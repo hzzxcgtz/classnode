@@ -94,6 +94,24 @@ pwdInput.addEventListener('input', function() {
   errorMsg.style.display = 'none';
 });
 
+// 检查系统是否已初始化
+(function() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', API_BASE + '/api/settings/init-status', true);
+  xhr.onload = function() {
+    try {
+      var resp = JSON.parse(xhr.responseText);
+      if (!resp.initialized) {
+        window.location.replace('/teacher/dashboard');
+      }
+    } catch(_) {}
+  };
+  xhr.onerror = function() {
+    // 服务不可用时仍显示登录表单
+  };
+  xhr.send();
+})();
+
 function handleLogin() {
   var pwd = pwdInput.value;
   if (!pwd) {

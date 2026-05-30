@@ -10,6 +10,11 @@ import {
 
 // ─── 辅助函数 ──────────────────────────────────────────────
 
+function getApiBaseUrl(): string {
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  return 'http://' + host + ':3001';
+}
+
 const greeting = () => {
   const hour = new Date().getHours();
   if (hour < 6) return '夜深了';

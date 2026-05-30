@@ -3,8 +3,12 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { getApiBaseUrl } from '@/lib/api-base';
 import { platformColors } from '@/lib/constants';
+
+function apiBaseUrl() {
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  return 'http://' + host + ':3001';
+}
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -173,7 +177,7 @@ export default function TeacherDashboard() {
                           fontSize: 9, fontWeight: 700, overflow: 'hidden',
                         }}>
                           {agt.logo
-                            ? <img src={agt.logo.startsWith('/') ? `${getApiBaseUrl()}${agt.logo}` : agt.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ? <img src={agt.logo.startsWith('/') ? `${apiBaseUrl()}${agt.logo}` : agt.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             : agt.name[0]}
                         </span>
                         {agt.name}
@@ -214,7 +218,7 @@ export default function TeacherDashboard() {
                 {cr.status === 'paused' ? (
                   <button onClick={async () => {
                     await api.resumeClassroom(cr.id);
-                    loadStats();
+                    loadData();
                   }} style={{
                     padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
                     background: 'transparent', color: '#2563eb', border: '1px solid #93c5fd',
@@ -227,7 +231,7 @@ export default function TeacherDashboard() {
                 ) : (
                   <button onClick={async () => {
                     await api.pauseClassroom(cr.id);
-                    loadStats();
+                    loadData();
                   }} style={{
                     padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
                     background: 'transparent', color: '#d97706', border: '1px solid #fcd34d',
@@ -241,7 +245,7 @@ export default function TeacherDashboard() {
                 <button onClick={async () => {
                   if (confirm(`确定结束课堂 "${cr.title || '未命名课堂'}" 吗？\n结束后的课堂可在历史数据中查看。`)) {
                     await api.endClassroom(cr.id);
-                    loadStats();
+                    loadData();
                   }
                 }} style={{
                   padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,

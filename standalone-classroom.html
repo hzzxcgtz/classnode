@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>AI互动课堂</title>
+<script>
+// Socket.io CDN 加载失败时显示友好提示
+window.__ioLoaded = false;
+// Runtime error diagnostics
+window.onerror = function(msg, url, line, col, err) {
+  var diag = document.getElementById('__errorDiag');
+  if (!diag) {
+    diag = document.createElement('div');
+    diag.id = '__errorDiag';
+    diag.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#dc2626;color:white;padding:12px 16px;font-size:13px;font-family:monospace;text-align:left;max-height:120px;overflow:auto';
+    document.body.appendChild(diag);
+  }
+  var src = '';
+  try { if (url && url !== window.location.href) src = ' ' + url.split('/').pop(); } catch(e) {}
+  diag.textContent += '⚠ ' + (msg || '') + ' [' + line + ':' + col + src + ']\n';
+  console.error('Runtime error:', msg, url, line, col);
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"
+  onload="window.__ioLoaded = true"
+  onerror="console.warn('socket.io CDN failed to load')"></script>
+<!-- fallback CDN -->
+<script>
+setTimeout(function() {
+  if (typeof io !== 'undefined') window.__ioLoaded = true;
+}, 3000);
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; touch-action: manipulation; overflow: hidden;
+  height: 100vh; height: -webkit-fill-available; background: #f0f4ff;
+}
+
+/* Loading screen */
+.loading-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;
+}
+.loading-screen .spinner { text-align: center; }
+.loading-screen .spinner-text { font-size: 16px; margin-bottom: 8px; }
+.loading-screen .spinner-code { font-size: 13px; opacity: 0.7; }
+.loading-dots { display: flex; gap: 5px; justify-content: center; margin-bottom: 16px; }
+.loading-dots span {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: rgba(255,255,255,0.6); display: inline-block;
+  animation: typing 1.4s infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* Identity screen */
+.identity-screen {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; position: relative;
+}
+.identity-card {
+  background: white; border-radius: 20px; padding: 40px; max-width: 420px; width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.identity-header { text-align: center; margin-bottom: 28px; }
+.identity-header .label { font-size: 14px; font-weight: 600; color: var(--primary); margin-bottom: 4px; }
+.identity-header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+.identity-header .title { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.student-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow: auto; }
+.student-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px; border-radius: 12px; border: 2px solid #eef2f6;
+  background: white; font-size: 15px; text-align: left;
+  cursor: pointer; transition: all .15s; width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+.student-item:active { transform: scale(0.98); }
+.student-item.online { cursor: not-allowed; opacity: 0.5; background: #f9fafb; }
+.student-item.selected { border-color: var(--primary); background: #eef2ff; }
+.student-avatar {
+  width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 16px;
+}
+.student-item .info { flex: 1; }
+.student-item .no { font-size: 12px; font-weight: 500; color: #9ca3af; line-height: 1.3; }
+.student-item .name { font-size: 16px; font-weight: 600; color: #1a1a2e; line-height: 1.4; }
+.student-item.online .name { color: #9ca3af; }
+.student-item .online-badge {
+  font-size: 11px; color: #9ca3af; background: #f3f4f6;
+  padding: 2px 8px; border-radius: 10px; flex-shrink: 0;
+}
+.confirm-btn {
+  width: 100%; margin-top: 20px; padding: 14px 28px;
+  border-radius: 12px; font-size: 16px; font-weight: 600; border: none;
+  background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+  cursor: pointer; transition: all .15s;
+}
+.confirm-btn:disabled { opacity: 0.5; cursor: default; }
+.confirm-btn:active:not(:disabled) { transform: scale(0.98); }
+.exit-btn {
+  position: absolute; top: 20px; left: 20px;
+  display: flex; align-items: center; gap: 4px; padding: 7px 14px;
+  background: rgba(255,255,255,0.12); backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+  color: white; font-size: 13px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chat screen */
+.chat-screen { height: 100vh; height: -webkit-fill-available; display: flex; flex-direction: column; }
+.chat-header {
+  padding: 10px 20px; display: flex; align-items: center; justify-content: space-between;
+  background: white; border-bottom: 1px solid #eef2f6; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  flex-shrink: 0;
+}
+.chat-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chat-header-left .avatar-wrap {
+  width: 42px; height: 42px; border-radius: 12px; overflow: hidden; flex-shrink: 0;
+}
+.chat-header-left .agent-name { font-size: 17px; font-weight: 600; color: #1a1a2e; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-header-left .agent-title { font-size: 12px; color: var(--text-secondary); line-height: 1.3; }
+.chat-header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.status-indicator { font-size: 12px; padding: 3px 8px; border-radius: 10px; font-weight: 500; white-space: nowrap; }
+.status-online { color: #10b981; background: #ecfdf5; }
+.status-offline { color: #ef4444; background: #fef2f2; }
+.header-btn {
+  padding: 5px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+  background: white; cursor: pointer; color: #6b7280; font-size: 12px;
+  font-weight: 500; display: flex; align-items: center; gap: 3px;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+.header-btn:active { background: #f9fafb; }
+.user-tag {
+  display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px;
+  background: #eef2ff; border-radius: 20px; font-size: 13px; color: var(--primary);
+  font-weight: 600; border: 1px solid #c7d2fe; white-space: nowrap;
+}
+.user-tag .initial {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 11px;
+}
+
+/* Messages area */
+.messages-area {
+  flex: 1; overflow: auto; padding: 0 24px 20px;
+  max-width: 800px; width: 100%; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.messages-area .empty-state {
+  text-align: center; padding: 40px 20px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.messages-area .empty-state .avatar-wrap {
+  width: 80px; height: 80px; border-radius: 24px; overflow: hidden;
+  margin-bottom: 20px; box-shadow: 0 8px 24px rgba(102,126,234,0.25);
+}
+.messages-area .empty-state h2 { font-size: 22px; font-weight: 700; color: #1a1a2e; margin: 0 0 8px; }
+.messages-area .empty-state p { font-size: 15px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+.messages-area .empty-state .disabled-notice {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+  background: #fffbeb; border-radius: 8px; border: 1px solid #fde68a;
+  font-size: 15px; color: #f59e0b; line-height: 1.6;
+}
+
+/* Message bubbles */
+.msg-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.msg-row.user { align-items: flex-end; }
+.msg-row .sender { display: flex; align-items: center; gap: 6px; padding-left: 4px; }
+.msg-row .sender .av { width: 34px; height: 34px; border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+.msg-row .sender .sn { font-size: 14px; font-weight: 600; color: var(--primary); }
+.msg-bubble {
+  max-width: 78%; padding: 14px 18px; font-size: 15px; line-height: 1.7;
+  word-break: break-word; position: relative;
+}
+.msg-bubble.user {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border-radius: 18px 18px 6px 18px;
+  box-shadow: 0 4px 12px rgba(102,126,234,0.2);
+}
+.msg-bubble.ai {
+  background: white; color: #1a1a2e;
+  border: 1px solid #eef2f6; border-radius: 6px 18px 18px 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.msg-bubble.system {
+  background: transparent; padding: 10px 16px; font-size: 14px;
+  max-width: 100%; text-align: center; color: var(--text-secondary);
+}
+.msg-bubble .file-preview { margin-bottom: 8px; }
+.msg-bubble .file-preview img {
+  max-width: 220px; max-height: 160px; border-radius: 10px;
+  object-fit: cover; display: block;
+}
+.msg-bubble .file-preview .file-link {
+  padding: 8px 12px; border-radius: 8px; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.msg-bubble.user .file-preview .file-link { background: rgba(255,255,255,0.15); color: white; }
+.msg-bubble.ai .file-preview .file-link { background: #f3f4f6; color: #1a1a2e; }
+.msg-bubble .markdown-content a { color: inherit; text-decoration: underline; }
+.msg-bubble.user .markdown-content a { color: rgba(255,255,255,0.9); }
+.msg-bubble.ai .markdown-content a { color: var(--primary); }
+.msg-bubble .markdown-content code {
+  background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace; font-size: 13px;
+}
+.msg-bubble .markdown-content pre {
+  background: rgba(0,0,0,0.06); border-radius: 8px; padding: 12px; overflow: auto;
+  margin: 8px 0; font-size: 13px;
+}
+.msg-bubble .markdown-content pre code { background: none; padding: 0; }
+.msg-bubble .markdown-content ul, .msg-bubble .markdown-content ol { padding-left: 20px; }
+.msg-bubble .markdown-content h3 { font-size: 16px; margin: 8px 0 4px; }
+.msg-bubble .markdown-content p { margin: 4px 0; }
+
+/* Thinking indicator */
+.thinking-bubble {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+}
+.thinking-bubble .sender { display: flex; align-items: center; gap: 6px; padding-left: 4px; }
+.thinking-bubble .sender .av { width: 26px; height: 26px; border-radius: 8px; overflow: hidden; }
+.thinking-bubble .sender .sn { font-size: 12px; font-weight: 600; color: var(--primary); }
+.thinking-content {
+  max-width: 78%; padding: 14px 18px; font-size: 15px; line-height: 1.7;
+  word-break: break-word;
+  background: white; color: #1a1a2e; border: 1px solid #eef2f6;
+  border-radius: 6px 18px 18px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.thinking-dots { display: flex; gap: 5px; padding: 4px 0; }
+.thinking-dots span {
+  width: 8px; height: 8px; border-radius: 50%; background: #d1d5db;
+  display: inline-block; animation: typing 1.4s infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+.cursor-blink { display: inline-block; width: 2px; height: 1em; background: var(--primary); margin-left: 2px; animation: blink 0.8s infinite; vertical-align: text-bottom; }
+
+/* Scroll to bottom button */
+.scroll-btn {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: 80px; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid #e5e7eb; background: white;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary); z-index: 10; transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Input area */
+.input-area {
+  padding: 10px 20px 14px; background: white;
+  border-top: 1px solid #eef2f6; flex-shrink: 0;
+}
+.file-previews {
+  max-width: 800px; width: 100%; margin: 0 auto 8px;
+  display: flex; gap: 8px; overflow: auto; padding-bottom: 2px;
+}
+.file-previews .file-thumb {
+  position: relative; flex-shrink: 0; width: 64px; height: 64px;
+  border-radius: 10px; overflow: hidden; border: 1px solid #eef2f6;
+  background: #f9fafb;
+}
+.file-previews .file-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.file-previews .file-thumb .file-icon {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; font-size: 10px; color: var(--text-secondary); gap: 2px;
+}
+.file-previews .file-thumb .file-icon span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; padding: 0 2px; }
+.file-previews .file-thumb .remove-file {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px;
+  border-radius: 50%; border: none; background: rgba(0,0,0,0.45);
+  color: white; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; font-size: 10px; line-height: 1;
+}
+.paused-notice {
+  max-width: 800px; width: 100%; margin: 0 auto 10px;
+  padding: 10px 16px; border-radius: 10px;
+  background: #fffbeb; border: 1px solid #fde68a;
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: #92400e;
+}
+.input-toolbar {
+  display: flex; gap: 8px; align-items: center;
+  max-width: 800px; width: 100%; margin: 0 auto;
+}
+.tool-btn {
+  flex-shrink: 0; width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #e5e7eb; border-radius: 12px; background: white;
+  cursor: pointer; color: #6b7280; transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-btn:active { background: #f9fafb; }
+.tool-btn:disabled { opacity: 0.4; }
+.tool-btn.listening { border-color: #fca5a5; background: #fef2f2; color: #ef4444; }
+.input-wrap {
+  flex: 1; display: flex; align-items: center;
+  background: #f3f4f6; border-radius: 12px; border: 1px solid #e5e7eb;
+}
+.input-wrap input {
+  flex: 1; font-size: 16px; padding: 12px 16px;
+  background: transparent; border: none; outline: none; color: #1a1a2e;
+}
+.send-btn {
+  flex-shrink: 0; height: 36px; width: 36px; margin: 3px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; border: none; cursor: pointer; transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.send-btn.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.send-btn.inactive { background: #d1d5db; color: white; cursor: default; }
+
+@keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
+@keyframes typing { 0%,60%,100% { transform: translateY(0) } 30% { transform: translateY(-5px) } }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  var API_PORT = 3001;
+  var API_BASE = 'http://' + window.location.hostname + ':' + API_PORT;
+  var app = document.getElementById('app');
+  var code = '';
+  var classroom = null;
+  var students = [];
+  var selectedStudent = null;
+  var messages = [];
+  var waitingAI = false;
+  var streamingContent = '';
+  var connected = false;
+  var paused = false;
+  var onlineStudentIds = {};
+  var socket = null;
+  var statusSocket = null;
+  var attachedFiles = [];
+  var uploading = false;
+
+  function getUrlParam(name) {
+    var m = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  // ===== Simple markdown renderer =====
+  function renderMarkdown(text) {
+    if (!text) return '';
+    var html = escapeHtml(text);
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    html = html.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(?:^|(?:\n\n))(<li>.*$)/gm, '<ol>$1</ol>');
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  }
+
+  function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(text));
+    return d.innerHTML;
+  }
+
+  function stripImages(md) {
+    return md.replace(/!\[([^\]]*)\]\([^)]+\)/g, '[$1]');
+  }
+
+  // ===== Agent avatar renderer（修复1：支持 logo 图片）=====
+  function renderAgentAvatar(size, borderRadius, fontSize) {
+    var agent = classroom && classroom.agents && classroom.agents[0];
+    var agentName = agent ? agent.name : 'AI 学习助手';
+    var logoUrl = agent && agent.logo ? (agent.logo.startsWith('/') ? API_BASE + agent.logo : agent.logo) : null;
+    if (logoUrl) {
+      return '<img src="' + logoUrl + '" alt="" style="width:' + size + 'px;height:' + size + 'px;border-radius:' + borderRadius + 'px;object-fit:cover;flex-shrink:0;display:block">';
+    }
+    return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:' + borderRadius + 'px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:' + fontSize + 'px;color:white;font-weight:700;flex-shrink:0">' + escapeHtml(agentName[0] || 'A') + '</div>';
+  }
+
+  // ===== Header 状态指示器更新（修复3：连接状态实时更新）=====
+  function updateConnectionStatus() {
+    var indicator = document.querySelector('.status-indicator');
+    if (!indicator) return;
+    indicator.textContent = connected ? '已连接' : '连接断开';
+    indicator.className = 'status-indicator ' + (connected ? 'status-online' : 'status-offline');
+  }
+
+  // ===== 消息区域连接状态横幅 =====
+  function updateConnBanner() {
+    var banner = document.getElementById('connBanner');
+    if (!banner) return;
+    if (connected) {
+      banner.style.display = 'none';
+    } else {
+      banner.style.display = 'block';
+      banner.style.background = '#fef2f2';
+      banner.style.color = '#ef4444';
+      banner.style.border = '1px solid #fecaca';
+      banner.textContent = '⚠️ 连接断开，正在重连...';
+    }
+  }
+
+  // ===== API calls =====
+  function apiGet(url) {
+    return new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', API_BASE + url, true);
+      xhr.timeout = 10000;
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch(e) { reject(new Error('Invalid JSON')); }
+        } else {
+          try { var e = JSON.parse(xhr.responseText); reject(new Error(e.error || 'Request failed')); }
+          catch(e2) { reject(new Error('Request failed: ' + xhr.status)); }
+        }
+      };
+      xhr.onerror = function() { reject(new Error('Network error')); };
+      xhr.ontimeout = function() { reject(new Error('Request timeout')); };
+      xhr.send();
+    });
+  }
+
+  // ===== Socket.io connection for chat =====
+  function startChatSession(studentId, studentName) {
+    if (socket) { socket.disconnect(); }
+    waitingAI = false;
+    streamingContent = '';
+
+    // 检查 socket.io 库是否加载成功
+    if (typeof io === 'undefined') {
+      connected = false;
+      updateConnectionStatus();
+      messages.push({ role: 'system', content: '⚠️ 连接库加载失败，请刷新页面或更换浏览器重试' });
+      updateChatUI();
+      return;
+    }
+
+    socket = io(API_BASE, { transports: ['polling', 'websocket'], timeout: 15000 });
+    console.log("[ClassNode] Chat socket created, existing statusSocket connected:", statusSocket ? statusSocket.connected : "no statusSocket");
+
+    // 连接超时处理
+    var connTimeout = setTimeout(function() {
+      if (!connected) {
+        messages.push({ role: 'system', content: '⚠️ 连接服务器超时，请检查网络后刷新重试' });
+        updateChatUI();
+      }
+    }, 15000);
+
+    socket.on('connect', function() {
+      console.log("[ClassNode] Chat socket CONNECTED, ID:", socket.id);
+      clearTimeout(connTimeout);
+      connected = true;
+      updateConnectionStatus();
+      updateConnBanner();
+      socket.emit('join-classroom', { classroomCode: code, studentId: studentId });
+    });
+
+    socket.on('disconnect', function() {
+      console.log("[ClassNode] Chat socket DISCONNECTED");
+      connected = false;
+      updateConnectionStatus();
+      updateConnBanner();
+    });
+    socket.on('connect_error', function(err) {
+      console.log("[ClassNode] Chat socket CONNECT_ERROR:", err ? (err.message || err) : "unknown");
+      connected = false;
+      updateConnectionStatus();
+      updateConnBanner();
+    });
+
+    socket.on('ai-response', function(data) {
+      waitingAI = false;
+      streamingContent = '';
+      messages.push({
+        role: 'assistant',
+        content: data.content,
+        roundIndex: data.roundIndex,
+      });
+      updateChatUI();
+      scrollToBottom();
+      setTimeout(function() { focusInput(); }, 100);
+    });
+
+    socket.on('ai-thinking', function() {
+      waitingAI = true;
+      streamingContent = '';
+      updateChatUI();
+      scrollToBottom();
+    });
+
+    socket.on('ai-chunk', function(data) {
+      streamingContent += data.content;
+      updateChatUI();
+      scrollToBottom();
+    });
+
+    socket.on('ai-error', function(data) {
+      waitingAI = false;
+      messages.push({ role: 'system', content: '⚠️ ' + data.error });
+      updateChatUI();
+      scrollToBottom();
+    });
+
+    socket.on('agent-disabled', function(data) {
+      waitingAI = false;
+      messages.push({ role: 'system', content: '智能体「' + data.agentName + '」当前已被教师停用，暂时无法回复你的问题。请稍后再试或联系老师。' });
+      updateChatUI();
+      scrollToBottom();
+    });
+
+    socket.on('classroom-ended', function() {
+      localStorage.removeItem('chat_session_' + code);
+      alert('课堂已结束');
+      window.location.href = '/';
+    });
+
+    socket.on('classroom-paused', function() {
+      paused = true;
+      waitingAI = false;
+      streamingContent = '';
+      messages.push({ role: 'system', content: '课堂已暂停，请等待老师继续' });
+      updatePausedUI();
+      updateChatUI();
+    });
+
+    socket.on('classroom-resumed', function() {
+      paused = false;
+      messages.push({ role: 'system', content: '课堂已恢复，可以继续提问了' });
+      updatePausedUI();
+      updateChatUI();
+    });
+
+    socket.on('identity-conflict', function(data) {
+      messages.push({ role: 'system', content: '⚠️ ' + data.error });
+      waitingAI = false;
+      connected = false;
+      updateConnectionStatus();
+      updateConnBanner();
+      localStorage.removeItem('chat_session_' + code);
+      updateChatUI();
+      setTimeout(function() {
+        if (socket) { socket.disconnect(); socket = null; }
+        selectedStudent = null;
+        messages = [];
+        renderIdentity();
+      }, 2000);
+    });
+
+    socket.on('error', function(err) {
+      waitingAI = false;
+      messages.push({ role: 'system', content: '⚠️ ' + (typeof err === 'string' ? err : '连接错误') });
+      updateChatUI();
+    });
+  }
+
+  // ===== UI Functions =====
+
+  function renderLoading() {
+    app.innerHTML =
+      '<div class="loading-screen">' +
+        '<div class="spinner">' +
+          '<div class="loading-dots"><span></span><span></span><span></span></div>' +
+          '<div class="spinner-text">正在连接课堂...</div>' +
+          '<div class="spinner-code">互动码: ' + escapeHtml(code) + '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // 身份选择页
+  function renderIdentity() {
+    var isGroupMode = classroom && classroom.mode === 'group';
+
+    // 如果已选中的学生现在在线了，取消选中
+    if (!students || students.length === 0) {
+      console.warn("[ClassNode] renderIdentity called with 0 students! classroom:", classroom ? classroom.id : "null");
+    }
+    if (selectedStudent && onlineStudentIds[selectedStudent.id]) {
+      selectedStudent = null;
+    }
+
+    var html =
+      '<div class="identity-screen">' +
+        '<button class="exit-btn" onclick="window.standaloneBack()">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>' +
+          '退出' +
+        '</button>' +
+        '<div class="identity-card">' +
+          '<div class="identity-header">' +
+            '<div class="label">' + (isGroupMode ? '选择你的小组' : '选择你的身份') + '</div>' +
+            '<h1>' + (isGroupMode ? '请选择你的小组' : '请选择你的姓名') + '</h1>' +
+            (classroom && classroom.title ? '<div class="title">' + escapeHtml(classroom.title) + '</div>' : '') +
+          '</div>' +
+          '<div class="student-list" id="studentList">';
+
+    var sorted = [].concat(students).sort(function(a, b) {
+      return (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0);
+    });
+
+    for (var i = 0; i < sorted.length; i++) {
+      var s = sorted[i];
+      var isOnline = onlineStudentIds[s.id];
+      var isSelected = selectedStudent && selectedStudent.id === s.id;
+      var initialBg = isOnline ? '#e5e7eb' : '#f3f4f6';
+      var initialColor = isOnline ? '#d1d5db' : '#6b7280';
+
+      html +=
+        '<button class="student-item' + (isOnline ? ' online' : '') + (isSelected ? ' selected' : '') + '" data-id="' + s.id + '" data-name="' + escapeHtml(s.name) + '"' + (isOnline ? ' disabled' : '') + '>' +
+          '<div class="student-avatar" style="background:' + initialBg + ';color:' + initialColor + '">' +
+            escapeHtml((s.name || '?')[0]) +
+          '</div>' +
+          '<div class="info">' +
+            (s.studentNo ? '<div class="no">' + escapeHtml(s.studentNo) + '</div>' : '') +
+            '<div class="name">' + escapeHtml(s.name) + '</div>' +
+          '</div>' +
+          (isOnline ? '<span class="online-badge">已登录</span>' : '') +
+        '</button>';
+    }
+
+    html +=
+          '</div>' +
+          '<button class="confirm-btn" id="confirmBtn"' + (selectedStudent ? '' : ' disabled') + '>' +
+            (isGroupMode ? '确认并进入小组对话' : '确认并进入对话') +
+          '</button>' +
+        '</div>' +
+      '</div>';
+
+    app.innerHTML = html;
+
+    var list = document.getElementById('studentList');
+    list.addEventListener('click', function(e) {
+      var btn = e.target.closest('.student-item');
+      if (!btn || btn.disabled) return;
+      var id = btn.dataset.id;
+      for (var j = 0; j < students.length; j++) {
+        if (students[j].id === id) {
+          selectedStudent = students[j];
+          break;
+        }
+      }
+      // 仅更新选中状态，不重绘整个列表以保持滚动位置
+      var items = list.querySelectorAll('.student-item');
+      for (var k = 0; k < items.length; k++) {
+        items[k].classList.toggle('selected', items[k].dataset.id === id);
+      }
+      document.getElementById('confirmBtn').disabled = false;
+    });
+
+    document.getElementById('confirmBtn').addEventListener('click', function() {
+      if (!selectedStudent) return;
+      goToChat();
+    });
+  }
+
+  function goToChat() {
+    try {
+      localStorage.setItem('chat_session_' + code, JSON.stringify({
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        timestamp: Date.now()
+      }));
+    } catch(e) {}
+
+    if (classroom && classroom.id) {
+      apiGet('/api/classroom/' + encodeURIComponent(classroom.id) + '/student/' + encodeURIComponent(selectedStudent.id) + '/messages')
+        .then(function(msgs) {
+          if (msgs && msgs.length > 0) {
+            messages = msgs.map(function(m) {
+              var item = { role: m.role, content: m.content, roundIndex: m.roundIndex };
+              try {
+                if (m.fileUrls) {
+                  item.fileUrls = typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls;
+                  item.fileNames = typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames;
+                }
+              } catch(e) {}
+              return item;
+            });
+          }
+          renderChat();
+          startChatSession(selectedStudent.id, selectedStudent.name);
+        })
+        .catch(function() {
+          renderChat();
+          startChatSession(selectedStudent.id, selectedStudent.name);
+        });
+    } else {
+      renderChat();
+      startChatSession(selectedStudent.id, selectedStudent.name);
+    }
+  }
+
+  // ===== Paused UI update =====
+  function updatePausedUI() {
+    var notice = document.getElementById('pausedNotice');
+    if (notice) {
+      notice.style.display = paused ? '' : 'none';
+    }
+    var input = document.getElementById('chatInput');
+    if (input) {
+      input.placeholder = paused ? '课堂已暂停...' : '输入你的问题...';
+      input.disabled = paused;
+    }
+    updateSendBtn();
+  }
+
+  // ===== Chat UI =====
+  function renderChat() {
+    var agent = classroom && classroom.agents && classroom.agents[0];
+    var agentName = agent ? agent.name : 'AI 学习助手';
+    var agentEnabled = agent ? agent.enabled !== false : true;
+
+    var html =
+      '<div class="chat-screen">' +
+        '<div class="chat-header">' +
+          '<div class="chat-header-left">' +
+            '<div class="avatar-wrap">' + renderAgentAvatar(42, 12, 20) + '</div>' +
+            '<div>' +
+              '<div class="agent-name">' + escapeHtml(agentName) + '</div>' +
+              (classroom && classroom.title ? '<div class="agent-title">' + escapeHtml(classroom.title) + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="chat-header-right">' +
+            '<span class="status-indicator ' + (connected ? 'status-online' : 'status-offline') + '">' + (connected ? '已连接' : '连接断开') + '</span>' +
+            (selectedStudent && selectedStudent.name ? '<div class="user-tag" id="userTag"><div class="initial">' + escapeHtml(selectedStudent.name[0]) + '</div>' + escapeHtml(selectedStudent.name) + '</div>' : '') +
+            '<button class="header-btn" onclick="window.standaloneSwitchIdentity()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>切换</button>' +
+            '<button class="header-btn" onclick="window.standaloneExit()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="messages-area" id="messagesArea">' +
+        '<div id="connBanner" style="flex-shrink:0;text-align:center;padding:8px 16px;font-size:13px;border-radius:8px;margin:8px 0 0;' + (connected ? 'display:none' : 'display:block;background:#fef2f2;color:#ef4444;border:1px solid #fecaca') + '">' + (connected ? '' : '⚠️ 连接断开，正在重连...') + '</div>';
+
+    // Empty state
+    console.log("[ClassNode] renderChat: messages=", messages.length, "waitingAI=", waitingAI, "agent=", agent ? agent.name : "null");
+    if (messages.length === 0 && !waitingAI) {
+      html +=
+        '<div class="empty-state">' +
+          '<div class="avatar-wrap">' + renderAgentAvatar(80, 24, 40) + '</div>' +
+          (agentEnabled ?
+            '<h2>' + escapeHtml(agentName) + '</h2><p>你好呀！我是你的 AI 学习助手 🎉<br>有什么问题尽管问我，也可以上传图片让我帮你评价哦！</p>' :
+            '<div class="disabled-notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>智能体已被教师停用，暂时无法回复消息</div>'
+          ) +
+        '</div>';
+    }
+
+    // Messages
+    for (var i = 0; i < messages.length; i++) {
+      var msg = messages[i];
+      if (msg.role === 'system') {
+        html += '<div class="msg-row"><div class="msg-bubble system">' + escapeHtml(msg.content) + '</div></div>';
+      } else if (msg.role === 'user') {
+        html += '<div class="msg-row user">';
+        if (msg.fileUrls && msg.fileUrls.length > 0) {
+          for (var fi = 0; fi < msg.fileUrls.length; fi++) {
+            var fu = msg.fileUrls[fi];
+            var fn = (msg.fileNames && msg.fileNames[fi]) || '';
+            if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu)) {
+              html += '<div class="msg-bubble user"><div class="file-preview"><img src="' + API_BASE + fu + '" alt="' + escapeHtml(fn) + '"></div>' + escapeHtml(msg.content || '(附件)') + '</div>';
+            } else {
+              html += '<div class="msg-bubble user"><div class="file-preview"><div class="file-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' + escapeHtml(fn || '文件') + '</div></div>' + escapeHtml(msg.content || '(附件)') + '</div>';
+            }
+          }
+        } else {
+          html += '<div class="msg-bubble user">' + escapeHtml(msg.content) + '</div>';
+        }
+        html += '</div>';
+      } else if (msg.role === 'assistant') {
+        html +=
+          '<div class="msg-row">' +
+            '<div class="sender"><div class="av">' + renderAgentAvatar(34, 10, 16) + '</div><span class="sn">' + escapeHtml(agentName) + '</span></div>' +
+            '<div class="msg-bubble ai"><div class="markdown-content">' + renderMarkdown(msg.content) + '</div></div>' +
+          '</div>';
+      }
+    }
+
+    // Thinking indicator
+    if (waitingAI) {
+      html +=
+        '<div class="thinking-bubble">' +
+          '<div class="sender"><div class="av">' + renderAgentAvatar(26, 8, 13) + '</div><span class="sn">' + escapeHtml(agentName) + '</span></div>' +
+          '<div class="thinking-content">' +
+            (streamingContent ?
+              '<div class="markdown-content">' + renderMarkdown(stripImages(streamingContent)) + '<span class="cursor-blink"></span></div>' :
+              '<div class="thinking-dots"><span></span><span></span><span></span></div>'
+            ) +
+          '</div>' +
+        '</div>';
+    }
+
+    html += '</div>'; // messages-area
+
+    // Scroll to bottom button
+    html += '<button class="scroll-btn" id="scrollBtn" style="display:none" onclick="window.standaloneScrollToBottom()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg></button>';
+
+    // Input area
+    html +=
+      '<div class="input-area">' +
+        '<div id="pausedNotice" class="paused-notice"' + (paused ? '' : ' style="display:none"') + '>' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>' +
+          '课堂已暂停，等待老师继续...' +
+        '</div>' +
+        '<div class="input-toolbar">' +
+          '<input type="file" id="fileInput" multiple accept="image/*,.pdf,.doc,.docx,.txt" style="display:none">' +
+          '<button class="tool-btn" id="attachBtn">' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>' +
+          '</button>' +
+          '<button class="tool-btn" id="voiceBtn">' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>' +
+          '</button>' +
+          '<div class="input-wrap">' +
+            '<input type="text" id="chatInput" placeholder="' + (paused ? '课堂已暂停...' : '输入你的问题...') + '"' + (paused ? ' disabled' : '') + ' autocomplete="off">' +
+            '<button class="send-btn inactive" id="sendBtn">' +
+              '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '</div>';
+
+    app.innerHTML = html;
+
+    setupChatEvents();
+    var area = document.getElementById('messagesArea');
+    if (area) {
+      area.addEventListener('scroll', function() {
+        var btn = document.getElementById('scrollBtn');
+        if (!btn) return;
+        var atBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+        btn.style.display = atBottom ? 'none' : '';
+      });
+    }
+  }
+
+  function setupChatEvents() {
+    var input = document.getElementById('chatInput');
+    var sendBtn = document.getElementById('sendBtn');
+    var attachBtn = document.getElementById('attachBtn');
+    var voiceBtn = document.getElementById('voiceBtn');
+    var fileInput = document.getElementById('fileInput');
+
+    if (input && sendBtn) {
+      input.addEventListener('input', function() { updateSendBtn(); });
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      });
+    }
+
+    if (sendBtn) {
+      sendBtn.addEventListener('click', function() { sendMessage(); });
+    }
+
+    if (attachBtn && fileInput) {
+      attachBtn.addEventListener('click', function() {
+        if (waitingAI || uploading || paused) return;
+        fileInput.click();
+      });
+      fileInput.addEventListener('change', function() { handleFileSelect(); });
+    }
+
+    if (voiceBtn) {
+      voiceBtn.addEventListener('click', function() { startVoiceInput(); });
+    }
+
+    setTimeout(function() { focusInput(); }, 300);
+  }
+
+  function focusInput() {
+    var input = document.getElementById('chatInput');
+    if (input && !paused) {
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) {
+        input.readOnly = true;
+        input.focus();
+        setTimeout(function() { input.readOnly = false; }, 150);
+      } else {
+        input.focus();
+      }
+    }
+  }
+
+  function updateSendBtn() {
+    var input = document.getElementById('chatInput');
+    var sendBtn = document.getElementById('sendBtn');
+    if (!input || !sendBtn) return;
+    var hasText = input.value.trim().length > 0 || attachedFiles.length > 0;
+    var canSend = hasText && !waitingAI && !paused;
+    sendBtn.className = 'send-btn ' + (canSend ? 'active' : 'inactive');
+    sendBtn.disabled = !canSend;
+  }
+
+  function sendMessage() {
+    var input = document.getElementById('chatInput');
+    if (!input) return;
+    var text = input.value.trim();
+    var files = attachedFiles;
+    if (!text && files.length === 0) return;
+    if (waitingAI || paused) return;
+    if (!socket) {
+      messages.push({ role: 'system', content: '⚠️ 尚未连接到服务器，请稍候或刷新重试' });
+      updateChatUI();
+      return;
+    }
+    if (!connected) {
+      messages.push({ role: 'system', content: '⚠️ 连接已断开，正在尝试重新连接...' });
+      updateChatUI();
+      scrollToBottom();
+      return; // 连接断开时不发送
+    }
+    if (!selectedStudent) {
+      messages.push({ role: 'system', content: '⚠️ 连接异常，请刷新页面重新选择身份' });
+      updateChatUI();
+      return;
+    }
+
+    input.value = '';
+    attachedFiles = [];
+    updateSendBtn();
+    updateFilePreviews();
+
+    messages.push({
+      role: 'user',
+      content: text || '(附件)',
+      fileUrls: files.map(function(f) { return f.url; }),
+      fileNames: files.map(function(f) { return f.name; }),
+    });
+    updateChatUI();
+    scrollToBottom();
+
+    console.log("[ClassNode] Emitting send-message, connected=" + connected + ", text=" + text.slice(0, 50));
+
+    socket.emit('send-message', {
+      classroomCode: code,
+      studentId: selectedStudent.id,
+      content: text || '',
+      fileUrls: files.map(function(f) { return f.url; }),
+      fileNames: files.map(function(f) { return f.name; }),
+    });
+  }
+
+  function handleFileSelect() {
+    var fileInput = document.getElementById('fileInput');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
+    uploading = true;
+    var files = Array.from(fileInput.files);
+    var newFiles = [];
+
+    function uploadNext(index) {
+      if (index >= files.length) {
+        uploading = false;
+        attachedFiles = attachedFiles.concat(newFiles);
+        updateFilePreviews();
+        updateSendBtn();
+        fileInput.value = '';
+        return;
+      }
+      var form = new FormData();
+      form.append('file', files[index]);
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + '/api/upload', true);
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            if (data.success) {
+              newFiles.push({ url: data.url, name: files[index].name });
+            }
+          } catch(e) {}
+        }
+        uploadNext(index + 1);
+      };
+      xhr.onerror = function() { uploadNext(index + 1); };
+      xhr.send(form);
+    }
+    uploadNext(0);
+  }
+
+  function updateFilePreviews() {
+    var container = document.getElementById('filePreviews');
+    if (!container) {
+      var inputArea = document.querySelector('.input-area');
+      if (!inputArea) return;
+      var existing = document.getElementById('filePreviews');
+      if (existing) existing.remove();
+      if (attachedFiles.length === 0) return;
+      var div = document.createElement('div');
+      div.id = 'filePreviews';
+      div.className = 'file-previews';
+      for (var i = 0; i < attachedFiles.length; i++) {
+        var f = attachedFiles[i];
+        var thumb = document.createElement('div');
+        thumb.className = 'file-thumb';
+        if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(f.url)) {
+          thumb.innerHTML = '<img src="' + API_BASE + f.url + '" alt="' + escapeHtml(f.name) + '"><button class="remove-file" data-i="' + i + '">✕</button>';
+        } else {
+          thumb.innerHTML = '<div class="file-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span>' + escapeHtml(f.name) + '</span></div><button class="remove-file" data-i="' + i + '">✕</button>';
+        }
+        thumb.querySelector('.remove-file').addEventListener('click', function(e) {
+          var idx = parseInt(e.currentTarget.dataset.i);
+          attachedFiles.splice(idx, 1);
+          updateFilePreviews();
+          updateSendBtn();
+        });
+        div.appendChild(thumb);
+      }
+      var pausedNotice = document.getElementById('pausedNotice');
+      if (pausedNotice) {
+        pausedNotice.parentNode.insertBefore(div, pausedNotice.nextSibling);
+      } else {
+        var toolbar = document.querySelector('.input-toolbar');
+        if (toolbar) inputArea.insertBefore(div, toolbar);
+      }
+    } else {
+      container.innerHTML = '';
+      for (var j = 0; j < attachedFiles.length; j++) {
+        var f2 = attachedFiles[j];
+        var t = document.createElement('div');
+        t.className = 'file-thumb';
+        if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(f2.url)) {
+          t.innerHTML = '<img src="' + API_BASE + f2.url + '" alt="' + escapeHtml(f2.name) + '"><button class="remove-file" data-i="' + j + '">✕</button>';
+        } else {
+          t.innerHTML = '<div class="file-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span>' + escapeHtml(f2.name) + '</span></div><button class="remove-file" data-i="' + j + '">✕</button>';
+        }
+        t.querySelector('.remove-file').addEventListener('click', function(e) {
+          var idx = parseInt(e.currentTarget.dataset.i);
+          attachedFiles.splice(idx, 1);
+          updateFilePreviews();
+          updateSendBtn();
+        });
+        container.appendChild(t);
+      }
+      container.style.display = attachedFiles.length === 0 ? 'none' : 'flex';
+    }
+  }
+
+  function startVoiceInput() {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('您的浏览器不支持语音输入，请使用 Chrome');
+      return;
+    }
+    var recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    var voiceBtn = document.getElementById('voiceBtn');
+    recognition.onstart = function() { if (voiceBtn) voiceBtn.classList.add('listening'); };
+    recognition.onend = function() { if (voiceBtn) voiceBtn.classList.remove('listening'); };
+    recognition.onresult = function(event) {
+      var transcript = event.results[0][0].transcript;
+      var input = document.getElementById('chatInput');
+      if (input) {
+        input.value = input.value + transcript;
+        updateSendBtn();
+      }
+    };
+    recognition.onerror = function() { if (voiceBtn) voiceBtn.classList.remove('listening'); };
+    recognition.start();
+    focusInput();
+  }
+
+  // ===== updateChatUI：仅更新消息区域和暂停状态 =====
+  function updateChatUI() {
+    var area = document.getElementById('messagesArea');
+    if (!area) { renderChat(); return; }
+
+    var oldScrollTop = area.scrollTop;
+    var oldScrollHeight = area.scrollHeight;
+
+    var agent = classroom && classroom.agents && classroom.agents[0];
+    var agentName = agent ? agent.name : 'AI 学习助手';
+    var agentEnabled = agent ? agent.enabled !== false : true;
+
+    var html = '';
+
+    // Empty state
+    if (messages.length === 0 && !waitingAI) {
+      html +=
+        '<div class="empty-state">' +
+          '<div class="avatar-wrap">' + renderAgentAvatar(80, 24, 40) + '</div>' +
+          (agentEnabled ?
+            '<h2>' + escapeHtml(agentName) + '</h2><p>你好呀！我是你的 AI 学习助手 🎉<br>有什么问题尽管问我，也可以上传图片让我帮你评价哦！</p>' :
+            '<div class="disabled-notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>智能体已被教师停用，暂时无法回复消息</div>'
+          ) +
+        '</div>';
+    }
+
+    for (var i = 0; i < messages.length; i++) {
+      var msg = messages[i];
+      if (msg.role === 'system') {
+        html += '<div class="msg-row"><div class="msg-bubble system">' + escapeHtml(msg.content) + '</div></div>';
+      } else if (msg.role === 'user') {
+        html += '<div class="msg-row user">';
+        if (msg.fileUrls && msg.fileUrls.length > 0) {
+          for (var fi = 0; fi < msg.fileUrls.length; fi++) {
+            var fu = msg.fileUrls[fi];
+            var fn = (msg.fileNames && msg.fileNames[fi]) || '';
+            if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu)) {
+              html += '<div class="msg-bubble user"><div class="file-preview"><img src="' + API_BASE + fu + '" alt="' + escapeHtml(fn) + '"></div>' + escapeHtml(msg.content || '(附件)') + '</div>';
+            } else {
+              html += '<div class="msg-bubble user"><div class="file-preview"><div class="file-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' + escapeHtml(fn || '文件') + '</div></div>' + escapeHtml(msg.content || '(附件)') + '</div>';
+            }
+          }
+        } else {
+          html += '<div class="msg-bubble user">' + escapeHtml(msg.content) + '</div>';
+        }
+        html += '</div>';
+      } else if (msg.role === 'assistant') {
+        html +=
+          '<div class="msg-row">' +
+            '<div class="sender"><div class="av">' + renderAgentAvatar(34, 10, 16) + '</div><span class="sn">' + escapeHtml(agentName) + '</span></div>' +
+            '<div class="msg-bubble ai"><div class="markdown-content">' + renderMarkdown(msg.content) + '</div></div>' +
+          '</div>';
+      }
+    }
+
+    // Thinking indicator
+    if (waitingAI) {
+      html +=
+        '<div class="thinking-bubble">' +
+          '<div class="sender"><div class="av">' + renderAgentAvatar(26, 8, 13) + '</div><span class="sn">' + escapeHtml(agentName) + '</span></div>' +
+          '<div class="thinking-content">' +
+            (streamingContent ?
+              '<div class="markdown-content">' + renderMarkdown(stripImages(streamingContent)) + '<span class="cursor-blink"></span></div>' :
+              '<div class="thinking-dots"><span></span><span></span><span></span></div>'
+            ) +
+          '</div>' +
+        '</div>';
+    }
+
+    area.innerHTML = '<div id="connBanner" style="flex-shrink:0;text-align:center;padding:8px 16px;font-size:13px;border-radius:8px;margin:8px 0 0;' + (connected ? 'display:none' : 'display:block;background:#fef2f2;color:#ef4444;border:1px solid #fecaca') + '">' + (connected ? '' : '⚠️ 连接断开，正在重连...') + '</div>' + html;
+
+    // Preserve scroll position unless near bottom
+    var newScrollHeight = area.scrollHeight;
+    var isAtBottom = oldScrollHeight - oldScrollTop - area.clientHeight < 80;
+    if (isAtBottom) {
+      if (newScrollHeight > oldScrollHeight) {
+        area.scrollTop = newScrollHeight;
+      }
+    } else {
+      area.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+    }
+
+    updateSendBtn();
+  }
+
+  function scrollToBottom() {
+    var area = document.getElementById('messagesArea');
+    if (area) {
+      requestAnimationFrame(function() {
+        area.scrollTop = area.scrollHeight;
+      });
+    }
+  }
+
+  // ===== Window-level callbacks =====
+  window.standaloneBack = function() {
+    cleanup();
+    window.location.href = '/';
+  };
+
+  window.standaloneExit = function() {
+    cleanup();
+    window.location.href = '/';
+  };
+
+  window.standaloneSwitchIdentity = function() {
+    if (socket) { socket.disconnect(); socket = null; }
+    localStorage.removeItem('chat_session_' + code);
+    messages = [];
+    selectedStudent = null;
+    renderIdentity();
+  };
+
+  window.standaloneScrollToBottom = function() {
+    scrollToBottom();
+    var btn = document.getElementById('scrollBtn');
+    if (btn) btn.style.display = 'none';
+  };
+
+  function cleanup() {
+    if (socket) { socket.disconnect(); socket = null; }
+    if (statusSocket) { statusSocket.disconnect(); statusSocket = null; }
+    localStorage.removeItem('chat_session_' + code);
+  }
+
+  // ===== Main Init =====
+  function init() {
+    code = getUrlParam('code');
+    if (!code) { window.location.href = '/'; return; }
+
+    renderLoading();
+
+    // Try to restore session
+    var saved = null;
+    try {
+      var raw = localStorage.getItem('chat_session_' + code);
+      if (raw) {
+        saved = JSON.parse(raw);
+        if (Date.now() - saved.timestamp >= 7200000) {
+          saved = null;
+          localStorage.removeItem('chat_session_' + code);
+        }
+      }
+    } catch(e) { saved = null; }
+
+    // Load classroom
+    apiGet('/api/classroom/code/' + encodeURIComponent(code))
+      .then(function(cr) {
+        classroom = cr;
+        if (cr.status === 'paused') paused = true;
+
+        // connect status socket for online status
+        if (cr.id) connectStatusSocket(cr.id);
+
+        if (saved) {
+          selectedStudent = { id: saved.studentId, name: saved.studentName };
+          goToChat();
+        } else {
+          apiGet('/api/classroom/' + encodeURIComponent(cr.id) + '/students')
+            .then(function(stu) {
+              students = stu || [];
+              console.log("[ClassNode] Students loaded:", students.length, "items, sample:", JSON.stringify(students.slice(0, 2)));
+              renderIdentity();
+            })
+            .catch(function() {
+              console.warn("[ClassNode] Failed to load students, rendering empty list");
+              students = [];
+              renderIdentity();
+            });
+        }
+      })
+      .catch(function() {
+        alert('互动码无效或课堂已结束');
+        window.location.href = '/';
+      });
+  }
+
+  function connectStatusSocket(classroomId) {
+    if (statusSocket) statusSocket.disconnect();
+    if (typeof io === 'undefined') return;
+    try {
+      statusSocket = io(API_BASE, { transports: ['polling', 'websocket'] });
+      statusSocket.on('connect', function() {
+        statusSocket.emit('listen-classroom-status', classroomId);
+      });
+      statusSocket.on('online-students', function(ids) {
+        onlineStudentIds = {};
+        for (var i = 0; i < ids.length; i++) {
+          onlineStudentIds[ids[i]] = true;
+        }
+        // 仅在身份选择页显示时取消选中（进入聊天后不再触发）
+        if (document.getElementById('studentList')) {
+          if (selectedStudent && onlineStudentIds[selectedStudent.id]) {
+            selectedStudent = null;
+          }
+          renderIdentity();
+        }
+      });
+    } catch(e) {}
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

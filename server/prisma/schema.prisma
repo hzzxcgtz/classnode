@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 教师全局配置（管理密码、端口号等）
+model Setting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value String
+}
+
+// AI 智能体配置
+model Agent {
+  id        String   @id @default(uuid())
+  name      String   // 本地展示名称
+  logo      String?  // 本地 Logo 路径
+  platform  String   // 平台类型: coze / dify / openai
+  apiUrl    String?  // API URL (for Dify / OpenAI)
+  apiKey    String   // AES 加密后的 API Key / Token
+  botId     String?  // Bot ID (for Coze)
+  extra     String?  // 额外配置 (JSON)
+  enabled   Boolean  @default(true)
+  greeting         String?   // 开场白
+  greetingFetchedAt DateTime? // 开场白最后拉取时间
+  createdAt         DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classroomAgents ClassroomAgent[]
+  classroomGroups ClassroomGroup[]
+}
+
+// 班级
+model Class {
+  id        String   @id @default(uuid())
+  name      String   // 班级名称
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students         Student[]
+  groups           ClassGroup[]
+  classroomClasses ClassroomClass[]
+}
+
+// 班级分组（持久化，可在创建课堂时复用）
+model ClassGroup {
+  id         String   @id @default(uuid())
+  classId    String
+  name       String   // 组名
+  studentIds String   @default("[]") // 学生 ID 数组 JSON ["uuid1","uuid2"]
+  createdAt  DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, name])
+}
+
+// 学生
+model Student {
+  id        String   @id @default(uuid())
+  classId   String
+  name      String   // 学生姓名
+  studentNo String?  // 学号
+  tag       String?  // 分组标签 (如 A组, B组)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classroomStudents ClassroomStudent[]
+}
+
+// 课堂
+model Classroom {
+  id        String   @id @default(uuid())
+  code      String?  @unique // 4位互动码（结束课堂时置空以回收）
+  title     String?  // 课堂标题
+  mode      String   @default("standard") // standard / advanced
+  status    String   @default("active") // active / ended
+  createdAt DateTime @default(now())
+  endedAt   DateTime?
+
+  classes          ClassroomClass[]
+  groups           ClassroomGroup[]
+  students         ClassroomStudent[]
+  classroomAgents  ClassroomAgent[]
+  interactions     Interaction[]
+}
+
+// 课堂关联的班级（标准模式）
+model ClassroomClass {
+  classroomId String
+  classId     String
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  class     Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([classroomId, classId])
+}
+
+// 课堂分组（高级模式）
+model ClassroomGroup {
+  id          String @id @default(uuid())
+  classroomId String
+  name        String // 组名
+  agentId    String // 该组绑定的智能体
+  code        String?  @unique // 该组的互动码（结束课堂时置空回收）
+
+  classroom Classroom       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  students  ClassroomStudent[]
+}
+
+// 课堂中的智能体关联
+model ClassroomAgent {
+  id          String @id @default(uuid())
+  classroomId String
+  agentId     String
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, agentId])
+}
+
+// 课堂中的学生
+model ClassroomStudent {
+  id          String   @id @default(uuid())
+  classroomId String
+  studentId   String
+  groupId     String?  // 所属组（高级模式）
+  joinTime    DateTime @default(now())
+  status      String   @default("offline") // online / offline
+  totalRounds Int      @default(0)
+
+  classroom Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group     ClassroomGroup? @relation(fields: [groupId], references: [id])
+  messages  Message[]
+
+  @@unique([classroomId, studentId])
+}
+
+// 互动消息
+model Message {
+  id               String   @id @default(uuid())
+  classroomId      String
+  studentId        String
+  content          String   // 消息原文
+  role             String   // user / assistant
+  displayName      String?  // 脱敏后的显示名
+  roundIndex       Int?     // 第几轮
+  agentId          String?  // 回复的智能体
+  tokenUsage       Int?     // Token 消耗
+  fileUrls         String?  // 附件 URL 列表（JSON 数组）
+  fileNames        String?  // 附件名称列表（JSON 数组）
+  createdAt        DateTime @default(now())
+
+  classroomStudent ClassroomStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+// 互动记录汇总
+model Interaction {
+  id          String   @id @default(uuid())
+  classroomId String
+  studentId   String
+  totalRounds Int      @default(0)
+  firstMsgLen Int?     // 首问字数
+  avgTime     Int?     // 平均响应时间(秒)
+  totalTokens Int?     // 总Token消耗
+  createdAt   DateTime @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, studentId])
+}

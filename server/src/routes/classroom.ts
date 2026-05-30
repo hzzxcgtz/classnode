@@ -252,7 +252,7 @@ router.get('/active', async (req, res) => {
         _count: { select: { students: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: true } },
-        groups: true,
+        groups: { include: { agent: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -359,6 +359,7 @@ router.get('/code/:code', async (req, res) => {
         logo: ca.agent.logo,
         platform: ca.agent.platform,
         enabled: ca.agent.enabled,
+        greeting: ca.agent.greeting,
       })),
       groups: (classroom.mode === 'advanced' || classroom.mode === 'group') ? classroom.groups : undefined,
     });
@@ -515,8 +516,29 @@ router.get('/history/all', async (req, res) => {
       orderBy: { endedAt: 'desc' },
       take: 50,
     });
-    res.json(classrooms);
+
+    // 批量查询每个课堂的参与学生数和消息总字数
+    const ids = classrooms.map(c => c.id);
+    type MsgStat = { classroomId: string; participantCount: number; totalChars: number };
+    let statsMap = new Map<string, MsgStat>();
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      const raw = await prisma.$queryRawUnsafe<MsgStat[]>(
+        `SELECT "classroomId", COUNT(DISTINCT "studentId") AS "participantCount", SUM(LENGTH("content")) AS "totalChars" FROM "Message" WHERE "classroomId" IN (${placeholders}) GROUP BY "classroomId"`,
+        ...ids,
+      );
+      statsMap = new Map(raw.map(r => [r.classroomId, r]));
+    }
+
+    const result = classrooms.map(c => ({
+      ...c,
+      participantCount: Number(statsMap.get(c.id)?.participantCount ?? 0),
+      totalChars: Number(statsMap.get(c.id)?.totalChars ?? 0),
+    }));
+
+    res.json(result);
   } catch (error) {
+    console.error('Get history error:', error);
     res.status(500).json({ error: '获取历史记录失败' });
   }
 });

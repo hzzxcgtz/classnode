@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.19.2/dist/preact.umd.js"
+  onerror="document.body.innerHTML='preact failed'"></script>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.19.2/hooks/dist/hooks.umd.js"
+  onerror="document.body.innerHTML+='hooks failed'"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"
+  onerror="document.body.innerHTML+='htm failed'"></script>
+<script>
+var h = preact.h;
+var render = preact.render;
+var html = htm.bind(h);
+
+function App() {
+  return html`<div style="padding:20px;background:green;color:white;font-size:24px">
+    <h1>Test</h1>
+    <p>${new Date().toString()}</p>
+    <button onClick=${function() { alert('clicked!'); }}>Click me</button>
+  </div>`;
+}
+
+try {
+  render(App, document.getElementById('root'));
+  document.body.innerHTML += '<div style="color:green">RENDER OK</div>';
+} catch(e) {
+  document.body.innerHTML += '<div style="color:red">ERROR: ' + e.message + '</div>';
+}
+</script>
+</body>
+</html>

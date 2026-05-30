@@ -376,6 +376,162 @@ async function proxyOpenAI(
 }
 
 /**
+ * 使用 Coze 账号的 PAT 发现工作区中的智能体
+ * 用于 Coze Agent 类型（自身无 PAT，借用已有 Coze 智能体的 Token）
+ */
+export async function discoverCozeBotWithPat(pat: string, matchName?: string): Promise<{
+  botId: string;
+  name?: string;
+  iconUrl?: string;
+} | null> {
+  try {
+    const baseUrl = 'https://api.coze.cn';
+
+    // 获取工作区列表
+    const wsRes = await fetch(`${baseUrl}/v1/workspaces`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${pat}` },
+    });
+    if (!wsRes.ok) return null;
+    const wsData = await wsRes.json();
+    const workspaces = wsData?.data?.workspaces || [];
+
+    // 遍历所有工作区查找机器人
+    for (const ws of workspaces) {
+      const botRes = await fetch(`${baseUrl}/v1/bots?workspace_id=${ws.id}&page_size=50`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${pat}` },
+      });
+      if (!botRes.ok) continue;
+      const botData = await botRes.json();
+      const bots = botData?.data?.items || [];
+
+      // 有名称时只返回精确匹配的机器人
+      if (matchName) {
+        const matched = bots.find((b: any) => b.name === matchName);
+        if (matched) return { botId: matched.id, name: matched.name, iconUrl: matched.icon_url };
+        continue; // 跳过没有匹配的工作区
+      }
+
+      // 无名称匹配时，只有一个机器人则直接返回
+      if (bots.length === 1) {
+        return { botId: bots[0].id, name: bots[0].name, iconUrl: bots[0].icon_url };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 获取 AI 智能体的开场白（从平台 API）
+ */
+export async function fetchAgentGreeting(agent: AgentConfig): Promise<string | null> {
+  try {
+    switch (agent.platform) {
+      case 'coze': {
+        const baseUrl = agent.apiUrl || 'https://api.coze.cn';
+        // GET /v1/bot/get_online_info 返回 OnboardingInfoV2 含 prologue
+        const url = `${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${agent.apiKey}` },
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (data?.data?.onboarding_info?.prologue) {
+          return data.data.onboarding_info.prologue;
+        }
+        if (data?.data?.onboarding_info_v2?.prologue) {
+          return data.data.onboarding_info_v2.prologue;
+        }
+        return null;
+      }
+      case 'coze-agent': {
+        if (!agent.botId) return null;
+        const baseUrl = 'https://api.coze.cn';
+        const res = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${agent.apiKey}` },
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data?.data?.onboarding_info?.prologue) {
+          return data.data.onboarding_info.prologue;
+        }
+        if (data?.data?.onboarding_info_v2?.prologue) {
+          return data.data.onboarding_info_v2.prologue;
+        }
+        return null;
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 从平台 API 获取智能体完整信息（名称、头像 URL、开场白）
+ */
+export async function fetchAgentInfo(agent: AgentConfig): Promise<{
+  name?: string;
+  iconUrl?: string;
+  greeting?: string;
+} | null> {
+  try {
+    switch (agent.platform) {
+      case 'coze': {
+        const baseUrl = agent.apiUrl || 'https://api.coze.cn';
+        const url = `${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${agent.apiKey}` },
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const result: { name?: string; iconUrl?: string; greeting?: string } = {};
+        if (data?.data?.name) result.name = data.data.name;
+        if (data?.data?.icon_url) result.iconUrl = data.data.icon_url;
+        if (data?.data?.onboarding_info?.prologue) {
+          result.greeting = data.data.onboarding_info.prologue;
+        } else if (data?.data?.onboarding_info_v2?.prologue) {
+          result.greeting = data.data.onboarding_info_v2.prologue;
+        }
+        return Object.keys(result).length > 0 ? result : null;
+      }
+      case 'coze-agent': {
+        if (!agent.botId) return null;
+        const baseUrl = 'https://api.coze.cn';
+        const result: { name?: string; iconUrl?: string; greeting?: string } = {};
+
+        const infoRes = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${agent.apiKey}` },
+        });
+        if (infoRes.ok) {
+          const infoData = await infoRes.json();
+          if (infoData?.data?.onboarding_info?.prologue) {
+            result.greeting = infoData.data.onboarding_info.prologue;
+          } else if (infoData?.data?.onboarding_info_v2?.prologue) {
+            result.greeting = infoData.data.onboarding_info_v2.prologue;
+          }
+        }
+
+        return Object.keys(result).length > 0 ? result : null;
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 测试 AI 智能体连通性
  */
 export async function testAgentConnection(agent: AgentConfig): Promise<{ success: boolean; error?: string }> {

@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { testAgentConnection } from '../services/ai-proxy.js';
+import { testAgentConnection, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -57,19 +57,18 @@ router.get('/:id', async (req, res) => {
 router.post('/', upload.single('logo'), async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, subject, grade, apiUrl, apiKey, botId, extra } = req.body;
-    const logo = req.file ? `/uploads/logos/${req.file.filename}` : null;
+    const { name, platform, apiUrl, apiKey, botId, extra, greeting } = req.body;
+    const logo = req.file ? `/uploads/logos/${req.file.filename}` : (req.body.logo || null);
 
     const agent = await prisma.agent.create({
       data: {
         name,
         platform,
-        subject: subject || null,
-        grade: grade || null,
         apiUrl: apiUrl || null,
         apiKey,
         botId: botId || null,
         extra: extra || null,
+        greeting: greeting || null,
         logo,
       },
     });
@@ -84,19 +83,19 @@ router.post('/', upload.single('logo'), async (req, res) => {
 router.put('/:id', upload.single('logo'), async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, subject, grade, apiUrl, apiKey, botId, extra, enabled } = req.body;
+    const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting } = req.body;
 
     const data: any = {};
     if (name !== undefined) data.name = name;
     if (platform !== undefined) data.platform = platform;
-    if (subject !== undefined) data.subject = subject;
-    if (grade !== undefined) data.grade = grade;
     if (apiUrl !== undefined) data.apiUrl = apiUrl;
     if (apiKey !== undefined) data.apiKey = apiKey;
     if (botId !== undefined) data.botId = botId;
     if (extra !== undefined) data.extra = extra;
+            if (greeting !== undefined) data.greeting = greeting || null;
     if (enabled !== undefined) data.enabled = enabled === 'true' || enabled === true;
     if (req.file) data.logo = `/uploads/logos/${req.file.filename}`;
+    else if (req.body.logo && typeof req.body.logo === 'string' && req.body.logo.startsWith('http')) data.logo = req.body.logo;
     if (req.body.removeLogo === 'true') data.logo = null;
 
     const agent = await prisma.agent.update({
@@ -149,6 +148,102 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '删除智能体失败' });
+  }
+});
+
+// 获取智能体开场白（从平台 API）
+router.get('/:id/greeting', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
+    if (!agent) return res.status(404).json({ error: '智能体不存在' });
+
+    // 有缓存且 30 分钟内拉取过则直接返回
+    if (req.query.force !== 'true' && agent.greeting && agent.greetingFetchedAt) {
+      var age = Date.now() - new Date(agent.greetingFetchedAt).getTime();
+      if (age < 30 * 60 * 1000) {
+        return res.json({ greeting: agent.greeting });
+      }
+    }
+
+    // 无缓存或过期，从平台 API 重新拉取
+    const greeting = await fetchAgentGreeting({
+      platform: agent.platform,
+      apiUrl: agent.apiUrl || undefined,
+      apiKey: agent.apiKey,
+      botId: agent.botId || undefined,
+      extra: agent.extra || undefined,
+    });
+
+    // 缓存到数据库（无论有无结果都更新时间戳，避免每次调用都去拉）
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: {
+        greeting: greeting || agent.greeting,
+        greetingFetchedAt: new Date(),
+      },
+    });
+
+    res.json({ greeting: greeting || null });
+  } catch (error) {
+    res.status(500).json({ error: '获取开场白失败' });
+  }
+});
+
+/**
+ * 从平台 API 获取智能体完整信息（名称、头像、开场白）
+ */
+router.get('/:id/info', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
+    if (!agent) return res.status(404).json({ error: '智能体不存在' });
+
+    // 先尝试用标准方式获取
+    let result = await fetchAgentInfo({
+      platform: agent.platform,
+      apiUrl: agent.apiUrl || undefined,
+      apiKey: agent.apiKey,
+      botId: agent.botId || undefined,
+      extra: agent.extra || undefined,
+    });
+
+    // Coze Agent 无 botId 时，借用已有 Coze 智能体的 PAT 进行工作区发现
+    if (!result && agent.platform === 'coze-agent') {
+      const cozeAgent = await prisma.agent.findFirst({
+        where: { platform: 'coze', apiKey: { startsWith: 'pat_' } },
+      });
+      if (cozeAgent) {
+        const discovered = await discoverCozeBotWithPat(cozeAgent.apiKey, agent.name);
+        if (discovered) {
+          const baseUrl = 'https://api.coze.cn';
+          const infoRes = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${discovered.botId}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${cozeAgent.apiKey}` },
+          });
+          if (infoRes.ok) {
+            const infoData = await infoRes.json();
+            const r: { name?: string; iconUrl?: string; greeting?: string } = {};
+            if (infoData?.data?.name) r.name = infoData.data.name;
+            if (discovered.iconUrl) r.iconUrl = discovered.iconUrl;
+            if (infoData?.data?.onboarding_info?.prologue) {
+              r.greeting = infoData.data.onboarding_info.prologue;
+            } else if (infoData?.data?.onboarding_info_v2?.prologue) {
+              r.greeting = infoData.data.onboarding_info_v2.prologue;
+            }
+            if (Object.keys(r).length > 0) result = r;
+          }
+        }
+      }
+    }
+
+    if (!result) {
+      return res.json({ name: null, iconUrl: null, greeting: null });
+    }
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: '获取智能体信息失败' });
   }
 });
 

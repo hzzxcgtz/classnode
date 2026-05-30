@@ -68,7 +68,7 @@
 
   <form id="codeForm" action="/classroom" method="get">
     <div class="code-inputs">
-      <input type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" data-index="0">
+      <input type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" data-index="0" autofocus>
       <input type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" data-index="1">
       <input type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" data-index="2">
       <input type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" data-index="3">
@@ -112,6 +112,10 @@
       updateHidden();
       if (val && i < 3) {
         inputs[i + 1].focus();
+      }
+      // 输入完成后自动提交
+      if (getCode().length === 4) {
+        setTimeout(function() { form.submit(); }, 150);
       }
     });
 

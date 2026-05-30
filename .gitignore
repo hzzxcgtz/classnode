@@ -13,9 +13,12 @@
 # testing
 /coverage
 
-# next.js
-/.next/
+# next.js build output (any level)
+.next/
+
+# export output
 /out/
+/public/
 
 # production
 /build
@@ -39,3 +42,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# server build output
+server/node_modules/
+server/dist/
+server/backups/
+server/uploads/
+
+# database
+*.db
+
+# downloaded
+playwright-*.tgz

@@ -128,7 +128,7 @@ SERVER_PID=$!
 
 sleep 2
 
-PORT="${FRONTEND_PORT}" node "$SCRIPT_DIR/serve-frontend.js" &
+PORT="${FRONTEND_PORT}" BACKEND_PORT="${BACKEND_PORT}" node "$SCRIPT_DIR/serve-frontend.js" &
 FRONTEND_PID=$!
 
 sleep 1

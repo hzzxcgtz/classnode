@@ -133,7 +133,7 @@ set SUCCESS=1
 start "ClassNode-Server" cmd /d /c "cd /d server && set FRONTEND_PORT=%FRONTEND_PORT% && set PORT=%BACKEND_PORT% && node dist/index.js"
 timeout /t 3 /nobreak >nul
 
-start "ClassNode-Frontend" cmd /d /c "cd /d %~dp0 && set PORT=%FRONTEND_PORT% && node serve-frontend.js"
+start "ClassNode-Frontend" cmd /d /c "cd /d %~dp0 && set PORT=%FRONTEND_PORT% && set BACKEND_PORT=%BACKEND_PORT% && node serve-frontend.js"
 timeout /t 2 /nobreak >nul
 
 echo.

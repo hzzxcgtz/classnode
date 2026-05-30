@@ -48,9 +48,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const router = useRouter();
   const pathname = usePathname();
   const [serverOnline, setServerOnline] = useState(true);
-  const [authState, setAuthState] = useState<'loading' | 'login' | 'authenticated'>('loading');
+  const [authState, setAuthState] = useState<'loading' | 'login' | 'setup' | 'authenticated'>('loading');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [setupPwd, setSetupPwd] = useState('');
+  const [setupConfirm, setSetupConfirm] = useState('');
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -76,11 +78,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         return;
       }
 
-      // 未初始化时放行（子页面会处理首次设置），否则需要登录
+      // 未初始化时显示设置密码页面
       try {
         const status = await api.getInitStatus();
         if (!status.initialized) {
-          setAuthState('authenticated');
+          setAuthState('setup');
         } else {
           setAuthState('login');
         }
@@ -119,6 +121,22 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     clearSession();
     setAuthState('login');
     setPassword('');
+  };
+
+  const handleSetup = async () => {
+    const errors: Record<string, string> = {};
+    if (setupPwd.length < 6) errors.setupPwd = '密码至少6位';
+    if (setupPwd !== setupConfirm) errors.setupConfirm = '两次密码输入不一致';
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    try {
+      await api.setAdminPassword(setupPwd);
+      setFieldErrors({});
+      setSetupPwd('');
+      setSetupConfirm('');
+      setAuthState('login');
+    } catch (e: any) {
+      setFieldErrors({ submit: e.message });
+    }
   };
 
   const clearPwdError = (field: string) => {
@@ -191,6 +209,37 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           <button onClick={() => router.push('/')} style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>
             返回学生页面
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 首次设置密码
+  if (authState === 'setup') {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+        <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 22, margin: '0 auto 16px' }}>AI</div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
+            <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <input type="password" className="input" placeholder="设置管理密码（至少6位）" value={setupPwd}
+              onChange={e => { setSetupPwd(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupPwd; return n; }); }}
+              onKeyDown={e => e.key === 'Enter' && handleSetup()}
+              style={{ borderColor: fieldErrors.setupPwd ? '#ef4444' : undefined }} autoFocus />
+            {fieldErrors.setupPwd && <FieldError message={fieldErrors.setupPwd} />}
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <input type="password" className="input" placeholder="再次确认密码" value={setupConfirm}
+              onChange={e => { setSetupConfirm(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupConfirm; return n; }); }}
+              onKeyDown={e => e.key === 'Enter' && handleSetup()}
+              style={{ borderColor: fieldErrors.setupConfirm ? '#ef4444' : undefined }} />
+            {fieldErrors.setupConfirm && <FieldError message={fieldErrors.setupConfirm} />}
+          </div>
+          {fieldErrors.submit && <FieldError message={fieldErrors.submit} style={{ marginBottom: 8 }} />}
+          <button className="btn btn-primary btn-lg" onClick={handleSetup} style={{ width: '100%' }}>确认并进入</button>
         </div>
       </div>
     );

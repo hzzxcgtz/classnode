@@ -74,7 +74,7 @@ fi
 if [ ! -f server/.env ]; then
   if [ -f server/.env.example ]; then
     cp server/.env.example server/.env
-    echo "  ✔ 已创建 server/.env"
+    echo "  ✔ Created server/.env"
   else
     echo "server/.env" > server/.env
     echo 'DATABASE_URL="file:./dev.db"' >> server/.env

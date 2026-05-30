@@ -75,7 +75,7 @@ if not exist "out" (
 if not exist "server\.env" (
     if exist "server\.env.example" (
         copy "server\.env.example" "server\.env" >nul
-        echo  ✔ 已创建 server\.env
+        echo  Created server\.env
     ) else (
         echo DATABASE_URL="file:./dev.db" > "server\.env"
         echo PORT=3001 >> "server\.env"

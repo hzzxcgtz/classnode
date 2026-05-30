@@ -310,9 +310,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 导航项 */}
         {navItems.map(item => {
+          const p = pathname || '';
           const isActive = item.path === '/teacher'
-            ? pathname === '/teacher' || pathname.startsWith('/teacher/classroom')
-            : pathname.startsWith(item.path);
+            ? p === '/teacher' || p.startsWith('/teacher/classroom')
+            : p.startsWith(item.path);
           return (
             <button
               key={item.path}

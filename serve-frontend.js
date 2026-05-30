@@ -49,6 +49,25 @@ function serveFile(res, filePath) {
     headers['Expires'] = '0';
   }
 
+  // 注入错误捕获脚本到 Next.js 页面（跳过独立 HTML）
+  if (contentType.includes('text/html') && filePath.indexOf('standalone') < 0) {
+    var errCapture = '<script>' +
+    'window.onerror=function(m,s,l,c,e){' +
+    'var d=document.createElement("div");' +
+    'd.style.cssText="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#1e293b;color:#f87171;padding:12px 16px;font-size:13px;font-family:monospace;border-top:3px solid #ef4444;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all";' +
+    'd.textContent="[JS Error] " + m + " at " + s + ":" + l;' +
+    'document.body.appendChild(d);' +
+    '};' +
+    'window.addEventListener("unhandledrejection",function(e){' +
+    'var d=document.createElement("div");' +
+    'd.style.cssText="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#1e293b;color:#fbbf24;padding:12px 16px;font-size:13px;font-family:monospace;border-top:3px solid #f59e0b;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all";' +
+    'd.textContent="[Promise Error] " + (e.reason && e.reason.message ? e.reason.message : String(e.reason || "unknown"));' +
+    'document.body.appendChild(d);' +
+    '});' +
+    '</script>';
+    content = Buffer.from(content.toString().replace('</body>', errCapture + '</body>'));
+  }
+
   // 对 classroom 页面注入水合失败回退脚本（跳过独立 HTML 页面，避免语法冲突）
   if (contentType.includes('text/html') && filePath.indexOf('classroom') >= 0 && filePath.indexOf('standalone') < 0) {
     var fallback = '<script>' +

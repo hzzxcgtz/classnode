@@ -70,6 +70,19 @@ if not exist "out" (
 )
 
 :: ============================================================
+:: Create .env if missing
+:: ============================================================
+if not exist "server\.env" (
+    if exist "server\.env.example" (
+        copy "server\.env.example" "server\.env" >nul
+        echo  ✔ 已创建 server\.env
+    ) else (
+        echo DATABASE_URL="file:./dev.db" > "server\.env"
+        echo PORT=3001 >> "server\.env"
+    )
+)
+
+:: ============================================================
 :: Initialize database and build backend
 :: ============================================================
 if not exist "server\dist" (

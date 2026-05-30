@@ -69,6 +69,20 @@ if [ ! -d "out" ]; then
 fi
 
 # ============================================================
+# Create .env if missing
+# ============================================================
+if [ ! -f server/.env ]; then
+  if [ -f server/.env.example ]; then
+    cp server/.env.example server/.env
+    echo "  ✔ 已创建 server/.env"
+  else
+    echo "server/.env" > server/.env
+    echo 'DATABASE_URL="file:./dev.db"' >> server/.env
+    echo "PORT=3001" >> server/.env
+  fi
+fi
+
+# ============================================================
 # Initialize database and build backend
 # ============================================================
 if [ ! -d "server/dist" ]; then

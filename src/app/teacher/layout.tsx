@@ -134,7 +134,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       setFieldErrors({});
       setSetupPwd('');
       setSetupConfirm('');
-      setAuthState('login');
+      saveSession();
+      setAuthState('authenticated');
     } catch (e: any) {
       setFieldErrors({ submit: e.message });
     }

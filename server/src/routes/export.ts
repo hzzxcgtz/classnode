@@ -16,6 +16,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
       where: { id: req.params.classroomId },
       include: {
         classes: { include: { class: true } },
+        classroomAgents: { include: { agent: true } },
       },
     });
 
@@ -30,12 +31,23 @@ router.get('/:classroomId/conversations', async (req, res) => {
       orderBy: { joinTime: 'asc' },
     });
 
+    const agentMap: Record<string, string> = {};
+    for (const ca of classroom.classroomAgents) {
+      agentMap[ca.agent.id] = ca.agent.name;
+    }
+
     const report = {
       title: classroom.title || '课堂对话汇总',
       code: classroom.code,
+      mode: classroom.mode,
       createdAt: classroom.createdAt,
       endedAt: classroom.endedAt,
       classes: classroom.classes.map((cc: { class: { name: string } }) => cc.class.name),
+      agents: classroom.classroomAgents.map((ca: Prisma.ClassroomAgentGetPayload<{ include: { agent: true } }>) => ({
+        id: ca.agent.id,
+        name: ca.agent.name,
+        platform: ca.agent.platform,
+      })),
       students: students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; messages: true } }>) => ({
         name: cs.student.name,
         studentNo: cs.student.studentNo,
@@ -44,6 +56,12 @@ router.get('/:classroomId/conversations', async (req, res) => {
           role: m.role,
           content: m.content,
           time: m.createdAt,
+          roundIndex: m.roundIndex,
+          tokenUsage: m.tokenUsage,
+          agentId: m.agentId,
+          agentName: m.agentId ? (agentMap[m.agentId] || null) : null,
+          fileUrls: m.fileUrls ? (() => { try { return JSON.parse(m.fileUrls); } catch { return undefined; } })() : undefined,
+          fileNames: m.fileNames ? (() => { try { return JSON.parse(m.fileNames); } catch { return undefined; } })() : undefined,
         })),
       })),
     };
@@ -52,6 +70,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=conversations-${classroom.code}.json`);
     res.json(report);
   } catch (error) {
+    console.error('[Export] conversations error:', error);
     res.status(500).json({ error: '导出失败' });
   }
 });

@@ -7,39 +7,55 @@ import { exportConversationsDoc, exportStatsDoc } from '@/lib/export-doc';
 export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState<string | null>(null);
+
+  // 导出预览弹窗
+  const [preview, setPreview] = useState<{
+    type: 'conversations' | 'stats';
+    classroomId: string;
+    classroom: any;
+    data: any;
+  } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.getHistory().then(setHistory).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const handleExport = async (classroomId: string, type: 'conversations' | 'stats') => {
-    const key = `${classroomId}-${type}`;
-    setExporting(key);
+  // 点击导出：先获取数据并展示预览
+  const handlePreview = async (classroomId: string, type: 'conversations' | 'stats') => {
+    const cr = history.find(h => h.id === classroomId);
     try {
-      if (type === 'conversations') {
-        const data = await api.exportConversations(classroomId);
-        const blob = await exportConversationsDoc(data);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `对话记录-${data.code || classroomId}.docx`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        const data = await api.exportStats(classroomId);
-        const blob = await exportStatsDoc(data);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `学情报表-${classroomId}.docx`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      const data = type === 'conversations'
+        ? await api.exportConversations(classroomId)
+        : await api.exportStats(classroomId);
+      setPreview({ type, classroomId, classroom: cr, data });
+    } catch (e: any) {
+      alert('获取数据失败: ' + e.message);
+    }
+  };
+
+  // 确认导出：生成 Word 并下载
+  const handleConfirmExport = async () => {
+    if (!preview) return;
+    setExporting(true);
+    try {
+      const { type, classroom, data } = preview;
+      const blob = type === 'conversations'
+        ? await exportConversationsDoc(data)
+        : await exportStatsDoc(data);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = type === 'conversations'
+        ? `对话记录-${data.code || classroom?.id}.docx`
+        : `学情报表-${classroom?.id.slice(0, 8)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPreview(null);
     } catch (e: any) {
       alert('导出失败: ' + e.message);
     }
-    setExporting(null);
+    setExporting(false);
   };
 
   const totalStudents = history.reduce((sum: number, cr: any) => sum + (cr._count?.students || 0), 0);
@@ -83,7 +99,7 @@ export default function HistoryPage() {
             </div>
           ) : (
             <>
-              {/* 统计摘要 — 使用 grid 布局，与其他页面风格一致 */}
+              {/* 统计摘要 */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(4, 1fr)',
@@ -222,17 +238,15 @@ export default function HistoryPage() {
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
                             style={{ fontSize: 11, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                            disabled={exporting === `${cr.id}-conversations`}
-                            onClick={() => handleExport(cr.id, 'conversations')}>
+                            onClick={() => handlePreview(cr.id, 'conversations')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                            {exporting === `${cr.id}-conversations` ? '导出中...' : '对话'}
+                            对话
                           </button>
                           <button className="btn btn-secondary"
                             style={{ fontSize: 11, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                            disabled={exporting === `${cr.id}-stats`}
-                            onClick={() => handleExport(cr.id, 'stats')}>
+                            onClick={() => handlePreview(cr.id, 'stats')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
-                            {exporting === `${cr.id}-stats` ? '导出中...' : '报表'}
+                            报表
                           </button>
                         </div>
                       </td>
@@ -265,6 +279,261 @@ export default function HistoryPage() {
             <BackupManager />
           </div>
         </>
+      )}
+
+      {/* 导出预览弹窗 */}
+      {preview && (
+        <ExportPreviewDialog
+          preview={preview}
+          exporting={exporting}
+          onConfirm={handleConfirmExport}
+          onCancel={() => setPreview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 导出预览弹窗组件 */
+function ExportPreviewDialog({
+  preview,
+  exporting,
+  onConfirm,
+  onCancel,
+}: {
+  preview: { type: 'conversations' | 'stats'; classroom: any; data: any };
+  exporting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { type, classroom, data } = preview;
+  const isConversation = type === 'conversations';
+
+  const startTime = classroom ? new Date(classroom.createdAt).toLocaleString() : '-';
+  const endTime = classroom?.endedAt ? new Date(classroom.endedAt).toLocaleString() : '-';
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={exporting ? undefined : onCancel}>
+      <div style={{
+        background: 'white', borderRadius: 14, padding: 0,
+        maxWidth: 640, width: '90%', maxHeight: '85vh',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+      }} onClick={e => e.stopPropagation()}>
+        {/* 弹窗头部 */}
+        <div style={{
+          padding: '24px 28px 16px',
+          borderBottom: '1px solid #eef2f6',
+        }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#0f172a' }}>
+            {isConversation ? '导出对话记录' : '导出学情报表'}
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+            请确认导出内容，无误后点击"确认导出"
+          </p>
+        </div>
+
+        {/* 弹窗内容 */}
+        <div style={{
+          padding: '20px 28px',
+          overflowY: 'auto', flex: 1,
+        }}>
+          {/* 课堂基本信息 */}
+          <div style={{
+            background: '#f8fafc', borderRadius: 10, padding: '14px 18px', marginBottom: 16,
+            fontSize: 13,
+          }}>
+            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
+              {classroom?.title || '未命名课堂'}
+            </div>
+            <div style={{ color: '#64748b', lineHeight: 1.8 }}>
+              <span style={{ marginRight: 24 }}>互动码：{data.code || '-'}</span>
+              <span>创建时间：{startTime}</span>
+              <br />
+              <span style={{ marginRight: 24 }}>结束时间：{endTime}</span>
+              <span>参与班级：{data.classes?.join('、') || '-'}</span>
+            </div>
+          </div>
+
+          {isConversation ? (
+            <ConversationPreview data={data} />
+          ) : (
+            <StatsPreview data={data} />
+          )}
+        </div>
+
+        {/* 弹窗底部 */}
+        <div style={{
+          padding: '16px 28px',
+          borderTop: '1px solid #eef2f6',
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+        }}>
+          <button className="btn btn-secondary"
+            onClick={onCancel} disabled={exporting}
+            style={{ fontSize: 13, padding: '8px 18px' }}>
+            取消
+          </button>
+          <button onClick={onConfirm} disabled={exporting}
+            style={{
+              fontSize: 13, padding: '8px 20px', borderRadius: 8, border: 'none',
+              cursor: exporting ? 'not-allowed' : 'pointer', fontWeight: 500,
+              background: exporting ? '#94a3b8' : '#2563eb', color: 'white',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+            {exporting ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                  <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" />
+                </svg>
+                生成中...
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                确认导出
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 对话预览 */
+function ConversationPreview({ data }: { data: any }) {
+  const students = data.students || [];
+  const totalMsgs = students.reduce((sum: number, s: any) => sum + (s.messages?.length || 0), 0);
+
+  return (
+    <div>
+      {/* 汇总统计 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16,
+      }}>
+        {[
+          { label: '学生人数', value: students.length, color: '#0891b2', bg: '#ecfeff' },
+          { label: '消息总数', value: totalMsgs, color: '#8b5cf6', bg: '#f5f3ff' },
+          { label: 'AI 智能体', value: data.agents?.length || 0, color: '#db2777', bg: '#fdf2f8' },
+        ].map(stat => (
+          <div key={stat.label} style={{
+            background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 学生列表 */}
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        学生对话概况
+      </div>
+      {students.length === 0 ? (
+        <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无学生记录</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {students.map((s: any, i: number) => {
+            const msgCount = s.messages?.length || 0;
+            const rounds = s.totalRounds || Math.ceil(msgCount / 2);
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', borderRadius: 8, background: '#f8fafc', fontSize: 13,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 500, color: '#0f172a' }}>{s.name}</span>
+                  {s.studentNo && <span style={{ color: '#94a3b8', fontSize: 11 }}>{s.studentNo}</span>}
+                </div>
+                <span style={{ color: '#64748b', fontSize: 12 }}>
+                  {rounds} 轮 · {msgCount} 条消息
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 报表预览 */
+function StatsPreview({ data }: { data: any }) {
+  const headers = data.headers || ['姓名', '学号', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
+  const rows = data.rows || [];
+  const totalStudents = rows.length;
+  const totalInteractions = rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
+
+  return (
+    <div>
+      {/* 汇总 */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16,
+      }}>
+        {[
+          { label: '学生人数', value: totalStudents, color: '#0891b2', bg: '#ecfeff' },
+          { label: '总交互轮数', value: totalInteractions, color: '#8b5cf6', bg: '#f5f3ff' },
+          { label: '数据列数', value: headers.length, color: '#059669', bg: '#d1fae5' },
+        ].map(stat => (
+          <div key={stat.label} style={{
+            background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 数据表格 */}
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        数据预览
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无数据</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {headers.map((h: string, i: number) => (
+                  <th key={i} style={{
+                    padding: '6px 8px', textAlign: 'center', background: '#eff6ff',
+                    color: '#1e40af', fontWeight: 600, borderBottom: '2px solid #dbeafe',
+                    whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 20).map((row: any[], ri: number) => (
+                <tr key={ri}>
+                  {row.map((val: any, ci: number) => (
+                    <td key={ci} style={{
+                      padding: '5px 8px', textAlign: 'center', color: '#1f2937',
+                      borderBottom: '1px solid #f1f5f9',
+                      background: ri % 2 === 0 ? 'white' : '#f8fafc',
+                      maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{val != null ? String(val) : '-'}</td>
+                  ))}
+                </tr>
+              ))}
+              {rows.length > 20 && (
+                <tr>
+                  <td colSpan={headers.length} style={{
+                    padding: '8px', textAlign: 'center', color: '#94a3b8', fontSize: 11,
+                    borderBottom: '1px solid #f1f5f9',
+                  }}>
+                    ... 还有 {rows.length - 20} 条记录，完整数据将在导出的 Word 中展示
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

@@ -18,6 +18,46 @@ echo "=========================================="
 echo ""
 echo "Source: $SRC_DIR"
 
+# ============================================================
+# Check for hardcoded ports in source code
+# ============================================================
+echo ""
+echo "Checking for hardcoded ports..."
+HARDCODED=$(grep -rn "3000\|3001\|3002\|3003" \
+  --include='*.ts' --include='*.tsx' --include='*.js' --include='*.html' \
+  --exclude-dir=node_modules \
+  --exclude-dir=.next \
+  --exclude-dir=out \
+  --exclude-dir=dist \
+  --exclude-dir=uploads \
+  --exclude-dir=backups \
+  --exclude-dir=v1.0.0 \
+  --exclude-dir=.git \
+  --exclude-dir=.claude \
+  --exclude='pnpm-lock.yaml' \
+  --exclude='package-lock.json' \
+  --exclude='serve-frontend.js' \
+  --exclude='make-dist.sh' \
+  --exclude='standalone-teacher.html' \
+  --exclude='standalone-classroom.html' \
+  "$SRC_DIR" 2>/dev/null | \
+  grep -v "setTimeout([0-9]*,[0-9]*)\|setInterval\|window.location.port" | \
+  grep -v "process\.env\|NEXT_PUBLIC_" || true)
+
+if [ -n "$HARDCODED" ]; then
+  echo ""
+  echo "WARNING: Hardcoded port numbers found:"
+  echo "$HARDCODED"
+  echo ""
+  read -p "Review and fix before continuing? (y/N): " CONFIRM
+  if [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ]; then
+    echo "Cancelled. Fix hardcoded ports first."
+    exit 1
+  fi
+else
+  echo "OK"
+fi
+
 read -p "Destination (default: ${DEFAULT_DST}): " DST_DIR
 DST_DIR="${DST_DIR:-$DEFAULT_DST}"
 

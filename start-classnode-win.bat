@@ -24,6 +24,15 @@ if %ERRORLEVEL% neq 0 (
 for /f "tokens=*" %%i in ('node -v') do echo  Node.js %%i
 
 :: ============================================================
+:: Clean up old processes on target ports
+:: ============================================================
+for %%p in (%FRONTEND_PORT% %BACKEND_PORT%) do (
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%%p "') do (
+        taskkill /f /pid %%a >nul 2>nul
+    )
+)
+
+:: ============================================================
 :: Install dependencies
 :: ============================================================
 if not exist "node_modules" (

@@ -24,6 +24,18 @@ fi
 echo "  Node.js $(node -v)"
 
 # ============================================================
+# Clean up old processes on target ports
+# ============================================================
+for PORT in $FRONTEND_PORT $BACKEND_PORT; do
+  PID=$(lsof -ti:$PORT 2>/dev/null)
+  if [ -n "$PID" ]; then
+    kill $PID 2>/dev/null
+    sleep 1
+    echo "  Freed port $PORT (was PID $PID)"
+  fi
+done
+
+# ============================================================
 # Install dependencies
 # ============================================================
 if [ ! -d "node_modules" ]; then

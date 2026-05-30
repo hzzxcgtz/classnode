@@ -71,24 +71,25 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         setServerOnline(false);
       }
 
-      // 检查本地 session
+      // 先检查初始化状态（未初始化时显示设置密码页面，不检查 session）
+      try {
+        const status = await api.getInitStatus();
+        if (!status.initialized) {
+          setAuthState('setup');
+          return;
+        }
+      } catch {
+        // 无法检查时继续
+      }
+
+      // 系统已初始化，再检查本地 session
       const session = getSession();
       if (session) {
         setAuthState('authenticated');
         return;
       }
 
-      // 未初始化时显示设置密码页面
-      try {
-        const status = await api.getInitStatus();
-        if (!status.initialized) {
-          setAuthState('setup');
-        } else {
-          setAuthState('login');
-        }
-      } catch {
-        setAuthState('authenticated');
-      }
+      setAuthState('login');
     };
     init();
   }, []);

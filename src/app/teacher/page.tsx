@@ -5,112 +5,26 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { platformColors } from '@/lib/constants';
-import { FieldError } from '@/lib/components';
 
 export default function TeacherDashboard() {
   const router = useRouter();
-  const [step, setStep] = useState<'loading' | 'init' | 'dashboard'>('loading');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(true);
   const [activeClassrooms, setActiveClassrooms] = useState<any[]>([]);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    checkInit();
+    loadData();
   }, []);
 
-  const checkInit = async () => {
-    try {
-      const status = await api.getInitStatus();
-      if (!status.initialized) {
-        setStep('init');
-      } else {
-        setStep('dashboard');
-        loadStats();
-      }
-    } catch {
-      setStep('init');
-    }
-  };
-
-  const handleSetPassword = async () => {
-    const errors: Record<string, string> = {};
-    if (password.length < 6) errors.password = '密码至少6位';
-    if (password !== confirmPassword) errors.confirmPassword = '两次密码输入不一致';
-    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
-
-    try {
-      await api.setAdminPassword(password);
-      // 设置成功后自动登录
-      const result = await api.verifyPassword(password);
-      if (result.verified) {
-        localStorage.setItem('teacher_session', JSON.stringify({
-          verified: true,
-          timestamp: Date.now(),
-        }));
-      }
-      setStep('dashboard');
-      setFieldErrors({});
-      loadStats();
-    } catch (e: any) {
-      setFieldErrors({ submit: e.message });
-    }
-  };
-
-  const loadStats = async () => {
+  const loadData = async () => {
+    setLoading(true);
     try {
       setActiveClassrooms(await api.getActiveClassrooms());
     } catch {}
+    setLoading(false);
   };
 
-  if (step === 'loading') {
+  if (loading) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>加载中...</div>;
-  }
-
-  if (step === 'init') {
-    return (
-      <div style={{ maxWidth: 400, margin: '60px auto', textAlign: 'center' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>欢迎使用 AI互动课堂</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 32, fontSize: 14 }}>
-          首次使用，请设置管理密码以保护教师控制台
-        </p>
-        <div style={{ marginBottom: 12 }}>
-          <input
-            type="password"
-            className="input"
-            placeholder="设置管理密码（至少6位）"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSetPassword()}
-            style={{ borderColor: fieldErrors.password ? '#ef4444' : undefined }}
-            autoFocus
-          />
-          {fieldErrors.password && (
-            <FieldError message={fieldErrors.password} style={{ color: 'var(--danger)' }} />
-          )}
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <input
-            type="password"
-            className="input"
-            placeholder="再次确认密码"
-            value={confirmPassword}
-            onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.confirmPassword; return n; }); }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSetPassword()}
-            style={{ borderColor: fieldErrors.confirmPassword ? '#ef4444' : undefined }}
-          />
-          {fieldErrors.confirmPassword && (
-            <FieldError message={fieldErrors.confirmPassword} style={{ color: 'var(--danger)' }} />
-          )}
-        </div>
-        {fieldErrors.submit && (
-          <FieldError message={fieldErrors.submit} style={{ color: 'var(--danger)', marginBottom: 8, marginTop: 0 }} />
-        )}
-        <button className="btn btn-primary btn-lg" onClick={handleSetPassword} style={{ width: '100%' }}>
-          确认并进入
-        </button>
-      </div>
-    );
   }
 
   return (

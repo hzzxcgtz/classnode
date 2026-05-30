@@ -4,8 +4,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
 cd "$SCRIPT_DIR" || exit 1
 
-FRONTEND_PORT=3002
-BACKEND_PORT=3003
+FRONTEND_PORT=3000
+BACKEND_PORT=3001
 
 echo ""
 echo "  ========================================"
@@ -72,7 +72,7 @@ if [ ! -d "out" ]; then
   echo "  ----------------------------------------"
   echo "  Building frontend..."
   echo "  ----------------------------------------"
-  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" NEXT_PUBLIC_FRONTEND_PORT="${FRONTEND_PORT}" node node_modules/next/dist/bin/next build --webpack
+  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" node node_modules/next/dist/bin/next build
   if [ $? -ne 0 ]; then
     echo "  [Error] Frontend build failed"
     read -p "Press Enter to exit..."
@@ -88,8 +88,7 @@ if [ ! -f server/.env ]; then
     cp server/.env.example server/.env
     echo "  ✔ Created server/.env"
   else
-    echo "server/.env" > server/.env
-    echo 'DATABASE_URL="file:./dev.db"' >> server/.env
+    echo 'DATABASE_URL="file:./dev.db"' > server/.env
     echo "PORT=3001" >> server/.env
   fi
 fi

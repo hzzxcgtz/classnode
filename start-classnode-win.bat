@@ -3,8 +3,8 @@ chcp 65001 >nul 2>&1
 setlocal
 cd /d "%~dp0"
 
-set FRONTEND_PORT=3002
-set BACKEND_PORT=3003
+set FRONTEND_PORT=3000
+set BACKEND_PORT=3001
 
 echo.
 echo  ========================================
@@ -70,8 +70,7 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    set "NEXT_PUBLIC_FRONTEND_PORT=%FRONTEND_PORT%"
-    node "node_modules\next\dist\bin\next" build --webpack
+    node "node_modules\next\dist\bin\next" build
     if errorlevel 1 (
         echo  [Error] Frontend build failed
         goto :end

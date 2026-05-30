@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
-const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT || process.env.BACKEND_PORT || '3001';
 const ROOT = path.resolve(__dirname, 'out');
 
 const MIME_TYPES = {
@@ -116,13 +115,7 @@ const server = http.createServer((req, res) => {
     if (url === '/teacher') {
       const standalone = path.join(__dirname, 'standalone-teacher.html');
       if (fs.existsSync(standalone)) {
-        if (BACKEND_PORT !== '3001') {
-          let content = fs.readFileSync(standalone, 'utf8');
-          content = content.replace('var BACKEND_PORT = 3001;', `var BACKEND_PORT = ${BACKEND_PORT};`);
-          serveRawContent(res, content, 'text/html; charset=utf-8');
-        } else {
-          serveFile(res, standalone);
-        }
+        serveFile(res, standalone);
         return;
       }
     }
@@ -131,13 +124,7 @@ const server = http.createServer((req, res) => {
     if (url === '/classroom') {
       const standalone = path.join(__dirname, 'standalone-classroom.html');
       if (fs.existsSync(standalone)) {
-        if (BACKEND_PORT !== '3001') {
-          let content = fs.readFileSync(standalone, 'utf8');
-          content = content.replace('var API_PORT = 3001;', 'var API_PORT = ' + BACKEND_PORT + ';');
-          serveRawContent(res, content, 'text/html; charset=utf-8');
-        } else {
-          serveFile(res, standalone);
-        }
+        serveFile(res, standalone);
         return;
       }
     }

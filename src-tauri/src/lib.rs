@@ -4,6 +4,9 @@ use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -200,13 +203,17 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
     if prisma_cli.exists() {
         eprintln!("同步数据库 schema...");
-        let status = Command::new(&node)
-            .arg(&prisma_cli)
-            .args(["db", "push", "--accept-data-loss"])
-            .current_dir(&server_dir)
-            .env("DATABASE_URL", &db_url)
-            .status()
-            .map_err(|e| format!("执行数据库迁移失败: {}", e))?;
+        let status = {
+            let mut cmd = Command::new(&node);
+            cmd.arg(&prisma_cli)
+                .args(["db", "push", "--accept-data-loss"])
+                .current_dir(&server_dir)
+                .env("DATABASE_URL", &db_url);
+            #[cfg(target_os = "windows")]
+            cmd.creation_flags(0x08000000);
+            cmd.status()
+                .map_err(|e| format!("执行数据库迁移失败: {}", e))?
+        };
         if !status.success() {
             eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
         }
@@ -214,13 +221,17 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");
     }
 
-    let child = Command::new(&node)
-        .arg(&server_script)
-        .current_dir(&server_dir)
-        .env("CLASSNODE_DATA_DIR", &data_dir_str)
-        .env("DATABASE_URL", &db_url)
-        .spawn()
-        .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?;
+    let child = {
+        let mut cmd = Command::new(&node);
+        cmd.arg(&server_script)
+            .current_dir(&server_dir)
+            .env("CLASSNODE_DATA_DIR", &data_dir_str)
+            .env("DATABASE_URL", &db_url);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        cmd.spawn()
+            .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?
+    };
 
     *app.state::<ServerState>().0.lock().unwrap() = Some(ServerInfo { child });
 
@@ -248,7 +259,8 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
 }
 
 fn open_browser() {
-    let host = get_local_ips()
+    let ips = get_local_ips();
+    let host = ips
         .first()
         .map(|s| s.trim_start_matches("IP: "))
         .unwrap_or("localhost");

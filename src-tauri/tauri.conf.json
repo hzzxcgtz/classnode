@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ClassNode",
   "version": "1.0.0",
-  "identifier": "com.classnode.app",
+  "identifier": "com.classnode.desktop",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",

@@ -248,7 +248,11 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
 }
 
 fn open_browser() {
-    let url = format!("http://localhost:{SERVER_PORT}/teacher");
+    let host = get_local_ips()
+        .first()
+        .map(|s| s.trim_start_matches("IP: "))
+        .unwrap_or("localhost");
+    let url = format!("http://{}:{SERVER_PORT}/teacher", host);
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(&url).spawn()
     } else if cfg!(target_os = "windows") {

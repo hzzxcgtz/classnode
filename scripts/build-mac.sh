@@ -75,6 +75,10 @@ else
   echo "WARNING: .prisma not found at $PRISMA_DIR"
 fi
 
+# 复制 prisma CLI（用于应用启动时自动同步 schema）
+cp -rL ../../../server/node_modules/prisma node_modules/
+echo "Prisma CLI bundled."
+
 echo "Server bundle contents:"
 ls -la dist/
 

@@ -181,6 +181,24 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let data_dir_str = data_dir.to_string_lossy().to_string();
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
+    // 同步数据库 schema（兼容跨版本升级）
+    let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
+    if prisma_cli.exists() {
+        eprintln!("同步数据库 schema...");
+        let status = Command::new(&node)
+            .arg(&prisma_cli)
+            .args(["db", "push", "--accept-data-loss"])
+            .current_dir(&server_dir)
+            .env("DATABASE_URL", &db_url)
+            .status()
+            .map_err(|e| format!("执行数据库迁移失败: {}", e))?;
+        if !status.success() {
+            eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
+        }
+    } else {
+        eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");
+    }
+
     let child = Command::new(&node)
         .arg(&server_script)
         .current_dir(&server_dir)

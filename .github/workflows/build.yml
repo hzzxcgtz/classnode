@@ -44,16 +44,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # ===== 安装 pnpm（使用 corepack，Node.js 22+ 内置）=====
-      - name: Setup pnpm
-        shell: bash
-        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
-
-      # ===== 安装 Node.js（用于构建前端和服务端）=====
+      # ===== 安装 Node.js（corepack 和 npm 都需要 Node.js）=====
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+
+      # ===== 使用 npm 全局安装 pnpm（比 corepack 更稳定）=====
+      - name: Setup pnpm
+        shell: bash
+        run: npm install -g pnpm@11.3.0
 
       # ===== 安装项目依赖 =====
       - name: Install dependencies

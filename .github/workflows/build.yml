@@ -15,7 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bundle-node: [true, false]
+        include:
+          - target: x86_64-pc-windows-msvc
+            arch: x64
+            node-platform: win-x64
+          - target: i686-pc-windows-msvc
+            arch: x86
+            node-platform: win-x86
 
     runs-on: windows-latest
 
@@ -82,13 +88,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
 
       - name: Download portable Node.js
-        if: matrix.bundle-node == true
         shell: bash
         run: |
-          NODE_FILENAME="node-v${NODE_LTS}-win-x64"
+          NODE_FILENAME="node-v${NODE_LTS}-${{ matrix.node-platform }}"
           NODE_URL="https://nodejs.org/dist/v${NODE_LTS}/${NODE_FILENAME}.zip"
           echo "Downloading: $NODE_URL"
           curl -fsSL "$NODE_URL" -o download.zip
@@ -101,7 +106,7 @@ jobs:
           echo "Node.js binary bundled at src-tauri/resources/server/"
 
       - name: Build Tauri app
-        run: pnpm tauri build --target x86_64-pc-windows-msvc
+        run: pnpm tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -109,8 +114,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: ClassNode-win-x64${{ matrix.bundle-node && '-with-node' || '' }}
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/
+          name: ClassNode-win-${{ matrix.arch }}-with-node
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/
           if-no-files-found: error
 
   release:

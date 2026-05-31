@@ -4,19 +4,19 @@ set -euo pipefail
 # ======================================================
 # macOS 本地构建脚本
 # 用法:
-#   ./scripts/build-mac.sh                    # 构建当前架构，不打包 Node.js
-#   ./scripts/build-mac.sh --with-node        # 构建当前架构，打包 Node.js
+#   ./scripts/build-mac.sh                         # 构建当前架构（含 Node.js）
 #   ./scripts/build-mac.sh --target x86_64-apple-darwin  # 构建 Intel 版本
+#   ./scripts/build-mac.sh --without-node          # 不含 Node.js（快速调试用）
 # ======================================================
 
 NODE_LTS="22.14.0"
-BUNDLE_NODE=false
+BUNDLE_NODE=true
 TAURI_TARGET=""
 
 # 解析参数
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-node) BUNDLE_NODE=true; shift ;;
+    --without-node) BUNDLE_NODE=false; shift ;;
     --target) TAURI_TARGET="$2"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
@@ -115,7 +115,7 @@ if [ "$BUNDLE_NODE" = true ]; then
   echo "Node.js binary bundled at src-tauri/resources/server/node"
 else
   echo ""
-  echo "=== [4/5] 跳过 Node.js 下载（使用系统 node） ==="
+  echo "=== [4/5] 跳过 Node.js 下载（--without-node 模式，使用系统 node） ==="
 fi
 
 # 步骤 5: Tauri 构建

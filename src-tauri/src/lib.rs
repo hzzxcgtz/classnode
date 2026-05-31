@@ -19,33 +19,48 @@ struct ServerInfo {
 
 struct ServerState(Mutex<Option<ServerInfo>>);
 
+fn get_local_ips() -> Vec<String> {
+    if_addrs::get_if_addrs()
+        .map(|ifaces| {
+            ifaces
+                .iter()
+                .filter_map(|i| match &i.addr {
+                    if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some(format!("IP: {}", v4.ip)),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let status_text = if running {
         format!("状态: 运行中 (端口: {SERVER_PORT})")
     } else {
         "状态: 已停止".to_string()
     };
-    let port_text = if running {
-        format!("端口: {SERVER_PORT}")
-    } else {
-        "端口: --".to_string()
-    };
 
     let status = MenuItem::with_id(app, "status", &status_text, true, None::<&str>)?;
-    let port = MenuItem::with_id(app, "port", &port_text, true, None::<&str>)?;
     status.set_enabled(false)?;
-    port.set_enabled(false)?;
 
     let sep1 = PredefinedMenuItem::separator(app)?;
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "打开管理页面", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "打开教师端", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
     let menu = Menu::new(app)?;
     menu.append(&status)?;
-    menu.append(&port)?;
+
+    if running {
+        for ip in get_local_ips() {
+            let item = MenuItem::with_id(app, &format!("ip_{}", ip), &ip, true, None::<&str>)?;
+            item.set_enabled(false)?;
+            menu.append(&item)?;
+        }
+    }
+
     menu.append(&sep1)?;
     menu.append(&start)?;
     menu.append(&stop)?;
@@ -233,7 +248,7 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
 }
 
 fn open_browser() {
-    let url = format!("http://localhost:{SERVER_PORT}");
+    let url = format!("http://localhost:{SERVER_PORT}/teacher");
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(&url).spawn()
     } else if cfg!(target_os = "windows") {

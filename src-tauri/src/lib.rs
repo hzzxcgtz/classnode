@@ -77,10 +77,11 @@ fn get_server_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 /// 查找可用的 Node.js 二进制（优先使用捆绑版本）
 fn find_node(app: &AppHandle) -> String {
     if let Ok(resource_dir) = app.path().resource_dir() {
+        let server_dir = resource_dir.join("server");
         let node_path = if cfg!(target_os = "windows") {
-            resource_dir.join("node.exe")
+            server_dir.join("node.exe")
         } else {
-            resource_dir.join("node")
+            server_dir.join("node")
         };
         if node_path.exists() {
             return node_path.to_string_lossy().to_string();

@@ -122,17 +122,17 @@ jobs:
           echo "Downloading: $NODE_URL"
           curl -fsSL "$NODE_URL" -o "download.${{ matrix.node-ext }}"
 
-          mkdir -p src-tauri/resources
+          mkdir -p src-tauri/resources/server
 
           if [ "${{ matrix.node-ext }}" = "zip" ]; then
             7z x "download.${{ matrix.node-ext }}" -o"node-extracted"
-            cp "node-extracted/${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/
+            cp "node-extracted/${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/server/
           else
             tar xzf "download.${{ matrix.node-ext }}"
-            cp "${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/
+            cp "${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/server/
           fi
 
-          echo "Node.js binary bundled at src-tauri/resources/"
+          echo "Node.js binary bundled at src-tauri/resources/server/"
 
       # ===== 使用 Tauri 构建单文件分发包 =====
       - name: Build Tauri app

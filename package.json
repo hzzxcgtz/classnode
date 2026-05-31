@@ -1,6 +1,7 @@
 {
   "name": "classnode",
   "version": "1.0.0",
+  "packageManager": "pnpm@11.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -45,6 +45,8 @@ jobs:
 
       # ===== 安装 pnpm =====
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11
 
       # ===== 安装 Node.js（用于构建前端和服务端）=====
       - uses: actions/setup-node@v4

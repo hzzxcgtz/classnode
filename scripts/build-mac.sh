@@ -77,6 +77,12 @@ fi
 
 echo "Server bundle contents:"
 ls -la dist/
+
+# 初始化数据库（创建表结构）
+echo ""
+echo "Creating database tables..."
+../../../server/node_modules/.bin/prisma db push --accept-data-loss
+echo "Database initialized."
 cd "$ROOT_DIR"
 
 # 步骤 4: 下载 Node.js 二进制（可选）

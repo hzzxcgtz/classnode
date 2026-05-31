@@ -73,6 +73,11 @@ jobs:
           echo "=== Prisma client ==="
           ls node_modules/.prisma/client/ 2>/dev/null || echo "No .prisma/client"
 
+          # 初始化数据库（创建表结构）
+          echo "Creating database tables..."
+          ../../../server/node_modules/.bin/prisma db push --accept-data-loss
+          echo "Database initialized."
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

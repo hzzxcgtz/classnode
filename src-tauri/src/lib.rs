@@ -152,13 +152,19 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         return Err(format!("服务端脚本未找到: {:?}", server_script));
     }
 
-    // 使用用户数据目录存放数据库，避免 Windows Program Files 只读问题
+    // 使用用户数据目录存放数据库和上传文件，避免 Windows Program Files 只读问题
     let data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法获取用户数据目录: {}", e))?;
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
+
+    // 创建运行时所需的子目录
+    for sub in &["uploads/chat", "uploads/logos", "uploads/temp"] {
+        fs::create_dir_all(data_dir.join(sub))
+            .map_err(|e| format!("创建目录 {} 失败: {}", sub, e))?;
+    }
 
     let db_path = data_dir.join("dev.db");
     if !db_path.exists() {
@@ -172,11 +178,13 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         }
     }
 
+    let data_dir_str = data_dir.to_string_lossy().to_string();
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
     let child = Command::new(&node)
         .arg(&server_script)
         .current_dir(&server_dir)
+        .env("CLASSNODE_DATA_DIR", &data_dir_str)
         .env("DATABASE_URL", &db_url)
         .spawn()
         .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?;

@@ -11,7 +11,9 @@ const router: Router = Router();
 
 // File upload config for agent logos
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../../uploads/logos'),
+  destination: process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'logos')
+    : path.join(__dirname, '../../uploads/logos'),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `logo-${Date.now()}${ext}`);
@@ -28,7 +30,10 @@ const upload = multer({
 });
 
 // Ensure upload directory exists
-fs.mkdirSync(path.join(__dirname, '../../uploads/logos'), { recursive: true });
+const logosDir = process.env.CLASSNODE_DATA_DIR
+  ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'logos')
+  : path.join(__dirname, '../../uploads/logos');
+fs.mkdirSync(logosDir, { recursive: true });
 
 // 获取所有智能体
 router.get('/', async (req, res) => {

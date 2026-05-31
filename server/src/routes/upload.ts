@@ -8,7 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, '../../uploads/chat'),
+  destination: process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
+    : path.join(__dirname, '../../uploads/chat'),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `chat-${Date.now()}${ext}`);
@@ -20,7 +22,10 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-fs.mkdirSync(path.join(__dirname, '../../uploads/chat'), { recursive: true });
+const chatDir = process.env.CLASSNODE_DATA_DIR
+  ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
+  : path.join(__dirname, '../../uploads/chat');
+fs.mkdirSync(chatDir, { recursive: true });
 
 // 文件上传
 router.post('/', upload.single('file'), (req, res) => {

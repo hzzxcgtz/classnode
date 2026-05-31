@@ -34,7 +34,11 @@ async function main() {
   // Middleware
   app.use(cors({ origin: '*' }));
   app.use(express.json({ limit: '10mb' }));
-  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  // 上传文件的静态服务（从用户目录加载，兼容开发环境）
+  const uploadsDir = process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
+    : path.join(__dirname, '../uploads');
+  app.use('/uploads', express.static(uploadsDir));
 
   // Make prisma and io available to routes
   app.set('prisma', prisma);

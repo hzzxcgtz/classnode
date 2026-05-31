@@ -8,8 +8,15 @@ import fs from 'fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
-fs.mkdirSync(path.join(__dirname, '../../uploads/temp'), { recursive: true });
+const upload = multer({
+  dest: process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'temp')
+    : path.join(__dirname, '../../uploads/temp'),
+});
+const uploadsTempDir = process.env.CLASSNODE_DATA_DIR
+  ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'temp')
+  : path.join(__dirname, '../../uploads/temp');
+fs.mkdirSync(uploadsTempDir, { recursive: true });
 
 // === 班级管理 ===
 

@@ -58,6 +58,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # ===== 生成 Prisma Client（必须在编译服务端之前）=====
+      - name: Generate Prisma client
+        run: cd server && npx prisma generate
+
       # ===== 构建前端（Next.js 静态导出）=====
       - name: Build frontend
         run: pnpm build
@@ -65,10 +69,6 @@ jobs:
       # ===== 编译后端 TypeScript =====
       - name: Build server
         run: pnpm build:server
-
-      # ===== 生成 Prisma Client =====
-      - name: Generate Prisma client
-        run: cd server && npx prisma generate
 
       # ===== 打包服务端代码到 Tauri 资源目录 =====
       - name: Bundle server into Tauri resources

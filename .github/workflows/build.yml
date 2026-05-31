@@ -43,10 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ===== 安装 pnpm =====
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.3.0
+      # ===== 安装 pnpm（使用 corepack，Node.js 22+ 内置）=====
+      - name: Setup pnpm
+        shell: bash
+        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
 
       # ===== 安装 Node.js（用于构建前端和服务端）=====
       - uses: actions/setup-node@v4

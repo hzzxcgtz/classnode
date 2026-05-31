@@ -16,23 +16,27 @@ jobs:
       fail-fast: false
       matrix:
         bundle-node: [ true, false ]
+        platform: [mac-arm64, mac-x64, win-x64]
         include:
           # macOS Apple Silicon (ARM64)
-          - os: macos-latest
+          - platform: mac-arm64
+            os: macos-latest
             tauri-target: aarch64-apple-darwin
             node-platform: darwin-arm64
             node-ext: tar.gz
             node-bin: bin/node
             artifact-suffix: mac-arm64
           # macOS Intel (x86_64)
-          - os: macos-latest
+          - platform: mac-x64
+            os: macos-latest
             tauri-target: x86_64-apple-darwin
             node-platform: darwin-x64
             node-ext: tar.gz
             node-bin: bin/node
             artifact-suffix: mac-x64
           # Windows x86_64
-          - os: windows-latest
+          - platform: win-x64
+            os: windows-latest
             tauri-target: x86_64-pc-windows-msvc
             node-platform: win-x64
             node-ext: zip

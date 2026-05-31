@@ -1,6 +1,5 @@
 packages:
   - "server"
-  - "src-tauri"
 allowBuilds:
   "@prisma/client": true
   "@prisma/engines": true

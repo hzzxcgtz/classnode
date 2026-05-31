@@ -1,0 +1,163 @@
+name: Build and Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+  NODE_LTS: '22.14.0'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle-node: [ true, false ]
+        include:
+          # macOS Apple Silicon (ARM64)
+          - os: macos-latest
+            tauri-target: aarch64-apple-darwin
+            node-platform: darwin-arm64
+            node-ext: tar.gz
+            node-bin: bin/node
+            artifact-suffix: mac-arm64
+          # macOS Intel (x86_64)
+          - os: macos-latest
+            tauri-target: x86_64-apple-darwin
+            node-platform: darwin-x64
+            node-ext: tar.gz
+            node-bin: bin/node
+            artifact-suffix: mac-x64
+          # Windows x86_64
+          - os: windows-latest
+            tauri-target: x86_64-pc-windows-msvc
+            node-platform: win-x64
+            node-ext: zip
+            node-bin: node.exe
+            artifact-suffix: win-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ===== 安装 pnpm =====
+      - uses: pnpm/action-setup@v4
+
+      # ===== 安装 Node.js（用于构建前端和服务端）=====
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # ===== 安装项目依赖 =====
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ===== 构建前端（Next.js 静态导出）=====
+      - name: Build frontend
+        run: pnpm build
+
+      # ===== 编译后端 TypeScript =====
+      - name: Build server
+        run: pnpm build:server
+
+      # ===== 生成 Prisma Client =====
+      - name: Generate Prisma client
+        run: cd server && npx prisma generate
+
+      # ===== 打包服务端代码到 Tauri 资源目录 =====
+      - name: Bundle server into Tauri resources
+        shell: bash
+        run: |
+          mkdir -p src-tauri/resources/server
+
+          # 复制编译后的服务端代码
+          cp -r server/dist src-tauri/resources/server/dist
+          cp -r server/prisma src-tauri/resources/server/prisma
+          cp server/package.json src-tauri/resources/server/
+
+          # 复制 .env（相对路径指向自己的 dev.db）
+          cp server/.env.example src-tauri/resources/server/.env
+
+          # 安装生产依赖（不执行 postinstall 脚本，避免 prisma generate 重复执行）
+          cd src-tauri/resources/server
+          npm install --production --ignore-scripts
+
+          # 复制 Prisma 生成的客户端（含 query-engine 二进制）
+          mkdir -p node_modules
+          cp -rL ../../../server/node_modules/.prisma node_modules/
+          cp -rL ../../../server/node_modules/@prisma/client node_modules/@prisma/
+
+          # 验证服务端脚本存在
+          echo "=== Server bundle contents ==="
+          ls -la dist/
+          echo "=== Prisma client ==="
+          ls node_modules/.prisma/client/ 2>/dev/null || echo "No .prisma/client"
+
+      # ===== 安装 Rust 工具链 =====
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri-target }}
+
+      # ===== 下载可移植 Node.js 二进制（仅含 Node 版本）=====
+      - name: Download portable Node.js (${{ matrix.node-platform }})
+        if: matrix.bundle-node == true
+        shell: bash
+        run: |
+          NODE_FILENAME="node-v${NODE_LTS}-${{ matrix.node-platform }}"
+          NODE_URL="https://nodejs.org/dist/v${NODE_LTS}/${NODE_FILENAME}.${{ matrix.node-ext }}"
+          echo "Downloading: $NODE_URL"
+          curl -fsSL "$NODE_URL" -o "download.${{ matrix.node-ext }}"
+
+          mkdir -p src-tauri/resources
+
+          if [ "${{ matrix.node-ext }}" = "zip" ]; then
+            7z x "download.${{ matrix.node-ext }}" -o"node-extracted"
+            cp "node-extracted/${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/
+          else
+            tar xzf "download.${{ matrix.node-ext }}"
+            cp "${NODE_FILENAME}/${{ matrix.node-bin }}" src-tauri/resources/
+          fi
+
+          echo "Node.js binary bundled at src-tauri/resources/"
+
+      # ===== 使用 Tauri 构建单文件分发包 =====
+      - name: Build Tauri app
+        run: pnpm tauri build --target ${{ matrix.tauri-target }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # ===== 上传构建产物 =====
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClassNode-${{ matrix.artifact-suffix }}${{ matrix.bundle-node && '-with-node' || '' }}
+          path: src-tauri/target/${{ matrix.tauri-target }}/release/bundle/
+          if-no-files-found: error
+
+  # ===== 发布 Release（仅在打 Tag 时触发）=====
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ClassNode-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            **/*.dmg
+            **/*.msi
+            **/*.exe
+            **/*.AppImage
+            **/*.deb
+          generate_release_notes: true

@@ -1,3 +1,4 @@
+use std::fs;
 use std::mem;
 use std::net::TcpStream;
 use std::process::{Child, Command};
@@ -151,9 +152,32 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         return Err(format!("服务端脚本未找到: {:?}", server_script));
     }
 
+    // 使用用户数据目录存放数据库，避免 Windows Program Files 只读问题
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取用户数据目录: {}", e))?;
+    fs::create_dir_all(&data_dir)
+        .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
+
+    let db_path = data_dir.join("dev.db");
+    if !db_path.exists() {
+        let builtin_db = server_dir.join("prisma").join("dev.db");
+        if builtin_db.exists() {
+            fs::copy(&builtin_db, &db_path)
+                .map_err(|e| format!("复制数据库失败: {}", e))?;
+            eprintln!("数据库已复制到: {:?}", db_path);
+        } else {
+            return Err(format!("内置数据库文件未找到: {:?}", builtin_db));
+        }
+    }
+
+    let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
+
     let child = Command::new(&node)
         .arg(&server_script)
         .current_dir(&server_dir)
+        .env("DATABASE_URL", &db_url)
         .spawn()
         .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?;
 

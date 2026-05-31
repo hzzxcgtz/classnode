@@ -6,8 +6,8 @@ import { api } from '@/lib/api';
 
 export default function StudentHomePage() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [code, setCode] = useState('');
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [digits, setDigits] = useState<string[]>(['', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
@@ -16,12 +16,39 @@ export default function StudentHomePage() {
   useEffect(() => {
     setHydrated(true);
     api.health().then(() => setServerOnline(true)).catch(() => setServerOnline(false));
-    setTimeout(() => inputRef.current?.focus(), 500);
+    setTimeout(() => inputRefs.current[0]?.focus(), 500);
   }, []);
+
+  const fullCode = digits.join('');
+
+  const handleDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const newDigits = [...digits];
+    newDigits[index] = digit;
+    setDigits(newDigits);
+    setError('');
+    if (digit && index < 3) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (pasted.length === 4) {
+      setDigits(pasted.split(''));
+      inputRefs.current[3]?.focus();
+      e.preventDefault();
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const fullCode = code.replace(/\D/g, '').slice(0, 4);
     if (fullCode.length !== 4) {
       setError('请输入完整的4位互动码');
       return;
@@ -32,6 +59,8 @@ export default function StudentHomePage() {
       router.push(`/classroom?code=${fullCode}`);
     } catch (e: any) {
       setError(e.message || '互动码无效，请确认后重试');
+      setDigits(['', '', '', '']);
+      inputRefs.current[0]?.focus();
     } finally {
       setLoading(false);
     }
@@ -86,29 +115,43 @@ export default function StudentHomePage() {
           </p>
         </div>
 
-        {/* 4 位码输入框：原生可见可交互，JS 不可用也能填写提交 */}
-        <input ref={inputRef} name="code" type="tel" maxLength={4} required
-          inputMode="numeric" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
-          value={code}
-          onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          placeholder="输入4位互动码"
-          style={{
-            width: 280, height: 72, fontSize: 36, fontWeight: 700,
-            letterSpacing: 8, textAlign: 'center',
-            borderRadius: 12, border: '2px solid rgba(255,255,255,0.3)',
-            background: 'rgba(255,255,255,0.15)', color: 'white',
-            outline: 'none', caretColor: 'white',
-            display: 'block', margin: '0 auto 24px',
-          }}
-        />
+        {/* 4 位独立输入框 */}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24 }}>
+          {digits.map((d, i) => (
+            <input key={i}
+              ref={el => { inputRefs.current[i] = el; }}
+              type="tel" maxLength={1} required
+              inputMode="numeric" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              value={d}
+              onChange={e => handleDigitChange(i, e.target.value)}
+              onKeyDown={e => handleKeyDown(i, e)}
+              onPaste={i === 0 ? handlePaste : undefined}
+              style={{
+                width: 64, height: 72, fontSize: 32, fontWeight: 700,
+                textAlign: 'center', borderRadius: 12,
+                border: '2px solid rgba(255,255,255,0.3)',
+                background: d ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
+                color: 'white', outline: 'none', caretColor: 'transparent',
+                transition: 'all 0.15s',
+              }}
+              onFocus={e => {
+                e.target.style.borderColor = 'white';
+                e.target.style.background = 'rgba(255,255,255,0.3)';
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = 'rgba(255,255,255,0.3)';
+                e.target.style.background = d ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+              }}
+            />
+          ))}
+        </div>
 
         {error && (
           <p style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16 }}>{error}</p>
         )}
 
-        {/* type="submit" 的 button，无 JS 时始终可点，由 <form action> 兜底提交 */}
         <button type="submit"
-          disabled={hydrated && (code.length !== 4 || loading)}
+          disabled={hydrated && (fullCode.length !== 4 || loading)}
           style={{
             background: 'white', color: '#667eea', fontWeight: 600, fontSize: 16,
             padding: '14px 40px', borderRadius: 12, border: 'none',

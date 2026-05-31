@@ -1,10 +1,13 @@
+use std::mem;
+use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager,
+    AppHandle, Manager, RunEvent,
 };
 
 const SERVER_PORT: u16 = 3001;
@@ -52,19 +55,29 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
 }
 
 fn set_tray_icon(app: &AppHandle, running: bool) {
-    let icon = if running {
-        Image::from_bytes(include_bytes!("../icons/tray-running.png"))
+    let data: &[u8] = if running {
+        include_bytes!("../icons/tray-running.png")
     } else {
-        Image::from_bytes(include_bytes!("../icons/tray-stopped.png"))
+        include_bytes!("../icons/tray-stopped.png")
     };
-    if let Ok(icon) = icon {
-        if let Some(tray) = app.tray_by_id("main") {
-            let _ = tray.set_icon(Some(icon));
+    match Image::from_bytes(data) {
+        Ok(icon) => {
+            if let Some(tray) = app.tray_by_id("main") {
+                if let Err(e) = tray.set_icon(Some(icon)) {
+                    eprintln!("设置托盘图标失败: {}", e);
+                }
+            } else {
+                eprintln!("未找到托盘对象 main");
+            }
+        }
+        Err(e) => {
+            eprintln!("加载图标图片失败: {}", e);
         }
     }
 }
 
 fn update_tray(app: &AppHandle, running: bool) {
+    eprintln!("update_tray(running={}) 被调用", running);
     set_tray_icon(app, running);
 
     let tooltip = if running {
@@ -74,60 +87,19 @@ fn update_tray(app: &AppHandle, running: bool) {
     };
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_tooltip(Some(&tooltip));
-        if let Ok(menu) = build_menu(app, running) {
-            let _ = tray.set_menu(Some(menu));
-        }
-    }
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .manage(ServerState(Mutex::new(None)))
-        .setup(|app| {
-            let icon = Image::from_bytes(include_bytes!("../icons/tray-stopped.png"))
-                .expect("无法加载托盘图标");
-
-            let handle = app.handle();
-            let menu = build_menu(&handle, false)?;
-
-            TrayIconBuilder::new()
-                .icon(icon)
-                .tooltip("ClassNode - 已停止")
-                .menu(&menu)
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "start" => {
-                        if let Err(e) = start_server(app) {
-                            eprintln!("启动服务失败: {}", e);
-                        }
-                    }
-                    "stop" => {
-                        if let Err(e) = stop_server(app) {
-                            eprintln!("停止服务失败: {}", e);
-                        }
-                    }
-                    "open" => open_browser(),
-                    "quit" => {
-                        let _ = stop_server(app);
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .build(app)?;
-
-            // 启动后自动运行服务
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                if let Err(e) = start_server(&handle) {
-                    eprintln!("自动启动服务失败: {}", e);
+        match build_menu(app, running) {
+            Ok(menu) => {
+                if let Err(e) = tray.set_menu(Some(menu)) {
+                    eprintln!("设置托盘菜单失败: {}", e);
                 }
-            });
-
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("启动 ClassNode 失败");
+            }
+            Err(e) => {
+                eprintln!("构建菜单失败: {}", e);
+            }
+        }
+    } else {
+        eprintln!("update_tray: 未找到托盘对象 main");
+    }
 }
 
 fn get_server_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -150,10 +122,27 @@ fn find_node(app: &AppHandle) -> String {
             return node_path.to_string_lossy().to_string();
         }
     }
+
+    let common_paths: &[&str] = if cfg!(target_os = "macos") {
+        &[
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+        ]
+    } else if cfg!(target_os = "windows") {
+        &[r"C:\Program Files\nodejs\node.exe"]
+    } else {
+        &["/usr/bin/node", "/usr/local/bin/node"]
+    };
+    for p in common_paths {
+        if std::path::Path::new(p).exists() {
+            return p.to_string();
+        }
+    }
     "node".to_string()
 }
 
-fn start_server(app: &AppHandle) -> Result<(), String> {
+fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");
     let node = find_node(app);
@@ -166,11 +155,9 @@ fn start_server(app: &AppHandle) -> Result<(), String> {
         .arg(&server_script)
         .current_dir(&server_dir)
         .spawn()
-        .map_err(|e| format!("启动服务失败: {}", e))?;
+        .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?;
 
     *app.state::<ServerState>().0.lock().unwrap() = Some(ServerInfo { child });
-
-    update_tray(app, true);
 
     Ok(())
 }
@@ -180,10 +167,19 @@ fn stop_server(app: &AppHandle) -> Result<(), String> {
         let mut child = info.child;
         child.kill().map_err(|e| format!("停止服务失败: {}", e))?;
         let _ = child.wait();
-
-        update_tray(app, false);
     }
     Ok(())
+}
+
+fn wait_for_server(port: u16, timeout: Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    false
 }
 
 fn open_browser() {
@@ -195,8 +191,78 @@ fn open_browser() {
     } else {
         Command::new("xdg-open").arg(&url).spawn()
     };
-
     if let Err(e) = result {
         eprintln!("打开浏览器失败: {}", e);
     }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let app = tauri::Builder::default()
+        .manage(ServerState(Mutex::new(None)))
+        .setup(|app| {
+            let icon = Image::from_bytes(include_bytes!("../icons/tray-stopped.png").as_slice())
+                .expect("无法加载托盘图标");
+
+            let handle = app.handle();
+            let menu = build_menu(&handle, false)?;
+
+            let tray = TrayIconBuilder::with_id("main")
+                .icon(icon)
+                .tooltip("ClassNode - 已停止")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "start" => {
+                        if let Err(e) = spawn_server(app) {
+                            eprintln!("启动服务失败: {}", e);
+                        } else {
+                            update_tray(app, true);
+                        }
+                    }
+                    "stop" => {
+                        if let Err(e) = stop_server(app) {
+                            eprintln!("停止服务失败: {}", e);
+                        } else {
+                            update_tray(app, false);
+                        }
+                    }
+                    "open" => open_browser(),
+                    "quit" => {
+                        let _ = stop_server(app);
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+            mem::forget(tray);
+
+            // 延迟到事件循环就绪后启动服务
+            let handle = app.handle().clone();
+            let h = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                if let Err(e) = spawn_server(&h) {
+                    eprintln!("自动启动服务失败: {}", e);
+                } else {
+                    update_tray(&h, true);
+                    // 后台线程等待服务就绪后再打开浏览器，不阻塞主线程
+                    std::thread::spawn(|| {
+                        if wait_for_server(SERVER_PORT, Duration::from_secs(15)) {
+                            open_browser();
+                        } else {
+                            eprintln!("等待服务启动超时，请手动打开管理页面");
+                        }
+                    });
+                }
+            });
+
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("启动 ClassNode 失败");
+
+    app.run(|app_handle, event| {
+        if let RunEvent::Exit = event {
+            let _ = stop_server(app_handle);
+        }
+    });
 }

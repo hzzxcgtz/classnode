@@ -75,12 +75,9 @@ jobs:
 
           # 初始化数据库（创建表结构）
           echo "Creating database tables..."
+          rm -f prisma/dev.db
           ../../../server/node_modules/.bin/prisma db push --accept-data-loss
-          if [ -f prisma/dev.db ]; then
-            mv prisma/dev.db .
-            echo "Database moved to server root."
-          fi
-          echo "Database initialized."
+          echo "Database initialized at prisma/dev.db"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

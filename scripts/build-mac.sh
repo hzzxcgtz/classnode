@@ -82,12 +82,10 @@ ls -la dist/
 echo ""
 echo "Creating database tables..."
 # prisma db push 把 dev.db 创建在 prisma/ 下，需要移到 server 根目录
+rm -f prisma/dev.db
+# prisma db push 把 dev.db 创建在 prisma/ 下，Prisma Client 运行时也会在此查找
 ../../../server/node_modules/.bin/prisma db push --accept-data-loss
-if [ -f prisma/dev.db ]; then
-  mv prisma/dev.db .
-  echo "Database moved to server root."
-fi
-echo "Database initialized."
+echo "Database initialized at prisma/dev.db"
 cd "$ROOT_DIR"
 
 # 步骤 4: 下载 Node.js 二进制（可选）

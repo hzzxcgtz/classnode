@@ -8,6 +8,7 @@ on:
 env:
   NODE_VERSION: '22'
   NODE_LTS: '22.14.0'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -41,7 +42,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ===== 安装 pnpm（使用 corepack，Node.js 22+ 内置）=====
       - name: Setup pnpm
@@ -49,7 +50,7 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.3.0 --activate
 
       # ===== 安装 Node.js（用于构建前端和服务端）=====
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -136,7 +137,7 @@ jobs:
 
       # ===== 上传构建产物 =====
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ClassNode-${{ matrix.artifact-suffix }}${{ matrix.bundle-node && '-with-node' || '' }}
           path: src-tauri/target/${{ matrix.tauri-target }}/release/bundle/
@@ -148,7 +149,7 @@ jobs:
     needs: [ build ]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: ClassNode-*
           merge-multiple: true

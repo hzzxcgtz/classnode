@@ -2,29 +2,94 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager,
 };
 
-struct ServerState(Mutex<Option<Child>>);
+const SERVER_PORT: u16 = 3001;
+
+struct ServerInfo {
+    child: Child,
+}
+
+struct ServerState(Mutex<Option<ServerInfo>>);
+
+fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    let status_text = if running {
+        format!("状态: 运行中 (端口: {SERVER_PORT})")
+    } else {
+        "状态: 已停止".to_string()
+    };
+    let port_text = if running {
+        format!("端口: {SERVER_PORT}")
+    } else {
+        "端口: --".to_string()
+    };
+
+    let status = MenuItem::with_id(app, "status", &status_text, true, None::<&str>)?;
+    let port = MenuItem::with_id(app, "port", &port_text, true, None::<&str>)?;
+    status.set_enabled(false)?;
+    port.set_enabled(false)?;
+
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "打开管理页面", true, None::<&str>)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+
+    let menu = Menu::new(app)?;
+    menu.append(&status)?;
+    menu.append(&port)?;
+    menu.append(&sep1)?;
+    menu.append(&start)?;
+    menu.append(&stop)?;
+    menu.append(&open)?;
+    menu.append(&sep2)?;
+    menu.append(&quit)?;
+    Ok(menu)
+}
+
+fn set_tray_icon(app: &AppHandle, running: bool) {
+    let icon = if running {
+        Image::from_bytes(include_bytes!("../icons/tray-running.png"))
+    } else {
+        Image::from_bytes(include_bytes!("../icons/tray-stopped.png"))
+    };
+    if let Ok(icon) = icon {
+        if let Some(tray) = app.tray_by_id("main") {
+            let _ = tray.set_icon(Some(icon));
+        }
+    }
+}
+
+fn update_tray(app: &AppHandle, running: bool) {
+    set_tray_icon(app, running);
+
+    let tooltip = if running {
+        format!("ClassNode - 运行中 (端口: {SERVER_PORT})")
+    } else {
+        "ClassNode - 已停止".to_string()
+    };
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_tooltip(Some(&tooltip));
+        if let Ok(menu) = build_menu(app, running) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(ServerState(Mutex::new(None)))
         .setup(|app| {
-            // 构建托盘菜单
-            let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
-            let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
-            let open = MenuItem::with_id(app, "open", "打开管理页面", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-
-            let menu = Menu::with_items(app, &[&start, &stop, &open, &quit])?;
-
-            // 加载托盘图标
-            let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
+            let icon = Image::from_bytes(include_bytes!("../icons/tray-stopped.png"))
                 .expect("无法加载托盘图标");
+
+            let handle = app.handle();
+            let menu = build_menu(&handle, false)?;
 
             TrayIconBuilder::new()
                 .icon(icon)
@@ -65,7 +130,6 @@ pub fn run() {
         .expect("启动 ClassNode 失败");
 }
 
-/// 获取服务端代码所在目录
 fn get_server_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let resource_dir = app
         .path()
@@ -74,7 +138,6 @@ fn get_server_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(resource_dir.join("server"))
 }
 
-/// 查找可用的 Node.js 二进制（优先使用捆绑版本）
 fn find_node(app: &AppHandle) -> String {
     if let Ok(resource_dir) = app.path().resource_dir() {
         let server_dir = resource_dir.join("server");
@@ -90,7 +153,6 @@ fn find_node(app: &AppHandle) -> String {
     "node".to_string()
 }
 
-/// 启动后端服务
 fn start_server(app: &AppHandle) -> Result<(), String> {
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");
@@ -106,39 +168,32 @@ fn start_server(app: &AppHandle) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("启动服务失败: {}", e))?;
 
-    *app.state::<ServerState>().0.lock().unwrap() = Some(child);
+    *app.state::<ServerState>().0.lock().unwrap() = Some(ServerInfo { child });
 
-    // 更新托盘提示
-    if let Some(tray) = app.tray_by_id("main") {
-        let _ = tray.set_tooltip(Some("ClassNode - 运行中"));
-    }
+    update_tray(app, true);
 
     Ok(())
 }
 
-/// 停止后端服务
 fn stop_server(app: &AppHandle) -> Result<(), String> {
-    if let Some(mut child) = app.state::<ServerState>().0.lock().unwrap().take() {
+    if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
+        let mut child = info.child;
         child.kill().map_err(|e| format!("停止服务失败: {}", e))?;
         let _ = child.wait();
 
-        // 更新托盘提示
-        if let Some(tray) = app.tray_by_id("main") {
-            let _ = tray.set_tooltip(Some("ClassNode - 已停止"));
-        }
+        update_tray(app, false);
     }
     Ok(())
 }
 
-/// 在默认浏览器中打开管理页面
 fn open_browser() {
-    let url = "http://localhost:3001";
+    let url = format!("http://localhost:{SERVER_PORT}");
     let result = if cfg!(target_os = "macos") {
-        Command::new("open").arg(url).spawn()
+        Command::new("open").arg(&url).spawn()
     } else if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/c", "start", url]).spawn()
+        Command::new("cmd").args(["/c", "start", &url]).spawn()
     } else {
-        Command::new("xdg-open").arg(url).spawn()
+        Command::new("xdg-open").arg(&url).spawn()
     };
 
     if let Err(e) = result {

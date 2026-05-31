@@ -3,7 +3,6 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
-import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
@@ -20,22 +19,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient();
 
-async function findAvailablePort(startPort: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.listen(startPort, '0.0.0.0', () => {
-      const port = (server.address() as net.AddressInfo).port;
-      server.close(() => resolve(port));
-    });
-    server.on('error', () => {
-      resolve(findAvailablePort(startPort + 1));
-    });
-  });
-}
-
 async function main() {
-  const preferredPort = parseInt(process.env.PORT || '3001', 10);
-  const port = await findAvailablePort(preferredPort);
+  const port = parseInt(process.env.PORT || '3001', 10);
 
   const app = express();
   const httpServer = createServer(app);

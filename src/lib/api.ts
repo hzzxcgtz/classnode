@@ -1,6 +1,10 @@
 function getApiBaseUrl(): string {
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  return `http://${host}:3001`;
+  if (typeof window !== 'undefined') {
+    const port = window.location.port;
+    if (port === '3000') return `http://localhost:3001`;
+    return '';
+  }
+  return '';
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

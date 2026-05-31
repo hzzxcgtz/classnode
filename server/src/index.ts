@@ -55,6 +55,10 @@ async function main() {
   app.set('prisma', prisma);
   app.set('io', io);
 
+  // 前端静态文件（Next.js 静态导出产物）
+  const frontendDir = path.join(__dirname, '../frontend');
+  app.use(express.static(frontendDir));
+
   // Routes
   app.use('/api/agents', agentRoutes);
   app.use('/api/classes', classRoutes);

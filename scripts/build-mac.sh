@@ -47,9 +47,9 @@ echo ""
 echo "=== [2/5] 编译服务端 ==="
 pnpm build:server
 
-# 步骤 3: 打包服务端代码到 Tauri 资源目录
+# 步骤 3: 打包服务端代码 + 前端静态文件到 Tauri 资源目录
 echo ""
-echo "=== [3/5] 打包服务端代码 ==="
+echo "=== [3/5] 打包服务端和前端代码 ==="
 rm -rf src-tauri/resources/server
 mkdir -p src-tauri/resources/server
 
@@ -57,6 +57,10 @@ cp -r server/dist src-tauri/resources/server/dist
 cp -r server/prisma src-tauri/resources/server/prisma
 cp server/package.json src-tauri/resources/server/
 cp server/.env.example src-tauri/resources/server/.env
+
+# 打包前端静态文件（由 Express 服务器承载）
+echo "Copying frontend..."
+cp -r out src-tauri/resources/server/frontend
 
 cd src-tauri/resources/server
 npm install --production --ignore-scripts

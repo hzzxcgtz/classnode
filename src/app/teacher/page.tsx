@@ -6,8 +6,10 @@ import { api } from '@/lib/api';
 import { platformColors } from '@/lib/constants';
 
 function apiBaseUrl() {
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-  return 'http://' + host + ':3001';
+  if (typeof window !== 'undefined' && window.location.port === '3000') {
+    return 'http://localhost:3001';
+  }
+  return '';
 }
 
 export default function TeacherDashboard() {

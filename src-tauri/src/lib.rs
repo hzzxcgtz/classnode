@@ -132,7 +132,7 @@ fn stop_server(app: &AppHandle) -> Result<(), String> {
 
 /// 在默认浏览器中打开管理页面
 fn open_browser() {
-    let url = "http://localhost:3000";
+    let url = "http://localhost:3001";
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(url).spawn()
     } else if cfg!(target_os = "windows") {

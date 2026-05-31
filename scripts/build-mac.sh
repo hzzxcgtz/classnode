@@ -123,6 +123,21 @@ echo ""
 echo "=== [5/5] 构建 Tauri App ==="
 pnpm tauri build --target "$TAURI_TARGET"
 
+	# rename DMG with friendly arch name
+	VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+	case "$TAURI_TARGET" in
+	  aarch64-apple-darwin) ARCH_NAME="Apple-Silicon" ;;
+	  x86_64-apple-darwin)  ARCH_NAME="Intel" ;;
+	  *)                    ARCH_NAME="$TAURI_TARGET" ;;
+	esac
+	DMG_SRC="src-tauri/target/$TAURI_TARGET/release/bundle/dmg/ClassNode_${VERSION}_*.dmg"
+	for f in $DMG_SRC; do
+	  if [ -f "$f" ]; then
+	    cp "$f" "ClassNode-v${VERSION}-${ARCH_NAME}.dmg"
+	    echo "  DMG: ClassNode-v${VERSION}-${ARCH_NAME}.dmg"
+	  fi
+	done
+
 echo ""
 echo "========================================"
 echo "  构建完成!"

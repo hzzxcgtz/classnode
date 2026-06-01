@@ -199,7 +199,7 @@ fn ensure_port_free(port: u16) {
             for line in stdout.lines() {
                 let line = line.trim();
                 if line.contains("LISTENING") {
-                    if let Some(pid_str) = line.rsplit_whitespace().next() {
+                    if let Some(pid_str) = line.split_whitespace().last() {
                         if let Ok(pid) = pid_str.parse::<i32>() {
                             eprintln!("杀死旧进程 PID={}", pid);
                             let _ = Command::new("taskkill")
@@ -300,7 +300,7 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
 fn stop_server(app: &AppHandle) -> Result<(), String> {
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
-        let pid = child.id();
+        let _pid = child.id();
 
         // 先正常终止子进程
         let _ = child.kill();

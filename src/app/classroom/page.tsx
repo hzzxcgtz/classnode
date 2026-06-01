@@ -26,7 +26,7 @@ function StudentChatContent() {
           setSelectedStudent({ id: session.studentId, name: session.studentName });
           setStep('chat');
           loadClassroom(codeFromUrl).then(cr => {
-            if (cr) { loadMessages(cr.id, session.studentId); startChatSession(session.studentId, session.studentName); }
+            if (cr) { loadMessages(cr.id, session.studentId); startChatSession(session.studentId, session.studentName, codeFromUrl); }
           });
           return;
         }
@@ -49,6 +49,7 @@ function StudentChatContent() {
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -134,15 +135,22 @@ function StudentChatContent() {
 
   const loadClassroom = async (classroomCode?: string) => {
     try {
+      setLoadError(null);
       const cr = await api.getClassroomByCode(classroomCode || code);
       setClassroom(cr);
       if (cr.status === 'paused') setPaused(true);
       return cr;
     } catch (e: any) {
-      alert('互动码无效或课堂已结束');
-      router.push('/');
+      setLoadError(e.message || '课堂不存在或已结束');
     }
   };
+
+  // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
+  useEffect(() => {
+    if (step === 'loading' && loadError) {
+      setStep('identity');
+    }
+  }, [loadError]);
 
   const loadMessages = async (classroomId: string, studentId: string) => {
     try {
@@ -189,12 +197,13 @@ function StudentChatContent() {
   }, [step, classroom?.id]);
 
   // 提取为独立函数，支持刷新恢复
-  const startChatSession = async (studentId: string, studentName: string) => {
+  const startChatSession = async (studentId: string, studentName: string, classroomCode?: string) => {
+    const joinCode = classroomCode || code;
     try {
       const { io } = await import('socket.io-client');
       const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
       socket.on('connect', () => {
-        socket.emit('join-classroom', { classroomCode: code, studentId });
+        socket.emit('join-classroom', { classroomCode: joinCode, studentId });
         setConnected(true);
       });
 
@@ -478,6 +487,21 @@ function StudentChatContent() {
             style={{ width: '100%', marginTop: 20, fontSize: 16, opacity: selectedStudent ? 1 : 0.5 }}>
             {isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
           </button>
+          {loadError && (
+            <div style={{
+              width: '100%', marginTop: 12, padding: '10px 14px',
+              background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10,
+              fontSize: 13, color: '#dc2626', textAlign: 'center',
+            }}>
+              {loadError}
+            </div>
+          )}
+          {loadError && (
+            <button onClick={() => router.push('/')}
+              style={{ display: 'block', width: '100%', marginTop: 12, padding: '10px 0', fontSize: 14, color: 'var(--primary)', background: 'transparent', border: '1px solid #c7d2fe', borderRadius: 10, cursor: 'pointer' }}>
+              返回首页
+            </button>
+          )}
         </div>
       </div>
     );
@@ -529,8 +553,59 @@ function StudentChatContent() {
       <div ref={chatContainerRef} onScroll={handleChatScroll}
         style={{ flex: 1, overflow: 'auto', padding: '0 24px 20px', display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800, width: '100%', margin: '0 auto' }}>
 
+        {/* 加载错误提示：会话恢复失败 */}
+        {loadError && messages.length === 0 && !waitingAI && (
+          <div style={{
+            textAlign: 'center', padding: '60px 20px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: '#fef2f2', color: '#ef4444',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#dc2626' }}>{loadError}</div>
+            <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>请确认课堂仍在进行中，或联系老师获取最新互动码</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => {
+                const tryRestore = async () => {
+                  const codeFromUrl = new URLSearchParams(window.location.search).get('code') || '';
+                  setLoadError(null);
+                  const cr = await loadClassroom(codeFromUrl);
+                  if (cr) {
+                    try {
+                      const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
+                      if (saved) {
+                        const session = JSON.parse(saved);
+                        loadMessages(cr.id, session.studentId);
+                        startChatSession(session.studentId, session.studentName, codeFromUrl);
+                      } else {
+                        setStep('identity');
+                      }
+                    } catch {
+                      setStep('identity');
+                    }
+                  }
+                };
+                tryRestore();
+              }}
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 13, cursor: 'pointer' }}>
+                重试
+              </button>
+              <button onClick={handleExit}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: 'white', fontSize: 13, cursor: 'pointer' }}>
+                返回首页
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 空状态：欢迎语 */}
-        {messages.length === 0 && !waitingAI && (
+        {messages.length === 0 && !waitingAI && !loadError && (
           <div style={{ textAlign: 'center', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ marginBottom: 20, boxShadow: '0 8px 24px rgba(102,126,234,0.25)', borderRadius: 24, width: 80, height: 80, overflow: 'hidden', opacity: classroom?.agents?.[0]?.enabled === false ? 0.5 : 1 }}>
               {renderAgentAvatar(80, 24)}

@@ -60,6 +60,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [pwdFieldErrors, setPwdFieldErrors] = useState<Record<string, string>>({});
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -260,9 +261,19 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {/* 品牌标识 */}
         <div style={{ marginBottom: 28, paddingLeft: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src="/logo.png" alt=""
-              style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }}
-            />
+            {logoError ? (
+              <div style={{
+                width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontWeight: 700, fontSize: 14,
+              }}>C</div>
+            ) : (
+              <img src="/logo.png" alt="ClassNode"
+                style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }}
+                onError={() => setLogoError(true)}
+              />
+            )}
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>ClassNode</div>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>AI 互动课堂系统</div>

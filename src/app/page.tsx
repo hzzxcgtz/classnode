@@ -57,7 +57,15 @@ export default function StudentHomePage() {
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
     if (pasted.length === 4) {
       setDigits(pasted.split(''));
-      inputRefs.current[3]?.focus();
+      setLoading(true);
+      api.getClassroomByCode(pasted)
+        .then(() => router.push(`/classroom?code=${pasted}`))
+        .catch((e: any) => {
+          setError(e.message || '互动码无效，请确认后重试');
+          setDigits(['', '', '', '']);
+          inputRefs.current[0]?.focus();
+        })
+        .finally(() => setLoading(false));
       e.preventDefault();
     }
   };

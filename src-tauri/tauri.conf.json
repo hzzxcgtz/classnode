@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ClassNode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "identifier": "com.classnode.desktop",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeBuildCommand": "pnpm build && cp -r out src-tauri/resources/server/frontend"
   },
   "app": {
     "windows": [],

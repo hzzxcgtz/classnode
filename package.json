@@ -1,6 +1,6 @@
 {
   "name": "classnode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "packageManager": "pnpm@11.3.0",
   "private": true,
   "scripts": {
@@ -9,6 +9,7 @@
     "dev:all": "pnpm dlx concurrently \"pnpm dev\" \"pnpm dev:server\"",
     "build": "next build",
     "build:server": "pnpm --filter classnode-server build",
+    "build:all": "pnpm build && cp -r out server/frontend && cp -r out src-tauri/resources/server/frontend",
     "start": "next start",
     "tauri": "tauri",
     "lint": "eslint",

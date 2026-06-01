@@ -25,7 +25,7 @@ function StudentChatContent() {
         if (Date.now() - session.timestamp < 7200000) {
           setSelectedStudent({ id: session.studentId, name: session.studentName });
           setStep('chat');
-          loadClassroom().then(cr => {
+          loadClassroom(codeFromUrl).then(cr => {
             if (cr) { loadMessages(cr.id, session.studentId); startChatSession(session.studentId, session.studentName); }
           });
           return;
@@ -33,7 +33,7 @@ function StudentChatContent() {
       } catch {}
       localStorage.removeItem(`chat_session_${codeFromUrl}`);
     }
-    loadClassroom().then(cr => { if (cr) setStep('identity'); });
+    loadClassroom(codeFromUrl).then(cr => { if (cr) setStep('identity'); });
   }, []);
 
   const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
@@ -132,9 +132,9 @@ function StudentChatContent() {
     setShowScrollBtn(false);
   };
 
-  const loadClassroom = async () => {
+  const loadClassroom = async (classroomCode?: string) => {
     try {
-      const cr = await api.getClassroomByCode(code);
+      const cr = await api.getClassroomByCode(classroomCode || code);
       setClassroom(cr);
       if (cr.status === 'paused') setPaused(true);
       return cr;

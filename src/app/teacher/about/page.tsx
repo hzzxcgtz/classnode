@@ -23,9 +23,12 @@ export default function AboutPage() {
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
-        <img src="/logo.png" alt="ClassNode"
-          style={{ width: 52, height: 52, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
-        />
+        <div style={{
+          width: 52, height: 52, borderRadius: 12, flexShrink: 0,
+          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', fontWeight: 700, fontSize: 22, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        }}>C</div>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>ClassNode · AI 互动课堂系统</h1>
           <p style={{ fontSize: 14, color: '#64748b', margin: '4px 0 0' }}>版本 1.0.3</p>

@@ -28,7 +28,7 @@ export default function AboutPage() {
         />
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>ClassNode · AI 互动课堂系统</h1>
-          <p style={{ fontSize: 14, color: '#64748b', margin: '4px 0 0' }}>版本 1.0.2</p>
+          <p style={{ fontSize: 14, color: '#64748b', margin: '4px 0 0' }}>版本 1.0.3</p>
         </div>
       </div>
 

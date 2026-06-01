@@ -30,6 +30,21 @@ export default function StudentHomePage() {
     if (digit && index < 3) {
       inputRefs.current[index + 1]?.focus();
     }
+    // 输完第4位数字时自动提交
+    if (digit && index === 3) {
+      const code = newDigits.join('');
+      if (code.length === 4) {
+        setLoading(true);
+        api.getClassroomByCode(code)
+          .then(() => router.push(`/classroom?code=${code}`))
+          .catch((e: any) => {
+            setError(e.message || '互动码无效，请确认后重试');
+            setDigits(['', '', '', '']);
+            inputRefs.current[0]?.focus();
+          })
+          .finally(() => setLoading(false));
+      }
+    }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {

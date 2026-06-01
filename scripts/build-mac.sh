@@ -60,6 +60,7 @@ cp server/.env.example src-tauri/resources/server/.env
 
 # 打包前端静态文件（由 Express 服务器承载）
 echo "Copying frontend..."
+rm -rf src-tauri/resources/server/frontend
 cp -r out src-tauri/resources/server/frontend
 
 cd src-tauri/resources/server

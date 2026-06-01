@@ -8,7 +8,7 @@
 set -e
 
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="1.0.0"
+VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")"
 DEFAULT_DST="${SRC_DIR}-v${VERSION}"
 
 echo ""

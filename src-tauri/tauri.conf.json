@@ -7,7 +7,7 @@
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build && cp -r out src-tauri/resources/server/frontend"
+    "beforeBuildCommand": "pnpm build && rm -rf src-tauri/resources/server/frontend && cp -r out src-tauri/resources/server/frontend"
   },
   "app": {
     "windows": [],

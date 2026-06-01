@@ -99,14 +99,9 @@ export default function StudentHomePage() {
 
       <div style={{ textAlign: 'center', maxWidth: 480, width: '100%' }}>
         <div style={{ marginBottom: 48 }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: 20,
-            background: 'rgba(255,255,255,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 20px', fontSize: 36, fontWeight: 700, color: 'white',
-          }}>
-            AI
-          </div>
+          <img src="/logo.png" alt="ClassNode"
+            style={{ width: 72, height: 72, borderRadius: 16, display: 'block', margin: '0 auto 20px' }}
+          />
           <h1 style={{ color: 'white', fontSize: 28, fontWeight: 700, margin: 0 }}>
             AI互动课堂
           </h1>

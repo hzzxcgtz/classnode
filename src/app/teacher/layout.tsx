@@ -186,7 +186,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 22, margin: '0 auto 16px' }}>AI</div>
+            <img src="/logo.png" alt="ClassNode" style={{ width: 48, height: 48, borderRadius: 10, display: 'block', margin: '0 auto 16px' }} />
             <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>教师身份验证</h1>
             <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>请输入管理密码以进入控制台</p>
           </div>
@@ -222,7 +222,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 22, margin: '0 auto 16px' }}>AI</div>
+            <img src="/logo.png" alt="ClassNode" style={{ width: 48, height: 48, borderRadius: 10, display: 'block', margin: '0 auto 16px' }} />
             <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
             <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
@@ -260,20 +260,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {/* 品牌标识 */}
         <div style={{ marginBottom: 28, paddingLeft: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 10,
-              background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 700, fontSize: 15,
-              boxShadow: '0 2px 8px rgba(37,99,235,0.25)',
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
-                <path d="M20 12v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-4"/>
-                <path d="M12 22v-6"/>
-                <path d="M9 16h6"/>
-              </svg>
-            </div>
+            <img src="/logo.png" alt=""
+              style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }}
+            />
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>ClassNode</div>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>AI 互动课堂系统</div>

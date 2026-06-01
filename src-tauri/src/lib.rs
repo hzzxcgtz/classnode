@@ -7,6 +7,8 @@ use std::time::Duration;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -161,7 +163,61 @@ fn find_node(app: &AppHandle) -> String {
     "node".to_string()
 }
 
+/// 检查并清理占用指定端口的旧进程（防止上次退出遗留的孤儿进程）
+fn ensure_port_free(port: u16) {
+    if TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
+        return; // 端口空闲，无需处理
+    }
+
+    eprintln!("端口 {port} 已被占用，正在清理旧进程...");
+
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("lsof")
+            .args(["-ti", &format!(":{}", port)])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Ok(pid) = line.trim().parse::<i32>() {
+                    eprintln!("杀死旧进程 PID={}", pid);
+                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).spawn();
+                }
+            }
+            // 等待进程释放端口
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = Command::new("cmd")
+            .args(["/c", &format!("netstat -ano | findstr :{}", port)])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.contains("LISTENING") {
+                    if let Some(pid_str) = line.rsplit_whitespace().next() {
+                        if let Ok(pid) = pid_str.parse::<i32>() {
+                            eprintln!("杀死旧进程 PID={}", pid);
+                            let _ = Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .spawn();
+                        }
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+}
+
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
+    // 先清理可能遗留的旧进程
+    ensure_port_free(SERVER_PORT);
+
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");
     let node = find_node(app);
@@ -227,6 +283,9 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
             .current_dir(&server_dir)
             .env("CLASSNODE_DATA_DIR", &data_dir_str)
             .env("DATABASE_URL", &db_url);
+        // 创建独立进程组，退出时一起清理
+        #[cfg(unix)]
+        cmd.process_group(0);
         #[cfg(target_os = "windows")]
         cmd.creation_flags(0x08000000);
         cmd.spawn()
@@ -241,8 +300,19 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
 fn stop_server(app: &AppHandle) -> Result<(), String> {
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
-        child.kill().map_err(|e| format!("停止服务失败: {}", e))?;
+        let pid = child.id();
+
+        // 先正常终止子进程
+        let _ = child.kill();
         let _ = child.wait();
+
+        // 确保整个进程组被清理（包括可能的子进程）
+        #[cfg(unix)]
+        {
+            let _ = Command::new("kill")
+                .args(["-9", &format!("-{}", pid)])
+                .spawn();
+        }
     }
     Ok(())
 }
@@ -260,11 +330,13 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
 
 fn open_browser() {
     let ips = get_local_ips();
+    eprintln!("open_browser: 获取到的 IP 列表: {:?}", ips);
     let host = ips
         .first()
         .map(|s| s.trim_start_matches("IP: "))
         .unwrap_or("localhost");
     let url = format!("http://{}:{SERVER_PORT}/teacher", host);
+    eprintln!("open_browser: 最终打开 URL: {}", url);
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(&url).spawn()
     } else if cfg!(target_os = "windows") {

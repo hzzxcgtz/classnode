@@ -23,19 +23,9 @@ export default function AboutPage() {
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
-        <div style={{
-          width: 52, height: 52, borderRadius: 14,
-          background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'white', fontWeight: 700, fontSize: 22,
-          boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
-        }}>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
-            <path d="M20 12v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-4"/>
-            <path d="M12 22v-6"/><path d="M9 16h6"/>
-          </svg>
-        </div>
+        <img src="/logo.png" alt="ClassNode"
+          style={{ width: 52, height: 52, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
+        />
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>ClassNode · AI 互动课堂系统</h1>
           <p style={{ fontSize: 14, color: '#64748b', margin: '4px 0 0' }}>版本 1.0.0</p>

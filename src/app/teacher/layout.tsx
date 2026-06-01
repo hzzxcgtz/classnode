@@ -60,6 +60,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [pwdFieldErrors, setPwdFieldErrors] = useState<Record<string, string>>({});
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
+  const [logoErr, setLogoErr] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -186,7 +187,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 20 }}>C</div>
+            {logoErr ? (
+              <div style={{ width: 48, height: 48, borderRadius: 12, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 20 }}>C</div>
+            ) : (
+              <img src="/logo.png" alt="ClassNode" style={{ width: 48, height: 48, borderRadius: 12, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
+            )}
             <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>教师身份验证</h1>
             <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>请输入管理密码以进入控制台</p>
           </div>
@@ -222,7 +227,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 20 }}>C</div>
+            {logoErr ? (
+              <div style={{ width: 48, height: 48, borderRadius: 12, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 20 }}>C</div>
+            ) : (
+              <img src="/logo.png" alt="ClassNode" style={{ width: 48, height: 48, borderRadius: 12, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
+            )}
             <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
             <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
@@ -260,12 +269,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {/* 品牌标识 */}
         <div style={{ marginBottom: 28, paddingLeft: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-              background: 'linear-gradient(135deg, #667eea, #764ba2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 700, fontSize: 14,
-            }}>C</div>
+            {logoErr ? (
+              <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 14 }}>C</div>
+            ) : (
+              <img src="/logo.png" alt="ClassNode" style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+            )}
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>ClassNode</div>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>AI 互动课堂系统</div>

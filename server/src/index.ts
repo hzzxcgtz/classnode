@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
 
@@ -47,6 +48,12 @@ async function main() {
   // 前端静态文件（Next.js 静态导出产物）
   const frontendDir = path.join(__dirname, '../frontend');
   app.use(express.static(frontendDir));
+  // 防御：如果构建时 out/ 被嵌套复制，也作为静态文件源
+  const nestedFrontendDir = path.join(frontendDir, 'out');
+  if (fs.existsSync(nestedFrontendDir)) {
+    app.use(express.static(nestedFrontendDir));
+    console.log(`[server] Also serving frontend from nested: ${nestedFrontendDir}`);
+  }
 
   // Routes
   app.use('/api/agents', agentRoutes);

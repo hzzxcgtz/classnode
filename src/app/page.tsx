@@ -10,6 +10,7 @@ export default function StudentHomePage() {
   const [digits, setDigits] = useState<string[]>(['', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoErr, setLogoErr] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
@@ -122,12 +123,11 @@ export default function StudentHomePage() {
 
       <div style={{ textAlign: 'center', maxWidth: 480, width: '100%' }}>
         <div style={{ marginBottom: 48 }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: 16, margin: '0 auto 20px',
-            background: 'linear-gradient(135deg, #667eea, #764ba2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 700, fontSize: 30, boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-          }}>C</div>
+          {logoErr ? (
+            <div style={{ width: 72, height: 72, borderRadius: 16, margin: '0 auto 20px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 30, boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>C</div>
+          ) : (
+            <img src="/logo.png" alt="ClassNode" style={{ width: 72, height: 72, borderRadius: 16, display: 'block', margin: '0 auto 20px' }} onError={() => setLogoErr(true)} />
+          )}
           <h1 style={{ color: 'white', fontSize: 28, fontWeight: 700, margin: 0 }}>
             AI互动课堂
           </h1>

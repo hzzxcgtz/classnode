@@ -1271,7 +1271,7 @@ function GroupManagement({ classId, students, onChanged }: {
                   </div>
 
                   {/* 组内学生标签 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {g.studentIds?.length > 0 ? (
                       [...students].filter(s => g.studentIds.includes(s.id))
                         .sort((a, b) => (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0)).map(s => (
@@ -1279,13 +1279,14 @@ function GroupManagement({ classId, students, onChanged }: {
                           onDragStart={e => handleDragStart(e, s.id)}
                           onDragEnd={() => setDraggedId(null)}
                           style={{
-                            display: 'flex', alignItems: 'center', gap: 5,
-                            padding: '4px 6px', borderRadius: 8, cursor: 'grab',
+                            display: 'flex', alignItems: 'center', gap: 4,
+                            padding: '4px 8px', borderRadius: 8, cursor: 'grab',
                             background: color.bg, color: color.text, fontSize: 13,
                             userSelect: 'none', transition: 'all 0.1s',
                             opacity: draggedId === s.id ? 0.35 : 1,
                             border: `1px solid ${color.light}`,
                             boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                            whiteSpace: 'nowrap',
                           }}>
                           <div style={{
                             width: 22, height: 22, borderRadius: '50%',

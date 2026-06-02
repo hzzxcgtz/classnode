@@ -300,7 +300,7 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
 fn stop_server(app: &AppHandle) -> Result<(), String> {
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
-        let _pid = child.id();
+        let pid = child.id();
 
         // 先正常终止子进程
         let _ = child.kill();

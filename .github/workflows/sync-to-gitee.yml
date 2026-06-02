@@ -14,5 +14,5 @@ jobs:
 
       - name: Sync to Gitee
         run: |
-          git remote add gitee https://oauth2:${{ secrets.GITEE_TOKEN }}@gitee.com/hzzxcgtz/classnode.git
+          git remote add gitee https://hzzxcgtz:${{ secrets.GITEE_TOKEN }}@gitee.com/hzzxcgtz/classnode.git
           git push --force --prune gitee

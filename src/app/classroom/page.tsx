@@ -49,6 +49,7 @@ function StudentChatContent() {
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [agentDisabled, setAgentDisabled] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -139,6 +140,9 @@ function StudentChatContent() {
       const cr = await api.getClassroomByCode(classroomCode || code);
       setClassroom(cr);
       if (cr.status === 'paused') setPaused(true);
+      if (cr.agents?.[0]?.enabled === false) setAgentDisabled(true);
+      // 也检查 classroomAgents
+      if (cr.classroomAgents?.[0]?.agent?.enabled === false) setAgentDisabled(true);
       return cr;
     } catch (e: any) {
       setLoadError(e.message || '课堂不存在或已结束');
@@ -167,6 +171,35 @@ function StudentChatContent() {
     } catch {}
   };
 
+  // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
+  useEffect(() => {
+    if (step !== 'chat' || !code) return;
+    const poll = async () => {
+      try {
+        const cr = await api.getClassroomByCode(code);
+        if (cr.status === 'ended') {
+          localStorage.removeItem(`chat_session_${code}`);
+          alert('课堂已结束');
+          router.push('/');
+          return;
+        }
+        setAgentDisabled(cr.agents?.[0]?.enabled === false);
+        setPaused(cr.status === 'paused');
+      } catch (e: any) {
+        // 课堂已结束（API 返回 404 或 400）
+        const msg = e.message || '';
+        if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
+          localStorage.removeItem(`chat_session_${code}`);
+          alert('课堂已结束');
+          router.push('/');
+        }
+      }
+    };
+    poll(); // 立即执行一次
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [step, code]);
+
   // 如果选中的学生被登录了，取消选中
   useEffect(() => {
     if (selectedStudent && onlineStudentIds.has(selectedStudent.id)) {
@@ -183,7 +216,7 @@ function StudentChatContent() {
         if (statusSocketRef.current) statusSocketRef.current.disconnect();
         const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
         sk.on('connect', () => sk.emit('listen-classroom-status', classroom.id));
-        sk.on('online-students', (ids: string[]) => setOnlineStudentIds(new Set(ids)));
+        sk.on('online-students', (data: any) => setOnlineStudentIds(new Set(data.studentIds)));
         statusSocketRef.current = sk;
       })();
     }
@@ -236,12 +269,13 @@ function StudentChatContent() {
         setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + data.error }]);
       });
 
-      socket.on('agent-disabled', (data: any) => {
+      socket.on('agent-disabled', () => {
         setWaitingAI(false);
-        setMessages(prev => [...prev, {
-          role: 'system',
-          content: `智能体「${data.agentName}」当前已被教师停用，暂时无法回复你的问题。请稍后再试或联系老师。`,
-        }]);
+        setAgentDisabled(true);
+      });
+
+      socket.on('agent-enabled', () => {
+        setAgentDisabled(false);
       });
 
       socket.on('classroom-ended', () => {
@@ -254,12 +288,10 @@ function StudentChatContent() {
         setPaused(true);
         setWaitingAI(false);
         setStreamingContent('');
-        setMessages(prev => [...prev, { role: 'system', content: '课堂已暂停，请等待老师继续' }]);
       });
 
       socket.on('classroom-resumed', () => {
         setPaused(false);
-        setMessages(prev => [...prev, { role: 'system', content: '课堂已恢复，可以继续提问了' }]);
       });
 
       socket.on('identity-conflict', (data: any) => {
@@ -379,7 +411,7 @@ function StudentChatContent() {
     const text = input.trim();
     const files = attachedFiles;
     if (!text && files.length === 0) return;
-    if (waitingAI || paused || !wsRef.current) return;
+    if (waitingAI || paused || agentDisabled || !wsRef.current) return;
     setInput('');
     setAttachedFiles([]);
     const userMsgContent = text || '(附件)';
@@ -756,14 +788,27 @@ function StudentChatContent() {
           </div>
         )}
 
+        {/* 智能体停用提示 */}
+        {agentDisabled && !paused && (
+          <div style={{
+            maxWidth: 800, width: '100%', margin: '0 auto 10px',
+            padding: '10px 16px', borderRadius: 10,
+            background: '#fef2f2', border: '1px solid #fecaca',
+            display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#991b1b',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            智能体已被教师停用，暂时无法回复消息
+          </div>
+        )}
+
         {/* 输入工具条 */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 800, width: '100%', margin: '0 auto' }}>
           <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{ display: 'none' }} />
 
           {/* 附件按钮 */}
-          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused}
+          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || agentDisabled}
             title="上传图片或文件"
-            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e5e7eb', borderRadius: 12, background: 'white', cursor: 'pointer', color: '#6b7280', opacity: (waitingAI || uploading || paused) ? 0.4 : 1, transition: 'all .15s' }}>
+            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e5e7eb', borderRadius: 12, background: 'white', cursor: 'pointer', color: '#6b7280', opacity: (waitingAI || uploading || paused || agentDisabled) ? 0.4 : 1, transition: 'all .15s' }}>
             {uploading ? (
               <span style={{ fontSize: 16 }}>⏳</span>
             ) : (
@@ -774,9 +819,9 @@ function StudentChatContent() {
           </button>
 
           {/* 语音按钮 */}
-          <button onClick={startVoiceInput} disabled={waitingAI || paused}
+          <button onClick={startVoiceInput} disabled={waitingAI || paused || agentDisabled}
             title={isListening ? '正在聆听...' : '语音输入'}
-            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${isListening ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, background: isListening ? '#fef2f2' : 'white', cursor: 'pointer', color: isListening ? '#ef4444' : '#6b7280', opacity: (waitingAI || paused) ? 0.4 : 1, transition: 'all .15s' }}>
+            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${isListening ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, background: isListening ? '#fef2f2' : 'white', cursor: 'pointer', color: isListening ? '#ef4444' : '#6b7280', opacity: (waitingAI || paused || agentDisabled) ? 0.4 : 1, transition: 'all .15s' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
               <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
@@ -787,10 +832,10 @@ function StudentChatContent() {
 
           {/* 输入框 + 发送按钮（整合在一行） */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
-            <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}} placeholder={paused ? '课堂已暂停...' : '输入你的问题...'} disabled={waitingAI || paused} autoFocus
+            <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}} placeholder={paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled} autoFocus
               style={{ flex: 1, fontSize: 16, padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
-            <button onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || waitingAI || paused}
-              style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused ? 'default' : 'pointer', transition: 'all .15s' }}>
+            <button onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled}
+              style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>

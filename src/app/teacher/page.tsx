@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { platformColors } from '@/lib/constants';
+import { getApiBaseUrl } from '@/lib/api-base';
+
+const SOCKET_URL = getApiBaseUrl();
 
 function apiBaseUrl() {
   if (typeof window !== 'undefined' && window.location.port === '3000') {
@@ -16,15 +19,76 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [activeClassrooms, setActiveClassrooms] = useState<any[]>([]);
+  const [onlineMap, setOnlineMap] = useState<Record<string, number>>({});
+  const socketRef = useRef<any>(null);
+  // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
+  const activeClassroomsRef = useRef(activeClassrooms);
+  activeClassroomsRef.current = activeClassrooms;
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // 定期刷新课堂数据，确保统计数据实时更新（socket 事件不一定覆盖所有字段）
+  useEffect(() => {
+    if (loading) return;
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getActiveClassrooms();
+        setActiveClassrooms(data);
+      } catch {}
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  // 连接 socket 订阅在线状态（仅创建一次，不随数据刷新重建）
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { io } = await import('socket.io-client');
+
+      const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+
+      sk.on('connect', () => {
+        if (!cancelled) {
+          // 用 ref 拿到最新的 classroom 列表，而非闭包中的 stale 值
+          const crs = activeClassroomsRef.current;
+          crs.forEach((cr: any) => {
+            sk.emit('listen-classroom-status', cr.id);
+          });
+        }
+      });
+
+      sk.on('online-students', (data: any) => {
+        if (!cancelled) {
+          setOnlineMap((prev: Record<string, number>) => ({
+            ...prev,
+            [data.classroomId]: data.studentIds?.length || 0,
+          }));
+        }
+      });
+
+      socketRef.current = sk;
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // 当活跃课堂列表变化时，通知 socket 开始监听新课堂的状态
+  useEffect(() => {
+    const sk = socketRef.current;
+    if (!sk?.connected || activeClassrooms.length === 0) return;
+    activeClassrooms.forEach((cr: any) => {
+      sk.emit('listen-classroom-status', cr.id);
+    });
+  }, [activeClassrooms]);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      setActiveClassrooms(await api.getActiveClassrooms());
+      const data = await api.getActiveClassrooms();
+      setActiveClassrooms(data);
     } catch {}
     setLoading(false);
   };
@@ -140,6 +204,19 @@ export default function TeacherDashboard() {
                       );
                     })()}
                   </div>
+                </div>
+                {/* 右上角统计数据 */}
+                <div style={{ display: 'flex', gap: 16, flexShrink: 0, marginLeft: 'auto' }}>
+                  {[
+                    { label: '在线', value: onlineMap[cr.id] || 0, color: '#22c55e' },
+                    { label: '离线', value: Math.max(0, (cr._count?.students || 0) - (onlineMap[cr.id] || 0)), color: '#94a3b8' },
+                    { label: '互动', value: (cr.students || []).reduce((sum: number, s: any) => sum + (s.totalRounds || 0), 0), color: '#2563eb' },
+                  ].map((stat, i) => (
+                    <div key={i} style={{ textAlign: 'center', minWidth: 40 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: stat.color, lineHeight: 1.2 }}>{stat.value}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{stat.label}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
               {/* 中间部分：智能体信息 */}

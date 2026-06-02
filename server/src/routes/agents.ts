@@ -108,6 +108,28 @@ router.put('/:id', upload.single('logo'), async (req, res) => {
       data,
     });
 
+    // 启用/停用状态变更时，通过 socket 实时通知学生
+    if (enabled !== undefined) {
+      const io: import('socket.io').Server = req.app.get('io');
+      // 查找使用了该智能体的活跃课堂（包括通过 classroomAgents 和 groups 两种方式）
+      const allClassroomIds = new Set<string>();
+      const classroomAgents = await prisma.classroomAgent.findMany({
+        where: { agentId: agent.id },
+        include: { classroom: { select: { id: true, status: true } } },
+      });
+      classroomAgents.forEach(ca => { if (ca.classroom.status !== 'ended') allClassroomIds.add(ca.classroom.id); });
+      const classroomGroups = await prisma.classroomGroup.findMany({
+        where: { agentId: agent.id },
+        include: { classroom: { select: { id: true, status: true } } },
+      });
+      classroomGroups.forEach(cg => { if (cg.classroom.status !== 'ended') allClassroomIds.add(cg.classroom.id); });
+      const eventName = agent.enabled ? 'agent-enabled' : 'agent-disabled';
+      for (const classroomId of allClassroomIds) {
+        io.to(`classroom:${classroomId}`).emit(eventName, { classroomId, agentName: agent.name });
+        io.to(`teacher:${classroomId}`).emit(eventName, { classroomId, agentName: agent.name });
+      }
+    }
+
     res.json(agent);
   } catch (error) {
     res.status(500).json({ error: '更新智能体失败' });

@@ -46,7 +46,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
     // 身份选择页监听课堂在线状态（无需身份）
     socket.on('listen-classroom-status', (classroomId: string) => {
       socket.join(`status:${classroomId}`);
-      socket.emit('online-students', getOnlineStudentIds(classroomId, activeConnections));
+      socket.emit('online-students', { classroomId, studentIds: getOnlineStudentIds(classroomId, activeConnections) });
     });
 
     // 学生加入课堂
@@ -107,7 +107,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         });
 
         // 广播在线状态给身份选择页
-        io.to(`status:${classroom.id}`).emit('online-students', getOnlineStudentIds(classroom.id, activeConnections));
+        io.to(`status:${classroom.id}`).emit('online-students', { classroomId: classroom.id, studentIds: getOnlineStudentIds(classroom.id, activeConnections) });
 
         console.log(`[Socket] Student ${data.studentId} joined classroom ${classroom.id}`);
       } catch (error) {
@@ -395,7 +395,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         });
 
         // 广播在线状态给身份选择页
-        io.to(`status:${classroomId}`).emit('online-students', getOnlineStudentIds(classroomId, activeConnections));
+        io.to(`status:${classroomId}`).emit('online-students', { classroomId, studentIds: getOnlineStudentIds(classroomId, activeConnections) });
       }
     });
   });

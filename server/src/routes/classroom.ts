@@ -250,6 +250,7 @@ router.get('/active', async (req, res) => {
       where: { status: { in: ['active', 'paused'] } },
       include: {
         _count: { select: { students: true } },
+        students: { select: { studentId: true, totalRounds: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: true } },
         groups: { include: { agent: true } },

@@ -121,17 +121,17 @@ export default function StudentHomePage() {
         教师入口
       </a>
 
-      <div style={{ textAlign: 'center', maxWidth: 480, width: '100%' }}>
-        <div style={{ marginBottom: 48 }}>
+      <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {logoErr ? (
-            <div style={{ width: 72, height: 72, borderRadius: 16, margin: '0 auto 20px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 30, boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>C</div>
+            <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 36 }}>C</div>
           ) : (
-            <img src="/logo.png" alt="ClassNode" style={{ width: 72, height: 72, borderRadius: 16, display: 'block', margin: '0 auto 20px' }} onError={() => setLogoErr(true)} />
+            <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
           )}
-          <h1 style={{ color: 'white', fontSize: 28, fontWeight: 700, margin: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: '#0f172a' }}>
             AI互动课堂
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: 8, fontSize: 15 }}>
+          <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>
             请输入老师下发的4位互动码
           </p>
         </div>
@@ -150,34 +150,32 @@ export default function StudentHomePage() {
               style={{
                 width: 64, height: 72, fontSize: 32, fontWeight: 700,
                 textAlign: 'center', borderRadius: 12,
-                border: '2px solid rgba(255,255,255,0.3)',
-                background: d ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
-                color: 'white', outline: 'none', caretColor: 'transparent',
+                border: `2px solid ${d ? '#667eea' : '#e2e8f0'}`,
+                background: d ? 'rgba(102,126,234,0.06)' : '#f8fafc',
+                color: '#0f172a', outline: 'none', caretColor: 'transparent',
                 transition: 'all 0.15s',
               }}
               onFocus={e => {
-                e.target.style.borderColor = 'white';
-                e.target.style.background = 'rgba(255,255,255,0.3)';
+                e.target.style.borderColor = '#667eea';
+                e.target.style.background = 'rgba(102,126,234,0.06)';
               }}
               onBlur={e => {
-                e.target.style.borderColor = 'rgba(255,255,255,0.3)';
-                e.target.style.background = d ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+                e.target.style.borderColor = d ? '#667eea' : '#e2e8f0';
+                e.target.style.background = d ? 'rgba(102,126,234,0.06)' : '#f8fafc';
               }}
             />
           ))}
         </div>
 
         {error && (
-          <p style={{ color: '#fca5a5', fontSize: 14, marginBottom: 16 }}>{error}</p>
+          <p style={{ color: '#ef4444', fontSize: 14, marginBottom: 16, textAlign: 'center' }}>{error}</p>
         )}
 
-        <button type="submit"
+        <button type="submit" className="btn btn-primary btn-lg"
           disabled={hydrated && (fullCode.length !== 4 || loading)}
           style={{
-            background: 'white', color: '#667eea', fontWeight: 600, fontSize: 16,
-            padding: '14px 40px', borderRadius: 12, border: 'none',
+            width: '100%', fontSize: 15,
             opacity: hydrated && loading ? 0.7 : 1,
-            cursor: 'pointer',
           }}
         >
           {loading ? '验证中...' : '进入课堂'}

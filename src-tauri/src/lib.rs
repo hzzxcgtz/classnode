@@ -355,7 +355,7 @@ pub fn run() {
         .manage(ServerState(Mutex::new(None)))
         .setup(|app| {
             let icon = Image::from_bytes(include_bytes!("../icons/tray-stopped.png").as_slice())
-                .expect("无法加载托盘图标");
+                .map_err(|e| format!("无法加载托盘图标: {e}"))?;
 
             let handle = app.handle();
             let menu = build_menu(&handle, false)?;

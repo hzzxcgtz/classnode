@@ -75,13 +75,17 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     Ok(menu)
 }
 
+fn tray_icon_bytes(running: bool) -> &'static [u8] {
+    match (running, cfg!(target_os = "windows")) {
+        (true, false) => include_bytes!("../icons/tray-running.png"),
+        (false, false) => include_bytes!("../icons/tray-stopped.png"),
+        (true, true) => include_bytes!("../icons/tray-running-windows.png"),
+        (false, true) => include_bytes!("../icons/tray-stopped-windows.png"),
+    }
+}
+
 fn set_tray_icon(app: &AppHandle, running: bool) {
-    let data: &[u8] = if running {
-        include_bytes!("../icons/tray-running.png")
-    } else {
-        include_bytes!("../icons/tray-stopped.png")
-    };
-    match Image::from_bytes(data) {
+    match Image::from_bytes(tray_icon_bytes(running)) {
         Ok(icon) => {
             if let Some(tray) = app.tray_by_id("main") {
                 if let Err(e) = tray.set_icon(Some(icon)) {
@@ -354,7 +358,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(ServerState(Mutex::new(None)))
         .setup(|app| {
-            let icon = Image::from_bytes(include_bytes!("../icons/tray-stopped.png").as_slice())
+            let icon = Image::from_bytes(tray_icon_bytes(false))
                 .map_err(|e| format!("无法加载托盘图标: {e}"))?;
 
             let handle = app.handle();

@@ -14,6 +14,7 @@ const navItems = [
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
   { path: '/teacher/history', label: '历史数据', icon: 'clock' },
+  { path: '/teacher/guide', label: '使用指南', icon: 'book' },
   { path: '/teacher/about', label: '关于', icon: 'info' },
 ];
 
@@ -394,6 +395,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     <line x1="12" y1="8" x2="12.01" y2="8" />
                   </svg>
                 )}
+                {item.icon === 'book' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                  </svg>
+                )}
               </span>
               <span>{item.label}</span>
             </button>
@@ -447,7 +454,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               fontSize: 11, color: '#cbd5e1',
               padding: '10px 12px 0',
             }}>
-              v1.0.6
+              v1.1.0
             </div>
           </div>
         </div>

@@ -91,6 +91,9 @@ fn set_tray_icon(app: &AppHandle, running: bool) {
                 if let Err(e) = tray.set_icon(Some(icon)) {
                     eprintln!("设置托盘图标失败: {}", e);
                 }
+                if let Err(e) = tray.set_icon_as_template(true) {
+                    eprintln!("设置托盘图标模板模式失败: {}", e);
+                }
             } else {
                 eprintln!("未找到托盘对象 main");
             }
@@ -366,6 +369,7 @@ pub fn run() {
 
             let tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
+                .icon_as_template(true)
                 .tooltip("ClassNode - 已停止")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {

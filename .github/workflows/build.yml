@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: '1.1.0'
   NODE_VERSION: '22'
   NODE_LTS: '22.14.0'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -28,6 +27,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Get version
+        shell: bash
+        id: version
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v6
         with:
@@ -117,10 +121,38 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Rename Windows installers
+        shell: bash
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCH="${{ matrix.arch }}"
+
+          # Rename NSIS installer
+          NSIS_DIR="$BUNDLE_DIR/nsis"
+          if ls "$NSIS_DIR"/ClassNode_*_${{ matrix.arch }}-setup.exe 1>/dev/null 2>&1; then
+            for f in "$NSIS_DIR"/ClassNode_*_${{ matrix.arch }}-setup.exe; do
+              base=$(basename "$f")
+              mv "$f" "$NSIS_DIR/ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
+              echo "Renamed: $base → ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
+            done
+          fi
+
+          # Rename MSI installer if it exists
+          MSI_DIR="$BUNDLE_DIR/msi"
+          if ls "$MSI_DIR"/ClassNode_*.msi 1>/dev/null 2>&1; then
+            for f in "$MSI_DIR"/ClassNode_*.msi; do
+              base=$(basename "$f")
+              archSuffix=$([ "${{ matrix.arch }}" = "x64" ] && echo "x64" || echo "x86")
+              mv "$f" "$MSI_DIR/ClassNode_${VERSION}_windows_${archSuffix}.msi"
+              echo "Renamed MSI: $base → ClassNode_${VERSION}_windows_${archSuffix}.msi"
+            done
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: ClassNode-v${{ env.APP_VERSION }}-win-${{ matrix.arch }}
+          name: ClassNode-v${{ steps.version.outputs.version }}-win-${{ matrix.arch }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/
           if-no-files-found: error
 

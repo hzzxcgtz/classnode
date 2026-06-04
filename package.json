@@ -12,6 +12,8 @@
     "build:all": "pnpm build && cp -r out server/frontend && cp -r out src-tauri/resources/server/frontend",
     "start": "next start",
     "tauri": "tauri",
+    "build:mac:arm64": "tauri build && node scripts/rename-bundle.js aarch64",
+    "build:mac:intel": "tauri build --target x86_64-apple-darwin && node scripts/rename-bundle.js x86_64",
     "lint": "eslint",
     "stop": "lsof -ti:3000,3001 | xargs kill -9"
   },

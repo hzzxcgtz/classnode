@@ -196,7 +196,7 @@ router.post('/create-advanced', async (req, res) => {
 
     // Create classroomAgent records from unique group agentIds
     const uniqueAgentIds = [...new Set(groups.map((g: any) => g.agentId).filter(Boolean))];
-    for (const agentId of uniqueAgentIds) {
+    for (const agentId of uniqueAgentIds as string[]) {
       await prisma.classroomAgent.create({
         data: { classroomId: classroom.id, agentId },
       }).catch(() => {});

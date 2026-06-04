@@ -57,7 +57,7 @@ router.get('/info', async (req, res) => {
     }
     const result = await fetchAgentInfo({
       platform,
-      apiUrl: (apiUrl && apiUrl !== 'undefined') || undefined,
+      apiUrl: (apiUrl && apiUrl !== 'undefined' ? apiUrl : undefined),
       apiKey,
       botId,
       extra: undefined,

@@ -460,7 +460,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               fontSize: 11, color: '#cbd5e1',
               padding: '10px 12px 0',
             }}>
-              v1.1.0
+              v1.2.0
             </div>
           </div>
         </div>

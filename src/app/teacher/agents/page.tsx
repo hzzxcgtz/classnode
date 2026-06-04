@@ -353,17 +353,15 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
   };
 
   const handleFetchInfo = async () => {
-    if (platform === 'coze' && (!botId || !apiKey)) {
-      alert('请先填写 Bot ID 和 API Token 后再从 Coze 获取');
-      return;
-    }
-    if (!agent) {
-      alert('请先保存智能体后再获取信息');
+    if (!botId || !apiKey) {
+      alert('请先填写 Bot ID 和 API Token 后再获取信息');
       return;
     }
     setFetchingInfo(true);
     try {
-      const resp = await api.getAgentInfo(agent.id);
+      const resp = agent
+        ? await api.getAgentInfo(agent.id)
+        : await api.getAgentInfoDirect({ platform, botId, apiKey, apiUrl: apiUrl || undefined });
       if (resp.name) setName(resp.name);
       if (resp.iconUrl) {
         setLogoPreview(resp.iconUrl);

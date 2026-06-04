@@ -174,37 +174,32 @@ router.post('/create-advanced', async (req, res) => {
         },
       });
 
-      // Assign students to group
-      if (group.studentIds?.length) {
-        for (const studentId of group.studentIds) {
-          await prisma.classroomStudent.create({
-            data: {
-              classroomId: classroom.id,
-              studentId,
-              groupId: classroomGroup.id,
-            },
-          });
-          await prisma.interaction.create({
-            data: { classroomId: classroom.id, studentId },
-          }).catch(() => {});
-        }
-      }
+      // 创建虚拟小组学生（用于登录），与 group 模式一致
+      const virtualStudent = await prisma.student.create({
+        data: {
+          classId,
+          name: group.name,
+          tag: '__group__',
+        },
+      });
+      await prisma.classroomStudent.create({
+        data: {
+          classroomId: classroom.id,
+          studentId: virtualStudent.id,
+          groupId: classroomGroup.id,
+        },
+      });
+      await prisma.interaction.create({
+        data: { classroomId: classroom.id, studentId: virtualStudent.id },
+      }).catch(() => {});
     }
 
-    // Add remaining students (unassigned)
-    const allStudents = await prisma.student.findMany({
-      where: { classId },
-    });
-    const assignedIds = groups.flatMap((g: any) => g.studentIds || []);
-    for (const student of allStudents) {
-      if (!assignedIds.includes(student.id)) {
-        await prisma.classroomStudent.create({
-          data: { classroomId: classroom.id, studentId: student.id },
-        });
-        await prisma.interaction.create({
-          data: { classroomId: classroom.id, studentId: student.id },
-        }).catch(() => {});
-      }
+    // Create classroomAgent records from unique group agentIds
+    const uniqueAgentIds = [...new Set(groups.map((g: any) => g.agentId).filter(Boolean))];
+    for (const agentId of uniqueAgentIds) {
+      await prisma.classroomAgent.create({
+        data: { classroomId: classroom.id, agentId },
+      }).catch(() => {});
     }
 
     const result = await prisma.classroom.findUnique({
@@ -232,7 +227,7 @@ router.get('/all', async (req, res) => {
         _count: { select: { students: true, interactions: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: true } },
-        groups: true,
+        groups: { include: { agent: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -272,7 +267,7 @@ router.get('/:id', async (req, res) => {
       include: {
         classes: { include: { class: true } },
         classroomAgents: { include: { agent: true } },
-        groups: true,
+        groups: { include: { agent: true } },
         students: {
           include: {
             student: true,
@@ -342,7 +337,7 @@ router.get('/code/:code', async (req, res) => {
       where: { code: req.params.code },
       include: {
         classroomAgents: { include: { agent: true } },
-        groups: true,
+        groups: { include: { agent: true } },
       },
     });
     if (!classroom) return res.status(404).json({ error: '互动码无效' });
@@ -354,7 +349,7 @@ router.get('/code/:code', async (req, res) => {
       title: classroom.title,
       mode: classroom.mode,
       status: classroom.status,
-      agents: classroom.classroomAgents.map((ca: Prisma.ClassroomAgentGetPayload<{ include: { agent: true } }>) => ({
+      agents: classroom.classroomAgents.map((ca: { agent: { id: any; name: any; logo: any; platform: any; enabled: any; greeting: any } }) => ({
         id: ca.agent.id,
         name: ca.agent.name,
         logo: ca.agent.logo,
@@ -419,6 +414,51 @@ router.post('/:id/end', async (req, res) => {
     res.json(classroom);
   } catch (error) {
     res.status(500).json({ error: '结束课堂失败' });
+  }
+});
+
+// 更新课堂设置
+router.put('/:id/settings', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { title, groups } = req.body;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (title !== undefined) {
+        await tx.classroom.update({
+          where: { id: req.params.id },
+          data: { title: title || null },
+        });
+      }
+
+      if (groups && Array.isArray(groups)) {
+        for (const g of groups) {
+          if (g.id && g.agentId) {
+            await tx.classroomGroup.update({
+              where: { id: g.id },
+              data: { agentId: g.agentId },
+            });
+            // 确保 classroomAgent 记录存在（用于看板展示）
+            await tx.classroomAgent.create({
+              data: { classroomId: req.params.id, agentId: g.agentId },
+            }).catch(() => {});
+          }
+        }
+      }
+    });
+
+    const result = await prisma.classroom.findUnique({
+      where: { id: req.params.id },
+      include: {
+        groups: { include: { agent: true } },
+        classroomAgents: { include: { agent: true } },
+      },
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Update classroom settings error:', error);
+    res.status(500).json({ error: '更新课堂设置失败' });
   }
 });
 
@@ -495,6 +535,12 @@ router.delete('/:id/student/:studentId/messages', async (req, res) => {
     await prisma.classroomStudent.update({
       where: { id: classroomStudent.id },
       data: { totalRounds: 0 },
+    });
+
+    // 通知该学生端清空对话
+    const io = req.app.get('io');
+    io.to(`classroom:${req.params.id}`).emit('messages-cleared', {
+      studentId: req.params.studentId,
     });
 
     res.json({ success: true });

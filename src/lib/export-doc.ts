@@ -877,7 +877,7 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
     ]}),
   );
 
-  const headers = data.headers || ['姓名', '学号', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
+  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
   const colWidths = calcColWidths(headers, data.rows || []);
 
   const headerRow = new TableRow({

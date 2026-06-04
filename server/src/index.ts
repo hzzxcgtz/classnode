@@ -14,7 +14,9 @@ import classRoutes from './routes/classes.js';
 import classroomRoutes from './routes/classroom.js';
 import exportRoutes from './routes/export.js';
 import settingsRoutes from './routes/settings.js';
+import shieldRoutes from './routes/shield.js';
 import uploadRoutes from './routes/upload.js';
+import defaultShieldWords from './services/default-shield-words.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +47,24 @@ async function main() {
   app.set('prisma', prisma);
   app.set('io', io);
 
+  // 自动填充默认屏蔽词（仅首次启动时，词库为空时跳过）
+  try {
+    const builtinCount = await prisma.shieldWord.count({ where: { builtin: true } });
+    if (builtinCount === 0) {
+      for (const word of defaultShieldWords) {
+        const existing = await prisma.shieldWord.findUnique({ where: { word } });
+        if (!existing) {
+          await prisma.shieldWord.create({ data: { word, builtin: true } });
+        }
+      }
+      if (defaultShieldWords.length > 0) {
+        console.log(`[server] Auto-seeded ${defaultShieldWords.length} default shield words`);
+      }
+    }
+  } catch (e) {
+    console.warn('[server] Failed to auto-seed shield words:', e);
+  }
+
   // 前端静态文件（Next.js 静态导出产物）
   const frontendDir = path.join(__dirname, '../frontend');
   app.use(express.static(frontendDir));
@@ -61,6 +81,7 @@ async function main() {
   app.use('/api/classroom', classroomRoutes);
   app.use('/api/export', exportRoutes);
   app.use('/api/settings', settingsRoutes);
+  app.use('/api/shield', shieldRoutes);
   app.use('/api/upload', uploadRoutes);
 
   // Health check

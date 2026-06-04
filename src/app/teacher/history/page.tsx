@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { exportConversationsDoc, exportStatsDoc } from '@/lib/export-doc';
 
@@ -463,7 +463,7 @@ function ConversationPreview({ data }: { data: any }) {
 
 /** 报表预览 */
 function StatsPreview({ data }: { data: any }) {
-  const headers = data.headers || ['姓名', '学号', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
+  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
   const rows = data.rows || [];
   const totalStudents = rows.length;
   const totalInteractions = rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
@@ -549,6 +549,8 @@ function BackupManager() {
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
 
@@ -564,16 +566,24 @@ function BackupManager() {
     setCreating(false);
   };
 
-  const handleDelete = async (name: string) => {
-    setDeleting(true);
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
     try {
-      await api.deleteBackup(name);
-      setDeleteTarget(null);
-      api.getBackups().then(setBackups);
+      const result = await api.uploadBackup(file);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        alert('导入备份成功！');
+        api.getBackups().then(setBackups);
+      }
     } catch (e: any) {
-      alert('删除失败: ' + e.message);
+      alert(e.message);
     }
-    setDeleting(false);
+    setImporting(false);
+    // 清空 input 以便再次选择同一文件
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleRestore = async (name: string) => {
@@ -587,6 +597,18 @@ function BackupManager() {
       alert('恢复失败: ' + e.message);
     }
     setRestoring(false);
+  };
+
+  const handleDelete = async (name: string) => {
+    setDeleting(true);
+    try {
+      await api.deleteBackup(name);
+      setDeleteTarget(null);
+      api.getBackups().then(setBackups);
+    } catch (e: any) {
+      alert('删除失败: ' + e.message);
+    }
+    setDeleting(false);
   };
 
   const handleReset = async () => {
@@ -643,6 +665,34 @@ function BackupManager() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
           初始化清零
         </button>
+        <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+            borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            border: '1px solid #e2e8f0', background: 'white', color: '#475569',
+            opacity: importing ? 0.6 : 1,
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+          {importing ? '导入中...' : '导入备份'}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".db" onChange={handleImportBackup}
+          style={{ display: 'none' }} />
+      </div>
+
+      {/* 跨设备迁移提示 */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        padding: '12px 16px', marginBottom: 16,
+        background: '#fffbeb', borderRadius: 10,
+        border: '1px solid #fde68a', fontSize: 13, color: '#92400e', lineHeight: 1.6,
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <div>
+          <strong>跨设备迁移须知：</strong>数据库备份仅包含文字数据，不包含上传的附件文件（图片等）。
+          如需完整迁移，请手动将原电脑上 <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>uploads</code> 文件夹复制到新电脑的相同位置。
+        </div>
       </div>
 
       {backups.length > 0 && (
@@ -660,11 +710,27 @@ function BackupManager() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                   <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
+                  {b.source === 'imported' ? (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
+                    }}>已导入</span>
+                  ) : (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0,
+                    }}>本机</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                   <span style={{ color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap' }}>
                     {new Date(b.createdAt).toLocaleString()} · {(b.size / 1024).toFixed(1)} KB
                   </span>
+                  <a href={api.getBackupDownloadUrl(b.name)} download
+                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',
+                      border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569' }}>
+                    下载
+                  </a>
                   <button onClick={() => setRestoreTarget(b.name)}
                     style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb' }}>

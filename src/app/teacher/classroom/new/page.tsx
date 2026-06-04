@@ -20,6 +20,7 @@ export default function NewClassroomPage() {
   const [groupAgentIds, setGroupAgentIds] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [openDropdownGroupId, setOpenDropdownGroupId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([api.getAgents(), api.getClasses()]).then(([a, c]) => {
@@ -36,7 +37,6 @@ export default function NewClassroomPage() {
     });
   };
 
-  // 选择班级时检测是否有分组
   const selectClass = (id: string) => {
     setSelectedClassId(id);
     clearError('class');
@@ -45,11 +45,23 @@ export default function NewClassroomPage() {
     setGroupAgentIds({});
     api.getGroups(id).then(groups => {
       setClassGroups(groups || []);
-      setMode(groups?.length > 0 ? 'standard' : 'standard');
     }).catch(() => {
       setClassGroups([]);
-      setMode('standard');
     }).finally(() => setLoadingGroups(false));
+  };
+
+  const handleModeChange = (newMode: CreateMode) => {
+    setMode(newMode);
+    clearError('mode');
+    // 切换到分组/高级模式时，若当前选中的班级无分组则取消选中
+    if ((newMode === 'group' || newMode === 'advanced') && selectedClassId) {
+      const cls = classes.find(c => c.id === selectedClassId);
+      if (!cls || (cls._count?.groups || 0) === 0) {
+        setSelectedClassId('');
+        setClassGroups([]);
+        setGroupAgentIds({});
+      }
+    }
   };
 
   const handleCreate = async () => {
@@ -125,6 +137,81 @@ export default function NewClassroomPage() {
           </div>}
         </div>
 
+        {/* 选择参与模式 */}
+        <div style={{
+          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
+          padding: '16px 20px', marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+            选择参与模式
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              {
+                id: 'standard' as CreateMode,
+                label: '标准模式',
+                sub: 'Standard Mode',
+                desc: '学生选择姓名加入，以个人身份与AI互动',
+                icon: (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+                  </svg>
+                ),
+              },
+              {
+                id: 'group' as CreateMode,
+                label: '分组模式',
+                sub: 'Group Mode',
+                desc: '学生选择小组加入，同组共享一个对话窗口',
+                icon: (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" />
+                  </svg>
+                ),
+              },
+              {
+                id: 'advanced' as CreateMode,
+                label: '高级模式',
+                sub: 'Advanced Mode',
+                desc: '每个小组绑定不同的AI智能体，分组独立对话',
+                icon: (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                ),
+              },
+            ].map(m => (
+              <div key={m.id} onClick={() => handleModeChange(m.id)}
+                style={{
+                  flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
+                  border: `2px solid ${mode === m.id ? '#2563eb' : '#e2e8f0'}`,
+                  background: mode === m.id ? '#eef2ff' : 'white',
+                  transition: 'all 0.12s',
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: '50%',
+                    border: `2px solid ${mode === m.id ? '#2563eb' : '#cbd5e1'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {mode === m.id && (
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />
+                    )}
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{m.sub}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
+                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#2563eb' : '#94a3b8' }}>{m.icon}</span>
+                  <span>{m.desc}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* 选择班级 */}
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
@@ -133,42 +220,57 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             选择班级
+            {mode !== 'standard' && (
+              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
+            )}
           </div>
           {classes.length === 0 ? (
             <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
               暂无可选班级，请先在「班级管理」中创建班级
             </div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {classes.map(c => (
-                <div key={c.id} onClick={() => selectClass(c.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
-                    borderRadius: 8, userSelect: 'none',
-                    border: `1.5px solid ${fieldErrors.class ? '#ef4444' : selectedClassId === c.id ? '#2563eb' : '#e2e8f0'}`,
-                    background: selectedClassId === c.id ? '#eef2ff' : 'white',
-                    cursor: 'pointer', fontSize: 14, fontWeight: selectedClassId === c.id ? 500 : 400,
-                    transition: 'all 0.12s',
-                  }}>
-                  <div style={{
-                    width: 16, height: 16, borderRadius: '50%',
-                    border: `2px solid ${selectedClassId === c.id ? '#2563eb' : '#cbd5e1'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.12s',
-                  }}>
-                    {selectedClassId === c.id && (
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {classes.map(c => {
+                const hasGroups = (c._count?.groups || 0) > 0;
+                const isSelected = selectedClassId === c.id;
+                const isDisabled = (mode === 'group' || mode === 'advanced') && !hasGroups;
+                return (
+                  <div key={c.id} onClick={() => { if (!isDisabled) selectClass(c.id); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '12px 14px', borderRadius: 10, userSelect: 'none',
+                      border: `1.5px solid ${fieldErrors.class ? '#ef4444' : isSelected ? '#2563eb' : '#e2e8f0'}`,
+                      background: isSelected ? '#eef2ff' : 'white',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isDisabled ? 0.5 : 1,
+                      fontSize: 14,
+                      transition: 'all 0.12s',
+                    }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#2563eb' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
+                        <span>{c._count?.students || 0} 名学生</span>
+                        {hasGroups && (
+                          <>
+                            <span>·</span>
+                            <span style={{ color: '#7c3aed' }}>{c._count.groups} 个小组</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {isDisabled ? (
+                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#fef3c7', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
+                    ) : hasGroups ? (
+                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
+                    ) : (
+                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
                     )}
                   </div>
-                  <span style={{ color: '#0f172a' }}>{c.name}</span>
-                  <span style={{
-                    fontSize: 11, padding: '1px 6px', borderRadius: 4,
-                    background: '#f1f5f9', color: '#64748b',
-                  }}>
-                    {c._count?.students || 0} 人
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {fieldErrors.class && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -176,131 +278,6 @@ export default function NewClassroomPage() {
             {fieldErrors.class}
           </div>}
         </div>
-
-        {/* 模式选择 — 仅当所选班级有分组时显示 */}
-        {selectedClassId && !loadingGroups && classGroups.length > 0 && (
-          <div style={{
-            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '16px 20px', marginBottom: 20,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-              参与模式
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {[
-                {
-                  id: 'standard' as CreateMode,
-                  label: '学生模式',
-                  sub: 'Student Mode',
-                  desc: '学生选择姓名加入，以个人身份与AI互动',
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                    </svg>
-                  ),
-                },
-                {
-                  id: 'group' as CreateMode,
-                  label: '分组模式',
-                  sub: 'Group Mode',
-                  desc: '学生选择小组加入，同组共享一个对话窗口',
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" />
-                    </svg>
-                  ),
-                },
-                {
-                  id: 'advanced' as CreateMode,
-                  label: '高级模式',
-                  sub: 'Advanced Mode',
-                  desc: '每个小组绑定不同的AI智能体，分组独立对话',
-                  icon: (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                  ),
-                },
-              ].map(m => (
-                <div key={m.id} onClick={() => setMode(m.id)}
-                  style={{
-                    flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
-                    border: `2px solid ${mode === m.id ? '#2563eb' : '#e2e8f0'}`,
-                    background: mode === m.id ? '#eef2ff' : 'white',
-                    transition: 'all 0.12s',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: '50%',
-                      border: `2px solid ${mode === m.id ? '#2563eb' : '#cbd5e1'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {mode === m.id && (
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />
-                      )}
-                    </div>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{m.sub}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
-                    <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#2563eb' : '#94a3b8' }}>{m.icon}</span>
-                    <span>{m.desc}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 无分组提示 */}
-        {selectedClassId && !loadingGroups && classGroups.length === 0 && (
-          <div style={{
-            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#64748b',
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-            该班级暂无分组，将以学生模式创建课堂
-          </div>
-        )}
-
-        {/* 分组信息展示（分组模式） */}
-        {selectedClassId && (mode === 'group') && classGroups.length > 0 && (
-          <div style={{
-            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '16px 20px', marginBottom: 20,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
-              小组信息
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {classGroups.map((g, i) => (
-                <div key={g.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
-                  background: 'white',
-                }}>
-                  <div style={{
-                    width: 26, height: 26, borderRadius: 6,
-                    background: '#2563eb', color: 'white',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 700, flexShrink: 0,
-                  }}>
-                    {i + 1}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                      {(g.studentIds?.length || 0)} 名学生
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* 高级模式：每个组分配智能体 */}
         {selectedClassId && mode === 'advanced' && classGroups.length > 0 && (
@@ -331,12 +308,69 @@ export default function NewClassroomPage() {
                   <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
                   <div style={{ fontSize: 11, color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
                 </div>
-                <select className="input" value={groupAgentIds[g.id] || ''}
-                  onChange={e => { setGroupAgentIds(prev => ({ ...prev, [g.id]: e.target.value })); clearError('groupAgents'); }}
-                  style={{ width: 180, fontSize: 13 }}>
-                  <option value="">选择AI智能体</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
+                <div style={{ position: 'relative', width: 200, flexShrink: 0 }}>
+                  <div
+                    onClick={() => setOpenDropdownGroupId(openDropdownGroupId === g.id ? null : g.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '6px 10px', borderRadius: 6, fontSize: 13,
+                      border: '1px solid #e2e8f0', cursor: 'pointer',
+                      background: 'white', minHeight: 32,
+                    }}>
+                    {groupAgentIds[g.id] ? (() => {
+                      const agent = agents.find(a => a.id === groupAgentIds[g.id]);
+                      const logoUrl = agent?.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
+                      return <>
+                        {logoUrl ? (
+                          <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
+                        )}
+                        <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
+                      </>;
+                    })() : (
+                      <span style={{ color: '#94a3b8' }}>选择AI智能体</span>
+                    )}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 'auto' }}><polyline points="6 9 12 15 18 9" /></svg>
+                  </div>
+                  {openDropdownGroupId === g.id && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                      marginTop: 4, background: 'white', borderRadius: 8,
+                      border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      maxHeight: 200, overflowY: 'auto',
+                    }}>
+                      {agents.map(a => {
+                        const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
+                        return (
+                          <div key={a.id} onClick={() => {
+                            setGroupAgentIds(prev => ({ ...prev, [g.id]: a.id }));
+                            clearError('groupAgents');
+                            setOpenDropdownGroupId(null);
+                          }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                            background: groupAgentIds[g.id] === a.id ? '#eef2ff' : 'white',
+                            transition: 'background 0.1s',
+                          }}>
+                            {logoUrl ? (
+                              <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                            )}
+                            <span>{a.name}</span>
+                            {groupAgentIds[g.id] === a.id && (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
             {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -346,7 +380,11 @@ export default function NewClassroomPage() {
           </div>
         )}
 
-        {/* 学生模式/分组模式：选择AI智能体 */}
+        {openDropdownGroupId && (
+          <div onClick={() => setOpenDropdownGroupId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
+        )}
+
+        {/* 标准/分组模式：选择AI智能体 */}
         {mode !== 'advanced' && (
           <div style={{
             background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',

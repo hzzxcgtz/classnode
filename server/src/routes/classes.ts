@@ -1,22 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
-import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
-
-const upload = multer({
-  dest: process.env.CLASSNODE_DATA_DIR
-    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'temp')
-    : path.join(__dirname, '../../uploads/temp'),
-});
-const uploadsTempDir = process.env.CLASSNODE_DATA_DIR
-  ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'temp')
-  : path.join(__dirname, '../../uploads/temp');
-fs.mkdirSync(uploadsTempDir, { recursive: true });
 
 // === 班级管理 ===
 
@@ -117,7 +102,7 @@ router.get('/:classId/students', async (req, res) => {
       where: { classId: req.params.classId },
       orderBy: { studentNo: 'asc' },
     });
-    res.json(students);
+    res.json(students.filter(s => s.tag !== '__group__'));
   } catch (error) {
     res.status(500).json({ error: '获取学生列表失败' });
   }
@@ -151,56 +136,6 @@ router.post('/:classId/students', async (req, res) => {
     res.json(student);
   } catch (error) {
     res.status(500).json({ error: '添加学生失败' });
-  }
-});
-
-// 批量导入学生（Excel / JSON）
-router.post('/:classId/students/batch', upload.single('file'), async (req, res) => {
-  try {
-    const prisma: PrismaClient = req.app.get('prisma');
-    let students: { name: string; studentNo?: string; tag?: string }[] = [];
-
-    if (req.file) {
-      // Parse JSON or CSV file
-      const content = fs.readFileSync(req.file.path, 'utf-8');
-      try {
-        students = JSON.parse(content);
-      } catch {
-        // Try CSV format: studentNo,name
-        const lines = content.trim().split('\n').filter(Boolean);
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-        students = lines.slice(1).map(line => {
-          const vals = line.split(',').map(v => v.trim());
-          const student: any = {};
-          headers.forEach((h, i) => {
-            if (h === 'name') student.name = vals[i];
-            if (h === 'studentno' || h === '学号' || h === 'number') student.studentNo = vals[i];
-            if (h === 'tag' || h === '标签' || h === 'group') student.tag = vals[i];
-          });
-          return student;
-        }).filter(s => s.name);
-      }
-      fs.unlinkSync(req.file.path);
-    } else if (req.body.students) {
-      students = JSON.parse(req.body.students);
-    }
-
-    if (students.length === 0) {
-      return res.status(400).json({ error: '没有有效的学生数据' });
-    }
-
-    const created = await prisma.student.createMany({
-      data: students.map(s => ({
-        classId: req.params.classId,
-        name: s.name,
-        studentNo: s.studentNo || null,
-        tag: s.tag || null,
-      })),
-    });
-
-    res.json({ count: created.count, students });
-  } catch (error) {
-    res.status(500).json({ error: '批量导入失败' });
   }
 });
 
@@ -265,14 +200,6 @@ router.delete('/:classId/students/:studentId', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: '删除学生失败' });
   }
-});
-
-// 导出 Excel 模板
-router.get('/template', (_req, res) => {
-  const csvContent = 'studentNo,name\n1,张三\n2,李四\n3,王五';
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename=student-template.csv');
-  res.send(csvContent);
 });
 
 // === 分组管理 ===

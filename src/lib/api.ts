@@ -51,6 +51,14 @@ export const api = {
     request<{ greeting: string | null }>(`/api/agents/${id}/greeting${force ? '?force=true' : ''}`),
   getAgentInfo: (id: string) =>
     request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/${id}/info`),
+  getAgentInfoDirect: (params: { platform: string; botId: string; apiKey: string; apiUrl?: string }) => {
+    const query = new URLSearchParams();
+    query.append('platform', params.platform);
+    query.append('botId', params.botId);
+    query.append('apiKey', params.apiKey);
+    if (params.apiUrl) query.append('apiUrl', params.apiUrl);
+    return request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/info?${query}`);
+  },
   testAgent: (id: string) => request<{ success: boolean; error?: string }>(`/api/agents/${id}/test`, { method: 'POST' }),
 
   // Classes
@@ -74,19 +82,12 @@ export const api = {
   getStudents: (classId: string) => request<any[]>(`/api/classes/${classId}/students`),
   addStudent: (classId: string, data: { name: string }) =>
     request(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
-  batchImportStudents: (classId: string, file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return fetch(`${getApiBaseUrl()}/api/classes/${classId}/students/batch`, { method: 'POST', body: form }).then(r => r.json());
-  },
   batchCreateStudentsFromNames: (classId: string, names: string[]) =>
     request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
-  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; tag?: string }) =>
+  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; tag?: string | null }) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
-  downloadTemplate: () => `${getApiBaseUrl()}/api/classes/template`,
-
   // Classroom
   createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>
     request('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
@@ -107,6 +108,8 @@ export const api = {
   resumeClassroom: (id: string) => request(`/api/classroom/${id}/resume`, { method: 'POST' }),
   getHistory: () => request<any[]>('/api/classroom/history/all'),
   getAllClassrooms: () => request<any[]>('/api/classroom/all'),
+  updateClassroomSettings: (id: string, data: { title?: string; groups?: { id: string; agentId: string }[] }) =>
+    request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Export
   exportConversations: (classroomId: string) =>
@@ -118,4 +121,38 @@ export const api = {
   deleteBackup: (name: string) => request(`/api/export/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   restoreBackup: (name: string) => request(`/api/export/restore/${encodeURIComponent(name)}`, { method: 'POST' }),
   resetAllData: () => request('/api/export/reset', { method: 'POST' }),
+  uploadBackup: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetch(`${getApiBaseUrl()}/api/export/backup/upload`, {
+      method: 'POST',
+      body: formData,
+    }).then(r => r.json());
+  },
+  getBackupDownloadUrl: (name: string) =>
+    `${getApiBaseUrl()}/api/export/backup/${encodeURIComponent(name)}/download`,
+
+  // Shield Words
+  getShieldWords: () => request<any[]>('/api/shield/words'),
+  clearBuiltinShieldWords: () =>
+    request<{ success: boolean; deleted: number }>('/api/shield/words/clear-builtin', { method: 'POST' }),
+  restoreDefaultShieldWords: () =>
+    request<{ success: boolean; restored: number; total: number }>('/api/shield/words/restore-defaults', { method: 'POST' }),
+  addShieldWord: (word: string) =>
+    request('/api/shield/words', { method: 'POST', body: JSON.stringify({ word }) }),
+  deleteShieldWord: (id: string) =>
+    request(`/api/shield/words/${id}`, { method: 'DELETE' }),
+  batchDeleteShieldWords: (ids: string[]) =>
+    request('/api/shield/words/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+  getShieldConfig: () => request<any>('/api/shield/config'),
+  updateShieldConfig: (autoBlackCount: number) =>
+    request('/api/shield/config', { method: 'PUT', body: JSON.stringify({ autoBlackCount }) }),
+  blacklistStudent: (classroomId: string, studentId: string) =>
+    request(`/api/shield/classroom/${classroomId}/student/${studentId}/blacklist`, { method: 'POST' }),
+  unblacklistStudent: (classroomId: string, studentId: string) =>
+    request(`/api/shield/classroom/${classroomId}/student/${studentId}/unblacklist`, { method: 'POST' }),
+  resetStudentWarnings: (classroomId: string, studentId: string) =>
+    request(`/api/shield/classroom/${classroomId}/student/${studentId}/reset-warnings`, { method: 'POST' }),
+  getClassroomWarnings: (classroomId: string) =>
+    request<any[]>(`/api/shield/classroom/${classroomId}/warnings`),
 };

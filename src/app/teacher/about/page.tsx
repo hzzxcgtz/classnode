@@ -6,14 +6,15 @@ import { useState } from 'react';
 const painPoints = [
   { icon: 'send', title: '分发障碍', desc: '教师精心调优的 AI 智能体，难以便捷、安全地分发给全班学生同步使用。' },
   { icon: 'eye', title: '监控盲区', desc: '学生与 AI 交互时，教师无法实时查看对话内容，难以掌握学生的学习状态。' },
+  { icon: 'wifi', title: '联网依赖', desc: '传统 AI 课堂要求学生的设备必须接入互联网才能与智能体互动，受学校网络环境和出口带宽限制较大。' },
   { icon: 'trash', title: '数据流失', desc: '课堂结束后对话数据随之流失，缺乏学情分析和教学反思的客观依据。' },
 ];
 
 const solutions = [
   { icon: 'share', title: '一键分发', desc: '支持个人/小组等多种模式，将 AI 智能体快速分发至全班。' },
   { icon: 'monitor', title: '实时看板', desc: '「课堂看板」以"上帝视角"实时监测每位学生的对话内容与进度。' },
-  { icon: 'chart', title: '数据分析', desc: '内置高频词云、活跃度排行，让隐性的思维过程显性化。' },
-  { icon: 'file', title: '一键导出', desc: '支持导出含全班对话详情的 Word 文档，为教研评课提供数据支撑。' },
+  { icon: 'wifi', title: '局域网互通', desc: '学生设备只需通过局域网与教师端连接即可与智能体对话，无需互联网访问。' },
+  { icon: 'file', title: '数据沉淀', desc: '课后对话数据完整留存，内置高频词云分析并支持一键导出 Word 文档，为教研评课提供数据支撑。' },
 ];
 
 const SvgIcon = ({ name, color }: { name: string; color: string }) => {
@@ -27,6 +28,7 @@ const SvgIcon = ({ name, color }: { name: string; color: string }) => {
     file: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>,
     lock: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>,
     computer: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>,
+    wifi: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M1.42 9a16 16 0 0 1 21.16 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><circle cx="12" cy="20" r="1" /></svg>,
   };
   return <>{icons[name] ?? null}</>;
 };

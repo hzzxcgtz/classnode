@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
+import { checkShieldWords } from '../services/shield-filter.js';
 
 interface JoinRoomData {
   classroomCode: string;
@@ -56,7 +57,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           where: { code: data.classroomCode },
           include: {
             classroomAgents: { include: { agent: true } },
-            groups: true,
+            groups: { include: { agent: true } },
           },
         });
 
@@ -75,6 +76,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
 
         // 记录新连接
         activeConnections.set(connKey, socket.id);
+
+        // 查询该学生的课堂记录（含黑屏状态）
+        const classroomStudent = await prisma.classroomStudent.findFirst({
+          where: { classroomId: classroom.id, studentId: data.studentId },
+        });
 
         // 更新学生状态
         await prisma.classroomStudent.updateMany({
@@ -98,7 +104,13 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
             platform: ca.agent.platform,
           })),
           groups: classroom.groups,
+          blacklisted: classroomStudent?.blacklisted || false,
         });
+
+        // 若已被黑屏，立即通知学生端
+        if (classroomStudent?.blacklisted) {
+          socket.emit('student-blacklisted', { studentId: data.studentId });
+        }
 
         // 通知教师端
         io.to(`teacher:${classroom.id}`).emit('student-online', {
@@ -133,6 +145,9 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
             classroomAgents: {
               include: { agent: true },
             },
+            groups: {
+              include: { agent: true },
+            },
           },
         });
 
@@ -151,7 +166,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
             classroomId: classroom.id,
             studentId: data.studentId,
           },
-          include: { student: true },
+          include: { student: true, group: true },
         });
 
         if (!classroomStudent) {
@@ -160,9 +175,106 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         }
 
         const studentName = classroomStudent.student.name;
+        // Shield word check
+        // Check if student is blacklisted
+        if (classroomStudent.blacklisted) {
+          socket.emit('ai-error', { error: '你已被老师黑屏处理，暂时无法发送消息' });
+          socket.emit('student-blacklisted', { studentId: data.studentId });
+          return;
+        }
+        // Load shield words and check content
+        const shieldWords = await prisma.shieldWord.findMany({ select: { word: true } });
+        const wordList = shieldWords.map(w => w.word);
+        if (wordList.length > 0) {
+          const { filtered, matched } = checkShieldWords(data.content, wordList);
+          if (matched.length > 0) {
+            // Replace content with filtered version
+            data.content = filtered;
+            // Save the filtered user message
+            const filteredMessage = await prisma.message.create({
+              data: {
+                classroomId: classroom.id,
+                studentId: classroomStudent.id,
+                content: filtered,
+                role: 'user',
+                displayName: anonymizer.anonymize(studentName),
+              },
+            });
+            // Broadcast filtered message to teacher
+            io.to(`teacher:${classroom.id}`).emit('student-message', {
+              studentId: data.studentId,
+              studentName,
+              content: filtered,
+              role: 'user',
+              messageId: filteredMessage.id,
+              timestamp: filteredMessage.createdAt,
+              shieldFiltered: true,
+            });
+            // Create warning record
+            await prisma.shieldWarning.create({
+              data: {
+                classroomId: classroom.id,
+                studentId: data.studentId,
+                word: matched.join(', '),
+                content: filtered.slice(0, 100),
+              },
+            });
+            // Increment warning count
+            const newWarningCount = classroomStudent.warningCount + 1;
+            await prisma.classroomStudent.update({
+              where: { id: classroomStudent.id },
+              data: { warningCount: { increment: 1 } },
+            });
+            // Emit warning to teacher
+            io.to(`teacher:${classroom.id}`).emit('shield-warning', {
+              studentId: data.studentId,
+              studentName,
+              matched,
+              filteredContent: filtered,
+              warningCount: newWarningCount,
+              classroomId: classroom.id,
+            });
+            // Emit warning to student (without revealing the actual words)
+            io.to(socket.id).emit('shield-warned', {
+              filteredContent: filtered,
+              warningCount: newWarningCount,
+              studentName,
+            });
+            // Check auto-blacklist threshold
+            const shieldConfig = await prisma.shieldConfig.findFirst();
+            const threshold = shieldConfig?.autoBlackCount || 0;
+            if (threshold > 0 && newWarningCount >= threshold) {
+              await prisma.classroomStudent.update({
+                where: { id: classroomStudent.id },
+                data: { blacklisted: true },
+              });
+              io.to(`teacher:${classroom.id}`).emit('student-blacklisted', { studentId: data.studentId, studentName, autoBlack: true });
+              io.to(socket.id).emit('student-blacklisted', { studentId: data.studentId });
+              io.to(socket.id).emit('ai-error', { error: `你已被自动黑屏（累计触发 ${threshold} 次）` });
+            }
+            // Do NOT proceed to AI call
+            return;
+          }
+        }
 
-        // Find the agent for this student
-        const agent = classroom.classroomAgents[0]?.agent;
+        // Determine agent: for group/advanced mode, use the group's agent; otherwise use the first classroom agent
+        let agent;
+        if ((classroom.mode === 'group' || classroom.mode === 'advanced') && classroomStudent.group?.agentId) {
+          const classroomGroup = classroom.groups.find(g => g.id === classroomStudent.groupId);
+          agent = classroomGroup?.agent || null;
+        } else {
+          agent = classroom.classroomAgents[0]?.agent;
+        }
+        console.log('[Socket] agent lookup:', JSON.stringify({
+          mode: classroom.mode,
+          studentId: data.studentId,
+          groupId: classroomStudent.groupId,
+          groupAgentId: classroomStudent.group?.agentId,
+          groupsCount: classroom.groups?.length,
+          foundGroupId: classroom.groups?.find(g => g.id === classroomStudent.groupId)?.id,
+          agentName: agent?.name,
+          agentId: agent?.id,
+        }));
         if (!agent) {
           socket.emit('ai-error', { error: '未配置AI智能体' });
           return;

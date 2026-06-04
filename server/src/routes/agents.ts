@@ -46,6 +46,31 @@ router.get('/', async (req, res) => {
   }
 });
 
+/**
+ * 直接获取智能体信息（无需保存，用于新建时预览）
+ */
+router.get('/info', async (req, res) => {
+  try {
+    const { platform, botId, apiKey, apiUrl } = req.query as Record<string, string | undefined>;
+    if (!platform || !botId || !apiKey) {
+      return res.status(400).json({ error: '缺少必要参数 platform、botId、apiKey' });
+    }
+    const result = await fetchAgentInfo({
+      platform,
+      apiUrl: (apiUrl && apiUrl !== 'undefined') || undefined,
+      apiKey,
+      botId,
+      extra: undefined,
+    });
+    if (!result) {
+      return res.json({ name: null, iconUrl: null, greeting: null });
+    }
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: '获取智能体信息失败' });
+  }
+});
+
 // 获取单个智能体
 router.get('/:id', async (req, res) => {
   try {

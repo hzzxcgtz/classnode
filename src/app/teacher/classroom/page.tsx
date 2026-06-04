@@ -40,9 +40,8 @@ function ClassroomBoardContent() {
   const fsContentRef = useRef<HTMLDivElement>(null);
   const { joinTeacherBoard, on } = useSocket();
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
-  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
-  const showTooltip = (text: string, e: React.MouseEvent) => setTooltip({ text, x: e.clientX, y: e.clientY - 10 });
-  const hideTooltip = () => setTooltip(null);
+  const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
+  const [studentBlacklisted, setStudentBlacklisted] = useState<Record<string, boolean>>({});
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo(() => {
@@ -95,12 +94,18 @@ function ClassroomBoardContent() {
       setStudents(students);
       const statuses: Record<string, string> = {};
       const rounds: Record<string, number> = {};
+      const warnings: Record<string, number> = {};
+      const blacklisted: Record<string, boolean> = {};
       students.forEach((s: any) => {
         statuses[s.student.id] = s.status;
         rounds[s.student.id] = s.totalRounds || 0;
+        warnings[s.student.id] = s.warningCount || 0;
+        blacklisted[s.student.id] = s.blacklisted || false;
       });
       setStudentStatuses(statuses);
       setStudentRounds(rounds);
+      setStudentWarnings(warnings);
+      setStudentBlacklisted(blacklisted);
 
       // 加载每位学生最近一轮对话预览和词云数据
       try {
@@ -174,8 +179,8 @@ function ClassroomBoardContent() {
             }
           : s
       ));
-      // 更新学生对话轮数
-      if (data.role === 'user') {
+      // 更新学生对话轮数（屏蔽词触发的提问不计入轮数）
+      if (data.role === 'user' && !data.shieldFiltered) {
         setStudentRounds(prev => ({
           ...prev,
           [data.studentId]: (prev[data.studentId] || 0) + 1,
@@ -194,7 +199,20 @@ function ClassroomBoardContent() {
       router.push('/teacher');
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); };
+    const unsub8 = on('shield-warning', (data: any) => {
+      setStudentWarnings(prev => ({ ...prev, [data.studentId]: data.warningCount }));
+    });
+
+    const unsub9 = on('student-blacklisted', (data: any) => {
+      setStudentBlacklisted(prev => ({ ...prev, [data.studentId]: true }));
+    });
+
+    const unsub10 = on('student-unblacklisted', (data: any) => {
+      setStudentBlacklisted(prev => ({ ...prev, [data.studentId]: false }));
+      setStudentWarnings(prev => ({ ...prev, [data.studentId]: 0 }));
+    });
+
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, selectedStudent?.id, router]);
 
   const openStudentDrawer = async (student: any) => {
@@ -230,6 +248,7 @@ function ClassroomBoardContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
+      <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
 
       {/* 顶部区域（非全屏时显示） */}
       {!gridFullscreen && (<>
@@ -243,7 +262,7 @@ function ClassroomBoardContent() {
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
           </button>
           <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -258,11 +277,11 @@ function ClassroomBoardContent() {
               padding: '3px 10px', borderRadius: 6,
               background: '#eef2ff', fontSize: 13, fontWeight: 500, color: '#2563eb',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: 16, letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
             </div>
             <span style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
               {students.length} 名学生
             </span>
           </div>
@@ -283,7 +302,7 @@ function ClassroomBoardContent() {
                   setPaused(false);
                   loadClassroom();
                 }} style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                   继续上课
                 </button>
               )}
@@ -299,7 +318,7 @@ function ClassroomBoardContent() {
           background: '#fffbeb', border: '1px solid #fde68a',
           display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#92400e',
         }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
           课堂已暂停，学生无法发送消息。点击「继续上课」即可恢复。
         </div>
       )}
@@ -325,22 +344,22 @@ function ClassroomBoardContent() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               {stat.icon === 'online' && (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                 </svg>
               )}
               {stat.icon === 'thinking' && (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
                 </svg>
               )}
               {stat.icon === 'offline' && (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 3.27A11 11 0 0 1 23 12"/><path d="M1 12a11 11 0 0 1 7.5-10.5"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="15" r="1"/>
                 </svg>
               )}
               {stat.icon === 'message' && (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
               )}
@@ -370,7 +389,7 @@ function ClassroomBoardContent() {
                   background: 'white', cursor: 'pointer', color: '#64748b', fontSize: 12,
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
                 全屏
               </button>
             </div>
@@ -386,7 +405,7 @@ function ClassroomBoardContent() {
                   background: '#f1f5f9', margin: '0 auto 12px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
                   </svg>
                 </div>
@@ -420,45 +439,19 @@ function ClassroomBoardContent() {
                       cursor: 'pointer',
                       border: '2px solid',
                       borderColor: isSelected ? '#2563eb' : status === 'thinking' ? '#f59e0b' : '#e2e8f0',
-                      padding: isGroup ? '16px 18px' : '20px 18px',
+                      padding: isGroup ? '18px 18px 16px' : '20px 18px 18px',
                       borderRadius: 12,
                       position: 'relative',
                       background: 'white',
                       display: 'flex',
                       flexDirection: 'column',
-                      height: 210,
+                      height: 260,
                       transition: 'all 0.15s',
                       boxShadow: isSelected ? '0 4px 16px rgba(37,99,235,0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
                       overflow: 'hidden',
                     }}>
-                    {/* 右上角状态 + 轮数 */}
-                    <div style={{
-                      position: 'absolute', top: 6, right: 6, zIndex: 1,
-                      display: 'flex', alignItems: 'center', gap: 4,
-                    }}>
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        padding: '1px 7px', borderRadius: 6,
-                        fontSize: 10, fontWeight: 500,
-                        background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9',
-                        color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8',
-                      }}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
-                        {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
-                      </div>
-                      <div style={{
-                        padding: '1px 7px', borderRadius: 6,
-                        fontSize: 10, fontWeight: 600,
-                        background: rounds > 0 ? '#eef2ff' : '#f3f4f6',
-                        color: rounds > 0 ? '#2563eb' : '#9ca3af',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {rounds} 轮
-                      </div>
-                    </div>
-
-                    {/* 头像 + 标题 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    {/* 头像 + 姓名行（含操作按钮）+ 学号 + 状态标签 */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: isGroup ? 10 : '50%', flexShrink: 0,
                         background: status === 'online' ? (isGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #10b981, #34d399)') : status === 'thinking' ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : '#e5e7eb',
@@ -466,36 +459,93 @@ function ClassroomBoardContent() {
                         fontWeight: 700, fontSize: 15,
                       }}>
                         {isGroup ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                         ) : student.name[0]}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        {isGroup ? (
-                          <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.2, marginBottom: 1 }}>{item.members.length} 人</div>
-                        ) : (
-                          student.studentNo && <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.2, marginBottom: 1 }}>{student.studentNo}</div>
-                        )}
-                        <div style={{ fontSize: 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {isGroup ? (
-                            <span onMouseMove={(e) => showTooltip(item.members.map((m: any) => m.student.name).join('、'), e)} onMouseLeave={hideTooltip} style={{ cursor: 'help', borderBottom: '1px dashed #cbd5e1' }}>
-                              {item.group?.name || '(未命名)'}
-                            </span>
-                          ) : (
-                            student.name
-                          )}
+                        {/* 姓名行 + 操作按钮 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                            {isGroup ? (item.group?.name || '(未命名)') : (
+                              <>{student.name}{student.studentNo && <span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>#{student.studentNo}</span>}</>
+                            )}
+                          </span>
                           {!isGroup && (classroom.mode === 'advanced' || classroom.mode === 'group') && cs.group && (
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3,
                               padding: '0 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                              background: '#f5f3ff', color: '#7c3aed', lineHeight: '18px',
+                              background: '#f5f3ff', color: '#7c3aed', lineHeight: '18px', flexShrink: 0,
                             }}>
                               <svg width="8" height="8" viewBox="0 0 24 24" fill="#7c3aed" stroke="none"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                               {cs.group.name}
                             </span>
                           )}
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
+                            {isGroup ? (
+                              (() => {
+                                const anyBlacklisted = item.members.some((m: any) => studentBlacklisted[m.student.id]);
+                                return (
+                                  <>
+                                    <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
+                                      onClick={async (e) => { e.stopPropagation();
+                                        if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.student.id]: 0 })); } catch {} } }
+                                        else { for (const m of item.members) { try { await api.blacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: true })); } catch {} } }
+                                      }}
+                                      style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: anyBlacklisted ? '#d1fae5' : '#fee2e2', color: anyBlacklisted ? '#047857' : '#b91c1c', padding: 0 }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        {anyBlacklisted ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
+                                      </svg>
+                                    </button>
+                                    <button title="清除对话"
+                                      onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${item.group?.name || '该小组'}」全体成员的对话记录？`)) return; for (const m of item.members) { try { await api.clearStudentMessages(id, m.student.id); } catch {} } }}
+                                      style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                    </button>
+                                  </>
+                                );
+                              })()
+                            ) : (
+                              <>
+                                <button title={studentBlacklisted[sid] ? '解除黑屏' : '黑屏处理'}
+                                  onClick={async (e) => { e.stopPropagation(); if (studentBlacklisted[sid]) { try { await api.unblacklistStudent(id, sid); setStudentBlacklisted(prev => ({ ...prev, [sid]: false })); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} } else { try { await api.blacklistStudent(id, sid); setStudentBlacklisted(prev => ({ ...prev, [sid]: true })); } catch {} } }}
+                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: studentBlacklisted[sid] ? '#d1fae5' : '#fee2e2', color: studentBlacklisted[sid] ? '#047857' : '#b91c1c', padding: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    {studentBlacklisted[sid] ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
+                                  </svg>
+                                </button>
+                                <button title="清除对话"
+                                  onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
+                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {/* 人数（仅小组） */}
+                        {isGroup && (
+                          <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
+                        )}
+                        {/* 状态标签 */}
+                        <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
+                          <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
+                            {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
+                          </div>
+                          <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                            {rounds} 轮
+                          </div>
+                          {!isGroup && studentWarnings[sid] > 0 && (
+                            <div title="警告次数（点击清零）" onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定将「${student.name}」的警告次数清零？`)) return; try { await api.resetStudentWarnings(id, sid); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                              {studentWarnings[sid]}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
+
 
                     {/* 最近一轮 Q&A 预览 */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -509,7 +559,7 @@ function ClassroomBoardContent() {
                             wordBreak: 'break-word',
                           }}>
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
-                              {isGroup ? (userMsg.studentName || student.name + '等') : student.name + ':'}
+                              {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                             </span>
                             <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
                               userMsg.content
@@ -597,7 +647,7 @@ function ClassroomBoardContent() {
                           padding: '0 6px', borderRadius: 4, fontSize: 11, fontWeight: 600,
                           background: '#f5f3ff', color: '#7c3aed',
                         }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                           {classroom.students.find((cs: any) => cs.student.id === selectedStudent.id).group.name}
                         </span>
                       )}
@@ -610,23 +660,12 @@ function ClassroomBoardContent() {
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => setShowFullscreen(true)}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                     投屏
-                  </button>
-                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, color: '#ef4444' }}
-                    onClick={async () => {
-                      if (!confirm(`确定清除「${selectedStudent.name}」的全部对话记录？此操作不可撤销。`)) return;
-                      try {
-                        await api.clearStudentMessages(id, selectedStudent.id);
-                        setMessages([]);
-                      } catch {}
-                    }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    清除
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => setSelectedStudent(null)}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     关闭
                   </button>
                 </div>
@@ -701,7 +740,7 @@ function ClassroomBoardContent() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               margin: '0 auto 24px',
             }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
@@ -785,7 +824,7 @@ function ClassroomBoardContent() {
             )}
             <button onClick={() => setShowFullscreen(false)}
               style={{ padding: '12px 28px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'white', cursor: 'pointer', fontSize: 16, color: '#64748b', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出投屏
             </button>
           </div>
@@ -901,7 +940,7 @@ function ClassroomBoardContent() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: 'white', fontWeight: 700, fontSize: 13,
               }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="7" height="7" rx="1" />
                   <rect x="14" y="3" width="7" height="7" rx="1" />
                   <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -917,7 +956,7 @@ function ClassroomBoardContent() {
                 background: 'white', cursor: 'pointer', fontSize: 13, color: '#475569',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出全屏
             </button>
           </div>
@@ -978,7 +1017,7 @@ function ClassroomBoardContent() {
                         cursor: 'pointer',
                         border: '2px solid',
                         borderColor: isSelected ? '#2563eb' : status === 'thinking' ? '#f59e0b' : '#e2e8f0',
-                        padding: compact ? (isGroup ? '8px 10px' : '10px 12px') : (isGroup ? '12px 14px' : '14px 16px'),
+                        padding: compact ? (isGroup ? '14px 10px 6px' : '16px 12px 6px') : (isGroup ? '18px 14px 8px' : '20px 16px 8px'),
                         borderRadius: 12,
                         background: 'white', position: 'relative',
                         display: 'flex', flexDirection: 'column',
@@ -988,33 +1027,8 @@ function ClassroomBoardContent() {
                         height: compact ? 155 : 190,
                         overflow: 'hidden',
                       }}>
-                      {/* 右上角状态 + 轮数 */}
-                      <div style={{
-                        position: 'absolute', top: 6, right: 6, zIndex: 1,
-                        display: 'flex', alignItems: 'center', gap: 4,
-                      }}>
-                        <div style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 2,
-                          padding: '1px 6px', borderRadius: 6,
-                          fontSize: 10, fontWeight: 500,
-                          background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9',
-                          color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8',
-                        }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
-                          {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
-                        </div>
-                        <div style={{
-                          padding: '1px 6px', borderRadius: 6,
-                          fontSize: 10, fontWeight: 600,
-                          background: rounds > 0 ? '#eef2ff' : '#f3f4f6',
-                          color: rounds > 0 ? '#2563eb' : '#9ca3af',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {rounds} 轮
-                        </div>
-                      </div>
-                      {/* 头像 + 姓名 */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 6 : 8, marginBottom: compact ? 3 : 6 }}>
+                      {/* 头像 + 姓名行（含操作按钮）+ 学号 + 状态标签 */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: compact ? 6 : 8, marginBottom: compact ? 3 : 6 }}>
                         <div style={{
                           width: compact ? 26 : 36,
                           height: compact ? 26 : 36,
@@ -1024,21 +1038,79 @@ function ClassroomBoardContent() {
                           fontWeight: 700, fontSize: compact ? 11 : 14,
                         }}>
                           {isGroup ? (
-                            <svg width={compact ? 14 : 18} height={compact ? 14 : 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                            <svg width={compact ? 14 : 18} height={compact ? 14 : 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                           ) : student.name[0]}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          {isGroup ? (
-                            <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2 }}>{item.members.length} 人</div>
-                          ) : (
-                            student.studentNo && <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2 }}>{student.studentNo}</div>
+                          {/* 姓名行 + 操作按钮 */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                            <span style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                              {isGroup ? (item.group?.name || '(未命名)') : (
+                                <>{student.name}{student.studentNo && <span style={{ fontSize: compact ? 8 : 10, fontWeight: 500, color: '#94a3b8', marginLeft: 3 }}>#{student.studentNo}</span>}</>
+                              )}
+                            </span>
+                            <div style={{ marginLeft: 'auto', display: 'flex', gap: compact ? 2 : 3, flexShrink: 0 }}>
+                              {isGroup ? (
+                                (() => {
+                                  const anyBlacklisted = item.members.some((m: any) => studentBlacklisted[m.student.id]);
+                                  return (
+                                    <>
+                                      <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
+                                        onClick={async (e) => { e.stopPropagation();
+                                          if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.student.id]: 0 })); } catch {} } }
+                                          else { for (const m of item.members) { try { await api.blacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: true })); } catch {} } }
+                                        }}
+                                        style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: anyBlacklisted ? '#d1fae5' : '#fee2e2', color: anyBlacklisted ? '#047857' : '#b91c1c', padding: 0 }}>
+                                        <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                          {anyBlacklisted ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
+                                        </svg>
+                                      </button>
+                                      <button title="清除对话"
+                                        onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${item.group?.name || '该小组'}」全体成员的对话记录？`)) return; for (const m of item.members) { try { await api.clearStudentMessages(id, m.student.id); } catch {} } }}
+                                        style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                        <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                      </button>
+                                    </>
+                                  );
+                                })()
+                              ) : (
+                                <>
+                                  <button title={studentBlacklisted[sid] ? '解除黑屏' : '黑屏处理'}
+                                    onClick={async (e) => { e.stopPropagation(); if (studentBlacklisted[sid]) { try { await api.unblacklistStudent(id, sid); setStudentBlacklisted(prev => ({ ...prev, [sid]: false })); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} } else { try { await api.blacklistStudent(id, sid); setStudentBlacklisted(prev => ({ ...prev, [sid]: true })); } catch {} } }}
+                                    style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: studentBlacklisted[sid] ? '#d1fae5' : '#fee2e2', color: studentBlacklisted[sid] ? '#047857' : '#b91c1c', padding: 0 }}>
+                                    <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                      {studentBlacklisted[sid] ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
+                                    </svg>
+                                  </button>
+                                  <button title="清除对话"
+                                    onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
+                                    style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                    <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {/* 人数（仅小组） */}
+                          {isGroup && (
+                            <div style={{ fontSize: compact ? 9 : 10, color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
                           )}
-                          <div style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-                            {isGroup ? (
-                              <span title={item.members.map((m: any) => m.student.name).join('、')} style={{ cursor: 'help', borderBottom: '1px dashed #cbd5e1' }}>
-                                {item.group?.name || '(未命名)'}
-                              </span>
-                            ) : student.name}
+                          {/* 状态标签 */}
+                          <div style={{ display: 'flex', gap: compact ? 2 : 3, marginTop: compact ? 2 : 4, flexWrap: 'wrap' }}>
+                            <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                              <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
+                              {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
+                            </div>
+                            <div title="对话轮数" style={{ padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                              {rounds} 轮
+                            </div>
+                            {!isGroup && studentWarnings[sid] > 0 && (
+                              <div title="警告次数（点击清零）" onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定将「${student.name}」的警告次数清零？`)) return; try { await api.resetStudentWarnings(id, sid); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                                <svg width={compact ? 8 : 10} height={compact ? 8 : 10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                                {studentWarnings[sid]}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1054,7 +1126,7 @@ function ClassroomBoardContent() {
                               wordBreak: 'break-word',
                             }}>
                               <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 3 }}>
-                                {isGroup ? (userMsg.studentName || student.name + '等') : student.name + ':'}
+                                {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                               </span>
                               <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
                                 userMsg.content
@@ -1098,17 +1170,6 @@ function ClassroomBoardContent() {
               )}
             </div>
           </div>
-        </div>
-      )}
-      {tooltip && (
-        <div style={{
-          position: 'fixed', left: tooltip.x + 10, top: tooltip.y,
-          background: '#1e293b', color: 'white', padding: '6px 12px', borderRadius: 8,
-          fontSize: 13, fontWeight: 400, whiteSpace: 'nowrap',
-          zIndex: 9999, pointerEvents: 'none',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-        }}>
-          {tooltip.text}
         </div>
       )}
     </div>
@@ -1250,10 +1311,11 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
 
   useEffect(() => { loadAnalytics(); }, [classroomId]);
 
-  // 词云：根据来源过滤
+  // 词云：根据来源过滤，排除被屏蔽词过滤的消息（内容含 ** 表示被替换）
+  const isShieldFiltered = (m: any) => (m.content || '').includes('**');
   const filteredForCloud = cloudSource === 'both'
-    ? allMessages
-    : allMessages.filter((m: any) => m.role === cloudSource);
+    ? allMessages.filter((m: any) => !isShieldFiltered(m))
+    : allMessages.filter((m: any) => m.role === cloudSource && !isShieldFiltered(m));
   const words = extractKeywords(filteredForCloud.map((m: any) => m.content || ''));
 
   // 活跃学生排名
@@ -1295,12 +1357,12 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
             </svg>
             <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>对话分析</span>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="18 15 12 9 6 15" />
           </svg>
         </div>
@@ -1323,7 +1385,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
           </svg>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>对话分析</span>
@@ -1340,12 +1402,12 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
             刷新
           </button>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>
@@ -1396,7 +1458,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
               fontSize: 13, color: '#cbd5e1', textAlign: 'center',
               padding: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, justifyContent: 'center',
             }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.2" strokeLinecap="round">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
               </svg>
               暂无对话数据

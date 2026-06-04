@@ -17,6 +17,8 @@ export default function ClassesPage() {
   const [sortField, setSortField] = useState<'studentNo' | 'name' | 'group'>('studentNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+  const [batchEditModal, setBatchEditModal] = useState<{ type: 'tag' } | null>(null);
   const [deleteBlocked, setDeleteBlocked] = useState<{
     classId: string;
     className: string;
@@ -508,30 +510,42 @@ export default function ClassesPage() {
                 </div>
               </div>
 
-              {/* 学生列表模式下的操作按钮 */}
+              {/* 学生列表模式下的操作按钮 / 批量操作栏 */}
               {tabMode === 'students' && (
-                <div style={{ display: 'flex', gap: 8, padding: '10px 20px 14px' }}>
-                  <a href={api.downloadTemplate()}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                      background: 'white', color: '#475569', border: '1px solid #e2e8f0',
-                      textDecoration: 'none', cursor: 'pointer',
-                    }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                    下载模板
-                  </a>
-                  <StudentBatchImport classId={selectedClass} onImported={loadStudents} />
-                  <button className="btn btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    逐个添加
-                  </button>
-                  <button className="btn btn-primary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
-                    粘贴名单
-                  </button>
+                <div style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
+                  {selectedStudentIds.size > 0 ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      <span style={{ fontWeight: 600, color: '#1e40af', fontSize: 13 }}>
+                        已选 {selectedStudentIds.size} 名学生
+                      </span>
+                      <div style={{ flex: 1 }} />
+                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        批量修改标签
+                      </button>
+                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        批量删除
+                      </button>
+                      <button onClick={() => setSelectedStudentIds(new Set())} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                        取消选择
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        逐个添加
+                      </button>
+                      <button className="btn btn-primary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                        onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
+                        粘贴名单
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -568,12 +582,20 @@ export default function ClassesPage() {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                       </div>
                       <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无学生</p>
-                      <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 16px' }}>点击上方「添加学生」或「批量导入」添加学生名单</p>
+                      <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
                     </div>
                   ) : (
                     <table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
+                          <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: 12, borderBottom: '2px solid #e2e8f0' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
+                              <input type="checkbox"
+                                checked={selectedStudentIds.size === sortedStudents.length && sortedStudents.length > 0}
+                                onChange={(e) => { if (e.target.checked) { setSelectedStudentIds(new Set(sortedStudents.map(s => s.id))); } else { setSelectedStudentIds(new Set()); } }}
+                                style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                            </label>
+                          </th>
                           <th onClick={() => handleSort('studentNo')}
                             style={{
                               width: 70, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
@@ -625,6 +647,14 @@ export default function ClassesPage() {
                       <tbody>
                         {sortedStudents.map((s) => (
                           <tr key={s.id}>
+                            <td style={{ textAlign: 'center', padding: '10px 8px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
+                                <input type="checkbox"
+                                  checked={selectedStudentIds.has(s.id)}
+                                  onChange={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }}
+                                  style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                              </label>
+                            </td>
                             <td style={{ textAlign: 'center', color: s.studentNo ? '#2563eb' : '#cbd5e1', fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
@@ -705,6 +735,17 @@ export default function ClassesPage() {
                 <GroupManagement classId={selectedClass} students={students} onChanged={() => { loadStudents(); loadGroups(); }} />
               )}
 
+              {/* 批量编辑标签弹窗 */}
+              {batchEditModal && (
+                <BatchEditTagModal
+                  classId={selectedClass}
+                  studentIds={[...selectedStudentIds]}
+                  studentNames={sortedStudents.filter(s => selectedStudentIds.has(s.id)).map(s => s.name)}
+                  onClose={() => setBatchEditModal(null)}
+                  onSaved={() => { setBatchEditModal(null); setSelectedStudentIds(new Set()); loadStudents(); }}
+                />
+              )}
+
               {/* 编辑学生弹窗 */}
               {editingStudent && (
                 <EditStudentModal
@@ -762,37 +803,6 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
       </button>
       <button className="btn btn-ghost" onClick={onClose} style={{ height: 38 }}>取消</button>
     </div>
-  );
-}
-
-function StudentBatchImport({ classId, onImported }: { classId: string; onImported: () => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      await api.batchImportStudents(classId, file);
-      onImported();
-    } catch (err: any) {
-      alert('导入失败: ' + err.message);
-    }
-  };
-
-  return (
-    <>
-      <input type="file" ref={fileRef} onChange={handleFile} accept=".csv,.json" style={{ display: 'none' }} />
-      <button onClick={() => fileRef.current?.click()}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-          background: 'white', color: '#475569', border: '1px solid #e2e8f0',
-          cursor: 'pointer',
-        }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-        批量导入
-      </button>
-    </>
   );
 }
 
@@ -929,6 +939,60 @@ function EditStudentModal({ student, classId, onClose, onSaved }: {
           <button className="btn btn-secondary" onClick={onClose}>取消</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>
             {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved }: {
+  classId: string; studentIds: string[]; studentNames: string[]; onClose: () => void; onSaved: () => void;
+}) {
+  const [tag, setTag] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const tagValue = tag.trim() || null;
+      for (const sid of studentIds) {
+        await api.updateStudent(classId, sid, { tag: tagValue });
+      }
+      onSaved();
+    } catch (e: any) {
+      alert('批量更新失败: ' + e.message);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef2ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          </div>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>批量修改标签</h2>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+              已选中 {studentIds.length} 名学生：{studentNames.join('、')}
+            </p>
+          </div>
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <input className="input" value={tag} onChange={e => setTag(e.target.value)}
+            placeholder="输入标签，如：组长、课代表"
+            onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
+          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
+            留空则清空选中学生的标签。
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose}>取消</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? '保存中...' : (tag.trim() ? `应用标签 (${studentIds.length} 人)` : `清空标签 (${studentIds.length} 人)`)}
           </button>
         </div>
       </div>

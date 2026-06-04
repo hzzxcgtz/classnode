@@ -20,6 +20,11 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeClassrooms, setActiveClassrooms] = useState<any[]>([]);
   const [onlineMap, setOnlineMap] = useState<Record<string, number>>({});
+  const [settingsModalClassroom, setSettingsModalClassroom] = useState<any>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editGroups, setEditGroups] = useState<any[]>([]);
+  const [allAgents, setAllAgents] = useState<any[]>([]);
+  const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<string | null>(null);
   const socketRef = useRef<any>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
@@ -91,6 +96,32 @@ export default function TeacherDashboard() {
       setActiveClassrooms(data);
     } catch {}
     setLoading(false);
+  };
+
+  const openSettings = async (cr: any) => {
+    setSettingsModalClassroom(cr);
+    setEditTitle(cr.title || '');
+    const groups = (cr.groups || []).map((g: any) => ({ id: g.id, name: g.name, agentId: g.agent?.id || '' }));
+    setEditGroups(groups);
+    try {
+      const agents = await api.getAgents();
+      setAllAgents(agents);
+    } catch {}
+  };
+
+  const handleSaveSettings = async () => {
+    if (!settingsModalClassroom) return;
+    try {
+      const data: any = { title: editTitle };
+      if (editGroups.length > 0) {
+        data.groups = editGroups.map((g: any) => ({ id: g.id, agentId: g.agentId }));
+      }
+      await api.updateClassroomSettings(settingsModalClassroom.id, data);
+      setSettingsModalClassroom(null);
+      loadData();
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   if (loading) {
@@ -175,7 +206,7 @@ export default function TeacherDashboard() {
                     {(() => {
                       const modeCfg: Record<string, { label: string; bg: string; color: string; icon: ReactNode }> = {
                         standard: {
-                          label: '学生模式',
+                          label: '标准模式',
                           bg: '#eef2ff', color: '#2563eb',
                           icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>,
                         },
@@ -285,6 +316,16 @@ export default function TeacherDashboard() {
                 }}>
                   {cr.status === 'paused' ? '已暂停' : '进行中'}
                 </span>
+                <button onClick={() => openSettings(cr)} title="课堂设置" style={{
+                  padding: '6px 10px', borderRadius: 6, fontSize: 12,
+                  background: 'transparent', color: '#64748b', border: '1px solid #e2e8f0',
+                  cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center',
+                  transition: 'all 0.15s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                </button>
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)} style={{
                   padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
                   background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
@@ -366,6 +407,139 @@ export default function TeacherDashboard() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             创建第一个课堂
           </button>
+        </div>
+      )}
+      {/* 课堂设置弹窗 */}
+      {settingsModalClassroom && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}
+          onClick={() => { setSettingsModalClassroom(null); setSettingsDropdownGroupId(null); }}>
+          <div style={{ background: 'white', borderRadius: 16, maxWidth: 480, width: '90%', boxShadow: '0 25px 80px rgba(0,0,0,0.2)' }}
+            onClick={e => e.stopPropagation()}>
+            {/* 弹窗头部 */}
+            <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef2ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+              </div>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>课堂设置</h3>
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整小组绑定智能体</p>
+              </div>
+            </div>
+            {/* 弹窗内容 */}
+            <div style={{ padding: '20px 28px' }}>
+              {/* 课堂名称 */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 20h16" /><path d="M4 20V4m0 0h16v16" /></svg>
+                  课堂名称
+                </label>
+                <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  placeholder="未命名课堂"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s', background: '#fafbfc' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = 'white'; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#fafbfc'; }} />
+              </div>
+              {/* 小组智能体 */}
+              {editGroups.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                    小组智能体
+                  </div>
+                  <div style={{ background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6', padding: '12px 14px' }}>
+                    {editGroups.map((g: any, idx: number) => (
+                      <div key={g.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 0',
+                        borderBottom: idx < editGroups.length - 1 ? '1px solid #eef2f6' : 'none',
+                      }}>
+                        <div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                          {idx + 1}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#0f172a', minWidth: 70, flexShrink: 0 }}>{g.name}</span>
+                        <div style={{ flex: 1, position: 'relative' }}>
+                          <div
+                            onClick={() => setSettingsDropdownGroupId(settingsDropdownGroupId === g.id ? null : g.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              padding: '6px 28px 6px 10px', borderRadius: 8, fontSize: 13,
+                              border: '1px solid #e2e8f0', cursor: 'pointer',
+                              background: 'white', minHeight: 32,
+                            }}>
+                            {g.agentId ? (() => {
+                              const agent = allAgents.find((a: any) => a.id === g.agentId);
+                              const logoUrl = agent?.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
+                              return <>
+                                {logoUrl ? (
+                                  <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
+                                )}
+                                <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
+                              </>;
+                            })() : (
+                              <span style={{ color: '#94a3b8' }}>选择智能体</span>
+                            )}
+                          </div>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                          {settingsDropdownGroupId === g.id && (
+                            <div style={{
+                              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60,
+                              marginTop: 4, background: 'white', borderRadius: 8,
+                              border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                              maxHeight: 200, overflowY: 'auto',
+                            }}>
+                              {allAgents.map((a: any) => {
+                                const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
+                                return (
+                                  <div key={a.id} onClick={() => {
+                                    const next = [...editGroups];
+                                    next[idx] = { ...next[idx], agentId: a.id };
+                                    setEditGroups(next);
+                                    setSettingsDropdownGroupId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                                    background: g.agentId === a.id ? '#eef2ff' : 'white',
+                                  }}>
+                                    {logoUrl ? (
+                                      <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                                    ) : (
+                                      <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                                    )}
+                                    <span>{a.name}</span>
+                                    {g.agentId === a.id && (
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                                        <polyline points="20 6 9 17 4 12" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* 弹窗底部按钮 */}
+            <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafbfc', borderRadius: '0 0 16px 16px' }}>
+              <button onClick={() => setSettingsModalClassroom(null)} className="btn"
+                style={{ fontSize: 13 }}>
+                取消
+              </button>
+              <button onClick={handleSaveSettings} className="btn btn-primary"
+                style={{ fontSize: 13 }}>
+                保存设置
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

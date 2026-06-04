@@ -88,6 +88,7 @@ model Classroom {
   students         ClassroomStudent[]
   classroomAgents  ClassroomAgent[]
   interactions     Interaction[]
+  shieldWarnings   ShieldWarning[]
 }
 
 // 课堂关联的班级（标准模式）
@@ -135,6 +136,8 @@ model ClassroomStudent {
   joinTime    DateTime @default(now())
   status      String   @default("offline") // online / offline
   totalRounds Int      @default(0)
+  warningCount Int    @default(0)
+  blacklisted  Boolean @default(false)
 
   classroom Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -160,6 +163,32 @@ model Message {
   createdAt        DateTime @default(now())
 
   classroomStudent ClassroomStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+// 屏蔽词
+model ShieldWord {
+  id        String   @id @default(uuid())
+  word      String   @unique
+  builtin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// 屏蔽系统配置
+model ShieldConfig {
+  id             String @id @default(uuid())
+  autoBlackCount Int    @default(0) // 0=不自动黑屏，N=警告N次后自动黑屏
+}
+
+// 屏蔽警告记录
+model ShieldWarning {
+  id          String   @id @default(uuid())
+  classroomId String
+  studentId   String   // ClassroomStudent.id
+  word        String   // 触发的屏蔽词
+  content     String?  // 触发时的消息内容片段
+  createdAt   DateTime @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
 }
 
 // 互动记录汇总

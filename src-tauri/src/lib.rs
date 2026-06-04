@@ -360,6 +360,9 @@ fn open_browser() {
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(ServerState(Mutex::new(None)))
+        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
+            // 无需额外操作，插件会自动阻止第二个实例启动
+        }))
         .setup(|app| {
             let icon = Image::from_bytes(tray_icon_bytes(false))
                 .map_err(|e| format!("无法加载托盘图标: {e}"))?;

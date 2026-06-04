@@ -10,6 +10,7 @@ export default function ShieldPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [configSaved, setConfigSaved] = useState(false);
+  const [configError, setConfigError] = useState('');
 
   useEffect(() => {
     loadData();
@@ -36,7 +37,7 @@ export default function ShieldPage() {
       setNewWord('');
       loadData();
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || '添加失败，请检查服务是否正常运行');
     }
     setSaving(false);
   };
@@ -45,16 +46,22 @@ export default function ShieldPage() {
     try {
       await api.deleteShieldWord(id);
       loadData();
-    } catch {}
+    } catch (e: any) {
+      setError(e.message || '删除失败');
+    }
   };
 
   const saveConfig = async () => {
     setConfigSaved(false);
+    setConfigError('');
     try {
       await api.updateShieldConfig(autoBlackCount);
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
-    } catch {}
+    } catch (e: any) {
+      setConfigError(e.message || '保存失败');
+      setTimeout(() => setConfigError(''), 3000);
+    }
   };
 
   return (
@@ -63,15 +70,6 @@ export default function ShieldPage() {
       <div className="teacher-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{
-              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              background: 'linear-gradient(135deg, #dc2626, #f87171)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </span>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>屏蔽管理</h1>
           </div>
           <p style={{ fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6, paddingLeft: 42 }}>
@@ -112,6 +110,9 @@ export default function ShieldPage() {
                 <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>已保存</>
               ) : '保存'}
             </button>
+            {configError && (
+              <span style={{ fontSize: 12, color: '#ef4444', marginLeft: 8 }}>{configError}</span>
+            )}
           </div>
         </div>
 

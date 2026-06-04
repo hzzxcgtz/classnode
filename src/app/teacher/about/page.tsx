@@ -1,4 +1,5 @@
 'use client';
+import { APP_VERSION } from '@/lib/version';
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -64,7 +65,7 @@ export default function AboutPage() {
           )}
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#0f172a' }}>ClassNode</h1>
-            <p style={{ fontSize: 13, color: '#64748b', margin: '2px 0 0' }}>AI 互动课堂系统 · 版本 1.2.0</p>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '2px 0 0' }}>AI 互动课堂系统 · 版本 {APP_VERSION}</p>
           </div>
         </div>
         <div style={{ padding: '20px 32px' }}>

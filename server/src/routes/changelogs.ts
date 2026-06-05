@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-const CHANGELOGS_DIR = path.join(__dirname, '../../../changelogs');
+const CHANGELOGS_DIR = path.join(__dirname, '../../changelogs');
 
 router.get('/', (_req, res) => {
   try {

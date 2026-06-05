@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { platformColors } from '@/lib/constants';
 import { getApiBaseUrl } from '@/lib/api-base';
+import { QRCodeSVG } from 'qrcode.react';
 
 const SOCKET_URL = getApiBaseUrl();
 
@@ -25,6 +26,7 @@ export default function TeacherDashboard() {
   const [editGroups, setEditGroups] = useState<any[]>([]);
   const [allAgents, setAllAgents] = useState<any[]>([]);
   const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<string | null>(null);
+  const [qrCodeClassroom, setQrCodeClassroom] = useState<any>(null);
   const socketRef = useRef<any>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
@@ -326,6 +328,17 @@ export default function TeacherDashboard() {
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
                 </button>
+                <button onClick={() => setQrCodeClassroom(cr)} title="显示互动码" style={{
+                  padding: '6px 10px', borderRadius: 6, fontSize: 12,
+                  background: 'transparent', color: '#7c3aed', border: '1px solid #ddd6fe',
+                  cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center',
+                  transition: 'all 0.15s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="17" y="2" width="5" height="5" rx="1" /><rect x="2" y="17" width="5" height="5" rx="1" /><path d="M11 2h2" /><path d="M11 22h2" /><path d="M2 11v2" /><path d="M22 11v2" /><path d="M15 15h2v2h-2z" /><path d="M17 15v-1a2 2 0 0 0-2-2h-1" /><path d="M15 19v1a2 2 0 0 0 2 2h1" /><path d="M19 17h2v2h-2z" /></svg>
+                </button>
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)} style={{
                   padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
                   background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
@@ -409,6 +422,70 @@ export default function TeacherDashboard() {
           </button>
         </div>
       )}
+
+      {/* 投屏发码 */}
+      {qrCodeClassroom && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300, overflow: 'auto',
+          background: '#0f172a',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setQrCodeClassroom(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14,
+              background: 'rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 24px',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <p style={{ fontSize: 30, color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用手机或平板扫描二维码，或在浏览器打开下方网址</p>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 40, flexWrap: 'wrap' }}>
+              <div style={{
+                background: 'white', borderRadius: 24, padding: 24,
+                display: 'inline-flex',
+              }}>
+                <QRCodeSVG
+                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? window.location.port : '3000'}/classroom?code=${qrCodeClassroom.code}`}
+                  size={360}
+                  level="M"
+                />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
+                <p style={{
+                  fontSize: 44, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
+                  fontFamily: 'monospace', letterSpacing: 1,
+                }}>
+                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? window.location.port : '3000'}
+                </p>
+                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {(qrCodeClassroom.code || '').split('').map((d: string, i: number) => (
+                    <div key={i} style={{
+                      width: 96, height: 112, borderRadius: 14,
+                      background: 'rgba(37,99,235,0.15)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 72, fontWeight: 700, color: '#60a5fa',
+                      lineHeight: 1,
+                    }}>{d}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button className="btn" style={{
+              background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
+              border: '1px solid rgba(255,255,255,0.15)', fontSize: 18, padding: '12px 36px',
+              borderRadius: 10, cursor: 'pointer',
+            }} onClick={() => setQrCodeClassroom(null)}>
+              返回看板
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 课堂设置弹窗 */}
       {settingsModalClassroom && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }}

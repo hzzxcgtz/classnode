@@ -26,6 +26,7 @@ export default function TeacherDashboard() {
   const [editGroups, setEditGroups] = useState<any[]>([]);
   const [allAgents, setAllAgents] = useState<any[]>([]);
   const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<string | null>(null);
+  const [editAgentId, setEditAgentId] = useState('');
   const [qrCodeClassroom, setQrCodeClassroom] = useState<any>(null);
   const socketRef = useRef<any>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
@@ -105,6 +106,9 @@ export default function TeacherDashboard() {
     setEditTitle(cr.title || '');
     const groups = (cr.groups || []).map((g: any) => ({ id: g.id, name: g.name, agentId: g.agent?.id || '' }));
     setEditGroups(groups);
+    // 标准/分组模式：取第一个 classroomAgent 作为当前选中的智能体
+    const currentAgentId = cr.classroomAgents?.[0]?.agent?.id || groups[0]?.agentId || '';
+    setEditAgentId(currentAgentId);
     try {
       const agents = await api.getAgents();
       setAllAgents(agents);
@@ -115,8 +119,17 @@ export default function TeacherDashboard() {
     if (!settingsModalClassroom) return;
     try {
       const data: any = { title: editTitle };
-      if (editGroups.length > 0) {
+      const mode = settingsModalClassroom?.mode;
+      if (mode === 'advanced') {
+        // 高级模式：每个小组分配不同智能体
         data.groups = editGroups.map((g: any) => ({ id: g.id, agentId: g.agentId }));
+      } else if (editAgentId) {
+        // 标准/分组模式：统一使用同一个智能体
+        if (mode === 'group') {
+          data.groups = editGroups.map((g: any) => ({ id: g.id, agentId: editAgentId }));
+        } else {
+          data.agentIds = [editAgentId];
+        }
       }
       await api.updateClassroomSettings(settingsModalClassroom.id, data);
       setSettingsModalClassroom(null);
@@ -499,7 +512,7 @@ export default function TeacherDashboard() {
               </div>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>课堂设置</h3>
-                <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整小组绑定智能体</p>
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整 AI 智能体</p>
               </div>
             </div>
             {/* 弹窗内容 */}
@@ -516,8 +529,42 @@ export default function TeacherDashboard() {
                   onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = 'white'; }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#fafbfc'; }} />
               </div>
-              {/* 小组智能体 */}
-              {editGroups.length > 0 && (
+
+              {/* 标准/分组模式：单个智能体选择器 */}
+              {settingsModalClassroom?.mode !== 'advanced' && allAgents.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
+                    AI智能体
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {allAgents.map((a: any) => {
+                      const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
+                      return (
+                        <div key={a.id} onClick={() => setEditAgentId(a.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+                            borderRadius: 8, userSelect: 'none',
+                            border: `1.5px solid ${editAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
+                            background: editAgentId === a.id ? '#eef2ff' : 'white',
+                            cursor: 'pointer', fontSize: 13, fontWeight: editAgentId === a.id ? 500 : 400,
+                            transition: 'all 0.12s',
+                          }}>
+                          {logoUrl ? (
+                            <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                          )}
+                          <span style={{ color: '#0f172a' }}>{a.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 高级模式：每个小组分配不同智能体 */}
+              {settingsModalClassroom?.mode === 'advanced' && editGroups.length > 0 && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>

@@ -444,7 +444,7 @@ router.post('/:id/end', async (req, res) => {
 router.put('/:id/settings', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, groups } = req.body;
+    const { title, groups, agentIds } = req.body;
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       if (title !== undefined) {
@@ -466,6 +466,18 @@ router.put('/:id/settings', async (req, res) => {
               data: { classroomId: req.params.id, agentId: g.agentId },
             }).catch(() => {});
           }
+        }
+      }
+
+      // 标准模式：替换课堂级别的智能体
+      if (agentIds && Array.isArray(agentIds)) {
+        await tx.classroomAgent.deleteMany({
+          where: { classroomId: req.params.id },
+        });
+        for (const agentId of agentIds) {
+          await tx.classroomAgent.create({
+            data: { classroomId: req.params.id, agentId },
+          });
         }
       }
     });

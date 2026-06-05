@@ -101,7 +101,8 @@ async function scheduleNext(): Promise<void> {
 export async function startAgentChecker(prismaInstance: PrismaClient, ioInstance: Server): Promise<void> {
   prisma = prismaInstance;
   io = ioInstance;
-  // 立即执行首次检测
+  // 延迟首次检测，避免启动时网络尚未稳定导致的假异常
+  await new Promise(resolve => setTimeout(resolve, 10_000));
   await runCheckNow();
   // 然后按间隔定时执行
   await scheduleNext();

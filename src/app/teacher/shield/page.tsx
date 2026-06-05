@@ -12,6 +12,8 @@ export default function ShieldPage() {
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState('');
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [categories, setCategories] = useState<{ name: string; count: number; words: string[] }[]>([]);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadData();
@@ -19,9 +21,10 @@ export default function ShieldPage() {
 
   const loadData = async () => {
     try {
-      const [w, cfg] = await Promise.all([api.getShieldWords(), api.getShieldConfig()]);
+      const [w, cfg, cats] = await Promise.all([api.getShieldWords(), api.getShieldConfig(), api.getShieldCategories()]);
       setWords(w);
       setAutoBlackCount(cfg.autoBlackCount || 0);
+      setCategories(cats || []);
     } catch {}
   };
 
@@ -225,7 +228,7 @@ export default function ShieldPage() {
           )}
         </div>
 
-        {/* 系统默认词库 */}
+        {/* 系统屏蔽词 */}
         <div style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           overflow: 'hidden',
@@ -238,7 +241,7 @@ export default function ShieldPage() {
           }}>
             <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', display: 'inline-block' }} />
-              系统默认词库
+              系统屏蔽词
               {builtinWords.length > 0 && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -252,11 +255,11 @@ export default function ShieldPage() {
             </h2>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={async () => {
-                if (!confirm('确认清空所有系统默认屏蔽词？自定义屏蔽词不受影响。')) return;
+                if (!confirm('确认清空所有系统屏蔽词？自定义屏蔽词不受影响。')) return;
                 setBuiltinMsg(null);
                 try {
                   const r = await api.clearBuiltinShieldWords();
-                  setBuiltinMsg({ type: 'success', text: `已清空 ${r.deleted} 个默认屏蔽词` });
+                  setBuiltinMsg({ type: 'success', text: `已清空 ${r.deleted} 个系统屏蔽词` });
                   loadData();
                   setTimeout(() => setBuiltinMsg(null), 3000);
                 } catch {
@@ -298,34 +301,73 @@ export default function ShieldPage() {
           )}
           {builtinWords.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-              <div>系统默认词库为空</div>
-              <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>点击「恢复预设」可重新加载系统内置的屏蔽词列表</div>
+              <div>系统屏蔽词为空</div>
+              <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>点击「恢复预设」可重新加载系统内置的屏蔽词</div>
             </div>
           ) : (
-            <div style={{ padding: '14px 20px 16px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {builtinWords.map(w => (
-                  <div key={w.id} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    padding: '4px 8px 4px 12px', borderRadius: 8,
-                    background: '#eef2ff', color: '#4338ca',
-                    fontSize: 13, fontWeight: 500, lineHeight: 1.4,
-                    border: '1px solid #c7d2fe',
-                  }}>
-                    {w.word}
-                    <button onClick={() => deleteWord(w.id)}
-                      style={{
-                        width: 16, height: 16, border: 'none', borderRadius: '50%',
-                        background: 'transparent', cursor: 'pointer', padding: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#6366f1', opacity: 0.4, fontSize: 12, lineHeight: 1,
-                        transition: 'all 0.1s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#c7d2fe'; }}
-                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; e.currentTarget.style.background = 'transparent'; }}
-                      title="删除">×</button>
-                  </div>
-                ))}
+            <div style={{ padding: '18px 24px 16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[{ name: '脏话辱骂', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+                  { name: '色情低俗', color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
+                  { name: '暴力威胁', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+                  { name: '自残自杀', color: '#7c3aed', bg: '#f5f3ff', border: '#e9d5ff' },
+                ].map(cat => {
+                  const catData = categories.find(c => c.name === cat.name);
+                  const count = catData?.count || 0;
+                  const expanded = expandedCategories[cat.name];
+                  return (
+                    <div key={cat.name} style={{
+                      borderRadius: 10,
+                      border: `1px solid ${cat.border}`,
+                      overflow: 'hidden',
+                    }}>
+                      <div
+                        onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.name]: !prev[cat.name] }))}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          padding: '12px 16px', cursor: 'pointer',
+                          background: cat.bg, userSelect: 'none',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(0.97)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={cat.color} strokeWidth="2.5" strokeLinecap="round"
+                          style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.12s', flexShrink: 0 }}>
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: cat.color }}>{cat.name}</span>
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, padding: '1px 8px', borderRadius: 6,
+                          background: cat.bg, color: cat.color,
+                          border: `1px solid ${cat.border}`,
+                        }}>{count} 个</span>
+                      </div>
+                      {expanded && catData && (
+                        <div style={{
+                          padding: '10px 16px 12px',
+                          display: 'flex', flexWrap: 'wrap', gap: 6,
+                          borderTop: `1px solid ${cat.border}`,
+                        }}>
+                          {catData.words.map(word => (
+                            <span key={word} style={{
+                              padding: '3px 8px', borderRadius: 6,
+                              background: cat.bg, color: cat.color,
+                              fontSize: 12, fontWeight: 500, lineHeight: 1.4,
+                            }}>{word}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{
+                marginTop: 14, padding: '8px 14px', borderRadius: 8,
+                background: '#f1f5f9', fontSize: 12, color: '#64748b',
+                display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.5,
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                系统内置 {builtinWords.length} 个屏蔽词，覆盖四大类别，在学生发送消息时自动拦截。点击类别可展开查看具体词条。
               </div>
             </div>
           )}

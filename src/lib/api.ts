@@ -135,6 +135,8 @@ export const api = {
 
   // Shield Words
   getShieldWords: () => request<any[]>('/api/shield/words'),
+  getShieldCategories: () =>
+    request<{ name: string; count: number; words: string[] }[]>('/api/shield/words/categories'),
   clearBuiltinShieldWords: () =>
     request<{ success: boolean; deleted: number }>('/api/shield/words/clear-builtin', { method: 'POST' }),
   restoreDefaultShieldWords: () =>

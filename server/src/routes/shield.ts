@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import defaultShieldWords from '../services/default-shield-words.js';
+import defaultShieldWords, { shieldCategories } from '../services/default-shield-words.js';
 
 const router: Router = Router();
 
@@ -14,6 +14,20 @@ router.get('/words', async (req, res) => {
     res.json(words);
   } catch (error) {
     res.status(500).json({ error: '获取屏蔽词失败' });
+  }
+});
+
+// 获取系统屏蔽词分类信息（每类包含词条列表）
+router.get('/words/categories', async (_req, res) => {
+  try {
+    const result = Object.entries(shieldCategories).map(([name, words]) => ({
+      name,
+      count: words.length,
+      words,
+    }));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: '获取分类信息失败' });
   }
 });
 

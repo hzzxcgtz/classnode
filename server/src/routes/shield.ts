@@ -17,14 +17,23 @@ router.get('/words', async (req, res) => {
   }
 });
 
-// 获取系统屏蔽词分类信息（每类包含词条列表）
-router.get('/words/categories', async (_req, res) => {
+// 获取系统屏蔽词分类信息（每类包含带 ID 的词条列表）
+router.get('/words/categories', async (req, res) => {
   try {
-    const result = Object.entries(shieldCategories).map(([name, words]) => ({
-      name,
-      count: words.length,
-      words,
-    }));
+    const prisma: PrismaClient = req.app.get('prisma');
+    // 从数据库查出所有内置词，建立 word -> id 映射
+    const dbWords = await prisma.shieldWord.findMany({
+      where: { builtin: true },
+      select: { id: true, word: true },
+    });
+    const dbWordMap = new Map(dbWords.map(w => [w.word, w.id]));
+
+    const result = Object.entries(shieldCategories).map(([name, words]) => {
+      const filtered = words
+        .filter(w => dbWordMap.has(w))
+        .map(w => ({ id: dbWordMap.get(w)!, word: w }));
+      return { name, count: filtered.length, words: filtered };
+    });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: '获取分类信息失败' });

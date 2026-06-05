@@ -12,7 +12,7 @@ export default function ShieldPage() {
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState('');
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [categories, setCategories] = useState<{ name: string; count: number; words: string[] }[]>([]);
+  const [categories, setCategories] = useState<{ name: string; count: number; words: { id: string; word: string }[] }[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -307,10 +307,10 @@ export default function ShieldPage() {
           ) : (
             <div style={{ padding: '18px 24px 16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[{ name: '脏话辱骂', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
-                  { name: '色情低俗', color: '#db2777', bg: '#fdf2f8', border: '#fbcfe8' },
-                  { name: '暴力威胁', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-                  { name: '自残自杀', color: '#7c3aed', bg: '#f5f3ff', border: '#e9d5ff' },
+                {[{ name: '脏话辱骂', color: '#991b1b', bg: '#fef4f4', border: '#f0d6d4' },
+                  { name: '色情低俗', color: '#831843', bg: '#fcf1f6', border: '#edd5de' },
+                  { name: '暴力威胁', color: '#78350f', bg: '#fcf8f1', border: '#ece2c5' },
+                  { name: '自残自杀', color: '#4c1d95', bg: '#f5f3fa', border: '#ddd5ed' },
                 ].map(cat => {
                   const catData = categories.find(c => c.name === cat.name);
                   const count = catData?.count || 0;
@@ -348,12 +348,30 @@ export default function ShieldPage() {
                           display: 'flex', flexWrap: 'wrap', gap: 6,
                           borderTop: `1px solid ${cat.border}`,
                         }}>
-                          {catData.words.map(word => (
-                            <span key={word} style={{
-                              padding: '3px 8px', borderRadius: 6,
+                          {catData.words.map(w => (
+                            <span key={w.id} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '3px 6px 3px 8px', borderRadius: 6,
                               background: cat.bg, color: cat.color,
                               fontSize: 12, fontWeight: 500, lineHeight: 1.4,
-                            }}>{word}</span>
+                            }}>
+                              {w.word}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteWord(w.id);
+                                }}
+                                style={{
+                                  width: 14, height: 14, border: 'none', borderRadius: '50%',
+                                  background: 'transparent', cursor: 'pointer', padding: 0,
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  color: cat.color, opacity: 0.35, fontSize: 10, lineHeight: 1,
+                                  transition: 'all 0.1s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = cat.border; }}
+                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.35'; e.currentTarget.style.background = 'transparent'; }}
+                                title="删除">×</button>
+                            </span>
                           ))}
                         </div>
                       )}

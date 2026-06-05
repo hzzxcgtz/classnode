@@ -155,7 +155,7 @@ export default function AgentsPage() {
               zhipuai: '#1d8cf8',
             };
             const platformLabels: Record<string, string> = {
-              coze: 'Coze',
+              coze: 'Coze Bot',
               openai: 'OpenAI',
               'coze-agent': 'Coze Agent',
               zhipuai: '智谱清言',
@@ -719,7 +719,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
                 }}>
                   {[
-                    { value: 'coze', label: 'Coze', desc: '扣子低代码', disabled: false },
+                    { value: 'coze', label: 'Coze Bot', desc: '扣子低代码', disabled: false },
                     { value: 'coze-agent', label: 'Coze Agent', desc: '扣子编程', disabled: false },
                     { value: 'zhipuai', label: '智谱清言', desc: 'GLM系列', disabled: true },
                     { value: 'openai', label: 'OpenAI', desc: '兼容接口', disabled: true },

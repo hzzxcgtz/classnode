@@ -20,13 +20,16 @@ const sections = [
       <><strong>添加智能体</strong>：进入 <Highlight>AI 智能体</Highlight> 页面，点击「添加智能体」开始配置。</>,
       <><strong>选择平台</strong>：目前系统支持以下主流 AI 平台接入：</>,
       <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 14, color: '#475569' }}>
-        <div>• <strong>Coze</strong>（扣子低代码接入）— 已支持</div>
+        <div>• <strong>Coze Bot</strong>（扣子低代码接入）— 已支持</div>
         <div>• <strong>Coze Agent</strong>（扣子编程接入）— 已支持</div>
         <div>• <strong>智谱清言</strong> — 敬请期待</div>
         <div>• <strong>OpenAI 兼容接口</strong> — 敬请期待</div>
       </div>,
       <><strong>参数配置</strong>：根据所选平台填写对应的 API 信息（如 API Key、Bot ID、API URL 等），并为该智能体设置一个便于识别的「本地展示名称」。</>,
       <><strong>连通性测试</strong>：添加完成后，在列表中点击 <Highlight>测试连接</Highlight> 验证配置是否生效。</>,
+      <><strong>自动巡检</strong>：系统会按可配置的时间间隔自动检测所有已启用智能体的连通性。智能体卡片底部会显示连接状态指示灯：<span style={{color:'#22c55e',fontWeight:600}}>●</span> 绿色表示正常，<span style={{color:'#ef4444',fontWeight:600}}>●</span> 红色表示异常。点击页面顶部的「全部检测」按钮可手动触发一次批量检测。</>,
+      <><strong>异常提醒</strong>：当检测到智能体连接异常时，左侧导航栏会自动弹出异常通知，提示管理员及时处理。手动关闭后，同一智能体不会重复提醒，直至其恢复连接或管理员完成修复。</>,
+      <><strong>检测间隔设置</strong>：在智能体列表页面顶部可设置自动检测间隔（以分钟为单位），设置后系统将按新间隔定时巡检。</>,
       <><strong>状态管理</strong>：智能体可随时切换启用/禁用状态，禁用的智能体在创建课堂时将不会出现在候选列表中。</>,
     ],
   },

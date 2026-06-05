@@ -31,18 +31,25 @@ export default function ShieldPage() {
   const builtinWords = words.filter(w => w.builtin);
   const customWords = words.filter(w => !w.builtin);
 
-  const addWord = async () => {
-    const word = newWord.trim();
-    if (!word) return;
+  const addWords = async () => {
+    const raw = newWord.trim();
+    if (!raw) return;
+    // 按常见分隔符切分：中文逗号、英文逗号、分号、顿号、空格、换行
+    const words = raw.split(/[,，;；、\s\n]+/).map(w => w.trim()).filter(Boolean);
+    if (words.length === 0) return;
     setSaving(true);
     setError('');
-    try {
-      await api.addShieldWord(word);
-      setNewWord('');
-      loadData();
-    } catch (e: any) {
-      setError(e.message || '添加失败，请检查服务是否正常运行');
+    let lastError = '';
+    for (const w of words) {
+      try {
+        await api.addShieldWord(w);
+      } catch (e: any) {
+        lastError = e.message || `「${w}」添加失败`;
+      }
     }
+    if (lastError) setError(lastError);
+    setNewWord('');
+    loadData();
     setSaving(false);
   };
 
@@ -130,24 +137,34 @@ export default function ShieldPage() {
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />
             添加自定义屏蔽词
           </h2>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <textarea
               className="input"
               value={newWord}
               onChange={e => { setNewWord(e.target.value); setError(''); }}
-              onKeyDown={e => { if (e.key === 'Enter') addWord(); }}
-              placeholder="输入需要屏蔽的关键词"
-              style={{ flex: 1, padding: '8px 14px' }}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addWords(); } }}
+              placeholder="输入需要屏蔽的关键词，多个词可用逗号、空格、换行等分隔"
+              rows={3}
+              style={{ width: '100%', padding: '8px 14px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
             />
-            <button className="btn btn-primary" onClick={addWord} disabled={saving || !newWord.trim()}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, padding: '0 20px', fontSize: 14 }}>
-              {saving ? (
-                <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              )}
-              添加
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{
+                fontSize: 11, color: '#94a3b8',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                支持批量添加，用 <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10 }}>,</code> <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10 }}>;</code> <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10 }}>、</code> <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10 }}>空格</code> 或 <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3, fontSize: 10 }}>换行</code> 分隔
+              </div>
+              <button className="btn btn-primary" onClick={addWords} disabled={saving || !newWord.trim()}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 18px', fontSize: 13, flexShrink: 0 }}>
+                {saving ? (
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                )}
+                批量添加
+              </button>
+            </div>
           </div>
           {error && (
             <div style={{ fontSize: 12, color: '#ef4444', marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>

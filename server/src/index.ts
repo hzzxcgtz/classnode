@@ -104,7 +104,7 @@ async function main() {
       port,
       localIPs: interfaces,
       urls: interfaces.map((ip: string) => `http://${ip}:${port}`),
-      classroomUrl: interfaces.map((ip: string) => `http://${ip}:${parseInt(process.env.FRONTEND_PORT || '3001', 10)}`),
+      classroomUrl: interfaces.map((ip: string) => `http://${ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
     });
   });
 

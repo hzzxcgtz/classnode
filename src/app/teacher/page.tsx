@@ -4,17 +4,11 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { platformColors } from '@/lib/constants';
-import { getApiBaseUrl } from '@/lib/api-base';
+import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
 import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
 
 const SOCKET_URL = getApiBaseUrl();
-
-function apiBaseUrl() {
-  if (typeof window !== 'undefined' && window.location.port === '3000') {
-    return 'http://localhost:3001';
-  }
-  return '';
-}
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -137,6 +131,67 @@ export default function TeacherDashboard() {
     } catch (e: any) {
       alert(e.message);
     }
+  };
+
+  /** 生成并下载带 Logo 的二维码图片 */
+  const downloadQRCode = async (cr: any) => {
+    const origin = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : '';
+    const qrValue = `${origin}/classroom?code=${cr.code}`;
+    const qrSize = 760;
+    const textHeight = 70;
+    const totalWidth = qrSize;
+    const totalHeight = qrSize + textHeight;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = totalWidth;
+    canvas.height = totalHeight;
+    const ctx = canvas.getContext('2d')!;
+
+    // QR 码
+    await QRCode.toCanvas(canvas, qrValue, {
+      width: qrSize,
+      margin: 3,
+      color: { dark: '#1a1a2e', light: '#ffffff' },
+    });
+
+    // 中心嵌入 Logo
+    const logoSize = qrSize * 0.2;
+    const cx = qrSize / 2, cy = qrSize / 2;
+    const logoImg = new Image();
+    logoImg.crossOrigin = 'anonymous';
+    await new Promise<void>((resolve, reject) => {
+      logoImg.onload = () => {
+        // 白色圆底
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cx, cy, logoSize / 2 + 8, 0, Math.PI * 2);
+        ctx.fill();
+        // 圆形裁剪绘制 Logo
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, logoSize / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(logoImg, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
+        ctx.restore();
+        resolve();
+      };
+      logoImg.onerror = () => { /* 静默忽略 */ resolve(); };
+      logoImg.src = `/qr-logo.png`;
+    });
+
+    // 下方课堂名称
+    const title = cr.title || '互动课堂';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1a1a2e';
+    ctx.font = 'bold 24px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(title, qrSize / 2, qrSize + textHeight / 2);
+
+    // 下载
+    const link = document.createElement('a');
+    link.download = `ClassNode-${cr.code}-${title}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   if (loading) {
@@ -331,15 +386,16 @@ export default function TeacherDashboard() {
                 }}>
                   {cr.status === 'paused' ? '已暂停' : '进行中'}
                 </span>
-                <button onClick={() => openSettings(cr)} title="课堂设置" style={{
+                <button onClick={() => openSettings(cr)} title="修改课堂设置" style={{
                   padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                  background: 'transparent', color: '#64748b', border: '1px solid #e2e8f0',
-                  cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center',
+                  background: 'transparent', color: '#475569', border: '1px solid #e2e8f0',
+                  cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', gap: 4,
                   transition: 'all 0.15s',
                 }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  修改
                 </button>
                 <button onClick={() => setQrCodeClassroom(cr)} title="显示互动码" style={{
                   padding: '6px 10px', borderRadius: 6, fontSize: 12,
@@ -455,16 +511,44 @@ export default function TeacherDashboard() {
               </svg>
             </div>
             <p style={{ fontSize: 30, color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用手机或平板扫描二维码，或在浏览器打开下方网址</p>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 40, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 36, flexWrap: 'wrap' }}>
               <div style={{
-                background: 'white', borderRadius: 24, padding: 24,
-                display: 'inline-flex',
+                background: 'white', borderRadius: 24, overflow: 'hidden',
+                display: 'inline-flex', flexDirection: 'column',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
               }}>
-                <QRCodeSVG
-                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? window.location.port : '3000'}/classroom?code=${qrCodeClassroom.code}`}
-                  size={360}
-                  level="M"
-                />
+                <div style={{ padding: 24, position: 'relative', display: 'inline-flex' }}>
+                  <QRCodeSVG
+                    value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${qrCodeClassroom.code}`}
+                    size={360}
+                    level="M"
+                  />
+                  <img src="/qr-logo.png" alt=""
+                    style={{
+                      position: 'absolute', top: '50%', left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: 72, height: 72, borderRadius: '50%',
+                      objectFit: 'cover', background: 'white',
+                      padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    }}
+                    onError={e => { (e.target as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+                {/* 下载按钮 — 作为二维码卡片的一部分 */}
+                <button onClick={() => downloadQRCode(qrCodeClassroom)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '14px 0', border: 'none', cursor: 'pointer',
+                    borderTop: '1px solid #eef2f6',
+                    background: '#f8fafc', color: '#2563eb',
+                    fontSize: 14, fontWeight: 600,
+                    transition: 'all 0.15s', width: '100%',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  下载二维码图片
+                </button>
               </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
@@ -472,7 +556,7 @@ export default function TeacherDashboard() {
                   fontSize: 44, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
-                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? window.location.port : '3000'}
+                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
                 </p>
                 <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>

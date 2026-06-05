@@ -1,11 +1,4 @@
-function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    const port = window.location.port;
-    if (port === '3000') return `http://localhost:3001`;
-    return '';
-  }
-  return '';
-}
+import { getApiBaseUrl } from './api-base';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;

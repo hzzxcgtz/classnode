@@ -6,7 +6,7 @@ import { WordCloud } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
-import { getApiBaseUrl } from '@/lib/api-base';
+import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function ClassroomBoard() {
@@ -815,7 +815,7 @@ function ClassroomBoardContent() {
                 display: 'inline-flex',
               }}>
                 <QRCodeSVG
-                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? window.location.port : '3000'}/classroom?code=${teacherCode}`}
+                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
                   size={360}
                   level="M"
                 />
@@ -826,7 +826,7 @@ function ClassroomBoardContent() {
                   fontSize: 44, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
-                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? window.location.port : '3000'}
+                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
                 </p>
                 <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>

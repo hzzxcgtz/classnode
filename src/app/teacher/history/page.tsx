@@ -693,27 +693,22 @@ function BackupManager() {
         <div>
           <strong>跨设备迁移须知：</strong>数据库备份仅包含文字数据，不包含上传的附件文件（图片等）。
           如需完整迁移，请手动将原电脑上{' '}
-          <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+          <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'help' }}
             onMouseEnter={() => setShowUploadsPath(true)}
             onMouseLeave={() => setShowUploadsPath(false)}>
-            <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>uploads</code>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 14, height: 14, borderRadius: '50%',
-              background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 700,
-              marginLeft: 3, cursor: 'help',
-            }}>?</span>
+            <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12, textDecoration: 'underline dotted #d97706', textUnderlineOffset: 3 }}>uploads</code>
             {showUploadsPath && (
               <div style={{
                 position: 'absolute', left: '50%', bottom: 'calc(100% + 6px)',
                 transform: 'translateX(-50%)', zIndex: 100,
                 background: '#1e293b', color: '#f1f5f9',
-                padding: '10px 14px', borderRadius: 8, fontSize: 12,
-                lineHeight: 1.8, whiteSpace: 'nowrap',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                padding: '12px 16px', borderRadius: 10, fontSize: 12,
+                lineHeight: 2, whiteSpace: 'nowrap',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
               }}>
-                <div>Mac: ~/Library/Application Support/com.classnode.desktop/uploads/</div>
-                <div>Windows: C:\Users\&lt;用户名&gt;\AppData\Roaming\com.classnode.desktop\uploads\</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5, marginBottom: 4 }}>跨设备迁移时需一并复制：</div>
+                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#e2e8f0' }}>Mac: ~/Library/Application Support/com.classnode.desktop/uploads/</div>
+                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#e2e8f0' }}>Windows: C:\Users\&lt;用户名&gt;\AppData\Roaming\com.classnode.desktop\uploads\</div>
               </div>
             )}
           </span>{' '}

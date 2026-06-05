@@ -26,7 +26,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/server": "server"
+      "resources/server": "server",
+      "resources/changelogs": "changelogs"
     }
   }
 }

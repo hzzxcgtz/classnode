@@ -219,12 +219,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
                 content: filtered.slice(0, 100),
               },
             });
-            // Increment warning count
-            const newWarningCount = classroomStudent.warningCount + 1;
-            await prisma.classroomStudent.update({
+            // Increment warning count (原子操作，使用返回值确保准确)
+            const updatedCS = await prisma.classroomStudent.update({
               where: { id: classroomStudent.id },
               data: { warningCount: { increment: 1 } },
             });
+            const newWarningCount = updatedCS.warningCount;
             // Emit warning to teacher
             io.to(`teacher:${classroom.id}`).emit('shield-warning', {
               studentId: data.studentId,
@@ -410,7 +410,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
               role: 'assistant',
               roundIndex: roundCount,
               agentId: agent.id,
-              tokenUsage: result.tokenUsage,
               fileUrls: data.fileUrls?.length ? JSON.stringify(data.fileUrls) : undefined,
               fileNames: data.fileNames?.length ? JSON.stringify(data.fileNames) : undefined,
             },
@@ -429,13 +428,9 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
               studentId: data.studentId,
               totalRounds: roundCount,
               firstMsgLen: roundCount === 1 ? data.content.length : undefined,
-              totalTokens: result.tokenUsage,
             },
             update: {
               totalRounds: roundCount,
-              totalTokens: {
-                increment: result.tokenUsage || 0,
-              },
             },
           });
 
@@ -460,7 +455,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
             role: 'assistant',
             roundIndex: roundCount,
             messageId: aiMessage.id,
-            tokenUsage: result.tokenUsage,
             timestamp: aiMessage.createdAt,
           });
 

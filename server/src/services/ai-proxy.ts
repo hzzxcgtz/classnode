@@ -29,7 +29,6 @@ interface ProxyResult {
   success: boolean;
   content?: string;
   error?: string;
-  tokenUsage?: number;
 }
 
 /**
@@ -198,7 +197,6 @@ async function proxyCoze(
   return {
     success: true,
     content: deanonymized,
-    tokenUsage: chatData.usage?.token_count,
   };
 }
 
@@ -309,7 +307,6 @@ async function proxyDify(
   return {
     success: true,
     content: deanonymized,
-    tokenUsage: data.metadata?.usage?.total_tokens,
   };
 }
 
@@ -371,7 +368,6 @@ async function proxyOpenAI(
   return {
     success: true,
     content: deanonymized,
-    tokenUsage: data.usage?.total_tokens,
   };
 }
 
@@ -889,7 +885,6 @@ async function proxyCozeStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  let tokenUsage: number | undefined;
   let eventCount = 0;
   let currentEvent = '';  // 追踪 SSE event 类型
 
@@ -933,10 +928,6 @@ async function proxyCozeStream(
               try { onChunk(delta); } catch {}
             }
           }
-
-          if (parsed.usage?.token_count) {
-            tokenUsage = parsed.usage.token_count;
-          }
         } catch {}
       }
     }
@@ -951,7 +942,7 @@ async function proxyCozeStream(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized, tokenUsage };
+  return { success: true, content: deanonymized };
 }
 
 async function proxyDifyStream(
@@ -1008,7 +999,6 @@ async function proxyDifyStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1089,7 +1079,6 @@ async function proxyOpenAIStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1332,7 +1321,6 @@ async function proxyZhipuaiStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;

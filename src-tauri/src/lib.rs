@@ -242,7 +242,7 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
 
     // 创建运行时所需的子目录
-    for sub in &["uploads/chat", "uploads/logos", "uploads/temp"] {
+    for sub in &["uploads/chat", "uploads/logos", "uploads/temp", "backups"] {
         fs::create_dir_all(data_dir.join(sub))
             .map_err(|e| format!("创建目录 {} 失败: {}", sub, e))?;
     }

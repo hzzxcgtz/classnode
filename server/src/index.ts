@@ -15,6 +15,8 @@ import classroomRoutes from './routes/classroom.js';
 import exportRoutes from './routes/export.js';
 import settingsRoutes from './routes/settings.js';
 import shieldRoutes from './routes/shield.js';
+import changelogRoutes from './routes/changelogs.js';
+import { startAgentChecker } from './services/agent-checker.js';
 import uploadRoutes from './routes/upload.js';
 import defaultShieldWords from './services/default-shield-words.js';
 
@@ -65,6 +67,11 @@ async function main() {
     console.warn('[server] Failed to auto-seed shield words:', e);
   }
 
+  // 启动智能体连通性定时检测
+  startAgentChecker(prisma, io).catch(e =>
+    console.warn('[server] Failed to start agent checker:', e),
+  );
+
   // 前端静态文件（Next.js 静态导出产物）
   const frontendDir = path.join(__dirname, '../frontend');
   app.use(express.static(frontendDir));
@@ -82,6 +89,7 @@ async function main() {
   app.use('/api/export', exportRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/shield', shieldRoutes);
+  app.use('/api/changelogs', changelogRoutes);
   app.use('/api/upload', uploadRoutes);
 
   // Health check

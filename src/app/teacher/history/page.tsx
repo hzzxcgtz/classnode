@@ -71,7 +71,7 @@ export default function HistoryPage() {
     <div>
       {/* 页面标题 */}
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>历史数据</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>数据管理</h1>
         <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
           课堂历史存档与数据导出
         </p>
@@ -463,7 +463,7 @@ function ConversationPreview({ data }: { data: any }) {
 
 /** 报表预览 */
 function StatsPreview({ data }: { data: any }) {
-  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
+  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'];
   const rows = data.rows || [];
   const totalStudents = rows.length;
   const totalInteractions = rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
@@ -550,6 +550,7 @@ function BackupManager() {
   const [resetting, setResetting] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [showUploadsPath, setShowUploadsPath] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
@@ -691,7 +692,32 @@ function BackupManager() {
         </svg>
         <div>
           <strong>跨设备迁移须知：</strong>数据库备份仅包含文字数据，不包含上传的附件文件（图片等）。
-          如需完整迁移，请手动将原电脑上 <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>uploads</code> 文件夹复制到新电脑的相同位置。
+          如需完整迁移，请手动将原电脑上{' '}
+          <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+            onMouseEnter={() => setShowUploadsPath(true)}
+            onMouseLeave={() => setShowUploadsPath(false)}>
+            <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>uploads</code>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 14, height: 14, borderRadius: '50%',
+              background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 700,
+              marginLeft: 3, cursor: 'help',
+            }}>?</span>
+            {showUploadsPath && (
+              <div style={{
+                position: 'absolute', left: '50%', bottom: 'calc(100% + 6px)',
+                transform: 'translateX(-50%)', zIndex: 100,
+                background: '#1e293b', color: '#f1f5f9',
+                padding: '10px 14px', borderRadius: 8, fontSize: 12,
+                lineHeight: 1.8, whiteSpace: 'nowrap',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+              }}>
+                <div>Mac: ~/Library/Application Support/com.classnode.desktop/uploads/</div>
+                <div>Windows: C:\Users\&lt;用户名&gt;\AppData\Roaming\com.classnode.desktop\uploads\</div>
+              </div>
+            )}
+          </span>{' '}
+          文件夹复制到新电脑的相同位置。
         </div>
       </div>
 

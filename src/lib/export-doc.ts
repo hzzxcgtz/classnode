@@ -374,7 +374,6 @@ interface StudentRankEntry {
   studentNo: string | null;
   rounds: number;
   msgCount: number;
-  tokens: number;
   charCount: number;
 }
 
@@ -385,7 +384,6 @@ interface ClassStats {
   totalAiMsgs: number;
   totalMsgs: number;
   totalRounds: number;
-  totalTokens: number;
   totalChars: number;
   avgRoundsPerStudent: number;
   avgCharsPerMsg: number;
@@ -401,7 +399,6 @@ function computeClassStats(data: any): ClassStats {
   let totalUserMsgs = 0;
   let totalAiMsgs = 0;
   let totalRounds = 0;
-  let totalTokens = 0;
   let totalChars = 0;
   let activeCount = 0;
 
@@ -411,13 +408,11 @@ function computeClassStats(data: any): ClassStats {
     const msgs = student.messages || [];
     let sUserMsgs = 0;
     let sAiMsgs = 0;
-    let sTokens = 0;
     let sChars = 0;
 
     for (const m of msgs) {
       if (m.role === 'user') sUserMsgs++;
       else sAiMsgs++;
-      sTokens += m.tokenUsage || 0;
       sChars += (m.content ? m.content.length : 0);
     }
 
@@ -425,7 +420,6 @@ function computeClassStats(data: any): ClassStats {
     totalAiMsgs += sAiMsgs;
     const sRounds = student.totalRounds || Math.ceil((sUserMsgs + sAiMsgs) / 2);
     totalRounds += sRounds;
-    totalTokens += sTokens;
     totalChars += sChars;
 
     if (msgs.length > 0) activeCount++;
@@ -435,7 +429,6 @@ function computeClassStats(data: any): ClassStats {
       studentNo: student.studentNo || null,
       rounds: sRounds,
       msgCount: msgs.length,
-      tokens: sTokens,
       charCount: sChars,
     });
   }
@@ -458,7 +451,6 @@ function computeClassStats(data: any): ClassStats {
     totalAiMsgs,
     totalMsgs,
     totalRounds,
-    totalTokens,
     totalChars,
     avgRoundsPerStudent: totalStudents > 0 ? Math.round((totalRounds / totalStudents) * 10) / 10 : 0,
     avgCharsPerMsg: totalMsgs > 0 ? Math.round(totalChars / totalMsgs) : 0,
@@ -511,7 +503,7 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
     statCell(String(stats.activeStudents) + ' / ' + String(stats.totalStudents) + ' 人', '参与学生', '0891B2', 'ECFEFF'),
     statCell(String(stats.totalMsgs) + ' 条', '总消息数', '8B5CF6', 'F5F3FF'),
     statCell(String(stats.totalRounds) + ' 轮', '总交互轮数', 'DB2777', 'FDF2F8'),
-    statCell(stats.totalTokens > 0 ? stats.totalTokens.toLocaleString() : '—', '总 Token', 'F59E0B', 'FFFBEB'),
+
   ];
 
   // Row 2
@@ -577,8 +569,8 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
       ]}),
     );
 
-    const rankHeaders = ['排名', '姓名', '学号', '交互轮数', '消息数', 'Token 消耗', '总字数'];
-    const rankWidths = [1200, 2000, 1600, 1800, 1600, 2000, 1800];
+    const rankHeaders = ['排名', '姓名', '学号', '交互轮数', '消息数', '总字数'];
+    const rankWidths = [1200, 2000, 1600, 1800, 1600, 2200];
 
     const hdrRow = new TableRow({
       tableHeader: true,
@@ -597,11 +589,10 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
     const rankDataRows = stats.studentRankings.map((s, i) => {
       const isEven = i % 2 === 0;
       const rankStr = '#' + String(i + 1);
-      const tokensStr = s.tokens > 0 ? s.tokens.toLocaleString() : '-';
       const charsStr = s.charCount > 0 ? String(s.charCount) : '-';
       return new TableRow({
         children: [
-          [rankStr, s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), tokensStr, charsStr],
+          [rankStr, s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), charsStr],
         ].map((vals, ci) => {
           const val = Array.isArray(vals) ? undefined : vals;
           return new TableCell({
@@ -612,7 +603,7 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
               alignment: AlignmentType.CENTER,
               spacing: { before: 40, after: 40 },
               children: [new TextRun({
-                text: ci === 0 ? rankStr : [s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), tokensStr, charsStr][ci - 1],
+                text: ci === 0 ? rankStr : [s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), charsStr][ci - 1],
                 size: 18,
                 color: COLORS.text,
                 font: { name: FONT },
@@ -628,9 +619,8 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
     const actualDataRows = stats.studentRankings.map((s, i) => {
       const isEven = i % 2 === 0;
       const rankStr = '#' + String(i + 1);
-      const tokensStr = s.tokens > 0 ? s.tokens.toLocaleString() : '-';
       const charsStr = s.charCount > 0 ? String(s.charCount) : '-';
-      const values = [rankStr, s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), tokensStr, charsStr];
+      const values = [rankStr, s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), charsStr];
       return new TableRow({
         children: values.map((val, ci) => new TableCell({
           width: { size: rankWidths[ci], type: WidthType.DXA },
@@ -798,9 +788,7 @@ function renderMessage(children: any[], msg: any, student: any) {
       children: [
         new TextRun({ text: roleLabel, bold: true, size: 18, color: roleColor, font: { name: FONT } }),
         new TextRun({ text: timeStr, size: 16, color: COLORS.textLight, font: { name: FONT } }),
-        ...(msg.tokenUsage ? [
-          new TextRun({ text: '  Token: ' + String(msg.tokenUsage), size: 16, color: COLORS.textLight, font: { name: FONT } }),
-        ] : []),
+
       ],
     }),
   );
@@ -844,22 +832,12 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
   if (data.rows && data.rows.length > 0) {
     const totalStudents = data.rows.length;
     const totalInteractions = data.rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
-    const avgTokens = totalStudents > 0
-      ? Math.round(data.rows.reduce((sum: number, r: any[]) => sum + (Number(r[5]) || 0), 0) / totalStudents)
-      : 0;
-
     const summaryRows: TableRow[] = [
       new TableRow({ children: [
         cell('学生总数', { bold: true, shading: COLORS.greenLight, width: 3000, color: COLORS.green, align: AlignmentType.CENTER }),
         cell(String(totalStudents) + ' 人', { width: 3000, align: AlignmentType.CENTER }),
         cell('总交互轮数', { bold: true, shading: COLORS.greenLight, width: 3000, color: COLORS.green, align: AlignmentType.CENTER }),
         cell(String(totalInteractions) + ' 轮', { width: 3000, align: AlignmentType.CENTER }),
-      ]}),
-      new TableRow({ children: [
-        cell('人均 Token', { bold: true, shading: COLORS.greenLight, width: 3000, color: COLORS.green, align: AlignmentType.CENTER }),
-        cell(String(avgTokens), { width: 3000, align: AlignmentType.CENTER }),
-        cell('', { width: 3000 }),
-        cell('', { width: 3000 }),
       ]}),
     ];
 
@@ -877,7 +855,7 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
     ]}),
   );
 
-  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'];
+  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'];
   const colWidths = calcColWidths(headers, data.rows || []);
 
   const headerRow = new TableRow({

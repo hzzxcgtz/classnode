@@ -279,7 +279,30 @@ router.get('/:id', async (req, res) => {
       },
     });
     if (!classroom) return res.status(404).json({ error: '课堂不存在' });
-    res.json(classroom);
+
+    // 解析分组/高级模式中 ClassGroup 的真实学生成员
+    let groupMembersMap: Record<string, { groupName: string; members: { id: string; name: string; studentNo: string | null }[] }> = {};
+    if (classroom.mode === 'advanced' || classroom.mode === 'group') {
+      const classIds = classroom.classes.map((cc: any) => cc.class.id);
+      const classGroups = await prisma.classGroup.findMany({
+        where: { classId: { in: classIds } },
+      });
+      for (const cg of classGroups) {
+        const ids: string[] = JSON.parse(cg.studentIds || '[]');
+        if (ids.length > 0) {
+          const students = await prisma.student.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true, studentNo: true },
+          });
+          groupMembersMap[cg.name] = {
+            groupName: cg.name,
+            members: students.map(s => ({ id: s.id, name: s.name, studentNo: s.studentNo })),
+          };
+        }
+      }
+    }
+
+    res.json({ ...classroom, groupMembersMap });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });
   }
@@ -527,7 +550,7 @@ router.delete('/:id/student/:studentId/messages', async (req, res) => {
           studentId: req.params.studentId,
         },
       },
-      update: { totalRounds: 0, totalTokens: 0, firstMsgLen: null },
+      update: { totalRounds: 0, firstMsgLen: null },
       create: { classroomId: req.params.id, studentId: req.params.studentId },
     });
 

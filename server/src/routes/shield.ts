@@ -146,6 +146,7 @@ router.post('/classroom/:classroomId/student/:studentId/blacklist', async (req, 
       data: { blacklisted: true },
     });
     const io = req.app.get('io');
+    io.to(`teacher:${classroomId}`).emit('student-blacklisted', { studentId });
     io.to(`classroom:${classroomId}`).emit('student-blacklisted', { studentId });
     res.json({ success: true });
   } catch (error) {
@@ -163,6 +164,7 @@ router.post('/classroom/:classroomId/student/:studentId/unblacklist', async (req
       data: { blacklisted: false, warningCount: 0 },
     });
     const io = req.app.get('io');
+    io.to(`teacher:${classroomId}`).emit('student-unblacklisted', { studentId, warningCount: 0 });
     io.to(`classroom:${classroomId}`).emit('student-unblacklisted', { studentId, warningCount: 0 });
     res.json({ success: true });
   } catch (error) {
@@ -195,7 +197,7 @@ router.post('/classroom/:classroomId/student/:studentId/reset-warnings', async (
       data: { warningCount: 0 },
     });
     const io = req.app.get('io');
-    io.to(`classroom:${classroomId}`).emit('shield-warning', { studentId, warningCount: 0 });
+    io.to(`teacher:${classroomId}`).emit('shield-warning', { studentId, warningCount: 0 });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '重置警告次数失败' });

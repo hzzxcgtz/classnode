@@ -60,6 +60,7 @@ export const api = {
     return request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/info?${query}`);
   },
   testAgent: (id: string) => request<{ success: boolean; error?: string }>(`/api/agents/${id}/test`, { method: 'POST' }),
+  testAllAgents: () => request<{ success: boolean }>('/api/agents/test-all', { method: 'POST' }),
 
   // Classes
   getClasses: () => request<any[]>('/api/classes'),
@@ -155,4 +156,8 @@ export const api = {
     request(`/api/shield/classroom/${classroomId}/student/${studentId}/reset-warnings`, { method: 'POST' }),
   getClassroomWarnings: (classroomId: string) =>
     request<any[]>(`/api/shield/classroom/${classroomId}/warnings`),
+
+  // Changelogs
+  getChangelogs: () =>
+    request<{ version: string; date: string | null; content: string }[]>('/api/changelogs'),
 };

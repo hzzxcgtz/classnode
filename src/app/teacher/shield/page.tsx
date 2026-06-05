@@ -11,6 +11,7 @@ export default function ShieldPage() {
   const [error, setError] = useState('');
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState('');
+  const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -224,12 +225,11 @@ export default function ShieldPage() {
           )}
         </div>
 
-        {/* 系统默认词库（功能暂未启用） */}
+        {/* 系统默认词库 */}
         <div style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           overflow: 'hidden',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-          opacity: 0.5,
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -251,22 +251,55 @@ export default function ShieldPage() {
               )}
             </h2>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button disabled
-                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: '#94a3b8', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'not-allowed' }}>
+              <button onClick={async () => {
+                if (!confirm('确认清空所有系统默认屏蔽词？自定义屏蔽词不受影响。')) return;
+                setBuiltinMsg(null);
+                try {
+                  const r = await api.clearBuiltinShieldWords();
+                  setBuiltinMsg({ type: 'success', text: `已清空 ${r.deleted} 个默认屏蔽词` });
+                  loadData();
+                  setTimeout(() => setBuiltinMsg(null), 3000);
+                } catch {
+                  setBuiltinMsg({ type: 'error', text: '清空失败' });
+                  setTimeout(() => setBuiltinMsg(null), 3000);
+                }
+              }}
+                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: builtinWords.length > 0 ? '#dc2626' : '#94a3b8', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: builtinWords.length > 0 ? 'pointer' : 'not-allowed' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                 一键清空
               </button>
-              <button disabled
-                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: '#94a3b8', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'not-allowed' }}>
+              <button onClick={async () => {
+                setBuiltinMsg(null);
+                try {
+                  const r = await api.restoreDefaultShieldWords();
+                  setBuiltinMsg({ type: 'success', text: `已恢复 ${r.restored} 个默认屏蔽词` });
+                  loadData();
+                  setTimeout(() => setBuiltinMsg(null), 3000);
+                } catch {
+                  setBuiltinMsg({ type: 'error', text: '恢复失败' });
+                  setTimeout(() => setBuiltinMsg(null), 3000);
+                }
+              }}
+                style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 6, cursor: 'pointer' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
                 恢复预设
               </button>
             </div>
           </div>
+          {builtinMsg && (
+            <div style={{
+              padding: '8px 24px', fontSize: 12,
+              color: builtinMsg.type === 'success' ? '#16a34a' : '#ef4444',
+              background: builtinMsg.type === 'success' ? '#f0fdf4' : '#fef2f2',
+              borderBottom: '1px solid #f1f5f9',
+            }}>
+              {builtinMsg.type === 'success' ? '✓ ' : '✗ '}{builtinMsg.text}
+            </div>
+          )}
           {builtinWords.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-              <div>暂无默认屏蔽词</div>
-              <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>系统默认词库功能暂未启用</div>
+              <div>系统默认词库为空</div>
+              <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>点击「恢复预设」可重新加载系统内置的屏蔽词列表</div>
             </div>
           ) : (
             <div style={{ padding: '14px 20px 16px' }}>

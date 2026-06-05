@@ -26,6 +26,7 @@ function ClassroomBoardContent() {
   const [studentStatuses, setStudentStatuses] = useState<Record<string, string>>({});
   const [studentRounds, setStudentRounds] = useState<Record<string, number>>({});
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [showCodeScreen, setShowCodeScreen] = useState(false);
@@ -42,6 +43,7 @@ function ClassroomBoardContent() {
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
   const [studentBlacklisted, setStudentBlacklisted] = useState<Record<string, boolean>>({});
+  const [groupTooltip, setGroupTooltip] = useState<{ id: string; x: number; y: number } | null>(null);
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo(() => {
@@ -60,6 +62,23 @@ function ClassroomBoardContent() {
     // 按组名排序
     return Array.from(map.values()).sort((a, b) => (a.group?.name || '').localeCompare(b.group?.name || ''));
   }, [classroom, students]);
+
+  // 小组名 → 成员列表（使用后端从 ClassGroup.studentIds 解析的真实学生数据）
+  const groupMembersMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    if (!groupCards || !classroom?.groupMembersMap) return map;
+    for (const g of groupCards) {
+      if (!g.group?.id || !g.group.name) continue;
+      const backendData = classroom.groupMembersMap[g.group.name];
+      if (backendData) {
+        map[g.group.id] = backendData.members.map((m: any) => ({
+          studentName: m.name,
+          groupName: g.group.name,
+        }));
+      }
+    }
+    return map;
+  }, [groupCards, classroom?.groupMembersMap]);
 
   // 打开抽屉时自动滚动到底部（最新消息）
   useEffect(() => {
@@ -188,7 +207,7 @@ function ClassroomBoardContent() {
       }
       // 如果当前选中该学生，追加消息
       if (selectedStudent?.id === data.studentId) {
-        setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, tokenUsage: data.tokenUsage, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
+        setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
       }
     });
 
@@ -267,6 +286,14 @@ function ClassroomBoardContent() {
           <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{classroom.title || '课堂看板'}</h1>
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+              background: classroom.mode === 'advanced' ? '#ecfdf5' : classroom.mode === 'group' ? '#f5f3ff' : '#eef2ff',
+              color: classroom.mode === 'advanced' ? '#059669' : classroom.mode === 'group' ? '#7c3aed' : '#2563eb',
+              whiteSpace: 'nowrap', lineHeight: '20px',
+            }}>
+              {classroom.mode === 'advanced' ? '高级模式' : classroom.mode === 'group' ? '分组模式' : '标准模式'}
+            </span>
             <span className={`tag ${classroom.status === 'paused' ? 'tag-yellow' : classroom.status === 'active' ? 'tag-green' : 'tag-gray'}`}>
               {classroom.status === 'paused' ? '已暂停' : classroom.status === 'active' ? '进行中' : '已结束'}
             </span>
@@ -434,7 +461,11 @@ function ClassroomBoardContent() {
                 const isSelected = !isGroup && selectedStudent?.id === sid;
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
-                    onClick={() => openStudentDrawer(student)}
+                    onClick={() => {
+                      if (isGroup) setSelectedGroup(item.group);
+                      else setSelectedGroup(null);
+                      openStudentDrawer(student);
+                    }}
                     style={{
                       cursor: 'pointer',
                       border: '2px solid',
@@ -466,7 +497,13 @@ function ClassroomBoardContent() {
                         {/* 姓名行 + 操作按钮 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
-                            {isGroup ? (item.group?.name || '(未命名)') : (
+                            {isGroup ? (
+                              <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
+                                onMouseMove={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
+                                onMouseLeave={() => setGroupTooltip(null)}>
+                                {item.group?.name || '(未命名)'}
+                              </span>
+                            ) : (
                               <>{student.name}{student.studentNo && <span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>#{student.studentNo}</span>}</>
                             )}
                           </span>
@@ -528,6 +565,15 @@ function ClassroomBoardContent() {
                         )}
                         {/* 状态标签 */}
                         <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
+                          {studentBlacklisted[sid] && (
+                            <div title="已被黑屏" style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                              background: '#1e293b', color: 'white', whiteSpace: 'nowrap',
+                            }}>
+                              黑屏
+                            </div>
+                          )}
                           <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                             {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
@@ -608,7 +654,7 @@ function ClassroomBoardContent() {
         {selectedStudent && (
           <>
             {/* 遮罩层 */}
-            <div onClick={() => setSelectedStudent(null)}
+            <div onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}
               style={{
                 position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)',
               }} />
@@ -631,30 +677,34 @@ function ClassroomBoardContent() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{
-                    width: 36, height: 36, borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                    width: 36, height: 36, borderRadius: selectedGroup ? 10 : '50%',
+                    background: selectedGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #667eea, #764ba2)',
                     color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontWeight: 700, fontSize: 15,
                   }}>
-                    {selectedStudent.name[0]}
+                    {selectedGroup ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                    ) : selectedStudent.name[0]}
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {selectedStudent.name}
-                      {(classroom.mode === 'advanced' || classroom.mode === 'group') && classroom.students?.find((cs: any) => cs.student.id === selectedStudent.id)?.group && (
+                      {selectedGroup ? selectedGroup.name : selectedStudent.name}
+                      {selectedGroup && groupMembersMap[selectedGroup.id] && (
                         <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 2,
-                          padding: '0 6px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                          background: '#f5f3ff', color: '#7c3aed',
+                          fontSize: 11, fontWeight: 500, color: '#94a3b8', marginLeft: 2,
                         }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
-                          {classroom.students.find((cs: any) => cs.student.id === selectedStudent.id).group.name}
+                          {groupMembersMap[selectedGroup.id].length} 人
                         </span>
                       )}
                     </h3>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
                       共 {messages.filter((m: any) => m.role === 'user').length} 轮交互 · {messages.length} 条消息
                     </div>
+                    {selectedGroup && groupMembersMap[selectedGroup.id] && (
+                      <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 4, lineHeight: 1.5 }}>
+                        {groupMembersMap[selectedGroup.id].map((d:any)=>d.studentName).join('、')}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -664,7 +714,7 @@ function ClassroomBoardContent() {
                     投屏
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setSelectedStudent(null)}>
+                    onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     关闭
                   </button>
@@ -719,7 +769,7 @@ function ClassroomBoardContent() {
                     <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
                     <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
                       <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
-                      {m.tokenUsage && <span>· {m.tokenUsage} tokens</span>}
+
                     </div>
                   </div>
                 ))
@@ -1012,7 +1062,11 @@ function ClassroomBoardContent() {
                   const isSelected = !isGroup && selectedStudent?.id === sid;
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
-                      onClick={() => openStudentDrawer(student)}
+                      onClick={() => {
+                      if (isGroup) setSelectedGroup(item.group);
+                      else setSelectedGroup(null);
+                      openStudentDrawer(student);
+                    }}
                       style={{
                         cursor: 'pointer',
                         border: '2px solid',
@@ -1045,7 +1099,13 @@ function ClassroomBoardContent() {
                           {/* 姓名行 + 操作按钮 */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
                             <span style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
-                              {isGroup ? (item.group?.name || '(未命名)') : (
+                              {isGroup ? (
+                                <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
+                                  onMouseMove={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
+                                  onMouseLeave={() => setGroupTooltip(null)}>
+                                  {item.group?.name || '(未命名)'}
+                                </span>
+                              ) : (
                                 <>{student.name}{student.studentNo && <span style={{ fontSize: compact ? 8 : 10, fontWeight: 500, color: '#94a3b8', marginLeft: 3 }}>#{student.studentNo}</span>}</>
                               )}
                             </span>
@@ -1097,6 +1157,16 @@ function ClassroomBoardContent() {
                           )}
                           {/* 状态标签 */}
                           <div style={{ display: 'flex', gap: compact ? 2 : 3, marginTop: compact ? 2 : 4, flexWrap: 'wrap' }}>
+                            {studentBlacklisted[sid] && (
+                              <div title="已被黑屏" style={{
+                                display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3,
+                                padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6,
+                                fontSize: compact ? 8 : 10, fontWeight: 600,
+                                background: '#1e293b', color: 'white', whiteSpace: 'nowrap',
+                              }}>
+                                黑屏
+                              </div>
+                            )}
                             <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
                               <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
@@ -1170,6 +1240,18 @@ function ClassroomBoardContent() {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {groupTooltip && groupMembersMap[groupTooltip.id] && (
+        <div style={{
+          position: 'fixed', left: groupTooltip.x + 12, top: groupTooltip.y - 10,
+          zIndex: 9999, pointerEvents: 'none',
+          background: '#1e293b', color: '#f1f5f9',
+          padding: '8px 12px', borderRadius: 8, fontSize: 12,
+          lineHeight: 1.7, whiteSpace: 'nowrap',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+        }}>
+          {groupMembersMap[groupTooltip.id].map((d: any) => d.studentName).filter(Boolean).join('、')}
         </div>
       )}
     </div>
@@ -1335,11 +1417,11 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
     .slice(0, 10);
   const topMaxCount = topStudents[0]?.count || 1;
 
-  // Token 统计（保留参与人数用于标题显示）
-  const tokenStudents = new Map<string, number>();
+  // 参与人数统计
+  const participantStudents = new Map<string, number>();
   for (const m of allMessages) {
     const sid = m.classroomStudent?.student?.id;
-    if (sid) tokenStudents.set(sid, (tokenStudents.get(sid) || 0) + 1);
+    if (sid) participantStudents.set(sid, (participantStudents.get(sid) || 0) + 1);
   }
 
   if (collapsed) {
@@ -1390,7 +1472,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           </svg>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>对话分析</span>
           <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>
-            {allMessages.length} 条消息 · {tokenStudents.size} 人参与
+            {allMessages.length} 条消息 · {participantStudents.size} 人参与
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

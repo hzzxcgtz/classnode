@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
+import { restartAgentChecker } from '../services/agent-checker.js';
 
 const router: Router = Router();
 
@@ -51,6 +52,10 @@ router.put('/:key', async (req, res) => {
       update: { value },
       create: { key, value },
     });
+    // 如果更新的是检测间隔，重启定时器
+    if (key === 'agent_check_interval') {
+      restartAgentChecker().catch(() => {});
+    }
     res.json(setting);
   } catch (error) {
     res.status(500).json({ error: '保存设置失败' });

@@ -11,6 +11,11 @@ export default function AgentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [checkAllLoading, setCheckAllLoading] = useState(false);
+  const [checkInterval, setCheckInterval] = useState('10');
+  const [savingInterval, setSavingInterval] = useState(false);
+  const [intervalSaved, setIntervalSaved] = useState(false);
+  const [errorTip, setErrorTip] = useState<{ text: string; top: number; left: number } | null>(null);
   const [deleteBlocked, setDeleteBlocked] = useState<{
     agentId: string;
     agentName: string;
@@ -18,12 +23,37 @@ export default function AgentsPage() {
 
   const loadAgents = async () => {
     try {
-      setAgents(await api.getAgents());
-    } catch {}
+      const [agentList, settings] = await Promise.all([api.getAgents(), api.getSettings()]);
+      setAgents(agentList);
+      if (settings.agent_check_interval) setCheckInterval(settings.agent_check_interval);
+    } catch {
+      try { setAgents(await api.getAgents()); } catch {}
+    }
     setLoading(false);
   };
 
   useEffect(() => { loadAgents(); }, []);
+
+  // 用 ref 保持 loadAgents 引用最新，避免闭包过期
+  const loadAgentsRef = useRef(loadAgents);
+  loadAgentsRef.current = loadAgents;
+  const socketRef = useRef<any>(null);
+
+  // 实时监听智能体检测结果（不主动断开 socket，与课堂看板模式一致）
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { io } = await import('socket.io-client');
+      const sk = io(getApiBaseUrl(), { transports: ['websocket', 'polling'], reconnection: true });
+      sk.on('agents-checked', () => {
+        if (!cancelled) loadAgentsRef.current();
+      });
+      socketRef.current = sk;
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div>
@@ -35,9 +65,53 @@ export default function AgentsPage() {
               接入 Coze、Coze Agent、智谱清言、OpenAI 兼容接口的 AI智能体
             </p>
           </div>
-          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            接入智能体
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={async () => {
+              setCheckAllLoading(true);
+              try { await api.testAllAgents(); await loadAgents(); } catch {}
+              setCheckAllLoading(false);
+            }} disabled={checkAllLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              {checkAllLoading ? (
+                <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #e2e8f0', borderTopColor: '#64748b', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              )}
+              全部检测
+            </button>
+            <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              接入智能体
+            </button>
+          </div>
+        </div>
+
+        {/* 自动检测间隔设置 */}
+        <div style={{
+          marginTop: 14, display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 16px', background: '#f8fafc', borderRadius: 10,
+          border: '1px solid #eef2f6',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span style={{ fontSize: 13, color: '#475569', whiteSpace: 'nowrap' }}>自动检测间隔：</span>
+          <input type="number" min={1} max={999} value={checkInterval}
+            onChange={e => setCheckInterval(e.target.value)}
+            style={{ width: 64, textAlign: 'center', padding: '5px 8px', fontSize: 13, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none' }}
+          />
+          <span style={{ fontSize: 13, color: '#64748b' }}>分钟</span>
+          <button className="btn btn-primary" style={{ fontSize: 12, padding: '4px 14px' }}
+            disabled={savingInterval || !checkInterval}
+            onClick={async () => {
+              setSavingInterval(true);
+              try {
+                await api.updateSetting('agent_check_interval', checkInterval);
+                setIntervalSaved(true);
+                setTimeout(() => setIntervalSaved(false), 2000);
+              } catch {}
+              setSavingInterval(false);
+            }}>
+            {intervalSaved ? (
+              <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>已保存</>
+            ) : savingInterval ? '保存中...' : '保存'}
           </button>
         </div>
       </div>
@@ -153,52 +227,105 @@ export default function AgentsPage() {
                   </button>
                 </div>
 
-                {/* 分割线 + 底部信息 */}
+                {/* 分割线 + 连接状态 + 操作按钮 */}
                 <div style={{
                   marginTop: 14, paddingTop: 12,
                   borderTop: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center',
+                  display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                    {new Date(agent.createdAt).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })} 创建
-                  </span>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {/* 左侧：状态指示 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                    {agent.lastCheckAt === null ? (
+                      <>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>未检测</span>
+                      </>
+                    ) : agent.lastCheckOk ? (
+                      <>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500, whiteSpace: 'nowrap' }}>正常</span>
+                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          {new Date(agent.lastCheckAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                        <span style={{
+                          fontSize: 11, color: '#dc2626', fontWeight: 500, whiteSpace: 'nowrap',
+                          cursor: 'help', borderBottom: '1px dashed #fca5a5',
+                        }}
+                          onMouseEnter={e => {
+                            if (!agent.lastCheckError) return;
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setErrorTip({ text: agent.lastCheckError, top: r.top - 8, left: r.left + r.width / 2 });
+                          }}
+                          onMouseLeave={() => setErrorTip(null)}>
+                          异常
+                        </span>
+                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {new Date(agent.lastCheckAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 右侧：操作按钮 */}
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
                     {isEnabled && (
-                      <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+                      <button style={{
+                        fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                        border: '1px solid #d1d5db', background: 'white', color: '#475569',
+                        display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
+                      }}
                         onClick={async () => {
                           setTesting(agent.id);
                           try {
                             const result = await api.testAgent(agent.id);
+                            // 乐观更新本地状态，无需等待服务端持久化
+                            setAgents(prev => prev.map(a =>
+                              a.id === agent.id
+                                ? { ...a, lastCheckAt: new Date().toISOString(), lastCheckOk: result.success, lastCheckError: result.success ? null : (result.error || '连接失败') }
+                                : a
+                            ));
                             if (result.success) alert('连接成功！');
                             else alert('连接失败:\n' + (result.error || '请检查配置'));
                           } catch { alert('测试请求失败'); }
                           setTesting(null);
                         }}
                         disabled={testing === agent.id}>
-                        {testing === agent.id ? '测试中...' : '连通性测试'}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        {testing === agent.id ? '测试中' : '测试'}
                       </button>
                     )}
-                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 12px' }}
+                    <button style={{
+                      fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      border: '1px solid #d1d5db', background: 'white', color: '#475569',
+                      display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
+                    }}
                       onClick={() => { setEditing(agent); setShowForm(true); }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       编辑
                     </button>
-                    <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 12px', color: '#ef4444' }}
+                    <button style={{
+                      fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      border: '1px solid #d1d5db', background: 'white', color: '#ef4444',
+                      display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
+                    }}
                       onClick={async () => {
-                        // 先检查是否被课堂使用
                         try {
                           const usage = await api.checkAgentUsage(agent.id);
                           if (usage.used) {
                             setDeleteBlocked({ agentId: agent.id, agentName: agent.name });
                             return;
                           }
-                        } catch {
-                          // 接口查不到时，直接降级
-                        }
+                        } catch {}
                         if (confirm(`确定删除 "${agent.name}" 吗？`)) {
                           await api.deleteAgent(agent.id);
                           loadAgents();
                         }
                       }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                       删除
                     </button>
                   </div>
@@ -250,6 +377,30 @@ export default function AgentsPage() {
             </button>
           </div>
         </>
+      )}
+
+      {/* 异常信息浮动浮窗 */}
+      {errorTip && (
+        <div style={{
+          position: 'fixed',
+          top: errorTip.top,
+          left: errorTip.left,
+          transform: 'translate(-50%, -100%)',
+          background: '#1e293b',
+          color: '#f1f5f9',
+          padding: '6px 10px',
+          borderRadius: 6,
+          fontSize: 11,
+          whiteSpace: 'normal',
+          wordBreak: 'break-all',
+          maxWidth: 260,
+          lineHeight: 1.5,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+          zIndex: 9999,
+          pointerEvents: 'none',
+        }}>
+          {errorTip.text}
+        </div>
       )}
     </div>
   );

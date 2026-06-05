@@ -1,8 +1,9 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
 import { FieldError } from '@/lib/components';
 
@@ -64,6 +65,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
   const [logoErr, setLogoErr] = useState(false);
+  const [failedAgents, setFailedAgents] = useState<string[]>([]);
+  const [dismissedAgents, setDismissedAgents] = useState<string[]>([]);
+  const dismissedRef = useRef<string[]>([]);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -105,6 +109,28 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       catch { setServerOnline(false); }
     }, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // 监听智能体连接异常通知
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { io } = await import('socket.io-client');
+      const sk = io(getApiBaseUrl(), { transports: ['websocket', 'polling'], reconnection: true });
+      sk.on('agents-checked', (data: any) => {
+        if (!cancelled) {
+          const allFailed: string[] = data?.failed || [];
+          setFailedAgents(allFailed.filter(a => !dismissedRef.current.includes(a)));
+        }
+      });
+      sk.on('agent-test-passed', (agentName: string) => {
+        if (!cancelled) {
+          setFailedAgents(prev => prev.filter(name => name !== agentName));
+          dismissedRef.current = dismissedRef.current.filter(name => name !== agentName);
+        }
+      });
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const handleLogin = async () => {
@@ -413,6 +439,37 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             </button>
           );
         })}
+
+        {/* 智能体异常通知 */}
+        {failedAgents.length > 0 && (
+          <div style={{
+            marginTop: 8, padding: '8px 28px 8px 10px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 8, fontSize: 12, color: '#b91c1c',
+            position: 'relative', lineHeight: 1.5,
+          }}>
+            <button onClick={() => { setFailedAgents([]); setDismissedAgents(prev => { const updated = [...prev, ...failedAgents]; dismissedRef.current = updated; return updated; }); }} style={{
+              position: 'absolute', top: 6, right: 6,
+              width: 18, height: 18, borderRadius: '50%',
+              border: 'none', background: 'transparent',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#dc2626', fontSize: 12, lineHeight: 1, padding: 0,
+              opacity: 0.6,
+            }} onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+               onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+            title="关闭提醒">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span style={{ display: 'inline' }}>{failedAgents.map((name, i) => (<span key={name} style={{ fontWeight: 700 }}>{name}{i < failedAgents.length - 1 ? '、' : ''}</span>))}连接异常</span>
+            </span>
+          </div>
+        )}
 
         {/* 底部区域 */}
         <div style={{ marginTop: 'auto' }}>

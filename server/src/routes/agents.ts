@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { testAgentConnection, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
+import { runCheckNow } from '../services/agent-checker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -314,9 +315,46 @@ router.post('/:id/test', async (req, res) => {
       extra: agent.extra || undefined,
     });
 
+    // 将测试结果持久化到数据库
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: {
+        lastCheckAt: new Date(),
+        lastCheckOk: result.success,
+        lastCheckError: result.success ? null : (result.error || '连接失败'),
+      },
+    });
+
+    // 测试成功后通知所有客户端清除该智能体的异常提醒
+    if (result.success) {
+      const io: import('socket.io').Server = req.app.get('io');
+      io.emit('agent-test-passed', agent.name);
+    }
+
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: '测试失败' });
+  }
+});
+
+// 一键检测所有已启用的智能体连通性
+router.post('/test-all', async (_req, res) => {
+  try {
+    await runCheckNow();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: '批量检测失败' });
+  }
+});
+
+// 测试 socket 事件推送
+router.post('/test-emit', (req, res) => {
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('agents-checked');
+    res.json({ success: true, clientsCount: io.engine?.clientsCount ?? 0 });
+  } else {
+    res.json({ success: false, error: 'io not found' });
   }
 });
 

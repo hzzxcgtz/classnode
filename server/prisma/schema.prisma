@@ -27,6 +27,9 @@ model Agent {
   enabled   Boolean  @default(true)
   greeting         String?   // 开场白
   greetingFetchedAt DateTime? // 开场白最后拉取时间
+  lastCheckAt       DateTime? // 最后连通性检查时间
+  lastCheckOk       Boolean?  // 最后检查是否成功
+  lastCheckError    String?   // 最后检查错误信息
   createdAt         DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -157,7 +160,6 @@ model Message {
   displayName      String?  // 脱敏后的显示名
   roundIndex       Int?     // 第几轮
   agentId          String?  // 回复的智能体
-  tokenUsage       Int?     // Token 消耗
   fileUrls         String?  // 附件 URL 列表（JSON 数组）
   fileNames        String?  // 附件名称列表（JSON 数组）
   createdAt        DateTime @default(now())
@@ -199,7 +201,6 @@ model Interaction {
   totalRounds Int      @default(0)
   firstMsgLen Int?     // 首问字数
   avgTime     Int?     // 平均响应时间(秒)
-  totalTokens Int?     // 总Token消耗
   createdAt   DateTime @default(now())
 
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)

@@ -15,15 +15,29 @@ function readableTimestamp(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
 }
 
+function getBackupDir(): string {
+  const dir = process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'backups')
+    : path.join(__dirname, '../../backups');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function getDbPath(): string {
+  if (process.env.DATABASE_URL) {
+    const m = process.env.DATABASE_URL.match(/^file:(.+)/);
+    if (m) return m[1];
+  }
+  return path.join(__dirname, '../../prisma/dev.db');
+}
+
 // Multer: 备份文件上传
 const backupStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    const backupDir = path.join(__dirname, '../../backups');
-    fs.mkdirSync(backupDir, { recursive: true });
-    cb(null, backupDir);
+    cb(null, getBackupDir());
   },
-  filename: (_req, file, cb) => {
-    cb(null, file.originalname);
+  filename: (_req, _file, cb) => {
+    cb(null, `upload-${crypto.randomUUID()}.db`);
   },
 });
 const backupUpload = multer({
@@ -88,7 +102,6 @@ router.get('/:classroomId/conversations', async (req, res) => {
           content: m.content,
           time: m.createdAt,
           roundIndex: m.roundIndex,
-          tokenUsage: m.tokenUsage,
           agentId: m.agentId,
           agentName: m.agentId ? (agentMap[m.agentId] || null) : null,
           fileUrls: m.fileUrls ? (() => { try { return JSON.parse(m.fileUrls); } catch { return undefined; } })() : undefined,
@@ -125,8 +138,6 @@ router.get('/:classroomId/stats', async (req, res) => {
         const userMsgs = msgs.filter(m => m.role === 'user');
         const totalRounds = userMsgs.length;
         const firstMsgLen = userMsgs.length > 0 ? (userMsgs[0].content?.length || 0) : 0;
-        const totalTokens = msgs.reduce((sum, m) => sum + (m.tokenUsage || 0), 0);
-
         // 计算平均响应时间：找到每条用户消息后第一条 assistant 消息的时间差
         let totalResponseTime = 0;
         let responseCount = 0;
@@ -147,7 +158,6 @@ router.get('/:classroomId/stats', async (req, res) => {
           totalRounds,
           firstMsgLen,
           avgTime,
-          totalTokens,
         };
       })
       .sort((a, b) => a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true }));
@@ -155,14 +165,13 @@ router.get('/:classroomId/stats', async (req, res) => {
     const report = {
       title: '学情报表',
       exportedAt: new Date().toISOString(),
-      headers: ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)', '总Token消耗'],
+      headers: ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'],
       rows: rows.map(r => [
         r.studentNo || '-',
         r.name,
         r.totalRounds,
         r.firstMsgLen,
         r.avgTime,
-        r.totalTokens,
       ]),
     };
 
@@ -178,9 +187,8 @@ router.get('/:classroomId/stats', async (req, res) => {
 // 数据库备份
 router.post('/backup', async (req, res) => {
   try {
-    const dbPath = path.join(__dirname, '../../prisma/dev.db');
-    const backupDir = path.join(__dirname, '../../backups');
-    fs.mkdirSync(backupDir, { recursive: true });
+    const dbPath = getDbPath();
+    const backupDir = getBackupDir();
 
     const timestamp = readableTimestamp();
     const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.db`);
@@ -204,8 +212,7 @@ router.post('/backup', async (req, res) => {
 // 获取备份列表
 router.get('/backups', async (req, res) => {
   try {
-    const backupDir = path.join(__dirname, '../../backups');
-    fs.mkdirSync(backupDir, { recursive: true });
+    const backupDir = getBackupDir();
 
     const files = fs.readdirSync(backupDir)
       .filter(f => f.startsWith('classnode-backup-') && f.endsWith('.db'))
@@ -242,7 +249,7 @@ router.get('/backups', async (req, res) => {
 // 删除备份文件
 router.delete('/backup/:name', async (req, res) => {
   try {
-    const backupDir = path.join(__dirname, '../../backups');
+    const backupDir = getBackupDir();
     const name = path.basename(req.params.name);
     const filePath = path.join(backupDir, name);
 
@@ -263,8 +270,8 @@ router.delete('/backup/:name', async (req, res) => {
 // 从备份恢复数据库
 router.post('/restore/:name', async (req, res) => {
   try {
-    const dbPath = path.join(__dirname, '../../prisma/dev.db');
-    const backupDir = path.join(__dirname, '../../backups');
+    const dbPath = getDbPath();
+    const backupDir = getBackupDir();
     const name = path.basename(req.params.name);
     const filePath = path.join(backupDir, name);
 
@@ -329,7 +336,7 @@ router.post('/restore/:name', async (req, res) => {
 // 下载备份文件（用于跨设备迁移）
 router.get('/backup/:name/download', async (req, res) => {
   try {
-    const backupDir = path.join(__dirname, '../../backups');
+    const backupDir = getBackupDir();
     const name = path.basename(req.params.name);
     const filePath = path.join(backupDir, name);
 
@@ -359,27 +366,12 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: '文件格式无效：不是有效的 SQLite 数据库文件' });
     }
-    // 计算文件哈希，检查是否与已有备份重复
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
-    const existingFiles = fs.readdirSync(path.dirname(req.file.path))
-      .filter(f => f.startsWith('classnode-backup-') && f.endsWith('.db.meta'));
-    for (const metaFile of existingFiles) {
-      try {
-        const meta = JSON.parse(fs.readFileSync(path.join(path.dirname(req.file.path), metaFile), 'utf-8'));
-        if (meta.hash === hash) {
-          const dupName = metaFile.replace(/\.meta$/, '');
-          fs.unlinkSync(req.file.path);
-          return res.status(409).json({ error: `上传的「${req.file.originalname}」与本地的「${dupName}」重复，请勿重复导入` });
-        }
-      } catch {}
-    }
-
-    // 重命名为标准格式并标记为已导入
+    // 重命名为标准格式并写入 meta 信息
     const timestamp = readableTimestamp();
     const newName = `classnode-backup-${timestamp}.db`;
     const newPath = path.join(path.dirname(req.file.path), newName);
     fs.renameSync(req.file.path, newPath);
-    // 写入 meta 信息标识来源和哈希
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(newPath)).digest('hex');
     fs.writeFileSync(newPath + '.meta', JSON.stringify({ source: 'imported', hash }));
     res.json({ success: true, name: newName, size: req.file.size });
   } catch (error) {

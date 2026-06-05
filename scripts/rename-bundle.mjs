@@ -24,6 +24,9 @@ const oldDmg = path.join(dmgDir, `ClassNode_${version}_${oldArch}.dmg`);
 const newDmg = path.join(dmgDir, `ClassNode_${version}_macos_${suffix}.dmg`);
 
 if (fs.existsSync(oldDmg)) {
+  if (fs.existsSync(newDmg)) {
+    fs.rmSync(newDmg);
+  }
   fs.renameSync(oldDmg, newDmg);
   console.log(`Renamed DMG: ClassNode_${version}_macos_${suffix}.dmg`);
 } else {
@@ -34,6 +37,9 @@ const appBundle = path.join(macosDir, 'ClassNode.app');
 const newApp = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.app`);
 
 if (fs.existsSync(appBundle)) {
+  if (fs.existsSync(newApp)) {
+    fs.rmSync(newApp, { recursive: true });
+  }
   fs.renameSync(appBundle, newApp);
   console.log(`Renamed App: ClassNode_${version}_macos_${suffix}.app`);
 } else {

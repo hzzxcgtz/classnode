@@ -370,6 +370,7 @@ function StudentChatContent() {
       });
 
       socket.on('student-blacklisted', (data: any) => {
+        if (data.studentId && data.studentId !== studentId) return;
         setBlacklisted(true);
         setWaitingAI(false);
         setStreamingContent('');
@@ -377,6 +378,7 @@ function StudentChatContent() {
       });
 
       socket.on('student-unblacklisted', (data: any) => {
+        if (data.studentId && data.studentId !== studentId) return;
         setBlacklisted(false);
         setShieldWarning(null);
         // 移除自动黑屏消息

@@ -60,7 +60,7 @@ jobs:
 
           cp -r server/dist src-tauri/resources/server/dist
           cp -r server/prisma src-tauri/resources/server/prisma
-          cp -r changelogs src-tauri/resources/server/changelogs
+          cp -r changelogs src-tauri/resources/changelogs
           cp server/package.json src-tauri/resources/server/
           cp server/.env.example src-tauri/resources/server/.env
 

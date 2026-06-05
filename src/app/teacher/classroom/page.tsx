@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
 import { getApiBaseUrl } from '@/lib/api-base';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function ClassroomBoard() {
   return (
@@ -301,11 +302,24 @@ function ClassroomBoardContent() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '3px 10px', borderRadius: 6,
+              padding: '3px 10px 3px 10px', borderRadius: 6,
               background: '#eef2ff', fontSize: 13, fontWeight: 500, color: '#2563eb',
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: 16, letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
+              <button onClick={() => setShowCodeScreen(true)} title="显示二维码"
+                style={{
+                  marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
+                  background: 'rgba(37,99,235,0.1)', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#2563eb', padding: 0, flexShrink: 0,
+                }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/>
+                  <rect x="3" y="16" width="5" height="5" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>
+                  <line x1="11" y1="3" x2="13" y2="3"/><line x1="3" y1="11" x2="3" y2="13"/><line x1="21" y1="11" x2="21" y2="13"/>
+                </svg>
+              </button>
             </div>
             <span style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
@@ -794,21 +808,36 @@ function ClassroomBoardContent() {
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
-            <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>请打开浏览器访问本机地址</p>
-            <p style={{
-              fontSize: 28, fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 40,
-              fontFamily: 'monospace', letterSpacing: 2,
-            }}>
-              http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? window.location.port : '3000'}
-            </p>
-            <div style={{
-              background: 'rgba(37,99,235,0.15)',
-              borderRadius: 20, padding: '32px 48px',
-              display: 'inline-block', marginBottom: 20,
-            }}>
-              <div style={{ fontSize: 100, fontWeight: 700, letterSpacing: 24, color: '#60a5fa', lineHeight: 1 }}>{teacherCode}</div>
+            <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 24 }}>请使用手机扫描二维码，或在浏览器访问本机地址</p>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 40, marginBottom: 32 }}>
+              <div style={{
+                background: 'white', borderRadius: 16, padding: 16,
+                display: 'inline-flex',
+              }}>
+                <QRCodeSVG
+                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? window.location.port : '3000'}/classroom?code=${teacherCode}`}
+                  size={220}
+                  level="M"
+                />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>浏览器访问</div>
+                <p style={{
+                  fontSize: 22, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 16px',
+                  fontFamily: 'monospace', letterSpacing: 1,
+                }}>
+                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? window.location.port : '3000'}
+                </p>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>或手动输入互动码</div>
+                <div style={{
+                  background: 'rgba(37,99,235,0.15)',
+                  borderRadius: 16, padding: '16px 28px',
+                  display: 'inline-block',
+                }}>
+                  <div style={{ fontSize: 72, fontWeight: 700, letterSpacing: 20, color: '#60a5fa', lineHeight: 1 }}>{teacherCode}</div>
+                </div>
+              </div>
             </div>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)', marginBottom: 40 }}>或在打开页面后输入上方互动码</p>
             <button className="btn" style={{
               background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
               border: '1px solid rgba(255,255,255,0.15)', fontSize: 14, padding: '10px 28px',

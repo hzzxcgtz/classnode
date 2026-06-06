@@ -71,8 +71,8 @@ ClassNode 不是大厂的云平台，而是一个能装进你电脑里的 AI 互
 
 | 角色 | 地址 |
 |------|------|
-| 教师端 | `http://localhost:3000/teacher` |
-| 学生端 | `http://localhost:3000/classroom` |
+| 教师端 | `http://localhost:3001/teacher` |
+| 学生端 | `http://localhost:3001/classroom` |
 
 > 学生端通过局域网访问，将 `localhost` 替换为教师电脑的局域网 IP 即可。
 

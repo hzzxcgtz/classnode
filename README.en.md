@@ -1,3 +1,5 @@
+[comment]: # (ClassNode README)
+
 <p align="center">
   <img src="public/logo.png" alt="ClassNode" width="96" height="96" style="border-radius: 20px;">
 </p>

@@ -71,12 +71,15 @@ ClassNode 便是为打破这道壁垒而生。它是一个轻量级的本地化 
 
 ### 本地源码部署
 
-以下以统信 UOS（Linux ARM64）为例，介绍完整的部署流程。
+> macOS 和 Windows 用户建议直接使用安装包，无需看此章节。以下教程仅面向 **Linux / 统信 UOS** 用户。
 
 #### 第一步：安装 Node.js
 
-**方法一：** 
-1. 直接下载二进制包安装
+访问 [Node.js 官网](https://nodejs.org) 下载 LTS 版本的 Linux 预编译二进制包，也可以直接用命令行下载：
+
+![Node.js 官网下载页面](public/images/help/nodejs-download.png)
+
+以统信 UOS（ARM64 架构）为例：
 
 ```bash
 # 创建并进入存放软件的目录
@@ -88,11 +91,11 @@ wget https://mirrors.huaweicloud.com/nodejs/v24.16.0/node-v24.16.0-linux-arm64.t
 # 解压压缩包
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
 
-# 重命名文件夹，去掉版本号后缀，方便后续配置和维护
+# 重命名文件夹，方便后续配置
 mv node-v24.16.0-linux-arm64 nodejs24
 ```
 
-2. 配置环境变量
+配置环境变量：
 
 ```bash
 # 将 Node.js 的 bin 目录加到环境变量中
@@ -102,37 +105,14 @@ echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-3. 验证安装
+验证安装：
 
 ```bash
 node -v   # 预期输出: v24.16.0
 npm -v    # 预期输出对应的 npm 版本号
 ```
 
-**方法二：** 
-1. 使用 nvm 安装
-
-```bash
-# 通过国内镜像安装 nvm
-curl -o- https://gitee.com/mirrors/nvm/raw/master/install.sh | bash
-
-# 刷新环境变量
-source ~/.bashrc
-
-# 验证安装
-nvm --version
-```
-
-2. 安装 nvm 后，必须设置国内镜像，否则下载 Node.js 会卡死
-
-```bash
-# 将 Node.js 下载源指向阿里云镜像
-echo 'export NVM_NODEJS_ORG_MIRROR=https://npmmirror.com/mirrors/node/' >> ~/.bashrc
-source ~/.bashrc
-
-# 安装指定版本
-nvm install 24.16.0
-```
+> 如果 CPU 是 x86 架构，请下载 `linux-x64` 版本；ARM 架构下载 `linux-arm64` 版本。
 
 #### 第二步：更换 npm 源
 

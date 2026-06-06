@@ -7,6 +7,7 @@ import { platformColors } from '@/lib/constants';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
+import { FieldError, Toast } from '@/lib/components';
 
 const SOCKET_URL = getApiBaseUrl();
 
@@ -22,6 +23,7 @@ export default function TeacherDashboard() {
   const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<string | null>(null);
   const [editAgentId, setEditAgentId] = useState('');
   const [qrCodeClassroom, setQrCodeClassroom] = useState<any>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const socketRef = useRef<any>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
@@ -129,7 +131,7 @@ export default function TeacherDashboard() {
       setSettingsModalClassroom(null);
       loadData();
     } catch (e: any) {
-      alert(e.message);
+      setToast({ msg: e.message, type: 'error' });
     }
   };
 
@@ -582,6 +584,8 @@ export default function TeacherDashboard() {
           </div>
         </div>
       )}
+
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* 课堂设置弹窗 */}
       {settingsModalClassroom && (

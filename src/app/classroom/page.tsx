@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
 import { getApiBaseUrl } from '@/lib/api-base';
+import { Toast } from '@/lib/components';
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -53,6 +54,8 @@ function StudentChatContent() {
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const [blacklisted, setBlacklisted] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -201,7 +204,7 @@ function StudentChatContent() {
         const cr = await api.getClassroomByCode(code);
         if (cr.status === 'ended') {
           localStorage.removeItem(`chat_session_${code}`);
-          alert('课堂已结束');
+          setToast({ msg: '课堂已结束', type: 'info' });
           router.push('/');
           return;
         }
@@ -218,7 +221,7 @@ function StudentChatContent() {
         const msg = e.message || '';
         if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
           localStorage.removeItem(`chat_session_${code}`);
-          alert('课堂已结束');
+          setToast({ msg: '课堂已结束', type: 'info' });
           router.push('/');
         }
       }
@@ -294,7 +297,7 @@ function StudentChatContent() {
 
       socket.on('ai-error', (data: any) => {
         setWaitingAI(false);
-        setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + data.error }]);
+        setConnectionError('AI 回复遇到了问题，请稍后重试');
       });
 
       socket.on('agent-disabled', () => {
@@ -308,7 +311,7 @@ function StudentChatContent() {
 
       socket.on('classroom-ended', () => {
         localStorage.removeItem(`chat_session_${code}`);
-        alert('课堂已结束');
+        setToast({ msg: '课堂已结束', type: 'info' });
         router.push('/');
       });
 
@@ -454,7 +457,7 @@ function StudentChatContent() {
   const startVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('您的浏览器不支持语音输入，请使用 Chrome');
+      setToast({ msg: '您的浏览器不支持语音输入，请使用 Chrome', type: 'info' });
       return;
     }
     const recognition = new SpeechRecognition();
@@ -484,6 +487,7 @@ function StudentChatContent() {
   const sendMessage = () => {
     const text = (inputRef.current?.value || '').trim();
     const files = attachedFiles;
+    setConnectionError(null);
     if (!text && files.length === 0) return;
     if (waitingAI || paused || agentDisabled || blacklisted || !wsRef.current) return;
     setInput('');
@@ -625,16 +629,18 @@ function StudentChatContent() {
           {renderAgentAvatar(42, 12, 20)}
           <div>
             <div style={{ fontSize: 17, fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
-            {(() => {
-              // 分组/高级模式下显示当前小组绑定的智能体名称
-              if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-                const group = classroom.groups.find(g => g.id === selectedStudent.groupId);
-                if (group?.agent?.name) return group.agent.name;
-              }
-              return classroom?.agents?.[0]?.name || 'AI 学习助手';
-            })()}
-          </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.3 }}>{classroom?.title || ''}</div>
+              {(() => {
+                if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
+                  const group = classroom.groups.find(g => g.id === selectedStudent.groupId);
+                  if (group?.agent?.name) return group.agent.name;
+                }
+                return classroom?.agents?.[0]?.name || 'AI 学习助手';
+              })()}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {classroom?.title || ''}
+              <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 600, background: '#eef2ff', padding: '1px 5px', borderRadius: 4, letterSpacing: 0.5 }}>#{code}</span>
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -891,34 +897,64 @@ function StudentChatContent() {
           </div>
         )}
 
-        {/* 暂停提示 */}
-        {paused && (
+        {/* 连接异常提示 - 浮动在输入条上方 */}
+        {connectionError && (
           <div style={{
-            maxWidth: 800, width: '100%', margin: '0 auto 10px',
-            padding: '10px 16px', borderRadius: 10,
-            background: '#fffbeb', border: '1px solid #fde68a',
-            display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#92400e',
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
+            marginBottom: 8,
+            padding: '6px 14px', borderRadius: 8,
+            background: '#fef2f2', border: '1px solid #fecaca',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#991b1b',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            zIndex: 5,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {connectionError}
+            <button onClick={() => setConnectionError(null)}
+              style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: 14 }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#fecaca'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.background = 'transparent'; }}
+            >×</button>
+          </div>
+        )}
+
+        {/* 暂停提示 - 浮动在输入条上方 */}
+        {paused && !connectionError && (
+          <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
+            marginBottom: 8,
+            padding: '6px 14px', borderRadius: 8,
+            background: '#fffbeb', border: '1px solid #fde68a',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#92400e',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            zIndex: 5,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
             课堂已暂停，等待老师继续...
           </div>
         )}
 
-        {/* 智能体停用提示 */}
-        {agentDisabled && !paused && (
+        {/* 智能体停用提示 - 浮动在输入条上方 */}
+        {agentDisabled && !paused && !connectionError && (
           <div style={{
-            maxWidth: 800, width: '100%', margin: '0 auto 10px',
-            padding: '10px 16px', borderRadius: 10,
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
+            marginBottom: 8,
+            padding: '6px 14px', borderRadius: 8,
             background: '#fef2f2', border: '1px solid #fecaca',
-            display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#991b1b',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#991b1b',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+            zIndex: 5,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             智能体已被教师停用，暂时无法回复消息
           </div>
         )}
 
         {/* 屏蔽词警告提示（黑屏后不再显示）- 浮动在输入条上方 */}
-        {shieldWarning && !blacklisted && (
+        {shieldWarning && !blacklisted && !connectionError && (
           <div style={{
             position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
             width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
@@ -982,6 +1018,7 @@ function StudentChatContent() {
             </button>
           </div>
         </div>
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       </div>
     </div>
   );

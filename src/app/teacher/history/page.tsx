@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { exportConversationsDoc, exportStatsDoc } from '@/lib/export-doc';
+import { Toast } from '@/lib/components';
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
@@ -16,6 +17,7 @@ export default function HistoryPage() {
     data: any;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     api.getHistory().then(setHistory).catch(() => {}).finally(() => setLoading(false));
@@ -30,7 +32,7 @@ export default function HistoryPage() {
         : await api.exportStats(classroomId);
       setPreview({ type, classroomId, classroom: cr, data });
     } catch (e: any) {
-      alert('获取数据失败: ' + e.message);
+      setToast({ msg: '获取数据失败: ' + e.message, type: 'error' });
     }
   };
 
@@ -53,7 +55,7 @@ export default function HistoryPage() {
       URL.revokeObjectURL(url);
       setPreview(null);
     } catch (e: any) {
-      alert('导出失败: ' + e.message);
+      setToast({ msg: '导出失败: ' + e.message, type: 'error' });
     }
     setExporting(false);
   };
@@ -290,6 +292,8 @@ export default function HistoryPage() {
           onCancel={() => setPreview(null)}
         />
       )}
+
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
@@ -559,10 +563,10 @@ function BackupManager() {
     setCreating(true);
     try {
       const result = await api.createBackup();
-      alert('备份成功！');
+      setToast({ msg: '备份成功！', type: 'success' });
       api.getBackups().then(setBackups);
     } catch (e: any) {
-      alert('备份失败: ' + e.message);
+      setToast({ msg: '备份失败: ' + e.message, type: 'error' });
     }
     setCreating(false);
   };
@@ -574,13 +578,13 @@ function BackupManager() {
     try {
       const result = await api.uploadBackup(file);
       if (result.error) {
-        alert(result.error);
+        setToast({ msg: result.error, type: 'error' });
       } else {
-        alert('导入备份成功！');
+        setToast({ msg: '导入备份成功！', type: 'success' });
         api.getBackups().then(setBackups);
       }
     } catch (e: any) {
-      alert(e.message);
+      setToast({ msg: e.message, type: 'error' });
     }
     setImporting(false);
     // 清空 input 以便再次选择同一文件
@@ -592,10 +596,10 @@ function BackupManager() {
     try {
       await api.restoreBackup(name);
       setRestoreTarget(null);
-      alert('数据恢复成功！页面将重新加载。');
+      setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
       window.location.reload();
     } catch (e: any) {
-      alert('恢复失败: ' + e.message);
+      setToast({ msg: '恢复失败: ' + e.message, type: 'error' });
     }
     setRestoring(false);
   };
@@ -607,7 +611,7 @@ function BackupManager() {
       setDeleteTarget(null);
       api.getBackups().then(setBackups);
     } catch (e: any) {
-      alert('删除失败: ' + e.message);
+      setToast({ msg: '删除失败: ' + e.message, type: 'error' });
     }
     setDeleting(false);
   };
@@ -619,10 +623,10 @@ function BackupManager() {
       await api.resetAllData();
       setShowResetDialog(false);
       setResetConfirmText('');
-      alert('所有数据已清零！页面将重新加载。');
+      setToast({ msg: '所有数据已清零！页面将重新加载。', type: 'success' });
       window.location.reload();
     } catch (e: any) {
-      alert('清零失败: ' + e.message);
+      setToast({ msg: '清零失败: ' + e.message, type: 'error' });
     }
     setResetting(false);
   };

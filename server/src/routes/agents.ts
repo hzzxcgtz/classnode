@@ -5,7 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { testAgentConnection, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
-import { runCheckNow } from '../services/agent-checker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -334,16 +333,6 @@ router.post('/:id/test', async (req, res) => {
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: '测试失败' });
-  }
-});
-
-// 一键检测所有已启用的智能体连通性
-router.post('/test-all', async (_req, res) => {
-  try {
-    await runCheckNow();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: '批量检测失败' });
   }
 });
 

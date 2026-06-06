@@ -199,15 +199,37 @@ export default function ShieldPage() {
               </span>
             </h2>
             {customWords.length > 0 && (
-              <button className="btn" onClick={async () => {
-                const ids = customWords.map(w => w.id);
-                try { await api.batchDeleteShieldWords(ids); loadData(); } catch {}
-              }}
-                style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px' }}
-                title="清空所有自定义屏蔽词">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                清空
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={async () => {
+                  const ids = customWords.map(w => w.id);
+                  const allDisabled = customWords.every(w => w.enabled === false);
+                  try { await api.batchToggleShieldWords(ids, allDisabled); loadData(); } catch {}
+                }}
+                  style={{
+                    position: 'relative', width: 40, height: 22,
+                    borderRadius: 11, border: 'none', cursor: 'pointer',
+                    background: customWords.some(w => w.enabled !== false) ? '#22c55e' : '#d1d5db',
+                    transition: 'background 0.2s', padding: 0, alignSelf: 'center',
+                  }}
+                  title={customWords.some(w => w.enabled !== false) ? '一键禁用所有自定义屏蔽词' : '一键启用所有自定义屏蔽词'}>
+                  <span style={{
+                    position: 'absolute', top: 2,
+                    left: customWords.some(w => w.enabled !== false) ? 20 : 2,
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    transition: 'left 0.2s',
+                  }} />
+                </button>
+                <button className="btn" onClick={async () => {
+                  const ids = customWords.map(w => w.id);
+                  try { await api.batchDeleteShieldWords(ids); loadData(); } catch {}
+                }}
+                  style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: customWords.length > 0 ? '#dc2626' : '#94a3b8', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}
+                  title="清空所有自定义屏蔽词">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                  一键清空
+                </button>
+              </div>
             )}
           </div>
           {customWords.length === 0 ? (
@@ -225,6 +247,7 @@ export default function ShieldPage() {
                     background: '#fef2f2', color: '#991b1b',
                     fontSize: 13, fontWeight: 500, lineHeight: 1.4,
                     border: '1px solid #fecaca',
+                    opacity: w.enabled === false ? 0.4 : 1,
                   }}>
                     {w.word}
                     <button onClick={() => deleteWord(w.id)}
@@ -271,6 +294,26 @@ export default function ShieldPage() {
               )}
             </h2>
             <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={async () => {
+                const ids = builtinWords.map(w => w.id);
+                const allDisabled = builtinWords.every(w => w.enabled === false);
+                try { await api.batchToggleShieldWords(ids, allDisabled); loadData(); } catch {}
+              }}
+                style={{
+                  position: 'relative', width: 40, height: 22,
+                  borderRadius: 11, border: 'none', cursor: 'pointer',
+                  background: builtinWords.some(w => w.enabled !== false) ? '#22c55e' : '#d1d5db',
+                  transition: 'background 0.2s', padding: 0,
+                }}
+                title={builtinWords.some(w => w.enabled !== false) ? '一键禁用所有系统屏蔽词' : '一键启用所有系统屏蔽词'}>
+                <span style={{
+                  position: 'absolute', top: 2,
+                  left: builtinWords.some(w => w.enabled !== false) ? 20 : 2,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  transition: 'left 0.2s',
+                }} />
+              </button>
               <button onClick={async () => {
                 if (!confirm('确认清空所有系统屏蔽词？自定义屏蔽词不受影响。')) return;
                 setBuiltinMsg(null);
@@ -365,12 +408,13 @@ export default function ShieldPage() {
                           display: 'flex', flexWrap: 'wrap', gap: 6,
                           borderTop: `1px solid ${cat.border}`,
                         }}>
-                          {catData.words.map(w => (
+                          {catData.words.map((w: any) => (
                             <span key={w.id} style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3,
                               padding: '3px 6px 3px 8px', borderRadius: 6,
                               background: cat.bg, color: cat.color,
                               fontSize: 12, fontWeight: 500, lineHeight: 1.4,
+                              opacity: w.enabled === false ? 0.35 : 1,
                             }}>
                               {w.word}
                               <button

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
+import { Toast } from '@/lib/components';
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -24,6 +25,7 @@ export default function ClassesPage() {
     className: string;
     classrooms: { id: string; title: string; status: string }[];
   } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const loadClasses = async () => {
     try {
@@ -565,7 +567,7 @@ export default function ClassesPage() {
                   borderBottom: '1px solid #eef2f6',
                 }}>
                   <PasteStudentNames classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => { setAddStudentMode(null); loadStudents(); }} />
+                    onAdded={() => { setAddStudentMode(null); loadStudents(); }} setToast={setToast} />
                 </div>
               )}
 
@@ -743,6 +745,7 @@ export default function ClassesPage() {
                   studentNames={sortedStudents.filter(s => selectedStudentIds.has(s.id)).map(s => s.name)}
                   onClose={() => setBatchEditModal(null)}
                   onSaved={() => { setBatchEditModal(null); setSelectedStudentIds(new Set()); loadStudents(); }}
+                  setToast={setToast}
                 />
               )}
 
@@ -753,6 +756,7 @@ export default function ClassesPage() {
                   classId={selectedClass}
                   onClose={() => setEditingStudent(null)}
                   onSaved={() => { setEditingStudent(null); loadStudents(); }}
+                  setToast={setToast}
                 />
               )}
             </div>
@@ -776,6 +780,7 @@ export default function ClassesPage() {
           )}
         </div>
       </div>
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
@@ -806,7 +811,7 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
   );
 }
 
-function PasteStudentNames({ classId, onClose, onAdded }: { classId: string; onClose: () => void; onAdded: () => void }) {
+function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: string; onClose: () => void; onAdded: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void }) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -819,7 +824,7 @@ function PasteStudentNames({ classId, onClose, onAdded }: { classId: string; onC
       await api.batchCreateStudentsFromNames(classId, names);
       onAdded();
     } catch (e: any) {
-      alert('创建失败: ' + e.message);
+      setToast({ msg: '创建失败: ' + e.message, type: 'error' });
     }
     setSaving(false);
   };
@@ -880,8 +885,8 @@ function PasteStudentNames({ classId, onClose, onAdded }: { classId: string; onC
   );
 }
 
-function EditStudentModal({ student, classId, onClose, onSaved }: {
-  student: any; classId: string; onClose: () => void; onSaved: () => void;
+function EditStudentModal({ student, classId, onClose, onSaved, setToast }: {
+  student: any; classId: string; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
 }) {
   const [name, setName] = useState(student.name || '');
   const [studentNo, setStudentNo] = useState(student.studentNo || '');
@@ -895,7 +900,7 @@ function EditStudentModal({ student, classId, onClose, onSaved }: {
       await api.updateStudent(classId, student.id, { name: name.trim(), studentNo: studentNo || undefined, tag: tag.trim() || undefined });
       onSaved();
     } catch (e: any) {
-      alert('更新失败: ' + e.message);
+      setToast({ msg: '更新失败: ' + e.message, type: 'error' });
     }
     setSaving(false);
   };
@@ -946,8 +951,8 @@ function EditStudentModal({ student, classId, onClose, onSaved }: {
   );
 }
 
-function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved }: {
-  classId: string; studentIds: string[]; studentNames: string[]; onClose: () => void; onSaved: () => void;
+function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved, setToast }: {
+  classId: string; studentIds: string[]; studentNames: string[]; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
 }) {
   const [tag, setTag] = useState('');
   const [saving, setSaving] = useState(false);
@@ -961,7 +966,7 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
       }
       onSaved();
     } catch (e: any) {
-      alert('批量更新失败: ' + e.message);
+      setToast({ msg: '批量更新失败: ' + e.message, type: 'error' });
     }
     setSaving(false);
   };

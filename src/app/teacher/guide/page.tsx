@@ -44,17 +44,17 @@ const sections = [
     id: 'ai-agents', title: '二、招募：配置您的 AI 助教团队', icon: 'bot',
     items: [
       <div>想要课堂出彩，先要有好的 AI 帮手。进入「<Highlight>AI 智能体</Highlight>」页面开始招募：</div>,
-      <><strong>多平台兼容</strong>：目前已支持 <Highlight>Coze Bot</Highlight>（低代码）和 <Highlight>Coze Agent</Highlight>（编程接入）。<strong>智谱清言</strong>和 <strong>OpenAI 兼容接口</strong>即将上线。</>,
-      <><strong>直观配置</strong>：填入平台提供的 API Key 和 Bot ID 等信息，可自定义本地名称（如"李白学长"）。支持一键从 Coze 拉取头像和开场白。</>,
+      <><strong>多平台兼容</strong>：目前已支持 <Highlight>Coze Bot</Highlight>（低代码）和 <Highlight>Coze Agent</Highlight>（编程接入）。<strong>其它接入方式</strong>陆续上线中。</>,
+      <><strong>配置更直观</strong>：填入平台提供的 API Key 和 Bot ID 等信息，可自定义本地名称（如"李白学长"）。支持一键从 Coze 拉取头像和开场白。</>,
       <div>
-        <div><strong>健康心跳监测</strong>：自动检测 AI 助教在线状态。</div>
+        <div><strong>连通性检测</strong>：系统启动时自动检测 AI 智能体在线状态。</div>
         <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 15, color: '#475569' }}>
           <div>• 卡片底部指示灯：<span style={{ color: '#22c55e', fontWeight: 600 }}>绿色</span> 代表在线，<span style={{ color: '#ef4444', fontWeight: 600 }}>红色</span> 代表离线。</div>
-          <div>• <strong>异常警报</strong>：AI 失联时左侧导航栏弹出通知（同一问题不会重复弹窗）。</div>
-          <div>• 可根据网络情况调整检测间隔。</div>
+          <div>• <strong>实时告警</strong>：课堂上 AI 连接异常时，左侧导航栏自动弹出通知。</div>
+          <div>• 也可手动点击智能体的「检测」按钮进行排查。</div>
         </div>
       </div>,
-      <><strong>助教排班</strong>：不使用的 AI 可随时禁用，创建课堂时列表更清爽。</>,
+      <><strong>智能体状态</strong>：不使用的 AI 可随时禁用，创建课堂时列表更清爽。</>,
     ],
   },
   {
@@ -131,8 +131,8 @@ const sections = [
     items: [
       <div>进入「<Highlight>屏蔽管理</Highlight>」，营造绿色课堂环境：</div>,
       <><strong>小黑屋机制</strong>：设定警告阈值（如触发 3 次违禁词），学生屏幕自动锁定黑屏，强制冷静。</>,
-      <><strong>违禁词库</strong>：内置脏话辱骂、色情低俗、暴力威胁、自残自杀四大词库。可根据情况增删，随时「恢复预设」一键还原。</>,
-      <><strong>自定义规则</strong>：添加自定义违禁词标签，灵活掌控课堂言论。</>,
+      <><strong>违禁词库</strong>：内置脏话辱骂、色情低俗、暴力威胁、自残自杀四大词库。系统词和自定义词可分别一键开启或禁用，灵活调控课堂过滤范围。</>,
+      <><strong>自定义规则</strong>：添加自定义屏蔽词，支持一键清空，灵活掌控课堂言论。</>,
     ],
   },
   {

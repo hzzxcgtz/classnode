@@ -4,6 +4,10 @@ import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { checkShieldWords } from '../services/shield-filter.js';
 
+/** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
+const agentAlertCooldown = new Map<string, number>();
+const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
+
 interface JoinRoomData {
   classroomCode: string;
   studentId: string;
@@ -183,7 +187,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           return;
         }
         // Load shield words and check content
-        const shieldWords = await prisma.shieldWord.findMany({ select: { word: true } });
+        const shieldWords = await prisma.shieldWord.findMany({ where: { enabled: true }, select: { word: true } });
         const wordList = shieldWords.map(w => w.word);
         if (wordList.length > 0) {
           const { filtered, matched } = checkShieldWords(data.content, wordList);
@@ -471,6 +475,29 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
             studentId: data.studentId,
             status: false,
           });
+          // 更新智能体状态并推送告警（带冷却，同一智能体 2 分钟内只通知一次）
+          if (agent) {
+            try {
+              await prisma.agent.update({
+                where: { id: agent.id },
+                data: {
+                  lastCheckAt: new Date(),
+                  lastCheckOk: false,
+                  lastCheckError: result.error || '连接失败',
+                },
+              });
+            } catch {}
+            const now = Date.now();
+            const lastAlert = agentAlertCooldown.get(agent.id);
+            if (!lastAlert || now - lastAlert > AGENT_ALERT_COOLDOWN_MS) {
+              agentAlertCooldown.set(agent.id, now);
+              io.emit('agent-connection-lost', {
+                agentId: agent.id,
+                agentName: agent.name,
+              });
+              io.emit('agents-checked', { failed: [agent.name] });
+            }
+          }
         }
       } catch (error) {
         console.error('[Socket] send-message error:', error);

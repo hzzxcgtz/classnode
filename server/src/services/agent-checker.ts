@@ -1,33 +1,15 @@
 /**
- * 智能体连通性定时检测服务
+ * 智能体连通性检测服务
  *
- * 按可配置的时间间隔周期性地测试所有已启用智能体的 API 连通性，
- * 将检测结果更新到 Agent 表的 lastCheckAt / lastCheckOk / lastCheckError 字段。
+ * 启动时检测一次所有已启用智能体，不设置定时循环。
+ * 手工检测由 agent 管理页面触发。
  */
 import { PrismaClient } from '@prisma/client';
 import { Server } from 'socket.io';
 import { testAgentConnection } from './ai-proxy.js';
 
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let prisma: PrismaClient | null = null;
 let io: Server | null = null;
-
-/** 默认检测间隔（分钟） */
-const DEFAULT_INTERVAL_MINUTES = 10;
-
-/** 获取当前配置的检测间隔（分钟） */
-async function getIntervalMinutes(): Promise<number> {
-  try {
-    if (!prisma) return DEFAULT_INTERVAL_MINUTES;
-    const setting = await prisma.setting.findUnique({
-      where: { key: 'agent_check_interval' },
-    });
-    const val = parseInt(setting?.value || String(DEFAULT_INTERVAL_MINUTES), 10);
-    return Math.max(val, 1);
-  } catch {
-    return DEFAULT_INTERVAL_MINUTES;
-  }
-}
 
 /** 检查单个智能体的连通性，返回是否成功 */
 async function checkAgent(agent: {
@@ -69,7 +51,7 @@ async function checkAgent(agent: {
   }
 }
 
-/** 执行一次全量检测 */
+/** 执行一次全量检测（被手工检测和启动检测共用） */
 export async function runCheckNow(): Promise<void> {
   if (!prisma) return;
   try {
@@ -86,33 +68,15 @@ export async function runCheckNow(): Promise<void> {
   }
 }
 
-/** 安排下一次定时检测 */
-async function scheduleNext(): Promise<void> {
-  if (intervalHandle) clearInterval(intervalHandle);
-  const minutes = await getIntervalMinutes();
-  intervalHandle = setInterval(runCheckNow, minutes * 60 * 1000);
-  console.log(`[AgentChecker] 定时检测已启动，间隔 ${minutes} 分钟`);
-}
-
 /**
- * 启动定时检测（服务器启动时调用）
- * 首次启动会立即执行一次检测
+ * 启动时检测一次（服务器启动时调用）
+ * 仅检测已启用的智能体
  */
 export async function startAgentChecker(prismaInstance: PrismaClient, ioInstance: Server): Promise<void> {
   prisma = prismaInstance;
   io = ioInstance;
-  // 延迟首次检测，避免启动时网络尚未稳定导致的假异常
+  // 延迟 10 秒，避免启动时网络尚未稳定导致的假异常
   await new Promise(resolve => setTimeout(resolve, 10_000));
   await runCheckNow();
-  // 然后按间隔定时执行
-  await scheduleNext();
-}
-
-/**
- * 重启定时器（设置变更后调用）
- */
-export async function restartAgentChecker(): Promise<void> {
-  if (!prisma) return;
-  if (intervalHandle) clearInterval(intervalHandle);
-  await scheduleNext();
+  // 不再设置定时循环
 }

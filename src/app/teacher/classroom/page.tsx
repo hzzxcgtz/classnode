@@ -8,6 +8,8 @@ import { useSocket } from '@/lib/socket';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
 import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
+import { Toast } from '@/lib/components';
 
 export default function ClassroomBoard() {
   return (
@@ -32,6 +34,62 @@ function ClassroomBoardContent() {
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [showCodeScreen, setShowCodeScreen] = useState(false);
   const [teacherCode, setTeacherCode] = useState('');
+
+  /** 生成并下载带 Logo 的二维码图片 */
+  const downloadQRCode = async () => {
+    const origin = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : '';
+    const qrValue = `${origin}/classroom?code=${teacherCode}`;
+    const qrSize = 760;
+    const textHeight = 70;
+    const totalWidth = qrSize;
+    const totalHeight = qrSize + textHeight;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = totalWidth;
+    canvas.height = totalHeight;
+    const ctx = canvas.getContext('2d')!;
+
+    await QRCode.toCanvas(canvas, qrValue, {
+      width: qrSize,
+      margin: 3,
+      color: { dark: '#1a1a2e', light: '#ffffff' },
+    });
+
+    const logoSize = qrSize * 0.2;
+    const cx = qrSize / 2, cy = qrSize / 2;
+    const logoImg = new Image();
+    logoImg.crossOrigin = 'anonymous';
+    await new Promise<void>((resolve) => {
+      logoImg.onload = () => {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cx, cy, logoSize / 2 + 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, logoSize / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(logoImg, cx - logoSize / 2, cy - logoSize / 2, logoSize, logoSize);
+        ctx.restore();
+        resolve();
+      };
+      logoImg.onerror = () => { resolve(); };
+      logoImg.src = `/qr-logo.png`;
+    });
+
+    const title = classroom?.title || '互动课堂';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1a1a2e';
+    ctx.font = 'bold 24px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(title, qrSize / 2, qrSize + textHeight / 2);
+
+    const link = document.createElement('a');
+    link.download = `ClassNode-${teacherCode}-${title}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
   const [paused, setPaused] = useState(false);
   const [allMessages, setAllMessages] = useState<any[]>([]);
   const [showAnalytics, setShowAnalytics] = useState(true);
@@ -45,6 +103,7 @@ function ClassroomBoardContent() {
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
   const [studentBlacklisted, setStudentBlacklisted] = useState<Record<string, boolean>>({});
   const [groupTooltip, setGroupTooltip] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo(() => {
@@ -215,7 +274,7 @@ function ClassroomBoardContent() {
     const unsub5 = on('classroom-paused', () => setPaused(true));
     const unsub6 = on('classroom-resumed', () => setPaused(false));
     const unsub7 = on('classroom-ended', () => {
-      alert('课堂已结束');
+      setToast({ msg: '课堂已结束', type: 'info' });
       router.push('/teacher');
     });
 
@@ -796,8 +855,12 @@ function ClassroomBoardContent() {
 
       {/* 投屏发码 */}
       {showCodeScreen && (
-        <div className="fullscreen-overlay" onClick={() => setShowCodeScreen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300, overflow: 'auto',
+          background: '#0f172a',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowCodeScreen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '40px 20px' }}>
             <div style={{
               width: 56, height: 56, borderRadius: 14,
               background: 'rgba(255,255,255,0.08)',
@@ -809,16 +872,43 @@ function ClassroomBoardContent() {
               </svg>
             </div>
             <p style={{ fontSize: 30, color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用手机或平板扫描二维码，或在浏览器打开下方网址</p>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 40 }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 36, flexWrap: 'wrap' }}>
               <div style={{
-                background: 'white', borderRadius: 24, padding: 24,
-                display: 'inline-flex',
+                background: 'white', borderRadius: 24, overflow: 'hidden',
+                display: 'inline-flex', flexDirection: 'column',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
               }}>
-                <QRCodeSVG
-                  value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
-                  size={360}
-                  level="M"
-                />
+                <div style={{ padding: 24, position: 'relative', display: 'inline-flex' }}>
+                  <QRCodeSVG
+                    value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
+                    size={360}
+                    level="M"
+                  />
+                  <img src="/qr-logo.png" alt=""
+                    style={{
+                      position: 'absolute', top: '50%', left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: 72, height: 72, borderRadius: '50%',
+                      objectFit: 'cover', background: 'white',
+                      padding: 4, boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    }}
+                    onError={e => { (e.target as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+                <button onClick={downloadQRCode}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '14px 0', border: 'none', cursor: 'pointer',
+                    borderTop: '1px solid #eef2f6',
+                    background: '#f8fafc', color: '#2563eb',
+                    fontSize: 14, fontWeight: 600,
+                    transition: 'all 0.15s', width: '100%',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  下载二维码图片
+                </button>
               </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
@@ -1287,6 +1377,7 @@ function ClassroomBoardContent() {
           {groupMembersMap[groupTooltip.id].map((d: any) => d.studentName).filter(Boolean).join('、')}
         </div>
       )}
+      {toast && <Toast msg={toast.msg} type={toast.type as any} onClose={() => setToast(null)} />}
     </div>
   );
 }

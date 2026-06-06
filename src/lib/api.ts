@@ -53,7 +53,6 @@ export const api = {
     return request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/info?${query}`);
   },
   testAgent: (id: string) => request<{ success: boolean; error?: string }>(`/api/agents/${id}/test`, { method: 'POST' }),
-  testAllAgents: () => request<{ success: boolean }>('/api/agents/test-all', { method: 'POST' }),
 
   // Classes
   getClasses: () => request<any[]>('/api/classes'),
@@ -140,6 +139,10 @@ export const api = {
     request(`/api/shield/words/${id}`, { method: 'DELETE' }),
   batchDeleteShieldWords: (ids: string[]) =>
     request('/api/shield/words/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+  toggleShieldWord: (id: string) =>
+    request<any>(`/api/shield/words/${id}/toggle`, { method: 'PUT' }),
+  batchToggleShieldWords: (ids: string[], enabled: boolean) =>
+    request('/api/shield/words/batch-toggle', { method: 'PUT', body: JSON.stringify({ ids, enabled }) }),
   getShieldConfig: () => request<any>('/api/shield/config'),
   updateShieldConfig: (autoBlackCount: number) =>
     request('/api/shield/config', { method: 'PUT', body: JSON.stringify({ autoBlackCount }) }),

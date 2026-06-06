@@ -24,14 +24,17 @@ router.get('/words/categories', async (req, res) => {
     // 从数据库查出所有内置词，建立 word -> id 映射
     const dbWords = await prisma.shieldWord.findMany({
       where: { builtin: true },
-      select: { id: true, word: true },
+      select: { id: true, word: true, enabled: true },
     });
     const dbWordMap = new Map(dbWords.map(w => [w.word, w.id]));
 
     const result = Object.entries(shieldCategories).map(([name, words]) => {
       const filtered = words
         .filter(w => dbWordMap.has(w))
-        .map(w => ({ id: dbWordMap.get(w)!, word: w }));
+        .map(w => {
+          const dbWord = dbWords.find(d => d.word === w);
+          return { id: dbWordMap.get(w)!, word: w, enabled: dbWord?.enabled ?? true };
+        });
       return { name, count: filtered.length, words: filtered };
     });
     res.json(result);
@@ -100,6 +103,37 @@ router.post('/words/clear-builtin', async (req, res) => {
     res.json({ success: true, deleted: count });
   } catch (error) {
     res.status(500).json({ error: '清空默认屏蔽词失败' });
+  }
+});
+
+// 切换屏蔽词启用/禁用状态
+router.put('/words/:id/toggle', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const word = await prisma.shieldWord.findUnique({ where: { id: req.params.id } });
+    if (!word) return res.status(404).json({ error: '屏蔽词不存在' });
+    const updated = await prisma.shieldWord.update({
+      where: { id: req.params.id },
+      data: { enabled: !word.enabled },
+    });
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: '切换失败' });
+  }
+});
+
+// 批量切换屏蔽词启用/禁用状态
+router.put('/words/batch-toggle', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { ids, enabled } = req.body;
+    await prisma.shieldWord.updateMany({
+      where: { id: { in: ids } },
+      data: { enabled },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: '批量切换失败' });
   }
 });
 

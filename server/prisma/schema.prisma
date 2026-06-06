@@ -172,6 +172,7 @@ model ShieldWord {
   id        String   @id @default(uuid())
   word      String   @unique
   builtin   Boolean  @default(false)
+  enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
 }
 

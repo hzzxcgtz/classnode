@@ -71,11 +71,15 @@ Download the installer for your platform from the [Release page](https://gitcode
 
 ### Deploy from Source
 
-The following uses UOS (Linux ARM64) as an example to walk through the complete deployment workflow.
+> macOS and Windows users should use the installer package — this section is for **Linux / UOS** users only.
 
 #### Step 1: Install Node.js
 
-**Method 1:** Download and install the binary package directly
+Visit the [Node.js official website](https://nodejs.org) to download the LTS precompiled binary for Linux, or use the command line directly:
+
+![Node.js download page](public/images/help/nodejs-download.png)
+
+The following uses UOS (ARM64) as an example:
 
 ```bash
 # Create and enter the software directory
@@ -108,27 +112,7 @@ node -v   # Expected output: v24.16.0
 npm -v    # Expected output: corresponding npm version
 ```
 
-**Method 2:** Install using nvm
-
-```bash
-# Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-
-# Refresh environment variables
-source ~/.bashrc
-
-# Verify installation
-nvm --version
-```
-
-Install the specified Node.js version:
-
-```bash
-# Install the latest LTS version
-nvm install --lts
-
-# Or install a specific version
-nvm install 24.16.0
+> Download `linux-x64` for x86 CPUs or `linux-arm64` for ARM CPUs.
 ```
 
 #### Step 2: Deploy ClassNode

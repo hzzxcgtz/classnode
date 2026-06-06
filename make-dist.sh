@@ -18,9 +18,9 @@ echo "=========================================="
 echo ""
 echo "Source: $SRC_DIR"
 
-# Port note: 3000 (frontend) and 3001 (backend) are intentionally hardcoded
+# Port note: 3001 (frontend) and 3002 (backend) are intentionally hardcoded
 # in api-base.ts, page.tsx, standalone-*.html, serve-frontend.js, and startup scripts.
-echo "  Ports: frontend=3000, backend=3001"
+echo "  Ports: frontend=3001, backend=3002"
 
 read -p "Destination (default: ${DEFAULT_DST}): " DST_DIR
 DST_DIR="${DST_DIR:-$DEFAULT_DST}"
@@ -45,6 +45,7 @@ rsync -av \
   --exclude='out' \
   --exclude='server/node_modules' \
   --exclude='server/dist' \
+  --exclude='server/frontend' \
   --exclude='server/prisma/dev.db' \
   --exclude='server/uploads/chat' \
   --exclude='server/uploads/logos' \
@@ -58,6 +59,7 @@ rsync -av \
   --exclude='next-env.d.ts' \
   --exclude='eslint.config.mjs' \
   --exclude='server/.env' \
+  --exclude='.env.development' \
   --exclude='.git' \
   --exclude='.DS_Store' \
   "$SRC_DIR/" "$DST_DIR/" 2>/dev/null

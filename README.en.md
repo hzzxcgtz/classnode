@@ -25,7 +25,7 @@
 
 ## Why It Was Built
 
-AI technology is advancing rapidly, and many teachers can skillfully craft excellent AI agents. Yet when they eagerly try to bring these成果 into real classrooms, they are often held back by harsh realities: fragile school networks, tedious account registration, invisible interaction processes, and data that scatters when the bell rings.
+AI technology is advancing rapidly, and many teachers can skillfully craft excellent AI agents. Yet when they eagerly try to bring these achievements into real classrooms, they are often held back by harsh realities: fragile school networks, tedious account registration, invisible interaction processes, and data that scatters when the bell rings.
 
 **When technology itself is no longer a barrier, the real challenge is deployment.**
 
@@ -41,7 +41,7 @@ ClassNode was born to break through this wall. It is a lightweight, local AI int
 | :--- | :--- |
 | **Cumbersome registration, hard to distribute** | **Scan to join** — no passwords, no registration, the whole class connects in seconds |
 | **Black box process, no visibility into learning** | **Real-time sync** — full panorama on the teacher dashboard, fully visualized monitoring throughout |
-| **Internet-dependent, limited by bandwidth** | **LAN-based** — no internet出口 needed, unafraid of network outages |
+| **Internet-dependent, limited by bandwidth** | **LAN-based** — no internet access needed, unafraid of network outages |
 | **Data vanishes, nothing left for research** | **Local storage** — complete record of trajectories, one-click Word report export |
 
 ---

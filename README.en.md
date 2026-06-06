@@ -144,7 +144,35 @@ Access after startup:
 ## Changelog
 
 <details>
-<summary>v1.3.4 — 2026-06-06 (Latest)</summary>
+<summary>v1.3.5 — 2026-06-07 (Latest)</summary>
+
+#### Agent Connectivity Optimization
+- Removed periodic health checks, now only checks on startup to save API quota
+- Real-time teacher notification when student-AI connection fails (2-min cooldown per agent to prevent spam)
+- Keep manual per-agent test button
+
+#### Content Filtering Enhancement
+- System and custom blocked words now support one-click enable/disable
+- Disabled words appear semi-transparent and are excluded from filtering
+
+#### Alert System Upgrade
+- Replaced all native `alert()` dialogs with non-blocking bottom Toast notifications
+- Agent error alerts in the navigation bar moved to bottom Toast
+
+#### QR Code Fix
+- Added ClassNode logo overlay and download button to the classroom dashboard QR code
+
+#### Student UI Improvements
+- Display room code in the chat header
+- Fixed floating prompts pushing the input area down
+
+#### Other Fixes
+- Fixed build script including old logo files
+- Fixed port comments not matching actual configuration
+</details>
+
+<details>
+<summary>v1.3.4 — 2026-06-06</summary>
 
 #### About Page Redesign
 - Added a developer story section, using a "The Origin" letter-paper design to tell the story behind ClassNode

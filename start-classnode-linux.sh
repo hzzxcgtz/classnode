@@ -4,8 +4,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
 cd "$SCRIPT_DIR" || exit 1
 
-FRONTEND_PORT=3000
-BACKEND_PORT=3001
+FRONTEND_PORT=3001
+BACKEND_PORT=3002
 
 echo ""
 echo "  ========================================"

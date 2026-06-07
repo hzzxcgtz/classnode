@@ -71,41 +71,38 @@ Download the installer for your platform from the [Release page](https://gitcode
 
 ### Deploy from Source
 
-> macOS and Windows users should use the installer package — this section is for **Linux / UOS** users only.
+> macOS and Windows users should use the installer package — this section is for **Linux** users only.
 
 #### Step 1: Install Node.js
 
 Visit the [Node.js official website](https://nodejs.org) to download the LTS precompiled binary for Linux, or use the command line directly:
 
-![Node.js download page](public/images/help/nodejs-download-en.png)
+**Download from the website:**
 
-The following uses UOS (ARM64) as an example:
+<img src="public/images/help/nodejs-download-en.png" alt="Node.js download page" width=“400">
+
+**Or download via command line:**
 
 ```bash
-# Create and enter the software directory
 mkdir -p ~/software && cd ~/software
-
-# Download the Node.js binary package
 wget https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
+```
 
-# Extract the package
+**Extract and rename (using UOS ARM64 as an example):**
+
+```bash
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
-
-# Rename the folder for easier maintenance
 mv node-v24.16.0-linux-arm64 nodejs24
 ```
 
-Configure environment variables:
+**Set up environment variables:**
 
 ```bash
-# Add Node.js bin directory to PATH
 echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
-
-# Refresh config to take effect immediately
 source ~/.bashrc
 ```
 
-Verify installation:
+**Verify installation:**
 
 ```bash
 node -v   # Expected output: v24.16.0
@@ -113,9 +110,15 @@ npm -v    # Expected output: corresponding npm version
 ```
 
 > Download `linux-x64` for x86 CPUs or `linux-arm64` for ARM CPUs.
+
+#### Step 2: Change npm registry (recommended for China users)
+
+```bash
+npm config set registry https://registry.npmmirror.com
+npm config get registry
 ```
 
-#### Step 2: Deploy ClassNode
+#### Step 3: Deploy ClassNode
 
 Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.x.x.zip`), extract it, open a terminal in the extracted directory, and run the startup script:
 

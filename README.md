@@ -71,31 +71,31 @@ ClassNode 便是为打破这道壁垒而生。它是一个轻量级的本地化 
 
 ### 本地源码部署
 
-> macOS 和 Windows 用户建议直接使用安装包，无需看此章节。以下教程仅面向 **Linux / 统信 UOS** 用户。
+> macOS 和 Windows 用户建议直接使用安装包，无需看此章节。以下教程面向 **Linux** 用户。
 
 #### 第一步：安装 Node.js
 
 访问 [Node.js 官网](https://nodejs.org) 下载 LTS 版本的 Linux 预编译二进制包，也可以直接用命令行下载：
 
-![Node.js 官网下载页面](public/images/help/nodejs-download.png)
+**官网下载：**
 
-以统信 UOS（ARM64 架构）为例：
+<img src="public/images/help/nodejs-download.png" alt="Node.js 官网下载页面" width=“400">
+
+**或命令行下载：**
 
 ```bash
-# 创建并进入存放软件的目录
 mkdir -p ~/software && cd ~/software
-
-# 从华为云镜像站下载 v24.16.0 的 Linux ARM64 二进制包
 wget https://mirrors.huaweicloud.com/nodejs/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
+```
 
-# 解压压缩包
+**解压与重命名（以统信 UOS ARM64 为例）：**
+
+```bash
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
-
-# 重命名文件夹，方便后续配置
 mv node-v24.16.0-linux-arm64 nodejs24
 ```
 
-配置环境变量：
+**配置环境变量：**
 
 ```bash
 # 将 Node.js 的 bin 目录加到环境变量中

@@ -371,7 +371,7 @@ router.get('/backup/uploads-chat', async (req, res) => {
 
     const archive = new ZipArchive();
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=classnode-uploads-chat-${readableTimestamp()}.zip`);
+    res.setHeader('Content-Disposition', `attachment; filename=classnode-uploads-chat-${readableTimestamp()}.classchat`);
     archive.pipe(res);
     archive.directory(uploadsDir, 'chat');
     await archive.finalize();

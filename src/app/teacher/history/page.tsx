@@ -693,7 +693,7 @@ function BackupManager() {
           style={{ display: 'none' }} />
       </div>
 
-      {      {/* 跨设备迁移提示 */}
+      {/* 跨设备迁移提示 */}
       <div style={{
         padding: '14px 18px', marginBottom: 16,
         background: '#fffbeb', borderRadius: 12,

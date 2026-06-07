@@ -559,30 +559,29 @@ function BackupManager() {
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
 
-  const handleBackup = async () => {
+  const handleFullBackup = async () => {
     setCreating(true);
     try {
-      const result = await api.createBackup();
-      setToast({ msg: '备份成功！', type: 'success' });
-      api.getBackups().then(setBackups);
+      const url = api.createFullBackup();
+      window.open(url, '_blank');
+      setToast({ msg: '备份文件正在下载...', type: 'success' });
     } catch (e: any) {
       setToast({ msg: '备份失败: ' + e.message, type: 'error' });
     }
     setCreating(false);
   };
 
-  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFullRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImporting(true);
     try {
-      const result = await api.uploadBackup(file);
-      if (result.error) {
-        setToast({ msg: result.error, type: 'error' });
-      } else {
-        setToast({ msg: '导入备份成功！', type: 'success' });
-        api.getBackups().then(setBackups);
-      }
+      await api.restoreFullBackup(file);
+      setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
+      setTimeout(() => location.reload(), 1500);
+    } catch (e: any) {
+      setToast({ msg: '恢复失败: ' + (e.message || e), type: 'error' });
+    }
     } catch (e: any) {
       setToast({ msg: e.message, type: 'error' });
     }
@@ -645,7 +644,7 @@ function BackupManager() {
     <div>
       {/* 操作栏：备份 + 清零 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <button className="btn btn-primary" onClick={handleBackup} disabled={creating}
+        <button className="btn btn-primary" onClick={handleFullBackup} disabled={creating}
           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {creating ? (
             <>
@@ -657,11 +656,11 @@ function BackupManager() {
           ) : (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              立即备份数据库
+              备份全部
             </>
           )}
         </button>
-        <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+        <button onClick={() => document.getElementById('restoreFileInput')?.click()} disabled={importing}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
             borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
@@ -669,8 +668,10 @@ function BackupManager() {
             opacity: importing ? 0.6 : 1,
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-          {importing ? '导入中...' : '导入备份'}
+          {importing ? '恢复中...' : '恢复备份'}
         </button>
+        <input id="restoreFileInput" type="file" accept=".classbak,.zip" style={{ display: 'none' }}
+          onChange={handleFullRestore} />
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowResetDialog(true)}
           style={{
@@ -681,69 +682,32 @@ function BackupManager() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
           数据库清零
         </button>
-        <input ref={fileInputRef} type="file" accept=".classdb,.db" onChange={handleImportBackup}
-          style={{ display: 'none' }} />
       </div>
 
       {/* 跨设备迁移提示 */}
       <div style={{
-        padding: '14px 18px', marginBottom: 16,
+        padding: '16px 20px', marginBottom: 16,
         background: '#fffbeb', borderRadius: 12,
         border: '1px solid #fde68a',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <strong style={{ fontSize: 14, color: '#92400e' }}>跨设备迁移须知</strong>
+          <strong style={{ fontSize: 14, color: '#92400e' }}>跨设备迁移</strong>
         </div>
-        <div style={{ paddingLeft: 24 }}>
-          <div style={{ fontSize: 13, color: '#b45309', lineHeight: 1.6, marginBottom: 14 }}>
-            数据库备份仅包含文字数据。跨设备迁移请按以下步骤操作：
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>1</div>
+            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>点击上方<strong>「备份全部」</strong>，下载一个完整的备份文件</span>
           </div>
-          <div style={{ display: 'flex', gap: 20, marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>1</div>
-              <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>下载本页的<strong>数据库备份</strong><br/>和右侧<strong>附件包</strong></span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>2</div>
-              <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>在新电脑上安装 ClassNode，通过<strong>导入备份</strong><br/>和右侧<strong>上传附件包</strong>恢复数据</span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', color: '#d97706' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <button onClick={() => { const url = api.downloadUploadsChat(); window.open(url, '_blank'); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 18px',
-                borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                border: 'none', background: '#2563eb', color: 'white',
-                boxShadow: '0 2px 6px rgba(37,99,235,0.2)',
-              }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              下载附件包
-            </button>
-            <button onClick={() => document.getElementById('uploadChatInput')?.click()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 18px',
-                borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                border: '1px solid #d1d5db', background: 'white', color: '#374151',
-              }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              上传附件包
-          </button>
-          <input id="uploadChatInput" type="file" accept=".classchat,.zip" style={{ display: 'none' }}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              try {
-                await api.uploadChatPackage(file);
-                setToast({ msg: '附件导入成功！', type: 'success' });
-              } catch (err: any) {
-                setToast({ msg: '附件导入失败: ' + (err.message || err), type: 'error' });
-              }
-              e.target.value = '';
-            }} />
-        </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>2</div>
+            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「恢复备份」</strong>，选择刚才的文件即可</span>
+          </div>
         </div>
       </div>
       {backups.length > 0 && (

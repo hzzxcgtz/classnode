@@ -409,6 +409,123 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
   }
 });
 
+// ─── 合并备份：数据库 + 附件（一键全量备份） ─────────────
+
+function getUploadsChatDir(): string {
+  return process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
+    : path.join(__dirname, '../../uploads', 'chat');
+}
+
+router.post('/backup/full', async (req, res) => {
+  try {
+    const dbPath = getDbPath();
+    const chatDir = getUploadsChatDir();
+    const { ZipArchive } = _require('archiver');
+
+    if (!fs.existsSync(dbPath)) {
+      return res.status(500).json({ error: '数据库文件不存在' });
+    }
+
+    const archive = new ZipArchive();
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename=classnode-full-backup-${readableTimestamp()}.classbak`);
+    archive.pipe(res);
+
+    // 添加数据库
+    archive.file(fs.createReadStream(dbPath), { name: 'data.db' });
+
+    // 添加附件目录（如果存在且有文件）
+    if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
+      archive.directory(chatDir, 'chat');
+    }
+
+    await archive.finalize();
+  } catch (error: any) {
+    console.error('[FullBackup] 创建失败:', error?.message || error);
+    res.status(500).json({ error: '备份失败: ' + (error?.message || '未知错误') });
+  }
+});
+
+// 恢复合并备份
+const fullRestoreUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, getBackupDir()),
+    filename: (_req, _file, cb) => cb(null, `full-restore-${Date.now()}.zip`),
+  }),
+});
+
+router.post('/backup/full/restore', fullRestoreUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '未选择文件' });
+
+    const tmpDir = path.join(getBackupDir(), `extract-${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const AdmZip = _require('adm-zip');
+    const zip = new AdmZip(req.file.path);
+    zip.extractAllTo(tmpDir, true);
+
+    // 恢复数据库
+    const dbPath = getDbPath();
+    const dataFile = path.join(tmpDir, 'data.db');
+    if (!fs.existsSync(dataFile)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: '备份文件不包含数据库' });
+    }
+    fs.copyFileSync(dataFile, dbPath);
+    // 清理旧的 WAL 文件
+    for (const ext of ['-wal', '-shm']) {
+      const p = dbPath + ext;
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+
+    // 恢复附件
+    const chatDir = getUploadsChatDir();
+    const chatExtract = path.join(tmpDir, 'chat');
+    if (fs.existsSync(chatExtract) && fs.readdirSync(chatExtract).length > 0) {
+      // 先清空原有 chat 目录
+      if (fs.existsSync(chatDir)) {
+        for (const f of fs.readdirSync(chatDir)) {
+          fs.rmSync(path.join(chatDir, f), { recursive: true, force: true });
+        }
+      } else {
+        fs.mkdirSync(chatDir, { recursive: true });
+      }
+      // 复制附件
+      for (const f of fs.readdirSync(chatExtract)) {
+        fs.cpSync(path.join(chatExtract, f), path.join(chatDir, f), { recursive: true });
+      }
+    }
+
+    // 清理临时文件
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.unlinkSync(req.file.path);
+
+    // 同步数据库结构（跨版本兼容）
+    try {
+      const { execSync } = await import('child_process');
+      const prismaCli = path.join(__dirname, '../../../node_modules/.bin/prisma');
+      if (fs.existsSync(prismaCli)) {
+        execSync(`"${process.execPath}" "${prismaCli}" db push --accept-data-loss`, {
+          cwd: path.resolve(__dirname, '../..'),
+          env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
+          stdio: 'pipe',
+          timeout: 30000,
+        });
+      }
+    } catch (e) {
+      console.warn('[FullBackup] 数据库结构同步失败（可忽略）:', e);
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[FullBackup] 恢复失败:', error?.message || error);
+    res.status(500).json({ error: '恢复失败: ' + (error?.message || '未知错误') });
+  }
+});
+
 // 导入备份文件（来自其他设备的迁移）
 router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   try {

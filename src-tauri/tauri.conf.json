@@ -7,10 +7,22 @@
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "rm -rf src-tauri/resources/server/frontend && cp -r out src-tauri/resources/server/frontend"
+    "beforeBuildCommand": "cp src-tauri/resources/dashboard.html out/ && rm -rf src-tauri/resources/server/frontend && cp -r out src-tauri/resources/server/frontend"
   },
   "app": {
-    "windows": [],
+    "windows": [
+      {
+        "label": "dashboard",
+        "url": "dashboard.html",
+        "title": "ClassNode",
+        "width": 520,
+        "height": 700,
+        "resizable": true,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     }

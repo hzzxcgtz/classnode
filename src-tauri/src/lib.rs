@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::os::windows::process::CommandExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+use serde::Serialize;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -30,7 +31,7 @@ fn get_local_ips() -> Vec<String> {
             ifaces
                 .iter()
                 .filter_map(|i| match &i.addr {
-                    if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some(format!("IP: {}", v4.ip)),
+                    if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some(v4.ip.to_string()),
                     _ => None,
                 })
                 .collect()
@@ -52,6 +53,7 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "打开教师端", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "显示面板", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
@@ -70,6 +72,7 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     menu.append(&start)?;
     menu.append(&stop)?;
     menu.append(&open)?;
+    menu.append(&show)?;
     menu.append(&sep2)?;
     menu.append(&quit)?;
     Ok(menu)
@@ -94,8 +97,6 @@ fn set_tray_icon(app: &AppHandle, running: bool) {
                 if let Err(e) = tray.set_icon_as_template(true) {
                     eprintln!("设置托盘图标模板模式失败: {}", e);
                 }
-            } else {
-                eprintln!("未找到托盘对象 main");
             }
         }
         Err(e) => {
@@ -105,7 +106,6 @@ fn set_tray_icon(app: &AppHandle, running: bool) {
 }
 
 fn update_tray(app: &AppHandle, running: bool) {
-    eprintln!("update_tray(running={}) 被调用", running);
     set_tray_icon(app, running);
 
     let tooltip = if running {
@@ -125,8 +125,6 @@ fn update_tray(app: &AppHandle, running: bool) {
                 eprintln!("构建菜单失败: {}", e);
             }
         }
-    } else {
-        eprintln!("update_tray: 未找到托盘对象 main");
     }
 }
 
@@ -170,10 +168,9 @@ fn find_node(app: &AppHandle) -> String {
     "node".to_string()
 }
 
-/// 检查并清理占用指定端口的旧进程（防止上次退出遗留的孤儿进程）
 fn ensure_port_free(port: u16) {
     if TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
-        return; // 端口空闲，无需处理
+        return;
     }
 
     eprintln!("端口 {port} 已被占用，正在清理旧进程...");
@@ -191,7 +188,6 @@ fn ensure_port_free(port: u16) {
                     let _ = Command::new("kill").args(["-9", &pid.to_string()]).spawn();
                 }
             }
-            // 等待进程释放端口
             std::thread::sleep(Duration::from_millis(500));
         }
     }
@@ -222,7 +218,6 @@ fn ensure_port_free(port: u16) {
 }
 
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
-    // 先清理可能遗留的旧进程
     ensure_port_free(SERVER_PORT);
 
     let server_dir = get_server_dir(app)?;
@@ -233,7 +228,6 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         return Err(format!("服务端脚本未找到: {:?}", server_script));
     }
 
-    // 使用用户数据目录存放数据库和上传文件，避免 Windows Program Files 只读问题
     let data_dir = app
         .path()
         .app_data_dir()
@@ -241,7 +235,6 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
 
-    // 创建运行时所需的子目录
     for sub in &["uploads/chat", "uploads/logos", "uploads/temp", "backups"] {
         fs::create_dir_all(data_dir.join(sub))
             .map_err(|e| format!("创建目录 {} 失败: {}", sub, e))?;
@@ -262,7 +255,6 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let data_dir_str = data_dir.to_string_lossy().to_string();
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
-    // 同步数据库 schema（兼容跨版本升级）
     let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
     if prisma_cli.exists() {
         eprintln!("同步数据库 schema...");
@@ -290,7 +282,6 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
             .current_dir(&server_dir)
             .env("CLASSNODE_DATA_DIR", &data_dir_str)
             .env("DATABASE_URL", &db_url);
-        // 创建独立进程组，退出时一起清理
         #[cfg(unix)]
         cmd.process_group(0);
         #[cfg(target_os = "windows")]
@@ -309,11 +300,9 @@ fn stop_server(app: &AppHandle) -> Result<(), String> {
         let mut child = info.child;
         let pid = child.id();
 
-        // 先正常终止子进程
         let _ = child.kill();
         let _ = child.wait();
 
-        // 确保整个进程组被清理（包括可能的子进程）
         #[cfg(unix)]
         {
             let _ = Command::new("kill")
@@ -335,34 +324,82 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
     false
 }
 
-fn open_browser() {
-    let ips = get_local_ips();
-    eprintln!("open_browser: 获取到的 IP 列表: {:?}", ips);
-    let host = ips
-        .first()
-        .map(|s| s.trim_start_matches("IP: "))
-        .unwrap_or("localhost");
-    let url = format!("http://{}:{SERVER_PORT}/teacher", host);
-    eprintln!("open_browser: 最终打开 URL: {}", url);
+fn open_browser_url(url: &str) {
     let result = if cfg!(target_os = "macos") {
-        Command::new("open").arg(&url).spawn()
+        Command::new("open").arg(url).spawn()
     } else if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/c", "start", &url]).spawn()
+        Command::new("cmd").args(["/c", "start", url]).spawn()
     } else {
-        Command::new("xdg-open").arg(&url).spawn()
+        Command::new("xdg-open").arg(url).spawn()
     };
     if let Err(e) = result {
         eprintln!("打开浏览器失败: {}", e);
     }
 }
 
+// ─── Tauri Commands ──────────────────────────────────────
+
+#[derive(Serialize)]
+struct ServerStatus {
+    running: bool,
+    port: u16,
+    ips: Vec<String>,
+}
+
+#[tauri::command]
+fn get_server_status(app: AppHandle) -> ServerStatus {
+    let running = TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
+    let ips = get_local_ips();
+    ServerStatus {
+        running,
+        port: SERVER_PORT,
+        ips,
+    }
+}
+
+#[tauri::command]
+fn start_server(app: AppHandle) -> Result<(), String> {
+    if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
+        return Err("服务已在运行中".to_string());
+    }
+    spawn_server(&app)?;
+    update_tray(&app, true);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_server(app: AppHandle) -> Result<(), String> {
+    stop_server(&app)?;
+    update_tray(&app, false);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_url(app: AppHandle, url_type: String) {
+    let ip = get_local_ips().first().cloned().unwrap_or_else(|| "localhost".to_string());
+    let url = match url_type.as_str() {
+        "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
+        "student" => format!("http://{}:{}/classroom", ip, SERVER_PORT),
+        _ => format!("http://{}:{}/teacher", ip, SERVER_PORT),
+    };
+    open_browser_url(&url);
+}
+
+// ─── App Entry ───────────────────────────────────────────
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(ServerState(Mutex::new(None)))
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
-            // 无需额外操作，插件会自动阻止第二个实例启动
+            // 阻止第二个实例启动
         }))
+        .invoke_handler(tauri::generate_handler![
+            get_server_status,
+            start_server,
+            stop_server,
+            open_url,
+        ])
         .setup(|app| {
             let icon = Image::from_bytes(tray_icon_bytes(false))
                 .map_err(|e| format!("无法加载托盘图标: {e}"))?;
@@ -390,7 +427,15 @@ pub fn run() {
                             update_tray(app, false);
                         }
                     }
-                    "open" => open_browser(),
+                    "open" => open_browser_url(
+                        &format!("http://localhost:{}/teacher", SERVER_PORT),
+                    ),
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("dashboard") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
                     "quit" => {
                         let _ = stop_server(app);
                         app.exit(0);
@@ -400,7 +445,7 @@ pub fn run() {
                 .build(app)?;
             mem::forget(tray);
 
-            // 延迟到事件循环就绪后启动服务
+            // 延迟启动服务
             let handle = app.handle().clone();
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || {
@@ -408,14 +453,6 @@ pub fn run() {
                     eprintln!("自动启动服务失败: {}", e);
                 } else {
                     update_tray(&h, true);
-                    // 后台线程等待服务就绪后再打开浏览器，不阻塞主线程
-                    std::thread::spawn(|| {
-                        if wait_for_server(SERVER_PORT, Duration::from_secs(15)) {
-                            open_browser();
-                        } else {
-                            eprintln!("等待服务启动超时，请手动打开管理页面");
-                        }
-                    });
                 }
             });
 

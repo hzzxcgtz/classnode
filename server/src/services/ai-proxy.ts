@@ -5,6 +5,27 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** 带超时的 fetch，避免上游 AI API 挂起时连接永不释放 */
+async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number } = {}): Promise<Response> {
+  const { timeout = FETCH_TIMEOUT_MS, ...fetchOpts } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...fetchOpts, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 安全解析 JSON，解析失败返回默认值 */
+function safeParseJSON<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+
 /** 清理 AI 响应的多余内容 */
 function cleanResponse(text: string): string {
   let result = text;
@@ -143,7 +164,7 @@ async function proxyCoze(
     });
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
     {
       method: 'POST',
@@ -210,7 +231,7 @@ async function pollCozeMessages(
   // 轮询等待聊天完成 (Coze 使用 GET + query params)
   for (let i = 0; i < maxRetries; i++) {
     const statusUrl = `${baseUrl}/v3/chat/retrieve?chat_id=${encodeURIComponent(chatId)}&conversation_id=${encodeURIComponent(conversationId)}`;
-    const statusRes = await fetch(statusUrl, {
+    const statusRes = await fetchWithTimeout(statusUrl, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${apiKey}` },
     });
@@ -234,7 +255,7 @@ async function pollCozeMessages(
 
   // 获取消息列表 (GET)
   const msgUrl = `${baseUrl}/v3/chat/message/list?chat_id=${encodeURIComponent(chatId)}&conversation_id=${encodeURIComponent(conversationId)}`;
-  const msgRes = await fetch(msgUrl, {
+  const msgRes = await fetchWithTimeout(msgUrl, {
     method: 'GET',
     headers: { 'Authorization': `Bearer ${apiKey}` },
   });
@@ -283,7 +304,7 @@ async function proxyDify(
     }));
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${agent.apiUrl}/chat-messages`,
     {
       method: 'POST',
@@ -340,7 +361,7 @@ async function proxyOpenAI(
     messages.push({ role: 'user', content: message });
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     agent.apiUrl || 'https://api.openai.com/v1/chat/completions',
     {
       method: 'POST',
@@ -384,7 +405,7 @@ export async function discoverCozeBotWithPat(pat: string, matchName?: string): P
     const baseUrl = 'https://api.coze.cn';
 
     // 获取工作区列表
-    const wsRes = await fetch(`${baseUrl}/v1/workspaces`, {
+    const wsRes = await fetchWithTimeout(`${baseUrl}/v1/workspaces`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${pat}` },
     });
@@ -394,7 +415,7 @@ export async function discoverCozeBotWithPat(pat: string, matchName?: string): P
 
     // 遍历所有工作区查找机器人
     for (const ws of workspaces) {
-      const botRes = await fetch(`${baseUrl}/v1/bots?workspace_id=${ws.id}&page_size=50`, {
+      const botRes = await fetchWithTimeout(`${baseUrl}/v1/bots?workspace_id=${ws.id}&page_size=50`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${pat}` },
       });
@@ -431,7 +452,7 @@ export async function fetchAgentGreeting(agent: AgentConfig): Promise<string | n
         const baseUrl = agent.apiUrl || 'https://api.coze.cn';
         // GET /v1/bot/get_online_info 返回 OnboardingInfoV2 含 prologue
         const url = `${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`;
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${agent.apiKey}` },
         });
@@ -448,7 +469,7 @@ export async function fetchAgentGreeting(agent: AgentConfig): Promise<string | n
       case 'coze-agent': {
         if (!agent.botId) return null;
         const baseUrl = 'https://api.coze.cn';
-        const res = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
+        const res = await fetchWithTimeout(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${agent.apiKey}` },
         });
@@ -483,7 +504,7 @@ export async function fetchAgentInfo(agent: AgentConfig): Promise<{
       case 'coze': {
         const baseUrl = agent.apiUrl || 'https://api.coze.cn';
         const url = `${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`;
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${agent.apiKey}` },
         });
@@ -504,7 +525,7 @@ export async function fetchAgentInfo(agent: AgentConfig): Promise<{
         const baseUrl = 'https://api.coze.cn';
         const result: { name?: string; iconUrl?: string; greeting?: string } = {};
 
-        const infoRes = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
+        const infoRes = await fetchWithTimeout(`${baseUrl}/v1/bot/get_online_info?bot_id=${agent.botId}`, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${agent.apiKey}` },
         });
@@ -603,7 +624,7 @@ async function uploadFileToDify(apiUrl: string, apiKey: string, fileUrl: string)
     formData.append('file', blob, fileName);
     formData.append('type', 'image');
 
-    const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/files/upload`, {
+    const response = await fetchWithTimeout(`${apiUrl.replace(/\/+$/, '')}/files/upload`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}` },
       body: formData,
@@ -669,7 +690,7 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
 
     console.log('[CozeUpload] Uploading to Coze:', fileName, `(${(fileBuffer.length / 1024).toFixed(1)}KB, ${mimeType})`);
 
-    const response = await fetch(`${baseUrl}/v1/files/upload`, {
+    const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -731,7 +752,7 @@ async function proxyCozeAgent(
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 
-  const extra = agent.extra ? JSON.parse(agent.extra) : {};
+  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
   if (!projectId) return { success: false, error: 'Coze Agent 需要 Project ID' };
 
@@ -757,7 +778,7 @@ async function proxyCozeAgent(
 
   // 支持用户填写完整 URL 或仅填 base URL
   const streamUrl = baseUrl.includes('/stream_run') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/stream_run`;
-  const response = await fetch(streamUrl, {
+  const response = await fetchWithTimeout(streamUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
@@ -860,7 +881,7 @@ async function proxyCozeStream(
     });
   }
 
-  const response = await fetch(`${baseUrl}/v3/chat`, {
+  const response = await fetchWithTimeout(`${baseUrl}/v3/chat`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
@@ -979,7 +1000,7 @@ async function proxyDifyStream(
     }));
   }
 
-  const response = await fetch(`${agent.apiUrl}/chat-messages`, {
+  const response = await fetchWithTimeout(`${agent.apiUrl}/chat-messages`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
@@ -1059,7 +1080,7 @@ async function proxyOpenAIStream(
     messages.push({ role: 'user', content: message });
   }
 
-  const response = await fetch(agent.apiUrl || 'https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithTimeout(agent.apiUrl || 'https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
@@ -1120,7 +1141,7 @@ async function proxyCozeAgentStream(
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 
-  const extra = agent.extra ? JSON.parse(agent.extra) : {};
+  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
   if (!projectId) return { success: false, error: 'Coze Agent 需要 Project ID' };
 
@@ -1145,7 +1166,7 @@ async function proxyCozeAgentStream(
   };
 
   const streamUrl = baseUrl.includes('/stream_run') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/stream_run`;
-  const response = await fetch(streamUrl, {
+  const response = await fetchWithTimeout(streamUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
@@ -1216,7 +1237,7 @@ async function proxyCozeAgentStream(
 /** 获取智谱清言 access_token（两步鉴权） */
 async function getZhipuaiToken(baseUrl: string, apiKey: string, apiSecret: string): Promise<string | null> {
   try {
-    const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/get_token`, {
+    const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/get_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
@@ -1240,7 +1261,7 @@ async function proxyZhipuai(
   fileUrls?: string[]
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://chatglm.cn/chatglm/assistant-api/v1';
-  const extra = agent.extra ? JSON.parse(agent.extra) : {};
+  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const apiSecret = extra.apiSecret || '';
 
   if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
@@ -1249,7 +1270,7 @@ async function proxyZhipuai(
   const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
   if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
 
-  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/stream_sync`, {
+  const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream_sync`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1292,7 +1313,7 @@ async function proxyZhipuaiStream(
   fileUrls?: string[]
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://chatglm.cn/chatglm/assistant-api/v1';
-  const extra = agent.extra ? JSON.parse(agent.extra) : {};
+  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const apiSecret = extra.apiSecret || '';
 
   if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
@@ -1301,7 +1322,7 @@ async function proxyZhipuaiStream(
   const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
   if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
 
-  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/stream`, {
+  const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

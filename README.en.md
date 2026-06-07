@@ -77,7 +77,7 @@ Download the installer for your platform from the [Release page](https://gitcode
 
 Visit the [Node.js official website](https://nodejs.org) to download the LTS precompiled binary for Linux, or use the command line directly:
 
-![Node.js download page](public/images/help/nodejs-download.png)
+![Node.js download page](public/images/help/nodejs-download-en.png)
 
 The following uses UOS (ARM64) as an example:
 
@@ -148,27 +148,24 @@ Access after startup:
 
 #### Agent Connectivity Optimization
 - Removed periodic health checks, now only checks on startup to save API quota
-- Real-time teacher notification when student-AI connection fails (2-min cooldown per agent to prevent spam)
+- Real-time teacher notification when student-AI connection fails
 - Keep manual per-agent test button
 
 #### Content Filtering Enhancement
 - System and custom blocked words now support one-click enable/disable
 - Disabled words appear semi-transparent and are excluded from filtering
 
-#### Alert System Upgrade
-- Replaced all native `alert()` dialogs with non-blocking bottom Toast notifications
-- Agent error alerts in the navigation bar moved to bottom Toast
-
 #### QR Code Fix
-- Added ClassNode logo overlay and download button to the classroom dashboard QR code
+- Added ClassNode logo overlay to the classroom dashboard QR code
+- Added QR code image download feature
 
 #### Student UI Improvements
 - Display room code in the chat header
-- Fixed floating prompts pushing the input area down
 
-#### Other Fixes
+### Fixes
+
 - Fixed build script including old logo files
-- Fixed port comments not matching actual configuration
+- Fixed floating prompts pushing the input area down
 </details>
 
 <details>

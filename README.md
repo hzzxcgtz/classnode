@@ -1,4 +1,4 @@
-[comment]: # (ClassNode README)
+	[comment]: # (ClassNode README)
 
 <p align="center">
   <img src="public/logo.png" alt="ClassNode" width="96" height="96" style="border-radius: 20px;">
@@ -157,27 +157,24 @@ chmod +x start-classnode-linux.sh
 
 #### 智能体连通性检测优化
 - 取消定时自动检测，改为启动时检测一次，节省 API 调用额度
-- 学生与 AI 对话时若连接失败，实时通知教师端（同一智能体 2 分钟内只通知一次）
+- 学生与 AI 对话时若连接失败，实时通知教师端
 - 保留单个智能体手动检测功能
 
 #### 屏蔽词系统增强
 - 系统屏蔽词和自定义屏蔽词支持一键启用/禁用
 - 禁用后的屏蔽词以半透明显示，不再参与过滤
 
-#### 弹窗提示全面升级
-- 全部 alert() 原生弹窗替换为底部 Toast 轻提示
-- 教师端导航栏智能体异常通知改为底部 Toast
-
 #### 课堂投屏二维码修复
-- 课堂看板投屏发码增加 ClassNode Logo 和下载按钮
+- 课堂看板的投屏发码增加 ClassNode Logo 显示
+- 新增二维码图片下载功能
 
 #### 学生端 UI 优化
 - 对话页顶部显示当前课堂互动码
-- 修复多个浮动提示框撑大输入区域的问题
 
-#### 其他修复
-- 修复打包脚本包含旧 logo 文件的问题
-- 修复端口注释与实际不一致的问题
+### 修复
+
+- 修复 make-dist.sh 打包包含旧 logo 文件的问题
+- 修复学生端多个浮动提示框撑大输入区域的问题
 </details>
 
 <details>

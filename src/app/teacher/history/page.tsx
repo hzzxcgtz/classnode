@@ -546,6 +546,7 @@ function StatsPreview({ data }: { data: any }) {
 function BackupManager() {
   const [backups, setBackups] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
@@ -870,6 +871,7 @@ function BackupManager() {
           </div>
         </div>
       )}
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }

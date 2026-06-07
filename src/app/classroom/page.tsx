@@ -1008,7 +1008,13 @@ function StudentChatContent() {
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
-            <input ref={inputRef} type="text" defaultValue="" onInput={e => setInput((e.target as HTMLInputElement).value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
+            <input ref={inputRef} type="text" value={input} onInput={e => setInput((e.target as HTMLInputElement).value)} onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                if ((e.nativeEvent as any).isComposing) return;
+                e.preventDefault();
+                sendMessage();
+              }
+            }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
               style={{ flex: 1, fontSize: 16, padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
             <button type="button" onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled || blacklisted}
               style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>

@@ -26,7 +26,12 @@ function getBackupDir(): string {
 function getDbPath(): string {
   if (process.env.DATABASE_URL) {
     const m = process.env.DATABASE_URL.match(/^file:(.+)/);
-    if (m) return m[1];
+    if (m) {
+      const p = m[1];
+      // DATABASE_URL 是相对于 prisma/ 目录的，fs 操作需要绝对路径
+      if (!path.isAbsolute(p) && !p.startsWith('.')) return p;
+      return path.resolve(__dirname, '../../prisma', p);
+    }
   }
   return path.join(__dirname, '../../prisma/dev.db');
 }

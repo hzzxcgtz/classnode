@@ -116,23 +116,21 @@ router.post('/create', async (req, res) => {
         }).catch(() => {});
       }
     } else {
-      // 标准/高级模式：将班级个体学生加入课堂
-      for (const cc of classroom.classes) {
-        for (const student of cc.class.students) {
-          await prisma.classroomStudent.create({
-            data: {
-              classroomId: classroom.id,
-              studentId: student.id,
-            },
-          });
-          // Create interaction record
-          await prisma.interaction.create({
-            data: {
-              classroomId: classroom.id,
-              studentId: student.id,
-            },
-          }).catch(() => {}); // Ignore unique constraint errors
-        }
+      // 标准/高级模式：将班级个体学生加入课堂（批量写入）
+      const allStudents = classroom.classes.flatMap((cc: any) => cc.class.students);
+      if (allStudents.length > 0) {
+        await prisma.classroomStudent.createMany({
+          data: allStudents.map((s: any) => ({
+            classroomId: classroom.id,
+            studentId: s.id,
+          })),
+        });
+        await prisma.interaction.createMany({
+          data: allStudents.map((s: any) => ({
+            classroomId: classroom.id,
+            studentId: s.id,
+          })),
+        });
       }
     }
 

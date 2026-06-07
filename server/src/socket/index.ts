@@ -8,6 +8,23 @@ import { checkShieldWords } from '../services/shield-filter.js';
 const agentAlertCooldown = new Map<string, number>();
 const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 
+/** 屏蔽词缓存（避免每次发消息都查询数据库） */
+let cachedShieldWords: string[] = [];
+let shieldWordsCacheTime = 0;
+const SHIELD_WORDS_CACHE_TTL = 3_000;
+
+async function getShieldWords(prisma: PrismaClient): Promise<string[]> {
+  const now = Date.now();
+  if (cachedShieldWords.length > 0 && now - shieldWordsCacheTime < SHIELD_WORDS_CACHE_TTL) {
+    return cachedShieldWords;
+  }
+  const words = await prisma.shieldWord.findMany({ where: { enabled: true }, select: { word: true } });
+  cachedShieldWords = words.map(w => w.word);
+  shieldWordsCacheTime = now;
+  return cachedShieldWords;
+}
+
+
 interface JoinRoomData {
   classroomCode: string;
   studentId: string;
@@ -70,12 +87,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           return;
         }
 
-        // 检查该学生是否已在其他设备登录
+        // 同一学生重复连接时，断开旧连接，保留新连接
         const connKey = `${classroom.id}:${data.studentId}`;
-        if (activeConnections.has(connKey)) {
-          // 拒绝新连接，提示该姓名已被登录
-          socket.emit('identity-conflict', { error: `"${data.studentId}" 这个姓名已经有同学登录了，不能重复登录` });
-          return;
+        const oldSocketId = activeConnections.get(connKey);
+        if (oldSocketId && oldSocketId !== socket.id) {
+          try { io.sockets.sockets.get(oldSocketId)?.emit('ai-error', { error: '账号已在其他设备登录' }); } catch {}
+          try { io.sockets.sockets.get(oldSocketId)?.disconnect(true); } catch {}
         }
 
         // 记录新连接
@@ -187,8 +204,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           return;
         }
         // Load shield words and check content
-        const shieldWords = await prisma.shieldWord.findMany({ where: { enabled: true }, select: { word: true } });
-        const wordList = shieldWords.map(w => w.word);
+        const wordList = await getShieldWords(prisma);
         if (wordList.length > 0) {
           const { filtered, matched } = checkShieldWords(data.content, wordList);
           if (matched.length > 0) {

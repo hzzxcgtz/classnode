@@ -4,7 +4,10 @@ import crypto from 'crypto';
 const router: Router = Router();
 
 const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.createHash('sha256').update('classnode-default-key-2024').digest('hex').slice(0, 32);
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || (() => {
+  console.warn('[Settings] 使用默认加密密钥，生产环境请设置 ENCRYPTION_KEY 环境变量');
+  return crypto.createHash('sha256').update('classnode-default-key-2024').digest('hex').slice(0, 32);
+})();
 
 function encrypt(text: string): string {
   const iv = crypto.randomBytes(12);

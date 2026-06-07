@@ -98,6 +98,7 @@ function ClassroomBoardContent() {
   const [fsCols, setFsCols] = useState(5);
   const gridRef = useRef<HTMLDivElement>(null);
   const fsContentRef = useRef<HTMLDivElement>(null);
+  const fullscreenContentRef = useRef<HTMLDivElement>(null);
   const { joinTeacherBoard, on } = useSocket();
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
@@ -149,6 +150,15 @@ function ClassroomBoardContent() {
       });
     }
   }, [selectedStudent, messages]);
+
+  // 投屏讲评展开时自动滚到底部
+  useEffect(() => {
+    if (showFullscreen && fullscreenContentRef.current) {
+      requestAnimationFrame(() => {
+        fullscreenContentRef.current?.scrollTo({ top: fullscreenContentRef.current.scrollHeight, behavior: 'auto' });
+      });
+    }
+  }, [showFullscreen, messages]);
 
   const loadClassroom = useCallback(async () => {
     if (!id) return;
@@ -1003,7 +1013,7 @@ function ClassroomBoardContent() {
           </div>
 
           {/* 对话内容 */}
-          <div style={{
+          <div ref={fullscreenContentRef} style={{
             flex: 1, overflow: 'auto', padding: '40px 60px',
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>

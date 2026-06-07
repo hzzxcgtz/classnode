@@ -148,6 +148,8 @@ model ClassroomStudent {
   messages  Message[]
 
   @@unique([classroomId, studentId])
+  @@index([classroomId, status])
+  @@index([studentId])
 }
 
 // 互动消息
@@ -165,6 +167,10 @@ model Message {
   createdAt        DateTime @default(now())
 
   classroomStudent ClassroomStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([classroomId])
+  @@index([studentId])
+  @@index([classroomId, createdAt])
 }
 
 // 屏蔽词
@@ -207,4 +213,5 @@ model Interaction {
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
 
   @@unique([classroomId, studentId])
+  @@index([classroomId])
 }

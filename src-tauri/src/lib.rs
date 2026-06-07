@@ -401,8 +401,9 @@ pub fn run() {
                 .icon_as_template(true)
                 .tooltip("ClassNode - 已停止")
                 .menu(&menu)
+                .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
+                    if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
                         if let Some(window) = tray.app_handle().get_webview_window("dashboard") {
                             let _ = window.show();
                             let _ = window.set_focus();

@@ -79,7 +79,7 @@ ClassNode 便是为打破这道壁垒而生。它是一个轻量级的本地化 
 
 **官网下载：**
 
-<img src="public/images/help/nodejs-download.png" alt="Node.js 官网下载页面" width=“400">
+<img src="public/images/help/nodejs-download.png" alt="Node.js 官网下载页面" width="400">
 
 **或命令行下载：**
 

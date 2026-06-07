@@ -79,7 +79,7 @@ Visit the [Node.js official website](https://nodejs.org) to download the LTS pre
 
 **Download from the website:**
 
-<img src="public/images/help/nodejs-download-en.png" alt="Node.js download page" width=“400">
+<img src="public/images/help/nodejs-download-en.png" alt="Node.js download page" width="400">
 
 **Or download via command line:**
 

@@ -51,7 +51,7 @@ const backupUpload = multer({
   storage: backupStorage,
   limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!file.originalname.endsWith('.db')) {
+    if (!file.originalname.endsWith('.classdb') && !file.originalname.endsWith('.db')) {
       cb(new Error('仅支持 .db 格式的备份文件'));
       return;
     }
@@ -198,7 +198,7 @@ router.post('/backup', async (req, res) => {
     const backupDir = getBackupDir();
 
     const timestamp = readableTimestamp();
-    const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.db`);
+    const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.classdb`);
 
     fs.copyFileSync(dbPath, backupPath);
 
@@ -222,7 +222,7 @@ router.get('/backups', async (req, res) => {
     const backupDir = getBackupDir();
 
     const files = fs.readdirSync(backupDir)
-      .filter(f => f.startsWith('classnode-backup-') && f.endsWith('.db'))
+      .filter(f => f.startsWith('classnode-backup-') && (f.endsWith('.classdb') || f.endsWith('.db')))
       .map(f => {
         const metaPath = path.join(backupDir, f + '.meta');
         let source: string = 'local';
@@ -233,7 +233,7 @@ router.get('/backups', async (req, res) => {
           } catch {}
         }
         // 从文件名解析时间，比 birthtime 更可靠
-        const match = f.match(/^classnode-backup-(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})\.db$/);
+        const match = f.match(/^classnode-backup-(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})\.(classdb|db)$/);
         const createdAt = match
           ? new Date(`${match[1]}T${match[2]}:${match[3]}:${match[4]}`).toISOString()
           : fs.statSync(path.join(backupDir, f)).birthtime.toISOString();

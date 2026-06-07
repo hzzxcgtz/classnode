@@ -661,7 +661,6 @@ function BackupManager() {
             </>
           )}
         </button>
-        <div style={{ flex: 1 }} />
         <button onClick={() => fileInputRef.current?.click()} disabled={importing}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
@@ -672,6 +671,7 @@ function BackupManager() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
           {importing ? '导入中...' : '导入备份'}
         </button>
+        <div style={{ flex: 1 }} />
         <button onClick={() => setShowResetDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
@@ -681,7 +681,7 @@ function BackupManager() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
           数据库清零
         </button>
-        <input ref={fileInputRef} type="file" accept=".db" onChange={handleImportBackup}
+        <input ref={fileInputRef} type="file" accept=".classdb,.db" onChange={handleImportBackup}
           style={{ display: 'none' }} />
       </div>
 
@@ -697,27 +697,38 @@ function BackupManager() {
           </svg>
           <strong style={{ fontSize: 14, color: '#92400e' }}>跨设备迁移须知</strong>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingLeft: 24 }}>
-          <span style={{ fontSize: 13, color: '#b45309', lineHeight: 1.6, flex: 1 }}>
-            数据库备份仅包含文字数据。跨设备迁移时请一并操作附件文件。
-          </span>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div style={{ paddingLeft: 24 }}>
+          <div style={{ fontSize: 13, color: '#b45309', lineHeight: 1.6, marginBottom: 14 }}>
+            数据库备份仅包含文字数据。跨设备迁移请按以下步骤操作：
+          </div>
+          <div style={{ display: 'flex', gap: 20, marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>1</div>
+              <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>下载本页的<strong>数据库备份</strong><br/>和右侧<strong>附件包</strong></span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>2</div>
+              <span style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>在新电脑上安装 ClassNode，通过<strong>导入备份</strong><br/>和右侧<strong>上传附件包</strong>恢复数据</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <button onClick={() => { const url = api.downloadUploadsChat(); window.open(url, '_blank'); }}
               style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px',
-                borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 18px',
+                borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 border: 'none', background: '#2563eb', color: 'white',
+                boxShadow: '0 2px 6px rgba(37,99,235,0.2)',
               }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               下载附件包
             </button>
             <button onClick={() => document.getElementById('uploadChatInput')?.click()}
               style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px',
-                borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 18px',
+                borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 border: '1px solid #d1d5db', background: 'white', color: '#374151',
               }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               上传附件包
           </button>
           <input id="uploadChatInput" type="file" accept=".classchat,.zip" style={{ display: 'none' }}

@@ -402,7 +402,7 @@ pub fn run() {
                 .tooltip("ClassNode - 已停止")
                 .menu(&menu)
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::DoubleClick { .. } = event {
+                    if let TrayIconEvent::Click { .. } = event {
                         if let Some(window) = tray.app_handle().get_webview_window("dashboard") {
                             let _ = window.show();
                             let _ = window.set_focus();

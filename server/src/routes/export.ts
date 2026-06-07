@@ -210,9 +210,13 @@ router.post('/backup', async (req, res) => {
     // 添加数据库
     archive.file(dbPath, { name: 'data.db' });
 
-    // 添加附件目录（如果存在且有文件）
+    // 添加附件目录（支持 chat 和 logos，不备份 temp）
     if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
       archive.directory(chatDir, 'chat');
+    }
+    const logosDir = path.join(getUploadsDir(), 'logos');
+    if (fs.existsSync(logosDir) && fs.readdirSync(logosDir).length > 0) {
+      archive.directory(logosDir, 'logos');
     }
 
     await archive.finalize();
@@ -332,13 +336,15 @@ router.post('/restore/:name', async (req, res) => {
       }
       fs.copyFileSync(dataFile, dbPath);
 
-      // 恢复附件
-      const chatExtract = path.join(tmpDir, 'chat');
-      const chatDir = getUploadsChatDir();
-      if (fs.existsSync(chatExtract) && fs.readdirSync(chatExtract).length > 0) {
-        if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
-        for (const f of fs.readdirSync(chatExtract)) {
-          fs.cpSync(path.join(chatExtract, f), path.join(chatDir, f), { recursive: true, force: true });
+      // 恢复附件（chat + logos）
+      for (const sub of ['chat', 'logos']) {
+        const srcDir = path.join(tmpDir, sub);
+        const dstDir = path.join(getUploadsDir(), sub);
+        if (fs.existsSync(srcDir) && fs.readdirSync(srcDir).length > 0) {
+          if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
+          for (const f of fs.readdirSync(srcDir)) {
+            fs.cpSync(path.join(srcDir, f), path.join(dstDir, f), { recursive: true, force: true });
+          }
         }
       }
 
@@ -461,6 +467,12 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
 
 // ─── 合并备份：数据库 + 附件（一键全量备份） ─────────────
 
+function getUploadsDir(): string {
+  return process.env.CLASSNODE_DATA_DIR
+    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
+    : path.join(__dirname, '../../uploads');
+}
+
 function getUploadsChatDir(): string {
   return process.env.CLASSNODE_DATA_DIR
     ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
@@ -485,9 +497,13 @@ router.get('/backup/full', async (req, res) => {
     // 添加数据库
     archive.file(dbPath, { name: 'data.db' });
 
-    // 添加附件目录（如果存在且有文件）
+    // 添加附件目录（支持 chat 和 logos，不备份 temp）
     if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
       archive.directory(chatDir, 'chat');
+    }
+    const logosDir = path.join(getUploadsDir(), 'logos');
+    if (fs.existsSync(logosDir) && fs.readdirSync(logosDir).length > 0) {
+      archive.directory(logosDir, 'logos');
     }
 
     await archive.finalize();

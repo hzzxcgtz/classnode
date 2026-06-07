@@ -272,9 +272,9 @@ export default function HistoryPage() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
               </div>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
                 <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>
-                  备份本地数据库文件，用于跨设备迁移或数据保全
+                  备份和恢复课堂数据，跨设备迁移时请一并处理附件文件
                 </p>
               </div>
             </div>
@@ -696,28 +696,28 @@ function BackupManager() {
           </svg>
           <strong style={{ fontSize: 14, color: '#92400e' }}>跨设备迁移须知</strong>
         </div>
-        <div style={{ fontSize: 13, color: '#b45309', lineHeight: 1.6, marginBottom: 14, paddingLeft: 24 }}>
-          数据库备份仅包含文字数据。如需完整迁移，请一并下载附件包，并在新电脑上导入。
-        </div>
-        <div style={{ display: 'flex', gap: 10, paddingLeft: 24 }}>
-          <button onClick={() => { const url = api.downloadUploadsChat(); window.open(url, '_blank'); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
-              borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              border: 'none', background: '#2563eb', color: 'white',
-              boxShadow: '0 2px 6px rgba(37,99,235,0.2)',
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            下载附件包
-          </button>
-          <button onClick={() => document.getElementById('uploadChatInput')?.click()}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px',
-              borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              border: '1px solid #d1d5db', background: 'white', color: '#374151',
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            上传附件包
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingLeft: 24 }}>
+          <span style={{ fontSize: 13, color: '#b45309', lineHeight: 1.6, flex: 1 }}>
+            数据库备份仅包含文字数据。跨设备迁移时请一并操作附件文件。
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => { const url = api.downloadUploadsChat(); window.open(url, '_blank'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px',
+                borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                border: 'none', background: '#2563eb', color: 'white',
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载附件包
+            </button>
+            <button onClick={() => document.getElementById('uploadChatInput')?.click()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px',
+                borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                border: '1px solid #d1d5db', background: 'white', color: '#374151',
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              上传附件包
           </button>
           <input id="uploadChatInput" type="file" accept=".classchat,.zip" style={{ display: 'none' }}
             onChange={async (e) => {

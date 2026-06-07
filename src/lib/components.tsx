@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 
 export function ErrorIcon() {
   return (
@@ -33,6 +33,11 @@ const TOAST_BG: Record<ToastType, string> = {
 };
 
 export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; onClose?: () => void }) {
+  useEffect(() => {
+    if (!onClose) return;
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [msg]);
   return (
     <div style={{
       position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClassNode</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f5f7fa;
+  color: #1e293b;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.container { padding: 24px; max-width: 480px; margin: 0 auto; }
+
+/* 顶部标题 */
+.header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.header .logo {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700; color: white;
+}
+.header h1 { font-size: 20px; font-weight: 700; }
+.header .version {
+  font-size: 12px; color: #94a3b8; background: #f1f4f9;
+  padding: 2px 8px; border-radius: 6px; margin-left: 6px;
+}
+
+/* 状态卡片 */
+.status-card {
+  background: white; border-radius: 14px;
+  border: 1px solid #e2e8f0; padding: 20px;
+  margin-bottom: 14px;
+}
+.status-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.status-label { font-size: 14px; font-weight: 600; color: #475569; }
+.status-dot {
+  width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+  margin-right: 8px;
+}
+.status-dot.running { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+.status-dot.stopped { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.3); }
+.status-text { font-size: 13px; font-weight: 600; }
+.status-text.running { color: #16a34a; }
+.status-text.stopped { color: #dc2626; }
+
+/* 地址列表 */
+.address-list { margin-top: 4px; }
+.address-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid #f1f5f9;
+}
+.address-item:last-child { border-bottom: none; }
+.address-label { font-size: 13px; color: #64748b; }
+.address-value {
+  font-size: 13px; font-weight: 600; color: #2563eb;
+  cursor: pointer; text-decoration: none;
+}
+.address-value:hover { text-decoration: underline; }
+
+/* 按钮 */
+.btn-group { display: flex; gap: 8px; margin-top: 4px; }
+.btn {
+  flex: 1; padding: 10px; border-radius: 10px; border: none;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: #2563eb; color: white; }
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-danger { background: #ef4444; color: white; }
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-outline {
+  background: white; color: #475569;
+  border: 1px solid #d1d5db;
+}
+.btn-outline:hover:not(:disabled) { background: #f8fafc; border-color: #2563eb; color: #2563eb; }
+
+/* 关于 */
+.about-card {
+  background: white; border-radius: 14px;
+  border: 1px solid #e2e8f0; padding: 20px;
+}
+.about-title {
+  font-size: 14px; font-weight: 700; color: #0f172a;
+  margin-bottom: 12px;
+}
+.about-row {
+  display: flex; justify-content: space-between;
+  font-size: 13px; padding: 6px 0;
+  border-bottom: 1px solid #f8fafc;
+}
+.about-row:last-child { border-bottom: none; }
+.about-row .label { color: #94a3b8; }
+.about-row .value { color: #334155; font-weight: 500; }
+
+/* 底部 */
+.footer {
+  text-align: center; margin-top: 20px;
+  font-size: 12px; color: #cbd5e1;
+}
+
+/* 错误提示 */
+.error-bar {
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+  padding: 8px 12px; font-size: 12px; color: #991b1b; margin-bottom: 10px;
+  display: none;
+}
+.error-bar.show { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 顶部 -->
+  <div class="header">
+    <div class="logo" id="logoIcon">C</div>
+    <div>
+      <div style="display:flex;align-items:center;">
+        <h1>ClassNode</h1>
+        <span class="version" id="versionLabel">v1.3.5</span>
+      </div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:2px;">AI 互动课堂系统</div>
+    </div>
+  </div>
+
+  <!-- 错误提示 -->
+  <div class="error-bar" id="errorBar"></div>
+
+  <!-- 状态卡片 -->
+  <div class="status-card">
+    <div class="status-row">
+      <span class="status-label">服务状态</span>
+      <span>
+        <span class="status-dot stopped" id="statusDot"></span>
+        <span class="status-text stopped" id="statusText">检测中...</span>
+      </span>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnStart" onclick="startServer()">启动服务</button>
+      <button class="btn btn-danger" id="btnStop" onclick="stopServer()">停止服务</button>
+    </div>
+  </div>
+
+  <!-- 访问地址 -->
+  <div class="status-card" id="addressCard">
+    <div class="status-row">
+      <span class="status-label">访问地址</span>
+    </div>
+    <div class="address-list">
+      <div class="address-item">
+        <span class="address-label">教师端</span>
+        <a class="address-value" id="teacherUrl" href="#" onclick="openUrl('teacher')">加载中...</a>
+      </div>
+      <div class="address-item">
+        <span class="address-label">学生端</span>
+        <a class="address-value" id="studentUrl" href="#" onclick="openUrl('student')">加载中...</a>
+      </div>
+      <div class="address-item" id="ipListContainer" style="display:none;flex-direction:column;align-items:stretch;padding:0;border:none;">
+        <div style="font-size:12px;color:#94a3b8;padding:6px 0;">局域网地址</div>
+        <div id="ipList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 关于 -->
+  <div class="about-card">
+    <div class="about-title">关于</div>
+    <div class="about-row">
+      <span class="label">应用名称</span>
+      <span class="value">ClassNode</span>
+    </div>
+    <div class="about-row">
+      <span class="label">版本号</span>
+      <span class="value" id="aboutVersion">-</span>
+    </div>
+    <div class="about-row">
+      <span class="label">服务端口</span>
+      <span class="value" id="aboutPort">3001</span>
+    </div>
+    <div class="about-row">
+      <span class="label">开发者</span>
+      <span class="value">张星昌</span>
+    </div>
+    <div class="about-row">
+      <span class="label">联系邮箱</span>
+      <span class="value"><a href="mailto:hzzxc2012@163.com" style="color:#2563eb;text-decoration:none;">hzzxc2012@163.com</a></span>
+    </div>
+  </div>
+
+  <div class="footer">ClassNode v<span id="footerVersion">1.3.5</span></div>
+</div>
+
+<script>
+let pollingTimer = null;
+
+/** Tauri v2 全局 API — 通过 withGlobalTauri 注入 */
+function tauriInvoke(cmd, args) {
+  const w = window;
+  if (w.__TAURI__?.core?.invoke) return w.__TAURI__.core.invoke(cmd, args);
+  if (w.__TAURI__?.invoke) return w.__TAURI__.invoke(cmd, args);
+  return null;
+}
+
+function showError(msg) {
+  const bar = document.getElementById('errorBar');
+  bar.textContent = msg;
+  bar.classList.add('show');
+  setTimeout(() => bar.classList.remove('show'), 5000);
+}
+
+function showDebug(msg) {
+  const el = document.getElementById('debugLog') || (() => {
+    const d = document.createElement('pre');
+    d.id = 'debugLog';
+    d.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1e293b;color:#fbbf24;font-size:11px;padding:8px;max-height:100px;overflow:auto;z-index:999;margin:0;white-space:pre-wrap';
+    document.body.appendChild(d);
+    return d;
+  })();
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function checkStatus() {
+  try {
+    showDebug('checkStatus() 开始执行');
+
+    const invoke = tauriInvoke;
+    let status;
+    if (invoke) {
+      showDebug('使用 Tauri invoke');
+      status = await invoke('get_server_status');
+      showDebug('invoke 返回: ' + JSON.stringify(status));
+    } else {
+      showDebug('Tauri invoke 不可用，使用 HTTP');
+      try {
+        const resp = await fetch('http://localhost:3001/api/health');
+        status = { running: resp.ok, port: 3001, ips: [] };
+        showDebug('HTTP 返回: ' + resp.status);
+      } catch (e) {
+        showDebug('HTTP 失败: ' + e.message);
+        status = { running: false, port: 3001, ips: [] };
+      }
+    }
+
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+
+    if (status.running) {
+      dot.className = 'status-dot running';
+      text.className = 'status-text running';
+      text.textContent = '运行中';
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+
+      const host = status.ips && status.ips.length > 0 ? status.ips[0] : 'localhost';
+      document.getElementById('teacherUrl').textContent = `http://${host}:${status.port}/teacher`;
+      document.getElementById('studentUrl').textContent = `http://${host}:${status.port}/classroom`;
+
+      const ipContainer = document.getElementById('ipListContainer');
+      const ipList = document.getElementById('ipList');
+      if (status.ips && status.ips.length > 1) {
+        ipContainer.style.display = 'flex';
+        ipList.innerHTML = status.ips.slice(1).map(ip =>
+          `<div style="font-size:13px;font-weight:500;color:#475569;padding:4px 0;">${ip}</div>`
+        ).join('');
+      } else if (status.ips && status.ips.length === 1) {
+        ipContainer.style.display = 'none';
+      } else {
+        ipContainer.style.display = 'none';
+      }
+    } else {
+      dot.className = 'status-dot stopped';
+      text.className = 'status-text stopped';
+      text.textContent = '已停止';
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+    }
+    document.getElementById('aboutPort').textContent = status.port || 3001;
+  } catch (e) {
+    console.error('状态检测失败:', e);
+  }
+}
+
+async function startServer() {
+  try {
+    document.getElementById('btnStart').disabled = true;
+    await tauriInvoke('cmd_start_server');
+    setTimeout(checkStatus, 500);
+  } catch (e) {
+    showError('启动服务失败: ' + e);
+    document.getElementById('btnStart').disabled = false;
+  }
+}
+
+async function stopServer() {
+  try {
+    document.getElementById('btnStop').disabled = true;
+    await tauriInvoke('cmd_stop_server');
+    setTimeout(checkStatus, 500);
+  } catch (e) {
+    showError('停止服务失败: ' + e);
+    document.getElementById('btnStop').disabled = false;
+  }
+}
+
+function openUrl(type) {
+  try {
+    tauriInvoke('cmd_open_url', { urlType: type });
+  } catch (e) { console.error(e); }
+}
+
+// 快速检测 Tauri 是否可用
+(async function() {
+  const available = !!(window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke);
+  console.log('[Dashboard] Tauri API available:', available, 'path:',
+    window.__TAURI__?.core?.invoke ? 'core.invoke' :
+    window.__TAURI__?.invoke ? 'invoke' : 'none');
+  if (!available) {
+    document.getElementById('statusText').textContent = '未检测到 Tauri';
+  }
+  checkStatus();
+})();
+pollingTimer = setInterval(checkStatus, 3000);
+</script>
+</body>
+</html>

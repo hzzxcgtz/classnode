@@ -274,7 +274,7 @@ export default function HistoryPage() {
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
                 <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>
-                  备份和恢复课堂数据，跨设备迁移时请一并处理附件文件
+                  备份包含全部课堂数据和上传附件，跨设备迁移一键完成
                 </p>
               </div>
             </div>

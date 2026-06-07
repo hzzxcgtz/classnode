@@ -417,7 +417,7 @@ function getUploadsChatDir(): string {
     : path.join(__dirname, '../../uploads', 'chat');
 }
 
-router.post('/backup/full', async (req, res) => {
+router.get('/backup/full', async (req, res) => {
   try {
     const dbPath = getDbPath();
     const chatDir = getUploadsChatDir();

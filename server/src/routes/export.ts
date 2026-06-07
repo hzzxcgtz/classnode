@@ -373,8 +373,9 @@ router.get('/backup/uploads-chat', async (req, res) => {
     archive.pipe(res);
     archive.directory(uploadsDir, 'chat');
     await archive.finalize();
-  } catch (error) {
-    res.status(500).json({ error: '打包下载失败' });
+  } catch (error: any) {
+    console.error('[UploadsChat] 打包失败:', error?.message || error);
+    res.status(500).json({ error: '打包下载失败: ' + (error?.message || '未知错误') });
   }
 });
 

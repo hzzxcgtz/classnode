@@ -51,8 +51,9 @@ const backupUpload = multer({
   storage: backupStorage,
   limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!file.originalname.endsWith('.classdb') && !file.originalname.endsWith('.db')) {
-      cb(new Error('仅支持 .db 格式的备份文件'));
+    const ok = ['.classbak', '.classdb', '.db', '.zip'].some(ext => file.originalname.endsWith(ext));
+    if (!ok) {
+      cb(new Error('仅支持 .classbak / .classdb 格式的备份文件'));
       return;
     }
     cb(null, true);

@@ -20,11 +20,6 @@ body {
   display: flex; align-items: center; gap: 12px;
   margin-bottom: 20px;
 }
-.header .logo {
-  width: 44px; height: 44px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700; color: white;
-}
 .header h1 { font-size: 20px; font-weight: 700; }
 .header .version {
   font-size: 12px; color: #94a3b8; background: #f1f4f9;
@@ -60,11 +55,13 @@ body {
 }
 .address-item:last-child { border-bottom: none; }
 .address-label { font-size: 13px; color: #64748b; }
-.address-value {
-  font-size: 13px; font-weight: 600; color: #2563eb;
-  cursor: pointer; text-decoration: none;
+.address-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 10px; border: 1px solid #d1d5db;
+  background: white; color: #2563eb; font-size: 13px; font-weight: 600;
+  cursor: pointer; text-decoration: none; transition: all 0.15s;
 }
-.address-value:hover { text-decoration: underline; }
+.address-btn:hover { background: #eff6ff; border-color: #2563eb; }
 
 /* 按钮 */
 .btn-group { display: flex; gap: 8px; margin-top: 4px; }
@@ -83,24 +80,6 @@ body {
   border: 1px solid #d1d5db;
 }
 .btn-outline:hover:not(:disabled) { background: #f8fafc; border-color: #2563eb; color: #2563eb; }
-
-/* 关于 */
-.about-card {
-  background: white; border-radius: 14px;
-  border: 1px solid #e2e8f0; padding: 20px;
-}
-.about-title {
-  font-size: 14px; font-weight: 700; color: #0f172a;
-  margin-bottom: 12px;
-}
-.about-row {
-  display: flex; justify-content: space-between;
-  font-size: 13px; padding: 6px 0;
-  border-bottom: 1px solid #f8fafc;
-}
-.about-row:last-child { border-bottom: none; }
-.about-row .label { color: #94a3b8; }
-.about-row .value { color: #334155; font-weight: 500; }
 
 /* 底部 */
 .footer {
@@ -121,7 +100,7 @@ body {
 <div class="container">
   <!-- 顶部 -->
   <div class="header">
-    <div class="logo" id="logoIcon">C</div>
+    <img src="/qr-logo.png" alt="ClassNode" style="width:44px;height:44px;border-radius:12px;object-fit:cover;">
     <div>
       <div style="display:flex;align-items:center;">
         <h1>ClassNode</h1>
@@ -155,43 +134,20 @@ body {
       <span class="status-label">访问地址</span>
     </div>
     <div class="address-list">
-      <div class="address-item">
-        <span class="address-label">教师端</span>
-        <a class="address-value" id="teacherUrl" href="#" onclick="openUrl('teacher')">加载中...</a>
+      <div style="display:flex;gap:8px;padding:4px 0;">
+        <button class="address-btn" onclick="openUrl('teacher')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span id="teacherUrl">加载中...</span>
+        </button>
+        <button class="address-btn" onclick="openUrl('student')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span id="studentUrl">加载中...</span>
+        </button>
       </div>
-      <div class="address-item">
-        <span class="address-label">学生端</span>
-        <a class="address-value" id="studentUrl" href="#" onclick="openUrl('student')">加载中...</a>
-      </div>
-      <div class="address-item" id="ipListContainer" style="display:none;flex-direction:column;align-items:stretch;padding:0;border:none;">
+      <div id="ipListContainer" style="display:none;flex-direction:column;align-items:stretch;padding:0;border:none;">
         <div style="font-size:12px;color:#94a3b8;padding:6px 0;">局域网地址</div>
         <div id="ipList"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- 关于 -->
-  <div class="about-card">
-    <div class="about-title">关于</div>
-    <div class="about-row">
-      <span class="label">应用名称</span>
-      <span class="value">ClassNode</span>
-    </div>
-    <div class="about-row">
-      <span class="label">版本号</span>
-      <span class="value" id="aboutVersion">-</span>
-    </div>
-    <div class="about-row">
-      <span class="label">服务端口</span>
-      <span class="value" id="aboutPort">3001</span>
-    </div>
-    <div class="about-row">
-      <span class="label">开发者</span>
-      <span class="value">张星昌</span>
-    </div>
-    <div class="about-row">
-      <span class="label">联系邮箱</span>
-      <span class="value"><a href="mailto:hzzxc2012@163.com" style="color:#2563eb;text-decoration:none;">hzzxc2012@163.com</a></span>
     </div>
   </div>
 
@@ -285,7 +241,6 @@ async function checkStatus() {
       btnStart.disabled = false;
       btnStop.disabled = true;
     }
-    document.getElementById('aboutPort').textContent = status.port || 3001;
   } catch (e) {
     console.error('状态检测失败:', e);
   }

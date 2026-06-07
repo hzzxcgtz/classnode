@@ -795,6 +795,15 @@ function StudentChatContent() {
                 <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
               </div>
             )}
+            {/* 学生头像和名字 */}
+            {msg.role === 'user' && selectedStudent && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{selectedStudent.name}</span>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 14, flexShrink: 0 }}>
+                  {selectedStudent.name[0]}
+                </div>
+              </div>
+            )}
             {/* 消息气泡 */}
             <div style={{
               maxWidth: '78%',

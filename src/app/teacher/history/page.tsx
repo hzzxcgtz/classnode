@@ -555,7 +555,6 @@ function BackupManager() {
   const [resetting, setResetting] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [importing, setImporting] = useState(false);
-  const [showUploadsPath, setShowUploadsPath] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
@@ -694,39 +693,52 @@ function BackupManager() {
           style={{ display: 'none' }} />
       </div>
 
-      {/* 跨设备迁移提示 */}
+      {      {/* 跨设备迁移提示 */}
       <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: '12px 16px', marginBottom: 16,
-        background: '#fffbeb', borderRadius: 10,
+        padding: '14px 18px', marginBottom: 16,
+        background: '#fffbeb', borderRadius: 12,
         border: '1px solid #fde68a', fontSize: 13, color: '#92400e', lineHeight: 1.6,
       }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <div>
-          <strong>跨设备迁移须知：</strong>数据库备份仅包含文字数据，不包含上传的附件文件（图片等）。
-          如需完整迁移，请手动将原电脑上{' '}
-          <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'help' }}
-            onMouseEnter={() => setShowUploadsPath(true)}
-            onMouseLeave={() => setShowUploadsPath(false)}>
-            <code style={{ background: '#fef3c7', padding: '1px 5px', borderRadius: 3, fontSize: 12, textDecoration: 'underline dotted #d97706', textUnderlineOffset: 3 }}>uploads</code>
-            {showUploadsPath && (
-              <div style={{
-                position: 'absolute', left: '50%', bottom: 'calc(100% + 6px)',
-                transform: 'translateX(-50%)', zIndex: 100,
-                background: '#1e293b', color: '#f1f5f9',
-                padding: '12px 16px', borderRadius: 10, fontSize: 12,
-                lineHeight: 2, whiteSpace: 'nowrap',
-                boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
-              }}>
-                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5, marginBottom: 4 }}>跨设备迁移时需一并复制：</div>
-                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#e2e8f0' }}>Mac: ~/Library/Application Support/com.classnode.desktop/uploads/</div>
-                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#e2e8f0' }}>Windows: C:\Users\&lt;用户名&gt;\AppData\Roaming\com.classnode.desktop\uploads\</div>
-              </div>
-            )}
-          </span>{' '}
-          文件夹复制到新电脑的相同位置。
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <strong>跨设备迁移须知</strong>
+        </div>
+        <div style={{ marginBottom: 12, fontSize: 12, color: '#b45309' }}>
+          数据库备份仅包含文字数据。如需完整迁移，请通过下方按钮一并打包附件文件。
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => { const url = api.downloadUploadsChat(); window.open(url, '_blank'); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+              borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4f46e5',
+            }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            下载附件包
+          </button>
+          <button onClick={() => document.getElementById('uploadChatInput')?.click()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+              borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              border: '1px solid #e2e8f0', background: 'white', color: '#475569',
+            }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            上传附件包
+          </button>
+          <input id="uploadChatInput" type="file" accept=".zip" style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                await api.uploadChatPackage(file);
+                setToast({ msg: '附件导入成功！', type: 'success' });
+              } catch (err: any) {
+                setToast({ msg: '附件导入失败: ' + (err.message || err), type: 'error' });
+              }
+              e.target.value = '';
+            }} />
         </div>
       </div>
 

@@ -111,6 +111,13 @@ export const api = {
     request<any>(`/api/export/${classroomId}/stats`),
   createBackup: () => request<{ success: boolean; path: string }>('/api/export/backup', { method: 'POST' }),
   downloadUploadsChat: () => `${getApiBaseUrl()}/api/export/backup/uploads-chat`,
+  uploadChatPackage: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await fetch(`${getApiBaseUrl()}/api/export/backup/uploads-chat/import`, { method: 'POST', body: form });
+    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || '导入失败'); }
+    return resp.json();
+  },
   getBackups: () => request<any[]>('/api/export/backups'),
   deleteBackup: (name: string) => request(`/api/export/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   restoreBackup: (name: string) => request(`/api/export/restore/${encodeURIComponent(name)}`, { method: 'POST' }),

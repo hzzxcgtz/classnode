@@ -381,6 +381,34 @@ router.get('/backup/uploads-chat', async (req, res) => {
   }
 });
 
+// 导入附件包（解压 zip 到 uploads/chat 目录）
+const chatUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, getBackupDir()),
+    filename: (_req, _file, cb) => cb(null, `chat-upload-${Date.now()}.zip`),
+  }),
+});
+
+router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '未选择文件' });
+
+    const uploadsChatDir = process.env.CLASSNODE_DATA_DIR
+      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
+      : path.join(__dirname, '../../uploads', 'chat');
+
+    const AdmZip = _require('adm-zip');
+    const zip = new AdmZip(req.file.path);
+    zip.extractAllTo(uploadsChatDir, true);
+
+    fs.unlinkSync(req.file.path);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[UploadsChat] 导入失败:', error?.message || error);
+    res.status(500).json({ error: '附件导入失败: ' + (error?.message || '未知错误') });
+  }
+});
+
 // 导入备份文件（来自其他设备的迁移）
 router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   try {

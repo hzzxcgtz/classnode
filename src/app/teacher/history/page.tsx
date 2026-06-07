@@ -725,7 +725,7 @@ function BackupManager() {
                     <span style={{
                       fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
                       background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
-                    }}>已导入</span>
+                    }}>导入</span>
                   ) : (
                     <span style={{
                       fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,

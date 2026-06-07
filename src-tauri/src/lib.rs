@@ -444,13 +444,13 @@ pub fn run() {
                 .build(app)?;
             mem::forget(tray);
 
-            // 关闭窗口时最小化到托盘（保留任务栏按钮）
+            // 关闭窗口时隐藏到系统托盘
             if let Some(window) = app.get_webview_window("dashboard") {
                 let w = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        let _ = w.minimize();
+                        let _ = w.hide();
                     }
                 });
             }

@@ -72,7 +72,7 @@ if [ ! -d "out" ]; then
   echo "  ----------------------------------------"
   echo "  Building frontend..."
   echo "  ----------------------------------------"
-  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" node node_modules/next/dist/bin/next build
+  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" npx next build
   if [ $? -ne 0 ]; then
     echo "  [Error] Frontend build failed"
     read -p "Press Enter to exit..."
@@ -101,7 +101,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Initializing database..."
   echo "  ----------------------------------------"
-  cd "$SCRIPT_DIR/server" && ./node_modules/.bin/prisma db push && cd "$SCRIPT_DIR"
+  cd "$SCRIPT_DIR/server" && npx prisma db push && cd "$SCRIPT_DIR"
   if [ $? -ne 0 ]; then
     echo "  [Error] Database init failed"
     read -p "Press Enter to exit..."
@@ -112,7 +112,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Building backend..."
   echo "  ----------------------------------------"
-  cd server && ../node_modules/.bin/tsc && cd ..
+  cd server && npx tsc && cd ..
   if [ $? -ne 0 ]; then
     echo "  [Error] Backend build failed"
     read -p "Press Enter to exit..."
@@ -123,7 +123,7 @@ else
   echo "  ----------------------------------------"
   echo "  Updating database..."
   echo "  ----------------------------------------"
-  cd "$SCRIPT_DIR/server" && ./node_modules/.bin/prisma db push && cd "$SCRIPT_DIR"
+  cd "$SCRIPT_DIR/server" && npx prisma db push && cd "$SCRIPT_DIR"
 fi
 
 # ============================================================

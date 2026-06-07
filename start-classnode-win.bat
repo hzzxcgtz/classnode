@@ -70,7 +70,7 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    node "node_modules\next\dist\bin\next" build
+    call npx next build
     if errorlevel 1 (
         echo  [Error] Frontend build failed
         goto :end
@@ -99,7 +99,7 @@ if not exist "server\dist" (
     echo  Initializing database...
     echo  ----------------------------------------
     pushd server
-    call node_modules\.bin\prisma db push
+    call npx prisma db push
     if errorlevel 1 (
         popd
         echo  [Error] Database init failed
@@ -112,7 +112,7 @@ if not exist "server\dist" (
     echo  Building backend...
     echo  ----------------------------------------
     pushd server
-    call ..\node_modules\.bin\tsc
+    call npx tsc
     if errorlevel 1 (
         popd
         echo  [Error] Backend build failed
@@ -125,7 +125,7 @@ if not exist "server\dist" (
     echo  Updating database...
     echo  ----------------------------------------
     pushd server
-    call node_modules\.bin\prisma db push
+    call npx prisma db push
     popd
 )
 

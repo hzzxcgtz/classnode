@@ -347,7 +347,7 @@ struct ServerStatus {
 }
 
 #[tauri::command]
-fn get_server_status(app: AppHandle) -> ServerStatus {
+fn get_server_status() -> ServerStatus {
     let running = TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
     let ips = get_local_ips();
     ServerStatus {
@@ -358,7 +358,7 @@ fn get_server_status(app: AppHandle) -> ServerStatus {
 }
 
 #[tauri::command]
-fn start_server(app: AppHandle) -> Result<(), String> {
+fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
     if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
         return Err("服务已在运行中".to_string());
     }
@@ -368,14 +368,14 @@ fn start_server(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn stop_server(app: AppHandle) -> Result<(), String> {
+fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
     stop_server(&app)?;
     update_tray(&app, false);
     Ok(())
 }
 
 #[tauri::command]
-fn open_url(app: AppHandle, url_type: String) {
+fn cmd_open_url(url_type: String) {
     let ip = get_local_ips().first().cloned().unwrap_or_else(|| "localhost".to_string());
     let url = match url_type.as_str() {
         "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
@@ -396,9 +396,9 @@ pub fn run() {
         }))
         .invoke_handler(tauri::generate_handler![
             get_server_status,
-            start_server,
-            stop_server,
-            open_url,
+            cmd_start_server,
+            cmd_stop_server,
+            cmd_open_url,
         ])
         .setup(|app| {
             let icon = Image::from_bytes(tray_icon_bytes(false))

@@ -274,7 +274,7 @@ export default function HistoryPage() {
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
                 <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>
-                  备份包含全部课堂数据和上传附件，跨设备迁移一键完成
+                  备份包含全部课堂数据和上传附件，跨设备迁移无忧
                 </p>
               </div>
             </div>
@@ -559,32 +559,31 @@ function BackupManager() {
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
 
-  const handleFullBackup = async () => {
+  const handleBackup = async () => {
     setCreating(true);
     try {
-      const url = api.createFullBackup();
-      window.open(url, '_blank');
-      setToast({ msg: '备份文件正在下载...', type: 'success' });
+      const result = await api.createBackup();
+      setToast({ msg: '备份成功！', type: 'success' });
+      api.getBackups().then(setBackups);
     } catch (e: any) {
       setToast({ msg: '备份失败: ' + e.message, type: 'error' });
     }
     setCreating(false);
   };
 
-  const handleFullRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImporting(true);
     try {
-      await api.restoreFullBackup(file);
-      setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
-      setTimeout(() => location.reload(), 1500);
+      await api.uploadBackup(file);
+      setToast({ msg: '导入备份成功！', type: 'success' });
+      api.getBackups().then(setBackups);
     } catch (e: any) {
-      setToast({ msg: '恢复失败: ' + (e.message || e), type: 'error' });
+      setToast({ msg: '导入失败: ' + (e.message || e), type: 'error' });
     }
     setImporting(false);
-    // 清空 input 以便再次选择同一文件
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (e.target) e.target.value = '';
   };
 
   const handleRestore = async (name: string) => {
@@ -641,7 +640,7 @@ function BackupManager() {
     <div>
       {/* 操作栏：备份 + 清零 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <button className="btn btn-primary" onClick={handleFullBackup} disabled={creating}
+        <button className="btn btn-primary" onClick={handleBackup} disabled={creating}
           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {creating ? (
             <>
@@ -653,11 +652,11 @@ function BackupManager() {
           ) : (
             <>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              备份全部
+              立即备份
             </>
           )}
         </button>
-        <button onClick={() => document.getElementById('restoreFileInput')?.click()} disabled={importing}
+        <button onClick={() => fileInputRef.current?.click()} disabled={importing}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
             borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
@@ -665,10 +664,10 @@ function BackupManager() {
             opacity: importing ? 0.6 : 1,
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-          {importing ? '恢复中...' : '恢复备份'}
+          {importing ? '导入中...' : '上传备份'}
         </button>
-        <input id="restoreFileInput" type="file" accept=".classbak,.zip" style={{ display: 'none' }}
-          onChange={handleFullRestore} />
+        <input ref={fileInputRef} type="file" accept=".classbak,.classdb,.zip,.db" style={{ display: 'none' }}
+          onChange={handleImportBackup} />
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowResetDialog(true)}
           style={{
@@ -696,14 +695,14 @@ function BackupManager() {
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>1</div>
-            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>点击上方<strong>「备份全部」</strong>，下载一个完整的备份文件</span>
+            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', color: '#d97706' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>2</div>
-            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「恢复备份」</strong>，选择刚才的文件即可</span>
+            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
           </div>
         </div>
       </div>

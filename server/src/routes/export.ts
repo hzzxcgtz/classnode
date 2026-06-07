@@ -191,16 +191,34 @@ router.get('/:classroomId/stats', async (req, res) => {
   }
 });
 
-// 数据库备份
+// 数据库备份（含附件）
 router.post('/backup', async (req, res) => {
   try {
     const dbPath = getDbPath();
+    const chatDir = getUploadsChatDir();
     const backupDir = getBackupDir();
 
     const timestamp = readableTimestamp();
-    const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.classdb`);
+    const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.classbak`);
 
-    fs.copyFileSync(dbPath, backupPath);
+    const { ZipArchive } = _require('archiver');
+    const archive = new ZipArchive();
+    const writeStream = fs.createWriteStream(backupPath);
+    archive.pipe(writeStream);
+
+    // 添加数据库
+    archive.file(dbPath, { name: 'data.db' });
+
+    // 添加附件目录（如果存在且有文件）
+    if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
+      archive.directory(chatDir, 'chat');
+    }
+
+    await archive.finalize();
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('close', resolve);
+      writeStream.on('error', reject);
+    });
 
     // 计算文件哈希并写入 meta 信息
     const hash = crypto.createHash('sha256').update(fs.readFileSync(backupPath)).digest('hex');
@@ -211,8 +229,9 @@ router.post('/backup', async (req, res) => {
       path: backupPath,
       size: fs.statSync(backupPath).size,
     });
-  } catch (error) {
-    res.status(500).json({ error: '备份失败' });
+  } catch (error: any) {
+    console.error('[Backup] 创建失败:', error?.message || error);
+    res.status(500).json({ error: '备份失败: ' + (error?.message || '未知错误') });
   }
 });
 
@@ -274,7 +293,7 @@ router.delete('/backup/:name', async (req, res) => {
   }
 });
 
-// 从备份恢复数据库
+// 从备份恢复数据库（兼容 .classbak 和旧版 .classdb）
 router.post('/restore/:name', async (req, res) => {
   try {
     const dbPath = getDbPath();
@@ -286,31 +305,61 @@ router.post('/restore/:name', async (req, res) => {
       return res.status(404).json({ error: '备份文件不存在' });
     }
 
-    // 1. 校验 SQLite 文件头
-    const header = fs.readFileSync(filePath, { encoding: 'binary' }).slice(0, 16);
-    if (header !== 'SQLite format 3\0') {
-      return res.status(400).json({ error: '备份文件格式无效：不是有效的 SQLite 数据库文件' });
-    }
+    const isLegacy = name.endsWith('.classdb') || name.endsWith('.db');
 
-    // 2. 校验数据库结构是否兼容（检查核心表是否存在）
-    try {
-      const { PrismaClient } = await import('@prisma/client');
-      const backupPrisma = new PrismaClient({
-        datasources: { db: { url: `file:${filePath}` } },
-      });
-      const tables = await backupPrisma.$queryRawUnsafe<{ name: string }[]>(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Classroom', 'Class', 'Agent')",
-      );
-      await backupPrisma.$disconnect();
-      if (tables.length < 3) {
-        return res.status(400).json({ error: '备份文件结构不匹配：未找到核心数据表（Classroom、Class、Agent），请确认该备份来自本系统' });
+    if (isLegacy) {
+      // 旧版 .classdb：直接复制数据库
+      const header = fs.readFileSync(filePath, { encoding: 'binary' }).slice(0, 16);
+      if (header !== 'SQLite format 3\0') {
+        return res.status(400).json({ error: '备份文件格式无效' });
       }
-    } catch (e) {
-      return res.status(400).json({ error: '备份文件无法识别：数据格式不兼容，请确认该备份来自本系统' });
-    }
+      fs.copyFileSync(filePath, dbPath);
+    } else {
+      // 新版 .classbak：解压后恢复数据库和附件
+      const tmpDir = path.join(backupDir, `extract-${Date.now()}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
 
-    // 复制备份文件覆盖当前数据库
-    fs.copyFileSync(filePath, dbPath);
+      const AdmZip = _require('adm-zip');
+      const zip = new AdmZip(filePath);
+      zip.extractAllTo(tmpDir, true);
+
+      // 恢复数据库
+      const dataFile = path.join(tmpDir, 'data.db');
+      if (!fs.existsSync(dataFile)) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        return res.status(400).json({ error: '备份文件不包含数据库' });
+      }
+      fs.copyFileSync(dataFile, dbPath);
+
+      // 恢复附件
+      const chatExtract = path.join(tmpDir, 'chat');
+      const chatDir = getUploadsChatDir();
+      if (fs.existsSync(chatExtract) && fs.readdirSync(chatExtract).length > 0) {
+        if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
+        for (const f of fs.readdirSync(chatExtract)) {
+          fs.cpSync(path.join(chatExtract, f), path.join(chatDir, f), { recursive: true, force: true });
+        }
+      }
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+
+      // 校验数据库结构
+      try {
+        const { PrismaClient } = await import('@prisma/client');
+        const backupPrisma = new PrismaClient({
+          datasources: { db: { url: `file:${dbPath}` } },
+        });
+        const tables = await backupPrisma.$queryRawUnsafe<{ name: string }[]>(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Classroom', 'Class', 'Agent')",
+        );
+        await backupPrisma.$disconnect();
+        if (tables.length < 3) {
+          return res.status(400).json({ error: '备份文件结构不匹配，请确认来自本系统' });
+        }
+      } catch {
+        return res.status(400).json({ error: '备份文件无法识别' });
+      }
+    }
 
     // 清除可能存在的旧 WAL/SHM 文件，避免干扰
     const walPath = dbPath + '-wal';
@@ -532,19 +581,22 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: '未选择文件' });
     }
-    // 校验 SQLite 文件头
-    const headerBuf = Buffer.alloc(16);
-    const fd = fs.openSync(req.file.path, 'r');
-    fs.readSync(fd, headerBuf, 0, 16, 0);
-    fs.closeSync(fd);
-    if (headerBuf.toString('binary') !== 'SQLite format 3\0') {
-      // 删除无效文件
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: '文件格式无效：不是有效的 SQLite 数据库文件' });
+    const isZip = req.file.originalname.endsWith('.classbak') || req.file.originalname.endsWith('.zip');
+    if (!isZip) {
+      // 旧版 .classdb：校验 SQLite 文件头
+      const headerBuf = Buffer.alloc(16);
+      const fd = fs.openSync(req.file.path, 'r');
+      fs.readSync(fd, headerBuf, 0, 16, 0);
+      fs.closeSync(fd);
+      if (headerBuf.toString('binary') !== 'SQLite format 3\0') {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: '文件格式无效' });
+      }
     }
     // 重命名为标准格式并写入 meta 信息
     const timestamp = readableTimestamp();
-    const newName = `classnode-backup-${timestamp}.db`;
+    const ext = isZip ? '.classbak' : '.classdb';
+    const newName = `classnode-backup-${timestamp}${ext}`;
     const newPath = path.join(path.dirname(req.file.path), newName);
     fs.renameSync(req.file.path, newPath);
     const hash = crypto.createHash('sha256').update(fs.readFileSync(newPath)).digest('hex');

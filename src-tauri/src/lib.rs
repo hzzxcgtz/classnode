@@ -52,8 +52,8 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     let sep1 = PredefinedMenuItem::separator(app)?;
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "打开教师端", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "显示面板", true, None::<&str>)?;
+    let repo = MenuItem::with_id(app, "repo", "项目地址", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
@@ -71,8 +71,8 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     menu.append(&sep1)?;
     menu.append(&start)?;
     menu.append(&stop)?;
-    menu.append(&open)?;
     menu.append(&show)?;
+    menu.append(&repo)?;
     menu.append(&sep2)?;
     menu.append(&quit)?;
     Ok(menu)
@@ -369,6 +369,7 @@ fn cmd_open_url(url_type: String) {
     let url = match url_type.as_str() {
         "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
         "student" => format!("http://{}:{}/classroom", ip, SERVER_PORT),
+        "repo" => "https://gitcode.com/weixin_41523975/classnode".to_string(),
         _ => format!("http://{}:{}/teacher", ip, SERVER_PORT),
     };
     open_browser_url(&url);
@@ -425,15 +426,15 @@ pub fn run() {
                             update_tray(app, false);
                         }
                     }
-                    "open" => open_browser_url(
-                        &format!("http://localhost:{}/teacher", SERVER_PORT),
-                    ),
                     "show" => {
                         if let Some(window) = app.get_webview_window("dashboard") {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
                     }
+                    "repo" => open_browser_url(
+                        "https://gitcode.com/weixin_41523975/classnode",
+                    ),
                     "quit" => {
                         let _ = stop_server(app);
                         app.exit(0);
@@ -471,8 +472,19 @@ pub fn run() {
         .expect("启动 ClassNode 失败");
 
     app.run(|app_handle, event| {
-        if let RunEvent::Exit = event {
-            let _ = stop_server(app_handle);
+        match event {
+            RunEvent::Exit => {
+                let _ = stop_server(app_handle);
+            }
+            RunEvent::WindowEvent { label, event: tauri::WindowEvent::Focused(true), .. } => {
+                if label == "dashboard" {
+                    if let Some(window) = app_handle.get_webview_window("dashboard") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+            _ => {}
         }
     });
 }

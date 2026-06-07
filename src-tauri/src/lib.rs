@@ -13,7 +13,7 @@ use serde::Serialize;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
+    tray::{TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, RunEvent,
 };
 
@@ -313,17 +313,6 @@ fn stop_server(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn wait_for_server(port: u16, timeout: Duration) -> bool {
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    false
-}
-
 fn open_browser_url(url: &str) {
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(url).spawn()
@@ -412,6 +401,14 @@ pub fn run() {
                 .icon_as_template(true)
                 .tooltip("ClassNode - 已停止")
                 .menu(&menu)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::DoubleClick { .. } = event {
+                        if let Some(window) = tray.app_handle().get_webview_window("dashboard") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "start" => {
                         if let Err(e) = spawn_server(app) {
@@ -444,6 +441,17 @@ pub fn run() {
                 })
                 .build(app)?;
             mem::forget(tray);
+
+            // 关闭窗口时隐藏而非退出
+            if let Some(window) = app.get_webview_window("dashboard") {
+                let w = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = w.hide();
+                    }
+                });
+            }
 
             // 延迟启动服务
             let handle = app.handle().clone();

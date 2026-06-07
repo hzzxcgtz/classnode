@@ -147,29 +147,31 @@ Access after startup:
 ## Changelog
 
 <details>
-<summary>v1.3.5 — 2026-06-07 (Latest)</summary>
+<summary>v1.3.6 — 2026-06-07 (Latest)</summary>
 
-#### Agent Connectivity Optimization
-- Removed periodic health checks, now only checks on startup to save API quota
-- Real-time teacher notification when student-AI connection fails
-- Keep manual per-agent test button
+#### Desktop Status Panel
+- New desktop window showing server status, access URLs, LAN IPs
+- One-click start/stop server from the panel
+- Copy URL to clipboard or open in browser with one click
+- System tray: left-click shows panel, right-click shows menu
 
-#### Content Filtering Enhancement
-- System and custom blocked words now support one-click enable/disable
-- Disabled words appear semi-transparent and are excluded from filtering
+#### Core Optimizations
+- AI requests now have 30-second timeout to prevent connection leaks
+- Classroom creation uses batch writes: 50 students from 100 DB ops to 2
+- Shield words cached in memory, no DB query per message
+- Added database indexes for faster queries
 
-#### QR Code Fix
-- Added ClassNode logo overlay to the classroom dashboard QR code
-- Added QR code image download feature
-
-#### Student UI Improvements
-- Display room code in the chat header
-
-### Fixes
-
-- Fixed build script including old logo files
-- Fixed floating prompts pushing the input area down
+#### Fixes
+- Fixed AI requests lacking timeout control
+- Fixed memory leak (Anonymizer auto-cleans at 500 entries)
+- Fixed database backup being 0KB (DATABASE_URL path resolution)
+- Fixed disabled shield words still being active
+- Fixed student input box not clearing with English/Chinese text
+- Fixed build script and port comment issues
 </details>
+
+<details>
+<summary>v1.3.5 — 2026-06-07</summary>
 
 <details>
 <summary>v1.3.4 — 2026-06-06</summary>

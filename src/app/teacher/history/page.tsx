@@ -582,9 +582,6 @@ function BackupManager() {
     } catch (e: any) {
       setToast({ msg: '恢复失败: ' + (e.message || e), type: 'error' });
     }
-    } catch (e: any) {
-      setToast({ msg: e.message, type: 'error' });
-    }
     setImporting(false);
     // 清空 input 以便再次选择同一文件
     if (fileInputRef.current) fileInputRef.current.value = '';

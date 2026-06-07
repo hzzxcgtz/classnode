@@ -151,23 +151,9 @@ Access after startup:
 
 #### Desktop Status Panel
 - New desktop window showing server status, access URLs, LAN IPs
-- One-click start/stop server from the panel
-- Copy URL to clipboard or open in browser with one click
+- Copy URLs to clipboard or open in browser with one click
 - System tray: left-click shows panel, right-click shows menu
-
-#### Core Optimizations
-- AI requests now have 30-second timeout to prevent connection leaks
-- Classroom creation uses batch writes: 50 students from 100 DB ops to 2
-- Shield words cached in memory, no DB query per message
-- Added database indexes for faster queries
-
-#### Fixes
-- Fixed AI requests lacking timeout control
-- Fixed memory leak (Anonymizer auto-cleans at 500 entries)
-- Fixed database backup being 0KB (DATABASE_URL path resolution)
-- Fixed disabled shield words still being active
-- Fixed student input box not clearing with English/Chinese text
-- Fixed build script and port comment issues
+- Added "Show Panel" and "Project URL" to tray menu
 </details>
 
 <details>

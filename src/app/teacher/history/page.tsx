@@ -732,7 +732,9 @@ function BackupManager() {
               e.target.value = '';
             }} />
         </div>
-      </div>      {backups.length > 0 && (
+        </div>
+      </div>
+      {backups.length > 0 && (
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             历史备份 ({backups.length})

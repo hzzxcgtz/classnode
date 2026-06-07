@@ -735,7 +735,7 @@ function BackupManager() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                   <span style={{ color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap' }}>
-                    {new Date(b.createdAt).toLocaleString()} · {(b.size / 1024).toFixed(1)} KB
+                    {new Date(b.createdAt).toLocaleString()} · {b.size > 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB'}
                   </span>
                   <a href={api.getBackupDownloadUrl(b.name)} download
                     style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',

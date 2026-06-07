@@ -3,6 +3,8 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
 
@@ -358,7 +360,7 @@ router.get('/backup/:name/download', async (req, res) => {
 // 打包下载上传文件（chat 目录，用于跨设备迁移）
 router.get('/backup/uploads-chat', async (req, res) => {
   try {
-    const { default: archiver } = await import('archiver') as any;
+    const { ZipArchive } = _require('archiver');
     const uploadsDir = process.env.CLASSNODE_DATA_DIR
       ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
       : path.join(__dirname, '../../uploads', 'chat');
@@ -367,7 +369,7 @@ router.get('/backup/uploads-chat', async (req, res) => {
       return res.status(404).json({ error: '暂无上传文件' });
     }
 
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = new ZipArchive();
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename=classnode-uploads-chat-${readableTimestamp()}.zip`);
     archive.pipe(res);

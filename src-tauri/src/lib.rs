@@ -394,6 +394,10 @@ pub fn run() {
             let icon = Image::from_bytes(tray_icon_bytes(false))
                 .map_err(|e| format!("无法加载托盘图标: {e}"))?;
 
+            // macOS: 设置为纯托盘应用（关闭窗口时 Dock 图标消失）
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let handle = app.handle();
             let menu = build_menu(&handle, false)?;
 

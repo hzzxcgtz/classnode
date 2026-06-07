@@ -355,6 +355,29 @@ router.get('/backup/:name/download', async (req, res) => {
   }
 });
 
+// 打包下载上传文件（chat 目录，用于跨设备迁移）
+router.get('/backup/uploads-chat', async (req, res) => {
+  try {
+    const { default: archiver } = await import('archiver') as any;
+    const uploadsDir = process.env.CLASSNODE_DATA_DIR
+      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
+      : path.join(__dirname, '../../uploads', 'chat');
+
+    if (!fs.existsSync(uploadsDir) || fs.readdirSync(uploadsDir).length === 0) {
+      return res.status(404).json({ error: '暂无上传文件' });
+    }
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename=classnode-uploads-chat-${readableTimestamp()}.zip`);
+    archive.pipe(res);
+    archive.directory(uploadsDir, 'chat');
+    await archive.finalize();
+  } catch (error) {
+    res.status(500).json({ error: '打包下载失败' });
+  }
+});
+
 // 导入备份文件（来自其他设备的迁移）
 router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   try {

@@ -110,6 +110,7 @@ export const api = {
   exportStats: (classroomId: string) =>
     request<any>(`/api/export/${classroomId}/stats`),
   createBackup: () => request<{ success: boolean; path: string }>('/api/export/backup', { method: 'POST' }),
+  downloadUploadsChat: () => `${getApiBaseUrl()}/api/export/backup/uploads-chat`,
   getBackups: () => request<any[]>('/api/export/backups'),
   deleteBackup: (name: string) => request(`/api/export/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   restoreBackup: (name: string) => request(`/api/export/restore/${encodeURIComponent(name)}`, { method: 'POST' }),

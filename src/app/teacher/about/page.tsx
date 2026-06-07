@@ -55,6 +55,7 @@ export default function AboutPage() {
   const [changelogsOpen, setChangelogsOpen] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
+  const [showAllLogs, setShowAllLogs] = useState(false);
 
   const toggleChangelogs = async () => {
     if (changelogsOpen) { setChangelogsOpen(false); return; }
@@ -189,7 +190,7 @@ export default function AboutPage() {
             <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>更新日志</span>
           </div>
           <div style={{ padding: '16px 22px' }}>
-            {changelogs.map((log, idx) => {
+            {(showAllLogs ? changelogs : changelogs.slice(0, 5)).map((log, idx) => {
               const isExpanded = expandedVersion === log.version;
               return (
                 <div key={log.version} style={{ marginBottom: idx < changelogs.length - 1 ? 6 : 0, borderRadius: 8, overflow: 'hidden', border: isExpanded ? '1px solid #e2e8f0' : '1px solid transparent', transition: 'border-color 0.15s' }}>
@@ -204,6 +205,12 @@ export default function AboutPage() {
                 </div>
               );
             })}
+            {changelogs.length > 5 && !showAllLogs && (
+              <button onClick={() => setShowAllLogs(true)}
+                style={{ display: 'block', width: '100%', marginTop: 10, padding: '10px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13, color: '#64748b', textAlign: 'center' }}>
+                显示全部更新日志（共 {changelogs.length} 条）
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -360,9 +367,9 @@ export default function AboutPage() {
       {/* ========== 底部信息 ========== */}
       <div style={{ textAlign: 'center', padding: '28px 0 12px', borderTop: '1px solid #eef2f6' }}>
         <div style={{ fontSize: 14, color: '#94a3b8', lineHeight: 2.2 }}>
-          <div>开发者：张星昌 · 杭州市拱墅区教育研究院</div>
+          <div>张星昌 · 杭州市拱墅区教育研究院</div>
           <div>
-            联系交流：
+            联系：
             <a href="mailto:hzzxc2012@163.com" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
           </div>
           <div style={{ marginTop: 4, fontSize: 13, color: '#cbd5e1' }}>

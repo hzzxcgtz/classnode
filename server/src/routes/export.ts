@@ -433,7 +433,7 @@ router.get('/backup/full', async (req, res) => {
     archive.pipe(res);
 
     // 添加数据库
-    archive.file(fs.createReadStream(dbPath), { name: 'data.db' });
+    archive.file(dbPath, { name: 'data.db' });
 
     // 添加附件目录（如果存在且有文件）
     if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {

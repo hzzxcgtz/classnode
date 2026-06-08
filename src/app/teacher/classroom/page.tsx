@@ -32,7 +32,7 @@ function ClassroomBoardContent() {
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
-  const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
+  const [hiddenRounds, setHiddenRounds] = useState<number[]>([]);
   const hideCensored = (msgs: any[]) => msgs.filter((m: any) =>
     !(m.shieldFiltered || (m.role === 'user' && (m.content || '').includes('**')))
   );
@@ -292,10 +292,6 @@ function ClassroomBoardContent() {
       // 如果当前选中该学生，追加消息（排除被屏蔽的）
       if (selectedStudent?.id === data.studentId && !data.shieldFiltered) {
         setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
-        // 新轮次默认加入投屏选择
-        if (data.roundIndex != null) {
-          setSelectedRounds(prev => prev.includes(data.roundIndex) ? prev : [...prev, data.roundIndex].sort((a, b) => a - b));
-        }
       }
     });
 
@@ -328,10 +324,8 @@ function ClassroomBoardContent() {
       const msgs = await api.getStudentMessages(id, student.id);
       const clean = ensureRoundIndices(hideCensored(msgs));
       setMessages(clean);
-      // 默认选中所有对话轮次
-      const ris = Array.from(new Set(clean.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(ri => ri != null))) as number[];
-      setSelectedRounds(ris.sort((a: number, b: number) => a - b));
-    } catch { setMessages([]); setSelectedRounds([]); }
+      setHiddenRounds([]); // 默认全选
+    } catch { setMessages([]); }
   };
 
 
@@ -814,10 +808,9 @@ function ClassroomBoardContent() {
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-secondary"
-                    onClick={() => selectedRounds.length > 0 && setShowFullscreen(true)}
-                    style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, opacity: selectedRounds.length === 0 ? 0.4 : 1, cursor: selectedRounds.length === 0 ? 'not-allowed' : 'pointer' }}>
+                    onClick={() => setShowFullscreen(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-                    投屏{selectedRounds.length > 0 ? ` (${selectedRounds.length})` : ''}
+                    投屏
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}>
@@ -838,13 +831,13 @@ function ClassroomBoardContent() {
                 const ris = Array.from(new Set(messages.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(ri => ri != null))) as number[];
                 ris.sort((a, b) => a - b);
                 if (ris.length === 0) return null;
-                const allSelected = ris.every(ri => selectedRounds.includes(ri));
+                const noHidden = ris.every(ri => !hiddenRounds.includes(ri));
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px 0' }}>
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>投屏选择</span>
-                    <button onClick={() => setSelectedRounds(allSelected ? [] : [...ris])}
+                    <button onClick={() => setHiddenRounds(noHidden ? [...ris] : [])}
                       style={{ fontSize: 11, color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
-                      {allSelected ? '取消全选' : `全选 (${ris.length})`}
+                      {noHidden ? '取消全选' : `全选 (${ris.length})`}
                     </button>
                   </div>
                 );
@@ -863,21 +856,21 @@ function ClassroomBoardContent() {
                       <div onClick={() => {
                         const ri = m.roundIndex;
                         if (ri != null) {
-                          setSelectedRounds(prev =>
-                            prev.includes(ri) ? prev.filter(r => r !== ri) : [...prev, ri].sort((a: number, b: number) => a - b)
+                          setHiddenRounds(prev =>
+                            prev.includes(ri) ? prev.filter(r => r !== ri) : [...prev, ri]
                           );
                         }
                       }}
                         style={{
                           width: 18, height: 18, borderRadius: 4, border: '2px solid',
-                          borderColor: m.roundIndex != null && selectedRounds.includes(m.roundIndex) ? '#6366f1' : '#d1d5db',
-                          background: m.roundIndex != null && selectedRounds.includes(m.roundIndex) ? '#6366f1' : 'transparent',
+                          borderColor: m.roundIndex != null && !hiddenRounds.includes(m.roundIndex) ? '#6366f1' : '#d1d5db',
+                          background: m.roundIndex != null && !hiddenRounds.includes(m.roundIndex) ? '#6366f1' : 'transparent',
                           cursor: m.roundIndex != null ? 'pointer' : 'default',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all .12s', flexShrink: 0,
                           opacity: m.roundIndex != null ? 1 : 0,
                         }}>
-                        {m.roundIndex != null && selectedRounds.includes(m.roundIndex) && (
+                        {m.roundIndex != null && !hiddenRounds.includes(m.roundIndex) && (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                         )}
                       </div>
@@ -1025,7 +1018,7 @@ function ClassroomBoardContent() {
 
       {/* 投屏讲评 */}
       {showFullscreen && (() => {
-        const projMsgs = messages.filter((m: any) => selectedRounds.includes(m.roundIndex));
+        const projMsgs = messages.filter((m: any) => !hiddenRounds.includes(m.roundIndex));
         const roundMap = new Map<number, any[]>();
         for (const m of projMsgs) {
           if (!roundMap.has(m.roundIndex)) roundMap.set(m.roundIndex, []);
@@ -1073,7 +1066,7 @@ function ClassroomBoardContent() {
                 {selectedStudent?.name || '学生'} 的对话
               </div>
               <div style={{ fontSize: 13, color: '#94a3b8' }}>
-                {sortedRounds.length} 轮展示 · 已选 {selectedRounds.length} 轮
+                {sortedRounds.length} 轮展示
               </div>
             </div>
             <button onClick={() => setShowFullscreen(false)}

@@ -100,8 +100,12 @@ if not exist "server\dist" (
     echo  Initializing database...
     echo  ----------------------------------------
     pushd server
-    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install
-    node node_modules\prisma\build\index.js db push --accept-data-loss
+    for /f "delims=" %%a in ('node -e "try{console.log(require.resolve('prisma/build/index.js'))}catch(e){console.log('NOT_FOUND')}"') do set PRISMA_CMD=%%a
+    if "%PRISMA_CMD%"=="NOT_FOUND" (
+        call npm install prisma
+        for /f "delims=" %%a in ('node -e "console.log(require.resolve('prisma/build/index.js'))"') do set PRISMA_CMD=%%a
+    )
+    node "%PRISMA_CMD%" db push --accept-data-loss
     if errorlevel 1 (
         popd
         echo  [Error] Database init failed
@@ -128,8 +132,12 @@ if not exist "server\dist" (
     echo  Updating database...
     echo  ----------------------------------------
     pushd server
-    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install
-    node node_modules\prisma\build\index.js db push --accept-data-loss
+    for /f "delims=" %%a in ('node -e "try{console.log(require.resolve('prisma/build/index.js'))}catch(e){console.log('NOT_FOUND')}"') do set PRISMA_CMD=%%a
+    if "%PRISMA_CMD%"=="NOT_FOUND" (
+        call npm install prisma
+        for /f "delims=" %%a in ('node -e "console.log(require.resolve('prisma/build/index.js'))"') do set PRISMA_CMD=%%a
+    )
+    node "%PRISMA_CMD%" db push --accept-data-loss
     popd
 )
 

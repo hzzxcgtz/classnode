@@ -32,6 +32,8 @@ function ClassroomBoardContent() {
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
+  const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
+  const hideCensored = (msgs: any[]) => msgs.filter((m: any) => !(m.content || '').includes('**'));
   const [showCodeScreen, setShowCodeScreen] = useState(false);
   const [teacherCode, setTeacherCode] = useState('');
 
@@ -275,9 +277,13 @@ function ClassroomBoardContent() {
           [data.studentId]: (prev[data.studentId] || 0) + 1,
         }));
       }
-      // 如果当前选中该学生，追加消息
-      if (selectedStudent?.id === data.studentId) {
+      // 如果当前选中该学生，追加消息（排除被屏蔽的）
+      if (selectedStudent?.id === data.studentId && !data.shieldFiltered) {
         setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
+        // 新轮次默认加入投屏选择
+        if (data.roundIndex != null) {
+          setSelectedRounds(prev => prev.includes(data.roundIndex) ? prev : [...prev, data.roundIndex].sort((a, b) => a - b));
+        }
       }
     });
 
@@ -308,8 +314,12 @@ function ClassroomBoardContent() {
     setSelectedStudent(student);
     try {
       const msgs = await api.getStudentMessages(id, student.id);
-      setMessages(msgs);
-    } catch { setMessages([]); }
+      const clean = hideCensored(msgs);
+      setMessages(clean);
+      // 默认选中所有对话轮次
+      const ris = Array.from(new Set(clean.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(Boolean))) as number[];
+      setSelectedRounds(ris.sort((a: number, b: number) => a - b));
+    } catch { setMessages([]); setSelectedRounds([]); }
   };
 
 
@@ -791,10 +801,11 @@ function ClassroomBoardContent() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setShowFullscreen(true)}>
+                  <button className="btn btn-secondary"
+                    onClick={() => selectedRounds.length > 0 && setShowFullscreen(true)}
+                    style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, opacity: selectedRounds.length === 0 ? 0.4 : 1, cursor: selectedRounds.length === 0 ? 'not-allowed' : 'pointer' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-                    投屏
+                    投屏{selectedRounds.length > 0 ? ` (${selectedRounds.length})` : ''}
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}>
@@ -804,6 +815,50 @@ function ClassroomBoardContent() {
                 </div>
               </div>
             </div>
+
+            {/* 轮次选择（投屏用） */}
+            {messages.length > 0 && (() => {
+              const ris = Array.from(new Set(messages.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(Boolean))) as number[];
+              ris.sort((a, b) => a - b);
+              if (ris.length === 0) return null;
+              return (
+                <div style={{
+                  padding: '6px 16px', borderBottom: '1px solid #eef2f6',
+                  display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', marginRight: 2 }}>投屏</span>
+                  {ris.map(ri => {
+                    const on = selectedRounds.includes(ri);
+                    return (
+                      <button key={ri} onClick={() => setSelectedRounds(prev =>
+                        prev.includes(ri) ? prev.filter(r => r !== ri) : [...prev, ri].sort((a: number, b: number) => a - b)
+                      )}
+                        style={{
+                          padding: '1px 7px', borderRadius: 10, border: '1px solid',
+                          fontSize: 10, cursor: 'pointer', fontWeight: 500, lineHeight: '20px',
+                          borderColor: on ? '#818cf8' : '#d1d5db',
+                          background: on ? '#eef2ff' : 'transparent',
+                          color: on ? '#6366f1' : '#94a3b8',
+                          transition: 'all .12s',
+                        }}>
+                        R{ri}
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => {
+                    const all = ris.every(ri => selectedRounds.includes(ri));
+                    setSelectedRounds(all ? [] : [...ris]);
+                  }}
+                    style={{
+                      marginLeft: 2, padding: '1px 7px', borderRadius: 8, border: '1px solid #e5e7eb',
+                      fontSize: 10, cursor: 'pointer', background: 'transparent', color: '#94a3b8',
+                      lineHeight: '20px',
+                    }}>
+                    {ris.every(ri => selectedRounds.includes(ri)) ? '取消' : `全部 (${ris.length})`}
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* 消息列表 */}
             <div ref={drawerMessagesRef} style={{
@@ -958,156 +1013,170 @@ function ClassroomBoardContent() {
       )}
 
       {/* 投屏讲评 */}
-      {showFullscreen && (
+      {showFullscreen && (() => {
+        const projMsgs = messages.filter((m: any) => selectedRounds.includes(m.roundIndex));
+        const roundMap = new Map<number, any[]>();
+        for (const m of projMsgs) {
+          if (!roundMap.has(m.roundIndex)) roundMap.set(m.roundIndex, []);
+          roundMap.get(m.roundIndex)!.push(m);
+        }
+        const sortedRounds = Array.from(roundMap.entries()).sort(([a], [b]) => a - b);
+        const renderMsgFiles = (m: any, labelColor: string, bg: string) => {
+          const urls = m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : [];
+          const names = m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : [];
+          return (
+            <>
+              {urls.map((fu: string, fi: number) => (
+                <div key={fi} style={{ marginBottom: 10 }}>
+                  {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
+                    <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
+                      style={{ maxWidth: 260, maxHeight: 180, borderRadius: 10, objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <div style={{ padding: '8px 14px', background: bg, borderRadius: 8, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                      {names[fi] || '附件'}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div style={{ lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+            </>
+          );
+        };
+        return (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 300,
-          background: '#fff',
+          background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
           display: 'flex', flexDirection: 'column',
         }}>
-          {/* 顶部信息栏 */}
+          {/* 顶部栏 */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '20px 48px',
-            background: 'white',
-            borderBottom: '1px solid #eef2f6',
+            padding: '14px 40px',
+            background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid #e2e8f0',
+            zIndex: 10,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 18,
-              }}>
-                {selectedStudent?.name?.[0] || '?'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
+                {selectedStudent?.name || '学生'} 的对话
               </div>
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
-                  {selectedStudent?.name || ''}
-                </div>
-                <div style={{ fontSize: 14, color: '#94a3b8', marginTop: 4 }}>
-                  {classroom?.title || '课堂'} · 共 {messages.filter((m: any) => m.role === 'user').length} 轮互动
-                </div>
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>
+                {sortedRounds.length} 轮展示 · 已选 {selectedRounds.length} 轮
               </div>
             </div>
-            {classroomAgent && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 20px', borderRadius: 12,
-                background: '#f8fafc', border: '1px solid #eef2f6',
-              }}>
-                <div style={{
-                  width: 30, height: 30, borderRadius: 8,
-                  background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                  color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700, overflow: 'hidden',
-                }}>
-                  {classroomAgent.logo
-                    ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : classroomAgent.name[0]
-                  }
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 600, color: '#334155' }}>{classroomAgent.name}</span>
-              </div>
-            )}
             <button onClick={() => setShowFullscreen(false)}
-              style={{ padding: '12px 28px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'white', cursor: 'pointer', fontSize: 16, color: '#64748b', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 14, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出投屏
             </button>
           </div>
 
           {/* 对话内容 */}
           <div ref={fullscreenContentRef} style={{
-            flex: 1, overflow: 'auto', padding: '40px 60px',
-            maxWidth: 1100, width: '100%', margin: '0 auto',
+            flex: 1, overflow: 'auto', padding: '28px 48px 40px',
           }}>
-            {messages.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 100, color: '#94a3b8', fontSize: 22 }}>
-                暂无对话记录
+            {sortedRounds.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 80, color: '#94a3b8', fontSize: 18 }}>
+                请先在右侧面板中选择要投屏的对话轮次
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-                {messages.map((m: any, i: number) => (
-                  <div key={i} style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
-                  }}>
-                    {/* 角色标签 */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      marginBottom: 10,
+              <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 36 }}>
+                {sortedRounds.map(([ri, roundMsgs]) => {
+                  const userMsg = roundMsgs.find((m: any) => m.role === 'user');
+                  const aiMsg = roundMsgs.find((m: any) => m.role === 'assistant');
+                  return (
+                    <div key={ri} style={{
+                      background: 'white',
+                      borderRadius: 16,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+                      overflow: 'hidden',
                     }}>
-                      {m.role !== 'user' && classroomAgent && (
-                        <div style={{
-                          width: 28, height: 28, borderRadius: 8,
-                          background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                          color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 13, fontWeight: 700, overflow: 'hidden',
-                        }}>
-                          {classroomAgent.logo
-                            ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : classroomAgent.name[0]
-                          }
-                        </div>
-                      )}
-                      <span style={{
-                        fontSize: 16, fontWeight: 600,
-                        color: m.role === 'user' ? '#667eea' : '#475569',
+                      {/* 轮次标题 */}
+                      <div style={{
+                        padding: '10px 24px',
+                        borderBottom: '1px solid #f1f5f9',
+                        fontSize: 12, fontWeight: 600, color: '#94a3b8',
+                        letterSpacing: 0.5,
                       }}>
-                        {m.role === 'user' ? selectedStudent?.name || '学生' : (classroomAgent?.name || 'AI 助手')}
-                      </span>
-                    </div>
-
-                    {/* 消息气泡 */}
-                    <div style={{
-                      maxWidth: '78%',
-                      padding: '20px 28px',
-                      borderRadius: m.role === 'user' ? '20px 20px 6px 20px' : '6px 20px 20px 20px',
-                      background: m.role === 'user' ? '#eef2ff' : '#f8fafc',
-                      border: '1px solid',
-                      borderColor: m.role === 'user' ? '#dbeafe' : '#eef2f6',
-                      lineHeight: 1.8,
-                      fontSize: 22,
-                      color: '#0f172a',
-                      wordBreak: 'break-word',
-                    }}>
-                      {/* 附件图片 */}
-                      {(() => {
-                        const urls = m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : [];
-                        const names = m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : [];
-                        return urls.map((fu: string, fi: number) => (
-                          <div key={fi} style={{ marginBottom: 12 }}>
-                            {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-                              <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                                style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block' }} />
-                            ) : (
-                              <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: 16, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                                {names[fi] || '附件'}
-                              </div>
-                            )}
+                        第 {ri} 轮
+                      </div>
+                      <div style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                        {/* 学生消息 */}
+                        {userMsg && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: '#667eea', paddingRight: 4 }}>
+                              {selectedStudent?.name || '学生'}
+                            </div>
+                            <div style={{
+                              maxWidth: '80%',
+                              padding: '14px 20px',
+                              borderRadius: '16px 16px 4px 16px',
+                              background: '#eef2ff',
+                              color: '#1a1a2e',
+                              fontSize: 17,
+                              wordBreak: 'break-word',
+                            }}>
+                              {userMsg && renderMsgFiles(userMsg, '#667eea', 'rgba(102,126,234,0.08)')}
+                            </div>
                           </div>
-                        ));
-                      })()}
-                      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+                        )}
+                        {/* AI 消息 */}
+                        {aiMsg && (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+                              <div style={{ width: 24, height: 24, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
+                                {classroomAgent?.logo ? (
+                                  <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{
+                                    width: '100%', height: '100%',
+                                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 11, fontWeight: 700, color: 'white',
+                                  }}>
+                                    {classroomAgent?.name?.[0] || 'AI'}
+                                  </div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>
+                                {classroomAgent?.name || 'AI 助手'}
+                              </span>
+                            </div>
+                            <div style={{
+                              maxWidth: '80%',
+                              padding: '14px 20px',
+                              borderRadius: '4px 16px 16px 16px',
+                              background: '#f8fafc',
+                              border: '1px solid #eef2f6',
+                              color: '#0f172a',
+                              fontSize: 17,
+                              wordBreak: 'break-word',
+                            }}>
+                              {aiMsg && renderMsgFiles(aiMsg, '#475569', '#f1f5f9')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
           {/* 底部水印 */}
           <div style={{
-            textAlign: 'center', padding: '12px 0',
-            fontSize: 13, color: '#cbd5e1',
+            textAlign: 'center', padding: '8px 0',
+            fontSize: 12, color: '#cbd5e1',
             borderTop: '1px solid #f1f5f9',
+            background: 'rgba(255,255,255,0.85)',
           }}>
-            ClassNode · 投屏展示
+            ClassNode · 投屏展示 · {selectedStudent?.name || ''}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 全屏学生网格覆盖层 — 盖过左侧导航栏 */}
       {gridFullscreen && (

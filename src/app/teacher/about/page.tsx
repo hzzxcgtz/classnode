@@ -365,15 +365,34 @@ export default function AboutPage() {
       </div>
 
       {/* ========== 底部信息 ========== */}
-      <div style={{ textAlign: 'center', padding: '28px 0 12px', borderTop: '1px solid #eef2f6' }}>
-        <div style={{ fontSize: 14, color: '#94a3b8', lineHeight: 2.2 }}>
-          <div>张星昌 · 杭州市拱墅区教育研究院</div>
-          <div>
-            联系：
-            <a href="mailto:hzzxc2012@163.com" style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
+      <div style={{ textAlign: 'center', padding: '24px 0 16px', borderTop: '1px solid #eef2f6' }}>
+        <div style={{ fontSize: 14, color: '#64748b', lineHeight: 2 }}>
+          <div style={{ fontWeight: 600, color: '#334155' }}>教学互促 · 源码共研</div>
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>欢迎对技术感兴趣的老师访问仓库交流</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '12px 0 16px' }}>
+            <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://gitcode.com/weixin_41523975/classnode'); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500, color: '#e4392b', transition: 'all 0.2s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(228,57,43,0.06)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+              <img src="/gitcode_logo.png" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
+              GitCode
+            </a>
+            <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://github.com/hzzxcgtz/classnode'); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500, color: '#24292f', transition: 'all 0.2s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+              <img src="/github_logo.png" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
+              GitHub
+            </a>
           </div>
-          <div style={{ marginTop: 4, fontSize: 13, color: '#cbd5e1' }}>
-            ClassNode v{APP_VERSION} &mdash; AI 互动课堂系统
+          <div style={{ fontSize: 13, color: '#94a3b8' }}>
+            张星昌 · 杭州市拱墅区教育研究院
+          </div>
+          <div>
+            <a href="mailto:hzzxc2012@163.com" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
+          </div>
+          <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>
+            ClassNode v{APP_VERSION}
           </div>
         </div>
       </div>

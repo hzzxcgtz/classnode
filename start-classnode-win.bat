@@ -20,7 +20,6 @@ if %ERRORLEVEL% neq 0 (
     echo  [Error] Node.js not found. Install from https://nodejs.org
     goto :end
 )
-
 for /f "tokens=*" %%i in ('node -v') do echo  Node.js %%i
 
 :: ============================================================
@@ -33,9 +32,10 @@ for %%p in (%FRONTEND_PORT% %BACKEND_PORT%) do (
 )
 
 :: ============================================================
-:: Install dependencies
+:: Install dependencies (通过 Node.js 模块解析检测，兼容 pnpm）
 :: ============================================================
-if not exist "node_modules" (
+node -e "require.resolve('next/dist/bin/next')" >nul 2>nul
+if %ERRORLEVEL% neq 0 (
     echo.
     echo  ----------------------------------------
     echo  Installing frontend dependencies...
@@ -47,19 +47,21 @@ if not exist "node_modules" (
     )
 )
 
-if not exist "server\node_modules" (
+pushd server
+node -e "require.resolve('prisma/build/index.js')" >nul 2>nul
+if %ERRORLEVEL% neq 0 (
     echo.
     echo  ----------------------------------------
     echo  Installing server dependencies...
     echo  ----------------------------------------
-    pushd server
     call npm install
-    popd
     if errorlevel 1 (
+        popd
         echo  [Error] Server install failed
         goto :end
     )
 )
+popd
 
 :: ============================================================
 :: Build frontend
@@ -70,7 +72,6 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    node -e "require.resolve('next/dist/bin/next')" >nul 2>nul || call npm install
     node -e "process.argv.splice(2,0,'build');require(require.resolve('next/dist/bin/next'))"
     if errorlevel 1 (
         echo  [Error] Frontend build failed
@@ -87,7 +88,7 @@ if not exist "server\.env" (
         echo  Created server\.env
     ) else (
         echo DATABASE_URL="file:./dev.db" > "server\.env"
-        echo PORT=3001 >> "server\.env"
+        echo PORT=%BACKEND_PORT% >> "server\.env"
     )
 )
 
@@ -100,7 +101,6 @@ if not exist "server\dist" (
     echo  Initializing database...
     echo  ----------------------------------------
     pushd server
-    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install prisma
     node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
     if errorlevel 1 (
         popd
@@ -114,7 +114,6 @@ if not exist "server\dist" (
     echo  Building backend...
     echo  ----------------------------------------
     pushd server
-    node -e "require.resolve('typescript/bin/tsc')" >nul 2>nul || call npm install
     node -e "require(require.resolve('typescript/bin/tsc'))"
     if errorlevel 1 (
         popd
@@ -128,7 +127,6 @@ if not exist "server\dist" (
     echo  Updating database...
     echo  ----------------------------------------
     pushd server
-    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install prisma
     node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
     popd
 )

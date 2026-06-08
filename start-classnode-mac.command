@@ -36,9 +36,9 @@ for PORT in $FRONTEND_PORT $BACKEND_PORT; do
 done
 
 # ============================================================
-# Install dependencies
+# Install dependencies (通过 Node.js 模块解析检测，兼容 pnpm)
 # ============================================================
-if [ ! -d "node_modules" ]; then
+if ! node -e "require.resolve('next/dist/bin/next')" 2>/dev/null; then
   echo ""
   echo "  ----------------------------------------"
   echo "  Installing frontend dependencies..."
@@ -51,7 +51,7 @@ if [ ! -d "node_modules" ]; then
   fi
 fi
 
-if [ ! -d "server/node_modules" ]; then
+if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
   echo ""
   echo "  ----------------------------------------"
   echo "  Installing server dependencies..."
@@ -89,13 +89,9 @@ if [ ! -f server/.env ]; then
     echo "  ✔ Created server/.env"
   else
     echo 'DATABASE_URL="file:./dev.db"' > server/.env
-    echo "PORT=3001" >> server/.env
+    echo "PORT=${BACKEND_PORT}" >> server/.env
   fi
 fi
-
-# ============================================================
-# Ensure server dependencies installed (pnpm 可能导致 .bin 缺失)
-# ============================================================
 
 # ============================================================
 # Initialize database and build backend
@@ -105,9 +101,6 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Initializing database..."
   echo "  ----------------------------------------"
-  if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
-    cd server && npm install prisma && cd "$SCRIPT_DIR"
-  fi
   cd "$SCRIPT_DIR/server" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))" && cd "$SCRIPT_DIR"
   if [ $? -ne 0 ]; then
     echo "  [Error] Database init failed"
@@ -119,7 +112,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Building backend..."
   echo "  ----------------------------------------"
-  cd server && node -e "require.resolve('typescript/bin/tsc')" 2>/dev/null || npm install && node -e "require(require.resolve('typescript/bin/tsc'))" && cd ..
+  cd server && node -e "require(require.resolve('typescript/bin/tsc'))" && cd ..
   if [ $? -ne 0 ]; then
     echo "  [Error] Backend build failed"
     read -p "Press Enter to exit..."
@@ -130,9 +123,6 @@ else
   echo "  ----------------------------------------"
   echo "  Updating database..."
   echo "  ----------------------------------------"
-  if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
-    cd server && npm install prisma && cd "$SCRIPT_DIR"
-  fi
   cd "$SCRIPT_DIR/server" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))" && cd "$SCRIPT_DIR"
 fi
 

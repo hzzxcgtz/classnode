@@ -54,8 +54,8 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let gitcode = MenuItem::with_id(app, "gitcode", "GitCode", true, None::<&str>)?;
-    let github = MenuItem::with_id(app, "github", "GitHub", true, None::<&str>)?;
+    let gitcode = MenuItem::with_id(app, "gitcode", "项目地址 (GitCode)", true, None::<&str>)?;
+    let github = MenuItem::with_id(app, "github", "项目地址 (GitHub)", true, None::<&str>)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
@@ -402,8 +402,8 @@ fn build_app_menu(handle: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> 
         &MenuItem::with_id(handle, "stop", "停止服务", true, None::<&str>)?,
     ])?;
     let help_menu = Submenu::with_items(handle, "帮助", true, &[
-        &MenuItem::with_id(handle, "gitcode", "GitCode", true, None::<&str>)?,
-        &MenuItem::with_id(handle, "github", "GitHub", true, None::<&str>)?,
+        &MenuItem::with_id(handle, "gitcode", "项目地址 (GitCode)", true, None::<&str>)?,
+        &MenuItem::with_id(handle, "github", "项目地址 (GitHub)", true, None::<&str>)?,
     ])?;
     let menu = Menu::new(handle)?;
     menu.append(&file_menu)?;

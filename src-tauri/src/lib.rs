@@ -1,6 +1,7 @@
 use std::fs;
 use std::net::TcpStream;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use tauri::{
 };
 
 const SERVER_PORT: u16 = 3001;
+static IS_STARTING: AtomicBool = AtomicBool::new(false);
 
 struct ServerInfo {
     child: Child,
@@ -342,10 +344,16 @@ fn get_server_status() -> ServerStatus {
 
 #[tauri::command]
 fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
+    if IS_STARTING.load(Ordering::Relaxed) {
+        return Err("服务正在启动中，请勿重复操作".to_string());
+    }
     if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
         return Err("服务已在运行中".to_string());
     }
-    spawn_server(&app)?;
+    IS_STARTING.store(true, Ordering::Relaxed);
+    let result = spawn_server(&app);
+    IS_STARTING.store(false, Ordering::Relaxed);
+    result?;
     update_tray(&app, true);
     Ok(())
 }

@@ -304,12 +304,13 @@ body {
 
 .addr-url {
   flex: 1;
-  font-size: 14px;
+  min-width: 0;
+  font-size: 13px;
   color: var(--text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "SF Mono", "Menlo", "Cascadia Code", monospace;
+  font-family: "SF Mono", "Menlo", "Cascadia Code", "Consolas", monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -590,14 +591,20 @@ async function chk() {
 }
 
 async function startSrv() {
+  const btn = document.getElementById('btnGo');
+  if (btn.disabled) return; // 防重按
+  btn.disabled = true;
+  document.getElementById('sDot').className = 'dot go';
+  document.getElementById('sLabel').className = 'status-label go';
+  document.getElementById('sLabel').textContent = '启动中…';
   try {
-    document.getElementById('btnGo').disabled = true;
-    document.getElementById('sDot').className = 'dot go';
-    document.getElementById('sLabel').className = 'status-label go';
-    document.getElementById('sLabel').textContent = '启动中…';
     await invoke('cmd_start_server');
     setTimeout(chk, 900);
-  } catch (e) { eShow('启动失败: ' + e); chk(); }
+  } catch (e) {
+    eShow('启动失败: ' + e);
+    btn.disabled = false;
+    chk();
+  }
 }
 
 async function stopSrv() {

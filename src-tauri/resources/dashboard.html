@@ -647,6 +647,8 @@ async function cpUrl(t) {
   } catch (e) { console.error(e); }
 }
 
+// 页面加载后立即标记"启动中…"（给自动启动留出缓冲时间）
+_startTs = Date.now();
 setTimeout(() => { chk(); _p = setInterval(chk, 3000); }, 900);
 </script>
 </body>

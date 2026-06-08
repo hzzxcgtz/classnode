@@ -20,21 +20,30 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prep:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ARCH="${{ github.event.inputs.arch }}"
+          else
+            ARCH="both"
+          fi
+          case "$ARCH" in
+            both) echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
+            x64)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' ;;
+            x86)  echo 'matrix={"include":[{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
+          esac >> "$GITHUB_OUTPUT"
+
   build:
-    if: |
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.arch == 'both' ||
-      github.event.inputs.arch == matrix.arch
+    needs: prep
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-pc-windows-msvc
-            arch: x64
-            node-platform: win-x64
-          - target: i686-pc-windows-msvc
-            arch: x86
-            node-platform: win-x86
+      matrix: ${{ fromJSON(needs.prep.outputs.matrix) }}
 
     runs-on: windows-latest
 

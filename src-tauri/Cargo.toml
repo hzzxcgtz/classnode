@@ -24,4 +24,5 @@ log = "0.4"
 tauri = { version = "2.11.2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
+tauri-plugin-window-state = "2"
 if-addrs = "0.12"

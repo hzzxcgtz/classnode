@@ -20,7 +20,16 @@ html = html.replace(/__APP_VERSION__/g, version);
 fs.writeFileSync(DEST, html);
 console.log(`[build] Copied dashboard.html → out/ (v${version})`);
 
-// 2. 复制 out/ 到 server/frontend
+// 2. 复制 logo 文件到 out/
+for (const f of ['gitcode_logo.png', 'github_logo.png']) {
+  const src = path.join(ROOT, 'public', f);
+  const dst = path.join(ROOT, 'out', f);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dst);
+  }
+}
+
+// 3. 复制 out/ 到 server/frontend
 if (fs.existsSync(FRONTEND_DEST)) {
   fs.rmSync(FRONTEND_DEST, { recursive: true, force: true });
 }

@@ -1,5 +1,4 @@
 use std::fs;
-use std::mem;
 use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::Mutex;
@@ -12,7 +11,7 @@ use std::os::unix::process::CommandExt;
 use serde::Serialize;
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, RunEvent,
 };
@@ -41,7 +40,7 @@ fn get_local_ips() -> Vec<String> {
 
 fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let status_text = if running {
-        format!("状态: 运行中 (端口: {SERVER_PORT})")
+        "状态: 运行中".to_string()
     } else {
         "状态: 已停止".to_string()
     };
@@ -53,27 +52,22 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "显示面板", true, None::<&str>)?;
-    let repo = MenuItem::with_id(app, "repo", "项目地址", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
+    let gitcode = MenuItem::with_id(app, "gitcode", "GitCode", true, None::<&str>)?;
+    let github = MenuItem::with_id(app, "github", "GitHub", true, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
     let menu = Menu::new(app)?;
     menu.append(&status)?;
-
-    if running {
-        for ip in get_local_ips() {
-            let item = MenuItem::with_id(app, &format!("ip_{}", ip), &ip, true, None::<&str>)?;
-            item.set_enabled(false)?;
-            menu.append(&item)?;
-        }
-    }
-
     menu.append(&sep1)?;
     menu.append(&start)?;
     menu.append(&stop)?;
     menu.append(&show)?;
-    menu.append(&repo)?;
     menu.append(&sep2)?;
+    menu.append(&gitcode)?;
+    menu.append(&github)?;
+    menu.append(&sep3)?;
     menu.append(&quit)?;
     Ok(menu)
 }
@@ -90,7 +84,7 @@ fn tray_icon_bytes(running: bool) -> &'static [u8] {
 fn set_tray_icon(app: &AppHandle, running: bool) {
     match Image::from_bytes(tray_icon_bytes(running)) {
         Ok(icon) => {
-            if let Some(tray) = app.tray_by_id("main") {
+            if let Some(tray) = app.tray_by_id("dashboard") {
                 if let Err(e) = tray.set_icon(Some(icon)) {
                     eprintln!("设置托盘图标失败: {}", e);
                 }
@@ -113,7 +107,7 @@ fn update_tray(app: &AppHandle, running: bool) {
     } else {
         "ClassNode - 已停止".to_string()
     };
-    if let Some(tray) = app.tray_by_id("main") {
+    if let Some(tray) = app.tray_by_id("dashboard") {
         let _ = tray.set_tooltip(Some(&tooltip));
         match build_menu(app, running) {
             Ok(menu) => {
@@ -369,13 +363,35 @@ fn cmd_open_url(url_type: String) {
     let url = match url_type.as_str() {
         "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
         "student" => format!("http://{}:{}/classroom", ip, SERVER_PORT),
-        "repo" => "https://gitcode.com/weixin_41523975/classnode".to_string(),
+        "repo" | "gitcode" => "https://gitcode.com/weixin_41523975/classnode".to_string(),
+        "github" => "https://github.com/hzzxcgtz/classnode".to_string(),
         _ => format!("http://{}:{}/teacher", ip, SERVER_PORT),
     };
     open_browser_url(&url);
 }
 
 // ─── App Entry ───────────────────────────────────────────
+
+fn build_app_menu(handle: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    let file_menu = Submenu::with_items(handle, "文件", true, &[
+        &MenuItem::with_id(handle, "show", "显示面板", true, None::<&str>)?,
+        &PredefinedMenuItem::separator(handle)?,
+        &MenuItem::with_id(handle, "quit", "退出 ClassNode", true, Some("CmdOrCtrl+Q"))?,
+    ])?;
+    let server_menu = Submenu::with_items(handle, "服务", true, &[
+        &MenuItem::with_id(handle, "start", "启动服务", true, Some("CmdOrCtrl+R"))?,
+        &MenuItem::with_id(handle, "stop", "停止服务", true, None::<&str>)?,
+    ])?;
+    let help_menu = Submenu::with_items(handle, "帮助", true, &[
+        &MenuItem::with_id(handle, "gitcode", "GitCode", true, None::<&str>)?,
+        &MenuItem::with_id(handle, "github", "GitHub", true, None::<&str>)?,
+    ])?;
+    let menu = Menu::new(handle)?;
+    menu.append(&file_menu)?;
+    menu.append(&server_menu)?;
+    menu.append(&help_menu)?;
+    Ok(menu)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -384,6 +400,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             // 阻止第二个实例启动
         }))
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_server_status,
             cmd_start_server,
@@ -394,18 +411,20 @@ pub fn run() {
             let icon = Image::from_bytes(tray_icon_bytes(false))
                 .map_err(|e| format!("无法加载托盘图标: {e}"))?;
 
-            // macOS: 设置为纯托盘应用（关闭窗口时 Dock 图标消失）
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
             let handle = app.handle();
-            let menu = build_menu(&handle, false)?;
 
-            let tray = TrayIconBuilder::with_id("main")
+            // 构建原生菜单栏（macOS 顶部菜单 / Windows 标题栏菜单）
+            #[cfg(not(target_os = "linux"))]
+            if let Ok(menu) = build_app_menu(&handle) {
+                app.set_menu(menu).ok();
+            }
+            let tray_menu = build_menu(&handle, false)?;
+
+            let _tray = TrayIconBuilder::with_id("dashboard")
                 .icon(icon)
                 .icon_as_template(true)
                 .tooltip("ClassNode - 已停止")
-                .menu(&menu)
+                .menu(&tray_menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
@@ -436,8 +455,11 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
-                    "repo" => open_browser_url(
+                    "gitcode" => open_browser_url(
                         "https://gitcode.com/weixin_41523975/classnode",
+                    ),
+                    "github" => open_browser_url(
+                        "https://github.com/hzzxcgtz/classnode",
                     ),
                     "quit" => {
                         let _ = stop_server(app);
@@ -446,9 +468,8 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
-            mem::forget(tray);
 
-            // 关闭窗口时隐藏到系统托盘
+            // 关闭窗口时最小化到托盘（不退出程序）
             if let Some(window) = app.get_webview_window("dashboard") {
                 let w = window.clone();
                 window.on_window_event(move |event| {
@@ -480,12 +501,12 @@ pub fn run() {
             RunEvent::Exit => {
                 let _ = stop_server(app_handle);
             }
-            RunEvent::WindowEvent { label, event: tauri::WindowEvent::Focused(true), .. } => {
-                if label == "dashboard" {
-                    if let Some(window) = app_handle.get_webview_window("dashboard") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+            // macOS: Dock 图标点击时重新显示窗口
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => {
+                if let Some(window) = app_handle.get_webview_window("dashboard") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
             _ => {}

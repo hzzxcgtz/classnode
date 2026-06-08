@@ -15,9 +15,9 @@
         "label": "dashboard",
         "url": "dashboard.html",
         "title": "ClassNode",
-        "width": 520,
-        "height": 620,
-        "resizable": true,
+        "width": 460,
+        "height": 580,
+        "resizable": false,
         "center": true,
         "decorations": true,
         "devtools": true

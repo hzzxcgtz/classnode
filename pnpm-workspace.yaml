@@ -1,5 +1,13 @@
 packages:
   - "server"
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  better-sqlite3: true
+  esbuild: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
 onlyBuiltDependencies:
   - "@prisma/client"
   - "@prisma/engines"

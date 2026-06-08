@@ -4,6 +4,15 @@ on:
   push:
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      arch:
+        type: choice
+        description: 构建架构（tag 推送时始终构建两个）
+        options:
+          - both
+          - x64
+          - x86
+        default: both
 
 env:
   NODE_VERSION: '22'
@@ -12,6 +21,10 @@ env:
 
 jobs:
   build:
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.arch == 'both' ||
+      github.event.inputs.arch == matrix.arch
     strategy:
       fail-fast: false
       matrix:

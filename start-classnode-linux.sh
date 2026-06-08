@@ -72,7 +72,7 @@ if [ ! -d "out" ]; then
   echo "  ----------------------------------------"
   echo "  Building frontend..."
   echo "  ----------------------------------------"
-  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" node node_modules/next/dist/bin/next build
+  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" node "$SCRIPT_DIR/_run-cmd.js" next/dist/bin/next build
   if [ $? -ne 0 ]; then
     echo "  [Error] Frontend build failed"
     read -p "Press Enter to exit..."
@@ -105,12 +105,10 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Initializing database..."
   echo "  ----------------------------------------"
-  PRISMA_PATH=$(node -e "try{console.log(require.resolve('prisma/build/index.js'))}catch(e){console.log('NOT_FOUND')}")
-  if [ "$PRISMA_PATH" = "NOT_FOUND" ]; then
+  if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
     cd server && npm install prisma && cd "$SCRIPT_DIR"
-    PRISMA_PATH=$(node -e "console.log(require.resolve('prisma/build/index.js'))")
   fi
-  cd "$SCRIPT_DIR/server" && node "$PRISMA_PATH" db push --accept-data-loss && cd "$SCRIPT_DIR"
+  cd "$SCRIPT_DIR/server" && node "$SCRIPT_DIR/_run-cmd.js" prisma/build/index.js db push --accept-data-loss && cd "$SCRIPT_DIR"
   if [ $? -ne 0 ]; then
     echo "  [Error] Database init failed"
     read -p "Press Enter to exit..."
@@ -121,7 +119,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Building backend..."
   echo "  ----------------------------------------"
-  cd server && node -e "require.resolve('typescript/bin/tsc')" 2>/dev/null || npm install && node node_modules/typescript/bin/tsc && cd ..
+  cd server && node -e "require.resolve('typescript/bin/tsc')" 2>/dev/null || npm install && node "$SCRIPT_DIR/_run-cmd.js" typescript/bin/tsc && cd ..
   if [ $? -ne 0 ]; then
     echo "  [Error] Backend build failed"
     read -p "Press Enter to exit..."
@@ -132,12 +130,10 @@ else
   echo "  ----------------------------------------"
   echo "  Updating database..."
   echo "  ----------------------------------------"
-  PRISMA_PATH=$(node -e "try{console.log(require.resolve('prisma/build/index.js'))}catch(e){console.log('NOT_FOUND')}")
-  if [ "$PRISMA_PATH" = "NOT_FOUND" ]; then
+  if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
     cd server && npm install prisma && cd "$SCRIPT_DIR"
-    PRISMA_PATH=$(node -e "console.log(require.resolve('prisma/build/index.js'))")
   fi
-  cd "$SCRIPT_DIR/server" && node "$PRISMA_PATH" db push --accept-data-loss && cd "$SCRIPT_DIR"
+  cd "$SCRIPT_DIR/server" && node "$SCRIPT_DIR/_run-cmd.js" prisma/build/index.js db push --accept-data-loss && cd "$SCRIPT_DIR"
 fi
 
 # ============================================================

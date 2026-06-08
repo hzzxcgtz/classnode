@@ -53,7 +53,6 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     let sep1 = PredefinedMenuItem::separator(app)?;
     let start = MenuItem::with_id(app, "start", "启动服务", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "停止服务", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, "show", "显示面板", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let gitcode = MenuItem::with_id(app, "gitcode", "GitCode", true, None::<&str>)?;
     let github = MenuItem::with_id(app, "github", "GitHub", true, None::<&str>)?;
@@ -65,7 +64,6 @@ fn build_menu(app: &AppHandle, running: bool) -> Result<Menu<tauri::Wry>, tauri:
     menu.append(&sep1)?;
     menu.append(&start)?;
     menu.append(&stop)?;
-    menu.append(&show)?;
     menu.append(&sep2)?;
     menu.append(&gitcode)?;
     menu.append(&github)?;

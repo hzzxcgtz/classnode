@@ -204,6 +204,11 @@ body {
 }
 
 .dot.stop { background: var(--red); }
+.dot.stopping { background: var(--red); animation: stopFade 0.9s ease-in-out infinite; }
+@keyframes stopFade {
+  0%, 100% { transform: scale(1); opacity: 0.6; box-shadow: 0 0 0 0 rgba(255,59,48,0); }
+  50% { transform: scale(0.7); opacity: 0.3; box-shadow: 0 0 0 6px rgba(255,59,48,0.1); }
+}
 .dot.go { background: transparent; position: relative; }
 .dot.go::before {
   content: '';
@@ -233,6 +238,7 @@ body {
 
 .status-label.run { color: var(--green); }
 .status-label.stop { color: var(--red); }
+.status-label.stopping { color: var(--red); opacity: 0.6; }
 .status-label.go { color: var(--orange); }
 
 .status-port {
@@ -491,7 +497,10 @@ body {
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           启动
         </button>
-        <button class="btn btn-secondary" id="btnStop" onclick="stopSrv()">停止</button>
+        <button class="btn btn-secondary" id="btnStop" onclick="stopSrv()">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          停止
+        </button>
       </div>
     </div>
 
@@ -548,6 +557,7 @@ body {
 <script>
 let _p = null;
 let _startTs = 0;  // 启动开始时间戳（用于保持"启动中…"状态）
+let _stopTs = 0;   // 停止开始时间戳
 const invoke = (window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || (() => null));
 
 function eShow(m) {
@@ -576,6 +586,11 @@ function ui(s) {
     desc.textContent = '服务正常，局域网内设备可扫码或输入地址加入课堂';
     _startTs = 0;
 
+    // 停止操作超时处理（如果按钮被禁用但服务一直没停）
+    if (_stopTs) {
+      _stopTs = 0;
+    }
+
     const h = (s.ips && s.ips[0]) || 'localhost';
     const b = `http://${h}:${s.port}`;
     document.getElementById('urlT').textContent = b + '/teacher';
@@ -587,7 +602,14 @@ function ui(s) {
       bx.style.display = 'block';
       ls.innerHTML = s.ips.slice(1).map(i => `<span class="ip-chip">${i}</span>`).join('');
     } else { bx.style.display = 'none'; }
-  } else if (_startTs > 0 && Date.now() - _startTs < 25000) {
+  } else if (_stopTs > 0 && Date.now() - _stopTs < 15000) {
+    dot.className = 'dot stopping';
+    lab.className = 'status-label stopping';
+    lab.textContent = '停止中…';
+    go.disabled = true; stp.disabled = true;
+    bts.forEach(b => b.disabled = true);
+    desc.textContent = '正在停止服务…';
+  } else if (_startTs > 0 && Date.now() - _startTs < 30000) {
     // 启动中，后台线程尚未完成
     dot.className = 'dot go';
     lab.className = 'status-label start';
@@ -637,11 +659,18 @@ async function startSrv() {
 }
 
 async function stopSrv() {
+  const btn = document.getElementById('btnStop');
+  if (btn.disabled) return;
+  _stopTs = Date.now();
+  btn.disabled = true;
+  document.getElementById('sDot').className = 'dot stopping';
+  document.getElementById('sLabel').className = 'status-label stopping';
+  document.getElementById('sLabel').textContent = '停止中…';
   try {
-    document.getElementById('btnStop').disabled = true;
     await invoke('cmd_stop_server');
+    _stopTs = 0;
     setTimeout(chk, 600);
-  } catch (e) { eShow('停止失败: ' + e); }
+  } catch (e) { _stopTs = 0; eShow('停止失败: ' + e); chk(); }
 }
 
 function openUrl(t) {

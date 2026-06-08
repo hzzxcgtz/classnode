@@ -317,7 +317,7 @@ function ClassroomBoardContent() {
       const clean = hideCensored(msgs);
       setMessages(clean);
       // 默认选中所有对话轮次
-      const ris = Array.from(new Set(clean.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(Boolean))) as number[];
+      const ris = Array.from(new Set(clean.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(ri => ri != null))) as number[];
       setSelectedRounds(ris.sort((a: number, b: number) => a - b));
     } catch { setMessages([]); setSelectedRounds([]); }
   };
@@ -818,7 +818,7 @@ function ClassroomBoardContent() {
 
             {/* 轮次选择（投屏用） */}
             {messages.length > 0 && (() => {
-              const ris = Array.from(new Set(messages.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(Boolean))) as number[];
+              const ris = Array.from(new Set(messages.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(ri => ri != null))) as number[];
               ris.sort((a, b) => a - b);
               if (ris.length === 0) return null;
               return (

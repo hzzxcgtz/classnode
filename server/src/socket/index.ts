@@ -2,26 +2,28 @@ import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
-import { checkShieldWords } from '../services/shield-filter.js';
+import { buildShieldFilter } from '../services/shield-filter.js';
+import { decrypt } from '../services/crypto.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
 const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 
-/** 屏蔽词缓存（避免每次发消息都查询数据库） */
-let cachedShieldWords: string[] = [];
+/** 屏蔽词过滤器缓存（预构建 AC 自动机，避免每次发消息都重建） */
+let cachedFilter: ((content: string) => { filtered: string; matched: string[] }) | null = null;
 let shieldWordsCacheTime = 0;
 const SHIELD_WORDS_CACHE_TTL = 3_000;
 
-async function getShieldWords(prisma: PrismaClient): Promise<string[]> {
+async function checkWithFilter(prisma: PrismaClient, content: string): Promise<{ filtered: string; matched: string[] } | null> {
   const now = Date.now();
-  if (cachedShieldWords.length > 0 && now - shieldWordsCacheTime < SHIELD_WORDS_CACHE_TTL) {
-    return cachedShieldWords;
+  if (!cachedFilter || now - shieldWordsCacheTime >= SHIELD_WORDS_CACHE_TTL) {
+    const words = await prisma.shieldWord.findMany({ where: { enabled: true }, select: { word: true } });
+    const wordList = words.map(w => w.word);
+    cachedFilter = wordList.length > 0 ? buildShieldFilter(wordList) : null;
+    shieldWordsCacheTime = now;
   }
-  const words = await prisma.shieldWord.findMany({ where: { enabled: true }, select: { word: true } });
-  cachedShieldWords = words.map(w => w.word);
-  shieldWordsCacheTime = now;
-  return cachedShieldWords;
+  if (!cachedFilter) return null;
+  return cachedFilter(content);
 }
 
 
@@ -203,10 +205,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           socket.emit('student-blacklisted', { studentId: data.studentId });
           return;
         }
-        // Load shield words and check content
-        const wordList = await getShieldWords(prisma);
-        if (wordList.length > 0) {
-          const { filtered, matched } = checkShieldWords(data.content, wordList);
+        // Load shield words and check content (使用预构建 AC 自动机)
+        const shieldResult = await checkWithFilter(prisma, data.content);
+        if (shieldResult && shieldResult.matched.length > 0) {
+          const { filtered, matched } = shieldResult;
           if (matched.length > 0) {
             // Replace content with filtered version
             data.content = filtered;
@@ -386,7 +388,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         const agentConfig = {
           platform: agent.platform,
           apiUrl: agent.apiUrl || undefined,
-          apiKey: agent.apiKey,
+          apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
           botId: agent.botId || undefined,
           extra: agent.extra || undefined,
         };

@@ -12,6 +12,12 @@ export function useSocket() {
       socketRef.current = io(getApiBaseUrl(), {
         transports: ['websocket', 'polling'],
       });
+      socketRef.current.on('connect_error', (err) => {
+        console.warn('[Socket] Connection error:', err.message);
+      });
+      socketRef.current.on('reconnect', (attempt) => {
+        console.log('[Socket] Reconnected after', attempt, 'attempts');
+      });
     }
     return () => {
       if (socketRef.current) {

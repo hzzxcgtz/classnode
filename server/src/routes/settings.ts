@@ -3,32 +3,6 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
 const router: Router = Router();
 
-const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || (() => {
-  console.warn('[Settings] 使用默认加密密钥，生产环境请设置 ENCRYPTION_KEY 环境变量');
-  return crypto.createHash('sha256').update('classnode-default-key-2024').digest('hex').slice(0, 32);
-})();
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'utf8'), iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
-}
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'utf8'), iv);
-  decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-}
-
 // 获取所有设置
 router.get('/', async (req, res) => {
   try {

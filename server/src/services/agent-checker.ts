@@ -7,6 +7,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Server } from 'socket.io';
 import { testAgentConnection } from './ai-proxy.js';
+import { decrypt } from './crypto.js';
 
 let prisma: PrismaClient | null = null;
 let io: Server | null = null;
@@ -22,10 +23,11 @@ async function checkAgent(agent: {
   extra: string | null;
 }): Promise<boolean> {
   try {
+    const decryptedKey = (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })();
     const result = await testAgentConnection({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
-      apiKey: agent.apiKey,
+      apiKey: decryptedKey,
       botId: agent.botId || undefined,
       extra: agent.extra || undefined,
     });

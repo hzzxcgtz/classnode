@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { testAgentConnection, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
+import { encrypt, decrypt, isEncrypted } from '../services/crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -35,12 +36,37 @@ const logosDir = process.env.CLASSNODE_DATA_DIR
   : path.join(__dirname, '../../uploads/logos');
 fs.mkdirSync(logosDir, { recursive: true });
 
+/** 脱敏 API Key，仅显示前后缀用于识别 */
+function maskApiKey(key: string): string {
+  if (key.length <= 8) return '****';
+  return key.slice(0, 4) + '****' + key.slice(-4);
+}
+
+/** 解密 agent 对象中的 apiKey */
+function decryptAgent(agent: any) {
+  if (!agent) return agent;
+  try {
+    if (isEncrypted(agent.apiKey)) {
+      agent.apiKey = decrypt(agent.apiKey);
+    }
+  } catch {
+    // 解密失败时保留原值
+  }
+  return agent;
+}
+
+/** 加密 apiKey（仅未加密的原始值才加密） */
+function encryptApiKey(apiKey: string): string {
+  if (isEncrypted(apiKey)) return apiKey;
+  return encrypt(apiKey);
+}
+
 // 获取所有智能体
 router.get('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const agents = await prisma.agent.findMany({ orderBy: { createdAt: 'desc' } });
-    res.json(agents);
+    res.json(agents.map(decryptAgent));
   } catch (error) {
     res.status(500).json({ error: '获取智能体列表失败' });
   }
@@ -77,7 +103,7 @@ router.get('/:id', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
-    res.json(agent);
+    res.json(decryptAgent(agent));
   } catch (error) {
     res.status(500).json({ error: '获取智能体失败' });
   }
@@ -95,7 +121,7 @@ router.post('/', upload.single('logo'), async (req, res) => {
         name,
         platform,
         apiUrl: apiUrl || null,
-        apiKey,
+        apiKey: encrypt(apiKey),
         botId: botId || null,
         extra: extra || null,
         greeting: greeting || null,
@@ -103,7 +129,7 @@ router.post('/', upload.single('logo'), async (req, res) => {
       },
     });
 
-    res.json(agent);
+    res.json({ ...agent, apiKey: decrypt(agent.apiKey) });
   } catch (error) {
     res.status(500).json({ error: '创建智能体失败' });
   }
@@ -119,7 +145,7 @@ router.put('/:id', upload.single('logo'), async (req, res) => {
     if (name !== undefined) data.name = name;
     if (platform !== undefined) data.platform = platform;
     if (apiUrl !== undefined) data.apiUrl = apiUrl;
-    if (apiKey !== undefined) data.apiKey = apiKey;
+    if (apiKey !== undefined) data.apiKey = encryptApiKey(apiKey);
     if (botId !== undefined) data.botId = botId;
     if (extra !== undefined) data.extra = extra;
             if (greeting !== undefined) data.greeting = greeting || null;
@@ -155,7 +181,7 @@ router.put('/:id', upload.single('logo'), async (req, res) => {
       }
     }
 
-    res.json(agent);
+    res.json(decryptAgent(agent));
   } catch (error) {
     res.status(500).json({ error: '更新智能体失败' });
   }

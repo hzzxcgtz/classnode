@@ -118,6 +118,16 @@ async function main() {
       console.log(`   http://${ip}:${port}`);
     });
   });
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`[server] Received ${signal}, shutting down gracefully...`);
+    httpServer.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 function getLocalIPAddresses(): string[] {

@@ -57,6 +57,9 @@ server/uploads/
 # database
 *.db
 
+# auto-generated encryption key
+server/.encryption.key
+
 # dev helpers
 dev.sh
 dev.md

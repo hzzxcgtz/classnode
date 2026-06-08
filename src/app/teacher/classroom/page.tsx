@@ -336,7 +336,7 @@ function ClassroomBoardContent() {
   };
 
   // 投屏过滤（只展示 selectedRounds 中的轮次）
-  const projMsgs = messages.filter(m => selectedRounds.includes(m.roundIndex));
+  const projMsgs = messages.filter((_, i) => selectedRounds.includes(msgRounds[i]));
   // 投屏轮次预计算
   const msgRounds: (number | null)[] = [];
   let _r = 0;
@@ -823,20 +823,21 @@ function ClassroomBoardContent() {
               </div>
             </div>
 
+            {allRis.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 20px', borderBottom: '1px solid #eef2f6', background: '#fafbff' }}>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>投屏选择</span>
+                <button onClick={() => setSelectedRounds(allRis.every(ri => selectedRounds.includes(ri)) ? [] : [...allRis])}
+                  style={{ fontSize: 11, color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
+                  {allRis.every(ri => selectedRounds.includes(ri)) ? '取消全选' : `全选 (${allRis.length - selectedRounds.length} / ${allRis.length})`}
+                </button>
+              </div>
+            )}
+
             {/* 消息列表 */}
             <div ref={drawerMessagesRef} style={{
               flex: 1, overflow: 'auto', padding: 16,
               display: 'flex', flexDirection: 'column', gap: 12,
             }}>
-              {allRis.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px' }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>投屏选择</span>
-                  <button onClick={() => setSelectedRounds(allRis.every(ri => selectedRounds.includes(ri)) ? [] : [...allRis])}
-                    style={{ fontSize: 11, color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
-                    {allRis.every(ri => selectedRounds.includes(ri)) ? '取消全选' : `全选 (${allRis.length - selectedRounds.length} / ${allRis.length})`}
-                  </button>
-                </div>
-              )}
               {messages.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: 13 }}>
                   暂无对话记录

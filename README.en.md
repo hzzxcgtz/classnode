@@ -71,42 +71,35 @@ Download the installer for your platform from the [Release page](https://gitcode
 
 ### Deploy from Source
 
-> macOS and Windows users should use the installer package — this section is for **Linux** users only.
+If you have some technical background, you can also download the source code and start via command line. Supports **Windows** and **Linux**.
+
+> macOS users should use the installer package above for the best experience.
 
 #### Step 1: Install Node.js
 
-Visit the [Node.js official website](https://nodejs.org) to download the LTS precompiled binary for Linux, or use the command line directly:
+Download **v24.16.0 LTS** from the [Node.js official website](https://nodejs.org).
 
-**Download from the website:**
+**Windows users** download the installer directly:
+- Visit https://nodejs.org to download the `Windows Installer (.msi)` 64-bit version
+- Double-click to install, check "Add to PATH" during installation
+- After installation, open Command Prompt (cmd) to verify:
+  ```bash
+  node -v   # Expected output: v24.16.0
+  npm -v    # Expected output: corresponding npm version
+  ```
+
+**Linux users** download the precompiled binary:
 
 <img src="public/images/help/nodejs-download-en.png" alt="Node.js download page" width="400">
-
-**Or download via command line:**
 
 ```bash
 mkdir -p ~/software && cd ~/software
 wget https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
-```
-
-**Extract and rename (using UOS ARM64 as an example):**
-
-```bash
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
 mv node-v24.16.0-linux-arm64 nodejs24
-```
 
-**Set up environment variables:**
-
-```bash
 echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
-```
-
-**Verify installation:**
-
-```bash
-node -v   # Expected output: v24.16.0
-npm -v    # Expected output: corresponding npm version
 ```
 
 > Download `linux-x64` for x86 CPUs or `linux-arm64` for ARM CPUs.
@@ -120,16 +113,20 @@ npm config get registry
 
 #### Step 3: Deploy ClassNode
 
-Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.x.x.zip`), extract it, open a terminal in the extracted directory, and run the startup script:
+Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.x.x.zip`), extract it.
+
+**Windows users**: Double-click `start-classnode-windows.bat`, or run it from the command prompt:
 
 ```bash
-# Enter the extracted directory (using v1.3.4 as an example)
 cd classnode-v1.3.4
+start-classnode-windows.bat
+```
 
-# Grant execute permission to the startup script (first time only)
-chmod +x start-classnode-linux.sh
+**Linux users**: Open a terminal in the extracted directory:
 
-# Run the startup script
+```bash
+cd classnode-v1.3.4
+chmod +x start-classnode-linux.sh   # first time only
 ./start-classnode-linux.sh
 ```
 

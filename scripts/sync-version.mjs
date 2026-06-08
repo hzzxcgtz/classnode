@@ -18,16 +18,20 @@ serverPkg.version = version;
 fs.writeFileSync(serverPkgPath, JSON.stringify(serverPkg, null, 2) + '\n');
 console.log(`[sync-version] server/package.json → ${version}`);
 
-// 同步 tauri.conf.json
+// 同步 tauri.conf.json（仅在桌面应用打包时存在）
 const tauriConfPath = path.join(root, 'src-tauri', 'tauri.conf.json');
-const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
-tauriConf.version = version;
-fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
-console.log(`[sync-version] tauri.conf.json → ${version}`);
+if (fs.existsSync(tauriConfPath)) {
+    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
+    tauriConf.version = version;
+    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+    console.log(`[sync-version] tauri.conf.json → ${version}`);
+}
 
-// 同步 Cargo.toml
+// 同步 Cargo.toml（仅在桌面应用打包时存在）
 const cargoPath = path.join(root, 'src-tauri', 'Cargo.toml');
-let cargo = fs.readFileSync(cargoPath, 'utf-8');
-cargo = cargo.replace(/^version = ".*?"/m, `version = "${version}"`);
-fs.writeFileSync(cargoPath, cargo);
-console.log(`[sync-version] Cargo.toml → ${version}`);
+if (fs.existsSync(cargoPath)) {
+    let cargo = fs.readFileSync(cargoPath, 'utf-8');
+    cargo = cargo.replace(/^version = ".*?"/m, `version = "${version}"`);
+    fs.writeFileSync(cargoPath, cargo);
+    console.log(`[sync-version] Cargo.toml → ${version}`);
+}

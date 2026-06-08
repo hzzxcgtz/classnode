@@ -71,50 +71,41 @@ ClassNode 便是为打破这道壁垒而生。它是一个轻量级的本地化 
 
 ### 本地源码部署
 
-> macOS 和 Windows 用户建议直接使用安装包，无需看此章节。以下教程面向 **Linux** 用户。
+如果你有一定的技术基础，也可以下载源码，通过命令行自行启动。支持 **Windows** 和 **Linux**。
+
+> macOS 用户建议直接使用安装包（见上方），体验最完整。
 
 #### 第一步：安装 Node.js
 
-访问 [Node.js 官网](https://nodejs.org) 下载 LTS 版本的 Linux 预编译二进制包，也可以直接用命令行下载：
+从 [Node.js 官网](https://nodejs.org) 下载 **v24.16.0 LTS** 版本，或参考下方命令行操作：
 
-**官网下载：**
+**Windows 用户** 直接下载安装包：
+- 访问 https://nodejs.org 下载 `Windows Installer (.msi)` 64 位版本
+- 双击安装，安装过程中勾选"自动添加到 PATH"
+- 安装完成后打开命令提示符（cmd），验证安装是否成功：
+  ```bash
+  node -v   # 预期输出: v24.16.0
+  npm -v    # 预期输出对应的 npm 版本号
+  ```
+
+**Linux 用户** 下载预编译包：
 
 <img src="public/images/help/nodejs-download.png" alt="Node.js 官网下载页面" width="400">
-
-**或命令行下载：**
 
 ```bash
 mkdir -p ~/software && cd ~/software
 wget https://mirrors.huaweicloud.com/nodejs/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
-```
-
-**解压与重命名（以统信 UOS ARM64 为例）：**
-
-```bash
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
 mv node-v24.16.0-linux-arm64 nodejs24
-```
 
-**配置环境变量：**
-
-```bash
 # 将 Node.js 的 bin 目录加到环境变量中
 echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
-
-# 刷新配置，使环境变量立即生效
 source ~/.bashrc
-```
-
-验证安装：
-
-```bash
-node -v   # 预期输出: v24.16.0
-npm -v    # 预期输出对应的 npm 版本号
 ```
 
 > 如果 CPU 是 x86 架构，请下载 `linux-x64` 版本；ARM 架构下载 `linux-arm64` 版本。
 
-#### 第二步：更换 npm 源
+#### 第二步：更换 npm 源（国内用户推荐）
 
 ```bash
 npm config set registry https://registry.npmmirror.com
@@ -126,16 +117,20 @@ npm config get registry
 
 #### 第三步：部署 ClassNode
 
-从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载 **Source code** 压缩包（如 `classnode-v1.x.x.zip`），解压后在终端进入解压目录，执行启动脚本：
+从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载 **Source code** 压缩包（如 `classnode-v1.x.x.zip`），解压。
+
+**Windows 用户**：双击 `start-classnode-windows.bat`，或打开命令提示符运行：
 
 ```bash
-# 进入解压后的目录（以 v1.3.4 为例）
 cd classnode-v1.3.4
+start-classnode-windows.bat
+```
 
-# 给启动脚本添加执行权限（仅首次需要）
-chmod +x start-classnode-linux.sh
+**Linux 用户**：在终端进入解压目录：
 
-# 运行启动脚本
+```bash
+cd classnode-v1.3.4
+chmod +x start-classnode-linux.sh   # 仅首次需要
 ./start-classnode-linux.sh
 ```
 

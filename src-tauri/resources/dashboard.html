@@ -530,6 +530,7 @@ body {
 
 <script>
 let _p = null;
+let _startTs = 0;  // 启动开始时间戳（用于保持"启动中…"状态）
 const invoke = (window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || (() => null));
 
 function eShow(m) {
@@ -556,6 +557,7 @@ function ui(s) {
     go.disabled = true; stp.disabled = false;
     bts.forEach(b => b.disabled = false);
     desc.textContent = '服务正常，局域网内设备可扫码或输入地址加入课堂';
+    _startTs = 0;
 
     const h = (s.ips && s.ips[0]) || 'localhost';
     const b = `http://${h}:${s.port}`;
@@ -568,7 +570,16 @@ function ui(s) {
       bx.style.display = 'block';
       ls.innerHTML = s.ips.slice(1).map(i => `<span class="ip-chip">${i}</span>`).join('');
     } else { bx.style.display = 'none'; }
+  } else if (_startTs > 0 && Date.now() - _startTs < 25000) {
+    // 启动中，后台线程尚未完成
+    dot.className = 'dot go';
+    lab.className = 'status-label start';
+    lab.textContent = '启动中…';
+    go.disabled = true; stp.disabled = true;
+    bts.forEach(b => b.disabled = true);
+    desc.textContent = '正在启动服务，请稍候…';
   } else {
+    _startTs = 0;
     dot.className = 'dot stop';
     lab.className = 'status-label stop';
     lab.textContent = '已停止';
@@ -593,13 +604,14 @@ async function chk() {
 async function startSrv() {
   const btn = document.getElementById('btnGo');
   if (btn.disabled) return; // 防重按
+  _startTs = Date.now();
   btn.disabled = true;
   document.getElementById('sDot').className = 'dot go';
   document.getElementById('sLabel').className = 'status-label go';
   document.getElementById('sLabel').textContent = '启动中…';
   try {
     await invoke('cmd_start_server');
-    setTimeout(chk, 900);
+    setTimeout(chk, 2000);
   } catch (e) {
     eShow('启动失败: ' + e);
     btn.disabled = false;

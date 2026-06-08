@@ -351,10 +351,23 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
         return Err("服务已在运行中".to_string());
     }
     IS_STARTING.store(true, Ordering::Relaxed);
-    let result = spawn_server(&app);
-    IS_STARTING.store(false, Ordering::Relaxed);
-    result?;
-    update_tray(&app, true);
+
+    // 后台线程启动（避免阻塞 IPC 线程导致窗口无响应）
+    let h = app.clone();
+    std::thread::spawn(move || {
+        let result = spawn_server(&h);
+        IS_STARTING.store(false, Ordering::Relaxed);
+        match result {
+            Ok(()) => {
+                let h2 = h.clone();
+                let _ = h.run_on_main_thread(move || update_tray(&h2, true));
+            }
+            Err(e) => {
+                eprintln!("启动服务失败: {}", e);
+            }
+        }
+    });
+
     Ok(())
 }
 

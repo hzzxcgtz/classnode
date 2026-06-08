@@ -36,14 +36,17 @@ function ClassroomBoardContent() {
   const hideCensored = (msgs: any[]) => msgs.filter((m: any) =>
     !(m.shieldFiltered || (m.role === 'user' && (m.content || '').includes('**')))
   );
-  // 为旧数据（roundIndex 为 null）自动补充轮次编号
+  // 为旧数据（roundIndex 为 null）自动补充轮次编号（仅 user/assistant）
   const ensureRoundIndices = (msgs: any[]) => {
     const needsCompute = msgs.some((m: any) => m.role === 'user' && m.roundIndex == null);
     if (!needsCompute) return msgs;
     let round = 0;
     return msgs.map((m: any) => {
       if (m.role === 'user') round++;
-      return { ...m, roundIndex: m.roundIndex ?? round };
+      if (m.role === 'user' || m.role === 'assistant') {
+        return { ...m, roundIndex: m.roundIndex ?? round };
+      }
+      return m; // 系统消息等不分配 roundIndex
     });
   };
   const [showCodeScreen, setShowCodeScreen] = useState(false);

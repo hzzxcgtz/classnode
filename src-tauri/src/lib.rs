@@ -253,13 +253,8 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let version_file = data_dir.join(".schema-version");
     let current_version = std::fs::read_to_string(server_dir.join("package.json"))
         .ok()
-        .and_then(|s| {
-            s.lines()
-                .find(|l| l.trim().starts_with("\"version\""))
-                .and_then(|l| l.split(':').nth(1))
-                .and_then(|v| v.trim().trim_matches(',').trim_matches('"').split('"').next())
-                .map(|v| v.to_string())
-        })
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("version").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .unwrap_or_default();
     let schema_up_to_date = std::fs::read_to_string(&version_file)
         .map(|s| s.trim() == current_version)

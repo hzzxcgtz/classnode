@@ -1,7 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
 setlocal
-set "NODE_OPTIONS="
 cd /d "%~dp0"
 
 set FRONTEND_PORT=3000
@@ -35,7 +34,7 @@ for %%p in (%FRONTEND_PORT% %BACKEND_PORT%) do (
 :: ============================================================
 :: Install dependencies (通过 Node.js 模块解析检测，兼容 pnpm）
 :: ============================================================
-node -e "require.resolve('next/dist/bin/next')" >nul 2>nul
+set "NODE_OPTIONS=" && node -e "require.resolve('next/dist/bin/next')" >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  ----------------------------------------
@@ -49,7 +48,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 pushd server
-node -e "require.resolve('prisma/build/index.js')" >nul 2>nul
+set "NODE_OPTIONS=" && node -e "require.resolve('prisma/build/index.js')" >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  ----------------------------------------
@@ -73,7 +72,7 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    node -e "process.argv.splice(2,0,'build');require(require.resolve('next/dist/bin/next'))"
+    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'build');require(require.resolve('next/dist/bin/next'))"
     if errorlevel 1 (
         echo  [Error] Frontend build failed
         goto :end
@@ -102,7 +101,7 @@ if not exist "server\dist" (
     echo  Initializing database...
     echo  ----------------------------------------
     pushd server
-    node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
+    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
     if errorlevel 1 (
         popd
         echo  [Error] Database init failed
@@ -115,7 +114,7 @@ if not exist "server\dist" (
     echo  Building backend...
     echo  ----------------------------------------
     pushd server
-    node -e "require(require.resolve('typescript/bin/tsc'))"
+    set "NODE_OPTIONS=" && node -e "require(require.resolve('typescript/bin/tsc'))"
     if errorlevel 1 (
         popd
         echo  [Error] Backend build failed
@@ -128,7 +127,7 @@ if not exist "server\dist" (
     echo  Updating database...
     echo  ----------------------------------------
     pushd server
-    node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
+    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
     popd
 )
 

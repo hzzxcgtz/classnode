@@ -850,30 +850,40 @@ function ClassroomBoardContent() {
                   暂无对话记录
                 </div>
               ) : (
-                messages.map((m: any, i: number) => (
+                messages.map((m: any, i: number) => {
+                  // 从消息位置计算轮次，不依赖服务端 roundIndex（避免空值问题）
+                  let msgRound: number | null = null;
+                  if (m.role === 'user' || m.role === 'assistant') {
+                    let r = 0;
+                    for (let j = 0; j <= i; j++) {
+                      if (messages[j].role === 'user') r++;
+                    }
+                    msgRound = r || 1; // 至少有第 1 轮
+                  }
+                  const checked = msgRound != null && selectedRounds.includes(msgRound);
+                  return (
                   <div key={i} style={{
                     display: 'flex', flexDirection: 'row', gap: 6, alignItems: 'stretch',
                   }}>
                     {/* 投屏选择复选框 */}
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: 14 }}>
                       <div onClick={() => {
-                        const ri = m.roundIndex;
-                        if (ri != null) {
+                        if (msgRound != null) {
                           setSelectedRounds(prev =>
-                            prev.includes(ri) ? prev.filter(r => r !== ri) : [...prev, ri]
+                            prev.includes(msgRound) ? prev.filter(r => r !== msgRound) : [...prev, msgRound]
                           );
                         }
                       }}
                         style={{
                           width: 18, height: 18, borderRadius: 4, border: '2px solid',
-                          borderColor: m.roundIndex != null && selectedRounds.includes(m.roundIndex) ? '#6366f1' : '#d1d5db',
-                          background: m.roundIndex != null && selectedRounds.includes(m.roundIndex) ? '#6366f1' : 'transparent',
-                          cursor: m.roundIndex != null ? 'pointer' : 'default',
+                          borderColor: checked ? '#6366f1' : '#d1d5db',
+                          background: checked ? '#6366f1' : 'transparent',
+                          cursor: msgRound != null ? 'pointer' : 'default',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all .12s', flexShrink: 0,
-                          opacity: m.roundIndex != null ? 1 : 0,
+                          opacity: msgRound != null ? 1 : 0,
                         }}>
-                        {m.roundIndex != null && selectedRounds.includes(m.roundIndex) && (
+                        {checked && (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                         )}
                       </div>
@@ -921,7 +931,8 @@ function ClassroomBoardContent() {
                     </div>
                   </div>
                 </div>
-                ))
+                );
+                })
               )}
             </div>
           </div>
@@ -1838,7 +1849,8 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
                       {s.count} 条
                     </span>
                   </div>
-                ))
+                );
+                }))
               )}
             </div>
           </div>

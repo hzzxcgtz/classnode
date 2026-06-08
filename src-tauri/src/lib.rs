@@ -249,25 +249,49 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let data_dir_str = data_dir.to_string_lossy().to_string();
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
-    let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
-    if prisma_cli.exists() {
-        eprintln!("同步数据库 schema...");
-        let status = {
-            let mut cmd = Command::new(&node);
-            cmd.arg(&prisma_cli)
-                .args(["db", "push", "--accept-data-loss"])
-                .current_dir(&server_dir)
-                .env("DATABASE_URL", &db_url);
-            #[cfg(target_os = "windows")]
-            cmd.creation_flags(0x08000000);
-            cmd.status()
-                .map_err(|e| format!("执行数据库迁移失败: {}", e))?
-        };
-        if !status.success() {
-            eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
-        }
+    // 检查 schema 版本，避免每次启动都跑 prisma db push
+    let version_file = data_dir.join(".schema-version");
+    let current_version = std::fs::read_to_string(server_dir.join("package.json"))
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.trim().starts_with("\"version\""))
+                .and_then(|l| l.split(':').nth(1))
+                .and_then(|v| v.trim().trim_matches(',').trim_matches('"').split('"').next())
+                .map(|v| v.to_string())
+        })
+        .unwrap_or_default();
+    let schema_up_to_date = std::fs::read_to_string(&version_file)
+        .map(|s| s.trim() == current_version)
+        .unwrap_or(false);
+
+    if schema_up_to_date {
+        eprintln!("数据库 schema 已是最新 (v{}), 跳过同步", current_version);
     } else {
-        eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");
+        let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
+        if prisma_cli.exists() {
+            eprintln!("同步数据库 schema...");
+            let status = {
+                let mut cmd = Command::new(&node);
+                cmd.arg(&prisma_cli)
+                    .args(["db", "push", "--accept-data-loss", "--skip-generate"])
+                    .current_dir(&server_dir)
+                    .env("DATABASE_URL", &db_url);
+                #[cfg(target_os = "windows")]
+                cmd.creation_flags(0x08000000);
+                cmd.status()
+                    .map_err(|e| format!("执行数据库迁移失败: {}", e))?
+            };
+            if status.success() {
+                // 写入版本标记，下次跳过
+                let _ = std::fs::write(&version_file, &current_version);
+                eprintln!("数据库同步完成, 版本已标记 (v{})", current_version);
+            } else {
+                eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
+            }
+        } else {
+            eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");
+        }
     }
 
     let child = {

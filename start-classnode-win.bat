@@ -91,6 +91,20 @@ if not exist "server\.env" (
 )
 
 :: ============================================================
+:: Ensure server dependencies installed (pnpm 可能导致 .bin 缺失)
+:: ============================================================
+if not exist "server\node_modules\.bin\prisma.cmd" (
+    pushd server
+    call npm install
+    popd
+)
+if not exist "server\node_modules\.bin\tsc.cmd" (
+    pushd server
+    call npm install
+    popd
+)
+
+:: ============================================================
 :: Initialize database and build backend
 :: ============================================================
 if not exist "server\dist" (

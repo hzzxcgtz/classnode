@@ -94,6 +94,16 @@ if [ ! -f server/.env ]; then
 fi
 
 # ============================================================
+# Ensure server dependencies installed (pnpm 可能导致 .bin 缺失)
+# ============================================================
+if [ ! -f "server/node_modules/.bin/prisma" ]; then
+  cd server && npm install && cd ..
+fi
+if [ ! -f "server/node_modules/.bin/tsc" ]; then
+  cd server && npm install && cd ..
+fi
+
+# ============================================================
 # Initialize database and build backend
 # ============================================================
 if [ ! -d "server/dist" ]; then

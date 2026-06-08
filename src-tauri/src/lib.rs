@@ -488,14 +488,15 @@ pub fn run() {
                 });
             }
 
-            // 延迟启动服务
-            let handle = app.handle().clone();
-            let h = handle.clone();
-            let _ = handle.run_on_main_thread(move || {
+            // 后台线程启动服务（避免阻塞主线程导致窗口无响应）
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(2));
                 if let Err(e) = spawn_server(&h) {
                     eprintln!("自动启动服务失败: {}", e);
                 } else {
-                    update_tray(&h, true);
+                    let h2 = h.clone();
+                    let _ = h.run_on_main_thread(move || update_tray(&h2, true));
                 }
             });
 

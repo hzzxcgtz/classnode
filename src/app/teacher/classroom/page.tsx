@@ -285,7 +285,7 @@ function ClassroomBoardContent() {
     const unsub5 = on('classroom-paused', () => setPaused(true));
     const unsub6 = on('classroom-resumed', () => setPaused(false));
     const unsub7 = on('classroom-ended', () => {
-      setToast({ msg: '课堂已结束', type: 'info' });
+      setToast({ msg: '课堂已结束', type: 'success' });
       router.push('/teacher');
     });
 
@@ -344,7 +344,7 @@ function ClassroomBoardContent() {
     msgRounds.push((_m.role === 'user' || _m.role === 'assistant') ? (_r || 1) : null);
   }
   // 投屏过滤（只展示 selectedRounds 中的轮次）
-  const projMsgs = messages.filter((_, i) => selectedRounds.includes(msgRounds[i]));
+  const projMsgs = messages.filter((_, i) => msgRounds[i] != null && selectedRounds.includes(msgRounds[i]!));
   const msgChecked = msgRounds.map(ri => ri != null && selectedRounds.includes(ri));
   const allRis = (() => {
     const s = new Set<number>();

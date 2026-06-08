@@ -210,7 +210,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         if (shieldResult && shieldResult.matched.length > 0) {
           const { filtered, matched } = shieldResult;
           if (matched.length > 0) {
-            // Replace content with filtered version
+            // 记录原文后再替换为过滤版（Warning 存原文供教师查阅）
+            const originalContent = data.content;
             data.content = filtered;
             // Save the filtered user message
             const filteredMessage = await prisma.message.create({
@@ -232,13 +233,13 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
               timestamp: filteredMessage.createdAt,
               shieldFiltered: true,
             });
-            // Create warning record
+            // Create warning record with original content + matched words
             await prisma.shieldWarning.create({
               data: {
                 classroomId: classroom.id,
-                studentId: data.studentId,
+                studentId: classroomStudent.studentId,
                 word: matched.join(', '),
-                content: filtered.slice(0, 100),
+                content: originalContent.slice(0, 200),
               },
             });
             // Increment warning count (原子操作，使用返回值确保准确)

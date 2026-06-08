@@ -128,7 +128,7 @@ export const api = {
   // Shield Words
   getShieldWords: () => request<any[]>('/api/shield/words'),
   getShieldCategories: () =>
-    request<{ name: string; count: number; words: string[] }[]>('/api/shield/words/categories'),
+    request<{ name: string; count: number; words: { id: string; word: string; enabled: boolean }[] }[]>('/api/shield/words/categories'),
   clearBuiltinShieldWords: () =>
     request<{ success: boolean; deleted: number }>('/api/shield/words/clear-builtin', { method: 'POST' }),
   restoreDefaultShieldWords: () =>
@@ -154,6 +154,12 @@ export const api = {
     request(`/api/shield/classroom/${classroomId}/student/${studentId}/reset-warnings`, { method: 'POST' }),
   getClassroomWarnings: (classroomId: string) =>
     request<any[]>(`/api/shield/classroom/${classroomId}/warnings`),
+  deleteWarning: (id: string) =>
+    request(`/api/shield/warnings/${id}`, { method: 'DELETE' }),
+  clearClassroomWarnings: (classroomId: string) =>
+    request(`/api/shield/classroom/${classroomId}/warnings`, { method: 'DELETE' }),
+  getWarningsSummary: () =>
+    request<{ id: string; title: string; status: string; code: string; className: string; warningCount: number; createdAt: string }[]>('/api/shield/warnings-summary'),
 
   // Changelogs
   getChangelogs: () =>

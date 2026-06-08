@@ -365,10 +365,10 @@ function HelpIcon({ imageSrc }: { imageSrc: string }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const iconRef = useRef<HTMLSpanElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showTooltip = () => {
-    clearTimeout(timerRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
     if (iconRef.current) {
       const r = iconRef.current.getBoundingClientRect();
       setPos({ top: r.bottom + 8, left: r.left + r.width / 2 });
@@ -395,7 +395,7 @@ function HelpIcon({ imageSrc }: { imageSrc: string }) {
           background: 'white', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
           padding: 8, maxWidth: 340, border: '1px solid #e2e8f0',
         }}
-          onMouseEnter={() => clearTimeout(timerRef.current)}
+          onMouseEnter={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
           onMouseLeave={() => { timerRef.current = setTimeout(() => setShow(false), 300); }}
           onClick={() => setFullscreen(true)}
         >

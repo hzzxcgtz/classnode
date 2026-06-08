@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 
 export default function ShieldPage() {
+  const [tab, setTab] = useState<'words' | 'records'>('words');
   const [words, setWords] = useState<any[]>([]);
   const [newWord, setNewWord] = useState('');
   const [autoBlackCount, setAutoBlackCount] = useState(0);
@@ -14,10 +15,20 @@ export default function ShieldPage() {
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [categories, setCategories] = useState<{ name: string; count: number; words: { id: string; word: string }[] }[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  // 警告记录
+  const [summary, setSummary] = useState<any[]>([]);
+  const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<any[]>([]);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [loadingWarnings, setLoadingWarnings] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (tab === 'records') loadSummary();
+  }, [tab]);
 
   const loadData = async () => {
     try {
@@ -26,6 +37,30 @@ export default function ShieldPage() {
       setAutoBlackCount(cfg.autoBlackCount || 0);
       setCategories(cats || []);
     } catch {}
+  };
+
+  const loadSummary = async () => {
+    setLoadingSummary(true);
+    try {
+      const data = await api.getWarningsSummary();
+      setSummary(data);
+      if (data.length > 0) {
+        const firstId = selectedClassroom || data[0].id;
+        setSelectedClassroom(firstId);
+        loadWarnings(firstId);
+      }
+    } catch {}
+    setLoadingSummary(false);
+  };
+
+  const loadWarnings = async (classroomId: string) => {
+    setSelectedClassroom(classroomId);
+    setLoadingWarnings(true);
+    try {
+      const data = await api.getClassroomWarnings(classroomId);
+      setWarnings(data);
+    } catch {}
+    setLoadingWarnings(false);
   };
 
   const builtinWords = words.filter(w => w.builtin);
@@ -89,7 +124,30 @@ export default function ShieldPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* 标签切换 */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: '1px solid #e2e8f0' }}>
+        {[
+          { key: 'words', label: '词库管理', icon: 'M12 2L2 7l10 5 10-5-10-5z' },
+          { key: 'records', label: '拦截记录', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+        ].map(t => (
+          <button key={t.key} onClick={() => { setTab(t.key as any); }}
+            style={{
+              flex: 1, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit',
+              border: 'none', borderBottom: tab === t.key ? '2px solid #007aff' : '2px solid transparent',
+              background: tab === t.key ? 'rgba(0,122,255,0.04)' : 'transparent',
+              color: tab === t.key ? '#007aff' : '#64748b',
+              fontSize: 14, fontWeight: 600, transition: 'all 0.12s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={t.icon} />
+            </svg>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'words' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* 自动黑屏设置 */}
         <div style={{
@@ -452,7 +510,167 @@ export default function ShieldPage() {
           )}
         </div>
 
-      </div>
+      </div>}
+
+      {tab === 'records' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
+
+        {/* 课堂列表 */}
+        <div style={{
+          background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', background: '#fafbff' }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+              课堂列表
+              {summary.length > 0 && <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>（{summary.length} 个课堂有拦截记录）</span>}
+            </h2>
+          </div>
+          {loadingSummary ? (
+            <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>加载中...</div>
+          ) : summary.length === 0 ? (
+            <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              <div>暂无拦截记录</div>
+              <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 2 }}>学生发送触发屏蔽词的内容后，记录会显示在此处</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {summary.map(c => (
+                <button key={c.id} onClick={() => loadWarnings(c.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 24px', cursor: 'pointer', border: 'none', borderBottom: '1px solid #f1f5f9',
+                    background: selectedClassroom === c.id ? '#f0f7ff' : 'white',
+                    textAlign: 'left', fontFamily: 'inherit', width: '100%', transition: 'background 0.1s',
+                  }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{c.title || '未命名课堂'}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8 }}>
+                      <span>{c.className}</span>
+                      <span>{c.status === 'ended' ? '已结束' : '进行中'}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 6,
+                    background: c.warningCount > 0 ? '#fef2f2' : '#f1f5f9',
+                    color: c.warningCount > 0 ? '#dc2626' : '#94a3b8',
+                    flexShrink: 0,
+                  }}>
+                    {c.warningCount} 次
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 拦截详情 */}
+        {selectedClassroom && <div style={{
+          background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden', flex: 1, minHeight: 0,
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{
+            padding: '14px 24px', borderBottom: '1px solid #f1f5f9', background: '#fafbff',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />
+              拦截详情
+              {warnings.length > 0 && <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>（{warnings.length} 条）</span>}
+            </h2>
+            {warnings.length > 0 && <button onClick={async () => {
+              if (!confirm('确认清空该课堂的所有拦截记录？')) return;
+              try {
+                await api.clearClassroomWarnings(selectedClassroom);
+                loadWarnings(selectedClassroom);
+                loadSummary();
+              } catch {}
+            }} style={{
+              fontSize: 12, padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
+              background: 'white', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+              清空全部
+            </button>}
+          </div>
+          {loadingWarnings ? (
+            <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>加载中...</div>
+          ) : warnings.length === 0 ? (
+            <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>暂无拦截记录</div>
+          ) : (
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9', position: 'sticky', top: 0 }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 12 }}>学生</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 12 }}>时间</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 12 }}>提问内容</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#64748b', fontSize: 12 }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {warnings.map((w, i) => {
+                    // 高亮内容中的屏蔽词
+                    const words = w.word.split(', ');
+                    let highlighted = w.content || '';
+                    for (const word of words) {
+                      if (!word) continue;
+                      highlighted = highlighted.replace(
+                        new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                        (m: string) => `\x00HL${m}\x00HL`
+                      );
+                    }
+                    const parts = highlighted.split('\x00HL').filter(Boolean);
+                    return (
+                    <tr key={w.id} style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      background: i % 2 === 0 ? 'white' : '#fafbfc',
+                    }}>
+                      <td style={{ padding: '10px 16px', fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                        {w.studentName || '未知'}
+                      </td>
+                      <td style={{ padding: '10px 16px', color: '#64748b', whiteSpace: 'nowrap', fontSize: 12 }}>
+                        {new Date(w.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', maxWidth: 260, wordBreak: 'break-word' }}>
+                        {parts.map((p: string, j: number) =>
+                          j % 2 === 1
+                            ? <span key={j} style={{ background: '#fef08a', color: '#92400e', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</span>
+                            : <span key={j}>{p}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                        <button onClick={async () => {
+                          try {
+                            await api.deleteWarning(w.id);
+                            loadWarnings(selectedClassroom);
+                            loadSummary();
+                          } catch {}
+                        }} style={{
+                          width: 28, height: 28, borderRadius: 6, border: 'none',
+                          background: 'transparent', cursor: 'pointer', color: '#94a3b8',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.1s',
+                        }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f1f5f9'; (e.currentTarget as HTMLElement).style.color = '#dc2626'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}
+                          title="删除">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                        </button>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>}
+
+      </div>}
+
     </div>
   );
 };

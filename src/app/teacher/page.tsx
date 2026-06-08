@@ -359,7 +359,7 @@ export default function TeacherDashboard() {
                           fontSize: 9, fontWeight: 700, overflow: 'hidden',
                         }}>
                           {agt.logo
-                            ? <img src={agt.logo.startsWith('/') ? `${apiBaseUrl()}${agt.logo}` : agt.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ? <img src={agt.logo.startsWith('/') ? `${getApiBaseUrl()}${agt.logo}` : agt.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             : agt.name[0]}
                         </span>
                         {agt.name}

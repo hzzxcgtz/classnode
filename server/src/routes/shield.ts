@@ -229,18 +229,56 @@ router.post('/classroom/:classroomId/student/:studentId/unblacklist', async (req
   }
 });
 
-// 获取课堂的警告记录
+// 获取课堂的警告记录（含学生完整信息）
 router.get('/classroom/:classroomId/warnings', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const warnings = await prisma.shieldWarning.findMany({
       where: { classroomId: req.params.classroomId },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 200,
     });
-    res.json(warnings);
+    // 批量查询学生姓名
+    const studentIds = [...new Set(warnings.map(w => w.studentId))];
+    const students = studentIds.length > 0 ? await prisma.student.findMany({
+      where: { id: { in: studentIds } },
+      select: { id: true, name: true },
+    }) : [];
+    const studentMap = new Map(students.map(s => [s.id, s.name]));
+    const result = warnings.map(w => ({
+      ...w,
+      studentName: studentMap.get(w.studentId) || '未知',
+    }));
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: '获取警告记录失败' });
+  }
+});
+
+// 获取所有课堂的警告汇总（按课堂分组，含课堂标题和班级名称）
+router.get('/warnings-summary', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classrooms = await prisma.classroom.findMany({
+      where: { shieldWarnings: { some: {} } },
+      include: {
+        _count: { select: { shieldWarnings: true } },
+        classes: { include: { class: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const result = classrooms.map(c => ({
+      id: c.id,
+      title: c.title || '未命名课堂',
+      status: c.status,
+      code: c.code,
+      className: c.classes.map(cc => cc.class.name).join(', '),
+      warningCount: c._count.shieldWarnings,
+      createdAt: c.createdAt,
+    }));
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: '获取警告汇总失败' });
   }
 });
 
@@ -258,6 +296,30 @@ router.post('/classroom/:classroomId/student/:studentId/reset-warnings', async (
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '重置警告次数失败' });
+  }
+});
+
+// 删除单条拦截记录
+router.delete('/warnings/:id', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    await prisma.shieldWarning.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: '删除失败' });
+  }
+});
+
+// 清空指定课堂的所有拦截记录
+router.delete('/classroom/:classroomId/warnings', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    await prisma.shieldWarning.deleteMany({
+      where: { classroomId: req.params.classroomId },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: '清空失败' });
   }
 });
 

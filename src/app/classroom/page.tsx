@@ -631,7 +631,7 @@ function StudentChatContent() {
             <div style={{ fontSize: 17, fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
               {(() => {
                 if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-                  const group = classroom.groups.find(g => g.id === selectedStudent.groupId);
+                  const group = classroom.groups.find((g: any) => g.id === selectedStudent.groupId);
                   if (group?.agent?.name) return group.agent.name;
                 }
                 return classroom?.agents?.[0]?.name || 'AI 学习助手';

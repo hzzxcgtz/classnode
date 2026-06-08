@@ -5,8 +5,7 @@
 // 后端端口通过 .env.development 中的 NEXT_PUBLIC_API_PORT 配置（默认 3001）
 export function getApiBaseUrl(): string {
   if (typeof window === 'undefined') return '';
-  // @ts-expect-error Next.js 在构建时替换 NEXT_PUBLIC_ 环境变量
-  const apiPort = process.env.NEXT_PUBLIC_API_PORT;
+  const apiPort = (process.env as any).NEXT_PUBLIC_API_PORT;
   if (apiPort && window.location.port !== apiPort) {
     return `http://${window.location.hostname}:${apiPort}`;
   }
@@ -17,8 +16,7 @@ export function getApiBaseUrl(): string {
 // 开发模式使用 NEXT_PUBLIC_API_PORT（Express 端口），生产模式同源
 export function getClassroomPort(): string {
   if (typeof window === 'undefined') return '3001';
-  // @ts-expect-error Next.js 在构建时替换 NEXT_PUBLIC_ 环境变量
-  const apiPort = process.env.NEXT_PUBLIC_API_PORT;
+  const apiPort = (process.env as any).NEXT_PUBLIC_API_PORT;
   if (apiPort && window.location.port !== apiPort) {
     return apiPort;
   }

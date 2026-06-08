@@ -43,17 +43,19 @@ for %%p in (%FRONTEND_PORT% %BACKEND_PORT%) do (
 )
 
 :: ============================================================
-:: Install dependencies (pnpm 方式，兼容所有平台)
+:: Install dependencies
 :: ============================================================
 echo.
 echo  ----------------------------------------
 echo  Installing dependencies...
 echo  ----------------------------------------
-call pnpm install --frozen-lockfile 2>nul
-if errorlevel 1 call pnpm install
+call pnpm install --no-frozen-lockfile 2>&1
 if errorlevel 1 (
-    echo  [Error] Install failed
-    goto :end
+    rem pnpm 因 ignoredBuilds 配置退出时包可能已装好，检查关键模块
+    if not exist "node_modules\next" (
+        echo  [Error] Install failed
+        goto :end
+    )
 )
 
 :: ============================================================

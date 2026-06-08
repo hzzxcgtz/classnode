@@ -817,42 +817,46 @@ function ClassroomBoardContent() {
               ) : (
                 messages.map((m: any, i: number) => (
                   <div key={i} style={{
-                    padding: '10px 14px',
-                    borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                    background: m.role === 'user' ? '#eef2ff' : '#f8fafc',
-                    border: '1px solid',
-                    borderColor: m.role === 'user' ? '#dbeafe' : '#eef2f6',
-                    maxWidth: '90%',
-                    alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                    alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
                   }}>
                     <div style={{
-                      fontSize: 11, fontWeight: 600, marginBottom: 4,
+                      fontSize: 11, fontWeight: 600,
                       color: m.role === 'user' ? 'var(--primary)' : '#64748b',
+                      padding: '0 4px',
                     }}>
                       {m.role === 'user' ? selectedStudent.name : 'AI'}
                     </div>
-                    {/* 附件图片 */}
-                    {(() => {
-                      const urls = m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : [];
-                      const names = m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : [];
-                      return urls.map((fu: string, fi: number) => (
-                        <div key={fi} style={{ marginBottom: 6 }}>
-                          {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-                            <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                              style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
-                          ) : (
-                            <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                              {names[fi] || '附件'}
-                            </div>
-                          )}
-                        </div>
-                      ));
-                    })()}
-                    <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
-                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
-                      <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
-
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                      background: m.role === 'user' ? '#eef2ff' : '#f8fafc',
+                      border: '1px solid',
+                      borderColor: m.role === 'user' ? '#dbeafe' : '#eef2f6',
+                      maxWidth: '90%',
+                    }}>
+                      {/* 附件图片 */}
+                      {(() => {
+                        const urls = m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : [];
+                        const names = m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : [];
+                        return urls.map((fu: string, fi: number) => (
+                          <div key={fi} style={{ marginBottom: 6 }}>
+                            {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
+                              <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
+                                style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
+                            ) : (
+                              <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                                {names[fi] || '附件'}
+                              </div>
+                            )}
+                          </div>
+                        ));
+                      })()}
+                      <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
+                        <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -969,18 +973,18 @@ function ClassroomBoardContent() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{
-                width: 56, height: 56, borderRadius: '50%',
+                width: 44, height: 44, borderRadius: '50%',
                 background: 'linear-gradient(135deg, #667eea, #764ba2)',
                 color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 24,
+                fontWeight: 700, fontSize: 18,
               }}>
                 {selectedStudent?.name?.[0] || '?'}
               </div>
               <div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
                   {selectedStudent?.name || ''}
                 </div>
-                <div style={{ fontSize: 16, color: '#94a3b8', marginTop: 4 }}>
+                <div style={{ fontSize: 14, color: '#94a3b8', marginTop: 4 }}>
                   {classroom?.title || '课堂'} · 共 {messages.filter((m: any) => m.role === 'user').length} 轮互动
                 </div>
               </div>
@@ -992,17 +996,17 @@ function ClassroomBoardContent() {
                 background: '#f8fafc', border: '1px solid #eef2f6',
               }}>
                 <div style={{
-                  width: 36, height: 36, borderRadius: 8,
+                  width: 30, height: 30, borderRadius: 8,
                   background: 'linear-gradient(135deg, #667eea, #764ba2)',
                   color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 700, overflow: 'hidden',
+                  fontSize: 14, fontWeight: 700, overflow: 'hidden',
                 }}>
                   {classroomAgent.logo
                     ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : classroomAgent.name[0]
                   }
                 </div>
-                <span style={{ fontSize: 18, fontWeight: 600, color: '#334155' }}>{classroomAgent.name}</span>
+                <span style={{ fontSize: 15, fontWeight: 600, color: '#334155' }}>{classroomAgent.name}</span>
               </div>
             )}
             <button onClick={() => setShowFullscreen(false)}
@@ -1036,10 +1040,10 @@ function ClassroomBoardContent() {
                     }}>
                       {m.role !== 'user' && classroomAgent && (
                         <div style={{
-                          width: 34, height: 34, borderRadius: 8,
+                          width: 28, height: 28, borderRadius: 8,
                           background: 'linear-gradient(135deg, #667eea, #764ba2)',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 15, fontWeight: 700, overflow: 'hidden',
+                          fontSize: 13, fontWeight: 700, overflow: 'hidden',
                         }}>
                           {classroomAgent.logo
                             ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1048,7 +1052,7 @@ function ClassroomBoardContent() {
                         </div>
                       )}
                       <span style={{
-                        fontSize: 20, fontWeight: 600,
+                        fontSize: 16, fontWeight: 600,
                         color: m.role === 'user' ? '#667eea' : '#475569',
                       }}>
                         {m.role === 'user' ? selectedStudent?.name || '学生' : (classroomAgent?.name || 'AI 助手')}

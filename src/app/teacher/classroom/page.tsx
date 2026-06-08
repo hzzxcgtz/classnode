@@ -34,6 +34,16 @@ function ClassroomBoardContent() {
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
   const hideCensored = (msgs: any[]) => msgs.filter((m: any) => !(m.content || '').includes('**'));
+  // 为旧数据（roundIndex 为 null）自动补充轮次编号
+  const ensureRoundIndices = (msgs: any[]) => {
+    const needsCompute = msgs.some((m: any) => m.role === 'user' && m.roundIndex == null);
+    if (!needsCompute) return msgs;
+    let round = 0;
+    return msgs.map((m: any) => {
+      if (m.role === 'user') round++;
+      return { ...m, roundIndex: m.roundIndex ?? round };
+    });
+  };
   const [showCodeScreen, setShowCodeScreen] = useState(false);
   const [teacherCode, setTeacherCode] = useState('');
 
@@ -314,7 +324,7 @@ function ClassroomBoardContent() {
     setSelectedStudent(student);
     try {
       const msgs = await api.getStudentMessages(id, student.id);
-      const clean = hideCensored(msgs);
+      const clean = ensureRoundIndices(hideCensored(msgs));
       setMessages(clean);
       // 默认选中所有对话轮次
       const ris = Array.from(new Set(clean.filter((m: any) => m.role === 'user').map((m: any) => m.roundIndex).filter(ri => ri != null))) as number[];

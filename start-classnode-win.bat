@@ -70,7 +70,8 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    call npx --no-install next build
+    node -e "require.resolve('next/dist/bin/next')" >nul 2>nul || call npm install
+    node node_modules\next\dist\bin\next build
     if errorlevel 1 (
         echo  [Error] Frontend build failed
         goto :end
@@ -91,20 +92,6 @@ if not exist "server\.env" (
 )
 
 :: ============================================================
-:: Ensure server dependencies installed (pnpm 可能导致 .bin 缺失)
-:: ============================================================
-if not exist "server\node_modules\.bin\prisma.cmd" (
-    pushd server
-    call npm install
-    popd
-)
-if not exist "server\node_modules\.bin\tsc.cmd" (
-    pushd server
-    call npm install
-    popd
-)
-
-:: ============================================================
 :: Initialize database and build backend
 :: ============================================================
 if not exist "server\dist" (
@@ -113,7 +100,8 @@ if not exist "server\dist" (
     echo  Initializing database...
     echo  ----------------------------------------
     pushd server
-    call npx --no-install prisma db push --accept-data-loss
+    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install
+    node node_modules\prisma\build\index.js db push --accept-data-loss
     if errorlevel 1 (
         popd
         echo  [Error] Database init failed
@@ -126,7 +114,8 @@ if not exist "server\dist" (
     echo  Building backend...
     echo  ----------------------------------------
     pushd server
-    call npx --no-install tsc
+    node -e "require.resolve('typescript/bin/tsc')" >nul 2>nul || call npm install
+    node node_modules\typescript\bin\tsc
     if errorlevel 1 (
         popd
         echo  [Error] Backend build failed
@@ -139,7 +128,8 @@ if not exist "server\dist" (
     echo  Updating database...
     echo  ----------------------------------------
     pushd server
-    call npx --no-install prisma db push --accept-data-loss
+    node -e "require.resolve('prisma/build/index.js')" >nul 2>nul || call npm install
+    node node_modules\prisma\build\index.js db push --accept-data-loss
     popd
 )
 

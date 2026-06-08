@@ -14,7 +14,7 @@ echo "  ========================================"
 echo ""
 
 # ============================================================
-# Check Node.js
+# Check Node.js and pnpm
 # ============================================================
 if ! command -v node &> /dev/null; then
   echo "  [Error] Node.js not found. Install from https://nodejs.org"
@@ -22,6 +22,17 @@ if ! command -v node &> /dev/null; then
   exit 1
 fi
 echo "  Node.js $(node -v)"
+
+if ! command -v pnpm &> /dev/null; then
+  echo "  Installing pnpm..."
+  npm install -g pnpm@11.3.0
+  if [ $? -ne 0 ]; then
+    echo "  [Error] pnpm install failed"
+    read -p "Press Enter to exit..."
+    exit 1
+  fi
+fi
+echo "  pnpm $(pnpm -v)"
 
 # ============================================================
 # Clean up old processes on target ports
@@ -36,32 +47,17 @@ for PORT in $FRONTEND_PORT $BACKEND_PORT; do
 done
 
 # ============================================================
-# Install dependencies (通过 Node.js 模块解析检测，兼容 pnpm)
+# Install dependencies
 # ============================================================
-if ! node -e "require.resolve('next/dist/bin/next')" 2>/dev/null; then
-  echo ""
-  echo "  ----------------------------------------"
-  echo "  Installing frontend dependencies..."
-  echo "  ----------------------------------------"
-  npm install
-  if [ $? -ne 0 ]; then
-    echo "  [Error] Frontend install failed"
-    read -p "Press Enter to exit..."
-    exit 1
-  fi
-fi
-
-if ! node -e "require.resolve('prisma/build/index.js')" 2>/dev/null; then
-  echo ""
-  echo "  ----------------------------------------"
-  echo "  Installing server dependencies..."
-  echo "  ----------------------------------------"
-  cd server && npm install && cd ..
-  if [ $? -ne 0 ]; then
-    echo "  [Error] Server install failed"
-    read -p "Press Enter to exit..."
-    exit 1
-  fi
+echo ""
+echo "  ----------------------------------------"
+echo "  Installing dependencies..."
+echo "  ----------------------------------------"
+pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+if [ $? -ne 0 ]; then
+  echo "  [Error] Install failed"
+  read -p "Press Enter to exit..."
+  exit 1
 fi
 
 # ============================================================
@@ -72,7 +68,7 @@ if [ ! -d "out" ]; then
   echo "  ----------------------------------------"
   echo "  Building frontend..."
   echo "  ----------------------------------------"
-  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" node -e "process.argv.splice(2,0,'build');require(require.resolve('next/dist/bin/next'))"
+  NEXT_PUBLIC_BACKEND_PORT="${BACKEND_PORT}" pnpm build
   if [ $? -ne 0 ]; then
     echo "  [Error] Frontend build failed"
     read -p "Press Enter to exit..."
@@ -101,7 +97,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Initializing database..."
   echo "  ----------------------------------------"
-  cd "$SCRIPT_DIR/server" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))" && cd "$SCRIPT_DIR"
+  pnpm --filter classnode-server db:push
   if [ $? -ne 0 ]; then
     echo "  [Error] Database init failed"
     read -p "Press Enter to exit..."
@@ -112,7 +108,7 @@ if [ ! -d "server/dist" ]; then
   echo "  ----------------------------------------"
   echo "  Building backend..."
   echo "  ----------------------------------------"
-  cd server && node -e "require(require.resolve('typescript/bin/tsc'))" && cd ..
+  pnpm --filter classnode-server build
   if [ $? -ne 0 ]; then
     echo "  [Error] Backend build failed"
     read -p "Press Enter to exit..."
@@ -123,7 +119,7 @@ else
   echo "  ----------------------------------------"
   echo "  Updating database..."
   echo "  ----------------------------------------"
-  cd "$SCRIPT_DIR/server" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))" && cd "$SCRIPT_DIR"
+  pnpm --filter classnode-server db:push
 fi
 
 # ============================================================

@@ -13,7 +13,7 @@ echo  ========================================
 echo.
 
 :: ============================================================
-:: Check Node.js
+:: Check Node.js and pnpm
 :: ============================================================
 where node >nul 2>nul
 if %ERRORLEVEL% neq 0 (
@@ -21,6 +21,17 @@ if %ERRORLEVEL% neq 0 (
     goto :end
 )
 for /f "tokens=*" %%i in ('node -v') do echo  Node.js %%i
+
+where pnpm >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo  Installing pnpm...
+    call npm install -g pnpm@11.3.0
+    if errorlevel 1 (
+        echo  [Error] pnpm install failed
+        goto :end
+    )
+)
+for /f "tokens=*" %%i in ('pnpm -v') do echo  pnpm %%i
 
 :: ============================================================
 :: Clean up old processes on target ports
@@ -32,36 +43,18 @@ for %%p in (%FRONTEND_PORT% %BACKEND_PORT%) do (
 )
 
 :: ============================================================
-:: Install dependencies (通过 Node.js 模块解析检测，兼容 pnpm）
+:: Install dependencies (pnpm 方式，兼容所有平台)
 :: ============================================================
-set "NODE_OPTIONS=" && node -e "require.resolve('next/dist/bin/next')" >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo  ----------------------------------------
-    echo  Installing frontend dependencies...
-    echo  ----------------------------------------
-    call npm install
-    if errorlevel 1 (
-        echo  [Error] Frontend install failed
-        goto :end
-    )
+echo.
+echo  ----------------------------------------
+echo  Installing dependencies...
+echo  ----------------------------------------
+call pnpm install --frozen-lockfile 2>nul
+if errorlevel 1 call pnpm install
+if errorlevel 1 (
+    echo  [Error] Install failed
+    goto :end
 )
-
-pushd server
-set "NODE_OPTIONS=" && node -e "require.resolve('prisma/build/index.js')" >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo  ----------------------------------------
-    echo  Installing server dependencies...
-    echo  ----------------------------------------
-    call npm install
-    if errorlevel 1 (
-        popd
-        echo  [Error] Server install failed
-        goto :end
-    )
-)
-popd
 
 :: ============================================================
 :: Build frontend
@@ -72,7 +65,7 @@ if not exist "out" (
     echo  Building frontend...
     echo  ----------------------------------------
     set "NEXT_PUBLIC_BACKEND_PORT=%BACKEND_PORT%"
-    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'build');require(require.resolve('next/dist/bin/next'))"
+    call pnpm build
     if errorlevel 1 (
         echo  [Error] Frontend build failed
         goto :end
@@ -100,35 +93,27 @@ if not exist "server\dist" (
     echo  ----------------------------------------
     echo  Initializing database...
     echo  ----------------------------------------
-    pushd server
-    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
+    call pnpm --filter classnode-server db:push
     if errorlevel 1 (
-        popd
         echo  [Error] Database init failed
         goto :end
     )
-    popd
 
     echo.
     echo  ----------------------------------------
     echo  Building backend...
     echo  ----------------------------------------
-    pushd server
-    set "NODE_OPTIONS=" && node -e "require(require.resolve('typescript/bin/tsc'))"
+    call pnpm --filter classnode-server build
     if errorlevel 1 (
-        popd
         echo  [Error] Backend build failed
         goto :end
     )
-    popd
 ) else (
     echo.
     echo  ----------------------------------------
     echo  Updating database...
     echo  ----------------------------------------
-    pushd server
-    set "NODE_OPTIONS=" && node -e "process.argv.splice(2,0,'db','push','--accept-data-loss');require(require.resolve('prisma/build/index.js'))"
-    popd
+    call pnpm --filter classnode-server db:push
 )
 
 :: ============================================================
@@ -140,7 +125,7 @@ echo  Starting services...
 echo  ----------------------------------------
 set SUCCESS=1
 
-start "ClassNode-Server" cmd /d /c "cd /d server && set FRONTEND_PORT=%FRONTEND_PORT% && set PORT=%BACKEND_PORT% && node dist/index.js"
+start "ClassNode-Server" cmd /d /c "cd /d server && set PORT=%BACKEND_PORT% && set FRONTEND_PORT=%FRONTEND_PORT% && node dist/index.js"
 timeout /t 3 /nobreak >nul
 
 start "ClassNode-Frontend" cmd /d /c "cd /d %~dp0 && set PORT=%FRONTEND_PORT% && set BACKEND_PORT=%BACKEND_PORT% && node serve-frontend.js"

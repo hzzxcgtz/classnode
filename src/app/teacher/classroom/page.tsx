@@ -335,8 +335,6 @@ function ClassroomBoardContent() {
     offline: '离线',
   };
 
-  // 投屏过滤（只展示 selectedRounds 中的轮次）
-  const projMsgs = messages.filter((_, i) => selectedRounds.includes(msgRounds[i]));
   // 投屏轮次预计算
   const msgRounds: (number | null)[] = [];
   let _r = 0;
@@ -345,6 +343,8 @@ function ClassroomBoardContent() {
     if (_m.role === 'user') _r++;
     msgRounds.push((_m.role === 'user' || _m.role === 'assistant') ? (_r || 1) : null);
   }
+  // 投屏过滤（只展示 selectedRounds 中的轮次）
+  const projMsgs = messages.filter((_, i) => selectedRounds.includes(msgRounds[i]));
   const msgChecked = msgRounds.map(ri => ri != null && selectedRounds.includes(ri));
   const allRis = (() => {
     const s = new Set<number>();
@@ -999,51 +999,21 @@ function ClassroomBoardContent() {
           {/* 顶部信息栏 */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '20px 48px',
+            padding: '16px 48px',
             background: 'white',
             borderBottom: '1px solid #eef2f6',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 24,
-              }}>
-                {selectedStudent?.name?.[0] || '?'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', letterSpacing: 1 }}>
+                {classroom?.title || '课堂'} · 学习展示
               </div>
-              <div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
-                  {selectedStudent?.name || ''}
-                </div>
-                <div style={{ fontSize: 16, color: '#94a3b8', marginTop: 4 }}>
-                  {classroom?.title || '课堂'} · 共 {projMsgs.filter((m: any) => m.role === 'user').length} 轮展示
-                </div>
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>
+                {selectedStudent?.name || ''} · {projMsgs.filter((m: any) => m.role === 'user').length} 轮对话
               </div>
             </div>
-            {classroomAgent && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 20px', borderRadius: 12,
-                background: '#f8fafc', border: '1px solid #eef2f6',
-              }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 8,
-                  background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                  color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 700, overflow: 'hidden',
-                }}>
-                  {classroomAgent.logo
-                    ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : classroomAgent.name[0]
-                  }
-                </div>
-                <span style={{ fontSize: 18, fontWeight: 600, color: '#334155' }}>{classroomAgent.name}</span>
-              </div>
-            )}
             <button onClick={() => setShowFullscreen(false)}
-              style={{ padding: '12px 28px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'white', cursor: 'pointer', fontSize: 16, color: '#64748b', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 14, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出投屏
             </button>
           </div>

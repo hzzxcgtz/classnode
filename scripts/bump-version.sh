@@ -17,7 +17,17 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "更新版本号到 $VERSION ..."
+# 获取旧版本号
+OLD_VERSION="$(node -p "require('$ROOT/package.json').version")"
+if [ "$OLD_VERSION" = "$VERSION" ]; then
+  echo "版本号未变化（$VERSION），跳过"
+  exit 0
+fi
+
+echo "更新版本号: $OLD_VERSION → $VERSION"
+echo ""
+
+# ── 更新版本号文件 ──────────────────────────────────
 
 # 1. package.json（根目录）
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$ROOT/package.json"
@@ -44,10 +54,102 @@ sed -i '' "s/classnode-v[0-9]*\.[0-9]*\.[0-9]*/classnode-v$VERSION/g" "$ROOT/REA
 echo "  ✓ README.en.md"
 
 echo ""
-echo "全部更新完成！版本号: $VERSION"
+
+# ── 自动生成更新日志 ─────────────────────────────────
+
+CHANGELOG_FILE="$ROOT/server/changelogs/v$VERSION.md"
+TODAY="$(date +%Y-%m-%d)"
+
+# 找上一次版本对应的 tag 或 commit
+LAST_TAG="v$OLD_VERSION"
+if ! git rev-parse "$LAST_TAG" &>/dev/null; then
+  # 没有 tag，用最近一个版本号的 changelog 文件的时间
+  LAST_FILE="$ROOT/server/changelogs/v$OLD_VERSION.md"
+  if [ -f "$LAST_FILE" ]; then
+    LAST_TAG=$(git log --oneline -- "$LAST_FILE" | head -1 | awk '{print $1}')
+    [ -z "$LAST_TAG" ] && LAST_TAG="HEAD~10"
+  else
+    LAST_TAG="HEAD~10"
+  fi
+fi
+
+# 从 git log 提取提交信息并分类
+FEATS=""; FIXES=""; DOCS=""; STYLES=""; REFACTORS=""; CHORES=""
+TMPLOG=$(mktemp)
+git log "$LAST_TAG..HEAD" --no-merges --pretty="format:%s" 2>/dev/null > "$TMPLOG" || true
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  type="${line%%:*}"
+  title="${line#*: }"
+  [ "$title" = "$line" ] && title="" && type="other"
+  case "$type" in
+    feat*)   FEATS="${FEATS}* ${title}"$'\n' ;;
+    fix*)    FIXES="${FIXES}* ${title}"$'\n' ;;
+    docs*)   DOCS="${DOCS}* ${title}"$'\n' ;;
+    style*)  STYLES="${STYLES}* ${title}"$'\n' ;;
+    refactor*) REFACTORS="${REFACTORS}* ${title}"$'\n' ;;
+    chore*)  CHORES="${CHORES}* ${title}"$'\n' ;;
+    *)       FEATS="${FEATS}* ${line}"$'\n' ;;
+  esac
+done < "$TMPLOG"
+rm -f "$TMPLOG"
+
+cat > "$CHANGELOG_FILE" << CHANGELOG
+# 更新日志
+
+## [$VERSION] — $TODAY
+
+$( [ -n "$FEATS" ] && cat << SECTION
+
+### 新增
+
+$FEATS
+SECTION
+)
+$( [ -n "$FIXES" ] && cat << SECTION
+
+### 修复
+
+$FIXES
+SECTION
+)
+$( [ -n "$STYLES" ] && cat << SECTION
+
+### 样式优化
+
+$STYLES
+SECTION
+)
+$( [ -n "$REFACTORS" ] && cat << SECTION
+
+### 重构
+
+$REFACTORS
+SECTION
+)
+$( [ -n "$DOCS" ] && cat << SECTION
+
+### 文档
+
+$DOCS
+SECTION
+)
+$( [ -n "$CHORES" ] && cat << SECTION
+
+### 其他
+
+$CHORES
+SECTION
+)
+CHANGELOG
+
+# 简化多余的空行
+sed -i '' '/^$/N;/^\n$/D' "$CHANGELOG_FILE"
+echo "  ✓ server/changelogs/v$VERSION.md"
 echo ""
 
-# 自动提交（仅版本文件，不捎带其他改动）
+# ── 提交 ────────────────────────────────────────────
+
 cd "$ROOT"
 git add \
   package.json \
@@ -55,10 +157,14 @@ git add \
   src-tauri/tauri.conf.json \
   src-tauri/Cargo.toml \
   README.md \
-  README.en.md
+  README.en.md \
+  server/changelogs/v$VERSION.md
+
 git commit -m "chore: bump version to $VERSION" 2>/dev/null && {
   echo "  ✓ 已自动提交"
-  echo "  推送命令: git push && git push <其他远程>"
+  echo "  推送命令: git push"
 } || {
   echo "  ℹ 无变更需要提交"
 }
+echo ""
+echo "全部完成！版本号: $OLD_VERSION → $VERSION"

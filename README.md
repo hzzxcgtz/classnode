@@ -67,43 +67,34 @@ ClassNode 便是为打破这道壁垒而生。它是一个轻量级的本地化 
 | macOS Apple Silicon | `ClassNode_1.x.x_macos_apple-silicon.dmg` |
 | macOS Intel | `ClassNode_1.x.x_macos_intel.dmg` |
 | Windows (64 位) | `ClassNode_1.x.x_x64-setup.exe` |
-| Windows (32 位) | `ClassNode_1.x.x_x32-setup.exe` |
 
 ### 本地源码部署
 
-如果你有一定的技术基础，也可以下载源码，通过命令行自行启动。支持 **Windows** 和 **Linux**。
+如果你有一定的技术基础，也可以下载源码，通过命令行自行启动。支持 **Linux** 平台。
 
-> macOS 用户建议直接使用安装包（见上方），体验最完整。
+> Windows 和 macOS 用户建议直接使用安装包（见上方），体验最完整。
 
 #### 第一步：安装 Node.js
 
-从 [Node.js 官网](https://nodejs.org) 下载 **v24.16.0 LTS** 版本，或参考下方命令行操作：
+从 [Node.js 官网](https://nodejs.org) 下载 **v24.16.0 LTS** 版本。
 
-**Windows 用户** 直接下载安装包：
-- 访问 https://nodejs.org 下载 `Windows Installer (.msi)` 64 位版本
-- 双击安装，安装过程中勾选"自动添加到 PATH"
-- 安装完成后打开命令提示符（cmd），验证安装是否成功：
-  ```bash
-  node -v   # 预期输出: v24.16.0
-  npm -v    # 预期输出对应的 npm 版本号
-  ```
-
-**Linux 用户** 下载预编译包：
-
-<img src="public/images/help/nodejs-download.png" alt="Node.js 官网下载页面" width="400">
+以统信 UOS 系统为例：
 
 ```bash
+# 1. 创建并进入软件目录
 mkdir -p ~/software && cd ~/software
+
+# 2. 下载（ARM 架构用 arm64，x86 架构用 x64）
 wget https://mirrors.huaweicloud.com/nodejs/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
+
+# 3. 解压
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
 mv node-v24.16.0-linux-arm64 nodejs24
 
-# 将 Node.js 的 bin 目录加到环境变量中
+# 4. 将 Node.js 加入环境变量
 echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
-
-> 如果 CPU 是 x86 架构，请下载 `linux-x64` 版本；ARM 架构下载 `linux-arm64` 版本。
 
 #### 第二步：更换 npm 源（国内用户推荐）
 
@@ -117,24 +108,21 @@ npm config get registry
 
 #### 第三步：部署 ClassNode
 
-从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载 **Source code** 压缩包（如 `classnode-v1.x.x.zip`），解压。
+从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载源码压缩包（如 `classnode-v1.x.x.zip`），解压。
 
-**Windows 用户**：双击 `start-classnode-windows.bat`，或打开命令提示符运行：
-
-```bash
-cd classnode-v1.3.4
-start-classnode-windows.bat
-```
-
-**Linux 用户**：在终端进入解压目录：
+打开终端，进入解压目录，运行一键启动脚本：
 
 ```bash
-cd classnode-v1.3.4
-chmod +x start-classnode-linux.sh   # 仅首次需要
-./start-classnode-linux.sh
+# 进入项目目录（请以实际解压路径为准）
+cd classnode-v1.3.8
+
+# 推荐方式：使用 Node.js 直接运行启动脚本
+node start.js
 ```
 
-首次启动会自动安装依赖并构建（约 1-5 分钟，需联网），之后启动会快很多。
+也可以在桌面玩意双击 `start-classnode-linux.sh` ，以终端方式运行（效果相同）。
+
+> 首次启动会自动安装依赖并构建（约 1-5 分钟，需联网），之后启动会快很多。
 
 启动后访问：
 

@@ -58,10 +58,13 @@ rsync -av \
   --exclude='tsconfig.tsbuildinfo' \
   --exclude='next-env.d.ts' \
   --exclude='eslint.config.mjs' \
+  --exclude='dev.md' \
+  --exclude='dev.sh' \
   --exclude='server/.env' \
   --exclude='.env.development' \
   --exclude='.git' \
   --exclude='.DS_Store' \
+  --exclude='.npmrc' \
   "$SRC_DIR/" "$DST_DIR/" 2>/dev/null
 
 echo "Copy complete"
@@ -84,12 +87,16 @@ cat > "server/.env" << 'ENV'
 DATABASE_URL="file:./dev.db"
 ENV
 
-echo "Distribution directory created at: $DST_DIR"
-echo "   Size: $(du -sh "$DST_DIR" | cut -f1)"
+echo "Packaging distribution..."
+ZIP_FILE="${DST_DIR}.zip"
+rm -f "$ZIP_FILE"
+(cd "$(dirname "$DST_DIR")" && zip -r "$(basename "$ZIP_FILE")" "$(basename "$DST_DIR")" > /dev/null 2>&1)
 echo ""
-echo "   Next steps for the recipient:"
-echo "   1. cd $DST_DIR"
-echo "   2. npm install"
-echo "   3. cd server && npm install && node_modules/.bin/prisma db push && node_modules/.bin/tsc && cd .."
-echo "   4. node_modules/.bin/next build --no-lint"
-echo "   5. start-classnode-mac.command (macOS) / start-classnode-win.bat (Windows)"
+echo "Distribution created:"
+echo "   Directory: $DST_DIR"
+echo "   Size:      $(du -sh "$DST_DIR" | cut -f1)"
+echo "   Archive:   ${ZIP_FILE}"
+echo "   Zip size:  $(du -sh "$ZIP_FILE" | cut -f1)"
+echo ""
+echo "Share the ZIP file with the end user."
+echo "The user just needs to: unzip, cd, node start.js"

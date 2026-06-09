@@ -67,42 +67,34 @@ Download the installer for your platform from the [Release page](https://gitcode
 | macOS Apple Silicon | `ClassNode_1.x.x_macos_apple-silicon.dmg` |
 | macOS Intel | `ClassNode_1.x.x_macos_intel.dmg` |
 | Windows (64-bit) | `ClassNode_1.x.x_x64-setup.exe` |
-| Windows (32-bit) | `ClassNode_1.x.x_x32-setup.exe` |
 
 ### Deploy from Source
 
-If you have some technical background, you can also download the source code and start via command line. Supports **Windows** and **Linux**.
+If you have some technical background, you can also download the source code and start via command line. Supports **Linux**.
 
-> macOS users should use the installer package above for the best experience.
+> Windows and macOS users should use the installer package above for the best experience.
 
 #### Step 1: Install Node.js
 
 Download **v24.16.0 LTS** from the [Node.js official website](https://nodejs.org).
 
-**Windows users** download the installer directly:
-- Visit https://nodejs.org to download the `Windows Installer (.msi)` 64-bit version
-- Double-click to install, check "Add to PATH" during installation
-- After installation, open Command Prompt (cmd) to verify:
-  ```bash
-  node -v   # Expected output: v24.16.0
-  npm -v    # Expected output: corresponding npm version
-  ```
-
-**Linux users** download the precompiled binary:
-
-<img src="public/images/help/nodejs-download-en.png" alt="Node.js download page" width="400">
+Example for Linux (UOS):
 
 ```bash
+# 1. Create and enter the software directory
 mkdir -p ~/software && cd ~/software
+
+# 2. Download (use arm64 for ARM CPUs, x64 for x86 CPUs)
 wget https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
+
+# 3. Extract
 tar -xvf node-v24.16.0-linux-arm64.tar.xz
 mv node-v24.16.0-linux-arm64 nodejs24
 
+# 4. Add Node.js to PATH
 echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
-
-> Download `linux-x64` for x86 CPUs or `linux-arm64` for ARM CPUs.
 
 #### Step 2: Change npm registry (recommended for China users)
 
@@ -115,22 +107,19 @@ npm config get registry
 
 Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.x.x.zip`), extract it.
 
-**Windows users**: Double-click `start-classnode-windows.bat`, or run it from the command prompt:
+Open a terminal in the extracted directory:
 
 ```bash
-cd classnode-v1.3.4
-start-classnode-windows.bat
+# Enter the project directory (adjust path as needed)
+cd classnode-v1.3.8
+
+# Recommended: run the start script via Node.js
+node start.js
 ```
 
-**Linux users**: Open a terminal in the extracted directory:
+You can also double-click `start-classnode-linux.sh` (same effect).
 
-```bash
-cd classnode-v1.3.4
-chmod +x start-classnode-linux.sh   # first time only
-./start-classnode-linux.sh
-```
-
-The first run will automatically install dependencies and build (about 1-5 minutes, requires internet). Subsequent starts will be much faster.
+> The first run will automatically install dependencies and build (about 1-5 minutes, requires internet). Subsequent starts will be much faster.
 
 Access after startup:
 

@@ -496,7 +496,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
     if (platform === 'wenxin') {
       if (!botId) errors.botId = '请填写 App ID';
     }
-    if (!apiKey) errors.apiKey = '请填写 API Token';
+    if (!apiKey) errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写 API Token';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setSaving(true);
     try {
@@ -739,7 +739,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                  API Token <HelpIcon imageSrc={
+                  {platform === 'wenxin' ? '密钥' : 'API Token'} <HelpIcon imageSrc={
                     platform === 'coze' ? '/images/help/coze-token.png' :
                     platform === 'wenxin' ? '/images/help/wenxin-api-config.png' :
                     '/images/help/coze-agent-config.png'

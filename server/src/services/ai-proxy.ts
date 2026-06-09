@@ -77,6 +77,8 @@ export async function proxyAIRequest(
         return await proxyDify(agent, anonMessage, anonName, history, fileUrls);
       case 'zhipuai':
         return await proxyZhipuai(agent, anonMessage, anonName, history, fileUrls);
+      case 'wenxin':
+        return await proxyWenxin(agent, anonMessage, anonName, history, fileUrls);
       case 'openai':
         return await proxyOpenAI(agent, anonMessage, anonName, history, fileUrls);
       default:
@@ -111,6 +113,8 @@ export async function proxyAIRequestStream(
         return await proxyDifyStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
       case 'zhipuai':
         return await proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+      case 'wenxin':
+        return await proxyWenxinStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
       case 'openai':
         return await proxyOpenAIStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
       default:
@@ -1371,4 +1375,186 @@ async function proxyZhipuaiStream(
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
   return { success: true, content: deanonymized };
+}
+
+// ---- 文心智能体平台（百度） ----
+
+/** 构建文心 API 请求 body */
+function buildWenxinBody(message: string, userName: string, threadId?: string) {
+  const body: any = {
+    message: {
+      content: {
+        type: 'text',
+        value: { showText: message },
+      },
+    },
+    source: '',
+    from: 'openapi',
+    openId: userName,
+  };
+  if (threadId) body.threadId = threadId;
+  return body;
+}
+
+/** 从文心 API 响应中提取文本内容 */
+function extractWenxinContent(data: any): string {
+  const contents = data?.content || [];
+  let text = '';
+  for (const item of contents) {
+    if (item.dataType === 'text' || item.dataType === 'markdown') {
+      text += item.data || '';
+    }
+  }
+  return text;
+}
+
+/** 获取文心 API 基础 URL（含 appId + secretKey 认证） */
+function wenxinUrl(agent: AgentConfig): string {
+  const baseUrl = agent.apiUrl || 'https://agentapi.baidu.com';
+  const appId = agent.botId || '';
+  const secretKey = agent.apiKey;
+  return `${baseUrl.replace(/\/+$/, '')}/assistant/getAnswer?appId=${encodeURIComponent(appId)}&secretKey=${encodeURIComponent(secretKey)}`;
+}
+
+function wenxinConversationUrl(agent: AgentConfig): string {
+  const baseUrl = agent.apiUrl || 'https://agentapi.baidu.com';
+  const appId = agent.botId || '';
+  const secretKey = agent.apiKey;
+  return `${baseUrl.replace(/\/+$/, '')}/assistant/conversation?appId=${encodeURIComponent(appId)}&secretKey=${encodeURIComponent(secretKey)}`;
+}
+
+async function proxyWenxin(
+  agent: AgentConfig,
+  message: string,
+  userName: string,
+  history?: { role: string; content: string }[],
+  fileUrls?: string[]
+): Promise<ProxyResult> {
+  try {
+    if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
+
+    const body = buildWenxinBody(message, userName);
+    body.source = agent.botId;
+
+    // 如有历史消息，使用最后一个 threadId 串联上下文
+    if (history && history.length > 0) {
+      // 文心 API 通过 threadId 串联上下文，首次不传，后续从响应获取
+      // 这里我们简化处理：不传 threadId，每次都独立对话
+      // 如果需要上下文串联，需要在前端或 socket 层维护 threadId
+    }
+
+    const url = wenxinUrl(agent);
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return { success: false, error: `文心 API 错误 (${response.status}): ${err}` };
+    }
+
+    const data = await response.json();
+
+    if (data.status !== 0) {
+      return { success: false, error: `文心 API 返回错误: ${data.message || '未知错误'} (code=${data.status})` };
+    }
+
+    const content = extractWenxinContent(data.data);
+    if (!content) return { success: false, error: '文心智能体返回为空' };
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
+    return { success: true, content: deanonymized };
+  } catch (error: any) {
+    return { success: false, error: error.message || '文心 API 请求失败' };
+  }
+}
+
+async function proxyWenxinStream(
+  agent: AgentConfig,
+  message: string,
+  userName: string,
+  onChunk: (chunk: string) => void,
+  history?: { role: string; content: string }[],
+  fileUrls?: string[]
+): Promise<ProxyResult> {
+  try {
+    if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
+
+    const body = buildWenxinBody(message, userName);
+    body.source = agent.botId;
+
+    const url = wenxinConversationUrl(agent);
+    const response = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return { success: false, error: `文心 API 错误 (${response.status}): ${err}` };
+    }
+
+    // 流式响应：SSE 格式
+    const reader = response.body?.getReader();
+    if (!reader) return { success: false, error: '无法读取响应流' };
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === '[DONE]') continue;
+
+        // SSE 格式: event: type\ndata: {...}
+        if (trimmed.startsWith('event:')) continue; // 跳过 event 行
+        if (!trimmed.startsWith('data:')) continue;
+
+        const dataStr = trimmed.slice(5).trim();
+        if (!dataStr) continue;
+
+        try {
+          const parsed = JSON.parse(dataStr);
+          // 文心流式 SSE 响应格式: { type: "XXX", content: "文本" }
+          const delta = parsed.content || parsed.text || parsed.data || '';
+          if (delta) {
+            fullContent += delta;
+            onChunk(delta);
+          }
+        } catch {
+          // 非 JSON 数据行跳过
+        }
+      }
+    }
+
+    if (!fullContent) return { success: false, error: '文心流式响应为空' };
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
+    return { success: true, content: deanonymized };
+  } catch (error: any) {
+    return { success: false, error: error.message || '文心 API 请求失败' };
+  }
+}
+
+/** 测试文心智能体连通性 */
+export async function testWenxinConnection(agent: AgentConfig): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!agent.botId) return { success: false, error: '缺少 App ID' };
+    const result = await proxyWenxin(agent, '你好，请回复"连接成功"', 'test');
+    if (result.success) return { success: true };
+    return { success: false, error: result.error || '连接失败' };
+  } catch (error: any) {
+    return { success: false, error: error.message || '测试请求异常' };
+  }
 }

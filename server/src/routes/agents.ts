@@ -332,10 +332,11 @@ router.post('/:id/test', async (req, res) => {
     const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
+    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
     const result = await testAgentConnection({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
-      apiKey: agent.apiKey,
+      apiKey: decryptedKey,
       botId: agent.botId || undefined,
       extra: agent.extra || undefined,
     });

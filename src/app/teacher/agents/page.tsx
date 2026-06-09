@@ -104,16 +104,18 @@ export default function AgentsPage() {
               openai: '#16a34a',
               'coze-agent': '#7c3aed',
               zhipuai: '#1d8cf8',
+              wenxin: '#c62828',
             };
             const platformLabels: Record<string, string> = {
               coze: 'Coze Bot',
               openai: 'OpenAI',
               'coze-agent': 'Coze Agent',
               zhipuai: '智谱清言',
+              wenxin: '文心智能体',
             };
             // 不同类型对应不同标签底色
             const badgeBg: Record<string, string> = {
-              coze: '#eef2ff', 'coze-agent': '#f5f3ff', zhipuai: '#ecfeff', openai: '#f0fdf4',
+              coze: '#eef2ff', 'coze-agent': '#f5f3ff', zhipuai: '#ecfeff', openai: '#f0fdf4', wenxin: '#fef2f2',
             };
             const platColor = platformColors[agent.platform] || '#64748b';
             const isEnabled = agent.enabled !== false;
@@ -493,6 +495,9 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
       if (!apiUrl) errors.apiUrl = '请填写 API URL';
       if (!projectId) errors.projectId = '请填写 Project ID';
     }
+    if (platform === 'wenxin') {
+      if (!botId) errors.botId = '请填写 App ID';
+    }
     if (platform === 'zhipuai') {
       if (!botId) errors.botId = '请填写智能体 ID (assistant_id)';
       if (!apiSecret) errors.apiSecret = '请填写 API Secret';
@@ -676,6 +681,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   {[
                     { value: 'coze', label: 'Coze Bot', desc: '扣子低代码', disabled: false },
                     { value: 'coze-agent', label: 'Coze Agent', desc: '扣子编程', disabled: false },
+                    { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
                     { value: 'zhipuai', label: '智谱清言', desc: 'GLM系列', disabled: true },
                     { value: 'openai', label: 'OpenAI', desc: '兼容接口', disabled: true },
                   ].map(p => (
@@ -716,6 +722,19 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在智谱清言创作者中心获取 assistant_id"
+                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
+                  {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
+                </div>
+              )}
+
+              {/* App ID — 文心智能体必填 */}
+              {platform === 'wenxin' && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                    App ID <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
+                    placeholder="在文心智能体平台-部署-API 调用中获取 App ID"
                     style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>

@@ -116,7 +116,7 @@ npm config get registry
 
 ```bash
 # 进入项目目录（请以实际解压路径为准）
-cd classnode-v1.3.8
+cd classnode-v1.3.9
 
 # 推荐方式：使用 Node.js 直接运行启动脚本
 node start.js

@@ -113,7 +113,7 @@ Open a terminal in the extracted directory:
 
 ```bash
 # Enter the project directory (adjust path as needed)
-cd classnode-v1.3.8
+cd classnode-v1.3.9
 
 # Recommended: run the start script via Node.js
 node start.js

@@ -55,7 +55,7 @@ export default function AgentsPage() {
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>AI智能体</h1>
             <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-              接入 Coze、Coze Agent、智谱清言、OpenAI 兼容接口的 AI智能体
+              接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -496,10 +496,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
     if (platform === 'wenxin') {
       if (!botId) errors.botId = '请填写 App ID';
     }
-    if (platform === 'zhipuai') {
-      if (!botId) errors.botId = '请填写智能体 ID (assistant_id)';
-      if (!apiSecret) errors.apiSecret = '请填写 API Secret';
-    }
     if (!apiKey) errors.apiKey = '请填写 API Token';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setSaving(true);
@@ -513,10 +509,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
       if (platform === 'coze-agent') {
         form.append('extra', JSON.stringify({ projectId }));
       }
-      if (platform === 'zhipuai') {
-        form.append('extra', JSON.stringify({ apiSecret }));
-      }
-
       if (fileRef.current?.files?.[0]) {
         form.append('logo', fileRef.current.files[0]);
       } else if (fetchedLogoUrl && !logoRemoved) {
@@ -554,7 +546,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             {agent ? '编辑智能体' : '接入AI智能体'}
           </h2>
           <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-            接入 Coze、Coze Agent、智谱清言或 OpenAI 兼容接口的 AI智能体
+            接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
           </p>
         </div>
 
@@ -625,7 +617,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
                       style={{ fontSize: 13, padding: '8px 12px', flex: 1, borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
-                    {platform !== 'coze-agent' ? (
+                    {platform === 'coze' ? (
                       <button
                         type="button"
                         className="btn btn-secondary"
@@ -636,11 +628,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                         {fetchingInfo ? '获取中...' : '从 Coze 获取'}
                       </button>
-                    ) : (
-                      <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                        该接入方式不支持自动获取
-                      </span>
-                    )}
+                    ) : null}
                   </div>
                   {fieldErrors.name && <FieldError message={fieldErrors.name} />}
                 </div>
@@ -705,20 +693,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     Bot ID <HelpIcon imageSrc="/images/help/coze-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
-                    placeholder="在 Coze 机器人发布页获取 Bot ID"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
-                  {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
-                </div>
-              )}
-
-              {/* 智能体 ID — 智谱清言必填 */}
-              {platform === 'zhipuai' && (
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    智能体 ID <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
-                    placeholder="在智谱清言创作者中心获取 assistant_id"
+                    placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字"
                     style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>
@@ -728,21 +703,21 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'wenxin' && (
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    App ID <span style={{ color: 'var(--danger)' }}>*</span>
+                    App ID <HelpIcon imageSrc="/images/help/wenxin-api-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
-                    placeholder="在文心智能体平台-部署-API 调用中获取 App ID"
+                    placeholder="在文心智能体平台获取 App ID"
                     style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>
               )}
 
-              {/* API URL — 智谱清言 / OpenAI / Coze Agent */}
-              {(platform === 'zhipuai' || platform === 'openai' || platform === 'coze-agent') && (
+              {/* API URL — Coze Agent 必填 */}
+              {platform === 'coze-agent' && (
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={apiUrl} onChange={e => { setApiUrl(e.target.value); clearError('apiUrl'); }}
-                    placeholder={platform === 'coze-agent' ? 'https://xxxx.coze.site' : platform === 'zhipuai' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.openai.com/v1'}
+                    placeholder="https://xxxx.coze.site"
                     style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiUrl ? '#ef4444' : undefined }} />
                   {fieldErrors.apiUrl && <FieldError message={fieldErrors.apiUrl} />}
                 </div>
@@ -762,30 +737,25 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               )}
 
 
-              {/* API Secret — 智谱清言必填 */}
-              {platform === 'zhipuai' && (
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    API Secret <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <input className="input" type="password" value={apiSecret} onChange={e => { setApiSecret(e.target.value); clearError('apiSecret'); }}
-                    placeholder="在智谱清言创作者中心获取 api_secret"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
-                  {fieldErrors.apiSecret && <FieldError message={fieldErrors.apiSecret} />}
-                </div>
-              )}
-
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                  API Token <HelpIcon imageSrc={platform === 'coze' ? '/images/help/coze-token.png' : '/images/help/coze-agent-config.png'} /> <span style={{ color: 'var(--danger)' }}>*</span>
+                  API Token <HelpIcon imageSrc={
+                    platform === 'coze' ? '/images/help/coze-token.png' :
+                    platform === 'wenxin' ? '/images/help/wenxin-api-config.png' :
+                    '/images/help/coze-agent-config.png'
+                  } /> <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input className="input" type="password" value={apiKey} onChange={e => { setApiKey(e.target.value); clearError('apiKey'); }}
-                  placeholder={platform === 'coze-agent' ? '' : 'pat_...'}
+                  placeholder={
+                    platform === 'coze' ? '在 Coze 个人令牌页面创建，以 pat_ 开头' :
+                    platform === 'wenxin' ? '在文心智能体平台的 Secret Key' :
+                    ''
+                  }
                   style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
                 {fieldErrors.apiKey && <FieldError message={fieldErrors.apiKey} />}
                 <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                  在对应平台的个人设置中创建并复制访问令牌
+                  {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : '在对应平台的个人设置中创建并复制访问令牌'}
                 </p>
               </div>
             </div>

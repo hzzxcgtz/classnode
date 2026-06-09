@@ -107,7 +107,7 @@ export default function AgentsPage() {
             };
             const platformLabels: Record<string, string> = {
               coze: 'Coze',
-              'coze-agent': 'Coze 智能体',
+              'coze-agent': 'Coze 编程',
               wenxin: '百度文心',
               openai: '敬请期待',
             };
@@ -677,10 +677,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
                 }}>
                   {[
-                    { value: 'coze', label: 'Coze 低代码', desc: 'Coze', disabled: false },
-                    { value: 'coze-agent', label: 'Coze 智能体', desc: 'Coze', disabled: false },
+                    { value: 'coze', label: 'Coze 低代码', desc: '字节扣子', disabled: false },
+                    { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
-                    { value: 'openai', label: '更多智能体接入，敬请期待', desc: '', disabled: true },
+                    { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true },
                   ].map(p => (
                     <button key={p.value} type="button"
                       onClick={() => !p.disabled && setPlatform(p.value)}

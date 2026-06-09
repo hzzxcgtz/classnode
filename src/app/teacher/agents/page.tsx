@@ -151,7 +151,16 @@ export default function AgentsPage() {
                       }}>
                         {platformLabels[agent.platform]}
                       </span>
-
+                      {agent.platform === 'wenxin' && (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 4,
+                          fontSize: 11, fontWeight: 500,
+                          background: '#fef2f2', color: '#dc2626',
+                          border: '0.5px solid #fecaca',
+                        }}>
+                          非流式
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -757,6 +766,17 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                   {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : '在对应平台的个人设置中创建并复制访问令牌'}
                 </p>
+                {platform === 'wenxin' && (
+                  <div style={{
+                    marginTop: 8, padding: '8px 12px', borderRadius: 8,
+                    background: '#fef2f2', border: '0.5px solid #fecaca',
+                    fontSize: 12, color: '#991b1b', lineHeight: 1.5,
+                    display: 'flex', alignItems: 'flex-start', gap: 6,
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span>百度文心智能体暂不支持流式输出，对话时需等待完整回复，体验上可能稍有延迟。</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

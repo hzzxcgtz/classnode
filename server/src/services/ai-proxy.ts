@@ -1401,15 +1401,13 @@ function extractWenxinContent(data: any): string {
   const contents = data?.content || [];
   let text = '';
   for (const item of contents) {
-    if (item.dataType === 'text' || item.dataType === 'markdown') {
-      // data 可能是 { text: "内容" } 对象，也可能是纯字符串
-      if (typeof item.data === 'string') {
-        text += item.data;
-      } else if (item.data?.text) {
-        text += item.data.text;
-      } else if (item.data?.content) {
-        text += item.data.content;
-      }
+    // 实际 dataType 可能是 'text' / 'markdown' / 'txt' 等
+    if (item.data && typeof item.data === 'string') {
+      text += item.data;
+    } else if (item.data?.text) {
+      text += item.data.text;
+    } else if (item.data?.content) {
+      text += item.data.content;
     }
   }
   return text;
@@ -1469,11 +1467,7 @@ async function proxyWenxin(
     }
 
     const content = extractWenxinContent(data.data);
-    if (!content) {
-      const firstItem = data.data?.content?.[0];
-      console.log('[Wenxin] Empty content, first item:', JSON.stringify(firstItem).slice(0, 300));
-      return { success: false, error: '文心智能体返回为空' };
-    }
+    if (!content) return { success: false, error: '文心智能体返回为空' };
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
     return { success: true, content: deanonymized };

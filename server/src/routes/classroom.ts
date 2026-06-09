@@ -389,11 +389,19 @@ router.get('/code/:code', async (req, res) => {
 router.get('/:id/students', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: req.params.id },
+      select: { mode: true },
+    });
     const students = await prisma.classroomStudent.findMany({
       where: { classroomId: req.params.id },
       include: { student: true, group: true },
     });
-    res.json(students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; group: true } }>) => ({
+    // 标准模式下过滤掉虚拟小组学生（tag 为 __group__）
+    const filtered = classroom?.mode === 'standard'
+      ? students.filter(cs => cs.student.tag !== '__group__')
+      : students;
+    res.json(filtered.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; group: true } }>) => ({
       id: cs.student.id,
       name: cs.student.name,
       studentNo: cs.student.studentNo,

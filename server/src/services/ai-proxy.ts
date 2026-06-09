@@ -1545,8 +1545,9 @@ async function proxyWenxinStream(
     }
 
     if (!fullContent) {
-      console.log('[WenxinStream] Empty, buffer snippet:', buffer.slice(0, 300));
-      return { success: false, error: '文心流式响应为空' };
+      // 流式不通时回退到非流式
+      console.log('[WenxinStream] Empty, falling back to non-streaming');
+      return await proxyWenxin(agent, message, userName, history, fileUrls);
     }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));

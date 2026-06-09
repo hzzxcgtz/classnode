@@ -25,7 +25,8 @@ function hr() { console.log(`  ${C.gr || ''}${'─'.repeat(48)}${C.R || ''}`); }
 
 function run(cmd, cwd) {
   return new Promise((resolve_, reject) => {
-    const proc = spawn(cmd, [], { cwd, stdio: 'inherit', shell: true });
+    const env = { ...process.env, NPM_CONFIG_LOGLEVEL: 'error' };
+    const proc = spawn(cmd, [], { cwd, stdio: 'inherit', shell: true, env });
     proc.on('close', code => code === 0 ? resolve_() : reject(new Error(`退出码 ${code}`)));
     proc.on('error', reject);
   });
@@ -65,11 +66,11 @@ async function main() {
   log('📦', '安装项目依赖');
   line();
   if (!existsSync(resolve(ROOT, 'node_modules')))
-    await step('npm install', ROOT, '前端依赖');
+    await step('npm install --no-fund --no-audit', ROOT, '前端依赖');
   else
     log('', '前端依赖  已存在');
   if (!existsSync(resolve(SERVER, 'node_modules')))
-    await step('npm install', SERVER, '服务端依赖');
+    await step('npm install --no-fund --no-audit', SERVER, '服务端依赖');
   else
     log('', '服务端依赖 已存在');
   line();
@@ -127,16 +128,21 @@ async function main() {
   console.log('  ' + (C.gr || '') + '按 Ctrl+C 停止服务' + (C.R || ''));
   line();
 
-  // 自动打开浏览器
-  setTimeout(() => {
-    try {
-      const url = 'http://localhost:' + PORT + '/teacher';
-      spawn('xdg-open', [url]);
-    } catch {}
-  }, 2000);
-
   const server = spawn('node', [resolve(SERVER, 'dist', 'index.js')],
     { cwd: SERVER, stdio: 'inherit' });
+
+  // 轮询等待服务就绪后打开浏览器
+  const url = 'http://localhost:' + PORT + '/teacher';
+  const poll = setInterval(() => {
+    const http = require('http');
+    http.get(url, res => {
+      if (res.statusCode === 200) {
+        clearInterval(poll);
+        try { spawn('xdg-open', [url]); } catch {}
+      }
+    }).on('error', () => {});
+  }, 800);
+
   server.on('exit', () => process.exit(0));
   process.on('SIGINT', () => { server.kill(); process.exit(0); });
   process.on('SIGTERM', () => { server.kill(); process.exit(0); });

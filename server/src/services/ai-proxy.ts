@@ -1469,7 +1469,11 @@ async function proxyWenxin(
     }
 
     const content = extractWenxinContent(data.data);
-    if (!content) return { success: false, error: '文心智能体返回为空' };
+    if (!content) {
+      const firstItem = data.data?.content?.[0];
+      console.log('[Wenxin] Empty content, first item:', JSON.stringify(firstItem).slice(0, 300));
+      return { success: false, error: '文心智能体返回为空' };
+    }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
     return { success: true, content: deanonymized };

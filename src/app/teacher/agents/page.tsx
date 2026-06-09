@@ -114,7 +114,7 @@ export default function AgentsPage() {
               coze: 'Coze',
               'coze-agent': 'Coze 编程',
               wenxin: '百度文心',
-              zhipuai: '智谱清言',
+              zhipuai: '清言智能体',
             };
             // 标签底色（极淡）
             const badgeBg: Record<string, string> = {
@@ -688,8 +688,8 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   {[
                     { value: 'coze', label: 'Coze 低代码', desc: '字节扣子', disabled: false },
                     { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false },
+                    { value: 'zhipuai', label: '清言智能体', desc: '智谱清言', disabled: false },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
-                    { value: 'zhipuai', label: '智谱清言', desc: 'GLM 系列', disabled: false },
                     { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true },
                   ].map(p => (
                     <button key={p.value} type="button"

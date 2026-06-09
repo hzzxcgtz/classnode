@@ -135,7 +135,7 @@ cmd_version_bump() {
     exit 1
   fi
   bash scripts/bump-version.sh "$new_ver"
-  log_ok "版本已更新到 ${BOLD}v${new_ver}${NC}"
+  log_ok "版本已更新到 v${new_ver}（已自动提交，推送即可）"
 }
 
 cmd_version_sync() {

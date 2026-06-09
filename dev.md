@@ -148,8 +148,7 @@ node scripts/rename-bundle.mjs   # 重命名 DMG 文件
 ## 完整发版流程
 
 ```bash
-./dev.sh version:bump patch    # 1. 修订号 +1
+./dev.sh version:bump patch    # 1. 修订号 +1（自动提交）
 ./dev.sh build:all             # 2. 验证构建通过
-                               # 3. Claude 自动提交
-                               # 4. 你确认后推送
+git push                       # 3. 推送版本号更新
 ```

@@ -35,3 +35,14 @@ if (fs.existsSync(cargoPath)) {
     fs.writeFileSync(cargoPath, cargo);
     console.log(`[sync-version] Cargo.toml → ${version}`);
 }
+
+// 同步 README.md（cd 命令中的版本号）
+for (const file of ['README.md', 'README.en.md']) {
+    const readmePath = path.join(root, file);
+    if (fs.existsSync(readmePath)) {
+        let content = fs.readFileSync(readmePath, 'utf-8');
+        content = content.replace(/classnode-v[\d.]+/g, `classnode-v${version}`);
+        fs.writeFileSync(readmePath, content);
+        console.log(`[sync-version] ${file} → ${version}`);
+    }
+}

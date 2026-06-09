@@ -99,21 +99,25 @@ export default function AgentsPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
           {agents.map(agent => {
+            // 平台色调（柔和色系，预留 8 色供后续接入）
             const platformColors: Record<string, string> = {
-              coze: '#2563eb',
-              'coze-agent': '#7c3aed',
-              wenxin: '#c62828',
-              openai: '#94a3b8',
+              coze: '#4f7bc9',        // 灰蓝
+              'coze-agent': '#8b6eb5', // 灰紫
+              wenxin: '#c0605a',       // 豆沙红
+              // 预留：
+              // p5: '#5d9b8e'  灰绿
+              // p6: '#b88b4a'  土黄
+              // p7: '#7a9bb5'  雾蓝
+              // p8: '#b57a9e'  玫瑰褐
             };
             const platformLabels: Record<string, string> = {
               coze: 'Coze',
               'coze-agent': 'Coze 编程',
               wenxin: '百度文心',
-              openai: '敬请期待',
             };
-            // 不同类型对应不同标签底色
+            // 标签底色（极淡）
             const badgeBg: Record<string, string> = {
-              coze: '#eef2ff', 'coze-agent': '#f5f3ff', wenxin: '#fef2f2', openai: '#f1f5f9',
+              coze: '#f0f4fa', 'coze-agent': '#f5f2fa', wenxin: '#fdf2f1',
             };
             const platColor = platformColors[agent.platform] || '#64748b';
             const isEnabled = agent.enabled !== false;

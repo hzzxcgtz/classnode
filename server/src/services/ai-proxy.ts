@@ -1461,8 +1461,22 @@ async function proxyWenxin(
       return { success: false, error: `文心 API 返回错误: ${data.message || '未知错误'} (code=${data.status})` };
     }
 
+    // 调试：检查响应结构
+    console.log('[Wenxin] Response structure:', JSON.stringify({
+      hasData: !!data.data,
+      dataKeys: data.data ? Object.keys(data.data) : [],
+      contentType: data.data?.content ? typeof data.data.content : 'no-content',
+      contentIsArray: data.data?.content ? Array.isArray(data.data.content) : false,
+      contentLen: data.data?.content ? (Array.isArray(data.data.content) ? data.data.content.length : 'n/a') : 0,
+      threadId: data.data?.threadId,
+      msgId: data.data?.msgId,
+    }).slice(0, 500));
+
     const content = extractWenxinContent(data.data);
-    if (!content) return { success: false, error: '文心智能体返回为空' };
+    if (!content) {
+      const raw = JSON.stringify(data.data).slice(0, 500);
+      return { success: false, error: `文心智能体返回为空，响应: ${raw}` };
+    }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
     return { success: true, content: deanonymized };
@@ -1538,7 +1552,10 @@ async function proxyWenxinStream(
       }
     }
 
-    if (!fullContent) return { success: false, error: '文心流式响应为空' };
+    if (!fullContent) {
+      console.log('[WenxinStream] Empty, buffer snippet:', buffer.slice(0, 300));
+      return { success: false, error: '文心流式响应为空' };
+    }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
     return { success: true, content: deanonymized };

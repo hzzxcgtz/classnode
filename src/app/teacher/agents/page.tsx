@@ -104,8 +104,8 @@ export default function AgentsPage() {
               coze: '#4f7bc9',        // 灰蓝
               'coze-agent': '#8b6eb5', // 灰紫
               wenxin: '#c0605a',       // 豆沙红
+              zhipuai: '#5d9b8e',      // 灰绿
               // 预留：
-              // p5: '#5d9b8e'  灰绿
               // p6: '#b88b4a'  土黄
               // p7: '#7a9bb5'  雾蓝
               // p8: '#b57a9e'  玫瑰褐
@@ -114,10 +114,11 @@ export default function AgentsPage() {
               coze: 'Coze',
               'coze-agent': 'Coze 编程',
               wenxin: '百度文心',
+              zhipuai: '智谱清言',
             };
             // 标签底色（极淡）
             const badgeBg: Record<string, string> = {
-              coze: '#f0f4fa', 'coze-agent': '#f5f2fa', wenxin: '#fdf2f1',
+              coze: '#f0f4fa', 'coze-agent': '#f5f2fa', wenxin: '#fdf2f1', zhipuai: '#f0f7f5',
             };
             const platColor = platformColors[agent.platform] || '#64748b';
             const isEnabled = agent.enabled !== false;
@@ -509,6 +510,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
     if (platform === 'wenxin') {
       if (!botId) errors.botId = '请填写 App ID';
     }
+    if (platform === 'zhipuai') {
+      if (!botId) errors.botId = '请填写 Assistant ID';
+      if (!apiSecret) errors.apiSecret = '请填写 API Secret';
+    }
     if (!apiKey) errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写 API Token';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setSaving(true);
@@ -521,6 +526,9 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
       if (botId) form.append('botId', botId);
       if (platform === 'coze-agent') {
         form.append('extra', JSON.stringify({ projectId }));
+      }
+      if (platform === 'zhipuai') {
+        form.append('extra', JSON.stringify({ apiSecret }));
       }
       if (fileRef.current?.files?.[0]) {
         form.append('logo', fileRef.current.files[0]);
@@ -681,6 +689,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     { value: 'coze', label: 'Coze 低代码', desc: '字节扣子', disabled: false },
                     { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
+                    { value: 'zhipuai', label: '智谱清言', desc: 'GLM 系列', disabled: false },
                     { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true },
                   ].map(p => (
                     <button key={p.value} type="button"
@@ -725,6 +734,19 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 </div>
               )}
 
+              {/* Assistant ID — 智谱清言必填 */}
+              {platform === 'zhipuai' && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                    Assistant ID <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
+                    placeholder="智能体对话页地址栏中的 ID"
+                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
+                  {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
+                </div>
+              )}
+
               {/* API URL — Coze Agent 必填 */}
               {platform === 'coze-agent' && (
                 <div>
@@ -749,10 +771,22 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 </div>
               )}
 
+              {/* API Secret — 智谱清言必填 */}
+              {platform === 'zhipuai' && (
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                    API Secret <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <input className="input" type="password" value={apiSecret} onChange={e => { setApiSecret(e.target.value); clearError('apiSecret'); }}
+                    placeholder="在智谱清言开发者面板获取 api_secret"
+                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
+                  {fieldErrors.apiSecret && <FieldError message={fieldErrors.apiSecret} />}
+                </div>
+              )}
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                  {platform === 'wenxin' ? '密钥' : 'API Token'} <HelpIcon imageSrc={
+                  {platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token'} <HelpIcon imageSrc={
                     platform === 'coze' ? '/images/help/coze-token.png' :
                     platform === 'wenxin' ? '/images/help/wenxin-api-config.png' :
                     '/images/help/coze-agent-config.png'
@@ -762,13 +796,14 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   placeholder={
                     platform === 'coze' ? '在 Coze 个人令牌页面创建，以 pat_ 开头' :
                     platform === 'wenxin' ? '在文心智能体平台的 Secret Key' :
+                    platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' :
                     ''
                   }
                   style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
                 {fieldErrors.apiKey && <FieldError message={fieldErrors.apiKey} />}
                 <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                  {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : '在对应平台的个人设置中创建并复制访问令牌'}
+                  {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' : '在对应平台的个人设置中创建并复制访问令牌'}
                 </p>
                 {platform === 'wenxin' && (
                   <div style={{

@@ -62,6 +62,8 @@ ClassNode was born to break through this wall. It is a lightweight, local AI int
 
 Download the installer for your platform from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases). Double-click to install:
 
+> On the **first launch** after installation or update, the application will automatically initialize the database, which may cause a **10-30 second** delay. Please be patient — subsequent launches will be much faster.
+
 | Platform | Package |
 |------|--------|
 | macOS Apple Silicon | `ClassNode_1.x.x_macos_apple-silicon.dmg` |
@@ -119,7 +121,7 @@ node start.js
 
 You can also double-click `start-classnode-linux.sh` (same effect).
 
-> The first run will automatically install dependencies and build (about 1-5 minutes, requires internet). Subsequent starts will be much faster.
+> The first run will automatically install dependencies, initialize the database, and build (about 1-5 minutes, requires internet). Subsequent starts will skip database initialization if the schema hasn't changed, making them significantly faster. A brief delay is also expected after version upgrades due to database updates.
 
 Access after startup:
 

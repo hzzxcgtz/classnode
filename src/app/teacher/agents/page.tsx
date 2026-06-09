@@ -90,7 +90,7 @@ export default function AgentsPage() {
           </div>
           <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 8px' }}>还没有接入智能体</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
-            点击上方按钮，接入您在 Coze、Coze Agent 等平台配置好的 AI 助手
+            点击上方按钮，接入您在 Coze、文心智能体等平台配置好的 AI 助手
           </p>
           <button className="btn btn-primary btn-lg" onClick={() => setShowForm(true)}>
             接入第一个智能体
@@ -101,21 +101,19 @@ export default function AgentsPage() {
           {agents.map(agent => {
             const platformColors: Record<string, string> = {
               coze: '#2563eb',
-              openai: '#16a34a',
               'coze-agent': '#7c3aed',
-              zhipuai: '#1d8cf8',
               wenxin: '#c62828',
+              openai: '#94a3b8',
             };
             const platformLabels: Record<string, string> = {
-              coze: 'Coze Bot',
-              openai: 'OpenAI',
-              'coze-agent': 'Coze Agent',
-              zhipuai: '智谱清言',
-              wenxin: '文心智能体',
+              coze: 'Coze',
+              'coze-agent': 'Coze 智能体',
+              wenxin: '百度文心',
+              openai: '敬请期待',
             };
             // 不同类型对应不同标签底色
             const badgeBg: Record<string, string> = {
-              coze: '#eef2ff', 'coze-agent': '#f5f3ff', zhipuai: '#ecfeff', openai: '#f0fdf4', wenxin: '#fef2f2',
+              coze: '#eef2ff', 'coze-agent': '#f5f3ff', wenxin: '#fef2f2', openai: '#f1f5f9',
             };
             const platColor = platformColors[agent.platform] || '#64748b';
             const isEnabled = agent.enabled !== false;
@@ -679,11 +677,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
                 }}>
                   {[
-                    { value: 'coze', label: 'Coze Bot', desc: '扣子低代码', disabled: false },
-                    { value: 'coze-agent', label: 'Coze Agent', desc: '扣子编程', disabled: false },
+                    { value: 'coze', label: 'Coze 低代码', desc: 'Coze', disabled: false },
+                    { value: 'coze-agent', label: 'Coze 智能体', desc: 'Coze', disabled: false },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
-                    { value: 'zhipuai', label: '智谱清言', desc: 'GLM系列', disabled: true },
-                    { value: 'openai', label: 'OpenAI', desc: '兼容接口', disabled: true },
+                    { value: 'openai', label: '更多智能体接入，敬请期待', desc: '', disabled: true },
                   ].map(p => (
                     <button key={p.value} type="button"
                       onClick={() => !p.disabled && setPlatform(p.value)}

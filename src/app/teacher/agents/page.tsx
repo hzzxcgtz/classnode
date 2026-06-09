@@ -686,24 +686,35 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
                 }}>
                   {[
-                    { value: 'coze', label: 'Coze 低代码', desc: '字节扣子', disabled: false },
-                    { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false },
-                    { value: 'zhipuai', label: '清言智能体', desc: '智谱清言', disabled: false },
-                    { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false },
-                    { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true },
+                    { value: 'coze', label: 'Coze 低代码', desc: '字节扣子', disabled: false, helpUrl: 'https://www.coze.cn' },
+                    { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false, helpUrl: 'https://www.coze.cn' },
+                    { value: 'zhipuai', label: '清言智能体', desc: '智谱清言', disabled: false, helpUrl: 'https://chatglm.cn/developersPanel/apiSet' },
+                    { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false, helpUrl: 'https://agents.baidu.com' },
+                    { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true, helpUrl: '' },
                   ].map(p => (
-                    <button key={p.value} type="button"
-                      onClick={() => !p.disabled && setPlatform(p.value)}
-                      title={p.disabled ? '暂未开放' : undefined}
-                      style={{
-                        padding: '7px 6px', borderRadius: 6, cursor: p.disabled ? 'not-allowed' : 'pointer',
-                        border: `1.5px solid ${platform === p.value && !p.disabled ? '#2563eb' : '#e2e8f0'}`,
-                        background: platform === p.value && !p.disabled ? '#eef2ff' : p.disabled ? '#f8f9fb' : 'white',
-                        textAlign: 'center', transition: 'all 0.12s', opacity: p.disabled ? 0.5 : 1,
+                    <div key={p.value} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                      <button type="button"
+                        onClick={() => !p.disabled && setPlatform(p.value)}
+                        title={p.disabled ? '暂未开放' : undefined}
+                        style={{
+                          width: '100%', padding: '7px 6px', borderRadius: 6, cursor: p.disabled ? 'not-allowed' : 'pointer',
+                          border: `1.5px solid ${platform === p.value && !p.disabled ? '#2563eb' : '#e2e8f0'}`,
+                          background: platform === p.value && !p.disabled ? '#eef2ff' : p.disabled ? '#f8f9fb' : 'white',
+                          textAlign: 'center', transition: 'all 0.12s', opacity: p.disabled ? 0.5 : 1, fontFamily: 'inherit',
                       }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: p.disabled ? '#94a3b8' : (platform === p.value ? '#2563eb' : '#475569') }}>{p.label}</div>
                       <div style={{ fontSize: 10, color: p.disabled ? '#cbd5e1' : '#94a3b8', marginTop: 1 }}>{p.desc}</div>
                     </button>
+                      {p.helpUrl && (
+                        <a href={p.helpUrl} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ fontSize: 10, color: '#94a3b8', textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                          title="查看配置帮助">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          帮助
+                        </a>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

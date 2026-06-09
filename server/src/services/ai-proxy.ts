@@ -1402,7 +1402,14 @@ function extractWenxinContent(data: any): string {
   let text = '';
   for (const item of contents) {
     if (item.dataType === 'text' || item.dataType === 'markdown') {
-      text += item.data || '';
+      // data 可能是 { text: "内容" } 对象，也可能是纯字符串
+      if (typeof item.data === 'string') {
+        text += item.data;
+      } else if (item.data?.text) {
+        text += item.data.text;
+      } else if (item.data?.content) {
+        text += item.data.content;
+      }
     }
   }
   return text;
@@ -1461,22 +1468,8 @@ async function proxyWenxin(
       return { success: false, error: `文心 API 返回错误: ${data.message || '未知错误'} (code=${data.status})` };
     }
 
-    // 调试：检查响应结构
-    console.log('[Wenxin] Response structure:', JSON.stringify({
-      hasData: !!data.data,
-      dataKeys: data.data ? Object.keys(data.data) : [],
-      contentType: data.data?.content ? typeof data.data.content : 'no-content',
-      contentIsArray: data.data?.content ? Array.isArray(data.data.content) : false,
-      contentLen: data.data?.content ? (Array.isArray(data.data.content) ? data.data.content.length : 'n/a') : 0,
-      threadId: data.data?.threadId,
-      msgId: data.data?.msgId,
-    }).slice(0, 500));
-
     const content = extractWenxinContent(data.data);
-    if (!content) {
-      const raw = JSON.stringify(data.data).slice(0, 500);
-      return { success: false, error: `文心智能体返回为空，响应: ${raw}` };
-    }
+    if (!content) return { success: false, error: '文心智能体返回为空' };
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
     return { success: true, content: deanonymized };
@@ -1540,8 +1533,9 @@ async function proxyWenxinStream(
 
         try {
           const parsed = JSON.parse(dataStr);
-          // 文心流式 SSE 响应格式: { type: "XXX", content: "文本" }
-          const delta = parsed.content || parsed.text || parsed.data || '';
+          // 文心流式 SSE 响应格式
+          const raw = parsed.content || parsed.text || parsed.data || '';
+          const delta = typeof raw === 'string' ? raw : (raw?.text || raw?.content || '');
           if (delta) {
             fullContent += delta;
             onChunk(delta);

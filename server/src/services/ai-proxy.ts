@@ -958,7 +958,8 @@ async function proxyCozeStream(
   let buffer = '';
   let fullContent = '';
   let eventCount = 0;
-  let currentEvent = '';  // 追踪 SSE event 类型
+  let currentEvent = '';
+  let streamConvId = agent.conversationId || '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -988,6 +989,9 @@ async function proxyCozeStream(
           }
 
           // 跳过推理模型的思考过程（Coze 推理模型发 content_type=thinking 的片段）
+          if (eventCount === 1 && !streamConvId && (parsed.conversation_id || parsed.data?.conversation_id)) {
+            streamConvId = parsed.conversation_id || parsed.data?.conversation_id;
+          }
           if (parsed.content_type === 'thinking') continue;
           // 跳过 verbose 中间事件（如 review process 等）
           if (parsed.type === 'verbose') continue;
@@ -1014,7 +1018,7 @@ async function proxyCozeStream(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyDifyStream(

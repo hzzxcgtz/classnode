@@ -26,6 +26,7 @@ html, body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation;
+  zoom: 1.1;
 }
 
 /* Teacher Layout */

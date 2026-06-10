@@ -134,9 +134,9 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息 + 当前消息一起传入（有图片时仅保留最近 4 条）
+  // 历史消息 + 当前消息一起传入（有图片时不带历史，避免干扰）
   const additionalMessages: any[] = [];
-  const historySlice = (fileUrls && fileUrls.length > 0) ? history?.slice(-4) : history;
+  const historySlice = (fileUrls && fileUrls.length > 0) ? [] : (history || []);
   if (historySlice) {
     for (const h of historySlice) {
       additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
@@ -152,18 +152,13 @@ async function proxyCoze(
     }
   }
   if (fileIds.length > 0) {
-    // 先用 file 类型发图片，再用 text 发文字
-    for (const fid of fileIds) {
-      additionalMessages.push({
-        role: 'user',
-        content: fid,
-        content_type: 'image',
-      });
-    }
     additionalMessages.push({
       role: 'user',
-      content: message,
-      content_type: 'text',
+      content: JSON.stringify([
+        { type: 'image', file_id: fileIds[0] },
+        { type: 'text', text: message },
+      ]),
+      content_type: 'object_string',
     });
   } else {
     additionalMessages.push({

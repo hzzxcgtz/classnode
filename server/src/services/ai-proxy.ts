@@ -170,6 +170,7 @@ async function proxyCoze(
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
+    auto_save_history: true,
     stream: false,
   });
   console.log('[Coze] Sending chat request, messages:', additionalMessages.length, 'hasImage:', additionalMessages.some((m: any) => m.content_type === 'object_string'));

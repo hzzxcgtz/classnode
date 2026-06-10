@@ -1274,13 +1274,26 @@ async function proxyZhipuai(
   const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
   if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
 
+  // 上传文件并获取 file_id
+  const fileIds: string[] = [];
+  if (fileUrls && fileUrls.length > 0) {
+    for (const url of fileUrls) {
+      if (isLocalFileUrl(url)) {
+        const fid = await uploadFileToZhipuai(baseUrl, token, url);
+        if (fid) fileIds.push(fid);
+      }
+    }
+  }
+  const body: any = { assistant_id: agent.botId, prompt: message };
+  if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
+
   const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream_sync`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ assistant_id: agent.botId, prompt: message }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -1332,13 +1345,25 @@ async function proxyZhipuaiStream(
   const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
   if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
 
+  const fileIds: string[] = [];
+  if (fileUrls && fileUrls.length > 0) {
+    for (const url of fileUrls) {
+      if (isLocalFileUrl(url)) {
+        const fid = await uploadFileToZhipuai(baseUrl, token, url);
+        if (fid) fileIds.push(fid);
+      }
+    }
+  }
+  const body: any = { assistant_id: agent.botId, prompt: message };
+  if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
+
   const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ assistant_id: agent.botId, prompt: message }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -1564,6 +1589,46 @@ async function proxyWenxinStream(
     return { success: true, content: deanonymized };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
+  }
+}
+
+/** 上传本地文件到智谱清言，返回 file_id */
+async function uploadFileToZhipuai(baseUrl: string, token: string, fileUrl: string): Promise<string | null> {
+  try {
+    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
+    const filePath = path.join(__dirname, '../..', relativePath);
+    if (!fs.existsSync(filePath)) {
+      console.error('[ZhipuaiUpload] File not found:', filePath);
+      return null;
+    }
+    const fileName = path.basename(fileUrl);
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp', '.gif': 'image/gif',
+      '.pdf': 'application/pdf', '.txt': 'text/plain',
+    };
+    const mimeType = mimeMap[ext] || 'application/octet-stream';
+    const fileBuffer = fs.readFileSync(filePath);
+    const formData = new FormData();
+    const blob = new Blob([fileBuffer], { type: mimeType });
+    formData.append('file', blob, fileName);
+
+    const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/file_upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('[ZhipuaiUpload] Error:', response.status, err);
+      return null;
+    }
+    const data = await response.json();
+    return data.result?.file_id || null;
+  } catch (error) {
+    console.error('[ZhipuaiUpload] Exception:', error);
+    return null;
   }
 }
 

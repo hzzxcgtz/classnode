@@ -315,7 +315,7 @@ function ClassroomBoardContent() {
 
 
   if (!classroom) {
-    return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 14 }}>加载中...</div>;
+    return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>;
   }
 
   const statusValues = Object.values(studentStatuses);
@@ -373,9 +373,9 @@ function ClassroomBoardContent() {
           </button>
           <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{classroom.title || '课堂看板'}</h1>
+            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0 }}>{classroom.title || '课堂看板'}</h1>
             <span style={{
-              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+              fontSize: "0.688rem", fontWeight: 600, padding: '2px 8px', borderRadius: 4,
               background: classroom.mode === 'advanced' ? '#ecfdf5' : classroom.mode === 'group' ? '#f5f3ff' : '#eef2ff',
               color: classroom.mode === 'advanced' ? '#059669' : classroom.mode === 'group' ? '#7c3aed' : '#2563eb',
               whiteSpace: 'nowrap', lineHeight: '20px',
@@ -390,10 +390,10 @@ function ClassroomBoardContent() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '3px 10px 3px 10px', borderRadius: 6,
-              background: '#eef2ff', fontSize: 13, fontWeight: 500, color: '#2563eb',
+              background: '#eef2ff', fontSize: "0.813rem", fontWeight: 500, color: '#2563eb',
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
-              互动码 <strong style={{ fontSize: 16, letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
+              互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
               <button onClick={() => setShowCodeScreen(true)} title="显示二维码"
                 style={{
                   marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
@@ -408,7 +408,7 @@ function ClassroomBoardContent() {
                 </svg>
               </button>
             </div>
-            <span style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: "0.813rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
               {students.length} 名学生
             </span>
@@ -418,7 +418,7 @@ function ClassroomBoardContent() {
         <div style={{ display: 'flex', gap: 8 }}>
           {classroom.status !== 'ended' && (
             <>
-              <button className="btn btn-primary btn-lg" onClick={() => setShowCodeScreen(true)} style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="btn btn-primary btn-lg" onClick={() => setShowCodeScreen(true)} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
@@ -429,7 +429,7 @@ function ClassroomBoardContent() {
                   await api.resumeClassroom(id);
                   setPaused(false);
                   loadClassroom();
-                }} style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                   继续上课
                 </button>
@@ -444,7 +444,7 @@ function ClassroomBoardContent() {
         <div style={{
           padding: '10px 16px', borderRadius: 10, marginBottom: 16,
           background: '#fffbeb', border: '1px solid #fde68a',
-          display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#92400e',
+          display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.813rem", color: '#92400e',
         }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
           课堂已暂停，学生无法发送消息。点击「继续上课」即可恢复。
@@ -493,8 +493,8 @@ function ClassroomBoardContent() {
               )}
             </div>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+              <div style={{ fontSize: "1.625rem", fontWeight: 700, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
+              <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
             </div>
           </div>
         ))}
@@ -505,16 +505,16 @@ function ClassroomBoardContent() {
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
+            <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
                 点击学生卡片查看完整对话
               </span>
               <button onClick={() => setGridFullscreen(true)}
                 title="全屏显示学生面板"
                 style={{
                   padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0',
-                  background: 'white', cursor: 'pointer', color: '#64748b', fontSize: 12,
+                  background: 'white', cursor: 'pointer', color: '#64748b', fontSize: "0.75rem",
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
@@ -537,8 +537,8 @@ function ClassroomBoardContent() {
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
                   </svg>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>暂无学生加入</div>
-                <div style={{ fontSize: 13, color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: 15, letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
+                <div style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>暂无学生加入</div>
+                <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
               </div>
             ) : (
               (groupCards || students).map((item: any) => {
@@ -588,7 +588,7 @@ function ClassroomBoardContent() {
                         width: 36, height: 36, borderRadius: isGroup ? 10 : '50%', flexShrink: 0,
                         background: status === 'online' ? (isGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #10b981, #34d399)') : status === 'thinking' ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : '#e5e7eb',
                         color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: 15,
+                        fontWeight: 700, fontSize: "0.938rem",
                       }}>
                         {isGroup ? (
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
@@ -597,7 +597,7 @@ function ClassroomBoardContent() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {/* 姓名行 + 操作按钮 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                          <span style={{ fontSize: "0.875rem", fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                             {isGroup ? (
                               <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
                                 onMouseMove={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
@@ -605,13 +605,13 @@ function ClassroomBoardContent() {
                                 {item.group?.name || '(未命名)'}
                               </span>
                             ) : (
-                              <>{student.name}{student.studentNo && <span style={{ fontSize: 10, fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>#{student.studentNo}</span>}</>
+                              <>{student.name}{student.studentNo && <span style={{ fontSize: "0.625rem", fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>#{student.studentNo}</span>}</>
                             )}
                           </span>
                           {!isGroup && (classroom.mode === 'advanced' || classroom.mode === 'group') && cs.group && (
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '0 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                              padding: '0 6px', borderRadius: 4, fontSize: "0.625rem", fontWeight: 600,
                               background: '#f5f3ff', color: '#7c3aed', lineHeight: '18px', flexShrink: 0,
                             }}>
                               <svg width="8" height="8" viewBox="0 0 24 24" fill="#7c3aed" stroke="none"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
@@ -662,29 +662,29 @@ function ClassroomBoardContent() {
                         </div>
                         {/* 人数（仅小组） */}
                         {isGroup && (
-                          <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
+                          <div style={{ fontSize: "0.688rem", color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
                         )}
                         {/* 状态标签 */}
                         <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
                           {studentBlacklisted[sid] && (
                             <div title="已被黑屏" style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                              padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600,
                               background: '#1e293b', color: 'white', whiteSpace: 'nowrap',
                             }}>
                               黑屏
                             </div>
                           )}
-                          <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                          <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                             {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                           </div>
-                          <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                          <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
                             {rounds} 轮
                           </div>
                           {!isGroup && studentWarnings[sid] > 0 && (
                             <div title="警告次数（点击清零）" onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定将「${student.name}」的警告次数清零？`)) return; try { await api.resetStudentWarnings(id, sid); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} }}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                               {studentWarnings[sid]}
                             </div>
@@ -702,7 +702,7 @@ function ClassroomBoardContent() {
                           <div style={{
                             padding: '10px 14px', borderRadius: 8,
                             background: '#eef2ff',
-                            fontSize: 12, lineHeight: 1.6, color: '#334155',
+                            fontSize: "0.75rem", lineHeight: 1.6, color: '#334155',
                             wordBreak: 'break-word',
                           }}>
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
@@ -722,7 +722,7 @@ function ClassroomBoardContent() {
                               padding: '10px 14px', borderRadius: 8,
                               background: '#f8fafc',
                               border: '1px solid #eef2f6',
-                              fontSize: 12, lineHeight: 1.6, color: '#64748b',
+                              fontSize: "0.75rem", lineHeight: 1.6, color: '#64748b',
                               wordBreak: 'break-word',
                             }}>
                               <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 4 }}>
@@ -739,7 +739,7 @@ function ClassroomBoardContent() {
                           )}
                         </>
                       ) : (
-                        <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f9fafb', fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>
+                        <div style={{ padding: '10px 14px', borderRadius: 8, background: '#f9fafb', fontSize: "0.75rem", color: '#cbd5e1', textAlign: 'center' }}>
                           暂无对话
                         </div>
                       )}
@@ -781,40 +781,40 @@ function ClassroomBoardContent() {
                     width: 36, height: 36, borderRadius: selectedGroup ? 10 : '50%',
                     background: selectedGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #667eea, #764ba2)',
                     color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: 15,
+                    fontWeight: 700, fontSize: "0.938rem",
                   }}>
                     {selectedGroup ? (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                     ) : selectedStudent.name[0]}
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                       {selectedGroup ? selectedGroup.name : selectedStudent.name}
                       {selectedGroup && groupMembersMap[selectedGroup.id] && (
                         <span style={{
-                          fontSize: 11, fontWeight: 500, color: '#94a3b8', marginLeft: 2,
+                          fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8', marginLeft: 2,
                         }}>
                           {groupMembersMap[selectedGroup.id].length} 人
                         </span>
                       )}
                     </h3>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginTop: 2 }}>
                       共 {messages.filter((m: any) => m.role === 'user').length} 轮交互 · {messages.length} 条消息
                     </div>
                     {selectedGroup && groupMembersMap[selectedGroup.id] && (
-                      <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 4, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: "0.688rem", color: '#7c3aed', marginTop: 4, lineHeight: 1.5 }}>
                         {groupMembersMap[selectedGroup.id].map((d:any)=>d.studentName).join('、')}
                       </div>
                     )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                  <button className="btn btn-secondary" style={{ fontSize: "0.688rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => setShowFullscreen(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                     投屏
                   </button>
-                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                  <button className="btn btn-ghost" style={{ fontSize: "0.688rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     关闭
@@ -825,9 +825,9 @@ function ClassroomBoardContent() {
 
             {allRis.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 20px', borderBottom: '1px solid #eef2f6', background: '#fafbff' }}>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>投屏选择</span>
+                <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>投屏选择</span>
                 <button onClick={() => setSelectedRounds(allRis.every(ri => selectedRounds.includes(ri)) ? [] : [...allRis])}
-                  style={{ fontSize: 11, color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
+                  style={{ fontSize: "0.688rem", color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
                   {allRis.every(ri => selectedRounds.includes(ri)) ? '取消全选' : `全选 (${allRis.length - selectedRounds.length} / ${allRis.length})`}
                 </button>
               </div>
@@ -839,7 +839,7 @@ function ClassroomBoardContent() {
               display: 'flex', flexDirection: 'column', gap: 12,
             }}>
               {messages.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: 13 }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: "0.813rem" }}>
                   暂无对话记录
                 </div>
               ) : (
@@ -863,7 +863,7 @@ function ClassroomBoardContent() {
                         style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid', borderColor: msgChecked[i] ? '#6366f1' : '#d1d5db', background: msgChecked[i] ? '#6366f1' : 'transparent', cursor: msgRounds[i] != null ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s', flexShrink: 0, opacity: msgRounds[i] != null ? 1 : 0 }}>
                         {msgChecked[i] && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : '#64748b' }}>
+                      <div style={{ fontSize: "0.688rem", fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : '#64748b' }}>
                         {m.role === 'user' ? selectedStudent.name : 'AI'}
                       </div>
                     </div>
@@ -877,7 +877,7 @@ function ClassroomBoardContent() {
                             <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
                           ) : (
-                            <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                               {names[fi] || '附件'}
                             </div>
@@ -885,8 +885,8 @@ function ClassroomBoardContent() {
                         </div>
                       ));
                     })()}
-                    <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
-                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
+                    <div style={{ fontSize: "0.875rem", lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+                    <div style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
                       <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
 
                     </div>
@@ -917,7 +917,7 @@ function ClassroomBoardContent() {
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
-            <p style={{ fontSize: 30, color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>请使用移动终端的相机或浏览器扫描下方二维码</p>
+            <p style={{ fontSize: "1.875rem", color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>请使用移动终端的相机或浏览器扫描下方二维码</p>
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 36, flexWrap: 'wrap' }}>
               <div style={{
                 background: 'white', borderRadius: 24, overflow: 'hidden',
@@ -947,7 +947,7 @@ function ClassroomBoardContent() {
                     padding: '14px 0', border: 'none', cursor: 'pointer',
                     borderTop: '1px solid #eef2f6',
                     background: '#f8fafc', color: '#2563eb',
-                    fontSize: 14, fontWeight: 600,
+                    fontSize: "0.875rem", fontWeight: 600,
                     transition: 'all 0.15s', width: '100%',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; }}
@@ -957,26 +957,26 @@ function ClassroomBoardContent() {
                 </button>
               </div>
               <div style={{ textAlign: 'center', marginTop: 0 }}>
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', maxWidth: 320, lineHeight: 1.6 }}>
+                <p style={{ fontSize: "0.875rem", color: 'rgba(255,255,255,0.4)', maxWidth: 320, lineHeight: 1.6 }}>
                   💡 请使用手机自带相机或浏览器扫码功能扫描二维码，微信/支付宝等扫码可能无法识别
                 </p>
               </div>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
+                <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
                 <p style={{
-                  fontSize: 44, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
+                  fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
                   http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
                 </p>
-                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
+                <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {teacherCode.split('').map((d, i) => (
                     <div key={i} style={{
                       width: 96, height: 112, borderRadius: 14,
                       background: 'rgba(37,99,235,0.15)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 72, fontWeight: 700, color: '#60a5fa',
+                      fontSize: "4.5rem", fontWeight: 700, color: '#60a5fa',
                       lineHeight: 1,
                     }}>{d}</div>
                   ))}
@@ -985,7 +985,7 @@ function ClassroomBoardContent() {
             </div>
             <button className="btn" style={{
               background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
-              border: '1px solid rgba(255,255,255,0.15)', fontSize: 18, padding: '12px 36px',
+              border: '1px solid rgba(255,255,255,0.15)', fontSize: "1.125rem", padding: '12px 36px',
               borderRadius: 10, cursor: 'pointer',
             }} onClick={() => setShowCodeScreen(false)}>
               返回看板
@@ -1009,15 +1009,15 @@ function ClassroomBoardContent() {
             borderBottom: '1px solid #eef2f6',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', letterSpacing: 1 }}>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: '#0f172a', letterSpacing: 1 }}>
                 {classroom?.title || '课堂'} · 学习展示
               </div>
-              <div style={{ fontSize: 13, color: '#94a3b8' }}>
+              <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>
                 {selectedStudent?.name || ''} · {projMsgs.filter((m: any) => m.role === 'user').length} 轮对话
               </div>
             </div>
             <button onClick={() => setShowFullscreen(false)}
-              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 14, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出投屏
             </button>
@@ -1029,7 +1029,7 @@ function ClassroomBoardContent() {
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
             {messages.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 100, color: '#94a3b8', fontSize: 22 }}>
+              <div style={{ textAlign: 'center', padding: 100, color: '#94a3b8', fontSize: "1.375rem" }}>
                 暂无对话记录
               </div>
             ) : (
@@ -1050,7 +1050,7 @@ function ClassroomBoardContent() {
                           width: 34, height: 34, borderRadius: 8,
                           background: 'linear-gradient(135deg, #667eea, #764ba2)',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 15, fontWeight: 700, overflow: 'hidden',
+                          fontSize: "0.938rem", fontWeight: 700, overflow: 'hidden',
                         }}>
                           {classroomAgent.logo
                             ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1059,7 +1059,7 @@ function ClassroomBoardContent() {
                         </div>
                       )}
                       <span style={{
-                        fontSize: 20, fontWeight: 600,
+                        fontSize: "1.25rem", fontWeight: 600,
                         color: m.role === 'user' ? '#667eea' : '#475569',
                       }}>
                         {m.role === 'user' ? selectedStudent?.name || '学生' : (classroomAgent?.name || 'AI 助手')}
@@ -1075,7 +1075,7 @@ function ClassroomBoardContent() {
                       border: '1px solid',
                       borderColor: m.role === 'user' ? '#dbeafe' : '#eef2f6',
                       lineHeight: 1.8,
-                      fontSize: 22,
+                      fontSize: "1.375rem",
                       color: '#0f172a',
                       wordBreak: 'break-word',
                     }}>
@@ -1089,7 +1089,7 @@ function ClassroomBoardContent() {
                               <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block' }} />
                             ) : (
-                              <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: 16, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                                 {names[fi] || '附件'}
                               </div>
@@ -1108,7 +1108,7 @@ function ClassroomBoardContent() {
           {/* 底部水印 */}
           <div style={{
             textAlign: 'center', padding: '12px 0',
-            fontSize: 13, color: '#cbd5e1',
+            fontSize: "0.813rem", color: '#cbd5e1',
             borderTop: '1px solid #f1f5f9',
           }}>
             ClassNode · 投屏展示
@@ -1132,7 +1132,7 @@ function ClassroomBoardContent() {
                 width: 30, height: 30, borderRadius: 8,
                 background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'white', fontWeight: 700, fontSize: 13,
+                color: 'white', fontWeight: 700, fontSize: "0.813rem",
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -1141,13 +1141,13 @@ function ClassroomBoardContent() {
                   <rect x="14" y="14" width="7" height="7" rx="1" />
                 </svg>
               </div>
-              <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>学生互动面板 · 全屏模式</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{(groupCards || students).length} {groupCards ? '个小组' : '名学生'}</span>
+              <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a' }}>学生互动面板 · 全屏模式</span>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>{(groupCards || students).length} {groupCards ? '个小组' : '名学生'}</span>
             </div>
             <button onClick={() => setGridFullscreen(false)}
               style={{
                 padding: '7px 16px', borderRadius: 8, border: '1px solid #e2e8f0',
-                background: 'white', cursor: 'pointer', fontSize: 13, color: '#475569',
+                background: 'white', cursor: 'pointer', fontSize: "0.813rem", color: '#475569',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
@@ -1157,19 +1157,19 @@ function ClassroomBoardContent() {
           <div ref={fsContentRef} style={{ flex: 1, overflow: 'hidden', padding: '12px 20px', display: 'flex', flexDirection: 'column' }}>
             {/* 布局控制栏 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
                 {(groupCards || students).length} {groupCards ? '个小组' : '名学生'} · {fsCols} 列（{Math.ceil((groupCards || students).length / fsCols)} 行）
               </span>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <button onClick={() => setFsCols(c => Math.max(2, c - 1))}
-                  style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: 14, color: '#475569', lineHeight: 1 }}>
+                  style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: '#475569', lineHeight: 1 }}>
                   −
                 </button>
-                <span style={{ fontSize: 12, color: '#64748b', padding: '0 6px', minWidth: 30, textAlign: 'center' }}>
+                <span style={{ fontSize: "0.75rem", color: '#64748b', padding: '0 6px', minWidth: 30, textAlign: 'center' }}>
                   {fsCols}列
                 </span>
                 <button onClick={() => setFsCols(c => Math.min(8, c + 1))}
-                  style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: 14, color: '#475569', lineHeight: 1 }}>
+                  style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: '#475569', lineHeight: 1 }}>
                   +
                 </button>
               </div>
@@ -1336,7 +1336,7 @@ function ClassroomBoardContent() {
                             <div style={{
                               padding: '5px 8px', borderRadius: 6,
                               background: '#eef2ff',
-                              fontSize: 10, lineHeight: 1.4, color: '#334155',
+                              fontSize: "0.625rem", lineHeight: 1.4, color: '#334155',
                               wordBreak: 'break-word',
                             }}>
                               <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 3 }}>
@@ -1356,7 +1356,7 @@ function ClassroomBoardContent() {
                                 padding: '5px 8px', borderRadius: 6,
                                 background: '#f8fafc',
                                 border: '1px solid #eef2f6',
-                                fontSize: 10, lineHeight: 1.4, color: '#64748b',
+                                fontSize: "0.625rem", lineHeight: 1.4, color: '#64748b',
                                 wordBreak: 'break-word',
                               }}>
                                 <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 3 }}>
@@ -1373,7 +1373,7 @@ function ClassroomBoardContent() {
                             )}
                           </>
                         ) : (
-                          <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f9fafb', fontSize: 11, color: '#cbd5e1', textAlign: 'center' }}>
+                          <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f9fafb', fontSize: "0.688rem", color: '#cbd5e1', textAlign: 'center' }}>
                             暂无对话
                           </div>
                         )}
@@ -1391,7 +1391,7 @@ function ClassroomBoardContent() {
           position: 'fixed', left: groupTooltip.x + 12, top: groupTooltip.y - 10,
           zIndex: 9999, pointerEvents: 'none',
           background: '#1e293b', color: '#f1f5f9',
-          padding: '8px 12px', borderRadius: 8, fontSize: 12,
+          padding: '8px 12px', borderRadius: 8, fontSize: "0.75rem",
           lineHeight: 1.7, whiteSpace: 'nowrap',
           boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
         }}>
@@ -1587,7 +1587,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
             </svg>
-            <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>对话分析</span>
+            <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>对话分析</span>
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="18 15 12 9 6 15" />
@@ -1615,8 +1615,8 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
           </svg>
-          <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>对话分析</span>
-          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>
+          <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>对话分析</span>
+          <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
             {allMessages.length} 条消息 · {participantStudents.size} 人参与
           </span>
         </div>
@@ -1625,7 +1625,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
             onClick={(e) => { e.stopPropagation(); loadAnalytics(); }}
             style={{
               background: '#f1f5f9', border: 'none', borderRadius: 6,
-              padding: '4px 10px', fontSize: 11, color: '#64748b',
+              padding: '4px 10px', fontSize: "0.688rem", color: '#64748b',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
             }}
           >
@@ -1652,14 +1652,14 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           `}</style>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingTop: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 display: 'inline-block', width: 8, height: 8, borderRadius: 2,
                 background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
               }} />
               高频词云
               {words.length > 0 && (
-                <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', textTransform: 'none' }}>
+                <span style={{ fontSize: "0.688rem", fontWeight: 400, color: '#94a3b8', textTransform: 'none' }}>
                   {words.length} 个热词
                 </span>
               )}
@@ -1669,7 +1669,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
                 <button key={key} onClick={() => setCloudSource(key)}
                   style={{
                     padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    fontSize: 11, fontWeight: cloudSource === key ? 600 : 400,
+                    fontSize: "0.688rem", fontWeight: cloudSource === key ? 600 : 400,
                     background: cloudSource === key ? '#eef2ff' : 'transparent',
                     color: cloudSource === key ? '#2563eb' : '#94a3b8',
                     transition: 'all 0.12s',
@@ -1682,7 +1682,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           {words.length === 0 ? (
             <div style={{
               flex: 1, minHeight: 200,
-              fontSize: 13, color: '#cbd5e1', textAlign: 'center',
+              fontSize: "0.813rem", color: '#cbd5e1', textAlign: 'center',
               padding: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, justifyContent: 'center',
             }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1731,12 +1731,12 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
         <div style={{ alignSelf: 'start', width: '100%', minWidth: 0 }}>
           {/* 活跃学生排名 */}
           <div style={{ padding: '16px 20px' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               活跃学生 TOP 10
             </div>
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {topStudents.length === 0 ? (
-                <div style={{ fontSize: 13, color: '#cbd5e1', textAlign: 'center', padding: 16 }}>暂无数据</div>
+                <div style={{ fontSize: "0.813rem", color: '#cbd5e1', textAlign: 'center', padding: 16 }}>暂无数据</div>
               ) : (
                 topStudents.map((s, i) => (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1745,11 +1745,11 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
                       background: i < 3 ? ['#fef3c7', '#e5e7eb', '#fed7aa'][i] : '#f1f5f9',
                       color: i < 3 ? ['#92400e', '#475569', '#9a3412'][i] : '#94a3b8',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, fontWeight: 700, flexShrink: 0,
+                      fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
                     }}>
                       {i + 1}
                     </span>
-                    <span style={{ fontSize: 13, color: '#334155', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: "0.813rem", color: '#334155', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.name}
                     </span>
                     <div style={{
@@ -1765,7 +1765,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
                         transition: 'width 0.3s',
                       }} />
                     </div>
-                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 40, textAlign: 'right' }}>
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 40, textAlign: 'right' }}>
                       {s.count} 条
                     </span>
                   </div>

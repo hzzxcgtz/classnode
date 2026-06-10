@@ -102,7 +102,7 @@ export default function StudentHomePage() {
       {/* 服务状态 */}
       <div style={{ position: 'absolute', top: 20, right: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
         <span className={`status-dot ${serverOnline ? 'online' : 'offline'}`} />
-        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: "0.813rem" }}>
           {serverOnline ? '服务在线' : '连接中...'}
         </span>
       </div>
@@ -114,7 +114,7 @@ export default function StudentHomePage() {
           background: 'rgba(255,255,255,0.1)',
           color: 'rgba(255,255,255,0.6)',
           border: '1px solid rgba(255,255,255,0.15)',
-          padding: '6px 14px', borderRadius: 6, fontSize: 12,
+          padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem",
           textDecoration: 'none',
         }}
       >
@@ -124,14 +124,14 @@ export default function StudentHomePage() {
       <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {logoErr ? (
-            <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 36 }}>C</div>
+            <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
           ) : (
             <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
           )}
-          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
             AI互动课堂
           </h1>
-          <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>
+          <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>
             请输入老师下发的4位互动码
           </p>
         </div>
@@ -148,7 +148,7 @@ export default function StudentHomePage() {
               onKeyDown={e => handleKeyDown(i, e)}
               onPaste={i === 0 ? handlePaste : undefined}
               style={{
-                width: 64, height: 72, fontSize: 32, fontWeight: 700,
+                width: 64, height: 72, fontSize: "2rem", fontWeight: 700,
                 textAlign: 'center', borderRadius: 12,
                 border: `2px solid ${d ? '#667eea' : '#e2e8f0'}`,
                 background: d ? 'rgba(102,126,234,0.06)' : '#f8fafc',
@@ -168,13 +168,13 @@ export default function StudentHomePage() {
         </div>
 
         {error && (
-          <p style={{ color: '#ef4444', fontSize: 14, marginBottom: 16, textAlign: 'center' }}>{error}</p>
+          <p style={{ color: '#ef4444', fontSize: "0.875rem", marginBottom: 16, textAlign: 'center' }}>{error}</p>
         )}
 
         <button type="submit" className="btn btn-primary btn-lg"
           disabled={hydrated && (fullCode.length !== 4 || loading)}
           style={{
-            width: '100%', fontSize: 15,
+            width: '100%', fontSize: "0.938rem",
             opacity: hydrated && loading ? 0.7 : 1,
           }}
         >

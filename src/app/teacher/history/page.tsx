@@ -73,14 +73,14 @@ export default function HistoryPage() {
     <div>
       {/* 页面标题 */}
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>数据管理</h1>
-        <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>数据管理</h1>
+        <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
           课堂历史存档与数据导出
         </p>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 14 }}>加载中...</div>
+        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
       ) : (
         <>
           {history.length === 0 ? (
@@ -94,8 +94,8 @@ export default function HistoryPage() {
                   <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                 </svg>
               </div>
-              <h2 style={{ fontSize: 16, fontWeight: 600, margin: '0 0 6px', color: '#0f172a' }}>暂无历史记录</h2>
-              <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>
+              <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 6px', color: '#0f172a' }}>暂无历史记录</h2>
+              <p style={{ color: '#94a3b8', fontSize: "0.813rem", margin: 0 }}>
                 结束的课堂将在这里显示，方便回顾和导出。备份数据可在下方恢复。
               </p>
             </div>
@@ -148,8 +148,8 @@ export default function HistoryPage() {
                   )}
                 </div>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+                  <div style={{ fontSize: "1.375rem", fontWeight: 700, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
+                  <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
                 </div>
               </div>
             ))}
@@ -161,8 +161,8 @@ export default function HistoryPage() {
               padding: '16px 20px', borderBottom: '1px solid #eef2f6',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂记录</h2>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>共 {history.length} 条记录</span>
+              <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂记录</h2>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>共 {history.length} 条记录</span>
             </div>
             <table>
               <thead>
@@ -192,16 +192,16 @@ export default function HistoryPage() {
                         <div style={{ fontWeight: 500, color: '#0f172a' }}>
                           {cr.title || '未命名课堂'}
                         </div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 2 }}>
                           {cr.classes?.map((cc: any) => cc.class.name).join(', ')}
                         </div>
                       </td>
-                      <td style={{ fontSize: 13, color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
-                      <td style={{ fontSize: 13, color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
+                      <td style={{ fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
+                      <td style={{ fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
                       <td>
                         {duration !== null ? (
                           <span style={{
-                            fontSize: 13, color: '#475569',
+                            fontSize: "0.813rem", color: '#475569',
                             display: 'flex', alignItems: 'center', gap: 4,
                           }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
@@ -210,25 +210,25 @@ export default function HistoryPage() {
                         ) : <span style={{ color: '#cbd5e1' }}>-</span>}
                       </td>
                       <td>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>
+                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
                           {cr._count?.students || 0}
                         </span>
                       </td>
                       <td>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: cr.participantCount > 0 ? '#2563eb' : '#94a3b8' }}>
+                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: cr.participantCount > 0 ? '#2563eb' : '#94a3b8' }}>
                           {cr.participantCount || 0}
                         </span>
                       </td>
                       <td>
                         <span style={{
-                          fontSize: 13, fontWeight: 600,
+                          fontSize: "0.813rem", fontWeight: 600,
                           color: (cr._count?.interactions || 0) > 50 ? '#2563eb' : (cr._count?.interactions || 0) > 10 ? '#f59e0b' : '#94a3b8',
                         }}>
                           {cr._count?.interactions || 0} 轮
                         </span>
                       </td>
                       <td>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#475569' }}>
+                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
                           {cr.totalChars > 0 ? (
                             cr.totalChars >= 10000
                               ? `${(cr.totalChars / 10000).toFixed(1)}万字`
@@ -239,13 +239,13 @@ export default function HistoryPage() {
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
-                            style={{ fontSize: 11, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id, 'conversations')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                             对话
                           </button>
                           <button className="btn btn-secondary"
-                            style={{ fontSize: 11, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id, 'stats')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
                             报表
@@ -272,8 +272,8 @@ export default function HistoryPage() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
               </div>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
-                <p style={{ color: '#64748b', fontSize: 12, margin: '2px 0 0' }}>
+                <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
+                <p style={{ color: '#64748b', fontSize: "0.75rem", margin: '2px 0 0' }}>
                   备份包含全部课堂数据和上传附件，跨设备迁移无忧
                 </p>
               </div>
@@ -333,10 +333,10 @@ function ExportPreviewDialog({
           padding: '24px 28px 16px',
           borderBottom: '1px solid #eef2f6',
         }}>
-          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#0f172a' }}>
+          <h3 style={{ margin: 0, fontSize: "1.063rem", fontWeight: 600, color: '#0f172a' }}>
             {isConversation ? '导出对话记录' : '导出学情报表'}
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: "0.813rem", color: '#64748b' }}>
             请确认导出内容，无误后点击"确认导出"
           </p>
         </div>
@@ -349,7 +349,7 @@ function ExportPreviewDialog({
           {/* 课堂基本信息 */}
           <div style={{
             background: '#f8fafc', borderRadius: 10, padding: '14px 18px', marginBottom: 16,
-            fontSize: 13,
+            fontSize: "0.813rem",
           }}>
             <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
               {classroom?.title || '未命名课堂'}
@@ -378,12 +378,12 @@ function ExportPreviewDialog({
         }}>
           <button className="btn btn-secondary"
             onClick={onCancel} disabled={exporting}
-            style={{ fontSize: 13, padding: '8px 18px' }}>
+            style={{ fontSize: "0.813rem", padding: '8px 18px' }}>
             取消
           </button>
           <button onClick={onConfirm} disabled={exporting}
             style={{
-              fontSize: 13, padding: '8px 20px', borderRadius: 8, border: 'none',
+              fontSize: "0.813rem", padding: '8px 20px', borderRadius: 8, border: 'none',
               cursor: exporting ? 'not-allowed' : 'pointer', fontWeight: 500,
               background: exporting ? '#94a3b8' : '#2563eb', color: 'white',
               display: 'flex', alignItems: 'center', gap: 6,
@@ -427,18 +427,18 @@ function ConversationPreview({ data }: { data: any }) {
           <div key={stat.label} style={{
             background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
           }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: stat.color }}>{stat.value}</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
           </div>
         ))}
       </div>
 
       {/* 学生列表 */}
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         学生对话概况
       </div>
       {students.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无学生记录</div>
+        <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无学生记录</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {students.map((s: any, i: number) => {
@@ -447,13 +447,13 @@ function ConversationPreview({ data }: { data: any }) {
             return (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 8, background: '#f8fafc', fontSize: 13,
+                padding: '8px 12px', borderRadius: 8, background: '#f8fafc', fontSize: "0.813rem",
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{s.name}</span>
-                  {s.studentNo && <span style={{ color: '#94a3b8', fontSize: 11 }}>{s.studentNo}</span>}
+                  {s.studentNo && <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>{s.studentNo}</span>}
                 </div>
-                <span style={{ color: '#64748b', fontSize: 12 }}>
+                <span style={{ color: '#64748b', fontSize: "0.75rem" }}>
                   {rounds} 轮 · {msgCount} 条消息
                 </span>
               </div>
@@ -486,21 +486,21 @@ function StatsPreview({ data }: { data: any }) {
           <div key={stat.label} style={{
             background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
           }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: stat.color }}>{stat.value}</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
+            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
           </div>
         ))}
       </div>
 
       {/* 数据表格 */}
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         数据预览
       </div>
       {rows.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无数据</div>
+        <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无数据</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', fontSize: "0.75rem", borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {headers.map((h: string, i: number) => (
@@ -528,7 +528,7 @@ function StatsPreview({ data }: { data: any }) {
               {rows.length > 20 && (
                 <tr>
                   <td colSpan={headers.length} style={{
-                    padding: '8px', textAlign: 'center', color: '#94a3b8', fontSize: 11,
+                    padding: '8px', textAlign: 'center', color: '#94a3b8', fontSize: "0.688rem",
                     borderBottom: '1px solid #f1f5f9',
                   }}>
                     ... 还有 {rows.length - 20} 条记录，完整数据将在导出的 Word 中展示
@@ -659,7 +659,7 @@ function BackupManager() {
         <button onClick={() => fileInputRef.current?.click()} disabled={importing}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-            borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
             border: '1px solid #e2e8f0', background: 'white', color: '#475569',
             opacity: importing ? 0.6 : 1,
           }}>
@@ -672,7 +672,7 @@ function BackupManager() {
         <button onClick={() => setShowResetDialog(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-            borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
             border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626',
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
@@ -690,25 +690,25 @@ function BackupManager() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <strong style={{ fontSize: 14, color: '#92400e' }}>跨设备迁移</strong>
+          <strong style={{ fontSize: "0.875rem", color: '#92400e' }}>跨设备迁移</strong>
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>1</div>
-            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
+            <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', color: '#d97706' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>2</div>
-            <span style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
+            <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
           </div>
         </div>
       </div>
       {backups.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             历史备份 ({backups.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -716,39 +716,39 @@ function BackupManager() {
               <div key={i} style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 padding: '10px 14px', borderRadius: 8,
-                background: '#f8fafc', fontSize: 13,
+                background: '#f8fafc', fontSize: "0.813rem",
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                   <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
                   {b.source === 'imported' ? (
                     <span style={{
-                      fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.625rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
                       background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
                     }}>导入</span>
                   ) : (
                     <span style={{
-                      fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.625rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
                       background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0,
                     }}>本机</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <span style={{ color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap' }}>
+                  <span style={{ color: '#94a3b8', fontSize: "0.75rem", whiteSpace: 'nowrap' }}>
                     {new Date(b.createdAt).toLocaleString()} · {b.size > 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB'}
                   </span>
                   <a href={api.getBackupDownloadUrl(b.name)} download
-                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',
+                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',
                       border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569' }}>
                     下载
                   </a>
                   <button onClick={() => setRestoreTarget(b.name)}
-                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb' }}>
                     恢复
                   </button>
                   <button onClick={() => setDeleteTarget(b.name)}
-                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626' }}>
                     删除
                   </button>
@@ -763,16 +763,16 @@ function BackupManager() {
       {deleteTarget && (
         <div style={overlay} onClick={() => !deleting && setDeleteTarget(null)}>
           <div style={dialog} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: '#0f172a' }}>确认删除</h3>
-            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>确认删除</h3>
+            <p style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
               确定要删除备份文件 <strong style={{ color: '#0f172a' }}>{deleteTarget}</strong> 吗？<br />
               此操作不可恢复。
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}
-                style={{ fontSize: 13, padding: '7px 16px' }}>取消</button>
+                style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleDelete(deleteTarget)} disabled={deleting}
-                style={{ fontSize: 13, padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: '#dc2626', color: 'white', opacity: deleting ? 0.6 : 1 }}>
                 {deleting ? '删除中...' : '确认删除'}
               </button>
@@ -785,21 +785,21 @@ function BackupManager() {
       {restoreTarget && (
         <div style={overlay} onClick={() => !restoring && setRestoreTarget(null)}>
           <div style={dialog} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: '#0f172a' }}>确认恢复</h3>
-            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 12px' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>确认恢复</h3>
+            <p style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.6, margin: '0 0 12px' }}>
               将从备份文件 <strong style={{ color: '#0f172a' }}>{restoreTarget}</strong> 恢复数据。
             </p>
             <div style={{
               padding: 12, borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: 13, color: '#dc2626', lineHeight: 1.6, marginBottom: 20,
+              fontSize: "0.813rem", color: '#dc2626', lineHeight: 1.6, marginBottom: 20,
             }}>
               <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库中的所有数据。建议在恢复前先备份当前数据。
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
-                style={{ fontSize: 13, padding: '7px 16px' }}>取消</button>
+                style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestore(restoreTarget)} disabled={restoring}
-                style={{ fontSize: 13, padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: '#2563eb', color: 'white', opacity: restoring ? 0.6 : 1 }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
@@ -816,11 +816,11 @@ function BackupManager() {
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
             </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: '#0f172a', textAlign: 'center' }}>初始化清零</h3>
-            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 12px', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a', textAlign: 'center' }}>初始化清零</h3>
+            <p style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.6, margin: '0 0 12px', textAlign: 'center' }}>
               此操作将<strong>永久删除</strong>数据库中的所有数据，包括：
             </p>
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.8, marginBottom: 16, padding: '0 8px' }}>
+            <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.8, marginBottom: 16, padding: '0 8px' }}>
               • 所有班级和学生信息<br />
               • 所有智能体配置<br />
               • 所有课堂记录和对话数据<br />
@@ -828,25 +828,25 @@ function BackupManager() {
             </div>
             <div style={{
               padding: 12, borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: 13, color: '#dc2626', lineHeight: 1.6, marginBottom: 16,
+              fontSize: "0.813rem", color: '#dc2626', lineHeight: 1.6, marginBottom: 16,
             }}>
               <strong>⚠ 此操作不可撤销！</strong>建议先备份数据库。
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontSize: "0.75rem", color: '#475569', display: 'block', marginBottom: 6 }}>
                 请输入 <strong style={{ color: '#dc2626' }}>确认清零</strong> 以继续：
               </label>
               <input type="text" value={resetConfirmText}
                 onChange={e => setResetConfirmText(e.target.value)}
                 placeholder="输入「确认清零」"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: "0.813rem", outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
-                disabled={resetting} style={{ fontSize: 13, padding: '7px 16px' }}>取消</button>
+                disabled={resetting} style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={handleReset}
                 disabled={resetting || resetConfirmText !== '确认清零'}
-                style={{ fontSize: 13, padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: resetConfirmText === '确认清零' ? '#dc2626' : '#e2e8f0',
                   color: resetConfirmText === '确认清零' ? 'white' : '#94a3b8',
                   opacity: resetting ? 0.6 : 1 }}>

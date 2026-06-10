@@ -153,8 +153,8 @@ export default function ClassesPage() {
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>班级管理</h1>
-            <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>班级管理</h1>
+            <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
               管理班级和学生名单，支持批量导入
             </p>
           </div>
@@ -179,8 +179,8 @@ export default function ClassesPage() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
               </div>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>创建班级</h2>
-                <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>输入新班级名称</p>
+                <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>创建班级</h2>
+                <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>输入新班级名称</p>
               </div>
             </div>
             <input className="input" value={newClassName} onChange={e => setNewClassName(e.target.value)}
@@ -198,7 +198,7 @@ export default function ClassesPage() {
         {/* 班级列表 */}
         <div style={{ width: 260, flexShrink: 0 }}>
           {loading ? (
-            <div style={{ padding: 20, color: '#94a3b8', textAlign: 'center', fontSize: 13 }}>加载中...</div>
+            <div style={{ padding: 20, color: '#94a3b8', textAlign: 'center', fontSize: "0.813rem" }}>加载中...</div>
           ) : classes.length === 0 ? (
             <div style={{
               background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
@@ -213,9 +213,9 @@ export default function ClassesPage() {
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
                 </svg>
               </div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无班级</p>
-              <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 16px' }}>创建班级后即可添加学生</p>
-              <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={() => setShowCreate(true)}>
+              <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无班级</p>
+              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>创建班级后即可添加学生</p>
+              <button className="btn btn-primary" style={{ fontSize: "0.813rem" }} onClick={() => setShowCreate(true)}>
                 创建第一个班级
               </button>
             </div>
@@ -263,7 +263,7 @@ export default function ClassesPage() {
                       background: selectedClass === c.id ? '#eef2ff' : '#f1f5f9',
                       color: selectedClass === c.id ? '#2563eb' : '#64748b',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 600, flexShrink: 0,
+                      fontSize: "0.813rem", fontWeight: 600, flexShrink: 0,
                     }}>
                       {c.name[0]}
                     </div>
@@ -273,7 +273,7 @@ export default function ClassesPage() {
                         <input className="input" defaultValue={c.name} autoFocus
                           onBlur={e => { handleRenameClass(c.id, e.target.value); }}
                           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingClassName(null); }}
-                          style={{ width: '100%', fontSize: 13, fontWeight: 600 }}
+                          style={{ width: '100%', fontSize: "0.813rem", fontWeight: 600 }}
                           onClick={e => e.stopPropagation()}
                         />
                       ) : (
@@ -298,7 +298,7 @@ export default function ClassesPage() {
                       )}
                     </div>
                       <div style={{
-                        fontSize: 12, color: '#94a3b8',
+                        fontSize: "0.75rem", color: '#94a3b8',
                         display: 'flex', alignItems: 'center', gap: 12,
                       }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -324,7 +324,7 @@ export default function ClassesPage() {
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4,
                         padding: '4px 10px', borderRadius: 6,
-                        fontSize: 12, fontWeight: 500,
+                        fontSize: "0.75rem", fontWeight: 500,
                         color: '#94a3b8', border: '1px solid transparent',
                         background: 'transparent', cursor: 'pointer',
                         transition: 'all 0.12s',
@@ -371,8 +371,8 @@ export default function ClassesPage() {
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
                 </div>
-                <h3 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 4px' }}>无法删除班级</h3>
-                <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+                <h3 style={{ fontSize: "1.063rem", fontWeight: 700, margin: '0 0 4px' }}>无法删除班级</h3>
+                <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
                   该班级正在被以下课堂使用中，请先删除关联的课堂后再试。
                 </p>
               </div>
@@ -380,12 +380,12 @@ export default function ClassesPage() {
                 background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
                 padding: '12px 16px', marginBottom: 16,
               }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>
+                <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>
                   「{deleteBlocked.className}」关联的课堂：
                 </div>
                 {deleteBlocked.classrooms.map((cr, i) => (
                   <div key={i} style={{
-                    fontSize: 13, color: '#b91c1c', padding: '4px 0',
+                    fontSize: "0.813rem", color: '#b91c1c', padding: '4px 0',
                     display: 'flex', alignItems: 'center', gap: 6,
                   }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -393,7 +393,7 @@ export default function ClassesPage() {
                     </svg>
                     {cr.title}
                     <span style={{
-                      fontSize: 11, padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.688rem", padding: '1px 6px', borderRadius: 4,
                       background: cr.status === 'active' ? '#dcfce7' : cr.status === 'paused' ? '#fef3c7' : '#f1f5f9',
                       color: cr.status === 'active' ? '#16a34a' : cr.status === 'paused' ? '#d97706' : '#94a3b8',
                       marginLeft: 'auto',
@@ -428,15 +428,15 @@ export default function ClassesPage() {
                       background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
                       color: 'white',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, fontSize: 18, flexShrink: 0,
+                      fontWeight: 700, fontSize: "1.125rem", flexShrink: 0,
                     }}>
                       {selectedClassData?.name?.[0] || '班'}
                     </div>
                     <div>
-                      <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                      <h2 style={{ fontSize: "1.063rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
                         {selectedClassData?.name || '班级'}
                       </h2>
-                      <p style={{ fontSize: 12, color: '#64748b', margin: '1px 0 0' }}>
+                      <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '1px 0 0' }}>
                         创建于 {selectedClassData?.createdAt ? new Date(selectedClassData.createdAt).toLocaleDateString('zh-CN') : '-'}
                       </p>
                     </div>
@@ -477,10 +477,10 @@ export default function ClassesPage() {
                         )}
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
                           {stat.value}
                         </div>
-                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{stat.label}</div>
+                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 2 }}>{stat.label}</div>
                       </div>
                     </div>
                   ))}
@@ -494,7 +494,7 @@ export default function ClassesPage() {
                   ].map(t => (
                     <button key={t.key} onClick={() => setTabMode(t.key)}
                       style={{
-                        padding: '8px 16px', fontSize: 13, fontWeight: tabMode === t.key ? 600 : 400,
+                        padding: '8px 16px', fontSize: "0.813rem", fontWeight: tabMode === t.key ? 600 : 400,
                         color: tabMode === t.key ? '#2563eb' : '#64748b',
                         background: 'transparent', border: 'none', cursor: 'pointer',
                         borderBottom: `2px solid ${tabMode === t.key ? '#2563eb' : 'transparent'}`,
@@ -518,30 +518,30 @@ export default function ClassesPage() {
                   {selectedStudentIds.size > 0 ? (
                     <>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                      <span style={{ fontWeight: 600, color: '#1e40af', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600, color: '#1e40af', fontSize: "0.813rem" }}>
                         已选 {selectedStudentIds.size} 名学生
                       </span>
                       <div style={{ flex: 1 }} />
-                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         批量修改标签
                       </button>
-                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         批量删除
                       </button>
-                      <button onClick={() => setSelectedStudentIds(new Set())} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                      <button onClick={() => setSelectedStudentIds(new Set())} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: "0.75rem", color: '#64748b', textDecoration: 'underline', textUnderlineOffset: 2 }}>
                         取消选择
                       </button>
                     </>
                   ) : (
                     <>
-                      <button className="btn btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                      <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                         onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                         逐个添加
                       </button>
-                      <button className="btn btn-primary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                      <button className="btn btn-primary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                         onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
                         粘贴名单
@@ -583,14 +583,14 @@ export default function ClassesPage() {
                       }}>
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                       </div>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无学生</p>
-                      <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
+                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无学生</p>
+                      <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
                     </div>
                   ) : (
                     <table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: 12, borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: "0.75rem", borderBottom: '2px solid #e2e8f0' }}>
                             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
                               <input type="checkbox"
                                 checked={selectedStudentIds.size === sortedStudents.length && sortedStudents.length > 0}
@@ -601,7 +601,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('studentNo')}
                             style={{
                               width: 70, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
@@ -613,7 +613,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('name')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
@@ -625,7 +625,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('group')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
@@ -636,12 +636,12 @@ export default function ClassesPage() {
                           </th>
                           <th style={{
                             width: 100, textAlign: 'center',
-                            padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#475569',
+                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>标签</th>
                           <th style={{
                             width: 140, textAlign: 'center',
-                            padding: '10px 12px', fontSize: 12, fontWeight: 600, color: '#475569',
+                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>操作</th>
                         </tr>
@@ -657,7 +657,7 @@ export default function ClassesPage() {
                                   style={{ width: 15, height: 15, cursor: 'pointer' }} />
                               </label>
                             </td>
-                            <td style={{ textAlign: 'center', color: s.studentNo ? '#2563eb' : '#cbd5e1', fontSize: 13, fontWeight: 600, fontFamily: 'monospace' }}>
+                            <td style={{ textAlign: 'center', color: s.studentNo ? '#2563eb' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
                             <td style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -665,7 +665,7 @@ export default function ClassesPage() {
                                 width: 28, height: 28, borderRadius: '50%',
                                 background: '#eef2ff', color: '#2563eb',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: 12, fontWeight: 600,
+                                fontSize: "0.75rem", fontWeight: 600,
                               }}>
                                 {s.name[0]}
                               </div>
@@ -674,14 +674,14 @@ export default function ClassesPage() {
                             <td>
                               {(() => {
                                 const groupName = studentGroupMap.get(s.id);
-                                if (!groupName) return <span style={{ color: '#e2e8f0', fontSize: 12 }}>-</span>;
+                                if (!groupName) return <span style={{ color: '#e2e8f0', fontSize: "0.75rem" }}>-</span>;
                                 const ci = groupColorMap.get(groupName) ?? 0;
                                 const color = GROUP_COLORS[ci % GROUP_COLORS.length];
                                 return (
                                   <span style={{
                                     padding: '1px 8px', borderRadius: 4,
                                     background: color.bg, color: color.text,
-                                    fontSize: 12, fontWeight: 500,
+                                    fontSize: "0.75rem", fontWeight: 500,
                                     border: `1px solid ${color.border}`,
                                   }}>
                                     {groupName}
@@ -694,19 +694,19 @@ export default function ClassesPage() {
                                 <span style={{
                                   padding: '1px 7px', borderRadius: 4,
                                   background: '#fef3c7', color: '#92400e',
-                                  fontSize: 12,
+                                  fontSize: "0.75rem",
                                 }}>
                                   {s.tag}
                                 </span>
                               ) : (
-                                <span style={{ color: '#e2e8f0', fontSize: 12 }}>-</span>
+                                <span style={{ color: '#e2e8f0', fontSize: "0.75rem" }}>-</span>
                               )}
                             </td>
                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                               <button onClick={() => setEditingStudent(s)}
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
-                                  fontSize: 12, color: '#2563eb', padding: '4px 8px', borderRadius: 6,
+                                  fontSize: "0.75rem", color: '#2563eb', padding: '4px 8px', borderRadius: 6,
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
@@ -714,7 +714,7 @@ export default function ClassesPage() {
                               </button>
                               <button style={{
                                 background: 'transparent', border: 'none', cursor: 'pointer',
-                                fontSize: 12, color: '#ef4444', padding: '4px 8px', borderRadius: 6,
+                                fontSize: "0.75rem", color: '#ef4444', padding: '4px 8px', borderRadius: 6,
                               }}
                                 onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -774,8 +774,8 @@ export default function ClassesPage() {
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
               </div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>选择一个班级</p>
-              <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>从左侧选择班级后即可管理学生名单</p>
+              <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>选择一个班级</p>
+              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>从左侧选择班级后即可管理学生名单</p>
             </div>
           )}
         </div>
@@ -797,9 +797,9 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
       <div style={{ flex: 1 }}>
-        <label style={{ fontSize: 11, color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
+        <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
-          placeholder="学生姓名" style={{ fontSize: 13 }} />
+          placeholder="学生姓名" style={{ fontSize: "0.813rem" }} />
       </div>
       <button className="btn btn-primary" onClick={handleAdd}
         style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -845,8 +845,8 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
           </svg>
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>粘贴名单</div>
-          <div style={{ fontSize: 11, color: '#64748b' }}>每行一个姓名，系统自动分配学号</div>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a' }}>粘贴名单</div>
+          <div style={{ fontSize: "0.688rem", color: '#64748b' }}>每行一个姓名，系统自动分配学号</div>
         </div>
       </div>
 
@@ -856,22 +856,22 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         onChange={e => setText(e.target.value)}
         placeholder={`张三\n李四\n王五\n赵六`}
         style={{
-          height: 100, resize: 'vertical', fontSize: 13,
+          height: 100, resize: 'vertical', fontSize: "0.813rem",
           fontFamily: 'monospace', lineHeight: 1.7,
         }}
       />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <div style={{
-          fontSize: 12, color: names.length > 0 ? '#2563eb' : '#94a3b8',
+          fontSize: "0.75rem", color: names.length > 0 ? '#2563eb' : '#94a3b8',
           fontWeight: names.length > 0 ? 600 : 400,
         }}>
           共识别 {names.length} 名学生
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: 12 }}>取消</button>
+          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: "0.75rem" }}>取消</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || names.length === 0}
-            style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
             {saving ? '创建中...' : (
               <>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -917,25 +917,25 @@ function EditStudentModal({ student, classId, onClose, onSaved, setToast }: {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </div>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>编辑学生</h2>
-            <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>修改学生信息</p>
+            <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>编辑学生</h2>
+            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>修改学生信息</p>
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' }}>学号</label>
+          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>学号</label>
           <input className="input" value={studentNo} onChange={e => setStudentNo(e.target.value)}
             placeholder="不填则自动生成" />
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
+          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)}
             placeholder="学生姓名" onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="如：组长、课代表" />
         </div>
@@ -979,18 +979,18 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </div>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>批量修改标签</h2>
-            <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>
+            <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>批量修改标签</h2>
+            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>
               已选中 {studentIds.length} 名学生：{studentNames.join('、')}
             </p>
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="输入标签，如：组长、课代表"
             onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
-          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
+          <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
             留空则清空选中学生的标签。
           </p>
         </div>
@@ -1233,15 +1233,15 @@ function GroupManagement({ classId, students, onChanged }: {
         padding: '10px 14px', background: '#f8fafc', borderRadius: 8,
       }}>
         <input className="input" value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
-          placeholder="新分组名称，回车添加" style={{ width: 200, fontSize: 13 }}
+          placeholder="新分组名称，回车添加" style={{ width: 200, fontSize: "0.813rem" }}
           onKeyDown={e => e.key === 'Enter' && handleCreateGroup()} />
         <button className="btn btn-primary" onClick={handleCreateGroup}
-          style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           添加分组
         </button>
         {groups.length > 0 && (
-          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 'auto' }}>
+          <span style={{ fontSize: "0.688rem", color: '#94a3b8', marginLeft: 'auto' }}>
             共 {groups.length} 组，{students.length} 人
           </span>
         )}
@@ -1278,7 +1278,7 @@ function GroupManagement({ classId, students, onChanged }: {
                       width: 26, height: 26, borderRadius: 7,
                       background: color.badge, color: 'white',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 12, fontWeight: 700, flexShrink: 0,
+                      fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                     }}>
                       {idx + 1}
                     </div>
@@ -1286,12 +1286,12 @@ function GroupManagement({ classId, students, onChanged }: {
                       <input className="input" defaultValue={g.name} autoFocus
                         onBlur={e => { setEditingName(null); if (e.target.value !== g.name) handleRenameGroup(g.id, e.target.value); }}
                         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingName(null); }}
-                        style={{ width: 160, fontSize: 13, fontWeight: 600 }}
+                        style={{ width: 160, fontSize: "0.813rem", fontWeight: 600 }}
                       />
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
                         onClick={() => setEditingName(g.id)}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: color.text }}>{g.name}</span>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: color.text }}>{g.name}</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                           strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
                           style={{ flexShrink: 0, stroke: '#cbd5e1', transition: 'stroke 0.12s' }}
@@ -1307,7 +1307,7 @@ function GroupManagement({ classId, students, onChanged }: {
                       <button onClick={() => handleRemoveAllStudents(g.id)}
                         style={{
                           background: 'transparent', border: 'none', cursor: 'pointer',
-                          fontSize: 12, color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                          fontSize: "0.75rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
                           display: 'flex', alignItems: 'center', gap: 3,
                           transition: 'all 0.1s',
                         }}
@@ -1321,7 +1321,7 @@ function GroupManagement({ classId, students, onChanged }: {
                     <button onClick={() => handleDeleteGroup(g.id)}
                       style={{
                         background: 'transparent', border: 'none', cursor: 'pointer',
-                        fontSize: 12, color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                        fontSize: "0.75rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
                         display: 'flex', alignItems: 'center', gap: 3,
                         transition: 'all 0.1s',
                       }}
@@ -1331,7 +1331,7 @@ function GroupManagement({ classId, students, onChanged }: {
                       删除
                     </button>
                     <div style={{
-                      fontSize: 12, padding: '2px 10px', borderRadius: 6,
+                      fontSize: "0.75rem", padding: '2px 10px', borderRadius: 6,
                       background: color.light, color: color.badge, fontWeight: 600,
                       whiteSpace: 'nowrap',
                     }}>
@@ -1350,7 +1350,7 @@ function GroupManagement({ classId, students, onChanged }: {
                           style={{
                             display: 'flex', alignItems: 'center', gap: 4,
                             padding: '4px 8px', borderRadius: 8, cursor: 'grab',
-                            background: color.bg, color: color.text, fontSize: 13,
+                            background: color.bg, color: color.text, fontSize: "0.813rem",
                             userSelect: 'none', transition: 'all 0.1s',
                             opacity: draggedId === s.id ? 0.35 : 1,
                             border: `1px solid ${color.light}`,
@@ -1361,17 +1361,17 @@ function GroupManagement({ classId, students, onChanged }: {
                             width: 22, height: 22, borderRadius: '50%',
                             background: color.badge, color: 'white',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 10, fontWeight: 700, flexShrink: 0,
+                            fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
                           }}>
                             {s.name[0]}
                           </div>
                           {s.name}
-                          {s.studentNo && <span style={{ fontSize: 10, color: color.badge, opacity: 0.6, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
+                          {s.studentNo && <span style={{ fontSize: "0.625rem", color: color.badge, opacity: 0.6, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
                         </div>
                       ))
                     ) : (
                       <div style={{
-                        fontSize: 12, color: '#94a3b8', padding: '8px 0',
+                        fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0',
                         width: '100%', textAlign: 'center',
                         border: '1px dashed #e2e8f0', borderRadius: 8,
                       }}>
@@ -1389,20 +1389,20 @@ function GroupManagement({ classId, students, onChanged }: {
       {/* 未分配学生 */}
       {unassigned.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             未分配学生
-            <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
+            <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
             {selectedUnassigned.size > 0 ? (
               <>
-                <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.688rem", color: '#2563eb', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
                 </span>
-                <span style={{ fontSize: 11, color: '#cbd5e1' }}>·</span>
+                <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>·</span>
                 <button onClick={() => setSelectedUnassigned(new Set())}
                   style={{
                     background: 'transparent', border: 'none', cursor: 'pointer',
-                    fontSize: 11, color: '#94a3b8', padding: 0,
+                    fontSize: "0.688rem", color: '#94a3b8', padding: 0,
                     textDecoration: 'underline', textUnderlineOffset: 2,
                   }}
                   onMouseEnter={e => e.currentTarget.style.color = '#64748b'}
@@ -1411,7 +1411,7 @@ function GroupManagement({ classId, students, onChanged }: {
                 </button>
               </>
             ) : (
-              <span style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.688rem", color: '#cbd5e1', fontWeight: 400 }}>
                 （点击可多选，然后拖拽到分组中）
               </span>
             )}
@@ -1461,7 +1461,7 @@ function GroupManagement({ classId, students, onChanged }: {
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '4px 6px', borderRadius: 8, cursor: 'grab',
                   background: isSelected ? '#eef2ff' : 'white',
-                  color: isSelected ? '#2563eb' : '#0f172a', fontSize: 13,
+                  color: isSelected ? '#2563eb' : '#0f172a', fontSize: "0.813rem",
                   border: `1.5px solid ${isSelected ? '#2563eb' : '#e2e8f0'}`,
                   userSelect: 'none',
                   opacity: draggedId === s.id ? 0.35 : 1,
@@ -1486,12 +1486,12 @@ function GroupManagement({ classId, students, onChanged }: {
                   background: isSelected ? '#dbeafe' : '#f1f5f9',
                   color: isSelected ? '#2563eb' : '#64748b',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10, fontWeight: 700, flexShrink: 0,
+                  fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
                 }}>
                   {s.name[0]}
                 </div>
                 {s.name}
-                {s.studentNo && <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
+                {s.studentNo && <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
               </div>
             );
           })}
@@ -1505,15 +1505,15 @@ function GroupManagement({ classId, students, onChanged }: {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 10, opacity: 0.5 }}>
             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
           </svg>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂未设置分组</p>
-          <p style={{ fontSize: 13, margin: '0 0 16px' }}>在上方输入分组名称后点击"添加分组"</p>
+          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂未设置分组</p>
+          <p style={{ fontSize: "0.813rem", margin: '0 0 16px' }}>在上方输入分组名称后点击"添加分组"</p>
         </div>
       )}
 
       {students.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94a3b8' }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂无学生</p>
-          <p style={{ fontSize: 13, margin: 0 }}>请先在「学生列表」中添加学生</p>
+          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂无学生</p>
+          <p style={{ fontSize: "0.813rem", margin: 0 }}>请先在「学生列表」中添加学生</p>
         </div>
       )}
     </div>

@@ -112,8 +112,8 @@ export default function NewClassroomPage() {
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>创建新课堂</h1>
-        <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>创建新课堂</h1>
+        <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
           配置课堂参数并发起互动课堂
         </p>
       </div>
@@ -124,14 +124,14 @@ export default function NewClassroomPage() {
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
             课堂标题
           </div>
           <input className="input" value={title} onChange={e => { setTitle(e.target.value); clearError('title'); }}
             placeholder="如：第三单元英语对话练习"
             style={{ borderColor: fieldErrors.title ? '#ef4444' : undefined }} />
-          {fieldErrors.title && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {fieldErrors.title && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.title}
           </div>}
@@ -142,7 +142,7 @@ export default function NewClassroomPage() {
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
             选择参与模式
           </div>
@@ -200,10 +200,10 @@ export default function NewClassroomPage() {
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />
                     )}
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>{m.sub}</span>
+                  <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
+                  <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{m.sub}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
+                <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
                   <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#2563eb' : '#94a3b8' }}>{m.icon}</span>
                   <span>{m.desc}</span>
                 </div>
@@ -217,15 +217,15 @@ export default function NewClassroomPage() {
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             选择班级
             {mode !== 'standard' && (
-              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
             )}
           </div>
           {classes.length === 0 ? (
-            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
               暂无可选班级，请先在「班级管理」中创建班级
             </div>
           ) : (
@@ -243,15 +243,15 @@ export default function NewClassroomPage() {
                       background: isSelected ? '#eef2ff' : 'white',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
                       opacity: isDisabled ? 0.5 : 1,
-                      fontSize: 14,
+                      fontSize: "0.875rem",
                       transition: 'all 0.12s',
                     }}>
                     <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#2563eb' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', marginTop: 1 }}>
+                      <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: '#94a3b8', marginTop: 1 }}>
                         <span>{c._count?.students || 0} 名学生</span>
                         {hasGroups && (
                           <>
@@ -262,18 +262,18 @@ export default function NewClassroomPage() {
                       </div>
                     </div>
                     {isDisabled ? (
-                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#fef3c7', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
+                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#fef3c7', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
                     ) : hasGroups ? (
-                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
+                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
                     ) : (
-                      <span style={{ fontSize: 10, padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
+                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
                     )}
                   </div>
                 );
               })}
             </div>
           )}
-          {fieldErrors.class && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {fieldErrors.class && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.class}
           </div>}
@@ -286,7 +286,7 @@ export default function NewClassroomPage() {
             border: `1px solid ${fieldErrors.groupAgents ? '#ef4444' : '#eef2f6'}`,
             padding: '16px 20px', marginBottom: 20,
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
               为每个小组分配AI智能体
             </div>
@@ -300,20 +300,20 @@ export default function NewClassroomPage() {
                   width: 26, height: 26, borderRadius: 6,
                   background: '#2563eb', color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                 }}>
                   {i + 1}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
+                  <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
+                  <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
                 </div>
                 <div style={{ position: 'relative', width: 200, flexShrink: 0 }}>
                   <div
                     onClick={() => setOpenDropdownGroupId(openDropdownGroupId === g.id ? null : g.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px', borderRadius: 6, fontSize: 13,
+                      padding: '6px 10px', borderRadius: 6, fontSize: "0.813rem",
                       border: '1px solid #e2e8f0', cursor: 'pointer',
                       background: 'white', minHeight: 32,
                     }}>
@@ -324,7 +324,7 @@ export default function NewClassroomPage() {
                         {logoUrl ? (
                           <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                         ) : (
-                          <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
+                          <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
                         )}
                         <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
                       </>;
@@ -350,14 +350,14 @@ export default function NewClassroomPage() {
                           }}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 8,
-                            padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                            padding: '8px 12px', cursor: 'pointer', fontSize: "0.813rem",
                             background: groupAgentIds[g.id] === a.id ? '#eef2ff' : 'white',
                             transition: 'background 0.1s',
                           }}>
                             {logoUrl ? (
                               <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                             ) : (
-                              <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                              <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
                             )}
                             <span>{a.name}</span>
                             {groupAgentIds[g.id] === a.id && (
@@ -373,7 +373,7 @@ export default function NewClassroomPage() {
                 </div>
               </div>
             ))}
-            {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.groupAgents}
             </div>}
@@ -390,12 +390,12 @@ export default function NewClassroomPage() {
             background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
             padding: '16px 20px', marginBottom: 20,
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
               选择AI智能体
             </div>
             {agents.length === 0 ? (
-              <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+              <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
                 暂无可选智能体，请先在「AI智能体」中接入
               </div>
             ) : (
@@ -414,7 +414,7 @@ export default function NewClassroomPage() {
                         borderRadius: 8, userSelect: 'none',
                         border: `1.5px solid ${selectedAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
                         background: selectedAgentId === a.id ? '#eef2ff' : 'white',
-                        cursor: 'pointer', fontSize: 14, fontWeight: selectedAgentId === a.id ? 500 : 400,
+                        cursor: 'pointer', fontSize: "0.875rem", fontWeight: selectedAgentId === a.id ? 500 : 400,
                         transition: 'all 0.12s',
                       }}>
                       {logoUrl ? (
@@ -424,7 +424,7 @@ export default function NewClassroomPage() {
                           width: 22, height: 22, borderRadius: 5,
                           background: 'linear-gradient(135deg, #667eea, #764ba2)',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 11, fontWeight: 700, flexShrink: 0,
+                          fontSize: "0.688rem", fontWeight: 700, flexShrink: 0,
                         }}>
                           {a.name[0]}
                         </div>
@@ -435,14 +435,14 @@ export default function NewClassroomPage() {
                 })}
               </div>
             )}
-            {fieldErrors.agent && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.agent}
             </div>}
           </div>
         )}
 
-        {fieldErrors.submit && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {fieldErrors.submit && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {fieldErrors.submit}
         </div>}

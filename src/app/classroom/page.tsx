@@ -518,8 +518,8 @@ function StudentChatContent() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 16, marginBottom: 8 }}>正在连接课堂...</div>
-          <div style={{ fontSize: 13, opacity: 0.7 }}>互动码: {code}</div>
+          <div style={{ fontSize: "1rem", marginBottom: 8 }}>正在连接课堂...</div>
+          <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: {code}</div>
         </div>
       </div>
     );
@@ -535,7 +535,7 @@ function StudentChatContent() {
             display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
             background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)',
             border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8,
-            color: 'white', fontSize: 13, cursor: 'pointer',
+            color: 'white', fontSize: "0.813rem", cursor: 'pointer',
             transition: 'background 0.15s',
           }}
           onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; }}
@@ -546,9 +546,9 @@ function StudentChatContent() {
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {classroom?.title && (
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, lineHeight: 1.3 }}>{classroom.title}</div>
+              <div style={{ fontSize: "1.375rem", fontWeight: 700, color: '#0f172a', marginBottom: 6, lineHeight: 1.3 }}>{classroom.title}</div>
             )}
-            <div style={{ fontSize: 15, fontWeight: 500, color: isGroupMode ? '#7c3aed' : 'var(--primary)' }}>
+            <div style={{ fontSize: "0.938rem", fontWeight: 500, color: isGroupMode ? '#7c3aed' : 'var(--primary)' }}>
               {isGroupMode ? '请选择你的小组' : '请选择你的姓名'}
             </div>
           </div>
@@ -561,7 +561,7 @@ function StudentChatContent() {
               const isSelected = selectedStudent?.id === s.id;
               return (
                 <button key={s.id} onClick={() => !isOnline && setSelectedStudent(s)} disabled={isOnline}
-                  style={{ padding: '14px 18px', borderRadius: 12, border: '2px solid', borderColor: isSelected ? 'var(--primary)' : '#eef2f6', background: isOnline ? '#f9fafb' : isSelected ? '#eef2ff' : 'white', cursor: isOnline ? 'not-allowed' : 'pointer', fontSize: 15, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, transition: 'all .15s', opacity: isOnline ? 0.5 : 1, width: '100%' }}>
+                  style={{ padding: '14px 18px', borderRadius: 12, border: '2px solid', borderColor: isSelected ? 'var(--primary)' : '#eef2f6', background: isOnline ? '#f9fafb' : isSelected ? '#eef2ff' : 'white', cursor: isOnline ? 'not-allowed' : 'pointer', fontSize: "0.938rem", textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, transition: 'all .15s', opacity: isOnline ? 0.5 : 1, width: '100%' }}>
                   {isGroupMode ? (
                     <>
                       <div style={{
@@ -575,22 +575,22 @@ function StudentChatContent() {
                         </svg>
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 600, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.4 }}>{s.name}</div>
-                        {s.groupName && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>小组</div>}
+                        <div style={{ fontSize: "1rem", fontWeight: 600, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.4 }}>{s.name}</div>
+                        {s.groupName && <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 1 }}>小组</div>}
                       </div>
                     </>
                   ) : (
                     <>
-                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6', color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6', color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem", flexShrink: 0 }}>
                         {s.name[0]}
                       </div>
                       <div style={{ flex: 1 }}>
-                        {s.studentNo && <div style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af', lineHeight: 1.3 }}>{s.studentNo}</div>}
-                        <div style={{ fontSize: 16, fontWeight: 600, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.4 }}>{s.name}</div>
+                        {s.studentNo && <div style={{ fontSize: "0.75rem", fontWeight: 500, color: '#9ca3af', lineHeight: 1.3 }}>{s.studentNo}</div>}
+                        <div style={{ fontSize: "1rem", fontWeight: 600, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.4 }}>{s.name}</div>
                       </div>
                     </>
                   )}
-                  {isOnline && <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, flexShrink: 0 }}>已登录</span>}
+                  {isOnline && <span style={{ fontSize: "0.688rem", color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, flexShrink: 0 }}>已登录</span>}
                   {!isOnline && !isGroupMode && s.groupName && <span className="tag tag-blue" style={{ marginLeft: 'auto', flexShrink: 0 }}>{s.groupName}</span>}
                 </button>
               );
@@ -598,21 +598,21 @@ function StudentChatContent() {
           </div>
           <button onClick={handleIdentityConfirm} disabled={!selectedStudent}
             className="btn btn-primary btn-lg"
-            style={{ width: '100%', marginTop: 20, fontSize: 16, opacity: selectedStudent ? 1 : 0.5 }}>
+            style={{ width: '100%', marginTop: 20, fontSize: "1rem", opacity: selectedStudent ? 1 : 0.5 }}>
             {isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
           </button>
           {loadError && (
             <div style={{
               width: '100%', marginTop: 12, padding: '10px 14px',
               background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10,
-              fontSize: 13, color: '#dc2626', textAlign: 'center',
+              fontSize: "0.813rem", color: '#dc2626', textAlign: 'center',
             }}>
               {loadError}
             </div>
           )}
           {loadError && (
             <button onClick={() => router.push('/')}
-              style={{ display: 'block', width: '100%', marginTop: 12, padding: '10px 0', fontSize: 14, color: 'var(--primary)', background: 'transparent', border: '1px solid #c7d2fe', borderRadius: 10, cursor: 'pointer' }}>
+              style={{ display: 'block', width: '100%', marginTop: 12, padding: '10px 0', fontSize: "0.875rem", color: 'var(--primary)', background: 'transparent', border: '1px solid #c7d2fe', borderRadius: 10, cursor: 'pointer' }}>
               返回首页
             </button>
           )}
@@ -628,7 +628,7 @@ function StudentChatContent() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {renderAgentAvatar(42, 12, 20)}
           <div>
-            <div style={{ fontSize: 17, fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
+            <div style={{ fontSize: "1.063rem", fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
               {(() => {
                 if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
                   const group = classroom.groups.find((g: any) => g.id === selectedStudent.groupId);
@@ -637,21 +637,21 @@ function StudentChatContent() {
                 return classroom?.agents?.[0]?.name || 'AI 学习助手';
               })()}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 6 }}>
               {classroom?.title || ''}
-              <span style={{ fontSize: 10, color: '#6366f1', fontWeight: 600, background: '#eef2ff', padding: '1px 5px', borderRadius: 4, letterSpacing: 0.5 }}>#{code}</span>
+              <span style={{ fontSize: "0.625rem", color: '#6366f1', fontWeight: 600, background: '#eef2ff', padding: '1px 5px', borderRadius: 4, letterSpacing: 0.5 }}>#{code}</span>
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: connected ? '#10b981' : '#ef4444' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: "0.75rem", color: connected ? '#10b981' : '#ef4444' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', display: 'inline-block' }} />
             {connected ? '已连接' : '连接断开'}
           </div>
           {/* 当前登录用户姓名标签 */}
           {selectedStudent?.name && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 4px', background: '#eef2ff', borderRadius: 20, fontSize: 13, color: 'var(--primary)', fontWeight: 600, border: '1px solid #c7d2fe' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 11 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 4px', background: '#eef2ff', borderRadius: 20, fontSize: "0.813rem", color: 'var(--primary)', fontWeight: 600, border: '1px solid #c7d2fe' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: "0.688rem" }}>
                 {selectedStudent.name[0]}
               </div>
               {selectedStudent.name}
@@ -659,7 +659,7 @@ function StudentChatContent() {
           )}
           {/* 切换用户按钮 */}
           <button onClick={handleSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: 13, fontWeight: 500, transition: 'all .15s' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: "0.813rem", fontWeight: 500, transition: 'all .15s' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
             </svg>
@@ -667,7 +667,7 @@ function StudentChatContent() {
           </button>
           {/* 退出按钮 */}
           <button onClick={handleExit} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '退出课堂'}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: 13, fontWeight: 500, transition: 'all .15s' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: "0.813rem", fontWeight: 500, transition: 'all .15s' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             退出
           </button>
@@ -693,8 +693,8 @@ function StudentChatContent() {
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
             </div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: '#dc2626' }}>{loadError}</div>
-            <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>请确认课堂仍在进行中，或联系老师获取最新互动码</p>
+            <div style={{ fontSize: "1rem", fontWeight: 600, color: '#dc2626' }}>{loadError}</div>
+            <p style={{ fontSize: "0.875rem", color: '#6b7280', margin: 0 }}>请确认课堂仍在进行中，或联系老师获取最新互动码</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => {
                 const tryRestore = async () => {
@@ -718,11 +718,11 @@ function StudentChatContent() {
                 };
                 tryRestore();
               }}
-                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: 13, cursor: 'pointer' }}>
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: "0.813rem", cursor: 'pointer' }}>
                 重试
               </button>
               <button onClick={handleExit}
-                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: 'white', fontSize: 13, cursor: 'pointer' }}>
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: 'white', fontSize: "0.813rem", cursor: 'pointer' }}>
                 返回首页
               </button>
             </div>
@@ -735,18 +735,18 @@ function StudentChatContent() {
             <div style={{ marginBottom: 20, boxShadow: '0 8px 24px rgba(102,126,234,0.25)', borderRadius: 24, width: 80, height: 80, overflow: 'hidden', opacity: getCurrentAgent()?.enabled === false ? 0.5 : 1 }}>
               {renderAgentAvatar(80, 24, 20)}
             </div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1a1a2e', margin: '0 0 8px' }}>
+            <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: '#1a1a2e', margin: '0 0 8px' }}>
               {getCurrentAgent()?.name || 'AI 学习助手'}
             </h2>
             {getCurrentAgent()?.enabled === false ? (
-              <div style={{ fontSize: 15, color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
+              <div style={{ fontSize: "0.938rem", color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   智能体已被教师停用，暂时无法回复消息
                 </span>
               </div>
             ) : (
-              <div style={{ fontSize: 15, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              <div style={{ fontSize: "0.938rem", color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
                 {getCurrentAgent()?.greeting ? (
                   <span>{getCurrentAgent()?.greeting}</span>
                 ) : (
@@ -778,8 +778,8 @@ function StudentChatContent() {
                 <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
               </svg>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#ffffff', letterSpacing: 2, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>你已被教师黑屏</div>
-            <div style={{ fontSize: 15, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>请注意课堂纪律</div>
+            <div style={{ fontSize: "1.625rem", fontWeight: 700, color: '#ffffff', letterSpacing: 2, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>你已被教师黑屏</div>
+            <div style={{ fontSize: "0.938rem", color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>请注意课堂纪律</div>
           </div>
         )}
 
@@ -792,13 +792,13 @@ function StudentChatContent() {
                 <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
                   {renderAgentAvatar(26, 8, 13, getCurrentAgent())}
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
               </div>
             )}
             {/* 学生名字（靠右） */}
             {msg.role === 'user' && selectedStudent && (
               <div style={{ paddingRight: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{selectedStudent.name}</span>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#94a3b8' }}>{selectedStudent.name}</span>
               </div>
             )}
             {/* 消息气泡 */}
@@ -811,7 +811,7 @@ function StudentChatContent() {
               border: msg.role === 'assistant' ? '1px solid #eef2f6' : 'none',
               boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.04)' : '0 4px 12px rgba(102,126,234,0.2)',
               lineHeight: 1.7,
-              fontSize: 15,
+              fontSize: "0.938rem",
               wordBreak: 'break-word',
               position: 'relative',
             }}>
@@ -822,7 +822,7 @@ function StudentChatContent() {
                     <img src={`${SOCKET_URL}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
                       style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }} />
                   ) : (
-                    <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                       {(msg.fileNames?.[fi]) || msg.fileName || '文件'}
                     </div>
@@ -846,7 +846,7 @@ function StudentChatContent() {
               <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
                 {renderAgentAvatar(26, 8, 13, getCurrentAgent())}
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
             </div>
             <div style={{
               maxWidth: '78%', padding: '14px 18px',
@@ -854,7 +854,7 @@ function StudentChatContent() {
               background: 'white', color: '#1a1a2e',
               border: '1px solid #eef2f6',
               boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              lineHeight: 1.7, fontSize: 15, wordBreak: 'break-word',
+              lineHeight: 1.7, fontSize: "0.938rem", wordBreak: 'break-word',
             }}>
               {streamingContent ? (
                 <span dangerouslySetInnerHTML={{ __html: renderMarkdown(stripImages(streamingContent)) + '<span style="display:inline-block;width:2px;height:1em;background:var(--primary);margin-left:2px;animation:blink 0.8s infinite;vertical-align:text-bottom"></span>' }} />
@@ -891,13 +891,13 @@ function StudentChatContent() {
                 {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(f.url) ? (
                   <img src={`${SOCKET_URL}${f.url}`} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-secondary)', gap: 2 }}>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", color: 'var(--text-secondary)', gap: 2 }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', padding: '0 2px' }}>{f.name}</span>
                   </div>
                 )}
                 <button onClick={() => removeAttachedFile(i)}
-                  style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, lineHeight: 1 }}>✕</button>
+                  style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", lineHeight: 1 }}>✕</button>
               </div>
             ))}
           </div>
@@ -911,14 +911,14 @@ function StudentChatContent() {
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
             background: '#fef2f2', border: '1px solid #fecaca',
-            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#991b1b',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             zIndex: 5,
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             {connectionError}
             <button onClick={() => setConnectionError(null)}
-              style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: 14 }}
+              style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: "0.875rem" }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#fecaca'; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.background = 'transparent'; }}
             >×</button>
@@ -933,7 +933,7 @@ function StudentChatContent() {
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
             background: '#fffbeb', border: '1px solid #fde68a',
-            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#92400e',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#92400e',
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             zIndex: 5,
           }}>
@@ -950,7 +950,7 @@ function StudentChatContent() {
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
             background: '#fef2f2', border: '1px solid #fecaca',
-            display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#991b1b',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             zIndex: 5,
           }}>
@@ -967,14 +967,14 @@ function StudentChatContent() {
             marginBottom: 8,
             padding: '6px 14px 6px 14px', borderRadius: 8,
             background: '#fef2f2', border: '1px solid #fecaca',
-            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#991b1b',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             zIndex: 5,
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <span dangerouslySetInnerHTML={{ __html: shieldWarning }} />
             <button onClick={() => setShieldWarning(null)}
-              style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: 14 }}
+              style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: "0.875rem" }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#fecaca'; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.background = 'transparent'; }}
             >×</button>
@@ -991,7 +991,7 @@ function StudentChatContent() {
             title="上传图片或文件"
             style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e5e7eb', borderRadius: 12, background: 'white', cursor: 'pointer', color: '#6b7280', opacity: (waitingAI || uploading || paused || agentDisabled) ? 0.4 : 1, transition: 'all .15s' }}>
             {uploading ? (
-              <span style={{ fontSize: 16 }}>⏳</span>
+              <span style={{ fontSize: "1rem" }}>⏳</span>
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -1021,7 +1021,7 @@ function StudentChatContent() {
                 sendMessage();
               }
             }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
-              style={{ flex: 1, fontSize: 16, padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
+              style={{ flex: 1, fontSize: "1rem", padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
             <button type="button" onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled || blacklisted}
               style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -26,7 +26,7 @@ function SectionCard({ title, icon, color, children }: {
         background: `linear-gradient(135deg, ${color}08, ${color}14)`,
       }}>
         <span style={{ color, display: 'flex' }}>{icon}</span>
-        <h3 style={{ fontSize: 13, fontWeight: 700, margin: 0, color: '#0f172a' }}>{title}</h3>
+        <h3 style={{ fontSize: "0.813rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>{title}</h3>
       </div>
       <div style={{ padding: 14 }}>{children}</div>
     </div>
@@ -50,7 +50,7 @@ function greeting() {
 function ChartTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
+    <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
       {payload.map((entry: any, i: number) => (
         <div key={i} style={{ color: '#f1f5f9' }}>{entry.payload.name || entry.name}: {entry.value}</div>
       ))}
@@ -149,7 +149,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
-        <div style={{ color: '#94a3b8', fontSize: 14 }}>加载中...</div>
+        <div style={{ color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
       </div>
     );
   }
@@ -191,11 +191,11 @@ export default function DashboardPage() {
         justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: '#0f172a' }}>仪表盘</h1>
-          <span style={{ fontSize: 13, color: '#94a3b8' }}>{greeting()}，以下是系统概览</span>
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>仪表盘</h1>
+          <span style={{ fontSize: "0.813rem", color: '#94a3b8' }}>{greeting()}，以下是系统概览</span>
         </div>
         <button className="btn btn-primary" onClick={loadData}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 16px' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", padding: '8px 16px' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2.5" strokeLinecap="round">
             <polyline points="23 4 23 10 17 10" />
@@ -229,10 +229,10 @@ export default function DashboardPage() {
               transition: 'box-shadow 0.2s, transform 0.15s',
             }}
           >
-            <div style={{ fontSize: 22, fontWeight: 700, color: card.color, lineHeight: 1.1 }}>
+            <div style={{ fontSize: "1.375rem", fontWeight: 700, color: card.color, lineHeight: 1.1 }}>
               {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{card.label}</div>
+            <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>{card.label}</div>
           </div>
         ))}
       </div>
@@ -249,7 +249,7 @@ export default function DashboardPage() {
           </svg>}
         >
           {agentTotal === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
               暂无智能体数据
             </div>
           ) : (
@@ -262,17 +262,17 @@ export default function DashboardPage() {
                   { label: '已停用', value: agentDisabled, color: '#94a3b8' },
                 ].map(s => (
                   <div key={s.label} style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
+                    <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
                       {s.value}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{s.label}</div>
+                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
 
               {/* 健康状态 */}
               {(agentOk > 0 || agentError > 0) && (
-                <div style={{ display: 'flex', gap: 20, fontSize: 12 }}>
+                <div style={{ display: 'flex', gap: 20, fontSize: "0.75rem" }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
                     <span style={{ color: '#16a34a', fontWeight: 500 }}>正常</span>
@@ -289,13 +289,13 @@ export default function DashboardPage() {
               {/* 接入方式分布 */}
               {platformData.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
                     接入方式
                   </div>
                   <ResponsiveContainer width="100%" height={platformData.length * 28 + 8}>
                     <BarChart data={platformData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
                       <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={8}>
                         {platformData.map((entry, i) => (
@@ -319,7 +319,7 @@ export default function DashboardPage() {
           </svg>}
         >
           {classTotal === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
               暂无班级数据
             </div>
           ) : (
@@ -332,10 +332,10 @@ export default function DashboardPage() {
                   { label: '总分组数', value: classGroupTotal, color: '#f59e0b' },
                 ].map(s => (
                   <div key={s.label} style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
+                    <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
                       {s.value}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{s.label}</div>
+                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -343,13 +343,13 @@ export default function DashboardPage() {
               {/* 最常用班级 */}
               {classData.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
                     最常用班级（课堂引用次数）
                   </div>
                   <ResponsiveContainer width="100%" height={classData.length * 28 + 8}>
                     <BarChart data={classData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} width={40} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={40} axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
                       <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={8}>
                         {classData.map((entry, i) => (
@@ -374,7 +374,7 @@ export default function DashboardPage() {
           </svg>}
         >
           {classroomTotal === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
               暂无课堂数据
             </div>
           ) : (
@@ -401,7 +401,7 @@ export default function DashboardPage() {
                   </ResponsiveContainer>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {statusData.map(s => (
-                      <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+                      <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.75rem" }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
                           <span style={{ color: '#64748b' }}>{s.name}</span>
@@ -416,13 +416,13 @@ export default function DashboardPage() {
               {/* 模式分布 */}
               {modeData.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
                     课堂模式
                   </div>
                   <ResponsiveContainer width="100%" height={modeData.length * 28 + 8}>
                     <BarChart data={modeData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
                       <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={8}>
                         {modeData.map((entry, i) => (
@@ -446,7 +446,7 @@ export default function DashboardPage() {
           </svg>}
         >
           {historyTotal === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: 12 }}>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
               暂无数据
             </div>
           ) : (
@@ -461,11 +461,11 @@ export default function DashboardPage() {
                 { label: '平均时长', value: `${historyAvgDuration}`, unit: '分钟/课', color: '#0f172a' },
               ].map(s => (
                 <div key={s.label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
                     {typeof s.value === 'number' ? s.value.toLocaleString() : s.value}
-                    {s.unit && <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginLeft: 3 }}>{s.unit}</span>}
+                    {s.unit && <span style={{ fontSize: "0.688rem", fontWeight: 400, color: '#94a3b8', marginLeft: 3 }}>{s.unit}</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{s.label}</div>
+                  <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
                 </div>
               ))}
             </div>

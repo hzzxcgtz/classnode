@@ -14,7 +14,7 @@ export function FieldError({ message, style }: { message: string; style?: CSSPro
   if (!message) return null;
   return (
     <div style={{
-      fontSize: 12, color: '#ef4444', marginTop: 4,
+      fontSize: "0.75rem", color: '#ef4444', marginTop: 4,
       display: 'flex', alignItems: 'center', gap: 4,
       ...style,
     }}>
@@ -44,7 +44,7 @@ export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; o
       zIndex: 99999,
       padding: '10px 24px', borderRadius: 10,
       background: TOAST_BG[type || 'success'],
-      color: 'white', fontSize: 14, fontWeight: 500,
+      color: 'white', fontSize: "0.875rem", fontWeight: 500,
       boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
       display: 'flex', alignItems: 'center', gap: 8,
     }}>
@@ -55,7 +55,7 @@ export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; o
       )}
       {msg}
       {onClose && (
-        <button onClick={onClose} style={{ marginLeft: 8, flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, lineHeight: 1, fontSize: 12 }}>×</button>
+        <button onClick={onClose} style={{ marginLeft: 8, flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, lineHeight: 1, fontSize: "0.75rem" }}>×</button>
       )}
     </div>
   );

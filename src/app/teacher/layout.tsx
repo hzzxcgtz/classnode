@@ -221,7 +221,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 15, color: '#6b7280' }}>加载中...</div>
+          <div style={{ fontSize: "0.938rem", color: '#6b7280' }}>加载中...</div>
         </div>
       </div>
     );
@@ -234,12 +234,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 36 }}>C</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
             ) : (
               <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
-            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>教师身份验证</h1>
-            <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>请输入管理密码以进入控制台</p>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>教师身份验证</h1>
+            <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>请输入管理密码以进入控制台</p>
           </div>
           <div style={{ marginBottom: 12 }}>
             <input
@@ -256,10 +256,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <FieldError message={fieldErrors.password} />
             )}
           </div>
-          <button className="btn btn-primary btn-lg" onClick={handleLogin} style={{ width: '100%', fontSize: 15 }}>
+          <button className="btn btn-primary btn-lg" onClick={handleLogin} style={{ width: '100%', fontSize: "0.938rem" }}>
             进入控制台
           </button>
-          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.813rem", cursor: 'pointer' }}>
             返回学生页面
           </button>
         </div>
@@ -274,12 +274,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 36 }}>C</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
             ) : (
               <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
-            <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
-            <p style={{ color: '#6b7280', fontSize: 14, marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
+            <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
           <div style={{ marginBottom: 14 }}>
             <input type="password" className="input" placeholder="设置管理密码（至少6位）" value={setupPwd}
@@ -316,13 +316,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ marginBottom: 28, paddingLeft: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {logoErr ? (
-              <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 14 }}>C</div>
+              <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "0.875rem" }}>C</div>
             ) : (
               <img src="/logo.png" alt="ClassNode" style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>ClassNode</div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>AI 互动课堂系统</div>
+              <div style={{ fontWeight: 600, fontSize: "0.875rem", color: '#0f172a' }}>ClassNode</div>
+              <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>AI 互动课堂系统</div>
             </div>
           </div>
         </div>
@@ -332,7 +332,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '7px 12px', marginBottom: 24,
           background: serverOnline ? '#f0fdf4' : '#fef2f2',
-          borderRadius: 8, fontSize: 12,
+          borderRadius: 8, fontSize: "0.75rem",
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%',
@@ -347,7 +347,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 导航标题 */}
         <div style={{
-          fontSize: 10, fontWeight: 600, color: '#94a3b8',
+          fontSize: "0.625rem", fontWeight: 600, color: '#94a3b8',
           letterSpacing: 0.8, textTransform: 'uppercase',
           marginBottom: 6, paddingLeft: 12,
         }}>
@@ -368,7 +368,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '9px 12px', borderRadius: 8, width: '100%',
                 border: 'none', cursor: 'pointer', textAlign: 'left',
-                fontSize: 13, fontWeight: isActive ? 600 : 400,
+                fontSize: "0.813rem", fontWeight: isActive ? 600 : 400,
                 color: isActive ? '#2563eb' : '#475569',
                 background: isActive ? '#eef2ff' : 'transparent',
                 position: 'relative', marginBottom: 2,
@@ -469,7 +469,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '8px 12px', borderRadius: 8, width: '100%',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: '#94a3b8', textAlign: 'left',
+                fontSize: "0.813rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#475569'; }}
@@ -487,7 +487,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '8px 12px', borderRadius: 8, width: '100%',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: 13, color: '#94a3b8', textAlign: 'left',
+                fontSize: "0.813rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
@@ -501,7 +501,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <span>退出登录</span>
             </button>
             <div style={{
-              fontSize: 11, color: '#cbd5e1',
+              fontSize: "0.688rem", color: '#cbd5e1',
               padding: '10px 12px 0',
             }}>
               v{APP_VERSION}
@@ -524,10 +524,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             zIndex: 201, background: 'white', borderRadius: 16, padding: 32,
             width: 380, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
           }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>修改管理密码</h3>
+            <h3 style={{ margin: '0 0 20px', fontSize: "1.125rem", fontWeight: 700 }}>修改管理密码</h3>
 
             {pwdSuccess ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#10b981', fontSize: 15 }}>
+              <div style={{ textAlign: 'center', padding: 20, color: '#10b981', fontSize: "0.938rem" }}>
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginBottom: 12 }}>
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
@@ -536,7 +536,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             ) : (
               <>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 13, color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>当前密码</label>
+                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>当前密码</label>
                   <input type="password" className="input" value={oldPwd}
                     onChange={e => { setOldPwd(e.target.value); clearPwdError('oldPwd'); }}
                     placeholder="输入当前管理密码" autoFocus
@@ -544,7 +544,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   {pwdFieldErrors.oldPwd && <FieldError message={pwdFieldErrors.oldPwd} />}
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 13, color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
+                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
                   <input type="password" className="input" value={newPwd}
                     onChange={e => { setNewPwd(e.target.value); clearPwdError('newPwd'); }}
                     placeholder="至少6位"
@@ -552,7 +552,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   {pwdFieldErrors.newPwd && <FieldError message={pwdFieldErrors.newPwd} />}
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 13, color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>确认新密码</label>
+                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>确认新密码</label>
                   <input type="password" className="input" value={confirmPwd}
                     onChange={e => { setConfirmPwd(e.target.value); clearPwdError('confirmPwd'); }}
                     placeholder="再次输入新密码"

@@ -53,8 +53,8 @@ export default function AgentsPage() {
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>AI智能体</h1>
-            <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>AI智能体</h1>
+            <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
               接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
             </p>
           </div>
@@ -76,7 +76,7 @@ export default function AgentsPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: 14 }}>加载中...</div>
+        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
       ) : agents.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 60 }}>
           <div style={{
@@ -88,8 +88,8 @@ export default function AgentsPage() {
               <rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /><path d="M8 4V2" /><path d="M16 4V2" /><path d="M8 20v2" /><path d="M16 20v2" />
             </svg>
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 8px' }}>还没有接入智能体</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: '0 0 8px' }}>还没有接入智能体</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: "0.875rem", marginBottom: 24 }}>
             点击上方按钮，接入您在 Coze、文心智能体等平台配置好的 AI 助手
           </p>
           <button className="btn btn-primary btn-lg" onClick={() => setShowForm(true)}>
@@ -134,7 +134,7 @@ export default function AgentsPage() {
                     width: 44, height: 44, borderRadius: 10, flexShrink: 0,
                     background: isEnabled ? `${platColor}12` : '#f1f5f9',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 20, fontWeight: 700, color: isEnabled ? platColor : '#94a3b8',
+                    fontSize: "1.25rem", fontWeight: 700, color: isEnabled ? platColor : '#94a3b8',
                     overflow: 'hidden',
                   }}>
                     {agent.logo
@@ -144,13 +144,13 @@ export default function AgentsPage() {
 
                   {/* 信息 */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: '#1a1a2e', marginBottom: 3 }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.938rem", color: '#1a1a2e', marginBottom: 3 }}>
                       {agent.name}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{
                         padding: '2px 8px', borderRadius: 4,
-                        fontSize: 11, fontWeight: 600,
+                        fontSize: "0.688rem", fontWeight: 600,
                         background: badgeBg[agent.platform] || '#f1f5f9',
                         color: platColor,
                       }}>
@@ -159,7 +159,7 @@ export default function AgentsPage() {
                       {['coze-agent', 'wenxin'].includes(agent.platform) && (
                         <span style={{
                           padding: '1px 6px', borderRadius: 3,
-                          fontSize: 10, fontWeight: 500,
+                          fontSize: "0.625rem", fontWeight: 500,
                           color: '#94a3b8', border: '0.5px solid #e2e8f0',
                         }}>
                           无图片
@@ -168,7 +168,7 @@ export default function AgentsPage() {
                       {agent.platform === 'wenxin' && (
                         <span style={{
                           padding: '1px 6px', borderRadius: 3,
-                          fontSize: 10, fontWeight: 500,
+                          fontSize: "0.625rem", fontWeight: 500,
                           color: '#94a3b8', border: '0.5px solid #e2e8f0',
                         }}>
                           非流式
@@ -211,13 +211,13 @@ export default function AgentsPage() {
                     {agent.lastCheckAt === null ? (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>未检测</span>
+                        <span style={{ fontSize: "0.688rem", color: '#94a3b8', whiteSpace: 'nowrap' }}>未检测</span>
                       </>
                     ) : agent.lastCheckOk ? (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 500, whiteSpace: 'nowrap' }}>正常</span>
-                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: "0.688rem", color: '#16a34a', fontWeight: 500, whiteSpace: 'nowrap' }}>正常</span>
+                        <span style={{ fontSize: "0.688rem", color: '#94a3b8', whiteSpace: 'nowrap' }}>
                           {new Date(agent.lastCheckAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </>
@@ -225,7 +225,7 @@ export default function AgentsPage() {
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
                         <span style={{
-                          fontSize: 11, color: '#dc2626', fontWeight: 500, whiteSpace: 'nowrap',
+                          fontSize: "0.688rem", color: '#dc2626', fontWeight: 500, whiteSpace: 'nowrap',
                           cursor: 'help', borderBottom: '1px dashed #fca5a5',
                         }}
                           onMouseEnter={e => {
@@ -236,7 +236,7 @@ export default function AgentsPage() {
                           onMouseLeave={() => setErrorTip(null)}>
                           异常
                         </span>
-                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <span style={{ fontSize: "0.688rem", color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {new Date(agent.lastCheckAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </>
@@ -247,7 +247,7 @@ export default function AgentsPage() {
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
                     {isEnabled && (
                       <button style={{
-                        fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                        fontSize: "0.688rem", padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
                         border: '1px solid #d1d5db', background: 'white', color: '#475569',
                         display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
                       }}
@@ -273,7 +273,7 @@ export default function AgentsPage() {
                       </button>
                     )}
                     <button style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      fontSize: "0.688rem", padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
                       border: '1px solid #d1d5db', background: 'white', color: '#475569',
                       display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
                     }}
@@ -282,7 +282,7 @@ export default function AgentsPage() {
                       编辑
                     </button>
                     <button style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      fontSize: "0.688rem", padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
                       border: '1px solid #d1d5db', background: 'white', color: '#ef4444',
                       display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
                     }}
@@ -329,8 +329,8 @@ export default function AgentsPage() {
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
               </div>
-              <h3 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3>
-              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+              <h3 style={{ fontSize: "1.063rem", fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3>
+              <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
                 该智能体正在被课堂使用中，请先删除关联的课堂后再试。
               </p>
             </div>
@@ -338,10 +338,10 @@ export default function AgentsPage() {
               background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
               padding: '14px 16px', marginBottom: 20,
             }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>
+              <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>
                 「{deleteBlocked.agentName}」
               </div>
-              <div style={{ fontSize: 13, color: '#b91c1c' }}>
+              <div style={{ fontSize: "0.813rem", color: '#b91c1c' }}>
                 该智能体已被配置到课堂中使用，无法直接删除。
               </div>
             </div>
@@ -364,7 +364,7 @@ export default function AgentsPage() {
           color: '#f1f5f9',
           padding: '6px 10px',
           borderRadius: 6,
-          fontSize: 11,
+          fontSize: "0.688rem",
           whiteSpace: 'normal',
           wordBreak: 'break-all',
           maxWidth: 260,
@@ -422,7 +422,7 @@ function HelpIcon({ imageSrc }: { imageSrc: string }) {
           onClick={() => setFullscreen(true)}
         >
           <img src={imageSrc} alt="配置说明" style={{ width: '100%', display: 'block', borderRadius: 6 }} />
-          <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginTop: 4 }}>点击放大</div>
+          <div style={{ textAlign: 'center', fontSize: "0.688rem", color: '#94a3b8', marginTop: 4 }}>点击放大</div>
         </div>
       )}
       {fullscreen && (
@@ -571,10 +571,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
           background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)',
           borderBottom: '1px solid var(--border)',
         }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 2px' }}>
+          <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 2px' }}>
             {agent ? '编辑智能体' : '接入AI智能体'}
           </h2>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+          <p style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
             接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
           </p>
         </div>
@@ -587,7 +587,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             border: '1px solid #eef2f6',
           }}>
             <div style={{
-              fontSize: 11, fontWeight: 600, color: '#94a3b8',
+              fontSize: "0.688rem", fontWeight: 600, color: '#94a3b8',
               marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               基本信息
@@ -622,7 +622,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                       width: 20, height: 20, borderRadius: '50%',
                       background: '#2563eb', color: 'white', border: '2px solid white',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', fontSize: 12, lineHeight: 1,
+                      cursor: 'pointer', fontSize: "0.75rem", lineHeight: 1,
                       padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                     }} title="上传头像">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -633,7 +633,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                         width: 18, height: 18, borderRadius: '50%',
                         background: '#ef4444', color: 'white', border: '2px solid white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: 'pointer', fontSize: 9, lineHeight: 1,
+                        cursor: 'pointer', fontSize: "0.563rem", lineHeight: 1,
                         padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                       }} title="移除头像">
                         ✕
@@ -642,17 +642,17 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
-                      style={{ fontSize: 13, padding: '8px 12px', flex: 1, borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
+                      style={{ fontSize: "0.813rem", padding: '8px 12px', flex: 1, borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
                     {platform === 'coze' ? (
                       <button
                         type="button"
                         className="btn btn-secondary"
                         onClick={handleFetchInfo}
                         disabled={fetchingInfo}
-                        style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
+                        style={{ fontSize: "0.75rem", padding: '5px 12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                         {fetchingInfo ? '获取中...' : '从 Coze 获取'}
@@ -664,13 +664,13 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
+                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
                 <textarea
                   className="input"
                   value={greeting}
                   onChange={e => setGreeting(e.target.value)}
                   placeholder={platform === 'coze-agent' ? '手动输入开场白内容' : '从 Coze 自动获取，或手动输入开场白'}
-                  style={{ fontSize: 13, padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
+                  style={{ fontSize: "0.813rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
                 />
               </div>
             </div>
@@ -682,14 +682,14 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             border: '1px solid #eef2f6',
           }}>
             <div style={{
-              fontSize: 11, fontWeight: 600, color: '#94a3b8',
+              fontSize: "0.688rem", fontWeight: 600, color: '#94a3b8',
               marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               平台配置
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>平台类型 <span style={{ color: 'var(--danger)' }}>*</span></label>
+                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>平台类型 <span style={{ color: 'var(--danger)' }}>*</span></label>
                 <div style={{
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
                 }}>
@@ -710,13 +710,13 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                           background: platform === p.value && !p.disabled ? '#eef2ff' : p.disabled ? '#f8f9fb' : 'white',
                           textAlign: 'center', transition: 'all 0.12s', opacity: p.disabled ? 0.5 : 1, fontFamily: 'inherit',
                       }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: p.disabled ? '#94a3b8' : (platform === p.value ? '#2563eb' : '#475569') }}>{p.label}</div>
-                      <div style={{ fontSize: 10, color: p.disabled ? '#cbd5e1' : '#94a3b8', marginTop: 1 }}>{p.desc}</div>
+                      <div style={{ fontSize: "0.813rem", fontWeight: 600, color: p.disabled ? '#94a3b8' : (platform === p.value ? '#2563eb' : '#475569') }}>{p.label}</div>
+                      <div style={{ fontSize: "0.625rem", color: p.disabled ? '#cbd5e1' : '#94a3b8', marginTop: 1 }}>{p.desc}</div>
                     </button>
                       {p.helpUrl && (
                         <a href={p.helpUrl} target="_blank" rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          style={{ fontSize: 10, color: '#94a3b8', textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                          style={{ fontSize: "0.625rem", color: '#94a3b8', textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
                           title="查看配置帮助">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                           帮助
@@ -730,12 +730,12 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* Bot ID — Coze 必填 */}
               {platform === 'coze' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                     Bot ID <HelpIcon imageSrc="/images/help/coze-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>
               )}
@@ -743,12 +743,12 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* App ID — 文心智能体必填 */}
               {platform === 'wenxin' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                     App ID <HelpIcon imageSrc="/images/help/wenxin-api-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在文心智能体平台获取 App ID"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>
               )}
@@ -756,12 +756,12 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* Assistant ID — 智谱清言必填 */}
               {platform === 'zhipuai' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                     Assistant ID <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="智能体对话页地址栏中的 ID"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.botId ? '#ef4444' : undefined }} />
                   {fieldErrors.botId && <FieldError message={fieldErrors.botId} />}
                 </div>
               )}
@@ -769,10 +769,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* API URL — Coze Agent 必填 */}
               {platform === 'coze-agent' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={apiUrl} onChange={e => { setApiUrl(e.target.value); clearError('apiUrl'); }}
                     placeholder="https://xxxx.coze.site"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiUrl ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiUrl ? '#ef4444' : undefined }} />
                   {fieldErrors.apiUrl && <FieldError message={fieldErrors.apiUrl} />}
                 </div>
               )}
@@ -780,12 +780,12 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* Project ID — Coze Agent 必填 */}
               {platform === 'coze-agent' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                     Project ID <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={projectId} onChange={e => { setProjectId(e.target.value); clearError('projectId'); }}
                     placeholder="在 Coze 项目设置中获取 Project ID"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.projectId ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.projectId ? '#ef4444' : undefined }} />
                   {fieldErrors.projectId && <FieldError message={fieldErrors.projectId} />}
                 </div>
               )}
@@ -793,18 +793,18 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* API Secret — 智谱清言必填 */}
               {platform === 'zhipuai' && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                     API Secret <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" type="password" value={apiSecret} onChange={e => { setApiSecret(e.target.value); clearError('apiSecret'); }}
                     placeholder="在智谱清言开发者面板获取 api_secret"
-                    style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
                   {fieldErrors.apiSecret && <FieldError message={fieldErrors.apiSecret} />}
                 </div>
               )}
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                   {platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token'} <HelpIcon imageSrc={
                     platform === 'coze' ? '/images/help/coze-token.png' :
                     platform === 'wenxin' ? '/images/help/wenxin-api-config.png' :
@@ -818,9 +818,9 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' :
                     ''
                   }
-                  style={{ fontSize: 13, padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
+                  style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
                 {fieldErrors.apiKey && <FieldError message={fieldErrors.apiKey} />}
-                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                   {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' : '在对应平台的个人设置中创建并复制访问令牌'}
                 </p>
@@ -828,7 +828,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   <div style={{
                     marginTop: 8, padding: '8px 12px', borderRadius: 8,
                     background: '#fef2f2', border: '0.5px solid #fecaca',
-                    fontSize: 12, color: '#991b1b', lineHeight: 1.5,
+                    fontSize: "0.75rem", color: '#991b1b', lineHeight: 1.5,
                     display: 'flex', alignItems: 'flex-start', gap: 6,
                   }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -843,7 +843,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             <div style={{
               padding: '8px 12px', borderRadius: 6,
               background: '#fef2f2', border: '1px solid #fecaca',
-              color: '#dc2626', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+              color: '#dc2626', fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               {fieldErrors.submit}
@@ -851,8 +851,8 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
           )}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: 13, padding: '7px 18px' }}>取消</button>
-            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: 13, padding: '7px 20px' }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
+            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 20px' }}>
               {saving ? (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" strokeLinecap="round"/></svg>

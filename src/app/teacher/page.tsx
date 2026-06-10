@@ -204,8 +204,8 @@ export default function TeacherDashboard() {
     <div>
       {/* 页面标题 */}
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>课堂管理</h1>
-        <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>课堂管理</h1>
+        <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
           管理课堂、监控互动进度
         </p>
       </div>
@@ -216,17 +216,17 @@ export default function TeacherDashboard() {
         marginBottom: 16,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>活跃课堂</h2>
+          <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>活跃课堂</h2>
           {activeClassrooms.length > 0 && (
             <span style={{
-              fontSize: 12, padding: '1px 8px', borderRadius: 10,
+              fontSize: "0.75rem", padding: '1px 8px', borderRadius: 10,
               background: '#dcfce7', color: '#16a34a', fontWeight: 500,
             }}>
               {activeClassrooms.length} 个
             </span>
           )}
         </div>
-        <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+        <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem" }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           创建新课堂
         </button>
@@ -250,23 +250,23 @@ export default function TeacherDashboard() {
                   width: 42, height: 42, borderRadius: 10,
                   background: '#eef2ff', color: '#2563eb',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 700, flexShrink: 0,
+                  fontSize: "1rem", fontWeight: 700, flexShrink: 0,
                 }}>
                   {(cr.title || '课')[0]}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', marginBottom: 3 }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.875rem", color: '#0f172a', marginBottom: 3 }}>
                     {cr.title || '未命名课堂'}
                     <span style={{
                       display: 'inline-block', marginLeft: 8,
                       padding: '1px 7px', borderRadius: 4,
                       background: '#f0fdf4', color: '#16a34a',
-                      fontSize: 11, fontWeight: 600, fontFamily: 'monospace',
+                      fontSize: "0.688rem", fontWeight: 600, fontFamily: 'monospace',
                     }}>
                       {cr.code}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
                     {cr._count?.students || 0} 名学生
                     <span style={{ margin: '0 6px', color: '#e2e8f0' }}>|</span>
                     {cr.classes?.[0]?.class?.name && (
@@ -297,7 +297,7 @@ export default function TeacherDashboard() {
                       return (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 3,
-                          padding: '1px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                          padding: '1px 7px', borderRadius: 4, fontSize: "0.688rem", fontWeight: 600,
                           verticalAlign: 'middle', lineHeight: '14px',
                           background: cfg.bg, color: cfg.color,
                         }}>
@@ -316,8 +316,8 @@ export default function TeacherDashboard() {
                     { label: '互动', value: (cr.students || []).reduce((sum: number, s: any) => sum + (s.totalRounds || 0), 0), color: '#2563eb' },
                   ].map((stat, i) => (
                     <div key={i} style={{ textAlign: 'center', minWidth: 40 }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: stat.color, lineHeight: 1.2 }}>{stat.value}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{stat.label}</div>
+                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: stat.color, lineHeight: 1.2 }}>{stat.value}</div>
+                      <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 1 }}>{stat.label}</div>
                     </div>
                   ))}
                 </div>
@@ -340,7 +340,7 @@ export default function TeacherDashboard() {
                   borderTop: '1px solid #f1f5f9',
                   display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
                 }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, marginRight: 2 }}>
+                  <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 500, marginRight: 2 }}>
                     智能体
                   </span>
                   {agents.map((agt: any) => {
@@ -350,13 +350,13 @@ export default function TeacherDashboard() {
                         display: 'inline-flex', alignItems: 'center', gap: 5,
                         padding: '3px 10px 3px 4px', borderRadius: 6,
                         background: '#f8fafc', border: '1px solid #eef2f6',
-                        fontSize: 12, color: '#475569',
+                        fontSize: "0.75rem", color: '#475569',
                       }}>
                         <span style={{
                           width: 18, height: 18, borderRadius: 4, flexShrink: 0,
                           background: pc,
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 9, fontWeight: 700, overflow: 'hidden',
+                          fontSize: "0.563rem", fontWeight: 700, overflow: 'hidden',
                         }}>
                           {agt.logo
                             ? <img src={agt.logo.startsWith('/') ? `${getApiBaseUrl()}${agt.logo}` : agt.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -383,13 +383,13 @@ export default function TeacherDashboard() {
                     : '0 0 6px rgba(34,197,94,0.4)',
                 }} />
                 <span style={{
-                  fontSize: 12, fontWeight: 500, marginRight: 'auto',
+                  fontSize: "0.75rem", fontWeight: 500, marginRight: 'auto',
                   color: cr.status === 'paused' ? '#d97706' : '#16a34a',
                 }}>
                   {cr.status === 'paused' ? '已暂停' : '进行中'}
                 </span>
                 <button onClick={() => openSettings(cr)} title="修改课堂设置" style={{
-                  padding: '6px 10px', borderRadius: 6, fontSize: 12,
+                  padding: '6px 10px', borderRadius: 6, fontSize: "0.75rem",
                   background: 'transparent', color: '#475569', border: '1px solid #e2e8f0',
                   cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', gap: 4,
                   transition: 'all 0.15s',
@@ -400,7 +400,7 @@ export default function TeacherDashboard() {
                   修改
                 </button>
                 <button onClick={() => setQrCodeClassroom(cr)} title="显示互动码" style={{
-                  padding: '6px 10px', borderRadius: 6, fontSize: 12,
+                  padding: '6px 10px', borderRadius: 6, fontSize: "0.75rem",
                   background: 'transparent', color: '#7c3aed', border: '1px solid #ddd6fe',
                   cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center',
                   transition: 'all 0.15s',
@@ -411,7 +411,7 @@ export default function TeacherDashboard() {
                     <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="17" y="2" width="5" height="5" rx="1" /><rect x="2" y="17" width="5" height="5" rx="1" /><path d="M11 2h2" /><path d="M11 22h2" /><path d="M2 11v2" /><path d="M22 11v2" /><path d="M15 15h2v2h-2z" /><path d="M17 15v-1a2 2 0 0 0-2-2h-1" /><path d="M15 19v1a2 2 0 0 0 2 2h1" /><path d="M19 17h2v2h-2z" /></svg>
                 </button>
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)} style={{
-                  padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                  padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
                   background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
                   transition: 'background 0.15s',
                 }}
@@ -424,7 +424,7 @@ export default function TeacherDashboard() {
                     await api.resumeClassroom(cr.id);
                     loadData();
                   }} style={{
-                    padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                    padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
                     background: 'transparent', color: '#2563eb', border: '1px solid #93c5fd',
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
@@ -437,7 +437,7 @@ export default function TeacherDashboard() {
                     await api.pauseClassroom(cr.id);
                     loadData();
                   }} style={{
-                    padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                    padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
                     background: 'transparent', color: '#d97706', border: '1px solid #fcd34d',
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
@@ -452,7 +452,7 @@ export default function TeacherDashboard() {
                     loadData();
                   }
                 }} style={{
-                  padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                  padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
                   background: 'transparent', color: '#ef4444', border: '1px solid #fca5a5',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
@@ -479,13 +479,13 @@ export default function TeacherDashboard() {
               <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
             </svg>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>暂无活跃课堂</div>
-          <p style={{ fontSize: 13, color: '#94a3b8', margin: '0 0 20px' }}>
+          <div style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>暂无活跃课堂</div>
+          <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 20px' }}>
             创建新课堂后，学生通过互动码加入，即可开始互动教学
           </p>
           <button onClick={() => router.push('/teacher/classroom/new')} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 600,
+            padding: '10px 24px', borderRadius: 8, fontSize: "0.875rem", fontWeight: 600,
             background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
           }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -512,7 +512,7 @@ export default function TeacherDashboard() {
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
-            <p style={{ fontSize: 30, color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用手机或平板扫描二维码，或在浏览器打开下方网址</p>
+            <p style={{ fontSize: "1.875rem", color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用手机或平板扫描二维码，或在浏览器打开下方网址</p>
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 36, flexWrap: 'wrap' }}>
               <div style={{
                 background: 'white', borderRadius: 24, overflow: 'hidden',
@@ -543,7 +543,7 @@ export default function TeacherDashboard() {
                     padding: '14px 0', border: 'none', cursor: 'pointer',
                     borderTop: '1px solid #eef2f6',
                     background: '#f8fafc', color: '#2563eb',
-                    fontSize: 14, fontWeight: 600,
+                    fontSize: "0.875rem", fontWeight: 600,
                     transition: 'all 0.15s', width: '100%',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; }}
@@ -553,21 +553,21 @@ export default function TeacherDashboard() {
                 </button>
               </div>
               <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
+                <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
                 <p style={{
-                  fontSize: 44, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
+                  fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
                   http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
                 </p>
-                <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
+                <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {(qrCodeClassroom.code || '').split('').map((d: string, i: number) => (
                     <div key={i} style={{
                       width: 96, height: 112, borderRadius: 14,
                       background: 'rgba(37,99,235,0.15)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 72, fontWeight: 700, color: '#60a5fa',
+                      fontSize: "4.5rem", fontWeight: 700, color: '#60a5fa',
                       lineHeight: 1,
                     }}>{d}</div>
                   ))}
@@ -576,7 +576,7 @@ export default function TeacherDashboard() {
             </div>
             <button className="btn" style={{
               background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
-              border: '1px solid rgba(255,255,255,0.15)', fontSize: 18, padding: '12px 36px',
+              border: '1px solid rgba(255,255,255,0.15)', fontSize: "1.125rem", padding: '12px 36px',
               borderRadius: 10, cursor: 'pointer',
             }} onClick={() => setQrCodeClassroom(null)}>
               返回看板
@@ -599,21 +599,21 @@ export default function TeacherDashboard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
               </div>
               <div>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>课堂设置</h3>
-                <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整 AI 智能体</p>
+                <h3 style={{ fontSize: "1rem", fontWeight: 600, color: '#0f172a', margin: 0 }}>课堂设置</h3>
+                <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整 AI 智能体</p>
               </div>
             </div>
             {/* 弹窗内容 */}
             <div style={{ padding: '20px 28px' }}>
               {/* 课堂名称 */}
               <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 20h16" /><path d="M4 20V4m0 0h16v16" /></svg>
                   课堂名称
                 </label>
                 <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)}
                   placeholder="未命名课堂"
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s', background: '#fafbfc' }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: "0.875rem", outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s', background: '#fafbfc' }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.background = 'white'; }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#fafbfc'; }} />
               </div>
@@ -621,7 +621,7 @@ export default function TeacherDashboard() {
               {/* 标准/分组模式：单个智能体选择器 */}
               {settingsModalClassroom?.mode !== 'advanced' && allAgents.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
                     AI智能体
                   </label>
@@ -635,13 +635,13 @@ export default function TeacherDashboard() {
                             borderRadius: 8, userSelect: 'none',
                             border: `1.5px solid ${editAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
                             background: editAgentId === a.id ? '#eef2ff' : 'white',
-                            cursor: 'pointer', fontSize: 13, fontWeight: editAgentId === a.id ? 500 : 400,
+                            cursor: 'pointer', fontSize: "0.813rem", fontWeight: editAgentId === a.id ? 500 : 400,
                             transition: 'all 0.12s',
                           }}>
                           {logoUrl ? (
                             <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                           ) : (
-                            <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                            <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
                           )}
                           <span style={{ color: '#0f172a' }}>{a.name}</span>
                         </div>
@@ -654,7 +654,7 @@ export default function TeacherDashboard() {
               {/* 高级模式：每个小组分配不同智能体 */}
               {settingsModalClassroom?.mode === 'advanced' && editGroups.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                     小组智能体
                   </div>
@@ -665,16 +665,16 @@ export default function TeacherDashboard() {
                         padding: '8px 0',
                         borderBottom: idx < editGroups.length - 1 ? '1px solid #eef2f6' : 'none',
                       }}>
-                        <div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                        <div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.688rem", fontWeight: 700, flexShrink: 0 }}>
                           {idx + 1}
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#0f172a', minWidth: 70, flexShrink: 0 }}>{g.name}</span>
+                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#0f172a', minWidth: 70, flexShrink: 0 }}>{g.name}</span>
                         <div style={{ flex: 1, position: 'relative' }}>
                           <div
                             onClick={() => setSettingsDropdownGroupId(settingsDropdownGroupId === g.id ? null : g.id)}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 6,
-                              padding: '6px 28px 6px 10px', borderRadius: 8, fontSize: 13,
+                              padding: '6px 28px 6px 10px', borderRadius: 8, fontSize: "0.813rem",
                               border: '1px solid #e2e8f0', cursor: 'pointer',
                               background: 'white', minHeight: 32,
                             }}>
@@ -685,7 +685,7 @@ export default function TeacherDashboard() {
                                 {logoUrl ? (
                                   <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                                 ) : (
-                                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
+                                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
                                 )}
                                 <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
                               </>;
@@ -714,13 +714,13 @@ export default function TeacherDashboard() {
                                   }}
                                   style={{
                                     display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                                    padding: '8px 12px', cursor: 'pointer', fontSize: "0.813rem",
                                     background: g.agentId === a.id ? '#eef2ff' : 'white',
                                   }}>
                                     {logoUrl ? (
                                       <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                                     ) : (
-                                      <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>{a.name[0]}</div>
+                                      <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
                                     )}
                                     <span>{a.name}</span>
                                     {g.agentId === a.id && (
@@ -743,11 +743,11 @@ export default function TeacherDashboard() {
             {/* 弹窗底部按钮 */}
             <div style={{ padding: '16px 28px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafbfc', borderRadius: '0 0 16px 16px' }}>
               <button onClick={() => setSettingsModalClassroom(null)} className="btn"
-                style={{ fontSize: 13 }}>
+                style={{ fontSize: "0.813rem" }}>
                 取消
               </button>
               <button onClick={handleSaveSettings} className="btn btn-primary"
-                style={{ fontSize: 13 }}>
+                style={{ fontSize: "0.813rem" }}>
                 保存设置
               </button>
             </div>

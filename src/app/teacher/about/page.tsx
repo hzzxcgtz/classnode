@@ -82,12 +82,12 @@ export default function AboutPage() {
       if (trimmed.startsWith('### ')) {
         const title = trimmed.replace('### ', '');
         elements.push(
-          <div key={i} style={{ fontSize: 12, fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: i > 0 ? 16 : 0, marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #eef2f6' }}>{title}</div>
+          <div key={i} style={{ fontSize: "0.75rem", fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: i > 0 ? 16 : 0, marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #eef2f6' }}>{title}</div>
         );
       } else if (trimmed.startsWith('#### ')) {
         const title = trimmed.replace('#### ', '').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
         elements.push(
-          <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginTop: 10, marginBottom: 6 }} dangerouslySetInnerHTML={{ __html: title }} />
+          <div key={i} style={{ fontSize: "0.813rem", fontWeight: 700, color: '#0f172a', marginTop: 10, marginBottom: 6 }} dangerouslySetInnerHTML={{ __html: title }} />
         );
       } else if (trimmed.startsWith('- ')) {
         const items: { text: string; sub: boolean }[] = [{ text: trimmed.replace(/^- /, ''), sub: false }];
@@ -98,7 +98,7 @@ export default function AboutPage() {
         elements.push(
           <div key={i} style={{ marginBottom: 6 }}>
             {items.map((item, j) => (
-              <div key={j} style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.7, paddingLeft: item.sub ? 28 : 16, position: 'relative' }}>
+              <div key={j} style={{ fontSize: "0.781rem", color: '#475569', lineHeight: 1.7, paddingLeft: item.sub ? 28 : 16, position: 'relative' }}>
                 <span style={{ position: 'absolute', left: item.sub ? 16 : 2, top: 0, color: item.sub ? '#94a3b8' : '#64748b', fontSize: item.sub ? 10 : 12 }}>{item.sub ? '‣' : '•'}</span>
                 <span dangerouslySetInnerHTML={{ __html: item.text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') }} />
               </div>
@@ -107,7 +107,7 @@ export default function AboutPage() {
         );
       } else if (!trimmed.startsWith('- ')) {
         elements.push(
-          <div key={i} style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.7, paddingLeft: 16 }}>
+          <div key={i} style={{ fontSize: "0.781rem", color: '#475569', lineHeight: 1.7, paddingLeft: 16 }}>
             <span dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') }} />
           </div>
         );
@@ -122,7 +122,7 @@ export default function AboutPage() {
 
       {/* ========== 返回按钮 ========== */}
       <button onClick={() => router.back()}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 8, transition: 'background 0.12s', marginBottom: 28 }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: "0.875rem", background: 'none', border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 8, transition: 'background 0.12s', marginBottom: 28 }}
         onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
@@ -139,25 +139,25 @@ export default function AboutPage() {
         <div style={{ padding: '36px 40px 30px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0, background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 30, boxShadow: '0 6px 16px rgba(59,130,246,0.25)' }}>C</div>
+              <div style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0, background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "1.875rem", boxShadow: '0 6px 16px rgba(59,130,246,0.25)' }}>C</div>
             ) : (
               <img src="/logo.png" alt="ClassNode" style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.5 }}>ClassNode</h1>
-                <span style={{ fontSize: 15, color: '#94a3b8', fontWeight: 500, padding: '2px 12px', borderRadius: 6, background: '#f1f4f9' }}>
+                <h1 style={{ fontSize: "2rem", fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.5 }}>ClassNode</h1>
+                <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 12px', borderRadius: 6, background: '#f1f4f9' }}>
                   v{APP_VERSION}
                 </span>
               </div>
-              <p style={{ fontSize: 16, color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
+              <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
                 让 AI 在真实课堂落地，零门槛、不设限。
               </p>
             </div>
             <button onClick={toggleChangelogs} style={{
               flexShrink: 0, alignSelf: 'flex-start',
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: 14, color: '#475569', background: '#f8fafc',
+              fontSize: "0.875rem", color: '#475569', background: '#f8fafc',
               border: '1px solid #d1d5db', borderRadius: 10, cursor: 'pointer',
               padding: '9px 18px', fontWeight: 500,
               transition: 'all 0.15s',
@@ -173,11 +173,11 @@ export default function AboutPage() {
             borderRadius: 12, padding: '18px 22px',
             display: 'flex', gap: 14, alignItems: 'flex-start',
           }}>
-            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: 22, lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif' }}>&ldquo;</span>
-            <p style={{ margin: 0, fontSize: 15, color: '#475569', lineHeight: 1.8 }}>
+            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: "1.375rem", lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif' }}>&ldquo;</span>
+            <p style={{ margin: 0, fontSize: "0.938rem", color: '#475569', lineHeight: 1.8 }}>
               专为真实课堂而生。即使网络环境不那么完美，也能让老师精心调优的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
             </p>
-            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: 22, lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif', alignSelf: 'flex-end' }}>&rdquo;</span>
+            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: "1.375rem", lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif', alignSelf: 'flex-end' }}>&rdquo;</span>
           </div>
         </div>
       </div>
@@ -187,19 +187,19 @@ export default function AboutPage() {
         <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 36, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ padding: '16px 22px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>更新日志</span>
+            <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a' }}>更新日志</span>
           </div>
           <div style={{ padding: '16px 22px' }}>
             {(showAllLogs ? changelogs : changelogs.slice(0, 5)).map((log, idx) => {
               const isExpanded = expandedVersion === log.version;
               return (
                 <div key={log.version} style={{ marginBottom: idx < changelogs.length - 1 ? 6 : 0, borderRadius: 8, overflow: 'hidden', border: isExpanded ? '1px solid #e2e8f0' : '1px solid transparent', transition: 'border-color 0.15s' }}>
-                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', background: isExpanded ? '#f8fafc' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 14, color: '#0f172a', fontWeight: 600, borderRadius: isExpanded ? '7px 7px 0 0' : 7, transition: 'background 0.12s' }}
+                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', background: isExpanded ? '#f8fafc' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: "0.875rem", color: '#0f172a', fontWeight: 600, borderRadius: isExpanded ? '7px 7px 0 0' : 7, transition: 'background 0.12s' }}
                     onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = '#f8fafc'; }}
                     onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" style={{ transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
                     <span style={{ flex: 1, color: '#0f172a' }}>{log.version}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 4, marginLeft: 4 }}>{isExpanded ? '收起' : '展开'}</span>
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 4, marginLeft: 4 }}>{isExpanded ? '收起' : '展开'}</span>
                   </button>
                   {isExpanded && <div style={{ padding: '12px 18px 16px' }}>{renderMarkdown(log.content)}</div>}
                 </div>
@@ -207,7 +207,7 @@ export default function AboutPage() {
             })}
             {changelogs.length > 5 && !showAllLogs && (
               <button onClick={() => setShowAllLogs(true)}
-                style={{ display: 'block', width: '100%', marginTop: 10, padding: '10px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13, color: '#64748b', textAlign: 'center' }}>
+                style={{ display: 'block', width: '100%', marginTop: 10, padding: '10px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: "0.813rem", color: '#64748b', textAlign: 'center' }}>
                 显示全部更新日志（共 {changelogs.length} 条）
               </button>
             )}
@@ -246,11 +246,11 @@ export default function AboutPage() {
         <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
             <span style={{
-              fontSize: 40, fontWeight: 200, color: '#1e3a5f',
+              fontSize: "2.5rem", fontWeight: 200, color: '#1e3a5f',
               lineHeight: 1,
             }}>缘</span>
             <span style={{
-              fontSize: 40, fontWeight: 200, color: '#1e3a5f',
+              fontSize: "2.5rem", fontWeight: 200, color: '#1e3a5f',
               lineHeight: 1,
             }}>起</span>
             <span style={{
@@ -260,13 +260,13 @@ export default function AboutPage() {
             }} />
           </div>
           <span style={{
-            fontSize: 13, color: '#a8a29e',
+            fontSize: "0.813rem", color: '#a8a29e',
             paddingLeft: 16, borderLeft: '1px solid #e2e0d8',
             letterSpacing: 0.5,
           }}>为什么做这个系统</span>
         </div>
 
-        <div style={{ fontSize: 16, color: '#57534e', lineHeight: 2.1 }}>
+        <div style={{ fontSize: "1rem", color: '#57534e', lineHeight: 2.1 }}>
           <p style={{ margin: '0 0 18px' }}>
             AI 技术发展很快，现在很多老师都能调教出很出色的 AI 智能体。但要想让全班几十个孩子都用上，现实往往是另一回事：学校网络卡顿、学生注册账号太麻烦、他们在屏幕后聊了什么你不知道、下课以后数据全没了&hellip;&hellip;
           </p>
@@ -292,7 +292,7 @@ export default function AboutPage() {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
             解决的教学<strong style={{ color: '#dc2626' }}>"老大难"</strong>
           </h2>
         </div>
@@ -316,11 +316,11 @@ export default function AboutPage() {
                 <div style={{ padding: '16px 20px 16px 0', flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColors[i], flexShrink: 0 }} />
-                    <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+                    <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>
                       {item.q}
                     </span>
                   </div>
-                  <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.8, paddingLeft: 0 }}>
+                  <div style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 1.8, paddingLeft: 0 }}>
                     <span style={{ color: dotColors[i], fontWeight: 500 }}>解决：</span>
                     {item.a}
                   </div>
@@ -341,7 +341,7 @@ export default function AboutPage() {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
             技术底座
           </h2>
         </div>
@@ -357,8 +357,8 @@ export default function AboutPage() {
               <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <SvgIcon name={item.icon} color="#4f46e5" size={16} />
               </div>
-              <div style={{ fontWeight: 600, fontSize: 15, color: '#0f172a', marginBottom: 6 }}>{item.title}</div>
-              <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.8 }}>{item.desc}</div>
+              <div style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a', marginBottom: 6 }}>{item.title}</div>
+              <div style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 1.8 }}>{item.desc}</div>
             </div>
           ))}
         </div>
@@ -366,32 +366,32 @@ export default function AboutPage() {
 
       {/* ========== 底部信息 ========== */}
       <div style={{ textAlign: 'center', padding: '24px 0 16px', borderTop: '1px solid #eef2f6' }}>
-        <div style={{ fontSize: 14, color: '#64748b', lineHeight: 2 }}>
+        <div style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 2 }}>
           <div style={{ fontWeight: 600, color: '#334155' }}>教学互促 · 源码共研</div>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>欢迎对技术感兴趣的老师访问仓库交流</div>
+          <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>欢迎对技术感兴趣的老师访问仓库交流</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, margin: '12px 0 16px' }}>
             <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://gitcode.com/weixin_41523975/classnode'); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500, color: '#e4392b', transition: 'all 0.2s' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: "0.813rem", fontWeight: 500, color: '#e4392b', transition: 'all 0.2s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(228,57,43,0.06)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
               <img src="/gitcode_logo.png" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
               GitCode
             </a>
             <a href="#" onClick={(e) => { e.preventDefault(); window.open('https://github.com/hzzxcgtz/classnode'); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 500, color: '#24292f', transition: 'all 0.2s' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, textDecoration: 'none', fontSize: "0.813rem", fontWeight: 500, color: '#24292f', transition: 'all 0.2s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
               <img src="/github_logo.png" alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
               GitHub
             </a>
           </div>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>
+          <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>
             张星昌 · 杭州市拱墅区教育研究院
           </div>
           <div>
-            <a href="mailto:hzzxc2012@163.com" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
+            <a href="mailto:hzzxc2012@163.com" style={{ fontSize: "0.813rem", color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
           </div>
-          <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>
+          <div style={{ fontSize: "0.75rem", color: '#cbd5e1', marginTop: 4 }}>
             ClassNode v{APP_VERSION}
           </div>
         </div>

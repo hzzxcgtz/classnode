@@ -48,7 +48,7 @@ const sections = [
       <><strong>配置更直观</strong>：填入平台提供的 API Key / Secret Key 等信息，可自定义本地名称（如"李白学长"）。Coze 低代码支持一键从 Coze 拉取头像和开场白。</>,
       <div>
         <div><strong>连通性检测</strong>：系统启动时自动检测 AI 智能体在线状态。</div>
-        <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 15, color: '#475569' }}>
+        <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
           <div>• 卡片底部指示灯：<span style={{ color: '#22c55e', fontWeight: 600 }}>绿色</span> 代表在线，<span style={{ color: '#ef4444', fontWeight: 600 }}>红色</span> 代表离线。</div>
           <div>• <strong>实时告警</strong>：课堂上 AI 连接异常时，左侧导航栏自动弹出通知。</div>
           <div>• 也可手动点击智能体的「检测」按钮进行排查。</div>
@@ -63,7 +63,7 @@ const sections = [
       <div>进入「<Highlight>班级管理</Highlight>」，建好班级后准备迎接学生：</div>,
       <div>
         <div><strong>极速导入学生</strong></div>
-        <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 15, color: '#475569' }}>
+        <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
           <div>• <strong>慢工出细活</strong>：人数较少时，手动逐个输入姓名即可。</div>
           <div>• <strong>魔法一键导入</strong>：将 Excel 学生名单复制粘贴（一行一个姓名），系统自动生成学号，3 秒完成建班。</div>
         </div>
@@ -75,26 +75,26 @@ const sections = [
     id: 'classroom', title: '四、备课：创建互动课堂', icon: 'classroom',
     items: [
       <div>在「<Highlight>课堂管理</Highlight>」中点击「创建新课堂」，为课堂命名并选择合适的<strong>教学模式</strong>：</div>,
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 20, lineHeight: 1.8, fontSize: 15, color: '#475569' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 20, lineHeight: 1.8, fontSize: "0.938rem", color: '#475569' }}>
         <div>
-          <span style={{ background: '#eef2ff', color: '#2563eb', fontWeight: 600, fontSize: 13, padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>标准模式</span>
-          <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 8 }}>Standard Mode</span>
+          <span style={{ background: '#eef2ff', color: '#2563eb', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>标准模式</span>
+          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Standard Mode</span>
           —— 每人一个独立账号，各自与 AI 对话，适合普适性练习。
         </div>
         <div>
-          <span style={{ background: '#f5f3ff', color: '#7c3aed', fontWeight: 600, fontSize: 13, padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>分组模式</span>
-          <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 8 }}>Group Mode</span>
+          <span style={{ background: '#f5f3ff', color: '#7c3aed', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>分组模式</span>
+          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Group Mode</span>
           —— 全组共用一个账号，同屏与 AI 讨论，适合协作探究。
         </div>
         <div>
-          <span style={{ background: '#fef3c7', color: '#d97706', fontWeight: 600, fontSize: 13, padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>高级模式</span>
-          <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 8 }}>Advanced Mode</span>
+          <span style={{ background: '#fef3c7', color: '#d97706', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>高级模式</span>
+          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Advanced Mode</span>
           —— 可为不同小组绑定不同的 AI 智能体，真正实现分层教学。
         </div>
       </div>,
       <div style={{
         background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
-        padding: '12px 16px', fontSize: 14, color: '#92400e', lineHeight: 1.7,
+        padding: '12px 16px', fontSize: "0.875rem", color: '#92400e', lineHeight: 1.7,
       }}>
         <strong style={{ color: '#b45309' }}>小贴士</strong>：课上到一半发现 AI 不太合适？在活跃课堂列表点击齿轮图标可中途更换 AI，已有聊天记录不会丢失。
       </div>,
@@ -112,11 +112,11 @@ const sections = [
     id: 'dashboard', title: '六、掌控：课堂看板与监控', icon: 'monitor',
     items: [
       <div>点击进行中的课堂，进入「<Highlight>课堂看板</Highlight>」：</div>,
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, lineHeight: 1.8, fontSize: 15, color: '#475569' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, lineHeight: 1.8, fontSize: "0.938rem", color: '#475569' }}>
         <div><strong>全景监控</strong>：主区域展示全班卡片，在线状态与对话轮次一目了然。卡片滚动显示学生最新问答。</div>
         <div>
           <strong>实时学情雷达</strong>
-          <div style={{ paddingLeft: 20, marginTop: 2, lineHeight: 2, fontSize: 15, color: '#475569' }}>
+          <div style={{ paddingLeft: 20, marginTop: 2, lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
             <div>• <strong>高频词云</strong>：抓取学生提问热点词，辅助调整讲课方向。</div>
             <div>• <strong>活跃榜 Top 10</strong>：展示提问达人与沉默学员，掌握参与度。</div>
           </div>
@@ -144,7 +144,7 @@ const sections = [
       <div>下课铃响，课堂的价值刚刚开始释放。前往「<Highlight>数据管理</Highlight>」：</div>,
       <><strong>宏观仪表盘</strong>：总课堂数、总参与人次、总交互轮数、平均时长——这些数据是 AI 教学成效的最佳证明。</>,
       <div><strong>一键生成 Word 报告</strong></div>,
-      <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 15, color: '#475569' }}>
+      <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
         <div>• <strong>导出对话</strong>：全班聊天实录一键导出，复盘学生思维走向。</div>
         <div>• <strong>导出报表</strong>：自动生成学情统计文档，适合教学案例、课题研究等场景。</div>
       </div>,
@@ -184,8 +184,8 @@ export default function GuidePage() {
   return (
     <div style={{ padding: '32px 40px', maxWidth: 1000, margin: '0 auto' }}>
       <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 6px', color: '#0f172a' }}>使用指南</h1>
-        <p style={{ fontSize: 15, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
+        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: '0 0 6px', color: '#0f172a' }}>使用指南</h1>
+        <p style={{ fontSize: "0.938rem", color: '#64748b', margin: 0, lineHeight: 1.6 }}>
           欢迎来到 ClassNode！这份指南将像一位贴心的助教，陪您走完从"系统开机"到"打磨出一堂完美 AI 课"的全过程。
         </p>
       </div>
@@ -210,11 +210,11 @@ export default function GuidePage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round">
                 <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
               </svg>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#475569', letterSpacing: 1 }}>
+              <span style={{ fontSize: "0.813rem", fontWeight: 600, color: '#475569', letterSpacing: 1 }}>
                 目 录
               </span>
               <span style={{
-                fontSize: 10, color: '#94a3b8', fontWeight: 500, marginLeft: 'auto',
+                fontSize: "0.625rem", color: '#94a3b8', fontWeight: 500, marginLeft: 'auto',
                 background: '#f1f4f7', padding: '1px 7px', borderRadius: 6,
               }}>
                 {sectionList.length}
@@ -251,7 +251,7 @@ export default function GuidePage() {
                   <div style={{
                     width: 24, height: 24, borderRadius: 6, flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700,
+                    fontSize: "0.625rem", fontWeight: 700,
                     background: isActive ? '#3b82f6' : '#f1f4f9',
                     color: isActive ? '#ffffff' : '#94a3b8',
                     transition: 'all 0.18s',
@@ -262,14 +262,14 @@ export default function GuidePage() {
                   {/* 两行标题 */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                      fontSize: 14, fontWeight: isActive ? 600 : 500,
+                      fontSize: "0.875rem", fontWeight: isActive ? 600 : 500,
                       color: isActive ? '#1e3a5f' : '#334155',
                       lineHeight: 1.4,
                     }}>
                       {item.mainLabel}
                     </div>
                     <div style={{
-                      fontSize: 12, fontWeight: 400,
+                      fontSize: "0.75rem", fontWeight: 400,
                       color: isActive ? '#64748b' : '#94a3b8',
                       lineHeight: 1.3, marginTop: 1,
                     }}>
@@ -301,13 +301,13 @@ export default function GuidePage() {
                 <span style={{ flexShrink: 0, display: 'flex' }}>
                   <SectionIcon name={section.icon} />
                 </span>
-                <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0, color: '#0f172a' }}>
+                <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>
                   {section.title}
                 </h2>
               </div>
 
               {/* 内容 */}
-              <div style={{ padding: '16px 20px', lineHeight: 2, fontSize: 15, color: '#475569' }}>
+              <div style={{ padding: '16px 20px', lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
                 {section.items.map((item, j) => (
                   <div key={j} style={{ marginBottom: j < section.items.length - 1 ? 12 : 0 }}>{item}</div>
                 ))}

@@ -1607,6 +1607,13 @@ async function uploadFileToZhipuai(baseUrl: string, token: string, fileUrl: stri
       '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
       '.webp': 'image/webp', '.gif': 'image/gif',
       '.pdf': 'application/pdf', '.txt': 'text/plain',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.md': 'text/markdown',
     };
     const mimeType = mimeMap[ext] || 'application/octet-stream';
     const fileBuffer = fs.readFileSync(filePath);

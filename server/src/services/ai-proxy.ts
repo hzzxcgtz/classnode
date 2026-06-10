@@ -153,6 +153,7 @@ async function proxyCoze(
 
   // 有文件时使用 object_string 格式，确保 Coze 能识别图片
   if (fileIds.length > 0) {
+    console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
     const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
       contentParts.push({ type: 'file', file_id: fid });
@@ -870,6 +871,7 @@ async function proxyCozeStream(
 
   // 有文件时使用 object_string 格式，确保 Coze 能识别图片
   if (fileIds.length > 0) {
+    console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
     const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
       contentParts.push({ type: 'file', file_id: fid });

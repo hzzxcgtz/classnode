@@ -883,143 +883,16 @@ async function proxyCozeStream(
   history?: { role: string; content: string }[],
   fileUrls?: string[]
 ): Promise<ProxyResult> {
-  // 有文件时回退到非流式（流式对 object_string 支持不稳定）
-  if (fileUrls && fileUrls.length > 0) {
-    const result = await proxyCoze(agent, message, userName, history, fileUrls);
-    if (result.success && result.content) {
-      const chunkSize = 20;
-      for (let i = 0; i < result.content.length; i += chunkSize) {
-        onChunk(result.content.slice(i, i + chunkSize));
-      }
-    }
-    return result;
-  }
-
-  const baseUrl = agent.apiUrl || 'https://api.coze.cn';
-
-  const additionalMessages: any[] = [];
-  if (history) {
-    for (const h of history) {
-      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
+  // Coze 流式对历史消息和图片支持不稳定，统一走非流式
+  const result = await proxyCoze(agent, message, userName, history, fileUrls);
+  if (result.success && result.content) {
+    const chunkSize = 20;
+    for (let i = 0; i < result.content.length; i += chunkSize) {
+      onChunk(result.content.slice(i, i + chunkSize));
     }
   }
-
-  // 上传文件到 Coze
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      const fid = await uploadFileToCoze(baseUrl, agent.apiKey, url);
-      if (fid) fileIds.push(fid);
-    }
-  }
-
-  // 有文件时：上传到 Coze 并用 object_string 传 file_id
-  if (fileIds.length > 0) {
-    const contentParts: any[] = [{ type: 'text', text: message }];
-    for (const fid of fileIds) {
-      contentParts.push({ type: 'image', file_id: fid });
-    }
-    const contentStr = JSON.stringify(contentParts);
-    console.log('[Coze] object_string:', contentStr.slice(0, 300));
-    additionalMessages.push({
-      role: 'user',
-      content: contentStr,
-      content_type: 'object_string',
-    });
-  } else {
-    additionalMessages.push({
-      role: 'user', content: message, content_type: 'text',
-    });
-  }
-
-  const response = await fetchWithTimeout(`${baseUrl}/v3/chat`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${agent.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      bot_id: agent.botId,
-      user_id: userName,
-      additional_messages: additionalMessages,
-      stream: true,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `Coze API 错误 (${response.status}): ${err}` };
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return { success: false, error: '无法读取响应流' };
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  let eventCount = 0;
-  let currentEvent = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      // 追踪 event 类型
-      if (line.startsWith('event:')) {
-        currentEvent = line.slice(6).trim();
-        continue;
-      }
-
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          eventCount++;
-
-          // 日志：记录事件类型（增加 content_type 字段，便于调试推理模型）
-          if (eventCount <= 50) {
-            console.log(`[CozeStream] Event #${eventCount}: sse=${currentEvent}, type=${parsed.type}, role=${parsed.role}, ct=${parsed.content_type}, content_len=${(parsed.content || '').length}`);
-          }
-
-          // 跳过推理模型的思考过程（Coze 推理模型发 content_type=thinking 的片段）
-          if (eventCount === 1) {
-            console.log('[CozeStream] First SSE event type:', currentEvent);
-          }
-          if (parsed.content_type === 'thinking') continue;
-          // 跳过 verbose 中间事件（如 review process 等）
-          if (parsed.type === 'verbose') continue;
-
-          // 只处理 delta 事件（type=answer 的助手回复），跳过 completed 防止重复
-          if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
-            const delta = parsed.content || '';
-            if (delta) {
-              fullContent += delta;
-              try { onChunk(delta); } catch {}
-            }
-          }
-        } catch {}
-      }
-    }
-  }
-
-  console.log(`[CozeStream] Done. Total events: ${eventCount}, fullContent: ${fullContent.length} chars, preview: ${fullContent.slice(0, 120)}`);
-
-  // 流式为空时回退到非流式
-  if (!fullContent) {
-    console.log('[CozeStream] Empty stream, falling back to non-streaming...');
-    return await proxyCoze(agent, message, userName, history, fileUrls);
-  }
-
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return result;
 }
-
 async function proxyDifyStream(
   agent: AgentConfig,
   message: string,

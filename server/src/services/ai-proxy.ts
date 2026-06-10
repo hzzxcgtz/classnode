@@ -162,6 +162,10 @@ async function proxyCoze(
     });
   }
 
+  // 无 conversation_id 时先创建会话
+  const convId = agent.conversationId || await createCozeConversation(baseUrl, agent, userName);
+  if (!convId) return { success: false, error: '创建会话失败' };
+
   const body: any = {
     bot_id: agent.botId,
     user_id: userName,
@@ -169,7 +173,7 @@ async function proxyCoze(
     auto_save_history: true,
     stream: false,
   };
-  if (agent.conversationId) body.conversation_id = agent.conversationId;
+  body.conversation_id = convId;
   const requestBody = JSON.stringify(body);
   console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
 
@@ -222,8 +226,33 @@ async function proxyCoze(
   return {
     success: true,
     content: deanonymized,
-    conversationId,
+    conversationId: convId,
   };
+}
+
+/** 创建 Coze 会话，返回 conversation_id */
+async function createCozeConversation(baseUrl: string, agent: AgentConfig, userName: string): Promise<string | null> {
+  try {
+    const response = await fetchWithTimeout(`${baseUrl}/v1/conversation/create`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${agent.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        bot_id: agent.botId,
+        name: `classnode_${userName}`,
+      }),
+    });
+    if (!response.ok) { console.error('[CozeConv] Create failed:', response.status); return null; }
+    const data = await response.json();
+    const convId = data.data?.id || data.conversation_id;
+    if (convId) console.log('[CozeConv] Created:', convId);
+    return convId || null;
+  } catch (e: any) {
+    console.error('[CozeConv] Create error:', e.message);
+    return null;
+  }
 }
 
 async function pollCozeMessages(
@@ -895,6 +924,9 @@ async function proxyCozeStream(
   // ---- 文字消息走流式 ----
   // 由 Coze 通过 conversation_id 管理历史上下文
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
+  const convId = agent.conversationId || await createCozeConversation(baseUrl, agent, userName);
+  if (!convId) return { success: false, error: '创建会话失败' };
+
   const additionalMessages: any[] = [{ role: 'user', content: message, content_type: 'text' }];
 
   const response = await fetchWithTimeout(`${baseUrl}/v3/chat`, {
@@ -908,8 +940,8 @@ async function proxyCozeStream(
       user_id: userName,
       additional_messages: additionalMessages,
       auto_save_history: true,
+      conversation_id: convId,
       stream: true,
-      ...(agent.conversationId ? { conversation_id: agent.conversationId } : {}),
     }),
   });
 
@@ -955,7 +987,7 @@ async function proxyCozeStream(
 
   if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
+  return { success: true, content: deanonymized, conversationId: convId };
 }
 
 async function proxyDifyStream(

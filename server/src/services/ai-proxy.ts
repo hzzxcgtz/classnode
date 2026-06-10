@@ -871,7 +871,7 @@ async function proxyCozeAgent(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 // ---- 流式输出实现 ----
@@ -960,7 +960,7 @@ async function proxyCozeStream(
 
   if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyDifyStream(
@@ -1044,7 +1044,7 @@ async function proxyDifyStream(
   if (!fullContent) return { success: false, error: 'Dify 流式响应为空' };
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyOpenAIStream(
@@ -1124,7 +1124,7 @@ async function proxyOpenAIStream(
   if (!fullContent) return { success: false, error: 'OpenAI 流式响应为空' };
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyCozeAgentStream(
@@ -1226,7 +1226,7 @@ async function proxyCozeAgentStream(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 // ---- 智谱清言 Assistant API ----
@@ -1278,6 +1278,7 @@ async function proxyZhipuai(
     }
   }
   const body: any = { assistant_id: agent.botId, prompt: message };
+  if (agent.conversationId) body.conversation_id = agent.conversationId;
   if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
 
   const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream_sync`, {
@@ -1317,7 +1318,8 @@ async function proxyZhipuai(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  const convId = data.result?.conversation_id || agent.conversationId;
+  return { success: true, content: deanonymized, conversationId: convId };
 }
 
 async function proxyZhipuaiStream(
@@ -1347,7 +1349,9 @@ async function proxyZhipuaiStream(
       }
     }
   }
+  let streamConvId = agent.conversationId || '';
   const body: any = { assistant_id: agent.botId, prompt: message };
+  if (agent.conversationId) body.conversation_id = agent.conversationId;
   if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
 
   const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream`, {
@@ -1384,6 +1388,8 @@ async function proxyZhipuaiStream(
         if (!dataStr) continue;
         try {
           const parsed = JSON.parse(dataStr);
+          // 提取 conversation_id
+          if (!streamConvId && parsed.conversation_id) streamConvId = parsed.conversation_id;
           // Result: { history_id, conversation_id, message: { role, content: { type, text }, status }, status }
           if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
             const text = parsed.message.content.text;
@@ -1402,7 +1408,7 @@ async function proxyZhipuaiStream(
   if (!fullContent) return { success: false, error: '智谱清言流式响应为空' };
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 // ---- 文心智能体平台（百度） ----
@@ -1517,7 +1523,7 @@ async function proxyWenxin(
     if (!content) return { success: false, error: '文心智能体返回为空' };
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-    return { success: true, content: deanonymized };
+    return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
   }
@@ -1598,7 +1604,7 @@ async function proxyWenxinStream(
     }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-    return { success: true, content: deanonymized };
+    return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
   }

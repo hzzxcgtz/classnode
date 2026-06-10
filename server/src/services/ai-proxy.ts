@@ -157,7 +157,7 @@ async function proxyCoze(
     for (const fid of fileIds) {
       additionalMessages.push({
         role: 'user',
-        content: JSON.stringify({ type: 'file', file_id: fid }),
+        content: JSON.stringify([{ type: 'file', file_id: fid }]),
         content_type: 'object_string',
       });
     }
@@ -878,7 +878,7 @@ async function proxyCozeStream(
     for (const fid of fileIds) {
       additionalMessages.push({
         role: 'user',
-        content: JSON.stringify({ type: 'file', file_id: fid }),
+        content: JSON.stringify([{ type: 'file', file_id: fid }]),
         content_type: 'object_string',
       });
     }

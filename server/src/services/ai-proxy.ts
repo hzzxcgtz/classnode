@@ -134,11 +134,10 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息 + 当前消息一起传入（有图片时不带历史，避免干扰）
+  // 历史消息（有图片时不传 additional_messages，由 Coze 通过 conversation_id 管理）
   const additionalMessages: any[] = [];
-  const historySlice = (fileUrls && fileUrls.length > 0) ? [] : (history || []);
-  if (historySlice) {
-    for (const h of historySlice) {
+  if (history && (!fileUrls || fileUrls.length === 0)) {
+    for (const h of history) {
       additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
     }
   }
@@ -170,6 +169,8 @@ async function proxyCoze(
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
+    conversation_id: `classnode_${userName}`,
+    auto_save_history: true,
     stream: false,
   });
   console.log('[Coze] Request body keys:', Object.keys(JSON.parse(requestBody)));

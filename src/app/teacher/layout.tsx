@@ -321,7 +321,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <img src="/logo.png" alt="ClassNode" style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div>
-              <div style={{ fontWeight: 600, fontSize: "0.875rem", color: '#0f172a' }}>ClassNode</div>
+              <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
               <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>AI 互动课堂系统</div>
             </div>
           </div>

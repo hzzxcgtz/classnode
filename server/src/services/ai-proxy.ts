@@ -574,8 +574,7 @@ export async function testAgentConnection(agent: AgentConfig): Promise<{ success
  */
 async function fileUrlToBase64DataUrl(fileUrl: string): Promise<string | null> {
   try {
-    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
-    const filePath = path.join(__dirname, '../..', relativePath);
+    const filePath = resolveLocalPath(fileUrl);
 
     if (!fs.existsSync(filePath)) {
       console.error('[FileToBase64] File not found:', filePath);
@@ -609,8 +608,7 @@ async function fileUrlToBase64DataUrl(fileUrl: string): Promise<string | null> {
  */
 async function uploadFileToDify(apiUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
   try {
-    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
-    const filePath = path.join(__dirname, '../..', relativePath);
+    const filePath = resolveLocalPath(fileUrl);
 
     if (!fs.existsSync(filePath)) {
       console.error('[DifyUpload] File not found:', filePath);
@@ -653,6 +651,16 @@ async function uploadFileToDify(apiUrl: string, apiKey: string, fileUrl: string)
   }
 }
 
+/** 将本地文件 URL 解析为绝对路径（兼容 CLASSNODE_DATA_DIR） */
+function resolveLocalPath(fileUrl: string): string {
+  const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
+  // 生产模式下文件存在 CLASSNODE_DATA_DIR 中
+  if (process.env.CLASSNODE_DATA_DIR) {
+    return path.join(process.env.CLASSNODE_DATA_DIR, relativePath);
+  }
+  return path.join(__dirname, '../..', relativePath);
+}
+
 /** 检查文件 URL 是否为本地路径 */
 function isLocalFileUrl(url: string): boolean {
   return url.startsWith('/');
@@ -663,8 +671,7 @@ function isLocalFileUrl(url: string): boolean {
  */
 async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
   try {
-    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
-    const filePath = path.join(__dirname, '../..', relativePath);
+    const filePath = resolveLocalPath(fileUrl);
 
     console.log('[CozeUpload] Looking for file at:', filePath);
 
@@ -1622,8 +1629,7 @@ async function proxyWenxinStream(
 /** 上传本地文件到智谱清言，返回 file_id */
 async function uploadFileToZhipuai(baseUrl: string, token: string, fileUrl: string): Promise<string | null> {
   try {
-    const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
-    const filePath = path.join(__dirname, '../..', relativePath);
+    const filePath = resolveLocalPath(fileUrl);
     if (!fs.existsSync(filePath)) {
       console.error('[ZhipuaiUpload] File not found:', filePath);
       return null;

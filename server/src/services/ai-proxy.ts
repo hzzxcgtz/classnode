@@ -878,6 +878,18 @@ async function proxyCozeStream(
   history?: { role: string; content: string }[],
   fileUrls?: string[]
 ): Promise<ProxyResult> {
+  // 有文件时回退到非流式（流式对 object_string 支持不稳定）
+  if (fileUrls && fileUrls.length > 0) {
+    const result = await proxyCoze(agent, message, userName, history, fileUrls);
+    if (result.success && result.content) {
+      const chunkSize = 20;
+      for (let i = 0; i < result.content.length; i += chunkSize) {
+        onChunk(result.content.slice(i, i + chunkSize));
+      }
+    }
+    return result;
+  }
+
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
   const additionalMessages: any[] = [];

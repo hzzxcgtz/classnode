@@ -111,7 +111,7 @@ export default function AgentsPage() {
               // p8: '#b57a9e'  玫瑰褐
             };
             const platformLabels: Record<string, string> = {
-              coze: 'Coze',
+              coze: 'Coze 低代码',
               'coze-agent': 'Coze 编程',
               wenxin: '百度文心',
               zhipuai: '清言智能体',
@@ -156,14 +156,14 @@ export default function AgentsPage() {
                       }}>
                         {platformLabels[agent.platform]}
                       </span>
-                      {agent.platform === 'wenxin' && (
+                      {['coze-agent', 'wenxin'].includes(agent.platform) && (
                         <span style={{
                           padding: '2px 8px', borderRadius: 4,
                           fontSize: 11, fontWeight: 500,
-                          background: '#fef2f2', color: '#dc2626',
-                          border: '0.5px solid #fecaca',
+                          background: '#f0fdf4', color: '#16a34a',
+                          border: '0.5px solid #bbf7d0',
                         }}>
-                          非流式
+                          无图片
                         </span>
                       )}
                     </div>

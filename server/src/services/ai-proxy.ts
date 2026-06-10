@@ -151,14 +151,14 @@ async function proxyCoze(
     }
   }
 
-  // 有文件时：文件单独作为消息发送，与文字分开（与 Coze 官方测试一致）
+  // 有文件时：用 content_type: "file" 传文件 ID（Coze v3 API 标准方式）
   if (fileIds.length > 0) {
     console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
     for (const fid of fileIds) {
       additionalMessages.push({
         role: 'user',
-        content: JSON.stringify([{ type: 'file', file_id: fid }]),
-        content_type: 'object_string',
+        content: fid,
+        content_type: 'file',
       });
     }
     additionalMessages.push({
@@ -879,14 +879,14 @@ async function proxyCozeStream(
     }
   }
 
-  // 有文件时：文件单独作为消息发送，与文字分开（与 Coze 官方测试一致）
+  // 有文件时：用 content_type: "file" 传文件 ID（Coze v3 API 标准方式）
   if (fileIds.length > 0) {
     console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
     for (const fid of fileIds) {
       additionalMessages.push({
         role: 'user',
-        content: JSON.stringify([{ type: 'file', file_id: fid }]),
-        content_type: 'object_string',
+        content: fid,
+        content_type: 'file',
       });
     }
     additionalMessages.push({

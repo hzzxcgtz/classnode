@@ -136,7 +136,7 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 由 Coze 通过 conversation_id 管理历史上下文，本地不传历史
+  // 由 Coze 通过 conversation_id 管理历史上下文，本地只传当前消息
   const additionalMessages: any[] = [];
 
   // 有文件时：上传图片到 Coze 并构造标准多模态消息
@@ -162,17 +162,13 @@ async function proxyCoze(
     });
   }
 
-  // 有 conversation_id 时不传 additional_messages，由 Coze 管理历史
   const body: any = {
     bot_id: agent.botId,
     user_id: userName,
+    additional_messages: additionalMessages,
     stream: false,
   };
-  if (agent.conversationId) {
-    body.conversation_id = agent.conversationId;
-  } else {
-    body.additional_messages = additionalMessages;
-  }
+  if (agent.conversationId) body.conversation_id = agent.conversationId;
   const requestBody = JSON.stringify(body);
   console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
 
@@ -909,10 +905,9 @@ async function proxyCozeStream(
     body: JSON.stringify({
       bot_id: agent.botId,
       user_id: userName,
+      additional_messages: additionalMessages,
       stream: true,
-      ...(agent.conversationId
-        ? { conversation_id: agent.conversationId }
-        : { additional_messages: additionalMessages }),
+      ...(agent.conversationId ? { conversation_id: agent.conversationId } : {}),
     }),
   });
 

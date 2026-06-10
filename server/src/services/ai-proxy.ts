@@ -44,12 +44,14 @@ interface AgentConfig {
   apiKey: string;
   botId?: string;
   extra?: string;
+  conversationId?: string;
 }
 
 interface ProxyResult {
   success: boolean;
   content?: string;
   error?: string;
+  conversationId?: string;
 }
 
 /**
@@ -134,13 +136,8 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息（有图片时不传 additional_messages，由 Coze 通过 conversation_id 管理）
+  // 不传历史消息，全部由 Coze 通过 conversation_id 管理
   const additionalMessages: any[] = [];
-  if (history && (!fileUrls || fileUrls.length === 0)) {
-    for (const h of history) {
-      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
-    }
-  }
 
   // 有文件时：上传图片到 Coze 并构造标准多模态消息
   const fileIds: string[] = [];
@@ -165,12 +162,14 @@ async function proxyCoze(
     });
   }
 
-  const requestBody = JSON.stringify({
+  const body: any = {
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
     stream: false,
-  });
+  };
+  if (agent.conversationId) body.conversation_id = agent.conversationId;
+  const requestBody = JSON.stringify(body);
   console.log('[Coze] Request body keys:', Object.keys(JSON.parse(requestBody)));
   console.log('[Coze] additional_messages count:', additionalMessages.length);
   console.log('[Coze] Last msg content_type:', additionalMessages[additionalMessages.length - 1]?.content_type);
@@ -225,6 +224,7 @@ async function proxyCoze(
   return {
     success: true,
     content: deanonymized,
+    conversationId,
   };
 }
 
@@ -941,6 +941,7 @@ async function proxyCozeStream(
       bot_id: agent.botId,
       user_id: userName,
       additional_messages: additionalMessages,
+      conversation_id: agent.conversationId || undefined,
       stream: true,
     }),
   });

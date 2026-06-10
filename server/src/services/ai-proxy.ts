@@ -787,6 +787,11 @@ async function proxyCozeAgent(
   history?: { role: string; content: string }[],
   fileUrls?: string[]
 ): Promise<ProxyResult> {
+  // 有附件时提示不支持（stream_run 自定义接口无统一上传标准）
+  if (fileUrls && fileUrls.length > 0) {
+    message = message + '（用户发送了附件，但当前接入方式不支持附件识别）';
+  }
+
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 
@@ -1135,6 +1140,11 @@ async function proxyCozeAgentStream(
   history?: { role: string; content: string }[],
   fileUrls?: string[]
 ): Promise<ProxyResult> {
+  // 有附件时提示不支持（stream_run 自定义接口无统一上传标准）
+  if (fileUrls && fileUrls.length > 0) {
+    message = message + '（用户发送了附件，但当前接入方式不支持附件识别）';
+  }
+
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 

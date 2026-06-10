@@ -152,15 +152,18 @@ async function proxyCoze(
     }
   }
   if (fileIds.length > 0) {
-    const contentArr: any[] = [];
+    // 先用 file 类型发图片，再用 text 发文字
     for (const fid of fileIds) {
-      contentArr.push({ type: 'image', file_id: fid });
+      additionalMessages.push({
+        role: 'user',
+        content: fid,
+        content_type: 'image',
+      });
     }
-    contentArr.push({ type: 'text', text: message });
     additionalMessages.push({
       role: 'user',
-      content: JSON.stringify(contentArr),
-      content_type: 'object_string',
+      content: message,
+      content_type: 'text',
     });
   } else {
     additionalMessages.push({

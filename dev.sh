@@ -454,6 +454,18 @@ cmd_git_pull() {
   log_ok "已更新"
 }
 
+cmd_git_commit() {
+  if [ $# -eq 0 ]; then
+    log_error "请提供提交信息"
+    log_info "用法: ./dev.sh git:commit <提交信息>"
+    return
+  fi
+  local msg="$*"
+  git add -A
+  git commit -m "$msg"
+  log_ok "已提交: ${msg}"
+}
+
 cmd_git_push() {
   local branch
   branch=$(git branch --show-current)
@@ -527,6 +539,7 @@ case "${1:-help}" in
   gl|git:log)                      shift; cmd_git_log "$@" ;;
   gd|git:diff)                     shift; cmd_git_diff "$@" ;;
   git:pull)                        cmd_git_pull ;;
+  git:commit)                      shift; cmd_git_commit "$@" ;;
   git:push)                        cmd_git_push ;;
   start|run)                       cmd_start ;;
   dist|package)                    cmd_dist ;;

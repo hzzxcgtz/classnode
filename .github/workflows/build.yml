@@ -4,6 +4,15 @@ on:
   push:
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      arch:
+        type: choice
+        description: 构建架构（tag 推送时始终构建两个）
+        options:
+          - both
+          - x64
+          - x86
+        default: both
 
 env:
   NODE_VERSION: '22'
@@ -19,7 +28,16 @@ jobs:
       - id: set-matrix
         shell: bash
         run: |
-          echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ARCH="${{ github.event.inputs.arch }}"
+          else
+            ARCH="both"
+          fi
+          case "$ARCH" in
+            both) echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
+            x64)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' ;;
+            x86)  echo 'matrix={"include":[{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
+          esac >> "$GITHUB_OUTPUT"
 
   build:
     needs: prep

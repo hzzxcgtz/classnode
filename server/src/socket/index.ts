@@ -378,7 +378,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         const history = await prisma.message.findMany({
           where: { studentId: classroomStudent.id },
           orderBy: { createdAt: 'asc' },
-          take: 20,
+          take: 30,
         });
 
         const formattedHistory = history.map((h: Prisma.MessageGetPayload<{}>) => ({

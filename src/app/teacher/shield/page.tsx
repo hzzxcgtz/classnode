@@ -14,7 +14,6 @@ export default function ShieldPage() {
   const [configError, setConfigError] = useState('');
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [categories, setCategories] = useState<{ name: string; count: number; words: { id: string; word: string }[] }[]>([]);
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   // 警告记录
   const [summary, setSummary] = useState<any[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
@@ -432,27 +431,16 @@ export default function ShieldPage() {
                 ].map(cat => {
                   const catData = categories.find(c => c.name === cat.name);
                   const count = catData?.count || 0;
-                  const expanded = expandedCategories[cat.name];
                   return (
                     <div key={cat.name} style={{
                       borderRadius: 10,
                       border: `1px solid ${cat.border}`,
-                      overflow: 'hidden',
                     }}>
-                      <div
-                        onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.name]: !prev[cat.name] }))}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          padding: '12px 16px', cursor: 'pointer',
-                          background: cat.bg, userSelect: 'none',
-                          transition: 'background 0.1s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(0.97)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={cat.color} strokeWidth="2.5" strokeLinecap="round"
-                          style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.12s', flexShrink: 0 }}>
-                          <polyline points="9 18 15 12 9 6" />
-                        </svg>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px 16px',
+                        background: cat.bg, userSelect: 'none',
+                      }}>
                         <span style={{ flex: 1, fontSize: "0.875rem", fontWeight: 600, color: cat.color }}>{cat.name}</span>
                         <span style={{
                           fontSize: "0.75rem", fontWeight: 600, padding: '1px 8px', borderRadius: 6,
@@ -460,40 +448,6 @@ export default function ShieldPage() {
                           border: `1px solid ${cat.border}`,
                         }}>{count} 个</span>
                       </div>
-                      {expanded && catData && (
-                        <div style={{
-                          padding: '10px 16px 12px',
-                          display: 'flex', flexWrap: 'wrap', gap: 6,
-                          borderTop: `1px solid ${cat.border}`,
-                        }}>
-                          {catData.words.map((w: any) => (
-                            <span key={w.id} style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 3,
-                              padding: '3px 6px 3px 8px', borderRadius: 6,
-                              background: cat.bg, color: cat.color,
-                              fontSize: "0.75rem", fontWeight: 500, lineHeight: 1.4,
-                              opacity: w.enabled === false ? 0.35 : 1,
-                            }}>
-                              {w.word}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteWord(w.id);
-                                }}
-                                style={{
-                                  width: 14, height: 14, border: 'none', borderRadius: '50%',
-                                  background: 'transparent', cursor: 'pointer', padding: 0,
-                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                  color: cat.color, opacity: 0.35, fontSize: "0.625rem", lineHeight: 1,
-                                  transition: 'all 0.1s',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = cat.border; }}
-                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.35'; e.currentTarget.style.background = 'transparent'; }}
-                                title="删除">×</button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -504,7 +458,7 @@ export default function ShieldPage() {
                 display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.5,
               }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                系统内置 {builtinWords.length} 个屏蔽词，覆盖四大类别，在学生发送消息时自动拦截。点击类别可展开查看具体词条。
+                系统内置 {builtinWords.length} 个屏蔽词，覆盖四大类别，在学生发送消息时自动拦截。具体内容不便展示。
               </div>
             </div>
           )}

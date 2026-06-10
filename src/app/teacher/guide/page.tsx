@@ -103,7 +103,7 @@ const sections = [
   {
     id: 'student-join', title: '五、上课：学生端接入与互动', icon: 'log-in',
     items: [
-      <><strong>扫码即入</strong>：大屏点击「投屏发码」，学生扫码或在浏览器输入 <Highlight>http://192.168.x.x:3001/classroom</Highlight> 及 4 位互动码即可加入。</>,
+      <><strong>扫码即入</strong>：大屏点击「投屏发码」，学生扫码或在浏览器输入 <Highlight>http://教师机局域网IP:3001/classroom</Highlight> 及 4 位互动码即可加入。</>,
       <><strong>认领身份</strong>：输入互动码后，点选自己的姓名或小组进入对话界面。</>,
       <><strong>专注学习</strong>：页面顶部展示 AI 开场白。AI 回复时输入框暂时冻结，防止学生连击导致消息错乱。所有对话实时同步至教师控制台。</>,
     ],

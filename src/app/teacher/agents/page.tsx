@@ -113,7 +113,7 @@ export default function AgentsPage() {
             const platformLabels: Record<string, string> = {
               coze: 'Coze 低代码',
               'coze-agent': 'Coze 编程',
-              wenxin: '百度文心',
+              wenxin: '文心智能体',
               zhipuai: '清言智能体',
             };
             // 标签底色（极淡）
@@ -382,63 +382,28 @@ export default function AgentsPage() {
   );
 }
 
-function HelpIcon({ imageSrc }: { imageSrc: string }) {
-  const [show, setShow] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const iconRef = useRef<HTMLSpanElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showTooltip = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (iconRef.current) {
-      const r = iconRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 8, left: r.left + r.width / 2 });
-    }
-    setShow(true);
-  };
-
+function HelpIcon({ platform }: { platform: string }) {
   return (
-    <>
-      <span ref={iconRef} style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 4, cursor: 'pointer', verticalAlign: 'middle' }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={() => { timerRef.current = setTimeout(() => setShow(false), 300); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-          <line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-      </span>
-      {show && (
-        <div style={{
-          position: 'fixed', top: pos.top, left: pos.left,
-          transform: 'translateX(-50%)', zIndex: 9999, cursor: 'pointer',
-          background: 'white', borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
-          padding: 8, maxWidth: 340, border: '1px solid #e2e8f0',
-        }}
-          onMouseEnter={() => { if (timerRef.current) clearTimeout(timerRef.current); }}
-          onMouseLeave={() => { timerRef.current = setTimeout(() => setShow(false), 300); }}
-          onClick={() => setFullscreen(true)}
-        >
-          <img src={imageSrc} alt="配置说明" style={{ width: '100%', display: 'block', borderRadius: 6 }} />
-          <div style={{ textAlign: 'center', fontSize: "0.688rem", color: '#94a3b8', marginTop: 4 }}>点击放大</div>
-        </div>
-      )}
-      {fullscreen && (
-        <div onClick={() => setFullscreen(false)} style={{
-          position: 'fixed', inset: 0, zIndex: 100000,
-          background: 'rgba(0,0,0,0.75)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', padding: 32,
-        }}>
-          <img src={imageSrc} alt="配置说明" style={{
-            maxWidth: '95%', maxHeight: '95%', objectFit: 'contain',
-            borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
-          }} onClick={e => e.stopPropagation()} />
-        </div>
-      )}
-    </>
+    <span
+      onClick={() => window.open(`/help/agents?platform=${platform}`, '_blank')}
+      title="查看配置截图"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        padding: '1px 7px', borderRadius: 4,
+        background: '#f0f4ff', color: '#4f7bc9', cursor: 'pointer',
+        fontSize: "0.688rem", fontWeight: 500, marginLeft: 8,
+        verticalAlign: 'middle', lineHeight: '18px',
+        fontFamily: 'inherit', border: '0.5px solid #d0d9f0',
+        transition: 'all 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = '#e0e9ff'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = '#f0f4ff'; }}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      配置截图
+    </span>
   );
 }
 
@@ -669,7 +634,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   className="input"
                   value={greeting}
                   onChange={e => setGreeting(e.target.value)}
-                  placeholder={platform === 'coze-agent' ? '手动输入开场白内容' : '从 Coze 自动获取，或手动输入开场白'}
+                  placeholder={platform === 'coze' ? '从 Coze 自动获取，或手动输入开场白' : '手动输入开场白内容'}
                   style={{ fontSize: "0.813rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
                 />
               </div>
@@ -713,16 +678,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                       <div style={{ fontSize: "0.813rem", fontWeight: 600, color: p.disabled ? '#94a3b8' : (platform === p.value ? '#2563eb' : '#475569') }}>{p.label}</div>
                       <div style={{ fontSize: "0.625rem", color: p.disabled ? '#cbd5e1' : '#94a3b8', marginTop: 1 }}>{p.desc}</div>
                     </button>
-                      {p.helpUrl && (
-                        <a href={p.helpUrl} target="_blank" rel="noopener noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          style={{ fontSize: "0.625rem", color: '#94a3b8', textDecoration: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
-                          title="查看配置帮助">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                          帮助
-                        </a>
-                      )}
-                    </div>
+                      </div>
                   ))}
                 </div>
               </div>
@@ -731,7 +687,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'coze' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    Bot ID <HelpIcon imageSrc="/images/help/coze-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    Bot ID <HelpIcon platform="coze" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字"
@@ -744,7 +700,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'wenxin' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    App ID <HelpIcon imageSrc="/images/help/wenxin-api-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    App ID <HelpIcon platform="wenxin" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在文心智能体平台获取 App ID"
@@ -757,7 +713,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'zhipuai' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    Assistant ID <span style={{ color: 'var(--danger)' }}>*</span>
+                    Assistant ID <HelpIcon platform="zhipuai" /> <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="智能体对话页地址栏中的 ID"
@@ -769,7 +725,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* API URL — Coze Agent 必填 */}
               {platform === 'coze-agent' && (
                 <div>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon platform="coze-agent" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={apiUrl} onChange={e => { setApiUrl(e.target.value); clearError('apiUrl'); }}
                     placeholder="https://xxxx.coze.site"
                     style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiUrl ? '#ef4444' : undefined }} />
@@ -781,7 +737,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'coze-agent' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    Project ID <HelpIcon imageSrc="/images/help/coze-agent-config.png" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    Project ID <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={projectId} onChange={e => { setProjectId(e.target.value); clearError('projectId'); }}
                     placeholder="在 Coze 项目设置中获取 Project ID"
@@ -805,11 +761,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
 
               <div>
                 <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                  {platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token'} <HelpIcon imageSrc={
-                    platform === 'coze' ? '/images/help/coze-token.png' :
-                    platform === 'wenxin' ? '/images/help/wenxin-api-config.png' :
-                    '/images/help/coze-agent-config.png'
-                  } /> <span style={{ color: 'var(--danger)' }}>*</span>
+                  {platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token'} <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input className="input" type="password" value={apiKey} onChange={e => { setApiKey(e.target.value); clearError('apiKey'); }}
                   placeholder={

@@ -461,13 +461,16 @@ router.put('/:id/settings', async (req, res) => {
       }
 
       if (groups && Array.isArray(groups)) {
+        // 先清除旧的小组智能体关联，再重新创建
+        await tx.classroomAgent.deleteMany({
+          where: { classroomId: req.params.id },
+        });
         for (const g of groups) {
           if (g.id && g.agentId) {
             await tx.classroomGroup.update({
               where: { id: g.id },
               data: { agentId: g.agentId },
             });
-            // 确保 classroomAgent 记录存在（用于看板展示）
             await tx.classroomAgent.create({
               data: { classroomId: req.params.id, agentId: g.agentId },
             }).catch(() => {});

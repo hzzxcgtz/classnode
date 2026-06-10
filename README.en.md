@@ -107,13 +107,13 @@ npm config get registry
 
 #### Step 3: Deploy ClassNode
 
-Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.3.9x.x.zip`), extract it.
+Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.3.10x.x.zip`), extract it.
 
 Open a terminal in the extracted directory:
 
 ```bash
 # Enter the project directory (adjust path as needed)
-cd classnode-v1.3.9
+cd classnode-v1.3.10
 
 # Recommended: run the start script via Node.js
 node start.js

@@ -173,10 +173,7 @@ async function proxyCoze(
     auto_save_history: true,
     stream: false,
   });
-  console.log('[Coze] Sending chat request, messages:', additionalMessages.length, 'hasImage:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
-  console.log('[Coze] additional_messages count:', additionalMessages.length);
-  console.log('[Coze] Last msg content_type:', additionalMessages[additionalMessages.length - 1]?.content_type);
-  console.log('[Coze] Last msg content preview:', (additionalMessages[additionalMessages.length - 1]?.content || '').slice(0, 100));
+  console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
 
   const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
@@ -691,9 +688,7 @@ function isLocalFileUrl(url: string): boolean {
 async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
   try {
     const filePath = resolveLocalPath(fileUrl);
-    console.log('[CozeUpload] Resolved path:', filePath, 'size:', fs.existsSync(filePath) ? fs.statSync(filePath).size + 'B' : 'NOT FOUND');
-
-    console.log('[CozeUpload] Looking for file at:', filePath);
+    console.log('[CozeUpload] File:', path.basename(fileUrl), `(${fs.existsSync(filePath) ? fs.statSync(filePath).size + 'B' : 'NOT FOUND'})`);
 
     if (!fs.existsSync(filePath)) {
       console.error('[CozeUpload] File not found:', filePath);
@@ -723,9 +718,6 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
     const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('file', blob, fileName);
 
-    console.log('[CozeUpload] Uploading to Coze:', fileName, `(${(fileBuffer.length / 1024).toFixed(1)}KB, ${mimeType})`);
-
-    console.log('[CozeUpload] Sending to:', `${baseUrl}/v1/files/upload`);
     const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
       method: 'POST',
       headers: {

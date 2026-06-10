@@ -136,7 +136,7 @@ async function proxyCoze(
 
   // 历史消息 + 当前消息一起传入
   const additionalMessages: any[] = [];
-  if (history) {
+  if (history && (!fileUrls || fileUrls.length === 0)) {
     for (const h of history) {
       additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
     }

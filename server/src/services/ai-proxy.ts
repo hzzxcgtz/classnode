@@ -142,20 +142,30 @@ async function proxyCoze(
     }
   }
 
-  // 有文件时：将图片转为 base64 嵌入文本（兼容 Coze 模型视觉能力）
-  let finalMessage = message;
+  // 有文件时：上传图片到 Coze 并构造标准多模态消息
+  const fileIds: string[] = [];
   if (fileUrls && fileUrls.length > 0) {
     for (const url of fileUrls) {
-      const imgTag = await fileUrlToMarkdownImage(url);
-      if (imgTag) {
-        // 将图片标记追加到消息末尾
-        finalMessage = finalMessage ? `${finalMessage}\n\n${imgTag}` : imgTag;
-      }
+      const fid = await uploadFileToCoze(baseUrl, agent.apiKey, url);
+      if (fid) fileIds.push(fid);
     }
   }
-  additionalMessages.push({
-    role: 'user', content: finalMessage, content_type: 'text',
-  });
+  if (fileIds.length > 0) {
+    const contentArr: any[] = [];
+    for (const fid of fileIds) {
+      contentArr.push({ type: 'image', file_id: fid });
+    }
+    contentArr.push({ type: 'text', text: message });
+    additionalMessages.push({
+      role: 'user',
+      content: JSON.stringify(contentArr),
+      content_type: 'object_string',
+    });
+  } else {
+    additionalMessages.push({
+      role: 'user', content: message, content_type: 'text',
+    });
+  }
 
   const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
@@ -709,8 +719,9 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
 
     console.log('[CozeUpload] Uploading to Coze:', fileName, `(${(fileBuffer.length / 1024).toFixed(1)}KB, ${mimeType})`);
 
-    console.log('[CozeUpload] Sending to:', `${baseUrl}/v1/files/upload`);
-    const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
+    const uploadUrl = `${baseUrl}/open/v1/attachments/upload`;
+    console.log('[CozeUpload] Sending to:', uploadUrl);
+    const response = await fetchWithTimeout(uploadUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -734,7 +745,7 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
       return null;
     }
 
-    const fileId = data.data?.id;
+    const fileId = data.data?.id || data.data?.file_id || data.id;
     if (fileId) {
       console.log('[CozeUpload] Success, file_id:', fileId, 'file:', fileName);
       return fileId;

@@ -1491,15 +1491,8 @@ async function proxyWenxin(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName, fileUrls);
+    const body = buildWenxinBody(message, userName, fileUrls, agent.conversationId || undefined);
     body.source = agent.botId;
-
-    // 如有历史消息，使用最后一个 threadId 串联上下文
-    if (history && history.length > 0) {
-      // 文心 API 通过 threadId 串联上下文，首次不传，后续从响应获取
-      // 这里我们简化处理：不传 threadId，每次都独立对话
-      // 如果需要上下文串联，需要在前端或 socket 层维护 threadId
-    }
 
     const url = wenxinUrl(agent);
     const response = await fetchWithTimeout(url, {
@@ -1523,7 +1516,8 @@ async function proxyWenxin(
     if (!content) return { success: false, error: '文心智能体返回为空' };
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-    return { success: true, content: deanonymized };
+    const threadId = data.data?.threadId || agent.conversationId;
+    return { success: true, content: deanonymized, conversationId: threadId };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
   }
@@ -1540,7 +1534,7 @@ async function proxyWenxinStream(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName, fileUrls);
+    const body = buildWenxinBody(message, userName, fileUrls, agent.conversationId || undefined);
     body.source = agent.botId;
 
     const url = wenxinConversationUrl(agent);
@@ -1604,7 +1598,7 @@ async function proxyWenxinStream(
     }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-    return { success: true, content: deanonymized };
+    return { success: true, content: deanonymized, conversationId: agent.conversationId || undefined };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
   }

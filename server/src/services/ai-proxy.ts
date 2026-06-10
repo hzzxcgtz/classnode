@@ -172,7 +172,7 @@ async function proxyCoze(
     additional_messages: additionalMessages,
     stream: false,
   });
-  console.log('[Coze] Request body:', JSON.stringify({ ...JSON.parse(requestBody), additional_messages: JSON.parse(requestBody).additional_messages.map((m: any) => ({ role: m.role, content_type: m.content_type, content_preview: (m.content || '').slice(0, 80) })) }));
+  console.log('[Coze] Sending chat request, messages:', additionalMessages.length, 'hasImage:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
   console.log('[Coze] additional_messages count:', additionalMessages.length);
   console.log('[Coze] Last msg content_type:', additionalMessages[additionalMessages.length - 1]?.content_type);
   console.log('[Coze] Last msg content preview:', (additionalMessages[additionalMessages.length - 1]?.content || '').slice(0, 100));

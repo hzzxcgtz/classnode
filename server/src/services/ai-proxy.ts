@@ -151,17 +151,20 @@ async function proxyCoze(
     }
   }
 
-  // 有文件时使用 object_string 格式，确保 Coze 能识别图片
+  // 有文件时：文件单独作为消息发送，与文字分开（与 Coze 官方测试一致）
   if (fileIds.length > 0) {
     console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
-    const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
-      contentParts.push({ type: 'file', file_id: fid });
+      additionalMessages.push({
+        role: 'user',
+        content: JSON.stringify({ type: 'file', file_id: fid }),
+        content_type: 'object_string',
+      });
     }
     additionalMessages.push({
       role: 'user',
-      content: JSON.stringify(contentParts),
-      content_type: 'object_string',
+      content: message,
+      content_type: 'text',
     });
   } else {
     additionalMessages.push({
@@ -869,17 +872,20 @@ async function proxyCozeStream(
     }
   }
 
-  // 有文件时使用 object_string 格式，确保 Coze 能识别图片
+  // 有文件时：文件单独作为消息发送，与文字分开（与 Coze 官方测试一致）
   if (fileIds.length > 0) {
     console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
-    const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
-      contentParts.push({ type: 'file', file_id: fid });
+      additionalMessages.push({
+        role: 'user',
+        content: JSON.stringify({ type: 'file', file_id: fid }),
+        content_type: 'object_string',
+      });
     }
     additionalMessages.push({
       role: 'user',
-      content: JSON.stringify(contentParts),
-      content_type: 'object_string',
+      content: message,
+      content_type: 'text',
     });
   } else {
     additionalMessages.push({

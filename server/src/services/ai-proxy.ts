@@ -169,8 +169,6 @@ async function proxyCoze(
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
-    conversation_id: `classnode_${userName}`,
-    auto_save_history: true,
     stream: false,
   });
   console.log('[Coze] Request body keys:', Object.keys(JSON.parse(requestBody)));

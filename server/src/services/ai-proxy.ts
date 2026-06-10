@@ -167,6 +167,17 @@ async function proxyCoze(
     });
   }
 
+  const requestBody = JSON.stringify({
+    bot_id: agent.botId,
+    user_id: userName,
+    additional_messages: additionalMessages,
+    stream: false,
+  });
+  console.log('[Coze] Request body keys:', Object.keys(JSON.parse(requestBody)));
+  console.log('[Coze] additional_messages count:', additionalMessages.length);
+  console.log('[Coze] Last msg content_type:', additionalMessages[additionalMessages.length - 1]?.content_type);
+  console.log('[Coze] Last msg content preview:', (additionalMessages[additionalMessages.length - 1]?.content || '').slice(0, 100));
+
   const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
     {
@@ -175,12 +186,7 @@ async function proxyCoze(
         'Authorization': `Bearer ${agent.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        bot_id: agent.botId,
-        user_id: userName,
-        additional_messages: additionalMessages,
-        stream: false,
-      }),
+      body: requestBody,
     }
   );
 

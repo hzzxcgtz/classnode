@@ -44,8 +44,8 @@ const sections = [
     id: 'ai-agents', title: '二、招募：配置您的 AI 助教团队', icon: 'bot',
     items: [
       <div>想要课堂出彩，先要有好的 AI 帮手。进入「<Highlight>AI 智能体</Highlight>」页面开始招募：</div>,
-      <><strong>多平台兼容</strong>：目前已支持 <Highlight>Coze Bot</Highlight>（低代码）和 <Highlight>Coze Agent</Highlight>（编程接入）。<strong>其它接入方式</strong>陆续上线中。</>,
-      <><strong>配置更直观</strong>：填入平台提供的 API Key 和 Bot ID 等信息，可自定义本地名称（如"李白学长"）。支持一键从 Coze 拉取头像和开场白。</>,
+      <><strong>多平台兼容</strong>：目前已支持 <Highlight>Coze 低代码</Highlight>、<Highlight>Coze 编程</Highlight>、<Highlight>清言智能体</Highlight>（智谱清言）和 <Highlight>文心智能体</Highlight>（百度文心）四种平台。</>,
+      <><strong>配置更直观</strong>：填入平台提供的 API Key / Secret Key 等信息，可自定义本地名称（如"李白学长"）。Coze 低代码支持一键从 Coze 拉取头像和开场白。</>,
       <div>
         <div><strong>连通性检测</strong>：系统启动时自动检测 AI 智能体在线状态。</div>
         <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: 15, color: '#475569' }}>

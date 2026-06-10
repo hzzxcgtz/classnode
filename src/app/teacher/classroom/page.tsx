@@ -956,6 +956,11 @@ function ClassroomBoardContent() {
                   下载二维码图片
                 </button>
               </div>
+              <div style={{ textAlign: 'center', marginTop: 0 }}>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', maxWidth: 320, lineHeight: 1.6 }}>
+                  💡 请使用手机自带相机或浏览器扫码功能扫描二维码，微信/支付宝等扫码可能无法识别
+                </p>
+              </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
                 <p style={{

@@ -158,20 +158,18 @@ export default function AgentsPage() {
                       </span>
                       {['coze-agent', 'wenxin'].includes(agent.platform) && (
                         <span style={{
-                          padding: '2px 8px', borderRadius: 4,
-                          fontSize: 11, fontWeight: 500,
-                          background: '#f0fdf4', color: '#16a34a',
-                          border: '0.5px solid #bbf7d0',
+                          padding: '1px 6px', borderRadius: 3,
+                          fontSize: 10, fontWeight: 500,
+                          color: '#94a3b8', border: '0.5px solid #e2e8f0',
                         }}>
                           无图片
                         </span>
                       )}
                       {agent.platform === 'wenxin' && (
                         <span style={{
-                          padding: '2px 8px', borderRadius: 4,
-                          fontSize: 11, fontWeight: 500,
-                          background: '#fef2f2', color: '#dc2626',
-                          border: '0.5px solid #fecaca',
+                          padding: '1px 6px', borderRadius: 3,
+                          fontSize: 10, fontWeight: 500,
+                          color: '#94a3b8', border: '0.5px solid #e2e8f0',
                         }}>
                           非流式
                         </span>

@@ -136,8 +136,13 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 不传历史消息，全部由 Coze 通过 conversation_id 管理
+  // 历史消息 + 当前消息一起传入
   const additionalMessages: any[] = [];
+  if (history) {
+    for (const h of history) {
+      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
+    }
+  }
 
   // 有文件时：上传图片到 Coze 并构造标准多模态消息
   const fileIds: string[] = [];
@@ -162,14 +167,12 @@ async function proxyCoze(
     });
   }
 
-  const body: any = {
+  const requestBody = JSON.stringify({
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
     stream: false,
-  };
-  if (agent.conversationId) body.conversation_id = agent.conversationId;
-  const requestBody = JSON.stringify(body);
+  });
   console.log('[Coze] Request body keys:', Object.keys(JSON.parse(requestBody)));
   console.log('[Coze] additional_messages count:', additionalMessages.length);
   console.log('[Coze] Last msg content_type:', additionalMessages[additionalMessages.length - 1]?.content_type);
@@ -224,7 +227,6 @@ async function proxyCoze(
   return {
     success: true,
     content: deanonymized,
-    conversationId,
   };
 }
 
@@ -941,7 +943,6 @@ async function proxyCozeStream(
       bot_id: agent.botId,
       user_id: userName,
       additional_messages: additionalMessages,
-      conversation_id: agent.conversationId || undefined,
       stream: true,
     }),
   });
@@ -959,7 +960,6 @@ async function proxyCozeStream(
   let fullContent = '';
   let eventCount = 0;
   let currentEvent = '';
-  let streamConvId = agent.conversationId || '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -990,11 +990,7 @@ async function proxyCozeStream(
 
           // 跳过推理模型的思考过程（Coze 推理模型发 content_type=thinking 的片段）
           if (eventCount === 1) {
-            console.log('[CozeStream] First SSE event:', JSON.stringify({ event: currentEvent, data: Object.keys(parsed), hasConvId: !!parsed.conversation_id, hasDataConvId: !!parsed.data?.conversation_id }));
-            if (!streamConvId && (parsed.conversation_id || parsed.data?.conversation_id)) {
-              streamConvId = parsed.conversation_id || parsed.data?.conversation_id;
-              console.log('[CozeStream] Extracted conversationId:', streamConvId);
-            }
+            console.log('[CozeStream] First SSE event type:', currentEvent);
           }
           if (parsed.content_type === 'thinking') continue;
           // 跳过 verbose 中间事件（如 review process 等）
@@ -1022,7 +1018,7 @@ async function proxyCozeStream(
   }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
+  return { success: true, content: deanonymized };
 }
 
 async function proxyDifyStream(

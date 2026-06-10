@@ -63,8 +63,6 @@ function getOnlineStudentIds(classroomId: string, connMap: Map<string, string>):
 export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
   // 追踪每个学生的活跃连接，key: `${classroomId}:${studentId}`
   const activeConnections = new Map<string, string>();
-  // Coze 对话 ID 持久化，key: `${classroomId}:${studentId}`
-  const cozeConversations = new Map<string, string>();
 
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);
@@ -388,14 +386,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           content: h.content,
         }));
 
-        const convKey = `${classroom.id}:${data.studentId}`;
         const agentConfig = {
           platform: agent.platform,
           apiUrl: agent.apiUrl || undefined,
           apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
           botId: agent.botId || undefined,
           extra: agent.extra || undefined,
-          conversationId: cozeConversations.get(convKey) || '',
         };
 
         let fullContent = '';
@@ -426,18 +422,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         );
 
         console.log('[Socket] AI result:', JSON.stringify({ success: result.success, contentLen: result.content?.length, error: result.error, hasContent: !!result.content }).slice(0, 300));
-
-        // 保存 Coze conversationId 用于后续对话
-        if ((result as any).conversationId) {
-          cozeConversations.set(convKey, (result as any).conversationId);
-          console.log('[CozeConv] Saved conversationId for', convKey, '->', (result as any).conversationId);
-        } else {
-          console.log('[CozeConv] No conversationId in result, map size:', cozeConversations.size);
-        }
-        const existingConvId = cozeConversations.get(convKey);
-        if (existingConvId) {
-          console.log('[CozeConv] Using existing conversationId for', convKey, '->', existingConvId);
-        }
 
         if (result.success && result.content) {
           // Save AI response（同时保存用户上传的 fileUrls，确保刷新后图片仍有展示）

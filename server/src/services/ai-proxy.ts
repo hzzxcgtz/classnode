@@ -1293,16 +1293,25 @@ async function proxyZhipuai(
     return { success: false, error: `智谱清言返回错误: ${data.message || '未知错误'}` };
   }
 
-  // 提取文本输出
-  const output = data.result?.output || [];
+  // 提取文本输出（兼容不同响应格式）
   let fullContent = '';
-  for (const part of output) {
-    if (part.content?.type === 'text' && part.content?.text) {
-      fullContent += part.content.text;
+  const msg = data.result?.message;
+  if (msg?.content?.type === 'text' && msg.content?.text) {
+    fullContent = msg.content.text;
+  } else {
+    // 回退到旧的 output 格式
+    const output = data.result?.output || [];
+    for (const part of output) {
+      if (part.content?.type === 'text' && part.content?.text) {
+        fullContent += part.content.text;
+      }
     }
   }
 
-  if (!fullContent) return { success: false, error: '智谱清言返回为空' };
+  if (!fullContent) {
+    const snippet = JSON.stringify(data).slice(0, 200);
+    return { success: false, error: `智谱清言返回为空，响应: ${snippet}` };
+  }
 
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
   return { success: true, content: deanonymized };

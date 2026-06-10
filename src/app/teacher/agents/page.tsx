@@ -166,6 +166,16 @@ export default function AgentsPage() {
                           无图片
                         </span>
                       )}
+                      {agent.platform === 'wenxin' && (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 4,
+                          fontSize: 11, fontWeight: 500,
+                          background: '#fef2f2', color: '#dc2626',
+                          border: '0.5px solid #fecaca',
+                        }}>
+                          非流式
+                        </span>
+                      )}
                     </div>
                   </div>
 

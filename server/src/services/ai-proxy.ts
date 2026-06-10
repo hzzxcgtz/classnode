@@ -1369,8 +1369,12 @@ async function proxyZhipuaiStream(
           // Result: { history_id, conversation_id, message: { role, content: { type, text }, status }, status }
           if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
             const text = parsed.message.content.text;
-            fullContent += text;
-            onChunk(text);
+            // SSE 事件可能发累积文本，取增量部分
+            const delta = text.startsWith(fullContent) ? text.slice(fullContent.length) : text;
+            if (delta) {
+              fullContent += delta;
+              onChunk(delta);
+            }
           }
         } catch {}
       }

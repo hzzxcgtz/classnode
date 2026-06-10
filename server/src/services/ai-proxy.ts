@@ -134,10 +134,11 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息 + 当前消息一起传入
+  // 历史消息 + 当前消息一起传入（有图片时仅保留最近 4 条）
   const additionalMessages: any[] = [];
-  if (history && (!fileUrls || fileUrls.length === 0)) {
-    for (const h of history) {
+  const historySlice = (fileUrls && fileUrls.length > 0) ? history?.slice(-4) : history;
+  if (historySlice) {
+    for (const h of historySlice) {
       additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
     }
   }

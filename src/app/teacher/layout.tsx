@@ -316,13 +316,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ marginBottom: 28, paddingLeft: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {logoErr ? (
-              <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "0.875rem" }}>C</div>
+              <div style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "1.125rem" }}>C</div>
             ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+              <img src="/logo.png" alt="ClassNode" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div>
               <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
-              <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>AI 互动课堂系统</div>
+              <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 2 }}>AI 互动课堂系统</div>
             </div>
           </div>
         </div>

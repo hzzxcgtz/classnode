@@ -162,13 +162,17 @@ async function proxyCoze(
     });
   }
 
+  // 有 conversation_id 时不传 additional_messages，由 Coze 管理历史
   const body: any = {
     bot_id: agent.botId,
     user_id: userName,
-    additional_messages: additionalMessages,
     stream: false,
   };
-  if (agent.conversationId) body.conversation_id = agent.conversationId;
+  if (agent.conversationId) {
+    body.conversation_id = agent.conversationId;
+  } else {
+    body.additional_messages = additionalMessages;
+  }
   const requestBody = JSON.stringify(body);
   console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
 
@@ -905,9 +909,10 @@ async function proxyCozeStream(
     body: JSON.stringify({
       bot_id: agent.botId,
       user_id: userName,
-      additional_messages: additionalMessages,
       stream: true,
-      ...(agent.conversationId ? { conversation_id: agent.conversationId } : {}),
+      ...(agent.conversationId
+        ? { conversation_id: agent.conversationId }
+        : { additional_messages: additionalMessages }),
     }),
   });
 

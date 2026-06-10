@@ -151,14 +151,14 @@ async function proxyCoze(
     }
   }
 
-  // 有文件时：使用 object_string 格式（Coze API 多内容格式）
+  // 有文件时：上传到 Coze 并用 object_string 传 file_id
   if (fileIds.length > 0) {
     const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
       contentParts.push({ type: 'file', file_id: fid });
     }
     const contentStr = JSON.stringify(contentParts);
-    console.log('[Coze] object_string:', contentStr.slice(0, 200));
+    console.log('[Coze] object_string:', contentStr.slice(0, 300));
     additionalMessages.push({
       role: 'user',
       content: contentStr,
@@ -670,6 +670,7 @@ function isLocalFileUrl(url: string): boolean {
 async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
   try {
     const filePath = resolveLocalPath(fileUrl);
+    console.log('[CozeUpload] Resolved path:', filePath, 'size:', fs.existsSync(filePath) ? fs.statSync(filePath).size + 'B' : 'NOT FOUND');
 
     console.log('[CozeUpload] Looking for file at:', filePath);
 
@@ -880,14 +881,14 @@ async function proxyCozeStream(
     }
   }
 
-  // 有文件时：使用 object_string 格式（Coze API 多内容格式）
+  // 有文件时：上传到 Coze 并用 object_string 传 file_id
   if (fileIds.length > 0) {
     const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
       contentParts.push({ type: 'file', file_id: fid });
     }
     const contentStr = JSON.stringify(contentParts);
-    console.log('[Coze] object_string:', contentStr.slice(0, 200));
+    console.log('[Coze] object_string:', contentStr.slice(0, 300));
     additionalMessages.push({
       role: 'user',
       content: contentStr,

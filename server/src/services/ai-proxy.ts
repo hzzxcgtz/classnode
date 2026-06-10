@@ -142,33 +142,20 @@ async function proxyCoze(
     }
   }
 
-  // 上传文件到 Coze（获取 file_id）
-  const fileIds: string[] = [];
+  // 有文件时：将图片转为 base64 嵌入文本（兼容 Coze 模型视觉能力）
+  let finalMessage = message;
   if (fileUrls && fileUrls.length > 0) {
     for (const url of fileUrls) {
-      const fid = await uploadFileToCoze(baseUrl, agent.apiKey, url);
-      if (fid) fileIds.push(fid);
+      const imgTag = await fileUrlToMarkdownImage(url);
+      if (imgTag) {
+        // 将图片标记追加到消息末尾
+        finalMessage = finalMessage ? `${finalMessage}\n\n${imgTag}` : imgTag;
+      }
     }
   }
-
-  // 有文件时：上传到 Coze 并用 object_string 传 file_id
-  if (fileIds.length > 0) {
-    const contentParts: any[] = [{ type: 'text', text: message }];
-    for (const fid of fileIds) {
-      contentParts.push({ type: 'file', file_id: fid });
-    }
-    const contentStr = JSON.stringify(contentParts);
-    console.log('[Coze] object_string:', contentStr.slice(0, 300));
-    additionalMessages.push({
-      role: 'user',
-      content: contentStr,
-      content_type: 'object_string',
-    });
-  } else {
-    additionalMessages.push({
-      role: 'user', content: message, content_type: 'text',
-    });
-  }
+  additionalMessages.push({
+    role: 'user', content: finalMessage, content_type: 'text',
+  });
 
   const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
@@ -657,6 +644,24 @@ function resolveLocalPath(fileUrl: string): string {
     return path.join(process.env.CLASSNODE_DATA_DIR, relativePath);
   }
   return path.join(__dirname, '../..', relativePath);
+}
+
+/** 将本地图片文件转为 Markdown 图片标签（base64 嵌入） */
+async function fileUrlToMarkdownImage(fileUrl: string): Promise<string | null> {
+  try {
+    const filePath = resolveLocalPath(fileUrl);
+    if (!fs.existsSync(filePath)) return null;
+    const ext = path.extname(filePath).toLowerCase();
+    const imgExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    if (!imgExts.includes(ext)) return null;
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    };
+    const buf = fs.readFileSync(filePath);
+    const b64 = buf.toString('base64');
+    return `![image](data:${mimeMap[ext] || 'image/png'};base64,${b64})`;
+  } catch { return null; }
 }
 
 /** 检查文件 URL 是否为本地路径 */

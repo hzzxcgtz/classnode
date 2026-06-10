@@ -430,6 +430,13 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         // 保存 Coze conversationId 用于后续对话
         if ((result as any).conversationId) {
           cozeConversations.set(convKey, (result as any).conversationId);
+          console.log('[CozeConv] Saved conversationId for', convKey, '->', (result as any).conversationId);
+        } else {
+          console.log('[CozeConv] No conversationId in result, map size:', cozeConversations.size);
+        }
+        const existingConvId = cozeConversations.get(convKey);
+        if (existingConvId) {
+          console.log('[CozeConv] Using existing conversationId for', convKey, '->', existingConvId);
         }
 
         if (result.success && result.content) {

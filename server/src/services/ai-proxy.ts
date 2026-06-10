@@ -989,8 +989,12 @@ async function proxyCozeStream(
           }
 
           // 跳过推理模型的思考过程（Coze 推理模型发 content_type=thinking 的片段）
-          if (eventCount === 1 && !streamConvId && (parsed.conversation_id || parsed.data?.conversation_id)) {
-            streamConvId = parsed.conversation_id || parsed.data?.conversation_id;
+          if (eventCount === 1) {
+            console.log('[CozeStream] First SSE event:', JSON.stringify({ event: currentEvent, data: Object.keys(parsed), hasConvId: !!parsed.conversation_id, hasDataConvId: !!parsed.data?.conversation_id }));
+            if (!streamConvId && (parsed.conversation_id || parsed.data?.conversation_id)) {
+              streamConvId = parsed.conversation_id || parsed.data?.conversation_id;
+              console.log('[CozeStream] Extracted conversationId:', streamConvId);
+            }
           }
           if (parsed.content_type === 'thinking') continue;
           // 跳过 verbose 中间事件（如 review process 等）

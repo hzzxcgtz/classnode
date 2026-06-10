@@ -166,6 +166,7 @@ async function proxyCoze(
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
+    auto_save_history: true,
     stream: false,
   };
   if (agent.conversationId) body.conversation_id = agent.conversationId;
@@ -906,6 +907,7 @@ async function proxyCozeStream(
       bot_id: agent.botId,
       user_id: userName,
       additional_messages: additionalMessages,
+      auto_save_history: true,
       stream: true,
       ...(agent.conversationId ? { conversation_id: agent.conversationId } : {}),
     }),

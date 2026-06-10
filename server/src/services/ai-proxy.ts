@@ -719,9 +719,8 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
 
     console.log('[CozeUpload] Uploading to Coze:', fileName, `(${(fileBuffer.length / 1024).toFixed(1)}KB, ${mimeType})`);
 
-    const uploadUrl = `${baseUrl}/open/v1/attachments/upload`;
-    console.log('[CozeUpload] Sending to:', uploadUrl);
-    const response = await fetchWithTimeout(uploadUrl, {
+    console.log('[CozeUpload] Sending to:', `${baseUrl}/v1/files/upload`);
+    const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -901,7 +900,7 @@ async function proxyCozeStream(
   if (fileIds.length > 0) {
     const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
-      contentParts.push({ type: 'file', file_id: fid });
+      contentParts.push({ type: 'image', file_id: fid });
     }
     const contentStr = JSON.stringify(contentParts);
     console.log('[Coze] object_string:', contentStr.slice(0, 300));

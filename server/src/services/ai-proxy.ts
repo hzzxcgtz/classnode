@@ -1414,14 +1414,33 @@ async function proxyZhipuaiStream(
 
 // ---- 文心智能体平台（百度） ----
 
+/** 文件扩展名到 type 映射 */
+const wenxinFileType: Record<string, string> = {
+  '.png': 'image', '.jpg': 'image', '.jpeg': 'image',
+  '.webp': 'image', '.gif': 'image', '.svg': 'image',
+};
+const WENXIN_PORT = parseInt(process.env.PORT || '3001', 10);
+
 /** 构建文心 API 请求 body */
-function buildWenxinBody(message: string, userName: string, threadId?: string) {
+function buildWenxinBody(message: string, userName: string, fileUrls?: string[], threadId?: string) {
+  // 优先使用图片附件
+  let contentType = 'text';
+  let contentValue: any = { showText: message };
+
+  if (fileUrls && fileUrls.length > 0) {
+    const ext = fileUrls[0] ? fileUrls[0].toLowerCase().match(/\.[^.]+$/)?.[0] || '' : '';
+    if (wenxinFileType[ext]) {
+      contentType = 'image';
+      // 构造本地可访问的图片 URL（最佳推测，外网可能无法访问）
+      const fileUrl = fileUrls[0].startsWith('/') ? `http://127.0.0.1:${WENXIN_PORT}${fileUrls[0]}` : fileUrls[0];
+      contentValue = { imageUrl: fileUrl, showText: message };
+    }
+    // 非图片文件暂不支持，降级为文本
+  }
+
   const body: any = {
     message: {
-      content: {
-        type: 'text',
-        value: { showText: message },
-      },
+      content: { type: contentType, value: contentValue },
     },
     source: '',
     from: 'openapi',
@@ -1473,7 +1492,7 @@ async function proxyWenxin(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName);
+    const body = buildWenxinBody(message, userName, fileUrls);
     body.source = agent.botId;
 
     // 如有历史消息，使用最后一个 threadId 串联上下文
@@ -1522,7 +1541,7 @@ async function proxyWenxinStream(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName);
+    const body = buildWenxinBody(message, userName, fileUrls);
     body.source = agent.botId;
 
     const url = wenxinConversationUrl(agent);

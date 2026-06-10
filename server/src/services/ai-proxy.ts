@@ -151,20 +151,18 @@ async function proxyCoze(
     }
   }
 
-  // 有文件时：用 content_type: "file" 传文件 ID（Coze v3 API 标准方式）
+  // 有文件时：使用 object_string 格式（Coze API 多内容格式）
   if (fileIds.length > 0) {
-    console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
+    const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
-      additionalMessages.push({
-        role: 'user',
-        content: fid,
-        content_type: 'file',
-      });
+      contentParts.push({ type: 'file', file_id: fid });
     }
+    const contentStr = JSON.stringify(contentParts);
+    console.log('[Coze] object_string:', contentStr.slice(0, 200));
     additionalMessages.push({
       role: 'user',
-      content: message,
-      content_type: 'text',
+      content: contentStr,
+      content_type: 'object_string',
     });
   } else {
     additionalMessages.push({
@@ -705,6 +703,7 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
 
     console.log('[CozeUpload] Uploading to Coze:', fileName, `(${(fileBuffer.length / 1024).toFixed(1)}KB, ${mimeType})`);
 
+    console.log('[CozeUpload] Sending to:', `${baseUrl}/v1/files/upload`);
     const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
       method: 'POST',
       headers: {
@@ -713,14 +712,16 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
       body: formData,
     });
 
+    const respText = await response.text();
+    console.log('[CozeUpload] HTTP', response.status, ':', respText.slice(0, 300));
+
     if (!response.ok) {
-      const err = await response.text();
-      console.error('[CozeUpload] HTTP Error:', response.status, err);
+      console.error('[CozeUpload] HTTP Error:', response.status, respText);
       return null;
     }
 
-    const data = await response.json();
-    console.log('[CozeUpload] Response:', JSON.stringify(data));
+    let data;
+    try { data = JSON.parse(respText); } catch { data = {}; }
 
     if (data.code !== 0 && data.code !== undefined) {
       console.error('[CozeUpload] API error:', data.msg || 'unknown');
@@ -879,20 +880,18 @@ async function proxyCozeStream(
     }
   }
 
-  // 有文件时：用 content_type: "file" 传文件 ID（Coze v3 API 标准方式）
+  // 有文件时：使用 object_string 格式（Coze API 多内容格式）
   if (fileIds.length > 0) {
-    console.log('[Coze] Attaching files, count:', fileIds.length, 'ids:', fileIds, 'msg:', message.slice(0, 60));
+    const contentParts: any[] = [{ type: 'text', text: message }];
     for (const fid of fileIds) {
-      additionalMessages.push({
-        role: 'user',
-        content: fid,
-        content_type: 'file',
-      });
+      contentParts.push({ type: 'file', file_id: fid });
     }
+    const contentStr = JSON.stringify(contentParts);
+    console.log('[Coze] object_string:', contentStr.slice(0, 200));
     additionalMessages.push({
       role: 'user',
-      content: message,
-      content_type: 'text',
+      content: contentStr,
+      content_type: 'object_string',
     });
   } else {
     additionalMessages.push({

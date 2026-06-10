@@ -430,7 +430,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
         // 保存各平台的对话 ID
         if ((result as any).conversationId) {
           conversationIds.set(convKey, (result as any).conversationId);
+          console.log('[Conv] Saved', convKey, '=', (result as any).conversationId);
+        } else {
+          console.log('[Conv] No conversationId for', convKey);
         }
+        console.log('[Conv] Using', convKey, '=', agentConfig.conversationId);
 
         if (result.success && result.content) {
           // Save AI response（同时保存用户上传的 fileUrls，确保刷新后图片仍有展示）

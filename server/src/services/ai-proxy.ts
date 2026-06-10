@@ -136,12 +136,12 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息 + 当前消息一起传入（有图片时仅保留最近 3 条）
+  // 历史消息 + 当前消息（有图片时不带历史，Coze 限制）
   const additionalMessages: any[] = [];
-  const maxHistory = (fileUrls && fileUrls.length > 0) ? 3 : (history?.length || 0);
-  const historySlice = history?.slice(-maxHistory) || [];
-  for (const h of historySlice) {
-    additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
+  if (!fileUrls || fileUrls.length === 0) {
+    for (const h of history || []) {
+      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
+    }
   }
 
   // 有文件时：上传图片到 Coze 并构造标准多模态消息

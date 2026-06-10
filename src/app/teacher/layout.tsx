@@ -358,8 +358,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {navItems.map(item => {
           const p = pathname || '';
           const isActive = item.path === '/teacher'
-            ? p === '/teacher' || p.startsWith('/teacher/classroom')
-            : p.startsWith(item.path);
+            ? p.replace(/\/$/, '') === '/teacher' || p.startsWith('/teacher/classroom')
+            : p.replace(/\/$/, '') === item.path || p.startsWith(item.path + '/');
           return (
             <button
               key={item.path}

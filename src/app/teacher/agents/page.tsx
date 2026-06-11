@@ -162,7 +162,7 @@ export default function AgentsPage() {
                           fontSize: "0.625rem", fontWeight: 500,
                           color: '#94a3b8', border: '0.5px solid #e2e8f0',
                         }}>
-                          无图片
+                          纯文字
                         </span>
                       )}
                       {agent.platform === 'wenxin' && (
@@ -664,22 +664,34 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     { value: 'zhipuai', label: '清言智能体', desc: '智谱清言', disabled: false, helpUrl: 'https://chatglm.cn/developersPanel/apiSet' },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false, helpUrl: 'https://agents.baidu.com' },
                     { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true, helpUrl: '' },
-                  ].map(p => (
+                  ].map(p => {
+                    const logoMap: Record<string, string> = {
+                      coze: 'coze-lowcode',
+                      'coze-agent': 'coze-code',
+                      zhipuai: 'zhipuai',
+                      wenxin: 'wenxin',
+                    };
+                    return (
                     <div key={p.value} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
                       <button type="button"
                         onClick={() => !p.disabled && setPlatform(p.value)}
                         title={p.disabled ? '暂未开放' : undefined}
                         style={{
-                          width: '100%', padding: '7px 6px', borderRadius: 6, cursor: p.disabled ? 'not-allowed' : 'pointer',
+                          width: '100%', padding: '10px 6px 7px', borderRadius: 6, cursor: p.disabled ? 'not-allowed' : 'pointer',
                           border: `1.5px solid ${platform === p.value && !p.disabled ? '#2563eb' : '#e2e8f0'}`,
                           background: platform === p.value && !p.disabled ? '#eef2ff' : p.disabled ? '#f8f9fb' : 'white',
                           textAlign: 'center', transition: 'all 0.12s', opacity: p.disabled ? 0.5 : 1, fontFamily: 'inherit',
                       }}>
+                        {logoMap[p.value] && (
+                          <img src={`/images/platforms/${logoMap[p.value]}.png`} alt=""
+                            style={{ width: 22, height: 22, objectFit: 'contain', marginBottom: 4, display: 'block', margin: '0 auto 4px' }} />
+                        )}
                       <div style={{ fontSize: "0.813rem", fontWeight: 600, color: p.disabled ? '#94a3b8' : (platform === p.value ? '#2563eb' : '#475569') }}>{p.label}</div>
                       <div style={{ fontSize: "0.625rem", color: p.disabled ? '#cbd5e1' : '#94a3b8', marginTop: 1 }}>{p.desc}</div>
                     </button>
                       </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -772,10 +784,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   }
                   style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
                 {fieldErrors.apiKey && <FieldError message={fieldErrors.apiKey} />}
-                <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                  {platform === 'wenxin' ? '在文心智能体平台-部署-API 调用中获取 Secret Key' : platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' : '在对应平台的个人设置中创建并复制访问令牌'}
-                </p>
                 {platform === 'wenxin' && (
                   <div style={{
                     marginTop: 8, padding: '8px 12px', borderRadius: 8,

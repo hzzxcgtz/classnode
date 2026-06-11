@@ -25,13 +25,15 @@
 
 ## Why It Was Built
 
-AI technology is advancing rapidly, and many teachers can skillfully craft excellent AI agents. Yet when they eagerly try to bring these achievements into real classrooms, they are often held back by harsh realities: fragile school networks, tedious account registration, invisible interaction processes, and data that scatters when the bell rings.
+AI technology is advancing fast. Many teachers can now craft impressive AI agents on platforms like Coze and Zhipu AI. But here's the real question: how do you get an entire class of 40 students to use it at the same time?
 
-**When technology itself is no longer a barrier, the real challenge is deployment.**
+The reality is often frustrating — sluggish school networks, students struggling to register, teachers blind to what students are discussing with AI, and all conversation data vanishing when the bell rings. The technology is ready, but deployment isn't.
 
-ClassNode was born to break through this wall. It is a lightweight, local AI interactive classroom system that delivers a teacher's carefully crafted AI agents to every student's screen — safely, smoothly, regardless of network fluctuations or device differences.
+**When technology itself is no longer the barrier, the real challenge is making it work in the classroom.**
 
-> Turning AI in the classroom from an occasional "worth a try" into a daily "used in every class."
+ClassNode was built to solve this. It's not a cloud platform — it's an AI classroom system that lives on your computer. Teachers can deliver their carefully crafted AI agents to every student safely and effortlessly, regardless of network quality or device type. Just open a browser and start class.
+
+> One goal only: make AI in the classroom an everyday reality, not just an occasional experiment.
 
 ---
 
@@ -39,20 +41,20 @@ ClassNode was born to break through this wall. It is a lightweight, local AI int
 
 | Traditional Pain Points | ClassNode's Solution |
 | :--- | :--- |
-| **Cumbersome registration, hard to distribute** | **Scan to join** — no passwords, no registration, the whole class connects in seconds |
-| **Black box process, no visibility into learning** | **Real-time sync** — full panorama on the teacher dashboard, fully visualized monitoring throughout |
-| **Internet-dependent, limited by bandwidth** | **LAN-based** — no internet access needed, unafraid of network outages |
-| **Data vanishes, nothing left for research** | **Local storage** — complete record of trajectories, one-click Word report export |
+| **Students can't even log in, the AI lesson stalls before it starts** | **No-registration QR access** — scan or enter a 4-digit code, the whole class joins in seconds |
+| **Teachers have no idea what students are doing with AI** | **Real-time dashboard** — full visibility into every student's conversation, no blind spots |
+| **One network hiccup and the AI lesson breaks** | **Students don't need internet** — the teacher's computer acts as the gateway, lessons keep running regardless of network quality |
+| **Conversation data vanishes when the bell rings** | **All data stays on the local hard drive** — review anytime, one-click Word report with word cloud export |
 
 ---
 
 ## Core Features
 
-- **Unified Agent Management** — Supports Coze, Zhipu AI and OpenAI-compatible APIs, with built-in automatic connectivity check
-- **Multi-Dimension Teaching Modes** — Flexibly switch between Standard (individual dialogue), Group (collaborative inquiry), and Advanced (differentiated instruction) scenarios
-- **Panoramic Classroom Dashboard** — God's-eye real-time monitoring of the whole class; dynamic word clouds and leaderboards make learning clear at a glance
-- **Intelligent Content Filtering** — 100+ built-in blocked words, custom rules, auto-lock when the threshold is triggered, keeping the classroom environment safe
-- **Data Value Closed Loop** — Runs through the entire flow of "lesson prep → interaction → review"; one-click Word report export and seamless cross-device migration
+- **Multi-Platform Agent Support** — Coze Low-Code, Coze Code, Zhipu AI, and Wenxin AI agents with automatic connectivity checks
+- **Three Teaching Modes** — Standard (individual chat), Group (collaborative inquiry), and Advanced (differentiated instruction) to fit different classroom scenarios
+- **Full Classroom Dashboard** — Real-time monitoring of all student conversations, with word clouds and activity leaderboards
+- **Smart Content Filtering** — Built-in blocked word library with custom rules and auto-black screen when threshold is triggered
+- **Complete Data Workflow** — Covers lesson prep, classroom interaction, and post-class review; one-click Word report export with cross-device migration support
 
 ---
 
@@ -107,13 +109,13 @@ npm config get registry
 
 #### Step 3: Deploy ClassNode
 
-Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.3.10x.x.zip`), extract it.
+Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.3.11x.x.zip`), extract it.
 
 Open a terminal in the extracted directory:
 
 ```bash
 # Enter the project directory (adjust path as needed)
-cd classnode-v1.3.10
+cd classnode-v1.3.11
 
 # Recommended: run the start script via Node.js
 node start.js

@@ -84,16 +84,7 @@ async function main() {
   }
   await step('npx prisma generate', SERVER, '生成 Prisma 客户端');
 
-  const versionFile = resolve(SERVER, '.schema-version');
-  const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
-  const currentVer = pkg.version || '';
-  const savedVer = existsSync(versionFile) ? readFileSync(versionFile, 'utf8').trim() : '';
-  if (savedVer === currentVer) {
-    log('', '数据库 schema 已是最新 (v' + currentVer + ')，跳过');
-  } else {
-    await step('npx prisma db push --accept-data-loss', SERVER, '初始化数据库表');
-    writeFileSync(versionFile, currentVer, 'utf8');
-  }
+  await step('npx prisma db push --accept-data-loss', SERVER, '同步数据库 schema 至最新');
   line();
 
   // 4. 编译后端

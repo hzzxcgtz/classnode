@@ -170,7 +170,6 @@ function StudentChatContent() {
   const [connected, setConnected] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
-  const [isListening, setIsListening] = useState(false);
   const [paused, setPaused] = useState(false);
   const [agentDisabled, setAgentDisabled] = useState(false);
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
@@ -178,6 +177,7 @@ function StudentChatContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [teacherNotif, setTeacherNotif] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -436,7 +436,7 @@ function StudentChatContent() {
 
       socket.on('ai-error', (data: any) => {
         setWaitingAI(false);
-        setConnectionError('AI 回复遇到了问题，请稍后重试');
+        setConnectionError(data.error || 'AI 回复遇到了问题，请稍后重试');
       });
 
       socket.on('agent-disabled', () => {
@@ -495,6 +495,12 @@ function StudentChatContent() {
           setStreamingContent('');
           setWaitingAI(false);
         }
+      });
+
+      socket.on('teacher-notification', (data: any) => {
+        setTeacherNotif(data.message);
+        // 15 秒后自动消失
+        setTimeout(() => setTeacherNotif(null), 15000);
       });
 
       socket.on('shield-warned', (data: any) => {
@@ -593,32 +599,6 @@ function StudentChatContent() {
     } catch {}
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const startVoiceInput = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setToast({ msg: '您的浏览器不支持语音输入，请使用 Chrome', type: 'info' });
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'zh-CN';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      if (inputRef.current) {
-        inputRef.current.value += transcript;
-        setInput(inputRef.current.value);
-      }
-    };
-    recognition.onerror = () => setIsListening(false);
-    recognition.start();
-    // 语音开始后聚焦输入框
-    inputRef.current?.focus();
   };
 
   const removeAttachedFile = (index: number) => {
@@ -949,6 +929,39 @@ function StudentChatContent() {
         </button>
       )}
 
+      {/* 教师通知气泡 */}
+      {teacherNotif && (
+        <div style={{
+          position: 'relative', maxWidth: 800, margin: '0 auto', padding: '0 20px',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            padding: '10px 14px', borderRadius: 10,
+            background: '#eef2ff', border: '1px solid #c7d2fe',
+            fontSize: "0.813rem", color: '#1e3a5f', lineHeight: 1.6,
+            boxShadow: '0 4px 16px rgba(37,99,235,0.1)',
+            marginBottom: 6,
+          }}>
+            <div style={{
+              flexShrink: 0, width: 24, height: 24, borderRadius: 6,
+              background: '#3b82f6', color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "0.75rem", color: '#4f46e5', marginBottom: 2 }}>老师</div>
+              <div>{teacherNotif}</div>
+            </div>
+            <button onClick={() => setTeacherNotif(null)}
+              style={{ flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'transparent', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, fontSize: "0.875rem", lineHeight: 1 }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#e0e7ff'; e.currentTarget.style.color = '#475569'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+            >✕</button>
+          </div>
+        </div>
+      )}
+
       {/* === 输入区域 === */}
       <div style={{ padding: '10px 20px 14px', background: 'white', borderTop: '1px solid #eef2f6', position: 'relative' }}>
         {/* 附件预览 */}
@@ -1067,17 +1080,6 @@ function StudentChatContent() {
             )}
           </button>
 
-          {/* 语音按钮 */}
-          <button onClick={startVoiceInput} disabled={waitingAI || paused || agentDisabled}
-            title={isListening ? '正在聆听...' : '语音输入'}
-            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${isListening ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 12, background: isListening ? '#fef2f2' : 'white', cursor: 'pointer', color: isListening ? '#ef4444' : '#6b7280', opacity: (waitingAI || paused || agentDisabled) ? 0.4 : 1, transition: 'all .15s' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="23"/>
-              <line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
-          </button>
 
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}

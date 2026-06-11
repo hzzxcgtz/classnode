@@ -46,5 +46,9 @@ export function useSocket() {
     };
   }, []);
 
-  return { socket: socketRef, joinClassroom, joinTeacherBoard, sendMessage, on };
+  const emit = useCallback((event: string, ...args: any[]) => {
+    socketRef.current?.emit(event, ...args);
+  }, []);
+
+  return { socket: socketRef, joinClassroom, joinTeacherBoard, sendMessage, on, emit };
 }

@@ -100,7 +100,10 @@ function ClassroomBoardContent() {
   const gridRef = useRef<HTMLDivElement>(null);
   const fsContentRef = useRef<HTMLDivElement>(null);
   const fullscreenContentRef = useRef<HTMLDivElement>(null);
-  const { joinTeacherBoard, on } = useSocket();
+  const { joinTeacherBoard, on, emit } = useSocket();
+  const [notifyState, setNotifyState] = useState<{ show: boolean; studentId?: string; studentName?: string }>({ show: false });
+  const [notifyText, setNotifyText] = useState('');
+  const [notifySent, setNotifySent] = useState(false);
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
   const groupTooltipThrottle = useRef(0);
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
@@ -240,6 +243,13 @@ function ClassroomBoardContent() {
       setAllMessages(msgs);
     } catch {}
   }, [id]);
+
+  // ESC 关闭投屏
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCodeScreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!id) { router.push('/teacher'); return; }
@@ -425,6 +435,13 @@ function ClassroomBoardContent() {
                 </svg>
                 投屏发码
               </button>
+              <button className="btn btn-secondary" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
+                style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                发通知
+              </button>
               {paused && (
                 <button className="btn btn-secondary" onClick={async () => {
                   await api.resumeClassroom(id);
@@ -546,7 +563,7 @@ function ClassroomBoardContent() {
                 const isGroup = groupCards && item.members;
                 const cs = isGroup ? item.members[0] : item;
                 const student = cs.student;
-                const sid = student.id;
+                const sid = cs.student.id;
                 const status = isGroup
                   ? item.members.some((m: any) => studentStatuses[m.student.id] === 'online')
                     ? 'online'
@@ -636,6 +653,11 @@ function ClassroomBoardContent() {
                                         {anyBlacklisted ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
                                       </svg>
                                     </button>
+                                    <button title="发通知"
+                                      onClick={(e) => { e.stopPropagation(); setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
+                                      style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef2ff', color: '#4f46e5', padding: 0 }}>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+                                    </button>
                                     <button title="清除对话"
                                       onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${item.group?.name || '该小组'}」全体成员的对话记录？`)) return; for (const m of item.members) { try { await api.clearStudentMessages(id, m.student.id); } catch {} } }}
                                       style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
@@ -652,6 +674,11 @@ function ClassroomBoardContent() {
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     {studentBlacklisted[sid] ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
                                   </svg>
+                                </button>
+                                <button title="发消息"
+                                  onClick={(e) => { e.stopPropagation(); setNotifyText(''); setNotifySent(false); setNotifyState({ show: true, studentId: sid, studentName: student.name }); }}
+                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef2ff', color: '#4f46e5', padding: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                 </button>
                                 <button title="清除对话"
                                   onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
@@ -919,7 +946,7 @@ function ClassroomBoardContent() {
                 <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
-            <p style={{ fontSize: "1.875rem", color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>请使用移动终端的相机或浏览器扫描下方二维码</p>
+            <p style={{ fontSize: "1.875rem", color: 'rgba(255,255,255,0.6)', marginBottom: 36 }}>使用平板或手机自带相机扫码，微信/支付宝等扫码可能出现功能异常</p>
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 56, marginBottom: 36, flexWrap: 'wrap' }}>
               <div style={{
                 background: 'white', borderRadius: 24, overflow: 'hidden',
@@ -958,11 +985,6 @@ function ClassroomBoardContent() {
                   下载二维码图片
                 </button>
               </div>
-              <div style={{ textAlign: 'center', marginTop: 0 }}>
-                <p style={{ fontSize: "0.875rem", color: 'rgba(255,255,255,0.4)', maxWidth: 320, lineHeight: 1.6 }}>
-                  💡 请使用手机自带相机或浏览器扫码功能扫描二维码，微信/支付宝等扫码可能无法识别
-                </p>
-              </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
                 <p style={{
@@ -973,7 +995,7 @@ function ClassroomBoardContent() {
                 </p>
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
-                  {teacherCode.split('').map((d, i) => (
+                  {(teacherCode || '').split('').map((d: string, i: number) => (
                     <div key={i} style={{
                       width: 96, height: 112, borderRadius: 14,
                       background: 'rgba(37,99,235,0.15)',
@@ -1400,10 +1422,90 @@ function ClassroomBoardContent() {
           {groupMembersMap[groupTooltip.id].map((d: any) => d.studentName).filter(Boolean).join('、')}
         </div>
       )}
+      {/* 发通知弹窗 */}
+      {notifyState.show && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+        }} onClick={() => setNotifyState({ show: false })}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'white', borderRadius: 14, padding: 0,
+            maxWidth: 440, width: '90%', maxHeight: '90vh', overflowY: 'auto',
+          }}>
+            <div style={{ padding: '20px 24px 16px' }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 4px' }}>
+                {notifyState.studentId ? `发消息给 ${notifyState.studentName || notifyState.studentId}` : '发通知给全班'}
+              </h3>
+              <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 14px' }}>
+                {notifyState.studentId ? '消息将出现在该学生对话页右下角' : '消息将出现在全班学生的对话页右下角'}
+              </p>
+              {notifySent ? (
+                <div style={{
+                  padding: '14px', borderRadius: 8, background: '#f0fdf4',
+                  border: '1px solid #bbf7d0', textAlign: 'center',
+                  fontSize: "0.875rem", color: '#166534', fontWeight: 500,
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }}><polyline points="20 6 9 17 4 12" /></svg>
+                  已发送
+                </div>
+              ) : (
+                <>
+                  <textarea
+                    className="input"
+                    value={notifyText}
+                    onChange={e => { setNotifyText(e.target.value); }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        const msg = notifyText.trim();
+                        if (!msg) return;
+                        emit('teacher-send-notification', {
+                          classroomId: id,
+                          studentId: notifyState.studentId,
+                          message: msg,
+                        });
+                        setNotifySent(true);
+                        setTimeout(() => setNotifyState({ show: false }), 1200);
+                      }
+                    }}
+                    placeholder="输入你想对学生说的话..."
+                    rows={4}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: "0.813rem", padding: '10px 14px', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>Enter 发送 · Shift+Enter 换行</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary" onClick={() => setNotifyState({ show: false })} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
+                    <button className="btn btn-primary" onClick={() => {
+                      const msg = notifyText.trim();
+                      if (!msg) return;
+                      emit('teacher-send-notification', {
+                        classroomId: id,
+                        studentId: notifyState.studentId,
+                        message: msg,
+                      });
+                      setNotifySent(true);
+                      setTimeout(() => setNotifyState({ show: false }), 1200);
+                    }} disabled={!notifyText.trim()}
+                      style={{ fontSize: "0.813rem", padding: '7px 20px' }}>
+                      发送
+                    </button>
+                  </div>
+                </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <Toast msg={toast.msg} type={toast.type as any} onClose={() => setToast(null)} />}
     </div>
   );
 }
+
 
 // ─── 对话分析面板 ──────────────────────────────────────────────
 
@@ -1540,36 +1642,64 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
 
   useEffect(() => { loadAnalytics(); }, [classroomId]);
 
-  // 词云：根据来源过滤，排除被屏蔽词过滤的消息（内容含 ** 表示被替换）
-  const isShieldFiltered = (m: any) => (m.content || '').includes('**');
-  const filteredForCloud = cloudSource === 'both'
+  // 词云计算：只在 allMessages 或 cloudSource 变化时才重算
+  const isShieldFiltered = useCallback((m: any) => (m.content || '').includes('**'), []);
+  const filteredForCloud = useMemo(() => cloudSource === 'both'
     ? allMessages.filter((m: any) => !isShieldFiltered(m))
-    : allMessages.filter((m: any) => m.role === cloudSource && !isShieldFiltered(m));
-  const words = extractKeywords(filteredForCloud.map((m: any) => m.content || ''));
+    : allMessages.filter((m: any) => m.role === cloudSource && !isShieldFiltered(m)), [allMessages, cloudSource, isShieldFiltered]);
+  const words = useMemo(() => extractKeywords(filteredForCloud.map((m: any) => m.content || '')), [filteredForCloud]);
 
-  // 活跃学生排名
-  const studentMsgCounts = new Map<string, { name: string; count: number }>();
-  for (const m of allMessages) {
-    const sid = m.classroomStudent?.student?.id;
-    const name = m.classroomStudent?.student?.name;
-    if (!sid || !name) continue;
-    const key = sid;
-    const existing = studentMsgCounts.get(key) || { name, count: 0 };
-    existing.count++;
-    studentMsgCounts.set(key, existing);
-  }
-  const topStudents = [...studentMsgCounts.entries()]
-    .map(([id, data]) => ({ id, ...data }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-  const topMaxCount = topStudents[0]?.count || 1;
+  // 活跃学生排名：只在 allMessages 变化时重算
+  const topStudents = useMemo(() => {
+    const studentMsgCounts = new Map<string, { name: string; count: number }>();
+    for (const m of allMessages) {
+      const sid = m.classroomStudent?.student?.id;
+      const name = m.classroomStudent?.student?.name;
+      if (!sid || !name) continue;
+      const key = sid;
+      const existing = studentMsgCounts.get(key) || { name, count: 0 };
+      existing.count++;
+      studentMsgCounts.set(key, existing);
+    }
+    const sorted = [...studentMsgCounts.entries()]
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    const maxCount = sorted[0]?.count || 1;
+    return { list: sorted, maxCount };
+  }, [allMessages]);
 
   // 参与人数统计
-  const participantStudents = new Map<string, number>();
-  for (const m of allMessages) {
-    const sid = m.classroomStudent?.student?.id;
-    if (sid) participantStudents.set(sid, (participantStudents.get(sid) || 0) + 1);
-  }
+  const participantCount = useMemo(() => {
+    const sids = new Set<string>();
+    for (const m of allMessages) {
+      const sid = m.classroomStudent?.student?.id;
+      if (sid) sids.add(sid);
+    }
+    return sids.size;
+  }, [allMessages]);
+
+  // 词云组件 props 全部用 useMemo/useCallback 稳定引用，避免父组件重渲染时触发 WordCloud 重算
+  const wordCloudData = useMemo(() => words.map(w => ({ text: w.word, value: w.count })), [words]);
+  const stableFont = useCallback(() => '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif', []);
+  const wordFontSize = useCallback((word: any) => {
+    const counts = words.map(w => w.count);
+    const min = Math.min(...counts);
+    const max = Math.max(...counts);
+    const range = max - min || 1;
+    return 11 + ((word.value - min) / range) * 16;
+  }, [words]);
+  const wordFill = useCallback((_w: any, i: number) => `url(#wcg${(i % 6) + 1})`, []);
+  const wordGradients = useMemo(() => [
+    { id: 'wcg1', type: 'linear' as const, angle: 45, stops: [{ offset: '0%' as const, color: '#2563eb' }, { offset: '100%' as const, color: '#7c3aed' }] },
+    { id: 'wcg2', type: 'linear' as const, angle: -45, stops: [{ offset: '0%' as const, color: '#db2777' }, { offset: '100%' as const, color: '#ea580c' }] },
+    { id: 'wcg3', type: 'linear' as const, angle: 135, stops: [{ offset: '0%' as const, color: '#059669' }, { offset: '100%' as const, color: '#10b981' }] },
+    { id: 'wcg4', type: 'linear' as const, angle: 90, stops: [{ offset: '0%' as const, color: '#7c3aed' }, { offset: '100%' as const, color: '#c084fc' }] },
+    { id: 'wcg5', type: 'linear' as const, angle: 0, stops: [{ offset: '0%' as const, color: '#dc2626' }, { offset: '100%' as const, color: '#fbbf24' }] },
+    { id: 'wcg6', type: 'linear' as const, angle: -90, stops: [{ offset: '0%' as const, color: '#0891b2' }, { offset: '100%' as const, color: '#2dd4bf' }] },
+  ], []);
+  const renderWord = useCallback((data: any, ref: any) => <WordText data={data} ref={ref} />, []);
+  const stableRotate = useCallback(() => 0, []);
 
   if (collapsed) {
     return (
@@ -1619,7 +1749,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
           </svg>
           <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>对话分析</span>
           <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
-            {allMessages.length} 条消息 · {participantStudents.size} 人参与
+            {allMessages.length} 条消息 · {participantCount} 人参与
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1698,28 +1828,15 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
               margin: '0 auto', background: '#fff', borderRadius: 12, width: '100%',
             }}>
               <WordCloud
-                words={words.map(w => ({ text: w.word, value: w.count }))}
+                words={wordCloudData}
                 width={cloudWidth}
                 height={Math.min(Math.floor(cloudWidth * 0.38), 220)}
-                font={() => '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif'}
-                fontSize={(word) => {
-                  const min = Math.min(...words.map(w => w.count));
-                  const max = Math.max(...words.map(w => w.count));
-                  const range = max - min || 1;
-                  const normalized = (word.value - min) / range;
-                  return 11 + normalized * 16;
-                }}
-                fill={(_w, i) => `url(#wcg${(i % 6) + 1})`}
-                gradients={[
-                  { id: 'wcg1', type: 'linear', angle: 45, stops: [{ offset: '0%', color: '#2563eb' }, { offset: '100%', color: '#7c3aed' }] },
-                  { id: 'wcg2', type: 'linear', angle: -45, stops: [{ offset: '0%', color: '#db2777' }, { offset: '100%', color: '#ea580c' }] },
-                  { id: 'wcg3', type: 'linear', angle: 135, stops: [{ offset: '0%', color: '#059669' }, { offset: '100%', color: '#10b981' }] },
-                  { id: 'wcg4', type: 'linear', angle: 90, stops: [{ offset: '0%', color: '#7c3aed' }, { offset: '100%', color: '#c084fc' }] },
-                  { id: 'wcg5', type: 'linear', angle: 0, stops: [{ offset: '0%', color: '#dc2626' }, { offset: '100%', color: '#fbbf24' }] },
-                  { id: 'wcg6', type: 'linear', angle: -90, stops: [{ offset: '0%', color: '#0891b2' }, { offset: '100%', color: '#2dd4bf' }] },
-                ]}
-                renderWord={(data, ref) => <WordText data={data} ref={ref} />}
-                rotate={() => [0, 0, 0, -15, 15][Math.floor(Math.random() * 5)]}
+                font={stableFont}
+                fontSize={wordFontSize}
+                fill={wordFill}
+                gradients={wordGradients}
+                renderWord={renderWord}
+                rotate={stableRotate}
                 spiral="archimedean"
                 padding={3}
                 enableTooltip
@@ -1737,10 +1854,10 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
               活跃学生 TOP 10
             </div>
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {topStudents.length === 0 ? (
+              {topStudents.list.length === 0 ? (
                 <div style={{ fontSize: "0.813rem", color: '#cbd5e1', textAlign: 'center', padding: 16 }}>暂无数据</div>
               ) : (
-                topStudents.map((s, i) => (
+                topStudents.list.map((s, i) => (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
                       width: 18, height: 18, borderRadius: 4,
@@ -1759,7 +1876,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
                       background: '#f1f5f9', overflow: 'hidden',
                     }}>
                       <div style={{
-                        width: `${(s.count / topMaxCount) * 100}%`,
+                        width: `${(s.count / topStudents.maxCount) * 100}%`,
                         height: '100%', borderRadius: 3,
                         background: i < 3
                           ? ['#f59e0b', '#94a3b8', '#f97316'][i]

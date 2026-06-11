@@ -186,6 +186,7 @@ model ShieldWord {
 model ShieldConfig {
   id             String @id @default(uuid())
   autoBlackCount Int    @default(0) // 0=不自动黑屏，N=警告N次后自动黑屏
+  rateLimit      Int    @default(6) // 每分钟最多提问次数，0=不限制
 }
 
 // 屏蔽警告记录

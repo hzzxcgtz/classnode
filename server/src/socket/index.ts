@@ -13,6 +13,41 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
 const platformConversations = new Map<string, string>();
 
+/** 学生提问频率限制：每分钟最多 10 条（被屏蔽词拦截的不计入） */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const studentMsgTimestamps = new Map<string, number[]>();
+/** 缓存频率限制配置，每 10 秒刷新一次 */
+let cachedRateLimit = 6;
+let rateLimitCacheTime = 0;
+const RATE_LIMIT_CACHE_TTL = 10_000;
+
+async function getRateLimit(prisma: PrismaClient): Promise<number> {
+  const now = Date.now();
+  if (now - rateLimitCacheTime >= RATE_LIMIT_CACHE_TTL) {
+    try {
+      const config = await prisma.shieldConfig.findFirst();
+      cachedRateLimit = config?.rateLimit ?? 6;
+      rateLimitCacheTime = now;
+    } catch {}
+  }
+  return cachedRateLimit;
+}
+
+async function checkRateLimit(studentId: string, prisma: PrismaClient): Promise<boolean> {
+  const limit = await getRateLimit(prisma);
+  if (limit <= 0) return true; // 0 = 不限制
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  let timestamps = studentMsgTimestamps.get(studentId) || [];
+  timestamps = timestamps.filter(t => t > windowStart);
+  if (timestamps.length >= limit) {
+    return false;
+  }
+  timestamps.push(now);
+  studentMsgTimestamps.set(studentId, timestamps);
+  return true;
+}
+
 /** 屏蔽词过滤器缓存（预构建 AC 自动机，避免每次发消息都重建） */
 let cachedFilter: ((content: string) => { filtered: string; matched: string[] }) | null = null;
 let shieldWordsCacheTime = 0;
@@ -334,6 +369,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           return;
         }
 
+        // 提问频率限制（被屏蔽的消息不计入）
+        if (!(await checkRateLimit(data.studentId, prisma))) {
+          socket.emit('ai-error', { error: `提问太频繁了，请稍后再试（每分钟限 ${cachedRateLimit} 次）` });
+          return;
+        }
+
         // Save user message
         const userMessage = await prisma.message.create({
           data: {
@@ -542,6 +583,20 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
       } catch (error) {
         console.error('[Socket] send-message error:', error);
         io.to(socket.id).emit('ai-error', { error: '消息发送失败' });
+      }
+    });
+
+    // 教师发送通知给学生（全班或指定学生，通过 activeConnections 高效查找 O(1)）
+    socket.on('teacher-send-notification', (data: { classroomId: string; studentId?: string; message: string }) => {
+      const { classroomId, studentId, message } = data;
+      if (studentId) {
+        const connKey = `${classroomId}:${studentId}`;
+        const targetSocketId = activeConnections.get(connKey);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('teacher-notification', { message });
+        }
+      } else {
+        io.to(`classroom:${classroomId}`).emit('teacher-notification', { message });
       }
     });
 

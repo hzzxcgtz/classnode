@@ -8,6 +8,7 @@ export default function ShieldPage() {
   const [words, setWords] = useState<any[]>([]);
   const [newWord, setNewWord] = useState('');
   const [autoBlackCount, setAutoBlackCount] = useState(0);
+  const [rateLimit, setRateLimit] = useState(6);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [configSaved, setConfigSaved] = useState(false);
@@ -34,6 +35,7 @@ export default function ShieldPage() {
       const [w, cfg, cats] = await Promise.all([api.getShieldWords(), api.getShieldConfig(), api.getShieldCategories()]);
       setWords(w);
       setAutoBlackCount(cfg.autoBlackCount || 0);
+      setRateLimit(cfg.rateLimit ?? 6);
       setCategories(cats || []);
     } catch {}
   };
@@ -100,7 +102,7 @@ export default function ShieldPage() {
     setConfigSaved(false);
     setConfigError('');
     try {
-      await api.updateShieldConfig(autoBlackCount);
+      await api.updateShieldConfig({ autoBlackCount, rateLimit });
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
     } catch (e: any) {
@@ -181,6 +183,39 @@ export default function ShieldPage() {
             {configError && (
               <span style={{ fontSize: "0.75rem", color: '#ef4444', marginLeft: 8 }}>{configError}</span>
             )}
+          </div>
+        </div>
+
+        {/* 提问频率限制 */}
+        <div style={{
+          background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
+          padding: '20px 24px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        }}>
+          <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: '0 0 4px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+            提问频率限制
+          </h2>
+          <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '0 0 12px', paddingLeft: 14 }}>
+            限制每位学生每分钟最多可向 AI 提问的次数（设为 0 为不限制）
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="number"
+              className="input"
+              value={rateLimit}
+              onChange={e => setRateLimit(parseInt(e.target.value) || 0)}
+              min={0}
+              max={99}
+              style={{ width: 80, textAlign: 'center', fontSize: "1rem", fontWeight: 600, padding: '8px 12px' }}
+            />
+            <span style={{ fontSize: "0.813rem", color: '#64748b' }}>次 / 分钟</span>
+            <button className="btn btn-primary" onClick={saveConfig}
+              style={{ fontSize: "0.813rem", flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+              {configSaved ? (
+                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>已保存</>
+              ) : '保存'}
+            </button>
           </div>
         </div>
 
@@ -371,39 +406,6 @@ export default function ShieldPage() {
                   transition: 'left 0.2s',
                 }} />
               </button>
-              <button onClick={async () => {
-                if (!confirm('确认清空所有系统屏蔽词？自定义屏蔽词不受影响。')) return;
-                setBuiltinMsg(null);
-                try {
-                  const r = await api.clearBuiltinShieldWords();
-                  setBuiltinMsg({ type: 'success', text: `已清空 ${r.deleted} 个系统屏蔽词` });
-                  loadData();
-                  setTimeout(() => setBuiltinMsg(null), 3000);
-                } catch {
-                  setBuiltinMsg({ type: 'error', text: '清空失败' });
-                  setTimeout(() => setBuiltinMsg(null), 3000);
-                }
-              }}
-                style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: builtinWords.length > 0 ? '#dc2626' : '#94a3b8', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, cursor: builtinWords.length > 0 ? 'pointer' : 'not-allowed' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                一键清空
-              </button>
-              <button onClick={async () => {
-                setBuiltinMsg(null);
-                try {
-                  const r = await api.restoreDefaultShieldWords();
-                  setBuiltinMsg({ type: 'success', text: `已恢复 ${r.restored} 个默认屏蔽词` });
-                  loadData();
-                  setTimeout(() => setBuiltinMsg(null), 3000);
-                } catch {
-                  setBuiltinMsg({ type: 'error', text: '恢复失败' });
-                  setTimeout(() => setBuiltinMsg(null), 3000);
-                }
-              }}
-                style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 6, cursor: 'pointer' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-                恢复预设
-              </button>
             </div>
           </div>
           {builtinMsg && (
@@ -419,46 +421,24 @@ export default function ShieldPage() {
           {builtinWords.length === 0 ? (
             <div style={{ padding: '36px 24px', textAlign: 'center', color: '#94a3b8', fontSize: "0.813rem" }}>
               <div>系统屏蔽词为空</div>
-              <div style={{ fontSize: "0.75rem", color: '#cbd5e1', marginTop: 2 }}>点击「恢复预设」可重新加载系统内置的屏蔽词</div>
+              <div style={{ fontSize: "0.75rem", color: '#cbd5e1', marginTop: 2 }}>如需重新加载系统内置屏蔽词，请联系管理员</div>
             </div>
           ) : (
             <div style={{ padding: '18px 24px 16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[{ name: '脏话辱骂', color: '#991b1b', bg: '#fef4f4', border: '#f0d6d4' },
-                  { name: '色情低俗', color: '#831843', bg: '#fcf1f6', border: '#edd5de' },
-                  { name: '暴力威胁', color: '#78350f', bg: '#fcf8f1', border: '#ece2c5' },
-                  { name: '自残自杀', color: '#4c1d95', bg: '#f5f3fa', border: '#ddd5ed' },
-                ].map(cat => {
-                  const catData = categories.find(c => c.name === cat.name);
-                  const count = catData?.count || 0;
-                  return (
-                    <div key={cat.name} style={{
-                      borderRadius: 10,
-                      border: `1px solid ${cat.border}`,
-                    }}>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '12px 16px',
-                        background: cat.bg, userSelect: 'none',
-                      }}>
-                        <span style={{ flex: 1, fontSize: "0.875rem", fontWeight: 600, color: cat.color }}>{cat.name}</span>
-                        <span style={{
-                          fontSize: "0.75rem", fontWeight: 600, padding: '1px 8px', borderRadius: 6,
-                          background: cat.bg, color: cat.color,
-                          border: `1px solid ${cat.border}`,
-                        }}>{count} 个</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{
-                marginTop: 14, padding: '8px 14px', borderRadius: 8,
-                background: '#f1f5f9', fontSize: "0.75rem", color: '#64748b',
-                display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.5,
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                系统内置 {builtinWords.length} 个屏蔽词，覆盖四大类别，在学生发送消息时自动拦截。具体内容不便展示。
+                <div style={{
+                  padding: '16px 20px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: 10,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  fontSize: "0.813rem", color: '#166534', lineHeight: 1.6,
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
+                  <span>系统已自动内置屏蔽词，在学生发送消息时实时拦截不当言论，维护良好的课堂秩序。具体分类与内容不便展示，请放心使用。您可以通过右上角的开关开启或关闭此过滤功能。</span>
+                </div>
               </div>
             </div>
           )}

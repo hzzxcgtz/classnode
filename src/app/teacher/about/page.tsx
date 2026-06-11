@@ -20,32 +20,32 @@ const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; siz
 
 const storyPainPoints = [
   {
-    q: '分发难得像发传单？',
-    a: '不用让学生挨个注册账号。互动码一开，全班扫码秒进。',
+    q: '学生登都登不进，AI 白调了？',
+    a: '不用让学生挨个注册账号、记住密码。互动码一开，扫码或输入 4 位数就能进，平板手机都能用。哪怕是临时换教室、来了旁听生，也能秒加。',
     icon: 'send',
   },
   {
-    q: '学生聊什么真是"黑盒"？',
-    a: '不用担心。每一句话都实时同步到教师端，谁在开小差、谁在深度思考，一目了然。',
+    q: '学生拿 AI 在干嘛，我看都看不到？',
+    a: '全班对话实时同步到教师控制台——谁在和 AI 深度互动、谁在刷屏闲聊、谁一言不发，一眼看清。还能点开任意学生的完整对话记录，不放过任何学情细节。',
     icon: 'eye',
   },
   {
-    q: '一断网 AI 就罢工？',
-    a: '局域网就是护城河。只要学生设备能连上老师电脑，就能正常对话，不依赖互联网。',
+    q: '网一断，AI 课直接废了？',
+    a: '教师机作为桥梁。学生设备只需连上老师的电脑即可与 AI 对话，学生端无需互联网，网络环境更安全、更纯净。教室再卡、运营商再不稳定，课堂节奏一点不受影响。',
     icon: 'wifi',
   },
   {
-    q: '下课铃一响数据全丢？',
-    a: '所有对话记录本地保存，随时回溯。还能一键生成含高频词云的 Word 报告，教研评课不再愁没数据。',
+    q: '一下课，对话记录全没了？白讲了？',
+    a: '所有对话记录都保存在本地硬盘里，随时回溯查看。还能一键生成含高频词云的 Word 报告——学生这堂课在想什么、哪个知识点讨论最多，一张报告全说清。',
     icon: 'database',
   },
 ];
 
 const techPoints = [
-  { title: '轻量化部署', desc: '不用求助网管，不用折腾服务器，在自己电脑上就能装。', icon: 'laptop' },
-  { title: '数据本地化', desc: '所有互动数据留在您的硬盘里，不传云端，隐私无忧。', icon: 'shield' },
-  { title: '局域网互通', desc: '基于局域网设计，不依赖互联网出口，网络再差也不怕。', icon: 'wifi' },
-  { title: '教学全闭环', desc: '从备课、课堂互动监控到课后数据复盘，完整覆盖 AI 教学全流程。', icon: 'check' },
+  { title: '轻量化部署', desc: '双击安装、浏览器访问。不用求助网管，不用折腾云服务器，在自己电脑上就能跑起来，Wi-Fi 环境即开即用。', icon: 'laptop' },
+  { title: '数据本地化', desc: '所有对话记录、学情数据保存在教师电脑本地硬盘，不经过任何第三方云服务器，学生隐私与课堂数据安全有保障。', icon: 'shield' },
+  { title: '纯净安全', desc: '学生端无需互联网即可与 AI 互动，通过教师机统一接入 AI 服务，既节省带宽又从根本上保障学生上网安全。', icon: 'wifi' },
+  { title: '教学全闭环', desc: '从创建课堂、配置 AI 智能体，到课上实时监控、课后一键导出对话报告——完整覆盖 AI 互动教学的全流程，不遗漏任何一个环节。', icon: 'check' },
 ];
 
 export default function AboutPage() {
@@ -82,7 +82,7 @@ export default function AboutPage() {
       if (trimmed.startsWith('### ')) {
         const title = trimmed.replace('### ', '');
         elements.push(
-          <div key={i} style={{ fontSize: "0.75rem", fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: i > 0 ? 16 : 0, marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #eef2f6' }}>{title}</div>
+          <div key={i} style={{ fontSize: "0.813rem", fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: i > 0 ? 16 : 0, marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #eef2f6' }}>{title}</div>
         );
       } else if (trimmed.startsWith('#### ')) {
         const title = trimmed.replace('#### ', '').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -98,7 +98,7 @@ export default function AboutPage() {
         elements.push(
           <div key={i} style={{ marginBottom: 6 }}>
             {items.map((item, j) => (
-              <div key={j} style={{ fontSize: "0.781rem", color: '#475569', lineHeight: 1.7, paddingLeft: item.sub ? 28 : 16, position: 'relative' }}>
+              <div key={j} style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.7, paddingLeft: item.sub ? 28 : 16, position: 'relative' }}>
                 <span style={{ position: 'absolute', left: item.sub ? 16 : 2, top: 0, color: item.sub ? '#94a3b8' : '#64748b', fontSize: item.sub ? 10 : 12 }}>{item.sub ? '‣' : '•'}</span>
                 <span dangerouslySetInnerHTML={{ __html: item.text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') }} />
               </div>
@@ -107,7 +107,7 @@ export default function AboutPage() {
         );
       } else if (!trimmed.startsWith('- ')) {
         elements.push(
-          <div key={i} style={{ fontSize: "0.781rem", color: '#475569', lineHeight: 1.7, paddingLeft: 16 }}>
+          <div key={i} style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.7, paddingLeft: 16 }}>
             <span dangerouslySetInnerHTML={{ __html: trimmed.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') }} />
           </div>
         );
@@ -169,15 +169,24 @@ export default function AboutPage() {
             </button>
           </div>
           <div style={{
-            background: '#f8fafc', border: '1px solid #eef2f6',
-            borderRadius: 12, padding: '18px 22px',
+            background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%)',
+            border: '1px solid #dbeafe',
+            borderRadius: 12, padding: '20px 24px',
             display: 'flex', gap: 14, alignItems: 'flex-start',
           }}>
-            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: "1.375rem", lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif' }}>&ldquo;</span>
-            <p style={{ margin: 0, fontSize: "0.938rem", color: '#475569', lineHeight: 1.8 }}>
-              专为真实课堂而生。即使网络环境不那么完美，也能让老师精心调优的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
-            </p>
-            <span style={{ flexShrink: 0, marginTop: 1, color: '#3b82f6', fontSize: "1.375rem", lineHeight: 1, fontStyle: 'italic', fontWeight: 300, fontFamily: 'Georgia, serif', alignSelf: 'flex-end' }}>&rdquo;</span>
+            <div style={{
+              flexShrink: 0, marginTop: 2,
+              width: 32, height: 32, borderRadius: 8,
+              background: '#3b82f6', color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontSize: "0.938rem", color: '#1e3a5f', lineHeight: 1.8, fontWeight: 500 }}>
+                专为真实课堂而生。即使网络环境不那么完美，也能让老师精心调优的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -266,15 +275,21 @@ export default function AboutPage() {
           }}>为什么做这个系统</span>
         </div>
 
-        <div style={{ fontSize: "1rem", color: '#57534e', lineHeight: 2.1 }}>
+        <div style={{ fontSize: "1rem", color: '#57534e', lineHeight: 1.9 }}>
           <p style={{ margin: '0 0 18px' }}>
-            AI 技术发展很快，现在很多老师都能调教出很出色的 AI 智能体。但要想让全班几十个孩子都用上，现实往往是另一回事：学校网络卡顿、学生注册账号太麻烦、他们在屏幕后聊了什么你不知道、下课以后数据全没了&hellip;&hellip;
+            AI 技术发展很快。现在很多老师都能在 Coze、智谱清言这些平台上调教出相当出色的 AI 智能体——能批改作文、能做英语陪练、能做历史解谜游戏。但问题来了：怎么让全班四十个孩子同时用上它？
+          </p>
+          <p style={{ margin: '0 0 18px' }}>
+            现实往往是这样的：学校带宽不够，打开一个网页都要转半天；让学生自己注册账号，折腾大半节课还没全进来；学生跟 AI 聊了什么，老师在讲台上完全不知道；下课铃一响，所有对话记录烟消云散&hellip;&hellip;技术明明很好了，可就是落不了地。
           </p>
           <p style={{ margin: '0 0 18px' }}>
             <strong style={{ color: '#292524' }}>技术不难的时候，难的是落地。</strong>
           </p>
           <p style={{ margin: '0 0 18px' }}>
-            ClassNode 不是大厂的云平台，而是一个能装进你电脑里的"AI 互动课堂系统"。老师用 Coze、智谱清言调教好的智能体，通过它就能安全、可控地分发给全班学生——不管学校网络好不好，不管学生用的是平板还是手机。
+            这就是 ClassNode 的出发点。它不是一个大厂的云平台，而是一个能装进你电脑里的"AI 互动课堂系统"。老师花心思调教好的智能体，通过它就能安全、可控、零门槛地分发给全班每一个学生——不管学校网络好不好，不管学生用的是平板还是手机，打开浏览器就能开课。
+          </p>
+          <p style={{ margin: '0 0 18px' }}>
+            从第一堂课到现在，ClassNode 一直在围绕一个核心打磨：让老师能把精力花在教学上，而不是折腾工具。
           </p>
           <p style={{ margin: 0, paddingLeft: 20, borderLeft: '3px solid #93c5fd' }}>
             <strong style={{ color: '#2563eb', fontWeight: 600 }}>目的只有一个：让 AI 课堂从"想试试"变成"天天用"。</strong>
@@ -292,7 +307,7 @@ export default function AboutPage() {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           </div>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
             解决的教学<strong style={{ color: '#dc2626' }}>"老大难"</strong>
           </h2>
         </div>
@@ -314,15 +329,27 @@ export default function AboutPage() {
                 {/* 左侧色条 */}
                 <div style={{ width: 4, flexShrink: 0, background: accentColors[i], alignSelf: 'stretch' }} />
                 <div style={{ padding: '16px 20px 16px 0', flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColors[i], flexShrink: 0 }} />
-                    <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                      background: dotColors[i], color: 'white',
+                      fontSize: "0.625rem", fontWeight: 700, lineHeight: 1,
+                    }}>Q</span>
+                    <span style={{ fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>
                       {item.q}
                     </span>
                   </div>
-                  <div style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 1.8, paddingLeft: 0 }}>
-                    <span style={{ color: dotColors[i], fontWeight: 500 }}>解决：</span>
-                    {item.a}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 2,
+                      background: '#f1f5f9', color: '#64748b',
+                      fontSize: "0.625rem", fontWeight: 700, lineHeight: 1,
+                    }}>A</span>
+                    <span style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 1.8, flex: 1 }}>
+                      {item.a}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -341,7 +368,7 @@ export default function AboutPage() {
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
             技术底座
           </h2>
         </div>

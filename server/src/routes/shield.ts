@@ -162,7 +162,7 @@ router.get('/config', async (req, res) => {
     let config = await prisma.shieldConfig.findFirst();
     if (!config) {
       config = await prisma.shieldConfig.create({
-        data: { autoBlackCount: 0 },
+        data: { autoBlackCount: 0, rateLimit: 6 },
       });
     }
     res.json(config);
@@ -175,16 +175,19 @@ router.get('/config', async (req, res) => {
 router.put('/config', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { autoBlackCount } = req.body;
+    const { autoBlackCount, rateLimit } = req.body;
+    const data: any = {};
+    if (autoBlackCount !== undefined) data.autoBlackCount = Math.max(0, parseInt(autoBlackCount) || 0);
+    if (rateLimit !== undefined) data.rateLimit = Math.max(0, parseInt(rateLimit) || 0);
     let config = await prisma.shieldConfig.findFirst();
     if (config) {
       config = await prisma.shieldConfig.update({
         where: { id: config.id },
-        data: { autoBlackCount: Math.max(0, parseInt(autoBlackCount) || 0) },
+        data,
       });
     } else {
       config = await prisma.shieldConfig.create({
-        data: { autoBlackCount: Math.max(0, parseInt(autoBlackCount) || 0) },
+        data: { ...data, autoBlackCount: data.autoBlackCount ?? 0, rateLimit: data.rateLimit ?? 6 },
       });
     }
     res.json(config);

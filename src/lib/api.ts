@@ -144,8 +144,8 @@ export const api = {
   batchToggleShieldWords: (ids: string[], enabled: boolean) =>
     request('/api/shield/words/batch-toggle', { method: 'PUT', body: JSON.stringify({ ids, enabled }) }),
   getShieldConfig: () => request<any>('/api/shield/config'),
-  updateShieldConfig: (autoBlackCount: number) =>
-    request('/api/shield/config', { method: 'PUT', body: JSON.stringify({ autoBlackCount }) }),
+  updateShieldConfig: (data: { autoBlackCount?: number; rateLimit?: number }) =>
+    request('/api/shield/config', { method: 'PUT', body: JSON.stringify(data) }),
   blacklistStudent: (classroomId: string, studentId: string) =>
     request(`/api/shield/classroom/${classroomId}/student/${studentId}/blacklist`, { method: 'POST' }),
   unblacklistStudent: (classroomId: string, studentId: string) =>

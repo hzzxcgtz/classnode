@@ -433,12 +433,9 @@ export default function ClassesPage() {
                       {selectedClassData?.name?.[0] || '班'}
                     </div>
                     <div>
-                      <h2 style={{ fontSize: "1.063rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                      <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
                         {selectedClassData?.name || '班级'}
                       </h2>
-                      <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '1px 0 0' }}>
-                        创建于 {selectedClassData?.createdAt ? new Date(selectedClassData.createdAt).toLocaleDateString('zh-CN') : '-'}
-                      </p>
                     </div>
                   </div>
                 </div>

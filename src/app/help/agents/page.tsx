@@ -132,27 +132,44 @@ function Content() {
           {/* 箭头 + 页码 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             <button onClick={() => go(current - 1)} disabled={current === 0}
+              title="上一张"
               style={{
-                width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)',
-                background: 'rgba(255,255,255,0.05)', cursor: current === 0 ? 'default' : 'pointer',
-                color: current === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontFamily: 'inherit',
-              }}>
-              ‹
+                width: 70, height: 70, borderRadius: '50%',
+                border: '2px solid rgba(255,255,255,0.3)',
+                background: current === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)',
+                cursor: current === 0 ? 'default' : 'pointer',
+                color: current === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.9)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                transition: 'all 0.15s',
+                backdropFilter: 'blur(4px)',
+              }}
+              onMouseEnter={e => { if (current > 0) { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'; e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(255,255,255,0.15)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = current === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-            <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>
-              {current + 1} / {images.length}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, letterSpacing: 0 }}>
+                点击翻页
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: 600 }}>
+                {current + 1} / {images.length}
+              </span>
+            </div>
             <button onClick={() => go(current + 1)} disabled={current === images.length - 1}
+              title="下一张"
               style={{
-                width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)',
-                background: 'rgba(255,255,255,0.05)', cursor: current === images.length - 1 ? 'default' : 'pointer',
-                color: current === images.length - 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.7)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontFamily: 'inherit',
-              }}>
-              ›
+                width: 70, height: 70, borderRadius: '50%',
+                border: '2px solid rgba(255,255,255,0.3)',
+                background: current === images.length - 1 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)',
+                cursor: current === images.length - 1 ? 'default' : 'pointer',
+                color: current === images.length - 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.9)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                transition: 'all 0.15s',
+                backdropFilter: 'blur(4px)',
+              }}
+              onMouseEnter={e => { if (current < images.length - 1) { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'; e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(255,255,255,0.15)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = current === images.length - 1 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
         </div>

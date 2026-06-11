@@ -101,8 +101,10 @@ export const api = {
   resumeClassroom: (id: string) => request(`/api/classroom/${id}/resume`, { method: 'POST' }),
   getHistory: () => request<any[]>('/api/classroom/history/all'),
   getAllClassrooms: () => request<any[]>('/api/classroom/all'),
-  updateClassroomSettings: (id: string, data: { title?: string; groups?: { id: string; agentId: string }[]; agentIds?: string[] }) =>
+  updateClassroomSettings: (id: string, data: { title?: string }) =>
     request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
+  getOnlineStudentIds: (id: string) =>
+    request<{ studentIds: string[] }>(`/api/classroom/${id}/online`),
 
   // Export
   exportConversations: (classroomId: string) =>

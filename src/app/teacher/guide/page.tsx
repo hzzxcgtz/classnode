@@ -46,6 +46,78 @@ const sections = [
       <div>想要课堂出彩，先要有好的 AI 帮手。进入「<Highlight>AI 智能体</Highlight>」页面开始招募：</div>,
       <><strong>多平台兼容</strong>：目前已支持 <Highlight>Coze 低代码</Highlight>、<Highlight>Coze 编程</Highlight>、<Highlight>清言智能体</Highlight>（智谱清言）和 <Highlight>文心智能体</Highlight>（百度文心）四种平台。</>,
       <><strong>配置更直观</strong>：填入平台提供的 API Key / Secret Key 等信息，可自定义本地名称（如"李白学长"）。Coze 低代码支持一键从 Coze 拉取头像和开场白。</>,
+      <div style={{
+        background: '#f0f7ff', border: '1px solid #bfdbfe', borderRadius: 8,
+        padding: '14px 18px', fontSize: "0.875rem", color: '#1e40af', lineHeight: 1.7,
+      }}>
+        <div style={{ fontWeight: 600, fontSize: "0.938rem", marginBottom: 10 }}>各平台特点速览</div>
+        <div style={{ width: '100%', fontSize: "0.813rem" }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #bfdbfe', padding: '6px 0', fontWeight: 600 }}>
+            <div style={{ width: 110 }}>智能体类型</div>
+            <div style={{ width: 80, textAlign: 'center' }}>AI 平台提供</div>
+            <div style={{ width: 70, textAlign: 'center' }}>流式输出</div>
+            <div style={{ width: 70, textAlign: 'center' }}>图片附件</div>
+            <div style={{ width: 120, textAlign: 'center' }}>官方链接</div>
+            <div style={{ flex: 1 }}>说明</div>
+          </div>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '6px 0' }}>
+            <div style={{ width: 110, fontWeight: 600, color: '#7c3aed' }}>清言智能体</div>
+            <div style={{ width: 80, textAlign: 'center', color: '#64748b' }}>智谱</div>
+            <div style={{ width: 70, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>✓</div>
+            <div style={{ width: 70, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>✓</div>
+            <div style={{ width: 120, textAlign: 'center' }}>
+              <a href="https://www.chatglm.cn/main/alltoolsdetail?lang=zh" target="_blank" rel="noopener noreferrer" title="前往清言智能体" style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: '#475569' }}><strong style={{ color: '#7c3aed' }}>推荐使用</strong>，流式与图片均支持，体验完整</div>
+          </div>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '6px 0' }}>
+            <div style={{ width: 110, fontWeight: 600, color: '#2563eb' }}>Coze 低代码</div>
+            <div style={{ width: 80, textAlign: 'center', color: '#64748b' }}>扣子</div>
+            <div style={{ width: 70, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>✓</div>
+            <div style={{ width: 70, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>✓</div>
+            <div style={{ width: 120, textAlign: 'center' }}>
+              <a href="https://code.coze.cn/home" target="_blank" rel="noopener noreferrer" title="前往 Coze" style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: '#475569' }}><strong style={{ color: '#2563eb' }}>推荐使用</strong>，流式与图片均支持，两者兼备</div>
+          </div>
+          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', padding: '6px 0' }}>
+            <div style={{ width: 110, fontWeight: 600, color: '#10b981' }}>Coze 编程</div>
+            <div style={{ width: 80, textAlign: 'center', color: '#64748b' }}>扣子</div>
+            <div style={{ width: 70, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>✓</div>
+            <div style={{ width: 70 }} />
+            <div style={{ width: 120, textAlign: 'center' }}>
+              <a href="https://code.coze.cn/home" target="_blank" rel="noopener noreferrer" title="前往 Coze" style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: '#475569' }}>支持流式输出，仅文本对话</div>
+          </div>
+          <div style={{ display: 'flex', padding: '6px 0' }}>
+            <div style={{ width: 110, fontWeight: 600, color: '#f97316' }}>文心智能体</div>
+            <div style={{ width: 80, textAlign: 'center', color: '#64748b' }}>百度</div>
+            <div style={{ width: 70 }} />
+            <div style={{ width: 70 }} />
+            <div style={{ width: 120, textAlign: 'center' }}>
+              <a href="https://agents.baidu.com/center" target="_blank" rel="noopener noreferrer" title="前往文心智能体" style={{ color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: '#475569' }}>基础可用，非流式纯文本</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10, fontSize: "0.813rem", color: '#64748b', lineHeight: 1.7 }}>
+          <div><strong style={{ color: '#475569' }}>流式输出</strong>：指 AI 逐字逐句实时生成回复内容，而非等待全部生成完毕后再一次性呈现。流式体验让对话节奏更自然、响应更及时，学生端感知到的等待时间大幅缩短。不支持流式的平台，学生需等待 AI 完成整个回复后才会看到内容。</div>
+          <div style={{ marginTop: 4 }}><strong style={{ color: '#475569' }}>图片附件</strong>：学生可在对话中上传图片供 AI 识别分析。该能力取决于平台 API 是否开放了图片上传接口，并非平台本身功能缺失，也非本系统能力限制。我们持续关注各平台 API 更新动态，待接口开放后及时纳入支持。</div>
+        </div>
+      </div>,
       <div>
         <div><strong>连通性检测</strong>：系统启动时自动检测 AI 智能体在线状态。</div>
         <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
@@ -78,17 +150,14 @@ const sections = [
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 20, lineHeight: 1.8, fontSize: "0.938rem", color: '#475569' }}>
         <div>
           <span style={{ background: '#eef2ff', color: '#2563eb', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>标准模式</span>
-          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Standard Mode</span>
           —— 每人一个独立账号，各自与 AI 对话，适合普适性练习。
         </div>
         <div>
           <span style={{ background: '#f5f3ff', color: '#7c3aed', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>分组模式</span>
-          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Group Mode</span>
           —— 全组共用一个账号，同屏与 AI 讨论，适合协作探究。
         </div>
         <div>
           <span style={{ background: '#fef3c7', color: '#d97706', fontWeight: 600, fontSize: "0.813rem", padding: '2px 10px', borderRadius: 4, marginRight: 6 }}>高级模式</span>
-          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginRight: 8 }}>Advanced Mode</span>
           —— 可为不同小组绑定不同的 AI 智能体，真正实现分层教学。
         </div>
       </div>,
@@ -96,7 +165,7 @@ const sections = [
         background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
         padding: '12px 16px', fontSize: "0.875rem", color: '#92400e', lineHeight: 1.7,
       }}>
-        <strong style={{ color: '#b45309' }}>小贴士</strong>：课上到一半发现 AI 不太合适？在活跃课堂列表点击齿轮图标可中途更换 AI，已有聊天记录不会丢失。
+        <strong style={{ color: '#b45309' }}>小贴士</strong>：课堂创建后仅可修改名称，AI 智能体等配置创建时即固定，请提前规划好。
       </div>,
     ],
   },
@@ -168,6 +237,15 @@ export default function GuidePage() {
   const [activeSection, setActiveSection] = useState('');
 
   useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    }
+  }, []);
+
+  useEffect(() => {
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
@@ -184,7 +262,7 @@ export default function GuidePage() {
   }, []);
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ padding: '32px 40px', maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: '0 0 6px', color: '#0f172a' }}>使用指南</h1>
         <p style={{ fontSize: "0.938rem", color: '#64748b', margin: 0, lineHeight: 1.6 }}>
@@ -285,37 +363,65 @@ export default function GuidePage() {
         </div>
 
         {/* 右侧内容 */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {sections.map(section => (
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {sections.map((section, si) => {
+            const sectionColors = [
+              { icon: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' },
+              { icon: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+              { icon: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+              { icon: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+              { icon: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
+              { icon: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+              { icon: '#7c3aed', bg: '#faf5ff', border: '#e9d5ff' },
+              { icon: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+              { icon: '#ca8a04', bg: '#fefce8', border: '#fef08a' },
+            ];
+            const sc = sectionColors[si] || sectionColors[0];
+            return (
             <div key={section.id} id={section.id} style={{
-              background: 'white', borderRadius: 12,
+              background: 'white', borderRadius: 14,
               border: '1px solid #eef2f6', overflow: 'hidden',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.02)',
               scrollMarginTop: 80,
-            }}>
+              transition: 'box-shadow 0.2s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.03)'; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.02)'; }}
+            >
               {/* 标题栏 */}
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '14px 20px',
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '16px 24px',
                 borderBottom: '1px solid #f1f5f9',
-                background: '#fafbfc',
+                background: sc.bg,
               }}>
-                <span style={{ flexShrink: 0, display: 'flex' }}>
+                <span style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 10,
+                  background: sc.icon + '18',
+                  color: sc.icon,
+                }}>
                   <SectionIcon name={section.icon} />
                 </span>
-                <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>
+                <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
                   {section.title}
                 </h2>
               </div>
 
               {/* 内容 */}
-              <div style={{ padding: '16px 20px', lineHeight: 2, fontSize: "0.938rem", color: '#475569' }}>
+              <div style={{
+                padding: '20px 24px',
+                fontSize: "0.938rem", color: '#334155', lineHeight: 1.8,
+              }}>
                 {section.items.map((item, j) => (
-                  <div key={j} style={{ marginBottom: j < section.items.length - 1 ? 12 : 0 }}>{item}</div>
+                  <div key={j} style={{
+                    marginBottom: j < section.items.length - 1 ? 14 : 0,
+                    padding: typeof item === 'object' && (item as any).props?.style?.padding ? undefined : '2px 0',
+                  }}>{item}</div>
                 ))}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
     </div>

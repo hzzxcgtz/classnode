@@ -109,7 +109,7 @@ async function main() {
   });
 
   // Socket.IO setup
-  setupSocketHandlers(io, prisma);
+  setupSocketHandlers(io, prisma, app);
 
   httpServer.listen(port, '0.0.0.0', () => {
     console.log(`🚀 ClassNode Server running on port ${port}`);

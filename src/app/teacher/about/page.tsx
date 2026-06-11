@@ -120,15 +120,6 @@ export default function AboutPage() {
   return (
     <div style={{ padding: '40px 48px', maxWidth: 900, margin: '0 auto' }}>
 
-      {/* ========== 返回按钮 ========== */}
-      <button onClick={() => router.back()}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: "0.875rem", background: 'none', border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 8, transition: 'background 0.12s', marginBottom: 28 }}
-        onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-        返回
-      </button>
-
       {/* ========== Hero ========== */}
       <div style={{
         background: '#ffffff', borderRadius: 20, overflow: 'hidden', marginBottom: 36,

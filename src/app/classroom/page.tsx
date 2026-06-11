@@ -147,14 +147,9 @@ function StudentChatContent() {
         const session = JSON.parse(saved);
         if (Date.now() - session.timestamp < 7200000) {
           setSelectedStudent({ id: session.studentId, name: session.studentName });
-          setStep('chat');
-          loadClassroom(codeFromUrl, session.studentId).then(cr => {
-            if (cr) { loadMessages(cr.id, session.studentId); startChatSession(session.studentId, session.studentName, codeFromUrl); }
-          });
-          return;
         }
       } catch {}
-      localStorage.removeItem(`chat_session_${codeFromUrl}`);
+      // 不跳过身份选择，仅预填学生姓名。自动跳过可能导致"账号已在其他设备登录"的提示
     }
     loadClassroom(codeFromUrl).then(cr => { if (cr) setStep('identity'); });
   }, []);
@@ -177,7 +172,9 @@ function StudentChatContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [teacherNotif, setTeacherNotif] = useState<string | null>(null);
+  const [teacherMsgs, setTeacherMsgs] = useState<{ message: string; time: string }[]>([]);
+  const [showTeacherPanel, setShowTeacherPanel] = useState(false);
+  const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -395,6 +392,7 @@ function StudentChatContent() {
       socket.on('connect', () => {
         socket.emit('join-classroom', { classroomCode: joinCode, studentId });
         setConnected(true);
+        setTeacherMsgs([]);
       });
 
       const flushStreaming = () => {
@@ -498,9 +496,11 @@ function StudentChatContent() {
       });
 
       socket.on('teacher-notification', (data: any) => {
-        setTeacherNotif(data.message);
-        // 15 秒后自动消失
-        setTimeout(() => setTeacherNotif(null), 15000);
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        setTeacherMsgs(prev => [...prev, { message: data.message, time: timeStr }]);
+        setTeacherNotifBubble(data.message);
+        setTimeout(() => setTeacherNotifBubble(null), 15000);
       });
 
       socket.on('shield-warned', (data: any) => {
@@ -778,6 +778,62 @@ function StudentChatContent() {
               {selectedStudent.name}
             </div>
           )}
+          {/* 消息按钮 */}
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowTeacherPanel(p => !p)}
+              title={showTeacherPanel ? '收起消息' : '查看消息'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
+                border: '1px solid #e0e7ff', borderRadius: 8,
+                background: 'white', cursor: 'pointer',
+                color: teacherMsgs.length > 0 ? '#4338ca' : '#94a3b8',
+                fontSize: "0.813rem", fontWeight: 500,
+                fontFamily: 'inherit', transition: 'all 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              消息 {teacherMsgs.length}
+            </button>
+            {showTeacherPanel && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, zIndex: 50,
+                marginTop: 6, width: 360, maxHeight: 300, overflowY: 'auto',
+                borderRadius: 10, border: '1px solid #e0e7ff',
+                background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+              }}>
+                {teacherMsgs.length === 0 ? (
+                  <div style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8', fontSize: "0.813rem" }}>
+                    暂无老师消息
+                  </div>
+                ) : (
+                  teacherMsgs.map((msg, i) => (
+                    <div key={i} style={{
+                      display: 'flex', gap: 10, padding: '10px 14px',
+                      borderBottom: i < teacherMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    }}>
+                      <div style={{
+                        flexShrink: 0, width: 26, height: 26, borderRadius: 7,
+                        background: 'linear-gradient(135deg, #4338ca, #6366f1)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff',
+                      }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                          <span style={{ fontWeight: 600, fontSize: "0.75rem", color: '#4338ca' }}>老师</span>
+                          <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{msg.time}</span>
+                        </div>
+                        <div style={{ fontSize: "0.813rem", color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{msg.message}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           {/* 切换用户按钮 */}
           <button onClick={handleSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: "0.813rem", fontWeight: 500, transition: 'all .15s' }}>
@@ -904,7 +960,7 @@ function StudentChatContent() {
           </div>
         )}
 
-        {/* 消息列表 */}
+          {/* 消息列表 */}
         {(() => {
           const memoAgent = getCurrentAgent();
           return messages.map((msg, i) => (
@@ -929,34 +985,53 @@ function StudentChatContent() {
         </button>
       )}
 
-      {/* 教师通知气泡 */}
-      {teacherNotif && (
+      {/* 教师通知气泡 — 立体气泡样式 */}
+      {teacherNotifBubble && (
         <div style={{
-          position: 'relative', maxWidth: 800, margin: '0 auto', padding: '0 20px',
+          position: 'sticky', bottom: 0, zIndex: 20,
+          maxWidth: 800, margin: '0 auto', padding: '0 20px 10px',
+          animation: 'notifSlideUp 0.3s ease-out',
         }}>
-          <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8,
-            padding: '10px 14px', borderRadius: 10,
-            background: '#eef2ff', border: '1px solid #c7d2fe',
-            fontSize: "0.813rem", color: '#1e3a5f', lineHeight: 1.6,
-            boxShadow: '0 4px 16px rgba(37,99,235,0.1)',
-            marginBottom: 6,
-          }}>
+          <div style={{ display: 'flex', justifyContent: 'center', paddingLeft: 4 }}>
             <div style={{
-              flexShrink: 0, width: 24, height: 24, borderRadius: 6,
-              background: '#3b82f6', color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'relative',
+              padding: '10px 14px', borderRadius: '6px 16px 16px 16px',
+              background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
+              fontSize: "0.813rem", color: '#451a03', lineHeight: 1.6,
+              boxShadow: '0 2px 8px rgba(251,146,60,0.08), 0 8px 24px rgba(251,146,60,0.10)',
+              maxWidth: '40%',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              {/* 三角尾巴 */}
+              <div style={{
+                position: 'absolute', top: 0, left: -6,
+                width: 12, height: 12,
+                background: '#fff7ed',
+                clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
+                borderRadius: '0 0 0 2px',
+              }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 18, height: 18, borderRadius: 5,
+                  background: '#fed7aa', color: '#c2410c', flexShrink: 0,
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                </span>
+                <span style={{ fontWeight: 600, fontSize: "0.688rem", color: '#c2410c' }}>老师</span>
+              </div>
+              <div>{teacherNotifBubble}</div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: "0.75rem", color: '#4f46e5', marginBottom: 2 }}>老师</div>
-              <div>{teacherNotif}</div>
-            </div>
-            <button onClick={() => setTeacherNotif(null)}
-              style={{ flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: 4, background: 'transparent', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, fontSize: "0.875rem", lineHeight: 1 }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#e0e7ff'; e.currentTarget.style.color = '#475569'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+            <button onClick={() => setTeacherNotifBubble(null)}
+              style={{
+                flexShrink: 0, marginLeft: 8, alignSelf: 'flex-start', marginTop: 4,
+                width: 20, height: 20, border: 'none', borderRadius: '50%',
+                background: 'rgba(0,0,0,0.03)', cursor: 'pointer',
+                color: '#cbd5e1', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', padding: 0, fontSize: "0.75rem", lineHeight: 1,
+                transition: 'all 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; e.currentTarget.style.color = '#cbd5e1'; }}
             >✕</button>
           </div>
         </div>
@@ -1113,6 +1188,12 @@ export default function StudentChatPage() {
         :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
         @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
         @keyframes typing { 0%,60%,100% { transform: translateY(0) } 30% { transform: translateY(-5px) } }
+        @keyframes teacherBubbleIn { from { opacity:0; transform: translateY(-8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
+        @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
       `}</style>
       <Suspense fallback={<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white'}}>加载中...</div>}>
         <StudentChatContent />

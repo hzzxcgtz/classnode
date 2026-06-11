@@ -12,7 +12,15 @@ router.get('/', (_req, res) => {
   try {
     const files = fs.readdirSync(CHANGELOGS_DIR)
       .filter(f => f.endsWith('.md'))
-      .sort()
+      .sort((a, b) => {
+        const va = a.replace(/\.md$/, '').replace(/^v/, '').split('.').map(Number);
+        const vb = b.replace(/\.md$/, '').replace(/^v/, '').split('.').map(Number);
+        for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+          const na = va[i] || 0, nb = vb[i] || 0;
+          if (na !== nb) return na - nb;
+        }
+        return 0;
+      })
       .reverse();
     const entries = files.map(file => {
       const content = fs.readFileSync(path.join(CHANGELOGS_DIR, file), 'utf-8');

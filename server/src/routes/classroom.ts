@@ -452,54 +452,12 @@ router.put('/:id/settings', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const { title, groups, agentIds } = req.body;
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (title !== undefined) {
-        await tx.classroom.update({
-          where: { id: req.params.id },
-          data: { title: title || null },
-        });
-      }
-
-      if (groups && Array.isArray(groups)) {
-        // 先清除旧的小组智能体关联，再重新创建
-        await tx.classroomAgent.deleteMany({
-          where: { classroomId: req.params.id },
-        });
-        for (const g of groups) {
-          if (g.id && g.agentId) {
-            await tx.classroomGroup.update({
-              where: { id: g.id },
-              data: { agentId: g.agentId },
-            });
-            await tx.classroomAgent.create({
-              data: { classroomId: req.params.id, agentId: g.agentId },
-            }).catch(() => {});
-          }
-        }
-      }
-
-      // 标准模式：替换课堂级别的智能体
-      if (agentIds && Array.isArray(agentIds)) {
-        await tx.classroomAgent.deleteMany({
-          where: { classroomId: req.params.id },
-        });
-        for (const agentId of agentIds) {
-          await tx.classroomAgent.create({
-            data: { classroomId: req.params.id, agentId },
-          });
-        }
-      }
-    });
-
-    const result = await prisma.classroom.findUnique({
+    await prisma.classroom.update({
       where: { id: req.params.id },
-      include: {
-        groups: { include: { agent: true } },
-        classroomAgents: { include: { agent: true } },
-      },
+      data: { title: title || null },
     });
 
-    res.json(result);
+    res.json({ success: true });
   } catch (error) {
     console.error('Update classroom settings error:', error);
     res.status(500).json({ error: '更新课堂设置失败' });
@@ -633,5 +591,22 @@ router.get('/history/all', async (req, res) => {
     res.status(500).json({ error: '获取历史记录失败' });
   }
 });
+
+  // 获取课堂当前在线学生 ID 列表（从 socket 活跃连接 Map 中读取）
+  router.get("/:id/online", (req, res) => {
+    try {
+      const activeConnections = req.app.get("activeConnections") as Map<string, string> | undefined;
+      if (!activeConnections) return res.json({ studentIds: [] });
+      const classroomId = req.params.id;
+      const studentIds: string[] = [];
+      for (const key of activeConnections.keys()) {
+        const [cid, sid] = key.split(":");
+        if (cid === classroomId) studentIds.push(sid);
+      }
+      res.json({ studentIds });
+    } catch (error) {
+      res.status(500).json({ error: "获取在线状态失败" });
+    }
+  });
 
 export default router;

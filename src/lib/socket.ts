@@ -1,31 +1,34 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getApiBaseUrl } from './api-base';
+
+/** 全局共享的单例 socket，避免组件卸载时断开连接导致事件丢失 */
+let globalSocket: Socket | null = null;
+
+function getSocket(): Socket {
+  if (!globalSocket) {
+    globalSocket = io(getApiBaseUrl(), {
+      transports: ['websocket', 'polling'],
+    });
+    globalSocket.on('connect_error', (err) => {
+      console.warn('[Socket] Connection error:', err.message);
+    });
+    globalSocket.on('reconnect', (attempt) => {
+      console.log('[Socket] Reconnected after', attempt, 'attempts');
+    });
+  }
+  return globalSocket;
+}
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
 
-  useEffect(() => {
-    if (!socketRef.current) {
-      socketRef.current = io(getApiBaseUrl(), {
-        transports: ['websocket', 'polling'],
-      });
-      socketRef.current.on('connect_error', (err) => {
-        console.warn('[Socket] Connection error:', err.message);
-      });
-      socketRef.current.on('reconnect', (attempt) => {
-        console.log('[Socket] Reconnected after', attempt, 'attempts');
-      });
-    }
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-    };
-  }, []);
+  // 使用全局单例 socket，不随组件卸载断开
+  if (!socketRef.current) {
+    socketRef.current = getSocket();
+  }
 
   const joinClassroom = useCallback((classroomCode: string, studentId: string) => {
     socketRef.current?.emit('join-classroom', { classroomCode, studentId });

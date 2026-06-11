@@ -55,7 +55,7 @@ export default function AgentsPage() {
           <div>
             <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>AI智能体</h1>
             <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-              接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
+              接入 Coze 低代码、Coze 编程、清言智能体、文心智能体等多种 AI 平台
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -90,7 +90,7 @@ export default function AgentsPage() {
           </div>
           <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: '0 0 8px' }}>还没有接入智能体</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: "0.875rem", marginBottom: 24 }}>
-            点击上方按钮，接入您在 Coze、文心智能体等平台配置好的 AI 助手
+            点击上方按钮，接入您在 Coze、清言智能体、文心智能体等平台配置好的 AI 助手
           </p>
           <button className="btn btn-primary btn-lg" onClick={() => setShowForm(true)}>
             接入第一个智能体
@@ -382,28 +382,27 @@ export default function AgentsPage() {
   );
 }
 
-function HelpIcon({ platform }: { platform: string }) {
+function HelpButton({ platform }: { platform: string }) {
   return (
-    <span
+    <button
+      type="button"
       onClick={() => window.open(`/help/agents?platform=${platform}`, '_blank')}
-      title="查看配置截图"
+      title="查看配置截图，了解如何获取以上信息"
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 3,
-        padding: '1px 7px', borderRadius: 4,
-        background: '#f0f4ff', color: '#4f7bc9', cursor: 'pointer',
-        fontSize: "0.688rem", fontWeight: 500, marginLeft: 8,
-        verticalAlign: 'middle', lineHeight: '18px',
-        fontFamily: 'inherit', border: '0.5px solid #d0d9f0',
-        transition: 'all 0.15s',
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        padding: '10px 24px', borderRadius: 10,
+        background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)',
+        color: '#4338ca', border: '1.5px dashed #a5b4fc',
+        cursor: 'pointer', fontSize: "0.813rem", fontWeight: 600,
+        fontFamily: 'inherit', transition: 'all 0.15s',
+        boxShadow: '0 2px 8px rgba(99,102,241,0.08)',
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = '#e0e9ff'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = '#f0f4ff'; }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)'; e.currentTarget.style.borderStyle = 'solid'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)'; e.currentTarget.style.borderStyle = 'dashed'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.08)'; }}
     >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-      配置截图
-    </span>
+      点击查看详细教程
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    </button>
   );
 }
 
@@ -540,23 +539,16 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             {agent ? '编辑智能体' : '接入AI智能体'}
           </h2>
           <p style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-            接入 Coze 低代码、Coze 编程、文心智能体等多种 AI 平台
+            接入 Coze 低代码、Coze 编程、清言智能体、文心智能体等多种 AI 平台
           </p>
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '14px 24px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-          {/* 基本信息 */}
           <div style={{
             background: '#fafbfc', borderRadius: 8, padding: 14,
             border: '1px solid #eef2f6',
           }}>
-            <div style={{
-              fontSize: "0.688rem", fontWeight: 600, color: '#94a3b8',
-              marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase',
-            }}>
-              基本信息
-            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* 头像 + 名称 — 对齐 */}
               <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -641,17 +633,10 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             </div>
           </div>
 
-          {/* 平台配置 */}
           <div style={{
             background: '#fafbfc', borderRadius: 8, padding: 14,
             border: '1px solid #eef2f6',
           }}>
-            <div style={{
-              fontSize: "0.688rem", fontWeight: 600, color: '#94a3b8',
-              marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase',
-            }}>
-              平台配置
-            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
                 <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>平台类型 <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -663,7 +648,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     { value: 'coze-agent', label: 'Coze 编程', desc: '字节扣子', disabled: false, helpUrl: 'https://www.coze.cn' },
                     { value: 'zhipuai', label: '清言智能体', desc: '智谱清言', disabled: false, helpUrl: 'https://chatglm.cn/developersPanel/apiSet' },
                     { value: 'wenxin', label: '文心智能体', desc: '百度文心', disabled: false, helpUrl: 'https://agents.baidu.com' },
-                    { value: 'openai', label: '更多平台', desc: '敬请期待', disabled: true, helpUrl: '' },
                   ].map(p => {
                     const logoMap: Record<string, string> = {
                       coze: 'coze-lowcode',
@@ -693,13 +677,57 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                     );
                   })}
                 </div>
+                <a href="/teacher/guide#ai-agents" target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    marginTop: 8, fontSize: "0.75rem", color: '#6366f1',
+                    textDecoration: 'none', fontWeight: 500,
+                    transition: 'color 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#4f46e5'; e.currentTarget.style.textDecoration = 'underline'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#6366f1'; e.currentTarget.style.textDecoration = 'none'; }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  不知道怎么选平台？前往查看各平台特点 →
+                </a>
               </div>
+
+              {/* 扣子低代码温馨提醒 */}
+              {platform === 'coze' && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
+                  border: '1px solid #fed7aa',
+                  fontSize: "0.75rem", color: '#9a3412', lineHeight: 1.6,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span>
+                    <strong>温馨提示</strong>：扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。
+                  </span>
+                </div>
+              )}
+              {/* 扣子编程温馨提醒 */}
+              {platform === 'coze-agent' && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
+                  border: '1px solid #fed7aa',
+                  fontSize: "0.75rem", color: '#9a3412', lineHeight: 1.6,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span>
+                    <strong>温馨提示</strong>：扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。受 API 功能限制，不支持图片理解。
+                  </span>
+                </div>
+              )}
 
               {/* Bot ID — Coze 必填 */}
               {platform === 'coze' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    Bot ID <HelpIcon platform="coze" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    Bot ID <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字"
@@ -708,11 +736,27 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 </div>
               )}
 
+              {/* 文心智能体温馨提醒 */}
+              {platform === 'wenxin' && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '10px 12px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
+                  border: '1px solid #fed7aa',
+                  fontSize: "0.75rem", color: '#9a3412', lineHeight: 1.6,
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span>
+                    <strong>温馨提示</strong>：文心智能体暂不支持流式输出，需等待完整回复，体验上稍有延迟。受 API 功能限制，不支持图片理解。
+                  </span>
+                </div>
+              )}
+
               {/* App ID — 文心智能体必填 */}
               {platform === 'wenxin' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    App ID <HelpIcon platform="wenxin" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    App ID <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="在文心智能体平台获取 App ID"
@@ -725,7 +769,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {platform === 'zhipuai' && (
                 <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    Assistant ID <HelpIcon platform="zhipuai" /> <span style={{ color: 'var(--danger)' }}>*</span>
+                    Assistant ID <span style={{ color: 'var(--danger)' }}>*</span>
                   </label>
                   <input className="input" value={botId} onChange={e => { setBotId(e.target.value); clearError('botId'); }}
                     placeholder="智能体对话页地址栏中的 ID"
@@ -737,7 +781,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               {/* API URL — Coze Agent 必填 */}
               {platform === 'coze-agent' && (
                 <div>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <HelpIcon platform="coze-agent" /> <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>API URL <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={apiUrl} onChange={e => { setApiUrl(e.target.value); clearError('apiUrl'); }}
                     placeholder="https://xxxx.coze.site"
                     style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiUrl ? '#ef4444' : undefined }} />
@@ -758,19 +802,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 </div>
               )}
 
-              {/* API Secret — 智谱清言必填 */}
-              {platform === 'zhipuai' && (
-                <div>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
-                    API Secret <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <input className="input" type="password" value={apiSecret} onChange={e => { setApiSecret(e.target.value); clearError('apiSecret'); }}
-                    placeholder="在智谱清言开发者面板获取 api_secret"
-                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
-                  {fieldErrors.apiSecret && <FieldError message={fieldErrors.apiSecret} />}
-                </div>
-              )}
-
               <div>
                 <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
                   {platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token'} <span style={{ color: 'var(--danger)' }}>*</span>
@@ -784,18 +815,25 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                   }
                   style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }} />
                 {fieldErrors.apiKey && <FieldError message={fieldErrors.apiKey} />}
-                {platform === 'wenxin' && (
-                  <div style={{
-                    marginTop: 8, padding: '8px 12px', borderRadius: 8,
-                    background: '#fef2f2', border: '0.5px solid #fecaca',
-                    fontSize: "0.75rem", color: '#991b1b', lineHeight: 1.5,
-                    display: 'flex', alignItems: 'flex-start', gap: 6,
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <span>百度文心智能体暂不支持流式输出，对话时需等待完整回复，体验上可能稍有延迟。</span>
-                  </div>
-                )}
               </div>
+
+              {/* API Secret — 智谱清言必填 */}
+              {platform === 'zhipuai' && (
+                <div>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
+                    API Secret <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <input className="input" type="password" value={apiSecret} onChange={e => { setApiSecret(e.target.value); clearError('apiSecret'); }}
+                    placeholder="在智谱清言开发者面板获取 api_secret"
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.apiSecret ? '#ef4444' : undefined }} />
+                  {fieldErrors.apiSecret && <FieldError message={fieldErrors.apiSecret} />}
+                </div>
+              )}
+            </div>
+
+            {/* 配置截图 — 放在所有输入框下方，居中显示 */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16, marginBottom: 4 }}>
+              <HelpButton platform={platform} />
             </div>
           </div>
 

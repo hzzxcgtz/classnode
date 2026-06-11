@@ -121,20 +121,7 @@ export default function TeacherDashboard() {
   const handleSaveSettings = async () => {
     if (!settingsModalClassroom) return;
     try {
-      const data: any = { title: editTitle };
-      const mode = settingsModalClassroom?.mode;
-      if (mode === 'advanced') {
-        // 高级模式：每个小组分配不同智能体
-        data.groups = editGroups.map((g: any) => ({ id: g.id, agentId: g.agentId }));
-      } else if (editAgentId) {
-        // 标准/分组模式：统一使用同一个智能体
-        if (mode === 'group') {
-          data.groups = editGroups.map((g: any) => ({ id: g.id, agentId: editAgentId }));
-        } else {
-          data.agentIds = [editAgentId];
-        }
-      }
-      await api.updateClassroomSettings(settingsModalClassroom.id, data);
+      await api.updateClassroomSettings(settingsModalClassroom.id, { title: editTitle });
       setSettingsModalClassroom(null);
       loadData();
     } catch (e: any) {
@@ -262,26 +249,8 @@ export default function TeacherDashboard() {
                   {(cr.title || '课')[0]}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: "0.875rem", color: '#0f172a', marginBottom: 3 }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.875rem", color: '#0f172a', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {cr.title || '未命名课堂'}
-                    <span style={{
-                      display: 'inline-block', marginLeft: 8,
-                      padding: '1px 7px', borderRadius: 4,
-                      background: '#f0fdf4', color: '#16a34a',
-                      fontSize: "0.688rem", fontWeight: 600, fontFamily: 'monospace',
-                    }}>
-                      {cr.code}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
-                    {cr._count?.students || 0} 名学生
-                    <span style={{ margin: '0 6px', color: '#e2e8f0' }}>|</span>
-                    {cr.classes?.[0]?.class?.name && (
-                      <>
-                        {cr.classes[0].class.name}
-                        <span style={{ margin: '0 6px', color: '#e2e8f0' }}>|</span>
-                      </>
-                    )}
                     {(() => {
                       const modeCfg: Record<string, { label: string; bg: string; color: string; icon: ReactNode }> = {
                         standard: {
@@ -313,6 +282,25 @@ export default function TeacherDashboard() {
                         </span>
                       );
                     })()}
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '1px 7px', borderRadius: 4,
+                      background: '#f0fdf4', color: '#16a34a',
+                      fontSize: "0.688rem", fontWeight: 600, fontFamily: 'monospace',
+                    }}>
+                      {cr.code}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
+                    {cr.classes?.[0]?.class?.name && (
+                      <>
+                        {cr.classes[0].class.name}
+                        <span style={{ margin: '0 6px', color: '#e2e8f0' }}>|</span>
+                      </>
+                    )}
+                    {cr._count?.students || 0} 名学生
+                    <span style={{ margin: '0 6px', color: '#e2e8f0' }}>|</span>
+                    <span>{new Date(cr.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 创建</span>
                   </div>
                 </div>
                 {/* 右上角统计数据 */}
@@ -607,7 +595,7 @@ export default function TeacherDashboard() {
               </div>
               <div>
                 <h3 style={{ fontSize: "1rem", fontWeight: 600, color: '#0f172a', margin: 0 }}>课堂设置</h3>
-                <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '2px 0 0' }}>修改课堂名称或调整 AI 智能体</p>
+                <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '2px 0 0' }}>可修改课堂名称，其余内容创建后不可更改</p>
               </div>
             </div>
             {/* 弹窗内容 */}
@@ -625,124 +613,65 @@ export default function TeacherDashboard() {
                   onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#fafbfc'; }} />
               </div>
 
-              {/* 标准/分组模式：单个智能体选择器 */}
-              {settingsModalClassroom?.mode !== 'advanced' && allAgents.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
+              {/* 当前智能体（只读展示） */}
+              {allAgents.length > 0 && (
+                <div style={{ marginBottom: settingsModalClassroom?.mode !== 'advanced' ? 0 : 20 }}>
                   <label style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
                     AI智能体
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（创建后不可更改）</span>
                   </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {allAgents.map((a: any) => {
-                      const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, opacity: 0.7 }}>
+                    {(() => {
+                      if (settingsModalClassroom?.mode === 'advanced') {
+                        const groupAgents = (settingsModalClassroom.groups || []).map((g: any) => g.agent).filter(Boolean);
+                        return groupAgents.length > 0 ? groupAgents.map((agent: any, i: number) => {
+                          const logoUrl = agent.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: "0.813rem", color: '#64748b' }}>
+                              {logoUrl ? <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} /> : <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent.name[0]}</div>}
+                              <span>{agent.name}</span>
+                            </div>
+                          );
+                        }) : <span style={{ fontSize: "0.813rem", color: '#94a3b8' }}>共 {settingsModalClassroom.groups?.length || 0} 个小组</span>;
+                      }
+                      const agent = allAgents.find((a: any) => a.id === editAgentId);
+                      if (!agent) return <span style={{ fontSize: "0.813rem", color: '#94a3b8' }}>未配置</span>;
+                      const logoUrl = agent.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
                       return (
-                        <div key={a.id} onClick={() => setEditAgentId(a.id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-                            borderRadius: 8, userSelect: 'none',
-                            border: `1.5px solid ${editAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
-                            background: editAgentId === a.id ? '#eef2ff' : 'white',
-                            cursor: 'pointer', fontSize: "0.813rem", fontWeight: editAgentId === a.id ? 500 : 400,
-                            transition: 'all 0.12s',
-                          }}>
-                          {logoUrl ? (
-                            <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
-                          )}
-                          <span style={{ color: '#0f172a' }}>{a.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: "0.813rem", color: '#64748b' }}>
+                          {logoUrl ? <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} /> : <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent.name[0]}</div>}
+                          <span>{agent.name}</span>
                         </div>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
               )}
 
-              {/* 高级模式：每个小组分配不同智能体 */}
+              {/* 高级模式：小组智能体列表（只读） */}
               {settingsModalClassroom?.mode === 'advanced' && editGroups.length > 0 && (
                 <div>
                   <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                     小组智能体
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（创建后不可更改）</span>
                   </div>
-                  <div style={{ background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6', padding: '12px 14px' }}>
-                    {editGroups.map((g: any, idx: number) => (
-                      <div key={g.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 0',
-                        borderBottom: idx < editGroups.length - 1 ? '1px solid #eef2f6' : 'none',
-                      }}>
-                        <div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.688rem", fontWeight: 700, flexShrink: 0 }}>
-                          {idx + 1}
-                        </div>
-                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#0f172a', minWidth: 70, flexShrink: 0 }}>{g.name}</span>
-                        <div style={{ flex: 1, position: 'relative' }}>
-                          <div
-                            onClick={() => setSettingsDropdownGroupId(settingsDropdownGroupId === g.id ? null : g.id)}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 6,
-                              padding: '6px 28px 6px 10px', borderRadius: 8, fontSize: "0.813rem",
-                              border: '1px solid #e2e8f0', cursor: 'pointer',
-                              background: 'white', minHeight: 32,
-                            }}>
-                            {g.agentId ? (() => {
-                              const agent = allAgents.find((a: any) => a.id === g.agentId);
-                              const logoUrl = agent?.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
-                              return <>
-                                {logoUrl ? (
-                                  <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                                ) : (
-                                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
-                                )}
-                                <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
-                              </>;
-                            })() : (
-                              <span style={{ color: '#94a3b8' }}>选择智能体</span>
-                            )}
+                  <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #eef2f6', padding: '12px 14px', opacity: 0.7 }}>
+                    {editGroups.map((g: any, idx: number) => {
+                      const agent = allAgents.find((a: any) => a.id === g.agentId);
+                      const logoUrl = agent?.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
+                      return (
+                        <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < editGroups.length - 1 ? '1px solid #eef2f6' : 'none' }}>
+                          <div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.688rem", fontWeight: 700, flexShrink: 0 }}>{idx + 1}</div>
+                          <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#0f172a', minWidth: 70, flexShrink: 0 }}>{g.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', fontSize: "0.813rem", color: '#64748b' }}>
+                            {logoUrl ? <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} /> : <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>}
+                            <span>{agent?.name || '未配置'}</span>
                           </div>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                          {settingsDropdownGroupId === g.id && (
-                            <div style={{
-                              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60,
-                              marginTop: 4, background: 'white', borderRadius: 8,
-                              border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                              maxHeight: 200, overflowY: 'auto',
-                            }}>
-                              {allAgents.map((a: any) => {
-                                const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
-                                return (
-                                  <div key={a.id} onClick={() => {
-                                    const next = [...editGroups];
-                                    next[idx] = { ...next[idx], agentId: a.id };
-                                    setEditGroups(next);
-                                    setSettingsDropdownGroupId(null);
-                                  }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '8px 12px', cursor: 'pointer', fontSize: "0.813rem",
-                                    background: g.agentId === a.id ? '#eef2ff' : 'white',
-                                  }}>
-                                    {logoUrl ? (
-                                      <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                                    ) : (
-                                      <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
-                                    )}
-                                    <span>{a.name}</span>
-                                    {g.agentId === a.id && (
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
-                                        <polyline points="20 6 9 17 4 12" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -752,6 +681,10 @@ export default function TeacherDashboard() {
               <button onClick={() => setSettingsModalClassroom(null)} className="btn"
                 style={{ fontSize: "0.813rem" }}>
                 取消
+              </button>
+              <button onClick={handleSaveSettings} className="btn btn-primary"
+                style={{ fontSize: "0.813rem" }}>
+                保存设置
               </button>
               <button onClick={handleSaveSettings} className="btn btn-primary"
                 style={{ fontSize: "0.813rem" }}>

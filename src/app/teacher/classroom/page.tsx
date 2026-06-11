@@ -191,11 +191,15 @@ function ClassroomBoardContent() {
       const warnings: Record<string, number> = {};
       const blacklisted: Record<string, boolean> = {};
       students.forEach((s: any) => {
-        statuses[s.student.id] = s.status;
         rounds[s.student.id] = s.totalRounds || 0;
         warnings[s.student.id] = s.warningCount || 0;
         blacklisted[s.student.id] = s.blacklisted || false;
       });
+      // 不通过 DB status 字段初始化在线状态，依赖 HTTP API 获取当前在线学生
+      try {
+        const online = await api.getOnlineStudentIds(id);
+        online.studentIds?.forEach((sid: string) => { statuses[sid] = 'online'; });
+      } catch {}
       setStudentStatuses(statuses);
       setStudentRounds(rounds);
       setStudentWarnings(warnings);
@@ -1439,7 +1443,7 @@ function ClassroomBoardContent() {
                 {notifyState.studentId ? `发消息给 ${notifyState.studentName || notifyState.studentId}` : '发通知给全班'}
               </h3>
               <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 14px' }}>
-                {notifyState.studentId ? '消息将出现在该学生对话页右下角' : '消息将出现在全班学生的对话页右下角'}
+                {notifyState.studentId ? '消息将出现在该学生对话页下方' : '消息将出现在全班学生的对话页下方'}
               </p>
               {notifySent ? (
                 <div style={{

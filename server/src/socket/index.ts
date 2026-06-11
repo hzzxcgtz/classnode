@@ -99,9 +99,11 @@ function getOnlineStudentIds(classroomId: string, connMap: Map<string, string>):
   return ids;
 }
 
-export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
+export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: import('express').Application) {
   // 追踪每个学生的活跃连接，key: `${classroomId}:${studentId}`
   const activeConnections = new Map<string, string>();
+  // 暴露给 HTTP 路由使用
+  if (app) app.set('activeConnections', activeConnections);
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);
 

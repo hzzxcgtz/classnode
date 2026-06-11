@@ -47,6 +47,7 @@ next-env.d.ts
 # server build output
 server/node_modules/
 server/dist/
+server/frontend/
 
 # tauri build artifacts
 src-tauri/resources/

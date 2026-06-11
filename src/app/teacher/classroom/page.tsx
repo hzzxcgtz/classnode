@@ -102,6 +102,7 @@ function ClassroomBoardContent() {
   const fullscreenContentRef = useRef<HTMLDivElement>(null);
   const { joinTeacherBoard, on } = useSocket();
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
+  const groupTooltipThrottle = useRef(0);
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
   const [studentBlacklisted, setStudentBlacklisted] = useState<Record<string, boolean>>({});
   const [groupTooltip, setGroupTooltip] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -600,7 +601,8 @@ function ClassroomBoardContent() {
                           <span style={{ fontSize: "0.875rem", fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                             {isGroup ? (
                               <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
-                                onMouseMove={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
+                                onMouseEnter={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
+                                onMouseMove={(e) => { const n = Date.now(); if (n - groupTooltipThrottle.current < 100) return; groupTooltipThrottle.current = n; setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY }); }}
                                 onMouseLeave={() => setGroupTooltip(null)}>
                                 {item.group?.name || '(未命名)'}
                               </span>
@@ -844,7 +846,7 @@ function ClassroomBoardContent() {
                 </div>
               ) : (
                 messages.map((m: any, i: number) => (
-                  <div key={i} style={{
+                  <div key={`dr-${m.role}-${m.createdAt || i}`} style={{
                     padding: '10px 14px',
                     borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
                     background: m.role === 'user' ? '#eef2ff' : '#f8fafc',
@@ -1035,7 +1037,7 @@ function ClassroomBoardContent() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
                 {projMsgs.map((m: any, i: number) => (
-                  <div key={i} style={{
+                  <div key={`fs-${m.role}-${m.createdAt || i}`} style={{
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',

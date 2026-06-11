@@ -9,6 +9,10 @@ import { decrypt } from '../services/crypto.js';
 const agentAlertCooldown = new Map<string, number>();
 const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 
+/** 平台对话上下文 ID 存储（key: classroomId:studentId:agentId）
+ *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
+const platformConversations = new Map<string, string>();
+
 /** 屏蔽词过滤器缓存（预构建 AC 自动机，避免每次发消息都重建） */
 let cachedFilter: ((content: string) => { filtered: string; matched: string[] }) | null = null;
 let shieldWordsCacheTime = 0;
@@ -380,17 +384,27 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           take: 30,
         });
 
-        const formattedHistory = history.map((h: Prisma.MessageGetPayload<{}>) => ({
+        // 取最近 20 条训练（约 10 轮对话），保持内容连贯的同时避免请求体过大
+        const recentHistory = history.slice(-20);
+        const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<{}>) => ({
           role: h.role as 'user' | 'assistant',
           content: h.content,
         }));
 
-        const agentConfig = {
+        // 智谱清言 / 文心使用对话上下文 ID 维护记忆，从内存中恢复
+        const platformNeedsConvId = ['coze', 'zhipuai', 'wenxin'].includes(agent.platform);
+        const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}`;
+        const platformConvId = platformConversations.get(platformConvKey) || undefined;
+        console.log(`[ConvId] key=${platformConvKey} found=${!!platformConvId} value=${platformConvId}`);
+
+        console.log(`[ConvId] agent platform=${agent.platform} name=${agent.name} botId=${agent.botId}`);
+        const agentConfig: any = {
           platform: agent.platform,
           apiUrl: agent.apiUrl || undefined,
           apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
           botId: agent.botId || undefined,
           extra: agent.extra || undefined,
+          conversationId: platformNeedsConvId ? platformConvId : undefined,
         };
 
         let fullContent = '';
@@ -419,6 +433,14 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient) {
           formattedHistory,
           data.fileUrls || (data.fileUrl ? [data.fileUrl] : [])
         );
+
+        // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
+        if (platformNeedsConvId && result.conversationId) {
+          console.log(`[ConvId] SET ${platformConvKey} = ${result.conversationId}`);
+          platformConversations.set(platformConvKey, result.conversationId);
+        } else {
+          console.log(`[ConvId] NOT SET: needs=${platformNeedsConvId} hasConvId=${!!result.conversationId} convId=${result.conversationId}`);
+        }
 
         console.log('[Socket] AI result:', JSON.stringify({ success: result.success, contentLen: result.content?.length, error: result.error, hasContent: !!result.content }).slice(0, 300));
 

@@ -136,7 +136,7 @@ async function proxyCoze(
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
-  // 历史消息 + 当前消息（有图片时不带历史，Coze 限制）
+  // 历史消息 + 当前消息（有图片时不能带文本历史，Coze 限制）
   const additionalMessages: any[] = [];
   if (!fileUrls || fileUrls.length === 0) {
     for (const h of history || []) {
@@ -167,13 +167,16 @@ async function proxyCoze(
     });
   }
 
-  const requestBody = JSON.stringify({
+  const requestBody: any = {
     bot_id: agent.botId,
     user_id: userName,
     additional_messages: additionalMessages,
     auto_save_history: true,
     stream: false,
-  });
+  };
+  if (agent.conversationId) {
+    requestBody.conversation_id = agent.conversationId;
+  }
   console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
 
   const response = await fetchWithTimeout(
@@ -184,7 +187,7 @@ async function proxyCoze(
         'Authorization': `Bearer ${agent.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: requestBody,
+      body: JSON.stringify(requestBody),
     }
   );
 
@@ -225,6 +228,7 @@ async function proxyCoze(
   return {
     success: true,
     content: deanonymized,
+    conversationId,
   };
 }
 
@@ -897,6 +901,7 @@ async function proxyCozeStream(
   // ---- 文字消息走流式 ----
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
   const additionalMessages: any[] = [];
+  // 始终通过 additional_messages 传完整历史，确保 bot 能感知上下文
   if (history) {
     for (const h of history) {
       additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
@@ -904,18 +909,24 @@ async function proxyCozeStream(
   }
   additionalMessages.push({ role: 'user', content: message, content_type: 'text' });
 
+  const body: any = {
+    bot_id: agent.botId,
+    user_id: userName,
+    additional_messages: additionalMessages,
+    auto_save_history: true,
+    stream: true,
+  };
+  if (agent.conversationId) {
+    body.conversation_id = agent.conversationId;
+  }
+
   const response = await fetchWithTimeout(`${baseUrl}/v3/chat`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${agent.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      bot_id: agent.botId,
-      user_id: userName,
-      additional_messages: additionalMessages,
-      stream: true,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -930,6 +941,7 @@ async function proxyCozeStream(
   let buffer = '';
   let fullContent = '';
   let currentEvent = '';
+  let streamConvId = agent.conversationId || '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -945,6 +957,10 @@ async function proxyCozeStream(
         if (!dataStr || dataStr === '[DONE]') continue;
         try {
           const parsed = JSON.parse(dataStr);
+          // 捕获 conversation_id（在 conversation.chat.created 等初始事件中）
+          if (!streamConvId && parsed.conversation_id) {
+            streamConvId = parsed.conversation_id;
+          }
           if (parsed.content_type === 'thinking') continue;
           if (parsed.type === 'verbose') continue;
           if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
@@ -958,7 +974,7 @@ async function proxyCozeStream(
 
   if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
+  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyDifyStream(

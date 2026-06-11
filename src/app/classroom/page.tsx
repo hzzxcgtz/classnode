@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, memo, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
@@ -8,6 +8,128 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 
 const API_BASE_URL = getApiBaseUrl();
+
+// ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
+
+const AgentAvatar = memo(function AgentAvatar({
+  size, borderRadius = 8, fontSize = 13, agent, apiBase,
+}: {
+  size: number; borderRadius?: number; fontSize?: number;
+  agent: any; apiBase: string;
+}) {
+  const logoUrl = agent?.logo
+    ? (agent.logo.startsWith('/') ? `${apiBase}${agent.logo}` : agent.logo)
+    : null;
+  if (logoUrl) {
+    return <img src={logoUrl} alt="" style={{ width: size, height: size, borderRadius, objectFit: 'cover', flexShrink: 0 }} />;
+  }
+  return (
+    <div style={{
+      width: size, height: size, borderRadius,
+      background: 'linear-gradient(135deg, #667eea, #764ba2)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize, color: 'white', fontWeight: 700, flexShrink: 0,
+    }}>
+      {agent?.name?.[0] || 'AI'}
+    </div>
+  );
+});
+
+const MessageItem = memo(function MessageItem({
+  msg, studentName, agent, apiBase,
+}: {
+  msg: any; studentName: string; agent: any; apiBase: string;
+}) {
+  const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
+      {msg.role === 'assistant' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
+            <AgentAvatar size={26} borderRadius={8} fontSize={13} agent={agent} apiBase={apiBase} />
+          </div>
+          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+        </div>
+      )}
+      {msg.role === 'user' && studentName && (
+        <div style={{ paddingRight: 4 }}>
+          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#94a3b8' }}>{studentName}</span>
+        </div>
+      )}
+      <div style={{
+        maxWidth: '78%',
+        padding: msg.role === 'system' ? '10px 16px' : '14px 18px',
+        borderRadius: msg.role === 'user' ? '18px 18px 6px 18px' : '6px 18px 18px 18px',
+        background: msg.role === 'user' ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'white',
+        color: msg.role === 'user' ? 'white' : '#1a1a2e',
+        border: msg.role === 'assistant' ? '1px solid #eef2f6' : 'none',
+        boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.04)' : '0 4px 12px rgba(102,126,234,0.2)',
+        lineHeight: 1.7,
+        fontSize: "0.938rem",
+        wordBreak: 'break-word',
+        position: 'relative',
+      }}>
+        {fileSources.map((fu: string, fi: number) => (
+          <div key={fi} style={{ marginBottom: 8 }}>
+            {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
+              <img src={`${apiBase}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
+                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }} />
+            ) : (
+              <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                {(msg.fileNames?.[fi]) || msg.fileName || '文件'}
+              </div>
+            )}
+          </div>
+        ))}
+        {msg.role === 'system' ? (
+          <span>{msg.content}</span>
+        ) : (
+          <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.fileUrls?.length ? stripImages(msg.content) : msg.content) }} />
+        )}
+      </div>
+    </div>
+  );
+});
+
+const StreamingIndicator = memo(function StreamingIndicator({
+  streamingContent, agent, apiBase,
+}: {
+  streamingContent: string; agent: any; apiBase: string;
+}) {
+  const displayHtml = useMemo(() => {
+    if (!streamingContent) return '';
+    return renderMarkdown(stripImages(streamingContent));
+  }, [streamingContent]);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+        <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
+          <AgentAvatar size={26} borderRadius={8} fontSize={13} agent={agent} apiBase={apiBase} />
+        </div>
+        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+      </div>
+      <div style={{
+        maxWidth: '78%', padding: '14px 18px',
+        borderRadius: '6px 18px 18px 18px',
+        background: 'white', color: '#1a1a2e',
+        border: '1px solid #eef2f6',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        lineHeight: 1.7, fontSize: "0.938rem", wordBreak: 'break-word',
+      }}>
+        {streamingContent ? (
+          <span dangerouslySetInnerHTML={{ __html: displayHtml + '<span style="display:inline-block;width:2px;height:1em;background:var(--primary);margin-left:2px;animation:blink 0.8s infinite;vertical-align:text-bottom"></span>' }} />
+        ) : (
+          <div style={{ display: 'flex', gap: 5, padding: '4px 0' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s infinite' }} />
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.2s infinite' }} />
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.4s infinite' }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 function StudentChatContent() {
   const router = useRouter();
@@ -67,6 +189,9 @@ function StudentChatContent() {
   const statusSocketRef = useRef<any>(null);
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
   const lastUserFileRef = useRef<{ urls: string[]; names: string[] }>({ urls: [], names: [] });
+  // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
+  const streamingBufferRef = useRef('');
+  const streamingRafRef = useRef<number | null>(null);
 
   const SOCKET_URL = API_BASE_URL;
   const apiBase = SOCKET_URL;
@@ -108,8 +233,9 @@ function StudentChatContent() {
   };
 
   // 新消息到达、AI 流式输出、或首次进入对话页时自动滚动到底部
+  // 用 useEffect 代替 useLayoutEffect，避免 scrollTop 强制同步布局阻塞主线程
   // iOS 键盘弹出时避免因滚动导致键盘收起：若输入框有焦点则不滚动
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (userScrolledUpRef.current) return;
     const el = chatContainerRef.current;
     if (!el) return;
@@ -117,7 +243,7 @@ function StudentChatContent() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (isIOS && document.activeElement === inputRef.current) return;
-    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [messages, streamingContent, step, waitingAI]);
 
   // AI 回答完成后自动聚焦输入框
@@ -271,7 +397,13 @@ function StudentChatContent() {
         setConnected(true);
       });
 
+      const flushStreaming = () => {
+        if (streamingRafRef.current) { cancelAnimationFrame(streamingRafRef.current); streamingRafRef.current = null; }
+        streamingBufferRef.current = '';
+      };
+
       socket.on('ai-response', (data: any) => {
+        flushStreaming();
         const attached = lastUserFileRef.current;
         setMessages(prev => [...prev, {
           role: 'assistant',
@@ -287,12 +419,19 @@ function StudentChatContent() {
       });
 
       socket.on('ai-thinking', () => {
+        flushStreaming();
         setWaitingAI(true);
         setStreamingContent('');
       });
 
       socket.on('ai-chunk', (data: any) => {
-        setStreamingContent(prev => prev + data.content);
+        streamingBufferRef.current += data.content;
+        if (!streamingRafRef.current) {
+          streamingRafRef.current = requestAnimationFrame(() => {
+            streamingRafRef.current = null;
+            setStreamingContent(streamingBufferRef.current);
+          });
+        }
       });
 
       socket.on('ai-error', (data: any) => {
@@ -316,6 +455,8 @@ function StudentChatContent() {
       });
 
       socket.on('classroom-paused', () => {
+        if (streamingRafRef.current) { cancelAnimationFrame(streamingRafRef.current); streamingRafRef.current = null; }
+        streamingBufferRef.current = '';
         setPaused(true);
         setWaitingAI(false);
         setStreamingContent('');
@@ -784,89 +925,16 @@ function StudentChatContent() {
         )}
 
         {/* 消息列表 */}
-        {messages.map((msg, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
-            {/* AI 头像和名字 */}
-            {msg.role === 'assistant' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-                <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-                  {renderAgentAvatar(26, 8, 13, getCurrentAgent())}
-                </div>
-                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
-              </div>
-            )}
-            {/* 学生名字（靠右） */}
-            {msg.role === 'user' && selectedStudent && (
-              <div style={{ paddingRight: 4 }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#94a3b8' }}>{selectedStudent.name}</span>
-              </div>
-            )}
-            {/* 消息气泡 */}
-            <div style={{
-              maxWidth: '78%',
-              padding: msg.role === 'system' ? '10px 16px' : '14px 18px',
-              borderRadius: msg.role === 'user' ? '18px 18px 6px 18px' : '6px 18px 18px 18px',
-              background: msg.role === 'user' ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'white',
-              color: msg.role === 'user' ? 'white' : '#1a1a2e',
-              border: msg.role === 'assistant' ? '1px solid #eef2f6' : 'none',
-              boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.04)' : '0 4px 12px rgba(102,126,234,0.2)',
-              lineHeight: 1.7,
-              fontSize: "0.938rem",
-              wordBreak: 'break-word',
-              position: 'relative',
-            }}>
-              {/* 用户消息中的文件附件 */}
-              {(msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : [])).map((fu: string, fi: number) => (
-                <div key={fi} style={{ marginBottom: 8 }}>
-                  {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-                    <img src={`${SOCKET_URL}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
-                      style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }} />
-                  ) : (
-                    <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                      {(msg.fileNames?.[fi]) || msg.fileName || '文件'}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {/* 系统消息 */}
-              {msg.role === 'system' ? (
-                <span>{msg.content}</span>
-              ) : (
-                <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.fileUrls?.length ? stripImages(msg.content) : msg.content) }} />
-              )}
-            </div>
-          </div>
-        ))}
+        {(() => {
+          const memoAgent = getCurrentAgent();
+          return messages.map((msg, i) => (
+            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} />
+          ));
+        })()}
 
         {/* AI 思考中/流式输出 */}
         {waitingAI && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-              <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-                {renderAgentAvatar(26, 8, 13, getCurrentAgent())}
-              </div>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{getCurrentAgent()?.name || 'AI助手'}</span>
-            </div>
-            <div style={{
-              maxWidth: '78%', padding: '14px 18px',
-              borderRadius: '6px 18px 18px 18px',
-              background: 'white', color: '#1a1a2e',
-              border: '1px solid #eef2f6',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              lineHeight: 1.7, fontSize: "0.938rem", wordBreak: 'break-word',
-            }}>
-              {streamingContent ? (
-                <span dangerouslySetInnerHTML={{ __html: renderMarkdown(stripImages(streamingContent)) + '<span style="display:inline-block;width:2px;height:1em;background:var(--primary);margin-left:2px;animation:blink 0.8s infinite;vertical-align:text-bottom"></span>' }} />
-              ) : (
-                <div style={{ display: 'flex', gap: 5, padding: '4px 0' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s infinite' }} />
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.2s infinite' }} />
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.4s infinite' }} />
-                </div>
-              )}
-            </div>
-          </div>
+          <StreamingIndicator streamingContent={streamingContent} agent={getCurrentAgent()} apiBase={SOCKET_URL} />
         )}
 
         {/* 底部锚点 */}

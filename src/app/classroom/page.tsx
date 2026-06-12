@@ -142,16 +142,27 @@ function StudentChatContent() {
     if (!codeFromUrl) { router.push('/'); return; }
     setCode(codeFromUrl);
     const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
+    let sessionData: { studentId: string; studentName: string } | null = null;
     if (saved) {
       try {
         const session = JSON.parse(saved);
         if (Date.now() - session.timestamp < 7200000) {
+          sessionData = { studentId: session.studentId, studentName: session.studentName };
           setSelectedStudent({ id: session.studentId, name: session.studentName });
         }
       } catch {}
-      // 不跳过身份选择，仅预填学生姓名。自动跳过可能导致"账号已在其他设备登录"的提示
     }
-    loadClassroom(codeFromUrl).then(cr => { if (cr) setStep('identity'); });
+    loadClassroom(codeFromUrl).then(async (cr) => {
+      if (!cr) return;
+      if (sessionData) {
+        // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
+        setStep('chat');
+        if (cr.id) await loadMessages(cr.id, sessionData.studentId);
+        startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
+      } else {
+        setStep('identity');
+      }
+    });
   }, []);
 
   const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');

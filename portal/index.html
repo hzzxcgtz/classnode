@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClassNode - AI 互动课堂系统</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- 滚动进度条 -->
+<div class="scroll-progress">
+    <div class="scroll-progress-bar" id="scrollProgress"></div>
+</div>
+
+<!-- 动态canvas背景 -->
+<canvas id="bgCanvas"></canvas>
+
+<!-- 鼠标光晕 -->
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<!-- 背景元素 -->
+<div class="grid-bg" id="gridBg"></div>
+<div class="gradient-orb orb-1" id="orb1"></div>
+<div class="gradient-orb orb-2" id="orb2"></div>
+<div class="gradient-orb orb-3" id="orb3"></div>
+
+<!-- 浮动几何 -->
+<div class="floating-shape shape-1" data-speed="0.3">
+    <svg class="shape-svg" viewBox="0 0 100 100">
+        <polygon points="50,5 95,75 5,75" />
+    </svg>
+</div>
+<div class="floating-shape shape-2" data-speed="0.5">
+    <svg class="shape-svg" viewBox="0 0 100 100">
+        <rect x="10" y="10" width="80" height="80" rx="8" />
+    </svg>
+</div>
+<div class="floating-shape shape-3" data-speed="0.4">
+    <svg class="shape-svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" />
+        <circle cx="50" cy="50" r="25" />
+    </svg>
+</div>
+
+<!-- 导航栏 -->
+<nav id="navbar">
+    <div class="nav-container">
+        <a href="#" class="nav-logo">
+            <img src="images/logo.png" alt="ClassNode" class="nav-logo-icon">
+            <span class="nav-logo-text">ClassNode</span>
+        </a>
+        <ul class="nav-menu">
+            <li><a href="#features">特性</a></li>
+            <li><a href="#gallery">预览</a></li>
+            <li><a href="#deploy">部署</a></li>
+            <li><a href="#workflow">流程</a></li>
+            <li><a href="#pain">解决问题</a></li>
+            <li><a href="#about">关于</a></li>
+        </ul>
+        <div class="nav-cta">
+            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">
+                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+            </button>
+            <a href="#download" class="btn btn-primary">免费下载</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        <span>v1.3.12 · 教师免费使用</span>
+    </div>
+    <h1>
+        <span class="gradient-text">让 AI 在真实课堂落地</span>
+        <span class="highlight" style="display:block; margin-top: 12px;">零门槛 · 不设限</span>
+    </h1>
+    <p class="hero-subtitle">
+        专为真实课堂打造的 AI 互动教学系统。即使网络不那么完美，也能让老师精心调优的 AI 智能体，安全、可控地送到每一个学生面前。
+    </p>
+    <div class="hero-cta">
+        <a href="#download" class="btn btn-primary btn-large">
+            立即下载
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+        </a>
+        <a href="#features" class="btn btn-secondary btn-large">了解更多</a>
+    </div>
+
+</section>
+
+<!-- 界面展示 -->
+<section class="showcase-section" id="gallery">
+    <div class="section-container">
+        <div class="section-header">
+            <div class="section-label">界面预览</div>
+            <h2 class="section-title">看看 ClassNode 长什么样</h2>
+            <p class="section-subtitle">从课堂管理到数据报告，一目了然</p>
+        </div>
+        <div class="showcase-tabs" id="showcaseTabs">
+            <button class="showcase-tab active" data-index="0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+                仪表盘
+            </button>
+            <button class="showcase-tab" data-index="1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                智能体
+            </button>
+            <button class="showcase-tab" data-index="2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                课堂互动
+            </button>
+            <button class="showcase-tab" data-index="3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                数据报告
+            </button>
+        </div>
+        <div class="showcase-stage" id="showcaseStage">
+            <div class="showcase-slide active" data-index="0">
+                <div class="showcase-mockup">
+                    <div class="showcase-mockup-bar">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <img src="images/screenshots/dashboard.svg" alt="课堂仪表盘">
+                </div>
+                <div class="showcase-info">
+                    <h3 class="showcase-info-title">课堂仪表盘</h3>
+                    <p class="showcase-info-desc">实时监控全班 AI 互动状态，学情数据一览无余。</p>
+                    <ul class="showcase-info-list">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            全班在线状态一目了然
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            对话轮次与互动深度追踪
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            高频词云与活跃榜 Top10
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="showcase-slide" data-index="1">
+                <div class="showcase-mockup">
+                    <div class="showcase-mockup-bar">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <img src="images/screenshots/agents.svg" alt="AI 智能体管理">
+                </div>
+                <div class="showcase-info">
+                    <h3 class="showcase-info-title">AI 智能体</h3>
+                    <p class="showcase-info-desc">Coze、清言智能体、文心智能体等多平台一键接入。</p>
+                    <ul class="showcase-info-list">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            四种平台智能体统一管理
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            配置截图 + 一键测试连通
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            在线状态自动检测告警
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="showcase-slide" data-index="2">
+                <div class="showcase-mockup">
+                    <div class="showcase-mockup-bar">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <img src="images/screenshots/classroom.svg" alt="课堂互动">
+                </div>
+                <div class="showcase-info">
+                    <h3 class="showcase-info-title">课堂互动</h3>
+                    <p class="showcase-info-desc">学生扫码即入，全班实时与 AI 对话，教师全程监控。</p>
+                    <ul class="showcase-info-list">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            四种课堂模式灵活切换
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            实时消息引导与单独沟通
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            屏蔽词 + 频率双重管控
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="showcase-slide" data-index="3">
+                <div class="showcase-mockup">
+                    <div class="showcase-mockup-bar">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <img src="images/screenshots/report.svg" alt="数据报告">
+                </div>
+                <div class="showcase-info">
+                    <h3 class="showcase-info-title">数据报告</h3>
+                    <p class="showcase-info-desc">一键生成含词云的 Word 报告，学情数据随时回溯。</p>
+                    <ul class="showcase-info-list">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            全班对话实录完整导出
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            学情统计报告一键生成
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            跨设备备份与数据迁移
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="showcase-nav" id="showcaseNav">
+            <button class="showcase-dot active" data-index="0" aria-label="仪表盘"></button>
+            <button class="showcase-dot" data-index="1" aria-label="智能体"></button>
+            <button class="showcase-dot" data-index="2" aria-label="课堂互动"></button>
+            <button class="showcase-dot" data-index="3" aria-label="数据报告"></button>
+        </div>
+    </div>
+</section>
+
+<!-- 核心特性 -->
+<section id="features">
+    <div class="section-container">
+        <div class="section-header">
+            <div class="section-label">核心特性</div>
+            <h2 class="section-title">为真实课堂而生</h2>
+            <p class="section-subtitle">轻量化、本地化、纯净安全、教学全闭环</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    </svg>
+                </div>
+                <h3 class="feature-title">轻量化部署</h3>
+                <p class="feature-desc">双击安装、浏览器访问。不用云服务器，自己电脑上就能跑，即开即用。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                </div>
+                <h3 class="feature-title">数据本地化</h3>
+                <p class="feature-desc">所有数据保存在教师电脑本地硬盘，不经过第三方服务器，隐私安全有保障。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+                <h3 class="feature-title">纯净安全</h3>
+                <p class="feature-desc">学生端无需互联网，通过教师机统一接入 AI，节省带宽且保障上网安全。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M23 4v6h-6"/>
+                        <path d="M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                </div>
+                <h3 class="feature-title">教学全闭环</h3>
+                <p class="feature-desc">从创建课堂到导出报告，完整覆盖 AI 互动教学全流程。</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 痛点 -->
+<section class="pain-points" id="pain">
+    <div class="section-container">
+        <div class="section-header">
+            <div class="section-label">老师的真实痛点</div>
+            <h2 class="section-title">解决 AI 课堂"老大难"</h2>
+            <p class="section-subtitle">技术不难的时候，难的是落地</p>
+        </div>
+        <div class="pain-grid">
+            <div class="pain-card">
+                <div class="pain-question">
+                    <div class="pain-q-icon">Q</div>
+                    <div class="pain-q-text">学生登都登不进，AI 白调了？</div>
+                </div>
+                <div class="pain-answer">
+                    <div class="pain-a-icon">A</div>
+                    <div class="pain-a-text">互动码一开，扫码或输入 4 位数就能进。平板手机都能用，临时换教室、来旁听生也能秒加。</div>
+                </div>
+            </div>
+            <div class="pain-card">
+                <div class="pain-question">
+                    <div class="pain-q-icon">Q</div>
+                    <div class="pain-q-text">学生拿 AI 在干嘛，我看都看不到？</div>
+                </div>
+                <div class="pain-answer">
+                    <div class="pain-a-icon">A</div>
+                    <div class="pain-a-text">全班对话实时同步到教师控制台，谁深度互动、谁刷屏闲聊一眼看清，可查阅完整对话记录。</div>
+                </div>
+            </div>
+            <div class="pain-card">
+                <div class="pain-question">
+                    <div class="pain-q-icon">Q</div>
+                    <div class="pain-q-text">网一断，AI 课直接废了？</div>
+                </div>
+                <div class="pain-answer">
+                    <div class="pain-a-icon">A</div>
+                    <div class="pain-a-text">教师机作为桥梁，学生端无需互联网。教室再卡、运营商再不稳定，课堂节奏一点不受影响。</div>
+                </div>
+            </div>
+            <div class="pain-card">
+                <div class="pain-question">
+                    <div class="pain-q-icon">Q</div>
+                    <div class="pain-q-text">一下课，对话记录全没了？</div>
+                </div>
+                <div class="pain-answer">
+                    <div class="pain-a-icon">A</div>
+                    <div class="pain-a-text">所有记录保存在本地硬盘，随时回溯。还能一键生成含高频词云的 Word 报告，学情一目了然。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 工作流程 -->
+<section class="workflow" id="workflow">
+    <div class="section-container">
+        <div class="section-header">
+            <div class="section-label">三步上手</div>
+            <h2 class="section-title">从备课到下课<br>一气呵成</h2>
+        </div>
+        <div class="workflow-grid">
+            <div class="workflow-card">
+                <div class="workflow-number">01</div>
+                <div class="workflow-step">课前 · 备课</div>
+                <h3 class="workflow-title">招募 AI 助教</h3>
+                <p class="workflow-desc">支持 Coze、智谱清言、文心智能体等多平台接入。一键拉取智能体配置，系统自动检测在线状态。</p>
+            </div>
+            <div class="workflow-card">
+                <div class="workflow-number">02</div>
+                <div class="workflow-step">课中 · 互动</div>
+                <h3 class="workflow-title">扫码即入，全景监控</h3>
+                <p class="workflow-desc">大屏发码即可加入。标准 / 分组 / 高级三种模式，支持暂停课堂、单独引导学生。</p>
+            </div>
+            <div class="workflow-card">
+                <div class="workflow-number">03</div>
+                <div class="workflow-step">课后 · 复盘</div>
+                <h3 class="workflow-title">一键导出报告</h3>
+                <p class="workflow-desc">高频词云、活跃榜、完整对话实录一键生成 Word 报告。本地保存，支持跨设备备份迁移。</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 本地部署 -->
+<section class="deploy-section" id="deploy">
+    <div class="section-container">
+        <div class="section-header">
+            <div class="section-label">本地部署</div>
+            <h2 class="section-title">装在老师电脑里的 AI 课堂</h2>
+            <p class="section-subtitle">无需云服务器，不依赖互联网，自己电脑上就能跑</p>
+        </div>
+        <div class="deploy-diagram">
+            <div class="deploy-node deploy-node-teacher">
+                <div class="deploy-node-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                        <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+                    </svg>
+                </div>
+                <div class="deploy-node-label">教师机</div>
+                <div class="deploy-node-sub">安装 ClassNode<br>接入 AI 智能体</div>
+            </div>
+            <div class="deploy-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                </svg>
+                <span>局域网</span>
+            </div>
+            <div class="deploy-node deploy-node-student">
+                <div class="deploy-node-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                </div>
+                <div class="deploy-node-label">学生端 × N</div>
+                <div class="deploy-node-sub">浏览器访问<br>扫码或互动码加入</div>
+            </div>
+            <div class="deploy-badge deploy-badge-1">无需注册</div>
+            <div class="deploy-badge deploy-badge-2">无需互联网</div>
+        </div>
+        <div class="deploy-platforms">
+            <div class="deploy-platform-card">
+                <div class="deploy-platform-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                </div>
+                <div class="deploy-platform-name">macOS</div>
+                <div class="deploy-platform-desc">Apple Silicon &amp; Intel</div>
+                <div class="deploy-platform-file">ClassNode_x.x.x_macos.dmg</div>
+            </div>
+            <div class="deploy-platform-card">
+                <div class="deploy-platform-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
+                </div>
+                <div class="deploy-platform-name">Windows</div>
+                <div class="deploy-platform-desc">64 位</div>
+                <div class="deploy-platform-file">ClassNode_x.x.x_x64-setup.exe</div>
+            </div>
+            <div class="deploy-platform-card">
+                <div class="deploy-platform-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                </div>
+                <div class="deploy-platform-name">Linux</div>
+                <div class="deploy-platform-desc">源码部署</div>
+                <div class="deploy-platform-file">git clone + npm start</div>
+            </div>
+        </div>
+        <div class="deploy-cta">
+            <a href="#download" class="btn btn-primary btn-large">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                下载安装包
+            </a>
+            <a href="https://gitcode.com/weixin_41523975/classnode" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-large">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                查看源码
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" id="download">
+    <div class="section-container">
+        <div class="cta-card">
+            <div class="cta-content">
+                <h2 class="cta-title">让 AI 课堂从<br>"想试试"变成"天天用"</h2>
+                <p class="cta-subtitle">完全免费 · 双击启动 · 局域网流畅运行</p>
+                <div class="repo-buttons">
+                    <a href="#" class="btn btn-primary btn-large">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        GitHub
+                    </a>
+                    <a href="#" class="btn btn-secondary btn-large">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"/>
+                            <polyline points="8 6 2 12 8 18"/>
+                        </svg>
+                        GitCode
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer id="about">
+    <div class="footer-container">
+        <div class="footer-top">
+            <div class="footer-brand">
+                <div class="footer-logo-block">
+                    <img src="images/logo.png" alt="ClassNode" class="footer-logo-icon">
+                    <div>
+                        <div class="footer-logo-text">ClassNode</div>
+                        <div class="footer-logo-sub">AI 互动课堂系统</div>
+                    </div>
+                </div>
+                <p class="footer-tagline">
+                    开源共建的 AI 互动教学系统。<br>
+                    源码开放 · 教学互促，欢迎对技术感兴趣的老师交流。
+                </p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-repo-hint">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <span>源码开放 · 前往 CTA 区域下载</span>
+                </div>
+                <p class="footer-author">
+                    张星昌 · 杭州市拱墅区教育研究院<br>
+                    <a href="mailto:hzzxc2012@163.com" style="font-size:0.813rem;color:#3b82f6;text-decoration:none;font-weight:500;">hzzxc2012@163.com</a>
+                </p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <div class="footer-copyright">
+                © 2026 ClassNode · AI 赋能教育 · 教学互促共研
+            </div>
+            <div class="footer-version">
+                <span class="footer-version-dot"></span>
+                v1.3.12
+            </div>
+        </div>
+    </div>
+</footer>
+
+<script src="js/script.js"></script>
+
+</body>
+</html>

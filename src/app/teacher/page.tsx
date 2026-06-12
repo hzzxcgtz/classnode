@@ -406,12 +406,18 @@ export default function TeacherDashboard() {
                     <rect x="2" y="2" width="5" height="5" rx="1" /><rect x="17" y="2" width="5" height="5" rx="1" /><rect x="2" y="17" width="5" height="5" rx="1" /><path d="M11 2h2" /><path d="M11 22h2" /><path d="M2 11v2" /><path d="M22 11v2" /><path d="M15 15h2v2h-2z" /><path d="M17 15v-1a2 2 0 0 0-2-2h-1" /><path d="M15 19v1a2 2 0 0 0 2 2h1" /><path d="M19 17h2v2h-2z" /></svg>
                 </button>
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)} style={{
-                  padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
+                  padding: '8px 20px', borderRadius: 8, fontSize: "0.875rem", fontWeight: 600,
                   background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
                   transition: 'background 0.15s',
                 }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#1d4ed8'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = '#2563eb'; }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                    <polyline points="10 17 15 12 10 7"/>
+                    <line x1="15" y1="12" x2="3" y2="12"/>
+                  </svg>
                   进入课堂
                 </button>
                 {cr.status === 'paused' ? (
@@ -613,9 +619,9 @@ export default function TeacherDashboard() {
                   onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#fafbfc'; }} />
               </div>
 
-              {/* 当前智能体（只读展示） */}
-              {allAgents.length > 0 && (
-                <div style={{ marginBottom: settingsModalClassroom?.mode !== 'advanced' ? 0 : 20 }}>
+              {/* 当前智能体（只读展示）- 高级模式不显示，仅展示下方小组智能体 */}
+              {allAgents.length > 0 && settingsModalClassroom?.mode !== 'advanced' && (
+                <div>
                   <label style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
                     AI智能体
@@ -623,18 +629,6 @@ export default function TeacherDashboard() {
                   </label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, opacity: 0.7 }}>
                     {(() => {
-                      if (settingsModalClassroom?.mode === 'advanced') {
-                        const groupAgents = (settingsModalClassroom.groups || []).map((g: any) => g.agent).filter(Boolean);
-                        return groupAgents.length > 0 ? groupAgents.map((agent: any, i: number) => {
-                          const logoUrl = agent.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
-                          return (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: "0.813rem", color: '#64748b' }}>
-                              {logoUrl ? <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} /> : <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent.name[0]}</div>}
-                              <span>{agent.name}</span>
-                            </div>
-                          );
-                        }) : <span style={{ fontSize: "0.813rem", color: '#94a3b8' }}>共 {settingsModalClassroom.groups?.length || 0} 个小组</span>;
-                      }
                       const agent = allAgents.find((a: any) => a.id === editAgentId);
                       if (!agent) return <span style={{ fontSize: "0.813rem", color: '#94a3b8' }}>未配置</span>;
                       const logoUrl = agent.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
@@ -681,10 +675,6 @@ export default function TeacherDashboard() {
               <button onClick={() => setSettingsModalClassroom(null)} className="btn"
                 style={{ fontSize: "0.813rem" }}>
                 取消
-              </button>
-              <button onClick={handleSaveSettings} className="btn btn-primary"
-                style={{ fontSize: "0.813rem" }}>
-                保存设置
               </button>
               <button onClick={handleSaveSettings} className="btn btn-primary"
                 style={{ fontSize: "0.813rem" }}>

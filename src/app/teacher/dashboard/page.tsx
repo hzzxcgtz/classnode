@@ -115,24 +115,30 @@ export default function DashboardPage() {
   const [allClassrooms, setAllClassrooms] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
+  const [shieldWords, setShieldWords] = useState<any[]>([]);
+  const [shieldConfig, setShieldConfig] = useState<any>(null);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [a, c, cr, h, b] = await Promise.all([
+      const [a, c, cr, h, b, sw, sconf] = await Promise.all([
         api.getAgents(),
         api.getClasses(),
         api.getAllClassrooms().catch(() => []),
         api.getHistory().catch(() => []),
         api.getBackups().catch(() => []),
+        api.getShieldWords().catch(() => []),
+        api.getShieldConfig().catch(() => null),
       ]);
       setAgents(a || []);
       setClasses(c || []);
       setAllClassrooms(cr || []);
       setHistory(h || []);
       setBackups(b || []);
+      setShieldWords(sw || []);
+      setShieldConfig(sconf);
     } catch {}
     setLoading(false);
   };
@@ -198,6 +204,11 @@ export default function DashboardPage() {
   const backupLatest = backupTotal > 0
     ? new Date(backups.reduce((latest, b) => new Date(b.createdAt) > new Date(latest) ? b : backups[0]).createdAt)
     : null;
+
+  // ── 屏蔽词 ──
+  const shieldCustomCount = shieldWords.filter(w => !w.builtin).length;
+  const shieldBuiltinCount = shieldWords.filter(w => w.builtin).length;
+  const shieldEnabled = shieldConfig?.enabled !== false;
 
   const formatBytes = (bytes: number) =>
     bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${bytes} B`;
@@ -344,21 +355,53 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {/* 健康状态指示器 */}
+              {/* 健康状态 — 环形图 */}
               {(agentOk > 0 || agentError > 0) && (
-                <div style={{ display: 'flex', gap: 24, padding: '8px 4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 6px rgba(34,197,94,0.4)' }} />
-                    <span style={{ fontSize: "0.75rem", color: '#16a34a', fontWeight: 500 }}>正常 {agentOk}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ position: 'relative', width: 100, height: 100, flexShrink: 0 }}>
+                    <ResponsiveContainer width={100} height={100}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            ...(agentOk > 0 ? [{ name: '正常', value: agentOk, color: '#22c55e' }] : []),
+                            ...(agentError > 0 ? [{ name: '异常', value: agentError, color: '#ef4444' }] : []),
+                          ]}
+                          cx="50%" cy="50%"
+                          innerRadius={32} outerRadius={46}
+                          dataKey="value"
+                          startAngle={90} endAngle={-270}
+                          stroke="none"
+                        >
+                          {agentOk > 0 && <Cell fill="#22c55e" />}
+                          {agentError > 0 && <Cell fill="#ef4444" />}
+                        </Pie>
+                        <Tooltip content={<ChartTooltip />} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
+                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>{agentTotal}</div>
+                      <div style={{ fontSize: "0.625rem", color: '#94a3b8' }}>总计</div>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: agentError > 0 ? '#ef4444' : '#e2e8f0', flexShrink: 0, boxShadow: agentError > 0 ? '0 0 6px rgba(239,68,68,0.4)' : 'none' }} />
-                    <span style={{ fontSize: "0.75rem", color: agentError > 0 ? '#dc2626' : '#94a3b8', fontWeight: 500 }}>异常 {agentError}</span>
-                  </div>
-                  <div style={{ flex: 1, textAlign: 'right' }}>
-                    <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>
-                      健康率 {agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0}%
-                    </span>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.75rem" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                      <span style={{ color: '#64748b', flex: 1 }}>正常</span>
+                      <span style={{ fontWeight: 600, color: '#16a34a', fontSize: "0.875rem" }}>{agentOk}</span>
+                      <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
+                        {agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0}%
+                      </span>
+                    </div>
+                    {agentError > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.75rem" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                        <span style={{ color: '#64748b', flex: 1 }}>异常</span>
+                        <span style={{ fontWeight: 600, color: '#dc2626', fontSize: "0.875rem" }}>{agentError}</span>
+                        <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
+                          {agentTotal > 0 ? Math.round((agentError / agentTotal) * 100) : 0}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -372,7 +415,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height={platformData.length * 28 + 8}>
                     <BarChart data={platformData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                       <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={90} axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
                       <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={10}>
                         {platformData.map((entry, i) => (
@@ -402,6 +445,21 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* 数字概览 */}
+              <div style={{ display: 'flex', gap: 12 }}>
+                {[
+                  { label: '进行中', value: classroomActive, color: '#10b981', bg: '#f0fdf4' },
+                  { label: '已暂停', value: classroomPaused, color: '#f59e0b', bg: '#fffbeb' },
+                  { label: '已结束', value: classroomEnded, color: '#94a3b8', bg: '#f8fafc' },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
+                      {s.value}
+                    </div>
+                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
               {/* 状态分布 — 环形图 */}
               {statusData.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -531,7 +589,7 @@ export default function DashboardPage() {
             <polyline points="12 6 12 12 16 14" />
           </svg>}
         >
-          {!hasHistoryData && backupTotal === 0 ? (
+          {!hasHistoryData && backupTotal === 0 && shieldCustomCount === 0 && shieldBuiltinCount === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
               暂无数据
             </div>
@@ -558,9 +616,37 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-              {backupTotal > 0 && (
-                <div style={{ fontSize: "0.688rem", color: '#94a3b8', textAlign: 'center', paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>
-                  备份文件保障数据安全，可随时恢复
+
+              {/* 屏蔽词统计 */}
+              {(shieldCustomCount > 0 || shieldBuiltinCount > 0) && (
+                <div>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8, marginTop: 4 }}>
+                    屏蔽词
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {[
+                      { label: '自定义屏蔽词', value: shieldCustomCount, color: '#dc2626', bg: '#fef2f2' },
+                      { label: '系统屏蔽词', value: shieldBuiltinCount, color: '#7c3aed', bg: '#f5f3ff' },
+                    ].map(s => (
+                      <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
+                          {s.value.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>
+                          {s.label}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ flex: 1, background: shieldEnabled ? '#f0fdf4' : '#fef2f2', borderRadius: 10, padding: '12px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: shieldEnabled ? '#22c55e' : '#ef4444', display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: shieldEnabled ? '#16a34a' : '#dc2626' }}>
+                          {shieldEnabled ? '已开启' : '未开启'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>屏蔽词开关</div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

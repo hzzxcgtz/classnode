@@ -409,9 +409,6 @@ export default function AboutPage() {
           <div>
             <a href="mailto:hzzxc2012@163.com" style={{ fontSize: "0.813rem", color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
           </div>
-          <div style={{ fontSize: "0.75rem", color: '#cbd5e1', marginTop: 4 }}>
-            ClassNode v{APP_VERSION}
-          </div>
         </div>
       </div>
     </div>

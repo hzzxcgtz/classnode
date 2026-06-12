@@ -5,6 +5,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ClassNode - AI 互动课堂系统</title>
 <link rel="stylesheet" href="css/style.css">
+<style>
+.dl-section { padding: 80px 24px; position: relative; z-index: 1; }
+.dl-section .section-container { max-width: 960px; margin: 0 auto; }
+.dl-section .section-header { margin-bottom: 48px; text-align: center; }
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+.dl-card {
+  padding: 28px 24px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--card-shadow); text-align: center;
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative; text-decoration: none; color: inherit; display: block;
+}
+.dl-card:hover { border-color: var(--border-hover); transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+.dl-card-icon {
+  width: 56px; height: 56px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dl-card:hover .dl-card-icon { transform: scale(1.1) rotate(-4deg); }
+.dl-card-name { font-size: 17px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.dl-card-desc { font-size: 13px; color: var(--text-tertiary); line-height: 1.5; }
+.dl-card-code {
+  display: inline-block; margin-top: 10px; padding: 3px 12px;
+  background: rgba(79, 70, 229, 0.08); border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 100px; font-size: 12px; font-weight: 600;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--accent-blue); letter-spacing: 0.04em;
+  transition: all 0.3s ease;
+}
+.dl-card-img {
+  width: 36px; height: 36px; object-fit: contain;
+  display: block; border-radius: 6px;
+}
+.repo-section { margin-top: 48px; text-align: center; }
+.repo-section-label {
+  font-size: 13px; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px;
+}
+.repo-cards {
+  display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+}
+.repo-card {
+  display: flex; align-items: center; gap: 16px;
+  padding: 18px 24px; min-width: 260px;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: 14px; text-decoration: none; color: inherit;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.repo-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 25%, var(--border-hover));
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.06);
+}
+.repo-card-top { display: flex; align-items: center; gap: 14px; flex: 1; }
+.repo-card-logo { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+.repo-card-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.repo-card-desc { font-size: 13px; color: var(--text-tertiary); margin-top: 2px; }
+.repo-card-arrow { color: var(--text-tertiary); flex-shrink: 0; transition: transform 0.3s ease; }
+.repo-card:hover .repo-card-arrow { transform: translateX(4px); color: var(--brand); }
+</style>
 </head>
 <body>
 
@@ -43,42 +104,8 @@
     </svg>
 </div>
 
-<!-- 导航栏 -->
-<nav id="navbar">
-    <div class="nav-container">
-        <a href="#" class="nav-logo">
-            <img src="images/logo.png" alt="ClassNode" class="nav-logo-icon">
-            <span class="nav-logo-text">ClassNode</span>
-        </a>
-        <ul class="nav-menu">
-            <li><a href="#features">特性</a></li>
-            <li><a href="#gallery">预览</a></li>
-            <li><a href="#deploy">部署</a></li>
-            <li><a href="#workflow">流程</a></li>
-            <li><a href="#pain">解决问题</a></li>
-            <li><a href="#about">关于</a></li>
-        </ul>
-        <div class="nav-cta">
-            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">
-                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
-            </button>
-            <a href="#download" class="btn btn-primary">免费下载</a>
-        </div>
-    </div>
-</nav>
+<!-- 导航栏（由 include.js 注入） -->
+<div data-include="header" data-page="index"></div>
 
 <!-- Hero -->
 <section class="hero">
@@ -94,7 +121,7 @@
         专为真实课堂打造的 AI 互动教学系统。即使网络不那么完美，也能让老师精心调优的 AI 智能体，安全、可控地送到每一个学生面前。
     </p>
     <div class="hero-cta">
-        <a href="#download" class="btn btn-primary btn-large">
+        <a href="#cloud-drives" class="btn btn-primary btn-large">
             立即下载
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -137,7 +164,7 @@
                     <div class="showcase-mockup-bar">
                         <span></span><span></span><span></span>
                     </div>
-                    <img src="images/screenshots/dashboard.svg" alt="课堂仪表盘">
+                    <img src="images/screenshots/dashboard.webp" alt="课堂仪表盘">
                 </div>
                 <div class="showcase-info">
                     <h3 class="showcase-info-title">课堂仪表盘</h3>
@@ -163,7 +190,7 @@
                     <div class="showcase-mockup-bar">
                         <span></span><span></span><span></span>
                     </div>
-                    <img src="images/screenshots/agents.svg" alt="AI 智能体管理">
+                    <img src="images/screenshots/agents.webp" alt="AI 智能体管理">
                 </div>
                 <div class="showcase-info">
                     <h3 class="showcase-info-title">AI 智能体</h3>
@@ -381,148 +408,84 @@
     </div>
 </section>
 
-<!-- 本地部署 -->
-<section class="deploy-section" id="deploy">
-    <div class="section-container">
+<!-- 网盘下载 -->
+<section class="dl-section" id="cloud-drives">
+    <div class="section-container" style="max-width:960px;">
         <div class="section-header">
-            <div class="section-label">本地部署</div>
-            <h2 class="section-title">装在老师电脑里的 AI 课堂</h2>
-            <p class="section-subtitle">无需云服务器，不依赖互联网，自己电脑上就能跑</p>
+            <div class="section-label">下载渠道</div>
+            <h2 class="section-title">选择你习惯的下载方式</h2>
+            <p class="section-subtitle">安装包、源码包已上传至国内主流网盘，按需取用。</p>
         </div>
-        <div class="deploy-diagram">
-            <div class="deploy-node deploy-node-teacher">
-                <div class="deploy-node-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                        <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
-                    </svg>
+        <div class="dl-grid">
+            <a href="https://pan.baidu.com/s/1FXlUcY4BG7hW6qS3P4wHkg?pwd=a8mg" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(37,119,255,0.08);">
+                    <img src="images/logo-baidupan.webp" alt="百度网盘" class="dl-card-img">
                 </div>
-                <div class="deploy-node-label">教师机</div>
-                <div class="deploy-node-sub">安装 ClassNode<br>接入 AI 智能体</div>
-            </div>
-            <div class="deploy-arrow">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                </svg>
-                <span>局域网</span>
-            </div>
-            <div class="deploy-node deploy-node-student">
-                <div class="deploy-node-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-                    </svg>
-                </div>
-                <div class="deploy-node-label">学生端 × N</div>
-                <div class="deploy-node-sub">浏览器访问<br>扫码或互动码加入</div>
-            </div>
-            <div class="deploy-badge deploy-badge-1">无需注册</div>
-            <div class="deploy-badge deploy-badge-2">无需互联网</div>
-        </div>
-        <div class="deploy-platforms">
-            <div class="deploy-platform-card">
-                <div class="deploy-platform-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-                </div>
-                <div class="deploy-platform-name">macOS</div>
-                <div class="deploy-platform-desc">Apple Silicon &amp; Intel</div>
-                <div class="deploy-platform-file">ClassNode_x.x.x_macos.dmg</div>
-            </div>
-            <div class="deploy-platform-card">
-                <div class="deploy-platform-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
-                </div>
-                <div class="deploy-platform-name">Windows</div>
-                <div class="deploy-platform-desc">64 位</div>
-                <div class="deploy-platform-file">ClassNode_x.x.x_x64-setup.exe</div>
-            </div>
-            <div class="deploy-platform-card">
-                <div class="deploy-platform-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                </div>
-                <div class="deploy-platform-name">Linux</div>
-                <div class="deploy-platform-desc">源码部署</div>
-                <div class="deploy-platform-file">git clone + npm start</div>
-            </div>
-        </div>
-        <div class="deploy-cta">
-            <a href="#download" class="btn btn-primary btn-large">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                下载安装包
+                <div class="dl-card-name">百度网盘</div>
+                <div class="dl-card-desc">全平台版本归档，长期维护</div>
+                <span class="dl-card-code">提取码：a8mg</span>
             </a>
-            <a href="https://gitcode.com/weixin_41523975/classnode" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-large">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                查看源码
+            <a href="https://www.alipan.com/s/6vBzQYDFPGz" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(100,120,240,0.08);">
+                    <img src="images/logo-alipan.webp" alt="阿里云盘" class="dl-card-img">
+                </div>
+                <div class="dl-card-name">阿里云盘</div>
+                <div class="dl-card-desc">不限速下载，推荐首选</div>
+                <span class="dl-card-code" style="color:var(--accent-green);border-color:rgba(34,197,94,0.15);background:rgba(34,197,94,0.06);">无需提取码</span>
+            </a>
+            <a href="https://pan.quark.cn/s/989a61a2278f?pwd=Y5PN" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(45,150,234,0.08);">
+                    <img src="images/logo-quark.webp" alt="夸克网盘" class="dl-card-img">
+                </div>
+                <div class="dl-card-name">夸克网盘</div>
+                <div class="dl-card-desc">高速下载，推荐备用</div>
+                <span class="dl-card-code">提取码：Y5PN</span>
+            </a>
+            <a href="https://1844479536.share.123865.com/123pan/6wxeTd-cspqh?pwd=Vd7T" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(88,124,251,0.08);">
+                    <img src="images/logo-123pan.webp" alt="123云盘" class="dl-card-img">
+                </div>
+                <div class="dl-card-name">123云盘</div>
+                <div class="dl-card-desc">不限速，适合大文件下载</div>
+                <span class="dl-card-code">提取码：Vd7T</span>
             </a>
         </div>
-    </div>
-</section>
-
-<!-- CTA -->
-<section class="cta-section" id="download">
-    <div class="section-container">
-        <div class="cta-card">
-            <div class="cta-content">
-                <h2 class="cta-title">让 AI 课堂从<br>"想试试"变成"天天用"</h2>
-                <p class="cta-subtitle">完全免费 · 双击启动 · 局域网流畅运行</p>
-                <div class="repo-buttons">
-                    <a href="#" class="btn btn-primary btn-large">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-                        </svg>
-                        GitHub
-                    </a>
-                    <a href="#" class="btn btn-secondary btn-large">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="16 18 22 12 16 6"/>
-                            <polyline points="8 6 2 12 8 18"/>
-                        </svg>
-                        GitCode
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Footer -->
-<footer id="about">
-    <div class="footer-container">
-        <div class="footer-top">
-            <div class="footer-brand">
-                <div class="footer-logo-block">
-                    <img src="images/logo.png" alt="ClassNode" class="footer-logo-icon">
-                    <div>
-                        <div class="footer-logo-text">ClassNode</div>
-                        <div class="footer-logo-sub">AI 互动课堂系统</div>
+        <div class="repo-section">
+            <div class="repo-section-label">源码仓库</div>
+            <div class="repo-cards">
+                <a href="https://gitcode.com/weixin_41523975/classnode" target="_blank" rel="noopener noreferrer" class="repo-card" style="--brand:#e4392b;">
+                    <div class="repo-card-top">
+                        <img src="images/gitcode_logo.webp" alt="" class="repo-card-logo">
+                        <div>
+                            <div class="repo-card-name">GitCode</div>
+                            <div class="repo-card-desc">国内镜像仓库，高速访问</div>
+                        </div>
                     </div>
-                </div>
-                <p class="footer-tagline">
-                    开源共建的 AI 互动教学系统。<br>
-                    源码开放 · 教学互促，欢迎对技术感兴趣的老师交流。
-                </p>
-            </div>
-            <div class="footer-links">
-                <div class="footer-repo-hint">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                    <span>源码开放 · 前往 CTA 区域下载</span>
-                </div>
-                <p class="footer-author">
-                    张星昌 · 杭州市拱墅区教育研究院<br>
-                    <a href="mailto:hzzxc2012@163.com" style="font-size:0.813rem;color:#3b82f6;text-decoration:none;font-weight:500;">hzzxc2012@163.com</a>
-                </p>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <div class="footer-copyright">
-                © 2026 ClassNode · AI 赋能教育 · 教学互促共研
-            </div>
-            <div class="footer-version">
-                <span class="footer-version-dot"></span>
-                v1.3.12
+                    <span class="repo-card-arrow">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </span>
+                </a>
+                <a href="https://github.com/hzzxcgtz/classnode" target="_blank" rel="noopener noreferrer" class="repo-card" style="--brand:#24292f;">
+                    <div class="repo-card-top">
+                        <img src="images/github_logo.webp" alt="" class="repo-card-logo">
+                        <div>
+                            <div class="repo-card-name">GitHub</div>
+                            <div class="repo-card-desc">国际仓库，Issue 与 PR 交流</div>
+                        </div>
+                    </div>
+                    <span class="repo-card-arrow">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </span>
+                </a>
             </div>
         </div>
     </div>
-</footer>
+</section>
 
+<!-- 页脚（由 include.js 注入） -->
+<div data-include="footer"></div>
+
+<script src="js/include.js"></script>
 <script src="js/script.js"></script>
 
 </body>

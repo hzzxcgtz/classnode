@@ -27,16 +27,29 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 });
 
 // ============ 平滑滚动 ============
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
     anchor.addEventListener('click', function (e) {
-        const href = this.getAttribute('href');
+        var href = this.getAttribute('href');
         if (href === '#') return;
-        const target = document.querySelector(href);
+        var target = document.querySelector(href);
         if (target) {
             e.preventDefault();
-            const offset = 80;
-            const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
-            window.scrollTo({ top: targetPosition, behavior: 'smooth' });
+            var offset = 80;
+            var startY = window.pageYOffset;
+            var endY = target.getBoundingClientRect().top + startY - offset;
+            var dist = Math.abs(endY - startY);
+            var duration = Math.min(400, Math.max(200, dist * 0.3));
+            var startTime = null;
+            function step(now) {
+                if (!startTime) startTime = now;
+                var elapsed = now - startTime;
+                var p = Math.min(1, elapsed / duration);
+                // ease-out quad: fast start, slow end
+                var ease = 1 - (1 - p) * (1 - p);
+                window.scrollTo(0, startY + (endY - startY) * ease);
+                if (p < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
         }
     });
 });
@@ -296,4 +309,50 @@ handleScroll();
     });
 
     resetTimer();
+})();
+
+// ============ 下载版本标签切换 ============
+(function() {
+  var tabs = document.querySelectorAll('.dl-version-tab');
+  var panels = document.querySelectorAll('.dl-version-panel');
+  if (!tabs.length) return;
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var version = this.dataset.version;
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      this.classList.add('active');
+      panels.forEach(function(p) { p.classList.remove('active'); });
+      var panel = document.querySelector('[data-panel="' + version + '"]');
+      if (panel) panel.classList.add('active');
+    });
+  });
+})();
+
+// ============ 导航滚动高亮 ============
+(function() {
+  var navLinks = document.querySelectorAll('.nav-menu a');
+  if (!navLinks.length) return;
+
+  var sections = [];
+  navLinks.forEach(function(link) {
+    var href = link.getAttribute('href');
+    if (href && href.charAt(0) === '#') {
+      var el = document.querySelector(href);
+      if (el) sections.push({ el: el, link: link });
+    }
+  });
+
+  function updateActive() {
+    var scrollY = window.pageYOffset + 100;
+    var current = sections[0];
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].el.offsetTop <= scrollY) current = sections[i];
+    }
+    navLinks.forEach(function(l) { l.style.color = ''; });
+    if (current) current.link.style.color = 'var(--text-primary)';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
 })();

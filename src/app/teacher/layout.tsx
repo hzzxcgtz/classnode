@@ -259,7 +259,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           <button className="btn btn-primary btn-lg" onClick={handleLogin} style={{ width: '100%', fontSize: "0.938rem" }}>
             进入控制台
           </button>
-          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.813rem", cursor: 'pointer' }}>
+          <div style={{ marginTop: 16, textAlign: 'center', fontSize: "0.75rem", color: '#9ca3af', lineHeight: 1.6 }}>
+            遗忘密码？请在桌面端<strong style={{ color: '#818cf8' }}>「控制面板」</strong>窗口中重置
+          </div>
+          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.813rem", cursor: 'pointer' }}>
             返回学生页面
           </button>
         </div>

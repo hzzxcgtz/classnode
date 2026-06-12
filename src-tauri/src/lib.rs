@@ -9,6 +9,13 @@ use std::time::Duration;
 use std::os::windows::process::CommandExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[derive(Serialize, Clone)]
+struct IpInfo {
+    name: String,
+    label: String,
+    ip: String,
+}
+
 use serde::Serialize;
 use tauri::{
     image::Image,
@@ -26,13 +33,38 @@ struct ServerInfo {
 
 struct ServerState(Mutex<Option<ServerInfo>>);
 
-fn get_local_ips() -> Vec<String> {
+fn friendly_name(name: &str) -> String {
+    match name {
+        "en0" => "Wi-Fi".to_string(),
+        "en1" => "以太网".to_string(),
+        n if n.starts_with("en") => format!("以太网 ({})", n),
+        n if n.starts_with("eth") => "以太网".to_string(),
+        n if n.starts_with("wlan") || n.starts_with("wlp") || n.starts_with("wl") => "Wi-Fi".to_string(),
+        n if n.starts_with("ww") => "移动网络".to_string(),
+        "Wi-Fi" | "WiFi" => "Wi-Fi".to_string(),
+        "以太网" | "Ethernet" => "以太网".to_string(),
+        n if n.starts_with("本地连接") => "本地连接".to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn get_local_ips() -> Vec<IpInfo> {
+    let virtual_patterns = [
+        "utun", "awdl", "llw", "anpi", "ap",
+        "docker", "veth", "virbr", "vmnet",
+        "vEthernet", "vmware", "virtualbox", "bridge",
+    ];
     if_addrs::get_if_addrs()
         .map(|ifaces| {
             ifaces
                 .iter()
+                .filter(|i| !virtual_patterns.iter().any(|p| i.name.to_lowercase().starts_with(p)))
                 .filter_map(|i| match &i.addr {
-                    if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some(v4.ip.to_string()),
+                    if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some(IpInfo {
+                        name: i.name.clone(),
+                        label: friendly_name(&i.name),
+                        ip: v4.ip.to_string(),
+                    }),
                     _ => None,
                 })
                 .collect()
@@ -346,16 +378,19 @@ struct ServerStatus {
     running: bool,
     port: u16,
     ips: Vec<String>,
+    interfaces: Vec<IpInfo>,
 }
 
 #[tauri::command]
 fn get_server_status() -> ServerStatus {
     let running = TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
-    let ips = get_local_ips();
+    let interfaces = get_local_ips();
+    let ips: Vec<String> = interfaces.iter().map(|i| i.ip.clone()).collect();
     ServerStatus {
         running,
         port: SERVER_PORT,
         ips,
+        interfaces,
     }
 }
 
@@ -396,8 +431,9 @@ fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn cmd_open_url(url_type: String) {
-    let ip = get_local_ips().first().cloned().unwrap_or_else(|| "localhost".to_string());
+fn cmd_open_url(url_type: String, ip: Option<String>) {
+    let ip = ip.or_else(|| get_local_ips().first().map(|i| i.ip.clone()))
+        .unwrap_or_else(|| "localhost".to_string());
     let url = match url_type.as_str() {
         "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
         "student" => format!("http://{}:{}/classroom", ip, SERVER_PORT),

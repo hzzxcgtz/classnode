@@ -309,19 +309,80 @@ body {
 .addr-acts .ibtn:disabled { opacity: 0.15; cursor: default; }
 .addr-acts .ibtn svg { width: 13px; height: 13px; flex-shrink: 0; }
 
-/* IP */
-.ip-box {
-  margin-top: 12px; padding-top: 12px;
-  border-top: 0.5px solid var(--border);
+/* NIC Selector (dropdown) */
+.iface-box {
   display: none;
 }
-.ip-label { font-size: 11px; font-weight: 500; color: var(--text3); margin-bottom: 6px; }
-.ip-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.ip-chip {
-  font-size: 12px; color: var(--text2);
-  background: var(--surface); padding: 4px 12px;
-  border-radius: 6px; border: 0.5px solid var(--border);
+.iface-box.show { display: block; }
+.iface-label { font-size: 11px; font-weight: 500; color: var(--text3); margin-bottom: 6px; }
+.iface-select {
+  width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text);
+  border: 0.5px solid var(--border); font-size: 12px; font-family: inherit;
+  cursor: pointer; outline: none; appearance: auto;
+  transition: border-color 0.15s;
 }
+.iface-select:hover { border-color: var(--accent); }
+.iface-select option { background: var(--surface); color: var(--text); }
+
+/* Separator */
+.sep { border: none; border-top: 0.5px solid var(--border); margin: 12px 0; }
+
+/* Reset Password Button */
+.reset-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 10px; border-radius: var(--radius-sm);
+  border: 0.5px solid rgba(255,149,0,0.2); cursor: pointer;
+  background: var(--orange-bg); color: var(--orange);
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: all 0.2s ease;
+}
+.reset-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.reset-btn:active { transform: scale(0.97); }
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 999;
+  background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: var(--surface); backdrop-filter: saturate(1.6) blur(24px);
+  border-radius: var(--radius); padding: 28px; width: 320px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  border: 0.5px solid var(--border);
+  text-align: center;
+}
+.modal-icon {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--orange-bg); display: flex;
+  align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.modal-icon svg { width: 24px; height: 24px; color: var(--orange); }
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.modal-desc { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 8px; }
+.modal-actions .btn { flex: 1; padding: 10px; border-radius: var(--radius-sm);
+  border: none; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: all 0.15s ease;
+}
+.modal-actions .btn:active { transform: scale(0.96); }
+.modal-actions .btn-secondary { background: transparent; color: var(--text2);
+  border: 0.5px solid var(--border);
+}
+.modal-actions .btn-secondary:hover { background: var(--surface-hover); }
+.modal-actions .btn-danger { background: var(--orange); color: white; }
+.modal-actions .btn-danger:hover { filter: brightness(1.08); }
+.modal-actions .btn:disabled { opacity: 0.3; cursor: default; }
+
+.modal-success {
+  text-align: center;
+}
+.modal-success svg { width: 40px; height: 40px; color: var(--green); margin-bottom: 12px; }
+.modal-success .s-text { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.modal-success .s-sub { font-size: 12px; color: var(--text2); }
 
 /* ===== Footer ===== */
 .foot {
@@ -464,9 +525,42 @@ body {
           </button>
         </div>
       </div>
-      <div class="ip-box" id="ipBox">
-        <div class="ip-label">局域网 IP</div>
-        <div class="ip-chips" id="ipList"></div>
+      <div class="iface-box" id="ifaceBox">
+        <div class="iface-label">选择网卡</div>
+        <select class="iface-select" id="ifaceSelect" onchange="onIfaceChange(event)"></select>
+      </div>
+
+      <hr class="sep">
+
+      <button class="reset-btn" id="resetBtn" onclick="showResetModal()" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        重置管理密码
+      </button>
+    </div>
+  </div>
+
+  <!-- Reset Password Modal -->
+  <div class="modal-overlay" id="resetModal">
+    <div class="modal-box" id="resetModalBox">
+      <!-- Confirm step -->
+      <div id="resetConfirm">
+        <div class="modal-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div class="modal-title">重置管理密码？</div>
+        <div class="modal-desc">密码将重置为 <strong>123456</strong>。<br>建议登录后立即修改密码。</div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="hideResetModal()">取消</button>
+          <button class="btn btn-danger" id="resetConfirmBtn" onclick="doResetPwd()">确认重置</button>
+        </div>
+      </div>
+      <!-- Success step -->
+      <div id="resetSuccess" style="display:none">
+        <div class="modal-success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <div class="s-text">密码已重置</div>
+          <div class="s-sub">默认密码：<strong>123456</strong>，请登录后修改</div>
+        </div>
       </div>
     </div>
   </div>
@@ -493,6 +587,8 @@ body {
 let _p = null;
 let _startTs = 0;
 let _stopTs = 0;
+let _ifaces = [];
+let _selIface = -1;
 const invoke = (window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || (() => null));
 
 function eShow(m) {
@@ -517,26 +613,23 @@ function ui(s) {
     lab.textContent = '运行中';
     go.disabled = true; stp.disabled = false;
     bts.forEach(b => b.disabled = false);
+    document.getElementById('resetBtn').disabled = false;
     desc.textContent = '服务正常，局域网内设备可扫码或输入地址加入课堂';
     _startTs = 0; _stopTs = 0;
 
-    const h = (s.ips && s.ips[0]) || 'localhost';
-    const b = `http://${h}:${s.port}`;
-    document.getElementById('urlT').textContent = b + '/teacher';
-    document.getElementById('urlS').textContent = b + '/classroom';
-
-    const bx = document.getElementById('ipBox');
-    const ls = document.getElementById('ipList');
-    if (s.ips && s.ips.length > 1) {
-      bx.style.display = 'block';
-      ls.innerHTML = s.ips.slice(1).map(i => `<span class="ip-chip">${i}</span>`).join('');
-    } else { bx.style.display = 'none'; }
+    // 记录接口信息
+    _ifaces = (s.interfaces && s.interfaces.length > 0) ? s.interfaces :
+              (s.ips || []).map(ip => ({ name: '网络', label: '网络', ip: ip }));
+    if (_selIface < 0 || _selIface >= _ifaces.length) _selIface = 0;
+    renderUrls();
+    renderIfaces();
   } else if (_stopTs > 0 && Date.now() - _stopTs < 15000) {
     dot.className = 'dot stopping';
     lab.className = 'status-label stopping';
     lab.textContent = '停止中…';
     go.disabled = true; stp.disabled = true;
     bts.forEach(b => b.disabled = true);
+    document.getElementById('resetBtn').disabled = true;
     desc.textContent = '正在停止服务…';
   } else if (_startTs > 0 && Date.now() - _startTs < 30000) {
     dot.className = 'dot go';
@@ -544,6 +637,7 @@ function ui(s) {
     lab.textContent = '启动中…';
     go.disabled = true; stp.disabled = true;
     bts.forEach(b => b.disabled = true);
+    document.getElementById('resetBtn').disabled = true;
     desc.textContent = '正在启动服务，请稍候…';
   } else {
     _startTs = 0; _stopTs = 0;
@@ -552,8 +646,51 @@ function ui(s) {
     lab.textContent = '已停止';
     go.disabled = false; stp.disabled = true;
     bts.forEach(b => b.disabled = true);
+    document.getElementById('resetBtn').disabled = true;
     desc.textContent = '服务未运行，点击「启动」按钮开启';
+    document.getElementById('urlT').textContent = '—';
+    document.getElementById('urlS').textContent = '—';
+    document.getElementById('ifaceBox').style.display = 'none';
   }
+}
+
+function renderUrls() {
+  const iface = _ifaces[_selIface];
+  if (!iface) return;
+  const h = iface.ip;
+  const port = 3001;
+  const b = `http://${h}:${port}`;
+  document.getElementById('urlT').textContent = b + '/teacher';
+  document.getElementById('urlS').textContent = b + '/classroom';
+}
+
+function renderIfaces() {
+  const bx = document.getElementById('ifaceBox');
+  const sel = document.getElementById('ifaceSelect');
+  if (_ifaces.length <= 1) {
+    bx.classList.remove('show');
+    return;
+  }
+  bx.classList.add('show');
+  const cur = sel.value;
+  sel.innerHTML = _ifaces.map((iface, i) => {
+    const label = iface.ip + ' — ' + (iface.label || iface.name || '未知');
+    return `<option value="${iface.ip}">${escHtml(label)}</option>`;
+  }).join('');
+  sel.value = _ifaces[_selIface]?.ip || cur;
+}
+
+function onIfaceChange(e) {
+  const ip = e.target.value;
+  const idx = _ifaces.findIndex(i => i.ip === ip);
+  if (idx >= 0) _selIface = idx;
+  renderUrls();
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 
 async function chk() {
@@ -561,8 +698,14 @@ async function chk() {
     let s;
     try { s = await invoke('get_server_status'); }
     catch {
-      try { const r = await fetch('http://localhost:3001/api/health'); s = { running: r.ok, port: 3001, ips: [] }; }
-      catch { s = { running: false, port: 3001, ips: [] }; }
+      try {
+        const r = await fetch('http://localhost:3001/api/server-info');
+        const info = await r.json();
+        s = { running: true, port: info.port, ips: info.localIPs || [], interfaces: info.interfaces || [] };
+      } catch {
+        try { const r = await fetch('http://localhost:3001/api/health'); s = { running: r.ok, port: 3001, ips: [], interfaces: [] }; }
+        catch { s = { running: false, port: 3001, ips: [], interfaces: [] }; }
+      }
     }
     ui(s);
   } catch (e) { console.error(e); }
@@ -598,7 +741,9 @@ async function stopSrv() {
 }
 
 function openUrl(t) {
-  try { invoke('cmd_open_url', { urlType: t }); } catch (e) { console.error(e); }
+  const iface = _ifaces[_selIface];
+  const ip = iface ? iface.ip : null;
+  try { invoke('cmd_open_url', { urlType: t, ip: ip }); } catch (e) { console.error(e); }
 }
 
 async function cpUrl(t) {
@@ -615,6 +760,32 @@ async function cpUrl(t) {
       btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     }, 700);
   } catch (e) { console.error(e); }
+}
+
+function showResetModal() {
+  document.getElementById('resetConfirm').style.display = '';
+  document.getElementById('resetSuccess').style.display = 'none';
+  document.getElementById('resetConfirmBtn').disabled = false;
+  document.getElementById('resetModal').classList.add('show');
+}
+
+function hideResetModal() {
+  document.getElementById('resetModal').classList.remove('show');
+}
+
+async function doResetPwd() {
+  const btn = document.getElementById('resetConfirmBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('http://localhost:3001/api/settings/reset-password', { method: 'POST' });
+    if (!r.ok) throw new Error('重置失败');
+    document.getElementById('resetConfirm').style.display = 'none';
+    document.getElementById('resetSuccess').style.display = '';
+    setTimeout(hideResetModal, 2500);
+  } catch (e) {
+    eShow('密码重置失败: ' + e);
+    hideResetModal();
+  }
 }
 
 _startTs = Date.now();

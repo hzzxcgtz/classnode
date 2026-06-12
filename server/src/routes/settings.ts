@@ -92,4 +92,21 @@ router.get('/init-status', async (req, res) => {
   }
 });
 
+// 重置管理密码为默认密码（从控制面板调用）
+router.post('/reset-password', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const defaultPassword = '123456';
+    const hashed = crypto.createHash('sha256').update(defaultPassword).digest('hex');
+    await prisma.setting.upsert({
+      where: { key: 'admin_password' },
+      update: { value: hashed },
+      create: { key: 'admin_password', value: hashed },
+    });
+    res.json({ success: true, message: '密码已重置为 123456' });
+  } catch (error) {
+    res.status(500).json({ error: '重置密码失败' });
+  }
+});
+
 export default router;

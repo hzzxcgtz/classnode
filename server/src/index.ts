@@ -102,9 +102,10 @@ async function main() {
     const interfaces = getLocalIPAddresses();
     res.json({
       port,
-      localIPs: interfaces,
-      urls: interfaces.map((ip: string) => `http://${ip}:${port}`),
-      classroomUrl: interfaces.map((ip: string) => `http://${ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
+      localIPs: interfaces.map(i => i.ip),
+      interfaces,
+      urls: interfaces.map(i => `http://${i.ip}:${port}`),
+      classroomUrl: interfaces.map(i => `http://${i.ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
     });
   });
 
@@ -114,8 +115,8 @@ async function main() {
   httpServer.listen(port, '0.0.0.0', () => {
     console.log(`🚀 ClassNode Server running on port ${port}`);
     const interfaces = getLocalIPAddresses();
-    interfaces.forEach((ip: string) => {
-      console.log(`   http://${ip}:${port}`);
+    interfaces.forEach((iface: { name: string; label: string; ip: string }) => {
+      console.log(`   http://${iface.ip}:${port}  (${iface.label})`);
     });
   });
 
@@ -130,18 +131,36 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-function getLocalIPAddresses(): string[] {
+function friendlyName(name: string): string {
+  if (name === 'en0') return 'Wi-Fi';
+  if (name === 'en1') return '以太网';
+  if (name.startsWith('en')) return `以太网 (${name})`;
+  if (name.startsWith('eth')) return '以太网';
+  if (name.startsWith('wlan') || name.startsWith('wlp') || name.startsWith('wl')) return 'Wi-Fi';
+  if (name.startsWith('以太网') || name === '以太网' || name === 'Ethernet') return '以太网';
+  if (name === 'Wi-Fi' || name === 'WiFi' || name.startsWith('WLAN')) return 'Wi-Fi';
+  if (name.startsWith('本地连接')) return '本地连接';
+  return name;
+}
+
+function getLocalIPAddresses(): { name: string; label: string; ip: string }[] {
   const { networkInterfaces } = os;
   const interfaces = networkInterfaces();
-  const addresses: string[] = [];
+  const result: { name: string; label: string; ip: string }[] = [];
+  const virtualPatterns = [
+    /^utun\d*$/i, /^awdl\d*$/i, /^llw\d*$/i, /^anpi\d*$/i, /^ap\d*$/i,
+    /^docker\d*$/i, /^veth\d*$/i, /^virbr\d*$/i, /^vmnet\d*$/i,
+    /^vEthernet/i, /vmware/i, /virtualbox/i, /bridge\d*$/i,
+  ];
   for (const name of Object.keys(interfaces)) {
+    if (virtualPatterns.some(p => p.test(name))) continue;
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        addresses.push(iface.address);
+        result.push({ name, label: friendlyName(name), ip: iface.address });
       }
     }
   }
-  return addresses;
+  return result;
 }
 
 main().catch((e) => {

@@ -35,11 +35,14 @@ function ClassroomBoardContent() {
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
   const [showCodeScreen, setShowCodeScreen] = useState(false);
   const [teacherCode, setTeacherCode] = useState('');
+  const [availableIPs, setAvailableIPs] = useState<{ name: string; label: string; ip: string }[]>([]);
+  const [selectedIP, setSelectedIP] = useState('');
 
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async () => {
-    const origin = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : '';
-    const qrValue = `${origin}/classroom?code=${teacherCode}`;
+    const host = selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '');
+    const port = typeof window !== 'undefined' ? getClassroomPort() : '3001';
+    const qrValue = `http://${host}:${port}/classroom?code=${teacherCode}`;
     const qrSize = 760;
     const textHeight = 70;
     const totalWidth = qrSize;
@@ -409,7 +412,7 @@ function ClassroomBoardContent() {
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
-              <button onClick={() => setShowCodeScreen(true)} title="显示二维码"
+              <button onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); if (ifaces.length > 0) setSelectedIP(ifaces[0].ip); }).catch(() => {}); }} title="显示二维码"
                 style={{
                   marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
                   background: 'rgba(37,99,235,0.1)', cursor: 'pointer',
@@ -433,7 +436,7 @@ function ClassroomBoardContent() {
         <div style={{ display: 'flex', gap: 8 }}>
           {classroom.status !== 'ended' && (
             <>
-              <button className="btn btn-primary btn-lg" onClick={() => setShowCodeScreen(true)} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="btn btn-primary btn-lg" onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); if (ifaces.length > 0) setSelectedIP(ifaces[0].ip); }).catch(() => {}); }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
@@ -959,7 +962,7 @@ function ClassroomBoardContent() {
               }}>
                 <div style={{ padding: 24, position: 'relative', display: 'inline-flex' }}>
                   <QRCodeSVG
-                    value={`http://${typeof window !== 'undefined' ? window.location.hostname : ''}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
+                    value={`http://${selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '')}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
                     size={360}
                     level="M"
                   />
@@ -995,8 +998,28 @@ function ClassroomBoardContent() {
                   fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
-                  http://{typeof window !== 'undefined' ? window.location.hostname : ''}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
+                  http://{selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '')}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
                 </p>
+                {availableIPs.length > 1 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: "0.875rem", color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>选择网卡</div>
+                    <select value={selectedIP} onChange={e => setSelectedIP(e.target.value)}
+                      style={{
+                        width: '100%', padding: '10px 14px', borderRadius: 8,
+                        background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        fontSize: "0.875rem", fontFamily: 'monospace', cursor: 'pointer',
+                        outline: 'none',
+                      }}>
+                      {availableIPs.map((iface, i) => (
+                        <option key={i} value={iface.ip}
+                          style={{ background: '#1e293b', color: '#e2e8f0' }}>
+                          {iface.ip} — {iface.label || iface.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {(teacherCode || '').split('').map((d: string, i: number) => (

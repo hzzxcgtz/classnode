@@ -37,13 +37,30 @@ model Agent {
   classroomGroups ClassroomGroup[]
 }
 
+// 头像库
+model Avatar {
+  id          Int       @id @default(autoincrement())
+  svgContent  String
+  category    String    @default("student") // student / class
+  gender      String    @default("neutral") // boy / girl / neutral
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  source      String    @default("teacher") // teacher / student
+  createdAt   DateTime  @default(now())
+
+  students Student[]
+  classes  Class[]
+}
+
 // 班级
 model Class {
   id        String   @id @default(uuid())
   name      String   // 班级名称
+  avatarId  Int?     // 班级图标
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  avatar           Avatar?           @relation(fields: [avatarId], references: [id])
   students         Student[]
   groups           ClassGroup[]
   classroomClasses ClassroomClass[]
@@ -69,10 +86,13 @@ model Student {
   name      String   // 学生姓名
   studentNo String?  // 学号
   tag       String?  // 分组标签 (如 A组, B组)
+  avatarId           Int?     // 学生头像
+  avatarChangeTokens Int      @default(0) // 教师奖励的可换头像次数
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  avatar    Avatar?         @relation(fields: [avatarId], references: [id])
   classroomStudents ClassroomStudent[]
 }
 

@@ -15,6 +15,7 @@ const navItems = [
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
+  { path: '/teacher/avatars', label: '头像管理', icon: 'avatar' },
   { path: '/teacher/shield', label: '屏蔽管理', icon: 'shield' },
   { path: '/teacher/history', label: '数据管理', icon: 'clock' },
   { path: '/teacher/guide', label: '使用指南', icon: 'book' },
@@ -435,6 +436,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     <path d="M12 12l4-4" />
                     <path d="M12 8v4" />
                     <circle cx="12" cy="12" r="2" />
+                  </svg>
+                )}
+                {item.icon === 'avatar' && (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                    <path d="M18 8l2 2 4-4"/>
                   </svg>
                 )}
                 {item.icon === 'clock' && (

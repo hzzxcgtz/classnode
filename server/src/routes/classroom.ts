@@ -405,12 +405,37 @@ router.get('/:id/students', async (req, res) => {
       id: cs.student.id,
       name: cs.student.name,
       studentNo: cs.student.studentNo,
+      avatarId: cs.student.avatarId,
       groupId: cs.groupId,
       groupName: cs.group?.name,
       status: cs.status,
     })));
   } catch (error) {
     res.status(500).json({ error: '获取学生列表失败' });
+  }
+});
+
+// 教师奖励学生头像更换权限（studentId 为 Student.id）
+router.post('/:id/student/:studentId/reward-avatar', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const io = req.app.get('io');
+    const studentId = req.params.studentId;
+    // 直接通过 Student.id 更新
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) return res.status(404).json({ error: '学生未找到' });
+    const updated = await prisma.student.update({
+      where: { id: studentId },
+      data: { avatarChangeTokens: { increment: 1 } },
+    });
+    // 实时通知学生端
+    if (io) {
+      io.to(`student:${studentId}`).emit('avatar-rewarded', { tokens: updated.avatarChangeTokens });
+    }
+    res.json({ success: true, tokens: updated.avatarChangeTokens });
+  } catch (error) {
+    console.error('[reward-avatar] Error:', error);
+    res.status(500).json({ error: '奖励失败' });
   }
 });
 

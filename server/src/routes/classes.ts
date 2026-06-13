@@ -10,10 +10,17 @@ router.get('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const classes = await prisma.class.findMany({
-      include: { _count: { select: { students: true, groups: true } } },
+      include: { _count: { select: { groups: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(classes);
+    // 手动统计实际学生数（排除 __group__ 虚拟学生）
+    const result = await Promise.all(classes.map(async (c) => {
+      const studentCount = await prisma.student.count({
+        where: { classId: c.id, OR: [{ tag: null }, { tag: { not: '__group__' } }] },
+      });
+      return { ...c, _count: { ...c._count, students: studentCount } };
+    }));
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: '获取班级列表失败' });
   }
@@ -23,28 +30,32 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name } = req.body;
+    const { name, avatarId } = req.body;
     if (!name) return res.status(400).json({ error: '班级名称不能为空' });
-    const cls = await prisma.class.create({ data: { name } });
+    const data: any = { name };
+    if (avatarId) data.avatarId = avatarId;
+    const cls = await prisma.class.create({ data });
     res.json(cls);
   } catch (error) {
     res.status(500).json({ error: '创建班级失败' });
   }
 });
 
-// 重命名班级
+// 更新班级
 router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: '班级名称不能为空' });
+    const { name, avatarId } = req.body;
+    const data: any = {};
+    if (name !== undefined) data.name = name;
+    if (avatarId !== undefined) data.avatarId = avatarId;
     const cls = await prisma.class.update({
       where: { id: req.params.id },
-      data: { name },
+      data,
     });
     res.json(cls);
   } catch (error) {
-    res.status(500).json({ error: '重命名失败' });
+    res.status(500).json({ error: '更新班级失败' });
   }
 });
 
@@ -176,11 +187,12 @@ router.post('/:classId/students/batch-names', async (req, res) => {
 router.put('/:classId/students/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, studentNo, tag } = req.body;
+    const { name, studentNo, tag, avatarId } = req.body;
     const data: any = {};
     if (name !== undefined) data.name = name;
     if (studentNo !== undefined) data.studentNo = studentNo;
     if (tag !== undefined) data.tag = tag;
+    if (avatarId !== undefined) data.avatarId = avatarId;
     const student = await prisma.student.update({
       where: { id: req.params.studentId },
       data,

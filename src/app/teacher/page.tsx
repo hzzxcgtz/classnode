@@ -342,28 +342,11 @@ export default function TeacherDashboard() {
                   padding: "16px 20px",
                 }}
               >
-                <div
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 10,
-                    background: "#eef2ff",
-                    color: "#2563eb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {(cr.title || "课")[0]}
-                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      fontWeight: 600,
-                      fontSize: "0.875rem",
+                      fontWeight: 700,
+                      fontSize: "1.125rem",
                       color: "#0f172a",
                       marginBottom: 3,
                       display: "flex",

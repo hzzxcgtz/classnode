@@ -1,0 +1,2 @@
+-- This is a baseline migration to match existing database state
+-- No schema changes needed since db push was used initially

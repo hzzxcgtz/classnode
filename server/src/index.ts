@@ -18,6 +18,7 @@ import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
 import uploadRoutes from './routes/upload.js';
+import avatarRoutes from './routes/avatars.js';
 import defaultShieldWords from './services/default-shield-words.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,7 @@ async function main() {
   app.use('/api/shield', shieldRoutes);
   app.use('/api/changelogs', changelogRoutes);
   app.use('/api/upload', uploadRoutes);
+  app.use('/api/avatars', avatarRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {

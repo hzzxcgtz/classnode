@@ -7,6 +7,8 @@ import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { renderMarkdown, stripImages } from '@/lib/markdown';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
+const API_BASE = getApiBaseUrl();
+function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
@@ -37,6 +39,15 @@ function ClassroomBoardContent() {
   const [teacherCode, setTeacherCode] = useState('');
   const [availableIPs, setAvailableIPs] = useState<{ name: string; label: string; ip: string }[]>([]);
   const [selectedIP, setSelectedIP] = useState('');
+  const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
+  // 加载头像 SVG
+  useEffect(() => {
+    api.getAvatarsAll('student').then(data => {
+      const m: Record<number, string> = {};
+      data.forEach((a: any) => { m[a.id] = a.svgContent; });
+      setStudentAvatars(m);
+    }).catch(() => {});
+  }, []);
 
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async () => {
@@ -613,10 +624,12 @@ function ClassroomBoardContent() {
                         width: 36, height: 36, borderRadius: isGroup ? 10 : '50%', flexShrink: 0,
                         background: status === 'online' ? (isGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #10b981, #34d399)') : status === 'thinking' ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : '#e5e7eb',
                         color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: "0.938rem",
+                        fontWeight: 700, fontSize: "0.938rem", overflow: 'hidden',
                       }}>
                         {isGroup ? (
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                        ) : student.avatarId && studentAvatars[student.avatarId] ? (
+                          <div style={{ width: 36, height: 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
                         ) : student.name[0]}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -687,6 +700,11 @@ function ClassroomBoardContent() {
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef2ff', color: '#4f46e5', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                 </button>
+                                <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
+                                  onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); student.avatarChangeTokens = (student.avatarChangeTokens || 0) + 1; } catch {} }}
+                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                                </button>
                                 <button title="清除对话"
                                   onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
@@ -718,6 +736,12 @@ function ClassroomBoardContent() {
                           <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
                             {rounds} 轮
                           </div>
+                          {student.avatarChangeTokens > 0 && (
+                            <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                              {student.avatarChangeTokens}
+                            </div>
+                          )}
                           {!isGroup && studentWarnings[sid] > 0 && (
                             <div title="警告次数（点击清零）" onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定将「${student.name}」的警告次数清零？`)) return; try { await api.resetStudentWarnings(id, sid); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} }}
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>
@@ -741,6 +765,10 @@ function ClassroomBoardContent() {
                             fontSize: "0.75rem", lineHeight: 1.6, color: '#334155',
                             wordBreak: 'break-word',
                           }}>
+                            {student.avatarId && studentAvatars[student.avatarId] ? (
+                              <span style={{ display: 'inline-block', width: 18, height: 18, borderRadius: '50%', overflow: 'hidden', verticalAlign: 'middle', marginRight: 4, flexShrink: 0 }}
+                                dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', '<svg width="18" height="18"') }} />
+                            ) : null}
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
                               {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                             </span>
@@ -817,10 +845,12 @@ function ClassroomBoardContent() {
                     width: 36, height: 36, borderRadius: selectedGroup ? 10 : '50%',
                     background: selectedGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #667eea, #764ba2)',
                     color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: "0.938rem",
+                    fontWeight: 700, fontSize: "0.938rem", overflow: 'hidden',
                   }}>
                     {selectedGroup ? (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                    ) : selectedStudent.avatarId && studentAvatars[selectedStudent.avatarId] ? (
+                      <div style={{ width: 36, height: 36 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
                     ) : selectedStudent.name[0]}
                   </div>
                   <div>
@@ -1096,9 +1126,18 @@ function ClassroomBoardContent() {
                       display: 'flex', alignItems: 'center', gap: 8,
                       marginBottom: 10,
                     }}>
-                      {m.role !== 'user' && classroomAgent && (
+                      {m.role === 'user' ? (
+                        selectedStudent?.avatarId && studentAvatars[selectedStudent.avatarId] ? (
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}
+                            dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="48" height="48"') }} />
+                        ) : (
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#eef2ff', color: '#667eea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.938rem", fontWeight: 700, flexShrink: 0 }}>
+                            {selectedStudent?.name?.[0] || '学'}
+                          </div>
+                        )
+                      ) : classroomAgent && (
                         <div style={{
-                          width: 34, height: 34, borderRadius: 8,
+                          width: 48, height: 48, borderRadius: 8,
                           background: 'linear-gradient(135deg, #667eea, #764ba2)',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: "0.938rem", fontWeight: 700, overflow: 'hidden',
@@ -1284,10 +1323,12 @@ function ClassroomBoardContent() {
                           borderRadius: isGroup ? (compact ? 6 : 8) : '50%', flexShrink: 0,
                           background: status === 'online' ? (isGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #10b981, #34d399)') : status === 'thinking' ? 'linear-gradient(135deg, #f59e0b, #fbbf24)' : '#e5e7eb',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 700, fontSize: compact ? 11 : 14,
+                          fontWeight: 700, fontSize: compact ? 11 : 14, overflow: 'hidden',
                         }}>
                           {isGroup ? (
                             <svg width={compact ? 14 : 18} height={compact ? 14 : 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                          ) : student.avatarId && studentAvatars[student.avatarId] ? (
+                            <div style={{ width: compact ? 26 : 36, height: compact ? 26 : 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', `<svg width="${compact ? 26 : 36}" height="${compact ? 26 : 36}"`) }} />
                           ) : student.name[0]}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1337,6 +1378,11 @@ function ClassroomBoardContent() {
                                       {studentBlacklisted[sid] ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
                                     </svg>
                                   </button>
+                                  <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
+                                    onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); student.avatarChangeTokens = (student.avatarChangeTokens || 0) + 1; } catch {} }}
+                                    style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
+                                    <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                                  </button>
                                   <button title="清除对话"
                                     onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
                                     style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
@@ -1369,6 +1415,12 @@ function ClassroomBoardContent() {
                             <div title="对话轮数" style={{ padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
                               {rounds} 轮
                             </div>
+                            {student.avatarChangeTokens > 0 && (
+                              <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
+                                <svg width={compact ? 8 : 10} height={compact ? 8 : 10} viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                                {student.avatarChangeTokens}
+                              </div>
+                            )}
                             {!isGroup && studentWarnings[sid] > 0 && (
                               <div title="警告次数（点击清零）" onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定将「${student.name}」的警告次数清零？`)) return; try { await api.resetStudentWarnings(id, sid); setStudentWarnings(prev => ({ ...prev, [sid]: 0 })); } catch {} }}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', whiteSpace: 'nowrap', cursor: 'pointer' }}>

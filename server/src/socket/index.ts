@@ -155,6 +155,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         });
 
         socket.join(`classroom:${classroom.id}`);
+        socket.join(`student:${data.studentId}`);
         socket.data.classroomId = classroom.id;
         socket.data.studentId = data.studentId;
 

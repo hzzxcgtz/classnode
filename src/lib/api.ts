@@ -56,10 +56,10 @@ export const api = {
 
   // Classes
   getClasses: () => request<any[]>('/api/classes'),
-  createClass: (name: string) =>
-    request('/api/classes', { method: 'POST', body: JSON.stringify({ name }) }),
-  updateClass: (id: string, name: string) =>
-    request(`/api/classes/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  createClass: (name: string, avatarId?: number) =>
+    request('/api/classes', { method: 'POST', body: JSON.stringify({ name, avatarId }) }),
+  updateClass: (id: string, name: string, avatarId?: number | null) =>
+    request(`/api/classes/${id}`, { method: 'PUT', body: JSON.stringify({ name, avatarId }) }),
   deleteClass: (id: string) => request(`/api/classes/${id}`, { method: 'DELETE' }),
   checkClassUsage: (id: string) =>
     request<{ used: boolean; classroomCount: number; classrooms: { id: string; title: string; status: string }[] }>(`/api/classes/${id}/usage`),
@@ -79,7 +79,7 @@ export const api = {
     request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
-  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; tag?: string | null }) =>
+  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; tag?: string | null; avatarId?: number | null }) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom
   createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>
@@ -105,6 +105,45 @@ export const api = {
     request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
   getOnlineStudentIds: (id: string) =>
     request<{ studentIds: string[] }>(`/api/classroom/${id}/online`),
+
+  // Avatars
+  getAvatars: (category?: string) =>
+    request<any[]>(`/api/avatars${category ? `?category=${category}` : ''}`),
+  getAllAvatars: (category?: string) =>
+    request<any[]>(`/api/avatars/all${category ? `?category=${category}` : ''}`),
+  createAvatar: (data: { name?: string; svgContent: string; category?: string; gender?: string; sortOrder?: number }) =>
+    request('/api/avatars', { method: 'POST', body: JSON.stringify(data) }),
+  updateAvatar: (id: number, data: { name?: string; svgContent?: string; gender?: string; sortOrder?: number }) =>
+    request(`/api/avatars/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAvatar: (id: number) =>
+    request<{ success: boolean; studentCount: number; classCount: number }>(`/api/avatars/${id}`, { method: 'DELETE' }),
+  assignStudentsAvatar: (studentIds: string[], avatarId: number) =>
+    request('/api/avatars/assign-students', { method: 'POST', body: JSON.stringify({ studentIds, avatarId }) }),
+  clearStudentsAvatar: (studentIds: string[]) =>
+    request('/api/avatars/clear-students', { method: 'POST', body: JSON.stringify({ studentIds }) }),
+  autoAssignAvatar: (params: { studentIds?: string[]; classId?: string }) =>
+    request<{ success: boolean; assigned: number }>('/api/avatars/auto-assign', { method: 'POST', body: JSON.stringify(params) }),
+  setClassAvatar: (classId: string, avatarId: number | null) =>
+    request(`/api/avatars/class/${classId}`, { method: 'PUT', body: JSON.stringify({ avatarId }) }),
+  rewardStudentAvatar: (classroomId: string, studentId: string) =>
+    request<{ success: boolean; tokens: number }>(`/api/classroom/${classroomId}/student/${studentId}/reward-avatar`, { method: 'POST' }),
+  rewardStudentDirect: (studentId: string) =>
+    request<{ success: boolean; tokens: number }>(`/api/avatars/reward-student/${studentId}`, { method: 'POST' }),
+  studentSelfChangeAvatar: (studentId: string, data: { avatarId?: number; svgContent?: string; gender?: string }) =>
+    request(`/api/avatars/student-self/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getAvatarsAll: (category?: string) =>
+    request<any[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
+  clearAllAvatars: (category?: string) =>
+    request<{ success: boolean; cleared: number }>('/api/avatars/clear-all', { method: 'POST', body: JSON.stringify({ category }) }),
+  getAvatarUsage: (id: number) =>
+    request<{ students: { name: string; class: { name: string } }[]; classes: { name: string }[] }>(`/api/avatars/${id}/usage`),
+  getStudentTokens: (studentId: string) =>
+    request<{ tokens: number }>(`/api/avatars/student-tokens/${studentId}`),
+  uploadAvatarImage: (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return fetch(`${getApiBaseUrl()}/api/upload/avatar`, { method: 'POST', body: formData }).then(r => r.json());
+  },
 
   // Export
   exportConversations: (classroomId: string) =>

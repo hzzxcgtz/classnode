@@ -8,6 +8,7 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 
 const API_BASE_URL = getApiBaseUrl();
+function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE_URL}/uploads/`) : svg; }
 
 // ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
 
@@ -36,24 +37,32 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase,
+  msg, studentName, agent, apiBase, avatarSvg,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string;
+  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
       {msg.role === 'assistant' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-            <AgentAvatar size={26} borderRadius={8} fontSize={13} agent={agent} apiBase={apiBase} />
+          <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
+            <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
           </div>
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+          <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
         </div>
       )}
       {msg.role === 'user' && studentName && (
-        <div style={{ paddingRight: 4 }}>
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#94a3b8' }}>{studentName}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
+          {avatarSvg ? (
+            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}
+              dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvg).replace('<svg', '<svg width="42" height="42"') }} />
+          ) : (
+            <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.875rem", fontWeight: 700, flexShrink: 0 }}>
+              {studentName[0]}
+            </div>
+          )}
+          <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#94a3b8' }}>{studentName}</span>
         </div>
       )}
       <div style={{
@@ -65,7 +74,7 @@ const MessageItem = memo(function MessageItem({
         border: msg.role === 'assistant' ? '1px solid #eef2f6' : 'none',
         boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.04)' : '0 4px 12px rgba(102,126,234,0.2)',
         lineHeight: 1.7,
-        fontSize: "0.938rem",
+        fontSize: "1rem",
         wordBreak: 'break-word',
         position: 'relative',
       }}>
@@ -104,10 +113,10 @@ const StreamingIndicator = memo(function StreamingIndicator({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-          <AgentAvatar size={26} borderRadius={8} fontSize={13} agent={agent} apiBase={apiBase} />
+        <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
+          <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
         </div>
-        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
       </div>
       <div style={{
         maxWidth: '78%', padding: '14px 18px',
@@ -159,6 +168,22 @@ function StudentChatContent() {
         setStep('chat');
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
         startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
+        // 恢复头像数据 + token
+        try {
+          const [avData, avTeacherData, stsData, tokenData] = await Promise.all([
+            api.getAvatarsAll('student'),
+            api.getAvatars('student'),
+            cr.id ? api.getClassroomStudents(cr.id) : Promise.resolve([]),
+            api.getStudentTokens(sessionData.studentId),
+          ]);
+          const m: Record<number, string> = {};
+          avData.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+          setAvatarSvgs(m);
+          setAllStudentAvatars(avTeacherData);
+          setAvatarTokenCount(tokenData.tokens || 0);
+          const cur = (stsData as any[]).find((s: any) => s.id === sessionData!.studentId);
+          if (cur) setSelectedStudent(cur);
+        } catch {}
       } else {
         setStep('identity');
       }
@@ -168,6 +193,10 @@ function StudentChatContent() {
   const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
   const [classroom, setClassroom] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
+  const [avatarSvgs, setAvatarSvgs] = useState<Record<number, string>>({});
+  const [avatarTokenCount, setAvatarTokenCount] = useState(0);
+  const [showAvatarChanger, setShowAvatarChanger] = useState(false);
+  const [allStudentAvatars, setAllStudentAvatars] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -374,7 +403,15 @@ function StudentChatContent() {
 
   useEffect(() => {
     if (step === 'identity' && classroom?.id) {
-      api.getClassroomStudents(classroom.id).then(setStudents).catch(() => {});
+      api.getClassroomStudents(classroom.id).then(data => {
+        setStudents(data);
+        // 加载头像 SVG 映射
+        api.getAvatarsAll('student').then(avatars => {
+          const m: Record<number, string> = {};
+          avatars.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+          setAvatarSvgs(m);
+        }).catch(() => {});
+      }).catch(() => {});
       // 连接状态监听 socket，获取已登录学生列表
       (async () => {
         const { io } = await import('socket.io-client');
@@ -506,6 +543,13 @@ function StudentChatContent() {
         }
       });
 
+      socket.on('avatar-rewarded', (data: any) => {
+        if (data?.tokens) {
+          setAvatarTokenCount(data.tokens);
+          setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击姓名旁的⭐即可更换', type: 'success' });
+        }
+      });
+
       socket.on('teacher-notification', (data: any) => {
         const now = new Date();
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -575,6 +619,14 @@ function StudentChatContent() {
   };
 
 
+  const fetchStudentTokens = async () => {
+    if (!selectedStudent?.id) return;
+    try {
+      const result = await api.getStudentTokens(selectedStudent.id);
+      setAvatarTokenCount(result.tokens || 0);
+    } catch {}
+  };
+
   const handleIdentityConfirm = async () => {
     if (!selectedStudent) return;
     setStep('chat');
@@ -584,6 +636,10 @@ function StudentChatContent() {
       studentName: selectedStudent.name,
       timestamp: Date.now(),
     }));
+    // 加载头像库（仅显示教师创建的供选择）+ 头像 SVG 映射（含学生自己的）
+    api.getAvatars('student').then(data => { setAllStudentAvatars(data); }).catch(() => {});
+    api.getAvatarsAll('student').then(data => { const m: Record<number, string> = {}; data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); }); setAvatarSvgs(m); }).catch(() => {});
+    fetchStudentTokens();
     // 加载该学生的历史对话
     if (classroom?.id) {
       await loadMessages(classroom.id, selectedStudent.id);
@@ -713,8 +769,10 @@ function StudentChatContent() {
                     </>
                   ) : (
                     <>
-                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6', color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem", flexShrink: 0 }}>
-                        {s.name[0]}
+                      <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: s.avatarId && avatarSvgs[s.avatarId] ? 'transparent' : (isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6'), color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem" }}>
+                        {s.avatarId && avatarSvgs[s.avatarId] ? (
+                          <div style={{ width: 42, height: 42 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvgs[s.avatarId]).replace('<svg', '<svg width="42" height="42"') }} />
+                        ) : s.name[0]}
                       </div>
                       <div style={{ flex: 1 }}>
                         {s.studentNo && <div style={{ fontSize: "0.75rem", fontWeight: 500, color: '#9ca3af', lineHeight: 1.3 }}>{s.studentNo}</div>}
@@ -783,10 +841,19 @@ function StudentChatContent() {
           {/* 当前登录用户姓名标签 */}
           {selectedStudent?.name && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 4px', background: '#eef2ff', borderRadius: 20, fontSize: "0.813rem", color: 'var(--primary)', fontWeight: 600, border: '1px solid #c7d2fe' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: "0.688rem" }}>
-                {selectedStudent.name[0]}
+              <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: "0.688rem" }}>
+                {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
+                  <div style={{ width: 22, height: 22 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvgs[selectedStudent.avatarId]).replace('<svg', '<svg width="22" height="22"') }} />
+                ) : selectedStudent.name[0]}
               </div>
               {selectedStudent.name}
+              {avatarTokenCount > 0 && (
+                <span onClick={() => setShowAvatarChanger(true)}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '1px 5px', borderRadius: 10, background: '#fffbeb', color: '#d97706', fontSize: "0.688rem", fontWeight: 700 }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                  {avatarTokenCount}
+                </span>
+              )}
             </div>
           )}
           {/* 消息按钮 */}
@@ -896,6 +963,11 @@ function StudentChatContent() {
                         const session = JSON.parse(saved);
                         loadMessages(cr.id, session.studentId);
                         startChatSession(session.studentId, session.studentName, codeFromUrl);
+                        api.getAvatarsAll('student').then(data => {
+                          const m: Record<number, string> = {};
+                          data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+                          setAvatarSvgs(m);
+                        }).catch(() => {});
                       } else {
                         setStep('identity');
                       }
@@ -974,8 +1046,9 @@ function StudentChatContent() {
           {/* 消息列表 */}
         {(() => {
           const memoAgent = getCurrentAgent();
+          const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} />
+            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} />
           ));
         })()}
 
@@ -1186,7 +1259,196 @@ function StudentChatContent() {
             </button>
           </div>
         </div>
+      {/* 头像更换弹窗 */}
+      {showAvatarChanger && (
+        <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
+            <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
+            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 4px' }}>
+              剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
+            </p>
+            <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: '0 0 16px' }}>
+              可从教师头像库中选择，也可粘贴自定义 SVG 代码
+            </p>
+            <AvatarChangerContent
+              studentId={selectedStudent?.id}
+              avatars={allStudentAvatars}
+              avatarSvgs={avatarSvgs}
+              onChanged={async () => {
+                setShowAvatarChanger(false);
+                fetchStudentTokens();
+                try {
+                  const [allAv, teacherAv] = await Promise.all([
+                    api.getAvatarsAll('student'),
+                    api.getAvatars('student'),
+                  ]);
+                  const m: Record<number, string> = {};
+                  allAv.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+                  setAvatarSvgs(m);
+                  setAllStudentAvatars(teacherAv);
+                  // 重新加载 classroom students 更新 selectedStudent
+                  if (classroom?.id && selectedStudent?.id) {
+                    const sts = await api.getClassroomStudents(classroom.id);
+                    const updated = sts.find((s: any) => s.id === selectedStudent.id);
+                    if (updated) setSelectedStudent(updated);
+                  }
+                } catch {}
+              }}
+              setToast={setToast}
+            />
+          </div>
+        </div>
+      )}
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      </div>
+    </div>
+  );
+}
+
+/** 学生自助换头像组件 */
+function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setToast }: {
+  studentId: string; avatars: any[]; avatarSvgs: Record<number, string>;
+  onChanged: () => void; setToast: (t: any) => void;
+}) {
+  const [tab, setTab] = useState<'library' | 'custom' | 'image'>('library');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [svgInput, setSvgInput] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadSvg, setUploadSvg] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    // 本地预览
+    const url = URL.createObjectURL(file);
+    setImagePreview(url);
+    setUploadSvg(null);
+    // 自动上传
+    setUploading(true);
+    try {
+      const result = await api.uploadAvatarImage(file);
+      if (result.svgContent) {
+        setUploadSvg(result.svgContent);
+      }
+    } catch { setToast({ msg: '图片上传失败', type: 'error' }); }
+    setUploading(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (tab === 'library' && selectedId) {
+        await api.studentSelfChangeAvatar(studentId, { avatarId: selectedId });
+      } else if (tab === 'custom' && svgInput.trim()) {
+        await api.studentSelfChangeAvatar(studentId, { svgContent: svgInput.trim(), gender: 'neutral' });
+      } else if (tab === 'image' && uploadSvg) {
+        await api.studentSelfChangeAvatar(studentId, { svgContent: uploadSvg, gender: 'neutral' });
+      } else {
+        setToast({ msg: '请选择或上传一个头像', type: 'error' }); setSaving(false); return;
+      }
+      setToast({ msg: '头像已更新！', type: 'success' });
+      onChanged();
+    } catch (e: any) {
+      setToast({ msg: e.message || '更换失败', type: 'error' });
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #e2e8f0' }}>
+        {[
+          { key: 'library' as const, label: '选择头像' },
+          { key: 'custom' as const, label: '自定义 SVG' },
+          { key: 'image' as const, label: '上传图片' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{
+              padding: '8px 16px', fontSize: "0.813rem", fontWeight: tab === t.key ? 600 : 400,
+              color: tab === t.key ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
+              cursor: 'pointer', borderBottom: `2px solid ${tab === t.key ? '#2563eb' : 'transparent'}`,
+              marginBottom: -2,
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'library' ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
+          {avatars.length === 0 ? (
+            <p style={{ fontSize: "0.813rem", color: '#94a3b8', padding: 20 }}>暂无可选头像</p>
+          ) : avatars.map(av => (
+            <div key={av.id} onClick={() => setSelectedId(selectedId === av.id ? null : av.id)}
+              style={{
+                width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
+                border: `2px solid ${selectedId === av.id ? '#2563eb' : '#e2e8f0'}`,
+              }}
+              dangerouslySetInnerHTML={{ __html: fixSvgUrl(av.svgContent).replace('<svg', '<svg width="40" height="40"') }} />
+          ))}
+        </div>
+      ) : tab === 'custom' ? (
+        <div style={{ marginBottom: 16 }}>
+          <textarea className="input" value={svgInput} onChange={e => setSvgInput(e.target.value)}
+            rows={5} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
+            placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
+          <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>
+            需要包含 viewBox="0 0 40 40" 的完整 SVG 代码
+          </p>
+          {svgInput.trim() && (
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', background: '#f8fafc', borderRadius: 8, padding: 12 }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden' }}
+                dangerouslySetInnerHTML={{ __html: svgInput.replace('<svg', '<svg width="60" height="60"') }} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect}
+            style={{ display: 'none' }} />
+          {!imagePreview ? (
+            <div onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: '2px dashed #cbd5e1', borderRadius: 12, padding: '30px 20px',
+                textAlign: 'center', cursor: 'pointer', transition: 'all 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#f8faff'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" style={{ marginBottom: 8 }}>
+                <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+              </svg>
+              <p style={{ fontSize: "0.813rem", fontWeight: 600, color: '#475569', margin: '0 0 4px' }}>点击上传头像图片</p>
+              <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: 0 }}>支持 JPG、PNG、WebP 格式</p>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', border: '3px solid #e2e8f0' }}>
+                  <img src={imagePreview} alt="预览" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              </div>
+              {uploading ? (
+                <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>上传中...</p>
+              ) : uploadSvg ? (
+                <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功，点击确认更换</p>
+              ) : null}
+              <button onClick={() => { setImageFile(null); setImagePreview(null); setUploadSvg(null); }}
+                style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
+                重新选择
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn btn-primary" onClick={handleSave}
+          disabled={saving || (tab === 'library' && !selectedId) || (tab === 'custom' && !svgInput.trim()) || (tab === 'image' && !uploadSvg)}>
+          {saving ? '更换中...' : '确认更换'}
+        </button>
       </div>
     </div>
   );

@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { exportConversationsDoc, exportStatsDoc } from '@/lib/export-doc';
-import { Toast } from '@/lib/components';
+import { Toast, Pagination } from '@/lib/components';
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   // 导出预览弹窗
   const [preview, setPreview] = useState<{
@@ -20,8 +22,10 @@ export default function HistoryPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    api.getHistory().then(setHistory).catch(() => {}).finally(() => setLoading(false));
+    api.getHistory().then(data => { setHistory(data); setPage(1); }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  const pagedHistory = history.slice((page - 1) * pageSize, page * pageSize);
 
   // 点击导出：先获取数据并展示预览
   const handlePreview = async (classroomId: string, type: 'conversations' | 'stats') => {
@@ -179,7 +183,7 @@ export default function HistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {history.map((cr: any) => {
+                {pagedHistory.map((cr: any) => {
                   const startTime = new Date(cr.createdAt);
                   const endTime = cr.endedAt ? new Date(cr.endedAt) : null;
                   const duration = endTime
@@ -257,6 +261,7 @@ export default function HistoryPage() {
                 })}
               </tbody>
             </table>
+            <Pagination current={page} total={history.length} pageSize={pageSize} pageSizeOptions={[10, 15, 20, 50, 100]} onChange={setPage} onPageSizeChange={setPageSize} />
           </div>
             </>
           )}

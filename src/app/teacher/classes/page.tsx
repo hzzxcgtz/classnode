@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Toast } from '@/lib/components';
+import { Toast, Pagination } from '@/lib/components';
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -20,6 +20,8 @@ export default function ClassesPage() {
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [batchEditModal, setBatchEditModal] = useState<{ type: 'tag' } | null>(null);
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(30);
   const [deleteBlocked, setDeleteBlocked] = useState<{
     classId: string;
     className: string;
@@ -107,8 +109,8 @@ export default function ClassesPage() {
     if (!selectedClass) return;
     const data = await api.getStudents(selectedClass);
     setStudents(data);
+    setStudentPage(1);
   };
-
   const handleSort = (field: 'studentNo' | 'name' | 'group') => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -134,6 +136,8 @@ export default function ClassesPage() {
     }
     return sortDir === 'asc' ? cmp : -cmp;
   });
+
+  const pagedStudents = sortedStudents.slice((studentPage - 1) * studentPageSize, studentPage * studentPageSize);
 
   const SortIcon = ({ field }: { field: 'studentNo' | 'name' | 'group' }) => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -415,70 +419,46 @@ export default function ClassesPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {selectedClass ? (
             <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-              {/* 头部：班级概览区块 */}
+              {/* 头部：班级概览区块 — 紧凑版 */}
               <div style={{
-                padding: '20px 20px 0',
+                padding: '12px 20px 0',
                 background: 'linear-gradient(135deg, #f8faff 0%, #ffffff 100%)',
                 borderBottom: '1px solid #eef2f6',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{
-                      width: 42, height: 42, borderRadius: 12,
-                      background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                      color: 'white',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, fontSize: "1.125rem", flexShrink: 0,
-                    }}>
-                      {selectedClassData?.name?.[0] || '班'}
-                    </div>
-                    <div>
-                      <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
-                        {selectedClassData?.name || '班级'}
-                      </h2>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+                    color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, fontSize: "0.875rem", flexShrink: 0,
+                  }}>
+                    {selectedClassData?.name?.[0] || '班'}
                   </div>
+                  <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                    {selectedClassData?.name || '班级'}
+                  </h2>
                 </div>
 
-                {/* 快捷统计 */}
+                {/* 快捷统计 — 行内紧凑 */}
                 <div style={{
-                  display: 'flex', gap: 0, marginBottom: 16,
-                  padding: '16px 0', background: '#f8fafc', borderRadius: 10,
-                  border: '1px solid #eef2f6',
+                  display: 'flex', gap: 0, marginBottom: 10,
+                  padding: '8px 0',
                 }}>
                   {[
-                    { label: '学生人数', value: students.length, icon: 'users', color: '#2563eb' },
-                    { label: '分组数量', value: classGroups.length, icon: 'grid', color: '#8b5cf6' },
-                    { label: '已分组', value: students.filter(s => studentGroupMap.has(s.id)).length, icon: 'check', color: '#10b981' },
-                    { label: '未分组', value: students.filter(s => !studentGroupMap.has(s.id)).length, icon: 'minus', color: selectedClassData?._count?.groups > 0 ? '#f59e0b' : '#94a3b8' },
+                    { label: '学生', value: students.length, color: '#2563eb' },
+                    { label: '分组', value: classGroups.length, color: '#8b5cf6' },
+                    { label: '已分组', value: students.filter(s => studentGroupMap.has(s.id)).length, color: '#10b981' },
+                    { label: '未分组', value: students.filter(s => !studentGroupMap.has(s.id)).length, color: selectedClassData?._count?.groups > 0 ? '#f59e0b' : '#94a3b8' },
                   ].map((stat, i) => (
                     <div key={i} style={{
-                      flex: 1, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', gap: 6,
-                      borderRight: i < 3 ? '1px solid #e2e8f0' : 'none',
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      borderRight: i < 3 ? '1px solid #eef2f6' : 'none',
                     }}>
-                      <div style={{
-                        width: 32, height: 32, borderRadius: 10,
-                        background: `${stat.color}12`,
-                        color: stat.color,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {stat.icon === 'users' ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-                        ) : stat.icon === 'grid' ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-                        ) : stat.icon === 'check' ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                        )}
+                      <div style={{ fontSize: "0.813rem", fontWeight: 700, color: stat.color, lineHeight: 1 }}>
+                        {stat.value}
                       </div>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: "1.125rem", fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
-                          {stat.value}
-                        </div>
-                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 2 }}>{stat.label}</div>
-                      </div>
+                      <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{stat.label}</div>
                     </div>
                   ))}
                 </div>
@@ -584,6 +564,7 @@ export default function ClassesPage() {
                       <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
                     </div>
                   ) : (
+                    <>
                     <table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
@@ -644,7 +625,7 @@ export default function ClassesPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedStudents.map((s) => (
+                        {pagedStudents.map((s) => (
                           <tr key={s.id}>
                             <td style={{ textAlign: 'center', padding: '10px 8px' }}>
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
@@ -728,7 +709,8 @@ export default function ClassesPage() {
                         ))}
                       </tbody>
                     </table>
-                  )}
+                    <Pagination current={studentPage} total={sortedStudents.length} pageSize={studentPageSize} pageSizeOptions={[10, 20, 30, 50, 100]} onChange={setStudentPage} onPageSizeChange={setStudentPageSize} />
+                  </>)}
                 </div>
               ) : (
                 <GroupManagement classId={selectedClass} students={students} onChanged={() => { loadStudents(); loadGroups(); }} />
@@ -1460,11 +1442,11 @@ function GroupManagement({ classId, students, onChanged }: {
                   background: isSelected ? '#eef2ff' : 'white',
                   color: isSelected ? '#2563eb' : '#0f172a', fontSize: "0.813rem",
                   border: `1.5px solid ${isSelected ? '#2563eb' : '#e2e8f0'}`,
-                  userSelect: 'none',
+                  userSelect: 'none', whiteSpace: 'nowrap',
                   opacity: draggedId === s.id ? 0.35 : 1,
                   transition: 'all 0.1s',
                   boxShadow: isSelected ? '0 1px 3px rgba(37,99,235,0.15)' : '0 1px 2px rgba(0,0,0,0.04)',
-                  width: 'calc(20% - 8px)',
+                  flex: '0 0 calc(20% - 8px)',
                 }}>
                 {/* 多选框 */}
                 <div style={{

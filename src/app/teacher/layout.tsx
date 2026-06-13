@@ -325,7 +325,14 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             )}
             <div>
               <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
-              <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 2 }}>AI 互动课堂系统</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>AI 互动课堂系统</span>
+                <span style={{
+                  fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
+                  borderRadius: 100, background: 'rgba(79,70,229,0.08)', color: '#6366f1',
+                  border: '1px solid rgba(79,70,229,0.15)',
+                }}>v{APP_VERSION}</span>
+              </div>
             </div>
           </div>
         </div>

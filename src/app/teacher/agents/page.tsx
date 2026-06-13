@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
-import { FieldError, Toast } from '@/lib/components';
+import { FieldError, Toast, Pagination } from '@/lib/components';
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<any[]>([]);
@@ -11,6 +11,8 @@ export default function AgentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [agentPage, setAgentPage] = useState(1);
+  const [agentPageSize, setAgentPageSize] = useState(12);
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: 'success' | 'error' }>({ show: false, msg: '', type: 'success' });
   const [errorTip, setErrorTip] = useState<{ text: string; top: number; left: number } | null>(null);
   const [deleteBlocked, setDeleteBlocked] = useState<{
@@ -20,10 +22,14 @@ export default function AgentsPage() {
 
   const loadAgents = async () => {
     try {
-      setAgents(await api.getAgents());
+      const data = await api.getAgents();
+      setAgents(data);
+      setAgentPage(1);
     } catch {}
     setLoading(false);
   };
+
+  const pagedAgents = agents.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
 
   useEffect(() => { loadAgents(); }, []);
 
@@ -98,7 +104,7 @@ export default function AgentsPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-          {agents.map(agent => {
+          {pagedAgents.map(agent => {
             // 平台色调（柔和色系，预留 8 色供后续接入）
             const platformColors: Record<string, string> = {
               coze: '#4f7bc9',        // 灰蓝
@@ -200,6 +206,20 @@ export default function AgentsPage() {
                   </button>
                 </div>
 
+                {/* 测试中的动画指示条 */}
+                {testing === agent.id && (
+                  <div style={{
+                    marginTop: 8, height: 3, borderRadius: 2, overflow: 'hidden',
+                    background: '#e2e8f0', position: 'relative',
+                  }}>
+                    <div style={{
+                      position: 'absolute', inset: 0, width: '40%',
+                      background: 'linear-gradient(90deg, #6366f1, #3b82f6)',
+                      borderRadius: 2,
+                      animation: 'indeterminate 1.2s ease-in-out infinite',
+                    }} />
+                  </div>
+                )}
                 {/* 分割线 + 连接状态 + 操作按钮 */}
                 <div style={{
                   marginTop: 14, paddingTop: 12,
@@ -208,7 +228,12 @@ export default function AgentsPage() {
                 }}>
                   {/* 左侧：状态指示 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                    {agent.lastCheckAt === null ? (
+                    {!isEnabled ? (
+                      <>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#94a3b8', flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap' }}>停用</span>
+                      </>
+                    ) : agent.lastCheckAt === null ? (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
                         <span style={{ fontSize: "0.688rem", color: '#94a3b8', whiteSpace: 'nowrap' }}>未检测</span>
@@ -268,8 +293,11 @@ export default function AgentsPage() {
                           setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
                         }}
                         disabled={testing === agent.id}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        {testing === agent.id ? '测试中' : '测试'}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                          style={testing === agent.id ? { animation: 'spin 1s linear infinite' } : undefined}>
+                          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        {testing === agent.id ? '检测中...' : '测试'}
                       </button>
                     )}
                     <button style={{
@@ -308,6 +336,9 @@ export default function AgentsPage() {
             );
           })}
         </div>
+      )}
+      {agents.length > agentPageSize && (
+        <Pagination current={agentPage} total={agents.length} pageSize={agentPageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setAgentPage} onPageSizeChange={setAgentPageSize} />
       )}
 
       {/* 删除被阻止的浮动弹窗 */}

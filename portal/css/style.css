@@ -63,7 +63,7 @@
 }
 
 html {
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
 }
 
 body {
@@ -1345,6 +1345,7 @@ footer::before {
     max-width: 1000px;
     margin: 0 auto;
     min-height: 400px;
+    overflow: hidden;
 }
 
 .showcase-slide {
@@ -1355,12 +1356,35 @@ footer::before {
 
 .showcase-slide.active {
     display: flex;
-    animation: showcaseIn 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-@keyframes showcaseIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
+/* 向右进入（下一张） */
+.showcase-slide.slide-in-right .showcase-mockup {
+    animation: slideInFromRight 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.showcase-slide.slide-in-right .showcase-info {
+    animation: fadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.1s both;
+}
+
+/* 向左进入（上一张） */
+.showcase-slide.slide-in-left .showcase-mockup {
+    animation: slideInFromLeft 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.showcase-slide.slide-in-left .showcase-info {
+    animation: fadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.1s both;
+}
+
+@keyframes slideInFromRight {
+    0%   { opacity: 0; transform: translateX(40px) scale(0.97); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes slideInFromLeft {
+    0%   { opacity: 0; transform: translateX(-40px) scale(0.97); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes fadeInUp {
+    0%   { opacity: 0; transform: translateY(16px); }
+    100% { opacity: 1; transform: translateY(0); }
 }
 
 /* 截图模拟窗 */

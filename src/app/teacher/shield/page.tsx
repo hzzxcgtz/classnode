@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { Pagination } from '@/lib/components';
 
 export default function ShieldPage() {
   const [tab, setTab] = useState<'words' | 'records'>('words');
@@ -21,6 +22,10 @@ export default function ShieldPage() {
   const [warnings, setWarnings] = useState<any[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingWarnings, setLoadingWarnings] = useState(false);
+  const [warningPage, setWarningPage] = useState(1);
+  const [wordPage, setWordPage] = useState(1);
+  const [warningPageSize, setWarningPageSize] = useState(20);
+  const [wordPageSize, setWordPageSize] = useState(50);
 
   useEffect(() => {
     loadData();
@@ -60,12 +65,15 @@ export default function ShieldPage() {
     try {
       const data = await api.getClassroomWarnings(classroomId);
       setWarnings(data);
+      setWarningPage(1);
     } catch {}
     setLoadingWarnings(false);
   };
 
   const builtinWords = words.filter(w => w.builtin);
   const customWords = words.filter(w => !w.builtin);
+  const pagedCustomWords = customWords.slice((wordPage - 1) * wordPageSize, wordPage * wordPageSize);
+  const pagedWarnings = warnings.slice((warningPage - 1) * warningPageSize, warningPage * warningPageSize);
 
   const addWords = async () => {
     const raw = newWord.trim();
@@ -332,7 +340,7 @@ export default function ShieldPage() {
           ) : (
             <div style={{ padding: '14px 20px 16px' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {customWords.map(w => (
+                {pagedCustomWords.map(w => (
                   <div key={w.id} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '4px 8px 4px 12px', borderRadius: 8,
@@ -356,6 +364,7 @@ export default function ShieldPage() {
                   </div>
                 ))}
               </div>
+              <Pagination current={wordPage} total={customWords.length} pageSize={wordPageSize} pageSizeOptions={[10, 20, 50, 100]} onChange={setWordPage} onPageSizeChange={setWordPageSize} />
             </div>
           )}
         </div>
@@ -545,7 +554,7 @@ export default function ShieldPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {warnings.map((w, i) => {
+                  {pagedWarnings.map((w, i) => {
                     // 高亮内容中的屏蔽词
                     const words = w.word.split(', ');
                     let highlighted = w.content || '';
@@ -599,6 +608,7 @@ export default function ShieldPage() {
                   })}
                 </tbody>
               </table>
+              <Pagination current={warningPage} total={warnings.length} pageSize={warningPageSize} pageSizeOptions={[10, 20, 50, 100]} onChange={setWarningPage} onPageSizeChange={setWarningPageSize} />
             </div>
           )}
         </div>}

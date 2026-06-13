@@ -9,7 +9,7 @@
 .dl-section { padding: 80px 24px; position: relative; z-index: 1; }
 .dl-section .section-container { max-width: 960px; margin: 0 auto; }
 .dl-section .section-header { margin-bottom: 48px; text-align: center; }
-.dl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+.dl-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .dl-card {
   padding: 28px 24px; background: var(--bg-primary);
   border: 1px solid var(--border); border-radius: 16px;
@@ -111,7 +111,7 @@
 <section class="hero">
     <div class="hero-badge">
         <span class="hero-badge-dot"></span>
-        <span>v1.3.12 · 开源免费</span>
+        <span>v1.3.13 · 开源免费</span>
     </div>
     <h1>
         <span class="gradient-text">让 AI 在真实课堂落地</span>
@@ -150,12 +150,16 @@
                 智能体
             </button>
             <button class="showcase-tab" data-index="2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                课堂互动
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                课堂模式
             </button>
             <button class="showcase-tab" data-index="3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                课堂看板
+            </button>
+            <button class="showcase-tab" data-index="4">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                数据报告
+                学生互动
             </button>
         </div>
         <div class="showcase-stage" id="showcaseStage">
@@ -168,19 +172,19 @@
                 </div>
                 <div class="showcase-info">
                     <h3 class="showcase-info-title">课堂仪表盘</h3>
-                    <p class="showcase-info-desc">实时监控全班 AI 互动状态，学情数据一览无余。</p>
+                    <p class="showcase-info-desc">系统运行全景概览，核心数据统计一屏掌握，让教师对 ClassNode 整体状况了然于胸。</p>
                     <ul class="showcase-info-list">
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            全班在线状态一目了然
+                            系统核心运行指标全景呈现
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            对话轮次与互动深度追踪
+                            课堂、学生、智能体全局数据统计
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            高频词云与活跃榜 Top10
+                            关键运行状态实时监控与预警
                         </li>
                     </ul>
                 </div>
@@ -193,20 +197,20 @@
                     <img src="images/screenshots/agents.webp" alt="AI 智能体管理">
                 </div>
                 <div class="showcase-info">
-                    <h3 class="showcase-info-title">AI 智能体</h3>
-                    <p class="showcase-info-desc">Coze、清言智能体、文心智能体等多平台一键接入。</p>
+                    <h3 class="showcase-info-title">AI 智能体中心</h3>
+                    <p class="showcase-info-desc">多平台 AI 智能体统一接入，一次配置即可在各课堂间复用，备课效率倍增。</p>
                     <ul class="showcase-info-list">
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            四种平台智能体统一管理
+                            支持四种主流平台智能体接入
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            配置截图 + 一键测试连通
+                            配置界面化管理，一键连通测试
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            在线状态自动检测告警
+                            在线状态自动检测与预警提醒
                         </li>
                     </ul>
                 </div>
@@ -216,23 +220,23 @@
                     <div class="showcase-mockup-bar">
                         <span></span><span></span><span></span>
                     </div>
-                    <img src="images/screenshots/classroom.svg" alt="课堂互动">
+                    <img src="images/screenshots/modes.png" alt="课堂模式">
                 </div>
                 <div class="showcase-info">
-                    <h3 class="showcase-info-title">课堂互动</h3>
-                    <p class="showcase-info-desc">学生扫码即入，全班实时与 AI 对话，教师全程监控。</p>
+                    <h3 class="showcase-info-title">课堂模式</h3>
+                    <p class="showcase-info-desc">标准、分组、高级三种课堂模式按需选用，高级模式实现真正的分层教学，因材施教。</p>
                     <ul class="showcase-info-list">
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            四种课堂模式灵活切换
+                            标准模式：全班统一使用同一智能体互动
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            实时消息引导与单独沟通
+                            分组模式：按小组分配不同 AI 角色协作学习
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            屏蔽词 + 频率双重管控
+                            高级模式：自定义智能体与提示词，实现分层教学
                         </li>
                     </ul>
                 </div>
@@ -242,23 +246,49 @@
                     <div class="showcase-mockup-bar">
                         <span></span><span></span><span></span>
                     </div>
-                    <img src="images/screenshots/report.svg" alt="数据报告">
+                    <img src="images/screenshots/board.png" alt="课堂看板">
                 </div>
                 <div class="showcase-info">
-                    <h3 class="showcase-info-title">数据报告</h3>
-                    <p class="showcase-info-desc">一键生成含词云的 Word 报告，学情数据随时回溯。</p>
+                    <h3 class="showcase-info-title">课堂看板</h3>
+                    <p class="showcase-info-desc">课堂全景监控看板，全维度掌握学生 AI 互动实况，教学节奏尽在掌控。</p>
                     <ul class="showcase-info-list">
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            全班对话实录完整导出
+                            实时消息流集中展示监控
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            学情统计报告一键生成
+                            三种课堂模式按需灵活切换
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                            跨设备备份与数据迁移
+                            发言频率与敏感内容双重管控
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="showcase-slide" data-index="4">
+                <div class="showcase-mockup">
+                    <div class="showcase-mockup-bar">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <img src="images/screenshots/student.png" alt="学生互动">
+                </div>
+                <div class="showcase-info">
+                    <h3 class="showcase-info-title">学生互动</h3>
+                    <p class="showcase-info-desc">学生端零门槛体验，扫码即入与 AI 沉浸式互动，完整记录课后可追溯。</p>
+                    <ul class="showcase-info-list">
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            扫码或输入课堂码秒加入互动
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            无需互联网，经教师机统一接入 AI
+                        </li>
+                        <li>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            全部互动记录自动保存与导出
                         </li>
                     </ul>
                 </div>
@@ -267,8 +297,9 @@
         <div class="showcase-nav" id="showcaseNav">
             <button class="showcase-dot active" data-index="0" aria-label="仪表盘"></button>
             <button class="showcase-dot" data-index="1" aria-label="智能体"></button>
-            <button class="showcase-dot" data-index="2" aria-label="课堂互动"></button>
-            <button class="showcase-dot" data-index="3" aria-label="数据报告"></button>
+            <button class="showcase-dot" data-index="2" aria-label="课堂模式"></button>
+            <button class="showcase-dot" data-index="3" aria-label="课堂看板"></button>
+            <button class="showcase-dot" data-index="4" aria-label="学生互动"></button>
         </div>
     </div>
 </section>
@@ -417,22 +448,6 @@
             <p class="section-subtitle">安装包、源码包已上传至国内主流网盘，按需取用。</p>
         </div>
         <div class="dl-grid">
-            <a href="https://pan.baidu.com/s/1FXlUcY4BG7hW6qS3P4wHkg?pwd=a8mg" class="dl-card" target="_blank" rel="noopener noreferrer">
-                <div class="dl-card-icon" style="background:rgba(37,119,255,0.08);">
-                    <img src="images/logo-baidupan.webp" alt="百度网盘" class="dl-card-img">
-                </div>
-                <div class="dl-card-name">百度网盘</div>
-                <div class="dl-card-desc">全平台版本归档，长期维护</div>
-                <span class="dl-card-code">提取码：a8mg</span>
-            </a>
-            <a href="https://www.alipan.com/s/6vBzQYDFPGz" class="dl-card" target="_blank" rel="noopener noreferrer">
-                <div class="dl-card-icon" style="background:rgba(100,120,240,0.08);">
-                    <img src="images/logo-alipan.webp" alt="阿里云盘" class="dl-card-img">
-                </div>
-                <div class="dl-card-name">阿里云盘</div>
-                <div class="dl-card-desc">不限速下载，推荐首选</div>
-                <span class="dl-card-code" style="color:var(--accent-green);border-color:rgba(34,197,94,0.15);background:rgba(34,197,94,0.06);">无需提取码</span>
-            </a>
             <a href="https://pan.quark.cn/s/989a61a2278f?pwd=Y5PN" class="dl-card" target="_blank" rel="noopener noreferrer">
                 <div class="dl-card-icon" style="background:rgba(45,150,234,0.08);">
                     <img src="images/logo-quark.webp" alt="夸克网盘" class="dl-card-img">
@@ -448,6 +463,22 @@
                 <div class="dl-card-name">123云盘</div>
                 <div class="dl-card-desc">不限速，适合大文件下载</div>
                 <span class="dl-card-code">提取码：Vd7T</span>
+            </a>
+            <a href="https://pan.baidu.com/s/1FXlUcY4BG7hW6qS3P4wHkg?pwd=a8mg" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(37,119,255,0.08);">
+                    <img src="images/logo-baidupan.webp" alt="百度网盘" class="dl-card-img">
+                </div>
+                <div class="dl-card-name">百度网盘</div>
+                <div class="dl-card-desc">全平台版本归档，长期维护</div>
+                <span class="dl-card-code">提取码：a8mg</span>
+            </a>
+            <a href="https://www.alipan.com/s/6vBzQYDFPGz" class="dl-card" target="_blank" rel="noopener noreferrer">
+                <div class="dl-card-icon" style="background:rgba(100,120,240,0.08);">
+                    <img src="images/logo-alipan.webp" alt="阿里云盘" class="dl-card-img">
+                </div>
+                <div class="dl-card-name">阿里云盘</div>
+                <div class="dl-card-desc">不限速下载，推荐首选</div>
+                <span class="dl-card-code" style="color:var(--accent-green);border-color:rgba(34,197,94,0.15);background:rgba(34,197,94,0.06);">无需提取码</span>
             </a>
         </div>
         <div class="repo-section">

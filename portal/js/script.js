@@ -65,6 +65,7 @@ const floatingShapes = document.querySelectorAll('.floating-shape');
 
 let lastScroll = 0;
 let ticking = false;
+let scrollRAF = null;
 
 function handleScroll() {
     const scrollY = window.pageYOffset;
@@ -72,39 +73,31 @@ function handleScroll() {
     const docHeight = document.documentElement.scrollHeight - windowHeight;
     const progress = (scrollY / docHeight) * 100;
 
-    // 进度条
+    // 进度条 update — cheap
     scrollProgress.style.width = progress + '%';
 
-    // 导航栏
-    if (scrollY > 50) {
-        navbar.classList.add('scrolled');
-    } else {
-        navbar.classList.remove('scrolled');
-    }
+    // 导航栏 — cheap
+    navbar.classList.toggle('scrolled', scrollY > 50);
 
-    // 网格背景缩放
+    // 视差效果 — throttle with transform optimizations
     const gridScale = 1 + (scrollY / windowHeight) * 0.1;
-    const gridRotate = scrollY * 0.02;
-    gridBg.style.transform = `scale(${gridScale}) rotate(${gridRotate}deg)`;
+    gridBg.style.transform = `scale(${gridScale}) rotate(${scrollY * 0.02}deg)`;
 
-    // 光晕视差
-    orb1.style.transform = `translate(${scrollY * 0.1}px, ${scrollY * 0.3}px) scale(${1 + scrollY * 0.0005})`;
-    orb2.style.transform = `translate(${-scrollY * 0.15}px, ${scrollY * 0.2}px) scale(${1 + scrollY * 0.0003})`;
-    orb3.style.transform = `translate(${scrollY * 0.08}px, ${-scrollY * 0.1}px) scale(${1 - scrollY * 0.0002})`;
+    orb1.style.transform = `translate3d(${scrollY * 0.1}px, ${scrollY * 0.3}px, 0)`;
+    orb2.style.transform = `translate3d(${-scrollY * 0.15}px, ${scrollY * 0.2}px, 0)`;
+    orb3.style.transform = `translate3d(${scrollY * 0.08}px, ${-scrollY * 0.1}px, 0)`;
 
-    // 浮动几何视差
     floatingShapes.forEach(shape => {
         const speed = parseFloat(shape.dataset.speed) || 0.3;
-        shape.style.transform = `translateY(${scrollY * speed}px)`;
+        shape.style.transform = `translate3d(0, ${scrollY * speed}px, 0)`;
     });
-
 
     ticking = false;
 }
 
 window.addEventListener('scroll', () => {
     if (!ticking) {
-        requestAnimationFrame(handleScroll);
+        scrollRAF = requestAnimationFrame(handleScroll);
         ticking = true;
     }
 }, { passive: true });
@@ -280,17 +273,33 @@ handleScroll();
 
     let current = 0;
     let autoTimer = null;
+    let transitioning = false;
     const INTERVAL = 5000;
 
     function goTo(index) {
-        if (index === current || !slides[index]) return;
+        if (index === current || !slides[index] || transitioning) return;
+        transitioning = true;
+
+        const direction = index > current ? 'right' : 'left';
+        const enterCls = direction === 'right' ? 'slide-in-right' : 'slide-in-left';
+
         slides[current].classList.remove('active');
         tabs[current].classList.remove('active');
         dots[current].classList.remove('active');
+
         current = index;
-        slides[current].classList.add('active');
+
+        // Force reflow so the display:none→flex takes effect before animation starts
+        void slides[current].offsetWidth;
+        slides[current].classList.add('active', enterCls);
         tabs[current].classList.add('active');
         dots[current].classList.add('active');
+
+        setTimeout(() => {
+            slides[current].classList.remove('slide-in-right', 'slide-in-left');
+            transitioning = false;
+        }, 550);
+
         resetTimer();
     }
 
@@ -355,4 +364,35 @@ handleScroll();
 
   window.addEventListener('scroll', updateActive, { passive: true });
   updateActive();
+})();
+
+// ============ 快速平滑滚动 ============
+(function () {
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function scrollToTarget(targetY, duration) {
+    var startY = window.pageYOffset;
+    var diff = targetY - startY;
+    if (Math.abs(diff) < 5) { window.scrollTo(0, targetY); return; }
+    var startTime = performance.now();
+
+    function step(now) {
+      var elapsed = now - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+      window.scrollTo(0, startY + diff * easeOutCubic(progress));
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest('a[href^="#"]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (!href || href === '#') return;
+    var target = document.querySelector(href);
+    if (!target) return;
+    e.preventDefault();
+    scrollToTarget(target.getBoundingClientRect().top + window.pageYOffset, 360);
+  });
 })();

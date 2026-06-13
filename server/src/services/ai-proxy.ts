@@ -177,8 +177,6 @@ async function proxyCoze(
   if (agent.conversationId) {
     requestBody.conversation_id = agent.conversationId;
   }
-  console.log('[Coze] Chat request:', additionalMessages.length, 'msgs, image:', additionalMessages.some((m: any) => m.content_type === 'object_string'));
-
   const response = await fetchWithTimeout(
     `${baseUrl}/v3/chat`,
     {
@@ -646,7 +644,6 @@ async function uploadFileToDify(apiUrl: string, apiKey: string, fileUrl: string)
     }
 
     const data = await response.json();
-    console.log('[DifyUpload] Success, file_id:', data.id, 'file:', fileName);
     return data.id || null;
   } catch (error) {
     console.error('[DifyUpload] Exception:', error);
@@ -693,7 +690,6 @@ function isLocalFileUrl(url: string): boolean {
 async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
   try {
     const filePath = resolveLocalPath(fileUrl);
-    console.log('[CozeUpload] File:', path.basename(fileUrl), `(${fs.existsSync(filePath) ? fs.statSync(filePath).size + 'B' : 'NOT FOUND'})`);
 
     if (!fs.existsSync(filePath)) {
       console.error('[CozeUpload] File not found:', filePath);
@@ -732,7 +728,6 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
     });
 
     const respText = await response.text();
-    console.log('[CozeUpload] HTTP', response.status, ':', respText.slice(0, 300));
 
     if (!response.ok) {
       console.error('[CozeUpload] HTTP Error:', response.status, respText);
@@ -749,7 +744,6 @@ async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string
 
     const fileId = data.data?.id || data.data?.file_id || data.id;
     if (fileId) {
-      console.log('[CozeUpload] Success, file_id:', fileId, 'file:', fileName);
       return fileId;
     }
 
@@ -1604,7 +1598,6 @@ async function proxyWenxinStream(
 
     if (!fullContent) {
       // 流式不通时回退到非流式
-      console.log('[WenxinStream] Empty, falling back to non-streaming');
       return await proxyWenxin(agent, message, userName, history, fileUrls);
     }
 

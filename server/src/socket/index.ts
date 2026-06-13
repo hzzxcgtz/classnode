@@ -328,16 +328,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         } else {
           agent = classroom.classroomAgents[0]?.agent;
         }
-        console.log('[Socket] agent lookup:', JSON.stringify({
-          mode: classroom.mode,
-          studentId: data.studentId,
-          groupId: classroomStudent.groupId,
-          groupAgentId: classroomStudent.group?.agentId,
-          groupsCount: classroom.groups?.length,
-          foundGroupId: classroom.groups?.find(g => g.id === classroomStudent.groupId)?.id,
-          agentName: agent?.name,
-          agentId: agent?.id,
-        }));
         if (!agent) {
           socket.emit('ai-error', { error: '未配置AI智能体' });
           return;
@@ -438,9 +428,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const platformNeedsConvId = ['coze', 'zhipuai', 'wenxin'].includes(agent.platform);
         const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}`;
         const platformConvId = platformConversations.get(platformConvKey) || undefined;
-        console.log(`[ConvId] key=${platformConvKey} found=${!!platformConvId} value=${platformConvId}`);
-
-        console.log(`[ConvId] agent platform=${agent.platform} name=${agent.name} botId=${agent.botId}`);
         const agentConfig: any = {
           platform: agent.platform,
           apiUrl: agent.apiUrl || undefined,
@@ -479,13 +466,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
         if (platformNeedsConvId && result.conversationId) {
-          console.log(`[ConvId] SET ${platformConvKey} = ${result.conversationId}`);
           platformConversations.set(platformConvKey, result.conversationId);
-        } else {
-          console.log(`[ConvId] NOT SET: needs=${platformNeedsConvId} hasConvId=${!!result.conversationId} convId=${result.conversationId}`);
         }
-
-        console.log('[Socket] AI result:', JSON.stringify({ success: result.success, contentLen: result.content?.length, error: result.error, hasContent: !!result.content }).slice(0, 300));
 
         if (result.success && result.content) {
           // Save AI response（同时保存用户上传的 fileUrls，确保刷新后图片仍有展示）

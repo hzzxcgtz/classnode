@@ -156,6 +156,11 @@ const SectionIcon = ({ name }: { name: string }) => {
         <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
       </svg>
     ),
+    avatar: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M22 11l-2 2-4-4"/>
+      </svg>
+    ),
   };
   return <>{icons[name] ?? null}</>;
 };
@@ -167,6 +172,7 @@ const sectionList = [
   { id: "classroom", mainLabel: "备课", subLabel: "创建互动课堂" },
   { id: "student-join", mainLabel: "上课", subLabel: "学生端接入与互动" },
   { id: "dashboard", mainLabel: "掌控", subLabel: "课堂看板与监控" },
+  { id: "avatars", mainLabel: "形象", subLabel: "头像管理与奖励" },
   { id: "shield", mainLabel: "净化", subLabel: "屏蔽词管理" },
   { id: "data", mainLabel: "丰收", subLabel: "数据管理与导出" },
   { id: "backup", mainLabel: "保障", subLabel: "数据备份与恢复" },
@@ -742,8 +748,27 @@ const sections = [
     ],
   },
   {
+    id: "avatars",
+    title: "七、形象：头像管理与奖励",
+    icon: "avatar",
+    items: [
+      <div>
+        进入「<Highlight>头像管理</Highlight>」管理头像库，或在课堂中奖励学生换头像：
+      </div>,
+      <div>
+        <strong>头像库管理</strong>：分为学生头像（男孩/女孩分区）和班级图标。点击「<Highlight>随机生成</Highlight>」每次生成5男5女，满意的一键导入。学生自定义上传的头像单独展示，教师可管理删除。
+      </div>,
+      <div>
+        <strong>奖励头像</strong>：课堂看板中学生卡片操作栏点击⭐按钮，奖励学生一次换头像权限。学生端实时收到通知，点击姓名旁的⭐即可兑换。
+      </div>,
+      <div>
+        <strong>兑换方式</strong>：学生可从教师头像库选择、粘贴自定义 SVG 代码或上传图片（JPG/PNG/WebP），每次消耗一次奖励机会，长期有效。
+      </div>,
+    ],
+  },
+  {
     id: "shield",
-    title: "七、净化：维持课堂秩序",
+    title: "八、净化：维持课堂秩序",
     icon: "shield",
     items: [
       <div>
@@ -780,7 +805,7 @@ const sections = [
   },
   {
     id: "data",
-    title: "八、丰收：数据管理与导出",
+    title: "九、丰收：数据管理与导出",
     icon: "history",
     items: [
       <div>
@@ -815,7 +840,7 @@ const sections = [
   },
   {
     id: "backup",
-    title: "九、保障：数据备份与恢复",
+    title: "十、保障：数据备份与恢复",
     icon: "gift",
     items: [
       <div>

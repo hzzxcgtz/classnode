@@ -534,10 +534,10 @@ export default function ClassesPage() {
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       borderRight: i < 3 ? '1px solid #eef2f6' : 'none',
                     }}>
-                      <div style={{ fontSize: "0.813rem", fontWeight: 700, color: stat.color, lineHeight: 1 }}>
+                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: stat.color, lineHeight: 1 }}>
                         {stat.value}
                       </div>
-                      <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{stat.label}</div>
+                      <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>{stat.label}</div>
                     </div>
                   ))}
                 </div>

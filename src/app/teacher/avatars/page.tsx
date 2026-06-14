@@ -168,19 +168,6 @@ export default function AvatarsPage() {
         ))}
       </div>
 
-      {/* 当前分类操作栏 */}
-      {!loading && avatars.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button onClick={async () => {
-            if (!confirm(`确定清空所有${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响，但头像库将变为空。`)) return;
-            try { const r = await api.clearAllAvatars(tab); setToast({ msg: `已清空 ${r.cleared} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' }); loadAvatars(); } catch { setToast({ msg: '清空失败', type: 'error' }); }
-          }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, border: '1px solid #fca5a5', background: 'white', color: '#ef4444', cursor: 'pointer', fontSize: "0.75rem" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            清空所有
-          </button>
-        </div>
-      )}
-
       {/* 头像网格 */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>加载中...</div>
@@ -244,9 +231,22 @@ export default function AvatarsPage() {
         </div>
       )}
 
+      {/* 清空当前分类按钮 — 居中显示 */}
+      {avatars.length > 0 && (
+        <div style={{ textAlign: 'center', margin: '20px 0 16px' }}>
+          <button onClick={async () => {
+            if (!confirm(`确定清空所有${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响，但头像库将变为空。`)) return;
+            try { const r = await api.clearAllAvatars(tab); setToast({ msg: `已清空 ${r.cleared} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' }); loadAvatars(); } catch { setToast({ msg: '清空失败', type: 'error' }); }
+          }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 6, border: '1px solid #fca5a5', background: 'white', color: '#ef4444', cursor: 'pointer', fontSize: "0.75rem" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            清空当前{tab === 'student' ? '头像' : '图标'}
+          </button>
+        </div>
+      )}
+
       {/* 学生自定义区域 — 显示在最下方 */}
       {tab === 'student' && (
-        <div style={{ marginTop: 24, marginBottom: 24 }}>
+        <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#f59e0b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 3, height: 14, borderRadius: 2, background: '#f59e0b', display: 'inline-block' }} />
             学生自定义
@@ -315,7 +315,7 @@ export default function AvatarsPage() {
               </div>
             </div>
 
-            {!randomGenerated ? (
+            {!randomGenerated && !generating ? (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{
                   width: 64, height: 64, borderRadius: 16,
@@ -332,75 +332,144 @@ export default function AvatarsPage() {
                 </p>
                 <button className="btn btn-primary btn-lg" onClick={() => handleRandomGenerate(tab)} disabled={generating}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: "0.938rem", padding: '12px 32px' }}>
-                  {generating ? (
-                    <>生成中...</>
-                  ) : (
-                    <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-                      随机生成一批
-                    </>
-                  )}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                  随机生成一批
                 </button>
+              </div>
+            ) : generating && !randomGenerated ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                <div style={{
+                  width: 64, height: 64, margin: '0 auto 20px',
+                  position: 'relative',
+                }}>
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    borderRadius: '50%',
+                    border: '3px solid #e2e8f0',
+                    borderTopColor: '#2563eb',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: 8,
+                    borderRadius: '50%',
+                    background: '#eef2ff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                  </div>
+                </div>
+                <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>正在生成{tab === 'student' ? '头像' : '图标'}...</p>
+                <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>程序化随机组合中，请稍候</p>
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  {(tab === 'student' ? [0, 5, 10, 15] : [0, 5]).map(startIdx => (
-                    <div key={startIdx} style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
-                      {randomPool.slice(startIdx, startIdx + 5).map((av: any, j: number) => {
-                        const i = startIdx + j;
-                        return (
+                {tab === 'student' && (
+                  <>
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#2563eb', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 3, height: 12, borderRadius: 2, background: '#2563eb', display: 'inline-block' }} />
+                        男孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                        {randomPool.slice(0, 10).map((av: any, i: number) => (
                           <div key={i}
                             onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                             style={{
-                              width: 80, padding: 8, textAlign: 'center',
+                              width: 72, padding: 6, textAlign: 'center',
                               borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#2563eb' : '#e2e8f0'}`,
                               background: selectedRandom.has(i) ? '#f8faff' : 'white',
-                              cursor: 'pointer', transition: 'all 0.15s',
+                              cursor: 'pointer', transition: 'all 0.12s',
                             }}>
-                            <div style={{
-                              width: 52, height: 52, margin: '0 auto 4px',
-                              borderRadius: '50%', overflow: 'hidden',
-                            }} dangerouslySetInnerHTML={{ __html: av.svgContent.replace('<svg', '<svg width="52" height="52"') }} />
+                            <div style={{ width: 48, height: 48, margin: '0 auto', borderRadius: '50%', overflow: 'hidden' }}
+                              dangerouslySetInnerHTML={{ __html: av.svgContent.replace('<svg', '<svg width="48" height="48"') }} />
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#e91e63', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 3, height: 12, borderRadius: 2, background: '#e91e63', display: 'inline-block' }} />
+                        女孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(10, 20).filter((_, i) => selectedRandom.has(i + 10)).length} 已选）</span>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                        {randomPool.slice(10, 20).map((av: any, i: number) => {
+                          const idx = i + 10;
+                          return (
+                            <div key={idx}
+                              onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(idx)) n.delete(idx); else n.add(idx); return n; }); }}
+                              style={{
+                                width: 72, padding: 6, textAlign: 'center',
+                                borderRadius: 10, border: `2px solid ${selectedRandom.has(idx) ? '#2563eb' : '#e2e8f0'}`,
+                                background: selectedRandom.has(idx) ? '#f8faff' : 'white',
+                                cursor: 'pointer', transition: 'all 0.12s',
+                              }}>
+                              <div style={{ width: 48, height: 48, margin: '0 auto', borderRadius: '50%', overflow: 'hidden' }}
+                                dangerouslySetInnerHTML={{ __html: av.svgContent.replace('<svg', '<svg width="48" height="48"') }} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {tab === 'class' && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 14 }}>
+                    {randomPool.map((av: any, i: number) => (
+                      <div key={i}
+                        onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
+                        style={{
+                          width: 80, padding: 8, textAlign: 'center',
+                          borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#2563eb' : '#e2e8f0'}`,
+                          background: selectedRandom.has(i) ? '#f8faff' : 'white',
+                          cursor: 'pointer', transition: 'all 0.12s',
+                        }}>
+                        <div style={{ width: 52, height: 52, margin: '0 auto', borderRadius: 8, overflow: 'hidden' }}
+                          dangerouslySetInnerHTML={{ __html: av.svgContent.replace('<svg', '<svg width="52" height="52"') }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <button onClick={() => handleRandomGenerate(tab)} disabled={generating}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '8px 18px', borderRadius: 8, border: '1px dashed #cbd5e1',
-                      background: generating ? '#f1f5f9' : '#f8fafc',
+                      padding: '8px 18px', borderRadius: 6,
+                      border: '1px solid #cbd5e1',
+                      background: generating ? '#f1f5f9' : 'white',
                       color: generating ? '#94a3b8' : '#475569',
                       cursor: generating ? 'not-allowed' : 'pointer',
                       fontSize: "0.813rem", fontWeight: 500,
                       transition: 'all 0.12s',
                     }}
-                    onMouseEnter={e => { if (!generating) { e.currentTarget.style.background = '#eef2ff'; e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = '#2563eb'; }}}
-                    onMouseLeave={e => { if (!generating) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#475569'; }}}>
+                    onMouseEnter={e => { if (!generating) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#94a3b8'; }}}
+                    onMouseLeave={e => { if (!generating) { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#cbd5e1'; }}}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     {generating ? '生成中...' : '换一批'}
                   </button>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#64748b' }}>已选 <span style={{ color: '#2563eb', fontWeight: 700 }}>{selectedRandom.size}</span> / {randomPool.length}</span>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+                    <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#64748b', display: 'flex', alignItems: 'center' }}>已选 <span style={{ color: '#2563eb', fontWeight: 700, marginLeft: 3 }}>{selectedRandom.size}</span> / {randomPool.length}</span>
                     <button onClick={handleImportAll}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '8px 16px', borderRadius: 8, border: 'none',
-                        background: 'linear-gradient(135deg, #059669, #10b981)',
-                        color: 'white', cursor: 'pointer',
-                        fontSize: "0.813rem", fontWeight: 600,
-                        boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                        padding: '8px 16px', borderRadius: 6, border: '1px solid #059669',
+                        background: 'white', color: '#059669', cursor: 'pointer',
+                        fontSize: "0.813rem", fontWeight: 500,
                         transition: 'all 0.12s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(5,150,105,0.35)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(5,150,105,0.25)'; }}>
+                      onMouseEnter={e => { e.currentTarget.style.background = '#f0fdf4'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                       导入全部
                     </button>
-                    <button className="btn btn-primary" onClick={handleImportRandom} disabled={selectedRandom.size === 0}>
+                    <button className="btn btn-primary" onClick={handleImportRandom} disabled={selectedRandom.size === 0}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '8px 16px', borderRadius: 6, border: 'none',
+                        background: selectedRandom.size === 0 ? '#e2e8f0' : '#2563eb',
+                        color: selectedRandom.size === 0 ? '#94a3b8' : 'white', cursor: selectedRandom.size === 0 ? 'not-allowed' : 'pointer',
+                        fontSize: "0.813rem", fontWeight: 500,
+                        transition: 'all 0.12s',
+                      }}>
                       导入选中 ({selectedRandom.size})
                     </button>
                   </div>
@@ -411,7 +480,7 @@ export default function AvatarsPage() {
         </div>
       )}
 
-      <style>{`.avatar-card:hover .avatar-card-del { opacity: 1 !important; }`}</style>
+      <style>{`.avatar-card:hover .avatar-card-del { opacity: 1 !important; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );

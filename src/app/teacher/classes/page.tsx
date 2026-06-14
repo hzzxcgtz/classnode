@@ -695,7 +695,7 @@ export default function ClassesPage() {
                             </div>
                           </th>
                           <th style={{
-                            width: 60, textAlign: 'center',
+                            width: 70, textAlign: 'center',
                             padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>性别</th>
@@ -766,8 +766,8 @@ export default function ClassesPage() {
                                 </span>
                               )}
                             </td>
-                            <td style={{ textAlign: 'center', fontSize: "0.75rem" }}>
-                              {s.gender === 'boy' ? <span style={{ color: '#2563eb' }}>♂ 男孩</span> : s.gender === 'girl' ? <span style={{ color: '#e91e63' }}>♀ 女孩</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
+                            <td style={{ textAlign: 'center', fontSize: "0.813rem", fontWeight: 500 }}>
+                              {s.gender === 'boy' ? <span style={{ color: '#2563eb' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#e91e63' }}>女</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
                             </td>
                             <td>
                               {(() => {
@@ -957,13 +957,14 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
       <div style={{ width: 180 }}>
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
-          placeholder="学生姓名" style={{ fontSize: "0.813rem" }} />
+          placeholder="学生姓名" style={{ fontSize: "0.813rem" }}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()} />
       </div>
       <div>
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
         <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 38 }}>
           {[
-            { value: '', label: '自动' },
+            { value: '', label: '未知' },
             { value: 'boy', label: '男孩' },
             { value: 'girl', label: '女孩' },
           ].map(g => (
@@ -1153,7 +1154,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
           <select className="input" value={gender} onChange={e => setGender(e.target.value)}
             style={{ width: 100, padding: '8px 6px' }}>
-            <option value="">未设置</option>
+            <option value="">未知</option>
             <option value="boy">男孩</option>
             <option value="girl">女孩</option>
           </select>

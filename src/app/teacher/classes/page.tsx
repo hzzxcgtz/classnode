@@ -595,8 +595,11 @@ export default function ClassesPage() {
                     <>
                       <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                         onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                        逐个添加
+                        {addStudentMode === 'form' ? (
+                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起</>
+                        ) : (
+                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
+                        )}
                       </button>
                       <button className="btn btn-primary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                         onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
@@ -629,7 +632,7 @@ export default function ClassesPage() {
                   borderBottom: '1px solid #eef2f6',
                 }}>
                   <AddStudentForm classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => { setAddStudentMode(null); loadStudents(); }} />
+                    onAdded={() => loadStudents()} />
                 </div>
               )}
               {addStudentMode === 'paste' && (
@@ -949,6 +952,7 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
   const handleAdd = async () => {
     if (!name) return;
     await api.addStudent(classId, { name, gender: gender || undefined });
+    setName('');
     onAdded();
   };
 
@@ -958,7 +962,7 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
           placeholder="学生姓名" style={{ fontSize: "0.813rem" }}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()} />
+          onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
       </div>
       <div>
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
@@ -989,7 +993,10 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
         添加
       </button>
-      <button className="btn btn-ghost" onClick={onClose} style={{ height: 38 }}>取消</button>
+      <button className="btn btn-ghost" onClick={onClose} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        完成
+      </button>
     </div>
   );
 }

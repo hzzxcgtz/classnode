@@ -42,8 +42,8 @@ router.post('/random-pool', async (req, res) => {
     const maxAttempts = count * 50;
 
     if (category === 'student') {
-      // 学生头像：5男5女
-      const targetCount = Math.floor(count / 2);
+      // 学生头像：各生成 10 个
+      const targetCount = count;
       [() => generateRandomStudentAvatarByGender('boy'), () => generateRandomStudentAvatarByGender('girl')].forEach(fn => {
         let added = 0;
         attempts = 0;

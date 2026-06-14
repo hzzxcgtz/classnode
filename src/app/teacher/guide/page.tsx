@@ -157,8 +157,19 @@ const SectionIcon = ({ name }: { name: string }) => {
       </svg>
     ),
     avatar: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M22 11l-2 2-4-4"/>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#2563eb"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+        <path d="M22 11l-2 2-4-4" />
       </svg>
     ),
   };
@@ -753,16 +764,22 @@ const sections = [
     icon: "avatar",
     items: [
       <div>
-        进入「<Highlight>头像管理</Highlight>」管理头像库，或在课堂中奖励学生换头像：
+        进入「<Highlight>头像管理</Highlight>
+        」管理头像库，或在课堂中奖励学生换头像：
       </div>,
       <div>
-        <strong>头像库管理</strong>：分为学生头像（男孩/女孩分区）和班级图标。点击「<Highlight>随机生成</Highlight>」每次生成5男5女，满意的一键导入。学生自定义上传的头像单独展示，教师可管理删除。
+        <strong>头像库管理</strong>
+        ：分为学生头像（男孩/女孩分区）和班级图标。点击「
+        <Highlight>随机生成</Highlight>
+        」每次生成10男10女，满意的一键导入。学生自定义上传的头像单独展示，教师可管理删除。
       </div>,
       <div>
-        <strong>奖励头像</strong>：课堂看板中学生卡片操作栏点击⭐按钮，奖励学生一次换头像权限。学生端实时收到通知，点击姓名旁的⭐即可兑换。
+        <strong>奖励头像</strong>
+        ：课堂看板中学生卡片操作栏点击⭐按钮，奖励学生一次换头像权限。学生端实时收到通知，点击姓名旁的⭐即可兑换。
       </div>,
       <div>
-        <strong>兑换方式</strong>：学生可从教师头像库选择、粘贴自定义 SVG 代码或上传图片（JPG/PNG/WebP），每次消耗一次奖励机会，长期有效。
+        <strong>兑换方式</strong>：学生可从教师头像库选择、粘贴自定义 SVG
+        代码或上传图片（JPG/PNG/WebP），每次消耗一次奖励机会，长期有效。
       </div>,
     ],
   },

@@ -325,7 +325,7 @@ export default function AvatarsPage() {
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                 </div>
                 <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
-                  💡 点击下方按钮，为你随机生成 10 个{tab === 'student' ? '头像' : '图标'}
+                  💡 点击下方按钮，为你随机生成{tab === 'student' ? ' 20 个' : ' 10 个'}{tab === 'student' ? '头像' : '图标'}
                 </p>
                 <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 24px' }}>
                   满意的选中后一键导入，不满意的可以再来一批
@@ -344,7 +344,7 @@ export default function AvatarsPage() {
             ) : (
               <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  {[0, 5].map(startIdx => (
+                  {(tab === 'student' ? [0, 5, 10, 15] : [0, 5]).map(startIdx => (
                     <div key={startIdx} style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
                       {randomPool.slice(startIdx, startIdx + 5).map((av: any, j: number) => {
                         const i = startIdx + j;

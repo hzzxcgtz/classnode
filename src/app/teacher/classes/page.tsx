@@ -20,7 +20,7 @@ export default function ClassesPage() {
   const [addStudentMode, setAddStudentMode] = useState<'form' | 'paste' | null>(null);
   const [tabMode, setTabMode] = useState<'students' | 'groups'>('students');
   const [classGroups, setClassGroups] = useState<any[]>([]);
-  const [sortField, setSortField] = useState<'studentNo' | 'name' | 'group'>('studentNo');
+  const [sortField, setSortField] = useState<'studentNo' | 'name' | 'gender' | 'group'>('studentNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
@@ -150,7 +150,7 @@ export default function ClassesPage() {
     setStudents(data);
     setStudentPage(1);
   };
-  const handleSort = (field: 'studentNo' | 'name' | 'group') => {
+  const handleSort = (field: 'studentNo' | 'name' | 'gender' | 'group') => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
@@ -165,6 +165,13 @@ export default function ClassesPage() {
       cmp = (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0);
     } else if (sortField === 'name') {
       cmp = a.name.localeCompare(b.name, 'zh-CN');
+    } else if (sortField === 'gender') {
+      const ga = a.gender || '';
+      const gb = b.gender || '';
+      if (!ga && !gb) cmp = 0;
+      else if (!ga) cmp = 1;
+      else if (!gb) cmp = -1;
+      else cmp = ga.localeCompare(gb, 'zh-CN');
     } else if (sortField === 'group') {
       const ga = studentGroupMap.get(a.id);
       const gb = studentGroupMap.get(b.id);
@@ -178,7 +185,7 @@ export default function ClassesPage() {
 
   const pagedStudents = sortedStudents.slice((studentPage - 1) * studentPageSize, studentPage * studentPageSize);
 
-  const SortIcon = ({ field }: { field: 'studentNo' | 'name' | 'group' }) => (
+  const SortIcon = ({ field }: { field: 'studentNo' | 'name' | 'gender' | 'group' }) => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
       stroke={sortField === field ? '#2563eb' : '#cbd5e1'}
       strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
@@ -697,11 +704,18 @@ export default function ClassesPage() {
                               姓名 <SortIcon field="name" />
                             </div>
                           </th>
-                          <th style={{
-                            width: 70, textAlign: 'center',
-                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
-                            borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
-                          }}>性别</th>
+                          <th onClick={() => handleSort('gender')}
+                            style={{
+                              width: 70, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
+                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                              borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
+                            onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              性别 <SortIcon field="gender" />
+                            </div>
+                          </th>
                           <th onClick={() => handleSort('group')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',

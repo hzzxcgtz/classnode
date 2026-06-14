@@ -69,3 +69,4 @@ dev.md
 playwright-*.tgz
 ClassNode-v*.dmg
 server/logs/
+scripts/upload-to-baidupan.sh

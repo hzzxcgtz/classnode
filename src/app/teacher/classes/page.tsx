@@ -603,18 +603,20 @@ export default function ClassesPage() {
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
                         粘贴名单
                       </button>
-                      <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
-                        onClick={async () => {
-                          if (!confirm('为当前班级中未分配头像的学生按性别自动分配头像？')) return;
-                          try {
-                            const r = await api.autoAssignAvatar({ classId: selectedClass! });
-                            setToast({ msg: `已为 ${r.assigned} 名学生分配头像`, type: 'success' });
-                            loadStudents();
-                          } catch { setToast({ msg: '自动分配失败', type: 'error' }); }
-                        }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M18 8l2 2 4-4"/></svg>
-                        分配头像
-                      </button>
+                      {students.some(s => !s.avatarId) && (
+                        <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={async () => {
+                            if (!confirm('为当前班级中未分配头像的学生按性别自动分配头像？')) return;
+                            try {
+                              const r = await api.autoAssignAvatar({ classId: selectedClass! });
+                              setToast({ msg: `已为 ${r.assigned} 名学生分配头像`, type: 'success' });
+                              loadStudents();
+                            } catch { setToast({ msg: '自动分配失败', type: 'error' }); }
+                          }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M18 8l2 2 4-4"/></svg>
+                          自动分配头像
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

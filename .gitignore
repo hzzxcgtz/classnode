@@ -68,3 +68,4 @@ dev.md
 # downloaded
 playwright-*.tgz
 ClassNode-v*.dmg
+server/logs/

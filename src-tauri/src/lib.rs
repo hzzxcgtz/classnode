@@ -282,18 +282,17 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
     // 检查 schema 版本，避免每次启动都跑 prisma db push
+    // 使用 schema.prisma 文件内容的哈希作为版本标识（比 package.json 版本更准确）
     let version_file = data_dir.join(".schema-version");
-    let current_version = std::fs::read_to_string(server_dir.join("package.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v.get("version").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .unwrap_or_default();
+    let schema_path = server_dir.join("prisma").join("schema.prisma");
+    let current_schema = std::fs::read_to_string(&schema_path).unwrap_or_default();
+    let current_schema_hash = schema_hash(&current_schema);
     let schema_up_to_date = std::fs::read_to_string(&version_file)
-        .map(|s| s.trim() == current_version)
+        .map(|s| s.trim() == current_schema_hash)
         .unwrap_or(false);
 
     if schema_up_to_date {
-        eprintln!("数据库 schema 已是最新 (v{}), 跳过同步", current_version);
+        eprintln!("数据库 schema 已是最新, 跳过同步");
     } else {
         let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
         if prisma_cli.exists() {
@@ -311,8 +310,8 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
             };
             if status.success() {
                 // 写入版本标记，下次跳过
-                let _ = std::fs::write(&version_file, &current_version);
-                eprintln!("数据库同步完成, 版本已标记 (v{})", current_version);
+                let _ = std::fs::write(&version_file, &current_schema_hash);
+                eprintln!("数据库同步完成, schema 已标记");
             } else {
                 eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
             }
@@ -338,6 +337,17 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     *app.state::<ServerState>().0.lock().unwrap() = Some(ServerInfo { child });
 
     Ok(())
+}
+
+/// 使用多项式哈希计算 schema 内容的确定性哈希值
+fn schema_hash(content: &str) -> String {
+    let bytes = content.as_bytes();
+    let len = bytes.len();
+    let mut h: u64 = 0;
+    for &b in bytes.iter() {
+        h = h.wrapping_mul(31).wrapping_add(b as u64);
+    }
+    format!("v{}:{}", len, h)
 }
 
 fn stop_server(app: &AppHandle) -> Result<(), String> {

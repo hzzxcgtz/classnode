@@ -17,6 +17,7 @@ import settingsRoutes from './routes/settings.js';
 import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
+import './services/file-logger.js'; // 文件日志（必须在最前面，接管 console）
 import uploadRoutes from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import defaultShieldWords from './services/default-shield-words.js';
@@ -49,6 +50,50 @@ async function main() {
   // Make prisma and io available to routes
   app.set('prisma', prisma);
   app.set('io', io);
+
+  // 自动同步数据库 schema（兼容旧版数据库缺少新表/列的情况）
+  try {
+    const dbVersion = await prisma.$queryRawUnsafe<{ version: string }[]>(`SELECT sqlite_version() as version`);
+    console.log(`[server] SQLite version: ${dbVersion[0].version}`);
+
+    // 创建缺失的表和字段（不同 Prisma schema 版本间迁移）
+    const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name='Avatar'`);
+    if (tables.length === 0) {
+      console.log('[server] Avatar table not found, creating...');
+      await prisma.$executeRawUnsafe(`CREATE TABLE "Avatar" (
+        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+        "svgContent" TEXT NOT NULL,
+        "category" TEXT NOT NULL DEFAULT 'student',
+        "gender" TEXT NOT NULL DEFAULT 'neutral',
+        "sortOrder" INTEGER NOT NULL DEFAULT 0,
+        "isActive" BOOLEAN NOT NULL DEFAULT 1,
+        "source" TEXT NOT NULL DEFAULT 'teacher',
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      console.log('[server] Avatar table created');
+    }
+
+    // 检查 Student 表是否有新列
+    const studentCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Student')`);
+    const studentColNames = studentCols.map(c => c.name);
+    if (!studentColNames.includes('avatarId')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Student" ADD COLUMN "avatarId" INTEGER REFERENCES "Avatar"("id")`);
+      console.log('[server] Added avatarId column to Student');
+    }
+    if (!studentColNames.includes('avatarChangeTokens')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Student" ADD COLUMN "avatarChangeTokens" INTEGER NOT NULL DEFAULT 0`);
+      console.log('[server] Added avatarChangeTokens column to Student');
+    }
+
+    // 检查 Class 表是否有 avatarId 列
+    const classCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Class')`);
+    if (!classCols.map(c => c.name).includes('avatarId')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Class" ADD COLUMN "avatarId" INTEGER REFERENCES "Avatar"("id")`);
+      console.log('[server] Added avatarId column to Class');
+    }
+  } catch (e) {
+    console.warn('[server] Schema sync skipped:', e);
+  }
 
   // 自动填充默认屏蔽词（仅首次启动时，词库为空时跳过）
   try {

@@ -1173,12 +1173,27 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
-          <select className="input" value={gender} onChange={e => setGender(e.target.value)}
-            style={{ width: 100, padding: '8px 6px' }}>
-            <option value="">未知</option>
-            <option value="boy">男孩</option>
-            <option value="girl">女孩</option>
-          </select>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {[
+              { value: '', label: '未知' },
+              { value: 'boy', label: '男孩' },
+              { value: 'girl', label: '女孩' },
+            ].map(g => (
+              <label key={g.value} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+                color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+                fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
+              }}>
+                <input type="radio" name="edit-gender" value={g.value}
+                  checked={gender === g.value}
+                  onChange={e => setGender(e.target.value)}
+                  style={{ width: 14, height: 14, margin: 0, cursor: 'pointer' }} />
+                {g.label}
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* 学生头像选择 */}

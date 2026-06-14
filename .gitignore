@@ -70,5 +70,7 @@ playwright-*.tgz
 ClassNode-v*.dmg
 server/logs/
 scripts/upload-to-baidupan.sh
-upload-dist.sh
-download-release.sh
+SCRIPTS.md
+memory/
+portal/
+.claude/

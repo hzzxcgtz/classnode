@@ -104,6 +104,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
       students: students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; messages: true } }>) => ({
         name: cs.student.name,
         studentNo: cs.student.studentNo,
+        gender: cs.student.gender,
         totalRounds: cs.totalRounds,
         messages: cs.messages.map((m: Prisma.MessageGetPayload<{}>) => ({
           role: m.role,
@@ -163,6 +164,7 @@ router.get('/:classroomId/stats', async (req, res) => {
         return {
           studentNo: cs.student.studentNo || '',
           name: cs.student.name,
+          gender: cs.student.gender,
           totalRounds,
           firstMsgLen,
           avgTime,

@@ -123,7 +123,7 @@ router.get('/:classId/students', async (req, res) => {
 router.post('/:classId/students', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name } = req.body;
+    const { name, gender } = req.body;
     if (!name) return res.status(400).json({ error: '学生姓名不能为空' });
 
     // 自动生成学号：取当前班级最大学号 + 1
@@ -137,13 +137,14 @@ router.post('/:classId/students', async (req, res) => {
       if (n > maxNo) maxNo = n;
     }
 
-    const student = await prisma.student.create({
-      data: {
-        classId: req.params.classId,
-        name,
-        studentNo: String(maxNo + 1),
-      },
-    });
+    const data: any = {
+      classId: req.params.classId,
+      name,
+      studentNo: String(maxNo + 1),
+    };
+    if (gender && ['boy', 'girl'].includes(gender)) data.gender = gender;
+
+    const student = await prisma.student.create({ data });
     res.json(student);
   } catch (error) {
     res.status(500).json({ error: '添加学生失败' });
@@ -154,7 +155,7 @@ router.post('/:classId/students', async (req, res) => {
 router.post('/:classId/students/batch-names', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { names } = req.body;
+    const { names, defaultGender } = req.body;
     if (!names || !Array.isArray(names) || names.length === 0) {
       return res.status(400).json({ error: '请提供有效的学生名单' });
     }
@@ -170,10 +171,13 @@ router.post('/:classId/students/batch-names', async (req, res) => {
       if (n > maxNo) maxNo = n;
     }
 
+    const validDefault = defaultGender && ['boy', 'girl'].includes(defaultGender) ? defaultGender : null;
+
     const students = names.map((name: string, i: number) => ({
       classId: req.params.classId,
       name: name.trim(),
       studentNo: String(maxNo + i + 1),
+      gender: validDefault,
     }));
 
     const created = await prisma.student.createMany({ data: students });
@@ -187,10 +191,11 @@ router.post('/:classId/students/batch-names', async (req, res) => {
 router.put('/:classId/students/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, studentNo, tag, avatarId } = req.body;
+    const { name, studentNo, gender, tag, avatarId } = req.body;
     const data: any = {};
     if (name !== undefined) data.name = name;
     if (studentNo !== undefined) data.studentNo = studentNo;
+    if (gender !== undefined) data.gender = gender || null;
     if (tag !== undefined) data.tag = tag;
     if (avatarId !== undefined) data.avatarId = avatarId;
     const student = await prisma.student.update({

@@ -73,13 +73,13 @@ export const api = {
   deleteGroup: (classId: string, groupId: string) =>
     request(`/api/classes/${classId}/groups/${groupId}`, { method: 'DELETE' }),
   getStudents: (classId: string) => request<any[]>(`/api/classes/${classId}/students`),
-  addStudent: (classId: string, data: { name: string }) =>
+  addStudent: (classId: string, data: { name: string; gender?: string }) =>
     request(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
-  batchCreateStudentsFromNames: (classId: string, names: string[]) =>
-    request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
+  batchCreateStudentsFromNames: (classId: string, names: string[], defaultGender?: string) =>
+    request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names, defaultGender }) }),
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
-  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; tag?: string | null; avatarId?: number | null }) =>
+  updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom
   createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>

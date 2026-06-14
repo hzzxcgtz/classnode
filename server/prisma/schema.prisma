@@ -85,6 +85,7 @@ model Student {
   classId   String
   name      String   // 学生姓名
   studentNo String?  // 学号
+  gender    String?  // boy / girl（用于头像匹配、自动分配）
   tag       String?  // 分组标签 (如 A组, B组)
   avatarId           Int?     // 学生头像
   avatarChangeTokens Int      @default(0) // 教师奖励的可换头像次数

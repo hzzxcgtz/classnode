@@ -84,6 +84,10 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Student" ADD COLUMN "avatarChangeTokens" INTEGER NOT NULL DEFAULT 0`);
       console.log('[server] Added avatarChangeTokens column to Student');
     }
+    if (!studentColNames.includes('gender')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Student" ADD COLUMN "gender" TEXT`);
+      console.log('[server] Added gender column to Student');
+    }
 
     // 检查 Class 表是否有 avatarId 列
     const classCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Class')`);

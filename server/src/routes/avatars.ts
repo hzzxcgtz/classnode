@@ -283,8 +283,8 @@ router.post('/auto-assign', async (req, res) => {
 
     let assigned = 0;
     for (const student of students) {
-      // 简单性别判断
-      const gender = guessGender(student.name);
+      // 优先使用学生已设置的性别，无则按姓名推断
+      const gender = student.gender || guessGender(student.name);
       const pool = gender === 'girl' ? girlPool : boyPool;
       if (pool.length === 0) continue;
       const avatar = pool[assigned % pool.length];

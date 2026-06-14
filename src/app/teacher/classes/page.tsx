@@ -694,6 +694,11 @@ export default function ClassesPage() {
                               姓名 <SortIcon field="name" />
                             </div>
                           </th>
+                          <th style={{
+                            width: 60, textAlign: 'center',
+                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                            borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
+                          }}>性别</th>
                           <th onClick={() => handleSort('group')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',
@@ -760,6 +765,9 @@ export default function ClassesPage() {
                                   {s.avatarChangeTokens}
                                 </span>
                               )}
+                            </td>
+                            <td style={{ textAlign: 'center', fontSize: "0.75rem" }}>
+                              {s.gender === 'boy' ? <span style={{ color: '#2563eb' }}>♂ 男孩</span> : s.gender === 'girl' ? <span style={{ color: '#e91e63' }}>♀ 女孩</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
                             </td>
                             <td>
                               {(() => {
@@ -936,10 +944,11 @@ export default function ClassesPage() {
 
 function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState('');
+  const [gender, setGender] = useState('');
 
   const handleAdd = async () => {
     if (!name) return;
-    await api.addStudent(classId, { name });
+    await api.addStudent(classId, { name, gender: gender || undefined });
     onAdded();
   };
 
@@ -949,6 +958,15 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
           placeholder="学生姓名" style={{ fontSize: "0.813rem" }} />
+      </div>
+      <div>
+        <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
+        <select className="input" value={gender} onChange={e => setGender(e.target.value)}
+          style={{ fontSize: "0.813rem", width: 80, padding: '8px 6px' }}>
+          <option value="">自动</option>
+          <option value="boy">男孩</option>
+          <option value="girl">女孩</option>
+        </select>
       </div>
       <button className="btn btn-primary" onClick={handleAdd}
         style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -963,6 +981,7 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
 function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: string; onClose: () => void; onAdded: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void }) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [batchGender, setBatchGender] = useState('');
 
   const names = text.split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -970,7 +989,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
     if (names.length === 0) return;
     setSaving(true);
     try {
-      await api.batchCreateStudentsFromNames(classId, names);
+      await api.batchCreateStudentsFromNames(classId, names, batchGender || undefined);
       onAdded();
     } catch (e: any) {
       setToast({ msg: '创建失败: ' + e.message, type: 'error' });
@@ -1010,10 +1029,19 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         }}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: "0.75rem", color: '#64748b' }}>默认性别：</label>
+          <select className="input" value={batchGender} onChange={e => setBatchGender(e.target.value)}
+            style={{ fontSize: "0.75rem", width: 90, padding: '5px 6px' }}>
+            <option value="">自动</option>
+            <option value="boy">男孩</option>
+            <option value="girl">女孩</option>
+          </select>
+        </div>
         <div style={{
           fontSize: "0.75rem", color: names.length > 0 ? '#2563eb' : '#94a3b8',
-          fontWeight: names.length > 0 ? 600 : 400,
+          fontWeight: names.length > 0 ? 600 : 400, flex: 1,
         }}>
           共识别 {names.length} 名学生
         </div>
@@ -1039,6 +1067,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
 }) {
   const [name, setName] = useState(student.name || '');
   const [studentNo, setStudentNo] = useState(student.studentNo || '');
+  const [gender, setGender] = useState(student.gender || '');
   const [tag, setTag] = useState(student.tag || '');
   const [avatarId, setAvatarId] = useState<number | null>(student.avatarId || null);
   const [avatars, setAvatars] = useState<any[]>([]);
@@ -1052,6 +1081,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
       await api.updateStudent(classId, student.id, {
         name: name.trim(),
         studentNo: studentNo || undefined,
+        gender: gender || null,
         tag: tag.trim() || undefined,
         avatarId: avatarId || undefined,
       });
@@ -1098,6 +1128,16 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)}
             placeholder="学生姓名" onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
+          <select className="input" value={gender} onChange={e => setGender(e.target.value)}
+            style={{ width: 100, padding: '8px 6px' }}>
+            <option value="">未设置</option>
+            <option value="boy">男孩</option>
+            <option value="girl">女孩</option>
+          </select>
         </div>
 
         {/* 学生头像选择 */}

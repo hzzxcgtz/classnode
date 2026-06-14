@@ -290,7 +290,7 @@ router.get('/:id', async (req, res) => {
         if (ids.length > 0) {
           const students = await prisma.student.findMany({
             where: { id: { in: ids } },
-            select: { id: true, name: true, studentNo: true },
+            select: { id: true, name: true, studentNo: true, gender: true },
           });
           groupMembersMap[cg.name] = {
             groupName: cg.name,
@@ -405,6 +405,7 @@ router.get('/:id/students', async (req, res) => {
       id: cs.student.id,
       name: cs.student.name,
       studentNo: cs.student.studentNo,
+      gender: cs.student.gender,
       avatarId: cs.student.avatarId,
       groupId: cs.groupId,
       groupName: cs.group?.name,

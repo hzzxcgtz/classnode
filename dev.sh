@@ -71,7 +71,11 @@ show_help() {
   log "  ${BOLD}发行版（macOS）${NC}"
   printf "    ${CYAN}%-28s${NC} %s\n" "release" "构建 ARM64 版并导出到安装包目录"
   printf "    ${CYAN}%-28s${NC} %s\n" "release:intel" "构建 Intel 版并导出到安装包目录"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:all" "构建 ARM64 + Intel 并导出到安装包目录"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release:all" "构建 ARM64 + Intel（含源码包）并导出到安装包目录"
+  printf "    ${CYAN}%-28s${NC} %s\n" "build:ci" "触发 GitHub Actions 远程构建（Windows）"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建：macOS 本地 + Windows CI，汇总到一个目录"
+
+
   log ""
 
   log "  ${BOLD}Git 快捷${NC}"
@@ -101,7 +105,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "fresh" "全新安装（clean:all + 重装依赖）"
   printf "    ${CYAN}%-28s${NC} %s\n" "lint" "ESLint 检查"
   printf "    ${CYAN}%-28s${NC} %s\n" "start / run" "运行 node start.js"
-  printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "运行 make-dist.sh 打包分发"
+  printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip)"
   printf "    ${CYAN}%-28s${NC} %s\n" "help" "显示本帮助"
   log ""
 }
@@ -323,22 +327,98 @@ cmd_db_generate() { pnpm --filter classnode-server db:generate; }
 _release_export() {
   local dst="/Users/zxc/Downloads/ClassNode/installer/v${VERSION}"
   mkdir -p "$dst"
-  local count=0
+  log_sub "目标: $dst"
   for src in "$@"; do
     if [ -f "$src" ]; then
+      local size
+      size=$(du -h "$src" | cut -f1)
       cp "$src" "$dst/"
-      log_ok "$(basename "$src") → 安装包目录"
-      count=$((count + 1))
+      log_ok "$(basename "$src")  ${DIM}(${size})${NC}"
     fi
   done
-  [ "$count" -gt 0 ] && log_sub "目标: $dst"
+}
+
+_make_source_dist() {
+  local dst="/Users/zxc/Downloads/ClassNode/installer/v${VERSION}"
+  local dist_name="classnode-${VERSION}"
+  local dist_dir="/tmp/${dist_name}"
+  local zip_file="${dst}/${dist_name}.zip"
+
+  log_info "打包源码分发包..."
+
+  # 清理临时目录
+  rm -rf "$dist_dir"
+  mkdir -p "$(dirname "$dist_dir")"
+
+  # rsync 复制项目文件（排除构建产物和开发文件）
+  rsync -a \
+    --exclude='node_modules' \
+    --exclude='.next' \
+    --exclude='out' \
+    --exclude='server/node_modules' \
+    --exclude='server/dist' \
+    --exclude='server/frontend' \
+    --exclude='server/prisma/dev.db' \
+    --exclude='server/prisma/dev.db-journal' \
+    --exclude='server/uploads/chat' \
+    --exclude='server/uploads/logos' \
+    --exclude='server/backups' \
+    --exclude='src-tauri' \
+    --exclude='.pnpm-store' \
+    --exclude='pnpm-lock.yaml' \
+    --exclude='pnpm-workspace.yaml' \
+    --exclude='make-dist.sh' \
+    --exclude='build-release.sh' \
+    --exclude='release-full.sh' \
+    --exclude='download-release.sh' \
+    --exclude='upload-dist.sh' \
+    --exclude='SCRIPTS.md' \
+    --exclude='tsconfig.tsbuildinfo' \
+    --exclude='next-env.d.ts' \
+    --exclude='eslint.config.mjs' \
+    --exclude='dev.md' \
+    --exclude='dev.sh' \
+    --exclude='server/.env' \
+    --exclude='.env.development' \
+    --exclude='.git' \
+    --exclude='.DS_Store' \
+    --exclude='.npmrc' \
+    --exclude='CLAUDE.md' \
+    --exclude='memory/' \
+    --exclude='portal/' \
+    --exclude='scripts/' \
+    "$ROOT/" "$dist_dir/" 2>/dev/null
+
+  # 清理并生成运行所需配置
+  rm -f "$dist_dir/pnpm-workspace.yaml"
+  rm -f "$dist_dir/server/prisma/dev.db" "$dist_dir/server/prisma/dev.db-journal"
+
+  cat > "$dist_dir/.npmrc" << 'NPMRC'
+registry=https://registry.npmmirror.com/
+NPMRC
+
+  cat > "$dist_dir/server/.env" << 'ENV'
+DATABASE_URL="file:./dev.db"
+ENV
+
+  # 压缩
+  mkdir -p "$dst"
+  rm -f "$zip_file"
+  (cd /tmp && zip -r "$zip_file" "$dist_name" > /dev/null 2>&1)
+
+  local size
+  size=$(du -sh "$zip_file" | cut -f1)
+  log_ok "${dist_name}.zip → 安装包目录（${size}）"
+  rm -rf "$dist_dir"
 }
 
 cmd_release() {
   _start=$SECONDS
   log_section "构建发行版（ARM64）"
   pnpm build:mac:arm64 || { log_error "ARM64 构建失败"; exit 1; }
-  _release_export "ClassNode-v${VERSION}-Apple-Silicon.dmg"
+  log ""
+  log_section "导出到安装包目录"
+  _release_export "src-tauri/target/release/bundle/dmg/ClassNode_${VERSION}_macos_apple-silicon.dmg"
   finish_timer
 }
 
@@ -346,7 +426,9 @@ cmd_release_intel() {
   _start=$SECONDS
   log_section "构建发行版（Intel）"
   pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
-  _release_export "ClassNode-v${VERSION}-Intel.dmg"
+  log ""
+  log_section "导出到安装包目录"
+  _release_export "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ClassNode_${VERSION}_macos_intel.dmg"
   finish_timer
 }
 
@@ -358,8 +440,11 @@ cmd_release_all() {
   log_section "构建 Intel 版"
   pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
   log ""
-  log_ok "两个版本构建完成"
-  _release_export "ClassNode-v${VERSION}-Apple-Silicon.dmg" "ClassNode-v${VERSION}-Intel.dmg"
+  log_section "导出到安装包目录"
+  _release_export \
+    "src-tauri/target/release/bundle/dmg/ClassNode_${VERSION}_macos_apple-silicon.dmg" \
+    "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ClassNode_${VERSION}_macos_intel.dmg"
+  _make_source_dist
   finish_timer
 }
 
@@ -471,8 +556,8 @@ cmd_start() {
 }
 
 cmd_dist() {
-  log_info "运行 make-dist.sh ..."
-  bash make-dist.sh
+  log_info "打包源码分发包到 /tmp ..."
+  _make_source_dist
 }
 
 # ─── 数据库操作 ───────────────────────────────────────
@@ -518,6 +603,8 @@ case "${1:-help}" in
   release)                         cmd_release ;;
   release:intel)                   cmd_release_intel ;;
   release:all)                     cmd_release_all ;;
+  build:ci)                          bash build-release.sh ;;
+  release:full)                      bash release-full.sh ;;
   lint)                            cmd_lint ;;
   clean)                           cmd_clean ;;
   clean:all)                       cmd_clean_all ;;

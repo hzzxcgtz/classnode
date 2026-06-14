@@ -55,6 +55,11 @@ rsync -av \
   --exclude='pnpm-lock.yaml' \
   --exclude='pnpm-workspace.yaml' \
   --exclude='make-dist.sh' \
+  --exclude='build-release.sh' \
+  --exclude='release-full.sh' \
+  --exclude='download-release.sh' \
+  --exclude='upload-dist.sh' \
+  --exclude='SCRIPTS.md' \
   --exclude='tsconfig.tsbuildinfo' \
   --exclude='next-env.d.ts' \
   --exclude='eslint.config.mjs' \
@@ -64,6 +69,10 @@ rsync -av \
   --exclude='.env.development' \
   --exclude='.git' \
   --exclude='.DS_Store' \
+  --exclude='CLAUDE.md' \
+  --exclude='memory/' \
+  --exclude='portal/' \
+  --exclude='scripts/' \
   --exclude='.npmrc' \
   "$SRC_DIR/" "$DST_DIR/" 2>/dev/null
 

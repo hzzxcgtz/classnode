@@ -69,10 +69,9 @@ show_help() {
   log ""
 
   log "  ${BOLD}发行版（macOS）${NC}"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release" "构建 ARM64 版"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:intel" "构建 Intel 版"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:all" "构建 ARM64 + Intel"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:export" "导出安装包到下载目录"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release" "构建 ARM64 版并导出到安装包目录"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release:intel" "构建 Intel 版并导出到安装包目录"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release:all" "构建 ARM64 + Intel 并导出到安装包目录"
   log ""
 
   log "  ${BOLD}Git 快捷${NC}"
@@ -321,19 +320,33 @@ cmd_db_generate() { pnpm --filter classnode-server db:generate; }
 
 # ─── 发行版 ────────────────────────────────────────────
 
+_release_export() {
+  local dst="/Users/zxc/Downloads/ClassNode/installer/v${VERSION}"
+  mkdir -p "$dst"
+  local count=0
+  for src in "$@"; do
+    if [ -f "$src" ]; then
+      cp "$src" "$dst/"
+      log_ok "$(basename "$src") → 安装包目录"
+      count=$((count + 1))
+    fi
+  done
+  [ "$count" -gt 0 ] && log_sub "目标: $dst"
+}
+
 cmd_release() {
   _start=$SECONDS
   log_section "构建发行版（ARM64）"
-  pnpm build:mac:arm64
-  log_ok "ARM64 发行版构建完成"
+  pnpm build:mac:arm64 || { log_error "ARM64 构建失败"; exit 1; }
+  _release_export "ClassNode-v${VERSION}-Apple-Silicon.dmg"
   finish_timer
 }
 
 cmd_release_intel() {
   _start=$SECONDS
   log_section "构建发行版（Intel）"
-  pnpm build:mac:intel
-  log_ok "Intel 发行版构建完成"
+  pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
+  _release_export "ClassNode-v${VERSION}-Intel.dmg"
   finish_timer
 }
 
@@ -346,32 +359,8 @@ cmd_release_all() {
   pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
   log ""
   log_ok "两个版本构建完成"
+  _release_export "ClassNode-v${VERSION}-Apple-Silicon.dmg" "ClassNode-v${VERSION}-Intel.dmg"
   finish_timer
-}
-
-cmd_release_export() {
-  local dst="/Users/zxc/Downloads/ClassNode/安装包"
-  log_section "导出安装包"
-  log_info "目标目录: ${GRAY}$dst${NC}"
-  log ""
-
-  local arm_dmg intel_dmg
-  arm_dmg="src-tauri/target/release/bundle/dmg/ClassNode_${VERSION}_macos_apple-silicon.dmg"
-  intel_dmg="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ClassNode_${VERSION}_macos_intel.dmg"
-
-  local count=0
-  for src in "$arm_dmg" "$intel_dmg"; do
-    if [ -f "$src" ] || [ -d "$src" ]; then
-      cp -R "$src" "$dst/"
-      log_ok "$(basename "$src")"
-      count=$((count + 1))
-    else
-      log_sub "$(basename "$src") — 不存在，跳过"
-    fi
-  done
-
-  log ""
-  log_ok "已导出 ${BOLD}$count${NC} 个文件"
 }
 
 # ─── 其他 ──────────────────────────────────────────────
@@ -529,7 +518,6 @@ case "${1:-help}" in
   release)                         cmd_release ;;
   release:intel)                   cmd_release_intel ;;
   release:all)                     cmd_release_all ;;
-  release:export)                  cmd_release_export ;;
   lint)                            cmd_lint ;;
   clean)                           cmd_clean ;;
   clean:all)                       cmd_clean_all ;;

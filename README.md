@@ -112,13 +112,13 @@ npm config get registry
 
 #### 第三步：部署 ClassNode
 
-从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载源码压缩包（如 `classnode-v1.4.0x.x.zip`），解压。
+从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载源码压缩包（如 `classnode-v1.4.1x.x.zip`），解压。
 
 打开终端，进入解压目录，运行一键启动脚本：
 
 ```bash
 # 进入项目目录（请以实际解压路径为准）
-cd classnode-v1.4.0
+cd classnode-v1.4.1
 
 # 推荐方式：使用 Node.js 直接运行启动脚本
 node start.js

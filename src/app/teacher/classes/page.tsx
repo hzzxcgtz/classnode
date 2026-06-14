@@ -596,7 +596,7 @@ export default function ClassesPage() {
                       <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                         onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
                         {addStudentMode === 'form' ? (
-                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起</>
+                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起添加</>
                         ) : (
                           <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
                         )}
@@ -770,7 +770,7 @@ export default function ClassesPage() {
                               )}
                             </td>
                             <td style={{ textAlign: 'center', fontSize: "0.813rem", fontWeight: 500 }}>
-                              {s.gender === 'boy' ? <span style={{ color: '#2563eb' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#e91e63' }}>女</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
+                              {s.gender === 'boy' ? <span style={{ color: '#475569' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#475569' }}>女</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
                             </td>
                             <td>
                               {(() => {

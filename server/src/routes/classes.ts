@@ -155,7 +155,7 @@ router.post('/:classId/students', async (req, res) => {
 router.post('/:classId/students/batch-names', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { names, defaultGender } = req.body;
+    const { names } = req.body;
     if (!names || !Array.isArray(names) || names.length === 0) {
       return res.status(400).json({ error: '请提供有效的学生名单' });
     }
@@ -171,14 +171,12 @@ router.post('/:classId/students/batch-names', async (req, res) => {
       if (n > maxNo) maxNo = n;
     }
 
-    const validDefault = defaultGender && ['boy', 'girl'].includes(defaultGender) ? defaultGender : null;
-
-    const students = names.map((name: string, i: number) => ({
-      classId: req.params.classId,
-      name: name.trim(),
-      studentNo: String(maxNo + i + 1),
-      gender: validDefault,
-    }));
+    // 兼容两种格式：旧版传字符串数组，新版传 { name, gender } 对象数组
+    const students = names.map((item: string | { name: string; gender?: string }, i: number) => {
+      const name = typeof item === 'string' ? item.trim() : item.name.trim();
+      const gender = typeof item === 'object' && item.gender && ['boy', 'girl'].includes(item.gender) ? item.gender : null;
+      return { classId: req.params.classId, name, studentNo: String(maxNo + i + 1), gender };
+    });
 
     const created = await prisma.student.createMany({ data: students });
     res.json({ count: created.count, students });

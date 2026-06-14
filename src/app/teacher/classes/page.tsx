@@ -954,19 +954,34 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
 
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-      <div style={{ flex: 1 }}>
+      <div style={{ width: 180 }}>
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
           placeholder="学生姓名" style={{ fontSize: "0.813rem" }} />
       </div>
       <div>
         <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
-        <select className="input" value={gender} onChange={e => setGender(e.target.value)}
-          style={{ fontSize: "0.813rem", width: 80, padding: '8px 6px' }}>
-          <option value="">自动</option>
-          <option value="boy">男孩</option>
-          <option value="girl">女孩</option>
-        </select>
+        <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 38 }}>
+          {[
+            { value: '', label: '自动' },
+            { value: 'boy', label: '男孩' },
+            { value: 'girl', label: '女孩' },
+          ].map(g => (
+            <label key={g.value} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+              color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+              fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
+            }}>
+              <input type="radio" name="gender" value={g.value}
+                checked={gender === g.value}
+                onChange={e => setGender(e.target.value)}
+                style={{ width: 14, height: 14, margin: 0, cursor: 'pointer' }} />
+              {g.label}
+            </label>
+          ))}
+        </div>
       </div>
       <button className="btn btn-primary" onClick={handleAdd}
         style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -978,18 +993,28 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
   );
 }
 
+/** 解析一行文本中的姓名和性别，分隔符支持空格、逗号、中文逗号、制表符等 */
+function parseNameGender(line: string): { name: string; gender?: string } {
+  const parts = line.trim().split(/[\s,，\t、|;；]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const genderStr = parts[parts.length - 1];
+    if (['男', 'boy', '男孩'].includes(genderStr)) return { name: parts.slice(0, -1).join(''), gender: 'boy' };
+    if (['女', 'girl', '女孩'].includes(genderStr)) return { name: parts.slice(0, -1).join(''), gender: 'girl' };
+  }
+  return { name: line.trim() };
+}
+
 function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: string; onClose: () => void; onAdded: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void }) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [batchGender, setBatchGender] = useState('');
 
-  const names = text.split('\n').map(s => s.trim()).filter(Boolean);
+  const parsed = text.split('\n').map(s => s.trim()).filter(Boolean).map(parseNameGender);
 
   const handleSubmit = async () => {
-    if (names.length === 0) return;
+    if (parsed.length === 0) return;
     setSaving(true);
     try {
-      await api.batchCreateStudentsFromNames(classId, names, batchGender || undefined);
+      await api.batchCreateStudentsFromNames(classId, parsed);
       onAdded();
     } catch (e: any) {
       setToast({ msg: '创建失败: ' + e.message, type: 'error' });
@@ -1014,7 +1039,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         </div>
         <div>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a' }}>粘贴名单</div>
-          <div style={{ fontSize: "0.688rem", color: '#64748b' }}>每行一个姓名，系统自动分配学号</div>
+          <div style={{ fontSize: "0.688rem", color: '#64748b' }}>每行一个姓名，可附带性别（用空格、逗号分隔），如：张三 男</div>
         </div>
       </div>
 
@@ -1022,32 +1047,26 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         className="input"
         value={text}
         onChange={e => setText(e.target.value)}
-        placeholder={`张三\n李四\n王五\n赵六`}
+        placeholder={`张三 男\n李四 女\n王五\n赵六 女`}
         style={{
           height: 100, resize: 'vertical', fontSize: "0.813rem",
           fontFamily: 'monospace', lineHeight: 1.7,
         }}
       />
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b' }}>默认性别：</label>
-          <select className="input" value={batchGender} onChange={e => setBatchGender(e.target.value)}
-            style={{ fontSize: "0.75rem", width: 90, padding: '5px 6px' }}>
-            <option value="">自动</option>
-            <option value="boy">男孩</option>
-            <option value="girl">女孩</option>
-          </select>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <div style={{
-          fontSize: "0.75rem", color: names.length > 0 ? '#2563eb' : '#94a3b8',
-          fontWeight: names.length > 0 ? 600 : 400, flex: 1,
+          fontSize: "0.75rem", color: parsed.length > 0 ? '#2563eb' : '#94a3b8',
+          fontWeight: parsed.length > 0 ? 600 : 400,
         }}>
-          共识别 {names.length} 名学生
+          共识别 {parsed.length} 名学生
+          {parsed.filter(p => p.gender).length > 0 && (
+            <span style={{ color: '#64748b', fontWeight: 400 }}>（{parsed.filter(p => p.gender === 'boy').length} 男，{parsed.filter(p => p.gender === 'girl').length} 女）</span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: "0.75rem" }}>取消</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || names.length === 0}
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || parsed.length === 0}
             style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
             {saving ? '创建中...' : (
               <>

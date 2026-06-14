@@ -75,8 +75,8 @@ export const api = {
   getStudents: (classId: string) => request<any[]>(`/api/classes/${classId}/students`),
   addStudent: (classId: string, data: { name: string; gender?: string }) =>
     request(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
-  batchCreateStudentsFromNames: (classId: string, names: string[], defaultGender?: string) =>
-    request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names, defaultGender }) }),
+  batchCreateStudentsFromNames: (classId: string, names: (string | { name: string; gender?: string })[]) =>
+    request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>

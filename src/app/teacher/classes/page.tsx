@@ -591,11 +591,11 @@ export default function ClassesPage() {
                       </button>
                       <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        批量删除
+                        批量删除学生
                       </button>
                       <button onClick={async () => { if (!confirm(`确定清除选中 ${selectedStudentIds.size} 名学生的头像？`)) return; try { await api.clearStudentsAvatar([...selectedStudentIds]); setToast({ msg: `已清除 ${selectedStudentIds.size} 名学生的头像`, type: 'success' }); setSelectedStudentIds(new Set()); loadStudents(); } catch {} }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#f59e0b', border: '1px solid #fcd34d', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        清除头像
+                        批量清除头像
                       </button>
                     </>
                   ) : (

@@ -579,21 +579,49 @@ cmd_dist() {
 cmd_speedtest() {
   local url="${1:-https://github.com/hzzxcgtz/classnode/archive/refs/heads/main.zip}"
   local tmpfile="/tmp/classnode-speedtest"
+
   log_section "GitHub 下载速度测试"
-  log_info "测试地址: ${url}"
-  log_info "下载到: ${tmpfile}"
-  log ""
-  curl -L -o "$tmpfile" --write-out "
-  ─── 结果 ─────────────────────
-  下载用时: %{time_total}s
-  平均速度: %{speed_download}B/s
-  HTTP 状态: %{http_code}
-  ──────────────────────────────
-  " "$url" 2>&1 | sed 's/^/  /'
+  log_info "地址: $(echo "$url" | sed 's|https://||')"
+
+  # 先用一次请求获取 write-out 数据（不保存文件）
+  local meta
+  meta=$(curl -L -o /dev/null -w "%{time_total} %{speed_download} %{http_code}" "$url" 2>/dev/null)
+  local curl_exit=$?
+
+  if [ "$curl_exit" -ne 0 ]; then
+    log_error "连接失败（curl 退出码: $curl_exit）"
+    return 1
+  fi
+
+  # 解析元数据
+  local time_total speed_download http_code
+  read -r time_total speed_download http_code <<< "$meta"
+  time_total="${time_total:-0}"; speed_download="${speed_download:-0}"; http_code="${http_code:-0}"
+
+  # 真正下载到本地测速（带进度条）
   echo ""
-  local speed
-  speed=$(stat -f%z "$tmpfile" 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null)
-  log_info "文件大小: ${speed} bytes"
+  curl -L -o "$tmpfile" "$url" 2>&1 | sed 's/^/  /'
+  local download_exit=$?
+  echo ""
+
+  if [ "$download_exit" -ne 0 ]; then
+    log_error "下载失败（curl 退出码: $download_exit）"
+    rm -f "$tmpfile"
+    return 1
+  fi
+
+  local size_mb speed_mb
+  size_mb=$(stat -f%z "$tmpfile" 2>/dev/null | awk '{printf "%.2f", $1/1048576}' 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null | awk '{printf "%.2f", $1/1048576}' 2>/dev/null)
+  speed_mb=$(awk "BEGIN{printf \"%.2f\", ${speed_download}/1048576}" 2>/dev/null)
+
+  echo ""
+  echo -e "  ${BOLD}结果${NC}"
+  echo -e "  ${GRAY}文件大小:${NC} ${size_mb} MB"
+  echo -e "  ${GRAY}下载用时:${NC} ${time_total}s"
+  if [ "${speed_download}" != "0" ]; then
+    echo -e "  ${GRAY}平均速度:${NC} ${speed_mb} MB/s"
+  fi
+  echo -e "  ${GRAY}HTTP 状态:${NC} ${http_code}"
   rm -f "$tmpfile"
   log_ok "测试完成"
 }

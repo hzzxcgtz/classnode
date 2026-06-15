@@ -43,11 +43,23 @@ function resolveEncryptionKey(): string {
   }
 }
 
-const ENCRYPTION_KEY = resolveEncryptionKey();
+let _encryptionKey: string | null = null;
+
+function getEncryptionKey(): string {
+  if (_encryptionKey) return _encryptionKey;
+  _encryptionKey = resolveEncryptionKey();
+  return _encryptionKey;
+}
+
+/** 重新加载加密密钥（恢复操作后调用） */
+export function reloadEncryptionKey(): void {
+  _encryptionKey = null;
+  getEncryptionKey();
+}
 
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'utf8'), iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(getEncryptionKey(), 'utf8'), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const authTag = cipher.getAuthTag().toString('hex');
@@ -58,7 +70,7 @@ export function decrypt(encryptedText: string): string {
   const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'utf8'), iv);
+  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(getEncryptionKey(), 'utf8'), iv);
   decipher.setAuthTag(authTag);
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');

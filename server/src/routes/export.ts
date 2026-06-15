@@ -7,6 +7,7 @@ import { createRequire } from 'module';
 const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
+import { reloadEncryptionKey } from '../services/crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -367,6 +368,7 @@ router.post('/restore/:name', async (req, res) => {
           : path.resolve(__dirname, '../..');
         const keyFile = path.join(keyDir, '.encryption.key');
         fs.copyFileSync(keyFileRestore, keyFile);
+        reloadEncryptionKey();
       }
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -594,6 +596,7 @@ router.post('/backup/full/restore', fullRestoreUpload.single('file'), async (req
         : path.resolve(__dirname, '../..');
       const keyFile = path.join(keyDir, '.encryption.key');
       fs.copyFileSync(keyFileExtract, keyFile);
+      reloadEncryptionKey();
     }
 
     // 清理临时文件

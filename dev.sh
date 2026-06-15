@@ -327,7 +327,7 @@ cmd_db_generate() { pnpm --filter classnode-server db:generate; }
 
 _release_export() {
   local dst="/Users/zxc/Downloads/ClassNode/installer/v${VERSION}"
-  mkdir -p "$dst" 2>/dev/null; mkdir -p "$dst"
+  mkdir -p "$dst"
   log_sub "目标: $dst"
   for src in "$@"; do
     if [ -f "$src" ]; then

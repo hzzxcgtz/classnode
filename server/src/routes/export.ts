@@ -213,9 +213,13 @@ router.post('/backup', async (req, res) => {
     // 添加数据库
     archive.file(dbPath, { name: 'data.db' });
 
-    // 添加附件目录（支持 chat 和 logos，不备份 temp）
+    // 添加附件目录（支持 chat、avatars 和 logos，不备份 temp）
     if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
       archive.directory(chatDir, 'chat');
+    }
+    const avatarsDir = path.join(getUploadsDir(), 'avatars');
+    if (fs.existsSync(avatarsDir) && fs.readdirSync(avatarsDir).length > 0) {
+      archive.directory(avatarsDir, 'avatars');
     }
     const logosDir = path.join(getUploadsDir(), 'logos');
     if (fs.existsSync(logosDir) && fs.readdirSync(logosDir).length > 0) {
@@ -349,7 +353,7 @@ router.post('/restore/:name', async (req, res) => {
       fs.copyFileSync(dataFile, dbPath);
 
       // 恢复附件（chat + logos）
-      for (const sub of ['chat', 'logos']) {
+      for (const sub of ['chat', 'avatars', 'logos']) {
         const srcDir = path.join(tmpDir, sub);
         const dstDir = path.join(getUploadsDir(), sub);
         if (fs.existsSync(srcDir) && fs.readdirSync(srcDir).length > 0) {
@@ -502,131 +506,7 @@ function getUploadsChatDir(): string {
     : path.join(__dirname, '../../uploads', 'chat');
 }
 
-router.get('/backup/full', async (req, res) => {
-  try {
-    const dbPath = getDbPath();
-    const chatDir = getUploadsChatDir();
-    const { ZipArchive } = _require('archiver');
 
-    if (!fs.existsSync(dbPath)) {
-      return res.status(500).json({ error: '数据库文件不存在' });
-    }
-
-    const archive = new ZipArchive();
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=classnode-full-backup-${readableTimestamp()}.classbak`);
-    archive.pipe(res);
-
-    // 添加数据库
-    archive.file(dbPath, { name: 'data.db' });
-
-    // 添加附件目录（支持 chat 和 logos，不备份 temp）
-    if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
-      archive.directory(chatDir, 'chat');
-    }
-    const logosDir = path.join(getUploadsDir(), 'logos');
-    if (fs.existsSync(logosDir) && fs.readdirSync(logosDir).length > 0) {
-      archive.directory(logosDir, 'logos');
-    }
-
-    await archive.finalize();
-  } catch (error: any) {
-    console.error('[FullBackup] 创建失败:', error?.message || error);
-    res.status(500).json({ error: '备份失败: ' + (error?.message || '未知错误') });
-  }
-});
-
-// 恢复合并备份
-const fullRestoreUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, getBackupDir()),
-    filename: (_req, _file, cb) => cb(null, `full-restore-${Date.now()}.zip`),
-  }),
-});
-
-router.post('/backup/full/restore', fullRestoreUpload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: '未选择文件' });
-
-    const tmpDir = path.join(getBackupDir(), `extract-${Date.now()}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    const AdmZip = _require('adm-zip');
-    const zip = new AdmZip(req.file.path);
-    zip.extractAllTo(tmpDir, true);
-
-    // 恢复数据库
-    const dbPath = getDbPath();
-    const dataFile = path.join(tmpDir, 'data.db');
-    if (!fs.existsSync(dataFile)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: '备份文件不包含数据库' });
-    }
-    fs.copyFileSync(dataFile, dbPath);
-    // 清理旧的 WAL 文件
-    for (const ext of ['-wal', '-shm']) {
-      const p = dbPath + ext;
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-
-    // 恢复附件
-    const chatDir = getUploadsChatDir();
-    const chatExtract = path.join(tmpDir, 'chat');
-    if (fs.existsSync(chatExtract) && fs.readdirSync(chatExtract).length > 0) {
-      // 先清空原有 chat 目录
-      if (fs.existsSync(chatDir)) {
-        for (const f of fs.readdirSync(chatDir)) {
-          fs.rmSync(path.join(chatDir, f), { recursive: true, force: true });
-        }
-      } else {
-        fs.mkdirSync(chatDir, { recursive: true });
-      }
-      // 复制附件
-      for (const f of fs.readdirSync(chatExtract)) {
-        fs.cpSync(path.join(chatExtract, f), path.join(chatDir, f), { recursive: true });
-      }
-    }
-
-    // 恢复加密密钥文件
-    const keyFileExtract = path.join(tmpDir, '.encryption.key');
-    if (fs.existsSync(keyFileExtract)) {
-      const keyDir = process.env.CLASSNODE_DATA_DIR
-        ? path.resolve(process.env.CLASSNODE_DATA_DIR)
-        : path.resolve(__dirname, '../..');
-      const keyFile = path.join(keyDir, '.encryption.key');
-      fs.copyFileSync(keyFileExtract, keyFile);
-      reloadEncryptionKey();
-    }
-
-    // 清理临时文件
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.unlinkSync(req.file.path);
-
-    // 同步数据库结构（跨版本兼容）
-    try {
-      const { execSync } = await import('child_process');
-      const prismaCli = path.join(__dirname, '../../../node_modules/.bin/prisma');
-      if (fs.existsSync(prismaCli)) {
-        execSync(`"${process.execPath}" "${prismaCli}" db push --accept-data-loss`, {
-          cwd: path.resolve(__dirname, '../..'),
-          env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
-          stdio: 'pipe',
-          timeout: 30000,
-        });
-      }
-    } catch (e) {
-      console.warn('[FullBackup] 数据库结构同步失败（可忽略）:', e);
-    }
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('[FullBackup] 恢复失败:', error?.message || error);
-    res.status(500).json({ error: '恢复失败: ' + (error?.message || '未知错误') });
-  }
-});
-
-// 导入备份文件（来自其他设备的迁移）
 router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -666,7 +546,7 @@ router.post('/reset', async (req, res) => {
     const tables = [
       'Message', 'ClassroomStudent', 'ClassroomGroup',
       'ClassroomAgent', 'ClassroomClass', 'Interaction',
-      'Student', 'ClassGroup', 'Classroom', 'Class', 'Agent',
+      'Student', 'Avatar', 'ClassGroup', 'Classroom', 'Class', 'Agent',
     ];
 
     await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF');
@@ -688,9 +568,9 @@ router.post('/reset', async (req, res) => {
       }
     }
 
-    // 清空屏蔽词相关数据
+    // 清空屏蔽警告记录（保留系统屏蔽词）
     await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWarning"`);
-    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWord"`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWord" WHERE builtin = 0`);
 
     res.json({ success: true });
   } catch (error) {

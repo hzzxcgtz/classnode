@@ -715,7 +715,6 @@ export default function TeacherDashboard() {
                 </button>
                 <button
                   onClick={() => {
-                    setQrCodeClassroom(cr);
                     fetch(`${getApiBaseUrl()}/api/server-info`)
                       .then((r) => r.json())
                       .then((d) => {
@@ -724,7 +723,8 @@ export default function TeacherDashboard() {
                         const savedIp = d.selectedIp || '';
                         setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                       })
-                      .catch(() => {});
+                      .catch(() => {})
+                      .finally(() => setQrCodeClassroom(cr));
                   }}
                   title="显示互动码"
                   style={{

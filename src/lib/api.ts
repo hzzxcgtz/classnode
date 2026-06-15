@@ -133,6 +133,8 @@ export const api = {
     request(`/api/avatars/student-self/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   getAvatarsAll: (category?: string) =>
     request<any[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
+  batchDeleteAvatars: (ids: number[]) =>
+    request<{ success: boolean; deleted: number }>('/api/avatars/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   clearAllAvatars: (category?: string) =>
     request<{ success: boolean; cleared: number }>('/api/avatars/clear-all', { method: 'POST', body: JSON.stringify({ category }) }),
   getAvatarUsage: (id: number) =>

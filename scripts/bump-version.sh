@@ -53,6 +53,14 @@ echo "  ✓ README.md"
 sed -i '' "s/classnode-v[0-9]*\.[0-9]*\.[0-9]*/classnode-v$VERSION/g" "$ROOT/README.en.md"
 echo "  ✓ README.en.md"
 
+# 7. portal/index.html（页头版本号）
+sed -i '' "s/v[0-9]*\.[0-9]*\.[0-9]*/v$VERSION/g" "$ROOT/portal/index.html"
+echo "  ✓ portal/index.html"
+
+# 8. portal/deploy.html（示例命令中的版本号）
+sed -i '' "s/classnode-v[0-9]*\.[0-9]*\.[0-9]*/classnode-v$VERSION/g" "$ROOT/portal/deploy.html"
+echo "  ✓ portal/deploy.html"
+
 echo ""
 
 # ── 自动生成更新日志 ─────────────────────────────────
@@ -158,6 +166,8 @@ git add \
   src-tauri/Cargo.toml \
   README.md \
   README.en.md \
+  portal/index.html \
+  portal/deploy.html \
   server/changelogs/v$VERSION.md
 
 git commit -m "chore: bump version to $VERSION" 2>/dev/null && {

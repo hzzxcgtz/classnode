@@ -1,7 +1,12 @@
 #!/bin/zsh
-# ClassNode - 全平台构建：本地 macOS (ARM64+Intel) + GitHub Actions (Windows x64+x86)
-# 全部产物汇总到 installer/v{ver}/
-# 用法: ./release-full.sh [选项]
+# ClassNode - 全平台构建
+# 用法: ./release-full.sh [模式]
+#   模式:
+#     空        全平台: macOS ARM64+Intel + Windows x64+x86+arm64
+#     mac       仅 macOS (ARM64+Intel)
+#     arm64 仅 macOS ARM64
+#     intel 仅 macOS Intel
+#     win       macOS + Windows x64+x86+arm64（同默认）
 
 # ─── ANSI Colors ──────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -26,149 +31,151 @@ REPO="hzzxcgtz/classnode"
 INSTALLER_BASE="/Users/zxc/Downloads/ClassNode/installer"
 _start=$SECONDS
 
-# ─── 参数 ─────────────────────────────────────────────
+# ─── 解析模式 ─────────────────────────────────────────
+MODE="${1:-full}"
 CI_BRANCH="main"
-CI_ARCH="both"
+CI_ARCH="all"
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --branch|-b) CI_BRANCH="$2"; shift 2 ;;
-    --help|-h)
-      echo "用法: $0 [选项]"
-      echo ""
-      echo "选项:"
-      echo "  -b, --branch <分支>   指定 CI 构建分支（默认: main）"
-      echo "  -h, --help            显示此帮助"
-      exit 0 ;;
-    *) err "未知参数: $1"; exit 1 ;;
-  esac
-done
+BUILD_MAC_ARM64=false
+BUILD_MAC_INTEL=false
+DO_CI=false
+
+case "$MODE" in
+  full)
+    BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=true
+    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + x86 + arm64"
+    MODE_LABEL="全平台（5 个架构）" ;;
+  mac)
+    BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=false
+    MAC_LABEL="ARM64 + Intel"; CI_LABEL="无"
+    MODE_LABEL="仅 macOS" ;;
+  arm64|arm64)
+    BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=false; DO_CI=false
+    MAC_LABEL="仅 ARM64"; CI_LABEL="无"
+    MODE_LABEL="仅 macOS ARM64" ;;
+  intel|intel)
+    BUILD_MAC_ARM64=false; BUILD_MAC_INTEL=true; DO_CI=false
+    MAC_LABEL="仅 Intel"; CI_LABEL="无"
+    MODE_LABEL="仅 macOS Intel" ;;
+  win)
+    BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=true
+    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + x86 + arm64"
+    MODE_LABEL="全平台（5 个架构）" ;;
+  --help|-h)
+    echo "用法: $0 [模式]"
+    echo ""
+    echo "模式:"
+    echo "  （空）     全平台构建（默认）"
+    echo "  mac        仅 macOS（ARM64 + Intel）"
+    echo "  arm64  仅 macOS ARM64"
+    echo "  intel  仅 macOS Intel"
+    exit 0 ;;
+  *)
+    err "未知模式: $1"
+    dim "可用: mac, arm64, intel"
+    exit 1 ;;
+esac
 
 # ─── 前置检查 ─────────────────────────────────────────
 cd "$ROOT"
 VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null)
 [ -z "$VERSION" ] && { err "无法读取版本号"; exit 1; }
 
-gh auth status &>/dev/null || { err "请先执行: ${BOLD}gh auth login${NC}"; exit 1; }
-command -v rclone &>/dev/null || warn "rclone 未安装，无法上传网盘"
-
 INSTALLER_DIR="${INSTALLER_BASE}/v${VERSION}"
 mkdir -p "$INSTALLER_DIR"
 
 # ─── 显示计划 ─────────────────────────────────────────
 echo ""
-echo -e "  ${BOLD}${BLUE}━━━ 全平台构建 ClassNode v${VERSION} ━━━${NC}"
-echo -e "  ${GRAY}本地:${NC}  macOS ARM64 + Intel  (${BOLD}build:mac:arm64${NC} + ${BOLD}build:mac:intel${NC})"
-echo -e "  ${GRAY}CI:${NC}    Windows x64 + x86    (${BOLD}${CI_BRANCH}${NC} 分支)"
-echo -e "  ${GRAY}输出:${NC}  ${INSTALLER_DIR}"
+echo -e "  ${BOLD}${BLUE}━━━ ${MODE_LABEL} — ClassNode v${VERSION} ━━━${NC}"
+echo -e "  ${GRAY}macOS:${NC} ${MAC_LABEL}"
+echo -e "  ${GRAY}Windows CI:${NC} ${CI_LABEL}"
+echo -e "  ${GRAY}输出:${NC} ${INSTALLER_DIR}"
 hr
 
-# ─── 第 1 步：触发 GitHub Actions ─────────────────────
-section "第 1 步 / 4  触发 GitHub Actions"
-info "触发 Windows 构建（${CI_BRANCH}）..."
-CI_RUN_ID=$(gh workflow run build.yml \
-  --repo "$REPO" \
-  --ref "$CI_BRANCH" \
-  --field arch="$CI_ARCH" 2>&1)
-[ $? -ne 0 ] && { err "触发 CI 失败"; exit 1; }
+# ─── 触发 CI ─────────────────────────────────────────
+if [ "$DO_CI" = true ]; then
+  gh auth status &>/dev/null || { err "请先执行: ${BOLD}gh auth login${NC}"; exit 1; }
 
-sleep 3
-CI_RUN_NUM=$(gh run list --repo "$REPO" --workflow build.yml --branch "$CI_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId')
-if [ -n "$CI_RUN_NUM" ] && [ "$CI_RUN_NUM" != "null" ]; then
-  ok "CI 已触发（运行 #${CI_RUN_NUM}）"
-  CI_URL="https://github.com/${REPO}/actions/runs/${CI_RUN_NUM}"
-  echo -e "  ${CYAN}🔗${NC} ${CI_URL}"
-else
-  warn "未能获取运行编号，后续需手动检查"
-  CI_RUN_NUM=""
-  CI_URL=""
+  section "触发 GitHub Actions（Windows CI）"
+  info "触发 Windows 构建（${CI_ARCH}）..."
+  gh workflow run build.yml \
+    --repo "$REPO" \
+    --ref "$CI_BRANCH" \
+    --field arch="$CI_ARCH" 2>&1 || { err "触发 CI 失败"; exit 1; }
+
+  sleep 3
+  CI_RUN_NUM=$(gh run list --repo "$REPO" --workflow build.yml --branch "$CI_BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId')
+  if [ -n "$CI_RUN_NUM" ] && [ "$CI_RUN_NUM" != "null" ]; then
+    ok "CI 已触发（运行 #${CI_RUN_NUM}）"
+    CI_URL="https://github.com/${REPO}/actions/runs/${CI_RUN_NUM}"
+    echo -e "  ${CYAN}🔗${NC} ${CI_URL}"
+  else
+    warn "未能获取运行编号，后续需手动检查"
+    CI_RUN_NUM=""; CI_URL=""
+  fi
 fi
 
-# ─── 第 2 步：本地构建 macOS ──────────────────────────
-section "第 2 步 / 4  构建 macOS ARM64"
-info "开始构建..."
-if pnpm build:mac:arm64 2>&1 | sed 's/^/  /'; then
+# ─── 本地构建 macOS ──────────────────────────────────
+if [ "$BUILD_MAC_ARM64" = true ]; then
+  section "构建 macOS ARM64"
+  pnpm build:arm64 2>&1 | sed 's/^/  /' || { err "ARM64 构建失败"; exit 1; }
   ok "ARM64 构建完成"
-else
-  err "ARM64 构建失败"
-  exit 1
 fi
 
-section "第 3 步 / 4  构建 macOS Intel"
-info "开始构建..."
-if pnpm build:mac:intel 2>&1 | sed 's/^/  /'; then
+if [ "$BUILD_MAC_INTEL" = true ]; then
+  section "构建 macOS Intel"
+  pnpm build:intel 2>&1 | sed 's/^/  /' || { err "Intel 构建失败"; exit 1; }
   ok "Intel 构建完成"
-else
-  err "Intel 构建失败"
-  exit 1
 fi
 
-# ─── 导出 DMG 到安装包目录 ─────────────────────────
+# ─── 导出 DMG ───────────────────────────────────────
 sub ""
 sub "导出 DMG → ${INSTALLER_DIR}"
 for dmg in \
   "src-tauri/target/release/bundle/dmg/ClassNode_${VERSION}_macos_apple-silicon.dmg" \
   "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ClassNode_${VERSION}_macos_intel.dmg"; do
-  if [ -f "$dmg" ]; then
-    sz=$(du -h "$dmg" | cut -f1)
-    cp "$dmg" "$INSTALLER_DIR/"
-    ok "$(basename "$dmg")  (${sz})"
-  else
-    warn "未找到: $dmg"
-  fi
+  [ -f "$dmg" ] || continue
+  sz=$(du -h "$dmg" | cut -f1)
+  cp "$dmg" "$INSTALLER_DIR/"
+  ok "$(basename "$dmg")  (${sz})"
 done
 
-# ─── 打包源码分发包 ────────────────────────────────
+# ─── 源码包 ──────────────────────────────────────────
 sub ""
 sub "打包源码分发包..."
 bash dev.sh dist 2>&1 | sed 's/^/  /'
 
-# ─── 第 4 步：等待 CI 完成并下载 ──────────────────────
-section "第 4 步 / 4  等待 CI 构建完成"
-
-if [ -z "$CI_RUN_NUM" ]; then
-  warn "没有 CI 运行编号，请手动下载 Windows 安装包"
-  info "检查: https://github.com/${REPO}/actions"
-else
+# ─── 等待 CI ──────────────────────────────────────────
+if [ "$DO_CI" = true ] && [ -n "$CI_RUN_NUM" ]; then
+  section "等待 CI 构建完成"
   CI_START=$SECONDS
-  sp="/-\|"
-  si=0
+  sp="/-\|"; si=0
+
   while true; do
     STATUS=$(gh run view "$CI_RUN_NUM" --repo "$REPO" --json status,conclusion --jq '{status,conclusion}' 2>/dev/null)
     CONCLUSION=$(echo "$STATUS" | jq -r '.conclusion')
     STATE=$(echo "$STATUS" | jq -r '.status')
 
-    elapsed=$((SECONDS - CI_START))
-    elapsed_str=$(printf "%dm %02ds" $((elapsed/60)) $((elapsed%60)))
-    ci=${sp:$si:1}; si=$(( (si+1) % 4 ))
-
     if [ "$STATE" = "completed" ]; then
       echo ""
       if [ "$CONCLUSION" = "success" ]; then
+        elapsed=$((SECONDS - CI_START))
+        elapsed_str=$(printf "%dm %02ds" $((elapsed/60)) $((elapsed%60)))
         ok "CI 构建成功（耗时 ${elapsed_str}）"
-
-        # 等待一下让 release 创建完成
         sleep 5
 
-        # 下载 Windows 安装包
-        sub ""
-        sub "下载 Windows 安装包..."
-        gh release download "v${VERSION}" --repo "$REPO" --dir "$INSTALLER_DIR" --pattern "*.exe" 2>&1 | sed 's/^/  /'
-
-        if [ $? -eq 0 ]; then
-          ok "Windows 安装包已下载"
-        else
-          warn "下载失败，可能是 draft release 尚未完成"
-          info "可手动下载: https://github.com/${REPO}/releases"
-        fi
+        sub ""; sub "下载 Windows 安装包..."
+        gh release download "v${VERSION}" --repo "$REPO" --dir "$INSTALLER_DIR" --pattern "*.exe" 2>&1 | sed 's/^/  /' && ok "下载完成" || warn "下载失败，请手动检查"
       else
         echo -e "  ${RED}${BOLD}━━━ CI 构建失败 (${CONCLUSION}) ━━━${NC}"
-        warn "耗时 ${elapsed_str}"
-        [ -n "$CI_URL" ] && info "查看日志: ${CI_URL}"
+        [ -n "$CI_URL" ] && dim "查看日志: ${CI_URL}"
       fi
       break
     fi
 
+    elapsed=$((SECONDS - CI_START))
+    elapsed_str=$(printf "%dm %02ds" $((elapsed/60)) $((elapsed%60)))
+    ci=${sp:$si:1}; si=$(( (si+1) % 4 ))
     printf "\r  ${DIM}⏳ 等待 CI 完成... ${ci}  已耗时 ${elapsed_str}     ${NC}"
     sleep 30
   done
@@ -182,11 +189,9 @@ echo ""
 echo -e "  ${BOLD}${BLUE}━━━ 构建汇总 ━━━${NC}"
 echo -e "  ${GRAY}输出目录:${NC} ${INSTALLER_DIR}"
 hr
-all_files=("$INSTALLER_DIR"/*)
-for f in "${all_files[@]}"; do
+for f in "$INSTALLER_DIR"/*; do
   [ -f "$f" ] || continue
-  sz=$(du -h "$f" | cut -f1)
-  echo -e "  ${GRAY}•${NC} $(basename "$f")  ${DIM}(${sz})${NC}"
+  echo -e "  ${GRAY}•${NC} $(basename "$f")  ${DIM}($(du -h "$f" | cut -f1))${NC}"
 done
 
 mac_count=$(ls "$INSTALLER_DIR"/*.dmg 2>/dev/null | wc -l | tr -d ' ')
@@ -194,6 +199,6 @@ win_count=$(ls "$INSTALLER_DIR"/*.exe 2>/dev/null | wc -l | tr -d ' ')
 zip_count=$(ls "$INSTALLER_DIR"/*.zip 2>/dev/null | wc -l | tr -d ' ')
 
 echo ""
-echo -e "  ${GREEN}${BOLD}🎉 全平台构建完成！${NC}"
+echo -e "  ${GREEN}${BOLD}🎉 构建完成！${NC}"
 echo -e "  ${GRAY}macOS DMG:${NC} ${mac_count} 个   ${GRAY}Windows exe:${NC} ${win_count} 个   ${GRAY}源码包:${NC} ${zip_count} 个"
 echo ""

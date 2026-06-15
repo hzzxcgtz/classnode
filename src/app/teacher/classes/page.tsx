@@ -333,14 +333,14 @@ export default function ClassesPage() {
                     {c.avatarId && classAvatars[c.avatarId] ? (
                       <div style={{
                         width: 28, height: 28, borderRadius: 6, flexShrink: 0, overflow: 'hidden',
-                      }} dangerouslySetInnerHTML={{ __html: classAvatars[c.avatarId].replace('<svg', '<svg width="28" height="28"') }} />
+                      }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[c.avatarId]).replace('<svg', '<svg width="28" height="28"') }} />
                     ) : (
                       <div style={{
-                        width: 28, height: 28, borderRadius: 6,
-                        background: selectedClass === c.id ? '#eef2ff' : '#f1f5f9',
-                        color: selectedClass === c.id ? '#2563eb' : '#64748b',
+                        width: 28, height: 28, borderRadius: 8,
+                        background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+                        color: 'white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: "0.813rem", fontWeight: 600, flexShrink: 0,
+                        fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                       }}>
                         {c.name[0]}
                       </div>
@@ -385,7 +385,7 @@ export default function ClassesPage() {
                         </span>
                         {(c._count?.groups ?? 0) > 0 && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M2 12h20" /><path d="M4 7v10" /><path d="M20 7v10" /><rect x="4" y="17" width="16" height="4" rx="1" /></svg>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
                             {c._count?.groups || 0} 个分组
                           </span>
                         )}
@@ -505,7 +505,7 @@ export default function ClassesPage() {
                     {selectedClassData?.avatarId && classAvatars[selectedClassData.avatarId] ? (
                       <div style={{
                         width: 52, height: 52, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
-                      }} dangerouslySetInnerHTML={{ __html: classAvatars[selectedClassData.avatarId].replace('<svg', '<svg width="52" height="52"') }} />
+                      }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[selectedClassData.avatarId]).replace('<svg', '<svg width="52" height="52"') }} />
                     ) : (
                       <div style={{
                         width: 52, height: 52, borderRadius: 8,

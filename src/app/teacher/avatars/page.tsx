@@ -34,6 +34,11 @@ export default function AvatarsPage() {
   const [generating, setGenerating] = useState(false);
   const [randomGenerated, setRandomGenerated] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedForBatch, setSelectedForBatch] = useState<Set<number>>(new Set());
+  const [dragRect, setDragRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
+  const dragStartRef = useRef<{x: number; y: number} | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const loadAvatars = async () => {
     setLoading(true);
@@ -104,7 +109,7 @@ export default function AvatarsPage() {
   const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<any[]>([]);
   const boyAvatars = avatars.filter(a => a.gender === 'boy');
   const girlAvatars = avatars.filter(a => a.gender === 'girl');
-  const neutralAvatars: any[] = [];
+  const neutralAvatars = avatars.filter(a => a.gender === 'neutral');
 
   const handleDelete = async (avatar: Avatar) => {
     try {
@@ -120,6 +125,70 @@ export default function AvatarsPage() {
     }
   };
 
+  const handleBatchMouseDown = (e: React.MouseEvent) => {
+    if (!batchMode) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('.avatar-card-del') || target.closest('.avatar-checkbox')) return;
+    e.preventDefault();
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const cr = container.getBoundingClientRect();
+    dragStartRef.current = { x: e.clientX - cr.left, y: e.clientY - cr.top };
+    let isDragging = false;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragStartRef.current || !container) return;
+      const cr2 = container.getBoundingClientRect();
+      const cx = ev.clientX - cr2.left;
+      const cy = ev.clientY - cr2.top;
+      const dx = cx - dragStartRef.current.x;
+      const dy = cy - dragStartRef.current.y;
+      if (!isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) isDragging = true;
+      if (isDragging) {
+        setDragRect({
+          left: Math.min(dragStartRef.current.x, cx),
+          top: Math.min(dragStartRef.current.y, cy),
+          width: Math.abs(dx),
+          height: Math.abs(dy),
+        });
+      }
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      if (isDragging && container) {
+        const cr2 = container.getBoundingClientRect();
+        const selL = Math.min(dragStartRef.current!.x, ev.clientX - cr2.left);
+        const selT = Math.min(dragStartRef.current!.y, ev.clientY - cr2.top);
+        const selR = Math.max(dragStartRef.current!.x, ev.clientX - cr2.left);
+        const selB = Math.max(dragStartRef.current!.y, ev.clientY - cr2.top);
+
+        container.querySelectorAll<HTMLElement>('[data-avatar-id]').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.left - cr2.left < selR && r.right - cr2.left > selL &&
+              r.top - cr2.top < selB && r.bottom - cr2.top > selT) {
+            const id = parseInt(el.dataset.avatarId || '', 10);
+            if (!isNaN(id)) {
+              setSelectedForBatch(prev => {
+                const n = new Set(prev);
+                if (n.has(id)) n.delete(id); else n.add(id);
+                return n;
+              });
+            }
+          }
+        });
+      }
+      dragStartRef.current = null;
+      setDragRect(null);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
@@ -131,14 +200,18 @@ export default function AvatarsPage() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => { setShowRandom(true); setRandomGenerated(false); setRandomPool([]); setSelectedRandom(new Set()); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-              随机生成
-            </button>
-            <button className="btn btn-primary" onClick={() => setShowEditor({ mode: 'create' })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              新增{tab === 'student' ? '头像' : '图标'}
-            </button>
+            {batchMode ? null : (
+              <>
+                <button className="btn btn-secondary" onClick={() => { setShowRandom(true); setRandomGenerated(false); setRandomPool([]); setSelectedRandom(new Set()); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                  随机生成
+                </button>
+                <button className="btn btn-primary" onClick={() => setShowEditor({ mode: 'create' })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  新增{tab === 'student' ? '头像' : '图标'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -168,99 +241,194 @@ export default function AvatarsPage() {
         ))}
       </div>
 
-      {/* 头像网格 */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>加载中...</div>
-      ) : avatars.length === 0 ? (
-        <div style={{
-          background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
-          textAlign: 'center', padding: '60px 20px',
-        }}>
+      {/* 头像网格 — 多选模式下支持鼠标拖拽框选 */}
+      <div ref={containerRef} style={{ position: 'relative', userSelect: batchMode ? 'none' : undefined }} onMouseDown={handleBatchMouseDown}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>加载中...</div>
+        ) : avatars.length === 0 ? (
           <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: '#f1f5f9', margin: '0 auto 12px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
+            textAlign: 'center', padding: '60px 20px',
           }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            </svg>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14,
+              background: '#f1f5f9', margin: '0 auto 12px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              </svg>
+            </div>
+            <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
+              暂无{tab === 'student' ? '头像' : '图标'}
+            </p>
+            <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 4px' }}>
+              点击右上角「随机生成」按钮，生成一批{tab === 'student' ? '头像' : '图标'}
+            </p>
+            <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>
+              满意的选中后导入，或一键导入全部
+            </p>
           </div>
-          <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
-            暂无{tab === 'student' ? '头像' : '图标'}
-          </p>
-          <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 4px' }}>
-            点击右上角「随机生成」按钮，生成一批{tab === 'student' ? '头像' : '图标'}
-          </p>
-          <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>
-            满意的选中后导入，或一键导入全部
-          </p>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* 教师头像区域 */}
-      {tab === 'student' ? (
-        <div>
-          {/* 男孩区域 */}
-          {boyAvatars.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#2563eb', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 3, height: 14, borderRadius: 2, background: '#2563eb', display: 'inline-block' }} />
-                男孩头像
+        {/* 教师头像区域 */}
+        {tab === 'student' ? (
+          <div>
+            {/* 男孩区域 */}
+            {boyAvatars.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#2563eb', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 3, height: 14, borderRadius: 2, background: '#2563eb', display: 'inline-block' }} />
+                  男孩头像
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {boyAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
+                    batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
+                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                </div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {boyAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab} onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+            )}
+            {/* 女孩区域 */}
+            {girlAvatars.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#e91e63', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 3, height: 14, borderRadius: 2, background: '#e91e63', display: 'inline-block' }} />
+                  女孩头像
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {girlAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
+                    batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
+                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                </div>
               </div>
-            </div>
-          )}
-          {/* 女孩区域 */}
-          {girlAvatars.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#e91e63', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 3, height: 14, borderRadius: 2, background: '#e91e63', display: 'inline-block' }} />
-                女孩头像
+            )}
+            {/* 通用区域 */}
+            {neutralAvatars.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#78716c', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 3, height: 14, borderRadius: 2, background: '#78716c', display: 'inline-block' }} />
+                  通用头像
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {neutralAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
+                    batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
+                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                </div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {girlAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab} onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {avatars.map(av => <AvatarCard key={av.id} av={av} tab={tab} onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {avatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
+              batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
+              onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+          </div>
+        )}
 
-      {/* 清空当前分类按钮 — 居中显示 */}
-      {avatars.length > 0 && (
+        {/* 学生自定义区域 — 显示在最下方 */}
+        {tab === 'student' && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#f59e0b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 3, height: 14, borderRadius: 2, background: '#f59e0b', display: 'inline-block' }} />
+              学生自定义
+              <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontWeight: 400 }}>（学生自己上传，可在此管理删除）</span>
+            </div>
+            {studentUploadedAvatars.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {studentUploadedAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
+                  batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
+                  onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+              </div>
+            ) : (
+              <p style={{ fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0' }}>暂无学生自定义头像</p>
+            )}
+          </div>
+        )}
+
+        {/* 拖拽框选 overlay */}
+        {batchMode && dragRect && (
+          <div style={{
+            position: 'absolute',
+            left: dragRect.left,
+            top: dragRect.top,
+            width: dragRect.width,
+            height: dragRect.height,
+            background: 'rgba(59, 130, 246, 0.06)',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            zIndex: 50,
+          }} />
+        )}
+      </div>
+
+      {/* 批量操作栏 */}
+      {batchMode ? (
+        <div style={{
+          position: 'sticky', bottom: 0, zIndex: 20, marginTop: 16,
+          background: '#fff', borderRadius: 12,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 -2px 20px rgba(0,0,0,0.07)',
+          padding: '10px 18px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: "0.813rem", fontWeight: 500, color: '#0f172a',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              已选 <strong style={{ color: '#2563eb', fontSize: "0.938rem" }}>{selectedForBatch.size}</strong> 个
+            </span>
+            {selectedForBatch.size > 0 && (
+              <button onClick={() => setSelectedForBatch(new Set())}
+                style={{
+                  background: 'transparent', border: 'none', color: '#64748b',
+                  fontSize: "0.75rem", cursor: 'pointer', padding: '2px 6px',
+                  textDecoration: 'underline', textUnderlineOffset: 2,
+                }}>取消选择</button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { setBatchMode(false); setSelectedForBatch(new Set()); }}
+              style={{
+                padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
+                border: '1px solid #cbd5e1', background: 'white', color: '#475569',
+                cursor: 'pointer',
+              }}>退出多选</button>
+            <button onClick={async () => {
+              if (selectedForBatch.size === 0) return;
+              const ids = [...selectedForBatch];
+              if (!confirm(`确定删除选中的 ${ids.length} 个${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响。`)) return;
+              try {
+                const r = await api.batchDeleteAvatars(ids);
+                setToast({ msg: `已删除 ${r.deleted} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' });
+                setBatchMode(false);
+                setSelectedForBatch(new Set());
+                loadAvatars();
+              } catch { setToast({ msg: '批量删除失败', type: 'error' }); }
+            }}
+              style={{
+                padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
+                border: 'none', background: selectedForBatch.size === 0 ? '#f1f5f9' : '#ef4444',
+                color: selectedForBatch.size === 0 ? '#94a3b8' : 'white',
+                cursor: selectedForBatch.size === 0 ? 'not-allowed' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+              }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              删除选中
+            </button>
+          </div>
+        </div>
+      ) : avatars.length > 0 && !batchMode ? (
         <div style={{ textAlign: 'center', margin: '20px 0 16px' }}>
-          <button onClick={async () => {
-            if (!confirm(`确定清空所有${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响，但头像库将变为空。`)) return;
-            try { const r = await api.clearAllAvatars(tab); setToast({ msg: `已清空 ${r.cleared} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' }); loadAvatars(); } catch { setToast({ msg: '清空失败', type: 'error' }); }
-          }} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 6, border: '1px solid #fca5a5', background: 'white', color: '#ef4444', cursor: 'pointer', fontSize: "0.75rem" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            清空当前{tab === 'student' ? '头像' : '图标'}
+          <button onClick={() => setBatchMode(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white', color: '#64748b', cursor: 'pointer', fontSize: "0.75rem" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            批量管理{tab === 'student' ? '头像' : '图标'}
           </button>
         </div>
-      )}
-
-      {/* 学生自定义区域 — 显示在最下方 */}
-      {tab === 'student' && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#f59e0b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 3, height: 14, borderRadius: 2, background: '#f59e0b', display: 'inline-block' }} />
-            学生自定义
-            <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontWeight: 400 }}>（学生自己上传，可在此管理删除）</span>
-          </div>
-          {studentUploadedAvatars.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {studentUploadedAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab} onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
-            </div>
-          ) : (
-            <p style={{ fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0' }}>暂无学生自定义头像</p>
-          )}
-        </div>
-      )}
+      ) : null}
 
       {/* 新增/编辑弹窗 */}
       {showEditor && (
@@ -486,7 +654,10 @@ export default function AvatarsPage() {
   );
 }
 
-function AvatarCard({ av, tab, onEdit, onDelete }: { av: Avatar; tab: string; onEdit: () => void; onDelete: () => void }) {
+function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }: {
+  av: Avatar; tab: string; onEdit: () => void; onDelete: () => void;
+  batchMode?: boolean; selected?: boolean; onToggle?: () => void;
+}) {
   const size = tab === 'class' ? 64 : 60;
   const [usageCount, setUsageCount] = useState<number | null>(null);
   const [usageDetail, setUsageDetail] = useState<string>('');
@@ -500,12 +671,30 @@ function AvatarCard({ av, tab, onEdit, onDelete }: { av: Avatar; tab: string; on
     }).catch(() => {});
   }, [av.id]);
   return (
-    <div className="avatar-card"
-      onClick={onEdit}
+    <div className="avatar-card" data-avatar-id={av.id}
+      onClick={batchMode ? onToggle : onEdit}
       style={{
-        background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
-        padding: 8, textAlign: 'center', position: 'relative', cursor: 'pointer',
+        background: batchMode && selected ? '#eff6ff' : 'white',
+        borderRadius: 12, border: `1px solid ${batchMode && selected ? '#93c5fd' : '#e2e8f0'}`,
+        padding: 8, textAlign: 'center', position: 'relative', cursor: batchMode ? 'pointer' : 'pointer',
+        transition: 'all 0.12s',
       }}>
+      {/* 多选复选框 */}
+      {batchMode && (
+        <div className="avatar-checkbox" onClick={e => { e.stopPropagation(); onToggle?.(); }}
+          style={{
+            position: 'absolute', top: 2, left: 2, zIndex: 10,
+            width: 14, height: 14, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: selected ? '#2563eb' : 'white',
+            border: `2px solid ${selected ? '#2563eb' : '#94a3b8'}`,
+            cursor: 'pointer', transition: 'all 0.12s',
+          }}>
+          {selected && (
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          )}
+        </div>
+      )}
       <div style={{
         width: size, height: size, margin: '0 auto',
         borderRadius: tab === 'class' ? 10 : '50%',
@@ -538,17 +727,19 @@ function AvatarCard({ av, tab, onEdit, onDelete }: { av: Avatar; tab: string; on
           )}
         </div>
       )}
-      <div className="avatar-card-del"
-        onClick={e => { e.stopPropagation(); onDelete(); }}
-        style={{
-          position: 'absolute', top: 2, right: 2,
-          width: 20, height: 20, borderRadius: '50%',
-          background: '#fef2f2', border: '1px solid #fca5a5',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', opacity: 0, transition: 'opacity 0.12s',
-        }} title="删除">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </div>
+      {!batchMode && (
+        <div className="avatar-card-del"
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          style={{
+            position: 'absolute', top: 2, right: 2,
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#fef2f2', border: '1px solid #fca5a5',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', opacity: 0, transition: 'opacity 0.12s',
+          }} title="删除">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+      )}
     </div>
   );
 }
@@ -568,11 +759,34 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   const [showHint, setShowHint] = useState(true);
   const [usage, setUsage] = useState<{ students: any[]; classes: any[] } | null>(null);
   const isImage = avatar?.svgContent?.includes('<image ') || false;
+  const [inputMode, setInputMode] = useState<'svg' | 'image'>('svg');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadSvg, setUploadSvg] = useState<string | null>(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (mode === 'view' && avatar) {
       api.getAvatarUsage(avatar.id).then(setUsage).catch(() => {});
     }
   }, [mode, avatar]);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    const url = URL.createObjectURL(file);
+    setImagePreview(url);
+    setUploadSvg(null);
+    setUploadingImg(true);
+    try {
+      const result = await api.uploadAvatarImage(file);
+      if (result.svgContent) {
+        setUploadSvg(result.svgContent);
+      }
+    } catch { setToast({ msg: '图片上传失败', type: 'error' }); }
+    setUploadingImg(false);
+  };
 
   const handlePreview = () => {
     setPreviewSvg(svgContent);
@@ -580,13 +794,14 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   };
 
   const handleSave = async () => {
-    if (!svgContent.trim()) return;
+    const finalSvg = inputMode === 'image' ? uploadSvg : svgContent;
+    if (!finalSvg?.trim()) return;
     setSaving(true);
     try {
       if (mode === 'create') {
-        await api.createAvatar({ svgContent, category, gender });
+        await api.createAvatar({ svgContent: finalSvg, category, gender });
       } else if (avatar) {
-        await api.updateAvatar(avatar.id, { svgContent, gender });
+        await api.updateAvatar(avatar.id, { svgContent: finalSvg, gender });
       }
       onSaved();
     } catch (e: any) {
@@ -691,23 +906,42 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>{mode === 'create' ? '新增' : '编辑'}{category === 'student' ? '头像' : '图标'}</h2>
             <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>
-              {mode === 'create' ? '输入 SVG 代码创建新头像' : '修改头像信息'}
+              {mode === 'create' ? '支持 SVG 代码或上传图片' : '修改头像信息'}
             </p>
           </div>
         </div>
+
+        {mode === 'create' && (
+          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #e2e8f0' }}>
+            <button onClick={() => setInputMode('svg')}
+              style={{
+                padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'svg' ? 600 : 400,
+                color: inputMode === 'svg' ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
+                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'svg' ? '#2563eb' : 'transparent'}`,
+                marginBottom: -2,
+              }}>SVG 代码</button>
+            <button onClick={() => setInputMode('image')}
+              style={{
+                padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'image' ? 600 : 400,
+                color: inputMode === 'image' ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
+                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'image' ? '#2563eb' : 'transparent'}`,
+                marginBottom: -2,
+              }}>上传图片</button>
+          </div>
+        )}
 
         {category === 'student' && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别倾向</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[{ value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }].map(g => (
+              {[{ value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }, { value: 'neutral', label: '通用' }].map(g => (
                 <button key={g.value}
                   onClick={() => setGender(g.value)}
                   style={{
                     padding: '6px 16px', borderRadius: 8, fontSize: "0.75rem", fontWeight: 500,
-                    background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : '#fce4ec') : 'white',
-                    color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : '#e91e63') : '#64748b',
-                    border: `1px solid ${gender === g.value ? (g.value === 'boy' ? '#bfdbfe' : '#f8bbd0') : '#e2e8f0'}`,
+                    background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f5f5f4') : 'white',
+                    color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#78716c') : '#64748b',
+                    border: `1px solid ${gender === g.value ? (g.value === 'boy' ? '#bfdbfe' : g.value === 'girl' ? '#f8bbd0' : '#d6d3d1') : '#e2e8f0'}`,
                     cursor: 'pointer',
                   }}>
                   {g.label}
@@ -717,46 +951,87 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           </div>
         )}
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>SVG 代码 *</label>
-          <textarea className="input" value={svgContent} onChange={e => setSvgContent(e.target.value)}
-            rows={6} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
-            placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
-          <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>需要包含 viewBox="0 0 40 40" 的完整 SVG 代码</p>
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <button className="btn btn-secondary" onClick={handlePreview}
-            style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-            预览
-          </button>
-          {!showHint && (
-            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center' }}>
-              <div style={{
-                width: 80, height: 80, padding: 10,
-                background: '#f8fafc', borderRadius: 12,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {previewSvg ? (
-                  <div style={{
-                    width: 48, height: 48,
-                    borderRadius: category === 'class' ? 12 : '50%',
-                    overflow: 'hidden',
-                  }} dangerouslySetInnerHTML={{ __html: previewSvg.replace('<svg', '<svg width="48" height="48"') }} />
-                ) : (
-                  <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>无效</span>
-                )}
-              </div>
+        {inputMode === 'svg' ? (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>SVG 代码 *</label>
+              <textarea className="input" value={svgContent} onChange={e => setSvgContent(e.target.value)}
+                rows={6} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
+                placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
+              <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>需要包含 viewBox="0 0 40 40" 的完整 SVG 代码</p>
             </div>
-          )}
-        </div>
+            <div style={{ marginBottom: 16 }}>
+              <button className="btn btn-secondary" onClick={handlePreview}
+                style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                预览
+              </button>
+              {!showHint && (
+                <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center' }}>
+                  <div style={{
+                    width: 80, height: 80, padding: 10,
+                    background: '#f8fafc', borderRadius: 12,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {previewSvg ? (
+                      <div style={{
+                        width: 48, height: 48,
+                        borderRadius: category === 'class' ? 12 : '50%',
+                        overflow: 'hidden',
+                      }} dangerouslySetInnerHTML={{ __html: previewSvg.replace('<svg', '<svg width="48" height="48"') }} />
+                    ) : (
+                      <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>无效</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ marginBottom: 16 }}>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect}
+              style={{ display: 'none' }} />
+            {!imagePreview ? (
+              <div onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: '2px dashed #cbd5e1', borderRadius: 12, padding: '30px 20px',
+                  textAlign: 'center', cursor: 'pointer', transition: 'all 0.12s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.background = '#f8faff'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" style={{ marginBottom: 8 }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                </svg>
+                <p style={{ fontSize: "0.813rem", fontWeight: 600, color: '#475569', margin: '0 0 4px' }}>点击上传头像图片</p>
+                <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: 0 }}>支持 JPG、PNG、WebP 格式</p>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', border: '3px solid #e2e8f0' }}>
+                    <img src={imagePreview} alt="预览" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                </div>
+                {uploadingImg ? (
+                  <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>上传中...</p>
+                ) : uploadSvg ? (
+                  <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功</p>
+                ) : null}
+                <button onClick={() => { setImageFile(null); setImagePreview(null); setUploadSvg(null); }}
+                  style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
+                  重新选择
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !svgContent.trim()}>
+          <button className="btn btn-primary" onClick={handleSave}
+            disabled={saving || (inputMode === 'svg' && !svgContent.trim()) || (inputMode === 'image' && !uploadSvg)}>
             {saving ? '保存中...' : (mode === 'create' ? '创建' : '保存')}
           </button>
         </div>

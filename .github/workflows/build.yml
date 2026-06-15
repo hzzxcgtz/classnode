@@ -7,11 +7,13 @@ on:
     inputs:
       arch:
         type: choice
-        description: 构建架构（tag 推送时始终构建两个）
+        description: 构建架构（tag 推送时始终构建所有架构）
         options:
+          - all
           - both
           - x64
           - x86
+          - arm64
         default: both
 
 env:
@@ -34,9 +36,11 @@ jobs:
             ARCH="both"
           fi
           case "$ARCH" in
+            all)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"},{"target":"aarch64-pc-windows-msvc","arch":"arm64","node-platform":"win-arm64"}]}' ;;
             both) echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
             x64)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' ;;
             x86)  echo 'matrix={"include":[{"target":"i686-pc-windows-msvc","arch":"x86","node-platform":"win-x86"}]}' ;;
+            arm64) echo 'matrix={"include":[{"target":"aarch64-pc-windows-msvc","arch":"arm64","node-platform":"win-arm64"}]}' ;;
           esac >> "$GITHUB_OUTPUT"
 
   build:
@@ -153,8 +157,11 @@ jobs:
 
           # Rename NSIS installer
           NSIS_DIR="$BUNDLE_DIR/nsis"
-          if ls "$NSIS_DIR"/ClassNode_*_${{ matrix.arch }}-setup.exe 1>/dev/null 2>&1; then
-            for f in "$NSIS_DIR"/ClassNode_*_${{ matrix.arch }}-setup.exe; do
+          # aarch64 target outputs "aarch64" suffix, not "arm64"
+          NSIS_PATTERN="${{ matrix.arch }}"
+          [ "$ARCH" = "arm64" ] && NSIS_PATTERN="aarch64"
+          if ls "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe 1>/dev/null 2>&1; then
+            for f in "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe; do
               base=$(basename "$f")
               mv "$f" "$NSIS_DIR/ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
               echo "Renamed: $base → ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
@@ -166,7 +173,11 @@ jobs:
           if ls "$MSI_DIR"/ClassNode_*.msi 1>/dev/null 2>&1; then
             for f in "$MSI_DIR"/ClassNode_*.msi; do
               base=$(basename "$f")
-              archSuffix=$([ "${{ matrix.arch }}" = "x64" ] && echo "x64" || echo "x86")
+              case "$ARCH" in
+                x64)   archSuffix="x64" ;;
+                x86)   archSuffix="x86" ;;
+                arm64) archSuffix="arm64" ;;
+              esac
               mv "$f" "$MSI_DIR/ClassNode_${VERSION}_windows_${archSuffix}.msi"
               echo "Renamed MSI: $base → ClassNode_${VERSION}_windows_${archSuffix}.msi"
             done

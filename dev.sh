@@ -68,14 +68,12 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "version:sync" "同步到所有子项目"
   log ""
 
-  log "  ${BOLD}发行版（macOS）${NC}"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release" "构建 ARM64 版并导出到安装包目录"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:intel" "构建 Intel 版并导出到安装包目录"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:all" "构建 ARM64 + Intel（含源码包）并导出到安装包目录"
-  printf "    ${CYAN}%-28s${NC} %s\n" "build:ci" "触发 GitHub Actions 远程构建（Windows）"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建：macOS 本地 + Windows CI，汇总到一个目录"
-
-
+  log "  ${BOLD}发行版${NC}"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release [模式]" "全平台构建: macOS + Windows（默认5平台，可选 both/arm64/intel）"
+  printf "    ${CYAN}%-28s${NC} %s\n" "r / release:intel" "macOS ARM64 / Intel 单架构"
+  printf "    ${CYAN}%-28s${NC} %s\n" "r all / release:all" "macOS 双架构 + 源码包"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ci / build:ci [架构]" "Windows 构建（默认全架构，可选 all/both/x64/x86/arm64）"
+  log ""
   log ""
 
   log "  ${BOLD}Git 快捷${NC}"
@@ -415,7 +413,7 @@ ENV
 cmd_release() {
   _start=$SECONDS
   log_section "构建发行版（ARM64）"
-  pnpm build:mac:arm64 || { log_error "ARM64 构建失败"; exit 1; }
+  pnpm build:arm64 || { log_error "ARM64 构建失败"; exit 1; }
   log ""
   log_section "导出到安装包目录"
   _release_export "src-tauri/target/release/bundle/dmg/ClassNode_${VERSION}_macos_apple-silicon.dmg"
@@ -425,7 +423,7 @@ cmd_release() {
 cmd_release_intel() {
   _start=$SECONDS
   log_section "构建发行版（Intel）"
-  pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
+  pnpm build:intel || { log_error "Intel 构建失败"; exit 1; }
   log ""
   log_section "导出到安装包目录"
   _release_export "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/ClassNode_${VERSION}_macos_intel.dmg"
@@ -435,10 +433,10 @@ cmd_release_intel() {
 cmd_release_all() {
   _start=$SECONDS
   log_section "构建 ARM64 版"
-  pnpm build:mac:arm64 || { log_error "ARM64 构建失败"; exit 1; }
+  pnpm build:arm64 || { log_error "ARM64 构建失败"; exit 1; }
   log ""
   log_section "构建 Intel 版"
-  pnpm build:mac:intel || { log_error "Intel 构建失败"; exit 1; }
+  pnpm build:intel || { log_error "Intel 构建失败"; exit 1; }
   log ""
   log_section "导出到安装包目录"
   _release_export \
@@ -585,6 +583,15 @@ cmd_prisma_format() {
 
 case "${1:-help}" in
   --version|-v)                    cmd_version ;;
+  r) shift
+     case "$1" in
+       both)  bash release-full.sh mac ;;
+       arm64) bash release-full.sh arm64 ;;
+       intel) cmd_release_intel ;;
+       all)   cmd_release_all ;;
+       *)     cmd_release ;;
+     esac ;;
+  ci)                               shift; bash build-release.sh "$@" ;;
   dev)                             shift; cmd_dev "$@" ;;
   dev:server)                      shift; cmd_dev_server "$@" ;;
   dev:all)                         shift; cmd_dev_all "$@" ;;
@@ -600,11 +607,11 @@ case "${1:-help}" in
   version)                         cmd_version ;;
   version:bump)                    shift; cmd_version_bump "$@" ;;
   version:sync)                    cmd_version_sync ;;
-  release)                         cmd_release ;;
+  release)                         shift; bash release-full.sh "$@" ;;
   release:intel)                   cmd_release_intel ;;
   release:all)                     cmd_release_all ;;
-  build:ci)                          bash build-release.sh ;;
-  release:full)                      bash release-full.sh ;;
+  build:ci)                        shift; bash build-release.sh "$@" ;;
+  release:full)                    shift; bash release-full.sh "$@" ;;
   lint)                            cmd_lint ;;
   clean)                           cmd_clean ;;
   clean:all)                       cmd_clean_all ;;

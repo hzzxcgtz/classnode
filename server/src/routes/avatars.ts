@@ -428,6 +428,32 @@ router.post('/clear-all', async (req, res) => {
   }
 });
 
+// 批量删除头像（支持教师头像和学生自定义头像）
+router.post('/batch-delete', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: '请提供 ID 列表' });
+    }
+    // 删除物理文件
+    const toDelete = await prisma.avatar.findMany({
+      where: { id: { in: ids } },
+      select: { svgContent: true },
+    });
+    toDelete.forEach(a => deleteAvatarFile(a.svgContent));
+    // 清除引用
+    await prisma.student.updateMany({ where: { avatarId: { in: ids } }, data: { avatarId: null } });
+    await prisma.class.updateMany({ where: { avatarId: { in: ids } }, data: { avatarId: null } });
+    // 物理删除
+    const result = await prisma.avatar.deleteMany({ where: { id: { in: ids } } });
+    res.json({ success: true, deleted: result.count });
+  } catch (error) {
+    console.error('[batch-delete] Error:', error);
+    res.status(500).json({ error: '批量删除失败' });
+  }
+});
+
 // 设置班级图标
 router.put('/class/:classId', async (req, res) => {
   try {

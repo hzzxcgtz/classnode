@@ -66,8 +66,7 @@ const MessageItem = memo(function MessageItem({
         </div>
       )}
       <div style={{
-        maxWidth: '95%',
-        minWidth: 320,
+        maxWidth: '78%',
         padding: msg.role === 'system' ? '10px 16px' : '14px 18px',
         borderRadius: msg.role === 'user' ? '18px 18px 6px 18px' : '6px 18px 18px 18px',
         background: msg.role === 'user' ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'white',

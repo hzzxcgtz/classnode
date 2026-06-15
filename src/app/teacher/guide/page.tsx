@@ -343,7 +343,7 @@ const sections = [
               Coze 低代码
             </div>
             <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
-              扣子
+              字节
             </div>
             <div
               style={{
@@ -412,7 +412,7 @@ const sections = [
               Coze 编程
             </div>
             <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
-              扣子
+              字节
             </div>
             <div
               style={{

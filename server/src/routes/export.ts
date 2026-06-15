@@ -221,6 +221,15 @@ router.post('/backup', async (req, res) => {
       archive.directory(logosDir, 'logos');
     }
 
+    // 添加加密密钥文件（确保恢复后 API Key 可解密）
+    const keyDir = process.env.CLASSNODE_DATA_DIR
+      ? path.resolve(process.env.CLASSNODE_DATA_DIR)
+      : path.resolve(__dirname, '../..');
+    const keyFile = path.join(keyDir, '.encryption.key');
+    if (fs.existsSync(keyFile)) {
+      archive.file(keyFile, { name: '.encryption.key' });
+    }
+
     await archive.finalize();
     await new Promise<void>((resolve, reject) => {
       writeStream.on('close', resolve);
@@ -348,6 +357,16 @@ router.post('/restore/:name', async (req, res) => {
             fs.cpSync(path.join(srcDir, f), path.join(dstDir, f), { recursive: true, force: true });
           }
         }
+      }
+
+      // 恢复加密密钥文件
+      const keyFileRestore = path.join(tmpDir, '.encryption.key');
+      if (fs.existsSync(keyFileRestore)) {
+        const keyDir = process.env.CLASSNODE_DATA_DIR
+          ? path.resolve(process.env.CLASSNODE_DATA_DIR)
+          : path.resolve(__dirname, '../..');
+        const keyFile = path.join(keyDir, '.encryption.key');
+        fs.copyFileSync(keyFileRestore, keyFile);
       }
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -565,6 +584,16 @@ router.post('/backup/full/restore', fullRestoreUpload.single('file'), async (req
       for (const f of fs.readdirSync(chatExtract)) {
         fs.cpSync(path.join(chatExtract, f), path.join(chatDir, f), { recursive: true });
       }
+    }
+
+    // 恢复加密密钥文件
+    const keyFileExtract = path.join(tmpDir, '.encryption.key');
+    if (fs.existsSync(keyFileExtract)) {
+      const keyDir = process.env.CLASSNODE_DATA_DIR
+        ? path.resolve(process.env.CLASSNODE_DATA_DIR)
+        : path.resolve(__dirname, '../..');
+      const keyFile = path.join(keyDir, '.encryption.key');
+      fs.copyFileSync(keyFileExtract, keyFile);
     }
 
     // 清理临时文件

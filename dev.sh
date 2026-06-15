@@ -106,6 +106,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "lint" "ESLint 检查"
   printf "    ${CYAN}%-28s${NC} %s\n" "start / run" "运行 node start.js"
   printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip)"
+  printf "    ${CYAN}%-28s${NC} %s\n" "speedtest" "测试 GitHub 下载速度"
   printf "    ${CYAN}%-28s${NC} %s\n" "help" "显示本帮助"
   log ""
 }
@@ -575,6 +576,28 @@ cmd_dist() {
   _make_source_dist
 }
 
+cmd_speedtest() {
+  local url="${1:-https://github.com/hzzxcgtz/classnode/archive/refs/heads/main.zip}"
+  local tmpfile="/tmp/classnode-speedtest"
+  log_section "GitHub 下载速度测试"
+  log_info "测试地址: ${url}"
+  log_info "下载到: ${tmpfile}"
+  log ""
+  curl -L -o "$tmpfile" --write-out "
+  ─── 结果 ─────────────────────
+  下载用时: %{time_total}s
+  平均速度: %{speed_download}B/s
+  HTTP 状态: %{http_code}
+  ──────────────────────────────
+  " "$url" 2>&1 | sed 's/^/  /'
+  echo ""
+  local speed
+  speed=$(stat -f%z "$tmpfile" 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null)
+  log_info "文件大小: ${speed} bytes"
+  rm -f "$tmpfile"
+  log_ok "测试完成"
+}
+
 # ─── 数据库操作 ───────────────────────────────────────
 
 cmd_reset_db() {
@@ -639,6 +662,7 @@ case "${1:-help}" in
   git:push)                        cmd_git_push ;;
   start|run)                       cmd_start ;;
   dist|package)                    cmd_dist ;;
+  speedtest)                       shift; cmd_speedtest "$@" ;;
   reset-db)                        cmd_reset_db ;;
   prisma:format)                   cmd_prisma_format ;;
   help|--help|-h)                  show_help ;;

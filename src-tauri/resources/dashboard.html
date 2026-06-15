@@ -620,7 +620,8 @@ function ui(s) {
     // 记录接口信息
     _ifaces = (s.interfaces && s.interfaces.length > 0) ? s.interfaces :
               (s.ips || []).map(ip => ({ name: '网络', label: '网络', ip: ip }));
-    if (_selIface < 0 || _selIface >= _ifaces.length) _selIface = 0;
+    const savedIdx = s.selectedIp ? _ifaces.findIndex(i => i.ip === s.selectedIp) : -1;
+    _selIface = savedIdx >= 0 ? savedIdx : (_selIface >= 0 && _selIface < _ifaces.length ? _selIface : 0);
     renderUrls();
     renderIfaces();
   } else if (_stopTs > 0 && Date.now() - _stopTs < 15000) {
@@ -685,6 +686,7 @@ function onIfaceChange(e) {
   const idx = _ifaces.findIndex(i => i.ip === ip);
   if (idx >= 0) _selIface = idx;
   renderUrls();
+  fetch('http://localhost:3001/api/settings/bind-ip', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
 }
 
 function escHtml(s) {
@@ -701,9 +703,9 @@ async function chk() {
       try {
         const r = await fetch('http://localhost:3001/api/server-info');
         const info = await r.json();
-        s = { running: true, port: info.port, ips: info.localIPs || [], interfaces: info.interfaces || [] };
+        s = { running: true, port: info.port, ips: info.localIPs || [], interfaces: info.interfaces || [], selectedIp: info.selectedIp || '' };
       } catch {
-        try { const r = await fetch('http://localhost:3001/api/health'); s = { running: r.ok, port: 3001, ips: [], interfaces: [] }; }
+        try { const r = await fetch('http://localhost:3001/api/health'); s = { running: r.ok, port: 3001, ips: [], interfaces: [], selectedIp: '' }; }
         catch { s = { running: false, port: 3001, ips: [], interfaces: [] }; }
       }
     }

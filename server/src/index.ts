@@ -149,12 +149,18 @@ async function main() {
   });
 
   // Get server info
-  app.get('/api/server-info', (_req, res) => {
+  app.get('/api/server-info', async (req, res) => {
     const interfaces = getLocalIPAddresses();
+    let selectedIp = '';
+    try {
+      const setting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } });
+      if (setting) selectedIp = setting.value;
+    } catch {}
     res.json({
       port,
       localIPs: interfaces.map(i => i.ip),
       interfaces,
+      selectedIp,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
       classroomUrl: interfaces.map(i => `http://${i.ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
     });

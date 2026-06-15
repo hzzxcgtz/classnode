@@ -423,7 +423,7 @@ function ClassroomBoardContent() {
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
-              <button onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); if (ifaces.length > 0) setSelectedIP(ifaces[0].ip); }).catch(() => {}); }} title="显示二维码"
+              <button onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); const savedIp = d.selectedIp || ''; setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : '')); }).catch(() => {}); }} title="显示二维码"
                 style={{
                   marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
                   background: 'rgba(37,99,235,0.1)', cursor: 'pointer',
@@ -447,7 +447,7 @@ function ClassroomBoardContent() {
         <div style={{ display: 'flex', gap: 8 }}>
           {classroom.status !== 'ended' && (
             <>
-              <button className="btn btn-primary btn-lg" onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); if (ifaces.length > 0) setSelectedIP(ifaces[0].ip); }).catch(() => {}); }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="btn btn-primary btn-lg" onClick={() => { setShowCodeScreen(true); fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => { const ifaces = d.interfaces || []; setAvailableIPs(ifaces); const savedIp = d.selectedIp || ''; setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : '')); }).catch(() => {}); }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
@@ -1033,7 +1033,11 @@ function ClassroomBoardContent() {
                 {availableIPs.length > 1 && (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ fontSize: "0.875rem", color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>选择网卡</div>
-                    <select value={selectedIP} onChange={e => setSelectedIP(e.target.value)}
+                    <select value={selectedIP} onChange={e => {
+                      const ip = e.target.value;
+                      setSelectedIP(ip);
+                      fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
+                    }}
                       style={{
                         width: '100%', padding: '10px 14px', borderRadius: 8,
                         background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)',

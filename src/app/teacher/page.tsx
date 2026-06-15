@@ -711,7 +711,8 @@ export default function TeacherDashboard() {
                       .then((d) => {
                         const ifaces = d.interfaces || [];
                         setAvailableIPs(ifaces);
-                        if (ifaces.length > 0) setSelectedIP(ifaces[0].ip);
+                        const savedIp = d.selectedIp || '';
+                        setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                       })
                       .catch(() => {});
                   }}
@@ -1165,7 +1166,11 @@ export default function TeacherDashboard() {
                     </div>
                     <select
                       value={selectedIP}
-                      onChange={(e) => setSelectedIP(e.target.value)}
+                      onChange={(e) => {
+                        const ip = e.target.value;
+                        setSelectedIP(ip);
+                        fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
+                      }}
                       style={{
                         width: "100%",
                         padding: "10px 14px",

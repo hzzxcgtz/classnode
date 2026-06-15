@@ -436,7 +436,29 @@ fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn cmd_open_url(url_type: String, ip: Option<String>) {
-    let ip = ip.or_else(|| get_local_ips().first().map(|i| i.ip.clone()))
+    // 优先使用传入的 IP，其次从 API 获取已保存的 IP，最后取第一块网卡
+    let ip = ip.or_else(|| {
+        let req = format!("GET /api/server-info HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        if let Ok(mut stream) = std::net::TcpStream::connect(format!("127.0.0.1:{}", SERVER_PORT)) {
+            use std::io::{Read, Write};
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let _ = stream.write_all(req.as_bytes());
+            let mut buf = vec![0u8; 4096];
+            if let Ok(n) = stream.read(&mut buf) {
+                let body = String::from_utf8_lossy(&buf[..n]);
+                if let Some(json_start) = body.find('{') {
+                    if let Some(json_end) = body[json_start..].find("}\n").or_else(|| body[json_start..].rfind('}')) {
+                        let json_str = &body[json_start..json_start + json_end + 1];
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            let selected = json["selectedIp"].as_str().unwrap_or("").to_string();
+                            if !selected.is_empty() { return Some(selected); }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }).or_else(|| get_local_ips().first().map(|i| i.ip.clone()))
         .unwrap_or_else(|| "localhost".to_string());
     let url = match url_type.as_str() {
         "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),

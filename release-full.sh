@@ -162,71 +162,14 @@ if [ "$DO_CI" = true ] && [ -n "$CI_RUN_NUM" ]; then
         elapsed=$((SECONDS - CI_START))
         elapsed_str=$(printf "%dm %02ds" $((elapsed/60)) $((elapsed%60)))
         ok "CI 构建成功（耗时 ${elapsed_str}）"
-        sleep 5
-
-        sub ""; sub "获取 Release 资产信息..."
-        ASSETS_JSON=$(gh api "repos/${REPO}/releases/tags/v${VERSION}" --jq '.assets[] | select(.name | endswith(".exe")) | {name, size, browser_download_url}' 2>/dev/null)
-        if [ -z "$ASSETS_JSON" ]; then
-          warn "未找到 Release，等待 10 秒后重试..."
-          sleep 10
-          ASSETS_JSON=$(gh api "repos/${REPO}/releases/tags/v${VERSION}" --jq '.assets[] | select(.name | endswith(".exe")) | {name, size, browser_download_url}' 2>/dev/null)
-        fi
-
-        if [ -n "$ASSETS_JSON" ]; then
-          DOWNLOAD_OK=true
-          while read -r asset; do
-            NAME=$(echo "$asset" | jq -r '.name')
-            SIZE=$(echo "$asset" | jq -r '.size')
-            URL=$(echo "$asset" | jq -r '.browser_download_url')
-            FILE="${INSTALLER_DIR}/${NAME}"
-
-            # 如果已存在且大小匹配则跳过
-            if [ -f "$FILE" ]; then
-              EXISTING_SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE" 2>/dev/null)
-              if [ "$EXISTING_SIZE" = "$SIZE" ]; then
-                ok "${NAME} 已存在，跳过下载"
-                continue
-              fi
-              sub "文件不完整，断点续传..."
-            fi
-
-            sub "下载 ${NAME}（${SIZE} bytes）..."
-            # curl 内置重试：最多 5 次，间隔 10 秒，总超时 600 秒
-            CURL_OPTS=(-L -C - --retry 5 --retry-delay 10 --retry-max-time 600 -o "$FILE" "$URL")
-            if curl "${CURL_OPTS[@]}" 2>&1 | sed 's/^/  /'; then
-              DOWNLOADED_SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE" 2>/dev/null)
-              if [ "$DOWNLOADED_SIZE" -eq "$SIZE" ] 2>/dev/null; then
-                ok "${NAME} 下载完成（大小匹配）"
-              else
-                warn "${NAME} 大小不匹配（期望 ${SIZE}，实际 ${DOWNLOADED_SIZE}）"
-                DOWNLOAD_OK=false
-              fi
-            else
-              warn "${NAME} 下载失败（多次重试后仍无法完成）"
-              DOWNLOAD_OK=false
-            fi
-          done < <(echo "$ASSETS_JSON" | jq -c '.')
-
-          if [ "$DOWNLOAD_OK" = true ]; then
-            ok "所有 Windows 安装包下载完成"
-
-            # ─── 上传到网盘 ─────────────────────────────
-            section "上传到网盘"
-            for target in "123" "kuake"; do
-              dest="alist:${target}/v${VERSION}/"
-              sub "上传到 ${target}..."
-              if rclone copy "$INSTALLER_DIR" "$dest" -P --transfers 1 --low-level-retries 10 2>&1 | sed 's/^/  /'; then
-                ok "${target} 上传完成"
-              else
-                warn "${target} 上传失败"
-              fi
-            done
-          else
-            warn "部分文件下载失败，跳过上传"
-          fi
-        else
-          warn "无法获取 Release 资产信息，请手动下载"
-        fi
+        echo ""
+        echo -e "  ${BOLD}${BLUE}━━━ Windows 安装包已就绪 ━━━${NC}"
+        echo -e "  ${CYAN}🔗${NC} ${CI_URL}"
+        echo ""
+        echo -e "  ${GRAY}后续操作（手动执行）：${NC}"
+        echo -e "  ${GRAY}  1.${NC} ./download-release.sh     ${DIM}# 下载 Windows 安装包${NC}"
+        echo -e "  ${GRAY}  2.${NC} ./upload-dist.sh          ${DIM}# 上传到网盘${NC}"
+        echo ""
       else
         echo -e "  ${RED}${BOLD}━━━ CI 构建失败 (${CONCLUSION}) ━━━${NC}"
         [ -n "$CI_URL" ] && dim "查看日志: ${CI_URL}"

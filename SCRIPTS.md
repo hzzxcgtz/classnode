@@ -97,8 +97,7 @@
                        ├─ Intel DMG
                        └─ 源码 zip
                     ──→ 等待 CI 完成（实时显示耗时）
-                       └─ 下载 Windows exe
-                    ──→ 全部汇总到 installer/v{ver}/
+                       └─ 提示手动下载和上传
 ```
 
 ---

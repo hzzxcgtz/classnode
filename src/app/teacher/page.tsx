@@ -1165,45 +1165,26 @@ export default function TeacherDashboard() {
                 </p>
                 {availableIPs.length > 1 && (
                   <div style={{ marginBottom: 20 }}>
-                    <div
-                      style={{
-                        fontSize: "0.875rem",
-                        color: "rgba(255,255,255,0.4)",
-                        marginBottom: 8,
-                      }}
-                    >
-                      选择网卡
-                    </div>
-                    <select
-                      value={selectedIP}
-                      onChange={(e) => {
-                        const ip = e.target.value;
-                        setSelectedIP(ip);
-                        fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        background: "rgba(255,255,255,0.08)",
-                        color: "rgba(255,255,255,0.85)",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        fontSize: "0.875rem",
-                        fontFamily: "monospace",
-                        cursor: "pointer",
-                        outline: "none",
-                      }}
-                    >
+                    <div style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>选择网卡</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
                       {availableIPs.map((iface, i) => (
-                        <option
-                          key={i}
-                          value={iface.ip}
-                          style={{ background: "#1e293b", color: "#e2e8f0" }}
-                        >
-                          {iface.ip} — {iface.label || iface.name}
-                        </option>
+                        <div key={i}
+                          onClick={() => {
+                            setSelectedIP(iface.ip);
+                            fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: iface.ip }) }).catch(() => {});
+                          }}
+                          style={{
+                            flex: 1, padding: '12px 10px', borderRadius: 10,
+                            background: selectedIP === iface.ip ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.06)',
+                            border: `1.5px solid ${selectedIP === iface.ip ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`,
+                            cursor: 'pointer', textAlign: 'center',
+                            transition: 'all 0.12s',
+                          }}>
+                          <div style={{ fontSize: "0.75rem", color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>{iface.label || iface.name}</div>
+                          <div style={{ fontSize: "0.875rem", fontWeight: 600, color: selectedIP === iface.ip ? '#93c5fd' : 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>{iface.ip}</div>
+                        </div>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 )}
                 <div

@@ -39,6 +39,7 @@ function ClassroomBoardContent() {
   const [teacherCode, setTeacherCode] = useState('');
   const [availableIPs, setAvailableIPs] = useState<{ name: string; label: string; ip: string }[]>([]);
   const [selectedIP, setSelectedIP] = useState('');
+  const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
   // 加载头像 SVG
   useEffect(() => {
@@ -54,6 +55,7 @@ function ClassroomBoardContent() {
     fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
       const ifaces = d.interfaces || [];
       setAvailableIPs(ifaces);
+                      setStudentUrl(d.studentUrl || '');
       const savedIp = d.selectedIp || '';
       setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
     }).catch(() => {});
@@ -63,7 +65,7 @@ function ClassroomBoardContent() {
   const downloadQRCode = async () => {
     const host = selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '');
     const port = typeof window !== 'undefined' ? getClassroomPort() : '3001';
-    const qrValue = `http://${host}:${port}/classroom?code=${teacherCode}`;
+    const qrValue = studentUrl ? `${studentUrl}?code=${teacherCode}` : `http://${host}:${port}/classroom?code=${teacherCode}`;
     const qrSize = 760;
     const textHeight = 70;
     const totalWidth = qrSize;
@@ -437,6 +439,7 @@ function ClassroomBoardContent() {
                 fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
                   const ifaces = d.interfaces || [];
                   setAvailableIPs(ifaces);
+                      setStudentUrl(d.studentUrl || '');
                   const savedIp = d.selectedIp || '';
                   setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                 }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
@@ -468,6 +471,7 @@ function ClassroomBoardContent() {
                 fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
                   const ifaces = d.interfaces || [];
                   setAvailableIPs(ifaces);
+                      setStudentUrl(d.studentUrl || '');
                   const savedIp = d.selectedIp || '';
                   setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                 }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
@@ -1016,7 +1020,7 @@ function ClassroomBoardContent() {
               }}>
                 <div style={{ padding: 24, position: 'relative', display: 'inline-flex' }}>
                   <QRCodeSVG
-                    value={`http://${selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '')}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
+                    value={studentUrl ? `${studentUrl}?code=${teacherCode}` : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`}
                     size={360}
                     level="M"
                   />
@@ -1052,7 +1056,7 @@ function ClassroomBoardContent() {
                   fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
-                  http://{selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '')}:{typeof window !== 'undefined' ? getClassroomPort() : '3001'}
+                  {studentUrl || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}`}
                 </p>
                 {availableIPs.length > 1 && (
                   <div style={{ marginBottom: 20 }}>

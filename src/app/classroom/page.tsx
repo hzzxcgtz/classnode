@@ -163,25 +163,22 @@ function StudentChatContent() {
     }
     loadClassroom(codeFromUrl).then(async (cr) => {
       if (!cr) return;
-
-      // 始终加载头像库（身份选择页和对话页都需要）
-      api.getAvatarsAll('student').then(data => {
-        const m: Record<number, string> = {};
-        data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
-        setAvatarSvgs(m);
-      }).catch(() => {});
-
       if (sessionData) {
         // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
         setStep('chat');
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
         startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
+        // 恢复头像数据 + token
         try {
-          const [avTeacherData, stsData, tokenData] = await Promise.all([
+          const [avData, avTeacherData, stsData, tokenData] = await Promise.all([
+            api.getAvatarsAll('student'),
             api.getAvatars('student'),
             cr.id ? api.getClassroomStudents(cr.id) : Promise.resolve([]),
             api.getStudentTokens(sessionData.studentId),
           ]);
+          const m: Record<number, string> = {};
+          avData.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+          setAvatarSvgs(m);
           setAllStudentAvatars(avTeacherData);
           setAvatarTokenCount(tokenData.tokens || 0);
           const cur = (stsData as any[]).find((s: any) => s.id === sessionData!.studentId);
@@ -249,22 +246,7 @@ function StudentChatContent() {
     const theAgent = agent || getCurrentAgent();
     const logoUrl = theAgent?.logo ? (theAgent.logo.startsWith('/') ? `${apiBase}${theAgent.logo}` : theAgent.logo) : null;
     if (logoUrl) {
-      return (
-        <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-          <img src={logoUrl} alt=""
-            style={{ width: size, height: size, borderRadius, objectFit: 'cover', position: 'absolute', inset: 0, zIndex: 1 }}
-            onError={e => { (e.target as HTMLElement).style.display = 'none'; }}
-          />
-          <div style={{
-            width: size, height: size, borderRadius,
-            background: 'linear-gradient(135deg, #667eea, #764ba2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize, color: 'white', fontWeight: 700,
-          }}>
-            {theAgent?.name?.[0] || 'AI'}
-          </div>
-        </div>
-      );
+      return <img src={logoUrl} alt="" style={{ width: size, height: size, borderRadius, objectFit: 'cover', flexShrink: 0 }} />;
     }
     return (
       <div style={{
@@ -361,7 +343,6 @@ function StudentChatContent() {
       setStep('identity');
     }
   }, [loadError]);
-
 
   const loadMessages = async (classroomId: string, studentId: string) => {
     try {
@@ -833,8 +814,8 @@ function StudentChatContent() {
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', background: 'linear-gradient(180deg, #f0f4ff 0%, #f8fafc 100%)' }}>
       {/* === 顶部栏 === */}
-      <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, background: 'white', borderBottom: '1px solid #eef2f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
+      <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', borderBottom: '1px solid #eef2f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {renderAgentAvatar(42, 12, 20)}
           <div>
             <div style={{ fontSize: "1.063rem", fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
@@ -852,7 +833,7 @@ function StudentChatContent() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: "0.75rem", color: connected ? '#10b981' : '#ef4444' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', display: 'inline-block' }} />
             {connected ? '已连接' : '连接断开'}

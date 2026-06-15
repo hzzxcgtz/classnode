@@ -191,22 +191,19 @@ if [ "$DO_CI" = true ] && [ -n "$CI_RUN_NUM" ]; then
             fi
 
             sub "下载 ${NAME}（${SIZE} bytes）..."
-            curl -L -C - -o "$FILE" "$URL" 2>&1 | sed 's/^/  /' || { warn "${NAME} 下载失败"; DOWNLOAD_OK=false; continue; }
-
-            # 校验大小
-            DOWNLOADED_SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE" 2>/dev/null)
-            if [ "$DOWNLOADED_SIZE" -eq "$SIZE" ] 2>/dev/null; then
-              ok "${NAME} 下载完成（大小匹配）"
-            else
-              warn "${NAME} 大小不匹配（期望 ${SIZE}，实际 ${DOWNLOADED_SIZE}），重试一次..."
-              curl -L -C - -o "$FILE" "$URL" 2>&1 | sed 's/^/  /'
+            # curl 内置重试：最多 5 次，间隔 10 秒，总超时 600 秒
+            CURL_OPTS=(-L -C - --retry 5 --retry-delay 10 --retry-max-time 600 -o "$FILE" "$URL")
+            if curl "${CURL_OPTS[@]}" 2>&1 | sed 's/^/  /'; then
               DOWNLOADED_SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE" 2>/dev/null)
               if [ "$DOWNLOADED_SIZE" -eq "$SIZE" ] 2>/dev/null; then
-                ok "${NAME} 下载完成（重试后大小匹配）"
+                ok "${NAME} 下载完成（大小匹配）"
               else
-                warn "${NAME} 大小仍不匹配，跳过"
+                warn "${NAME} 大小不匹配（期望 ${SIZE}，实际 ${DOWNLOADED_SIZE}）"
                 DOWNLOAD_OK=false
               fi
+            else
+              warn "${NAME} 下载失败（多次重试后仍无法完成）"
+              DOWNLOAD_OK=false
             fi
           done < <(echo "$ASSETS_JSON" | jq -c '.')
 

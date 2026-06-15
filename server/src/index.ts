@@ -156,6 +156,11 @@ async function main() {
       const setting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } });
       if (setting) selectedIp = setting.value;
     } catch {}
+    if (!selectedIp || !interfaces.some(i => i.ip === selectedIp)) {
+      selectedIp = interfaces.length > 0 ? interfaces[0].ip : "localhost";
+    }
+    const fePort = parseInt(process.env.FRONTEND_PORT || String(port), 10);
+    const studentUrl = `http://${selectedIp}:${fePort}/classroom`;
     res.json({
       port,
       localIPs: interfaces.map(i => i.ip),

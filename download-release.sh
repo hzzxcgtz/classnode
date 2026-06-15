@@ -57,8 +57,8 @@ hr
 
 # ─── 获取 Release 资产信息 ────────────────────────────
 info "获取 Release 资产信息..."
-ASSETS_JSON=$(gh api "repos/${REPO}/releases/tags/${TAG}" \
-  --jq '.assets[] | select(.name | endswith(".exe")) | {name, size, browser_download_url}' 2>/dev/null)
+ASSETS_JSON=$(gh release view "${TAG}" --repo "$REPO" --json assets \
+  --jq '.assets[] | select(.name | endswith(".exe")) | {name, size}' 2>/dev/null)
 
 if [ -z "$ASSETS_JSON" ]; then
   err "未找到 Release v${VERSION} 或其中没有 exe 文件"
@@ -72,7 +72,6 @@ TOTAL_BYTES=0
 while read -r asset; do
   NAME=$(echo "$asset" | jq -r '.name')
   SIZE=$(echo "$asset" | jq -r '.size')
-  URL=$(echo "$asset" | jq -r '.browser_download_url')
   FILE="${DEST}/${NAME}"
 
   # 如果已存在且大小匹配则跳过
@@ -84,7 +83,9 @@ while read -r asset; do
       TOTAL_BYTES=$((TOTAL_BYTES + SIZE))
       continue
     fi
-    sub "${NAME} 文件不完整，断点续传..."
+    # 存在但大小不匹配，删除后重新下载
+    sub "${NAME} 文件不完整，重新下载..."
+    rm -f "$FILE"
   fi
 
   SIZE_MB=$(awk "BEGIN{printf \"%.1f\", ${SIZE}/1048576}")
@@ -93,17 +94,8 @@ while read -r asset; do
   sub "下载 ${NAME}（${SIZE_MB} MB）..."
   echo ""
 
-  # curl 带断点续传 + 自动重试
-  #   -C -     断点续传（已存在的部分自动跳过）
-  #   --retry 5  最多重试 5 次
-  #   --retry-delay 10  重试间隔 10 秒
-  #   --retry-max-time 600  重试阶段总超时 10 分钟
-  #   --connect-timeout 30  连接超时 30 秒
-  #   --max-time 1800      单次传输总超时 30 分钟
-  if curl -L -C - \
-    --retry 5 --retry-delay 10 --retry-max-time 600 \
-    --connect-timeout 30 --max-time 1800 \
-    -o "$FILE" "$URL" 2>&1; then
+  # gh release download 支持 draft release
+  if gh release download "${TAG}" --repo "$REPO" --pattern "$NAME" --dir "$DEST" 2>&1 | sed 's/^/  /'; then
 
     # 校验大小
     DOWNLOADED_SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE" 2>/dev/null)

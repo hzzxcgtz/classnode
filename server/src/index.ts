@@ -166,6 +166,7 @@ async function main() {
       localIPs: interfaces.map(i => i.ip),
       interfaces,
       selectedIp,
+      studentUrl,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
       classroomUrl: interfaces.map(i => `http://${i.ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
     });

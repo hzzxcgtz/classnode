@@ -843,10 +843,10 @@ function ClassroomBoardContent() {
               background: 'linear-gradient(135deg, #f8faff, #f0f4ff)',
               borderRadius: '12px 12px 0 0',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
                   <div style={{
-                    width: 36, height: 36, borderRadius: selectedGroup ? 10 : '50%',
+                    width: 36, height: 36, borderRadius: selectedGroup ? 10 : '50%', flexShrink: 0,
                     background: selectedGroup ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'linear-gradient(135deg, #667eea, #764ba2)',
                     color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontWeight: 700, fontSize: "0.938rem", overflow: 'hidden',
@@ -857,8 +857,8 @@ function ClassroomBoardContent() {
                       <div style={{ width: 36, height: 36 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
                     ) : selectedStudent.name[0]}
                   </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {selectedGroup ? selectedGroup.name : selectedStudent.name}
                       {selectedGroup && groupMembersMap[selectedGroup.id] && (
                         <span style={{

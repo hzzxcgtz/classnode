@@ -617,16 +617,16 @@ function BackupManager() {
   };
 
   const handleReset = async () => {
-    if (resetConfirmText !== '确认清零') return;
+    if (resetConfirmText !== '确认初始化') return;
     setResetting(true);
     try {
       await api.resetAllData();
       setShowResetDialog(false);
       setResetConfirmText('');
-      setToast({ msg: '所有数据已清零！页面将重新加载。', type: 'success' });
+      setToast({ msg: '系统已初始化！页面将重新加载。', type: 'success' });
       window.location.reload();
     } catch (e: any) {
-      setToast({ msg: '清零失败: ' + e.message, type: 'error' });
+      setToast({ msg: '初始化失败: ' + e.message, type: 'error' });
     }
     setResetting(false);
   };
@@ -643,7 +643,7 @@ function BackupManager() {
 
   return (
     <div>
-      {/* 操作栏：备份 + 清零 */}
+      {/* 操作栏：备份 + 初始化 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <button className="btn btn-primary" onClick={handleBackup} disabled={creating}
           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -681,7 +681,7 @@ function BackupManager() {
             border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626',
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
-          数据库清零
+          系统初始化
         </button>
       </div>
 
@@ -813,7 +813,7 @@ function BackupManager() {
         </div>
       )}
 
-      {/* 清零确认弹窗 */}
+      {/* 初始化确认 */}
       {showResetDialog && (
         <div style={overlay} onClick={() => !resetting && setShowResetDialog(false)}>
           <div style={dialog} onClick={e => e.stopPropagation()}>
@@ -821,7 +821,7 @@ function BackupManager() {
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
             </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a', textAlign: 'center' }}>初始化清零</h3>
+            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a', textAlign: 'center' }}>系统初始化</h3>
             <p style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.6, margin: '0 0 12px', textAlign: 'center' }}>
               此操作将<strong>永久删除</strong>数据库中的所有数据，包括：
             </p>
@@ -839,23 +839,23 @@ function BackupManager() {
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: "0.75rem", color: '#475569', display: 'block', marginBottom: 6 }}>
-                请输入 <strong style={{ color: '#dc2626' }}>确认清零</strong> 以继续：
+                请输入 「确认初始化」 以继续：
               </label>
               <input type="text" value={resetConfirmText}
                 onChange={e => setResetConfirmText(e.target.value)}
-                placeholder="输入「确认清零」"
+                placeholder="输入「确认初始化」"
                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: "0.813rem", outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
                 disabled={resetting} style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={handleReset}
-                disabled={resetting || resetConfirmText !== '确认清零'}
+                disabled={resetting || resetConfirmText !== '确认初始化'}
                 style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: resetConfirmText === '确认清零' ? '#dc2626' : '#e2e8f0',
-                  color: resetConfirmText === '确认清零' ? 'white' : '#94a3b8',
+                  background: resetConfirmText === '确认初始化' ? '#dc2626' : '#e2e8f0',
+                  color: resetConfirmText === '确认初始化' ? 'white' : '#94a3b8',
                   opacity: resetting ? 0.6 : 1 }}>
-                {resetting ? '清零中...' : '确认清零'}
+                {resetting ? '初始化中...' : '确认初始化'}
               </button>
             </div>
           </div>

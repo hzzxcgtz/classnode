@@ -157,9 +157,7 @@ jobs:
 
           # Rename NSIS installer
           NSIS_DIR="$BUNDLE_DIR/nsis"
-          # aarch64 target outputs "aarch64" suffix, not "arm64"
           NSIS_PATTERN="${{ matrix.arch }}"
-          [ "$ARCH" = "arm64" ] && NSIS_PATTERN="aarch64"
           if ls "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe 1>/dev/null 2>&1; then
             for f in "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe; do
               base=$(basename "$f")

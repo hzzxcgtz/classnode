@@ -25,6 +25,7 @@ export default function ClassesPage() {
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [batchEditModal, setBatchEditModal] = useState<{ type: 'tag' } | null>(null);
+  const [batchEditGenderModal, setBatchEditGenderModal] = useState(false);
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(30);
   const [deleteBlocked, setDeleteBlocked] = useState<{
@@ -38,6 +39,9 @@ export default function ClassesPage() {
   const [classIconPicker, setClassIconPicker] = useState<string | null>(null);
   const [studentAvatarPicker, setStudentAvatarPicker] = useState<{ studentId: string; currentAvatarId?: number } | null>(null);
   const [allStudentAvatars, setAllStudentAvatars] = useState<any[]>([]);
+  const [studentMarqueeRect, setStudentMarqueeRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
+  const studentMarqueeStartRef = useRef<{x: number; y: number} | null>(null);
+  const studentTableRef = useRef<HTMLDivElement>(null);
 
   const loadClasses = async () => {
     try {
@@ -148,7 +152,6 @@ export default function ClassesPage() {
     if (!selectedClass) return;
     const data = await api.getStudents(selectedClass);
     setStudents(data);
-    setStudentPage(1);
   };
   const handleSort = (field: 'studentNo' | 'name' | 'gender' | 'group') => {
     if (sortField === field) {
@@ -196,6 +199,73 @@ export default function ClassesPage() {
       )}
     </svg>
   );
+
+  const handleStudentTableMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('th') || target.closest('button, input, textarea, a, label')) return;
+    e.preventDefault();
+
+    const container = studentTableRef.current;
+    if (!container) return;
+    const cr = container.getBoundingClientRect();
+    studentMarqueeStartRef.current = { x: e.clientX - cr.left, y: e.clientY - cr.top };
+    let isDragging = false;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!studentMarqueeStartRef.current || !container) return;
+      const cr2 = container.getBoundingClientRect();
+      const cx = ev.clientX - cr2.left;
+      const cy = ev.clientY - cr2.top;
+      const dx = cx - studentMarqueeStartRef.current.x;
+      const dy = cy - studentMarqueeStartRef.current.y;
+      if (!isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) isDragging = true;
+      if (isDragging) {
+        setStudentMarqueeRect({
+          left: Math.min(studentMarqueeStartRef.current.x, cx),
+          top: Math.min(studentMarqueeStartRef.current.y, cy),
+          width: Math.abs(dx),
+          height: Math.abs(dy),
+        });
+      }
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      if (isDragging && container) {
+        const cr2 = container.getBoundingClientRect();
+        const selL = Math.min(studentMarqueeStartRef.current!.x, ev.clientX - cr2.left);
+        const selT = Math.min(studentMarqueeStartRef.current!.y, ev.clientY - cr2.top);
+        const selR = Math.max(studentMarqueeStartRef.current!.x, ev.clientX - cr2.left);
+        const selB = Math.max(studentMarqueeStartRef.current!.y, ev.clientY - cr2.top);
+
+        const ids: string[] = [];
+        container.querySelectorAll<HTMLElement>('[data-student-id]').forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.left - cr2.left < selR && r.right - cr2.left > selL &&
+              r.top - cr2.top < selB && r.bottom - cr2.top > selT) {
+            const id = el.dataset.studentId;
+            if (id) ids.push(id);
+          }
+        });
+        if (ids.length > 0) {
+          setSelectedStudentIds(prev => {
+            const next = new Set(prev);
+            ids.forEach(id => {
+              if (next.has(id)) next.delete(id); else next.add(id);
+            });
+            return next;
+          });
+        }
+      }
+      studentMarqueeStartRef.current = null;
+      setStudentMarqueeRect(null);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   return (
     <div>
@@ -295,7 +365,7 @@ export default function ClassesPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {classes.map(c => (
                 <div key={c.id}
-                  onClick={() => { setSelectedClass(c.id); setSelectedStudentIds(new Set()); }}
+                  onClick={() => { setSelectedClass(c.id); setSelectedStudentIds(new Set()); setStudentPage(1); }}
                   style={{
                     padding: '13px 16px', borderRadius: 12, cursor: 'pointer',
                     border: `1.5px solid ${selectedClass === c.id ? '#2563eb' : '#e2e8f0'}`,
@@ -584,18 +654,29 @@ export default function ClassesPage() {
                       <span style={{ fontWeight: 600, color: '#1e40af', fontSize: "0.813rem" }}>
                         已选 {selectedStudentIds.size} 名学生
                       </span>
+                      <button onClick={() => setSelectedStudentIds(new Set())}
+                        style={{
+                          background: 'transparent', border: 'none', color: '#64748b',
+                          fontSize: "0.75rem", cursor: 'pointer', padding: '2px 6px',
+                          textDecoration: 'underline', textUnderlineOffset: 2,
+                        }}>取消选择</button>
                       <div style={{ flex: 1 }} />
+                      <span style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
                       <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        批量修改标签
+                        修改标签
                       </button>
                       <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        批量删除学生
+                        删除学生
                       </button>
                       <button onClick={async () => { if (!confirm(`确定清除选中 ${selectedStudentIds.size} 名学生的头像？`)) return; try { await api.clearStudentsAvatar([...selectedStudentIds]); setToast({ msg: `已清除 ${selectedStudentIds.size} 名学生的头像`, type: 'success' }); setSelectedStudentIds(new Set()); loadStudents(); } catch {} }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#f59e0b', border: '1px solid #fcd34d', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        批量清除头像
+                        清除头像
+                      </button>
+                      <button onClick={() => setBatchEditGenderModal(true)} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#8b5cf6', border: '1px solid #c4b5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M17 8l2 2 4-4"/></svg>
+                        设置性别
                       </button>
                     </>
                   ) : (
@@ -669,7 +750,7 @@ export default function ClassesPage() {
                     </div>
                   ) : (
                     <>
-                    <table>
+                    <div ref={studentTableRef} style={{position: 'relative', userSelect: 'none'}} onMouseDown={handleStudentTableMouseDown}><table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
                           <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: "0.75rem", borderBottom: '2px solid #e2e8f0' }}>
@@ -742,7 +823,7 @@ export default function ClassesPage() {
                       </thead>
                       <tbody>
                         {pagedStudents.map((s) => (
-                          <tr key={s.id}>
+                          <tr key={s.id} data-student-id={s.id}>
                             <td style={{ textAlign: 'center', padding: '10px 8px' }}>
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
                                 <input type="checkbox"
@@ -754,8 +835,8 @@ export default function ClassesPage() {
                             <td style={{ textAlign: 'center', color: s.studentNo ? '#2563eb' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
-                            <td style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div onClick={() => setStudentAvatarPicker({ studentId: s.id, currentAvatarId: s.avatarId })}
+                            <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                              <div onClick={e => { e.stopPropagation(); setStudentAvatarPicker({ studentId: s.id, currentAvatarId: s.avatarId }); }}
                                 style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
                                 {s.avatarId && studentAvatars[s.avatarId] ? (
                                   <div style={{
@@ -879,6 +960,21 @@ export default function ClassesPage() {
                         ))}
                       </tbody>
                     </table>
+                      {studentMarqueeRect && (
+                        <div style={{
+                          position: 'absolute',
+                          left: studentMarqueeRect.left,
+                          top: studentMarqueeRect.top,
+                          width: studentMarqueeRect.width,
+                          height: studentMarqueeRect.height,
+                          background: 'rgba(59, 130, 246, 0.06)',
+                          border: '1px solid rgba(59, 130, 246, 0.35)',
+                          borderRadius: 4,
+                          pointerEvents: 'none',
+                          zIndex: 50,
+                        }} />
+                      )}
+                    </div>
                     <Pagination current={studentPage} total={sortedStudents.length} pageSize={studentPageSize} pageSizeOptions={[10, 20, 30, 50, 100]} onChange={setStudentPage} onPageSizeChange={setStudentPageSize} />
                   </>)}
                 </div>
@@ -918,6 +1014,17 @@ export default function ClassesPage() {
                   studentNames={sortedStudents.filter(s => selectedStudentIds.has(s.id)).map(s => s.name)}
                   onClose={() => setBatchEditModal(null)}
                   onSaved={() => { setBatchEditModal(null); setSelectedStudentIds(new Set()); loadStudents(); }}
+                  setToast={setToast}
+                />
+              )}
+
+              {batchEditGenderModal && (
+                <BatchEditGenderModal
+                  classId={selectedClass}
+                  studentIds={[...selectedStudentIds]}
+                  studentNames={sortedStudents.filter(s => selectedStudentIds.has(s.id)).map(s => s.name)}
+                  onClose={() => setBatchEditGenderModal(false)}
+                  onSaved={() => { setBatchEditGenderModal(false); setSelectedStudentIds(new Set()); loadStudents(); }}
                   setToast={setToast}
                 />
               )}
@@ -1297,6 +1404,83 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
   );
 }
 
+function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSaved, setToast }: {
+  classId: string; studentIds: string[]; studentNames: string[]; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
+}) {
+  const [gender, setGender] = useState<'boy' | 'girl' | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!gender) return;
+    setSaving(true);
+    try {
+      for (const sid of studentIds) {
+        await api.updateStudent(classId, sid, { gender });
+      }
+      onSaved();
+    } catch (e: any) {
+      setToast({ msg: '批量更新失败: ' + e.message, type: 'error' });
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 24 }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%', margin: '0 auto 12px',
+            background: '#f5f3ff', color: '#8b5cf6',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>批量设置性别</h2>
+          <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
+            已选中 <strong style={{ color: '#0f172a' }}>{studentIds.length}</strong> 名学生
+          </p>
+          <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 4, maxHeight: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {studentNames.join('、')}
+          </div>
+        </div>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {[
+              { value: 'boy' as const, label: '男', icon: '♂', desc: '设置为男生', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+              { value: 'girl' as const, label: '女', icon: '♀', desc: '设置为女生', color: '#e91e63', bg: '#fdf2f8', border: '#f9a8d4' },
+            ].map(g => (
+              <button key={g.value} onClick={() => setGender(g.value)}
+                style={{
+                  flex: 1, padding: '20px 0', borderRadius: 12,
+                  background: gender === g.value ? g.bg : 'white',
+                  border: `2px solid ${gender === g.value ? g.color : '#e2e8f0'}`,
+                  cursor: 'pointer', transition: 'all 0.12s',
+                  textAlign: 'center',
+                }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: gender === g.value ? g.color : '#94a3b8', marginBottom: 4 }}>
+                  {g.icon}
+                </div>
+                <div style={{ fontSize: "0.875rem", fontWeight: 600, color: gender === g.value ? g.color : '#64748b' }}>
+                  {g.label}
+                </div>
+                <div style={{ fontSize: "0.688rem", color: gender === g.value ? g.color : '#94a3b8', marginTop: 2 }}>
+                  {g.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={onClose} style={{ flex: 1 }}>取消</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !gender} style={{ flex: 1 }}>
+            {saving ? '保存中...' : `确认设置 (${studentIds.length} 人)`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars, onClose, onSaved, setToast }: {
   classId: string; studentId: string; currentAvatarId?: number; avatars: any[];
   onClose: () => void; onSaved: () => void; setToast: (t: any) => void;
@@ -1550,6 +1734,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
     const target = e.target as HTMLElement;
     // 不要在学生标签或交互元素上启动框选
     if (target.closest('[data-student-id]') || target.closest('button, input, textarea, a')) return;
+    e.preventDefault();
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -1824,7 +2009,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
             onDrop={e => handleDrop(e, null)}
             onMouseDown={handleContainerMouseDown}
             style={{
-              position: 'relative',
+              position: 'relative', userSelect: 'none',
               display: 'flex', flexWrap: 'wrap', gap: 10, minHeight: 44,
               padding: '12px 16px', borderRadius: 10,
               border: `2px dashed ${draggedId ? '#93c5fd' : selectedUnassigned.size > 0 ? '#2563eb' : '#e2e8f0'}`,

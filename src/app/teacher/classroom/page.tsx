@@ -49,6 +49,16 @@ function ClassroomBoardContent() {
     }).catch(() => {});
   }, []);
 
+  // 加载已保存的网卡 IP
+  useEffect(() => {
+    fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+      const ifaces = d.interfaces || [];
+      setAvailableIPs(ifaces);
+      const savedIp = d.selectedIp || '';
+      setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
+    }).catch(() => {});
+  }, []);
+
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async () => {
     const host = selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '');

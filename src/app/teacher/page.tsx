@@ -52,6 +52,16 @@ export default function TeacherDashboard() {
     loadData();
   }, []);
 
+  // 加载已保存的网卡 IP
+  useEffect(() => {
+    fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+      const ifaces = d.interfaces || [];
+      setAvailableIPs(ifaces);
+      const savedIp = d.selectedIp || '';
+      setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
+    }).catch(() => {});
+  }, []);
+
   // 定期刷新课堂数据，确保统计数据实时更新（socket 事件不一定覆盖所有字段）
   useEffect(() => {
     if (loading) return;

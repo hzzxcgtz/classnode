@@ -1031,11 +1031,12 @@ function ClassroomBoardContent() {
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>浏览器访问</div>
                 <p style={{
-                  fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 28px 0',
+                  fontSize: "2.75rem", fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '0 0 8px 0',
                   fontFamily: 'monospace', letterSpacing: 1,
                 }}>
                   {studentUrl || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}`}
                 </p>
+                <div style={{ fontSize: "0.75rem", color: 'rgba(255,255,255,0.25)', marginBottom: 28 }}>studentUrl: {studentUrl || '(空)'}</div>
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {(teacherCode || '').split('').map((d: string, i: number) => (

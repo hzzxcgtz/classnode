@@ -1150,7 +1150,7 @@ export default function TeacherDashboard() {
                     letterSpacing: 1,
                   }}
                 >
-                  {studentUrl || `http://${typeof window !== "undefined" ? window.location.hostname : ""}:${typeof window !== "undefined" ? getClassroomPort() : "3001"}`}
+                  {studentUrl ? studentUrl.replace('/classroom', '') : `http://${typeof window !== "undefined" ? window.location.hostname : ""}:${typeof window !== "undefined" ? getClassroomPort() : "3001"}`}
                 </p>
                 <div
                   style={{

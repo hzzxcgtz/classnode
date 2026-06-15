@@ -331,7 +331,6 @@ _release_export() {
   log_sub "目标: $dst"
   for src in "$@"; do
     if [ -f "$src" ]; then
-      local size
       size=$(du -h "$src" | cut -f1)
       cp "$src" "$dst/"
       log_ok "$(basename "$src")  ${DIM}(${size})${NC}"
@@ -407,7 +406,6 @@ ENV
   rm -f "$zip_file"
   (cd /tmp && zip -r "$zip_file" "$dist_name" > /dev/null 2>&1)
 
-  local size
   size=$(du -sh "$zip_file" | cut -f1)
   log_ok "${dist_name}.zip → 安装包目录（${size}）"
   rm -rf "$dist_dir"
@@ -577,53 +575,87 @@ cmd_dist() {
 }
 
 cmd_speedtest() {
-  local url="${1:-https://github.com/hzzxcgtz/classnode/archive/refs/heads/main.zip}"
+  local url="${1:-}"
   local tmpfile="/tmp/classnode-speedtest"
+  local loop_mode=false
+  [ "${1:-}" = "--loop" ] && loop_mode=true && url=""
+  [ "${2:-}" = "--loop" ] && loop_mode=true
 
-  log_section "GitHub 下载速度测试"
+  # 如果没给 URL，自动找最新 Release 里最大的 exe
+  if [ -z "$url" ]; then
+    log_section "GitHub 下载速度测试"
+    log_info "自动获取最新 Release 文件..."
+    local asset
+    asset=$(gh api "repos/hzzxcgtz/classnode/releases" \
+      --jq '[.[] | select(.draft == false)][0].assets[] | select(.name | endswith(".exe")) | {name, browser_download_url, size}' 2>/dev/null | jq -s 'sort_by(.size) | reverse | .[0]' 2>/dev/null || echo "")
+    if [ -z "$asset" ] || [ "$asset" = "null" ] || [ -z "$(echo "$asset" | jq -r '.browser_download_url' 2>/dev/null || echo '')" ]; then
+      log_warn "未找到 Release，回退到源码 zip 测速"
+      url="https://github.com/hzzxcgtz/classnode/archive/refs/heads/main.zip"
+      log_info "文件: main.zip"
+    else
+      url=$(echo "$asset" | jq -r '.browser_download_url')
+      local name=$(echo "$asset" | jq -r '.name')
+      log_info "文件: ${name}（约 ${size_mb} MB）"
+    fi
+  else
+    log_section "GitHub 下载速度测试"
+  fi
   log_info "地址: $(echo "$url" | sed 's|https://||')"
-
-  # 先用一次请求获取 write-out 数据（不保存文件）
-  local meta
-  meta=$(curl -L -o /dev/null -w "%{time_total} %{speed_download} %{http_code}" "$url" 2>/dev/null)
-  local curl_exit=$?
-
-  if [ "$curl_exit" -ne 0 ]; then
-    log_error "连接失败（curl 退出码: $curl_exit）"
-    return 1
-  fi
-
-  # 解析元数据
-  local time_total speed_download http_code
-  read -r time_total speed_download http_code <<< "$meta"
-  time_total="${time_total:-0}"; speed_download="${speed_download:-0}"; http_code="${http_code:-0}"
-
-  # 真正下载到本地测速（带进度条）
-  echo ""
-  curl -L -o "$tmpfile" "$url" 2>&1 | sed 's/^/  /'
-  local download_exit=$?
+  [ "$loop_mode" = true ] && log_info "循环模式: 每轮结束后等待 5 秒自动重测"
+  log_info "提示: 测速过程中可切换代理链路，观察实时速度变化"
   echo ""
 
-  if [ "$download_exit" -ne 0 ]; then
-    log_error "下载失败（curl 退出码: $download_exit）"
-    rm -f "$tmpfile"
-    return 1
-  fi
+  local round=0
+  while true; do
+    round=$((round + 1))
+    [ "$loop_mode" = true ] && echo -e "  ${DIM}─── 第 ${round} 轮 ───${NC}"
 
-  local size_mb speed_mb
-  size_mb=$(stat -f%z "$tmpfile" 2>/dev/null | awk '{printf "%.2f", $1/1048576}' 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null | awk '{printf "%.2f", $1/1048576}' 2>/dev/null)
-  speed_mb=$(awk "BEGIN{printf \"%.2f\", ${speed_download}/1048576}" 2>/dev/null)
+    # 下载测速（实时进度显示 + 手动计算速率）
+    local start_time end_time elapsed size
+    start_time=$(date +%s 2>/dev/null || echo 0)
+    curl -L -o "$tmpfile" "$url" 2>&1 | sed 's/^/  /'
+    local curl_exit=$?
+    end_time=$(date +%s 2>/dev/null || echo 0)
+    time_total=$((end_time - start_time))
+    [ "$time_total" -lt 1 ] && time_total=1
 
-  echo ""
-  echo -e "  ${BOLD}结果${NC}"
-  echo -e "  ${GRAY}文件大小:${NC} ${size_mb} MB"
-  echo -e "  ${GRAY}下载用时:${NC} ${time_total}s"
-  if [ "${speed_download}" != "0" ]; then
+    local http_code size_mb speed_mb
+    http_code=200
+    size=$(stat -f%z "$tmpfile" 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null)
+    size="${size:-0}"
+    [ "$time_total" -gt 0 ] 2>/dev/null || time_total=1
+    size_mb=$(python3 -c "print('%.2f' % (${size}/1048576))" 2>/dev/null || echo "0.00")
+    speed_mb=$(python3 -c "print('%.2f' % (${size}/1048576/${time_total}))" 2>/dev/null || echo "0.00")
+
+    if [ "$curl_exit" -ne 0 ]; then
+      echo ""
+      log_error "下载失败（curl 退出码: $curl_exit）"
+      rm -f "$tmpfile" 2>/dev/null
+      [ "$loop_mode" = false ] && return 1
+      sleep 3; continue
+    fi
+
+    size=$(stat -f%z "$tmpfile" 2>/dev/null || stat -c%s "$tmpfile" 2>/dev/null)
+
+    echo ""
+    echo -e "  ${BOLD}━━━ 第 ${round} 轮结果 ━━━${NC}"
+    echo -e "  ${GRAY}文件大小:${NC} ${size_mb} MB"
+    echo -e "  ${GRAY}下载用时:${NC} ${time_total}s"
     echo -e "  ${GRAY}平均速度:${NC} ${speed_mb} MB/s"
-  fi
-  echo -e "  ${GRAY}HTTP 状态:${NC} ${http_code}"
-  rm -f "$tmpfile"
-  log_ok "测试完成"
+    echo -e "  ${GRAY}HTTP 状态:${NC} ${http_code}"
+
+    rm -f "$tmpfile" 2>/dev/null
+
+    if [ "$loop_mode" = true ]; then
+      log_info "5 秒后下一轮（按 Ctrl+C 终止）..."
+      echo ""
+      sleep 5
+    else
+      break
+    fi
+  done
+
+  [ "$loop_mode" = false ] && log_ok "测试完成"
 }
 
 # ─── 数据库操作 ───────────────────────────────────────

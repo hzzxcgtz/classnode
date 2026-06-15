@@ -163,22 +163,25 @@ function StudentChatContent() {
     }
     loadClassroom(codeFromUrl).then(async (cr) => {
       if (!cr) return;
+
+      // 始终加载头像库（身份选择页和对话页都需要）
+      api.getAvatarsAll('student').then(data => {
+        const m: Record<number, string> = {};
+        data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+        setAvatarSvgs(m);
+      }).catch(() => {});
+
       if (sessionData) {
         // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
         setStep('chat');
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
         startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
-        // 恢复头像数据 + token
         try {
-          const [avData, avTeacherData, stsData, tokenData] = await Promise.all([
-            api.getAvatarsAll('student'),
+          const [avTeacherData, stsData, tokenData] = await Promise.all([
             api.getAvatars('student'),
             cr.id ? api.getClassroomStudents(cr.id) : Promise.resolve([]),
             api.getStudentTokens(sessionData.studentId),
           ]);
-          const m: Record<number, string> = {};
-          avData.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
-          setAvatarSvgs(m);
           setAllStudentAvatars(avTeacherData);
           setAvatarTokenCount(tokenData.tokens || 0);
           const cur = (stsData as any[]).find((s: any) => s.id === sessionData!.studentId);
@@ -359,16 +362,6 @@ function StudentChatContent() {
     }
   }, [loadError]);
 
-  // 进入身份选择页时预加载头像数据
-  useEffect(() => {
-    if (step === 'identity') {
-      api.getAvatarsAll('student').then(data => {
-        const m: Record<number, string> = {};
-        data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
-        setAvatarSvgs(m);
-      }).catch(() => {});
-    }
-  }, [step]);
 
   const loadMessages = async (classroomId: string, studentId: string) => {
     try {

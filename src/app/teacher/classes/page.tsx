@@ -47,9 +47,11 @@ export default function ClassesPage() {
     try {
       const data = await api.getClasses();
       setClasses(data);
-      // 自动选中第一个班级，避免右侧空白
       if (data.length > 0) {
-        setSelectedClass(data[0].id);
+        // 如果已选中某班级且仍在列表中，保持选中；否则选第一个
+        if (!data.some((c: any) => c.id === selectedClass)) {
+          setSelectedClass(data[0].id);
+        }
       }
     } catch {}
     setLoading(false);

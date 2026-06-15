@@ -35,7 +35,7 @@ function ClassroomBoardContent() {
   const [messages, setMessages] = useState<any[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
-  const [showCodeScreen, setShowCodeScreen] = useState(false);
+  const [codeScreenKey, setCodeScreenKey] = useState(0);
   const [teacherCode, setTeacherCode] = useState('');
   const [availableIPs, setAvailableIPs] = useState<{ name: string; label: string; ip: string }[]>([]);
   const [selectedIP, setSelectedIP] = useState('');
@@ -274,7 +274,7 @@ function ClassroomBoardContent() {
 
   // ESC 关闭投屏
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCodeScreen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCodeScreenKey(0); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -439,7 +439,7 @@ function ClassroomBoardContent() {
                   setAvailableIPs(ifaces);
                   const savedIp = d.selectedIp || '';
                   setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
-                }).catch(() => {}).finally(() => setShowCodeScreen(true));
+                }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
               }} title="显示二维码"
                 style={{
                   marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
@@ -470,7 +470,7 @@ function ClassroomBoardContent() {
                   setAvailableIPs(ifaces);
                   const savedIp = d.selectedIp || '';
                   setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
-                }).catch(() => {}).finally(() => setShowCodeScreen(true));
+                }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
               }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
@@ -990,12 +990,12 @@ function ClassroomBoardContent() {
       </div>
 
       {/* 投屏发码 */}
-      {showCodeScreen && (
+      {codeScreenKey > 0 && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 300, overflow: 'auto',
           background: '#0f172a',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowCodeScreen(false)}>
+        }} onClick={() => setCodeScreenKey(0)}>
           <div onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '40px 20px' }}>
             <div style={{
               width: 56, height: 56, borderRadius: 14,
@@ -1096,7 +1096,7 @@ function ClassroomBoardContent() {
               background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
               border: '1px solid rgba(255,255,255,0.15)', fontSize: "1.125rem", padding: '12px 36px',
               borderRadius: 10, cursor: 'pointer',
-            }} onClick={() => setShowCodeScreen(false)}>
+            }} onClick={() => setCodeScreenKey(0)}>
               返回看板
             </button>
           </div>

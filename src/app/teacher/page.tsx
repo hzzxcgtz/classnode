@@ -30,6 +30,7 @@ export default function TeacherDashboard() {
     { name: string; label: string; ip: string }[]
   >([]);
   const [selectedIP, setSelectedIP] = useState("");
+  const [studentUrl, setStudentUrl] = useState("");
   const [toast, setToast] = useState<{
     msg: string;
     type: "success" | "error";
@@ -50,13 +51,6 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  // 加载已保存的网卡 IP
-  useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-      const ifaces = d.interfaces || [];
-    }).catch(() => {});
   }, []);
 
   // 定期刷新课堂数据，确保统计数据实时更新（socket 事件不一定覆盖所有字段）
@@ -97,6 +91,12 @@ export default function TeacherDashboard() {
             [data.classroomId]: data.studentIds?.length || 0,
           }));
         }
+      });
+
+      sk.on("nic-changed", () => {
+        fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+          if (d.studentUrl) setStudentUrl(d.studentUrl);
+        }).catch(() => {});
       });
 
       socketRef.current = sk;
@@ -163,7 +163,7 @@ export default function TeacherDashboard() {
       selectedIP ||
       (typeof window !== "undefined" ? window.location.hostname : "");
     const port = typeof window !== "undefined" ? getClassroomPort() : "3001";
-    const qrValue = `http://${host}:${port}/classroom?code=${cr.code}`;
+    const qrValue = studentUrl ? `${studentUrl}?code=${cr.code}` : `http://${host}:${port}/classroom?code=${cr.code}`;
     const qrSize = 760;
     const textHeight = 70;
     const totalWidth = qrSize;
@@ -715,7 +715,7 @@ export default function TeacherDashboard() {
                     fetch(`${getApiBaseUrl()}/api/server-info`)
                       .then((r) => r.json())
                       .then((d) => {
-                        const ifaces = d.interfaces || [];
+                        setStudentUrl(d.studentUrl || '');
                       })
                       .catch(() => {})
                       .finally(() => setQrCodeClassroom(cr));
@@ -1063,7 +1063,7 @@ export default function TeacherDashboard() {
                   }}
                 >
                   <QRCodeSVG
-                    value={`http://${selectedIP || (typeof window !== "undefined" ? window.location.hostname : "")}:${typeof window !== "undefined" ? getClassroomPort() : "3001"}/classroom?code=${qrCodeClassroom.code}`}
+                    value={studentUrl ? `${studentUrl}?code=${qrCodeClassroom.code}` : `http://${typeof window !== "undefined" ? window.location.hostname : ""}:${typeof window !== "undefined" ? getClassroomPort() : "3001"}/classroom?code=${qrCodeClassroom.code}`}
                     size={360}
                     level="M"
                   />
@@ -1150,12 +1150,7 @@ export default function TeacherDashboard() {
                     letterSpacing: 1,
                   }}
                 >
-                  http://
-                  {selectedIP ||
-                    (typeof window !== "undefined"
-                      ? window.location.hostname
-                      : "")}
-                  :{typeof window !== "undefined" ? getClassroomPort() : "3001"}
+                  {studentUrl || `http://${typeof window !== "undefined" ? window.location.hostname : ""}:${typeof window !== "undefined" ? getClassroomPort() : "3001"}`}
                 </p>
                 <div
                   style={{

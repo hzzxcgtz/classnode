@@ -436,23 +436,6 @@ function ClassroomBoardContent() {
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
-              <button onClick={() => {
-                fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-                      setStudentUrl(d.studentUrl || '');
-                }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
-              }} title="显示二维码"
-                style={{
-                  marginLeft: 2, width: 22, height: 22, borderRadius: 4, border: 'none',
-                  background: 'rgba(37,99,235,0.1)', cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#2563eb', padding: 0, flexShrink: 0,
-                }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/>
-                  <rect x="3" y="16" width="5" height="5" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>
-                  <line x1="11" y1="3" x2="13" y2="3"/><line x1="3" y1="11" x2="3" y2="13"/><line x1="21" y1="11" x2="21" y2="13"/>
-                </svg>
-              </button>
             </div>
             <span style={{ fontSize: "0.813rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>

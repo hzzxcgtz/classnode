@@ -792,6 +792,20 @@ async function doResetPwd() {
 
 _startTs = Date.now();
 setTimeout(() => { chk(); _p = setInterval(chk, 3000); }, 900);
+// 额外获取已保存的 IP 用于初始化
+setTimeout(() => {
+  fetch('http://localhost:3001/api/server-info').then(r => r.json()).then(info => {
+    if (info.selectedIp) {
+      const idx = _ifaces.findIndex(i => i.ip === info.selectedIp);
+      if (idx >= 0 && idx !== _selIface) {
+        _selIface = idx;
+        renderUrls();
+        const sel = document.getElementById('ifaceSelect');
+        if (sel) sel.value = info.selectedIp;
+      }
+    }
+  }).catch(() => {});
+}, 2000);
 </script>
 </body>
 </html>

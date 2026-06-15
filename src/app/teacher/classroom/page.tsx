@@ -39,6 +39,17 @@ function ClassroomBoardContent() {
   const [teacherCode, setTeacherCode] = useState('');
   const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
+  // 投屏弹窗打开时实时刷新 studentUrl
+  useEffect(() => {
+    if (codeScreenKey > 0) {
+      const t = setInterval(() => {
+        fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+          if (d.studentUrl) setStudentUrl(d.studentUrl);
+        }).catch(() => {});
+      }, 3000);
+      return () => clearInterval(t);
+    }
+  }, [codeScreenKey]);
   // 加载头像 SVG
   useEffect(() => {
     api.getAvatarsAll('student').then(data => {
@@ -1036,7 +1047,6 @@ function ClassroomBoardContent() {
                 }}>
                   {studentUrl || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}`}
                 </p>
-                <div style={{ fontSize: "0.75rem", color: 'rgba(255,255,255,0.25)', marginBottom: 28 }}>studentUrl: {studentUrl || '(空)'}</div>
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {(teacherCode || '').split('').map((d: string, i: number) => (

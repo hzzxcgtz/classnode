@@ -684,7 +684,7 @@ cmd_prisma_format() {
 case "${1:-help}" in
   --version|-v)                    cmd_version ;;
   r) shift
-     case "$1" in
+     case "${1:-}" in
        both)  cmd_release_both ;;
        intel) cmd_release_intel ;;
        all)   cmd_release_all ;;

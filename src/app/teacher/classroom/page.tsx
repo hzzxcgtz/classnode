@@ -37,8 +37,6 @@ function ClassroomBoardContent() {
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
   const [codeScreenKey, setCodeScreenKey] = useState(0);
   const [teacherCode, setTeacherCode] = useState('');
-  const [availableIPs, setAvailableIPs] = useState<{ name: string; label: string; ip: string }[]>([]);
-  const [selectedIP, setSelectedIP] = useState('');
   const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
   // 加载头像 SVG
@@ -50,22 +48,10 @@ function ClassroomBoardContent() {
     }).catch(() => {});
   }, []);
 
-  // 加载已保存的网卡 IP
-  useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-      const ifaces = d.interfaces || [];
-      setAvailableIPs(ifaces);
-                      setStudentUrl(d.studentUrl || '');
-      const savedIp = d.selectedIp || '';
-      setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
-    }).catch(() => {});
-  }, []);
 
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async () => {
-    const host = selectedIP || (typeof window !== 'undefined' ? window.location.hostname : '');
-    const port = typeof window !== 'undefined' ? getClassroomPort() : '3001';
-    const qrValue = studentUrl ? `${studentUrl}?code=${teacherCode}` : `http://${host}:${port}/classroom?code=${teacherCode}`;
+    const qrValue = studentUrl ? `${studentUrl}?code=${teacherCode}` : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}/classroom?code=${teacherCode}`;
     const qrSize = 760;
     const textHeight = 70;
     const totalWidth = qrSize;
@@ -437,11 +423,7 @@ function ClassroomBoardContent() {
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
               <button onClick={() => {
                 fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-                  const ifaces = d.interfaces || [];
-                  setAvailableIPs(ifaces);
                       setStudentUrl(d.studentUrl || '');
-                  const savedIp = d.selectedIp || '';
-                  setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                 }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
               }} title="显示二维码"
                 style={{
@@ -469,11 +451,7 @@ function ClassroomBoardContent() {
             <>
               <button className="btn btn-primary btn-lg" onClick={() => {
                 fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-                  const ifaces = d.interfaces || [];
-                  setAvailableIPs(ifaces);
                       setStudentUrl(d.studentUrl || '');
-                  const savedIp = d.selectedIp || '';
-                  setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                 }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
               }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1058,30 +1036,6 @@ function ClassroomBoardContent() {
                 }}>
                   {studentUrl || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${typeof window !== 'undefined' ? getClassroomPort() : '3001'}`}
                 </p>
-                {availableIPs.length > 1 && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: "0.875rem", color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>选择网卡</div>
-                    <select value={selectedIP} onChange={e => {
-                      const ip = e.target.value;
-                      setSelectedIP(ip);
-                      fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
-                    }}
-                      style={{
-                        width: '100%', padding: '10px 14px', borderRadius: 8,
-                        background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        fontSize: "0.875rem", fontFamily: 'monospace', cursor: 'pointer',
-                        outline: 'none',
-                      }}>
-                      {availableIPs.map((iface, i) => (
-                        <option key={i} value={iface.ip}
-                          style={{ background: '#1e293b', color: '#e2e8f0' }}>
-                          {iface.ip} — {iface.label || iface.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
                 <div style={{ fontSize: "1.375rem", color: 'rgba(255,255,255,0.5)', marginBottom: 10 }}>输入互动码</div>
                 <div style={{ display: 'flex', gap: 16 }}>
                   {(teacherCode || '').split('').map((d: string, i: number) => (

@@ -871,14 +871,9 @@ function ClassroomBoardContent() {
                     <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginTop: 2 }}>
                       共 {messages.filter((m: any) => m.role === 'user').length} 轮交互 · {messages.length} 条消息
                     </div>
-                    {selectedGroup && groupMembersMap[selectedGroup.id] && (
-                      <div style={{ fontSize: "0.688rem", color: '#7c3aed', marginTop: 4, lineHeight: 1.5 }}>
-                        {groupMembersMap[selectedGroup.id].map((d:any)=>d.studentName).join('、')}
-                      </div>
-                    )}
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button className="btn btn-secondary" style={{ fontSize: "0.688rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => setShowFullscreen(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>

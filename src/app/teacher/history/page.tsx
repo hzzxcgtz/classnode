@@ -817,41 +817,51 @@ function BackupManager() {
       {showResetDialog && (
         <div style={overlay} onClick={() => !resetting && setShowResetDialog(false)}>
           <div style={dialog} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: '#fef2f2', color: '#dc2626', margin: '0 auto 16px',
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', color: '#dc2626', margin: '0 auto 16px',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
             </div>
-            <h3 style={{ margin: '0 0 8px', fontSize: "1rem", fontWeight: 600, color: '#0f172a', textAlign: 'center' }}>系统初始化</h3>
-            <p style={{ fontSize: "0.813rem", color: '#475569', lineHeight: 1.6, margin: '0 0 12px', textAlign: 'center' }}>
-              此操作将<strong>永久删除</strong>数据库中的所有数据，包括：
+            <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#0f172a', textAlign: 'center' }}>系统初始化</h3>
+            <p style={{ fontSize: '0.813rem', color: '#64748b', textAlign: 'center', margin: '0 0 16px' }}>
+              将清空所有数据，恢复到初始状态。<br />管理员密码将保留。
             </p>
-            <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.8, marginBottom: 16, padding: '0 8px' }}>
-              • 所有班级和学生信息<br />
-              • 所有智能体配置<br />
-              • 所有课堂记录和对话数据<br />
-              • 所有系统设置
+
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: '0.75rem', lineHeight: 1.8, color: '#475569' }}>
+              <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>将被清除的数据：</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                <span>• 所有班级和学生</span>
+                <span>• 所有智能体配置</span>
+                <span>• 所有课堂和对话</span>
+                <span>• 所有屏蔽词配置</span>
+                <span>• 用户上传的头像</span>
+                <span>• 聊天附件文件</span>
+                <span>• 智能体 Logo</span>
+                <span>• 系统设置项</span>
+              </div>
             </div>
+
             <div style={{
-              padding: 12, borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: "0.813rem", color: '#dc2626', lineHeight: 1.6, marginBottom: 16,
+              padding: '10px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
+              fontSize: '0.75rem', color: '#dc2626', lineHeight: 1.6, marginBottom: 16,
             }}>
-              <strong>⚠ 此操作不可撤销！</strong>建议先备份数据库。
+              <strong>⚠ 此操作不可撤销。</strong>建议先备份数据。
             </div>
+
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: "0.75rem", color: '#475569', display: 'block', marginBottom: 6 }}>
-                请输入 「确认初始化」 以继续：
+              <label style={{ fontSize: '0.75rem', color: '#475569', display: 'block', marginBottom: 6 }}>
+                请输入 <strong style={{ color: '#dc2626' }}>确认初始化</strong> 以继续：
               </label>
               <input type="text" value={resetConfirmText}
                 onChange={e => setResetConfirmText(e.target.value)}
                 placeholder="输入「确认初始化」"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: "0.813rem", outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.813rem', outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
-                disabled={resetting} style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
+                disabled={resetting} style={{ fontSize: '0.813rem', padding: '7px 16px' }}>取消</button>
               <button onClick={handleReset}
                 disabled={resetting || resetConfirmText !== '确认初始化'}
-                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: resetConfirmText === '确认初始化' ? '#dc2626' : '#e2e8f0',
                   color: resetConfirmText === '确认初始化' ? 'white' : '#94a3b8',
                   opacity: resetting ? 0.6 : 1 }}>
@@ -861,6 +871,8 @@ function BackupManager() {
           </div>
         </div>
       )}
+
+
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );

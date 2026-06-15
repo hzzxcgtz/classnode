@@ -675,9 +675,26 @@ router.post('/reset', async (req, res) => {
     }
     await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
 
+    // 清空上传文件（头像、聊天附件、智能体 Logo）
+    const uploadsBase = process.env.CLASSNODE_DATA_DIR
+      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
+      : path.join(__dirname, '../../uploads');
+    for (const sub of ['avatars', 'chat', 'logos', 'temp']) {
+      const dir = path.join(uploadsBase, sub);
+      if (fs.existsSync(dir)) {
+        for (const f of fs.readdirSync(dir)) {
+          fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+        }
+      }
+    }
+
+    // 清空屏蔽词相关数据
+    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWarning"`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWord"`);
+
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: '清零失败' });
+    res.status(500).json({ error: '初始化失败' });
   }
 });
 

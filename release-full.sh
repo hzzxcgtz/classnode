@@ -118,13 +118,13 @@ fi
 # ─── 本地构建 macOS ──────────────────────────────────
 if [ "$BUILD_MAC_ARM64" = true ]; then
   section "构建 macOS ARM64"
-  pnpm build:arm64 2>&1 | sed 's/^/  /' || { err "ARM64 构建失败"; exit 1; }
+  pnpm build:mac:arm64 2>&1 | sed 's/^/  /' || { err "ARM64 构建失败"; exit 1; }
   ok "ARM64 构建完成"
 fi
 
 if [ "$BUILD_MAC_INTEL" = true ]; then
   section "构建 macOS Intel"
-  pnpm build:intel 2>&1 | sed 's/^/  /' || { err "Intel 构建失败"; exit 1; }
+  pnpm build:mac:intel 2>&1 | sed 's/^/  /' || { err "Intel 构建失败"; exit 1; }
   ok "Intel 构建完成"
 fi
 

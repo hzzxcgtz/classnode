@@ -27,6 +27,11 @@ router.put('/:key', async (req, res) => {
       update: { value },
       create: { key, value },
     });
+    // 网卡切换时通过 Socket 广播通知所有客户端
+    if (key === 'bind-ip') {
+      const io = req.app.get('io');
+      if (io) io.emit('nic-changed', { ip: value });
+    }
     res.json(setting);
   } catch (error) {
     res.status(500).json({ error: '保存设置失败' });

@@ -56,9 +56,6 @@ export default function TeacherDashboard() {
   useEffect(() => {
     fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
       const ifaces = d.interfaces || [];
-      setAvailableIPs(ifaces);
-      const savedIp = d.selectedIp || '';
-      setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
     }).catch(() => {});
   }, []);
 
@@ -719,9 +716,6 @@ export default function TeacherDashboard() {
                       .then((r) => r.json())
                       .then((d) => {
                         const ifaces = d.interfaces || [];
-                        setAvailableIPs(ifaces);
-                        const savedIp = d.selectedIp || '';
-                        setSelectedIP(savedIp && ifaces.some((i: any) => i.ip === savedIp) ? savedIp : (ifaces.length > 0 ? ifaces[0].ip : ''));
                       })
                       .catch(() => {})
                       .finally(() => setQrCodeClassroom(cr));
@@ -1163,30 +1157,6 @@ export default function TeacherDashboard() {
                       : "")}
                   :{typeof window !== "undefined" ? getClassroomPort() : "3001"}
                 </p>
-                {availableIPs.length > 1 && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>选择网卡</div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {availableIPs.map((iface, i) => (
-                        <div key={i}
-                          onClick={() => {
-                            setSelectedIP(iface.ip);
-                            fetch(`${getApiBaseUrl()}/api/settings/bind-ip`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: iface.ip }) }).catch(() => {});
-                          }}
-                          style={{
-                            flex: 1, padding: '12px 10px', borderRadius: 10,
-                            background: selectedIP === iface.ip ? 'rgba(37,99,235,0.2)' : 'rgba(255,255,255,0.06)',
-                            border: `1.5px solid ${selectedIP === iface.ip ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`,
-                            cursor: 'pointer', textAlign: 'center',
-                            transition: 'all 0.12s',
-                          }}>
-                          <div style={{ fontSize: "0.75rem", color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>{iface.label || iface.name}</div>
-                          <div style={{ fontSize: "0.875rem", fontWeight: 600, color: selectedIP === iface.ip ? '#93c5fd' : 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>{iface.ip}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <div
                   style={{
                     fontSize: "1.375rem",

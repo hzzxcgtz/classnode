@@ -39,15 +39,19 @@ function ClassroomBoardContent() {
   const [teacherCode, setTeacherCode] = useState('');
   const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
-  // 投屏弹窗打开时实时刷新 studentUrl
+  // 投屏弹窗打开时监听 Socket 网卡切换事件
   useEffect(() => {
     if (codeScreenKey > 0) {
-      const t = setInterval(() => {
-        fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
-          if (d.studentUrl) setStudentUrl(d.studentUrl);
-        }).catch(() => {});
-      }, 3000);
-      return () => clearInterval(t);
+      let socket: any = null;
+      import('socket.io-client').then(({ io }) => {
+        socket = io(getApiBaseUrl(), { transports: ['websocket', 'polling'] });
+        socket.on('nic-changed', (data: { ip: string }) => {
+          fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+            if (d.studentUrl) setStudentUrl(d.studentUrl);
+          }).catch(() => {});
+        });
+      });
+      return () => { if (socket) socket.disconnect(); };
     }
   }, [codeScreenKey]);
   // 加载头像 SVG

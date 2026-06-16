@@ -204,6 +204,21 @@ export const api = {
   getWarningsSummary: () =>
     request<{ id: string; title: string; status: string; code: string; className: string; warningCount: number; createdAt: string }[]>('/api/shield/warnings-summary'),
 
+  // Storage stats
+  getStorageStats: () =>
+    request<{
+      avatars: { teacher: { count: number; totalSize: number; totalSizeText: string }; student: { count: number; totalSize: number; totalSizeText: string } };
+      classIcons: { count: number; totalSize: number; totalSizeText: string };
+      agentLogos: { count: number; totalSize: number; totalSizeText: string };
+      classroomAttachments: {
+        totalCount: number;
+        totalSize: number;
+        totalSizeText: string;
+        classrooms: { id: string; title: string | null; status: string; interactionCount: number; totalRounds: number; attachmentCount: number; totalSize: number; totalSizeText: string }[];
+      };
+      agentUsage: { id: string; name: string; platform: string; classroomCount: number; totalCalls: number; totalChars: number }[];
+    }>('/api/system/storage-stats'),
+
   // Changelogs
   getChangelogs: () =>
     request<{ version: string; date: string | null; content: string }[]>('/api/changelogs'),

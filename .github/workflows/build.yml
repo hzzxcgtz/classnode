@@ -155,18 +155,25 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ARCH="${{ matrix.arch }}"
 
-          # Rename NSIS installer
+          # 统一重命名标准：ClassNode_{VERSION}_windows_{ARCH}-setup.exe / .msi
+          # Tauri 输出的原始文件名架构标识不确定（arm64/aarch64 等），
+          # 故不依赖匹配具体架构模式，而是找出所有不带 _windows_ 前缀的文件进行重命名
+
+          # 重命名 NSIS 安装程序
           NSIS_DIR="$BUNDLE_DIR/nsis"
-          NSIS_PATTERN="${{ matrix.arch }}"
-          if ls "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe 1>/dev/null 2>&1; then
-            for f in "$NSIS_DIR"/ClassNode_*_${NSIS_PATTERN}-setup.exe; do
+          if ls "$NSIS_DIR"/ClassNode_*.exe 1>/dev/null 2>&1; then
+            for f in "$NSIS_DIR"/ClassNode_*.exe; do
               base=$(basename "$f")
-              mv "$f" "$NSIS_DIR/ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
-              echo "Renamed: $base → ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
+              target="$NSIS_DIR/ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
+              if [[ "$base" != *"_windows_"* ]]; then
+                rm -f "$target"
+                mv "$f" "$target"
+                echo "Renamed: $base → ClassNode_${VERSION}_windows_${ARCH}-setup.exe"
+              fi
             done
           fi
 
-          # Rename MSI installer if it exists
+          # 重命名 MSI 安装程序
           MSI_DIR="$BUNDLE_DIR/msi"
           if ls "$MSI_DIR"/ClassNode_*.msi 1>/dev/null 2>&1; then
             for f in "$MSI_DIR"/ClassNode_*.msi; do
@@ -176,10 +183,27 @@ jobs:
                 x86)   archSuffix="x86" ;;
                 arm64) archSuffix="arm64" ;;
               esac
-              mv "$f" "$MSI_DIR/ClassNode_${VERSION}_windows_${archSuffix}.msi"
-              echo "Renamed MSI: $base → ClassNode_${VERSION}_windows_${archSuffix}.msi"
+              target="$MSI_DIR/ClassNode_${VERSION}_windows_${archSuffix}.msi"
+              if [[ "$base" != *"_windows_"* ]]; then
+                rm -f "$target"
+                mv "$f" "$target"
+                echo "Renamed MSI: $base → ClassNode_${VERSION}_windows_${archSuffix}.msi"
+              fi
             done
           fi
+
+          # 清理残留：确保没有不带 _windows_ 前缀的旧文件留在构建目录中
+          for dir in "$NSIS_DIR" "$MSI_DIR"; do
+            [ -d "$dir" ] || continue
+            for f in "$dir"/ClassNode_*.exe "$dir"/ClassNode_*.msi; do
+              [ -f "$f" ] || continue
+              base=$(basename "$f")
+              if [[ "$base" != *"_windows_"* ]]; then
+                rm -f "$f"
+                echo "Cleaned up leftover: $base"
+              fi
+            done
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

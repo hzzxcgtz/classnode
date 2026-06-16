@@ -14,11 +14,27 @@ router.get('/', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
     // 手动统计实际学生数（排除 __group__ 虚拟学生）
+    // 预查所有上传图片类型的头像（非纯 SVG 的头像）
+    const allAvatars = await prisma.avatar.findMany({
+      select: { id: true, svgContent: true },
+    });
+    const uploadedAvatarIds = new Set(
+      allAvatars.filter(a => a.svgContent.includes('/uploads/')).map(a => a.id)
+    );
+
     const result = await Promise.all(classes.map(async (c) => {
-      const studentCount = await prisma.student.count({
+      const students = await prisma.student.findMany({
         where: { classId: c.id, OR: [{ tag: null }, { tag: { not: '__group__' } }] },
+        select: { gender: true, avatarId: true, avatarChangeTokens: true },
       });
-      return { ...c, _count: { ...c._count, students: studentCount } };
+      const studentCount = students.length;
+      const maleCount = students.filter(s => s.gender === 'boy').length;
+      const femaleCount = students.filter(s => s.gender === 'girl').length;
+      const avatarAssignedCount = students.filter(s => s.avatarId !== null).length;
+      const rewardedCount = students.filter(s => s.avatarChangeTokens > 0).length;
+      const totalTokens = students.reduce((sum, s) => sum + s.avatarChangeTokens, 0);
+      const uploadedAvatarCount = students.filter(s => s.avatarId !== null && uploadedAvatarIds.has(s.avatarId)).length;
+      return { ...c, _count: { ...c._count, students: studentCount }, maleCount, femaleCount, avatarAssignedCount, rewardedCount, totalTokens, uploadedAvatarCount };
     }));
     res.json(result);
   } catch (error) {

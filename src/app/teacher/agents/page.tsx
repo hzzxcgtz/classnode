@@ -241,7 +241,7 @@ export default function AgentsPage() {
                     ) : agent.lastCheckOk ? (
                       <>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                        <span style={{ fontSize: "0.688rem", color: '#16a34a', fontWeight: 500, whiteSpace: 'nowrap' }}>正常</span>
+                        <span style={{ fontSize: "0.688rem", color: '#16a34a', fontWeight: 500, whiteSpace: 'nowrap' }}>健康</span>
                         <span style={{ fontSize: "0.688rem", color: '#94a3b8', whiteSpace: 'nowrap' }}>
                           {new Date(agent.lastCheckAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </span>

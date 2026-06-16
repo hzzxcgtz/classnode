@@ -20,6 +20,7 @@ import { startAgentChecker } from './services/agent-checker.js';
 import './services/file-logger.js'; // 文件日志（必须在最前面，接管 console）
 import uploadRoutes from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
+import systemRoutes from './routes/system.js';
 import defaultShieldWords from './services/default-shield-words.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -142,6 +143,7 @@ async function main() {
   app.use('/api/changelogs', changelogRoutes);
   app.use('/api/upload', uploadRoutes);
   app.use('/api/avatars', avatarRoutes);
+  app.use("/api/system", systemRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {

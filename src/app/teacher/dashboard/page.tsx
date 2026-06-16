@@ -7,7 +7,7 @@ import {
   classroomModeLabels, classroomModeColors, classroomModeBg,
 } from '@/lib/constants';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 
 // ─── 区块卡片 ──────────────────────────────────────────────
@@ -63,6 +63,28 @@ function ChartTooltip({ active, payload }: any) {
   );
 }
 
+function StackedBarTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const total = payload.reduce((sum: number, p: any) => sum + (p.value || 0), 0);
+  const usageItem = payload.find((p: any) => p.name === '使用次数');
+  return (
+    <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: '#e2e8f0' }}>{payload[0]?.payload?.name}</div>
+      {payload.filter((p: any) => p.name !== '使用次数').map((entry: any, i: number) => (
+        <div key={i} style={{ color: entry.color || '#f1f5f9' }}>
+          {entry.name}: {entry.value}人
+        </div>
+      ))}
+      {usageItem && (
+        <div style={{ color: '#f59e0b' }}>使用次数: {usageItem.value}</div>
+      )}
+      <div style={{ borderTop: '1px solid #334155', marginTop: 3, paddingTop: 3, color: '#f1f5f9' }}>
+        总计: {total}人
+      </div>
+    </div>
+  );
+}
+
 // ─── KPI 卡片 ────────────────────────────────────────────────
 
 function KpiCard({ label, value, color, icon, trend, trendUp }: {
@@ -106,6 +128,27 @@ function KpiCard({ label, value, color, icon, trend, trendUp }: {
   );
 }
 
+// ─── 辅助组件 ──────────────────────────────────────────────
+
+function StatBar({ label, count, size, color }: { label: string; count: number; size: string; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.75rem" }}>
+      <span style={{ color: '#475569' }}>{label}</span>
+      <span><b style={{ color }}>{count}</b> <span style={{ color: '#94a3b8' }}>{size}</span></span>
+    </div>
+  );
+}
+
+function StatBlock({ label, count, size, color }: { label: string; count: number; size: string; color: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: "0.813rem", fontWeight: 700, color }}>{count}</div>
+      <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{size}</div>
+    </div>
+  );
+}
+
 // ─── 主组件 ────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -117,13 +160,14 @@ export default function DashboardPage() {
   const [backups, setBackups] = useState<any[]>([]);
   const [shieldWords, setShieldWords] = useState<any[]>([]);
   const [shieldConfig, setShieldConfig] = useState<any>(null);
+  const [storageStats, setStorageStats] = useState<any>(null);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [a, c, cr, h, b, sw, sconf] = await Promise.all([
+      const [a, c, cr, h, b, sw, sconf, ss] = await Promise.all([
         api.getAgents(),
         api.getClasses(),
         api.getAllClassrooms().catch(() => []),
@@ -131,6 +175,7 @@ export default function DashboardPage() {
         api.getBackups().catch(() => []),
         api.getShieldWords().catch(() => []),
         api.getShieldConfig().catch(() => null),
+        api.getStorageStats().catch(() => null),
       ]);
       setAgents(a || []);
       setClasses(c || []);
@@ -139,6 +184,7 @@ export default function DashboardPage() {
       setBackups(b || []);
       setShieldWords(sw || []);
       setShieldConfig(sconf);
+      setStorageStats(ss);
     } catch {}
     setLoading(false);
   };
@@ -149,6 +195,7 @@ export default function DashboardPage() {
   const agentDisabled = agentTotal - agentEnabled;
   const agentOk = agents.filter(a => a.lastCheckOk === true).length;
   const agentError = agents.filter(a => a.lastCheckAt !== null && a.lastCheckOk === false).length;
+  const agentPending = agentTotal - agentOk - agentError;
   const agentPlatforms = agents.reduce((acc: Record<string, number>, a) => {
     const p = a.platform || 'unknown';
     acc[p] = (acc[p] || 0) + 1;
@@ -165,8 +212,7 @@ export default function DashboardPage() {
     ).length;
     return { id: c.id, name: c.name, usageCount: count };
   });
-  const classByUsage = classUsage.sort((a, b) => b.usageCount - a.usageCount).slice(0, 5);
-  const classMaxUsage = Math.max(...classByUsage.map(c => c.usageCount), 1);
+  const classByUsage = classUsage.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 5);
 
   // ── 课堂 ──
   const classroomTotal = allClassrooms.length;
@@ -246,11 +292,30 @@ export default function DashboardPage() {
     color: classroomModeColors[k] || '#64748b',
   }));
 
-  const classData = classByUsage.map(c => ({
-    name: c.name.length > 6 ? c.name.slice(0, 6) + '…' : c.name,
-    count: c.usageCount,
-    color: ['#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe', '#ddd6fe'][classByUsage.indexOf(c)],
-  }));
+  const stackedClassData = classByUsage.map(c => {
+    const cls = classes.find(cl => cl.id === c.id);
+    const maleCount = cls?.maleCount || 0;
+    const femaleCount = cls?.femaleCount || 0;
+    const unknownCount = Math.max(0, (cls?._count?.students || 0) - maleCount - femaleCount);
+    return {
+      name: c.name.length > 6 ? c.name.slice(0, 6) + '…' : c.name,
+      usageCount: c.usageCount,
+      maleCount,
+      femaleCount,
+      unknownCount,
+    };
+  });
+
+  // ── 头像 ──
+  const classAvatarData = [...classes]
+    .sort((a, b) => (b.uploadedAvatarCount || 0) - (a.uploadedAvatarCount || 0))
+    .slice(0, 5)
+    .map(c => ({
+      name: c.name.length > 8 ? c.name.slice(0, 8) + '…' : c.name,
+      total: c._count?.students || 0,
+      uploadedAvatar: c.uploadedAvatarCount || 0,
+      remainingTokens: c.totalTokens || 0,
+    }));
 
   const statusData = [
     { name: '进行中', value: classroomActive, color: '#10b981' },
@@ -292,7 +357,7 @@ export default function DashboardPage() {
           label="AI 智能体"
           value={`${agentEnabled}/${agentTotal}`}
           color="#2563eb"
-          trend={agentError > 0 ? `${agentError} 个异常` : '全部正常'}
+          trend={agentError > 0 ? `${agentError} 个异常` : '全部健康'}
           trendUp={agentError === 0}
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>}
         />
@@ -355,75 +420,159 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {/* 健康状态 — 环形图 */}
-              {(agentOk > 0 || agentError > 0) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ position: 'relative', width: 100, height: 100, flexShrink: 0 }}>
-                    <ResponsiveContainer width={100} height={100}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            ...(agentOk > 0 ? [{ name: '正常', value: agentOk, color: '#22c55e' }] : []),
-                            ...(agentError > 0 ? [{ name: '异常', value: agentError, color: '#ef4444' }] : []),
-                          ]}
-                          cx="50%" cy="50%"
-                          innerRadius={32} outerRadius={46}
-                          dataKey="value"
-                          startAngle={90} endAngle={-270}
-                          stroke="none"
-                        >
-                          {agentOk > 0 && <Cell fill="#22c55e" />}
-                          {agentError > 0 && <Cell fill="#ef4444" />}
-                        </Pie>
-                        <Tooltip content={<ChartTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
-                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>{agentTotal}</div>
-                      <div style={{ fontSize: "0.625rem", color: '#94a3b8' }}>总计</div>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.75rem" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                      <span style={{ color: '#64748b', flex: 1 }}>正常</span>
-                      <span style={{ fontWeight: 600, color: '#16a34a', fontSize: "0.875rem" }}>{agentOk}</span>
-                      <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
-                        {agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0}%
-                      </span>
-                    </div>
-                    {agentError > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.75rem" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
-                        <span style={{ color: '#64748b', flex: 1 }}>异常</span>
-                        <span style={{ fontWeight: 600, color: '#dc2626', fontSize: "0.875rem" }}>{agentError}</span>
-                        <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
-                          {agentTotal > 0 ? Math.round((agentError / agentTotal) * 100) : 0}%
+              {/* 健康度 & 接入方式 — 双环形图 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {/* 健康度 */}
+                <div>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>智能体健康度</div>
+                  {agentTotal > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ width: '100%', height: 10, background: '#e2e8f0', borderRadius: 5, overflow: 'hidden', display: 'flex' }}>
+                        {agentError === 0 && agentPending === 0 ? (
+                          <div style={{ width: '100%', height: '100%', background: '#22c55e', borderRadius: 5 }} />
+                        ) : (
+                          <>
+                            {agentOk > 0 && (
+                              <div style={{ width: `${(agentOk / agentTotal) * 100}%`, height: '100%', background: '#22c55e', borderRadius: '5px 0 0 5px', transition: 'width 0.4s' }} />
+                            )}
+                            {agentError > 0 && (
+                              <div style={{ width: `${(agentError / agentTotal) * 100}%`, height: '100%', background: '#ef4444', borderRadius: agentPending > 0 ? '0' : '0 5px 5px 0', transition: 'width 0.4s' }} />
+                            )}
+                            {agentPending > 0 && (
+                              <div style={{ flex: 1, height: '100%', background: '#d1d5db', borderRadius: '0 5px 5px 0' }} />
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, fontSize: "0.688rem" }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                          <span style={{ color: '#475569' }}>健康</span>
+                          <b style={{ color: '#16a34a' }}>{agentOk}</b>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                          <span style={{ color: '#475569' }}>异常</span>
+                          <b style={{ color: agentError === 0 ? '#94a3b8' : '#dc2626' }}>{agentError}</b>
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
+                          <span style={{ color: '#475569' }}>未检测</span>
+                          <b style={{ color: agentPending === 0 ? '#94a3b8' : '#94a3b8' }}>{agentPending}</b>
                         </span>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
+                  )}
                 </div>
-              )}
 
-              {/* 接入方式分布 */}
-              {platformData.length > 0 && (
+                {/* 接入方式分布 */}
+                <div>
+                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>接入方式分布</div>
+                  {platformData.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                        <ResponsiveContainer width={80} height={80}>
+                          <PieChart>
+                            <Pie
+                              data={platformData}
+                              cx="50%" cy="50%"
+                              innerRadius={24} outerRadius={36}
+                              dataKey="count"
+                              startAngle={90} endAngle={-270}
+                              stroke="none"
+                            >
+                              {platformData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<ChartTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {platformData.map(s => (
+                          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                            <span style={{ color: '#64748b', flex: 1 }}>{s.name}</span>
+                            <span style={{ fontWeight: 600, color: s.color }}>
+                              {agentTotal > 0 ? Math.round((s.count / agentTotal) * 100) : 0}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
+                  )}
+                </div>
+              </div>
+
+              {/* 智能体使用率 */}
+              {storageStats?.agentUsage?.length > 0 && (
                 <div>
                   <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                    接入方式分布
+                    智能体使用率
                   </div>
-                  <ResponsiveContainer width="100%" height={platformData.length * 28 + 8}>
-                    <BarChart data={platformData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={90} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                      <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={10}>
-                        {platformData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0' }}>智能体名称</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>状态</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>被引用数</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                            调用次数
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <polyline points="19 12 12 19 5 12" />
+                            </svg>
+                          </span>
+                        </th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>总字数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storageStats.agentUsage.slice(0, 5).map((a: any) => {
+                        const agentInfo = agents.find(ag => ag.id === a.id);
+                        const isEnabled = agentInfo?.enabled !== false;
+                        const isHealthy = agentInfo?.lastCheckOk === true;
+                        const isError = agentInfo?.lastCheckAt !== null && agentInfo?.lastCheckOk === false;
+                        let statusLabel = '停用';
+                        let statusColor = '#94a3b8';
+                        let statusBg = '#f1f5f9';
+                        if (isEnabled && agentInfo?.lastCheckAt === null) {
+                          statusLabel = '未检测';
+                          statusColor = '#94a3b8';
+                          statusBg = '#f1f5f9';
+                        } else if (isEnabled && isHealthy) {
+                          statusLabel = '健康';
+                          statusColor = '#16a34a';
+                          statusBg = '#f0fdf4';
+                        } else if (isEnabled && isError) {
+                          statusLabel = '异常';
+                          statusColor = '#dc2626';
+                          statusBg = '#fef2f2';
+                        }
+                        return (
+                        <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '5px 4px', color: '#0f172a', fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.name}
+                          </td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center' }}>
+                            <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 4, fontSize: "0.625rem", background: statusBg, color: statusColor }}>
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#475569' }}>{a.classroomCount}</td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>{a.totalCalls}</td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#94a3b8' }}>{formatChars(a.totalChars)}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -460,65 +609,157 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-              {/* 状态分布 — 环形图 */}
-              {statusData.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ position: 'relative', width: 100, height: 100, flexShrink: 0 }}>
-                    <ResponsiveContainer width={100} height={100}>
-                      <PieChart>
-                        <Pie
-                          data={statusData}
-                          cx="50%" cy="50%"
-                          innerRadius={32} outerRadius={46}
-                          dataKey="value"
-                          startAngle={90} endAngle={-270}
-                          stroke="none"
-                        >
-                          {statusData.map((entry, i) => (
-                            <Cell key={i} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<ChartTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
-                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>{classroomTotal}</div>
-                      <div style={{ fontSize: "0.625rem", color: '#94a3b8' }}>总计</div>
+              {/* 双环形图：模式占比 + 课堂附件空间占比 */}
+              {modeData.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {/* 模式占比 */}
+                  <div>
+                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>模式占比</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                        <ResponsiveContainer width={80} height={80}>
+                          <PieChart>
+                            <Pie
+                              data={modeData}
+                              cx="50%" cy="50%"
+                              innerRadius={24} outerRadius={36}
+                              dataKey="count"
+                              startAngle={90} endAngle={-270}
+                              stroke="none"
+                            >
+                              {modeData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<ChartTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {modeData.map(s => (
+                          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                            <span style={{ color: '#64748b', flex: 1 }}>{s.name}</span>
+                            <span style={{ fontWeight: 600, color: s.color }}>
+                              {classroomTotal > 0 ? Math.round((s.count / classroomTotal) * 100) : 0}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {statusData.map(s => (
-                      <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.75rem" }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                        <span style={{ color: '#64748b', flex: 1 }}>{s.name}</span>
-                        <span style={{ fontWeight: 600, color: s.color, fontSize: "0.875rem" }}>{s.value}</span>
-                        <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
-                          {classroomTotal > 0 ? Math.round((s.value / classroomTotal) * 100) : 0}%
-                        </span>
-                      </div>
-                    ))}
+
+                  {/* 空间占比 */}
+                  <div>
+                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>空间占比</div>
+                    {(() => {
+                      const spaceColors = ['#6366f1', '#8b5cf6', '#a78bfa', '#94a3b8'];
+                      const allClassrooms = storageStats?.classroomAttachments?.classrooms || [];
+                      const sorted = [...allClassrooms].sort((a: any, b: any) => b.totalSize - a.totalSize);
+                      const top3 = sorted.slice(0, 3).filter((cr: any) => cr.totalSize > 0);
+                      const others = sorted.slice(3).reduce((sum: number, cr: any) => sum + cr.totalSize, 0);
+                      const totalSize = sorted.reduce((sum: number, cr: any) => sum + cr.totalSize, 0);
+                      const spaceData = top3.map((cr: any, i: number) => ({
+                        name: cr.title || '(未命名)',
+                        value: totalSize > 0 ? cr.totalSize : 0,
+                        color: spaceColors[i],
+                      }));
+                      if (others > 0) spaceData.push({ name: '其它', value: others, color: spaceColors[3] });
+                      return spaceData.length > 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                            <ResponsiveContainer width={80} height={80}>
+                              <PieChart>
+                                <Pie
+                                  data={spaceData}
+                                  cx="50%" cy="50%"
+                                  innerRadius={24} outerRadius={36}
+                                  dataKey="value"
+                                  startAngle={90} endAngle={-270}
+                                  stroke="none"
+                                >
+                                  {spaceData.map((entry, i) => (
+                                    <Cell key={i} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip content={<ChartTooltip />} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {spaceData.map((s: any) => (
+                              <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.688rem" }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                                  <span style={{ color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>{s.name}</span>
+                                </span>
+                                <span style={{ fontWeight: 600, color: s.name === '其它' ? '#94a3b8' : s.color }}>
+                                  {totalSize > 0 ? Math.round((s.value / totalSize) * 100) : 0}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
 
-              {/* 模式分布 */}
-              {modeData.length > 0 && (
+              {/* 课堂空间占用量 */}
+              {storageStats?.classroomAttachments?.classrooms?.filter((cr: any) => cr.attachmentCount > 0).length > 0 && (
                 <div>
                   <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                    课堂模式分布
+                    课堂空间占用量
                   </div>
-                  <ResponsiveContainer width="100%" height={modeData.length * 28 + 8}>
-                    <BarChart data={modeData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={56} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                      <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={10}>
-                        {modeData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', width: 6 }}>#</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0' }}>课堂名称</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>状态</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>附件数</th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                            占用空间
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <polyline points="19 12 12 19 5 12" />
+                            </svg>
+                          </span>
+                        </th>
+                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>对话轮数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...storageStats.classroomAttachments.classrooms]
+                        .filter((cr: any) => cr.attachmentCount > 0)
+                        .sort((a: any, b: any) => b.totalSize - a.totalSize)
+                        .slice(0, 5)
+                        .map((cr: any, i: number) => (
+                        <tr key={cr.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '5px 4px', color: '#94a3b8', textAlign: 'center' }}>{i + 1}</td>
+                          <td style={{ padding: '5px 4px', color: '#0f172a', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {cr.title || '(未命名)'}
+                          </td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center' }}>
+                            <span style={{
+                              display: 'inline-block', padding: '1px 5px', borderRadius: 4, fontSize: "0.625rem",
+                              background: cr.status === 'active' ? '#dcfce7' : cr.status === 'ended' ? '#f1f5f9' : '#fef3c7',
+                              color: cr.status === 'active' ? '#16a34a' : cr.status === 'ended' ? '#94a3b8' : '#d97706',
+                            }}>
+                              {cr.status === 'active' ? '进行中' : cr.status === 'ended' ? '已结束' : '已暂停'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{cr.attachmentCount}</td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#64748b' }}>{cr.totalSizeText}</td>
+                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#64748b' }}>{cr.totalRounds}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -557,26 +798,76 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {/* 最常用班级 */}
-              {classData.length > 0 && (
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                    最常用班级
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {/* 左: 最常用班级 */}
+                {stackedClassData.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                      最常用班级
+                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <ComposedChart data={stackedClassData} margin={{ top: 0, right: 10, bottom: 0, left: 10 }}>
+                        <XAxis dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} axisLine={false} tickLine={false} />
+                        <YAxis hide />
+                        <Tooltip content={<StackedBarTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                        <Bar dataKey="unknownCount" stackId="gender" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={24} name="未设置" />
+                        <Bar dataKey="femaleCount" stackId="gender" fill="#f472b6" barSize={24} name="女生" />
+                        <Bar dataKey="maleCount" stackId="gender" fill="#6366f1" barSize={24} name="男生" />
+                        <Line type="monotone" dataKey="usageCount" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: '#f59e0b' }} name="使用次数" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    <div style={{ display: 'flex', gap: 14, fontSize: "0.688rem", marginTop: 6, justifyContent: 'center' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', flexShrink: 0 }} />
+                        <span style={{ color: '#475569' }}>男生</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f472b6', flexShrink: 0 }} />
+                        <span style={{ color: '#475569' }}>女生</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', flexShrink: 0 }} />
+                        <span style={{ color: '#94a3b8' }}>未设置</span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ width: 12, height: 2, background: '#f59e0b', flexShrink: 0, borderRadius: 1 }} />
+                        <span style={{ color: '#475569' }}>使用次数</span>
+                      </span>
+                    </div>
                   </div>
-                  <ResponsiveContainer width="100%" height={classData.length * 28 + 8}>
-                    <BarChart data={classData} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} width={40} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                      <Bar dataKey="count" radius={[0, 3, 3, 0]} barSize={10}>
-                        {classData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
+                )}
+
+                {/* 右: 头像分配概况 */}
+                {classAvatarData.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                      头像分配概况
+                    </div>
+                    <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ color: '#94a3b8' }}>
+                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0' }}>班级</th>
+                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>人数</th>
+                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>个性化头像</th>
+                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>剩奖励次数</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {classAvatarData.map(c => (
+                          <tr key={c.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '5px 4px', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>
+                              {c.name}
+                            </td>
+                            <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{c.total}</td>
+                            <td style={{ padding: '5px 4px', textAlign: 'center', color: c.uploadedAvatar > 0 ? '#6366f1' : '#94a3b8' }}>{c.uploadedAvatar}</td>
+                            <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: c.remainingTokens > 0 ? '#10b981' : '#94a3b8' }}>{c.remainingTokens}</td>
+                          </tr>
                         ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </SectionCard>

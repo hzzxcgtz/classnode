@@ -668,7 +668,7 @@ export default function ClassesPage() {
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
-                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); loadClasses(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         删除学生
                       </button>
@@ -722,7 +722,7 @@ export default function ClassesPage() {
                   borderBottom: '1px solid #eef2f6',
                 }}>
                   <AddStudentForm classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => loadStudents()} />
+                    onAdded={() => { loadStudents(); loadClasses(); }} />
                 </div>
               )}
               {addStudentMode === 'paste' && (
@@ -731,7 +731,7 @@ export default function ClassesPage() {
                   borderBottom: '1px solid #eef2f6',
                 }}>
                   <PasteStudentNames classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => { setAddStudentMode(null); loadStudents(); }} setToast={setToast} />
+                    onAdded={() => { setAddStudentMode(null); loadStudents(); loadClasses(); }} setToast={setToast} />
                 </div>
               )}
 
@@ -946,6 +946,7 @@ export default function ClassesPage() {
                                   if (confirm(`确定删除 ${s.name}？`)) {
                                     await api.deleteStudent(selectedClass, s.id);
                                     loadStudents();
+                                    loadClasses();
                                   }
                                 }}
                                 style={{

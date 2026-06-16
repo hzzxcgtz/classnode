@@ -68,11 +68,10 @@
 ## 发行版 — Windows（GitHub Actions CI）
 
 ```bash
-./dev.sh ci               # Windows x64 + x86 + arm64
+./dev.sh ci               # Windows x64 + arm64
 ./dev.sh ci x64           # 仅 Windows x64
-./dev.sh ci x86           # 仅 Windows x86
 ./dev.sh ci arm64         # 仅 Windows arm64
-./dev.sh ci both          # Windows x64 + x86
+./dev.sh ci both          # 仅 Windows x64
 ```
 
 ---
@@ -82,12 +81,12 @@
 一键完成：本地 macOS（ARM64+Intel）+ CI Windows 全部架构，汇总到同一目录。
 
 ```bash
-./dev.sh release:full     # 完整的五个平台的全流程操作
+./dev.sh release:full     # 完整的四个平台的全流程操作
 
 # Windows 远程构建（仅触发 CI，不下载不上传）
 ./dev.sh release          # Windows x64
-./dev.sh release both     # Windows x86 + x64
-./dev.sh release all      # Windows x86 + x64 + ARM64
+./dev.sh release both     # 仅 Windows x64
+./dev.sh release all      # Windows x64 + ARM64
 ```
 
 流程：
@@ -143,11 +142,10 @@
 ```
 1. ./dev.sh version:bump patch   # 升版本，自动 commit
 2. git push                      # 推送 GitHub
-3. ./dev.sh release:full         # 全平台构建（5 个架构）
+3. ./dev.sh release:full         # 全平台构建（4 个架构）
    ├── macOS ARM64  ← 本地
    ├── macOS Intel  ← 本地
    ├── Windows x64  ← CI
-   ├── Windows x86  ← CI
    └── Windows arm64 ← CI
 4. ./upload-dist.sh              # 上传网盘
 ```

@@ -2,11 +2,11 @@
 # ClassNode - 全平台构建
 # 用法: ./release-full.sh [模式]
 #   模式:
-#     空        全平台: macOS ARM64+Intel + Windows x64+x86+arm64
+#     空        全平台: macOS ARM64+Intel + Windows x64+arm64
 #     mac       仅 macOS (ARM64+Intel)
 #     arm64 仅 macOS ARM64
 #     intel 仅 macOS Intel
-#     win       macOS + Windows x64+x86+arm64（同默认）
+#     win       macOS + Windows x64+arm64（同默认）
 
 # ─── ANSI Colors ──────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -43,8 +43,8 @@ DO_CI=false
 case "$MODE" in
   full)
     BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=true
-    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + x86 + arm64"
-    MODE_LABEL="全平台（5 个架构）" ;;
+    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + arm64"
+    MODE_LABEL="全平台（4 个架构）" ;;
   mac)
     BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=false
     MAC_LABEL="ARM64 + Intel"; CI_LABEL="无"
@@ -59,8 +59,8 @@ case "$MODE" in
     MODE_LABEL="仅 macOS Intel" ;;
   win)
     BUILD_MAC_ARM64=true; BUILD_MAC_INTEL=true; DO_CI=true
-    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + x86 + arm64"
-    MODE_LABEL="全平台（5 个架构）" ;;
+    MAC_LABEL="ARM64 + Intel"; CI_LABEL="x64 + arm64"
+    MODE_LABEL="全平台（4 个架构）" ;;
   --help|-h)
     echo "用法: $0 [模式]"
     echo ""

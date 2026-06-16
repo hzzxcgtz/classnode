@@ -60,6 +60,9 @@ async function getInstanceId(prisma: PrismaClient): Promise<string> {
  * 发送匿名心跳
  */
 export async function sendPing(prisma: PrismaClient): Promise<void> {
+  // 开发环境不发送统计
+  if (process.env.NODE_ENV === 'development') return;
+
   try {
     const version = getVersion();
     const instanceId = await getInstanceId(prisma);
@@ -70,12 +73,17 @@ export async function sendPing(prisma: PrismaClient): Promise<void> {
     url.searchParams.set('arch', process.arch);
     url.searchParams.set('id', instanceId);
 
-    // 附加使用规模数据（非精确，仅作参考）
+    // 附加智能体配置数据（记录用户接入的平台和数量）
     try {
-      const classCount = await prisma.class.count();
-      const studentCount = await prisma.student.count();
-      url.searchParams.set('classes', String(classCount));
-      url.searchParams.set('students', String(studentCount));
+      const agents = await prisma.agent.findMany();
+      const agentCoze = agents.filter(a => a.platform === 'coze').length;
+      const agentCozeAgent = agents.filter(a => a.platform === 'coze-agent').length;
+      const agentZhipuai = agents.filter(a => a.platform === 'zhipuai').length;
+      const agentWenxin = agents.filter(a => a.platform === 'wenxin').length;
+      url.searchParams.set('agent_coze', String(agentCoze));
+      url.searchParams.set('agent_coze_agent', String(agentCozeAgent));
+      url.searchParams.set('agent_zhipuai', String(agentZhipuai));
+      url.searchParams.set('agent_wenxin', String(agentWenxin));
     } catch { /* 数据库未就绪时不发送 */ }
 
     const controller = new AbortController();

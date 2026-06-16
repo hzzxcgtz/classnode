@@ -1,7 +1,7 @@
 #!/bin/zsh
 # ClassNode - 触发 GitHub Actions 构建 Windows 安装包，生成 draft release
 # 用法: ./build-release.sh [架构]
-#   架构: all（默认，x64+x86+arm64）, both, x64, x86, arm64
+#   架构: all（默认，x64+arm64）, both, x64, arm64
 
 # ─── ANSI Colors ──────────────────────────────────────
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -24,20 +24,19 @@ BRANCH="main"
 ARCH="${1:-all}"
 
 case "$ARCH" in
-  all|both|x64|x86|arm64) ;;
+  all|both|x64|arm64) ;;
   --help|-h)
     echo "用法: $0 [架构]"
     echo ""
     echo "架构:"
-    echo "  all      x64 + x86 + arm64（默认）"
-    echo "  both     x64 + x86"
+    echo "  all      x64 + arm64（默认）"
+    echo "  both     仅 x64"
     echo "  x64      仅 x64"
-    echo "  x86      仅 x86"
     echo "  arm64    仅 arm64"
     exit 0 ;;
   *)
     err "未知架构: $1"
-    dim "可用: all, both, x64, x86, arm64"
+    dim "可用: all, both, x64, arm64"
     exit 1 ;;
 esac
 
@@ -45,10 +44,9 @@ esac
 gh auth status &>/dev/null || { err "请先执行: ${BOLD}gh auth login${NC}"; exit 1; }
 
 # ─── 确认信息 ─────────────────────────────────────────
-ARCH_LABEL="x64 + x86 + arm64"
-[ "$ARCH" = "both" ] && ARCH_LABEL="x64 + x86"
+ARCH_LABEL="x64 + arm64"
+[ "$ARCH" = "both" ] && ARCH_LABEL="仅 x64"
 [ "$ARCH" = "x64" ] && ARCH_LABEL="仅 x64"
-[ "$ARCH" = "x86" ] && ARCH_LABEL="仅 x86"
 [ "$ARCH" = "arm64" ] && ARCH_LABEL="仅 arm64"
 
 echo ""

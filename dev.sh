@@ -75,7 +75,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "r all" "macOS 双架构 + 源码包"
   printf "    ${CYAN}%-28s${NC} %s\n" "release [x64|both|all]" "Windows 远程构建（默认 x64）"
   printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建（macOS + Windows CI + 下载 + 源码包）"
-  printf "    ${CYAN}%-28s${NC} %s\n" "ci [x64|x86|arm64|both]" "Windows CI 构建（默认全架构）"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ci [x64|arm64|both]" "Windows CI 构建（默认全架构）"
   log ""
 
   log "  ${BOLD}Git 快捷${NC}"

@@ -71,7 +71,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
-        run: cd server && npx prisma generate
+        # 使用项目本地 Prisma（在 pnpm monorepo 中，npx 找不到 server/ 下的 bin）
+        run: pnpm --filter classnode-server db:generate
 
       - name: Build frontend
         run: pnpm build

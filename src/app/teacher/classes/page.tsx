@@ -111,10 +111,11 @@ export default function ClassesPage() {
 
   const handleCreateClass = async () => {
     if (!newClassName) return;
-    await api.createClass(newClassName, newClassAvatarId || undefined);
+    const newClass = await api.createClass(newClassName, newClassAvatarId || undefined);
     setNewClassName('');
     setNewClassAvatarId(null);
     setShowCreate(false);
+    setSelectedClass(newClass.id);
     loadClasses();
   };
 

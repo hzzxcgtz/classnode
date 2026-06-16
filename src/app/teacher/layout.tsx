@@ -8,7 +8,7 @@ import { APP_VERSION } from '@/lib/version';
 import { FieldError, Toast } from '@/lib/components';
 
 const SESSION_KEY = 'teacher_session';
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 天
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 小时
 
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
@@ -70,6 +70,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [dismissedAgents, setDismissedAgents] = useState<string[]>([]);
   const dismissedRef = useRef<string[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -142,6 +143,22 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // 侧边栏折叠状态持久化
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('teacher_sidebar_collapsed');
+      if (saved === 'true') setSidebarCollapsed(true);
+    } catch {}
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('teacher_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   // 智能体异常时弹出底部 Toast
   useEffect(() => {
@@ -307,63 +324,78 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   }
 
   // 已认证 — 正常显示
+  const iconSize = sidebarCollapsed ? 22 : 18;
   return (
     <div className="teacher-layout">
       <nav style={{
-        width: 240, background: '#ffffff',
+        width: sidebarCollapsed ? 68 : 220, background: '#ffffff',
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
-        padding: '24px 14px', position: 'fixed',
+        padding: sidebarCollapsed ? '24px 4px' : '24px 12px', position: 'fixed',
         top: 0, left: 0, bottom: 0, zIndex: 50,
+        transition: 'width 0.2s ease',
+        overflow: 'hidden',
       }}>
         {/* 品牌标识 */}
-        <div style={{ marginBottom: 28, paddingLeft: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginBottom: 24, textAlign: sidebarCollapsed ? 'center' : undefined }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: sidebarCollapsed ? 'center' : undefined }}>
             {logoErr ? (
-              <div style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "1.125rem" }}>C</div>
+              <div style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>C</div>
             ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+              <img src="/logo.png" alt="ClassNode" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>AI 互动课堂系统</span>
-                <span style={{
-                  fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
-                  borderRadius: 100, background: 'rgba(79,70,229,0.08)', color: '#6366f1',
-                  border: '1px solid rgba(79,70,229,0.15)',
-                }}>v{APP_VERSION}</span>
+            {!sidebarCollapsed && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                  <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>AI 互动课堂系统</span>
+                  <span style={{
+                    fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
+                    borderRadius: 100, background: 'rgba(79,70,229,0.08)', color: '#6366f1',
+                    border: '1px solid rgba(79,70,229,0.15)',
+                  }}>v{APP_VERSION}</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* 服务状态 */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 12px', marginBottom: 24,
-          background: serverOnline ? '#f0fdf4' : '#fef2f2',
-          borderRadius: 8, fontSize: "0.75rem",
-        }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: serverOnline ? '#22c55e' : '#ef4444',
-            boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
-            flexShrink: 0,
-          }} />
-          <span style={{ color: serverOnline ? '#16a34a' : '#dc2626' }}>
-            服务{serverOnline ? '运行中' : '已断开'}
-          </span>
-        </div>
+        {sidebarCollapsed ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+            <span title={serverOnline ? '服务运行中' : '服务已断开'} style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: serverOnline ? '#22c55e' : '#ef4444',
+              boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+            }} />
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 12px', marginBottom: 24,
+            background: serverOnline ? '#f0fdf4' : '#fef2f2',
+            borderRadius: 8, fontSize: "0.75rem",
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: serverOnline ? '#22c55e' : '#ef4444',
+              boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+              flexShrink: 0,
+            }} />
+            <span style={{ color: serverOnline ? '#16a34a' : '#dc2626' }}>
+              服务{serverOnline ? '运行中' : '已断开'}
+            </span>
+          </div>
+        )}
 
         {/* 导航标题 */}
-        <div style={{
+        {!sidebarCollapsed && <div style={{
           fontSize: "0.625rem", fontWeight: 600, color: '#94a3b8',
           letterSpacing: 0.8, textTransform: 'uppercase',
           marginBottom: 6, paddingLeft: 12,
         }}>
           导航菜单
-        </div>
+        </div>}
 
         {/* 导航项 */}
         {navItems.map(item => {
@@ -375,11 +407,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
+              title={sidebarCollapsed ? item.label : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 12px', borderRadius: 8, width: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,
+                gap: 10,
+                padding: sidebarCollapsed ? '10px 0' : '9px 12px', borderRadius: 8, width: '100%',
                 border: 'none', cursor: 'pointer', textAlign: 'left',
-                fontSize: "0.813rem", fontWeight: isActive ? 600 : 400,
+                fontSize: "0.875rem", fontWeight: isActive ? 600 : 400,
                 color: isActive ? '#2563eb' : '#475569',
                 background: isActive ? '#eef2ff' : 'transparent',
                 position: 'relative', marginBottom: 2,
@@ -404,7 +438,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               )}
               <span style={{ flexShrink: 0, display: 'flex' }}>
                 {item.icon === 'dashboard' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="7" height="7" rx="1" />
                     <rect x="14" y="3" width="7" height="7" rx="1" />
                     <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -412,7 +446,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'bot' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="4" y="4" width="16" height="16" rx="3" />
                     <path d="M9 12h6" />
                     <path d="M12 9v6" />
@@ -423,7 +457,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'users' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                     <circle cx="9" cy="7" r="4" />
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -431,7 +465,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'gauge' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 2a10 10 0 1 0 10 10" />
                     <path d="M12 12l4-4" />
                     <path d="M12 8v4" />
@@ -439,38 +473,38 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'avatar' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                     <circle cx="12" cy="7" r="4"/>
                     <path d="M18 8l2 2 4-4"/>
                   </svg>
                 )}
                 {item.icon === 'clock' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
                 )}
                 {item.icon === 'info' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="16" x2="12" y2="12" />
                     <line x1="12" y1="8" x2="12.01" y2="8" />
                   </svg>
                 )}
                 {item.icon === 'book' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
                     <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
                   </svg>
                 )}
                 {item.icon === 'shield' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                   </svg>
                 )}
               </span>
-              <span>{item.label}</span>
+              {!sidebarCollapsed && <span>{item.label}</span>}
             </button>
           );
         })}
@@ -483,11 +517,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           }}>
             <button
               onClick={() => setShowChangePwd(true)}
+              title={sidebarCollapsed ? '修改密码' : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 12px', borderRadius: 8, width: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,
+                gap: 10,
+                padding: sidebarCollapsed ? '8px 0' : '8px 12px', borderRadius: 8, width: '100%',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: "0.813rem", color: '#94a3b8', textAlign: 'left',
+                fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#475569'; }}
@@ -497,15 +533,17 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
-              <span>修改密码</span>
+              {!sidebarCollapsed && <span>修改密码</span>}
             </button>
             <button
               onClick={handleLogout}
+              title={sidebarCollapsed ? '退出登录' : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 12px', borderRadius: 8, width: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,
+                gap: 10,
+                padding: sidebarCollapsed ? '8px 0' : '8px 12px', borderRadius: 8, width: '100%',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: "0.813rem", color: '#94a3b8', textAlign: 'left',
+                fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
               onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
@@ -516,19 +554,56 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              <span>退出登录</span>
+              {!sidebarCollapsed && <span>退出登录</span>}
             </button>
-            <div style={{
+            {!sidebarCollapsed && <div style={{
               fontSize: "0.688rem", color: '#cbd5e1',
               padding: '10px 12px 0',
             }}>
               v{APP_VERSION}
-            </div>
+            </div>}
           </div>
         </div>
       </nav>
 
-      <main className="teacher-main">
+      {/* 折叠/展开按钮 — 侧边突起 */}
+      <button
+        onClick={toggleSidebar}
+        title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
+        style={{
+          position: 'fixed',
+          left: sidebarCollapsed ? 68 : 220,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 20,
+          height: 52,
+          borderRadius: '0 8px 8px 0',
+          background: '#fff',
+          border: '1px solid #e2e8f0',
+          borderLeft: 'none',
+          cursor: 'pointer',
+          zIndex: 51,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+          color: '#94a3b8',
+          transition: 'left 0.2s ease, color 0.15s, background 0.15s',
+          boxShadow: '2px 0 6px rgba(0,0,0,0.04)',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#f8faff'; }}
+        onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = '#fff'; }}
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+
+      <main className="teacher-main" style={{
+        marginLeft: sidebarCollapsed ? 68 : 220,
+        maxWidth: sidebarCollapsed ? `min(calc(100vw - 68px), 1464px)` : undefined,
+        transition: 'margin-left 0.2s ease',
+      }}>
         {children}
       </main>
 

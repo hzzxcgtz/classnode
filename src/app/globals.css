@@ -51,9 +51,9 @@ html, body {
 
 .teacher-main {
   flex: 1;
-  margin-left: 240px;
+  margin-left: 220px;
   padding: clamp(24px, 2.5vw, 48px);
-  max-width: min(calc(100vw - 240px), 1464px);
+  max-width: min(calc(100vw - 220px), 1484px);
   display: flex;
   flex-direction: column;
   min-height: 0;

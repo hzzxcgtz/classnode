@@ -107,6 +107,10 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "start / run" "运行 node start.js"
   printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip)"
   printf "    ${CYAN}%-28s${NC} %s\n" "speedtest" "测试 GitHub 下载速度"
+  log ""
+  log "  ${BOLD}统计服务${NC}"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ping:deploy" "上传统计服务文件到服务器"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ping:restart" "重启服务器上的统计服务"
   printf "    ${CYAN}%-28s${NC} %s\n" "help" "显示本帮助"
   log ""
 }
@@ -660,6 +664,28 @@ cmd_speedtest() {
 
 # ─── 数据库操作 ───────────────────────────────────────
 
+# ─── 统计服务 ───────────────────────────────────────────
+
+PING_SERVER="root@hzzxcgtz.51vip.biz"
+PING_DIR="/opt/classnode"
+
+cmd_ping_deploy() {
+  log_info "上传统计服务文件到 ${CYAN}$PING_SERVER${NC} ..."
+  scp "$ROOT/server/ping-server.py" "$ROOT/server/dashboard.html" "$PING_SERVER:$PING_DIR/"
+  log_ok "上传完成"
+  log_info "执行 ${CYAN}./dev.sh ping:restart${NC} 重启服务"
+}
+
+cmd_ping_restart() {
+  log_info "重启服务器上的统计服务..."
+  ssh "$PING_SERVER" "systemctl restart classnode-ping"
+  log_ok "已重启"
+  sleep 1
+  ssh "$PING_SERVER" "systemctl status classnode-ping --no-pager -l" | head -5
+}
+
+# ─── 数据库操作 ───────────────────────────────────────
+
 cmd_reset_db() {
   log_section "重置数据库"
   log_warn "将删除现有数据库！"
@@ -710,6 +736,8 @@ case "${1:-help}" in
   release:full)                    shift; bash release-full.sh "$@" ;;
   build:ci)                        shift; bash build-release.sh "$@" ;;
   lint)                            cmd_lint ;;
+  ping:deploy)                     cmd_ping_deploy ;;
+  ping:restart)                    cmd_ping_restart ;;
   clean)                           cmd_clean ;;
   clean:all)                       cmd_clean_all ;;
   fresh)                           cmd_fresh ;;

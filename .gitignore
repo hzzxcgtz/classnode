@@ -55,8 +55,9 @@ src-tauri/target/
 server/backups/
 server/uploads/
 
-# server-side stats script (not part of app distribution)
+# server-side stats files (not part of app distribution)
 server/ping-server.py
+server/dashboard.html
 
 # database
 *.db

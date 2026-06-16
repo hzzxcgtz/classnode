@@ -18,6 +18,7 @@ import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
 import './services/file-logger.js'; // 文件日志（必须在最前面，接管 console）
+import { sendPing } from './services/ping.js';
 import uploadRoutes from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
@@ -183,6 +184,8 @@ async function main() {
     interfaces.forEach((iface: { name: string; label: string; ip: string }) => {
       console.log(`   http://${iface.ip}:${port}  (${iface.label})`);
     });
+    // 匿名心跳统计（需先通过设置配置 ping_url）
+    sendPing(prisma);
   });
 
   // Graceful shutdown

@@ -37,6 +37,12 @@ echo "  ✓ package.json"
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$ROOT/server/package.json"
 echo "  ✓ server/package.json"
 
+# 3. src-tauri/resources/server/package.json（Tauri 捆绑的服务器版本）
+if [ -f "$ROOT/src-tauri/resources/server/package.json" ]; then
+  sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$ROOT/src-tauri/resources/server/package.json"
+  echo "  ✓ src-tauri/resources/server/package.json"
+fi
+
 # 3. tauri.conf.json
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$ROOT/src-tauri/tauri.conf.json"
 echo "  ✓ src-tauri/tauri.conf.json"
@@ -162,6 +168,7 @@ cd "$ROOT"
 git add \
   package.json \
   server/package.json \
+  src-tauri/resources/server/package.json \
   src-tauri/tauri.conf.json \
   src-tauri/Cargo.toml \
   README.md \

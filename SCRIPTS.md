@@ -36,7 +36,7 @@
 ./dev.sh version:bump 1.5.0         # 升级到指定版本
 ```
 
-`version:bump` 自动更新文件：`package.json`、`server/package.json`、`tauri.conf.json`、`Cargo.toml`、`README.md`、`README.en.md`、`portal/index.html`、`portal/deploy.html`，并 commit。
+`version:bump` 自动更新文件：`package.json`、`server/package.json`、`src-tauri/resources/server/package.json`、`tauri.conf.json`、`Cargo.toml`、`README.md`、`README.en.md`、`portal/index.html`、`portal/deploy.html`，并 commit。
 
 ---
 
@@ -84,7 +84,7 @@
 
 # Windows 远程构建（仅触发 CI，不下载不上传）
 ./dev.sh release          # Windows x64
-./dev.sh release both     # 仅 Windows x64
+./dev.sh release both     # Windows x64
 ./dev.sh release all      # Windows x64 + ARM64
 ```
 

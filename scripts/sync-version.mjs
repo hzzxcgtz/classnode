@@ -18,6 +18,15 @@ serverPkg.version = version;
 fs.writeFileSync(serverPkgPath, JSON.stringify(serverPkg, null, 2) + '\n');
 console.log(`[sync-version] server/package.json → ${version}`);
 
+// 同步 src-tauri/resources/server/package.json（Tauri 捆绑的服务器版本）
+const bundledPkgPath = path.join(root, 'src-tauri', 'resources', 'server', 'package.json');
+if (fs.existsSync(bundledPkgPath)) {
+    const bundledPkg = JSON.parse(fs.readFileSync(bundledPkgPath, 'utf-8'));
+    bundledPkg.version = version;
+    fs.writeFileSync(bundledPkgPath, JSON.stringify(bundledPkg, null, 2) + '\n');
+    console.log(`[sync-version] src-tauri/resources/server/package.json → ${version}`);
+}
+
 // 同步 tauri.conf.json（仅在桌面应用打包时存在）
 const tauriConfPath = path.join(root, 'src-tauri', 'tauri.conf.json');
 if (fs.existsSync(tauriConfPath)) {

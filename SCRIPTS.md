@@ -68,10 +68,9 @@
 ## 发行版 — Windows（GitHub Actions CI）
 
 ```bash
-./dev.sh ci               # Windows x64 + arm64
-./dev.sh ci x64           # 仅 Windows x64
+./dev.sh ci               # Windows x64
 ./dev.sh ci arm64         # 仅 Windows arm64
-./dev.sh ci both          # 仅 Windows x64
+./dev.sh ci both          # Windows x64 + arm64
 ```
 
 ---

@@ -36,7 +36,7 @@ jobs:
           fi
           case "$ARCH" in
             all)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"aarch64-pc-windows-msvc","arch":"arm64","node-platform":"win-arm64"}]}' ;;
-            both) echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' ;;
+            both) echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"},{"target":"aarch64-pc-windows-msvc","arch":"arm64","node-platform":"win-arm64"}]}' ;;
             x64)  echo 'matrix={"include":[{"target":"x86_64-pc-windows-msvc","arch":"x64","node-platform":"win-x64"}]}' ;;
             arm64) echo 'matrix={"include":[{"target":"aarch64-pc-windows-msvc","arch":"arm64","node-platform":"win-arm64"}]}' ;;
           esac >> "$GITHUB_OUTPUT"

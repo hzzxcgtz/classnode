@@ -75,7 +75,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "r all" "macOS 双架构 + 源码包"
   printf "    ${CYAN}%-28s${NC} %s\n" "release [x64|both|all]" "Windows 远程构建（默认 x64）"
   printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建（macOS + Windows CI + 下载 + 源码包）"
-  printf "    ${CYAN}%-28s${NC} %s\n" "ci [x64|arm64|both]" "Windows CI 构建（默认全架构）"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ci [arm64|both]" "Windows CI 构建（默认 x64）"
   log ""
 
   log "  ${BOLD}Git 快捷${NC}"
@@ -109,8 +109,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "speedtest" "测试 GitHub 下载速度"
   log ""
   log "  ${BOLD}统计服务${NC}"
-  printf "    ${CYAN}%-28s${NC} %s\n" "ping:deploy" "上传统计服务文件到服务器"
-  printf "    ${CYAN}%-28s${NC} %s\n" "ping:restart" "重启服务器上的统计服务"
+  printf "    ${CYAN}%-28s${NC} %s\n" "ping:deploy" "上传统计服务文件并重启（一键部署）"
   printf "    ${CYAN}%-28s${NC} %s\n" "help" "显示本帮助"
   log ""
 }
@@ -673,11 +672,7 @@ cmd_ping_deploy() {
   log_info "上传统计服务文件到 ${CYAN}$PING_SERVER${NC} ..."
   scp "$ROOT/server/ping-server.py" "$ROOT/server/dashboard.html" "$PING_SERVER:$PING_DIR/"
   log_ok "上传完成"
-  log_info "执行 ${CYAN}./dev.sh ping:restart${NC} 重启服务"
-}
-
-cmd_ping_restart() {
-  log_info "重启服务器上的统计服务..."
+  log_info "重启统计服务..."
   ssh "$PING_SERVER" "systemctl restart classnode-ping"
   log_ok "已重启"
   sleep 1
@@ -716,7 +711,7 @@ case "${1:-help}" in
        all)   cmd_release_all ;;
        *)     cmd_release ;;
      esac ;;
-  ci)                               shift; bash build-release.sh "$@" ;;
+  ci)                               shift; bash build-release.sh "${1:-x64}" ;;
   dev)                             shift; cmd_dev "$@" ;;
   dev:server)                      shift; cmd_dev_server "$@" ;;
   dev:all)                         shift; cmd_dev_all "$@" ;;
@@ -737,7 +732,6 @@ case "${1:-help}" in
   build:ci)                        shift; bash build-release.sh "$@" ;;
   lint)                            cmd_lint ;;
   ping:deploy)                     cmd_ping_deploy ;;
-  ping:restart)                    cmd_ping_restart ;;
   clean)                           cmd_clean ;;
   clean:all)                       cmd_clean_all ;;
   fresh)                           cmd_fresh ;;

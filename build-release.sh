@@ -30,7 +30,7 @@ case "$ARCH" in
     echo ""
     echo "架构:"
     echo "  all      x64 + arm64（默认）"
-    echo "  both     仅 x64"
+    echo "  both     x64 + arm64"
     echo "  x64      仅 x64"
     echo "  arm64    仅 arm64"
     exit 0 ;;
@@ -45,7 +45,7 @@ gh auth status &>/dev/null || { err "请先执行: ${BOLD}gh auth login${NC}"; e
 
 # ─── 确认信息 ─────────────────────────────────────────
 ARCH_LABEL="x64 + arm64"
-[ "$ARCH" = "both" ] && ARCH_LABEL="仅 x64"
+[ "$ARCH" = "both" ] && ARCH_LABEL="x64 + arm64"
 [ "$ARCH" = "x64" ] && ARCH_LABEL="仅 x64"
 [ "$ARCH" = "arm64" ] && ARCH_LABEL="仅 arm64"
 

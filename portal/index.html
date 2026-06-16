@@ -8,8 +8,38 @@
 <style>
 .dl-section { padding: 80px 24px; position: relative; z-index: 1; }
 .dl-section .section-container { max-width: 960px; margin: 0 auto; }
-.dl-section .section-header { margin-bottom: 48px; text-align: center; }
+.dl-section .section-header { margin-bottom: 32px; text-align: center; }
 .dl-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.dl-version-banner {
+  display: flex; align-items: center; gap: 18px;
+  padding: 18px 24px; margin-bottom: 28px;
+  background: linear-gradient(135deg, rgba(79,70,229,0.06), rgba(13,148,136,0.04));
+  border: 1px solid rgba(79,70,229,0.15);
+  border-radius: 14px;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.dl-version-banner:hover { border-color: rgba(79,70,229,0.25); }
+.dl-version-banner-icon {
+  flex-shrink: 0; width: 42px; height: 42px; border-radius: 11px;
+  background: linear-gradient(135deg, rgba(79,70,229,0.1), rgba(13,148,136,0.1));
+  border: 1px solid rgba(79,70,229,0.15);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent-blue);
+}
+.dl-version-banner-icon svg { width: 20px; height: 20px; }
+.dl-version-banner-content { flex: 1; min-width: 0; }
+.dl-version-banner-label { font-size: 11px; color: var(--text-tertiary); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 2px; }
+.dl-version-banner-version { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+.dl-version-banner-date { font-size: 13px; font-weight: 400; color: var(--text-tertiary); margin-left: 8px; }
+.dl-version-banner-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+.dl-version-banner-btn {
+  flex-shrink: 0; padding: 8px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; text-decoration: none;
+  background: var(--btn-primary-bg); color: var(--btn-primary-fg);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+.dl-version-banner-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
 .dl-card {
   padding: 28px 24px; background: var(--bg-primary);
   border: 1px solid var(--border); border-radius: 16px;
@@ -446,6 +476,20 @@
             <div class="section-label">下载渠道</div>
             <h2 class="section-title">选择你习惯的下载方式</h2>
             <p class="section-subtitle">安装包、源码包已上传至国内主流网盘，按需取用。</p>
+        </div>
+        <div class="dl-version-banner">
+            <div class="dl-version-banner-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                    <polyline points="17 6 23 6 23 12" />
+                </svg>
+            </div>
+            <div class="dl-version-banner-content">
+                <div class="dl-version-banner-label">当前最新版本</div>
+                <div class="dl-version-banner-version">v1.4.4 <span class="dl-version-banner-date">2026-06-16</span></div>
+                <div class="dl-version-banner-desc">仪表盘大幅改版、备份流程优化、多项界面修复</div>
+            </div>
+            <a href="https://gitcode.com/weixin_41523975/classnode/releases" target="_blank" rel="noopener noreferrer" class="dl-version-banner-btn">查看完整更新</a>
         </div>
         <div class="dl-grid">
             <a href="https://pan.quark.cn/s/989a61a2278f?pwd=Y5PN" class="dl-card" target="_blank" rel="noopener noreferrer">

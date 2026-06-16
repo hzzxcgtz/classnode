@@ -8,6 +8,7 @@ import {
 } from '@/lib/constants';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  RadialBarChart, RadialBar,
 } from 'recharts';
 
 // ─── 区块卡片 ──────────────────────────────────────────────
@@ -196,6 +197,8 @@ export default function DashboardPage() {
   const agentOk = agents.filter(a => a.lastCheckOk === true).length;
   const agentError = agents.filter(a => a.lastCheckAt !== null && a.lastCheckOk === false).length;
   const agentPending = agentTotal - agentOk - agentError;
+  const healthPercent = agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0;
+  const gaugeColor = healthPercent >= 80 ? '#22c55e' : healthPercent >= 50 ? '#f59e0b' : '#ef4444';
   const agentPlatforms = agents.reduce((acc: Record<string, number>, a) => {
     const p = a.platform || 'unknown';
     acc[p] = (acc[p] || 0) + 1;
@@ -426,40 +429,43 @@ export default function DashboardPage() {
                 <div>
                   <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>智能体健康度</div>
                   {agentTotal > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ width: '100%', height: 10, background: '#e2e8f0', borderRadius: 5, overflow: 'hidden', display: 'flex' }}>
-                        {agentError === 0 && agentPending === 0 ? (
-                          <div style={{ width: '100%', height: '100%', background: '#22c55e', borderRadius: 5 }} />
-                        ) : (
-                          <>
-                            {agentOk > 0 && (
-                              <div style={{ width: `${(agentOk / agentTotal) * 100}%`, height: '100%', background: '#22c55e', borderRadius: '5px 0 0 5px', transition: 'width 0.4s' }} />
-                            )}
-                            {agentError > 0 && (
-                              <div style={{ width: `${(agentError / agentTotal) * 100}%`, height: '100%', background: '#ef4444', borderRadius: agentPending > 0 ? '0' : '0 5px 5px 0', transition: 'width 0.4s' }} />
-                            )}
-                            {agentPending > 0 && (
-                              <div style={{ flex: 1, height: '100%', background: '#d1d5db', borderRadius: '0 5px 5px 0' }} />
-                            )}
-                          </>
-                        )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                        <ResponsiveContainer width={80} height={80}>
+                          <RadialBarChart
+                            innerRadius="50%"
+                            outerRadius="85%"
+                            data={[{ name: '健康度', value: healthPercent, fill: gaugeColor }]}
+                            startAngle={180}
+                            endAngle={0}
+                            barSize={10}
+                          >
+                            <RadialBar dataKey="value" cornerRadius={5} background={{ fill: '#e2e8f0' }} />
+                          </RadialBarChart>
+                        </ResponsiveContainer>
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: gaugeColor, lineHeight: 1 }}>
+                            {healthPercent}%
+                          </div>
+                          <div style={{ fontSize: '0.5rem', color: '#94a3b8', marginTop: 1 }}>健康率</div>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 12, fontSize: "0.688rem" }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                          <span style={{ color: '#475569' }}>健康</span>
-                          <b style={{ color: '#16a34a' }}>{agentOk}</b>
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ color: '#64748b', flex: 1 }}>健康</span>
+                          <span style={{ fontWeight: 600, color: '#16a34a' }}>{agentOk}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
-                          <span style={{ color: '#475569' }}>异常</span>
-                          <b style={{ color: agentError === 0 ? '#94a3b8' : '#dc2626' }}>{agentError}</b>
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ color: '#64748b', flex: 1 }}>异常</span>
+                          <span style={{ fontWeight: 600, color: agentError === 0 ? '#94a3b8' : '#dc2626' }}>{agentError}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
-                          <span style={{ color: '#475569' }}>未检测</span>
-                          <b style={{ color: agentPending === 0 ? '#94a3b8' : '#94a3b8' }}>{agentPending}</b>
-                        </span>
+                          <span style={{ color: '#64748b', flex: 1 }}>未检测</span>
+                          <span style={{ fontWeight: 600, color: agentPending === 0 ? '#94a3b8' : '#94a3b8' }}>{agentPending}</span>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -846,21 +852,19 @@ export default function DashboardPage() {
                     <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ color: '#94a3b8' }}>
-                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0' }}>班级</th>
-                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>人数</th>
-                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>个性化头像</th>
-                          <th style={{ padding: '4px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>剩奖励次数</th>
+                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0' }}>班级</th>
+                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>装饰人数</th>
+                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>奖励次数</th>
                         </tr>
                       </thead>
                       <tbody>
                         {classAvatarData.map(c => (
                           <tr key={c.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '5px 4px', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 72 }}>
+                            <td style={{ padding: '5px 6px', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
                               {c.name}
                             </td>
-                            <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{c.total}</td>
-                            <td style={{ padding: '5px 4px', textAlign: 'center', color: c.uploadedAvatar > 0 ? '#6366f1' : '#94a3b8' }}>{c.uploadedAvatar}</td>
-                            <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: c.remainingTokens > 0 ? '#10b981' : '#94a3b8' }}>{c.remainingTokens}</td>
+                            <td style={{ padding: '5px 6px', textAlign: 'center', color: c.uploadedAvatar > 0 ? '#6366f1' : '#94a3b8' }}>{c.uploadedAvatar}</td>
+                            <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 600, color: c.remainingTokens > 0 ? '#10b981' : '#94a3b8' }}>{c.remainingTokens}</td>
                           </tr>
                         ))}
                       </tbody>

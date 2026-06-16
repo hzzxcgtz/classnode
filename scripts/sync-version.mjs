@@ -46,3 +46,21 @@ for (const file of ['README.md', 'README.en.md']) {
         console.log(`[sync-version] ${file} → ${version}`);
     }
 }
+
+// 同步 portal/index.html（版本徽章 + 下载横幅中的版本号）
+const portalIndexPath = path.join(root, 'portal', 'index.html');
+if (fs.existsSync(portalIndexPath)) {
+    let content = fs.readFileSync(portalIndexPath, 'utf-8');
+    content = content.replace(/>v\d+\.\d+\.\d+</g, `>v${version}<`);
+    fs.writeFileSync(portalIndexPath, content);
+    console.log(`[sync-version] portal/index.html → ${version}`);
+}
+
+// 同步 portal/deploy.html（安装包文件名中的版本号）
+const portalDeployPath = path.join(root, 'portal', 'deploy.html');
+if (fs.existsSync(portalDeployPath)) {
+    let content = fs.readFileSync(portalDeployPath, 'utf-8');
+    content = content.replace(/classnode-v[\d.]+/g, `classnode-v${version}`);
+    fs.writeFileSync(portalDeployPath, content);
+    console.log(`[sync-version] portal/deploy.html → ${version}`);
+}

@@ -826,16 +826,13 @@ const sections = [
     icon: "history",
     items: [
       <div>
-        下课铃响，课堂的价值刚刚开始释放。前往「<Highlight>数据管理</Highlight>
-        」：
+        前往「<Highlight>仪表盘</Highlight>
+        」查看系统运行全景概览：总课堂数、总参与人次、总交互轮数、平均时长——这些数据是
+        AI 教学成效的最佳证明。
       </div>,
-      <>
-        <strong>宏观仪表盘</strong>
-        ：总课堂数、总参与人次、总交互轮数、平均时长——这些数据是 AI
-        教学成效的最佳证明。
-      </>,
       <div>
-        <strong>一键生成 Word 报告</strong>
+        前往「<Highlight>数据管理</Highlight>」查看历史课堂记录，一键生成 Word
+        报告：
       </div>,
       <div
         style={{

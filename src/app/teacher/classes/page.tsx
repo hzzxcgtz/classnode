@@ -27,7 +27,7 @@ export default function ClassesPage() {
   const [batchEditModal, setBatchEditModal] = useState<{ type: 'tag' } | null>(null);
   const [batchEditGenderModal, setBatchEditGenderModal] = useState(false);
   const [studentPage, setStudentPage] = useState(1);
-  const [studentPageSize, setStudentPageSize] = useState(30);
+  const [studentPageSize, setStudentPageSize] = useState(20);
   const [deleteBlocked, setDeleteBlocked] = useState<{
     classId: string;
     className: string;

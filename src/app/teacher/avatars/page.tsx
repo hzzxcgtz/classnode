@@ -284,7 +284,7 @@ export default function AvatarsPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {boyAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
                     batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
-                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                    onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
                 </div>
               </div>
             )}
@@ -298,7 +298,7 @@ export default function AvatarsPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {girlAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
                     batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
-                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                    onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
                 </div>
               </div>
             )}
@@ -312,7 +312,7 @@ export default function AvatarsPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {neutralAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
                     batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
-                    onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                    onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
                 </div>
               </div>
             )}
@@ -321,7 +321,7 @@ export default function AvatarsPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {avatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
               batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
-              onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+              onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
           </div>
         )}
 
@@ -337,7 +337,7 @@ export default function AvatarsPage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {studentUploadedAvatars.map(av => <AvatarCard key={av.id} av={av} tab={tab}
                   batchMode={batchMode} selected={selectedForBatch.has(av.id)} onToggle={() => { setSelectedForBatch(prev => { const n = new Set(prev); if (n.has(av.id)) n.delete(av.id); else n.add(av.id); return n; }); }}
-                  onEdit={() => setShowEditor({ mode: 'view', avatar: av })} onDelete={() => setShowDelete(av)} />)}
+                  onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
               </div>
             ) : (
               <p style={{ fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0' }}>暂无学生自定义头像</p>
@@ -759,7 +759,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   const [showHint, setShowHint] = useState(true);
   const [usage, setUsage] = useState<{ students: any[]; classes: any[] } | null>(null);
   const isImage = avatar?.svgContent?.includes('<image ') || false;
-  const [inputMode, setInputMode] = useState<'svg' | 'image'>('svg');
+  const [inputMode, setInputMode] = useState<'svg' | 'image'>(isImage ? 'image' : 'svg');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadSvg, setUploadSvg] = useState<string | null>(null);
@@ -794,7 +794,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   };
 
   const handleSave = async () => {
-    const finalSvg = inputMode === 'image' ? uploadSvg : svgContent;
+    const finalSvg = inputMode === 'image' ? (uploadSvg || avatar?.svgContent || '') : svgContent;
     if (!finalSvg?.trim()) return;
     setSaving(true);
     try {
@@ -911,7 +911,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           </div>
         </div>
 
-        {mode === 'create' && (
+        {mode !== 'view' && (
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #e2e8f0' }}>
             <button onClick={() => setInputMode('svg')}
               style={{
@@ -993,7 +993,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           <div style={{ marginBottom: 16 }}>
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect}
               style={{ display: 'none' }} />
-            {!imagePreview ? (
+            {!imagePreview && mode === 'create' ? (
               <div onClick={() => fileInputRef.current?.click()}
                 style={{
                   border: '2px dashed #cbd5e1', borderRadius: 12, padding: '30px 20px',
@@ -1006,6 +1006,26 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                 </svg>
                 <p style={{ fontSize: "0.813rem", fontWeight: 600, color: '#475569', margin: '0 0 4px' }}>点击上传头像图片</p>
                 <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: 0 }}>支持 JPG、PNG、WebP 格式</p>
+              </div>
+            ) : !imagePreview && mode !== 'create' && avatar?.svgContent ? (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 80, height: 80, margin: '0 auto 8px',
+                  borderRadius: '50%', overflow: 'hidden', border: '2px solid #e2e8f0',
+                }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatar.svgContent).replace('<svg', '<svg width="80" height="80"') }} />
+                <p style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 8 }}>当前{category === 'student' ? '头像' : '图标'}</p>
+                <button onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '6px 14px', borderRadius: 6,
+                    border: '1px solid #cbd5e1', background: 'white',
+                    color: '#475569', cursor: 'pointer', fontSize: "0.75rem",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  替换图片
+                </button>
               </div>
             ) : (
               <div style={{ textAlign: 'center' }}>
@@ -1031,7 +1051,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onClose}>取消</button>
           <button className="btn btn-primary" onClick={handleSave}
-            disabled={saving || (inputMode === 'svg' && !svgContent.trim()) || (inputMode === 'image' && !uploadSvg)}>
+            disabled={saving || (inputMode === 'svg' && !svgContent.trim()) || (inputMode === 'image' && !uploadSvg && !avatar?.svgContent)}>
             {saving ? '保存中...' : (mode === 'create' ? '创建' : '保存')}
           </button>
         </div>

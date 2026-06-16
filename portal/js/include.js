@@ -51,17 +51,8 @@
     '<div class="footer-row-right"></div>' +
     '</div>' +
     '<div class="footer-hr"></div>' +
-    '<div class="footer-row">' +
-    '<div class="footer-row-left">' +
+    '<div class="footer-row footer-row-copy">' +
     '<span class="footer-copy">© 2026 ClassNode · AI 赋能教育 · 教学互促共研</span>' +
-    '</div>' +
-    '<div class="footer-row-right">' +
-    '<span class="footer-author">张星昌 · 杭州市拱墅区教育研究院</span>' +
-    '<span class="footer-sep">|</span>' +
-    '<a href="mailto:hzzxc2012@163.com" class="footer-email">' +
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
-    'hzzxc2012@163.com</a>' +
-    '</div>' +
     '</div>' +
     '</div>' +
     '</footer>';

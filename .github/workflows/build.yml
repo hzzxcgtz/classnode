@@ -96,6 +96,11 @@ jobs:
           cd src-tauri/resources/server
           npm install --production --ignore-scripts
 
+          # ARM64 构建额外安装 sharp 的 ARM64 原生二进制
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            npm install @img/sharp-win32-arm64 --no-save
+          fi
+
           mkdir -p node_modules
           cp -rL ../../../server/node_modules/@prisma/client node_modules/@prisma/
           PRISMA_REAL=$(cd ../../../server/node_modules/@prisma/client && pwd -P)

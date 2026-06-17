@@ -769,10 +769,6 @@ function ClassroomBoardContent() {
                             fontSize: "0.75rem", lineHeight: 1.6, color: '#334155',
                             wordBreak: 'break-word',
                           }}>
-                            {student.avatarId && studentAvatars[student.avatarId] ? (
-                              <span style={{ display: 'inline-block', width: 18, height: 18, borderRadius: '50%', overflow: 'hidden', verticalAlign: 'middle', marginRight: 4, flexShrink: 0 }}
-                                dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', '<svg width="18" height="18"') }} />
-                            ) : null}
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
                               {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                             </span>

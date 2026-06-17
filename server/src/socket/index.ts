@@ -490,7 +490,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         }
 
         if (result.success && result.content) {
-          // Save AI response（同时保存用户上传的 fileUrls，确保刷新后图片仍有展示）
+          // Save AI response
           const aiMessage = await prisma.message.create({
             data: {
               classroomId: classroom.id,
@@ -499,8 +499,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
               role: 'assistant',
               roundIndex: roundCount,
               agentId: agent.id,
-              fileUrls: data.fileUrls?.length ? JSON.stringify(data.fileUrls) : undefined,
-              fileNames: data.fileNames?.length ? JSON.stringify(data.fileNames) : undefined,
             },
           });
 

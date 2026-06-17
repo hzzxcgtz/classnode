@@ -251,7 +251,6 @@ function StudentChatContent() {
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
   const statusSocketRef = useRef<any>(null);
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
-  const lastUserFileRef = useRef<{ urls: string[]; names: string[] }>({ urls: [], names: [] });
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
   const streamingBufferRef = useRef('');
   const streamingRafRef = useRef<number | null>(null);
@@ -556,16 +555,11 @@ function StudentChatContent() {
 
       socket.on('ai-response', (data: any) => {
         flushStreaming();
-        const attached = lastUserFileRef.current;
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: data.content,
           roundIndex: data.roundIndex,
-          // 携带用户上次上传的文件，确保图片在 AI 回答框中也能显示
-          fileUrls: attached.urls.length > 0 ? [...attached.urls] : undefined,
-          fileNames: attached.names.length > 0 ? [...attached.names] : undefined,
         }]);
-        lastUserFileRef.current = { urls: [], names: [] };
         setStreamingContent('');
         setWaitingAI(false);
       });
@@ -792,8 +786,6 @@ function StudentChatContent() {
     setShieldWarning(null);
     setAttachedFiles([]);
     const userMsgContent = text || '(附件)';
-    // 记录本次用户消息的文件，供 AI 回复时一同展示
-    lastUserFileRef.current = { urls: files.map(f => f.url), names: files.map(f => f.name) };
     setMessages(prev => [...prev, {
       role: 'user', content: userMsgContent,
       fileUrls: files.map(f => f.url), fileNames: files.map(f => f.name),

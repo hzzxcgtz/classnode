@@ -11,6 +11,9 @@ import {
 import { PrismaClient, Prisma } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+import sharp from 'sharp';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── 类型定义 ───────────────────────────────────────────────
 
@@ -67,7 +70,7 @@ const INDENT_SM = { left: 400 };
 function resolveFilePath(fileUrl: string): string | null {
   if (!fileUrl) return null;
   const fileName = path.basename(fileUrl);
-  // 优先从 CLASSNODE_DATA_DIR 加载
+  // 优先从 CLASSNODE_DATA_DIR 加载（生产模式）
   const dataDir = process.env.CLASSNODE_DATA_DIR;
   if (dataDir) {
     const p = path.join(dataDir, 'uploads', 'chat', fileName);
@@ -75,6 +78,12 @@ function resolveFilePath(fileUrl: string): string | null {
     const p2 = path.join(dataDir, 'uploads', fileName);
     if (fs.existsSync(p2)) return p2;
   }
+  // 开发模式：文件存储在 server/uploads/ 下
+  const localDir = path.join(__dirname, '../../uploads');
+  const p3 = path.join(localDir, 'chat', fileName);
+  if (fs.existsSync(p3)) return p3;
+  const p4 = path.join(localDir, fileName);
+  if (fs.existsSync(p4)) return p4;
   return null;
 }
 
@@ -203,6 +212,98 @@ function mdToParagraphs(text: string, opts?: { size?: number; color?: string; sh
   return result;
 }
 
+/**
+ * 从图片 Buffer 中读取实际宽高（像素），用于等比例缩放
+ * 支持 PNG / JPEG / GIF / BMP / WebP
+ */
+function getImageDimensions(buf: Buffer, ext: string): { w: number; h: number } | null {
+  try {
+    switch (ext) {
+      case 'png': {
+        if (buf.length < 24) return null;
+        // PNG IHDR chunk: offset 16 = width (4B BE), 20 = height (4B BE), preceded by IHDR tag at 12
+        if (buf.readUInt32BE(12) !== 0x49484452) return null;
+        return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+      }
+      case 'jpg':
+      case 'jpeg': {
+        // 扫描 JPEG 段找到 SOF0/SOF1/SOF2 标记获取尺寸
+        let off = 2;
+        while (off < buf.length - 1) {
+          if (buf[off] !== 0xFF) break;
+          const marker = buf[off + 1];
+          if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+            return { w: buf.readUInt16BE(off + 7), h: buf.readUInt16BE(off + 5) };
+          }
+          const segLen = buf.readUInt16BE(off + 2);
+          if (segLen < 2) break;
+          off += 2 + segLen;
+        }
+        return null;
+      }
+      case 'gif': {
+        if (buf.length < 10) return null;
+        return { w: buf.readUInt16LE(6), h: buf.readUInt16LE(8) };
+      }
+      case 'bmp': {
+        if (buf.length < 26) return null;
+        return { w: buf.readInt32LE(18), h: Math.abs(buf.readInt32LE(22)) };
+      }
+      case 'webp': {
+        // WebP 文件头 (RIFF): offset 24 = width&height in VP8/VP8L format
+        if (buf.length < 30) return null;
+        const riff = buf.slice(0, 4).toString();
+        if (riff !== 'RIFF') return null;
+        const format = buf.slice(8, 12).toString();
+        if (format === 'WEBP') {
+          const vp8 = buf.slice(12, 16).toString();
+          if (vp8 === 'VP8 ' || vp8 === 'VP8X') {
+            // VP8 lossy: offset 26, packed 14-bit values
+            const w = buf.readUInt16LE(26) & 0x3FFF;
+            const h = buf.readUInt16LE(28) & 0x3FFF;
+            if (w && h) return { w, h };
+          }
+          if (vp8 === 'VP8L') {
+            // VP8L lossless: offset 21, packed 14-bit values (little-endian bitfields)
+            const bits = buf.readUInt32LE(21);
+            const w = (bits & 0x3FFF) + 1;
+            const h = ((bits >>> 14) & 0x3FFF) + 1;
+            if (w && h) return { w, h };
+          }
+        }
+        return null;
+      }
+      default:
+        return null;
+    }
+  } catch { return null; }
+}
+
+/**
+ * 从文件头魔数检测实际图片格式，不依赖扩展名
+ * 只返回 DOCX ImageRun 支持的类型（png/jpg/gif/bmp），
+ * 不支持的返回 null
+ */
+function detectImageType(buf: Buffer): string | null {
+  if (buf.length < 4) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'png';
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'jpg';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'gif';
+  if (buf[0] === 0x42 && buf[1] === 0x4D) return 'bmp';
+  // WebP (RIFF....WEBP) 等不支持的格式
+  return null;
+}
+
+/** 计算等比例缩放后的 EMU 尺寸，maxWidthEmu / maxHeightEmu 限制最大值 */
+function scaleImageSize(imgWidth: number, imgHeight: number, maxPx = 400, maxHeightPx = 400): { width: number; height: number } {
+  if (imgWidth <= 0 || imgHeight <= 0) return { width: maxPx, height: maxHeightPx };
+  const scale = Math.min(maxPx / imgWidth, maxHeightPx / imgHeight, 1);
+  return {
+    width: Math.round(imgWidth * scale),
+    height: Math.round(imgHeight * scale),
+  };
+}
+
 // ─── DOCX 辅助 ───────────────────────────────────────────────
 
 function pText(text: string, opts?: { bold?: boolean; size?: number; color?: string; align?: typeof AlignmentType[keyof typeof AlignmentType]; spacingBefore?: number; spacingAfter?: number }) {
@@ -294,12 +395,10 @@ function renderCover(data: any): DocBlock[] {
   children.push(pText(data.title || '未命名课堂', { size: 26, color: C.textSecondary, align: AlignmentType.CENTER, spacingAfter: 400 }));
 
   const rows: TableRow[] = [
-    new TableRow({ children: [cell('课堂模式', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 1200 }), cell('开始时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(fmtDate(data.createdAt), { width: 2200 }), cell('结束时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.endedAt ? fmtDate(data.endedAt) : '-', { width: 2200 })] }),
-    new TableRow({ children: [cell('参与班级', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell((data.classes || []).join('、') || '-', { width: 3200 }), cell('参与学生', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(String(data.students?.length || 0) + ' 人', { width: 3200 })] }),
+    new TableRow({ children: [cell('参与班级', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell((data.classes || []).join('、') || '-', { width: 3500 }), cell('学生人数', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(String(data.students?.length || 0) + ' 人', { width: 3500 })] }),
+    new TableRow({ children: [cell('开始时间', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(fmtDate(data.createdAt), { width: 3500 }), cell('结束时间', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.endedAt ? fmtDate(data.endedAt) : '-', { width: 3500 })] }),
+    new TableRow({ children: [cell('课堂模式', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 3500 }), cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.agents?.length > 0 ? data.agents.map((a: any) => a.name).join('、') : '-', { width: 3500 })] }),
   ];
-  if (data.agents?.length > 0) {
-    rows.push(new TableRow({ children: [cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.agents.map((a: any) => a.name).join('、'), { width: 8200 })] }));
-  }
   children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
   children.push(new Paragraph({ spacing: { before: 300 }, children: [] }));
   children.push(pText('— 文档由 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
@@ -335,12 +434,10 @@ function renderOverview(stats: ClassStats): DocBlock[] {
   ];
   const avgMsgLenStr = stats.avgCharsPerMsg > 0 ? `${stats.avgCharsPerMsg} 字` : '—';
   const totalCharsStr = stats.totalChars > 0 ? (stats.totalChars >= 10000 ? `${(stats.totalChars / 10000).toFixed(1)}万字` : `${stats.totalChars} 字`) : '—';
-  const durStr = stats.duration !== null ? `${stats.duration} 分钟` : '—';
   const r2 = [
     statCard(String(stats.avgRoundsPerStudent), '平均每人轮数', '059669', 'D1FAE5'),
     statCard(avgMsgLenStr, '平均消息长度', '2563EB', 'DBEAFE'),
     statCard(totalCharsStr, '总文字量', '7C3AED', 'EDE9FE'),
-    statCard(durStr, '课堂时长', 'DC2626', 'FEF2F2'),
   ];
 
   children.push(new Table({ rows: [new TableRow({ children: r1 }), new TableRow({ children: r2 })], width: { size: 100, type: WidthType.PERCENTAGE } }));
@@ -379,7 +476,7 @@ function renderOverview(stats: ClassStats): DocBlock[] {
 
 // ─── 学生对话渲染 ────────────────────────────────────────────
 
-function renderStudentMessages(student: any, agentMap: Record<string, string>, teacherNotifData: any[]): DocBlock[] {
+async function renderStudentMessages(student: any, agentMap: Record<string, string>, teacherNotifData: any[]): Promise<DocBlock[]> {
   const children: DocBlock[] = [];
 
   const label = student.name + (student.studentNo ? `（${student.studentNo}）` : '');
@@ -432,13 +529,13 @@ function renderStudentMessages(student: any, agentMap: Record<string, string>, t
       lastRound = roundIdx;
     }
 
-    renderSingleMessage(children, msg, student, agentMap);
+    await renderSingleMessage(children, msg, student, agentMap);
   }
 
   return children;
 }
 
-function renderSingleMessage(children: DocBlock[], msg: any, student: any, agentMap: Record<string, string>) {
+async function renderSingleMessage(children: DocBlock[], msg: any, student: any, agentMap: Record<string, string>) {
   // 教师通知：特殊金色样式
   if (msg.role === 'teacher-notification') {
     const ts = msg.time ? `  ${fmtTime(msg.time)}` : '';
@@ -488,14 +585,49 @@ function renderSingleMessage(children: DocBlock[], msg: any, student: any, agent
       if (imagePath && fs.existsSync(imagePath)) {
         try {
           const imgBuf = fs.readFileSync(imagePath);
-          const ext = fileUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp)$/)?.[1]?.replace('jpeg', 'jpg') || 'png';
+          // 从文件头检测实际格式（不依赖扩展名）
+          const imgType = detectImageType(imgBuf);
+          // 不支持的格式尝试用 sharp 转换（WebP → PNG）
+          if (!imgType) {
+            try {
+              const converted = await sharp(imgBuf).png().toBuffer();
+              const dim = getImageDimensions(converted, 'png');
+              const MAX_PX = 400;
+              const sized = dim
+                ? scaleImageSize(dim.w, dim.h, MAX_PX, MAX_PX)
+                : { width: MAX_PX, height: 300 };
+              children.push(new Paragraph({
+                spacing: { before: 40, after: 20 }, indent: INDENT_SM,
+                children: [
+                  new ImageRun({
+                    data: converted,
+                    type: 'png',
+                    transformation: sized,
+                  }),
+                ],
+              }));
+            } catch {
+              // 转换失败时显示文件名
+              children.push(new Paragraph({
+                spacing: { after: 20 }, indent: INDENT_SM,
+                children: [new TextRun({ text: `[图片] ${fileName}`, size: 16, color: C.textSecondary, font: { name: FONT }, italics: true })],
+              }));
+            }
+            continue;
+          }
+          // 按比例缩放图片（transformation 单位为像素，docx 库自动转 EMU）
+          const dim = getImageDimensions(imgBuf, imgType);
+          const MAX_PX = 400;
+          const sized = dim
+            ? scaleImageSize(dim.w, dim.h, MAX_PX, MAX_PX)
+            : { width: MAX_PX, height: 300 };
           children.push(new Paragraph({
             spacing: { before: 40, after: 20 }, indent: INDENT_SM,
             children: [
               new ImageRun({
                 data: imgBuf,
-                type: ext,
-                transformation: { width: 360, height: 270 },
+                type: imgType as 'png' | 'jpg' | 'gif' | 'bmp',
+                transformation: sized,
               }),
             ],
           }));
@@ -629,7 +761,7 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
   });
   if (!classroom) throw new Error('课堂不存在');
 
-  const classroomStudents = await prisma.classroomStudent.findMany({
+  const rawStudents = await prisma.classroomStudent.findMany({
     where: {
       classroomId,
       ...(opts?.studentIds?.length ? { studentId: { in: opts.studentIds } } : {}),
@@ -640,6 +772,9 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
     },
     orderBy: { joinTime: 'asc' },
   });
+  const classroomStudents = classroom.mode === 'standard'
+    ? rawStudents.filter(cs => cs.student.tag !== '__group__')
+    : rawStudents;
 
   const teacherNotifs = await prisma.teacherNotification.findMany({
     where: { classroomId },
@@ -677,7 +812,7 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
 }
 
 async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: FetchOptions) {
-  const classroomStudents = await prisma.classroomStudent.findMany({
+  const rawStudents = await prisma.classroomStudent.findMany({
     where: {
       classroomId,
       ...(opts?.studentIds?.length ? { studentId: { in: opts.studentIds } } : {}),
@@ -687,6 +822,14 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
       messages: { orderBy: { createdAt: 'asc' } },
     },
   });
+
+  const cr = await prisma.classroom.findUnique({
+    where: { id: classroomId },
+    select: { mode: true },
+  });
+  const classroomStudents = cr?.mode === 'standard'
+    ? rawStudents.filter(cs => cs.student.tag !== '__group__')
+    : rawStudents;
 
   const rows = classroomStudents
     .map((cs) => {
@@ -745,7 +888,7 @@ export async function generateConversationsDocx(
     const student = data.students[i];
     const pct = 35 + Math.round(55 * ((i + 1) / totalStudents));
     progress({ taskId: '', progress: pct, stage: `正在渲染学生对话（${i + 1}/${totalStudents}）：${student.name}` });
-    const msgs = renderStudentMessages(student, data.agents.reduce((acc: Record<string, string>, a: any) => { acc[a.id] = a.name; return acc; }, {}), data.teacherNotifications || []);
+    const msgs = await renderStudentMessages(student, data.agents.reduce((acc: Record<string, string>, a: any) => { acc[a.id] = a.name; return acc; }, {}), data.teacherNotifications || []);
     allChildren.push(...msgs);
   }
 

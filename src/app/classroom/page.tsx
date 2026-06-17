@@ -890,7 +890,6 @@ function StudentChatContent() {
                     </>
                   )}
                   {isOnline && <span style={{ fontSize: "0.688rem", color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, flexShrink: 0 }}>已登录</span>}
-                  {!isOnline && !isGroupMode && s.groupName && <span className="tag tag-blue" style={{ marginLeft: 'auto', flexShrink: 0 }}>{s.groupName}</span>}
                 </button>
               );
             })}

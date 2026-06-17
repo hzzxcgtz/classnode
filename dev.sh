@@ -165,19 +165,35 @@ parse_port_opts() {
 
 # ─── 开发环境 ──────────────────────────────────────────
 
-cleanup_tsx_watch() {
-  local count
-  count=$(pgrep -f "tsx.*watch.*src/index.ts" 2>/dev/null | wc -l | tr -d ' ') || true
-  if [ "$count" -gt 0 ]; then
-    log_info "清理 $count 个残留 tsx watch 进程..."
-    pkill -f "tsx.*watch.*src/index.ts" 2>/dev/null || true
-    pkill -f "esbuild.*service" 2>/dev/null || true
+cleanup_stale_dev() {
+  local found=false
+  for pattern in "tsx.*watch.*src/index.ts" "next dev" "concurrent" "pnpm.*dev:server" "pnpm.*dev$"; do
+    local pids
+    pids=$(pgrep -f "$pattern" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+      local count
+      count=$(echo "$pids" | wc -l | tr -d ' ')
+      [ "$found" = false ] && log_info "清理残留 dev 进程..."
+      log_sub "  $pattern: $count 个进程"
+      echo "$pids" | xargs kill 2>/dev/null || true
+      found=true
+    fi
+  done
+  # 清理已无端口占用的残留 node 子进程
+  local orphans
+  orphans=$(pgrep -f "esbuild.*service" 2>/dev/null || true)
+  if [ -n "$orphans" ]; then
+    echo "$orphans" | xargs kill 2>/dev/null || true
+    found=true
+  fi
+  if [ "$found" = true ]; then
+    sleep 1
     log_ok "残留进程已清理"
   fi
 }
 
 cmd_dev() {
-  cleanup_tsx_watch
+  cleanup_stale_dev
   parse_port_opts "$@"
   local port="${FRONTEND_PORT:-4000}"
   log_info "前端 → ${CYAN}http://localhost:$port${NC}"
@@ -189,7 +205,7 @@ cmd_dev() {
 }
 
 cmd_dev_server() {
-  cleanup_tsx_watch
+  cleanup_stale_dev
   parse_port_opts "$@"
   local port="${API_PORT:-4001}"
   log_info "后端 → ${CYAN}http://localhost:$port${NC}"
@@ -201,7 +217,7 @@ cmd_dev_server() {
 }
 
 cmd_dev_all() {
-  cleanup_tsx_watch
+  cleanup_stale_dev
   parse_port_opts "$@"
   local fp="${FRONTEND_PORT:-4000}"
   local ap="${API_PORT:-4001}"
@@ -244,7 +260,7 @@ cmd_stop() {
     fi
   done
 
-  cleanup_tsx_watch
+  cleanup_stale_dev
 
   if [ "$found" = false ]; then
     log_info "没有运行中的进程"

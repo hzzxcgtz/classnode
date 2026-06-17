@@ -84,7 +84,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
 
     if (!classroom) return res.status(404).json({ error: '课堂不存在' });
 
-    const students = await prisma.classroomStudent.findMany({
+    const rawStudents = await prisma.classroomStudent.findMany({
       where: {
         classroomId: req.params.classroomId,
         ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
@@ -95,6 +95,10 @@ router.get('/:classroomId/conversations', async (req, res) => {
       },
       orderBy: { joinTime: 'asc' },
     });
+    // 标准模式过滤掉虚拟小组学生
+    const students = classroom.mode === 'standard'
+      ? rawStudents.filter(cs => cs.student.tag !== '__group__')
+      : rawStudents;
 
     // 加载教师通知
     const teacherNotifs = await prisma.teacherNotification.findMany({
@@ -231,7 +235,7 @@ router.get('/:classroomId/stats', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const studentIds = (req.query.studentIds as string)?.split(',').filter(Boolean);
 
-    const classroomStudents = await prisma.classroomStudent.findMany({
+  const rawClassroomStudents = await prisma.classroomStudent.findMany({
       where: {
         classroomId: req.params.classroomId,
         ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
@@ -241,6 +245,15 @@ router.get('/:classroomId/stats', async (req, res) => {
         messages: { orderBy: { createdAt: 'asc' } },
       },
     });
+
+    // 获取课堂模式用于过滤虚拟小组学生
+    const crMode = await prisma.classroom.findUnique({
+      where: { id: req.params.classroomId },
+      select: { mode: true },
+    });
+    const classroomStudents = crMode?.mode === 'standard'
+      ? rawClassroomStudents.filter(cs => cs.student.tag !== '__group__')
+      : rawClassroomStudents;
 
     const rows = classroomStudents
       .map((cs) => {

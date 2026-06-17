@@ -22,8 +22,11 @@ export default function HistoryPage() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportStage, setExportStage] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const [exportFormat, setExportFormat] = useState<'docx' | 'csv'>('docx');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  // 恢复课堂弹窗
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const { socket, on } = useSocket();
 
@@ -58,7 +61,6 @@ export default function HistoryPage() {
       }
       setExportProgress(null);
       setExportStage('');
-      setExportFormat('docx');
     } catch (e: any) {
       setToast({ msg: '获取数据失败: ' + e.message, type: 'error' });
     }
@@ -96,29 +98,7 @@ export default function HistoryPage() {
         .map((s: any) => s.studentId)
         .filter(Boolean);
 
-      if (exportFormat === 'csv' && type === 'conversations') {
-        // CSV 对话记录
-        const resp = await api.exportConversationsCsv(classroomId, { studentIds });
-        if (!resp.ok) throw new Error('导出失败');
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `对话记录-${data.code || classroomId.slice(0, 8)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else if (exportFormat === 'csv' && type === 'stats') {
-        // CSV 学情报表
-        const resp = await api.exportStatsCsv(classroomId, { studentIds });
-        if (!resp.ok) throw new Error('导出失败');
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `学情报表-${classroomId.slice(0, 8)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else if (exportFormat === 'docx' && type === 'conversations') {
+      if (type === 'conversations') {
         // DOCX 对话记录
         const resp = await api.exportConversationsDocx(classroomId, { studentIds, socketId });
         if (!resp.ok) throw new Error('导出失败');
@@ -150,6 +130,20 @@ export default function HistoryPage() {
     setExporting(false);
     setExportProgress(null);
     setExportStage('');
+  };
+
+  // 恢复已结束的课堂
+  const handleRestoreClassroom = async (id: string) => {
+    setRestoring(true);
+    try {
+      await api.restoreClassroom(id);
+      setRestoreTarget(null);
+      setHistory(prev => prev.filter(h => h.id !== id)); // 从列表移除
+      setToast({ msg: '✅ 课堂已恢复！可在「活跃课堂」中查看', type: 'success' });
+    } catch (e: any) {
+      setToast({ msg: '恢复失败: ' + (e.message || '未知错误'), type: 'error' });
+    }
+    setRestoring(false);
   };
 
   const totalStudents = history.reduce((sum: number, cr: any) => sum + (cr._count?.students || 0), 0);
@@ -259,14 +253,14 @@ export default function HistoryPage() {
             <table>
               <thead>
                 <tr>
-                  <th>课堂名称</th>
-                  <th>创建时间</th>
-                  <th>结束时间</th>
-                  <th>时长</th>
-                  <th>总人数</th>
-                  <th>参与</th>
-                  <th>交互量</th>
-                  <th>文字量</th>
+                  <th style={{ textAlign: 'center' }}>课堂名称</th>
+                  <th style={{ textAlign: 'center' }}>模式</th>
+                  <th style={{ textAlign: 'center' }}>创建时间</th>
+                  <th style={{ textAlign: 'center' }}>结束时间</th>
+                  <th style={{ textAlign: 'center' }}>时长</th>
+                  <th style={{ textAlign: 'center' }}>参与人数</th>
+                  <th style={{ textAlign: 'center' }}>交互量</th>
+                  <th style={{ textAlign: 'center' }}>文字量</th>
                   <th style={{ textAlign: 'center' }}>操作</th>
                 </tr>
               </thead>
@@ -288,9 +282,19 @@ export default function HistoryPage() {
                           {cr.classes?.map((cc: any) => cc.class.name).join(', ')}
                         </div>
                       </td>
-                      <td style={{ fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
-                      <td style={{ fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
-                      <td>
+                      <td style={{ textAlign: 'center', fontSize: "0.75rem", color: '#475569', whiteSpace: 'nowrap' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+                          fontSize: "0.688rem", fontWeight: 600,
+                          background: cr.mode === 'advanced' ? '#f5f3ff' : cr.mode === 'group' ? '#fffbeb' : '#f0fdf4',
+                          color: cr.mode === 'advanced' ? '#7c3aed' : cr.mode === 'group' ? '#d97706' : '#059669',
+                        }}>
+                          {cr.mode === 'advanced' ? '高级模式' : cr.mode === 'group' ? '分组模式' : '标准模式'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
+                      <td style={{ textAlign: 'center', fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
+                      <td style={{ textAlign: 'center' }}>
                         {duration !== null ? (
                           <span style={{
                             fontSize: "0.813rem", color: '#475569',
@@ -301,17 +305,12 @@ export default function HistoryPage() {
                           </span>
                         ) : <span style={{ color: '#cbd5e1' }}>-</span>}
                       </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
-                          {cr._count?.students || 0}
+                          {cr.participantCount || 0}/{cr._count?.students || 0}
                         </span>
                       </td>
-                      <td>
-                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: cr.participantCount > 0 ? '#2563eb' : '#94a3b8' }}>
-                          {cr.participantCount || 0}
-                        </span>
-                      </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <span style={{
                           fontSize: "0.813rem", fontWeight: 600,
                           color: (cr._count?.interactions || 0) > 50 ? '#2563eb' : (cr._count?.interactions || 0) > 10 ? '#f59e0b' : '#94a3b8',
@@ -319,7 +318,7 @@ export default function HistoryPage() {
                           {cr._count?.interactions || 0} 轮
                         </span>
                       </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
                           {cr.totalChars > 0 ? (
                             cr.totalChars >= 10000
@@ -334,13 +333,23 @@ export default function HistoryPage() {
                             style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id, 'conversations')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                            对话
+                            导出对话
                           </button>
                           <button className="btn btn-secondary"
                             style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id, 'stats')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
-                            报表
+                            导出报表
+                          </button>
+                          <button onClick={() => setRestoreTarget(cr.id)}
+                            title="恢复课堂"
+                            style={{
+                              fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
+                              borderRadius: 6, cursor: 'pointer', fontWeight: 500,
+                              border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a',
+                            }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                            恢复
                           </button>
                         </div>
                       </td>
@@ -383,14 +392,49 @@ export default function HistoryPage() {
           exporting={exporting}
           exportProgress={exportProgress}
           exportStage={exportStage}
-          exportFormat={exportFormat}
           selectedStudentIds={selectedStudentIds}
           onToggleStudent={toggleStudent}
           onToggleAll={toggleAllStudents}
-          onFormatChange={setExportFormat}
           onConfirm={handleConfirmExport}
           onCancel={() => setPreview(null)}
         />
+      )}
+
+      {/* 恢复课堂确认弹窗 */}
+      {restoreTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => !restoring && setRestoreTarget(null)}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '28px 32px',
+            maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f0fdf4', color: '#16a34a', margin: '0 auto 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+            </div>
+            <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#0f172a', textAlign: 'center' }}>确认恢复课堂</h3>
+            <div style={{
+              margin: '16px 0 20px', padding: '12px 16px', borderRadius: 8,
+              background: '#fefce8', border: '1px solid #fde68a',
+              fontSize: '0.813rem', color: '#92400e', lineHeight: 1.6,
+            }}>
+              <strong>⚠ 恢复后该课堂将变为活跃状态</strong>，学生可通过新的互动码重新加入。<br />
+              原有的消息记录将被保留，新的互动码将在恢复后自动生成。
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
+                style={{ fontSize: '0.813rem', padding: '7px 16px' }}>取消</button>
+              <button onClick={() => handleRestoreClassroom(restoreTarget)} disabled={restoring}
+                style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                  background: restoring ? '#94a3b8' : '#16a34a', color: 'white' }}>
+                {restoring ? '恢复中...' : '确认恢复'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
@@ -404,7 +448,6 @@ function ExportPreviewDialog({
   exporting,
   exportProgress,
   exportStage,
-  exportFormat,
   selectedStudentIds,
   onToggleStudent,
   onToggleAll,
@@ -416,11 +459,9 @@ function ExportPreviewDialog({
   exporting: boolean;
   exportProgress: number | null;
   exportStage: string;
-  exportFormat: 'docx' | 'csv';
   selectedStudentIds: string[];
   onToggleStudent: (id: string) => void;
   onToggleAll: (allIds: string[]) => void;
-  onFormatChange: (f: 'docx' | 'csv') => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -474,11 +515,12 @@ function ExportPreviewDialog({
               {classroom?.title || '未命名课堂'}
             </div>
             <div style={{ color: '#64748b', lineHeight: 1.7 }}>
-              <span style={{ marginRight: 18 }}>互动码：{data.code || '-'}</span>
-              <span>创建：{startTime}</span>
-              <br />
-              <span style={{ marginRight: 18 }}>结束：{endTime}</span>
               <span>班级：{data.classes?.join('、') || '-'}</span>
+              <br />
+              <span style={{ marginRight: 18 }}>创建：{startTime}</span>
+              <span>结束：{endTime}</span>
+              <br />
+              <span>模式：{data.mode === 'advanced' ? '高级模式' : '标准模式'}</span>
             </div>
           </div>
 
@@ -529,39 +571,10 @@ function ExportPreviewDialog({
             </div>
           )}
 
-          {/* 导出格式选择 */}
-          <div style={{ marginBottom: 12 }}>
-            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>
-              导出格式
-            </span>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {[
-                { value: 'docx' as const, label: 'Word (.docx)', desc: '适合打印和分享' },
-                { value: 'csv' as const, label: 'CSV (.csv)', desc: '适合 Excel 打开' },
-              ].map(opt => (
-                <label key={opt.value} style={{
-                  flex: 1, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
-                  border: exportFormat === opt.value ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                  background: exportFormat === opt.value ? '#eff6ff' : 'white',
-                  transition: 'all 0.15s',
-                }}>
-                  <input type="radio" name="export-format" value={opt.value}
-                    checked={exportFormat === opt.value}
-                    onChange={() => onFormatChange(opt.value)}
-                    style={{ display: 'none' }} />
-                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#0f172a' }}>{opt.label}</div>
-                  <div style={{ fontSize: "0.625rem", color: '#94a3b8' }}>{opt.desc}</div>
-                </label>
-              ))}
-            </div>
-          </div>
+
 
           {/* 数据预览 */}
-          {isConversation ? (
-            <ConversationPreview data={data} />
-          ) : (
-            <StatsPreview data={data} />
-          )}
+          {!isConversation && <StatsPreview data={data} />}
         </div>
 
         {/* 弹窗底部 */}
@@ -629,63 +642,7 @@ function ExportPreviewDialog({
 }
 
 /** 对话预览 */
-function ConversationPreview({ data }: { data: any }) {
-  const students = data.students || [];
-  const totalMsgs = students.reduce((sum: number, s: any) => sum + (s.messages?.length || 0), 0);
 
-  return (
-    <div>
-      {/* 汇总统计 */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16,
-      }}>
-        {[
-          { label: '学生人数', value: students.length, color: '#0891b2', bg: '#ecfeff' },
-          { label: '消息总数', value: totalMsgs, color: '#8b5cf6', bg: '#f5f3ff' },
-          { label: 'AI 智能体', value: data.agents?.length || 0, color: '#db2777', bg: '#fdf2f8' },
-        ].map(stat => (
-          <div key={stat.label} style={{
-            background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: stat.color }}>{stat.value}</div>
-            <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* 学生列表 */}
-      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        学生对话概况
-      </div>
-      {students.length === 0 ? (
-        <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无学生记录</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {students.map((s: any, i: number) => {
-            const msgCount = s.messages?.length || 0;
-            const rounds = s.totalRounds || Math.ceil(msgCount / 2);
-            return (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 8, background: '#f8fafc', fontSize: "0.813rem",
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontWeight: 500, color: '#0f172a' }}>{s.name}</span>
-                  {s.studentNo && <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>{s.studentNo}</span>}
-                </div>
-                <span style={{ color: '#64748b', fontSize: "0.75rem" }}>
-                  {rounds} 轮 · {msgCount} 条消息
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 报表预览 */
 function StatsPreview({ data }: { data: any }) {
   const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'];
   const rows = data.rows || [];

@@ -408,7 +408,7 @@ router.get('/:id/students', async (req, res) => {
       gender: cs.student.gender,
       avatarId: cs.student.avatarId,
       groupId: cs.groupId,
-      groupName: cs.group?.name,
+      groupName: classroom?.mode === 'standard' ? undefined : cs.group?.name,
       status: cs.status,
     })));
   } catch (error) {
@@ -526,6 +526,61 @@ router.post('/:id/resume', async (req, res) => {
     res.json(classroom);
   } catch (error) {
     console.error('[Classroom] resume error:', error);
+    res.status(500).json({ error: '恢复课堂失败' });
+  }
+});
+
+// 恢复已结束的课堂（重新生成互动码）
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+
+    // 1. 校验课堂状态
+    const existing = await prisma.classroom.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, status: true, mode: true },
+    });
+    if (!existing) return res.status(404).json({ error: '课堂不存在' });
+    if (existing.status !== 'ended') return res.status(400).json({ error: '只能恢复已结束的课堂' });
+
+    // 2. 生成新的互动码
+    const newCode = await generateUniqueClassroomCode(prisma);
+
+    // 3. 恢复
+    const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // 分组/高级模式：重新生成小组互动码
+      if (existing.mode === 'group' || existing.mode === 'advanced') {
+        const groups = await tx.classroomGroup.findMany({
+          where: { classroomId: req.params.id },
+        });
+        for (const group of groups) {
+          const groupCode = await generateUniqueGroupCode(prisma);
+          await tx.classroomGroup.update({
+            where: { id: group.id },
+            data: { code: groupCode },
+          });
+        }
+      }
+
+      return tx.classroom.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'active',
+          code: newCode,
+          endedAt: null,
+        },
+      });
+    });
+
+    // 通知教师端（学生端不通知，学生需重新用新码加入）
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`teacher:${classroom.id}`).emit('classroom-restored', { classroom });
+    }
+
+    res.json(classroom);
+  } catch (error) {
+    console.error('[Classroom] restore error:', error);
     res.status(500).json({ error: '恢复课堂失败' });
   }
 });

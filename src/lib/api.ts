@@ -108,6 +108,10 @@ export const api = {
   getOnlineStudentIds: (id: string) =>
     request<{ studentIds: string[] }>(`/api/classroom/${id}/online`),
 
+  // 恢复已结束课堂
+  restoreClassroom: (id: string) =>
+    request(`/api/classroom/${id}/restore`, { method: 'POST' }),
+
   // Avatars
   getAvatars: (category?: string) =>
     request<any[]>(`/api/avatars${category ? `?category=${category}` : ''}`),

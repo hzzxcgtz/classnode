@@ -362,6 +362,39 @@ router.put('/student-self/:studentId', async (req, res) => {
     } else {
       return res.status(400).json({ error: '请提供 avatarId 或 svgContent' });
     }
+
+    // 通知教师端实时更新头像
+    try {
+      const updated = await prisma.student.findUnique({
+        where: { id: student.id },
+        select: { avatarId: true },
+      });
+      let avatarSvg: string | undefined;
+      if (updated?.avatarId) {
+        const avatar = await prisma.avatar.findUnique({
+          where: { id: updated.avatarId },
+          select: { svgContent: true },
+        });
+        avatarSvg = avatar?.svgContent;
+      }
+      const io = req.app.get('io');
+      if (io) {
+        const activeClassrooms = await prisma.classroomStudent.findMany({
+          where: { studentId: student.id },
+          include: { classroom: { select: { status: true } } },
+        });
+        for (const cs of activeClassrooms) {
+          if (cs.classroom.status === 'active' || cs.classroom.status === 'paused') {
+            io.to(`teacher:${cs.classroomId}`).emit('student-avatar-changed', {
+              studentId: student.id,
+              avatarId: updated?.avatarId,
+              svgContent: avatarSvg,
+            });
+          }
+        }
+      }
+    } catch {}
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '更换头像失败' });

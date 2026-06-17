@@ -13,6 +13,11 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
 const platformConversations = new Map<string, string>();
 
+/** 教师通知缓存：key=classroomId，value=最近 N 条通知（用于 socket 重连时回放） */
+const teacherNotificationCache = new Map<string, { message: string; timestamp: number }[]>();
+const MAX_CACHED_NOTIFICATIONS = 5;
+const NOTIFICATION_CACHE_TTL = 10 * 60 * 1000; // 10 分钟
+
 /** 学生提问频率限制：每分钟最多 10 条（被屏蔽词拦截的不计入） */
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const studentMsgTimestamps = new Map<string, number[]>();
@@ -175,6 +180,19 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         if (classroomStudent?.blacklisted) {
           socket.emit('student-blacklisted', { studentId: data.studentId });
         }
+
+        // 重放教师缓存通知（断开连接期间错过的消息）
+        try {
+          const cached = teacherNotificationCache.get(classroom.id);
+          if (cached && cached.length > 0) {
+            const validCutoff = Date.now() - NOTIFICATION_CACHE_TTL;
+            for (const n of cached) {
+              if (n.timestamp > validCutoff) {
+                socket.emit('teacher-notification', { message: n.message });
+              }
+            }
+          }
+        } catch {}
 
         // 通知教师端
         io.to(`teacher:${classroom.id}`).emit('student-online', {
@@ -574,6 +592,14 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     // 教师发送通知给学生（全班或指定学生，通过 activeConnections 高效查找 O(1)）
     socket.on('teacher-send-notification', (data: { classroomId: string; studentId?: string; message: string }) => {
       const { classroomId, studentId, message } = data;
+      // 缓存通知（重连回放用），全班通知缓存到 classroom，指定学生通知也缓存到 classroom（仅回放时无法区分，保持一致即可）
+      if (classroomId) {
+        if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
+        const cache = teacherNotificationCache.get(classroomId)!;
+        cache.push({ message, timestamp: Date.now() });
+        const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
+        teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
+      }
       if (studentId) {
         const connKey = `${classroomId}:${studentId}`;
         const targetSocketId = activeConnections.get(connKey);

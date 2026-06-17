@@ -37,9 +37,9 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase, avatarSvg,
+  msg, studentName, agent, apiBase, avatarSvg, onImageClick,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string;
+  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
   return (
@@ -83,7 +83,10 @@ const MessageItem = memo(function MessageItem({
           <div key={fi} style={{ marginBottom: 8 }}>
             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
               <img src={`${apiBase}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
-                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }} />
+                onClick={() => onImageClick?.(`${apiBase}${fu}`)}
+                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block', cursor: 'pointer', transition: 'opacity 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }} />
             ) : (
               <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -167,6 +170,11 @@ function StudentChatContent() {
       if (sessionData) {
         // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
         setStep('chat');
+        // 恢复缓存的教师消息
+        try {
+          const savedMsgs = localStorage.getItem(`teacher_msgs_${codeFromUrl}`);
+          if (savedMsgs) setTeacherMsgs(JSON.parse(savedMsgs));
+        } catch {}
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
         startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
         // 恢复头像数据 + token
@@ -216,6 +224,11 @@ function StudentChatContent() {
   const [teacherMsgs, setTeacherMsgs] = useState<{ message: string; time: string }[]>([]);
   const [showTeacherPanel, setShowTeacherPanel] = useState(false);
   const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
+  const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
+  const overlayRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -230,6 +243,55 @@ function StudentChatContent() {
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
   const streamingBufferRef = useRef('');
   const streamingRafRef = useRef<number | null>(null);
+
+  // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
+  useEffect(() => {
+    if (!fullscreenImg) return;
+    setZoomLevel(1);
+    setImgOffset({ x: 0, y: 0 });
+    const d = dragRef.current;
+    d.dragging = false; d.offX = 0; d.offY = 0;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFullscreenImg(null); setZoomLevel(1); }
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const step = Math.abs(e.deltaY) < 20 ? e.deltaY * 0.005 : e.deltaY > 0 ? -0.12 : 0.12;
+      setZoomLevel(prev => Math.max(0.3, Math.min(15, prev + step)));
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      d.dragging = true;
+      d.startX = e.clientX - d.offX;
+      d.startY = e.clientY - d.offY;
+      if (overlayRef.current) overlayRef.current.style.cursor = 'grabbing';
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!d.dragging) return;
+      d.offX = e.clientX - d.startX;
+      d.offY = e.clientY - d.startY;
+      setImgOffset({ x: d.offX, y: d.offY });
+    };
+    const onMouseUp = () => {
+      if (d.dragging) {
+        d.dragging = false;
+        if (overlayRef.current) overlayRef.current.style.cursor = 'zoom-out';
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [fullscreenImg]);
 
   const SOCKET_URL = API_BASE_URL;
   const apiBase = SOCKET_URL;
@@ -441,7 +503,6 @@ function StudentChatContent() {
       socket.on('connect', () => {
         socket.emit('join-classroom', { classroomCode: joinCode, studentId });
         setConnected(true);
-        setTeacherMsgs([]);
       });
 
       const flushStreaming = () => {
@@ -554,7 +615,11 @@ function StudentChatContent() {
       socket.on('teacher-notification', (data: any) => {
         const now = new Date();
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        setTeacherMsgs(prev => [...prev, { message: data.message, time: timeStr }]);
+        setTeacherMsgs(prev => {
+          const updated = [...prev, { message: data.message, time: timeStr }];
+          try { localStorage.setItem(`teacher_msgs_${joinCode}`, JSON.stringify(updated)); } catch {}
+          return updated;
+        });
         setTeacherNotifBubble(data.message);
         setTimeout(() => setTeacherNotifBubble(null), 15000);
       });
@@ -1049,7 +1114,7 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} />
+            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} />
           ));
         })()}
 
@@ -1084,7 +1149,7 @@ function StudentChatContent() {
               background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
               fontSize: "0.813rem", color: '#451a03', lineHeight: 1.6,
               boxShadow: '0 2px 8px rgba(251,146,60,0.08), 0 8px 24px rgba(251,146,60,0.10)',
-              maxWidth: '40%',
+              maxWidth: '85%',
             }}>
               {/* 三角尾巴 */}
               <div style={{
@@ -1301,6 +1366,82 @@ function StudentChatContent() {
         </div>
       )}
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* 全屏图片预览（支持无极缩放） */}
+      {fullscreenImg && (
+        <div ref={overlayRef}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(8px)',
+            cursor: 'zoom-out',
+            userSelect: 'none',
+          }}>
+          <img src={fullscreenImg} alt=""
+            draggable={false}
+            style={{
+              transform: `translate(${imgOffset.x}px, ${imgOffset.y}px) scale(${zoomLevel})`,
+              transformOrigin: 'center center',
+              maxWidth: '92vw', maxHeight: '92vh',
+              objectFit: 'contain', borderRadius: 8,
+              boxShadow: zoomLevel > 1 ? '0 0 60px rgba(0,0,0,0.4)' : '0 8px 40px rgba(0,0,0,0.5)',
+              cursor: 'grab',
+              pointerEvents: 'auto',
+            }} />
+          <button onClick={() => { setFullscreenImg(null); setZoomLevel(1); }}
+            style={{
+              position: 'absolute', top: 20, right: 24,
+              width: 40, height: 40, borderRadius: '50%',
+              border: 'none', background: 'rgba(255,255,255,0.12)',
+              color: 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, lineHeight: 1,
+              backdropFilter: 'blur(4px)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}>
+            ✕
+          </button>
+          <div style={{
+            position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          }}>
+            {/* 缩放滑竿 */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+              borderRadius: 24, padding: '8px 20px',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <input type="range" min="30" max="300" value={Math.round(zoomLevel * 100)}
+                onChange={e => setZoomLevel(parseInt(e.target.value) / 100)}
+                style={{
+                  width: 140, height: 4, appearance: 'none',
+                  background: 'rgba(255,255,255,0.2)', borderRadius: 2,
+                  outline: 'none', cursor: 'pointer',
+                }}
+                onInput={e => {
+                  const v = parseInt((e.target as HTMLInputElement).value) / 100;
+                  setZoomLevel(v);
+                }} />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <span style={{
+                minWidth: 44, textAlign: 'center',
+                color: 'rgba(255,255,255,0.85)', fontSize: "0.813rem",
+                fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+              }}>{Math.round(zoomLevel * 100)}%</span>
+            </div>
+            {/* 滚轮提示 */}
+            <span style={{
+              color: 'rgba(255,255,255,0.35)', fontSize: "0.75rem",
+              letterSpacing: 0.5,
+            }}>滚轮缩放</span>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

@@ -39,6 +39,11 @@ function ClassroomBoardContent() {
   const [teacherCode, setTeacherCode] = useState('');
   const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
+  const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
+  const overlayRef = useRef<HTMLDivElement>(null);
   // 投屏弹窗打开时监听 Socket 网卡切换事件
   useEffect(() => {
     if (codeScreenKey > 0) {
@@ -62,6 +67,55 @@ function ClassroomBoardContent() {
       setStudentAvatars(m);
     }).catch(() => {});
   }, []);
+
+  // 全屏图片预览：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
+  useEffect(() => {
+    if (!fullscreenImg) return;
+    setZoomLevel(1);
+    setImgOffset({ x: 0, y: 0 });
+    const d = dragRef.current;
+    d.dragging = false; d.offX = 0; d.offY = 0;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setFullscreenImg(null); setZoomLevel(1); }
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const step = Math.abs(e.deltaY) < 20 ? e.deltaY * 0.005 : e.deltaY > 0 ? -0.12 : 0.12;
+      setZoomLevel(prev => Math.max(0.3, Math.min(15, prev + step)));
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      d.dragging = true;
+      d.startX = e.clientX - d.offX;
+      d.startY = e.clientY - d.offY;
+      if (overlayRef.current) overlayRef.current.style.cursor = 'grabbing';
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!d.dragging) return;
+      d.offX = e.clientX - d.startX;
+      d.offY = e.clientY - d.startY;
+      setImgOffset({ x: d.offX, y: d.offY });
+    };
+    const onMouseUp = () => {
+      if (d.dragging) {
+        d.dragging = false;
+        if (overlayRef.current) overlayRef.current.style.cursor = 'zoom-out';
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [fullscreenImg]);
 
 
   /** 生成并下载带 Logo 的二维码图片 */
@@ -344,7 +398,36 @@ function ClassroomBoardContent() {
       setStudentWarnings(prev => ({ ...prev, [data.studentId]: 0 }));
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); };
+    const unsub11 = on('student-avatar-changed', (data: any) => {
+      if (data.avatarId && data.svgContent) {
+        setStudentAvatars(prev => ({ ...prev, [data.avatarId]: data.svgContent }));
+      }
+      // 更新学生列表中的 avatarId
+      setStudents(prev => prev.map(s => {
+        if (s.student?.id === data.studentId) {
+          return { ...s, student: { ...s.student, avatarId: data.avatarId } };
+        }
+        // 也查一下小组模式的 members
+        if (s.members) {
+          return {
+            ...s,
+            members: s.members.map((m: any) =>
+              m.student?.id === data.studentId
+                ? { ...m, student: { ...m.student, avatarId: data.avatarId } }
+                : m
+            ),
+          };
+        }
+        return s;
+      }));
+      // 同步更新当前选中的学生头像（打开抽屉时实时刷新）
+      setSelectedStudent(prev => {
+        if (!prev?.student?.id || prev.student.id !== data.studentId) return prev;
+        return { ...prev, student: { ...prev.student, avatarId: data.avatarId } };
+      });
+    });
+
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, selectedStudent?.id, router]);
 
   const openStudentDrawer = async (student: any) => {
@@ -936,7 +1019,8 @@ function ClassroomBoardContent() {
                         <div key={fi} style={{ marginBottom: 6 }}>
                           {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
                             <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                              style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block' }} />
+                              onClick={() => setFullscreenImg(`${getApiBaseUrl()}${fu}`)}
+                              style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
                           ) : (
                             <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -1152,7 +1236,8 @@ function ClassroomBoardContent() {
                           <div key={fi} style={{ marginBottom: 12 }}>
                             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
                               <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                                style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block' }} />
+                                onClick={() => setFullscreenImg(`${getApiBaseUrl()}${fu}`)}
+                                style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
                             ) : (
                               <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -1556,6 +1641,82 @@ function ClassroomBoardContent() {
         </div>
       )}
       {toast && <Toast msg={toast.msg} type={toast.type as any} onClose={() => setToast(null)} />}
+
+      {/* 全屏图片预览（支持无极缩放） */}
+      {fullscreenImg && (
+        <div ref={overlayRef}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(8px)',
+            cursor: 'zoom-out',
+            userSelect: 'none',
+          }}>
+          <img src={fullscreenImg} alt=""
+            draggable={false}
+            style={{
+              transform: `translate(${imgOffset.x}px, ${imgOffset.y}px) scale(${zoomLevel})`,
+              transformOrigin: 'center center',
+              maxWidth: '92vw', maxHeight: '92vh',
+              objectFit: 'contain', borderRadius: 8,
+              boxShadow: zoomLevel > 1 ? '0 0 60px rgba(0,0,0,0.4)' : '0 8px 40px rgba(0,0,0,0.5)',
+              cursor: 'grab',
+              pointerEvents: 'auto',
+            }} />
+          <button onClick={() => { setFullscreenImg(null); setZoomLevel(1); }}
+            style={{
+              position: 'absolute', top: 20, right: 24,
+              width: 40, height: 40, borderRadius: '50%',
+              border: 'none', background: 'rgba(255,255,255,0.12)',
+              color: 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, lineHeight: 1,
+              backdropFilter: 'blur(4px)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}>
+            ✕
+          </button>
+          <div style={{
+            position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          }}>
+            {/* 缩放滑竿 */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+              borderRadius: 24, padding: '8px 20px',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <input type="range" min="30" max="300" value={Math.round(zoomLevel * 100)}
+                onChange={e => setZoomLevel(parseInt(e.target.value) / 100)}
+                style={{
+                  width: 140, height: 4, appearance: 'none',
+                  background: 'rgba(255,255,255,0.2)', borderRadius: 2,
+                  outline: 'none', cursor: 'pointer',
+                }}
+                onInput={e => {
+                  const v = parseInt((e.target as HTMLInputElement).value) / 100;
+                  setZoomLevel(v);
+                }} />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <span style={{
+                minWidth: 44, textAlign: 'center',
+                color: 'rgba(255,255,255,0.85)', fontSize: "0.813rem",
+                fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+              }}>{Math.round(zoomLevel * 100)}%</span>
+            </div>
+            {/* 滚轮提示 */}
+            <span style={{
+              color: 'rgba(255,255,255,0.35)', fontSize: "0.75rem",
+              letterSpacing: 0.5,
+            }}>滚轮缩放</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

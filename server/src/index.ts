@@ -8,6 +8,9 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
 
+// 文件日志必须在最前面导入，确保任何后续模块加载失败都能被记录
+import './services/file-logger.js';
+
 import { setupSocketHandlers } from './socket/index.js';
 import agentRoutes from './routes/agents.js';
 import classRoutes from './routes/classes.js';
@@ -17,7 +20,6 @@ import settingsRoutes from './routes/settings.js';
 import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
-import './services/file-logger.js'; // 文件日志（必须在最前面，接管 console）
 import { sendPing } from './services/ping.js';
 import uploadRoutes from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';

@@ -12,7 +12,18 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import sharp from 'sharp';
+let _sharp: any = null;
+async function getSharp() {
+  if (!_sharp) {
+    try {
+      _sharp = (await import('sharp')).default;
+    } catch (e) {
+      console.warn('[export] sharp not available, WebP image conversion disabled:', e);
+      _sharp = null;
+    }
+  }
+  return _sharp;
+}
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── 类型定义 ───────────────────────────────────────────────
@@ -599,7 +610,9 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
           // 不支持的格式尝试用 sharp 转换（WebP → PNG）
           if (!imgType) {
             try {
-              const converted = await sharp(imgBuf).png().toBuffer();
+              const s = await getSharp();
+              if (!s) throw new Error('sharp not available');
+              const converted = await s(imgBuf).png().toBuffer();
               const dim = getImageDimensions(converted, 'png');
               const sized = dim
                 ? scaleImageSize(dim.w, dim.h, IMAGE_MAX_PX, IMAGE_MAX_PX)

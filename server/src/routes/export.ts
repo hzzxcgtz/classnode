@@ -300,7 +300,7 @@ router.get('/:classroomId/stats', async (req, res) => {
     };
 
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId}.json`);
+    res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId}-${readableTimestamp()}.json`);
     res.json(report);
   } catch (error) {
     console.error('[Export] stats error:', error);
@@ -376,7 +376,7 @@ router.post('/:classroomId/stats/csv', async (req, res) => {
     const csv = generateStatsCsv(statsData);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId.slice(0, 8)}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId.slice(0, 8)}-${readableTimestamp()}.csv`);
     res.send(csv);
   } catch (error: any) {
     console.error('[Export] stats CSV error:', error);

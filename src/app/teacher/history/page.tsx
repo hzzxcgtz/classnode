@@ -13,7 +13,7 @@ export default function HistoryPage() {
 
   // 导出预览弹窗
   const [preview, setPreview] = useState<{
-    type: 'conversations' | 'stats';
+    type: 'conversations';
     classroomId: string;
     classroom: any;
     data: any;
@@ -45,19 +45,14 @@ export default function HistoryPage() {
   const pagedHistory = history.slice((page - 1) * pageSize, page * pageSize);
 
   // 点击导出：先获取数据并展示预览
-  const handlePreview = async (classroomId: string, type: 'conversations' | 'stats') => {
+  const handlePreview = async (classroomId: string) => {
     const cr = history.find(h => h.id === classroomId);
     try {
-      const data = type === 'conversations'
-        ? await api.exportConversations(classroomId)
-        : await api.exportStats(classroomId);
-      setPreview({ type, classroomId, classroom: cr, data });
+      const data = await api.exportConversations(classroomId);
+      setPreview({ type: 'conversations', classroomId, classroom: cr, data });
       // 默认全选所有学生
       if (data.students) {
         setSelectedStudentIds(data.students.map((s: any) => s.studentId || s.name).filter(Boolean));
-      } else if (data.rows) {
-        // stats 模式下没有 studentId，用名字标识
-        setSelectedStudentIds(data.rows.map((r: any[]) => r[1]).filter(Boolean));
       }
       setExportProgress(null);
       setExportStage('');
@@ -106,18 +101,10 @@ export default function HistoryPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `对话记录-${data.code || classroomId.slice(0, 8)}.docx`;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // DOCX 学情报表
-        const resp = await api.exportStatsDocx(classroomId, { studentIds, socketId });
-        if (!resp.ok) throw new Error('导出失败');
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `学情报表-${classroomId.slice(0, 8)}.docx`;
+        const now = new Date();
+        const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        const titleSafe = (data.title || `课堂-${data.code || classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
+        a.download = `${titleSafe}-对话记录-${ts}.docx`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -331,15 +318,9 @@ export default function HistoryPage() {
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
                             style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                            onClick={() => handlePreview(cr.id, 'conversations')}>
+                            onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                             导出对话
-                          </button>
-                          <button className="btn btn-secondary"
-                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                            onClick={() => handlePreview(cr.id, 'stats')}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
-                            导出报表
                           </button>
                           <button onClick={() => setRestoreTarget(cr.id)}
                             title="恢复课堂"
@@ -451,11 +432,10 @@ function ExportPreviewDialog({
   selectedStudentIds,
   onToggleStudent,
   onToggleAll,
-  onFormatChange,
   onConfirm,
   onCancel,
 }: {
-  preview: { type: 'conversations' | 'stats'; classroom: any; data: any };
+  preview: { classroom: any; data: any };
   exporting: boolean;
   exportProgress: number | null;
   exportStage: string;
@@ -465,14 +445,13 @@ function ExportPreviewDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const { type, classroom, data } = preview;
-  const isConversation = type === 'conversations';
+  const { classroom, data } = preview;
 
   const startTime = classroom ? new Date(classroom.createdAt).toLocaleString() : '-';
   const endTime = classroom?.endedAt ? new Date(classroom.endedAt).toLocaleString() : '-';
 
   // 学生列表
-  const students = isConversation ? (data.students || []) : [];
+  const students = data.students || [];
   const studentSelectorId = (s: any) => s.studentId || s.name;
   const allSelected = students.length > 0 && selectedStudentIds.length === students.length;
 
@@ -494,7 +473,7 @@ function ExportPreviewDialog({
           borderBottom: '1px solid #eef2f6',
         }}>
           <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>
-            {isConversation ? '导出对话记录' : '导出学情报表'}
+            导出对话记录
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: "0.75rem", color: '#64748b' }}>
             选择学生和格式后点击确认导出
@@ -524,8 +503,8 @@ function ExportPreviewDialog({
             </div>
           </div>
 
-          {/* 学生选择（仅对话模式） */}
-          {isConversation && students.length > 0 && (
+          {/* 学生选择 */}
+          {students.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -573,8 +552,6 @@ function ExportPreviewDialog({
 
 
 
-          {/* 数据预览 */}
-          {!isConversation && <StatsPreview data={data} />}
         </div>
 
         {/* 弹窗底部 */}
@@ -612,11 +589,11 @@ function ExportPreviewDialog({
               style={{ fontSize: "0.75rem", padding: '7px 16px' }}>
               取消
             </button>
-            <button onClick={onConfirm} disabled={exporting || (isConversation && selectedStudentIds.length === 0)}
+            <button onClick={onConfirm} disabled={exporting || selectedStudentIds.length === 0}
               style={{
                 fontSize: "0.75rem", padding: '7px 18px', borderRadius: 8, border: 'none',
-                cursor: (exporting || (isConversation && selectedStudentIds.length === 0)) ? 'not-allowed' : 'pointer', fontWeight: 500,
-                background: (exporting || (isConversation && selectedStudentIds.length === 0)) ? '#94a3b8' : '#2563eb',
+                cursor: (exporting || selectedStudentIds.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 500,
+                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : '#2563eb',
                 color: 'white',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
@@ -637,85 +614,6 @@ function ExportPreviewDialog({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/** 对话预览 */
-
-function StatsPreview({ data }: { data: any }) {
-  const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'];
-  const rows = data.rows || [];
-  const totalStudents = rows.length;
-  const totalInteractions = rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
-
-  return (
-    <div>
-      {/* 汇总 */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16,
-      }}>
-        {[
-          { label: '学生人数', value: totalStudents, color: '#0891b2', bg: '#ecfeff' },
-          { label: '总交互轮数', value: totalInteractions, color: '#8b5cf6', bg: '#f5f3ff' },
-          { label: '数据列数', value: headers.length, color: '#059669', bg: '#d1fae5' },
-        ].map(stat => (
-          <div key={stat.label} style={{
-            background: stat.bg, borderRadius: 8, padding: '10px 14px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: "1.25rem", fontWeight: 700, color: stat.color }}>{stat.value}</div>
-            <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* 数据表格 */}
-      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        数据预览
-      </div>
-      {rows.length === 0 ? (
-        <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center', padding: 20 }}>暂无数据</div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: "0.75rem", borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {headers.map((h: string, i: number) => (
-                  <th key={i} style={{
-                    padding: '6px 8px', textAlign: 'center', background: '#eff6ff',
-                    color: '#1e40af', fontWeight: 600, borderBottom: '2px solid #dbeafe',
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 20).map((row: any[], ri: number) => (
-                <tr key={ri}>
-                  {row.map((val: any, ci: number) => (
-                    <td key={ci} style={{
-                      padding: '5px 8px', textAlign: 'center', color: '#1f2937',
-                      borderBottom: '1px solid #f1f5f9',
-                      background: ri % 2 === 0 ? 'white' : '#f8fafc',
-                      maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{val != null ? String(val) : '-'}</td>
-                  ))}
-                </tr>
-              ))}
-              {rows.length > 20 && (
-                <tr>
-                  <td colSpan={headers.length} style={{
-                    padding: '8px', textAlign: 'center', color: '#94a3b8', fontSize: "0.688rem",
-                    borderBottom: '1px solid #f1f5f9',
-                  }}>
-                    ... 还有 {rows.length - 20} 条记录，完整数据将在导出的 Word 中展示
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }

@@ -35,6 +35,9 @@ export interface ExportResult {
 // ─── 常量 ───────────────────────────────────────────────────
 
 
+/** DOCX 嵌入图片最大尺寸（像素），等比例缩放 */
+const IMAGE_MAX_PX = 250;
+
 // ─── 类型别名 ────────────────────────────────────────────────
 
 type DocBlock = Paragraph | Table;
@@ -88,6 +91,12 @@ function resolveFilePath(fileUrl: string): string | null {
 }
 
 // ─── 工具函数 ────────────────────────────────────────────────
+
+function readableTimestamp(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+}
 
 function fmtDate(d: string | Date) {
   try { return new Date(d).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
@@ -592,10 +601,9 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
             try {
               const converted = await sharp(imgBuf).png().toBuffer();
               const dim = getImageDimensions(converted, 'png');
-              const MAX_PX = 400;
               const sized = dim
-                ? scaleImageSize(dim.w, dim.h, MAX_PX, MAX_PX)
-                : { width: MAX_PX, height: 300 };
+                ? scaleImageSize(dim.w, dim.h, IMAGE_MAX_PX, IMAGE_MAX_PX)
+                : { width: IMAGE_MAX_PX, height: 200 };
               children.push(new Paragraph({
                 spacing: { before: 40, after: 20 }, indent: INDENT_SM,
                 children: [
@@ -617,10 +625,9 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
           }
           // 按比例缩放图片（transformation 单位为像素，docx 库自动转 EMU）
           const dim = getImageDimensions(imgBuf, imgType);
-          const MAX_PX = 400;
           const sized = dim
-            ? scaleImageSize(dim.w, dim.h, MAX_PX, MAX_PX)
-            : { width: MAX_PX, height: 300 };
+            ? scaleImageSize(dim.w, dim.h, IMAGE_MAX_PX, IMAGE_MAX_PX)
+            : { width: IMAGE_MAX_PX, height: 200 };
           children.push(new Paragraph({
             spacing: { before: 40, after: 20 }, indent: INDENT_SM,
             children: [
@@ -825,7 +832,7 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
 
   const cr = await prisma.classroom.findUnique({
     where: { id: classroomId },
-    select: { mode: true },
+    include: { classes: { include: { class: true } } },
   });
   const classroomStudents = cr?.mode === 'standard'
     ? rawStudents.filter(cs => cs.student.tag !== '__group__')
@@ -849,7 +856,9 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
     .sort((a, b) => a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true }));
 
   return {
-    title: '学情报表',
+    title: cr?.title || '学情报表',
+    mode: cr?.mode || 'standard',
+    classes: cr?.classes?.map((cc: any) => cc.class.name) || [],
     exportedAt: new Date().toISOString(),
     headers: ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'],
     rows: rows.map(r => [r.studentNo || '-', r.name, r.totalRounds, r.firstMsgLen, r.avgTime]),
@@ -916,9 +925,10 @@ export async function generateConversationsDocx(
 
   progress({ taskId: '', progress: 100, stage: '导出完成' });
 
+  const shortTitle = (data.title || `课堂-${data.code || classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
   return {
     buffer,
-    filename: `对话记录-${data.code || classroomId.slice(0, 8)}.docx`,
+    filename: `${shortTitle}-对话记录-${readableTimestamp()}.docx`,
     title: data.title || '课堂对话记录',
     stats: {
       totalStudents: stats.totalStudents,
@@ -959,9 +969,10 @@ export async function generateStatsDocx(
 
   progress({ taskId: '', progress: 100, stage: '导出完成' });
 
+  const shortTitle = (data.title || `课堂-${classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
   return {
     buffer,
-    filename: `学情报表-${classroomId.slice(0, 8)}.docx`,
+    filename: `${shortTitle}-学情报表-${readableTimestamp()}.docx`,
     title: '学情报表',
     stats: {
       totalStudents: data.rows.length,
@@ -1012,8 +1023,9 @@ export async function generateConversationsCsv(
     }
   }
 
+  const shortTitleCsv = (data.title || `课堂-${data.code || classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
   return {
     csv,
-    filename: `对话记录-${data.code || classroomId.slice(0, 8)}.csv`,
+    filename: `${shortTitleCsv}-对话记录-${readableTimestamp()}.csv`,
   };
 }

@@ -729,16 +729,16 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
       )}
       {!batchMode && (
         <div className="avatar-card-del"
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          style={{
-            position: 'absolute', top: 2, right: 2,
-            width: 20, height: 20, borderRadius: '50%',
-            background: '#fef2f2', border: '1px solid #fca5a5',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', opacity: 0, transition: 'opacity 0.12s',
-          }} title="删除">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </div>
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            style={{
+              position: 'absolute', top: 2, right: 2,
+              width: 20, height: 20, borderRadius: '50%',
+              background: '#fef2f2', border: '1px solid #fca5a5',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', opacity: 0, transition: 'opacity 0.12s',
+            }} title="删除">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
       )}
     </div>
   );
@@ -766,7 +766,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   const [uploadingImg, setUploadingImg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (mode === 'view' && avatar) {
+    if ((mode === 'edit' || mode === 'view') && avatar) {
       api.getAvatarUsage(avatar.id).then(setUsage).catch(() => {});
     }
   }, [mode, avatar]);
@@ -1012,7 +1012,8 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                 <div style={{
                   width: 80, height: 80, margin: '0 auto 8px',
                   borderRadius: '50%', overflow: 'hidden', border: '2px solid #e2e8f0',
-                }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatar.svgContent).replace('<svg', '<svg width="80" height="80"') }} />
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatar.svgContent).replace('<svg', '<svg width="80" height="80" preserveAspectRatio="xMidYMid meet"') }} />
                 <p style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 8 }}>当前{category === 'student' ? '头像' : '图标'}</p>
                 <button onClick={() => fileInputRef.current?.click()}
                   style={{
@@ -1043,6 +1044,53 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
                   重新选择
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 使用情况（编辑模式也显示） */}
+        {mode === 'edit' && avatar && (
+          <div style={{ textAlign: 'left', marginBottom: 16, padding: '12px 14px', background: '#f8fafc', borderRadius: 8 }}>
+            <p style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6 }}>使用情况：</p>
+            {!usage ? (
+              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</p>
+            ) : usage.students.length === 0 && usage.classes.length === 0 ? (
+              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>暂无使用</p>
+            ) : (
+              <div style={{ maxHeight: 120, overflow: 'auto' }}>
+                {usage.students.length > 0 && (
+                  <div style={{ marginBottom: 4 }}>
+                    <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {usage.students.map((s: any, i: number) => (
+                        <span key={i} style={{
+                          padding: '2px 6px', borderRadius: 4, fontSize: "0.625rem",
+                          background: 'white', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
+                        }}>
+                          {s.class?.name ? (
+                            <><span style={{ color: '#2563eb', fontWeight: 600 }}>{s.class.name}</span><span style={{ color: '#94a3b8' }}>·</span><span>{s.name}</span></>
+                          ) : s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {usage.classes.length > 0 && (
+                  <div>
+                    <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {usage.classes.map((c: any, i: number) => (
+                        <span key={i} style={{
+                          padding: '2px 8px', borderRadius: 4, fontSize: "0.625rem",
+                          background: 'white', color: '#059669',
+                        }}>
+                          {c.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

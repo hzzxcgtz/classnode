@@ -6,9 +6,11 @@
 import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   AlignmentType, BorderStyle, WidthType, ShadingType, Header, Footer,
-  PageNumber, PageBreak,
+  PageNumber, PageBreak, ImageRun,
 } from 'docx';
 import { PrismaClient, Prisma } from '@prisma/client';
+import path from 'path';
+import fs from 'fs';
 
 // ─── 类型定义 ───────────────────────────────────────────────
 
@@ -60,6 +62,21 @@ const C = {
 
 const INDENT = { left: 400, right: 200 };
 const INDENT_SM = { left: 400 };
+
+
+function resolveFilePath(fileUrl: string): string | null {
+  if (!fileUrl) return null;
+  const fileName = path.basename(fileUrl);
+  // 优先从 CLASSNODE_DATA_DIR 加载
+  const dataDir = process.env.CLASSNODE_DATA_DIR;
+  if (dataDir) {
+    const p = path.join(dataDir, 'uploads', 'chat', fileName);
+    if (fs.existsSync(p)) return p;
+    const p2 = path.join(dataDir, 'uploads', fileName);
+    if (fs.existsSync(p2)) return p2;
+  }
+  return null;
+}
 
 // ─── 工具函数 ────────────────────────────────────────────────
 
@@ -277,12 +294,11 @@ function renderCover(data: any): DocBlock[] {
   children.push(pText(data.title || '未命名课堂', { size: 26, color: C.textSecondary, align: AlignmentType.CENTER, spacingAfter: 400 }));
 
   const rows: TableRow[] = [
-    new TableRow({ children: [cell('互动码', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.code || '-', { width: 3200 }), cell('课堂模式', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 3200 })] }),
-    new TableRow({ children: [cell('开始时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(fmtDate(data.createdAt), { width: 3200 }), cell('结束时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.endedAt ? fmtDate(data.endedAt) : '-', { width: 3200 })] }),
+    new TableRow({ children: [cell('课堂模式', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 1200 }), cell('开始时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(fmtDate(data.createdAt), { width: 2200 }), cell('结束时间', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.endedAt ? fmtDate(data.endedAt) : '-', { width: 2200 })] }),
     new TableRow({ children: [cell('参与班级', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell((data.classes || []).join('、') || '-', { width: 3200 }), cell('参与学生', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(String(data.students?.length || 0) + ' 人', { width: 3200 })] }),
   ];
   if (data.agents?.length > 0) {
-    rows.push(new TableRow({ children: [cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.agents.map((a: any) => a.name).join('、'), { width: 3200 }), cell('智能体数量', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(String(data.agents.length) + ' 个', { width: 3200 })] }));
+    rows.push(new TableRow({ children: [cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 1800, color: C.primary }), cell(data.agents.map((a: any) => a.name).join('、'), { width: 8200 })] }));
   }
   children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
   children.push(new Paragraph({ spacing: { before: 300 }, children: [] }));
@@ -328,20 +344,6 @@ function renderOverview(stats: ClassStats): DocBlock[] {
   ];
 
   children.push(new Table({ rows: [new TableRow({ children: r1 }), new TableRow({ children: r2 })], width: { size: 100, type: WidthType.PERCENTAGE } }));
-
-  // 消息构成表
-  if (stats.totalMsgs > 0) {
-    const userPct = Math.round((stats.totalUserMsgs / stats.totalMsgs) * 100);
-    const aiPct = 100 - userPct;
-    children.push(pText('消息构成', { bold: true, size: 22, color: C.primary, spacingBefore: 250, spacingAfter: 60 }));
-    children.push(new Table({
-      rows: [
-        new TableRow({ children: [cell('学生消息', { bold: true, shading: C.primaryLight, width: 3000 }), cell(`${stats.totalUserMsgs} 条`, { width: 3000 }), cell('占比', { bold: true, shading: C.primaryLight, width: 3000 }), cell(`${userPct}%`, { width: 3000 })] }),
-        new TableRow({ children: [cell('AI 回复', { bold: true, shading: C.accentLight, width: 3000, color: C.accent }), cell(`${stats.totalAiMsgs} 条`, { width: 3000 }), cell('占比', { bold: true, shading: C.accentLight, width: 3000, color: C.accent }), cell(`${aiPct}%`, { width: 3000 })] }),
-      ],
-      width: { size: 100, type: WidthType.PERCENTAGE },
-    }));
-  }
 
   // 学生活跃度排行
   if (stats.studentRankings.length > 0) {
@@ -418,7 +420,7 @@ function renderStudentMessages(student: any, agentMap: Record<string, string>, t
   for (const msg of studentMsgs) {
     const roundIdx = msg.roundIndex != null ? msg.roundIndex : null;
 
-    if (roundIdx !== null && roundIdx !== lastRound) {
+    if (msg.role === 'user' && roundIdx !== null && roundIdx !== lastRound) {
       // 轮次分隔
       children.push(new Paragraph({
         spacing: { before: lastRound === null ? 120 : 200, after: 40 },
@@ -475,12 +477,43 @@ function renderSingleMessage(children: DocBlock[], msg: any, student: any, agent
   const paras = mdToParagraphs(msg.content || '', { size: 19, shading: bg });
   children.push(...paras);
 
-  // 附件
+  // 附件（图片嵌入）
   if (msg.fileUrls?.length > 0) {
-    children.push(new Paragraph({
-      spacing: { after: 40 }, indent: INDENT_SM,
-      children: [new TextRun({ text: `[附件] ${(msg.fileNames || msg.fileUrls).join('、')}`, size: 16, color: C.textSecondary, font: { name: FONT }, italics: true })],
-    }));
+    const names = msg.fileNames || msg.fileUrls;
+    for (let fi = 0; fi < msg.fileUrls.length; fi++) {
+      const fileUrl = msg.fileUrls[fi];
+      const fileName = names[fi] || fileUrl;
+      // 尝试嵌入图片
+      const imagePath = resolveFilePath(fileUrl);
+      if (imagePath && fs.existsSync(imagePath)) {
+        try {
+          const imgBuf = fs.readFileSync(imagePath);
+          const ext = fileUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp)$/)?.[1]?.replace('jpeg', 'jpg') || 'png';
+          children.push(new Paragraph({
+            spacing: { before: 40, after: 20 }, indent: INDENT_SM,
+            children: [
+              new ImageRun({
+                data: imgBuf,
+                type: ext,
+                transformation: { width: 360, height: 270 },
+              }),
+            ],
+          }));
+        } catch {
+          // 图片加载失败时显示文件名
+          children.push(new Paragraph({
+            spacing: { after: 20 }, indent: INDENT_SM,
+            children: [new TextRun({ text: `[图片] ${fileName}`, size: 16, color: C.textSecondary, font: { name: FONT }, italics: true })],
+          }));
+        }
+      } else {
+        // 没有本地文件时显示文件名
+        children.push(new Paragraph({
+          spacing: { after: 20 }, indent: INDENT_SM,
+          children: [new TextRun({ text: `[图片] ${fileName}`, size: 16, color: C.textSecondary, font: { name: FONT }, italics: true })],
+        }));
+      }
+    }
   }
 }
 
@@ -573,8 +606,8 @@ export function generateStatsCsv(data: any): string {
   csv += headers.join(',') + '\n';
   for (const row of rows) {
     csv += row.map((v: any) => {
-      const s = String(v ?? '');
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+      const s = String(v ?? '').replace(/[\r\n]+/g, ' ');
+      return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g, '""') + '"' : s;
     }).join(',') + '\n';
   }
   return csv;
@@ -829,8 +862,8 @@ export async function generateConversationsCsv(
 
     for (const entry of allEntries) {
       const esc = (s: string) => {
-        const str = String(s ?? '');
-        return str.includes(',') || str.includes('"') || str.includes('\n') ? '"' + str.replace(/"/g, '""') + '"' : str;
+        const str = String(s ?? '').replace(/[\r\n]+/g, ' ');
+        return str.includes(',') || str.includes('"') ? '"' + str.replace(/"/g, '""') + '"' : str;
       };
       csv += `${esc(student.name)},${esc(student.studentNo || '')},${esc(String(entry.round))},${esc(entry.role)},${esc(fmtDate(entry.time))},${esc(entry.content)}\n`;
     }

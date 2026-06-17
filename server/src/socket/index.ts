@@ -13,11 +13,11 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
 const platformConversations = new Map<string, string>();
 
-/** 教师通知缓存：key=classroomId，value=最近 N 条通知（用于 socket 重连时回放） */
-const teacherNotificationCache = new Map<string, { message: string; timestamp: number }[]>();
+/** 教师通知缓存：key=classroomId，value=最近 N 条通知（用于 socket 重连时回放）
+ *  studentId=null 表示全班广播，回放时只有目标学生或全班消息才推给当前学生 */
+const teacherNotificationCache = new Map<string, { id: string; message: string; timestamp: number; studentId: string | null }[]>();
 const MAX_CACHED_NOTIFICATIONS = 5;
 const NOTIFICATION_CACHE_TTL = 10 * 60 * 1000; // 10 分钟
-
 /** 学生提问频率限制：每分钟最多 10 条（被屏蔽词拦截的不计入） */
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const studentMsgTimestamps = new Map<string, number[]>();
@@ -187,8 +187,9 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           if (cached && cached.length > 0) {
             const validCutoff = Date.now() - NOTIFICATION_CACHE_TTL;
             for (const n of cached) {
-              if (n.timestamp > validCutoff) {
-                socket.emit('teacher-notification', { message: n.message });
+              // 只放行全班广播（studentId===null）或发给当前学生的通知
+              if (n.timestamp > validCutoff && (n.studentId === null || n.studentId === data.studentId)) {
+                socket.emit('teacher-notification', { id: n.id, message: n.message });
               }
             }
           }
@@ -589,25 +590,62 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       }
     });
 
-    // 教师发送通知给学生（全班或指定学生，通过 activeConnections 高效查找 O(1)）
-    socket.on('teacher-send-notification', (data: { classroomId: string; studentId?: string; message: string }) => {
-      const { classroomId, studentId, message } = data;
-      // 缓存通知（重连回放用），全班通知缓存到 classroom，指定学生通知也缓存到 classroom（仅回放时无法区分，保持一致即可）
-      if (classroomId) {
-        if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
-        const cache = teacherNotificationCache.get(classroomId)!;
-        cache.push({ message, timestamp: Date.now() });
-        const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
-        teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
-      }
-      if (studentId) {
-        const connKey = `${classroomId}:${studentId}`;
-        const targetSocketId = activeConnections.get(connKey);
-        if (targetSocketId) {
-          io.to(targetSocketId).emit('teacher-notification', { message });
+    // 教师发送通知给学生：全班广播 / 定向单个学生 / 定向多个学生（如小组成员）
+    // 教师通知：全班广播 / 定向单个学生 / 定向组（分组/高级模式）
+    socket.on('teacher-send-notification', async (data: { classroomId: string; studentId?: string; groupId?: string; message: string }) => {
+      const { classroomId, studentId, groupId, message } = data;
+      if (!classroomId) return;
+      try {
+        if (groupId) {
+          // 定向到组：查组成员，每人一条通知记录
+          const members = await prisma.classroomStudent.findMany({
+            where: { classroomId, groupId },
+            select: { id: true, studentId: true },
+          });
+          for (const m of members) {
+            const notif = await prisma.teacherNotification.create({
+              data: { classroomId, studentId: m.studentId, groupId, content: message },
+            });
+            if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
+            const cache = teacherNotificationCache.get(classroomId)!;
+            cache.push({ id: notif.id, message, timestamp: Date.now(), studentId: m.studentId });
+            const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
+            teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
+            const connKey = `${classroomId}:${m.studentId}`;
+            const targetSocketId = activeConnections.get(connKey);
+            if (targetSocketId) {
+              io.to(targetSocketId).emit('teacher-notification', { id: notif.id, message });
+            }
+          }
+        } else if (studentId) {
+          // 定向到单个学生
+          const notif = await prisma.teacherNotification.create({
+            data: { classroomId, studentId, content: message },
+          });
+          if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
+          const cache = teacherNotificationCache.get(classroomId)!;
+          cache.push({ id: notif.id, message, timestamp: Date.now(), studentId });
+          const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
+          teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
+          const connKey = `${classroomId}:${studentId}`;
+          const targetSocketId = activeConnections.get(connKey);
+          if (targetSocketId) {
+            io.to(targetSocketId).emit('teacher-notification', { id: notif.id, message });
+          }
+        } else {
+          // 全班广播
+          const notif = await prisma.teacherNotification.create({
+            data: { classroomId, studentId: null, content: message },
+          });
+          if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
+          const cache = teacherNotificationCache.get(classroomId)!;
+          cache.push({ id: notif.id, message, timestamp: Date.now(), studentId: null });
+          const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
+          teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
+          io.to(`classroom:${classroomId}`).emit('teacher-notification', { id: notif.id, message });
         }
-      } else {
-        io.to(`classroom:${classroomId}`).emit('teacher-notification', { message });
+      } catch (err) {
+        console.error('[Socket] save notification error:', err);
       }
     });
 

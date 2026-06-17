@@ -170,11 +170,23 @@ function StudentChatContent() {
       if (sessionData) {
         // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
         setStep('chat');
-        // 恢复缓存的教师消息
-        try {
-          const savedMsgs = localStorage.getItem(`teacher_msgs_${codeFromUrl}`);
-          if (savedMsgs) setTeacherMsgs(JSON.parse(savedMsgs));
-        } catch {}
+        // 从数据库加载教师通知（持久化后可导出，且刷新不丢失）
+        if (cr.id) {
+          try {
+            const notifs = await api.getTeacherNotifications(cr.id, sessionData.studentId);
+            const seen = seenNotifIdsRef.current;
+            const msgs: { message: string; time: string }[] = [];
+            for (const n of notifs) {
+              seen.add(n.id);
+              const d = new Date(n.createdAt);
+              const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+              msgs.push({ message: n.content, time });
+            }
+            setTeacherMsgs(msgs);
+            // 持久化已见的通知 ID 以防 socket 重放重复
+            try { localStorage.setItem('_seen_notif_ids', JSON.stringify([...seen])); } catch {}
+          } catch {}
+        }
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
         startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
         // 恢复头像数据 + token
@@ -243,6 +255,38 @@ function StudentChatContent() {
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
   const streamingBufferRef = useRef('');
   const streamingRafRef = useRef<number | null>(null);
+  // 去重教师消息：通过唯一 ID 跟踪已收到的通知，跨刷新持久化
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  // 点击外部关闭教师消息面板
+  const teacherPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showTeacherPanel) return;
+    const handler = (e: MouseEvent) => {
+      if (teacherPanelRef.current && !teacherPanelRef.current.contains(e.target as Node)) {
+        setShowTeacherPanel(false);
+      }
+    };
+    // 延迟挂载以避免触发按钮自身的 click 事件
+    setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => document.removeEventListener('click', handler);
+  }, [showTeacherPanel]);
+  // 初始化时从 localStorage 恢复已见 ID
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('_seen_notif_ids');
+      if (saved) seenNotifIdsRef.current = new Set(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  // 手机端检测（< 640px）
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
   useEffect(() => {
@@ -613,13 +657,12 @@ function StudentChatContent() {
       });
 
       socket.on('teacher-notification', (data: any) => {
+        // 通过唯一 ID 去重（Db 持久化后，防止缓存重放 / socket 重连产生的重复）
+        if (data.id && seenNotifIdsRef.current.has(data.id)) return;
+        if (data.id) seenNotifIdsRef.current.add(data.id);
         const now = new Date();
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        setTeacherMsgs(prev => {
-          const updated = [...prev, { message: data.message, time: timeStr }];
-          try { localStorage.setItem(`teacher_msgs_${joinCode}`, JSON.stringify(updated)); } catch {}
-          return updated;
-        });
+        setTeacherMsgs(prev => [...prev, { message: data.message, time: timeStr }]);
         setTeacherNotifBubble(data.message);
         setTimeout(() => setTeacherNotifBubble(null), 15000);
       });
@@ -880,7 +923,7 @@ function StudentChatContent() {
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', background: 'linear-gradient(180deg, #f0f4ff 0%, #f8fafc 100%)' }}>
       {/* === 顶部栏 === */}
-      <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', borderBottom: '1px solid #eef2f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+      <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 4 : 0, background: 'white', borderBottom: '1px solid #eef2f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {renderAgentAvatar(42, 12, 20)}
           <div>
@@ -899,7 +942,7 @@ function StudentChatContent() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 5 : 10, flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: "0.75rem", color: connected ? '#10b981' : '#ef4444' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', display: 'inline-block' }} />
             {connected ? '已连接' : '连接断开'}
@@ -923,7 +966,7 @@ function StudentChatContent() {
             </div>
           )}
           {/* 消息按钮 */}
-          <div style={{ position: 'relative' }}>
+          <div ref={teacherPanelRef} style={{ position: 'relative' }}>
             <button onClick={() => setShowTeacherPanel(p => !p)}
               title={showTeacherPanel ? '收起消息' : '查看消息'}
               style={{

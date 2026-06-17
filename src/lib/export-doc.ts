@@ -776,6 +776,31 @@ export async function exportConversationsDoc(data: any): Promise<Blob> {
 }
 
 function renderMessage(children: any[], msg: any, student: any) {
+  // 教师通知：特殊样式（金色标签 + 灰底）
+  if (msg.role === 'teacher-notification') {
+    const timeStr = msg.time ? '  ' + formatTime(msg.time) : '';
+    children.push(
+      new Paragraph({
+        spacing: { before: 120, after: 10 },
+        indent: { left: 400 },
+        children: [
+          new TextRun({ text: '📢 教师通知', bold: true, size: 17, color: '92400E', font: { name: FONT } }),
+          new TextRun({ text: timeStr, size: 16, color: COLORS.textLight, font: { name: FONT } }),
+        ],
+      }),
+      new Paragraph({
+        spacing: { after: 80 },
+        indent: { left: 400 },
+        border: { left: { style: BorderStyle.SINGLE, size: 6, color: 'F59E0B' } },
+        shading: { fill: 'FFFBEB', type: ShadingType.CLEAR },
+        children: [
+          new TextRun({ text: msg.content || '', size: 19, color: '1F2937', font: { name: FONT } }),
+        ],
+      }),
+    );
+    return;
+  }
+
   const isUser = msg.role === 'user';
   const roleColor = isUser ? COLORS.primary : COLORS.accent;
   const roleLabel = isUser ? student.name : (msg.agentName || 'AI 助手');

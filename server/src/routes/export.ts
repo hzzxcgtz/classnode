@@ -85,6 +85,22 @@ router.get('/:classroomId/conversations', async (req, res) => {
       orderBy: { joinTime: 'asc' },
     });
 
+    // 加载教师通知
+    const teacherNotifs = await prisma.teacherNotification.findMany({
+      where: { classroomId: req.params.classroomId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // 构建学生→通知的映射（广播通知归入每个学生）
+    const studentNotifMap: Record<string, { content: string; time: Date; target: string | null }[]> = {};
+    for (const n of teacherNotifs) {
+      const entry = { content: n.content, time: n.createdAt, target: n.studentId };
+      if (n.studentId) {
+        if (!studentNotifMap[n.studentId]) studentNotifMap[n.studentId] = [];
+        studentNotifMap[n.studentId].push(entry);
+      }
+    }
+
     const agentMap: Record<string, string> = {};
     for (const ca of classroom.classroomAgents) {
       agentMap[ca.agent.id] = ca.agent.name;
@@ -102,22 +118,45 @@ router.get('/:classroomId/conversations', async (req, res) => {
         name: ca.agent.name,
         platform: ca.agent.platform,
       })),
-      students: students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; messages: true } }>) => ({
-        name: cs.student.name,
-        studentNo: cs.student.studentNo,
-        gender: cs.student.gender,
-        totalRounds: cs.totalRounds,
-        messages: cs.messages.map((m: Prisma.MessageGetPayload<{}>) => ({
-          role: m.role,
-          content: m.content,
-          time: m.createdAt,
-          roundIndex: m.roundIndex,
-          agentId: m.agentId,
-          agentName: m.agentId ? (agentMap[m.agentId] || null) : null,
-          fileUrls: m.fileUrls ? (() => { try { return JSON.parse(m.fileUrls); } catch { return undefined; } })() : undefined,
-          fileNames: m.fileNames ? (() => { try { return JSON.parse(m.fileNames); } catch { return undefined; } })() : undefined,
-        })),
+      teacherNotifications: teacherNotifs.map((n: Prisma.TeacherNotificationGetPayload<{}>) => ({
+        content: n.content,
+        time: n.createdAt,
+        targetStudentId: n.studentId,
       })),
+      students: students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; messages: true } }>) => {
+        // 合并该学生的教师通知（全班广播 + 定向给该学生的）
+        const notifMsgs = teacherNotifs
+          .filter(n => n.studentId === null || n.studentId === cs.student.id)
+          .map(n => ({
+            role: 'teacher-notification',
+            content: n.content,
+            time: n.createdAt,
+            roundIndex: null,
+            agentId: null,
+            agentName: null,
+            fileUrls: undefined,
+            fileNames: undefined,
+          }));
+        return {
+          name: cs.student.name,
+          studentNo: cs.student.studentNo,
+          gender: cs.student.gender,
+          totalRounds: cs.totalRounds,
+          messages: [
+            ...notifMsgs,
+            ...cs.messages.map((m: Prisma.MessageGetPayload<{}>) => ({
+              role: m.role,
+              content: m.content,
+              time: m.createdAt,
+              roundIndex: m.roundIndex,
+              agentId: m.agentId,
+              agentName: m.agentId ? (agentMap[m.agentId] || null) : null,
+              fileUrls: m.fileUrls ? (() => { try { return JSON.parse(m.fileUrls); } catch { return undefined; } })() : undefined,
+              fileNames: m.fileNames ? (() => { try { return JSON.parse(m.fileNames); } catch { return undefined; } })() : undefined,
+            })),
+          ],
+        };
+      }),
     };
 
     res.setHeader('Content-Type', 'application/json');

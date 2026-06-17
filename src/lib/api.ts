@@ -92,6 +92,8 @@ export const api = {
   getClassroomStudents: (id: string) => request<any[]>(`/api/classroom/${id}/students`),
   getStudentMessages: (classroomId: string, studentId: string) =>
     request<any[]>(`/api/classroom/${classroomId}/student/${studentId}/messages`),
+  getTeacherNotifications: (classroomId: string, studentId?: string) =>
+    request<any[]>(`/api/classroom/${classroomId}/notifications${studentId ? `?studentId=${studentId}` : ''}`),
   getAllMessages: (classroomId: string) =>
     request<any[]>(`/api/classroom/${classroomId}/all-messages`),
   clearStudentMessages: (classroomId: string, studentId: string) =>

@@ -97,6 +97,28 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Class" ADD COLUMN "avatarId" INTEGER REFERENCES "Avatar"("id")`);
       console.log('[server] Added avatarId column to Class');
     }
+
+    // 检查 TeacherNotification 表是否存在（v1.4.6 新增）
+    const notifTable = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name='TeacherNotification'`);
+    if (notifTable.length === 0) {
+      console.log('[server] TeacherNotification table not found, creating...');
+      await prisma.$executeRawUnsafe(`CREATE TABLE "TeacherNotification" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "classroomId" TEXT NOT NULL REFERENCES "Classroom"("id") ON DELETE CASCADE,
+        "studentId" TEXT,
+        "content" TEXT NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX "TeacherNotification_classroomId_createdAt_idx" ON "TeacherNotification"("classroomId", "createdAt")`);
+      console.log('[server] TeacherNotification table created');
+    } else {
+      // 检查是否有 groupId 列（v1.4.6 新增）
+      const notifCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('TeacherNotification')`);
+      if (!notifCols.map(c => c.name).includes('groupId')) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "TeacherNotification" ADD COLUMN "groupId" TEXT`);
+        console.log('[server] Added groupId column to TeacherNotification');
+      }
+    }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
   }

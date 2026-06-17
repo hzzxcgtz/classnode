@@ -635,4 +635,28 @@ router.get('/history/all', async (req, res) => {
     }
   });
 
+// 获取教师通知（学生端页面加载 / 重连时调用）
+router.get('/:id/notifications', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { studentId } = req.query;
+    const notifications = await prisma.teacherNotification.findMany({
+      where: {
+        classroomId: req.params.id,
+        ...(typeof studentId === 'string' ? {
+          OR: [
+            { studentId: null },
+            { studentId },
+          ],
+        } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(notifications);
+  } catch (error) {
+    console.error('[Notifications] get error:', error);
+    res.status(500).json({ error: '获取教师通知失败' });
+  }
+});
+
 export default router;

@@ -115,6 +115,7 @@ model Classroom {
   classroomAgents  ClassroomAgent[]
   interactions     Interaction[]
   shieldWarnings   ShieldWarning[]
+  notifications    TeacherNotification[]
 }
 
 // 课堂关联的班级（标准模式）
@@ -222,6 +223,21 @@ model ShieldWarning {
   createdAt   DateTime @default(now())
 
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+}
+
+// 教师通知（全班广播或发给指定学生，持久化到 DB 支持导出）
+model TeacherNotification {
+  id          String   @id @default(uuid())
+  classroomId String
+  studentId   String?  // null = 全班广播 或 定向到组，非空 = 发送给指定学生（Student.id）
+  groupId     String?  // 定向到组（高级/分组模式），studentId=null 时 groupId 有值
+  content     String
+  createdAt   DateTime @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@index([classroomId, createdAt])
+  @@index([classroomId, groupId])
 }
 
 // 互动记录汇总

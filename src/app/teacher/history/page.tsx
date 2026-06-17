@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { exportConversationsDoc, exportStatsDoc } from '@/lib/export-doc';
+import { useSocket } from '@/lib/socket';
 import { Toast, Pagination } from '@/lib/components';
 
 export default function HistoryPage() {
@@ -19,7 +19,21 @@ export default function HistoryPage() {
     data: any;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [exportStage, setExportStage] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [exportFormat, setExportFormat] = useState<'docx' | 'csv'>('docx');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const { socket, on } = useSocket();
+
+  // 监听导出进度
+  useEffect(() => {
+    return on('export-progress', (p: { progress: number; stage: string }) => {
+      setExportProgress(p.progress);
+      setExportStage(p.stage);
+    });
+  }, [on]);
 
   useEffect(() => {
     api.getHistory().then(data => { setHistory(data); setPage(1); }).catch(() => {}).finally(() => setLoading(false));
@@ -35,33 +49,107 @@ export default function HistoryPage() {
         ? await api.exportConversations(classroomId)
         : await api.exportStats(classroomId);
       setPreview({ type, classroomId, classroom: cr, data });
+      // 默认全选所有学生
+      if (data.students) {
+        setSelectedStudentIds(data.students.map((s: any) => s.studentId || s.name).filter(Boolean));
+      } else if (data.rows) {
+        // stats 模式下没有 studentId，用名字标识
+        setSelectedStudentIds(data.rows.map((r: any[]) => r[1]).filter(Boolean));
+      }
+      setExportProgress(null);
+      setExportStage('');
+      setExportFormat('docx');
     } catch (e: any) {
       setToast({ msg: '获取数据失败: ' + e.message, type: 'error' });
     }
   };
 
-  // 确认导出：生成 Word 并下载
+  // 切换学生选择
+  const toggleStudent = (id: string) => {
+    setSelectedStudentIds(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllStudents = (allIds: string[]) => {
+    setSelectedStudentIds(prev =>
+      prev.length === allIds.length ? [] : [...allIds]
+    );
+  };
+
+  // 确认导出：服务端生成并下载
   const handleConfirmExport = async () => {
     if (!preview) return;
     setExporting(true);
+    setExportProgress(0);
+    setExportStage('正在准备导出...');
+
     try {
       const { type, classroom, data } = preview;
-      const blob = type === 'conversations'
-        ? await exportConversationsDoc(data)
-        : await exportStatsDoc(data);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = type === 'conversations'
-        ? `对话记录-${data.code || classroom?.id}.docx`
-        : `学情报表-${classroom?.id.slice(0, 8)}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const classroomId = preview.classroomId;
+      const socketId = socket?.current?.id;
+
+      // 确定要导出的学生 ID（从原 data 中提取实际 studentId）
+      const students = data.students || [];
+      const studentIds = students
+        .filter((s: any) => selectedStudentIds.includes(s.studentId || s.name))
+        .map((s: any) => s.studentId)
+        .filter(Boolean);
+
+      if (exportFormat === 'csv' && type === 'conversations') {
+        // CSV 对话记录
+        const resp = await api.exportConversationsCsv(classroomId, { studentIds });
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `对话记录-${data.code || classroomId.slice(0, 8)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else if (exportFormat === 'csv' && type === 'stats') {
+        // CSV 学情报表
+        const resp = await api.exportStatsCsv(classroomId, { studentIds });
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `学情报表-${classroomId.slice(0, 8)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else if (exportFormat === 'docx' && type === 'conversations') {
+        // DOCX 对话记录
+        const resp = await api.exportConversationsDocx(classroomId, { studentIds, socketId });
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `对话记录-${data.code || classroomId.slice(0, 8)}.docx`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        // DOCX 学情报表
+        const resp = await api.exportStatsDocx(classroomId, { studentIds, socketId });
+        if (!resp.ok) throw new Error('导出失败');
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `学情报表-${classroomId.slice(0, 8)}.docx`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
       setPreview(null);
+      setToast({ msg: '导出成功！', type: 'success' });
     } catch (e: any) {
       setToast({ msg: '导出失败: ' + e.message, type: 'error' });
     }
     setExporting(false);
+    setExportProgress(null);
+    setExportStage('');
   };
 
   const totalStudents = history.reduce((sum: number, cr: any) => sum + (cr._count?.students || 0), 0);
@@ -293,6 +381,13 @@ export default function HistoryPage() {
         <ExportPreviewDialog
           preview={preview}
           exporting={exporting}
+          exportProgress={exportProgress}
+          exportStage={exportStage}
+          exportFormat={exportFormat}
+          selectedStudentIds={selectedStudentIds}
+          onToggleStudent={toggleStudent}
+          onToggleAll={toggleAllStudents}
+          onFormatChange={setExportFormat}
           onConfirm={handleConfirmExport}
           onCancel={() => setPreview(null)}
         />
@@ -307,11 +402,25 @@ export default function HistoryPage() {
 function ExportPreviewDialog({
   preview,
   exporting,
+  exportProgress,
+  exportStage,
+  exportFormat,
+  selectedStudentIds,
+  onToggleStudent,
+  onToggleAll,
+  onFormatChange,
   onConfirm,
   onCancel,
 }: {
   preview: { type: 'conversations' | 'stats'; classroom: any; data: any };
   exporting: boolean;
+  exportProgress: number | null;
+  exportStage: string;
+  exportFormat: 'docx' | 'csv';
+  selectedStudentIds: string[];
+  onToggleStudent: (id: string) => void;
+  onToggleAll: (allIds: string[]) => void;
+  onFormatChange: (f: 'docx' | 'csv') => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -320,6 +429,11 @@ function ExportPreviewDialog({
 
   const startTime = classroom ? new Date(classroom.createdAt).toLocaleString() : '-';
   const endTime = classroom?.endedAt ? new Date(classroom.endedAt).toLocaleString() : '-';
+
+  // 学生列表
+  const students = isConversation ? (data.students || []) : [];
+  const studentSelectorId = (s: any) => s.studentId || s.name;
+  const allSelected = students.length > 0 && selectedStudentIds.length === students.length;
 
   return (
     <div style={{
@@ -335,39 +449,114 @@ function ExportPreviewDialog({
       }} onClick={e => e.stopPropagation()}>
         {/* 弹窗头部 */}
         <div style={{
-          padding: '24px 28px 16px',
+          padding: '20px 24px 14px',
           borderBottom: '1px solid #eef2f6',
         }}>
-          <h3 style={{ margin: 0, fontSize: "1.063rem", fontWeight: 600, color: '#0f172a' }}>
+          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>
             {isConversation ? '导出对话记录' : '导出学情报表'}
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: "0.813rem", color: '#64748b' }}>
-            请确认导出内容，无误后点击"确认导出"
+          <p style={{ margin: '4px 0 0', fontSize: "0.75rem", color: '#64748b' }}>
+            选择学生和格式后点击确认导出
           </p>
         </div>
 
         {/* 弹窗内容 */}
         <div style={{
-          padding: '20px 28px',
+          padding: '16px 24px',
           overflowY: 'auto', flex: 1,
         }}>
           {/* 课堂基本信息 */}
           <div style={{
-            background: '#f8fafc', borderRadius: 10, padding: '14px 18px', marginBottom: 16,
-            fontSize: "0.813rem",
+            background: '#f8fafc', borderRadius: 8, padding: '12px 16px', marginBottom: 14,
+            fontSize: "0.75rem",
           }}>
-            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
               {classroom?.title || '未命名课堂'}
             </div>
-            <div style={{ color: '#64748b', lineHeight: 1.8 }}>
-              <span style={{ marginRight: 24 }}>互动码：{data.code || '-'}</span>
-              <span>创建时间：{startTime}</span>
+            <div style={{ color: '#64748b', lineHeight: 1.7 }}>
+              <span style={{ marginRight: 18 }}>互动码：{data.code || '-'}</span>
+              <span>创建：{startTime}</span>
               <br />
-              <span style={{ marginRight: 24 }}>结束时间：{endTime}</span>
-              <span>参与班级：{data.classes?.join('、') || '-'}</span>
+              <span style={{ marginRight: 18 }}>结束：{endTime}</span>
+              <span>班级：{data.classes?.join('、') || '-'}</span>
             </div>
           </div>
 
+          {/* 学生选择（仅对话模式） */}
+          {isConversation && students.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 8,
+              }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b' }}>
+                  选择学生（{selectedStudentIds.length}/{students.length}）
+                </span>
+                <label style={{
+                  fontSize: "0.688rem", color: '#2563eb', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}>
+                  <input type="checkbox" checked={allSelected}
+                    onChange={() => onToggleAll(students.map(studentSelectorId))}
+                    style={{ accentColor: '#2563eb' }} />
+                  全选
+                </label>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+                {students.map((s: any, i: number) => {
+                  const sid = studentSelectorId(s);
+                  const msgCount = s.messages?.length || 0;
+                  const rounds = s.totalRounds || Math.ceil(msgCount / 2);
+                  return (
+                    <label key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                      borderRadius: 6, cursor: 'pointer', fontSize: "0.75rem",
+                      background: selectedStudentIds.includes(sid) ? '#eff6ff' : '#f8fafc',
+                      border: selectedStudentIds.includes(sid) ? '1px solid #bfdbfe' : '1px solid transparent',
+                      transition: 'all 0.15s',
+                    }}>
+                      <input type="checkbox" checked={selectedStudentIds.includes(sid)}
+                        onChange={() => onToggleStudent(sid)}
+                        style={{ accentColor: '#2563eb' }} />
+                      <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{s.name}</span>
+                      <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
+                        {rounds} 轮 · {msgCount} 条
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 导出格式选择 */}
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>
+              导出格式
+            </span>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {[
+                { value: 'docx' as const, label: 'Word (.docx)', desc: '适合打印和分享' },
+                { value: 'csv' as const, label: 'CSV (.csv)', desc: '适合 Excel 打开' },
+              ].map(opt => (
+                <label key={opt.value} style={{
+                  flex: 1, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                  border: exportFormat === opt.value ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                  background: exportFormat === opt.value ? '#eff6ff' : 'white',
+                  transition: 'all 0.15s',
+                }}>
+                  <input type="radio" name="export-format" value={opt.value}
+                    checked={exportFormat === opt.value}
+                    onChange={() => onFormatChange(opt.value)}
+                    style={{ display: 'none' }} />
+                  <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#0f172a' }}>{opt.label}</div>
+                  <div style={{ fontSize: "0.625rem", color: '#94a3b8' }}>{opt.desc}</div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 数据预览 */}
           {isConversation ? (
             <ConversationPreview data={data} />
           ) : (
@@ -377,36 +566,62 @@ function ExportPreviewDialog({
 
         {/* 弹窗底部 */}
         <div style={{
-          padding: '16px 28px',
+          padding: '14px 24px',
           borderTop: '1px solid #eef2f6',
-          display: 'flex', justifyContent: 'flex-end', gap: 10,
         }}>
-          <button className="btn btn-secondary"
-            onClick={onCancel} disabled={exporting}
-            style={{ fontSize: "0.813rem", padding: '8px 18px' }}>
-            取消
-          </button>
-          <button onClick={onConfirm} disabled={exporting}
-            style={{
-              fontSize: "0.813rem", padding: '8px 20px', borderRadius: 8, border: 'none',
-              cursor: exporting ? 'not-allowed' : 'pointer', fontWeight: 500,
-              background: exporting ? '#94a3b8' : '#2563eb', color: 'white',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-            {exporting ? (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
-                  <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" />
-                </svg>
-                生成中...
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                确认导出
-              </>
-            )}
-          </button>
+          {/* 进度条 */}
+          {exporting && exportProgress !== null && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                fontSize: "0.688rem", color: '#64748b', marginBottom: 4,
+              }}>
+                <span>{exportStage || '导出中...'}</span>
+                <span>{exportProgress}%</span>
+              </div>
+              <div style={{
+                width: '100%', height: 6, borderRadius: 3,
+                background: '#e2e8f0', overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${exportProgress}%`, height: '100%',
+                  background: 'linear-gradient(90deg, #2563eb, #7c3aed)',
+                  borderRadius: 3,
+                  transition: 'width 0.3s ease',
+                }} />
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-secondary"
+              onClick={onCancel} disabled={exporting}
+              style={{ fontSize: "0.75rem", padding: '7px 16px' }}>
+              取消
+            </button>
+            <button onClick={onConfirm} disabled={exporting || (isConversation && selectedStudentIds.length === 0)}
+              style={{
+                fontSize: "0.75rem", padding: '7px 18px', borderRadius: 8, border: 'none',
+                cursor: (exporting || (isConversation && selectedStudentIds.length === 0)) ? 'not-allowed' : 'pointer', fontWeight: 500,
+                background: (exporting || (isConversation && selectedStudentIds.length === 0)) ? '#94a3b8' : '#2563eb',
+                color: 'white',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+              {exporting ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                    <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" />
+                  </svg>
+                  {exportProgress !== null && exportProgress >= 100 ? '已就绪' : '导出中...'}
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                  确认导出
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

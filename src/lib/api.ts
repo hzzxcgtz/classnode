@@ -152,8 +152,52 @@ export const api = {
   // Export
   exportConversations: (classroomId: string) =>
     request<any>(`/api/export/${classroomId}/conversations`),
+  exportConversationsFiltered: (classroomId: string, studentIds?: string[]) => {
+    const params = studentIds?.length ? `?studentIds=${studentIds.join(',')}` : '';
+    return request<any>(`/api/export/${classroomId}/conversations${params}`);
+  },
   exportStats: (classroomId: string) =>
     request<any>(`/api/export/${classroomId}/stats`),
+  exportStatsFiltered: (classroomId: string, studentIds?: string[]) => {
+    const params = studentIds?.length ? `?studentIds=${studentIds.join(',')}` : '';
+    return request<any>(`/api/export/${classroomId}/stats${params}`);
+  },
+
+  // 服务端生成 DOCX（对话记录）
+  exportConversationsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
+    return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/conversations/docx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+  },
+
+  // 服务端生成 DOCX（学情报表）
+  exportStatsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
+    return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/stats/docx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+  },
+
+  // 服务端生成 CSV（对话记录）
+  exportConversationsCsv: (classroomId: string, options?: { studentIds?: string[] }) => {
+    return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/conversations/csv`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+  },
+
+  // 服务端生成 CSV（学情报表）
+  exportStatsCsv: (classroomId: string, options?: { studentIds?: string[] }) => {
+    return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/stats/csv`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+  },
   createBackup: () => request<{ success: boolean; path: string }>('/api/export/backup', { method: 'POST' }),
   getBackups: () => request<any[]>('/api/export/backups'),
   deleteBackup: (name: string) => request(`/api/export/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),

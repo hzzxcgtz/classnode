@@ -7,7 +7,14 @@ import { createRequire } from 'module';
 const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { reloadEncryptionKey } from '../services/crypto.js';
+import {
+  generateConversationsDocx,
+  generateStatsDocx,
+  generateConversationsCsv,
+  generateStatsCsv,
+} from '../services/export-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -61,10 +68,11 @@ const backupUpload = multer({
   },
 });
 
-// 导出全班对话汇总 (JSON format, can be converted to Word by frontend)
+// 导出全班对话汇总 (JSON format, supports ?studentIds=id1,id2 filter)
 router.get('/:classroomId/conversations', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const studentIds = (req.query.studentIds as string)?.split(',').filter(Boolean);
 
     const classroom = await prisma.classroom.findUnique({
       where: { id: req.params.classroomId },
@@ -77,7 +85,10 @@ router.get('/:classroomId/conversations', async (req, res) => {
     if (!classroom) return res.status(404).json({ error: '课堂不存在' });
 
     const students = await prisma.classroomStudent.findMany({
-      where: { classroomId: req.params.classroomId },
+      where: {
+        classroomId: req.params.classroomId,
+        ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
+      },
       include: {
         student: true,
         messages: { orderBy: { createdAt: 'asc' } },
@@ -168,13 +179,63 @@ router.get('/:classroomId/conversations', async (req, res) => {
   }
 });
 
-// 导出学情报表 — 从消息记录实时计算
+// ─── 服务端生成 DOCX（对话记录） ────────────────────────────
+router.post('/:classroomId/conversations/docx', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const io = req.app.get('io');
+    const { studentIds, socketId } = req.body;
+
+    const result = await generateConversationsDocx(
+      req.params.classroomId,
+      prisma,
+      socketId && io ? (p) => {
+        io.to(socketId).emit('export-progress', p);
+      } : undefined,
+      { studentIds },
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+    res.send(result.buffer);
+  } catch (error: any) {
+    console.error('[Export] conversations DOCX error:', error);
+    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+  }
+});
+
+// 服务端生成 CSV（对话记录）
+router.post('/:classroomId/conversations/csv', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { studentIds } = req.body;
+
+    const result = await generateConversationsCsv(
+      req.params.classroomId,
+      prisma,
+      { studentIds },
+    );
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+    res.send(result.csv);
+  } catch (error: any) {
+    console.error('[Export] conversations CSV error:', error);
+    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+  }
+});
+
+// 导出学情报表 — 从消息记录实时计算（支持 ?studentIds=id1,id2 筛选）
 router.get('/:classroomId/stats', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const studentIds = (req.query.studentIds as string)?.split(',').filter(Boolean);
 
     const classroomStudents = await prisma.classroomStudent.findMany({
-      where: { classroomId: req.params.classroomId },
+      where: {
+        classroomId: req.params.classroomId,
+        ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
+      },
       include: {
         student: true,
         messages: { orderBy: { createdAt: 'asc' } },
@@ -231,6 +292,82 @@ router.get('/:classroomId/stats', async (req, res) => {
   } catch (error) {
     console.error('[Export] stats error:', error);
     res.status(500).json({ error: '导出报表失败' });
+  }
+});
+
+// ─── 服务端生成 DOCX（学情报表） ────────────────────────────
+router.post('/:classroomId/stats/docx', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const io = req.app.get('io');
+    const { studentIds, socketId } = req.body;
+
+    const result = await generateStatsDocx(
+      req.params.classroomId,
+      prisma,
+      socketId && io ? (p) => {
+        io.to(socketId).emit('export-progress', p);
+      } : undefined,
+      { studentIds },
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+    res.send(result.buffer);
+  } catch (error: any) {
+    console.error('[Export] stats DOCX error:', error);
+    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+  }
+});
+
+// 服务端生成 CSV（学情报表）
+router.post('/:classroomId/stats/csv', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { studentIds } = req.body;
+
+    const data = await prisma.classroomStudent.findMany({
+      where: {
+        classroomId: req.params.classroomId,
+        ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
+      },
+      include: {
+        student: true,
+        messages: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    const rows = data
+      .map((cs) => {
+        const msgs = cs.messages || [];
+        const userMsgs = msgs.filter(m => m.role === 'user');
+        const totalRounds = userMsgs.length;
+        const firstMsgLen = userMsgs.length > 0 ? (userMsgs[0].content?.length || 0) : 0;
+        let totalRT = 0, rtCount = 0;
+        for (let i = 0; i < msgs.length; i++) {
+          if (msgs[i].role === 'assistant' && i > 0 && msgs[i - 1].role === 'user') {
+            const diff = (new Date(msgs[i].createdAt).getTime() - new Date(msgs[i - 1].createdAt).getTime()) / 1000;
+            if (diff > 0) { totalRT += diff; rtCount++; }
+          }
+        }
+        return { studentNo: cs.student.studentNo || '', name: cs.student.name, totalRounds, firstMsgLen, avgTime: rtCount > 0 ? Math.round(totalRT / rtCount) : 0 };
+      })
+      .sort((a, b) => a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true }));
+
+    const statsData = {
+      exportedAt: new Date().toISOString(),
+      headers: ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'],
+      rows: rows.map(r => [r.studentNo || '-', r.name, r.totalRounds, r.firstMsgLen, r.avgTime]),
+    };
+
+    const csv = generateStatsCsv(statsData);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId.slice(0, 8)}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error('[Export] stats CSV error:', error);
+    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
   }
 });
 

@@ -175,7 +175,7 @@ export default function AboutPage() {
             </div>
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontSize: "0.938rem", color: '#1e3a5f', lineHeight: 1.8, fontWeight: 500 }}>
-                专为真实课堂而生。即使网络环境不那么完美，也能让老师精心调优的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
+                专为真实课堂而生。将您在 Coze、智谱清言、百度文心等平台创建好的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
               </p>
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function AboutPage() {
 
         <div style={{ fontSize: "1rem", color: '#57534e', lineHeight: 1.9 }}>
           <p style={{ margin: '0 0 18px' }}>
-            AI 技术发展很快。现在很多老师都能在 Coze、智谱清言这些平台上调教出相当出色的 AI 智能体——能批改作文、能做英语陪练、能做历史解谜游戏。但问题来了：怎么让全班四十个孩子同时用上它？
+            AI 技术发展很快。现在很多老师都能在 Coze、智谱清言、百度文心这些平台上调教出相当出色的 AI 智能体——能批改作文、能做英语陪练、能做历史解谜游戏。但问题来了：怎么让全班四十个孩子同时用上它？
           </p>
           <p style={{ margin: '0 0 18px' }}>
             现实往往是这样的：学校带宽不够，打开一个网页都要转半天；让学生自己注册账号，折腾大半节课还没全进来；学生跟 AI 聊了什么，老师在讲台上完全不知道；下课铃一响，所有对话记录烟消云散&hellip;&hellip;技术明明很好了，可就是落不了地。

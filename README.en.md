@@ -25,13 +25,13 @@
 
 ## Why It Was Built
 
-AI technology is advancing fast. Many teachers can now craft impressive AI agents on platforms like Coze and Zhipu AI. But here's the real question: how do you get an entire class of 40 students to use it at the same time?
+AI technology is advancing fast. Many teachers can now craft impressive AI agents on platforms like Coze, Zhipu AI, and Baidu Wenxin. But here's the real question: how do you get an entire class of 40 students to use it at the same time?
 
 The reality is often frustrating — sluggish school networks, students struggling to register, teachers blind to what students are discussing with AI, and all conversation data vanishing when the bell rings. The technology is ready, but deployment isn't.
 
 **When technology itself is no longer the barrier, the real challenge is making it work in the classroom.**
 
-ClassNode was built to solve this. It's not a cloud platform — it's an AI classroom system that lives on your computer. Teachers can deliver their carefully crafted AI agents to every student safely and effortlessly, regardless of network quality or device type. Just open a browser and start class.
+ClassNode was built to solve this. It's not a cloud platform — it's an AI classroom system that lives on your computer. Teachers can deliver AI agents they created on Coze, Zhipu AI, Baidu Wenxin and other platforms to every student safely and effortlessly, regardless of network quality or device type. Just open a browser and start class.
 
 > One goal only: make AI in the classroom an everyday reality, not just an occasional experiment.
 
@@ -109,13 +109,13 @@ npm config get registry
 
 #### Step 3: Deploy ClassNode
 
-Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.4.7x.x.zip`), extract it.
+Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.4.8x.x.zip`), extract it.
 
 Open a terminal in the extracted directory:
 
 ```bash
 # Enter the project directory (adjust path as needed)
-cd classnode-v1.4.7
+cd classnode-v1.4.8
 
 # Recommended: run the start script via Node.js
 node start.js

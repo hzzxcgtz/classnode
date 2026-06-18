@@ -860,7 +860,7 @@ export default function TeacherDashboard() {
                   onClick={async () => {
                     if (
                       confirm(
-                        `确定结束课堂 "${cr.title || "未命名课堂"}" 吗？\n结束后的课堂可在历史数据中查看。`,
+                        `确定结束课堂「${cr.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`,
                       )
                     ) {
                       await api.endClassroom(cr.id);

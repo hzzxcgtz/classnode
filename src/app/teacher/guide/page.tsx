@@ -177,14 +177,14 @@ const SectionIcon = ({ name }: { name: string }) => {
 };
 
 const sectionList = [
-  { id: "getting-started", mainLabel: "启程", subLabel: "首次见面与安全锁" },
-  { id: "ai-agents", mainLabel: "招募", subLabel: "配置 AI 助教团队" },
+  { id: "getting-started", mainLabel: "启程", subLabel: "首次见面安全锁" },
+  { id: "ai-agents", mainLabel: "接入", subLabel: "配置AI助教团队" },
   { id: "classes", mainLabel: "组局", subLabel: "班级与学生管理" },
-  { id: "classroom", mainLabel: "备课", subLabel: "创建互动课堂" },
-  { id: "student-join", mainLabel: "上课", subLabel: "学生端接入与互动" },
+  { id: "classroom", mainLabel: "备课", subLabel: "创建与管理课堂" },
+  { id: "student-join", mainLabel: "上课", subLabel: "学生端接入互动" },
   { id: "dashboard", mainLabel: "掌控", subLabel: "课堂看板与监控" },
   { id: "avatars", mainLabel: "形象", subLabel: "头像管理与奖励" },
-  { id: "shield", mainLabel: "净化", subLabel: "屏蔽词管理" },
+  { id: "shield", mainLabel: "净化", subLabel: "违禁与频率管控" },
   { id: "data", mainLabel: "丰收", subLabel: "数据管理与导出" },
   { id: "backup", mainLabel: "保障", subLabel: "数据备份与恢复" },
 ];
@@ -192,7 +192,7 @@ const sectionList = [
 const sections = [
   {
     id: "getting-started",
-    title: "一、启程：首次见面与安全锁",
+    title: "一、启程：首次见面安全锁",
     icon: "rocket",
     items: [
       <>
@@ -213,12 +213,12 @@ const sections = [
   },
   {
     id: "ai-agents",
-    title: "二、招募：配置您的 AI 助教团队",
+    title: "二、接入：配置AI助教团队",
     icon: "bot",
     items: [
       <div>
         想要课堂出彩，先要有好的 AI 帮手。进入「<Highlight>AI 智能体</Highlight>
-        」页面开始招募：
+        」页面，将在 Coze、智谱清言、百度文心等平台创建好的智能体接入 Classroom：
       </div>,
       <>
         <strong>多平台兼容</strong>：目前已支持{" "}
@@ -595,7 +595,7 @@ const sections = [
   },
   {
     id: "classroom",
-    title: "四、备课：创建互动课堂",
+    title: "四、备课：创建与管理课堂",
     icon: "classroom",
     items: [
       <div>
@@ -681,7 +681,7 @@ const sections = [
   },
   {
     id: "student-join",
-    title: "五、上课：学生端接入与互动",
+    title: "五、上课：学生端接入互动",
     icon: "log-in",
     items: [
       <>
@@ -785,7 +785,7 @@ const sections = [
   },
   {
     id: "shield",
-    title: "八、净化：维持课堂秩序",
+    title: "八、净化：违禁与频率管控",
     icon: "shield",
     items: [
       <div>

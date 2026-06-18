@@ -1614,6 +1614,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
   const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragSourceGroupRef = useRef<string | null>(null);
 
   const loadGroups = () => {
     api.getGroups(classId).then(setGroups);
@@ -1935,8 +1936,20 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                       [...students].filter(s => g.studentIds.includes(s.id))
                         .sort((a, b) => (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0)).map(s => (
                         <div key={s.id} draggable
-                          onDragStart={e => handleDragStart(e, s.id)}
-                          onDragEnd={() => setDraggedId(null)}
+                          onDragStart={e => { handleDragStart(e, s.id); dragSourceGroupRef.current = g.id; }}
+                          onDragEnd={e => {
+                            // 拖出小组框（未落在任何有效接收区）→ 自动移出小组
+                            if (e.dataTransfer.dropEffect === 'none' && dragSourceGroupRef.current) {
+                              const srcGroup = groups.find(grp => grp.id === dragSourceGroupRef.current);
+                              if (srcGroup) {
+                                api.updateGroup(classId, dragSourceGroupRef.current, {
+                                  studentIds: srcGroup.studentIds.filter((id: string) => id !== s.id),
+                                }).then(() => { loadGroups(); onChanged?.(); });
+                              }
+                            }
+                            setDraggedId(null);
+                            dragSourceGroupRef.current = null;
+                          }}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 4,
                             padding: '4px 8px', borderRadius: 8, cursor: 'grab',
@@ -1978,14 +1991,13 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
         </div>
       )}
 
-      {/* 未分配学生 */}
-      {unassigned.length > 0 && (
+      {/* 未分配学生 — 始终显示 */}
         <div>
           <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             未分配学生
             <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
-            {selectedUnassigned.size > 0 ? (
+            {unassigned.length > 0 && selectedUnassigned.size > 0 ? (
               <>
                 <span style={{ fontSize: "0.688rem", color: '#2563eb', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
@@ -2002,9 +2014,13 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                   取消选择
                 </button>
               </>
-            ) : (
+            ) : unassigned.length > 0 ? (
               <span style={{ fontSize: "0.688rem", color: '#cbd5e1', fontWeight: 400 }}>
                 （点击可多选，然后拖拽到分组中）
+              </span>
+            ) : (
+              <span style={{ fontSize: "0.688rem", color: '#cbd5e1', fontWeight: 400 }}>
+                （从小组中拖出学生可取消分组）
               </span>
             )}
           </div>
@@ -2035,7 +2051,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 zIndex: 20,
               }} />
             )}
-            {unassigned.map(s => {
+            {unassigned.length > 0 ? unassigned.map(s => {
               const isSelected = selectedUnassigned.has(s.id);
               return (
               <div key={s.id} data-student-id={s.id} draggable
@@ -2088,10 +2104,20 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 {s.studentNo && <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
               </div>
             );
-          })}
+          }) : (
+            <div style={{
+              width: '100%', textAlign: 'center',
+              color: '#94a3b8', fontSize: "0.75rem",
+              padding: '6px 0', lineHeight: '28px',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginRight: 4, verticalAlign: 'middle', opacity: 0.5 }}>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              从小组中拖出学生到此区域即可取消分组
+            </div>
+          )}
           </div>
         </div>
-      )}
 
       {/* 空状态 */}
       {groups.length === 0 && unassigned.length === 0 && students.length > 0 && (

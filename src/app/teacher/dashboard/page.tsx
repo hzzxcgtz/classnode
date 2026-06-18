@@ -853,7 +853,15 @@ export default function DashboardPage() {
                       <thead>
                         <tr style={{ color: '#94a3b8' }}>
                           <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0' }}>班级</th>
-                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>装饰人数</th>
+                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                              装饰人数
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <polyline points="19 12 12 19 5 12" />
+                              </svg>
+                            </span>
+                          </th>
                           <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>奖励次数</th>
                         </tr>
                       </thead>

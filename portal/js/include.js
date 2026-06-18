@@ -12,6 +12,7 @@
     '" class="nav-logo">' +
     '<img src="images/logo.png" alt="ClassNode" class="nav-logo-icon">' +
     '<span class="nav-logo-text">ClassNode</span>' +
+    '<span class="nav-logo-sub">AI 互动课堂</span>' +
     "</a>" +
     '<ul class="nav-menu">' +
     '<li><a href="' +
@@ -44,17 +45,6 @@
   var FOOTER_HTML =
     '<footer id="about">' +
     '<div class="footer-inner">' +
-    '<div class="footer-row">' +
-    '<div class="footer-row-left">' +
-    '<a href="index.html" class="footer-logo">' +
-    '<img src="images/logo.png" alt="ClassNode" class="footer-logo-img">' +
-    '<span class="footer-logo-txt">ClassNode</span>' +
-    "</a>" +
-    '<span class="footer-logo-sub">AI 互动课堂系统</span>' +
-    "</div>" +
-    '<div class="footer-row-right"></div>' +
-    "</div>" +
-    '<div class="footer-hr"></div>' +
     '<div class="footer-row footer-row-copy">' +
     '<span class="footer-copy">© 2026 ClassNode · AI 赋能教育 · 教学互促共研</span>' +
     '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" class="footer-icp">' +

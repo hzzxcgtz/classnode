@@ -320,8 +320,10 @@ router.get('/:id/student/:studentId/messages', async (req, res) => {
 
     const messages = await prisma.message.findMany({
       where: { studentId: classroomStudent.id },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
+    messages.reverse(); // 反转回正序，前端按时间顺序展示
     res.json(messages);
   } catch (error) {
     res.status(500).json({ error: '获取消息失败' });

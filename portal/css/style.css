@@ -269,9 +269,9 @@ nav.scrolled {
 }
 
 .nav-logo-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
     object-fit: cover;
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -284,6 +284,14 @@ nav.scrolled {
     font-size: 18px;
     font-weight: 600;
     letter-spacing: -0.02em;
+}
+
+.nav-logo-sub {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    padding-left: 10px;
+    margin-left: 2px;
+    border-left: 1px solid var(--border);
 }
 
 .nav-menu {

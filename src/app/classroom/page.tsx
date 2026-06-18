@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense, memo, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { renderMarkdown, stripImages } from '@/lib/markdown';
+import { stripImages, Markdown } from '@/lib/markdown';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 
@@ -98,7 +98,7 @@ const MessageItem = memo(function MessageItem({
         {msg.role === 'system' ? (
           <span>{msg.content}</span>
         ) : (
-          <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.fileUrls?.length ? stripImages(msg.content) : msg.content) }} />
+          <Markdown>{msg.fileUrls?.length ? stripImages(msg.content) : msg.content}</Markdown>
         )}
       </div>
     </div>
@@ -110,10 +110,7 @@ const StreamingIndicator = memo(function StreamingIndicator({
 }: {
   streamingContent: string; agent: any; apiBase: string;
 }) {
-  const displayHtml = useMemo(() => {
-    if (!streamingContent) return '';
-    return renderMarkdown(stripImages(streamingContent));
-  }, [streamingContent]);
+  const strippedContent = useMemo(() => stripImages(streamingContent), [streamingContent]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
@@ -130,8 +127,8 @@ const StreamingIndicator = memo(function StreamingIndicator({
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         lineHeight: 1.7, fontSize: "0.938rem", wordBreak: 'break-word',
       }}>
-        {streamingContent ? (
-          <span dangerouslySetInnerHTML={{ __html: displayHtml + '<span style="display:inline-block;width:2px;height:1em;background:var(--primary);margin-left:2px;animation:blink 0.8s infinite;vertical-align:text-bottom"></span>' }} />
+        {strippedContent ? (
+          <Markdown streaming allowImages={false}>{strippedContent}</Markdown>
         ) : (
           <div style={{ display: 'flex', gap: 5, padding: '4px 0' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s infinite' }} />
@@ -220,6 +217,7 @@ function StudentChatContent() {
   const [allStudentAvatars, setAllStudentAvatars] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
   const [waitingAI, setWaitingAI] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -451,6 +449,7 @@ function StudentChatContent() {
   }, [loadError]);
 
   const loadMessages = async (classroomId: string, studentId: string) => {
+    setLoadingMessages(true);
     try {
       const msgs = await api.getStudentMessages(classroomId, studentId);
       if (msgs && msgs.length > 0) {
@@ -462,7 +461,9 @@ function StudentChatContent() {
           fileNames: m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : undefined,
         })));
       }
-    } catch {}
+    } catch {} finally {
+      setLoadingMessages(false);
+    }
   };
 
   // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
@@ -1143,6 +1144,24 @@ function StudentChatContent() {
           </div>
         )}
 
+        {/* 历史消息加载指示 */}
+        {loadingMessages && messages.length === 0 && (
+          <div style={{
+            textAlign: 'center', padding: '60px 20px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+          }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: '50%',
+              border: '3px solid #eef2f6',
+              borderTopColor: 'var(--primary)',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            <div style={{ fontSize: "0.938rem", color: '#64748b', fontWeight: 500 }}>
+              正在加载历史消息...
+            </div>
+          </div>
+        )}
+
           {/* 消息列表 */}
         {(() => {
           const memoAgent = getCurrentAgent();
@@ -1639,6 +1658,7 @@ export default function StudentChatPage() {
         @keyframes typing { 0%,60%,100% { transform: translateY(0) } 30% { transform: translateY(-5px) } }
         @keyframes teacherBubbleIn { from { opacity:0; transform: translateY(-8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }

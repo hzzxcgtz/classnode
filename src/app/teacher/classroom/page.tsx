@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
-import { renderMarkdown, stripImages } from '@/lib/markdown';
+import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
@@ -42,8 +42,10 @@ function ClassroomBoardContent() {
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
   const overlayRef = useRef<HTMLDivElement>(null);
+  const selectedStudentIdRef = useRef<string | null>(null); // 避免 useEffect 依赖 selectedStudent 导致重复挂载 socket
   // 投屏弹窗打开时监听 Socket 网卡切换事件
   useEffect(() => {
     if (codeScreenKey > 0) {
@@ -373,7 +375,7 @@ function ClassroomBoardContent() {
         }));
       }
       // 如果当前选中该学生，追加消息
-      if (selectedStudent?.id === data.studentId) {
+      if (selectedStudentIdRef.current === data.studentId) {
         setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
       }
     });
@@ -428,14 +430,70 @@ function ClassroomBoardContent() {
     });
 
     return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); };
-  }, [id, joinTeacherBoard, on, loadClassroom, selectedStudent?.id, router]);
+  }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: any) => {
+    if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
+    selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
+    setLoadingMessages(true);
+    setMessages([]);
     try {
       const msgs = await api.getStudentMessages(id, student.id);
       setMessages(msgs);
     } catch { setMessages([]); }
+    finally { setLoadingMessages(false); }
+  };
+
+  /** 清除学生对话记录并同步更新监控框 */
+  const handleClearMessages = async (studentId: string, studentName: string) => {
+    if (!confirm(`确定清除「${studentName}」的全部对话记录？`)) return;
+    try {
+      await api.clearStudentMessages(id, studentId);
+      // 清除监控框预览
+      setStudents(prev => prev.map(s => {
+        // 标准模式：s.student 存在时直接匹配
+        if (s.student && s.student.id === studentId) {
+          return { ...s, messages: [] };
+        }
+        // 小组模式：查找成员列表
+        if (s.members) {
+          return {
+            ...s,
+            members: s.members.map((m: any) =>
+              m.student.id === studentId ? { ...m, messages: [] } : m
+            ),
+          };
+        }
+        return s;
+      }));
+      // 重置对话轮数
+      setStudentRounds(prev => ({ ...prev, [studentId]: 0 }));
+      // 如果当前抽屉中正显示该学生，清空消息列表
+      if (selectedStudentIdRef.current === studentId) {
+        setMessages([]);
+      }
+    } catch {}
+  };
+
+  /** 清除小组全体成员的对话记录并同步更新监控框 */
+  const handleClearGroupMessages = async (members: any[], groupName: string) => {
+    if (!confirm(`确定清除「${groupName}」全体成员的对话记录？`)) return;
+    for (const m of members) {
+      const studentId = m.student.id;
+      try {
+        await api.clearStudentMessages(id, studentId);
+        setStudents(prev => prev.map(s => {
+          if (s.student && s.student.id === studentId) return { ...s, messages: [] };
+          if (s.members) {
+            return { ...s, members: s.members.map((mm: any) => mm.student.id === studentId ? { ...mm, messages: [] } : mm) };
+          }
+          return s;
+        }));
+        setStudentRounds(prev => ({ ...prev, [studentId]: 0 }));
+        if (selectedStudentIdRef.current === studentId) setMessages([]);
+      } catch {}
+    }
   };
 
 
@@ -480,7 +538,7 @@ function ClassroomBoardContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
-      <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`.preview-scroll::-webkit-scrollbar { width: 4px; } .preview-scroll::-webkit-scrollbar-track { background: transparent; } .preview-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; } .preview-scroll { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; } @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* 顶部区域（非全屏时显示） */}
       {!gridFullscreen && (<>
@@ -772,7 +830,7 @@ function ClassroomBoardContent() {
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                     </button>
                                     <button title="清除对话"
-                                      onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${item.group?.name || '该小组'}」全体成员的对话记录？`)) return; for (const m of item.members) { try { await api.clearStudentMessages(id, m.student.id); } catch {} } }}
+                                      onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
                                       style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                     </button>
@@ -799,7 +857,7 @@ function ClassroomBoardContent() {
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                 </button>
                                 <button title="清除对话"
-                                  onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
+                                  onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                 </button>
@@ -848,7 +906,7 @@ function ClassroomBoardContent() {
 
 
                     {/* 最近一轮 Q&A 预览 */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <div className="preview-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                       {userMsg ? (
                         <>
                           {/* 学生提问 */}
@@ -861,13 +919,7 @@ function ClassroomBoardContent() {
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
                               {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                             </span>
-                            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
-                              userMsg.content
-                                .replace(/```[\s\S]*?```/g, '[代码]')
-                                .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[图片]')
-                                .replace(/<img\s+[^>]*\/?\s*>/gi, '[图片]')
-                                .slice(0, 300)
-                            ) }} />
+                            <span>{stripMarkdownToPlainText(userMsg.content).slice(0, 300)}</span>
                           </div>
                           {/* AI 回答 */}
                           {assistantMsg && (
@@ -881,13 +933,7 @@ function ClassroomBoardContent() {
                               <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 4 }}>
                                 AI:
                               </span>
-                              <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
-                                assistantMsg.content
-                                  .replace(/```[\s\S]*?```/g, '[代码]')
-                                  .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[图片]')
-                                  .replace(/<img\s+[^>]*\/?\s*>/gi, '[图片]')
-                                  .slice(0, 300)
-                              ) }} />
+                              <span>{stripMarkdownToPlainText(assistantMsg.content).slice(0, 300)}</span>
                             </div>
                           )}
                         </>
@@ -908,7 +954,7 @@ function ClassroomBoardContent() {
         {selectedStudent && (
           <>
             {/* 遮罩层 */}
-            <div onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}
+            <div onClick={() => { setSelectedStudent(null); setSelectedGroup(null); selectedStudentIdRef.current = null; }}
               style={{
                 position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)',
               }} />
@@ -965,7 +1011,7 @@ function ClassroomBoardContent() {
                     投屏
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: "0.688rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => { setSelectedStudent(null); setSelectedGroup(null); }}>
+                    onClick={() => { setSelectedStudent(null); setSelectedGroup(null); selectedStudentIdRef.current = null; }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     关闭
                   </button>
@@ -988,7 +1034,17 @@ function ClassroomBoardContent() {
               flex: 1, overflow: 'auto', padding: 16,
               display: 'flex', flexDirection: 'column', gap: 12,
             }}>
-              {messages.length === 0 ? (
+              {loadingMessages ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 14 }}>
+                  <div style={{
+                    width: 36, height: 36, border: '3px solid #eef2f6',
+                    borderTop: '3px solid var(--primary)',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  <span style={{ color: 'var(--text-secondary)', fontSize: "0.813rem" }}>加载历史消息...</span>
+                </div>
+              ) : messages.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 40, fontSize: "0.813rem" }}>
                   暂无对话记录
                 </div>
@@ -1036,7 +1092,9 @@ function ClassroomBoardContent() {
                         </div>
                       ));
                     })()}
-                    <div style={{ fontSize: "0.875rem", lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#1a1a2e' }} dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+                    <div style={{ fontSize: "0.875rem", lineHeight: 1.6, wordBreak: 'break-word', color: '#1a1a2e' }}>
+                      <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>
+                    </div>
                     <div style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
                       <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
 
@@ -1253,7 +1311,7 @@ function ClassroomBoardContent() {
                           </div>
                         ));
                       })()}
-                      <div dangerouslySetInnerHTML={{ __html: renderMarkdown(m.fileUrls?.length ? stripImages(m.content) : m.content) }} />
+                      <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>
                     </div>
                   </div>
                 ))}
@@ -1428,7 +1486,7 @@ function ClassroomBoardContent() {
                                         </svg>
                                       </button>
                                       <button title="清除对话"
-                                        onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${item.group?.name || '该小组'}」全体成员的对话记录？`)) return; for (const m of item.members) { try { await api.clearStudentMessages(id, m.student.id); } catch {} } }}
+                                        onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
                                         style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                         <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                       </button>
@@ -1450,7 +1508,7 @@ function ClassroomBoardContent() {
                                     <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   </button>
                                   <button title="清除对话"
-                                    onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定清除「${student.name}」的全部对话记录？`)) return; try { await api.clearStudentMessages(id, sid); } catch {} }}
+                                    onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
                                     style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                     <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                   </button>
@@ -1498,7 +1556,7 @@ function ClassroomBoardContent() {
                         </div>
                       </div>
                       {/* 最近一轮 Q&A 预览 */}
-                      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 4, overflow: 'hidden' }}>
+                      <div className="preview-scroll" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto' }}>
                         {userMsg ? (
                           <>
                             {/* 学生提问 */}
@@ -1511,13 +1569,7 @@ function ClassroomBoardContent() {
                               <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 3 }}>
                                 {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                               </span>
-                              <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
-                                userMsg.content
-                                  .replace(/```[\s\S]*?```/g, '[代码]')
-                                  .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[图片]')
-                                  .replace(/<img\s+[^>]*\/?\s*>/gi, '[图片]')
-                                  .slice(0, 150)
-                              )}} />
+                              <span>{stripMarkdownToPlainText(userMsg.content).slice(0, 150)}</span>
                             </div>
                             {/* AI 回答 */}
                             {assistantMsg && (
@@ -1531,13 +1583,7 @@ function ClassroomBoardContent() {
                                 <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 3 }}>
                                   AI:
                                 </span>
-                                <span dangerouslySetInnerHTML={{ __html: renderMarkdown(
-                                  assistantMsg.content
-                                    .replace(/```[\s\S]*?```/g, '[代码]')
-                                    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[图片]')
-                                    .replace(/<img\s+[^>]*\/?\s*>/gi, '[图片]')
-                                    .slice(0, 150)
-                                )}} />
+                                <span>{stripMarkdownToPlainText(assistantMsg.content).slice(0, 150)}</span>
                               </div>
                             )}
                           </>

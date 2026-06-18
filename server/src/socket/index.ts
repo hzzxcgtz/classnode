@@ -484,12 +484,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           data.fileUrls || (data.fileUrl ? [data.fileUrl] : [])
         );
 
-        // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
-        if (platformNeedsConvId && result.conversationId) {
-          platformConversations.set(platformConvKey, result.conversationId);
-        }
-
         if (result.success && result.content) {
+          // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
+          // 必须在 success 块内保存，防止工具调用失败等场景保存了损坏的 context id
+          if (platformNeedsConvId && result.conversationId) {
+            platformConversations.set(platformConvKey, result.conversationId);
+          }
           // Save AI response
           const aiMessage = await prisma.message.create({
             data: {

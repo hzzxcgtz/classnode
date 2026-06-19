@@ -709,16 +709,14 @@ const sections = [
           lineHeight: 1.8,
         }}
       >
-        <strong style={{ color: "#b45309" }}>💡 提示：学生机连不上？</strong
-        >通常是防火墙拦截了端口 <strong>3001</strong>，在教师电脑上任选一种方式：<br />
-        <strong>方式一（放行软件）</strong
-        >：打开「Windows 安全中心 → 防火墙和网络保护 →
-        允许应用通过防火墙」，勾选 <strong>ClassNode</strong> 或
-        <strong>Node.js</strong> 的专用和公用网络（若没有，点「允许其他应用」手动添加）。<br />
-        <strong>方式二（开放端口）</strong
-        >：在「高级设置 → 入站规则 → 新建规则」，依次选：端口 → TCP
-        → 特定本地端口
-        <code style={{ color: "#92400e" }}>3001</code> → 允许连接。
+        <strong style={{ color: "#b45309" }}>💡 贴心提示：学生机连不上？</strong
+        >Windows 系统默认的安全策略有时会误拦截网络。若学生机连接失败，多半是教师机的
+        <strong>3001</strong> 端口被防火墙阻挡。请在教师电脑上尝试：<br />
+        <strong>方式一：</strong>打开「Windows 安全中心 → 防火墙和网络保护 →
+        允许应用通过防火墙」，勾选 <strong>ClassNode</strong> (或
+        <strong>Node.js</strong>) 的专用与公用网络（若无，点「允许其他应用」手动添加）。<br />
+        <strong>方式二：</strong>进同页面的「高级设置 → 入站规则 → 新建规则」，按提示勾选：端口 → TCP
+        → 输入 <code style={{ color: "#92400e" }}>3001</code> → 允许连接。
       </div>,
     ],
   },

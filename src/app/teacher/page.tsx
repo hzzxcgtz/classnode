@@ -573,7 +573,7 @@ export default function TeacherDashboard() {
                       style={{
                         fontSize: "0.688rem",
                         color: "#94a3b8",
-                        fontWeight: 500,
+                        fontWeight: 700,
                         marginRight: 2,
                       }}
                     >
@@ -635,14 +635,14 @@ export default function TeacherDashboard() {
                       );
                     })}
                     <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem' }}>
-                      <span style={{ color: '#64748b', fontWeight: 500 }}>学生状态：</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.status !== 'paused' ? '#eff6ff' : '#f1f5f9', border: `1px solid ${cr.status !== 'paused' ? '#bfdbfe' : '#e2e8f0'}`, color: cr.status !== 'paused' ? '#3b82f6' : '#94a3b8' }}>
+                      <span style={{ color: '#94a3b8', fontWeight: 700 }}>对话状态：</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.status !== 'paused' ? '#eff6ff' : '#f1f5f9', color: cr.status !== 'paused' ? '#3b82f6' : '#94a3b8' }}>
                         {cr.status !== 'paused' ? '允许提问' : '禁止提问'}
                       </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.allowStudentStop !== false ? '#fffbeb' : '#f1f5f9', border: `1px solid ${cr.allowStudentStop !== false ? '#fde68a' : '#e2e8f0'}`, color: cr.allowStudentStop !== false ? '#d97706' : '#94a3b8' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowStudentStop !== false ? '#fffbeb' : '#f1f5f9', color: cr.allowStudentStop !== false ? '#d97706' : '#94a3b8' }}>
                         {cr.allowStudentStop !== false ? '允许中断' : '禁止中断'}
                       </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.allowStudentExport !== false ? '#ecfeff' : '#f1f5f9', border: `1px solid ${cr.allowStudentExport !== false ? '#a5f3fc' : '#e2e8f0'}`, color: cr.allowStudentExport !== false ? '#0891b2' : '#94a3b8' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowStudentExport !== false ? '#ecfeff' : '#f1f5f9', color: cr.allowStudentExport !== false ? '#0891b2' : '#94a3b8' }}>
                         {cr.allowStudentExport !== false ? '允许导出' : '禁止导出'}
                       </span>
                     </span>

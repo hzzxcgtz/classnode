@@ -21,8 +21,8 @@ model Agent {
   id        String   @id @default(uuid())
   name      String   // 本地展示名称
   logo      String?  // 本地 Logo 路径
-  platform  String   // 平台类型: coze / dify / openai
-  apiUrl    String?  // API URL (for Dify / OpenAI)
+  platform  String   // 平台类型: coze / coze-agent / wenxin / zhipuai
+  apiUrl    String?  // API URL (for Coze Agent)
   apiKey    String   // AES 加密后的 API Key / Token
   botId     String?  // Bot ID (for Coze)
   extra     String?  // 额外配置 (JSON)

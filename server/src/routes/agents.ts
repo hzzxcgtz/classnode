@@ -245,10 +245,11 @@ router.get('/:id/greeting', async (req, res) => {
     }
 
     // 无缓存或过期，从平台 API 重新拉取
+    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
     const greeting = await fetchAgentGreeting({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
-      apiKey: agent.apiKey,
+      apiKey: decryptedKey,
       botId: agent.botId || undefined,
       extra: agent.extra || undefined,
     });
@@ -277,11 +278,14 @@ router.get('/:id/info', async (req, res) => {
     const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
+    // 先解密 API Key
+    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
+
     // 先尝试用标准方式获取
     let result = await fetchAgentInfo({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
-      apiKey: agent.apiKey,
+      apiKey: decryptedKey,
       botId: agent.botId || undefined,
       extra: agent.extra || undefined,
     });
@@ -289,15 +293,16 @@ router.get('/:id/info', async (req, res) => {
     // Coze Agent 无 botId 时，借用已有 Coze 智能体的 PAT 进行工作区发现
     if (!result && agent.platform === 'coze-agent') {
       const cozeAgent = await prisma.agent.findFirst({
-        where: { platform: 'coze', apiKey: { startsWith: 'pat_' } },
+        where: { platform: 'coze' },
       });
       if (cozeAgent) {
-        const discovered = await discoverCozeBotWithPat(cozeAgent.apiKey, agent.name);
+        const cozeDecryptedKey = isEncrypted(cozeAgent.apiKey) ? decrypt(cozeAgent.apiKey) : cozeAgent.apiKey;
+        const discovered = await discoverCozeBotWithPat(cozeDecryptedKey, agent.name);
         if (discovered) {
           const baseUrl = 'https://api.coze.cn';
           const infoRes = await fetch(`${baseUrl}/v1/bot/get_online_info?bot_id=${discovered.botId}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${cozeAgent.apiKey}` },
+            headers: { 'Authorization': `Bearer ${cozeDecryptedKey}` },
           });
           if (infoRes.ok) {
             const infoData = await infoRes.json();

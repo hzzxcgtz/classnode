@@ -1,7 +1,6 @@
 // 平台显示名
 export const platformLabels: Record<string, string> = {
   coze: 'Coze 低代码',
-  openai: 'OpenAI',
   'coze-agent': 'Coze 编程',
   wenxin: '文心智能体',
   zhipuai: '清言智能体',
@@ -10,7 +9,6 @@ export const platformLabels: Record<string, string> = {
 // 平台品牌色
 export const platformColors: Record<string, string> = {
   coze: '#2563eb',
-  openai: '#16a34a',
   'coze-agent': '#7c3aed',
   wenxin: '#dc2626',
   zhipuai: '#1d8cf8',
@@ -19,7 +17,6 @@ export const platformColors: Record<string, string> = {
 // 平台徽标背景色
 export const platformBadgeBg: Record<string, string> = {
   coze: '#eef2ff',
-  openai: '#f0fdf4',
   'coze-agent': '#f5f3ff',
   wenxin: '#fef2f2',
   zhipuai: '#e0f2fe',

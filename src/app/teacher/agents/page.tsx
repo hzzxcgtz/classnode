@@ -491,8 +491,11 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
         setFetchedLogoUrl(resp.iconUrl);
       }
       if (resp.greeting) setGreeting(resp.greeting);
+      if (!resp.name && !resp.iconUrl) {
+        setToast({ msg: '未能从 Coze 获取到智能体信息，请检查 Bot ID 和 API Token 是否正确', type: 'error' });
+      }
     } catch (e) {
-      console.error('Failed to fetch agent info:', e);
+      setToast({ msg: '获取信息失败：' + (e instanceof Error ? e.message : '请求异常'), type: 'error' });
     }
     setFetchingInfo(false);
   };

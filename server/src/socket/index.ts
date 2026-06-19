@@ -467,12 +467,21 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         let fullContent = '';
         let displayedContent = '';
+        let hasDeepThinking = false; // 是否接收到了深度思考内容
         try {
           const result = await proxyAIRequestStream(
             agentConfig,
             data.content,
             studentName,
             (chunk) => {
+              // 首次收到回答 chunk，若之前有深度思考，通知教师端思考阶段结束
+              if (hasDeepThinking) {
+                hasDeepThinking = false;
+                io.to(`teacher:${classroom.id}`).emit('student-deep-thinking', {
+                  studentId: data.studentId,
+                  status: false,
+                });
+              }
               fullContent += chunk;
               // 实时清理流式内容，隐藏 Markdown 图片链接
               const cleanFull = cleanStreamContent(fullContent);
@@ -491,11 +500,31 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             },
             formattedHistory,
             data.fileUrls || (data.fileUrl ? [data.fileUrl] : []),
-            abortController.signal
+            abortController.signal,
+            (thinking) => {
+              // 深度思考内容到达
+              if (!hasDeepThinking) {
+                hasDeepThinking = true;
+                // 通知教师端学生正在深度思考
+                io.to(`teacher:${classroom.id}`).emit('student-deep-thinking', {
+                  studentId: data.studentId,
+                  status: true,
+                });
+              }
+              // 将思考内容实时推送给学生端（不保存到数据库）
+              io.to(socket.id).emit('ai-thinking-content', { content: thinking });
+            }
           );
 
           if (result.aborted) {
             // 用户中断生成：不保存、不推送任何内容，直接丢弃
+            if (hasDeepThinking) {
+              hasDeepThinking = false;
+              io.to(`teacher:${classroom.id}`).emit('student-deep-thinking', {
+                studentId: data.studentId,
+                status: false,
+              });
+            }
             io.to(`teacher:${classroom.id}`).emit('student-thinking', {
               studentId: data.studentId,
               status: false,
@@ -570,6 +599,14 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             status: false,
           });
         } else {
+          // AI 响应失败，清理深度思考状态（如果有）
+          if (hasDeepThinking) {
+            hasDeepThinking = false;
+            io.to(`teacher:${classroom.id}`).emit('student-deep-thinking', {
+              studentId: data.studentId,
+              status: false,
+            });
+          }
           io.to(socket.id).emit('ai-error', {
             error: result.error || 'AI 响应失败',
           });

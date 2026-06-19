@@ -82,9 +82,6 @@ export function Markdown({ children, allowImages = true, className, streaming }:
   return (
     <>
       {content}
-      {streaming && children && (
-        <span style={{ display: 'inline-block', width: 2, height: '1em', background: 'var(--primary)', marginLeft: 2, animation: 'blink 0.8s infinite', verticalAlign: 'text-bottom' }} />
-      )}
     </>
   );
 }

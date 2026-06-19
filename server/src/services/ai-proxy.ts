@@ -64,7 +64,7 @@ interface ProxyResult {
 
 /**
  * AI API 代理服务
- * 支持 Coze、Dify、OpenAI 兼容接口
+ * 支持 Coze、Coze Agent、智谱清言、文心智能体
  * 发送前脱敏，接收后还原
  */
 export async function proxyAIRequest(
@@ -83,14 +83,10 @@ export async function proxyAIRequest(
         return await proxyCoze(agent, anonMessage, anonName, history, fileUrls);
       case 'coze-agent':
         return await proxyCozeAgent(agent, anonMessage, anonName, history, fileUrls);
-      case 'dify':
-        return await proxyDify(agent, anonMessage, anonName, history, fileUrls);
       case 'zhipuai':
         return await proxyZhipuai(agent, anonMessage, anonName, history, fileUrls);
       case 'wenxin':
         return await proxyWenxin(agent, anonMessage, anonName, history, fileUrls);
-      case 'openai':
-        return await proxyOpenAI(agent, anonMessage, anonName, history, fileUrls);
       default:
         return { success: false, error: `不支持的平台: ${agent.platform}` };
     }
@@ -109,7 +105,8 @@ export async function proxyAIRequestStream(
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
   fileUrls?: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
   const anonName = anonymizer.anonymize(studentName);
   const anonMessage = anonymizer.anonymizeMessage(message, studentName);
@@ -117,17 +114,13 @@ export async function proxyAIRequestStream(
   try {
     switch (agent.platform) {
       case 'coze':
-        return await proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
+        return await proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal, onThinking);
       case 'coze-agent':
         return await proxyCozeAgentStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
-      case 'dify':
-        return await proxyDifyStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'zhipuai':
         return await proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'wenxin':
         return await proxyWenxinStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
-      case 'openai':
-        return await proxyOpenAIStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       default:
         return { success: false, error: `不支持的平台: ${agent.platform}` };
     }
@@ -141,7 +134,8 @@ async function proxyCoze(
   message: string,
   userName: string,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://api.coze.cn';
 
@@ -229,7 +223,14 @@ async function proxyCoze(
     return { success: false, error: 'Coze 未返回助手回复' };
   }
 
-  const content = answerMsg.content || '';
+  let content = answerMsg.content || '';
+  // 提取深度思考内容（在 cleanResponse 清除之前）
+  if (onThinking) {
+    const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      onThinking(anonymizer.deanonymizeMessage(thinkMatch[1]));
+    }
+  }
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
 
   return {
@@ -286,128 +287,6 @@ async function pollCozeMessages(
 
   const msgData = await msgRes.json();
   return msgData.data || [];
-}
-
-async function proxyDify(
-  agent: AgentConfig,
-  message: string,
-  userName: string,
-  history?: { role: string; content: string }[],
-  fileUrls?: string[]
-): Promise<ProxyResult> {
-  // 上传文件到 Dify
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const fid = await uploadFileToDify(agent.apiUrl || '', agent.apiKey, url);
-        if (fid) fileIds.push(fid);
-      }
-    }
-  }
-
-  const body: any = {
-    query: message,
-    user: userName,
-    response_mode: 'blocking',
-    inputs: {},
-  };
-
-  // 有文件时添加 files 参数
-  if (fileIds.length > 0) {
-    body.files = fileIds.map(id => ({
-      type: 'image',
-      transfer_method: 'local_file',
-      upload_file_id: id,
-    }));
-  }
-
-  const response = await fetchWithTimeout(
-    `${agent.apiUrl}/chat-messages`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${agent.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `Dify API 错误: ${response.status} ${err}` };
-  }
-
-  const data = await response.json();
-  const content = data.answer || '';
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-
-  return {
-    success: true,
-    content: deanonymized,
-  };
-}
-
-async function proxyOpenAI(
-  agent: AgentConfig,
-  message: string,
-  userName: string,
-  history?: { role: string; content: string }[],
-  fileUrls?: string[]
-): Promise<ProxyResult> {
-  const messages: any[] = history
-    ? history.map(h => ({ role: h.role, content: h.content }))
-    : [];
-
-  // 有文件时使用 Vision API 格式（content 为数组）
-  if (fileUrls && fileUrls.length > 0) {
-    const contentParts: any[] = [{ type: 'text', text: message }];
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const dataUrl = await fileUrlToBase64DataUrl(url);
-        if (dataUrl) {
-          contentParts.push({ type: 'image_url', image_url: { url: dataUrl, detail: 'low' } });
-        }
-      } else {
-        // 远程 URL 直接使用
-        contentParts.push({ type: 'image_url', image_url: { url, detail: 'low' } });
-      }
-    }
-    messages.push({ role: 'user', content: contentParts });
-  } else {
-    messages.push({ role: 'user', content: message });
-  }
-
-  const response = await fetchWithTimeout(
-    agent.apiUrl || 'https://api.openai.com/v1/chat/completions',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${agent.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        user: userName,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `OpenAI API 错误: ${response.status} ${err}` };
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-
-  return {
-    success: true,
-    content: deanonymized,
-  };
 }
 
 /**
@@ -579,86 +458,6 @@ export async function testAgentConnection(agent: AgentConfig): Promise<{ success
   }
 }
 
-/**
- * 将本地文件路径转换为 base64 data URL（用于 OpenAI Vision API）
- */
-async function fileUrlToBase64DataUrl(fileUrl: string): Promise<string | null> {
-  try {
-    const filePath = resolveLocalPath(fileUrl);
-
-    if (!fs.existsSync(filePath)) {
-      console.error('[FileToBase64] File not found:', filePath);
-      return null;
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-    };
-    const mimeType = mimeMap[ext];
-    if (!mimeType) {
-      console.error('[FileToBase64] Unsupported file type for image:', ext);
-      return null;
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    return `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
-  } catch (error) {
-    console.error('[FileToBase64] Error:', error);
-    return null;
-  }
-}
-
-/**
- * 上传本地文件到 Dify，返回文件 ID
- */
-async function uploadFileToDify(apiUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
-  try {
-    const filePath = resolveLocalPath(fileUrl);
-
-    if (!fs.existsSync(filePath)) {
-      console.error('[DifyUpload] File not found:', filePath);
-      return null;
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const fileName = path.basename(fileUrl);
-    const ext = path.extname(fileName).toLowerCase();
-
-    const mimeMap: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif', '.webp': 'image/webp',
-    };
-    const mimeType = mimeMap[ext] || 'application/octet-stream';
-
-    const formData = new FormData();
-    const blob = new Blob([fileBuffer], { type: mimeType });
-    formData.append('file', blob, fileName);
-    formData.append('type', 'image');
-
-    const response = await fetchWithTimeout(`${apiUrl.replace(/\/+$/, '')}/files/upload`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[DifyUpload] HTTP Error:', response.status, err);
-      return null;
-    }
-
-    const data = await response.json();
-    return data.id || null;
-  } catch (error) {
-    console.error('[DifyUpload] Exception:', error);
-    return null;
-  }
-}
 
 /** 将本地文件 URL 解析为绝对路径（兼容 CLASSNODE_DATA_DIR） */
 function resolveLocalPath(fileUrl: string): string {
@@ -888,11 +687,12 @@ async function proxyCozeStream(
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
   fileUrls?: string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
   // 有图片时回退到非流式（流式对 object_string 支持不稳定）
   if (fileUrls && fileUrls.length > 0) {
-    const result = await proxyCoze(agent, message, userName, history, fileUrls);
+    const result = await proxyCoze(agent, message, userName, history, fileUrls, onThinking);
     if (result.success && result.content) {
       const chunkSize = 20;
       for (let i = 0; i < result.content.length; i += chunkSize) {
@@ -967,8 +767,19 @@ async function proxyCozeStream(
             if (!streamConvId && parsed.conversation_id) {
               streamConvId = parsed.conversation_id;
             }
-            if (parsed.content_type === 'thinking') continue;
-            if (parsed.type === 'verbose') continue;
+            if (parsed.content_type === 'thinking') {
+              if (onThinking && parsed.content) {
+                onThinking(parsed.content);
+              }
+              continue;
+            }
+            if (parsed.type === 'verbose') {
+              // verbose 事件可能包含 thinking 字段
+              if (onThinking && parsed.content?.thinking) {
+                onThinking(parsed.content.thinking);
+              }
+              continue;
+            }
             if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
               const delta = parsed.content || '';
               if (delta) { fullContent += delta; onChunk(delta); }
@@ -987,188 +798,6 @@ async function proxyCozeStream(
   if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
   const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
   return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
-}
-
-async function proxyDifyStream(
-  agent: AgentConfig,
-  message: string,
-  userName: string,
-  onChunk: (chunk: string) => void,
-  history?: { role: string; content: string }[],
-  fileUrls?: string[],
-  signal?: AbortSignal
-): Promise<ProxyResult> {
-  // 上传文件到 Dify
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const fid = await uploadFileToDify(agent.apiUrl || '', agent.apiKey, url);
-        if (fid) fileIds.push(fid);
-      }
-    }
-  }
-
-  const body: any = {
-    query: message,
-    user: userName,
-    response_mode: 'streaming',
-    inputs: {},
-  };
-
-  if (fileIds.length > 0) {
-    body.files = fileIds.map(id => ({
-      type: 'image',
-      transfer_method: 'local_file',
-      upload_file_id: id,
-    }));
-  }
-
-  const response = await fetchWithTimeout(`${agent.apiUrl}/chat-messages`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${agent.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `Dify API 错误: ${response.status} ${err}` };
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return { success: false, error: '无法读取响应流' };
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const dataStr = line.slice(5).trim();
-          if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.event === 'message') {
-              const delta = parsed.answer || '';
-              fullContent += delta;
-              onChunk(delta);
-            }
-          } catch {}
-        }
-      }
-    }
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
-      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
-    }
-    throw e;
-  }
-
-  if (!fullContent) return { success: false, error: 'Dify 流式响应为空' };
-
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
-}
-
-async function proxyOpenAIStream(
-  agent: AgentConfig,
-  message: string,
-  userName: string,
-  onChunk: (chunk: string) => void,
-  history?: { role: string; content: string }[],
-  fileUrls?: string[],
-  signal?: AbortSignal
-): Promise<ProxyResult> {
-  const messages: any[] = history
-    ? history.map(h => ({ role: h.role, content: h.content }))
-    : [];
-
-  // 有文件时使用 Vision API 格式
-  if (fileUrls && fileUrls.length > 0) {
-    const contentParts: any[] = [{ type: 'text', text: message }];
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const dataUrl = await fileUrlToBase64DataUrl(url);
-        if (dataUrl) {
-          contentParts.push({ type: 'image_url', image_url: { url: dataUrl, detail: 'low' } });
-        }
-      } else {
-        contentParts.push({ type: 'image_url', image_url: { url, detail: 'low' } });
-      }
-    }
-    messages.push({ role: 'user', content: contentParts });
-  } else {
-    messages.push({ role: 'user', content: message });
-  }
-
-  const response = await fetchWithTimeout(agent.apiUrl || 'https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${agent.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages, user: userName, stream: true }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `OpenAI API 错误: ${response.status} ${err}` };
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return { success: false, error: '无法读取响应流' };
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const dataStr = line.slice(5).trim();
-          if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
-          try {
-            const parsed = JSON.parse(dataStr);
-            const delta = parsed.choices?.[0]?.delta?.content || '';
-            if (delta) {
-              fullContent += delta;
-              onChunk(delta);
-            }
-          } catch {}
-        }
-      }
-    }
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
-      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
-    }
-    throw e;
-  }
-
-  if (!fullContent) return { success: false, error: 'OpenAI 流式响应为空' };
-
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized };
 }
 
 async function proxyCozeAgentStream(

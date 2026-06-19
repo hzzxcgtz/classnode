@@ -38,9 +38,9 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport,
+  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport, msgIndex,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean;
+  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
   const [toast, setToast] = useState<string | null>(null);
@@ -61,7 +61,7 @@ const MessageItem = memo(function MessageItem({
   }, [msg.content, msg.createdAt, agent]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
+    <div data-msg-id={msg.role === 'user' && msgIndex !== undefined ? msgIndex : undefined} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
       {msg.role === 'assistant' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
           <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
@@ -83,7 +83,7 @@ const MessageItem = memo(function MessageItem({
           <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#94a3b8' }}>{studentName}</span>
         </div>
       )}
-      <div style={{
+      <div data-msg-content style={{
         maxWidth: '78%',
         minWidth: 320,
         padding: msg.role === 'system' ? '10px 16px' : '14px 18px',
@@ -181,16 +181,72 @@ const StreamingIndicator = memo(function StreamingIndicator({
           <Markdown streaming allowImages={false}>{strippedContent}</Markdown>
         ) : (
           <span style={{
-            fontSize: "0.875rem", color: '#1a1a2e', display: 'inline-flex', alignItems: 'center', gap: 3,
-            lineHeight: '18px', animation: 'textGlow 2s ease-in-out infinite',
+            fontSize: "0.875rem", color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: 0,
+            lineHeight: '18px',
           }}>
-            正在思考中
-            <span style={{ display: 'inline-flex', gap: 3, width: 18 }}>
-              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s ease-in-out infinite' }} />
-              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s 0.2s ease-in-out infinite' }} />
-              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s 0.4s ease-in-out infinite' }} />
-            </span>
+            <span style={{ animation: 'thinkingWave 1.4s ease-in-out infinite' }}>正</span>
+            <span style={{ animation: 'thinkingWave 1.4s 0.2s ease-in-out infinite' }}>在</span>
+            <span style={{ animation: 'thinkingWave 1.4s 0.4s ease-in-out infinite' }}>思</span>
+            <span style={{ animation: 'thinkingWave 1.4s 0.6s ease-in-out infinite' }}>考</span>
+            <span style={{ animation: 'thinkingWave 1.4s 0.8s ease-in-out infinite', marginLeft: 2 }}>·</span>
+            <span style={{ animation: 'thinkingWave 1.4s 1.0s ease-in-out infinite' }}>·</span>
+            <span style={{ animation: 'thinkingWave 1.4s 1.2s ease-in-out infinite' }}>·</span>
           </span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+/** 深度思考过程展示组件 */
+const ThinkingContent = memo(function ThinkingContent({
+  content, agent, apiBase,
+}: {
+  content: string; agent: any; apiBase: string;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
+        <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
+          <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
+        </div>
+        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+      </div>
+      <div style={{
+        maxWidth: '78%', padding: 0,
+        borderRadius: '6px 18px 18px 18px',
+        background: '#faf5ff', color: '#5b21b6',
+        border: '1px solid #e9d5ff',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        lineHeight: 1.7, fontSize: "0.813rem", wordBreak: 'break-word',
+      }}>
+        <div onClick={() => setCollapsed(prev => !prev)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px',
+            cursor: 'pointer', userSelect: 'none',
+            borderBottom: collapsed ? 'none' : '1px solid #e9d5ff',
+            color: '#7c3aed', fontWeight: 600, fontSize: "0.75rem",
+          }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04Z"/>
+            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.04Z"/>
+          </svg>
+          深度思考过程
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        {!collapsed && (
+          <div style={{
+            padding: '10px 14px',
+            fontSize: "0.813rem", color: '#6d28d9', lineHeight: 1.8,
+            fontStyle: 'italic',
+            opacity: 0.85,
+          }}>
+            <Markdown>{content}</Markdown>
+          </div>
         )}
       </div>
     </div>
@@ -277,6 +333,7 @@ function StudentChatContent() {
   const [input, setInput] = useState('');
   const [waitingAI, setWaitingAI] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [thinkingContent, setThinkingContent] = useState('');
   const [connected, setConnected] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
@@ -297,9 +354,11 @@ function StudentChatContent() {
   const overlayRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [markers, setMarkers] = useState<{ index: number; top: number; text: string }[]>([]);
+  const [markerBarStyle, setMarkerBarStyle] = useState<{ left: number; top: number; height: number } | null>(null);
   const userScrolledUpRef = useRef(false);
   const wsRef = useRef<any>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
@@ -429,6 +488,37 @@ function StudentChatContent() {
     setShowScrollBtn(!isAtBottom);
   };
 
+  // 计算滚动标记位置
+  const updateMarkers = useCallback(() => {
+    const container = chatContainerRef.current;
+    if (!container || container.scrollHeight <= 0) return;
+    const userMsgEls = container.querySelectorAll<HTMLElement>('[data-msg-id]');
+    if (userMsgEls.length === 0) { setMarkers([]); setMarkerBarStyle(null); return; }
+    const cr = container.getBoundingClientRect();
+    const items: { index: number; top: number; text: string }[] = [];
+    for (const el of userMsgEls) {
+      const idx = parseInt(el.getAttribute('data-msg-id') || '', 10);
+      if (isNaN(idx)) continue;
+      const er = el.getBoundingClientRect();
+      const topInContent = er.top - cr.top + container.scrollTop;
+      const contentEl = el.querySelector('[data-msg-content]');
+      const rawText = ((contentEl?.textContent || '').trim()).replace(/\s+/g, ' ');
+      const preview = rawText.length > 30 ? rawText.slice(0, 30) + '…' : rawText;
+      items.push({ index: idx, top: (topInContent / container.scrollHeight) * container.clientHeight, text: preview });
+    }
+    setMarkers(items);
+    // 同时记录标记条在视口中的位置（用于 position: fixed）
+    setMarkerBarStyle({ left: cr.right - 20, top: cr.top, height: cr.height });
+  }, []);
+
+  // 点击标记跳转
+  const scrollToMarker = useCallback((index: number) => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-msg-id="${index}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   // 新消息到达、AI 流式输出、或首次进入对话页时自动滚动到底部
   // 用 useEffect 代替 useLayoutEffect，避免 scrollTop 强制同步布局阻塞主线程
   // iOS 键盘弹出时避免因滚动导致键盘收起：若输入框有焦点则不滚动
@@ -442,6 +532,16 @@ function StudentChatContent() {
     if (isIOS && document.activeElement === inputRef.current) return;
     requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [messages, streamingContent, step, waitingAI]);
+
+  // 初始化滚动标记并监听容器尺寸变化
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    requestAnimationFrame(() => updateMarkers());
+    const ro = new ResizeObserver(() => requestAnimationFrame(() => updateMarkers()));
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [messages, updateMarkers]);
 
   // AI 回答完成后自动聚焦输入框
   // iOS Safari 需要特殊处理：程序化 focus() 不会弹出虚拟键盘，
@@ -612,6 +712,7 @@ function StudentChatContent() {
 
       socket.on('ai-response', (data: any) => {
         flushStreaming();
+        setThinkingContent('');
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: data.content,
@@ -625,6 +726,7 @@ function StudentChatContent() {
         flushStreaming();
         setWaitingAI(true);
         setStreamingContent('');
+        setThinkingContent('');
       });
 
       socket.on('ai-chunk', (data: any) => {
@@ -637,8 +739,13 @@ function StudentChatContent() {
         }
       });
 
+      socket.on('ai-thinking-content', (data: any) => {
+        setThinkingContent(prev => prev + data.content);
+      });
+
       socket.on('ai-error', (data: any) => {
         setWaitingAI(false);
+        setThinkingContent('');
         setConnectionError(data.error || 'AI 回复遇到了问题，请稍后重试');
       });
 
@@ -663,6 +770,7 @@ function StudentChatContent() {
         setPaused(true);
         setWaitingAI(false);
         setStreamingContent('');
+        setThinkingContent('');
       });
 
       socket.on('classroom-resumed', () => {
@@ -865,7 +973,10 @@ function StudentChatContent() {
     if (!text && files.length === 0) return;
     if (waitingAI || paused || agentDisabled || blacklisted || !wsRef.current) return;
     setInput('');
-    if (inputRef.current) inputRef.current.value = '';
+    if (inputRef.current) {
+      inputRef.current.value = '';
+      inputRef.current.style.height = 'auto';
+    }
     setShieldWarning(null);
     setAttachedFiles([]);
     const userMsgContent = text || '(附件)';
@@ -1249,9 +1360,14 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
+            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
           ));
         })()}
+
+        {/* 深度思考过程（可折叠） */}
+        {thinkingContent && (
+          <ThinkingContent content={thinkingContent} agent={getCurrentAgent()} apiBase={SOCKET_URL} />
+        )}
 
         {/* AI 思考中/流式输出 */}
         {waitingAI && (
@@ -1268,6 +1384,21 @@ function StudentChatContent() {
           style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 76, width: 40, height: 40, borderRadius: '50%', border: '1px solid #e5e7eb', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#667eea', zIndex: 10, transition: 'all .15s' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
+      )}
+
+      {/* 滚动标记条（position: fixed 对齐滚动条位置） */}
+      {markerBarStyle && markers.length > 0 && (
+        <div style={{ position: 'fixed', left: markerBarStyle.left - 6, top: markerBarStyle.top, width: 20, height: markerBarStyle.height, pointerEvents: 'none', zIndex: 20 }}>
+          {markers.map(m => (
+            <div key={m.index}
+              onClick={(e) => { e.stopPropagation(); scrollToMarker(m.index); }}
+              title={m.text}
+              style={{ position: 'absolute', right: 4, top: m.top, width: 11, height: 4, borderRadius: 2, background: '#cbd5e1', cursor: 'pointer', pointerEvents: 'auto', opacity: 0.5, transition: 'opacity 0.15s, background 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#64748b'; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = '#cbd5e1'; }}
+            />
+          ))}
+        </div>
       )}
 
       {/* 教师通知气泡 — 立体气泡样式 */}
@@ -1443,15 +1574,21 @@ function StudentChatContent() {
 
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
-            <input ref={inputRef} type="text" value={input} onInput={e => setInput((e.target as HTMLInputElement).value)} onKeyDown={e => {
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
+            <textarea ref={inputRef} value={input} onInput={e => {
+              const el = e.target as HTMLTextAreaElement;
+              setInput(el.value);
+              el.style.height = 'auto';
+              el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+            }} onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if ((e.nativeEvent as any).isComposing) return;
                 e.preventDefault();
                 sendMessage();
               }
-            }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
-              style={{ flex: 1, fontSize: "1rem", padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
+            }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '有什么想问的？按 Shift+Enter 换行'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
+              rows={1}
+              style={{ flex: 1, fontSize: "1rem", padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e', resize: 'none', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', fontFamily: 'inherit' }} />
             {waitingAI && classroom?.allowStudentStop !== false ? (
               <button type="button" onClick={handleStopGeneration}
                 style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', transition: 'all .15s' }}
@@ -1747,8 +1884,7 @@ export default function StudentChatPage() {
       <style>{`
         :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
         @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
-        @keyframes textGlow { 0%,100% { text-shadow: 0 0 4px rgba(99,102,241,0.3) } 50% { text-shadow: 0 0 14px rgba(99,102,241,0.7), 0 0 24px rgba(99,102,241,0.3) } }
-        @keyframes thinking { 0%,60%,100% { transform: scale(1); opacity: 0.4 } 30% { transform: scale(1.3); opacity: 1 } }
+        @keyframes thinkingWave { 0%,60%,100% { color: #94a3b8 } 30% { color: #818cf8 } }
         @keyframes teacherBubbleIn { from { opacity:0; transform: translateY(-8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

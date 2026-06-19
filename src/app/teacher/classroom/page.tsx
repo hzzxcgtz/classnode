@@ -29,6 +29,7 @@ function ClassroomBoardContent() {
   const [classroom, setClassroom] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [studentStatuses, setStudentStatuses] = useState<Record<string, string>>({});
+  const [deepThinkingStatuses, setDeepThinkingStatuses] = useState<Record<string, boolean>>({});
   const [studentRounds, setStudentRounds] = useState<Record<string, number>>({});
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
@@ -352,6 +353,17 @@ function ClassroomBoardContent() {
     const unsub3 = on('student-thinking', (data: any) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: data.status ? 'thinking' : 'online' }));
     });
+    const unsubDeepThink = on('student-deep-thinking', (data: any) => {
+      if (data.status) {
+        setDeepThinkingStatuses(prev => ({ ...prev, [data.studentId]: true }));
+      } else {
+        setDeepThinkingStatuses(prev => {
+          const next = { ...prev };
+          delete next[data.studentId];
+          return next;
+        });
+      }
+    });
     const unsub4 = on('student-message', (data: any) => {
       // 更新学生消息预览（仅保留最近3条用户提问）
       setStudents(prev => prev.map(s =>
@@ -437,7 +449,7 @@ function ClassroomBoardContent() {
       setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); };
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: any) => {
@@ -546,7 +558,7 @@ function ClassroomBoardContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
-      <style>{`.preview-scroll::-webkit-scrollbar { width: 4px; } .preview-scroll::-webkit-scrollbar-track { background: transparent; } .preview-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; } .preview-scroll { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; } @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`.preview-scroll::-webkit-scrollbar { width: 4px; } .preview-scroll::-webkit-scrollbar-track { background: transparent; } .preview-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; } .preview-scroll { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; } .control-btn:hover { background: #f1f5f9 !important; } @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* 顶部区域（非全屏时显示） */}
       {!gridFullscreen && (<>
@@ -675,46 +687,46 @@ function ClassroomBoardContent() {
             <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {/* 允许/禁止学生提问 */}
-              <button onClick={async () => {
+              <button className="control-btn" onClick={async () => {
                 if (paused) { await api.resumeClassroom(id); setPaused(false); loadClassroom(); }
                 else { await api.pauseClassroom(id); setPaused(true); }
               }}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: paused ? '#94a3b8' : '#059669', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: paused ? '#94a3b8' : '#3b82f6', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {paused ? <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></> : <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>}
                 </svg>
                 {paused ? '禁止学生提问' : '允许学生提问'}
               </button>
               {/* 允许/禁止中断回答 */}
-              <button onClick={async () => {
+              <button className="control-btn" onClick={async () => {
                 const res = await api.toggleAllowStop(id);
                 setClassroom(prev => prev ? { ...prev, allowStudentStop: res.allowStudentStop } : prev);
               }}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentStop !== false ? '#059669' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentStop !== false ? '#d97706' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {classroom?.allowStudentStop !== false ? <rect x="4" y="4" width="16" height="16" rx="3"/> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
                 </svg>
                 {classroom?.allowStudentStop !== false ? '允许中断回答' : '禁止中断回答'}
               </button>
               {/* 允许/禁止学生导出 */}
-              <button onClick={async () => {
+              <button className="control-btn" onClick={async () => {
                 const res = await api.toggleAllowExport(id);
                 setClassroom(prev => prev ? { ...prev, allowStudentExport: res.allowStudentExport } : prev);
               }}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentExport !== false ? '#059669' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentExport !== false ? '#0891b2' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {classroom?.allowStudentExport !== false ? <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
                 </svg>
                 {classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
               </button>
               {/* 通知全体 */}
-              <button onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#6366f1', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+              <button className="control-btn" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#64748b', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
                 通知全体
               </button>
               <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>|</span>
-              <button onClick={() => setGridFullscreen(true)}
+              <button className="control-btn" onClick={() => setGridFullscreen(true)}
                 title="全屏显示学生面板"
                 style={{
                   padding: '3px 8px', borderRadius: 5, border: 'none',
@@ -897,10 +909,21 @@ function ClassroomBoardContent() {
                               黑屏
                             </div>
                           )}
-                          <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', whiteSpace: 'nowrap' }}>
-                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
-                            {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
-                          </div>
+                          {(() => {
+                            const isDeep = isGroup
+                              ? item.members.some((m: any) => deepThinkingStatuses[m.student.id])
+                              : deepThinkingStatuses[sid];
+                            const bg = isDeep ? '#f5f3ff' : status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9';
+                            const dotColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8';
+                            const textColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8';
+                            const label = isDeep ? '深度思考' : status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线';
+                            return (
+                              <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 500, background: bg, color: textColor, whiteSpace: 'nowrap' }}>
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
+                                {label}
+                              </div>
+                            );
+                          })()}
                           <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
                             {rounds} 轮
                           </div>
@@ -936,7 +959,7 @@ function ClassroomBoardContent() {
                             <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 4 }}>
                               {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                             </span>
-                            <span>{stripMarkdownToPlainText(userMsg.content).slice(0, 300)}</span>
+                            <span>{stripMarkdownToPlainText(userMsg.content)}</span>
                           </div>
                           {/* AI 回答 */}
                           {assistantMsg && (
@@ -950,7 +973,7 @@ function ClassroomBoardContent() {
                               <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 4 }}>
                                 AI:
                               </span>
-                              <span>{stripMarkdownToPlainText(assistantMsg.content).slice(0, 300)}</span>
+                              <span>{stripMarkdownToPlainText(assistantMsg.content)}</span>
                             </div>
                           )}
                         </>
@@ -1589,7 +1612,7 @@ function ClassroomBoardContent() {
                               <span style={{ fontWeight: 600, color: '#2563eb', marginRight: 3 }}>
                                 {isGroup ? (userMsg.studentName || item.group?.name || student.name) : student.name + ':'}
                               </span>
-                              <span>{stripMarkdownToPlainText(userMsg.content).slice(0, 150)}</span>
+                              <span>{stripMarkdownToPlainText(userMsg.content)}</span>
                             </div>
                             {/* AI 回答 */}
                             {assistantMsg && (
@@ -1603,7 +1626,7 @@ function ClassroomBoardContent() {
                                 <span style={{ fontWeight: 600, color: '#16a34a', marginRight: 3 }}>
                                   AI:
                                 </span>
-                                <span>{stripMarkdownToPlainText(assistantMsg.content).slice(0, 150)}</span>
+                                <span>{stripMarkdownToPlainText(assistantMsg.content)}</span>
                               </div>
                             )}
                           </>

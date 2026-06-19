@@ -674,7 +674,7 @@ const sections = [
           lineHeight: 1.7,
         }}
       >
-        <strong style={{ color: "#b45309" }}>小贴士</strong>
+        <strong style={{ color: "#b45309" }}>💡 小贴士</strong>
         ：课堂创建后仅可修改名称，AI 智能体等配置创建时即固定，请提前规划好。
       </div>,
     ],
@@ -698,6 +698,28 @@ const sections = [
         <strong>专注学习</strong>：页面顶部展示 AI 开场白。AI
         回复时输入框暂时冻结，防止学生连击导致消息错乱。所有对话实时同步至教师控制台。
       </>,
+      <div
+        style={{
+          background: "#fffbeb",
+          border: "1px solid #fde68a",
+          borderRadius: 8,
+          padding: "12px 16px",
+          fontSize: "0.875rem",
+          color: "#92400e",
+          lineHeight: 1.8,
+        }}
+      >
+        <strong style={{ color: "#b45309" }}>💡 提示：学生机连不上？</strong
+        >通常是防火墙拦截了端口 <strong>3001</strong>，在教师电脑上任选一种方式：<br />
+        <strong>方式一（放行软件）</strong
+        >：打开「Windows 安全中心 → 防火墙和网络保护 →
+        允许应用通过防火墙」，勾选 <strong>ClassNode</strong> 或
+        <strong>Node.js</strong> 的专用和公用网络（若没有，点「允许其他应用」手动添加）。<br />
+        <strong>方式二（开放端口）</strong
+        >：在「高级设置 → 入站规则 → 新建规则」，依次选：端口 → TCP
+        → 特定本地端口
+        <code style={{ color: "#92400e" }}>3001</code> → 允许连接。
+      </div>,
     ],
   },
   {

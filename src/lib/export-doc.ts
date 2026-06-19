@@ -113,7 +113,7 @@ type MdBlock =
 function parseInline(text: string): InlineSeg[] {
   const segments: InlineSeg[] = [];
   let remaining = text;
-  const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*|\[([^\]]+)\]\(([^)]+)\))/g;
+  const regex = /(\$\$(.+?)\$\$|\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*|\[([^\]]+)\]\(([^)]+)\)|\$(.+?)\$)/g;
   let lastIdx = 0;
   let match: RegExpExecArray | null;
 
@@ -123,15 +123,19 @@ function parseInline(text: string): InlineSeg[] {
     }
 
     if (match[2] !== undefined) {
-      segments.push({ text: match[2], bold: true, italic: true });
+      segments.push({ text: '公式: ' + match[2], code: true });
     } else if (match[3] !== undefined) {
-      segments.push({ text: match[3], bold: true });
-    } else if (match[5] !== undefined) {
-      segments.push({ text: match[5], italic: true });
+      segments.push({ text: match[3], bold: true, italic: true });
     } else if (match[4] !== undefined) {
-      segments.push({ text: match[4], code: true });
+      segments.push({ text: match[4], bold: true });
+    } else if (match[5] !== undefined) {
+      segments.push({ text: match[5], code: true });
     } else if (match[6] !== undefined) {
-      segments.push({ text: match[6] + '（' + match[7] + '）' });
+      segments.push({ text: match[6], italic: true });
+    } else if (match[7] !== undefined) {
+      segments.push({ text: match[7] + '（' + match[8] + '）' });
+    } else if (match[9] !== undefined) {
+      segments.push({ text: match[9], code: true });
     }
 
     lastIdx = match.index + match[0].length;
@@ -193,6 +197,24 @@ function parseMarkdown(text: string): MdBlock[] {
 
     if (inFence) {
       fenceLines.push(line);
+      continue;
+    }
+
+    // $$...$$ 块级数学公式
+    if (/^\$\$/.test(line)) {
+      let formulaLines: string[] = [];
+      if (line.trim() === '$$') {
+        i++;
+        while (i < rawLines.length && !/^\$\$/.test(rawLines[i])) {
+          formulaLines.push(rawLines[i]);
+          i++;
+        }
+      } else {
+        formulaLines.push(line.replace(/^\$\$/, '').replace(/\$\$$/, '').trim());
+      }
+      if (formulaLines.length > 0) {
+        blocks.push({ type: 'code', lang: 'math', lines: formulaLines });
+      }
       continue;
     }
 
@@ -959,4 +981,130 @@ function calcColWidths(headers: string[], rows: any[][]): number[] {
   }
 
   return widths;
+}
+
+/**
+ * 导出单条 AI 消息为 Word 文档
+ * @param content AI 回答的 Markdown 内容
+ * @param agentName 智能体名称
+ * @param timestamp 消息时间戳
+ */
+export function exportMessageToWord(content: string, agentName: string, timestamp?: string) {
+  const blocks = parseMarkdown(content);
+  const children: (Paragraph | Table)[] = [];
+
+  // 标题：AI 回答
+  children.push(
+    new Paragraph({
+      spacing: { before: 200, after: 60 },
+      children: [
+        new TextRun({ text: 'AI 回答', bold: true, size: 28, color: COLORS.primary, font: { name: FONT } }),
+      ],
+    }),
+  );
+
+  // 元信息：智能体 + 时间
+  const metaParts = [`智能体：${agentName}`];
+  if (timestamp) metaParts.push(`时间：${timestamp}`);
+  children.push(
+    new Paragraph({
+      spacing: { before: 0, after: 200 },
+      children: [
+        new TextRun({ text: metaParts.join('    '), size: 18, color: COLORS.textSecondary, font: { name: FONT } }),
+      ],
+    }),
+  );
+
+  // 分割线
+  children.push(
+    new Paragraph({
+      spacing: { before: 0, after: 200 },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: COLORS.border } },
+      children: [],
+    }),
+  );
+
+  // 渲染 Markdown 内容
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'paragraph':
+        children.push(new Paragraph({
+          spacing: { before: 60, after: 60 },
+          children: segsToRuns(block.segs, { size: 22 }),
+        }));
+        break;
+      case 'heading':
+        children.push(new Paragraph({
+          spacing: { before: 200, after: 80 },
+          children: segsToRuns(block.segs, { size: block.level === 1 ? 28 : block.level === 2 ? 26 : 24, color: COLORS.primary }),
+        }));
+        break;
+      case 'list-item':
+        children.push(new Paragraph({
+          spacing: { before: 40, after: 40 },
+          indent: { left: block.indent * 400 + 400 },
+          children: [
+            new TextRun({
+              text: block.ordered ? `${block.index}. ` : '• ',
+              size: 22,
+              color: COLORS.text,
+              font: { name: FONT },
+            }),
+            ...segsToRuns(block.segs, { size: 22 }),
+          ],
+        }));
+        break;
+      case 'code': {
+        const codeText = block.lines.join('\n');
+        children.push(
+          new Paragraph({
+            spacing: { before: 80, after: 40, left: 200 },
+            shading: { fill: COLORS.codeBg, type: ShadingType.CLEAR },
+            children: [
+              new TextRun({ text: codeText, size: 18, font: { name: CODE_FONT }, color: COLORS.text }),
+            ],
+          }),
+        );
+        break;
+      }
+      case 'blockquote':
+        children.push(new Paragraph({
+          spacing: { before: 60, after: 60 },
+          indent: { left: 400 },
+          shading: { fill: COLORS.bgLight, type: ShadingType.CLEAR },
+          border: { left: { style: BorderStyle.SINGLE, size: 12, color: COLORS.primary } },
+          children: segsToRuns(block.segs, { size: 20, color: COLORS.textSecondary }),
+        }));
+        break;
+      case 'hr':
+        children.push(new Paragraph({
+          spacing: { before: 120, after: 120 },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: COLORS.hr } },
+          children: [],
+        }));
+        break;
+    }
+  }
+
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: FONT, size: 22, color: COLORS.text },
+        },
+      },
+    },
+    sections: [{ children }],
+  });
+
+  const fileName = `${agentName}-回答-${timestamp || Date.now()}.docx`;
+
+  Packer.toBlob(doc).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 }

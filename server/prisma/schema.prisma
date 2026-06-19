@@ -105,7 +105,9 @@ model Classroom {
   code      String?  @unique // 4位互动码（结束课堂时置空以回收）
   title     String?  // 课堂标题
   mode      String   @default("standard") // standard / advanced
-  status    String   @default("active") // active / ended
+  status    String   @default("active") // active / paused / ended
+  allowStudentStop Boolean @default(true)
+  allowStudentExport Boolean @default(true)
   createdAt DateTime @default(now())
   endedAt   DateTime?
 

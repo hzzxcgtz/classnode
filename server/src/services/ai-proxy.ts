@@ -8,10 +8,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FETCH_TIMEOUT_MS = 30_000;
 
 /** 带超时的 fetch，避免上游 AI API 挂起时连接永不释放 */
-async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number } = {}): Promise<Response> {
-  const { timeout = FETCH_TIMEOUT_MS, ...fetchOpts } = options;
+async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number, signal?: AbortSignal } = {}): Promise<Response> {
+  const { timeout = FETCH_TIMEOUT_MS, signal: externalSignal, ...fetchOpts } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => { clearTimeout(timer); controller.abort(); });
+    }
+  }
   try {
     const response = await fetch(url, { ...fetchOpts, signal: controller.signal });
     return response;
@@ -52,6 +59,7 @@ interface ProxyResult {
   content?: string;
   error?: string;
   conversationId?: string;
+  aborted?: boolean;
 }
 
 /**
@@ -100,7 +108,8 @@ export async function proxyAIRequestStream(
   studentName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   const anonName = anonymizer.anonymize(studentName);
   const anonMessage = anonymizer.anonymizeMessage(message, studentName);
@@ -108,17 +117,17 @@ export async function proxyAIRequestStream(
   try {
     switch (agent.platform) {
       case 'coze':
-        return await proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'coze-agent':
-        return await proxyCozeAgentStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyCozeAgentStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'dify':
-        return await proxyDifyStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyDifyStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'zhipuai':
-        return await proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'wenxin':
-        return await proxyWenxinStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyWenxinStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'openai':
-        return await proxyOpenAIStream(agent, anonMessage, anonName, onChunk, history, fileUrls);
+        return await proxyOpenAIStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       default:
         return { success: false, error: `不支持的平台: ${agent.platform}` };
     }
@@ -878,7 +887,8 @@ async function proxyCozeStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   // 有图片时回退到非流式（流式对 object_string 支持不稳定）
   if (fileUrls && fileUrls.length > 0) {
@@ -886,6 +896,7 @@ async function proxyCozeStream(
     if (result.success && result.content) {
       const chunkSize = 20;
       for (let i = 0; i < result.content.length; i += chunkSize) {
+        if (signal?.aborted) break;
         onChunk(result.content.slice(i, i + chunkSize));
       }
     }
@@ -921,6 +932,7 @@ async function proxyCozeStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -937,33 +949,39 @@ async function proxyCozeStream(
   let currentEvent = '';
   let streamConvId = agent.conversationId || '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.startsWith('event:')) { currentEvent = line.slice(6).trim(); continue; }
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (!dataStr || dataStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          // 捕获 conversation_id（在 conversation.chat.created 等初始事件中）
-          if (!streamConvId && parsed.conversation_id) {
-            streamConvId = parsed.conversation_id;
-          }
-          if (parsed.content_type === 'thinking') continue;
-          if (parsed.type === 'verbose') continue;
-          if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
-            const delta = parsed.content || '';
-            if (delta) { fullContent += delta; onChunk(delta); }
-          }
-        } catch {}
+      for (const line of lines) {
+        if (line.startsWith('event:')) { currentEvent = line.slice(6).trim(); continue; }
+        if (line.startsWith('data:')) {
+          const dataStr = line.slice(5).trim();
+          if (!dataStr || dataStr === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (!streamConvId && parsed.conversation_id) {
+              streamConvId = parsed.conversation_id;
+            }
+            if (parsed.content_type === 'thinking') continue;
+            if (parsed.type === 'verbose') continue;
+            if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
+              const delta = parsed.content || '';
+              if (delta) { fullContent += delta; onChunk(delta); }
+            }
+          } catch {}
+        }
       }
     }
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, conversationId: streamConvId || undefined, aborted: true };
+    }
+    throw e;
   }
 
   if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
@@ -977,7 +995,8 @@ async function proxyDifyStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   // 上传文件到 Dify
   const fileIds: string[] = [];
@@ -1012,6 +1031,7 @@ async function proxyDifyStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -1025,28 +1045,35 @@ async function proxyDifyStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          if (parsed.event === 'message') {
-            const delta = parsed.answer || '';
-            fullContent += delta;
-            onChunk(delta);
-          }
-        } catch {}
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          const dataStr = line.slice(5).trim();
+          if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.event === 'message') {
+              const delta = parsed.answer || '';
+              fullContent += delta;
+              onChunk(delta);
+            }
+          } catch {}
+        }
       }
     }
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
+    }
+    throw e;
   }
 
   if (!fullContent) return { success: false, error: 'Dify 流式响应为空' };
@@ -1061,7 +1088,8 @@ async function proxyOpenAIStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   const messages: any[] = history
     ? history.map(h => ({ role: h.role, content: h.content }))
@@ -1092,6 +1120,7 @@ async function proxyOpenAIStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ model: 'gpt-4o-mini', messages, user: userName, stream: true }),
+    signal,
   });
 
   if (!response.ok) {
@@ -1105,28 +1134,35 @@ async function proxyOpenAIStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          const delta = parsed.choices?.[0]?.delta?.content || '';
-          if (delta) {
-            fullContent += delta;
-            onChunk(delta);
-          }
-        } catch {}
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          const dataStr = line.slice(5).trim();
+          if (dataStr === '[DONE]' || dataStr === '"[DONE]"') continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+              onChunk(delta);
+            }
+          } catch {}
+        }
       }
     }
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
+    }
+    throw e;
   }
 
   if (!fullContent) return { success: false, error: 'OpenAI 流式响应为空' };
@@ -1141,7 +1177,8 @@ async function proxyCozeAgentStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   // 有附件时提示不支持（stream_run 自定义接口无统一上传标准）
   if (fileUrls && fileUrls.length > 0) {
@@ -1184,6 +1221,7 @@ async function proxyCozeAgentStream(
       'Accept': 'text/event-stream',
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -1199,39 +1237,46 @@ async function proxyCozeAgentStream(
   let fullContent = '';
   let debugEvents: any[] = [];
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.trim() && debugEvents.length < 20) {
-        debugEvents.push({ raw: line.slice(0, 300) });
-      }
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (!dataStr || dataStr === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          // SSE 格式: { type: "answer", content: { answer: "文本片段", thinking: null, ... } }
-          const contentVal = parsed.content?.answer ?? parsed.answer ?? parsed.text ?? parsed.output ?? parsed.message ?? parsed.delta ?? null;
-          if (contentVal !== null) {
-            const extracted = extractContent(contentVal);
-            fullContent += extracted;
-            onChunk(extracted);
-          } else if (debugEvents.length < 20) {
-            debugEvents.push(parsed);
-          }
-        } catch {
-          if (debugEvents.length < 20) {
-            debugEvents.push({ rawData: dataStr.slice(0, 300) });
+      for (const line of lines) {
+        if (line.trim() && debugEvents.length < 20) {
+          debugEvents.push({ raw: line.slice(0, 300) });
+        }
+        if (line.startsWith('data:')) {
+          const dataStr = line.slice(5).trim();
+          if (!dataStr || dataStr === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            // SSE 格式: { type: "answer", content: { answer: "文本片段", thinking: null, ... } }
+            const contentVal = parsed.content?.answer ?? parsed.answer ?? parsed.text ?? parsed.output ?? parsed.message ?? parsed.delta ?? null;
+            if (contentVal !== null) {
+              const extracted = extractContent(contentVal);
+              fullContent += extracted;
+              onChunk(extracted);
+            } else if (debugEvents.length < 20) {
+              debugEvents.push(parsed);
+            }
+          } catch {
+            if (debugEvents.length < 20) {
+              debugEvents.push({ rawData: dataStr.slice(0, 300) });
+            }
           }
         }
       }
     }
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
+    }
+    throw e;
   }
 
   if (!fullContent) {
@@ -1341,7 +1386,8 @@ async function proxyZhipuaiStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   const baseUrl = agent.apiUrl || 'https://chatglm.cn/chatglm/assistant-api/v1';
   const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
@@ -1374,6 +1420,7 @@ async function proxyZhipuaiStream(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
@@ -1387,35 +1434,39 @@ async function proxyZhipuaiStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const dataStr = line.slice(5).trim();
-        if (!dataStr) continue;
-        try {
-          const parsed = JSON.parse(dataStr);
-          // 提取 conversation_id
-          if (!streamConvId && parsed.conversation_id) streamConvId = parsed.conversation_id;
-          // Result: { history_id, conversation_id, message: { role, content: { type, text }, status }, status }
-          if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
-            const text = parsed.message.content.text;
-            // SSE 事件可能发累积文本，取增量部分
-            const delta = text.startsWith(fullContent) ? text.slice(fullContent.length) : text;
-            if (delta) {
-              fullContent += delta;
-              onChunk(delta);
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          const dataStr = line.slice(5).trim();
+          if (!dataStr) continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (!streamConvId && parsed.conversation_id) streamConvId = parsed.conversation_id;
+            if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
+              const text = parsed.message.content.text;
+              const delta = text.startsWith(fullContent) ? text.slice(fullContent.length) : text;
+              if (delta) {
+                fullContent += delta;
+                onChunk(delta);
+              }
             }
-          }
-        } catch {}
+          } catch {}
+        }
       }
     }
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, conversationId: streamConvId || undefined, aborted: true };
+    }
+    throw e;
   }
 
   if (!fullContent) return { success: false, error: '智谱清言流式响应为空' };
@@ -1534,7 +1585,8 @@ async function proxyWenxinStream(
   userName: string,
   onChunk: (chunk: string) => void,
   history?: { role: string; content: string }[],
-  fileUrls?: string[]
+  fileUrls?: string[],
+  signal?: AbortSignal
 ): Promise<ProxyResult> {
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
@@ -1547,6 +1599,7 @@ async function proxyWenxinStream(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) {
@@ -1562,42 +1615,46 @@ async function proxyWenxinStream(
     let buffer = '';
     let fullContent = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed === '[DONE]') continue;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === '[DONE]') continue;
 
-        // SSE 格式: event: type\ndata: {...}
-        if (trimmed.startsWith('event:')) continue; // 跳过 event 行
-        if (!trimmed.startsWith('data:')) continue;
+          if (trimmed.startsWith('event:')) continue;
+          if (!trimmed.startsWith('data:')) continue;
 
-        const dataStr = trimmed.slice(5).trim();
-        if (!dataStr) continue;
+          const dataStr = trimmed.slice(5).trim();
+          if (!dataStr) continue;
 
-        try {
-          const parsed = JSON.parse(dataStr);
-          // 文心流式 SSE 响应格式
-          const raw = parsed.content || parsed.text || parsed.data || '';
-          const delta = typeof raw === 'string' ? raw : (raw?.text || raw?.content || '');
-          if (delta) {
-            fullContent += delta;
-            onChunk(delta);
+          try {
+            const parsed = JSON.parse(dataStr);
+            const raw = parsed.content || parsed.text || parsed.data || '';
+            const delta = typeof raw === 'string' ? raw : (raw?.text || raw?.content || '');
+            if (delta) {
+              fullContent += delta;
+              onChunk(delta);
+            }
+          } catch {
+            // 非 JSON 数据行跳过
           }
-        } catch {
-          // 非 JSON 数据行跳过
         }
       }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
+      }
+      throw e;
     }
 
     if (!fullContent) {
-      // 流式不通时回退到非流式
       return await proxyWenxin(agent, message, userName, history, fileUrls);
     }
 

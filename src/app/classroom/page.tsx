@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, memo, useMemo } from 'react';
+import { useState, useEffect, useRef, Suspense, memo, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { stripImages, Markdown } from '@/lib/markdown';
+import { exportMessageToWord } from '@/lib/export-doc';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 
@@ -37,11 +38,28 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase, avatarSvg, onImageClick,
+  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void;
+  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const handleCopy = useCallback(() => {
+    const raw = msg.content || '';
+    navigator.clipboard.writeText(raw).then(() => {
+      setToast('已复制');
+      setTimeout(() => setToast(null), 1500);
+    }).catch(() => setToast('复制失败'));
+  }, [msg.content]);
+
+  const handleExportWord = useCallback(() => {
+    const raw = msg.content || '';
+    const agentName = agent?.name || 'AI助手';
+    const ts = msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : undefined;
+    exportMessageToWord(raw, agentName, ts);
+  }, [msg.content, msg.createdAt, agent]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
       {msg.role === 'assistant' && (
@@ -101,6 +119,38 @@ const MessageItem = memo(function MessageItem({
           <Markdown>{msg.fileUrls?.length ? stripImages(msg.content) : msg.content}</Markdown>
         )}
       </div>
+      {msg.role === 'assistant' && allowExport !== false && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4, marginTop: 2, position: 'relative' }}>
+          <button onClick={handleCopy}
+            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            复制
+          </button>
+          <button onClick={handleExportWord}
+            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            导出
+          </button>
+          {toast && (
+            <span style={{ fontSize: "0.688rem", color: '#10b981', animation: 'notifSlideUp 0.3s ease-out' }}>{toast}</span>
+          )}
+        </div>
+      )}
+      {msg.role === 'user' && onEdit && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4, marginTop: 2 }}>
+          <button onClick={() => onEdit(msg.content || '')}
+            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            编辑
+          </button>
+        </div>
+      )}
     </div>
   );
 });
@@ -130,11 +180,17 @@ const StreamingIndicator = memo(function StreamingIndicator({
         {strippedContent ? (
           <Markdown streaming allowImages={false}>{strippedContent}</Markdown>
         ) : (
-          <div style={{ display: 'flex', gap: 5, padding: '4px 0' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s infinite' }} />
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.2s infinite' }} />
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d1d5db', animation: 'typing 1.4s 0.4s infinite' }} />
-          </div>
+          <span style={{
+            fontSize: "0.875rem", color: '#1a1a2e', display: 'inline-flex', alignItems: 'center', gap: 3,
+            lineHeight: '18px', animation: 'textGlow 2s ease-in-out infinite',
+          }}>
+            正在思考中
+            <span style={{ display: 'inline-flex', gap: 3, width: 18 }}>
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s ease-in-out infinite' }} />
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s 0.2s ease-in-out infinite' }} />
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#6366f1', animation: 'thinking 1.4s 0.4s ease-in-out infinite' }} />
+            </span>
+          </span>
         )}
       </div>
     </div>
@@ -694,6 +750,15 @@ function StudentChatContent() {
         setMessages(prev => prev.filter(m => !(m.role === 'system' && typeof m.content === 'string' && m.content.includes('自动黑屏'))));
       });
 
+
+      socket.on('allow-stop-changed', (data: any) => {
+        setClassroom(prev => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+      });
+
+      socket.on('allow-export-changed', (data: any) => {
+        setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+      });
+
       wsRef.current = socket;
     } catch {
       setConnected(false);
@@ -713,6 +778,23 @@ function StudentChatContent() {
     setShieldWarning(null);
     setStep('identity');
   };
+
+  const handleStopGeneration = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.emit('stop-generation');
+    }
+    setWaitingAI(false);
+    setStreamingContent('');
+  }, []);
+
+  const handleEdit = useCallback((content: string) => {
+    setInput(content);
+    if (inputRef.current) {
+      inputRef.current.focus();
+      const len = content.length;
+      inputRef.current.setSelectionRange(len, len);
+    }
+  }, []);
 
   const handleExit = () => {
     if (waitingAI) return;
@@ -1167,7 +1249,7 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} />
+            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
           ));
         })()}
 
@@ -1370,12 +1452,22 @@ function StudentChatContent() {
               }
             }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '输入你的问题...'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
               style={{ flex: 1, fontSize: "1rem", padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e' }} />
-            <button type="button" onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled || blacklisted}
-              style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || waitingAI || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
+            {waitingAI && classroom?.allowStudentStop !== false ? (
+              <button type="button" onClick={handleStopGeneration}
+                style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', transition: 'all .15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
+              </button>
+            ) : (
+              <button type="button" onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted}
+                style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       {/* 头像更换弹窗 */}
@@ -1655,7 +1747,8 @@ export default function StudentChatPage() {
       <style>{`
         :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
         @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
-        @keyframes typing { 0%,60%,100% { transform: translateY(0) } 30% { transform: translateY(-5px) } }
+        @keyframes textGlow { 0%,100% { text-shadow: 0 0 4px rgba(99,102,241,0.3) } 50% { text-shadow: 0 0 14px rgba(99,102,241,0.7), 0 0 24px rgba(99,102,241,0.3) } }
+        @keyframes thinking { 0%,60%,100% { transform: scale(1); opacity: 0.4 } 30% { transform: scale(1.3); opacity: 1 } }
         @keyframes teacherBubbleIn { from { opacity:0; transform: translateY(-8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

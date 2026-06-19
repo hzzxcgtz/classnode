@@ -121,6 +121,14 @@ async function main() {
         console.log('[server] Added groupId column to TeacherNotification');
       }
     }
+
+    // 检查 Classroom 表是否有 allowStudentExport 列
+    const classroomCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Classroom')`);
+    const classroomColNames = classroomCols.map(c => c.name);
+    if (!classroomColNames.includes('allowStudentExport')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentExport" BOOLEAN NOT NULL DEFAULT 1`);
+      console.log('[server] Added allowStudentExport column to Classroom');
+    }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
   }

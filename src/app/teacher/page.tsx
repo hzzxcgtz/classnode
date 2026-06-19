@@ -634,6 +634,18 @@ export default function TeacherDashboard() {
                         </span>
                       );
                     })}
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem' }}>
+                      <span style={{ color: '#64748b', fontWeight: 500 }}>学生状态：</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.status !== 'paused' ? '#eff6ff' : '#f1f5f9', border: `1px solid ${cr.status !== 'paused' ? '#bfdbfe' : '#e2e8f0'}`, color: cr.status !== 'paused' ? '#3b82f6' : '#94a3b8' }}>
+                        {cr.status !== 'paused' ? '允许提问' : '禁止提问'}
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.allowStudentStop !== false ? '#fffbeb' : '#f1f5f9', border: `1px solid ${cr.allowStudentStop !== false ? '#fde68a' : '#e2e8f0'}`, color: cr.allowStudentStop !== false ? '#d97706' : '#94a3b8' }}>
+                        {cr.allowStudentStop !== false ? '允许中断' : '禁止中断'}
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 4, background: cr.allowStudentExport !== false ? '#ecfeff' : '#f1f5f9', border: `1px solid ${cr.allowStudentExport !== false ? '#a5f3fc' : '#e2e8f0'}`, color: cr.allowStudentExport !== false ? '#0891b2' : '#94a3b8' }}>
+                        {cr.allowStudentExport !== false ? '允许导出' : '禁止导出'}
+                      </span>
+                    </span>
                   </div>
                 );
               })()}
@@ -642,8 +654,8 @@ export default function TeacherDashboard() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
-                  padding: "10px 20px",
+                  gap: 6,
+                  padding: "8px 20px",
                   background: "#fafbfc",
                   borderTop: "1px solid #f1f5f9",
                 }}
@@ -671,221 +683,38 @@ export default function TeacherDashboard() {
                 >
                   {cr.status === "paused" ? "已暂停" : "进行中"}
                 </span>
-                <button
-                  onClick={() => openSettings(cr)}
-                  title="修改课堂设置"
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    fontSize: "0.75rem",
-                    background: "transparent",
-                    color: "#475569",
-                    border: "1px solid #e2e8f0",
-                    cursor: "pointer",
-                    lineHeight: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#f8fafc";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                  修改
+
+                {/* 编辑 + 互动码 */}
+                <button onClick={() => openSettings(cr)} title="修改课堂设置"
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  编辑
                 </button>
-                <button
-                  onClick={() => {
-                    fetch(`${getApiBaseUrl()}/api/server-info`)
-                      .then((r) => r.json())
-                      .then((d) => {
-                        setStudentUrl(d.studentUrl || '');
-                      })
-                      .catch(() => {})
-                      .finally(() => setQrCodeClassroom(cr));
-                  }}
-                  title="显示互动码"
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    fontSize: "0.75rem",
-                    background: "transparent",
-                    color: "#7c3aed",
-                    border: "1px solid #ddd6fe",
-                    cursor: "pointer",
-                    lineHeight: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#f5f3ff";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="2" y="2" width="5" height="5" rx="1" />
-                    <rect x="17" y="2" width="5" height="5" rx="1" />
-                    <rect x="2" y="17" width="5" height="5" rx="1" />
-                    <path d="M11 2h2" />
-                    <path d="M11 22h2" />
-                    <path d="M2 11v2" />
-                    <path d="M22 11v2" />
-                    <path d="M15 15h2v2h-2z" />
-                    <path d="M17 15v-1a2 2 0 0 0-2-2h-1" />
-                    <path d="M15 19v1a2 2 0 0 0 2 2h1" />
-                    <path d="M19 17h2v2h-2z" />
-                  </svg>
+                <button onClick={() => { fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => setStudentUrl(d.studentUrl || '')).catch(() => {}).finally(() => setQrCodeClassroom(cr)); }} title="显示互动码"
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#7c3aed"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
+                  互动码
                 </button>
-                <button
-                  onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
-                  style={{
-                    padding: "8px 20px",
-                    borderRadius: 8,
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                    background: "#2563eb",
-                    color: "white",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#1d4ed8";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "#2563eb";
-                  }}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-                    <polyline points="10 17 15 12 10 7" />
-                    <line x1="15" y1="12" x2="3" y2="12" />
-                  </svg>
-                  进入课堂
-                </button>
-                {cr.status === "paused" ? (
-                  <button
-                    onClick={async () => {
-                      await api.resumeClassroom(cr.id);
-                      loadData();
-                    }}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: 6,
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      background: "transparent",
-                      color: "#2563eb",
-                      border: "1px solid #93c5fd",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#eef2ff";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    继续上课
-                  </button>
-                ) : (
-                  <button
-                    onClick={async () => {
-                      await api.pauseClassroom(cr.id);
-                      loadData();
-                    }}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: 6,
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      background: "transparent",
-                      color: "#d97706",
-                      border: "1px solid #fcd34d",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#fffbeb";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    暂停
-                  </button>
-                )}
-                <button
-                  onClick={async () => {
-                    if (
-                      confirm(
-                        `确定结束课堂「${cr.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`,
-                      )
-                    ) {
-                      await api.endClassroom(cr.id);
-                      loadData();
-                    }
-                  }}
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: 6,
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    background: "transparent",
-                    color: "#ef4444",
-                    border: "1px solid #fca5a5",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#fef2f2";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
+
+                {/* 结束课堂 — 红字轮廓，hover 加强 */}
+                <button onClick={async () => { if (confirm(`确定结束课堂「${cr.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`)) { await api.endClassroom(cr.id); loadData(); } }}
+                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: "transparent", color: "#ef4444", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.borderColor = "#f87171"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
                   结束课堂
+                </button>
+
+                {/* 进入课堂 — 醒目填充按钮 */}
+                <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
+                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #1d4ed8, #1e40af)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(37,99,235,0.35)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, #2563eb, #1d4ed8)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.25)"; }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                  进入课堂
                 </button>
               </div>
             </div>

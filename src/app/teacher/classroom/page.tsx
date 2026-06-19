@@ -429,7 +429,15 @@ function ClassroomBoardContent() {
       });
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); };
+    const unsub12 = on('allow-stop-changed', (data: any) => {
+      setClassroom(prev => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+    });
+
+    const unsub13 = on('allow-export-changed', (data: any) => {
+      setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+    });
+
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: any) => {
@@ -604,39 +612,11 @@ function ClassroomBoardContent() {
                 </svg>
                 投屏发码
               </button>
-              <button className="btn btn-secondary" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
-                style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                发通知
-              </button>
-              {paused && (
-                <button className="btn btn-secondary" onClick={async () => {
-                  await api.resumeClassroom(id);
-                  setPaused(false);
-                  loadClassroom();
-                }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                  继续上课
-                </button>
-              )}
             </>
           )}
         </div>
       </div>
 
-      {/* 已暂停提示条 */}
-      {paused && (
-        <div style={{
-          padding: '10px 16px', borderRadius: 10, marginBottom: 16,
-          background: '#fffbeb', border: '1px solid #fde68a',
-          display: 'flex', alignItems: 'center', gap: 8, fontSize: "0.813rem", color: '#92400e',
-        }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-          课堂已暂停，学生无法发送消息。点击「继续上课」即可恢复。
-        </div>
-      )}
 
       {/* 实时数据统计 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -692,19 +672,56 @@ function ClassroomBoardContent() {
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
-                点击学生卡片查看完整对话
-              </span>
+            <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {/* 允许/禁止学生提问 */}
+              <button onClick={async () => {
+                if (paused) { await api.resumeClassroom(id); setPaused(false); loadClassroom(); }
+                else { await api.pauseClassroom(id); setPaused(true); }
+              }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: paused ? '#94a3b8' : '#059669', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {paused ? <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></> : <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>}
+                </svg>
+                {paused ? '禁止学生提问' : '允许学生提问'}
+              </button>
+              {/* 允许/禁止中断回答 */}
+              <button onClick={async () => {
+                const res = await api.toggleAllowStop(id);
+                setClassroom(prev => prev ? { ...prev, allowStudentStop: res.allowStudentStop } : prev);
+              }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentStop !== false ? '#059669' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {classroom?.allowStudentStop !== false ? <rect x="4" y="4" width="16" height="16" rx="3"/> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
+                </svg>
+                {classroom?.allowStudentStop !== false ? '允许中断回答' : '禁止中断回答'}
+              </button>
+              {/* 允许/禁止学生导出 */}
+              <button onClick={async () => {
+                const res = await api.toggleAllowExport(id);
+                setClassroom(prev => prev ? { ...prev, allowStudentExport: res.allowStudentExport } : prev);
+              }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentExport !== false ? '#059669' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {classroom?.allowStudentExport !== false ? <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
+                </svg>
+                {classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
+              </button>
+              {/* 通知全体 */}
+              <button onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#6366f1', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                通知全体
+              </button>
+              <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>|</span>
               <button onClick={() => setGridFullscreen(true)}
                 title="全屏显示学生面板"
                 style={{
-                  padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0',
-                  background: 'white', cursor: 'pointer', color: '#64748b', fontSize: "0.75rem",
-                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '3px 8px', borderRadius: 5, border: 'none',
+                  background: 'transparent', cursor: 'pointer', color: '#64748b', fontSize: "0.688rem",
+                  display: 'flex', alignItems: 'center', gap: 3,
                 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
                 全屏
               </button>
             </div>
@@ -1106,6 +1123,9 @@ function ClassroomBoardContent() {
           </div>
           </>
         )}
+
+
+
       </div>
 
       {/* 投屏发码 */}
@@ -1889,7 +1909,16 @@ function WordText({ data, ref }: { data: any; ref?: any }) {
 }
 
 function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: AnalyticsPanelProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(`cls_analytics_collapsed_${classroomId}`) === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`cls_analytics_collapsed_${classroomId}`, String(collapsed));
+  }, [collapsed, classroomId]);
   const [cloudSource, setCloudSource] = useState<'user' | 'assistant' | 'both'>('user');
   const cloudRef = useRef<HTMLDivElement>(null);
   const [cloudWidth, setCloudWidth] = useState(360);

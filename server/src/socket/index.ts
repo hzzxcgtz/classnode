@@ -13,6 +13,10 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
 const platformConversations = new Map<string, string>();
 
+/** 活跃 AI 流式请求的 AbortController（key: socketId）
+ *  学生端请求停止生成时，通过此 map 中断对应的 AI 请求 */
+const activeStreams = new Map<string, AbortController>();
+
 /** 教师通知缓存：key=classroomId，value=最近 N 条通知（用于 socket 重连时回放）
  *  studentId=null 表示全班广播，回放时只有目标学生或全班消息才推给当前学生 */
 const teacherNotificationCache = new Map<string, { id: string; message: string; timestamp: number; studentId: string | null }[]>();
@@ -457,34 +461,49 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           conversationId: platformNeedsConvId ? platformConvId : undefined,
         };
 
+        const abortController = new AbortController();
+        const streamKey = socket.id;
+        activeStreams.set(streamKey, abortController);
+
         let fullContent = '';
         let displayedContent = '';
-        const result = await proxyAIRequestStream(
-          agentConfig,
-          data.content,
-          studentName,
-          (chunk) => {
-            fullContent += chunk;
-            // 实时清理流式内容，隐藏 Markdown 图片链接
-            const cleanFull = cleanStreamContent(fullContent);
-            if (cleanFull.length > displayedContent.length) {
-              const newPart = cleanFull.slice(displayedContent.length);
-              displayedContent = cleanFull;
-              // 实时推送给学生
-              io.to(socket.id).emit('ai-chunk', { content: newPart, roundIndex: roundCount });
-              // 实时推送给教师看板
-              io.to(`teacher:${classroom.id}`).emit('student-chunk', {
-                studentId: data.studentId,
-                content: newPart,
-                roundIndex: roundCount,
-              });
-            }
-          },
-          formattedHistory,
-          data.fileUrls || (data.fileUrl ? [data.fileUrl] : [])
-        );
+        try {
+          const result = await proxyAIRequestStream(
+            agentConfig,
+            data.content,
+            studentName,
+            (chunk) => {
+              fullContent += chunk;
+              // 实时清理流式内容，隐藏 Markdown 图片链接
+              const cleanFull = cleanStreamContent(fullContent);
+              if (cleanFull.length > displayedContent.length) {
+                const newPart = cleanFull.slice(displayedContent.length);
+                displayedContent = cleanFull;
+                // 实时推送给学生
+                io.to(socket.id).emit('ai-chunk', { content: newPart, roundIndex: roundCount });
+                // 实时推送给教师看板
+                io.to(`teacher:${classroom.id}`).emit('student-chunk', {
+                  studentId: data.studentId,
+                  content: newPart,
+                  roundIndex: roundCount,
+                });
+              }
+            },
+            formattedHistory,
+            data.fileUrls || (data.fileUrl ? [data.fileUrl] : []),
+            abortController.signal
+          );
 
-        if (result.success && result.content) {
+          if (result.aborted) {
+            // 用户中断生成：不保存、不推送任何内容，直接丢弃
+            io.to(`teacher:${classroom.id}`).emit('student-thinking', {
+              studentId: data.studentId,
+              status: false,
+            });
+            return;
+          }
+
+          if (result.success && result.content) {
           // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
           // 必须在 success 块内保存，防止工具调用失败等场景保存了损坏的 context id
           if (platformNeedsConvId && result.conversationId) {
@@ -581,10 +600,30 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
               io.emit('agents-checked', { failed: [agent.name] });
             }
           }
+          }
+        } finally {
+          activeStreams.delete(streamKey);
         }
       } catch (error) {
         console.error('[Socket] send-message error:', error);
         io.to(socket.id).emit('ai-error', { error: '消息发送失败' });
+      }
+    });
+
+    // 学生请求停止 AI 生成
+    socket.on('stop-generation', async () => {
+      // 查该学生所在课堂是否允许中断
+      let classroomId: string | null = null;
+      for (const room of socket.rooms) {
+        if (room.startsWith('classroom:')) { classroomId = room.slice(10); break; }
+      }
+      if (classroomId) {
+        const classroom = await prisma.classroom.findUnique({ where: { id: classroomId } });
+        if (!classroom || !classroom.allowStudentStop) return;
+      }
+      const controller = activeStreams.get(socket.id);
+      if (controller) {
+        controller.abort();
       }
     });
 

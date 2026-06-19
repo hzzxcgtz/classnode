@@ -372,6 +372,8 @@ router.get('/code/:code', async (req, res) => {
       title: classroom.title,
       mode: classroom.mode,
       status: classroom.status,
+      allowStudentStop: classroom.allowStudentStop,
+      allowStudentExport: classroom.allowStudentExport,
       agents: classroom.classroomAgents.map((ca: { agent: { id: any; name: any; logo: any; platform: any; enabled: any; greeting: any } }) => ({
         id: ca.agent.id,
         name: ca.agent.name,
@@ -584,6 +586,52 @@ router.post('/:id/restore', async (req, res) => {
   } catch (error) {
     console.error('[Classroom] restore error:', error);
     res.status(500).json({ error: '恢复课堂失败' });
+  }
+});
+
+// 切换是否允许学生中断 AI 回答
+router.post('/:id/toggle-allow-stop', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({ where: { id: req.params.id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const updated = await prisma.classroom.update({
+      where: { id: req.params.id },
+      data: { allowStudentStop: !classroom.allowStudentStop },
+    });
+
+    const io = req.app.get('io');
+    io.to(`classroom:${classroom.id}`).emit('allow-stop-changed', { allow: updated.allowStudentStop });
+    io.to(`teacher:${classroom.id}`).emit('allow-stop-changed', { allow: updated.allowStudentStop });
+
+    res.json({ allowStudentStop: updated.allowStudentStop });
+  } catch (error) {
+    console.error('[Classroom] toggle allow-stop error:', error);
+    res.status(500).json({ error: '切换失败' });
+  }
+});
+
+// 切换是否允许学生导出（复制/Word）
+router.post('/:id/toggle-allow-export', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({ where: { id: req.params.id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const updated = await prisma.classroom.update({
+      where: { id: req.params.id },
+      data: { allowStudentExport: !classroom.allowStudentExport },
+    });
+
+    const io = req.app.get('io');
+    io.to(`classroom:${classroom.id}`).emit('allow-export-changed', { allow: updated.allowStudentExport });
+    io.to(`teacher:${classroom.id}`).emit('allow-export-changed', { allow: updated.allowStudentExport });
+
+    res.json({ allowStudentExport: updated.allowStudentExport });
+  } catch (error) {
+    console.error('[Classroom] toggle allow-export error:', error);
+    res.status(500).json({ error: '切换失败' });
   }
 });
 

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import 'katex/dist/katex.min.css';
 
 export const metadata: Metadata = {
   title: "AI互动课堂",

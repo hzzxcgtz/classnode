@@ -164,9 +164,28 @@ export function checkShieldWords(content: string, words: string[]): {
 
   // 词边界校验：只保留对齐到词边界的匹配
   const boundaries = getWordBoundaries(content);
-  const valid = positions.filter(p =>
+  let valid = positions.filter(p =>
     boundaries.has(p.start) && boundaries.has(p.end + 1),
   );
+
+  if (valid.length === 0) {
+    return { filtered: content, matched: [] };
+  }
+
+  // 上下文语义优化：屏蔽词以助词结尾时，检查是否后接中文实词
+  // 如果屏蔽词的最后一个字是 "的/了/着/过" 等助词，且紧跟的中文字符非标点，
+  // 则大概率是所属/修饰关系（如"奶奶的双手"），而非脏话用法，跳过匹配
+  const PARTICLE_END = new Set(['的', '地', '得', '了', '着', '过']);
+  const CJK_RE = /[一-鿿㐀-䶿豈-﫿]/;
+  valid = valid.filter(p => {
+    const lastChar = content[p.end];
+    if (lastChar && PARTICLE_END.has(lastChar)) {
+      const nextChar = content[p.end + 1];
+      // 助词后紧跟中文实词 → 所属/修饰关系 → 跳过
+      if (nextChar && CJK_RE.test(nextChar)) return false;
+    }
+    return true;
+  });
 
   if (valid.length === 0) {
     return { filtered: content, matched: [] };
@@ -186,14 +205,29 @@ export function buildShieldFilter(words: string[]): (content: string) => {
   matched: string[];
 } {
   const ac = new AhoCorasick(words);
+  const PARTICLE_END = new Set(['的', '地', '得', '了', '着', '过']);
+  const CJK_RE = /[一-鿿㐀-䶿豈-﫿]/;
+
   return (content: string) => {
     const { positions } = ac.search(content);
     if (positions.length === 0) return { filtered: content, matched: [] };
 
     const boundaries = getWordBoundaries(content);
-    const valid = positions.filter(p =>
+    let valid = positions.filter(p =>
       boundaries.has(p.start) && boundaries.has(p.end + 1),
     );
+
+    if (valid.length === 0) return { filtered: content, matched: [] };
+
+    // 同上，上下文语义优化
+    valid = valid.filter(p => {
+      const lastChar = content[p.end];
+      if (lastChar && PARTICLE_END.has(lastChar)) {
+        const nextChar = content[p.end + 1];
+        if (nextChar && CJK_RE.test(nextChar)) return false;
+      }
+      return true;
+    });
 
     if (valid.length === 0) return { filtered: content, matched: [] };
 

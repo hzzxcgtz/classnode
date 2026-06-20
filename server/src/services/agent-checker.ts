@@ -6,7 +6,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { Server } from 'socket.io';
-import { testAgentConnection } from './ai-proxy.js';
+import { testAgentAvailability } from './ai-proxy.js';
 import { decrypt } from './crypto.js';
 
 let prisma: PrismaClient | null = null;
@@ -24,7 +24,7 @@ async function checkAgent(agent: {
 }): Promise<boolean> {
   try {
     const decryptedKey = (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })();
-    const result = await testAgentConnection({
+    const result = await testAgentAvailability({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
       apiKey: decryptedKey,

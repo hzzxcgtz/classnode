@@ -356,6 +356,8 @@ function StudentChatContent() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [markers, setMarkers] = useState<{ index: number; top: number; text: string }[]>([]);
   const [markerBarStyle, setMarkerBarStyle] = useState<{ left: number; top: number; height: number } | null>(null);
+  const [activeMsgIndex, setActiveMsgIndex] = useState<number | null>(null);
+  const [hoveredMarker, setHoveredMarker] = useState<{ index: number; text: string; x: number; y: number } | null>(null);
   const userScrolledUpRef = useRef(false);
   const wsRef = useRef<any>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -507,8 +509,10 @@ function StudentChatContent() {
       items.push({ index: idx, top: (topInContent / container.scrollHeight) * container.clientHeight, text: preview });
     }
     setMarkers(items);
-    // 同时记录标记条在视口中的位置（用于 position: fixed）
-    setMarkerBarStyle({ left: cr.right - 20, top: cr.top, height: cr.height });
+    // 标记条对齐内部包裹层的右边缘（而非全宽滚动容器的右边缘）
+    const wrapper = container.querySelector<HTMLElement>('[data-chat-wrapper]');
+    const wr = wrapper ? wrapper.getBoundingClientRect() : cr;
+    setMarkerBarStyle({ left: wr.right - 20, top: cr.top, height: cr.height });
   }, []);
 
   // 点击标记跳转
@@ -533,14 +537,32 @@ function StudentChatContent() {
     requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [messages, streamingContent, step, waitingAI]);
 
-  // 初始化滚动标记并监听容器尺寸变化
+  // 初始化滚动标记、追踪当前可见消息（高亮标记）、监听容器尺寸变化
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
     requestAnimationFrame(() => updateMarkers());
+
+    // IntersectionObserver: 追踪当前在视口中的用户消息，用于高亮对应标记
+    const visibleIds = new Set<number>();
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const idx = parseInt((entry.target as HTMLElement).getAttribute('data-msg-id') || '', 10);
+        if (isNaN(idx)) continue;
+        if (entry.isIntersecting) visibleIds.add(idx);
+        else visibleIds.delete(idx);
+      }
+      // 取可见消息中序号最小的（最靠近顶部）作为"当前"消息
+      setActiveMsgIndex(visibleIds.size > 0 ? Math.min(...visibleIds) : null);
+    }, { root: container, rootMargin: '-20px 0px -70% 0px' });
+
+    const msgEls = container.querySelectorAll<HTMLElement>('[data-msg-id]');
+    msgEls.forEach(el => io.observe(el));
+
     const ro = new ResizeObserver(() => requestAnimationFrame(() => updateMarkers()));
     ro.observe(container);
-    return () => ro.disconnect();
+
+    return () => { io.disconnect(); ro.disconnect(); };
   }, [messages, updateMarkers]);
 
   // AI 回答完成后自动聚焦输入框
@@ -1225,7 +1247,8 @@ function StudentChatContent() {
 
       {/* === 消息区域 === */}
       <div ref={chatContainerRef} onScroll={handleChatScroll}
-        style={{ flex: 1, overflow: 'auto', padding: '20px 24px 20px', display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800, width: '100%', margin: '0 auto' }}>
+        style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', minHeight: 0 }}>
+        <div data-chat-wrapper style={{ width: '100%', maxWidth: 800, padding: '20px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* 加载错误提示：会话恢复失败 */}
         {loadError && messages.length === 0 && !waitingAI && (
@@ -1376,6 +1399,7 @@ function StudentChatContent() {
 
         {/* 底部锚点 */}
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* 回到底部按钮 */}
@@ -1389,15 +1413,59 @@ function StudentChatContent() {
       {/* 滚动标记条（position: fixed 对齐滚动条位置） */}
       {markerBarStyle && markers.length > 0 && (
         <div style={{ position: 'fixed', left: markerBarStyle.left - 6, top: markerBarStyle.top, width: 20, height: markerBarStyle.height, pointerEvents: 'none', zIndex: 20 }}>
-          {markers.map(m => (
-            <div key={m.index}
-              onClick={(e) => { e.stopPropagation(); scrollToMarker(m.index); }}
-              title={m.text}
-              style={{ position: 'absolute', right: 4, top: m.top, width: 11, height: 4, borderRadius: 2, background: '#cbd5e1', cursor: 'pointer', pointerEvents: 'auto', opacity: 0.5, transition: 'opacity 0.15s, background 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#64748b'; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = '#cbd5e1'; }}
-            />
-          ))}
+          {markers.map(m => {
+            const isActive = m.index === activeMsgIndex;
+            const isHovered = hoveredMarker?.index === m.index;
+            const isHighlighted = isActive || isHovered;
+            return (
+              <div key={m.index}
+                onClick={(e) => { e.stopPropagation(); scrollToMarker(m.index); }}
+                onMouseEnter={() => {
+                  // 标记左边缘的屏幕 X 坐标（标记容器 left + 20 - 4 - 11）
+                  const markerLeftEdge = markerBarStyle.left - 1;
+                  // 标记垂直中心：标记条 top + 标记在条内的 top + 2px（标记高 4px 的一半）
+                  setHoveredMarker({ index: m.index, text: m.text, x: markerLeftEdge, y: markerBarStyle.top + m.top + 2 });
+                }}
+                onMouseLeave={() => {
+                  if (hoveredMarker?.index === m.index) setHoveredMarker(null);
+                }}
+                style={{
+                  position: 'absolute', right: 4, top: m.top - (isHighlighted ? 0 : 1),
+                  width: isHighlighted ? 14 : 7,
+                  height: isHighlighted ? 5 : 7,
+                  borderRadius: isHighlighted ? 2 : '50%',
+                  background: isHovered ? '#cbd5e1' : isActive ? '#6366f1' : '#cbd5e1',
+                  cursor: 'pointer', pointerEvents: 'auto',
+                  opacity: isHighlighted ? 1 : 0.5,
+                  transition: 'opacity 0.15s, background 0.15s, width 0.15s, height 0.15s',
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+      {/* 自定义 tooltip：鼠标悬停标记时立即显示提问内容 */}
+      {hoveredMarker && (
+        <div style={{
+          position: 'fixed',
+          right: window.innerWidth - hoveredMarker.x + 9,
+          top: hoveredMarker.y,
+          transform: 'translateY(-50%)',
+          maxWidth: 260,
+          padding: '5px 10px',
+          borderRadius: 6,
+          background: '#1e293b',
+          color: '#f1f5f9',
+          fontSize: '0.75rem',
+          lineHeight: 1.4,
+          pointerEvents: 'none',
+          zIndex: 30,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+        }}>
+          {hoveredMarker.text}
         </div>
       )}
 
@@ -1889,9 +1957,9 @@ export default function StudentChatPage() {
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
       <Suspense fallback={<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white'}}>加载中...</div>}>
         <StudentChatContent />

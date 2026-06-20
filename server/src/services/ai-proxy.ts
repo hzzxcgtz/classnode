@@ -446,13 +446,14 @@ export async function fetchAgentInfo(agent: AgentConfig): Promise<{
 }
 
 /**
- * 测试 AI 智能体连通性
+ * 测试 AI 智能体可用性
+ * 发送真实消息验证智能体能否正常响应，确保 API 密钥、参数、联网均正常
  */
-export async function testAgentConnection(agent: AgentConfig): Promise<{ success: boolean; error?: string }> {
+export async function testAgentAvailability(agent: AgentConfig): Promise<{ success: boolean; error?: string }> {
   try {
     const result = await proxyAIRequest(agent, '你好，请回复"连接成功"', '测试用户');
     if (result.success) return { success: true };
-    return { success: false, error: result.error || '连接失败' };
+    return { success: false, error: result.error || '可用性测试失败' };
   } catch (error: any) {
     return { success: false, error: error.message || '测试请求异常' };
   }
@@ -596,12 +597,10 @@ async function proxyCozeAgent(
 
   const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
-  if (!projectId) return { success: false, error: 'Coze Agent 需要 Project ID' };
 
   const sessionId = `student_${userName}`;
 
   const body: any = {
-    project_id: Number(projectId),
     content: {
       query: {
         prompt: [
@@ -618,8 +617,21 @@ async function proxyCozeAgent(
     session_id: sessionId,
   };
 
+  // project_id：文档标注为 int 类型，但 JS Number 会精度丢失，且 Coze 可能不接受字符串。
+  // 对于 *.coze.site 项目专属 URL，Coze 靠域名路由，不传 project_id
+  // 对于非 *.coze.site 的自定义 API URL，才需要传 project_id
+  // 注：project_id 用占位符替换手法在 JSON 中保持原始精确整数字面量
+  const exactProjectId = !baseUrl.includes('.coze.site') ? projectId : '';
+  if (exactProjectId) {
+    body.project_id = '__EXACT_PROJECT_ID__';
+  }
+
   // 支持用户填写完整 URL 或仅填 base URL
   const streamUrl = baseUrl.includes('/stream_run') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/stream_run`;
+  let bodyStr = JSON.stringify(body);
+  if (exactProjectId) {
+    bodyStr = bodyStr.replace('"__EXACT_PROJECT_ID__"', exactProjectId);
+  }
   const response = await fetchWithTimeout(streamUrl, {
     method: 'POST',
     headers: {
@@ -627,7 +639,7 @@ async function proxyCozeAgent(
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify(body),
+    body: bodyStr,
   });
 
   if (!response.ok) {
@@ -668,8 +680,30 @@ async function proxyCozeAgent(
 
   if (!fullContent) {
     if (debugEvents.length === 0 && rawText.length > 0) {
-      // 没有 data: 事件或格式异常，返回原始内容片段
       return { success: false, error: `Coze Agent 响应格式异常(${rawText.length}字节): ${rawText.slice(0, 500)}` };
+    }
+    // 尝试从检测到的 SSE 事件提取更具体的错误信息
+    for (const evt of debugEvents) {
+      // 优先使用已解析的完整对象（原始行可能被截断）
+      const parsed = typeof evt === 'object' && !Array.isArray(evt) && !('raw' in evt) ? evt : null;
+      if (parsed?.type === 'message_end' && parsed.content?.message_end) {
+        const end = parsed.content.message_end;
+        // 文档表明 token_cost.total_tokens 为 0 是正常情况，仅检查 code
+        if (end.code && end.code !== '0') {
+          return { success: false, error: `Coze Agent 返回错误: code=${end.code} ${end.message || ''}` };
+        }
+        console.warn('[CozeAgent] message_end 无回答内容:', JSON.stringify(end));
+      }
+      // 原始行兜底解析（可能被截断，仅做补充）
+      const raw = typeof evt === 'string' ? evt : (evt.raw || '');
+      if (raw.startsWith('data:')) {
+        try {
+          const p = JSON.parse(raw.slice(5).trim());
+          if (p.code && p.code !== 0 && p.code !== undefined) {
+            return { success: false, error: `Coze Agent 返回错误: code=${p.code} ${p.msg || ''}` };
+          }
+        } catch {}
+      }
     }
     return { success: false, error: `Coze Agent 响应为空，调试: ${JSON.stringify(debugEvents)}` };
   }
@@ -819,12 +853,10 @@ async function proxyCozeAgentStream(
 
   const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
-  if (!projectId) return { success: false, error: 'Coze Agent 需要 Project ID' };
 
   const sessionId = `student_${userName}`;
 
   const body: any = {
-    project_id: Number(projectId),
     content: {
       query: {
         prompt: [
@@ -841,7 +873,17 @@ async function proxyCozeAgentStream(
     session_id: sessionId,
   };
 
+  // project_id 用占位符替换手法在 JSON 中保持原始精确整数字面量
+  const exactProjectId = projectId;
+  if (exactProjectId) {
+    body.project_id = '__EXACT_PROJECT_ID__';
+  }
+
   const streamUrl = baseUrl.includes('/stream_run') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/stream_run`;
+  let bodyStr = JSON.stringify(body);
+  if (exactProjectId) {
+    bodyStr = bodyStr.replace('"__EXACT_PROJECT_ID__"', exactProjectId);
+  }
   const response = await fetchWithTimeout(streamUrl, {
     method: 'POST',
     headers: {
@@ -849,7 +891,7 @@ async function proxyCozeAgentStream(
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify(body),
+    body: bodyStr,
     signal,
   });
 
@@ -909,6 +951,18 @@ async function proxyCozeAgentStream(
   }
 
   if (!fullContent) {
+    for (const evt of debugEvents) {
+      try {
+        if (evt.type === 'message_end' && evt.content?.message_end) {
+          const end = evt.content.message_end;
+          // 文档表明 token_cost.total_tokens 为 0 是正常情况，仅检查 code
+          if (end.code && end.code !== '0') {
+            return { success: false, error: `Coze Agent 返回错误: code=${end.code} ${end.message || ''}` };
+          }
+          console.warn('[CozeAgentStream] message_end 无回答内容:', JSON.stringify(end));
+        }
+      } catch {}
+    }
     return { success: false, error: `Coze Agent 流式响应为空，调试: ${JSON.stringify(debugEvents)}` };
   }
 

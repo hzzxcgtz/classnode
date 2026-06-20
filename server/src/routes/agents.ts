@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { testAgentConnection, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
+import { testAgentAvailability, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
 import { encrypt, decrypt, isEncrypted } from '../services/crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -338,7 +338,7 @@ router.post('/:id/test', async (req, res) => {
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
     const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
-    const result = await testAgentConnection({
+    const result = await testAgentAvailability({
       platform: agent.platform,
       apiUrl: agent.apiUrl || undefined,
       apiKey: decryptedKey,

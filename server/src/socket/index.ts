@@ -62,6 +62,71 @@ let cachedFilter: ((content: string) => { filtered: string; matched: string[] })
 let shieldWordsCacheTime = 0;
 const SHIELD_WORDS_CACHE_TTL = 3_000;
 
+/**
+ * 从原文中提取屏蔽词附近的上下文（取匹配词所在的一句话范围）
+ * 用于拦截记录展示，只显示屏蔽词前后 1-2 句，而非整个提问
+ */
+function extractContextAroundMatch(content: string, matchedWords: string[], maxChars: number = 200): string {
+  if (!content || matchedWords.length === 0) return content.slice(0, maxChars);
+
+  // 中文句子结束标点
+  const sentenceEnd = /[。！？!?\n]/;
+
+  // 对每个屏蔽词找到其在原文中的位置，以句子为单位提取窗口
+  const windows: { start: number; end: number }[] = [];
+  const lowerContent = content.toLowerCase();
+
+  for (const word of matchedWords) {
+    if (!word) continue;
+    const idx = lowerContent.indexOf(word.toLowerCase());
+    if (idx === -1) continue;
+
+    // 向后找到句子起点（上一个句子结束符后的第一个非空字符）
+    let start = idx;
+    // 回退最多 50 个字符找句子边界
+    for (let i = idx - 1; i >= Math.max(0, idx - 50); i--) {
+      if (sentenceEnd.test(content[i])) {
+        start = i + 1;
+        break;
+      }
+    }
+    if (start === idx) start = Math.max(0, idx - 20); // 没找到句子边界，回退 20 字
+
+    // 向前找到句子终点
+    let end = idx + word.length;
+    for (let i = idx + word.length; i < Math.min(content.length, idx + word.length + 50); i++) {
+      if (sentenceEnd.test(content[i])) {
+        end = i + 1;
+        break;
+      }
+    }
+    if (end === idx + word.length) end = Math.min(content.length, idx + word.length + 30);
+
+    windows.push({ start, end });
+  }
+
+  // 合并重叠或相邻的窗口
+  const sorted = windows.sort((a, b) => a.start - b.start);
+  const merged: { start: number; end: number }[] = [];
+  for (const w of sorted) {
+    if (merged.length === 0 || w.start > merged[merged.length - 1].end) {
+      merged.push({ start: w.start, end: w.end });
+    } else {
+      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, w.end);
+    }
+  }
+
+  // 拼接窗口文本
+  let result = merged.map(w => content.slice(w.start, w.end)).join('…');
+
+  // 限制总长度
+  if (result.length > maxChars) {
+    result = result.slice(0, maxChars - 3) + '…';
+  }
+
+  return result || content.slice(0, maxChars);
+}
+
 async function checkWithFilter(prisma: PrismaClient, content: string): Promise<{ filtered: string; matched: string[] } | null> {
   const now = Date.now();
   if (!cachedFilter || now - shieldWordsCacheTime >= SHIELD_WORDS_CACHE_TTL) {
@@ -303,7 +368,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
                 classroomId: classroom.id,
                 studentId: classroomStudent.studentId,
                 word: matched.join(', '),
-                content: originalContent.slice(0, 200),
+                content: extractContextAroundMatch(originalContent, matched, 200),
               },
             });
             // Increment warning count (原子操作，使用返回值确保准确)

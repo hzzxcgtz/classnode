@@ -502,12 +502,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // AI Proxy call (流式)
         const history = await prisma.message.findMany({
           where: { studentId: classroomStudent.id },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
           take: 30,
         });
 
-        // 取最近 20 条训练（约 10 轮对话），保持内容连贯的同时避免请求体过大
-        const recentHistory = history.slice(-20);
+        // 取最近 30 条消息（约 15 轮对话），反转回正序
+        const recentHistory = history.reverse();
         const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<{}>) => ({
           role: h.role as 'user' | 'assistant',
           content: h.content,

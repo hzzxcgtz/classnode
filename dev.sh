@@ -167,6 +167,16 @@ parse_port_opts() {
 
 cleanup_stale_dev() {
   local found=false
+  # 清理 Prisma 残留进程（Ctrl+C 后易产生孤儿进程，堆积导致 EMFILE）
+  local prisma_pids
+  prisma_pids=$(pgrep -f "prisma" 2>/dev/null || true)
+  if [ -n "$prisma_pids" ]; then
+    local prisma_count
+    prisma_count=$(echo "$prisma_pids" | wc -l | tr -d ' ')
+    log_info "清理 Prisma 残留进程（${prisma_count} 个）..."
+    echo "$prisma_pids" | xargs kill 2>/dev/null || true
+    found=true
+  fi
   for pattern in "tsx.*watch.*src/index.ts" "next dev" "concurrent" "pnpm.*dev:server" "pnpm.*dev$"; do
     local pids
     pids=$(pgrep -f "$pattern" 2>/dev/null || true)

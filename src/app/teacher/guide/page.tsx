@@ -307,8 +307,8 @@ const sections = [
               </a>
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
-              <strong style={{ color: "#2563eb" }}>最全面，强烈推荐</strong>
-              —— 所有功能一应俱全
+              <strong style={{ color: "#2563eb" }}>强烈推荐</strong>
+              —— 功能最全面，几乎完美支持所有特性
             </div>
           </div>
           <div
@@ -327,7 +327,7 @@ const sections = [
             <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
             <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
             <div style={{ width: 56, textAlign: "center" }} />
-            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 100, textAlign: "center" }}>
               <a
@@ -352,8 +352,7 @@ const sections = [
               </a>
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
-              <strong style={{ color: "#10b981" }}>推荐使用</strong>
-              —— 支持流式输出与追问建议
+              制作简单，基本功能齐备，暂不支持图片上传等高级功能
             </div>
           </div>
           <div
@@ -397,8 +396,7 @@ const sections = [
               </a>
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
-              <strong style={{ color: "#7c3aed" }}>推荐使用</strong>
-              —— 支持流式、图片理解与追问建议
+              综合表现不错，暂不支持深度思考
             </div>
           </div>
           <div style={{ display: "flex", padding: "6px 0" }}>
@@ -409,7 +407,7 @@ const sections = [
               百度
             </div>
             <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
-            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
             <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 56, textAlign: "center" }} />
@@ -436,7 +434,7 @@ const sections = [
               </a>
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
-              基础可用，纯文本非流式对话
+              基础功能可用，满足日常教学需求
             </div>
           </div>
         </div>

@@ -994,11 +994,52 @@ function StudentChatContent() {
     await startChatSession(selectedStudent.id, selectedStudent.name);
   };
 
+  /** 将 WebP 图片转换为 PNG Blob */
+  const convertWebpToPng = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { URL.revokeObjectURL(url); reject(new Error('Canvas 2D 不可用')); return; }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          if (blob) {
+            const newName = file.name.replace(/\.webp$/i, '.png');
+            resolve(new File([blob], newName, { type: 'image/png' }));
+          } else {
+            reject(new Error('WebP 转换失败'));
+          }
+        }, 'image/png');
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('WebP 图片加载失败')); };
+      img.src = url;
+    });
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    let files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     setUploading(true);
     try {
+      // WebP 图片自动转 PNG（部分平台不支持 WebP 格式）
+      files = await Promise.all(files.map(async (f) => {
+        if (f.type === 'image/webp' || /\.webp$/i.test(f.name)) {
+          try {
+            const png = await convertWebpToPng(f);
+            console.log(`[Upload] WebP 已转 PNG: ${f.name} → ${png.name} (${(png.size / 1024).toFixed(1)}KB)`);
+            return png;
+          } catch (convErr) {
+            console.warn('[Upload] WebP 转换失败，尝试原格式上传:', convErr);
+            return f;
+          }
+        }
+        return f;
+      }));
       const newFiles: { url: string; name: string }[] = [];
       for (const file of files) {
         const form = new FormData();

@@ -1,6 +1,7 @@
 import { anonymizer } from './anonymizer.js';
 import { CozeBot } from './coze-bot/index.js';
 import type { EnterMessage, StreamCallbacks, MessageData } from './coze-bot/index.js';
+import { WenxinBot } from './wenxin/index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1038,64 +1039,14 @@ async function proxyZhipuaiStream(
 
 // ---- 文心智能体平台（百度） ----
 
-/** 文件扩展名到 type 映射 */
-const wenxinFileType: Record<string, string> = {
-  '.png': 'image', '.jpg': 'image', '.jpeg': 'image',
-  '.webp': 'image', '.gif': 'image', '.svg': 'image',
-};
-const WENXIN_PORT = parseInt(process.env.PORT || '3001', 10);
-
-/** 构建文心 API 请求 body */
-function buildWenxinBody(message: string, userName: string, fileUrls?: string[], threadId?: string) {
-  // 文心 API 不支持文件上传和本地图片 URL，有附件时仍以文本发送
-  const finalMessage = (fileUrls && fileUrls.length > 0)
-    ? `${message}（用户发送了附件，但当前平台不支持附件识别）`
-    : message;
-  let contentType = 'text';
-  let contentValue: any = { showText: finalMessage };
-
-  const body: any = {
-    message: {
-      content: { type: contentType, value: contentValue },
-    },
-    source: '',
-    from: 'openapi',
-    openId: userName,
-  };
-  if (threadId) body.threadId = threadId;
-  return body;
-}
-
-/** 从文心 API 响应中提取文本内容 */
-function extractWenxinContent(data: any): string {
-  const contents = data?.content || [];
-  let text = '';
-  for (const item of contents) {
-    // 实际 dataType 可能是 'text' / 'markdown' / 'txt' 等
-    if (item.data && typeof item.data === 'string') {
-      text += item.data;
-    } else if (item.data?.text) {
-      text += item.data.text;
-    } else if (item.data?.content) {
-      text += item.data.content;
-    }
-  }
-  return text;
-}
-
-/** 获取文心 API 基础 URL（含 appId + secretKey 认证） */
-function wenxinUrl(agent: AgentConfig): string {
-  const baseUrl = agent.apiUrl || 'https://agentapi.baidu.com';
-  const appId = agent.botId || '';
-  const secretKey = agent.apiKey;
-  return `${baseUrl.replace(/\/+$/, '')}/assistant/getAnswer?appId=${encodeURIComponent(appId)}&secretKey=${encodeURIComponent(secretKey)}`;
-}
-
-function wenxinConversationUrl(agent: AgentConfig): string {
-  const baseUrl = agent.apiUrl || 'https://agentapi.baidu.com';
-  const appId = agent.botId || '';
-  const secretKey = agent.apiKey;
-  return `${baseUrl.replace(/\/+$/, '')}/assistant/conversation?appId=${encodeURIComponent(appId)}&secretKey=${encodeURIComponent(secretKey)}`;
+/** 创建 WenxinBot 实例的辅助函数 */
+function createWenxinBot(agent: AgentConfig): WenxinBot {
+  return new WenxinBot({
+    appId: agent.botId || '',
+    secretKey: agent.apiKey,
+    baseUrl: agent.apiUrl || undefined,
+    threadId: agent.conversationId,
+  });
 }
 
 async function proxyWenxin(
@@ -1108,33 +1059,30 @@ async function proxyWenxin(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName, fileUrls, agent.conversationId || undefined);
-    body.source = agent.botId;
+    // 文心 API 暂不支持图片/文件识别，有附件时追加文字说明
+    const finalMessage = (fileUrls && fileUrls.length > 0)
+      ? `${message}\n\n（用户上传了图片附件，请查看聊天记录中的图片）`
+      : message;
 
-    const url = wenxinUrl(agent);
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const bot = createWenxinBot(agent);
+
+    const result = await bot.sendMessage(finalMessage, {
+      userName,
+      threadId: agent.conversationId || undefined,
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      return { success: false, error: `文心 API 错误 (${response.status}): ${err}` };
+
+    if (!result.content) {
+      return { success: false, error: "文心智能体返回为空" };
     }
 
-    const data = await response.json();
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(result.content));
 
-    if (data.status !== 0) {
-      return { success: false, error: `文心 API 返回错误: ${data.message || '未知错误'} (code=${data.status})` };
-    }
-
-    const content = extractWenxinContent(data.data);
-    if (!content) return { success: false, error: '文心智能体返回为空' };
-
-    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-    const threadId = data.data?.threadId || agent.conversationId;
-    return { success: true, content: deanonymized, conversationId: threadId };
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: result.threadId,
+    };
   } catch (error: any) {
     return { success: false, error: error.message || '文心 API 请求失败' };
   }
@@ -1152,80 +1100,64 @@ async function proxyWenxinStream(
   try {
     if (!agent.botId) return { success: false, error: '文心智能体需要填写 App ID' };
 
-    const body = buildWenxinBody(message, userName, fileUrls, agent.conversationId || undefined);
-    body.source = agent.botId;
+    // 文心 API 暂不支持图片/文件识别，有附件时追加文字说明
+    const finalMessage = (fileUrls && fileUrls.length > 0)
+      ? `${message}\n\n（用户上传了图片附件，请查看聊天记录中的图片）`
+      : message;
 
-    const url = wenxinConversationUrl(agent);
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
+    const bot = createWenxinBot(agent);
 
-    if (!response.ok) {
-      const err = await response.text();
-      return { success: false, error: `文心 API 错误 (${response.status}): ${err}` };
-    }
-
-    // 流式响应：SSE 格式
-    const reader = response.body?.getReader();
-    if (!reader) return { success: false, error: '无法读取响应流' };
-
-    const decoder = new TextDecoder();
-    let buffer = '';
     let fullContent = '';
+    let streamError: string | null = null;
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === '[DONE]') continue;
-
-          if (trimmed.startsWith('event:')) continue;
-          if (!trimmed.startsWith('data:')) continue;
-
-          const dataStr = trimmed.slice(5).trim();
-          if (!dataStr) continue;
-
-          try {
-            const parsed = JSON.parse(dataStr);
-            const raw = parsed.content || parsed.text || parsed.data || '';
-            const delta = typeof raw === 'string' ? raw : (raw?.text || raw?.content || '');
-            if (delta) {
-              fullContent += delta;
-              onChunk(delta);
-            }
-          } catch {
-            // 非 JSON 数据行跳过
-          }
-        }
-      }
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
-      }
-      throw e;
-    }
+    const result = await bot.sendMessageStream(
+      finalMessage,
+      {
+        userName,
+        threadId: agent.conversationId || undefined,
+      },
+      {
+        onDelta(chunk) {
+          fullContent += chunk;
+          onChunk(chunk);
+        },
+        onError(err) {
+          streamError = err.message;
+          console.error('[WenxinStream] SSE 错误:', err.code, err.message);
+        },
+      },
+      signal
+    );
 
     if (!fullContent) {
-      return await proxyWenxin(agent, message, userName, history, fileUrls);
+      // 流为空：优先返回 SSE 中的错误信息，再回退到非流式
+      if (streamError) {
+        return { success: false, error: streamError };
+      }
+      const fallback = await proxyWenxin(agent, message, userName, history, fileUrls);
+      if (fallback.success && fallback.content) {
+        onChunk(fallback.content);
+        return {
+          ...fallback,
+          content: fallback.content,
+        };
+      }
+      return fallback;
     }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-    return { success: true, content: deanonymized, conversationId: agent.conversationId || undefined };
-  } catch (error: any) {
-    return { success: false, error: error.message || '文心 API 请求失败' };
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: result.threadId || undefined,
+    };
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      return { success: false, aborted: true };
+    }
+    return { success: false, error: e.message || '文心 API 请求失败' };
   }
 }
-
 /** 上传本地文件到智谱清言，返回 file_id */
 async function uploadFileToZhipuai(baseUrl: string, token: string, fileUrl: string): Promise<string | null> {
   try {

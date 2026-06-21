@@ -645,6 +645,9 @@ export default function TeacherDashboard() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowStudentExport !== false ? '#ecfeff' : '#f1f5f9', color: cr.allowStudentExport !== false ? '#0891b2' : '#94a3b8' }}>
                         {cr.allowStudentExport !== false ? '允许导出' : '禁止导出'}
                       </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowFollowUps !== false ? '#f5f3ff' : '#f1f5f9', color: cr.allowFollowUps !== false ? '#8b5cf6' : '#94a3b8' }}>
+                        {cr.allowFollowUps !== false ? '允许追问' : '禁止追问'}
+                      </span>
                     </span>
                   </div>
                 );

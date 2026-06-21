@@ -23,6 +23,8 @@ export interface StreamCallbacks {
   onDelta?: (chunk: string, messageId: string) => void;
   /** 单条消息完成 (conversation.message.completed) */
   onMessageCompleted?: (message: MessageData) => void;
+  /** 追问建议 (conversation.message.completed, type=follow_up) */
+  onFollowUp?: (question: string) => void;
   /** 对话完成 (conversation.chat.completed) */
   onChatCompleted?: (chat: ChatData) => void;
   /** 对话失败 (conversation.chat.failed) */
@@ -172,6 +174,9 @@ export class ChatAPI {
         break;
 
       case 'conversation.message.completed':
+        if (data.type === 'follow_up' && data.content) {
+          cb.onFollowUp?.(data.content);
+        }
         cb.onMessageCompleted?.(data as MessageData);
         // 深度思考内容随 message.completed 返回
         break;

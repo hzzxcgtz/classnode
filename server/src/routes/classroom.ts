@@ -635,6 +635,29 @@ router.post('/:id/toggle-allow-export', async (req, res) => {
   }
 });
 
+// 切换是否允许追问建议
+router.post('/:id/toggle-allow-follow-ups', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({ where: { id: req.params.id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const updated = await prisma.classroom.update({
+      where: { id: req.params.id },
+      data: { allowFollowUps: !classroom.allowFollowUps },
+    });
+
+    const io = req.app.get('io');
+    io.to(`classroom:${classroom.id}`).emit('follow-ups-changed', { allow: updated.allowFollowUps });
+    io.to(`teacher:${classroom.id}`).emit('follow-ups-changed', { allow: updated.allowFollowUps });
+
+    res.json({ allowFollowUps: updated.allowFollowUps });
+  } catch (error) {
+    console.error('[Classroom] toggle allow-follow-ups error:', error);
+    res.status(500).json({ error: '切换失败' });
+  }
+});
+
 // 清除学生的对话记录（重置为新会话）
 router.delete('/:id/student/:studentId/messages', async (req, res) => {
   try {

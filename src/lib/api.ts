@@ -103,6 +103,7 @@ export const api = {
   resumeClassroom: (id: string) => request(`/api/classroom/${id}/resume`, { method: 'POST' }),
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
+  toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),
   getHistory: () => request<any[]>('/api/classroom/history/all'),
   getAllClassrooms: () => request<any[]>('/api/classroom/all'),
   updateClassroomSettings: (id: string, data: { title?: string }) =>

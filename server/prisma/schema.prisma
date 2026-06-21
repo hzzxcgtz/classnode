@@ -108,6 +108,7 @@ model Classroom {
   status    String   @default("active") // active / paused / ended
   allowStudentStop Boolean @default(true)
   allowStudentExport Boolean @default(true)
+  allowFollowUps Boolean @default(true)
   createdAt DateTime @default(now())
   endedAt   DateTime?
 
@@ -190,6 +191,7 @@ model Message {
   agentId          String?  // 回复的智能体
   fileUrls         String?  // 附件 URL 列表（JSON 数组）
   fileNames        String?  // 附件名称列表（JSON 数组）
+  followUps        String?  // 追问建议列表（JSON 字符串数组）
   createdAt        DateTime @default(now())
 
   classroomStudent ClassroomStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)

@@ -38,9 +38,9 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport, msgIndex,
+  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport, msgIndex, onFollowUp, allowFollowUps,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number;
+  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number; onFollowUp?: (question: string) => void; allowFollowUps?: boolean;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
   const [toast, setToast] = useState<string | null>(null);
@@ -138,6 +138,29 @@ const MessageItem = memo(function MessageItem({
           {toast && (
             <span style={{ fontSize: "0.688rem", color: '#10b981', animation: 'notifSlideUp 0.3s ease-out' }}>{toast}</span>
           )}
+        </div>
+      )}
+      {/* 追问建议按钮 */}
+      {msg.role === 'assistant' && onFollowUp && msg.followUps?.length > 0 && allowFollowUps !== false && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingLeft: 4 }}>
+          {msg.followUps.map((q: string, i: number) => (
+            <button key={i} onClick={() => onFollowUp(q)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 18,
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#94a3b8',
+                fontSize: "0.813rem",
+                cursor: 'pointer',
+                transition: 'all 0.12s',
+                lineHeight: 1.4,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8'; }}>
+              {q}
+            </button>
+          ))}
         </div>
       )}
       {msg.role === 'user' && onEdit && (
@@ -638,6 +661,7 @@ function StudentChatContent() {
           id: m.id,
           fileUrls: m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : undefined,
           fileNames: m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : undefined,
+          followUps: m.followUps ? (typeof m.followUps === 'string' ? JSON.parse(m.followUps) : m.followUps) : undefined,
         })));
       }
     } catch {} finally {
@@ -741,6 +765,7 @@ function StudentChatContent() {
           content: data.content,
           roundIndex: data.roundIndex,
           id: data.messageId,
+          followUps: data.followUps,
         }]);
         setStreamingContent('');
         setWaitingAI(false);
@@ -891,6 +916,10 @@ function StudentChatContent() {
         setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
       });
 
+      socket.on('follow-ups-changed', (data: any) => {
+        setClassroom(prev => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+      });
+
       wsRef.current = socket;
     } catch {
       setConnected(false);
@@ -1020,6 +1049,28 @@ function StudentChatContent() {
       fileNames: files.map(f => f.name),
     });
   };
+
+  /** 点击追问建议时自动发送该问题 */
+  const handleFollowUp = useCallback((question: string) => {
+    if (waitingAI || paused || agentDisabled || blacklisted || !wsRef.current) return;
+    setConnectionError(null);
+    setShieldWarning(null);
+    setInput('');
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+    setMessages(prev => [...prev, {
+      role: 'user', content: question,
+    }]);
+    userScrolledUpRef.current = false;
+    const el = chatContainerRef.current;
+    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    wsRef.current.emit('send-message', {
+      classroomCode: code,
+      studentId: selectedStudent.id,
+      content: question,
+    });
+  }, [waitingAI, paused, agentDisabled, blacklisted, wsRef.current, code, selectedStudent]);
 
   if (step === 'loading') {
     return (
@@ -1385,7 +1436,7 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
+            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} onFollowUp={handleFollowUp} allowFollowUps={classroom?.allowFollowUps !== false} />
           ));
         })()}
 

@@ -449,7 +449,11 @@ function ClassroomBoardContent() {
       setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); };
+    const unsub14 = on('follow-ups-changed', (data: any) => {
+      setClassroom(prev => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+    });
+
+    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: any) => {
@@ -718,6 +722,17 @@ function ClassroomBoardContent() {
                   {classroom?.allowStudentExport !== false ? <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
                 </svg>
                 {classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
+              </button>
+              {/* 允许/禁止追问建议 */}
+              <button className="control-btn" onClick={async () => {
+                const res = await api.toggleAllowFollowUps(id);
+                setClassroom(prev => prev ? { ...prev, allowFollowUps: res.allowFollowUps } : prev);
+              }}
+                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowFollowUps !== false ? '#8b5cf6' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {classroom?.allowFollowUps !== false ? <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></> : <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>}
+                </svg>
+                {classroom?.allowFollowUps !== false ? '允许追问建议' : '禁止追问建议'}
               </button>
               {/* 通知全体 */}
               <button className="control-btn" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}

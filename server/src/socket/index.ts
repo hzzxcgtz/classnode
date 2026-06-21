@@ -611,6 +611,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
               role: 'assistant',
               roundIndex: roundCount,
               agentId: agent.id,
+              followUps: result.followUps ? JSON.stringify(result.followUps) : undefined,
             },
           });
 
@@ -644,6 +645,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             content: result.content,
             messageId: aiMessage.id,
             roundIndex: roundCount,
+            followUps: result.followUps,
           });
 
           // Broadcast to teacher board
@@ -655,6 +657,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             roundIndex: roundCount,
             messageId: aiMessage.id,
             timestamp: aiMessage.createdAt,
+            followUps: result.followUps,
           });
 
           // Notify teacher AI stopped thinking

@@ -62,6 +62,7 @@ interface ProxyResult {
   error?: string;
   conversationId?: string;
   aborted?: boolean;
+  followUps?: string[];
 }
 
 /**
@@ -651,6 +652,7 @@ async function proxyCozeStream(
     let fullContent = '';
     let streamConvId = agent.conversationId || '';
     let streamChatId = '';
+    const followUps: string[] = [];
 
     const callbacks: StreamCallbacks = {
       onMessageCompleted(msg) {
@@ -658,6 +660,9 @@ async function proxyCozeStream(
         if (onThinking && msg.reasoning_content) {
           onThinking(msg.reasoning_content);
         }
+      },
+      onFollowUp(question) {
+        followUps.push(question);
       },
       onDelta(chunk, _messageId) {
         fullContent += chunk;
@@ -688,10 +693,14 @@ async function proxyCozeStream(
     }
 
     const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
+    if (followUps.length > 0) {
+      console.log(`[CozeStream] followUps: ${JSON.stringify(followUps)}`);
+    }
     return {
       success: true,
       content: deanonymized,
       conversationId: streamConvId || undefined,
+      followUps: followUps.length > 0 ? followUps : undefined,
     };
   } catch (e: any) {
     if (e.name === 'AbortError') {

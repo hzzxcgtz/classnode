@@ -256,11 +256,14 @@ const sections = [
               fontWeight: 600,
             }}
           >
-            <div style={{ width: 110 }}>智能体类型</div>
-            <div style={{ width: 80, textAlign: "center" }}>AI 平台提供</div>
-            <div style={{ width: 70, textAlign: "center" }}>流式输出</div>
-            <div style={{ width: 70, textAlign: "center" }}>图片附件</div>
-            <div style={{ width: 120, textAlign: "center" }}>官方链接</div>
+            <div style={{ width: 100 }}>智能体类型</div>
+            <div style={{ width: 58, textAlign: "center" }}>平台提供</div>
+            <div style={{ width: 56, textAlign: "center" }}>基础问答</div>
+            <div style={{ width: 56, textAlign: "center" }}>流式输出</div>
+            <div style={{ width: 56, textAlign: "center" }}>图片理解</div>
+            <div style={{ width: 56, textAlign: "center" }}>追问建议</div>
+            <div style={{ width: 56, textAlign: "center" }}>深度思考</div>
+            <div style={{ width: 100, textAlign: "center" }}>官方链接</div>
             <div style={{ flex: 1 }}>说明</div>
           </div>
           <div
@@ -270,33 +273,108 @@ const sections = [
               padding: "6px 0",
             }}
           >
-            <div style={{ width: 110, fontWeight: 600, color: "#7c3aed" }}>
+            <div style={{ width: 100, fontWeight: 600, color: "#2563eb" }}>
+              Coze 低代码
+            </div>
+            <div style={{ width: 58, textAlign: "center", color: "#64748b" }}>
+              字节
+            </div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 100, textAlign: "center" }}>
+              <a
+                href="https://code.coze.cn/home"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="前往 Coze"
+                style={{
+                  color: "#2563eb",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: "#475569" }}>
+              <strong style={{ color: "#2563eb" }}>最全面，强烈推荐</strong>
+              —— 所有功能一应俱全
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              borderBottom: "1px solid #e2e8f0",
+              padding: "6px 0",
+            }}
+          >
+            <div style={{ width: 100, fontWeight: 600, color: "#10b981" }}>
+              Coze 编程
+            </div>
+            <div style={{ width: 58, textAlign: "center", color: "#64748b" }}>
+              字节
+            </div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 100, textAlign: "center" }}>
+              <a
+                href="https://code.coze.cn/home"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="前往 Coze"
+                style={{
+                  color: "#2563eb",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+                <span style={{ fontSize: "0.75rem" }}>去创作</span>
+              </a>
+            </div>
+            <div style={{ flex: 1, color: "#475569" }}>
+              <strong style={{ color: "#10b981" }}>推荐使用</strong>
+              —— 支持流式输出与追问建议
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              borderBottom: "1px solid #e2e8f0",
+              padding: "6px 0",
+            }}
+          >
+            <div style={{ width: 100, fontWeight: 600, color: "#7c3aed" }}>
               清言智能体
             </div>
-            <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
+            <div style={{ width: 58, textAlign: "center", color: "#64748b" }}>
               智谱
             </div>
-            <div
-              style={{
-                width: 70,
-                textAlign: "center",
-                color: "#22c55e",
-                fontWeight: 600,
-              }}
-            >
-              ✓
-            </div>
-            <div
-              style={{
-                width: 70,
-                textAlign: "center",
-                color: "#22c55e",
-                fontWeight: 600,
-              }}
-            >
-              ✓
-            </div>
-            <div style={{ width: 120, textAlign: "center" }}>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 100, textAlign: "center" }}>
               <a
                 href="https://www.chatglm.cn/main/alltoolsdetail?lang=zh"
                 target="_blank"
@@ -310,16 +388,7 @@ const sections = [
                   gap: 3,
                 }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                   <polyline points="15 3 21 3 21 9" />
                   <line x1="10" y1="14" x2="21" y2="3" />
@@ -329,147 +398,22 @@ const sections = [
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
               <strong style={{ color: "#7c3aed" }}>推荐使用</strong>
-              ，流式与图片均支持，体验完整
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              borderBottom: "1px solid #e2e8f0",
-              padding: "6px 0",
-            }}
-          >
-            <div style={{ width: 110, fontWeight: 600, color: "#2563eb" }}>
-              Coze 低代码
-            </div>
-            <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
-              字节
-            </div>
-            <div
-              style={{
-                width: 70,
-                textAlign: "center",
-                color: "#22c55e",
-                fontWeight: 600,
-              }}
-            >
-              ✓
-            </div>
-            <div
-              style={{
-                width: 70,
-                textAlign: "center",
-                color: "#22c55e",
-                fontWeight: 600,
-              }}
-            >
-              ✓
-            </div>
-            <div style={{ width: 120, textAlign: "center" }}>
-              <a
-                href="https://code.coze.cn/home"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="前往 Coze"
-                style={{
-                  color: "#2563eb",
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-                <span style={{ fontSize: "0.75rem" }}>去创作</span>
-              </a>
-            </div>
-            <div style={{ flex: 1, color: "#475569" }}>
-              <strong style={{ color: "#2563eb" }}>推荐使用</strong>
-              ，流式与图片均支持，两者兼备
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              borderBottom: "1px solid #e2e8f0",
-              padding: "6px 0",
-            }}
-          >
-            <div style={{ width: 110, fontWeight: 600, color: "#10b981" }}>
-              Coze 编程
-            </div>
-            <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
-              字节
-            </div>
-            <div
-              style={{
-                width: 70,
-                textAlign: "center",
-                color: "#22c55e",
-                fontWeight: 600,
-              }}
-            >
-              ✓
-            </div>
-            <div style={{ width: 70 }} />
-            <div style={{ width: 120, textAlign: "center" }}>
-              <a
-                href="https://code.coze.cn/home"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="前往 Coze"
-                style={{
-                  color: "#2563eb",
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-                <span style={{ fontSize: "0.75rem" }}>去创作</span>
-              </a>
-            </div>
-            <div style={{ flex: 1, color: "#475569" }}>
-              支持流式输出，仅文本对话
+              —— 支持流式、图片理解与追问建议
             </div>
           </div>
           <div style={{ display: "flex", padding: "6px 0" }}>
-            <div style={{ width: 110, fontWeight: 600, color: "#f97316" }}>
+            <div style={{ width: 100, fontWeight: 600, color: "#f97316" }}>
               文心智能体
             </div>
-            <div style={{ width: 80, textAlign: "center", color: "#64748b" }}>
+            <div style={{ width: 58, textAlign: "center", color: "#64748b" }}>
               百度
             </div>
-            <div style={{ width: 70 }} />
-            <div style={{ width: 70 }} />
-            <div style={{ width: 120, textAlign: "center" }}>
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 100, textAlign: "center" }}>
               <a
                 href="https://agents.baidu.com/center"
                 target="_blank"
@@ -483,16 +427,7 @@ const sections = [
                   gap: 3,
                 }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                   <polyline points="15 3 21 3 21 9" />
                   <line x1="10" y1="14" x2="21" y2="3" />
@@ -501,7 +436,7 @@ const sections = [
               </a>
             </div>
             <div style={{ flex: 1, color: "#475569" }}>
-              基础可用，非流式纯文本
+              基础可用，纯文本非流式对话
             </div>
           </div>
         </div>
@@ -514,15 +449,24 @@ const sections = [
           }}
         >
           <div>
-            <strong style={{ color: "#475569" }}>流式输出</strong>：指 AI
-            逐字逐句实时生成回复内容，而非等待全部生成完毕后再一次性呈现。流式体验让对话节奏更自然、响应更及时，学生端感知到的等待时间大幅缩短。不支持流式的平台，学生需等待
-            AI 完成整个回复后才会看到内容。
+            <strong style={{ color: "#475569" }}>基础问答</strong>
+            ：最基本的文字对话能力，所有接入的平台均支持。
           </div>
           <div style={{ marginTop: 4 }}>
-            <strong style={{ color: "#475569" }}>图片附件</strong>
-            ：学生可在对话中上传图片供 AI 识别分析。该能力取决于平台 API
-            是否开放了图片上传接口，并非平台本身功能缺失，也非本系统能力限制。我们持续关注各平台
-            API 更新动态，待接口开放后及时纳入支持。
+            <strong style={{ color: "#475569" }}>流式输出</strong>
+            ：指 AI 逐字逐句实时生成回复内容，而非等待全部生成完毕后再一次性呈现。流式体验让对话节奏更自然、响应更及时，学生端感知到的等待时间大幅缩短。不支持流式的平台，学生需等待 AI 完成整个回复后才会看到内容。
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <strong style={{ color: "#475569" }}>图片理解</strong>
+            ：学生可在对话中上传图片供 AI 识别分析。该能力取决于平台 API 是否开放了图片上传接口，我们持续关注各平台接口更新动态。
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <strong style={{ color: "#475569" }}>追问建议</strong>
+            ：AI 回答后自动生成推荐追问问题，学生点击即可深入探讨，类似搜索引擎的「相关搜索」功能。Coze 与清言平台均支持。
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <strong style={{ color: "#475569" }}>深度思考</strong>
+            ：AI 在给出最终回答前展示内部推理过程，让学生看到思考链条，提升学习透明度。当前仅 Coze 低代码平台支持。
           </div>
         </div>
       </div>,

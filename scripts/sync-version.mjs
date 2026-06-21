@@ -56,13 +56,19 @@ for (const file of ['README.md', 'README.en.md']) {
     }
 }
 
-// 同步 portal/index.html（版本徽章 + 下载横幅中的版本号）
+// 同步 portal/index.html（版本徽章 + 下载横幅中的版本号 + 日期）
 const portalIndexPath = path.join(root, 'portal', 'index.html');
 if (fs.existsSync(portalIndexPath)) {
     let content = fs.readFileSync(portalIndexPath, 'utf-8');
     content = content.replace(/>v\d+\.\d+\.\d+</g, `>v${version}<`);
+    // 更新版本发布日期为今天
+    const today = new Date().toISOString().slice(0, 10);
+    content = content.replace(
+        /(class="dl-version-banner-date"\s*>)\d{4}-\d{2}-\d{2}(<\/span>)/,
+        `$1${today}$2`
+    );
     fs.writeFileSync(portalIndexPath, content);
-    console.log(`[sync-version] portal/index.html → ${version}`);
+    console.log(`[sync-version] portal/index.html → ${version} (${today})`);
 }
 
 // 同步 portal/deploy.html（安装包文件名中的版本号）

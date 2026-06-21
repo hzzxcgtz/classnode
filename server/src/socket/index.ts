@@ -456,6 +456,27 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           return;
         }
 
+        // AI Proxy call (流式)
+        // 先取历史再存消息，确保 additional_messages 不含当前消息，避免重复
+        const pastMessages = await prisma.message.findMany({
+          where: { studentId: classroomStudent.id },
+          orderBy: { createdAt: 'desc' },
+          take: 30,
+        });
+
+        // 取最近 30 条消息（约 15 轮对话），反转回正序
+        const recentHistory = pastMessages.reverse();
+        const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<{}>) => ({
+          role: h.role as 'user' | 'assistant',
+          content: h.content,
+        }));
+
+        // 计算 roundCount：统计 DB 中所有 user 消息数 + 1（当前消息还没存）
+        const pastUserCount = await prisma.message.count({
+          where: { studentId: classroomStudent.id, role: 'user' },
+        });
+        const roundCount = pastUserCount + 1;
+
         // Save user message
         const userMessage = await prisma.message.create({
           data: {
@@ -466,14 +487,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             displayName: anonymizer.anonymize(studentName),
             fileUrls: data.fileUrls?.length ? JSON.stringify(data.fileUrls) : undefined,
             fileNames: data.fileNames?.length ? JSON.stringify(data.fileNames) : undefined,
-          },
-        });
-
-        // Update rounds count
-        const roundCount = await prisma.message.count({
-          where: {
-            studentId: classroomStudent.id,
-            role: 'user',
           },
         });
 
@@ -498,20 +511,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // Send to student that AI is thinking
         io.to(socket.id).emit('ai-thinking');
-
-        // AI Proxy call (流式)
-        const history = await prisma.message.findMany({
-          where: { studentId: classroomStudent.id },
-          orderBy: { createdAt: 'desc' },
-          take: 30,
-        });
-
-        // 取最近 30 条消息（约 15 轮对话），反转回正序
-        const recentHistory = history.reverse();
-        const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<{}>) => ({
-          role: h.role as 'user' | 'assistant',
-          content: h.content,
-        }));
 
         // 智谱清言 / 文心使用对话上下文 ID 维护记忆，从内存中恢复
         const platformNeedsConvId = ['coze', 'zhipuai', 'wenxin'].includes(agent.platform);

@@ -1,4 +1,6 @@
 import { anonymizer } from './anonymizer.js';
+import { CozeBot } from './coze-bot/index.js';
+import type { EnterMessage, StreamCallbacks, MessageData } from './coze-bot/index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -129,6 +131,33 @@ export async function proxyAIRequestStream(
   }
 }
 
+/** 创建 CozeBot 实例的辅助函数 */
+function createCozeBot(agent: AgentConfig): CozeBot {
+  return new CozeBot({
+    apiKey: agent.apiKey,
+    botId: agent.botId || '',
+    baseUrl: agent.apiUrl || undefined,
+    conversationId: agent.conversationId,
+  });
+}
+
+/** 上传本地文件到 Coze 并返回 file_id（供多模态消息使用） */
+async function uploadFileToCoze(imageUrl: string, coze: CozeBot): Promise<string | null> {
+  try {
+    const filePath = resolveLocalPath(imageUrl);
+    if (!fs.existsSync(filePath)) {
+      console.error('[CozeUpload] File not found:', filePath);
+      return null;
+    }
+    const fileData = await coze.file.upload(filePath);
+    console.log(`[CozeUpload] Success: file_id=${fileData.id}, name=${fileData.file_name}, size=${fileData.bytes}`);
+    return fileData.id;
+  } catch (error: any) {
+    console.error(`[CozeUpload] Exception for ${imageUrl}:`, error.message || error);
+    return null;
+  }
+}
+
 async function proxyCoze(
   agent: AgentConfig,
   message: string,
@@ -137,156 +166,78 @@ async function proxyCoze(
   fileUrls?: string[],
   onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
-  const baseUrl = agent.apiUrl || 'https://api.coze.cn';
+  try {
+    const coze = createCozeBot(agent);
 
-  // 历史消息 + 当前消息（有图片时不能带文本历史，Coze 限制）
-  const additionalMessages: any[] = [];
-  if (!fileUrls || fileUrls.length === 0) {
-    for (const h of history || []) {
-      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
-    }
-  }
+    // 构造历史消息 + 当前问题
+    // 始终从本地数据库传历史，不依赖 Coze 服务端的对话记忆
+    const messages: EnterMessage[] = [];
 
-  // 有文件时：上传图片到 Coze 并构造标准多模态消息
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      const fid = await uploadFileToCoze(baseUrl, agent.apiKey, url);
-      if (fid) fileIds.push(fid);
-    }
-  }
-  if (fileIds.length > 0) {
-    additionalMessages.push({
-      role: 'user',
-      content: JSON.stringify([
-        { type: 'image', file_id: fileIds[0] },
-        { type: 'text', text: message },
-      ]),
-      content_type: 'object_string',
-    });
-  } else {
-    additionalMessages.push({
-      role: 'user', content: message, content_type: 'text',
-    });
-  }
-
-  const requestBody: any = {
-    bot_id: agent.botId,
-    user_id: userName,
-    additional_messages: additionalMessages,
-    auto_save_history: true,
-    stream: false,
-  };
-  if (agent.conversationId) {
-    requestBody.conversation_id = agent.conversationId;
-  }
-  const response = await fetchWithTimeout(
-    `${baseUrl}/v3/chat`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${agent.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `Coze API 错误 (${response.status}): ${err}` };
-  }
-
-  const data = await response.json();
-
-  if (data.code !== 0 && data.code !== undefined) {
-    return { success: false, error: `Coze API 返回错误: code=${data.code} msg=${data.msg || '未知错误'}` };
-  }
-
-  const chatData = data.data || data;
-  const chatId = chatData.id;
-  const conversationId = chatData.conversation_id;
-
-  if (!chatId) {
-    return { success: false, error: 'Coze API 未返回 chat_id' };
-  }
-
-  const messages = await pollCozeMessages(baseUrl, agent.apiKey, chatId, conversationId);
-  if (messages.length === 0) {
-    return { success: false, error: 'Coze 未返回消息内容' };
-  }
-
-  // 过滤出最终回答（排除 knowledge_recall, verbose 等中间事件）
-  const answerMsg = messages.find((m: any) => m.type === 'answer' && m.role === 'assistant');
-  if (!answerMsg) {
-    console.error('[Coze] Available messages:', JSON.stringify(messages, null, 2));
-    return { success: false, error: 'Coze 未返回助手回复' };
-  }
-
-  let content = answerMsg.content || '';
-  // 提取深度思考内容（在 cleanResponse 清除之前）
-  if (onThinking) {
-    const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
-    if (thinkMatch) {
-      onThinking(anonymizer.deanonymizeMessage(thinkMatch[1]));
-    }
-  }
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
-
-  return {
-    success: true,
-    content: deanonymized,
-    conversationId,
-  };
-}
-
-async function pollCozeMessages(
-  baseUrl: string,
-  apiKey: string,
-  chatId: string,
-  conversationId: string,
-  maxRetries = 15
-): Promise<any[]> {
-  // 轮询等待聊天完成 (Coze 使用 GET + query params)
-  for (let i = 0; i < maxRetries; i++) {
-    const statusUrl = `${baseUrl}/v3/chat/retrieve?chat_id=${encodeURIComponent(chatId)}&conversation_id=${encodeURIComponent(conversationId)}`;
-    const statusRes = await fetchWithTimeout(statusUrl, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-    });
-
-    if (statusRes.ok) {
-      const statusData = await statusRes.json();
-      const chatStatus = statusData.data?.status;
-
-      if (chatStatus === 'completed') {
-        break;
-      }
-      if (chatStatus === 'failed') {
-        const lastErr = statusData.data?.last_error;
-        console.error('[Coze] Chat failed:', lastErr);
-        return [];
+    if (history) {
+      for (const h of history) {
+        messages.push({
+          role: h.role as 'user' | 'assistant',
+          type: h.role === 'assistant' ? 'answer' : 'question',
+          content: h.content,
+          content_type: 'text',
+        });
       }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 当前消息（支持多模态）
+    if (fileUrls && fileUrls.length > 0) {
+      // 上传图片到 Coze
+      const fileIds: string[] = [];
+      for (const url of fileUrls) {
+        const fid = await uploadFileToCoze(url, coze);
+        if (fid) fileIds.push(fid);
+      }
+      const textItems: any[] = [{ type: 'text', text: message }];
+      for (const fid of fileIds) {
+        textItems.push({ type: 'image', file_id: fid });
+      }
+      messages.push({
+        role: 'user',
+        content: JSON.stringify(textItems),
+        content_type: 'object_string',
+      });
+    } else {
+      messages.push({
+        role: 'user',
+        content: message,
+        content_type: 'text',
+      });
+    }
+
+    const result = await coze.chat(message, {
+      userName,
+      history: messages,
+    });
+
+    let content = result.content;
+
+    // 提取深度思考内容
+    if (onThinking) {
+      const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
+      if (thinkMatch) {
+        onThinking(anonymizer.deanonymizeMessage(thinkMatch[1]));
+      }
+    }
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(content));
+
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: result.conversationId,
+    };
+  } catch (error: any) {
+    console.error('[Coze] Error:', error.message);
+    return {
+      success: false,
+      error: error.message || 'Coze 请求失败',
+    };
   }
-
-  // 获取消息列表 (GET)
-  const msgUrl = `${baseUrl}/v3/chat/message/list?chat_id=${encodeURIComponent(chatId)}&conversation_id=${encodeURIComponent(conversationId)}`;
-  const msgRes = await fetchWithTimeout(msgUrl, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${apiKey}` },
-  });
-
-  if (!msgRes.ok) {
-    const err = await msgRes.text();
-    console.error('[Coze] Message list error:', err);
-    return [];
-  }
-
-  const msgData = await msgRes.json();
-  return msgData.data || [];
 }
 
 /**
@@ -493,77 +444,6 @@ function isLocalFileUrl(url: string): boolean {
   return url.startsWith('/');
 }
 
-/**
- * 上传本地文件到 Coze，返回 file_id
- */
-async function uploadFileToCoze(baseUrl: string, apiKey: string, fileUrl: string): Promise<string | null> {
-  try {
-    const filePath = resolveLocalPath(fileUrl);
-
-    if (!fs.existsSync(filePath)) {
-      console.error('[CozeUpload] File not found:', filePath);
-      return null;
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const fileName = path.basename(fileUrl);
-
-    // 根据扩展名设置正确的 MIME 类型
-    const ext = path.extname(fileName).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.svg': 'image/svg+xml',
-      '.pdf': 'application/pdf',
-      '.txt': 'text/plain',
-      '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    };
-    const mimeType = mimeMap[ext] || 'application/octet-stream';
-
-    const formData = new FormData();
-    const blob = new Blob([fileBuffer], { type: mimeType });
-    formData.append('file', blob, fileName);
-
-    const response = await fetchWithTimeout(`${baseUrl}/v1/files/upload`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    const respText = await response.text();
-
-    if (!response.ok) {
-      console.error('[CozeUpload] HTTP Error:', response.status, respText);
-      return null;
-    }
-
-    let data;
-    try { data = JSON.parse(respText); } catch { data = {}; }
-
-    if (data.code !== 0 && data.code !== undefined) {
-      console.error('[CozeUpload] API error:', data.msg || 'unknown');
-      return null;
-    }
-
-    const fileId = data.data?.id || data.data?.file_id || data.id;
-    if (fileId) {
-      return fileId;
-    }
-
-    console.error('[CozeUpload] No file_id in response, data:', JSON.stringify(data));
-    return null;
-  } catch (error) {
-    console.error('[CozeUpload] Exception:', error);
-    return null;
-  }
-}
-
 /** 从 Coze Agent SSE 事件的 content 字段安全地提取文本 */
 function extractContent(val: any): string {
   if (typeof val === 'string') return val;
@@ -724,114 +604,103 @@ async function proxyCozeStream(
   signal?: AbortSignal,
   onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
-  // 有图片时回退到非流式（流式对 object_string 支持不稳定）
-  if (fileUrls && fileUrls.length > 0) {
-    const result = await proxyCoze(agent, message, userName, history, fileUrls, onThinking);
-    if (result.success && result.content) {
-      const chunkSize = 20;
-      for (let i = 0; i < result.content.length; i += chunkSize) {
-        if (signal?.aborted) break;
-        onChunk(result.content.slice(i, i + chunkSize));
-      }
-    }
-    return result;
-  }
-
-  // ---- 文字消息走流式 ----
-  const baseUrl = agent.apiUrl || 'https://api.coze.cn';
-  const additionalMessages: any[] = [];
-  // 始终通过 additional_messages 传完整历史，确保 bot 能感知上下文
-  if (history) {
-    for (const h of history) {
-      additionalMessages.push({ role: h.role, content: h.content, content_type: 'text' });
-    }
-  }
-  additionalMessages.push({ role: 'user', content: message, content_type: 'text' });
-
-  const body: any = {
-    bot_id: agent.botId,
-    user_id: userName,
-    additional_messages: additionalMessages,
-    auto_save_history: true,
-    stream: true,
-  };
-  if (agent.conversationId) {
-    body.conversation_id = agent.conversationId;
-  }
-
-  const response = await fetchWithTimeout(`${baseUrl}/v3/chat`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${agent.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `Coze API 错误 (${response.status}): ${err}` };
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return { success: false, error: '无法读取响应流' };
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
-  let currentEvent = '';
-  let streamConvId = agent.conversationId || '';
-
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    const coze = createCozeBot(agent);
 
-      for (const line of lines) {
-        if (line.startsWith('event:')) { currentEvent = line.slice(6).trim(); continue; }
-        if (line.startsWith('data:')) {
-          const dataStr = line.slice(5).trim();
-          if (!dataStr || dataStr === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (!streamConvId && parsed.conversation_id) {
-              streamConvId = parsed.conversation_id;
-            }
-            if (parsed.content_type === 'thinking') {
-              if (onThinking && parsed.content) {
-                onThinking(parsed.content);
-              }
-              continue;
-            }
-            if (parsed.type === 'verbose') {
-              // verbose 事件可能包含 thinking 字段
-              if (onThinking && parsed.content?.thinking) {
-                onThinking(parsed.content.thinking);
-              }
-              continue;
-            }
-            if (currentEvent === 'conversation.message.delta' && parsed.type === 'answer' && parsed.role === 'assistant') {
-              const delta = parsed.content || '';
-              if (delta) { fullContent += delta; onChunk(delta); }
-            }
-          } catch {}
-        }
+    // 构造历史消息 + 当前问题
+    // 始终从本地数据库传历史，不依赖 Coze 服务端的对话记忆（后者不可靠，易丢失上下文）
+    const messages: EnterMessage[] = [];
+
+    if (history) {
+      for (const h of history) {
+        messages.push({
+          role: h.role as 'user' | 'assistant',
+          type: h.role === 'assistant' ? 'answer' : 'question',
+          content: h.content,
+          content_type: 'text',
+        });
       }
     }
+
+    // 当前消息（支持多模态）
+    if (fileUrls && fileUrls.length > 0) {
+      // 新 API 支持流式多模态，不再回退到非流式
+      const fileIds: string[] = [];
+      for (const url of fileUrls) {
+        const fid = await uploadFileToCoze(url, coze);
+        if (fid) fileIds.push(fid);
+      }
+      console.log(`[CozeStream] Uploaded ${fileIds.length}/${fileUrls.length} files, ids:`, fileIds);
+      const textItems: any[] = [{ type: 'text', text: message }];
+      for (const fid of fileIds) {
+        textItems.push({ type: 'image', file_id: fid });
+      }
+      messages.push({
+        role: 'user',
+        content: JSON.stringify(textItems),
+        content_type: 'object_string',
+      });
+    } else {
+      messages.push({
+        role: 'user',
+        content: message,
+        content_type: 'text',
+      });
+    }
+
+    let fullContent = '';
+    let streamConvId = agent.conversationId || '';
+    let streamChatId = '';
+
+    const callbacks: StreamCallbacks = {
+      onMessageCompleted(msg) {
+        // 收集深度思考内容
+        if (onThinking && msg.reasoning_content) {
+          onThinking(msg.reasoning_content);
+        }
+      },
+      onDelta(chunk, _messageId) {
+        fullContent += chunk;
+        onChunk(chunk);
+      },
+      onChatCompleted(chat) {
+        streamConvId = chat.conversation_id || streamConvId;
+        streamChatId = chat.id || streamChatId;
+      },
+    };
+
+    // 图片已由上方处理并放入 history，不再传 fileUrls（避免 chatStream 二次构造多模态消息）
+    // 不传 conversationId——上下文通过 additional_messages 的 history 提供，避免 Coze 服务端重复加载
+    const result = await coze.chatStream(
+      message,
+      {
+        userName,
+        history: messages,
+      },
+      callbacks,
+      signal
+    );
+
+    streamConvId = result.conversationId || streamConvId;
+
+    if (!fullContent) {
+      return { success: false, error: 'Coze 流式响应为空' };
+    }
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: streamConvId || undefined,
+    };
   } catch (e: any) {
     if (e.name === 'AbortError') {
-      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, conversationId: streamConvId || undefined, aborted: true };
+      // 被取消时，返回已收集到的内容
+      return { success: false, aborted: true };
     }
-    throw e;
+    console.error('[CozeStream] Error:', e.message);
+    return { success: false, error: e.message || 'Coze 流式请求失败' };
   }
-
-  if (!fullContent) return { success: false, error: 'Coze 流式响应为空' };
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
 }
 
 async function proxyCozeAgentStream(

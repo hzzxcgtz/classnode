@@ -635,6 +635,7 @@ function StudentChatContent() {
           role: m.role,
           content: m.content,
           roundIndex: m.roundIndex,
+          id: m.id,
           fileUrls: m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : undefined,
           fileNames: m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : undefined,
         })));
@@ -739,6 +740,7 @@ function StudentChatContent() {
           role: 'assistant',
           content: data.content,
           roundIndex: data.roundIndex,
+          id: data.messageId,
         }]);
         setStreamingContent('');
         setWaitingAI(false);
@@ -1383,7 +1385,7 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.roundIndex ? `${msg.role}-${msg.roundIndex}` : `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
+            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} />
           ));
         })()}
 

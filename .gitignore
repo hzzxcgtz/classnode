@@ -78,3 +78,6 @@ SCRIPTS.md
 memory/
 portal/
 .claude/
+
+# 仅供 AI 参考的文档，不需版本管理
+docs/

@@ -44,6 +44,8 @@ function cleanResponse(text: string): string {
   result = result.replace(/<think>[\s\S]*?<\/think>/g, '');
   // 去除推理模型的思考过程（如 哦不、重新来、不对 等自纠对话）
   result = result.replace(/——?\s*(哦不?|不对|等等|重新来|让我重新|我再想想|嗯.*?不对|等等.*?不对)[\s\S]*?(?=得分|总分|【|$)/g, '');
+  // 去除清言等平台的引用标记（如 【0†source】）
+  result = result.replace(/【\d+†source】/g, '');
   // 去除多余的空行（保留最多一个连续换行）
   result = result.replace(/\n{3,}/g, '\n\n');
   return result.trim();

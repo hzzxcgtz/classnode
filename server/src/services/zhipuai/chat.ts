@@ -108,6 +108,8 @@ export class ChatAPI {
     const decoder = new TextDecoder();
     let buffer = '';
     let fullContent = '';
+    /** 自上次文本事件后是否遇到过非文本事件（如 tool_call 导致的生成阶段切换） */
+    let seenNonTextSinceLastText = false;
 
     try {
       while (true) {
@@ -139,6 +141,13 @@ export class ChatAPI {
             // 提取文本内容（type=text 的情况）
             if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
               const text = parsed.message.content.text;
+              // 自上次文本事件后经历了 tool_call / browser_result 等非文本事件，
+              // 说明进入了新的文本生成阶段，之前累积的 fullContent 已不适用。
+              // 此时如果新文本不以 fullContent 开头，重置累积内容以避免重复累积。
+              if (seenNonTextSinceLastText && fullContent && !text.startsWith(fullContent)) {
+                fullContent = '';
+              }
+              seenNonTextSinceLastText = false;
               // API 返回的是累积文本，计算增量
               const delta = text.startsWith(fullContent)
                 ? text.slice(fullContent.length)
@@ -147,6 +156,10 @@ export class ChatAPI {
                 fullContent += delta;
                 callbacks.onDelta?.(delta);
               }
+            } else if (parsed.message?.content?.type && parsed.message.content.type !== 'text') {
+              // 非文本事件（tool_calls / browser_result / quote_result 等），
+              // 标记已在生成阶段之间切换，下一段文本应重置累积状态
+              seenNonTextSinceLastText = true;
             }
           } catch {
             // 跳过无法解析的行

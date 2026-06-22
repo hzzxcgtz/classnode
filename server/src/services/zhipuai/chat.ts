@@ -199,11 +199,7 @@ export class ChatAPI {
       conversation_id: conversationId,
     };
 
-    console.log(`[ZhipuaiSuggest] 请求追问: conversation_id=${conversationId}`);
-
     const data = await this.client.post<SuggestPromptsResponse>('/suggest/prompts', body);
-
-    console.log(`[ZhipuaiSuggest] 响应: status=${data.status} list=${JSON.stringify(data.result?.list)}`);
 
     if (data.status !== 0) {
       console.error('[ZhipuaiSuggest] API 返回错误:', data.message);

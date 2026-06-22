@@ -328,7 +328,7 @@ const sections = [
             <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
             <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 56, textAlign: "center" }} />
-            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓<sup style={{ color: "#94a3b8", fontSize: "0.625rem", cursor: "help" }} title="待确认">?</sup></div>
             <div style={{ width: 100, textAlign: "center" }}>
               <a
                 href="https://code.coze.cn/home"
@@ -410,7 +410,7 @@ const sections = [
             <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓</div>
             <div style={{ width: 56, textAlign: "center" }} />
             <div style={{ width: 56, textAlign: "center" }} />
-            <div style={{ width: 56, textAlign: "center" }} />
+            <div style={{ width: 56, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>✓<sup style={{ color: "#94a3b8", fontSize: "0.625rem", cursor: "help" }} title="待确认">?</sup></div>
             <div style={{ width: 100, textAlign: "center" }}>
               <a
                 href="https://agents.baidu.com/center"
@@ -461,10 +461,6 @@ const sections = [
           <div style={{ marginTop: 4 }}>
             <strong style={{ color: "#475569" }}>追问建议</strong>
             ：AI 回答后自动生成推荐追问问题，学生点击即可深入探讨，类似搜索引擎的「相关搜索」功能。Coze 与清言平台均支持。
-          </div>
-          <div style={{ marginTop: 4 }}>
-            <strong style={{ color: "#475569" }}>深度思考</strong>
-            ：AI 在给出最终回答前展示内部推理过程，让学生看到思考链条，提升学习透明度。当前仅 Coze 低代码平台支持。
           </div>
         </div>
       </div>,

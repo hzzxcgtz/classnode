@@ -2,6 +2,7 @@ import { anonymizer } from './anonymizer.js';
 import { CozeBot } from './coze-bot/index.js';
 import type { EnterMessage, StreamCallbacks, MessageData } from './coze-bot/index.js';
 import { WenxinBot } from './wenxin/index.js';
+import { ZhipuaiBot } from './zhipuai/index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -851,25 +852,6 @@ async function proxyCozeAgentStream(
 
 // ---- 智谱清言 Assistant API ----
 
-/** 获取智谱清言 access_token（两步鉴权） */
-async function getZhipuaiToken(baseUrl: string, apiKey: string, apiSecret: string): Promise<string | null> {
-  try {
-    const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/get_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.status === 0 && data.result?.access_token) {
-      return data.result.access_token;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 async function proxyZhipuai(
   agent: AgentConfig,
   message: string,
@@ -877,69 +859,51 @@ async function proxyZhipuai(
   history?: { role: string; content: string }[],
   fileUrls?: string[]
 ): Promise<ProxyResult> {
-  const baseUrl = agent.apiUrl || 'https://chatglm.cn/chatglm/assistant-api/v1';
-  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
-  const apiSecret = extra.apiSecret || '';
+  try {
+    const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+    const apiSecret = extra.apiSecret || '';
 
-  if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
-  if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };
+    if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
+    if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };
 
-  const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
-  if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
+    const bot = new ZhipuaiBot({
+      assistantId: agent.botId,
+      apiKey: agent.apiKey,
+      apiSecret,
+      baseUrl: agent.apiUrl || undefined,
+      conversationId: agent.conversationId,
+    });
 
-  // 上传文件并获取 file_id
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const fid = await uploadFileToZhipuai(baseUrl, token, url);
-        if (fid) fileIds.push(fid);
+    // 上传文件
+    const fileIds: string[] = [];
+    if (fileUrls && fileUrls.length > 0) {
+      for (const url of fileUrls) {
+        if (isLocalFileUrl(url)) {
+          const filePath = resolveLocalPath(url);
+          if (fs.existsSync(filePath)) {
+            const fileName = path.basename(url);
+            const mimeType = getFileMimeType(fileName);
+            const fid = await bot.uploadFile(filePath, fileName, mimeType);
+            if (fid) fileIds.push(fid);
+          }
+        }
       }
     }
+
+    const result = await bot.sendMessage(message, {
+      conversationId: agent.conversationId,
+      fileIds: fileIds.length > 0 ? fileIds : undefined,
+    });
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(result.content));
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: result.conversationId,
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message || '智谱清言请求失败' };
   }
-  const body: any = { assistant_id: agent.botId, prompt: message };
-  if (agent.conversationId) body.conversation_id = agent.conversationId;
-  if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
-
-  const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream_sync`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `智谱清言 API 错误 (${response.status}): ${err}` };
-  }
-
-  const data = await response.json();
-  if (data.status !== 0) {
-    return { success: false, error: `智谱清言返回错误: ${data.message || '未知错误'}` };
-  }
-
-  // 提取文本输出
-  let fullContent = '';
-  const output = data.result?.output || [];
-  for (const part of output) {
-    const contents = part.content || [];
-    for (const item of (Array.isArray(contents) ? contents : [contents])) {
-      if (item.type === 'text' && item.text) {
-        fullContent += item.text;
-      }
-    }
-  }
-
-  if (!fullContent) {
-    const snippet = JSON.stringify(data).slice(0, 300);
-    return { success: false, error: `智谱清言返回为空，响应: ${snippet}` };
-  }
-
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  const convId = data.result?.conversation_id || agent.conversationId;
-  return { success: true, content: deanonymized, conversationId: convId };
 }
 
 async function proxyZhipuaiStream(
@@ -951,90 +915,90 @@ async function proxyZhipuaiStream(
   fileUrls?: string[],
   signal?: AbortSignal
 ): Promise<ProxyResult> {
-  const baseUrl = agent.apiUrl || 'https://chatglm.cn/chatglm/assistant-api/v1';
-  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
-  const apiSecret = extra.apiSecret || '';
-
-  if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
-  if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };
-
-  const token = await getZhipuaiToken(baseUrl, agent.apiKey, apiSecret);
-  if (!token) return { success: false, error: '获取智谱清言 access_token 失败，请检查 API Key 和 API Secret' };
-
-  const fileIds: string[] = [];
-  if (fileUrls && fileUrls.length > 0) {
-    for (const url of fileUrls) {
-      if (isLocalFileUrl(url)) {
-        const fid = await uploadFileToZhipuai(baseUrl, token, url);
-        if (fid) fileIds.push(fid);
-      }
-    }
-  }
-  let streamConvId = agent.conversationId || '';
-  const body: any = { assistant_id: agent.botId, prompt: message };
-  if (agent.conversationId) body.conversation_id = agent.conversationId;
-  if (fileIds.length > 0) body.file_list = fileIds.map(id => ({ file_id: id }));
-
-  const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/stream`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    return { success: false, error: `智谱清言 API 错误 (${response.status}): ${err}` };
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return { success: false, error: '无法读取响应流' };
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+    const apiSecret = extra.apiSecret || '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
+    if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };
 
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const dataStr = line.slice(5).trim();
-          if (!dataStr) continue;
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (!streamConvId && parsed.conversation_id) streamConvId = parsed.conversation_id;
-            if (parsed.message?.content?.type === 'text' && parsed.message.content.text) {
-              const text = parsed.message.content.text;
-              const delta = text.startsWith(fullContent) ? text.slice(fullContent.length) : text;
-              if (delta) {
-                fullContent += delta;
-                onChunk(delta);
-              }
-            }
-          } catch {}
+    const bot = new ZhipuaiBot({
+      assistantId: agent.botId,
+      apiKey: agent.apiKey,
+      apiSecret,
+      baseUrl: agent.apiUrl || undefined,
+      conversationId: agent.conversationId,
+    });
+
+    // 上传文件
+    const fileIds: string[] = [];
+    if (fileUrls && fileUrls.length > 0) {
+      for (const url of fileUrls) {
+        if (isLocalFileUrl(url)) {
+          const filePath = resolveLocalPath(url);
+          if (fs.existsSync(filePath)) {
+            const fileName = path.basename(url);
+            const mimeType = getFileMimeType(fileName);
+            const fid = await bot.uploadFile(filePath, fileName, mimeType);
+            if (fid) fileIds.push(fid);
+          }
         }
       }
     }
+
+    let fullContent = '';
+
+    const result = await bot.sendMessageStream(
+      message,
+      {
+        conversationId: agent.conversationId,
+        fileIds: fileIds.length > 0 ? fileIds : undefined,
+      },
+      {
+        onDelta(chunk) {
+          fullContent += chunk;
+          onChunk(chunk);
+        },
+      },
+      signal
+    );
+
+    if (!fullContent) {
+      return { success: false, error: '智谱清言流式响应为空' };
+    }
+
+    const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
+
+    // 追问建议生成
+    const followUps = await generateZhipuaiFollowUps(bot, result.conversationId);
+
+    return {
+      success: true,
+      content: deanonymized,
+      conversationId: result.conversationId || undefined,
+      followUps: followUps.length > 0 ? followUps : undefined,
+    };
   } catch (e: any) {
     if (e.name === 'AbortError') {
-      return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, conversationId: streamConvId || undefined, aborted: true };
+      return { success: false, aborted: true };
     }
-    throw e;
+    return { success: false, error: e.message || '智谱清言请求失败' };
   }
+}
 
-  if (!fullContent) return { success: false, error: '智谱清言流式响应为空' };
+/**
+ * 使用清言原生 suggest/prompts API 生成追问建议
+ *
+ * 文档：POST /suggest/prompts → { conversation_id } → { status, result: { list: string[] } }
+ * log_id 的语义是获取"某条历史记录的缓存结果"，新对话的追问尚未生成过，不该传
+ */
+async function generateZhipuaiFollowUps(
+  bot: ZhipuaiBot,
+  conversationId: string
+): Promise<string[]> {
+  if (!conversationId) return [];
 
-  const deanonymized = cleanResponse(anonymizer.deanonymizeMessage(fullContent));
-  return { success: true, content: deanonymized, conversationId: streamConvId || undefined };
+  return await bot.suggestPrompts(conversationId);
 }
 
 // ---- 文心智能体平台（百度） ----
@@ -1158,50 +1122,22 @@ async function proxyWenxinStream(
     return { success: false, error: e.message || '文心 API 请求失败' };
   }
 }
-/** 上传本地文件到智谱清言，返回 file_id */
-async function uploadFileToZhipuai(baseUrl: string, token: string, fileUrl: string): Promise<string | null> {
-  try {
-    const filePath = resolveLocalPath(fileUrl);
-    if (!fs.existsSync(filePath)) {
-      console.error('[ZhipuaiUpload] File not found:', filePath);
-      return null;
-    }
-    const fileName = path.basename(fileUrl);
-    const ext = path.extname(fileName).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.webp': 'image/webp', '.gif': 'image/gif',
-      '.pdf': 'application/pdf', '.txt': 'text/plain',
-      '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.xls': 'application/vnd.ms-excel',
-      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      '.ppt': 'application/vnd.ms-powerpoint',
-      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      '.md': 'text/markdown',
-    };
-    const mimeType = mimeMap[ext] || 'application/octet-stream';
-    const fileBuffer = fs.readFileSync(filePath);
-    const formData = new FormData();
-    const blob = new Blob([fileBuffer], { type: mimeType });
-    formData.append('file', blob, fileName);
-
-    const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/file_upload`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData,
-    });
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[ZhipuaiUpload] Error:', response.status, err);
-      return null;
-    }
-    const data = await response.json();
-    return data.result?.file_id || null;
-  } catch (error) {
-    console.error('[ZhipuaiUpload] Exception:', error);
-    return null;
-  }
+/** 根据文件名获取 MIME 类型 */
+function getFileMimeType(fileName: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp', '.gif': 'image/gif',
+    '.pdf': 'application/pdf', '.txt': 'text/plain',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.md': 'text/markdown',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
 }
 
 /** 测试文心智能体连通性 */

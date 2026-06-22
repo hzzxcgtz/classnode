@@ -557,7 +557,11 @@ function StudentChatContent() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (isIOS && document.activeElement === inputRef.current) return;
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    });
   }, [messages, streamingContent, step, waitingAI]);
 
   // 初始化滚动标记、追踪当前可见消息（高亮标记）、监听容器尺寸变化
@@ -654,14 +658,19 @@ function StudentChatContent() {
     try {
       const msgs = await api.getStudentMessages(classroomId, studentId);
       if (msgs && msgs.length > 0) {
-        setMessages(msgs.map((m: any) => ({
+        // 找到最后一个 AI 回答的索引，只有它保留追问建议
+        let lastAssistantIdx = -1;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'assistant') { lastAssistantIdx = i; break; }
+        }
+        setMessages(msgs.map((m: any, i: number) => ({
           role: m.role,
           content: m.content,
           roundIndex: m.roundIndex,
           id: m.id,
           fileUrls: m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : undefined,
           fileNames: m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : undefined,
-          followUps: m.followUps ? (typeof m.followUps === 'string' ? JSON.parse(m.followUps) : m.followUps) : undefined,
+          followUps: (i === lastAssistantIdx && m.followUps) ? (typeof m.followUps === 'string' ? JSON.parse(m.followUps) : m.followUps) : undefined,
         })));
       }
     } catch {} finally {
@@ -760,13 +769,17 @@ function StudentChatContent() {
       socket.on('ai-response', (data: any) => {
         flushStreaming();
         setThinkingContent('');
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: data.content,
-          roundIndex: data.roundIndex,
-          id: data.messageId,
-          followUps: data.followUps,
-        }]);
+        // 清除上一条 AI 回答的追问建议，只保留最新一条
+        setMessages(prev => {
+          const cleaned = prev.map(m => m.role === 'assistant' ? { ...m, followUps: undefined } : m);
+          return [...cleaned, {
+            role: 'assistant',
+            content: data.content,
+            roundIndex: data.roundIndex,
+            id: data.messageId,
+            followUps: data.followUps,
+          }];
+        });
         setStreamingContent('');
         setWaitingAI(false);
       });
@@ -1078,10 +1091,7 @@ function StudentChatContent() {
       role: 'user', content: userMsgContent,
       fileUrls: files.map(f => f.url), fileNames: files.map(f => f.name),
     }]);
-    // 发送后立即滚动到底部，确保新消息可见
     userScrolledUpRef.current = false;
-    const el = chatContainerRef.current;
-    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     wsRef.current.emit('send-message', {
       classroomCode: code,
       studentId: selectedStudent.id,
@@ -1104,8 +1114,6 @@ function StudentChatContent() {
       role: 'user', content: question,
     }]);
     userScrolledUpRef.current = false;
-    const el = chatContainerRef.current;
-    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     wsRef.current.emit('send-message', {
       classroomCode: code,
       studentId: selectedStudent.id,
@@ -1736,7 +1744,7 @@ function StudentChatContent() {
 
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
             <textarea ref={inputRef} value={input} onInput={e => {
               const el = e.target as HTMLTextAreaElement;
               setInput(el.value);

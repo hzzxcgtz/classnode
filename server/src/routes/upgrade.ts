@@ -107,4 +107,89 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * POST /download
+ *
+ * 从远程仓库下载更新包到本地 Downloads 目录。
+ * 用于浏览器/Tauri 混合模式（Tauri IPC 在 localhost 不可用时）。
+ */
+router.post('/download', async (req, res) => {
+  try {
+    const { version } = req.body as { version?: string };
+    if (!version) {
+      res.status(400).json({ error: '缺少 version 参数' });
+      return;
+    }
+
+    // 构造下载 URL（与 update-updater-manifest.mjs 保持一致的命名规则）
+    const arch = process.arch === 'arm64' ? 'apple-silicon' : 'intel';
+    const url = `https://github.com/hzzxcgtz/classnode/releases/download/v${version}/ClassNode_${version}_macos_${arch}.tar.gz`;
+
+    // 下载到系统 Downloads 目录
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
+    const downloadsDir = path.join(homeDir, 'Downloads');
+    if (!fs.existsSync(downloadsDir)) {
+      fs.mkdirSync(downloadsDir, { recursive: true });
+    }
+    const destPath = path.join(downloadsDir, `ClassNode_${version}_macos_${arch}.tar.gz`);
+
+    // 如果已存在则跳过
+    if (fs.existsSync(destPath)) {
+      res.json({ success: true, filePath: destPath, skipped: true });
+      return;
+    }
+
+    // 流式下载
+    const downloadResp = await fetch(url);
+    if (!downloadResp.ok) {
+      res.status(502).json({ error: `下载失败 (HTTP ${downloadResp.status})` });
+      return;
+    }
+
+    const totalSize = parseInt(downloadResp.headers.get('content-length') || '0', 10);
+    const reader = downloadResp.body?.getReader();
+    if (!reader) {
+      res.status(502).json({ error: '无法读取响应流' });
+      return;
+    }
+
+    const writeStream = fs.createWriteStream(destPath);
+    let downloaded = 0;
+
+    // 使用单独的端点查询进度，这里先下载完成再返回
+    // 小文件直接下载
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        downloaded += value.length;
+      }
+    }
+
+    // 写入文件
+    for (const chunk of chunks) {
+      writeStream.write(chunk);
+    }
+    writeStream.end();
+    await new Promise<void>((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    console.log(`[upgrade/download] 下载完成: ${destPath} (${downloaded} bytes)`);
+    res.json({
+      success: true,
+      filePath: destPath,
+      totalBytes: totalSize,
+      downloadedBytes: downloaded,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[upgrade/download] 下载失败:', msg);
+    res.status(502).json({ error: `下载失败: ${msg}` });
+  }
+});
+
 export default router;

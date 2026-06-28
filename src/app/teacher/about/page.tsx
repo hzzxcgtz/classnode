@@ -106,6 +106,7 @@ export default function AboutPage() {
         const data = await checkForUpdates();
         if (data.hasUpdate) {
           setUpdateMsg({ type: 'success', text: `新版本 v${data.latestVersion} 可用` });
+          setUpdateFound(true);
           // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
           clearDismiss();
           cacheCheckResult(data);
@@ -125,42 +126,72 @@ export default function AboutPage() {
     setCheckingUpdate(false);
   }, [realTauri]);
 
-  // Tauri 模式：下载更新
+  // 下载更新（Tauri 原生 / 服务端代理两种模式）
   const handleDownload = useCallback(async () => {
-    if (!updateRef) return;
     setDownloadState('downloading');
     setDownloadProgress(0);
-    try {
-      updateRef.addListener((event: any) => {
-        if (event.status === 'PROGRESS' && event.contentLength > 0) {
-          const pct = Math.round((event.chunkLength / event.contentLength) * 100);
-          setDownloadProgress(Math.min(pct, 99));
-        } else if (event.status === 'DONE') {
+
+    if (updateRef) {
+      // Tauri IPC 可用 → 使用原生插件
+      try {
+        updateRef.addListener((event: any) => {
+          if (event.status === 'PROGRESS' && event.contentLength > 0) {
+            const pct = Math.round((event.chunkLength / event.contentLength) * 100);
+            setDownloadProgress(Math.min(pct, 99));
+          } else if (event.status === 'DONE') {
+            setDownloadProgress(100);
+            setDownloadState('downloaded');
+            setUpdateMsg({ type: 'success', text: '下载完成，可安装新版本' });
+          } else if (event.status === 'ERROR') {
+            setDownloadState('error');
+            setUpdateMsg({ type: 'error', text: '下载失败，请重试' });
+          }
+        });
+        await updateRef.download();
+      } catch (e) {
+        console.error('更新下载失败:', e);
+        setDownloadState('error');
+        setUpdateMsg({ type: 'error', text: '下载失败' });
+      }
+    } else {
+      // Tauri IPC 不可用 → 通过服务端 API 下载
+      try {
+        const resp = await fetch('/api/upgrade/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: updateMsg?.text.match(/v(\d+\.\d+\.\d+)/)?.[1] }),
+        });
+        const data = await resp.json();
+        if (data.success) {
           setDownloadProgress(100);
           setDownloadState('downloaded');
           setUpdateMsg({ type: 'success', text: '下载完成，可安装新版本' });
-        } else if (event.status === 'ERROR') {
+        } else {
           setDownloadState('error');
-          setUpdateMsg({ type: 'error', text: '下载失败，请重试' });
+          setUpdateMsg({ type: 'error', text: data.error || '下载失败' });
         }
-      });
-      await updateRef.download();
-    } catch (e) {
-      console.error('下载更新失败:', e);
-      setDownloadState('error');
-      setUpdateMsg({ type: 'error', text: '下载失败' });
+      } catch (e) {
+        console.error('更新下载失败:', e);
+        setDownloadState('error');
+        setUpdateMsg({ type: 'error', text: '下载失败' });
+      }
     }
-  }, [updateRef]);
+  }, [updateRef, updateMsg]);
 
-  // Tauri 模式：安装更新
+  // 安装更新（Tauri 原生 / 打开更新包所在目录 两种模式）
   const handleInstall = useCallback(async () => {
-    if (!updateRef) return;
-    try {
-      await updateRef.install();
-      // install() 会重启应用，此处代码通常不会执行
-    } catch (e) {
-      console.error('安装更新失败:', e);
-      setUpdateMsg({ type: 'error', text: '安装失败' });
+    if (updateRef) {
+      // Tauri IPC 可用 → 使用原生插件安装
+      try {
+        await updateRef.install();
+        // install() 会重启应用，此处代码通常不会执行
+      } catch (e) {
+        console.error('安装更新失败:', e);
+        setUpdateMsg({ type: 'error', text: '安装失败' });
+      }
+    } else {
+      // 非 Tauri 模式：打开 GitHub Releases 页面
+      window.open('https://github.com/hzzxcgtz/classnode/releases/latest', '_blank');
     }
   }, [updateRef]);
 

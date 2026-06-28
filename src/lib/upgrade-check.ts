@@ -22,40 +22,58 @@ export async function checkForUpdates(): Promise<UpgradeCheckResult> {
   return resp.json() as Promise<UpgradeCheckResult>;
 }
 
-/**
- * 缓存版本比较结果（避免短时间重复弹窗）
- */
-const STORAGE_KEY = 'classnode_update_cache';
+/** localStorage 中的检测结果快照 */
+interface UpdateCache {
+  hasUpdate: boolean;
+  latestVersion: string;
+  dismissed: boolean;
+  timestamp: number;
+}
 
-function getCache(): { version: string; dismissed: boolean; timestamp: number } | null {
+const CACHE_KEY = 'classnode_update_cache';
+
+function getCache(): UpdateCache | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function setCache(version: string, dismissed: boolean) {
+function setCache(data: Omit<UpdateCache, 'timestamp'>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version, dismissed, timestamp: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }));
   } catch { /* ignore */ }
 }
 
-/** 新版本是否被用户忽略过（例如关闭了提示） */
+/** 将 API 检测结果写入缓存（保留 dismiss 状态） */
+export function cacheCheckResult(result: UpgradeCheckResult) {
+  const prev = getCache();
+  const dismissed = prev !== null && prev.dismissed && prev.latestVersion === result.latestVersion;
+  setCache({ hasUpdate: result.hasUpdate, latestVersion: result.latestVersion, dismissed });
+}
+
+/** 从缓存读取上次检测结果（页面刷新后立刻恢复） */
+export function getCachedCheckResult(): { hasUpdate: boolean; latestVersion: string } | null {
+  const cached = getCache();
+  if (!cached) return null;
+  return { hasUpdate: cached.hasUpdate, latestVersion: cached.latestVersion };
+}
+
+/** 新版本是否被用户忽略过 */
 export function isUpdateDismissed(latestVersion: string): boolean {
   const cached = getCache();
-  return cached !== null && cached.version === latestVersion && cached.dismissed;
+  return cached !== null && cached.latestVersion === latestVersion && cached.dismissed;
 }
 
 /** 标记新版本为用户已忽略 */
 export function dismissUpdate(latestVersion: string) {
-  setCache(latestVersion, true);
+  const prev = getCache();
+  setCache({ hasUpdate: prev?.hasUpdate ?? false, latestVersion, dismissed: true });
 }
 
-/** 检查是否有新版本（可做缓存版本对比避免重复通知） */
-export function hasNewVersionCached(latestVersion: string): boolean {
-  const cached = getCache();
-  return cached === null || cached.version !== latestVersion;
+/** 清除缓存（当用户在关于页手动检测并确认有新版本时调用） */
+export function clearDismiss() {
+  try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
 }

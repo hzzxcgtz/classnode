@@ -3,7 +3,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { checkForUpdates, isUpdateDismissed, dismissUpdate } from '@/lib/upgrade-check';
+import { checkForUpdates, cacheCheckResult, clearDismiss } from '@/lib/upgrade-check';
 
 const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; size?: number }) => {
   const c = color || '#2563eb';
@@ -91,12 +91,12 @@ export default function AboutPage() {
       } else {
         // 浏览器模式 — 通过后端 API 检测
         const data = await checkForUpdates();
+        // 缓存结果供侧栏读取
+        cacheCheckResult(data);
         if (data.hasUpdate) {
           setUpdateMsg({ type: 'success', text: `发现新版本 v${data.latestVersion}！（当前版本 v${data.currentVersion}）` });
           // 清除已忽略状态，让侧栏通知重新出现
-          if (isUpdateDismissed(data.latestVersion)) {
-            localStorage.removeItem('classnode_update_cache');
-          }
+          clearDismiss();
         } else {
           setUpdateMsg({ type: 'info', text: `已是最新版本 v${data.currentVersion}` });
         }

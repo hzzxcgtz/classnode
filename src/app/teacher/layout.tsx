@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
-import { checkForUpdates, isUpdateDismissed, dismissUpdate, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
+import { checkForUpdates, getCachedCheckResult, cacheCheckResult, isUpdateDismissed, dismissUpdate, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
 const SESSION_KEY = 'teacher_session';
@@ -148,6 +148,15 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     return () => { cancelled = true; };
   }, []);
 
+  // 页面加载时立即从缓存恢复检测结果（不必等 8s API）
+  useEffect(() => {
+    const cached = getCachedCheckResult();
+    if (cached && cached.hasUpdate && !isUpdateDismissed(cached.latestVersion)) {
+      setHasUpdate(true);
+      setUpdateVersion(cached.latestVersion);
+    }
+  }, []);
+
   // 定时自动检查更新（首次延迟 8s，之后每 24h）
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -158,6 +167,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       setUpdateChecking(true);
       try {
         const result = await checkForUpdates();
+        // 缓存检测结果，刷新页面后仍能立即显示
+        cacheCheckResult(result);
         if (result.hasUpdate && !isUpdateDismissed(result.latestVersion)) {
           setHasUpdate(true);
           setUpdateVersion(result.latestVersion);

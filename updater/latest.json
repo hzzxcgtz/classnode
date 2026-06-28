@@ -1,10 +1,10 @@
 {
   "version": "1.5.2",
   "notes": "ClassNode v1.5.2 正式版",
-  "pub_date": "2026-06-28T04:23:36.827Z",
+  "pub_date": "2026-06-28T05:17:51.136Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSaHQ2cHViVlZFZTJYRmJ3NDFoRnVjZzdkYVpiRUZqdnY0eEY4SE5FR1hMblJsTzJFSU1LZFhZeElieDJYMmFDcU9DU3JIcG81RXJuRzZMNHN1azEzRzVRUzFPY01wVVFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNjE5OTkwCWZpbGU6Q2xhc3NOb2RlLmFwcC50YXIuZ3oKQkMyTE0yWk1mTEp4OUtPVWhsZlhxZDdVTEdBL0tZUDZsRDlEUmRBSEJYaFFXOEpYeXBzQ3d5U2RUaDJCQ1ZSTmErK0gxOEQ0bUZ5M0huVHlzYS93Qnc9PQo=",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSaHQ2cHViVlZFZTlWL2doMERwa1RqaGh4d2xXQ1E5UHQyL2tuRU5QRlhqUjRraFp5SWRkQXA2Z3pvc1ZsUG15R0cwOFU1N1ErWWZyV0NXRlVwVEdwZzUzSmhBQUM4THdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNjIwOTY5CWZpbGU6Q2xhc3NOb2RlLmFwcC50YXIuZ3oKbSsvMG9ibHZtWnFhU1QvaDQzSWRxQ3NGcmo3eUoxbk1VTkNlMHlsbTczMHJLK1YrdjcvUmwxVW5SWEpoQWdQYllGL1NiN1ZXaFFxakNMbEtyVVpHQ1E9PQo=",
       "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.5.2/ClassNode_1.5.2_macos_apple-silicon.tar.gz"
     },
     "darwin-x86_64": {

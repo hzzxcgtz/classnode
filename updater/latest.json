@@ -1,23 +1,23 @@
 {
-  "version": "1.6.0",
-  "notes": "(测试) 远程版本检测与自动更新功能",
+  "version": "99.99.99",
+  "notes": "(测试) 用于验证自动下载与安装流程",
   "pub_date": "2026-06-28T00:00:00Z",
   "platforms": {
     "darwin-aarch64": {
       "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.6.0/ClassNode_1.6.0_macos_apple-silicon.tar.gz"
+      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v99.99.99/ClassNode_99.99.99_macos_apple-silicon.tar.gz"
     },
     "darwin-x86_64": {
       "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.6.0/ClassNode_1.6.0_macos_intel.tar.gz"
+      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v99.99.99/ClassNode_99.99.99_macos_intel.tar.gz"
     },
     "windows-x86_64": {
       "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.6.0/ClassNode_1.6.0_windows_x64-setup.exe"
+      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v99.99.99/ClassNode_99.99.99_windows_x64-setup.exe"
     },
     "windows-aarch64": {
       "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.6.0/ClassNode_1.6.0_windows_arm64-setup.exe"
+      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v99.99.99/ClassNode_99.99.99_windows_arm64-setup.exe"
     }
   }
 }

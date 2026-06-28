@@ -1,5 +1,5 @@
 {
   "version": "1.5.3",
   "notes": "ClassNode v1.5.3\n- Linux PM2 一键部署（install.sh + ecosystem.config.js）\n- 源码包新增 .tar.gz 格式\n- 更新日志见 server/changelogs/v1.5.3.md",
-  "pub_date": "2026-06-28T12:00:00Z"
+  "pub_date": "2026-06-28T11:21:24.611Z"
 }

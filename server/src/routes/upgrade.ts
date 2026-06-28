@@ -7,10 +7,11 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-// 多级上游 URL：jsDelivr CDN 优先（国内访问快），GitHub raw 兜底
+// 多级上游 URL：GitHub raw 优先（权威源），jsDelivr CDN 兜底
+// jsDelivr 放在后面是因为 CDN 可能缓存过期版本（如测试期的 99.99.99）
 const UPSTREAM_URLS = [
-  'https://cdn.jsdelivr.net/gh/hzzxcgtz/classnode@main/updater/latest.json',
   'https://raw.githubusercontent.com/hzzxcgtz/classnode/main/updater/latest.json',
+  'https://cdn.jsdelivr.net/gh/hzzxcgtz/classnode@main/updater/latest.json',
 ];
 
 /**

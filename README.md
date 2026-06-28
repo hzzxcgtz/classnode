@@ -108,11 +108,11 @@ source ~/.bashrc
 
 **第二步：下载并安装 ClassNode**
 
-从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载源码压缩包（如 `classnode-v1.5.3.tar.gz`），解压后运行安装脚本：
+从 [Release 页面](https://gitcode.com/weixin_41523975/classnode/releases) 下载源码压缩包（如 `classnode-v1.5.3tar.gz`），解压后运行安装脚本：
 
 ```bash
 # 1. 解压
-tar -xzf classnode-v1.5.3.tar.gz
+tar -xzf classnode-v1.5.3tar.gz
 cd classnode-v1.5.3
 
 # 2. 一键安装（默认安装到 /opt/classnode，需要 sudo 权限）

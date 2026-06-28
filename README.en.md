@@ -108,11 +108,11 @@ source ~/.bashrc
 
 **Step 2: Download and Install ClassNode**
 
-Download the **Source code** archive from the [Release page](https://github.com/hzzxcgtz/classnode/releases) (e.g. `classnode-v1.5.3.tar.gz`), extract it, and run the install script:
+Download the **Source code** archive from the [Release page](https://github.com/hzzxcgtz/classnode/releases) (e.g. `classnode-v1.5.3tar.gz`), extract it, and run the install script:
 
 ```bash
 # 1. Extract
-tar -xzf classnode-v1.5.3.tar.gz
+tar -xzf classnode-v1.5.3tar.gz
 cd classnode-v1.5.3
 
 # 2. One-click install (defaults to /opt/classnode, needs sudo)

@@ -74,9 +74,13 @@ export default function AboutPage() {
     );
     const forceTauri = typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('tauri');
-    if (isTauriEnv) console.log('[ClassNode] Tauri 环境已检测到');
-    else if (forceTauri) console.log('[ClassNode] 模拟 Tauri 模式（?tauri=1）');
-    setRealTauri(isTauriEnv);
+    if (isTauriEnv) {
+      console.log('[ClassNode] Tauri 环境已检测到');
+      setRealTauri(true);
+    } else if (forceTauri) {
+      console.log('[ClassNode] 模拟 Tauri 模式（?tauri=1）');
+      setRealTauri(true);
+    }
   }, []);
 
   const checkUpdate = useCallback(async () => {

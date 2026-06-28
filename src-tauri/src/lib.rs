@@ -347,7 +347,7 @@ fn schema_hash(content: &str) -> String {
 fn stop_server(app: &AppHandle) -> Result<(), String> {
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
-        let pid = child.id();
+        let _pid = child.id();
 
         let _ = child.kill();
         let _ = child.wait();

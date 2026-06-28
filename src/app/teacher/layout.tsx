@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
+import { checkForUpdates, isUpdateDismissed, dismissUpdate, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
 const SESSION_KEY = 'teacher_session';
@@ -71,6 +72,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const dismissedRef = useRef<string[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState('');
+  const [updateChecking, setUpdateChecking] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -143,6 +147,43 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // 定时自动检查更新（首次延迟 8s，之后每 24h）
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    let interval: ReturnType<typeof setInterval>;
+
+    const doCheck = async () => {
+      if (updateChecking) return;
+      setUpdateChecking(true);
+      try {
+        const result = await checkForUpdates();
+        if (result.hasUpdate && !isUpdateDismissed(result.latestVersion)) {
+          setHasUpdate(true);
+          setUpdateVersion(result.latestVersion);
+        } else {
+          setHasUpdate(false);
+          setUpdateVersion('');
+        }
+      } catch {
+        // 静默失败，下次再试
+      }
+      setUpdateChecking(false);
+    };
+
+    // 首次延迟检查，避免启动时干扰
+    timer = setTimeout(doCheck, 8000);
+    // 之后每 24h 检查一次
+    interval = setInterval(doCheck, UPDATE_CHECK_INTERVAL);
+
+    return () => { clearTimeout(timer); clearInterval(interval); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleDismissUpdate = () => {
+    setHasUpdate(false);
+    if (updateVersion) dismissUpdate(updateVersion);
+  };
 
   // 侧边栏折叠状态持久化
   useEffect(() => {
@@ -436,7 +477,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   borderRadius: '0 2px 2px 0',
                 }} />
               )}
-              <span style={{ flexShrink: 0, display: 'flex' }}>
+              <span style={{ flexShrink: 0, display: 'flex', position: 'relative' }}>
                 {item.icon === 'dashboard' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -486,11 +527,21 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'info' && (
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="16" x2="12" y2="12" />
-                    <line x1="12" y1="8" x2="12.01" y2="8" />
-                  </svg>
+                  <>
+                    <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
+                    </svg>
+                    {hasUpdate && (
+                      <span style={{
+                        position: 'absolute', top: -2, right: sidebarCollapsed ? -2 : -4,
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: '#ef4444',
+                        border: '2px solid #ffffff',
+                      }} />
+                    )}
+                  </>
                 )}
                 {item.icon === 'book' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -511,8 +562,43 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 底部区域 */}
         <div style={{ marginTop: 'auto' }}>
+          {/* 新版本通知 — 只在不折叠时显示 */}
+          {hasUpdate && !sidebarCollapsed && (
+            <div style={{
+              margin: '0 0 6px', padding: '8px 12px',
+              background: 'linear-gradient(135deg, #fef9c3, #fef3c7)',
+              border: '1px solid #fde68a', borderRadius: 8,
+              cursor: 'pointer', fontSize: "0.75rem", color: '#92400e',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+              onClick={() => router.push('/teacher/about')}
+              onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #fef08a, #fde68a)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #fef9c3, #fef3c7)'; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+              <span style={{ flex: 1, lineHeight: 1.4 }}>
+                发现新版本 <strong>v{updateVersion}</strong>
+              </span>
+              <span
+                onClick={(e) => { e.stopPropagation(); handleDismissUpdate(); }}
+                style={{
+                  flexShrink: 0, width: 18, height: 18, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: "0.625rem", cursor: 'pointer',
+                  color: '#92400e', opacity: 0.5,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent'; }}
+                title="忽略此版本"
+              >✕</span>
+            </div>
+          )}
+
           <div style={{
-            borderTop: '1px solid #eef2f6',
+            borderTop: hasUpdate ? 'none' : '1px solid #eef2f6',
             paddingTop: 12,
           }}>
             <button

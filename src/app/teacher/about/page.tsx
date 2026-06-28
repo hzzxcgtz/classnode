@@ -3,6 +3,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { checkForUpdates, isUpdateDismissed, dismissUpdate } from '@/lib/upgrade-check';
 
 const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; size?: number }) => {
   const c = color || '#2563eb';
@@ -89,14 +90,13 @@ export default function AboutPage() {
         }
       } else {
         // 浏览器模式 — 通过后端 API 检测
-        const resp = await fetch('/api/upgrade/check');
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err.error || `HTTP ${resp.status}`);
-        }
-        const data = await resp.json();
+        const data = await checkForUpdates();
         if (data.hasUpdate) {
           setUpdateMsg({ type: 'success', text: `发现新版本 v${data.latestVersion}！（当前版本 v${data.currentVersion}）` });
+          // 清除已忽略状态，让侧栏通知重新出现
+          if (isUpdateDismissed(data.latestVersion)) {
+            localStorage.removeItem('classnode_update_cache');
+          }
         } else {
           setUpdateMsg({ type: 'info', text: `已是最新版本 v${data.currentVersion}` });
         }
@@ -187,7 +187,7 @@ export default function AboutPage() {
               <img src="/logo.png" alt="ClassNode" style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: "2rem", fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.5 }}>ClassNode</h1>
                 <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 10px', borderRadius: 6, background: '#f1f4f9' }}>
                   v{APP_VERSION}

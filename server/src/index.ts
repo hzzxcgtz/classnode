@@ -24,6 +24,7 @@ import { sendPing } from './services/ping.js';
 import uploadRoutes from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
+import upgradeRoutes from './routes/upgrade.js';
 import defaultShieldWords from './services/default-shield-words.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -177,6 +178,7 @@ async function main() {
   app.use('/api/upload', uploadRoutes);
   app.use('/api/avatars', avatarRoutes);
   app.use("/api/system", systemRoutes);
+app.use('/api/upgrade', upgradeRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {

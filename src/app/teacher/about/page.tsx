@@ -1,7 +1,7 @@
 'use client';
 import { APP_VERSION } from '@/lib/version';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 
 const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; size?: number }) => {
@@ -56,6 +56,58 @@ export default function AboutPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
+  const [realTauri, setRealTauri] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    // Tauri v2 环境下 window.__TAURI__ 或 __TAURI_INTERNALS__ 存在
+    // 浏览器中可通过 URL 参数 ?tauri=1 模拟以便调试
+    const isTauriEnv = typeof window !== 'undefined' && (
+      !!(window as any).__TAURI__ ||
+      !!(window as any).__TAURI_INTERNALS__
+    );
+    const forceTauri = typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('tauri');
+    if (isTauriEnv) console.log('[ClassNode] Tauri 环境已检测到');
+    else if (forceTauri) console.log('[ClassNode] 模拟 Tauri 模式（?tauri=1）');
+    setRealTauri(isTauriEnv);
+  }, []);
+
+  const checkUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    setUpdateMsg(null);
+    try {
+      // Tauri 环境下使用原生 updater 插件（为将来自动下载安装做准备）
+      if (realTauri) {
+        const { check } = await import('@tauri-apps/plugin-updater');
+        const update = await check();
+        if (update !== null) {
+          setUpdateMsg({ type: 'success', text: `发现新版本 v${update.version}！` });
+        } else {
+          setUpdateMsg({ type: 'info', text: '已是最新版本' });
+        }
+      } else {
+        // 浏览器模式 — 通过后端 API 检测
+        const resp = await fetch('/api/upgrade/check');
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        if (data.hasUpdate) {
+          setUpdateMsg({ type: 'success', text: `发现新版本 v${data.latestVersion}！（当前版本 v${data.currentVersion}）` });
+        } else {
+          setUpdateMsg({ type: 'info', text: `已是最新版本 v${data.currentVersion}` });
+        }
+      }
+    } catch (e) {
+      console.error('检查更新失败:', e);
+      setUpdateMsg({ type: 'error', text: '检查更新失败，请稍后重试' });
+    }
+    setCheckingUpdate(false);
+    setTimeout(() => setUpdateMsg(null), 5000);
+  }, [realTauri]);
 
   const toggleChangelogs = async () => {
     if (changelogsOpen) { setChangelogsOpen(false); return; }
@@ -135,12 +187,38 @@ export default function AboutPage() {
               <img src="/logo.png" alt="ClassNode" style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                 <h1 style={{ fontSize: "2rem", fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.5 }}>ClassNode</h1>
-                <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 12px', borderRadius: 6, background: '#f1f4f9' }}>
+                <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 10px', borderRadius: 6, background: '#f1f4f9' }}>
                   v{APP_VERSION}
                 </span>
+                <button onClick={checkUpdate} disabled={checkingUpdate} style={{
+                    fontSize: "0.75rem", color: '#64748b', background: 'transparent',
+                    border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+                    padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
+                    transition: 'all 0.15s', lineHeight: '22px',
+                  }}
+                    onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
+                    onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
+                    {checkingUpdate ? '检查中...' : '检查更新'}
+                  </button>
               </div>
+              {updateMsg && (
+                <div style={{
+                  marginTop: 10, padding: '8px 14px', borderRadius: 8,
+                  fontSize: "0.813rem", fontWeight: 500,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
+                  border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                  color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
+                }}>
+                  <span style={{ flex: 1 }}>{updateMsg.text}</span>
+                  <button onClick={() => setUpdateMsg(null)} style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: 'inherit', opacity: 0.5, fontSize: "0.875rem", padding: '0 2px',
+                  }}>✕</button>
+                </div>
+              )}
               <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
                 让 AI 在真实课堂落地，零门槛、不设限。
               </p>

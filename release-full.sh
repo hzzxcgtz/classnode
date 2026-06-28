@@ -31,6 +31,67 @@ REPO="hzzxcgtz/classnode"
 INSTALLER_BASE="/Users/zxc/Downloads/ClassNode/installer"
 _start=$SECONDS
 
+# ─── 签名密钥 ─────────────────────────────────────────
+TAURI_KEY_FILE="$HOME/.tauri/classnode.key"
+if [ -f "$TAURI_KEY_FILE" ]; then
+  export TAURI_SIGNING_PRIVATE_KEY=$(cat "$TAURI_KEY_FILE")
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+  # 无密码密钥（首次生成时使用 --password ''）
+  dim "签名密钥已加载: $TAURI_KEY_FILE"
+else
+  warn "签名密钥未找到: $TAURI_KEY_FILE"
+  warn "请先生成密钥: pnpm tauri signer generate -w ~/.tauri/classnode.key"
+fi
+
+# ─── 更新 updater 清单 ────────────────────────────────
+update_updater_manifest() {
+  local version="$1"
+  local manifest="$ROOT/updater/latest.json"
+  sub ""
+
+  # 检查并创建目录
+  mkdir -p "$(dirname "$manifest")"
+
+  # macOS ARM64 签名
+  local mac_arm_sig=""
+  local mac_arm_tar="src-tauri/target/release/bundle/macos/ClassNode_${version}_macos_apple-silicon.app.tar.gz"
+  local mac_arm_sigfile="${mac_arm_tar}.sig"
+  [ -f "$mac_arm_sigfile" ] && mac_arm_sig=$(cat "$mac_arm_sigfile") && ok "macOS ARM64 签名已提取"
+
+  # macOS Intel 签名
+  local mac_intel_sig=""
+  local mac_intel_tar="src-tauri/target/x86_64-apple-darwin/release/bundle/macos/ClassNode_${version}_macos_intel.app.tar.gz"
+  local mac_intel_sigfile="${mac_intel_tar}.sig"
+  [ -f "$mac_intel_sigfile" ] && mac_intel_sig=$(cat "$mac_intel_sigfile") && ok "macOS Intel 签名已提取"
+
+  cat > "$manifest" << JSONEOF
+{
+  "version": "${version}",
+  "notes": "ClassNode v${version}",
+  "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "${mac_arm_sig}",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v${version}/ClassNode_${version}_macos_apple-silicon.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "${mac_intel_sig}",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v${version}/ClassNode_${version}_macos_intel.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v${version}/ClassNode_${version}_windows_x64-setup.exe"
+    },
+    "windows-aarch64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v${version}/ClassNode_${version}_windows_arm64-setup.exe"
+    }
+  }
+}
+JSONEOF
+  ok "updater 清单已更新: $manifest"
+}
+
 # ─── 解析模式 ─────────────────────────────────────────
 MODE="${1:-full}"
 CI_BRANCH="main"
@@ -139,6 +200,12 @@ for dmg in \
   cp "$dmg" "$INSTALLER_DIR/"
   ok "$(basename "$dmg")  (${sz})"
 done
+
+# ─── 更新 updater 清单 ──────────────────────────────
+if [ "$BUILD_MAC_ARM64" = true ] || [ "$BUILD_MAC_INTEL" = true ]; then
+  section "更新 updater 清单"
+  update_updater_manifest "$VERSION"
+fi
 
 # ─── 源码包 ──────────────────────────────────────────
 sub ""

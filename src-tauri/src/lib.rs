@@ -511,6 +511,12 @@ pub fn run() {
 
             let handle = app.handle();
 
+            // 注册 updater 插件（版本检测）
+            #[cfg(desktop)]
+            if let Err(e) = handle.plugin(tauri_plugin_updater::Builder::new().build()) {
+                eprintln!("注册 updater 插件失败: {}", e);
+            }
+
             // 构建原生菜单栏（macOS 顶部菜单 / Windows 标题栏菜单）
             #[cfg(not(target_os = "linux"))]
             if let Ok(menu) = build_app_menu(&handle) {

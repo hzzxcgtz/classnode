@@ -82,7 +82,7 @@ export default function AboutPage() {
     const cached = getCachedCheckResult();
     if (cached && cached.hasUpdate) {
       setUpdateFound(true);
-      setUpdateMsg({ type: 'success', text: `新版本 v${cached.latestVersion} 可用` });
+      setUpdateMsg({ type: 'success', text: `v${cached.latestVersion} 可用，前往更新` });
     }
   }, []);
 
@@ -115,7 +115,7 @@ export default function AboutPage() {
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         if (update !== null) {
-          setUpdateMsg({ type: 'success', text: `新版本 v${update.version} 可用` });
+          setUpdateMsg({ type: 'success', text: `v${update.version} 可用，前往更新` });
           setUpdateFound(true);
         } else {
           setUpdateMsg({ type: 'info', text: '已是最新版' });
@@ -125,7 +125,7 @@ export default function AboutPage() {
         // 浏览器模式 — 通过后端 API 检测
         const data = await checkForUpdates();
         if (data.hasUpdate) {
-          setUpdateMsg({ type: 'success', text: `新版本 v${data.latestVersion} 可用` });
+          setUpdateMsg({ type: 'success', text: `v${data.latestVersion} 可用，前往更新` });
           setUpdateFound(true);
           // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
           clearDismiss();
@@ -236,7 +236,11 @@ export default function AboutPage() {
                   )}
                 </span>
                 {updateMsg && (
-                  <span style={{
+                  <a href={updateMsg.type === 'success' ? 'https://classnode.icu/' : undefined}
+                     target={updateMsg.type === 'success' ? '_blank' : undefined}
+                     rel={updateMsg.type === 'success' ? 'noopener noreferrer' : undefined}
+                     style={{
+                    textDecoration: 'none', cursor: updateMsg.type === 'success' ? 'pointer' : 'default',
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     fontSize: "0.75rem", fontWeight: 500,
                     padding: '2px 8px', borderRadius: 6,
@@ -246,30 +250,16 @@ export default function AboutPage() {
                     border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
                   }}>
                     <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '20px' }}>{updateMsg.text}</span>
-                    <span onClick={() => setUpdateMsg(null)} style={{
+                    <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setUpdateMsg(null); }} style={{
                       cursor: 'pointer', opacity: 0.4, flexShrink: 0,
                       fontSize: "0.688rem", lineHeight: '20px',
                     }}
                       onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
                       onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
                     >✕</span>
-                  </span>
-                )}
-                {/* 发现新版本 → 提供下载链接 */}
-                {updateFound && (
-                  <a href="https://classnode.icu/" target="_blank" rel="noopener noreferrer" style={{
-                    fontSize: "0.75rem", color: '#2563eb', background: '#eef2ff',
-                    border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer',
-                    padding: '2px 10px', fontWeight: 500, lineHeight: '22px',
-                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4,
-                    transition: 'all 0.15s',
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#eef2ff'; }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    去官网下载
                   </a>
                 )}
+                {/* 发现新版本 → 提示文字已集成在 updateMsg 中 */}
               </div>
               <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
                 让 AI 在真实课堂落地，零门槛、不设限。

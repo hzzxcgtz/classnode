@@ -582,7 +582,27 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             paddingTop: 12,
           }}>
             <button
-              onClick={() => setShowChangePwd(true)}
+              onClick={() => window.open('https://classnode.icu/', '_blank')}
+              title={sidebarCollapsed ? '打开官网' : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,
+                gap: 10,
+                padding: sidebarCollapsed ? '8px 0' : '8px 12px', borderRadius: 8, width: '100%',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#2563eb'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              {!sidebarCollapsed && <span>打开官网</span>}
+            </button>
+            <button
               title={sidebarCollapsed ? '修改密码' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,

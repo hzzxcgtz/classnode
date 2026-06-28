@@ -196,8 +196,9 @@ done
 mac_count=$(ls "$INSTALLER_DIR"/*.dmg 2>/dev/null | wc -l | tr -d ' ')
 win_count=$(ls "$INSTALLER_DIR"/*.exe 2>/dev/null | wc -l | tr -d ' ')
 zip_count=$(ls "$INSTALLER_DIR"/*.zip 2>/dev/null | wc -l | tr -d ' ')
+  tgz_count=$(ls "$INSTALLER_DIR"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
 
 echo ""
 echo -e "  ${GREEN}${BOLD}🎉 构建完成！${NC}"
-echo -e "  ${GRAY}macOS DMG:${NC} ${mac_count} 个   ${GRAY}Windows exe:${NC} ${win_count} 个   ${GRAY}源码包:${NC} ${zip_count} 个"
+echo -e "  ${GRAY}macOS DMG:${NC} ${mac_count} 个   ${GRAY}Windows exe:${NC} ${win_count} 个   ${GRAY}源码包:${NC} ${zip_count} 个（zip）+ ${tgz_count} 个（tar.gz）"
 echo ""

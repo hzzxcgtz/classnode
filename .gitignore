@@ -81,3 +81,6 @@ portal/
 
 # 仅供 AI 参考的文档，不需版本管理
 docs/
+
+# 源码打包产物
+classnode-v*.tar.gz

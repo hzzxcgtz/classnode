@@ -78,9 +78,15 @@ If you have some technical background, you can also download the source code and
 
 > Windows and macOS users should use the installer package above for the best experience.
 
-#### Step 1: Install Node.js
+#### 🐧 Linux One-Click Deployment (Recommended)
 
-Download **v24.16.0 LTS** from the [Node.js official website](https://nodejs.org).
+Uses PM2 for process management with auto-start on boot and easy version upgrades.
+
+**Requirements:** Node.js 18+
+
+**Step 1: Install Node.js**
+
+Download **v22 LTS** from the [Node.js official website](https://nodejs.org).
 
 Example for Linux (UOS):
 
@@ -89,46 +95,79 @@ Example for Linux (UOS):
 mkdir -p ~/software && cd ~/software
 
 # 2. Download (use arm64 for ARM CPUs, x64 for x86 CPUs)
-wget https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-arm64.tar.xz
+wget https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-arm64.tar.xz
 
 # 3. Extract
-tar -xvf node-v24.16.0-linux-arm64.tar.xz
-mv node-v24.16.0-linux-arm64 nodejs24
+tar -xvf node-v22.14.0-linux-arm64.tar.xz
+mv node-v22.14.0-linux-arm64 nodejs22
 
 # 4. Add Node.js to PATH
-echo 'export PATH=$HOME/software/nodejs24/bin:$PATH' >> ~/.bashrc
+echo 'export PATH=$HOME/software/nodejs22/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-#### Step 2: Change npm registry (recommended for China users)
+**Step 2: Download and Install ClassNode**
+
+Download the **Source code** archive from the [Release page](https://github.com/hzzxcgtz/classnode/releases) (e.g. `classnode-v1.5.3.tar.gz`), extract it, and run the install script:
 
 ```bash
-npm config set registry https://registry.npmmirror.com
-npm config get registry
+# 1. Extract
+tar -xzf classnode-v1.5.3.tar.gz
+cd classnode-v1.5.3
+
+# 2. One-click install (defaults to /opt/classnode, needs sudo)
+sudo bash install.sh
 ```
 
-#### Step 3: Deploy ClassNode
+After installation, access:
 
-Download the **Source code** archive from the [Release page](https://gitcode.com/weixin_41523975/classnode/releases) (e.g. `classnode-v1.5.2x.x.zip`), extract it.
+- Teacher Console: `http://<your-server-ip>:3001/teacher`
+- Student Portal: `http://<your-server-ip>:3001/classroom`
 
-Open a terminal in the extracted directory:
+> Don't know your server IP? Run `ip addr show | grep inet`.
+
+**Version Upgrade:**
 
 ```bash
-# Enter the project directory (adjust path as needed)
-cd classnode-v1.5.2
+# Download new version → extract → enter directory → run:
+sudo bash install.sh
+# The script will preserve database, uploads, and all data automatically
+```
 
-# Recommended: run the start script via Node.js
+**Management Commands:**
+
+```bash
+pm2 status              # Check running status
+pm2 logs classnode      # View logs
+pm2 restart classnode   # Restart service
+pm2 stop classnode      # Stop service
+pm2 startup             # Enable auto-start on boot (requires sudo)
+```
+
+#### Alternative: Manual Setup
+
+If you prefer not to use PM2, you can start the app manually:
+
+```bash
+# Enter the project directory
+cd classnode-v1.5.3
+
+# Install dependencies
+npm install -g pnpm
+pnpm install
+
+# Build
+pnpm build
+pnpm build:server
+
+# Initialize database
+cd server
+npx prisma db push
+cd ..
+
+# Start
 node start.js
 ```
-
-You can also double-click `start-classnode-linux.sh` (same effect).
-
-> The first run will automatically install dependencies, initialize the database, and build (about 1-5 minutes, requires internet). Subsequent starts will skip database initialization if the schema hasn't changed, making them significantly faster. A brief delay is also expected after version upgrades due to database updates.
-
-Access after startup:
-
-- Teacher Console: `http://localhost:3001/teacher`
-- Student Portal: `http://localhost:3001/classroom`
 
 > For student devices on the same LAN, replace `localhost` with the teacher's LAN IP address.
 

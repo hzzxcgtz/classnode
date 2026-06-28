@@ -105,7 +105,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "fresh" "全新安装（clean:all + 重装依赖）"
   printf "    ${CYAN}%-28s${NC} %s\n" "lint" "ESLint 检查"
   printf "    ${CYAN}%-28s${NC} %s\n" "start / run" "运行 node start.js"
-  printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip)"
+  printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip + .tar.gz)"
   printf "    ${CYAN}%-28s${NC} %s\n" "speedtest" "测试 GitHub 下载速度"
   log ""
   log "  ${BOLD}统计服务${NC}"
@@ -372,6 +372,7 @@ _make_source_dist() {
   local dist_name="classnode-${VERSION}"
   local dist_dir="/tmp/${dist_name}"
   local zip_file="${dst}/${dist_name}.zip"
+  local tar_file="${dst}/${dist_name}.tar.gz"
 
   log_info "打包源码分发包..."
 
@@ -394,8 +395,6 @@ _make_source_dist() {
     --exclude='server/backups' \
     --exclude='src-tauri' \
     --exclude='.pnpm-store' \
-    --exclude='pnpm-lock.yaml' \
-    --exclude='pnpm-workspace.yaml' \
     --exclude='build-release.sh' \
     --exclude='release-full.sh' \
     --exclude='SCRIPTS.md' \
@@ -408,17 +407,16 @@ _make_source_dist() {
     --exclude='.env.development' \
     --exclude='.git' \
     --exclude='.DS_Store' \
-    --exclude='.npmrc' \
     --exclude='CLAUDE.md' \
     --exclude='memory/' \
     --exclude='portal/' \
     --exclude='scripts/' \
     "$ROOT/" "$dist_dir/" 2>/dev/null
 
-  # 清理并生成运行所需配置
-  rm -f "$dist_dir/pnpm-workspace.yaml"
+  # 清理可能残留的数据库
   rm -f "$dist_dir/server/prisma/dev.db" "$dist_dir/server/prisma/dev.db-journal"
 
+  # 生成运行时配置
   cat > "$dist_dir/.npmrc" << 'NPMRC'
 registry=https://registry.npmmirror.com/
 NPMRC
@@ -427,13 +425,23 @@ NPMRC
 DATABASE_URL="file:./dev.db"
 ENV
 
-  # 压缩
+  # 压缩输出
   mkdir -p "$dst"
-  rm -f "$zip_file"
-  (cd /tmp && zip -r "$zip_file" "$dist_name" > /dev/null 2>&1)
+  rm -f "$zip_file" "$tar_file"
 
-  size=$(du -sh "$zip_file" | cut -f1)
-  log_ok "${dist_name}.zip → 安装包目录（${size}）"
+  # .zip（Windows 兼容）
+  (cd /tmp && zip -r "$zip_file" "$dist_name" > /dev/null 2>&1)
+  local zip_size
+  zip_size=$(du -sh "$zip_file" | cut -f1)
+  log_ok "${dist_name}.zip → 安装包目录（${zip_size}）"
+
+  # .tar.gz（Linux 部署用）
+  (cd /tmp && tar czf "$tar_file" "$dist_name" 2>/dev/null)
+  local tar_size
+  tar_size=$(du -sh "$tar_file" | cut -f1)
+  log_ok "${dist_name}.tar.gz → 安装包目录（${tar_size}）"
+
+  # 清理
   rm -rf "$dist_dir"
 }
 

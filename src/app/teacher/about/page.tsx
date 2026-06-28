@@ -60,6 +60,7 @@ export default function AboutPage() {
   const [realTauri, setRealTauri] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [updateFound, setUpdateFound] = useState(false);
 
   useEffect(() => {
     // Tauri v2 环境下 window.__TAURI__ 或 __TAURI_INTERNALS__ 存在
@@ -70,29 +71,55 @@ export default function AboutPage() {
     );
     const forceTauri = typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('tauri');
-    if (isTauriEnv) console.log('[ClassNode] Tauri 环境已检测到');
-    else if (forceTauri) console.log('[ClassNode] 模拟 Tauri 模式（?tauri=1）');
+    if (isTauriEnv) {
+      console.log('[ClassNode] Tauri 环境已检测到');
+    } else if (forceTauri) {
+      console.log('[ClassNode] 检测到 ?tauri=1（仅用于浏览器 API 调试）');
+    }
     setRealTauri(isTauriEnv);
   }, []);
+
+  // 首次展开时懒加载更新日志
+  const loadChangelogs = useCallback(async () => {
+    if (changelogs) return;
+    setLoadingLogs(true);
+    try {
+      const data = await api.getChangelogs();
+      setChangelogs(data);
+    } catch {}
+    setLoadingLogs(false);
+  }, [changelogs]);
+
+  const toggleChangelogs = useCallback(() => {
+    if (changelogsOpen) {
+      setChangelogsOpen(false);
+    } else {
+      loadChangelogs();
+      setChangelogsOpen(true);
+    }
+  }, [changelogsOpen, loadChangelogs]);
 
   const checkUpdate = useCallback(async () => {
     setCheckingUpdate(true);
     setUpdateMsg(null);
     try {
-      // Tauri 环境下使用原生 updater 插件（为将来自动下载安装做准备）
+      // Tauri 环境下使用原生 updater 插件
       if (realTauri) {
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         if (update !== null) {
           setUpdateMsg({ type: 'success', text: `新版本 v${update.version} 可用` });
+          setUpdateFound(true);
         } else {
           setUpdateMsg({ type: 'info', text: '已是最新版' });
+          setUpdateFound(false);
         }
       } else {
         // 浏览器模式 — 通过后端 API 检测
         const data = await checkForUpdates();
         if (data.hasUpdate) {
           setUpdateMsg({ type: 'success', text: `新版本 v${data.latestVersion} 可用` });
+          setUpdateFound(true);
           // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
           clearDismiss();
           cacheCheckResult(data);
@@ -101,27 +128,16 @@ export default function AboutPage() {
           }));
         } else {
           setUpdateMsg({ type: 'info', text: '已是最新版' });
+          setUpdateFound(false);
         }
       }
     } catch (e) {
       console.error('检查更新失败:', e);
       setUpdateMsg({ type: 'error', text: '检查失败' });
+      setUpdateFound(false);
     }
     setCheckingUpdate(false);
   }, [realTauri]);
-
-  const toggleChangelogs = async () => {
-    if (changelogsOpen) { setChangelogsOpen(false); return; }
-    if (changelogs) { setChangelogsOpen(true); return; }
-    setLoadingLogs(true);
-    try {
-      const data = await api.getChangelogs();
-      setChangelogs(data);
-      if (data.length > 0) setExpandedVersion(data[0].version);
-      setChangelogsOpen(true);
-    } catch {}
-    setLoadingLogs(false);
-  };
 
   const renderMarkdown = (text: string) => {
     const lines = text.split('\n');
@@ -175,7 +191,7 @@ export default function AboutPage() {
 
       {/* ========== Hero ========== */}
       <div style={{
-        background: '#ffffff', borderRadius: 20, overflow: 'hidden', marginBottom: 36,
+        background: '#ffffff', borderRadius: 20, overflow: 'hidden', marginBottom: 20,
         border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
         position: 'relative',
       }}>
@@ -223,24 +239,26 @@ export default function AboutPage() {
                     >✕</span>
                   </span>
                 )}
+                {/* 发现新版本 → 提供下载链接 */}
+                {updateFound && (
+                  <a href="https://classnode.icu/" target="_blank" rel="noopener noreferrer" style={{
+                    fontSize: "0.75rem", color: '#2563eb', background: '#eef2ff',
+                    border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer',
+                    padding: '2px 10px', fontWeight: 500, lineHeight: '22px',
+                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4,
+                    transition: 'all 0.15s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#eef2ff'; }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    去官网下载
+                  </a>
+                )}
               </div>
               <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
                 让 AI 在真实课堂落地，零门槛、不设限。
               </p>
             </div>
-            <button onClick={toggleChangelogs} style={{
-              flexShrink: 0, alignSelf: 'flex-start',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontSize: "0.875rem", color: '#475569', background: '#f8fafc',
-              border: '1px solid #d1d5db', borderRadius: 10, cursor: 'pointer',
-              padding: '9px 18px', fontWeight: 500,
-              transition: 'all 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#475569'; e.currentTarget.style.background = '#f8fafc'; }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-              {loadingLogs ? '加载中...' : changelogsOpen ? '收起更新日志' : '更新日志'}
-            </button>
           </div>
           <div style={{
             background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%)',
@@ -266,43 +284,66 @@ export default function AboutPage() {
       </div>
 
       {/* ========== 更新日志 ========== */}
-      {changelogsOpen && changelogs && (
-        <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 36, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div style={{ padding: '16px 22px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a' }}>更新日志</span>
-          </div>
-          <div style={{ padding: '16px 22px' }}>
+        <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <button onClick={toggleChangelogs} style={{
+            width: '100%', padding: '14px 20px', background: '#f8fafc',
+            border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+            borderBottom: changelogsOpen ? '1px solid #e2e8f0' : 'none',
+            transition: 'background 0.12s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.8" strokeLinecap="round" style={{ transition: 'transform 0.2s', transform: changelogsOpen ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a', flex: 1, textAlign: 'left' }}>更新日志</span>
+            {loadingLogs && <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</span>}
+          </button>
+          {changelogsOpen && changelogs && (
+          <div style={{ padding: '12px 20px 16px' }}>
             {(showAllLogs ? changelogs : changelogs.slice(0, 5)).map((log, idx) => {
               const isExpanded = expandedVersion === log.version;
+              const accentColor = idx === 0 ? '#3b82f6' : '#94a3b8';
               return (
-                <div key={log.version} style={{ marginBottom: idx < changelogs.length - 1 ? 6 : 0, borderRadius: 8, overflow: 'hidden', border: isExpanded ? '1px solid #e2e8f0' : '1px solid transparent', transition: 'border-color 0.15s' }}>
-                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 14px', background: isExpanded ? '#f8fafc' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: "0.875rem", color: '#0f172a', fontWeight: 600, borderRadius: isExpanded ? '7px 7px 0 0' : 7, transition: 'background 0.12s' }}
-                    onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = '#f8fafc'; }}
-                    onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" style={{ transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
+                <div key={log.version} style={{
+                  marginBottom: idx < changelogs.length - 1 ? 6 : 0,
+                  borderLeft: `3px solid ${isExpanded ? accentColor : '#e2e8f0'}`,
+                  borderRadius: 0, overflow: 'hidden',
+                  paddingLeft: 12, transition: 'border-color 0.15s',
+                }}>
+                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '8px 0', background: 'transparent',
+                    border: 'none', cursor: 'pointer', textAlign: 'left',
+                    fontSize: "0.875rem", color: '#0f172a', fontWeight: 600,
+                    transition: 'opacity 0.12s',
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" style={{ transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
                     <span style={{ flex: 1, color: '#0f172a' }}>{log.version}</span>
-                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 4, marginLeft: 4 }}>{isExpanded ? '收起' : '展开'}</span>
+                    {log.date && <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{log.date}</span>}
                   </button>
-                  {isExpanded && <div style={{ padding: '12px 18px 16px' }}>{renderMarkdown(log.content)}</div>}
+                  {isExpanded && (
+                    <div style={{ padding: '2px 0 8px 20px', fontSize: "0.813rem", color: '#475569', lineHeight: 1.8 }}>
+                      {renderMarkdown(log.content)}
+                    </div>
+                  )}
                 </div>
               );
             })}
             {changelogs.length > 5 && !showAllLogs && (
               <button onClick={() => setShowAllLogs(true)}
-                style={{ display: 'block', width: '100%', marginTop: 10, padding: '10px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: "0.813rem", color: '#64748b', textAlign: 'center' }}>
+                style={{ display: 'block', width: '100%', marginTop: 10, padding: '8px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: "0.813rem", color: '#64748b', textAlign: 'center' }}>
                 显示全部更新日志（共 {changelogs.length} 条）
               </button>
             )}
           </div>
+        )}
         </div>
-      )}
 
       {/* ========== 缘起 ========== */}
       <div style={{
         background: '#fefcf7', borderRadius: 16,
         border: '1px solid #ede9e0', padding: '36px 44px 32px',
-        marginBottom: 28, boxShadow: '0 6px 24px rgba(0,0,0,0.04)',
+        marginBottom: 12, boxShadow: '0 6px 24px rgba(0,0,0,0.04)',
         position: 'relative',
       }}>
         {/* 右上角折纸效果 */}
@@ -375,7 +416,7 @@ export default function AboutPage() {
       <div style={{
         background: '#ffffff', borderRadius: 16,
         border: '1px solid #e2e8f0', padding: '32px 36px',
-        marginBottom: 28, boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+        marginBottom: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -435,10 +476,10 @@ export default function AboutPage() {
       {/* ========== 技术底座 ========== */}
       <div style={{
         background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-        borderRadius: 16, padding: '32px 36px', marginBottom: 36,
-        border: '1px solid #e2e8f0',
+        borderRadius: 16, padding: '32px 36px',
+        border: '1px solid #e2e8f0', marginBottom: 12,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </div>

@@ -45,3 +45,25 @@ if (fs.existsSync(appBundle)) {
 } else {
   console.warn(`App bundle not found: ${appBundle}`);
 }
+
+// --- 重命名 updater 归档文件 ---
+const tarGzOld = path.join(macosDir, 'ClassNode.app.tar.gz');
+const tarGzNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz`);
+const sigOld = path.join(macosDir, 'ClassNode.app.tar.gz.sig');
+const sigNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz.sig`);
+
+if (fs.existsSync(tarGzOld)) {
+  if (fs.existsSync(tarGzNew)) fs.rmSync(tarGzNew);
+  fs.renameSync(tarGzOld, tarGzNew);
+  console.log(`Renamed tar.gz: ClassNode_${version}_macos_${suffix}.tar.gz`);
+} else {
+  console.warn(`tar.gz not found: ${tarGzOld}`);
+}
+
+if (fs.existsSync(sigOld)) {
+  if (fs.existsSync(sigNew)) fs.rmSync(sigNew);
+  fs.renameSync(sigOld, sigNew);
+  console.log(`Renamed sig: ClassNode_${version}_macos_${suffix}.tar.gz.minisig`);
+} else {
+  console.warn(`Sig not found: ${sigOld}`);
+}

@@ -71,3 +71,13 @@ if (fs.existsSync(portalIndexPath)) {
     console.log(`[sync-version] portal/index.html → ${version} (${today})`);
 }
 
+// 同步 updater/latest.json（版本号和发布日期）
+const updaterManifestPath = path.join(root, 'updater', 'latest.json');
+if (fs.existsSync(updaterManifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(updaterManifestPath, 'utf-8'));
+    manifest.version = version;
+    manifest.pub_date = new Date().toISOString();
+    fs.writeFileSync(updaterManifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    console.log(`[sync-version] updater/latest.json → ${version}`);
+}
+

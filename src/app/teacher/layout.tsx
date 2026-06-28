@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
-import { checkForUpdates, getCachedCheckResult, cacheCheckResult, isUpdateDismissed, dismissUpdate, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
+import { checkForUpdates, getCachedCheckResult, cacheCheckResult, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
 const SESSION_KEY = 'teacher_session';
@@ -151,7 +151,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // 页面加载时立即从缓存恢复检测结果 + 监听手动检测事件
   useEffect(() => {
     const cached = getCachedCheckResult();
-    if (cached && cached.hasUpdate && !isUpdateDismissed(cached.latestVersion)) {
+    if (cached && cached.hasUpdate) {
       setHasUpdate(true);
       setUpdateVersion(cached.latestVersion);
     }
@@ -177,7 +177,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         const result = await checkForUpdates();
         // 缓存检测结果，刷新页面后仍能立即显示
         cacheCheckResult(result);
-        if (result.hasUpdate && !isUpdateDismissed(result.latestVersion)) {
+        if (result.hasUpdate) {
           setHasUpdate(true);
           setUpdateVersion(result.latestVersion);
         } else {
@@ -198,11 +198,6 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     return () => { clearTimeout(timer); clearInterval(interval); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleDismissUpdate = () => {
-    setHasUpdate(false);
-    if (updateVersion) dismissUpdate(updateVersion);
-  };
 
   // 侧边栏折叠状态持久化
   useEffect(() => {
@@ -582,42 +577,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {/* 底部区域 */}
         <div style={{ marginTop: 'auto' }}>
           {/* 新版本通知 — 只在不折叠时显示 */}
-          {hasUpdate && !sidebarCollapsed && (
-            <div style={{
-              margin: '0 0 6px', padding: '8px 12px',
-              background: 'linear-gradient(135deg, #fef9c3, #fef3c7)',
-              border: '1px solid #fde68a', borderRadius: 8,
-              cursor: 'pointer', fontSize: "0.75rem", color: '#92400e',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}
-              onClick={() => router.push('/teacher/about')}
-              onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #fef08a, #fde68a)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, #fef9c3, #fef3c7)'; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              <span style={{ flex: 1, lineHeight: 1.4 }}>
-                发现新版本 <strong>v{updateVersion}</strong>
-              </span>
-              <span
-                onClick={(e) => { e.stopPropagation(); handleDismissUpdate(); }}
-                style={{
-                  flexShrink: 0, width: 18, height: 18, borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: "0.625rem", cursor: 'pointer',
-                  color: '#92400e', opacity: 0.5,
-                }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; }}
-                onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = 'transparent'; }}
-                title="忽略此版本"
-              >✕</span>
-            </div>
-          )}
-
           <div style={{
-            borderTop: hasUpdate ? 'none' : '1px solid #eef2f6',
+            borderTop: '1px solid #eef2f6',
             paddingTop: 12,
           }}>
             <button

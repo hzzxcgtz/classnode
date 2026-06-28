@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
 const UPSTREAM_URL =
-  'https://gitcode.com/weixin_41523975/classnode/raw/main/updater/latest.json';
+  'https://raw.githubusercontent.com/hzzxcgtz/classnode/main/updater/latest.json';
 
 /**
  * GET /check

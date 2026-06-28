@@ -54,7 +54,7 @@ const signature = fs.readFileSync(sigPath, 'utf-8').trim();
 console.log(`[update-manifest] 签名: ${signature.substring(0, 40)}...`);
 
 // --- 构造下载 URL ---
-const url = `https://gitcode.com/weixin_41523975/classnode/releases/download/v${version}/ClassNode_${version}_macos_${archName}.tar.gz`;
+const url = `https://github.com/hzzxcgtz/classnode/releases/download/v${version}/ClassNode_${version}_macos_${archName}.tar.gz`;
 
 // --- 读取现有 manifest ---
 const manifestPath = path.join(root, 'updater', 'latest.json');

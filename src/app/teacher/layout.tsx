@@ -148,13 +148,21 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     return () => { cancelled = true; };
   }, []);
 
-  // 页面加载时立即从缓存恢复检测结果（不必等 8s API）
+  // 页面加载时立即从缓存恢复检测结果 + 监听手动检测事件
   useEffect(() => {
     const cached = getCachedCheckResult();
     if (cached && cached.hasUpdate && !isUpdateDismissed(cached.latestVersion)) {
       setHasUpdate(true);
       setUpdateVersion(cached.latestVersion);
     }
+
+    const onUpdateFound = (e: Event) => {
+      const { version } = (e as CustomEvent).detail;
+      setHasUpdate(true);
+      setUpdateVersion(version);
+    };
+    window.addEventListener('classnode-update-found', onUpdateFound);
+    return () => window.removeEventListener('classnode-update-found', onUpdateFound);
   }, []);
 
   // 定时自动检查更新（首次延迟 8s，之后每 24h）

@@ -1,4 +1,5 @@
 /** 升级检测共享模块 */
+import { getApiBaseUrl } from '@/lib/api-base';
 
 export interface UpgradeCheckResult {
   hasUpdate: boolean;
@@ -14,7 +15,8 @@ export const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 小时
  * 通过服务端 API 检查更新（浏览器模式）
  */
 export async function checkForUpdates(): Promise<UpgradeCheckResult> {
-  const resp = await fetch('/api/upgrade/check');
+  const base = getApiBaseUrl();
+  const resp = await fetch(`${base}/api/upgrade/check`);
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || `HTTP ${resp.status}`);

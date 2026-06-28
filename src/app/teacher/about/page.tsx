@@ -84,29 +84,30 @@ export default function AboutPage() {
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         if (update !== null) {
-          setUpdateMsg({ type: 'success', text: `发现新版本 v${update.version}！` });
+          setUpdateMsg({ type: 'success', text: `新版本 v${update.version} 可用` });
         } else {
-          setUpdateMsg({ type: 'info', text: '已是最新版本' });
+          setUpdateMsg({ type: 'info', text: '已是最新版' });
         }
       } else {
         // 浏览器模式 — 通过后端 API 检测
         const data = await checkForUpdates();
-        // 缓存结果供侧栏读取
-        cacheCheckResult(data);
         if (data.hasUpdate) {
-          setUpdateMsg({ type: 'success', text: `发现新版本 v${data.latestVersion}！（当前版本 v${data.currentVersion}）` });
-          // 清除已忽略状态，让侧栏通知重新出现
+          setUpdateMsg({ type: 'success', text: `新版本 v${data.latestVersion} 可用` });
+          // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
           clearDismiss();
+          cacheCheckResult(data);
+          window.dispatchEvent(new CustomEvent('classnode-update-found', {
+            detail: { version: data.latestVersion },
+          }));
         } else {
-          setUpdateMsg({ type: 'info', text: `已是最新版本 v${data.currentVersion}` });
+          setUpdateMsg({ type: 'info', text: '已是最新版' });
         }
       }
     } catch (e) {
       console.error('检查更新失败:', e);
-      setUpdateMsg({ type: 'error', text: '检查更新失败，请稍后重试' });
+      setUpdateMsg({ type: 'error', text: '检查失败' });
     }
     setCheckingUpdate(false);
-    setTimeout(() => setUpdateMsg(null), 5000);
   }, [realTauri]);
 
   const toggleChangelogs = async () => {
@@ -202,23 +203,27 @@ export default function AboutPage() {
                     onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
                     {checkingUpdate ? '检查中...' : '检查更新'}
                   </button>
+                {updateMsg && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: "0.75rem", fontWeight: 500,
+                    padding: '2px 8px', borderRadius: 6,
+                    flexShrink: 0, maxWidth: 240, overflow: 'hidden',
+                    color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
+                    background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
+                    border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                  }}>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '20px' }}>{updateMsg.text}</span>
+                    <span onClick={() => setUpdateMsg(null)} style={{
+                      cursor: 'pointer', opacity: 0.4, flexShrink: 0,
+                      fontSize: "0.688rem", lineHeight: '20px',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
+                    >✕</span>
+                  </span>
+                )}
               </div>
-              {updateMsg && (
-                <div style={{
-                  marginTop: 10, padding: '8px 14px', borderRadius: 8,
-                  fontSize: "0.813rem", fontWeight: 500,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
-                  border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                  color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
-                }}>
-                  <span style={{ flex: 1 }}>{updateMsg.text}</span>
-                  <button onClick={() => setUpdateMsg(null)} style={{
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    color: 'inherit', opacity: 0.5, fontSize: "0.875rem", padding: '0 2px',
-                  }}>✕</button>
-                </div>
-              )}
               <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
                 让 AI 在真实课堂落地，零门槛、不设限。
               </p>

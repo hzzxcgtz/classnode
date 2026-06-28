@@ -32,8 +32,22 @@ router.get('/check', async (_req, res) => {
       return;
     }
 
-    // 拉取远程 manifest
-    const resp = await fetch(UPSTREAM_URL, { signal: AbortSignal.timeout(8000) });
+    // 拉取远程 manifest（绕过系统代理环境变量）
+    const savedHttpProxy = process.env.http_proxy;
+    const savedHttpsProxy = process.env.https_proxy;
+    const savedNoProxy = process.env.no_proxy;
+    process.env.http_proxy = '';
+    process.env.https_proxy = '';
+    process.env.no_proxy = '*';
+    let resp;
+    try {
+      resp = await fetch(UPSTREAM_URL, { signal: AbortSignal.timeout(8000) });
+    } finally {
+      // 恢复代理环境变量
+      process.env.http_proxy = savedHttpProxy ?? '';
+      process.env.https_proxy = savedHttpsProxy ?? '';
+      process.env.no_proxy = savedNoProxy ?? '';
+    }
     if (!resp.ok) {
       res.status(502).json({ error: `远程版本服务响应异常 (${resp.status})` });
       return;

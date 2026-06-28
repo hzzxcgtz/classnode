@@ -76,11 +76,10 @@ export default function AboutPage() {
       new URLSearchParams(window.location.search).has('tauri');
     if (isTauriEnv) {
       console.log('[ClassNode] Tauri 环境已检测到');
-      setRealTauri(true);
     } else if (forceTauri) {
-      console.log('[ClassNode] 模拟 Tauri 模式（?tauri=1）');
-      setRealTauri(true);
+      console.log('[ClassNode] 检测到 ?tauri=1（仅用于浏览器 API 调试）');
     }
+    setRealTauri(isTauriEnv);
   }, []);
 
   const checkUpdate = useCallback(async () => {

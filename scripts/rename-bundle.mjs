@@ -49,8 +49,8 @@ if (fs.existsSync(appBundle)) {
 // --- 重命名 updater 归档文件 ---
 const tarGzOld = path.join(macosDir, 'ClassNode.app.tar.gz');
 const tarGzNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz`);
-const sigOld = path.join(macosDir, 'ClassNode.app.tar.gz.minisig');
-const sigNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz.minisig`);
+const sigOld = path.join(macosDir, 'ClassNode.app.tar.gz.sig');
+const sigNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz.sig`);
 
 if (fs.existsSync(tarGzOld)) {
   if (fs.existsSync(tarGzNew)) fs.rmSync(tarGzNew);

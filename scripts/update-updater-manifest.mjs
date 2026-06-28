@@ -43,7 +43,7 @@ if (!fs.existsSync(sigDir)) {
   process.exit(1);
 }
 
-const sigFiles = fs.readdirSync(sigDir).filter(f => f.endsWith('.tar.gz.minisig'));
+const sigFiles = fs.readdirSync(sigDir).filter(f => f.endsWith('.tar.gz.sig'));
 if (sigFiles.length === 0) {
   console.error(`[update-manifest] 错误: 未找到 .tar.gz.minisig 签名文件 (查找位置: ${sigDir})`);
   process.exit(1);

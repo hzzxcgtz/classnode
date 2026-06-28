@@ -74,7 +74,7 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "r both" "macOS 双架构（ARM64 + Intel）"
   printf "    ${CYAN}%-28s${NC} %s\n" "r all" "macOS 双架构 + 源码包"
   printf "    ${CYAN}%-28s${NC} %s\n" "release [x64|both|all]" "Windows 远程构建（默认 x64）"
-  printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建（macOS + Windows CI + 下载 + 源码包）"
+  printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建（macOS + Windows CI + 源码包）"
   printf "    ${CYAN}%-28s${NC} %s\n" "ci [arm64|both]" "Windows CI 构建（默认 x64）"
   log ""
 
@@ -396,11 +396,8 @@ _make_source_dist() {
     --exclude='.pnpm-store' \
     --exclude='pnpm-lock.yaml' \
     --exclude='pnpm-workspace.yaml' \
-    --exclude='make-dist.sh' \
     --exclude='build-release.sh' \
     --exclude='release-full.sh' \
-    --exclude='download-release.sh' \
-    --exclude='upload-dist.sh' \
     --exclude='SCRIPTS.md' \
     --exclude='tsconfig.tsbuildinfo' \
     --exclude='next-env.d.ts' \

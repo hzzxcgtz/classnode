@@ -172,6 +172,13 @@ const SectionIcon = ({ name }: { name: string }) => {
         <path d="M22 11l-2 2-4-4" />
       </svg>
     ),
+    update: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 4 23 10 17 10" />
+        <polyline points="1 20 1 14 7 14" />
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+      </svg>
+    ),
   };
   return <>{icons[name] ?? null}</>;
 };
@@ -187,6 +194,7 @@ const sectionList = [
   { id: "shield", mainLabel: "净化", subLabel: "违禁与频率管控" },
   { id: "data", mainLabel: "丰收", subLabel: "数据管理与导出" },
   { id: "backup", mainLabel: "保障", subLabel: "数据备份与恢复" },
+  { id: "upgrade", mainLabel: "更新", subLabel: "版本检测与升级" },
 ];
 
 const sections = [
@@ -836,6 +844,47 @@ const sections = [
       </>,
     ],
   },
+  {
+    id: "upgrade",
+    title: "十一、更新：版本检测与升级",
+    icon: "update",
+    items: [
+      <>
+        ClassNode 采用<strong>自动检测 + 手动触发</strong>的版本更新机制，确保您能第一时间获取最新功能和修复。
+      </>,
+      <>
+        <strong>检查更新</strong>
+        ：进入「<Highlight>关于</Highlight>
+        」页面，点击「<Highlight>检查更新</Highlight>
+        」按钮，系统自动从 CDN 获取最新版本信息并与当前版本比较。
+      </>,
+      <div>
+        <strong>版本提示</strong>
+        ：检测到新版本后，会以以下方式提醒您：
+        <div style={{ paddingLeft: 20, lineHeight: 2, fontSize: "0.938rem", color: "#475569" }}>
+          <div>
+            • 「检查更新」按钮旁显示<strong>红点指示器</strong>，刷新页面也不会消失；
+          </div>
+          <div>
+            • 版本信息显示为<strong>可点击链接</strong>，点击直达官网下载页；
+          </div>
+          <div>
+            • 左侧导航栏的「打开官网」按钮旁也会同步显示红点提醒。
+          </div>
+        </div>
+      </div>,
+      <>
+        <strong>自动检测</strong>
+        ：系统启动时及运行中会自动检查更新，无需手动操作。检测到新版本后，持续提醒直到您升级到最新版。
+      </>,
+      <>
+        <strong>前往官网</strong>
+        ：点击左侧导航栏的「<Highlight>打开官网</Highlight>」，或点击关于页的版本提示链接，前往{" "}
+        <a href="https://classnode.icu" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>classnode.icu</a>{" "}
+        下载最新安装包。
+      </>,
+    ],
+  },
 ];
 
 export default function GuidePage() {
@@ -1079,6 +1128,8 @@ export default function GuidePage() {
               { icon: "#7c3aed", bg: "#faf5ff", border: "#e9d5ff" },
               { icon: "#0891b2", bg: "#ecfeff", border: "#a5f3fc" },
               { icon: "#ca8a04", bg: "#fefce8", border: "#fef08a" },
+              { icon: "#0d9488", bg: "#f0fdfa", border: "#99f6e4" },
+              { icon: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
             ];
             const sc = sectionColors[si] || sectionColors[0];
             return (

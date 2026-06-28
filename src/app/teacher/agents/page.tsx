@@ -559,7 +559,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{
         maxWidth: 520, padding: 0, borderRadius: 14,
       }}>
@@ -568,7 +568,21 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
           padding: '16px 24px 0',
           background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)',
           borderBottom: '1px solid var(--border)',
+          position: 'relative',
         }}>
+          <button type="button" onClick={onClose} style={{
+            position: 'absolute', top: 12, right: 12,
+            width: 28, height: 28, borderRadius: 6,
+            border: 'none', background: 'transparent',
+            color: '#94a3b8', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: "1rem", lineHeight: 1,
+            transition: 'all 0.12s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#475569'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}>
+            ✕
+          </button>
           <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 2px' }}>
             {agent ? '编辑智能体' : '接入AI智能体'}
           </h2>
@@ -752,7 +766,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                   <span>
-                    <strong>温馨提示</strong>：扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。受 API 功能限制，不支持图片理解。
+                    <strong>温馨提示</strong>：扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。
                   </span>
                 </div>
               )}
@@ -865,10 +879,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
               )}
             </div>
 
-            {/* 配置截图 — 放在所有输入框下方，居中显示 */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16, marginBottom: 4 }}>
-              <HelpButton platform={platform} />
-            </div>
           </div>
 
       {fieldErrors.submit && (
@@ -882,7 +892,9 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+            <HelpButton platform={platform} />
+            <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
             <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 20px' }}>
               {saving ? (
@@ -892,6 +904,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: any; onClose: () => voi
                 </span>
               ) : (agent ? '更新设置' : '确认接入')}
             </button>
+            </div>
           </div>
         </form>
       </div>

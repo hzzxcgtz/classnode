@@ -57,27 +57,11 @@ export default function AboutPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
-  const [realTauri, setRealTauri] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [updateFound, setUpdateFound] = useState(false);
 
   useEffect(() => {
-    // Tauri v2 环境下 window.__TAURI__ 或 __TAURI_INTERNALS__ 存在
-    // 浏览器中可通过 URL 参数 ?tauri=1 模拟以便调试
-    const isTauriEnv = typeof window !== 'undefined' && (
-      !!(window as any).__TAURI__ ||
-      !!(window as any).__TAURI_INTERNALS__
-    );
-    const forceTauri = typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).has('tauri');
-    if (isTauriEnv) {
-      console.log('[ClassNode] Tauri 环境已检测到');
-    } else if (forceTauri) {
-      console.log('[ClassNode] 检测到 ?tauri=1（仅用于浏览器 API 调试）');
-    }
-    setRealTauri(isTauriEnv);
-
     // 页面加载时从缓存恢复版本检测状态（刷新后红点不消失）
     const cached = getCachedCheckResult();
     if (cached && cached.hasUpdate) {
@@ -110,41 +94,31 @@ export default function AboutPage() {
     setCheckingUpdate(true);
     setUpdateMsg(null);
     try {
-      // Tauri 环境下使用原生 updater 插件
-      if (realTauri) {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const update = await check();
-        if (update !== null) {
-          setUpdateMsg({ type: 'success', text: `v${update.version} 可用，前往更新` });
-          setUpdateFound(true);
-        } else {
-          setUpdateMsg({ type: 'info', text: '已是最新版' });
-          setUpdateFound(false);
-        }
+      // 通过后端 API 检测版本
+      const data = await checkForUpdates();
+      // 无论是否有更新，都将结果写入缓存，覆盖可能的脏数据
+      cacheCheckResult(data);
+      if (data.hasUpdate) {
+        setUpdateMsg({ type: 'success', text: `v${data.latestVersion} 可用，前往更新` });
+        setUpdateFound(true);
+        // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
+        clearDismiss();
+        window.dispatchEvent(new CustomEvent('classnode-update-found', {
+          detail: { version: data.latestVersion },
+        }));
       } else {
-        // 浏览器模式 — 通过后端 API 检测
-        const data = await checkForUpdates();
-        if (data.hasUpdate) {
-          setUpdateMsg({ type: 'success', text: `v${data.latestVersion} 可用，前往更新` });
-          setUpdateFound(true);
-          // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
-          clearDismiss();
-          cacheCheckResult(data);
-          window.dispatchEvent(new CustomEvent('classnode-update-found', {
-            detail: { version: data.latestVersion },
-          }));
-        } else {
-          setUpdateMsg({ type: 'info', text: '已是最新版' });
-          setUpdateFound(false);
-        }
+        setUpdateMsg({ type: 'info', text: '已是最新版' });
+        setUpdateFound(false);
       }
     } catch (e) {
       console.error('检查更新失败:', e);
       setUpdateMsg({ type: 'error', text: '检查失败' });
       setUpdateFound(false);
+      // 检查失败时清除缓存，避免下次加载页面时仍显示旧的版本提示
+      clearDismiss();
     }
     setCheckingUpdate(false);
-  }, [realTauri]);
+  }, []);
 
   const renderMarkdown = (text: string) => {
     const lines = text.split('\n');

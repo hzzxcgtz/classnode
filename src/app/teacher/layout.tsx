@@ -185,7 +185,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           setUpdateVersion('');
         }
       } catch {
-        // 静默失败，下次再试
+        // 静默失败，下次再试；清除缓存避免页面加载时仍显示过期版本提示
+        try { localStorage.removeItem('classnode_update_cache'); } catch {}
       }
       setUpdateChecking(false);
     };

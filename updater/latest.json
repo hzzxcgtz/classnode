@@ -1,0 +1,23 @@
+{
+  "version": "1.6.0",
+  "notes": "(测试) 新增远程版本检测功能",
+  "pub_date": "2026-06-28T00:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v1.5.1/ClassNode_1.5.1_macos_apple-silicon.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v1.5.1/ClassNode_1.5.1_macos_intel.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v1.5.1/ClassNode_1.5.1_windows_x64-setup.exe"
+    },
+    "windows-aarch64": {
+      "signature": "",
+      "url": "https://gitcode.com/weixin_41523975/classnode/releases/download/v1.5.1/ClassNode_1.5.1_windows_arm64-setup.exe"
+    }
+  }
+}

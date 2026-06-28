@@ -3,7 +3,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { checkForUpdates, cacheCheckResult, clearDismiss } from '@/lib/upgrade-check';
+import { checkForUpdates, cacheCheckResult, clearDismiss, getCachedCheckResult } from '@/lib/upgrade-check';
 
 const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; size?: number }) => {
   const c = color || '#2563eb';
@@ -77,6 +77,13 @@ export default function AboutPage() {
       console.log('[ClassNode] 检测到 ?tauri=1（仅用于浏览器 API 调试）');
     }
     setRealTauri(isTauriEnv);
+
+    // 页面加载时从缓存恢复版本检测状态（刷新后红点不消失）
+    const cached = getCachedCheckResult();
+    if (cached && cached.hasUpdate) {
+      setUpdateFound(true);
+      setUpdateMsg({ type: 'success', text: `新版本 v${cached.latestVersion} 可用` });
+    }
   }, []);
 
   // 首次展开时懒加载更新日志
@@ -209,16 +216,25 @@ export default function AboutPage() {
                 <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 10px', borderRadius: 6, background: '#f1f4f9' }}>
                   v{APP_VERSION}
                 </span>
-                <button onClick={checkUpdate} disabled={checkingUpdate} style={{
-                    fontSize: "0.75rem", color: '#64748b', background: 'transparent',
-                    border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-                    padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
-                    transition: 'all 0.15s', lineHeight: '22px',
-                  }}
-                    onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
-                    onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
-                    {checkingUpdate ? '检查中...' : '检查更新'}
-                  </button>
+                <span style={{ position: 'relative', display: 'inline-flex' }}>
+                  <button onClick={checkUpdate} disabled={checkingUpdate} style={{
+                      fontSize: "0.75rem", color: '#64748b', background: 'transparent',
+                      border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+                      padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
+                      transition: 'all 0.15s', lineHeight: '22px',
+                    }}
+                      onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
+                      onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
+                      {checkingUpdate ? '检查中...' : '检查更新'}
+                    </button>
+                  {updateFound && (
+                    <span style={{
+                      position: 'absolute', top: -3, right: -3,
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: '#ef4444',
+                    }} />
+                  )}
+                </span>
                 {updateMsg && (
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,

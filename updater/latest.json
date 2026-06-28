@@ -1,23 +1,5 @@
 {
   "version": "1.5.2",
   "notes": "ClassNode v1.5.2 正式版",
-  "pub_date": "2026-06-28T06:54:28.722Z",
-  "platforms": {
-    "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSaHQ2cHViVlZFZTlWL2doMERwa1RqaGh4d2xXQ1E5UHQyL2tuRU5QRlhqUjRraFp5SWRkQXA2Z3pvc1ZsUG15R0cwOFU1N1ErWWZyV0NXRlVwVEdwZzUzSmhBQUM4THdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgyNjIwOTY5CWZpbGU6Q2xhc3NOb2RlLmFwcC50YXIuZ3oKbSsvMG9ibHZtWnFhU1QvaDQzSWRxQ3NGcmo3eUoxbk1VTkNlMHlsbTczMHJLK1YrdjcvUmwxVW5SWEpoQWdQYllGL1NiN1ZXaFFxakNMbEtyVVpHQ1E9PQo=",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.5.2/ClassNode_1.5.2_macos_apple-silicon.tar.gz"
-    },
-    "darwin-x86_64": {
-      "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.5.2/ClassNode_1.5.2_macos_intel.tar.gz"
-    },
-    "windows-x86_64": {
-      "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.5.2/ClassNode_1.5.2_windows_x64-setup.exe"
-    },
-    "windows-aarch64": {
-      "signature": "",
-      "url": "https://github.com/hzzxcgtz/classnode/releases/download/v1.5.2/ClassNode_1.5.2_windows_arm64-setup.exe"
-    }
-  }
+  "pub_date": "2026-06-28T06:54:28.722Z"
 }

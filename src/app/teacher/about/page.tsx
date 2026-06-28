@@ -60,6 +60,10 @@ export default function AboutPage() {
   const [realTauri, setRealTauri] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [updateFound, setUpdateFound] = useState(false);
+  const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'downloaded' | 'error'>('idle');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateRef, setUpdateRef] = useState<any>(null);
 
   useEffect(() => {
     // Tauri v2 环境下 window.__TAURI__ 或 __TAURI_INTERNALS__ 存在
@@ -79,14 +83,20 @@ export default function AboutPage() {
     setCheckingUpdate(true);
     setUpdateMsg(null);
     try {
-      // Tauri 环境下使用原生 updater 插件（为将来自动下载安装做准备）
+      // Tauri 环境下使用原生 updater 插件
       if (realTauri) {
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         if (update !== null) {
+          setUpdateRef(update);
           setUpdateMsg({ type: 'success', text: `新版本 v${update.version} 可用` });
+          setUpdateFound(true);
+          setDownloadState('idle');
+          setDownloadProgress(0);
         } else {
           setUpdateMsg({ type: 'info', text: '已是最新版' });
+          setUpdateFound(false);
+          setDownloadState('idle');
         }
       } else {
         // 浏览器模式 — 通过后端 API 检测
@@ -101,14 +111,55 @@ export default function AboutPage() {
           }));
         } else {
           setUpdateMsg({ type: 'info', text: '已是最新版' });
+          setUpdateFound(false);
         }
       }
     } catch (e) {
       console.error('检查更新失败:', e);
       setUpdateMsg({ type: 'error', text: '检查失败' });
+      setUpdateFound(false);
     }
     setCheckingUpdate(false);
   }, [realTauri]);
+
+  // Tauri 模式：下载更新
+  const handleDownload = useCallback(async () => {
+    if (!updateRef) return;
+    setDownloadState('downloading');
+    setDownloadProgress(0);
+    try {
+      updateRef.addListener((event: any) => {
+        if (event.status === 'PROGRESS' && event.contentLength > 0) {
+          const pct = Math.round((event.chunkLength / event.contentLength) * 100);
+          setDownloadProgress(Math.min(pct, 99));
+        } else if (event.status === 'DONE') {
+          setDownloadProgress(100);
+          setDownloadState('downloaded');
+          setUpdateMsg({ type: 'success', text: '下载完成，可安装新版本' });
+        } else if (event.status === 'ERROR') {
+          setDownloadState('error');
+          setUpdateMsg({ type: 'error', text: '下载失败，请重试' });
+        }
+      });
+      await updateRef.download();
+    } catch (e) {
+      console.error('下载更新失败:', e);
+      setDownloadState('error');
+      setUpdateMsg({ type: 'error', text: '下载失败' });
+    }
+  }, [updateRef]);
+
+  // Tauri 模式：安装更新
+  const handleInstall = useCallback(async () => {
+    if (!updateRef) return;
+    try {
+      await updateRef.install();
+      // install() 会重启应用，此处代码通常不会执行
+    } catch (e) {
+      console.error('安装更新失败:', e);
+      setUpdateMsg({ type: 'error', text: '安装失败' });
+    }
+  }, [updateRef]);
 
   const toggleChangelogs = async () => {
     if (changelogsOpen) { setChangelogsOpen(false); return; }
@@ -222,6 +273,53 @@ export default function AboutPage() {
                       onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
                     >✕</span>
                   </span>
+                )}
+                {/* Tauri 模式：下载更新按钮 */}
+                {realTauri && updateFound && downloadState === 'idle' && (
+                  <button onClick={handleDownload} style={{
+                    fontSize: "0.75rem", color: '#2563eb', background: '#eef2ff',
+                    border: '1px solid #93c5fd', borderRadius: 6, cursor: 'pointer',
+                    padding: '2px 10px', fontWeight: 500, lineHeight: '22px',
+                    transition: 'all 0.15s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#eef2ff'; }}>
+                    下载更新
+                  </button>
+                )}
+                {/* Tauri 模式：下载中进度条 */}
+                {realTauri && downloadState === 'downloading' && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    fontSize: "0.75rem", color: '#475569',
+                    padding: '2px 8px', borderRadius: 6,
+                    border: '1px solid #e2e8f0', background: '#f8fafc',
+                  }}>
+                    <span style={{
+                      width: 60, height: 6, borderRadius: 3,
+                      background: '#e2e8f0', overflow: 'hidden', display: 'inline-block',
+                    }}>
+                      <span style={{
+                        display: 'block', height: '100%', borderRadius: 3,
+                        background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                        width: `${downloadProgress}%`, transition: 'width 0.3s',
+                      }} />
+                    </span>
+                    <span style={{ fontWeight: 500, minWidth: 32, textAlign: 'right' }}>{downloadProgress}%</span>
+                  </span>
+                )}
+                {/* Tauri 模式：下载完成后安装按钮 */}
+                {realTauri && downloadState === 'downloaded' && (
+                  <button onClick={handleInstall} style={{
+                    fontSize: "0.75rem", color: '#ffffff', background: '#2563eb',
+                    border: '1px solid #2563eb', borderRadius: 6, cursor: 'pointer',
+                    padding: '2px 12px', fontWeight: 600, lineHeight: '22px',
+                    transition: 'all 0.15s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#1d4ed8'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#2563eb'; }}>
+                    立即安装
+                  </button>
                 )}
               </div>
               <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>

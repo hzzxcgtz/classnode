@@ -6,9 +6,8 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-// 开发阶段指向 feat/tauri-updater 分支，发布到 main 后改为 main
 const UPSTREAM_URL =
-  'https://raw.githubusercontent.com/hzzxcgtz/classnode/feat%2Ftauri-updater/updater/latest.json';
+  'https://gitcode.com/weixin_41523975/classnode/raw/main/updater/latest.json';
 
 /**
  * GET /check

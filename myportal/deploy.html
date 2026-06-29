@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>安装部署指南 · ClassNode - AI编程技术分享</title>
+<meta name="description" content="ClassNode 本地部署指南：安装包一键安装，或源码部署。无需云服务器，几分钟内完成。" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect x=%223%22 y=%223%22 width=%2226%22 height=%2226%22 rx=%228%22 fill=%22%23E07A3C%22/><path d=%22M11 10.5h10M11 16h7M11 21.5h10%22 stroke=%22%23fff%22 stroke-width=%222.2%22 stroke-linecap=%22round%22/></svg>" />
+<link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+<style>
+  #install-pkg, #source-deploy, #after-start { scroll-margin-top: 90px; }
+</style>
+<!-- 51LA -->
+<script charset="UTF-8" id="LA_COLLECT" src="//sdk.51.la/js-sdk-pro.min.js"></script>
+<script>LA.init({ id: "3QHx91HKIn6h3y4A", ck: "3QHx91HKIn6h3y4A" });</script>
+</head>
+<body>
+
+<div id="scrollProgress"></div>
+
+<!-- 导航栏 -->
+<div data-include="header" data-page="deploy"></div>
+
+<!-- ============ Hero ============ -->
+<section class="guide-hero">
+  <span class="hero-blob b1"></span>
+  <span class="hero-blob b2"></span>
+  <div class="container">
+    <span class="eyebrow"><span class="dot"></span> 本地部署指南</span>
+    <h1 class="guide-title">把 ClassNode<br><span class="grad">装进你的电脑</span></h1>
+    <p class="guide-sub">无需云服务器。下载安装包即可使用。</p>
+    <div class="guide-jump" style="margin-top:32px;">
+      <a href="#install-pkg" class="btn btn-ghost btn-sm">安装包安装</a>
+      <a href="#after-start" class="btn btn-ghost btn-sm">启动后访问</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 安装包安装 ============ -->
+<section class="guide-section" id="install-pkg">
+  <div class="guide-container">
+    <div class="guide-header fade-in">
+      <span class="eyebrow"><span class="dot"></span> 推荐 · 零门槛</span>
+      <h2 class="guide-h2"><span class="num-chip">方式一</span>安装包安装（推荐）</h2>
+      <p class="guide-text">
+        从
+        <a href="https://gitcode.com/weixin_41523975/classnode/releases" target="_blank" rel="noopener noreferrer">Release 页面</a>
+        或 <a href="classnode.html#download">下载渠道</a> 下载对应系统的安装包，双击即可完成安装。
+      </p>
+    </div>
+
+    <div class="guide-card fade-in">
+      <h3 class="guide-h3">
+        <span class="guide-h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+        安装包版本列表
+      </h3>
+      <div class="platform-table-wrap">
+        <table class="platform-table">
+          <thead><tr><th>平台</th><th>安装包</th></tr></thead>
+          <tbody>
+            <tr><td>macOS Apple Silicon</td><td><code>ClassNode_1.x.x_macos_apple-silicon.dmg</code></td></tr>
+            <tr><td>macOS Intel</td><td><code>ClassNode_1.x.x_macos_intel.dmg</code></td></tr>
+            <tr><td>Windows（64 位）</td><td><code>ClassNode_1.x.x_windows_x64-setup.exe</code></td></tr>
+            <tr><td>Windows（ARM64）</td><td><code>ClassNode_1.x.x_windows_arm64-setup.exe</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="guide-info teal">
+        <strong>💡 提示：</strong>安装或更新版本后<strong>首次启动</strong>时，程序会自动同步数据库结构，可能会有 <strong>10–30 秒</strong> 的短暂延迟，请耐心等待，后续启动将恢复正常速度。
+      </div>
+    </div>
+
+    <div class="guide-next fade-in">
+      <strong>安装完成了？</strong> 跳转到下方「<a href="#after-start">启动后访问</a>」，打开浏览器即可开始使用。
+    </div>
+  </div>
+</section>
+
+<!-- ============ 启动后访问 ============ -->
+<section class="guide-section" id="after-start">
+  <div class="guide-container">
+    <div class="guide-header fade-in">
+      <span class="eyebrow"><span class="dot"></span> 通用</span>
+      <h2 class="guide-h2"><span class="num-chip">通用</span>启动后访问</h2>
+      <p class="guide-text">安装完成后，在浏览器中访问以下地址即可使用：</p>
+    </div>
+
+    <div class="guide-card fade-in" style="margin-bottom:32px;">
+      <ul class="guide-list">
+        <li>管理端：<strong>管理电脑</strong> 打开浏览器访问 <code>http://localhost:3001/teacher</code></li>
+        <li>参与端：<strong>局域网内任意设备</strong>（平板、手机、其他电脑）访问 <code>http://管理电脑IP:3001/classroom</code></li>
+      </ul>
+      <div class="guide-note">
+        <strong>💡 提示：</strong>参与端通过局域网访问，只需将 <code>localhost</code> 替换为管理电脑的局域网 IP 地址即可（如 <code>http://192.168.1.100:3001/classroom</code>）。<br />
+        参与端<strong>无需安装任何软件</strong>，也<strong>无需互联网连接</strong>，打开浏览器就能用。
+      </div>
+      <div class="guide-note warn">
+        <strong>💡 客户端连不上？</strong>Windows 系统默认的安全策略有时会误拦截网络。若客户端连接失败，多半是管理机的 <strong>3001</strong> 端口被防火墙阻挡。请在管理电脑上尝试：<br />
+        <strong>方式一：</strong>打开「Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙」，勾选 <strong>ClassNode</strong>（或 <strong>Node.js</strong>）的专用与公用网络（若无，点「允许其他应用」手动添加）。<br />
+        <strong>方式二：</strong>进同页面的「高级设置 → 入站规则 → 新建规则」，按提示勾选：端口 → TCP → 输入 <code>3001</code> → 允许连接。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 页脚 -->
+<div data-include="footer"></div>
+
+<script src="js/include.js"></script>
+<script src="js/script.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+</body>
+</html>

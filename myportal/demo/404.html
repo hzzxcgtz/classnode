@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 - 页面未找到 · 智能造物</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="scrollProgress"></div>
+<div id="cursorGlow"></div>
+
+<!-- 导航栏 -->
+<div data-include="header" data-page="index"></div>
+
+<!-- 404 -->
+<section class="error-section">
+  <div>
+    <div class="error-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="11"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+    <div class="error-code">404</div>
+    <div class="error-subtitle">页面未找到</div>
+    <p class="error-desc">
+      你要找的页面可能已被移动、删除，或者地址输入有误。<br>
+      试试返回首页看看？
+    </p>
+    <div class="error-actions">
+      <a href="index.html" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        返回首页 →
+      </a>
+      <a href="index.html#works" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        浏览作品
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- 页脚 -->
+<div data-include="footer"></div>
+
+<script src="js/include.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

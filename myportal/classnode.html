@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClassNode — AI 智能体实时互动系统 - AI编程技术分享</title>
+<meta name="description" content="ClassNode：专为教师设计的 AI 智能体实时互动系统。支持 Coze、智谱清言、百度文心，本地部署、扫码即入、全景监控、一键导出报告。" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect x=%223%22 y=%223%22 width=%2226%22 height=%2226%22 rx=%228%22 fill=%22%23E07A3C%22/><path d=%22M11 10.5h10M11 16h7M11 21.5h10%22 stroke=%22%23fff%22 stroke-width=%222.2%22 stroke-linecap=%22round%22/></svg>" />
+<link rel="stylesheet" href="css/style.css" />
+<!-- 51LA -->
+<script charset="UTF-8" id="LA_COLLECT" src="//sdk.51.la/js-sdk-pro.min.js"></script>
+<script>LA.init({ id: "3QHx91HKIn6h3y4A", ck: "3QHx91HKIn6h3y4A" });</script>
+</head>
+<body>
+
+<div id="scrollProgress"></div>
+
+<!-- 导航栏 -->
+<div data-include="header" data-page="classnode"></div>
+
+<!-- ============ Hero ============ -->
+<section class="project-hero">
+  <span class="hero-blob b1"></span>
+  <span class="hero-blob b2"></span>
+  <div class="container">
+    <span class="eyebrow"><span class="dot"></span> v1.5.4 · 免费开源 · 持续更新</span>
+    <h1 class="project-title">ClassNode<br><span class="grad">AI 智能体实时互动系统</span></h1>
+    <p class="project-subtitle">
+      把你创建的 AI 智能体，安全可控地送到每一位学生面前——专为教师设计的 AI 课堂互动工具。
+      支持 Coze、智谱清言、百度文心等主流平台。
+    </p>
+    <div class="project-cta">
+      <a href="#download" class="btn btn-primary">下载 ClassNode →</a>
+      <a href="deploy.html" target="_blank" class="btn btn-ghost">部署指南</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 功能预览 ============ -->
+<section id="gallery" style="background: var(--bg-secondary);">
+  <div class="container">
+    <div class="sec-head center fade-in">
+      <span class="eyebrow teal"><span class="dot"></span> 功能预览</span>
+      <h2 class="sec-title">看看 ClassNode 长什么样</h2>
+      <p class="sec-desc">从仪表盘到参与者互动，一目了然</p>
+    </div>
+    <div class="showcase-tabs" id="showcaseTabs">
+      <button class="showcase-tab active" data-index="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>仪表盘
+      </button>
+      <button class="showcase-tab" data-index="1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>智能体
+      </button>
+      <button class="showcase-tab" data-index="2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>运行模式
+      </button>
+      <button class="showcase-tab" data-index="3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>监控看板
+      </button>
+      <button class="showcase-tab" data-index="4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>互动参与
+      </button>
+    </div>
+    <div class="showcase-stage" id="showcaseStage">
+      <div class="showcase-slide active" data-index="0">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/dashboard.png" alt="系统仪表盘" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">仪表盘</h3>
+          <p class="showcase-info-desc">系统运行全景概览，核心数据统计一屏掌握，对整体状况了然于胸。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>系统核心运行指标全景呈现</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>会话、参与者、智能体全局统计</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>关键运行状态实时监控与预警</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="1">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/agents.webp" alt="AI 智能体管理" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">智能体管理</h3>
+          <p class="showcase-info-desc">将在 Coze、智谱清言、百度文心等平台创建的 AI 智能体统一接入，一次配置即可在各场景复用。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>支持四种主流平台智能体接入</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>配置界面化管理，一键连通测试</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>在线状态自动检测与预警提醒</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="2">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/modes.png" alt="运行模式" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">运行模式</h3>
+          <p class="showcase-info-desc">标准、分组、高级三种运行模式按需选用，灵活适配不同交互场景。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>标准模式：全员统一使用同一智能体</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>分组模式：按小组分配不同 AI 角色</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>高级模式：自定义智能体与提示词</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="3">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/board.png" alt="监控看板" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">监控看板</h3>
+          <p class="showcase-info-desc">全景监控看板，全维度掌握 AI 互动实况，课堂节奏尽在掌控。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>实时消息流集中展示监控</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>三种运行模式按需灵活切换</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>发言频率与内容双重管控</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="4">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/student.png" alt="参与者互动" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">互动参与</h3>
+          <p class="showcase-info-desc">参与者端零门槛体验，扫码即入与 AI 沉浸式互动，完整记录可追溯。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>扫码或输入互动码秒加入</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>无需互联网，经管理端统一接入 AI</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>全部交互记录自动保存与导出</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="showcase-nav" id="showcaseNav">
+      <button class="showcase-dot active" data-index="0" aria-label="仪表盘"></button>
+      <button class="showcase-dot" data-index="1" aria-label="智能体"></button>
+      <button class="showcase-dot" data-index="2" aria-label="运行模式"></button>
+      <button class="showcase-dot" data-index="3" aria-label="监控看板"></button>
+      <button class="showcase-dot" data-index="4" aria-label="参与者互动"></button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 核心特性 ============ -->
+<section id="features">
+  <div class="container">
+    <div class="sec-head center fade-in">
+      <span class="eyebrow"><span class="dot"></span> 核心特性</span>
+      <h2 class="sec-title">为什么选择 ClassNode</h2>
+      <p class="sec-desc">轻量部署 · 数据本地化 · 纯净安全 · 完整工作流</p>
+    </div>
+    <div class="feature-grid" style="grid-template-columns:repeat(2,1fr);">
+      <div class="feature-card fade-in">
+        <span class="feature-num">01</span>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <h3>轻量化部署</h3>
+        <p>双击安装、浏览器访问。不用云服务器，自己电脑上就能跑，即开即用。</p>
+      </div>
+      <div class="feature-card teal fade-in">
+        <span class="feature-num">02</span>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <h3>数据本地化</h3>
+        <p>所有数据保存在本地硬盘，不经过第三方服务器，学生隐私安全有保障。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-num">03</span>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></div>
+        <h3>纯净安全</h3>
+        <p>参与者端无需互联网，通过管理端统一接入 AI，节省带宽且保障校园网络安全。</p>
+      </div>
+      <div class="feature-card teal fade-in">
+        <span class="feature-num">04</span>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+        <h3>完整工作流</h3>
+        <p>从配置智能体、扫码互动到导出报告，完整覆盖 AI 课堂互动全流程。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 适用场景 ============ -->
+<section id="scenarios" style="background: var(--bg-secondary);">
+  <div class="container">
+    <div class="sec-head center fade-in">
+      <span class="eyebrow teal"><span class="dot"></span> 适用场景</span>
+      <h2 class="sec-title">谁在用 ClassNode</h2>
+      <p class="sec-desc">从教室到教研，ClassNode 适配多种教育场景</p>
+    </div>
+    <div class="scenario-grid">
+      <div class="scenario-item fade-in">
+        <div class="scenario-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <h4>教室互动教学</h4>
+        <p>教师大屏展示，学生用手机或平板扫码参与 AI 互动，课堂气氛活跃。</p>
+      </div>
+      <div class="scenario-item fade-in">
+        <div class="scenario-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+        <h4>小组协作讨论</h4>
+        <p>分组模式下每个小组拥有独立 AI 角色，开展协作式探究学习。</p>
+      </div>
+      <div class="scenario-item fade-in">
+        <div class="scenario-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <h4>课后自主学习</h4>
+        <p>学生课后在局域网内访问 AI 智能体，自主提问、巩固知识。</p>
+      </div>
+      <div class="scenario-item fade-in">
+        <div class="scenario-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <h4>教师教研培训</h4>
+        <p>在教师培训中部署 AI 答疑助手，参训教师随时提问，即时获得解答。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 三步上手 ============ -->
+<section id="workflow">
+  <div class="container">
+    <div class="sec-head center fade-in">
+      <span class="eyebrow"><span class="dot"></span> 上手流程</span>
+      <h2 class="sec-title">三步上手，一气呵成</h2>
+      <p class="sec-desc">从接入到导出，让 AI 走进课堂只需三步</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card fade-in">
+        <div class="step-num">1</div>
+        <h4>接入 AI 智能体</h4>
+        <p>在 Coze、智谱清言、百度文心等平台创建好智能体后，在 ClassNode 中一键配置接入，系统自动检测在线状态。</p>
+      </div>
+      <div class="step-card fade-in">
+        <div class="step-num">2</div>
+        <h4>扫码即入，全景监控</h4>
+        <p>大屏发码即可加入。标准 / 分组 / 高级三种模式，支持暂停、单独引导参与者，节奏尽在掌控。</p>
+      </div>
+      <div class="step-card fade-in">
+        <div class="step-num">3</div>
+        <h4>一键导出报告</h4>
+        <p>高频词云、活跃榜、完整对话实录一键生成 Word 报告。本地保存，支持跨设备备份迁移。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 下载 ============ -->
+<section id="download" style="background: var(--bg-secondary);">
+  <div class="container">
+    <div class="sec-head center fade-in">
+      <span class="eyebrow teal"><span class="dot"></span> 免费下载</span>
+      <h2 class="sec-title">免费下载 ClassNode</h2>
+      <p class="sec-desc">安装包、源码包已上传至国内主流网盘，按需取用</p>
+    </div>
+
+    <div class="fade-in">
+      <div class="dl-grid">
+        <a href="https://www.alipan.com/s/x1C6B5jrX5u" target="_blank" rel="noopener" class="dl-card">
+          <div class="dl-card-icon"><img src="images/logo-alipan.webp" alt="阿里云盘" /></div>
+          <div class="dl-name">阿里云盘</div>
+          <div class="dl-desc">不限速下载，推荐首选</div>
+          <div class="dl-code">提取码：vp25</div>
+          <span class="dl-btn">下载 →</span>
+        </a>
+        <a href="https://1844479536.share.123865.com/123pan/6wxeTd-cspqh?pwd=Vd7T" target="_blank" rel="noopener" class="dl-card">
+          <div class="dl-card-icon"><img src="images/logo-123pan.webp" alt="123云盘" /></div>
+          <div class="dl-name">123云盘</div>
+          <div class="dl-desc">不限速，适合大文件</div>
+          <div class="dl-code">提取码：Vd7T</div>
+          <span class="dl-btn">下载 →</span>
+        </a>
+        <a href="https://pan.quark.cn/s/989a61a2278f?pwd=Y5PN" target="_blank" rel="noopener" class="dl-card">
+          <div class="dl-card-icon"><img src="images/logo-quark.webp" alt="夸克网盘" /></div>
+          <div class="dl-name">夸克网盘</div>
+          <div class="dl-desc">高速下载，推荐备用</div>
+          <div class="dl-code">提取码：Y5PN</div>
+          <span class="dl-btn">下载 →</span>
+        </a>
+        <a href="https://pan.baidu.com/s/1FXlUcY4BG7hW6qS3P4wHkg?pwd=a8mg" target="_blank" rel="noopener" class="dl-card">
+          <div class="dl-card-icon"><img src="images/logo-baidupan.webp" alt="百度网盘" /></div>
+          <div class="dl-name">百度网盘</div>
+          <div class="dl-desc">全平台版本归档</div>
+          <div class="dl-code">提取码：a8mg</div>
+          <span class="dl-btn">下载 →</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="fade-in" style="margin-top:48px;">
+      <div class="repo-grid">
+        <a href="https://gitcode.com/weixin_41523975/classnode" target="_blank" rel="noopener" class="repo-link">
+          <div class="r-head">
+            <img class="r-logo" src="images/gitcode_logo.webp" alt="GitCode" />
+            <div><h4>GitCode</h4><p>国内镜像仓库，高速访问</p></div>
+          </div>
+          <span class="repo-arrow">→</span>
+        </a>
+        <a href="https://github.com/hzzxcgtz/classnode" target="_blank" rel="noopener" class="repo-link">
+          <div class="r-head">
+            <img class="r-logo" src="images/github_logo.webp" alt="GitHub" />
+            <div><h4>GitHub</h4><p>国际仓库，Issue 与 PR 交流</p></div>
+          </div>
+          <span class="repo-arrow">→</span>
+        </a>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:48px;" class="fade-in">
+      <a href="deploy.html" target="_blank" class="btn btn-primary">查看部署指南 →</a>
+      <a href="https://gitcode.com/weixin_41523975/classnode/releases" target="_blank" rel="noopener" class="btn btn-ghost">更新日志</a>
+    </div>
+  </div>
+</section>
+
+<!-- 页脚 -->
+<div data-include="footer"></div>
+
+<script src="js/include.js"></script>
+<script src="js/script.js"></script>
+</body>
+</html>

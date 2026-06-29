@@ -71,6 +71,24 @@ if (fs.existsSync(portalIndexPath)) {
     console.log(`[sync-version] portal/index.html → ${version} (${today})`);
 }
 
+// 同步 myportal/index.html（badge + 下载描述中的版本号）
+const myportalIndexPath = path.join(root, 'myportal', 'index.html');
+if (fs.existsSync(myportalIndexPath)) {
+    let content = fs.readFileSync(myportalIndexPath, 'utf-8');
+    content = content.replace(/v\d+\.\d+\.\d+/g, `v${version}`);
+    fs.writeFileSync(myportalIndexPath, content);
+    console.log(`[sync-version] myportal/index.html → v${version}`);
+}
+
+// 同步 myportal/classnode.html（hero eyebrow 中的版本号）
+const myportalClassnodePath = path.join(root, 'myportal', 'classnode.html');
+if (fs.existsSync(myportalClassnodePath)) {
+    let content = fs.readFileSync(myportalClassnodePath, 'utf-8');
+    content = content.replace(/v\d+\.\d+\.\d+/g, `v${version}`);
+    fs.writeFileSync(myportalClassnodePath, content);
+    console.log(`[sync-version] myportal/classnode.html → v${version}`);
+}
+
 // 同步 updater/latest.json（版本号和发布日期）
 const updaterManifestPath = path.join(root, 'updater', 'latest.json');
 if (fs.existsSync(updaterManifestPath)) {

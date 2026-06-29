@@ -77,6 +77,8 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "release:full" "全平台构建（macOS + Windows CI + 源码包）"
   printf "    ${CYAN}%-28s${NC} %s\n" "ci [arm64|both]" "Windows CI 构建（默认 x64）"
   log ""
+  printf "    ${CYAN}%-28s${NC} %s\n" "dist:source" "单独构建源码分发包 (.zip + .tar.gz)"
+  log ""
 
   log "  ${BOLD}Git 快捷${NC}"
   printf "    ${CYAN}%-28s${NC} %s\n" "gs / git:status" "查看变更"
@@ -104,7 +106,6 @@ show_help() {
   printf "    ${CYAN}%-28s${NC} %s\n" "clean:all" "深度清理（含 node_modules）"
   printf "    ${CYAN}%-28s${NC} %s\n" "fresh" "全新安装（clean:all + 重装依赖）"
   printf "    ${CYAN}%-28s${NC} %s\n" "lint" "ESLint 检查"
-  printf "    ${CYAN}%-28s${NC} %s\n" "start / run" "运行 node start.js"
   printf "    ${CYAN}%-28s${NC} %s\n" "dist / package" "打包源码分发包 (classnode-<ver>.zip + .tar.gz)"
   printf "    ${CYAN}%-28s${NC} %s\n" "speedtest" "测试 GitHub 下载速度"
   log ""
@@ -410,7 +411,8 @@ _make_source_dist() {
     --exclude='CLAUDE.md' \
     --exclude='memory/' \
     --exclude='portal/' \
-    --exclude='scripts/' \
+    --include='scripts/sync-version.mjs' \
+    --exclude='scripts/*' \
     "$ROOT/" "$dist_dir/" 2>/dev/null
 
   # 清理可能残留的数据库
@@ -436,7 +438,7 @@ ENV
   log_ok "${dist_name}.zip → 安装包目录（${zip_size}）"
 
   # .tar.gz（Linux 部署用）
-  (cd /tmp && tar czf "$tar_file" "$dist_name" 2>/dev/null)
+  (cd /tmp && tar czf "$tar_file" --no-xattrs "$dist_name" 2>/dev/null)
   local tar_size
   tar_size=$(du -sh "$tar_file" | cut -f1)
   log_ok "${dist_name}.tar.gz → 安装包目录（${tar_size}）"
@@ -597,11 +599,6 @@ cmd_git_push() {
 }
 
 # ─── 启动与分发 ───────────────────────────────────────
-
-cmd_start() {
-  log_info "运行 node start.js ..."
-  node start.js
-}
 
 cmd_dist() {
   log_info "打包源码分发包到 /tmp ..."
@@ -773,8 +770,7 @@ case "${1:-help}" in
   git:pull)                        cmd_git_pull ;;
   git:commit)                      shift; cmd_git_commit "$@" ;;
   git:push)                        cmd_git_push ;;
-  start|run)                       cmd_start ;;
-  dist|package)                    cmd_dist ;;
+  dist|package|dist:source)        cmd_dist ;;
   speedtest)                       shift; cmd_speedtest "$@" ;;
   reset-db)                        cmd_reset_db ;;
   prisma:format)                   cmd_prisma_format ;;

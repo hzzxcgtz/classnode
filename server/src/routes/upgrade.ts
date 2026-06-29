@@ -7,11 +7,10 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-// 多级上游 URL：GitHub raw 优先（权威源），jsDelivr CDN 兜底
-// jsDelivr 放在后面是因为 CDN 可能缓存过期版本（如测试期的 99.99.99）
+// 上游 URL：按优先级依次尝试，第一个成功的返回
 const UPSTREAM_URLS = [
+  'https://gitee.com/hzzxcgtz/classnode/raw/main/updater/latest.json',
   'https://raw.githubusercontent.com/hzzxcgtz/classnode/main/updater/latest.json',
-  'https://cdn.jsdelivr.net/gh/hzzxcgtz/classnode@main/updater/latest.json',
 ];
 
 /**
@@ -66,7 +65,7 @@ async function proxyAwareFetch(url: string, options?: { signal?: AbortSignal }):
 /**
  * GET /check
  *
- * 从 GitCode 拉取远程 version manifest，与本地的 package.json 版本比较。
+ * 从 Gitee 或 GitHub 拉取远程 version manifest，与本地的 package.json 版本比较。
  * 返回格式：
  * {
  *   hasUpdate: boolean,
@@ -85,42 +84,45 @@ router.get('/check', async (_req, res) => {
       return;
     }
 
-    // 遍历上游 URL，第一个成功的返回
-    let lastErr = '';
-    for (const url of UPSTREAM_URLS) {
+    // 并行发起两个源请求，优先用 Gitee，失败则降级到 GitHub
+    const [giteeUrl, githubUrl] = UPSTREAM_URLS;
+    const TIMEOUT = 8000;
+
+    const giteePromise = proxyAwareFetch(giteeUrl, { signal: AbortSignal.timeout(TIMEOUT) })
+      .then(async (resp) => {
+        if (!resp.ok) throw new Error(`Gitee ${resp.status}`);
+        return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
+      });
+
+    const githubPromise = proxyAwareFetch(githubUrl, { signal: AbortSignal.timeout(TIMEOUT) })
+      .then(async (resp) => {
+        if (!resp.ok) throw new Error(`GitHub ${resp.status}`);
+        return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
+      });
+
+    // 优先等 Gitee
+    let remote: { version: string; notes?: string; pub_date?: string };
+    try {
+      remote = await giteePromise;
+    } catch (giteeErr) {
+      console.warn('[upgrade/check] Gitee 失败，降级到 GitHub:', giteeErr instanceof Error ? giteeErr.message : String(giteeErr));
       try {
-        const resp = await proxyAwareFetch(url, { signal: AbortSignal.timeout(10000) });
-        if (!resp.ok) {
-          lastErr = `远程版本服务响应异常 (${resp.status})`;
-          continue;
-        }
-
-        const remote = await resp.json() as {
-          version: string;
-          notes?: string;
-          pub_date?: string;
-        };
-
-        const hasUpdate = compareVersions(remote.version, localVersion) > 0;
-
-        res.json({
-          hasUpdate,
-          currentVersion: localVersion,
-          latestVersion: remote.version,
-          notes: remote.notes,
-          pub_date: remote.pub_date,
-        });
-        return; // 成功返回
-      } catch (e) {
-        lastErr = e instanceof Error ? e.message : String(e);
-        console.warn(`[upgrade/check] 上游 ${url} 失败:`, lastErr);
-        // 继续尝试下一个 URL
+        remote = await githubPromise;
+      } catch (githubErr) {
+        console.error('[upgrade/check] 所有上游全部失败:', githubErr instanceof Error ? githubErr.message : String(githubErr));
+        res.status(502).json({ error: '无法连接到版本服务器，请检查网络后重试' });
+        return;
       }
     }
 
-    // 所有上游都失败
-    console.error('[upgrade/check] 所有上游全部失败:', lastErr);
-    res.status(502).json({ error: '无法连接到版本服务器，请检查网络后重试' });
+    const hasUpdate = compareVersions(remote.version, localVersion) > 0;
+    res.json({
+      hasUpdate,
+      currentVersion: localVersion,
+      latestVersion: remote.version,
+      notes: remote.notes,
+      pub_date: remote.pub_date,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[upgrade/check] 内部错误:', msg);

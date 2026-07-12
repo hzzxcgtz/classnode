@@ -175,27 +175,25 @@ router.post('/:classId/students/batch-names', async (req, res) => {
     if (!names || !Array.isArray(names) || names.length === 0) {
       return res.status(400).json({ error: '请提供有效的学生名单' });
     }
+    if (names.length > 500) return res.status(400).json({ error: '单次最多导入500名学生' });
 
-    // 获取当前班级最大学号，从下一个开始
-    const all = await prisma.student.findMany({
-      where: { classId: req.params.classId },
-      select: { studentNo: true },
+    const normalized = names.map((item: string | { name: string; gender?: string }) => {
+      const name = typeof item === 'string' ? item.trim() : (item && typeof item.name === 'string' ? item.name.trim() : '');
+      const gender = item && typeof item === 'object' && item.gender && ['boy', 'girl'].includes(item.gender) ? item.gender : null;
+      return { name, gender };
     });
-    let maxNo = 0;
-    for (const s of all) {
-      const n = parseInt(s.studentNo || '0', 10);
-      if (n > maxNo) maxNo = n;
-    }
+    if (normalized.some(item => !item.name)) return res.status(400).json({ error: '学生姓名不能为空' });
 
-    // 兼容两种格式：旧版传字符串数组，新版传 { name, gender } 对象数组
-    const students = names.map((item: string | { name: string; gender?: string }, i: number) => {
-      const name = typeof item === 'string' ? item.trim() : item.name.trim();
-      const gender = typeof item === 'object' && item.gender && ['boy', 'girl'].includes(item.gender) ? item.gender : null;
-      return { classId: req.params.classId, name, studentNo: String(maxNo + i + 1), gender };
+    const result = await prisma.$transaction(async tx => {
+      const all = await tx.student.findMany({ where: { classId: req.params.classId }, select: { studentNo: true } });
+      const maxNo = all.reduce((max, s) => Math.max(max, parseInt(s.studentNo || '0', 10) || 0), 0);
+      const students = normalized.map((item, i) => ({
+        classId: req.params.classId, name: item.name, studentNo: String(maxNo + i + 1), gender: item.gender,
+      }));
+      const created = await tx.student.createMany({ data: students });
+      return { created, students };
     });
-
-    const created = await prisma.student.createMany({ data: students });
-    res.json({ count: created.count, students });
+    res.json({ count: result.created.count, students: result.students });
   } catch (error) {
     res.status(500).json({ error: '批量创建学生失败' });
   }

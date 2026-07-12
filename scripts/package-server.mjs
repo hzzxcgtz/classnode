@@ -56,7 +56,7 @@ execSync('npm install --production', {
 });
 
 console.log('\n[package-server] Initializing database...');
-execSync('npx prisma db push --accept-data-loss', {
+execSync('npx prisma db push', {
   cwd: RESOURCE_DIR,
   stdio: 'inherit',
 });

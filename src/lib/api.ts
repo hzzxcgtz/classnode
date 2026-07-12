@@ -1,16 +1,45 @@
 import { getApiBaseUrl } from './api-base';
+import type { AgentSummary, ClassroomSummary, InitStatus, StudentSessionResponse } from './types';
+
+let studentSessionToken = '';
+
+export function setStudentSessionToken(token?: string): void {
+  studentSessionToken = token || '';
+}
+
+export function getStudentSessionAuthorization(): Record<string, string> {
+  return studentSessionToken ? { Authorization: `Bearer ${studentSessionToken}` } : {};
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(studentSessionToken ? { Authorization: `Bearer ${studentSessionToken}` } : {}),
+      ...options?.headers,
+    },
     ...options,
   });
+  if (res.status === 401 && typeof window !== 'undefined' && !path.includes('verify-password')) {
+    window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormData): Promise<T> {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, { method, body, credentials: 'include' });
+  const data = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
+  }
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data as T;
 }
 
 export const api = {
@@ -27,16 +56,20 @@ export const api = {
     request<{ verified: boolean; firstTime: boolean }>('/api/settings/verify-password', {
       method: 'POST', body: JSON.stringify({ password }),
     }),
+  getSession: () => request<{ authenticated: boolean }>('/api/settings/session'),
+  logout: () => request('/api/settings/logout', { method: 'POST' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request('/api/settings/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   getInitStatus: () =>
-    request<{ initialized: boolean; hasAgents: boolean; hasClasses: boolean }>('/api/settings/init-status'),
+    request<InitStatus>('/api/settings/init-status'),
 
   // Agents
-  getAgents: () => request<any[]>('/api/agents'),
-  getAgent: (id: string) => request<any>(`/api/agents/${id}`),
+  getAgents: () => request<AgentSummary[]>('/api/agents'),
+  getAgent: (id: string) => request<AgentSummary>(`/api/agents/${id}`),
   createAgent: (data: FormData) =>
-    fetch(`${getApiBaseUrl()}/api/agents`, { method: 'POST', body: data }).then(r => r.json()),
+    formRequest<any>('/api/agents', 'POST', data),
   updateAgent: (id: string, data: FormData) =>
-    fetch(`${getApiBaseUrl()}/api/agents/${id}`, { method: 'PUT', body: data }).then(r => r.json()),
+    formRequest<any>(`/api/agents/${id}`, 'PUT', data),
   deleteAgent: (id: string) => request(`/api/agents/${id}`, { method: 'DELETE' }),
   checkAgentUsage: (id: string) =>
     request<{ used: boolean; classroomCount: number; groupCount: number }>(`/api/agents/${id}/usage`),
@@ -44,20 +77,16 @@ export const api = {
     request<{ greeting: string | null }>(`/api/agents/${id}/greeting${force ? '?force=true' : ''}`),
   getAgentInfo: (id: string) =>
     request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/${id}/info`),
-  getAgentInfoDirect: (params: { platform: string; botId: string; apiKey: string; apiUrl?: string }) => {
-    const query = new URLSearchParams();
-    query.append('platform', params.platform);
-    query.append('botId', params.botId);
-    query.append('apiKey', params.apiKey);
-    if (params.apiUrl) query.append('apiUrl', params.apiUrl);
-    return request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/info?${query}`);
-  },
+  getAgentInfoDirect: (params: { platform: string; botId: string; apiKey: string; apiUrl?: string; projectId?: string; apiSecret?: string }) =>
+    request<{ name: string | null; iconUrl: string | null; greeting: string | null }>('/api/agents/info-preview', {
+      method: 'POST', body: JSON.stringify(params),
+    }),
   testAgent: (id: string) => request<{ success: boolean; error?: string }>(`/api/agents/${id}/test`, { method: 'POST' }),
 
   // Classes
   getClasses: () => request<any[]>('/api/classes'),
   createClass: (name: string, avatarId?: number) =>
-    request('/api/classes', { method: 'POST', body: JSON.stringify({ name, avatarId }) }),
+    request<{ id: string; name: string; avatarId?: number | null }>('/api/classes', { method: 'POST', body: JSON.stringify({ name, avatarId }) }),
   updateClass: (id: string, name: string, avatarId?: number | null) =>
     request(`/api/classes/${id}`, { method: 'PUT', body: JSON.stringify({ name, avatarId }) }),
   deleteClass: (id: string) => request(`/api/classes/${id}`, { method: 'DELETE' }),
@@ -87,8 +116,12 @@ export const api = {
   createAdvancedClassroom: (data: { title?: string; classId: string; groups: any[] }) =>
     request('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<any[]>('/api/classroom/active'),
-  getClassroom: (id: string) => request<any>(`/api/classroom/${id}`),
-  getClassroomByCode: (code: string) => request<any>(`/api/classroom/code/${code}`),
+  getClassroom: (id: string) => request<ClassroomSummary>(`/api/classroom/${id}`),
+  getClassroomByCode: (code: string) => request<ClassroomSummary>(`/api/classroom/code/${code}`),
+  createStudentSession: (code: string, studentId: string) =>
+    request<StudentSessionResponse>(`/api/classroom/code/${code}/student-session`, {
+      method: 'POST', body: JSON.stringify({ studentId }),
+    }),
   getClassroomStudents: (id: string) => request<any[]>(`/api/classroom/${id}/students`),
   getStudentMessages: (classroomId: string, studentId: string) =>
     request<any[]>(`/api/classroom/${classroomId}/student/${studentId}/messages`),
@@ -153,7 +186,9 @@ export const api = {
   uploadAvatarImage: (file: File) => {
     const formData = new FormData();
     formData.append('avatar', file);
-    return fetch(`${getApiBaseUrl()}/api/upload/avatar`, { method: 'POST', body: formData }).then(r => r.json());
+    return fetch(`${getApiBaseUrl()}/api/upload/avatar`, {
+      method: 'POST', body: formData, credentials: 'include', headers: getStudentSessionAuthorization(),
+    }).then(r => r.json());
   },
 
   // Export
@@ -174,6 +209,7 @@ export const api = {
   exportConversationsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/conversations/docx`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options || {}),
     });
@@ -183,6 +219,7 @@ export const api = {
   exportStatsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/stats/docx`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options || {}),
     });
@@ -192,6 +229,7 @@ export const api = {
   exportConversationsCsv: (classroomId: string, options?: { studentIds?: string[] }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/conversations/csv`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options || {}),
     });
@@ -201,6 +239,7 @@ export const api = {
   exportStatsCsv: (classroomId: string, options?: { studentIds?: string[] }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/stats/csv`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options || {}),
     });
@@ -215,6 +254,7 @@ export const api = {
     formData.append('file', file);
     return fetch(`${getApiBaseUrl()}/api/export/backup/upload`, {
       method: 'POST',
+      credentials: 'include',
       body: formData,
     }).then(r => r.json());
   },

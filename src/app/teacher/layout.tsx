@@ -8,9 +8,6 @@ import { APP_VERSION } from '@/lib/version';
 import { checkForUpdates, getCachedCheckResult, cacheCheckResult, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
-const SESSION_KEY = 'teacher_session';
-const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 小时
-
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
@@ -23,31 +20,8 @@ const navItems = [
   { path: '/teacher/about', label: '关于', icon: 'info' },
 ];
 
-function getSession(): { verified: boolean; timestamp: number } | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw);
-    if (session.verified && Date.now() - session.timestamp < SESSION_DURATION) {
-      return session;
-    }
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
-}
-
-function saveSession() {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({
-    verified: true,
-    timestamp: Date.now(),
-  }));
-}
-
-function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
@@ -66,14 +40,22 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [pwdFieldErrors, setPwdFieldErrors] = useState<Record<string, string>>({});
   const [pwdSuccess, setPwdSuccess] = useState('');
   const [changingPwd, setChangingPwd] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [logoErr, setLogoErr] = useState(false);
-  const [failedAgents, setFailedAgents] = useState<string[]>([]);
-  const [dismissedAgents, setDismissedAgents] = useState<string[]>([]);
   const dismissedRef = useRef<string[]>([]);
+  const loginRef = useRef(false);
+  const setupRef = useRef(false);
+  const changePwdRef = useRef(false);
+  const logoutRef = useRef(false);
+  const pwdCloseTimerRef = useRef<number | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [hasUpdate, setHasUpdate] = useState(false);
-  const [updateVersion, setUpdateVersion] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('teacher_sidebar_collapsed') === 'true'; }
+    catch { return false; }
+  });
+  const [hasUpdate, setHasUpdate] = useState(() => getCachedCheckResult()?.hasUpdate === true);
   const [updateChecking, setUpdateChecking] = useState(false);
 
   // 检查服务状态和认证
@@ -97,9 +79,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         // 无法检查时继续
       }
 
-      // 系统已初始化，再检查本地 session
-      const session = getSession();
-      if (session) {
+      const session = await api.getSession();
+      if (session.authenticated) {
         setAuthState('authenticated');
         return;
       }
@@ -121,45 +102,48 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // 监听智能体连接异常通知
   useEffect(() => {
     let cancelled = false;
+    let socket: { disconnect: () => void } | undefined;
     (async () => {
       const { io } = await import('socket.io-client');
-      const sk = io(getApiBaseUrl(), { transports: ['websocket', 'polling'], reconnection: true });
-      sk.on('agents-checked', (data: any) => {
+      const sk = io(getApiBaseUrl(), { transports: ['websocket', 'polling'], reconnection: true, withCredentials: true });
+      socket = sk;
+      sk.on('agents-checked', (data: { failed?: unknown }) => {
         if (!cancelled) {
-          const allFailed: string[] = data?.failed || [];
-          setFailedAgents(allFailed.filter(a => !dismissedRef.current.includes(a)));
+          const allFailed = Array.isArray(data?.failed) ? data.failed.filter((item): item is string => typeof item === 'string') : [];
+          const visible = allFailed.filter(a => !dismissedRef.current.includes(a));
+          if (visible.length > 0) setToast({ msg: visible.join('、') + ' 连接异常', type: 'error' });
         }
       });
       sk.on('agent-test-passed', (agentName: string) => {
         if (!cancelled) {
-          setFailedAgents(prev => prev.filter(name => name !== agentName));
           dismissedRef.current = dismissedRef.current.filter(name => name !== agentName);
         }
       });
       // 学生端 AI 调用失败时，实时收到智能体异常通知
       sk.on('agent-connection-lost', (data: { agentId: string; agentName: string }) => {
         if (!cancelled) {
-          setFailedAgents(prev =>
-            prev.includes(data.agentName) ? prev : [...prev, data.agentName]
-          );
+          setToast({ msg: `${data.agentName} 连接异常`, type: 'error' });
         }
       });
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; socket?.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setAuthState('login');
+      setPassword('');
+      setToast({ msg: '登录已过期，请重新输入管理密码', type: 'error' });
+    };
+    window.addEventListener('classnode-teacher-session-expired', onSessionExpired);
+    return () => window.removeEventListener('classnode-teacher-session-expired', onSessionExpired);
   }, []);
 
   // 页面加载时立即从缓存恢复检测结果 + 监听手动检测事件
   useEffect(() => {
-    const cached = getCachedCheckResult();
-    if (cached && cached.hasUpdate) {
-      setHasUpdate(true);
-      setUpdateVersion(cached.latestVersion);
-    }
-
     const onUpdateFound = (e: Event) => {
-      const { version } = (e as CustomEvent).detail;
+      void (e as CustomEvent<{ version: string }>).detail.version;
       setHasUpdate(true);
-      setUpdateVersion(version);
     };
     window.addEventListener('classnode-update-found', onUpdateFound);
     return () => window.removeEventListener('classnode-update-found', onUpdateFound);
@@ -167,9 +151,6 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
   // 定时自动检查更新（首次延迟 8s，之后每 24h）
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let interval: ReturnType<typeof setInterval>;
-
     const doCheck = async () => {
       if (updateChecking) return;
       setUpdateChecking(true);
@@ -179,10 +160,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         cacheCheckResult(result);
         if (result.hasUpdate) {
           setHasUpdate(true);
-          setUpdateVersion(result.latestVersion);
         } else {
           setHasUpdate(false);
-          setUpdateVersion('');
         }
       } catch {
         // 静默失败，下次再试；清除缓存避免页面加载时仍显示过期版本提示
@@ -192,20 +171,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     };
 
     // 首次延迟检查，避免启动时干扰
-    timer = setTimeout(doCheck, 8000);
+    const timer = setTimeout(doCheck, 8000);
     // 之后每 24h 检查一次
-    interval = setInterval(doCheck, UPDATE_CHECK_INTERVAL);
+    const interval = setInterval(doCheck, UPDATE_CHECK_INTERVAL);
 
     return () => { clearTimeout(timer); clearInterval(interval); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 侧边栏折叠状态持久化
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('teacher_sidebar_collapsed');
-      if (saved === 'true') setSidebarCollapsed(true);
-    } catch {}
   }, []);
 
   const toggleSidebar = () => {
@@ -216,49 +187,65 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     });
   };
 
-  // 智能体异常时弹出底部 Toast
-  useEffect(() => {
-    if (failedAgents.length > 0) {
-      const msg = failedAgents.map(n => n).join('、') + ' 连接异常';
-      setToast({ msg, type: 'error' });
-    }
-  }, [failedAgents]);
+  useEffect(() => () => {
+    if (pwdCloseTimerRef.current) window.clearTimeout(pwdCloseTimerRef.current);
+  }, []);
 
   const handleLogin = async () => {
+    if (loginRef.current) return;
+    loginRef.current = true;
+    setLoggingIn(true);
     try {
       const result = await api.verifyPassword(password);
       if (result.verified) {
-        saveSession();
         setAuthState('authenticated');
         setFieldErrors({});
       } else {
         setFieldErrors({ password: '密码错误' });
       }
-    } catch (e: any) {
-      setFieldErrors({ password: e.message || '验证失败' });
+    } catch (error: unknown) {
+      setFieldErrors({ password: errorMessage(error, '验证失败') });
+    } finally {
+      loginRef.current = false;
+      setLoggingIn(false);
     }
   };
 
-  const handleLogout = () => {
-    clearSession();
-    setAuthState('login');
-    setPassword('');
+  const handleLogout = async () => {
+    if (logoutRef.current) return;
+    logoutRef.current = true;
+    setLoggingOut(true);
+    try {
+      await api.logout();
+      setAuthState('login');
+      setPassword('');
+    } catch (error) {
+      setToast({ msg: `退出登录失败：${errorMessage(error, '请求异常')}`, type: 'error' });
+    } finally {
+      logoutRef.current = false;
+      setLoggingOut(false);
+    }
   };
 
   const handleSetup = async () => {
+    if (setupRef.current) return;
     const errors: Record<string, string> = {};
-    if (setupPwd.length < 6) errors.setupPwd = '密码至少6位';
+    if (setupPwd.length < 8) errors.setupPwd = '密码至少8位';
     if (setupPwd !== setupConfirm) errors.setupConfirm = '两次密码输入不一致';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setupRef.current = true;
+    setSettingUp(true);
     try {
       await api.setAdminPassword(setupPwd);
       setFieldErrors({});
       setSetupPwd('');
       setSetupConfirm('');
-      saveSession();
       setAuthState('authenticated');
-    } catch (e: any) {
-      setFieldErrors({ submit: e.message });
+    } catch (error: unknown) {
+      setFieldErrors({ submit: errorMessage(error, '设置失败') });
+    } finally {
+      setupRef.current = false;
+      setSettingUp(false);
     }
   };
 
@@ -267,26 +254,28 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   };
 
   const handleChangePassword = async () => {
+    if (changePwdRef.current) return;
     setPwdFieldErrors({});
     setPwdSuccess('');
     const errors: Record<string, string> = {};
     if (!oldPwd) errors.oldPwd = '请输入当前密码';
-    if (!newPwd || newPwd.length < 6) errors.newPwd = '新密码至少6位';
+    if (!newPwd || newPwd.length < 8) errors.newPwd = '新密码至少8位';
     if (newPwd !== confirmPwd) errors.confirmPwd = '两次输入的新密码不一致';
     if (Object.keys(errors).length > 0) { setPwdFieldErrors(errors); return; }
+    changePwdRef.current = true;
     setChangingPwd(true);
     try {
-      const result = await api.verifyPassword(oldPwd);
-      if (!result.verified) { setPwdFieldErrors({ oldPwd: '当前密码错误' }); setChangingPwd(false); return; }
-      await api.setAdminPassword(newPwd);
+      await api.changePassword(oldPwd, newPwd);
       setPwdSuccess('密码修改成功');
       setOldPwd('');
       setNewPwd('');
       setConfirmPwd('');
-      setTimeout(() => { setShowChangePwd(false); setPwdSuccess(''); }, 1500);
-    } catch (e: any) {
-      setPwdFieldErrors({ submit: e.message || '修改失败' });
+      if (pwdCloseTimerRef.current) window.clearTimeout(pwdCloseTimerRef.current);
+      pwdCloseTimerRef.current = window.setTimeout(() => { setShowChangePwd(false); setPwdSuccess(''); }, 1500);
+    } catch (error: unknown) {
+      setPwdFieldErrors({ submit: errorMessage(error, '修改失败') });
     }
+    changePwdRef.current = false;
     setChangingPwd(false);
   };
 
@@ -322,7 +311,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               placeholder="管理密码"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              onKeyDown={(e) => e.key === 'Enter' && void handleLogin()}
+              disabled={loggingIn}
               style={{ borderColor: fieldErrors.password ? '#ef4444' : undefined }}
               autoFocus
             />
@@ -330,8 +320,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <FieldError message={fieldErrors.password} />
             )}
           </div>
-          <button className="btn btn-primary btn-lg" onClick={handleLogin} style={{ width: '100%', fontSize: "0.938rem" }}>
-            进入控制台
+          <button className="btn btn-primary btn-lg" onClick={() => void handleLogin()} disabled={loggingIn} style={{ width: '100%', fontSize: "0.938rem" }}>
+            {loggingIn ? '验证中...' : '进入控制台'}
           </button>
           <div style={{ marginTop: 16, textAlign: 'center', fontSize: "0.75rem", color: '#9ca3af', lineHeight: 1.6 }}>
             遗忘密码？请在桌面端<strong style={{ color: '#818cf8' }}>「控制面板」</strong>窗口中重置
@@ -359,21 +349,23 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
           <div style={{ marginBottom: 14 }}>
-            <input type="password" className="input" placeholder="设置管理密码（至少6位）" value={setupPwd}
+            <input type="password" className="input" placeholder="设置管理密码（至少8位）" value={setupPwd}
               onChange={e => { setSetupPwd(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupPwd; return n; }); }}
-              onKeyDown={e => e.key === 'Enter' && handleSetup()}
+              onKeyDown={e => e.key === 'Enter' && void handleSetup()}
+              disabled={settingUp}
               style={{ borderColor: fieldErrors.setupPwd ? '#ef4444' : undefined }} autoFocus />
             {fieldErrors.setupPwd && <FieldError message={fieldErrors.setupPwd} />}
           </div>
           <div style={{ marginBottom: 14 }}>
             <input type="password" className="input" placeholder="再次确认密码" value={setupConfirm}
               onChange={e => { setSetupConfirm(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupConfirm; return n; }); }}
-              onKeyDown={e => e.key === 'Enter' && handleSetup()}
+              onKeyDown={e => e.key === 'Enter' && void handleSetup()}
+              disabled={settingUp}
               style={{ borderColor: fieldErrors.setupConfirm ? '#ef4444' : undefined }} />
             {fieldErrors.setupConfirm && <FieldError message={fieldErrors.setupConfirm} />}
           </div>
           {fieldErrors.submit && <FieldError message={fieldErrors.submit} style={{ marginBottom: 8 }} />}
-          <button className="btn btn-primary btn-lg" onClick={handleSetup} style={{ width: '100%' }}>确认并进入</button>
+          <button className="btn btn-primary btn-lg" onClick={() => void handleSetup()} disabled={settingUp} style={{ width: '100%' }}>{settingUp ? '设置中...' : '确认并进入'}</button>
         </div>
       </div>
     );
@@ -623,7 +615,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               {!sidebarCollapsed && <span>修改密码</span>}
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
+              disabled={loggingOut}
               title={sidebarCollapsed ? '退出登录' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,
@@ -641,7 +634,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              {!sidebarCollapsed && <span>退出登录</span>}
+              {!sidebarCollapsed && <span>{loggingOut ? '退出中...' : '退出登录'}</span>}
             </button>
             {!sidebarCollapsed && <div style={{
               fontSize: "0.688rem", color: '#cbd5e1',
@@ -727,7 +720,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
                   <input type="password" className="input" value={newPwd}
                     onChange={e => { setNewPwd(e.target.value); clearPwdError('newPwd'); }}
-                    placeholder="至少6位"
+                    placeholder="至少8位"
                     style={{ borderColor: pwdFieldErrors.newPwd ? '#ef4444' : undefined }} />
                   {pwdFieldErrors.newPwd && <FieldError message={pwdFieldErrors.newPwd} />}
                 </div>

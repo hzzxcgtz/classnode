@@ -9,6 +9,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { reloadEncryptionKey } from '../services/crypto.js';
+import { safeExtractZip } from '../services/upload-security.js';
 import {
   generateConversationsDocx,
   generateStatsDocx,
@@ -44,6 +45,29 @@ function getDbPath(): string {
     }
   }
   return path.join(__dirname, '../../prisma/dev.db');
+}
+
+async function validateClassNodeDatabase(filePath: string): Promise<void> {
+  const { PrismaClient: ValidationClient } = await import('@prisma/client');
+  const client = new ValidationClient({ datasources: { db: { url: `file:${filePath}` } } });
+  try {
+    const tables = await client.$queryRawUnsafe<{ name: string }[]>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Classroom', 'Class', 'Agent')",
+    );
+    if (tables.length < 3) throw new Error('数据库结构不匹配');
+    const integrity = await client.$queryRawUnsafe<{ integrity_check: string }[]>('PRAGMA integrity_check');
+    if (integrity[0]?.integrity_check !== 'ok') throw new Error('数据库完整性检查失败');
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function createDatabaseSafetySnapshot(prisma: PrismaClient, backupDir: string): Promise<string> {
+  const snapshotPath = path.join(backupDir, `classnode-backup-${readableTimestamp()}-${crypto.randomUUID().slice(0, 8)}-pre-restore.classdb`);
+  const escaped = snapshotPath.replace(/'/g, "''");
+  await prisma.$executeRawUnsafe(`VACUUM INTO '${escaped}'`);
+  fs.writeFileSync(snapshotPath + '.meta', JSON.stringify({ source: 'safety-restore' }));
+  return snapshotPath;
 }
 
 // Multer: 备份文件上传
@@ -505,9 +529,13 @@ router.delete('/backup/:name', async (req, res) => {
 
 // 从备份恢复数据库（兼容 .classbak 和旧版 .classdb）
 router.post('/restore/:name', async (req, res) => {
+  let safetyBackupPath: string | null = null;
+  let dbPathForRollback: string | null = null;
   try {
     const dbPath = getDbPath();
+    dbPathForRollback = dbPath;
     const backupDir = getBackupDir();
+    const prisma: PrismaClient = req.app.get('prisma');
     const name = path.basename(req.params.name);
     const filePath = path.join(backupDir, name);
 
@@ -516,6 +544,7 @@ router.post('/restore/:name', async (req, res) => {
     }
 
     const isLegacy = name.endsWith('.classdb') || name.endsWith('.db');
+    let candidateDbPath = filePath;
 
     if (isLegacy) {
       // 旧版 .classdb：直接复制数据库
@@ -523,7 +552,6 @@ router.post('/restore/:name', async (req, res) => {
       if (header !== 'SQLite format 3\0') {
         return res.status(400).json({ error: '备份文件格式无效' });
       }
-      fs.copyFileSync(filePath, dbPath);
     } else {
       // 新版 .classbak：解压后恢复数据库和附件
       const tmpDir = path.join(backupDir, `extract-${Date.now()}`);
@@ -531,7 +559,11 @@ router.post('/restore/:name', async (req, res) => {
 
       const AdmZip = _require('adm-zip');
       const zip = new AdmZip(filePath);
-      zip.extractAllTo(tmpDir, true);
+      safeExtractZip(zip, tmpDir, {
+        maxFiles: 5000,
+        maxTotalBytes: 1024 * 1024 * 1024,
+        maxSingleFileBytes: 500 * 1024 * 1024,
+      });
 
       // 恢复数据库
       const dataFile = path.join(tmpDir, 'data.db');
@@ -539,7 +571,17 @@ router.post('/restore/:name', async (req, res) => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
         return res.status(400).json({ error: '备份文件不包含数据库' });
       }
-      fs.copyFileSync(dataFile, dbPath);
+      const dbHeader = fs.readFileSync(dataFile, { encoding: 'binary' }).slice(0, 16);
+      if (dbHeader !== 'SQLite format 3\0') {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        return res.status(400).json({ error: '备份中的数据库文件无效' });
+      }
+      candidateDbPath = dataFile;
+
+      await validateClassNodeDatabase(candidateDbPath);
+      safetyBackupPath = await createDatabaseSafetySnapshot(prisma, backupDir);
+      await prisma.$disconnect();
+      fs.copyFileSync(candidateDbPath, dbPath);
 
       // 恢复附件（chat + logos）
       for (const sub of ['chat', 'avatars', 'logos']) {
@@ -566,22 +608,13 @@ router.post('/restore/:name', async (req, res) => {
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
-      // 校验数据库结构
-      try {
-        const { PrismaClient } = await import('@prisma/client');
-        const backupPrisma = new PrismaClient({
-          datasources: { db: { url: `file:${dbPath}` } },
-        });
-        const tables = await backupPrisma.$queryRawUnsafe<{ name: string }[]>(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Classroom', 'Class', 'Agent')",
-        );
-        await backupPrisma.$disconnect();
-        if (tables.length < 3) {
-          return res.status(400).json({ error: '备份文件结构不匹配，请确认来自本系统' });
-        }
-      } catch {
-        return res.status(400).json({ error: '备份文件无法识别' });
-      }
+    }
+
+    if (isLegacy) {
+      await validateClassNodeDatabase(candidateDbPath);
+      safetyBackupPath = await createDatabaseSafetySnapshot(prisma, backupDir);
+      await prisma.$disconnect();
+      fs.copyFileSync(candidateDbPath, dbPath);
     }
 
     // 清除可能存在的旧 WAL/SHM 文件，避免干扰
@@ -592,22 +625,38 @@ router.post('/restore/:name', async (req, res) => {
 
     // 3. 尝试同步数据库结构（不同版本间新增表/字段自动补齐，静默处理）
     try {
-      const { execSync } = await import('child_process');
-      const prismaCli = path.join(__dirname, '../../../node_modules/.bin/prisma');
+      const { execFileSync } = await import('child_process');
+      const prismaCli = path.join(__dirname, '../../node_modules/prisma/build/index.js');
       if (fs.existsSync(prismaCli)) {
-        execSync(`${prismaCli} db push --accept-data-loss --skip-generate`, {
+        execFileSync(process.execPath, [prismaCli, 'db', 'push', '--skip-generate'], {
           cwd: path.join(__dirname, '../..'),
           stdio: 'ignore',
           timeout: 30000,
+          env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
         });
+      } else {
+        throw new Error('Prisma CLI 不可用');
       }
-    } catch {
-      // prisma CLI 不可用时静默跳过，不影响恢复结果
+    } catch (error) {
+      throw new Error(`恢复后的数据库无法安全同步: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    res.json({ success: true, restoredFrom: name });
+    await prisma.$connect();
+
+    res.json({ success: true, restoredFrom: name, safetyBackup: safetyBackupPath ? path.basename(safetyBackupPath) : null });
   } catch (error) {
     console.error('[Restore] error:', error);
+    if (safetyBackupPath && dbPathForRollback && fs.existsSync(safetyBackupPath)) {
+      try {
+        const prisma: PrismaClient = req.app.get('prisma');
+        await prisma.$disconnect();
+        fs.copyFileSync(safetyBackupPath, dbPathForRollback);
+        await prisma.$connect();
+        console.warn('[Restore] 恢复失败，已自动回滚到操作前数据库');
+      } catch (rollbackError) {
+        console.error('[Restore] 自动回滚失败:', rollbackError);
+      }
+    }
     res.status(500).json({ error: '恢复失败: ' + (error instanceof Error ? error.message : '未知错误') });
   }
 });
@@ -659,6 +708,11 @@ const chatUpload = multer({
     destination: (_req, _file, cb) => cb(null, getBackupDir()),
     filename: (_req, _file, cb) => cb(null, `chat-upload-${Date.now()}.zip`),
   }),
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, ext === '.zip' || ext === '.classchat');
+  },
 });
 
 router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req, res) => {
@@ -671,9 +725,22 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
 
     const AdmZip = _require('adm-zip');
     const zip = new AdmZip(req.file.path);
-    zip.extractAllTo(uploadsChatDir, true);
+    const tmpDir = path.join(getBackupDir(), `chat-extract-${crypto.randomUUID()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    safeExtractZip(zip, tmpDir, {
+      maxFiles: 2000,
+      maxTotalBytes: 300 * 1024 * 1024,
+      maxSingleFileBytes: 25 * 1024 * 1024,
+    });
+    const sourceDir = fs.existsSync(path.join(tmpDir, 'chat')) ? path.join(tmpDir, 'chat') : tmpDir;
+    fs.mkdirSync(uploadsChatDir, { recursive: true });
+    for (const file of fs.readdirSync(sourceDir)) {
+      const source = path.join(sourceDir, file);
+      if (fs.statSync(source).isFile()) fs.copyFileSync(source, path.join(uploadsChatDir, path.basename(file)));
+    }
 
     fs.unlinkSync(req.file.path);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     res.json({ success: true });
   } catch (error: any) {
     console.error('[UploadsChat] 导入失败:', error?.message || error);
@@ -701,8 +768,30 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: '未选择文件' });
     }
-    const isZip = req.file.originalname.endsWith('.classbak') || req.file.originalname.endsWith('.zip');
-    if (!isZip) {
+    const originalName = req.file.originalname.toLowerCase();
+    const isZip = originalName.endsWith('.classbak') || originalName.endsWith('.zip');
+    if (isZip) {
+      const AdmZip = _require('adm-zip');
+      const zip = new AdmZip(req.file.path);
+      const entries = zip.getEntries();
+      const allowedRoot = /^(data\.db|\.encryption\.key|(?:chat|avatars|logos)(?:\/|$))/;
+      if (!entries.some((entry: any) => entry.entryName === 'data.db') || entries.some((entry: any) => !allowedRoot.test(String(entry.entryName).replace(/\\/g, '/')))) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: '备份压缩包结构无效' });
+      }
+      const verifyDir = path.join(getBackupDir(), `verify-${crypto.randomUUID()}`);
+      fs.mkdirSync(verifyDir, { recursive: true });
+      try {
+        safeExtractZip(zip, verifyDir, { maxFiles: 5000, maxTotalBytes: 1024 * 1024 * 1024, maxSingleFileBytes: 500 * 1024 * 1024 });
+        const dataFile = path.join(verifyDir, 'data.db');
+        if (fs.readFileSync(dataFile, { encoding: 'binary' }).slice(0, 16) !== 'SQLite format 3\0') throw new Error('数据库文件无效');
+      } catch (error) {
+        fs.unlinkSync(req.file.path);
+        fs.rmSync(verifyDir, { recursive: true, force: true });
+        return res.status(400).json({ error: '备份文件校验失败: ' + (error instanceof Error ? error.message : '格式无效') });
+      }
+      fs.rmSync(verifyDir, { recursive: true, force: true });
+    } else {
       // 旧版 .classdb：校验 SQLite 文件头
       const headerBuf = Buffer.alloc(16);
       const fd = fs.openSync(req.file.path, 'r');

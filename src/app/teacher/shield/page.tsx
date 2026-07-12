@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Pagination } from '@/lib/components';
 
@@ -27,6 +27,8 @@ export default function ShieldPage() {
   const [wordPage, setWordPage] = useState(1);
   const [warningPageSize, setWarningPageSize] = useState(20);
   const [wordPageSize, setWordPageSize] = useState(50);
+  const [shieldAction, setShieldAction] = useState<string | null>(null);
+  const shieldActionRef = useRef(false);
 
   useEffect(() => {
     loadData();
@@ -36,7 +38,7 @@ export default function ShieldPage() {
     if (tab === 'records') loadSummary();
   }, [tab]);
 
-  const loadData = async () => {
+  async function loadData() {
     try {
       const [w, cfg, cats] = await Promise.all([api.getShieldWords(), api.getShieldConfig(), api.getShieldCategories()]);
       setWords(w);
@@ -44,9 +46,9 @@ export default function ShieldPage() {
       setRateLimit(cfg.rateLimit ?? 6);
       setCategories(cats || []);
     } catch {}
-  };
+  }
 
-  const loadSummary = async () => {
+  async function loadSummary() {
     setLoadingSummary(true);
     try {
       const data = await api.getWarningsSummary();
@@ -58,9 +60,9 @@ export default function ShieldPage() {
       }
     } catch {}
     setLoadingSummary(false);
-  };
+  }
 
-  const loadWarnings = async (classroomId: string) => {
+  async function loadWarnings(classroomId: string) {
     setSelectedClassroom(classroomId);
     setLoadingWarnings(true);
     try {
@@ -69,7 +71,7 @@ export default function ShieldPage() {
       setWarningPage(1);
     } catch {}
     setLoadingWarnings(false);
-  };
+  }
 
   const builtinWords = words.filter(w => w.builtin);
   const customWords = words.filter(w => !w.builtin);
@@ -82,6 +84,9 @@ export default function ShieldPage() {
     // 按常见分隔符切分：中文逗号、英文逗号、分号、顿号、空格、换行
     const words = raw.split(/[,，;；、\s\n]+/).map(w => w.trim()).filter(Boolean);
     if (words.length === 0) return;
+    if (shieldActionRef.current) return;
+    shieldActionRef.current = true;
+    setShieldAction('add');
     setSaving(true);
     setError('');
     let lastError = '';
@@ -95,20 +100,31 @@ export default function ShieldPage() {
     if (lastError) setError(lastError);
     else { setAddSaved(true); setTimeout(() => setAddSaved(false), 1500); }
     setNewWord('');
-    loadData();
+    await loadData();
+    shieldActionRef.current = false;
+    setShieldAction(null);
     setSaving(false);
   };
 
   const deleteWord = async (id: string) => {
+    if (shieldActionRef.current) return;
+    shieldActionRef.current = true;
+    setShieldAction('delete');
     try {
       await api.deleteShieldWord(id);
-      loadData();
+      await loadData();
     } catch (e: any) {
       setError(e.message || '删除失败');
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
     }
   };
 
   const saveConfig = async () => {
+    if (shieldActionRef.current) return;
+    shieldActionRef.current = true;
+    setShieldAction('config');
     setConfigSaved(false);
     setConfigError('');
     try {
@@ -118,6 +134,93 @@ export default function ShieldPage() {
     } catch (e: any) {
       setConfigError(e.message || '保存失败');
       setTimeout(() => setConfigError(''), 3000);
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
+    }
+  };
+
+  const toggleCustomWords = async () => {
+    if (shieldActionRef.current || !customWords.length) return;
+    shieldActionRef.current = true;
+    setShieldAction('toggle');
+    try {
+      const ids = customWords.map(word => word.id);
+      const enable = customWords.every(word => word.enabled === false);
+      await api.batchToggleShieldWords(ids, enable);
+      await loadData();
+      setBuiltinMsg({ type: 'success', text: enable ? '已启用全部自定义屏蔽词' : '已禁用全部自定义屏蔽词' });
+    } catch (error) {
+      setBuiltinMsg({ type: 'error', text: `批量更新失败：${error instanceof Error ? error.message : '请求异常'}` });
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
+    }
+  };
+
+  const deleteCustomWords = async () => {
+    if (shieldActionRef.current || !customWords.length) return;
+    if (!confirm(`确定删除全部 ${customWords.length} 个自定义屏蔽词？`)) return;
+    shieldActionRef.current = true;
+    setShieldAction('delete');
+    try {
+      await api.batchDeleteShieldWords(customWords.map(word => word.id));
+      await loadData();
+      setBuiltinMsg({ type: 'success', text: '已删除全部自定义屏蔽词' });
+    } catch (error) {
+      setBuiltinMsg({ type: 'error', text: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}` });
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
+    }
+  };
+
+  const clearWarnings = async () => {
+    if (!selectedClassroom || shieldActionRef.current) return;
+    if (!confirm('确认清空该课堂的所有拦截记录？')) return;
+    shieldActionRef.current = true;
+    setShieldAction('warnings');
+    try {
+      await api.clearClassroomWarnings(selectedClassroom);
+      await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
+      setBuiltinMsg({ type: 'success', text: '已清空该课堂的拦截记录' });
+    } catch (error) {
+      setBuiltinMsg({ type: 'error', text: `清空记录失败：${error instanceof Error ? error.message : '请求异常'}` });
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
+    }
+  };
+
+  const toggleBuiltinWords = async () => {
+    if (shieldActionRef.current || !builtinWords.length) return;
+    shieldActionRef.current = true;
+    setShieldAction('toggle');
+    try {
+      const enable = builtinWords.every(word => word.enabled === false);
+      await api.batchToggleShieldWords(builtinWords.map(word => word.id), enable);
+      await loadData();
+      setBuiltinMsg({ type: 'success', text: enable ? '已启用系统屏蔽词' : '已禁用系统屏蔽词' });
+    } catch (error) {
+      setBuiltinMsg({ type: 'error', text: `系统屏蔽词更新失败：${error instanceof Error ? error.message : '请求异常'}` });
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
+    }
+  };
+
+  const deleteWarning = async (warningId: string) => {
+    if (!selectedClassroom || shieldActionRef.current) return;
+    shieldActionRef.current = true;
+    setShieldAction('warnings');
+    try {
+      await api.deleteWarning(warningId);
+      await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
+    } catch (error) {
+      setBuiltinMsg({ type: 'error', text: `删除记录失败：${error instanceof Error ? error.message : '请求异常'}` });
+    } finally {
+      shieldActionRef.current = false;
+      setShieldAction(null);
     }
   };
 
@@ -319,11 +422,7 @@ export default function ShieldPage() {
             </div>
             {customWords.length > 0 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={async () => {
-                  const ids = customWords.map(w => w.id);
-                  const allDisabled = customWords.every(w => w.enabled === false);
-                  try { await api.batchToggleShieldWords(ids, allDisabled); loadData(); } catch {}
-                }}
+                <button onClick={() => void toggleCustomWords()} disabled={shieldAction !== null}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: 0, border: 'none', background: 'transparent', fontFamily: 'inherit',
                   }}
@@ -344,10 +443,7 @@ export default function ShieldPage() {
                   </span>
                   <span style={{ fontSize: "0.75rem", color: '#64748b' }}>{customWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
                 </button>
-                <button onClick={async () => {
-                  const ids = customWords.map(w => w.id);
-                  try { await api.batchDeleteShieldWords(ids); loadData(); } catch {}
-                }}
+                <button onClick={() => void deleteCustomWords()} disabled={shieldAction !== null}
                   style={{
                     fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
                     background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#dc2626',
@@ -429,11 +525,7 @@ export default function ShieldPage() {
                 </span>
               )}
             </div>
-            <button onClick={async () => {
-              const ids = builtinWords.map(w => w.id);
-              const allDisabled = builtinWords.every(w => w.enabled === false);
-              try { await api.batchToggleShieldWords(ids, allDisabled); loadData(); } catch {}
-            }}
+            <button onClick={() => void toggleBuiltinWords()} disabled={shieldAction !== null}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: 0, border: 'none', background: 'transparent', fontFamily: 'inherit',
               }}>
@@ -595,10 +687,7 @@ export default function ShieldPage() {
                 </span>
               )}
             </div>
-            {warnings.length > 0 && <button onClick={async () => {
-              if (!confirm('确认清空该课堂的所有拦截记录？')) return;
-              try { await api.clearClassroomWarnings(selectedClassroom); loadWarnings(selectedClassroom); loadSummary(); } catch {}
-            }} style={{
+            {warnings.length > 0 && <button onClick={() => void clearWarnings()} disabled={shieldAction !== null} style={{
               fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
               background: 'white', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.1s',
@@ -673,9 +762,7 @@ export default function ShieldPage() {
                         )}
                       </td>
                       <td style={{ padding: '8px 16px', textAlign: 'right' }}>
-                        <button onClick={async () => {
-                          try { await api.deleteWarning(w.id); loadWarnings(selectedClassroom); loadSummary(); } catch {}
-                        }} style={{
+                        <button onClick={() => void deleteWarning(w.id)} disabled={shieldAction !== null} style={{
                           width: 30, height: 30, borderRadius: 6, border: 'none',
                           background: 'transparent', cursor: 'pointer', color: '#cbd5e1',
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

@@ -548,7 +548,7 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </div>
         <div class="modal-title">重置管理密码？</div>
-        <div class="modal-desc">密码将重置为 <strong>123456</strong>。<br>建议登录后立即修改密码。</div>
+        <div class="modal-desc">系统将生成一个仅显示一次的临时密码。<br>请登录后立即修改密码。</div>
         <div class="modal-actions">
           <button class="btn btn-secondary" onclick="hideResetModal()">取消</button>
           <button class="btn btn-danger" id="resetConfirmBtn" onclick="doResetPwd()">确认重置</button>
@@ -559,7 +559,7 @@ body {
         <div class="modal-success">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           <div class="s-text">密码已重置</div>
-          <div class="s-sub">默认密码：<strong>123456</strong>，请登录后修改</div>
+          <div class="s-sub">临时密码：<strong id="temporaryPassword"></strong><br>请妥善记录并登录后修改</div>
         </div>
       </div>
     </div>
@@ -781,6 +781,8 @@ async function doResetPwd() {
   try {
     const r = await fetch('http://localhost:3001/api/settings/reset-password', { method: 'POST' });
     if (!r.ok) throw new Error('重置失败');
+    const data = await r.json();
+    document.getElementById('temporaryPassword').textContent = data.temporaryPassword || '';
     document.getElementById('resetConfirm').style.display = 'none';
     document.getElementById('resetSuccess').style.display = '';
     setTimeout(hideResetModal, 2500);

@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -290,11 +290,26 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     } else {
         let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
         if prisma_cli.exists() {
+            let backup_dir = data_dir.join("backups");
+            fs::create_dir_all(&backup_dir)
+                .map_err(|e| format!("创建升级备份目录失败: {}", e))?;
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let safety_backup = backup_dir.join(format!("classnode-backup-{}-pre-upgrade.classdb", timestamp));
+            fs::copy(&db_path, &safety_backup)
+                .map_err(|e| format!("数据库升级前备份失败，已取消升级: {}", e))?;
+            let _ = fs::write(
+                safety_backup.with_extension("classdb.meta"),
+                r#"{"source":"safety-upgrade"}"#,
+            );
+            eprintln!("升级前安全备份已创建: {:?}", safety_backup);
             eprintln!("同步数据库 schema...");
             let status = {
                 let mut cmd = Command::new(&node);
                 cmd.arg(&prisma_cli)
-                    .args(["db", "push", "--accept-data-loss", "--skip-generate"])
+                    .args(["db", "push", "--skip-generate"])
                     .current_dir(&server_dir)
                     .env("DATABASE_URL", &db_url);
                 #[cfg(target_os = "windows")]
@@ -307,7 +322,10 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
                 let _ = std::fs::write(&version_file, &current_schema_hash);
                 eprintln!("数据库同步完成, schema 已标记");
             } else {
-                eprintln!("数据库迁移警告: 进程退出码 {:?}", status.code());
+                return Err(format!(
+                    "数据库升级被安全检查阻止（退出码 {:?}）。备份位于 {:?}",
+                    status.code(), safety_backup
+                ));
             }
         } else {
             eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");

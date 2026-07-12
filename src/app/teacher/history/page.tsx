@@ -19,6 +19,7 @@ export default function HistoryPage() {
     data: any;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [previewingClassroomId, setPreviewingClassroomId] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportStage, setExportStage] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
@@ -27,6 +28,9 @@ export default function HistoryPage() {
   // 恢复课堂弹窗
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const previewingRef = useRef(false);
+  const exportingRef = useRef(false);
+  const restoringRef = useRef(false);
 
   const { socket, on } = useSocket();
 
@@ -46,6 +50,9 @@ export default function HistoryPage() {
 
   // 点击导出：先获取数据并展示预览
   const handlePreview = async (classroomId: string) => {
+    if (previewingRef.current || exportingRef.current) return;
+    previewingRef.current = true;
+    setPreviewingClassroomId(classroomId);
     const cr = history.find(h => h.id === classroomId);
     try {
       const data = await api.exportConversations(classroomId);
@@ -58,6 +65,9 @@ export default function HistoryPage() {
       setExportStage('');
     } catch (e: any) {
       setToast({ msg: '获取数据失败: ' + e.message, type: 'error' });
+    } finally {
+      previewingRef.current = false;
+      setPreviewingClassroomId(null);
     }
   };
 
@@ -76,7 +86,8 @@ export default function HistoryPage() {
 
   // 确认导出：服务端生成并下载
   const handleConfirmExport = async () => {
-    if (!preview) return;
+    if (!preview || exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     setExportProgress(0);
     setExportStage('正在准备导出...');
@@ -114,6 +125,7 @@ export default function HistoryPage() {
     } catch (e: any) {
       setToast({ msg: '导出失败: ' + e.message, type: 'error' });
     }
+    exportingRef.current = false;
     setExporting(false);
     setExportProgress(null);
     setExportStage('');
@@ -121,6 +133,8 @@ export default function HistoryPage() {
 
   // 恢复已结束的课堂
   const handleRestoreClassroom = async (id: string) => {
+    if (restoringRef.current) return;
+    restoringRef.current = true;
     setRestoring(true);
     try {
       await api.restoreClassroom(id);
@@ -130,6 +144,7 @@ export default function HistoryPage() {
     } catch (e: any) {
       setToast({ msg: '恢复失败: ' + (e.message || '未知错误'), type: 'error' });
     }
+    restoringRef.current = false;
     setRestoring(false);
   };
 
@@ -317,12 +332,13 @@ export default function HistoryPage() {
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
+                            disabled={previewingClassroomId !== null || exporting}
                             style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                            导出对话
+                            {previewingClassroomId === cr.id ? '准备中...' : '导出对话'}
                           </button>
-                          <button onClick={() => setRestoreTarget(cr.id)}
+                          <button onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
                             title="恢复课堂"
                             style={{
                               fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
@@ -630,38 +646,52 @@ function BackupManager() {
   const [resetting, setResetting] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [backupAction, setBackupAction] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupActionRef = useRef(false);
 
   useEffect(() => { api.getBackups().then(setBackups).catch(() => {}); }, []);
 
   const handleBackup = async () => {
+    if (backupActionRef.current) return;
+    backupActionRef.current = true;
+    setBackupAction('create');
     setCreating(true);
     try {
       const result = await api.createBackup();
       setToast({ msg: '备份成功！', type: 'success' });
-      api.getBackups().then(setBackups);
+      setBackups(await api.getBackups());
     } catch (e: any) {
       setToast({ msg: '备份失败: ' + e.message, type: 'error' });
     }
+    backupActionRef.current = false;
+    setBackupAction(null);
     setCreating(false);
   };
 
   const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || backupActionRef.current) return;
+    backupActionRef.current = true;
+    setBackupAction('import');
     setImporting(true);
     try {
       await api.uploadBackup(file);
       setToast({ msg: '导入备份成功！', type: 'success' });
-      api.getBackups().then(setBackups);
+      setBackups(await api.getBackups());
     } catch (e: any) {
       setToast({ msg: '导入失败: ' + (e.message || e), type: 'error' });
     }
+    backupActionRef.current = false;
+    setBackupAction(null);
     setImporting(false);
     if (e.target) e.target.value = '';
   };
 
   const handleRestore = async (name: string) => {
+    if (backupActionRef.current) return;
+    backupActionRef.current = true;
+    setBackupAction('restore');
     setRestoring(true);
     try {
       await api.restoreBackup(name);
@@ -671,23 +701,32 @@ function BackupManager() {
     } catch (e: any) {
       setToast({ msg: '恢复失败: ' + e.message, type: 'error' });
     }
+    backupActionRef.current = false;
+    setBackupAction(null);
     setRestoring(false);
   };
 
   const handleDelete = async (name: string) => {
+    if (backupActionRef.current) return;
+    backupActionRef.current = true;
+    setBackupAction('delete');
     setDeleting(true);
     try {
       await api.deleteBackup(name);
       setDeleteTarget(null);
-      api.getBackups().then(setBackups);
+      setBackups(await api.getBackups());
     } catch (e: any) {
       setToast({ msg: '删除失败: ' + e.message, type: 'error' });
     }
+    backupActionRef.current = false;
+    setBackupAction(null);
     setDeleting(false);
   };
 
   const handleReset = async () => {
-    if (resetConfirmText !== '确认初始化') return;
+    if (resetConfirmText !== '确认初始化' || backupActionRef.current) return;
+    backupActionRef.current = true;
+    setBackupAction('reset');
     setResetting(true);
     try {
       await api.resetAllData();
@@ -698,6 +737,8 @@ function BackupManager() {
     } catch (e: any) {
       setToast({ msg: '初始化失败: ' + e.message, type: 'error' });
     }
+    backupActionRef.current = false;
+    setBackupAction(null);
     setResetting(false);
   };
 
@@ -715,7 +756,7 @@ function BackupManager() {
     <div>
       {/* 操作栏：备份 + 初始化 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <button className="btn btn-primary" onClick={handleBackup} disabled={creating}
+        <button className="btn btn-primary" onClick={() => void handleBackup()} disabled={backupAction !== null}
           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {creating ? (
             <>
@@ -731,7 +772,7 @@ function BackupManager() {
             </>
           )}
         </button>
-        <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+        <button onClick={() => fileInputRef.current?.click()} disabled={backupAction !== null}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
             borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
@@ -744,7 +785,7 @@ function BackupManager() {
         <input ref={fileInputRef} type="file" accept=".classbak,.classdb,.zip,.db" style={{ display: 'none' }}
           onChange={handleImportBackup} />
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowResetDialog(true)}
+        <button onClick={() => setShowResetDialog(true)} disabled={backupAction !== null}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
             borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
@@ -817,12 +858,12 @@ function BackupManager() {
                       border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569' }}>
                     下载
                   </a>
-                  <button onClick={() => setRestoreTarget(b.name)}
+                  <button onClick={() => setRestoreTarget(b.name)} disabled={backupAction !== null}
                     style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb' }}>
                     恢复
                   </button>
-                  <button onClick={() => setDeleteTarget(b.name)}
+                  <button onClick={() => setDeleteTarget(b.name)} disabled={backupAction !== null}
                     style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626' }}>
                     删除

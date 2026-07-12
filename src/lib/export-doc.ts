@@ -1058,7 +1058,8 @@ export function exportMessageToWord(content: string, agentName: string, timestam
         const codeText = block.lines.join('\n');
         children.push(
           new Paragraph({
-            spacing: { before: 80, after: 40, left: 200 },
+            spacing: { before: 80, after: 40 },
+            indent: { left: 200 },
             shading: { fill: COLORS.codeBg, type: ShadingType.CLEAR },
             children: [
               new TextRun({ text: codeText, size: 18, font: { name: CODE_FONT }, color: COLORS.text }),

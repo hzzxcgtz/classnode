@@ -6,6 +6,7 @@ import { ZhipuaiBot } from './zhipuai/index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { decrypt, isEncrypted } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -863,7 +864,7 @@ async function proxyZhipuai(
 ): Promise<ProxyResult> {
   try {
     const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
-    const apiSecret = extra.apiSecret || '';
+    const apiSecret = extra.apiSecret ? (isEncrypted(extra.apiSecret) ? decrypt(extra.apiSecret) : extra.apiSecret) : '';
 
     if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
     if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };
@@ -919,7 +920,7 @@ async function proxyZhipuaiStream(
 ): Promise<ProxyResult> {
   try {
     const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
-    const apiSecret = extra.apiSecret || '';
+    const apiSecret = extra.apiSecret ? (isEncrypted(extra.apiSecret) ? decrypt(extra.apiSecret) : extra.apiSecret) : '';
 
     if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
     if (!apiSecret) return { success: false, error: '智谱清言需要 API Secret' };

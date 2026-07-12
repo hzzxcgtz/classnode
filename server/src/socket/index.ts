@@ -4,6 +4,8 @@ import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { buildShieldFilter } from '../services/shield-filter.js';
 import { decrypt } from '../services/crypto.js';
+import { hasTeacherSessionCookie } from '../middleware/auth.js';
+import { verifyStudentToken } from '../middleware/student-auth.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -143,6 +145,7 @@ async function checkWithFilter(prisma: PrismaClient, content: string): Promise<{
 interface JoinRoomData {
   classroomCode: string;
   studentId: string;
+  token?: string;
 }
 
 interface SendMessageData {
@@ -200,6 +203,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         if (!classroom || classroom.status === 'ended') {
           socket.emit('ai-error', { error: '课堂不存在或已结束' });
+          return;
+        }
+
+        const studentSession = verifyStudentToken(data.token);
+        if (!studentSession || studentSession.classroomId !== classroom.id || studentSession.studentId !== data.studentId) {
+          socket.emit('student-auth-error', { error: '学生会话已失效，请重新选择身份' });
           return;
         }
 
@@ -282,6 +291,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
     // 教师加入课堂看板
     socket.on('join-teacher-board', async (classroomId: string) => {
+      if (!hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
+        socket.emit('teacher-auth-error', { error: '教师会话已失效，请重新登录' });
+        return;
+      }
       socket.join(`teacher:${classroomId}`);
       socket.data.classroomId = classroomId;
       socket.data.isTeacher = true;
@@ -291,6 +304,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     // 学生发送消息（流式）
     socket.on('send-message', async (data: SendMessageData) => {
       try {
+        if (!socket.data.classroomId || !socket.data.studentId || socket.data.studentId !== data.studentId) {
+          socket.emit('student-auth-error', { error: '学生身份无效，请重新进入课堂' });
+          return;
+        }
         const classroom = await prisma.classroom.findUnique({
           where: { code: data.classroomCode },
           include: {
@@ -305,6 +322,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         if (!classroom || classroom.status === 'ended') {
           socket.emit('ai-error', { error: '课堂不存在或已结束' });
+          return;
+        }
+        if (classroom.id !== socket.data.classroomId) {
+          socket.emit('student-auth-error', { error: '课堂身份不匹配' });
           return;
         }
 
@@ -734,6 +755,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     // 教师发送通知给学生：全班广播 / 定向单个学生 / 定向多个学生（如小组成员）
     // 教师通知：全班广播 / 定向单个学生 / 定向组（分组/高级模式）
     socket.on('teacher-send-notification', async (data: { classroomId: string; studentId?: string; groupId?: string; message: string }) => {
+      if (!socket.data.isTeacher || !hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
+        socket.emit('teacher-auth-error', { error: '无权发送教师通知' });
+        return;
+      }
       const { classroomId, studentId, groupId, message } = data;
       if (!classroomId) return;
       try {

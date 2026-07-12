@@ -34,6 +34,10 @@ export default function ClassesPage() {
     classrooms: { id: string; title: string; status: string }[];
   } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [batchAction, setBatchAction] = useState<string | null>(null);
+  const batchActionRef = useRef(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const deleteBusyRef = useRef(false);
   const [classAvatars, setClassAvatars] = useState<Record<number, string>>({});
   const [studentAvatars, setStudentAvatars] = useState<Record<string, string>>({});
   const [classIconPicker, setClassIconPicker] = useState<string | null>(null);
@@ -127,25 +131,101 @@ export default function ClassesPage() {
   };
 
   const handleDeleteClass = async (id: string) => {
+    if (deleteBusyRef.current) return;
     const cls = classes.find(c => c.id === id);
     if (!cls) return;
+    deleteBusyRef.current = true;
+    setDeleteBusyId(`class:${id}`);
     // 先检查是否被课堂使用
     try {
       const usage = await api.checkClassUsage(id);
       if (usage.used) {
         setDeleteBlocked({ classId: id, className: cls.name, classrooms: usage.classrooms });
+        deleteBusyRef.current = false;
+        setDeleteBusyId(null);
         return;
       }
-    } catch {
-      // 接口查不到时，直接降级为 confirm
+    } catch (error) {
+      setToast({ msg: `无法确认班级是否正在使用：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+      deleteBusyRef.current = false;
+      setDeleteBusyId(null);
+      return;
     }
-    if (!confirm('确定删除此班级及所有学生数据？')) return;
+    if (!confirm('确定删除此班级及所有学生数据？')) {
+      deleteBusyRef.current = false;
+      setDeleteBusyId(null);
+      return;
+    }
     try {
       await api.deleteClass(id);
       if (selectedClass === id) { setSelectedClass(null); setStudents([]); }
-      loadClasses();
-    } catch (e: any) {
-      setDeleteBlocked({ classId: id, className: cls.name, classrooms: [{ id: '', title: e.message, status: '' }] });
+      await loadClasses();
+      setToast({ msg: `班级「${cls.name}」已删除`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `删除班级失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      deleteBusyRef.current = false;
+      setDeleteBusyId(null);
+    }
+  };
+
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+    if (!selectedClass || deleteBusyRef.current) return;
+    if (!confirm(`确定删除 ${studentName}？`)) return;
+    deleteBusyRef.current = true;
+    setDeleteBusyId(`student:${studentId}`);
+    try {
+      await api.deleteStudent(selectedClass, studentId);
+      await Promise.all([loadStudents(), loadClasses()]);
+      setSelectedStudentIds(previous => { const next = new Set(previous); next.delete(studentId); return next; });
+      setToast({ msg: `学生「${studentName}」已删除`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `删除学生失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      deleteBusyRef.current = false;
+      setDeleteBusyId(null);
+    }
+  };
+
+  const handleBatchDeleteStudents = async () => {
+    if (!selectedClass || batchActionRef.current) return;
+    const ids = [...selectedStudentIds];
+    if (!ids.length || !confirm(`确定删除选中的 ${ids.length} 名学生？此操作不可撤销。`)) return;
+    batchActionRef.current = true;
+    setBatchAction('delete');
+    try {
+      const results = await Promise.allSettled(ids.map(studentId => api.deleteStudent(selectedClass, studentId)));
+      const succeeded = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      if (succeeded) {
+        setSelectedStudentIds(new Set());
+        await Promise.all([loadStudents(), loadClasses()]);
+      }
+      setToast(failed ? { msg: `已删除 ${succeeded} 名学生，${failed} 名删除失败，请重试`, type: 'error' } : { msg: `已删除 ${succeeded} 名学生`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      batchActionRef.current = false;
+      setBatchAction(null);
+    }
+  };
+
+  const handleBatchClearAvatars = async () => {
+    if (batchActionRef.current) return;
+    const ids = [...selectedStudentIds];
+    if (!ids.length || !confirm(`确定清除选中 ${ids.length} 名学生的头像？`)) return;
+    batchActionRef.current = true;
+    setBatchAction('avatars');
+    try {
+      await api.clearStudentsAvatar(ids);
+      setSelectedStudentIds(new Set());
+      await loadStudents();
+      setToast({ msg: `已清除 ${ids.length} 名学生的头像`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `清除头像失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      batchActionRef.current = false;
+      setBatchAction(null);
     }
   };
 
@@ -490,11 +570,11 @@ export default function ClassesPage() {
                         e.currentTarget.style.borderColor = 'transparent';
                         e.currentTarget.style.background = 'transparent';
                       }}
-                      onClick={(e) => { e.stopPropagation(); handleDeleteClass(c.id); }}>
+                      onClick={(e) => { e.stopPropagation(); void handleDeleteClass(c.id); }} disabled={deleteBusyId !== null}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>
-                      删除此班级
+                      {deleteBusyId === `class:${c.id}` ? '删除中...' : '删除此班级'}
                     </button>
                   </div>
                 </div>
@@ -669,13 +749,13 @@ export default function ClassesPage() {
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
-                      <button onClick={async () => { const count = selectedStudentIds.size; if (!confirm(`确定删除选中的 ${count} 名学生？此操作不可撤销。`)) return; for (const sid of selectedStudentIds) { await api.deleteStudent(selectedClass, sid); } setSelectedStudentIds(new Set()); loadStudents(); loadClasses(); }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchDeleteStudents()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        删除学生
+                        {batchAction === 'delete' ? '删除中...' : '删除学生'}
                       </button>
-                      <button onClick={async () => { if (!confirm(`确定清除选中 ${selectedStudentIds.size} 名学生的头像？`)) return; try { await api.clearStudentsAvatar([...selectedStudentIds]); setToast({ msg: `已清除 ${selectedStudentIds.size} 名学生的头像`, type: 'success' }); setSelectedStudentIds(new Set()); loadStudents(); } catch {} }} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#f59e0b', border: '1px solid #fcd34d', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#f59e0b', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        清除头像
+                        {batchAction === 'avatars' ? '清除中...' : '清除头像'}
                       </button>
                       <button onClick={() => setBatchEditGenderModal(true)} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#8b5cf6', border: '1px solid #c4b5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M17 8l2 2 4-4"/></svg>
@@ -942,14 +1022,8 @@ export default function ClassesPage() {
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
-                              <button title="删除"
-                                onClick={async () => {
-                                  if (confirm(`确定删除 ${s.name}？`)) {
-                                    await api.deleteStudent(selectedClass, s.id);
-                                    loadStudents();
-                                    loadClasses();
-                                  }
-                                }}
+                              <button title={deleteBusyId ? '正在删除，请稍候' : '删除'} disabled={deleteBusyId !== null}
+                                onClick={() => void handleDeleteStudent(s.id, s.name)}
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',

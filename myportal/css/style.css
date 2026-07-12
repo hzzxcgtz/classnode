@@ -260,6 +260,13 @@ section { padding: 88px 0; position: relative; }
 .feature-icon svg { width: 24px; height: 24px; }
 .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
 .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+
+/* QA card style for "为什么选择 ClassNode" */
+.qa-card .feature-icon { margin-bottom: 16px; }
+.qa-content { display: flex; flex-direction: column; gap: 8px; }
+.qa-q { font-size: 15px; font-weight: 700; color: var(--text-primary); line-height: 1.5; }
+.qa-a { font-size: 14px; color: var(--text-secondary); line-height: 1.75; }
+
 .feature-num {
   position: absolute; top: 22px; right: 24px; font-size: 13px; font-weight: 700;
   color: var(--text-tertiary); font-variant-numeric: tabular-nums;

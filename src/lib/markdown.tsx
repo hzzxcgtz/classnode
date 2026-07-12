@@ -27,7 +27,8 @@ export function Markdown({ children, allowImages = true, className, streaming }:
       components={{
         img: ({ src, alt }) => {
           if (!allowImages) return null;
-          const fullSrc = src?.startsWith('/') ? `${API_BASE_URL}${src}` : src;
+          if (typeof src !== 'string') return null;
+          const fullSrc = src.startsWith('/') ? `${API_BASE_URL}${src}` : src;
           return (
             <img src={fullSrc} alt={alt || ''}
               style={{ maxWidth: 220, maxHeight: 180, borderRadius: 10, objectFit: 'cover', display: 'block', margin: '4px 0' }} />
@@ -80,9 +81,10 @@ export function Markdown({ children, allowImages = true, className, streaming }:
   );
 
   return (
-    <>
+    <div className={className}>
       {content}
-    </>
+      {streaming && <span aria-hidden="true" style={{ display: 'inline-block', width: 2, height: '1em', marginLeft: 3, background: 'currentColor', verticalAlign: 'text-bottom', animation: 'pulse 1s infinite' }} />}
+    </div>
   );
 }
 

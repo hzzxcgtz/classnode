@@ -18,13 +18,18 @@ function getKeyDir(): string {
 function resolveEncryptionKey(): string {
   // 1. 优先使用环境变量
   if (process.env.ENCRYPTION_KEY) {
+    if (Buffer.byteLength(process.env.ENCRYPTION_KEY, 'utf8') !== 32) {
+      throw new Error('ENCRYPTION_KEY 必须是恰好 32 字节的字符串');
+    }
     return process.env.ENCRYPTION_KEY;
   }
 
   // 2. 尝试读取本地密钥文件
   const keyFile = path.join(getKeyDir(), '.encryption.key');
   if (fs.existsSync(keyFile)) {
-    return fs.readFileSync(keyFile, 'utf8').trim();
+    const key = fs.readFileSync(keyFile, 'utf8').trim();
+    if (Buffer.byteLength(key, 'utf8') !== 32) throw new Error('本地加密密钥文件格式无效');
+    return key;
   }
 
   // 3. 首次运行：自动生成随机密钥并持久化
@@ -37,9 +42,7 @@ function resolveEncryptionKey(): string {
     console.log(`[Crypto] 已自动生成加密密钥: ${keyFile}`);
     return newKey;
   } catch (e) {
-    // 4. 写入失败时回退默认密钥（不影响启动）
-    console.warn('[Crypto] 无法写入密钥文件，使用默认密钥');
-    return crypto.createHash('sha256').update('classnode-default-key-2024').digest('hex').slice(0, 32);
+    throw new Error(`[Crypto] 无法安全创建加密密钥文件: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

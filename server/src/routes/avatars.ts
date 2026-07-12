@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { sanitizeSvg } from '../services/upload-security.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const router: Router = Router();
@@ -143,14 +144,15 @@ router.post('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { svgContent, category, gender, sortOrder } = req.body;
-    if (!svgContent) {
+    const safeSvg = typeof svgContent === 'string' ? sanitizeSvg(svgContent) : null;
+    if (!safeSvg) {
       return res.status(400).json({ error: 'SVG 内容不能为空' });
     }
     const validCategory = category === 'class' ? 'class' : 'student';
     const validGender = ['boy', 'girl', 'neutral'].includes(gender) ? gender : 'neutral';
     const avatar = await prisma.avatar.create({
       data: {
-        svgContent,
+        svgContent: safeSvg,
         category: validCategory,
         gender: validGender,
         sortOrder: sortOrder || 0,
@@ -170,7 +172,11 @@ router.put('/:id', async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: '无效的 ID' });
     const { svgContent, gender, sortOrder } = req.body;
     const data: any = {};
-    if (svgContent !== undefined) data.svgContent = svgContent;
+    if (svgContent !== undefined) {
+      const safeSvg = typeof svgContent === 'string' ? sanitizeSvg(svgContent) : null;
+      if (!safeSvg) return res.status(400).json({ error: 'SVG 包含不安全或不支持的内容' });
+      data.svgContent = safeSvg;
+    }
     if (gender !== undefined && ['boy', 'girl', 'neutral'].includes(gender)) data.gender = gender;
     if (sortOrder !== undefined) data.sortOrder = sortOrder;
     const avatar = await prisma.avatar.update({ where: { id }, data });
@@ -187,10 +193,11 @@ router.delete('/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: '无效的 ID' });
     const avatar = await prisma.avatar.findUnique({ where: { id }, select: { svgContent: true } });
-    // 清除引用
-    await prisma.student.updateMany({ where: { avatarId: id }, data: { avatarId: null } });
-    await prisma.class.updateMany({ where: { avatarId: id }, data: { avatarId: null } });
-    await prisma.avatar.delete({ where: { id } });
+    await prisma.$transaction(async tx => {
+      await tx.student.updateMany({ where: { avatarId: id }, data: { avatarId: null } });
+      await tx.class.updateMany({ where: { avatarId: id }, data: { avatarId: null } });
+      await tx.avatar.delete({ where: { id } });
+    });
     // 删除物理文件
     if (avatar) deleteAvatarFile(avatar.svgContent);
     res.json({ success: true });
@@ -344,24 +351,29 @@ router.put('/student-self/:studentId', async (req, res) => {
     const { avatarId, svgContent, gender } = req.body;
     const student = await prisma.student.findUnique({ where: { id: req.params.studentId } });
     if (!student) return res.status(404).json({ error: '学生未找到' });
-    if (student.avatarChangeTokens < 1) return res.status(403).json({ error: '没有可用的更换次数' });
-
-    if (avatarId) {
-      await prisma.student.update({
-        where: { id: student.id },
-        data: { avatarId, avatarChangeTokens: { decrement: 1 } },
-      });
-    } else if (svgContent) {
-      const avatar = await prisma.avatar.create({
-        data: { svgContent, category: 'student', gender: gender || 'neutral', source: 'student' },
-      });
-      await prisma.student.update({
-        where: { id: student.id },
-        data: { avatarId: avatar.id, avatarChangeTokens: { decrement: 1 } },
-      });
-    } else {
+    if (!avatarId && !svgContent) {
       return res.status(400).json({ error: '请提供 avatarId 或 svgContent' });
     }
+    const safeSvg = typeof svgContent === 'string' ? sanitizeSvg(svgContent) : null;
+    if (svgContent && !safeSvg) return res.status(400).json({ error: 'SVG 包含不安全或不支持的内容' });
+
+    await prisma.$transaction(async tx => {
+      let nextAvatarId = avatarId ? Number(avatarId) : null;
+      if (nextAvatarId) {
+        const allowed = await tx.avatar.findFirst({ where: { id: nextAvatarId, isActive: true, category: 'student' }, select: { id: true } });
+        if (!allowed) throw new Error('INVALID_AVATAR');
+      } else if (safeSvg) {
+        const created = await tx.avatar.create({
+          data: { svgContent: safeSvg, category: 'student', gender: gender || 'neutral', source: 'student' },
+        });
+        nextAvatarId = created.id;
+      }
+      const changed = await tx.student.updateMany({
+        where: { id: student.id, avatarChangeTokens: { gte: 1 } },
+        data: { avatarId: nextAvatarId, avatarChangeTokens: { decrement: 1 } },
+      });
+      if (changed.count !== 1) throw new Error('NO_AVATAR_TOKEN');
+    });
 
     // 通知教师端实时更新头像
     try {
@@ -397,6 +409,8 @@ router.put('/student-self/:studentId', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    if (error instanceof Error && error.message === 'NO_AVATAR_TOKEN') return res.status(403).json({ error: '没有可用的更换次数' });
+    if (error instanceof Error && error.message === 'INVALID_AVATAR') return res.status(400).json({ error: '所选头像不可用' });
     res.status(500).json({ error: '更换头像失败' });
   }
 });

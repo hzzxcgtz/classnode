@@ -19,6 +19,27 @@ const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; siz
   return <>{icons[name] ?? null}</>;
 };
 
+const SectionCard = ({ title, color, children, icon }: { title: string; color: string; children: React.ReactNode; icon?: React.ReactNode }) => (
+  <div style={{
+    background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0',
+    overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+    marginBottom: 16,
+  }}>
+    <div style={{
+      padding: '14px 20px',
+      display: 'flex', alignItems: 'center', gap: 10,
+      borderLeft: `3px solid ${color}`,
+      background: `linear-gradient(135deg, ${color}08, ${color}04)`,
+    }}>
+      {icon && <span style={{ color, display: 'flex', flexShrink: 0 }}>{icon}</span>}
+      <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>{title}</h3>
+    </div>
+    <div style={{ padding: '20px 24px' }}>
+      {children}
+    </div>
+  </div>
+);
+
 const storyPainPoints = [
   {
     q: '学生登都登不进，AI 白调了？',
@@ -43,10 +64,10 @@ const storyPainPoints = [
 ];
 
 const techPoints = [
-  { title: '轻量化部署', desc: '双击安装、浏览器访问。不用求助网管，不用折腾云服务器，在自己电脑上就能跑起来，Wi-Fi 环境即开即用。', icon: 'laptop' },
-  { title: '数据本地化', desc: '所有对话记录、学情数据保存在教师电脑本地硬盘，不经过任何第三方云服务器，学生隐私与课堂数据安全有保障。', icon: 'shield' },
-  { title: '纯净安全', desc: '学生端无需互联网即可与 AI 互动，通过教师机统一接入 AI 服务，既节省带宽又从根本上保障学生上网安全。', icon: 'wifi' },
-  { title: '教学全闭环', desc: '从创建课堂、配置 AI 智能体，到课上实时监控、课后一键导出对话报告——完整覆盖 AI 互动教学的全流程，不遗漏任何一个环节。', icon: 'check' },
+  { title: '轻量化部署', desc: '双击安装、浏览器访问。不用云服务器，自己电脑上就能跑，即开即用。', icon: 'laptop' },
+  { title: '数据本地化', desc: '所有数据保存在本地硬盘，不经过第三方服务器，学生隐私安全有保障。', icon: 'shield' },
+  { title: '纯净安全', desc: '参与者端无需互联网，通过管理端统一接入 AI，节省带宽且保障校园网络安全。', icon: 'wifi' },
+  { title: '完整工作流', desc: '从配置智能体、扫码互动到导出报告，完整覆盖 AI 课堂互动全流程。', icon: 'check' },
 ];
 
 export default function AboutPage() {
@@ -172,99 +193,89 @@ export default function AboutPage() {
 
       {/* ========== Hero ========== */}
       <div style={{
-        background: '#ffffff', borderRadius: 20, overflow: 'hidden', marginBottom: 20,
-        border: '1px solid #e2e8f0', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
-        position: 'relative',
+        display: 'flex', alignItems: 'flex-start', gap: 20,
+        marginBottom: 28,
       }}>
-        <div style={{ height: 4, width: '100%', background: 'linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6)' }} />
-        <div style={{ padding: '36px 40px 30px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginBottom: 28 }}>
-            {logoErr ? (
-              <div style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0, background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "1.875rem", boxShadow: '0 6px 16px rgba(59,130,246,0.25)' }}>C</div>
-            ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: 76, height: 76, borderRadius: 16, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+        {logoErr ? (
+          <div style={{ width: 48, height: 48, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "1.25rem", boxShadow: '0 4px 12px rgba(59,130,246,0.25)' }}>C</div>
+        ) : (
+          <img src="/logo.png" alt="ClassNode" style={{ width: 48, height: 48, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.3 }}>ClassNode</h1>
+            <span style={{ fontSize: "0.813rem", color: '#94a3b8', fontWeight: 500, padding: '1px 10px', borderRadius: 6, background: '#f1f4f9' }}>
+              v{APP_VERSION}
+            </span>
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              <button onClick={checkUpdate} disabled={checkingUpdate} style={{
+                  fontSize: "0.75rem", color: '#64748b', background: 'transparent',
+                  border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+                  padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
+                  transition: 'all 0.15s', lineHeight: '22px',
+                }}
+                  onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
+                  onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
+                  {checkingUpdate ? '检查中...' : '检查更新'}
+                </button>
+              {updateFound && (
+                <span style={{
+                  position: 'absolute', top: -3, right: -3,
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: '#ef4444',
+                }} />
+              )}
+            </span>
+            {updateMsg && (
+              <a href={updateMsg.type === 'success' ? 'https://gitcode.com/weixin_41523975/classnode/releases' : undefined}
+                 target={updateMsg.type === 'success' ? '_blank' : undefined}
+                 rel={updateMsg.type === 'success' ? 'noopener noreferrer' : undefined}
+                 style={{
+                textDecoration: 'none', cursor: updateMsg.type === 'success' ? 'pointer' : 'default',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: "0.75rem", fontWeight: 500,
+                padding: '2px 8px', borderRadius: 6,
+                flexShrink: 0, maxWidth: 240, overflow: 'hidden',
+                color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
+                background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
+                border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
+              }}>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '20px' }}>{updateMsg.text}</span>
+                <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setUpdateMsg(null); }} style={{
+                  cursor: 'pointer', opacity: 0.4, flexShrink: 0,
+                  fontSize: "0.688rem", lineHeight: '20px',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
+                >✕</span>
+              </a>
             )}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h1 style={{ fontSize: "2rem", fontWeight: 700, margin: 0, color: '#0f172a', letterSpacing: -0.5 }}>ClassNode</h1>
-                <span style={{ fontSize: "0.938rem", color: '#94a3b8', fontWeight: 500, padding: '2px 10px', borderRadius: 6, background: '#f1f4f9' }}>
-                  v{APP_VERSION}
-                </span>
-                <span style={{ position: 'relative', display: 'inline-flex' }}>
-                  <button onClick={checkUpdate} disabled={checkingUpdate} style={{
-                      fontSize: "0.75rem", color: '#64748b', background: 'transparent',
-                      border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-                      padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
-                      transition: 'all 0.15s', lineHeight: '22px',
-                    }}
-                      onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
-                      onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
-                      {checkingUpdate ? '检查中...' : '检查更新'}
-                    </button>
-                  {updateFound && (
-                    <span style={{
-                      position: 'absolute', top: -3, right: -3,
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: '#ef4444',
-                    }} />
-                  )}
-                </span>
-                {updateMsg && (
-                  <a href={updateMsg.type === 'success' ? 'https://classnode.icu/' : undefined}
-                     target={updateMsg.type === 'success' ? '_blank' : undefined}
-                     rel={updateMsg.type === 'success' ? 'noopener noreferrer' : undefined}
-                     style={{
-                    textDecoration: 'none', cursor: updateMsg.type === 'success' ? 'pointer' : 'default',
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    fontSize: "0.75rem", fontWeight: 500,
-                    padding: '2px 8px', borderRadius: 6,
-                    flexShrink: 0, maxWidth: 240, overflow: 'hidden',
-                    color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
-                    background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
-                    border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                  }}>
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '20px' }}>{updateMsg.text}</span>
-                    <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setUpdateMsg(null); }} style={{
-                      cursor: 'pointer', opacity: 0.4, flexShrink: 0,
-                      fontSize: "0.688rem", lineHeight: '20px',
-                    }}
-                      onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-                      onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
-                    >✕</span>
-                  </a>
-                )}
-                {/* 发现新版本 → 提示文字已集成在 updateMsg 中 */}
-              </div>
-              <p style={{ fontSize: "1rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.5 }}>
-                让 AI 在真实课堂落地，零门槛、不设限。
-              </p>
-            </div>
           </div>
-          <div style={{
-            background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%)',
-            border: '1px solid #dbeafe',
-            borderRadius: 12, padding: '20px 24px',
-            display: 'flex', gap: 14, alignItems: 'flex-start',
-          }}>
-            <div style={{
-              flexShrink: 0, marginTop: 2,
-              width: 32, height: 32, borderRadius: 8,
-              background: '#3b82f6', color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontSize: "0.938rem", color: '#1e3a5f', lineHeight: 1.8, fontWeight: 500 }}>
-                专为真实课堂而生。将您在 Coze、智谱清言、百度文心等平台创建好的 AI 智能体，安全、可控、零门槛地送到每一个学生面前。
-              </p>
-            </div>
-          </div>
+          <p style={{ fontSize: "0.938rem", color: '#64748b', margin: '4px 0 0', lineHeight: 1.5 }}>
+            让 AI 在真实课堂落地，零门槛、不设限。
+          </p>
         </div>
       </div>
 
+      {/* ========== 引用卡片 ========== */}
+      <SectionCard title="教育变革的同行者" color="#3b82f6">
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{
+            fontSize: "2.5rem", lineHeight: 0.8,
+            color: '#cbd5e1', fontWeight: 400, fontFamily: 'Georgia, serif',
+            float: 'left', marginRight: 10, marginTop: 2,
+          }}>&ldquo;</div>
+          <p style={{ margin: '0 0 12px', fontSize: "0.938rem", color: '#475569', lineHeight: 1.9 }}>
+            在 AI 时代，技术不应该成为教学的门槛。ClassNode 不是大厂的高大上平台，而是一线教育者为真实课堂打造的"落地利器"。我希望用它，把你花心血在各类大模型上创建的 AI 智能体，安全、可控、无缝地接入到班级的每一个屏幕上。让我们一起，让 AI 课堂从"想试试"变成"天天用"。
+          </p>
+          <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'right', borderTop: '1px solid #eef2f6', paddingTop: 8 }}>
+            —— 张星昌 · 杭州市拱墅区教育研究院
+          </div>
+        </div>
+      </SectionCard>
+
       {/* ========== 更新日志 ========== */}
-        <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <SectionCard title="更新日志" color="#64748b">
           <button onClick={toggleChangelogs} style={{
             width: '100%', padding: '14px 20px', background: '#f8fafc',
             border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
@@ -317,60 +328,11 @@ export default function AboutPage() {
             )}
           </div>
         )}
-        </div>
+      </SectionCard>
 
       {/* ========== 缘起 ========== */}
-      <div style={{
-        background: '#fefcf7', borderRadius: 16,
-        border: '1px solid #ede9e0', padding: '36px 44px 32px',
-        marginBottom: 12, boxShadow: '0 6px 24px rgba(0,0,0,0.04)',
-        position: 'relative',
-      }}>
-        {/* 右上角折纸效果 */}
-        <div style={{
-          position: 'absolute', top: 0, right: 0, overflow: 'hidden',
-          width: 40, height: 40, borderRadius: '0 16px 0 0',
-        }}>
-          <div style={{
-            position: 'absolute', top: 0, right: 0,
-            width: 0, height: 0,
-            borderStyle: 'solid',
-            borderWidth: '0 40px 40px 0',
-            borderColor: 'transparent #e2e0d8 transparent transparent',
-          }} />
-          <div style={{
-            position: 'absolute', top: 0, right: 0,
-            width: 0, height: 0,
-            borderStyle: 'solid',
-            borderWidth: '0 36px 36px 0',
-            borderColor: 'transparent #fefcf7 transparent transparent',
-          }} />
-        </div>
-
-        <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-            <span style={{
-              fontSize: "2.5rem", fontWeight: 200, color: '#1e3a5f',
-              lineHeight: 1,
-            }}>缘</span>
-            <span style={{
-              fontSize: "2.5rem", fontWeight: 200, color: '#1e3a5f',
-              lineHeight: 1,
-            }}>起</span>
-            <span style={{
-              display: 'inline-block', width: 4, height: 4,
-              borderRadius: '50%', background: '#3b82f6',
-              marginLeft: 10, marginTop: 4, opacity: 0.6,
-            }} />
-          </div>
-          <span style={{
-            fontSize: "0.813rem", color: '#a8a29e',
-            paddingLeft: 16, borderLeft: '1px solid #e2e0d8',
-            letterSpacing: 0.5,
-          }}>为什么做这个系统</span>
-        </div>
-
-        <div style={{ fontSize: "1rem", color: '#57534e', lineHeight: 1.9 }}>
+      <SectionCard title="缘起 · 为什么做这个系统" color="#d97706">
+        <div style={{ fontSize: "0.938rem", color: '#475569', lineHeight: 1.9 }}>
           <p style={{ margin: '0 0 18px' }}>
             AI 技术发展很快。现在很多老师都能在 Coze、智谱清言、百度文心这些平台上调教出相当出色的 AI 智能体——能批改作文、能做英语陪练、能做历史解谜游戏。但问题来了：怎么让全班四十个孩子同时用上它？
           </p>
@@ -390,22 +352,10 @@ export default function AboutPage() {
             <strong style={{ color: '#2563eb', fontWeight: 600 }}>目的只有一个：让 AI 课堂从"想试试"变成"天天用"。</strong>
           </p>
         </div>
-      </div>
+      </SectionCard>
 
       {/* ========== 痛点 ========== */}
-      <div style={{
-        background: '#ffffff', borderRadius: 16,
-        border: '1px solid #e2e8f0', padding: '32px 36px',
-        marginBottom: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-          </div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
-            解决的教学<strong style={{ color: '#dc2626' }}>"老大难"</strong>
-          </h2>
-        </div>
+      <SectionCard title={'解决的教学"老大难"'} color="#dc2626">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {storyPainPoints.map((item, i) => {
             const accentColors = ['#fee2e2', '#fef9c3', '#dbeafe', '#d1fae5'];
@@ -451,22 +401,10 @@ export default function AboutPage() {
             );
           })}
         </div>
-      </div>
+      </SectionCard>
 
-      {/* ========== 技术底座 ========== */}
-      <div style={{
-        background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-        borderRadius: 16, padding: '32px 36px',
-        border: '1px solid #e2e8f0', marginBottom: 12,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          </div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
-            技术底座
-          </h2>
-        </div>
+      {/* ========== 核心特性 ========== */}
+      <SectionCard title="核心特性" color="#4f46e5">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {techPoints.map((item, i) => (
             <div key={i} style={{
@@ -484,7 +422,7 @@ export default function AboutPage() {
             </div>
           ))}
         </div>
-      </div>
+      </SectionCard>
 
       {/* ========== 底部信息 ========== */}
       <div style={{ textAlign: 'center', padding: '24px 0 16px', borderTop: '1px solid #eef2f6' }}>
@@ -508,10 +446,7 @@ export default function AboutPage() {
             </a>
           </div>
           <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>
-            张星昌 · 杭州市拱墅区教育研究院
-          </div>
-          <div>
-            <a href="mailto:hzzxc2012@163.com" style={{ fontSize: "0.813rem", color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>hzzxc2012@163.com</a>
+            Copyright 2026 编程研习工坊
           </div>
         </div>
       </div>

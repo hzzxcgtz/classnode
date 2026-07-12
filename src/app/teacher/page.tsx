@@ -35,6 +35,12 @@ export default function TeacherDashboard() {
     msg: string;
     type: "success" | "error";
   } | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [loadingQrClassroomId, setLoadingQrClassroomId] = useState<string | null>(null);
+  const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
+  const endingRef = useRef(false);
+  const settingsSavingRef = useRef(false);
+  const qrLoadingRef = useRef(false);
   const socketRef = useRef<any>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
@@ -125,6 +131,23 @@ export default function TeacherDashboard() {
     setLoading(false);
   };
 
+  const endClassroom = async (classroom: any) => {
+    if (endingRef.current) return;
+    if (!confirm(`确定结束课堂「${classroom.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`)) return;
+    endingRef.current = true;
+    setEndingClassroomId(classroom.id);
+    try {
+      await api.endClassroom(classroom.id);
+      await loadData();
+      setToast({ msg: `课堂「${classroom.title || "未命名课堂"}」已结束`, type: "success" });
+    } catch (error) {
+      setToast({ msg: `结束课堂失败：${error instanceof Error ? error.message : "请求异常"}`, type: "error" });
+    } finally {
+      endingRef.current = false;
+      setEndingClassroomId(null);
+    }
+  };
+
   const openSettings = async (cr: any) => {
     setSettingsModalClassroom(cr);
     setEditTitle(cr.title || "");
@@ -141,19 +164,45 @@ export default function TeacherDashboard() {
     try {
       const agents = await api.getAgents();
       setAllAgents(agents);
-    } catch {}
+    } catch (error) {
+      setToast({ msg: `智能体列表加载失败：${error instanceof Error ? error.message : "请求异常"}`, type: "error" });
+    }
   };
 
   const handleSaveSettings = async () => {
-    if (!settingsModalClassroom) return;
+    if (!settingsModalClassroom || settingsSavingRef.current) return;
+    settingsSavingRef.current = true;
+    setSavingSettings(true);
     try {
       await api.updateClassroomSettings(settingsModalClassroom.id, {
         title: editTitle,
       });
       setSettingsModalClassroom(null);
-      loadData();
-    } catch (e: any) {
-      setToast({ msg: e.message, type: "error" });
+      await loadData();
+      setToast({ msg: "课堂设置已保存", type: "success" });
+    } catch (error) {
+      setToast({ msg: `保存课堂设置失败：${error instanceof Error ? error.message : "请求异常"}`, type: "error" });
+    } finally {
+      settingsSavingRef.current = false;
+      setSavingSettings(false);
+    }
+  };
+
+  const openQrCode = async (classroom: any) => {
+    if (qrLoadingRef.current) return;
+    qrLoadingRef.current = true;
+    setLoadingQrClassroomId(classroom.id);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/server-info`);
+      if (!response.ok) throw new Error("无法读取学生端地址");
+      const data = await response.json();
+      setStudentUrl(data.studentUrl || "");
+      setQrCodeClassroom(classroom);
+    } catch (error) {
+      setToast({ msg: `互动码加载失败：${error instanceof Error ? error.message : "请求异常"}`, type: "error" });
+    } finally {
+      qrLoadingRef.current = false;
+      setLoadingQrClassroomId(null);
     }
   };
 
@@ -695,20 +744,20 @@ export default function TeacherDashboard() {
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   编辑
                 </button>
-                <button onClick={() => { fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => setStudentUrl(d.studentUrl || '')).catch(() => {}).finally(() => setQrCodeClassroom(cr)); }} title="显示互动码"
+                <button onClick={() => void openQrCode(cr)} disabled={loadingQrClassroomId !== null} title="显示互动码"
                   style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#7c3aed"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
-                  互动码
+                  {loadingQrClassroomId === cr.id ? "加载中..." : "互动码"}
                 </button>
 
                 {/* 结束课堂 — 红字轮廓，hover 加强 */}
-                <button onClick={async () => { if (confirm(`确定结束课堂「${cr.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`)) { await api.endClassroom(cr.id); loadData(); } }}
+                <button onClick={() => void endClassroom(cr)} disabled={endingClassroomId !== null}
                   style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: "transparent", color: "#ef4444", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.borderColor = "#f87171"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
-                  结束课堂
+                  {endingClassroomId === cr.id ? "结束中..." : "结束课堂"}
                 </button>
 
                 {/* 进入课堂 — 醒目填充按钮 */}
@@ -1470,18 +1519,18 @@ export default function TeacherDashboard() {
               }}
             >
               <button
-                onClick={() => setSettingsModalClassroom(null)}
+                onClick={() => setSettingsModalClassroom(null)} disabled={savingSettings}
                 className="btn"
                 style={{ fontSize: "0.813rem" }}
               >
                 取消
               </button>
               <button
-                onClick={handleSaveSettings}
+                onClick={() => void handleSaveSettings()} disabled={savingSettings}
                 className="btn btn-primary"
                 style={{ fontSize: "0.813rem" }}
               >
-                保存设置
+                {savingSettings ? "保存中..." : "保存设置"}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
@@ -21,12 +21,20 @@ export default function NewClassroomPage() {
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [openDropdownGroupId, setOpenDropdownGroupId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const savingRef = useRef(false);
+  const groupRequestRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
     Promise.all([api.getAgents(), api.getClasses()]).then(([a, c]) => {
+      if (!mountedRef.current) return;
       setAgents(a.filter((agent: any) => agent.enabled !== false));
       setClasses(c);
+    }).catch(error => {
+      if (mountedRef.current) setFieldErrors({ submit: `课堂配置加载失败：${error instanceof Error ? error.message : '请求异常'}` });
     });
+    return () => { mountedRef.current = false; };
   }, []);
 
   const clearError = (field: string) => {
@@ -38,16 +46,22 @@ export default function NewClassroomPage() {
   };
 
   const selectClass = (id: string) => {
+    const requestId = ++groupRequestRef.current;
     setSelectedClassId(id);
     clearError('class');
     setLoadingGroups(true);
     setClassGroups([]);
     setGroupAgentIds({});
     api.getGroups(id).then(groups => {
+      if (!mountedRef.current || requestId !== groupRequestRef.current) return;
       setClassGroups(groups || []);
     }).catch(() => {
+      if (!mountedRef.current || requestId !== groupRequestRef.current) return;
       setClassGroups([]);
-    }).finally(() => setLoadingGroups(false));
+      setFieldErrors(prev => ({ ...prev, submit: '班级分组加载失败，请重新选择班级后再试' }));
+    }).finally(() => {
+      if (mountedRef.current && requestId === groupRequestRef.current) setLoadingGroups(false);
+    });
   };
 
   const handleModeChange = (newMode: CreateMode) => {
@@ -57,6 +71,7 @@ export default function NewClassroomPage() {
     if ((newMode === 'group' || newMode === 'advanced') && selectedClassId) {
       const cls = classes.find(c => c.id === selectedClassId);
       if (!cls || (cls._count?.groups || 0) === 0) {
+        groupRequestRef.current += 1;
         setSelectedClassId('');
         setClassGroups([]);
         setGroupAgentIds({});
@@ -65,6 +80,7 @@ export default function NewClassroomPage() {
   };
 
   const handleCreate = async () => {
+    if (savingRef.current) return;
     const errors: Record<string, string> = {};
     if (!title.trim()) errors.title = '请输入课堂标题';
     if (!selectedClassId) errors.class = '请选择班级';
@@ -79,6 +95,7 @@ export default function NewClassroomPage() {
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       if (mode === 'advanced') {
@@ -102,10 +119,12 @@ export default function NewClassroomPage() {
         });
         router.push(`/teacher/classroom?id=${result.id}`);
       }
-    } catch (e: any) {
-      setFieldErrors({ submit: e.message });
+    } catch (e: unknown) {
+      if (mountedRef.current) setFieldErrors({ submit: e instanceof Error ? e.message : '创建课堂失败' });
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) setSaving(false);
     }
-    setSaving(false);
   };
 
   return (

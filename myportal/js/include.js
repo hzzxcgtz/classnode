@@ -30,11 +30,11 @@
     '</span>' +
     "</a>" +
     '<ul class="nav-menu">' +
-    '<li><a href="' + home("#change") + '">使命</a></li>' +
+    '<li><a href="' + home("#change") + '">缘起</a></li>' +
     '<li><a href="' + home("#vibe") + '">Vibe Coding</a></li>' +
     '<li><a href="' + home("#works") + '">作品</a></li>' +
-    '<li><a href="' + home("#about") + '">关于</a></li>' +
     '<li><a href="classnode.html">ClassNode</a></li>' +
+    '<li><a href="' + home("#about") + '">关于</a></li>' +
     "</ul>" +
     '<div class="nav-right">' +
     '<button class="theme-toggle" id="themeToggle" aria-label="切换主题">' +

@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../..');
 
 // 统计服务器地址（打包前配置，用户无感知）
-const PING_URL = 'http://hzzxcgtz.51vip.biz:20601/ping';
+const PING_URL = 'http://114.55.178.166:20601/ping';
 const PING_TIMEOUT = 3000;
 
 let _version: string | null = null;

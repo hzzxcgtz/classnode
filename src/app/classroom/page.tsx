@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense, memo, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
 import { stripImages, Markdown } from '@/lib/markdown';
 import { exportMessageToWord } from '@/lib/export-doc';
 import { getApiBaseUrl } from '@/lib/api-base';
@@ -287,12 +287,13 @@ function StudentChatContent() {
     if (!codeFromUrl) { router.push('/'); return; }
     setCode(codeFromUrl);
     const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
-    let sessionData: { studentId: string; studentName: string } | null = null;
+    let sessionData: { studentId: string; studentName: string; token?: string } | null = null;
     if (saved) {
       try {
         const session = JSON.parse(saved);
         if (Date.now() - session.timestamp < 7200000) {
-          sessionData = { studentId: session.studentId, studentName: session.studentName };
+          sessionData = { studentId: session.studentId, studentName: session.studentName, token: session.token };
+          setStudentSessionToken(session.token);
           setSelectedStudent({ id: session.studentId, name: session.studentName });
         }
       } catch {}
@@ -300,6 +301,23 @@ function StudentChatContent() {
     loadClassroom(codeFromUrl).then(async (cr) => {
       if (!cr) return;
       if (sessionData) {
+        // 每次刷新都在后台静默续领，兼容应用重启和旧版保存的本地会话。
+        try {
+          const renewed = await api.createStudentSession(codeFromUrl, sessionData.studentId);
+          sessionData.token = renewed.token;
+          setStudentSessionToken(renewed.token);
+          localStorage.setItem(`chat_session_${codeFromUrl}`, JSON.stringify({
+            studentId: sessionData.studentId,
+            studentName: sessionData.studentName,
+            token: renewed.token,
+            timestamp: Date.now(),
+          }));
+        } catch {
+          localStorage.removeItem(`chat_session_${codeFromUrl}`);
+          setSelectedStudent(null);
+          setStep('identity');
+          return;
+        }
         // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
         setStep('chat');
         // 从数据库加载教师通知（持久化后可导出，且刷新不丢失）
@@ -320,7 +338,7 @@ function StudentChatContent() {
           } catch {}
         }
         if (cr.id) await loadMessages(cr.id, sessionData.studentId);
-        startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl);
+        startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl, sessionData.token);
         // 恢复头像数据 + token
         try {
           const [avData, avTeacherData, stsData, tokenData] = await Promise.all([
@@ -344,6 +362,7 @@ function StudentChatContent() {
   }, []);
 
   const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
+  const [joiningClassroom, setJoiningClassroom] = useState(false);
   const [classroom, setClassroom] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [avatarSvgs, setAvatarSvgs] = useState<Record<number, string>>({});
@@ -383,11 +402,25 @@ function StudentChatContent() {
   const [hoveredMarker, setHoveredMarker] = useState<{ index: number; text: string; x: number; y: number } | null>(null);
   const userScrolledUpRef = useRef(false);
   const wsRef = useRef<any>(null);
+  const joiningRef = useRef(false);
+  const sendingRef = useRef(false);
+  const chatConnectionGenerationRef = useRef(0);
+  const identityConflictTimerRef = useRef<number | null>(null);
+  const teacherNotifTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
   const statusSocketRef = useRef<any>(null);
+
+  useEffect(() => () => {
+    chatConnectionGenerationRef.current += 1;
+    if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
+    if (statusSocketRef.current) { statusSocketRef.current.disconnect(); statusSocketRef.current = null; }
+    if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
+    if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
+    if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
+  }, []);
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
   const streamingBufferRef = useRef('');
@@ -751,13 +784,16 @@ function StudentChatContent() {
   }, [step, classroom?.id]);
 
   // 提取为独立函数，支持刷新恢复
-  const startChatSession = async (studentId: string, studentName: string, classroomCode?: string) => {
+  const startChatSession = async (studentId: string, studentName: string, classroomCode?: string, token?: string) => {
     const joinCode = classroomCode || code;
     try {
+      if (wsRef.current) wsRef.current.disconnect();
+      const generation = ++chatConnectionGenerationRef.current;
       const { io } = await import('socket.io-client');
+      if (generation !== chatConnectionGenerationRef.current) return;
       const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
       socket.on('connect', () => {
-        socket.emit('join-classroom', { classroomCode: joinCode, studentId });
+        socket.emit('join-classroom', { classroomCode: joinCode, studentId, token });
         setConnected(true);
       });
 
@@ -767,6 +803,7 @@ function StudentChatContent() {
       };
 
       socket.on('ai-response', (data: any) => {
+        sendingRef.current = false;
         flushStreaming();
         setThinkingContent('');
         // 清除上一条 AI 回答的追问建议，只保留最新一条
@@ -806,12 +843,26 @@ function StudentChatContent() {
       });
 
       socket.on('ai-error', (data: any) => {
+        sendingRef.current = false;
         setWaitingAI(false);
         setThinkingContent('');
         setConnectionError(data.error || 'AI 回复遇到了问题，请稍后重试');
       });
 
+      socket.on('student-auth-error', (data: any) => {
+        sendingRef.current = false;
+        setStudentSessionToken();
+        localStorage.removeItem(`chat_session_${joinCode}`);
+        setWaitingAI(false);
+        setConnectionError(data.error || '学生会话已失效，请重新选择身份');
+        socket.disconnect();
+        setSelectedStudent(null);
+        setMessages([]);
+        setStep('identity');
+      });
+
       socket.on('agent-disabled', () => {
+        sendingRef.current = false;
         setWaitingAI(false);
         setAgentDisabled(true);
       });
@@ -827,6 +878,7 @@ function StudentChatContent() {
       });
 
       socket.on('classroom-paused', () => {
+        sendingRef.current = false;
         if (streamingRafRef.current) { cancelAnimationFrame(streamingRafRef.current); streamingRafRef.current = null; }
         streamingBufferRef.current = '';
         setPaused(true);
@@ -845,7 +897,9 @@ function StudentChatContent() {
         setConnected(false);
         // 断开后清除会话，回到身份选择页
         localStorage.removeItem(`chat_session_${code}`);
-        setTimeout(() => {
+        if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
+        identityConflictTimerRef.current = window.setTimeout(() => {
+          if (generation !== chatConnectionGenerationRef.current) return;
           if (wsRef.current) wsRef.current.disconnect();
           wsRef.current = null;
           setStep('identity');
@@ -854,10 +908,11 @@ function StudentChatContent() {
         }, 2000);
       });
 
-      socket.on('disconnect', () => setConnected(false));
-      socket.on('connect_error', () => setConnected(false));
+      socket.on('disconnect', () => { sendingRef.current = false; setWaitingAI(false); setConnected(false); });
+      socket.on('connect_error', () => { sendingRef.current = false; setWaitingAI(false); setConnected(false); });
 
       socket.on('error', (err: string) => {
+        sendingRef.current = false;
         setWaitingAI(false);
         setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + err }]);
       });
@@ -885,7 +940,10 @@ function StudentChatContent() {
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
         setTeacherMsgs(prev => [...prev, { message: data.message, time: timeStr }]);
         setTeacherNotifBubble(data.message);
-        setTimeout(() => setTeacherNotifBubble(null), 15000);
+        if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
+        teacherNotifTimerRef.current = window.setTimeout(() => {
+          if (generation === chatConnectionGenerationRef.current) setTeacherNotifBubble(null);
+        }, 15000);
       });
 
       socket.on('shield-warned', (data: any) => {
@@ -922,15 +980,15 @@ function StudentChatContent() {
 
 
       socket.on('allow-stop-changed', (data: any) => {
-        setClassroom(prev => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+        setClassroom((prev: any) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
       });
 
       socket.on('allow-export-changed', (data: any) => {
-        setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+        setClassroom((prev: any) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
       });
 
       socket.on('follow-ups-changed', (data: any) => {
-        setClassroom(prev => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+        setClassroom((prev: any) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
       });
 
       wsRef.current = socket;
@@ -942,11 +1000,13 @@ function StudentChatContent() {
   const handleSwitchIdentity = () => {
     if (waitingAI) return;
     // 断开当前连接
+    chatConnectionGenerationRef.current += 1;
     if (wsRef.current) {
       wsRef.current.disconnect();
       wsRef.current = null;
     }
     localStorage.removeItem(`chat_session_${code}`);
+    setStudentSessionToken();
     setMessages([]);
     setSelectedStudent(null);
     setShieldWarning(null);
@@ -972,9 +1032,11 @@ function StudentChatContent() {
 
   const handleExit = () => {
     if (waitingAI) return;
+    chatConnectionGenerationRef.current += 1;
     if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
     if (statusSocketRef.current) { statusSocketRef.current.disconnect(); statusSocketRef.current = null; }
     localStorage.removeItem(`chat_session_${code}`);
+    setStudentSessionToken();
     router.push('/');
   };
 
@@ -988,12 +1050,26 @@ function StudentChatContent() {
   };
 
   const handleIdentityConfirm = async () => {
-    if (!selectedStudent) return;
+    if (!selectedStudent || joiningRef.current) return;
+    joiningRef.current = true;
+    setJoiningClassroom(true);
+    let token: string;
+    try {
+      const session = await api.createStudentSession(code, selectedStudent.id);
+      token = session.token;
+      setStudentSessionToken(token);
+    } catch (e: any) {
+      setToast({ msg: e.message || '无法进入课堂', type: 'error' });
+      joiningRef.current = false;
+      setJoiningClassroom(false);
+      return;
+    }
     setStep('chat');
     // 保存会话到 localStorage
     localStorage.setItem(`chat_session_${code}`, JSON.stringify({
       studentId: selectedStudent.id,
       studentName: selectedStudent.name,
+      token,
       timestamp: Date.now(),
     }));
     // 加载头像库（仅显示教师创建的供选择）+ 头像 SVG 映射（含学生自己的）
@@ -1004,7 +1080,9 @@ function StudentChatContent() {
     if (classroom?.id) {
       await loadMessages(classroom.id, selectedStudent.id);
     }
-    await startChatSession(selectedStudent.id, selectedStudent.name);
+    await startChatSession(selectedStudent.id, selectedStudent.name, undefined, token);
+    joiningRef.current = false;
+    setJoiningClassroom(false);
   };
 
   /** 将 WebP 图片转换为 PNG Blob */
@@ -1057,16 +1135,23 @@ function StudentChatContent() {
       for (const file of files) {
         const form = new FormData();
         form.append('file', file);
-        const res = await fetch(`${SOCKET_URL}/api/upload`, { method: 'POST', body: form });
+        const res = await fetch(`${SOCKET_URL}/api/upload`, {
+          method: 'POST', body: form, headers: getStudentSessionAuthorization(), credentials: 'include',
+        });
         const data = await res.json();
-        if (data.success) {
+        if (res.ok && data.success) {
           newFiles.push({ url: data.url, name: file.name });
+        } else {
+          throw new Error(data.error || `${file.name} 上传失败`);
         }
       }
       setAttachedFiles(prev => [...prev, ...newFiles]);
-    } catch {}
-    setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (error) {
+      setToast({ msg: `附件上传失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const removeAttachedFile = (index: number) => {
@@ -1078,7 +1163,13 @@ function StudentChatContent() {
     const files = attachedFiles;
     setConnectionError(null);
     if (!text && files.length === 0) return;
-    if (waitingAI || paused || agentDisabled || blacklisted || !wsRef.current) return;
+    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted) return;
+    if (!wsRef.current || !connected) {
+      setToast({ msg: '连接暂不可用，请稍后重试', type: 'error' });
+      return;
+    }
+    sendingRef.current = true;
+    setWaitingAI(true);
     setInput('');
     if (inputRef.current) {
       inputRef.current.value = '';
@@ -1103,7 +1194,9 @@ function StudentChatContent() {
 
   /** 点击追问建议时自动发送该问题 */
   const handleFollowUp = useCallback((question: string) => {
-    if (waitingAI || paused || agentDisabled || blacklisted || !wsRef.current) return;
+    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !wsRef.current || !connected) return;
+    sendingRef.current = true;
+    setWaitingAI(true);
     setConnectionError(null);
     setShieldWarning(null);
     setInput('');
@@ -1119,7 +1212,7 @@ function StudentChatContent() {
       studentId: selectedStudent.id,
       content: question,
     });
-  }, [waitingAI, paused, agentDisabled, blacklisted, wsRef.current, code, selectedStudent]);
+  }, [waitingAI, paused, agentDisabled, blacklisted, connected, code, selectedStudent]);
 
   if (step === 'loading') {
     return (
@@ -1204,10 +1297,10 @@ function StudentChatContent() {
               );
             })}
           </div>
-          <button onClick={handleIdentityConfirm} disabled={!selectedStudent}
+          <button onClick={() => void handleIdentityConfirm()} disabled={!selectedStudent || joiningClassroom}
             className="btn btn-primary btn-lg"
             style={{ width: '100%', marginTop: 20, fontSize: "1rem", opacity: selectedStudent ? 1 : 0.5 }}>
-            {isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
+            {joiningClassroom ? '进入中...' : isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
           </button>
           {loadError && (
             <div style={{
@@ -1768,7 +1861,7 @@ function StudentChatContent() {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
               </button>
             ) : (
-              <button type="button" onClick={sendMessage} disabled={(!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted}
+              <button type="button" onClick={sendMessage} disabled={waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted || !connected}
                 style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

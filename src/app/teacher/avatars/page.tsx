@@ -32,6 +32,7 @@ export default function AvatarsPage() {
   const [randomPool, setRandomPool] = useState<any[]>([]);
   const [selectedRandom, setSelectedRandom] = useState<Set<number>>(new Set());
   const [generating, setGenerating] = useState(false);
+  const [avatarAction, setAvatarAction] = useState<string | null>(null);
   const [randomGenerated, setRandomGenerated] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [batchMode, setBatchMode] = useState(false);
@@ -39,6 +40,7 @@ export default function AvatarsPage() {
   const [dragRect, setDragRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
   const dragStartRef = useRef<{x: number; y: number} | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const avatarActionRef = useRef(false);
 
   const loadAvatars = async () => {
     setLoading(true);
@@ -62,6 +64,9 @@ export default function AvatarsPage() {
   useEffect(() => { loadAvatars(); }, [tab]);
 
   const handleRandomGenerate = async (cat?: string) => {
+    if (avatarActionRef.current) return;
+    avatarActionRef.current = true;
+    setAvatarAction('generate');
     const category = cat || tab;
     if (randomGenerated) {
       setRandomPool([]);
@@ -77,33 +82,39 @@ export default function AvatarsPage() {
       setSelectedRandom(new Set());
       setRandomGenerated(true);
     } catch { setToast({ msg: '生成失败，请重试', type: 'error' }); }
+    avatarActionRef.current = false;
+    setAvatarAction(null);
     setGenerating(false);
   };
 
   const handleImportRandom = async () => {
     const importIds = [...selectedRandom];
     if (importIds.length === 0) { setToast({ msg: '请选择要导入的头像', type: 'error' }); return; }
+    if (avatarActionRef.current) return;
+    avatarActionRef.current = true;
+    setAvatarAction('import');
     try {
       const selected = randomPool.filter((_, i) => importIds.includes(i));
-      for (const av of selected) {
-        await api.createAvatar({ svgContent: av.svgContent, category: tab, gender: av.gender || 'neutral' });
-      }
-      setToast({ msg: `成功导入 ${selected.length} 个头像`, type: 'success' });
-      setShowRandom(false);
-      loadAvatars();
-    } catch { setToast({ msg: '导入失败', type: 'error' }); }
+      const results = await Promise.allSettled(selected.map(av => api.createAvatar({ svgContent: av.svgContent, category: tab, gender: av.gender || 'neutral' })));
+      const succeeded = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      if (succeeded) { setShowRandom(false); await loadAvatars(); }
+      setToast(failed ? { msg: `已导入 ${succeeded} 个，${failed} 个失败，请重试`, type: 'error' } : { msg: `成功导入 ${succeeded} 个头像`, type: 'success' });
+    } finally { avatarActionRef.current = false; setAvatarAction(null); }
   };
 
   const handleImportAll = async () => {
     if (randomPool.length === 0) return;
+    if (avatarActionRef.current) return;
+    avatarActionRef.current = true;
+    setAvatarAction('import');
     try {
-      for (const av of randomPool) {
-        await api.createAvatar({ svgContent: av.svgContent, category: tab, gender: av.gender || 'neutral' });
-      }
-      setToast({ msg: `成功导入全部 ${randomPool.length} 个头像`, type: 'success' });
-      setShowRandom(false);
-      loadAvatars();
-    } catch { setToast({ msg: '导入失败', type: 'error' }); }
+      const results = await Promise.allSettled(randomPool.map(av => api.createAvatar({ svgContent: av.svgContent, category: tab, gender: av.gender || 'neutral' })));
+      const succeeded = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      if (succeeded) { setShowRandom(false); await loadAvatars(); }
+      setToast(failed ? { msg: `已导入 ${succeeded} 个，${failed} 个失败，请重试`, type: 'error' } : { msg: `成功导入全部 ${succeeded} 个头像`, type: 'success' });
+    } finally { avatarActionRef.current = false; setAvatarAction(null); }
   };
 
   const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<any[]>([]);
@@ -112,6 +123,9 @@ export default function AvatarsPage() {
   const neutralAvatars = avatars.filter(a => a.gender === 'neutral');
 
   const handleDelete = async (avatar: Avatar) => {
+    if (avatarActionRef.current) return;
+    avatarActionRef.current = true;
+    setAvatarAction('delete');
     try {
       const result = await api.deleteAvatar(avatar.id);
       setToast({
@@ -119,9 +133,29 @@ export default function AvatarsPage() {
         type: 'success',
       });
       setShowDelete(null);
-      loadAvatars();
+      await loadAvatars();
     } catch (e: any) {
       setToast({ msg: e.message || '删除失败', type: 'error' });
+    } finally { avatarActionRef.current = false; setAvatarAction(null); }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedForBatch.size === 0 || avatarActionRef.current) return;
+    const ids = [...selectedForBatch];
+    if (!confirm(`确定删除选中的 ${ids.length} 个${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响。`)) return;
+    avatarActionRef.current = true;
+    setAvatarAction('delete');
+    try {
+      const result = await api.batchDeleteAvatars(ids);
+      setToast({ msg: `已删除 ${result.deleted} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' });
+      setBatchMode(false);
+      setSelectedForBatch(new Set());
+      await loadAvatars();
+    } catch (error) {
+      setToast({ msg: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      avatarActionRef.current = false;
+      setAvatarAction(null);
     }
   };
 
@@ -396,27 +430,16 @@ export default function AvatarsPage() {
                 border: '1px solid #cbd5e1', background: 'white', color: '#475569',
                 cursor: 'pointer',
               }}>退出多选</button>
-            <button onClick={async () => {
-              if (selectedForBatch.size === 0) return;
-              const ids = [...selectedForBatch];
-              if (!confirm(`确定删除选中的 ${ids.length} 个${tab === 'student' ? '头像' : '图标'}？已使用的不会受影响。`)) return;
-              try {
-                const r = await api.batchDeleteAvatars(ids);
-                setToast({ msg: `已删除 ${r.deleted} 个${tab === 'student' ? '头像' : '图标'}`, type: 'success' });
-                setBatchMode(false);
-                setSelectedForBatch(new Set());
-                loadAvatars();
-              } catch { setToast({ msg: '批量删除失败', type: 'error' }); }
-            }}
+            <button onClick={() => void handleBatchDelete()} disabled={selectedForBatch.size === 0 || avatarAction !== null}
               style={{
                 padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
                 border: 'none', background: selectedForBatch.size === 0 ? '#f1f5f9' : '#ef4444',
                 color: selectedForBatch.size === 0 ? '#94a3b8' : 'white',
-                cursor: selectedForBatch.size === 0 ? 'not-allowed' : 'pointer',
+                cursor: selectedForBatch.size === 0 || avatarAction ? 'not-allowed' : 'pointer',
                 display: 'inline-flex', alignItems: 'center', gap: 5,
               }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              删除选中
+              {avatarAction === 'delete' ? '删除中...' : '删除选中'}
             </button>
           </div>
         </div>
@@ -1032,7 +1055,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
               <div style={{ textAlign: 'center' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
                   <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', border: '3px solid #e2e8f0' }}>
-                    <img src={imagePreview} alt="预览" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={imagePreview || ''} alt="预览" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 </div>
                 {uploadingImg ? (

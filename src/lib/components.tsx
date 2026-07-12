@@ -37,7 +37,7 @@ export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; o
     if (!onClose) return;
     const timer = setTimeout(onClose, 3000);
     return () => clearTimeout(timer);
-  }, [msg]);
+  }, [msg, onClose]);
   return (
     <div style={{
       position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',

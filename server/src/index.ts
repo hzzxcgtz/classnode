@@ -26,6 +26,8 @@ import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
 import upgradeRoutes from './routes/upgrade.js';
 import defaultShieldWords from './services/default-shield-words.js';
+import { requireTeacher } from './middleware/auth.js';
+import { getStudentSession } from './middleware/student-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,13 +40,19 @@ async function main() {
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: '*',
+      origin: true,
       methods: ['GET', 'POST'],
+      credentials: true,
     },
   });
 
   // Middleware
-  app.use(cors({ origin: '*' }));
+  app.use(cors({ origin: true, credentials: true }));
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
   app.use(express.json({ limit: '10mb' }));
   // 上传文件的静态服务（从用户目录加载，兼容开发环境）
   const uploadsDir = process.env.CLASSNODE_DATA_DIR
@@ -168,16 +176,45 @@ async function main() {
   }
 
   // Routes
-  app.use('/api/agents', agentRoutes);
-  app.use('/api/classes', classRoutes);
-  app.use('/api/classroom', classroomRoutes);
-  app.use('/api/export', exportRoutes);
+  app.use('/api/agents', requireTeacher, agentRoutes);
+  app.use('/api/classes', requireTeacher, classRoutes);
+  app.use('/api/classroom', (req, res, next) => {
+    const publicStudentAccess =
+      (req.method === 'POST' && /^\/code\/[^/]+\/student-session\/?$/.test(req.path)) ||
+      (req.method === 'GET' && (
+      /^\/code\/[^/]+\/?$/.test(req.path) ||
+      /^\/[^/]+\/students\/?$/.test(req.path)
+    ));
+    if (publicStudentAccess) return next();
+    const student = getStudentSession(req);
+    const messageMatch = req.path.match(/^\/([^/]+)\/student\/([^/]+)\/messages\/?$/);
+    const notificationMatch = req.path.match(/^\/([^/]+)\/notifications\/?$/);
+    if (req.method === 'GET' && student && (
+      (messageMatch && student.classroomId === messageMatch[1] && student.studentId === messageMatch[2]) ||
+      (notificationMatch && student.classroomId === notificationMatch[1] && (!req.query.studentId || req.query.studentId === student.studentId))
+    )) return next();
+    requireTeacher(req, res, next);
+  }, classroomRoutes);
+  app.use('/api/export', requireTeacher, exportRoutes);
   app.use('/api/settings', settingsRoutes);
-  app.use('/api/shield', shieldRoutes);
+  app.use('/api/shield', requireTeacher, shieldRoutes);
   app.use('/api/changelogs', changelogRoutes);
-  app.use('/api/upload', uploadRoutes);
-  app.use('/api/avatars', avatarRoutes);
-  app.use("/api/system", systemRoutes);
+  app.use('/api/upload', (req, res, next) => {
+    if (getStudentSession(req)) return next();
+    requireTeacher(req, res, next);
+  }, uploadRoutes);
+  app.use('/api/avatars', (req, res, next) => {
+    if (req.method === 'GET' && !/^\/student-tokens\//.test(req.path)) return next();
+    const student = getStudentSession(req);
+    const selfMatch = req.path.match(/^\/student-self\/([^/]+)\/?$/);
+    const tokenMatch = req.path.match(/^\/student-tokens\/([^/]+)\/?$/);
+    if (student && (
+      (req.method === 'PUT' && selfMatch?.[1] === student.studentId) ||
+      (req.method === 'GET' && tokenMatch?.[1] === student.studentId)
+    )) return next();
+    requireTeacher(req, res, next);
+  }, avatarRoutes);
+  app.use('/api/system', requireTeacher, systemRoutes);
 app.use('/api/upgrade', upgradeRoutes);
 
   // Health check

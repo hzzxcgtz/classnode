@@ -188,12 +188,17 @@ function ClassroomBoardContent() {
   const [notifyState, setNotifyState] = useState<{ show: boolean; studentId?: string; studentName?: string; groupId?: string }>({ show: false });
   const [notifyText, setNotifyText] = useState('');
   const [notifySent, setNotifySent] = useState(false);
+  const notifySendingRef = useRef(false);
   const drawerMessagesRef = useRef<HTMLDivElement>(null);
   const groupTooltipThrottle = useRef(0);
   const [studentWarnings, setStudentWarnings] = useState<Record<string, number>>({});
   const [studentBlacklisted, setStudentBlacklisted] = useState<Record<string, boolean>>({});
   const [groupTooltip, setGroupTooltip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [controlBusy, setControlBusy] = useState<string | null>(null);
+  const controlBusyRef = useRef(false);
+  const [clearBusy, setClearBusy] = useState<string | null>(null);
+  const clearBusyRef = useRef(false);
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo(() => {
@@ -254,7 +259,7 @@ function ClassroomBoardContent() {
     try {
       const cr = await api.getClassroom(id);
       setClassroom(cr);
-      setTeacherCode(cr.code);
+      setTeacherCode(cr.code || '');
       setPaused(cr.status === 'paused');
       const students = cr.students || [];
       // 排序：标准模式按学号，分组/高级模式按组名
@@ -435,22 +440,22 @@ function ClassroomBoardContent() {
         return s;
       }));
       // 同步更新当前选中的学生头像（打开抽屉时实时刷新）
-      setSelectedStudent(prev => {
+      setSelectedStudent((prev: any) => {
         if (!prev?.student?.id || prev.student.id !== data.studentId) return prev;
         return { ...prev, student: { ...prev.student, avatarId: data.avatarId } };
       });
     });
 
     const unsub12 = on('allow-stop-changed', (data: any) => {
-      setClassroom(prev => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+      setClassroom((prev: any) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
     });
 
     const unsub13 = on('allow-export-changed', (data: any) => {
-      setClassroom(prev => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+      setClassroom((prev: any) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
     });
 
     const unsub14 = on('follow-ups-changed', (data: any) => {
-      setClassroom(prev => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+      setClassroom((prev: any) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
     });
 
     return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
@@ -471,7 +476,10 @@ function ClassroomBoardContent() {
 
   /** 清除学生对话记录并同步更新监控框 */
   const handleClearMessages = async (studentId: string, studentName: string) => {
+    if (clearBusyRef.current) return;
     if (!confirm(`确定清除「${studentName}」的全部对话记录？`)) return;
+    clearBusyRef.current = true;
+    setClearBusy(studentId);
     try {
       await api.clearStudentMessages(id, studentId);
       // 清除监控框预览
@@ -497,28 +505,94 @@ function ClassroomBoardContent() {
       if (selectedStudentIdRef.current === studentId) {
         setMessages([]);
       }
-    } catch {}
+      setToast({ msg: `已清除「${studentName}」的对话记录`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `清除「${studentName}」失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      clearBusyRef.current = false;
+      setClearBusy(null);
+    }
   };
 
   /** 清除小组全体成员的对话记录并同步更新监控框 */
   const handleClearGroupMessages = async (members: any[], groupName: string) => {
+    if (clearBusyRef.current) return;
     if (!confirm(`确定清除「${groupName}」全体成员的对话记录？`)) return;
-    for (const m of members) {
+    clearBusyRef.current = true;
+    setClearBusy(`group:${groupName}`);
+    const results = await Promise.allSettled(members.map(async m => {
       const studentId = m.student.id;
-      try {
-        await api.clearStudentMessages(id, studentId);
+      await api.clearStudentMessages(id, studentId);
+      return studentId;
+    }));
+    const succeeded = results.filter((result): result is PromiseFulfilledResult<string> => result.status === 'fulfilled').map(result => result.value);
+    if (succeeded.length) {
         setStudents(prev => prev.map(s => {
-          if (s.student && s.student.id === studentId) return { ...s, messages: [] };
+          if (s.student && succeeded.includes(s.student.id)) return { ...s, messages: [] };
           if (s.members) {
-            return { ...s, members: s.members.map((mm: any) => mm.student.id === studentId ? { ...mm, messages: [] } : mm) };
+            return { ...s, members: s.members.map((mm: any) => succeeded.includes(mm.student.id) ? { ...mm, messages: [] } : mm) };
           }
           return s;
         }));
-        setStudentRounds(prev => ({ ...prev, [studentId]: 0 }));
-        if (selectedStudentIdRef.current === studentId) setMessages([]);
-      } catch {}
+      setStudentRounds(prev => Object.fromEntries(Object.entries(prev).map(([studentId, rounds]) => [studentId, succeeded.includes(studentId) ? 0 : rounds])));
+      if (selectedStudentIdRef.current && succeeded.includes(selectedStudentIdRef.current)) setMessages([]);
+    }
+    const failed = results.length - succeeded.length;
+    setToast(failed ? { msg: `「${groupName}」已清除 ${succeeded.length} 人，${failed} 人失败，请重试`, type: 'error' } : { msg: `已清除「${groupName}」全体 ${succeeded.length} 人的对话记录`, type: 'success' });
+    clearBusyRef.current = false;
+    setClearBusy(null);
+  };
+
+  const sendNotification = () => {
+    if (notifySendingRef.current) return;
+    const message = notifyText.trim();
+    if (!message) return;
+    notifySendingRef.current = true;
+    emit('teacher-send-notification', { classroomId: id, studentId: notifyState.studentId, groupId: notifyState.groupId, message });
+    setNotifySent(true);
+    setTimeout(() => { setNotifyState({ show: false }); notifySendingRef.current = false; }, 1200);
+  };
+
+  const runControlAction = async (key: string, action: () => Promise<void>) => {
+    if (controlBusyRef.current) return;
+    controlBusyRef.current = true;
+    setControlBusy(key);
+    try {
+      await action();
+    } catch (error) {
+      setToast({ msg: `课堂设置更新失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      controlBusyRef.current = false;
+      setControlBusy(null);
     }
   };
+
+  const toggleQuestions = () => runControlAction('questions', async () => {
+    if (paused) {
+      await api.resumeClassroom(id);
+      setPaused(false);
+      setClassroom((previous: any) => previous ? { ...previous, status: 'active' } : previous);
+    } else {
+      await api.pauseClassroom(id);
+      setPaused(true);
+      setClassroom((previous: any) => previous ? { ...previous, status: 'paused' } : previous);
+    }
+  });
+
+  const toggleStop = () => runControlAction('stop', async () => {
+    const result = await api.toggleAllowStop(id);
+    setClassroom((previous: any) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
+  });
+
+  const toggleExport = () => runControlAction('export', async () => {
+    const result = await api.toggleAllowExport(id);
+    setClassroom((previous: any) => previous ? { ...previous, allowStudentExport: result.allowStudentExport } : previous);
+  });
+
+  const toggleFollowUps = () => runControlAction('follow-ups', async () => {
+    const result = await api.toggleAllowFollowUps(id);
+    setClassroom((previous: any) => previous ? { ...previous, allowFollowUps: result.allowFollowUps } : previous);
+  });
 
 
   if (!classroom) {
@@ -691,48 +765,36 @@ function ClassroomBoardContent() {
             <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {/* 允许/禁止学生提问 */}
-              <button className="control-btn" onClick={async () => {
-                if (paused) { await api.resumeClassroom(id); setPaused(false); loadClassroom(); }
-                else { await api.pauseClassroom(id); setPaused(true); }
-              }}
+              <button className="control-btn" onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
                 style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: paused ? '#94a3b8' : '#3b82f6', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {paused ? <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></> : <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>}
                 </svg>
-                {paused ? '禁止学生提问' : '允许学生提问'}
+                {controlBusy === 'questions' ? '更新中...' : paused ? '禁止学生提问' : '允许学生提问'}
               </button>
               {/* 允许/禁止中断回答 */}
-              <button className="control-btn" onClick={async () => {
-                const res = await api.toggleAllowStop(id);
-                setClassroom(prev => prev ? { ...prev, allowStudentStop: res.allowStudentStop } : prev);
-              }}
+              <button className="control-btn" onClick={() => void toggleStop()} disabled={controlBusy !== null}
                 style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentStop !== false ? '#d97706' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {classroom?.allowStudentStop !== false ? <rect x="4" y="4" width="16" height="16" rx="3"/> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
                 </svg>
-                {classroom?.allowStudentStop !== false ? '允许中断回答' : '禁止中断回答'}
+                {controlBusy === 'stop' ? '更新中...' : classroom?.allowStudentStop !== false ? '允许中断回答' : '禁止中断回答'}
               </button>
               {/* 允许/禁止学生导出 */}
-              <button className="control-btn" onClick={async () => {
-                const res = await api.toggleAllowExport(id);
-                setClassroom(prev => prev ? { ...prev, allowStudentExport: res.allowStudentExport } : prev);
-              }}
+              <button className="control-btn" onClick={() => void toggleExport()} disabled={controlBusy !== null}
                 style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentExport !== false ? '#0891b2' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {classroom?.allowStudentExport !== false ? <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
                 </svg>
-                {classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
+                {controlBusy === 'export' ? '更新中...' : classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
               </button>
               {/* 允许/禁止追问建议 */}
-              <button className="control-btn" onClick={async () => {
-                const res = await api.toggleAllowFollowUps(id);
-                setClassroom(prev => prev ? { ...prev, allowFollowUps: res.allowFollowUps } : prev);
-              }}
+              <button className="control-btn" onClick={() => void toggleFollowUps()} disabled={controlBusy !== null}
                 style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowFollowUps !== false ? '#8b5cf6' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {classroom?.allowFollowUps !== false ? <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></> : <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>}
                 </svg>
-                {classroom?.allowFollowUps !== false ? '允许追问建议' : '禁止追问建议'}
+                {controlBusy === 'follow-ups' ? '更新中...' : classroom?.allowFollowUps !== false ? '允许追问建议' : '禁止追问建议'}
               </button>
               {/* 通知全体 */}
               <button className="control-btn" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
@@ -873,7 +935,7 @@ function ClassroomBoardContent() {
                                       style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef2ff', color: '#4f46e5', padding: 0 }}>
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                     </button>
-                                    <button title="清除对话"
+                                    <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                       onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
                                       style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
@@ -900,7 +962,7 @@ function ClassroomBoardContent() {
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                 </button>
-                                <button title="清除对话"
+                                <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                   onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
@@ -1543,7 +1605,7 @@ function ClassroomBoardContent() {
                                           {anyBlacklisted ? <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></>}
                                         </svg>
                                       </button>
-                                      <button title="清除对话"
+                                      <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                         onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
                                         style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                         <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
@@ -1565,7 +1627,7 @@ function ClassroomBoardContent() {
                                     style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
                                     <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   </button>
-                                  <button title="清除对话"
+                                  <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                     onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
                                     style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                     <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
@@ -1708,16 +1770,7 @@ function ClassroomBoardContent() {
                     onKeyDown={e => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        const msg = notifyText.trim();
-                        if (!msg) return;
-                        emit('teacher-send-notification', {
-                          classroomId: id,
-                          studentId: notifyState.studentId,
-                          groupId: notifyState.groupId,
-                          message: msg,
-                        });
-                        setNotifySent(true);
-                        setTimeout(() => setNotifyState({ show: false }), 1200);
+                        sendNotification();
                       }
                     }}
                     placeholder="输入你想对学生说的话..."
@@ -1729,18 +1782,7 @@ function ClassroomBoardContent() {
                     <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>Enter 发送 · Shift+Enter 换行</span>
                     <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-secondary" onClick={() => setNotifyState({ show: false })} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
-                    <button className="btn btn-primary" onClick={() => {
-                      const msg = notifyText.trim();
-                      if (!msg) return;
-                      emit('teacher-send-notification', {
-                        classroomId: id,
-                        studentId: notifyState.studentId,
-                        groupId: notifyState.groupId,
-                        message: msg,
-                      });
-                      setNotifySent(true);
-                      setTimeout(() => setNotifyState({ show: false }), 1200);
-                    }} disabled={!notifyText.trim()}
+                    <button className="btn btn-primary" onClick={sendNotification} disabled={!notifyText.trim() || notifySent}
                       style={{ fontSize: "0.813rem", padding: '7px 20px' }}>
                       发送
                     </button>

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { createStudentToken } from '../middleware/student-auth.js';
+import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 
 const router: Router = Router();
 
@@ -7,8 +9,26 @@ function generateCode(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
+// 学生选择身份后静默领取课堂临时令牌，不增加前端操作步骤。
+router.post('/code/:code/student-session', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const studentId = typeof req.body?.studentId === 'string' ? req.body.studentId : '';
+    const classroom = await prisma.classroom.findUnique({ where: { code: req.params.code } });
+    if (!classroom || classroom.status === 'ended') return res.status(404).json({ error: '课堂不存在或已结束' });
+    const member = await prisma.classroomStudent.findFirst({
+      where: { classroomId: classroom.id, studentId },
+      select: { id: true },
+    });
+    if (!member) return res.status(403).json({ error: '该学生不属于当前课堂' });
+    res.json({ token: createStudentToken(classroom.id, studentId), expiresIn: 7200 });
+  } catch {
+    res.status(500).json({ error: '创建学生会话失败' });
+  }
+});
+
 /** 生成不重复的 4 位互动码，只检查活跃/暂停中的课堂（已结束的码可回收） */
-async function generateUniqueClassroomCode(prisma: PrismaClient): Promise<string> {
+async function generateUniqueClassroomCode(prisma: PrismaClient | Prisma.TransactionClient): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = generateCode();
     const existing = await prisma.classroom.findFirst({
@@ -30,7 +50,7 @@ async function generateUniqueClassroomCode(prisma: PrismaClient): Promise<string
 }
 
 /** 生成不重复的 4 位小组互动码 */
-async function generateUniqueGroupCode(prisma: PrismaClient): Promise<string> {
+async function generateUniqueGroupCode(prisma: PrismaClient | Prisma.TransactionClient): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = generateCode();
     const existing = await prisma.classroomGroup.findFirst({ where: { code } });
@@ -55,84 +75,87 @@ router.post('/create', async (req, res) => {
     if (!classIds?.length || !agentIds?.length) {
       return res.status(400).json({ error: '请选择班级和智能体' });
     }
+    if (!['standard', 'group'].includes(mode)) return res.status(400).json({ error: '课堂模式无效' });
+    const uniqueClassIds: string[] = Array.from(new Set<string>((classIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
+    const uniqueAgentIds: string[] = Array.from(new Set<string>((agentIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
+    if (uniqueClassIds.length === 0 || uniqueAgentIds.length === 0) return res.status(400).json({ error: '班级或智能体无效' });
+    if (mode === 'group' && uniqueClassIds.length !== 1) return res.status(400).json({ error: '分组模式一次只能选择一个班级' });
 
-    const code = await generateUniqueClassroomCode(prisma);
-
-    const classroom = await prisma.classroom.create({
+    const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const code = await generateUniqueClassroomCode(tx);
+      const created = await tx.classroom.create({
       data: {
         code,
         title: title || null,
         mode,
         classes: {
-          create: classIds.map((classId: string) => ({ classId })),
+          create: uniqueClassIds.map(classId => ({ classId })),
         },
         classroomAgents: {
-          create: agentIds.map((agentId: string) => ({ agentId })),
+          create: uniqueAgentIds.map(agentId => ({ agentId })),
         },
       },
       include: {
         classes: { include: { class: { include: { students: true } } } },
         classroomAgents: { include: { agent: true } },
       },
-    });
+      });
 
-    if (mode === 'group') {
+      if (mode === 'group') {
       // 分组模式：以小组身份登录，每个组创建一个虚拟小组学生
-      const classGroups = await prisma.classGroup.findMany({
-        where: { classId: classIds[0] },
+      const classGroups = await tx.classGroup.findMany({
+        where: { classId: uniqueClassIds[0] },
       });
       for (const classGroup of classGroups) {
         // 创建虚拟小组学生
-        const virtualStudent = await prisma.student.create({
-          data: {
-            classId: classIds[0],
-            name: classGroup.name,
-            tag: '__group__',
-          },
-        });
+        const virtualStudent = await tx.student.findFirst({
+          where: { classId: uniqueClassIds[0], name: classGroup.name, tag: '__group__' },
+        }) || await tx.student.create({ data: { classId: uniqueClassIds[0], name: classGroup.name, tag: '__group__' } });
         // 创建课堂分组记录
-        const classroomGroup = await prisma.classroomGroup.create({
+        const classroomGroup = await tx.classroomGroup.create({
           data: {
-            classroomId: classroom.id,
+            classroomId: created.id,
             name: classGroup.name,
-            agentId: agentIds[0],
-            code: await generateUniqueGroupCode(prisma),
+            agentId: uniqueAgentIds[0],
+            code: await generateUniqueGroupCode(tx),
           },
         });
         // 创建课堂学生记录（小组级别）
-        await prisma.classroomStudent.create({
+        await tx.classroomStudent.create({
           data: {
-            classroomId: classroom.id,
+            classroomId: created.id,
             studentId: virtualStudent.id,
             groupId: classroomGroup.id,
           },
         });
         // 创建互动记录
-        await prisma.interaction.create({
+        await tx.interaction.create({
           data: {
-            classroomId: classroom.id,
+            classroomId: created.id,
             studentId: virtualStudent.id,
           },
-        }).catch(() => {});
+        });
       }
     } else {
       // 标准/高级模式：将班级个体学生加入课堂（批量写入）
-      const allStudents = classroom.classes.flatMap((cc: any) => cc.class.students);
+      const allStudents = created.classes.flatMap((cc: any) => cc.class.students);
       if (allStudents.length > 0) {
-        await prisma.classroomStudent.createMany({
+        await tx.classroomStudent.createMany({
           data: allStudents.map((s: any) => ({
-            classroomId: classroom.id,
+            classroomId: created.id,
             studentId: s.id,
           })),
         });
-        await prisma.interaction.createMany({
+        await tx.interaction.createMany({
           data: allStudents.map((s: any) => ({
-            classroomId: classroom.id,
+            classroomId: created.id,
             studentId: s.id,
           })),
         });
       }
-    }
+      }
+      return created;
+    });
 
     res.json(classroom);
   } catch (error) {
@@ -150,22 +173,30 @@ router.post('/create-advanced', async (req, res) => {
     if (!classId || !groups?.length) {
       return res.status(400).json({ error: '请选择班级和分组' });
     }
+    if (!Array.isArray(groups) || groups.length > 100) return res.status(400).json({ error: '分组数量无效' });
+    const normalizedGroups = groups.map((group: any) => ({
+      name: typeof group?.name === 'string' ? group.name.trim() : '',
+      agentId: typeof group?.agentId === 'string' ? group.agentId : '',
+    }));
+    if (normalizedGroups.some(group => !group.name || !group.agentId)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
+    if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
-    const classroom = await prisma.classroom.create({
-      data: {
-        code: await generateUniqueClassroomCode(prisma),
+    const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.classroom.create({
+        data: {
+        code: await generateUniqueClassroomCode(tx),
         title: title || null,
         mode: 'advanced',
-        classes: { create: { classId } },
-      },
-    });
+          classes: { create: { classId } },
+        },
+      });
 
     // Create groups and their codes
-    for (const group of groups) {
-      const groupCode = await generateUniqueGroupCode(prisma);
-      const classroomGroup = await prisma.classroomGroup.create({
+    for (const group of normalizedGroups) {
+      const groupCode = await generateUniqueGroupCode(tx);
+      const classroomGroup = await tx.classroomGroup.create({
         data: {
-          classroomId: classroom.id,
+          classroomId: created.id,
           name: group.name,
           agentId: group.agentId,
           code: groupCode,
@@ -173,43 +204,35 @@ router.post('/create-advanced', async (req, res) => {
       });
 
       // 创建虚拟小组学生（用于登录），与 group 模式一致
-      const virtualStudent = await prisma.student.create({
+      const virtualStudent = await tx.student.findFirst({ where: { classId, name: group.name, tag: '__group__' } })
+        || await tx.student.create({ data: { classId, name: group.name, tag: '__group__' } });
+      await tx.classroomStudent.create({
         data: {
-          classId,
-          name: group.name,
-          tag: '__group__',
-        },
-      });
-      await prisma.classroomStudent.create({
-        data: {
-          classroomId: classroom.id,
+          classroomId: created.id,
           studentId: virtualStudent.id,
           groupId: classroomGroup.id,
         },
       });
-      await prisma.interaction.create({
-        data: { classroomId: classroom.id, studentId: virtualStudent.id },
-      }).catch(() => {});
+      await tx.interaction.create({ data: { classroomId: created.id, studentId: virtualStudent.id } });
     }
 
     // Create classroomAgent records from unique group agentIds
-    const uniqueAgentIds = [...new Set(groups.map((g: any) => g.agentId).filter(Boolean))];
+    const uniqueAgentIds = [...new Set(normalizedGroups.map(group => group.agentId))];
     for (const agentId of uniqueAgentIds as string[]) {
-      await prisma.classroomAgent.create({
-        data: { classroomId: classroom.id, agentId },
-      }).catch(() => {});
+      await tx.classroomAgent.create({ data: { classroomId: created.id, agentId } });
     }
 
-    const result = await prisma.classroom.findUnique({
-      where: { id: classroom.id },
+      return tx.classroom.findUnique({
+      where: { id: created.id },
       include: {
         groups: true,
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: { include: { students: true } } } },
       },
+      });
     });
 
-    res.json(result);
+    res.json(classroom);
   } catch (error) {
     console.error('Create advanced classroom error:', error);
     res.status(500).json({ error: '创建高级课堂失败' });
@@ -426,9 +449,12 @@ router.post('/:id/student/:studentId/reward-avatar', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const io = req.app.get('io');
     const studentId = req.params.studentId;
-    // 直接通过 Student.id 更新
-    const student = await prisma.student.findUnique({ where: { id: studentId } });
-    if (!student) return res.status(404).json({ error: '学生未找到' });
+    const membership = await prisma.classroomStudent.findFirst({
+      where: { classroomId: req.params.id, studentId },
+      include: { classroom: { select: { status: true } } },
+    });
+    if (!membership) return res.status(404).json({ error: '该学生不属于当前课堂' });
+    if (membership.classroom.status === 'ended') return res.status(409).json({ error: '课堂已结束，不能继续奖励' });
     const updated = await prisma.student.update({
       where: { id: studentId },
       data: { avatarChangeTokens: { increment: 1 } },
@@ -449,20 +475,17 @@ router.post('/:id/end', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const changed = await tx.classroom.updateMany({
+        where: { id: req.params.id, status: { in: [...ALLOWED_SOURCE_STATUSES.end] } },
+        data: { status: 'ended', endedAt: new Date(), code: null },
+      });
+      if (changed.count !== 1) throw new Error('INVALID_CLASSROOM_STATE');
       // 回收所有小组互动码
       await tx.classroomGroup.updateMany({
         where: { classroomId: req.params.id, code: { not: null } },
         data: { code: null },
       });
-      // 回收课堂互动码
-      return tx.classroom.update({
-        where: { id: req.params.id },
-        data: {
-          status: 'ended',
-          endedAt: new Date(),
-          code: null,
-        },
-      });
+      return tx.classroom.findUniqueOrThrow({ where: { id: req.params.id } });
     });
 
     // 通知所有连接的学生和教师
@@ -472,6 +495,9 @@ router.post('/:id/end', async (req, res) => {
 
     res.json(classroom);
   } catch (error) {
+    if (error instanceof Error && error.message === 'INVALID_CLASSROOM_STATE') {
+      return res.status(409).json({ error: '只有进行中或已暂停的课堂可以结束' });
+    }
     res.status(500).json({ error: '结束课堂失败' });
   }
 });
@@ -498,10 +524,9 @@ router.put('/:id/settings', async (req, res) => {
 router.post('/:id/pause', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const classroom = await prisma.classroom.update({
-      where: { id: req.params.id },
-      data: { status: 'paused' },
-    });
+    const changed = await prisma.classroom.updateMany({ where: { id: req.params.id, status: ALLOWED_SOURCE_STATUSES.pause[0] }, data: { status: 'paused' } });
+    if (changed.count !== 1) return res.status(409).json({ error: '只有进行中的课堂可以暂停' });
+    const classroom = await prisma.classroom.findUniqueOrThrow({ where: { id: req.params.id } });
 
     const io = req.app.get('io');
     io.to(`classroom:${classroom.id}`).emit('classroom-paused');
@@ -518,10 +543,9 @@ router.post('/:id/pause', async (req, res) => {
 router.post('/:id/resume', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const classroom = await prisma.classroom.update({
-      where: { id: req.params.id },
-      data: { status: 'active' },
-    });
+    const changed = await prisma.classroom.updateMany({ where: { id: req.params.id, status: ALLOWED_SOURCE_STATUSES.resume[0] }, data: { status: 'active' } });
+    if (changed.count !== 1) return res.status(409).json({ error: '只有已暂停的课堂可以继续' });
+    const classroom = await prisma.classroom.findUniqueOrThrow({ where: { id: req.params.id } });
 
     const io = req.app.get('io');
     io.to(`classroom:${classroom.id}`).emit('classroom-resumed');
@@ -547,18 +571,20 @@ router.post('/:id/restore', async (req, res) => {
     if (!existing) return res.status(404).json({ error: '课堂不存在' });
     if (existing.status !== 'ended') return res.status(400).json({ error: '只能恢复已结束的课堂' });
 
-    // 2. 生成新的互动码
-    const newCode = await generateUniqueClassroomCode(prisma);
-
-    // 3. 恢复
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const newCode = await generateUniqueClassroomCode(tx);
+      const changed = await tx.classroom.updateMany({
+        where: { id: req.params.id, status: ALLOWED_SOURCE_STATUSES.restore[0] },
+        data: { status: 'active', code: newCode, endedAt: null },
+      });
+      if (changed.count !== 1) throw new Error('INVALID_CLASSROOM_STATE');
       // 分组/高级模式：重新生成小组互动码
       if (existing.mode === 'group' || existing.mode === 'advanced') {
         const groups = await tx.classroomGroup.findMany({
           where: { classroomId: req.params.id },
         });
         for (const group of groups) {
-          const groupCode = await generateUniqueGroupCode(prisma);
+          const groupCode = await generateUniqueGroupCode(tx);
           await tx.classroomGroup.update({
             where: { id: group.id },
             data: { code: groupCode },
@@ -566,14 +592,7 @@ router.post('/:id/restore', async (req, res) => {
         }
       }
 
-      return tx.classroom.update({
-        where: { id: req.params.id },
-        data: {
-          status: 'active',
-          code: newCode,
-          endedAt: null,
-        },
-      });
+      return tx.classroom.findUniqueOrThrow({ where: { id: req.params.id } });
     });
 
     // 通知教师端（学生端不通知，学生需重新用新码加入）
@@ -584,6 +603,9 @@ router.post('/:id/restore', async (req, res) => {
 
     res.json(classroom);
   } catch (error) {
+    if (error instanceof Error && error.message === 'INVALID_CLASSROOM_STATE') {
+      return res.status(409).json({ error: '该课堂已被恢复，请刷新页面' });
+    }
     console.error('[Classroom] restore error:', error);
     res.status(500).json({ error: '恢复课堂失败' });
   }
@@ -670,13 +692,9 @@ router.delete('/:id/student/:studentId/messages', async (req, res) => {
     });
     if (!classroomStudent) return res.status(404).json({ error: '未找到该学生' });
 
-    // 删除所有消息
-    await prisma.message.deleteMany({
-      where: { studentId: classroomStudent.id },
-    });
-
-    // 重置互动统计
-    await prisma.interaction.upsert({
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.message.deleteMany({ where: { studentId: classroomStudent.id } });
+      await tx.interaction.upsert({
       where: {
         classroomId_studentId: {
           classroomId: req.params.id,
@@ -685,12 +703,11 @@ router.delete('/:id/student/:studentId/messages', async (req, res) => {
       },
       update: { totalRounds: 0, firstMsgLen: null },
       create: { classroomId: req.params.id, studentId: req.params.studentId },
-    });
-
-    // 重置学生轮数
-    await prisma.classroomStudent.update({
+      });
+      await tx.classroomStudent.update({
       where: { id: classroomStudent.id },
       data: { totalRounds: 0 },
+      });
     });
 
     // 通知该学生端清空对话

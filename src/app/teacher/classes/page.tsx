@@ -4,25 +4,26 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Toast, Pagination } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
+import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 
 export default function ClassesPage() {
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<StudentSummary[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newClassName, setNewClassName] = useState('');
   const [newClassAvatarId, setNewClassAvatarId] = useState<number | null>(null);
-  const [classIconList, setClassIconList] = useState<any[]>([]);
+  const [classIconList, setClassIconList] = useState<AvatarSummary[]>([]);
   const [editingClassName, setEditingClassName] = useState<string | null>(null);
   const [addStudentMode, setAddStudentMode] = useState<'form' | 'paste' | null>(null);
   const [tabMode, setTabMode] = useState<'students' | 'groups'>('students');
-  const [classGroups, setClassGroups] = useState<any[]>([]);
+  const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
   const [sortField, setSortField] = useState<'studentNo' | 'name' | 'gender' | 'group'>('studentNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [editingStudent, setEditingStudent] = useState<any | null>(null);
+  const [editingStudent, setEditingStudent] = useState<StudentSummary | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [batchEditModal, setBatchEditModal] = useState<{ type: 'tag' } | null>(null);
   const [batchEditGenderModal, setBatchEditGenderModal] = useState(false);
@@ -42,7 +43,7 @@ export default function ClassesPage() {
   const [studentAvatars, setStudentAvatars] = useState<Record<string, string>>({});
   const [classIconPicker, setClassIconPicker] = useState<string | null>(null);
   const [studentAvatarPicker, setStudentAvatarPicker] = useState<{ studentId: string; currentAvatarId?: number } | null>(null);
-  const [allStudentAvatars, setAllStudentAvatars] = useState<any[]>([]);
+  const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
   const [studentMarqueeRect, setStudentMarqueeRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
   const studentMarqueeStartRef = useRef<{x: number; y: number} | null>(null);
   const studentTableRef = useRef<HTMLDivElement>(null);
@@ -53,7 +54,7 @@ export default function ClassesPage() {
       setClasses(data);
       if (data.length > 0) {
         // 如果已选中某班级且仍在列表中，保持选中；否则选第一个
-        if (!data.some((c: any) => c.id === selectedClass)) {
+        if (!data.some((c) => c.id === selectedClass)) {
           setSelectedClass(data[0].id);
         }
       }
@@ -73,10 +74,10 @@ export default function ClassesPage() {
           api.getAvatars('student'),
         ]);
         const cm: Record<number, string> = {};
-        classData.forEach((a: any) => { cm[a.id] = a.svgContent; });
+        classData.forEach((a) => { cm[a.id] = a.svgContent; });
         setClassAvatars(cm);
         const sm: Record<string, string> = {};
-        allStudentData.forEach((a: any) => { sm[a.id] = fixSvgUrl(a.svgContent); });
+        allStudentData.forEach((a) => { sm[a.id] = fixSvgUrl(a.svgContent); });
         setStudentAvatars(sm);
         setAllStudentAvatars(teacherStudentData);
       } catch {}
@@ -248,7 +249,7 @@ export default function ClassesPage() {
   const sortedStudents = [...students].sort((a, b) => {
     let cmp = 0;
     if (sortField === 'studentNo') {
-      cmp = (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0);
+      cmp = (parseInt(a.studentNo ?? '', 10) || 0) - (parseInt(b.studentNo ?? '', 10) || 0);
     } else if (sortField === 'name') {
       cmp = a.name.localeCompare(b.name, 'zh-CN');
     } else if (sortField === 'gender') {
@@ -688,7 +689,7 @@ export default function ClassesPage() {
                     { label: '学生', value: students.length, color: '#2563eb' },
                     { label: '分组', value: classGroups.length, color: '#8b5cf6' },
                     { label: '已分组', value: students.filter(s => studentGroupMap.has(s.id)).length, color: '#10b981' },
-                    { label: '未分组', value: students.filter(s => !studentGroupMap.has(s.id)).length, color: selectedClassData?._count?.groups > 0 ? '#f59e0b' : '#94a3b8' },
+                    { label: '未分组', value: students.filter(s => !studentGroupMap.has(s.id)).length, color: (selectedClassData?._count?.groups ?? 0) > 0 ? '#f59e0b' : '#94a3b8' },
                   ].map((stat, i) => (
                     <div key={i} style={{
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -919,7 +920,7 @@ export default function ClassesPage() {
                               {s.studentNo || '-'}
                             </td>
                             <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-                              <div onClick={e => { e.stopPropagation(); setStudentAvatarPicker({ studentId: s.id, currentAvatarId: s.avatarId }); }}
+                              <div onClick={e => { e.stopPropagation(); setStudentAvatarPicker({ studentId: s.id, currentAvatarId: s.avatarId ?? undefined }); }}
                                 style={{ cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
                                 {s.avatarId && studentAvatars[s.avatarId] ? (
                                   <div style={{
@@ -1077,7 +1078,7 @@ export default function ClassesPage() {
               {classIconPicker && (
                 <ClassIconPickerModal
                   classId={classIconPicker}
-                  currentAvatarId={selectedClassData?.avatarId}
+                  currentAvatarId={selectedClassData?.avatarId ?? undefined}
                   onClose={() => setClassIconPicker(null)}
                   onSaved={() => { setClassIconPicker(null); loadClasses(); }}
                   setToast={setToast}
@@ -1223,8 +1224,8 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
     try {
       await api.batchCreateStudentsFromNames(classId, parsed);
       onAdded();
-    } catch (e: any) {
-      setToast({ msg: '创建失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '创建失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     setSaving(false);
   };
@@ -1289,14 +1290,14 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
 }
 
 function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, setToast }: {
-  student: any; studentAvatars: Record<string, string>; classId: string; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
+  student: StudentSummary; studentAvatars: Record<string, string>; classId: string; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
 }) {
   const [name, setName] = useState(student.name || '');
   const [studentNo, setStudentNo] = useState(student.studentNo || '');
   const [gender, setGender] = useState(student.gender || '');
   const [tag, setTag] = useState(student.tag || '');
   const [avatarId, setAvatarId] = useState<number | null>(student.avatarId || null);
-  const [avatars, setAvatars] = useState<any[]>([]);
+  const [avatars, setAvatars] = useState<AvatarSummary[]>([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => { api.getAvatars('student').then(setAvatars).catch(() => {}); }, []);
 
@@ -1312,8 +1313,8 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         avatarId: avatarId || undefined,
       });
       onSaved();
-    } catch (e: any) {
-      setToast({ msg: '更新失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '更新失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     setSaving(false);
   };
@@ -1442,8 +1443,8 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
         await api.updateStudent(classId, sid, { tag: tagValue });
       }
       onSaved();
-    } catch (e: any) {
-      setToast({ msg: '批量更新失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '批量更新失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     setSaving(false);
   };
@@ -1496,8 +1497,8 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
         await api.updateStudent(classId, sid, { gender });
       }
       onSaved();
-    } catch (e: any) {
-      setToast({ msg: '批量更新失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '批量更新失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     setSaving(false);
   };
@@ -1560,8 +1561,8 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
 }
 
 function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars, onClose, onSaved, setToast }: {
-  classId: string; studentId: string; currentAvatarId?: number; avatars: any[];
-  onClose: () => void; onSaved: () => void; setToast: (t: any) => void;
+  classId: string; studentId: string; currentAvatarId?: number; avatars: AvatarSummary[];
+  onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(currentAvatarId || null);
   const [saving, setSaving] = useState(false);
@@ -1615,9 +1616,9 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
 }
 
 function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setToast }: {
-  classId: string; currentAvatarId?: number; onClose: () => void; onSaved: () => void; setToast: (t: any) => void;
+  classId: string; currentAvatarId?: number; onClose: () => void; onSaved: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
 }) {
-  const [icons, setIcons] = useState<any[]>([]);
+  const [icons, setIcons] = useState<AvatarSummary[]>([]);
   const [selected, setSelected] = useState<number | null>(currentAvatarId || null);
   const [saving, setSaving] = useState(false);
   useEffect(() => { api.getAvatars('class').then(setIcons).catch(() => {}); }, []);
@@ -1678,9 +1679,9 @@ const GROUP_COLORS = [
 ];
 
 function GroupManagement({ classId, students, studentAvatars, onChanged }: {
-  classId: string; students: any[]; studentAvatars: Record<string, string>; onChanged: () => void;
+  classId: string; students: StudentSummary[]; studentAvatars: Record<string, string>; onChanged: () => void;
 }) {
-  const [groups, setGroups] = useState<any[]>([]);
+  const [groups, setGroups] = useState<ClassGroup[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -1699,7 +1700,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
 
   const assignedIds = new Set(groups.flatMap(g => g.studentIds || []));
   const unassigned = [...students].filter(s => !assignedIds.has(s.id))
-    .sort((a, b) => (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0));
+    .sort((a, b) => (parseInt(a.studentNo ?? '', 10) || 0) - (parseInt(b.studentNo ?? '', 10) || 0));
 
   const handleDragStart = (e: React.DragEvent, studentId: string, isUnassigned = false) => {
     e.dataTransfer.effectAllowed = 'move';
@@ -2008,7 +2009,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {g.studentIds?.length > 0 ? (
                       [...students].filter(s => g.studentIds.includes(s.id))
-                        .sort((a, b) => (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0)).map(s => (
+                        .sort((a, b) => (parseInt(a.studentNo ?? '', 10) || 0) - (parseInt(b.studentNo ?? '', 10) || 0)).map(s => (
                         <div key={s.id} draggable
                           onDragStart={e => { handleDragStart(e, s.id); dragSourceGroupRef.current = g.id; }}
                           onDragEnd={e => {

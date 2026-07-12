@@ -20,6 +20,10 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '未知错误';
+}
+
 function readableTimestamp(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -226,9 +230,9 @@ router.post('/:classroomId/conversations/docx', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
     res.send(result.buffer);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Export] conversations DOCX error:', error);
-    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });
 
@@ -247,9 +251,9 @@ router.post('/:classroomId/conversations/csv', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
     res.send(result.csv);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Export] conversations CSV error:', error);
-    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });
 
@@ -351,9 +355,9 @@ router.post('/:classroomId/stats/docx', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
     res.send(result.buffer);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Export] stats DOCX error:', error);
-    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });
 
@@ -402,9 +406,9 @@ router.post('/:classroomId/stats/csv', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=stats-${req.params.classroomId.slice(0, 8)}-${readableTimestamp()}.csv`);
     res.send(csv);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Export] stats CSV error:', error);
-    res.status(500).json({ error: '导出失败: ' + (error?.message || '未知错误') });
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });
 
@@ -463,9 +467,9 @@ router.post('/backup', async (req, res) => {
       path: backupPath,
       size: fs.statSync(backupPath).size,
     });
-  } catch (error: any) {
-    console.error('[Backup] 创建失败:', error?.message || error);
-    res.status(500).json({ error: '备份失败: ' + (error?.message || '未知错误') });
+  } catch (error: unknown) {
+    console.error('[Backup] 创建失败:', errorMessage(error));
+    res.status(500).json({ error: '备份失败: ' + errorMessage(error) });
   }
 });
 
@@ -696,9 +700,9 @@ router.get('/backup/uploads-chat', async (req, res) => {
     archive.pipe(res);
     archive.directory(uploadsDir, 'chat');
     await archive.finalize();
-  } catch (error: any) {
-    console.error('[UploadsChat] 打包失败:', error?.message || error);
-    res.status(500).json({ error: '打包下载失败: ' + (error?.message || '未知错误') });
+  } catch (error: unknown) {
+    console.error('[UploadsChat] 打包失败:', errorMessage(error));
+    res.status(500).json({ error: '打包下载失败: ' + errorMessage(error) });
   }
 });
 
@@ -742,9 +746,9 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
     fs.unlinkSync(req.file.path);
     fs.rmSync(tmpDir, { recursive: true, force: true });
     res.json({ success: true });
-  } catch (error: any) {
-    console.error('[UploadsChat] 导入失败:', error?.message || error);
-    res.status(500).json({ error: '附件导入失败: ' + (error?.message || '未知错误') });
+  } catch (error: unknown) {
+    console.error('[UploadsChat] 导入失败:', errorMessage(error));
+    res.status(500).json({ error: '附件导入失败: ' + errorMessage(error) });
   }
 });
 
@@ -775,7 +779,7 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
       const zip = new AdmZip(req.file.path);
       const entries = zip.getEntries();
       const allowedRoot = /^(data\.db|\.encryption\.key|(?:chat|avatars|logos)(?:\/|$))/;
-      if (!entries.some((entry: any) => entry.entryName === 'data.db') || entries.some((entry: any) => !allowedRoot.test(String(entry.entryName).replace(/\\/g, '/')))) {
+      if (!entries.some((entry: { entryName: string }) => entry.entryName === 'data.db') || entries.some((entry: { entryName: string }) => !allowedRoot.test(String(entry.entryName).replace(/\\/g, '/')))) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: '备份压缩包结构无效' });
       }

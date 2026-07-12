@@ -10,6 +10,14 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
   RadialBarChart, RadialBar,
 } from 'recharts';
+import type { AgentSummary, BackupFile, ClassSummary, ClassroomHistoryItem, DashboardClassroom, ShieldConfig, ShieldWord, StorageStats } from '@/lib/types';
+
+type ChartPayloadItem = {
+  name?: string;
+  value?: number;
+  color?: string;
+  payload?: { name?: string };
+};
 
 // ─── 区块卡片 ──────────────────────────────────────────────
 
@@ -53,25 +61,25 @@ function greeting() {
 
 // ─── 自定义 Tooltip ─────────────────────────────────────────
 
-function ChartTooltip({ active, payload }: any) {
+function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartPayloadItem[] }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
-      {payload.map((entry: any, i: number) => (
-        <div key={i} style={{ color: '#f1f5f9' }}>{entry.payload.name || entry.name}: {entry.value}</div>
+      {payload.map((entry, i: number) => (
+        <div key={i} style={{ color: '#f1f5f9' }}>{entry.payload?.name || entry.name}: {entry.value}</div>
       ))}
     </div>
   );
 }
 
-function StackedBarTooltip({ active, payload }: any) {
+function StackedBarTooltip({ active, payload }: { active?: boolean; payload?: ChartPayloadItem[] }) {
   if (!active || !payload?.length) return null;
-  const total = payload.reduce((sum: number, p: any) => sum + (p.value || 0), 0);
-  const usageItem = payload.find((p: any) => p.name === '使用次数');
+  const total = payload.reduce((sum, item) => sum + (item.value || 0), 0);
+  const usageItem = payload.find((item) => item.name === '使用次数');
   return (
     <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
       <div style={{ fontWeight: 600, marginBottom: 4, color: '#e2e8f0' }}>{payload[0]?.payload?.name}</div>
-      {payload.filter((p: any) => p.name !== '使用次数').map((entry: any, i: number) => (
+      {payload.filter((item) => item.name !== '使用次数').map((entry, i: number) => (
         <div key={i} style={{ color: entry.color || '#f1f5f9' }}>
           {entry.name}: {entry.value}人
         </div>
@@ -154,14 +162,14 @@ function StatBlock({ label, count, size, color }: { label: string; count: number
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [agents, setAgents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [allClassrooms, setAllClassrooms] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [backups, setBackups] = useState<any[]>([]);
-  const [shieldWords, setShieldWords] = useState<any[]>([]);
-  const [shieldConfig, setShieldConfig] = useState<any>(null);
-  const [storageStats, setStorageStats] = useState<any>(null);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [classes, setClasses] = useState<ClassSummary[]>([]);
+  const [allClassrooms, setAllClassrooms] = useState<DashboardClassroom[]>([]);
+  const [history, setHistory] = useState<ClassroomHistoryItem[]>([]);
+  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [shieldWords, setShieldWords] = useState<ShieldWord[]>([]);
+  const [shieldConfig, setShieldConfig] = useState<ShieldConfig | null>(null);
+  const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -211,7 +219,7 @@ export default function DashboardPage() {
   const classGroupTotal = classes.reduce((sum, c) => sum + (c._count?.groups || 0), 0);
   const classUsage = classes.map(c => {
     const count = allClassrooms.filter(cr =>
-      cr.classes?.some((cc: any) => cc.classId === c.id)
+      cr.classes.some((cc) => cc.classId === c.id)
     ).length;
     return { id: c.id, name: c.name, usageCount: count };
   });
@@ -228,7 +236,7 @@ export default function DashboardPage() {
     return acc;
   }, {});
   const classroomTotalInteractions = allClassrooms.reduce(
-    (sum, c) => sum + (c._count?.interactions || 0), 0,
+    (sum, c) => sum + c._count.interactions, 0,
   );
 
   // ── 数据管理 ──
@@ -251,13 +259,13 @@ export default function DashboardPage() {
   const backupTotal = backups.length;
   const backupTotalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0);
   const backupLatest = backupTotal > 0
-    ? new Date(backups.reduce((latest, b) => new Date(b.createdAt) > new Date(latest) ? b : backups[0]).createdAt)
+    ? new Date(backups.reduce((latest, backup) => new Date(backup.createdAt) > new Date(latest.createdAt) ? backup : latest).createdAt)
     : null;
 
   // ── 屏蔽词 ──
   const shieldCustomCount = shieldWords.filter(w => !w.builtin).length;
   const shieldBuiltinCount = shieldWords.filter(w => w.builtin).length;
-  const shieldEnabled = shieldConfig?.enabled !== false;
+  const shieldEnabled = true;
 
   const formatBytes = (bytes: number) =>
     bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${bytes} B`;
@@ -516,7 +524,7 @@ export default function DashboardPage() {
               </div>
 
               {/* 智能体使用率 */}
-              {storageStats?.agentUsage?.length > 0 && (
+              {storageStats && storageStats.agentUsage.length > 0 && (
                 <div>
                   <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
                     智能体使用率
@@ -540,7 +548,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {storageStats.agentUsage.slice(0, 5).map((a: any) => {
+                      {storageStats.agentUsage.slice(0, 5).map((a) => {
                         const agentInfo = agents.find(ag => ag.id === a.id);
                         const isEnabled = agentInfo?.enabled !== false;
                         const isHealthy = agentInfo?.lastCheckOk === true;
@@ -660,12 +668,12 @@ export default function DashboardPage() {
                     <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>空间占比</div>
                     {(() => {
                       const spaceColors = ['#6366f1', '#8b5cf6', '#a78bfa', '#94a3b8'];
-                      const allClassrooms = storageStats?.classroomAttachments?.classrooms || [];
-                      const sorted = [...allClassrooms].sort((a: any, b: any) => b.totalSize - a.totalSize);
-                      const top3 = sorted.slice(0, 3).filter((cr: any) => cr.totalSize > 0);
-                      const others = sorted.slice(3).reduce((sum: number, cr: any) => sum + cr.totalSize, 0);
-                      const totalSize = sorted.reduce((sum: number, cr: any) => sum + cr.totalSize, 0);
-                      const spaceData = top3.map((cr: any, i: number) => ({
+                      const attachmentClassrooms = storageStats?.classroomAttachments.classrooms ?? [];
+                      const sorted = [...attachmentClassrooms].sort((a, b) => b.totalSize - a.totalSize);
+                      const top3 = sorted.slice(0, 3).filter((cr) => cr.totalSize > 0);
+                      const others = sorted.slice(3).reduce((sum, cr) => sum + cr.totalSize, 0);
+                      const totalSize = sorted.reduce((sum, cr) => sum + cr.totalSize, 0);
+                      const spaceData = top3.map((cr, i: number) => ({
                         name: cr.title || '(未命名)',
                         value: totalSize > 0 ? cr.totalSize : 0,
                         color: spaceColors[i],
@@ -693,7 +701,7 @@ export default function DashboardPage() {
                             </ResponsiveContainer>
                           </div>
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {spaceData.map((s: any) => (
+                            {spaceData.map((s) => (
                               <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.688rem" }}>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
@@ -715,7 +723,7 @@ export default function DashboardPage() {
               )}
 
               {/* 课堂空间占用量 */}
-              {storageStats?.classroomAttachments?.classrooms?.filter((cr: any) => cr.attachmentCount > 0).length > 0 && (
+              {storageStats && storageStats.classroomAttachments.classrooms.filter((cr) => cr.attachmentCount > 0).length > 0 && (
                 <div>
                   <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
                     课堂空间占用量
@@ -741,10 +749,10 @@ export default function DashboardPage() {
                     </thead>
                     <tbody>
                       {[...storageStats.classroomAttachments.classrooms]
-                        .filter((cr: any) => cr.attachmentCount > 0)
-                        .sort((a: any, b: any) => b.totalSize - a.totalSize)
+                        .filter((cr) => cr.attachmentCount > 0)
+                        .sort((a, b) => b.totalSize - a.totalSize)
                         .slice(0, 5)
-                        .map((cr: any, i: number) => (
+                        .map((cr, i: number) => (
                         <tr key={cr.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '5px 4px', color: '#94a3b8', textAlign: 'center' }}>{i + 1}</td>
                           <td style={{ padding: '5px 4px', color: '#0f172a', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

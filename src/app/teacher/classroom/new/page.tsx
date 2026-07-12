@@ -4,16 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
+import type { AgentSummary, ClassGroup, ClassSummary } from '@/lib/types';
 
 type CreateMode = 'standard' | 'group' | 'advanced';
 
 export default function NewClassroomPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
-  const [agents, setAgents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
-  const [classGroups, setClassGroups] = useState<any[]>([]);
+  const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [mode, setMode] = useState<CreateMode>('standard');
   const [selectedAgentId, setSelectedAgentId] = useState('');
@@ -29,7 +30,7 @@ export default function NewClassroomPage() {
     mountedRef.current = true;
     Promise.all([api.getAgents(), api.getClasses()]).then(([a, c]) => {
       if (!mountedRef.current) return;
-      setAgents(a.filter((agent: any) => agent.enabled !== false));
+      setAgents(a.filter((agent) => agent.enabled !== false));
       setClasses(c);
     }).catch(error => {
       if (mountedRef.current) setFieldErrors({ submit: `课堂配置加载失败：${error instanceof Error ? error.message : '请求异常'}` });
@@ -104,14 +105,14 @@ export default function NewClassroomPage() {
           agentId: groupAgentIds[g.id],
           studentIds: g.studentIds || [],
         }));
-        const result: any = await api.createAdvancedClassroom({
+        const result = await api.createAdvancedClassroom({
           title: title || undefined,
           classId: selectedClassId,
           groups,
         });
         router.push(`/teacher/classroom?id=${result.id}`);
       } else {
-        const result: any = await api.createClassroom({
+        const result = await api.createClassroom({
           title: title || undefined,
           classIds: [selectedClassId],
           agentIds: [selectedAgentId],

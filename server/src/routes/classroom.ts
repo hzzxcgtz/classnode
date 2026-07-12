@@ -138,16 +138,16 @@ router.post('/create', async (req, res) => {
       }
     } else {
       // 标准/高级模式：将班级个体学生加入课堂（批量写入）
-      const allStudents = created.classes.flatMap((cc: any) => cc.class.students);
+      const allStudents = created.classes.flatMap((cc) => cc.class.students);
       if (allStudents.length > 0) {
         await tx.classroomStudent.createMany({
-          data: allStudents.map((s: any) => ({
+          data: allStudents.map((s) => ({
             classroomId: created.id,
             studentId: s.id,
           })),
         });
         await tx.interaction.createMany({
-          data: allStudents.map((s: any) => ({
+          data: allStudents.map((s) => ({
             classroomId: created.id,
             studentId: s.id,
           })),
@@ -174,10 +174,13 @@ router.post('/create-advanced', async (req, res) => {
       return res.status(400).json({ error: '请选择班级和分组' });
     }
     if (!Array.isArray(groups) || groups.length > 100) return res.status(400).json({ error: '分组数量无效' });
-    const normalizedGroups = groups.map((group: any) => ({
-      name: typeof group?.name === 'string' ? group.name.trim() : '',
-      agentId: typeof group?.agentId === 'string' ? group.agentId : '',
-    }));
+    const normalizedGroups = groups.map((group: unknown) => {
+      const input = typeof group === 'object' && group !== null ? group as Record<string, unknown> : {};
+      return {
+        name: typeof input.name === 'string' ? input.name.trim() : '',
+        agentId: typeof input.agentId === 'string' ? input.agentId : '',
+      };
+    });
     if (normalizedGroups.some(group => !group.name || !group.agentId)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
     if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
@@ -397,7 +400,7 @@ router.get('/code/:code', async (req, res) => {
       status: classroom.status,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
-      agents: classroom.classroomAgents.map((ca: { agent: { id: any; name: any; logo: any; platform: any; enabled: any; greeting: any } }) => ({
+      agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,
         name: ca.agent.name,
         logo: ca.agent.logo,

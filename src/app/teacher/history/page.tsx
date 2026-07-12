@@ -4,9 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { Toast, Pagination } from '@/lib/components';
+import type { BackupFile, ClassroomHistoryItem, ConversationExportReport, ExportConversationStudent } from '@/lib/types';
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 export default function HistoryPage() {
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<ClassroomHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
@@ -15,8 +20,8 @@ export default function HistoryPage() {
   const [preview, setPreview] = useState<{
     type: 'conversations';
     classroomId: string;
-    classroom: any;
-    data: any;
+    classroom: ClassroomHistoryItem | undefined;
+    data: ConversationExportReport;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [previewingClassroomId, setPreviewingClassroomId] = useState<string | null>(null);
@@ -59,12 +64,12 @@ export default function HistoryPage() {
       setPreview({ type: 'conversations', classroomId, classroom: cr, data });
       // 默认全选所有学生
       if (data.students) {
-        setSelectedStudentIds(data.students.map((s: any) => s.studentId || s.name).filter(Boolean));
+        setSelectedStudentIds(data.students.map((s) => s.studentId || s.name).filter(Boolean));
       }
       setExportProgress(null);
       setExportStage('');
-    } catch (e: any) {
-      setToast({ msg: '获取数据失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '获取数据失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     } finally {
       previewingRef.current = false;
       setPreviewingClassroomId(null);
@@ -100,9 +105,9 @@ export default function HistoryPage() {
       // 确定要导出的学生 ID（从原 data 中提取实际 studentId）
       const students = data.students || [];
       const studentIds = students
-        .filter((s: any) => selectedStudentIds.includes(s.studentId || s.name))
-        .map((s: any) => s.studentId)
-        .filter(Boolean);
+        .filter((s) => selectedStudentIds.includes(s.studentId || s.name))
+        .map((s) => s.studentId)
+        .filter((studentId): studentId is string => Boolean(studentId));
 
       if (type === 'conversations') {
         // DOCX 对话记录
@@ -122,8 +127,8 @@ export default function HistoryPage() {
 
       setPreview(null);
       setToast({ msg: '导出成功！', type: 'success' });
-    } catch (e: any) {
-      setToast({ msg: '导出失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '导出失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     exportingRef.current = false;
     setExporting(false);
@@ -141,17 +146,17 @@ export default function HistoryPage() {
       setRestoreTarget(null);
       setHistory(prev => prev.filter(h => h.id !== id)); // 从列表移除
       setToast({ msg: '✅ 课堂已恢复！可在「活跃课堂」中查看', type: 'success' });
-    } catch (e: any) {
-      setToast({ msg: '恢复失败: ' + (e.message || '未知错误'), type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '恢复失败: ' + (error instanceof Error ? error.message : '未知错误'), type: 'error' });
     }
     restoringRef.current = false;
     setRestoring(false);
   };
 
-  const totalStudents = history.reduce((sum: number, cr: any) => sum + (cr._count?.students || 0), 0);
-  const totalInteractions = history.reduce((sum: number, cr: any) => sum + (cr._count?.interactions || 0), 0);
-  const totalChars = history.reduce((sum: number, cr: any) => sum + (Number(cr.totalChars) || 0), 0);
-  const totalDuration = history.reduce((sum: number, cr: any) => {
+  const totalStudents = history.reduce((sum, cr) => sum + cr._count.students, 0);
+  const totalInteractions = history.reduce((sum, cr) => sum + cr._count.interactions, 0);
+  const totalChars = history.reduce((sum, cr) => sum + cr.totalChars, 0);
+  const totalDuration = history.reduce((sum, cr) => {
     if (!cr.endedAt) return sum;
     return sum + (new Date(cr.endedAt).getTime() - new Date(cr.createdAt).getTime());
   }, 0);
@@ -267,7 +272,7 @@ export default function HistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedHistory.map((cr: any) => {
+                {pagedHistory.map((cr) => {
                   const startTime = new Date(cr.createdAt);
                   const endTime = cr.endedAt ? new Date(cr.endedAt) : null;
                   const duration = endTime
@@ -281,7 +286,7 @@ export default function HistoryPage() {
                           {cr.title || '未命名课堂'}
                         </div>
                         <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 2 }}>
-                          {cr.classes?.map((cc: any) => cc.class.name).join(', ')}
+                          {cr.classes.map((cc) => cc.class.name).join(', ')}
                         </div>
                       </td>
                       <td style={{ textAlign: 'center', fontSize: "0.75rem", color: '#475569', whiteSpace: 'nowrap' }}>
@@ -451,7 +456,7 @@ function ExportPreviewDialog({
   onConfirm,
   onCancel,
 }: {
-  preview: { classroom: any; data: any };
+  preview: { classroom: ClassroomHistoryItem | undefined; data: ConversationExportReport };
   exporting: boolean;
   exportProgress: number | null;
   exportStage: string;
@@ -468,7 +473,7 @@ function ExportPreviewDialog({
 
   // 学生列表
   const students = data.students || [];
-  const studentSelectorId = (s: any) => s.studentId || s.name;
+  const studentSelectorId = (student: ExportConversationStudent) => student.studentId || student.name;
   const allSelected = students.length > 0 && selectedStudentIds.length === students.length;
 
   return (
@@ -540,7 +545,7 @@ function ExportPreviewDialog({
                 </label>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
-                {students.map((s: any, i: number) => {
+                {students.map((s, i: number) => {
                   const sid = studentSelectorId(s);
                   const msgCount = s.messages?.length || 0;
                   const rounds = s.totalRounds || Math.ceil(msgCount / 2);
@@ -635,7 +640,7 @@ function ExportPreviewDialog({
 }
 
 function BackupManager() {
-  const [backups, setBackups] = useState<any[]>([]);
+  const [backups, setBackups] = useState<BackupFile[]>([]);
   const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -661,8 +666,8 @@ function BackupManager() {
       const result = await api.createBackup();
       setToast({ msg: '备份成功！', type: 'success' });
       setBackups(await api.getBackups());
-    } catch (e: any) {
-      setToast({ msg: '备份失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '备份失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
     }
     backupActionRef.current = false;
     setBackupAction(null);
@@ -679,8 +684,8 @@ function BackupManager() {
       await api.uploadBackup(file);
       setToast({ msg: '导入备份成功！', type: 'success' });
       setBackups(await api.getBackups());
-    } catch (e: any) {
-      setToast({ msg: '导入失败: ' + (e.message || e), type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '导入失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
     }
     backupActionRef.current = false;
     setBackupAction(null);
@@ -698,8 +703,8 @@ function BackupManager() {
       setRestoreTarget(null);
       setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
       window.location.reload();
-    } catch (e: any) {
-      setToast({ msg: '恢复失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '恢复失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
     }
     backupActionRef.current = false;
     setBackupAction(null);
@@ -715,8 +720,8 @@ function BackupManager() {
       await api.deleteBackup(name);
       setDeleteTarget(null);
       setBackups(await api.getBackups());
-    } catch (e: any) {
-      setToast({ msg: '删除失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '删除失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
     }
     backupActionRef.current = false;
     setBackupAction(null);
@@ -734,8 +739,8 @@ function BackupManager() {
       setResetConfirmText('');
       setToast({ msg: '系统已初始化！页面将重新加载。', type: 'success' });
       window.location.reload();
-    } catch (e: any) {
-      setToast({ msg: '初始化失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: '初始化失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
     }
     backupActionRef.current = false;
     setBackupAction(null);

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { isValidElement, useState, useEffect } from "react";
 
 const Highlight = (props: { children: React.ReactNode }) => (
   <span style={{ fontWeight: 600, color: "#2563eb" }}>{props.children}</span>
@@ -1208,8 +1208,8 @@ export default function GuidePage() {
                       style={{
                         marginBottom: j < section.items.length - 1 ? 14 : 0,
                         padding:
-                          typeof item === "object" &&
-                          (item as any).props?.style?.padding
+                          isValidElement<{ style?: { padding?: unknown } }>(item) &&
+                          item.props.style?.padding
                             ? undefined
                             : "2px 0",
                       }}

@@ -8,24 +8,26 @@ import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
 import { FieldError, Toast } from "@/lib/components";
+import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
+import type { Socket } from "socket.io-client";
 
 const SOCKET_URL = getApiBaseUrl();
 
 export default function TeacherDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [activeClassrooms, setActiveClassrooms] = useState<any[]>([]);
+  const [activeClassrooms, setActiveClassrooms] = useState<ActiveClassroom[]>([]);
   const [onlineMap, setOnlineMap] = useState<Record<string, number>>({});
   const [settingsModalClassroom, setSettingsModalClassroom] =
-    useState<any>(null);
+    useState<ActiveClassroom | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editGroups, setEditGroups] = useState<any[]>([]);
-  const [allAgents, setAllAgents] = useState<any[]>([]);
+  const [editGroups, setEditGroups] = useState<ClassroomSettingsGroup[]>([]);
+  const [allAgents, setAllAgents] = useState<AgentSummary[]>([]);
   const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<
     string | null
   >(null);
   const [editAgentId, setEditAgentId] = useState("");
-  const [qrCodeClassroom, setQrCodeClassroom] = useState<any>(null);
+  const [qrCodeClassroom, setQrCodeClassroom] = useState<ActiveClassroom | null>(null);
   const [availableIPs, setAvailableIPs] = useState<
     { name: string; label: string; ip: string }[]
   >([]);
@@ -41,7 +43,7 @@ export default function TeacherDashboard() {
   const endingRef = useRef(false);
   const settingsSavingRef = useRef(false);
   const qrLoadingRef = useRef(false);
-  const socketRef = useRef<any>(null);
+  const socketRef = useRef<Socket | null>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
   activeClassroomsRef.current = activeClassrooms;
@@ -84,13 +86,13 @@ export default function TeacherDashboard() {
         if (!cancelled) {
           // 用 ref 拿到最新的 classroom 列表，而非闭包中的 stale 值
           const crs = activeClassroomsRef.current;
-          crs.forEach((cr: any) => {
+          crs.forEach((cr) => {
             sk.emit("listen-classroom-status", cr.id);
           });
         }
       });
 
-      sk.on("online-students", (data: any) => {
+      sk.on("online-students", (data: { classroomId: string; studentIds?: string[] }) => {
         if (!cancelled) {
           setOnlineMap((prev: Record<string, number>) => ({
             ...prev,
@@ -117,7 +119,7 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const sk = socketRef.current;
     if (!sk?.connected || activeClassrooms.length === 0) return;
-    activeClassrooms.forEach((cr: any) => {
+    activeClassrooms.forEach((cr) => {
       sk.emit("listen-classroom-status", cr.id);
     });
   }, [activeClassrooms]);
@@ -131,7 +133,7 @@ export default function TeacherDashboard() {
     setLoading(false);
   };
 
-  const endClassroom = async (classroom: any) => {
+  const endClassroom = async (classroom: ActiveClassroom) => {
     if (endingRef.current) return;
     if (!confirm(`确定结束课堂「${classroom.title || "未命名课堂"}」？\n结束后学生端将停止互动，数据自动保存至历史记录。`)) return;
     endingRef.current = true;
@@ -148,10 +150,10 @@ export default function TeacherDashboard() {
     }
   };
 
-  const openSettings = async (cr: any) => {
+  const openSettings = async (cr: ActiveClassroom) => {
     setSettingsModalClassroom(cr);
     setEditTitle(cr.title || "");
-    const groups = (cr.groups || []).map((g: any) => ({
+    const groups = cr.groups.map((g) => ({
       id: g.id,
       name: g.name,
       agentId: g.agent?.id || "",
@@ -188,7 +190,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  const openQrCode = async (classroom: any) => {
+  const openQrCode = async (classroom: ActiveClassroom) => {
     if (qrLoadingRef.current) return;
     qrLoadingRef.current = true;
     setLoadingQrClassroomId(classroom.id);
@@ -207,7 +209,7 @@ export default function TeacherDashboard() {
   };
 
   /** 生成并下载带 Logo 的二维码图片 */
-  const downloadQRCode = async (cr: any) => {
+  const downloadQRCode = async (cr: ActiveClassroom) => {
     const host =
       selectedIP ||
       (typeof window !== "undefined" ? window.location.hostname : "");
@@ -378,7 +380,7 @@ export default function TeacherDashboard() {
       {/* 课堂列表 */}
       {activeClassrooms.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {activeClassrooms.map((cr: any) => (
+          {activeClassrooms.map((cr) => (
             <div
               key={cr.id}
               style={{
@@ -565,7 +567,7 @@ export default function TeacherDashboard() {
                     {
                       label: "互动",
                       value: (cr.students || []).reduce(
-                        (sum: number, s: any) => sum + (s.totalRounds || 0),
+                        (sum: number, s) => sum + (s.totalRounds || 0),
                         0,
                       ),
                       color: "#2563eb",
@@ -598,11 +600,11 @@ export default function TeacherDashboard() {
               {/* 中间部分：智能体信息 */}
               {(() => {
                 // 收集智能体（从 classroomAgents 和 groups 去重）
-                const agentMap = new Map<string, any>();
-                (cr.classroomAgents || []).forEach((ca: any) => {
+                const agentMap = new Map<string, AgentSummary>();
+                cr.classroomAgents.forEach((ca) => {
                   if (ca.agent) agentMap.set(ca.agent.id, ca.agent);
                 });
-                (cr.groups || []).forEach((g: any) => {
+                cr.groups.forEach((g) => {
                   if (g.agent) agentMap.set(g.agent.id, g.agent);
                 });
                 const agents = [...agentMap.values()];
@@ -628,7 +630,7 @@ export default function TeacherDashboard() {
                     >
                       智能体
                     </span>
-                    {agents.map((agt: any) => {
+                    {agents.map((agt) => {
                       const pc = platformColors[agt.platform] || "#64748b";
                       return (
                         <span
@@ -1287,7 +1289,7 @@ export default function TeacherDashboard() {
                     >
                       {(() => {
                         const agent = allAgents.find(
-                          (a: any) => a.id === editAgentId,
+                          (a) => a.id === editAgentId,
                         );
                         if (!agent)
                           return (
@@ -1403,9 +1405,9 @@ export default function TeacherDashboard() {
                         opacity: 0.7,
                       }}
                     >
-                      {editGroups.map((g: any, idx: number) => {
+                      {editGroups.map((g, idx: number) => {
                         const agent = allAgents.find(
-                          (a: any) => a.id === g.agentId,
+                          (a) => a.id === g.agentId,
                         );
                         const logoUrl = agent?.logo
                           ? agent.logo.startsWith("/")

@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Pagination } from '@/lib/components';
+import type { ClassroomWarning, ClassroomWarningSummary, ShieldWord } from '@/lib/types';
 
 export default function ShieldPage() {
   const [tab, setTab] = useState<'words' | 'records'>('words');
-  const [words, setWords] = useState<any[]>([]);
+  const [words, setWords] = useState<ShieldWord[]>([]);
   const [newWord, setNewWord] = useState('');
   const [autoBlackCount, setAutoBlackCount] = useState(0);
   const [rateLimit, setRateLimit] = useState(6);
@@ -18,9 +19,9 @@ export default function ShieldPage() {
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [categories, setCategories] = useState<{ name: string; count: number; words: { id: string; word: string }[] }[]>([]);
   // 警告记录
-  const [summary, setSummary] = useState<any[]>([]);
+  const [summary, setSummary] = useState<ClassroomWarningSummary[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<any[]>([]);
+  const [warnings, setWarnings] = useState<ClassroomWarning[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingWarnings, setLoadingWarnings] = useState(false);
   const [warningPage, setWarningPage] = useState(1);
@@ -93,8 +94,8 @@ export default function ShieldPage() {
     for (const w of words) {
       try {
         await api.addShieldWord(w);
-      } catch (e: any) {
-        lastError = e.message || `「${w}」添加失败`;
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : `「${w}」添加失败`;
       }
     }
     if (lastError) setError(lastError);
@@ -113,8 +114,8 @@ export default function ShieldPage() {
     try {
       await api.deleteShieldWord(id);
       await loadData();
-    } catch (e: any) {
-      setError(e.message || '删除失败');
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : '删除失败');
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -131,8 +132,8 @@ export default function ShieldPage() {
       await api.updateShieldConfig({ autoBlackCount, rateLimit });
       setConfigSaved(true);
       setTimeout(() => setConfigSaved(false), 2000);
-    } catch (e: any) {
-      setConfigError(e.message || '保存失败');
+    } catch (error: unknown) {
+      setConfigError(error instanceof Error ? error.message : '保存失败');
       setTimeout(() => setConfigError(''), 3000);
     } finally {
       shieldActionRef.current = false;
@@ -240,11 +241,11 @@ export default function ShieldPage() {
 
       {/* 标签切换 */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 4, borderBottom: '1px solid #e2e8f0' }}>
-        {[
+        {([
           { key: 'words', label: '词库管理', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8' },
           { key: 'records', label: '拦截记录', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M12 8v4 M12 16h.01' },
-        ].map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key as any); }}
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => { setTab(t.key); }}
             style={{
               flex: 1, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit',
               border: 'none', borderBottom: tab === t.key ? '2px solid #007aff' : '2px solid transparent',

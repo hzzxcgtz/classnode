@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { AgentSummary, ClassroomSummary, InitStatus, StudentSessionResponse } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
 
 let studentSessionToken = '';
 
@@ -67,68 +67,68 @@ export const api = {
   getAgents: () => request<AgentSummary[]>('/api/agents'),
   getAgent: (id: string) => request<AgentSummary>(`/api/agents/${id}`),
   createAgent: (data: FormData) =>
-    formRequest<any>('/api/agents', 'POST', data),
+    formRequest<AgentSummary>('/api/agents', 'POST', data),
   updateAgent: (id: string, data: FormData) =>
-    formRequest<any>(`/api/agents/${id}`, 'PUT', data),
+    formRequest<AgentSummary>(`/api/agents/${id}`, 'PUT', data),
   deleteAgent: (id: string) => request(`/api/agents/${id}`, { method: 'DELETE' }),
   checkAgentUsage: (id: string) =>
     request<{ used: boolean; classroomCount: number; groupCount: number }>(`/api/agents/${id}/usage`),
   getAgentGreeting: (id: string, force?: boolean) =>
     request<{ greeting: string | null }>(`/api/agents/${id}/greeting${force ? '?force=true' : ''}`),
   getAgentInfo: (id: string) =>
-    request<{ name: string | null; iconUrl: string | null; greeting: string | null }>(`/api/agents/${id}/info`),
+    request<AgentInfoResponse>(`/api/agents/${id}/info`),
   getAgentInfoDirect: (params: { platform: string; botId: string; apiKey: string; apiUrl?: string; projectId?: string; apiSecret?: string }) =>
-    request<{ name: string | null; iconUrl: string | null; greeting: string | null }>('/api/agents/info-preview', {
+    request<AgentInfoResponse>('/api/agents/info-preview', {
       method: 'POST', body: JSON.stringify(params),
     }),
-  testAgent: (id: string) => request<{ success: boolean; error?: string }>(`/api/agents/${id}/test`, { method: 'POST' }),
+  testAgent: (id: string) => request<AgentTestResponse>(`/api/agents/${id}/test`, { method: 'POST' }),
 
   // Classes
-  getClasses: () => request<any[]>('/api/classes'),
+  getClasses: () => request<ClassSummary[]>('/api/classes'),
   createClass: (name: string, avatarId?: number) =>
-    request<{ id: string; name: string; avatarId?: number | null }>('/api/classes', { method: 'POST', body: JSON.stringify({ name, avatarId }) }),
+    request<ClassSummary>('/api/classes', { method: 'POST', body: JSON.stringify({ name, avatarId }) }),
   updateClass: (id: string, name: string, avatarId?: number | null) =>
-    request(`/api/classes/${id}`, { method: 'PUT', body: JSON.stringify({ name, avatarId }) }),
+    request<ClassSummary>(`/api/classes/${id}`, { method: 'PUT', body: JSON.stringify({ name, avatarId }) }),
   deleteClass: (id: string) => request(`/api/classes/${id}`, { method: 'DELETE' }),
   checkClassUsage: (id: string) =>
     request<{ used: boolean; classroomCount: number; classrooms: { id: string; title: string; status: string }[] }>(`/api/classes/${id}/usage`),
 
   // Groups
-  getGroups: (classId: string) => request<any[]>(`/api/classes/${classId}/groups`),
+  getGroups: (classId: string) => request<ClassGroup[]>(`/api/classes/${classId}/groups`),
   createGroup: (classId: string, name: string) =>
-    request(`/api/classes/${classId}/groups`, { method: 'POST', body: JSON.stringify({ name }) }),
+    request<ClassGroup>(`/api/classes/${classId}/groups`, { method: 'POST', body: JSON.stringify({ name }) }),
   updateGroup: (classId: string, groupId: string, data: { name?: string; studentIds?: string[] }) =>
-    request(`/api/classes/${classId}/groups/${groupId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    request<ClassGroup>(`/api/classes/${classId}/groups/${groupId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteGroup: (classId: string, groupId: string) =>
     request(`/api/classes/${classId}/groups/${groupId}`, { method: 'DELETE' }),
-  getStudents: (classId: string) => request<any[]>(`/api/classes/${classId}/students`),
+  getStudents: (classId: string) => request<StudentSummary[]>(`/api/classes/${classId}/students`),
   addStudent: (classId: string, data: { name: string; gender?: string }) =>
-    request(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
+    request<StudentSummary>(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
   batchCreateStudentsFromNames: (classId: string, names: (string | { name: string; gender?: string })[]) =>
-    request(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
+    request<StudentBatchCreateResponse>(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>
-    request(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    request<StudentSummary>(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom
   createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>
-    request('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
-  createAdvancedClassroom: (data: { title?: string; classId: string; groups: any[] }) =>
-    request('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
-  getActiveClassrooms: () => request<any[]>('/api/classroom/active'),
-  getClassroom: (id: string) => request<ClassroomSummary>(`/api/classroom/${id}`),
+    request<ClassroomSummary>('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
+  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[] }) =>
+    request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
+  getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
+  getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),
   getClassroomByCode: (code: string) => request<ClassroomSummary>(`/api/classroom/code/${code}`),
   createStudentSession: (code: string, studentId: string) =>
     request<StudentSessionResponse>(`/api/classroom/code/${code}/student-session`, {
       method: 'POST', body: JSON.stringify({ studentId }),
     }),
-  getClassroomStudents: (id: string) => request<any[]>(`/api/classroom/${id}/students`),
+  getClassroomStudents: (id: string) => request<ClassroomStudentSummary[]>(`/api/classroom/${id}/students`),
   getStudentMessages: (classroomId: string, studentId: string) =>
-    request<any[]>(`/api/classroom/${classroomId}/student/${studentId}/messages`),
+    request<ClassroomMessage[]>(`/api/classroom/${classroomId}/student/${studentId}/messages`),
   getTeacherNotifications: (classroomId: string, studentId?: string) =>
-    request<any[]>(`/api/classroom/${classroomId}/notifications${studentId ? `?studentId=${studentId}` : ''}`),
+    request<TeacherNotification[]>(`/api/classroom/${classroomId}/notifications${studentId ? `?studentId=${studentId}` : ''}`),
   getAllMessages: (classroomId: string) =>
-    request<any[]>(`/api/classroom/${classroomId}/all-messages`),
+    request<ClassroomMessage[]>(`/api/classroom/${classroomId}/all-messages`),
   clearStudentMessages: (classroomId: string, studentId: string) =>
     request(`/api/classroom/${classroomId}/student/${studentId}/messages`, { method: 'DELETE' }),
   endClassroom: (id: string) => request(`/api/classroom/${id}/end`, { method: 'POST' }),
@@ -137,8 +137,8 @@ export const api = {
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
   toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),
-  getHistory: () => request<any[]>('/api/classroom/history/all'),
-  getAllClassrooms: () => request<any[]>('/api/classroom/all'),
+  getHistory: () => request<ClassroomHistoryItem[]>('/api/classroom/history/all'),
+  getAllClassrooms: () => request<DashboardClassroom[]>('/api/classroom/all'),
   updateClassroomSettings: (id: string, data: { title?: string }) =>
     request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
   getOnlineStudentIds: (id: string) =>
@@ -150,19 +150,19 @@ export const api = {
 
   // Avatars
   getAvatars: (category?: string) =>
-    request<any[]>(`/api/avatars${category ? `?category=${category}` : ''}`),
+    request<AvatarSummary[]>(`/api/avatars${category ? `?category=${category}` : ''}`),
   getAllAvatars: (category?: string) =>
-    request<any[]>(`/api/avatars/all${category ? `?category=${category}` : ''}`),
+    request<AvatarSummary[]>(`/api/avatars/all${category ? `?category=${category}` : ''}`),
   createAvatar: (data: { name?: string; svgContent: string; category?: string; gender?: string; sortOrder?: number }) =>
-    request('/api/avatars', { method: 'POST', body: JSON.stringify(data) }),
+    request<AvatarSummary>('/api/avatars', { method: 'POST', body: JSON.stringify(data) }),
   updateAvatar: (id: number, data: { name?: string; svgContent?: string; gender?: string; sortOrder?: number }) =>
-    request(`/api/avatars/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    request<AvatarSummary>(`/api/avatars/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAvatar: (id: number) =>
     request<{ success: boolean; studentCount: number; classCount: number }>(`/api/avatars/${id}`, { method: 'DELETE' }),
   assignStudentsAvatar: (studentIds: string[], avatarId: number) =>
-    request('/api/avatars/assign-students', { method: 'POST', body: JSON.stringify({ studentIds, avatarId }) }),
+    request<AvatarBatchResult>('/api/avatars/assign-students', { method: 'POST', body: JSON.stringify({ studentIds, avatarId }) }),
   clearStudentsAvatar: (studentIds: string[]) =>
-    request('/api/avatars/clear-students', { method: 'POST', body: JSON.stringify({ studentIds }) }),
+    request<AvatarBatchResult>('/api/avatars/clear-students', { method: 'POST', body: JSON.stringify({ studentIds }) }),
   autoAssignAvatar: (params: { studentIds?: string[]; classId?: string }) =>
     request<{ success: boolean; assigned: number }>('/api/avatars/auto-assign', { method: 'POST', body: JSON.stringify(params) }),
   setClassAvatar: (classId: string, avatarId: number | null) =>
@@ -174,7 +174,7 @@ export const api = {
   studentSelfChangeAvatar: (studentId: string, data: { avatarId?: number; svgContent?: string; gender?: string }) =>
     request(`/api/avatars/student-self/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   getAvatarsAll: (category?: string) =>
-    request<any[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
+    request<AvatarSummary[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
   batchDeleteAvatars: (ids: number[]) =>
     request<{ success: boolean; deleted: number }>('/api/avatars/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   clearAllAvatars: (category?: string) =>
@@ -188,21 +188,21 @@ export const api = {
     formData.append('avatar', file);
     return fetch(`${getApiBaseUrl()}/api/upload/avatar`, {
       method: 'POST', body: formData, credentials: 'include', headers: getStudentSessionAuthorization(),
-    }).then(r => r.json());
+    }).then(r => r.json() as Promise<AvatarUploadResponse>);
   },
 
   // Export
   exportConversations: (classroomId: string) =>
-    request<any>(`/api/export/${classroomId}/conversations`),
+    request<ConversationExportReport>(`/api/export/${classroomId}/conversations`),
   exportConversationsFiltered: (classroomId: string, studentIds?: string[]) => {
     const params = studentIds?.length ? `?studentIds=${studentIds.join(',')}` : '';
-    return request<any>(`/api/export/${classroomId}/conversations${params}`);
+    return request<ConversationExportReport>(`/api/export/${classroomId}/conversations${params}`);
   },
   exportStats: (classroomId: string) =>
-    request<any>(`/api/export/${classroomId}/stats`),
+    request<StatsExportReport>(`/api/export/${classroomId}/stats`),
   exportStatsFiltered: (classroomId: string, studentIds?: string[]) => {
     const params = studentIds?.length ? `?studentIds=${studentIds.join(',')}` : '';
-    return request<any>(`/api/export/${classroomId}/stats${params}`);
+    return request<StatsExportReport>(`/api/export/${classroomId}/stats${params}`);
   },
 
   // 服务端生成 DOCX（对话记录）
@@ -245,7 +245,7 @@ export const api = {
     });
   },
   createBackup: () => request<{ success: boolean; path: string }>('/api/export/backup', { method: 'POST' }),
-  getBackups: () => request<any[]>('/api/export/backups'),
+  getBackups: () => request<BackupFile[]>('/api/export/backups'),
   deleteBackup: (name: string) => request(`/api/export/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   restoreBackup: (name: string) => request(`/api/export/restore/${encodeURIComponent(name)}`, { method: 'POST' }),
   resetAllData: () => request('/api/export/reset', { method: 'POST' }),
@@ -256,15 +256,15 @@ export const api = {
       method: 'POST',
       credentials: 'include',
       body: formData,
-    }).then(r => r.json());
+    }).then(r => r.json() as Promise<{ success: boolean; name: string }>);
   },
   getBackupDownloadUrl: (name: string) =>
     `${getApiBaseUrl()}/api/export/backup/${encodeURIComponent(name)}/download`,
 
   // Shield Words
-  getShieldWords: () => request<any[]>('/api/shield/words'),
+  getShieldWords: () => request<ShieldWord[]>('/api/shield/words'),
   getShieldCategories: () =>
-    request<{ name: string; count: number; words: { id: string; word: string; enabled: boolean }[] }[]>('/api/shield/words/categories'),
+    request<ShieldWordCategory[]>('/api/shield/words/categories'),
   clearBuiltinShieldWords: () =>
     request<{ success: boolean; deleted: number }>('/api/shield/words/clear-builtin', { method: 'POST' }),
   restoreDefaultShieldWords: () =>
@@ -276,10 +276,10 @@ export const api = {
   batchDeleteShieldWords: (ids: string[]) =>
     request('/api/shield/words/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   toggleShieldWord: (id: string) =>
-    request<any>(`/api/shield/words/${id}/toggle`, { method: 'PUT' }),
+    request<ShieldWord>(`/api/shield/words/${id}/toggle`, { method: 'PUT' }),
   batchToggleShieldWords: (ids: string[], enabled: boolean) =>
     request('/api/shield/words/batch-toggle', { method: 'PUT', body: JSON.stringify({ ids, enabled }) }),
-  getShieldConfig: () => request<any>('/api/shield/config'),
+  getShieldConfig: () => request<ShieldConfig>('/api/shield/config'),
   updateShieldConfig: (data: { autoBlackCount?: number; rateLimit?: number }) =>
     request('/api/shield/config', { method: 'PUT', body: JSON.stringify(data) }),
   blacklistStudent: (classroomId: string, studentId: string) =>
@@ -289,28 +289,17 @@ export const api = {
   resetStudentWarnings: (classroomId: string, studentId: string) =>
     request(`/api/shield/classroom/${classroomId}/student/${studentId}/reset-warnings`, { method: 'POST' }),
   getClassroomWarnings: (classroomId: string) =>
-    request<any[]>(`/api/shield/classroom/${classroomId}/warnings`),
+    request<ClassroomWarning[]>(`/api/shield/classroom/${classroomId}/warnings`),
   deleteWarning: (id: string) =>
     request(`/api/shield/warnings/${id}`, { method: 'DELETE' }),
   clearClassroomWarnings: (classroomId: string) =>
     request(`/api/shield/classroom/${classroomId}/warnings`, { method: 'DELETE' }),
   getWarningsSummary: () =>
-    request<{ id: string; title: string; status: string; code: string; className: string; warningCount: number; createdAt: string }[]>('/api/shield/warnings-summary'),
+    request<ClassroomWarningSummary[]>('/api/shield/warnings-summary'),
 
   // Storage stats
   getStorageStats: () =>
-    request<{
-      avatars: { teacher: { count: number; totalSize: number; totalSizeText: string }; student: { count: number; totalSize: number; totalSizeText: string } };
-      classIcons: { count: number; totalSize: number; totalSizeText: string };
-      agentLogos: { count: number; totalSize: number; totalSizeText: string };
-      classroomAttachments: {
-        totalCount: number;
-        totalSize: number;
-        totalSizeText: string;
-        classrooms: { id: string; title: string | null; status: string; interactionCount: number; totalRounds: number; attachmentCount: number; totalSize: number; totalSizeText: string }[];
-      };
-      agentUsage: { id: string; name: string; platform: string; classroomCount: number; totalCalls: number; totalChars: number }[];
-    }>('/api/system/storage-stats'),
+    request<StorageStats>('/api/system/storage-stats'),
 
   // Changelogs
   getChangelogs: () =>

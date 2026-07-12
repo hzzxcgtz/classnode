@@ -4,21 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Toast } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
+import type { AvatarRandomCandidate, AvatarSummary } from '@/lib/types';
 const API_BASE = typeof window !== 'undefined' ? getApiBaseUrl() : '';
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 
 type TabType = 'student' | 'class';
 
-interface Avatar {
-  id: number;
-  name: string;
-  svgContent: string;
-  category: string;
-  gender: string;
-  sortOrder: number;
-  isActive: boolean;
-  source?: string;
-}
+type Avatar = AvatarSummary;
+type AvatarUsage = {
+  students: Array<{ name: string; class: { name: string } }>;
+  classes: Array<{ name: string }>;
+};
 
 export default function AvatarsPage() {
   const [tab, setTab] = useState<TabType>('student');
@@ -29,7 +25,7 @@ export default function AvatarsPage() {
   const [showEditor, setShowEditor] = useState<{ mode: 'create' | 'edit' | 'view'; avatar?: Avatar } | null>(null);
   const [showDelete, setShowDelete] = useState<Avatar | null>(null);
   const [showRandom, setShowRandom] = useState(false);
-  const [randomPool, setRandomPool] = useState<any[]>([]);
+  const [randomPool, setRandomPool] = useState<AvatarRandomCandidate[]>([]);
   const [selectedRandom, setSelectedRandom] = useState<Set<number>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [avatarAction, setAvatarAction] = useState<string | null>(null);
@@ -55,8 +51,8 @@ export default function AvatarsPage() {
       setStudentCount(allStudentAvatars.length);
       setClassCount(allClassAvatars.length);
       // 学生上传的头像 = 全部 - 教师
-      const teacherIds = new Set(teacherAvatars.map((a: any) => a.id));
-      setStudentUploadedAvatars(allAvatars.filter((a: any) => !teacherIds.has(a.id)));
+      const teacherIds = new Set(teacherAvatars.map((a) => a.id));
+      setStudentUploadedAvatars(allAvatars.filter((a) => !teacherIds.has(a.id)));
     } catch { setAvatars([]); setStudentUploadedAvatars([]); }
     setLoading(false);
   };
@@ -117,7 +113,7 @@ export default function AvatarsPage() {
     } finally { avatarActionRef.current = false; setAvatarAction(null); }
   };
 
-  const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<any[]>([]);
+  const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<Avatar[]>([]);
   const boyAvatars = avatars.filter(a => a.gender === 'boy');
   const girlAvatars = avatars.filter(a => a.gender === 'girl');
   const neutralAvatars = avatars.filter(a => a.gender === 'neutral');
@@ -134,8 +130,8 @@ export default function AvatarsPage() {
       });
       setShowDelete(null);
       await loadAvatars();
-    } catch (e: any) {
-      setToast({ msg: e.message || '删除失败', type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: error instanceof Error ? error.message : '删除失败', type: 'error' });
     } finally { avatarActionRef.current = false; setAvatarAction(null); }
   };
 
@@ -562,7 +558,7 @@ export default function AvatarsPage() {
                         男孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                        {randomPool.slice(0, 10).map((av: any, i: number) => (
+                        {randomPool.slice(0, 10).map((av, i: number) => (
                           <div key={i}
                             onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                             style={{
@@ -583,7 +579,7 @@ export default function AvatarsPage() {
                         女孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(10, 20).filter((_, i) => selectedRandom.has(i + 10)).length} 已选）</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                        {randomPool.slice(10, 20).map((av: any, i: number) => {
+                        {randomPool.slice(10, 20).map((av, i: number) => {
                           const idx = i + 10;
                           return (
                             <div key={idx}
@@ -605,7 +601,7 @@ export default function AvatarsPage() {
                 )}
                 {tab === 'class' && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 14 }}>
-                    {randomPool.map((av: any, i: number) => (
+                    {randomPool.map((av, i: number) => (
                       <div key={i}
                         onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                         style={{
@@ -689,7 +685,7 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
     api.getAvatarUsage(av.id).then(data => {
       setUsageCount((data.students?.length || 0) + (data.classes?.length || 0));
       if (data.students?.length) {
-        setUsageDetail(data.students.map((s: any) => s.class?.name ? `${s.class.name}/${s.name}` : s.name).join('、'));
+        setUsageDetail(data.students.map((student) => student.class?.name ? `${student.class.name}/${student.name}` : student.name).join('、'));
       }
     }).catch(() => {});
   }, [av.id]);
@@ -780,7 +776,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   const [saving, setSaving] = useState(false);
   const [previewSvg, setPreviewSvg] = useState(avatar?.svgContent || '');
   const [showHint, setShowHint] = useState(true);
-  const [usage, setUsage] = useState<{ students: any[]; classes: any[] } | null>(null);
+  const [usage, setUsage] = useState<AvatarUsage | null>(null);
   const isImage = avatar?.svgContent?.includes('<image ') || false;
   const [inputMode, setInputMode] = useState<'svg' | 'image'>(isImage ? 'image' : 'svg');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -827,8 +823,8 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
         await api.updateAvatar(avatar.id, { svgContent: finalSvg, gender });
       }
       onSaved();
-    } catch (e: any) {
-      setToast({ msg: (mode === 'create' ? '创建' : '更新') + '失败: ' + e.message, type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: (mode === 'create' ? '创建' : '更新') + '失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
     }
     setSaving(false);
   };
@@ -864,7 +860,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   <div style={{ marginBottom: 4 }}>
                     <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {usage.students.map((s: any, i: number) => (
+                      {usage.students.map((s, i: number) => (
                         <span key={i} style={{
                           padding: '3px 6px', borderRadius: 4, fontSize: "0.688rem",
                           background: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
@@ -881,7 +877,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   <div>
                     <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {usage.classes.map((c: any, i: number) => (
+                      {usage.classes.map((c, i: number) => (
                         <span key={i} style={{
                           padding: '3px 8px', borderRadius: 4, fontSize: "0.688rem",
                           background: '#f0fdf4', color: '#059669',
@@ -957,7 +953,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别倾向</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[{ value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }, { value: 'neutral', label: '通用' }].map(g => (
+              {([{ value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }, { value: 'neutral', label: '通用' }] as const).map(g => (
                 <button key={g.value}
                   onClick={() => setGender(g.value)}
                   style={{
@@ -1086,7 +1082,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   <div style={{ marginBottom: 4 }}>
                     <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {usage.students.map((s: any, i: number) => (
+                      {usage.students.map((s, i: number) => (
                         <span key={i} style={{
                           padding: '2px 6px', borderRadius: 4, fontSize: "0.625rem",
                           background: 'white', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
@@ -1103,7 +1099,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   <div>
                     <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {usage.classes.map((c: any, i: number) => (
+                      {usage.classes.map((c, i: number) => (
                         <span key={i} style={{
                           padding: '2px 8px', borderRadius: 4, fontSize: "0.625rem",
                           background: 'white', color: '#059669',

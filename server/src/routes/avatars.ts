@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -87,7 +87,7 @@ router.get('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { category } = req.query;
-    const where: any = { isActive: true, source: 'teacher' };
+    const where: Prisma.AvatarWhereInput = { isActive: true, source: 'teacher' };
     if (category && (category === 'student' || category === 'class')) {
       where.category = category;
     }
@@ -106,7 +106,7 @@ router.get('/all-including-student', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { category } = req.query;
-    const where: any = { isActive: true };
+    const where: Prisma.AvatarWhereInput = { isActive: true };
     if (category && (category === 'student' || category === 'class')) {
       where.category = category;
     }
@@ -125,7 +125,7 @@ router.get('/all', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { category } = req.query;
-    const where: any = {};
+    const where: Prisma.AvatarWhereInput = {};
     if (category && (category === 'student' || category === 'class')) {
       where.category = category;
     }
@@ -171,7 +171,7 @@ router.put('/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: '无效的 ID' });
     const { svgContent, gender, sortOrder } = req.body;
-    const data: any = {};
+    const data: Prisma.AvatarUpdateInput = {};
     if (svgContent !== undefined) {
       const safeSvg = typeof svgContent === 'string' ? sanitizeSvg(svgContent) : null;
       if (!safeSvg) return res.status(400).json({ error: 'SVG 包含不安全或不支持的内容' });
@@ -455,7 +455,7 @@ router.post('/clear-all', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { category } = req.body;
-    const where: any = { source: 'teacher' };
+    const where: Prisma.AvatarWhereInput = { source: 'teacher' };
     if (category && (category === 'student' || category === 'class')) {
       where.category = category;
     }

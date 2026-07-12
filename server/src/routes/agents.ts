@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Agent, Prisma, PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -74,7 +74,7 @@ function maskApiKey(key: string): string {
 }
 
 /** 解密 agent 对象中的 apiKey */
-function toPublicAgent(agent: any) {
+function toPublicAgent(agent: Agent | null) {
   if (!agent) return agent;
   let rawKey = agent.apiKey || '';
   try {
@@ -101,7 +101,7 @@ function encryptExtraSecrets(extra?: string | null): string | null {
   return JSON.stringify(parsed);
 }
 
-async function migrateAgentSecrets(prisma: PrismaClient, agent: any): Promise<void> {
+async function migrateAgentSecrets(prisma: PrismaClient, agent: Agent): Promise<void> {
   const apiKey = agent.apiKey && !isEncrypted(agent.apiKey) ? encrypt(agent.apiKey) : agent.apiKey;
   let extra = agent.extra;
   try { extra = encryptExtraSecrets(agent.extra); } catch {}
@@ -199,7 +199,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting } = req.body;
 
-    const data: any = {};
+    const data: Prisma.AgentUpdateInput = {};
     if (name !== undefined) data.name = name;
     if (platform !== undefined) data.platform = platform;
     if (apiUrl !== undefined) data.apiUrl = apiUrl;
@@ -208,7 +208,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     if (extra !== undefined) {
       const incoming = JSON.parse(extra || '{}');
       const existing = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { extra: true, platform: true } });
-      let previous: Record<string, any> = {};
+      let previous: Record<string, unknown> = {};
       try { previous = JSON.parse(existing?.extra || '{}'); } catch {}
       const remainsOnSamePlatform = shouldPreserveAgentSecret(existing?.platform, platform);
       if (!incoming.apiSecret && previous.apiSecret && remainsOnSamePlatform) incoming.apiSecret = previous.apiSecret;
@@ -305,7 +305,7 @@ router.get('/:id/greeting', async (req, res) => {
 
     // 有缓存且 30 分钟内拉取过则直接返回
     if (req.query.force !== 'true' && agent.greeting && agent.greetingFetchedAt) {
-      var age = Date.now() - new Date(agent.greetingFetchedAt).getTime();
+      const age = Date.now() - new Date(agent.greetingFetchedAt).getTime();
       if (age < 30 * 60 * 1000) {
         return res.json({ greeting: agent.greeting });
       }

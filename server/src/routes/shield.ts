@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import defaultShieldWords, { shieldCategories } from '../services/default-shield-words.js';
 
 const router: Router = Router();
@@ -176,7 +176,7 @@ router.put('/config', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { autoBlackCount, rateLimit } = req.body;
-    const data: any = {};
+    const data: Prisma.ShieldConfigUpdateInput = {};
     if (autoBlackCount !== undefined) data.autoBlackCount = Math.max(0, parseInt(autoBlackCount) || 0);
     if (rateLimit !== undefined) data.rateLimit = Math.max(0, parseInt(rateLimit) || 0);
     let config = await prisma.shieldConfig.findFirst();
@@ -187,7 +187,10 @@ router.put('/config', async (req, res) => {
       });
     } else {
       config = await prisma.shieldConfig.create({
-        data: { ...data, autoBlackCount: data.autoBlackCount ?? 0, rateLimit: data.rateLimit ?? 6 },
+        data: {
+          autoBlackCount: typeof data.autoBlackCount === 'number' ? data.autoBlackCount : 0,
+          rateLimit: typeof data.rateLimit === 'number' ? data.rateLimit : 6,
+        },
       });
     }
     res.json(config);

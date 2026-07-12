@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, avatarId } = req.body;
     if (!name) return res.status(400).json({ error: '班级名称不能为空' });
-    const data: any = { name };
+    const data: Prisma.ClassUncheckedCreateInput = { name };
     if (avatarId) data.avatarId = avatarId;
     const cls = await prisma.class.create({ data });
     res.json(cls);
@@ -62,7 +62,7 @@ router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, avatarId } = req.body;
-    const data: any = {};
+    const data: Prisma.ClassUncheckedUpdateInput = {};
     if (name !== undefined) data.name = name;
     if (avatarId !== undefined) data.avatarId = avatarId;
     const cls = await prisma.class.update({
@@ -153,7 +153,7 @@ router.post('/:classId/students', async (req, res) => {
       if (n > maxNo) maxNo = n;
     }
 
-    const data: any = {
+    const data: Prisma.StudentUncheckedCreateInput = {
       classId: req.params.classId,
       name,
       studentNo: String(maxNo + 1),
@@ -204,7 +204,7 @@ router.put('/:classId/students/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, studentNo, gender, tag, avatarId } = req.body;
-    const data: any = {};
+    const data: Prisma.StudentUncheckedUpdateInput = {};
     if (name !== undefined) data.name = name;
     if (studentNo !== undefined) data.studentNo = studentNo;
     if (gender !== undefined) data.gender = gender || null;
@@ -241,7 +241,7 @@ router.get('/:classId/groups', async (req, res) => {
       where: { classId: req.params.classId },
       orderBy: { createdAt: 'asc' },
     });
-    res.json(groups.map((g: Prisma.ClassGroupGetPayload<{}>) => ({ ...g, studentIds: JSON.parse(g.studentIds) })));
+    res.json(groups.map((g) => ({ ...g, studentIds: JSON.parse(g.studentIds) })));
   } catch (error) {
     res.status(500).json({ error: '获取分组列表失败' });
   }
@@ -257,8 +257,10 @@ router.post('/:classId/groups', async (req, res) => {
       data: { classId: req.params.classId, name, studentIds: '[]' },
     });
     res.json({ ...group, studentIds: [] });
-  } catch (error: any) {
-    if (error?.code === 'P2002') return res.status(400).json({ error: '分组名称已存在' });
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(400).json({ error: '分组名称已存在' });
+    }
     res.status(500).json({ error: '创建分组失败' });
   }
 });
@@ -268,7 +270,7 @@ router.put('/:classId/groups/:groupId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, studentIds } = req.body;
-    const data: any = {};
+    const data: Prisma.ClassGroupUpdateInput = {};
     if (name !== undefined) data.name = name;
     if (studentIds !== undefined) data.studentIds = JSON.stringify(studentIds);
     const group = await prisma.classGroup.update({
@@ -276,8 +278,10 @@ router.put('/:classId/groups/:groupId', async (req, res) => {
       data,
     });
     res.json({ ...group, studentIds: JSON.parse(group.studentIds) });
-  } catch (error: any) {
-    if (error?.code === 'P2002') return res.status(400).json({ error: '分组名称已存在' });
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(400).json({ error: '分组名称已存在' });
+    }
     res.status(500).json({ error: '更新分组失败' });
   }
 });

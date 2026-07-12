@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense, useLayoutEffect, type Ref } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { WordCloud } from "@isoterik/react-word-cloud";
+import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
@@ -12,6 +12,32 @@ function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g,
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
+import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, StudentSummary } from '@/lib/types';
+import type { Socket } from 'socket.io-client';
+
+type ClassroomAgentDisplay = Pick<AgentSummary, 'id' | 'name' | 'logo'>;
+type ClassroomGroupDisplay = { id: string; name: string };
+type DisplayMessage = Pick<ClassroomMessage, 'content' | 'role' | 'createdAt' | 'roundIndex' | 'fileUrls' | 'fileNames'> & { id?: string };
+type ClassroomGroupCard = { group: ClassroomCardGroup | null; members: ClassroomCardStudent[] };
+type ClassroomDisplayCard = ClassroomCardStudent | ClassroomGroupCard;
+
+function isClassroomGroupCard(card: ClassroomDisplayCard): card is ClassroomGroupCard {
+  return 'members' in card;
+}
+type StudentPresenceEvent = { studentId: string };
+type StudentThinkingEvent = StudentPresenceEvent & { status: boolean };
+type StudentMessageEvent = StudentPresenceEvent & {
+  content: string;
+  role: string;
+  roundIndex?: number | null;
+  timestamp: string;
+  shieldFiltered?: boolean;
+  fileUrls?: string | null;
+  fileNames?: string | null;
+};
+type ShieldWarningEvent = StudentPresenceEvent & { warningCount: number };
+type StudentAvatarChangedEvent = StudentPresenceEvent & { avatarId: number | null; svgContent?: string | null };
+type ClassroomPermissionEvent = { allow: boolean };
 
 export default function ClassroomBoard() {
   return (
@@ -26,14 +52,14 @@ function ClassroomBoardContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id') || '';
 
-  const [classroom, setClassroom] = useState<any>(null);
-  const [students, setStudents] = useState<any[]>([]);
+  const [classroom, setClassroom] = useState<ClassroomDetail | null>(null);
+  const [students, setStudents] = useState<ClassroomCardStudent[]>([]);
   const [studentStatuses, setStudentStatuses] = useState<Record<string, string>>({});
   const [deepThinkingStatuses, setDeepThinkingStatuses] = useState<Record<string, boolean>>({});
   const [studentRounds, setStudentRounds] = useState<Record<string, number>>({});
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [selectedGroup, setSelectedGroup] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentSummary | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<ClassroomGroupDisplay | null>(null);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
   const [codeScreenKey, setCodeScreenKey] = useState(0);
@@ -50,7 +76,7 @@ function ClassroomBoardContent() {
   // 投屏弹窗打开时监听 Socket 网卡切换事件
   useEffect(() => {
     if (codeScreenKey > 0) {
-      let socket: any = null;
+      let socket: Socket | null = null;
       import('socket.io-client').then(({ io }) => {
         socket = io(getApiBaseUrl(), { transports: ['websocket', 'polling'] });
         socket.on('nic-changed', (data: { ip: string }) => {
@@ -66,7 +92,7 @@ function ClassroomBoardContent() {
   useEffect(() => {
     api.getAvatarsAll('student').then(data => {
       const m: Record<number, string> = {};
-      data.forEach((a: any) => { m[a.id] = a.svgContent; });
+      data.forEach((a: AvatarSummary) => { m[a.id] = a.svgContent; });
       setStudentAvatars(m);
     }).catch(() => {});
   }, []);
@@ -176,9 +202,9 @@ function ClassroomBoardContent() {
   };
 
   const [paused, setPaused] = useState(false);
-  const [allMessages, setAllMessages] = useState<any[]>([]);
+  const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [showAnalytics, setShowAnalytics] = useState(true);
-  const [classroomAgent, setClassroomAgent] = useState<any>(null);
+  const [classroomAgent, setClassroomAgent] = useState<ClassroomAgentDisplay | null>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const [fsCols, setFsCols] = useState(5);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -201,18 +227,21 @@ function ClassroomBoardContent() {
   const clearBusyRef = useRef(false);
 
   // 分组/高级模式：按小组聚合卡片
-  const groupCards = useMemo(() => {
+  const groupCards = useMemo<ClassroomGroupCard[] | null>(() => {
     if (!classroom || (classroom.mode !== 'advanced' && classroom.mode !== 'group')) return null;
-    const map = new Map<string, { group: any; members: any[] }>();
+    const map = new Map<string, ClassroomGroupCard>();
     for (const cs of students) {
       if (!cs.groupId) continue;
-      let g = map.get(cs.groupId);
-      if (!g) { g = { group: cs.group, members: [] }; map.set(cs.groupId, g); }
-      g.members.push(cs);
+      let groupCard = map.get(cs.groupId);
+      if (!groupCard) {
+        groupCard = { group: cs.group ?? null, members: [] };
+        map.set(cs.groupId, groupCard);
+      }
+      groupCard.members.push(cs);
     }
     // 组内按学号排序
     for (const g of map.values()) {
-      g.members.sort((a, b) => (parseInt(a.student?.studentNo) || 999999) - (parseInt(b.student?.studentNo) || 999999));
+      g.members.sort((a, b) => (parseInt(a.student.studentNo ?? '', 10) || 999999) - (parseInt(b.student.studentNo ?? '', 10) || 999999));
     }
     // 按组名排序
     return Array.from(map.values()).sort((a, b) => (a.group?.name || '').localeCompare(b.group?.name || ''));
@@ -220,15 +249,16 @@ function ClassroomBoardContent() {
 
   // 小组名 → 成员列表（使用后端从 ClassGroup.studentIds 解析的真实学生数据）
   const groupMembersMap = useMemo(() => {
-    const map: Record<string, any> = {};
+    const map: Record<string, Array<{ studentName: string; groupName: string }>> = {};
     if (!groupCards || !classroom?.groupMembersMap) return map;
     for (const g of groupCards) {
       if (!g.group?.id || !g.group.name) continue;
-      const backendData = classroom.groupMembersMap[g.group.name];
+      const group = g.group;
+      const backendData = classroom.groupMembersMap[group.name];
       if (backendData) {
-        map[g.group.id] = backendData.members.map((m: any) => ({
+        map[group.id] = backendData.members.map((m) => ({
           studentName: m.name,
-          groupName: g.group.name,
+          groupName: group.name,
         }));
       }
     }
@@ -265,13 +295,13 @@ function ClassroomBoardContent() {
       // 排序：标准模式按学号，分组/高级模式按组名
       const mode = cr.mode || 'standard';
       if (mode === 'standard') {
-        students.sort((a: any, b: any) => (parseInt(a.student?.studentNo) || 999999) - (parseInt(b.student?.studentNo) || 999999));
+        students.sort((a, b) => (parseInt(a.student.studentNo ?? '', 10) || 999999) - (parseInt(b.student.studentNo ?? '', 10) || 999999));
       } else {
-        students.sort((a: any, b: any) => {
+        students.sort((a, b) => {
           const ga = a.group?.name || '';
           const gb = b.group?.name || '';
           if (ga !== gb) return ga.localeCompare(gb);
-          return (parseInt(a.student?.studentNo) || 999999) - (parseInt(b.student?.studentNo) || 999999);
+          return (parseInt(a.student.studentNo ?? '', 10) || 999999) - (parseInt(b.student.studentNo ?? '', 10) || 999999);
         });
       }
       setStudents(students);
@@ -279,7 +309,7 @@ function ClassroomBoardContent() {
       const rounds: Record<string, number> = {};
       const warnings: Record<string, number> = {};
       const blacklisted: Record<string, boolean> = {};
-      students.forEach((s: any) => {
+      students.forEach((s) => {
         rounds[s.student.id] = s.totalRounds || 0;
         warnings[s.student.id] = s.warningCount || 0;
         blacklisted[s.student.id] = s.blacklisted || false;
@@ -298,7 +328,7 @@ function ClassroomBoardContent() {
       try {
         const allMsgs = await api.getAllMessages(id);
         setAllMessages(allMsgs);
-        const grouped = new Map<string, any[]>();
+        const grouped = new Map<string, ClassroomMessage[]>();
         for (const msg of allMsgs) {
           const sid = msg.classroomStudent?.student?.id;
           if (!sid) continue;
@@ -309,9 +339,9 @@ function ClassroomBoardContent() {
           const sid = s.student.id;
           const msgs = grouped.get(sid);
           if (!msgs || msgs.length === 0) return s;
-          const lastUser = msgs.filter((m: any) => m.role === 'user').slice(-1)?.[0];
-          const lastAssistant = msgs.filter((m: any) => m.role === 'assistant').slice(-1)?.[0];
-          const preview: any[] = [];
+          const lastUser = msgs.filter((m) => m.role === 'user').slice(-1)?.[0];
+          const lastAssistant = msgs.filter((m) => m.role === 'assistant').slice(-1)?.[0];
+          const preview: ClassroomCardStudent['messages'] = [];
           if (lastUser) preview.push({ content: lastUser.content, role: 'user', createdAt: lastUser.createdAt });
           if (lastAssistant && (!lastUser || new Date(lastAssistant.createdAt) > new Date(lastUser.createdAt))) {
             preview.push({ content: lastAssistant.content, role: 'assistant', createdAt: lastAssistant.createdAt });
@@ -323,7 +353,7 @@ function ClassroomBoardContent() {
       try {
         const agents = await api.getAgents();
         const agentIds = cr.agentIds || [];
-        const found = agents.find((a: any) => agentIds.includes(a.id));
+        const found = agents.find((a) => agentIds.includes(a.id));
         setClassroomAgent(found || (agents.length > 0 ? agents[0] : null));
       } catch {}
     } catch {}
@@ -349,16 +379,16 @@ function ClassroomBoardContent() {
     loadClassroom();
     joinTeacherBoard(id);
 
-    const unsub1 = on('student-online', (data: any) => {
+    const unsub1 = on('student-online', (data: StudentPresenceEvent) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: 'online' }));
     });
-    const unsub2 = on('student-offline', (data: any) => {
+    const unsub2 = on('student-offline', (data: StudentPresenceEvent) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: 'offline' }));
     });
-    const unsub3 = on('student-thinking', (data: any) => {
+    const unsub3 = on('student-thinking', (data: StudentThinkingEvent) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: data.status ? 'thinking' : 'online' }));
     });
-    const unsubDeepThink = on('student-deep-thinking', (data: any) => {
+    const unsubDeepThink = on('student-deep-thinking', (data: StudentThinkingEvent) => {
       if (data.status) {
         setDeepThinkingStatuses(prev => ({ ...prev, [data.studentId]: true }));
       } else {
@@ -369,7 +399,7 @@ function ClassroomBoardContent() {
         });
       }
     });
-    const unsub4 = on('student-message', (data: any) => {
+    const unsub4 = on('student-message', (data: StudentMessageEvent) => {
       // 更新学生消息预览（仅保留最近3条用户提问）
       setStudents(prev => prev.map(s =>
         s.student.id === data.studentId
@@ -378,7 +408,7 @@ function ClassroomBoardContent() {
               messages: data.role === 'user'
                 ? [{ content: data.content, role: 'user', createdAt: data.timestamp }]
                 : (() => {
-                    const userMsgs = (s.messages || []).filter((m: any) => m.role === 'user').slice(-1);
+                    const userMsgs = s.messages.filter((m) => m.role === 'user').slice(-1);
                     return [...userMsgs, { content: data.content, role: 'assistant', createdAt: data.timestamp }];
                   })()
             }
@@ -393,7 +423,7 @@ function ClassroomBoardContent() {
       }
       // 如果当前选中该学生，追加消息
       if (selectedStudentIdRef.current === data.studentId) {
-        setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
+        setMessages(prev => [...prev, { content: data.content, role: data.role, roundIndex: data.roundIndex ?? null, createdAt: data.timestamp, fileUrls: data.fileUrls, fileNames: data.fileNames }]);
       }
     });
 
@@ -404,64 +434,55 @@ function ClassroomBoardContent() {
       router.push('/teacher');
     });
 
-    const unsub8 = on('shield-warning', (data: any) => {
+    const unsub8 = on('shield-warning', (data: ShieldWarningEvent) => {
       setStudentWarnings(prev => ({ ...prev, [data.studentId]: data.warningCount }));
     });
 
-    const unsub9 = on('student-blacklisted', (data: any) => {
+    const unsub9 = on('student-blacklisted', (data: StudentPresenceEvent) => {
       setStudentBlacklisted(prev => ({ ...prev, [data.studentId]: true }));
     });
 
-    const unsub10 = on('student-unblacklisted', (data: any) => {
+    const unsub10 = on('student-unblacklisted', (data: StudentPresenceEvent) => {
       setStudentBlacklisted(prev => ({ ...prev, [data.studentId]: false }));
       setStudentWarnings(prev => ({ ...prev, [data.studentId]: 0 }));
     });
 
-    const unsub11 = on('student-avatar-changed', (data: any) => {
+    const unsub11 = on('student-avatar-changed', (data: StudentAvatarChangedEvent) => {
       if (data.avatarId && data.svgContent) {
-        setStudentAvatars(prev => ({ ...prev, [data.avatarId]: data.svgContent }));
+        const avatarId = data.avatarId;
+        const svgContent = data.svgContent;
+        setStudentAvatars(prev => ({ ...prev, [avatarId]: svgContent }));
       }
       // 更新学生列表中的 avatarId
       setStudents(prev => prev.map(s => {
         if (s.student?.id === data.studentId) {
           return { ...s, student: { ...s.student, avatarId: data.avatarId } };
         }
-        // 也查一下小组模式的 members
-        if (s.members) {
-          return {
-            ...s,
-            members: s.members.map((m: any) =>
-              m.student?.id === data.studentId
-                ? { ...m, student: { ...m.student, avatarId: data.avatarId } }
-                : m
-            ),
-          };
-        }
         return s;
       }));
       // 同步更新当前选中的学生头像（打开抽屉时实时刷新）
-      setSelectedStudent((prev: any) => {
-        if (!prev?.student?.id || prev.student.id !== data.studentId) return prev;
-        return { ...prev, student: { ...prev.student, avatarId: data.avatarId } };
+      setSelectedStudent((prev) => {
+        if (!prev || prev.id !== data.studentId) return prev;
+        return { ...prev, avatarId: data.avatarId };
       });
     });
 
-    const unsub12 = on('allow-stop-changed', (data: any) => {
-      setClassroom((prev: any) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+    const unsub12 = on('allow-stop-changed', (data: ClassroomPermissionEvent) => {
+      setClassroom((prev) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
     });
 
-    const unsub13 = on('allow-export-changed', (data: any) => {
-      setClassroom((prev: any) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+    const unsub13 = on('allow-export-changed', (data: ClassroomPermissionEvent) => {
+      setClassroom((prev) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
     });
 
-    const unsub14 = on('follow-ups-changed', (data: any) => {
-      setClassroom((prev: any) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+    const unsub14 = on('follow-ups-changed', (data: ClassroomPermissionEvent) => {
+      setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
     });
 
     return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
-  const openStudentDrawer = async (student: any) => {
+  const openStudentDrawer = async (student: StudentSummary) => {
     if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
     selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
@@ -488,15 +509,6 @@ function ClassroomBoardContent() {
         if (s.student && s.student.id === studentId) {
           return { ...s, messages: [] };
         }
-        // 小组模式：查找成员列表
-        if (s.members) {
-          return {
-            ...s,
-            members: s.members.map((m: any) =>
-              m.student.id === studentId ? { ...m, messages: [] } : m
-            ),
-          };
-        }
         return s;
       }));
       // 重置对话轮数
@@ -514,8 +526,19 @@ function ClassroomBoardContent() {
     }
   };
 
+  const incrementAvatarChangeTokens = (studentId: string) => {
+    const updateStudent = (student: StudentSummary) => student.id === studentId
+      ? { ...student, avatarChangeTokens: student.avatarChangeTokens + 1 }
+      : student;
+    setStudents((previous) => previous.map((card) => ({
+      ...card,
+      student: updateStudent(card.student),
+    })));
+    setSelectedStudent((previous) => previous ? updateStudent(previous) : previous);
+  };
+
   /** 清除小组全体成员的对话记录并同步更新监控框 */
-  const handleClearGroupMessages = async (members: any[], groupName: string) => {
+  const handleClearGroupMessages = async (members: ClassroomCardStudent[], groupName: string) => {
     if (clearBusyRef.current) return;
     if (!confirm(`确定清除「${groupName}」全体成员的对话记录？`)) return;
     clearBusyRef.current = true;
@@ -529,9 +552,6 @@ function ClassroomBoardContent() {
     if (succeeded.length) {
         setStudents(prev => prev.map(s => {
           if (s.student && succeeded.includes(s.student.id)) return { ...s, messages: [] };
-          if (s.members) {
-            return { ...s, members: s.members.map((mm: any) => succeeded.includes(mm.student.id) ? { ...mm, messages: [] } : mm) };
-          }
           return s;
         }));
       setStudentRounds(prev => Object.fromEntries(Object.entries(prev).map(([studentId, rounds]) => [studentId, succeeded.includes(studentId) ? 0 : rounds])));
@@ -571,27 +591,27 @@ function ClassroomBoardContent() {
     if (paused) {
       await api.resumeClassroom(id);
       setPaused(false);
-      setClassroom((previous: any) => previous ? { ...previous, status: 'active' } : previous);
+      setClassroom((previous) => previous ? { ...previous, status: 'active' } : previous);
     } else {
       await api.pauseClassroom(id);
       setPaused(true);
-      setClassroom((previous: any) => previous ? { ...previous, status: 'paused' } : previous);
+      setClassroom((previous) => previous ? { ...previous, status: 'paused' } : previous);
     }
   });
 
   const toggleStop = () => runControlAction('stop', async () => {
     const result = await api.toggleAllowStop(id);
-    setClassroom((previous: any) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
+    setClassroom((previous) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
   });
 
   const toggleExport = () => runControlAction('export', async () => {
     const result = await api.toggleAllowExport(id);
-    setClassroom((previous: any) => previous ? { ...previous, allowStudentExport: result.allowStudentExport } : previous);
+    setClassroom((previous) => previous ? { ...previous, allowStudentExport: result.allowStudentExport } : previous);
   });
 
   const toggleFollowUps = () => runControlAction('follow-ups', async () => {
     const result = await api.toggleAllowFollowUps(id);
-    setClassroom((previous: any) => previous ? { ...previous, allowFollowUps: result.allowFollowUps } : previous);
+    setClassroom((previous) => previous ? { ...previous, allowFollowUps: result.allowFollowUps } : previous);
   });
 
 
@@ -679,7 +699,7 @@ function ClassroomBoardContent() {
             {classroom.classes?.length > 0 && (
               <span style={{ fontSize: "0.75rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-                {classroom.classes.map((cc: any) => cc.class.name).join('、')}
+                {classroom.classes.map((cc) => cc.class.name).join('、')}
               </span>
             )}
             <span style={{ fontSize: "0.813rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -834,24 +854,24 @@ function ClassroomBoardContent() {
                 <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
               </div>
             ) : (
-              (groupCards || students).map((item: any) => {
-                const isGroup = groupCards && item.members;
+              (groupCards || students).map((item: ClassroomDisplayCard) => {
+                const isGroup = isClassroomGroupCard(item);
                 const cs = isGroup ? item.members[0] : item;
                 const student = cs.student;
                 const sid = cs.student.id;
                 const status = isGroup
-                  ? item.members.some((m: any) => studentStatuses[m.student.id] === 'online')
+                  ? item.members.some((m) => studentStatuses[m.student.id] === 'online')
                     ? 'online'
-                    : item.members.some((m: any) => studentStatuses[m.student.id] === 'thinking')
+                    : item.members.some((m) => studentStatuses[m.student.id] === 'thinking')
                     ? 'thinking'
                     : 'offline'
                   : studentStatuses[sid] || 'offline';
                 const rounds = isGroup
-                  ? item.members.reduce((sum: number, m: any) => sum + (studentRounds[m.student.id] || 0), 0)
+                  ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
                   : studentRounds[sid] || 0;
-                const allMsgs = isGroup ? item.members.flatMap((m: any) => m.messages || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
-                const userMsg = isGroup ? allMsgs!.filter((m: any) => m.role === 'user')[0] : cs.messages?.filter((m: any) => m.role === 'user').slice(-1)?.[0];
-                const assistantMsg = isGroup ? allMsgs!.filter((m: any) => m.role === 'assistant')[0] : cs.messages?.filter((m: any) => m.role === 'assistant').slice(-1)?.[0];
+                const allMsgs = isGroup ? item.members.flatMap((m) => m.messages).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
+                const userMsg = isGroup ? allMsgs!.filter((m) => m.role === 'user')[0] : cs.messages.filter((m) => m.role === 'user').slice(-1)?.[0];
+                const assistantMsg = isGroup ? allMsgs!.filter((m) => m.role === 'assistant')[0] : cs.messages.filter((m) => m.role === 'assistant').slice(-1)?.[0];
                 const isSelected = !isGroup && selectedStudent?.id === sid;
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
@@ -895,8 +915,8 @@ function ClassroomBoardContent() {
                           <span style={{ fontSize: "0.875rem", fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                             {isGroup ? (
                               <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
-                                onMouseEnter={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
-                                onMouseMove={(e) => { const n = Date.now(); if (n - groupTooltipThrottle.current < 100) return; groupTooltipThrottle.current = n; setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY }); }}
+                                onMouseEnter={(e) => setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY })}
+                                onMouseMove={(e) => { const n = Date.now(); if (n - groupTooltipThrottle.current < 100) return; groupTooltipThrottle.current = n; setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY }); }}
                                 onMouseLeave={() => setGroupTooltip(null)}>
                                 {item.group?.name || '(未命名)'}
                               </span>
@@ -917,7 +937,7 @@ function ClassroomBoardContent() {
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
                             {isGroup ? (
                               (() => {
-                                const anyBlacklisted = item.members.some((m: any) => studentBlacklisted[m.student.id]);
+                                const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.student.id]);
                                 return (
                                   <>
                                     <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
@@ -958,7 +978,7 @@ function ClassroomBoardContent() {
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                 </button>
                                 <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
-                                  onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); student.avatarChangeTokens = (student.avatarChangeTokens || 0) + 1; } catch {} }}
+                                  onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); incrementAvatarChangeTokens(sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); } catch {} }}
                                   style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                 </button>
@@ -988,7 +1008,7 @@ function ClassroomBoardContent() {
                           )}
                           {(() => {
                             const isDeep = isGroup
-                              ? item.members.some((m: any) => deepThinkingStatuses[m.student.id])
+                              ? item.members.some((m) => deepThinkingStatuses[m.student.id])
                               : deepThinkingStatuses[sid];
                             const bg = isDeep ? '#f5f3ff' : status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9';
                             const dotColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8';
@@ -1117,7 +1137,7 @@ function ClassroomBoardContent() {
                       )}
                     </h3>
                     <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginTop: 2 }}>
-                      共 {messages.filter((m: any) => m.role === 'user').length} 轮交互 · {messages.length} 条消息
+                      共 {messages.filter((m) => m.role === 'user').length} 轮交互 · {messages.length} 条消息
                     </div>
                   </div>
                 </div>
@@ -1166,7 +1186,7 @@ function ClassroomBoardContent() {
                   暂无对话记录
                 </div>
               ) : (
-                messages.map((m: any, i: number) => (
+                messages.map((m, i: number) => (
                   <div key={`dr-${m.role}-${m.createdAt || i}`} style={{
                     padding: '10px 14px',
                     borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
@@ -1337,7 +1357,7 @@ function ClassroomBoardContent() {
                 {classroom?.title || '课堂'} · 学习展示
               </div>
               <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>
-                {selectedStudent?.name || ''} · {projMsgs.filter((m: any) => m.role === 'user').length} 轮对话
+                {selectedStudent?.name || ''} · {projMsgs.filter((m) => m.role === 'user').length} 轮对话
               </div>
             </div>
             <button onClick={() => setShowFullscreen(false)}
@@ -1358,7 +1378,7 @@ function ClassroomBoardContent() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-                {projMsgs.map((m: any, i: number) => (
+                {projMsgs.map((m, i: number) => (
                   <div key={`fs-${m.role}-${m.createdAt || i}`} style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -1518,25 +1538,25 @@ function ClassroomBoardContent() {
                   {groupCards ? '暂未分组' : '暂无学生加入'}
                 </div>
               ) : (
-                (groupCards || students).map((item: any) => {
-                  const isGroup = groupCards && item.members;
+                (groupCards || students).map((item: ClassroomDisplayCard) => {
+                  const isGroup = isClassroomGroupCard(item);
                   const cs = isGroup ? item.members[0] : item;
                   const student = cs.student;
                   const sid = student.id;
                   const status = isGroup
-                    ? item.members.some((m: any) => studentStatuses[m.student.id] === 'online')
+                    ? item.members.some((m) => studentStatuses[m.student.id] === 'online')
                       ? 'online'
-                      : item.members.some((m: any) => studentStatuses[m.student.id] === 'thinking')
+                      : item.members.some((m) => studentStatuses[m.student.id] === 'thinking')
                       ? 'thinking'
                       : 'offline'
                     : studentStatuses[sid] || 'offline';
                   const rounds = isGroup
-                    ? item.members.reduce((sum: number, m: any) => sum + (studentRounds[m.student.id] || 0), 0)
+                    ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
                     : studentRounds[sid] || 0;
                   const compact = fsCols >= 6;
-                  const allMsgs = isGroup ? item.members.flatMap((m: any) => m.messages || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
-                  const userMsg = isGroup ? allMsgs!.filter((m: any) => m.role === 'user')[0] : cs.messages?.filter((m: any) => m.role === 'user').slice(-1)?.[0];
-                  const assistantMsg = isGroup ? allMsgs!.filter((m: any) => m.role === 'assistant')[0] : cs.messages?.filter((m: any) => m.role === 'assistant').slice(-1)?.[0];
+                  const allMsgs = isGroup ? item.members.flatMap((m) => m.messages).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
+                  const userMsg = isGroup ? allMsgs!.filter((m) => m.role === 'user')[0] : cs.messages.filter((m) => m.role === 'user').slice(-1)?.[0];
+                  const assistantMsg = isGroup ? allMsgs!.filter((m) => m.role === 'assistant')[0] : cs.messages.filter((m) => m.role === 'assistant').slice(-1)?.[0];
                   const isSelected = !isGroup && selectedStudent?.id === sid;
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
@@ -1581,7 +1601,7 @@ function ClassroomBoardContent() {
                             <span style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: status === 'offline' ? '#9ca3af' : '#1a1a2e', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
                               {isGroup ? (
                                 <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
-                                  onMouseMove={(e) => setGroupTooltip({ id: item.group?.id, x: e.clientX, y: e.clientY })}
+                                  onMouseMove={(e) => setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY })}
                                   onMouseLeave={() => setGroupTooltip(null)}>
                                   {item.group?.name || '(未命名)'}
                                 </span>
@@ -1592,7 +1612,7 @@ function ClassroomBoardContent() {
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: compact ? 2 : 3, flexShrink: 0 }}>
                               {isGroup ? (
                                 (() => {
-                                  const anyBlacklisted = item.members.some((m: any) => studentBlacklisted[m.student.id]);
+                                  const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.student.id]);
                                   return (
                                     <>
                                       <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
@@ -1623,7 +1643,7 @@ function ClassroomBoardContent() {
                                     </svg>
                                   </button>
                                   <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
-                                    onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); student.avatarChangeTokens = (student.avatarChangeTokens || 0) + 1; } catch {} }}
+                                    onClick={async (e) => { e.stopPropagation(); if (!confirm(`确定奖励「${student.name}」一次头像更换权限？`)) return; try { await api.rewardStudentAvatar(id, sid); incrementAvatarChangeTokens(sid); setToast({ msg: `已奖励 ${student.name} 一次头像更换权限`, type: 'success' }); } catch {} }}
                                     style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fffbeb', color: '#d97706', padding: 0 }}>
                                     <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   </button>
@@ -1730,7 +1750,7 @@ function ClassroomBoardContent() {
           lineHeight: 1.7, whiteSpace: 'nowrap',
           boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
         }}>
-          {groupMembersMap[groupTooltip.id].map((d: any) => d.studentName).filter(Boolean).join('、')}
+          {groupMembersMap[groupTooltip.id].map((d) => d.studentName).filter(Boolean).join('、')}
         </div>
       )}
       {/* 发通知弹窗 */}
@@ -1794,7 +1814,7 @@ function ClassroomBoardContent() {
           </div>
         </div>
       )}
-      {toast && <Toast msg={toast.msg} type={toast.type as any} onClose={() => setToast(null)} />}
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* 全屏图片预览（支持无极缩放） */}
       {fullscreenImg && (
@@ -1948,12 +1968,12 @@ function extractKeywords(texts: string[]): { word: string; count: number }[] {
 
 interface AnalyticsPanelProps {
   classroomId: string;
-  allMessages: any[];
+  allMessages: ClassroomMessage[];
   loadAnalytics: () => void;
-  students: any[];
+  students: ClassroomCardStudent[];
 }
 
-function WordText({ data, ref }: { data: any; ref?: any }) {
+function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElement> }) {
   const [visible, setVisible] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -2021,11 +2041,11 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
   useEffect(() => { loadAnalytics(); }, [classroomId]);
 
   // 词云计算：只在 allMessages 或 cloudSource 变化时才重算
-  const isShieldFiltered = useCallback((m: any) => (m.content || '').includes('**'), []);
+  const isShieldFiltered = useCallback((m: ClassroomMessage) => (m.content || '').includes('**'), []);
   const filteredForCloud = useMemo(() => cloudSource === 'both'
-    ? allMessages.filter((m: any) => !isShieldFiltered(m))
-    : allMessages.filter((m: any) => m.role === cloudSource && !isShieldFiltered(m)), [allMessages, cloudSource, isShieldFiltered]);
-  const words = useMemo(() => extractKeywords(filteredForCloud.map((m: any) => m.content || '')), [filteredForCloud]);
+    ? allMessages.filter((m) => !isShieldFiltered(m))
+    : allMessages.filter((m) => m.role === cloudSource && !isShieldFiltered(m)), [allMessages, cloudSource, isShieldFiltered]);
+  const words = useMemo(() => extractKeywords(filteredForCloud.map((m) => m.content || '')), [filteredForCloud]);
 
   // 活跃学生排名：只在 allMessages 变化时重算
   const topStudents = useMemo(() => {
@@ -2060,14 +2080,14 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
   // 词云组件 props 全部用 useMemo/useCallback 稳定引用，避免父组件重渲染时触发 WordCloud 重算
   const wordCloudData = useMemo(() => words.map(w => ({ text: w.word, value: w.count })), [words]);
   const stableFont = useCallback(() => '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif', []);
-  const wordFontSize = useCallback((word: any) => {
+  const wordFontSize = useCallback((word: Word) => {
     const counts = words.map(w => w.count);
     const min = Math.min(...counts);
     const max = Math.max(...counts);
     const range = max - min || 1;
     return 11 + ((word.value - min) / range) * 16;
   }, [words]);
-  const wordFill = useCallback((_w: any, i: number) => `url(#wcg${(i % 6) + 1})`, []);
+  const wordFill = useCallback((_word: Word, i: number) => `url(#wcg${(i % 6) + 1})`, []);
   const wordGradients = useMemo(() => [
     { id: 'wcg1', type: 'linear' as const, angle: 45, stops: [{ offset: '0%' as const, color: '#2563eb' }, { offset: '100%' as const, color: '#7c3aed' }] },
     { id: 'wcg2', type: 'linear' as const, angle: -45, stops: [{ offset: '0%' as const, color: '#db2777' }, { offset: '100%' as const, color: '#ea580c' }] },
@@ -2076,7 +2096,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
     { id: 'wcg5', type: 'linear' as const, angle: 0, stops: [{ offset: '0%' as const, color: '#dc2626' }, { offset: '100%' as const, color: '#fbbf24' }] },
     { id: 'wcg6', type: 'linear' as const, angle: -90, stops: [{ offset: '0%' as const, color: '#0891b2' }, { offset: '100%' as const, color: '#2dd4bf' }] },
   ], []);
-  const renderWord = useCallback((data: any, ref: any) => <WordText data={data} ref={ref} />, []);
+  const renderWord = useCallback((data: WordRendererData, ref?: Ref<SVGTextElement>) => <WordText data={data} ref={ref} />, []);
   const stableRotate = useCallback(() => 0, []);
 
   if (collapsed) {

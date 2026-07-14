@@ -16,7 +16,7 @@ export const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 小时
  */
 export async function checkForUpdates(): Promise<UpgradeCheckResult> {
   const base = getApiBaseUrl();
-  const resp = await fetch(`${base}/api/upgrade/check`);
+  const resp = await fetch(`${base}/api/upgrade/check`, { credentials: 'include' });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || `HTTP ${resp.status}`);

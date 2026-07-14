@@ -38,6 +38,28 @@ function safeParseJSON<T>(json: string | null | undefined, fallback: T): T {
   try { return JSON.parse(json); } catch { return fallback; }
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export function asJsonRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function getCozeMessageEndError(event: unknown): string | null {
+  const eventRecord = asJsonRecord(event);
+  if (!eventRecord || eventRecord.type !== 'message_end') return null;
+  const content = asJsonRecord(eventRecord.content);
+  const end = content && asJsonRecord(content.message_end);
+  if (!end) return null;
+  const code = typeof end.code === 'string' ? end.code : '';
+  if (!code || code === '0') return null;
+  const message = typeof end.message === 'string' ? end.message : '';
+  return `Coze Agent 返回错误: code=${code} ${message}`;
+}
+
 /** 清理 AI 响应的多余内容 */
 function cleanResponse(text: string): string {
   let result = text;
@@ -52,7 +74,7 @@ function cleanResponse(text: string): string {
   return result.trim();
 }
 
-interface AgentConfig {
+export interface AgentConfig {
   platform: string;
   apiUrl?: string;
   apiKey: string;
@@ -60,6 +82,18 @@ interface AgentConfig {
   extra?: string;
   conversationId?: string;
 }
+
+type CozeMultimodalItem = { type: 'text'; text: string } | { type: 'image'; file_id: string };
+type CozeAgentExtra = { projectId?: string };
+type SecretAgentExtra = { apiSecret?: string };
+type CozeWorkspace = { id: string };
+type CozeBotSummary = { id: string; name?: string; icon_url?: string };
+type CozeAgentRequestBody = {
+  content: { query: { prompt: Array<{ type: 'text'; content: { text: string } }> } };
+  type: 'query';
+  session_id: string;
+  project_id?: string;
+};
 
 interface ProxyResult {
   success: boolean;
@@ -98,8 +132,8 @@ export async function proxyAIRequest(
       default:
         return { success: false, error: `不支持的平台: ${agent.platform}` };
     }
-  } catch (error: any) {
-    return { success: false, error: error.message || 'AI 请求失败' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, 'AI 请求失败') };
   }
 }
 
@@ -132,8 +166,8 @@ export async function proxyAIRequestStream(
       default:
         return { success: false, error: `不支持的平台: ${agent.platform}` };
     }
-  } catch (error: any) {
-    return { success: false, error: error.message || 'AI 请求失败' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, 'AI 请求失败') };
   }
 }
 
@@ -158,8 +192,8 @@ async function uploadFileToCoze(imageUrl: string, coze: CozeBot): Promise<string
     const fileData = await coze.file.upload(filePath);
     console.log(`[CozeUpload] Success: file_id=${fileData.id}, name=${fileData.file_name}, size=${fileData.bytes}`);
     return fileData.id;
-  } catch (error: any) {
-    console.error(`[CozeUpload] Exception for ${imageUrl}:`, error.message || error);
+  } catch (error: unknown) {
+    console.error(`[CozeUpload] Exception for ${imageUrl}:`, getErrorMessage(error, '上传失败'));
     return null;
   }
 }
@@ -198,7 +232,7 @@ async function proxyCoze(
         const fid = await uploadFileToCoze(url, coze);
         if (fid) fileIds.push(fid);
       }
-      const textItems: any[] = [{ type: 'text', text: message }];
+      const textItems: CozeMultimodalItem[] = [{ type: 'text', text: message }];
       for (const fid of fileIds) {
         textItems.push({ type: 'image', file_id: fid });
       }
@@ -220,7 +254,7 @@ async function proxyCoze(
       history: messages,
     });
 
-    let content = result.content;
+    const content = result.content;
 
     // 提取深度思考内容
     if (onThinking) {
@@ -237,11 +271,11 @@ async function proxyCoze(
       content: deanonymized,
       conversationId: result.conversationId,
     };
-  } catch (error: any) {
-    console.error('[Coze] Error:', error.message);
+  } catch (error: unknown) {
+    console.error('[Coze] Error:', getErrorMessage(error, 'Coze 请求失败'));
     return {
       success: false,
-      error: error.message || 'Coze 请求失败',
+      error: getErrorMessage(error, 'Coze 请求失败'),
     };
   }
 }
@@ -264,8 +298,8 @@ export async function discoverCozeBotWithPat(pat: string, matchName?: string): P
       headers: { 'Authorization': `Bearer ${pat}` },
     });
     if (!wsRes.ok) return null;
-    const wsData = await wsRes.json();
-    const workspaces = wsData?.data?.workspaces || [];
+    const wsData = await wsRes.json() as { data?: { workspaces?: CozeWorkspace[] } };
+    const workspaces = wsData.data?.workspaces || [];
 
     // 遍历所有工作区查找机器人
     for (const ws of workspaces) {
@@ -274,12 +308,12 @@ export async function discoverCozeBotWithPat(pat: string, matchName?: string): P
         headers: { 'Authorization': `Bearer ${pat}` },
       });
       if (!botRes.ok) continue;
-      const botData = await botRes.json();
-      const bots = botData?.data?.items || [];
+      const botData = await botRes.json() as { data?: { items?: CozeBotSummary[] } };
+      const bots = botData.data?.items || [];
 
       // 有名称时只返回精确匹配的机器人
       if (matchName) {
-        const matched = bots.find((b: any) => b.name === matchName);
+        const matched = bots.find((bot) => bot.name === matchName);
         if (matched) return { botId: matched.id, name: matched.name, iconUrl: matched.icon_url };
         continue; // 跳过没有匹配的工作区
       }
@@ -411,20 +445,26 @@ export async function testAgentAvailability(agent: AgentConfig): Promise<{ succe
     const result = await proxyAIRequest(agent, '你好，请回复"连接成功"', '测试用户');
     if (result.success) return { success: true };
     return { success: false, error: result.error || '可用性测试失败' };
-  } catch (error: any) {
-    return { success: false, error: error.message || '测试请求异常' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, '测试请求异常') };
   }
 }
 
 
 /** 将本地文件 URL 解析为绝对路径（兼容 CLASSNODE_DATA_DIR） */
-function resolveLocalPath(fileUrl: string): string {
-  const relativePath = fileUrl.startsWith('/') ? fileUrl.slice(1) : fileUrl;
-  // 生产模式下文件存在 CLASSNODE_DATA_DIR 中
-  if (process.env.CLASSNODE_DATA_DIR) {
-    return path.join(process.env.CLASSNODE_DATA_DIR, relativePath);
+export function resolveLocalPath(fileUrl: string): string {
+  if (!fileUrl.startsWith('/uploads/')) {
+    throw new Error('仅允许读取应用上传目录中的文件');
   }
-  return path.join(__dirname, '../..', relativePath);
+  const storageRoot = process.env.CLASSNODE_DATA_DIR
+    ? path.resolve(process.env.CLASSNODE_DATA_DIR)
+    : path.resolve(__dirname, '../..');
+  const uploadsRoot = path.resolve(storageRoot, 'uploads');
+  const resolved = path.resolve(storageRoot, fileUrl.slice(1));
+  if (resolved !== uploadsRoot && !resolved.startsWith(uploadsRoot + path.sep)) {
+    throw new Error('附件路径超出应用上传目录');
+  }
+  return resolved;
 }
 
 /** 将本地图片文件转为 Markdown 图片标签（base64 嵌入） */
@@ -451,13 +491,14 @@ function isLocalFileUrl(url: string): boolean {
 }
 
 /** 从 Coze Agent SSE 事件的 content 字段安全地提取文本 */
-function extractContent(val: any): string {
+export function extractContent(val: unknown): string {
   if (typeof val === 'string') return val;
   if (val && typeof val === 'object') {
     if (Array.isArray(val)) return val.map(v => extractContent(v)).join('');
+    const record = val as Record<string, unknown>;
     // 尝试常见的嵌套结构: { text: "..." } 或 { content: { text: "..." } } 或 { content: [...] }
-    if (val.text) return extractContent(val.text);
-    if (val.content) return extractContent(val.content);
+    if (record.text) return extractContent(record.text);
+    if (record.content) return extractContent(record.content);
     // 兜底：忽略对象（如 type 等元数据）
     return '';
   }
@@ -481,12 +522,12 @@ async function proxyCozeAgent(
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 
-  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+  const extra = agent.extra ? safeParseJSON<CozeAgentExtra>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
 
   const sessionId = `student_${userName}`;
 
-  const body: any = {
+  const body: CozeAgentRequestBody = {
     content: {
       query: {
         prompt: [
@@ -537,7 +578,7 @@ async function proxyCozeAgent(
   const rawText = await response.text();
 
   let fullContent = '';
-  let debugEvents: any[] = [];
+  const debugEvents: unknown[] = [];
   const sseLines = rawText.split('\n');
   for (const rawLine of sseLines) {
     const line = rawLine.trim();
@@ -569,24 +610,19 @@ async function proxyCozeAgent(
       return { success: false, error: `Coze Agent 响应格式异常(${rawText.length}字节): ${rawText.slice(0, 500)}` };
     }
     // 尝试从检测到的 SSE 事件提取更具体的错误信息
-    for (const evt of debugEvents) {
-      // 优先使用已解析的完整对象（原始行可能被截断）
-      const parsed = typeof evt === 'object' && !Array.isArray(evt) && !('raw' in evt) ? evt : null;
-      if (parsed?.type === 'message_end' && parsed.content?.message_end) {
-        const end = parsed.content.message_end;
-        // 文档表明 token_cost.total_tokens 为 0 是正常情况，仅检查 code
-        if (end.code && end.code !== '0') {
-          return { success: false, error: `Coze Agent 返回错误: code=${end.code} ${end.message || ''}` };
-        }
-        console.warn('[CozeAgent] message_end 无回答内容:', JSON.stringify(end));
-      }
+    for (const event of debugEvents) {
+      const eventError = getCozeMessageEndError(event);
+      if (eventError) return { success: false, error: eventError };
       // 原始行兜底解析（可能被截断，仅做补充）
-      const raw = typeof evt === 'string' ? evt : (evt.raw || '');
+      const eventRecord = asJsonRecord(event);
+      const raw = typeof event === 'string' ? event : (typeof eventRecord?.raw === 'string' ? eventRecord.raw : '');
       if (raw.startsWith('data:')) {
         try {
-          const p = JSON.parse(raw.slice(5).trim());
-          if (p.code && p.code !== 0 && p.code !== undefined) {
-            return { success: false, error: `Coze Agent 返回错误: code=${p.code} ${p.msg || ''}` };
+          const parsed = asJsonRecord(JSON.parse(raw.slice(5).trim()));
+          const code = parsed?.code;
+          if (code && code !== 0) {
+            const message = typeof parsed?.msg === 'string' ? parsed.msg : '';
+            return { success: false, error: `Coze Agent 返回错误: code=${String(code)} ${message}` };
           }
         } catch {}
       }
@@ -637,7 +673,7 @@ async function proxyCozeStream(
         if (fid) fileIds.push(fid);
       }
       console.log(`[CozeStream] Uploaded ${fileIds.length}/${fileUrls.length} files, ids:`, fileIds);
-      const textItems: any[] = [{ type: 'text', text: message }];
+      const textItems: CozeMultimodalItem[] = [{ type: 'text', text: message }];
       for (const fid of fileIds) {
         textItems.push({ type: 'image', file_id: fid });
       }
@@ -707,13 +743,13 @@ async function proxyCozeStream(
       conversationId: streamConvId || undefined,
       followUps: followUps.length > 0 ? followUps : undefined,
     };
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       // 被取消时，返回已收集到的内容
       return { success: false, aborted: true };
     }
-    console.error('[CozeStream] Error:', e.message);
-    return { success: false, error: e.message || 'Coze 流式请求失败' };
+    console.error('[CozeStream] Error:', getErrorMessage(error, 'Coze 流式请求失败'));
+    return { success: false, error: getErrorMessage(error, 'Coze 流式请求失败') };
   }
 }
 
@@ -734,12 +770,12 @@ async function proxyCozeAgentStream(
   const baseUrl = agent.apiUrl || '';
   if (!baseUrl) return { success: false, error: 'Coze Agent 需要 API URL' };
 
-  const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+  const extra = agent.extra ? safeParseJSON<CozeAgentExtra>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
 
   const sessionId = `student_${userName}`;
 
-  const body: any = {
+  const body: CozeAgentRequestBody = {
     content: {
       query: {
         prompt: [
@@ -789,7 +825,7 @@ async function proxyCozeAgentStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  let debugEvents: any[] = [];
+  const debugEvents: unknown[] = [];
 
   try {
     while (true) {
@@ -826,25 +862,17 @@ async function proxyCozeAgentStream(
         }
       }
     }
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return { success: !!(fullContent || fullContent.trim()), content: fullContent || undefined, aborted: true };
     }
-    throw e;
+      throw error;
   }
 
   if (!fullContent) {
-    for (const evt of debugEvents) {
-      try {
-        if (evt.type === 'message_end' && evt.content?.message_end) {
-          const end = evt.content.message_end;
-          // 文档表明 token_cost.total_tokens 为 0 是正常情况，仅检查 code
-          if (end.code && end.code !== '0') {
-            return { success: false, error: `Coze Agent 返回错误: code=${end.code} ${end.message || ''}` };
-          }
-          console.warn('[CozeAgentStream] message_end 无回答内容:', JSON.stringify(end));
-        }
-      } catch {}
+    for (const event of debugEvents) {
+      const error = getCozeMessageEndError(event);
+      if (error) return { success: false, error };
     }
     return { success: false, error: `Coze Agent 流式响应为空，调试: ${JSON.stringify(debugEvents)}` };
   }
@@ -863,7 +891,7 @@ async function proxyZhipuai(
   fileUrls?: string[]
 ): Promise<ProxyResult> {
   try {
-    const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+    const extra = agent.extra ? safeParseJSON<SecretAgentExtra>(agent.extra, {}) : {};
     const apiSecret = extra.apiSecret ? (isEncrypted(extra.apiSecret) ? decrypt(extra.apiSecret) : extra.apiSecret) : '';
 
     if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
@@ -904,8 +932,8 @@ async function proxyZhipuai(
       content: deanonymized,
       conversationId: result.conversationId,
     };
-  } catch (error: any) {
-    return { success: false, error: error.message || '智谱清言请求失败' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, '智谱清言请求失败') };
   }
 }
 
@@ -919,7 +947,7 @@ async function proxyZhipuaiStream(
   signal?: AbortSignal
 ): Promise<ProxyResult> {
   try {
-    const extra = agent.extra ? safeParseJSON<any>(agent.extra, {}) : {};
+    const extra = agent.extra ? safeParseJSON<SecretAgentExtra>(agent.extra, {}) : {};
     const apiSecret = extra.apiSecret ? (isEncrypted(extra.apiSecret) ? decrypt(extra.apiSecret) : extra.apiSecret) : '';
 
     if (!agent.botId) return { success: false, error: '智谱清言需要 assistant_id' };
@@ -981,11 +1009,11 @@ async function proxyZhipuaiStream(
       conversationId: result.conversationId || undefined,
       followUps: followUps.length > 0 ? followUps : undefined,
     };
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return { success: false, aborted: true };
     }
-    return { success: false, error: e.message || '智谱清言请求失败' };
+    return { success: false, error: getErrorMessage(error, '智谱清言请求失败') };
   }
 }
 
@@ -1050,8 +1078,8 @@ async function proxyWenxin(
       content: deanonymized,
       conversationId: result.threadId,
     };
-  } catch (error: any) {
-    return { success: false, error: error.message || '文心 API 请求失败' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, '文心 API 请求失败') };
   }
 }
 
@@ -1118,11 +1146,11 @@ async function proxyWenxinStream(
       content: deanonymized,
       conversationId: result.threadId || undefined,
     };
-  } catch (e: any) {
-    if (e.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return { success: false, aborted: true };
     }
-    return { success: false, error: e.message || '文心 API 请求失败' };
+    return { success: false, error: getErrorMessage(error, '文心 API 请求失败') };
   }
 }
 /** 根据文件名获取 MIME 类型 */
@@ -1150,7 +1178,7 @@ export async function testWenxinConnection(agent: AgentConfig): Promise<{ succes
     const result = await proxyWenxin(agent, '你好，请回复"连接成功"', 'test');
     if (result.success) return { success: true };
     return { success: false, error: result.error || '连接失败' };
-  } catch (error: any) {
-    return { success: false, error: error.message || '测试请求异常' };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, '测试请求异常') };
   }
 }

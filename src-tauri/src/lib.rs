@@ -188,57 +188,15 @@ fn find_node(app: &AppHandle) -> String {
     "node".to_string()
 }
 
-fn ensure_port_free(port: u16) {
+fn ensure_port_free(port: u16) -> Result<(), String> {
     if TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
-        return;
+        return Ok(());
     }
-
-    eprintln!("端口 {port} 已被占用，正在清理旧进程...");
-
-    #[cfg(unix)]
-    {
-        if let Ok(output) = Command::new("lsof")
-            .args(["-ti", &format!(":{}", port)])
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if let Ok(pid) = line.trim().parse::<i32>() {
-                    eprintln!("杀死旧进程 PID={}", pid);
-                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).spawn();
-                }
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(output) = Command::new("cmd")
-            .args(["/c", &format!("netstat -ano | findstr :{}", port)])
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let line = line.trim();
-                if line.contains("LISTENING") {
-                    if let Some(pid_str) = line.split_whitespace().last() {
-                        if let Ok(pid) = pid_str.parse::<i32>() {
-                            eprintln!("杀死旧进程 PID={}", pid);
-                            let _ = Command::new("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .spawn();
-                        }
-                    }
-                }
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
-    }
+    Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序，或在系统设置中调整 ClassNode 端口后重试。"))
 }
 
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
-    ensure_port_free(SERVER_PORT);
+    ensure_port_free(SERVER_PORT)?;
 
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");

@@ -6,10 +6,12 @@
 // ---- 通用响应结构 ----
 
 /** API 通用响应包装 */
-export interface CozeResponse<T = any> {
+export interface CozeResponse<T = unknown> {
   code: number;       // 0 成功，非 0 失败
   msg: string;        // 错误时含详细错误信息
   data?: T;
+  /** 部分消息接口将实体直接放在 message 字段。 */
+  message?: T;
   detail?: ResponseDetail;
 }
 
@@ -222,7 +224,7 @@ export interface CreateChatRequest {
   meta_data?: Record<string, string>;
   extra_params?: Record<string, string>;    // latitude / longitude 等
   shortcut_command?: ShortcutCommand;
-  parameters?: Record<string, any>;         // 对话流自定义参数
+  parameters?: Record<string, unknown>;         // 对话流自定义参数
   enable_card?: boolean;                    // 默认 false
   publish_status?: 'published_online' | 'unpublished_draft';  // 默认 published_online
   bot_version?: string;                     // 指定智能体版本号
@@ -268,7 +270,7 @@ export type SSEEvent =
 /** SSE 数据包 */
 export interface SSEPackage {
   event: SSEEvent;
-  data: any;  // ChatData | MessageData 取决于 event
+  data: unknown;  // ChatData | MessageData 取决于 event
 }
 
 // ---- 文件 ----

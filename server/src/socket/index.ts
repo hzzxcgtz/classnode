@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
+import type { AgentConfig } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { buildShieldFilter } from '../services/shield-filter.js';
 import { decrypt } from '../services/crypto.js';
@@ -13,7 +14,8 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 
 /** 平台对话上下文 ID 存储（key: classroomId:studentId:agentId）
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
-const platformConversations = new Map<string, string>();
+const platformConversations = new Map<string, { conversationId: string; lastUsedAt: number }>();
+const PLATFORM_CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** 活跃 AI 流式请求的 AbortController（key: socketId）
  *  学生端请求停止生成时，通过此 map 中断对应的 AI 请求 */
@@ -32,8 +34,29 @@ let cachedRateLimit = 6;
 let rateLimitCacheTime = 0;
 const RATE_LIMIT_CACHE_TTL = 10_000;
 
+/** 清理仅用于实时会话的内存缓存，避免桌面端长期运行时无界累积。 */
+function pruneSocketCaches(now: number = Date.now()): void {
+  for (const [studentId, timestamps] of studentMsgTimestamps) {
+    const recent = timestamps.filter(timestamp => timestamp > now - RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) studentMsgTimestamps.delete(studentId);
+    else studentMsgTimestamps.set(studentId, recent);
+  }
+  for (const [classroomId, notifications] of teacherNotificationCache) {
+    const recent = notifications.filter(notification => notification.timestamp > now - NOTIFICATION_CACHE_TTL);
+    if (recent.length === 0) teacherNotificationCache.delete(classroomId);
+    else teacherNotificationCache.set(classroomId, recent);
+  }
+  for (const [agentId, lastAlert] of agentAlertCooldown) {
+    if (lastAlert <= now - AGENT_ALERT_COOLDOWN_MS) agentAlertCooldown.delete(agentId);
+  }
+  for (const [key, conversation] of platformConversations) {
+    if (conversation.lastUsedAt <= now - PLATFORM_CONVERSATION_TTL_MS) platformConversations.delete(key);
+  }
+}
+
 async function getRateLimit(prisma: PrismaClient): Promise<number> {
   const now = Date.now();
+  pruneSocketCaches(now);
   if (now - rateLimitCacheTime >= RATE_LIMIT_CACHE_TTL) {
     try {
       const config = await prisma.shieldConfig.findFirst();
@@ -158,6 +181,43 @@ interface SendMessageData {
   fileNames?: string[];
 }
 
+const MAX_STUDENT_MESSAGE_LENGTH = 10_000;
+const MAX_CHAT_ATTACHMENTS = 5;
+const CHAT_UPLOAD_URL = /^\/uploads\/chat\/chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt)$/i;
+
+/**
+ * Socket 事件不具备 HTTP 路由的参数校验，必须在进入 AI 代理前收紧边界。
+ * 附件只接受本应用上传接口生成的聊天文件 URL，避免客户端伪造本地路径。
+ */
+export function validateStudentMessagePayload(value: unknown): SendMessageData | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (
+    typeof data.classroomCode !== 'string' || !data.classroomCode.trim() ||
+    typeof data.studentId !== 'string' || !data.studentId.trim() ||
+    typeof data.content !== 'string' || !data.content.trim() ||
+    data.content.length > MAX_STUDENT_MESSAGE_LENGTH
+  ) return null;
+
+  const rawUrls = Array.isArray(data.fileUrls)
+    ? data.fileUrls
+    : typeof data.fileUrl === 'string' ? [data.fileUrl] : [];
+  if (rawUrls.length > MAX_CHAT_ATTACHMENTS || rawUrls.some(url => typeof url !== 'string' || !CHAT_UPLOAD_URL.test(url))) return null;
+
+  const rawNames = Array.isArray(data.fileNames)
+    ? data.fileNames
+    : typeof data.fileName === 'string' ? [data.fileName] : [];
+  if (rawNames.length > rawUrls.length || rawNames.some(name => typeof name !== 'string' || name.length > 255)) return null;
+
+  return {
+    classroomCode: data.classroomCode.trim(),
+    studentId: data.studentId,
+    content: data.content,
+    fileUrls: rawUrls as string[],
+    fileNames: rawNames as string[],
+  };
+}
+
 /** 清理流式内容中的推理标签 */
 function cleanStreamContent(text: string): string {
   let result = text;
@@ -176,11 +236,44 @@ function getOnlineStudentIds(classroomId: string, connMap: Map<string, string>):
   return ids;
 }
 
+/**
+ * 只允许当前登记的连接将学生标记为离线。
+ * 新连接顶下旧连接时，旧 socket 的 disconnect 事件会随后到达；若不做此判断，会把新连接误标为离线。
+ */
+export function clearCurrentStudentConnection(connMap: Map<string, string>, connKey: string, socketId: string): boolean {
+  if (connMap.get(connKey) !== socketId) return false;
+  connMap.delete(connKey);
+  return true;
+}
+
+/** 暂停或结束课堂时中止该课堂所有仍在进行的 AI 生成。 */
+export function abortClassroomStreams(
+  classroomId: string,
+  connMap: Map<string, string>,
+  streams: Map<string, AbortController>,
+): number {
+  let count = 0;
+  for (const [key, socketId] of connMap) {
+    if (!key.startsWith(`${classroomId}:`)) continue;
+    const controller = streams.get(socketId);
+    if (!controller) continue;
+    controller.abort();
+    streams.delete(socketId);
+    count++;
+  }
+  return count;
+}
+
 export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: import('express').Application) {
   // 追踪每个学生的活跃连接，key: `${classroomId}:${studentId}`
   const activeConnections = new Map<string, string>();
   // 暴露给 HTTP 路由使用
-  if (app) app.set('activeConnections', activeConnections);
+  if (app) {
+    app.set('activeConnections', activeConnections);
+    app.set('activeStreams', activeStreams);
+  }
+  const cacheCleanupTimer = setInterval(() => pruneSocketCaches(), NOTIFICATION_CACHE_TTL);
+  cacheCleanupTimer.unref();
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] Client connected: ${socket.id}`);
 
@@ -212,6 +305,15 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           return;
         }
 
+        // 令牌签发后教师仍可能调整课堂成员；加入实时课堂前必须再次确认归属。
+        const classroomStudent = await prisma.classroomStudent.findFirst({
+          where: { classroomId: classroom.id, studentId: data.studentId },
+        });
+        if (!classroomStudent) {
+          socket.emit('student-auth-error', { error: '你已不在当前课堂，请重新选择身份' });
+          return;
+        }
+
         // 同一学生重复连接时，断开旧连接，保留新连接
         const connKey = `${classroom.id}:${data.studentId}`;
         const oldSocketId = activeConnections.get(connKey);
@@ -222,11 +324,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 记录新连接
         activeConnections.set(connKey, socket.id);
-
-        // 查询该学生的课堂记录（含黑屏状态）
-        const classroomStudent = await prisma.classroomStudent.findFirst({
-          where: { classroomId: classroom.id, studentId: data.studentId },
-        });
 
         // 更新学生状态
         await prisma.classroomStudent.updateMany({
@@ -302,8 +399,13 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // 学生发送消息（流式）
-    socket.on('send-message', async (data: SendMessageData) => {
+    socket.on('send-message', async (input: SendMessageData) => {
       try {
+        const data = validateStudentMessagePayload(input);
+        if (!data) {
+          socket.emit('ai-error', { error: '消息或附件格式无效' });
+          return;
+        }
         if (!socket.data.classroomId || !socket.data.studentId || socket.data.studentId !== data.studentId) {
           socket.emit('student-auth-error', { error: '学生身份无效，请重新进入课堂' });
           return;
@@ -487,7 +589,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 取最近 30 条消息（约 15 轮对话），反转回正序
         const recentHistory = pastMessages.reverse();
-        const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<{}>) => ({
+        const formattedHistory = recentHistory.map((h: Prisma.MessageGetPayload<object>) => ({
           role: h.role as 'user' | 'assistant',
           content: h.content,
         }));
@@ -536,8 +638,9 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // 智谱清言 / 文心使用对话上下文 ID 维护记忆，从内存中恢复
         const platformNeedsConvId = ['coze', 'zhipuai', 'wenxin'].includes(agent.platform);
         const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}`;
-        const platformConvId = platformConversations.get(platformConvKey) || undefined;
-        const agentConfig: any = {
+        const storedConversation = platformConversations.get(platformConvKey);
+        const platformConvId = storedConversation?.conversationId;
+        const agentConfig: AgentConfig = {
           platform: agent.platform,
           apiUrl: agent.apiUrl || undefined,
           apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
@@ -621,7 +724,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           // 保存平台对话上下文 ID（智谱清言 conversationId / 文心 threadId），后续请求保持上下文
           // 必须在 success 块内保存，防止工具调用失败等场景保存了损坏的 context id
           if (platformNeedsConvId && result.conversationId) {
-            platformConversations.set(platformConvKey, result.conversationId);
+            platformConversations.set(platformConvKey, { conversationId: result.conversationId, lastUsedAt: Date.now() });
           }
           // Save AI response
           const aiMessage = await prisma.message.create({
@@ -754,13 +857,27 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
     // 教师发送通知给学生：全班广播 / 定向单个学生 / 定向多个学生（如小组成员）
     // 教师通知：全班广播 / 定向单个学生 / 定向组（分组/高级模式）
-    socket.on('teacher-send-notification', async (data: { classroomId: string; studentId?: string; groupId?: string; message: string }) => {
+    socket.on('teacher-send-notification', async (data: unknown) => {
       if (!socket.data.isTeacher || !hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
         socket.emit('teacher-auth-error', { error: '无权发送教师通知' });
         return;
       }
-      const { classroomId, studentId, groupId, message } = data;
-      if (!classroomId) return;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        socket.emit('teacher-auth-error', { error: '通知格式无效' });
+        return;
+      }
+      const { classroomId, studentId, groupId, message } = data as {
+        classroomId?: unknown; studentId?: unknown; groupId?: unknown; message?: unknown;
+      };
+      if (
+        typeof classroomId !== 'string' || classroomId !== socket.data.classroomId ||
+        typeof message !== 'string' || !message.trim() || message.length > 1_000 ||
+        (studentId !== undefined && typeof studentId !== 'string') ||
+        (groupId !== undefined && typeof groupId !== 'string')
+      ) {
+        socket.emit('teacher-auth-error', { error: '通知格式无效或课堂不匹配' });
+        return;
+      }
       try {
         if (groupId) {
           // 定向到组：查组成员，每人一条通知记录
@@ -818,15 +935,22 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     // 断开连接
     socket.on('disconnect', async () => {
       console.log(`[Socket] Client disconnected: ${socket.id}`);
+      // 浏览器关闭、网络切换或被新设备顶下线时，立即取消仍在进行的 AI 请求。
+      // 否则上游流会持续到自然结束，既浪费额度也可能留下无接收方的任务。
+      const activeStream = activeStreams.get(socket.id);
+      if (activeStream) {
+        activeStream.abort();
+        activeStreams.delete(socket.id);
+      }
       const { classroomId, studentId, isTeacher } = socket.data;
       const connKey = classroomId && studentId ? `${classroomId}:${studentId}` : null;
 
       // 清理活跃连接记录
-      if (connKey && activeConnections.get(connKey) === socket.id) {
-        activeConnections.delete(connKey);
-      }
+      const disconnectedCurrentStudent = connKey
+        ? clearCurrentStudentConnection(activeConnections, connKey, socket.id)
+        : false;
 
-      if (classroomId && studentId && !isTeacher) {
+      if (classroomId && studentId && !isTeacher && disconnectedCurrentStudent) {
         // 更新学生离线状态
         await prisma.classroomStudent.updateMany({
           where: { classroomId, studentId },

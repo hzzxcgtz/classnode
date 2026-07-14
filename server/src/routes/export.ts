@@ -161,7 +161,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
         name: ca.agent.name,
         platform: ca.agent.platform,
       })),
-      teacherNotifications: teacherNotifs.map((n: Prisma.TeacherNotificationGetPayload<{}>) => ({
+      teacherNotifications: teacherNotifs.map((n: Prisma.TeacherNotificationGetPayload<object>) => ({
         content: n.content,
         time: n.createdAt,
         targetStudentId: n.studentId,
@@ -187,7 +187,7 @@ router.get('/:classroomId/conversations', async (req, res) => {
           totalRounds: cs.totalRounds,
           messages: [
             ...notifMsgs,
-            ...cs.messages.map((m: Prisma.MessageGetPayload<{}>) => ({
+            ...cs.messages.map((m: Prisma.MessageGetPayload<object>) => ({
               role: m.role,
               content: m.content,
               time: m.createdAt,

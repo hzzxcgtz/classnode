@@ -4,13 +4,13 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import {
   platformLabels, platformColors, platformBadgeBg,
-  classroomModeLabels, classroomModeColors, classroomModeBg,
+  classroomModeLabels, classroomModeColors,
 } from '@/lib/constants';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
   RadialBarChart, RadialBar,
 } from 'recharts';
-import type { AgentSummary, BackupFile, ClassSummary, ClassroomHistoryItem, DashboardClassroom, ShieldConfig, ShieldWord, StorageStats } from '@/lib/types';
+import type { AgentSummary, BackupFile, ClassSummary, ClassroomHistoryItem, DashboardClassroom, ShieldWord, StorageStats } from '@/lib/types';
 
 type ChartPayloadItem = {
   name?: string;
@@ -21,8 +21,8 @@ type ChartPayloadItem = {
 
 // ─── 区块卡片 ──────────────────────────────────────────────
 
-function SectionCard({ title, icon, color, children, accent }: {
-  title: string; icon: React.ReactNode; color: string; children: React.ReactNode; accent?: boolean;
+function SectionCard({ title, icon, color, children }: {
+  title: string; icon: React.ReactNode; color: string; children: React.ReactNode;
 }) {
   return (
     <div style={{
@@ -137,27 +137,6 @@ function KpiCard({ label, value, color, icon, trend, trendUp }: {
   );
 }
 
-// ─── 辅助组件 ──────────────────────────────────────────────
-
-function StatBar({ label, count, size, color }: { label: string; count: number; size: string; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.75rem" }}>
-      <span style={{ color: '#475569' }}>{label}</span>
-      <span><b style={{ color }}>{count}</b> <span style={{ color: '#94a3b8' }}>{size}</span></span>
-    </div>
-  );
-}
-
-function StatBlock({ label, count, size, color }: { label: string; count: number; size: string; color: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: "0.813rem", fontWeight: 700, color }}>{count}</div>
-      <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{size}</div>
-    </div>
-  );
-}
-
 // ─── 主组件 ────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -168,22 +147,23 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<ClassroomHistoryItem[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [shieldWords, setShieldWords] = useState<ShieldWord[]>([]);
-  const [shieldConfig, setShieldConfig] = useState<ShieldConfig | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadData(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
-  const loadData = async () => {
+  async function loadData() {
     setLoading(true);
     try {
-      const [a, c, cr, h, b, sw, sconf, ss] = await Promise.all([
+      const [a, c, cr, h, b, sw, ss] = await Promise.all([
         api.getAgents(),
         api.getClasses(),
         api.getAllClassrooms().catch(() => []),
         api.getHistory().catch(() => []),
         api.getBackups().catch(() => []),
         api.getShieldWords().catch(() => []),
-        api.getShieldConfig().catch(() => null),
         api.getStorageStats().catch(() => null),
       ]);
       setAgents(a || []);
@@ -192,11 +172,10 @@ export default function DashboardPage() {
       setHistory(h || []);
       setBackups(b || []);
       setShieldWords(sw || []);
-      setShieldConfig(sconf);
       setStorageStats(ss);
     } catch {}
     setLoading(false);
-  };
+  }
 
   // ── AI 智能体 ──
   const agentTotal = agents.length;
@@ -244,16 +223,6 @@ export default function DashboardPage() {
   const historyParticipants = history.reduce(
     (sum, h) => sum + (Number(h.participantCount) || 0), 0,
   );
-  const historyTotalChars = history.reduce(
-    (sum, h) => sum + (Number(h.totalChars) || 0), 0,
-  );
-  const historyTotalDuration = history.reduce((sum, h) => {
-    if (!h.endedAt) return sum;
-    return sum + (new Date(h.endedAt).getTime() - new Date(h.createdAt).getTime());
-  }, 0);
-  const historyAvgDuration = historyTotal > 0
-    ? Math.round(historyTotalDuration / historyTotal / 60000)
-    : 0;
 
   // ── 备份 ──
   const backupTotal = backups.length;
@@ -327,12 +296,6 @@ export default function DashboardPage() {
       uploadedAvatar: c.uploadedAvatarCount || 0,
       remainingTokens: c.totalTokens || 0,
     }));
-
-  const statusData = [
-    { name: '进行中', value: classroomActive, color: '#10b981' },
-    { name: '已暂停', value: classroomPaused, color: '#f59e0b' },
-    { name: '已结束', value: classroomEnded, color: '#94a3b8' },
-  ].filter(s => s.value > 0);
 
   const hasAgentData = agentTotal > 0;
   const hasClassData = classTotal > 0;

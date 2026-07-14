@@ -18,6 +18,21 @@
   box-sizing: border-box;
 }
 
+/* 键盘操作时保留清晰焦点，鼠标点击不会额外干扰课堂投屏画面。 */
+:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.55);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -191,6 +206,14 @@ html, body {
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  .modal-content {
+    width: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+    border-radius: 14px;
+  }
 }
 
 .code-display {

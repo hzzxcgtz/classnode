@@ -104,7 +104,7 @@ export class MessageAPI {
     );
     // 注意：该接口响应中 data 字段可能以 message 字段返回
     // 处理兼容性
-    return (res as any).message || res.data!;
+    return res.message || res.data!;
   }
 
   /**

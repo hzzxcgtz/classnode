@@ -40,13 +40,13 @@ async function checkAgent(agent: {
       },
     });
     return result.success;
-  } catch (error: any) {
+  } catch (error: unknown) {
     await prisma!.agent.update({
       where: { id: agent.id },
       data: {
         lastCheckAt: new Date(),
         lastCheckOk: false,
-        lastCheckError: error?.message || '检测异常',
+        lastCheckError: error instanceof Error ? error.message : '检测异常',
       },
     });
     return false;

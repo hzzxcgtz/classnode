@@ -13,7 +13,7 @@ export function ErrorIcon() {
 export function FieldError({ message, style }: { message: string; style?: CSSProperties }) {
   if (!message) return null;
   return (
-    <div style={{
+    <div role="alert" style={{
       fontSize: "0.75rem", color: '#ef4444', marginTop: 4,
       display: 'flex', alignItems: 'center', gap: 4,
       ...style,
@@ -39,7 +39,7 @@ export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; o
     return () => clearTimeout(timer);
   }, [msg, onClose]);
   return (
-    <div style={{
+    <div role={type === 'error' ? 'alert' : 'status'} aria-live={type === 'error' ? 'assertive' : 'polite'} style={{
       position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
       zIndex: 99999,
       padding: '10px 24px', borderRadius: 10,
@@ -55,7 +55,7 @@ export function Toast({ msg, type, onClose }: { msg: string; type?: ToastType; o
       )}
       {msg}
       {onClose && (
-        <button onClick={onClose} style={{ marginLeft: 8, flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, lineHeight: 1, fontSize: "0.75rem" }}>×</button>
+        <button onClick={onClose} aria-label="关闭提示" style={{ marginLeft: 8, flexShrink: 0, width: 20, height: 20, border: 'none', borderRadius: '50%', background: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, lineHeight: 1, fontSize: "0.75rem" }}>×</button>
       )}
     </div>
   );

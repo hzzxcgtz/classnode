@@ -36,7 +36,7 @@ export interface SSEResult {
     error_code: string;
     error_msg: string;
   };
-  meta_data?: Record<string, any>;
+  meta_data?: Record<string, unknown>;
 }
 
 /** SSE 返回的 Message 结构 */
@@ -45,7 +45,7 @@ export interface SSEMessage {
   content: SSEContent;
   status: 'init' | 'processing' | 'finish' | 'error';
   created_at: string;
-  meta_data?: Record<string, any>;
+  meta_data?: Record<string, unknown>;
 }
 
 /** SSE Content 结构 — 根据不同的 Tool 调用情况返回不同格式 */
@@ -78,7 +78,7 @@ export interface SyncOutputItem {
   content: SSEContent | SSEContent[];
   status: string;
   created_at: string;
-  meta_data?: Record<string, any>;
+  meta_data?: Record<string, unknown>;
 }
 
 // ---- 下一步问题建议（POST /suggest/prompts） ----

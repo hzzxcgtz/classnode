@@ -4,6 +4,10 @@ import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function StudentHomePage() {
   const router = useRouter();
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -12,12 +16,11 @@ export default function StudentHomePage() {
   const [loading, setLoading] = useState(false);
   const [logoErr, setLogoErr] = useState(false);
   const [serverOnline, setServerOnline] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setHydrated(true);
     api.health().then(() => setServerOnline(true)).catch(() => setServerOnline(false));
-    setTimeout(() => inputRefs.current[0]?.focus(), 500);
+    const timer = window.setTimeout(() => inputRefs.current[0]?.focus(), 500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const fullCode = digits.join('');
@@ -38,8 +41,8 @@ export default function StudentHomePage() {
         setLoading(true);
         api.getClassroomByCode(code)
           .then(() => router.push(`/classroom?code=${code}`))
-          .catch((e: any) => {
-            setError(e.message || '互动码无效，请确认后重试');
+          .catch((error: unknown) => {
+            setError(getErrorMessage(error, '互动码无效，请确认后重试'));
             setDigits(['', '', '', '']);
             inputRefs.current[0]?.focus();
           })
@@ -61,8 +64,8 @@ export default function StudentHomePage() {
       setLoading(true);
       api.getClassroomByCode(pasted)
         .then(() => router.push(`/classroom?code=${pasted}`))
-        .catch((e: any) => {
-          setError(e.message || '互动码无效，请确认后重试');
+        .catch((error: unknown) => {
+          setError(getErrorMessage(error, '互动码无效，请确认后重试'));
           setDigits(['', '', '', '']);
           inputRefs.current[0]?.focus();
         })
@@ -81,8 +84,8 @@ export default function StudentHomePage() {
     try {
       await api.getClassroomByCode(fullCode);
       router.push(`/classroom?code=${fullCode}`);
-    } catch (e: any) {
-      setError(e.message || '互动码无效，请确认后重试');
+    } catch (error: unknown) {
+      setError(getErrorMessage(error, '互动码无效，请确认后重试'));
       setDigits(['', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -172,10 +175,10 @@ export default function StudentHomePage() {
         )}
 
         <button type="submit" className="btn btn-primary btn-lg"
-          disabled={hydrated && (fullCode.length !== 4 || loading)}
+          disabled={fullCode.length !== 4 || loading}
           style={{
             width: '100%', fontSize: "0.938rem",
-            opacity: hydrated && loading ? 0.7 : 1,
+            opacity: loading ? 0.7 : 1,
           }}
         >
           {loading ? '验证中...' : '进入课堂'}

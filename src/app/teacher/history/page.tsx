@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { Toast, Pagination } from '@/lib/components';
@@ -98,7 +98,7 @@ export default function HistoryPage() {
     setExportStage('正在准备导出...');
 
     try {
-      const { type, classroom, data } = preview;
+      const { type, data } = preview;
       const classroomId = preview.classroomId;
       const socketId = socket?.current?.id;
 
@@ -156,11 +156,6 @@ export default function HistoryPage() {
   const totalStudents = history.reduce((sum, cr) => sum + cr._count.students, 0);
   const totalInteractions = history.reduce((sum, cr) => sum + cr._count.interactions, 0);
   const totalChars = history.reduce((sum, cr) => sum + cr.totalChars, 0);
-  const totalDuration = history.reduce((sum, cr) => {
-    if (!cr.endedAt) return sum;
-    return sum + (new Date(cr.endedAt).getTime() - new Date(cr.createdAt).getTime());
-  }, 0);
-  const avgDuration = history.length > 0 ? Math.round(totalDuration / history.length / 60000) : 0;
 
   return (
     <div>
@@ -663,7 +658,7 @@ function BackupManager() {
     setBackupAction('create');
     setCreating(true);
     try {
-      const result = await api.createBackup();
+      await api.createBackup();
       setToast({ msg: '备份成功！', type: 'success' });
       setBackups(await api.getBackups());
     } catch (error: unknown) {

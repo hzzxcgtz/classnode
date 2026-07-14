@@ -1,15 +1,56 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, memo, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore, Suspense, memo, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
 import { stripImages, Markdown } from '@/lib/markdown';
 import { exportMessageToWord } from '@/lib/export-doc';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
+import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+import type { Socket } from 'socket.io-client';
 
 const API_BASE_URL = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE_URL}/uploads/`) : svg; }
+function svgDataUrl(svg: string) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(fixSvgUrl(svg))}`;
+}
+function SvgAvatar({ svg, size }: { svg: string; size: number }) {
+  return <img src={svgDataUrl(svg)} alt="" width={size} height={size} style={{ display: 'block', width: size, height: size }} />;
+}
+function useIsMobile(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const media = window.matchMedia('(max-width: 640px)');
+      media.addEventListener('change', onStoreChange);
+      return () => media.removeEventListener('change', onStoreChange);
+    },
+    () => window.matchMedia('(max-width: 640px)').matches,
+    () => false,
+  );
+}
+type ChatAgent = Pick<AgentSummary, 'name' | 'logo'> | null | undefined;
+type StudentChatMessage = {
+  id?: string;
+  role: string;
+  content: string;
+  createdAt?: string;
+  fileUrls?: string[];
+  fileUrl?: string;
+  fileNames?: string[];
+  fileName?: string;
+  followUps?: string[];
+  roundIndex?: number | null;
+};
+type SocketTextEvent = { content: string };
+type AiResponseEvent = SocketTextEvent & { roundIndex?: number | null; messageId?: string; followUps?: string[] };
+type SocketErrorEvent = { error?: string };
+type StudentIdEvent = { studentId?: string };
+type AvatarRewardEvent = { tokens?: number };
+type TeacherNotificationEvent = { id?: string; message: string };
+type ShieldWarnEvent = { studentName?: string; filteredContent?: string };
+type PermissionEvent = { allow: boolean };
+const MAX_ATTACHED_FILES = 5;
 
 // ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
 
@@ -17,7 +58,7 @@ const AgentAvatar = memo(function AgentAvatar({
   size, borderRadius = 8, fontSize = 13, agent, apiBase,
 }: {
   size: number; borderRadius?: number; fontSize?: number;
-  agent: any; apiBase: string;
+  agent: ChatAgent; apiBase: string;
 }) {
   const logoUrl = agent?.logo
     ? (agent.logo.startsWith('/') ? `${apiBase}${agent.logo}` : agent.logo)
@@ -40,9 +81,10 @@ const AgentAvatar = memo(function AgentAvatar({
 const MessageItem = memo(function MessageItem({
   msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport, msgIndex, onFollowUp, allowFollowUps,
 }: {
-  msg: any; studentName: string; agent: any; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number; onFollowUp?: (question: string) => void; allowFollowUps?: boolean;
+  msg: StudentChatMessage; studentName: string; agent: ChatAgent; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number; onFollowUp?: (question: string) => void; allowFollowUps?: boolean;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
+  const followUps = msg.followUps ?? [];
   const [toast, setToast] = useState<string | null>(null);
 
   const handleCopy = useCallback(() => {
@@ -73,8 +115,9 @@ const MessageItem = memo(function MessageItem({
       {msg.role === 'user' && studentName && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
           {avatarSvg ? (
-            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}
-              dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvg).replace('<svg', '<svg width="42" height="42"') }} />
+            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
+              <SvgAvatar svg={avatarSvg} size={42} />
+            </div>
           ) : (
             <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.875rem", fontWeight: 700, flexShrink: 0 }}>
               {studentName[0]}
@@ -141,9 +184,9 @@ const MessageItem = memo(function MessageItem({
         </div>
       )}
       {/* 追问建议按钮 */}
-      {msg.role === 'assistant' && onFollowUp && msg.followUps?.length > 0 && allowFollowUps !== false && (
+      {msg.role === 'assistant' && onFollowUp && followUps.length > 0 && allowFollowUps !== false && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingLeft: 4 }}>
-          {msg.followUps.map((q: string, i: number) => (
+          {followUps.map((q, i: number) => (
             <button key={i} onClick={() => onFollowUp(q)}
               style={{
                 padding: '6px 14px',
@@ -181,7 +224,7 @@ const MessageItem = memo(function MessageItem({
 const StreamingIndicator = memo(function StreamingIndicator({
   streamingContent, agent, apiBase,
 }: {
-  streamingContent: string; agent: any; apiBase: string;
+  streamingContent: string; agent: ChatAgent; apiBase: string;
 }) {
   const strippedContent = useMemo(() => stripImages(streamingContent), [streamingContent]);
   return (
@@ -225,7 +268,7 @@ const StreamingIndicator = memo(function StreamingIndicator({
 const ThinkingContent = memo(function ThinkingContent({
   content, agent, apiBase,
 }: {
-  content: string; agent: any; apiBase: string;
+  content: string; agent: ChatAgent; apiBase: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -244,13 +287,14 @@ const ThinkingContent = memo(function ThinkingContent({
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         lineHeight: 1.7, fontSize: "0.813rem", wordBreak: 'break-word',
       }}>
-        <div onClick={() => setCollapsed(prev => !prev)}
+        <button type="button" onClick={() => setCollapsed(prev => !prev)} aria-expanded={!collapsed}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 14px',
             cursor: 'pointer', userSelect: 'none',
             borderBottom: collapsed ? 'none' : '1px solid #e9d5ff',
             color: '#7c3aed', fontWeight: 600, fontSize: "0.75rem",
+            width: '100%', border: 'none', background: 'transparent', textAlign: 'left',
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04Z"/>
@@ -260,7 +304,7 @@ const ThinkingContent = memo(function ThinkingContent({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
             <polyline points="6 9 12 15 18 9"/>
           </svg>
-        </div>
+        </button>
         {!collapsed && (
           <div style={{
             padding: '10px 14px',
@@ -281,7 +325,7 @@ function StudentChatContent() {
   const [code, setCode] = useState('');
 
   // 首次渲染时一次性读取 URL 并处理全部逻辑，消除时序竞争
-  useEffect(() => {
+  async function restoreSessionFromUrl(now: number) {
     const params = new URLSearchParams(window.location.search);
     const codeFromUrl = params.get('code') || '';
     if (!codeFromUrl) { router.push('/'); return; }
@@ -291,15 +335,26 @@ function StudentChatContent() {
     if (saved) {
       try {
         const session = JSON.parse(saved);
-        if (Date.now() - session.timestamp < 7200000) {
+        if (now - session.timestamp < 7200000) {
           sessionData = { studentId: session.studentId, studentName: session.studentName, token: session.token };
           setStudentSessionToken(session.token);
-          setSelectedStudent({ id: session.studentId, name: session.studentName });
+          setSelectedStudent({ id: session.studentId, name: session.studentName, studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' });
+        } else {
+          localStorage.removeItem(`chat_session_${codeFromUrl}`);
         }
-      } catch {}
+      } catch {
+        localStorage.removeItem(`chat_session_${codeFromUrl}`);
+      }
     }
-    loadClassroom(codeFromUrl).then(async (cr) => {
-      if (!cr) return;
+    loadClassroom(codeFromUrl, sessionData?.studentId).then(async (cr) => {
+      if (!cr) {
+        if (sessionData) {
+          localStorage.removeItem(`chat_session_${codeFromUrl}`);
+          setStudentSessionToken();
+          setSelectedStudent(null);
+        }
+        return;
+      }
       if (sessionData) {
         // 每次刷新都在后台静默续领，兼容应用重启和旧版保存的本地会话。
         try {
@@ -348,29 +403,29 @@ function StudentChatContent() {
             api.getStudentTokens(sessionData.studentId),
           ]);
           const m: Record<number, string> = {};
-          avData.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+          avData.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
           setAvatarSvgs(m);
           setAllStudentAvatars(avTeacherData);
           setAvatarTokenCount(tokenData.tokens || 0);
-          const cur = (stsData as any[]).find((s: any) => s.id === sessionData!.studentId);
+          const cur = stsData.find((student) => student.id === sessionData!.studentId);
           if (cur) setSelectedStudent(cur);
         } catch {}
       } else {
         setStep('identity');
       }
     });
-  }, []);
+  }
 
   const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
   const [joiningClassroom, setJoiningClassroom] = useState(false);
-  const [classroom, setClassroom] = useState<any>(null);
-  const [students, setStudents] = useState<any[]>([]);
+  const [classroom, setClassroom] = useState<StudentClassroom | null>(null);
+  const [students, setStudents] = useState<ClassroomStudentSummary[]>([]);
   const [avatarSvgs, setAvatarSvgs] = useState<Record<number, string>>({});
   const [avatarTokenCount, setAvatarTokenCount] = useState(0);
   const [showAvatarChanger, setShowAvatarChanger] = useState(false);
-  const [allStudentAvatars, setAllStudentAvatars] = useState<any[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<ClassroomStudentSummary | null>(null);
+  const [messages, setMessages] = useState<StudentChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
   const [waitingAI, setWaitingAI] = useState(false);
@@ -401,7 +456,7 @@ function StudentChatContent() {
   const [activeMsgIndex, setActiveMsgIndex] = useState<number | null>(null);
   const [hoveredMarker, setHoveredMarker] = useState<{ index: number; text: string; x: number; y: number } | null>(null);
   const userScrolledUpRef = useRef(false);
-  const wsRef = useRef<any>(null);
+  const wsRef = useRef<Socket | null>(null);
   const joiningRef = useRef(false);
   const sendingRef = useRef(false);
   const chatConnectionGenerationRef = useRef(0);
@@ -411,7 +466,7 @@ function StudentChatContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
-  const statusSocketRef = useRef<any>(null);
+  const statusSocketRef = useRef<Socket | null>(null);
 
   useEffect(() => () => {
     chatConnectionGenerationRef.current += 1;
@@ -449,20 +504,11 @@ function StudentChatContent() {
   }, []);
 
   // 手机端检测（< 640px）
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)');
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+  const isMobile = useIsMobile();
 
   // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
   useEffect(() => {
     if (!fullscreenImg) return;
-    setZoomLevel(1);
-    setImgOffset({ x: 0, y: 0 });
     const d = dragRef.current;
     d.dragging = false; d.offX = 0; d.offY = 0;
 
@@ -513,13 +559,13 @@ function StudentChatContent() {
   /** 获取当前学生/小组绑定的智能体 */
   const getCurrentAgent = () => {
     if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-      const group = classroom.groups.find((g: any) => g.id === selectedStudent.groupId);
+      const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
       if (group?.agent) return group.agent;
     }
     return classroom?.agents?.[0] || null;
   };
 
-  const renderAgentAvatar = (size: number, borderRadius = 8, fontSize = 13, agent?: any) => {
+  const renderAgentAvatar = (size: number, borderRadius = 8, fontSize = 13, agent?: ChatAgent) => {
     const theAgent = agent || getCurrentAgent();
     const logoUrl = theAgent?.logo ? (theAgent.logo.startsWith('/') ? `${apiBase}${theAgent.logo}` : theAgent.logo) : null;
     if (logoUrl) {
@@ -653,7 +699,7 @@ function StudentChatContent() {
     setShowScrollBtn(false);
   };
 
-  const loadClassroom = async (classroomCode?: string, sessionStudentId?: string) => {
+  async function loadClassroom(classroomCode?: string, sessionStudentId?: string) {
     try {
       setLoadError(null);
       const cr = await api.getClassroomByCode(classroomCode || code);
@@ -664,9 +710,9 @@ function StudentChatContent() {
         // 需要先获取学生的 groupId
         try {
           const sts = await api.getClassroomStudents(cr.id);
-          const myStudent = sts.find((s: any) => s.id === sessionStudentId);
+          const myStudent = sts.find((student) => student.id === sessionStudentId);
           if (myStudent?.groupId) {
-            const g = cr.groups.find((gr: any) => gr.id === myStudent.groupId);
+            const g = cr.groups.find((group) => group.id === myStudent.groupId);
             if (g?.agent?.enabled === false) setAgentDisabled(true);
           }
         } catch {}
@@ -674,19 +720,19 @@ function StudentChatContent() {
         if (cr.agents?.[0]?.enabled === false) setAgentDisabled(true);
       }
       return cr;
-    } catch (e: any) {
-      setLoadError(e.message || '课堂不存在或已结束');
+    } catch (error: unknown) {
+      setLoadError(error instanceof Error ? error.message : '课堂不存在或已结束');
     }
-  };
+  }
 
   // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
   useEffect(() => {
     if (step === 'loading' && loadError) {
       setStep('identity');
     }
-  }, [loadError]);
+  }, [loadError, step]);
 
-  const loadMessages = async (classroomId: string, studentId: string) => {
+  async function loadMessages(classroomId: string, studentId: string) {
     setLoadingMessages(true);
     try {
       const msgs = await api.getStudentMessages(classroomId, studentId);
@@ -696,7 +742,7 @@ function StudentChatContent() {
         for (let i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i].role === 'assistant') { lastAssistantIdx = i; break; }
         }
-        setMessages(msgs.map((m: any, i: number) => ({
+        setMessages(msgs.map((m, i: number) => ({
           role: m.role,
           content: m.content,
           roundIndex: m.roundIndex,
@@ -709,7 +755,7 @@ function StudentChatContent() {
     } catch {} finally {
       setLoadingMessages(false);
     }
-  };
+  }
 
   // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
   useEffect(() => {
@@ -725,15 +771,15 @@ function StudentChatContent() {
         }
         // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个
         if ((cr.mode === 'group' || cr.mode === 'advanced') && selectedStudent?.groupId && cr.groups) {
-          const g = cr.groups.find((gr: any) => gr.id === selectedStudent.groupId);
+          const g = cr.groups.find((group) => group.id === selectedStudent.groupId);
           setAgentDisabled(g?.agent?.enabled === false);
         } else {
           setAgentDisabled(cr.agents?.[0]?.enabled === false);
         }
         setPaused(cr.status === 'paused');
-      } catch (e: any) {
+      } catch (error: unknown) {
         // 课堂已结束（API 返回 404 或 400）
-        const msg = e.message || '';
+        const msg = error instanceof Error ? error.message : '';
         if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
           localStorage.removeItem(`chat_session_${code}`);
           setToast({ msg: '课堂已结束', type: 'info' });
@@ -744,7 +790,7 @@ function StudentChatContent() {
     poll(); // 立即执行一次
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [step, code]);
+  }, [step, code, router, selectedStudent?.groupId]);
 
   // 如果选中的学生被登录了，取消选中
   useEffect(() => {
@@ -760,7 +806,7 @@ function StudentChatContent() {
         // 加载头像 SVG 映射
         api.getAvatarsAll('student').then(avatars => {
           const m: Record<number, string> = {};
-          avatars.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+          avatars.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
           setAvatarSvgs(m);
         }).catch(() => {});
       }).catch(() => {});
@@ -770,7 +816,7 @@ function StudentChatContent() {
         if (statusSocketRef.current) statusSocketRef.current.disconnect();
         const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
         sk.on('connect', () => sk.emit('listen-classroom-status', classroom.id));
-        sk.on('online-students', (data: any) => setOnlineStudentIds(new Set(data.studentIds)));
+        sk.on('online-students', (data: { studentIds: string[] }) => setOnlineStudentIds(new Set(data.studentIds)));
         statusSocketRef.current = sk;
       })();
     }
@@ -781,10 +827,10 @@ function StudentChatContent() {
         statusSocketRef.current = null;
       }
     };
-  }, [step, classroom?.id]);
+  }, [step, classroom?.id, SOCKET_URL]);
 
   // 提取为独立函数，支持刷新恢复
-  const startChatSession = async (studentId: string, studentName: string, classroomCode?: string, token?: string) => {
+  async function startChatSession(studentId: string, studentName: string, classroomCode?: string, token?: string) {
     const joinCode = classroomCode || code;
     try {
       if (wsRef.current) wsRef.current.disconnect();
@@ -802,7 +848,7 @@ function StudentChatContent() {
         streamingBufferRef.current = '';
       };
 
-      socket.on('ai-response', (data: any) => {
+      socket.on('ai-response', (data: AiResponseEvent) => {
         sendingRef.current = false;
         flushStreaming();
         setThinkingContent('');
@@ -828,7 +874,7 @@ function StudentChatContent() {
         setThinkingContent('');
       });
 
-      socket.on('ai-chunk', (data: any) => {
+      socket.on('ai-chunk', (data: SocketTextEvent) => {
         streamingBufferRef.current += data.content;
         if (!streamingRafRef.current) {
           streamingRafRef.current = requestAnimationFrame(() => {
@@ -838,18 +884,18 @@ function StudentChatContent() {
         }
       });
 
-      socket.on('ai-thinking-content', (data: any) => {
+      socket.on('ai-thinking-content', (data: SocketTextEvent) => {
         setThinkingContent(prev => prev + data.content);
       });
 
-      socket.on('ai-error', (data: any) => {
+      socket.on('ai-error', (data: SocketErrorEvent) => {
         sendingRef.current = false;
         setWaitingAI(false);
         setThinkingContent('');
         setConnectionError(data.error || 'AI 回复遇到了问题，请稍后重试');
       });
 
-      socket.on('student-auth-error', (data: any) => {
+      socket.on('student-auth-error', (data: SocketErrorEvent) => {
         sendingRef.current = false;
         setStudentSessionToken();
         localStorage.removeItem(`chat_session_${joinCode}`);
@@ -891,7 +937,7 @@ function StudentChatContent() {
         setPaused(false);
       });
 
-      socket.on('identity-conflict', (data: any) => {
+      socket.on('identity-conflict', (data: SocketErrorEvent) => {
         setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + data.error }]);
         setWaitingAI(false);
         setConnected(false);
@@ -917,7 +963,7 @@ function StudentChatContent() {
         setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + err }]);
       });
 
-      socket.on('messages-cleared', (data: any) => {
+      socket.on('messages-cleared', (data: StudentIdEvent) => {
         if (data.studentId === studentId) {
           setMessages([]);
           setStreamingContent('');
@@ -925,14 +971,14 @@ function StudentChatContent() {
         }
       });
 
-      socket.on('avatar-rewarded', (data: any) => {
+      socket.on('avatar-rewarded', (data: AvatarRewardEvent) => {
         if (data?.tokens) {
           setAvatarTokenCount(data.tokens);
           setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击姓名旁的⭐即可更换', type: 'success' });
         }
       });
 
-      socket.on('teacher-notification', (data: any) => {
+      socket.on('teacher-notification', (data: TeacherNotificationEvent) => {
         // 通过唯一 ID 去重（Db 持久化后，防止缓存重放 / socket 重连产生的重复）
         if (data.id && seenNotifIdsRef.current.has(data.id)) return;
         if (data.id) seenNotifIdsRef.current.add(data.id);
@@ -946,7 +992,7 @@ function StudentChatContent() {
         }, 15000);
       });
 
-      socket.on('shield-warned', (data: any) => {
+      socket.on('shield-warned', (data: ShieldWarnEvent) => {
         const name = data.studentName || '学生';
         setShieldWarning(`${name}同学你好，课堂交流请使用文明用语哦！请修改你的提问。`);
         // 将对话区域中上一条学生消息替换为过滤后的内容
@@ -962,7 +1008,7 @@ function StudentChatContent() {
         });
       });
 
-      socket.on('student-blacklisted', (data: any) => {
+      socket.on('student-blacklisted', (data: StudentIdEvent) => {
         if (data.studentId && data.studentId !== studentId) return;
         setBlacklisted(true);
         setWaitingAI(false);
@@ -970,7 +1016,7 @@ function StudentChatContent() {
         setShieldWarning(null);
       });
 
-      socket.on('student-unblacklisted', (data: any) => {
+      socket.on('student-unblacklisted', (data: StudentIdEvent) => {
         if (data.studentId && data.studentId !== studentId) return;
         setBlacklisted(false);
         setShieldWarning(null);
@@ -979,23 +1025,36 @@ function StudentChatContent() {
       });
 
 
-      socket.on('allow-stop-changed', (data: any) => {
-        setClassroom((prev: any) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
+      socket.on('allow-stop-changed', (data: PermissionEvent) => {
+        setClassroom((prev) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
       });
 
-      socket.on('allow-export-changed', (data: any) => {
-        setClassroom((prev: any) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
+      socket.on('allow-export-changed', (data: PermissionEvent) => {
+        setClassroom((prev) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
       });
 
-      socket.on('follow-ups-changed', (data: any) => {
-        setClassroom((prev: any) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+      socket.on('follow-ups-changed', (data: PermissionEvent) => {
+        setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
       });
 
       wsRef.current = socket;
     } catch {
       setConnected(false);
     }
+  }
+
+  const openFullscreenImage = (url: string) => {
+    setZoomLevel(1);
+    setImgOffset({ x: 0, y: 0 });
+    setFullscreenImg(url);
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void restoreSessionFromUrl(Date.now());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const handleSwitchIdentity = () => {
     if (waitingAI) return;
@@ -1013,22 +1072,22 @@ function StudentChatContent() {
     setStep('identity');
   };
 
-  const handleStopGeneration = useCallback(() => {
+  const handleStopGeneration = () => {
     if (wsRef.current) {
       wsRef.current.emit('stop-generation');
     }
     setWaitingAI(false);
     setStreamingContent('');
-  }, []);
+  };
 
-  const handleEdit = useCallback((content: string) => {
+  const handleEdit = (content: string) => {
     setInput(content);
     if (inputRef.current) {
       inputRef.current.focus();
       const len = content.length;
       inputRef.current.setSelectionRange(len, len);
     }
-  }, []);
+  };
 
   const handleExit = () => {
     if (waitingAI) return;
@@ -1058,8 +1117,8 @@ function StudentChatContent() {
       const session = await api.createStudentSession(code, selectedStudent.id);
       token = session.token;
       setStudentSessionToken(token);
-    } catch (e: any) {
-      setToast({ msg: e.message || '无法进入课堂', type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: error instanceof Error ? error.message : '无法进入课堂', type: 'error' });
       joiningRef.current = false;
       setJoiningClassroom(false);
       return;
@@ -1074,7 +1133,7 @@ function StudentChatContent() {
     }));
     // 加载头像库（仅显示教师创建的供选择）+ 头像 SVG 映射（含学生自己的）
     api.getAvatars('student').then(data => { setAllStudentAvatars(data); }).catch(() => {});
-    api.getAvatarsAll('student').then(data => { const m: Record<number, string> = {}; data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); }); setAvatarSvgs(m); }).catch(() => {});
+    api.getAvatarsAll('student').then(data => { const m: Record<number, string> = {}; data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); }); setAvatarSvgs(m); }).catch(() => {});
     fetchStudentTokens();
     // 加载该学生的历史对话
     if (classroom?.id) {
@@ -1115,6 +1174,16 @@ function StudentChatContent() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    const availableSlots = MAX_ATTACHED_FILES - attachedFiles.length;
+    if (availableSlots <= 0) {
+      setToast({ msg: `每条消息最多添加 ${MAX_ATTACHED_FILES} 个附件`, type: 'info' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (files.length > availableSlots) {
+      files = files.slice(0, availableSlots);
+      setToast({ msg: `本次仅添加前 ${availableSlots} 个附件（每条消息最多 ${MAX_ATTACHED_FILES} 个）`, type: 'info' });
+    }
     setUploading(true);
     try {
       // WebP 图片自动转 PNG（部分平台不支持 WebP 格式）
@@ -1163,7 +1232,7 @@ function StudentChatContent() {
     const files = attachedFiles;
     setConnectionError(null);
     if (!text && files.length === 0) return;
-    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted) return;
+    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !selectedStudent) return;
     if (!wsRef.current || !connected) {
       setToast({ msg: '连接暂不可用，请稍后重试', type: 'error' });
       return;
@@ -1193,8 +1262,8 @@ function StudentChatContent() {
   };
 
   /** 点击追问建议时自动发送该问题 */
-  const handleFollowUp = useCallback((question: string) => {
-    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !wsRef.current || !connected) return;
+  const handleFollowUp = (question: string) => {
+    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !wsRef.current || !connected || !selectedStudent) return;
     sendingRef.current = true;
     setWaitingAI(true);
     setConnectionError(null);
@@ -1212,7 +1281,7 @@ function StudentChatContent() {
       studentId: selectedStudent.id,
       content: question,
     });
-  }, [waitingAI, paused, agentDisabled, blacklisted, connected, code, selectedStudent]);
+  };
 
   if (step === 'loading') {
     return (
@@ -1254,9 +1323,8 @@ function StudentChatContent() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflow: 'auto' }}>
             {[...students].sort((a, b) => {
-              if (isGroupMode) return a.name.localeCompare(b.name, 'zh-CN');
-              return (parseInt(a.studentNo) || 0) - (parseInt(b.studentNo) || 0);
-            }).map((s: any) => {
+              return a.name.localeCompare(b.name, 'zh-CN');
+            }).map((s) => {
               const isOnline = onlineStudentIds.has(s.id);
               const isSelected = selectedStudent?.id === s.id;
               return (
@@ -1283,11 +1351,10 @@ function StudentChatContent() {
                     <>
                       <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: s.avatarId && avatarSvgs[s.avatarId] ? 'transparent' : (isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6'), color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem" }}>
                         {s.avatarId && avatarSvgs[s.avatarId] ? (
-                          <div style={{ width: 42, height: 42 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvgs[s.avatarId]).replace('<svg', '<svg width="42" height="42"') }} />
+                          <SvgAvatar svg={avatarSvgs[s.avatarId]} size={42} />
                         ) : s.name[0]}
                       </div>
                       <div style={{ flex: 1 }}>
-                        {s.studentNo && <div style={{ fontSize: "0.75rem", fontWeight: 500, color: '#9ca3af', lineHeight: 1.3 }}>{s.studentNo}</div>}
                         <div style={{ fontSize: "1rem", fontWeight: 600, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.4 }}>{s.name}</div>
                       </div>
                     </>
@@ -1332,7 +1399,7 @@ function StudentChatContent() {
             <div style={{ fontSize: "1.063rem", fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
               {(() => {
                 if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-                  const group = classroom.groups.find((g: any) => g.id === selectedStudent.groupId);
+                  const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
                   if (group?.agent?.name) return group.agent.name;
                 }
                 return classroom?.agents?.[0]?.name || 'AI 学习助手';
@@ -1354,7 +1421,7 @@ function StudentChatContent() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 4px', background: '#eef2ff', borderRadius: 20, fontSize: "0.813rem", color: 'var(--primary)', fontWeight: 600, border: '1px solid #c7d2fe' }}>
               <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: "0.688rem" }}>
                 {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
-                  <div style={{ width: 22, height: 22 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatarSvgs[selectedStudent.avatarId]).replace('<svg', '<svg width="22" height="22"') }} />
+                  <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={22} />
                 ) : selectedStudent.name[0]}
               </div>
               {selectedStudent.name}
@@ -1477,7 +1544,7 @@ function StudentChatContent() {
                         startChatSession(session.studentId, session.studentName, codeFromUrl);
                         api.getAvatarsAll('student').then(data => {
                           const m: Record<number, string> = {};
-                          data.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+                          data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
                           setAvatarSvgs(m);
                         }).catch(() => {});
                       } else {
@@ -1578,7 +1645,7 @@ function StudentChatContent() {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
           return messages.map((msg, i) => (
-            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={setFullscreenImg} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} onFollowUp={handleFollowUp} allowFollowUps={classroom?.allowFollowUps !== false} />
+            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={openFullscreenImage} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} onFollowUp={handleFollowUp} allowFollowUps={classroom?.allowFollowUps !== false} />
           ));
         })()}
 
@@ -1807,7 +1874,7 @@ function StudentChatContent() {
             zIndex: 5,
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span dangerouslySetInnerHTML={{ __html: shieldWarning }} />
+            <span>{shieldWarning}</span>
             <button onClick={() => setShieldWarning(null)}
               style={{ marginLeft: 4, flexShrink: 0, width: 18, height: 18, border: 'none', borderRadius: '50%', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', opacity: 0.6, padding: 0, lineHeight: 1, fontSize: "0.875rem" }}
               onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#fecaca'; }}
@@ -1845,7 +1912,7 @@ function StudentChatContent() {
               el.style.height = Math.min(el.scrollHeight, 160) + 'px';
             }} onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
-                if ((e.nativeEvent as any).isComposing) return;
+                if (e.nativeEvent.isComposing) return;
                 e.preventDefault();
                 sendMessage();
               }
@@ -1873,8 +1940,9 @@ function StudentChatContent() {
       {/* 头像更换弹窗 */}
       {showAvatarChanger && (
         <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
-            <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="avatar-changer-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
+            <button type="button" aria-label="关闭更换头像窗口" onClick={() => setShowAvatarChanger(false)} style={{ float: 'right', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: "1.25rem", color: '#64748b', lineHeight: 1 }}>×</button>
+            <h3 id="avatar-changer-title" style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
             <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 4px' }}>
               剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
             </p>
@@ -1882,9 +1950,8 @@ function StudentChatContent() {
               可从教师头像库中选择，也可粘贴自定义 SVG 代码
             </p>
             <AvatarChangerContent
-              studentId={selectedStudent?.id}
+              studentId={selectedStudent?.id ?? ''}
               avatars={allStudentAvatars}
-              avatarSvgs={avatarSvgs}
               onChanged={async () => {
                 setShowAvatarChanger(false);
                 fetchStudentTokens();
@@ -1894,13 +1961,13 @@ function StudentChatContent() {
                     api.getAvatars('student'),
                   ]);
                   const m: Record<number, string> = {};
-                  allAv.forEach((a: any) => { m[a.id] = fixSvgUrl(a.svgContent); });
+                  allAv.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
                   setAvatarSvgs(m);
                   setAllStudentAvatars(teacherAv);
                   // 重新加载 classroom students 更新 selectedStudent
                   if (classroom?.id && selectedStudent?.id) {
                     const sts = await api.getClassroomStudents(classroom.id);
-                    const updated = sts.find((s: any) => s.id === selectedStudent.id);
+                    const updated = sts.find((student) => student.id === selectedStudent.id);
                     if (updated) setSelectedStudent(updated);
                   }
                 } catch {}
@@ -1993,26 +2060,37 @@ function StudentChatContent() {
 }
 
 /** 学生自助换头像组件 */
-function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setToast }: {
-  studentId: string; avatars: any[]; avatarSvgs: Record<number, string>;
-  onChanged: () => void; setToast: (t: any) => void;
+function AvatarChangerContent({ studentId, avatars, onChanged, setToast }: {
+  studentId: string; avatars: AvatarSummary[];
+  onChanged: () => void; setToast: (t: { msg: string; type: 'success' | 'error' | 'info' } | null) => void;
 }) {
   const [tab, setTab] = useState<'library' | 'custom' | 'image'>('library');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [svgInput, setSvgInput] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadSvg, setUploadSvg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  const clearImagePreview = () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = null;
+    setImagePreview(null);
+  };
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
 
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
     // 本地预览
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
     setImagePreview(url);
     setUploadSvg(null);
     // 自动上传
@@ -2040,8 +2118,8 @@ function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setTo
       }
       setToast({ msg: '头像已更新！', type: 'success' });
       onChanged();
-    } catch (e: any) {
-      setToast({ msg: e.message || '更换失败', type: 'error' });
+    } catch (error: unknown) {
+      setToast({ msg: error instanceof Error ? error.message : '更换失败', type: 'error' });
     }
     setSaving(false);
   };
@@ -2073,8 +2151,9 @@ function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setTo
               style={{
                 width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
                 border: `2px solid ${selectedId === av.id ? '#2563eb' : '#e2e8f0'}`,
-              }}
-              dangerouslySetInnerHTML={{ __html: fixSvgUrl(av.svgContent).replace('<svg', '<svg width="40" height="40"') }} />
+              }}>
+              <SvgAvatar svg={av.svgContent} size={40} />
+            </div>
           ))}
         </div>
       ) : tab === 'custom' ? (
@@ -2083,12 +2162,13 @@ function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setTo
             rows={5} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
             placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
           <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>
-            需要包含 viewBox="0 0 40 40" 的完整 SVG 代码
+            {'需要包含 viewBox="0 0 40 40" 的完整 SVG 代码'}
           </p>
           {svgInput.trim() && (
             <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', background: '#f8fafc', borderRadius: 8, padding: 12 }}>
-              <div style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden' }}
-                dangerouslySetInnerHTML={{ __html: svgInput.replace('<svg', '<svg width="60" height="60"') }} />
+              <div style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden' }}>
+                <SvgAvatar svg={svgInput} size={60} />
+              </div>
             </div>
           )}
         </div>
@@ -2122,7 +2202,7 @@ function AvatarChangerContent({ studentId, avatars, avatarSvgs, onChanged, setTo
               ) : uploadSvg ? (
                 <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功，点击确认更换</p>
               ) : null}
-              <button onClick={() => { setImageFile(null); setImagePreview(null); setUploadSvg(null); }}
+              <button onClick={() => { clearImagePreview(); setUploadSvg(null); }}
                 style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
                 重新选择
               </button>

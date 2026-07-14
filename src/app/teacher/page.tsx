@@ -7,7 +7,7 @@ import { platformColors } from "@/lib/constants";
 import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
-import { FieldError, Toast } from "@/lib/components";
+import { Toast } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
 import type { Socket } from "socket.io-client";
 
@@ -23,15 +23,8 @@ export default function TeacherDashboard() {
   const [editTitle, setEditTitle] = useState("");
   const [editGroups, setEditGroups] = useState<ClassroomSettingsGroup[]>([]);
   const [allAgents, setAllAgents] = useState<AgentSummary[]>([]);
-  const [settingsDropdownGroupId, setSettingsDropdownGroupId] = useState<
-    string | null
-  >(null);
   const [editAgentId, setEditAgentId] = useState("");
   const [qrCodeClassroom, setQrCodeClassroom] = useState<ActiveClassroom | null>(null);
-  const [availableIPs, setAvailableIPs] = useState<
-    { name: string; label: string; ip: string }[]
-  >([]);
-  const [selectedIP, setSelectedIP] = useState("");
   const [studentUrl, setStudentUrl] = useState("");
   const [toast, setToast] = useState<{
     msg: string;
@@ -46,7 +39,10 @@ export default function TeacherDashboard() {
   const socketRef = useRef<Socket | null>(null);
   // 用 ref 跟踪最新的 classroom 列表，避免 socket connect 闭包中的 stale 值
   const activeClassroomsRef = useRef(activeClassrooms);
-  activeClassroomsRef.current = activeClassrooms;
+
+  useEffect(() => {
+    activeClassroomsRef.current = activeClassrooms;
+  }, [activeClassrooms]);
 
   // ESC 关闭投屏
   useEffect(() => {
@@ -102,7 +98,7 @@ export default function TeacherDashboard() {
       });
 
       sk.on("nic-changed", () => {
-        fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+        fetch(`${getApiBaseUrl()}/api/server-info`, { credentials: 'include' }).then(r => r.json()).then(d => {
           if (d.studentUrl) setStudentUrl(d.studentUrl);
         }).catch(() => {});
       });
@@ -124,14 +120,14 @@ export default function TeacherDashboard() {
     });
   }, [activeClassrooms]);
 
-  const loadData = async () => {
+  async function loadData() {
     setLoading(true);
     try {
       const data = await api.getActiveClassrooms();
       setActiveClassrooms(data);
     } catch {}
     setLoading(false);
-  };
+  }
 
   const endClassroom = async (classroom: ActiveClassroom) => {
     if (endingRef.current) return;
@@ -195,7 +191,7 @@ export default function TeacherDashboard() {
     qrLoadingRef.current = true;
     setLoadingQrClassroomId(classroom.id);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/server-info`);
+      const response = await fetch(`${getApiBaseUrl()}/api/server-info`, { credentials: 'include' });
       if (!response.ok) throw new Error("无法读取学生端地址");
       const data = await response.json();
       setStudentUrl(data.studentUrl || "");
@@ -211,8 +207,7 @@ export default function TeacherDashboard() {
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async (cr: ActiveClassroom) => {
     const host =
-      selectedIP ||
-      (typeof window !== "undefined" ? window.location.hostname : "");
+      typeof window !== "undefined" ? window.location.hostname : "";
     const port = typeof window !== "undefined" ? getClassroomPort() : "3001";
     const qrValue = studentUrl ? `${studentUrl}?code=${cr.code}` : `http://${host}:${port}/classroom?code=${cr.code}`;
     const qrSize = 760;
@@ -238,7 +233,7 @@ export default function TeacherDashboard() {
       cy = qrSize / 2;
     const logoImg = new Image();
     logoImg.crossOrigin = "anonymous";
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
       logoImg.onload = () => {
         // 白色圆底
         ctx.fillStyle = "#ffffff";
@@ -1112,7 +1107,6 @@ export default function TeacherDashboard() {
           }}
           onClick={() => {
             setSettingsModalClassroom(null);
-            setSettingsDropdownGroupId(null);
           }}
         >
           <div

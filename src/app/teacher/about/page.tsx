@@ -1,6 +1,5 @@
 'use client';
 import { APP_VERSION } from '@/lib/version';
-import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { checkForUpdates, cacheCheckResult, clearDismiss, getCachedCheckResult } from '@/lib/upgrade-check';
@@ -71,7 +70,6 @@ const techPoints = [
 ];
 
 export default function AboutPage() {
-  const router = useRouter();
   const [logoErr, setLogoErr] = useState(false);
   const [changelogs, setChangelogs] = useState<{ version: string; date: string | null; content: string }[] | null>(null);
   const [changelogsOpen, setChangelogsOpen] = useState(false);
@@ -84,11 +82,14 @@ export default function AboutPage() {
 
   useEffect(() => {
     // 页面加载时从缓存恢复版本检测状态（刷新后红点不消失）
-    const cached = getCachedCheckResult();
-    if (cached && cached.hasUpdate) {
-      setUpdateFound(true);
-      setUpdateMsg({ type: 'success', text: `v${cached.latestVersion} 可用，前往更新` });
-    }
+    const timer = window.setTimeout(() => {
+      const cached = getCachedCheckResult();
+      if (cached && cached.hasUpdate) {
+        setUpdateFound(true);
+        setUpdateMsg({ type: 'success', text: `v${cached.latestVersion} 可用，前往更新` });
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // 首次展开时懒加载更新日志
@@ -266,7 +267,7 @@ export default function AboutPage() {
             float: 'left', marginRight: 10, marginTop: 2,
           }}>&ldquo;</div>
           <p style={{ margin: '0 0 12px', fontSize: "0.938rem", color: '#475569', lineHeight: 1.9 }}>
-            在 AI 时代，技术不应该成为教学的门槛。ClassNode 不是大厂的高大上平台，而是一线教育者为真实课堂打造的"落地利器"。我希望用它，把你花心血在各类大模型上创建的 AI 智能体，安全、可控、无缝地接入到班级的每一个屏幕上。让我们一起，让 AI 课堂从"想试试"变成"天天用"。
+            在 AI 时代，技术不应该成为教学的门槛。ClassNode 不是大厂的高大上平台，而是一线教育者为真实课堂打造的&ldquo;落地利器&rdquo;。我希望用它，把你花心血在各类大模型上创建的 AI 智能体，安全、可控、无缝地接入到班级的每一个屏幕上。让我们一起，让 AI 课堂从&ldquo;想试试&rdquo;变成&ldquo;天天用&rdquo;。
           </p>
           <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'right', borderTop: '1px solid #eef2f6', paddingTop: 8 }}>
             —— 张星昌 · 杭州市拱墅区教育研究院
@@ -343,13 +344,13 @@ export default function AboutPage() {
             <strong style={{ color: '#292524' }}>技术不难的时候，难的是落地。</strong>
           </p>
           <p style={{ margin: '0 0 18px' }}>
-            这就是 ClassNode 的出发点。它不是一个大厂的云平台，而是一个能装进你电脑里的"AI 互动课堂系统"。老师花心思调教好的智能体，通过它就能安全、可控、零门槛地分发给全班每一个学生——不管学校网络好不好，不管学生用的是平板还是手机，打开浏览器就能开课。
+            这就是 ClassNode 的出发点。它不是一个大厂的云平台，而是一个能装进你电脑里的&ldquo;AI 互动课堂系统&rdquo;。老师花心思调教好的智能体，通过它就能安全、可控、零门槛地分发给全班每一个学生——不管学校网络好不好，不管学生用的是平板还是手机，打开浏览器就能开课。
           </p>
           <p style={{ margin: '0 0 18px' }}>
             从第一堂课到现在，ClassNode 一直在围绕一个核心打磨：让老师能把精力花在教学上，而不是折腾工具。
           </p>
           <p style={{ margin: 0, paddingLeft: 20, borderLeft: '3px solid #93c5fd' }}>
-            <strong style={{ color: '#2563eb', fontWeight: 600 }}>目的只有一个：让 AI 课堂从"想试试"变成"天天用"。</strong>
+            <strong style={{ color: '#2563eb', fontWeight: 600 }}>目的只有一个：让 AI 课堂从&ldquo;想试试&rdquo;变成&ldquo;天天用&rdquo;。</strong>
           </p>
         </div>
       </SectionCard>

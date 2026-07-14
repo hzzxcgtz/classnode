@@ -3,6 +3,10 @@ import {
   AlignmentType, BorderStyle, WidthType, ShadingType,
   PageBreak,
 } from 'docx';
+import type { ConversationExportReport, ExportConversationStudent, StatsExportReport } from './types';
+
+type ExportDocChild = Paragraph | Table;
+type ConversationExportMessage = ExportConversationStudent['messages'][number];
 
 function formatDate(d: string | Date) {
   try {
@@ -112,7 +116,7 @@ type MdBlock =
 
 function parseInline(text: string): InlineSeg[] {
   const segments: InlineSeg[] = [];
-  let remaining = text;
+  const remaining = text;
   const regex = /(\$\$(.+?)\$\$|\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*|\[([^\]]+)\]\(([^)]+)\)|\$(.+?)\$)/g;
   let lastIdx = 0;
   let match: RegExpExecArray | null;
@@ -202,7 +206,7 @@ function parseMarkdown(text: string): MdBlock[] {
 
     // $$...$$ 块级数学公式
     if (/^\$\$/.test(line)) {
-      let formulaLines: string[] = [];
+      const formulaLines: string[] = [];
       if (line.trim() === '$$') {
         i++;
         while (i < rawLines.length && !/^\$\$/.test(rawLines[i])) {
@@ -294,10 +298,7 @@ function blockToParagraphs(block: MdBlock, opts?: {
   const indentLeft = 400;
   const indentRight = 200;
 
-  function mkPara(config: {
-    spacing?: any; indent?: any; border?: any; shading?: any;
-    children: any[]; alignment?: any;
-  }) {
+  function mkPara(config: Exclude<ConstructorParameters<typeof Paragraph>[0], string>) {
     const shade = config.shading || (bg ? { fill: bg, type: ShadingType.CLEAR } : undefined);
     return new Paragraph({
       alignment: config.alignment,
@@ -414,7 +415,7 @@ interface ClassStats {
   studentRankings: StudentRankEntry[];
 }
 
-function computeClassStats(data: any): ClassStats {
+function computeClassStats(data: ConversationExportReport): ClassStats {
   const allStudents = data.students || [];
   const totalStudents = allStudents.length;
 
@@ -482,7 +483,7 @@ function computeClassStats(data: any): ClassStats {
   };
 }
 
-function renderClassOverview(children: any[], stats: ClassStats): void {
+function renderClassOverview(children: ExportDocChild[], stats: ClassStats): void {
   children.push(new Paragraph({ children: [new PageBreak()] }));
 
   children.push(
@@ -608,36 +609,6 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
       })),
     });
 
-    const rankDataRows = stats.studentRankings.map((s, i) => {
-      const isEven = i % 2 === 0;
-      const rankStr = '#' + String(i + 1);
-      const charsStr = s.charCount > 0 ? String(s.charCount) : '-';
-      return new TableRow({
-        children: [
-          [rankStr, s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), charsStr],
-        ].map((vals, ci) => {
-          const val = Array.isArray(vals) ? undefined : vals;
-          return new TableCell({
-            width: { size: rankWidths[ci], type: WidthType.DXA },
-            shading: isEven ? { fill: COLORS.white, type: ShadingType.CLEAR } : { fill: COLORS.bgLight, type: ShadingType.CLEAR },
-            verticalAlign: 'center',
-            children: [new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 40, after: 40 },
-              children: [new TextRun({
-                text: ci === 0 ? rankStr : [s.name, s.studentNo || '-', String(s.rounds), String(s.msgCount), charsStr][ci - 1],
-                size: 18,
-                color: COLORS.text,
-                font: { name: FONT },
-                bold: i < 3 && ci === 0,
-              })],
-            })],
-          });
-        }),
-      });
-    });
-
-    // Actually let me build this differently to avoid complex array gymnastics
     const actualDataRows = stats.studentRankings.map((s, i) => {
       const isEven = i % 2 === 0;
       const rankStr = '#' + String(i + 1);
@@ -673,8 +644,8 @@ function renderClassOverview(children: any[], stats: ClassStats): void {
 //  Conversation export
 // ══════════════════════════════════════════════
 
-export async function exportConversationsDoc(data: any): Promise<Blob> {
-  const children: any[] = [];
+export async function exportConversationsDoc(data: ConversationExportReport): Promise<Blob> {
+  const children: ExportDocChild[] = [];
 
   // Cover Page
   children.push(
@@ -705,7 +676,7 @@ export async function exportConversationsDoc(data: any): Promise<Blob> {
   ];
 
   if (data.agents && data.agents.length > 0) {
-    const agentNames = data.agents.map((a: any) => a.name).join('、');
+    const agentNames = data.agents.map((agent) => agent.name).join('、');
     coverRows.push(new TableRow({ children: [
       cell('AI 智能体', { bold: true, shading: COLORS.primaryLight, width: 2000, color: COLORS.primary }),
       cell(agentNames, { width: 4000 }),
@@ -797,7 +768,7 @@ export async function exportConversationsDoc(data: any): Promise<Blob> {
   return await Packer.toBlob(doc);
 }
 
-function renderMessage(children: any[], msg: any, student: any) {
+function renderMessage(children: ExportDocChild[], msg: ConversationExportMessage, student: ExportConversationStudent) {
   // 教师通知：特殊样式（金色标签 + 灰底）
   if (msg.role === 'teacher-notification') {
     const timeStr = msg.time ? '  ' + formatTime(msg.time) : '';
@@ -867,8 +838,8 @@ function renderMessage(children: any[], msg: any, student: any) {
 //  Stats export
 // ══════════════════════════════════════════════
 
-export async function exportStatsDoc(data: any): Promise<Blob> {
-  const children: any[] = [];
+export async function exportStatsDoc(data: StatsExportReport): Promise<Blob> {
+  const children: ExportDocChild[] = [];
 
   children.push(
     new Paragraph({ spacing: { before: 1500 }, children: [] }),
@@ -878,7 +849,7 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
 
   if (data.rows && data.rows.length > 0) {
     const totalStudents = data.rows.length;
-    const totalInteractions = data.rows.reduce((sum: number, r: any[]) => sum + (Number(r[2]) || 0), 0);
+    const totalInteractions = data.rows.reduce((sum, row) => sum + (Number(row[2]) || 0), 0);
     const summaryRows: TableRow[] = [
       new TableRow({ children: [
         cell('学生总数', { bold: true, shading: COLORS.greenLight, width: 3000, color: COLORS.green, align: AlignmentType.CENTER }),
@@ -919,11 +890,11 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
     })),
   });
 
-  const dataRows = (data.rows || []).map((row: any[], rowIdx: number) => {
+  const dataRows = (data.rows || []).map((row, rowIdx: number) => {
     const isEven = rowIdx % 2 === 0;
     return new TableRow({
-      children: row.map((val: any, colIdx: number) => {
-        const text = val != null ? String(val) : '-';
+      children: row.map((value, colIdx: number) => {
+        const text = value != null ? String(value) : '-';
         return new TableCell({
           width: { size: colWidths[colIdx], type: WidthType.DXA },
           shading: isEven ? { fill: COLORS.white, type: ShadingType.CLEAR } : { fill: COLORS.bgLight, type: ShadingType.CLEAR },
@@ -958,7 +929,7 @@ export async function exportStatsDoc(data: any): Promise<Blob> {
   return await Packer.toBlob(doc);
 }
 
-function calcColWidths(headers: string[], rows: any[][]): number[] {
+function calcColWidths(headers: string[], rows: Array<Array<string | number>>): number[] {
   const totalWidth = 12000;
   const minWidth = 1200;
 

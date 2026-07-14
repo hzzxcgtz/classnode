@@ -12,8 +12,9 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-let _sharp: any = null;
-async function getSharp() {
+type SharpModule = typeof import('sharp').default;
+let _sharp: SharpModule | null = null;
+async function getSharp(): Promise<SharpModule | null> {
   if (!_sharp) {
     try {
       _sharp = (await import('sharp')).default;
@@ -195,7 +196,7 @@ function mdToParagraphs(text: string, opts?: { size?: number; color?: string; sh
   const blocks = parseMarkdown(text);
   const result: Paragraph[] = [];
 
-  function mkPara(cfg: { spacing?: any; indent?: any; border?: any; shading?: any; children: any[]; alignment?: any }) {
+  function mkPara(cfg: Exclude<ConstructorParameters<typeof Paragraph>[0], string>) {
     const shade = cfg.shading || (bg ? { fill: bg, type: ShadingType.CLEAR } : undefined);
     return new Paragraph({ alignment: cfg.alignment, spacing: cfg.spacing, indent: cfg.indent, border: cfg.border, shading: shade, children: cfg.children });
   }
@@ -354,7 +355,56 @@ interface ClassStats {
   studentRankings: StudentRankEntry[];
 }
 
-function computeStats(data: any): ClassStats {
+type ExportValue = string | number;
+
+interface ConversationExportMessage {
+  role: string;
+  content: string;
+  time: string | Date;
+  roundIndex: number | null;
+  agentId: string | null;
+  agentName: string | null;
+  fileUrls?: string[];
+  fileNames?: string[];
+}
+
+interface ConversationExportStudent {
+  name: string;
+  studentNo: string | null;
+  gender: string | null;
+  studentId: string;
+  totalRounds: number;
+  messages: ConversationExportMessage[];
+}
+
+interface TeacherNotificationExport {
+  content: string;
+  time: string | Date;
+  targetStudentId: string | null;
+}
+
+interface ConversationExportData {
+  title: string;
+  code: string | null;
+  mode: string;
+  createdAt: string | Date;
+  endedAt: string | Date | null;
+  classes: string[];
+  agents: Array<{ id: string; name: string; platform: string }>;
+  teacherNotifications: TeacherNotificationExport[];
+  students: ConversationExportStudent[];
+}
+
+interface StatsExportData {
+  title?: string;
+  mode?: string;
+  classes?: string[];
+  exportedAt: string | Date;
+  headers: string[];
+  rows: ExportValue[][];
+}
+
+function computeStats(data: ConversationExportData): ClassStats {
   const all = data.students || [];
   const total = all.length;
   let uMsgs = 0, aMsgs = 0, rounds = 0, chars = 0, active = 0;
@@ -408,7 +458,7 @@ function makeFooter(title: string) {
 
 // ─── 封面页 ──────────────────────────────────────────────────
 
-function renderCover(data: any): DocBlock[] {
+function renderCover(data: ConversationExportData): DocBlock[] {
   const children: DocBlock[] = [];
   children.push(new Paragraph({ spacing: { before: 1500 }, children: [] }));
   children.push(pText('课堂对话记录', { bold: true, size: 48, color: C.primary, align: AlignmentType.CENTER, spacingAfter: 60 }));
@@ -417,7 +467,7 @@ function renderCover(data: any): DocBlock[] {
   const rows: TableRow[] = [
     new TableRow({ children: [cell('参与班级', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell((data.classes || []).join('、') || '-', { width: 3500 }), cell('学生人数', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(String(data.students?.length || 0) + ' 人', { width: 3500 })] }),
     new TableRow({ children: [cell('开始时间', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(fmtDate(data.createdAt), { width: 3500 }), cell('结束时间', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.endedAt ? fmtDate(data.endedAt) : '-', { width: 3500 })] }),
-    new TableRow({ children: [cell('课堂模式', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 3500 }), cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.agents?.length > 0 ? data.agents.map((a: any) => a.name).join('、') : '-', { width: 3500 })] }),
+    new TableRow({ children: [cell('课堂模式', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.mode === 'advanced' ? '高级模式' : '标准模式', { width: 3500 }), cell('AI 智能体', { bold: true, shading: C.primaryLight, width: 2000, color: C.primary }), cell(data.agents.length > 0 ? data.agents.map((agent) => agent.name).join('、') : '-', { width: 3500 })] }),
   ];
   children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
   children.push(new Paragraph({ spacing: { before: 300 }, children: [] }));
@@ -496,7 +546,18 @@ function renderOverview(stats: ClassStats): DocBlock[] {
 
 // ─── 学生对话渲染 ────────────────────────────────────────────
 
-async function renderStudentMessages(student: any, agentMap: Record<string, string>, teacherNotifData: any[]): Promise<DocBlock[]> {
+type RenderedConversationEntry = ConversationExportMessage | {
+  role: 'teacher-notification';
+  content: string;
+  time: string | Date;
+  roundIndex: null;
+  agentId: null;
+  agentName: null;
+  fileUrls?: string[];
+  fileNames?: string[];
+};
+
+async function renderStudentMessages(student: ConversationExportStudent, agentMap: Record<string, string>, teacherNotifData: TeacherNotificationExport[]): Promise<DocBlock[]> {
   const children: DocBlock[] = [];
 
   const label = student.name + (student.studentNo ? `（${student.studentNo}）` : '');
@@ -521,12 +582,15 @@ async function renderStudentMessages(student: any, agentMap: Record<string, stri
   }));
 
   // 合并该学生的教师通知
-  const studentMsgs = [...(teacherNotifData
-    .filter((n: any) => n.studentId === null || n.studentId === student.studentId)
-    .map((n: any) => ({
-      role: 'teacher-notification', content: n.content, time: n.createdAt,
+  const notifications: RenderedConversationEntry[] = teacherNotifData
+    .filter((notification) => notification.targetStudentId === null || notification.targetStudentId === student.studentId)
+    .map((notification) => ({
+      role: 'teacher-notification', content: notification.content, time: notification.time,
       roundIndex: null, agentId: null, agentName: null,
-    }))), ...(student.messages || [])].sort((a: any, b: any) => new Date(a.time || a.createdAt).getTime() - new Date(b.time || b.createdAt).getTime());
+    }));
+  const studentMsgs = [...notifications, ...student.messages].sort(
+    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
+  );
 
   if (studentMsgs.length === 0) {
     children.push(pText('（该学生暂无对话记录）', { size: 20, color: C.textLight, align: AlignmentType.CENTER, spacingBefore: 80, spacingAfter: 80 }));
@@ -555,7 +619,7 @@ async function renderStudentMessages(student: any, agentMap: Record<string, stri
   return children;
 }
 
-async function renderSingleMessage(children: DocBlock[], msg: any, student: any, agentMap: Record<string, string>) {
+async function renderSingleMessage(children: DocBlock[], msg: RenderedConversationEntry, student: ConversationExportStudent, agentMap: Record<string, string>) {
   // 教师通知：特殊金色样式
   if (msg.role === 'teacher-notification') {
     const ts = msg.time ? `  ${fmtTime(msg.time)}` : '';
@@ -577,7 +641,7 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
 
   const isUser = msg.role === 'user';
   const roleColor = isUser ? C.primary : C.accent;
-  const roleLabel = isUser ? student.name : (msg.agentName || agentMap[msg.agentId] || 'AI 助手');
+  const roleLabel = isUser ? student.name : (msg.agentName || agentMap[msg.agentId ?? ''] || 'AI 助手');
   const ts = msg.time ? `  ${fmtTime(msg.time)}` : '';
 
   // 角色名 + 时间
@@ -595,10 +659,11 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
   children.push(...paras);
 
   // 附件（图片嵌入）
-  if (msg.fileUrls?.length > 0) {
-    const names = msg.fileNames || msg.fileUrls;
-    for (let fi = 0; fi < msg.fileUrls.length; fi++) {
-      const fileUrl = msg.fileUrls[fi];
+  const fileUrls = msg.fileUrls ?? [];
+  if (fileUrls.length > 0) {
+    const names = msg.fileNames ?? fileUrls;
+    for (let fi = 0; fi < fileUrls.length; fi++) {
+      const fileUrl = fileUrls[fi];
       const fileName = names[fi] || fileUrl;
       // 尝试嵌入图片
       const imagePath = resolveFilePath(fileUrl);
@@ -671,7 +736,7 @@ async function renderSingleMessage(children: DocBlock[], msg: any, student: any,
 
 // ─── 学情报表 DOCX ─────────────────────────────────────────
 
-function renderStatsDocx(data: any): DocBlock[] {
+function renderStatsDocx(data: StatsExportData): DocBlock[] {
   const children: DocBlock[] = [];
   children.push(new Paragraph({ spacing: { before: 1500 }, children: [] }));
   children.push(pText('学情统计报表', { bold: true, size: 44, color: C.primary, align: AlignmentType.CENTER, spacingAfter: 40 }));
@@ -679,7 +744,7 @@ function renderStatsDocx(data: any): DocBlock[] {
 
   if (data.rows?.length > 0) {
     const total = data.rows.length;
-    const totalInt = data.rows.reduce((s: number, r: any[]) => s + (Number(r[2]) || 0), 0);
+    const totalInt = data.rows.reduce((sum, row) => sum + (Number(row[2]) || 0), 0);
     children.push(pText('数据概览', { bold: true, size: 22, color: C.primary, spacingBefore: 100, spacingAfter: 80 }));
     children.push(new Table({
       rows: [new TableRow({
@@ -706,11 +771,11 @@ function renderStatsDocx(data: any): DocBlock[] {
       children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: h, bold: true, size: 18, color: C.primary, font: { name: FONT } })] })],
     })),
   });
-  const dataRows = (data.rows || []).map((row: any[], ri: number) => {
+  const dataRows = data.rows.map((row, ri: number) => {
     const even = ri % 2 === 0;
     return new TableRow({
-      children: row.map((val: any, ci: number) => {
-        const t = val != null ? String(val) : '-';
+      children: row.map((value, ci: number) => {
+        const t = value != null ? String(value) : '-';
         return new TableCell({
           width: { size: colWidths[ci], type: WidthType.DXA },
           shading: even ? { fill: C.white, type: ShadingType.CLEAR } : { fill: C.bgLight, type: ShadingType.CLEAR },
@@ -731,7 +796,7 @@ function renderStatsDocx(data: any): DocBlock[] {
   return children;
 }
 
-function calcColWidths(headers: string[], rows: any[][], totalWidth = 11000): number[] {
+function calcColWidths(headers: string[], rows: ExportValue[][], totalWidth = 11000): number[] {
   const minW = 1000;
   const maxLens = headers.map((h, i) => {
     let ml = h.length;
@@ -751,14 +816,14 @@ function calcColWidths(headers: string[], rows: any[][], totalWidth = 11000): nu
 
 // ─── CSV 生成 ────────────────────────────────────────────────
 
-export function generateStatsCsv(data: any): string {
+export function generateStatsCsv(data: StatsExportData): string {
   const headers = data.headers || ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'];
   const rows = data.rows || [];
   let csv = '﻿';
   csv += headers.join(',') + '\n';
   for (const row of rows) {
-    csv += row.map((v: any) => {
-      const s = String(v ?? '').replace(/[\r\n]+/g, ' ');
+    csv += row.map((value) => {
+      const s = String(value ?? '').replace(/[\r\n]+/g, ' ');
       return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g, '""') + '"' : s;
     }).join(',') + '\n';
   }
@@ -812,20 +877,20 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
     mode: classroom.mode,
     createdAt: classroom.createdAt,
     endedAt: classroom.endedAt,
-    classes: classroom.classes.map((cc: any) => cc.class.name),
-    agents: classroom.classroomAgents.map((ca: any) => ({ id: ca.agent.id, name: ca.agent.name, platform: ca.agent.platform })),
-    teacherNotifications: teacherNotifs.map((n: any) => ({ content: n.content, time: n.createdAt, targetStudentId: n.studentId })),
-    students: classroomStudents.map((cs: any) => ({
-      name: cs.student.name,
-      studentNo: cs.student.studentNo,
-      gender: cs.student.gender,
-      studentId: cs.student.id,
-      totalRounds: cs.totalRounds,
-      messages: cs.messages.map((m: any) => ({
-        role: m.role, content: m.content, time: m.createdAt, roundIndex: m.roundIndex,
-        agentId: m.agentId, agentName: m.agentId ? (agentMap[m.agentId] || null) : null,
-        fileUrls: m.fileUrls ? (() => { try { return JSON.parse(m.fileUrls); } catch { return undefined; } })() : undefined,
-        fileNames: m.fileNames ? (() => { try { return JSON.parse(m.fileNames); } catch { return undefined; } })() : undefined,
+    classes: classroom.classes.map((classroomClass) => classroomClass.class.name),
+    agents: classroom.classroomAgents.map((classroomAgent) => ({ id: classroomAgent.agent.id, name: classroomAgent.agent.name, platform: classroomAgent.agent.platform })),
+    teacherNotifications: teacherNotifs.map((notification) => ({ content: notification.content, time: notification.createdAt, targetStudentId: notification.studentId })),
+    students: classroomStudents.map((classroomStudent) => ({
+      name: classroomStudent.student.name,
+      studentNo: classroomStudent.student.studentNo,
+      gender: classroomStudent.student.gender,
+      studentId: classroomStudent.student.id,
+      totalRounds: classroomStudent.totalRounds,
+      messages: classroomStudent.messages.map((message) => ({
+        role: message.role, content: message.content, time: message.createdAt, roundIndex: message.roundIndex,
+        agentId: message.agentId, agentName: message.agentId ? (agentMap[message.agentId] || null) : null,
+        fileUrls: message.fileUrls ? (() => { try { return JSON.parse(message.fileUrls); } catch { return undefined; } })() : undefined,
+        fileNames: message.fileNames ? (() => { try { return JSON.parse(message.fileNames); } catch { return undefined; } })() : undefined,
       })),
     })),
   };
@@ -871,7 +936,7 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
   return {
     title: cr?.title || '学情报表',
     mode: cr?.mode || 'standard',
-    classes: cr?.classes?.map((cc: any) => cc.class.name) || [],
+    classes: cr?.classes?.map((classroomClass) => classroomClass.class.name) || [],
     exportedAt: new Date().toISOString(),
     headers: ['学号', '姓名', '互动次数', '首问字数', '平均响应时间(秒)'],
     rows: rows.map(r => [r.studentNo || '-', r.name, r.totalRounds, r.firstMsgLen, r.avgTime]),
@@ -910,7 +975,7 @@ export async function generateConversationsDocx(
     const student = data.students[i];
     const pct = 35 + Math.round(55 * ((i + 1) / totalStudents));
     progress({ taskId: '', progress: pct, stage: `正在渲染学生对话（${i + 1}/${totalStudents}）：${student.name}` });
-    const msgs = await renderStudentMessages(student, data.agents.reduce((acc: Record<string, string>, a: any) => { acc[a.id] = a.name; return acc; }, {}), data.teacherNotifications || []);
+    const msgs = await renderStudentMessages(student, data.agents.reduce((acc: Record<string, string>, agent) => { acc[agent.id] = agent.name; return acc; }, {}), data.teacherNotifications || []);
     allChildren.push(...msgs);
   }
 
@@ -990,7 +1055,7 @@ export async function generateStatsDocx(
     stats: {
       totalStudents: data.rows.length,
       totalMsgs: 0,
-      totalRounds: data.rows.reduce((s: number, r: any[]) => s + (Number(r[2]) || 0), 0),
+      totalRounds: data.rows.reduce((sum, row) => sum + (Number(row[2]) || 0), 0),
     },
   };
 }
@@ -1007,20 +1072,20 @@ export async function generateConversationsCsv(
   csv += '学生姓名,学号,轮次,角色,发送时间,消息内容\n';
 
   for (const student of data.students) {
-    const notifEntries = (data.teacherNotifications || [])
-      .filter((n: any) => n.studentId === null || n.studentId === student.studentId)
-      .map((n: any) => ({
+    const notifEntries = data.teacherNotifications
+      .filter((notification) => notification.targetStudentId === null || notification.targetStudentId === student.studentId)
+      .map((notification) => ({
         round: '',
         role: '教师通知',
-        time: n.time,
-        content: n.content,
+        time: notification.time,
+        content: notification.content,
       }));
 
-    const msgEntries = (student.messages || []).map((m: any) => ({
-      round: m.roundIndex ?? '',
-      role: m.role === 'user' ? student.name : (m.agentName || 'AI'),
-      time: m.time || m.createdAt,
-      content: m.content || '',
+    const msgEntries = student.messages.map((message) => ({
+      round: message.roundIndex ?? '',
+      role: message.role === 'user' ? student.name : (message.agentName || 'AI'),
+      time: message.time,
+      content: message.content || '',
     }));
 
     const allEntries = [...notifEntries, ...msgEntries].sort(

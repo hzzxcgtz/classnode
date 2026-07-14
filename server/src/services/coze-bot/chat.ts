@@ -12,6 +12,13 @@ import type {
   CancelChatRequest,
   SSEEvent,
 } from './types.js';
+import type { RequiredAction } from './types.js';
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
 
 /** 流式事件回调 */
 export interface StreamCallbacks {
@@ -119,7 +126,7 @@ export class ChatAPI {
               continue;
             }
 
-            let parsed: any;
+            let parsed: unknown;
             try {
               parsed = JSON.parse(dataStr);
             } catch {
@@ -137,12 +144,12 @@ export class ChatAPI {
           }
         }
       }
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         // 被外部 signal 取消，返回当前已收集的数据
-        throw e;
+        throw error;
       }
-      throw e;
+      throw error;
     }
 
     if (!completedChat) {
@@ -153,7 +160,8 @@ export class ChatAPI {
   }
 
   /** 将 SSE event 分派到对应的回调 */
-  private dispatchEvent(eventType: string, data: any, cb: StreamCallbacks): void {
+  private dispatchEvent(eventType: string, data: unknown, cb: StreamCallbacks): void {
+    const record = asRecord(data);
     switch (eventType) {
       case 'conversation.chat.created':
         cb.onChatCreated?.(data as ChatData);
@@ -164,8 +172,8 @@ export class ChatAPI {
         break;
 
       case 'conversation.message.delta':
-        if (data.type === 'answer' && data.role === 'assistant' && data.content) {
-          cb.onDelta?.(data.content, data.id);
+        if (record?.type === 'answer' && record.role === 'assistant' && typeof record.content === 'string') {
+          cb.onDelta?.(record.content, typeof record.id === 'string' ? record.id : '');
         }
         break;
 
@@ -174,8 +182,8 @@ export class ChatAPI {
         break;
 
       case 'conversation.message.completed':
-        if (data.type === 'follow_up' && data.content) {
-          cb.onFollowUp?.(data.content);
+        if (record?.type === 'follow_up' && typeof record.content === 'string') {
+          cb.onFollowUp?.(record.content);
         }
         cb.onMessageCompleted?.(data as MessageData);
         // 深度思考内容随 message.completed 返回
@@ -186,20 +194,23 @@ export class ChatAPI {
         break;
 
       case 'conversation.chat.failed':
+        {
+        const lastError = asRecord(record?.last_error);
         cb.onChatFailed?.({
-          code: data.code || data.last_error?.code || -1,
-          msg: data.msg || data.last_error?.msg || '对话失败',
+          code: typeof record?.code === 'number' ? record.code : (typeof lastError?.code === 'number' ? lastError.code : -1),
+          msg: typeof record?.msg === 'string' ? record.msg : (typeof lastError?.msg === 'string' ? lastError.msg : '对话失败'),
         });
+        }
         break;
 
       case 'conversation.chat.requires_action':
-        cb.onRequiresAction?.(data.required_action);
+        cb.onRequiresAction?.(record?.required_action as RequiredAction | undefined);
         break;
 
       case 'error':
         cb.onError?.({
-          code: data.code,
-          msg: data.msg || '流式错误',
+          code: typeof record?.code === 'number' ? record.code : -1,
+          msg: typeof record?.msg === 'string' ? record.msg : '流式错误',
         });
         break;
     }
@@ -360,9 +371,9 @@ export class ChatAPI {
           }
         }
       }
-    } catch (e: any) {
-      if (e.name === 'AbortError') throw e;
-      throw e;
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      throw error;
     }
 
     if (!completedChat) throw new Error('Coze 流式响应未返回完成事件');

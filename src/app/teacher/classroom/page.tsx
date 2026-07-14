@@ -79,8 +79,8 @@ function ClassroomBoardContent() {
       let socket: Socket | null = null;
       import('socket.io-client').then(({ io }) => {
         socket = io(getApiBaseUrl(), { transports: ['websocket', 'polling'] });
-        socket.on('nic-changed', (data: { ip: string }) => {
-          fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+        socket.on('nic-changed', () => {
+          fetch(`${getApiBaseUrl()}/api/server-info`, { credentials: 'include' }).then(r => r.json()).then(d => {
             if (d.studentUrl) setStudentUrl(d.studentUrl);
           }).catch(() => {});
         });
@@ -100,8 +100,6 @@ function ClassroomBoardContent() {
   // 全屏图片预览：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
   useEffect(() => {
     if (!fullscreenImg) return;
-    setZoomLevel(1);
-    setImgOffset({ x: 0, y: 0 });
     const d = dragRef.current;
     d.dragging = false; d.offX = 0; d.offY = 0;
 
@@ -145,6 +143,12 @@ function ClassroomBoardContent() {
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, [fullscreenImg]);
+
+  const openFullscreenImage = (url: string) => {
+    setZoomLevel(1);
+    setImgOffset({ x: 0, y: 0 });
+    setFullscreenImg(url);
+  };
 
 
   /** 生成并下载带 Logo 的二维码图片 */
@@ -203,7 +207,6 @@ function ClassroomBoardContent() {
 
   const [paused, setPaused] = useState(false);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
-  const [showAnalytics, setShowAnalytics] = useState(true);
   const [classroomAgent, setClassroomAgent] = useState<ClassroomAgentDisplay | null>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const [fsCols, setFsCols] = useState(5);
@@ -263,7 +266,7 @@ function ClassroomBoardContent() {
       }
     }
     return map;
-  }, [groupCards, classroom?.groupMembersMap]);
+  }, [groupCards, classroom]);
 
   // 打开抽屉时自动滚动到底部（最新消息）
   useEffect(() => {
@@ -376,7 +379,7 @@ function ClassroomBoardContent() {
 
   useEffect(() => {
     if (!id) { router.push('/teacher'); return; }
-    loadClassroom();
+    const initialLoadTimer = window.setTimeout(() => { void loadClassroom(); }, 0);
     joinTeacherBoard(id);
 
     const unsub1 = on('student-online', (data: StudentPresenceEvent) => {
@@ -479,7 +482,7 @@ function ClassroomBoardContent() {
       setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
     });
 
-    return () => { unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -625,17 +628,6 @@ function ClassroomBoardContent() {
   const offlineCount = statusValues.filter(v => v === 'offline').length;
   const totalRounds = Object.values(studentRounds).reduce((sum, r) => sum + r, 0);
 
-  const statusColors: Record<string, string> = {
-    online: '#10b981',
-    thinking: '#f59e0b',
-    offline: '#94a3b8',
-  };
-  const statusLabels: Record<string, string> = {
-    online: '在线',
-    thinking: '思考中...',
-    offline: '离线',
-  };
-
   // 投屏轮次预计算
   const msgRounds: (number | null)[] = [];
   let _r = 0;
@@ -713,7 +705,7 @@ function ClassroomBoardContent() {
           {classroom.status !== 'ended' && (
             <>
               <button className="btn btn-primary btn-lg" onClick={() => {
-                fetch(`${getApiBaseUrl()}/api/server-info`).then(r => r.json()).then(d => {
+                fetch(`${getApiBaseUrl()}/api/server-info`, { credentials: 'include' }).then(r => r.json()).then(d => {
                       setStudentUrl(d.studentUrl || '');
                 }).catch(() => {}).finally(() => setCodeScreenKey(k => k + 1));
               }} style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -778,7 +770,7 @@ function ClassroomBoardContent() {
       </div>
       </>)}
       {/* 对话分析面板（始终渲染，全屏时被 fixed 遮罩覆盖） */}
-      <AnalyticsPanel classroomId={id} allMessages={allMessages} loadAnalytics={loadAnalytics} students={students} />
+      <AnalyticsPanel classroomId={id} allMessages={allMessages} loadAnalytics={loadAnalytics} />
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -1218,7 +1210,7 @@ function ClassroomBoardContent() {
                         <div key={fi} style={{ marginBottom: 6 }}>
                           {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
                             <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                              onClick={() => setFullscreenImg(`${getApiBaseUrl()}${fu}`)}
+                              onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
                           ) : (
                             <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1440,7 +1432,7 @@ function ClassroomBoardContent() {
                           <div key={fi} style={{ marginBottom: 12 }}>
                             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
                               <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
-                                onClick={() => setFullscreenImg(`${getApiBaseUrl()}${fu}`)}
+                                onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
                             ) : (
                               <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -1970,7 +1962,6 @@ interface AnalyticsPanelProps {
   classroomId: string;
   allMessages: ClassroomMessage[];
   loadAnalytics: () => void;
-  students: ClassroomCardStudent[];
 }
 
 function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElement> }) {
@@ -2008,7 +1999,7 @@ function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElem
   );
 }
 
-function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: AnalyticsPanelProps) {
+function AnalyticsPanel({ classroomId, allMessages, loadAnalytics }: AnalyticsPanelProps) {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(`cls_analytics_collapsed_${classroomId}`) === 'true';
@@ -2022,7 +2013,6 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
   const [cloudSource, setCloudSource] = useState<'user' | 'assistant' | 'both'>('user');
   const cloudRef = useRef<HTMLDivElement>(null);
   const [cloudWidth, setCloudWidth] = useState(360);
-  const [cloudHeight, setCloudHeight] = useState(200);
 
   useLayoutEffect(() => {
     const el = cloudRef.current;
@@ -2030,7 +2020,6 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
     const measure = () => {
       const rect = el.getBoundingClientRect();
       if (rect.width > 0) setCloudWidth(Math.max(200, Math.floor(rect.width)));
-      if (rect.height > 0) setCloudHeight(Math.max(200, Math.floor(rect.height)));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -2038,7 +2027,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, students }: A
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => { loadAnalytics(); }, [classroomId]);
+  useEffect(() => { loadAnalytics(); }, [classroomId, loadAnalytics]);
 
   // 词云计算：只在 allMessages 或 cloudSource 变化时才重算
   const isShieldFiltered = useCallback((m: ClassroomMessage) => (m.content || '').includes('**'), []);

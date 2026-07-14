@@ -12,10 +12,45 @@ import {
 } from '../middleware/auth.js';
 
 const router: Router = Router();
-const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+type LoginAttempt = { count: number; blockedUntil: number; lastAttemptAt: number };
+const loginAttempts = new Map<string, LoginAttempt>();
+const LOGIN_ATTEMPT_WINDOW_MS = 10 * 60_000;
+const LOGIN_BLOCK_MS = 60_000;
+const MAX_LOGIN_ATTEMPT_CLIENTS = 5_000;
 
 function clientKey(req: import('express').Request): string {
   return req.socket.remoteAddress || 'unknown';
+}
+
+/** 将同一来源的连续错误限制在短时间窗口内，避免历史误输长期影响教师登录。 */
+export function nextLoginAttempt(previous: LoginAttempt | undefined, now = Date.now()): LoginAttempt {
+  const reset = !previous
+    || now - previous.lastAttemptAt >= LOGIN_ATTEMPT_WINDOW_MS
+    || (previous.blockedUntil > 0 && previous.blockedUntil <= now);
+  const count = reset ? 1 : previous.count + 1;
+  return { count, blockedUntil: count >= 5 ? now + LOGIN_BLOCK_MS : 0, lastAttemptAt: now };
+}
+
+function getCurrentLoginAttempt(key: string, now: number): LoginAttempt | undefined {
+  const attempt = loginAttempts.get(key);
+  if (!attempt) return undefined;
+  if (now - attempt.lastAttemptAt >= LOGIN_ATTEMPT_WINDOW_MS || (attempt.blockedUntil > 0 && attempt.blockedUntil <= now)) {
+    loginAttempts.delete(key);
+    return undefined;
+  }
+  return attempt;
+}
+
+function pruneLoginAttempts(now: number): void {
+  if (loginAttempts.size < MAX_LOGIN_ATTEMPT_CLIENTS) return;
+  for (const [key, attempt] of loginAttempts) {
+    if (now - attempt.lastAttemptAt >= LOGIN_ATTEMPT_WINDOW_MS && attempt.blockedUntil <= now) loginAttempts.delete(key);
+  }
+  while (loginAttempts.size >= MAX_LOGIN_ATTEMPT_CLIENTS) {
+    const oldestKey = loginAttempts.keys().next().value;
+    if (!oldestKey) break;
+    loginAttempts.delete(oldestKey);
+  }
 }
 
 router.get('/init-status', async (req, res) => {
@@ -31,6 +66,8 @@ router.get('/init-status', async (req, res) => {
 });
 
 router.post('/admin-password', async (req, res) => {
+  // 首次初始化决定教师控制台的归属，只允许在安装本应用的教师电脑上完成。
+  if (!isLoopbackRequest(req)) return res.status(403).json({ error: '请在教师电脑本机完成首次密码设置' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const existing = await prisma.setting.findUnique({ where: { key: 'admin_password' } });
@@ -50,8 +87,9 @@ router.post('/admin-password', async (req, res) => {
 router.post('/verify-password', async (req, res) => {
   try {
     const key = clientKey(req);
-    const attempt = loginAttempts.get(key);
-    if (attempt?.blockedUntil && attempt.blockedUntil > Date.now()) {
+    const now = Date.now();
+    const attempt = getCurrentLoginAttempt(key, now);
+    if (attempt?.blockedUntil && attempt.blockedUntil > now) {
       return res.status(429).json({ error: '尝试次数过多，请稍后再试' });
     }
     const prisma: PrismaClient = req.app.get('prisma');
@@ -60,8 +98,8 @@ router.post('/verify-password', async (req, res) => {
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     const verified = verifyPassword(password, stored.value);
     if (!verified) {
-      const count = (attempt?.count || 0) + 1;
-      loginAttempts.set(key, { count, blockedUntil: count >= 5 ? Date.now() + 60_000 : 0 });
+      pruneLoginAttempts(now);
+      loginAttempts.set(key, nextLoginAttempt(attempt, now));
       return res.status(401).json({ verified: false, firstTime: false, error: '密码错误' });
     }
     loginAttempts.delete(key);

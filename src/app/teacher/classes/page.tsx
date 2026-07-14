@@ -7,6 +7,18 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
+type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
+function SortIcon({ field, sortField, sortDir }: { field: StudentSortField; sortField: StudentSortField; sortDir: 'asc' | 'desc' }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke={sortField === field ? '#2563eb' : '#cbd5e1'}
+      strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+      {sortField === field && sortDir === 'asc'
+        ? <polyline points="18 15 12 9 6 15" />
+        : <polyline points="6 9 12 15 18 9" />}
+    </svg>
+  );
+}
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
@@ -21,7 +33,7 @@ export default function ClassesPage() {
   const [addStudentMode, setAddStudentMode] = useState<'form' | 'paste' | null>(null);
   const [tabMode, setTabMode] = useState<'students' | 'groups'>('students');
   const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
-  const [sortField, setSortField] = useState<'studentNo' | 'name' | 'gender' | 'group'>('studentNo');
+  const [sortField, setSortField] = useState<StudentSortField>('studentNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [editingStudent, setEditingStudent] = useState<StudentSummary | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
@@ -48,7 +60,7 @@ export default function ClassesPage() {
   const studentMarqueeStartRef = useRef<{x: number; y: number} | null>(null);
   const studentTableRef = useRef<HTMLDivElement>(null);
 
-  const loadClasses = async () => {
+  async function loadClasses() {
     try {
       const data = await api.getClasses();
       setClasses(data);
@@ -60,9 +72,12 @@ export default function ClassesPage() {
       }
     } catch {}
     setLoading(false);
-  };
+  }
 
-  useEffect(() => { loadClasses(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadClasses(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // 加载头像数据（供班级图标和学生头像展示用）
   useEffect(() => {
@@ -85,16 +100,16 @@ export default function ClassesPage() {
   }, []);
 
   useEffect(() => {
-    loadStudents();
-    loadGroups();
+    const timer = window.setTimeout(() => { void loadStudents(); void loadGroups(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [selectedClass]);
 
-  const loadGroups = async () => {
+  async function loadGroups() {
     if (!selectedClass) { setClassGroups([]); return; }
     try {
       setClassGroups(await api.getGroups(selectedClass));
     } catch { setClassGroups([]); }
-  };
+  }
 
   // 构建 studentId → groupName 映射
   const studentGroupMap = new Map<string, string>();
@@ -110,9 +125,14 @@ export default function ClassesPage() {
   useEffect(() => {
     if (showCreate) {
       api.getAvatars('class').then(setClassIconList).catch(() => {});
-      setNewClassAvatarId(null);
     }
   }, [showCreate]);
+
+  const openCreateModal = () => {
+    setNewClassName('');
+    setNewClassAvatarId(null);
+    setShowCreate(true);
+  };
 
   const handleCreateClass = async () => {
     if (!newClassName) return;
@@ -232,12 +252,12 @@ export default function ClassesPage() {
 
   const selectedClassData = classes.find(c => c.id === selectedClass);
 
-  const loadStudents = async () => {
+  async function loadStudents() {
     if (!selectedClass) return;
     const data = await api.getStudents(selectedClass);
     setStudents(data);
-  };
-  const handleSort = (field: 'studentNo' | 'name' | 'gender' | 'group') => {
+  }
+  const handleSort = (field: StudentSortField) => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
@@ -271,18 +291,6 @@ export default function ClassesPage() {
   });
 
   const pagedStudents = sortedStudents.slice((studentPage - 1) * studentPageSize, studentPage * studentPageSize);
-
-  const SortIcon = ({ field }: { field: 'studentNo' | 'name' | 'gender' | 'group' }) => (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-      stroke={sortField === field ? '#2563eb' : '#cbd5e1'}
-      strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
-      {sortField === field && sortDir === 'asc' ? (
-        <polyline points="18 15 12 9 6 15" />
-      ) : (
-        <polyline points="6 9 12 15 18 9" />
-      )}
-    </svg>
-  );
 
   const handleStudentTableMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -362,7 +370,7 @@ export default function ClassesPage() {
               管理班级和学生名单，支持批量导入
             </p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowCreate(true)}
+          <button className="btn btn-primary" onClick={openCreateModal}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             创建班级
@@ -441,7 +449,7 @@ export default function ClassesPage() {
               </div>
               <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无班级</p>
               <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>创建班级后即可添加学生</p>
-              <button className="btn btn-primary" style={{ fontSize: "0.813rem" }} onClick={() => setShowCreate(true)}>
+              <button className="btn btn-primary" style={{ fontSize: "0.813rem" }} onClick={openCreateModal}>
                 创建第一个班级
               </button>
             </div>
@@ -854,7 +862,7 @@ export default function ClassesPage() {
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              学号 <SortIcon field="studentNo" />
+                              学号 <SortIcon field="studentNo" sortField={sortField} sortDir={sortDir} />
                             </div>
                           </th>
                           <th onClick={() => handleSort('name')}
@@ -866,7 +874,7 @@ export default function ClassesPage() {
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              姓名 <SortIcon field="name" />
+                              姓名 <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
                             </div>
                           </th>
                           <th onClick={() => handleSort('gender')}
@@ -878,7 +886,7 @@ export default function ClassesPage() {
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              性别 <SortIcon field="gender" />
+                              性别 <SortIcon field="gender" sortField={sortField} sortDir={sortDir} />
                             </div>
                           </th>
                           <th onClick={() => handleSort('group')}
@@ -890,7 +898,7 @@ export default function ClassesPage() {
                             onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              分组 <SortIcon field="group" />
+                              分组 <SortIcon field="group" sortField={sortField} sortDir={sortDir} />
                             </div>
                           </th>
                           <th style={{
@@ -1000,7 +1008,11 @@ export default function ClassesPage() {
                                   try {
                                     await api.rewardStudentDirect(s.id);
                                     setToast({ msg: `已奖励 ${s.name} 一次头像更换权限`, type: 'success' });
-                                    s.avatarChangeTokens = (s.avatarChangeTokens || 0) + 1;
+                                    setStudents((previous) => previous.map((student) =>
+                                      student.id === s.id
+                                        ? { ...student, avatarChangeTokens: (student.avatarChangeTokens || 0) + 1 }
+                                        : student,
+                                    ));
                                   } catch { setToast({ msg: '奖励失败', type: 'error' }); }
                                 }}
                                 style={{
@@ -2201,7 +2213,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
           </svg>
           <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂未设置分组</p>
-          <p style={{ fontSize: "0.813rem", margin: '0 0 16px' }}>在上方输入分组名称后点击"添加分组"</p>
+          <p style={{ fontSize: "0.813rem", margin: '0 0 16px' }}>{'在上方输入分组名称后点击“添加分组”'}</p>
         </div>
       )}
 

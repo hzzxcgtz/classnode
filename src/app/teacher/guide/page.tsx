@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react/jsx-key -- 静态内容数组在最终渲染时由外层容器提供稳定键。 */
 import { isValidElement, useState, useEffect } from "react";
 
 const Highlight = (props: { children: React.ReactNode }) => (
@@ -208,7 +209,7 @@ const sections = [
         ：双击启动程序，打开浏览器访问教师控制台，开始使用。
       </>,
       <>
-        <strong>给您的讲台上一道锁</strong>：首次使用会要求设置管理密码（至少 6
+        <strong>给您的讲台上一道锁</strong>：首次使用会要求设置管理密码（至少 8
         位）。这里存放着全班的学情数据和 AI 配置，须防止学生误入。
       </>,
       <>
@@ -236,7 +237,7 @@ const sections = [
       </>,
       <>
         <strong>配置更直观</strong>：填入平台提供的 API Key / Secret Key
-        等信息，可自定义本地名称（如"李白学长"）。Coze 低代码支持一键从 Coze
+        等信息，可自定义本地名称（如&ldquo;李白学长&rdquo;）。Coze 低代码支持一键从 Coze
         拉取头像和开场白。
       </>,
       <div
@@ -840,7 +841,7 @@ const sections = [
       </>,
       <>
         <strong>学期重置</strong>
-        ：新学期开始？输入"确认清零"清空旧业务数据（保留密码），轻装迎接新生。
+        ：新学期开始？输入&ldquo;确认清零&rdquo;清空旧业务数据（保留密码），轻装迎接新生。
       </>,
     ],
   },
@@ -940,8 +941,8 @@ export default function GuidePage() {
           }}
         >
           欢迎来到
-          ClassNode！这份指南将像一位贴心的助教，陪您走完从"系统开机"到"打磨出一堂完美
-          AI 课"的全过程。
+          ClassNode！这份指南将像一位贴心的助教，陪您走完从&ldquo;系统开机&rdquo;到&ldquo;打磨出一堂完美
+          AI 课&rdquo;的全过程。
         </p>
       </div>
 

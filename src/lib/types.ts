@@ -209,6 +209,11 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
   _count: { students: number };
 }
 
+export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
+  agents: AgentSummary[];
+  groups?: Array<ClassroomCardGroup & { agent: AgentSummary }>;
+}
+
 export interface ClassroomSettingsGroup {
   id: string;
   name: string;
@@ -270,6 +275,7 @@ export interface ClassroomMessage {
   agentId: string | null;
   fileUrls?: string | null;
   fileNames?: string | null;
+  followUps?: string | string[] | null;
   classroomStudent?: {
     student: Pick<StudentSummary, 'id' | 'name' | 'studentNo' | 'gender' | 'avatarId'>;
   };

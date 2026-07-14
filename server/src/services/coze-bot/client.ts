@@ -10,6 +10,12 @@ export interface ClientOptions {
   timeout?: number;
 }
 
+interface CozeRawResponse {
+  code?: number;
+  msg?: string;
+  detail?: { logid?: string };
+}
+
 export class CozeClientError extends Error {
   constructor(
     public statusCode: number,
@@ -72,7 +78,7 @@ export class CozeHttpClient {
   }
 
   /** GET 请求，参数在 URL query 中 */
-  async get<T = any>(
+  async get<T = unknown>(
     path: string,
     params?: Record<string, string | number | boolean | undefined>
   ): Promise<T> {
@@ -98,9 +104,9 @@ export class CozeHttpClient {
   }
 
   /** POST JSON 请求 */
-  async post<T = any>(
+  async post<T = unknown>(
     path: string,
-    body?: any,
+    body?: unknown,
     extraHeaders?: Record<string, string>,
     queryParams?: Record<string, string | number | boolean | undefined>
   ): Promise<T> {
@@ -130,7 +136,7 @@ export class CozeHttpClient {
   }
 
   /** PUT JSON 请求 */
-  async put<T = any>(path: string, body?: any): Promise<T> {
+  async put<T = unknown>(path: string, body?: unknown): Promise<T> {
     const response = await fetchWithTimeout(this.url(path), {
       method: 'PUT',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
@@ -142,7 +148,7 @@ export class CozeHttpClient {
   }
 
   /** DELETE 请求 */
-  async delete<T = any>(path: string): Promise<T> {
+  async delete<T = unknown>(path: string): Promise<T> {
     const response = await fetchWithTimeout(this.url(path), {
       method: 'DELETE',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
@@ -153,7 +159,7 @@ export class CozeHttpClient {
   }
 
   /** multipart/form-data 上传 */
-  async upload<T = any>(path: string, formData: FormData): Promise<T> {
+  async upload<T = unknown>(path: string, formData: FormData): Promise<T> {
     const response = await fetchWithTimeout(this.url(path), {
       method: 'POST',
       headers: {
@@ -170,7 +176,7 @@ export class CozeHttpClient {
   /** 流式 POST 请求，返回 Response 供调用者读取 body stream */
   async postStream(
     path: string,
-    body?: any,
+    body?: unknown,
     signal?: AbortSignal,
     queryParams?: Record<string, string | number | boolean | undefined>
   ): Promise<Response> {
@@ -225,9 +231,9 @@ export class CozeHttpClient {
     }
 
     const text = await response.text();
-    let parsed: any;
+    let parsed: CozeRawResponse;
     try {
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(text) as CozeRawResponse;
     } catch {
       throw new CozeClientError(
         response.status,

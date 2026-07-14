@@ -13,6 +13,34 @@ import { shouldPreserveAgentSecret } from '../services/agent-secret-policy.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10
+    || parts[0] === 127
+    || (parts[0] === 169 && parts[1] === 254)
+    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+    || (parts[0] === 192 && parts[1] === 168)
+    || parts[0] === 0;
+}
+
+/** 管理员可配置平台网关，但不允许服务端请求本机或私有网段，避免误访问教师电脑内网服务。 */
+function validateAgentApiUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') return 'API 地址格式无效';
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:') return '自定义 API 地址必须使用 HTTPS';
+    if (host === 'localhost' || host.endsWith('.localhost') || isPrivateIpv4(host) || host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:')) {
+      return '自定义 API 地址不能指向本机或私有网络';
+    }
+    return null;
+  } catch {
+    return 'API 地址格式无效';
+  }
+}
+
 // File upload config for agent logos
 const storage = multer.diskStorage({
   destination: process.env.CLASSNODE_DATA_DIR
@@ -37,6 +65,20 @@ const logosDir = process.env.CLASSNODE_DATA_DIR
   ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'logos')
   : path.join(__dirname, '../../uploads/logos');
 fs.mkdirSync(logosDir, { recursive: true });
+
+const MANAGED_LOGO_FILE = /^logo-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|svg)$/i;
+
+function deleteManagedLogo(logo: string | null | undefined): void {
+  if (!logo?.startsWith('/uploads/logos/')) return;
+  const name = logo.slice('/uploads/logos/'.length);
+  if (!MANAGED_LOGO_FILE.test(name)) return;
+  try { fs.unlinkSync(path.join(logosDir, name)); } catch {}
+}
+
+function discardUploadedLogo(req: import('express').Request): void {
+  if (!req.file) return;
+  try { fs.unlinkSync(req.file.path); } catch {}
+}
 
 function secureLogoUpload(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction): void {
   if (!req.file) return next();
@@ -131,6 +173,8 @@ router.post('/info-preview', async (req, res) => {
     if (!platform || !botId || !apiKey) {
       return res.status(400).json({ error: '缺少必要参数 platform、botId、apiKey' });
     }
+    const apiUrlError = validateAgentApiUrl(apiUrl);
+    if (apiUrlError) return res.status(400).json({ error: apiUrlError });
     const result = await fetchAgentInfo({
       platform,
       apiUrl: (apiUrl && apiUrl !== 'undefined' ? apiUrl : undefined),
@@ -166,10 +210,19 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, platform, apiUrl, apiKey, botId, extra, greeting } = req.body;
     if (typeof apiKey !== 'string' || !apiKey.trim()) return res.status(400).json({ error: 'API 密钥不能为空' });
+    const apiUrlError = validateAgentApiUrl(apiUrl);
+    if (apiUrlError) {
+      discardUploadedLogo(req);
+      return res.status(400).json({ error: apiUrlError });
+    }
     let storedExtra = extra || null;
     if (extra) {
-      const parsed = JSON.parse(extra);
-      if (parsed.apiSecret) parsed.apiSecret = encryptApiKey(parsed.apiSecret);
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(extra); } catch {
+        discardUploadedLogo(req);
+        return res.status(400).json({ error: '扩展配置格式无效，请重新填写' });
+      }
+      if (typeof parsed.apiSecret === 'string' && parsed.apiSecret) parsed.apiSecret = encryptApiKey(parsed.apiSecret);
       storedExtra = encryptExtraSecrets(JSON.stringify(parsed));
     }
     const logo = req.file ? `/uploads/logos/${req.file.filename}` : (req.body.logo || null);
@@ -189,6 +242,7 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
 
     res.json(toPublicAgent(agent));
   } catch (error) {
+    discardUploadedLogo(req);
     res.status(500).json({ error: '创建智能体失败' });
   }
 });
@@ -198,6 +252,16 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting } = req.body;
+    const previousAgent = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } });
+    if (!previousAgent) {
+      discardUploadedLogo(req);
+      return res.status(404).json({ error: '智能体不存在' });
+    }
+    const apiUrlError = validateAgentApiUrl(apiUrl);
+    if (apiUrlError) {
+      discardUploadedLogo(req);
+      return res.status(400).json({ error: apiUrlError });
+    }
 
     const data: Prisma.AgentUpdateInput = {};
     if (name !== undefined) data.name = name;
@@ -206,13 +270,17 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     if (typeof apiKey === 'string' && apiKey.trim()) data.apiKey = encryptApiKey(apiKey.trim());
     if (botId !== undefined) data.botId = botId;
     if (extra !== undefined) {
-      const incoming = JSON.parse(extra || '{}');
+      let incoming: Record<string, unknown>;
+      try { incoming = JSON.parse(extra || '{}'); } catch {
+        discardUploadedLogo(req);
+        return res.status(400).json({ error: '扩展配置格式无效，请重新填写' });
+      }
       const existing = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { extra: true, platform: true } });
       let previous: Record<string, unknown> = {};
       try { previous = JSON.parse(existing?.extra || '{}'); } catch {}
       const remainsOnSamePlatform = shouldPreserveAgentSecret(existing?.platform, platform);
       if (!incoming.apiSecret && previous.apiSecret && remainsOnSamePlatform) incoming.apiSecret = previous.apiSecret;
-      else if (incoming.apiSecret) incoming.apiSecret = encryptApiKey(incoming.apiSecret);
+      else if (typeof incoming.apiSecret === 'string' && incoming.apiSecret) incoming.apiSecret = encryptApiKey(incoming.apiSecret);
       data.extra = JSON.stringify(incoming);
     }
             if (greeting !== undefined) data.greeting = greeting || null;
@@ -225,6 +293,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
       where: { id: req.params.id },
       data,
     });
+    if (previousAgent.logo !== agent.logo) deleteManagedLogo(previousAgent.logo);
 
     // 启用/停用状态变更时，通过 socket 实时通知学生
     if (enabled !== undefined) {
@@ -250,6 +319,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
 
     res.json(toPublicAgent(agent));
   } catch (error) {
+    discardUploadedLogo(req);
     res.status(500).json({ error: '更新智能体失败' });
   }
 });
@@ -280,16 +350,20 @@ router.delete('/:id', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
 
     // 检查是否有课堂关联此智能体
-    const caCount = await prisma.classroomAgent.count({
-      where: { agentId: req.params.id },
-    });
-    if (caCount > 0) {
+    const [agent, caCount, cgCount] = await Promise.all([
+      prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } }),
+      prisma.classroomAgent.count({ where: { agentId: req.params.id } }),
+      prisma.classroomGroup.count({ where: { agentId: req.params.id } }),
+    ]);
+    if (!agent) return res.status(404).json({ error: '智能体不存在' });
+    if (caCount > 0 || cgCount > 0) {
       return res.status(400).json({
-        error: `该智能体已关联 ${caCount} 个课堂，无法删除。请先删除关联的课堂后再试。`,
+        error: `该智能体已关联 ${caCount} 个课堂和 ${cgCount} 个分组，无法删除。请先删除关联的课堂后再试。`,
       });
     }
 
     await prisma.agent.delete({ where: { id: req.params.id } });
+    deleteManagedLogo(agent.logo);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '删除智能体失败' });

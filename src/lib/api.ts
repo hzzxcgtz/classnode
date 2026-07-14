@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
 
 let studentSessionToken = '';
 
@@ -33,7 +33,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormData): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}${path}`, { method, body, credentials: 'include' });
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method,
+    body,
+    credentials: 'include',
+    headers: getStudentSessionAuthorization(),
+  });
   const data = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
   if (res.status === 401 && typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
@@ -117,7 +122,7 @@ export const api = {
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
   getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),
-  getClassroomByCode: (code: string) => request<ClassroomSummary>(`/api/classroom/code/${code}`),
+  getClassroomByCode: (code: string) => request<StudentClassroom>(`/api/classroom/code/${code}`),
   createStudentSession: (code: string, studentId: string) =>
     request<StudentSessionResponse>(`/api/classroom/code/${code}/student-session`, {
       method: 'POST', body: JSON.stringify({ studentId }),
@@ -186,9 +191,7 @@ export const api = {
   uploadAvatarImage: (file: File) => {
     const formData = new FormData();
     formData.append('avatar', file);
-    return fetch(`${getApiBaseUrl()}/api/upload/avatar`, {
-      method: 'POST', body: formData, credentials: 'include', headers: getStudentSessionAuthorization(),
-    }).then(r => r.json() as Promise<AvatarUploadResponse>);
+    return formRequest<AvatarUploadResponse>('/api/upload/avatar', 'POST', formData);
   },
 
   // Export

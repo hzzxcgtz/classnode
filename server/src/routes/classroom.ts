@@ -1,9 +1,40 @@
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { createStudentToken } from '../middleware/student-auth.js';
+import { hasTeacherSession } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
+import { abortClassroomStreams } from '../socket/index.js';
 
 const router: Router = Router();
+
+const PUBLIC_CODE_WINDOW_MS = 60_000;
+const PUBLIC_CODE_MAX_REQUESTS = 120;
+const publicCodeRequests = new Map<string, number[]>();
+
+/**
+ * 互动码保留四位以兼顾课堂输入效率；对公开查询加温和限流，降低局域网内批量枚举的风险。
+ * 每位学生正常进入和断线恢复只会产生极少量请求，不会增加其操作步骤。
+ */
+function limitPublicCodeRequests(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction): void {
+  const now = Date.now();
+  const client = req.socket.remoteAddress || 'unknown';
+  const recent = (publicCodeRequests.get(client) || []).filter(timestamp => timestamp > now - PUBLIC_CODE_WINDOW_MS);
+  if (recent.length >= PUBLIC_CODE_MAX_REQUESTS) {
+    res.status(429).json({ error: '查询过于频繁，请稍后再试' });
+    return;
+  }
+  recent.push(now);
+  publicCodeRequests.set(client, recent);
+  if (publicCodeRequests.size > 2_000) {
+    for (const [key, timestamps] of publicCodeRequests) {
+      if (timestamps.every(timestamp => timestamp <= now - PUBLIC_CODE_WINDOW_MS)) publicCodeRequests.delete(key);
+    }
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+}
+
+router.use('/code', limitPublicCodeRequests);
 
 function generateCode(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -305,9 +336,9 @@ router.get('/:id', async (req, res) => {
     if (!classroom) return res.status(404).json({ error: '课堂不存在' });
 
     // 解析分组/高级模式中 ClassGroup 的真实学生成员
-    let groupMembersMap: Record<string, { groupName: string; members: { id: string; name: string; studentNo: string | null }[] }> = {};
+    const groupMembersMap: Record<string, { groupName: string; members: { id: string; name: string; studentNo: string | null }[] }> = {};
     if (classroom.mode === 'advanced' || classroom.mode === 'group') {
-      const classIds = classroom.classes.map((cc: any) => cc.class.id);
+      const classIds = classroom.classes.map((classroomClass) => classroomClass.class.id);
       const classGroups = await prisma.classGroup.findMany({
         where: { classId: { in: classIds } },
       });
@@ -360,13 +391,9 @@ router.get('/:id/student/:studentId/messages', async (req, res) => {
 router.get('/:id/all-messages', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const classroomStudents = await prisma.classroomStudent.findMany({
-      where: { classroomId: req.params.id },
-      include: { student: true },
-    });
-    const studentIds = classroomStudents.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true } }>) => cs.id);
+    // Message 已有 classroomId + createdAt 联合索引，直接按课堂读取可避免大班级时先查学生、再构造超长 IN 条件。
     const messages = await prisma.message.findMany({
-      where: { studentId: { in: studentIds } },
+      where: { classroomId: req.params.id },
       orderBy: { createdAt: 'asc' },
       include: {
         classroomStudent: { include: { student: true } },
@@ -416,13 +443,17 @@ router.get('/code/:code', async (req, res) => {
 });
 
 // 获取课堂的学生列表（学生端选择身份用）
-router.get('/:id/students', async (req, res) => {
+// 身份选择前必须公开名单；沿用课堂码入口的温和限流，避免被持续轮询。
+router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const classroom = await prisma.classroom.findUnique({
       where: { id: req.params.id },
-      select: { mode: true },
+      select: { mode: true, status: true },
     });
+    if (!classroom || classroom.status === 'ended') {
+      return res.status(404).json({ error: '课堂不存在或已结束' });
+    }
     const students = await prisma.classroomStudent.findMany({
       where: { classroomId: req.params.id },
       include: { student: true, group: true },
@@ -431,11 +462,13 @@ router.get('/:id/students', async (req, res) => {
     const filtered = classroom?.mode === 'standard'
       ? students.filter(cs => cs.student.tag !== '__group__')
       : students;
+    const isTeacher = hasTeacherSession(req);
     res.json(filtered.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; group: true } }>) => ({
       id: cs.student.id,
       name: cs.student.name,
-      studentNo: cs.student.studentNo,
-      gender: cs.student.gender,
+      // 学生端只需姓名和头像完成极简身份选择；学号、性别仅提供给教师端。
+      studentNo: isTeacher ? cs.student.studentNo : null,
+      gender: isTeacher ? cs.student.gender : null,
       avatarId: cs.student.avatarId,
       groupId: cs.groupId,
       groupName: classroom?.mode === 'standard' ? undefined : cs.group?.name,
@@ -493,6 +526,9 @@ router.post('/:id/end', async (req, res) => {
 
     // 通知所有连接的学生和教师
     const io = req.app.get('io');
+    const activeConnections = req.app.get('activeConnections') as Map<string, string> | undefined;
+    const activeStreams = req.app.get('activeStreams') as Map<string, AbortController> | undefined;
+    if (activeConnections && activeStreams) abortClassroomStreams(classroom.id, activeConnections, activeStreams);
     io.to(`classroom:${classroom.id}`).emit('classroom-ended');
     io.to(`teacher:${classroom.id}`).emit('classroom-ended');
 
@@ -532,6 +568,9 @@ router.post('/:id/pause', async (req, res) => {
     const classroom = await prisma.classroom.findUniqueOrThrow({ where: { id: req.params.id } });
 
     const io = req.app.get('io');
+    const activeConnections = req.app.get('activeConnections') as Map<string, string> | undefined;
+    const activeStreams = req.app.get('activeStreams') as Map<string, AbortController> | undefined;
+    if (activeConnections && activeStreams) abortClassroomStreams(classroom.id, activeConnections, activeStreams);
     io.to(`classroom:${classroom.id}`).emit('classroom-paused');
     io.to(`teacher:${classroom.id}`).emit('classroom-paused');
 
@@ -798,9 +837,11 @@ router.get('/:id/notifications', async (req, res) => {
           ],
         } : {}),
       },
-      orderBy: { createdAt: 'asc' },
+      // 重连只需恢复最近通知；限制读取量避免长期课堂的通知记录拖慢学生端恢复。
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
-    res.json(notifications);
+    res.json(notifications.reverse());
   } catch (error) {
     console.error('[Notifications] get error:', error);
     res.status(500).json({ error: '获取教师通知失败' });

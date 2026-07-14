@@ -47,9 +47,20 @@ export interface ZipLimits {
   maxSingleFileBytes: number;
 }
 
-export function safeExtractZip(zip: any, destination: string, limits: ZipLimits): void {
+export interface ZipEntryLike {
+  entryName: string;
+  isDirectory: boolean;
+  header?: { size?: number };
+  getData(): Buffer;
+}
+
+export interface ZipArchiveLike {
+  getEntries(): ZipEntryLike[];
+}
+
+export function safeExtractZip(zip: ZipArchiveLike, destination: string, limits: ZipLimits): void {
   const root = path.resolve(destination);
-  const entries: any[] = zip.getEntries();
+  const entries = zip.getEntries();
   if (entries.length > limits.maxFiles) throw new Error(`压缩包文件数量超过 ${limits.maxFiles} 个`);
   let total = 0;
   for (const entry of entries) {

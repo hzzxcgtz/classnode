@@ -21,7 +21,7 @@ import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
 import { sendPing } from './services/ping.js';
-import uploadRoutes from './routes/upload.js';
+import uploadRoutes, { cleanupOrphanedUploads } from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
 import upgradeRoutes from './routes/upgrade.js';
@@ -51,18 +51,39 @@ async function main() {
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     next();
   });
   app.use(express.json({ limit: '10mb' }));
+  // API 中包含教师配置、学生名单和对话内容；避免浏览器或代理复用旧响应。
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   // 上传文件的静态服务（从用户目录加载，兼容开发环境）
   const uploadsDir = process.env.CLASSNODE_DATA_DIR
     ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
     : path.join(__dirname, '../uploads');
-  app.use('/uploads', express.static(uploadsDir));
+  app.use('/uploads', express.static(uploadsDir, {
+    index: false,
+    redirect: false,
+    dotfiles: 'deny',
+  }));
 
   // Make prisma and io available to routes
   app.set('prisma', prisma);
   app.set('io', io);
+
+  // 上传后未发送消息、取消头像更换等情况会留下临时文件；延迟清理不打断课堂操作。
+  const cleanUploads = () => cleanupOrphanedUploads(prisma)
+    .then(({ chat, avatars }) => {
+      if (chat || avatars) console.log(`[uploads] Removed ${chat} chat and ${avatars} avatar orphan(s)`);
+    })
+    .catch(error => console.warn('[uploads] Orphan cleanup failed:', error));
+  void cleanUploads();
+  const uploadCleanupTimer = setInterval(cleanUploads, 6 * 60 * 60 * 1000);
+  uploadCleanupTimer.unref();
 
   // 自动同步数据库 schema（兼容旧版数据库缺少新表/列的情况）
   try {
@@ -198,7 +219,7 @@ async function main() {
   app.use('/api/export', requireTeacher, exportRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/shield', requireTeacher, shieldRoutes);
-  app.use('/api/changelogs', changelogRoutes);
+  app.use('/api/changelogs', requireTeacher, changelogRoutes);
   app.use('/api/upload', (req, res, next) => {
     if (getStudentSession(req)) return next();
     requireTeacher(req, res, next);
@@ -215,7 +236,7 @@ async function main() {
     requireTeacher(req, res, next);
   }, avatarRoutes);
   app.use('/api/system', requireTeacher, systemRoutes);
-app.use('/api/upgrade', upgradeRoutes);
+  app.use('/api/upgrade', requireTeacher, upgradeRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -223,7 +244,7 @@ app.use('/api/upgrade', upgradeRoutes);
   });
 
   // Get server info
-  app.get('/api/server-info', async (req, res) => {
+  app.get('/api/server-info', requireTeacher, async (req, res) => {
     const interfaces = getLocalIPAddresses();
     let selectedIp = '';
     try {

@@ -21,6 +21,7 @@ export default function AvatarsPage() {
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [studentCount, setStudentCount] = useState(0);
   const [classCount, setClassCount] = useState(0);
+  const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<Avatar[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState<{ mode: 'create' | 'edit' | 'view'; avatar?: Avatar } | null>(null);
   const [showDelete, setShowDelete] = useState<Avatar | null>(null);
@@ -38,7 +39,7 @@ export default function AvatarsPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const avatarActionRef = useRef(false);
 
-  const loadAvatars = async () => {
+  async function loadAvatars() {
     setLoading(true);
     try {
       const [teacherAvatars, allAvatars, allStudentAvatars, allClassAvatars] = await Promise.all([
@@ -55,9 +56,12 @@ export default function AvatarsPage() {
       setStudentUploadedAvatars(allAvatars.filter((a) => !teacherIds.has(a.id)));
     } catch { setAvatars([]); setStudentUploadedAvatars([]); }
     setLoading(false);
-  };
+  }
 
-  useEffect(() => { loadAvatars(); }, [tab]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadAvatars(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [tab]);
 
   const handleRandomGenerate = async (cat?: string) => {
     if (avatarActionRef.current) return;
@@ -113,7 +117,6 @@ export default function AvatarsPage() {
     } finally { avatarActionRef.current = false; setAvatarAction(null); }
   };
 
-  const [studentUploadedAvatars, setStudentUploadedAvatars] = useState<Avatar[]>([]);
   const boyAvatars = avatars.filter(a => a.gender === 'boy');
   const girlAvatars = avatars.filter(a => a.gender === 'girl');
   const neutralAvatars = avatars.filter(a => a.gender === 'neutral');
@@ -779,22 +782,27 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
   const [usage, setUsage] = useState<AvatarUsage | null>(null);
   const isImage = avatar?.svgContent?.includes('<image ') || false;
   const [inputMode, setInputMode] = useState<'svg' | 'image'>(isImage ? 'image' : 'svg');
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadSvg, setUploadSvg] = useState<string | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imagePreviewUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if ((mode === 'edit' || mode === 'view') && avatar) {
       api.getAvatarUsage(avatar.id).then(setUsage).catch(() => {});
     }
   }, [mode, avatar]);
 
+  useEffect(() => () => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+  }, []);
+
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
     const url = URL.createObjectURL(file);
+    imagePreviewUrlRef.current = url;
     setImagePreview(url);
     setUploadSvg(null);
     setUploadingImg(true);
@@ -977,7 +985,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
               <textarea className="input" value={svgContent} onChange={e => setSvgContent(e.target.value)}
                 rows={6} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
                 placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
-              <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>需要包含 viewBox="0 0 40 40" 的完整 SVG 代码</p>
+              <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>{'需要包含 viewBox="0 0 40 40" 的完整 SVG 代码'}</p>
             </div>
             <div style={{ marginBottom: 16 }}>
               <button className="btn btn-secondary" onClick={handlePreview}
@@ -1059,7 +1067,12 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                 ) : uploadSvg ? (
                   <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功</p>
                 ) : null}
-                <button onClick={() => { setImageFile(null); setImagePreview(null); setUploadSvg(null); }}
+                <button onClick={() => {
+                  if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+                  imagePreviewUrlRef.current = null;
+                  setImagePreview(null);
+                  setUploadSvg(null);
+                }}
                   style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
                   重新选择
                 </button>

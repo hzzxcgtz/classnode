@@ -33,7 +33,12 @@ export class ChatAPI {
     conversationId?: string;
     historyId?: string;
   }> {
-    const body: Record<string, any> = {
+    const body: {
+      assistant_id: string;
+      prompt: string;
+      conversation_id?: string;
+      file_list?: Array<{ file_id: string }>;
+    } = {
       assistant_id: options.assistantId,
       prompt,
     };
@@ -83,7 +88,12 @@ export class ChatAPI {
     conversationId: string;
     historyId: string;
   }> {
-    const body: Record<string, any> = {
+    const body: {
+      assistant_id: string;
+      prompt: string;
+      conversation_id?: string;
+      file_list?: Array<{ file_id: string }>;
+    } = {
       assistant_id: options.assistantId,
       prompt,
     };
@@ -166,12 +176,12 @@ export class ChatAPI {
           }
         }
       }
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         callbacks.onEnd?.(streamConvId);
         return { content: fullContent, conversationId: streamConvId, historyId: streamHistoryId };
       }
-      throw e;
+      throw error;
     }
 
     callbacks.onEnd?.(streamConvId);

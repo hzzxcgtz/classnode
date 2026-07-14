@@ -20,6 +20,10 @@ import type {
   SSEEvent,
 } from './types.js';
 
+type CozeMessageItem =
+  | { type: 'text'; text: string }
+  | { type: 'image'; file_id?: string; file_url?: string };
+
 export type {
   CozeAgentConfig,
   EnterMessage,
@@ -178,7 +182,7 @@ export class CozeBot {
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role !== 'user') {
       if (options.fileUrls && options.fileUrls.length > 0) {
-        const textItems: any[] = [{ type: 'text' as const, text: content }];
+        const textItems: CozeMessageItem[] = [{ type: 'text', text: content }];
         for (const url of options.fileUrls) {
           textItems.push({ type: 'image' as const, file_url: url });
         }
@@ -225,7 +229,7 @@ export class CozeBot {
     imageFileIds?: string[],
     imageUrls?: string[]
   ): EnterMessage {
-    const items: any[] = [{ type: 'text', text }];
+    const items: CozeMessageItem[] = [{ type: 'text', text }];
     if (imageFileIds) {
       for (const fid of imageFileIds) {
         items.push({ type: 'image', file_id: fid });

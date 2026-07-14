@@ -112,7 +112,7 @@ export class ZhipuaiHttpClient {
    */
   async post<T>(
     path: string,
-    body: Record<string, any>,
+    body: object,
     retried?: boolean
   ): Promise<T> {
     const token = await this.getAccessToken();
@@ -148,7 +148,7 @@ export class ZhipuaiHttpClient {
    */
   async postStream(
     path: string,
-    body: Record<string, any>,
+    body: object,
     signal?: AbortSignal,
     retried?: boolean
   ): Promise<Response> {

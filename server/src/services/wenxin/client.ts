@@ -5,6 +5,13 @@
 import type { WenxinAgentConfig, AccessTokenResponse } from './types.js';
 import { WENXIN_BASE_URL, getWenxinErrorMessage } from './types.js';
 
+interface WenxinRawResponse {
+  status?: number;
+  message?: string;
+  logid?: string;
+  data?: unknown;
+}
+
 const FETCH_TIMEOUT_MS = 30_000;
 
 /** 文心 API 客户端错误 */
@@ -59,7 +66,7 @@ export class WenxinHttpClient {
   private token: string | null = null;
   private tokenExpiresAt: number = 0;
 
-  constructor(private config: WenxinAgentConfig) {
+  constructor(readonly config: WenxinAgentConfig) {
     this.baseUrl = (config.baseUrl || WENXIN_BASE_URL).replace(/\/+$/, '');
     this.timeout = FETCH_TIMEOUT_MS;
   }
@@ -144,7 +151,7 @@ export class WenxinHttpClient {
    */
   async post<T>(
     path: string,
-    body: any,
+    body: unknown,
     options?: { signal?: AbortSignal; useToken?: boolean }
   ): Promise<{ data: T; logid: string }> {
     const { url, headers } = this.buildUrl(path, options?.useToken);
@@ -158,9 +165,9 @@ export class WenxinHttpClient {
     });
 
     const raw = await response.text();
-    let parsed: any;
+    let parsed: WenxinRawResponse;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(raw) as WenxinRawResponse;
     } catch {
       throw new WenxinClientError(
         response.status,
@@ -190,7 +197,7 @@ export class WenxinHttpClient {
 
     return {
       data: parsed.data as T,
-      logid: parsed.logid,
+      logid: parsed.logid || '',
     };
   }
 
@@ -199,7 +206,7 @@ export class WenxinHttpClient {
    */
   async postStream(
     path: string,
-    body: any,
+    body: unknown,
     signal?: AbortSignal
   ): Promise<Response> {
     const { url, headers } = this.buildUrl(path);

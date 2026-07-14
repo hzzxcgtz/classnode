@@ -9,7 +9,7 @@
 export const WENXIN_BASE_URL = 'https://agentapi.baidu.com';
 
 /** 统一响应包装（非流式） */
-export interface WenxinResponse<T = any> {
+export interface WenxinResponse<T = unknown> {
   status: number;       // 0 成功，非 0 失败
   message: string;      // 错误信息
   logid: string;        // 请求日志 ID
@@ -159,7 +159,7 @@ export interface SSEContentItem {
     antiFlag?: number;
     isIntervene?: boolean;
     showType?: 'append' | 'replace';
-    typeData?: any[];     // uiData 时可能包含
+    typeData?: unknown[];     // uiData 时可能包含
   };
 }
 

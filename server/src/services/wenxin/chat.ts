@@ -17,6 +17,20 @@ import type {
 } from './types.js';
 import { buildTextMessage, buildMultimodalMessage } from './types.js';
 
+type WenxinSseEnvelope = {
+  status?: number;
+  message?: string;
+  data?: {
+    message?: {
+      msgId?: string;
+      threadId?: string;
+      endTurn?: boolean;
+      content?: SSEContentItem[];
+      progress?: ToolProgress;
+    };
+  };
+};
+
 /** 从响应 content[] 中完整提取文本
  *
  * 实际 dataType 值有多种可能：'text' / 'markdown' / 'txt' / 等
@@ -31,7 +45,7 @@ export function extractWenxinContent(content: GetAnswerData['content']): string 
     }
     // data 为对象时尝试取 text/content 字段
     else if (item.data && typeof item.data === 'object') {
-      const obj = item.data as Record<string, any>;
+      const obj = item.data as Record<string, unknown>;
       if (typeof obj.text === 'string') {
         parts.push(obj.text);
       } else if (typeof obj.content === 'string') {
@@ -43,9 +57,9 @@ export function extractWenxinContent(content: GetAnswerData['content']): string 
 }
 
 /** 从流式内容（已累积的片段）中提取引用来源 */
-export function extractReferenceList(data: GetAnswerData | any): ReferenceItem[] {
+export function extractReferenceList(data: GetAnswerData | { referenceList?: unknown }): ReferenceItem[] {
   if (data?.referenceList && Array.isArray(data.referenceList)) {
-    return data.referenceList;
+    return data.referenceList as ReferenceItem[];
   }
   // getAnswer 非流式的 data.content 可能含 referenceList 在 data 外层
   return [];
@@ -77,7 +91,7 @@ export class ChatAPI {
     referenceList?: ReferenceItem[];
     source: string;             // source = appId
   }> {
-    const config: WenxinAgentConfig = (this.client as any).config;
+    const config = this.client.config;
     const appId = config.appId;
 
     // 构建消息内容（优先使用预构建的 messageContent）
@@ -142,7 +156,7 @@ export class ChatAPI {
     threadId: string;     // 对话 threadId
     msgId: string;        // 消息 ID
   }> {
-    const config: WenxinAgentConfig = (this.client as any).config;
+    const config = this.client.config;
     const appId = config.appId;
 
     // 构建消息内容（优先使用预构建的 messageContent）
@@ -180,7 +194,7 @@ export class ChatAPI {
     let currentEvent = '';
     let resolvedThreadId = options.threadId || '';
     let resolvedMsgId = '';
-    let dataLines: string[] = []; // 记录所有 data 行，备用回退
+    const dataLines: string[] = []; // 记录所有 data 行，备用回退
 
     try {
       while (true) {
@@ -218,9 +232,9 @@ export class ChatAPI {
             // 如果没有 event 前缀，也尝试解析（兼容某些实现）
           }
 
-          let parsed: any;
+          let parsed: WenxinSseEnvelope;
           try {
-            parsed = JSON.parse(dataStr);
+            parsed = JSON.parse(dataStr) as WenxinSseEnvelope;
           } catch {
             continue;
           }
@@ -235,8 +249,7 @@ export class ChatAPI {
             continue;
           }
 
-          const sseData = parsed.data || parsed;
-          const message = sseData.message;
+          const message = parsed.data?.message;
 
           if (!message) {
             currentEvent = '';
@@ -276,8 +289,8 @@ export class ChatAPI {
           currentEvent = '';
         }
       }
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         // 被取消时返回已收集到的内容
         return {
           content: fullContent,
@@ -285,7 +298,7 @@ export class ChatAPI {
           msgId: resolvedMsgId,
         };
       }
-      throw e;
+      throw error;
     }
 
     // 流为空时自动回退到非流式 getAnswer

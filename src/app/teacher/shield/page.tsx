@@ -17,7 +17,6 @@ export default function ShieldPage() {
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState('');
   const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [categories, setCategories] = useState<{ name: string; count: number; words: { id: string; word: string }[] }[]>([]);
   // 警告记录
   const [summary, setSummary] = useState<ClassroomWarningSummary[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
@@ -37,15 +36,14 @@ export default function ShieldPage() {
 
   useEffect(() => {
     if (tab === 'records') loadSummary();
-  }, [tab]);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps -- 进入记录页时按需加载汇总
 
   async function loadData() {
     try {
-      const [w, cfg, cats] = await Promise.all([api.getShieldWords(), api.getShieldConfig(), api.getShieldCategories()]);
+      const [w, cfg] = await Promise.all([api.getShieldWords(), api.getShieldConfig()]);
       setWords(w);
       setAutoBlackCount(cfg.autoBlackCount || 0);
       setRateLimit(cfg.rateLimit ?? 6);
-      setCategories(cats || []);
     } catch {}
   }
 

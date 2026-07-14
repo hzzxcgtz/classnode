@@ -61,7 +61,7 @@ export default function AvatarsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadAvatars(); }, 0);
     return () => window.clearTimeout(timer);
-  }, [tab]);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps -- 切换头像分类时重新加载对应数据
 
   const handleRandomGenerate = async (cat?: string) => {
     if (avatarActionRef.current) return;

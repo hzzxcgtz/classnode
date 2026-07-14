@@ -33,6 +33,8 @@ export default function TeacherDashboard() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [loadingQrClassroomId, setLoadingQrClassroomId] = useState<string | null>(null);
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
+  const [lanAccess, setLanAccess] = useState(true);
+  const [networkSaving, setNetworkSaving] = useState(false);
   const endingRef = useRef(false);
   const settingsSavingRef = useRef(false);
   const qrLoadingRef = useRef(false);
@@ -123,10 +125,26 @@ export default function TeacherDashboard() {
   async function loadData() {
     setLoading(true);
     try {
-      const data = await api.getActiveClassrooms();
+      const [data, settings] = await Promise.all([api.getActiveClassrooms(), api.getSettings().catch((): Record<string, string> => ({}))]);
       setActiveClassrooms(data);
+      setLanAccess(settings['lan-access'] !== 'false');
     } catch {}
     setLoading(false);
+  }
+
+  async function toggleLanAccess() {
+    if (networkSaving) return;
+    setNetworkSaving(true);
+    const next = !lanAccess;
+    try {
+      await api.updateSetting('lan-access', String(next));
+      setLanAccess(next);
+      setToast({ msg: next ? '局域网访问已开启，学生可以连接' : '局域网访问已关闭，仅本机可访问', type: 'success' });
+    } catch (error: unknown) {
+      setToast({ msg: error instanceof Error ? error.message : '网络模式切换失败', type: 'error' });
+    } finally {
+      setNetworkSaving(false);
+    }
   }
 
   const endClassroom = async (classroom: ActiveClassroom) => {
@@ -346,6 +364,11 @@ export default function TeacherDashboard() {
             </span>
           )}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" className="btn btn-secondary" onClick={() => void toggleLanAccess()} disabled={networkSaving}
+          title={lanAccess ? '学生设备可通过局域网访问' : '当前仅教师电脑本机可访问'}>
+          {networkSaving ? '切换中…' : lanAccess ? '局域网：已开放' : '局域网：已关闭'}
+        </button>
         <button
           className="btn btn-primary"
           onClick={() => router.push("/teacher/classroom/new")}
@@ -370,6 +393,7 @@ export default function TeacherDashboard() {
           </svg>
           创建新课堂
         </button>
+      </div>
       </div>
 
       {/* 课堂列表 */}

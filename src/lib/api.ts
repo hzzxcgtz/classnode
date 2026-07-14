@@ -132,8 +132,18 @@ export const api = {
     request<ClassroomMessage[]>(`/api/classroom/${classroomId}/student/${studentId}/messages`),
   getTeacherNotifications: (classroomId: string, studentId?: string) =>
     request<TeacherNotification[]>(`/api/classroom/${classroomId}/notifications${studentId ? `?studentId=${studentId}` : ''}`),
-  getAllMessages: (classroomId: string) =>
-    request<ClassroomMessage[]>(`/api/classroom/${classroomId}/all-messages`),
+  getAllMessages: async (classroomId: string) => {
+    const result: ClassroomMessage[] = [];
+    const limit = 500;
+    for (let page = 1; page <= 100; page++) {
+      const batch = await request<ClassroomMessage[]>(`/api/classroom/${classroomId}/all-messages?page=${page}&limit=${limit}`);
+      result.push(...batch);
+      if (batch.length < limit) break;
+    }
+    return result;
+  },
+  getClassroomMessageStats: (classroomId: string) =>
+    request<{ total: number; userMessages: number; assistantMessages: number; participantCount: number }>(`/api/classroom/${classroomId}/message-stats`),
   clearStudentMessages: (classroomId: string, studentId: string) =>
     request(`/api/classroom/${classroomId}/student/${studentId}/messages`, { method: 'DELETE' }),
   endClassroom: (id: string) => request(`/api/classroom/${id}/end`, { method: 'POST' }),

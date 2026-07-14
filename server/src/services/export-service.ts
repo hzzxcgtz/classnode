@@ -5,10 +5,10 @@
  */
 import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  AlignmentType, BorderStyle, WidthType, ShadingType, Header, Footer,
+  AlignmentType, BorderStyle, WidthType, ShadingType, Footer,
   PageNumber, PageBreak, ImageRun,
 } from 'docx';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -78,7 +78,6 @@ const C = {
   hr: 'D1D5DB',
 };
 
-const INDENT = { left: 400, right: 200 };
 const INDENT_SM = { left: 400 };
 
 
@@ -112,10 +111,6 @@ function readableTimestamp(): string {
 
 function fmtDate(d: string | Date) {
   try { return new Date(d).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
-  catch { return String(d); }
-}
-function fmtDateShort(d: string | Date) {
-  try { return new Date(d).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
   catch { return String(d); }
 }
 function fmtTime(t: string | Date) {
@@ -338,10 +333,6 @@ function cell(text: string, opts?: { bold?: boolean; shading?: string; width?: n
     verticalAlign: 'center',
     children: [new Paragraph({ alignment: opts?.align ?? AlignmentType.LEFT, spacing: { before: 40, after: 40 }, children: [new TextRun({ text: text ?? '', bold: opts?.bold ?? false, size: opts?.size ?? 20, color: opts?.color ?? C.text, font: { name: FONT } })] })],
   });
-}
-
-function emptyPara() {
-  return new Paragraph({ spacing: { before: 0, after: 0 }, children: [] });
 }
 
 // ─── 统计计算 ────────────────────────────────────────────────

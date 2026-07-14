@@ -10,7 +10,6 @@ import type {
   MessageData,
   SubmitToolOutputsRequest,
   CancelChatRequest,
-  SSEEvent,
 } from './types.js';
 import type { RequiredAction } from './types.js';
 

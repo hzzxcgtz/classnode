@@ -74,6 +74,18 @@ async function main() {
   // Make prisma and io available to routes
   app.set('prisma', prisma);
   app.set('io', io);
+  const lanAccessSetting = await prisma.setting.findUnique({ where: { key: 'lan-access' } }).catch(() => null);
+  app.set('lanAccessEnabled', lanAccessSetting?.value !== 'false');
+
+  const isLoopbackAddress = (address?: string) => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+  app.use((req, res, next) => {
+    if (app.get('lanAccessEnabled') !== false || isLoopbackAddress(req.socket.remoteAddress)) return next();
+    res.status(403).json({ error: '教师已关闭局域网访问' });
+  });
+  io.use((socket, next) => {
+    if (app.get('lanAccessEnabled') !== false || isLoopbackAddress(socket.handshake.address)) return next();
+    next(new Error('教师已关闭局域网访问'));
+  });
 
   // 上传后未发送消息、取消头像更换等情况会留下临时文件；延迟清理不打断课堂操作。
   const cleanUploads = () => cleanupOrphanedUploads(prisma)

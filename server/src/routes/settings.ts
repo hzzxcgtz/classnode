@@ -181,6 +181,19 @@ router.put('/:key', async (req, res) => {
     const value = typeof req.body?.value === 'string' ? req.body.value : '';
     const setting = await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
     if (key === 'bind-ip') req.app.get('io')?.emit('nic-changed', { ip: value });
+    if (key === 'lan-access') {
+      const enabled = value !== 'false';
+      req.app.set('lanAccessEnabled', enabled);
+      const io = req.app.get('io') as import('socket.io').Server | undefined;
+      io?.emit('lan-access-changed', { enabled });
+      if (!enabled && io) {
+        for (const socket of io.sockets.sockets.values()) {
+          const address = socket.handshake.address;
+          const local = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+          if (!local) socket.disconnect(true);
+        }
+      }
+    }
     res.json(setting);
   } catch {
     res.status(500).json({ error: '保存设置失败' });

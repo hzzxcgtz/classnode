@@ -1054,7 +1054,7 @@ function StudentChatContent() {
       void restoreSessionFromUrl(Date.now());
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在首次挂载恢复 URL 中的本地会话
 
   const handleSwitchIdentity = () => {
     if (waitingAI) return;

@@ -1,6 +1,6 @@
 import { anonymizer } from './anonymizer.js';
 import { CozeBot } from './coze-bot/index.js';
-import type { EnterMessage, StreamCallbacks, MessageData } from './coze-bot/index.js';
+import type { EnterMessage, StreamCallbacks } from './coze-bot/index.js';
 import { WenxinBot } from './wenxin/index.js';
 import { ZhipuaiBot } from './zhipuai/index.js';
 import fs from 'fs';
@@ -465,24 +465,6 @@ export function resolveLocalPath(fileUrl: string): string {
     throw new Error('附件路径超出应用上传目录');
   }
   return resolved;
-}
-
-/** 将本地图片文件转为 Markdown 图片标签（base64 嵌入） */
-async function fileUrlToMarkdownImage(fileUrl: string): Promise<string | null> {
-  try {
-    const filePath = resolveLocalPath(fileUrl);
-    if (!fs.existsSync(filePath)) return null;
-    const ext = path.extname(filePath).toLowerCase();
-    const imgExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
-    if (!imgExts.includes(ext)) return null;
-    const mimeMap: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-    };
-    const buf = fs.readFileSync(filePath);
-    const b64 = buf.toString('base64');
-    return `![image](data:${mimeMap[ext] || 'image/png'};base64,${b64})`;
-  } catch { return null; }
 }
 
 /** 检查文件 URL 是否为本地路径 */

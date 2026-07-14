@@ -15,7 +15,6 @@ export default function NewClassroomPage() {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
-  const [loadingGroups, setLoadingGroups] = useState(false);
   const [mode, setMode] = useState<CreateMode>('standard');
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [groupAgentIds, setGroupAgentIds] = useState<Record<string, string>>({});
@@ -50,7 +49,6 @@ export default function NewClassroomPage() {
     const requestId = ++groupRequestRef.current;
     setSelectedClassId(id);
     clearError('class');
-    setLoadingGroups(true);
     setClassGroups([]);
     setGroupAgentIds({});
     api.getGroups(id).then(groups => {
@@ -60,8 +58,6 @@ export default function NewClassroomPage() {
       if (!mountedRef.current || requestId !== groupRequestRef.current) return;
       setClassGroups([]);
       setFieldErrors(prev => ({ ...prev, submit: '班级分组加载失败，请重新选择班级后再试' }));
-    }).finally(() => {
-      if (mountedRef.current && requestId === groupRequestRef.current) setLoadingGroups(false);
     });
   };
 

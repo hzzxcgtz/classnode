@@ -520,10 +520,7 @@ router.put('/class/:classId', async (req, res) => {
 
 const SKIN = ['#FDECDC', '#FFE4C4', '#F5D0A9', '#E8C39E', '#FFDBAC', '#FFF0D4', '#FCE4EC', '#FFF8E1'];
 const HAIR = ['#2C1810', '#3E2723', '#4E342E', '#5D4037', '#1A1A2E', '#333333', '#455A64', '#5C4A3A', '#8D6E63', '#A1887F', '#D4A574', '#C68E5A'];
-const EYE_COLORS = ['#4A2800', '#333333', '#1565C0', '#2E7D32', '#6A1B9A', '#00838F'];
-const BLUSH = '#FFB5B5';
 const WHITE = '#FFFFFF';
-const PINK = '#FF80AB';
 const ACCENT = ['#E91E63', '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4'];
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -554,7 +551,6 @@ function generateRandomStudentAvatarByGender(gender: string): { svgContent: stri
   const skin = pick(SKIN);
   const skinLum = hexLuminance(skin);
   const hair = pickHair(skinLum);
-  const eyeColor = pick(EYE_COLORS);
   const accent = pick(ACCENT);
   // 背景色——柔和马卡龙色
   const bgColors = ['#E0F7FA','#FCE4EC','#FFF3E0','#E8F5E9','#F3E5F5','#FFF9C4','#E0F2F1','#FBE9E7'];

@@ -77,7 +77,7 @@ export default function ClassesPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadClasses(); }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 页面首次挂载加载班级
 
   // 加载头像数据（供班级图标和学生头像展示用）
   useEffect(() => {
@@ -102,7 +102,7 @@ export default function ClassesPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadStudents(); void loadGroups(); }, 0);
     return () => window.clearTimeout(timer);
-  }, [selectedClass]);
+  }, [selectedClass]); // eslint-disable-line react-hooks/exhaustive-deps -- 班级变化时同步学生与分组
 
   async function loadGroups() {
     if (!selectedClass) { setClassGroups([]); return; }
@@ -1707,8 +1707,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
     api.getGroups(classId).then(setGroups);
   };
 
-  useEffect(() => { loadGroups(); }, [classId]);
-  useEffect(() => { loadGroups(); }, [students.length]);
+  useEffect(() => { loadGroups(); }, [classId]); // eslint-disable-line react-hooks/exhaustive-deps -- 班级切换时刷新分组
+  useEffect(() => { loadGroups(); }, [students.length]); // eslint-disable-line react-hooks/exhaustive-deps -- 学生数量变化时刷新分组归属
 
   const assignedIds = new Set(groups.flatMap(g => g.studentIds || []));
   const unassigned = [...students].filter(s => !assignedIds.has(s.id))

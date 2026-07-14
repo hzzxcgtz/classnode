@@ -4,12 +4,10 @@
 // ============================================================
 import { WenxinHttpClient } from './client.js';
 import type {
-  WenxinAgentConfig,
   WenxinStreamCallbacks,
   GetAnswerRequest,
   GetAnswerData,
   ConversationRequest,
-  SSEPackage,
   SSEContentItem,
   ReferenceItem,
   MessageContent,

@@ -201,7 +201,7 @@ export class ChatAPI {
    */
   async suggestPrompts(
     conversationId: string,
-    logId?: string
+    _logId?: string
   ): Promise<string[]> {
     // log_id 的语义是获取"之前某条 log_id 的生成结果，如果未生成过，会返回空"
     // 对于当前刚刚完成的对话，尚未生成过追问，因此只传 conversation_id 让 API 自动生成

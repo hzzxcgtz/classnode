@@ -7,7 +7,6 @@ import { createRequire } from 'module';
 const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
 import { reloadEncryptionKey } from '../services/crypto.js';
 import { safeExtractZip } from '../services/upload-security.js';
 import {

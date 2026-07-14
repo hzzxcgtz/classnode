@@ -391,10 +391,14 @@ router.get('/:id/student/:studentId/messages', async (req, res) => {
 router.get('/:id/all-messages', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(500, Math.max(50, Number.parseInt(String(req.query.limit || '500'), 10) || 500));
     // Message 已有 classroomId + createdAt 联合索引，直接按课堂读取可避免大班级时先查学生、再构造超长 IN 条件。
     const messages = await prisma.message.findMany({
       where: { classroomId: req.params.id },
       orderBy: { createdAt: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit,
       include: {
         classroomStudent: { include: { student: true } },
       },
@@ -402,6 +406,21 @@ router.get('/:id/all-messages', async (req, res) => {
     res.json(messages);
   } catch (error) {
     res.status(500).json({ error: '获取消息失败' });
+  }
+});
+
+router.get('/:id/message-stats', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const [total, userMessages, assistantMessages, participants] = await Promise.all([
+      prisma.message.count({ where: { classroomId: req.params.id } }),
+      prisma.message.count({ where: { classroomId: req.params.id, role: 'user' } }),
+      prisma.message.count({ where: { classroomId: req.params.id, role: 'assistant' } }),
+      prisma.message.findMany({ where: { classroomId: req.params.id }, distinct: ['studentId'], select: { studentId: true } }),
+    ]);
+    res.json({ total, userMessages, assistantMessages, participantCount: participants.length });
+  } catch {
+    res.status(500).json({ error: '获取消息统计失败' });
   }
 });
 
@@ -545,7 +564,7 @@ router.post('/:id/end', async (req, res) => {
 router.put('/:id/settings', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, groups, agentIds } = req.body;
+    const { title } = req.body;
 
     await prisma.classroom.update({
       where: { id: req.params.id },

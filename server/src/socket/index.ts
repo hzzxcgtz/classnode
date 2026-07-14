@@ -1,6 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { proxyAIRequest, proxyAIRequestStream } from '../services/ai-proxy.js';
+import { proxyAIRequestStream } from '../services/ai-proxy.js';
 import type { AgentConfig } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { buildShieldFilter } from '../services/shield-filter.js';

@@ -16,8 +16,8 @@ on:
         default: both
 
 env:
-  NODE_VERSION: '22'
-  NODE_LTS: '22.14.0'
+  NODE_VERSION: '24.18.0'
+  NODE_LTS: '24.18.0'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -79,52 +79,7 @@ jobs:
         run: pnpm build:server
 
       - name: Bundle server into Tauri resources
-        shell: bash
-        run: |
-          mkdir -p src-tauri/resources/server
-
-          cp -r server/dist src-tauri/resources/server/dist
-          cp -r server/prisma src-tauri/resources/server/prisma
-          cp -r server/changelogs src-tauri/resources/server/changelogs
-          cp server/package.json src-tauri/resources/server/
-          cp server/.env.example src-tauri/resources/server/.env
-
-          # 打包前端静态文件（由 Express 服务器承载）
-          rm -rf src-tauri/resources/server/frontend
-          cp -r out src-tauri/resources/server/frontend
-
-          cd src-tauri/resources/server
-          npm install --production --ignore-scripts
-
-          # ARM64 构建额外安装 sharp 的 ARM64 原生二进制（在 x64 runner 上需 --force 跳过平台检查）
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            npm install @img/sharp-win32-arm64@0.35.1 --no-save --force
-          fi
-
-          mkdir -p node_modules
-          cp -rL ../../../server/node_modules/@prisma/client node_modules/@prisma/
-          PRISMA_REAL=$(cd ../../../server/node_modules/@prisma/client && pwd -P)
-          PRISMA_DIR="$(dirname "$(dirname "$PRISMA_REAL")")/.prisma"
-          if [ -d "$PRISMA_DIR" ]; then
-            cp -rL "$PRISMA_DIR" node_modules/
-          else
-            echo "WARNING: .prisma not found at $PRISMA_DIR"
-          fi
-
-          # 复制 prisma CLI（用于应用启动时自动同步 schema）
-          cp -rL ../../../server/node_modules/prisma node_modules/
-          echo "Prisma CLI bundled."
-
-          echo "=== Server bundle contents ==="
-          ls -la dist/
-          echo "=== Prisma client ==="
-          ls node_modules/.prisma/client/ 2>/dev/null || echo "No .prisma/client"
-
-          # 初始化数据库（创建表结构）
-          echo "Creating database tables..."
-          rm -f prisma/dev.db
-          ../../../server/node_modules/.bin/prisma db push --accept-data-loss
-          echo "Database initialized at prisma/dev.db"
+        run: node scripts/package-server.mjs --target ${{ matrix.target }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

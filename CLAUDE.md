@@ -5,8 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Dev server (frontend + backend concurrently)
+# Background dev server control
+./dev.sh start       # PID files + logs under .dev/
+./dev.sh status
+./dev.sh logs
+./dev.sh stop
+
+# Foreground frontend + backend
 pnpm dev:all
+
+# Development uses `next dev --webpack`. Turbopack currently panics while
+# resolving Next through this pnpm workspace and causes an HMR reload loop.
 
 # Run each separately
 pnpm dev           # Next.js frontend only (port 3000 → auto-redirect to 4000)
@@ -15,7 +24,7 @@ pnpm dev:server    # Express backend only (port 3001, or 4001 in dev:all)
 # Build
 pnpm build         # Next.js static export → out/
 pnpm build:server  # tsc compile server/src → server/dist/
-pnpm build:all     # both, then copy out/ → server/frontend + src-tauri/resources/server/frontend
+pnpm build:all     # both, then replace server/frontend from out/
 
 # Test (compiles server then runs Node built-in test runner)
 pnpm test
@@ -28,9 +37,15 @@ pnpm --filter classnode-server db:studio     # Open Prisma Studio
 # Sync version from root package.json to all sub-packages
 pnpm sync-version
 
+# Prepare version/changelog/release date without committing
+pnpm prepare-release patch
+
 # Tauri distribution builds
 pnpm build:mac:arm64     # Full .dmg for Apple Silicon (also: build:mac:intel)
 pnpm build:windows       # Full .msi for Windows x64 (also: build:windows:arm64)
+
+# Unified release orchestration
+./release.sh --help
 
 # Kill dev servers
 pnpm stop
@@ -187,11 +202,11 @@ Rust sidecar that bundles Node.js + Express server as embedded resources:
 - Requires bundled Node.js binary for production builds
 
 **Build flow (macOS):** `scripts/build-mac.sh`
-1. `sync-version.mjs` — syncs version to all `package.json`, `tauri.conf.json`, `Cargo.toml`, portals, `updater/latest.json`
+1. `sync-version.mjs` — idempotently syncs version only; normal builds never change release dates
 2. `next build` → `out/`
 3. `tsc` → `server/dist/`
 4. Copy server + frontend to `src-tauri/resources/server/`
-5. `npm install --production` + copy Prisma binaries
+5. Install production dependencies for the target architecture and generate matching Prisma engines
 6. `prisma db push` — initialize bundled database
 7. Download Node.js binary for target arch (optional)
 8. `tauri build` → `.dmg` / `.msi`
@@ -203,20 +218,20 @@ Rust sidecar that bundles Node.js + Express server as embedded resources:
 
 ### Portal / Landing Pages
 
-Two static HTML sites served by Express:
-- **`myportal/`** — Main landing page (`classnode.html` as hero, `index.html`, `deploy.html`)
-- **`portal/`** — Alternate portal version (some files, used by sync-version)
-
-Both have version numbers synced automatically by `sync-version.mjs`.
+`myportal/` is the static landing site. Its displayed version is synchronized by
+`sync-version.mjs`.
 
 ### Versioning
 
 Single source of truth: **root `package.json` → `version`**. The `scripts/sync-version.mjs` script (runs as `prebuild` hook) propagates it to:
 - `server/package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
 - `src-tauri/resources/server/package.json` (bundled copy)
-- `myportal/classnode.html`, `myportal/index.html`, `portal/index.html`
-- `updater/latest.json` (auto-update manifest)
+- `myportal/classnode.html`, `myportal/index.html`
+- `updater/latest.json` version only
 - `README.md`, `README.en.md`
+
+Release dates and changelogs are updated only by `prepare-release.mjs`. The
+script deliberately does not run `git add`, commit, push, or create a tag.
 
 Frontend reads it via `src/lib/version.ts` → `import pkg from '../../package.json'; export const APP_VERSION = pkg.version;`
 

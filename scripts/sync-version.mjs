@@ -1,101 +1,58 @@
 /**
- * 构建前同步版本号：从 package.json 读取版本，写入 tauri.conf.json 和 Cargo.toml
+ * Keep package and UI versions in sync with the root package.json.
+ *
+ * This script is intentionally idempotent: normal builds must not change
+ * release dates or touch files whose contents are already correct.
  */
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
-const version = pkg.version;
-
-// 同步 server/package.json
-const serverPkgPath = path.join(root, 'server', 'package.json');
-const serverPkg = JSON.parse(fs.readFileSync(serverPkgPath, 'utf-8'));
-serverPkg.version = version;
-fs.writeFileSync(serverPkgPath, JSON.stringify(serverPkg, null, 2) + '\n');
-console.log(`[sync-version] server/package.json → ${version}`);
-
-// 同步 src-tauri/resources/server/package.json（Tauri 捆绑的服务器版本）
-const bundledPkgPath = path.join(root, 'src-tauri', 'resources', 'server', 'package.json');
-if (fs.existsSync(bundledPkgPath)) {
-    const bundledPkg = JSON.parse(fs.readFileSync(bundledPkgPath, 'utf-8'));
-    bundledPkg.version = version;
-    fs.writeFileSync(bundledPkgPath, JSON.stringify(bundledPkg, null, 2) + '\n');
-    console.log(`[sync-version] src-tauri/resources/server/package.json → ${version}`);
+function read(file) {
+  return fs.readFileSync(path.join(root, file), 'utf8');
 }
 
-// 同步 tauri.conf.json（仅在桌面应用打包时存在）
-const tauriConfPath = path.join(root, 'src-tauri', 'tauri.conf.json');
-if (fs.existsSync(tauriConfPath)) {
-    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
-    tauriConf.version = version;
-    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
-    console.log(`[sync-version] tauri.conf.json → ${version}`);
+function writeIfChanged(file, content) {
+  const target = path.join(root, file);
+  if (!fs.existsSync(target)) return false;
+  if (fs.readFileSync(target, 'utf8') === content) return false;
+  fs.writeFileSync(target, content);
+  console.log(`[sync-version] ${file}`);
+  return true;
 }
 
-// 同步 Cargo.toml（仅在桌面应用打包时存在）
-const cargoPath = path.join(root, 'src-tauri', 'Cargo.toml');
-if (fs.existsSync(cargoPath)) {
-    let cargo = fs.readFileSync(cargoPath, 'utf-8');
-    cargo = cargo.replace(/^version = ".*?"/m, `version = "${version}"`);
-    fs.writeFileSync(cargoPath, cargo);
-    console.log(`[sync-version] Cargo.toml → ${version}`);
+function updateJson(file, update) {
+  const target = path.join(root, file);
+  if (!fs.existsSync(target)) return false;
+  const value = JSON.parse(fs.readFileSync(target, 'utf8'));
+  update(value);
+  return writeIfChanged(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-// 同步 README.md（cd 命令中的版本号）
+const { version } = JSON.parse(read('package.json'));
+let changed = 0;
+
+changed += updateJson('server/package.json', value => { value.version = version; });
+changed += updateJson('src-tauri/tauri.conf.json', value => { value.version = version; });
+changed += updateJson('updater/latest.json', value => { value.version = version; });
+
+if (fs.existsSync(path.join(root, 'src-tauri/Cargo.toml'))) {
+  changed += writeIfChanged(
+    'src-tauri/Cargo.toml',
+    read('src-tauri/Cargo.toml').replace(/^version = ".*?"/m, `version = "${version}"`),
+  );
+}
+
 for (const file of ['README.md', 'README.en.md']) {
-    const readmePath = path.join(root, file);
-    if (fs.existsSync(readmePath)) {
-        let content = fs.readFileSync(readmePath, 'utf-8');
-        content = content.replace(/classnode-v[\d.]+/g, `classnode-v${version}`);
-        fs.writeFileSync(readmePath, content);
-        console.log(`[sync-version] ${file} → ${version}`);
-    }
+  if (!fs.existsSync(path.join(root, file))) continue;
+  changed += writeIfChanged(file, read(file).replace(/classnode-v[\d.]+/g, `classnode-v${version}`));
 }
 
-// 同步 portal/index.html（版本徽章 + 下载横幅中的版本号 + 日期）
-const portalIndexPath = path.join(root, 'portal', 'index.html');
-if (fs.existsSync(portalIndexPath)) {
-    let content = fs.readFileSync(portalIndexPath, 'utf-8');
-    content = content.replace(/>v\d+\.\d+\.\d+</g, `>v${version}<`);
-    // 更新版本发布日期为今天
-    const today = new Date().toISOString().slice(0, 10);
-    content = content.replace(
-        /(class="dl-version-banner-date"\s*>)\d{4}-\d{2}-\d{2}(<\/span>)/,
-        `$1${today}$2`
-    );
-    fs.writeFileSync(portalIndexPath, content);
-    console.log(`[sync-version] portal/index.html → ${version} (${today})`);
+for (const file of ['myportal/index.html', 'myportal/classnode.html']) {
+  if (!fs.existsSync(path.join(root, file))) continue;
+  changed += writeIfChanged(file, read(file).replace(/v\d+\.\d+\.\d+/g, `v${version}`));
 }
 
-// 同步 myportal/index.html（badge + 下载描述中的版本号）
-const myportalIndexPath = path.join(root, 'myportal', 'index.html');
-if (fs.existsSync(myportalIndexPath)) {
-    let content = fs.readFileSync(myportalIndexPath, 'utf-8');
-    content = content.replace(/v\d+\.\d+\.\d+/g, `v${version}`);
-    fs.writeFileSync(myportalIndexPath, content);
-    console.log(`[sync-version] myportal/index.html → v${version}`);
-}
-
-// 同步 myportal/classnode.html（hero eyebrow 中的版本号）
-const myportalClassnodePath = path.join(root, 'myportal', 'classnode.html');
-if (fs.existsSync(myportalClassnodePath)) {
-    let content = fs.readFileSync(myportalClassnodePath, 'utf-8');
-    content = content.replace(/v\d+\.\d+\.\d+/g, `v${version}`);
-    fs.writeFileSync(myportalClassnodePath, content);
-    console.log(`[sync-version] myportal/classnode.html → v${version}`);
-}
-
-// 同步 updater/latest.json（版本号和发布日期）
-const updaterManifestPath = path.join(root, 'updater', 'latest.json');
-if (fs.existsSync(updaterManifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(updaterManifestPath, 'utf-8'));
-    manifest.version = version;
-    manifest.pub_date = new Date().toISOString();
-    fs.writeFileSync(updaterManifestPath, JSON.stringify(manifest, null, 2) + '\n');
-    console.log(`[sync-version] updater/latest.json → ${version}`);
-}
-
+console.log(`[sync-version] v${version}: ${changed ? `${changed} 个文件已更新` : '已是最新'}`);

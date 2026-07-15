@@ -5,8 +5,17 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ## Commands
 
 ```bash
-# Dev server (frontend + backend concurrently)
+# Background dev server control (PID files + logs under .dev/)
+./dev.sh start
+./dev.sh status
+./dev.sh logs
+./dev.sh stop
+
+# Foreground frontend + backend
 pnpm dev:all
+
+# Development intentionally uses Webpack; Turbopack currently panics while
+# resolving Next through this pnpm workspace and causes an HMR reload loop.
 
 # Build frontend (Next.js static export to out/)
 pnpm build
@@ -22,6 +31,12 @@ pnpm build:mac:arm64
 
 # Sync version across all package.json files
 pnpm sync-version
+
+# Prepare a release without committing or pushing
+pnpm prepare-release patch
+
+# Unified release entry point
+./release.sh --help
 
 # Server database commands (run in server/)
 pnpm --filter classnode-server db:generate   # Generate Prisma client after schema change
@@ -109,17 +124,19 @@ Rust sidecar (`src-tauri/src/lib.rs`) that:
 # Full Tauri .dmg build for ARM64
 pnpm build:mac:arm64
 
-# Creates source distribution zip (without Tauri)
-bash make-dist.sh
+# Creates source distribution zip + tar.gz (without Tauri)
+./release.sh source
 ```
 
-The Tauri build process:
+The Tauri build process is implemented by `scripts/build-mac.sh` and
+`scripts/package-server.mjs` rather than duplicated in `package.json`:
 1. `sync-version.mjs` — syncs version from root package.json to all sub-packages
 2. `next build` — builds frontend static export to `out/`
 3. `tsc` — compiles server TypeScript to `server/dist/`
-4. Copies compiled server + frontend + database to `src-tauri/resources/server/`
-5. Runs `prisma db push` on the bundled database
-6. `tauri build` — packages as `.dmg`
+4. Recreates `src-tauri/resources/server/` for the target architecture
+5. Installs target production dependencies and generates Prisma engines
+6. Initializes the bundled database and downloads the target Node.js runtime
+7. `tauri build` — packages as `.dmg`
 
 ### Key Patterns
 

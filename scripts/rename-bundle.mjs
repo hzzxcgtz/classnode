@@ -1,69 +1,58 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const target = process.argv[2];
+const targets = {
+  aarch64: { triple: 'aarch64-apple-darwin', suffix: 'apple-silicon' },
+  'aarch64-apple-darwin': { triple: 'aarch64-apple-darwin', suffix: 'apple-silicon' },
+  x86_64: { triple: 'x86_64-apple-darwin', suffix: 'intel' },
+  'x86_64-apple-darwin': { triple: 'x86_64-apple-darwin', suffix: 'intel' },
+};
 
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
-const version = pkg.version;
-const target = process.argv[2]; // 'aarch64' or 'x86_64'
+if (!targets[target]) {
+  console.error('用法: node scripts/rename-bundle.mjs <aarch64-apple-darwin|x86_64-apple-darwin>');
+  process.exit(2);
+}
 
-const isArm = target === 'aarch64';
-const suffix = isArm ? 'apple-silicon' : 'intel';
+const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const { triple, suffix } = targets[target];
+const bundleDir = path.join(root, 'src-tauri', 'target', triple, 'release', 'bundle');
 
-const bundleDir = isArm
-  ? path.join(root, 'src-tauri', 'target', 'release', 'bundle')
-  : path.join(root, 'src-tauri', 'target', 'x86_64-apple-darwin', 'release', 'bundle');
+function firstFile(directory, predicate) {
+  if (!fs.existsSync(directory)) return null;
+  return fs.readdirSync(directory)
+    .map(name => path.join(directory, name))
+    .find(file => predicate(path.basename(file))) || null;
+}
+
+function replace(source, destination) {
+  if (!source) return false;
+  fs.rmSync(destination, { recursive: true, force: true });
+  fs.renameSync(source, destination);
+  console.log(`[rename-bundle] ${path.basename(destination)}`);
+  return true;
+}
 
 const dmgDir = path.join(bundleDir, 'dmg');
 const macosDir = path.join(bundleDir, 'macos');
+const prefix = `ClassNode_${version}_macos_${suffix}`;
 
-const oldArch = isArm ? 'aarch64' : 'x64';
-const oldDmg = path.join(dmgDir, `ClassNode_${version}_${oldArch}.dmg`);
-const newDmg = path.join(dmgDir, `ClassNode_${version}_macos_${suffix}.dmg`);
-
-if (fs.existsSync(oldDmg)) {
-  if (fs.existsSync(newDmg)) {
-    fs.rmSync(newDmg);
-  }
-  fs.renameSync(oldDmg, newDmg);
-  console.log(`Renamed DMG: ClassNode_${version}_macos_${suffix}.dmg`);
-} else {
-  console.warn(`DMG not found: ${oldDmg}`);
+const dmg = firstFile(dmgDir, name => name.endsWith('.dmg') && !name.includes('_macos_'));
+if (!replace(dmg, path.join(dmgDir, `${prefix}.dmg`))) {
+  throw new Error(`未找到待重命名的 DMG: ${dmgDir}`);
 }
 
-const appBundle = path.join(macosDir, 'ClassNode.app');
-const newApp = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.app`);
-
-if (fs.existsSync(appBundle)) {
-  if (fs.existsSync(newApp)) {
-    fs.rmSync(newApp, { recursive: true });
-  }
-  fs.renameSync(appBundle, newApp);
-  console.log(`Renamed App: ClassNode_${version}_macos_${suffix}.app`);
-} else {
-  console.warn(`App bundle not found: ${appBundle}`);
-}
-
-// --- 重命名 updater 归档文件 ---
-const tarGzOld = path.join(macosDir, 'ClassNode.app.tar.gz');
-const tarGzNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz`);
-const sigOld = path.join(macosDir, 'ClassNode.app.tar.gz.sig');
-const sigNew = path.join(macosDir, `ClassNode_${version}_macos_${suffix}.tar.gz.sig`);
-
-if (fs.existsSync(tarGzOld)) {
-  if (fs.existsSync(tarGzNew)) fs.rmSync(tarGzNew);
-  fs.renameSync(tarGzOld, tarGzNew);
-  console.log(`Renamed tar.gz: ClassNode_${version}_macos_${suffix}.tar.gz`);
-} else {
-  console.warn(`tar.gz not found: ${tarGzOld}`);
-}
-
-if (fs.existsSync(sigOld)) {
-  if (fs.existsSync(sigNew)) fs.rmSync(sigNew);
-  fs.renameSync(sigOld, sigNew);
-  console.log(`Renamed sig: ClassNode_${version}_macos_${suffix}.tar.gz.minisig`);
-} else {
-  console.warn(`Sig not found: ${sigOld}`);
-}
+replace(
+  firstFile(macosDir, name => name === 'ClassNode.app'),
+  path.join(macosDir, `${prefix}.app`),
+);
+replace(
+  firstFile(macosDir, name => name === 'ClassNode.app.tar.gz'),
+  path.join(macosDir, `${prefix}.tar.gz`),
+);
+replace(
+  firstFile(macosDir, name => name === 'ClassNode.app.tar.gz.sig'),
+  path.join(macosDir, `${prefix}.tar.gz.sig`),
+);

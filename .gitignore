@@ -66,8 +66,8 @@ server/dashboard.html
 server/.encryption.key
 
 # dev helpers
-dev.sh
 dev.md
+/.dev/
 
 # downloaded
 playwright-*.tgz
@@ -84,3 +84,4 @@ docs/
 
 # 源码打包产物
 classnode-v*.tar.gz
+/dist/

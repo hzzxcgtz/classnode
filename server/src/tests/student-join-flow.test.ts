@@ -26,14 +26,25 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
         where.code === '1234' || where.id === 'classroom-1' ? classroom : null,
     },
     classroomStudent: {
-      findFirst: async ({ where }: { where: { classroomId: string; studentId: string } }) =>
-        where.classroomId === 'classroom-1' && where.studentId === 'student-1' ? { id: 'membership-1' } : null,
-      findMany: async () => [{
-        student: { id: 'student-1', name: '小林', studentNo: '202601', gender: 'boy', avatarId: 7, tag: null },
-        groupId: null,
-        group: null,
-        status: 'offline',
-      }],
+      findFirst: async ({ where }: { where: { classroomId: string; id: string } }) =>
+        where.classroomId === 'classroom-1' && where.id === 'membership-1' ? { id: 'membership-1' } : null,
+      findMany: async () => [
+        {
+          id: 'membership-10', type: 'student', studentId: 'student-10',
+          student: { id: 'student-10', name: '十号', studentNo: '10', gender: 'girl', avatarId: null, tag: null },
+          groupId: null, group: null, status: 'offline',
+        },
+        {
+          id: 'membership-1', type: 'student', studentId: 'student-1',
+          student: { id: 'student-1', name: '小林', studentNo: '1', gender: 'boy', avatarId: 7, tag: null },
+          groupId: null, group: null, status: 'offline',
+        },
+        {
+          id: 'membership-2', type: 'student', studentId: 'student-2',
+          student: { id: 'student-2', name: '二号', studentNo: '2', gender: 'boy', avatarId: null, tag: null },
+          groupId: null, group: null, status: 'offline',
+        },
+      ],
     },
   });
   app.use(classroomRoutes);
@@ -60,20 +71,22 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
 
   const studentsResponse = await fetch(`${baseUrl}/classroom-1/students`);
   assert.equal(studentsResponse.status, 200);
-  assert.deepEqual(await studentsResponse.json(), [{
-    id: 'student-1', name: '小林', studentNo: null, gender: null, avatarId: 7, groupId: null, status: 'offline',
-  }]);
+  assert.deepEqual(await studentsResponse.json(), [
+    { id: 'membership-1', participantType: 'student', studentId: 'student-1', name: '小林', studentNo: null, gender: null, avatarId: 7, groupId: null, status: 'offline' },
+    { id: 'membership-2', participantType: 'student', studentId: 'student-2', name: '二号', studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' },
+    { id: 'membership-10', participantType: 'student', studentId: 'student-10', name: '十号', studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' },
+  ]);
 
   const sessionResponse = await fetch(`${baseUrl}/code/1234/student-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ studentId: 'student-1' }),
+    body: JSON.stringify({ studentId: 'membership-1' }),
   });
   assert.equal(sessionResponse.status, 200);
   const { token } = await sessionResponse.json() as { token: string };
   const session = verifyStudentToken(token);
   assert.equal(session?.classroomId, 'classroom-1');
-  assert.equal(session?.studentId, 'student-1');
+  assert.equal(session?.studentId, 'membership-1');
 
   const deniedResponse = await fetch(`${baseUrl}/code/1234/student-session`, {
     method: 'POST',
@@ -81,7 +94,7 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
     body: JSON.stringify({ studentId: 'student-not-in-classroom' }),
   });
   assert.equal(deniedResponse.status, 403);
-  assert.deepEqual(await deniedResponse.json(), { error: '该学生不属于当前课堂' });
+  assert.deepEqual(await deniedResponse.json(), { error: '该参与者不属于当前课堂' });
 
   // 暂停课堂仍允许学生断线重连；只有结束后才应彻底关闭公开入口。
   classroom.status = 'ended';
@@ -96,7 +109,7 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
   const endedSessionResponse = await fetch(`${baseUrl}/code/1234/student-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ studentId: 'student-1' }),
+    body: JSON.stringify({ studentId: 'membership-1' }),
   });
   assert.equal(endedSessionResponse.status, 404);
   assert.deepEqual(await endedSessionResponse.json(), { error: '课堂不存在或已结束' });

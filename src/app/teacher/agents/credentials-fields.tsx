@@ -61,6 +61,16 @@ function PlatformNotice({ children }: { children: React.ReactNode }) {
   );
 }
 
+export function AgentPlatformNotice({ platform }: { platform: AgentPlatform }) {
+  if (platform === 'coze' || platform === 'coze-agent') {
+    return <PlatformNotice>扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。</PlatformNotice>;
+  }
+  if (platform === 'wenxin') {
+    return <PlatformNotice>文心智能体暂不支持流式输出，需等待完整回复，体验上稍有延迟。受 API 功能限制，不支持图片理解。</PlatformNotice>;
+  }
+  return null;
+}
+
 export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
   const { platform, editing, savedApiKeyLabel, savedApiSecretLabel, fieldErrors, onChange } = props;
   const update = (field: CredentialField) => (value: string) => onChange(field, value);
@@ -73,12 +83,6 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
 
   return (
     <>
-      {(platform === 'coze' || platform === 'coze-agent') && (
-        <PlatformNotice>扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。</PlatformNotice>
-      )}
-      {platform === 'wenxin' && (
-        <PlatformNotice>文心智能体暂不支持流式输出，需等待完整回复，体验上稍有延迟。受 API 功能限制，不支持图片理解。</PlatformNotice>
-      )}
       {platform === 'coze' && <RequiredField label="Bot ID" value={props.botId} placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字" error={fieldErrors.botId} onChange={update('botId')} />}
       {platform === 'wenxin' && <RequiredField label="App ID" value={props.botId} placeholder="在文心智能体平台获取 App ID" error={fieldErrors.botId} onChange={update('botId')} />}
       {platform === 'zhipuai' && <RequiredField label="Assistant ID" value={props.botId} placeholder="智能体对话页地址栏中的 ID" error={fieldErrors.botId} onChange={update('botId')} />}

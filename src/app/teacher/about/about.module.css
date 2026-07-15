@@ -1,0 +1,130 @@
+.letter {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: 34px 38px 30px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.98), rgba(246,249,255,.96)),
+    #fff;
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.08);
+}
+
+.letter::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #3b82f6, #818cf8 55%, #c4b5fd);
+  content: '';
+}
+
+.letterGlow {
+  position: absolute;
+  top: -130px;
+  right: -90px;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(147,197,253,.24), rgba(199,210,254,.08) 52%, transparent 72%);
+  pointer-events: none;
+}
+
+.letterMark {
+  position: absolute;
+  top: 11px;
+  right: 34px;
+  color: rgba(59, 130, 246, 0.09);
+  font-family: Georgia, serif;
+  font-size: 8.5rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.letterContent {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+}
+
+.letterEyebrow {
+  margin-bottom: 9px;
+  color: #2563eb;
+  font-size: 0.688rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.letter h2 {
+  max-width: 620px;
+  margin: 0 0 22px;
+  color: #0f172a;
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.45;
+}
+
+.letterBody {
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.95;
+}
+
+.letterBody p {
+  margin: 0 0 14px;
+}
+
+.letterBody .letterWish {
+  margin-bottom: 24px;
+  color: #334155;
+  font-weight: 550;
+}
+
+.signature {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.signatureAvatar {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  box-shadow: 0 4px 10px rgba(37,99,235,.2);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.signature > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.signature strong {
+  color: #334155;
+  font-size: 0.78rem;
+}
+
+.signature small {
+  color: #94a3b8;
+  font-size: 0.67rem;
+}
+
+@media (max-width: 640px) {
+  .letter { padding: 27px 24px 24px; border-radius: 16px; }
+  .letterMark { right: 18px; font-size: 6rem; }
+  .letter h2 { padding-right: 18px; font-size: 1.15rem; }
+  .letterBody { font-size: 0.85rem; line-height: 1.85; }
+  .signature { margin-left: 0; }
+}

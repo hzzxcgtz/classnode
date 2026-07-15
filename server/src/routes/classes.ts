@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
       include: { _count: { select: { groups: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    // 手动统计实际学生数（排除 __group__ 虚拟学生）
+    // 统计真实学生；小组不再写入 Student 表。
     // 预查所有上传图片类型的头像（非纯 SVG 的头像）
     const allAvatars = await prisma.avatar.findMany({
       select: { id: true, svgContent: true },
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 
     const result = await Promise.all(classes.map(async (c) => {
       const students = await prisma.student.findMany({
-        where: { classId: c.id, OR: [{ tag: null }, { tag: { not: '__group__' } }] },
+        where: { classId: c.id },
         select: { gender: true, avatarId: true, avatarChangeTokens: true },
       });
       const studentCount = students.length;
@@ -129,7 +129,7 @@ router.get('/:classId/students', async (req, res) => {
       where: { classId: req.params.classId },
       orderBy: { studentNo: 'asc' },
     });
-    res.json(students.filter(s => s.tag !== '__group__'));
+    res.json(students);
   } catch (error) {
     res.status(500).json({ error: '获取学生列表失败' });
   }

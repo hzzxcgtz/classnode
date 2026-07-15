@@ -153,8 +153,8 @@ export default function HistoryPage() {
     setRestoring(false);
   };
 
-  const totalStudents = history.reduce((sum, cr) => sum + cr._count.students, 0);
-  const totalInteractions = history.reduce((sum, cr) => sum + cr._count.interactions, 0);
+  const totalStudents = history.reduce((sum, cr) => sum + (cr.realStudentCount ?? cr._count.students), 0);
+  const totalInteractions = history.reduce((sum, cr) => sum + (cr.totalRounds ?? 0), 0);
   const totalChars = history.reduce((sum, cr) => sum + cr.totalChars, 0);
 
   return (
@@ -309,15 +309,17 @@ export default function HistoryPage() {
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
-                          {cr.participantCount || 0}/{cr._count?.students || 0}
+                          {cr.mode === 'group' || cr.mode === 'advanced'
+                            ? `${cr.participantCount || 0} 组/${cr.realStudentCount ?? 0} 人`
+                            : `${cr.participantCount || 0}/${cr.realStudentCount ?? (cr._count?.students || 0)}`}
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{
                           fontSize: "0.813rem", fontWeight: 600,
-                          color: (cr._count?.interactions || 0) > 50 ? '#2563eb' : (cr._count?.interactions || 0) > 10 ? '#f59e0b' : '#94a3b8',
+                          color: (cr.totalRounds || 0) > 50 ? '#2563eb' : (cr.totalRounds || 0) > 10 ? '#f59e0b' : '#94a3b8',
                         }}>
-                          {cr._count?.interactions || 0} 轮
+                          {cr.totalRounds || 0} 轮
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>

@@ -9,14 +9,36 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
+import styles from './chat.module.css';
 
 const API_BASE_URL = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE_URL}/uploads/`) : svg; }
 function svgDataUrl(svg: string) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(fixSvgUrl(svg))}`;
 }
-function SvgAvatar({ svg, size }: { svg: string; size: number }) {
-  return <img src={svgDataUrl(svg)} alt="" width={size} height={size} style={{ display: 'block', width: size, height: size }} />;
+
+/** 上传图片头像会保存为包含相对 image href 的 SVG；作为 data URL 渲染时浏览器不会加载其外部图片。 */
+function getEmbeddedAvatarImageUrl(svg: string): string | null {
+  const match = svg.match(/<image\b[^>]*\bhref\s*=\s*(["'])([^"']+)\1/i);
+  if (!match) return null;
+  const href = match[2];
+  if (href.startsWith('/uploads/')) return `${API_BASE_URL}${href}`;
+  if (href.startsWith(`${API_BASE_URL}/uploads/`)) return href;
+  return null;
+}
+
+function SvgAvatar({ svg, size, fallback = '?' }: { svg: string; size: number; fallback?: string }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const embeddedImageUrl = getEmbeddedAvatarImageUrl(svg);
+  const src = embeddedImageUrl || svgDataUrl(svg);
+  if (failedSrc === src) {
+    return (
+      <span style={{ display: 'flex', width: size, height: size, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#f3f4f6', color: '#64748b', fontSize: Math.max(11, size * 0.4), fontWeight: 700 }}>
+        {fallback}
+      </span>
+    );
+  }
+  return <img src={src} alt="" width={size} height={size} onError={() => setFailedSrc(src)} style={{ display: 'block', width: size, height: size, objectFit: embeddedImageUrl ? 'cover' : undefined }} />;
 }
 function useIsMobile(): boolean {
   return useSyncExternalStore(
@@ -79,9 +101,9 @@ const AgentAvatar = memo(function AgentAvatar({
 });
 
 const MessageItem = memo(function MessageItem({
-  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onEdit, allowExport, msgIndex, onFollowUp, allowFollowUps,
+  msg, studentName, agent, apiBase, avatarSvg, onImageClick, onRevise, allowExport, msgIndex, onFollowUp, allowFollowUps, allowStudentStop, isRespondingToThis, aiResponding,
 }: {
-  msg: StudentChatMessage; studentName: string; agent: ChatAgent; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onEdit?: (content: string) => void; allowExport?: boolean; msgIndex?: number; onFollowUp?: (question: string) => void; allowFollowUps?: boolean;
+  msg: StudentChatMessage; studentName: string; agent: ChatAgent; apiBase: string; avatarSvg?: string; onImageClick?: (url: string) => void; onRevise?: (content: string) => void; allowExport?: boolean; msgIndex?: number; onFollowUp?: (question: string) => void; allowFollowUps?: boolean; allowStudentStop?: boolean; isRespondingToThis?: boolean; aiResponding?: boolean;
 }) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
   const followUps = msg.followUps ?? [];
@@ -103,43 +125,31 @@ const MessageItem = memo(function MessageItem({
   }, [msg.content, msg.createdAt, agent]);
 
   return (
-    <div data-msg-id={msg.role === 'user' && msgIndex !== undefined ? msgIndex : undefined} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: 4 }}>
+    <div data-msg-id={msg.role === 'user' && msgIndex !== undefined ? msgIndex : undefined} className={`${styles.messageRow} ${msg.role === 'user' ? styles.messageRowUser : styles.messageRowAssistant}`}>
       {msg.role === 'assistant' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-            <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
+        <div className={styles.messageAuthor}>
+          <div className={styles.messageAvatar}>
+            <AgentAvatar size={40} borderRadius={12} fontSize={17} agent={agent} apiBase={apiBase} />
           </div>
-          <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+          <span>{agent?.name || 'AI助手'}</span>
+          <small>正在和你一起思考</small>
         </div>
       )}
       {msg.role === 'user' && studentName && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}>
+        <div className={`${styles.messageAuthor} ${styles.messageAuthorUser}`}>
           {avatarSvg ? (
-            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
-              <SvgAvatar svg={avatarSvg} size={42} />
+            <div className={styles.studentMessageAvatar}>
+              <SvgAvatar svg={avatarSvg} size={40} fallback={studentName[0]} />
             </div>
           ) : (
-            <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.875rem", fontWeight: 700, flexShrink: 0 }}>
+            <div className={styles.studentAvatarFallback}>
               {studentName[0]}
             </div>
           )}
-          <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#94a3b8' }}>{studentName}</span>
+          <span>{studentName}</span>
         </div>
       )}
-      <div data-msg-content style={{
-        maxWidth: '78%',
-        minWidth: 320,
-        padding: msg.role === 'system' ? '10px 16px' : '14px 18px',
-        borderRadius: msg.role === 'user' ? '18px 18px 6px 18px' : '6px 18px 18px 18px',
-        background: msg.role === 'user' ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'white',
-        color: msg.role === 'user' ? 'white' : '#1a1a2e',
-        border: msg.role === 'assistant' ? '1px solid #eef2f6' : 'none',
-        boxShadow: msg.role === 'assistant' ? '0 2px 8px rgba(0,0,0,0.04)' : '0 4px 12px rgba(102,126,234,0.2)',
-        lineHeight: 1.7,
-        fontSize: "1rem",
-        wordBreak: 'break-word',
-        position: 'relative',
-      }}>
+      <div data-msg-content className={`${styles.messageBubble} ${msg.role === 'user' ? styles.userBubble : msg.role === 'system' ? styles.systemBubble : styles.assistantBubble}`}>
         {fileSources.map((fu: string, fi: number) => (
           <div key={fi} style={{ marginBottom: 8 }}>
             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
@@ -163,19 +173,13 @@ const MessageItem = memo(function MessageItem({
         )}
       </div>
       {msg.role === 'assistant' && allowExport !== false && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4, marginTop: 2, position: 'relative' }}>
-          <button onClick={handleCopy}
-            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <div className={styles.messageActions}>
+          <button onClick={handleCopy} className={styles.messageAction}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             复制
           </button>
-          <button onClick={handleExportWord}
-            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <button onClick={handleExportWord} className={styles.messageAction}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             导出
           </button>
           {toast && (
@@ -185,35 +189,24 @@ const MessageItem = memo(function MessageItem({
       )}
       {/* 追问建议按钮 */}
       {msg.role === 'assistant' && onFollowUp && followUps.length > 0 && allowFollowUps !== false && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingLeft: 4 }}>
+        <div className={styles.followUps}>
           {followUps.map((q, i: number) => (
-            <button key={i} onClick={() => onFollowUp(q)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 18,
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#94a3b8',
-                fontSize: "0.813rem",
-                cursor: 'pointer',
-                transition: 'all 0.12s',
-                lineHeight: 1.4,
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#94a3b8'; }}>
+            <button key={i} onClick={() => onFollowUp(q)} className={styles.followUpButton}>
+              <span aria-hidden="true">↗</span>
               {q}
             </button>
           ))}
         </div>
       )}
-      {msg.role === 'user' && onEdit && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4, marginTop: 2 }}>
-          <button onClick={() => onEdit(msg.content || '')}
-            style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: "0.688rem", display: 'flex', alignItems: 'center', gap: 3, transition: 'color .12s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#6366f1'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            编辑
+      {msg.role === 'user' && onRevise && (!aiResponding || (isRespondingToThis && allowStudentStop !== false)) && (
+        <div className={`${styles.messageActions} ${styles.messageActionsUser}`}>
+          <button
+            onClick={() => onRevise(msg.content || '')}
+            className={`${styles.messageAction} ${styles.reviseAction} ${isRespondingToThis ? styles.reviseActionActive : ''}`}
+            title={isRespondingToThis ? '停止当前回答，并将问题放回输入框修改' : '将这条问题放回输入框修改后重新发送'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            {isRespondingToThis ? '停止并修改' : '修改后重发'}
           </button>
         </div>
       )}
@@ -228,21 +221,15 @@ const StreamingIndicator = memo(function StreamingIndicator({
 }) {
   const strippedContent = useMemo(() => stripImages(streamingContent), [streamingContent]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-          <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
+    <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
+      <div className={styles.messageAuthor}>
+        <div className={styles.messageAvatar}>
+          <AgentAvatar size={40} borderRadius={12} fontSize={17} agent={agent} apiBase={apiBase} />
         </div>
-        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+        <span>{agent?.name || 'AI助手'}</span>
+        <small>正在组织回答</small>
       </div>
-      <div style={{
-        maxWidth: '78%', padding: '14px 18px',
-        borderRadius: '6px 18px 18px 18px',
-        background: 'white', color: '#1a1a2e',
-        border: '1px solid #eef2f6',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        lineHeight: 1.7, fontSize: "0.938rem", wordBreak: 'break-word',
-      }}>
+      <div className={`${styles.messageBubble} ${styles.assistantBubble} ${styles.streamingBubble}`}>
         {strippedContent ? (
           <Markdown streaming allowImages={false}>{strippedContent}</Markdown>
         ) : (
@@ -272,12 +259,13 @@ const ThinkingContent = memo(function ThinkingContent({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 8, flexShrink: 0, overflow: 'hidden' }}>
-          <AgentAvatar size={42} borderRadius={8} fontSize={18} agent={agent} apiBase={apiBase} />
+    <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
+      <div className={styles.messageAuthor}>
+        <div className={styles.messageAvatar}>
+          <AgentAvatar size={40} borderRadius={12} fontSize={17} agent={agent} apiBase={apiBase} />
         </div>
-        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--primary)' }}>{agent?.name || 'AI助手'}</span>
+        <span>{agent?.name || 'AI助手'}</span>
+        <small>深度思考</small>
       </div>
       <div style={{
         maxWidth: '78%', padding: 0,
@@ -338,7 +326,7 @@ function StudentChatContent() {
         if (now - session.timestamp < 7200000) {
           sessionData = { studentId: session.studentId, studentName: session.studentName, token: session.token };
           setStudentSessionToken(session.token);
-          setSelectedStudent({ id: session.studentId, name: session.studentName, studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' });
+          setSelectedStudent({ id: session.studentId, participantType: 'student', studentId: null, name: session.studentName, studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' });
         } else {
           localStorage.removeItem(`chat_session_${codeFromUrl}`);
         }
@@ -400,15 +388,20 @@ function StudentChatContent() {
             api.getAvatarsAll('student'),
             api.getAvatars('student'),
             cr.id ? api.getClassroomStudents(cr.id) : Promise.resolve([]),
-            api.getStudentTokens(sessionData.studentId),
+            Promise.resolve({ tokens: 0 }),
           ]);
           const m: Record<number, string> = {};
           avData.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
           setAvatarSvgs(m);
           setAllStudentAvatars(avTeacherData);
-          setAvatarTokenCount(tokenData.tokens || 0);
           const cur = stsData.find((student) => student.id === sessionData!.studentId);
-          if (cur) setSelectedStudent(cur);
+          if (cur) {
+            setSelectedStudent(cur);
+            if (cur.studentId) {
+              const tokenData = await api.getStudentTokens(cur.id);
+              setAvatarTokenCount(tokenData.tokens || 0);
+            } else setAvatarTokenCount(0);
+          }
         } catch {}
       } else {
         setStep('identity');
@@ -1077,17 +1070,29 @@ function StudentChatContent() {
     if (wsRef.current) {
       wsRef.current.emit('stop-generation');
     }
+    sendingRef.current = false;
     setWaitingAI(false);
     setStreamingContent('');
+    setThinkingContent('');
   };
 
-  const handleEdit = (content: string) => {
+  const handleRevise = (content: string) => {
+    if (waitingAI && classroom?.allowStudentStop === false) return;
+    const stoppedCurrentAnswer = waitingAI;
+    if (stoppedCurrentAnswer) handleStopGeneration();
+    setAttachedFiles([]);
     setInput(content);
-    if (inputRef.current) {
+    window.requestAnimationFrame(() => {
+      if (!inputRef.current) return;
       inputRef.current.focus();
-      const len = content.length;
-      inputRef.current.setSelectionRange(len, len);
-    }
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 160) + 'px';
+      inputRef.current.setSelectionRange(content.length, content.length);
+    });
+    setToast({
+      msg: stoppedCurrentAnswer ? '已停止回答，请修改后重新发送' : '问题已放回输入框，请修改后重新发送',
+      type: 'info',
+    });
   };
 
   const handleExit = () => {
@@ -1102,7 +1107,7 @@ function StudentChatContent() {
 
 
   const fetchStudentTokens = async () => {
-    if (!selectedStudent?.id) return;
+    if (!selectedStudent?.studentId) return;
     try {
       const result = await api.getStudentTokens(selectedStudent.id);
       setAvatarTokenCount(result.tokens || 0);
@@ -1298,9 +1303,9 @@ function StudentChatContent() {
   if (step === 'identity') {
     const isGroupMode = classroom?.mode === 'group' || classroom?.mode === 'advanced';
     const normalizedIdentitySearch = identitySearch.trim().toLocaleLowerCase('zh-CN');
-    const visibleStudents = [...students]
-      .filter((student) => !normalizedIdentitySearch || student.name.toLocaleLowerCase('zh-CN').includes(normalizedIdentitySearch))
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    const visibleStudents = students
+      .filter((student) => !normalizedIdentitySearch || student.name.toLocaleLowerCase('zh-CN').includes(normalizedIdentitySearch));
+    if (isGroupMode) visibleStudents.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: 24, position: 'relative' }}>
         <button onClick={handleExit}
@@ -1381,7 +1386,7 @@ function StudentChatContent() {
                     <>
                       <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: s.avatarId && avatarSvgs[s.avatarId] ? 'transparent' : (isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6'), color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem" }}>
                         {s.avatarId && avatarSvgs[s.avatarId] ? (
-                          <SvgAvatar svg={avatarSvgs[s.avatarId]} size={42} />
+                          <SvgAvatar svg={avatarSvgs[s.avatarId]} size={42} fallback={s.name[0]} />
                         ) : s.name[0]}
                       </div>
                       <div style={{ flex: 1 }}>
@@ -1426,13 +1431,13 @@ function StudentChatContent() {
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', background: 'linear-gradient(180deg, #f0f4ff 0%, #f8fafc 100%)' }}>
+    <div className={styles.chatShell}>
       {/* === 顶部栏 === */}
-      <div style={{ padding: isMobile ? '8px 12px' : '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 4 : 0, background: 'white', borderBottom: '1px solid #eef2f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {renderAgentAvatar(42, 12, 20)}
-          <div>
-            <div style={{ fontSize: "1.063rem", fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>
+      <div className={styles.topBar}>
+        <div className={styles.agentIdentity}>
+          <div className={styles.headerAgentAvatar}>{renderAgentAvatar(48, 14, 20)}</div>
+          <div className={styles.agentIdentityText}>
+            <div className={styles.agentTitle}>
               {(() => {
                 if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
                   const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
@@ -1441,27 +1446,27 @@ function StudentChatContent() {
                 return classroom?.agents?.[0]?.name || 'AI 学习助手';
               })()}
             </div>
-            <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className={styles.classroomMeta}>
               {classroom?.title || ''}
-              <span style={{ fontSize: "0.625rem", color: '#6366f1', fontWeight: 600, background: '#eef2ff', padding: '1px 5px', borderRadius: 4, letterSpacing: 0.5 }}>#{code}</span>
+              <span>课堂 #{code}</span>
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 5 : 10, flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: 'flex-end' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: "0.75rem", color: connected ? '#10b981' : '#ef4444' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? '#10b981' : '#ef4444', display: 'inline-block' }} />
+        <div className={styles.headerActions}>
+          <div className={`${styles.connectionBadge} ${connected ? styles.connectionOnline : styles.connectionOffline}`}>
+            <span />
             {connected ? '已连接' : '连接断开'}
           </div>
           {/* 当前登录用户姓名标签 */}
           {selectedStudent?.name && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px 3px 4px', background: '#eef2ff', borderRadius: 20, fontSize: "0.813rem", color: 'var(--primary)', fontWeight: 600, border: '1px solid #c7d2fe' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: "0.688rem" }}>
+            <div className={styles.studentBadge}>
+              <div className={styles.studentBadgeAvatar}>
                 {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
-                  <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={22} />
+                  <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={28} fallback={selectedStudent.name[0]} />
                 ) : selectedStudent.name[0]}
               </div>
               {selectedStudent.name}
-              {avatarTokenCount > 0 && (
+              {selectedStudent.studentId && avatarTokenCount > 0 && (
                 <span onClick={() => setShowAvatarChanger(true)}
                   style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '1px 5px', borderRadius: 10, background: '#fffbeb', color: '#d97706', fontSize: "0.688rem", fontWeight: 700 }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
@@ -1474,16 +1479,7 @@ function StudentChatContent() {
           <div ref={teacherPanelRef} style={{ position: 'relative' }}>
             <button onClick={() => setShowTeacherPanel(p => !p)}
               title={showTeacherPanel ? '收起消息' : '查看消息'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px',
-                border: '1px solid #e0e7ff', borderRadius: 8,
-                background: 'white', cursor: 'pointer',
-                color: teacherMsgs.length > 0 ? '#4338ca' : '#94a3b8',
-                fontSize: "0.813rem", fontWeight: 500,
-                fontFamily: 'inherit', transition: 'all 0.12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}
+              className={`${styles.headerButton} ${teacherMsgs.length > 0 ? styles.headerButtonActive : ''}`}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
               消息 {teacherMsgs.length}
@@ -1528,7 +1524,7 @@ function StudentChatContent() {
           </div>
           {/* 切换用户按钮 */}
           <button onClick={handleSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: "0.813rem", fontWeight: 500, transition: 'all .15s' }}>
+            className={styles.headerButton}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
             </svg>
@@ -1536,7 +1532,7 @@ function StudentChatContent() {
           </button>
           {/* 退出按钮 */}
           <button onClick={handleExit} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '退出课堂'}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: waitingAI ? '#f9fafb' : 'white', cursor: waitingAI ? 'not-allowed' : 'pointer', color: waitingAI ? '#d1d5db' : '#6b7280', fontSize: "0.813rem", fontWeight: 500, transition: 'all .15s' }}>
+            className={`${styles.headerButton} ${styles.exitButton}`}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             退出
           </button>
@@ -1545,8 +1541,8 @@ function StudentChatContent() {
 
       {/* === 消息区域 === */}
       <div ref={chatContainerRef} onScroll={handleChatScroll}
-        style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', minHeight: 0 }}>
-        <div data-chat-wrapper style={{ width: '100%', maxWidth: 800, padding: '20px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        className={styles.chatScroller}>
+        <div data-chat-wrapper className={styles.chatWrapper}>
 
         {/* 加载错误提示：会话恢复失败 */}
         {loadError && messages.length === 0 && !waitingAI && (
@@ -1606,11 +1602,12 @@ function StudentChatContent() {
 
         {/* 空状态：欢迎语 */}
         {messages.length === 0 && !waitingAI && !loadError && (
-          <div style={{ textAlign: 'center', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ marginBottom: 20, boxShadow: '0 8px 24px rgba(102,126,234,0.25)', borderRadius: 24, width: 80, height: 80, overflow: 'hidden', opacity: getCurrentAgent()?.enabled === false ? 0.5 : 1 }}>
-              {renderAgentAvatar(80, 24, 20)}
+          <div className={styles.welcomeCard}>
+            <span className={styles.welcomeEyebrow}>今天，我们一起探索</span>
+            <div className={styles.welcomeAvatar} style={{ opacity: getCurrentAgent()?.enabled === false ? 0.5 : 1 }}>
+              {renderAgentAvatar(88, 26, 22)}
             </div>
-            <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: '#1a1a2e', margin: '0 0 8px' }}>
+            <h2>
               {getCurrentAgent()?.name || 'AI 学习助手'}
             </h2>
             {getCurrentAgent()?.enabled === false ? (
@@ -1621,7 +1618,7 @@ function StudentChatContent() {
                 </span>
               </div>
             ) : (
-              <div style={{ fontSize: "0.938rem", color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              <div className={styles.welcomeGreeting}>
                 {getCurrentAgent()?.greeting ? (
                   <span>{getCurrentAgent()?.greeting}</span>
                 ) : (
@@ -1630,6 +1627,16 @@ function StudentChatContent() {
                     有什么问题尽管问我，也可以上传图片让我帮你评价哦！
                   </>
                 )}
+              </div>
+            )}
+            {getCurrentAgent()?.enabled !== false && (
+              <div className={styles.starterPrompts} aria-label="快速开始">
+                {["请帮我梳理思路", "能给我一些提示吗？", "请用例子解释一下"].map(prompt => (
+                  <button key={prompt} type="button" onClick={() => {
+                    setInput(prompt);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}>{prompt}</button>
+                ))}
               </div>
             )}
           </div>
@@ -1680,8 +1687,9 @@ function StudentChatContent() {
         {(() => {
           const memoAgent = getCurrentAgent();
           const studentAvatarSvg = selectedStudent?.avatarId && avatarSvgs[selectedStudent.avatarId] ? avatarSvgs[selectedStudent.avatarId] : undefined;
+          const lastUserMessageIndex = messages.reduce((lastIndex, message, index) => message.role === 'user' ? index : lastIndex, -1);
           return messages.map((msg, i) => (
-            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={openFullscreenImage} onEdit={handleEdit} allowExport={classroom?.allowStudentExport} onFollowUp={handleFollowUp} allowFollowUps={classroom?.allowFollowUps !== false} />
+            <MessageItem key={msg.id || `msg-${i}`} msgIndex={i} msg={msg} studentName={selectedStudent?.name || ''} agent={memoAgent} apiBase={SOCKET_URL} avatarSvg={studentAvatarSvg} onImageClick={openFullscreenImage} onRevise={handleRevise} allowExport={classroom?.allowStudentExport} onFollowUp={handleFollowUp} allowFollowUps={classroom?.allowFollowUps !== false} allowStudentStop={classroom?.allowStudentStop !== false} aiResponding={waitingAI} isRespondingToThis={waitingAI && i === lastUserMessageIndex} />
           ));
         })()}
 
@@ -1702,8 +1710,7 @@ function StudentChatContent() {
 
       {/* 回到底部按钮 */}
       {showScrollBtn && messages.length > 0 && (
-        <button onClick={scrollToBottom}
-          style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 76, width: 40, height: 40, borderRadius: '50%', border: '1px solid #e5e7eb', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#667eea', zIndex: 10, transition: 'all .15s' }}>
+        <button onClick={scrollToBottom} className={styles.scrollToBottom} aria-label="回到最新消息">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       )}
@@ -1820,10 +1827,10 @@ function StudentChatContent() {
       )}
 
       {/* === 输入区域 === */}
-      <div style={{ padding: '10px 20px 14px', background: 'white', borderTop: '1px solid #eef2f6', position: 'relative' }}>
+      <div className={styles.composerArea}>
         {/* 附件预览 */}
         {attachedFiles.length > 0 && (
-          <div style={{ maxWidth: 800, width: '100%', margin: '0 auto 8px auto', display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 2 }}>
+          <div className={styles.attachmentStrip}>
             {attachedFiles.map((f, i) => (
               <div key={i} style={{ position: 'relative', flexShrink: 0, width: 64, height: 64, borderRadius: 10, overflow: 'hidden', border: '1px solid #eef2f6', background: '#f9fafb' }}>
                 {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(f.url) ? (
@@ -1920,14 +1927,14 @@ function StudentChatContent() {
         )}
 
         {/* 输入工具条 */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', maxWidth: 800, width: '100%', margin: '0 auto' }}>
+        <div className={styles.composerToolbar}>
           <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{ display: 'none' }} />
 
           {!blacklisted && (<>
           {/* 附件按钮 */}
           <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || agentDisabled}
             title="上传图片或文件"
-            style={{ flexShrink: 0, width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e5e7eb', borderRadius: 12, background: 'white', cursor: 'pointer', color: '#6b7280', opacity: (waitingAI || uploading || paused || agentDisabled) ? 0.4 : 1, transition: 'all .15s' }}>
+            className={styles.attachmentButton}>
             {uploading ? (
               <span style={{ fontSize: "1rem" }}>⏳</span>
             ) : (
@@ -1940,7 +1947,7 @@ function StudentChatContent() {
 
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f3f4f6', borderRadius: 12, border: '1px solid #e5e7eb', transition: 'border-color .15s' }}>
+          <div className={styles.composerBox}>
             <textarea ref={inputRef} value={input} onInput={e => {
               const el = e.target as HTMLTextAreaElement;
               setInput(el.value);
@@ -1954,18 +1961,16 @@ function StudentChatContent() {
               }
             }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '有什么想问的？按 Shift+Enter 换行'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
               rows={1}
-              style={{ flex: 1, fontSize: "1rem", padding: '12px 16px', background: 'transparent', border: 'none', outline: 'none', color: '#1a1a2e', resize: 'none', lineHeight: 1.6, maxHeight: 160, overflowY: 'auto', fontFamily: 'inherit' }} />
+              className={styles.composerTextarea} />
             {waitingAI && classroom?.allowStudentStop !== false ? (
               <button type="button" onClick={handleStopGeneration}
-                style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', transition: 'all .15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; }}
+                className={`${styles.composerAction} ${styles.stopAction}`}
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
               </button>
             ) : (
               <button type="button" onClick={sendMessage} disabled={waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted || !connected}
-                style={{ flexShrink: 0, height: 36, width: 36, margin: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: 'none', background: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? '#d1d5db' : 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', cursor: (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled ? 'default' : 'pointer', transition: 'all .15s' }}>
+                className={styles.composerAction}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
                 </svg>
@@ -1988,7 +1993,13 @@ function StudentChatContent() {
             <AvatarChangerContent
               studentId={selectedStudent?.id ?? ''}
               avatars={allStudentAvatars}
-              onChanged={async () => {
+              onChanged={async (result) => {
+                // 接口返回的是服务端最终保存（并已清理）的头像，先立即更新当前会话。
+                setAvatarSvgs((current) => ({
+                  ...current,
+                  [result.avatarId]: fixSvgUrl(result.svgContent),
+                }));
+                setSelectedStudent((current) => current ? { ...current, avatarId: result.avatarId } : current);
                 setShowAvatarChanger(false);
                 fetchStudentTokens();
                 try {
@@ -2098,7 +2109,8 @@ function StudentChatContent() {
 /** 学生自助换头像组件 */
 function AvatarChangerContent({ studentId, avatars, onChanged, setToast }: {
   studentId: string; avatars: AvatarSummary[];
-  onChanged: () => void; setToast: (t: { msg: string; type: 'success' | 'error' | 'info' } | null) => void;
+  onChanged: (result: { avatarId: number; svgContent: string }) => void;
+  setToast: (t: { msg: string; type: 'success' | 'error' | 'info' } | null) => void;
 }) {
   const [tab, setTab] = useState<'library' | 'custom' | 'image'>('library');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -2143,17 +2155,18 @@ function AvatarChangerContent({ studentId, avatars, onChanged, setToast }: {
   const handleSave = async () => {
     setSaving(true);
     try {
+      let result: { avatarId: number; svgContent: string };
       if (tab === 'library' && selectedId) {
-        await api.studentSelfChangeAvatar(studentId, { avatarId: selectedId });
+        result = await api.studentSelfChangeAvatar(studentId, { avatarId: selectedId });
       } else if (tab === 'custom' && svgInput.trim()) {
-        await api.studentSelfChangeAvatar(studentId, { svgContent: svgInput.trim(), gender: 'neutral' });
+        result = await api.studentSelfChangeAvatar(studentId, { svgContent: svgInput.trim(), gender: 'neutral' });
       } else if (tab === 'image' && uploadSvg) {
-        await api.studentSelfChangeAvatar(studentId, { svgContent: uploadSvg, gender: 'neutral' });
+        result = await api.studentSelfChangeAvatar(studentId, { svgContent: uploadSvg, gender: 'neutral' });
       } else {
         setToast({ msg: '请选择或上传一个头像', type: 'error' }); setSaving(false); return;
       }
       setToast({ msg: '头像已更新！', type: 'success' });
-      onChanged();
+      onChanged(result);
     } catch (error: unknown) {
       setToast({ msg: error instanceof Error ? error.message : '更换失败', type: 'error' });
     }

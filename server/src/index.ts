@@ -28,10 +28,27 @@ import upgradeRoutes from './routes/upgrade.js';
 import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
+import { migrateClassroomParticipants } from './services/participant-migration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient();
+
+function backupDatabaseBeforeParticipantMigration(): string | null {
+  const databaseUrl = process.env.DATABASE_URL || '';
+  if (!databaseUrl.startsWith('file:')) return null;
+  const configuredPath = databaseUrl.slice('file:'.length);
+  const databasePath = path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(process.cwd(), configuredPath);
+  if (!fs.existsSync(databasePath)) return null;
+  const backupDir = path.join(path.dirname(databasePath), 'backups');
+  fs.mkdirSync(backupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(backupDir, `before-participant-migration-${stamp}.db`);
+  fs.copyFileSync(databasePath, backupPath);
+  return backupPath;
+}
 
 async function main() {
   const port = parseInt(process.env.PORT || '3001', 10);
@@ -173,6 +190,24 @@ async function main() {
     }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
+  }
+
+  // v1.7：小组不再伪装为 Student。首次迁移先备份，成功后记录标记避免重复备份。
+  try {
+    const migrationKey = 'participant-model-migration-v1';
+    const completed = await prisma.setting.findUnique({ where: { key: migrationKey } });
+    if (!completed) {
+      const backupPath = backupDatabaseBeforeParticipantMigration();
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    await migrateClassroomParticipants(prisma);
+    if (!completed) {
+      await prisma.setting.upsert({ where: { key: migrationKey }, update: { value: 'completed' }, create: { key: migrationKey, value: 'completed' } });
+    }
+    console.log('[server] Classroom participant migration complete');
+  } catch (e) {
+    console.error('[server] Classroom participant migration failed:', e);
+    throw e;
   }
 
   // 自动填充默认屏蔽词（仅首次启动时，词库为空时跳过）

@@ -843,14 +843,12 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
       ...(opts?.studentIds?.length ? { studentId: { in: opts.studentIds } } : {}),
     },
     include: {
-      student: true,
+      student: true, group: true,
       messages: { orderBy: { createdAt: 'asc' } },
     },
     orderBy: { joinTime: 'asc' },
   });
-  const classroomStudents = classroom.mode === 'standard'
-    ? rawStudents.filter(cs => cs.student.tag !== '__group__')
-    : rawStudents;
+  const classroomStudents = rawStudents;
 
   const teacherNotifs = await prisma.teacherNotification.findMany({
     where: { classroomId },
@@ -872,10 +870,10 @@ async function fetchConversationData(classroomId: string, prisma: PrismaClient, 
     agents: classroom.classroomAgents.map((classroomAgent) => ({ id: classroomAgent.agent.id, name: classroomAgent.agent.name, platform: classroomAgent.agent.platform })),
     teacherNotifications: teacherNotifs.map((notification) => ({ content: notification.content, time: notification.createdAt, targetStudentId: notification.studentId })),
     students: classroomStudents.map((classroomStudent) => ({
-      name: classroomStudent.student.name,
-      studentNo: classroomStudent.student.studentNo,
-      gender: classroomStudent.student.gender,
-      studentId: classroomStudent.student.id,
+      name: classroomStudent.student?.name || classroomStudent.group?.name || '未命名小组',
+      studentNo: classroomStudent.student?.studentNo || null,
+      gender: classroomStudent.student?.gender || null,
+      studentId: classroomStudent.id,
       totalRounds: classroomStudent.totalRounds,
       messages: classroomStudent.messages.map((message) => ({
         role: message.role, content: message.content, time: message.createdAt, roundIndex: message.roundIndex,
@@ -894,7 +892,7 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
       ...(opts?.studentIds?.length ? { studentId: { in: opts.studentIds } } : {}),
     },
     include: {
-      student: true,
+      student: true, group: true,
       messages: { orderBy: { createdAt: 'asc' } },
     },
   });
@@ -903,9 +901,7 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
     where: { id: classroomId },
     include: { classes: { include: { class: true } } },
   });
-  const classroomStudents = cr?.mode === 'standard'
-    ? rawStudents.filter(cs => cs.student.tag !== '__group__')
-    : rawStudents;
+  const classroomStudents = rawStudents;
 
   const rows = classroomStudents
     .map((cs) => {
@@ -920,7 +916,7 @@ async function fetchStatsData(classroomId: string, prisma: PrismaClient, opts?: 
           if (diff > 0) { totalRT += diff; rtCount++; }
         }
       }
-      return { studentNo: cs.student.studentNo || '', name: cs.student.name, gender: cs.student.gender, totalRounds, firstMsgLen, avgTime: rtCount > 0 ? Math.round(totalRT / rtCount) : 0 };
+      return { studentNo: cs.student?.studentNo || '', name: cs.student?.name || cs.group?.name || '未命名小组', gender: cs.student?.gender || null, totalRounds, firstMsgLen, avgTime: rtCount > 0 ? Math.round(totalRT / rtCount) : 0 };
     })
     .sort((a, b) => a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true }));
 

@@ -307,7 +307,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 令牌签发后教师仍可能调整课堂成员；加入实时课堂前必须再次确认归属。
         const classroomStudent = await prisma.classroomStudent.findFirst({
-          where: { classroomId: classroom.id, studentId: data.studentId },
+          where: { classroomId: classroom.id, id: data.studentId },
         });
         if (!classroomStudent) {
           socket.emit('student-auth-error', { error: '你已不在当前课堂，请重新选择身份' });
@@ -315,7 +315,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         }
 
         // 同一学生重复连接时，断开旧连接，保留新连接
-        const connKey = `${classroom.id}:${data.studentId}`;
+        const connKey = `${classroom.id}:${classroomStudent.id}`;
         const oldSocketId = activeConnections.get(connKey);
         if (oldSocketId && oldSocketId !== socket.id) {
           try { io.sockets.sockets.get(oldSocketId)?.emit('ai-error', { error: '账号已在其他设备登录' }); } catch {}
@@ -329,15 +329,15 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         await prisma.classroomStudent.updateMany({
           where: {
             classroomId: classroom.id,
-            studentId: data.studentId,
+            id: data.studentId,
           },
           data: { status: 'online' },
         });
 
         socket.join(`classroom:${classroom.id}`);
-        socket.join(`student:${data.studentId}`);
+        if (classroomStudent.studentId) socket.join(`student:${classroomStudent.studentId}`);
         socket.data.classroomId = classroom.id;
-        socket.data.studentId = data.studentId;
+        socket.data.studentId = classroomStudent.id;
 
         socket.emit('joined', {
           classroomId: classroom.id,
@@ -353,7 +353,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 若已被黑屏，立即通知学生端
         if (classroomStudent?.blacklisted) {
-          socket.emit('student-blacklisted', { studentId: data.studentId });
+          socket.emit('student-blacklisted', { studentId: classroomStudent.id });
         }
 
         // 重放教师缓存通知（断开连接期间错过的消息）
@@ -363,7 +363,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             const validCutoff = Date.now() - NOTIFICATION_CACHE_TTL;
             for (const n of cached) {
               // 只放行全班广播（studentId===null）或发给当前学生的通知
-              if (n.timestamp > validCutoff && (n.studentId === null || n.studentId === data.studentId)) {
+              if (n.timestamp > validCutoff && (n.studentId === null || n.studentId === classroomStudent.id)) {
                 socket.emit('teacher-notification', { id: n.id, message: n.message });
               }
             }
@@ -372,14 +372,14 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 通知教师端
         io.to(`teacher:${classroom.id}`).emit('student-online', {
-          studentId: data.studentId,
+          studentId: classroomStudent.id,
           socketId: socket.id,
         });
 
         // 广播在线状态给身份选择页
         io.to(`status:${classroom.id}`).emit('online-students', { classroomId: classroom.id, studentIds: getOnlineStudentIds(classroom.id, activeConnections) });
 
-        console.log(`[Socket] Student ${data.studentId} joined classroom ${classroom.id}`);
+        console.log(`[Socket] Participant ${classroomStudent.id} joined classroom ${classroom.id}`);
       } catch (error) {
         console.error('[Socket] join-classroom error:', error);
         socket.emit('ai-error', { error: '加入课堂失败' });
@@ -449,7 +449,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           return;
         }
 
-        const studentName = classroomStudent.student.name;
+        const studentName = classroomStudent.student?.name || classroomStudent.group?.name || '未命名小组';
+        const displayParticipantId = classroomStudent.id;
         // Shield word check
         // Check if student is blacklisted
         if (classroomStudent.blacklisted) {
@@ -477,7 +478,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             });
             // Broadcast filtered message to teacher
             io.to(`teacher:${classroom.id}`).emit('student-message', {
-              studentId: data.studentId,
+              studentId: displayParticipantId,
               studentName,
               content: filtered,
               role: 'user',
@@ -489,7 +490,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             await prisma.shieldWarning.create({
               data: {
                 classroomId: classroom.id,
-                studentId: classroomStudent.studentId,
+                studentId: classroomStudent.id,
                 word: matched.join(', '),
                 content: extractContextAroundMatch(originalContent, matched, 200),
               },
@@ -502,7 +503,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             const newWarningCount = updatedCS.warningCount;
             // Emit warning to teacher
             io.to(`teacher:${classroom.id}`).emit('shield-warning', {
-              studentId: data.studentId,
+              studentId: displayParticipantId,
               studentName,
               matched,
               filteredContent: filtered,
@@ -551,18 +552,16 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           const userMessage = await prisma.message.create({
             data: {
               classroomId: classroom.id,
-              studentId: (await prisma.classroomStudent.findFirst({
-                where: { classroomId: classroom.id, studentId: data.studentId },
-              }))!.id,
+              studentId: classroomStudent.id,
               content: data.content,
               role: 'user',
-              displayName: data.studentId,
+              displayName: anonymizer.anonymize(studentName),
               fileUrls: data.fileUrls?.length ? JSON.stringify(data.fileUrls) : undefined,
               fileNames: data.fileNames?.length ? JSON.stringify(data.fileNames) : undefined,
             },
           });
           io.to(`teacher:${classroom.id}`).emit('student-message', {
-            studentId: data.studentId, studentName: data.studentId,
+            studentId: data.studentId, studentName,
             content: data.content, role: 'user',
             messageId: userMessage.id, timestamp: userMessage.createdAt,
             fileUrls: data.fileUrls, fileNames: data.fileNames,
@@ -880,21 +879,21 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       }
       try {
         if (groupId) {
-          // 定向到组：查组成员，每人一条通知记录
+          // 定向到组：该组只有一个小组参与者，通知与实时连接均使用参与者 ID。
           const members = await prisma.classroomStudent.findMany({
             where: { classroomId, groupId },
             select: { id: true, studentId: true },
           });
           for (const m of members) {
             const notif = await prisma.teacherNotification.create({
-              data: { classroomId, studentId: m.studentId, groupId, content: message },
+              data: { classroomId, studentId: m.id, groupId, content: message },
             });
             if (!teacherNotificationCache.has(classroomId)) teacherNotificationCache.set(classroomId, []);
             const cache = teacherNotificationCache.get(classroomId)!;
-            cache.push({ id: notif.id, message, timestamp: Date.now(), studentId: m.studentId });
+            cache.push({ id: notif.id, message, timestamp: Date.now(), studentId: m.id });
             const cutoff = Date.now() - NOTIFICATION_CACHE_TTL;
             teacherNotificationCache.set(classroomId, cache.filter(n => n.timestamp > cutoff).slice(-MAX_CACHED_NOTIFICATIONS));
-            const connKey = `${classroomId}:${m.studentId}`;
+            const connKey = `${classroomId}:${m.id}`;
             const targetSocketId = activeConnections.get(connKey);
             if (targetSocketId) {
               io.to(targetSocketId).emit('teacher-notification', { id: notif.id, message });
@@ -953,7 +952,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       if (classroomId && studentId && !isTeacher && disconnectedCurrentStudent) {
         // 更新学生离线状态
         await prisma.classroomStudent.updateMany({
-          where: { classroomId, studentId },
+          where: { classroomId, id: studentId },
           data: { status: 'offline' },
         });
 

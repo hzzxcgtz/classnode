@@ -117,15 +117,12 @@ router.get('/:classroomId/conversations', async (req, res) => {
         ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
       },
       include: {
-        student: true,
+        student: true, group: true,
         messages: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { joinTime: 'asc' },
     });
-    // 标准模式过滤掉虚拟小组学生
-    const students = classroom.mode === 'standard'
-      ? rawStudents.filter(cs => cs.student.tag !== '__group__')
-      : rawStudents;
+    const students = rawStudents;
 
     // 加载教师通知
     const teacherNotifs = await prisma.teacherNotification.findMany({
@@ -165,10 +162,10 @@ router.get('/:classroomId/conversations', async (req, res) => {
         time: n.createdAt,
         targetStudentId: n.studentId,
       })),
-      students: students.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; messages: true } }>) => {
+      students: students.map((cs) => {
         // 合并该学生的教师通知（全班广播 + 定向给该学生的）
         const notifMsgs = teacherNotifs
-          .filter(n => n.studentId === null || n.studentId === cs.student.id)
+          .filter(n => n.studentId === null || n.studentId === cs.id)
           .map(n => ({
             role: 'teacher-notification',
             content: n.content,
@@ -180,9 +177,9 @@ router.get('/:classroomId/conversations', async (req, res) => {
             fileNames: undefined,
           }));
         return {
-          name: cs.student.name,
-          studentNo: cs.student.studentNo,
-          gender: cs.student.gender,
+          name: cs.student?.name || cs.group?.name || '未命名小组',
+          studentNo: cs.student?.studentNo || null,
+          gender: cs.student?.gender || null,
           totalRounds: cs.totalRounds,
           messages: [
             ...notifMsgs,
@@ -268,19 +265,12 @@ router.get('/:classroomId/stats', async (req, res) => {
         ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
       },
       include: {
-        student: true,
+        student: true, group: true,
         messages: { orderBy: { createdAt: 'asc' } },
       },
     });
 
-    // 获取课堂模式用于过滤虚拟小组学生
-    const crMode = await prisma.classroom.findUnique({
-      where: { id: req.params.classroomId },
-      select: { mode: true },
-    });
-    const classroomStudents = crMode?.mode === 'standard'
-      ? rawClassroomStudents.filter(cs => cs.student.tag !== '__group__')
-      : rawClassroomStudents;
+    const classroomStudents = rawClassroomStudents;
 
     const rows = classroomStudents
       .map((cs) => {
@@ -303,9 +293,9 @@ router.get('/:classroomId/stats', async (req, res) => {
         const avgTime = responseCount > 0 ? Math.round(totalResponseTime / responseCount) : 0;
 
         return {
-          studentNo: cs.student.studentNo || '',
-          name: cs.student.name,
-          gender: cs.student.gender,
+          studentNo: cs.student?.studentNo || '',
+          name: cs.student?.name || cs.group?.name || '未命名小组',
+          gender: cs.student?.gender || null,
           totalRounds,
           firstMsgLen,
           avgTime,
@@ -372,7 +362,7 @@ router.post('/:classroomId/stats/csv', async (req, res) => {
         ...(studentIds?.length ? { studentId: { in: studentIds } } : {}),
       },
       include: {
-        student: true,
+        student: true, group: true,
         messages: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -390,7 +380,7 @@ router.post('/:classroomId/stats/csv', async (req, res) => {
             if (diff > 0) { totalRT += diff; rtCount++; }
           }
         }
-        return { studentNo: cs.student.studentNo || '', name: cs.student.name, totalRounds, firstMsgLen, avgTime: rtCount > 0 ? Math.round(totalRT / rtCount) : 0 };
+        return { studentNo: cs.student?.studentNo || '', name: cs.student?.name || cs.group?.name || '未命名小组', totalRounds, firstMsgLen, avgTime: rtCount > 0 ? Math.round(totalRT / rtCount) : 0 };
       })
       .sort((a, b) => a.studentNo.localeCompare(b.studentNo, undefined, { numeric: true }));
 

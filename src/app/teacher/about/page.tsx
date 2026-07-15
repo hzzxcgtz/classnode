@@ -3,20 +3,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { checkForUpdates, cacheCheckResult, clearDismiss, getCachedCheckResult } from '@/lib/upgrade-check';
-
-const SvgIcon = ({ name, color, size = 20 }: { name: string; color?: string; size?: number }) => {
-  const c = color || '#2563eb';
-  const icons: Record<string, React.ReactNode> = {
-    send: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>,
-    eye: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>,
-    wifi: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M1.42 9a16 16 0 0 1 21.16 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><circle cx="12" cy="20" r="1" /></svg>,
-    database: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /></svg>,
-    shield: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
-    laptop: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="2" y1="20" x2="22" y2="20" /></svg>,
-    check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>,
-  };
-  return <>{icons[name] ?? null}</>;
-};
+import styles from './about.module.css';
 
 const SectionCard = ({ title, color, children, icon }: { title: string; color: string; children: React.ReactNode; icon?: React.ReactNode }) => (
   <div style={{
@@ -41,32 +28,21 @@ const SectionCard = ({ title, color, children, icon }: { title: string; color: s
 
 const storyPainPoints = [
   {
-    q: '学生登都登不进，AI 白调了？',
-    a: '不用让学生挨个注册账号、记住密码。互动码一开，扫码或输入 4 位数就能进，平板手机都能用。哪怕是临时换教室、来了旁听生，也能秒加。',
-    icon: 'send',
+    q: '四十个学生，怎样同时走进同一堂 AI 课？',
+    a: '不必逐个注册账号，也不必记忆新的密码。教师开启课堂后，学生扫码或输入互动码即可加入；无论是平板、手机，还是临时加入的学生，都能从容开始。',
   },
   {
-    q: '学生拿 AI 在干嘛，我看都看不到？',
-    a: '全班对话实时同步到教师控制台——谁在和 AI 深度互动、谁在刷屏闲聊、谁一言不发，一眼看清。还能点开任意学生的完整对话记录，不放过任何学情细节。',
-    icon: 'eye',
+    q: '当学生与 AI 对话时，教师如何真正看见学习？',
+    a: '全班互动会实时回到教师控制台。谁正在深入思考，谁需要提醒，谁还没有开口，都能及时看见；点开学生卡片，还可以沿着完整对话理解他的思路。',
   },
   {
-    q: '网一断，AI 课直接废了？',
-    a: '教师机作为桥梁。学生设备只需连上老师的电脑即可与 AI 对话，学生端无需互联网，网络环境更安全、更纯净。教室再卡、运营商再不稳定，课堂节奏一点不受影响。',
-    icon: 'wifi',
+    q: '校园网络并不理想，课堂还能顺畅开展吗？',
+    a: '学生设备只需通过局域网连接教师电脑，无须分别访问外部 AI 平台。网络压力集中、入口更加纯净，也让课堂秩序和数据边界始终掌握在教师手中。',
   },
   {
-    q: '一下课，对话记录全没了？白讲了？',
-    a: '所有对话记录都保存在本地硬盘里，随时回溯查看。还能一键生成含高频词云的 Word 报告——学生这堂课在想什么、哪个知识点讨论最多，一张报告全说清。',
-    icon: 'database',
+    q: '下课之后，这些珍贵的对话能够留下什么？',
+    a: '课堂记录会安静地保存在本地，随时可以回望、分析与导出。从个体思考到全班高频话题，一份报告把稍纵即逝的课堂生成，沉淀为下一次教学的依据。',
   },
-];
-
-const techPoints = [
-  { title: '轻量化部署', desc: '双击安装、浏览器访问。不用云服务器，自己电脑上就能跑，即开即用。', icon: 'laptop' },
-  { title: '数据本地化', desc: '所有数据保存在本地硬盘，不经过第三方服务器，学生隐私安全有保障。', icon: 'shield' },
-  { title: '纯净安全', desc: '参与者端无需互联网，通过管理端统一接入 AI，节省带宽且保障校园网络安全。', icon: 'wifi' },
-  { title: '完整工作流', desc: '从配置智能体、扫码互动到导出报告，完整覆盖 AI 课堂互动全流程。', icon: 'check' },
 ];
 
 export default function AboutPage() {
@@ -253,27 +229,35 @@ export default function AboutPage() {
             )}
           </div>
           <p style={{ fontSize: "0.938rem", color: '#64748b', margin: '4px 0 0', lineHeight: 1.5 }}>
-            让 AI 在真实课堂落地，零门槛、不设限。
+            让每一次 AI 探索，都自然地发生在真实课堂里。
           </p>
         </div>
       </div>
 
-      {/* ========== 引用卡片 ========== */}
-      <SectionCard title="教育变革的同行者" color="#3b82f6">
-        <div style={{ overflow: 'hidden' }}>
-          <div style={{
-            fontSize: "2.5rem", lineHeight: 0.8,
-            color: '#cbd5e1', fontWeight: 400, fontFamily: 'Georgia, serif',
-            float: 'left', marginRight: 10, marginTop: 2,
-          }}>&ldquo;</div>
-          <p style={{ margin: '0 0 12px', fontSize: "0.938rem", color: '#475569', lineHeight: 1.9 }}>
-            在 AI 时代，技术不应该成为教学的门槛。ClassNode 不是大厂的高大上平台，而是一线教育者为真实课堂打造的&ldquo;落地利器&rdquo;。我希望用它，把你花心血在各类大模型上创建的 AI 智能体，安全、可控、无缝地接入到班级的每一个屏幕上。让我们一起，让 AI 课堂从&ldquo;想试试&rdquo;变成&ldquo;天天用&rdquo;。
-          </p>
-          <div style={{ fontSize: "0.813rem", color: '#94a3b8', textAlign: 'right', borderTop: '1px solid #eef2f6', paddingTop: 8 }}>
-            —— 张星昌 · 杭州市拱墅区教育研究院
+      {/* ========== 写给使用者的话 ========== */}
+      <section className={styles.letter} aria-labelledby="developer-letter-title">
+        <div className={styles.letterGlow} aria-hidden="true" />
+        <div className={styles.letterMark} aria-hidden="true">“</div>
+        <div className={styles.letterContent}>
+          <div className={styles.letterEyebrow}>写给每一位愿意尝试 AI 的老师</div>
+          <h2 id="developer-letter-title">愿技术靠近课堂，而不是让课堂迁就技术</h2>
+          <div className={styles.letterBody}>
+            <p>
+              做 ClassNode，不是因为课堂还缺少一个平台，而是因为我一次次看到：老师花了许多个夜晚打磨出很好的智能体，真正带进教室时，却常常被账号、网络和设备挡在门外。
+            </p>
+            <p>
+              我始终相信，好的技术应该站在教学身后。它不要求每位老师先成为工程师，也不该让一堂珍贵的课消耗在登录和配置上。于是我把 ClassNode 做成一座尽可能轻的桥——连接老师精心创造的智能体，也连接屏幕前每一个正在思考的孩子。
+            </p>
+            <p className={styles.letterWish}>
+              如果它能让你少一次手忙脚乱，多看见一个学生真实的想法；能让一次勇敢的尝试，慢慢长成日常，我所做的一切就有了意义。
+            </p>
+          </div>
+          <div className={styles.signature}>
+            <span className={styles.signatureAvatar}>张</span>
+            <span><strong>张星昌</strong><small>杭州市拱墅区教育研究院</small></span>
           </div>
         </div>
-      </SectionCard>
+      </section>
 
       {/* ========== 更新日志 ========== */}
       <SectionCard title="更新日志" color="#64748b">
@@ -332,31 +316,28 @@ export default function AboutPage() {
       </SectionCard>
 
       {/* ========== 缘起 ========== */}
-      <SectionCard title="缘起 · 为什么做这个系统" color="#d97706">
+      <SectionCard title="缘起 · 从一堂真实的 AI 课出发" color="#d97706">
         <div style={{ fontSize: "0.938rem", color: '#475569', lineHeight: 1.9 }}>
           <p style={{ margin: '0 0 18px' }}>
-            AI 技术发展很快。现在很多老师都能在 Coze、智谱清言、百度文心这些平台上调教出相当出色的 AI 智能体——能批改作文、能做英语陪练、能做历史解谜游戏。但问题来了：怎么让全班四十个孩子同时用上它？
+            今天，越来越多的老师开始创造属于自己课堂的 AI 智能体：它可以陪学生练习表达，可以循着问题启发思考，也可以把一段知识变成一次有趣的探究。真正困难的，往往不是把智能体做出来，而是让它自然地走进一间有四十个孩子的教室。
           </p>
           <p style={{ margin: '0 0 18px' }}>
-            现实往往是这样的：学校带宽不够，打开一个网页都要转半天；让学生自己注册账号，折腾大半节课还没全进来；学生跟 AI 聊了什么，老师在讲台上完全不知道；下课铃一响，所有对话记录烟消云散&hellip;&hellip;技术明明很好了，可就是落不了地。
+            真实课堂有自己的节奏：网络未必稳定，设备各不相同，注册登录可能占去宝贵的时间；学生与 AI 说了什么，教师需要及时了解；下课之后，那些闪光的提问与思考也应该被好好留下。再好的技术，若不能融入这些细节，就很难成为教学的一部分。
           </p>
           <p style={{ margin: '0 0 18px' }}>
-            <strong style={{ color: '#292524' }}>技术不难的时候，难的是落地。</strong>
+            ClassNode 就从这些细小而真实的问题里生长出来。它安静地运行在教师电脑上，把老师精心准备的智能体带到每一个学生面前，也把课堂中的互动、秩序与数据重新交还给教师掌握。
           </p>
           <p style={{ margin: '0 0 18px' }}>
-            这就是 ClassNode 的出发点。它不是一个大厂的云平台，而是一个能装进你电脑里的&ldquo;AI 互动课堂系统&rdquo;。老师花心思调教好的智能体，通过它就能安全、可控、零门槛地分发给全班每一个学生——不管学校网络好不好，不管学生用的是平板还是手机，打开浏览器就能开课。
-          </p>
-          <p style={{ margin: '0 0 18px' }}>
-            从第一堂课到现在，ClassNode 一直在围绕一个核心打磨：让老师能把精力花在教学上，而不是折腾工具。
+            从第一堂试验课到今天，它始终只围绕一件事打磨：让工具少占一点注意力，让教师多留一点心力给学生。
           </p>
           <p style={{ margin: 0, paddingLeft: 20, borderLeft: '3px solid #93c5fd' }}>
-            <strong style={{ color: '#2563eb', fontWeight: 600 }}>目的只有一个：让 AI 课堂从&ldquo;想试试&rdquo;变成&ldquo;天天用&rdquo;。</strong>
+            <strong style={{ color: '#2563eb', fontWeight: 600 }}>让 AI 课堂不止是一次新鲜的尝试，而成为每位老师都能从容使用的日常。</strong>
           </p>
         </div>
       </SectionCard>
 
       {/* ========== 痛点 ========== */}
-      <SectionCard title={'解决的教学"老大难"'} color="#dc2626">
+      <SectionCard title="把难题留给系统，把课堂还给教师" color="#dc2626">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {storyPainPoints.map((item, i) => {
             const accentColors = ['#fee2e2', '#fef9c3', '#dbeafe', '#d1fae5'];
@@ -401,27 +382,6 @@ export default function AboutPage() {
               </div>
             );
           })}
-        </div>
-      </SectionCard>
-
-      {/* ========== 核心特性 ========== */}
-      <SectionCard title="核心特性" color="#4f46e5">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {techPoints.map((item, i) => (
-            <div key={i} style={{
-              background: '#ffffff', borderRadius: 12,
-              border: '1px solid #e8ecf0', padding: '20px 22px',
-              transition: 'all 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(37,99,235,0.1)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#e8ecf0'; e.currentTarget.style.boxShadow = 'none'; }}>
-              <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                <SvgIcon name={item.icon} color="#4f46e5" size={16} />
-              </div>
-              <div style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a', marginBottom: 6 }}>{item.title}</div>
-              <div style={{ fontSize: "0.875rem", color: '#64748b', lineHeight: 1.8 }}>{item.desc}</div>
-            </div>
-          ))}
         </div>
       </SectionCard>
 

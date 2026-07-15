@@ -116,6 +116,7 @@ model Classroom {
 
   classes          ClassroomClass[]
   groups           ClassroomGroup[]
+  groupMembers     ClassroomGroupMember[]
   students         ClassroomStudent[]
   classroomAgents  ClassroomAgent[]
   interactions     Interaction[]
@@ -138,13 +139,33 @@ model ClassroomClass {
 model ClassroomGroup {
   id          String @id @default(uuid())
   classroomId String
-  name        String // 组名
+  name        String // 创建课堂时的小组名称快照
   agentId    String // 该组绑定的智能体
-  code        String?  @unique // 该组的互动码（结束课堂时置空回收）
+  sourceClassGroupId String? // 创建时关联的班级分组；仅作溯源，不参与运行时匹配
 
   classroom Classroom       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   students  ClassroomStudent[]
+  members   ClassroomGroupMember[]
+
+  @@index([classroomId])
+}
+
+// 课堂创建时冻结的小组成员名单。班级分组日后改名、换人不会影响课堂及历史记录。
+model ClassroomGroupMember {
+  id          String @id @default(uuid())
+  classroomId String
+  groupId     String
+  studentId   String?
+  name        String
+  studentNo   String?
+
+  classroom Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  group     ClassroomGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, studentId])
+  @@index([classroomId])
+  @@index([groupId])
 }
 
 // 课堂中的智能体关联
@@ -159,12 +180,13 @@ model ClassroomAgent {
   @@unique([classroomId, agentId])
 }
 
-// 课堂中的学生
+// 课堂参与者。标准模式关联真实学生；分组/高级模式直接关联 ClassroomGroup，绝不再创建虚拟 Student。
 model ClassroomStudent {
   id          String   @id @default(uuid())
   classroomId String
-  studentId   String
-  groupId     String?  // 所属组（高级模式）
+  type        String   @default("student") // student / group
+  studentId   String?
+  groupId     String?
   joinTime    DateTime @default(now())
   status      String   @default("offline") // online / offline
   totalRounds Int      @default(0)
@@ -172,11 +194,12 @@ model ClassroomStudent {
   blacklisted  Boolean @default(false)
 
   classroom Classroom      @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student   Student?       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   group     ClassroomGroup? @relation(fields: [groupId], references: [id])
   messages  Message[]
 
   @@unique([classroomId, studentId])
+  @@unique([classroomId, groupId])
   @@index([classroomId, status])
   @@index([studentId])
 }

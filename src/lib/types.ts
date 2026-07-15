@@ -139,7 +139,9 @@ export interface AvatarRandomCandidate {
 }
 
 export interface ClassroomStudentSummary {
-  id: string;
+  id: string; // ClassroomStudent.id：稳定的课堂参与者 ID
+  participantType: 'student' | 'group';
+  studentId: string | null; // 仅真实学生参与者存在
   name: string;
   studentNo: string | null;
   gender: string | null;
@@ -169,7 +171,9 @@ export interface ClassroomCardGroup {
 
 export interface ClassroomCardStudent {
   id: string;
-  studentId: string;
+  participantId?: string;
+  participantType?: 'student' | 'group';
+  studentId: string | null;
   groupId: string | null;
   totalRounds: number;
   warningCount: number;
@@ -195,7 +199,9 @@ export interface ClassroomHistoryItem extends ClassroomSummary {
   createdAt: string;
   endedAt: string | null;
   totalChars: number;
+  totalRounds: number;
   participantCount: number;
+  realStudentCount: number;
   _count: { students: number; interactions: number };
   classes: Array<{ classId: string; class: Pick<ClassSummary, 'id' | 'name'> }>;
 }
@@ -207,6 +213,8 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
   groups: Array<ClassroomCardGroup & { agent: AgentSummary }>;
   students: Array<{ studentId: string; totalRounds: number }>;
   _count: { students: number };
+  participantCount: number;
+  realStudentCount: number;
 }
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
@@ -225,6 +233,8 @@ export interface DashboardClassroom extends Omit<ClassroomSummary, 'groups' | 's
   classroomAgents: Array<{ agentId: string; agent: AgentSummary }>;
   groups: Array<ClassroomCardGroup & { agent: AgentSummary }>;
   _count: { students: number; interactions: number };
+  participantCount: number;
+  realStudentCount: number;
 }
 
 export interface StorageStats {
@@ -277,7 +287,9 @@ export interface ClassroomMessage {
   fileNames?: string | null;
   followUps?: string | string[] | null;
   classroomStudent?: {
-    student: Pick<StudentSummary, 'id' | 'name' | 'studentNo' | 'gender' | 'avatarId'>;
+    id: string;
+    student?: Pick<StudentSummary, 'id' | 'name' | 'studentNo' | 'gender' | 'avatarId'> | null;
+    group?: Pick<ClassroomCardGroup, 'id' | 'name'> | null;
   };
 }
 

@@ -26,6 +26,10 @@ function isClassroomGroupCard(card: ClassroomDisplayCard): card is ClassroomGrou
   return 'members' in card;
 }
 
+function getGroupInitial(name?: string | null): string {
+  return Array.from(name?.trim() || '')[0] || '组';
+}
+
 function PermissionMenuItem({ label, enabled, busy, onToggle }: {
   label: string;
   enabled: boolean;
@@ -280,14 +284,14 @@ function ClassroomBoardContent() {
     return Array.from(map.values()).sort((a, b) => (a.group?.name || '').localeCompare(b.group?.name || ''));
   }, [classroom, students]);
 
-  // 小组名 → 成员列表（使用后端从 ClassGroup.studentIds 解析的真实学生数据）
+  // 课堂小组 ID → 创建课堂时冻结的成员快照；不依赖可变的小组名称。
   const groupMembersMap = useMemo(() => {
     const map: Record<string, Array<{ studentName: string; groupName: string }>> = {};
     if (!groupCards || !classroom?.groupMembersMap) return map;
     for (const g of groupCards) {
       if (!g.group?.id || !g.group.name) continue;
       const group = g.group;
-      const backendData = classroom.groupMembersMap[group.name];
+      const backendData = classroom.groupMembersMap[group.id];
       if (backendData) {
         map[group.id] = backendData.members.map((m) => ({
           studentName: m.name,
@@ -297,6 +301,10 @@ function ClassroomBoardContent() {
     }
     return map;
   }, [groupCards, classroom]);
+
+  const classroomStudentCount = groupCards
+    ? groupCards.reduce((total, group) => total + (group.group?.id ? (groupMembersMap[group.group.id]?.length ?? 0) : 0), 0)
+    : students.length;
 
   // 打开抽屉时自动滚动到底部（最新消息）
   useEffect(() => {
@@ -343,9 +351,9 @@ function ClassroomBoardContent() {
       const warnings: Record<string, number> = {};
       const blacklisted: Record<string, boolean> = {};
       students.forEach((s) => {
-        rounds[s.student.id] = s.totalRounds || 0;
-        warnings[s.student.id] = s.warningCount || 0;
-        blacklisted[s.student.id] = s.blacklisted || false;
+        rounds[s.id] = s.totalRounds || 0;
+        warnings[s.id] = s.warningCount || 0;
+        blacklisted[s.id] = s.blacklisted || false;
       });
       // 不通过 DB status 字段初始化在线状态，依赖 HTTP API 获取当前在线学生
       try {
@@ -363,13 +371,13 @@ function ClassroomBoardContent() {
         setAllMessages(allMsgs);
         const grouped = new Map<string, ClassroomMessage[]>();
         for (const msg of allMsgs) {
-          const sid = msg.classroomStudent?.student?.id;
+          const sid = msg.classroomStudent?.id;
           if (!sid) continue;
           if (!grouped.has(sid)) grouped.set(sid, []);
           grouped.get(sid)!.push(msg);
         }
         setStudents(prev => prev.map(s => {
-          const sid = s.student.id;
+          const sid = s.id;
           const msgs = grouped.get(sid);
           if (!msgs || msgs.length === 0) return s;
           const lastUser = msgs.filter((m) => m.role === 'user').slice(-1)?.[0];
@@ -435,7 +443,7 @@ function ClassroomBoardContent() {
     const unsub4 = on('student-message', (data: StudentMessageEvent) => {
       // 更新学生消息预览（仅保留最近3条用户提问）
       setStudents(prev => prev.map(s =>
-        s.student.id === data.studentId
+        s.id === data.studentId
           ? {
               ...s,
               messages: data.role === 'user'
@@ -488,7 +496,7 @@ function ClassroomBoardContent() {
       }
       // 更新学生列表中的 avatarId
       setStudents(prev => prev.map(s => {
-        if (s.student?.id === data.studentId) {
+        if (s.id === data.studentId) {
           return { ...s, student: { ...s.student, avatarId: data.avatarId } };
         }
         return s;
@@ -539,7 +547,7 @@ function ClassroomBoardContent() {
       // 清除监控框预览
       setStudents(prev => prev.map(s => {
         // 标准模式：s.student 存在时直接匹配
-        if (s.student && s.student.id === studentId) {
+        if (s.student && s.id === studentId) {
           return { ...s, messages: [] };
         }
         return s;
@@ -577,14 +585,14 @@ function ClassroomBoardContent() {
     clearBusyRef.current = true;
     setClearBusy(`group:${groupName}`);
     const results = await Promise.allSettled(members.map(async m => {
-      const studentId = m.student.id;
+      const studentId = m.id;
       await api.clearStudentMessages(id, studentId);
       return studentId;
     }));
     const succeeded = results.filter((result): result is PromiseFulfilledResult<string> => result.status === 'fulfilled').map(result => result.value);
     if (succeeded.length) {
         setStudents(prev => prev.map(s => {
-          if (s.student && succeeded.includes(s.student.id)) return { ...s, messages: [] };
+          if (s.student && succeeded.includes(s.id)) return { ...s, messages: [] };
           return s;
         }));
       setStudentRounds(prev => Object.fromEntries(Object.entries(prev).map(([studentId, rounds]) => [studentId, succeeded.includes(studentId) ? 0 : rounds])));
@@ -632,6 +640,17 @@ function ClassroomBoardContent() {
     }
   });
 
+  const syncGroups = () => runControlAction('sync-groups', async () => {
+    const result = await api.syncClassroomGroups(id);
+    await loadClassroom();
+    setToast({
+      msg: result.addedGroups > 0
+        ? `分组已同步，新增 ${result.addedGroups} 个小组${classroom?.mode === 'advanced' ? '（使用课堂默认智能体）' : ''}`
+        : '分组成员已同步到课堂看板',
+      type: 'success',
+    });
+  });
+
   const toggleStop = () => runControlAction('stop', async () => {
     const result = await api.toggleAllowStop(id);
     setClassroom((previous) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
@@ -661,16 +680,16 @@ function ClassroomBoardContent() {
   const allDisplayCards: ClassroomDisplayCard[] = groupCards || students;
   const getDisplayCardStatus = (card: ClassroomDisplayCard): 'online' | 'thinking' | 'offline' => {
     if (isClassroomGroupCard(card)) {
-      if (card.members.some((member) => studentStatuses[member.student.id] === 'thinking')) return 'thinking';
-      if (card.members.some((member) => studentStatuses[member.student.id] === 'online')) return 'online';
+      if (card.members.some((member) => studentStatuses[member.id] === 'thinking')) return 'thinking';
+      if (card.members.some((member) => studentStatuses[member.id] === 'online')) return 'online';
       return 'offline';
     }
-    const status = studentStatuses[card.student.id];
+    const status = studentStatuses[card.id];
     return status === 'thinking' || status === 'online' ? status : 'offline';
   };
   const cardNeedsAttention = (card: ClassroomDisplayCard) => {
     const members = isClassroomGroupCard(card) ? card.members : [card];
-    return members.some((member) => studentBlacklisted[member.student.id] || (studentWarnings[member.student.id] || 0) > 0);
+    return members.some((member) => studentBlacklisted[member.id] || (studentWarnings[member.id] || 0) > 0);
   };
   const displayCards = allDisplayCards.filter((card) => {
     if (studentBoardFilter === 'all') return true;
@@ -753,7 +772,7 @@ function ClassroomBoardContent() {
             )}
             <span style={{ fontSize: "0.813rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-              {students.length} 名学生
+              {classroomStudentCount} 名学生
             </span>
           </div>
         </div>
@@ -836,6 +855,14 @@ function ClassroomBoardContent() {
               <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>点击学生卡片查看完整对话，使用筛选快速定位课堂状态</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {(classroom.mode === 'group' || classroom.mode === 'advanced') && classroom.status !== 'ended' && (
+                <button className="btn btn-secondary" onClick={() => void syncGroups()} disabled={controlBusy !== null}
+                  title="把当前班级的分组名称和成员同步到正在进行的课堂"
+                  style={{ minHeight: 36, padding: '7px 12px' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
+                  {controlBusy === 'sync-groups' ? '同步中...' : '同步分组'}
+                </button>
+              )}
               <button className={paused ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
                 style={{ minHeight: 36, padding: '7px 12px', color: paused ? 'white' : '#2563eb' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -911,10 +938,10 @@ function ClassroomBoardContent() {
                 const isGroup = isClassroomGroupCard(item);
                 const cs = isGroup ? item.members[0] : item;
                 const student = cs.student;
-                const sid = cs.student.id;
+                const sid = cs.id;
                 const status = getDisplayCardStatus(item);
                 const rounds = isGroup
-                  ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
+                  ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.id] || 0), 0)
                   : studentRounds[sid] || 0;
                 const allMsgs = isGroup ? item.members.flatMap((m) => m.messages).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
                 const userMsg = isGroup ? allMsgs!.filter((m) => m.role === 'user')[0] : cs.messages.filter((m) => m.role === 'user').slice(-1)?.[0];
@@ -925,7 +952,7 @@ function ClassroomBoardContent() {
                     onClick={() => {
                       if (isGroup) setSelectedGroup(item.group);
                       else setSelectedGroup(null);
-                      openStudentDrawer(student);
+                      openStudentDrawer({ ...student, id: cs.id });
                     }}
                     style={{
                       cursor: 'pointer',
@@ -951,7 +978,7 @@ function ClassroomBoardContent() {
                         fontWeight: 700, fontSize: "0.938rem", overflow: 'hidden',
                       }}>
                         {isGroup ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                          getGroupInitial(item.group?.name)
                         ) : student.avatarId && studentAvatars[student.avatarId] ? (
                           <div style={{ width: 36, height: 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
                         ) : student.name[0]}
@@ -984,13 +1011,13 @@ function ClassroomBoardContent() {
                           <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
                             {isGroup ? (
                               (() => {
-                                const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.student.id]);
+                                const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.id]);
                                 return (
                                   <>
                                     <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
                                       onClick={async (e) => { e.stopPropagation();
-                                        if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.student.id]: 0 })); } catch {} } }
-                                        else { for (const m of item.members) { try { await api.blacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: true })); } catch {} } }
+                                        if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.id); setStudentBlacklisted(prev => ({ ...prev, [m.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.id]: 0 })); } catch {} } }
+                                        else { for (const m of item.members) { try { await api.blacklistStudent(id, m.id); setStudentBlacklisted(prev => ({ ...prev, [m.id]: true })); } catch {} } }
                                       }}
                                       style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: anyBlacklisted ? '#d1fae5' : '#fee2e2', color: anyBlacklisted ? '#047857' : '#b91c1c', padding: 0 }}>
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1040,7 +1067,9 @@ function ClassroomBoardContent() {
                         </div>
                         {/* 人数（仅小组） */}
                         {isGroup && (
-                          <div style={{ fontSize: "0.688rem", color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
+                          <div style={{ fontSize: "0.688rem", color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>
+                            {item.group?.id ? (groupMembersMap[item.group.id]?.length ?? item.members.length) : item.members.length} 人
+                          </div>
                         )}
                         {/* 状态标签 */}
                         <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
@@ -1055,7 +1084,7 @@ function ClassroomBoardContent() {
                           )}
                           {(() => {
                             const isDeep = isGroup
-                              ? item.members.some((m) => deepThinkingStatuses[m.student.id])
+                              ? item.members.some((m) => deepThinkingStatuses[m.id])
                               : deepThinkingStatuses[sid];
                             const bg = isDeep ? '#f5f3ff' : status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#fffbeb' : '#f1f5f9';
                             const dotColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8';
@@ -1595,10 +1624,10 @@ function ClassroomBoardContent() {
                   const isGroup = isClassroomGroupCard(item);
                   const cs = isGroup ? item.members[0] : item;
                   const student = cs.student;
-                  const sid = student.id;
+                  const sid = cs.id;
                   const status = getDisplayCardStatus(item);
                   const rounds = isGroup
-                    ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
+                    ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.id] || 0), 0)
                     : studentRounds[sid] || 0;
                   const compact = fsCols >= 6;
                   const allMsgs = isGroup ? item.members.flatMap((m) => m.messages).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : null;
@@ -1610,7 +1639,7 @@ function ClassroomBoardContent() {
                       onClick={() => {
                       if (isGroup) setSelectedGroup(item.group);
                       else setSelectedGroup(null);
-                      openStudentDrawer(student);
+                      openStudentDrawer({ ...student, id: cs.id });
                     }}
                       style={{
                         cursor: 'pointer',
@@ -1637,7 +1666,7 @@ function ClassroomBoardContent() {
                           fontWeight: 700, fontSize: compact ? 11 : 14, overflow: 'hidden',
                         }}>
                           {isGroup ? (
-                            <svg width={compact ? 14 : 18} height={compact ? 14 : 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
+                            getGroupInitial(item.group?.name)
                           ) : student.avatarId && studentAvatars[student.avatarId] ? (
                             <div style={{ width: compact ? 26 : 36, height: compact ? 26 : 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', `<svg width="${compact ? 26 : 36}" height="${compact ? 26 : 36}"`) }} />
                           ) : student.name[0]}
@@ -1659,13 +1688,13 @@ function ClassroomBoardContent() {
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: compact ? 2 : 3, flexShrink: 0 }}>
                               {isGroup ? (
                                 (() => {
-                                  const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.student.id]);
+                                  const anyBlacklisted = item.members.some((m) => studentBlacklisted[m.id]);
                                   return (
                                     <>
                                       <button title={anyBlacklisted ? '解除黑屏' : '黑屏处理'}
                                         onClick={async (e) => { e.stopPropagation();
-                                          if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.student.id]: 0 })); } catch {} } }
-                                          else { for (const m of item.members) { try { await api.blacklistStudent(id, m.student.id); setStudentBlacklisted(prev => ({ ...prev, [m.student.id]: true })); } catch {} } }
+                                          if (anyBlacklisted) { for (const m of item.members) { try { await api.unblacklistStudent(id, m.id); setStudentBlacklisted(prev => ({ ...prev, [m.id]: false })); setStudentWarnings(prev => ({ ...prev, [m.id]: 0 })); } catch {} } }
+                                          else { for (const m of item.members) { try { await api.blacklistStudent(id, m.id); setStudentBlacklisted(prev => ({ ...prev, [m.id]: true })); } catch {} } }
                                         }}
                                         style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: anyBlacklisted ? '#d1fae5' : '#fee2e2', color: anyBlacklisted ? '#047857' : '#b91c1c', padding: 0 }}>
                                         <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1705,7 +1734,9 @@ function ClassroomBoardContent() {
                           </div>
                           {/* 人数（仅小组） */}
                           {isGroup && (
-                            <div style={{ fontSize: compact ? 9 : 10, color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>{item.members.length} 人</div>
+                            <div style={{ fontSize: compact ? 9 : 10, color: '#9ca3af', lineHeight: 1.2, marginTop: 1 }}>
+                              {item.group?.id ? (groupMembersMap[item.group.id]?.length ?? item.members.length) : item.members.length} 人
+                            </div>
                           )}
                           {/* 状态标签 */}
                           <div style={{ display: 'flex', gap: compact ? 2 : 3, marginTop: compact ? 2 : 4, flexWrap: 'wrap' }}>
@@ -2091,19 +2122,20 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics }: AnalyticsPa
     : allMessages.filter((m) => m.role === cloudSource && !isShieldFiltered(m)), [allMessages, cloudSource, isShieldFiltered]);
   const words = useMemo(() => extractKeywords(filteredForCloud.map((m) => m.content || '')), [filteredForCloud]);
 
-  // 活跃学生排名：只在 allMessages 变化时重算
+  // 活跃学生排名：每条学生提问计为一轮，不把 AI 回复重复计数。
   const topStudents = useMemo(() => {
-    const studentMsgCounts = new Map<string, { name: string; count: number }>();
+    const studentRoundCounts = new Map<string, { name: string; count: number }>();
     for (const m of allMessages) {
-      const sid = m.classroomStudent?.student?.id;
-      const name = m.classroomStudent?.student?.name;
+      if (m.role !== 'user') continue;
+      const sid = m.classroomStudent?.id;
+      const name = m.classroomStudent?.student?.name || m.classroomStudent?.group?.name;
       if (!sid || !name) continue;
       const key = sid;
-      const existing = studentMsgCounts.get(key) || { name, count: 0 };
+      const existing = studentRoundCounts.get(key) || { name, count: 0 };
       existing.count++;
-      studentMsgCounts.set(key, existing);
+      studentRoundCounts.set(key, existing);
     }
-    const sorted = [...studentMsgCounts.entries()]
+    const sorted = [...studentRoundCounts.entries()]
       .map(([id, data]) => ({ id, ...data }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
@@ -2115,7 +2147,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics }: AnalyticsPa
   const participantCount = useMemo(() => {
     const sids = new Set<string>();
     for (const m of allMessages) {
-      const sid = m.classroomStudent?.student?.id;
+      const sid = m.classroomStudent?.id;
       if (sid) sids.add(sid);
     }
     return sids.size;
@@ -2327,7 +2359,7 @@ function AnalyticsPanel({ classroomId, allMessages, loadAnalytics }: AnalyticsPa
                       }} />
                     </div>
                     <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 40, textAlign: 'right' }}>
-                      {s.count} 条
+                      {s.count} 轮
                     </span>
                   </div>
                 ))

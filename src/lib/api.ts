@@ -136,6 +136,8 @@ export const api = {
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
   getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),
+  syncClassroomGroups: (id: string) =>
+    request<{ success: true; addedGroups: number; updatedGroups: number; sourceGroupCount: number }>(`/api/classroom/${id}/sync-groups`, { method: 'POST' }),
   getClassroomByCode: (code: string) => request<StudentClassroom>(`/api/classroom/code/${code}`),
   createStudentSession: (code: string, studentId: string) =>
     request<StudentSessionResponse>(`/api/classroom/code/${code}/student-session`, {
@@ -201,7 +203,9 @@ export const api = {
   rewardStudentDirect: (studentId: string) =>
     request<{ success: boolean; tokens: number }>(`/api/avatars/reward-student/${studentId}`, { method: 'POST' }),
   studentSelfChangeAvatar: (studentId: string, data: { avatarId?: number; svgContent?: string; gender?: string }) =>
-    request(`/api/avatars/student-self/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
+    request<{ success: boolean; avatarId: number; svgContent: string }>(`/api/avatars/student-self/${studentId}`, {
+      method: 'PUT', body: JSON.stringify(data),
+    }),
   getAvatarsAll: (category?: string) =>
     request<AvatarSummary[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
   generateAvatarPool: (category: 'student' | 'class', count = 10, route?: number) =>

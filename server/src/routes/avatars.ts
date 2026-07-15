@@ -8,6 +8,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const router: Router = Router();
 
+// 学生端会话使用课堂参与者 ID；教师侧旧接口仍可能传入真实 Student.id。
+// 在这里统一解析，避免小组参与者被误当成可更换头像的学生。
+async function resolveRealStudentId(prisma: PrismaClient, id: string): Promise<string | null> {
+  const direct = await prisma.student.findUnique({ where: { id }, select: { id: true } });
+  if (direct) return direct.id;
+  const participant = await prisma.classroomStudent.findUnique({
+    where: { id }, select: { studentId: true },
+  });
+  return participant?.studentId || null;
+}
+
 /** 如果 SVG 是图片上传类型的，删除对应的物理文件 */
 function deleteAvatarFile(svgContent: string): void {
   const match = svgContent.match(/href="(\/uploads\/avatars\/[^"]+)"/);
@@ -255,7 +266,7 @@ router.post('/auto-assign', async (req, res) => {
     const activeAvatarIds = (await prisma.avatar.findMany({ where: { isActive: true }, select: { id: true } })).map(a => a.id);
     if (classId) {
       await prisma.student.updateMany({
-        where: { classId, avatarId: { not: null }, NOT: { avatarId: { in: activeAvatarIds } }, tag: { not: '__group__' } },
+        where: { classId, avatarId: { not: null }, NOT: { avatarId: { in: activeAvatarIds } } },
         data: { avatarId: null },
       });
     }
@@ -263,7 +274,7 @@ router.post('/auto-assign', async (req, res) => {
     let students;
     if (classId) {
       students = await prisma.student.findMany({
-        where: { classId, avatarId: null, OR: [{ tag: null }, { tag: { not: '__group__' } }] },
+        where: { classId, avatarId: null },
       });
     } else if (studentIds) {
       students = await prisma.student.findMany({
@@ -349,7 +360,8 @@ router.put('/student-self/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { avatarId, svgContent, gender } = req.body;
-    const student = await prisma.student.findUnique({ where: { id: req.params.studentId } });
+    const realStudentId = await resolveRealStudentId(prisma, req.params.studentId);
+    const student = realStudentId ? await prisma.student.findUnique({ where: { id: realStudentId } }) : null;
     if (!student) return res.status(404).json({ error: '学生未找到' });
     if (!avatarId && !svgContent) {
       return res.status(400).json({ error: '请提供 avatarId 或 svgContent' });
@@ -357,7 +369,7 @@ router.put('/student-self/:studentId', async (req, res) => {
     const safeSvg = typeof svgContent === 'string' ? sanitizeSvg(svgContent) : null;
     if (svgContent && !safeSvg) return res.status(400).json({ error: 'SVG 包含不安全或不支持的内容' });
 
-    await prisma.$transaction(async tx => {
+    const nextAvatarId = await prisma.$transaction(async tx => {
       let nextAvatarId = avatarId ? Number(avatarId) : null;
       if (nextAvatarId) {
         const allowed = await tx.avatar.findFirst({ where: { id: nextAvatarId, isActive: true, category: 'student' }, select: { id: true } });
@@ -373,22 +385,18 @@ router.put('/student-self/:studentId', async (req, res) => {
         data: { avatarId: nextAvatarId, avatarChangeTokens: { decrement: 1 } },
       });
       if (changed.count !== 1) throw new Error('NO_AVATAR_TOKEN');
+      if (!nextAvatarId) throw new Error('INVALID_AVATAR');
+      return nextAvatarId;
     });
+
+    const savedAvatar = await prisma.avatar.findUnique({
+      where: { id: nextAvatarId },
+      select: { svgContent: true },
+    });
+    if (!savedAvatar) throw new Error('INVALID_AVATAR');
 
     // 通知教师端实时更新头像
     try {
-      const updated = await prisma.student.findUnique({
-        where: { id: student.id },
-        select: { avatarId: true },
-      });
-      let avatarSvg: string | undefined;
-      if (updated?.avatarId) {
-        const avatar = await prisma.avatar.findUnique({
-          where: { id: updated.avatarId },
-          select: { svgContent: true },
-        });
-        avatarSvg = avatar?.svgContent;
-      }
       const io = req.app.get('io');
       if (io) {
         const activeClassrooms = await prisma.classroomStudent.findMany({
@@ -398,16 +406,17 @@ router.put('/student-self/:studentId', async (req, res) => {
         for (const cs of activeClassrooms) {
           if (cs.classroom.status === 'active' || cs.classroom.status === 'paused') {
             io.to(`teacher:${cs.classroomId}`).emit('student-avatar-changed', {
-              studentId: student.id,
-              avatarId: updated?.avatarId,
-              svgContent: avatarSvg,
+              studentId: cs.id,
+              avatarId: nextAvatarId,
+              svgContent: savedAvatar.svgContent,
             });
           }
         }
       }
     } catch {}
 
-    res.json({ success: true });
+    // 将最终保存的头像直接返回给学生端，避免保存后再次查询产生短暂的旧头像状态。
+    res.json({ success: true, avatarId: nextAvatarId, svgContent: savedAvatar.svgContent });
   } catch (error) {
     if (error instanceof Error && error.message === 'NO_AVATAR_TOKEN') return res.status(403).json({ error: '没有可用的更换次数' });
     if (error instanceof Error && error.message === 'INVALID_AVATAR') return res.status(400).json({ error: '所选头像不可用' });
@@ -439,10 +448,11 @@ router.get('/:id/usage', async (req, res) => {
 router.get('/student-tokens/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const student = await prisma.student.findUnique({
-      where: { id: req.params.studentId },
+    const realStudentId = await resolveRealStudentId(prisma, req.params.studentId);
+    const student = realStudentId ? await prisma.student.findUnique({
+      where: { id: realStudentId },
       select: { avatarChangeTokens: true },
-    });
+    }) : null;
     if (!student) return res.status(404).json({ error: '学生未找到' });
     res.json({ tokens: student.avatarChangeTokens });
   } catch (error) {

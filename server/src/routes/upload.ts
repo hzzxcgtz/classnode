@@ -55,7 +55,7 @@ export async function requireActiveStudentUpload(
     const membership = await prisma.classroomStudent.findFirst({
       where: {
         classroomId: session.classroomId,
-        studentId: session.studentId,
+        id: session.studentId,
         classroom: { status: { in: ['active', 'paused'] } },
       },
       select: { id: true },

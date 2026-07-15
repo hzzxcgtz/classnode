@@ -253,6 +253,19 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     setPwdFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
   };
 
+  const openChangePassword = () => {
+    if (pwdCloseTimerRef.current) {
+      window.clearTimeout(pwdCloseTimerRef.current);
+      pwdCloseTimerRef.current = null;
+    }
+    setOldPwd('');
+    setNewPwd('');
+    setConfirmPwd('');
+    setPwdFieldErrors({});
+    setPwdSuccess('');
+    setShowChangePwd(true);
+  };
+
   const handleChangePassword = async () => {
     if (changePwdRef.current) return;
     setPwdFieldErrors({});
@@ -597,6 +610,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               {!sidebarCollapsed && <span>打开官网</span>}
             </button>
             <button
+              type="button"
+              onClick={openChangePassword}
               title={sidebarCollapsed ? '修改密码' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,

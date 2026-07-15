@@ -35,6 +35,7 @@ export default function TeacherDashboard() {
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
   const [lanAccess, setLanAccess] = useState(true);
   const [networkSaving, setNetworkSaving] = useState(false);
+  const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [classroomStatusFilter, setClassroomStatusFilter] = useState<"all" | "running" | "paused">("all");
   const endingRef = useRef(false);
@@ -146,6 +147,44 @@ export default function TeacherDashboard() {
       setToast({ msg: error instanceof Error ? error.message : '网络模式切换失败', type: 'error' });
     } finally {
       setNetworkSaving(false);
+    }
+  }
+
+  async function toggleQuickPermission(
+    classroom: ActiveClassroom,
+    permission: 'questions' | 'stop' | 'export' | 'followUps',
+  ) {
+    if (permissionBusy) return;
+    const busyKey = `${classroom.id}:${permission}`;
+    setPermissionBusy(busyKey);
+    try {
+      let patch: Partial<ActiveClassroom> = {};
+      let message = '';
+      if (permission === 'questions') {
+        const willEnable = classroom.status === 'paused';
+        if (willEnable) await api.resumeClassroom(classroom.id);
+        else await api.pauseClassroom(classroom.id);
+        patch = { status: willEnable ? 'active' : 'paused' };
+        message = willEnable ? '已恢复学生提问' : '已暂停学生提问';
+      } else if (permission === 'stop') {
+        const result = await api.toggleAllowStop(classroom.id);
+        patch = { allowStudentStop: result.allowStudentStop };
+        message = result.allowStudentStop ? '已允许学生中断回答' : '已禁止学生中断回答';
+      } else if (permission === 'export') {
+        const result = await api.toggleAllowExport(classroom.id);
+        patch = { allowStudentExport: result.allowStudentExport };
+        message = result.allowStudentExport ? '已允许学生导出对话' : '已禁止学生导出对话';
+      } else {
+        const result = await api.toggleAllowFollowUps(classroom.id);
+        patch = { allowFollowUps: result.allowFollowUps };
+        message = result.allowFollowUps ? '已显示追问建议' : '已隐藏追问建议';
+      }
+      setActiveClassrooms(current => current.map(item => item.id === classroom.id ? { ...item, ...patch } : item));
+      setToast({ msg: `${classroom.title || '当前课堂'}：${message}`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: `权限更新失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    } finally {
+      setPermissionBusy(null);
     }
   }
 
@@ -312,7 +351,7 @@ export default function TeacherDashboard() {
 
   const activeTotals = activeClassrooms.reduce(
     (summary, classroom) => {
-      summary.students += classroom._count?.students || 0;
+      summary.students += classroom.realStudentCount ?? (classroom._count?.students || 0);
       summary.online += onlineMap[classroom.id] || 0;
       summary.rounds += (classroom.students || []).reduce(
         (total: number, student) => total + (student.totalRounds || 0),
@@ -452,9 +491,6 @@ export default function TeacherDashboard() {
               <span>{item.label}</span>
             </div>
           ))}
-          {activeTotals.paused > 0 && (
-            <p>{activeTotals.paused} 个课堂当前已暂停学生提问</p>
-          )}
         </div>
         <div className="active-classroom-filters">
           <label className="active-classroom-search">
@@ -536,13 +572,15 @@ export default function TeacherDashboard() {
                           label: string;
                           bg: string;
                           color: string;
+                          border: string;
                           icon: ReactNode;
                         }
                       > = {
                         standard: {
                           label: "标准模式",
-                          bg: "#eef2ff",
-                          color: "#2563eb",
+                          bg: "#f7f7ff",
+                          color: "#5558b7",
+                          border: "#e2e3f7",
                           icon: (
                             <svg
                               width="12"
@@ -560,8 +598,9 @@ export default function TeacherDashboard() {
                         },
                         group: {
                           label: "分组模式",
-                          bg: "#f5f3ff",
-                          color: "#7c3aed",
+                          bg: "#faf7ff",
+                          color: "#7556a9",
+                          border: "#ebe1f7",
                           icon: (
                             <svg
                               width="12"
@@ -580,8 +619,9 @@ export default function TeacherDashboard() {
                         },
                         advanced: {
                           label: "高级模式",
-                          bg: "#fef3c7",
-                          color: "#d97706",
+                          bg: "#fffaf0",
+                          color: "#a66b1c",
+                          border: "#f2e5c8",
                           icon: (
                             <svg
                               width="12"
@@ -604,15 +644,18 @@ export default function TeacherDashboard() {
                           style={{
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: 3,
-                            padding: "1px 7px",
-                            borderRadius: 4,
-                            fontSize: "0.688rem",
+                            gap: 5,
+                            minHeight: 26,
+                            padding: "3px 9px",
+                            borderRadius: 8,
+                            border: `1px solid ${cfg.border}`,
+                            fontSize: "0.7rem",
                             fontWeight: 600,
                             verticalAlign: "middle",
-                            lineHeight: "14px",
+                            lineHeight: "16px",
                             background: cfg.bg,
                             color: cfg.color,
+                            boxSizing: "border-box",
                           }}
                         >
                           {cfg.icon}
@@ -627,20 +670,22 @@ export default function TeacherDashboard() {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: 4,
-                        padding: "1px 7px",
-                        borderRadius: 4,
-                        background: "#f0fdf4",
-                        color: "#16a34a",
-                        fontSize: "0.688rem",
+                        gap: 6,
+                        minHeight: 26,
+                        padding: "3px 9px",
+                        borderRadius: 8,
+                        background: "#f8fafc",
+                        color: "#475569",
+                        fontSize: "0.7rem",
                         fontWeight: 600,
-                        fontFamily: "monospace",
-                        border: "1px solid #bbf7d0",
+                        border: "1px solid #e2e8f0",
                         cursor: "copy",
+                        boxSizing: "border-box",
                       }}
                     >
-                      {cr.code}
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span style={{ color: "#94a3b8", fontWeight: 500 }}>互动码</span>
+                      <strong style={{ color: "#0f766e", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.75rem", letterSpacing: "0.04em" }}>{cr.code}</strong>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
@@ -652,7 +697,9 @@ export default function TeacherDashboard() {
                         </span>
                       </>
                     )}
-                    {cr._count?.students || 0} 名学生
+                    {cr.mode === 'group' || cr.mode === 'advanced'
+                      ? `${cr.participantCount ?? (cr._count?.students || 0)} 个小组 · ${cr.realStudentCount ?? 0} 名学生`
+                      : `${cr.realStudentCount ?? (cr._count?.students || 0)} 名学生`}
                     <span style={{ margin: "0 6px", color: "#e2e8f0" }}>|</span>
                     <span>
                       {new Date(cr.createdAt).toLocaleString("zh-CN", {
@@ -685,7 +732,7 @@ export default function TeacherDashboard() {
                       label: "离线",
                       value: Math.max(
                         0,
-                        (cr._count?.students || 0) - (onlineMap[cr.id] || 0),
+                        (cr.participantCount ?? (cr._count?.students || 0)) - (onlineMap[cr.id] || 0),
                       ),
                       color: "#94a3b8",
                     },
@@ -811,19 +858,48 @@ export default function TeacherDashboard() {
                         </span>
                       );
                     })}
-                    <span className="active-classroom-permissions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem' }}>
-                      <span style={{ color: '#94a3b8', fontWeight: 700 }}>对话状态：</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.status !== 'paused' ? '#eff6ff' : '#f1f5f9', color: cr.status !== 'paused' ? '#3b82f6' : '#94a3b8' }}>
-                        {cr.status !== 'paused' ? '允许提问' : '禁止提问'}
+                    <span className="active-classroom-permissions" style={{ marginLeft: 'auto' }}>
+                      <span className="active-classroom-permissions-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        学生权限
                       </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowStudentStop !== false ? '#fffbeb' : '#f1f5f9', color: cr.allowStudentStop !== false ? '#d97706' : '#94a3b8' }}>
-                        {cr.allowStudentStop !== false ? '允许中断' : '禁止中断'}
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowStudentExport !== false ? '#ecfeff' : '#f1f5f9', color: cr.allowStudentExport !== false ? '#0891b2' : '#94a3b8' }}>
-                        {cr.allowStudentExport !== false ? '允许导出' : '禁止导出'}
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.allowFollowUps !== false ? '#f5f3ff' : '#f1f5f9', color: cr.allowFollowUps !== false ? '#8b5cf6' : '#94a3b8' }}>
-                        {cr.allowFollowUps !== false ? '允许追问' : '禁止追问'}
+                      <span className="active-classroom-permission-group">
+                        {([
+                          { key: 'questions', label: '提问', enabled: cr.status !== 'paused' },
+                          { key: 'stop', label: '中断', enabled: cr.allowStudentStop !== false },
+                          { key: 'export', label: '导出', enabled: cr.allowStudentExport !== false },
+                          { key: 'followUps', label: '追问', enabled: cr.allowFollowUps !== false },
+                        ] as const).map(permission => {
+                          const busy = permissionBusy === `${cr.id}:${permission.key}`;
+                          return (
+                          <button
+                            type="button"
+                            key={permission.key}
+                            className={`active-classroom-permission ${permission.enabled ? 'is-enabled' : 'is-disabled'} ${busy ? 'is-busy' : ''}`}
+                            title={`点击${permission.enabled ? '关闭' : '开启'}${permission.label}`}
+                            aria-pressed={permission.enabled}
+                            aria-busy={busy}
+                            disabled={permissionBusy !== null}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void toggleQuickPermission(cr, permission.key);
+                            }}
+                          >
+                            <span className="active-classroom-permission-icon" aria-hidden="true">
+                              {busy ? (
+                                <span className="active-classroom-permission-spinner" />
+                              ) : permission.enabled ? (
+                                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 6 2.4 2.4L10 3"/></svg>
+                              ) : (
+                                <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m3 3 6 6M9 3 3 9"/></svg>
+                              )}
+                            </span>
+                            {permission.label}
+                          </button>
+                          );
+                        })}
                       </span>
                     </span>
                   </div>

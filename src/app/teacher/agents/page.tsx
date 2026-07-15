@@ -6,7 +6,7 @@ import type { AgentSummary } from '@/lib/types';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
-import { AgentCredentialsFields } from './credentials-fields';
+import { AgentCredentialsFields, AgentPlatformNotice } from './credentials-fields';
 import { AgentCard } from './agent-card';
 import { AgentDeleteBlockedDialog, AgentErrorTip, type AgentErrorTipData } from './agent-overlays';
 import { useAgentController } from './use-agent-controller';
@@ -276,21 +276,6 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
                 }}
               />
 
-              {platform === 'coze' && (
-                <div className={`agent-coze-fetch-guide${canFetchCozeInfo ? ' is-ready' : ''}`}>
-                  <div className="agent-coze-fetch-copy">
-                    <span className="agent-coze-fetch-badge">推荐</span>
-                    <div>
-                      <strong>{canFetchCozeInfo ? '凭据已填好，可以自动获取资料' : '填好 Bot ID 和 API Token 后自动获取资料'}</strong>
-                      <small>将自动填入头像、智能体名称和开场白；也可以跳过，稍后手动填写。</small>
-                    </div>
-                  </div>
-                  <button type="button" className="btn btn-primary" onClick={handleFetchInfo} disabled={!canFetchCozeInfo || fetchingInfo}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    {fetchingInfo ? '正在从 Coze 获取...' : '从 Coze 获取头像、名称和开场白'}
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
@@ -301,8 +286,15 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div className="agent-form-step-heading">
                 <span>2</span>
-                <div><strong>{AGENT_PLATFORM_MAP[platform].label}智能体资料</strong><small>{platform === 'coze' ? '可自动获取，也可以在这里手动填写' : '请手动填写展示名称、头像和开场白'}</small></div>
+                <div><strong>{AGENT_PLATFORM_MAP[platform].label}智能体资料</strong><small>{platform === 'coze' ? '自动获取或手动填写' : '请手动填写展示名称、头像和开场白'}</small></div>
               </div>
+              {platform === 'coze' && (
+                <button type="button" className="btn btn-primary agent-coze-fetch-button" onClick={handleFetchInfo} disabled={!canFetchCozeInfo || fetchingInfo}
+                  title={canFetchCozeInfo ? '自动填入头像、名称和开场白' : '请先填写 Bot ID 和 API Token'}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  {fetchingInfo ? '获取中...' : '从 Coze 获取资料'}
+                </button>
+              )}
               <div className="agent-form-identity" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                 <AgentLogoField inputRef={fileRef} preview={logoPreview} onChange={handleLogoChange} onRemove={handleRemoveLogo} />
                 <div style={{ flex: 1 }}>
@@ -326,7 +318,13 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
             </div>
           </div>
 
-      {fieldErrors.submit && (
+          {(platform === 'coze' || platform === 'coze-agent' || platform === 'wenxin') && (
+            <div className="agent-form-platform-notice">
+              <AgentPlatformNotice platform={platform} />
+            </div>
+          )}
+
+          {fieldErrors.submit && (
             <div className="agent-form-submit-error" style={{
               padding: '8px 12px', borderRadius: 6,
               background: '#fef2f2', border: '1px solid #fecaca',

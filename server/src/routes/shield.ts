@@ -205,7 +205,7 @@ router.post('/classroom/:classroomId/student/:studentId/blacklist', async (req, 
     const prisma: PrismaClient = req.app.get('prisma');
     const { classroomId, studentId } = req.params;
     await prisma.classroomStudent.updateMany({
-      where: { classroomId, studentId },
+      where: { classroomId, id: studentId },
       data: { blacklisted: true },
     });
     const io = req.app.get('io');
@@ -223,7 +223,7 @@ router.post('/classroom/:classroomId/student/:studentId/unblacklist', async (req
     const prisma: PrismaClient = req.app.get('prisma');
     const { classroomId, studentId } = req.params;
     await prisma.classroomStudent.updateMany({
-      where: { classroomId, studentId },
+      where: { classroomId, id: studentId },
       data: { blacklisted: false, warningCount: 0 },
     });
     const io = req.app.get('io');
@@ -244,16 +244,18 @@ router.get('/classroom/:classroomId/warnings', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
-    // 批量查询学生姓名
-    const studentIds = [...new Set(warnings.map(w => w.studentId))];
-    const students = studentIds.length > 0 ? await prisma.student.findMany({
-      where: { id: { in: studentIds } },
-      select: { id: true, name: true },
+    // warning.studentId 现为课堂参与者 ID，可指向真实学生或小组。
+    const participantIds = [...new Set(warnings.map(w => w.studentId))];
+    const participants = participantIds.length > 0 ? await prisma.classroomStudent.findMany({
+      where: { id: { in: participantIds } }, include: { student: true, group: true },
     }) : [];
-    const studentMap = new Map(students.map(s => [s.id, s.name]));
+    const participantMap = new Map(participants.map(participant => [
+      participant.id,
+      participant.student?.name || participant.group?.name || '未知',
+    ]));
     const result = warnings.map(w => ({
       ...w,
-      studentName: studentMap.get(w.studentId) || '未知',
+      studentName: participantMap.get(w.studentId) || '未知',
     }));
     res.json(result);
   } catch (error) {
@@ -294,7 +296,7 @@ router.post('/classroom/:classroomId/student/:studentId/reset-warnings', async (
     const prisma: PrismaClient = req.app.get('prisma');
     const { classroomId, studentId } = req.params;
     await prisma.classroomStudent.updateMany({
-      where: { classroomId, studentId },
+      where: { classroomId, id: studentId },
       data: { warningCount: 0 },
     });
     const io = req.app.get('io');

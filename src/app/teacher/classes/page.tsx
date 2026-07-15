@@ -41,6 +41,8 @@ export default function ClassesPage() {
   const [batchEditGenderModal, setBatchEditGenderModal] = useState(false);
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(20);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentGroupFilter, setStudentGroupFilter] = useState<'all' | 'grouped' | 'ungrouped'>('all');
   const [deleteBlocked, setDeleteBlocked] = useState<{
     classId: string;
     className: string;
@@ -266,7 +268,18 @@ export default function ClassesPage() {
     }
   };
 
-  const sortedStudents = [...students].sort((a, b) => {
+  const normalizedStudentSearch = studentSearch.trim().toLocaleLowerCase('zh-CN');
+  const filteredStudents = students.filter((student) => {
+    const groupName = studentGroupMap.get(student.id) || '';
+    const matchesSearch = !normalizedStudentSearch || [student.name, student.studentNo || '', student.tag || '', groupName]
+      .some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedStudentSearch));
+    const matchesGroup = studentGroupFilter === 'all'
+      || (studentGroupFilter === 'grouped' && Boolean(groupName))
+      || (studentGroupFilter === 'ungrouped' && !groupName);
+    return matchesSearch && matchesGroup;
+  });
+
+  const sortedStudents = [...filteredStudents].sort((a, b) => {
     let cmp = 0;
     if (sortField === 'studentNo') {
       cmp = (parseInt(a.studentNo ?? '', 10) || 0) - (parseInt(b.studentNo ?? '', 10) || 0);
@@ -291,6 +304,7 @@ export default function ClassesPage() {
   });
 
   const pagedStudents = sortedStudents.slice((studentPage - 1) * studentPageSize, studentPage * studentPageSize);
+  const currentPageFullySelected = pagedStudents.length > 0 && pagedStudents.every((student) => selectedStudentIds.has(student.id));
 
   const handleStudentTableMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -428,9 +442,9 @@ export default function ClassesPage() {
       )}
 
       {/* 主体内容 */}
-      <div style={{ display: 'flex', gap: 24 }}>
+      <div className="classes-layout" style={{ display: 'flex', gap: 24 }}>
         {/* 班级列表 */}
-        <div style={{ width: 260, flexShrink: 0 }}>
+        <div className="classes-sidebar" style={{ width: 260, flexShrink: 0 }}>
           {loading ? (
             <div style={{ padding: 20, color: '#94a3b8', textAlign: 'center', fontSize: "0.813rem" }}>加载中...</div>
           ) : classes.length === 0 ? (
@@ -454,10 +468,10 @@ export default function ClassesPage() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="classes-sidebar-list" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {classes.map(c => (
                 <div key={c.id}
-                  onClick={() => { setSelectedClass(c.id); setSelectedStudentIds(new Set()); setStudentPage(1); }}
+                  onClick={() => { setSelectedClass(c.id); setSelectedStudentIds(new Set()); setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}
                   style={{
                     padding: '13px 16px', borderRadius: 12, cursor: 'pointer',
                     border: `1.5px solid ${selectedClass === c.id ? '#2563eb' : '#e2e8f0'}`,
@@ -739,7 +753,7 @@ export default function ClassesPage() {
 
               {/* 学生列表模式下的操作按钮 / 批量操作栏 */}
               {tabMode === 'students' && (
-                <div style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
+                <div className="classes-action-bar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
                   {selectedStudentIds.size > 0 ? (
                     <>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -773,33 +787,59 @@ export default function ClassesPage() {
                     </>
                   ) : (
                     <>
-                      <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
-                        onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
-                        {addStudentMode === 'form' ? (
-                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起添加</>
-                        ) : (
-                          <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
-                        )}
-                      </button>
-                      <button className="btn btn-primary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
-                        onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
-                        粘贴名单
-                      </button>
-                      {students.some(s => !s.avatarId) && (
+                      <div className="classes-filter-controls">
+                        <label className="classes-search-box">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                          <input
+                            value={studentSearch}
+                            onChange={(event) => { setStudentSearch(event.target.value); setStudentPage(1); }}
+                            placeholder="搜索姓名、学号、分组或标签"
+                            aria-label="搜索学生"
+                          />
+                          {studentSearch && (
+                            <button type="button" onClick={() => { setStudentSearch(''); setStudentPage(1); }} aria-label="清空学生搜索">×</button>
+                          )}
+                        </label>
+                        <select
+                          className="classes-group-filter"
+                          value={studentGroupFilter}
+                          onChange={(event) => { setStudentGroupFilter(event.target.value as 'all' | 'grouped' | 'ungrouped'); setStudentPage(1); }}
+                          aria-label="按分组状态筛选"
+                        >
+                          <option value="all">全部分组</option>
+                          <option value="grouped">已分组</option>
+                          <option value="ungrouped">未分组</option>
+                        </select>
+                      </div>
+                      <div className="classes-primary-actions">
                         <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={async () => {
-                            if (!confirm('为当前班级中未分配头像的学生按性别自动分配头像？')) return;
-                            try {
-                              const r = await api.autoAssignAvatar({ classId: selectedClass! });
-                              setToast({ msg: `已为 ${r.assigned} 名学生分配头像`, type: 'success' });
-                              loadStudents();
-                            } catch { setToast({ msg: '自动分配失败', type: 'error' }); }
-                          }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M18 8l2 2 4-4"/></svg>
-                          自动分配头像
+                          onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
+                          {addStudentMode === 'form' ? (
+                            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起添加</>
+                          ) : (
+                            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
+                          )}
                         </button>
-                      )}
+                        <button className="btn btn-primary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
+                          粘贴名单
+                        </button>
+                        {students.some(s => !s.avatarId) && (
+                          <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                            onClick={async () => {
+                              if (!confirm('为当前班级中未分配头像的学生按性别自动分配头像？')) return;
+                              try {
+                                const r = await api.autoAssignAvatar({ classId: selectedClass! });
+                                setToast({ msg: `已为 ${r.assigned} 名学生分配头像`, type: 'success' });
+                                loadStudents();
+                              } catch { setToast({ msg: '自动分配失败', type: 'error' }); }
+                            }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M18 8l2 2 4-4"/></svg>
+                            自动分配头像
+                          </button>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -828,6 +868,12 @@ export default function ClassesPage() {
               {/* 内容区域 */}
               {tabMode === 'students' ? (
                 <div style={{ padding: 0 }}>
+                  {(studentSearch || studentGroupFilter !== 'all') && students.length > 0 && (
+                    <div className="classes-filter-summary">
+                      <span>找到 <strong>{sortedStudents.length}</strong> 名学生</span>
+                      <button type="button" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>清除筛选</button>
+                    </div>
+                  )}
                   {students.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '48px 20px' }}>
                       <div style={{
@@ -840,16 +886,38 @@ export default function ClassesPage() {
                       <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无学生</p>
                       <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
                     </div>
+                  ) : sortedStudents.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '48px 20px' }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: 11,
+                        background: '#f1f5f9', margin: '0 auto 10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      </div>
+                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>没有符合条件的学生</p>
+                      <p style={{ fontSize: "0.813rem", color: '#64748b', margin: '0 0 16px' }}>可以更换关键词或清除分组筛选</p>
+                      <button className="btn btn-secondary" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>查看全部学生</button>
+                    </div>
                   ) : (
                     <>
-                    <div ref={studentTableRef} style={{position: 'relative', userSelect: 'none'}} onMouseDown={handleStudentTableMouseDown}><table>
+                    <div className="student-table-scroll" ref={studentTableRef} style={{position: 'relative', userSelect: 'none'}} onMouseDown={handleStudentTableMouseDown}><table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
                           <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: "0.75rem", borderBottom: '2px solid #e2e8f0' }}>
                             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
                               <input type="checkbox"
-                                checked={selectedStudentIds.size === pagedStudents.length && pagedStudents.length > 0}
-                                onChange={(e) => { if (e.target.checked) { setSelectedStudentIds(new Set(pagedStudents.map(s => s.id))); } else { setSelectedStudentIds(new Set()); } }}
+                                checked={currentPageFullySelected}
+                                onChange={(e) => {
+                                  setSelectedStudentIds((previous) => {
+                                    const next = new Set(previous);
+                                    pagedStudents.forEach((student) => {
+                                      if (e.target.checked) next.add(student.id);
+                                      else next.delete(student.id);
+                                    });
+                                    return next;
+                                  });
+                                }}
                                 style={{ width: 15, height: 15, cursor: 'pointer' }} />
                             </label>
                           </th>

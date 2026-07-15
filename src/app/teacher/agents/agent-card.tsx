@@ -31,7 +31,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
     : null;
 
   return (
-    <div className="card" style={{ borderLeft: `5px solid ${enabled ? color : '#e2e8f0'}`, padding: '16px 20px' }}>
+    <div className="card agent-management-card" style={{ borderLeft: `5px solid ${enabled ? color : '#e2e8f0'}`, padding: '16px 20px' }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{
           width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: enabled ? `${color}12` : '#f1f5f9',
@@ -60,7 +60,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
 
       {testing && <div style={{ marginTop: 8, height: 3, borderRadius: 2, overflow: 'hidden', background: '#e2e8f0', position: 'relative' }}><div style={{ position: 'absolute', inset: 0, width: '40%', background: 'linear-gradient(90deg, #6366f1, #3b82f6)', borderRadius: 2, animation: 'indeterminate 1.2s ease-in-out infinite' }} /></div>}
 
-      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="agent-management-card-footer" style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden' }}>
           {!enabled ? <Status color="#94a3b8" label="停用" />
             : !checkedAt ? <Status color="#d1d5db" label="未检测" />
@@ -71,7 +71,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
                   onShowError(agent.lastCheckError, rect.top - 8, rect.left + rect.width / 2);
                 }} onMouseLeave={onHideError} /><Time>{checkedAt}</Time></>}
         </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
+        <div className="agent-management-card-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
           {enabled && <button type="button" style={actionStyle()} onClick={onTest} disabled={testing}><RefreshIcon spinning={testing} />{testing ? '检测中...' : '测试'}</button>}
           <button type="button" style={actionStyle()} onClick={onEdit} disabled={toggling || deleting}><EditIcon />编辑</button>
           <button type="button" style={actionStyle(true)} onClick={onDelete} disabled={deleting || toggling}><DeleteIcon />{deleting ? '处理中...' : '删除'}</button>

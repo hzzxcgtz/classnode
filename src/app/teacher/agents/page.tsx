@@ -13,6 +13,7 @@ import { useAgentController } from './use-agent-controller';
 import { useAgentFormFields } from './use-agent-form-fields';
 import { useAgentLogo } from './use-agent-logo';
 import { useAgentFormActions } from './use-agent-form-actions';
+import { AGENT_PLATFORMS, type AgentPlatform } from './agent-platforms';
 
 export default function AgentsPage() {
   const [showForm, setShowForm] = useState(false);
@@ -23,6 +24,9 @@ export default function AgentsPage() {
   const toastTimerRef = useRef<number | null>(null);
   const [errorTip, setErrorTip] = useState<AgentErrorTipData | null>(null);
   const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string } | null>(null);
+  const [agentSearch, setAgentSearch] = useState('');
+  const [platformFilter, setPlatformFilter] = useState<'all' | AgentPlatform>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'healthy' | 'error'>('all');
 
   const { agents, loading, testing, busyOperation, loadAgents, toggleAgent, deleteAgent, testAgent } = useAgentController({
     onNotice: notice => {
@@ -37,7 +41,24 @@ export default function AgentsPage() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
   }, []);
 
-  const pagedAgents = agents.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
+  const normalizedAgentSearch = agentSearch.trim().toLocaleLowerCase('zh-CN');
+  const filteredAgents = agents.filter(agent => {
+    const matchesSearch = !normalizedAgentSearch || agent.name.toLocaleLowerCase('zh-CN').includes(normalizedAgentSearch);
+    const matchesPlatform = platformFilter === 'all' || agent.platform === platformFilter;
+    const enabled = agent.enabled !== false;
+    const matchesStatus = statusFilter === 'all'
+      || (statusFilter === 'enabled' && enabled)
+      || (statusFilter === 'disabled' && !enabled)
+      || (statusFilter === 'healthy' && enabled && agent.lastCheckOk === true)
+      || (statusFilter === 'error' && enabled && Boolean(agent.lastCheckAt) && agent.lastCheckOk === false);
+    return matchesSearch && matchesPlatform && matchesStatus;
+  });
+  const pagedAgents = filteredAgents.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
+  const agentSummary = {
+    enabled: agents.filter(agent => agent.enabled !== false).length,
+    healthy: agents.filter(agent => agent.enabled !== false && agent.lastCheckOk === true).length,
+    error: agents.filter(agent => agent.enabled !== false && Boolean(agent.lastCheckAt) && agent.lastCheckOk === false).length,
+  };
 
   return (
     <div>
@@ -66,6 +87,42 @@ export default function AgentsPage() {
         />
       )}
 
+      {!loading && agents.length > 0 && (
+        <>
+          <div className="agent-management-overview" aria-label="智能体状态概览">
+            {[
+              { label: '全部智能体', value: agents.length, tone: 'blue' },
+              { label: '当前启用', value: agentSummary.enabled, tone: 'purple' },
+              { label: '连接健康', value: agentSummary.healthy, tone: 'green' },
+              { label: '连接异常', value: agentSummary.error, tone: 'red' },
+            ].map(item => (
+              <div key={item.label} className={`tone-${item.tone}`}>
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="agent-management-filters">
+            <label className="agent-management-search">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input value={agentSearch} onChange={event => { setAgentSearch(event.target.value); setAgentPage(1); }} placeholder="搜索智能体名称" aria-label="搜索智能体" />
+              {agentSearch && <button type="button" onClick={() => { setAgentSearch(''); setAgentPage(1); }} aria-label="清空智能体搜索">×</button>}
+            </label>
+            <select value={platformFilter} onChange={event => { setPlatformFilter(event.target.value as 'all' | AgentPlatform); setAgentPage(1); }} aria-label="按平台筛选智能体">
+              <option value="all">全部平台</option>
+              {AGENT_PLATFORMS.map(platform => <option key={platform.value} value={platform.value}>{platform.label}</option>)}
+            </select>
+            <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value as typeof statusFilter); setAgentPage(1); }} aria-label="按状态筛选智能体">
+              <option value="all">全部状态</option>
+              <option value="enabled">已启用</option>
+              <option value="disabled">已停用</option>
+              <option value="healthy">连接健康</option>
+              <option value="error">连接异常</option>
+            </select>
+          </div>
+        </>
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
       ) : agents.length === 0 ? (
@@ -87,8 +144,14 @@ export default function AgentsPage() {
             接入第一个智能体
           </button>
         </div>
+      ) : filteredAgents.length === 0 ? (
+        <div className="agent-management-filter-empty">
+          <strong>没有符合条件的智能体</strong>
+          <span>可以更换关键词、平台或连接状态</span>
+          <button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>
+        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+        <div className="agent-management-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
           {pagedAgents.map(agent => (
             <AgentCard
               key={agent.id}
@@ -106,8 +169,8 @@ export default function AgentsPage() {
           ))}
         </div>
       )}
-      {agents.length > agentPageSize && (
-        <Pagination current={agentPage} total={agents.length} pageSize={agentPageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setAgentPage} onPageSizeChange={setAgentPageSize} />
+      {filteredAgents.length > agentPageSize && (
+        <Pagination current={agentPage} total={filteredAgents.length} pageSize={agentPageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setAgentPage} onPageSizeChange={setAgentPageSize} />
       )}
 
       {deleteBlocked && <AgentDeleteBlockedDialog agentName={deleteBlocked.agentName} onClose={() => setDeleteBlocked(null)} />}
@@ -142,7 +205,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="agent-form-title" onClick={e => e.stopPropagation()} style={{
+      <div className="modal-content agent-form-modal" role="dialog" aria-modal="true" aria-labelledby="agent-form-title" onClick={e => e.stopPropagation()} style={{
         maxWidth: 520, padding: 0, borderRadius: 14,
       }}>
         {/* 顶栏 */}
@@ -181,11 +244,11 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* 头像 + 名称 — 对齐 */}
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div className="agent-form-identity" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                 <AgentLogoField inputRef={fileRef} preview={logoPreview} onChange={handleLogoChange} onRemove={handleRemoveLogo} />
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div className="agent-form-name-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
                       style={{ fontSize: "0.813rem", padding: '8px 12px', flex: 1, borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
                     {platform === 'coze' ? (
@@ -255,7 +318,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="agent-form-footer" style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
             <AgentHelpButton platform={platform} />
             <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>

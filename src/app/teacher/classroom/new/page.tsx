@@ -19,11 +19,16 @@ export default function NewClassroomPage() {
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [groupAgentIds, setGroupAgentIds] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [openDropdownGroupId, setOpenDropdownGroupId] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
   const groupRequestRef = useRef(0);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const classSectionRef = useRef<HTMLDivElement>(null);
+  const agentSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -33,6 +38,8 @@ export default function NewClassroomPage() {
       setClasses(c);
     }).catch(error => {
       if (mountedRef.current) setFieldErrors({ submit: `课堂配置加载失败：${error instanceof Error ? error.message : '请求异常'}` });
+    }).finally(() => {
+      if (mountedRef.current) setLoadingOptions(false);
     });
     return () => { mountedRef.current = false; };
   }, []);
@@ -49,8 +56,10 @@ export default function NewClassroomPage() {
     const requestId = ++groupRequestRef.current;
     setSelectedClassId(id);
     clearError('class');
+    clearError('submit');
     setClassGroups([]);
     setGroupAgentIds({});
+    setLoadingGroups(true);
     api.getGroups(id).then(groups => {
       if (!mountedRef.current || requestId !== groupRequestRef.current) return;
       setClassGroups(groups || []);
@@ -58,6 +67,8 @@ export default function NewClassroomPage() {
       if (!mountedRef.current || requestId !== groupRequestRef.current) return;
       setClassGroups([]);
       setFieldErrors(prev => ({ ...prev, submit: '班级分组加载失败，请重新选择班级后再试' }));
+    }).finally(() => {
+      if (mountedRef.current && requestId === groupRequestRef.current) setLoadingGroups(false);
     });
   };
 
@@ -72,6 +83,7 @@ export default function NewClassroomPage() {
         setSelectedClassId('');
         setClassGroups([]);
         setGroupAgentIds({});
+        setLoadingGroups(false);
       }
     }
   };
@@ -84,11 +96,18 @@ export default function NewClassroomPage() {
     if (mode !== 'advanced' && !selectedAgentId) errors.agent = '请选择AI智能体';
     if (mode === 'advanced') {
       const allAssigned = classGroups.every(g => groupAgentIds[g.id]);
-      if (!allAssigned) errors.groupAgents = '请为每个小组分配智能体';
+      if (loadingGroups) errors.groupAgents = '班级分组仍在加载，请稍候';
+      else if (classGroups.length === 0) errors.groupAgents = '当前班级没有可用分组，请重新选择班级';
+      else if (!allAssigned) errors.groupAgents = '请为每个小组分配智能体';
     }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      window.setTimeout(() => {
+        if (errors.title) titleInputRef.current?.focus();
+        else if (errors.class) classSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        else agentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 0);
       return;
     }
 
@@ -124,6 +143,21 @@ export default function NewClassroomPage() {
     }
   };
 
+  const selectedClass = classes.find((classItem) => classItem.id === selectedClassId);
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const configuredGroupCount = classGroups.filter((group) => groupAgentIds[group.id]).length;
+  const modeLabel = mode === 'standard' ? '标准模式' : mode === 'group' ? '分组模式' : '高级模式';
+  const steps = [
+    { label: '课堂信息', complete: Boolean(title.trim()) },
+    { label: '参与班级', complete: Boolean(selectedClassId) },
+    {
+      label: 'AI 配置',
+      complete: mode === 'advanced'
+        ? classGroups.length > 0 && configuredGroupCount === classGroups.length
+        : Boolean(selectedAgentId),
+    },
+  ];
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       {/* 页面标题 */}
@@ -135,19 +169,33 @@ export default function NewClassroomPage() {
       </div>
 
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
+        <div className="new-classroom-steps" aria-label="课堂创建进度">
+          {steps.map((step, index) => (
+            <div key={step.label} className={step.complete ? 'is-complete' : ''}>
+              <span>{step.complete ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+              ) : index + 1}</span>
+              <strong>{step.label}</strong>
+            </div>
+          ))}
+        </div>
+
         {/* 课堂标题 */}
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
         }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <label htmlFor="classroom-title" style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
             课堂标题
-          </div>
-          <input className="input" value={title} onChange={e => { setTitle(e.target.value); clearError('title'); }}
+            <span className="required-field-mark">必填</span>
+          </label>
+          <input ref={titleInputRef} id="classroom-title" className="input" value={title} onChange={e => { setTitle(e.target.value); clearError('title'); }}
             placeholder="如：第三单元英语对话练习"
+            aria-invalid={Boolean(fieldErrors.title)}
+            aria-describedby={fieldErrors.title ? 'classroom-title-error' : undefined}
             style={{ borderColor: fieldErrors.title ? '#ef4444' : undefined }} />
-          {fieldErrors.title && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {fieldErrors.title && <div id="classroom-title-error" role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.title}
           </div>}
@@ -162,12 +210,11 @@ export default function NewClassroomPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
             选择参与模式
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div className="new-classroom-mode-grid" role="group" aria-label="课堂参与模式">
             {[
               {
                 id: 'standard' as CreateMode,
                 label: '标准模式',
-                sub: 'Standard Mode',
                 desc: '学生选择姓名加入，以个人身份与AI互动',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -178,7 +225,6 @@ export default function NewClassroomPage() {
               {
                 id: 'group' as CreateMode,
                 label: '分组模式',
-                sub: 'Group Mode',
                 desc: '学生选择小组加入，同组共享一个对话窗口',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -189,7 +235,6 @@ export default function NewClassroomPage() {
               {
                 id: 'advanced' as CreateMode,
                 label: '高级模式',
-                sub: 'Advanced Mode',
                 desc: '每个小组绑定不同的AI智能体，分组独立对话',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -198,13 +243,14 @@ export default function NewClassroomPage() {
                 ),
               },
             ].map(m => (
-              <div key={m.id} onClick={() => handleModeChange(m.id)}
+              <button type="button" key={m.id} onClick={() => handleModeChange(m.id)} aria-pressed={mode === m.id}
+                className="new-classroom-mode-card"
                 style={{
                   flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
                   border: `2px solid ${mode === m.id ? '#2563eb' : '#e2e8f0'}`,
                   background: mode === m.id ? '#eef2ff' : 'white',
                   transition: 'all 0.12s',
-                  display: 'flex', flexDirection: 'column',
+                  display: 'flex', flexDirection: 'column', textAlign: 'left', font: 'inherit',
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <div style={{
@@ -217,41 +263,45 @@ export default function NewClassroomPage() {
                     )}
                   </div>
                   <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
-                  <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{m.sub}</span>
+                  {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
                   <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#2563eb' : '#94a3b8' }}>{m.icon}</span>
                   <span>{m.desc}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
 
         {/* 选择班级 */}
-        <div style={{
+        <div ref={classSectionRef} style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
         }}>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             选择班级
+            <span className="required-field-mark">必填</span>
             {mode !== 'standard' && (
               <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
             )}
           </div>
-          {classes.length === 0 ? (
+          {loadingOptions ? (
+            <div className="new-classroom-loading" role="status">正在加载班级与智能体...</div>
+          ) : classes.length === 0 ? (
             <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
               暂无可选班级，请先在「班级管理」中创建班级
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="new-classroom-class-grid">
               {classes.map(c => {
                 const hasGroups = (c._count?.groups || 0) > 0;
                 const isSelected = selectedClassId === c.id;
                 const isDisabled = (mode === 'group' || mode === 'advanced') && !hasGroups;
                 return (
-                  <div key={c.id} onClick={() => { if (!isDisabled) selectClass(c.id); }}
+                  <button type="button" key={c.id} onClick={() => selectClass(c.id)} disabled={isDisabled}
+                    aria-pressed={isSelected}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '12px 14px', borderRadius: 10, userSelect: 'none',
@@ -260,7 +310,7 @@ export default function NewClassroomPage() {
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
                       opacity: isDisabled ? 0.5 : 1,
                       fontSize: "0.875rem",
-                      transition: 'all 0.12s',
+                      transition: 'all 0.12s', textAlign: 'left', fontFamily: 'inherit',
                     }}>
                     <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#2563eb' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
@@ -284,12 +334,13 @@ export default function NewClassroomPage() {
                     ) : (
                       <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
-          {fieldErrors.class && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {selectedClassId && loadingGroups && <div className="new-classroom-inline-status" role="status">正在读取班级分组...</div>}
+          {fieldErrors.class && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.class}
           </div>}
@@ -297,7 +348,7 @@ export default function NewClassroomPage() {
 
         {/* 高级模式：每个组分配智能体 */}
         {selectedClassId && mode === 'advanced' && classGroups.length > 0 && (
-          <div style={{
+          <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10,
             border: `1px solid ${fieldErrors.groupAgents ? '#ef4444' : '#eef2f6'}`,
             padding: '16px 20px', marginBottom: 20,
@@ -305,9 +356,10 @@ export default function NewClassroomPage() {
             <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
               为每个小组分配AI智能体
+              <span className="required-field-mark">必填</span>
             </div>
             {classGroups.map((g, i) => (
-              <div key={g.id} style={{
+              <div key={g.id} className="new-classroom-group-row" style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
                 marginBottom: 8, background: 'white',
@@ -324,10 +376,12 @@ export default function NewClassroomPage() {
                   <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
                   <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
                 </div>
-                <div style={{ position: 'relative', width: 200, flexShrink: 0 }}>
-                  <div
+                <div className="new-classroom-group-agent" style={{ position: 'relative', width: 200, flexShrink: 0 }}>
+                  <button type="button"
                     onClick={() => setOpenDropdownGroupId(openDropdownGroupId === g.id ? null : g.id)}
+                    aria-expanded={openDropdownGroupId === g.id}
                     style={{
+                      width: '100%', fontFamily: 'inherit',
                       display: 'flex', alignItems: 'center', gap: 6,
                       padding: '6px 10px', borderRadius: 6, fontSize: "0.813rem",
                       border: '1px solid #e2e8f0', cursor: 'pointer',
@@ -348,7 +402,7 @@ export default function NewClassroomPage() {
                       <span style={{ color: '#94a3b8' }}>选择AI智能体</span>
                     )}
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 'auto' }}><polyline points="6 9 12 15 18 9" /></svg>
-                  </div>
+                  </button>
                   {openDropdownGroupId === g.id && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
@@ -359,12 +413,13 @@ export default function NewClassroomPage() {
                       {agents.map(a => {
                         const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
                         return (
-                          <div key={a.id} onClick={() => {
+                          <button type="button" key={a.id} onClick={() => {
                             setGroupAgentIds(prev => ({ ...prev, [g.id]: a.id }));
                             clearError('groupAgents');
                             setOpenDropdownGroupId(null);
                           }}
                           style={{
+                            width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '8px 12px', cursor: 'pointer', fontSize: "0.813rem",
                             background: groupAgentIds[g.id] === a.id ? '#eef2ff' : 'white',
@@ -381,7 +436,7 @@ export default function NewClassroomPage() {
                                 <polyline points="20 6 9 17 4 12" />
                               </svg>
                             )}
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -402,15 +457,18 @@ export default function NewClassroomPage() {
 
         {/* 标准/分组模式：选择AI智能体 */}
         {mode !== 'advanced' && (
-          <div style={{
+          <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
             padding: '16px 20px', marginBottom: 20,
           }}>
             <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
               选择AI智能体
+              <span className="required-field-mark">必填</span>
             </div>
-            {agents.length === 0 ? (
+            {loadingOptions ? (
+              <div className="new-classroom-loading" role="status">正在加载智能体...</div>
+            ) : agents.length === 0 ? (
               <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
                 暂无可选智能体，请先在「AI智能体」中接入
               </div>
@@ -424,14 +482,15 @@ export default function NewClassroomPage() {
                 {agents.map(a => {
                   const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
                   return (
-                    <div key={a.id} onClick={() => { setSelectedAgentId(a.id); clearError('agent'); }}
+                    <button type="button" key={a.id} onClick={() => { setSelectedAgentId(a.id); clearError('agent'); }}
+                      aria-pressed={selectedAgentId === a.id}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
                         borderRadius: 8, userSelect: 'none',
                         border: `1.5px solid ${selectedAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
                         background: selectedAgentId === a.id ? '#eef2ff' : 'white',
                         cursor: 'pointer', fontSize: "0.875rem", fontWeight: selectedAgentId === a.id ? 500 : 400,
-                        transition: 'all 0.12s',
+                        transition: 'all 0.12s', fontFamily: 'inherit',
                       }}>
                       {logoUrl ? (
                         <img src={logoUrl} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
@@ -446,7 +505,7 @@ export default function NewClassroomPage() {
                         </div>
                       )}
                       <span style={{ color: '#0f172a' }}>{a.name}</span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -458,34 +517,45 @@ export default function NewClassroomPage() {
           </div>
         )}
 
-        {fieldErrors.submit && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {fieldErrors.submit && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {fieldErrors.submit}
         </div>}
 
         {/* 操作按钮 */}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 16, borderTop: '1px solid #eef2f6' }}>
-          <button className="btn btn-secondary" onClick={() => router.push('/teacher')}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-            取消
-          </button>
-          <button className="btn btn-primary btn-lg" onClick={handleCreate} disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {saving ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
-                  <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
-                </svg>
-                创建中...
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                {mode === 'group' ? '发起课堂（分组模式）' : mode === 'advanced' ? '发起课堂（高级模式）' : '发起课堂'}
-              </>
-            )}
-          </button>
+        <div className="new-classroom-actions">
+          <div className="new-classroom-summary" aria-live="polite">
+            <strong>{title.trim() || '尚未填写课堂标题'}</strong>
+            <span>
+              {modeLabel} · {selectedClass?.name || '未选班级'} · {mode === 'advanced'
+                ? `${configuredGroupCount}/${classGroups.length} 个小组已配置`
+                : selectedAgent?.name || '未选智能体'}
+            </span>
+          </div>
+          <div className="new-classroom-action-buttons">
+            <button className="btn btn-secondary" onClick={() => router.push('/teacher')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
+              取消
+            </button>
+            <button className="btn btn-primary btn-lg" onClick={handleCreate}
+              disabled={saving || loadingOptions || (mode === 'advanced' && loadingGroups)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving ? (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                    <line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+                  </svg>
+                  创建中...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                  {mode === 'group' ? '发起课堂（分组模式）' : mode === 'advanced' ? '发起课堂（高级模式）' : '发起课堂'}
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

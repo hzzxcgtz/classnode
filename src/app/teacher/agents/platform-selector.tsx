@@ -8,7 +8,7 @@ export function AgentPlatformSelector({ platform, onChange }: {
   return (
     <div>
       <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>平台类型 <span style={{ color: 'var(--danger)' }}>*</span></label>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+      <div className="agent-platform-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
         {AGENT_PLATFORMS.map(option => (
           <div key={option.value} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
             <button type="button" onClick={() => onChange(option.value)} aria-pressed={platform === option.value} style={{

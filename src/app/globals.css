@@ -12,6 +12,15 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
+  --text-muted: #64748b;
+  --text-subtle: #7c8da3;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-card-hover: 0 8px 24px rgba(15, 23, 42, 0.07);
+  --teacher-sidebar-width: 220px;
+  --teacher-sidebar-collapsed-width: 68px;
 }
 
 * {
@@ -48,15 +57,16 @@ html, body {
 .teacher-layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
 }
 
 .teacher-sidebar {
-  width: 240px;
+  width: var(--teacher-sidebar-width);
   background: var(--card);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 24px 16px;
+  padding: 24px 12px;
   position: fixed;
   top: 0;
   left: 0;
@@ -66,9 +76,10 @@ html, body {
 
 .teacher-main {
   flex: 1;
-  margin-left: 220px;
+  width: 100%;
+  margin-left: var(--teacher-sidebar-width);
   padding: clamp(24px, 2.5vw, 48px);
-  max-width: min(calc(100vw - 220px), 1484px);
+  max-width: min(calc(100vw - var(--teacher-sidebar-width)), 1484px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -106,11 +117,12 @@ html, body {
   border-radius: 14px;
   border: 1px solid var(--border);
   padding: 24px;
-  transition: box-shadow 0.2s;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .btn {
@@ -335,7 +347,7 @@ th, td {
 th {
   font-weight: 600;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -349,7 +361,7 @@ tr:hover td {
   align-items: center;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -371,4 +383,132 @@ tr:hover td {
 .tag-yellow {
   background: #fef3c7;
   color: #d97706;
+}
+
+/* 教师端基础可读性：历史页面中大量 10–12px 辅助信息统一抬升一档。 */
+.teacher-main [style*="font-size: 0.625rem"] {
+  font-size: 0.75rem !important;
+}
+
+.teacher-main [style*="font-size: 0.688rem"] {
+  font-size: 0.75rem !important;
+}
+
+.teacher-main [style*="font-size: 0.75rem"] {
+  font-size: 0.8125rem !important;
+}
+
+/* #94a3b8 在白底小字号下对比度不足，正文辅助信息统一使用更清晰的灰色。 */
+.teacher-main p[style*="rgb(148, 163, 184)"],
+.teacher-main span[style*="rgb(148, 163, 184)"],
+.teacher-main td[style*="rgb(148, 163, 184)"],
+.teacher-main div[style*="rgb(148, 163, 184)"] {
+  color: var(--text-muted) !important;
+}
+
+@media (max-width: 1100px) {
+  .teacher-sidebar {
+    width: var(--teacher-sidebar-collapsed-width) !important;
+    padding: 20px 4px !important;
+  }
+
+  .teacher-sidebar-brand {
+    text-align: center !important;
+  }
+
+  .teacher-sidebar-brand > div {
+    justify-content: center !important;
+  }
+
+  .teacher-sidebar-brand-copy,
+  .teacher-nav-title,
+  .teacher-nav-label,
+  .teacher-service-status-label,
+  .teacher-sidebar-footer span,
+  .teacher-sidebar-footer > div > div:last-child {
+    display: none !important;
+  }
+
+  .teacher-service-status {
+    justify-content: center !important;
+    padding: 8px 0 !important;
+    background: transparent !important;
+  }
+
+  .teacher-nav-button,
+  .teacher-sidebar-footer button {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .teacher-sidebar-toggle {
+    left: var(--teacher-sidebar-collapsed-width) !important;
+  }
+
+  .teacher-main {
+    margin-left: var(--teacher-sidebar-collapsed-width) !important;
+    max-width: calc(100vw - var(--teacher-sidebar-collapsed-width)) !important;
+    padding: 24px !important;
+  }
+
+  .teacher-main [style*="grid-template-columns: repeat(4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --teacher-sidebar-collapsed-width: 56px;
+  }
+
+  .teacher-sidebar {
+    padding-top: 16px !important;
+  }
+
+  .teacher-sidebar-brand img,
+  .teacher-sidebar-brand > div > div:first-child {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  .teacher-sidebar-toggle {
+    display: none !important;
+  }
+
+  .teacher-main {
+    padding: 18px 16px 28px !important;
+  }
+
+  .teacher-main [style*="grid-template-columns: repeat(4"],
+  .teacher-main [style*="grid-template-columns: repeat(2"],
+  .teacher-main [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .teacher-main [style*="justify-content: space-between"] {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  .teacher-main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .teacher-main .card {
+    padding: 18px;
+  }
+
+  .teacher-main .btn {
+    min-height: 40px;
+  }
+
+  .code-display {
+    font-size: clamp(48px, 16vw, 72px);
+    letter-spacing: 8px;
+  }
 }

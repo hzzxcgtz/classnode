@@ -374,8 +374,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // 已认证 — 正常显示
   const iconSize = sidebarCollapsed ? 22 : 18;
   return (
-    <div className="teacher-layout">
-      <nav style={{
+    <div className="teacher-layout" data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}>
+      <nav className="teacher-sidebar" style={{
         width: sidebarCollapsed ? 68 : 220, background: '#ffffff',
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
@@ -385,7 +385,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         overflow: 'hidden',
       }}>
         {/* 品牌标识 */}
-        <div style={{ marginBottom: 24, textAlign: sidebarCollapsed ? 'center' : undefined }}>
+        <div className="teacher-sidebar-brand" style={{ marginBottom: 24, textAlign: sidebarCollapsed ? 'center' : undefined }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: sidebarCollapsed ? 'center' : undefined }}>
             {logoErr ? (
               <div style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>C</div>
@@ -393,7 +393,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <img src="/logo.png" alt="ClassNode" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             {!sidebarCollapsed && (
-              <div>
+              <div className="teacher-sidebar-brand-copy">
                 <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                   <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>AI 互动课堂系统</span>
@@ -410,7 +410,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 服务状态 */}
         {sidebarCollapsed ? (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+          <div className="teacher-service-status teacher-service-status-collapsed" style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
             <span title={serverOnline ? '服务运行中' : '服务已断开'} style={{
               width: 8, height: 8, borderRadius: '50%',
               background: serverOnline ? '#22c55e' : '#ef4444',
@@ -418,7 +418,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             }} />
           </div>
         ) : (
-          <div style={{
+          <div className="teacher-service-status" style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '7px 12px', marginBottom: 24,
             background: serverOnline ? '#f0fdf4' : '#fef2f2',
@@ -430,14 +430,14 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
               flexShrink: 0,
             }} />
-            <span style={{ color: serverOnline ? '#16a34a' : '#dc2626' }}>
+            <span className="teacher-service-status-label" style={{ color: serverOnline ? '#16a34a' : '#dc2626' }}>
               服务{serverOnline ? '运行中' : '已断开'}
             </span>
           </div>
         )}
 
         {/* 导航标题 */}
-        {!sidebarCollapsed && <div style={{
+        {!sidebarCollapsed && <div className="teacher-nav-title" style={{
           fontSize: "0.625rem", fontWeight: 600, color: '#94a3b8',
           letterSpacing: 0.8, textTransform: 'uppercase',
           marginBottom: 6, paddingLeft: 12,
@@ -453,6 +453,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             : p.replace(/\/$/, '') === item.path || p.startsWith(item.path + '/');
           return (
             <button
+              className="teacher-nav-button"
               key={item.path}
               onClick={() => router.push(item.path)}
               title={sidebarCollapsed ? item.label : undefined}
@@ -562,13 +563,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
               </span>
-              {!sidebarCollapsed && <span>{item.label}</span>}
+              {!sidebarCollapsed && <span className="teacher-nav-label">{item.label}</span>}
             </button>
           );
         })}
 
         {/* 底部区域 */}
-        <div style={{ marginTop: 'auto' }}>
+        <div className="teacher-sidebar-footer" style={{ marginTop: 'auto' }}>
           {/* 新版本通知 — 只在不折叠时显示 */}
           <div style={{
             borderTop: '1px solid #eef2f6',
@@ -648,6 +649,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
       {/* 折叠/展开按钮 — 侧边突起 */}
       <button
+        className="teacher-sidebar-toggle"
         onClick={toggleSidebar}
         title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
         style={{

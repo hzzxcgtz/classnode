@@ -425,6 +425,7 @@ function StudentChatContent() {
   const [showAvatarChanger, setShowAvatarChanger] = useState(false);
   const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<ClassroomStudentSummary | null>(null);
+  const [identitySearch, setIdentitySearch] = useState('');
   const [messages, setMessages] = useState<StudentChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
@@ -1296,6 +1297,10 @@ function StudentChatContent() {
 
   if (step === 'identity') {
     const isGroupMode = classroom?.mode === 'group' || classroom?.mode === 'advanced';
+    const normalizedIdentitySearch = identitySearch.trim().toLocaleLowerCase('zh-CN');
+    const visibleStudents = [...students]
+      .filter((student) => !normalizedIdentitySearch || student.name.toLocaleLowerCase('zh-CN').includes(normalizedIdentitySearch))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: 24, position: 'relative' }}>
         <button onClick={handleExit}
@@ -1312,8 +1317,8 @@ function StudentChatContent() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
           退出
         </button>
-        <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ background: 'white', borderRadius: 20, padding: isMobile ? 24 : 32, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
             {classroom?.title && (
               <div style={{ fontSize: "1.375rem", fontWeight: 700, color: '#0f172a', marginBottom: 6, lineHeight: 1.3 }}>{classroom.title}</div>
             )}
@@ -1321,10 +1326,35 @@ function StudentChatContent() {
               {isGroupMode ? '请选择你的小组' : '请选择你的姓名'}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflow: 'auto' }}>
-            {[...students].sort((a, b) => {
-              return a.name.localeCompare(b.name, 'zh-CN');
-            }).map((s) => {
+          {students.length > 8 && (
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                <circle cx="11" cy="11" r="7" />
+                <line x1="16.65" y1="16.65" x2="21" y2="21" />
+              </svg>
+              <input
+                type="text"
+                role="searchbox"
+                value={identitySearch}
+                onChange={(event) => setIdentitySearch(event.target.value)}
+                placeholder={isGroupMode ? '搜索小组名称' : '搜索你的姓名'}
+                aria-label={isGroupMode ? '搜索小组名称' : '搜索学生姓名'}
+                className="input"
+                style={{ paddingLeft: 40, paddingRight: identitySearch ? 72 : 14, minHeight: 44, background: '#f8fafc' }}
+              />
+              {identitySearch && (
+                <button
+                  type="button"
+                  onClick={() => setIdentitySearch('')}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, borderRadius: 6, background: 'transparent', color: '#64748b', padding: '6px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                >
+                  清除
+                </button>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'min(400px, calc(100vh - 320px))', overflow: 'auto' }}>
+            {visibleStudents.map((s) => {
               const isOnline = onlineStudentIds.has(s.id);
               const isSelected = selectedStudent?.id === s.id;
               return (
@@ -1363,6 +1393,12 @@ function StudentChatContent() {
                 </button>
               );
             })}
+            {visibleStudents.length === 0 && (
+              <div role="status" style={{ padding: '36px 20px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 12, border: '1px dashed #cbd5e1' }}>
+                <div style={{ fontSize: '0.938rem', fontWeight: 600, marginBottom: 4 }}>没有找到匹配结果</div>
+                <div style={{ fontSize: '0.813rem' }}>请检查输入，或清除搜索后重新选择</div>
+              </div>
+            )}
           </div>
           <button onClick={() => void handleIdentityConfirm()} disabled={!selectedStudent || joiningClassroom}
             className="btn btn-primary btn-lg"

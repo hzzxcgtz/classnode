@@ -23,12 +23,23 @@ const eslintConfig = defineConfig([
       "@next/next/no-img-element": "off",
     },
   },
+  {
+    files: ["scripts/**/*.js", "serve-frontend.js"],
+    rules: {
+      // These standalone Node utilities intentionally run as CommonJS.
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",
+    "server/dist/**",
+    "server/frontend/**",
+    "src-tauri/resources/**",
+    "src-tauri/target/**",
     "next-env.d.ts",
   ]),
 ]);

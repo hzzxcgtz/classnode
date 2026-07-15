@@ -20,9 +20,28 @@ type ClassroomGroupDisplay = { id: string; name: string };
 type DisplayMessage = Pick<ClassroomMessage, 'content' | 'role' | 'createdAt' | 'roundIndex' | 'fileUrls' | 'fileNames'> & { id?: string };
 type ClassroomGroupCard = { group: ClassroomCardGroup | null; members: ClassroomCardStudent[] };
 type ClassroomDisplayCard = ClassroomCardStudent | ClassroomGroupCard;
+type StudentBoardFilter = 'all' | 'online' | 'thinking' | 'attention' | 'offline';
 
 function isClassroomGroupCard(card: ClassroomDisplayCard): card is ClassroomGroupCard {
   return 'members' in card;
+}
+
+function PermissionMenuItem({ label, enabled, busy, onToggle }: {
+  label: string;
+  enabled: boolean;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button role="menuitemcheckbox" aria-checked={enabled} disabled={busy} onClick={onToggle}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', border: 0, borderRadius: 8, background: 'transparent', cursor: busy ? 'wait' : 'pointer', color: '#334155', textAlign: 'left', fontSize: '0.813rem', opacity: busy ? 0.7 : 1 }}>
+      <span style={{ width: 34, height: 20, padding: 2, borderRadius: 999, background: enabled ? '#2563eb' : '#cbd5e1', display: 'flex', justifyContent: enabled ? 'flex-end' : 'flex-start', transition: 'all .15s', flexShrink: 0 }}>
+        <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(15,23,42,.2)' }} />
+      </span>
+      <span style={{ flex: 1 }}>{busy ? '更新中...' : label}</span>
+      <span style={{ color: enabled ? '#16a34a' : '#94a3b8', fontSize: '0.75rem' }}>{enabled ? '已开启' : '已关闭'}</span>
+    </button>
+  );
 }
 type StudentPresenceEvent = { studentId: string };
 type StudentThinkingEvent = StudentPresenceEvent & { status: boolean };
@@ -226,8 +245,19 @@ function ClassroomBoardContent() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [controlBusy, setControlBusy] = useState<string | null>(null);
   const controlBusyRef = useRef(false);
+  const [showPermissionsMenu, setShowPermissionsMenu] = useState(false);
+  const permissionsMenuRef = useRef<HTMLDivElement>(null);
+  const [studentBoardFilter, setStudentBoardFilter] = useState<StudentBoardFilter>('all');
   const [clearBusy, setClearBusy] = useState<string | null>(null);
   const clearBusyRef = useRef(false);
+
+  useEffect(() => {
+    const closePermissionsMenu = (event: PointerEvent) => {
+      if (!permissionsMenuRef.current?.contains(event.target as Node)) setShowPermissionsMenu(false);
+    };
+    document.addEventListener('pointerdown', closePermissionsMenu);
+    return () => document.removeEventListener('pointerdown', closePermissionsMenu);
+  }, []);
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo<ClassroomGroupCard[] | null>(() => {
@@ -628,6 +658,33 @@ function ClassroomBoardContent() {
   const offlineCount = statusValues.filter(v => v === 'offline').length;
   const totalRounds = Object.values(studentRounds).reduce((sum, r) => sum + r, 0);
 
+  const allDisplayCards: ClassroomDisplayCard[] = groupCards || students;
+  const getDisplayCardStatus = (card: ClassroomDisplayCard): 'online' | 'thinking' | 'offline' => {
+    if (isClassroomGroupCard(card)) {
+      if (card.members.some((member) => studentStatuses[member.student.id] === 'thinking')) return 'thinking';
+      if (card.members.some((member) => studentStatuses[member.student.id] === 'online')) return 'online';
+      return 'offline';
+    }
+    const status = studentStatuses[card.student.id];
+    return status === 'thinking' || status === 'online' ? status : 'offline';
+  };
+  const cardNeedsAttention = (card: ClassroomDisplayCard) => {
+    const members = isClassroomGroupCard(card) ? card.members : [card];
+    return members.some((member) => studentBlacklisted[member.student.id] || (studentWarnings[member.student.id] || 0) > 0);
+  };
+  const displayCards = allDisplayCards.filter((card) => {
+    if (studentBoardFilter === 'all') return true;
+    if (studentBoardFilter === 'attention') return cardNeedsAttention(card);
+    return getDisplayCardStatus(card) === studentBoardFilter;
+  });
+  const boardFilterCounts: Record<StudentBoardFilter, number> = {
+    all: allDisplayCards.length,
+    online: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'online').length,
+    thinking: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'thinking').length,
+    attention: allDisplayCards.filter(cardNeedsAttention).length,
+    offline: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'offline').length,
+  };
+
   // 投屏轮次预计算
   const msgRounds: (number | null)[] = [];
   let _r = 0;
@@ -773,62 +830,61 @@ function ClassroomBoardContent() {
       <AnalyticsPanel classroomId={id} allMessages={allMessages} loadAnalytics={loadAnalytics} />
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {/* 允许/禁止学生提问 */}
-              <button className="control-btn" onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: paused ? '#94a3b8' : '#3b82f6', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {paused ? <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></> : <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
+              <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>点击学生卡片查看完整对话，使用筛选快速定位课堂状态</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button className={paused ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
+                style={{ minHeight: 36, padding: '7px 12px', color: paused ? 'white' : '#2563eb' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {paused ? <><path d="M8 5v14l11-7z" /></> : <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>}
                 </svg>
-                {controlBusy === 'questions' ? '更新中...' : paused ? '禁止学生提问' : '允许学生提问'}
+                {controlBusy === 'questions' ? '更新中...' : paused ? '恢复学生提问' : '暂停学生提问'}
               </button>
-              {/* 允许/禁止中断回答 */}
-              <button className="control-btn" onClick={() => void toggleStop()} disabled={controlBusy !== null}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentStop !== false ? '#d97706' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {classroom?.allowStudentStop !== false ? <rect x="4" y="4" width="16" height="16" rx="3"/> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
-                </svg>
-                {controlBusy === 'stop' ? '更新中...' : classroom?.allowStudentStop !== false ? '允许中断回答' : '禁止中断回答'}
-              </button>
-              {/* 允许/禁止学生导出 */}
-              <button className="control-btn" onClick={() => void toggleExport()} disabled={controlBusy !== null}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowStudentExport !== false ? '#0891b2' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {classroom?.allowStudentExport !== false ? <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></> : <><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></>}
-                </svg>
-                {controlBusy === 'export' ? '更新中...' : classroom?.allowStudentExport !== false ? '允许学生导出' : '禁止学生导出'}
-              </button>
-              {/* 允许/禁止追问建议 */}
-              <button className="control-btn" onClick={() => void toggleFollowUps()} disabled={controlBusy !== null}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: classroom?.allowFollowUps !== false ? '#8b5cf6' : '#94a3b8', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {classroom?.allowFollowUps !== false ? <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></> : <><circle cx="11" cy="11" r="5"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>}
-                </svg>
-                {controlBusy === 'follow-ups' ? '更新中...' : classroom?.allowFollowUps !== false ? '允许追问建议' : '禁止追问建议'}
-              </button>
-              {/* 通知全体 */}
-              <button className="control-btn" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }}
-                style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: '#64748b', fontSize: "0.688rem", fontWeight: 500, transition: 'all .12s' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              <button className="btn btn-secondary" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }} style={{ minHeight: 36, padding: '7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
                 通知全体
               </button>
-              <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>|</span>
-              <button className="control-btn" onClick={() => setGridFullscreen(true)}
-                title="全屏显示学生面板"
-                style={{
-                  padding: '3px 8px', borderRadius: 5, border: 'none',
-                  background: 'transparent', cursor: 'pointer', color: '#64748b', fontSize: "0.688rem",
-                  display: 'flex', alignItems: 'center', gap: 3,
-                }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+              <div ref={permissionsMenuRef} style={{ position: 'relative' }}>
+                <button className="btn btn-secondary" aria-haspopup="menu" aria-expanded={showPermissionsMenu} onClick={() => setShowPermissionsMenu((visible) => !visible)} style={{ minHeight: 36, padding: '7px 12px' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.2.37.55.72 1 .9.35.14.73.2 1.1.2h.1v4h-.1a1.7 1.7 0 0 0-1.5.9z"/></svg>
+                  课堂权限
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                {showPermissionsMenu && (
+                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 260, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
+                    <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>学生端功能</div>
+                    <PermissionMenuItem label="允许中断 AI 回答" enabled={classroom.allowStudentStop !== false} busy={controlBusy === 'stop'} onToggle={() => void toggleStop()} />
+                    <PermissionMenuItem label="允许导出对话" enabled={classroom.allowStudentExport !== false} busy={controlBusy === 'export'} onToggle={() => void toggleExport()} />
+                    <PermissionMenuItem label="显示追问建议" enabled={classroom.allowFollowUps !== false} busy={controlBusy === 'follow-ups'} onToggle={() => void toggleFollowUps()} />
+                  </div>
+                )}
+              </div>
+              <button className="btn btn-secondary" onClick={() => setGridFullscreen(true)} title="全屏显示学生面板" style={{ minHeight: 36, padding: '7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
                 全屏
               </button>
             </div>
           </div>
+          <div aria-label="学生状态筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+            {([
+              ['all', '全部'], ['online', '在线'], ['thinking', '互动中'], ['attention', '需关注'], ['offline', '离线'],
+            ] as Array<[StudentBoardFilter, string]>).map(([key, label]) => {
+              const active = studentBoardFilter === key;
+              const attention = key === 'attention' && boardFilterCounts.attention > 0;
+              return (
+                <button key={key} type="button" aria-pressed={active} onClick={() => setStudentBoardFilter(key)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '5px 11px', borderRadius: 999, border: `1px solid ${active ? '#2563eb' : attention ? '#fecaca' : '#e2e8f0'}`, background: active ? '#2563eb' : attention ? '#fef2f2' : 'white', color: active ? 'white' : attention ? '#dc2626' : '#475569', cursor: 'pointer', fontSize: '0.813rem', fontWeight: active ? 600 : 500, whiteSpace: 'nowrap' }}>
+                  {label}
+                  <span style={{ minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: active ? 'rgba(255,255,255,.2)' : '#f1f5f9', color: active ? 'white' : attention ? '#dc2626' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>{boardFilterCounts[key]}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="student-grid">
-            {(groupCards || students).length === 0 ? (
+            {allDisplayCards.length === 0 ? (
               <div style={{
                 gridColumn: '1 / -1', textAlign: 'center', padding: '60px 20px',
                 background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
@@ -845,19 +901,18 @@ function ClassroomBoardContent() {
                 <div style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>暂无学生加入</div>
                 <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
               </div>
+            ) : displayCards.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '44px 20px', background: 'white', borderRadius: 14, border: '1px dashed #cbd5e1', color: '#64748b' }}>
+                <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>当前筛选下没有学生</div>
+                <button type="button" onClick={() => setStudentBoardFilter('all')} style={{ marginTop: 10, border: 0, background: 'transparent', color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
+              </div>
             ) : (
-              (groupCards || students).map((item: ClassroomDisplayCard) => {
+              displayCards.map((item: ClassroomDisplayCard) => {
                 const isGroup = isClassroomGroupCard(item);
                 const cs = isGroup ? item.members[0] : item;
                 const student = cs.student;
                 const sid = cs.student.id;
-                const status = isGroup
-                  ? item.members.some((m) => studentStatuses[m.student.id] === 'online')
-                    ? 'online'
-                    : item.members.some((m) => studentStatuses[m.student.id] === 'thinking')
-                    ? 'thinking'
-                    : 'offline'
-                  : studentStatuses[sid] || 'offline';
+                const status = getDisplayCardStatus(item);
                 const rounds = isGroup
                   ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
                   : studentRounds[sid] || 0;
@@ -1488,7 +1543,9 @@ function ClassroomBoardContent() {
                 </svg>
               </div>
               <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a' }}>学生互动面板 · 全屏模式</span>
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>{(groupCards || students).length} {groupCards ? '个小组' : '名学生'}</span>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
+                {displayCards.length}{displayCards.length !== allDisplayCards.length ? ` / ${allDisplayCards.length}` : ''} {groupCards ? '个小组' : '名学生'}
+              </span>
             </div>
             <button onClick={() => setGridFullscreen(false)}
               style={{
@@ -1504,7 +1561,7 @@ function ClassroomBoardContent() {
             {/* 布局控制栏 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
-                {(groupCards || students).length} {groupCards ? '个小组' : '名学生'} · {fsCols} 列（{Math.ceil((groupCards || students).length / fsCols)} 行）
+                {displayCards.length}{displayCards.length !== allDisplayCards.length ? ` / ${allDisplayCards.length}` : ''} {groupCards ? '个小组' : '名学生'} · {fsCols} 列（{Math.ceil(displayCards.length / fsCols)} 行）
               </span>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <button onClick={() => setFsCols(c => Math.max(2, c - 1))}
@@ -1525,23 +1582,21 @@ function ClassroomBoardContent() {
               gridTemplateColumns: `repeat(${fsCols}, 1fr)`,
               alignContent: 'stretch',
             }}>
-              {(groupCards || students).length === 0 ? (
+              {allDisplayCards.length === 0 ? (
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: '#94a3b8' }}>
                   {groupCards ? '暂未分组' : '暂无学生加入'}
                 </div>
+              ) : displayCards.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: '#64748b' }}>
+                  当前筛选下没有学生，请退出全屏后切换筛选条件
+                </div>
               ) : (
-                (groupCards || students).map((item: ClassroomDisplayCard) => {
+                displayCards.map((item: ClassroomDisplayCard) => {
                   const isGroup = isClassroomGroupCard(item);
                   const cs = isGroup ? item.members[0] : item;
                   const student = cs.student;
                   const sid = student.id;
-                  const status = isGroup
-                    ? item.members.some((m) => studentStatuses[m.student.id] === 'online')
-                      ? 'online'
-                      : item.members.some((m) => studentStatuses[m.student.id] === 'thinking')
-                      ? 'thinking'
-                      : 'offline'
-                    : studentStatuses[sid] || 'offline';
+                  const status = getDisplayCardStatus(item);
                   const rounds = isGroup
                     ? item.members.reduce((sum: number, m) => sum + (studentRounds[m.student.id] || 0), 0)
                     : studentRounds[sid] || 0;

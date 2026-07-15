@@ -35,6 +35,8 @@ export default function TeacherDashboard() {
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
   const [lanAccess, setLanAccess] = useState(true);
   const [networkSaving, setNetworkSaving] = useState(false);
+  const [classroomSearch, setClassroomSearch] = useState("");
+  const [classroomStatusFilter, setClassroomStatusFilter] = useState<"all" | "running" | "paused">("all");
   const endingRef = useRef(false);
   const settingsSavingRef = useRef(false);
   const qrLoadingRef = useRef(false);
@@ -295,9 +297,49 @@ export default function TeacherDashboard() {
     link.click();
   };
 
+  const copyClassroomCode = async (classroom: ActiveClassroom) => {
+    if (!classroom.code) {
+      setToast({ msg: "当前课堂还没有可用互动码", type: "error" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(classroom.code);
+      setToast({ msg: `互动码 ${classroom.code} 已复制`, type: "success" });
+    } catch {
+      setToast({ msg: "互动码复制失败，请手动记录", type: "error" });
+    }
+  };
+
+  const activeTotals = activeClassrooms.reduce(
+    (summary, classroom) => {
+      summary.students += classroom._count?.students || 0;
+      summary.online += onlineMap[classroom.id] || 0;
+      summary.rounds += (classroom.students || []).reduce(
+        (total: number, student) => total + (student.totalRounds || 0),
+        0,
+      );
+      if (classroom.status === "paused") summary.paused += 1;
+      return summary;
+    },
+    { students: 0, online: 0, rounds: 0, paused: 0 },
+  );
+  const normalizedClassroomSearch = classroomSearch.trim().toLocaleLowerCase("zh-CN");
+  const visibleClassrooms = activeClassrooms.filter((classroom) => {
+    const matchesSearch = !normalizedClassroomSearch || [
+      classroom.title || "",
+      classroom.code || "",
+      classroom.classes?.[0]?.class?.name || "",
+    ].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalizedClassroomSearch));
+    const matchesStatus = classroomStatusFilter === "all"
+      || (classroomStatusFilter === "paused" && classroom.status === "paused")
+      || (classroomStatusFilter === "running" && classroom.status !== "paused");
+    return matchesSearch && matchesStatus;
+  });
+
   if (loading) {
     return (
       <div
+        className="classroom-management-toolbar"
         style={{
           display: "flex",
           alignItems: "center",
@@ -364,10 +406,11 @@ export default function TeacherDashboard() {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="classroom-management-toolbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button type="button" className="btn btn-secondary" onClick={() => void toggleLanAccess()} disabled={networkSaving}
           title={lanAccess ? '学生设备可通过局域网访问' : '当前仅教师电脑本机可访问'}>
-          {networkSaving ? '切换中…' : lanAccess ? '局域网：已开放' : '局域网：已关闭'}
+          <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
+          {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
         </button>
         <button
           className="btn btn-primary"
@@ -396,12 +439,64 @@ export default function TeacherDashboard() {
       </div>
       </div>
 
+      {activeClassrooms.length > 0 && (
+        <><div className="active-classroom-overview" aria-label="活跃课堂概览">
+          {[
+            { label: "活跃课堂", value: activeClassrooms.length, tone: "blue" },
+            { label: "参与学生", value: activeTotals.students, tone: "purple" },
+            { label: "当前在线", value: activeTotals.online, tone: "green" },
+            { label: "互动轮次", value: activeTotals.rounds, tone: "amber" },
+          ].map((item) => (
+            <div key={item.label} className={`tone-${item.tone}`}>
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
+            </div>
+          ))}
+          {activeTotals.paused > 0 && (
+            <p>{activeTotals.paused} 个课堂当前已暂停学生提问</p>
+          )}
+        </div>
+        <div className="active-classroom-filters">
+          <label className="active-classroom-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              value={classroomSearch}
+              onChange={(event) => setClassroomSearch(event.target.value)}
+              placeholder="搜索课堂名称、互动码或班级"
+              aria-label="搜索活跃课堂"
+            />
+            {classroomSearch && <button type="button" onClick={() => setClassroomSearch("")} aria-label="清空课堂搜索">×</button>}
+          </label>
+          <div className="active-classroom-filter-tabs" role="group" aria-label="课堂状态筛选">
+            {[
+              { value: "all" as const, label: "全部", count: activeClassrooms.length },
+              { value: "running" as const, label: "进行中", count: activeClassrooms.length - activeTotals.paused },
+              { value: "paused" as const, label: "已暂停", count: activeTotals.paused },
+            ].map((filter) => (
+              <button key={filter.value} type="button" aria-pressed={classroomStatusFilter === filter.value}
+                onClick={() => setClassroomStatusFilter(filter.value)}>
+                {filter.label} <span>{filter.count}</span>
+              </button>
+            ))}
+          </div>
+        </div></>
+      )}
+
       {/* 课堂列表 */}
       {activeClassrooms.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {activeClassrooms.map((cr) => (
+        <div className="active-classroom-list" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {visibleClassrooms.length === 0 ? (
+            <div className="active-classroom-filter-empty">
+              <strong>没有符合条件的课堂</strong>
+              <span>可以更换关键词或课堂状态</span>
+              <button type="button" className="btn btn-secondary" onClick={() => { setClassroomSearch(""); setClassroomStatusFilter("all"); }}>
+                查看全部课堂
+              </button>
+            </div>
+          ) : visibleClassrooms.map((cr) => (
             <div
               key={cr.id}
+              className="active-classroom-card"
               style={{
                 background: "white",
                 borderRadius: 12,
@@ -412,6 +507,7 @@ export default function TeacherDashboard() {
             >
               {/* 上半部分：基本信息 */}
               <div
+                className="active-classroom-card-header"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -421,6 +517,7 @@ export default function TeacherDashboard() {
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
+                    className="active-classroom-title-row"
                     style={{
                       fontWeight: 700,
                       fontSize: "1.125rem",
@@ -523,9 +620,14 @@ export default function TeacherDashboard() {
                         </span>
                       );
                     })()}
-                    <span
+                    <button type="button"
+                      onClick={() => void copyClassroomCode(cr)}
+                      title="复制互动码"
+                      aria-label={`复制互动码 ${cr.code}`}
                       style={{
-                        display: "inline-block",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
                         padding: "1px 7px",
                         borderRadius: 4,
                         background: "#f0fdf4",
@@ -533,10 +635,13 @@ export default function TeacherDashboard() {
                         fontSize: "0.688rem",
                         fontWeight: 600,
                         fontFamily: "monospace",
+                        border: "1px solid #bbf7d0",
+                        cursor: "copy",
                       }}
                     >
                       {cr.code}
-                    </span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
                     {cr.classes?.[0]?.class?.name && (
@@ -562,6 +667,7 @@ export default function TeacherDashboard() {
                 </div>
                 {/* 右上角统计数据 */}
                 <div
+                  className="active-classroom-stats"
                   style={{
                     display: "flex",
                     gap: 16,
@@ -630,6 +736,7 @@ export default function TeacherDashboard() {
                 if (agents.length === 0) return null;
                 return (
                   <div
+                    className="active-classroom-agent-row"
                     style={{
                       padding: "8px 20px",
                       borderTop: "1px solid #f1f5f9",
@@ -704,7 +811,7 @@ export default function TeacherDashboard() {
                         </span>
                       );
                     })}
-                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem' }}>
+                    <span className="active-classroom-permissions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem' }}>
                       <span style={{ color: '#94a3b8', fontWeight: 700 }}>对话状态：</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 4, background: cr.status !== 'paused' ? '#eff6ff' : '#f1f5f9', color: cr.status !== 'paused' ? '#3b82f6' : '#94a3b8' }}>
                         {cr.status !== 'paused' ? '允许提问' : '禁止提问'}
@@ -724,6 +831,7 @@ export default function TeacherDashboard() {
               })()}
               {/* 下半部分：操作栏 */}
               <div
+                className="active-classroom-footer"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -757,6 +865,7 @@ export default function TeacherDashboard() {
                   {cr.status === "paused" ? "已暂停" : "进行中"}
                 </span>
 
+                <div className="active-classroom-actions">
                 {/* 编辑 + 互动码 */}
                 <button onClick={() => openSettings(cr)} title="修改课堂设置"
                   style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
@@ -789,6 +898,7 @@ export default function TeacherDashboard() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
                   进入课堂
                 </button>
+                </div>
               </div>
             </div>
           ))}

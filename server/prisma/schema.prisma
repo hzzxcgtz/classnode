@@ -1,7 +1,9 @@
 generator client {
   provider      = "prisma-client-js"
   engineType    = "binary"
-  binaryTargets = ["native"]
+  // Desktop packages are cross-compiled, so the generated client must carry
+  // engines for every supported runtime rather than only the build machine.
+  binaryTargets = ["native", "darwin", "darwin-arm64", "windows"]
 }
 
 datasource db {

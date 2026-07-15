@@ -1,6 +1,0 @@
-$ pnpm --filter classnode-server dev
-$ NODE_ENV=development tsx watch src/index.ts
-[file-logger] Logging to /Users/zxc/myprojects/classnode/server/logs/server-2026-07-15.log
-[server] SQLite version: 3.46.0
-🚀 ClassNode Server running on port 4001
-   http://192.168.6.130:4001  (Wi-Fi)

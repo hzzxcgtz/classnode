@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { AgentSummary } from '@/lib/types';
 import type { AgentPlatform } from './agent-platforms';
 import type { AgentCredentialValues } from './credentials-fields';
 
-function readExtra(agent: AgentSummary | null): { projectId?: string; hasApiSecret?: boolean } {
+function readExtra(agent: AgentSummary | null): { projectId?: string; hasApiSecret?: boolean; apiSecretMask?: string } {
   try { return agent?.extra ? JSON.parse(agent.extra) : {}; } catch { return {}; }
 }
 
@@ -18,17 +18,33 @@ export function useAgentFormFields(agent: AgentSummary | null) {
   const [projectId, setProjectId] = useState(extra.projectId || '');
   const [apiSecret, setApiSecret] = useState('');
   const [greeting, setGreeting] = useState(agent?.greeting || '');
+  const initialDrafts: Record<AgentPlatform, AgentCredentialValues & { name: string; greeting: string }> = {
+    coze: { name: '', greeting: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
+    'coze-agent': { name: '', greeting: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
+    zhipuai: { name: '', greeting: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
+    wenxin: { name: '', greeting: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
+  };
+  if (agent) {
+    initialDrafts[initialPlatform] = {
+      name: agent.name || '', greeting: agent.greeting || '', apiKey: '', apiUrl: agent.apiUrl || '',
+      botId: agent.botId || '', projectId: extra.projectId || '', apiSecret: '',
+    };
+  }
+  const draftsRef = useRef(initialDrafts);
   const samePlatformAsSaved = !!agent && platform === initialPlatform;
 
   const setPlatform = (next: AgentPlatform) => {
     if (next === platform) return;
+    draftsRef.current[platform] = { name, greeting, apiKey, apiUrl, botId, projectId, apiSecret };
+    const nextDraft = draftsRef.current[next];
     setPlatformState(next);
-    // 平台凭据不可复用；切换时清除旧平台字段，防止误提交。
-    setApiKey('');
-    setApiUrl('');
-    setBotId('');
-    setProjectId('');
-    setApiSecret('');
+    setName(nextDraft.name);
+    setGreeting(nextDraft.greeting);
+    setApiKey(nextDraft.apiKey);
+    setApiUrl(nextDraft.apiUrl);
+    setBotId(nextDraft.botId);
+    setProjectId(nextDraft.projectId);
+    setApiSecret(nextDraft.apiSecret);
   };
 
   const updateCredential = (field: keyof AgentCredentialValues, value: string) => {
@@ -44,6 +60,7 @@ export function useAgentFormFields(agent: AgentSummary | null) {
     hasSavedApiKey: samePlatformAsSaved && !!agent?.hasApiKey,
     hasSavedApiSecret: samePlatformAsSaved && !!extra.hasApiSecret,
     savedApiKeyLabel: samePlatformAsSaved ? agent?.apiKey : undefined,
+    savedApiSecretLabel: samePlatformAsSaved ? extra.apiSecretMask : undefined,
     editingSavedPlatform: samePlatformAsSaved,
   };
 }

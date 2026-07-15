@@ -13,7 +13,7 @@ import { useAgentController } from './use-agent-controller';
 import { useAgentFormFields } from './use-agent-form-fields';
 import { useAgentLogo } from './use-agent-logo';
 import { useAgentFormActions } from './use-agent-form-actions';
-import { AGENT_PLATFORMS, type AgentPlatform } from './agent-platforms';
+import { AGENT_PLATFORMS, AGENT_PLATFORM_MAP, type AgentPlatform } from './agent-platforms';
 
 export default function AgentsPage() {
   const [showForm, setShowForm] = useState(false);
@@ -185,15 +185,22 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
   const fields = useAgentFormFields(agent);
   const { name, setName, platform, setPlatform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
     updateCredential,
-    hasSavedApiKey, hasSavedApiSecret, savedApiKeyLabel, editingSavedPlatform } = fields;
+    hasSavedApiKey, hasSavedApiSecret, savedApiKeyLabel, savedApiSecretLabel, editingSavedPlatform } = fields;
   const logo = useAgentLogo(agent);
-  const { fileRef, preview: logoPreview, selectFile: handleLogoChange, applyRemote: applyRemoteLogo, remove: handleRemoveLogo, appendTo: appendLogoTo } = logo;
+  const { fileRef, preview: logoPreview, selectFile: handleLogoChange, applyRemote: applyRemoteLogo, remove: handleRemoveLogo, resetForPlatform: resetLogoForPlatform, appendTo: appendLogoTo } = logo;
   const actions = useAgentFormActions({
     agent, values: { name, platform, apiKey, apiUrl, botId, projectId, apiSecret, greeting },
     hasSavedApiKey, hasSavedApiSecret, setName, setGreeting, applyRemoteLogo, appendLogoTo, onSaved,
   });
   const { fetchingInfo, saving, fieldErrors, toast, setToast, clearError, clearErrors, fetchInfo: handleFetchInfo, submit } = actions;
   const handleSubmit = (event: React.FormEvent) => { event.preventDefault(); void submit(); };
+  const canFetchCozeInfo = platform === 'coze' && Boolean(botId.trim()) && (hasSavedApiKey || Boolean(apiKey.trim()));
+  const handlePlatformChange = (next: AgentPlatform) => {
+    if (next === platform) return;
+    setPlatform(next);
+    resetLogoForPlatform(next);
+    clearErrors();
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -206,7 +213,7 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
   return (
     <div className="modal-overlay">
       <div className="modal-content agent-form-modal" role="dialog" aria-modal="true" aria-labelledby="agent-form-title" onClick={e => e.stopPropagation()} style={{
-        maxWidth: 520, padding: 0, borderRadius: 14,
+        maxWidth: 860, padding: 0, borderRadius: 14,
       }}>
         {/* 顶栏 */}
         <div style={{
@@ -236,62 +243,27 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: '14px 24px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form className="agent-form-layout" onSubmit={handleSubmit}>
 
-          <div style={{
-            background: '#fafbfc', borderRadius: 8, padding: 14,
-            border: '1px solid #eef2f6',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* 头像 + 名称 — 对齐 */}
-              <div className="agent-form-identity" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <AgentLogoField inputRef={fileRef} preview={logoPreview} onChange={handleLogoChange} onRemove={handleRemoveLogo} />
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
-                  <div className="agent-form-name-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input className="input" autoFocus value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
-                      style={{ fontSize: "0.813rem", padding: '8px 12px', flex: 1, borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
-                    {platform === 'coze' ? (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={handleFetchInfo}
-                        disabled={fetchingInfo}
-                        style={{ fontSize: "0.75rem", padding: '5px 12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        {fetchingInfo ? '获取中...' : '从 Coze 获取'}
-                      </button>
-                    ) : null}
-                  </div>
-                  {fieldErrors.name && <FieldError message={fieldErrors.name} />}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
-                <textarea
-                  className="input"
-                  value={greeting}
-                  onChange={e => setGreeting(e.target.value)}
-                  placeholder={platform === 'coze' ? '从 Coze 自动获取，或手动输入开场白' : '手动输入开场白内容'}
-                  style={{ fontSize: "0.813rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
-                />
-              </div>
-            </div>
+          <div className="agent-form-platform">
+            <AgentPlatformSelector platform={platform} onChange={handlePlatformChange} />
           </div>
 
-          <div style={{
+          <div className="agent-form-section agent-form-credentials" style={{
             background: '#fafbfc', borderRadius: 8, padding: 14,
             border: '1px solid #eef2f6',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <AgentPlatformSelector platform={platform} onChange={next => { setPlatform(next); clearErrors(); }} />
+              <div className="agent-form-step-heading">
+                <span>1</span>
+                <div><strong>填写接入凭据</strong><small>{AGENT_PLATFORM_MAP[platform].label} · 凭据仅加密保存在本机</small></div>
+              </div>
 
               <AgentCredentialsFields
                 platform={platform}
                 editing={editingSavedPlatform}
                 savedApiKeyLabel={savedApiKeyLabel}
+                savedApiSecretLabel={savedApiSecretLabel}
                 apiKey={apiKey}
                 apiUrl={apiUrl}
                 botId={botId}
@@ -303,12 +275,59 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
                   clearError(field);
                 }}
               />
-            </div>
 
+              {platform === 'coze' && (
+                <div className={`agent-coze-fetch-guide${canFetchCozeInfo ? ' is-ready' : ''}`}>
+                  <div className="agent-coze-fetch-copy">
+                    <span className="agent-coze-fetch-badge">推荐</span>
+                    <div>
+                      <strong>{canFetchCozeInfo ? '凭据已填好，可以自动获取资料' : '填好 Bot ID 和 API Token 后自动获取资料'}</strong>
+                      <small>将自动填入头像、智能体名称和开场白；也可以跳过，稍后手动填写。</small>
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-primary" onClick={handleFetchInfo} disabled={!canFetchCozeInfo || fetchingInfo}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    {fetchingInfo ? '正在从 Coze 获取...' : '从 Coze 获取头像、名称和开场白'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="agent-form-section agent-form-profile" style={{
+            background: '#fafbfc', borderRadius: 8, padding: 14,
+            border: '1px solid #eef2f6',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="agent-form-step-heading">
+                <span>2</span>
+                <div><strong>{AGENT_PLATFORM_MAP[platform].label}智能体资料</strong><small>{platform === 'coze' ? '可自动获取，也可以在这里手动填写' : '请手动填写展示名称、头像和开场白'}</small></div>
+              </div>
+              <div className="agent-form-identity" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                <AgentLogoField inputRef={fileRef} preview={logoPreview} onChange={handleLogoChange} onRemove={handleRemoveLogo} />
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <input className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
+                  {fieldErrors.name && <FieldError message={fieldErrors.name} />}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
+                <textarea
+                  className="input"
+                  value={greeting}
+                  onChange={e => setGreeting(e.target.value)}
+                  placeholder={platform === 'coze' ? '自动获取后会填入这里，也可以手动输入' : '手动输入开场白内容'}
+                  style={{ fontSize: "0.813rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
+                />
+              </div>
+            </div>
           </div>
 
       {fieldErrors.submit && (
-            <div style={{
+            <div className="agent-form-submit-error" style={{
               padding: '8px 12px', borderRadius: 6,
               background: '#fef2f2', border: '1px solid #fecaca',
               color: '#dc2626', fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 6,

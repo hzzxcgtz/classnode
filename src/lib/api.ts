@@ -1,7 +1,9 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
 
 let studentSessionToken = '';
+
+const FORM_REQUEST_TIMEOUT_MS = 15_000;
 
 export function setStudentSessionToken(token?: string): void {
   studentSessionToken = token || '';
@@ -33,18 +35,30 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormData): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    method,
-    body,
-    credentials: 'include',
-    headers: getStudentSessionAuthorization(),
-  });
-  const data = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
-  if (res.status === 401 && typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), FORM_REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${getApiBaseUrl()}${path}`, {
+      method,
+      body,
+      credentials: 'include',
+      headers: getStudentSessionAuthorization(),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
+    }
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('保存请求超时，请确认 ClassNode 服务正在运行后重试');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return data as T;
 }
 
 export const api = {
@@ -190,6 +204,10 @@ export const api = {
     request(`/api/avatars/student-self/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   getAvatarsAll: (category?: string) =>
     request<AvatarSummary[]>(`/api/avatars/all-including-student${category ? `?category=${category}` : ''}`),
+  generateAvatarPool: (category: 'student' | 'class', count = 10, route?: number) =>
+    request<{ avatars: AvatarRandomCandidate[] }>('/api/avatars/random-pool', {
+      method: 'POST', body: JSON.stringify({ category, count, route }),
+    }),
   batchDeleteAvatars: (ids: number[]) =>
     request<{ success: boolean; deleted: number }>('/api/avatars/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   clearAllAvatars: (category?: string) =>

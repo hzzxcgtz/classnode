@@ -63,25 +63,20 @@ export default function AvatarsPage() {
     return () => window.clearTimeout(timer);
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps -- 切换头像分类时重新加载对应数据
 
-  const handleRandomGenerate = async (cat?: string) => {
+  const handleRandomGenerate = async (cat?: TabType) => {
     if (avatarActionRef.current) return;
     avatarActionRef.current = true;
     setAvatarAction('generate');
     const category = cat || tab;
-    if (randomGenerated) {
-      setRandomPool([]);
-      setSelectedRandom(new Set());
-      await new Promise(r => setTimeout(r, 150));
-    }
     setGenerating(true);
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/avatars/random-pool`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, count: 10 }) });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
+      const data = await api.generateAvatarPool(category, 10);
       setRandomPool(data.avatars || []);
       setSelectedRandom(new Set());
       setRandomGenerated(true);
-    } catch { setToast({ msg: '生成失败，请重试', type: 'error' }); }
+    } catch (error) {
+      setToast({ msg: `生成失败：${error instanceof Error ? error.message : '请重试'}`, type: 'error' });
+    }
     avatarActionRef.current = false;
     setAvatarAction(null);
     setGenerating(false);
@@ -552,7 +547,7 @@ export default function AvatarsPage() {
                 <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>程序化随机组合中，请稍候</p>
               </div>
             ) : (
-              <>
+              <div className="avatar-random-results" aria-busy={generating}>
                 {tab === 'student' && (
                   <>
                     <div style={{ marginBottom: 14 }}>
@@ -664,7 +659,14 @@ export default function AvatarsPage() {
                     </button>
                   </div>
                 </div>
-              </>
+                {generating && (
+                  <div className="avatar-random-loading" role="status" aria-live="polite">
+                    <div className="avatar-random-loading-spinner" />
+                    <strong>正在生成新一批{tab === 'student' ? '头像' : '图标'}...</strong>
+                    <span>当前内容会保留，新头像生成后自动替换</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

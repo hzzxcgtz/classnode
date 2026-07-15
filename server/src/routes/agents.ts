@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { testAgentAvailability, fetchAgentGreeting, fetchAgentInfo, discoverCozeBotWithPat } from '../services/ai-proxy.js';
 import { encrypt, decrypt, isEncrypted } from '../services/crypto.js';
 import { detectSafeImage, sanitizeSvg } from '../services/upload-security.js';
-import { shouldPreserveAgentSecret } from '../services/agent-secret-policy.js';
+import { maskAgentSecret, shouldPreserveAgentSecret } from '../services/agent-secret-policy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -109,12 +109,6 @@ function secureLogoUpload(req: import('express').Request, res: import('express')
   }
 }
 
-/** 脱敏 API Key，仅显示前后缀用于识别 */
-function maskApiKey(key: string): string {
-  if (key.length <= 8) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
-
 /** 解密 agent 对象中的 apiKey */
 function toPublicAgent(agent: Agent | null) {
   if (!agent) return agent;
@@ -125,9 +119,18 @@ function toPublicAgent(agent: Agent | null) {
   let publicExtra: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(agent.extra || '{}');
-    publicExtra = { ...parsed, apiSecret: undefined, hasApiSecret: !!parsed.apiSecret };
+    let rawSecret = typeof parsed.apiSecret === 'string' ? parsed.apiSecret : '';
+    try {
+      if (rawSecret && isEncrypted(rawSecret)) rawSecret = decrypt(rawSecret);
+    } catch { rawSecret = ''; }
+    publicExtra = {
+      ...parsed,
+      apiSecret: undefined,
+      hasApiSecret: !!rawSecret,
+      apiSecretMask: rawSecret ? maskAgentSecret(rawSecret) : undefined,
+    };
   } catch {}
-  return { ...agent, apiKey: maskApiKey(rawKey), hasApiKey: !!rawKey, extra: JSON.stringify(publicExtra) };
+  return { ...agent, apiKey: maskAgentSecret(rawKey), hasApiKey: !!rawKey, extra: JSON.stringify(publicExtra) };
 }
 
 /** 加密 apiKey（仅未加密的原始值才加密） */
@@ -243,6 +246,7 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
     res.json(toPublicAgent(agent));
   } catch (error) {
     discardUploadedLogo(req);
+    console.error('[agents] 创建智能体失败:', error);
     res.status(500).json({ error: '创建智能体失败' });
   }
 });
@@ -320,6 +324,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     res.json(toPublicAgent(agent));
   } catch (error) {
     discardUploadedLogo(req);
+    console.error(`[agents] 更新智能体失败 (${req.params.id}):`, error);
     res.status(500).json({ error: '更新智能体失败' });
   }
 });

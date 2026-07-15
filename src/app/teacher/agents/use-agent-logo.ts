@@ -16,9 +16,17 @@ export function useAgentLogo(agent: AgentSummary | null) {
   };
   const applyRemote = (url: string) => { revokeLocal(); if (fileRef.current) fileRef.current.value = ''; setPreview(url); setRemoteUrl(url); setRemoved(false); };
   const remove = () => { revokeLocal(); if (fileRef.current) fileRef.current.value = ''; setPreview(null); setRemoteUrl(null); setRemoved(true); };
+  const resetForPlatform = (platform: string) => {
+    revokeLocal();
+    if (fileRef.current) fileRef.current.value = '';
+    const savedLogo = agent && agent.platform === platform ? agent.logo : null;
+    setPreview(savedLogo ? (savedLogo.startsWith('/') ? `${getApiBaseUrl()}${savedLogo}` : savedLogo) : null);
+    setRemoteUrl(null);
+    setRemoved(Boolean(agent && agent.platform !== platform));
+  };
   const appendTo = (form: FormData) => {
     const file = fileRef.current?.files?.[0];
     if (file) form.append('logo', file); else if (remoteUrl && !removed) form.append('logo', remoteUrl); else if (agent && removed) form.append('removeLogo', 'true');
   };
-  return { fileRef, preview, selectFile, applyRemote, remove, appendTo };
+  return { fileRef, preview, selectFile, applyRemote, remove, resetForPlatform, appendTo };
 }

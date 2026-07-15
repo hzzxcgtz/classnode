@@ -15,18 +15,23 @@ interface AgentCredentialsFieldsProps extends AgentCredentialValues {
   platform: AgentPlatform;
   editing: boolean;
   savedApiKeyLabel?: string;
+  savedApiSecretLabel?: string;
   fieldErrors: Record<string, string>;
   onChange: (field: CredentialField, value: string) => void;
 }
+
+const SAVED_SECRET_PLACEHOLDER = '••••••••••••••••••••••••';
 
 const inputStyle = (error?: string) => ({
   fontSize: '0.813rem', padding: '8px 12px', borderColor: error ? '#ef4444' : undefined,
 });
 
-function RequiredField({ label, value, placeholder, error, type = 'text', onChange }: {
+function RequiredField({ label, value, placeholder, hint, savedDisplay = false, error, type = 'text', onChange }: {
   label: string;
   value: string;
   placeholder: string;
+  hint?: string;
+  savedDisplay?: boolean;
   error?: string;
   type?: 'text' | 'password';
   onChange: (value: string) => void;
@@ -36,7 +41,8 @@ function RequiredField({ label, value, placeholder, error, type = 'text', onChan
       <label style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>
         {label} <span style={{ color: 'var(--danger)' }}>*</span>
       </label>
-      <input className="input" type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} style={inputStyle(error)} />
+      <input className={`input${savedDisplay && !value ? ' saved-secret-display' : ''}`} type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} style={inputStyle(error)} />
+      {hint && !error && <div style={{ color: '#64748b', fontSize: '0.688rem', marginTop: 4 }}>{hint}</div>}
       {error && <FieldError message={error} />}
     </div>
   );
@@ -56,11 +62,11 @@ function PlatformNotice({ children }: { children: React.ReactNode }) {
 }
 
 export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
-  const { platform, editing, savedApiKeyLabel, fieldErrors, onChange } = props;
+  const { platform, editing, savedApiKeyLabel, savedApiSecretLabel, fieldErrors, onChange } = props;
   const update = (field: CredentialField) => (value: string) => onChange(field, value);
   const apiKeyLabel = platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token';
   const apiKeyPlaceholder = editing
-    ? `已保存（${savedApiKeyLabel || '安全存储'}），留空保持不变`
+    ? savedApiKeyLabel || SAVED_SECRET_PLACEHOLDER
     : platform === 'coze' ? '在 Coze 个人令牌页面创建，以 pat_ 开头'
       : platform === 'wenxin' ? '在文心智能体平台的 Secret Key'
         : platform === 'zhipuai' ? '在智谱清言开发者面板获取 api_key' : '';
@@ -82,9 +88,9 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           <RequiredField label="Project ID" value={props.projectId} placeholder="在 Coze 项目设置中获取 Project ID" error={fieldErrors.projectId} onChange={update('projectId')} />
         </>
       )}
-      <RequiredField label={apiKeyLabel} type="password" value={props.apiKey} placeholder={apiKeyPlaceholder} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+      <RequiredField label={apiKeyLabel} type="password" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '已安全保存；如需更换，直接输入新值' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
       {platform === 'zhipuai' && (
-        <RequiredField label="API Secret" type="password" value={props.apiSecret} placeholder={editing ? '已安全保存，留空保持不变' : '在智谱清言开发者面板获取 api_secret'} error={fieldErrors.apiSecret} onChange={update('apiSecret')} />
+        <RequiredField label="API Secret" type="password" value={props.apiSecret} placeholder={editing ? savedApiSecretLabel || SAVED_SECRET_PLACEHOLDER : '在智谱清言开发者面板获取 api_secret'} hint={editing ? '已安全保存；如需更换，直接输入新值' : undefined} savedDisplay={editing} error={fieldErrors.apiSecret} onChange={update('apiSecret')} />
       )}
     </>
   );

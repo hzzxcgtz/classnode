@@ -25,7 +25,13 @@ export function useAgentFormActions(options: FormActionOptions) {
   const savingRef = useRef(false);
   const optionsRef = useRef(options);
   useEffect(() => { optionsRef.current = options; });
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    // React Strict Mode 会在开发环境执行一次 setup → cleanup → setup。
+    // 每次 effect 生效时都恢复 mounted 状态，否则第一次模拟 cleanup 后，
+    // 保存成功也不会关闭弹窗，finally 也无法解除“保存中”。
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const clearError = (field: string) => setFieldErrors(previous => { const next = { ...previous }; delete next[field]; return next; });
   const clearErrors = () => setFieldErrors({});

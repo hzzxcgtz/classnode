@@ -62,11 +62,13 @@ function copy(relativeSource, relativeDestination) {
 }
 
 function run(command, args, env = {}) {
-  const executable = process.platform === 'win32' ? `${command}.cmd` : command;
-  const result = spawnSync(executable, args, {
+  // Windows 的 .cmd 文件不能被 spawnSync 直接执行，会导致 EINVAL。
+  // 通过 Shell 解析 npm / npx，可同时覆盖 x64 与 ARM64 构建任务。
+  const result = spawnSync(command, args, {
     cwd: resourceDir,
     env: { ...process.env, ...env },
     stdio: 'inherit',
+    shell: process.platform === 'win32',
   });
   if (result.error) fail(`${command} 启动失败: ${result.error.message}`);
   if (result.status !== 0) fail(`${command} 退出码: ${result.status}`);

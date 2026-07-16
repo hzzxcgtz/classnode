@@ -1,4 +1,82 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+
+/** 统一教师端页面的标题、说明和主操作区域。 */
+export function TeacherPageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <header className="teacher-page-header">
+      <div className="teacher-page-header-copy">
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {actions && <div className="teacher-page-header-actions">{actions}</div>}
+    </header>
+  );
+}
+
+/** 管理型页面使用的紧凑分段页签，支持显示各分区的数据量。 */
+export function TeacherPageTabs<T extends string>({
+  value,
+  onChange,
+  items,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  items: Array<{ value: T; label: string; badge?: string | number; icon?: ReactNode }>;
+}) {
+  return (
+    <div className="teacher-page-tabs" role="tablist">
+      {items.map(item => {
+        const selected = value === item.value;
+        return (
+          <button key={item.value} type="button" role="tab" aria-selected={selected} onClick={() => onChange(item.value)} className={selected ? 'is-active' : ''}>
+            {item.icon && <span className="teacher-page-tabs-icon">{item.icon}</span>}
+            {item.label}
+            {item.badge !== undefined && <span className="teacher-page-tabs-badge">{item.badge}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 统一数据页的空状态，避免每页重新发明提示层级。 */
+export function TeacherEmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="teacher-empty-state">
+      <div className="teacher-empty-state-icon">{icon}</div>
+      <h2>{title}</h2>
+      <p>{description}</p>
+      {action && <div className="teacher-empty-state-action">{action}</div>}
+    </div>
+  );
+}
+
+export function TeacherLoadingState({ label = '正在加载…' }: { label?: string }) {
+  return (
+    <div className="teacher-loading-state" role="status">
+      <span aria-hidden="true" />
+      {label}
+    </div>
+  );
+}
 
 export function ErrorIcon() {
   return (

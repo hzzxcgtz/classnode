@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { FieldError, Toast, Pagination } from '@/lib/components';
+import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { AgentSummary } from '@/lib/types';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
@@ -62,22 +62,12 @@ export default function AgentsPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>AI智能体</h1>
-            <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-              接入 Coze 低代码、Coze 编程、清言智能体、文心智能体等多种 AI 平台
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-              接入智能体
-            </button>
-          </div>
-        </div>
-      </div>
+      <TeacherPageHeader title="AI 智能体" description="接入并管理课堂使用的 AI 智能体。" actions={
+        <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          接入智能体
+        </button>
+      } />
 
       {showForm && (
         <AgentForm
@@ -102,7 +92,7 @@ export default function AgentsPage() {
               </div>
             ))}
           </div>
-          <div className="agent-management-filters">
+          <div className="agent-management-filters teacher-list-toolbar">
             <label className="agent-management-search">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input value={agentSearch} onChange={event => { setAgentSearch(event.target.value); setAgentPage(1); }} placeholder="搜索智能体名称" aria-label="搜索智能体" />
@@ -124,32 +114,21 @@ export default function AgentsPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
+        <TeacherLoadingState label="正在加载智能体…" />
       ) : agents.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 60 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: '#f1f5f9', margin: '0 auto 14px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round">
-              <rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /><path d="M8 4V2" /><path d="M16 4V2" /><path d="M8 20v2" /><path d="M16 20v2" />
-            </svg>
-          </div>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 600, margin: '0 0 8px' }}>还没有接入智能体</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: "0.875rem", marginBottom: 24 }}>
-            点击上方按钮，接入您在 Coze、清言智能体、文心智能体等平台配置好的 AI 助手
-          </p>
-          <button className="btn btn-primary btn-lg" onClick={() => setShowForm(true)}>
-            接入第一个智能体
-          </button>
-        </div>
+        <TeacherEmptyState
+          icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /><path d="M8 4V2" /><path d="M16 4V2" /><path d="M8 20v2" /><path d="M16 20v2" /></svg>}
+          title="还没有接入智能体"
+          description="先接入一个已配置好的智能体，再把它带入课堂。"
+          action={<button className="btn btn-primary" onClick={() => setShowForm(true)}>接入第一个智能体</button>}
+        />
       ) : filteredAgents.length === 0 ? (
-        <div className="agent-management-filter-empty">
-          <strong>没有符合条件的智能体</strong>
-          <span>可以更换关键词、平台或连接状态</span>
-          <button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>
-        </div>
+        <TeacherEmptyState
+          icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>}
+          title="没有符合条件的智能体"
+          description="可以调整关键词、平台或连接状态。"
+          action={<button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>}
+        />
       ) : (
         <div className="agent-management-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
           {pagedAgents.map(agent => (

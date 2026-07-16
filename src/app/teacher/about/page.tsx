@@ -166,7 +166,7 @@ export default function AboutPage() {
   };
 
   return (
-    <div style={{ padding: '40px 48px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ width: '100%', maxWidth: 980, margin: '0 auto', paddingBottom: 32 }}>
 
       {/* ========== Hero ========== */}
       <div style={{

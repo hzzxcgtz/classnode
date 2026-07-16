@@ -11,6 +11,7 @@ import {
   RadialBarChart, RadialBar,
 } from 'recharts';
 import type { AgentSummary, BackupFile, ClassSummary, ClassroomHistoryItem, DashboardClassroom, ShieldWord, StorageStats } from '@/lib/types';
+import { TeacherPageHeader } from '@/lib/components';
 
 type ChartPayloadItem = {
   name?: string;
@@ -305,25 +306,12 @@ export default function DashboardPage() {
   return (
     <div>
 
-      {/* ═══ 页面标题 ═══ */}
-      <div style={{
-        marginBottom: 22, display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <div>
-          <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>仪表盘</h1>
-          <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '2px 0 0' }}>{greeting()}，以下是系统整体概览</p>
-        </div>
-        <button className="btn btn-primary" onClick={loadData}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", padding: '8px 16px' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2.5" strokeLinecap="round">
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+      <TeacherPageHeader title="仪表盘" description={`${greeting()}，这里汇总系统与课堂运行情况。`} actions={
+        <button className="btn btn-primary" onClick={loadData}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
           刷新数据
         </button>
-      </div>
+      } />
 
       {/* ═══ 核心 KPI 行 ═══ */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>

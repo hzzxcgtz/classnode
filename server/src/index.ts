@@ -24,7 +24,7 @@ import { sendPing } from './services/ping.js';
 import uploadRoutes, { cleanupOrphanedUploads } from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
-import upgradeRoutes from './routes/upgrade.js';
+import upgradeRoutes, { checkForUpdateOnStartup } from './routes/upgrade.js';
 import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
@@ -325,6 +325,12 @@ async function main() {
     });
     // 匿名心跳统计（需先通过设置配置 ping_url）
     sendPing(prisma);
+    // 每次服务启动后仅检查一次版本；失败不影响课堂服务正常运行。
+    void checkForUpdateOnStartup()
+      .then((result) => console.log(result.hasUpdate
+        ? `[upgrade] 发现新版本 v${result.latestVersion}`
+        : `[upgrade] 已是最新版本 v${result.currentVersion}`))
+      .catch((error) => console.warn('[upgrade] 后台检查失败:', error instanceof Error ? error.message : String(error)));
   });
 
   // Graceful shutdown

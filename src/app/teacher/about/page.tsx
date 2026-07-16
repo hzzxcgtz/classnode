@@ -1,8 +1,7 @@
 'use client';
 import { APP_VERSION } from '@/lib/version';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { checkForUpdates, cacheCheckResult, clearDismiss, getCachedCheckResult } from '@/lib/upgrade-check';
 import styles from './about.module.css';
 
 const SectionCard = ({ title, color, children, icon }: { title: string; color: string; children: React.ReactNode; icon?: React.ReactNode }) => (
@@ -52,21 +51,6 @@ export default function AboutPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [showAllLogs, setShowAllLogs] = useState(false);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateMsg, setUpdateMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
-  const [updateFound, setUpdateFound] = useState(false);
-
-  useEffect(() => {
-    // 页面加载时从缓存恢复版本检测状态（刷新后红点不消失）
-    const timer = window.setTimeout(() => {
-      const cached = getCachedCheckResult();
-      if (cached && cached.hasUpdate) {
-        setUpdateFound(true);
-        setUpdateMsg({ type: 'success', text: `v${cached.latestVersion} 可用，前往更新` });
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   // 首次展开时懒加载更新日志
   const loadChangelogs = useCallback(async () => {
@@ -87,36 +71,6 @@ export default function AboutPage() {
       setChangelogsOpen(true);
     }
   }, [changelogsOpen, loadChangelogs]);
-
-  const checkUpdate = useCallback(async () => {
-    setCheckingUpdate(true);
-    setUpdateMsg(null);
-    try {
-      // 通过后端 API 检测版本
-      const data = await checkForUpdates();
-      // 无论是否有更新，都将结果写入缓存，覆盖可能的脏数据
-      cacheCheckResult(data);
-      if (data.hasUpdate) {
-        setUpdateMsg({ type: 'success', text: `v${data.latestVersion} 可用，前往更新` });
-        setUpdateFound(true);
-        // 先清除忽略状态 → 再缓存检测结果 → 最后通知侧栏
-        clearDismiss();
-        window.dispatchEvent(new CustomEvent('classnode-update-found', {
-          detail: { version: data.latestVersion },
-        }));
-      } else {
-        setUpdateMsg({ type: 'info', text: '已是最新版' });
-        setUpdateFound(false);
-      }
-    } catch (e) {
-      console.error('检查更新失败:', e);
-      setUpdateMsg({ type: 'error', text: '检查失败' });
-      setUpdateFound(false);
-      // 检查失败时清除缓存，避免下次加载页面时仍显示旧的版本提示
-      clearDismiss();
-    }
-    setCheckingUpdate(false);
-  }, []);
 
   const renderMarkdown = (text: string) => {
     const lines = text.split('\n');
@@ -184,54 +138,61 @@ export default function AboutPage() {
             <span style={{ fontSize: "0.813rem", color: '#94a3b8', fontWeight: 500, padding: '1px 10px', borderRadius: 6, background: '#f1f4f9' }}>
               v{APP_VERSION}
             </span>
-            <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <button onClick={checkUpdate} disabled={checkingUpdate} style={{
-                  fontSize: "0.75rem", color: '#64748b', background: 'transparent',
-                  border: '1px solid #d1d5db', borderRadius: 6, cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-                  padding: '2px 10px', fontWeight: 500, opacity: checkingUpdate ? 0.6 : 1,
-                  transition: 'all 0.15s', lineHeight: '22px',
-                }}
-                  onMouseEnter={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#eef2ff'; } }}
-                  onMouseLeave={e => { if (!checkingUpdate) { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; } }}>
-                  {checkingUpdate ? '检查中...' : '检查更新'}
-                </button>
-              {updateFound && (
-                <span style={{
-                  position: 'absolute', top: -3, right: -3,
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: '#ef4444',
-                }} />
-              )}
-            </span>
-            {updateMsg && (
-              <a href={updateMsg.type === 'success' ? 'https://gitcode.com/weixin_41523975/classnode/releases' : undefined}
-                 target={updateMsg.type === 'success' ? '_blank' : undefined}
-                 rel={updateMsg.type === 'success' ? 'noopener noreferrer' : undefined}
-                 style={{
-                textDecoration: 'none', cursor: updateMsg.type === 'success' ? 'pointer' : 'default',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontSize: "0.75rem", fontWeight: 500,
-                padding: '2px 8px', borderRadius: 6,
-                flexShrink: 0, maxWidth: 240, overflow: 'hidden',
-                color: updateMsg.type === 'success' ? '#166534' : updateMsg.type === 'error' ? '#991b1b' : '#475569',
-                background: updateMsg.type === 'success' ? '#f0fdf4' : updateMsg.type === 'error' ? '#fef2f2' : '#f8fafc',
-                border: updateMsg.type === 'success' ? '1px solid #bbf7d0' : updateMsg.type === 'error' ? '1px solid #fecaca' : '1px solid #e2e8f0',
-              }}>
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '20px' }}>{updateMsg.text}</span>
-                <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setUpdateMsg(null); }} style={{
-                  cursor: 'pointer', opacity: 0.4, flexShrink: 0,
-                  fontSize: "0.688rem", lineHeight: '20px',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-                  onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; }}
-                >✕</span>
-              </a>
-            )}
           </div>
           <p style={{ fontSize: "0.938rem", color: '#64748b', margin: '4px 0 0', lineHeight: 1.5 }}>
             让每一次 AI 探索，都自然地发生在真实课堂里。
           </p>
         </div>
+      </div>
+
+      {/* ========== 版本更新 ========== */}
+      <div style={{
+        marginBottom: 16, overflow: 'hidden', border: '1px solid #e2e8f0',
+        borderRadius: 14, background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+      }}>
+        <button onClick={toggleChangelogs} style={{
+          width: '100%', padding: '14px 20px', background: '#f8fafc',
+          border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+          borderBottom: changelogsOpen ? '1px solid #e2e8f0' : 'none',
+          transition: 'background 0.12s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.8" strokeLinecap="round" style={{ transition: 'transform 0.2s', transform: changelogsOpen ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a', flex: 1, textAlign: 'left' }}>更新日志</span>
+          {loadingLogs && <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</span>}
+        </button>
+        {changelogsOpen && changelogs && (
+          <div style={{ padding: '12px 20px 16px' }}>
+            {(showAllLogs ? changelogs : changelogs.slice(0, 5)).map((log, idx) => {
+              const isExpanded = expandedVersion === log.version;
+              const accentColor = idx === 0 ? '#3b82f6' : '#94a3b8';
+              return (
+                <div key={log.version} style={{
+                  marginBottom: idx < changelogs.length - 1 ? 6 : 0,
+                  borderLeft: `3px solid ${isExpanded ? accentColor : '#e2e8f0'}`,
+                  borderRadius: 0, overflow: 'hidden', paddingLeft: 12, transition: 'border-color 0.15s',
+                }}>
+                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 0', background: 'transparent',
+                    border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: "0.875rem", color: '#0f172a', fontWeight: 600,
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" style={{ transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
+                    <span style={{ flex: 1, color: '#0f172a' }}>{log.version}</span>
+                    {log.date && <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{log.date}</span>}
+                  </button>
+                  {isExpanded && <div style={{ padding: '2px 0 8px 20px', fontSize: "0.813rem", color: '#475569', lineHeight: 1.8 }}>{renderMarkdown(log.content)}</div>}
+                </div>
+              );
+            })}
+            {changelogs.length > 5 && !showAllLogs && (
+              <button onClick={() => setShowAllLogs(true)} style={{ display: 'block', width: '100%', marginTop: 10, padding: '8px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: "0.813rem", color: '#64748b', textAlign: 'center' }}>
+                显示全部更新日志（共 {changelogs.length} 条）
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ========== 写给使用者的话 ========== */}
@@ -253,67 +214,11 @@ export default function AboutPage() {
             </p>
           </div>
           <div className={styles.signature}>
-            <span className={styles.signatureAvatar}>张</span>
-            <span><strong>张星昌</strong><small>杭州市拱墅区教育研究院</small></span>
+            <span className={styles.signatureLabel}>ClassNode 开发者</span>
+            <span className={styles.signatureIdentity}><strong>张星昌</strong><small>杭州市拱墅区教育研究院</small></span>
           </div>
         </div>
       </section>
-
-      {/* ========== 更新日志 ========== */}
-      <SectionCard title="更新日志" color="#64748b">
-          <button onClick={toggleChangelogs} style={{
-            width: '100%', padding: '14px 20px', background: '#f8fafc',
-            border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-            borderBottom: changelogsOpen ? '1px solid #e2e8f0' : 'none',
-            transition: 'background 0.12s',
-          }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.8" strokeLinecap="round" style={{ transition: 'transform 0.2s', transform: changelogsOpen ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a', flex: 1, textAlign: 'left' }}>更新日志</span>
-            {loadingLogs && <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</span>}
-          </button>
-          {changelogsOpen && changelogs && (
-          <div style={{ padding: '12px 20px 16px' }}>
-            {(showAllLogs ? changelogs : changelogs.slice(0, 5)).map((log, idx) => {
-              const isExpanded = expandedVersion === log.version;
-              const accentColor = idx === 0 ? '#3b82f6' : '#94a3b8';
-              return (
-                <div key={log.version} style={{
-                  marginBottom: idx < changelogs.length - 1 ? 6 : 0,
-                  borderLeft: `3px solid ${isExpanded ? accentColor : '#e2e8f0'}`,
-                  borderRadius: 0, overflow: 'hidden',
-                  paddingLeft: 12, transition: 'border-color 0.15s',
-                }}>
-                  <button onClick={() => setExpandedVersion(isExpanded ? null : log.version)} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                    padding: '8px 0', background: 'transparent',
-                    border: 'none', cursor: 'pointer', textAlign: 'left',
-                    fontSize: "0.875rem", color: '#0f172a', fontWeight: 600,
-                    transition: 'opacity 0.12s',
-                  }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" style={{ transition: 'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}><polyline points="9 18 15 12 9 6" /></svg>
-                    <span style={{ flex: 1, color: '#0f172a' }}>{log.version}</span>
-                    {log.date && <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{log.date}</span>}
-                  </button>
-                  {isExpanded && (
-                    <div style={{ padding: '2px 0 8px 20px', fontSize: "0.813rem", color: '#475569', lineHeight: 1.8 }}>
-                      {renderMarkdown(log.content)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {changelogs.length > 5 && !showAllLogs && (
-              <button onClick={() => setShowAllLogs(true)}
-                style={{ display: 'block', width: '100%', marginTop: 10, padding: '8px', border: '1px dashed #d1d5db', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: "0.813rem", color: '#64748b', textAlign: 'center' }}>
-                显示全部更新日志（共 {changelogs.length} 条）
-              </button>
-            )}
-          </div>
-        )}
-      </SectionCard>
 
       {/* ========== 缘起 ========== */}
       <SectionCard title="缘起 · 从一堂真实的 AI 课出发" color="#d97706">

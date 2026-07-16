@@ -26,8 +26,8 @@ router.get('/', (_req, res) => {
       const content = fs.readFileSync(path.join(CHANGELOGS_DIR, file), 'utf-8');
       // 从文件名提取版本号（如 v1.2.3.md → 1.2.3）
       const version = file.replace(/\.md$/, '');
-      // 从内容查找日期（如 ## [1.2.3] — 2026-06-05）
-      const dateMatch = content.match(/—\s*(\d{4}-\d{2}-\d{2})/);
+      // 兼容旧格式“## [1.2.3] — 2026-06-05”与当前格式“## v1.2.3 (2026-06-05)”。
+      const dateMatch = content.match(/^#{1,3}\s+.*?(?:—\s*|[（(]\s*)(\d{4}-\d{2}-\d{2})/m);
       return { version, date: dateMatch ? dateMatch[1] : null, content };
     });
     res.json(entries);

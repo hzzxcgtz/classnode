@@ -13,6 +13,16 @@ const UPSTREAM_URLS = [
   'https://raw.githubusercontent.com/hzzxcgtz/classnode/main/updater/latest.json',
 ];
 
+export interface UpgradeCheckResult {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  notes?: string;
+  pub_date?: string;
+}
+
+let startupCheck: Promise<UpgradeCheckResult> | null = null;
+
 /**
  * 代理感知的 fetch——当系统设置了 https_proxy 时，Node.js 24 内置 fetch
  * 可能不兼容，退化到原生 http.request 通过代理转发。
@@ -75,60 +85,65 @@ async function proxyAwareFetch(url: string, options?: { signal?: AbortSignal }):
  *   pub_date?: string
  * }
  */
+export function checkForUpdateOnStartup(): Promise<UpgradeCheckResult> {
+  if (startupCheck) return startupCheck;
+  startupCheck = fetchUpgradeCheck();
+  return startupCheck;
+}
+
 router.get('/check', async (_req, res) => {
   try {
-    // 读取本地版本
-    const localVersion = readLocalVersion();
-    if (!localVersion) {
-      res.status(500).json({ error: '无法读取本地版本号' });
-      return;
-    }
-
-    // 并行发起两个源请求，优先用 Gitee，失败则降级到 GitHub
-    const [giteeUrl, githubUrl] = UPSTREAM_URLS;
-    const TIMEOUT = 8000;
-
-    const giteePromise = proxyAwareFetch(giteeUrl, { signal: AbortSignal.timeout(TIMEOUT) })
-      .then(async (resp) => {
-        if (!resp.ok) throw new Error(`Gitee ${resp.status}`);
-        return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
-      });
-
-    const githubPromise = proxyAwareFetch(githubUrl, { signal: AbortSignal.timeout(TIMEOUT) })
-      .then(async (resp) => {
-        if (!resp.ok) throw new Error(`GitHub ${resp.status}`);
-        return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
-      });
-
-    // 优先等 Gitee
-    let remote: { version: string; notes?: string; pub_date?: string };
-    try {
-      remote = await giteePromise;
-    } catch (giteeErr) {
-      console.warn('[upgrade/check] Gitee 失败，降级到 GitHub:', giteeErr instanceof Error ? giteeErr.message : String(giteeErr));
-      try {
-        remote = await githubPromise;
-      } catch (githubErr) {
-        console.error('[upgrade/check] 所有上游全部失败:', githubErr instanceof Error ? githubErr.message : String(githubErr));
-        res.status(502).json({ error: '无法连接到版本服务器，请检查网络后重试' });
-        return;
-      }
-    }
-
-    const hasUpdate = compareVersions(remote.version, localVersion) > 0;
-    res.json({
-      hasUpdate,
-      currentVersion: localVersion,
-      latestVersion: remote.version,
-      notes: remote.notes,
-      pub_date: remote.pub_date,
-    });
+    res.json(await checkForUpdateOnStartup());
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[upgrade/check] 内部错误:', msg);
     res.status(502).json({ error: '无法连接到版本服务器，请检查网络后重试' });
   }
 });
+
+async function fetchUpgradeCheck(): Promise<UpgradeCheckResult> {
+  // 读取本地版本
+  const localVersion = readLocalVersion();
+  if (!localVersion) throw new Error('无法读取本地版本号');
+
+  // 并行发起两个源请求，优先用 Gitee，失败则降级到 GitHub
+  const [giteeUrl, githubUrl] = UPSTREAM_URLS;
+  const TIMEOUT = 8000;
+
+  const giteePromise = proxyAwareFetch(giteeUrl, { signal: AbortSignal.timeout(TIMEOUT) })
+    .then(async (resp) => {
+      if (!resp.ok) throw new Error(`Gitee ${resp.status}`);
+      return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
+    });
+
+  const githubPromise = proxyAwareFetch(githubUrl, { signal: AbortSignal.timeout(TIMEOUT) })
+    .then(async (resp) => {
+      if (!resp.ok) throw new Error(`GitHub ${resp.status}`);
+      return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
+    });
+
+  // 优先等 Gitee
+  let remote: { version: string; notes?: string; pub_date?: string };
+  try {
+    remote = await giteePromise;
+  } catch (giteeErr) {
+    console.warn('[upgrade/check] Gitee 失败，降级到 GitHub:', giteeErr instanceof Error ? giteeErr.message : String(giteeErr));
+    try {
+      remote = await githubPromise;
+    } catch (githubErr) {
+      console.error('[upgrade/check] 所有上游全部失败:', githubErr instanceof Error ? githubErr.message : String(githubErr));
+      throw new Error('无法连接到版本服务器，请检查网络后重试');
+    }
+  }
+
+  return {
+    hasUpdate: compareVersions(remote.version, localVersion) > 0,
+    currentVersion: localVersion,
+    latestVersion: remote.version,
+    notes: remote.notes,
+    pub_date: remote.pub_date,
+  };
+}
 
 /** 从根 package.json 读取版本号 */
 function readLocalVersion(): string | null {

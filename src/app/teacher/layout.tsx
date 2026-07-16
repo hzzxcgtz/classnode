@@ -5,7 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
-import { checkForUpdates, getCachedCheckResult, cacheCheckResult, UPDATE_CHECK_INTERVAL } from '@/lib/upgrade-check';
+import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
 const navItems = [
@@ -55,8 +55,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     try { return typeof window !== 'undefined' && localStorage.getItem('teacher_sidebar_collapsed') === 'true'; }
     catch { return false; }
   });
-  const [hasUpdate, setHasUpdate] = useState(() => getCachedCheckResult()?.hasUpdate === true);
-  const [updateChecking, setUpdateChecking] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -139,45 +138,21 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     return () => window.removeEventListener('classnode-teacher-session-expired', onSessionExpired);
   }, []);
 
-  // 页面加载时立即从缓存恢复检测结果 + 监听手动检测事件
+  // 服务端启动时已完成一次后台检测；教师认证后只读取该次结果。
   useEffect(() => {
-    const onUpdateFound = (e: Event) => {
-      void (e as CustomEvent<{ version: string }>).detail.version;
-      setHasUpdate(true);
-    };
-    window.addEventListener('classnode-update-found', onUpdateFound);
-    return () => window.removeEventListener('classnode-update-found', onUpdateFound);
-  }, []);
-
-  // 定时自动检查更新（首次延迟 8s，之后每 24h）
-  useEffect(() => {
-    const doCheck = async () => {
-      if (updateChecking) return;
-      setUpdateChecking(true);
-      try {
-        const result = await checkForUpdates();
-        // 缓存检测结果，刷新页面后仍能立即显示
-        cacheCheckResult(result);
+    if (authState !== 'authenticated') return;
+    let cancelled = false;
+    void checkForUpdates()
+      .then((result) => {
+        if (cancelled) return;
+        setHasUpdate(result.hasUpdate);
         if (result.hasUpdate) {
-          setHasUpdate(true);
-        } else {
-          setHasUpdate(false);
+          setToast({ msg: `发现新版本 v${result.latestVersion}，可在“关于”页面查看`, type: 'success' });
         }
-      } catch {
-        // 静默失败，下次再试；清除缓存避免页面加载时仍显示过期版本提示
-        try { localStorage.removeItem('classnode_update_cache'); } catch {}
-      }
-      setUpdateChecking(false);
-    };
-
-    // 首次延迟检查，避免启动时干扰
-    const timer = setTimeout(doCheck, 8000);
-    // 之后每 24h 检查一次
-    const interval = setInterval(doCheck, UPDATE_CHECK_INTERVAL);
-
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      })
+      .catch(() => { if (!cancelled) setHasUpdate(false); });
+    return () => { cancelled = true; };
+  }, [authState]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {

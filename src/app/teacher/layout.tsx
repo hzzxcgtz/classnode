@@ -14,7 +14,7 @@ const navItems = [
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
   { path: '/teacher/avatars', label: '头像管理', icon: 'avatar' },
-  { path: '/teacher/shield', label: '屏蔽管理', icon: 'shield' },
+  { path: '/teacher/shield', label: '课堂安全', icon: 'shield' },
   { path: '/teacher/history', label: '数据管理', icon: 'clock' },
   { path: '/teacher/guide', label: '使用指南', icon: 'book' },
   { path: '/teacher/about', label: '关于', icon: 'info' },

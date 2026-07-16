@@ -1,7 +1,7 @@
 .page {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 28px 36px 48px;
+  padding: 0 0 48px;
   color: #0f172a;
 }
 
@@ -117,15 +117,20 @@
 .capabilityNotes span { color: #64748b; font-size: .65rem; line-height: 1.55; }
 .visuallyHidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-.screenshot { margin: 20px 0 0; overflow: hidden; border: 1px solid #dbe4f0; border-radius: 13px; background: #f8fafc; }
-.screenshot > img { display: block; width: 100%; height: auto; }
+.screenshot { width: min(100%, 780px); margin: 20px auto 0; overflow: hidden; border: 1px solid #dbe4f0; border-radius: 13px; background: #f8fafc; box-shadow: 0 8px 20px rgba(15,23,42,.05); }
+.screenshot figcaption { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #e2e8f0; color: #334155; background: #fff; }
+.screenshot figcaption span { padding: 3px 7px; border-radius: 999px; color: #2563eb; background: #eff6ff; font-size: .6rem; font-weight: 800; }
+.screenshot figcaption strong { min-width: 0; overflow: hidden; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.screenshot figcaption small { margin-left: auto; flex-shrink: 0; color: #94a3b8; font-size: .61rem; }
+.screenshotPreview { display: flex; max-height: 390px; align-items: center; justify-content: center; background: #f1f5f9; }
+.screenshotPreview img { display: block; max-width: 100%; max-height: 390px; width: auto; height: auto; object-fit: contain; transition: transform .18s ease; }
+.screenshotPreview:hover img { transform: scale(1.012); }
 .screenshotPlaceholder { display: flex; min-height: 230px; padding: 28px; align-items: center; justify-content: center; flex-direction: column; text-align: center; background-image: linear-gradient(45deg, rgba(226,232,240,.32) 25%, transparent 25%), linear-gradient(-45deg, rgba(226,232,240,.32) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(226,232,240,.32) 75%), linear-gradient(-45deg, transparent 75%, rgba(226,232,240,.32) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; }
 .screenshotBadge { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 12px; padding: 4px 9px; border-radius: 999px; color: #2563eb; background: #dbeafe; font-size: .66rem; font-weight: 750; }
 .screenshotBadge svg { width: 13px; height: 13px; }
 .screenshotPlaceholder strong { color: #334155; font-size: .86rem; }
 .screenshotPlaceholder p { max-width: 650px; margin: 8px 0 0; color: #64748b; font-size: .72rem; line-height: 1.65; }
 .screenshotPlaceholder small { max-width: 650px; margin-top: 8px; color: #b45309; font-size: .67rem; line-height: 1.55; }
-.screenshot figcaption { padding: 8px 12px; border-top: 1px solid #e2e8f0; color: #64748b; background: #fff; font-size: .67rem; }
 
 .finish { display: flex; align-items: center; gap: 13px; padding: 20px 22px; border: 1px solid #bbf7d0; border-radius: 15px; background: linear-gradient(135deg, #f0fdf4, #f7fee7); }
 .finish > span { display: inline-flex; width: 38px; height: 38px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: #16a34a; }
@@ -133,7 +138,7 @@
 .finish p { margin: 4px 0 0; color: #4d7c0f; font-size: .73rem; line-height: 1.6; }
 
 @media (max-width: 1080px) {
-  .page { padding: 24px; }
+  .page { padding: 0 0 40px; }
   .hero { align-items: flex-start; flex-direction: column; }
   .heroPromise { width: 100%; min-width: 0; }
   .sidebar { width: 190px; }
@@ -144,7 +149,7 @@
 }
 
 @media (max-width: 760px) {
-  .page { padding: 16px 14px 32px; }
+  .page { padding: 0 0 32px; }
   .hero { padding: 22px 20px; border-radius: 16px; }
   .hero h1 { font-size: 1.35rem; }
   .layout { flex-direction: column; }
@@ -158,4 +163,7 @@
   .comparisonLegend { white-space: normal; }
   .capabilityNotes { grid-template-columns: 1fr; padding: 13px 16px 15px; }
   .screenshotPlaceholder { min-height: 250px; padding: 22px 18px; }
+  .screenshot { width: 100%; }
+  .screenshotPreview, .screenshotPreview img { max-height: 300px; }
+  .screenshot figcaption small { display: none; }
 }

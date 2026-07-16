@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Pagination } from '@/lib/components';
+import { Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { ClassroomWarning, ClassroomWarningSummary, ShieldWord } from '@/lib/types';
 
 export default function ShieldPage() {
@@ -227,41 +227,13 @@ export default function ShieldPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      {/* 页面标题 */}
-      <div className="teacher-header">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0 }}>课堂安全中心</h1>
-          </div>
-          <p style={{ fontSize: "0.813rem", color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 }}>
-            管理屏蔽词、追踪拦截情况，配置课堂保护规则。
-          </p>
-        </div>
-      </div>
+      <TeacherPageHeader title="课堂安全" description="管理屏蔽词、追踪拦截情况，配置课堂保护规则。" />
 
-      {/* 功能分区 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content', marginBottom: 20, padding: 4, border: '1px solid #e2e8f0', borderRadius: 12, background: '#f8fafc' }}>
-        {([
-          { key: 'words', label: '词库管理', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8' },
-          { key: 'records', label: '拦截记录', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M12 8v4 M12 16h.01' },
-          { key: 'settings', label: '管控设置', icon: 'M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.1a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.1A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.2.37.55.72 1 .9.35.14.73.2 1.1.2h.1v4h-.1a1.7 1.7 0 0 0-1.5.9z' },
-        ] as const).map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); }}
-            style={{
-              padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit', border: 'none', borderRadius: 8,
-              background: tab === t.key ? 'white' : 'transparent',
-              color: tab === t.key ? '#007aff' : '#64748b',
-              fontSize: "0.813rem", fontWeight: 600, transition: 'all 0.12s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              boxShadow: tab === t.key ? '0 1px 3px rgba(15,23,42,.12)' : 'none',
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d={t.icon} />
-            </svg>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TeacherPageTabs value={tab} onChange={setTab} items={[
+        { value: 'words', label: '词库管理', badge: words.length },
+        { value: 'records', label: '拦截记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
+        { value: 'settings', label: '管控设置' },
+      ]} />
 
       {tab === 'settings' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
@@ -616,17 +588,13 @@ export default function ShieldPage() {
             )}
           </div>
           {loadingSummary ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8' }}>
-              <div style={{ fontSize: "0.813rem" }}>加载中...</div>
-            </div>
+            <TeacherLoadingState label="正在加载拦截记录…" />
           ) : summary.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}>
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无拦截记录</div>
-              <div style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>学生发送触发屏蔽词的内容后，记录会显示在此处</div>
-            </div>
+            <TeacherEmptyState
+              icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
+              title="暂无拦截记录"
+              description="学生消息触发屏蔽词后，会按课堂汇总在这里。"
+            />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {summary.map(c => (
@@ -706,15 +674,13 @@ export default function ShieldPage() {
             </button>}
           </div>
           {loadingWarnings ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8', fontSize: "0.813rem" }}>加载中...</div>
+            <TeacherLoadingState label="正在加载课堂详情…" />
           ) : warnings.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}>
-                <circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
-              </svg>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无拦截记录</div>
-              <div style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>该课堂暂无触发屏蔽词的行为</div>
-            </div>
+            <TeacherEmptyState
+              icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>}
+              title="该课堂暂无拦截记录"
+              description="当前课堂没有触发屏蔽词的学生消息。"
+            />
           ) : (
             <div style={{ overflowY: 'auto', flex: 1 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: "0.813rem" }}>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
-import { Toast, Pagination } from '@/lib/components';
+import { Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { BackupFile, ClassroomHistoryItem, ConversationExportReport, ExportConversationStudent } from '@/lib/types';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -159,34 +159,18 @@ export default function HistoryPage() {
 
   return (
     <div>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>数据管理</h1>
-        <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-          课堂历史存档与数据导出
-        </p>
-      </div>
+      <TeacherPageHeader title="数据管理" description="查看课堂历史、导出对话并管理本地备份。" />
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>
+        <TeacherLoadingState label="正在加载课堂历史…" />
       ) : (
         <>
           {history.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '60px 20px', marginBottom: 24 }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: 14,
-                background: '#f1f5f9', margin: '0 auto 14px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                </svg>
-              </div>
-              <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 6px', color: '#0f172a' }}>暂无历史记录</h2>
-              <p style={{ color: '#94a3b8', fontSize: "0.813rem", margin: 0 }}>
-                结束的课堂将在这里显示，方便回顾和导出。备份数据可在下方恢复。
-              </p>
-            </div>
+            <TeacherEmptyState
+              icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}
+              title="暂无历史记录"
+              description="结束课堂后，可在这里回顾、导出和整理对话。"
+            />
           ) : (
             <>
               {/* 统计摘要 */}

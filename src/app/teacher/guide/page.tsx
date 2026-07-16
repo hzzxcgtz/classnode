@@ -34,14 +34,14 @@ const sections: Array<{ id: GuideSectionId; label: string; desc: string }> = [
   { id: "manage", label: "日常管理", desc: "安全、头像与备份" },
 ];
 
-/** 收到脱敏截图后，把 null 替换为 /images/guide/xxx.webp 即可，无需调整页面结构。 */
+/** 收到脱敏截图后，把对应占位路径替换为 /images/guide/xxx.png 即可，无需调整页面结构。 */
 const screenshotSources: Record<ScreenshotId, string | null> = {
-  "agent-form": null,
-  "class-roster": null,
-  "create-classroom": null,
-  "student-join": null,
-  "live-board": null,
-  "history-export": null,
+  "agent-form": "/images/guide/agent-form.png",
+  "class-roster": "/images/guide/class-roster.png",
+  "create-classroom": "/images/guide/create-classroom.png",
+  "student-join": "/images/guide/student-join.png",
+  "live-board": "/images/guide/live-board.png",
+  "history-export": "/images/guide/history-export.png",
 };
 
 function Icon({ name }: { name: "route" | "lock" | "bot" | "users" | "book" | "phone" | "monitor" | "chart" | "settings" | "camera" | "check" | "arrow" }) {
@@ -192,8 +192,15 @@ function Screenshot({ id, title, instruction, avoid }: { id: ScreenshotId; title
   const src = screenshotSources[id];
   return (
     <figure className={styles.screenshot}>
+      <figcaption>
+        <span>界面示例</span>
+        <strong>{title}</strong>
+        {src && <small>点击图片查看原图</small>}
+      </figcaption>
       {src ? (
-        <img src={src} alt={title} />
+        <a className={styles.screenshotPreview} href={src} target="_blank" rel="noreferrer" aria-label={`查看${title}原图`}>
+          <img src={src} alt={title} />
+        </a>
       ) : (
         <div className={styles.screenshotPlaceholder}>
           <span className={styles.screenshotBadge}><Icon name="camera" /> 截图待补充</span>
@@ -202,7 +209,6 @@ function Screenshot({ id, title, instruction, avoid }: { id: ScreenshotId; title
           {avoid && <small>注意：{avoid}</small>}
         </div>
       )}
-      <figcaption>{title}</figcaption>
     </figure>
   );
 }

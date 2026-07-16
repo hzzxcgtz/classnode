@@ -7,7 +7,7 @@ import { platformColors } from "@/lib/constants";
 import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
-import { Toast } from "@/lib/components";
+import { Toast, TeacherPageHeader } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
 import type { Socket } from "socket.io-client";
 
@@ -393,22 +393,12 @@ export default function TeacherDashboard() {
 
   return (
     <div>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 28 }}>
-        <h1
-          style={{
-            fontSize: "1.375rem",
-            fontWeight: 700,
-            margin: 0,
-            color: "#0f172a",
-          }}
-        >
-          课堂管理
-        </h1>
-        <p style={{ color: "#64748b", fontSize: "0.813rem", marginTop: 4 }}>
-          管理课堂、监控互动进度
-        </p>
-      </div>
+      <TeacherPageHeader title="课堂管理" description="创建课堂并实时掌握学生互动进度。" actions={
+        <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          创建新课堂
+        </button>
+      } />
 
       {/* 工具栏 */}
       <div
@@ -451,30 +441,6 @@ export default function TeacherDashboard() {
           <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
           {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
         </button>
-        <button
-          className="btn btn-primary"
-          onClick={() => router.push("/teacher/classroom/new")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: "0.813rem",
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          创建新课堂
-        </button>
       </div>
       </div>
 
@@ -492,7 +458,7 @@ export default function TeacherDashboard() {
             </div>
           ))}
         </div>
-        <div className="active-classroom-filters">
+          <div className="active-classroom-filters teacher-list-toolbar">
           <label className="active-classroom-search">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input

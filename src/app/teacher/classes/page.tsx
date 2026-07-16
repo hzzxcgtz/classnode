@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Toast, Pagination } from '@/lib/components';
+import { Toast, Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
 const API_BASE = getApiBaseUrl();
@@ -375,22 +375,12 @@ export default function ClassesPage() {
 
   return (
     <div>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>班级管理</h1>
-            <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-              管理班级和学生名单，支持批量导入
-            </p>
-          </div>
-          <button className="btn btn-primary" onClick={openCreateModal}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            创建班级
-          </button>
-        </div>
-      </div>
+      <TeacherPageHeader title="班级管理" description="维护班级、学生名单和课堂分组。" actions={
+        <button className="btn btn-primary" onClick={openCreateModal}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          创建班级
+        </button>
+      } />
 
       {/* 创建班级弹窗 */}
       {showCreate && (
@@ -446,7 +436,7 @@ export default function ClassesPage() {
         {/* 班级列表 */}
         <div className="classes-sidebar" style={{ width: 260, flexShrink: 0 }}>
           {loading ? (
-            <div style={{ padding: 20, color: '#94a3b8', textAlign: 'center', fontSize: "0.813rem" }}>加载中...</div>
+            <TeacherLoadingState label="正在加载班级…" />
           ) : classes.length === 0 ? (
             <div style={{
               background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
@@ -725,35 +715,15 @@ export default function ClassesPage() {
                   ))}
                 </div>
 
-                {/* 标签页切换 */}
-                <div style={{ display: 'flex', gap: 0, marginBottom: 0 }}>
-                  {[
-                    { key: 'students' as const, label: '学生列表', icon: 'users' },
-                    { key: 'groups' as const, label: '分组管理', icon: 'grid' },
-                  ].map(t => (
-                    <button key={t.key} onClick={() => setTabMode(t.key)}
-                      style={{
-                        padding: '8px 16px', fontSize: "0.813rem", fontWeight: tabMode === t.key ? 600 : 400,
-                        color: tabMode === t.key ? '#2563eb' : '#64748b',
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        borderBottom: `2px solid ${tabMode === t.key ? '#2563eb' : 'transparent'}`,
-                        marginBottom: -1, transition: 'all 0.12s',
-                        display: 'flex', alignItems: 'center', gap: 6,
-                      }}>
-                      {t.key === 'students' ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-                      )}
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
+                <TeacherPageTabs value={tabMode} onChange={setTabMode} items={[
+                  { value: 'students', label: '学生列表', badge: students.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> },
+                  { value: 'groups', label: '分组管理', badge: classGroups.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg> },
+                ]} />
               </div>
 
               {/* 学生列表模式下的操作按钮 / 批量操作栏 */}
               {tabMode === 'students' && (
-                <div className="classes-action-bar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
+                <div className="classes-action-bar teacher-list-toolbar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
                   {selectedStudentIds.size > 0 ? (
                     <>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -875,30 +845,18 @@ export default function ClassesPage() {
                     </div>
                   )}
                   {students.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '48px 20px' }}>
-                      <div style={{
-                        width: 44, height: 44, borderRadius: 11,
-                        background: '#f1f5f9', margin: '0 auto 10px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                      </div>
-                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无学生</p>
-                      <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>点击上方按钮添加学生名单</p>
-                    </div>
+                    <TeacherEmptyState
+                      icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>}
+                      title="暂无学生"
+                      description="通过上方的“逐个添加”或“粘贴名单”补充学生。"
+                    />
                   ) : sortedStudents.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '48px 20px' }}>
-                      <div style={{
-                        width: 44, height: 44, borderRadius: 11,
-                        background: '#f1f5f9', margin: '0 auto 10px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                      </div>
-                      <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>没有符合条件的学生</p>
-                      <p style={{ fontSize: "0.813rem", color: '#64748b', margin: '0 0 16px' }}>可以更换关键词或清除分组筛选</p>
-                      <button className="btn btn-secondary" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>查看全部学生</button>
-                    </div>
+                    <TeacherEmptyState
+                      icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>}
+                      title="没有符合条件的学生"
+                      description="可以调整关键词或清除分组筛选。"
+                      action={<button className="btn btn-secondary" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>查看全部学生</button>}
+                    />
                   ) : (
                     <>
                     <div className="student-table-scroll" ref={studentTableRef} style={{position: 'relative', userSelect: 'none'}} onMouseDown={handleStudentTableMouseDown}><table>

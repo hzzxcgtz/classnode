@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
+import { TeacherPageHeader } from '@/lib/components';
 import type { AgentSummary, ClassGroup, ClassSummary } from '@/lib/types';
 
 type CreateMode = 'standard' | 'group' | 'advanced';
@@ -160,13 +161,7 @@ export default function NewClassroomPage() {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>创建新课堂</h1>
-        <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-          配置课堂参数并发起互动课堂
-        </p>
-      </div>
+      <TeacherPageHeader title="创建新课堂" description="依次选择模式、班级和智能体后发起课堂。" />
 
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
         <div className="new-classroom-steps" aria-label="课堂创建进度">

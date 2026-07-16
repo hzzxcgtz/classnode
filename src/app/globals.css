@@ -94,6 +94,169 @@ html, body {
   border-bottom: 1px solid var(--border);
 }
 
+/* 教师端内容页的统一页首：标题、说明和主操作始终保持同一层级。 */
+.teacher-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 24px;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.teacher-page-header-copy {
+  min-width: 0;
+}
+
+.teacher-page-header h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.teacher-page-header p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.813rem;
+  line-height: 1.55;
+}
+
+.teacher-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.teacher-page-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.teacher-page-tabs > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .813rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.teacher-page-tabs > button.is-active {
+  background: #fff;
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+.teacher-page-tabs-icon { display: inline-flex; }
+
+.teacher-page-tabs-badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: .688rem;
+  line-height: 18px;
+}
+
+.teacher-page-tabs > button.is-active .teacher-page-tabs-badge {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.teacher-empty-state {
+  display: flex;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #fff, #fafcff);
+  text-align: center;
+}
+
+.teacher-empty-state-icon {
+  display: inline-flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.teacher-empty-state h2 { margin: 0; color: #334155; font-size: 1rem; font-weight: 700; }
+.teacher-empty-state p { max-width: 440px; margin: 6px 0 0; color: #64748b; font-size: .813rem; line-height: 1.6; }
+.teacher-empty-state-action { margin-top: 18px; }
+
+.teacher-loading-state {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #64748b;
+  font-size: .813rem;
+}
+
+.teacher-loading-state > span {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: teacher-loading-spin .7s linear infinite;
+}
+
+@keyframes teacher-loading-spin { to { transform: rotate(360deg); } }
+
+/* 列表页的搜索、筛选和批量操作都置于同一层级的轻量工具栏内。 */
+.teacher-list-toolbar {
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.teacher-list-toolbar:focus-within {
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .06);
+}
+
+@media (max-width: 640px) {
+  .teacher-page-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .teacher-page-header-actions { width: 100%; }
+}
+
 .status-dot {
   display: inline-block;
   width: 8px;
@@ -928,14 +1091,16 @@ tr:hover td {
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
 }
 
-.active-classroom-overview {
+.active-classroom-overview,
+.agent-management-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
 
-.active-classroom-overview > div {
+.active-classroom-overview > div,
+.agent-management-overview > div {
   min-height: 68px;
   padding: 12px 16px;
   border: 1px solid #e2e8f0;
@@ -947,12 +1112,14 @@ tr:hover td {
   gap: 10px;
 }
 
-.active-classroom-overview strong {
+.active-classroom-overview strong,
+.agent-management-overview strong {
   font-size: 1.375rem;
   line-height: 1;
 }
 
-.active-classroom-overview span {
+.active-classroom-overview span,
+.agent-management-overview span {
   color: #64748b;
   font-size: 0.75rem;
 }
@@ -1186,35 +1353,6 @@ tr:hover td {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.agent-management-overview {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.agent-management-overview > div {
-  min-height: 66px;
-  padding: 12px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #fff;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.agent-management-overview strong {
-  font-size: 1.375rem;
-  line-height: 1;
-}
-
-.agent-management-overview span {
-  color: #64748b;
-  font-size: 0.75rem;
 }
 
 .agent-management-overview .tone-blue strong { color: #2563eb; }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Toast } from '@/lib/components';
+import { Toast, TeacherPageHeader, TeacherPageTabs } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarRandomCandidate, AvatarSummary } from '@/lib/types';
 const API_BASE = typeof window !== 'undefined' ? getApiBaseUrl() : '';
@@ -219,55 +219,27 @@ export default function AvatarsPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>头像管理</h1>
-            <p style={{ color: '#64748b', fontSize: "0.813rem", marginTop: 4 }}>
-              管理学生头像和班级图标库，支持新增、编辑、删除和随机生成
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <TeacherPageHeader title="头像管理" description="管理学生头像和班级图标库。" actions={
+          <>
             {batchMode ? null : (
               <>
-                <button className="btn btn-secondary" onClick={() => { setShowRandom(true); setRandomGenerated(false); setRandomPool([]); setSelectedRandom(new Set()); }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button className="btn btn-secondary" onClick={() => { setShowRandom(true); setRandomGenerated(false); setRandomPool([]); setSelectedRandom(new Set()); }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                   随机生成
                 </button>
-                <button className="btn btn-primary" onClick={() => setShowEditor({ mode: 'create' })} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button className="btn btn-primary" onClick={() => setShowEditor({ mode: 'create' })}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   新增{tab === 'student' ? '头像' : '图标'}
                 </button>
               </>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+      } />
 
-      {/* Tab 切换 */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid #e2e8f0' }}>
-        {[
-          { key: 'student' as TabType, label: '学生头像', desc: `${studentCount} 个` },
-          { key: 'class' as TabType, label: '班级图标', desc: `${classCount} 个` },
-        ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            style={{
-              padding: '10px 20px', fontSize: "0.875rem", fontWeight: tab === t.key ? 600 : 400,
-              color: tab === t.key ? '#2563eb' : '#64748b',
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              borderBottom: `2px solid ${tab === t.key ? '#2563eb' : 'transparent'}`,
-              marginBottom: -2, transition: 'all 0.12s',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-            {t.label}
-            <span style={{
-              fontSize: "0.688rem", padding: '1px 7px', borderRadius: 10,
-              background: tab === t.key ? '#eef2ff' : '#f1f5f9',
-              color: tab === t.key ? '#2563eb' : '#94a3b8',
-            }}>{t.desc}</span>
-          </button>
-        ))}
-      </div>
+      <TeacherPageTabs value={tab} onChange={setTab} items={[
+        { value: 'student', label: '学生头像', badge: studentCount },
+        { value: 'class', label: '班级图标', badge: classCount },
+      ]} />
 
       {/* 头像网格 — 多选模式下支持鼠标拖拽框选 */}
       <div ref={containerRef} style={{ position: 'relative', userSelect: batchMode ? 'none' : undefined }} onMouseDown={handleBatchMouseDown}>

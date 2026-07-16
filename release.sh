@@ -78,7 +78,6 @@ download_windows_artifacts() {
     --repo "${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}" \
     --dir "$OUTPUT_DIR" \
     --pattern "*.exe" \
-    --pattern "*.msi" \
     --clobber
 }
 

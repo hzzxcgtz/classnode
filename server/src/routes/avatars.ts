@@ -4,6 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { sanitizeSvg } from '../services/upload-security.js';
+import {
+  generateRandomStudentAvatar,
+  generateRandomStudentAvatarByGender,
+} from '../services/student-avatar-generator.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const router: Router = Router();
@@ -526,175 +530,9 @@ router.put('/class/:classId', async (req, res) => {
   }
 });
 
-// ── 高质量卡通头像生成器 ──────────────────────────
-
-const SKIN = ['#FDECDC', '#FFE4C4', '#F5D0A9', '#E8C39E', '#FFDBAC', '#FFF0D4', '#FCE4EC', '#FFF8E1'];
-const HAIR = ['#2C1810', '#3E2723', '#4E342E', '#5D4037', '#1A1A2E', '#333333', '#455A64', '#5C4A3A', '#8D6E63', '#A1887F', '#D4A574', '#C68E5A'];
-const WHITE = '#FFFFFF';
-const ACCENT = ['#E91E63', '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#00BCD4'];
+// ── 班级图标生成器 ────────────────────────────────
 
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
-
-/** 计算 hex 颜色亮度 (0=最暗, 255=最亮) */
-function hexLuminance(hex: string): number {
-  const c = hex.replace('#', '');
-  const r = parseInt(c.substring(0, 2), 16);
-  const g = parseInt(c.substring(2, 4), 16);
-  const b = parseInt(c.substring(4, 6), 16);
-  return Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-}
-
-/** 确保头发颜色比肤色至少暗 threshold，否则重新选 */
-function pickHair(skinLum: number, threshold = 80): string {
-  for (let i = 0; i < 50; i++) {
-    const h = pick(HAIR);
-    if (skinLum - hexLuminance(h) >= threshold) return h;
-  }
-  return '#2C1810'; // 保底最暗色
-}
-
-function generateRandomStudentAvatar(): { svgContent: string; gender: string } {
-  return generateRandomStudentAvatarByGender(Math.random() > 0.5 ? 'boy' : 'girl');
-}
-
-function generateRandomStudentAvatarByGender(gender: string): { svgContent: string; gender: string } {
-  const skin = pick(SKIN);
-  const skinLum = hexLuminance(skin);
-  const hair = pickHair(skinLum);
-  const accent = pick(ACCENT);
-  // 背景色——柔和马卡龙色
-  const bgColors = ['#E0F7FA','#FCE4EC','#FFF3E0','#E8F5E9','#F3E5F5','#FFF9C4','#E0F2F1','#FBE9E7'];
-  const bg = pick(bgColors);
-
-  let svg = `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="20" fill="${bg}"/>`;
-
-  // ── 1. 身体/服饰层（校服领口/红领巾）──
-  if (gender === 'boy') {
-    // 白衬衫 + 红领巾
-    svg += `<path d="M24 36Q30 34 34 36L34 40L6 40L6 36Q10 34 16 36Q18 37 20 38Q22 37 24 36" fill="#FFFFFF"/>`;
-    // 红领巾
-    svg += `<path d="M20 36L15 40L17 40Z" fill="#D32F2F"/><path d="M20 36L25 40L23 40Z" fill="#D32F2F"/>`;
-    svg += `<polygon points="18,35 22,35 20,37" fill="#B71C1C"/>`;
-  } else {
-    // 运动校服领口（白底+蓝/红边）
-    svg += `<path d="M24 36Q30 34 34 36L34 40L6 40L6 36Q10 34 16 36Q18 37 20 38Q22 37 24 36" fill="#FFFFFF"/>`;
-    svg += `<path d="M20 36L16 40M20 36L24 40" stroke="${accent}" stroke-width="1.5" opacity="0.6"/>`;
-  }
-
-  // ── 2. 后发层（女生长发/马尾）──
-  if (gender === 'girl') {
-    const hairBack = Math.floor(Math.random() * 3);
-    if (hairBack === 0) {
-      // 披肩发后层（只做两侧垂发，不遮脸）
-      svg += `<path d="M6 18Q10 4 20 4Q30 4 34 18L34 30Q28 32 26 28Q22 30 20 28Q18 30 14 28Q12 32 6 30Z" fill="${hair}" opacity="0.6"/>`;
-    } else if (hairBack === 1) {
-      // 高马尾
-      svg += `<path d="M20 4Q28 2 32 8Q34 14 30 18Q34 10 26 4Z" fill="${hair}"/>`;
-    }
-  }
-
-  // ── 3. 脸型层 ──
-  svg += `<ellipse cx="20" cy="23" rx="14" ry="15" fill="${skin}"/>`;
-  // 耳朵
-  svg += `<ellipse cx="7" cy="24" rx="2.5" ry="3.5" fill="${skin}"/>`;
-  svg += `<ellipse cx="33" cy="24" rx="2.5" ry="3.5" fill="${skin}"/>`;
-
-  // ── 4. 腮红 ──
-  svg += `<ellipse cx="11" cy="27" rx="3" ry="1.5" fill="#FFB6C1" opacity="0.4"/>`;
-  svg += `<ellipse cx="29" cy="27" rx="3" ry="1.5" fill="#FFB6C1" opacity="0.4"/>`;
-
-  // ── 5. 五官 ──
-  // 眉毛
-  if (gender === 'boy') {
-    svg += `<path d="M11 19Q13.5 17.5 16 19" stroke="#333" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
-    svg += `<path d="M24 19Q26.5 17.5 29 19" stroke="#333" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
-  } else {
-    svg += `<path d="M11.5 19Q14 18 16.5 19" stroke="#5D4037" stroke-width="1" fill="none" stroke-linecap="round"/>`;
-    svg += `<path d="M23.5 19Q26 18 28.5 19" stroke="#5D4037" stroke-width="1" fill="none" stroke-linecap="round"/>`;
-  }
-
-  // 眼睛（自然大小，黑色圆点+高光）
-  const eyeR = 2;
-  svg += `<circle cx="13.5" cy="23" r="${eyeR}" fill="#2C2C2C"/>`;
-  svg += `<circle cx="13" cy="22.3" r="0.8" fill="${WHITE}"/>`;
-  svg += `<circle cx="26.5" cy="23" r="${eyeR}" fill="#2C2C2C"/>`;
-  svg += `<circle cx="26" cy="22.3" r="0.8" fill="${WHITE}"/>`;
-
-  // 鼻子（小圆点）
-  svg += `<circle cx="20" cy="26" r="0.6" fill="#D7A98C" opacity="0.6"/>`;
-
-  // 嘴巴（微笑）
-  const mouthType = Math.floor(Math.random() * 3);
-  if (mouthType === 0) {
-    svg += `<path d="M16 29.5Q20 32 24 29.5" stroke="#E57373" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
-  } else if (mouthType === 1) {
-    svg += `<path d="M17 29.5Q20 33 23 29.5" stroke="#E57373" stroke-width="1" fill="none" stroke-linecap="round"/>`;
-    svg += `<ellipse cx="20" cy="30.5" rx="2" ry="1" fill="${WHITE}" opacity="0.8"/>`;
-  } else {
-    svg += `<path d="M17 29.5Q20 32 23 29.5Z" fill="#E57373" opacity="0.7"/>`;
-  }
-
-  // ── 6. 前发/刘海层 ──
-  if (gender === 'boy') {
-    const hs = Math.floor(Math.random() * 4);
-    switch (hs) {
-      case 0: // 碎刘海
-        svg += `<path d="M6 18Q8 4 20 4Q32 4 34 18Q32 12 28 10Q24 8 20 8Q16 8 12 10Q8 12 6 18" fill="${hair}"/>`;
-        svg += `<path d="M10 10Q14 6 20 6Q26 6 30 10" fill="${pick(HAIR)}" opacity="0.3"/>`;
-        break;
-      case 1: // 锅盖头
-        svg += `<path d="M6 18Q6 5 20 4Q34 5 34 18Q32 13 28 12Q24 10 20 10Q16 10 12 12Q8 13 6 18" fill="${hair}"/>`;
-        break;
-      case 2: // 偏分
-        svg += `<path d="M8 20Q8 4 20 4Q24 4 26 10Q30 4 34 8L34 20Q32 14 28 12Q24 10 20 10Q14 10 10 12Q8 14 8 20" fill="${hair}"/>`;
-        break;
-      case 3: // 寸头
-        svg += `<path d="M6 18Q8 3 20 3Q32 3 34 18" fill="${hair}"/>`;
-        svg += `<path d="M8 10Q14 5 20 5Q26 5 32 10" fill="${pick(HAIR)}" opacity="0.4"/>`;
-        break;
-    }
-  } else {
-    const hs = Math.floor(Math.random() * 5);
-    switch (hs) {
-      case 0: // 齐刘海
-        svg += `<path d="M6 16Q8 2 20 2Q32 2 34 16Q30 10 26 12Q22 9 20 10Q18 9 14 12Q10 10 6 16" fill="${hair}"/>`;
-        svg += `<line x1="6" y1="12" x2="34" y2="12" stroke="${pick(HAIR)}" stroke-width="0.8" opacity="0.3"/>`;
-        break;
-      case 1: // 斜刘海
-        svg += `<path d="M6 18Q8 2 20 2Q32 2 34 18L34 19Q32 14 28 12Q24 10 20 10Q16 10 12 12Q8 14 6 18Z" fill="${hair}"/>`;
-        svg += `<path d="M6 12Q10 2 20 2Q24 2 28 6Q22 8 16 10Q10 12 6 16Z" fill="${pick(HAIR)}" opacity="0.3"/>`;
-        break;
-      case 2: // 双马尾
-        svg += `<path d="M8 18Q8 4 20 4Q32 4 32 18" fill="${hair}"/>`;
-        svg += `<circle cx="8" cy="10" r="4.5" fill="${hair}"/><circle cx="32" cy="10" r="4.5" fill="${hair}"/>`;
-        svg += `<circle cx="8" cy="10" r="2" fill="${accent}" opacity="0.5"/><circle cx="32" cy="10" r="2" fill="${accent}" opacity="0.5"/>`;
-        break;
-      case 3: // 波波头（改良——底部只到脸颊上方）
-        svg += `<path d="M6 18Q8 3 20 3Q32 3 34 18L34 21Q32 19 28 18Q24 17 20 18Q16 17 12 18Q8 19 6 21Z" fill="${hair}"/>`;
-        break;
-      case 4: // 高马尾
-        svg += `<path d="M8 18Q8 4 20 4Q32 4 32 18" fill="${hair}"/>`;
-        svg += `<path d="M20 2Q26 0 30 6Q28 10 24 8Q22 4 20 2" fill="${hair}"/>`;
-        break;
-    }
-  }
-
-  // ── 7. 配饰 ──
-  if (gender === 'boy' && Math.random() > 0.7) {
-    // 黑框眼镜
-    svg += `<rect x="10" y="20" width="7" height="6" rx="1.5" fill="none" stroke="#455A64" stroke-width="1"/>`;
-    svg += `<rect x="23" y="20" width="7" height="6" rx="1.5" fill="none" stroke="#455A64" stroke-width="1"/>`;
-    svg += `<line x1="17" y1="23" x2="23" y2="23" stroke="#455A64" stroke-width="1"/>`;
-  }
-  if (gender === 'girl' && Math.random() > 0.6) {
-    const bx = Math.random() > 0.5 ? 10 : 30;
-    svg += `<circle cx="${bx}" cy="9" r="2.5" fill="${accent}"/>`;
-    svg += `<circle cx="${bx - 1.5}" cy="8.5" r="1" fill="${WHITE}" opacity="0.6"/>`;
-  }
-
-  svg += `</svg>`;
-  return { svgContent: svg, gender };
-}
 
 function generateRandomClassIcon(route?: number): { svgContent: string; gender: string } {
   // 校园主题色板，按方案分组

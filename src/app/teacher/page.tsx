@@ -631,7 +631,7 @@ export default function TeacherDashboard() {
                     })()}
                     <button type="button"
                       onClick={() => void copyClassroomCode(cr)}
-                      title="复制互动码"
+                      title="点击复制互动码"
                       aria-label={`复制互动码 ${cr.code}`}
                       style={{
                         display: "inline-flex",
@@ -645,13 +645,13 @@ export default function TeacherDashboard() {
                         fontSize: "0.7rem",
                         fontWeight: 600,
                         border: "1px solid #e2e8f0",
-                        cursor: "copy",
+                        cursor: "pointer",
                         boxSizing: "border-box",
                       }}
                     >
                       <span style={{ color: "#94a3b8", fontWeight: 500 }}>互动码</span>
                       <strong style={{ color: "#0f766e", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.75rem", letterSpacing: "0.04em" }}>{cr.code}</strong>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>

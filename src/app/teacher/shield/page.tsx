@@ -4,6 +4,23 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { ClassroomWarning, ClassroomWarningSummary, ShieldWord } from '@/lib/types';
+import styles from './shield.module.css';
+
+type WordActionMessage = { type: 'success' | 'error'; text: string } | null;
+
+function WordStatusMessage({ message }: { message: WordActionMessage }) {
+  if (!message) return null;
+  return (
+    <div className={`${styles.wordStatus} ${message.type === 'success' ? styles.wordStatusSuccess : styles.wordStatusError}`}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        {message.type === 'success'
+          ? <polyline points="20 6 9 17 4 12" />
+          : <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>}
+      </svg>
+      {message.text}
+    </div>
+  );
+}
 
 export default function ShieldPage() {
   const [tab, setTab] = useState<'words' | 'records' | 'settings'>('words');
@@ -16,7 +33,9 @@ export default function ShieldPage() {
   const [error, setError] = useState('');
   const [configSaved, setConfigSaved] = useState(false);
   const [configError, setConfigError] = useState('');
-  const [builtinMsg, setBuiltinMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [customMsg, setCustomMsg] = useState<WordActionMessage>(null);
+  const [builtinMsg, setBuiltinMsg] = useState<WordActionMessage>(null);
+  const [recordMsg, setRecordMsg] = useState<WordActionMessage>(null);
   // 警告记录
   const [summary, setSummary] = useState<ClassroomWarningSummary[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
@@ -150,9 +169,9 @@ export default function ShieldPage() {
       const enable = customWords.every(word => word.enabled === false);
       await api.batchToggleShieldWords(ids, enable);
       await loadData();
-      setBuiltinMsg({ type: 'success', text: enable ? '已启用全部自定义屏蔽词' : '已禁用全部自定义屏蔽词' });
+      setCustomMsg({ type: 'success', text: enable ? '已启用全部自定义屏蔽词' : '已禁用全部自定义屏蔽词' });
     } catch (error) {
-      setBuiltinMsg({ type: 'error', text: `批量更新失败：${error instanceof Error ? error.message : '请求异常'}` });
+      setCustomMsg({ type: 'error', text: `批量更新失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -167,9 +186,9 @@ export default function ShieldPage() {
     try {
       await api.batchDeleteShieldWords(customWords.map(word => word.id));
       await loadData();
-      setBuiltinMsg({ type: 'success', text: '已删除全部自定义屏蔽词' });
+      setCustomMsg({ type: 'success', text: '已删除全部自定义屏蔽词' });
     } catch (error) {
-      setBuiltinMsg({ type: 'error', text: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}` });
+      setCustomMsg({ type: 'error', text: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -184,9 +203,9 @@ export default function ShieldPage() {
     try {
       await api.clearClassroomWarnings(selectedClassroom);
       await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
-      setBuiltinMsg({ type: 'success', text: '已清空该课堂的拦截记录' });
+      setRecordMsg({ type: 'success', text: '已清空该课堂的拦截记录' });
     } catch (error) {
-      setBuiltinMsg({ type: 'error', text: `清空记录失败：${error instanceof Error ? error.message : '请求异常'}` });
+      setRecordMsg({ type: 'error', text: `清空记录失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -218,7 +237,7 @@ export default function ShieldPage() {
       await api.deleteWarning(warningId);
       await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
     } catch (error) {
-      setBuiltinMsg({ type: 'error', text: `删除记录失败：${error instanceof Error ? error.message : '请求异常'}` });
+      setRecordMsg({ type: 'error', text: `删除记录失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -314,13 +333,13 @@ export default function ShieldPage() {
         </div>
       </div>}
 
-      {tab === 'words' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {tab === 'words' && <div className={styles.wordWorkspace} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* 添加屏蔽词 */}
-        <div style={{
+        <div className={styles.wordComposer} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
         }}>
-          <div style={{
+          <div className={styles.wordComposerHeader} style={{
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
             background: '#fafbff', display: 'flex', alignItems: 'center', gap: 8,
           }}>
@@ -329,8 +348,9 @@ export default function ShieldPage() {
             </svg>
             <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义屏蔽词</h2><span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
           </div>
-          <div style={{ padding: '20px 24px' }}>
+          <div className={styles.wordComposerBody} style={{ padding: '20px 24px' }}>
             <textarea
+              aria-label="新增自定义屏蔽词"
               className="input"
               value={newWord}
               onChange={e => { setNewWord(e.target.value); setError(''); }}
@@ -339,10 +359,10 @@ export default function ShieldPage() {
               rows={2}
               style={{
                 width: '100%', padding: '12px 14px', boxSizing: 'border-box', resize: 'vertical',
-                fontFamily: 'inherit', lineHeight: 1.6, fontSize: "0.875rem",
+                fontFamily: 'inherit', lineHeight: 1.6, fontSize: "0.875rem", minHeight: 74,
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+            <div className={styles.wordComposerFooter} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
               <div style={{
                 fontSize: "0.688rem", color: '#94a3b8',
                 display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
@@ -373,13 +393,13 @@ export default function ShieldPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16, alignItems: 'start' }}>
+        <div className={styles.libraryGrid} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16, alignItems: 'start' }}>
         {/* 自定义屏蔽词 */}
-        <div style={{
+        <div className={`${styles.libraryPanel} ${styles.customLibrary}`} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
         }}>
-          <div style={{
+          <div className={styles.libraryHeader} style={{
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
             background: '#fafbff', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
@@ -435,6 +455,7 @@ export default function ShieldPage() {
               </div>
             )}
           </div>
+          <WordStatusMessage message={customMsg} />
           {customWords.length === 0 ? (
             <div style={{ padding: '28px 24px', textAlign: 'center', color: '#94a3b8', background: 'linear-gradient(180deg, #fff, #fafcff)' }}>
               <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无自定义屏蔽词</div>
@@ -479,11 +500,11 @@ export default function ShieldPage() {
         </div>
 
         {/* 系统屏蔽词 */}
-        <div style={{
+        <div className={`${styles.libraryPanel} ${styles.systemLibrary}`} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
         }}>
-          <div style={{
+          <div className={styles.libraryHeader} style={{
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
             background: '#fafbff', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
@@ -524,20 +545,7 @@ export default function ShieldPage() {
               <span style={{ fontSize: "0.75rem", color: '#64748b' }}>{builtinWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
             </button>
           </div>
-          {builtinMsg && (
-            <div style={{
-              padding: '8px 24px', fontSize: "0.75rem",
-              color: builtinMsg.type === 'success' ? '#16a34a' : '#ef4444',
-              background: builtinMsg.type === 'success' ? '#f0fdf4' : '#fef2f2',
-              borderBottom: '1px solid #f1f5f9',
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                {builtinMsg.type === 'success' ? <polyline points="20 6 9 17 4 12" /> : <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>}
-              </svg>
-              {builtinMsg.text}
-            </div>
-          )}
+          <WordStatusMessage message={builtinMsg} />
           {builtinWords.length === 0 ? (
             <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}>
@@ -548,7 +556,7 @@ export default function ShieldPage() {
             </div>
           ) : (
             <div style={{ padding: '18px 24px' }}>
-              <div style={{
+              <div className={`${styles.systemNotice} ${builtinWords.some(w => w.enabled !== false) ? styles.systemNoticeEnabled : styles.systemNoticePaused}`} style={{
                 padding: '14px 18px',
                 background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10,
                 display: 'flex', alignItems: 'flex-start', gap: 10,
@@ -557,7 +565,12 @@ export default function ShieldPage() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                <span><strong>系统词库已就绪。</strong> 学生消息会实时检测不当内容；词库明细不展示，可通过右上角开关统一启用或暂停。</span>
+                <span>
+                  <strong>{builtinWords.some(w => w.enabled !== false) ? '系统词库正在保护课堂。' : '系统词库已暂停。'}</strong>
+                  {' '}{builtinWords.some(w => w.enabled !== false)
+                    ? '学生消息会实时检测不当内容；词库明细不展示，可通过右上角开关统一暂停。'
+                    : '当前不会使用系统屏蔽词检测消息，可通过右上角开关重新启用。'}
+                </span>
               </div>
             </div>
           )}
@@ -567,6 +580,7 @@ export default function ShieldPage() {
       </div>}
 
       {tab === 'records' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
+        {recordMsg && <div className={styles.recordStatus}><WordStatusMessage message={recordMsg} /></div>}
 
         {/* 课堂列表 */}
         <div style={{

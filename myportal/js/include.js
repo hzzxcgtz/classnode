@@ -55,7 +55,8 @@
     '<div class="footer-links">' +
     '<a href="' + (IS_INDEX ? "classnode.html" : "index.html") + '">' + (IS_INDEX ? "ClassNode 详情" : "返回首页") + "</a>" +
     '<a href="' + (IS_INDEX ? "deploy.html" : "deploy.html") + '" target="_blank" rel="noopener">部署指南</a>' +
-    '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026044424号-1</a>' +
+    '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026044424号-2</a>' +
+    '<a href="https://beian.mps.gov.cn/#/query/webSearch?code=33010602014703" target="_blank" rel="noopener noreferrer">浙公网安备 33010602014703号</a>' +
     "</div>" +
     '<div class="footer-copy">Copyright 2026 编程研习工坊 · AI编程技术分享</div>' +
     "</div>" +

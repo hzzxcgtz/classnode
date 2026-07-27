@@ -1,4 +1,5 @@
 import { FieldError } from '@/lib/components';
+import { useState } from 'react';
 import type { AgentPlatform } from './agent-platforms';
 
 export interface AgentCredentialValues {
@@ -26,22 +27,40 @@ const inputStyle = (error?: string) => ({
   fontSize: '0.813rem', padding: '8px 12px', borderColor: error ? '#ef4444' : undefined,
 });
 
-function RequiredField({ label, value, placeholder, hint, savedDisplay = false, error, type = 'text', onChange }: {
+function RequiredField({ label, value, placeholder, hint, savedDisplay = false, error, onChange }: {
   label: string;
   value: string;
   placeholder: string;
   hint?: string;
   savedDisplay?: boolean;
   error?: string;
-  type?: 'text' | 'password';
   onChange: (value: string) => void;
 }) {
+  const [replacingSavedValue, setReplacingSavedValue] = useState(false);
+  const showingSavedValue = savedDisplay && !value && !replacingSavedValue;
+
   return (
     <div>
       <label style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>
         {label} <span style={{ color: 'var(--danger)' }}>*</span>
       </label>
-      <input className={`input${savedDisplay && !value ? ' saved-secret-display' : ''}`} type={type} value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} style={inputStyle(error)} />
+      <input
+        className={`input${showingSavedValue ? ' saved-secret-display' : ''}`}
+        type="text"
+        value={showingSavedValue ? placeholder : value}
+        onFocus={() => {
+          if (showingSavedValue) setReplacingSavedValue(true);
+        }}
+        onBlur={() => {
+          if (savedDisplay && !value) setReplacingSavedValue(false);
+        }}
+        onChange={event => onChange(event.target.value)}
+        placeholder={savedDisplay ? `输入新的${label}以替换原值` : placeholder}
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        style={inputStyle(error)}
+      />
       {hint && !error && <div style={{ color: '#64748b', fontSize: '0.688rem', marginTop: 4 }}>{hint}</div>}
       {error && <FieldError message={error} />}
     </div>
@@ -92,9 +111,9 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           <RequiredField label="Project ID" value={props.projectId} placeholder="在 Coze 项目设置中获取 Project ID" error={fieldErrors.projectId} onChange={update('projectId')} />
         </>
       )}
-      <RequiredField label={apiKeyLabel} type="password" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '已安全保存；如需更换，直接输入新值' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+      <RequiredField label={apiKeyLabel} value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
       {platform === 'zhipuai' && (
-        <RequiredField label="API Secret" type="password" value={props.apiSecret} placeholder={editing ? savedApiSecretLabel || SAVED_SECRET_PLACEHOLDER : '在智谱清言开发者面板获取 api_secret'} hint={editing ? '已安全保存；如需更换，直接输入新值' : undefined} savedDisplay={editing} error={fieldErrors.apiSecret} onChange={update('apiSecret')} />
+        <RequiredField label="API Secret" value={props.apiSecret} placeholder={editing ? savedApiSecretLabel || SAVED_SECRET_PLACEHOLDER : '在智谱清言开发者面板获取 api_secret'} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiSecret} onChange={update('apiSecret')} />
       )}
     </>
   );

@@ -28,6 +28,11 @@ pnpm build:all     # both, then replace server/frontend from out/
 
 # Test (compiles server then runs Node built-in test runner)
 pnpm test
+# Run a single test file (from server/, after pnpm build:server)
+node --test dist/tests/security.test.js
+
+# Lint (ESLint)
+pnpm lint
 
 # Database (run in project root — pnpm --filter classnode-server handles it)
 pnpm --filter classnode-server db:generate   # Generate Prisma client after schema change
@@ -61,6 +66,7 @@ classnode/
 ├── server/              # Express.js backend (TypeScript, ESM)
 ├── src-tauri/           # Tauri v2 desktop wrapper (Rust sidecar)
 ├── myportal/            # Landing page (HTML/CSS/JS, served by Express static)
+├── myportal-redesign/   # WIP landing page redesign (untracked, in progress)
 └── scripts/             # Build helpers (sync-version, package-server, build-mac.sh, etc.)
 ```
 
@@ -146,9 +152,12 @@ All routes inject Prisma via `req.app.get('prisma')` and Socket.IO via `req.app.
 | **Agent Checker** | `agent-checker.ts` | Periodic connectivity check for all agents, emits via Socket.IO |
 | **Agent Secret Policy** | `agent-secret-policy.ts` | Controls when to preserve encrypted secrets on agent update |
 | **Classroom State** | `classroom-state.ts` | Allowed source status constants |
+| **Participant Migration** | `participant-migration.ts` | One-time migration of legacy virtual-group Students → real group participants (`ClassroomGroupMember`) |
 | **Shield Filter** | `shield-filter.ts` | AC automaton-based content filtering |
 | **Default Shield Words** | `default-shield-words.ts` | Built-in bad word list (seeded on first launch) |
 | **Default Avatars** | `default-avatars.ts` | 44 seed SVG avatars |
+| **Student Avatar Generator** | `student-avatar-generator.ts` | Programmatic SVG avatar generation for students |
+| **Student Sort** | `student-sort.ts` | Student ordering utilities |
 | **Anonymizer** | `anonymizer.ts` | Student name de-identification for teacher board display |
 | **Export Service** | `export-service.ts` | Word document generation (conversations + stats) |
 | **File Logger** | `file-logger.ts` | Captures console.log → file in `CLASSNODE_DATA_DIR/logs/` or `server/logs/` |
@@ -181,7 +190,7 @@ Schema at `server/prisma/schema.prisma`. Key models:
 - `Agent` — AI agent config (AES-encrypted API keys)
 - `Avatar` — SVG icon library (seed + student-generated)
 - `Class` / `Student` / `ClassGroup` — class hierarchy with grouping
-- `Classroom` / `ClassroomStudent` / `ClassroomAgent` / `ClassroomGroup` — active classroom state
+- `Classroom` / `ClassroomClass` / `ClassroomStudent` / `ClassroomAgent` / `ClassroomGroup` / `ClassroomGroupMember` — active classroom state
 - `Message` — conversation messages (user + assistant rounds)
 - `Interaction` — per-student interaction summary statistics
 - `ShieldWord` / `ShieldConfig` / `ShieldWarning` — content filtering

@@ -66,7 +66,6 @@ classnode/
 ├── server/              # Express.js backend (TypeScript, ESM)
 ├── src-tauri/           # Tauri v2 desktop wrapper (Rust sidecar)
 ├── myportal/            # Landing page (HTML/CSS/JS, served by Express static)
-├── myportal-redesign/   # WIP landing page redesign (untracked, in progress)
 └── scripts/             # Build helpers (sync-version, package-server, build-mac.sh, etc.)
 ```
 

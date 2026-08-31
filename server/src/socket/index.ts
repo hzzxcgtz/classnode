@@ -439,7 +439,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const classroomStudent = await prisma.classroomStudent.findFirst({
           where: {
             classroomId: classroom.id,
-            studentId: data.studentId,
+            // 客户端与学生会话中传递的是 ClassroomStudent 的参与记录 ID，
+            // 而不是基础 Student 表的 ID。两者混用会让已成功加入课堂的学生
+            // 在发送第一条消息时又被误判为“不存在”。
+            id: data.studentId,
           },
           include: { student: true, group: true },
         });

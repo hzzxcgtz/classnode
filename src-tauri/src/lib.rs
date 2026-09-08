@@ -26,6 +26,7 @@ use tauri::{
 
 const SERVER_PORT: u16 = 3001;
 static IS_STARTING: AtomicBool = AtomicBool::new(false);
+static LAST_START_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 struct ServerInfo {
     child: Child,
@@ -354,20 +355,41 @@ fn open_browser_url(url: &str) {
 // ─── Tauri Commands ──────────────────────────────────────
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ServerStatus {
     running: bool,
+    starting: bool,
+    last_error: Option<String>,
     port: u16,
     ips: Vec<String>,
     interfaces: Vec<IpInfo>,
 }
 
 #[tauri::command]
-fn get_server_status() -> ServerStatus {
+fn get_server_status(app: tauri::AppHandle) -> ServerStatus {
     let running = TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
+    if !running {
+        let server_state = app.state::<ServerState>();
+        let mut server = server_state.0.lock().unwrap();
+        let exited = match server.as_mut() {
+            Some(info) => info.child.try_wait().ok().flatten(),
+            None => None,
+        };
+        if let Some(status) = exited {
+            *server = None;
+            let message = match status.code() {
+                Some(code) => format!("服务进程已退出（退出码 {code}）"),
+                None => "服务进程已异常退出".to_string(),
+            };
+            *LAST_START_ERROR.lock().unwrap() = Some(message);
+        }
+    }
     let interfaces = get_local_ips();
     let ips: Vec<String> = interfaces.iter().map(|i| i.ip.clone()).collect();
     ServerStatus {
         running,
+        starting: IS_STARTING.load(Ordering::Relaxed),
+        last_error: LAST_START_ERROR.lock().unwrap().clone(),
         port: SERVER_PORT,
         ips,
         interfaces,
@@ -382,6 +404,7 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
     if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
         return Err("服务已在运行中".to_string());
     }
+    *LAST_START_ERROR.lock().unwrap() = None;
     IS_STARTING.store(true, Ordering::Relaxed);
 
     // 后台线程启动（避免阻塞 IPC 线程导致窗口无响应）
@@ -395,6 +418,7 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
                 let _ = h.run_on_main_thread(move || update_tray(&h2, true));
             }
             Err(e) => {
+                *LAST_START_ERROR.lock().unwrap() = Some(e.clone());
                 eprintln!("启动服务失败: {}", e);
             }
         }
@@ -406,6 +430,7 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
     stop_server(&app)?;
+    *LAST_START_ERROR.lock().unwrap() = None;
     update_tray(&app, false);
     Ok(())
 }
@@ -511,8 +536,10 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "start" => {
                         if let Err(e) = spawn_server(app) {
+                            *LAST_START_ERROR.lock().unwrap() = Some(e.clone());
                             eprintln!("启动服务失败: {}", e);
                         } else {
+                            *LAST_START_ERROR.lock().unwrap() = None;
                             update_tray(app, true);
                         }
                     }
@@ -554,8 +581,10 @@ pub fn run() {
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(2));
                 if let Err(e) = spawn_server(&h) {
+                    *LAST_START_ERROR.lock().unwrap() = Some(e.clone());
                     eprintln!("自动启动服务失败: {}", e);
                 } else {
+                    *LAST_START_ERROR.lock().unwrap() = None;
                     let h2 = h.clone();
                     let _ = h.run_on_main_thread(move || update_tray(&h2, true));
                 }

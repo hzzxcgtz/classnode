@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const resourceDir = path.join(root, 'src-tauri', 'resources', 'server');
+const nodeVersion = process.env.CLASSNODE_NODE_VERSION || '24.18.0';
+const nodeDownloadBase = process.env.CLASSNODE_NODE_DOWNLOAD_BASE || 'https://nodejs.org/dist';
+const nodeMirrorBase = process.env.CLASSNODE_NODE_MIRROR_BASE || 'https://npmmirror.com/mirrors/node';
+const nodeCacheDir = process.env.CLASSNODE_NODE_CACHE_DIR || path.join(root, '.dev', 'cache', 'node');
 
 function fail(message) {
   console.error(`[package-server] ${message}`);
@@ -74,6 +78,68 @@ function run(command, args, env = {}) {
   if (result.status !== 0) fail(`${command} 退出码: ${result.status}`);
 }
 
+function validateWindowsNode(filePath, arch) {
+  const data = fs.readFileSync(filePath);
+  if (data.length < 10 * 1024 * 1024 || data[0] !== 0x4d || data[1] !== 0x5a) {
+    throw new Error(`下载的 Node.js 不是有效的 Windows 可执行文件: ${filePath}`);
+  }
+  const peOffset = data.readUInt32LE(0x3c);
+  if (peOffset + 6 > data.length || data.toString('ascii', peOffset, peOffset + 4) !== 'PE\0\0') {
+    throw new Error(`下载的 Node.js 缺少有效的 PE 文件头: ${filePath}`);
+  }
+  const expectedMachine = arch === 'arm64' ? 0xaa64 : 0x8664;
+  const actualMachine = data.readUInt16LE(peOffset + 4);
+  if (actualMachine !== expectedMachine) {
+    throw new Error(
+      `Node.js 架构错误: 期望 ${arch} (0x${expectedMachine.toString(16)})，实际 0x${actualMachine.toString(16)}`,
+    );
+  }
+}
+
+async function downloadWindowsNode(runtime) {
+  const platformName = `win-${runtime.arch}`;
+  const cacheFile = path.join(nodeCacheDir, `node-v${nodeVersion}-${platformName}.exe`);
+  const destination = path.join(resourceDir, 'node.exe');
+  fs.mkdirSync(nodeCacheDir, { recursive: true });
+
+  if (fs.existsSync(cacheFile)) {
+    try {
+      validateWindowsNode(cacheFile, runtime.arch);
+      fs.copyFileSync(cacheFile, destination);
+      console.log(`  ✓ node.exe (缓存 v${nodeVersion}, ${runtime.arch})`);
+      return;
+    } catch (error) {
+      console.warn(`[package-server] Node.js 缓存无效，将重新下载: ${error.message}`);
+      fs.rmSync(cacheFile, { force: true });
+    }
+  }
+
+  const bases = [...new Set([nodeDownloadBase, nodeMirrorBase])];
+  let lastError;
+  for (const base of bases) {
+    const url = `${base.replace(/\/$/, '')}/v${nodeVersion}/${platformName}/node.exe`;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const tempFile = `${cacheFile}.download`;
+      try {
+        console.log(`[package-server] 下载 Node.js (${runtime.arch}, ${attempt}/3): ${url}`);
+        const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        fs.writeFileSync(tempFile, Buffer.from(await response.arrayBuffer()));
+        validateWindowsNode(tempFile, runtime.arch);
+        fs.renameSync(tempFile, cacheFile);
+        fs.copyFileSync(cacheFile, destination);
+        console.log(`  ✓ node.exe (v${nodeVersion}, ${runtime.arch})`);
+        return;
+      } catch (error) {
+        lastError = error;
+        fs.rmSync(tempFile, { force: true });
+        console.warn(`[package-server] Node.js 下载失败: ${error.message}`);
+      }
+    }
+  }
+  fail(`无法下载 Windows Node.js v${nodeVersion}: ${lastError?.message || '未知错误'}`);
+}
+
 const { target, help } = parseArgs(process.argv.slice(2));
 if (help) {
   console.log('用法: node scripts/package-server.mjs [--target <rust-triple>]');
@@ -126,14 +192,22 @@ run('npx', ['prisma', 'generate'], installEnv);
 console.log('[package-server] 初始化内置数据库');
 run('npx', ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'], installEnv);
 
-for (const required of [
+if (runtime.platform === 'win32') {
+  console.log('[package-server] 准备 Windows Node.js 运行时');
+  await downloadWindowsNode(runtime);
+}
+
+const requiredFiles = [
   'dist/index.js',
   'frontend/index.html',
   'prisma/schema.prisma',
   'prisma/dev.db',
   'node_modules/@prisma/client/package.json',
   'node_modules/prisma/build/index.js',
-]) {
+];
+if (runtime.platform === 'win32') requiredFiles.push('node.exe');
+
+for (const required of requiredFiles) {
   if (!fs.existsSync(path.join(resourceDir, required))) fail(`打包结果不完整: ${required}`);
 }
 

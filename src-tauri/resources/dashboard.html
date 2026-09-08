@@ -589,6 +589,7 @@ let _startTs = 0;
 let _stopTs = 0;
 let _ifaces = [];
 let _selIface = -1;
+let _shownStartError = '';
 const invoke = (window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || (() => null));
 
 function eShow(m) {
@@ -616,6 +617,7 @@ function ui(s) {
     document.getElementById('resetBtn').disabled = false;
     desc.textContent = '服务正常，局域网内设备可扫码或输入地址加入课堂';
     _startTs = 0; _stopTs = 0;
+    _shownStartError = '';
 
     // 记录接口信息
     _ifaces = (s.interfaces && s.interfaces.length > 0) ? s.interfaces :
@@ -624,6 +626,22 @@ function ui(s) {
     _selIface = savedIdx >= 0 ? savedIdx : (_selIface >= 0 && _selIface < _ifaces.length ? _selIface : 0);
     renderUrls();
     renderIfaces();
+  } else if (s.lastError) {
+    _startTs = 0; _stopTs = 0;
+    dot.className = 'dot stop';
+    lab.className = 'status-label stop';
+    lab.textContent = '启动失败';
+    go.disabled = false; stp.disabled = true;
+    bts.forEach(b => b.disabled = true);
+    document.getElementById('resetBtn').disabled = true;
+    desc.textContent = s.lastError;
+    document.getElementById('urlT').textContent = '—';
+    document.getElementById('urlS').textContent = '—';
+    document.getElementById('ifaceBox').style.display = 'none';
+    if (_shownStartError !== s.lastError) {
+      _shownStartError = s.lastError;
+      eShow('启动失败: ' + s.lastError);
+    }
   } else if (_stopTs > 0 && Date.now() - _stopTs < 15000) {
     dot.className = 'dot stopping';
     lab.className = 'status-label stopping';
@@ -632,7 +650,7 @@ function ui(s) {
     bts.forEach(b => b.disabled = true);
     document.getElementById('resetBtn').disabled = true;
     desc.textContent = '正在停止服务…';
-  } else if (_startTs > 0 && Date.now() - _startTs < 30000) {
+  } else if (s.starting || (_startTs > 0 && Date.now() - _startTs < 30000)) {
     dot.className = 'dot go';
     lab.className = 'status-label go';
     lab.textContent = '启动中…';
@@ -717,6 +735,7 @@ async function startSrv() {
   const btn = document.getElementById('btnGo');
   if (btn.disabled) return;
   _startTs = Date.now();
+  _shownStartError = '';
   btn.disabled = true;
   document.getElementById('sDot').className = 'dot go';
   document.getElementById('sLabel').className = 'status-label go';

@@ -64,11 +64,11 @@
         <table class="platform-table">
           <thead><tr><th>平台</th><th>安装包</th></tr></thead>
           <tbody>
-            <tr><td>macOS Apple Silicon</td><td><code>ClassNode_1.x.x_macos_apple-silicon.dmg</code></td></tr>
-            <tr><td>macOS Intel</td><td><code>ClassNode_1.x.x_macos_intel.dmg</code></td></tr>
-            <tr><td>Windows（64 位）</td><td><code>ClassNode_1.x.x_windows_x64.msi</code></td></tr>
-            <tr><td>Windows（ARM64）</td><td><code>ClassNode_1.x.x_windows_arm64.msi</code></td></tr>
-            <tr><td>Linux</td><td><code>classnode-v1.x.x.tar.gz</code> 或 <code>.zip</code>（源码包）</td></tr>
+            <tr><td>macOS Apple Silicon</td><td><code>ClassNode_1.6.2_macos_apple-silicon.dmg</code></td></tr>
+            <tr><td>macOS Intel</td><td><code>ClassNode_1.6.2_macos_intel.dmg</code></td></tr>
+            <tr><td>Windows（64 位）</td><td><code>ClassNode_1.6.2_windows_x64.msi</code></td></tr>
+            <tr><td>Windows（ARM64）</td><td><code>ClassNode_1.6.2_windows_arm64.msi</code></td></tr>
+            <tr><td>Linux</td><td><code>classnode-1.6.2.tar.gz</code> 或 <code>classnode-1.6.2.zip</code>（源码包）</td></tr>
           </tbody>
         </table>
       </div>
@@ -144,14 +144,14 @@ npm config get registry
       <p class="guide-text">
         从
         <a href="https://gitcode.com/weixin_41523975/classnode/releases" target="_blank" rel="noopener noreferrer">Release 页面</a>
-        或 <a href="classnode.html#download">下载渠道</a> 下载源码压缩包（如 <code>classnode-v1.x.x.tar.gz</code> 或 <code>.zip</code>），解压后进入目录。
+        或 <a href="classnode.html#download">下载渠道</a> 下载源码压缩包（如 <code>classnode-1.6.2.tar.gz</code> 或 <code>classnode-1.6.2.zip</code>），解压后进入目录。
       </p>
       <p class="guide-text" style="font-weight:700;color:var(--text-primary);margin-top:20px;">🐧 Linux 推荐方式（PM2 进程管理）：</p>
       <div class="guide-code-block">
         <div class="guide-code-label">终端</div>
         <pre><code class="language-bash"># 解压
-tar -xzf classnode-v1.x.x.tar.gz
-cd classnode-v1.x.x
+tar -xzf classnode-1.6.2.tar.gz
+cd classnode-1.6.2
 
 # 一键安装（默认安装到 /opt/classnode）
 sudo bash install.sh</code></pre>
@@ -172,7 +172,7 @@ pm2 stop classnode      # 停止服务</code></pre>
       <div class="guide-code-block" style="margin-bottom:16px;">
         <div class="guide-code-label">终端</div>
         <pre><code class="language-bash"># 进入项目目录
-cd classnode-v1.x.x
+cd classnode-1.6.2
 
 # 安装依赖并构建
 npm install -g pnpm

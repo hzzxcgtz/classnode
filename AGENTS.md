@@ -30,7 +30,7 @@ pnpm build:all
 pnpm build:mac:arm64
 
 # Sync version across all package.json files
-pnpm sync-version
+pnpm run sync-version
 
 # Prepare a release without committing or pushing
 pnpm prepare-release patch
@@ -46,6 +46,14 @@ pnpm --filter classnode-server db:studio     # Open Prisma Studio GUI
 # Kill dev servers
 pnpm stop
 ```
+
+## Release Version Synchronization
+
+When preparing a new version or generating its changelog, update all version-bearing
+content in `myportal/` in the same change. This includes the current-version labels in
+`index.html` and `classnode.html`, plus the concrete installer and source-package names
+in `deploy.html`. Run `pnpm run sync-version` and verify that no previous ClassNode version
+remains under `myportal/` before considering the release notes complete.
 
 ## Architecture
 

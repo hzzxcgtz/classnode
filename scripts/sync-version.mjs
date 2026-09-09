@@ -55,4 +55,11 @@ for (const file of ['myportal/index.html', 'myportal/classnode.html']) {
   changed += writeIfChanged(file, read(file).replace(/v\d+\.\d+\.\d+/g, `v${version}`));
 }
 
+if (fs.existsSync(path.join(root, 'myportal/deploy.html'))) {
+  const content = read('myportal/deploy.html')
+    .replace(/ClassNode_\d+\.\d+\.\d+(?=_)/g, `ClassNode_${version}`)
+    .replace(/classnode-v?\d+\.\d+\.\d+(?=[./])/g, `classnode-${version}`);
+  changed += writeIfChanged('myportal/deploy.html', content);
+}
+
 console.log(`[sync-version] v${version}: ${changed ? `${changed} 个文件已更新` : '已是最新'}`);

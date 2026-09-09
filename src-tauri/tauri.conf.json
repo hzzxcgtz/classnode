@@ -42,14 +42,6 @@
     ],
     "resources": {
       "resources": "."
-    },
-    "windows": {
-      "nsis": {
-        "languages": [
-          "SimpChinese",
-          "English"
-        ]
-      }
     }
   }
 }

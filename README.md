@@ -70,7 +70,8 @@ ClassNode 正是为此而生。它不是一个云平台，而是一个能装进�
 |------|--------|
 | macOS Apple Silicon | `ClassNode_1.x.x_macos_apple-silicon.dmg` |
 | macOS Intel | `ClassNode_1.x.x_macos_intel.dmg` |
-| Windows (64 位) | `ClassNode_1.x.x_x64-setup.exe` |
+| Windows (64 位) | `ClassNode_1.x.x_windows_x64.msi` |
+| Windows (ARM64) | `ClassNode_1.x.x_windows_arm64.msi` |
 
 ### 本地源码部署
 

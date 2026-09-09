@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import remarkGfmCompat from './remark-gfm-compat';
 import remarkMath from 'remark-math';
 import remarkBreaks from 'remark-breaks';
 import rehypeKatex from 'rehype-katex';
@@ -22,7 +22,7 @@ interface MarkdownProps {
 export function Markdown({ children, allowImages = true, className, streaming }: MarkdownProps) {
   const content = (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+      remarkPlugins={[remarkGfmCompat, remarkMath, remarkBreaks]}
       rehypePlugins={[rehypeKatex]}
       components={{
         img: ({ src, alt }) => {

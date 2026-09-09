@@ -96,7 +96,8 @@ start_service() {
     nohup env NEXT_PUBLIC_API_PORT="$SERVER_PORT" PORT="$CLIENT_PORT" \
       pnpm dev >"$(log_file client)" 2>&1 &
   else
-    nohup env PORT="$SERVER_PORT" pnpm dev:server >"$(log_file server)" 2>&1 &
+    nohup env PORT="$SERVER_PORT" FRONTEND_PORT="$CLIENT_PORT" \
+      pnpm dev:server >"$(log_file server)" 2>&1 &
   fi
   pid=$!
   printf '%s\n' "$pid" >"$(pid_file "$service")"
@@ -154,7 +155,7 @@ cmd_foreground() {
   assert_port_free "$CLIENT_PORT"
   assert_port_free "$SERVER_PORT"
   cd "$ROOT_DIR"
-  env PORT="$SERVER_PORT" pnpm dev:server &
+  env PORT="$SERVER_PORT" FRONTEND_PORT="$CLIENT_PORT" pnpm dev:server &
   local server_pid=$!
   env NEXT_PUBLIC_API_PORT="$SERVER_PORT" PORT="$CLIENT_PORT" pnpm dev &
   local client_pid=$!

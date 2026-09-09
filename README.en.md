@@ -70,7 +70,8 @@ Download the installer for your platform from the [Release page](https://gitcode
 |------|--------|
 | macOS Apple Silicon | `ClassNode_1.x.x_macos_apple-silicon.dmg` |
 | macOS Intel | `ClassNode_1.x.x_macos_intel.dmg` |
-| Windows (64-bit) | `ClassNode_1.x.x_x64-setup.exe` |
+| Windows (64-bit) | `ClassNode_1.x.x_windows_x64.msi` |
+| Windows (ARM64) | `ClassNode_1.x.x_windows_arm64.msi` |
 
 ### Deploy from Source
 

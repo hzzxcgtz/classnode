@@ -4,6 +4,32 @@ import test from 'node:test';
 import express from 'express';
 import classroomRoutes from '../routes/classroom.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
+import { migrateClassroomParticipants } from '../services/participant-migration.js';
+
+test('participant migration still converts legacy virtual groups after db push changed the table shape', async () => {
+  const executed: string[] = [];
+  const prisma = {
+    $queryRawUnsafe: async (sql: string) => {
+      if (sql.includes("name='ClassroomGroupMember'")) return [{ name: 'ClassroomGroupMember' }];
+      if (sql.includes("table_info('ClassroomGroup')")) return [{ name: 'sourceClassGroupId' }];
+      if (sql.includes("table_info('ClassroomStudent')")) {
+        return [{ name: 'type', notnull: 1 }, { name: 'studentId', notnull: 0 }];
+      }
+      if (sql.includes('FROM "ClassroomGroup"')) return [];
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    $executeRawUnsafe: async (sql: string) => { executed.push(sql); return 0; },
+  };
+
+  await migrateClassroomParticipants(prisma as never);
+
+  assert.ok(executed.some(sql =>
+    sql.includes('UPDATE "ClassroomStudent"')
+    && sql.includes('"type" = \'group\'')
+    && sql.includes('"studentId" = NULL')
+    && sql.includes('"tag" = \'__group__\''),
+  ));
+});
 
 test('group classroom exposes a group participant without a virtual Student', async (t) => {
   const app = express();

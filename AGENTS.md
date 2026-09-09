@@ -14,8 +14,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 # Foreground frontend + backend
 pnpm dev:all
 
-# Development intentionally uses Webpack; Turbopack currently panics while
-# resolving Next through this pnpm workspace and causes an HMR reload loop.
+# Next.js 15 development uses Webpack by default. Turbopack currently panics
+# while resolving Next through this pnpm workspace and causes an HMR reload loop.
 
 # Build frontend (Next.js static export to out/)
 pnpm build

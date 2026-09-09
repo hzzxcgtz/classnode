@@ -77,7 +77,7 @@ download_windows_artifacts() {
   gh release download "v$VERSION" \
     --repo "${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}" \
     --dir "$OUTPUT_DIR" \
-    --pattern "*.exe" \
+    --pattern "*.msi" \
     --clobber
 }
 

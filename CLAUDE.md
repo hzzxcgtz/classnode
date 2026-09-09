@@ -14,8 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Foreground frontend + backend
 pnpm dev:all
 
-# Development uses `next dev --webpack`. Turbopack currently panics while
-# resolving Next through this pnpm workspace and causes an HMR reload loop.
+# Next.js 15 development uses Webpack by default. Turbopack currently panics
+# while resolving Next through this pnpm workspace and causes an HMR reload loop.
 
 # Run each separately
 pnpm dev           # Next.js frontend only (port 3000 → auto-redirect to 4000)

@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useSyncExternalStore, Suspense, memo, useM
 import { useRouter } from 'next/navigation';
 import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
 import { stripImages, Markdown } from '@/lib/markdown';
-import { exportMessageToWord } from '@/lib/export-doc';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
@@ -44,8 +43,14 @@ function useIsMobile(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
       const media = window.matchMedia('(max-width: 640px)');
-      media.addEventListener('change', onStoreChange);
-      return () => media.removeEventListener('change', onStoreChange);
+      // iPadOS 15 and older WebKit builds still expose the legacy listener API
+      // in some embedded/browser configurations.
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', onStoreChange);
+        return () => media.removeEventListener('change', onStoreChange);
+      }
+      media.addListener(onStoreChange);
+      return () => media.removeListener(onStoreChange);
     },
     () => window.matchMedia('(max-width: 640px)').matches,
     () => false,
@@ -72,6 +77,33 @@ type AvatarRewardEvent = { tokens?: number };
 type TeacherNotificationEvent = { id?: string; message: string };
 type ShieldWarnEvent = { studentName?: string; filteredContent?: string };
 type PermissionEvent = { allow: boolean };
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean;
+  length: number;
+  [index: number]: { transcript: string; confidence: number };
+};
+type BrowserSpeechRecognitionEvent = Event & {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+};
+type BrowserSpeechRecognitionErrorEvent = Event & { error: string; message?: string };
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+};
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
 const MAX_ATTACHED_FILES = 5;
 
 // ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
@@ -117,10 +149,13 @@ const MessageItem = memo(function MessageItem({
     }).catch(() => setToast('复制失败'));
   }, [msg.content]);
 
-  const handleExportWord = useCallback(() => {
+  const handleExportWord = useCallback(async () => {
     const raw = msg.content || '';
     const agentName = agent?.name || 'AI助手';
     const ts = msg.createdAt ? new Date(msg.createdAt).toLocaleString('zh-CN') : undefined;
+    // DOCX is large and is not needed while joining a classroom. Loading it on
+    // demand keeps the initial student bundle small enough for older iPads.
+    const { exportMessageToWord } = await import('@/lib/export-doc');
     exportMessageToWord(raw, agentName, ts);
   }, [msg.content, msg.createdAt, agent]);
 
@@ -314,11 +349,19 @@ function StudentChatContent() {
 
   // 首次渲染时一次性读取 URL 并处理全部逻辑，消除时序竞争
   async function restoreSessionFromUrl(now: number) {
-    const params = new URLSearchParams(window.location.search);
-    const codeFromUrl = params.get('code') || '';
+    let codeFromUrl = '';
+    try {
+      codeFromUrl = new URLSearchParams(window.location.search).get('code') || '';
+    } catch {
+      // URLSearchParams is available on iPadOS 15, but retain a simple parser
+      // for restricted WebViews and unusual QR scanner browsers.
+      const match = window.location.search.match(/[?&]code=([^&]+)/);
+      codeFromUrl = match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : '';
+    }
     if (!codeFromUrl) { router.push('/'); return; }
     setCode(codeFromUrl);
-    const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(`chat_session_${codeFromUrl}`); } catch {}
     let sessionData: { studentId: string; studentName: string; token?: string } | null = null;
     if (saved) {
       try {
@@ -328,16 +371,16 @@ function StudentChatContent() {
           setStudentSessionToken(session.token);
           setSelectedStudent({ id: session.studentId, participantType: 'student', studentId: null, name: session.studentName, studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' });
         } else {
-          localStorage.removeItem(`chat_session_${codeFromUrl}`);
+          try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
         }
       } catch {
-        localStorage.removeItem(`chat_session_${codeFromUrl}`);
+        try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
       }
     }
     loadClassroom(codeFromUrl, sessionData?.studentId).then(async (cr) => {
       if (!cr) {
         if (sessionData) {
-          localStorage.removeItem(`chat_session_${codeFromUrl}`);
+          try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
           setStudentSessionToken();
           setSelectedStudent(null);
         }
@@ -349,14 +392,16 @@ function StudentChatContent() {
           const renewed = await api.createStudentSession(codeFromUrl, sessionData.studentId);
           sessionData.token = renewed.token;
           setStudentSessionToken(renewed.token);
-          localStorage.setItem(`chat_session_${codeFromUrl}`, JSON.stringify({
-            studentId: sessionData.studentId,
-            studentName: sessionData.studentName,
-            token: renewed.token,
-            timestamp: Date.now(),
-          }));
+          try {
+            localStorage.setItem(`chat_session_${codeFromUrl}`, JSON.stringify({
+              studentId: sessionData.studentId,
+              studentName: sessionData.studentName,
+              token: renewed.token,
+              timestamp: Date.now(),
+            }));
+          } catch {}
         } catch {
-          localStorage.removeItem(`chat_session_${codeFromUrl}`);
+          try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
           setSelectedStudent(null);
           setStep('identity');
           return;
@@ -422,6 +467,8 @@ function StudentChatContent() {
   const [messages, setMessages] = useState<StudentChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
+  const [voiceInputAvailable, setVoiceInputAvailable] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
   const [waitingAI, setWaitingAI] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
@@ -443,6 +490,7 @@ function StudentChatContent() {
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
   const overlayRef = useRef<HTMLDivElement>(null);
+  const chatShellRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [markers, setMarkers] = useState<{ index: number; top: number; text: string }[]>([]);
@@ -457,6 +505,8 @@ function StudentChatContent() {
   const identityConflictTimerRef = useRef<number | null>(null);
   const teacherNotifTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const voiceInputBaseRef = useRef('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
@@ -469,6 +519,10 @@ function StudentChatContent() {
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
+    if (voiceRecognitionRef.current) {
+      voiceRecognitionRef.current.abort();
+      voiceRecognitionRef.current = null;
+    }
   }, []);
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
@@ -499,6 +553,51 @@ function StudentChatContent() {
 
   // 手机端检测（< 640px）
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    const speechWindow = window as SpeechRecognitionWindow;
+    setVoiceInputAvailable(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
+  }, []);
+
+  // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。使用可视窗口
+  // 的实时高度约束对话页，并锁住 body，确保只有消息列表本身可滚动。
+  useEffect(() => {
+    if (step !== 'chat') return;
+    const shell = chatShellRef.current;
+    if (!shell) return;
+    const viewport = window.visualViewport;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    let frame: number | null = null;
+
+    const updateViewportHeight = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const height = Math.round(viewport?.height || window.innerHeight);
+        shell.style.setProperty('--chat-viewport-height', `${height}px`);
+        frame = null;
+      });
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    updateViewportHeight();
+    window.addEventListener('resize', updateViewportHeight);
+    window.addEventListener('orientationchange', updateViewportHeight);
+    viewport?.addEventListener('resize', updateViewportHeight);
+    viewport?.addEventListener('scroll', updateViewportHeight);
+
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updateViewportHeight);
+      window.removeEventListener('orientationchange', updateViewportHeight);
+      viewport?.removeEventListener('resize', updateViewportHeight);
+      viewport?.removeEventListener('scroll', updateViewportHeight);
+      shell.style.removeProperty('--chat-viewport-height');
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [step]);
 
   // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
   useEffect(() => {
@@ -645,7 +744,7 @@ function StudentChatContent() {
 
     // IntersectionObserver: 追踪当前在视口中的用户消息，用于高亮对应标记
     const visibleIds = new Set<number>();
-    const io = new IntersectionObserver((entries) => {
+    const io = typeof IntersectionObserver === 'function' ? new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const idx = parseInt((entry.target as HTMLElement).getAttribute('data-msg-id') || '', 10);
         if (isNaN(idx)) continue;
@@ -654,15 +753,17 @@ function StudentChatContent() {
       }
       // 取可见消息中序号最小的（最靠近顶部）作为"当前"消息
       setActiveMsgIndex(visibleIds.size > 0 ? Math.min(...visibleIds) : null);
-    }, { root: container, rootMargin: '-20px 0px -70% 0px' });
+    }, { root: container, rootMargin: '-20px 0px -70% 0px' }) : null;
 
     const msgEls = container.querySelectorAll<HTMLElement>('[data-msg-id]');
-    msgEls.forEach(el => io.observe(el));
+    if (io) msgEls.forEach(el => io.observe(el));
 
-    const ro = new ResizeObserver(() => requestAnimationFrame(() => updateMarkers()));
-    ro.observe(container);
+    const ro = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => requestAnimationFrame(() => updateMarkers()))
+      : null;
+    if (ro) ro.observe(container);
 
-    return () => { io.disconnect(); ro.disconnect(); };
+    return () => { if (io) io.disconnect(); if (ro) ro.disconnect(); };
   }, [messages, updateMarkers]);
 
   // AI 回答完成后自动聚焦输入框
@@ -1043,11 +1144,77 @@ function StudentChatContent() {
     setFullscreenImg(url);
   };
 
+  const voiceErrorMessage = (error: string) => {
+    if (error === 'not-allowed' || error === 'service-not-allowed') {
+      return '无法使用语音输入。请使用 Safari 打开，并在系统设置中启用 Siri、听写和麦克风权限';
+    }
+    if (error === 'audio-capture') return '没有检测到可用的麦克风，请检查 iPad 麦克风权限';
+    if (error === 'network') return '语音识别服务暂时无法连接，请检查网络后重试';
+    if (error === 'no-speech') return '没有听清，请靠近麦克风后重试';
+    return '语音识别失败，请稍后重试或使用键盘输入';
+  };
+
+  const toggleVoiceInput = () => {
+    if (voiceListening) {
+      voiceRecognitionRef.current?.stop();
+      setVoiceListening(false);
+      return;
+    }
+
+    const speechWindow = window as SpeechRecognitionWindow;
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setToast({ msg: '当前浏览器不支持语音输入，请使用 Safari 或系统键盘听写', type: 'info' });
+      return;
+    }
+
+    const recognition = new Recognition();
+    voiceInputBaseRef.current = input;
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript || '';
+      }
+      setInput(`${voiceInputBaseRef.current}${transcript}`);
+      requestAnimationFrame(() => {
+        const textarea = inputRef.current;
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+      });
+    };
+    recognition.onerror = (event) => {
+      if (event.error !== 'aborted') {
+        setToast({ msg: voiceErrorMessage(event.error), type: 'error' });
+      }
+      setVoiceListening(false);
+      voiceRecognitionRef.current = null;
+    };
+    recognition.onend = () => {
+      setVoiceListening(false);
+      voiceRecognitionRef.current = null;
+    };
+
+    voiceRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setVoiceListening(true);
+    } catch {
+      voiceRecognitionRef.current = null;
+      setVoiceListening(false);
+      setToast({ msg: '语音输入启动失败，请检查 Safari 的麦克风权限', type: 'error' });
+    }
+  };
+
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void restoreSessionFromUrl(Date.now());
-    }, 0);
-    return () => window.clearTimeout(timer);
+    void restoreSessionFromUrl(Date.now()).catch((error: unknown) => {
+      setLoadError(error instanceof Error ? error.message : '学生端初始化失败，请刷新后重试');
+      setStep('identity');
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在首次挂载恢复 URL 中的本地会话
 
   const handleSwitchIdentity = () => {
@@ -1294,7 +1461,7 @@ function StudentChatContent() {
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: "1rem", marginBottom: 8 }}>正在连接课堂...</div>
-          <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: {code}</div>
+          <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: <span>{code}</span></div>
         </div>
       </div>
     );
@@ -1431,7 +1598,7 @@ function StudentChatContent() {
   }
 
   return (
-    <div className={styles.chatShell}>
+    <div ref={chatShellRef} className={styles.chatShell}>
       {/* === 顶部栏 === */}
       <div className={styles.topBar}>
         <div className={styles.agentIdentity}>
@@ -1944,6 +2111,24 @@ function StudentChatContent() {
             )}
           </button>
 
+          <button type="button" onClick={toggleVoiceInput}
+            disabled={waitingAI || paused || agentDisabled || blacklisted}
+            aria-pressed={voiceListening}
+            aria-label={voiceListening ? '停止语音输入' : '开始语音输入'}
+            title={voiceListening ? '正在听写，点击停止' : voiceInputAvailable ? '语音输入' : '当前浏览器可能不支持语音输入'}
+            className={`${styles.voiceButton} ${voiceListening ? styles.voiceButtonListening : ''}`}>
+            {voiceListening ? (
+              <span className={styles.voiceListeningDot} />
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="2" width="6" height="12" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0" />
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <line x1="8" y1="22" x2="16" y2="22" />
+              </svg>
+            )}
+          </button>
+
 
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
@@ -1957,6 +2142,7 @@ function StudentChatContent() {
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (e.nativeEvent.isComposing) return;
                 e.preventDefault();
+                if (voiceListening) return;
                 sendMessage();
               }
             }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '有什么想问的？按 Shift+Enter 换行'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
@@ -1969,7 +2155,7 @@ function StudentChatContent() {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
               </button>
             ) : (
-              <button type="button" onClick={sendMessage} disabled={waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted || !connected}
+              <button type="button" onClick={sendMessage} disabled={voiceListening || waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted || !connected}
                 className={styles.composerAction}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

@@ -1,6 +1,6 @@
 use std::fs;
 use std::net::TcpStream;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Output};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -196,6 +196,44 @@ fn ensure_port_free(port: u16) -> Result<(), String> {
     Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序，或在系统设置中调整 ClassNode 端口后重试。"))
 }
 
+fn process_output_details(output: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let details = format!("{}\n{}", stdout.trim(), stderr.trim());
+    let details = details.trim();
+    if details.is_empty() {
+        "命令没有返回详细信息".to_string()
+    } else {
+        details.to_string()
+    }
+}
+
+fn is_prisma_data_loss_refusal(details: &str) -> bool {
+    details.contains("--accept-data-loss")
+        && details.to_ascii_lowercase().contains("data loss")
+}
+
+fn run_prisma_db_push(
+    node: &str,
+    prisma_cli: &std::path::Path,
+    server_dir: &std::path::Path,
+    db_url: &str,
+    accept_data_loss: bool,
+) -> Result<Output, String> {
+    let mut cmd = Command::new(node);
+    cmd.arg(prisma_cli)
+        .args(["db", "push", "--skip-generate"])
+        .current_dir(server_dir)
+        .env("DATABASE_URL", db_url);
+    if accept_data_loss {
+        cmd.arg("--accept-data-loss");
+    }
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd.output()
+        .map_err(|e| format!("执行数据库迁移失败: {}", e))
+}
+
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
     ensure_port_free(SERVER_PORT)?;
 
@@ -265,25 +303,38 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
             );
             eprintln!("升级前安全备份已创建: {:?}", safety_backup);
             eprintln!("同步数据库 schema...");
-            let status = {
-                let mut cmd = Command::new(&node);
-                cmd.arg(&prisma_cli)
-                    .args(["db", "push", "--skip-generate"])
-                    .current_dir(&server_dir)
-                    .env("DATABASE_URL", &db_url);
-                #[cfg(target_os = "windows")]
-                cmd.creation_flags(0x08000000);
-                cmd.status()
-                    .map_err(|e| format!("执行数据库迁移失败: {}", e))?
-            };
-            if status.success() {
+            let mut output = run_prisma_db_push(
+                &node,
+                &prisma_cli,
+                &server_dir,
+                &db_url,
+                false,
+            )?;
+            let mut details = process_output_details(&output);
+
+            // Prisma 会在删除已废弃的列时要求显式确认。数据库已在上方完成
+            // 完整备份，因此仅在 Prisma 明确提示 --accept-data-loss 时重试；
+            // 引擎缺失、权限、数据库损坏等其他错误仍然立即中止。
+            if !output.status.success() && is_prisma_data_loss_refusal(&details) {
+                eprintln!("检测到已知的 schema 清理操作，使用安全备份后继续升级...");
+                output = run_prisma_db_push(
+                    &node,
+                    &prisma_cli,
+                    &server_dir,
+                    &db_url,
+                    true,
+                )?;
+                details = process_output_details(&output);
+            }
+
+            if output.status.success() {
                 // 写入版本标记，下次跳过
                 let _ = std::fs::write(&version_file, &current_schema_hash);
                 eprintln!("数据库同步完成, schema 已标记");
             } else {
                 return Err(format!(
-                    "数据库升级被安全检查阻止（退出码 {:?}）。备份位于 {:?}",
-                    status.code(), safety_backup
+                    "数据库升级失败（退出码 {:?}）。\n{}\n备份位于 {:?}",
+                    output.status.code(), details, safety_backup
                 ));
             }
         } else {
@@ -611,4 +662,22 @@ pub fn run() {
             _ => {}
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_prisma_data_loss_refusal;
+
+    #[test]
+    fn retries_only_prisma_data_loss_refusals() {
+        assert!(is_prisma_data_loss_refusal(
+            "There might be data loss. You can use the --accept-data-loss flag."
+        ));
+        assert!(!is_prisma_data_loss_refusal(
+            "Query engine binary could not be found."
+        ));
+        assert!(!is_prisma_data_loss_refusal(
+            "Unknown option --accept-data-loss"
+        ));
+    }
 }

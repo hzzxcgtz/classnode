@@ -192,6 +192,7 @@
   align-items: center;
   padding: 14px 20px;
   border-left: 3px solid var(--section-accent);
+  background: linear-gradient(135deg, #f8fafc, white);
   background: linear-gradient(135deg, color-mix(in srgb, var(--section-accent) 3%, white), white);
 }
 

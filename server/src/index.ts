@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { createServer } from 'http';
+import { createServer, type ServerResponse } from 'http';
 import { Server } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
@@ -233,14 +233,28 @@ async function main() {
     console.warn('[server] Failed to start agent checker:', e),
   );
 
-  // 前端静态文件（Next.js 静态导出产物）
-  const frontendDir = path.join(__dirname, '../frontend');
-  app.use(express.static(frontendDir));
-  // 防御：如果构建时 out/ 被嵌套复制，也作为静态文件源
-  const nestedFrontendDir = path.join(frontendDir, 'out');
-  if (fs.existsSync(nestedFrontendDir)) {
-    app.use(express.static(nestedFrontendDir));
-    console.log(`[server] Also serving frontend from nested: ${nestedFrontendDir}`);
+  // 生产版由后端同源提供打包后的前端。开发环境由 Next.js dev server
+  // 单独提供，禁止回退到 server/frontend 中可能过期的静态构建。
+  if (process.env.NODE_ENV !== 'development') {
+    const frontendDir = path.join(__dirname, '../frontend');
+    const frontendStaticOptions = {
+      setHeaders(res: ServerResponse, filePath: string) {
+        // Next 的带哈希资源可以长期缓存；HTML 必须每次重新验证，否则
+        // Safari 可能在应用升级后继续引用上一版本已不存在的 JS 文件。
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-store, max-age=0');
+        } else if (filePath.includes(`${path.sep}_next${path.sep}static${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    };
+    app.use(express.static(frontendDir, frontendStaticOptions));
+    // 防御：如果构建时 out/ 被嵌套复制，也作为静态文件源
+    const nestedFrontendDir = path.join(frontendDir, 'out');
+    if (fs.existsSync(nestedFrontendDir)) {
+      app.use(express.static(nestedFrontendDir, frontendStaticOptions));
+      console.log(`[server] Also serving frontend from nested: ${nestedFrontendDir}`);
+    }
   }
 
   // Routes
@@ -301,7 +315,8 @@ async function main() {
     if (!selectedIp || !interfaces.some(i => i.ip === selectedIp)) {
       selectedIp = interfaces.length > 0 ? interfaces[0].ip : "localhost";
     }
-    const fePort = parseInt(process.env.FRONTEND_PORT || String(port), 10);
+    const defaultFrontendPort = process.env.NODE_ENV === 'development' ? '4000' : String(port);
+    const fePort = parseInt(process.env.FRONTEND_PORT || defaultFrontendPort, 10);
     const studentUrl = `http://${selectedIp}:${fePort}/classroom`;
     res.json({
       port,
@@ -310,7 +325,7 @@ async function main() {
       selectedIp,
       studentUrl,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
-      classroomUrl: interfaces.map(i => `http://${i.ip}:${parseInt(process.env.FRONTEND_PORT || String(port), 10)}`),
+      classroomUrl: interfaces.map(i => `http://${i.ip}:${fePort}`),
     });
   });
 

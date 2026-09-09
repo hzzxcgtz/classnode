@@ -113,6 +113,14 @@ export async function migrateClassroomParticipants(prisma: PrismaClient): Promis
     await prisma.$executeRawUnsafe(`PRAGMA foreign_keys = ON`);
   }
 
+  // 桌面端的 prisma db push 可能已经先把表改成了新结构。此时不能只凭
+  // 列结构判断迁移是否完成，还要把旧版虚拟小组参与者显式转换掉。
+  await prisma.$executeRawUnsafe(`UPDATE "ClassroomStudent"
+    SET "type" = 'group', "studentId" = NULL
+    WHERE "studentId" IN (
+      SELECT "id" FROM "Student" WHERE "tag" = '__group__'
+    )`);
+
   // 旧课堂没有成员快照：首次迁移时从同班级、同名的 ClassGroup 建立快照。
   // 若教师后来修改过分组，无法凭空恢复历史，只能冻结当前可获得的数据。
   const groups = await prisma.$queryRawUnsafe<LegacyGroup[]>(`SELECT "id", "classroomId", "name" FROM "ClassroomGroup"`);

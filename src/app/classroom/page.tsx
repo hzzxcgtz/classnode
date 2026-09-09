@@ -559,8 +559,8 @@ function StudentChatContent() {
     setVoiceInputAvailable(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
   }, []);
 
-  // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。使用可视窗口
-  // 的实时高度约束对话页，并锁住 body，确保只有消息列表本身可滚动。
+  // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。软键盘弹出时
+  // visualViewport 还可能向下偏移，因此高度和顶部偏移都要同步。
   useEffect(() => {
     if (step !== 'chat') return;
     const shell = chatShellRef.current;
@@ -574,7 +574,9 @@ function StudentChatContent() {
       if (frame !== null) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const height = Math.round(viewport?.height || window.innerHeight);
+        const offsetTop = Math.round(viewport?.offsetTop || 0);
         shell.style.setProperty('--chat-viewport-height', `${height}px`);
+        shell.style.setProperty('--chat-viewport-offset-top', `${offsetTop}px`);
         frame = null;
       });
     };
@@ -594,6 +596,7 @@ function StudentChatContent() {
       viewport?.removeEventListener('resize', updateViewportHeight);
       viewport?.removeEventListener('scroll', updateViewportHeight);
       shell.style.removeProperty('--chat-viewport-height');
+      shell.style.removeProperty('--chat-viewport-offset-top');
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
@@ -2145,7 +2148,7 @@ function StudentChatContent() {
                 if (voiceListening) return;
                 sendMessage();
               }
-            }} placeholder={blacklisted ? '你已被黑屏处理...' : paused ? '课堂已暂停...' : agentDisabled ? '智能体已停用...' : '有什么想问的？按 Shift+Enter 换行'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
+            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
               rows={1}
               className={styles.composerTextarea} />
             {waitingAI && classroom?.allowStudentStop !== false ? (

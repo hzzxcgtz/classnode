@@ -9,6 +9,7 @@ INSTALLER_ROOT="${CLASSNODE_INSTALLER_DIR:-$HOME/Downloads/ClassNode/installer}"
 INSTALLER_DIR="$INSTALLER_ROOT/v$VERSION"
 MODE="${1:-all}"
 WINDOWS_ARCH="${2:-both}"
+GENERATED_ARTIFACTS=()
 
 usage() {
   cat <<'EOF'
@@ -18,7 +19,7 @@ usage() {
   mac                 macOS 双架构
   mac-arm64           macOS Apple Silicon
   mac-intel           macOS Intel
-  windows [架构]      GitHub Actions 构建，可选 both、x64、arm64
+  windows [架构]      触发 GitHub Actions MSI 构建后立即返回，可选 both、x64、arm64
   source              仅源码分发包
 
 环境变量:
@@ -49,6 +50,7 @@ copy_macos_artifact() {
   source="src-tauri/target/$target/release/bundle/dmg/ClassNode_${VERSION}_macos_${suffix}.dmg"
   [[ -f "$source" ]] || { echo "错误: 未生成 $source" >&2; exit 1; }
   cp "$source" "$OUTPUT_DIR/"
+  GENERATED_ARTIFACTS+=("$OUTPUT_DIR/$(basename "$source")")
   echo "[release] $(basename "$source")"
 }
 
@@ -68,20 +70,16 @@ package_source() {
   rm -f "$OUTPUT_DIR/$name.zip" "$OUTPUT_DIR/$name.tar.gz"
   git archive --format=zip --prefix="$name/" --output="$OUTPUT_DIR/$name.zip" HEAD
   git archive --format=tar.gz --prefix="$name/" --output="$OUTPUT_DIR/$name.tar.gz" HEAD
+  GENERATED_ARTIFACTS+=("$OUTPUT_DIR/$name.zip" "$OUTPUT_DIR/$name.tar.gz")
   echo "[release] $name.zip"
   echo "[release] $name.tar.gz"
 }
 
-download_windows_artifacts() {
-  command -v gh >/dev/null || { echo "错误: 下载 Windows 安装包需要 gh" >&2; exit 1; }
-  gh release download "v$VERSION" \
-    --repo "${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}" \
-    --dir "$OUTPUT_DIR" \
-    --pattern "*.msi" \
-    --clobber
-}
-
 archive_installers() {
+  if ((${#GENERATED_ARTIFACTS[@]} == 0)); then
+    return
+  fi
+
   mkdir -p "$INSTALLER_DIR"
 
   # 自定义产物目录已指向归档目录时，无需重复移动。
@@ -90,17 +88,7 @@ archive_installers() {
     return
   fi
 
-  local artifacts=()
-  while IFS= read -r -d '' file; do
-    artifacts+=("$file")
-  done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -print0)
-
-  if ((${#artifacts[@]} == 0)); then
-    echo "错误: 未找到可归档的发布产物: $OUTPUT_DIR" >&2
-    exit 1
-  fi
-
-  mv -f "${artifacts[@]}" "$INSTALLER_DIR/"
+  mv -f "${GENERATED_ARTIFACTS[@]}" "$INSTALLER_DIR/"
   echo "[release] 安装包已归档: $INSTALLER_DIR"
 }
 
@@ -109,22 +97,20 @@ case "$MODE" in
   mac-intel) build_intel ;;
   mac) build_arm64; build_intel ;;
   windows)
-    bash scripts/build-windows.sh "$WINDOWS_ARCH"
-    download_windows_artifacts
+    bash scripts/build-windows.sh "$WINDOWS_ARCH" --no-wait
     ;;
   source) package_source ;;
   all)
-    run_id_file="$(mktemp)"
-    trap 'rm -f "$run_id_file"' EXIT
-    bash scripts/build-windows.sh both --no-wait --run-id-file "$run_id_file"
+    bash scripts/build-windows.sh both --no-wait
     build_arm64
     build_intel
     package_source
-    run_id="$(cat "$run_id_file")"
-    gh run watch "$run_id" --repo "${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}" --exit-status
-    download_windows_artifacts
     ;;
 esac
 
 archive_installers
-echo "[release] 完成: $INSTALLER_DIR"
+if [[ "$MODE" == windows ]]; then
+  echo "[release] Windows MSI 构建已提交，请稍后从 GitHub 手工下载"
+else
+  echo "[release] 完成: $INSTALLER_DIR"
+fi

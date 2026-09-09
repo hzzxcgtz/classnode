@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Trigger the Windows GitHub Actions build and reliably identify its run.
+# Trigger the Windows GitHub Actions MSI build. Fire-and-forget by default.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY="${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}"
 BRANCH="${CLASSNODE_RELEASE_BRANCH:-main}"
 ARCH="${1:-both}"
-WAIT=true
+WAIT=false
 RUN_ID_FILE=""
 
 shift || true
 while (($#)); do
   case "$1" in
+    --wait) WAIT=true; shift ;;
     --no-wait) WAIT=false; shift ;;
     --run-id-file)
       [[ $# -ge 2 ]] || { echo "错误: --run-id-file 缺少路径" >&2; exit 2; }
@@ -23,7 +24,7 @@ done
 case "$ARCH" in
   all|both|x64|arm64) ;;
   -h|--help)
-    echo "用法: scripts/build-windows.sh [both|x64|arm64] [--no-wait] [--run-id-file <path>]"
+    echo "用法: scripts/build-windows.sh [both|x64|arm64] [--no-wait|--wait] [--run-id-file <path>]"
     exit 0 ;;
   *) echo "错误: 未知架构 $ARCH" >&2; exit 2 ;;
 esac
@@ -35,6 +36,12 @@ cd "$ROOT_DIR"
 dispatched_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "[windows] 触发 ${REPOSITORY}/build.yml（${ARCH}）"
 gh workflow run build.yml --repo "$REPOSITORY" --ref "$BRANCH" --field "arch=$ARCH"
+
+if [[ "$WAIT" == false && -z "$RUN_ID_FILE" ]]; then
+  echo "[windows] MSI 构建命令已发送，本地不会等待或下载"
+  echo "[windows] https://github.com/$REPOSITORY/actions/workflows/build.yml"
+  exit 0
+fi
 
 run_id=""
 for _ in $(seq 1 20); do
@@ -54,9 +61,7 @@ done
 [[ -z "$RUN_ID_FILE" ]] || printf '%s\n' "$run_id" > "$RUN_ID_FILE"
 echo "[windows] https://github.com/$REPOSITORY/actions/runs/$run_id"
 
-if [[ "$WAIT" == false ]]; then
-  exit 0
-fi
+[[ "$WAIT" == true ]] || exit 0
 
 gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
 version="$(node -p 'require("./package.json").version')"

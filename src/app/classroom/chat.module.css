@@ -7,6 +7,7 @@
   height: var(--chat-viewport-height, 100dvh);
   min-height: 0;
   max-height: var(--chat-viewport-height, 100dvh);
+  top: var(--chat-viewport-offset-top, 0px);
   display: flex;
   flex-direction: column;
   position: relative;

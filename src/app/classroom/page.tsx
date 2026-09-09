@@ -559,8 +559,9 @@ function StudentChatContent() {
     setVoiceInputAvailable(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
   }, []);
 
-  // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。软键盘弹出时
-  // visualViewport 还可能向下偏移，因此高度和顶部偏移都要同步。
+  // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后
+  // Safari 还会平移 visualViewport：保持页面起点不动，只把偏移量计入
+  // 可用高度，避免在触摸滚动期间反复移动整个页面造成抖动。
   useEffect(() => {
     if (step !== 'chat') return;
     const shell = chatShellRef.current;
@@ -569,34 +570,46 @@ function StudentChatContent() {
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
     let frame: number | null = null;
+    let settleTimer: number | null = null;
 
     const updateViewportHeight = () => {
       if (frame !== null) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const height = Math.round(viewport?.height || window.innerHeight);
-        const offsetTop = Math.round(viewport?.offsetTop || 0);
+        const visualHeight = viewport?.height || window.innerHeight;
+        const visualOffsetTop = viewport?.offsetTop || 0;
+        const height = Math.round(visualHeight + visualOffsetTop);
         shell.style.setProperty('--chat-viewport-height', `${height}px`);
-        shell.style.setProperty('--chat-viewport-offset-top', `${offsetTop}px`);
         frame = null;
       });
     };
 
+    // Older WebKit may report offsetTop=0 in the first keyboard resize event
+    // and correct it shortly afterwards. Re-measure once after the animation
+    // settles instead of following every visualViewport scroll event.
+    const updateAndSettle = () => {
+      updateViewportHeight();
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(updateViewportHeight, 120);
+    };
+
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    updateViewportHeight();
-    window.addEventListener('resize', updateViewportHeight);
-    window.addEventListener('orientationchange', updateViewportHeight);
-    viewport?.addEventListener('resize', updateViewportHeight);
-    viewport?.addEventListener('scroll', updateViewportHeight);
+    updateAndSettle();
+    window.addEventListener('resize', updateAndSettle);
+    window.addEventListener('orientationchange', updateAndSettle);
+    document.addEventListener('focusin', updateAndSettle);
+    document.addEventListener('focusout', updateAndSettle);
+    viewport?.addEventListener('resize', updateAndSettle);
 
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
-      window.removeEventListener('resize', updateViewportHeight);
-      window.removeEventListener('orientationchange', updateViewportHeight);
-      viewport?.removeEventListener('resize', updateViewportHeight);
-      viewport?.removeEventListener('scroll', updateViewportHeight);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      window.removeEventListener('resize', updateAndSettle);
+      window.removeEventListener('orientationchange', updateAndSettle);
+      document.removeEventListener('focusin', updateAndSettle);
+      document.removeEventListener('focusout', updateAndSettle);
+      viewport?.removeEventListener('resize', updateAndSettle);
       shell.style.removeProperty('--chat-viewport-height');
-      shell.style.removeProperty('--chat-viewport-offset-top');
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };

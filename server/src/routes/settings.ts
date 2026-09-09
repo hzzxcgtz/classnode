@@ -6,7 +6,7 @@ import {
   createTeacherSession,
   destroyTeacherSession,
   hasTeacherSession,
-  isLoopbackRequest,
+  isLocalMachineRequest,
   requireTeacher,
   revokeAllTeacherSessions,
 } from '../middleware/auth.js';
@@ -67,7 +67,7 @@ router.get('/init-status', async (req, res) => {
 
 router.post('/admin-password', async (req, res) => {
   // 首次初始化决定教师控制台的归属，只允许在安装本应用的教师电脑上完成。
-  if (!isLoopbackRequest(req)) return res.status(403).json({ error: '请在教师电脑本机完成首次密码设置' });
+  if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '请在教师电脑本机完成首次密码设置' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const existing = await prisma.setting.findUnique({ where: { key: 'admin_password' } });
@@ -143,7 +143,7 @@ router.post('/change-password', requireTeacher, async (req, res) => {
 });
 
 router.post('/reset-password', async (req, res) => {
-  if (!isLoopbackRequest(req)) return res.status(403).json({ error: '只能从本机控制面板重置密码' });
+  if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '只能从本机控制面板重置密码' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const temporaryPassword = crypto.randomBytes(9).toString('base64url');

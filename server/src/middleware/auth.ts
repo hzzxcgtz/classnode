@@ -71,3 +71,21 @@ export function isLoopbackRequest(req: Request): boolean {
   const address = req.socket.remoteAddress || '';
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
+
+function normalizeSocketAddress(address?: string): string {
+  const value = (address || '').split('%')[0].toLowerCase();
+  return value.startsWith('::ffff:') ? value.slice(7) : value;
+}
+
+/**
+ * Accept loopback requests and requests made by this computer through one of
+ * its own LAN addresses. For a direct local connection the socket's remote
+ * and local addresses are identical; another device has a different remote
+ * address, so it cannot claim device-local setup privileges.
+ */
+export function isLocalMachineRequest(req: Request): boolean {
+  if (isLoopbackRequest(req)) return true;
+  const remoteAddress = normalizeSocketAddress(req.socket.remoteAddress);
+  const localAddress = normalizeSocketAddress(req.socket.localAddress);
+  return remoteAddress !== '' && localAddress !== '' && remoteAddress === localAddress;
+}

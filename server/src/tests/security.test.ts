@@ -6,6 +6,7 @@ import {
   createTeacherSession,
   destroyTeacherSession,
   hasTeacherSession,
+  isLocalMachineRequest,
   isLoopbackRequest,
   revokeAllTeacherSessions,
 } from '../middleware/auth.js';
@@ -48,6 +49,22 @@ test('only loopback requests may perform device-local setup and recovery actions
   assert.equal(isLoopbackRequest(loopback), true);
   assert.equal(isLoopbackRequest(ipv6Loopback), true);
   assert.equal(isLoopbackRequest(lanClient), false);
+});
+
+test('the host computer may use its own LAN address for device-local actions', () => {
+  const hostViaLan = {
+    socket: { remoteAddress: '::ffff:172.20.10.2', localAddress: '172.20.10.2' },
+  } as unknown as Request;
+  const remoteLanClient = {
+    socket: { remoteAddress: '172.20.10.8', localAddress: '172.20.10.2' },
+  } as unknown as Request;
+  const loopback = {
+    socket: { remoteAddress: '::1', localAddress: '::1' },
+  } as unknown as Request;
+
+  assert.equal(isLocalMachineRequest(hostViaLan), true);
+  assert.equal(isLocalMachineRequest(loopback), true);
+  assert.equal(isLocalMachineRequest(remoteLanClient), false);
 });
 
 test('student token binds classroom and student and rejects tampering', () => {

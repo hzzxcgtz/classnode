@@ -149,17 +149,31 @@ fn update_tray(app: &AppHandle, running: bool) {
     }
 }
 
+/// Node 22/24 on Windows can fail to resolve a JavaScript entry point when a
+/// Tauri path carries the Win32 verbatim prefix (`\\?\C:\...`). Convert it
+/// back to the equivalent regular drive or UNC path before spawning Node.
+fn node_compatible_path(path: &std::path::Path) -> std::path::PathBuf {
+    let value = path.to_string_lossy();
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return std::path::PathBuf::from(format!(r"\\{}", rest));
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return std::path::PathBuf::from(rest);
+    }
+    path.to_path_buf()
+}
+
 fn get_server_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("无法获取资源目录: {}", e))?;
-    Ok(resource_dir.join("server"))
+    Ok(node_compatible_path(&resource_dir.join("server")))
 }
 
 fn find_node(app: &AppHandle) -> String {
     if let Ok(resource_dir) = app.path().resource_dir() {
-        let server_dir = resource_dir.join("server");
+        let server_dir = node_compatible_path(&resource_dir.join("server"));
         let node_path = if cfg!(target_os = "windows") {
             server_dir.join("node.exe")
         } else {
@@ -213,6 +227,13 @@ fn is_prisma_data_loss_refusal(details: &str) -> bool {
         && details.to_ascii_lowercase().contains("data loss")
 }
 
+/// Prefer a path relative to the child process working directory. On Windows,
+/// passing a JavaScript entry point below Program Files as an absolute path can
+/// be truncated to `C:` by the Node command-line parsing chain.
+fn child_script_arg<'a>(script: &'a std::path::Path, cwd: &std::path::Path) -> &'a std::path::Path {
+    script.strip_prefix(cwd).unwrap_or(script)
+}
+
 fn run_prisma_db_push(
     node: &str,
     prisma_cli: &std::path::Path,
@@ -221,7 +242,7 @@ fn run_prisma_db_push(
     accept_data_loss: bool,
 ) -> Result<Output, String> {
     let mut cmd = Command::new(node);
-    cmd.arg(prisma_cli)
+    cmd.arg(child_script_arg(prisma_cli, server_dir))
         .args(["db", "push", "--skip-generate"])
         .current_dir(server_dir)
         .env("DATABASE_URL", db_url);
@@ -245,10 +266,11 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         return Err(format!("服务端脚本未找到: {:?}", server_script));
     }
 
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法获取用户数据目录: {}", e))?;
+    let data_dir = node_compatible_path(
+        &app.path()
+            .app_data_dir()
+            .map_err(|e| format!("无法获取用户数据目录: {}", e))?,
+    );
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
 
@@ -344,7 +366,7 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
 
     let child = {
         let mut cmd = Command::new(&node);
-        cmd.arg(&server_script)
+        cmd.arg(child_script_arg(&server_script, &server_dir))
             .current_dir(&server_dir)
             .env("CLASSNODE_DATA_DIR", &data_dir_str)
             .env("DATABASE_URL", &db_url);
@@ -666,7 +688,8 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_prisma_data_loss_refusal;
+    use super::{child_script_arg, is_prisma_data_loss_refusal, node_compatible_path};
+    use std::path::Path;
 
     #[test]
     fn retries_only_prisma_data_loss_refusals() {
@@ -679,5 +702,30 @@ mod tests {
         assert!(!is_prisma_data_loss_refusal(
             "Unknown option --accept-data-loss"
         ));
+    }
+
+    #[test]
+    fn uses_relative_child_script_paths_below_working_directory() {
+        let cwd = Path::new(r"C:\Program Files\ClassNode\resources\server");
+        let script = cwd.join("node_modules").join("prisma").join("build").join("index.js");
+        assert_eq!(
+            child_script_arg(&script, cwd),
+            Path::new("node_modules").join("prisma").join("build").join("index.js")
+        );
+
+        let external = Path::new(r"D:\tools\script.js");
+        assert_eq!(child_script_arg(external, cwd), external);
+    }
+
+    #[test]
+    fn removes_windows_verbatim_prefixes_before_starting_node() {
+        assert_eq!(
+            node_compatible_path(Path::new(r"\\?\C:\Program Files\ClassNode\server")),
+            Path::new(r"C:\Program Files\ClassNode\server")
+        );
+        assert_eq!(
+            node_compatible_path(Path::new(r"\\?\UNC\server\share\ClassNode")),
+            Path::new(r"\\server\share\ClassNode")
+        );
     }
 }

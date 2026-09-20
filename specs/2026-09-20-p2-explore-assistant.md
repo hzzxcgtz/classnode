@@ -66,7 +66,11 @@ git checkout -b feat/p2-explore-assistant
 
 ```bash
 npx tsc --noEmit                              # 退出 0、零输出
+
+# ⚠️ 这是**限定范围**的 lint（只扫学生端）。两条命令的数字**不同**，别拿一条的
+#    输出去对另一条的期望 —— T0 的复审者就这么对过一次，得出「基线漂移」的错误结论。
 npx eslint src/app/classroom/ src/lib/        # 退出 0、恰好 1 条既有 warning（use-student-session.ts 的 tokenData）
+pnpm lint                                     # 退出 0、3 条 warning（多出的两条在根目录 serve-frontend.js，与本里程碑无关）
 ./dev.sh stop && pnpm build && ./dev.sh start # 退出 0 + Safari 检查通过；跑完必须复核 4000/4001
 cd server && pnpm test                        # 63 pass / 0 fail
 ```

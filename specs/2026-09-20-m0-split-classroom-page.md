@@ -89,6 +89,22 @@ M0 的原则是「能用机械搬家解决的，不做重构」。图片查看�
 
 Spec 结构里没有列出 `classroom-types.ts` / `avatar-utils.ts` / `use-is-mobile.ts`。新增这三个**放在 `classroom/` 根目录**是必要的：它们被 `identity/` 和 `chat/` **两边共用**，放进任一子目录都会造成跨目录的反向依赖。Spec §4.1 的结构是给新功能文件画的位置，这三个是重构产物。
 
+### ⚠️ 关于本文档中的行号
+
+**本文档引用的所有行号都是「原始文件」（M0 开始前，2495 行版本）的行号。** 每完成一个任务，`page.tsx` 就会变短，行号随即失效——Task 1 抽走 48 行后，原 13 行变成第 18 行（顶部 import 增加 5 行），原 111 行变成第 68 行，中间存在断点。
+
+**因此：永远按符号名定位，不要按行号定位。** 需要查阅原始代码时用：
+
+```bash
+git show 0713de41cb0c59220218cd8210cdfb4b58647d1d:src/app/classroom/page.tsx | sed -n '<原始行号>,<原始行号>p'
+```
+
+按名定位：
+
+```bash
+grep -nE "^(const|function) (API_BASE_URL|fixSvgUrl|svgDataUrl|getEmbeddedAvatarImageUrl|SvgAvatar|useIsMobile|AgentAvatar|MessageItem|StreamingIndicator|ThinkingContent|AvatarChangerContent)" src/app/classroom/page.tsx
+```
+
 ### 三个必须记住的搬迁陷阱
 
 1. **`API_BASE_URL`（原第 13 行）必须跟着 `avatar-utils.ts` 一起走并导出。** `SvgAvatar` 通过 `fixSvgUrl` / `getEmbeddedAvatarImageUrl` **间接**依赖它。漏搬不会报错，只会让头像 URL 变成 `undefined` 前缀。
@@ -113,7 +129,17 @@ Spec 结构里没有列出 `classroom-types.ts` / `avatar-utils.ts` / `use-is-mo
 
 - [ ] **Step 1: 创建 `classroom-types.ts`，把原 59-106 行原样搬入**
 
-把 `page.tsx` 第 59-106 行**逐字符复制**到新文件（包含 `ChatAgent` 到 `SpeechRecognitionWindow` 的全部类型）。在每个声明前加 `export`。文件开头无需 import（这些类型不依赖任何外部符号）。
+把 `page.tsx` 第 59-106 行**逐字符复制**到新文件（包含 `ChatAgent` 到 `SpeechRecognitionWindow` 的全部类型）。在每个声明前加 `export`。
+
+**文件开头需要一行 import**（执行时发现并修正，见台账 Ruling 4）：
+
+```ts
+import type { AgentSummary } from '@/lib/types';
+```
+
+因为 `ChatAgent` 依赖 `AgentSummary`。连带动作：`AgentSummary` 在 `page.tsx` 中原仅服务于 `ChatAgent`，搬走后成为孤儿导入，**必须一并从 `page.tsx` 的 import 中移除**，否则会多出一条 ESLint `no-unused-vars` 告警。
+
+import 语句放在文件**顶部 import 区**，不要放在原 59 行的位置（那会触发 `import/first`）。
 
 注意：`BrowserSpeechRecognition`（原 90-101）内部引用了 `BrowserSpeechRecognitionResult` 等，因为同文件所以无需 import。保持原样。
 
@@ -900,15 +926,29 @@ git commit -m "refactor(classroom): 抽出 useChatSocket 实时通信逻辑"
 git mv src/app/classroom/chat.module.css src/app/classroom/chat/chat.module.css
 ```
 
-然后把 `chat/` 目录下所有文件里的 `from '../chat.module.css'` 保持不变（它们已经从 `chat/xxx.tsx` 指向 `chat/chat.module.css`）。**核对每一处导入路径**：
+**⚠️ 这里必须改 import 路径，不能保持不变。** 迁移前 `chat/xxx.tsx` 里的 `'../chat.module.css'` 指向 `classroom/chat.module.css`；文件移入 `chat/` 后该路径会指向**已不存在的**位置。
+
+把 `chat/` 目录下**每一个**文件里的导入改成：
+
+```ts
+import styles from './chat.module.css';
+```
+
+核对（`chat/` 内的文件应当**全部**是 `'./chat.module.css'`，不得残留 `'../chat.module.css'`）：
 
 ```bash
 grep -rn "chat.module.css" src/app/classroom/
 ```
 
-预期：`chat/` 下的文件用 `'./chat.module.css'` 或 `'../chat.module.css'` 需按实际层级逐一核对，**全部必须指向 `chat/chat.module.css`**。
+预期输出中每一行的路径形式都必须是 `'./chat.module.css'`。**出现 `'../chat.module.css'` 即为错误**——这正是 Webpack 会报 `Module not found` 的地方。
 
 - [ ] **Step 2: 把 `StudentChatContent` 整体移入 `chat/chat-panel.tsx`**
+
+> **关于 `'use client'`（Task 3 审查提出）**：`chat/` 下由 Task 2/3 产出的五个文件（`svg-avatar.tsx`、`agent-avatar.tsx`、`message-item.tsx`、`streaming-indicator.tsx`、`thinking-content.tsx`）**都没有 `'use client'` 指令**，它们用了 hooks 却能工作，完全依赖「只被 `'use client'` 的 `page.tsx` 引用」。
+>
+> `chat-panel.tsx` 本身必须带 `'use client'`（它用 `useRouter` 和大量 hooks），且 `page.tsx` 保持 `'use client'`——这样五个子文件仍处于客户端图内，无需给它们逐个补指令。
+>
+> **不要**把这三个组件挂到任何 Server Component 边界下。若误挂，Next.js 会在**构建期**报错（`useState`/`useMemo` 在 Server Component 中不可用），属响亮失败而非静默失效——但仍应在构建后确认一遍。
 
 把 `page.tsx` 里剩余的 `StudentChatContent`（原 346-2309 减去已抽出的部分）整体移入新文件，具名导出：
 
@@ -937,9 +977,11 @@ import { StudentChatContent } from './chat/chat-panel';
 export default function StudentChatPage() {
   return (
     <>
-      {/* ★ 原 2478-2489 的 <style> 块，一个字都不许改，必须留在这里 */}
-      <style jsx global>{`...`}</style>
-      <Suspense fallback={<div style={{ /* 原 2490 行的 fallback */ }}>加载中...</div>}>
+      {/* ★ 原 2478-2489 的 <style> 块，一个字都不许改，必须留在这里。
+          注意：是普通 <style>{`...`}</style>，不是 styled-jsx 的 <style jsx global>。
+          已核实原文件第 2478 行为 <style>{` —— 照抄，不要"顺手改成" jsx 形式。 */}
+      <style>{`/* 原 2479-2488 的内容原样 */`}</style>
+      <Suspense fallback={<div style={{ /* 原 2490 行的 fallback 原样 */ }}>加载中...</div>}>
         <StudentChatContent />
       </Suspense>
     </>

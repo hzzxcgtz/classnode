@@ -48,8 +48,10 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     iconSrc: '/images/module-icons/worksheet.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+        <rect x="5" y="3.5" width="14" height="18" rx="2" />
+        <path d="M9 2.5h6v3H9z" fill="currentColor" stroke="none" />
+        <circle cx="9" cy="10" r="1.2" />
+        <path d="M12 10h4.5m-8.7 5 1.3 1.3 2.2-2.5M13 15.5h3.5" />
       </svg>
     ),
   },
@@ -61,9 +63,10 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     iconSrc: '/images/module-icons/explore.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M9.5 2v6.2L4.6 17.4A1.8 1.8 0 0 0 6.2 20h11.6a1.8 1.8 0 0 0 1.6-2.6L14.5 8.2V2" />
-        <path d="M8 2h8" />
-        <path d="M7.4 14h9.2" />
+        <rect x="2.5" y="3" width="19" height="17" rx="2.5" />
+        <path d="M2.5 8h19M6 5.5h.01M9 5.5h.01" />
+        <path d="M6.5 15c1.7-3.3 4.2-3.3 5.5-1 1.3 2.3 3.8 2.3 5.5-2" />
+        <path d="m15 16 5 2-2.3 1.1-1.1 1.9-1.6-5Z" fill="currentColor" stroke="none" />
       </svg>
     ),
   },
@@ -78,7 +81,10 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     iconSrc: '/images/module-icons/companion.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
+        <path d="M11.5 3C6.8 3 3 6.2 3 10.1c0 1.7.7 3.2 2 4.4L4 18l3.8-2c1.1.7 2.4 1 3.7 1 4.7 0 8.5-3.1 8.5-6.9S16.2 3 11.5 3Z" />
+        <path d="M17.6 8.2c2 .8 3.4 2.5 3.4 4.6 0 2.8-2.5 5.1-5.7 5.1h-1.7L10 21l.9-3.4" />
+        <path d="M8.5 10h.01M11.5 10h.01M14.5 10h.01" strokeWidth="2.6" />
+        <path d="M20 2v3M18.5 3.5h3" />
       </svg>
     ),
   },

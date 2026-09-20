@@ -26,13 +26,26 @@ import type { ModuleId } from './classroom-types';
  *
  * 色相保持不变（同一色系的深一档，Tailwind 的 600→700/700→800），学生仍能一眼认出是同一个
  * 模块；颜色仍然只有这一个来源，通过 CSS 自定义属性传下去，CSS 里不另抄十六进制。
+ *
+ * ── `iconSrc` 与 `icon` 的分工（两个字段并存是刻意的，别合并）────────────────
+ * `iconSrc` 是 `/public/images/module-icons/*.svg` 的路径，**首页卡片专用**。这批图标是
+ * 「自带渐变圆角底的整块图标」（`rect rx=32` + 白色线稿），底色正好是各模块的
+ * `accentStrong`，所以卡片上不需要再铺 `--card-accent`，否则就是色块套色块。
+ *
+ * `icon` 是内联的**白色线稿**（`stroke="currentColor"`，跟着文字颜色走），**Tab 栏专用**。
+ * 两者不能互换：Tab 的图标位只有 21px 画布、视觉上更小，整块渐变压进去会糊成一团、
+ * 也认不出形状；反过来，线稿放进卡片则缺少「一眼分辨三个模块」的那块底色。
+ *
+ * 单个模块图标只在这两处出现，所以两个字段都挂在同一张表上 —— 新增模块时
+ * `Record<ModuleId, …>` 会同时逼着两份都补齐，不会出现「卡片有图、Tab 空着」。
  */
-export const MODULE_META: Record<ModuleId, { label: string; accent: string; accentStrong: string; cta: string; icon: ReactNode }> = {
+export const MODULE_META: Record<ModuleId, { label: string; accent: string; accentStrong: string; cta: string; icon: ReactNode; iconSrc: string }> = {
   worksheet: {
     label: '学习单',
     accent: '#2563eb',
     accentStrong: '#1d4ed8',
     cta: '继续作答',
+    iconSrc: '/images/module-icons/worksheet.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -45,6 +58,7 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     accent: '#7c3aed',
     accentStrong: '#6d28d9',
     cta: '去探究',
+    iconSrc: '/images/module-icons/explore.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M9.5 2v6.2L4.6 17.4A1.8 1.8 0 0 0 6.2 20h11.6a1.8 1.8 0 0 0 1.6-2.6L14.5 8.2V2" />
@@ -61,6 +75,7 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     // 强调色（Tab 选中态用）再压一档：青 700 → 青 800。见文件头。
     accentStrong: '#155e75',
     cta: '开始对话',
+    iconSrc: '/images/module-icons/companion.svg',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />

@@ -209,7 +209,11 @@ export function StudentHome({
                     }}
                   >
                     <span className={styles.cardIcon}>
-                      {card.icon}
+                      {/* `iconSrc` 而不是 `card.icon`：卡片用「自带渐变圆角底的整块图标」，
+                          Tab 用的白色线稿在 52px 上只剩几根细线。分工见 `module-meta.tsx`。
+                          `alt=""` 是刻意的 —— 卡片正文紧接着就是模块名，图标是装饰，
+                          读屏再念一遍只是啰嗦。 */}
+                      <img className={styles.cardIconImage} src={card.iconSrc} alt="" width={52} height={52} />
                       {locked && <LockBadge />}
                     </span>
                     <span className={styles.cardBody}>

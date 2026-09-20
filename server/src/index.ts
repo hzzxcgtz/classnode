@@ -29,7 +29,7 @@ import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
-import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
+import { refreshWebappOrigin, resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,10 +97,15 @@ async function main() {
 
   // 探究助手托管服务的端口。**只在这里算一次** —— 路由层一律经 app.get('webappOrigin')
   // 取值，不得自行重算一遍（与 prisma / io / lanAccessEnabled 同一套注入方式）。
-  // app.set 必须在 listen 之前完成，否则路由会拿到 undefined。
   const webappPort = resolveWebappPort(port);
-  const bindIpSetting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } }).catch(() => null);
-  app.set('webappOrigin', `http://${pickSelectedIp(getLocalIPAddresses(), bindIpSetting?.value ?? null)}:${webappPort}`);
+  app.set('webappPort', webappPort);
+  // 「选中哪个 IP」与 /api/server-info 共用同一套兜底（pickSelectedIp）。注入进 app 让
+  // webapp-host 在 bind-ip 变更时复用，避免出现第二套 NIC 枚举。
+  app.set('resolveSelectedIp', (bindIp: string | null) => pickSelectedIp(getLocalIPAddresses(), bindIp));
+  // webappOrigin 全项目**只有 refreshWebappOrigin 一处构造**：启动时这一次，以及 bind-ip
+  // 被改时那一次（routes/settings.ts）。app.set 必须在 listen 之前完成，否则路由会拿到
+  // undefined；这里 await 是为了保证 listen 时缓存已经就位。
+  await refreshWebappOrigin(app);
 
   const isLoopbackAddress = (address?: string) => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
   app.use((req, res, next) => {

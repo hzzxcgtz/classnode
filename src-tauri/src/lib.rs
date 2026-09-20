@@ -260,8 +260,15 @@ fn run_prisma_db_push(
 }
 
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
+    // 主端口绑不上，服务端根本起不来 —— 硬失败是对的，保持不变。
     ensure_port_free(SERVER_PORT)?;
-    ensure_port_free(WEBAPP_PORT)?;
+    // 托管端口**只警告**：它与主服务是同一个进程里的两个监听，服务端自己遇到 EADDRINUSE
+    // 也只是 warn（见 webapp-host.ts）。这里若用 `?`，一个无关进程占了 3002 就会让整节课
+    // 开不了 —— 那是拿「探究助手不可用」换「完全无法上课」，与「该端口故障不影响主服务」
+    // 的承诺自相矛盾。宁可少一个模块，不可整节课停摆。
+    if let Err(e) = ensure_port_free(WEBAPP_PORT) {
+        eprintln!("⚠️ 探究助手托管端口预检失败，主服务照常启动，该模块将无法加载: {e}");
+    }
 
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");

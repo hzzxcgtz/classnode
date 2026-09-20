@@ -10,6 +10,7 @@ import {
   requireTeacher,
   revokeAllTeacherSessions,
 } from '../middleware/auth.js';
+import { refreshWebappOrigin } from '../services/webapp-host.js';
 
 const router: Router = Router();
 type LoginAttempt = { count: number; blockedUntil: number; lastAttemptAt: number };
@@ -180,7 +181,15 @@ router.put('/:key', async (req, res) => {
     if (key === 'admin_password') return res.status(400).json({ error: '请使用修改密码接口' });
     const value = typeof req.body?.value === 'string' ? req.body.value : '';
     const setting = await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
-    if (key === 'bind-ip') req.app.get('io')?.emit('nic-changed', { ip: value });
+    if (key === 'bind-ip') {
+      req.app.get('io')?.emit('nic-changed', { ip: value });
+      // 探究助手的源是从 IP 拼出来的（app.set('webappOrigin')），而它被 /code/:code 读取
+      // （15 秒轮询热路径，不能为它加 DB 读）。缓存不在这里刷新的话，教师改 bind-ip 之后
+      // 所有学生都会一直拿到旧 IP，直到服务重启。
+      // 耦合说明：这里知道 webappOrigin 的形状，是因为**这里是唯一改变它的输入的地方** ——
+      // 换个地方刷新（例如让某个 GET 顺手刷新）会让读接口带上副作用。
+      await refreshWebappOrigin(req.app);
+    }
     if (key === 'lan-access') {
       const enabled = value !== 'false';
       req.app.set('lanAccessEnabled', enabled);

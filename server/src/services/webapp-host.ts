@@ -1,8 +1,10 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import type { Application } from 'express';
 import type { Server } from 'node:http';
-import { SDK_PATH } from './webapp-sdk.js';
+import { SDK_PATH, injectSdk } from './webapp-sdk.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +38,63 @@ export function webappsRoot(): string {
     ? path.join(process.env.CLASSNODE_DATA_DIR, 'webapps')
     : path.join(__dirname, '../../uploads/webapps');
   return base;
+}
+
+/**
+ * 把「/webapps 挂载点之后」的 URL 路径解析成 webappsRoot 之下的绝对路径。
+ *
+ * 返回 null 表示**必须拒绝**，调用方一律按「不存在」处理（不区分拒绝原因，避免把
+ * 「文件没有」和「被挡了」的差异透给探测者）。
+ *
+ * **为什么抽成纯函数**：路径穿越用 curl 证明是不可靠的 —— HTTP 客户端与中间层常会在
+ * 请求发出**之前**就把 '..' 折叠掉，于是「没打出穿越」既可能是被挡了、也可能是根本没发出去。
+ * 对字符串直接断言与被规范化与否无关。中间件里那份 curl 证据见测试与报告。
+ */
+export function resolveWebappFile(root: string, urlPath: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath);
+  } catch {
+    return null; // 非法百分号编码
+  }
+  if (decoded.includes('\0')) return null; // NUL 截断
+
+  const segments = decoded.split('/').filter(segment => segment.length > 0);
+
+  // 一个判断同时管两件事，因为它们判的是同一个前缀：
+  //   · '.' / '..' —— 路径穿越。**刻意不做「归一化后仍在根内就放行」的宽容处理**：
+  //     宽容会让本中间件比它下面的 express.static 更松，于是「其余路径的行为一个字
+  //     都没变」这句话就不成立了。
+  //   · 任意以 '.' 开头的段 —— dotfiles: 'deny' 的语义（.env、.git/config、.hidden/x.html）。
+  if (segments.some(segment => segment.startsWith('.'))) return null;
+
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, ...segments);
+  // 上面已经拒掉了 '..'，所以这一句在数学上不可能触发。留着是因为那条「不可能」依赖
+  // 上面的判断不被后人改动，而这里是安全边界 —— 断言比注释可靠。
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) return null;
+  return resolved;
+}
+
+/**
+ * 重新计算并缓存 webappOrigin。
+ *
+ * 只有两处调用，都是「这个值的输入刚刚变了」的那一瞬：启动时一次（index.ts），
+ * 以及 bind-ip 被改时一次（routes/settings.ts）。**刻意不让任何 GET 顺手刷新** ——
+ * 那会让读接口带上副作用。
+ *
+ * 端口从 app.get('webappPort') 读、IP 交给 app 注入的 resolveSelectedIp —— 两者都不是
+ * 本函数自己推算的，所以这里没有第二套端口/网卡逻辑。
+ * 本函数不会 reject（唯一的 I/O 是读设置，失败已兜底）。
+ */
+export async function refreshWebappOrigin(app: Application): Promise<void> {
+  const port = app.get('webappPort');
+  const resolveSelectedIp = app.get('resolveSelectedIp');
+  if (!port || typeof resolveSelectedIp !== 'function') return;
+  const prisma = app.get('prisma');
+  const setting = await prisma?.setting.findUnique({ where: { key: 'bind-ip' } }).catch(() => null);
+  // 空串表示「自动选择」，与未设置同义 —— 一并交给解析函数去走 NIC 枚举。
+  app.set('webappOrigin', `http://${resolveSelectedIp(setting?.value || null)}:${port}`);
 }
 
 export interface StartWebappHostOptions {
@@ -91,6 +150,47 @@ export async function startWebappHost(
     res.type('application/javascript');
     res.setHeader('Cache-Control', 'no-store'); // 与 HTML 同样的理由：升级后不能留旧的
     res.send(readSdkSource());
+  });
+
+  // 注入 SDK：只拦 .html，其余一律 next() 交给下面的 express.static。
+  //
+  // ⚠️ 为什么必须拦在静态之前：express.static 没有改写响应体的钩子，而 SDK 注入
+  // 必须在 `</head>` 前插一个 <script>。让静态服务先处理，响应就已经发出去了。
+  //
+  // ⚠️ 为什么只拦 .html 而不是自己实现整个静态服务：非 HTML 资源（css/js/图片/字体）
+  // 继续走 express.static，它已经验证过的行为（dotfiles:deny、路径穿越防护、缓存头）
+  // 一个字都不用重新证明。**改动面越小，要重新证明的东西越少。**
+  //
+  // 本中间件只在「路径解析成功 + 是 .html + 读得到」三个条件同时成立时才应答；
+  // 其余**全部** next() 下去 —— 这样「非 HTML 路径的行为一个字都没变」才是可证的，
+  // 而不是靠枚举。
+  app.use('/webapps', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+
+    const resolved = resolveWebappFile(opts.webappsRoot, req.path);
+    if (!resolved) return next(); // 穿越/点文件/编码非法 → 交给 static 走它原有的拒绝语义
+
+    let target = resolved;
+    try {
+      if (fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+    } catch {
+      return next(); // 不存在 → 交给 static 产出标准的 404
+    }
+    // 用后缀判断而不是 Content-Type：后者要先读文件才知道，而读文件是有代价的。
+    if (!target.toLowerCase().endsWith('.html')) return next();
+
+    let html: string;
+    try {
+      html = fs.readFileSync(target, 'utf8');
+    } catch {
+      return next();
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // HTML 必须 no-store —— 与下面 static 那侧同样的理由（CLAUDE.md 的既有硬约束）。
+    res.setHeader('Cache-Control', 'no-store');
+    // ⚠️ 本服务绝不设 X-Frame-Options：主服务 index.ts 全局设的那条 DENY 会把 iframe 封死。
+    res.send(injectSdk(html, { sdkPath: SDK_PATH }));
   });
 
   app.use(

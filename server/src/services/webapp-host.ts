@@ -82,14 +82,47 @@ function resolveCandidatePath(root: string, urlPath: string): string | null {
 }
 
 /** lstatSync 的安全包装：读不到（不存在 / 权限 / 路径过长）一律当作「不是符号链接」。 */
-function isSymlinkAt(target: string): boolean {
+/**
+ * 目标经 realpath 解析后是否落在 **webappsRoot 之外**。
+ *
+ * 这是本文件里唯一的权威包含性判定。**为什么不用 lstat / 逐段 lstat**：
+ * `lstatSync` 不跟随**最后一个**分量，但**跟随中间分量** —— 于是
+ * `<root>/dirlink/secret.html`（`dirlink` 是指向根外的目录链接）被 lstat 成一个
+ * **普通文件**，判定「不是链接」，一路放行到 `readFileSync` / `express.static`
+ * 把根外内容原样送出。实测复现过：`/webapps/dirlink/secret.html` → 200 + 泄漏。
+ * 逐段 lstat 是想把同一类推理再做一遍，仍然是在「猜路径里有没有链接」；
+ * `realpathSync` **一次性解析所有中间分量与叶子分量（含 `..`）**，判定退化成一次
+ * 前缀比较 —— 问题整个消失，而不是被逐个分量地绕。
+ *
+ * ⚠️ **两边都要 realpath**：webappsRoot 本身也可能含链接。这不是理论顾虑 ——
+ * macOS 上 `/tmp` 本身就是指向 `/private/tmp` 的链接，只解析一边会让
+ * `realRoot` = `/tmp/x/webapps` 与 `realTarget` = `/private/tmp/x/webapps/a.html`
+ * 前缀对不上，**整个目录全部误判为逃逸而 404**。
+ */
+function realpathEscapes(root: string, candidate: string): boolean {
+  let realRoot: string;
   try {
-    // ⚠️ 必须 lstatSync，不能 statSync —— 后者**跟随**链接，正是要查的东西本身
-    // （`ln -s ../OUTSIDE.html webapps/link.html` 用 statSync 看是个普通文件）。
-    return fs.lstatSync(target).isSymbolicLink();
+    realRoot = fs.realpathSync(root);
   } catch {
+    // 根都读不到 → 下游本来就会 404，不当作「逃逸」（否则会把它变成中间件应答的 404，
+    // 反而改变了「非 HTML 交给 static」的既有语义）。
     return false;
   }
+
+  let realTarget: string;
+  try {
+    realTarget = fs.realpathSync(candidate);
+  } catch {
+    // ENOENT（文件不存在，是**正常业务路径**，不是攻击）、ELOOP（链接成环）、
+    // EACCES、ENAMETOOLONG —— 一律当作「不是逃逸」，交给下游 404。
+    // ⚠️ 必须吞掉：这是请求路径上最常见的分支，抛出去就是未捕获异常。
+    // 而且打不开的路径也不可能是泄漏源 —— 泄漏的前提是「读得到根外的东西」。
+    return false;
+  }
+
+  if (realTarget === realRoot) return false;
+  // ⚠️ 必须带 path.sep：只 startsWith(realRoot) 会把 `/a/bc` 判成在 `/a/b` 之下。
+  return !realTarget.startsWith(realRoot + path.sep);
 }
 
 /**
@@ -102,33 +135,34 @@ function isSymlinkAt(target: string): boolean {
  * 请求发出**之前**就把 '..' 折叠掉，于是「没打出穿越」既可能是被挡了、也可能是根本没发出去。
  * 对字符串直接断言与被规范化与否无关。中间件里那份 curl 证据见测试与报告。
  *
- * ⚠️ **符号链接一律拒绝**（唯一一处文件系统访问，只判最终目标，不逐段 lstat 中间目录）：
- * 链接会被 statSync/readFileSync/express.static 一路跟随，把根外的内容原样送出。
+ * ⚠️ **解析结果逃出根的一律拒绝**（唯一一处文件系统访问是 realpath，见 realpathEscapes）。
+ * 逃逸的路径会被 readFileSync / express.static 一路跟随，把根外的内容原样送出。
  *
  * ⚠️ **但返回 null 本身拦不住它** —— 调用方对 null 的既有语义是 `next()` 交给
- * express.static，而 **static 会跟随符号链接**（实测 `/webapps/link.html` → 200 +
- * 正文含 OUTSIDE-LEAKED）。所以中间件必须把符号链接这一类单独摘出来**直接 404**，
- * 用下面的 `isSymlinkRequest`。只加本函数里的判断、不改中间件，等于没修。
+ * express.static，而 **static 会跟随链接**（实测 `/webapps/link.html` → 200 +
+ * 正文含 OUTSIDE-LEAKED）。所以中间件必须把「逃逸」这一类单独摘出来**直接 404**，
+ * 用下面的 `escapesWebappsRoot`。只加本函数里的判断、不改中间件，等于没修。
  */
 export function resolveWebappFile(root: string, urlPath: string): string | null {
   const resolved = resolveCandidatePath(root, urlPath);
   if (!resolved) return null;
-  if (isSymlinkAt(resolved)) return null;
+  if (realpathEscapes(root, resolved)) return null;
   return resolved;
 }
 
 /**
- * 该请求解析后是否指向一个符号链接。
+ * 该请求解析后是否逃出了 webappsRoot。
  *
  * 存在的唯一理由：`resolveWebappFile` 返回的 null 有两个语义完全不同的来源 ——
  * 「static 对这些输入有正确语义」（含 '..' 归一化后仍在根内、dotfiles: deny）与
- * 「符号链接，static 会跟随」。前者可以安全 next()，**后者必须直接 404**。
- * 中间件用本函数把后者摘出来。两层判断共用同一个 `resolveCandidatePath`，不会各写一套。
+ * 「逃出根，static 会跟随链接把根外内容送出」。前者可以安全 next()，**后者必须直接 404**。
+ * 中间件用本函数把后者摘出来。两层共用同一个 `resolveCandidatePath` 与同一个
+ * `realpathEscapes`，不会各写一套判据。
  */
-export function isSymlinkRequest(root: string, urlPath: string): boolean {
+export function escapesWebappsRoot(root: string, urlPath: string): boolean {
   const resolved = resolveCandidatePath(root, urlPath);
   if (!resolved) return false;
-  return isSymlinkAt(resolved);
+  return realpathEscapes(root, resolved);
 }
 
 export interface StartWebappHostOptions {
@@ -208,12 +242,13 @@ export async function startWebappHost(
     // ⚠️ 副作用（实测过，见 T4/T6 注意事项）：含 '..' 但归一化后仍在根内的 **.html**
     // 会由 static 原样送出，因而**绕过 SDK 注入**。学生端用规整路径即可避开，未修。
     if (!resolved) {
-      // ⚠️ **符号链接是这条分支里唯一不能 next() 的一类。** 上面那些 null 之所以能安全
-      // 交给 static，是因为 static 对它们有正确语义（归一化 / dotfiles: deny）；
-      // 但对符号链接，static 的「既有语义」就是**跟随**它 —— 实测
-      // `/webapps/link.html` 与 `/webapps/link.css` 都返回 200 且正文是根外文件的内容。
+      // ⚠️ **逃出根的那一类不能 next()。** 上面那些 null 之所以能安全交给 static，
+      // 是因为 static 对它们有正确语义（归一化 / dotfiles: deny）；但对逃出根的目标，
+      // static 的「既有语义」就是**跟随链接**把它读出来 —— 实测
+      // `/webapps/leaflink.html`（叶子链接）与 `/webapps/dirlink/secret.html`
+      // （**中间分量**是目录链接）都返回 200 且正文是根外文件的内容。
       // 所以这里直接 404，不走 fall-through。这是本中间件唯一一处自己应答 404 的地方。
-      if (isSymlinkRequest(opts.webappsRoot, req.path)) {
+      if (escapesWebappsRoot(opts.webappsRoot, req.path)) {
         res.status(404).end();
         return;
       }

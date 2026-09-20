@@ -703,7 +703,12 @@ export async function loadClassroomWebapps(
 const handleUploadError: ErrorRequestHandler = (error, _req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      res.status(400).json({ error: `单个文件不能超过 ${WEBAPP_LIMITS.maxSingleFileBytes / 1024 / 1024}MB` });
+      // ⚠️ 这里必须报 maxTotalBytes，不是 maxSingleFileBytes：multer 的 `limits.fileSize`
+      // 是**单个上传文件在磁盘上的大小**（zip 本体），上面设的就是 maxTotalBytes(80MB)。
+      // 曾经写的是 maxSingleFileBytes(25MB) —— 教师传一个 84MB 的 zip 会被告知「不能超过
+      // 25MB」，而他实际撞的是 80MB 那道闸门，数字对不上。单文件 25MB 那条限制由
+      // validateWebappUpload 在**解压后逐个文件**判（那里的文案才是 25MB），两条闸门不同。
+      res.status(400).json({ error: `上传文件不能超过 ${WEBAPP_LIMITS.maxTotalBytes / 1024 / 1024}MB` });
       return;
     }
     if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {

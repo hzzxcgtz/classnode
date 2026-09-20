@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
-  isSymlinkRequest,
+  escapesWebappsRoot,
   resolveWebappFile,
   resolveWebappPort,
   startWebappHost,
@@ -121,48 +121,104 @@ test('resolveWebappFile 拒绝非法编码与 NUL', () => {
 // 换解压实现 / 换 zip 库 / 新增一条导入路径，这个前提就静默失效。
 // 补上之后不变量从「前提是上传进不来」变成「即使有也不会被跟随」。
 
-test('resolveWebappFile 拒绝符号链接；同目录的普通文件不受影响', () => {
+test('resolveWebappFile 拒绝逃出根的链接（叶子与中间目录都算）；根内文件不受影响', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-sym-'));
-  const outside = path.join(path.dirname(root), `cn-outside-${path.basename(root)}.html`);
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-out-'));
   try {
-    fs.writeFileSync(outside, '<html>OUTSIDE-LEAKED</html>');
+    fs.writeFileSync(path.join(outsideDir, 'secret.html'), '<html>OUTSIDE-LEAKED</html>');
     fs.mkdirSync(path.join(root, 'probe'));
     // 阳性与阴性对照**同处一个目录**：这样「链接被拒」就不可能是「整个目录读不到」的副作用。
     fs.writeFileSync(path.join(root, 'probe', 'normal.html'), '<html>normal</html>');
-    fs.symlinkSync(outside, path.join(root, 'probe', 'link.html'));
+    // ① 叶子是链接
+    fs.symlinkSync(path.join(outsideDir, 'secret.html'), path.join(root, 'probe', 'link.html'));
+    // ② **中间分量**是目录链接 —— 上一轮漏掉的形状。lstat 看不到它（只不跟随最后一个分量），
+    //    所以 <root>/probe/dirlink/secret.html 会被 lstat 成普通文件而放行。
+    fs.symlinkSync(outsideDir, path.join(root, 'probe', 'dirlink'));
 
-    assert.equal(resolveWebappFile(root, '/probe/link.html'), null, '符号链接必须被拒绝');
+    assert.equal(resolveWebappFile(root, '/probe/link.html'), null, '叶子链接必须被拒绝');
+    assert.equal(
+      resolveWebappFile(root, '/probe/dirlink/secret.html'), null,
+      '中间目录是链接时也必须被拒绝（这是上一轮漏掉的形状）',
+    );
     assert.equal(resolveWebappFile(root, '/probe/normal.html'), path.join(root, 'probe', 'normal.html'));
 
-    // lstatSync 抛错（文件不存在）**不当成拒绝**：沿用本函数既有契约（返回路径，下游 404）。
+    // realpathSync 抛错（文件不存在）**不当成拒绝**：沿用本函数既有契约（返回路径，下游 404）。
+    // 「文件不存在」是正常业务路径上最常见的一种，绝不能变成未捕获异常。
     assert.equal(
       resolveWebappFile(root, '/probe/missing.html'),
       path.join(root, 'probe', 'missing.html'),
-      '不存在的文件仍按既有契约返回路径（行为与加 lstat 之前一致）',
+      '不存在的文件仍按既有契约返回路径',
     );
 
-    // 含 '..' 的一类与符号链接共用 null，但语义不同：前者能安全交给 static，后者不能。
-    // isSymlinkRequest 就是用来分开这两类的，为 false 时中间件才走 fall-through。
-    assert.equal(isSymlinkRequest(root, '/probe/link.html'), true);
-    assert.equal(isSymlinkRequest(root, '/probe/normal.html'), false);
-    assert.equal(isSymlinkRequest(root, '/probe/../normal.html'), false, '含 .. 的一类不归它管');
+    // 中间件用它区分「能安全 next() 的 null」与「必须直接 404 的 null」。
+    assert.equal(escapesWebappsRoot(root, '/probe/link.html'), true);
+    assert.equal(escapesWebappsRoot(root, '/probe/dirlink/secret.html'), true);
+    assert.equal(escapesWebappsRoot(root, '/probe/normal.html'), false);
+    assert.equal(escapesWebappsRoot(root, '/probe/../normal.html'), false, '含 .. 的一类不归它管');
+    assert.equal(escapesWebappsRoot(root, '/probe/missing.html'), false, '不存在 ⇒ 不当作逃逸');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
-    fs.rmSync(outside, { force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });
 
-test('托管服务：符号链接返回 404（含非 HTML），普通文件仍 200', async () => {
+// path.sep 那条边界：只 startsWith(realRoot) 会把 <root>-evil 判成在 <root> 之下。
+test('包含性判定必须带 path.sep（同前缀的兄弟目录不算在根内）', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-sep-'));
+  const root = path.join(base, 'root');
+  const sibling = path.join(base, 'root-evil');
+  try {
+    fs.mkdirSync(root);
+    fs.mkdirSync(sibling);
+    fs.writeFileSync(path.join(sibling, 'x.html'), '<html>SIBLING-LEAKED</html>');
+    fs.writeFileSync(path.join(root, 'x.html'), '<html>inside</html>');
+    // 从 root 里穿到同前缀的兄弟目录
+    fs.symlinkSync(path.join(sibling, 'x.html'), path.join(root, 'sib.html'));
+
+    assert.equal(
+      resolveWebappFile(root, '/sib.html'), null,
+      'root-evil 与 root 只是前缀相同，绝不是「在根内」——少了 path.sep 这里会放行',
+    );
+    assert.equal(escapesWebappsRoot(root, '/sib.html'), true);
+    assert.equal(resolveWebappFile(root, '/x.html'), path.join(root, 'x.html'), '根内文件照常');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// macOS 上 /tmp 本身就是指向 /private/tmp 的链接（os.tmpdir() 走的就是它）⇒
+// 只 realpath 一边会让 root 与 target 前缀对不上，**整个目录全部误判为逃逸而 404**。
+// 这条用真实的 os.tmpdir() 钉住「两边都要 realpath」。
+test('两边都 realpath：webappsRoot 自身含链接时不能全军覆没', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-both-'));
+  try {
+    fs.writeFileSync(path.join(root, 'index.html'), '<html>inside</html>');
+    assert.equal(
+      resolveWebappFile(root, '/index.html'), path.join(root, 'index.html'),
+      '根自身含链接时，根内的普通文件必须照常解析',
+    );
+    assert.equal(escapesWebappsRoot(root, '/index.html'), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('托管服务：逃出根的链接返回 404（叶子 / 中间目录 / 非 HTML），根内文件仍 200', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-symhttp-'));
-  const outside = path.join(path.dirname(root), `cn-outside-${path.basename(root)}.html`);
-  fs.writeFileSync(outside, '<html>OUTSIDE-LEAKED</html>');
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-outhttp-'));
+  fs.writeFileSync(path.join(outsideDir, 'secret.html'), '<html>SECRET-HTML-LEAKED</html>');
+  fs.writeFileSync(path.join(outsideDir, 'secret.css'), 'SECRET-CSS-LEAKED');
   fs.mkdirSync(path.join(root, 'probe'));
+  fs.mkdirSync(path.join(root, 'normaldir'));
   fs.writeFileSync(path.join(root, 'probe', 'normal.html'), '<html><head></head><body>normal</body></html>');
   fs.writeFileSync(path.join(root, 'probe', 'normal.css'), 'body{color:red}');
-  fs.symlinkSync(outside, path.join(root, 'probe', 'link.html'));
-  // ⚠️ 非 HTML 的链接**必须一起测**：中间件只拦 .html，非 HTML 会 next() 落到
-  // express.static，而 static 会跟随链接。只测 .html 会漏掉这一整类。
-  fs.symlinkSync(outside, path.join(root, 'probe', 'link.css'));
+  fs.writeFileSync(path.join(root, 'normaldir', 'page.html'), '<html><head></head><body>page</body></html>');
+  // ① 叶子是链接
+  fs.symlinkSync(path.join(outsideDir, 'secret.html'), path.join(root, 'probe', 'link.html'));
+  // ② 非 HTML 的叶子链接：中间件只拦 .html，非 HTML 会 next() 落到 express.static
+  fs.symlinkSync(path.join(outsideDir, 'secret.css'), path.join(root, 'probe', 'link.css'));
+  // ③ **中间分量**是目录链接 —— 审查者实测出的绕过形状，也是上一轮唯一漏掉的那一种
+  fs.symlinkSync(outsideDir, path.join(root, 'dirlink'));
 
   const server = await startWebappHost({
     port: 0,
@@ -184,25 +240,34 @@ test('托管服务：符号链接返回 404（含非 HTML），普通文件仍 2
   });
 
   try {
-    // 阳性对照：链接必须 404，且正文里绝不能出现根外内容
-    const linkedHtml = await get('/webapps/probe/link.html');
-    assert.equal(linkedHtml.status, 404, '符号链接 .html 必须被拒');
-    assert.equal(linkedHtml.body.includes('OUTSIDE-LEAKED'), false, '绝不能泄漏根外内容');
-    const linkedCss = await get('/webapps/probe/link.css');
-    assert.equal(linkedCss.status, 404, '符号链接 .css 必须被拒（它走的是 express.static）');
-    assert.equal(linkedCss.body.includes('OUTSIDE-LEAKED'), false);
+    // 阳性对照①②：叶子链接必须 404，正文绝不能出现根外内容
+    for (const p of ['/webapps/probe/link.html', '/webapps/probe/link.css']) {
+      const r = await get(p);
+      assert.equal(r.status, 404, `${p} 必须被拒`);
+      assert.equal(r.body.includes('LEAKED'), false, `${p} 绝不能泄漏根外内容`);
+    }
+    // 阳性对照③：中间目录是链接（这一组就是审查者打出来的绕过）
+    for (const p of ['/webapps/dirlink/secret.html', '/webapps/dirlink/secret.css']) {
+      const r = await get(p);
+      assert.equal(r.status, 404, `${p}（中间分量是目录链接）必须被拒`);
+      assert.equal(r.body.includes('LEAKED'), false, `${p} 绝不能泄漏根外内容`);
+    }
 
-    // 阴性对照：同一目录里的普通文件必须照常服务 —— 否则上面两条可能只是「目录服务坏了」
+    // 阴性对照：根内的普通文件与**普通子目录**必须照常服务 ——
+    // 否则上面那些 404 可能只是「整个目录服务被弄坏了」，区分不了闸门生效与服务损坏。
     const normalHtml = await get('/webapps/probe/normal.html');
     assert.equal(normalHtml.status, 200);
     assert.equal(normalHtml.body.includes('normal'), true);
     const normalCss = await get('/webapps/probe/normal.css');
     assert.equal(normalCss.status, 200);
     assert.equal(normalCss.body, 'body{color:red}');
+    const normalDir = await get('/webapps/normaldir/page.html');
+    assert.equal(normalDir.status, 200, '普通子目录必须照常服务');
+    assert.equal(normalDir.body.includes('page'), true);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     fs.rmSync(root, { recursive: true, force: true });
-    fs.rmSync(outside, { force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });
 

@@ -394,9 +394,17 @@ git commit -m "feat(server): 新增课堂模块三态设置端点与双发广播
 ## Task 4: 学生端初始三态下发 + 事件类型
 
 **Files:**
-- Modify: `server/src/routes/classroom.ts`（`GET /code/:code` 的返回对象）
+- Modify: `server/src/routes/classroom.ts`（**两个**读端点）
 - Modify: `src/lib/socket-events.ts`（新增事件类型，顺带修掉过时的 `joined` 声明）
-- Test: `server/src/tests/classroom-module-state-route.test.ts`（追加一个用例）或独立文件
+- Test: `server/src/tests/classroom-module-state-route.test.ts`（**追加**到既有文件，不要重建 —— 它是 Task 3 创建的）
+
+> **⚠️ 本节范围在 Task 3 执行后扩大过（实施者发现的缺口）。** 原计划只改学生的 `GET /code/:code`，但**教师端看板走的是另一条路径**：`src/app/teacher/classroom/page.tsx:331` 调 `api.getClassroom(id)` → **`GET /api/classroom/:id`**（`server/src/routes/classroom.ts:413`）。两个读端点都要带上 `modules`，否则教师端刷新后读不到三态（Task 5 的 UI 依赖它）。**在 Task 3 之前，整个功能是只写的** —— 没有任何端点能读回模块状态。
+
+**两个端点都要改：**
+1. `GET /code/:code`（学生，约 `classroom.ts:521-570`）—— 已被学生端 15 秒轮询兜底
+2. `GET /:id`（教师，`classroom.ts:413`）—— 教师看板 `loadClassroom` 用
+
+**两条路径必须共用同一个补齐函数**（用 `MODULE_KEYS` 遍历 + `DEFAULT_MODULE_STATE` 兜底），不要在两个地方各写一遍补齐逻辑 —— 否则老课堂兼容会在其中一条上漏掉。
 
 **Interfaces:**
 - Consumes: Task 2 的 `MODULE_KEYS` / `DEFAULT_MODULE_STATE`
@@ -459,15 +467,25 @@ git commit -m "feat(classroom): 学生端初始三态下发与事件类型"
 
 ---
 
-## Task 5: 教师端三态控制 UI
+## Task 5: 前端接线 —— 教师端控制 UI + 学生端订阅
+
+> **⚠️ 本节范围在 Task 4 执行后扩大过（实施者发现的两处缺口）。** 原计划只做教师端 UI，但：
+>
+> **缺口 A（会直接卡住本任务）**：`src/lib/types.ts` 的 `StudentClassroom` / `ClassroomDetail` **都没有 `modules` 字段**，而 `src/lib/api.ts:138/141` 用它们定型 —— 不补类型，读 `res.modules` 会直接 TS 报错。
+>
+> **缺口 B（产品预期）**：**学生端不监听 `module-state-changed`**，只靠 15 秒轮询。教师改态后学生端最坏延迟 15 秒，而设计文档 §4.4 要求**实时**。同样地，**教师端**也需要监听回显（多端教师看一致状态）。
+>
+> 所以本任务同时覆盖**写侧（教师）与读侧（学生 + 教师）**的接线。
 
 **Files:**
+- Modify: `src/lib/types.ts`（补 `modules` 字段 —— **缺口 A，先做**）
 - Modify: `src/app/teacher/classroom/page.tsx`（课堂看板）
 - Modify: `src/lib/api.ts`（新增 API 方法）
+- Modify: 学生端接收 `module-state-changed` 的位置（**缺口 B**）—— 按 M1b-2 的规划，`classroom` 状态归外壳 `use-classroom-session.ts` 持有；**但那个 hook 在 M1b-2 才存在**。本任务先在既有位置订阅（学生端当前的 `use-chat-socket.ts` 或 `chat-panel.tsx`），并**在报告中明确标注这处订阅在 M1b-2 应迁往外壳**。
 
 **Interfaces:**
-- Consumes: Task 3 的端点、Task 4 的事件类型
-- Produces: 教师端可实时切换三个模块的态；教师端监听 `module-state-changed` 回显
+- Consumes: Task 3 的端点、Task 4 的事件类型与两个读路径
+- Produces: 教师端可实时切换三个模块的态；教师端与学生端**都**监听 `module-state-changed` 更新本地态
 
 **UI 落点**：照既有「课堂权限」下拉菜单（`src/app/teacher/classroom/page.tsx:877-891`）。它是三个布尔开关；新增的是一组**三选一**，形态不同，建议**单独一个下拉菜单**或在该菜单里加一个分组，**不要混进布尔开关列表**。
 

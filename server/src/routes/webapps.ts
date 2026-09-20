@@ -117,12 +117,27 @@ export function validateWebappUpload(
   if (htmlFiles.length === 0) {
     return { ok: false, reason: '压缩包/所选文件中必须包含入口 HTML（如 index.html）' };
   }
+  // 教师显式指定的一律优先，压过下面的 index.html 启发式。
   if (entryHint) {
     const hit = files.find(f => f.path === entryHint);
     if (!hit) return { ok: false, reason: `指定的入口文件不存在：${entryHint}` };
     return { ok: true, entry: hit.path };
   }
-  return { ok: true, entry: htmlFiles[0].path };
+  // **优先挑 index.html**，找不到才退回「第一个 .html」。
+  //
+  // 为什么不能只用「第一个」：ZIP 路径下「第一个」是 `walkTree` 的 readdir 顺序
+  // （约等于字典序），而不是任何人的选择。规格 §5.2 那句「首个 .html 作入口」的语境是
+  // **教师多选文件时的勾选顺序**，搬到 ZIP 上就失去了原意 —— 一个再常规不过的站点
+  // （about.html / contact.html / index.html）会被判成 `about.html`，学生打开看到的是
+  // 「关于」页而不是首页。那是「上传成功但打不开**对的那个首页**」。
+  //
+  // 只在「没有显式 entryHint」时生效，且**找不到 index.html 时行为与从前逐字一致**
+  // （仍退回 htmlFiles[0]）—— 没有 index.html 的包不能被判成「没有入口」。
+  const indexFile = htmlFiles.find(f => {
+    const base = (f.path.replace(/\\/g, '/').split('/').pop() ?? '').toLowerCase();
+    return base === 'index.html' || base === 'index.htm';
+  });
+  return { ok: true, entry: (indexFile ?? htmlFiles[0]).path };
 }
 
 // ── 磁盘路径 ────────────────────────────────────────────────────────

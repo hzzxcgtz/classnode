@@ -82,6 +82,57 @@ test('大小写不敏感（.HTML 也是入口）', () => {
   assert.deepEqual(validateWebappUpload([f('INDEX.HTML')]), { ok: true, entry: 'INDEX.HTML' });
 });
 
+// ── 入口启发式：优先 index.html（裁定 9）──────────────────────────────
+// 「第一个 .html」在 ZIP 路径上其实是「字母序第一个」，而常规站点天然有多个 .html。
+
+test('多个 HTML 时优先挑 index.html，而不是字典序第一个', () => {
+  // 常规站点：字典序 about < contact < index，旧行为会判成 about.html ⇒ 学生看到「关于」页
+  assert.deepEqual(
+    validateWebappUpload([f('about.html'), f('contact.html'), f('index.html')]),
+    { ok: true, entry: 'index.html' },
+  );
+  // 大小写不敏感，与既有 .HTML 的处理一致
+  assert.deepEqual(
+    validateWebappUpload([f('about.html'), f('INDEX.HTML')]),
+    { ok: true, entry: 'INDEX.HTML' },
+  );
+  // .htm 同属入口后缀
+  assert.deepEqual(
+    validateWebappUpload([f('about.html'), f('index.htm')]),
+    { ok: true, entry: 'index.htm' },
+  );
+  // 子目录里的 index.html 同样认得（提升没发生时它还在深层）
+  assert.deepEqual(
+    validateWebappUpload([f('site/about.html'), f('site/index.html')]),
+    { ok: true, entry: 'site/index.html' },
+  );
+});
+
+// ⚠️ 阴性对照：**不能**因为新规则把「没有 index.html 的包」判成没有入口。
+test('没有 index.html 时仍退回第一个 .html（阴性对照）', () => {
+  assert.deepEqual(
+    validateWebappUpload([f('about.html')]),
+    { ok: true, entry: 'about.html' },
+  );
+  assert.deepEqual(
+    validateWebappUpload([f('about.html'), f('contact.html')]),
+    { ok: true, entry: 'about.html' },
+  );
+  // 名字里含 index 但不是 index.html，不算入口
+  assert.deepEqual(
+    validateWebappUpload([f('index-old.html'), f('about.html')]),
+    { ok: true, entry: 'index-old.html' },
+  );
+});
+
+// entryHint 是教师显式指定的，必须压过 index.html 启发式。
+test('entryHint 指定的入口优先于 index.html', () => {
+  assert.deepEqual(
+    validateWebappUpload([f('about.html'), f('index.html')], 'about.html'),
+    { ok: true, entry: 'about.html' },
+  );
+});
+
 // 上限值必须集中在一处导出，否则 T7 的教师端提示会和服务端各写一个数字。
 test('WEBAPP_LIMITS 是可导入的常量', () => {
   assert.equal(WEBAPP_LIMITS.maxFiles, 500);

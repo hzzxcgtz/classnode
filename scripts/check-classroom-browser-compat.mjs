@@ -4,14 +4,64 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// ===========================================================================
+// Part A：产物级 —— 正则后行断言（lookbehind）
+// ===========================================================================
+// 为什么必须扫**产物**而不是源码：后行断言可能从**依赖**进到学生包里，
+// 源码扫描根本看不见它。这道检查自 M0 起工作至今、零误报，是
+// 「/classroom/ 不得有 lookbehind」这条 P0 红线的唯一自动化闸门。
+//
+// ⚠️ 本函数内的判据、六个标记、scriptPaths 的抠法、out/ 路径拼接、
+//    「文件不存在」失败分支，均为原样恢复，**请勿改动**。相对原脚本的
+//    唯一机械改动：结尾的 throw / console.log 换成 return，交给下方统一汇总。
+function checkBundleLookbehinds() {
+  const classroomHtmlPath = path.join(root, 'out', 'classroom', 'index.html');
+
+  if (!fs.existsSync(classroomHtmlPath)) {
+    throw new Error(`缺少学生端构建产物: ${classroomHtmlPath}`);
+  }
+
+  const html = fs.readFileSync(classroomHtmlPath, 'utf8');
+  const scriptPaths = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((source) => source.startsWith('/'));
+
+  const unsupportedLookbehinds = ['/(?<=', '/(?<!', 'RegExp("(?<=', 'RegExp("(?<!', "RegExp('(?<=", "RegExp('(?<!"];
+  const failures = [];
+
+  for (const source of scriptPaths) {
+    const filePath = path.join(root, 'out', source);
+    if (!fs.existsSync(filePath)) {
+      failures.push(`${source}: 文件不存在`);
+      continue;
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    const pattern = unsupportedLookbehinds.find((candidate) => content.includes(candidate));
+    if (pattern) failures.push(`${source}: 包含 Safari 15 不支持的正则后行断言 ${pattern}`);
+  }
+
+  return { failures, scriptCount: scriptPaths.length };
+}
+
+// ===========================================================================
+// Part B：源码级 —— Safari 15 不支持的语言/选择器标记
+// ===========================================================================
+// 为什么扫源码而不是产物：产物里会命中 Next runtime 垫片与 vendor chunk
+//（实测 Object.hasOwn 3 处、.at( 1 处、structuredClone 1 处），开发者修不了
+//  ⇒ 闸门永久红 ⇒ 没人再看它。源码级每个命中都可归因、可修。
+
 // ---- 1. 剥注释 ----------------------------------------------------------
 // 必须剥，否则 home.module.css / shell.module.css 的「硬约束」注释本身
 // 就逐字写着这些标记，脚本会被自己的注释绊倒（实测）。
+//
+// 只剥**块注释**与**行首** `//`，刻意不剥行尾 `//`：行尾注释的判定要区分
+// 字符串字面量里的 `//`（如 `"a//b"`、`'https://…'`）与真注释，正则做不到
+// 无歧义。放弃它，最坏情况从**漏报**（静默放走后面的真违规）变成**误报**
+//（吵闹、可见、可修）——静默的洞比吵闹的失败糟。
 function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')   // 块注释（CSS + JS）
-    .replace(/^[ \t]*\/\/.*$/gm, '')    // 行注释（JS/TS）
-    .replace(/(^|[^:])\/\/.*$/gm, '$1'); // 行尾注释（避免吃掉 https://）
+    .replace(/^[ \t]*\/\/.*$/gm, '');   // 行首行注释（JS/TS）
 }
 
 // ---- 2. 标记表 ----------------------------------------------------------
@@ -44,8 +94,10 @@ const ALLOWED = {
 };
 
 // ---- 3. 扫描目标 --------------------------------------------------------
-// 源码级：每个命中都可归因、可修。产物级会命中 Next runtime 与 vendor chunk。
-const SCAN_ROOTS = ['src/app/classroom', 'src/lib', 'src/app/globals.css'];
+// src/app/layout.tsx：/classroom/ 继承根 layout，在可达范围内，必须纳入。
+// 刻意**不**整个加 src/app —— 教师端页面有不同的兼容约束，纳进来只会引入
+// 无关误报。新增学生端可达目录时，记得同步这里。
+const SCAN_ROOTS = ['src/app/classroom', 'src/lib', 'src/app/globals.css', 'src/app/layout.tsx'];
 const EXTS = ['.ts', '.tsx', '.css', '.mjs'];
 
 function walk(target, out = []) {
@@ -61,42 +113,61 @@ function walk(target, out = []) {
   return out;
 }
 
-const failures = [];
-const files = SCAN_ROOTS.flatMap((r) => walk(r));
+function checkSourceTokens() {
+  const failures = [];
+  const files = SCAN_ROOTS.flatMap((r) => walk(r));
 
-for (const rel of files) {
-  const raw = fs.readFileSync(path.join(root, rel), 'utf8');
-  const source = stripComments(raw);
-  const lines = source.split('\n');
+  for (const rel of files) {
+    const raw = fs.readFileSync(path.join(root, rel), 'utf8');
+    const source = stripComments(raw);
+    const lines = source.split('\n');
 
-  for (const token of HARD_TOKENS) {
-    const hit = lines.findIndex((line) => line.includes(token));
-    if (hit !== -1) {
-      failures.push(`${rel}:${hit + 1}: Safari 15 不支持 ${token}`);
+    for (const token of HARD_TOKENS) {
+      const hit = lines.findIndex((line) => line.includes(token));
+      if (hit !== -1) {
+        failures.push(`${rel}:${hit + 1}: Safari 15 不支持 ${token}`);
+      }
+    }
+
+    for (const [token, budget] of Object.entries(ALLOWED[rel] ?? {})) {
+      const count = lines.filter((line) => line.includes(token)).length;
+      if (count > budget) {
+        failures.push(
+          `${rel}: ${token} 出现 ${count} 行，超出豁免额度 ${budget} 行。` +
+          `\n  该文件对该标记的既有用法是有意的降级（见 Ruling 5），但**不得新增**。`,
+        );
+      }
     }
   }
 
-  for (const [token, budget] of Object.entries(ALLOWED[rel] ?? {})) {
-    const count = lines.filter((line) => line.includes(token)).length;
-    if (count > budget) {
-      failures.push(
-        `${rel}: ${token} 出现 ${count} 行，超出豁免额度 ${budget} 行。` +
-        `\n  该文件对该标记的既有用法是有意的降级（见 Ruling 5），但**不得新增**。`,
-      );
-    }
+  // 反向检查：豁免表里点名的文件必须还在，否则豁免表在悄悄腐烂
+  for (const rel of Object.keys(ALLOWED)) {
+    if (!files.includes(rel)) failures.push(`豁免表引用了不存在的文件: ${rel}`);
   }
+
+  return { failures, fileCount: files.length };
 }
 
-// 反向检查：豁免表里点名的文件必须还在，否则豁免表在悄悄腐烂
-for (const rel of Object.keys(ALLOWED)) {
-  if (!files.includes(rel)) failures.push(`豁免表引用了不存在的文件: ${rel}`);
-}
+// ===========================================================================
+// 汇总：两道检查各跑各的，一次把两边的失败都报出来
+// ===========================================================================
+const bundle = checkBundleLookbehinds();
+const source = checkSourceTokens();
 
-if (failures.length > 0) {
-  throw new Error(`学生端浏览器兼容性检查失败:\n${failures.join('\n')}`);
+const sections = [
+  ['产物级 lookbehind（扫 out/）', bundle.failures],
+  ['源码级 Safari 15 标记（扫 src/）', source.failures],
+].filter(([, list]) => list.length > 0);
+
+if (sections.length > 0) {
+  const body = sections
+    .map(([title, list]) => `\n【${title}】\n${list.join('\n')}`)
+    .join('\n');
+  throw new Error(`学生端浏览器兼容性检查失败:${body}`);
 }
 
 console.log(
-  `[browser-compat] 源码 ${files.length} 个文件通过 Safari 15 检查` +
+  `[browser-compat] 产物 ${bundle.scriptCount} 个脚本（lookbehind）` +
+  ` + 源码 ${source.fileCount} 个文件通过 Safari 15 检查` +
   `（豁免 ${Object.keys(ALLOWED).length} 个文件的既有降级用法）`,
 );

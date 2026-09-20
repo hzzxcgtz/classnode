@@ -1,4 +1,4 @@
-import type { AgentSummary } from '@/lib/types';
+import type { AgentSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 
 export type ChatAgent = Pick<AgentSummary, 'name' | 'logo'> | null | undefined;
 export type StudentChatMessage = {
@@ -48,3 +48,26 @@ export type SpeechRecognitionWindow = Window & {
   SpeechRecognition?: BrowserSpeechRecognitionConstructor;
   webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
 };
+
+/** 外壳持有的课堂信息。M1a 先用 StudentClassroom 的别名，M1b 需要时再收窄。 */
+export type ClassroomInfo = StudentClassroom;
+
+/** 外壳持有的学生身份。 */
+export type StudentSession = ClassroomStudentSummary;
+
+/** 学伴模块面板的契约。M1b 会在此基础上加 active / state 两个字段。 */
+export interface ChatPanelProps {
+  code: string;
+  classroom: ClassroomInfo | null;
+  selectedStudent: StudentSession | null;
+  avatarSvgs: Record<number, string>;
+  avatarTokenCount: number;
+  teacherMsgs: { message: string; time: string }[];
+  setClassroom: (value: ClassroomInfo | null) => void;
+  setAvatarTokenCount: (value: number) => void;
+  setTeacherMsgs: (value: { message: string; time: string }[]) => void;
+  /** 会话失效（student-auth-error）—— 外壳负责清会话并回到身份选择。 */
+  onSessionInvalid: () => void;
+  /** 课堂结束 —— 外壳负责收尾与导航。 */
+  onClassroomEnded: () => void;
+}

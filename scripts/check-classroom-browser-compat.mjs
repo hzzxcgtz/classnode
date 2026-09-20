@@ -12,9 +12,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 「/classroom/ 不得有 lookbehind」这条 P0 红线的唯一自动化闸门。
 //
 // 本函数内的判据、六个标记、scriptPaths 的抠法、out/ 路径拼接、
-//「文件不存在」失败分支，均自原脚本沿用；后续只做了两处受控改动：
+//「文件不存在」失败分支，均自原脚本沿用；后续的受控改动如下
+//（刻意不写「几处」——写数字必然过期）：
 //   1. 扫描集合从「index.html 引用的脚本」扩为下面 (1)+(2)+(3) 之并集；
-//   2. 命中时先查容忍表 TOLERATED_PRODUCT_FINDINGS（见该表注释）。
+//   2. 命中时先查容忍表 TOLERATED_PRODUCT_FINDINGS，且按**命中级**粒度判定（见该表注释）；
+//   3. 被排除的 teacher/help 路径改走「边界提示」——只提示、不失败（见 boundaryHits）。
 function checkBundleLookbehinds() {
   const classroomHtmlPath = path.join(root, 'out', 'classroom', 'index.html');
 
@@ -92,6 +94,19 @@ function checkBundleLookbehinds() {
   const failures = [];
   const toleratedHits = [];
 
+  // 数一份产物里**全部**后行断言标记的命中数（剥注释后）。
+  // 容忍条目的 toleratedMarkerHits 就是拿这个口径比的 —— 见该表注释：
+  // 签名命中只说明「docx 在里面」，不说明「里面只有 docx」。
+  function countLookbehindMarkers(source) {
+    const breakdown = unsupportedLookbehinds
+      .map((marker) => ({ marker, count: source.split(marker).length - 1 }))
+      .filter((entry) => entry.count > 0);
+    return {
+      total: breakdown.reduce((sum, entry) => sum + entry.count, 0),
+      breakdown: breakdown.map((entry) => `${entry.marker}×${entry.count}`).join(', '),
+    };
+  }
+
   for (const source of scriptPaths) {
     const filePath = path.join(root, 'out', source);
     if (!fs.existsSync(filePath)) {
@@ -104,8 +119,20 @@ function checkBundleLookbehinds() {
 
     // 容忍表按**内容签名**匹配，且**必须先剥注释**（产物里也有注释）。
     // 只对产物级生效 —— 源码级不查 lookbehind，也无容忍概念。
-    const matched = TOLERATED_PRODUCT_FINDINGS.find((t) => stripComments(content).includes(t.signature));
+    const stripped = stripComments(content);
+    const matched = TOLERATED_PRODUCT_FINDINGS.find((t) => stripped.includes(t.signature));
     if (matched) {
+      const { total, breakdown } = countLookbehindMarkers(stripped);
+      if (total > matched.toleratedMarkerHits) {
+        failures.push(
+          `${source}: 后行断言命中 ${total} 处（${breakdown}），超出该文件容忍的 ` +
+          `${matched.toleratedMarkerHits} 处。\n` +
+          `  已知并接受的那条是 ${matched.signature}（docx 的 {{ }} 扫描器）；` +
+          `**多出来的那些是新的**，不在容忍范围内。\n` +
+          `  webpack 的 splitChunks 分组每次构建都可能变 —— 常见原因是第二个库被并进了本文件。`,
+        );
+        continue;
+      }
       toleratedHits.push({ source, signature: matched.signature, reason: matched.reason });
       continue;
     }
@@ -131,9 +158,14 @@ function checkBundleLookbehinds() {
 // ===========================================================================
 // Part B：源码级 —— Safari 15 不支持的语言/选择器标记
 // ===========================================================================
-// 为什么扫源码而不是产物：产物里会命中 Next runtime 垫片与 vendor chunk
-//（实测 Object.hasOwn 3 处、.at( 1 处、structuredClone 1 处），开发者修不了
-//  ⇒ 闸门永久红 ⇒ 没人再看它。源码级每个命中都可归因、可修。
+// 为什么扫源码而不是产物：产物里会命中 Next runtime 垫片与 vendor chunk，
+// 开发者修不了 ⇒ 闸门永久红 ⇒ 没人再看它。源码级每个命中都可归因、可修。
+//
+// ⚠️ 这里刻意**不写**命中的具体数字。它随依赖版本、分包结果、扫描口径每次都变，
+//    写进来必然过期（上一版写的「3 / 1 / 1」在首屏 10 脚本口径与全 chunks/ 口径下
+//    都复现不出来）。要看实际命中，跑这条可复现的命令（口径：顶层 chunks/ 的 .js）：
+//        grep -c "Object.hasOwn" out/_next/static/chunks/*.js
+//    本项目通则：任何「实测」后面必须跟着可复现的口径。
 
 // ---- 1. 剥注释 ----------------------------------------------------------
 // 必须剥，否则 home.module.css / shell.module.css 的「硬约束」注释本身
@@ -157,6 +189,12 @@ function stripComments(source) {
  * 判据按**内容签名**而不是文件名 —— 产物文件名带内容哈希，每次构建都变，
  * 按文件名豁免会静默腐烂。
  *
+ * ⚠️ 判定粒度是**命中级**，不是文件级：签名命中**不等于**整份文件被跳过，
+ * 还要数该文件里**全部**后行断言标记的命中总数，超过 toleratedMarkerHits 即失败。
+ * 文件级粒度有一个真实的静默漏洞：webpack 的 splitChunks 分组**每次构建都可能变**，
+ * 若有第二个库被并进同一个 chunk，它的 lookbehind 会连同 docx 那条一起被签名放行 ——
+ * 而「未命中警告」也不会响（签名仍然匹配）⇒ 那条新违规**完全静默**。
+ *
  * 签名失配（例如依赖升级后代码变了）时本表不再生效 ⇒ 构建重新变红 ⇒ 有人来看。
  * 这是有意的自愈设计：豁免必须有失效路径。
  *
@@ -168,6 +206,17 @@ function stripComments(source) {
 const TOLERATED_PRODUCT_FINDINGS = [
   {
     signature: 'RegExp("(?<=\\\\{\\\\{)',
+    /**
+     * 该文件里**允许存在**的后行断言标记命中总数。
+     * ⚠️ 这个数字是这条豁免的**边界**，不是装饰：webpack 的 splitChunks 分组每次
+     * 构建都可能变，若有第二个库被并进本文件，它的 lookbehind 会连同 docx 的一起
+     * 被签名放行 —— 那时这个计数会超，构建变红，有人来看。
+     * 只按签名匹配（不数总数）时，那条新违规是完全静默的。
+     *
+     * 口径：剥注释后，六个 unsupportedLookbehinds 标记在本文件里的出现次数之和。
+     * 当前实测为 1（只有 docx 那一条 `RegExp("(?<=\{\{)`）。
+     */
+    toleratedMarkerHits: 1,
     reason:
       'docx 库的 {{ }} 占位符扫描器（webpack chunk 840，由学生端 message-item.tsx:46 ' +
       '的 await import("@/lib/export-doc") 拉取）。经审查确认它不在 export-doc.ts 实际 ' +
@@ -193,8 +242,16 @@ const HARD_TOKENS = [
   // `.at(` 单独一条，因为它最容易被误伤（`format(` 不含 `.at(`，但 `foo.at(` 是真命中）
   '.at(',
   // 两处 CSS 注释的「不用」清单里都写了 `color-mix()`，但此前闸门里没有它 ——
-  // 注释声称了闸门没有的东西。全仓 `color-mix` 只出现在
-  // src/app/teacher/about/about.module.css（教师端，不在扫描根内），加入后零命中。
+  // 注释声称了闸门没有的东西。
+  //
+  // 「加入后零命中」成立的真正原因是**剥注释**，不是「学生端没在用」：
+  // `color-mix` 实际上**也在扫描根内**——
+  //   src/app/classroom/home/home.module.css:4
+  //   src/app/classroom/shell/shell.module.css:4
+  // 只不过那两处都在**块注释**里，被 stripComments 剥掉了。
+  // ⇒ 这条标记与那两行注释是**耦合**的：剥注释一旦失效，红的是注释而不是代码。
+  //   （全仓唯一的**非注释**用法在教师端 src/app/teacher/about/about.module.css:196，
+  //     不在扫描根内。）
   'color-mix(',
 ];
 
@@ -318,9 +375,12 @@ if (unmatchedEntries.length > 0) {
 }
 
 // 边界提示：只提示，绝不进 failures。见上面的「排除 ≠ 不看」。
+// 必须打印**标记**，不能只打印文件名 —— 这条提示是将来打包事故的唯一信号，
+// 看不到是哪条正则在作祟就没有诊断力（失败分支是会打印标记的，这里对齐）。
 for (const hit of bundle.boundaryHits) {
   console.warn(
     `⚠️  [browser-compat] 边界提示（不在约束范围内，仅提示、不失败）: ${hit.source}\n` +
+    `⚠️    命中标记 ${hit.pattern}\n` +
     `⚠️    该路径属于教师端 / help 路由，本闸门不覆盖，因此**无法判断**它是否算违规。\n` +
     `⚠️    若这里出现了学生端可达的代码，说明打包把学生端组件发到了教师端路由下 —— 请人工确认。`,
   );

@@ -340,6 +340,43 @@ M1a 为「切换身份时复位」留了**两套不互相覆盖的机制**：外
 
 ---
 
+### 4.11 M1b-1 交付后的追加清单（2026-09-20 补充）
+
+M1b-1（课堂模块三态：后端 + 教师端 + 双端实时）已完成并合入 `main`。终审在 M1b-2 之前又挖出以下事项。
+
+#### A. 一条必须先裁定的产品决策
+
+**`DEFAULT_MODULE_STATE = 'preview'` + 老课堂零行 ⇒ 升级后所有既有课堂的三个模块全部锁定。** 技术上自洽（新旧课堂行为一致），但**升级当天，一堂原本能用的课，学生突然进不去智能学伴**——直到教师发现「模块状态」菜单。
+
+M1b-2 渲染首页前必须三选一：(1) 接受 + 加教师可见提示；(2) 读路径把「零行」对 `companion` 视为 `open`；(3) 建课堂时预置三行。**裁定结果须写回 §4.4**。
+
+#### B. 七条 M1b-2 雷区（终审新增，§4.10 未覆盖）
+
+1. **15 秒轮询丢弃 `modules`，而它是唯一的兜底。** §4.10 C1 已要求把轮询搬进外壳——**把「并合并 `cr.modules`」并入那一项**，不要当成两件事。M1b-1 已在 `use-chat-socket.ts` 的 `connect` 回调加了补读（覆盖「连接成立前」与「断线期间」两个窗口），但**「连接存活期间漏掉一次广播」仍无兜底**，因为轮询不看 `modules`。
+2. **`handleIdentityConfirm` 从不刷新 `classroom`**（`use-classroom-session.ts:129-173`）。今天不可见（无人读 `modules`）；首页一旦渲染它，**在教师改态之后才选身份的学生会看到页面加载时的旧态**。
+3. **外壳必须是单页，不能给 tab 独立路由。** `useClassroomSession` 在 `page.tsx:50` 无条件调用（在 `step` early-return 之前），所以在 `step === 'chat'` 分支内部加首页与三个 tab **不会**卸载 socket 或课堂状态。一旦某个 tab 有自己的路由，页面会重挂、`restoreSessionFromUrl` 重跑、`loadClassroom` + `createStudentSession` + `startChatSession` 全部重发。
+4. **模块从 `open` 变为非 `open` 时必须能强制切换视图**，而设计没有规定「正在流式回复时被隐藏」该怎么办——服务端**不会**中断（`activeStreams` 是 per-socket 的，`PUT` 只发事件）。§4.4 说「提示 + 送回首页，不丢已作答内容」；外壳须从 `classroom.modules[active] !== 'open'` 推导，并**显式决定流式中隐藏是否停掉生成**。
+5. **教师端的全局 socket 从不离开 `teacher:<旧课堂>`。** `src/lib/socket.ts:8` 是模块级单例，`join-teacher-board` 只 join 不 leave。**打开课堂 X 的看板再导航到 Y 的看板，Y 会收到 X 的 `module-state-changed`**（payload 里没有 `classroomId`），并把它应用到 Y 上——表现为**单选按钮选错**。这是既有系统性漏洞，但**这是第一个会显示错误「值」而非错误「开关」的功能**。
+6. **从 `MODULE_KEYS` 渲染，不要从 `classroom.modules` 的位置渲染。** 数组今天恒定三项只是因为服务端补齐了；`applyModuleState` 在键缺失时会追加，而 `StudentClassroom.modules` 声明为必需字段。按下标映射会把 tab 顺序耦合到合并顺序。
+7. **不要在 M1b-2 里把学生侧订阅搬进外壳。** M1b-1 已论证它属于 `use-chat-socket.ts`（socket 的唯一创建者、三条同族权限订阅的邻居）；搬进外壳会反转 §4.10 B 的划分。
+
+#### C. 遗留的延迟 Minor（不阻塞，供 M1b-2 顺手处理）
+
+- **教师端两个下拉菜单可同时打开**（`teacher/classroom/page.tsx` 的「课堂权限」与「模块状态」是两个独立布尔 + 同一 `z-index`，重叠约 260px）。建议合成一个 `openMenu: 'permissions' | 'modules' | null`。
+- **同一个模块在 RTT 窗口内被他人广播改态、而本次 PUT 失败时**，回滚会写回点击前的值而非那条更新的广播值。任何后续写入都会自愈。
+- **`POST /api/export/reset` 不清 `ClassroomModule`**（`export.ts:817-821` 的列表里没有它——`ClassroomGroupMember` 与 `TeacherNotification` 同样缺席，属既有遗漏）。
+- **`api.request` 在任何 401 上派发 `classnode-teacher-session-expired`**。目前无害（只有 `teacher/layout.tsx` 监听，且学生侧调的是公开白名单端点），但学生侧若将来调用教师门控端点会是个陷阱。
+- **`server/dist/tests/socket-participant-message.test.js` 是孤儿产物**（源文件已删除），`tsc` 不清理已删源文件的输出，它给每次测试运行多算 1 个。建议 `build:server` 前 `rm -rf dist`。
+- **前后端各有一份三态词汇表**（`src/lib/classroom-modules.ts` vs `server/src/services/classroom-module-state.ts`），结构上不可避免（前端无法 import `server/src`），已在三处注释标注。M1b-2 改动任一份前，建议加一个 10 行的漂移守卫（提取两侧字面量比对）。
+
+#### D. 一条来自终审的流程观察
+
+M1b-1 过程中出现了**三次「散文声称了代码没提供的机制」**：`classroom.ts:542` 声称 15 秒轮询兜底三态（实际轮询丢弃了 `modules`）、`socket-events.ts` 的 `joined` 声明与服务端不符、`index.ts` 注释声称 DDL 块有独立守卫（实际前面的语句抛错就跳过它）。**三次全部由审查者读代码发现**——`tsc`、53 项测试、构建、以及浏览器验收全都没抓到。
+
+**教训**：注释既不被编译、也不被测试、不被运行时检查，却恰恰是下一个人最先信任的东西。凡在注释里描述机制，必须有人去读代码核对。
+
+---
+
 ## 5. P2：探究助手
 
 ### 5.1 源隔离方案

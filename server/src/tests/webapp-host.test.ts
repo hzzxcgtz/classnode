@@ -6,10 +6,10 @@ import path from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
-  refreshWebappOrigin,
   resolveWebappFile,
   resolveWebappPort,
   startWebappHost,
+  webappsRoot,
 } from '../services/webapp-host.js';
 import { SDK_PATH, injectSdk } from '../services/webapp-sdk.js';
 
@@ -65,9 +65,42 @@ test('resolveWebappFile 拒绝路径穿越（含编码变形）', () => {
   }
 });
 
-test('resolveWebappFile 拒绝「归一化后仍在根内」的 .. —— 不比 express.static 更松', () => {
-  // express.static 对含 '..' 的路径直接拒。若这里放行，非 HTML 路径的行为就变了。
+test('resolveWebappFile 一律拒绝含 .. 的路径，不论归一化后是否仍在根内', () => {
+  // 这是本函数自己的契约，别把它读成「中间件比 express.static 更严」——
+  // 端到端上这些请求会 next() 落到 static，static 是**归一化**处理的
+  // （实测：/webapps/probe/../CLAMP.html 在 CLAMP.html 存在时返回 200）。
+  // 见下面集成测试里那条 fall-through 断言。
   assert.equal(resolveWebappFile(ROOT, '/probe/../other/index.html'), null);
+});
+
+// ── webappsRoot：必须与 uploads 平级（规格 §5.2）────────────────────────
+// 嵌进 uploads 的话，主服务把整个 uploadsDir 挂在 /uploads 上，教师上传的 HTML
+// 就会在**应用自己的源**（有教师 session 与全部 /api）上可达 —— 正是 sandbox 要隔开的东西。
+// 这条是判别式的：它断言的是位置关系，不是「函数能跑」。
+
+test('webappsRoot 与 uploads 平级，绝不在 uploads 之内', () => {
+  const root = webappsRoot();
+  assert.equal(path.basename(root), 'webapps');
+  assert.notEqual(
+    path.basename(path.dirname(root)), 'uploads',
+    `webappsRoot 的父目录不能是 uploads：${root}`,
+  );
+  assert.equal(
+    root.includes(`${path.sep}uploads${path.sep}`), false,
+    `webappsRoot 路径里不能出现 /uploads/ 这一段：${root}`,
+  );
+});
+
+test('webappsRoot 在 CLASSNODE_DATA_DIR 下时同样与 uploads 平级', () => {
+  const saved = process.env.CLASSNODE_DATA_DIR;
+  process.env.CLASSNODE_DATA_DIR = path.resolve('/tmp/cn-data-dir');
+  try {
+    assert.equal(webappsRoot(), path.join(path.resolve('/tmp/cn-data-dir'), 'webapps'));
+    assert.equal(webappsRoot().includes(`${path.sep}uploads${path.sep}`), false);
+  } finally {
+    if (saved === undefined) delete process.env.CLASSNODE_DATA_DIR;
+    else process.env.CLASSNODE_DATA_DIR = saved;
+  }
 });
 
 test('resolveWebappFile 拒绝点文件（dotfiles: deny 语义）', () => {
@@ -81,60 +114,6 @@ test('resolveWebappFile 拒绝非法编码与 NUL', () => {
   assert.equal(resolveWebappFile(ROOT, '/probe/index.html%00.png'), null);
 });
 
-// ── refreshWebappOrigin：bind-ip 变更时的刷新（裁定 3）─────────────────────
-// 本机只有一块网卡，端到端改 bind-ip 时源字符串**不会变**，所以「有没有真的重算」
-// 在黑盒上不可判别。这里用一个受控的假 app + 假解析函数，让「传进去的是 bindIp 还是
-// null」变成可观测的 —— 这正是「不要只用 value」的要害。
-
-function fakeApp(initial: Record<string, unknown>) {
-  const store = new Map<string, unknown>(Object.entries(initial));
-  return {
-    get: (key: string) => store.get(key),
-    set: (key: string, value: unknown) => { store.set(key, value); },
-    store,
-  };
-}
-
-test('refreshWebappOrigin 用 app 注入的端口与解析函数重算，不自己推算', async () => {
-  const app = fakeApp({
-    webappPort: 4002,
-    // 把「自动选择」与「指定 IP」区分开，从而看出实参是 bindIp 还是 null
-    resolveSelectedIp: (bindIp: string | null) => (bindIp ? bindIp : '10.0.0.9'),
-    prisma: { setting: { findUnique: async () => ({ value: '192.168.1.5' }) } },
-  });
-
-  await refreshWebappOrigin(app as never);
-  assert.equal(app.store.get('webappOrigin'), 'http://192.168.1.5:4002');
-});
-
-test('refreshWebappOrigin 把空串当成「自动选择」，不得拼出 http://:4002', async () => {
-  const app = fakeApp({
-    webappPort: 4002,
-    resolveSelectedIp: (bindIp: string | null) => (bindIp ? bindIp : '10.0.0.9'),
-    prisma: { setting: { findUnique: async () => ({ value: '' }) } },
-  });
-
-  await refreshWebappOrigin(app as never);
-  assert.equal(app.store.get('webappOrigin'), 'http://10.0.0.9:4002');
-});
-
-test('refreshWebappOrigin 在设置读失败时按「未设置」处理且不抛', async () => {
-  const app = fakeApp({
-    webappPort: 3002,
-    resolveSelectedIp: (bindIp: string | null) => (bindIp ? bindIp : '10.0.0.9'),
-    prisma: { setting: { findUnique: async () => { throw new Error('db down'); } } },
-  });
-
-  await refreshWebappOrigin(app as never);
-  assert.equal(app.store.get('webappOrigin'), 'http://10.0.0.9:3002');
-});
-
-test('refreshWebappOrigin 在依赖缺失时安全返回（不写坏缓存、不抛）', async () => {
-  const app = fakeApp({ prisma: { setting: { findUnique: async () => null } } });
-  await refreshWebappOrigin(app as never); // 无 webappPort
-  assert.equal(app.store.get('webappOrigin'), undefined);
-});
-
 // ── 集成：真起一个托管服务，走真实 HTTP ────────────────────────────────
 // port 0 = 让内核分配空闲端口，避免测试之间抢端口。
 
@@ -145,7 +124,10 @@ test('托管服务：HTML 经 injectSdk，非 HTML 不经手，边界一律拒�
   fs.mkdirSync(path.join(root, '.hidden'));
   fs.writeFileSync(path.join(root, 'probe', 'index.html'), sourceHtml);
   fs.writeFileSync(path.join(root, 'probe', 'probe.css'), 'body{color:red}');
+  fs.writeFileSync(path.join(root, 'probe', 'clip.mp4'), 'not-really-mp4');
   fs.writeFileSync(path.join(root, '.hidden', 'x.html'), '<html>secret</html>');
+  // 归一化后仍在**根内**，用来钉住「含 .. 的路径会 fall-through 给 static」这一事实
+  fs.writeFileSync(path.join(root, 'CLAMP.html'), '<html><head></head><body>clamp</body></html>');
   // 放在 root 的**同级**，用来验证穿越确实够不到它
   fs.writeFileSync(path.join(path.dirname(root), 'cn-outside-probe.html'), '<html>outside</html>');
 
@@ -192,6 +174,23 @@ test('托管服务：HTML 经 injectSdk，非 HTML 不经手，边界一律拒�
     assert.equal(css.body, 'body{color:red}');
     assert.equal(css.headers['accept-ranges'], 'bytes');
     assert.equal(css.headers['x-frame-options'], undefined);
+    // no-store 只该落在 HTML 上：媒体按 uuid 目录寻址，重传即换 uuid，缓存是安全的。
+    // 对所有文件一律 no-store 会让老 iPad 每次刷新全量重下。
+    assert.notEqual(css.headers['cache-control'], 'no-store', '非 HTML 不应带 no-store');
+    const mp4 = await get('/webapps/probe/clip.mp4');
+    assert.equal(mp4.status, 200);
+    assert.notEqual(mp4.headers['cache-control'], 'no-store', '媒体不应带 no-store');
+
+    // 2b) fall-through 的**判别式**证据：同一份 CLAMP.html，两条路径回答者不同。
+    //     规整路径 → 中间件（无 Accept-Ranges，且经 injectSdk）
+    //     含 '..' 路径 → next() 落到 express.static（有 Accept-Ranges，**绕过 injectSdk**）
+    //     这正是「含 '..' 的 .html 不会被注入」的实际后果，钉住它以免将来又被误读。
+    const clamped = await get('/webapps/CLAMP.html');
+    assert.equal(clamped.status, 200);
+    assert.equal(clamped.headers['accept-ranges'], undefined, '规整路径应由中间件应答');
+    const fallThrough = await get('/webapps/probe/../CLAMP.html');
+    assert.equal(fallThrough.status, 200, '归一化后仍在根内 → static 照常送出（与加中间件之前一致）');
+    assert.equal(fallThrough.headers['accept-ranges'], 'bytes', '含 .. 的路径由 static 应答 → 绕过注入');
 
     // 3) 边界
     assert.equal((await get('/webapps/probe/../cn-outside-probe.html')).status, 404, '穿越必须被拒');

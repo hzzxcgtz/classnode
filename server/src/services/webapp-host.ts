@@ -2,7 +2,6 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import type { Application } from 'express';
 import type { Server } from 'node:http';
 import { SDK_PATH, injectSdk } from './webapp-sdk.js';
 
@@ -27,16 +26,21 @@ export function resolveWebappPort(serverPort: number): number {
 }
 
 /**
- * 托管网页的根目录。
+ * 托管网页的根目录。两个分支都必须是 **uploads 的兄弟目录**，不是它的子目录（规格 §5.2）。
  *
- * 与 uploads 平级（规格 §5.2）。注意 routes 层与 services 层的兜底深度不同：
- * 编译产物在 server/dist/services/，所以 '../..' 才是 server/。**照抄本函数的兜底，
- * 不要照抄 routes/upload.ts:16 的 '../../uploads'**（那是从 dist/routes/ 往上两级）。
+ * ⚠️ **兜底分支绝不能写成 `uploads/webapps`。** 主服务把整个 uploadsDir 挂在 `/uploads`
+ * 上（index.ts，无白名单），嵌进 uploads 就等于把教师上传的任意 HTML 也暴露在**应用自己的
+ * 源**上 —— 那个源里有教师 session 和全部 `/api`，正是 sandbox 要隔开的东西。
+ * 实测过：`/uploads/webapps/x/index.html` 与托管源的同一文件同字节返回 200。
+ *
+ * 注意 routes 层与 services 层的兜底深度不同：编译产物在 server/dist/services/，
+ * 所以 '../..' 才是 server/。**照抄本函数的兜底，不要照抄 routes/upload.ts 的
+ * '../../uploads'**（那是从 dist/routes/ 往上两级）。
  */
 export function webappsRoot(): string {
   const base = process.env.CLASSNODE_DATA_DIR
     ? path.join(process.env.CLASSNODE_DATA_DIR, 'webapps')
-    : path.join(__dirname, '../../uploads/webapps');
+    : path.join(__dirname, '../../webapps');
   return base;
 }
 
@@ -62,10 +66,14 @@ export function resolveWebappFile(root: string, urlPath: string): string | null 
   const segments = decoded.split('/').filter(segment => segment.length > 0);
 
   // 一个判断同时管两件事，因为它们判的是同一个前缀：
-  //   · '.' / '..' —— 路径穿越。**刻意不做「归一化后仍在根内就放行」的宽容处理**：
-  //     宽容会让本中间件比它下面的 express.static 更松，于是「其余路径的行为一个字
-  //     都没变」这句话就不成立了。
+  //   · '.' / '..' —— 本函数一律拒绝，不论归一化后是否仍在根内。
   //   · 任意以 '.' 开头的段 —— dotfiles: 'deny' 的语义（.env、.git/config、.hidden/x.html）。
+  //
+  // ⚠️ **这里拒掉 '..' 并不会让本中间件比它下面的 express.static 更严**（实测过）：
+  // 这类请求会 next() 落到 express.static，而 static 是**归一化**处理的 ——
+  // 归一化后仍在根内的路径它照常送出（`root/CLAMP.html` 存在时，
+  // `/webapps/probe/../CLAMP.html` 返回 200），只有**逃出根**的才 404。
+  // 也就是说：本中间件实际应答的路径**从不含 '..'**，含 '..' 的一律沿用旧行为。
   if (segments.some(segment => segment.startsWith('.'))) return null;
 
   const resolvedRoot = path.resolve(root);
@@ -74,27 +82,6 @@ export function resolveWebappFile(root: string, urlPath: string): string | null 
   // 上面的判断不被后人改动，而这里是安全边界 —— 断言比注释可靠。
   if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) return null;
   return resolved;
-}
-
-/**
- * 重新计算并缓存 webappOrigin。
- *
- * 只有两处调用，都是「这个值的输入刚刚变了」的那一瞬：启动时一次（index.ts），
- * 以及 bind-ip 被改时一次（routes/settings.ts）。**刻意不让任何 GET 顺手刷新** ——
- * 那会让读接口带上副作用。
- *
- * 端口从 app.get('webappPort') 读、IP 交给 app 注入的 resolveSelectedIp —— 两者都不是
- * 本函数自己推算的，所以这里没有第二套端口/网卡逻辑。
- * 本函数不会 reject（唯一的 I/O 是读设置，失败已兜底）。
- */
-export async function refreshWebappOrigin(app: Application): Promise<void> {
-  const port = app.get('webappPort');
-  const resolveSelectedIp = app.get('resolveSelectedIp');
-  if (!port || typeof resolveSelectedIp !== 'function') return;
-  const prisma = app.get('prisma');
-  const setting = await prisma?.setting.findUnique({ where: { key: 'bind-ip' } }).catch(() => null);
-  // 空串表示「自动选择」，与未设置同义 —— 一并交给解析函数去走 NIC 枚举。
-  app.set('webappOrigin', `http://${resolveSelectedIp(setting?.value || null)}:${port}`);
 }
 
 export interface StartWebappHostOptions {
@@ -168,7 +155,12 @@ export async function startWebappHost(
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
 
     const resolved = resolveWebappFile(opts.webappsRoot, req.path);
-    if (!resolved) return next(); // 穿越/点文件/编码非法 → 交给 static 走它原有的拒绝语义
+    // 解析失败（含 '..' / 点文件 / 编码非法）一律 next() 交给 express.static，
+    // **不在这里自己 404**。理由是「其余路径的行为一个字都没变」：
+    // static 对这些输入有它自己的既有语义（归一化后送出、或 404），照搬它比另立一套安全。
+    // ⚠️ 副作用（实测过，见 T4/T6 注意事项）：含 '..' 但归一化后仍在根内的 **.html**
+    // 会由 static 原样送出，因而**绕过 SDK 注入**。学生端用规整路径即可避开，未修。
+    if (!resolved) return next();
 
     let target = resolved;
     try {
@@ -199,10 +191,12 @@ export async function startWebappHost(
       index: ['index.html'],
       redirect: false,
       dotfiles: 'deny',
-      setHeaders: (res) => {
-        // 关键：静态 HTML 必须 no-store（CLAUDE.md 的既有约束）。托管网页与主前端
-        // 是同一类东西 —— 升级后浏览器留着旧 HTML 会去请求已删的 JS chunk。
-        res.setHeader('Cache-Control', 'no-store');
+      setHeaders: (res, filePath) => {
+        // 只有 HTML 必须 no-store（CLAUDE.md 的既有约束）：托管网页与主前端是同一类
+        // 东西 —— 升级后浏览器留着旧 HTML 会去请求已删的 JS chunk。
+        // ⚠️ **只对 .html 设**：媒体（mp4/mp3/webp）按 uuid 目录寻址，教师重传即换 uuid，
+        // 缓存是安全的；对所有文件一律 no-store 会让老 iPad 每次刷新都全量重下。
+        if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-store');
       },
     }),
   );

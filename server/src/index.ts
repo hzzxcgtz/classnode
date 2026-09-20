@@ -29,7 +29,7 @@ import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
-import { refreshWebappOrigin, resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
+import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,17 +95,13 @@ async function main() {
   const lanAccessSetting = await prisma.setting.findUnique({ where: { key: 'lan-access' } }).catch(() => null);
   app.set('lanAccessEnabled', lanAccessSetting?.value !== 'false');
 
-  // 探究助手托管服务的端口。**只在这里算一次** —— 路由层一律经 app.get('webappOrigin')
-  // 取值，不得自行重算一遍（与 prisma / io / lanAccessEnabled 同一套注入方式）。
+  // 探究助手托管服务的端口。**只在这里算一次**，路由层经 app.get('webappPort') 取值
+  // （与 prisma / io / lanAccessEnabled 同一套注入方式）。
+  // 下发的是端口而不是拼好的 URL：客户端本来就知道自己是从哪个 IP 进来的
+  // （location.hostname），自己拼永远正确、也不存在缓存陈旧。教师端的 /api/server-info
+  // 另给完整 URL —— 那里是每请求实算的。
   const webappPort = resolveWebappPort(port);
   app.set('webappPort', webappPort);
-  // 「选中哪个 IP」与 /api/server-info 共用同一套兜底（pickSelectedIp）。注入进 app 让
-  // webapp-host 在 bind-ip 变更时复用，避免出现第二套 NIC 枚举。
-  app.set('resolveSelectedIp', (bindIp: string | null) => pickSelectedIp(getLocalIPAddresses(), bindIp));
-  // webappOrigin 全项目**只有 refreshWebappOrigin 一处构造**：启动时这一次，以及 bind-ip
-  // 被改时那一次（routes/settings.ts）。app.set 必须在 listen 之前完成，否则路由会拿到
-  // undefined；这里 await 是为了保证 listen 时缓存已经就位。
-  await refreshWebappOrigin(app);
 
   const isLoopbackAddress = (address?: string) => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
   app.use((req, res, next) => {
@@ -368,12 +364,14 @@ async function main() {
   // Get server info
   app.get('/api/server-info', requireTeacher, async (req, res) => {
     const interfaces = getLocalIPAddresses();
-    let bindIp: string | null = null;
+    let selectedIp = '';
     try {
       const setting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } });
-      if (setting) bindIp = setting.value;
+      if (setting) selectedIp = setting.value;
     } catch {}
-    const selectedIp = pickSelectedIp(interfaces, bindIp);
+    if (!selectedIp || !interfaces.some(i => i.ip === selectedIp)) {
+      selectedIp = interfaces.length > 0 ? interfaces[0].ip : "localhost";
+    }
     const defaultFrontendPort = process.env.NODE_ENV === 'development' ? '4000' : String(port);
     const fePort = parseInt(process.env.FRONTEND_PORT || defaultFrontendPort, 10);
     const studentUrl = `http://${selectedIp}:${fePort}/classroom`;
@@ -422,28 +420,17 @@ async function main() {
   const shutdown = async (signal: string) => {
     console.log(`[server] Received ${signal}, shutting down gracefully...`);
     httpServer.close();
-    // 两个监听都在同一个进程里（Ruling 1），所以只关主 server 会留下一个还在
-    // 接连接的 webapp 端口，进程也就无法真正退出。null 表示它本就没起来。
+    // 与 httpServer.close() 对称：两个监听同进程（Ruling 1），退出路径上把第二个监听
+    // 也显式停掉，不再接收新连接。
+    // ⚠️ 这一行**不是必需的**：紧接着的 process.exit(0) 无论如何都会终止进程并释放端口。
+    // 留着是为了保持「先停止接客、再断 DB、最后退出」这个顺序完整。
+    // null 表示该服务因端口相同或 EADDRINUSE 没起来。
     webappServer?.close();
     await prisma.$disconnect();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
-}
-
-/**
- * 「选中的局域网 IP」的唯一兜底实现。
- *
- * 设置里的 bind-ip 优先，但它可能指向一块已经拔掉的网卡，所以还要在网卡列表里验一次；
- * 验不过就回落到第一块网卡，一块都没有（纯离线机器）才用 localhost。
- *
- * 抽成函数是因为 /api/server-info 与「启动时算 webappOrigin」两处要用同一套兜底 ——
- * 两处各自抄一份的话，教师看到的学生端地址与探究助手地址会在换网时不一致。
- */
-function pickSelectedIp(interfaces: { ip: string }[], bindIp: string | null): string {
-  if (bindIp && interfaces.some(i => i.ip === bindIp)) return bindIp;
-  return interfaces.length > 0 ? interfaces[0].ip : 'localhost';
 }
 
 function friendlyName(name: string): string {

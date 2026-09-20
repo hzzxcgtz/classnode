@@ -572,10 +572,11 @@ router.get('/code/:code', async (req, res) => {
       status: classroom.status,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
-      // 探究助手托管服务的源。学生端拿它拼 iframe 的 src —— 它必须与父页面**跨源**，
-      // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，
-      // 这里只读不算（与 prisma / io 同一套注入方式）。
-      webappOrigin: req.app.get('webappOrigin') as string | undefined,
+      // 探究助手托管服务的**端口**（不是拼好的 URL）。学生端用
+      // `http://${location.hostname}:${webappPort}` 自己拼 —— 它本来就知道自己是从哪个
+      // IP 进来的，所以永远正确、无缓存、不会陈旧。托管源必须与父页面**跨源**，
+      // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
+      webappPort: req.app.get('webappPort') as number | undefined,
       modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,

@@ -7,8 +7,11 @@
  * ── 分层模型（三件套共享一个舞台）────────────────────────────────────────────
  *   .shell  整页容器；高度由内容决定（首页可能比视口高）
  *   .bar    固定在视口顶端的导航栏（首页入口 + 模块 Tab）
- *   .stage  舞台：所有面板层叠在这里，同一时刻只有一层可见
- *   .layer  一层（首页 / 一个模块）：绝对定位铺满舞台，非活动层 visibility:hidden
+ *   .stage  舞台：所有面板层叠在这里，同一时刻只有一层可交互
+ *   .layer  一层（首页 / 一个模块）：绝对定位铺满舞台，静置的非前台层 visibility:hidden
+ *
+ * 切换时（§4.6）两层**同时可见**、横向错开滑动，动画结束后离场层才不可见 ——
+ * 四条入场/离场动画在文件下半部分，隐藏态写在离场动画的终点，不在层自身。
  *
  * 为什么栏用 `position: fixed` 而不是在流内：学伴面板是**整屏 100vh** 的组件
  * （见 chat.module.css 的 .chatShell），在流内的栏会把它顶出视口下缘、把底部输入区推走。
@@ -51,10 +54,44 @@
   box-shadow: 0 6px 18px rgba(71, 85, 105, 0.06);
 }
 
+/* `position: relative` 是给指示器滑块做的坐标系：滑块的 left 由 `offsetLeft` 量出来，
+   而 `offsetLeft` 是相对**定位祖先**（offsetParent）的 —— 没有这一行，量的会是整个视口。 */
 .tabs {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* ── Tab 指示器滑块（§4.6：随选中项平移）──
+   为什么是**半透明药丸**而不是实心色块：实心块上的文字必须白色才看得清，而颜色不在本任务
+   允许动画的两种属性里 —— 滑块用 240ms 慢慢挪，新选中 Tab 的文字却要当场变白，那 240ms 里
+   它就是白底白字。换成「模块色 16% 的淡药丸 + 模块色文字」之后，任意时刻文字都是模块色落在
+   浅底上，颜色全程不用动，动的只有滑块的位置（translateX）与显隐（opacity）。
+
+   位置与宽度都是**量出来的**（Tab 宽度随文案与视口变化，写死必然漂移）：宽度直接写在行内
+   样式上、**不参与过渡**（width 是布局属性，动画它就跑出了 transform/opacity 的纪律）；
+   它在相邻 Tab 之间的差值只有几个像素，肉眼只看见平移。 */
+.tabIndicator {
+  position: absolute;
+  top: 8px; /* (栏高 52px - 按钮高 36px) / 2 */
+  left: 0;
+  height: 36px;
+  border-radius: 999px;
+  opacity: 0; /* 行内样式给 0 / 1；这里是首页在前台、或还没量过时的初值 */
+  pointer-events: none;
+  transition: transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 150ms ease;
+}
+
+/* 色只用到这里（`::after` 的 16%）。整块药丸的 opacity 专门留给显隐，两者相乘 ——
+   与 home.module.css 的 `.card::before` 同一手法：不该动画的那部分剥进伪元素。 */
+.tabIndicator::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--tab-accent, #64748b);
+  opacity: 0.16;
 }
 
 .home,
@@ -77,17 +114,25 @@
   cursor: pointer;
 }
 
-/* 首页入口：常驻最左。选中态用中性色（它不属于任何一个模块，不该抢模块的身份色）。 */
+/* 文字/图标要画在滑块**之上**（滑块是绝对定位的兄弟节点，默认会盖住流内内容）。 */
+.tab {
+  position: relative;
+  z-index: 1;
+}
+
+/* 首页入口：常驻最左。选中态用中性色（它不属于任何一个模块，不该抢模块的身份色）——
+   与模块 Tab 的「淡色药丸 + 模块色文字」是同一套语言，只是它自己带着底色。 */
 .homeActive {
   color: #4338ca;
   background: #eef2ff;
 }
 
 /* 模块 Tab：静置灰、选中用**模块自己的身份色**（§4.6：学生在卡片上认到的颜色，
-   进到模块里还是同一个颜色）。 */
+   进到模块里还是同一个颜色）。底色由滑块给，这里只负责文字颜色 —— 文字颜色是**瞬间**
+   生效的（颜色不能动画），所以它必须在滑块到达之前就已经可读：模块色落在浅色栏底上。 */
 .tabActive {
-  color: #fff;
-  background: var(--tab-accent);
+  color: var(--tab-accent);
+  background: transparent;
 }
 
 /* 预告态（preview）：可见但灰掉（§4.4）。虚线边与更淡的文字让它一眼区别于「可进」。 */
@@ -97,7 +142,11 @@
   padding: 0 11px; /* 补掉虚线边框占的 1px，锁定前后不跳动 */
 }
 
-/* 悬停只改颜色，不改布局；「抬起」用 transform（受限允许的两种属性之一）。 */
+/* 悬停只改颜色，不改布局；「抬起」用 transform（受限允许的两种属性之一）。
+
+   ⚠️ 顺序不是随意的：`.tab:hover` 与 `.tabActive:hover` 特异性相同(0,2,0) ——
+   靠**源码顺序**取胜。所以选中态那条必须留在 `.tab:hover` **之后**，否则鼠标停在选中的
+   Tab 上时 `.tab:hover` 的灰底会盖住滑块（按钮的背景画在滑块之上）。 */
 .home:hover {
   color: #4338ca;
   background: #eef2ff;
@@ -109,8 +158,8 @@
 }
 
 .tabActive:hover {
-  color: #fff;
-  background: var(--tab-accent);
+  color: var(--tab-accent);
+  background: transparent;
 }
 
 .tabLocked:hover {
@@ -130,15 +179,27 @@
 
 /* ───────────────────────── 舞台与层 ───────────────────────── */
 
+/* 舞台。`overflow: hidden` 是**动画期**需要的：入场层从 `translateX(100%)` 起步、
+   离场层可能滑到 `translateX(100%)`，而 transform 造成的溢出不会被 `visibility` 或
+   层自己的 `overflow` 拦住 —— 不夹住它，整页在动画那 240ms 里会长出横向滚动区
+   （iPad 上就是能左右拖出去一屏）。夹在舞台上而不是 `body` 上：只有这里会溢出，
+   动全局的 overflow 是另一个量级的改动。舞台上没有 `position: fixed` 的直接后代
+   （五个浮层已在 Task 2 portal 到 body），所以这一行不会重新锚定任何东西。 */
 .stage {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
-/* 一层：铺满舞台。非活动层**留在 DOM 里**，只是隐藏（§4.5 惰性挂载 + 永不卸载）。
+/* 一层：铺满舞台。非前台层**留在 DOM 里**，只是隐藏（§4.5 惰性挂载 + 永不卸载）。
    `overflow: hidden` 是刻意的：每一层自己管自己的滚动（主页层滚动、面板层内部滚动），
-   层本身不外溢，否则隐藏层的溢出内容会把舞台撑高。 */
+   层本身不外溢，否则隐藏层的溢出内容会把舞台撑高。
+
+   `z-index` 也是刻意的（哪怕只在动画期用得上）：§4.6 的两层共存会让两层的子树进入同一个
+   层叠上下文比较，而学伴面板自带 20/30/100/9999/99999 五个层级 —— 没有 z-index 的话，
+   离场层里那些浮层会盖上入场层。给了 z-index 之后每层自成一个层叠上下文。取值 1/2 低于
+   Tab 栏的 60、更低于各浮层的 100+：Task 2 portal 化之后「栏 < 浮层」的关系原样不变。 */
 .layer {
   position: absolute;
   top: 0;
@@ -147,12 +208,62 @@
   left: 0;
   overflow: hidden;
   visibility: hidden;
+  z-index: 1;
 }
 
-/* 活动层。与 .layer 特异性相同(0,1,0) —— 靠**源码顺序**取胜，所以这条必须留在 .layer 之后。 */
-.layerVisible {
+/* 前台层：可见、且在离场层之上。与 .layer 特异性相同(0,1,0) —— 靠**源码顺序**取胜，
+   所以这条必须留在 .layer 之后。 */
+.layerFront {
   visibility: visible;
+  z-index: 2;
 }
+
+/* ─────────────────── 切换动画（§4.6：translateX + opacity）───────────────────
+   两条与「只用 transform / opacity」同等重要的规矩：
+
+   ① **`visibility:hidden` 只出现在离场动画的终点。** §4.10 C2：`visibility:hidden` 下的
+      元素不可聚焦、`focus()` 静默 no-op，学伴面板在 `active` 上升沿的程序化聚焦会因此
+      永不弹键盘。所以入场层拿的是 `.layerFront`（`visibility: visible`，普通声明），
+      隐藏则写在 `@keyframes` 的 `to` 里、由 `animation-fill-mode: forwards` 保持 ——
+      「动画结束后才隐藏」不是靠 JS 掐时间，而是动画自己的语义，不可能写反。
+      万一动画没跑起来（浏览器不支持 / 被降级掉），`.layer` 的 `visibility:hidden` 兜底：
+      离场层当场消失（少一段动效），也绝不会出现「两层同时可交互」。
+
+   ② **时长只有这一份。** 外壳的 JS（classroom-shell.tsx）不去猜动画何时结束，而是从离场层
+      的计算样式里读 `animation-duration` 再定时 —— 改这里的 240ms，那边跟着变；
+      `prefers-reduced-motion` 下本文件把动画整个关掉（`animation: none`，见文件末尾），
+      计算值随之落到 ≈0（本项目 globals.css 另有一条全局降级把时长压成 0.01ms），
+      外壳于是立刻视为就位 —— 与 §4.7 要求的「降级为直接切换」是同一个机制，
+      不需要第二条降级路径。 */
+
+@keyframes shellEnterRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes shellEnterLeft {
+  from { transform: translateX(-30%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes shellExitLeft {
+  from { transform: translateX(0); opacity: 1; visibility: visible; }
+  to { transform: translateX(-30%); opacity: 0; visibility: hidden; }
+}
+
+@keyframes shellExitRight {
+  from { transform: translateX(0); opacity: 1; visibility: visible; }
+  to { transform: translateX(100%); opacity: 0; visibility: hidden; }
+}
+
+/* 入场：前进（位次变大）自右入、后退自左入。退场跟着镜像 —— 前进时旧层向左退出，
+   后退时旧层向右退出，于是「走过的距离」与方向一致（推入式，不是交叉淡入淡出）。
+   退场那两层额外关掉指针事件：它在动画期仍然可见（§4.6 要求两层面共存），但学生的手指
+   已经不在它上面了 —— 不关的话，紧接着的第二次点击可能落在一个正在滑走的按钮上。 */
+.enterRight { animation: shellEnterRight 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.enterLeft { animation: shellEnterLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.exitLeft { animation: shellExitLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
+.exitRight { animation: shellExitRight 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
 
 /* 首页层：内容自带 min-height:100%，这里给它「层内滚动 + 让开固定栏」。
    （栏是 fixed 的，不占流内空间，所以这 52px 的上内边距就是它的位置。） */
@@ -167,10 +278,6 @@
 .moduleLayer {
   overflow: hidden;
 }
-
-/* Task 7（切换动画）挂在这里：动画期两层面共存，结束后才给离场层加 visibility:hidden，
-   且**只有离场层**能带 visibility —— 入场层若在过渡期仍是 hidden，回来时键盘永远弹不出来
-   （§4.10 C2、计划里 Task 7 的验收断言）。 */
 
 /* ───────────────────────── 占位面板（Ruling 2）───────────────────────── */
 
@@ -224,7 +331,26 @@
 
 /* ───────────────────────── 无障碍与降级 ───────────────────────── */
 
+/* 本文件里**所有**会动的东西都必须在这里被关掉，一条不漏：
+   · 四条层切换动画（`.enterRight` / `.enterLeft` / `.exitLeft` / `.exitRight`）
+   · 指示器滑块的过渡（`.tabIndicator`）
+   · 两处按下反馈（`.home:active` / `.tab:active`）
+   `animation: none` 之后离场层落回 `.layer` 自身的 `visibility:hidden`、入场层落回
+   `.layerFront` 的 `visibility:visible` —— 也就是「直接切换」。外壳从计算样式里读到的
+   `animation-duration` 也一并归零（globals.css 的全局降级规则把它压成 0.01ms），它那边的
+   「动画结束」判定同一刻成立，不用第二套降级。 */
 @media (prefers-reduced-motion: reduce) {
+  .enterRight,
+  .enterLeft,
+  .exitLeft,
+  .exitRight {
+    animation: none;
+  }
+
+  .tabIndicator {
+    transition: none;
+  }
+
   .home:active,
   .tab:active {
     transform: none;

@@ -442,7 +442,10 @@ export function StudentChatContent({
   // 尺寸，容器的 ResizeObserver 不会触发，`updateMarkers` 也不会因 `messages` 未变而重跑。
   // 于是「最后一次测量发生在面板被平移的时刻」会让标记条整体偏掉一整个位移量。
   // 这里在 active 上升沿补测一次，保证学生能看见标记条时它一定是当前视口下的正确位置。
-  // （今天 active 恒为 true，本 effect 等价于挂载时多测一次，与既有那条 rAF 同形，无害。）
+  // Task 7 的选择是**让这条补测成为唯一的测量时机**：外壳不在滑动途中翻 active，而是等层上的
+  // 离场动画真的结束（`animationend` 的等价物：外壳从离场层的计算样式读时长再定时）才翻真。
+  // 于是这次 rAF 量到的容器必然在 `translateX(0)` 上 —— 不需要在动画容器这一侧再挂
+  // transitionend 监听，也不会出现「标记条先量错、动画结束时再跳一下」的可见抖动。
   useEffect(() => {
     if (!active) return;
     const frame = requestAnimationFrame(() => updateMarkers());
@@ -452,6 +455,9 @@ export function StudentChatContent({
   // 聚焦输入框的两条路径（M1b-2 Task 1 合并成一条，两者都必须在「可见」时才做）：
   //   ① AI 回答完成（waitingAI 由 true 变 false）：答完了把焦点还给学生；
   //   ② 模块由不可见变为可见（active 上升沿）：等价于基线的「进入聊天即聚焦」。
+  // Task 7：外壳把「可见」定义成「在前台**且已滑到位**」，所以 ② 实际发生在切换动画结束后的
+  // 那一帧 —— 键盘不会在面板还在平移时弹出来，而入场层全程是 `visibility:visible`（隐藏态只
+  // 加在离场层、且只在动画终点），所以这里的 `focus()` 不会撞上 §4.10 C2 的静默 no-op。
   // 原来的 <textarea autoFocus> 已删除：常驻面板下它只在首次挂载时生效，而模块隐藏时
   // （尤其 §4.6 动画期的 opacity/transform 阶段）元素仍可被聚焦 —— iPad 上会在学生已经
   // 切到另一个 tab 或首页时弹出键盘。等价的「首次聚焦」由 ② 承担。

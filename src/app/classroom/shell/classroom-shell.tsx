@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { ChatPanelProps } from '../classroom-types';
+import type { ChatPanelProps, ModuleId } from '../classroom-types';
 import type { StudentHomeProps } from '../home/student-home';
 import { StudentHome } from '../home/student-home';
 import { StudentChatContent } from '../chat/chat-panel';
@@ -33,15 +33,71 @@ export interface ClassroomShellProps {
   onStepChange: (step: 'home' | 'shell') => void;
 }
 
+/** 层的键空间：首页 + 三个模块。 */
+type LayerKey = 'home' | ModuleId;
+
 /**
- * 三件套外壳（§4.1 / §4.3 / §4.5）：顶部 Tab 栏 + 首页 + 三个模块层。
+ * 视图相位 —— 一次切换里的四件事，必须**一起**变化，所以合成一个 state。
+ *
+ * `front` 与 `settled` 是两件不同的事，Task 7 的核心就在这个区分上：
+ *   · `front`   = **学生点中的那一层**，点击即刻生效。层的可见性、滑动方向、Toast 的归属
+ *                 跟它走（学生的手指已经落下，UI 必须立刻响应）。
+ *   · `settled` = **前台层已经滑到位**（§4.6 的动画结束）。模块面板的 `active` 是
+ *                 `front && settled`，理由见下面 `activate` 的注释。
+ *
+ * `leaving` 是正在滑出的那一层：§4.6 要求动画期间两层面共存，结束后才给它加
+ * `visibility:hidden`（写在离场动画的 `to` 里，见 shell.module.css）。
+ */
+interface ViewPhase {
+  front: LayerKey;
+  leaving: LayerKey | null;
+  /** 1 = 前进（新层自右入、旧层向左出）；-1 = 后退。仅决定用哪一组动画。 */
+  dir: 1 | -1;
+  settled: boolean;
+}
+
+/**
+ * 动画就位后额外等的余量（ms）。
+ *
+ * 定时器与浏览器的动画时钟之间只差一个事件循环的抖动，宁可晚 40ms 也不早 ——
+ * **早**才是错的方向：教学面板的标记条是 `getBoundingClientRect()` 量的（含 transform），
+ * 早一帧就会把「还在平移中的坐标」当成最终值固定下来（Task 2 报告 §3 点名的陷阱）。
+ * 而晚一帧只是键盘晚 40ms 弹出来，代价为零。
+ */
+const SETTLE_SLACK_MS = 40;
+
+/**
+ * 离场动画的时长（ms），**从离场层的计算样式里读**，不在 JS 里另抄一份 240ms。
+ *
+ * 两个附带的好处，都不是巧合：
+ *   · `prefers-reduced-motion` 下 CSS 把动画整个关掉（shell.module.css 末尾的
+ *     `animation: none`），计算值随之落到 ≈0（本项目 globals.css 另有一条全局降级规则
+ *     把任何动画时长压成 0.01ms）⇒ 外壳立刻视为就位 ⇒ §4.7 的「降级为直接切换」自动成立，
+ *     不需要第二条降级路径；
+ *   · 将来把动画调快调慢，只有 CSS 那一处要改。
+ */
+function slideDurationMs(el: HTMLElement | null): number {
+  if (!el) return 0;
+  const raw = window.getComputedStyle(el).animationDuration || '';
+  let longest = 0;
+  raw.split(',').forEach((part) => {
+    const value = parseFloat(part);
+    if (isNaN(value)) return;
+    const ms = part.trim().slice(-2) === 'ms' ? value : value * 1000;
+    if (ms > longest) longest = ms;
+  });
+  return longest;
+}
+
+/**
+ * 三件套外壳（§4.1 / §4.3 / §4.5 / §4.6）：顶部 Tab 栏 + 首页 + 三个模块层。
  *
  * **单页，没有路由**（§4.11 B3）：四个视图是同一条页面上的四个层，切 Tab 不触发导航 ——
  * 一旦某个 Tab 有自己的路由，页面会重挂、`restoreSessionFromUrl` 重跑、
  * `loadClassroom` + `createStudentSession` + `startChatSession` 全部重发。
  *
  * 分层模型见 shell.module.css 的头部注释。这里只有两条规则：
- *   · 首页与每个**已挂载**的模块各占一层，同一时刻只有一层可见（`visibility`）；
+ *   · 首页与每个**已挂载**的模块各占一层，同一时刻只有一层可交互（`visibility`）；
  *   · 「已挂载」由 `useModuleTabs` 决定（惰性挂载 + 永不卸载）。
  *
  * 为什么首页也做成一层而不是留在 `step` 分支里：§4.5 的「切换保留内容」对首页同样成立
@@ -55,36 +111,124 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
     classroom: chat.classroom,
     setToast,
   });
-  const homeActive = activeModuleId === null;
+
+  /** 前台层：`activeModuleId` 为 `null` 时是首页。**点击即刻生效**，不等动画。 */
+  const frontKey: LayerKey = activeModuleId ?? 'home';
+
+  /** 层的位次，只用来判方向：首页最左，模块按 Tab 栏顺序向右排。 */
+  const orderOf = (key: LayerKey): number => {
+    if (key === 'home') return 0;
+    const index = tabs.findIndex((tab) => tab.id === key);
+    return index === -1 ? 2 : index + 1; // 不在 tabs 里（刚被教师关掉）时给一个中性位次
+  };
+
+  const [phase, setPhase] = useState<ViewPhase>({
+    front: frontKey,
+    leaving: null,
+    dir: 1,
+    settled: true, // 首次挂载没有动画：首页就是前台，静止着出现
+  });
+
+  /**
+   * 「渲染期调整 state」（React 官方模式）：前台一变，就把离场层、方向、未就位三件事
+   * 在**同一个 commit 里**算好交给 DOM。
+   *
+   * 为什么不能放在 effect 里：effect 在绘制之后跑，于是会先画出一帧「新前台已经可见、
+   * 旧前台已经不可见」，下一帧才补上离场动画 —— 那一帧就是闪烁（§4.6 要求两层面共存）。
+   * 条件写成本身保证不会死循环：调整之后 `phase.front === frontKey`，下一次渲染不再进分支。
+   */
+  if (phase.front !== frontKey) {
+    setPhase({
+      front: frontKey,
+      leaving: phase.front,
+      dir: orderOf(frontKey) >= orderOf(phase.front) ? 1 : -1,
+      settled: false,
+    });
+  }
+
+  /** 层元素，只为「读离场动画的时长」而存（见 slideDurationMs）。 */
+  const layerRefs = useRef<Partial<Record<LayerKey, HTMLElement | null>>>({});
+
+  /**
+   * 动画结束 → 前台层「就位」。
+   *
+   * 依赖整个 `phase`：切换会让它换一个对象，于是计时器重新开始（快速连点时永远以最后一次
+   * 为准）；就位后 `settled` 为真，本 effect 直接返回，不再重排。
+   */
+  useEffect(() => {
+    if (phase.settled) return;
+    const leavingEl = phase.leaving ? layerRefs.current[phase.leaving] ?? null : null;
+    const timer = window.setTimeout(() => {
+      setPhase((prev) => (prev.settled ? prev : { ...prev, settled: true, leaving: null }));
+    }, slideDurationMs(leavingEl) + SETTLE_SLACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
 
   // 视图 → step 的镜像，见上。
   useEffect(() => {
-    onStepChange(homeActive ? 'home' : 'shell');
-  }, [homeActive, onStepChange]);
+    onStepChange(frontKey === 'home' ? 'home' : 'shell');
+  }, [frontKey, onStepChange]);
 
   /**
-   * 一层（首页 / 一个模块）。非活动层留在 DOM 里，只是 `visibility:hidden`（§4.5）——
-   * 隐藏态顺带获得「不可聚焦、不可点」的语义（§4.10 C2），这对面板里那些自动聚焦的
-   * effect 是必需的：`visibility:hidden` 下 `focus()` 静默 no-op，不会把键盘弹到别的 Tab 上。
+   * 模块面板的 `active`：**在前台、且已滑到位**。
    *
-   * 可见性走 class 而不是内联 style：Task 7 的切换动画要接管这件事（动画期两层面共存，
-   * 结束后才给**离场**层加 hidden），内联 style 会与它打架。
+   * 为什么不是「在前台」就够（Task 7 的约束 ②，学伴面板的标记条）：标记条 portal 到 body
+   * 之后是视口坐标的 `position: fixed`，坐标由 `getBoundingClientRect()` 量出 —— 而它**包含
+   * transform**。若 `active` 在滑动途中就翻真，面板会在 `active` 上升沿量到一个被平移过的
+   * 容器，把那个偏移量当成最终值固定下来（transform 不改布局尺寸，容器的 ResizeObserver
+   * 不会触发，没有第二次机会）。等就位再翻真，那条既有的上升沿补测就量在 translateX(0) 上。
+   *
+   * 反过来，**离场层当场失去 `active`**（不等动画）：它已经不在前台了，五处页面级副作用
+   * （锁 body 滚动、语音、聚焦、浮层可见性）该立刻收手 —— 尤其是聚焦。反过来的写法（离场层
+   * 保住 `active` 直到动画结束）会在滑动期间留一个窗口：AI 恰好答完时 `waitingAI` 翻转，
+   * 面板会把键盘弹到一个正在滑走的层上，正是 §4.10 C2 担心的那件事。
    */
-  const renderLayer = (key: string, active: boolean, className: string, children: ReactNode) => (
-    <section key={key} className={`${styles.layer} ${className} ${active ? styles.layerVisible : ''}`.trim()}>
+  const activate = (key: LayerKey) => phase.front === key && phase.settled;
+
+  /**
+   * 一层（首页 / 一个模块）。非前台层留在 DOM 里（§4.5），隐藏态由 CSS 负责：
+   * 前台层是 `.layerFront`（可见），正在离场的那层挂离场动画（动画终点才 `visibility:hidden`），
+   * 其余层落回 `.layer` 自身的隐藏态。
+   *
+   * **入场层永远拿不到隐藏态** —— 它拿的是 `.layerFront`，这是构造性的（见 shell.module.css）：
+   * 一旦入场层在过渡期仍是 `visibility:hidden`，`focus()` 就是静默 no-op，切回学伴时键盘
+   * 永远弹不出来（§4.10 C2，本任务的硬约束 ①）。
+   */
+  const layerClass = (key: LayerKey, base: string) => {
+    const parts = [styles.layer, base];
+    if (phase.front === key) {
+      parts.push(styles.layerFront);
+      if (!phase.settled) parts.push(phase.dir > 0 ? styles.enterRight : styles.enterLeft);
+    } else if (phase.leaving === key) {
+      parts.push(phase.dir > 0 ? styles.exitLeft : styles.exitRight);
+    }
+    return parts.join(' ');
+  };
+
+  const renderLayer = (key: LayerKey, base: string, children: ReactNode) => (
+    <section
+      key={key}
+      ref={(el) => {
+        layerRefs.current[key] = el;
+      }}
+      className={layerClass(key, base)}
+    >
       {children}
     </section>
   );
 
   /**
-   * 只有**当前可见的那一层**渲染 Toast。
+   * 只有**前台那一层**渲染 Toast。
    *
    * 首页与学伴面板各自 portal 一个 `<Toast>`（在 Task 4 之前两者靠 `step` 二选一渲染，天然
    * 互斥）。外壳让两层同屏之后，同一个 `toast` 会被渲染两遍 —— 两个提示条叠在屏幕底部。
-   * 所以由外壳把不可见层的 toast 置空：`toast` 状态仍只有一个（会话级，`chat.toast` 与
+   * 所以由外壳把非前台层的 toast 置空：`toast` 状态仍只有一个（会话级，`chat.toast` 与
    * `home.toast` 是同一个对象），渲染点也只剩一处。
+   *
+   * 归属按 `front` 而不是 `activate`：动画那 240ms 里两层都没「就位」，按后者会把提示条
+   * 掐断一瞬（学生看到的是闪一下又回来）。
    */
-  const toastFor = (active: boolean) => (active ? chat.toast : null);
+  const toastFor = (key: LayerKey) => (phase.front === key ? chat.toast : null);
 
   return (
     <div className={styles.shell}>
@@ -93,19 +237,17 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
       <div className={styles.stage}>
         {renderLayer(
           'home',
-          homeActive,
           styles.homeLayer,
           <StudentHome
             {...home}
-            active={homeActive}
-            toast={toastFor(homeActive)}
+            active={activate('home')}
+            toast={toastFor('home')}
             onOpenModule={openModule}
           />,
         )}
 
-        {mountedIds.map((id) => {
-          const active = activeModuleId === id;
-          return renderLayer(id, active, styles.moduleLayer, id === 'companion' ? (
+        {mountedIds.map((id) => (
+          renderLayer(id, styles.moduleLayer, id === 'companion' ? (
             <StudentChatContent
               // Ruling 4（路线 A）：换身份即重挂，卸载清理才会跑 —— `streamingRafRef` /
               // `streamingBufferRef` 的复位与「草稿不跨学生泄漏」都只长在那条清理里。
@@ -113,19 +255,19 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               // 保留内容（正是 §4.5 要的），只有换身份才重挂。
               key={chat.selectedStudent?.id ?? 'no-student'}
               {...chat}
-              active={active}
-              toast={toastFor(active)}
+              active={activate(id)}
+              toast={toastFor(id)}
             />
           ) : (
             <ModulePlaceholder
               moduleId={id}
-              active={active}
+              active={activate(id)}
               state={moduleStateFor(chat.classroom?.modules, id)}
               classroom={chat.classroom}
               session={chat.selectedStudent}
             />
-          ));
-        })}
+          ))
+        ))}
       </div>
     </div>
   );

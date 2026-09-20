@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { MODULE_META } from '../module-meta';
 import type { ModuleId } from '../classroom-types';
@@ -48,12 +49,60 @@ function LockIcon() {
  *      进了唯一的那个模块就再也回不到首页（§4.2 把回首页的入口放在这里，没有第二个）。
  *      判断写成「模块项 ≥ 2 才渲染 Tab 组」，而不是「整条栏渲染与否」。
  *
- * Task 7 会在这里加随选中项平移的指示器滑块与切换动画（只用 `transform`/`opacity`）；
- * 本任务只做「显示/隐藏 + 选中态」，不动画任何东西。
+ * Task 7 在这里加了随选中项平移的指示器滑块（只用 `transform`/`opacity`）：
+ * 滑块是一枚**半透明**的模块色药丸（见 shell.module.css 的 `.tabIndicator`），
+ * 位置与宽度由 `offsetLeft` / `offsetWidth` 量出来 —— 不用 `getBoundingClientRect()`，
+ * 因为它含祖先的 `transform`，而本壳的切换动画正在平移整个层。
  */
 export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarProps) {
   const homeActive = activeId === null;
   const showTabs = tabs.length >= 2;
+
+  const navRef = useRef<HTMLElement | null>(null);
+  const itemRefs = useRef<Partial<Record<ModuleId, HTMLButtonElement | null>>>({});
+
+  /** 滑块的几何：`x`（相对 nav 左缘）/ `w`。`null` = 还没量过（首次点击之前）。 */
+  const [indicator, setIndicator] = useState<{ x: number; w: number } | null>(null);
+
+  /**
+   * 量一次滑块该在哪儿。
+   *
+   * `activeId === null`（首页在前台）时**什么都不做**：保留上一次的位置而不是清零，
+   * 否则下次进模块时滑块会从栏的左端滑过来，而它该做的是在正确的位置淡入。
+   * 落点是 `transform: translateX()` 而不是 `left` —— 布局属性动不了（动画只允许
+   * transform/opacity），而 width 直接写死、不参与过渡（相邻 Tab 的宽度只差几个像素，
+   * 肉眼看到的就是平移）。
+   */
+  const measure = useCallback(() => {
+    if (activeId === null) return;
+    const el = itemRefs.current[activeId];
+    if (!el) return;
+    const x = el.offsetLeft;
+    const w = el.offsetWidth;
+    setIndicator((prev) => (prev && prev.x === x && prev.w === w ? prev : { x, w }));
+  }, [activeId]);
+
+  // Tab 集合的身份串：`tabs` 每次渲染都是新数组（useModuleTabs 现算），直接当依赖会让下面的
+  // effect 每帧重跑 —— 而流式回答期间外壳每来一个 chunk 就重渲染一次。
+  const tabIds = tabs.map((tab) => tab.id).join(',');
+
+  useEffect(() => {
+    measure();
+  }, [measure, tabIds]);
+
+  // 文案换行、字体加载、旋转屏幕、模块增减都会改 Tab 的宽度；观察它们而不是只听 window.resize
+  // （后者漏掉前两种）。观察回调里 setIndicator 会做等值短路，所以不会自激。
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(nav);
+    Object.keys(itemRefs.current).forEach((key) => {
+      const el = itemRefs.current[key as ModuleId];
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [measure, tabIds]);
 
   return (
     <header className={styles.bar}>
@@ -70,7 +119,18 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
       </button>
 
       {showTabs && (
-        <nav className={styles.tabs} aria-label="课堂模块">
+        <nav className={styles.tabs} aria-label="课堂模块" ref={navRef}>
+          {/* 指示器滑块（§4.6）。纯装饰，不接事件、不进无障碍树。 */}
+          <span
+            className={styles.tabIndicator}
+            aria-hidden="true"
+            style={{
+              '--tab-accent': activeId ? MODULE_META[activeId].accent : undefined,
+              transform: indicator ? `translateX(${indicator.x}px)` : undefined,
+              width: indicator ? `${indicator.w}px` : 0,
+              opacity: activeId !== null && indicator ? 1 : 0,
+            } as CSSProperties}
+          />
           {tabs.map(({ id, state }) => {
             const meta = MODULE_META[id];
             const selected = activeId === id;
@@ -86,6 +146,9 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
               <button
                 key={id}
                 type="button"
+                ref={(el) => {
+                  itemRefs.current[id] = el;
+                }}
                 className={className}
                 style={{ '--tab-accent': meta.accent } as CSSProperties}
                 aria-current={selected ? 'page' : undefined}

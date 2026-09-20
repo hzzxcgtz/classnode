@@ -118,9 +118,15 @@ export interface ChatPanelProps {
    * 「一直可见」，那正是这道闸要防的事。
    *
    * Task 5 起由外壳（`shell/classroom-shell.tsx`）传入真实值：`activeModuleId === 'companion'`，
-   * 也就是**首页在前台、或前台是另一个模块、或课堂已结束分支下都不为真**。外壳的入参类型是
-   * `Omit<ChatPanelProps, 'active'>`，所以「谁来传」在类型上只剩外壳一个答案 —— 把这条从
-   * `Omit` 里放出来（或给它加默认值），五处门就会静默退回空操作且没有任何编译期信号。
+   * 也就是**首页在前台、或前台是另一个模块、或课堂已结束分支下都不为真**。
+   * Task 7 又补了第二个条件：**前台层已经滑到位**（`front && settled`）。理由是面板里的
+   * 页面级读取含 `transform` —— 标记条的坐标来自 `getBoundingClientRect()`，若在滑动途中
+   * 翻真，量到的是被平移过的坐标，而 transform 不改布局尺寸、容器的 ResizeObserver 不会
+   * 触发，那个偏移会被永久固定下来。反方向不受影响：离场层**当场**失去 `active`（不等动画），
+   * 五处副作用的收手必须即时。
+   * 外壳的入参类型是 `Omit<ChatPanelProps, 'active'>`，所以「谁来传」在类型上只剩外壳一个
+   * 答案 —— 把这条从 `Omit` 里放出来（或给它加默认值），五处门就会静默退回空操作且没有
+   * 任何编译期信号。
    */
   active: boolean;
   // —— 外壳状态：面板只读 ——

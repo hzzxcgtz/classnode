@@ -3,18 +3,23 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
-import type { ChatToast, StartChatSession, StudentChatMessage, TeacherMessage } from './classroom-types';
+import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
+import { useChatSocket } from './chat/use-chat-socket';
 
 export interface ClassroomSessionOptions {
   router: { push: (href: string) => void };
-  // 下面 5 个 ref 由 page.tsx 创建，按对象身份同时交给外壳与面板（M0 Ruling 8）。
+  // 下面这些 ref 由 page.tsx 创建，按对象身份同时交给外壳与面板（M0 Ruling 8）。
   // 任何一侧重新声明都会拿到另一个对象，静默破坏停止生成 / 发送闸门 / 卸载清理。
   wsRef: { current: Socket | null };
   statusSocketRef: { current: Socket | null };
   chatConnectionGenerationRef: { current: number };
   seenNotifIdsRef: { current: Set<string> };
-  startChatSessionRef: { current: StartChatSession | null };
+  sendingRef: { current: boolean };
+  identityConflictTimerRef: { current: number | null };
+  teacherNotifTimerRef: { current: number | null };
+  streamingBufferRef: { current: string };
+  streamingRafRef: { current: number | null };
 }
 
 /**
@@ -50,6 +55,16 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [agentDisabled, setAgentDisabled] = useState(false);
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<ChatToast | null>(null);
+  // 下面这批状态的写入点同样在 useChatSocket 的回调里。M1a Task 3 把该 hook 上移到本文件
+  // 之前，它们住在面板里，靠「面板挂载/卸载」隐式重置；socket 归外壳后，面板在
+  // step !== 'chat' 时会卸载（socket 仍在），所以所有者必须是外壳，否则 socket 回调写进
+  // 卸载中的面板会被丢弃。面板重新挂载时的隐式重置，由 handleIdentityConfirm 显式补齐。
+  const [connected, setConnected] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState('');
+  const [thinkingContent, setThinkingContent] = useState('');
+  const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
+  const [blacklisted, setBlacklisted] = useState(false);
   const joiningRef = useRef(false);
 
   async function loadClassroom(classroomCode?: string, sessionStudentId?: string) {
@@ -126,6 +141,16 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       setJoiningClassroom(false);
       return;
     }
+    // 会话级状态复位，与 setStep('chat') 同批提交，保证面板首帧看到的就是复位值。
+    // 上移前面板每次挂载都会用 useState 的初始值重新初始化这批状态；上移后它们由外壳
+    // 持有、不随面板挂载而重置，所以在这里显式补齐同样的语义 —— 否则「切换身份」后会
+    // 残留上一位学生的黑屏蒙版 / 连接错误提示。
+    setConnected(true);
+    setConnectionError(null);
+    setStreamingContent('');
+    setThinkingContent('');
+    setTeacherNotifBubble(null);
+    setBlacklisted(false);
     setStep('chat');
     // 保存会话到 localStorage
     localStorage.setItem(`chat_session_${code}`, JSON.stringify({
@@ -175,14 +200,40 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     o.router.push('/');
   };
 
-  // startChatSession 仍归面板的 useChatSocket（学伴模块自己的 socket）。这里通过
-  // startChatSessionRef 取它，而不是把函数本身提到外壳：两侧必须拿到同一个函数对象
-  // （M0 Ruling 8）。所有调用点都在 setStep('chat') 之后、隔着一次网络 await，
-  // 那时面板已挂载并完成注册。
-  const startChatSession: StartChatSession = (studentId, studentName, classroomCode, token) => {
-    const start = optionsRef.current.startChatSessionRef.current;
-    return start ? start(studentId, studentName, classroomCode, token) : Promise.resolve();
-  };
+  // 实时通信归外壳：socket 与 step 状态机同处一个 hook，会话生命周期只有一个持有者。
+  // useChatSocket 必须先于 useStudentSession 调用 —— 后者的 options 在 render 期就求值，
+  // 直接读下面这个 const。这是普通 TDZ 约束（const 声明顺序），不是运行期时序：
+  // 顺序写反会在首帧直接抛 ReferenceError，而不是静默退化成「没有 socket 的聊天页」。
+  const { startChatSession } = useChatSocket({
+    code,
+    router: options.router,
+    SOCKET_URL,
+    wsRef: options.wsRef,
+    sendingRef: options.sendingRef,
+    chatConnectionGenerationRef: options.chatConnectionGenerationRef,
+    identityConflictTimerRef: options.identityConflictTimerRef,
+    teacherNotifTimerRef: options.teacherNotifTimerRef,
+    streamingBufferRef: options.streamingBufferRef,
+    streamingRafRef: options.streamingRafRef,
+    seenNotifIdsRef: options.seenNotifIdsRef,
+    setAgentDisabled,
+    setAvatarTokenCount,
+    setBlacklisted,
+    setClassroom,
+    setConnected,
+    setConnectionError,
+    setMessages,
+    setPaused,
+    setSelectedStudent,
+    setShieldWarning,
+    setStep,
+    setStreamingContent,
+    setTeacherMsgs,
+    setTeacherNotifBubble,
+    setThinkingContent,
+    setToast,
+    setWaitingAI,
+  });
 
   // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
   useEffect(() => {
@@ -200,9 +251,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     } catch {}
   }, []);
 
-  // 会话恢复逻辑抽到 useStudentSession。它接收的 startChatSession 是面板 useChatSocket
-  // 的实现（经 startChatSessionRef 透传），因此这里没有 TDZ 约束 —— 真正的顺序约束
-  // 变成了「面板必须先挂载」，由上面适配函数的注释说明。
+  // 会话恢复逻辑抽到 useStudentSession。它接收的 startChatSession 就是上面
+  // useChatSocket 的返回值，同一渲染周期内已初始化，不再依赖「面板先挂载」这条时序。
   const { restoreSessionFromUrl } = useStudentSession({
     router: options.router,
     seenNotifIdsRef: options.seenNotifIdsRef,
@@ -272,6 +322,12 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     agentDisabled,
     shieldWarning,
     toast,
+    connected,
+    connectionError,
+    streamingContent,
+    thinkingContent,
+    teacherNotifBubble,
+    blacklisted,
     // setter
     setCode,
     setStep,
@@ -293,6 +349,10 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setAgentDisabled,
     setShieldWarning,
     setToast,
+    setConnectionError,
+    setStreamingContent,
+    setThinkingContent,
+    setTeacherNotifBubble,
     // 逻辑
     loadClassroom,
     loadMessages,
@@ -300,5 +360,6 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     handleIdentityConfirm,
     handleSwitchIdentity,
     handleExit,
+    startChatSession,
   };
 }

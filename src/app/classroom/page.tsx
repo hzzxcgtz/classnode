@@ -3,7 +3,6 @@
 import { Suspense, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
-import type { StartChatSession } from './classroom-types';
 import { IdentityPicker } from './identity/identity-picker';
 import { useClassroomSession } from './use-classroom-session';
 import { StudentChatContent } from './chat/chat-panel';
@@ -40,7 +39,13 @@ function ClassroomOrchestrator() {
   const statusSocketRef = useRef<Socket | null>(null);
   const chatConnectionGenerationRef = useRef(0);
   const seenNotifIdsRef = useRef<Set<string>>(new Set());
-  const startChatSessionRef = useRef<StartChatSession | null>(null);
+  // useChatSocket 上移到外壳后，它内部使用的 ref 仍在这里声明：外壳与面板必须拿到
+  // 同一个对象，否则停止生成 / 发送闸门 / 卸载清理会静默失效（M0 Ruling 8）。
+  const sendingRef = useRef(false);
+  const identityConflictTimerRef = useRef<number | null>(null);
+  const teacherNotifTimerRef = useRef<number | null>(null);
+  const streamingBufferRef = useRef('');
+  const streamingRafRef = useRef<number | null>(null);
 
   const session = useClassroomSession({
     router,
@@ -48,7 +53,11 @@ function ClassroomOrchestrator() {
     statusSocketRef,
     chatConnectionGenerationRef,
     seenNotifIdsRef,
-    startChatSessionRef,
+    sendingRef,
+    identityConflictTimerRef,
+    teacherNotifTimerRef,
+    streamingBufferRef,
+    streamingRafRef,
   });
 
   if (session.step === 'loading') {
@@ -99,13 +108,16 @@ function ClassroomOrchestrator() {
       shieldWarning={session.shieldWarning}
       toast={session.toast}
       loadError={session.loadError}
+      connected={session.connected}
+      connectionError={session.connectionError}
+      streamingContent={session.streamingContent}
+      thinkingContent={session.thinkingContent}
+      teacherNotifBubble={session.teacherNotifBubble}
+      blacklisted={session.blacklisted}
       setStep={session.setStep}
-      setClassroom={session.setClassroom}
       setSelectedStudent={session.setSelectedStudent}
       setAvatarSvgs={session.setAvatarSvgs}
-      setAvatarTokenCount={session.setAvatarTokenCount}
       setAllStudentAvatars={session.setAllStudentAvatars}
-      setTeacherMsgs={session.setTeacherMsgs}
       setMessages={session.setMessages}
       setWaitingAI={session.setWaitingAI}
       setPaused={session.setPaused}
@@ -113,17 +125,24 @@ function ClassroomOrchestrator() {
       setShieldWarning={session.setShieldWarning}
       setToast={session.setToast}
       setLoadError={session.setLoadError}
+      setConnectionError={session.setConnectionError}
+      setStreamingContent={session.setStreamingContent}
+      setThinkingContent={session.setThinkingContent}
+      setTeacherNotifBubble={session.setTeacherNotifBubble}
       loadClassroom={session.loadClassroom}
       loadMessages={session.loadMessages}
       fetchStudentTokens={session.fetchStudentTokens}
+      startChatSession={session.startChatSession}
       onSwitchIdentity={session.handleSwitchIdentity}
       onExit={session.handleExit}
       router={router}
       wsRef={wsRef}
       statusSocketRef={statusSocketRef}
       chatConnectionGenerationRef={chatConnectionGenerationRef}
-      seenNotifIdsRef={seenNotifIdsRef}
-      startChatSessionRef={startChatSessionRef}
+      sendingRef={sendingRef}
+      identityConflictTimerRef={identityConflictTimerRef}
+      teacherNotifTimerRef={teacherNotifTimerRef}
+      streamingRafRef={streamingRafRef}
     />
   );
 }

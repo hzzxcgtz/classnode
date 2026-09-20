@@ -63,14 +63,6 @@ export type TeacherMessage = { message: string; time: string };
 /** 学生端浮动提示（外壳持有，面板渲染）。 */
 export type ChatToast = { msg: string; type: 'success' | 'error' | 'info' };
 
-/** 面板 useChatSocket 提供的实时通信入口；面板挂载后注册进 startChatSessionRef 交给外壳。 */
-export type StartChatSession = (
-  studentId: string,
-  studentName: string,
-  classroomCode?: string,
-  token?: string,
-) => Promise<void>;
-
 /** 学伴模块面板的契约。M1b 会在此基础上加 active / state 两个字段。 */
 export interface ChatPanelProps {
   // —— 外壳状态：面板只读 ——
@@ -90,15 +82,22 @@ export interface ChatPanelProps {
   shieldWarning: string | null;
   toast: ChatToast | null;
   loadError: string | null;
+  // 下面这批状态的写入点在 useChatSocket 的回调里；M1a Task 3 把该 hook 上移到外壳后，
+  // 它们的所有者也随之上移（面板在 step !== 'chat' 时会卸载，不能持有 socket 写入的状态）。
+  connected: boolean;
+  connectionError: string | null;
+  streamingContent: string;
+  thinkingContent: string;
+  teacherNotifBubble: string | null;
+  blacklisted: boolean;
 
-  // —— 外壳 setter：面板自身与面板的 useChatSocket 都要写这些状态 ——
+  // —— 外壳 setter：面板自身仍要写这些状态 ——
+  // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket
+  //   在写，随 hook 上移后已从面板契约中移除。）
   setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'chat'>>;
-  setClassroom: Dispatch<SetStateAction<ClassroomInfo | null>>;
   setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
   setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
-  setAvatarTokenCount: Dispatch<SetStateAction<number>>;
   setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;
-  setTeacherMsgs: Dispatch<SetStateAction<TeacherMessage[]>>;
   setMessages: Dispatch<SetStateAction<StudentChatMessage[]>>;
   setWaitingAI: Dispatch<SetStateAction<boolean>>;
   setPaused: Dispatch<SetStateAction<boolean>>;
@@ -106,8 +105,20 @@ export interface ChatPanelProps {
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   setLoadError: Dispatch<SetStateAction<string | null>>;
+  setConnectionError: Dispatch<SetStateAction<string | null>>;
+  setStreamingContent: Dispatch<SetStateAction<string>>;
+  setThinkingContent: Dispatch<SetStateAction<string>>;
+  setTeacherNotifBubble: Dispatch<SetStateAction<string | null>>;
 
   // —— 外壳逻辑：面板的重试卡片与顶部栏调用 ——
+  // 外壳 useChatSocket 的返回值。面板的重试卡片直接调用它重连（与上移前调用面板自己
+  // 那份是同一个函数）。
+  startChatSession: (
+    studentId: string,
+    studentName: string,
+    classroomCode?: string,
+    token?: string,
+  ) => Promise<void>;
   loadClassroom: (classroomCode?: string, sessionStudentId?: string) => Promise<StudentClassroom | undefined>;
   loadMessages: (classroomId: string, studentId: string) => Promise<void>;
   fetchStudentTokens: () => Promise<void>;
@@ -118,9 +129,15 @@ export interface ChatPanelProps {
   router: { push: (href: string) => void };
 
   // —— 共享 ref：按对象身份透传，两侧必须是同一个对象（M0 Ruling 8）——
+  // socket 上移后，其内部使用的 ref 仍由 page.tsx 声明，同时交给外壳（useChatSocket）
+  // 与面板（卸载清理、发送闸门、停止生成），任何一侧重新声明都会拿到另一个对象。
+  // （seenNotifIdsRef / streamingBufferRef 只被 useChatSocket 使用，已随 hook 上移到
+  //   外壳，面板不再接收。）
   wsRef: { current: Socket | null };
   statusSocketRef: { current: Socket | null };
   chatConnectionGenerationRef: { current: number };
-  seenNotifIdsRef: { current: Set<string> };
-  startChatSessionRef: { current: StartChatSession | null };
+  sendingRef: { current: boolean };
+  identityConflictTimerRef: { current: number | null };
+  teacherNotifTimerRef: { current: number | null };
+  streamingRafRef: { current: number | null };
 }

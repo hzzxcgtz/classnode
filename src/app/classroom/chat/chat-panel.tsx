@@ -10,7 +10,6 @@ import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
 import { AvatarChangerContent } from './avatar-changer';
-import { useChatSocket } from './use-chat-socket';
 import { useVoiceInput } from './use-voice-input';
 import styles from './chat.module.css';
 
@@ -33,13 +32,16 @@ export function StudentChatContent({
   shieldWarning,
   toast,
   loadError,
+  connected,
+  connectionError,
+  streamingContent,
+  thinkingContent,
+  teacherNotifBubble,
+  blacklisted,
   setStep,
-  setClassroom,
   setSelectedStudent,
   setAvatarSvgs,
-  setAvatarTokenCount,
   setAllStudentAvatars,
-  setTeacherMsgs,
   setMessages,
   setWaitingAI,
   setPaused,
@@ -47,31 +49,34 @@ export function StudentChatContent({
   setShieldWarning,
   setToast,
   setLoadError,
+  setConnectionError,
+  setStreamingContent,
+  setThinkingContent,
+  setTeacherNotifBubble,
   loadClassroom,
   loadMessages,
   fetchStudentTokens,
+  startChatSession,
   onSwitchIdentity,
   onExit,
   router,
   wsRef,
   statusSocketRef,
   chatConnectionGenerationRef,
-  seenNotifIdsRef,
-  startChatSessionRef,
+  sendingRef,
+  identityConflictTimerRef,
+  teacherNotifTimerRef,
+  streamingRafRef,
 }: ChatPanelProps) {
   // M1a：会话所有权（code/step/classroom/selectedStudent/messages/... ）已上移到
-  // page.tsx 的 useClassroomSession，这里只保留学伴模块自身的状态。
+  // page.tsx 的 useClassroomSession；task 3 又把 useChatSocket 连同它写入的
+  // connected/connectionError/streamingContent/thinkingContent/teacherNotifBubble/
+  // blacklisted 一并上移。这里只剩下学伴模块自身、与 socket 无关的状态。
   const [showAvatarChanger, setShowAvatarChanger] = useState(false);
   const [input, setInput] = useState('');
-  const [streamingContent, setStreamingContent] = useState('');
-  const [thinkingContent, setThinkingContent] = useState('');
-  const [connected, setConnected] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
-  const [blacklisted, setBlacklisted] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [showTeacherPanel, setShowTeacherPanel] = useState(false);
-  const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
@@ -85,9 +90,6 @@ export function StudentChatContent({
   const [activeMsgIndex, setActiveMsgIndex] = useState<number | null>(null);
   const [hoveredMarker, setHoveredMarker] = useState<{ index: number; text: string; x: number; y: number } | null>(null);
   const userScrolledUpRef = useRef(false);
-  const sendingRef = useRef(false);
-  const identityConflictTimerRef = useRef<number | null>(null);
-  const teacherNotifTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -99,11 +101,7 @@ export function StudentChatContent({
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 卸载清理只跑一次；三个 ref 由外壳按对象身份传入，是稳定对象
-  // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
-  // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
-  const streamingBufferRef = useRef('');
-  const streamingRafRef = useRef<number | null>(null);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 卸载清理只跑一次；ref 由 page.tsx 创建、按对象身份传入，是稳定对象
   // 点击外部关闭教师消息面板
   const teacherPanelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -118,27 +116,9 @@ export function StudentChatContent({
     return () => document.removeEventListener('click', handler);
   }, [showTeacherPanel]);
 
-  // 实时通信仍留在面板内（Ruling A：socket 归学伴模块自己）。它需要的 code / router /
-  // setStep / 各 setter 现在都由外壳以 props 传入；startChatSession 本身注册进
-  // startChatSessionRef，供外壳的 useStudentSession 恢复路径与 handleIdentityConfirm 调用。
-  const { startChatSession } = useChatSocket({
-    code,
-    router,
-    SOCKET_URL: API_BASE_URL,
-    wsRef, sendingRef, chatConnectionGenerationRef,
-    identityConflictTimerRef, teacherNotifTimerRef,
-    streamingBufferRef, streamingRafRef, seenNotifIdsRef,
-    setAgentDisabled, setAvatarTokenCount, setBlacklisted, setClassroom, setConnected,
-    setConnectionError, setMessages, setPaused, setSelectedStudent, setShieldWarning,
-    setStep, setStreamingContent, setTeacherMsgs, setTeacherNotifBubble,
-    setThinkingContent, setToast, setWaitingAI,
-  });
-
-  // 把 startChatSession 注册给外壳。用无依赖数组的裸 effect，与 optionsRef 惯用法一致，
-  // 保证 ref 里始终是最新渲染的闭包（该闭包内部同样通过 optionsRef 读取实时值）。
-  // 外壳的调用点都在 setStep('chat') 之后、隔着一次网络 await，因此注册一定已完成。
-  useEffect(() => { startChatSessionRef.current = startChatSession; });
-
+  // 实时通信（useChatSocket）已整体上移到 use-classroom-session.ts：面板在
+  // step !== 'chat' 时会卸载，不该持有 socket 与会话级状态。面板仍需要的 ref
+  // （发送闸门 / 停止生成 / 卸载清理）由 page.tsx 按对象身份透传。
   const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef });
 
   // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后

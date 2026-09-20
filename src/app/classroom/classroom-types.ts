@@ -223,9 +223,15 @@ export interface ChatPanelProps {
  *
  * 为什么需要它：`ModulePanelProps` 今天没有 `extends` 它的实现者（三条理由见上面的注释），
  * 于是「学伴面板满足契约」这句话只活在一段注释里 —— 注释拦不住漂移。这个别名把「面板至少
- * 得接住 `active`、`classroom`、`toast` 与 `setToast`」变成编译期事实：`active` 一旦被删掉
- * 或改宽（例如退回 `active?: boolean`）、`classroom` 一旦换了类型、`toast` 一旦被改名或
- * 放宽成可选，这里立刻报错。
+ * 得接住 `active`、`classroom`、`toast` 与 `setToast`」变成编译期事实：这四项**被删掉、
+ * 被改名、或类型改到不兼容**，这里立刻报错。
+ *
+ * ⚠️ **它抓不住「把契约改宽」**（例如 `ModulePanelProps` 里 `active: boolean` 退回
+ * `active?: boolean`、或 `toast` 放宽成可选）。`T extends U` 只要求 `T` 满足 `U`，而
+ * **放宽 `U` 是削弱约束** —— 必填的实现依然满足可选的契约，断言照旧是 `true`。本任务实测
+ * 确认过：把契约改成可选，`tsc` exit 0 不报错。要抓这个方向得反向断言或做精确匹配。
+ * 真正硬的那道门是 `ModulePlaceholderProps extends ModulePanelProps` 加上 JSX 调用点
+ * 缺 prop 的报错，那一条是真的。
  *
  * 为什么 `Omit` 掉 `state` 与 `session`：这两项今天的名字/落地还没对齐（`session` 在本面板叫
  * `selectedStudent`；`state` 面板尚未读）。要求它们就位，只能往 `page.tsx` 传假值 ——

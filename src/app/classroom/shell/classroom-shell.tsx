@@ -238,8 +238,11 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
    * 所以由外壳把非前台层的 toast 置空：`toast` 状态仍只有一个（会话级，`chat.toast` 与
    * `home.toast` 是同一个对象），渲染点也只剩一处。
    *
-   * 归属按 `front` 而不是 `activate`：动画那 240ms 里两层都没「就位」，按后者会把提示条
-   * 掐断一瞬（学生看到的是闪一下又回来）。
+   * 归属按 `front` 而不是 `activate`：按 `activate` 归属会在动画那 240ms 里**卸载**提示条
+   * （两层都没「就位」）⇒ `<Toast>` 被卸载 ⇒ 它内部那个 3 秒计时器的 effect 清理掉重来，
+   * 计时要重头数。**注意这不解决视觉闪烁**：提示条的可见性是由 portal 包装层的 `activate()`
+   * 决定的（与归属无关），所以切层时两层都会 `visibility:hidden` 约 240+40ms，两种归属都有。
+   * `front` 归属真正修掉的是**计时器被重置**。
    *
    * **每个前台层都必须能渲染**（Task 11）：规则是无条件的，按层分而不是按模块实现度分 ——
    * 占位面板也接住了 `toast` / `setToast`（契约里那两项）。前一版占位面板不接，于是学生站在

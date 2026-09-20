@@ -314,7 +314,12 @@ export function ModuleTabBar({
             按钮的 `aria-label` 把姓名一起带上（`${name}，更换头像`）：窄屏下姓名文本被
             `display:none` 拿掉，只写「更换头像」的话学生就再也听不到自己在用哪个身份 ——
             T1 的 Ruling 3「只减视觉宽度、不减无障碍信息」在这里同样成立。宽屏下
-            `aria-label` 覆盖子内容，姓名也**只念一次**（不会「标签一遍 + 可见文本一遍」）。 */}
+            `aria-label` 覆盖子内容，姓名也**只念一次**（不会「标签一遍 + 可见文本一遍」）。
+
+            `title` 与 `aria-label` **必须逐字一致**（T2 审查 C7b）：`title` 是鼠标用户看到
+            的 tooltip，走的是「视觉变窄」的同一条路 —— 窄屏姓名 `display:none` 之后，
+            若 tooltip 只写「更换头像」，鼠标用户同样看不出这是谁的身份。两处都带上姓名，
+            改一处就要同时改另一处。（下面那个不可点的 span 形态同理，两者都写姓名。） */}
         {selectedStudent?.name && (
           changeable ? (
             <button
@@ -322,7 +327,7 @@ export function ModuleTabBar({
               className={`${styles.studentChip} ${styles.studentChipButton}`}
               onClick={onChangeAvatar}
               aria-label={`${selectedStudent.name}，更换头像`}
-              title="更换头像"
+              title={`${selectedStudent.name}，更换头像`}
             >
               {renderChipContent(selectedStudent)}
             </button>

@@ -557,7 +557,7 @@
 /* 本文件里**所有**会动的东西都必须在这里被关掉，一条不漏：
    · 四条层切换动画（`.enterRight` / `.enterLeft` / `.exitLeft` / `.exitRight`）
    · 指示器滑块的过渡（`.tabIndicator` / `.tabIndicatorInstant`）
-   · 三处按下反馈（`.home:active` / `.tab:active` / `.action:active` / `.studentChipButton:active`）
+   · 四处按下反馈（`.home:active` / `.tab:active` / `.action:active` / `.studentChipButton:active`）
    `animation: none` 之后离场层落回 `.layer` 自身的 `visibility:hidden`、入场层落回
    `.layerFront` 的 `visibility:visible` —— 也就是「直接切换」。外壳从计算样式里读到的
    `animation-duration` 也一并归零（globals.css 的全局降级规则把它压成 0.01ms），它那边的

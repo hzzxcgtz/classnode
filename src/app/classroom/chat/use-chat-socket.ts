@@ -204,7 +204,13 @@ export function useChatSocket(options: ChatSocketOptions) {
       socket.on('avatar-rewarded', (data: AvatarRewardEvent) => {
         if (data?.tokens) {
           optionsRef.current.setAvatarTokenCount(data.tokens);
-          optionsRef.current.setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击姓名旁的⭐即可更换', type: 'success' });
+          // ⚠️ 入口指向**顶栏那枚学生 chip**（外壳的 `ModuleTabBar`），措辞必须跟着入口走：
+          // M1b-3 T2 撤掉了面板头上那枚「⭐ N」角标与首页的换头像按钮，奖励到达的这一刻
+          // 屏幕上**没有任何星形图标** —— 旧文案「点击姓名旁的⭐」会让拿到奖励的学生找不到
+          // 入口。顶栏 chip 在 `avatarTokenCount > 0` 时正好是 `<button>`（本行上面那句
+          // `setAvatarTokenCount` 就是它的开关），所以这句话说出口时入口一定在、且可点。
+          // 措辞改一次就要重新对一遍入口，别再退回「某某旁的图标」这种描述。
+          optionsRef.current.setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击屏幕上方你的头像即可更换', type: 'success' });
         }
       });
 

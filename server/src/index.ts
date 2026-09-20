@@ -236,6 +236,65 @@ async function main() {
       console.warn('[server] Webapp schema sync failed (探究助手 will be unavailable):', e);
     }
 
+    // 检查 WebappUsage 表是否存在（探究助手的使用汇总，v1.7 新增）。
+    //
+    // 为什么不挂在上面那个 Webapp 的 try 里：那样任何一步失败都会让**两条**同步都被
+    // 跳过，而两者依赖的东西不同 —— 本表的外键同时指向 Classroom 与 Webapp，
+    // 所以它必须排在「Webapp / ClassroomWebapp 已建好」**之后**（同一个 try 里
+    // 语句顺序恰好也满足，但拆开才能让失败面各自收窄）。
+    //
+    // ⚠️ 下面的 DDL 与 schema.prisma 里 WebappUsage 的定义**逐字对齐**（含外键约束名
+    // 与三个索引名）。它不是手抄的：由 `DATABASE_URL=file:/tmp/… npx prisma db push`
+    // 到一个空库后 `sqlite3 … ".schema WebappUsage"` dump 得到，见 task-5-report.md。
+    // 改了 schema 就要照同一条命令重新 dump，否则下次 db push 会重建表，而本同步块
+    // 按表名探测、不会重跑，两边就此不一致 —— 同 ClassroomModule :194-196 的告诫。
+    try {
+      const usageTables = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='WebappUsage'`
+      );
+      if (usageTables.length === 0) {
+        console.log('[server] WebappUsage table not found, creating...');
+        await prisma.$executeRawUnsafe(`CREATE TABLE "WebappUsage" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "classroomId" TEXT NOT NULL,
+          "webappId" TEXT NOT NULL,
+          "studentId" TEXT NOT NULL,
+          "durationMs" INTEGER NOT NULL DEFAULT 0,
+          "clicks" INTEGER NOT NULL DEFAULT 0,
+          "inputs" INTEGER NOT NULL DEFAULT 0,
+          "maxDepth" INTEGER NOT NULL DEFAULT 0,
+          "reports" INTEGER NOT NULL DEFAULT 0,
+          "frameCount" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "WebappUsage_classroomId_fkey" FOREIGN KEY ("classroomId")
+            REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "WebappUsage_webappId_fkey" FOREIGN KEY ("webappId")
+            REFERENCES "Webapp" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+        )`);
+        console.log('[server] WebappUsage table created');
+      }
+      // 索引同样按名探测（同 ClassroomModule）：只判断表存在不够 —— 那样
+      // 「表建好但索引创建失败」的中间态会永久缺唯一键，而写入依赖它。
+      const usageIndexes = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('WebappUsage_classroomId_studentId_webappId_key', 'WebappUsage_classroomId_idx', 'WebappUsage_webappId_idx')`
+      );
+      const usageIndexNames = usageIndexes.map(i => i.name);
+      if (!usageIndexNames.includes('WebappUsage_classroomId_studentId_webappId_key')) {
+        await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "WebappUsage_classroomId_studentId_webappId_key" ON "WebappUsage"("classroomId", "studentId", "webappId")`);
+        console.log('[server] WebappUsage unique index created');
+      }
+      if (!usageIndexNames.includes('WebappUsage_classroomId_idx')) {
+        await prisma.$executeRawUnsafe(`CREATE INDEX "WebappUsage_classroomId_idx" ON "WebappUsage"("classroomId")`);
+        console.log('[server] WebappUsage classroomId index created');
+      }
+      if (!usageIndexNames.includes('WebappUsage_webappId_idx')) {
+        await prisma.$executeRawUnsafe(`CREATE INDEX "WebappUsage_webappId_idx" ON "WebappUsage"("webappId")`);
+        console.log('[server] WebappUsage webappId index created');
+      }
+    } catch (e) {
+      console.warn('[server] WebappUsage schema sync failed (课堂结束的使用汇总 will be unavailable):', e);
+    }
+
     // 创建缺失的表和字段（不同 Prisma schema 版本间迁移）
     const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name='Avatar'`);
     if (tables.length === 0) {

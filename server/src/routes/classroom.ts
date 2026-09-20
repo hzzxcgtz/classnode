@@ -6,6 +6,7 @@ import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
 import { isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
 import { abortClassroomStreams } from '../socket/index.js';
+import type { WebappUsageRow } from '../socket/index.js';
 import { loadClassroomWebapps } from './webapps.js';
 
 const router: Router = Router();
@@ -710,6 +711,26 @@ router.post('/:id/end', async (req, res) => {
     const activeConnections = req.app.get('activeConnections') as Map<string, string> | undefined;
     const activeStreams = req.app.get('activeStreams') as Map<string, AbortController> | undefined;
     if (activeConnections && activeStreams) abortClassroomStreams(classroom.id, activeConnections, activeStreams);
+
+    // 探究助手：取走本课堂的内存监控数据（取完即清空）→ 写唯一一条落盘汇总。
+    // 内存态住在 socket 模块、结束逻辑在这里（预审 2），所以经 app.set('webappMonitor') 取用。
+    //
+    // ⚠️ 汇总失败**不能让本请求失败**：课堂在上面那个事务里已经结束（不可回滚），
+    // 回 500 只会让教师看到「结束失败」而课堂其实已经结束了。记日志，把结果留在服务端。
+    const webappMonitor = req.app.get('webappMonitor') as {
+      drain: (classroomId: string) => WebappUsageRow[];
+      record: (prisma: PrismaClient, classroomId: string, rows: WebappUsageRow[]) => Promise<number>;
+    } | undefined;
+    if (webappMonitor) {
+      try {
+        const rows = webappMonitor.drain(classroom.id);
+        const written = await webappMonitor.record(prisma, classroom.id, rows);
+        if (written > 0) console.log(`[Classroom] webapp usage summary written: ${written} row(s) for ${classroom.id}`);
+      } catch (error) {
+        console.error('[Classroom] webapp usage summary failed:', error);
+      }
+    }
+
     io.to(`classroom:${classroom.id}`).emit('classroom-ended');
     io.to(`teacher:${classroom.id}`).emit('classroom-ended');
 

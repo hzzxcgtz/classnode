@@ -139,14 +139,33 @@ export const SDK_SOURCE = `/*
   // 没做的事。（brief 里叫它 MAX_PAYLOAD_BYTES。）
   var MAX_PAYLOAD_CODE_UNITS = 32 * 1024;
 
-  // 缩略图节奏与尺寸。降频是 T5 的事（它用 pause/resume 驱动），这里只定「一次多久」。
-  var FRAME_INTERVAL_MS = 3000;
+  // 缩略图节奏与尺寸。
+  //
+  // ⚠️ 降频（规格 §5.5「测量截图耗时，超过 300ms 自动降档 5s → 10s → 20s」）**在这里执行**：
+  // 耗时只有本 SDK 量得到（它就在 drawImage + toDataURL 这一行上），而且档位是**每台设备**
+  // 自己的事 —— 同一间教室里老 iPad 与新电脑该待在不同的档。所以服务端不发档位，
+  // webapp-monitor-demand 的载荷只有 watching 一个字段（T5 定死的契约）。
+  //
+  // 基准值曾经是 3000（T4 拍的，它自己在报告里写明「降频归 T5」）。T5 对齐到计划的
+  // 5s/10s/20s：第一档**就是** FRAME_INTERVAL_MS，三档由此乘 1/2/4 得来，
+  // 「基准」与「第一档」不再是两个可能对不上的数（这就是预审 4 要的那个一致）。
+  var FRAME_INTERVAL_MS = 5000;
+  var FRAME_INTERVAL_TIERS = [FRAME_INTERVAL_MS, FRAME_INTERVAL_MS * 2, FRAME_INTERVAL_MS * 4];
+  // 一帧超过 SLOW_FRAME_MS 记一次「慢」，连续 SLOW_RUN 次就升一档；连续 FAST_RUN 次
+  // 快于 FAST_FRAME_MS 就降回来 —— 只要升不要降的话，一次 GC 卡顿会把整节课钉在最慢档。
+  var SLOW_FRAME_MS = 300;
+  var FAST_FRAME_MS = 150;
+  var SLOW_RUN = 3;
+  var FAST_RUN = 10;
   var THUMBNAIL_WIDTH = 320;
   var JPEG_QUALITY = 0.4;
 
   var paused = false;
   var maxDecile = -1;
   var frameTimer = null;
+  var tierIndex = 0;
+  var slowRun = 0;
+  var fastRun = 0;
 
   // ══════════════════════════════════════════════════════════════════════
   // 唯一的载荷构造点。**本文件内所有上报都必须经过这里。**
@@ -370,9 +389,45 @@ export const SDK_SOURCE = `/*
     }
     if (!best || bestArea <= 0) return;
 
+    // 耗时只算「画 + 编码」这一段：那才是老 iPad 上真正贵的地方，也是降频要躲的东西。
+    // Date.now() 而不是 performance.now()：本文件一个反斜杠都不能出现（见文件头约束 3），
+    // 而 300ms 这个量级不需要亚毫秒精度。
+    var startedAt = Date.now();
     var url = thumbnail(best);
     if (!url) return;
+    noteFrameCost(Date.now() - startedAt);
     post('frame', buildEvent('frame', { selector: describe(best), image: url }));
+  }
+
+  /**
+   * 按实测耗时调档（规格 §5.5 的降频）。
+   *
+   * 只在**跨档**时重建定时器：每帧都 clearInterval + setInterval 会把节奏抖得很碎，
+   * 而档位本来就该稳定。抖动上做了双向：只升不降的话，一次 GC 卡顿会让整节课
+   * 钉在 20 秒一帧。
+   */
+  function noteFrameCost(costMs) {
+    if (costMs > SLOW_FRAME_MS) {
+      slowRun = slowRun + 1;
+      fastRun = 0;
+    } else if (costMs < FAST_FRAME_MS) {
+      fastRun = fastRun + 1;
+      slowRun = 0;
+    } else {
+      slowRun = 0;
+      fastRun = 0;
+    }
+    var next = tierIndex;
+    if (slowRun >= SLOW_RUN && tierIndex < FRAME_INTERVAL_TIERS.length - 1) next = tierIndex + 1;
+    else if (fastRun >= FAST_RUN && tierIndex > 0) next = tierIndex - 1;
+    if (next === tierIndex) return;
+    tierIndex = next;
+    slowRun = 0;
+    fastRun = 0;
+    if (frameTimer !== null) {
+      stopFrames();
+      startFrames();
+    }
   }
 
   /** 缩到宽 320 的 JPEG data URL。读不到（被跨源内容污染）时返回空串。 */
@@ -399,7 +454,7 @@ export const SDK_SOURCE = `/*
 
   function startFrames() {
     if (frameTimer !== null) return;
-    frameTimer = setInterval(captureFrame, FRAME_INTERVAL_MS);
+    frameTimer = setInterval(captureFrame, FRAME_INTERVAL_TIERS[tierIndex]);
   }
 
   function stopFrames() {

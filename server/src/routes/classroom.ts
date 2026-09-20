@@ -469,7 +469,9 @@ router.get('/:id', async (req, res) => {
       // 所以「三态全是 preview」既可能是「教师把三项都设成了预告」也可能是「从未设置过」，
       // 前端单看 modules 分不出来。行数据本就读出来了，这个派生量不增加任何查询；
       // 读取失败（null）时不下结论、不发这个字段，前端只在明确拿到 false 时才提示。
-      hasModuleRows: moduleRecords ? moduleRecords.length > 0 : undefined,
+      // 显式判空（而不是 `moduleRecords?.length ? … : undefined`）：写成后者会让「查到了、零行」
+      // 也落到 undefined，老课堂的提示永远不再出现，且不报任何错。
+      hasModuleRows: moduleRecords === null ? undefined : moduleRecords.length > 0,
     });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });

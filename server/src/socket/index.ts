@@ -276,8 +276,9 @@ const TEACHER_ROOM_PREFIX = 'teacher:';
  * 客户端无从分辨是哪个课堂），表现为菜单里的三态单选按钮被另一个课堂改掉。
  * 修在服务端而不是给载荷加 classroomId：根因在这里，一次修好所有客户端，且不动协议。
  *
- * 只清 `teacher:` 前缀的房间：教师首页的 listen-classroom-status 加入的 `status:<id>`
- * 服务的是学生在线列表，与看板无关，不能顺手清掉。
+ * 只清 `teacher:` 前缀的房间：这个 socket 上我们只加过 `teacher:` 房间，过滤刻意保持窄 ——
+ * 日后若真有客户端让同一个 socket 承担别的房间（例如学生在线列表用的 `status:<id>`，今天
+ * 由教师首页自建的 socket 承担，不共用这个单例），不会被顺手清掉。
  */
 export function staleTeacherRooms(rooms: Iterable<string>, currentClassroomId: string): string[] {
   const keep = `${TEACHER_ROOM_PREFIX}${currentClassroomId}`;

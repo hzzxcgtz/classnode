@@ -230,6 +230,31 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const modulesSnapshotRef = useRef<StudentClassroom['modules'] | undefined>(undefined);
   useEffect(() => { modulesSnapshotRef.current = classroom?.modules; }, [classroom?.modules]);
 
+  /**
+   * 最近一次渲染时的 `paused` / `agentDisabled`，只给下面那条轮询判断「快照是否陈旧」用
+   * （M1b-2 Task 11 补入）。
+   *
+   * 为什么与 `modules` 用**同一种手法**（而不发明新机制）：这三项在**同一条轮询响应**里落地
+   * （`status` / `agents` / `modules` 都来自 `api.getClassroomByCode(code)`），陈旧窗口也是同一个
+   * RTT。只给 `modules` 加守卫的话，同一个窗口里另外两项仍会把**广播之后**的状态写回
+   * **广播之前**的视角：教师在 T0+RTT/2 停用智能体（socket `agent-disabled` 已落地
+   * `setAgentDisabled(true)`），T0+RTT 到达的旧快照说「启用」⇒ 横幅与发送闸门回退，
+   * 最长到下一轮（15 秒）。`paused` 同理（`classroom-paused` 广播被旧快照压掉）。
+   *
+   * 布尔量没有「数组身份」可比，所以比对的是**值**：发起请求时把当前值抓进局部量，
+   * 落地时用函数式 setter 看 `prev` 是否仍是那一刻的值 —— 不同就是中间有广播落地过，
+   * 跳过本轮。与 `modules` 那条一样是**往「保留更新值」的方向错**（宁可漏一次轮询的刷新，
+   * 15 秒内自愈），不是往「复活陈旧值」的方向错。
+   *
+   * ⚠️ 本 effect 同样必须声明在轮询 effect **之前**（同一次提交里 effect 按声明顺序执行，
+   * 而轮询一挂载就立刻 `poll()` 一次）。
+   */
+  const flagsSnapshotRef = useRef<{ paused: boolean; agentDisabled: boolean }>({
+    paused: false, // 与上面两个 useState 的初值一致
+    agentDisabled: false,
+  });
+  useEffect(() => { flagsSnapshotRef.current = { paused, agentDisabled }; }, [paused, agentDisabled]);
+
   // 课堂生命期轮询（15 秒）：课堂是否结束、智能体是否被停用、课堂是否暂停，外加三态兜底。
   // M1b-2 Task 6 把它从学伴面板（chat-panel.tsx 的 poll）搬到这里。
   //
@@ -268,6 +293,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       // 发起请求那一刻的 `modules` 对象身份，用来在后面判断「这份快照是不是已经陈旧」。
       // 只读 ref，不进依赖：`classroom.modules` 一变就重建定时器，15 秒的兜底会被广播刷没。
       const modulesAtRequest = modulesSnapshotRef.current;
+      // 同一刻的 paused / agentDisabled 值，同一用途（见上面 flagsSnapshotRef 的注释）。
+      const flagsAtRequest = flagsSnapshotRef.current;
       try {
         const cr = await api.getClassroomByCode(code);
         if (cr.status === 'ended') {
@@ -275,14 +302,19 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
           handleClassroomEnded();
           return;
         }
-        // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个
+        // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个。
+        // 两个分支都过陈旧守卫：中间有 socket 广播落地过（`prev` 已不是发起时那个值）就跳过本轮，
+        // 与下面 modules 那条同一条理由、同一个方向。
         if ((cr.mode === 'group' || cr.mode === 'advanced') && selectedStudent?.groupId && cr.groups) {
           const g = cr.groups.find((group) => group.id === selectedStudent.groupId);
-          setAgentDisabled(g?.agent?.enabled === false);
+          const freshAgentDisabled = g?.agent?.enabled === false;
+          setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
         } else {
-          setAgentDisabled(cr.agents?.[0]?.enabled === false);
+          const freshAgentDisabled = cr.agents?.[0]?.enabled === false;
+          setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
         }
-        setPaused(cr.status === 'paused');
+        const freshPaused = cr.status === 'paused';
+        setPaused((prev) => (prev === flagsAtRequest.paused ? freshPaused : prev));
         // 三态兜底。`freshModules` 先落成局部量：旧服务端/老库可能真的不带这个字段，
         // 那种情况保留现有三态，不要把已就绪的态清成默认值。
         const freshModules = cr.modules;

@@ -36,7 +36,15 @@ const eslintConfig = defineConfig([
     //
     // 只管 `setInterval`：`setTimeout` 在面板里是合法的（Toast 自动消失、语音识别、滚动
     // 回弹都在用），它们是一次性的、且都随卸载清理。
+    //
+    // 范围是本目录下**除会话生命期模块以外**的全部文件（M1b-2 Task 11 收窄）：`chat/` 里
+    // 还住着 `use-chat-socket.ts`，按 §4.10 B7 的判定它是**会话生命期**代码而不是面板
+    // （socket 归会话层，面板在它不挂载时也照常收消息）。在这份文件里合法地长一条重连定时器
+    // 会收到一条**指错地方**的报错，还会把人往「加 eslint-disable」上推。用 `ignores` 排除
+    // 单份文件、而不是把 glob 收窄成一份面板文件清单：收窄后**将来新增的面板文件**会静默落在
+    // 闸门之外，那正是这条规则要防的方向，而排除法的失效方向只是「多守住一份会话文件」。
     files: ["src/app/classroom/chat/**/*.{ts,tsx}"],
+    ignores: ["src/app/classroom/chat/use-chat-socket.ts"],
     rules: {
       "no-restricted-syntax": ["error",
         {

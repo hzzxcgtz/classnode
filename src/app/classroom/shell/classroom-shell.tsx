@@ -67,14 +67,17 @@ interface ViewPhase {
 const SETTLE_SLACK_MS = 40;
 
 /**
- * 离场动画的时长（ms），**从离场层的计算样式里读**，不在 JS 里另抄一份 240ms。
+ * 某一层动画的时长（ms），**从该层的计算样式里读**，不在 JS 里另抄一份 240ms。
  *
  * 两个附带的好处，都不是巧合：
  *   · `prefers-reduced-motion` 下 CSS 把动画整个关掉（shell.module.css 末尾的
  *     `animation: none`），计算值随之落到 ≈0（本项目 globals.css 另有一条全局降级规则
- *     把任何动画时长压成 0.01ms）⇒ 外壳立刻视为就位 ⇒ §4.7 的「降级为直接切换」自动成立，
- *     不需要第二条降级路径；
+ *     把任何动画时长压成 0.01ms）⇒ 外壳很快视为就位（多等一个 SETTLE_SLACK_MS 的余量，
+ *     不是「立刻」）⇒ §4.7 的「降级为直接切换」自动成立，不需要第二条降级路径；
  *   · 将来把动画调快调慢，只有 CSS 那一处要改。
+ *
+ * 调用方必须**两侧都读**（离场层 + 前台层）再取最大值：决定「就位」的是入场层何时停，
+ * 而 shell.module.css 里四条时长是四处独立的字面量，没有任何机制强制它们相等。
  */
 function slideDurationMs(el: HTMLElement | null): number {
   if (!el) return 0;
@@ -146,11 +149,20 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
     });
   }
 
-  /** 层元素，只为「读离场动画的时长」而存（见 slideDurationMs）。 */
+  /** 层元素，只为「读动画时长」而存：就位判定要读离场层与前台层**两侧**（见 slideDurationMs）。 */
   const layerRefs = useRef<Partial<Record<LayerKey, HTMLElement | null>>>({});
 
   /**
    * 动画结束 → 前台层「就位」。
+   *
+   * **两侧时长取最大值**：离场层与当前前台层（入场层）各读一次，谁长听谁的。真正决定「就位」
+   * 的是**入场层**何时停 —— 只读离场层的话，将来单独把 `.enterRight` / `.enterLeft` 调长
+   * （四条 240ms 是四处独立的字面量，没有任何机制强制它们相等），`settled` 就会在入场层还在
+   * 平移途中翻真，约束 ② 要防的 bug 原样回来，且没有任何编译期或运行期信号。
+   *
+   * 这样写仍然是失败安全的：类名被删/改名，或浏览器干脆不放动画 ⇒ 两侧都量不到时长、都 ≈0
+   * ⇒ 只等一个 SETTLE_SLACK_MS 就位 —— 而此时入场层也没有 transform，**没有东西可量错**。
+   * 时长与位移来自同一条 `animation` 声明，只能一起失效。
    *
    * 依赖整个 `phase`：切换会让它换一个对象，于是计时器重新开始（快速连点时永远以最后一次
    * 为准）；就位后 `settled` 为真，本 effect 直接返回，不再重排。
@@ -158,9 +170,10 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
   useEffect(() => {
     if (phase.settled) return;
     const leavingEl = phase.leaving ? layerRefs.current[phase.leaving] ?? null : null;
+    const frontEl = layerRefs.current[phase.front] ?? null;
     const timer = window.setTimeout(() => {
       setPhase((prev) => (prev.settled ? prev : { ...prev, settled: true, leaving: null }));
-    }, slideDurationMs(leavingEl) + SETTLE_SLACK_MS);
+    }, Math.max(slideDurationMs(leavingEl), slideDurationMs(frontEl)) + SETTLE_SLACK_MS);
     return () => window.clearTimeout(timer);
   }, [phase]);
 

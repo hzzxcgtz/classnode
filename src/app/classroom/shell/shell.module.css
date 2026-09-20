@@ -74,7 +74,12 @@
    它在相邻 Tab 之间的差值只有几个像素，肉眼只看见平移。 */
 .tabIndicator {
   position: absolute;
-  top: 8px; /* (栏高 52px - 按钮高 36px) / 2 */
+  /* ⚠️ 这里**不能**再写「(栏高 52px - 按钮高 36px) / 2 = 8px」那套按栏算的公式：
+     绝对定位的 offsetParent 是 `.tabs`（上面那行 position: relative），而 `.tabs` 作为
+     `.bar` 的 align-items: center 的 flex item，**本身就只有 36px 高、且已经在 52px 的栏里
+     居中过了**。再让 8px 就是居中两次，药丸整体沉 8px（文字在药丸里明显偏上），底边那 8px
+     还会被 `.bar` 的 overflow-y: hidden 啃掉。相对 `.tabs` 它就是 0。 */
+  top: 0;
   left: 0;
   height: 36px;
   border-radius: 999px;
@@ -92,6 +97,16 @@
   border-radius: inherit;
   background: var(--tab-accent, #64748b);
   opacity: 0.16;
+}
+
+/* 首次落位那一帧：**只让 opacity 过渡**，transform 不参与。
+   `indicator` 的初值是 null（还不知该在哪儿），首次进模块时它从 `transform: none` 变成
+   `translateX(x)` —— 若 transform 也过渡，药丸会从栏**左端**滑过来，而不是在选中项处淡入。
+   （`none` 在插值上等价于 `translateX(0)`，所以「从无到有」看起来就是从左端出发。）
+   下一次切换时这个类已经摘掉，滑动过渡照旧 —— 见 module-tab-bar.tsx 的 `instant`。
+   必须留在 `.tabIndicator` **之后**：同特异性靠源码顺序取胜。 */
+.tabIndicatorInstant {
+  transition: opacity 150ms ease;
 }
 
 .home,
@@ -127,11 +142,17 @@
   background: #eef2ff;
 }
 
-/* 模块 Tab：静置灰、选中用**模块自己的身份色**（§4.6：学生在卡片上认到的颜色，
+/* 模块 Tab：静置灰、选中用**模块自己的色**（§4.6：学生在卡片上认到的颜色，
    进到模块里还是同一个颜色）。底色由滑块给，这里只负责文字颜色 —— 文字颜色是**瞬间**
-   生效的（颜色不能动画），所以它必须在滑块到达之前就已经可读：模块色落在浅色栏底上。 */
+   生效的（颜色不能动画），所以它必须在滑块到达之前就已经可读：模块色落在浅色栏底上。
+
+   ⚠️ 选中态用的是 `--tab-accent-strong` 而不是身份色：这里的字是 0.813rem / 650 字重，
+   够不到 WCAG「大字号」门槛，需要 4.5:1，而底是「16% 身份色 + 84% 栏底」的淡药丸。
+   身份色落上去只有 4.11 / 4.46 / 4.26 —— 全部跌破。压深一档的强调色是 5.33 / 5.56 / 5.78。
+   `--tab-accent` 仍然是身份色（药丸的 16% 底色用它），色相不变，学生认得出是同一个模块。
+   两个值都只有 module-meta.tsx 一个来源，这里不抄十六进制。 */
 .tabActive {
-  color: var(--tab-accent);
+  color: var(--tab-accent-strong, var(--tab-accent));
   background: transparent;
 }
 
@@ -158,7 +179,7 @@
 }
 
 .tabActive:hover {
-  color: var(--tab-accent);
+  color: var(--tab-accent-strong, var(--tab-accent));
   background: transparent;
 }
 
@@ -229,11 +250,16 @@
       万一动画没跑起来（浏览器不支持 / 被降级掉），`.layer` 的 `visibility:hidden` 兜底：
       离场层当场消失（少一段动效），也绝不会出现「两层同时可交互」。
 
-   ② **时长只有这一份。** 外壳的 JS（classroom-shell.tsx）不去猜动画何时结束，而是从离场层
-      的计算样式里读 `animation-duration` 再定时 —— 改这里的 240ms，那边跟着变；
+   ② **下面四条动画的时长必须一致 —— 这是一条不变量，不是「已经只有一份」的事实。**
+      外壳的 JS（classroom-shell.tsx）不去猜动画何时结束，而是从**离场层与当前前台层**的
+      计算样式里各读一次 `animation-duration`、取二者的 `Math.max` 再定时。之所以读两侧：
+      真正决定「就位」的是**入场层**何时停，而四条 240ms 是四处**独立的字面量**，没有任何
+      机制强制它们相等。只读离场层的话，把 `.enterRight` / `.enterLeft` 单独调成 480ms 就会
+      让外壳在 280ms 宣布就位、入场层还在平移途中 —— 正是 §4.6 约束 ② 要防的那件事，
+      且没有任何编译期或运行期信号。**改时长请四条一起改。**
       `prefers-reduced-motion` 下本文件把动画整个关掉（`animation: none`，见文件末尾），
       计算值随之落到 ≈0（本项目 globals.css 另有一条全局降级把时长压成 0.01ms），
-      外壳于是立刻视为就位 —— 与 §4.7 要求的「降级为直接切换」是同一个机制，
+      外壳于是很快视为就位 —— 与 §4.7 要求的「降级为直接切换」是同一个机制，
       不需要第二条降级路径。 */
 
 @keyframes shellEnterRight {
@@ -259,7 +285,11 @@
 /* 入场：前进（位次变大）自右入、后退自左入。退场跟着镜像 —— 前进时旧层向左退出，
    后退时旧层向右退出，于是「走过的距离」与方向一致（推入式，不是交叉淡入淡出）。
    退场那两层额外关掉指针事件：它在动画期仍然可见（§4.6 要求两层面共存），但学生的手指
-   已经不在它上面了 —— 不关的话，紧接着的第二次点击可能落在一个正在滑走的按钮上。 */
+   已经不在它上面了 —— 不关的话，紧接着的第二次点击可能落在一个正在滑走的按钮上。
+
+   ⚠️ 四条时长必须**一致**（上面 ②）。就位判定读的是入场层与离场层二者的最大值，所以哪怕
+   某一侧被单独调长，也不会提前宣布就位 —— 「外壳已就位而某层还在动」在**正确性**上已由
+   `Math.max` 兜住。保持一致是为了两个层看起来是**同一段**动画：一快一慢会明显发飘。 */
 .enterRight { animation: shellEnterRight 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
 .enterLeft { animation: shellEnterLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
 .exitLeft { animation: shellExitLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
@@ -333,7 +363,7 @@
 
 /* 本文件里**所有**会动的东西都必须在这里被关掉，一条不漏：
    · 四条层切换动画（`.enterRight` / `.enterLeft` / `.exitLeft` / `.exitRight`）
-   · 指示器滑块的过渡（`.tabIndicator`）
+   · 指示器滑块的过渡（`.tabIndicator` / `.tabIndicatorInstant`）
    · 两处按下反馈（`.home:active` / `.tab:active`）
    `animation: none` 之后离场层落回 `.layer` 自身的 `visibility:hidden`、入场层落回
    `.layerFront` 的 `visibility:visible` —— 也就是「直接切换」。外壳从计算样式里读到的
@@ -347,7 +377,8 @@
     animation: none;
   }
 
-  .tabIndicator {
+  .tabIndicator,
+  .tabIndicatorInstant {
     transition: none;
   }
 

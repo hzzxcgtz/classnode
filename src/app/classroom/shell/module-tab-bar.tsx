@@ -61,8 +61,15 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
   const navRef = useRef<HTMLElement | null>(null);
   const itemRefs = useRef<Partial<Record<ModuleId, HTMLButtonElement | null>>>({});
 
-  /** 滑块的几何：`x`（相对 nav 左缘）/ `w`。`null` = 还没量过（首次点击之前）。 */
-  const [indicator, setIndicator] = useState<{ x: number; w: number } | null>(null);
+  /**
+   * 滑块的几何：`x`（相对 nav 左缘）/ `w`。`null` = 还没量过（首次点击之前）。
+   *
+   * `instant` = 这次落位**不参与 transform 过渡**，只淡入。只有首次落位是 `true`：
+   * 那一刻 `transform` 从 `none`（等价 `translateX(0)`）变成 `translateX(x)`，照常过渡的话
+   * 药丸会从栏**左端**滑过来，而它该做的是在选中项处淡入。下一次切换时它是 `false`，
+   * 滑动过渡照旧（见 shell.module.css 的 `.tabIndicatorInstant`）。
+   */
+  const [indicator, setIndicator] = useState<{ x: number; w: number; instant: boolean } | null>(null);
 
   /**
    * 量一次滑块该在哪儿。
@@ -72,6 +79,10 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
    * 落点是 `transform: translateX()` 而不是 `left` —— 布局属性动不了（动画只允许
    * transform/opacity），而 width 直接写死、不参与过渡（相邻 Tab 的宽度只差几个像素，
    * 肉眼看到的就是平移）。
+   *
+   * `instant: !prev` 与上面的判等短路共用同一次 setState：**首次落位**（prev 为 null）这一帧
+   * 关掉 transform 过渡，此后每次都是 `false`。等值短路返回原对象时 `instant` 保持原样，
+   * 但那时 transform 也没变化，无过渡可言。
    */
   const measure = useCallback(() => {
     if (activeId === null) return;
@@ -79,7 +90,7 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
     if (!el) return;
     const x = el.offsetLeft;
     const w = el.offsetWidth;
-    setIndicator((prev) => (prev && prev.x === x && prev.w === w ? prev : { x, w }));
+    setIndicator((prev) => (prev && prev.x === x && prev.w === w ? prev : { x, w, instant: !prev }));
   }, [activeId]);
 
   // Tab 集合的身份串：`tabs` 每次渲染都是新数组（useModuleTabs 现算），直接当依赖会让下面的
@@ -122,7 +133,9 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
         <nav className={styles.tabs} aria-label="课堂模块" ref={navRef}>
           {/* 指示器滑块（§4.6）。纯装饰，不接事件、不进无障碍树。 */}
           <span
-            className={styles.tabIndicator}
+            className={indicator && indicator.instant
+              ? `${styles.tabIndicator} ${styles.tabIndicatorInstant}`
+              : styles.tabIndicator}
             aria-hidden="true"
             style={{
               '--tab-accent': activeId ? MODULE_META[activeId].accent : undefined,
@@ -150,7 +163,9 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
                   itemRefs.current[id] = el;
                 }}
                 className={className}
-                style={{ '--tab-accent': meta.accent } as CSSProperties}
+                // 身份色给药丸的 16% 底色与悬停态；强调色只给选中态的文字（对比度，见
+                // module-meta.tsx 的文件头）。两个值同源，CSS 里不抄十六进制。
+                style={{ '--tab-accent': meta.accent, '--tab-accent-strong': meta.accentStrong } as CSSProperties}
                 aria-current={selected ? 'page' : undefined}
                 aria-disabled={locked || undefined}
                 onClick={() => onSelect(id)}

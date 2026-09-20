@@ -6,10 +6,7 @@ import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/l
 import { Toast } from '@/lib/components';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
-import type {
-  ChatAgent, StudentChatMessage, SocketTextEvent, AiResponseEvent, SocketErrorEvent,
-  StudentIdEvent, AvatarRewardEvent, TeacherNotificationEvent, ShieldWarnEvent, PermissionEvent,
-} from './classroom-types';
+import type { ChatAgent, StudentChatMessage } from './classroom-types';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import { SvgAvatar } from './chat/svg-avatar';
 import { MessageItem } from './chat/message-item';
@@ -18,6 +15,7 @@ import { ThinkingContent } from './chat/thinking-content';
 import { AvatarChangerContent } from './chat/avatar-changer';
 import { IdentityPicker } from './identity/identity-picker';
 import { useStudentSession } from './identity/use-student-session';
+import { useChatSocket } from './chat/use-chat-socket';
 import { useVoiceInput } from './chat/use-voice-input';
 import styles from './chat.module.css';
 
@@ -116,8 +114,23 @@ function StudentChatContent() {
     } catch {}
   }, []);
 
-  // 会话恢复逻辑抽到 useStudentSession。调用点必须在 seenNotifIdsRef 声明之后；
-  // 下面的 loadClassroom / loadMessages / startChatSession 是函数声明，会被提升，可安全引用。
+  // 实时通信逻辑抽到 useChatSocket。startChatSession 现在是 hook 返回值（不再是提升的
+  // 函数声明），因此 useChatSocket 的调用必须写在 useStudentSession 之前；后者会把它
+  // 透传给 restoreSessionFromUrl。下面的 loadClassroom / loadMessages 仍是函数声明，会被提升。
+  const { startChatSession } = useChatSocket({
+    code,
+    router,
+    SOCKET_URL: API_BASE_URL,
+    wsRef, sendingRef, chatConnectionGenerationRef,
+    identityConflictTimerRef, teacherNotifTimerRef,
+    streamingBufferRef, streamingRafRef, seenNotifIdsRef,
+    setAgentDisabled, setAvatarTokenCount, setBlacklisted, setClassroom, setConnected,
+    setConnectionError, setMessages, setPaused, setSelectedStudent, setShieldWarning,
+    setStep, setStreamingContent, setTeacherMsgs, setTeacherNotifBubble,
+    setThinkingContent, setToast, setWaitingAI,
+  });
+
+  // 会话恢复逻辑抽到 useStudentSession。调用点必须在 seenNotifIdsRef 声明之后。
   const { restoreSessionFromUrl } = useStudentSession({
     router,
     seenNotifIdsRef,
@@ -508,220 +521,6 @@ function StudentChatContent() {
       }
     };
   }, [step, classroom?.id, SOCKET_URL]);
-
-  // 提取为独立函数，支持刷新恢复
-  async function startChatSession(studentId: string, studentName: string, classroomCode?: string, token?: string) {
-    const joinCode = classroomCode || code;
-    try {
-      if (wsRef.current) wsRef.current.disconnect();
-      const generation = ++chatConnectionGenerationRef.current;
-      const { io } = await import('socket.io-client');
-      if (generation !== chatConnectionGenerationRef.current) return;
-      const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
-      socket.on('connect', () => {
-        socket.emit('join-classroom', { classroomCode: joinCode, studentId, token });
-        setConnected(true);
-      });
-
-      const flushStreaming = () => {
-        if (streamingRafRef.current) { cancelAnimationFrame(streamingRafRef.current); streamingRafRef.current = null; }
-        streamingBufferRef.current = '';
-      };
-
-      socket.on('ai-response', (data: AiResponseEvent) => {
-        sendingRef.current = false;
-        flushStreaming();
-        setThinkingContent('');
-        // 清除上一条 AI 回答的追问建议，只保留最新一条
-        setMessages(prev => {
-          const cleaned = prev.map(m => m.role === 'assistant' ? { ...m, followUps: undefined } : m);
-          return [...cleaned, {
-            role: 'assistant',
-            content: data.content,
-            roundIndex: data.roundIndex,
-            id: data.messageId,
-            followUps: data.followUps,
-          }];
-        });
-        setStreamingContent('');
-        setWaitingAI(false);
-      });
-
-      socket.on('ai-thinking', () => {
-        flushStreaming();
-        setWaitingAI(true);
-        setStreamingContent('');
-        setThinkingContent('');
-      });
-
-      socket.on('ai-chunk', (data: SocketTextEvent) => {
-        streamingBufferRef.current += data.content;
-        if (!streamingRafRef.current) {
-          streamingRafRef.current = requestAnimationFrame(() => {
-            streamingRafRef.current = null;
-            setStreamingContent(streamingBufferRef.current);
-          });
-        }
-      });
-
-      socket.on('ai-thinking-content', (data: SocketTextEvent) => {
-        setThinkingContent(prev => prev + data.content);
-      });
-
-      socket.on('ai-error', (data: SocketErrorEvent) => {
-        sendingRef.current = false;
-        setWaitingAI(false);
-        setThinkingContent('');
-        setConnectionError(data.error || 'AI 回复遇到了问题，请稍后重试');
-      });
-
-      socket.on('student-auth-error', (data: SocketErrorEvent) => {
-        sendingRef.current = false;
-        setStudentSessionToken();
-        localStorage.removeItem(`chat_session_${joinCode}`);
-        setWaitingAI(false);
-        setConnectionError(data.error || '学生会话已失效，请重新选择身份');
-        socket.disconnect();
-        setSelectedStudent(null);
-        setMessages([]);
-        setStep('identity');
-      });
-
-      socket.on('agent-disabled', () => {
-        sendingRef.current = false;
-        setWaitingAI(false);
-        setAgentDisabled(true);
-      });
-
-      socket.on('agent-enabled', () => {
-        setAgentDisabled(false);
-      });
-
-      socket.on('classroom-ended', () => {
-        localStorage.removeItem(`chat_session_${code}`);
-        setToast({ msg: '课堂已结束', type: 'info' });
-        router.push('/');
-      });
-
-      socket.on('classroom-paused', () => {
-        sendingRef.current = false;
-        if (streamingRafRef.current) { cancelAnimationFrame(streamingRafRef.current); streamingRafRef.current = null; }
-        streamingBufferRef.current = '';
-        setPaused(true);
-        setWaitingAI(false);
-        setStreamingContent('');
-        setThinkingContent('');
-      });
-
-      socket.on('classroom-resumed', () => {
-        setPaused(false);
-      });
-
-      socket.on('identity-conflict', (data: SocketErrorEvent) => {
-        setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + data.error }]);
-        setWaitingAI(false);
-        setConnected(false);
-        // 断开后清除会话，回到身份选择页
-        localStorage.removeItem(`chat_session_${code}`);
-        if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
-        identityConflictTimerRef.current = window.setTimeout(() => {
-          if (generation !== chatConnectionGenerationRef.current) return;
-          if (wsRef.current) wsRef.current.disconnect();
-          wsRef.current = null;
-          setStep('identity');
-          setSelectedStudent(null);
-          setMessages([]);
-        }, 2000);
-      });
-
-      socket.on('disconnect', () => { sendingRef.current = false; setWaitingAI(false); setConnected(false); });
-      socket.on('connect_error', () => { sendingRef.current = false; setWaitingAI(false); setConnected(false); });
-
-      socket.on('error', (err: string) => {
-        sendingRef.current = false;
-        setWaitingAI(false);
-        setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + err }]);
-      });
-
-      socket.on('messages-cleared', (data: StudentIdEvent) => {
-        if (data.studentId === studentId) {
-          setMessages([]);
-          setStreamingContent('');
-          setWaitingAI(false);
-        }
-      });
-
-      socket.on('avatar-rewarded', (data: AvatarRewardEvent) => {
-        if (data?.tokens) {
-          setAvatarTokenCount(data.tokens);
-          setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击姓名旁的⭐即可更换', type: 'success' });
-        }
-      });
-
-      socket.on('teacher-notification', (data: TeacherNotificationEvent) => {
-        // 通过唯一 ID 去重（Db 持久化后，防止缓存重放 / socket 重连产生的重复）
-        if (data.id && seenNotifIdsRef.current.has(data.id)) return;
-        if (data.id) seenNotifIdsRef.current.add(data.id);
-        const now = new Date();
-        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        setTeacherMsgs(prev => [...prev, { message: data.message, time: timeStr }]);
-        setTeacherNotifBubble(data.message);
-        if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
-        teacherNotifTimerRef.current = window.setTimeout(() => {
-          if (generation === chatConnectionGenerationRef.current) setTeacherNotifBubble(null);
-        }, 15000);
-      });
-
-      socket.on('shield-warned', (data: ShieldWarnEvent) => {
-        const name = data.studentName || '学生';
-        setShieldWarning(`${name}同学你好，课堂交流请使用文明用语哦！请修改你的提问。`);
-        // 将对话区域中上一条学生消息替换为过滤后的内容
-        setMessages(prev => {
-          const next = [...prev];
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'user') {
-              next[i] = { ...next[i], content: data.filteredContent || next[i].content };
-              break;
-            }
-          }
-          return next;
-        });
-      });
-
-      socket.on('student-blacklisted', (data: StudentIdEvent) => {
-        if (data.studentId && data.studentId !== studentId) return;
-        setBlacklisted(true);
-        setWaitingAI(false);
-        setStreamingContent('');
-        setShieldWarning(null);
-      });
-
-      socket.on('student-unblacklisted', (data: StudentIdEvent) => {
-        if (data.studentId && data.studentId !== studentId) return;
-        setBlacklisted(false);
-        setShieldWarning(null);
-        // 移除自动黑屏消息
-        setMessages(prev => prev.filter(m => !(m.role === 'system' && typeof m.content === 'string' && m.content.includes('自动黑屏'))));
-      });
-
-
-      socket.on('allow-stop-changed', (data: PermissionEvent) => {
-        setClassroom((prev) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
-      });
-
-      socket.on('allow-export-changed', (data: PermissionEvent) => {
-        setClassroom((prev) => prev ? { ...prev, allowStudentExport: data.allow } : prev);
-      });
-
-      socket.on('follow-ups-changed', (data: PermissionEvent) => {
-        setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
-      });
-
-      wsRef.current = socket;
-    } catch {
-      setConnected(false);
-    }
-  }
 
   const openFullscreenImage = (url: string) => {
     setZoomLevel(1);

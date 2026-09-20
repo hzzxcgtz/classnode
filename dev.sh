@@ -201,6 +201,10 @@ cmd_clean() {
   cmd_stop || true
   rm -rf "$ROOT_DIR/.next" "$ROOT_DIR/out" "$ROOT_DIR/server/dist" \
     "$ROOT_DIR/server/frontend" "$ROOT_DIR/src-tauri/resources/server"
+  # 只清 PID/日志这类临时状态，否则陈旧文件会一直堆积。
+  # 注意不要删整个 .dev/：其中 cache/node 是 build-mac.sh 的 Node.js 下载缓存
+  # （约 100MB），删掉会强制下次打包重新下载。
+  rm -rf "$PID_DIR" "$LOG_DIR"
   ok "构建产物已清理"
 }
 
@@ -217,9 +221,53 @@ cmd_reset_db() {
   local answer
   read -r answer
   [[ "$answer" == reset ]] || { info "已取消"; return; }
-  rm -f "$ROOT_DIR/server/prisma/dev.db" "$ROOT_DIR/server/prisma/dev.db-journal" \
-    "$ROOT_DIR/server/.schema-version"
+  rm -f "$ROOT_DIR/server/prisma/dev.db" "$ROOT_DIR/server/prisma/dev.db-journal"
   pnpm --dir "$ROOT_DIR" --filter classnode-server db:push
+}
+
+# 统一的打包目标词汇表。新旧两套写法都接受，归一为 release.sh 的目标名：
+#   新: mac | mac-arm | mac-intel | win | all | source
+#   旧: both(macOS 双架构) | arm64 | intel | windows | msi
+# 结果写入 PKG_TARGET 而非 stdout —— die 在 $( ) 子 shell 中只会退出子 shell，
+# 会让非法目标静默退化成空串并触发 release.sh 的默认值(全量构建)。
+PKG_TARGET=""
+resolve_pkg_target() {
+  case "${1:-mac}" in
+    mac|macos|both)              PKG_TARGET=mac ;;
+    mac-arm|arm|arm64|mac-arm64) PKG_TARGET=mac-arm64 ;;
+    mac-intel|intel|x64)         PKG_TARGET=mac-intel ;;
+    win|windows|msi)             PKG_TARGET=windows ;;
+    all)                         PKG_TARGET=all ;;
+    source)                      PKG_TARGET=source ;;
+    *) die "未知的打包目标: $1（可用：mac、mac-arm、mac-intel、win、all、source）" ;;
+  esac
+}
+
+cmd_pkg() {
+  ensure_runtime
+  resolve_pkg_target "${1:-mac}"
+  if [[ "$PKG_TARGET" == windows || "$PKG_TARGET" == all ]]; then
+    info "Windows MSI 由 GitHub Actions 构建：命令派发后立即返回，不会在本机产出文件"
+  fi
+  exec bash "$ROOT_DIR/release.sh" "$PKG_TARGET"
+}
+
+cmd_db() {
+  ensure_runtime
+  case "${1:-}" in
+    push)         pnpm --filter classnode-server db:push ;;
+    gen|generate) pnpm --filter classnode-server db:generate ;;
+    studio)       pnpm --filter classnode-server db:studio ;;
+    reset)        cmd_reset_db ;;
+    *) die "db 的动作应为 push、gen、studio 或 reset" ;;
+  esac
+}
+
+# 逃生舱：低频需求直接透传给 pnpm，避免本脚本再跟着 package.json 增删子命令。
+cmd_run() {
+  ensure_runtime
+  (($#)) || die "用法: ./dev.sh run <pnpm 脚本名> [参数...]"
+  pnpm run "$@"
 }
 
 show_help() {
@@ -228,23 +276,33 @@ ${BOLD}ClassNode 开发工具${NC}
 
 用法: ./dev.sh <命令>
 
-  start                 后台启动前端和后端（默认）
-  foreground            前台启动前端和后端
-  stop | restart        停止或重启由本脚本启动的服务
+${BOLD}日常${NC}
+  start                 后台启动开发环境（前端 ${CLIENT_PORT} / 后端 ${SERVER_PORT}）—— 默认命令
+  fg                    前台启动，Ctrl-C 退出
+  stop                  关闭
+  restart               重启
   status                查看服务状态
-  logs [client|server]  跟踪日志
-  build                 构建前端
-  build:server          编译后端
-  build:all             构建前后端并组装 Web 运行目录
-  db:push|db:generate|db:studio
-  reset-db              重建开发数据库
-  clean                 停止服务并清理构建产物
-  reset                 清理、重装依赖并启动
-  version               查看版本
-  version:bump <版本>   准备新版本（不自动提交）
-  release [目标]        调用统一发布脚本
+  logs [client]         跟踪日志（默认前端 + 后端）
 
-端口可通过 CLASSNODE_CLIENT_PORT / CLASSNODE_SERVER_PORT 覆盖。
+${BOLD}构建${NC}
+  build                 构建前端静态导出 → out/
+  pkg [目标]            构建并生成安装包（默认 mac）
+                        目标：mac | mac-arm | mac-intel | win | all | source
+
+${BOLD}维护${NC}
+  db <动作>             数据库：push | gen | studio | reset
+  clean                 停止服务并清理构建产物与 .dev/ 状态
+  run <脚本> [参数...]   直接执行任意 pnpm 脚本
+  version               查看当前版本
+  version:bump <版本>   准备新版本（不自动提交）
+  help                  显示本帮助
+
+${BOLD}说明${NC}
+  pkg win / pkg all 中的 Windows MSI 由 GitHub Actions 构建，命令派发后
+  立即返回，不会在本机产出文件。
+  pkg 要求工作区无未提交改动；临时放行可设 CLASSNODE_ALLOW_DIRTY_RELEASE=1。
+  db reset 会删除开发数据库，需输入 reset 确认。
+  端口可通过 CLASSNODE_CLIENT_PORT / CLASSNODE_SERVER_PORT 覆盖。
 EOF
 }
 
@@ -252,32 +310,36 @@ cd "$ROOT_DIR"
 command_name="${1:-start}"
 shift || true
 case "$command_name" in
-  start|dev:all) cmd_start ;;
-  foreground) cmd_foreground ;;
-  stop) cmd_stop ;;
-  restart) cmd_stop; cmd_start ;;
-  status|ps) cmd_status ;;
-  logs) cmd_logs "$@" ;;
-  build) ensure_runtime; pnpm build ;;
-  build:server) ensure_runtime; pnpm build:server ;;
-  build:all) ensure_runtime; pnpm build:all ;;
-  db:push|db:generate|db:studio) ensure_runtime; pnpm --filter classnode-server "$command_name" ;;
-  reset-db) ensure_runtime; cmd_reset_db ;;
-  clean) cmd_clean ;;
-  reset|fresh) ensure_runtime; cmd_reset ;;
-  version) node -p '"ClassNode v" + require("./package.json").version' ;;
-  version:bump) ensure_runtime; node scripts/prepare-release.mjs "$@" ;;
-  release|release:full) exec bash "$ROOT_DIR/release.sh" "$@" ;;
-  r)
-    case "${1:-arm64}" in
-      arm64) target=mac-arm64 ;;
-      intel) target=mac-intel ;;
-      both) target=mac ;;
-      all) target=all ;;
-      *) die "r 的目标应为 arm64、intel、both 或 all" ;;
-    esac
-    exec bash "$ROOT_DIR/release.sh" "$target"
-    ;;
+  # 日常
+  start|dev:all)  cmd_start ;;
+  fg|foreground)  cmd_foreground ;;
+  stop)           cmd_stop ;;
+  restart)        cmd_stop; cmd_start ;;
+  status|ps)      cmd_status ;;
+  logs)           cmd_logs "$@" ;;
+
+  # 构建
+  build)          ensure_runtime; pnpm build ;;
+  pkg)            cmd_pkg "$@" ;;
+  # 旧的 r / release 一律走 cmd_pkg，其目标归一表同时接受旧词汇
+  r|release|release:full) cmd_pkg "$@" ;;
+
+  # 维护
+  db)             cmd_db "$@" ;;
+  clean)          cmd_clean ;;
+  run)            cmd_run "$@" ;;
+  version)        node -p '"ClassNode v" + require("./package.json").version' ;;
+  version:bump)   ensure_runtime; node scripts/prepare-release.mjs "$@" ;;
+
+  # 已废弃的旧名，保留一代以免打断肌肉记忆；下一版可整段删除
+  build:server)   ensure_runtime; pnpm build:server ;;
+  build:all)      ensure_runtime; pnpm build:all ;;
+  db:push)        cmd_db push ;;
+  db:generate)    cmd_db gen ;;
+  db:studio)      cmd_db studio ;;
+  reset-db)       cmd_db reset ;;
+  reset|fresh)    ensure_runtime; cmd_reset ;;
+
   help|-h|--help) show_help ;;
   *) die "未知命令: ${command_name}（运行 ./dev.sh help 查看帮助）" ;;
 esac

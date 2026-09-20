@@ -539,7 +539,10 @@ router.get('/code/:code', async (req, res) => {
     if (!classroom) return res.status(404).json({ error: '互动码无效' });
     if (classroom.status === 'ended') return res.status(400).json({ error: '课堂已结束' });
 
-    // 三态随课堂信息一起下发：学生端每 15 秒轮询本端点，加字段即自动获得首屏与兜底两条路径。
+    // 三态随课堂信息一起下发，供学生端两条路径读取：首屏（外壳 loadClassroom 进入会话时）
+    // 与连接达成时的补读（use-chat-socket 的 connect 回调用本端点只取 modules 合并 ——
+    // 覆盖首次加入前与断线期间收不到广播的两个空窗）。注意：chat-panel 那条 15 秒轮询
+    // 虽然也调本端点，但它只消费 status / agents / paused，不读 modules，不构成三态兜底。
     // 写入端点只为被设置的那一个模块建行，老课堂一行都没有，故必须按 MODULE_KEYS 补齐。
     // 读路径不可失败：ClassroomModule 表缺失（老库启动 DDL 被跳过）时降级为全默认态
     // ——「三个模块可见但锁定」是能接受的退化，把学生挡在课堂门外不是。

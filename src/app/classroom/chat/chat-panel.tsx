@@ -16,6 +16,8 @@ import styles from './chat.module.css';
 const MAX_ATTACHED_FILES = 5;
 
 export function StudentChatContent({
+  // ⚠️ 临时默认值 true：外壳（Task 5）还没有传入真实值，见 ChatPanelProps.active 的说明。
+  active = true,
   code,
   classroom,
   selectedStudent,
@@ -90,6 +92,11 @@ export function StudentChatContent({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
+  // ⚠️ M1b-2 之后面板常驻，这条清理只在「面板真正卸载」时执行（课堂结束、或换身份
+  // 时重挂）。§4.10 A 记录的缺口 —— streamingRafRef/streamingBufferRef 与两个定时器的
+  // 复位**只长在这里** —— 因此不能由它兜底。换身份那条路径必须显式选路线 A（key 重挂）
+  // 或路线 B（外壳 resetSessionState()），见 Task 1 报告；两者都不做则 M1a 修过的
+  // 「RAF id 已取消但非空 ⇒ 流式文字完全不显示」会原样回来。
   useEffect(() => () => {
     chatConnectionGenerationRef.current += 1;
     if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
@@ -106,32 +113,60 @@ export function StudentChatContent({
   // 点击外部关闭教师消息面板
   const teacherPanelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!showTeacherPanel) return;
+    // M1b-2 Task 1：这是 document 级监听，模块隐藏时不该继续挂在 document 上。
+    // 隐藏期间不挂（此时点外部也没有"关闭弹层"的意义），active 回来后重新挂载；
+    // 弹层状态本身跨 tab 保留，所以切回来时若还开着，行为与之前一致。
+    if (!active || !showTeacherPanel) return;
     const handler = (e: MouseEvent) => {
       if (teacherPanelRef.current && !teacherPanelRef.current.contains(e.target as Node)) {
         setShowTeacherPanel(false);
       }
     };
     // 延迟挂载以避免触发按钮自身的 click 事件
-    setTimeout(() => document.addEventListener('click', handler), 0);
-    return () => document.removeEventListener('click', handler);
-  }, [showTeacherPanel]);
+    const attachTimer = window.setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => {
+      // 必须显式清掉定时器：否则清理先于定时器执行时会 remove 一个尚未 add 的监听，
+      // 随后那个定时器再把 handler 永久挂到 document 上（再也摘不掉，包括卸载时）。
+      // active 进依赖后挂载/摘除变得频繁，这个窗口必须关掉。
+      window.clearTimeout(attachTimer);
+      document.removeEventListener('click', handler);
+    };
+  }, [active, showTeacherPanel]);
 
-  // 实时通信（useChatSocket）已整体上移到 use-classroom-session.ts：面板在
-  // step !== 'chat' 时会卸载，不该持有 socket 与会话级状态。面板仍需要的 ref
-  // （发送闸门 / 停止生成 / 卸载清理）由 page.tsx 按对象身份透传。
+  // 实时通信（useChatSocket）已整体上移到 use-classroom-session.ts：socket 属于
+  // 「课堂会话」而不是「学伴模块」—— M1b-2 之后面板常驻却随时可能不可见，让模块持有
+  // socket 就等于用可见性决定连接的生死。面板仍需要的 ref（发送闸门 / 停止生成 /
+  // 卸载清理）由 page.tsx 按对象身份透传。
   const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef });
 
   // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后
   // Safari 还会平移 visualViewport：保持页面起点不动，只把偏移量计入
   // 可用高度，避免在触摸滚动期间反复移动整个页面造成抖动。
-  // 面板只在 step === 'chat' 时挂载，原来的 step 门控因此恒为真，随挂载/卸载等价。
+  //
+  // M1b-2 Task 1：面板常驻后「挂载」不再等于「可见」，这道锁改挂 active。
+  // scrollLockRef 同时承担两件事：**证明锁是我们自己上的**，以及**记住加锁前的值**。
+  // 它是幂等性的全部依据：
+  //   · 只有「当前未持有锁」时才快照 —— cleanup 一定会先还原并把它置空，因此下一次
+  //     激活读到的必然是加锁前的真实值，**永不可能是我们自己写进去的 'hidden'**；
+  //   · 只有持有者才还原，且还原后立刻让出持有权。
+  // React 保证同一 effect 的 cleanup 一定先于下一次 setup 运行，所以「重新激活」与
+  // 「上一次的还原」不会交错：反复切走切回 N 次后，DOM 状态始终等于「最后一次 active
+  // 的稳态」（隐藏 → 原值，可见 → 'hidden'），既不会把 'hidden' 越叠越深，也不会漏还原。
+  // （真正会踩雷的是「只把 if (!active) return 塞进函数体、依赖仍留 []」：那样这道锁
+  //   只在挂载时上一次，切走后无人释放 —— 面板又不再卸载 —— <body> 会在整堂课上永远
+  //   停在 overflow:hidden。也就是说缺陷不在「往依赖里加 active」，而在**取锁与放锁
+  //   必须成对挂在同一个状态上**；这条 ref 语义正是把这件事写死。）
+  const scrollLockRef = useRef<{ body: string; html: string } | null>(null);
   useEffect(() => {
     const shell = chatShellRef.current;
-    if (!shell) return;
+    if (!active || !shell) return;
     const viewport = window.visualViewport;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
+    if (scrollLockRef.current === null) {
+      scrollLockRef.current = {
+        body: document.body.style.overflow,
+        html: document.documentElement.style.overflow,
+      };
+    }
     let frame: number | null = null;
     let settleTimer: number | null = null;
 
@@ -172,15 +207,25 @@ export function StudentChatContent({
       document.removeEventListener('focusin', updateAndSettle);
       document.removeEventListener('focusout', updateAndSettle);
       viewport?.removeEventListener('resize', updateAndSettle);
-      shell.style.removeProperty('--chat-viewport-height');
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
+      // 刻意**不**移除 --chat-viewport-height：面板不再卸载，把最后一次量到的高度留着，
+      // 切回学伴时的第一帧就是正确高度（否则那一帧会落到 100dvh 兜底上，而 Safari 15
+      // 不认识 dvh 会把整条声明丢弃 → 该帧高度退化为 auto）。下一次激活会立刻重新量。
+      const saved = scrollLockRef.current;
+      if (saved !== null) {
+        document.body.style.overflow = saved.body;
+        document.documentElement.style.overflow = saved.html;
+        scrollLockRef.current = null;
+      }
     };
-  }, []);
+  }, [active]);
 
   // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
+  // M1b-2 Task 1：五个监听全挂在 window 上，其中 wheel 还带 preventDefault —— 模块隐藏
+  // 时必须摘掉，否则学生打开图片后切到别的 tab，**整个外壳的滚轮都会被吃掉**。
+  // 查看器本身不关闭（状态跨 tab 保留，切回来它还在，与 §4.10 C3 一致）；重新可见时
+  // setup 会把拖拽状态复位，不会带着「拖到一半」的状态回来。
   useEffect(() => {
-    if (!fullscreenImg) return;
+    if (!active || !fullscreenImg) return;
     const d = dragRef.current;
     d.dragging = false; d.offX = 0; d.offY = 0;
 
@@ -223,7 +268,7 @@ export function StudentChatContent({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [fullscreenImg]);
+  }, [active, fullscreenImg]);
 
   const SOCKET_URL = API_BASE_URL;
   const apiBase = SOCKET_URL;
@@ -300,12 +345,14 @@ export function StudentChatContent({
   // 新消息到达、AI 流式输出、或首次进入对话页时自动滚动到底部
   // 用 useEffect 代替 useLayoutEffect，避免 scrollTop 强制同步布局阻塞主线程
   // iOS 键盘弹出时避免因滚动导致键盘收起：若输入框有焦点则不滚动
-  // （原依赖里的 step 只在挂载时变化，面板挂载即 step === 'chat'，故已移除）
+  // M1b-2 Task 1 **刻意不给这条加 active 门**：它只写自己子树内的 scrollTop，没有任何
+  // 页面级副作用；保持无门意味着隐藏期间视图也一直贴着最新一条，学生切回学伴时不需要
+  // 任何补滚就停在正确位置。
   useEffect(() => {
     if (userScrolledUpRef.current) return;
     const el = chatContainerRef.current;
     if (!el) return;
-    // iOS 上如果输入框有焦点，不自动滚动以免布局变化导致键盘收起
+    // iPhone/iPad 上如果输入框有焦点，不自动滚动以免布局变化导致键盘收起
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (isIOS && document.activeElement === inputRef.current) return;
@@ -346,27 +393,30 @@ export function StudentChatContent({
     return () => { if (io) io.disconnect(); if (ro) ro.disconnect(); };
   }, [messages, updateMarkers]);
 
-  // AI 回答完成后自动聚焦输入框
+  // 聚焦输入框的两条路径（M1b-2 Task 1 合并成一条，两者都必须在「可见」时才做）：
+  //   ① AI 回答完成（waitingAI 由 true 变 false）：答完了把焦点还给学生；
+  //   ② 模块由不可见变为可见（active 上升沿）：等价于基线的「进入聊天即聚焦」。
+  // 原来的 <textarea autoFocus> 已删除：常驻面板下它只在首次挂载时生效，而模块隐藏时
+  // （尤其 §4.6 动画期的 opacity/transform 阶段）元素仍可被聚焦 —— iPad 上会在学生已经
+  // 切到另一个 tab 或首页时弹出键盘。等价的「首次聚焦」由 ② 承担。
   // iOS Safari 需要特殊处理：程序化 focus() 不会弹出虚拟键盘，
   // 临时设置 readOnly→focus→移除 readOnly 能强制触发键盘
-  // （面板挂载即 step === 'chat'，原来的 step 条件恒为真）
   useEffect(() => {
-    if (!waitingAI) {
-      requestAnimationFrame(() => {
-        const el = inputRef.current;
-        if (!el) return;
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        if (isIOS) {
-          el.readOnly = true;
-          el.focus();
-          setTimeout(() => { el.readOnly = false; }, 150);
-        } else {
-          el.focus();
-        }
-      });
-    }
-  }, [waitingAI]);
+    if (!active || waitingAI) return;
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) {
+        el.readOnly = true;
+        el.focus();
+        setTimeout(() => { el.readOnly = false; }, 150);
+      } else {
+        el.focus();
+      }
+    });
+  }, [active, waitingAI]);
 
   const scrollToBottom = () => {
     const el = chatContainerRef.current;
@@ -376,7 +426,9 @@ export function StudentChatContent({
   };
 
   // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
-  // 面板挂载即 step === 'chat'，原来的 step 门控恒为真
+  // M1b-2 Task 1 **刻意不给这条加 active 门**：它观察的是「课堂生命期」，不是模块呈现。
+  // 面板常驻后若按可见性停掉它，学生只要不打开学伴 tab，课堂结束就再也检测不到
+  // （§4.10 C1 是同一判断，并进一步要求把它搬进外壳 —— 那是另一件事，不在本任务内）。
   useEffect(() => {
     if (!code) return;
     const poll = async () => {
@@ -1104,7 +1156,7 @@ export function StudentChatContent({
                 if (voiceListening) return;
                 sendMessage();
               }
-            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoFocus autoComplete="off"
+            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoComplete="off"
               rows={1}
               className={styles.composerTextarea} />
             {waitingAI && classroom?.allowStudentStop !== false ? (

@@ -70,6 +70,15 @@ export type ChatToast = { msg: string; type: 'success' | 'error' | 'info' };
 
 /** 学伴模块面板的契约。M1b 会在此基础上加 active / state 两个字段。 */
 export interface ChatPanelProps {
+  /**
+   * 此刻这个模块是否对用户可见（M1b-2 Task 1 引入）。
+   *
+   * ⚠️ **临时契约**：现在**可选且默认 `true`**。面板至今只在 `step === 'chat'` 时挂载，
+   * 「挂载 ≡ 可见」仍然成立，所以面板里的 active 门此刻全是空操作，行为与基线逐字一致。
+   * Task 3 定义 `ModulePanelProps` 时应把它变成**必填**的 `active: boolean`，并删掉面板
+   * 解构里的 `= true` 默认值；Task 5 的外壳负责传入真实值。
+   */
+  active?: boolean;
   // —— 外壳状态：面板只读 ——
   code: string;
   classroom: ClassroomInfo | null;

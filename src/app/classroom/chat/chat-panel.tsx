@@ -22,7 +22,6 @@ export function StudentChatContent({
   avatarSvgs,
   avatarTokenCount,
   allStudentAvatars,
-  onlineStudentIds,
   teacherMsgs,
   messages,
   loadingMessages,
@@ -408,13 +407,6 @@ export function StudentChatContent({
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
   }, [code, onClassroomEnded, selectedStudent?.groupId, setAgentDisabled, setPaused]); // 两个 setter 与 onClassroomEnded 都由外壳提供，是稳定引用
-
-  // 如果选中的学生被登录了，取消选中
-  useEffect(() => {
-    if (selectedStudent && onlineStudentIds.has(selectedStudent.id)) {
-      setSelectedStudent(null);
-    }
-  }, [onlineStudentIds, selectedStudent, setSelectedStudent]); // setSelectedStudent 由外壳传入，是稳定引用
 
   const openFullscreenImage = (url: string) => {
     setZoomLevel(1);

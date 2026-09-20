@@ -344,6 +344,19 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     };
   }, [step, classroom?.id, SOCKET_URL]);
 
+  // 如果选中的学生被登录了，取消选中。必须留在外壳里：它只读外壳状态
+  // （onlineStudentIds / selectedStudent / setSelectedStudent），且 onlineStudentIds
+  // 由上面那条身份页 socket effect 实时更新。M1a 之前这段长在面板里，而面板当时恒挂载，
+  // 所以它在身份选择页上是活的 —— 学生在身份页选中一位离线同学后，该同学从另一台设备
+  // 登录会立刻清空选择、置灰确认按钮，避免确认时走服务端「后登录踢先登录」分支把对方踢下线。
+  // 面板改为只在 step === 'chat' 时挂载后这段会失去身份页窗口，故上移到外壳恢复基线行为。
+  // 依赖数组与基线完全一致（无 step / active 闸门）。
+  useEffect(() => {
+    if (selectedStudent && onlineStudentIds.has(selectedStudent.id)) {
+      setSelectedStudent(null);
+    }
+  }, [onlineStudentIds, selectedStudent]); // setSelectedStudent 是 useState setter，引用稳定
+
   return {
     // 状态
     code,

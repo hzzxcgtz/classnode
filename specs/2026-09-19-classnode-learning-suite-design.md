@@ -201,10 +201,12 @@ interface ModulePanelProps {
 ```
 ClassroomModule            # 模块状态（与资源关联解耦）
 ├─ classroomId
-├─ module: 'worksheet' | 'explore' | 'companion'
-├─ state:  'open' | 'preview' | 'hidden'
-└─ @@unique([classroomId, module])
+├─ moduleKey: 'learning-sheet' | 'explorer' | 'companion'
+├─ state:     'open' | 'preview' | 'hidden'
+└─ @@unique([classroomId, moduleKey])
 ```
+
+> **⚠️ 实现修正（M1b-2 落地时）**：本节原先写的键名是 `module: 'worksheet' | 'explore' | 'companion'`，**与实际落地的代码/数据库不一致**。实现用的是 `moduleKey`，取值为 `'learning-sheet' | 'explorer' | 'companion'`（单一来源：`server/src/services/classroom-module-state.ts`；前端镜像在 `src/lib/classroom-modules.ts`）。**这里已按实现改正**——键名是持久化数据，改了要迁移，所以以代码为准。
 
 资源关联沿用各自机制，与本表解耦（模块可以「预告」但尚未配资源）：
 
@@ -222,6 +224,16 @@ ClassroomModule            # 模块状态（与资源关联解耦）
 - **惊群对策**：模块网页资源设长缓存；推送时给学生加 0～3 秒**随机错峰**，避免 40 个 iframe 同时拉取同一份 JS/CSS
 
 **边界情况**：三个模块全部为 `preview`/`hidden` 时，学生停留在**首页**，三张卡片全部灰掉——这正是首页存在的意义之一。
+
+**老课堂升级后的行为（M1b-2 Ruling 1 的裁定结果，回写于此）**：
+
+三态默认值为 `preview`（教学上最保守的起点，与本节的「预告」设计意图一致）。因此在 M1b-2 上线后，**升级前创建的课堂没有任何 `ClassroomModule` 行**，读路径按 `MODULE_KEYS` 补齐 ⇒ **三个模块一律呈现为 `preview`**——学生三张卡片全灰、进不去智能学伴。
+
+**裁定：接受这个行为，并加教师可见提示**，而不是「零行时把 `companion` 视为 `open`」。
+
+- 理由：尊重本节的设计意图；同时不让教师在升级当天困惑于「学生为什么进不去」。
+- 实现：教师端课堂看板的「模块状态」菜单里，当三个模块**都**是 `preview` **且该课堂确实没有任何 `ClassroomModule` 行**时，显示一句提示。区分「**查到了零行**」与「**查不到**」是关键——前者才提示，后者（读失败）必须沉默，否则会把一次查询失败误报成「未配置」。
+- **若判断有误的代价**：教师在升级当天可能发现学生进不去智能学伴；改动很小（换成「零行时 `companion` 视为 `open`」只需改读路径一处）。
 
 ### 4.5 挂载管理
 
@@ -368,6 +380,8 @@ M1b-2 渲染首页前必须三选一：(1) 接受 + 加教师可见提示；(2) 
 - **`api.request` 在任何 401 上派发 `classnode-teacher-session-expired`**。目前无害（只有 `teacher/layout.tsx` 监听，且学生侧调的是公开白名单端点），但学生侧若将来调用教师门控端点会是个陷阱。
 - **`server/dist/tests/socket-participant-message.test.js` 是孤儿产物**（源文件已删除），`tsc` 不清理已删源文件的输出，它给每次测试运行多算 1 个。建议 `build:server` 前 `rm -rf dist`。
 - **前后端各有一份三态词汇表**（`src/lib/classroom-modules.ts` vs `server/src/services/classroom-module-state.ts`），结构上不可避免（前端无法 import `server/src`），已在三处注释标注。M1b-2 改动任一份前，建议加一个 10 行的漂移守卫（提取两侧字面量比对）。
+  > **M1b-2 终审状态：守卫未加（遗留）。** 终审实测确认：**前端一侧的门是真的有牙齿**——`CoversAll` ×2 + `satisfies Record<ModuleId, …>` + `InverseOf` 四道编译期检查，加第 4 个模块时漏改 `types.ts` / `MODULE_KEY_BY_ID` / `MODULE_ID_BY_KEY` / `ModuleId` / `MODULE_META` **任一处都会编译失败**。
+  > **唯一静默的方向是服务端 → 前端**：两侧的 `ModuleKey` 是各自独立的字面量联合，服务端加一个模块**不会**让前端编译失败，症状是「**教师能设置、学生端连卡片都不出现**」。`server/src/tests/` 下目前没有任何测试引用 `src/lib/classroom-modules.ts`。⇒ **单独立项**。
 
 #### D. 一条来自终审的流程观察
 

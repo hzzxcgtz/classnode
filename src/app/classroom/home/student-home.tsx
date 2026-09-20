@@ -101,8 +101,12 @@ export function StudentHome({
   const studentName = selectedStudent?.name || '同学';
   const studentAvatarSvg = selectedStudent?.avatarId ? avatarSvgs[selectedStudent.avatarId] : undefined;
 
-  // 与学伴面板顶部栏同一套取值顺序（小组智能体优先，其次课堂第一个智能体），
+  // 与学伴面板**欢迎卡片**同一套取值顺序（小组智能体优先，其次课堂第一个智能体），
   // 否则首页说「小科老师」、进去变成另一个名字。
+  // ⚠️ 原文写的是「与学伴面板顶部栏同一套取值顺序」—— 那行头部已由 M1b-3 T4 整个撤除。
+  // 但这条不变量**仍然真实存在**：面板仅存的展示点是欢迎卡片（chat-panel.tsx 的
+  // renderAgentAvatar 那一处），它读的是**同一个字段、同一套顺序**。改这里的顺序之前，
+  // 先去看那一处 —— 这条注释防的正是两边漂移。
   //
   // 兜底用模块的身份名（`MODULE_META.companion.label`，也就是卡片上的「智能学伴」）而不是
   // 再写一遍字面量：零智能体的课堂里，首页卡片、Tab 与面板标题必须说同一个名字，而三处

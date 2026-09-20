@@ -37,7 +37,10 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 60; /* 高于面板自己的顶部栏(30)，低于各浮层(100 起) —— 查看器/模态要盖住它 */
+  z-index: 60; /* 高于面板内的浮层(标记条 25 / tooltip 30)，低于查看器/模态(100 起) —— 它们要盖住它 */
+  /* ⚠️ 原先这里写的是「高于面板自己的顶部栏(30)」。那行头部已由 M1b-3 T4 整个撤除，
+     所以指代对象不存在了 —— 但 60 这个取值仍然成立：面板内还留着 z-index 30 的标记
+     tooltip（chat-panel.tsx 的 markerTooltip），栏必须压在它之上。 */
   height: var(--shell-topbar-height);
   display: flex;
   align-items: center;

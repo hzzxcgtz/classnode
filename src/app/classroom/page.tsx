@@ -6,8 +6,13 @@ import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/l
 import { stripImages, Markdown } from '@/lib/markdown';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
-import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
+import type {
+  ChatAgent, StudentChatMessage, SocketTextEvent, AiResponseEvent, SocketErrorEvent,
+  StudentIdEvent, AvatarRewardEvent, TeacherNotificationEvent, ShieldWarnEvent, PermissionEvent,
+  BrowserSpeechRecognition, SpeechRecognitionWindow,
+} from './classroom-types';
 import styles from './chat.module.css';
 
 const API_BASE_URL = getApiBaseUrl();
@@ -56,54 +61,6 @@ function useIsMobile(): boolean {
     () => false,
   );
 }
-type ChatAgent = Pick<AgentSummary, 'name' | 'logo'> | null | undefined;
-type StudentChatMessage = {
-  id?: string;
-  role: string;
-  content: string;
-  createdAt?: string;
-  fileUrls?: string[];
-  fileUrl?: string;
-  fileNames?: string[];
-  fileName?: string;
-  followUps?: string[];
-  roundIndex?: number | null;
-};
-type SocketTextEvent = { content: string };
-type AiResponseEvent = SocketTextEvent & { roundIndex?: number | null; messageId?: string; followUps?: string[] };
-type SocketErrorEvent = { error?: string };
-type StudentIdEvent = { studentId?: string };
-type AvatarRewardEvent = { tokens?: number };
-type TeacherNotificationEvent = { id?: string; message: string };
-type ShieldWarnEvent = { studentName?: string; filteredContent?: string };
-type PermissionEvent = { allow: boolean };
-type BrowserSpeechRecognitionResult = {
-  isFinal: boolean;
-  length: number;
-  [index: number]: { transcript: string; confidence: number };
-};
-type BrowserSpeechRecognitionEvent = Event & {
-  resultIndex: number;
-  results: ArrayLike<BrowserSpeechRecognitionResult>;
-};
-type BrowserSpeechRecognitionErrorEvent = Event & { error: string; message?: string };
-type BrowserSpeechRecognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
-  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-};
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
-type SpeechRecognitionWindow = Window & {
-  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
-};
 const MAX_ATTACHED_FILES = 5;
 
 // ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====

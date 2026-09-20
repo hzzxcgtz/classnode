@@ -11,8 +11,9 @@ type Emitted = { room: string; event: string; payload: unknown };
 /**
  * 手写 prisma mock：只实现本端点会调到的方法。
  * `writes` 记录所有写库调用，非法输入用例断言它必须为空。
+ * `modules` 是 classroomModule.findMany 的返回值 —— 两个读端点都用它拼三态。
  */
-function createHarness(options: { classroom: unknown }) {
+function createHarness(options: { classroom: unknown; modules?: unknown[] }) {
   const emits: Emitted[] = [];
   const writes: unknown[] = [];
   const prisma = {
@@ -20,6 +21,7 @@ function createHarness(options: { classroom: unknown }) {
       findUnique: async () => options.classroom,
     },
     classroomModule: {
+      findMany: async () => options.modules ?? [],
       upsert: async (args: unknown) => {
         writes.push(args);
         return { id: 'module-row-1' };
@@ -40,7 +42,10 @@ function createHarness(options: { classroom: unknown }) {
   return { app, emits, writes };
 }
 
-async function startServer(t: { after: (fn: () => void) => void }, options: { classroom: unknown }) {
+async function startServer(
+  t: { after: (fn: () => void) => void },
+  options: { classroom: unknown; modules?: unknown[] },
+) {
   const harness = createHarness(options);
   const server = createServer(harness.app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -138,5 +143,168 @@ test('重复提交同一状态幂等：两次都返回 200 并各自广播', asy
   assert.deepEqual(emits.map(({ room }) => room), [
     'classroom:classroom-1', 'teacher:classroom-1',
     'classroom:classroom-1', 'teacher:classroom-1',
+  ]);
+});
+
+// ---------------------------------------------------------------------------
+// 读路径：学生端 GET /code/:code 与教师端 GET /:id 都必须下发完整三态。
+// 写入端点只为被设置的那一个模块建行，老课堂更是零行，所以两条路径都必须
+// 按 MODULE_KEYS 补齐 —— 这三个用例（0 / 1~2 / 3 行）就是为这条兜底写的。
+// ---------------------------------------------------------------------------
+
+/** 三个 key 的期望顺序，与 MODULE_KEYS 一致。 */
+const ALL_MODULE_KEYS = ['learning-sheet', 'explorer', 'companion'];
+
+/** 学生端 GET /code/:code 会展开 classroomAgents / groups，故 mock 需带上空数组。 */
+function studentClassroom() {
+  return {
+    id: 'classroom-1',
+    code: '1234',
+    title: '测试课堂',
+    mode: 'standard',
+    status: 'active',
+    allowStudentStop: false,
+    allowStudentExport: false,
+    classroomAgents: [],
+    groups: [],
+  };
+}
+
+/** 教师端 GET /:id 在响应前会遍历 students / groups。 */
+function teacherClassroom() {
+  return { ...studentClassroom(), classes: [], students: [] };
+}
+
+function getByCode(baseUrl: string, code: string) {
+  return fetch(`${baseUrl}/code/${code}`);
+}
+
+function getClassroom(baseUrl: string, id: string) {
+  return fetch(`${baseUrl}/${id}`);
+}
+
+test('学生端：课堂没有任何模块行时仍返回三个 key，且全部为默认态', async (t) => {
+  const { baseUrl } = await startServer(t, { classroom: studentClassroom(), modules: [] });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.modules.length, 3);
+  assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
+});
+
+test('学生端：三个模块都有记录时返回各自的态', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: studentClassroom(),
+    modules: [
+      { moduleKey: 'learning-sheet', state: 'hidden' },
+      { moduleKey: 'explorer', state: 'open' },
+      { moduleKey: 'companion', state: 'preview' },
+    ],
+  });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).modules, [
+    { moduleKey: 'learning-sheet', state: 'hidden' },
+    { moduleKey: 'explorer', state: 'open' },
+    { moduleKey: 'companion', state: 'preview' },
+  ]);
+});
+
+test('学生端：只有部分记录时，缺失的 key 用默认态补齐', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: studentClassroom(),
+    modules: [{ moduleKey: 'explorer', state: 'open' }],
+  });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).modules, [
+    { moduleKey: 'learning-sheet', state: 'preview' },
+    { moduleKey: 'explorer', state: 'open' },
+    { moduleKey: 'companion', state: 'preview' },
+  ]);
+});
+
+test('学生端：库里的态非法时退回默认态，不把脏数据下发给学生', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: studentClassroom(),
+    modules: [{ moduleKey: 'companion', state: 'locked' }],
+  });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).modules, [
+    { moduleKey: 'learning-sheet', state: 'preview' },
+    { moduleKey: 'explorer', state: 'preview' },
+    { moduleKey: 'companion', state: 'preview' },
+  ]);
+});
+
+test('教师端：课堂没有任何模块行时仍返回三个 key，且全部为默认态', async (t) => {
+  const { baseUrl } = await startServer(t, { classroom: teacherClassroom(), modules: [] });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.modules.length, 3);
+  assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
+});
+
+test('教师端：三个模块都有记录时返回各自的态', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: teacherClassroom(),
+    modules: [
+      { moduleKey: 'learning-sheet', state: 'open' },
+      { moduleKey: 'explorer', state: 'hidden' },
+      { moduleKey: 'companion', state: 'open' },
+    ],
+  });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).modules, [
+    { moduleKey: 'learning-sheet', state: 'open' },
+    { moduleKey: 'explorer', state: 'hidden' },
+    { moduleKey: 'companion', state: 'open' },
+  ]);
+});
+
+test('教师端：只有部分记录时，缺失的 key 用默认态补齐', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: teacherClassroom(),
+    modules: [{ moduleKey: 'learning-sheet', state: 'hidden' }],
+  });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).modules, [
+    { moduleKey: 'learning-sheet', state: 'hidden' },
+    { moduleKey: 'explorer', state: 'preview' },
+    { moduleKey: 'companion', state: 'preview' },
+  ]);
+});
+
+test('两个读端点在同样的记录下给出同一份三态', async (t) => {
+  const modules = [{ moduleKey: 'companion', state: 'hidden' }];
+  const student = await startServer(t, { classroom: studentClassroom(), modules });
+  const teacher = await startServer(t, { classroom: teacherClassroom(), modules });
+
+  const studentBody = await (await getByCode(student.baseUrl, '1234')).json();
+  const teacherBody = await (await getClassroom(teacher.baseUrl, 'classroom-1')).json();
+
+  assert.deepEqual(studentBody.modules, teacherBody.modules);
+  assert.deepEqual(teacherBody.modules, [
+    { moduleKey: 'learning-sheet', state: 'preview' },
+    { moduleKey: 'explorer', state: 'preview' },
+    { moduleKey: 'companion', state: 'hidden' },
   ]);
 });

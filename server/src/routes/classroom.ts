@@ -4,7 +4,7 @@ import { createStudentToken } from '../middleware/student-auth.js';
 import { hasTeacherSession } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
-import { isValidModuleKey, isValidModuleState } from '../services/classroom-module-state.js';
+import { isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
 import { abortClassroomStreams } from '../socket/index.js';
 
 const router: Router = Router();
@@ -451,7 +451,13 @@ router.get('/:id', async (req, res) => {
         gender: null, tag: null, avatarId: null, avatarChangeTokens: 0,
       },
     }));
-    res.json({ ...classroom, students, groupMembersMap });
+    // 教师端看板也依赖三态（刷新后要还原模块的开关状态）。
+    // 与 /code/:code 共用 mergeModuleStates，老课堂的零行兜底只在这一处定义。
+    const moduleRecords = await prisma.classroomModule.findMany({
+      where: { classroomId: classroom.id },
+      select: { moduleKey: true, state: true },
+    });
+    res.json({ ...classroom, students, groupMembersMap, modules: mergeModuleStates(moduleRecords) });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });
   }
@@ -532,6 +538,13 @@ router.get('/code/:code', async (req, res) => {
     if (!classroom) return res.status(404).json({ error: '互动码无效' });
     if (classroom.status === 'ended') return res.status(400).json({ error: '课堂已结束' });
 
+    // 三态随课堂信息一起下发：学生端每 15 秒轮询本端点，加字段即自动获得首屏与兜底两条路径。
+    // 写入端点只为被设置的那一个模块建行，老课堂一行都没有，故必须按 MODULE_KEYS 补齐。
+    const moduleRecords = await prisma.classroomModule.findMany({
+      where: { classroomId: classroom.id },
+      select: { moduleKey: true, state: true },
+    });
+
     res.json({
       id: classroom.id,
       code: classroom.code,
@@ -540,6 +553,7 @@ router.get('/code/:code', async (req, res) => {
       status: classroom.status,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
+      modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,
         name: ca.agent.name,

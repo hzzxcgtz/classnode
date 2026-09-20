@@ -25,6 +25,10 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
       findUnique: async ({ where }: { where: { code?: string; id?: string } }) =>
         where.code === '1234' || where.id === 'classroom-1' ? classroom : null,
     },
+    // 本课堂没有任何 ClassroomModule 行（老课堂升级后的常态）：GET /code/:code 仍须下发三个默认态。
+    classroomModule: {
+      findMany: async () => [],
+    },
     classroomStudent: {
       findFirst: async ({ where }: { where: { classroomId: string; id: string } }) =>
         where.classroomId === 'classroom-1' && where.id === 'membership-1' ? { id: 'membership-1' } : null,
@@ -66,6 +70,12 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
     status: 'active',
     allowStudentStop: true,
     allowStudentExport: true,
+    // 三态随课堂信息一起下发，缺失的行按 MODULE_KEYS 补齐为默认态 preview。
+    modules: [
+      { moduleKey: 'learning-sheet', state: 'preview' },
+      { moduleKey: 'explorer', state: 'preview' },
+      { moduleKey: 'companion', state: 'preview' },
+    ],
     agents: [{ id: 'agent-1', name: '语文助手', logo: null, platform: 'coze', enabled: true, greeting: null }],
   });
 

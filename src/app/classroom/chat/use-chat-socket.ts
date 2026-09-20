@@ -204,13 +204,25 @@ export function useChatSocket(options: ChatSocketOptions) {
       socket.on('avatar-rewarded', (data: AvatarRewardEvent) => {
         if (data?.tokens) {
           optionsRef.current.setAvatarTokenCount(data.tokens);
-          // ⚠️ 入口指向**顶栏那枚学生 chip**（外壳的 `ModuleTabBar`），措辞必须跟着入口走：
-          // M1b-3 T2 撤掉了面板头上那枚「⭐ N」角标与首页的换头像按钮，奖励到达的这一刻
-          // 屏幕上**没有任何星形图标** —— 旧文案「点击姓名旁的⭐」会让拿到奖励的学生找不到
-          // 入口。顶栏 chip 在 `avatarTokenCount > 0` 时正好是 `<button>`（本行上面那句
-          // `setAvatarTokenCount` 就是它的开关），所以这句话说出口时入口一定在、且可点。
-          // 措辞改一次就要重新对一遍入口，别再退回「某某旁的图标」这种描述。
-          optionsRef.current.setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击屏幕上方你的头像即可更换', type: 'success' });
+          // ⚠️ 入口指向**屏幕最上方那一行里你的头像**（外壳 `ModuleTabBar` 里的学生 chip）。
+          // 措辞有两条硬要求，改一次就要重新对一遍：
+          //   ① **入口要是当下真正可点的那一个**。M1b-3 T2 撤掉了面板头上那枚「⭐ N」角标与
+          //      首页的换头像按钮，奖励到达的这一刻屏幕上**没有任何星形图标** —— 旧文案
+          //      「点击姓名旁的⭐」会让拿到奖励的学生找不到入口。
+          //   ② **必须排他**。「你的头像」这个说法不排他：同一屏的首页白卡里、紧挨学生姓名
+          //      还有第二枚「你的头像」（70×70、比 chip 那枚 36px 圆更显眼，1280px 下同样
+          //      成立），它是 `<span>` / `cursor: auto`，点下去**没有任何反应** —— 学生按字面
+          //      去点它，得到的只是「没反应」。所以这里说的是**位置**（屏幕最上方那一行），
+          //      屏幕上长得像头像的东西里只有那一行里的这枚在顶栏内。
+          //
+          // ⚠️ 「chip 是不是按钮」的开关**不是** `avatarTokenCount`：真实开关在
+          // `module-tab-bar.tsx` 的 `changeable`（`selectedStudent?.studentId`）—— 真实学生
+          // 参与者**永远**是可点的 `<button>`，小组参与者拿到不可点的 `<span>`（小组没有这项
+          // 能力，服务端的 `avatarChangeTokens` 长在 `Student` 上）。上面的
+          // `setAvatarTokenCount` 只决定**点下去之后**走哪个分支：tokens > 0 开弹窗，否则由
+          // `handleChangeAvatar` 说一句「换头像的机会由老师奖励」。奖励到达时 tokens > 0，
+          // 所以这句话说出口时点它一定开弹窗。
+          optionsRef.current.setToast({ msg: '🎉 老师奖励了你一次更换头像的机会！点击屏幕最上方那一行里你的头像即可更换', type: 'success' });
         }
       });
 

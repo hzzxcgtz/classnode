@@ -83,7 +83,18 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M11.5 3C6.8 3 3 6.2 3 10.1c0 1.7.7 3.2 2 4.4L4 18l3.8-2c1.1.7 2.4 1 3.7 1 4.7 0 8.5-3.1 8.5-6.9S16.2 3 11.5 3Z" />
         <path d="M17.6 8.2c2 .8 3.4 2.5 3.4 4.6 0 2.8-2.5 5.1-5.7 5.1h-1.7L10 21l.9-3.4" />
-        <path d="M8.5 10h.01M11.5 10h.01M14.5 10h.01" strokeWidth="2.6" />
+        {/* 三枚「眼睛」点。⚠️ 这里**必须**是显式 `<circle>`，不能写成
+            `M8.5 10h.01M11.5 10h.01M14.5 10h.01` + `strokeWidth="2.6"` 那种端点圈写法：
+            那种写法下这三枚点**在几何上是不存在的**（`getBBox()` 实测高度为 0 —— 它只是一条
+            没有长度的线），成形完全依赖父 `<svg>` 上**继承来的** `stroke-linecap="round"`。
+            父级 linecap 一改、或这段被复制到别处，三枚点会整体消失（不是变细）。
+            取值按原状推算：round 端点圈的半径 = strokeWidth / 2 = 2.6 / 2 = **1.3**，
+            圆心就是三个 MoveTo 的落点 (8.5,10) / (11.5,10) / (14.5,10)。
+            `fill` / `stroke` 必须写在每个 circle 上：父 svg 给的是 `fill="none"` +
+            `stroke="currentColor"`，不覆盖就成了空心圆环（形状会变）。 */}
+        <circle cx="8.5" cy="10" r="1.3" fill="currentColor" stroke="none" />
+        <circle cx="11.5" cy="10" r="1.3" fill="currentColor" stroke="none" />
+        <circle cx="14.5" cy="10" r="1.3" fill="currentColor" stroke="none" />
         <path d="M20 2v3M18.5 3.5h3" />
       </svg>
     ),

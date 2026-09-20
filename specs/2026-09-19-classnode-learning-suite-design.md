@@ -264,6 +264,42 @@ Tab 栏带随选中项平移的指示器滑块，模块以颜色区分：学习�
 
 ---
 
+### 4.9 M0 交付后的实况核对（2026-09-20 补充）
+
+M0 已完成并合入 `feat/classroom-suite`：`page.tsx` 由 2495 行降至 **26 行**，产出 16 个文件。实施过程中整体审查发现**本设计对 M1 的两处预估偏乐观**，M1 排期必须据此修正：
+
+**① M0 并未交付「可挂载的容器」（原假设错误）。**
+`chat/chat-panel.tsx` 的 `StudentChatContent()` **不接收任何 props**，且自己拥有 `step` 状态机（`'loading' | 'identity' | 'chat'`）、loading 整页、identity 整页、以及 `router.push('/')` 整页跳转。**M1 无法直接把它挂进 tab。**
+
+M1 的第一项必须是**「编排上移」**：把 `step`、loading 分支、identity 分支、`code` / `classroom` / `selectedStudent` 从 `chat-panel` 提到 `page.tsx` / `shell/`，并把 `useChatSocket`（含 `setStep`、`router`、`setSelectedStudent`、`setMessages`）与 `useStudentSession` 一并上移——因为这些现在会写 `step`、会整页跳转，那是外壳职责而非 tab 职责。
+
+**这是一块独立工作量，比 M0 任何单个任务都大，且无法用机械搬家完成（需要设计 `active` 语义）。** 不要指望在 M1 里「顺手」做掉。
+
+**② 聊天分支有三处页面级副作用未受「是否可见」门控，M1 必踩。**
+§4.5 规定模块挂载后不再卸载、非活动模块用 `visibility:hidden` 保留。但当前 `chat-panel.tsx` 中：
+
+- `document.body.style.overflow = 'hidden'` + `documentElement` 同类操作 + `visualViewport` / `resize` / `focusin` / `focusout` 监听：只在 `step !== 'chat'` 时因 early-return 不生效。M1 里学生切到学习单 tab 时 `step` 仍是 `chat`，**整个外壳的滚动会被锁死**
+- `autoFocus` 与「AI 回答完成后自动聚焦输入框」的 effect：无 `active` 门，模块挂载即聚焦，iPad 上会**弹出键盘**，而学生可能正在首页或另一个 tab
+- 15 秒轮询 effect 在课堂结束时 `router.push('/')`：跳转本身在 M1 仍正确，但**由模块决定整页导航**是层级错误
+
+**M1 对策**：overflow/viewport effect 的依赖加 `active`；聚焦 effect 加 `active &&` 前置条件；`autoFocus` 改为 `active` 首次变 true 时程序化 focus。
+
+**③ 其他 M1 建议（来自整体审查，按价值排序）**
+
+- **合并 `renderAgentAvatar` → `AgentAvatar`**：`chat-panel.tsx:259-275` 与 `chat/agent-avatar.tsx:12-31` 渲染的 DOM **完全相同**（逐属性比对），是同一份实现的两套写法，且 `renderAgentAvatar` 的第 4 个参数从未被传过（死参数）。合并可证 DOM 等价。
+- **消掉 `use-chat-socket.ts` options 里的 `SOCKET_URL` 字段**：它是该 options 面上唯一的编译期常量，却和必须透传的 ref 混在一起，导致 `chat-panel.tsx` 对同一常量有两处独立赋值（分叉风险，无编译期保护）。改为 hook 内直接 `import { API_BASE_URL } from '../avatar-utils'`，options 28 → 27。
+- **把 `chat/svg-avatar.tsx` 移到 `classroom/` 根目录**：它被 4 处消费（含 `identity/identity-picker.tsx`），现在构成**目录级循环**（`chat-panel` → `identity-picker` → `svg-avatar`；无文件级循环故非 bug），但 M1 把 chat 变成 tab 后这个方向会很别扭。
+- **处理 `identity-conflict` 死 handler**：`server/src/` 自 v1.3.5 起改发 `ai-error`，该 handler 永不可达。**连带一个既有功能缺口**：真实设备冲突路径 `ai-error`（`server/src/socket/index.ts:321`，文案「账号已在其他设备登录」）目前只把消息塞进 `connectionError` 横幅，**学生仍停在聊天页，无任何引导**——建议单独立项补 UI。
+- **头像映射加载片段被复制了 5 份**（1 份在 `identity/use-student-session.ts`，4 份在 `chat/`），建议提一个 `loadAvatarMap()` 到 `avatar-utils.ts`。
+- **`page.tsx` 的 `Suspense` 包装已成摆设**（`/classroom/` 下无 `useSearchParams`，无物可 suspend），M1 重写 `page.tsx` 时可直接删；`page.tsx` 的 `@keyframes blink` 与 `teacherBubbleIn` 在全树无引用（**重构前就无引用**），一并删。
+- **`identity/use-student-session.ts:29` 的 `const o = optionsRef.current` 是一次性快照**（唯一调用点是 `[]` deps 挂载 effect，当前与重构前闭包等价）。**若 M1 把这个函数接给重试按钮或任何重渲染后的回调，语义会静默变成「调用时刻的 options」。** 复用前先加注释或改成逐次读取。
+
+**④ 一条独立的既有缺口（不属 M1，建议单独立项）**
+
+`scripts/check-classroom-browser-compat.mjs` **只扫描 JS bundle，不扫描 CSS**。因此 `chat/chat.module.css` 中的 `100dvh`（第 6/7/9 行）与 `:focus-visible`（第 61/130 行）——两者都在本项目的 Safari 15 禁用清单上——长期未被构建 gate 拦截。经核实这些是 M0 之前就存在的（`0713de41` 中逐字相同），且降级表现优雅（`100dvh` 有 CSS 变量兜底、`:focus-visible` 失效仅损失聚焦轮廓），但**这暴露了老 iPad 兼容防线的一个盲区**，与本次重构无关，应单独处理。
+
+---
+
 ## 5. P2：探究助手
 
 ### 5.1 源隔离方案

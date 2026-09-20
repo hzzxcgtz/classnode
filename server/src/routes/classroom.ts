@@ -572,6 +572,10 @@ router.get('/code/:code', async (req, res) => {
       status: classroom.status,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
+      // 探究助手托管服务的源。学生端拿它拼 iframe 的 src —— 它必须与父页面**跨源**，
+      // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，
+      // 这里只读不算（与 prisma / io 同一套注入方式）。
+      webappOrigin: req.app.get('webappOrigin') as string | undefined,
       modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,

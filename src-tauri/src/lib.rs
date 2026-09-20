@@ -25,6 +25,10 @@ use tauri::{
 };
 
 const SERVER_PORT: u16 = 3001;
+// 探究助手托管服务的端口：必须与主服务不同源，否则 sandbox 的 allow-same-origin
+// 会让 iframe 能自行摘除 sandbox。这里与服务端 resolveWebappPort 的默认值保持一致
+// （serverPort + 1），并显式下发给子进程，避免两边各自推算。
+const WEBAPP_PORT: u16 = SERVER_PORT + 1;
 static IS_STARTING: AtomicBool = AtomicBool::new(false);
 static LAST_START_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
@@ -257,6 +261,7 @@ fn run_prisma_db_push(
 
 fn spawn_server(app: &AppHandle) -> Result<(), String> {
     ensure_port_free(SERVER_PORT)?;
+    ensure_port_free(WEBAPP_PORT)?;
 
     let server_dir = get_server_dir(app)?;
     let server_script = server_dir.join("dist").join("index.js");
@@ -274,7 +279,7 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     fs::create_dir_all(&data_dir)
         .map_err(|e| format!("创建用户数据目录失败: {}", e))?;
 
-    for sub in &["uploads/chat", "uploads/logos", "uploads/temp", "backups"] {
+    for sub in &["uploads/chat", "uploads/logos", "uploads/temp", "backups", "webapps"] {
         fs::create_dir_all(data_dir.join(sub))
             .map_err(|e| format!("创建目录 {} 失败: {}", sub, e))?;
     }
@@ -369,7 +374,8 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
         cmd.arg(child_script_arg(&server_script, &server_dir))
             .current_dir(&server_dir)
             .env("CLASSNODE_DATA_DIR", &data_dir_str)
-            .env("DATABASE_URL", &db_url);
+            .env("DATABASE_URL", &db_url)
+            .env("CLASSNODE_WEBAPP_PORT", WEBAPP_PORT.to_string());
         #[cfg(unix)]
         cmd.process_group(0);
         #[cfg(target_os = "windows")]

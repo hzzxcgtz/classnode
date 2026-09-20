@@ -29,6 +29,7 @@ import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
+import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -93,6 +94,13 @@ async function main() {
   app.set('io', io);
   const lanAccessSetting = await prisma.setting.findUnique({ where: { key: 'lan-access' } }).catch(() => null);
   app.set('lanAccessEnabled', lanAccessSetting?.value !== 'false');
+
+  // 探究助手托管服务的端口。**只在这里算一次** —— 路由层一律经 app.get('webappOrigin')
+  // 取值，不得自行重算一遍（与 prisma / io / lanAccessEnabled 同一套注入方式）。
+  // app.set 必须在 listen 之前完成，否则路由会拿到 undefined。
+  const webappPort = resolveWebappPort(port);
+  const bindIpSetting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } }).catch(() => null);
+  app.set('webappOrigin', `http://${pickSelectedIp(getLocalIPAddresses(), bindIpSetting?.value ?? null)}:${webappPort}`);
 
   const isLoopbackAddress = (address?: string) => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
   app.use((req, res, next) => {
@@ -355,14 +363,12 @@ async function main() {
   // Get server info
   app.get('/api/server-info', requireTeacher, async (req, res) => {
     const interfaces = getLocalIPAddresses();
-    let selectedIp = '';
+    let bindIp: string | null = null;
     try {
       const setting = await prisma.setting.findUnique({ where: { key: 'bind-ip' } });
-      if (setting) selectedIp = setting.value;
+      if (setting) bindIp = setting.value;
     } catch {}
-    if (!selectedIp || !interfaces.some(i => i.ip === selectedIp)) {
-      selectedIp = interfaces.length > 0 ? interfaces[0].ip : "localhost";
-    }
+    const selectedIp = pickSelectedIp(interfaces, bindIp);
     const defaultFrontendPort = process.env.NODE_ENV === 'development' ? '4000' : String(port);
     const fePort = parseInt(process.env.FRONTEND_PORT || defaultFrontendPort, 10);
     const studentUrl = `http://${selectedIp}:${fePort}/classroom`;
@@ -372,6 +378,8 @@ async function main() {
       interfaces,
       selectedIp,
       studentUrl,
+      // 探究助手托管服务的源。端口来自 main() 里那一个 webappPort 变量，不在这里重算。
+      webappOrigin: `http://${selectedIp}:${webappPort}`,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
       classroomUrl: interfaces.map(i => `http://${i.ip}:${fePort}`),
     });
@@ -396,15 +404,41 @@ async function main() {
       .catch((error) => console.warn('[upgrade] 后台检查失败:', error instanceof Error ? error.message : String(error)));
   });
 
+  // 探究助手托管服务：独立源的第二个 Express 实例（规格 §5.1）。
+  // 它起不来**不能**拖垮主服务 —— EADDRINUSE 时 startWebappHost 只 warn 并返回 null。
+  const webappServer = await startWebappHost({
+    port: webappPort,
+    serverPort: port,
+    lanAccessEnabled: app.get('lanAccessEnabled') !== false,
+    webappsRoot: webappsRoot(),
+  });
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`[server] Received ${signal}, shutting down gracefully...`);
     httpServer.close();
+    // 两个监听都在同一个进程里（Ruling 1），所以只关主 server 会留下一个还在
+    // 接连接的 webapp 端口，进程也就无法真正退出。null 表示它本就没起来。
+    webappServer?.close();
     await prisma.$disconnect();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+/**
+ * 「选中的局域网 IP」的唯一兜底实现。
+ *
+ * 设置里的 bind-ip 优先，但它可能指向一块已经拔掉的网卡，所以还要在网卡列表里验一次；
+ * 验不过就回落到第一块网卡，一块都没有（纯离线机器）才用 localhost。
+ *
+ * 抽成函数是因为 /api/server-info 与「启动时算 webappOrigin」两处要用同一套兜底 ——
+ * 两处各自抄一份的话，教师看到的学生端地址与探究助手地址会在换网时不一致。
+ */
+function pickSelectedIp(interfaces: { ip: string }[], bindIp: string | null): string {
+  if (bindIp && interfaces.some(i => i.ip === bindIp)) return bindIp;
+  return interfaces.length > 0 ? interfaces[0].ip : 'localhost';
 }
 
 function friendlyName(name: string): string {

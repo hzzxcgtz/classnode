@@ -22,9 +22,40 @@ function checkBundleLookbehinds() {
   }
 
   const html = fs.readFileSync(classroomHtmlPath, 'utf8');
-  const scriptPaths = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
+
+  // (1) index.html 直接引用的脚本 —— 管共享 chunk 与 vendor chunk。
+  const htmlScriptPaths = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
     .map((match) => match[1])
     .filter((source) => source.startsWith('/'));
+
+  // (2) classroom 路由**自己**的 chunk 目录 —— 管懒加载（next/dynamic）chunk。
+  //     这类 chunk 不在 index.html 里，只按 (1) 扫会漏掉。
+  //     注意：这道覆盖原先靠「classroom 恰好没有懒加载」偶然成立；一旦引入
+  //     next/dynamic，新 chunk 落在本目录下却不在 index.html 里 ⇒ 变成盲区。
+  const routeChunkDir = path.join(root, 'out', '_next', 'static', 'chunks', 'app', 'classroom');
+
+  function listRouteChunks(dir) {
+    if (!fs.existsSync(dir)) return [];
+    const found = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) found.push(...listRouteChunks(child));
+      else if (entry.name.endsWith('.js')) found.push(child);
+    }
+    return found;
+  }
+
+  const outDir = path.join(root, 'out');
+  const routeScriptPaths = listRouteChunks(routeChunkDir)
+    .map((abs) => `/${path.relative(outDir, abs).split(path.sep).join('/')}`);
+
+  // 两者之并集，去重。(1) 与 (2) 今天有重叠（classroom 暂无懒加载），
+  // 不去重会让同一个 chunk 被检测两遍、失败信息也重复。
+  //
+  // ⚠️ 刻意**不**扫整个 out/_next/static/chunks/：教师端 app/teacher/** 的
+  //    lookbehind 是合法的（教师用桌面浏览器）。扫进来会变成**假失败**，
+  //    而一个会误报的闸门很快就会被绕过 —— 那比漏报更糟。
+  const scriptPaths = [...new Set([...htmlScriptPaths, ...routeScriptPaths])];
 
   const unsupportedLookbehinds = ['/(?<=', '/(?<!', 'RegExp("(?<=', 'RegExp("(?<!', "RegExp('(?<=", "RegExp('(?<!"];
   const failures = [];

@@ -3,7 +3,7 @@ import { Markdown, stripImages } from '@/lib/markdown';
 import { SvgAvatar } from './svg-avatar';
 import { AgentAvatar } from './agent-avatar';
 import type { ChatAgent, StudentChatMessage } from '../classroom-types';
-import styles from '../chat.module.css';
+import styles from './chat.module.css';
 
 export interface MessageItemProps {
   msg: StudentChatMessage;

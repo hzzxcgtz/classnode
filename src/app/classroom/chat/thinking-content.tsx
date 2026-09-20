@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { Markdown } from '@/lib/markdown';
 import { AgentAvatar } from './agent-avatar';
 import type { ChatAgent } from '../classroom-types';
-import styles from '../chat.module.css';
+import styles from './chat.module.css';
 
 export interface ThinkingContentProps {
   content: string;

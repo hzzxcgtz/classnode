@@ -119,6 +119,49 @@ T2 与 T3 都会**在 `topBar` 块内部改东西**（T2 摘掉头像的 `onClic
 
 ---
 
+## T1 审查的遗留项（**由 T2 一并收口**，控制器已裁定）
+
+T1 审查结论 **Approved with fixes**（0 Critical / 1 Important / 4 Minor），实测确认：768px 下栏内容宽 **610px**、余量 **158px**、零溢出（实施者估 608，误差 2px）；指示器滑块 ΔX/ΔW 全为 0、`offsetParent` 未变（最大回归风险**不存在**）；Ruling 3 的无障碍逐条达标（含杀掉后端验证连接点 0.7s 内翻文案）；范围纪律干净。
+
+### C1（Important，**必修**）：641~703px 区间长姓名会把操作推出视野
+
+`.studentChip` 的 `max-width: 180px` 只把损害**封顶在 704px**，并不能阻止溢出。实测「需要的最小栏宽 = 524 + chip 宽」：
+
+| 姓名长度 | chip 宽 | 需要视口 |
+|---|---|---|
+| 3 字（贾宝玉） | 86 | 610 |
+| 7 字（司马相如字长卿） | 134 | **658** |
+| 撞满 180 上限 | 180 | **704** |
+
+⇒ 姓名可见（>640px）且较长时，641~703px 区间**顶栏横向滚动，「切换身份」「退出课堂」被推出视野**。
+**不是 Critical**：栏自身 `overflow-x: auto` 消化了溢出（整页不产生横向滚动条），滑动即可触达，功能不丢。
+
+**修法（三选一，控制器选 ③）**：给 `.studentChip` / `.actions` 加 `flex-shrink: 1; min-width: 0`，让**已有的** `.studentName` 省略号真正参与收缩。
+**为什么选 ③**：现在 chip 是 `flex: 0 0 auto` —— **永远不会缩，只会在 180px 处硬截**（连省略号都不给）。③ 同时修好这两件事，且不影响 768px 的观感。
+**若判断有误的代价**：长姓名学生的操作仍要滑动才够得到。
+
+### C2（Minor，**顺手修**）：同一个文件里三个互相矛盾的宽度数字
+
+`shell.module.css:225` 写「合计约 **598px**」、`:542` 写「约 **602px** / 不带姓名 **560px**」、报告写「608 / 560」，而**实测是 610 / 562**（chip 的 `border: 1px` 双侧让无姓名态是 38 而非 36）。
+⇒ 以**实测值 610 / 562** 为准统一。不修不影响功能，只影响 T4 重算时的信任成本。
+
+### C3（Minor，**必须在 T2 里做对**）：chip 的 `role="img"` 会在 T2 变成坑
+
+`module-tab-bar.tsx` 的 `.studentChip` 现在是 `role="img"` + `aria-label`（T1 为「窄屏 `display:none` 后无障碍树变空」而加，审查者用 `ariaSnapshot()` 验证过**合理且不冗余**）。
+但 **Ruling 1 要求 T2 把它变成可点的换头像入口** —— 届时 `<button role="img">` 会**丢掉 button 角色**。
+⇒ **T2 改成 `<button>` 时必须摘掉 `role="img"`**，`aria-label` 平移到 button 上。**T1 内不构成问题**（它现在确实不可点）。
+
+### C4（Minor，不改代码）：连接点画法与面板不逐像素一致
+
+新顶栏是 10px 实心点，面板是 7px 点 + 4px 环。**判定为 cosmetic**：面板那一行 T4 就删了，「与面板一致」很快失去意义；配色（`#079669`/`#ecfdf5`、`#dc2626`/`#fef2f2`）逐值抄准，学生读到的仍是同一个信号。
+
+### C5（流程，**T2~T5 每个派发都要带上**）：跑 `pnpm build` 前先 `./dev.sh stop`
+
+T1 期间 `pnpm build` 覆盖了 `.next`，**把正在跑的 dev server 打成了 500**（`Cannot find module './129.js'`）。这是流程问题不是代码问题，但会让开发环境每个任务坏一次。
+⇒ **T2~T5 的派发说明里加一条**：跑 `pnpm build` 之前先 `./dev.sh stop`，跑完再 `./dev.sh start`。
+
+---
+
 ## Task 2: 换头像收进外壳（两处 → 一处）
 
 **Files:** Modify `src/app/classroom/shell/classroom-shell.tsx`、`src/app/classroom/shell/module-tab-bar.tsx`、`src/app/classroom/chat/chat-panel.tsx`、`src/app/classroom/home/student-home.tsx`

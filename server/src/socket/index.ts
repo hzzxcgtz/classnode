@@ -264,6 +264,31 @@ export function abortClassroomStreams(
   return count;
 }
 
+/** 教师看板房间的前缀，与下面 join-teacher-board 及各处 io.to(`teacher:${id}`) 的写法一致。 */
+const TEACHER_ROOM_PREFIX = 'teacher:';
+
+/**
+ * 该 socket 上「已经不是当前课堂」的教师看板房间 —— 换看板前要逐个 leave 掉。
+ *
+ * 教师的 socket 在前端是模块级单例（src/lib/socket.ts），从课堂 X 的看板导航到 Y 的看板时
+ * 是**同一个 socket 再次 join**，而 Socket.IO 的 join 只加不减。不先离开旧房间的话，Y 的看板
+ * 会持续收到 X 的 module-state-changed（载荷只有 moduleKey/state，没有 classroomId，
+ * 客户端无从分辨是哪个课堂），表现为菜单里的三态单选按钮被另一个课堂改掉。
+ * 修在服务端而不是给载荷加 classroomId：根因在这里，一次修好所有客户端，且不动协议。
+ *
+ * 只清 `teacher:` 前缀的房间：教师首页的 listen-classroom-status 加入的 `status:<id>`
+ * 服务的是学生在线列表，与看板无关，不能顺手清掉。
+ */
+export function staleTeacherRooms(rooms: Iterable<string>, currentClassroomId: string): string[] {
+  const keep = `${TEACHER_ROOM_PREFIX}${currentClassroomId}`;
+  const stale: string[] = [];
+  for (const room of rooms) {
+    // room !== keep：已经在当前课堂房间里时不必先退出再进（join 本身幂等）。
+    if (room !== keep && room.startsWith(TEACHER_ROOM_PREFIX)) stale.push(room);
+  }
+  return stale;
+}
+
 export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: import('express').Application) {
   // 追踪每个学生的活跃连接，key: `${classroomId}:${studentId}`
   const activeConnections = new Map<string, string>();
@@ -392,6 +417,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         socket.emit('teacher-auth-error', { error: '教师会话已失效，请重新登录' });
         return;
       }
+      // 先离开上一个课堂的看板房间再进新的：join 只加不减，不清理的话本 socket 会同时待在
+      // teacher:X 与 teacher:Y 两个房间里，两个课堂的模块状态广播都会推过来。
+      // 放在鉴权之后：会话失效的请求不得造成任何房间变更。
+      for (const room of staleTeacherRooms(socket.rooms, classroomId)) socket.leave(room);
       socket.join(`teacher:${classroomId}`);
       socket.data.classroomId = classroomId;
       socket.data.isTeacher = true;

@@ -4,6 +4,7 @@ import { createStudentToken } from '../middleware/student-auth.js';
 import { hasTeacherSession } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
+import { isValidModuleKey, isValidModuleState } from '../services/classroom-module-state.js';
 import { abortClassroomStreams } from '../socket/index.js';
 
 const router: Router = Router();
@@ -835,6 +836,45 @@ router.post('/:id/toggle-allow-follow-ups', async (req, res) => {
   } catch (error) {
     console.error('[Classroom] toggle allow-follow-ups error:', error);
     res.status(500).json({ error: '切换失败' });
+  }
+});
+
+// 设置课堂模块的三态（open / preview / hidden）
+// 用 PUT 而非 toggle：三态没有「取反」语义，PUT 幂等、带目标态、可重试。
+router.put('/:id/modules/:moduleKey', async (req, res) => {
+  // 先校验再落库：非法输入不得产生任何写入或广播。
+  const { moduleKey } = req.params;
+  const { state } = req.body ?? {};
+  if (!isValidModuleKey(moduleKey)) {
+    return res.status(400).json({ error: '无效的模块标识' });
+  }
+  if (!isValidModuleState(state)) {
+    return res.status(400).json({ error: '无效的模块状态' });
+  }
+
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const id = req.params.id;
+    const classroom = await prisma.classroom.findUnique({ where: { id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    // 老课堂没有 ClassroomModule 行，因此用 upsert 而非 create。
+    // where 的复合键名由 Prisma 依 @@unique([classroomId, moduleKey]) 约定生成。
+    await prisma.classroomModule.upsert({
+      where: { classroomId_moduleKey: { classroomId: id, moduleKey } },
+      create: { classroomId: id, moduleKey, state },
+      update: { state },
+    });
+
+    // 教师端只加入 teacher:<id>，学生端只加入 classroom:<id>，两边都必须发。
+    const io = req.app.get('io');
+    io.to(`classroom:${id}`).emit('module-state-changed', { moduleKey, state });
+    io.to(`teacher:${id}`).emit('module-state-changed', { moduleKey, state });
+
+    res.json({ moduleKey, state });
+  } catch (error) {
+    console.error('[Classroom] set module state error:', error);
+    res.status(500).json({ error: '设置模块状态失败' });
   }
 });
 

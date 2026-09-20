@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:server": "pnpm --filter classnode-server dev",
-    "dev:all": "bash dev.sh foreground",
+    "dev:all": "bash dev.sh fg",
     "build": "next build && node scripts/check-classroom-browser-compat.mjs",
     "build:server": "pnpm --filter classnode-server build",
     "test": "pnpm --filter classnode-server test",

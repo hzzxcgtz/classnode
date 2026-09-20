@@ -5,28 +5,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Background dev server control
-./dev.sh start       # PID files + logs under .dev/
-./dev.sh status
-./dev.sh logs
-./dev.sh stop
+# Dev server control — ./dev.sh is the entry point; it owns the ports.
+# Bare `./dev.sh` (or `start`) is the default. PIDs/logs under .dev/.
+./dev.sh [start]      # background dev environment
+./dev.sh fg           # foreground (Ctrl-C to quit)
+./dev.sh status | stop | restart
+./dev.sh logs [client]
+./dev.sh build        # frontend static export -> out/
+./dev.sh pkg [目标]    # build + installer; mac(默认) | mac-arm | mac-intel | win | all | source
+./dev.sh db <动作>     # push | gen | studio | reset
+./dev.sh clean        # stop + remove build artifacts and .dev/{pids,logs}
+./dev.sh run <脚本>    # escape hatch: run any pnpm script
+./dev.sh help
 
-# Foreground frontend + backend
-pnpm dev:all
+# `pkg win` / `pkg all` only DISPATCH GitHub Actions and return immediately —
+# no local artifact. `pkg` also refuses a dirty tree (CLASSNODE_ALLOW_DIRTY_RELEASE=1
+# to override). Legacy names (r, release, db:push, reset-db, ...) still resolve.
+
+# Ports: CLASSNODE_CLIENT_PORT (default 4000) / CLASSNODE_SERVER_PORT (default 4001).
+# dev.sh exports PORT=… to each process; there is no hard-coded 4000 anywhere.
+
+# Run each separately — these do NOT get dev.sh's port env, so they use defaults
+pnpm dev           # Next.js frontend only → :3000
+pnpm dev:server    # Express backend only → PORT from server/.env (:3001)
 
 # Next.js 15 development uses Webpack by default. Turbopack currently panics
 # while resolving Next through this pnpm workspace and causes an HMR reload loop.
 
-# Run each separately
-pnpm dev           # Next.js frontend only (port 3000 → auto-redirect to 4000)
-pnpm dev:server    # Express backend only (port 3001, or 4001 in dev:all)
-
 # Build
-pnpm build         # Next.js static export → out/
+pnpm build         # Next.js static export → out/, then check-classroom-browser-compat.mjs
 pnpm build:server  # tsc compile server/src → server/dist/
-pnpm build:all     # both, then replace server/frontend from out/
+pnpm build:all     # both, then assemble the web runtime dir via scripts/package-web.mjs
 
-# Test (compiles server then runs Node built-in test runner)
+# Test (compiles server then runs Node built-in test runner over dist/tests/*.test.js)
 pnpm test
 # Run a single test file (from server/, after pnpm build:server)
 node --test dist/tests/security.test.js
@@ -69,13 +80,13 @@ classnode/
 └── scripts/             # Build helpers (sync-version, package-server, build-mac.sh, etc.)
 ```
 
-**Dev mode:** `pnpm dev:all` runs Next.js on port 4000 and Express on port 4001 concurrently. Express serves the static frontend from `out/` at `http://localhost:4001` in production, but in dev mode the Next.js dev server handles HMR. The `.env` files configure the ports.
+**Dev mode:** `pnpm dev:all` (→ `dev.sh foreground`) runs Next.js on 4000 and Express on 4001 concurrently. In production the Express server serves the static frontend from `server/frontend/` (populated from `out/`); `NODE_ENV=development` deliberately skips that static mount so a stale build can't shadow the Next dev server.
 
-**Important:** Express server has a 30s startup delay before listening (random argon2 scrypt hash for password security). Be patient after restart.
+**Runtime data root:** `CLASSNODE_DATA_DIR` is the desktop-app data directory. When set, it relocates uploads (`uploads/`), API-key encryption material, export backups (`backups/`), and logs (`logs/`). In dev it is unset and everything falls back under `server/`. Any new persisted file should respect it.
 
 ### Frontend (`src/app/`)
 
-Static export via `next.config.ts` (`output: 'export'`, `trailingSlash: true`). All pages under `src/app/teacher/` and one student portal page:
+Static export via `next.config.ts` (`output: 'export'`, `trailingSlash: true`, `images.unoptimized`) — no server-side rendering, so every page that talks to the API is a client component. Teacher pages live under `src/app/teacher/`; the student-facing pages are `/`, `/classroom/`, and `/help/agents/`:
 
 | Route | File | Purpose |
 |-------|------|---------|
@@ -90,7 +101,9 @@ Static export via `next.config.ts` (`output: 'export'`, `trailingSlash: true`). 
 | `/teacher/shield/` | `teacher/shield/page.tsx` | Shield words + rate limiting |
 | `/teacher/about/` | `teacher/about/page.tsx` | About page |
 | `/teacher/guide/` | `teacher/guide/page.tsx` | User guide |
+| `/help/agents/` | `help/agents/page.tsx` | Screenshot walkthrough for each AI platform, opened from the agents page with a `?platform=` query param |
 | `/classroom/` | `classroom/page.tsx` | **Student-facing portal** — join with code, chat, avatar changer |
+| `/` | `page.tsx` | Student entry (4-digit code); redirects to `/classroom/` |
 
 **Shared libs** (`src/lib/`):
 - `api.ts` — All API calls with typed responses; auto-injects `Authorization: Bearer` for student tokens; dispatches `classnode-teacher-session-expired` custom event on 401
@@ -100,6 +113,7 @@ Static export via `next.config.ts` (`output: 'export'`, `trailingSlash: true`). 
 - `types.ts` — Shared types: `InitStatus`, `AgentSummary`, `ClassroomSummary`, `StudentSessionResponse`
 - `components.tsx` — Shared UI: `Toast`, `Pagination`, `FieldError`
 - `markdown.tsx` — Markdown renderer (remark/rehype with KaTeX math)
+- `remark-gfm-compat.ts` — GFM plugin wiring for the markdown renderer
 - `export-doc.ts` — DOCX report export (classroom conversations + stats)
 - `version.ts` — Reads version from `package.json` via `APP_VERSION` constant
 - `upgrade-check.ts` — Version update checker (Gitee primary + GitHub fallback)
@@ -127,37 +141,42 @@ All routes inject Prisma via `req.app.get('prisma')` and Socket.IO via `req.app.
 | `/api/settings` | `settings.ts` | **None** | Admin password, session, init-status, change password — auth handled internally |
 | `/api/shield` | `shield.ts` | Teacher | Shield words CRUD, CSV import, config, auto-blacklist |
 | `/api/upload` | `upload.ts` | Teacher/Student | File upload (chat attachments, avatar images) |
-| `/api/changelogs` | `changelogs.ts` | **Public** | Lists changelog markdown files sorted by version |
+| `/api/changelogs` | `changelogs.ts` | Teacher | Lists changelog markdown files sorted by version |
 | `/api/system` | `system.ts` | Teacher | System info |
-| `/api/upgrade` | `upgrade.ts` | **None** | App upgrade check |
+| `/api/upgrade` | `upgrade.ts` | Teacher | App upgrade check (proxy-aware fetch, Gitee primary + GitHub fallback) |
+| `/api/health` | inline in `index.ts` | **Public** | Liveness probe used by the student entry page |
+| `/api/server-info` | inline in `index.ts` | Teacher | LAN IPs, chosen bind IP, and the QR-code student URL |
 
-**Auth layer in `index.ts`:** Routes are wrapped with middleware at registration time:
+**Auth layer in `index.ts`:** Routes are wrapped with middleware at registration time — individual routers do **not** add their own teacher auth:
 - Most admin routes use `requireTeacher` directly
-- `classroom` and `upload` allow public student access for specific paths (match via regex)
-- `avatars` allows student self-service for token-authenticated requests
-- `/api/settings` and `/api/changelogs` have internal auth or are public
+- `/api/classroom` — only three shapes bypass teacher auth: `POST /code/:code/student-session`, `GET /code/:code`, `GET /:id/students`. A valid student token additionally unlocks `GET /:id/student/:studentId/messages` and `GET /:id/notifications` for that student only
+- `/api/upload` — any valid student token passes
+- `/api/avatars` — public for `GET` except `/student-tokens/…`; a student token unlocks their own `PUT /student-self/:id` and `GET /student-tokens/:id`
+- `/api/settings` — no route-level teacher gate; each handler opts in (only `change-password` does; password/session/reset endpoints authenticate internally because they are the bootstrap path)
+
+**LAN gate:** before any route, a middleware 403s non-loopback requests when the `lan-access` Setting is `'false'` — Socket.IO has the matching check in `io.use()`. Both read the flag from `app.get('lanAccessEnabled')`, which is loaded once at startup, so toggling the setting requires a server restart.
 
 #### Services (`server/src/services/`)
 
 | Service | File | Purpose |
 |---------|------|---------|
-| **AI Proxy** | `ai-proxy.ts` | Multi-platform AI API: Coze (low-code + bot), Wenxin, Zhipuai. Streaming + non-streaming. 30s timeout, abort controller support. |
+| **AI Proxy** | `ai-proxy.ts` | Multi-platform AI API: Coze (low-code + bot), Wenxin, Zhipuai. Streaming + non-streaming. `fetchWithTimeout()` bounds **time-to-response-headers only** (30s) — a long stream is not cut off by it. |
 | **Coze Bot** | `coze-bot/` | Coze agent protocol implementation (streaming, tool calls) |
 | **Wenxin** | `wenxin/` | Baidu Wenxin agent protocol |
 | **Zhipuai** | `zhipuai/` | Zhipu AI agent protocol |
 | **Crypto** | `crypto.ts` | AES encrypt/decrypt for API keys stored in DB |
-| **Password Security** | `password-security.ts` | Scrypt hashing (via argon2), verify, migrate from old SHA256 |
+| **Password Security** | `password-security.ts` | Scrypt hashing via Node's built-in `crypto.scryptSync` (no native dep), `timingSafeEqual` verify, legacy SHA256 fallback |
 | **Upload Security** | `upload-security.ts` | File magic number detection, SVG sanitization, ZIP safe extraction |
 | **Agent Checker** | `agent-checker.ts` | Periodic connectivity check for all agents, emits via Socket.IO |
-| **Agent Secret Policy** | `agent-secret-policy.ts` | Controls when to preserve encrypted secrets on agent update |
-| **Classroom State** | `classroom-state.ts` | Allowed source status constants |
+| **Agent Secret Policy** | `agent-secret-policy.ts` | `shouldPreserveAgentSecret()` — keep the stored encrypted key when the editor submits a blank/unchanged secret; `maskAgentSecret()` for API responses |
+| **Classroom State** | `classroom-state.ts` | `canTransition(status, action)` — the single source of truth for which pause/resume/end/restore transitions are legal (`active`/`paused`/`ended`) |
 | **Participant Migration** | `participant-migration.ts` | One-time migration of legacy virtual-group Students → real group participants (`ClassroomGroupMember`) |
 | **Shield Filter** | `shield-filter.ts` | AC automaton-based content filtering |
 | **Default Shield Words** | `default-shield-words.ts` | Built-in bad word list (seeded on first launch) |
 | **Default Avatars** | `default-avatars.ts` | 44 seed SVG avatars |
 | **Student Avatar Generator** | `student-avatar-generator.ts` | Programmatic SVG avatar generation for students |
 | **Student Sort** | `student-sort.ts` | Student ordering utilities |
-| **Anonymizer** | `anonymizer.ts` | Student name de-identification for teacher board display |
+| **Anonymizer** | `anonymizer.ts` | Real name ⇄ `User_NNN` pseudonym map applied on the way into and out of every AI request (see Key Patterns) |
 | **Export Service** | `export-service.ts` | Word document generation (conversations + stats) |
 | **File Logger** | `file-logger.ts` | Captures console.log → file in `CLASSNODE_DATA_DIR/logs/` or `server/logs/` |
 | **Ping** | `ping.ts` | Anonymous usage statistics ping (opt-in via setting) |
@@ -220,9 +239,12 @@ Rust sidecar that bundles Node.js + Express server as embedded resources:
 8. `tauri build` → `.dmg` / `.msi`
 
 **Cross-platform build scripts:**
-- macOS: `scripts/build-mac.sh` (supports `--target` and `--without-node`)
-- Windows: `pnpm build:windows` uses `scripts/package-server.mjs` (works without Tauri CLI)
-- `scripts/package-server.mjs` — packages server + frontend to Tauri resource dir (shared by all platforms)
+- macOS: `scripts/build-mac.sh --target <triple> [--without-node]` — steps 2–6 are delegated to `scripts/package-server.mjs`
+- Windows: `pnpm build:windows[:arm64]` runs the same packaging locally, then `tauri build --bundles msi`
+- `scripts/package-server.mjs` — packages server + frontend into the Tauri resource dir (shared by all platforms)
+- `scripts/build-windows.sh` — does **not** build; it dispatches `.github/workflows/build.yml` on GitHub Actions (`v*` tags build both Windows arches automatically) and returns immediately unless `--wait` is passed
+
+**Release entry point:** users go through `./dev.sh pkg`, which normalizes its target vocabulary and execs `./release.sh <all|mac|mac-arm64|mac-intel|windows|source>`. `release.sh` stays internal — it is not part of the `dev.sh` help surface. It refuses to run on a dirty working tree unless `CLASSNODE_ALLOW_DIRTY_RELEASE=1`, and archives installers to `CLASSNODE_INSTALLER_DIR` (default `~/Downloads/ClassNode/installer`).
 
 ### Portal / Landing Pages
 
@@ -250,11 +272,20 @@ Frontend reads it via `src/lib/version.ts` → `import pkg from '../../package.j
 - **Real-time updates** via Socket.IO (classroom board, avatar rewards, student status, notifications).
 - **All API routes** inject `prisma` and `io` via `req.app.get('prisma')` / `req.app.get('io')` instead of importing directly.
 - **Active connections** Map is exposed via `app.set('activeConnections', ...)` so HTTP routes can query online students.
-- **API auth** is layered in `index.ts` route registration — routes don't add their own auth middleware.
-- **AI proxy** has a 30s fetch timeout; uses AbortController for student-initiated cancellation.
+- **API auth** is layered in `index.ts` route registration — routers don't add their own teacher gate. `settings.ts` is the deliberate exception (it gates itself, because its password/session endpoints *are* the login path).
+- **AI proxy** timeouts cover time-to-first-byte (30s, timer cleared once the response resolves); cancelling a stream is the student's `stop-generation` → `activeStreams` AbortController, not a timeout.
 - **Shield filter** uses AC automaton for O(n) matching, rebuilt from DB every 3s.
 - **Admin password** is stored as scrypt hash; old SHA256 hashes are migrated on first login attempt.
 - **API keys** are AES-encrypted at rest via `services/crypto.ts`; decrypted on-the-fly for AI proxying.
 - **Changelogs** are individual markdown files in `server/changelogs/v*.md`, served at `/api/changelogs` (sorted by semver, newest first).
 - **Tests** live in `server/src/tests/`; run via Node.js built-in test runner (`node --test`).
-- **`anonymizer`** ("匿名者") provides `anonymize(name)` that shows only first/last char of Chinese names for teacher board display.
+- **`anonymizer`** is a minors-privacy boundary, not a display filter. Before any prompt leaves the machine, `ai-proxy.ts` rewrites the student's real name to a stable pseudonym (`User_001`, …) and re-substitutes the real name into the model's reply before persisting it — so no AI provider ever receives a student's name. The `Anonymizer` singleton holds a bidirectional map that resets when full (500 entries) or on a new classroom.
+
+## Compatibility constraints
+
+The student portal runs on whatever the school already owns — including old iPads, whose Safari is stuck on 15. Two consequences that will otherwise bite you:
+
+- **No regex lookbehind** (`(?<=` / `(?<!`) anywhere reachable from `/classroom/`. `scripts/check-classroom-browser-compat.mjs` runs as part of `pnpm build` and **fails the build** if the student bundle contains one, so prefer `String.prototype.matchAll` or capture groups over lookbehind.
+- **HTML must not be cached.** The server sends `no-store` for `.html`, immutable caching only for `_next/static/`. Preserve this when touching static-file serving — Safari will otherwise keep loading a previous release's now-deleted JS chunks after an upgrade.
+
+Pay attention to input/layout work on `/classroom/` too: text-entry flows and viewport handling are tuned for these devices.

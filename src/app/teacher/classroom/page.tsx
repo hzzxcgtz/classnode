@@ -12,7 +12,7 @@ function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g,
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
-import { applyModuleState, isClassroomModuleKey, isClassroomModuleState, MODULE_KEYS, MODULE_STATES, moduleStateOf } from '@/lib/classroom-modules';
+import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, MODULE_KEYS, MODULE_STATES, moduleStateOf } from '@/lib/classroom-modules';
 import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
@@ -732,6 +732,10 @@ function ClassroomBoardContent() {
       setClassroom((previous) => previous ? { ...previous, modules: applyModuleState(previous.modules, moduleKey, state) } : previous);
       try {
         await api.setClassroomModuleState(id, moduleKey, state);
+        // 成功后该课堂至少有这一行模块行了 —— 否则把 A 设成 open 再设回 preview 时，
+        // 三态又全是预告，而 hasModuleRows 还停在初始加载的 false 上，
+        // 菜单会重新弹出「未单独配置过模块」这句已经不成立的话。
+        setClassroom((previous) => previous ? { ...previous, hasModuleRows: true } : previous);
       } catch (error) {
         // 只回滚被点击的这一个模块。回滚整个数组快照会把这一个 RTT 窗口内其它模块收到的
         // 广播一并抹掉（窗口内另一位教师改了别的模块时，本机会显示成旧态直到刷新）。
@@ -751,6 +755,15 @@ function ClassroomBoardContent() {
   const thinkingCount = statusValues.filter(v => v === 'thinking').length;
   const offlineCount = statusValues.filter(v => v === 'offline').length;
   const totalRounds = Object.values(studentRounds).reduce((sum, r) => sum + r, 0);
+
+  // 「这个课堂从没单独配置过模块，菜单里看到的是默认态」。
+  //
+  // 两个条件缺一不可：只看「三态都是预告」会把教师主动把三项都设成预告的课堂误判成未配置
+  // （mergeModuleStates 补齐出来的默认态与显式设置的预告在 modules 里长得一模一样）。
+  // hasModuleRows 用 === false 而不是 !：服务端读不到模块行时不发这个字段，那是「不知道」，
+  // 不是「没有」，不能借它断言未配置。
+  const modulesNeverConfigured = classroom.hasModuleRows === false
+    && MODULE_KEYS.every((moduleKey) => moduleStateOf(classroom.modules, moduleKey) === DEFAULT_MODULE_STATE);
 
   const allDisplayCards: ClassroomDisplayCard[] = groupCards || students;
   const getDisplayCardStatus = (card: ClassroomDisplayCard): 'online' | 'thinking' | 'offline' => {
@@ -973,6 +986,11 @@ function ClassroomBoardContent() {
                 {showModulesMenu && (
                   <div role="menu" aria-label="课堂模块状态" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
                     <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
+                    {modulesNeverConfigured && (
+                      <div style={{ margin: '0 10px 8px', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>
+                        本课堂未单独配置过模块，以下三项均为默认的「预告」态。
+                      </div>
+                    )}
                     {MODULE_KEYS.map((moduleKey) => {
                       const currentState = moduleStateOf(classroom.modules, moduleKey);
                       const moduleBusy = controlBusy === `module:${moduleKey}`;

@@ -347,3 +347,52 @@ test('教师端：模块表查询抛错时仍返回 200，三态降级为三个�
   assert.equal(body.modules.length, 3);
   assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
 });
+
+// ---------------------------------------------------------------------------
+// hasModuleRows：教师端的模块菜单要区分「教师把三项都设成了预告」与「这个课堂从未设置过」，
+// 而 mergeModuleStates 会把两种情况补齐成**一模一样**的 modules（都是三个 preview），
+// 前端单看 modules 分不出来 —— 这就是这个派生量存在的理由。它只为教师端 GET /:id 服务。
+// ---------------------------------------------------------------------------
+
+test('教师端：课堂没有模块行时 hasModuleRows 为 false', async (t) => {
+  const { baseUrl } = await startServer(t, { classroom: teacherClassroom(), modules: [] });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).hasModuleRows, false);
+});
+
+test('教师端：有模块行时 hasModuleRows 为 true，哪怕三态与补齐后的默认态完全相同', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: teacherClassroom(),
+    modules: [{ moduleKey: 'companion', state: 'preview' }],
+  });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.hasModuleRows, true);
+  // 只有一行、且态就是默认态：modules 与上一用例（零行）逐字相同，
+  // 唯一的区别只在这个字段里 —— 少了它前端就会把「显式设成预告」说成「从未设置过」。
+  assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
+});
+
+test('教师端：模块表查询抛错时不下发 hasModuleRows，不把「读不到」说成「没有」', async (t) => {
+  const { baseUrl } = await startServer(t, { classroom: teacherClassroom(), modulesError: true });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  assert.equal('hasModuleRows' in (await response.json()), false);
+});
+
+test('学生端：响应里没有 hasModuleRows，教师端的菜单提示不该泄漏给学生', async (t) => {
+  const { baseUrl } = await startServer(t, { classroom: studentClassroom(), modules: [] });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  assert.equal('hasModuleRows' in (await response.json()), false);
+});

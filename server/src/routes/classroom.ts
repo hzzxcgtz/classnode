@@ -455,10 +455,22 @@ router.get('/:id', async (req, res) => {
     // 与 /code/:code 共用 mergeModuleStates，老课堂的零行兜底只在这一处定义。
     // 读路径不可失败：ClassroomModule 表缺失（老库启动 DDL 被跳过）时降级为全默认态，
     // 绝不能因为查不到模块而把教师/学生挡在课堂之外。
+    // 失败时留 null 而不是空数组：空数组同时意味着「查到了，零行」（老课堂，从未设置过），
+    // 下面的 hasModuleRows 要区分这两种情况，不能把「读不到」说成「没有」。
     const moduleRecords = await prisma.classroomModule
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
-      .catch(() => [] as { moduleKey: string; state: string }[]);
-    res.json({ ...classroom, students, groupMembersMap, modules: mergeModuleStates(moduleRecords) });
+      .catch(() => null);
+    res.json({
+      ...classroom,
+      students,
+      groupMembersMap,
+      modules: mergeModuleStates(moduleRecords ?? []),
+      // 该课堂有没有 ClassroomModule 行。mergeModuleStates 会把缺失的 key 补齐成默认态，
+      // 所以「三态全是 preview」既可能是「教师把三项都设成了预告」也可能是「从未设置过」，
+      // 前端单看 modules 分不出来。行数据本就读出来了，这个派生量不增加任何查询；
+      // 读取失败（null）时不下结论、不发这个字段，前端只在明确拿到 false 时才提示。
+      hasModuleRows: moduleRecords ? moduleRecords.length > 0 : undefined,
+    });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });
   }

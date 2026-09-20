@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { api, getStudentSessionAuthorization } from '@/lib/api';
 import { Toast } from '@/lib/components';
 import type { ChatAgent, ChatPanelProps } from '../classroom-types';
@@ -91,6 +93,32 @@ export function StudentChatContent({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+
+  // ===== 浮层逃生舱（M1b-2 Task 2）=====
+  // 面板里有五个 `position: fixed` 元素：滚动标记条（z-index 20）、标记 tooltip（30）、
+  // 头像更换模态（`.modal-overlay` → 100）、全屏图片查看器（9999）、Toast（99999）。
+  // §4.6 的切换动画会给面板加 `transform`，面板随即成为它们的**包含块** —— 它们会被重新
+  // 锚定到面板盒子、被裁切、暗色遮罩跟着平移。提到 `document.body` 才能逃出去。
+  //
+  // Ruling 5：**portal 本身不够**。提到 body 之后它们不再继承面板的 `visibility:hidden`，
+  // 会浮在首页与另外两个 tab 之上。所以每个浮层都必须**显式按所属模块的 active 决定可见性**。
+  //   · 不能用「非 active 就卸载」：那会丢掉全屏查看器的缩放/位置与模态的展开状态，
+  //     而 §4.5 要求模块挂载后状态完整保留（切回来查看器还开着、还停在原缩放）。
+  //   · 所以这里保持挂载，只把 `active` 翻译成 `visibility`（与面板自身被隐藏的方式一致，
+  //     顺带获得「隐藏时不可聚焦/不可点」的语义，见 §4.10 C2）。
+  //
+  // SSR 守卫：Next.js 静态导出会在构建期预渲染本页，那时没有 `document`。用 mounted 标志
+  // 而不是 `typeof document !== 'undefined'` 内联判断 —— 后者会让服务端输出与首次客户端
+  // 渲染不一致（hydration 不匹配）。浮层的初始状态全是关闭，所以只晚一帧，肉眼不可见。
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => { setPortalReady(true); }, []);
+  const overlayPortal = (node: ReactNode) => {
+    if (!portalReady || !node) return null;
+    return createPortal(
+      <div style={{ visibility: active ? 'visible' : 'hidden' }}>{node}</div>,
+      document.body,
+    );
+  };
 
   // ⚠️ M1b-2 之后面板常驻，这条清理只在「面板真正卸载」时执行（课堂结束、或换身份
   // 时重挂）。§4.10 A 记录的缺口 —— streamingRafRef/streamingBufferRef 与两个定时器的
@@ -223,11 +251,21 @@ export function StudentChatContent({
   // M1b-2 Task 1：五个监听全挂在 window 上，其中 wheel 还带 preventDefault —— 模块隐藏
   // 时必须摘掉，否则学生打开图片后切到别的 tab，**整个外壳的滚轮都会被吃掉**。
   // 查看器本身不关闭（状态跨 tab 保留，切回来它还在，与 §4.10 C3 一致）；重新可见时
-  // setup 会把拖拽状态复位，不会带着「拖到一半」的状态回来。
+  // setup 会把「拖到一半」的状态复位，不会带着拖拽中的状态回来。
+  // M1b-2 Task 2（M1）：**只复位 `dragging`，不复位 `offX/offY`。** 那两个累加器对应
+  // `imgOffset`（`translate(...)`），而 §4.10 C3 要求缩放/位置跨 tab 保留 —— 在这里清零
+  // 会让「拖过图 → 切走 → 切回 → 再按下拖动」的第一帧 mousemove 把图猛地拉回原点
+  // （累加器归零、`imgOffset` 仍在原处）。归零改在 `openFullscreenImage` 里做，那里
+  // 本来就同时清零 `imgOffset`，两者永远同生同灭。
+  // M1b-2 Task 2（M3）：cleanup 是唯一能收口「拖拽中途被切走」的位置 —— 那一刻 mouseup
+  // 监听已经摘掉，`onMouseUp` 永远不会跑，光标会永久停在 'grabbing'。所以由 cleanup 复位。
   useEffect(() => {
     if (!active || !fullscreenImg) return;
     const d = dragRef.current;
-    d.dragging = false; d.offX = 0; d.offY = 0;
+    d.dragging = false;
+    // setup 时捕获浮层节点（此时 effect 已跑在 commit 之后，ref 必然是挂上的），
+    // 供 cleanup 复位光标 —— 见下方 cleanup 的说明，也避免在 cleanup 里读 ref.current。
+    const overlayEl = overlayRef.current;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setFullscreenImg(null); setZoomLevel(1); }
@@ -267,6 +305,13 @@ export function StudentChatContent({
       window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      // M3：拖拽中途切走（或切换查看的图片）时 `mouseup` 监听已摘，`onMouseUp` 不再运行，
+      // 光标会永久停在 'grabbing'。下一次可见时 setup 只复位 `dragging`、不碰光标，
+      // 所以必须在 cleanup 收口。这里用 setup 时捕获的节点而不是 `overlayRef.current`：
+      // 关闭查看器时 ref 已经脱离（读 `.current` 会是 null，白写），而 active 切换时
+      // 浮层**保持挂载**（Ruling 5），捕获的节点就是那个仍在文档里的元素。
+      d.dragging = false;
+      if (overlayEl) overlayEl.style.cursor = 'zoom-out';
     };
   }, [active, fullscreenImg]);
 
@@ -393,6 +438,18 @@ export function StudentChatContent({
     return () => { if (io) io.disconnect(); if (ro) ro.disconnect(); };
   }, [messages, updateMarkers]);
 
+  // 标记条补测（M1b-2 Task 2）：标记条已 portal 到 body，是**视口坐标**的 `position: fixed`，
+  // 不再跟着面板平移。而 §4.6 的切换动画是靠 `transform` 平移面板的 —— transform 不改变布局
+  // 尺寸，容器的 ResizeObserver 不会触发，`updateMarkers` 也不会因 `messages` 未变而重跑。
+  // 于是「最后一次测量发生在面板被平移的时刻」会让标记条整体偏掉一整个位移量。
+  // 这里在 active 上升沿补测一次，保证学生能看见标记条时它一定是当前视口下的正确位置。
+  // （今天 active 恒为 true，本 effect 等价于挂载时多测一次，与既有那条 rAF 同形，无害。）
+  useEffect(() => {
+    if (!active) return;
+    const frame = requestAnimationFrame(() => updateMarkers());
+    return () => cancelAnimationFrame(frame);
+  }, [active, updateMarkers]);
+
   // 聚焦输入框的两条路径（M1b-2 Task 1 合并成一条，两者都必须在「可见」时才做）：
   //   ① AI 回答完成（waitingAI 由 true 变 false）：答完了把焦点还给学生；
   //   ② 模块由不可见变为可见（active 上升沿）：等价于基线的「进入聊天即聚焦」。
@@ -401,21 +458,47 @@ export function StudentChatContent({
   // 切到另一个 tab 或首页时弹出键盘。等价的「首次聚焦」由 ② 承担。
   // iOS Safari 需要特殊处理：程序化 focus() 不会弹出虚拟键盘，
   // 临时设置 readOnly→focus→移除 readOnly 能强制触发键盘
+  // M2（Task 2）：这条 effect 有一条**迟到的**副作用路径，必须显式收口。
+  //   · `requestAnimationFrame` 与 150ms 的 `setTimeout` 都不受 `active` 约束 —— 若 `active`
+  //     在 rAF 落地前转 false（§4.6 动画期元素仍可聚焦），焦点会落在学生已经离开的模块上，
+  //     iPad 上键盘就弹在别的 tab 之上；
+  //   · 更糟的是 `readOnly = true` 与 150ms 后的 `readOnly = false` 之间被切走：清理里若
+  //     只取消定时器，`readOnly` 会**永久停在 true**，输入框再也打不了字。
+  //   所以 cleanup 同时取消 rAF、取消定时器，并在确实设过 readOnly 时把它还回去。
   useEffect(() => {
     if (!active || waitingAI) return;
-    requestAnimationFrame(() => {
+    let frame: number | null = null;
+    let readOnlyTimer: number | null = null;
+    // 只在真的把 readOnly 设成 true 时才记下元素：cleanup 的还原条件与设置条件因此严格同源，
+    // 也避免在 cleanup 里读 `inputRef.current`（那时它可能已经指向别的节点或为 null）。
+    let readOnlyEl: HTMLTextAreaElement | null = null;
+    frame = requestAnimationFrame(() => {
+      frame = null;
       const el = inputRef.current;
       if (!el) return;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       if (isIOS) {
         el.readOnly = true;
+        readOnlyEl = el;
         el.focus();
-        setTimeout(() => { el.readOnly = false; }, 150);
+        readOnlyTimer = window.setTimeout(() => {
+          readOnlyTimer = null;
+          readOnlyEl = null;
+          el.readOnly = false;
+        }, 150);
       } else {
         el.focus();
       }
     });
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (readOnlyTimer !== null) {
+        window.clearTimeout(readOnlyTimer);
+        readOnlyTimer = null;
+        if (readOnlyEl) { readOnlyEl.readOnly = false; readOnlyEl = null; }
+      }
+    };
   }, [active, waitingAI]);
 
   const scrollToBottom = () => {
@@ -463,6 +546,11 @@ export function StudentChatContent({
   const openFullscreenImage = (url: string) => {
     setZoomLevel(1);
     setImgOffset({ x: 0, y: 0 });
+    // M1：拖拽累加器必须与 `imgOffset` 在同一处清零 —— 它们描述同一个平移量，
+    // 分开复位会让「切走 → 切回 → 再拖」的第一帧把图拉回原点（详见查看器 effect 的注释）。
+    dragRef.current.offX = 0;
+    dragRef.current.offY = 0;
+    dragRef.current.dragging = false;
     setFullscreenImg(url);
   };
 
@@ -893,8 +981,8 @@ export function StudentChatContent({
         </button>
       )}
 
-      {/* 滚动标记条（position: fixed 对齐滚动条位置） */}
-      {markerBarStyle && markers.length > 0 && (
+      {/* 滚动标记条（position: fixed 对齐滚动条位置；已 portal 到 body，见浮层逃生舱） */}
+      {overlayPortal(markerBarStyle && markers.length > 0 && (
         <div style={{ position: 'fixed', left: markerBarStyle.left - 6, top: markerBarStyle.top, width: 20, height: markerBarStyle.height, pointerEvents: 'none', zIndex: 20 }}>
           {markers.map(m => {
             const isActive = m.index === activeMsgIndex;
@@ -926,9 +1014,9 @@ export function StudentChatContent({
             );
           })}
         </div>
-      )}
-      {/* 自定义 tooltip：鼠标悬停标记时立即显示提问内容 */}
-      {hoveredMarker && (
+      ))}
+      {/* 自定义 tooltip：鼠标悬停标记时立即显示提问内容（已 portal 到 body） */}
+      {overlayPortal(hoveredMarker && (
         <div style={{
           position: 'fixed',
           right: window.innerWidth - hoveredMarker.x + 9,
@@ -950,7 +1038,7 @@ export function StudentChatContent({
         }}>
           {hoveredMarker.text}
         </div>
-      )}
+      ))}
 
       {/* 教师通知气泡 — 立体气泡样式 */}
       {teacherNotifBubble && (
@@ -1175,8 +1263,8 @@ export function StudentChatContent({
             )}
           </div>
         </div>
-      {/* 头像更换弹窗 */}
-      {showAvatarChanger && (
+      {/* 头像更换弹窗（`.modal-overlay` 是 position: fixed / z-index 100，已 portal 到 body） */}
+      {overlayPortal(showAvatarChanger && (
         <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
           <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="avatar-changer-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
             <button type="button" aria-label="关闭更换头像窗口" onClick={() => setShowAvatarChanger(false)} style={{ float: 'right', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: "1.25rem", color: '#64748b', lineHeight: 1 }}>×</button>
@@ -1220,11 +1308,12 @@ export function StudentChatContent({
             />
           </div>
         </div>
-      )}
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      ))}
+      {/* Toast 自身是 position: fixed / z-index 99999，同样要逃出动画容器 */}
+      {overlayPortal(toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />)}
 
-      {/* 全屏图片预览（支持无极缩放） */}
-      {fullscreenImg && (
+      {/* 全屏图片预览（支持无极缩放；已 portal 到 body） */}
+      {overlayPortal(fullscreenImg && (
         <div ref={overlayRef}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
@@ -1297,7 +1386,7 @@ export function StudentChatContent({
             }}>滚轮缩放</span>
           </div>
         </div>
-      )}
+      ))}
       </div>
     </div>
   );

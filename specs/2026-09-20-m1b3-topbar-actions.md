@@ -337,6 +337,18 @@ public/images/module-icons/companion.svg    1164B
 
 ---
 
+## ⚠️ 派发分组（用户要求加速后由控制器裁定）
+
+**T4 + T5 + T6 合并为一次派发、三个 commit、一轮审查。**
+
+用户明确选了「把剩下的任务合成更少的批次」。控制器的评估与**降低代价的措施**：
+- 三者**确实共享 `classroom-shell.tsx`**（T4 从 `chat` 对象上删 prop、T5 往顶栏传新 prop），所以本来也必须串行 —— 合成一次派发不会引入冲突。
+- **代价**：一次审查覆盖三块改动，注意力会被摊薄，抓漏概率上升。这是用户知情后选的。
+- **缓解措施（硬要求）**：**每个 commit 必须对照它自己那一节独立成立**；审查者**按 commit 逐个核**，而不是笼统看一遍 diff。派发说明里要给出逐 commit 的核对清单。
+- **T7（更新走查清单）仍由控制器自己做**，不派实施者。
+
+---
+
 ## Task 4: 删学伴面板整行头部 + 清死 prop / 死 CSS + 契约核对
 
 **Files:** Modify `src/app/classroom/chat/chat-panel.tsx`、`src/app/classroom/chat/chat.module.css`、`src/app/classroom/classroom-types.ts`、`src/app/classroom/shell/classroom-shell.tsx`

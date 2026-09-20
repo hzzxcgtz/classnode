@@ -17,7 +17,14 @@ export function injectSdk(html: string, opts: { sdkPath: string }): string {
   if (!html) return html;
   // 幂等：已经注入过就原样返回。教师自己也可能手写了一个 <script src="…/sdk.js">，
   // 重复注入会让 SDK 跑两遍、事件翻倍。
-  if (html.includes(opts.sdkPath)) return html;
+  // ⚠️ 判据必须匹配**我们实际插入的那个标签形状**，不能是裸路径。
+  // 裸路径的 `includes` 是**整篇子串包含**：教师网页的正文或注释里只要出现过
+  // 「/__classnode/sdk.js」这几个字（哪怕只是一句「本页已接入探究助手，由
+  // /__classnode/sdk.js 提供支持」的说明文案），注入就会被**整体跳过** ——
+  // 该页一个事件都不采集，而且没有任何报错。方向安全（不采集 ≠ 泄漏）但**静默**。
+  // 匹配 `<script src="<sdkPath>` 仍然容得下教师自己写的 `?v=2` 查询串
+  // （路由的 query 不参与匹配，照样送出 SDK），却不会再被正文里的路径字样绊倒。
+  if (html.includes(`<script src="${opts.sdkPath}`)) return html;
 
   const tag = `<script src="${opts.sdkPath}"></script>`;
 
@@ -84,12 +91,27 @@ export const SDK_SOURCE = `/*
  *   · 所有上报载荷都由**唯一一个**函数 buildEvent() 构造；
  *   · buildEvent 的形参表里**没有任何内容字段** —— selector / inputType /
  *     length / depth / to / image 六项，全是结构描述或页面自己画出来的像素；
- *   · 全文件**只有一处**碰过输入框的 .value，它在一个**只返回数字**的函数里
- *     （见 inputLength）。内容没有被绑定到任何可以被顺手传出去的变量上。
+ *   · 全 SDK 只有 inputLength() **一个函数**碰过输入内容（表单控件的 .value、
+ *     contenteditable 的 textContent），并且它**只返回一个数字**。
  *
  * 想加一个能装内容的字段，必须先改 buildEvent —— 那是一件必须刻意去做的事，
- * 而不是「顺手把 el.value 传进去」。唯一一条能携带任意内容的通道是教师网页
- * **显式**调用的 ClassNode.report()，本文件内部的任何监听器都不会调用它。
+ * 而不是「顺手把 el.value 传进去」。
+ *
+ * ══ ⚠️ 把保证说窄 —— 上面那段**不等于**「除 report 之外没有任何内容通道」══
+ * 那句话是**假的**，本文件里真出现过一次（见下面 hashchange 那一行的注释）：
+ *   · selector 里的 id / class 是自由字符串；
+ *   · image 是自由字符串（canvas 像素的 data URL）；
+ *   · to 曾经被喂 location.hash —— 一个**自由文本源**，于是「把输入同步到
+ *     URL 片段」这种与 ClassNode 无关的常见 UI 写法，会让学生的输入经由默认
+ *     采集通道原样出门，全程没有调用过 report()。
+ *
+ * **真实的保证只有一条，而且要说窄**：每条通道**恰好一个内部调用点**
+ * （post() 只有 4 个：ready / event / frame / report），且每个字段的**取值来源
+ * 被逐一枚举**（selector ← describe()；inputType ← el.type/tagName；
+ * length ← inputLength() 那个只返回数字的返回值；depth ← 滚动十分位；
+ * to ← **短枚举字面量**；image ← canvas 自身的像素）。
+ * ⇒ 「新增一条内容通道」必须是一次**显式的代码改动**（改 buildEvent 或改某个
+ *   调用点的取值来源），而不是「顺手传进去」。这是本文件真正买到的东西。
  *
  * ══ 本文件的三条书写约束（由 server/src/tests/webapp-sdk-injection.test.ts 校验）══
  *   1. 整体是 webapp-sdk.ts 里一个模板字符串的内容，因此**不能出现反引号**；
@@ -110,7 +132,12 @@ export const SDK_SOURCE = `/*
 
   // 单条消息上限（规格 §5.4）。教师网页可以 report 任意东西，一条 10MB 的 payload
   // 会让老 iPad 在 postMessage 的结构化克隆上卡住。超限**丢弃**，不截断、不重试。
-  var MAX_PAYLOAD_BYTES = 32 * 1024;
+  // ⚠️ 名字说的是「码元」而不是「字节」—— 因为下面比的是 encoded.length，
+  // 那是 **UTF-16 码元数**，不是字节数。一条中文 payload 的实际上限因此约是
+  // 32K 码元 ≈ 96KB UTF-8，而不是 32KB。**行为不改**（意图是限住工作量，
+  // 码元口径完全够用），改的是名字：名字也是一种散文，它不该声称一件代码
+  // 没做的事。（brief 里叫它 MAX_PAYLOAD_BYTES。）
+  var MAX_PAYLOAD_CODE_UNITS = 32 * 1024;
 
   // 缩略图节奏与尺寸。降频是 T5 的事（它用 pause/resume 驱动），这里只定「一次多久」。
   var FRAME_INTERVAL_MS = 3000;
@@ -137,7 +164,12 @@ export const SDK_SOURCE = `/*
    *   image     —— canvas 缩略图的 data URL，是**页面自己画出来的**，不是输入内容。
    *
    * 要采集输入框里的具体内容，只能由教师网页**显式**调用 ClassNode.report() ——
-   * 那是教师自己的选择与责任，本 SDK 绝不替他们采集。
+   * 那是教师自己的选择与责任。
+   *
+   * ⚠️ 但**不要**把本函数读成「所有字段都无害」：selector 的 id/class 是自由
+   * 字符串，image 是自由字符串。真正的保证是「每个字段的**取值来源**被逐一
+   * 枚举」—— 尤其是 to，它**不得**接上任何自由文本源（location.hash /
+   * el.value / document.title 之类）。见文件头「把保证说窄」那一段。
    */
   function buildEvent(kind, fields) {
     var f = fields || {};
@@ -169,7 +201,7 @@ export const SDK_SOURCE = `/*
     } catch (err) {
       return; // 环形结构 / 含 BigInt / toJSON 抛错 —— 丢弃，绝不往外冒
     }
-    if (encoded.length > MAX_PAYLOAD_BYTES) return; // 超限即丢，见 MAX_PAYLOAD_BYTES
+    if (encoded.length > MAX_PAYLOAD_CODE_UNITS) return; // 超限即丢，见该常量的说明
     try {
       parent.postMessage(msg, '*');
     } catch (err) {
@@ -186,7 +218,8 @@ export const SDK_SOURCE = `/*
   /**
    * 给元素一个稳定的标识。
    *
-   * ⚠️ **不读 textContent / innerText / value** —— 只用 tagName、id、class 与
+   * ⚠️ 本函数**不读** textContent / innerText / value —— 读内容只发生在
+   * inputLength() 里，且只有长度会离开它。本函数只用 tagName、id、class 与
    * 「同标签兄弟中的序号」。文本内容属于学生输入与页面内容，不在采集范围内。
    */
   function describe(el) {
@@ -224,15 +257,27 @@ export const SDK_SOURCE = `/*
   }
 
   /**
-   * ⚠️ **全 SDK 唯一接触输入框 .value 的地方**，并且它**只返回一个数字**。
+   * ⚠️ **全 SDK 唯一接触输入内容的函数**，并且它**只返回一个数字**。
    *
-   * 把「读 value」关进一个返回值是 number 的表达式里：内容没有被绑定到任何
-   * 可以被顺手传出去的变量上，所以「不小心把内容带上」在本文件里**无处可写**。
-   * 要越过它，必须刻意往 buildEvent 里加一个内容字段 —— 那是一个显式的动作。
+   * 红线禁的是**把内容传出去**，不是「在进程内读一下」—— 读 .value 这件事本身
+   * 与「只拿走它的长度」并不冲突。这里读两种内容，两条路径同构：
+   *   · 表单控件（input / textarea / select…）：.value
+   *   · contenteditable（**没有** .value，内容就是文本节点）：.textContent
+   * 内容在函数内被读，**只有 .length 离开**。
+   *
+   * 把「读内容」关进一个返回值是 number 的函数里 ⇒ 「不小心把内容带上」在本文件里
+   * **无处可写**：要越过它，必须刻意往 buildEvent 里加一个内容字段 —— 那是一个
+   * 显式的动作。（曾经这里只处理 .value，于是 contenteditable 恒报 0；当时的理由
+   * 「拿长度就得读 textContent，而那是红线禁止的手段」是**自相矛盾的**：上面那行
+   * 本来就在读内容。禁的是传出，不是读。）
    */
   function inputLength(el) {
     try {
-      return typeof el.value === 'string' ? el.value.length : 0;
+      if (typeof el.value === 'string') return el.value.length;
+      if (el.isContentEditable === true && typeof el.textContent === 'string') {
+        return el.textContent.length;
+      }
+      return 0;
     } catch (err) {
       return 0; // 自定义元素的取值器抛错
     }
@@ -277,9 +322,19 @@ export const SDK_SOURCE = `/*
     emit('scroll', { depth: decile * 10 });
   }, { passive: true });
 
-  // 页面内跳转。hash 是短定位串，不是页面内容。
+  // 页面内跳转。
+  //
+  // ⚠️ **只报「跳了」与 hash 的长度，绝不报 hash 的值。** 这条不是洁癖：
+  // 把 location.hash 赋成某个输入框的值，是教师写页面时**极常见**的一行 UI 代码
+  // （把输入同步到 URL 片段），它与 ClassNode 毫无关系，却会让学生的输入经由
+  // **默认采集通道原样出门**，全程没有调用过 report() —— 红线后半句「需采集
+  // 具体内容必须由教师网页显式调用 ClassNode.report()」在这条路径上整个失效。
+  // 而且 hash 是**字面文本**（可无损复原），比 frame 的像素严重得多。
+  //
+  // 长度与「输入框长度 N」是**同一类信息**，规格明确允许（它本身就是红线的
+  // 惯例形状）；值不是。事件的确切形状由 T5 定，本文件只保证**值不出门**。
   addEventListener('hashchange', function () {
-    emit('navigate', { to: location.hash });
+    emit('navigate', { length: location.hash.length });
   });
 
   // 可见性变化：既上报，也顺带停/启截图 —— 学生切走时没人看缩略图，不必画。
@@ -382,9 +437,9 @@ export const SDK_SOURCE = `/*
   /**
    * 教师网页**显式**上报的唯一入口。
    *
-   * 这是本 SDK 里唯一一条能携带任意内容的通道，而且它必须由教师网页主动调用 ——
+   * 这是**唯一一条由教师侧决定内容**的通道，它必须由教师网页主动调用 ——
    * 本文件内部的任何监听器都不会调用它。默认采集因此永远不会带上输入内容（规格 §5.4）。
-   * 教师往里放什么，是教师自己的选择与责任；载荷仍受 MAX_PAYLOAD_BYTES 限制。
+   * 教师往里放什么，是教师自己的选择与责任；载荷仍受单条消息上限约束。
    */
   function report(payload) {
     post('report', payload);

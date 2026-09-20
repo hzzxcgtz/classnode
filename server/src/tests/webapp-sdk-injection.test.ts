@@ -76,6 +76,22 @@ test('教师自己写了 SDK 的 script 标签时不重复插（哪怕带查询�
   assert.equal(injectSdk(html, { sdkPath: SDK_PATH }), html);
 });
 
+// 幂等判据曾经是 `html.includes(opts.sdkPath)` —— **整篇子串包含**。于是正文或
+// 注释里只要出现过那几个字（例如一句说明文案里带了路径），注入就被**整体跳过**：
+// 该页一个事件都不采集，而且没有任何报错。方向安全但静默。
+test('红线外：正文/注释里提到 sdk.js 这几个字，不得让注入整体跳过（原先的静默 fail-open）', () => {
+  const html =
+    `<html><head><!-- 本页已接入 ${SDK_PATH} --></head>` +
+    `<body><p>探究助手由 ${SDK_PATH} 提供支持</p></body></html>`;
+  const out = injectSdk(html, { sdkPath: SDK_PATH });
+  assert.ok(
+    out.includes(`<script src="${SDK_PATH}"></script>`),
+    '正文提到路径 ≠ 已经注入过 —— 否则该页静默地一个事件都不采集',
+  );
+  // 判别式：这一页确实**没有**该标签，所以「应当注入」不是靠猜
+  assert.equal(html.includes('<script'), false);
+});
+
 test('没有 </head> 也没有 <html> 时，仍只前置、不改动正文', () => {
   const html = '<p>hello</p>';
   assert.equal(injectSdk(html, { sdkPath: SDK_PATH }), `<script src="${SDK_PATH}"></script>` + html);
@@ -128,32 +144,51 @@ function stripComments(source: string): string {
     .replace(/^[ \t]*\/\/.*$/gm, '');
 }
 
-test('红线：SDK 的代码里读到输入内容的手段一个都没有', () => {
+// 「读内容」的判据 —— 注意是**读**，不是**传**。
+//
+// ⚠️ 这条断言曾经写成「代码里不得出现 textContent」，理由是「拿长度就得读
+// textContent，而那是红线禁止的手段」。**那个理由是错的，而且自相矛盾**：
+// inputLength() 本来就在读 `el.value`（内容本身），只让 `.length` 离开。
+// 红线禁的是**把内容传出去**，不是「在进程内读一下」。按错误理由设的禁词会
+// 挡住未来正确的修法（它确实挡过 contenteditable 如实报长度这一条）。
+//
+// 正确的判据是「**读内容的代码被关在一个只返回数字的函数里**」——
+// 与实现细节无关，且不随合法的修法而失效。
+const CONTENT_READ_TOKENS = ['.value', '.textContent', '.innerText', '.outerText', '.innerHTML', '.outerHTML', 'getAttribute('];
+
+test('红线：所有读输入内容的手段都被关在 inputLength() 一个函数里', () => {
   const code = stripComments(SDK_SOURCE);
-  for (const token of ['textContent', 'innerText', 'innerHTML', 'outerHTML', 'getAttribute']) {
+  const start = code.indexOf('function inputLength(el)');
+  const end = code.indexOf('function inputTypeOf(el)');
+  assert.ok(start !== -1 && end > start, 'inputLength() 必须存在，且后面跟着 inputTypeOf()');
+
+  // 把 inputLength 的函数体抠掉之后，全文不得再有任何读内容的手段
+  const rest = code.slice(0, start) + code.slice(end);
+  for (const token of CONTENT_READ_TOKENS) {
     assert.equal(
-      code.includes(token), false,
-      `SDK 代码里出现了 ${token} —— 输入/页面内容不在采集范围内（规格 §5.4）`,
+      rest.includes(token), false,
+      `inputLength() 之外出现了 ${token} —— 读内容必须关在那一个函数里`,
     );
   }
+  // 判别式：inputLength 里**确实**在读内容（否则上一条会因「它什么都不读」而空过）
+  const body = code.slice(start, end);
+  assert.ok(
+    CONTENT_READ_TOKENS.some((t) => body.includes(t)),
+    'inputLength() 应当至少读一种内容（.value 或 .textContent）—— 否则上一条是空断言',
+  );
 });
 
-test('红线：全 SDK 只有一处碰 .value，且那一处只返回长度', () => {
+test('红线：inputLength() 只返回数字 —— 内容没有任何形状可以离开它', () => {
   const code = stripComments(SDK_SOURCE);
-  const valueLines = code.split('\n').filter((line) => line.includes('.value'));
-  assert.equal(
-    valueLines.length, 1,
-    `碰 .value 的代码行必须恰好一处，实际 ${valueLines.length} 处：\n${valueLines.join('\n')}`,
-  );
-  const only = valueLines[0].trim();
-  assert.equal(only, 'return typeof el.value === \'string\' ? el.value.length : 0;');
-  // 判别式：它所在的函数**只返回数字**。内容没有被绑定到任何可传出去的变量上。
-  assert.equal(
-    /function inputLength\(el\) \{\n    try \{\n      return typeof el\.value === 'string' \? el\.value\.length : 0;/
-      .test(stripComments(SDK_SOURCE)),
-    true,
-    '那唯一的 .value 必须落在 inputLength() 里',
-  );
+  const body = code.slice(code.indexOf('function inputLength(el)'), code.indexOf('function inputTypeOf(el)'));
+  const returns = [...body.matchAll(/return ([^;]+);/g)].map((m) => m[1].trim());
+  assert.ok(returns.length >= 2, `应当有多个返回点，实际 ${returns.length}`);
+  for (const value of returns) {
+    assert.ok(
+      value === '0' || value.endsWith('.length'),
+      `inputLength() 只允许返回数字（0 或 .length），实际返回: ${value}`,
+    );
+  }
 });
 
 test('红线：所有上报载荷都由唯一的 buildEvent 构造，且它没有内容形参', () => {
@@ -187,6 +222,32 @@ test('红线：事件的载荷一律经过 buildEvent —— post() 的调用点
   assert.ok(frameLines[0].includes('buildEvent('), 'frame 载荷必须来自 buildEvent');
 });
 
+test('红线：navigate 只报 hash 的**长度**，绝不报 hash 的值', () => {
+  const code = stripComments(SDK_SOURCE);
+  // 这是审查者实测出来的第二条内容通道：`location.hash = 输入框的值` 是教师写页面时
+  // 极常见的一行 UI 代码，与 ClassNode 无关，却让学生的输入经由**默认采集通道**
+  // 原样出门（实测：输入 HX7QM2VK → navigate.to = "#HX7QM2VK"）。
+  assert.equal(code.includes('to: location.hash'), false, 'navigate 不得传出 hash 值');
+  assert.ok(code.includes('length: location.hash.length'), 'navigate 仍须保留「跳了、大概多长」的信号');
+  assert.equal(/location\.(hash|href|search|pathname)/.test(code.replace(/location\.hash\.length/g, '')), false);
+});
+
+test('红线：没有任何字段被直接喂上一个自由文本源', () => {
+  const code = stripComments(SDK_SOURCE);
+  // 判定的是**取值来源**，不是「有没有这个字段」：字段本身（to / selector / image…）
+  // 都在白名单里，出问题的是「谁被接了上去」。
+  const SUSPECT = /location|\.value|textContent|innerText|innerHTML|document\.title|\.href/;
+  const sites = [...code.matchAll(/\b(to|inputType|depth|image):\s*([^,\n]+)/g)]
+    .map((m) => ({ field: m[1], value: m[2].trim() }));
+  assert.ok(sites.length >= 4, `应当能定位到各字段的赋值点，实际 ${sites.length}`);
+  for (const site of sites) {
+    assert.equal(
+      SUSPECT.test(site.value), false,
+      `${site.field}: 的取值来源是自由文本 —— 那会绕过整条红线: ${site.value}`,
+    );
+  }
+});
+
 test('红线：report() 只有定义、没有内部调用者 —— SDK 绝不替教师采集', () => {
   const code = stripComments(SDK_SOURCE);
   // 定义 1 次；`report: report` 那次不含左括号。任何一处**内部调用**都会让计数 > 1。
@@ -200,8 +261,11 @@ test('红线：report() 只有定义、没有内部调用者 —— SDK 绝不�
 
 test('防护 1：单条消息上限存在，且超限是**丢弃**而不是抛错', () => {
   const code = stripComments(SDK_SOURCE);
-  assert.ok(code.includes('var MAX_PAYLOAD_BYTES = 32 * 1024;'));
-  assert.ok(/if \(encoded\.length > MAX_PAYLOAD_BYTES\) return;/.test(code));
+  // 常量名说的是「码元」不是「字节」：比的是 encoded.length（UTF-16 码元数），
+  // 一条中文 payload 的实际上限约 96KB UTF-8。名字不该声称代码没做的事。
+  assert.ok(code.includes('var MAX_PAYLOAD_CODE_UNITS = 32 * 1024;'));
+  assert.equal(code.includes('MAX_PAYLOAD_BYTES'), false, '不得留下与代码不符的旧名字');
+  assert.ok(/if \(encoded\.length > MAX_PAYLOAD_CODE_UNITS\) return;/.test(code));
   assert.ok(code.includes('encoded = JSON.stringify(msg);'));
   // 序列化失败（环形结构）也必须丢弃而不是往外冒
   assert.ok(/catch \(err\) \{\s*\n\s*return; \/\/ 环形结构/.test(code));

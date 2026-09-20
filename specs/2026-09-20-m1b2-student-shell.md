@@ -213,7 +213,17 @@ export interface ModulePanelProps {
 
 ---
 
-## Task 8: 教师端提示（Ruling 1）
+## Task 8: 教师端提示（Ruling 1）+ 认领 §4.11 B5
+
+> **⚠️ T6 审查裁定：§4.11 B5 指派给本任务**（它本来就要改 `teacher/classroom/page.tsx`）。
+>
+> **B5 是什么**：教师端的 socket 是**模块级单例**（`src/lib/socket.ts:8`），而服务端 `join-teacher-board`（`server/src/socket/index.ts:395`）**只 join 不 leave**。于是**打开课堂 X 的看板、再导航到 Y 的看板，Y 会收到 X 的 `module-state-changed`**（载荷只有 `{ moduleKey, state }`，**没有 `classroomId`**），并在 `teacher/classroom/page.tsx:572-575` 无条件 `applyModuleState` —— **表现为单选按钮选错**。
+>
+> **⚠️ 但要注意它不污染学生端**（T6 审查澄清）：学生 socket 每次 `startChatSession` 都是**新建并先断开旧连接**（`use-chat-socket.ts:54`），只 join 自己的 `classroom:<id>`。所以这是**教师端独有**的问题。
+>
+> **修法方向**（实施者自行判断并在报告里说明）：让 `join-teacher-board` 在加入新课堂前离开旧房间，或给载荷加 `classroomId` 并在教师端按 id 过滤。**注意 B5 是既有缺陷、不由 M1b-2 引入**，所以不要为它扩大改动面。
+
+**Files:**
 
 **Files:** Modify `src/app/teacher/classroom/page.tsx`
 
@@ -238,6 +248,11 @@ export interface ModulePanelProps {
 - **双 Toast 重复**
 - **锁住卡片的「按下回弹」被层叠顺序吃掉**：`home.module.css` 的 `.card:active` 与 `.cardLocked:hover` **特异性相同**、后者在后 → 指针按下必然同时命中 `:hover`，所以注释承诺的「按下有回弹作为『我收到了』的反馈」**实际完全不生效**。修法：`.cardLocked:not(:active):hover`，或删掉那句承诺
 - **零智能体课堂的兜底文案不一致**：首页用 `'智能学伴'`、学伴面板用 `'AI 学习助手'`，且卡片 label 已是「智能学伴」→ 会出现同名两行
+
+**T6 审查补入的清理项：**
+- **陈旧轮询响应可盖掉更新的广播**（`use-classroom-session.ts:275-283`）。现有的对象身份守卫**只避免每 15 秒换对象导致整树重渲染**，**不比较新旧**——广播刚把 X 改成 `hidden`、随后到达的旧快照轮询说 `open`，照样写回旧值。概率约每次改态 0.1%（`/api` 全量 `no-store`，所以响应必为读时刻的新值），15 秒内自愈，且**同形状已存在于 M1b-1 的 connect 补读**。**修法 3 行**：发起请求前把 `classroom.modules` 的对象身份存进 ref，响应落地时若 `prev.modules !== 发起时的引用` 就跳过本次合并
+- **守卫比较的是硬编码的两个键**（`:280-281`）。今天等价于整元素比较（该类型只有两个字段），但将来加第三个被 UI 读取的字段时，守卫会**静默压掉**合法更新。改为比较整元素，或加注释点名这个耦合
+- **「面板里不得再有定时器」缺永久闸门**。实质边界已由编译器把守（面板拿不到生命期能力），残余风险只是「将来有人用面板里仍在的 `api` + `code` 重新长一条定时器」。建议在 `eslint.config.mjs` 加一个 scoped block（`files: ["src/app/classroom/chat/**/*.{ts,tsx}"]` + `no-restricted-syntax` 禁 `setInterval`），约 5 行
 
 - [ ] **Step 1-2: 实现 + 门禁；Step 3: 提交**
 
@@ -278,6 +293,9 @@ export interface ModulePanelProps {
 > - **首页的换头像模态 + token 门禁**（头像可点与「机会由老师奖励」的文案切换）
 > - **「退出课堂」入口**（T4 新加，§4.2 未画）
 > - **窄屏 860px / 640px 下卡片转横排且无横向滚动** —— 这是 T4 新写的响应式分支，**也正是老 iPad 的主场景**
+
+> **⚠️ T6 审查补入：一条负向断言（上面全是正向的）**
+> T6 新加了「只在 `step === 'chat'` 时才轮询」的行为边界。**必须验证它不跑**：停在**身份选择页**时，Network 面板里**不应出现** `classroom/code/...` 请求。这条一旦被放宽，身份页会与「课堂结束就地提示」的设计打架。**一次就能看，且是唯一能守住该边界的走查。**
 
 - [ ] 输码 → 身份选择 → **进入首页**（不再是直接进聊天）
 - [ ] 首页三张卡片：三态三种呈现都对（开放可点 / 预告灰掉带锁 / 隐藏不显示）

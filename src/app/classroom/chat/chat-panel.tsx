@@ -18,8 +18,8 @@ import styles from './chat.module.css';
 const MAX_ATTACHED_FILES = 5;
 
 export function StudentChatContent({
-  // ⚠️ 临时默认值 true：外壳（Task 5）还没有传入真实值，见 ChatPanelProps.active 的说明。
-  active = true,
+  // M1b-2 Task 3 起必填且无默认值：默认 true 会把「外壳忘了传」伪装成「一直可见」。
+  active,
   code,
   classroom,
   selectedStudent,

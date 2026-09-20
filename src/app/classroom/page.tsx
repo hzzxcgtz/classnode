@@ -92,6 +92,9 @@ function ClassroomOrchestrator() {
 
   return (
     <StudentChatContent
+      // 面板只在这个分支挂载，所以恒为可见（与加 active 门之前的基线逐字一致）。
+      // Task 5 的外壳接管此处，传入真实值。
+      active
       code={session.code}
       classroom={session.classroom}
       selectedStudent={session.selectedStudent}

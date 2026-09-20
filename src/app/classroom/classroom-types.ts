@@ -1,6 +1,12 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+// 模块词汇表（ModuleId / ModuleState 与后端 moduleKey 的双向映射）住在
+// lib/classroom-modules.ts：教师端也读那两张表，另写一份必然漂移。
+// 这里只做转出，让外壳能从本文件一处取到模块契约相关的全部类型。
+import type { ModuleId, ModuleState } from '@/lib/classroom-modules';
+
+export type { ModuleId, ModuleState };
 
 export type ChatAgent = Pick<AgentSummary, 'name' | 'logo'> | null | undefined;
 export type StudentChatMessage = {
@@ -68,17 +74,51 @@ export type TeacherMessage = { message: string; time: string };
 /** 学生端浮动提示（外壳持有，面板渲染）。 */
 export type ChatToast = { msg: string; type: 'success' | 'error' | 'info' };
 
-/** 学伴模块面板的契约。M1b 会在此基础上加 active / state 两个字段。 */
+/**
+ * 模块面板契约（§4.3）：外壳与模块之间**唯一**的接口。模块自行响应 `active` 变化
+ * （如探究助手在此向 iframe 发挂起信号）；外壳不关心模块内部，模块不关心有几个兄弟。
+ * 加一个模块 = 加一个组件。
+ *
+ * 「每个模块都满足它」说的是外壳一定把这四件事给到面板；**面板自己的 props 会更多**
+ * （学伴面板几十个，见下面的 ChatPanelProps），契约是共同的下限而不是完整清单。
+ *
+ * `active` 与 `state` 是两件不同的事，不能合成一个字段：
+ *   · `active` = **此刻是否可见**。切走的模块仍然挂载（§4.5），所以「挂载」≠「可见」；
+ *   · `state`  = **教师设定的三态**（开放 / 预告 / 隐藏）。它决定模块在首页与 Tab 栏能否
+ *     进入，与此刻在不在前台无关 —— 一个 `preview` 的模块可以在前台，一个 `open` 的
+ *     模块也可以在后台。
+ */
+export interface ModulePanelProps {
+  /** 此刻是否可见。 */
+  active: boolean;
+  /** 教师设定的三态（由外壳按 MODULE_KEY_BY_ID 从 classroom.modules 读出）。 */
+  state: ModuleState;
+  classroom: ClassroomInfo | null;
+  session: StudentSession | null;
+}
+
+/**
+ * 学伴面板的 props —— 满足 `ModulePanelProps` 的语义，但**不是** `extends` 它。
+ *
+ * 两条理由，都是当下的事实而非取舍：
+ *   1. 契约里的 `session` 在本面板叫 `selectedStudent`。那是 M1a 就定下的名字，横跨
+ *      use-classroom-session.ts（hook 的返回值）与 page.tsx 的传参；改名要动那两个
+ *      已验收的文件，不属于「定义契约」这件事。
+ *   2. 契约里的 `state` 本面板暂时无人读：教师改态后的「提示 + 送回首页」由外壳负责
+ *      （Task 6）。为此刻没人读的字段要求 page.tsx 传值，只会传一个假值进去。
+ * 所以关系是「面板接住契约的语义，名字与落地分两步走」；Task 5/6 让面板真的需要
+ * `state` 时，再把它加进来（届时 `extends` 才是准确的写法）。
+ */
 export interface ChatPanelProps {
   /**
-   * 此刻这个模块是否对用户可见（M1b-2 Task 1 引入）。
+   * 此刻这个模块是否对用户可见（M1b-2 Task 1 引入，Task 3 定稿为**必填**）。
    *
-   * ⚠️ **临时契约**：现在**可选且默认 `true`**。面板至今只在 `step === 'chat'` 时挂载，
-   * 「挂载 ≡ 可见」仍然成立，所以面板里的 active 门此刻全是空操作，行为与基线逐字一致。
-   * Task 3 定义 `ModulePanelProps` 时应把它变成**必填**的 `active: boolean`，并删掉面板
-   * 解构里的 `= true` 默认值；Task 5 的外壳负责传入真实值。
+   * 面板常驻后「挂载」不再等于「可见」（§4.5：惰性挂载 + 一旦挂载永不卸载），所以面板里
+   * 所有页面级副作用都挂在这道闸上。**不给默认值**：默认 `true` 会把「外壳忘了传」伪装成
+   * 「一直可见」，那正是这道闸要防的事。Task 5 的外壳传入真实值；今天 page.tsx 只在
+   * `step === 'chat'` 时挂载面板，所以传 `active`（恒真，与基线逐字一致）。
    */
-  active?: boolean;
+  active: boolean;
   // —— 外壳状态：面板只读 ——
   code: string;
   classroom: ClassroomInfo | null;

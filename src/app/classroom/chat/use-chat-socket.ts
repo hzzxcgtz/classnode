@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
-import { setStudentSessionToken } from '@/lib/api';
+import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type {
@@ -59,6 +59,18 @@ export function useChatSocket(options: ChatSocketOptions) {
       socket.on('connect', () => {
         socket.emit('join-classroom', { classroomCode: joinCode, studentId, token });
         optionsRef.current.setConnected(true);
+        // 三态补读：广播只在连接存活时能收到，而这个连接成立前有两条空窗 ——
+        // 学生停在身份选择页时（外壳的 loadClassroom 只跑一次，identity 确认不重读课堂），
+        // 以及断线期间（服务端重连后回的 joined 不带三态，别处也没有监听它的补写逻辑）。
+        // 只合并 modules：整对象覆盖会让一次陈旧读取复活 status / allowStudentStop 等字段。
+        // 代际守卫查两次（发起前与落盘前），否则死连接的迟到响应会写进新会话。
+        if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;
+        api.getClassroomByCode(joinCode)
+          .then((cr) => {
+            if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;
+            optionsRef.current.setClassroom((prev) => prev ? { ...prev, modules: cr.modules } : prev);
+          })
+          .catch(() => { /* 尽力而为的补读：socket 自有错误出口，这里不打扰学生 */ });
       });
 
       const flushStreaming = () => {
@@ -256,13 +268,12 @@ export function useChatSocket(options: ChatSocketOptions) {
       });
 
       // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。
-      // 这条订阅是学生端唯一的传播路径：面板那条 15 秒轮询（chat-panel.tsx 的 poll）只读
-      // status / agents / paused，拿到 cr 后从不调用 setClassroom —— 学生端 setClassroom 的
-      // 写入点只有外壳的 loadClassroom（进入会话 / 重试恢复时各一次）与下面这几条 socket 回调。
-      // 所以改动前三态是「冻结在首次加载的值」，不是「最多慢 15 秒」。设计 §4.4 要求实时，
-      // 这条不能省。载荷是线缆上的值，先过类型守卫。
+      // 这条订阅是学生端的实时路径；兜底是上面 connect 回调里的补读（覆盖连接成立前的空窗
+      // 与断线期间）。面板那条 15 秒轮询（chat-panel.tsx 的 poll）读的是 status / agents /
+      // paused，拿到 cr 后不调用 setClassroom，不参与三态。设计 §4.4 要求实时，这条不能省。
+      // 载荷是线缆上的值，先过类型守卫 —— 连 null / undefined 都会走到这里，所以不能直接解构。
       socket.on('module-state-changed', (data: ModuleStateEvent) => {
-        const { moduleKey, state } = data;
+        const { moduleKey, state } = data ?? {};
         if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
         optionsRef.current.setClassroom((prev) => prev ? { ...prev, modules: applyModuleState(prev.modules, moduleKey, state) } : prev);
       });

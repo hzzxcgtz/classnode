@@ -568,8 +568,9 @@ function ClassroomBoardContent() {
     // 模块三态回显：服务端在 PUT 成功后向 classroom:<id> 与 teacher:<id> 双发，
     // 所以另一台教师机（或本机另一个标签页）改态时这里立刻跟上，不必等轮询。
     // 载荷是线缆上的值，先过类型守卫 —— 非法 key/state 直接忽略，不写进本地三元素数组。
+    // 连 null / undefined 都会走到这里，所以不能直接解构（解构会先抛错，守卫就没机会跑）。
     const unsub15 = on('module-state-changed', (data) => {
-      const { moduleKey, state } = data;
+      const { moduleKey, state } = data ?? {};
       if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
       setClassroom((prev) => prev ? { ...prev, modules: applyModuleState(prev.modules, moduleKey, state) } : prev);
     });

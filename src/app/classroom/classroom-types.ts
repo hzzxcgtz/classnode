@@ -72,7 +72,6 @@ export interface ChatPanelProps {
   avatarSvgs: Record<number, string>;
   avatarTokenCount: number;
   allStudentAvatars: AvatarSummary[];
-  onlineStudentIds: Set<string>;
   teacherMsgs: TeacherMessage[];
   messages: StudentChatMessage[];
   loadingMessages: boolean;

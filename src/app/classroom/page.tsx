@@ -98,7 +98,6 @@ function ClassroomOrchestrator() {
       avatarSvgs={session.avatarSvgs}
       avatarTokenCount={session.avatarTokenCount}
       allStudentAvatars={session.allStudentAvatars}
-      onlineStudentIds={session.onlineStudentIds}
       teacherMsgs={session.teacherMsgs}
       messages={session.messages}
       loadingMessages={session.loadingMessages}

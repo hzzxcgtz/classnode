@@ -1,0 +1,110 @@
+import { useEffect, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { MODULE_ID_BY_KEY, MODULE_KEY_BY_ID, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
+import type { ClassroomModuleKey, ClassroomModuleSetting } from '@/lib/types';
+import type { ChatToast, ClassroomInfo, ModuleId, ModuleState } from '../classroom-types';
+
+/** Tab 栏的一项：前端语义名 + 线缆上的 moduleKey + 此刻的三态。 */
+export interface ModuleTabEntry {
+  id: ModuleId;
+  moduleKey: ClassroomModuleKey;
+  state: ModuleState;
+}
+
+export interface UseModuleTabsOptions {
+  classroom: ClassroomInfo | null;
+  /**
+   * 与首页、学伴面板共用的**同一个** `setToast`（会话级状态由 page.tsx 持有）。
+   * 外壳的提示（模块被关闭、点开未开放的 Tab）走这里，渲染则交给当前可见的那一层 ——
+   * 见 classroom-shell.tsx 里「只有可见层渲染 Toast」那条规则。
+   */
+  setToast: Dispatch<SetStateAction<ChatToast | null>>;
+}
+
+/**
+ * 读某个模块此刻的三态。外壳渲染占位面板时也要用，所以导出而不是塞在 hook 里
+ * （两处各写一遍 `moduleStateOf(modules, MODULE_KEY_BY_ID[id])` 就会有两份口径）。
+ * 收 `modules` 而不是整个 `classroom`：effect 的依赖要写成 `classroom?.modules`，
+ * 传整个对象会让 eslint 认为依赖不全。
+ */
+export function moduleStateFor(modules: readonly ClassroomModuleSetting[] | undefined, id: ModuleId): ModuleState {
+  return moduleStateOf(modules, MODULE_KEY_BY_ID[id]);
+}
+
+/**
+ * 三件套的挂载管理（§4.5）。三件事，缺一条都会静默毁掉「切换保留内容」：
+ *
+ *   1. **惰性挂载**：模块第一次被打开才挂载 —— 从没访问过的模块零成本（§4.8 的内存门槛）。
+ *   2. **一旦挂载，永不卸载**（直到课堂结束）：`mountedIds` 只增不减。这是「切换保留内容」
+ *      的实现方式 —— 不卸载就不存在状态丢失，不需要任何序列化/恢复代码。
+ *   3. **被教师关闭 = 隐藏并挂起，而不是销毁**：`tabs` 里不再出现它、`activeModuleId`
+ *      被送回首页，但 `mountedIds` 仍留着它。教师误操作后改回 `open`，学生切回去时
+ *      之前的内容原样还在（§4.4：零成本恢复）。
+ *
+ * 「课堂结束」的边界不是这个 hook 管的：课堂结束时 page.tsx 会整页回 `/`，外壳随之卸载，
+ * 这些状态一起消失。换身份同理（回到身份页 ⇒ 外壳卸载），所以不存在「上一个学生的模块
+ * 还留在 DOM 里」的窗口。
+ */
+export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
+  /** 前台是哪个模块；`null` = 首页在前台（首页也是这个外壳的一层）。 */
+  const [activeModuleId, setActiveModuleId] = useState<ModuleId | null>(null);
+  /** 挂载集合，按「第一次进入」的顺序（层是绝对定位的，顺序不影响显示）。 */
+  const [mountedIds, setMountedIds] = useState<ModuleId[]>([]);
+
+  // Tab 栏的内容：**遍历词汇表** `MODULE_KEYS` 逐键查态，不按 `classroom.modules` 的数组
+  // 下标（§4.11 B6：`applyModuleState` 在键缺失时会追加元素，下标会漂移 ⇒ 教师改一次态
+  // 就可能让 Tab 换位甚至串号）。渲染顺序由词汇表决定，恒定。
+  const tabs: ModuleTabEntry[] = MODULE_KEYS
+    .map((moduleKey) => ({
+      moduleKey,
+      id: MODULE_ID_BY_KEY[moduleKey],
+      state: moduleStateOf(classroom?.modules, moduleKey),
+    }))
+    // `hidden` 是「完全不显示」（§4.4）：教师没安排这个环节，学生不该在 Tab 栏看见它。
+    .filter((entry) => entry.state !== 'hidden');
+
+  /**
+   * 进入一个模块。**唯一的入口闸门在这里**，不在调用点：首页卡片与 Tab 栏都会自己提示一次，
+   * 但闸门只有一处，将来多一个入口（教师推送、深链）也绕不过它。
+   */
+  const openModule = (id: ModuleId) => {
+    if (moduleStateFor(classroom?.modules, id) !== 'open') {
+      setToast({ msg: '老师还没开放', type: 'info' });
+      return;
+    }
+    setMountedIds((prev) => (prev.indexOf(id) === -1 ? [...prev, id] : prev));
+    setActiveModuleId(id);
+  };
+
+  const goHome = () => setActiveModuleId(null);
+
+  // §4.11 B4：学生正在用的模块被教师改成非 `open`（`preview` 或 `hidden`）时，必须**能**
+  // 把视图强制切走 —— 否则学生会继续待在一个已经关掉的模块里。
+  // 「不丢已作答内容」由第 2 条挂载策略保证：视图切走，模块仍挂在 DOM 里（草稿、附件、
+  // 滚动位置都在），教师改回来后切进去内容原样。
+  //
+  // **流式中被隐藏是否停掉生成：决定是「不停」**（Task 5 的显式裁定）。三条理由，都是代码里
+  // 能核对的事实，不是口味：
+  //   1. 服务端**无法**「暂停」：`stop-generation` 走的是 `activeStreams.get(socket.id).abort()`，
+  //      而服务端在 `result.aborted` 分支上是「不保存、不推送任何内容，直接丢弃」
+  //      （server/src/socket/index.ts）。也就是说自动停 = **整条回答被丢掉**，学生回来只看到
+  //      自己的问题孤零零挂着。这与 §4.4 的「不丢已作答内容」直接冲突。
+  //   2. 停与不停都不由学生决定：服务端还要看课堂的 `allowStudentStop`，同一个动作在不同课堂
+  //      里行为不同（有的课堂会自动丢弃、有的照常流完），学生会遇到无法解释的不一致。
+  //   3. 流本身不需要可见性：socket 归会话层（`use-chat-socket`），所以回答照常送达、照常落库。
+  //      「切走看一眼学习单再切回来」是 §4.5 的核心承诺，截断回答恰好背叛它。
+  // 代价与边界：被隐藏的模块会继续跑完这一次请求（一个在途请求，受既有 30s 首字节超时约束）；
+  // 学生回来后停止按钮照旧可用，教师侧的 `allowStudentStop` 语义一条没变。
+  //
+  // 依赖只有 `classroom?.modules`：三态的真源。M1b-1 已经把 socket 的 `module-state-changed`
+  // 合并进 `classroom.modules`（use-chat-socket.ts 的 `applyModuleState` 那一处），所以这条
+  // effect **今天就是活的**，教师改态即刻把学生送回首页 —— Task 6 不需要在这里补实时。
+  useEffect(() => {
+    if (activeModuleId === null) return;
+    if (moduleStateFor(classroom?.modules, activeModuleId) === 'open') return;
+    setActiveModuleId(null);
+    setToast({ msg: '老师暂时关闭了这个模块，先回到首页', type: 'info' });
+  }, [activeModuleId, classroom?.modules, setToast]);
+
+  return { activeModuleId, mountedIds, tabs, openModule, goHome };
+}

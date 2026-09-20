@@ -10,8 +10,10 @@
  * 卡片的左侧 4px 粗边与图标底色 = 模块身份色（§4.6：学习单蓝 / 探究助手紫 / 学伴青），
  * 与 Task 7 的 Tab 栏滑块同源。 */
 
+/* 高度填满**外壳让出来的舞台**（Task 5 的 shell.module.css：顶部固定栏以下、层内滚动），
+   而不是 100vh —— 首页现在活在一个已经扣掉栏高的层里，再要 100vh 就会多出 52px 的滚动。 */
 .page {
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;

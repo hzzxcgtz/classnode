@@ -1,0 +1,245 @@
+/* 学生端外壳（§4.1 的 shell/）：顶部 Tab 栏 + 首页 + 三个模块层。
+ *
+ * 硬约束（Safari 15，老 iPad）同 home.module.css：不用 `:has()` / `content-visibility` /
+ * `@container` / `dvh` / `:focus-visible`；动效只碰 `transform` 与 `opacity`，
+ * 并在 `prefers-reduced-motion` 下关闭。
+ *
+ * ── 分层模型（三件套共享一个舞台）────────────────────────────────────────────
+ *   .shell  整页容器；高度由内容决定（首页可能比视口高）
+ *   .bar    固定在视口顶端的导航栏（首页入口 + 模块 Tab）
+ *   .stage  舞台：所有面板层叠在这里，同一时刻只有一层可见
+ *   .layer  一层（首页 / 一个模块）：绝对定位铺满舞台，非活动层 visibility:hidden
+ *
+ * 为什么栏用 `position: fixed` 而不是在流内：学伴面板是**整屏 100vh** 的组件
+ * （见 chat.module.css 的 .chatShell），在流内的栏会把它顶出视口下缘、把底部输入区推走。
+ * 所以栏浮在面板之上，面板用 `padding-top: var(--shell-topbar-height)` 让出这条带子
+ * （chat.module.css 里那一行）。同一条带子也用在 .homeLayer 的上内边距上。
+ *
+ * `--shell-topbar-height` 是**栏高的唯一事实来源**，三处读它：.bar 的 height、
+ * .homeLayer 的上内边距、.chatShell 的上内边距。改这一个值，三处一起跟着变。
+ * 之所以敢写死像素而不是运行时测量：栏是一行不换行的按钮（下面 .bar 有 nowrap + 横向滚动），
+ * 高度不随文案或视口变化。 */
+.shell {
+  --shell-topbar-height: 52px;
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ───────────────────────── 顶部 Tab 栏 ───────────────────────── */
+
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60; /* 高于面板自己的顶部栏(30)，低于各浮层(100 起) —— 查看器/模态要盖住它 */
+  height: var(--shell-topbar-height);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  /* 横向可滚、纵向不换行：模块多起来时宁可让 Tab 组滚动，也不能把栏撑成两行 ——
+     栏高被面板当成了布局常量（见文件头）。 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid rgba(210, 218, 238, 0.8);
+  box-shadow: 0 6px 18px rgba(71, 85, 105, 0.06);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.home,
+.tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 0.813rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 首页入口：常驻最左。选中态用中性色（它不属于任何一个模块，不该抢模块的身份色）。 */
+.homeActive {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+/* 模块 Tab：静置灰、选中用**模块自己的身份色**（§4.6：学生在卡片上认到的颜色，
+   进到模块里还是同一个颜色）。 */
+.tabActive {
+  color: #fff;
+  background: var(--tab-accent);
+}
+
+/* 预告态（preview）：可见但灰掉（§4.4）。虚线边与更淡的文字让它一眼区别于「可进」。 */
+.tabLocked {
+  color: #94a3b8;
+  border: 1px dashed #cbd5e1;
+  padding: 0 11px; /* 补掉虚线边框占的 1px，锁定前后不跳动 */
+}
+
+/* 悬停只改颜色，不改布局；「抬起」用 transform（受限允许的两种属性之一）。 */
+.home:hover {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.tab:hover {
+  color: var(--tab-accent);
+  background: #f1f5f9;
+}
+
+.tabActive:hover {
+  color: #fff;
+  background: var(--tab-accent);
+}
+
+.tabLocked:hover {
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.home:active,
+.tab:active {
+  transform: translateY(1px);
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ───────────────────────── 舞台与层 ───────────────────────── */
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 一层：铺满舞台。非活动层**留在 DOM 里**，只是隐藏（§4.5 惰性挂载 + 永不卸载）。
+   `overflow: hidden` 是刻意的：每一层自己管自己的滚动（主页层滚动、面板层内部滚动），
+   层本身不外溢，否则隐藏层的溢出内容会把舞台撑高。 */
+.layer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* 活动层。与 .layer 特异性相同(0,1,0) —— 靠**源码顺序**取胜，所以这条必须留在 .layer 之后。 */
+.layerVisible {
+  visibility: visible;
+}
+
+/* 首页层：内容自带 min-height:100%，这里给它「层内滚动 + 让开固定栏」。
+   （栏是 fixed 的，不占流内空间，所以这 52px 的上内边距就是它的位置。） */
+.homeLayer {
+  overflow-y: auto;
+  padding-top: var(--shell-topbar-height);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 模块层不加上内边距：学伴面板自己用 padding-top 让出栏高（它能算进 100vh 的预算里），
+   占位面板压根不需要。在这里再加一层就会把面板顶出视口。 */
+.moduleLayer {
+  overflow: hidden;
+}
+
+/* Task 7（切换动画）挂在这里：动画期两层面共存，结束后才给离场层加 visibility:hidden，
+   且**只有离场层**能带 visibility —— 入场层若在过渡期仍是 hidden，回来时键盘永远弹不出来
+   （§4.10 C2、计划里 Task 7 的验收断言）。 */
+
+/* ───────────────────────── 占位面板（Ruling 2）───────────────────────── */
+
+.placeholder {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.placeholderCard {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 24px;
+  border-radius: 18px;
+  border-top: 4px solid var(--module-accent);
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(30, 27, 75, 0.16);
+  text-align: center;
+}
+
+.placeholderBadge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--module-accent);
+  font-size: 0.813rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.placeholderTitle {
+  margin: 0 0 6px;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.placeholderNote {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.813rem;
+  line-height: 1.6;
+}
+
+/* ───────────────────────── 无障碍与降级 ───────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .home:active,
+  .tab:active {
+    transform: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .home,
+  .tab {
+    padding: 0 9px;
+    gap: 4px;
+    font-size: 0.75rem;
+  }
+
+  .tabLocked {
+    padding: 0 8px;
+  }
+}

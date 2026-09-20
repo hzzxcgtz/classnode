@@ -7,6 +7,14 @@
   height: var(--chat-viewport-height, 100dvh);
   min-height: 0;
   max-height: var(--chat-viewport-height, 100dvh);
+  /* M1b-2 Task 5：外壳的顶部 Tab 栏固定在视口顶端、覆盖在面板之上（shell.module.css 的 .bar），
+     面板用上内边距让出这条带子。**用内边距而不是改 height**：height 是「视口预算」，
+     iOS 键盘弹出时由面板的 visualViewport 逻辑（panel 顶部的 scroll-lock effect）在算它，
+     改成 calc 会连带改掉那套计算的语义。box-sizing 是全局 border-box，所以内容区自动
+     少掉 52px，底部输入区仍贴在视口下缘。
+     变量由外壳在祖先元素上给出；面板一旦离开外壳（--shell-topbar-height 未定义）回落到
+     0px，与基线逐字一致。 */
+  padding-top: var(--shell-topbar-height, 0px);
   display: flex;
   flex-direction: column;
   position: relative;

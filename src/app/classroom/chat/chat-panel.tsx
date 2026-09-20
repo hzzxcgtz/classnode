@@ -120,11 +120,12 @@ export function StudentChatContent({
     );
   };
 
-  // ⚠️ M1b-2 之后面板常驻，这条清理只在「面板真正卸载」时执行（课堂结束、或换身份
-  // 时重挂）。§4.10 A 记录的缺口 —— streamingRafRef/streamingBufferRef 与两个定时器的
-  // 复位**只长在这里** —— 因此不能由它兜底。换身份那条路径必须显式选路线 A（key 重挂）
-  // 或路线 B（外壳 resetSessionState()），见 Task 1 报告；两者都不做则 M1a 修过的
-  // 「RAF id 已取消但非空 ⇒ 流式文字完全不显示」会原样回来。
+  // ⚠️ M1b-2 Task 5 起面板常驻（切 Tab 只隐藏不卸载，§4.5），这条清理只在「面板真正卸载」
+  // 时执行：换身份、课堂结束、或整页离开。§4.10 A 记录的缺口 ——
+  // streamingRafRef/streamingBufferRef 与两个定时器的复位**只长在这里** —— 因此由外壳选的
+  // **路线 A**（Ruling 4：`key={selectedStudent?.id}`）兜底：换身份即重挂 ⇒ 这条清理照跑，
+  // 今天的 ref/清理语义完整保留。外壳在 classroom-shell.tsx 里给的正是那个 key。
+  // 谁把那个 key 换掉，M1a 修过的「RAF id 已取消但非空 ⇒ 流式文字完全不显示」就会原样回来。
   useEffect(() => () => {
     chatConnectionGenerationRef.current += 1;
     if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
@@ -165,7 +166,8 @@ export function StudentChatContent({
   // 「课堂会话」而不是「学伴模块」—— M1b-2 之后面板常驻却随时可能不可见，让模块持有
   // socket 就等于用可见性决定连接的生死。面板仍需要的 ref（发送闸门 / 停止生成 /
   // 卸载清理）由 page.tsx 按对象身份透传。
-  const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef });
+  // `active` 交给语音：模块被隐藏时必须停麦（Ruling 6，见 use-voice-input.ts 里那条 effect）。
+  const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef, active });
 
   // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后
   // Safari 还会平移 visualViewport：保持页面起点不动，只把偏移量计入

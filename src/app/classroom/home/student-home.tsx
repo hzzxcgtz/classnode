@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { CSSProperties, Dispatch, ReactNode, SetStateAction } from 'react';
+import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { Toast } from '@/lib/components';
@@ -9,11 +9,21 @@ import type { AvatarSummary } from '@/lib/types';
 import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { fixSvgUrl } from '../avatar-utils';
+import { MODULE_META } from '../module-meta';
 import { SvgAvatar } from '../chat/svg-avatar';
 import { AvatarChangerContent } from '../chat/avatar-changer';
 import styles from './home.module.css';
 
 export interface StudentHomeProps {
+  /**
+   * 首页此刻是否在前台（Task 5 引入，**无默认值**）。
+   *
+   * 首页常驻之后（§4.5 的挂载策略同样适用于它）「挂载」不再等于「可见」：学生进入任一
+   * 模块后首页仍在 DOM 里，只为保留它自己的状态（滚动位置、换头像弹窗是否开着）。
+   * 它自己没有任何页面级副作用，唯一需要这道闸的是下面那个 portal —— 提到 `document.body`
+   * 的元素不继承本层的 `visibility:hidden`，会在模块之上浮起来（Ruling 5 / Task 2 同类问题）。
+   */
+  active: boolean;
   code: string;
   classroom: ClassroomInfo | null;
   selectedStudent: StudentSession | null;
@@ -33,51 +43,10 @@ export interface StudentHomeProps {
 }
 
 /**
- * 每张卡片的静态部分：模块名、图标、主色、按钮文案。
- *
- * 用 `Record<ModuleId, …>` 而不是数组或索引签名：模块词汇表（`ModuleId`）扩项时这里
- * **必须**报错，否则新模块在首页上会没有卡片。
- *
- * 三个颜色就是 §4.6 给模块定的身份色（学习单=蓝 / 探究助手=紫 / 学伴=青），与 Task 7 的
- * Tab 栏滑块同源 —— 学生在卡片上认到的颜色，进到模块里还是同一个颜色。
+ * 每张卡片的静态部分（模块名、图标、主色、按钮文案）住在 `../module-meta`：
+ * 外壳的 Tab 栏与这里必须用同一份（§4.6：学生在卡片上认到的颜色，进到模块里还是同一个
+ * 颜色），各写一份必然漂移。
  */
-const MODULE_CARDS: Record<ModuleId, { label: string; accent: string; cta: string; icon: ReactNode }> = {
-  worksheet: {
-    label: '学习单',
-    accent: '#2563eb',
-    cta: '继续作答',
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      </svg>
-    ),
-  },
-  explore: {
-    label: '探究助手',
-    accent: '#7c3aed',
-    cta: '去探究',
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M9.5 2v6.2L4.6 17.4A1.8 1.8 0 0 0 6.2 20h11.6a1.8 1.8 0 0 0 1.6-2.6L14.5 8.2V2" />
-        <path d="M8 2h8" />
-        <path d="M7.4 14h9.2" />
-      </svg>
-    ),
-  },
-  companion: {
-    label: '智能学伴',
-    // §4.6 的「青」压深了一档（#0891b2 → #0e7490）：白字落在 #0891b2 上只有 4.0:1，
-    // 按钮文字是 0.875rem 正文大小，够不到 AA 的 4.5:1。
-    accent: '#0e7490',
-    cta: '开始对话',
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
-      </svg>
-    ),
-  },
-};
 
 /** 锁定角标（🔒）。画成 SVG 而不是用 emoji：与全局图标同一套线条，缩放不糊。 */
 function LockBadge() {
@@ -117,6 +86,7 @@ function summarizeLastRound(messages: StudentChatMessage[]): string | null {
  * 让卡片换位甚至串号。这里遍历词汇表、逐键查态，顺序恒定。
  */
 export function StudentHome({
+  active,
   code,
   classroom,
   selectedStudent,
@@ -266,7 +236,7 @@ export function StudentHome({
             <div className={styles.cards}>
               {cards.map(({ moduleKey, state }) => {
                 const moduleId = MODULE_ID_BY_KEY[moduleKey];
-                const card = MODULE_CARDS[moduleId];
+                const card = MODULE_META[moduleId];
                 const content = cardContent[moduleId];
                 const locked = state === 'preview';
                 return (
@@ -303,7 +273,11 @@ export function StudentHome({
       </div>
 
       {mounted && createPortal(
-        <>
+        // Task 5：portal 逃出了本层的 `visibility:hidden`（Ruling 5），所以这里必须**显式**
+        // 按 `active` 决定可见性 —— 否则学生在首页打开换头像弹窗后进入任一模块，弹窗会浮在
+        // 模块之上。与 Task 2 给学伴面板四个浮层用的是同一个做法（保持挂载 + 可见性受控），
+        // 不是「非 active 就卸载」：那会丢掉弹窗里已经选到一半的状态。
+        <div style={{ visibility: active ? 'visible' : 'hidden' }}>
           {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
           {showAvatarChanger && (
             <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
@@ -339,7 +313,7 @@ export function StudentHome({
               </div>
             </div>
           )}
-        </>,
+        </div>,
         document.body,
       )}
     </div>

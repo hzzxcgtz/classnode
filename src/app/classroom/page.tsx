@@ -9,7 +9,6 @@ import type { Socket } from 'socket.io-client';
 import type {
   ChatAgent, StudentChatMessage, SocketTextEvent, AiResponseEvent, SocketErrorEvent,
   StudentIdEvent, AvatarRewardEvent, TeacherNotificationEvent, ShieldWarnEvent, PermissionEvent,
-  BrowserSpeechRecognition, SpeechRecognitionWindow,
 } from './classroom-types';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import { SvgAvatar } from './chat/svg-avatar';
@@ -19,6 +18,7 @@ import { ThinkingContent } from './chat/thinking-content';
 import { AvatarChangerContent } from './chat/avatar-changer';
 import { IdentityPicker } from './identity/identity-picker';
 import { useStudentSession } from './identity/use-student-session';
+import { useVoiceInput } from './chat/use-voice-input';
 import styles from './chat.module.css';
 
 const MAX_ATTACHED_FILES = 5;
@@ -40,8 +40,6 @@ function StudentChatContent() {
   const [messages, setMessages] = useState<StudentChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
-  const [voiceInputAvailable, setVoiceInputAvailable] = useState(false);
-  const [voiceListening, setVoiceListening] = useState(false);
   const [waitingAI, setWaitingAI] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
@@ -78,8 +76,6 @@ function StudentChatContent() {
   const identityConflictTimerRef = useRef<number | null>(null);
   const teacherNotifTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const voiceRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const voiceInputBaseRef = useRef('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
@@ -92,10 +88,6 @@ function StudentChatContent() {
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
-    if (voiceRecognitionRef.current) {
-      voiceRecognitionRef.current.abort();
-      voiceRecognitionRef.current = null;
-    }
   }, []);
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
@@ -134,10 +126,7 @@ function StudentChatContent() {
     setAvatarSvgs, setAllStudentAvatars, setAvatarTokenCount,
   });
 
-  useEffect(() => {
-    const speechWindow = window as SpeechRecognitionWindow;
-    setVoiceInputAvailable(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
-  }, []);
+  const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef });
 
   // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后
   // Safari 还会平移 visualViewport：保持页面起点不动，只把偏移量计入
@@ -738,72 +727,6 @@ function StudentChatContent() {
     setZoomLevel(1);
     setImgOffset({ x: 0, y: 0 });
     setFullscreenImg(url);
-  };
-
-  const voiceErrorMessage = (error: string) => {
-    if (error === 'not-allowed' || error === 'service-not-allowed') {
-      return '无法使用语音输入。请使用 Safari 打开，并在系统设置中启用 Siri、听写和麦克风权限';
-    }
-    if (error === 'audio-capture') return '没有检测到可用的麦克风，请检查 iPad 麦克风权限';
-    if (error === 'network') return '语音识别服务暂时无法连接，请检查网络后重试';
-    if (error === 'no-speech') return '没有听清，请靠近麦克风后重试';
-    return '语音识别失败，请稍后重试或使用键盘输入';
-  };
-
-  const toggleVoiceInput = () => {
-    if (voiceListening) {
-      voiceRecognitionRef.current?.stop();
-      setVoiceListening(false);
-      return;
-    }
-
-    const speechWindow = window as SpeechRecognitionWindow;
-    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    if (!Recognition) {
-      setToast({ msg: '当前浏览器不支持语音输入，请使用 Safari 或系统键盘听写', type: 'info' });
-      return;
-    }
-
-    const recognition = new Recognition();
-    voiceInputBaseRef.current = input;
-    recognition.lang = 'zh-CN';
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
-      let transcript = '';
-      for (let index = 0; index < event.results.length; index += 1) {
-        transcript += event.results[index]?.[0]?.transcript || '';
-      }
-      setInput(`${voiceInputBaseRef.current}${transcript}`);
-      requestAnimationFrame(() => {
-        const textarea = inputRef.current;
-        if (!textarea) return;
-        textarea.style.height = 'auto';
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
-      });
-    };
-    recognition.onerror = (event) => {
-      if (event.error !== 'aborted') {
-        setToast({ msg: voiceErrorMessage(event.error), type: 'error' });
-      }
-      setVoiceListening(false);
-      voiceRecognitionRef.current = null;
-    };
-    recognition.onend = () => {
-      setVoiceListening(false);
-      voiceRecognitionRef.current = null;
-    };
-
-    voiceRecognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setVoiceListening(true);
-    } catch {
-      voiceRecognitionRef.current = null;
-      setVoiceListening(false);
-      setToast({ msg: '语音输入启动失败，请检查 Safari 的麦克风权限', type: 'error' });
-    }
   };
 
   useEffect(() => {

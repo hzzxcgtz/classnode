@@ -29,6 +29,10 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
     classroomModule: {
       findMany: async () => [],
     },
+    // 本课堂没有关联任何探究助手网页：GET /code/:code 仍须下发 webapps: [] 而不是省略/报错。
+    classroomWebapp: {
+      findMany: async () => [],
+    },
     classroomStudent: {
       findFirst: async ({ where }: { where: { classroomId: string; id: string } }) =>
         where.classroomId === 'classroom-1' && where.id === 'membership-1' ? { id: 'membership-1' } : null,
@@ -76,6 +80,8 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
       { moduleKey: 'explorer', state: 'preview' },
       { moduleKey: 'companion', state: 'preview' },
     ],
+    // 探究助手：只发 id / name / entryPath，不含任何磁盘路径（本课堂未关联任何网页，空数组）。
+    webapps: [],
     agents: [{ id: 'agent-1', name: '语文助手', logo: null, platform: 'coze', enabled: true, greeting: null }],
   });
 

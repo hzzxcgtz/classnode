@@ -6,6 +6,7 @@ import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
 import { isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
 import { abortClassroomStreams } from '../socket/index.js';
+import { loadClassroomWebapps } from './webapps.js';
 
 const router: Router = Router();
 
@@ -460,10 +461,14 @@ router.get('/:id', async (req, res) => {
     const moduleRecords = await prisma.classroomModule
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
       .catch(() => null);
+    // 探究助手：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
+    // 两条路径口径不一。只含 id / name / entryPath，磁盘根路径不进响应。
+    const webapps = await loadClassroomWebapps(prisma, classroom.id);
     res.json({
       ...classroom,
       students,
       groupMembersMap,
+      webapps,
       modules: mergeModuleStates(moduleRecords ?? []),
       // 该课堂有没有 ClassroomModule 行。mergeModuleStates 会把缺失的 key 补齐成默认态，
       // 所以「三态全是 preview」既可能是「教师把三项都设成了预告」也可能是「从未设置过」，
@@ -564,6 +569,12 @@ router.get('/code/:code', async (req, res) => {
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
       .catch(() => [] as { moduleKey: string; state: string }[]);
 
+    // 探究助手：该课堂关联的网页，按关联顺序下发。
+    // ⚠️ **只发 id / name / entryPath**，不发任何磁盘路径。学生端用
+    // `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}` 自己拼。
+    // 查询失败（老库缺表）时降级为空数组 —— 读路径不可失败，不能把学生挡在课堂门外。
+    const webapps = await loadClassroomWebapps(prisma, classroom.id);
+
     res.json({
       id: classroom.id,
       code: classroom.code,
@@ -577,6 +588,7 @@ router.get('/code/:code', async (req, res) => {
       // IP 进来的，所以永远正确、无缓存、不会陈旧。托管源必须与父页面**跨源**，
       // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
       webappPort: req.app.get('webappPort') as number | undefined,
+      webapps,
       modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,

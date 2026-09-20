@@ -120,6 +120,7 @@ model Classroom {
   students         ClassroomStudent[]
   classroomAgents  ClassroomAgent[]
   modules          ClassroomModule[]
+  webapps          ClassroomWebapp[]
   interactions     Interaction[]
   shieldWarnings   ShieldWarning[]
   notifications    TeacherNotification[]
@@ -197,6 +198,44 @@ model ClassroomModule {
 
   @@unique([classroomId, moduleKey])
   @@index([classroomId])
+}
+
+// 探究助手：教师上传的静态网页（规格 §5.2）。
+// entryPath 存的是**包内相对路径**（如 index.html），不是磁盘路径 ——
+// 绝对路径会把数据目录的位置写进数据库，换机器就废；而磁盘目录由 id 直接决定
+// （<webappsRoot>/<id>/），不需要在库里再存一份。
+model Webapp {
+  id        String   @id @default(uuid())
+  name      String
+  entryPath String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classrooms ClassroomWebapp[]
+}
+
+// 课堂关联的探究助手网页。
+//
+// ⚠️ 本模型的 schema 定义**必须与 index.ts 的手写 DDL 逐字对齐**，否则下次 db push
+// 会重建本表，而同步块按表名探测、不会重跑，两边就此不一致
+// （同 ClassroomModule :194-196 的告诫，新表照这条规矩办）。
+//
+// createdAt 不是装饰：学生端按「关联顺序」下发网页列表，而 @@unique([classroomId, webappId])
+// 的索引次序是 classroomId 在前、给不出 webappId 维度的顺序，没有时间列就没有稳定次序。
+// ClassroomStudent.joinTime 是同一个用法。
+model ClassroomWebapp {
+  id          String   @id @default(uuid())
+  classroomId String
+  webappId    String
+  createdAt   DateTime @default(now())
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  webapp    Webapp    @relation(fields: [webappId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, webappId])
+  // 删网页前要 count({ where: { webappId } })；上面那个唯一索引以 classroomId 打头，
+  // 给不了这个维度，缺了它每次删除都是全表扫。
+  @@index([webappId])
 }
 
 // 课堂参与者。标准模式关联真实学生；分组/高级模式直接关联 ClassroomGroup，绝不再创建虚拟 Student。

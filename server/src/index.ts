@@ -25,6 +25,7 @@ import uploadRoutes, { cleanupOrphanedUploads } from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
 import upgradeRoutes, { checkForUpdateOnStartup } from './routes/upgrade.js';
+import webappRoutes from './routes/webapps.js';
 import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
@@ -174,6 +175,65 @@ async function main() {
       }
     } catch (e) {
       console.warn('[server] ClassroomModule schema sync failed (module tri-state will be unavailable):', e);
+    }
+
+    // 检查 Webapp / ClassroomWebapp 表是否存在（探究助手，v1.7 新增）。
+    //
+    // 位置与 ClassroomModule 同款理由：排在下面前面那些 legacy 条件语句**之前**，
+    // 这样无论后面哪条老语句抛错，这两张表都已经建好了。
+    // 依赖「Classroom 表已存在」—— 那是安装时 prisma db push 建的基础 schema。
+    //
+    // ⚠️ 下面的 DDL 与 schema.prisma 里 Webapp / ClassroomWebapp 的定义**逐字对齐**
+    // （含外键约束名与索引名）。改了 schema 就要同步改这里，否则下次 db push 会重建表，
+    // 而本同步块按表名探测、不会重跑，两边就此不一致 —— 同 ClassroomModule :194-196 的告诫。
+    // 对齐不是靠眼睛：DDL 由 `prisma db push` 到一个空库后 dump sqlite_master 得到，
+    // 见 task-3-report.md 的实测记录。
+    try {
+      const webappTables = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Webapp', 'ClassroomWebapp')`
+      );
+      const webappTableNames = webappTables.map(t => t.name);
+      if (!webappTableNames.includes('Webapp')) {
+        console.log('[server] Webapp table not found, creating...');
+        await prisma.$executeRawUnsafe(`CREATE TABLE "Webapp" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "name" TEXT NOT NULL,
+          "entryPath" TEXT NOT NULL,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL
+        )`);
+        console.log('[server] Webapp table created');
+      }
+      if (!webappTableNames.includes('ClassroomWebapp')) {
+        console.log('[server] ClassroomWebapp table not found, creating...');
+        await prisma.$executeRawUnsafe(`CREATE TABLE "ClassroomWebapp" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "classroomId" TEXT NOT NULL,
+          "webappId" TEXT NOT NULL,
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "ClassroomWebapp_classroomId_fkey" FOREIGN KEY ("classroomId")
+            REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT "ClassroomWebapp_webappId_fkey" FOREIGN KEY ("webappId")
+            REFERENCES "Webapp" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+        )`);
+        console.log('[server] ClassroomWebapp table created');
+      }
+      // 索引同样按名探测（同 ClassroomModule）：只判断表存在不够 —— 那样
+      // 「表建好但索引创建失败」的中间态会永久缺唯一键，而关联查询依赖它。
+      const webappIndexes = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('ClassroomWebapp_classroomId_webappId_key', 'ClassroomWebapp_webappId_idx')`
+      );
+      const webappIndexNames = webappIndexes.map(i => i.name);
+      if (!webappIndexNames.includes('ClassroomWebapp_classroomId_webappId_key')) {
+        await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomWebapp_classroomId_webappId_key" ON "ClassroomWebapp"("classroomId", "webappId")`);
+        console.log('[server] ClassroomWebapp unique index created');
+      }
+      if (!webappIndexNames.includes('ClassroomWebapp_webappId_idx')) {
+        await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomWebapp_webappId_idx" ON "ClassroomWebapp"("webappId")`);
+        console.log('[server] ClassroomWebapp webappId index created');
+      }
+    } catch (e) {
+      console.warn('[server] Webapp schema sync failed (探究助手 will be unavailable):', e);
     }
 
     // 创建缺失的表和字段（不同 Prisma schema 版本间迁移）
@@ -355,6 +415,10 @@ async function main() {
   }, avatarRoutes);
   app.use('/api/system', requireTeacher, systemRoutes);
   app.use('/api/upgrade', requireTeacher, upgradeRoutes);
+  // 探究助手的网页管理**全部是教师端**，没有学生可访问的端点。
+  // 学生靠 iframe 直接向托管源（另一个端口）取静态文件，不经过 /api。
+  // ⚠️ **绝不给本路由开学生 token 通道**：一旦开了，学生就能列出全库网页。
+  app.use('/api/webapps', requireTeacher, webappRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {

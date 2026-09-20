@@ -109,8 +109,12 @@
   transition: opacity 150ms ease;
 }
 
+/* `.actionText`（切换用户 / 退出课堂）与 `.home` / `.tab` 共用这一份度量 —— 它们本来就是
+   同一种东西：栏里一枚「图标 + 文字」的药丸按钮。分开写两份必然漂移（T5 之前那两枚是
+   无文字的图标块，尺寸与 Tab 不同，学生看到的是一排按钮里夹着两个异类）。 */
 .home,
-.tab {
+.tab,
+.actionText {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -188,8 +192,11 @@
 
    ⚠️ 顺序不是随意的：`.tab:hover` 与 `.tabActive:hover` 特异性相同(0,2,0) ——
    靠**源码顺序**取胜。所以选中态那条必须留在 `.tab:hover` **之后**，否则鼠标停在选中的
-   Tab 上时 `.tab:hover` 的灰底会盖住滑块（按钮的背景画在滑块之上）。 */
-.home:hover {
+   Tab 上时 `.tab:hover` 的灰底会盖住滑块（按钮的背景画在滑块之上）。
+
+   ⚠️ `.actionText:hover` 与 `.home:hover` 同色，所以直接并进这一条（两者互斥，不会打架）。 */
+.home:hover,
+.actionText:hover {
   color: #4338ca;
   background: #eef2ff;
 }
@@ -210,7 +217,8 @@
 }
 
 .home:active,
-.tab:active {
+.tab:active,
+.actionText:active {
   transform: translateY(1px);
 }
 
@@ -219,20 +227,25 @@
   text-overflow: ellipsis;
 }
 
-/* ─────────────────── 操作组（M1b-3 T1：连接 / 学生 / 切换 / 退出）───────────────────
-   栏右侧那一组共用操作。**位置是流内兄弟项，不是右侧固定**（Ruling 4）：本任务只做「图标化」，
-   没选「Tab 组滚动 + 操作钉在右侧」。所以这里不写 `margin-left: auto` —— 那会在 `.bar` 的
-   `overflow-x: auto` 里把这一组推到滚动区的右端，窄屏上与 Tab 组一起滚走，行为反而更怪。
-   留 4px（而非 0）是为了让操作组与 Tab 组之间比栏内默认的 4px 间距再宽一点，读得出分界。
+/* ─────────────────── 操作组（M1b-3 T1 / T5：连接 / 学生 / 消息 / 切换 / 退出）──────────
+   栏右侧那一组共用操作。
+
+   ── 右对齐（M1b-3 T5：Ruling 4 作废）──
+   `margin-left: auto` 把这一组推到栏的**最右**。T1 的注释曾明确不写这一行，理由是用户当时
+   选了「图标化」而不是「Tab 组滚动 + 操作钉在右侧」；T5 用户改口明确要求右对齐（顶栏单行、
+   左侧四个入口靠左、右侧四个操作靠右）⇒ 那条禁令解除、改为要求。
+
+   ⚠️ 那句旧注释里唯一站得住的一半，在这里如实记着：`margin-left: auto` 吸走的只是**自由
+   空间**，没有自由空间时它自动退化成 0，于是这一组紧跟着 Tab 组、一起横向滚走 —— 这正是窄屏
+   上唯一合理的行为（用户已明确接受横滑）。所以不需要另写媒体查询去关掉它。
+   实测（T5，700×800，此时自由空间刚好为 0）：chip 长出角标让本组宽了 31px，本组的右缘就
+   跟着**右移了 31px**（消息按钮 `right` 512 → 543）—— 正是「退化成 0 之后按流内排布」的样子。
+   ⚠️ 与 Tab 组之间**至少** 4px 的分界由 `.bar` 自己的 `gap: 4px` 保证（自动外边距吃掉自由
+   空间时 gap 仍在）：实测 640px（本组已退化成流内排布）时 Tab 组右缘 343、本组左缘 347。
+   所以右对齐之后不再需要 T1 那个 `margin-left: 4px`。
 
    ⚠️ 高度一律 36px、与 `.home` / `.tab` 同高 —— 栏高 52px 是面板与首页层的布局常量
-   （见文件头），本任务**不动**它，也不引入比 Tab 更高的东西。
-
-   ⚠️ 宽度（M1b-3 T3 实测，Chrome @ 768px，见 .studentName 的媒体查询注释）：
-   本组 = **160 + chip**（连接 36 + 4 + chip + 4 + 消息 36 + 4 + 切换 36 + 4 + 退出 36），
-   3 字姓名时 chip = 86 ⇒ 本组 246px；栏在没有本组时 396px。
-   （T2 时本组是 120 + chip / 206px —— T3 的消息按钮给它加了 36 + 4 = 40px，
-   下面媒体查询里的宽度预算已按同一增量更新。）
+   （见文件头），**本批次不动它**（用户要单行正是为了省高度），也不引入比 Tab 更高的东西。
 
    ── 可收缩（M1b-3 T2 修 C1）──
    `flex: 0 1 auto` + `min-width: 0`：**这一组必须能收缩，否则里面的 chip 永远不会缩**。
@@ -242,47 +255,62 @@
    够不着那段区间实际需要的 44px 以上。`min-width: 0` 解掉那层兜底，缺口才传得进
    chip 里（实测：660px + 撞满上限的姓名，「退出课堂」右缘从 696 回到 652，栏不再横向滚动）。
 
-   ⚠️ T3 的消息按钮把本组的 min-content 抬到 ≈214（多一个 36 + 4），收缩缺口因此**更大**，
-   但走的是同一条路径、同一个结论：实测 641px + 3 字姓名时本组 246 → 237、栏溢出 0。 */
+   ⚠️ 可收缩这条在 T5 之后**更重要**了：组里两枚按钮从 36px 的图标块变成了带文字的按钮，
+   min-content 随之抬高，能靠收缩吸收的缺口相对更小 ⇒ 更早进入横向滚动。走的是同一条路径、
+   同一个结论（T5 实测数字见下面 `.studentChip` 与媒体查询那两段注释）。 */
 .actions {
   flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: 4px;
+  margin-left: auto;
 }
 
-/* 连接状态点。**本文件是它唯一的来源**（M1b-3 T4）：面板头那套同源的配色
+/* 连接状态。**本文件是它唯一的来源**（M1b-3 T4）：面板头那套同源的配色
    （`chat.module.css` 的 `.connectionOnline` / `.connectionOffline`）随整行头部一并撤除，
    原先「两份并存、T4 之后收敛成一份」的过渡期到此结束。
 
-   绿点本身是纯装饰，信息载体是元素的 aria-label / title（Ruling 3 续）。 */
-.connectionDot {
+   ⚠️ T5 把文字搬到了脸上，配色因此**必须**跟着动（否则新出现的文字直接跌破 AA）：
+   `#079669` 落在 `#ecfdf5` 上只有 **3.58:1**，`#dc2626` 落在 `#fef2f2` 上只有 **4.41:1** ——
+   两者都低于小字号要求的 4.5:1（0.813rem / 650 字重够不到 WCAG 的「大字号」门槛）。
+   换成同色系压深一档的 **`#047857`（5.21:1）** 与 **`#b91c1c`（5.91:1）**，四个值都由
+   WCAG 相对亮度公式实算。深色对圆点同样安全（非文字 3:1 的要求反向更宽松）。
+
+   圆点本身是纯装饰（`aria-hidden`），信息载体是可见文字 + 元素的 aria-label / title
+   （Ruling 3 续：颜色不能是唯一的信息载体）。 */
+.connectionStatus {
   flex: 0 0 auto;
   display: inline-flex;
-  min-width: 36px;
   min-height: 36px;
+  padding: 0 12px 0 10px;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   border-radius: 999px;
+  font-size: 0.813rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .connectionOnline {
-  color: #079669;
+  color: #047857;
   background: #ecfdf5;
 }
 
 .connectionOffline {
-  color: #dc2626;
+  color: #b91c1c;
   background: #fef2f2;
 }
 
 /* 圆点用 `currentColor`：颜色只有 `.connectionOnline` / `.connectionOffline` 一处来源，
-   这里不抄十六进制（同一手法见 `.homeActive` / `.tabActive`）。 */
+   这里不抄十六进制（同一手法见 `.homeActive` / `.tabActive`）。
+   `flex-shrink: 0` 是必须的：状态胶囊在窄屏上被压时，先认输的应该是文字（`nowrap` 会
+   横向溢出），而不是把这枚圆点压成椭圆。 */
 .connectionDotMark {
   width: 10px;
   height: 10px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: currentColor;
 }
@@ -293,16 +321,18 @@
    不对，且面板头整行随 T4 撤除。
 
    ⚠️ 这个 `min-width: 36px` 是**刻意保留**的地板，不是漏改（T2 修 C1）：chip 的 min-content
-   是 28px 头像 + 6 gap + 14 内边距 + 2 边框 = **50px**，缩到 50 以下头像就会溢出到「切换身份」
-   按钮上。36px 与 50px 都低于这条线，但 36px 只在**姓名已被媒体查询隐藏**（≤640px，此时
-   chip 的自然宽是 38px）的区间才起作用 —— 那一段收缩量只有 2px，实测头像仍完整落在 chip 的
-   边框盒内（`avatarFullyInsideChip === true`），页面上就是「光环贴身」而不是「头像跑出去」。
-   换成控制器原话里的 `min-width: 0` 则会在手机宽度下出事：实测 **375px 时 chip 从 38 一路
-   缩到 10px**，28px 的头像随即溢出 chip 的边框盒（`avatarFullyInsideChip === false`）压到
-   相邻按钮上 —— 那是 T1 没有过的新退化。而在 C1 真正要修的区间两者**完全等价**：实测
-   **660px + 撞满上限的姓名，`min-width: 36px` 与 `0` 都得到 chip 136、栏溢出 0**，因为那时
-   chip 只需要从 180 缩到 136，离任何一条地板都远。641px 以上同理（实测 **641px + 7 字姓名：
-   chip 117、姓名 84px 落在 67px 里打了省略号**，离 36px 的地板还有 81px）。 */
+   是 28px 头像 + 6 gap + 14 内边距 + 2 边框 = **50px**，缩到 50 以下头像就会溢出到「切换用户」
+   按钮上。36px 与 50px 都低于这条线，而 36px 只在**姓名已经被压到 0**（无论是媒体查询隐藏的
+   ≤640px，还是收缩吃光了名字的中间档）的区间才起作用 —— 实测（T5）640/700/768/1024 四档下
+   头像都完整落在 chip 的边框盒内（`avatarInsideChip === true`），页面上就是「光环贴身」而不是
+   「头像跑出去」。
+   换成 `min-width: 0` 则会在手机宽度下出事（T2 实测：**375px 时 chip 从 38 一路缩到 10px**，
+   28px 的头像随即溢出 chip 的边框盒、压到相邻按钮上）—— 那是 T1 没有过的新退化。
+   T2 还实测过：在收缩还没触到地板的区间（`min-width: 36px` 与 `0`）两者**完全等价**
+   （**660px + 撞满上限的姓名，两种取值都得到 chip 136、栏溢出 0**）。
+
+   ⚠️ T5 之后这条地板的另一面：它只守得住**头像**。角标的 16px 不在里面，所以带角标时改用
+   下面 `.studentChipBadged` 的 69px 地板（理由见那一条）。 */
 .studentChip {
   flex: 0 1 auto;
   display: inline-flex;
@@ -312,6 +342,13 @@
   padding: 0 10px 0 4px;
   align-items: center;
   gap: 6px;
+  /* ⚠️ **必须留着 `overflow: hidden`**（M1b-3 T5）：chip 是能收缩的（C1），而它的三个孩子
+     （头像 / 姓名 / 角标）谁也压不下去 —— 缺口一大，孩子就会**画出边框盒之外**。
+     实测（T5，Chrome）：768px 时 chip 43px 宽，角标画在 521–537，而 chip 的盒子是 473–516
+     ⇒ 角标落在**隔壁「消息」按钮上**。裁掉之后同一场景下角标不会越界，
+     而下面 `.studentChipBadged` 的地板保证角标**要么完整可见、要么完全不画**（不留半枚）。
+     ⚠️ 头像不受影响：四个视口实测 `avatarInsideChip === true`（它的右边距本来就有余量）。 */
+  overflow: hidden;
   border: 1px solid #dcdcff;
   border-radius: 999px;
   color: #4f46c8;
@@ -333,6 +370,20 @@
 .studentChipButton {
   font-family: inherit;
   cursor: pointer;
+}
+
+/* 带角标的 chip 的**地板**（M1b-3 T5，C8）：`min-width` 必须够放下
+   头像 28 + 间距 6 + 角标的 margin 3 + 角标 16 + 内边距 14 + 边框 2 = **69px**。
+   理由与 `.studentChip` 那条 `min-width: 36px` 逐字同源（T2 修 C1：地板防止孩子溢出盒子），
+   只是这一条守的是**角标**：没有它，chip 一被压就轮到角标溢出，而它与名字不同 ——
+   名字可以打成省略号，角标被裁一半就是一粒看不懂的色块。
+   实测（T5）：不带这一条时 768px 的角标画到 521–537、chip 盒子只到 516；
+   带上之后 400/640/700/768/1024 五档角标都完整落在 chip 的边框盒内。
+
+   ⇒ 有角标时 chip 的收缩下限抬到 69px，缺口改由**栏自身的横向滚动**吸收（用户已明确接受）。
+   这不改变 C1 的结论：chip 仍然收缩，只是不再缩到「连角标都放不下」。 */
+.studentChipBadged {
+  min-width: 69px;
 }
 
 .studentChipButton:hover {
@@ -403,11 +454,12 @@
   background: #eef2ff;
 }
 
-/* 老师消息的未读角标（M1b-3 T3）。只在 `teacherMsgCount > 0` 时渲染。
-   画在按钮的流内（flex 行里排在铃铛右边），**不用绝对定位**：`.bar` 是 `overflow-y: hidden`，
-   贴边的绝对定位角标一旦伸出按钮盒就有被裁的风险，而流内排布天然在按钮盒里。
-   字号取 0.688rem 与面板头那枚时间戳同档；`currentColor` 系配色直接复用按钮的文字色，
-   不另抄十六进制（与 `.connectionDotMark` 同一手法）。 */
+/* 栏内计数角标的**共用几何**（M1b-3 T3 立，T5 起两个使用者）：老师消息按钮上的未读条数，
+   以及学生 chip 上的剩余换头像次数。
+   画在各自的流内（flex 行里排在图标 / 姓名右边），**不用绝对定位**：`.bar` 是
+   `overflow-y: hidden`，贴边的绝对定位角标一旦伸出按钮盒就有被裁的风险，而流内排布天然在
+   按钮盒里。字号取 0.688rem 与面板头那枚时间戳同档。
+   `background` / `color` 由使用者各自的修饰类给（见 `.chipBadge`），这里只留一套几何。 */
 .actionBadge {
   display: inline-flex;
   min-width: 16px;
@@ -417,11 +469,23 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  /* 老师消息的未读角标（M1b-3 T3）的配色：`currentColor` 系，直接复用按钮的文字色，
+     不另抄十六进制（与 `.connectionDotMark` 同一手法）。 */
   background: #e0e7ff;
   color: #4338ca;
   font-size: 0.688rem;
   font-weight: 700;
   line-height: 1;
+}
+
+/* 学生 chip 的剩余换头像次数角标（M1b-3 T5，C8）。
+   **刻意与消息角标不同色**：那枚是「有几条消息要读」，这枚是「老师刚给了你奖励」——
+   后者是学生拿到奖励后唯一的线索（T2 撤掉了首页的「换头像 N」按钮与面板头的「⭐ N」），
+   而 chip 自己的底已经是浅紫（`#f5f5ff`），浅紫角标落在上面几乎看不出来。
+   实心紫 + 白字的对比度是 **6.90:1**（实算），比消息角标那枚的 6.41:1 还高。 */
+.chipBadge {
+  background: #4f46c8;
+  color: #fff;
 }
 
 /* ───────────────────────── 舞台与层 ───────────────────────── */
@@ -590,7 +654,8 @@
 /* 本文件里**所有**会动的东西都必须在这里被关掉，一条不漏：
    · 四条层切换动画（`.enterRight` / `.enterLeft` / `.exitLeft` / `.exitRight`）
    · 指示器滑块的过渡（`.tabIndicator` / `.tabIndicatorInstant`）
-   · 四处按下反馈（`.home:active` / `.tab:active` / `.action:active` / `.studentChipButton:active`）
+   · 五处按下反馈（`.home:active` / `.tab:active` / `.action:active` / `.actionText:active` /
+     `.studentChipButton:active`）
    `animation: none` 之后离场层落回 `.layer` 自身的 `visibility:hidden`、入场层落回
    `.layerFront` 的 `visibility:visible` —— 也就是「直接切换」。外壳从计算样式里读到的
    `animation-duration` 也一并归零（globals.css 的全局降级规则把它压成 0.01ms），它那边的
@@ -611,43 +676,43 @@
   .home:active,
   .tab:active,
   .action:active,
+  .actionText:active,
   .studentChipButton:active {
     transform: none;
   }
 }
 
-/* ── 窄屏：姓名隐藏、头像保留（简报要求）──
+/* ── 窄屏：姓名隐藏、头像保留 ──
 
-   断点取 640px 不是随手挑的，是按栏的宽度预算算出来的（字号 0.813rem = 13px，汉字全角
-   ≈ 1em；**T2 起这些数字是实测值**，Chrome 下 `scrollWidth` 刚好不溢出所需的最小视口；
-   T3 的宽度那一行按「操作组 +40px」同步更新，见下表）：
+   **下面这一整段是 T5 的实测数字**（Chrome，2026-09-20；T5 给操作组恢复文字之后，T2/T3 那套
+   按「图标化」算出来的预算全部作废，不能再引用）。以 2 字姓名（chip 74）为例，栏的自然宽度：
 
-     首页 72 +（学习单 90 + 4 + 探究助手 103 + 4 + 智能学伴 103）= 304
-     + 栏左右内边距 16 + 栏内三项之间的 2×4 = 8
-     ⇒ 只有 Tab 时 **396px**
-     操作组 = 160 + chip（见 .actions），栏的 gap 4 + 本组 margin-left 4
-     ⇒ 需要的最小栏宽 = **564 + chip**
+     栏 = 内边距 16 + 首页 72 + 间距 4 + Tab 组 304 + 间距 4 + 操作组
+     操作组（宽口径）= 连接 77 + 4 + chip + 4 + 消息 36 + 4 + 切换用户 98 + 4 + 退出课堂 98
+                      = 325 + chip
+     ⇒ 宽口径（>860px）**栏自然宽 = 725 + chip**；实测 2 字 799 / 3 字 811 / 长姓名 905
+     ⇒ 紧口径（≤860px，见文件末尾那条收紧规则）**栏自然宽 = 647 + chip**；
+        实测 2 字 721 / 3 字 733
 
-   chip 自身（见 .studentChip）= 50 + 12×字数，上限 `max-width: 180px`：
-     · 3 字姓名 ⇒ chip 86 ⇒ 栏需 **650px**（T2 实测 610 + T3 的 40）
-     · 姓名隐藏 ⇒ chip 收成 **38px** 的圆（28 头像 + 8 内边距 + **2px 边框**，
-       边框两侧各 1px 所以是 38 而不是 36）⇒ 栏需 **592px**（T3 实测：590px 时
-       `scrollWidth - clientWidth = 2`，592px 起为 0）
-     · 撞满 180 上限（≈11 字以上）⇒ 栏需 **744px**（T2 实测 704 + T3 的 40）
+   所以「想要什么都放得下」需要的最小视口就是这两个式子，`chip` 由姓名长度决定
+   （`.studentChip` = 50 + 12×字数，上限 180）：
+     · 2 字 ⇒ chip 74 ⇒ 宽口径要 799、紧口径要 721。**768（iPad 竖屏）落在紧口径里，
+       721 < 768 ⇒ 放得下（余量 47px）**，姓名与角标都在。
+     · 3 字 ⇒ chip 86 ⇒ 紧口径要 733 ⇒ 768 仍然放得下（余量 35px）。
+     · 撞满 180 上限（≈11 字以上）⇒ 紧口径要 827 > 768 ⇒ 768 下 chip 被压到 121、
+       姓名打省略号（**栏本身仍不溢出**）。
 
-   所以 640px 是「带姓名的 **T2 口径** 610px 还留得住 ~30px 余量」的最小整断点；768px
-   （iPad 竖屏）下 610 < 768，余量约 158px，宽裕。640px 以下姓名让位。
+   ⚠️ 640px 这个断点的含义因此**变了**，这里如实写清楚：它不再是「某条预算推出来的最小
+   整断点」（那条推导依赖的 396/564 两个数已经作废），而是**姓名在这个宽度上无论如何都留不住**
+   的那条线 —— 实测 640px 时栏的自然宽 675 > 640（已溢出 35px），chip 被压到 36px 的地板、
+   姓名的渲染宽度是 **0**。与其让学生看到一枚压缩到没有名字的 chip，不如在 ≤640px 明说
+   「姓名让位」，把 chip 收成头像圆（28 + 8 内边距 + 2 边框 = 38，见下面 `.studentChip` 的
+   内边距改写）。
 
-   ⚠️ T3 加了消息按钮之后，3 字姓名那一行涨到 650 > 640，**断点没有跟着挪**：641~650 这一段
-   由 `.actions` / `.studentChip` 的收缩 + 姓名省略号兜住 —— **实测 641px 时 chip 从 86 缩到
-   77（本组 246 → 237），栏 `scrollWidth - clientWidth = 0`**，与 T2 修 C1 时同一条路径。
-   窄屏这一组的重排（右对齐 + 全部带文字标签）归 T5，这里只把数字改对。
-
-   ⚠️ 极限需求 704px > 640px，**这不是断点能兜住的范围**：641~703px 之间长姓名会把「切换
-   身份」「退出课堂」推出视野（T1 审查 C1）。修法不在这个断点上，而在 `.actions` /
-   `.studentChip` 的 `flex-shrink`（见那两条规则的注释）：chip 自己缩、姓名走已有的省略号，
-   栏不再横向滚动。（`.studentName` 的省略号本来就生效 —— 实测 chip 顶到 180px 时姓名
-   144px 的文本落在 130px 里、已经打了省略号；C1 真正的病根只是 chip 从不收缩。） */
+   ⚠️ 640~860px 这一段由 `.actions` / `.studentChip` 的收缩 + 姓名省略号兜住（T2 修 C1 的
+   同一条路径）：实测 700px 时 chip 从 74 缩到 36、栏 `scrollWidth - clientWidth = 0`。
+   带宽尺度的长姓名会把「切换用户」「退出课堂」推出视野（T1 审查 C1），修法仍不在断点上，
+   而在那两条收缩规则里。 */
 @media (max-width: 640px) {
   .studentName {
     display: none;
@@ -659,9 +724,28 @@
   }
 }
 
-@media (max-width: 420px) {
+/* ── 紧一档：栏放不下时先缩排布，而不是丢掉文字（M1b-3 T5）──
+
+   为什么把这条从 420px 放宽到 860px：T5 给操作组恢复文字之后，栏的自然宽度从 646px 涨到
+   **807px**（Chrome 实测，2 字姓名、无角标），于是 **768（iPad 竖屏）放不下了**。
+   放不下时浏览器不会自动「横滑」—— `.actions` / `.studentChip` 是能收缩的（T2 修 C1），
+   缺口会被 chip 一个吸收干净：实测 768px 时 **chip 从 74 压到 43、姓名的渲染宽度变成 0**，
+   栏 `scrollWidth === clientWidth`（不溢出），但学生**在 iPad 竖屏上看不见自己的名字**。
+   用户要的恰恰是「这几个都要有文字」，而 768 也不是他说的「极端情况」。
+
+   ⇒ 与其丢掉文字，不如把栏内排布紧一档：实测 768px 下这套取值把自然宽度从 807 压到
+   **745**（省 62px），姓名与角标都留得住、栏溢出 0。
+   取值与 `.home` / `.tab` 原本在 ≤420px 用的那份**逐字相同**（0.75rem / 内边距 9px / 间距
+   4px）—— 只是把同一套降级提前到「装不下」的那个宽度，而不是等到手机宽度。原来的
+   `@media (max-width: 420px)` 块因此合并进来，不再留第二份。
+
+   ⚠️ 断点取 860 而不是 768：除了姓名，还有「长姓名」（`.studentChip` 的 180px 上限）与
+   角标这两条会在更宽的视口上重新撑爆栏。860 覆盖到「2 字姓名 + 角标 + 三个模块」也够用的
+   宽度为止。1024（iPad 横屏）**不受影响** —— 那份实测数字仍按宽屏口径成立。 */
+@media (max-width: 860px) {
   .home,
-  .tab {
+  .tab,
+  .actionText {
     padding: 0 9px;
     gap: 4px;
     font-size: 0.75rem;
@@ -669,5 +753,12 @@
 
   .tabLocked {
     padding: 0 8px;
+  }
+
+  /* 连接状态胶囊跟着同一档收紧（它是组里最左边那项，省下的每一像素都直接让给 chip）。 */
+  .connectionStatus {
+    padding: 0 9px 0 8px;
+    gap: 5px;
+    font-size: 0.75rem;
   }
 }

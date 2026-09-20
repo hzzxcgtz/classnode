@@ -23,6 +23,15 @@ export interface ModuleTabBarProps {
   /** 头像 SVG 池，键是 `Avatar.id`。缺项时头像降级成姓名首字。 */
   avatarSvgs: Record<number, string>;
   /**
+   * 学生还剩几次换头像的机会（M1b-3 T5 补入，C8）。
+   *
+   * 栏只拿它做一件事：`> 0` 时在 chip 上多一枚角标。**不判断能不能换** —— 那条判断与弹窗
+   * 一起归外壳（见 `onChangeAvatar`）。为什么这枚角标非有不可：T2 撤掉了首页的「换头像 N」
+   * 按钮与面板头的「⭐ N」之后，「有 0 次」与「有 ≥1 次」的 chip 在**外观与交互上完全一致**，
+   * 学生拿到老师奖励后没有任何线索 —— 恢复的是 T2 顺带抹掉的既有信号。
+   */
+  avatarTokenCount: number;
+  /**
    * 顶栏头像被点击（M1b-3 T2）。
    *
    * 栏不判断「能不能换」—— 决定权（有机会就开弹窗、没机会就说为什么）与弹窗本身都归外壳，
@@ -119,27 +128,44 @@ function ExitIcon() {
  * 位置与宽度由 `offsetLeft` / `offsetWidth` 量出来 —— 不用 `getBoundingClientRect()`，
  * 因为它含祖先的 `transform`，而本壳的切换动画正在平移整个层。
  *
- * ── 操作组（M1b-3 T1 / T2 / T3）─────────────────────────────────────────────
- * 栏右侧追加一组操作：连接状态点、学生头像 + 姓名、老师消息、切换身份、退出课堂。能力**全部**
+ * ── 操作组（M1b-3 T1 / T2 / T3 / T5）────────────────────────────────────────
+ * 栏右侧追加一组操作：连接状态、学生头像 + 姓名、老师消息、切换用户、退出课堂。能力**全部**
  * 由外壳从 `useClassroomSession` 转手进来（`connected` / `selectedStudent` / `avatarSvgs` /
- * `onChangeAvatar` / `onToggleTeacherMsgs` / `onSwitchIdentity` / `onExit`），栏自己不持有
- * 任何状态、不新增 effect —— 它只是一个展示点。T2 给头像 chip 加的那次点击（换头像）同样是
- * 转手：能不能换、换完怎么收尾都由外壳决定，栏连「有没有机会」都不判断。T3 的消息入口同理，
- * 唯一的例外是那根 `teacherMsgsButtonRef`：下拉 portal 到 body 之后，落点只能由外壳量
- * （栏仍然不量、不存，只是把引用挂上去）。
+ * `onChangeAvatar` / `onToggleTeacherMsgs` / `onSwitchIdentity` / `onExit` /
+ * `avatarTokenCount`），栏自己不持有任何状态、不新增 effect —— 它只是一个展示点。T2 给头像
+ * chip 加的那次点击（换头像）同样是转手：能不能换、换完怎么收尾都由外壳决定，栏连「有没有
+ * 机会」都不判断。T3 的消息入口同理，唯一的例外是那根 `teacherMsgsButtonRef`：下拉 portal
+ * 到 body 之后，落点只能由外壳量（栏仍然不量、不存，只是把引用挂上去）。
  *
- * 三条从控制器裁定下来的规矩，改这里时不要丢：
- *   ① **图标化只减视觉宽度，不减无障碍信息**（Ruling 3）：每个操作 36px 见方（与 Tab 同高），
- *      两个图标按钮必须有 `aria-label` + `title`；
- *   ② **颜色不能是唯一的信息载体**（Ruling 3 续）：连接状态不是一个孤零零的绿点/红点，
- *      它有 `aria-label` / `title` 的「已连接」/「连接断开」；`role="img"` 是让这个标签
- *      稳定成为该元素的无障碍名字（纯装饰的圆点本身 `aria-hidden`）；
- *   ③ **不把操作钉死在右侧**（Ruling 4）：操作组是栏里的普通流内兄弟项，与 Tab 组一起
- *      横向滚动。
+ * 四条从控制器裁定下来的规矩，改这里时不要丢：
+ *   ① **栏必须是一行**（M1b-3 T5 的用户要求）：栏高 52px 是面板与首页层的布局常量
+ *      （`--shell-topbar-height`，见 shell.module.css 的文件头），**本任务不得改它**；
+ *      宽度不够时由 `.bar` 的 `overflow-x: auto` 横向滚动兜底 —— 用户明确接受这一点，
+ *      理由是「再加一行 44–48px 是整堂课持续付出的代价，横滑只是在极端情况下滑一下」。
+ *   ② **无障碍信息不许比视觉更少**（Ruling 3）：每个操作 36px 高（与 Tab 同高），可点的一律
+ *      是原生 `<button>` + `aria-label`，且 **`title` 与 `aria-label` 逐字一致**（T2 审查 C7b）。
+ *   ③ **颜色不能是唯一的信息载体**（Ruling 3 续）：连接状态不是一个孤零零的绿点/红点 ——
+ *      T5 起它把「已连接」/「连接断开」**写在脸上**，`role="img"` + `aria-label` 让这个标签
+ *      稳定成为该元素的无障碍名字（纯装饰的圆点本身 `aria-hidden`）。
+ *   ④ **操作组右对齐**（M1b-3 T5，Ruling 4 已作废）：`margin-left: auto` 把这一组推到栏的
+ *      最右。T1 时控制器明确要求**不做**这件事，理由是用户当时选了「图标化」而非
+ *      「Tab 组滚动、操作固定右侧」；T5 用户改口明确要求右对齐 ⇒ 那条禁令解除、改为要求。
  *
- * ⚠️ ① 在 T2 之后多了一层：`role="img"` 与「可点的入口」不可兼得（显式角色会覆盖掉 button
- * 角色）。可点的那两个（切换身份 / 退出 / 头像 chip 的按钮形态）一律是原生 `<button>` +
- * `aria-label`；只有**真的不可点**的元素（连接点、小组的 chip）才用 `role="img"`。
+ * ⚠️ ④ 的一个副作用值得记下来：右对齐**只改变这一组的位置，不改变它内部的相对几何**
+ * （`margin-left: auto` 吸走的是自由空间，组内排布与 Tab 组一点没动）。所以
+ * `classroom-shell.tsx` 里那条「下拉跟按钮走」的测量仍然成立 —— 它是量按钮的
+ * `getBoundingClientRect()`，不是量栏。这一点由 T5 实测确认（滑块 ΔX 仍为 0）。
+ *
+ * ⚠️ ② 在 T2 之后多了一层：`role="img"` 与「可点的入口」不可兼得（显式角色会覆盖掉 button
+ * 角色）。可点的那三个（切换用户 / 退出课堂 / 头像 chip 的按钮形态）一律是原生 `<button>` +
+ * `aria-label`；只有**真的不可点**的元素（连接状态、小组的 chip）才用 `role="img"`。
+ *
+ * 文案的两处对齐（T5）：用户口述的是「切换用户」与「退出教室」，代码库既有词汇是
+ * 「切换身份」（那只是 T1 起的 aria-label，从没有过可见文字）与「退出课堂」（首页原来那个
+ * 入口）。⇒ 采用**用户钦定的「切换用户」**作为可见文字与无障碍名（可见文字必须落在无障碍名
+ * 里，WCAG 2.5.3），**「退出课堂」沿用代码库既有词汇**（把「教室」硬改过来是全局词汇问题，
+ * 该单开一项，不在本任务里做）。
+
  *
  * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionBadge`）曾是 T1 的
  * 参考，但**样式全部写在 shell.module.css**，不 import 面板的 CSS module：层级不对。现在
@@ -154,6 +180,7 @@ export function ModuleTabBar({
   connected,
   selectedStudent,
   avatarSvgs,
+  avatarTokenCount,
   onChangeAvatar,
   onSwitchIdentity,
   onExit,
@@ -183,10 +210,36 @@ export function ModuleTabBar({
   const changeable = Boolean(selectedStudent?.studentId);
 
   /**
-   * chip 的内容：头像 + 姓名。两个形态（按钮 / 不可点的 span）逐字共用同一份。
+   * chip 上的「剩余换头像次数」角标（M1b-3 T5，C8）该不该出现。
+   *
+   * `avatarTokenCount > 0` 是**唯一**的信号来源（简报的判据）。多加的 `changeable` 不是第二个
+   * 条件，而是一道**构造性的保证**：角标只在「点得动、且点了有反应」的那个形态上出现，所以
+   * 它必然与解释它的 `aria-label`（见下面的 `chipLabel`）同进同出，不会出现一枚谁都解释不了
+   * 的角标。两种写法在**今天可达的每一个状态里完全等价** —— 机会数长在 `Student` 上，
+   * `fetchStudentTokens` 在 `studentId` 为空（小组）时直接 return，所以小组的
+   * `avatarTokenCount` 恒为 0（`use-classroom-session.ts` 的 `fetchStudentTokens`）。
+   */
+  const showChipBadge = changeable && avatarTokenCount > 0;
+
+  /**
+   * chip 的无障碍名（按钮形态）：姓名 + 用途 + （有机会时）剩余次数。
+   *
+   * 角标是 `aria-hidden` 的纯视觉线索，所以那个数字必须在**无障碍名**里出现一次 —— 否则
+   * 读屏用户就是唯一看不到「老师刚奖励了机会」的人（Ruling 3 的同一件事：视觉上少一点可以，
+   * 无障碍信息不许少）。两处的写法因此与 `.actionBadge` 那枚消息角标一致：角标本身
+   * `aria-hidden`，条数写进 `aria-label` / `title`，且两处**逐字一致**。
+   */
+  const chipLabel = selectedStudent
+    ? `${selectedStudent.name}，更换头像${showChipBadge ? `，剩余 ${avatarTokenCount} 次机会` : ''}`
+    : '';
+
+  /**
+   * chip 的内容：头像 + 姓名 (+ 剩余换头像次数角标)。两个形态（按钮 / 不可点的 span）
+   * 逐字共用同一份。
    *
    * 头像圆是 `aria-hidden` 的纯装饰（头像 SVG 与姓名首字对读屏没有增量信息，姓名本身就在
-   * 旁边），所以两个形态的无障碍名都由外层元素给。
+   * 旁边），所以两个形态的无障碍名都由外层元素给。角标同理，见 `chipLabel`（它在 span 形态下
+   * 永远不出现，因为 `showChipBadge` 含 `changeable`）。
    */
   const renderChipContent = (student: StudentSession) => (
     <>
@@ -196,6 +249,9 @@ export function ModuleTabBar({
         ) : student.name[0]}
       </span>
       <span className={styles.studentName}>{student.name}</span>
+      {showChipBadge && (
+        <span className={`${styles.actionBadge} ${styles.chipBadge}`} aria-hidden="true">{avatarTokenCount}</span>
+      )}
     </>
   );
 
@@ -320,24 +376,28 @@ export function ModuleTabBar({
         </nav>
       )}
 
-      {/* ── 操作组（M1b-3 T1）。四项都是**共用**能力：任何层（首页或三个模块）下都在，
+      {/* ── 操作组（M1b-3 T1 / T5）。四项都是**共用**能力：任何层（首页或三个模块）下都在，
           因为它们属于「这一节课的会话」，不属于任何一个模块。 */}
       <div className={styles.actions}>
-        {/* 连接状态点。**不是按钮** —— 它没有可执行的动作，做成按钮只会让学生去点它。
-            颜色由 `.connectionOnline` / `.connectionOffline` 给，文字信息走 aria-label /
-            title（Ruling 3 续：颜色不能是唯一的信息载体）。 */}
+        {/* 连接状态。**不是按钮** —— 它没有可执行的动作，做成按钮只会让学生去点它。
+            配色由 `.connectionOnline` / `.connectionOffline` 给；**文字就是信息载体本身**
+            （Ruling 3 续：颜色不能是唯一的信息载体 —— T5 之前这里只有一个孤零零的圆点，
+            状态只活在 `aria-label` 里，色盲/灰度屏学生看到的都是同一枚点）。
+            `role="img"` + 同名的 `aria-label` / `title` 让「已连接」/「连接断开」稳定成为这个
+            元素的无障碍名字；圆点是纯装饰（`aria-hidden`），名字不靠它。 */}
         <span
-          className={`${styles.connectionDot} ${connected ? styles.connectionOnline : styles.connectionOffline}`}
+          className={`${styles.connectionStatus} ${connected ? styles.connectionOnline : styles.connectionOffline}`}
           role="img"
           aria-label={connected ? '已连接' : '连接断开'}
           title={connected ? '已连接' : '连接断开'}
         >
           <span className={styles.connectionDotMark} aria-hidden="true" />
+          {connected ? '已连接' : '连接断开'}
         </span>
 
-        {/* 学生头像 + 姓名。姓名在窄屏由媒体查询隐藏、头像保留（见 shell.module.css
-            的 `.studentName`）。降级写法逐字对齐面板：有 avatarId 且池里有这张 SVG 才画
-            `SvgAvatar`，否则退到姓名首字（底色由 `.studentChipAvatar` 给）。
+        {/* 学生头像 + 姓名（+ 剩余换头像次数角标）。姓名在窄屏由媒体查询隐藏、头像保留
+            （见 shell.module.css 的 `.studentName`）。降级写法逐字对齐面板：有 avatarId 且
+            池里有这张 SVG 才画 `SvgAvatar`，否则退到姓名首字（底色由 `.studentChipAvatar` 给）。
 
             ── 换头像的**唯一**入口（M1b-3 T2 / Ruling 1）──
             真实学生这里是 `<button>`：点它就换头像（有机会开弹窗，没机会由外壳给一句
@@ -350,9 +410,10 @@ export function ModuleTabBar({
             **不可点**的 span 上（那里它是对的：`img` 是叶子角色，窄屏 `display:none` 掉姓名
             之后，它仍让这个 chip 在无障碍树里是一个有名字的节点，而不是空的）。
 
-            按钮的 `aria-label` 把姓名一起带上（`${name}，更换头像`）：窄屏下姓名文本被
-            `display:none` 拿掉，只写「更换头像」的话学生就再也听不到自己在用哪个身份 ——
-            T1 的 Ruling 3「只减视觉宽度、不减无障碍信息」在这里同样成立。宽屏下
+            按钮的无障碍名走 `chipLabel`（`${name}，更换头像`，有机会时再补上剩余次数）：
+            窄屏下姓名文本被 `display:none` 拿掉，只写「更换头像」的话学生就再也听不到自己在
+            用哪个身份 —— T1 的 Ruling 3「只减视觉宽度、不减无障碍信息」在这里同样成立。
+            T5 补的角标同理：它 `aria-hidden`，那个数字只从 `chipLabel` 读得到。宽屏下
             `aria-label` 覆盖子内容，姓名也**只念一次**（不会「标签一遍 + 可见文本一遍」）。
 
             `title` 与 `aria-label` **必须逐字一致**（T2 审查 C7b）：`title` 是鼠标用户看到
@@ -363,10 +424,12 @@ export function ModuleTabBar({
           changeable ? (
             <button
               type="button"
-              className={`${styles.studentChip} ${styles.studentChipButton}`}
+              className={showChipBadge
+                ? `${styles.studentChip} ${styles.studentChipButton} ${styles.studentChipBadged}`
+                : `${styles.studentChip} ${styles.studentChipButton}`}
               onClick={onChangeAvatar}
-              aria-label={`${selectedStudent.name}，更换头像`}
-              title={`${selectedStudent.name}，更换头像`}
+              aria-label={chipLabel}
+              title={chipLabel}
             >
               {renderChipContent(selectedStudent)}
             </button>
@@ -384,18 +447,21 @@ export function ModuleTabBar({
 
         {/* ── 老师消息（M1b-3 T3）──
             入口从学伴面板头搬到这里：那条栏属于「这一节课的会话」，任何层（首页或三个模块）
-            下都在，而面板头整行会随 T4 撤除。搬过来之后**面板侧不再有这个入口**，删掉它
+            下都在，而面板头整行已随 T4 撤除。搬过来之后**面板侧不再有这个入口**，删掉它
             等于把「老师发的消息」整个藏起来。
 
-            ⚠️ 位置在「学生 chip」与「切换身份」之间是照着面板头原来的次序
-            （连接 / 学生 / 消息 / 切换 / 退出）排的，不是随手插的：两处并存期间学生看到的
-            是同一套次序，T4 撤掉面板头之后也不会感觉按钮「跳了位」。
+            ⚠️ 位置在「学生 chip」与「切换用户」之间是照着面板头原来的次序
+            （连接 / 学生 / 消息 / 切换 / 退出）排的，不是随手插的。
 
             ⚠️ 下拉本体**不在这里** —— 它 portal 到 body，由外壳渲染（见 prop 注释）。
             这里只有入口。
 
+            ⚠️ **这是操作组里唯一一枚纯图标按钮**（T5 只给用户点名的四项加了文字：连接状态 /
+            学生 chip / 切换用户 / 退出课堂，消息不在这份名单里）。它留着图标 + 角标，条数
+            仍然完整写在 aria-label / title 里 —— 读屏用户不比视觉用户少听到任何东西。
+
             角标只在有条数时出现：36px 的图标按钮里塞不下「消息 0」，而 0 本身也不是学生
-            需要一眼看到的信息；条数仍然完整地写在 aria-label / title 里。 */}
+            需要一眼看到的信息。 */}
         <button
           type="button"
           ref={teacherMsgsButtonRef}
@@ -411,24 +477,29 @@ export function ModuleTabBar({
           )}
         </button>
 
+        {/* 切换用户 / 退出课堂（M1b-3 T5 恢复文字）。与 `.home` / `.tab` 同一套度量
+            （36px 高、12px 内边距、0.813rem / 650 字重、图标 + 文字），所以栏里五个入口看起来
+            是同一排按钮，而不是「四个字按钮夹一个图标按钮」。文案的两处对齐见文件头。 */}
         <button
           type="button"
-          className={styles.action}
+          className={styles.actionText}
           onClick={onSwitchIdentity}
-          aria-label="切换身份"
-          title="切换身份"
+          aria-label="切换用户"
+          title="切换用户"
         >
           <SwitchIdentityIcon />
+          切换用户
         </button>
 
         <button
           type="button"
-          className={styles.action}
+          className={styles.actionText}
           onClick={onExit}
           aria-label="退出课堂"
           title="退出课堂"
         >
           <ExitIcon />
+          退出课堂
         </button>
       </div>
     </header>

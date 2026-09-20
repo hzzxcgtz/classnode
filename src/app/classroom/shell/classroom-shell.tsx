@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChatPanelProps, ModuleId } from '../classroom-types';
 import type { StudentHomeProps } from '../home/student-home';
@@ -355,15 +355,43 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
   }, []);
 
   /**
-   * 打开期间跟着按钮走。
+   * 打开期间**每次提交之后**重量一次（M1b-3 T5 修 C16）。
+   *
+   * 为什么不能只挂 scroll + resize：这两件事都得先有「浏览器认识的事件」发生。T3 审查实测过
+   * 两个都不产生任何 scroll 事件的反例：
+   *   · 教师关掉一个模块 ⇒ Tab 组少一项、栏内重排，消息按钮**左移 107px**（三个模块全关时
+   *     可达约 300px）。1280×800 下可滚动元素数为 0、文档也不滚动 ⇒ **永远不会产生
+   *     scroll 事件** ⇒ 脱节一直保持到学生手动关掉再打开下拉；
+   *   · 角标首次出现（学生正开着下拉读消息、老师发来第一条通知）⇒ 按钮 36 → 51px ⇒ 脱节 15px。
+   * 两者都是 **React 状态变化引起的布局变化**，所以「每次提交后重量一次」正好覆盖它们。
+   * 无依赖数组的 effect 就是「每次提交后运行」；`measureTeacherMsgs` 内部有等值短路
+   * （四项全等时返回原对象），所以这一次额外的 setState 不会自激成循环。
+   *
+   * 用 `useLayoutEffect` 而不是 `useEffect`：落点是**视口坐标的行内样式**，必须在同一帧的
+   * 绘制**之前**落定，否则会有一帧「按钮已经动了、下拉还在原地」。下拉没开着时它空转一次
+   * （一次提前 return），代价可以忽略。
+   *
+   * ⚠️ 不要换成 `ResizeObserver`：T3 审查实测过净尺寸增量 `{button:0, chip:0, actions:0,
+   * nav:1, bar:0}` —— 模块增减时**按钮自己的尺寸一点没变**，变的只是位置，而变尺寸的是
+   * `nav.tabs`。ResizeObserver 只看尺寸、不看位置，挂在按钮或栏上都不会触发。
+   */
+  useLayoutEffect(() => {
+    if (!teacherMsgsOpen) return;
+    measureTeacherMsgs();
+  });
+
+  /**
+   * 打开期间跟着按钮走：顶栏自己横向滚动、以及旋转屏幕。
    *
    * `scroll` 必须用**捕获阶段**：`.bar` 自己就是横向滚动容器，而 `scroll` 事件不冒泡 ——
    * 不捕获的话，顶栏横向滚动时下拉会留在原地，与按钮脱开。`resize` 覆盖旋转屏幕（夹取依赖
    * 视口宽度，不重量就会留一个按旧宽度算出的落点）。
+   *
+   * ⚠️ 这两条与上面那条「每次提交后重量」是**互补**的，不是重复：scroll / resize 根本不经过
+   * React 提交（顶栏横向滚动并不引起重渲染），只有事件监听能覆盖它们。
    */
   useEffect(() => {
     if (!teacherMsgsOpen) return;
-    measureTeacherMsgs();
     const remeasure = () => measureTeacherMsgs();
     window.addEventListener('scroll', remeasure, true);
     window.addEventListener('resize', remeasure);
@@ -469,6 +497,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
         connected={chat.connected}
         selectedStudent={chat.selectedStudent}
         avatarSvgs={chat.avatarSvgs}
+        avatarTokenCount={chat.avatarTokenCount}
         onChangeAvatar={handleChangeAvatar}
         onSwitchIdentity={chat.onSwitchIdentity}
         onExit={chat.onExit}

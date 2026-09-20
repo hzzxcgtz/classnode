@@ -119,6 +119,7 @@ model Classroom {
   groupMembers     ClassroomGroupMember[]
   students         ClassroomStudent[]
   classroomAgents  ClassroomAgent[]
+  modules          ClassroomModule[]
   interactions     Interaction[]
   shieldWarnings   ShieldWarning[]
   notifications    TeacherNotification[]
@@ -178,6 +179,22 @@ model ClassroomAgent {
   agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@unique([classroomId, agentId])
+}
+
+// 课堂模块三态（学习单 / 探究助手 / 智能学伴）
+model ClassroomModule {
+  id          String @id @default(uuid())
+  classroomId String
+  moduleKey   String // 'learning-sheet' | 'explorer' | 'companion'
+  state       String @default("preview") // 'open' | 'preview' | 'hidden'
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([classroomId, moduleKey])
+  @@index([classroomId])
 }
 
 // 课堂参与者。标准模式关联真实学生；分组/高级模式直接关联 ClassroomGroup，绝不再创建虚拟 Student。

@@ -188,6 +188,27 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentExport" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added allowStudentExport column to Classroom');
     }
+
+    // 检查 ClassroomModule 表是否存在（v1.7 新增）。放在同步块最后：新增 DDL 失败不会影响上面的既有检查。
+    const moduleTable = await prisma.$queryRawUnsafe<{ name: string }[]>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='ClassroomModule'`
+    );
+    if (moduleTable.length === 0) {
+      console.log('[server] ClassroomModule table not found, creating...');
+      await prisma.$executeRawUnsafe(`CREATE TABLE "ClassroomModule" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "classroomId" TEXT NOT NULL,
+        "moduleKey" TEXT NOT NULL,
+        "state" TEXT NOT NULL DEFAULT 'preview',
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "ClassroomModule_classroomId_fkey" FOREIGN KEY ("classroomId")
+          REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`);
+      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomModule_classroomId_moduleKey_key" ON "ClassroomModule"("classroomId", "moduleKey")`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomModule_classroomId_idx" ON "ClassroomModule"("classroomId")`);
+      console.log('[server] ClassroomModule table created');
+    }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
   }

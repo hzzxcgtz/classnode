@@ -874,14 +874,17 @@ export function useChatSocket(options: ChatSocketOptions) {
   const optionsRef = useRef(options);
   useEffect(() => { optionsRef.current = options; });
 
-  // 原 491-534 区间里属于 chat socket 的 ref 一并搬入：
-  //   wsRef(501)、sendingRef(503)、chatConnectionGenerationRef(504)、
-  //   identityConflictTimerRef(505)、teacherNotifTimerRef(506)、
-  //   streamingBufferRef(529)、streamingRafRef(530)、seenNotifIdsRef(532)
-  // 【注意】chatShellRef(493)、messagesEndRef(494)、chatContainerRef(495)、
-  //   inputRef(507)、fileInputRef(510)、statusSocketRef(513)、
-  //   teacherPanelRef(534)、userScrolledUpRef(500)、overlayRef(492)、dragRef(491)
-  //   **不属于**本 hook，留在 page.tsx。以原代码实际使用位置为准核对。
+  // 【已修正 —— 原计划此处指令有误，照做会破坏聊天】
+  // ❌ 原文写「8 个 ref 一并搬入」。**不可搬入。**
+  //    这 8 个 ref（wsRef / sendingRef / chatConnectionGenerationRef /
+  //    identityConflictTimerRef / teacherNotifTimerRef / streamingBufferRef /
+  //    streamingRafRef / seenNotifIdsRef）在 startChatSession 之外**仍被
+  //    page.tsx 使用**（执行时实测：wsRef 13 处、sendingRef 7 处、
+  //    chatConnectionGenerationRef 5 处、seenNotifIdsRef 5 处，其余各 2-3 处，
+  //    含卸载清理与发送闸门）。把声明搬进 hook 会让 page.tsx 拿到**另一个
+  //    ref 对象**，导致停止生成、发送闸门、卸载清理同时静默失效。
+  // ✅ 正确做法：把 ref 对象本身作为 options 传入，接口里声明为 `{ current: T }`。
+  //    以对象身份共享意味着双向读写都即时可见，optionsRef 间接层不引入陈旧性。
 
   const startChatSession = async (/* 原 944 行的参数 */) => {
     // 原 945-1154 行函数体原样，state 写入换成 optionsRef.current.setXxx

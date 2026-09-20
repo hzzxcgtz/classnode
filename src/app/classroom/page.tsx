@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useSyncExternalStore, Suspense, memo, useM
 import { useRouter } from 'next/navigation';
 import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
 import { stripImages, Markdown } from '@/lib/markdown';
-import { getApiBaseUrl } from '@/lib/api-base';
 import { Toast } from '@/lib/components';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -13,37 +12,11 @@ import type {
   StudentIdEvent, AvatarRewardEvent, TeacherNotificationEvent, ShieldWarnEvent, PermissionEvent,
   BrowserSpeechRecognition, SpeechRecognitionWindow,
 } from './classroom-types';
+import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
+import { SvgAvatar } from './chat/svg-avatar';
+import { AgentAvatar } from './chat/agent-avatar';
 import styles from './chat.module.css';
 
-const API_BASE_URL = getApiBaseUrl();
-function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE_URL}/uploads/`) : svg; }
-function svgDataUrl(svg: string) {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(fixSvgUrl(svg))}`;
-}
-
-/** 上传图片头像会保存为包含相对 image href 的 SVG；作为 data URL 渲染时浏览器不会加载其外部图片。 */
-function getEmbeddedAvatarImageUrl(svg: string): string | null {
-  const match = svg.match(/<image\b[^>]*\bhref\s*=\s*(["'])([^"']+)\1/i);
-  if (!match) return null;
-  const href = match[2];
-  if (href.startsWith('/uploads/')) return `${API_BASE_URL}${href}`;
-  if (href.startsWith(`${API_BASE_URL}/uploads/`)) return href;
-  return null;
-}
-
-function SvgAvatar({ svg, size, fallback = '?' }: { svg: string; size: number; fallback?: string }) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const embeddedImageUrl = getEmbeddedAvatarImageUrl(svg);
-  const src = embeddedImageUrl || svgDataUrl(svg);
-  if (failedSrc === src) {
-    return (
-      <span style={{ display: 'flex', width: size, height: size, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: '#f3f4f6', color: '#64748b', fontSize: Math.max(11, size * 0.4), fontWeight: 700 }}>
-        {fallback}
-      </span>
-    );
-  }
-  return <img src={src} alt="" width={size} height={size} onError={() => setFailedSrc(src)} style={{ display: 'block', width: size, height: size, objectFit: embeddedImageUrl ? 'cover' : undefined }} />;
-}
 function useIsMobile(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
@@ -64,30 +37,6 @@ function useIsMobile(): boolean {
 const MAX_ATTACHED_FILES = 5;
 
 // ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
-
-const AgentAvatar = memo(function AgentAvatar({
-  size, borderRadius = 8, fontSize = 13, agent, apiBase,
-}: {
-  size: number; borderRadius?: number; fontSize?: number;
-  agent: ChatAgent; apiBase: string;
-}) {
-  const logoUrl = agent?.logo
-    ? (agent.logo.startsWith('/') ? `${apiBase}${agent.logo}` : agent.logo)
-    : null;
-  if (logoUrl) {
-    return <img src={logoUrl} alt="" style={{ width: size, height: size, borderRadius, objectFit: 'cover', flexShrink: 0 }} />;
-  }
-  return (
-    <div style={{
-      width: size, height: size, borderRadius,
-      background: 'linear-gradient(135deg, #667eea, #764ba2)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize, color: 'white', fontWeight: 700, flexShrink: 0,
-    }}>
-      {agent?.name?.[0] || 'AI'}
-    </div>
-  );
-});
 
 const MessageItem = memo(function MessageItem({
   msg, studentName, agent, apiBase, avatarSvg, onImageClick, onRevise, allowExport, msgIndex, onFollowUp, allowFollowUps, allowStudentStop, isRespondingToThis, aiResponding,

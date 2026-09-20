@@ -1492,6 +1492,75 @@ git commit -m "feat(webapp): 注入式 SDK（事件采集不含输入内容，�
 
 ## Task 5: 实时监控链路
 
+## 🔴 T5 派发前的预审裁定（控制器已逐条拿代码核过，**按此执行**）
+
+**这一节的由来**：成本裁定 A（7d 用在自己身上）只约束 A **之后**写的东西，而 T5/T6/T7 的 brief 是从 **A 之前**写的计划里抽出来的。控制器逐句把这三段的断言拿代码核了一遍 —— **T5 这段挖出 5 条，其中 3 条会静默出错**。
+
+### 预审 1（🔴 会静默出错）：`teacher:<id>:webapp` 会被 `staleTeacherRooms` 扫掉
+
+`server/src/socket/index.ts:283-291`：
+
+```ts
+const keep = `${TEACHER_ROOM_PREFIX}${currentClassroomId}`;   // "teacher:<id>"
+for (const room of rooms) {
+  if (room !== keep && room.startsWith(TEACHER_ROOM_PREFIX)) stale.push(room);
+}
+```
+
+⇒ **`teacher:<id>:webapp` 以 `teacher:` 开头、又不等于 `keep` ⇒ 每次 `join-teacher-board` 都会被踢出去。**
+
+**失败场景（全程无报错）**：教师打开探究助手视图（`join` 了那个房间）→ 任何重新触发 `join-teacher-board` 的动作（effect 依赖变化、断线重连）把它扫掉 → `io.sockets.adapter.rooms.get('teacher:<id>:webapp').size` 归零 → **学生停止推流** → 教师看到一块**冻住的图墙**。
+
+**裁定**：把 `staleTeacherRooms` 改成**保留当前课堂的两种房间**（`teacher:<id>` 与 `teacher:<id>:webapp`）。
+- 语义上这是对的：两者都是「本课堂的教师房间」，该函数要清的本来就是「**别的课堂**的」。
+- **必须同时改 `:279-282` 那段注释** —— 它写着「这个 socket 上我们**只加过** `teacher:` 房间」，这个前提变了。
+- **必须加测试**：`join-teacher-board` 之后，`teacher:<id>` 与 `teacher:<id>:webapp` **都存活**；而**另一个课堂**的两种房间**都被清掉**。
+
+⚠️ **不要**改用另一个前缀（如 `webapp:<id>`）绕开 —— 那会让新房间**永远不被清理**，等于把一个静默的洞换成一个静默的泄漏。
+
+### 预审 2（🔴 缺设计）：汇总的落盘点是**跨模块**的
+
+计划说「在课堂结束时写一条汇总」。核实结果：
+
+- **课堂结束只有一条路径**：`server/src/routes/classroom.ts:702`（`status: 'ended'`）
+- **但内存数据在 `server/src/socket/index.ts` 里**（`activeConnections` 那批 Map 的同居者）
+
+⇒ **两者不在同一个模块。** 计划完全没提这件事。⇒ T5 必须**从 socket 模块导出一个 drain 函数**（例如 `drainWebappMonitor(classroomId)`，返回汇总所需的数据并清空该课堂的三个 Map），由路由在 `:702` 之后调用。
+
+⚠️ 注意 `index.ts` 已经把 `activeConnections` 等经 `app.set` 暴露给路由了（`:299`）—— **照那个既有做法**，不要把路由改成直接 import socket 模块的内部状态。
+
+### 预审 3（🔴 数字未经测量，且很可能偏低）
+
+计划写「**40 人 ≈600KB 内存**」。核实 SDK 的常量：`THUMBNAIL_WIDTH = 320`、`JPEG_QUALITY = 0.4`（`webapp-sdk.ts:144-145`）。
+
+**这个数字有两处被漏算**：
+1. `toDataURL` 返回的是 **base64 data URL** —— 比二进制**大 4/3**
+2. 它作为 **JS 字符串**存在内存里，V8 里是 **UTF-16 ⇒ 每字符 2 字节**
+
+⇒ 一张 15KB 的 JPEG ≈ 20KB base64 ≈ **40KB 内存**。**40 人 ≈ 1.6MB，不是 600KB。**
+
+⚠️ 而且 15KB 本身也没依据 —— T4 的探针在**简单 canvas** 上量到 2643 字符，真实教学页的 canvas 会大得多。
+
+⇒ **T5 必须实测**：造一个真实尺寸的 canvas 页，量一帧的 data URL 长度，按上面两条换算算出内存，**把实测数字写进代码注释**。**不许把计划里那个未测量的数字抄进注释**（那正是 7d 要禁的「没有命令的结论」）。
+
+### 预审 4（⚠️ 前后不一致）：截图基准间隔
+
+- **计划**说三档是 **5s → 10s → 20s**
+- **SDK 现值**是 `FRAME_INTERVAL_MS = 3000`（`webapp-sdk.ts:143`，T4 实施者自报「brief 未给，我拍的，降频归 T5」）
+
+⇒ **T5 必须选定一个并让两边一致**：要么把 SDK 的基准改成 5000，要么把计划的三档改成 3s → 6s → 12s。**在报告里说明选了哪个、为什么。**
+
+### 预审 5（⚠️ 缺兜底）：内存只有「课堂结束释放」，没有 TTL
+
+计划只写了「课堂结束释放」。但**课堂可以不结束**（教师直接关掉浏览器）⇒ 那堂课的内存**永不释放**，而 `index.ts` 是本项目里长期驻留的进程（桌面端应用）。
+
+⇒ **照 `pruneSocketCaches`（`socket/index.ts:38-55`，由 `:301` 的定时器驱动）挂上 TTL 清理**。它存在的理由逐字就是这件事：「清理仅用于实时会话的内存缓存，**避免桌面端长期运行时无界累积**」。
+
+⚠️ 该定时器用 `cacheCleanupTimer.unref()`（`:302`）—— 加逻辑时不要把它变成阻止退出的引用。
+
+---
+
+
 **Files:**
 - Modify: `server/src/socket/index.ts`（新事件 handler + 内存态 + 有界化）
 - Modify: `src/lib/socket-events.ts`（新事件类型）
@@ -1595,6 +1664,42 @@ git commit -m "feat(webapp): 实时监控链路（按需推流、计数式内存
 ---
 
 ## Task 6: 学生端「探究助手」面板
+
+## 🔴 T6 派发前的预审裁定（控制器已逐条拿代码核过）
+
+### 预审 6a（🔴 竞态，来自 T4 的实现）：`ready` **只发一次** ⇒ 监听必须**先挂**
+
+T4 的 SDK 在握手时发**恰好一次** `{ source:'classnode-sdk', type:'ready' }`（T4 实施者与审查者都独立确认过「每个 document 恰好 1 次、二次加载不重发」）。
+
+⇒ **T6 必须在插入 iframe 元素之前就挂好 `message` 监听**。若先 `appendChild` 再 `addEventListener`，SDK 可能在两者之间就已经发完 `ready` ⇒ **握手丢失**。
+
+**失败症状**：iframe 正常加载、学生也看得见网页，但父页面永远认为它没就绪 —— 于是**挂起协议可能不生效、事件可能不被转发**，而**没有任何报错**。
+
+⚠️ T4 实施者**刻意没有**把 `ready` 改成发两次（那会给 T6 一个它没预期的重复消息）。⇒ **这条责任在 T6。**
+
+**要求**：`message` 监听挂在 effect 里、且在**创建/插入 iframe 之前**；并**实测**一次「冷加载」路径（不是热重载），确认父页面收到了 `ready`。
+
+### 预审 6b（⚠️ 行号漂移）：`module-placeholder.tsx` 的收窄位置
+
+计划说 `moduleId` 收窄在 `:22-24`。**实际在 `:10`，而且是一个具名类型**：
+
+```ts
+type PlaceholderModuleId = Exclude<ModuleId, 'companion'>;
+```
+
+⇒ **指令本身仍然正确**（`explore` 分出去之后这个收窄要跟着变成 `Exclude<ModuleId, 'companion' | 'explore'>`），但**位置要自己 `grep` 找**，不要照抄 `:22-24`。
+
+### 预审 6c（✅ 已核实无误，省你一次 `grep`）
+
+数据契约**已经就位**，T6 直接可用：
+
+- `server/src/routes/classroom.ts:590` 下发 **`webappPort`**（**端口，不是拼好的 URL** —— T3 已按控制器的裁定实现，注释里写明了理由）
+- 同一响应里下发 **`webapps: [{ id, name, entryPath }]`**（`loadClassroomWebapps(prisma, classroomId)`，**只含这三个字段、不含任何磁盘路径**，查询失败降级为空数组）
+- 学生端拼 URL 的形状：`http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`
+- `classroom-shell.tsx:523` 的二分派发（`id === 'companion' ?`）与计划写的位置一致
+
+---
+
 
 **Files:**
 - Create: `src/app/classroom/explore/explore-panel.tsx`
@@ -1727,6 +1832,45 @@ git commit -m "feat(classroom): 探究助手面板换成真 iframe（沙箱 + �
 ---
 
 ## Task 7: 教师端管理页 + 看板
+
+## 🔴 T7 派发前的预审裁定（控制器已逐条拿代码核过）
+
+### 预审 7a（✅ 行号全部核对无误）
+
+计划里 T7 引用的每一个行号，控制器**逐个打开文件核过实际内容**，**全部对得上**：
+
+| 计划写的 | 实际内容 |
+|---|---|
+| `teacher/layout.tsx:11-21` + `:477+` | 导航数组 + 图标 switch（**两处必须同时改**，漏第二处不报错、只渲染成空位） |
+| `lib/components.tsx:25-48` `TeacherPageTabs` | `:25` `export function TeacherPageTabs<T extends string>({` ✅ |
+| `agents/agent-card.tsx:63-79` | ✅ |
+| `agents/use-agent-controller.ts:75-79` **使用量守卫** | `:75` `const usage = await api.checkAgentUsage(agent.id);` ✅ |
+| `agents/page.tsx:193-194` 弹窗骨架 | ✅ |
+| `teacher/classroom/page.tsx:1295-1311` **详情抽屉** | `:1295` `{selectedStudent && (`、`:1300` 遮罩、`:1304` 面板 ✅ |
+| `classroom/new/page.tsx:453-513` **勾选块** | ✅ |
+| `classroom/new/page.tsx:151-160` 进度条 `steps`（**硬编码 3 项**） | `:151` `const steps = [` ✅ |
+| `lib/api.ts:133-134` `createClassroom` 签名 | `:133` `createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>` ✅ |
+| `agents.ts:69-76` `deleteManagedLogo`（删目录前的路径校验要照抄它） | ✅ |
+
+### 预审 7b（🔴 三条必做项，**缺一条都会收获一批「看起来成功」的坏数据**）
+
+1. **文案必须把教师往 ZIP 上引。** 多选文件**保留不了目录结构**（浏览器不给 `webkitRelativePath`，multer 也不暴露）⇒ 教师多选 `index.html + css/ + js/` 会得到「**上传成功但样式全没了**」。
+2. **必须能让教师改入口。** `PUT /:id` 已经实现为「改名 / 改指另一个入口」（T3 把「只做什么 / 不做什么」写进了注释，可直接照着写 UI）。它与 T3 的「无 `entryHint` 时优先挑 `index.html`」**互为兜底，两件都要**。
+3. **不得展示原始 URL。** T2 的 `url` 字段**只保证「识别出这是一条外部依赖」，不保证完整**（CSS 场景可能被 `;` 截断）⇒ 上传响应给的是 `{ count, files }`，**没有 `urls` 字段**。UI 只展示**数量与文件名**（规格 §5.3 要的原文也只是「本网页依赖 N 个外部资源」）。
+
+### 预审 7c（⚠️ 与 T5 的 `staleTeacherRooms` 有交互）
+
+T7 的探究助手视图挂载时会 `join` 房间 `teacher:<id>:webapp`。**这个房间会被 `staleTeacherRooms` 扫掉**（见 T5 的预审 1）。
+
+⇒ **T5 会先把 `staleTeacherRooms` 改对并加测试；T7 不要自己另起房间名或绕开它。** 动手前 `grep` 一下 `staleTeacherRooms` 看 T5 改成什么样了。
+
+### 预审 7d（⚠️ T7 是 Tier 3 —— 实施者自证 + 控制器抽查，**没有独立审查者**）
+
+⇒ 自证的质量直接决定成色。**每条「通过」都要问**：这个实验能不能区分「真的通过」和「我的对照摆错了」？
+本里程碑已出过 **8 种假绿形态**，最新一种是「**断言恒真**」（被验证的对象不存在时断言依然通过）。
+
+---
+
 
 **Files:**
 - Create: `src/app/teacher/webapps/page.tsx` + 拆分组件

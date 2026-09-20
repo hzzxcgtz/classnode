@@ -119,6 +119,54 @@ async function main() {
     const dbVersion = await prisma.$queryRawUnsafe<{ version: string }[]>(`SELECT sqlite_version() as version`);
     console.log(`[server] SQLite version: ${dbVersion[0].version}`);
 
+    // 检查 ClassroomModule 表是否存在（v1.7 新增）。
+    //
+    // 位置是刻意的：它排在下面所有 legacy 条件语句**之前**执行，而不是排在它们后面。
+    // 原因：缺少这张表的库，恰恰就是会执行下面那些条件 ALTER 的老库，两者失败是相关的
+    // （`:143/:147/:151/:158/:179/:188`）。若把它放在同一个 try 的末尾，前面任一条老语句
+    // 抛错都会让控制流直接跳到 catch，块里的 CREATE TABLE 根本没机会被进入 —— 只把一个
+    // 内层 try/catch 套在末尾，只能挡住块内自身的部分失败，挡不住这种「前面先炸」。
+    // 提前之后，无论后面哪条老语句抛错，这张表都已经建好了。可依赖 Classroom 表已存在：
+    // 那是安装时 `prisma db push` 建的基础 schema，不是本同步块建的。
+    //
+    // 内层 try/catch 仍然保留，防的是块内自身的部分失败（例如建表成功但索引失败），
+    // 失败以 warn 留痕点明后果，不静默吞掉。
+    try {
+      const moduleTable = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='ClassroomModule'`
+      );
+      if (moduleTable.length === 0) {
+        console.log('[server] ClassroomModule table not found, creating...');
+        await prisma.$executeRawUnsafe(`CREATE TABLE "ClassroomModule" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "classroomId" TEXT NOT NULL,
+          "moduleKey" TEXT NOT NULL,
+          "state" TEXT NOT NULL DEFAULT 'preview',
+          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "ClassroomModule_classroomId_fkey" FOREIGN KEY ("classroomId")
+            REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+        )`);
+        console.log('[server] ClassroomModule table created');
+      }
+      // 索引同样按名探测：若曾出现「表建好但索引创建失败」的中间态，可在下次启动自愈。
+      // 只判断表存在是不够的——那样中间态会永久缺唯一键，而课堂模块的 upsert 依赖它。
+      const moduleIndexes = await prisma.$queryRawUnsafe<{ name: string }[]>(
+        `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('ClassroomModule_classroomId_moduleKey_key', 'ClassroomModule_classroomId_idx')`
+      );
+      const moduleIndexNames = moduleIndexes.map(i => i.name);
+      if (!moduleIndexNames.includes('ClassroomModule_classroomId_moduleKey_key')) {
+        await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomModule_classroomId_moduleKey_key" ON "ClassroomModule"("classroomId", "moduleKey")`);
+        console.log('[server] ClassroomModule unique index created');
+      }
+      if (!moduleIndexNames.includes('ClassroomModule_classroomId_idx')) {
+        await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomModule_classroomId_idx" ON "ClassroomModule"("classroomId")`);
+        console.log('[server] ClassroomModule classroomId index created');
+      }
+    } catch (e) {
+      console.warn('[server] ClassroomModule schema sync failed (module tri-state will be unavailable):', e);
+    }
+
     // 创建缺失的表和字段（不同 Prisma schema 版本间迁移）
     const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type='table' AND name='Avatar'`);
     if (tables.length === 0) {
@@ -187,47 +235,6 @@ async function main() {
     if (!classroomColNames.includes('allowStudentExport')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentExport" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added allowStudentExport column to Classroom');
-    }
-
-    // 检查 ClassroomModule 表是否存在（v1.7 新增）。
-    // 单独 try/catch：缺这张表的库正是会执行上面那些条件 ALTER 的老库，两者失败是相关的。
-    // 若沿用外层那个大 try，一条老 ALTER 抛错就会连带跳过这里的 CREATE TABLE —— 现象是
-    // 教师端每次改态都 500 回滚，而读路径静默降级成「三个模块全 preview」，很难归因。
-    // 独立之后本特性的可用性不再受既有检查牵连；失败仍以 warn 留痕，不静默吞掉。
-    try {
-      const moduleTable = await prisma.$queryRawUnsafe<{ name: string }[]>(
-        `SELECT name FROM sqlite_master WHERE type='table' AND name='ClassroomModule'`
-      );
-      if (moduleTable.length === 0) {
-        console.log('[server] ClassroomModule table not found, creating...');
-        await prisma.$executeRawUnsafe(`CREATE TABLE "ClassroomModule" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "classroomId" TEXT NOT NULL,
-          "moduleKey" TEXT NOT NULL,
-          "state" TEXT NOT NULL DEFAULT 'preview',
-          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "ClassroomModule_classroomId_fkey" FOREIGN KEY ("classroomId")
-            REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-        )`);
-        console.log('[server] ClassroomModule table created');
-      }
-      // 索引同样按名探测：若曾出现「表建好但索引创建失败」的中间态，可在下次启动自愈。
-      // 只判断表存在是不够的——那样中间态会永久缺唯一键，而课堂模块的 upsert 依赖它。
-      const moduleIndexes = await prisma.$queryRawUnsafe<{ name: string }[]>(
-        `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('ClassroomModule_classroomId_moduleKey_key', 'ClassroomModule_classroomId_idx')`
-      );
-      const moduleIndexNames = moduleIndexes.map(i => i.name);
-      if (!moduleIndexNames.includes('ClassroomModule_classroomId_moduleKey_key')) {
-        await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomModule_classroomId_moduleKey_key" ON "ClassroomModule"("classroomId", "moduleKey")`);
-        console.log('[server] ClassroomModule unique index created');
-      }
-      if (!moduleIndexNames.includes('ClassroomModule_classroomId_idx')) {
-        await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomModule_classroomId_idx" ON "ClassroomModule"("classroomId")`);
-        console.log('[server] ClassroomModule classroomId index created');
-      }
-    } catch (e) {
-      console.warn('[server] ClassroomModule schema sync failed (module tri-state will be unavailable):', e);
     }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);

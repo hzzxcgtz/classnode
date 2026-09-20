@@ -165,6 +165,13 @@ export interface ChatPanelProps {
    */
   avatarTokenCount: number;
   allStudentAvatars: AvatarSummary[];
+  /**
+   * 老师消息（M1b-3 T3 起**面板自己不再消费**，外壳从同一个 `chat` 对象里读）。
+   *
+   * TS 上仍留在这个接口里，理由与上面 `avatarTokenCount` 那两项逐字相同：`chat` 就是
+   * `Omit<ChatPanelProps, 'active'>`，会话级状态只在这一处声明。搬去顶栏的是**入口与下拉**
+   * （外壳的 `ModuleTabBar` + 那条 portal），数据一直都在会话手里。
+   */
   teacherMsgs: TeacherMessage[];
   messages: StudentChatMessage[];
   loadingMessages: boolean;

@@ -22,7 +22,9 @@ export function StudentChatContent({
   classroom,
   selectedStudent,
   avatarSvgs,
-  teacherMsgs,
+  // ⚠️ 这里**没有** `teacherMsgs`（M1b-3 T3）：老师消息的入口与下拉都搬去顶栏（外壳）了，
+  // 面板不再是它的消费者。字段仍留在 `ChatPanelProps` 上（外壳从同一个 `chat` 对象里读它，
+  // 理由与 `avatarTokenCount` 那两项相同），只是下面不再解构 —— 解构了就是 unused-vars。
   messages,
   loadingMessages,
   waitingAI,
@@ -69,7 +71,6 @@ export function StudentChatContent({
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
-  const [showTeacherPanel, setShowTeacherPanel] = useState(false);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
@@ -127,28 +128,9 @@ export function StudentChatContent({
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 卸载清理只跑一次；ref 由 page.tsx 创建、按对象身份传入，是稳定对象
-  // 点击外部关闭教师消息面板
-  const teacherPanelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    // M1b-2 Task 1：这是 document 级监听，模块隐藏时不该继续挂在 document 上。
-    // 隐藏期间不挂（此时点外部也没有"关闭弹层"的意义），active 回来后重新挂载；
-    // 弹层状态本身跨 tab 保留，所以切回来时若还开着，行为与之前一致。
-    if (!active || !showTeacherPanel) return;
-    const handler = (e: MouseEvent) => {
-      if (teacherPanelRef.current && !teacherPanelRef.current.contains(e.target as Node)) {
-        setShowTeacherPanel(false);
-      }
-    };
-    // 延迟挂载以避免触发按钮自身的 click 事件
-    const attachTimer = window.setTimeout(() => document.addEventListener('click', handler), 0);
-    return () => {
-      // 必须显式清掉定时器：否则清理先于定时器执行时会 remove 一个尚未 add 的监听，
-      // 随后那个定时器再把 handler 永久挂到 document 上（再也摘不掉，包括卸载时）。
-      // active 进依赖后挂载/摘除变得频繁，这个窗口必须关掉。
-      window.clearTimeout(attachTimer);
-      document.removeEventListener('click', handler);
-    };
-  }, [active, showTeacherPanel]);
+  // 「老师消息」的下拉与它那条「点击外部关闭」的 document 监听（含 clearTimeout 与挂载条件）
+  // M1b-3 T3 已整体搬去外壳（shell/classroom-shell.tsx）：入口是顶栏，而顶栏不属于任何一层，
+  // 面板的 `active` 语义套不到它上面。这里不再有任何 teacherMsgs 的读者。
 
   // 实时通信（useChatSocket）已整体上移到 use-classroom-session.ts：socket 属于
   // 「课堂会话」而不是「学伴模块」—— M1b-2 之后面板常驻却随时可能不可见，让模块持有
@@ -723,53 +705,10 @@ export function StudentChatContent({
               {selectedStudent.name}
             </div>
           )}
-          {/* 消息按钮 */}
-          <div ref={teacherPanelRef} style={{ position: 'relative' }}>
-            <button onClick={() => setShowTeacherPanel(p => !p)}
-              title={showTeacherPanel ? '收起消息' : '查看消息'}
-              className={`${styles.headerButton} ${teacherMsgs.length > 0 ? styles.headerButtonActive : ''}`}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-              消息 {teacherMsgs.length}
-            </button>
-            {showTeacherPanel && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, zIndex: 50,
-                marginTop: 6, width: 360, maxHeight: 300, overflowY: 'auto',
-                borderRadius: 10, border: '1px solid #e0e7ff',
-                background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-              }}>
-                {teacherMsgs.length === 0 ? (
-                  <div style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8', fontSize: "0.813rem" }}>
-                    暂无老师消息
-                  </div>
-                ) : (
-                  teacherMsgs.map((msg, i) => (
-                    <div key={i} style={{
-                      display: 'flex', gap: 10, padding: '10px 14px',
-                      borderBottom: i < teacherMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
-                    }}>
-                      <div style={{
-                        flexShrink: 0, width: 26, height: 26, borderRadius: 7,
-                        background: 'linear-gradient(135deg, #4338ca, #6366f1)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#fff',
-                      }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                          <span style={{ fontWeight: 600, fontSize: "0.75rem", color: '#4338ca' }}>老师</span>
-                          <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{msg.time}</span>
-                        </div>
-                        <div style={{ fontSize: "0.813rem", color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{msg.message}</div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
+          {/* ⚠️ 「消息 N」按钮与它的下拉 M1b-3 T3 已整体搬去顶栏（外壳 + ModuleTabBar）：
+              入口是顶栏，而顶栏在外壳挂载期间**始终可见**（它不属于任何一层）；这条面板头
+              则会随 T4 整行撤除，两个入口并存没有必要。下拉之所以必须 portal 到 body，
+              见 classroom-shell.tsx 里那条注释（顶栏的 overflow-y: hidden 会把它纵向裁掉）。 */}
           {/* 切换用户按钮 */}
           <button onClick={onSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
             className={styles.headerButton}>

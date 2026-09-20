@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChatPanelProps, ModuleId } from '../classroom-types';
 import type { StudentHomeProps } from '../home/student-home';
@@ -67,6 +67,12 @@ interface ViewPhase {
  * 而晚一帧只是键盘晚 40ms 弹出来，代价为零。
  */
 const SETTLE_SLACK_MS = 40;
+
+/** 老师消息下拉的宽度上限（沿用面板头那版的 360px）。 */
+const TEACHER_MSGS_WIDTH = 360;
+
+/** 下拉离视口边缘的最小留白（左/右/下三处共用）。 */
+const TEACHER_MSGS_EDGE = 8;
 
 /**
  * 某一层动画的时长（ms），**从该层的计算样式里读**，不在 JS 里另抄一份 240ms。
@@ -293,6 +299,127 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
    */
   const avatarOverlayPortal = useOverlayPortal(true);
 
+  /**
+   * ── 老师消息下拉（M1b-3 T3）─────────────────────────────────────────────────
+   *
+   * 状态、下拉本体与「点击外部关闭」的 document 监听原本都长在学伴面板头（`chat-panel.tsx`
+   * 的 `showTeacherPanel`）。随入口一并搬到这里，因为**入口是顶栏，而顶栏属于外壳**：
+   * 下拉的挂载点必须与它可见的那个外壳同生共死，挂在面板上就会随「面板是不是前台」被牵连
+   * —— 而顶栏在外壳挂载期间**始终可见**，学生的消息不跟着模块切换走。
+   *
+   * 数据不用搬：`teacherMsgs` 本来就由会话持有（`chat.teacherMsgs`，面板只是接 prop），
+   * 到这里只是从同一个 `chat` 对象里读。
+   */
+  const [teacherMsgsOpen, setTeacherMsgsOpen] = useState(false);
+
+  /** 下拉按钮的引用：下拉 portal 到 body 之后，落点只能从按钮的矩形量出来（见下表）。 */
+  const teacherMsgsButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  /**
+   * 下拉的落点（**视口坐标**，配合 `position: fixed`）。
+   *
+   * 为什么不继续用原来那套 `position: absolute; top: 100%; right: 0`：绝对定位要求下拉是
+   * 按钮在 DOM 上的后代，而它必须 portal 到 body（Ruling 2）—— `.bar` 是
+   * `overflow-x: auto; overflow-y: hidden`，就地渲染的双向下拉会被纵向裁掉一半。
+   * portal 之后唯一的锚定办法就是量出按钮的位置，把坐标写进行内样式。
+   *
+   * `null` = 还没打开过（从没量过）。它只在点击之后才落值，所以静态导出预渲染时不存在，
+   * 也就没有「服务端输出与首次客户端渲染不一致」的余地。
+   */
+  const [teacherMsgsPos, setTeacherMsgsPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+
+  /**
+   * 量一次下拉该落在哪儿。
+   *
+   * 两个方向都做**视口夹取**（而不是原来那种「贴着按钮右缘、任由它出屏」）：顶栏是横向滚动
+   * 的，窄屏上按钮本身就可能落在视口右缘之外（T5 会重排这一组，届时这是兜底），照抄
+   * `right: 0` 会让整块下拉跟着出屏。夹取之后任何情况下它都完整落在视口内。
+   *
+   * `maxHeight` 跟着落点算：下拉是「贴按钮下缘、最多 300px、内部滚动」，落点越低能用到的
+   * 高度就越少 —— 直接把可用高度写进去，比让浏览器把底部裁掉要好。
+   */
+  const measureTeacherMsgs = useCallback(() => {
+    const anchor = teacherMsgsButtonRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(TEACHER_MSGS_WIDTH, window.innerWidth - TEACHER_MSGS_EDGE * 2);
+    const maxLeft = window.innerWidth - TEACHER_MSGS_EDGE - width;
+    const left = Math.min(Math.max(TEACHER_MSGS_EDGE, rect.right - width), Math.max(TEACHER_MSGS_EDGE, maxLeft));
+    const top = rect.bottom + 6;
+    const maxHeight = Math.min(300, Math.max(120, window.innerHeight - top - TEACHER_MSGS_EDGE));
+    setTeacherMsgsPos((prev) => (
+      prev && prev.left === left && prev.top === top && prev.width === width && prev.maxHeight === maxHeight
+        ? prev
+        : { left, top, width, maxHeight }
+    ));
+  }, []);
+
+  /**
+   * 打开期间跟着按钮走。
+   *
+   * `scroll` 必须用**捕获阶段**：`.bar` 自己就是横向滚动容器，而 `scroll` 事件不冒泡 ——
+   * 不捕获的话，顶栏横向滚动时下拉会留在原地，与按钮脱开。`resize` 覆盖旋转屏幕（夹取依赖
+   * 视口宽度，不重量就会留一个按旧宽度算出的落点）。
+   */
+  useEffect(() => {
+    if (!teacherMsgsOpen) return;
+    measureTeacherMsgs();
+    const remeasure = () => measureTeacherMsgs();
+    window.addEventListener('scroll', remeasure, true);
+    window.addEventListener('resize', remeasure);
+    return () => {
+      window.removeEventListener('scroll', remeasure, true);
+      window.removeEventListener('resize', remeasure);
+    };
+  }, [teacherMsgsOpen, measureTeacherMsgs]);
+
+  /**
+   * 点击外部关闭。
+   *
+   * ⚠️ 挂在**什么条件**上（面板那版是 `active && showTeacherPanel`）：搬到这里之后
+   * `active` 没有对应物，条件只剩「下拉开着」一条 —— 因为顶栏在外壳挂载期间**始终可见**
+   * （它不在任何一层里，切 Tab 只动 `.stage` 里的层），面板那半条 `active` 想排除的
+   * 「模块隐藏、点了也没意义」这个窗口在这里**不存在**。外壳一旦卸载（退出/换身份/课堂结束），
+   * 下面这条清理照跑，监听一并摘掉。
+   *
+   * ⚠️⚠️ 两条细节**必须**原样带着，不是可选优化：
+   *   ① **延时挂载 + 显式 clearTimeout**：延时是为了躲开「打开它的那一次点击」；而清理里
+   *      必须显式清掉定时器 —— 否则清理先于定时器执行时会 remove 一个尚未 add 的监听，
+   *      随后那个定时器再把 handler **永久**挂到 document 上（再也摘不掉，包括卸载时）。
+   *      `teacherMsgsOpen` 进依赖后挂载/摘除会很频繁，这个窗口必须关掉。
+   *   ② 判「点在外面」用的是 `contains`，而 `teacherMsgsPanelRef` 挂在**portal 出去的那块
+   *      下拉自己身上**（不是按钮的包裹层）：DOM 上它已不在按钮旁边，`contains` 照样成立
+   *      （它比的是 DOM 树，不是布局）。点按钮时两条路都会把它关掉（React 的 onClick 先跑，
+   *      再轮到 document 上的这条），结果一致且幂等。
+   */
+  const teacherMsgsPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!teacherMsgsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (teacherMsgsPanelRef.current && !teacherMsgsPanelRef.current.contains(e.target as Node)) {
+        setTeacherMsgsOpen(false);
+      }
+    };
+    // 延迟挂载以避免触发按钮自身的 click 事件
+    const attachTimer = window.setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => {
+      window.clearTimeout(attachTimer);
+      document.removeEventListener('click', handler);
+    };
+  }, [teacherMsgsOpen]);
+
+  /**
+   * 下拉那条独立 portal（Ruling 8：**另加自己那一个**，不去复用换头像的
+   * `avatarOverlayPortal`）。两条的 `active` 语义在本文件里都是「恒为真」，但它们**各量各的
+   * 落点、各有各的关闭路径**，合并会让一个浮层的可见性由另一个的状态决定。
+   *
+   * `active` 恒为真的理由与换头像弹窗同源：它由**四个 tab 共用、始终可见**的顶栏触发，
+   * 不属于任何一层 —— 挂在任何模块层的 `active` 上，教师在另一个 tab 上关掉/切换模块就会
+   * 把这个开着的下拉弄没（而 `teacherMsgsOpen` 仍是 true）。关闭时 `teacherMsgsOpen` 为
+   * false、传给 portal 的 node 是 `null`，`useOverlayPortal` 直接返回 `null`，什么都不渲染。
+   */
+  const teacherMsgsOverlayPortal = useOverlayPortal(true);
+
   /** 顶栏头像是否表现为「可换」：真实学生参与者（小组没有这个能力）且教师奖励过机会。 */
   const canChangeAvatar = Boolean(chat.selectedStudent?.studentId) && chat.avatarTokenCount > 0;
 
@@ -345,6 +472,10 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
         onChangeAvatar={handleChangeAvatar}
         onSwitchIdentity={chat.onSwitchIdentity}
         onExit={chat.onExit}
+        teacherMsgCount={chat.teacherMsgs.length}
+        teacherMsgsOpen={teacherMsgsOpen}
+        teacherMsgsButtonRef={teacherMsgsButtonRef}
+        onToggleTeacherMsgs={() => setTeacherMsgsOpen((prev) => !prev)}
       />
 
       <div className={styles.stage}>
@@ -401,6 +532,51 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
           onClose={() => setShowAvatarChanger(false)}
           onChanged={handleAvatarChanged}
         />
+      ))}
+
+      {/* 老师消息下拉（M1b-3 T3）。JSX 逐字沿袭面板头那版（配色、间距、圆角、空态文案），
+          只有两处**必须**不同：
+            · 外层容器从「按钮的绝对定位兄弟」变成 portal 到 body 的 `position: fixed`，
+              坐标由 `teacherMsgsPos` 给（理由见上面 `teacherMsgsOverlayPortal` 的注释）；
+            · 宽度与最大高度跟着量出来的落点走（视口夹取，见 `measureTeacherMsgs`）。
+          `teacherMsgsPos` 为 null 时不渲染 —— 它只在打开之后才可能为 null（量在 effect 里，
+          而那个 effect 与 `teacherMsgsOpen` 同一次提交后运行），所以肉眼不可见。 */}
+      {teacherMsgsOverlayPortal(teacherMsgsOpen && teacherMsgsPos && (
+        <div ref={teacherMsgsPanelRef} style={{
+          position: 'fixed', left: teacherMsgsPos.left, top: teacherMsgsPos.top, zIndex: 50,
+          width: teacherMsgsPos.width, maxHeight: teacherMsgsPos.maxHeight, overflowY: 'auto',
+          borderRadius: 10, border: '1px solid #e0e7ff',
+          background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+        }}>
+          {chat.teacherMsgs.length === 0 ? (
+            <div style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
+              暂无老师消息
+            </div>
+          ) : (
+            chat.teacherMsgs.map((msg, i) => (
+              <div key={i} style={{
+                display: 'flex', gap: 10, padding: '10px 14px',
+                borderBottom: i < chat.teacherMsgs.length - 1 ? '1px solid #f1f5f9' : 'none',
+              }}>
+                <div style={{
+                  flexShrink: 0, width: 26, height: 26, borderRadius: 7,
+                  background: 'linear-gradient(135deg, #4338ca, #6366f1)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff',
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.75rem', color: '#4338ca' }}>老师</span>
+                    <span style={{ fontSize: '0.688rem', color: '#94a3b8' }}>{msg.time}</span>
+                  </div>
+                  <div style={{ fontSize: '0.813rem', color: '#1e293b', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{msg.message}</div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       ))}
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import { MODULE_META } from '../module-meta';
 import type { ModuleId, StudentSession } from '../classroom-types';
 import { SvgAvatar } from '../chat/svg-avatar';
@@ -31,6 +31,20 @@ export interface ModuleTabBarProps {
   onChangeAvatar: () => void;
   onSwitchIdentity: () => void;
   onExit: () => void;
+  // ── 教师消息入口（M1b-3 T3）：与其余四项同源 —— 条数与下拉状态都归外壳 ──
+  /** 老师消息条数。> 0 时按钮上带一枚角标（窄屏也保留：它是「有新消息」的唯一视觉线索）。 */
+  teacherMsgCount: number;
+  /** 下拉此刻是否展开（决定按钮的 aria-label / title 与按下态）。 */
+  teacherMsgsOpen: boolean;
+  /**
+   * 下拉按钮的 DOM 引用，由外壳持有。
+   *
+   * 与其余 prop 不同，这是一根**引用**而不是一项能力 —— 因为下拉已经 portal 到 body
+   * （顶栏 `.bar` 的 `overflow-y: hidden` 会把它纵向裁掉，见 classroom-shell.tsx），
+   * 定位只能靠外壳量按钮的 `getBoundingClientRect()`。栏不量也不存，只是把它挂上去。
+   */
+  teacherMsgsButtonRef: RefObject<HTMLButtonElement | null>;
+  onToggleTeacherMsgs: () => void;
 }
 
 /** 首页图标。内联 SVG 而不是 emoji：与三件套同一套线条，缩放不糊。 */
@@ -65,6 +79,17 @@ function SwitchIdentityIcon() {
   );
 }
 
+/** 老师消息（铃铛）。画法与学伴面板头那枚「消息」按钮的铃铛同源（chat-panel.tsx 的 24 画布
+ *  + 两条路径），只是按顶栏的 16px 画布重画了一遍描边宽度 —— 与另外三枚图标同规格。 */
+function MessagesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 /** 退出课堂（开门 + 外走箭头）。 */
 function ExitIcon() {
   return (
@@ -94,12 +119,14 @@ function ExitIcon() {
  * 位置与宽度由 `offsetLeft` / `offsetWidth` 量出来 —— 不用 `getBoundingClientRect()`，
  * 因为它含祖先的 `transform`，而本壳的切换动画正在平移整个层。
  *
- * ── 操作组（M1b-3 T1 / T2）──────────────────────────────────────────────────
- * 栏右侧追加一组操作：连接状态点、学生头像 + 姓名、切换身份、退出课堂。四项能力**全部**
+ * ── 操作组（M1b-3 T1 / T2 / T3）─────────────────────────────────────────────
+ * 栏右侧追加一组操作：连接状态点、学生头像 + 姓名、老师消息、切换身份、退出课堂。能力**全部**
  * 由外壳从 `useClassroomSession` 转手进来（`connected` / `selectedStudent` / `avatarSvgs` /
- * `onChangeAvatar` / `onSwitchIdentity` / `onExit`），栏自己不持有任何状态、不新增 effect ——
- * 它只是一个展示点。T2 给头像 chip 加的那次点击（换头像）同样是转手：能不能换、换完怎么收尾
- * 都由外壳决定，栏连「有没有机会」都不判断。
+ * `onChangeAvatar` / `onToggleTeacherMsgs` / `onSwitchIdentity` / `onExit`），栏自己不持有
+ * 任何状态、不新增 effect —— 它只是一个展示点。T2 给头像 chip 加的那次点击（换头像）同样是
+ * 转手：能不能换、换完怎么收尾都由外壳决定，栏连「有没有机会」都不判断。T3 的消息入口同理，
+ * 唯一的例外是那根 `teacherMsgsButtonRef`：下拉 portal 到 body 之后，落点只能由外壳量
+ * （栏仍然不量、不存，只是把引用挂上去）。
  *
  * 三条从控制器裁定下来的规矩，改这里时不要丢：
  *   ① **图标化只减视觉宽度，不减无障碍信息**（Ruling 3）：每个操作 36px 见方（与 Tab 同高），
@@ -129,9 +156,20 @@ export function ModuleTabBar({
   onChangeAvatar,
   onSwitchIdentity,
   onExit,
+  teacherMsgCount,
+  teacherMsgsOpen,
+  teacherMsgsButtonRef,
+  onToggleTeacherMsgs,
 }: ModuleTabBarProps) {
   const homeActive = activeId === null;
   const showTabs = tabs.length >= 2;
+
+  /**
+   * 消息按钮的无障碍名 / tooltip —— 两处**逐字一致**（T2 审查 C7b 立的规矩），且把条数一起
+   * 说出来：Ruling 3「图标化只减视觉宽度、不减无障碍信息」在这里同样成立 —— 角标只在
+   * `teacherMsgCount > 0` 时出现，读屏用户不能因此少听到一个数。
+   */
+  const messagesLabel = `${teacherMsgsOpen ? '收起' : '查看'}老师消息，共 ${teacherMsgCount} 条`;
 
   /**
    * 头像 chip 是不是一个**按钮**：只有真实学生参与者能换头像（小组没有这项能力 ——
@@ -342,6 +380,35 @@ export function ModuleTabBar({
             </span>
           )
         )}
+
+        {/* ── 老师消息（M1b-3 T3）──
+            入口从学伴面板头搬到这里：那条栏属于「这一节课的会话」，任何层（首页或三个模块）
+            下都在，而面板头整行会随 T4 撤除。搬过来之后**面板侧不再有这个入口**，删掉它
+            等于把「老师发的消息」整个藏起来。
+
+            ⚠️ 位置在「学生 chip」与「切换身份」之间是照着面板头原来的次序
+            （连接 / 学生 / 消息 / 切换 / 退出）排的，不是随手插的：两处并存期间学生看到的
+            是同一套次序，T4 撤掉面板头之后也不会感觉按钮「跳了位」。
+
+            ⚠️ 下拉本体**不在这里** —— 它 portal 到 body，由外壳渲染（见 prop 注释）。
+            这里只有入口。
+
+            角标只在有条数时出现：36px 的图标按钮里塞不下「消息 0」，而 0 本身也不是学生
+            需要一眼看到的信息；条数仍然完整地写在 aria-label / title 里。 */}
+        <button
+          type="button"
+          ref={teacherMsgsButtonRef}
+          className={teacherMsgsOpen ? `${styles.action} ${styles.actionActive}` : styles.action}
+          onClick={onToggleTeacherMsgs}
+          aria-expanded={teacherMsgsOpen}
+          aria-label={messagesLabel}
+          title={messagesLabel}
+        >
+          <MessagesIcon />
+          {teacherMsgCount > 0 && (
+            <span className={styles.actionBadge} aria-hidden="true">{teacherMsgCount}</span>
+          )}
+        </button>
 
         <button
           type="button"

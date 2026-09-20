@@ -1,7 +1,8 @@
 /* 学生端外壳（§4.1 的 shell/）：顶部 Tab 栏 + 首页 + 三个模块层。
  *
  * 硬约束（Safari 15，老 iPad）同 home.module.css：不用 `:has()` / `content-visibility` /
- * `@container` / `dvh` / `:focus-visible`；动效只碰 `transform` 与 `opacity`，
+ * `@container` / `color-mix()`；`dvh` 与 `:focus-visible` **只在带降级时**可用；
+ * 动效只碰 `transform` 与 `opacity`，
  * 并在 `prefers-reduced-motion` 下关闭。
  *
  * ── 分层模型（三件套共享一个舞台）────────────────────────────────────────────

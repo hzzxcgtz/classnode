@@ -1,7 +1,8 @@
 /* 学生端首页（§4.2）。
  *
  * 硬约束（Safari 15，老 iPad）：不用 `:has()` / `content-visibility` / `@container` /
- * `dvh` / `color-mix()` / `:focus-visible`；动效只碰 `transform` 与 `opacity`
+ * `color-mix()`；`dvh` 与 `:focus-visible` **只在带降级时**可用（如 chat.module.css 的
+ * 100vh→100dvh 链）。动效只碰 `transform` 与 `opacity`
  * （卡片的投影走 `::before` 的 `opacity` 淡入，而不是 transition `box-shadow`），
  * 并在 `prefers-reduced-motion` 下全部关闭。
  *

@@ -18,7 +18,6 @@ export interface StudentHomeProps {
    * `visibility:hidden`，会在模块之上浮起来（Ruling 5 / Task 2 同类问题）。
    */
   active: boolean;
-  code: string;
   classroom: ClassroomInfo | null;
   selectedStudent: StudentSession | null;
   avatarSvgs: Record<number, string>;
@@ -27,7 +26,6 @@ export interface StudentHomeProps {
   toast: ChatToast | null;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   onOpenModule: (moduleId: ModuleId) => void;
-  onExit: () => void;
 }
 
 /**
@@ -66,14 +64,19 @@ function summarizeLastRound(messages: StudentChatMessage[]): string | null {
 /**
  * 学生端首页（常驻门户，§4.2）：进入课堂后的默认落点，不是直接掉进某个模块。
  *
- * 三件事：我是谁（头像/姓名）、这是哪堂课（班级名 + 互动码）、今天能做什么
- * （三张模块卡片，三态由教师实时决定）。
+ * 今天只做一件事：**今天能做什么**（三张模块卡片，三态由教师实时决定）。
+ * 另外两项「我是谁」「这是哪堂课」在 M1b-3 里逐项离场：
+ *   · 「我是谁」的**入口**（换头像）T2 起归顶栏的学生 chip（Ruling 1）—— 首页只**显示**当前
+ *     头像，那是下面那张身份卡（`.identity`）的事，本任务一行没动；
+ *   · 「这是哪堂课」（班级名 + 互动码）与它同行的那枚「退出课堂」**整个头部行**随本任务（T6）
+ *     撤除（Ruling 9 / Ruling 10）：班级名与互动码是教师视角的编排信息，学生端不需要；
+ *     退出课堂也已经在顶栏有一份（M1b-3 T5），留着就是同一能力两个入口。
+ *   ⇒ 撤除之后 `.shell` 里只剩 `.desk` 一张卡，首页正文直接顶上来。
  *
- * **换头像的入口不在这里**（M1b-3 T2 / Ruling 1）：顶栏的学生 chip 是唯一入口，弹窗与它的
- * 状态一并归外壳。首页这里只**显示**当前头像（不再是一个按钮）—— 撤掉的两个入口是那枚
- * 可点头像与「换头像 N」按钮，随之撤掉的还有「换头像的机会由老师奖励」那行常驻提示
- * （同一句话改由外壳在点击顶栏头像时说出口）。同理，首页也不再需要 `setAvatarSvgs` /
- * `setSelectedStudent` / `setAllStudentAvatars` / `fetchStudentTokens` 这四个 props。
+ * ⚠️ 因此 `StudentHomeProps` 里不再有 `code` 与 `onExit` —— 它们在本文件里的最后两个读者
+ * 就是被撤除的那一行。删掉之后**编译期会立刻发现漏改**：`page.tsx` 给 `home` 对象传的
+ * `code` / `onExit` 变成多余属性，`tsc` 直接报错（`_ContractCheck` 抓不住「把契约改宽」，
+ * 但这一路是收窄，靠调用点就能收口）。
  *
  * **卡片从 `MODULE_KEYS` 渲染，不按 `classroom.modules` 的数组下标**（§4.11 B6）：
  * `applyModuleState` 在键缺失时会追加元素，下标会漂移 —— 按下标渲染，教师改一次态就可能
@@ -81,7 +84,6 @@ function summarizeLastRound(messages: StudentChatMessage[]): string | null {
  */
 export function StudentHome({
   active,
-  code,
   classroom,
   selectedStudent,
   avatarSvgs,
@@ -89,7 +91,6 @@ export function StudentHome({
   toast,
   setToast,
   onOpenModule,
-  onExit,
 }: StudentHomeProps) {
   // 浮层一律走 portal：Task 5 的切换动画会让首页成为 `transform` 容器，届时留在树内的
   // `position: fixed` 会被重新锚定到首页盒子（Task 2 同类问题）。现在就先摆正，
@@ -150,17 +151,6 @@ export function StudentHome({
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
-        <header className={styles.topBar}>
-          <div className={styles.classroomName}>{classroom?.title || '互动课堂'}</div>
-          <div className={styles.codeChip}>
-            <span className={styles.codeChipLabel}>互动码</span>
-            <span className={styles.codeValue}>{code}</span>
-          </div>
-          <button type="button" className={styles.exitButton} onClick={onExit}>
-            退出课堂
-          </button>
-        </header>
-
         <main className={styles.desk}>
           <section className={styles.identity}>
             {/* 头像只**显示**，不再是一个按钮（M1b-3 T2）：换头像的唯一入口是顶栏的学生

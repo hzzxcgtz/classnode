@@ -158,14 +158,12 @@ function ClassroomOrchestrator() {
         streamingRafRef,
       }}
       home={{
-        code: session.code,
         classroom: session.classroom,
         selectedStudent: session.selectedStudent,
         avatarSvgs: session.avatarSvgs,
         messages: session.messages,
         toast: session.toast,
         setToast: session.setToast,
-        onExit: session.handleExit,
       }}
     />
   );

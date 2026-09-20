@@ -28,64 +28,10 @@
   max-width: 980px;
 }
 
-/* ————————————————— 顶部：班级名 + 互动码 ————————————————— */
-
-.topBar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 2px 4px 16px;
-}
-
-.classroomName {
-  font-size: clamp(1.125rem, 2.6vw, 1.5rem);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: #fff;
-  line-height: 1.3;
-  text-shadow: 0 1px 12px rgba(30, 27, 75, 0.25);
-}
-
-.codeChip {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  margin-left: auto;
-  padding: 5px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-}
-
-.codeChipLabel {
-  font-size: 0.75rem;
-  opacity: 0.85;
-}
-
-.codeValue {
-  font-size: 1.125rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  font-variant-numeric: tabular-nums;
-}
-
-.exitButton {
-  padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 0.813rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: opacity 0.16s ease;
-}
-
-.exitButton:hover {
-  opacity: 0.78;
-}
+/* 这里原本是「顶部：班级名 + 互动码 + 退出课堂」那一整行（`.topBar` / `.classroomName` /
+   `.codeChip` / `.codeChipLabel` / `.codeValue` / `.exitButton`，含各自的媒体查询分支）。
+   M1b-3 T6 按 Ruling 9 / Ruling 10 整个撤除：班级名与互动码从学生端消失，退出课堂由顶栏
+   那一份承担（T5）。样式随之删净 —— `.shell` 里只剩下面 `.desk` 一张卡。 */
 
 /* ————————————————— 课桌 ————————————————— */
 
@@ -399,14 +345,6 @@
 }
 
 @media (max-width: 640px) {
-  .topBar {
-    padding-bottom: 12px;
-  }
-
-  .classroomName {
-    flex: 1 1 100%;
-  }
-
   .desk {
     padding: 16px 16px 18px;
     border-radius: 16px;
@@ -415,8 +353,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .card::before,
-  .exitButton {
+  .card::before {
     transition: none;
   }
 

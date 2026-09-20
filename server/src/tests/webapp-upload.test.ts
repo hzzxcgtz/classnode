@@ -209,6 +209,96 @@ test('唯一顶层项是目录但不含 HTML 时不提升', () => {
   }
 });
 
+// ── macOS 元数据清理（登记为 T3 交付内容：不清会把入口判成 AppleDouble 二进制块 ⇒ 白屏）
+
+/**
+ * 走真实路由上传一个 zip，返回响应体。
+ * 用真 multer + 真解压 + 真落盘，只有 prisma 是 mock —— 清元数据的行为发生在文件系统上，
+ * mock 掉文件系统就等于什么都没测。
+ */
+async function uploadZip(
+  t: { after: (fn: () => void) => void },
+  dataDir: string,
+  zipBuffer: Buffer,
+  name: string,
+) {
+  const harness = createHarness(SAMPLE, 0);
+  const app = express();
+  app.set('prisma', harness.prisma);
+  app.use('/api/webapps', webappRoutes);
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const address = server.address() as AddressInfo;
+
+  const form = new FormData();
+  form.append('archive', new Blob([new Uint8Array(zipBuffer)]), 'site.zip');
+  form.append('name', name);
+  const res = await fetch(`http://127.0.0.1:${address.port}/api/webapps`, { method: 'POST', body: form });
+  return { status: res.status, body: await res.json() as Record<string, unknown>, dataDir };
+}
+
+/** 把解压目录里的树列成相对路径（排序，便于逐字断言）。 */
+function listTree(dir: string, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(`${rel}/`, ...listTree(path.join(dir, entry.name), rel));
+    else out.push(rel);
+  }
+  return out.sort();
+}
+
+test('含 __MACOSX 的 ZIP：入口仍是真 HTML，元数据不落盘', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const AdmZip = createRequire(import.meta.url)('adm-zip');
+    const zip = new AdmZip();
+    zip.addFile('myproject/index.html', Buffer.from('<html>REAL-ENTRY</html>'));
+    zip.addFile('myproject/s.css', Buffer.from('body{}'));
+    // Finder「压缩」带进来的东西：顶层 __MACOSX/ 与 ._* 的 AppleDouble 块。
+    // ⚠️ `._index.html` 也以 .html 结尾，**会参与入口判定** —— 这正是必须清掉的理由。
+    zip.addFile('__MACOSX/myproject/._index.html', Buffer.from('\x00\x05\x16\x07MAC-DOUBLE'));
+    zip.addFile('__MACOSX/._myproject', Buffer.from('junk'));
+    const buf = zip.toBuffer();
+
+    const res = await uploadZip(t, dataDir, buf, '含元数据的包');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.entryPath, 'index.html', '入口必须是真的 index.html（提升 + 清理都生效）');
+
+    const dir = path.join(dataDir, 'webapps', String(res.body.id));
+    assert.deepEqual(listTree(dir), ['index.html', 's.css'], '__MACOSX 与 ._* 都不得落盘');
+    assert.equal(
+      fs.readFileSync(path.join(dir, 'index.html'), 'utf8'),
+      '<html>REAL-ENTRY</html>',
+      '入口内容必须是真的网页，不是 AppleDouble 块',
+    );
+  });
+});
+
+// 阴性对照：清理逻辑**不能误伤**不含元数据的包。
+// 没有这一条，「入口正确」有可能只是碰巧 —— 比如清理顺手把整个 myproject/ 也删了。
+test('不含 __MACOSX 的 ZIP：树必须一个文件不少（阴性对照）', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const AdmZip = createRequire(import.meta.url)('adm-zip');
+    const zip = new AdmZip();
+    zip.addFile('myproject/index.html', Buffer.from('<html>REAL-ENTRY</html>'));
+    zip.addFile('myproject/s.css', Buffer.from('body{}'));
+    zip.addFile('myproject/assets/app.js', Buffer.from('console.log(1)'));
+    zip.addFile('myproject/assets/img/logo.svg', Buffer.from('<svg/>'));
+
+    const res = await uploadZip(t, dataDir, zip.toBuffer(), '干净的包');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.entryPath, 'index.html', '没有元数据可清时，提升与入口判定照常');
+
+    const dir = path.join(dataDir, 'webapps', String(res.body.id));
+    assert.deepEqual(
+      listTree(dir),
+      ['assets/', 'assets/app.js', 'assets/img/', 'assets/img/logo.svg', 'index.html', 's.css'],
+      '一个文件都不能少：清理逻辑误伤会让「入口正确」变成碰巧',
+    );
+  });
+});
+
 // ── 删目录前的路径校验（照 agents.ts deleteManagedLogo 手法）───────────
 
 test('删目录前的路径校验：越界一律拒绝，且磁盘不被触碰', () => {
@@ -253,7 +343,7 @@ test('删目录前的路径校验：越界一律拒绝，且磁盘不被触碰',
 
 function createHarness(webapp: unknown, usageCount = 0) {
   const deleted: unknown[] = [];
-  const prisma = {
+  const prisma: Record<string, unknown> = {
     webapp: {
       findUnique: async () => webapp,
       create: async (args: { data: unknown }) => args.data,
@@ -263,16 +353,20 @@ function createHarness(webapp: unknown, usageCount = 0) {
     },
     classroomWebapp: { count: async () => usageCount },
   };
+  return { prisma, deleted };
+}
+
+function createAuthedApp(prisma: unknown) {
   const app = express();
   app.use(express.json());
   app.set('prisma', prisma);
   app.use('/api/webapps', requireTeacher, webappRoutes);
-  return { app, deleted };
+  return app;
 }
 
 async function startServer(t: { after: (fn: () => void) => void }, webapp: unknown, usageCount = 0) {
   const harness = createHarness(webapp, usageCount);
-  const server = createServer(harness.app);
+  const server = createServer(createAuthedApp(harness.prisma));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const address = server.address() as AddressInfo;

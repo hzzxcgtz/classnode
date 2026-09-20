@@ -6,6 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
+  isSymlinkRequest,
   resolveWebappFile,
   resolveWebappPort,
   startWebappHost,
@@ -112,6 +113,97 @@ test('resolveWebappFile 拒绝点文件（dotfiles: deny 语义）', () => {
 test('resolveWebappFile 拒绝非法编码与 NUL', () => {
   assert.equal(resolveWebappFile(ROOT, '/%E0%A4%A'), null); // 截断的百分号编码
   assert.equal(resolveWebappFile(ROOT, '/probe/index.html%00.png'), null);
+});
+
+// ── 符号链接：托管源绝不能跟随 ────────────────────────────────────────
+// 上传路径进不来符号链接（T3 实测：safeExtractZip 用 fs.writeFileSync，ZIP 里
+// mode=0o120777 的条目会被摊平成普通文件）。但那是**解压器的一个隐式行为**，不是保证 ——
+// 换解压实现 / 换 zip 库 / 新增一条导入路径，这个前提就静默失效。
+// 补上之后不变量从「前提是上传进不来」变成「即使有也不会被跟随」。
+
+test('resolveWebappFile 拒绝符号链接；同目录的普通文件不受影响', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-sym-'));
+  const outside = path.join(path.dirname(root), `cn-outside-${path.basename(root)}.html`);
+  try {
+    fs.writeFileSync(outside, '<html>OUTSIDE-LEAKED</html>');
+    fs.mkdirSync(path.join(root, 'probe'));
+    // 阳性与阴性对照**同处一个目录**：这样「链接被拒」就不可能是「整个目录读不到」的副作用。
+    fs.writeFileSync(path.join(root, 'probe', 'normal.html'), '<html>normal</html>');
+    fs.symlinkSync(outside, path.join(root, 'probe', 'link.html'));
+
+    assert.equal(resolveWebappFile(root, '/probe/link.html'), null, '符号链接必须被拒绝');
+    assert.equal(resolveWebappFile(root, '/probe/normal.html'), path.join(root, 'probe', 'normal.html'));
+
+    // lstatSync 抛错（文件不存在）**不当成拒绝**：沿用本函数既有契约（返回路径，下游 404）。
+    assert.equal(
+      resolveWebappFile(root, '/probe/missing.html'),
+      path.join(root, 'probe', 'missing.html'),
+      '不存在的文件仍按既有契约返回路径（行为与加 lstat 之前一致）',
+    );
+
+    // 含 '..' 的一类与符号链接共用 null，但语义不同：前者能安全交给 static，后者不能。
+    // isSymlinkRequest 就是用来分开这两类的，为 false 时中间件才走 fall-through。
+    assert.equal(isSymlinkRequest(root, '/probe/link.html'), true);
+    assert.equal(isSymlinkRequest(root, '/probe/normal.html'), false);
+    assert.equal(isSymlinkRequest(root, '/probe/../normal.html'), false, '含 .. 的一类不归它管');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { force: true });
+  }
+});
+
+test('托管服务：符号链接返回 404（含非 HTML），普通文件仍 200', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-webapp-symhttp-'));
+  const outside = path.join(path.dirname(root), `cn-outside-${path.basename(root)}.html`);
+  fs.writeFileSync(outside, '<html>OUTSIDE-LEAKED</html>');
+  fs.mkdirSync(path.join(root, 'probe'));
+  fs.writeFileSync(path.join(root, 'probe', 'normal.html'), '<html><head></head><body>normal</body></html>');
+  fs.writeFileSync(path.join(root, 'probe', 'normal.css'), 'body{color:red}');
+  fs.symlinkSync(outside, path.join(root, 'probe', 'link.html'));
+  // ⚠️ 非 HTML 的链接**必须一起测**：中间件只拦 .html，非 HTML 会 next() 落到
+  // express.static，而 static 会跟随链接。只测 .html 会漏掉这一整类。
+  fs.symlinkSync(outside, path.join(root, 'probe', 'link.css'));
+
+  const server = await startWebappHost({
+    port: 0,
+    serverPort: 1,
+    lanAccessEnabled: true,
+    webappsRoot: root,
+  });
+  assert.ok(server);
+  const { port } = server.address() as AddressInfo;
+  const get = (requestPath: string) => new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path: requestPath, method: 'GET' }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+
+  try {
+    // 阳性对照：链接必须 404，且正文里绝不能出现根外内容
+    const linkedHtml = await get('/webapps/probe/link.html');
+    assert.equal(linkedHtml.status, 404, '符号链接 .html 必须被拒');
+    assert.equal(linkedHtml.body.includes('OUTSIDE-LEAKED'), false, '绝不能泄漏根外内容');
+    const linkedCss = await get('/webapps/probe/link.css');
+    assert.equal(linkedCss.status, 404, '符号链接 .css 必须被拒（它走的是 express.static）');
+    assert.equal(linkedCss.body.includes('OUTSIDE-LEAKED'), false);
+
+    // 阴性对照：同一目录里的普通文件必须照常服务 —— 否则上面两条可能只是「目录服务坏了」
+    const normalHtml = await get('/webapps/probe/normal.html');
+    assert.equal(normalHtml.status, 200);
+    assert.equal(normalHtml.body.includes('normal'), true);
+    const normalCss = await get('/webapps/probe/normal.css');
+    assert.equal(normalCss.status, 200);
+    assert.equal(normalCss.body, 'body{color:red}');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { force: true });
+  }
 });
 
 // ── 集成：真起一个托管服务，走真实 HTTP ────────────────────────────────

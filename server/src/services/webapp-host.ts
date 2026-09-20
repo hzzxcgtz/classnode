@@ -45,16 +45,12 @@ export function webappsRoot(): string {
 }
 
 /**
- * 把「/webapps 挂载点之后」的 URL 路径解析成 webappsRoot 之下的绝对路径。
+ * 纯字符串解析：把「/webapps 挂载点之后」的 URL 路径映射成 webappsRoot 之下的候选绝对路径。
+ * 越界 / 点段 / 非法编码一律返回 null。
  *
- * 返回 null 表示**必须拒绝**，调用方一律按「不存在」处理（不区分拒绝原因，避免把
- * 「文件没有」和「被挡了」的差异透给探测者）。
- *
- * **为什么抽成纯函数**：路径穿越用 curl 证明是不可靠的 —— HTTP 客户端与中间层常会在
- * 请求发出**之前**就把 '..' 折叠掉，于是「没打出穿越」既可能是被挡了、也可能是根本没发出去。
- * 对字符串直接断言与被规范化与否无关。中间件里那份 curl 证据见测试与报告。
+ * **不含任何文件系统访问**，理由见下面 resolveWebappFile 的说明。
  */
-export function resolveWebappFile(root: string, urlPath: string): string | null {
+function resolveCandidatePath(root: string, urlPath: string): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(urlPath);
@@ -81,7 +77,58 @@ export function resolveWebappFile(root: string, urlPath: string): string | null 
   // 上面已经拒掉了 '..'，所以这一句在数学上不可能触发。留着是因为那条「不可能」依赖
   // 上面的判断不被后人改动，而这里是安全边界 —— 断言比注释可靠。
   if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) return null;
+
   return resolved;
+}
+
+/** lstatSync 的安全包装：读不到（不存在 / 权限 / 路径过长）一律当作「不是符号链接」。 */
+function isSymlinkAt(target: string): boolean {
+  try {
+    // ⚠️ 必须 lstatSync，不能 statSync —— 后者**跟随**链接，正是要查的东西本身
+    // （`ln -s ../OUTSIDE.html webapps/link.html` 用 statSync 看是个普通文件）。
+    return fs.lstatSync(target).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 把「/webapps 挂载点之后」的 URL 路径解析成 webappsRoot 之下的绝对路径。
+ *
+ * 返回 null 表示**必须拒绝**，调用方一律按「不存在」处理（不区分拒绝原因，避免把
+ * 「文件没有」和「被挡了」的差异透给探测者）。
+ *
+ * **为什么抽成纯函数**：路径穿越用 curl 证明是不可靠的 —— HTTP 客户端与中间层常会在
+ * 请求发出**之前**就把 '..' 折叠掉，于是「没打出穿越」既可能是被挡了、也可能是根本没发出去。
+ * 对字符串直接断言与被规范化与否无关。中间件里那份 curl 证据见测试与报告。
+ *
+ * ⚠️ **符号链接一律拒绝**（唯一一处文件系统访问，只判最终目标，不逐段 lstat 中间目录）：
+ * 链接会被 statSync/readFileSync/express.static 一路跟随，把根外的内容原样送出。
+ *
+ * ⚠️ **但返回 null 本身拦不住它** —— 调用方对 null 的既有语义是 `next()` 交给
+ * express.static，而 **static 会跟随符号链接**（实测 `/webapps/link.html` → 200 +
+ * 正文含 OUTSIDE-LEAKED）。所以中间件必须把符号链接这一类单独摘出来**直接 404**，
+ * 用下面的 `isSymlinkRequest`。只加本函数里的判断、不改中间件，等于没修。
+ */
+export function resolveWebappFile(root: string, urlPath: string): string | null {
+  const resolved = resolveCandidatePath(root, urlPath);
+  if (!resolved) return null;
+  if (isSymlinkAt(resolved)) return null;
+  return resolved;
+}
+
+/**
+ * 该请求解析后是否指向一个符号链接。
+ *
+ * 存在的唯一理由：`resolveWebappFile` 返回的 null 有两个语义完全不同的来源 ——
+ * 「static 对这些输入有正确语义」（含 '..' 归一化后仍在根内、dotfiles: deny）与
+ * 「符号链接，static 会跟随」。前者可以安全 next()，**后者必须直接 404**。
+ * 中间件用本函数把后者摘出来。两层判断共用同一个 `resolveCandidatePath`，不会各写一套。
+ */
+export function isSymlinkRequest(root: string, urlPath: string): boolean {
+  const resolved = resolveCandidatePath(root, urlPath);
+  if (!resolved) return false;
+  return isSymlinkAt(resolved);
 }
 
 export interface StartWebappHostOptions {
@@ -160,7 +207,18 @@ export async function startWebappHost(
     // static 对这些输入有它自己的既有语义（归一化后送出、或 404），照搬它比另立一套安全。
     // ⚠️ 副作用（实测过，见 T4/T6 注意事项）：含 '..' 但归一化后仍在根内的 **.html**
     // 会由 static 原样送出，因而**绕过 SDK 注入**。学生端用规整路径即可避开，未修。
-    if (!resolved) return next();
+    if (!resolved) {
+      // ⚠️ **符号链接是这条分支里唯一不能 next() 的一类。** 上面那些 null 之所以能安全
+      // 交给 static，是因为 static 对它们有正确语义（归一化 / dotfiles: deny）；
+      // 但对符号链接，static 的「既有语义」就是**跟随**它 —— 实测
+      // `/webapps/link.html` 与 `/webapps/link.css` 都返回 200 且正文是根外文件的内容。
+      // 所以这里直接 404，不走 fall-through。这是本中间件唯一一处自己应答 404 的地方。
+      if (isSymlinkRequest(opts.webappsRoot, req.path)) {
+        res.status(404).end();
+        return;
+      }
+      return next();
+    }
 
     let target = resolved;
     try {

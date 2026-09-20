@@ -60,22 +60,33 @@ function checkBundleLookbehinds() {
   //     ⚠️ 排除 app/teacher/** 与 app/help/**：
   //     **理由是语义的，不是「避免假失败」** —— 本闸门守的是「**学生端**不得有 lookbehind」，
   //     教师页跑在桌面浏览器上，本就不在约束范围内。help 页同理（教师侧入口）。
-  //     代价（须明说）：这两条路径下的产物**不会**被本闸门检查。若将来有学生端可达的代码
-  //     被打包进这两个路由的自有 chunk，本闸门会漏 —— 那种情况应被视为打包事故，
-  //     并且必须重新审视这条排除。
   //     现状说明：实测今天教师端 `app/teacher/**` 全树 **零命中**，所以这条排除
   //     **当前不掩盖任何东西**；它是一条为将来保留的边界，而不是在压一个已知违规。
+  //
+  //     ── 排除 ≠ 不看：被排除的路径会走「边界提示」（见下方 boundaryHits）──
+  //     这两条路径下的产物**仍然会被读一遍**，命中 lookbehind 时**打印提示但绝不失败**。
+  //     代价（须明说）：它们是**不在约束范围内**的，所以那里的命中无法判断是不是违规；
+  //     提示只是「我可能没在看那儿」的信号。若将来有学生端可达的代码被打包进这两个
+  //     路由的自有 chunk（打包事故），这条提示是唯一的信号 —— 今天它**一次都不会响**
+  //     （实测教师端零命中），所以零噪音。
+  //
+  //     ── 「容忍表」与「边界提示」不是同一条规则的松紧，判断对象不同 ──
+  //       · 容忍表：**接受了**一个已知违规（docx）。命中要喊，但**不失败**。
+  //       · 边界提示：**没法判断**它是不是违规（根本不在约束范围内）。**只提示**。
+  //     前者是「我知道它在那儿」，后者是「我可能没在看那儿」。
   const EXCLUDED_CHUNK_PREFIXES = [
     '/_next/static/chunks/app/teacher/',
     '/_next/static/chunks/app/help/',
   ];
-  const allChunkPaths = listJsFiles(chunksDir)
-    .map(toOutRelative)
+  const allChunkPaths = listJsFiles(chunksDir).map(toOutRelative);
+  const inScopeChunkPaths = allChunkPaths
     .filter((rel) => !EXCLUDED_CHUNK_PREFIXES.some((prefix) => rel.startsWith(prefix)));
+  const outOfScopeChunkPaths = allChunkPaths
+    .filter((rel) => EXCLUDED_CHUNK_PREFIXES.some((prefix) => rel.startsWith(prefix)));
 
   // 三者之并集，去重。(2) 与 (3) 今天有重叠，不去重会让同一个 chunk 被检测两遍、
   // 失败信息与容忍警告也会重复。
-  const scriptPaths = [...new Set([...htmlScriptPaths, ...routeScriptPaths, ...allChunkPaths])];
+  const scriptPaths = [...new Set([...htmlScriptPaths, ...routeScriptPaths, ...inScopeChunkPaths])];
 
   const unsupportedLookbehinds = ['/(?<=', '/(?<!', 'RegExp("(?<=', 'RegExp("(?<!', "RegExp('(?<=", "RegExp('(?<!"];
   const failures = [];
@@ -102,7 +113,19 @@ function checkBundleLookbehinds() {
     failures.push(`${source}: 包含 Safari 15 不支持的正则后行断言 ${pattern}`);
   }
 
-  return { failures, scriptCount: scriptPaths.length, toleratedHits };
+  // 边界提示：教师端 / help 路由**不在约束范围内**，所以命中了也**绝不失败**，
+  // 只是提示「这里有你没在看的东西」。文件缺失同样不算失败（不在范围内）。
+  // 刻意**不**查容忍表 —— 容忍表的语义是「接受了一个已知违规」，而这里根本没在判断违规。
+  const boundaryHits = [];
+  for (const source of outOfScopeChunkPaths) {
+    const filePath = path.join(root, 'out', source);
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, 'utf8');
+    const pattern = unsupportedLookbehinds.find((candidate) => content.includes(candidate));
+    if (pattern) boundaryHits.push({ source, pattern });
+  }
+
+  return { failures, scriptCount: scriptPaths.length, toleratedHits, boundaryHits };
 }
 
 // ===========================================================================
@@ -136,6 +159,11 @@ function stripComments(source) {
  *
  * 签名失配（例如依赖升级后代码变了）时本表不再生效 ⇒ 构建重新变红 ⇒ 有人来看。
  * 这是有意的自愈设计：豁免必须有失效路径。
+ *
+ * 失效路径有**两条**，覆盖两件不同的事，缺一不可：
+ *   1. 签名**失配** → 构建变红（本表条目不再吞掉那个命中）；
+ *   2. 签名**整个消失**（依赖不再产出该代码）→ 本表与命中**两边都空**，
+ *      若不单独提示就完全静默 ⇒ 由下方「容忍表未命中」警告兜住。
  */
 const TOLERATED_PRODUCT_FINDINGS = [
   {
@@ -258,7 +286,10 @@ if (sections.length > 0) {
   throw new Error(`学生端浏览器兼容性检查失败:${body}`);
 }
 
-// 容忍 ≠ 静默：命中了就**每次构建**都喊一遍，让人看得见它还在。
+// ── 两类提示语义不同，措辞必须分开，不要合成一句 ──────────────────────────
+//  · 容忍表命中   = 「**看见了**一个已知违规」（被接受的），所以喊，但不失败。
+//  · 容忍表未命中 = 「这条豁免**可能已经过期**」，与违规无关。
+//  · 边界提示     = 「**可能没在看那儿**」（路径不在约束范围内，无法判断是否违规）。
 for (const hit of bundle.toleratedHits) {
   console.warn(
     `⚠️  [browser-compat] 容忍表命中（构建继续，不失败）: ${hit.source}\n` +
@@ -267,10 +298,31 @@ for (const hit of bundle.toleratedHits) {
     `⚠️    容忍 ≠ 静默：签名失配时本表失效，构建会重新变红。`,
   );
 }
-if (bundle.toleratedHits.length === 0) {
+
+// 容忍表的两条失效路径都要有信号，它们覆盖的是两件不同的事：
+//   · 签名**失配**（依赖升级后代码变了）→ 上面的失败分支会让构建变红；
+//   · 签名**整个消失**（依赖不再产出该代码）→ failures 与 toleratedHits **两边都空**，
+//     若不单独提示就会**完全静默地**烂掉。所以这里非失败地喊一声。
+const matchedSignatures = new Set(bundle.toleratedHits.map((hit) => hit.signature));
+const unmatchedEntries = TOLERATED_PRODUCT_FINDINGS.filter(
+  (entry) => !matchedSignatures.has(entry.signature),
+);
+if (unmatchedEntries.length > 0) {
   console.warn(
-    `⚠️  [browser-compat] 容忍表有 ${TOLERATED_PRODUCT_FINDINGS.length} 条，但本次构建一条都没命中。\n` +
-    `⚠️    要么依赖已不再产出该代码（可以把条目删掉），要么签名已变（那本该让构建变红）。`,
+    `⚠️  [browser-compat] 容忍表未命中 ${unmatchedEntries.length} 条` +
+    `（不是违规，是「这条豁免可能已经过期」）:\n` +
+    unmatchedEntries.map((entry) => `⚠️    - ${entry.signature}`).join('\n') + '\n' +
+    `⚠️    本次构建没有任何产物命中上述签名。要么依赖已不再产出该代码（可以把条目删掉），\n` +
+    `⚠️    要么签名已变（那本该让构建变红）。`,
+  );
+}
+
+// 边界提示：只提示，绝不进 failures。见上面的「排除 ≠ 不看」。
+for (const hit of bundle.boundaryHits) {
+  console.warn(
+    `⚠️  [browser-compat] 边界提示（不在约束范围内，仅提示、不失败）: ${hit.source}\n` +
+    `⚠️    该路径属于教师端 / help 路由，本闸门不覆盖，因此**无法判断**它是否算违规。\n` +
+    `⚠️    若这里出现了学生端可达的代码，说明打包把学生端组件发到了教师端路由下 —— 请人工确认。`,
   );
 }
 

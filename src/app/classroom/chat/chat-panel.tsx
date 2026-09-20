@@ -1,57 +1,75 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
+import { api, getStudentSessionAuthorization } from '@/lib/api';
 import { Toast } from '@/lib/components';
-import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
-import type { Socket } from 'socket.io-client';
-import type { ChatAgent, StudentChatMessage } from '../classroom-types';
+import type { ChatAgent, ChatPanelProps } from '../classroom-types';
 import { API_BASE_URL, fixSvgUrl } from '../avatar-utils';
 import { SvgAvatar } from './svg-avatar';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
 import { AvatarChangerContent } from './avatar-changer';
-import { IdentityPicker } from '../identity/identity-picker';
-import { useStudentSession } from '../identity/use-student-session';
 import { useChatSocket } from './use-chat-socket';
 import { useVoiceInput } from './use-voice-input';
 import styles from './chat.module.css';
 
 const MAX_ATTACHED_FILES = 5;
 
-export function StudentChatContent() {
-  const router = useRouter();
-  const [code, setCode] = useState('');
-
-  const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
-  const [joiningClassroom, setJoiningClassroom] = useState(false);
-  const [classroom, setClassroom] = useState<StudentClassroom | null>(null);
-  const [students, setStudents] = useState<ClassroomStudentSummary[]>([]);
-  const [avatarSvgs, setAvatarSvgs] = useState<Record<number, string>>({});
-  const [avatarTokenCount, setAvatarTokenCount] = useState(0);
+export function StudentChatContent({
+  code,
+  classroom,
+  selectedStudent,
+  avatarSvgs,
+  avatarTokenCount,
+  allStudentAvatars,
+  onlineStudentIds,
+  teacherMsgs,
+  messages,
+  loadingMessages,
+  waitingAI,
+  paused,
+  agentDisabled,
+  shieldWarning,
+  toast,
+  loadError,
+  setStep,
+  setClassroom,
+  setSelectedStudent,
+  setAvatarSvgs,
+  setAvatarTokenCount,
+  setAllStudentAvatars,
+  setTeacherMsgs,
+  setMessages,
+  setWaitingAI,
+  setPaused,
+  setAgentDisabled,
+  setShieldWarning,
+  setToast,
+  setLoadError,
+  loadClassroom,
+  loadMessages,
+  fetchStudentTokens,
+  onSwitchIdentity,
+  onExit,
+  router,
+  wsRef,
+  statusSocketRef,
+  chatConnectionGenerationRef,
+  seenNotifIdsRef,
+  startChatSessionRef,
+}: ChatPanelProps) {
+  // M1a：会话所有权（code/step/classroom/selectedStudent/messages/... ）已上移到
+  // page.tsx 的 useClassroomSession，这里只保留学伴模块自身的状态。
   const [showAvatarChanger, setShowAvatarChanger] = useState(false);
-  const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<ClassroomStudentSummary | null>(null);
-  const [identitySearch, setIdentitySearch] = useState('');
-  const [messages, setMessages] = useState<StudentChatMessage[]>([]);
-  const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState('');
-  const [waitingAI, setWaitingAI] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [thinkingContent, setThinkingContent] = useState('');
   const [connected, setConnected] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
-  const [paused, setPaused] = useState(false);
-  const [agentDisabled, setAgentDisabled] = useState(false);
-  const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const [blacklisted, setBlacklisted] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [teacherMsgs, setTeacherMsgs] = useState<{ message: string; time: string }[]>([]);
   const [showTeacherPanel, setShowTeacherPanel] = useState(false);
   const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
@@ -67,17 +85,12 @@ export function StudentChatContent() {
   const [activeMsgIndex, setActiveMsgIndex] = useState<number | null>(null);
   const [hoveredMarker, setHoveredMarker] = useState<{ index: number; text: string; x: number; y: number } | null>(null);
   const userScrolledUpRef = useRef(false);
-  const wsRef = useRef<Socket | null>(null);
-  const joiningRef = useRef(false);
   const sendingRef = useRef(false);
-  const chatConnectionGenerationRef = useRef(0);
   const identityConflictTimerRef = useRef<number | null>(null);
   const teacherNotifTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
-  const statusSocketRef = useRef<Socket | null>(null);
 
   useEffect(() => () => {
     chatConnectionGenerationRef.current += 1;
@@ -86,13 +99,11 @@ export function StudentChatContent() {
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 卸载清理只跑一次；三个 ref 由外壳按对象身份传入，是稳定对象
   // 跟踪最后一次用户消息中附带的文件，用于 AI 回复时一同展示
   // 流式输出 RAF 节流：累积 chunk 后每帧只更新一次 state，避免高频 setState 阻塞
   const streamingBufferRef = useRef('');
   const streamingRafRef = useRef<number | null>(null);
-  // 去重教师消息：通过唯一 ID 跟踪已收到的通知，跨刷新持久化
-  const seenNotifIdsRef = useRef<Set<string>>(new Set());
   // 点击外部关闭教师消息面板
   const teacherPanelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -106,17 +117,10 @@ export function StudentChatContent() {
     setTimeout(() => document.addEventListener('click', handler), 0);
     return () => document.removeEventListener('click', handler);
   }, [showTeacherPanel]);
-  // 初始化时从 localStorage 恢复已见 ID
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('_seen_notif_ids');
-      if (saved) seenNotifIdsRef.current = new Set(JSON.parse(saved));
-    } catch {}
-  }, []);
 
-  // 实时通信逻辑抽到 useChatSocket。startChatSession 现在是 hook 返回值（不再是提升的
-  // 函数声明），因此 useChatSocket 的调用必须写在 useStudentSession 之前；后者会把它
-  // 透传给 restoreSessionFromUrl。下面的 loadClassroom / loadMessages 仍是函数声明，会被提升。
+  // 实时通信仍留在面板内（Ruling A：socket 归学伴模块自己）。它需要的 code / router /
+  // setStep / 各 setter 现在都由外壳以 props 传入；startChatSession 本身注册进
+  // startChatSessionRef，供外壳的 useStudentSession 恢复路径与 handleIdentityConfirm 调用。
   const { startChatSession } = useChatSocket({
     code,
     router,
@@ -130,22 +134,18 @@ export function StudentChatContent() {
     setThinkingContent, setToast, setWaitingAI,
   });
 
-  // 会话恢复逻辑抽到 useStudentSession。调用点必须在 seenNotifIdsRef 声明之后。
-  const { restoreSessionFromUrl } = useStudentSession({
-    router,
-    seenNotifIdsRef,
-    loadClassroom, loadMessages, startChatSession,
-    setCode, setSelectedStudent, setStep, setTeacherMsgs,
-    setAvatarSvgs, setAllStudentAvatars, setAvatarTokenCount,
-  });
+  // 把 startChatSession 注册给外壳。用无依赖数组的裸 effect，与 optionsRef 惯用法一致，
+  // 保证 ref 里始终是最新渲染的闭包（该闭包内部同样通过 optionsRef 读取实时值）。
+  // 外壳的调用点都在 setStep('chat') 之后、隔着一次网络 await，因此注册一定已完成。
+  useEffect(() => { startChatSessionRef.current = startChatSession; });
 
   const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef });
 
   // iPadOS 15 的 100vh 会包含 Safari 工具栏占用的区域。键盘弹出后
   // Safari 还会平移 visualViewport：保持页面起点不动，只把偏移量计入
   // 可用高度，避免在触摸滚动期间反复移动整个页面造成抖动。
+  // 面板只在 step === 'chat' 时挂载，原来的 step 门控因此恒为真，随挂载/卸载等价。
   useEffect(() => {
-    if (step !== 'chat') return;
     const shell = chatShellRef.current;
     if (!shell) return;
     const viewport = window.visualViewport;
@@ -195,7 +195,7 @@ export function StudentChatContent() {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
-  }, [step]);
+  }, []);
 
   // 全屏预览图片：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
   useEffect(() => {
@@ -319,6 +319,7 @@ export function StudentChatContent() {
   // 新消息到达、AI 流式输出、或首次进入对话页时自动滚动到底部
   // 用 useEffect 代替 useLayoutEffect，避免 scrollTop 强制同步布局阻塞主线程
   // iOS 键盘弹出时避免因滚动导致键盘收起：若输入框有焦点则不滚动
+  // （原依赖里的 step 只在挂载时变化，面板挂载即 step === 'chat'，故已移除）
   useEffect(() => {
     if (userScrolledUpRef.current) return;
     const el = chatContainerRef.current;
@@ -332,7 +333,7 @@ export function StudentChatContent() {
         el.scrollTop = el.scrollHeight;
       });
     });
-  }, [messages, streamingContent, step, waitingAI]);
+  }, [messages, streamingContent, waitingAI]);
 
   // 初始化滚动标记、追踪当前可见消息（高亮标记）、监听容器尺寸变化
   useEffect(() => {
@@ -367,8 +368,9 @@ export function StudentChatContent() {
   // AI 回答完成后自动聚焦输入框
   // iOS Safari 需要特殊处理：程序化 focus() 不会弹出虚拟键盘，
   // 临时设置 readOnly→focus→移除 readOnly 能强制触发键盘
+  // （面板挂载即 step === 'chat'，原来的 step 条件恒为真）
   useEffect(() => {
-    if (!waitingAI && step === 'chat') {
+    if (!waitingAI) {
       requestAnimationFrame(() => {
         const el = inputRef.current;
         if (!el) return;
@@ -383,7 +385,7 @@ export function StudentChatContent() {
         }
       });
     }
-  }, [waitingAI, step]);
+  }, [waitingAI]);
 
   const scrollToBottom = () => {
     const el = chatContainerRef.current;
@@ -392,67 +394,10 @@ export function StudentChatContent() {
     setShowScrollBtn(false);
   };
 
-  async function loadClassroom(classroomCode?: string, sessionStudentId?: string) {
-    try {
-      setLoadError(null);
-      const cr = await api.getClassroomByCode(classroomCode || code);
-      setClassroom(cr);
-      if (cr.status === 'paused') setPaused(true);
-      // 如果是从缓存恢复会话，检查该学生/小组绑定的智能体是否停用
-      if (sessionStudentId && (cr.mode === 'group' || cr.mode === 'advanced') && cr.groups) {
-        // 需要先获取学生的 groupId
-        try {
-          const sts = await api.getClassroomStudents(cr.id);
-          const myStudent = sts.find((student) => student.id === sessionStudentId);
-          if (myStudent?.groupId) {
-            const g = cr.groups.find((group) => group.id === myStudent.groupId);
-            if (g?.agent?.enabled === false) setAgentDisabled(true);
-          }
-        } catch {}
-      } else {
-        if (cr.agents?.[0]?.enabled === false) setAgentDisabled(true);
-      }
-      return cr;
-    } catch (error: unknown) {
-      setLoadError(error instanceof Error ? error.message : '课堂不存在或已结束');
-    }
-  }
-
-  // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
-  useEffect(() => {
-    if (step === 'loading' && loadError) {
-      setStep('identity');
-    }
-  }, [loadError, step]);
-
-  async function loadMessages(classroomId: string, studentId: string) {
-    setLoadingMessages(true);
-    try {
-      const msgs = await api.getStudentMessages(classroomId, studentId);
-      if (msgs && msgs.length > 0) {
-        // 找到最后一个 AI 回答的索引，只有它保留追问建议
-        let lastAssistantIdx = -1;
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          if (msgs[i].role === 'assistant') { lastAssistantIdx = i; break; }
-        }
-        setMessages(msgs.map((m, i: number) => ({
-          role: m.role,
-          content: m.content,
-          roundIndex: m.roundIndex,
-          id: m.id,
-          fileUrls: m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : undefined,
-          fileNames: m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : undefined,
-          followUps: (i === lastAssistantIdx && m.followUps) ? (typeof m.followUps === 'string' ? JSON.parse(m.followUps) : m.followUps) : undefined,
-        })));
-      }
-    } catch {} finally {
-      setLoadingMessages(false);
-    }
-  }
-
   // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
+  // 面板挂载即 step === 'chat'，原来的 step 门控恒为真
   useEffect(() => {
-    if (step !== 'chat' || !code) return;
+    if (!code) return;
     const poll = async () => {
       try {
         const cr = await api.getClassroomByCode(code);
@@ -483,72 +428,19 @@ export function StudentChatContent() {
     poll(); // 立即执行一次
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [step, code, router, selectedStudent?.groupId]);
+  }, [code, router, selectedStudent?.groupId, setAgentDisabled, setPaused, setToast]); // 三个 setter 由外壳传入，是稳定引用
 
   // 如果选中的学生被登录了，取消选中
   useEffect(() => {
     if (selectedStudent && onlineStudentIds.has(selectedStudent.id)) {
       setSelectedStudent(null);
     }
-  }, [onlineStudentIds, selectedStudent]);
-
-  useEffect(() => {
-    if (step === 'identity' && classroom?.id) {
-      api.getClassroomStudents(classroom.id).then(data => {
-        setStudents(data);
-        // 加载头像 SVG 映射
-        api.getAvatarsAll('student').then(avatars => {
-          const m: Record<number, string> = {};
-          avatars.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
-          setAvatarSvgs(m);
-        }).catch(() => {});
-      }).catch(() => {});
-      // 连接状态监听 socket，获取已登录学生列表
-      (async () => {
-        const { io } = await import('socket.io-client');
-        if (statusSocketRef.current) statusSocketRef.current.disconnect();
-        const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
-        sk.on('connect', () => sk.emit('listen-classroom-status', classroom.id));
-        sk.on('online-students', (data: { studentIds: string[] }) => setOnlineStudentIds(new Set(data.studentIds)));
-        statusSocketRef.current = sk;
-      })();
-    }
-    // 离开身份选择页时断开状态监听
-    return () => {
-      if (statusSocketRef.current) {
-        statusSocketRef.current.disconnect();
-        statusSocketRef.current = null;
-      }
-    };
-  }, [step, classroom?.id, SOCKET_URL]);
+  }, [onlineStudentIds, selectedStudent, setSelectedStudent]); // setSelectedStudent 由外壳传入，是稳定引用
 
   const openFullscreenImage = (url: string) => {
     setZoomLevel(1);
     setImgOffset({ x: 0, y: 0 });
     setFullscreenImg(url);
-  };
-
-  useEffect(() => {
-    void restoreSessionFromUrl(Date.now()).catch((error: unknown) => {
-      setLoadError(error instanceof Error ? error.message : '学生端初始化失败，请刷新后重试');
-      setStep('identity');
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在首次挂载恢复 URL 中的本地会话
-
-  const handleSwitchIdentity = () => {
-    if (waitingAI) return;
-    // 断开当前连接
-    chatConnectionGenerationRef.current += 1;
-    if (wsRef.current) {
-      wsRef.current.disconnect();
-      wsRef.current = null;
-    }
-    localStorage.removeItem(`chat_session_${code}`);
-    setStudentSessionToken();
-    setMessages([]);
-    setSelectedStudent(null);
-    setShieldWarning(null);
-    setStep('identity');
   };
 
   const handleStopGeneration = () => {
@@ -578,61 +470,6 @@ export function StudentChatContent() {
       msg: stoppedCurrentAnswer ? '已停止回答，请修改后重新发送' : '问题已放回输入框，请修改后重新发送',
       type: 'info',
     });
-  };
-
-  const handleExit = () => {
-    if (waitingAI) return;
-    chatConnectionGenerationRef.current += 1;
-    if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
-    if (statusSocketRef.current) { statusSocketRef.current.disconnect(); statusSocketRef.current = null; }
-    localStorage.removeItem(`chat_session_${code}`);
-    setStudentSessionToken();
-    router.push('/');
-  };
-
-
-  const fetchStudentTokens = async () => {
-    if (!selectedStudent?.studentId) return;
-    try {
-      const result = await api.getStudentTokens(selectedStudent.id);
-      setAvatarTokenCount(result.tokens || 0);
-    } catch {}
-  };
-
-  const handleIdentityConfirm = async () => {
-    if (!selectedStudent || joiningRef.current) return;
-    joiningRef.current = true;
-    setJoiningClassroom(true);
-    let token: string;
-    try {
-      const session = await api.createStudentSession(code, selectedStudent.id);
-      token = session.token;
-      setStudentSessionToken(token);
-    } catch (error: unknown) {
-      setToast({ msg: error instanceof Error ? error.message : '无法进入课堂', type: 'error' });
-      joiningRef.current = false;
-      setJoiningClassroom(false);
-      return;
-    }
-    setStep('chat');
-    // 保存会话到 localStorage
-    localStorage.setItem(`chat_session_${code}`, JSON.stringify({
-      studentId: selectedStudent.id,
-      studentName: selectedStudent.name,
-      token,
-      timestamp: Date.now(),
-    }));
-    // 加载头像库（仅显示教师创建的供选择）+ 头像 SVG 映射（含学生自己的）
-    api.getAvatars('student').then(data => { setAllStudentAvatars(data); }).catch(() => {});
-    api.getAvatarsAll('student').then(data => { const m: Record<number, string> = {}; data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); }); setAvatarSvgs(m); }).catch(() => {});
-    fetchStudentTokens();
-    // 加载该学生的历史对话
-    if (classroom?.id) {
-      await loadMessages(classroom.id, selectedStudent.id);
-    }
-    await startChatSession(selectedStudent.id, selectedStudent.name, undefined, token);
-    joiningRef.current = false;
-    setJoiningClassroom(false);
   };
 
   /** 将 WebP 图片转换为 PNG Blob */
@@ -774,36 +611,6 @@ export function StudentChatContent() {
     });
   };
 
-  if (step === 'loading') {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: "1rem", marginBottom: 8 }}>正在连接课堂...</div>
-          <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: <span>{code}</span></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (step === 'identity') {
-    return (
-      <IdentityPicker
-        classroom={classroom}
-        students={students}
-        selectedStudent={selectedStudent}
-        identitySearch={identitySearch}
-        onIdentitySearchChange={setIdentitySearch}
-        onlineStudentIds={onlineStudentIds}
-        avatarSvgs={avatarSvgs}
-        joiningClassroom={joiningClassroom}
-        loadError={loadError}
-        onSelectStudent={setSelectedStudent}
-        onConfirm={handleIdentityConfirm}
-        onExit={handleExit}
-      />
-    );
-  }
-
   return (
     <div ref={chatShellRef} className={styles.chatShell}>
       {/* === 顶部栏 === */}
@@ -897,7 +704,7 @@ export function StudentChatContent() {
             )}
           </div>
           {/* 切换用户按钮 */}
-          <button onClick={handleSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
+          <button onClick={onSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
             className={styles.headerButton}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
@@ -905,7 +712,7 @@ export function StudentChatContent() {
             切换
           </button>
           {/* 退出按钮 */}
-          <button onClick={handleExit} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '退出课堂'}
+          <button onClick={onExit} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '退出课堂'}
             className={`${styles.headerButton} ${styles.exitButton}`}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             退出
@@ -966,7 +773,7 @@ export function StudentChatContent() {
                 style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: "0.813rem", cursor: 'pointer' }}>
                 重试
               </button>
-              <button onClick={handleExit}
+              <button onClick={onExit}
                 style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: 'white', fontSize: "0.813rem", cursor: 'pointer' }}>
                 返回首页
               </button>

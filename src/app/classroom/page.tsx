@@ -1,6 +1,11 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import type { Socket } from 'socket.io-client';
+import type { StartChatSession } from './classroom-types';
+import { IdentityPicker } from './identity/identity-picker';
+import { useClassroomSession } from './use-classroom-session';
 import { StudentChatContent } from './chat/chat-panel';
 
 export default function StudentChatPage() {
@@ -19,8 +24,106 @@ export default function StudentChatPage() {
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
       <Suspense fallback={<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white'}}>加载中...</div>}>
-        <StudentChatContent />
+        <ClassroomOrchestrator />
       </Suspense>
     </>
+  );
+}
+
+/**
+ * 编排者：step 状态机 + loading/identity 分支 + 挂载面板。
+ * 这里创建的 ref 同时交给外壳与面板，两侧必须是同一个对象（M0 Ruling 8）。
+ */
+function ClassroomOrchestrator() {
+  const router = useRouter();
+  const wsRef = useRef<Socket | null>(null);
+  const statusSocketRef = useRef<Socket | null>(null);
+  const chatConnectionGenerationRef = useRef(0);
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  const startChatSessionRef = useRef<StartChatSession | null>(null);
+
+  const session = useClassroomSession({
+    router,
+    wsRef,
+    statusSocketRef,
+    chatConnectionGenerationRef,
+    seenNotifIdsRef,
+    startChatSessionRef,
+  });
+
+  if (session.step === 'loading') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: "1rem", marginBottom: 8 }}>正在连接课堂...</div>
+          <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: <span>{session.code}</span></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (session.step === 'identity') {
+    return (
+      <IdentityPicker
+        classroom={session.classroom}
+        students={session.students}
+        selectedStudent={session.selectedStudent}
+        identitySearch={session.identitySearch}
+        onIdentitySearchChange={session.setIdentitySearch}
+        onlineStudentIds={session.onlineStudentIds}
+        avatarSvgs={session.avatarSvgs}
+        joiningClassroom={session.joiningClassroom}
+        loadError={session.loadError}
+        onSelectStudent={session.setSelectedStudent}
+        onConfirm={session.handleIdentityConfirm}
+        onExit={session.handleExit}
+      />
+    );
+  }
+
+  return (
+    <StudentChatContent
+      code={session.code}
+      classroom={session.classroom}
+      selectedStudent={session.selectedStudent}
+      avatarSvgs={session.avatarSvgs}
+      avatarTokenCount={session.avatarTokenCount}
+      allStudentAvatars={session.allStudentAvatars}
+      onlineStudentIds={session.onlineStudentIds}
+      teacherMsgs={session.teacherMsgs}
+      messages={session.messages}
+      loadingMessages={session.loadingMessages}
+      waitingAI={session.waitingAI}
+      paused={session.paused}
+      agentDisabled={session.agentDisabled}
+      shieldWarning={session.shieldWarning}
+      toast={session.toast}
+      loadError={session.loadError}
+      setStep={session.setStep}
+      setClassroom={session.setClassroom}
+      setSelectedStudent={session.setSelectedStudent}
+      setAvatarSvgs={session.setAvatarSvgs}
+      setAvatarTokenCount={session.setAvatarTokenCount}
+      setAllStudentAvatars={session.setAllStudentAvatars}
+      setTeacherMsgs={session.setTeacherMsgs}
+      setMessages={session.setMessages}
+      setWaitingAI={session.setWaitingAI}
+      setPaused={session.setPaused}
+      setAgentDisabled={session.setAgentDisabled}
+      setShieldWarning={session.setShieldWarning}
+      setToast={session.setToast}
+      setLoadError={session.setLoadError}
+      loadClassroom={session.loadClassroom}
+      loadMessages={session.loadMessages}
+      fetchStudentTokens={session.fetchStudentTokens}
+      onSwitchIdentity={session.handleSwitchIdentity}
+      onExit={session.handleExit}
+      router={router}
+      wsRef={wsRef}
+      statusSocketRef={statusSocketRef}
+      chatConnectionGenerationRef={chatConnectionGenerationRef}
+      seenNotifIdsRef={seenNotifIdsRef}
+      startChatSessionRef={startChatSessionRef}
+    />
   );
 }

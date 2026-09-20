@@ -268,9 +268,12 @@ export function useChatSocket(options: ChatSocketOptions) {
       });
 
       // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。
-      // 这条订阅是学生端的实时路径；兜底是上面 connect 回调里的补读（覆盖连接成立前的空窗
-      // 与断线期间）。面板那条 15 秒轮询（chat-panel.tsx 的 poll）读的是 status / agents /
-      // paused，拿到 cr 后不调用 setClassroom，不参与三态。设计 §4.4 要求实时，这条不能省。
+      // 这条订阅是学生端的实时路径；兜底有两条，都在别处：
+      //   1. 上面 connect 回调里的补读 —— 覆盖「连接成立前」与「断线期间」两个空窗；
+      //   2. `use-classroom-session.ts` 的 15 秒轮询 —— M1b-2 Task 6 起它把 `cr.modules`
+      //      合并回来，覆盖「连接存活期间漏掉一次广播」（此前这条轮询拿到了 modules
+      //      却丢掉，是该窗口唯一的缺口）。两条兜底都只合并 modules。
+      // 设计 §4.4 要求实时，这条不能省。
       // 载荷是线缆上的值，先过类型守卫 —— 连 null / undefined 都会走到这里，所以不能直接解构。
       socket.on('module-state-changed', (data: ModuleStateEvent) => {
         const { moduleKey, state } = data ?? {};

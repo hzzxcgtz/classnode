@@ -210,13 +210,89 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // 课堂已经结束了，这里只清本地会话、提示、整页回首页。这三步与 useChatSocket 的
   // classroom-ended 处理等价（那边用 optionsRef.current.code，同一会话期取值相同），
   // 也就是说外壳内目前有两份同样的三行逻辑 —— 合并要动 ChatSocketOptions，留给 M1b。
-  // 必须 useCallback：[code] 之外身份稳定，否则面板的轮询 effect 每次渲染都会重建
+  // 必须 useCallback：[code] 之外身份稳定，否则下面那条轮询 effect 每次渲染都会重建
   // setInterval —— 流式回复期间渲染频繁，15 秒的兜底轮询将几乎永不触发。
   const handleClassroomEnded = useCallback(() => {
     localStorage.removeItem(`chat_session_${code}`);
     setToast({ msg: '课堂已结束', type: 'info' });
     optionsRef.current.router.push('/');
   }, [code]);
+
+  // 课堂生命期轮询（15 秒）：课堂是否结束、智能体是否被停用、课堂是否暂停，外加三态兜底。
+  // M1b-2 Task 6 把它从学伴面板（chat-panel.tsx 的 poll）搬到这里。
+  //
+  // **为什么必须搬**：这条观察的是**会话生命期**，与「学伴模块此刻是否可见」无关 —— 面板自
+  // Task 4 起只在学生点开学伴卡片后才挂载（§4.5 惰性挂载，§4.8 低性能降级模式下还会
+  // 「切走即销毁」），把会话生命期的观察者放进模块面板，等于让「学生点没点开学伴」决定课堂
+  // 结束能不能被兜住。推送路径（use-chat-socket 的 `classroom-ended`）本身是会话级的、面板
+  // 不挂载也收得到，所以真正的缺口是**它覆盖不到的那两个窗口**：socket 断线期间课堂结束
+  // （重连成功时服务端 join-classroom 只回 `ai-error`「课堂不存在或已结束」，**不会**补发
+  // `classroom-ended`，学生端只把它塞进 connectionError 横幅、停在原地），以及断线后没再
+  // 连上的情况 —— 这两个窗口唯一的兜底就是这条轮询。宿主因此是本 hook（会话的持有者），
+  // 而不是任何一个模块面板。T1 当初坚决不给它加 `active` 门，
+  // 理由同此，本次搬迁不改变这一点。
+  //
+  // 四件事，前三件与搬迁前逐字一致：
+  //   1. `status === 'ended'` → 清本地会话、提示、整页回首页（handleClassroomEnded）
+  //   2. 分组/高级模式看当前小组绑定的智能体，其余看第一个 ⇒ agentDisabled
+  //   3. `status === 'paused'` ⇒ paused
+  //   4. **合并 `cr.modules`**（Task 6 新增，§4.11 B1）：M1b-1 在 use-chat-socket 的 connect
+  //      回调里加的补读只覆盖「连接成立前」与「断线期间」两个窗口，「连接存活期间漏掉一次
+  //      广播」此前**没有任何兜底** —— 这条轮询拿到了 `modules` 却把它丢掉。只合并 modules、
+  //      不整对象覆盖，与 connect 补读同一口径（整对象覆盖会让一次陈旧读取复活
+  //      status / allowStudentStop 等字段）。
+  //
+  // 闸门是 `step` 而不是 `active`：轮询窗口 =「已进入课堂」（首页或某个模块），这是会话相位，
+  // 不是模块呈现。加载页与身份页不跑 —— 那里课堂还没进入，课堂结束该就地提示
+  // （loadError / 身份确认失败），而不是静默整页跳转。
+  //
+  // 依赖里除原始值以外全是稳定引用：handleClassroomEnded 已 useCallback([code])（§4.10 C9
+  // 点名过的坑），setPaused / setAgentDisabled / setClassroom 是 useState setter。任何一项
+  // 变成每次渲染新建，15 秒的兜底就会退化成「几乎永不触发」。
+  useEffect(() => {
+    if (!code) return;
+    if (step !== 'home' && step !== 'shell') return;
+    const poll = async () => {
+      try {
+        const cr = await api.getClassroomByCode(code);
+        if (cr.status === 'ended') {
+          // 课堂已结束：清本地会话、提示、整页回首页 —— 编排归外壳
+          handleClassroomEnded();
+          return;
+        }
+        // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个
+        if ((cr.mode === 'group' || cr.mode === 'advanced') && selectedStudent?.groupId && cr.groups) {
+          const g = cr.groups.find((group) => group.id === selectedStudent.groupId);
+          setAgentDisabled(g?.agent?.enabled === false);
+        } else {
+          setAgentDisabled(cr.agents?.[0]?.enabled === false);
+        }
+        setPaused(cr.status === 'paused');
+        // 三态兜底。`freshModules` 先落成局部量：旧服务端/老库可能真的不带这个字段，
+        // 那种情况保留现有三态，不要把已就绪的态清成默认值。
+        const freshModules = cr.modules;
+        if (!freshModules) return;
+        setClassroom((prev) => {
+          if (!prev) return prev;
+          const current = prev.modules ?? [];
+          // 只在真的变了时才写回。无条件 `{...prev, modules}` 会每 15 秒换一次 `classroom`
+          // 的对象身份 ⇒ 整个外壳（含常驻的学伴面板）每 15 秒重渲染一次，老 iPad 上不值当。
+          const unchanged = current.length === freshModules.length
+            && current.every((m, i) => m.moduleKey === freshModules[i].moduleKey && m.state === freshModules[i].state);
+          return unchanged ? prev : { ...prev, modules: freshModules };
+        });
+      } catch (error: unknown) {
+        // 课堂已结束（API 返回 404 或 400）
+        const msg = error instanceof Error ? error.message : '';
+        if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
+          handleClassroomEnded();
+        }
+      }
+    };
+    poll(); // 立即执行一次
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [code, step, selectedStudent?.groupId, handleClassroomEnded, setAgentDisabled, setPaused, setClassroom]);
 
   // 面板「重试」按钮的编排（对应面板 chat-panel.tsx 的错误态卡片）：按 URL 里的互动码
   // 重建课堂与历史消息，再续接会话；取不到本地会话就退回身份选择页。

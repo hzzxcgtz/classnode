@@ -46,8 +46,6 @@ export function StudentChatContent({
   setAllStudentAvatars,
   setMessages,
   setWaitingAI,
-  setPaused,
-  setAgentDisabled,
   setShieldWarning,
   setToast,
   setConnectionError,
@@ -57,7 +55,6 @@ export function StudentChatContent({
   fetchStudentTokens,
   onSwitchIdentity,
   onExit,
-  onClassroomEnded,
   onRetryRestore,
   wsRef,
   statusSocketRef,
@@ -509,41 +506,6 @@ export function StudentChatContent({
     userScrolledUpRef.current = false;
     setShowScrollBtn(false);
   };
-
-  // 轮询后备：每 15 秒从 API 同步智能体启用/停用状态和课堂暂停状态（socket 事件的兜底）
-  // M1b-2 Task 1 **刻意不给这条加 active 门**：它观察的是「课堂生命期」，不是模块呈现。
-  // 面板常驻后若按可见性停掉它，学生只要不打开学伴 tab，课堂结束就再也检测不到
-  // （§4.10 C1 是同一判断，并进一步要求把它搬进外壳 —— 那是另一件事，不在本任务内）。
-  useEffect(() => {
-    if (!code) return;
-    const poll = async () => {
-      try {
-        const cr = await api.getClassroomByCode(code);
-        if (cr.status === 'ended') {
-          // 课堂已结束：清本地会话、提示、整页回首页 —— 编排归外壳
-          onClassroomEnded();
-          return;
-        }
-        // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个
-        if ((cr.mode === 'group' || cr.mode === 'advanced') && selectedStudent?.groupId && cr.groups) {
-          const g = cr.groups.find((group) => group.id === selectedStudent.groupId);
-          setAgentDisabled(g?.agent?.enabled === false);
-        } else {
-          setAgentDisabled(cr.agents?.[0]?.enabled === false);
-        }
-        setPaused(cr.status === 'paused');
-      } catch (error: unknown) {
-        // 课堂已结束（API 返回 404 或 400）
-        const msg = error instanceof Error ? error.message : '';
-        if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
-          onClassroomEnded();
-        }
-      }
-    };
-    poll(); // 立即执行一次
-    const interval = setInterval(poll, 15000);
-    return () => clearInterval(interval);
-  }, [code, onClassroomEnded, selectedStudent?.groupId, setAgentDisabled, setPaused]); // 两个 setter 与 onClassroomEnded 都由外壳提供，是稳定引用
 
   const openFullscreenImage = (url: string) => {
     setZoomLevel(1);

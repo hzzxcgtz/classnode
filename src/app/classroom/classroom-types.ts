@@ -151,14 +151,13 @@ export interface ChatPanelProps {
   // —— 外壳 setter：面板自身仍要写这些状态 ——
   // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket
   //   在写，随 hook 上移后已从面板契约中移除。setLoadError 与 setStep 过去只有面板的
-  //   重试卡片在写，随重试逻辑上移后也已移除。）
+  //   重试卡片在写，随重试逻辑上移后也已移除。setPaused 与 setAgentDisabled 过去只有
+  //   面板的 15 秒轮询在写，M1b-2 Task 6 把轮询搬进 use-classroom-session 后同样移除。）
   setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
   setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
   setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;
   setMessages: Dispatch<SetStateAction<StudentChatMessage[]>>;
   setWaitingAI: Dispatch<SetStateAction<boolean>>;
-  setPaused: Dispatch<SetStateAction<boolean>>;
-  setAgentDisabled: Dispatch<SetStateAction<boolean>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   setConnectionError: Dispatch<SetStateAction<string | null>>;
@@ -166,15 +165,15 @@ export interface ChatPanelProps {
   setThinkingContent: Dispatch<SetStateAction<string>>;
   setTeacherNotifBubble: Dispatch<SetStateAction<string | null>>;
 
-  // —— 外壳逻辑：面板的顶部栏、错误态重试卡片与轮询兜底调用 ——
+  // —— 外壳逻辑：面板的顶部栏与错误态重试卡片调用 ——
   // 上移前，面板的重试卡片直接持有 loadClassroom / loadMessages / startChatSession /
-  // setStep、轮询兜底直接持有 router —— 那都是渲染在模块 DOM 里的页面编排。现在面板
+  // setStep，轮询兜底直接持有 router —— 那都是渲染在模块 DOM 里的页面编排。现在面板
   // 只留按钮与调用点，编排全部由外壳提供，面板不再持有任何整页导航入口。
+  // （onClassroomEnded 过去由面板的 15 秒轮询调用，M1b-2 Task 6 把轮询搬进
+  //   use-classroom-session 后已从面板契约中移除：课堂生命期不属于模块呈现。）
   fetchStudentTokens: () => Promise<void>;
   onSwitchIdentity: () => void;
   onExit: () => void;
-  /** 课堂已结束（轮询兜底发现）：外壳清本地会话、提示并整页回首页。 */
-  onClassroomEnded: () => void;
   /** 错误态的「重试」：外壳按 URL 互动码恢复课堂、历史消息与会话。 */
   onRetryRestore: () => void;
 

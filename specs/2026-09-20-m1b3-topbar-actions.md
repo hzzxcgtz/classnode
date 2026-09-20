@@ -250,9 +250,11 @@ T1 期间 `pnpm build` 覆盖了 `.next`，**把正在跑的 dev server 打成�
 
 ---
 
-## Task 6: 首页头部行撤除（原「首页瘦身」的另一半）
+## Task 6: 首页 —— 撤除头部行 + 启用新模块图标
 
-**Files:** Modify `src/app/classroom/home/student-home.tsx`、`src/app/classroom/home/home.module.css`
+**Files:** Modify `src/app/classroom/home/student-home.tsx`、`src/app/classroom/home/home.module.css`、`src/app/classroom/module-meta.tsx`
+
+### 6a 撤除首页整行头部
 
 用户钦定「全部上提，首页只剩三张卡」。撤掉首页**整行头部**：
 - 班级名（`student-home.tsx:171` 附近）
@@ -264,6 +266,32 @@ T1 期间 `pnpm build` 覆盖了 `.next`，**把正在跑的 dev server 打成�
 **保留**：三张卡片；首页的 `Toast` 与 `useOverlayPortal`（Toast 仍然需要）。
 **必须核对**：撤掉头部后 `.page` 的渐变背景与上内边距是否仍正确给**两行** chrome 让位（T5 改了栏高）；`onExit` 若在 `StudentHomeProps` 里再无消费者就去掉（⚠️ 注意 `_ContractCheck` **抓不住「把契约改宽」**，靠 tsc 的调用点报错发现漏改）。
 **验证**：首页不应剩下任何指向已移走能力的死按钮或空占位。
+
+### 6b 三张卡片换用用户提供的模块图标
+
+**用户提供的文件已经在正确位置，不需要复制**（控制器已实测验证）：
+
+```
+public/images/module-icons/worksheet.svg    1221B   → /images/module-icons/worksheet.svg
+public/images/module-icons/explore.svg      1163B
+public/images/module-icons/companion.svg    1164B
+```
+
+`public/` 就是 Next.js 的 Web 根，三个 URL 现已 HTTP 200（`image/svg+xml`）。**同目录还各有一份 128×128 的 `.png`，本任务不用**（SVG 更小、可缩放、Retina 不糊）；**也不要删它们**（那是用户的文件，控制器会另行询问）。
+
+**用 SVG 而不是 PNG。** 三个 SVG 是自包含的（无外部引用），且自带的渐变底色**正好是各模块的强调色**：`#1D4ED8` / `#6D28D9` / `#155E75` —— 与 `module-meta.tsx` 的 `accentStrong` **同值**。
+
+**关键：这批图标是「自带渐变圆角底的整块图标」（`rect rx=32` + 白色线稿），不是线稿。** 所以：
+- 现在 `.cardIcon` 的 `background: var(--card-accent)` 与 `border-radius: 12px`（`home.module.css:218-228`）**必须去掉**，否则变成「色块套色块」。
+- **保留 `.cardIcon` 的 `position: relative`** —— 锁定角标 `<LockBadge />` 是挂在它里面的绝对定位元素（`student-home.tsx:211-214`），去掉定位上下文会让角标跑位。
+- `<img>` 加 `alt=""`：卡片正文已经有模块名文字，图标是**装饰性**的，重复朗读反而啰嗦。
+
+**尺寸：用户明确要求「图标不要太小」。** 现在是 **40×40**，请放大到 **52×52** 起步（实施者可上下微调，但**不得小于 48**），并**实测**卡片在既有的 860px / 640px 响应式分支下不破版、不产生横向滚动。
+
+**锁定态必须仍然「一眼看出灰掉」**（§4.4 的三态要求）：现在靠 `.cardLocked .cardIcon { background: #e2e8f0; color: #94a3b8 }`（`:294-297`）—— 换成 `<img>` 后这两个属性**不再有效**（SVG 自带颜色、也改不了色）。
+⇒ 改用 **`filter: grayscale(1)` + 降低 `opacity`**（或用遮罩），**并实测锁定态与开放态在视觉上确实区分得开**。⚠️ 注意 `--card-accent` 还被卡片的**左侧粗边（`:183`）、模块名颜色（`:240`）、CTA 按钮底色（`:262`）**用着，**不要动那三处**。
+
+**图标路径写进 `module-meta.tsx`**（模块元数据的单一来源），**不要**在 `student-home.tsx` 里散落三个字面量。既有的 `icon`（白色线稿，给 Tab 栏用）**保留不动** —— 顶栏的 tab 在 16px 上，全彩整块图标会糊成一团。**两个字段并存是刻意的**，请在 `module-meta.tsx` 里用注释写明这个分工。
 
 - [ ] **Step 1-2: 实现 + 门禁；Step 3: 提交**
 

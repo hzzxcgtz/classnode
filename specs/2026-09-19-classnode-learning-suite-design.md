@@ -300,6 +300,46 @@ M1 的第一项必须是**「编排上移」**：把 `step`、loading 分支、i
 
 ---
 
+### 4.10 M1a 交付后的 M1b 前置清单（2026-09-20 补充）
+
+M1a（编排上移）已完成：`page.tsx` 26 → **145 行**（编排者）、新增 `use-classroom-session.ts` **411 行**、`chat-panel.tsx` 1500 → **1260 行**（纯面板，零整页导航、零流程编排）。终审裁决为「修一处后可合并」；修完后以下事项**必须在 M1b 处理**——它们今天正确，但**只因为某个巧合**，M1b 的结构一改就会静默失效。
+
+#### A. 一个必须先做的二选一（不要两个都不选）
+
+M1a 为「切换身份时复位」留了**两套不互相覆盖的机制**：外壳在 `handleIdentityConfirm` 里显式复位 6 个状态；面板在自己的卸载清理里复位 2 个 streaming ref 与 2 个定时器。
+
+**缺口**：`streamingRafRef`/`streamingBufferRef` 的复位**只存在于面板的卸载清理**里。§4.5 规定「模块一旦挂载即不再卸载」——那条策略一生效，这个兜底就消失，M1a 修复过的缺陷（**RAF id 已取消但非空 ⇒ `ai-chunk` 的 `if (!streamingRafRef.current)` 永远为假 ⇒ 流式文字完全不显示**）会以完全相同的形式回来。同一缺口还会让**学生 A 的未发送草稿与已上传附件重新泄漏给学生 B**（M1a 的 Ruling 4 明确把它列为要修的东西）。
+
+**两条互斥路线，M1b 必须选一条：**
+- **路线 A（省事）**：给面板加 `key={selectedStudent?.id}`。换身份即重挂 → 清理照跑，今天的 ref/清理语义完整保留。
+- **路线 B（彻底）**：在外壳提一个 `resetSessionState()`，覆盖 7 个会话状态 + 2 个 streaming ref + 2 个定时器，在 `handleIdentityConfirm`（`setStep('chat')` 之前）、`handleSwitchIdentity`、`handleExit` 三处调用；面板卸载清理只留 DOM/socket 相关。
+
+**若要把 `setToast(null)` 也纳入复位，那是一条需要显式裁定的行为变更**（基线同样泄漏 `toast`）——走裁定，不要悄悄加。
+
+#### B. `use-chat-socket.ts` 仍持有整页导航与流程状态
+
+`router`(:15) 与 `setStep`(:37) 仍在 options 里，`:140` 有 `router.push('/')`、`:124` 有 `setStep('identity')`。**M1a 的 mandate 不允许动它**（改就是改行为）。产物是 `classroom-ended` 的三行序列在 `useClassroomSession` 与 `useChatSocket` 里各有一份。
+
+**M1b 必须认领**：step 机会长出 `home`/`shell`，socket 直接写 `'identity'`、直推 `/` 会绕过它，可能出现「tab 状态说在学伴、实际在身份页」的组合。
+
+#### C. 终审新增的九条 M1b 雷区（§4.9 与计划未覆盖的）
+
+1. **「课堂已结束」的兜底检测长在面板里，外壳自己没有生命期观察者。** push 路径在 `use-chat-socket.ts:137`，而 15 秒轮询兜底在 `chat-panel.tsx:381-410`。§4.8 的低性能降级模式正是「切走即销毁」——那一刻**只要学生不打开学伴 tab，课堂结束就检测不到**，学生会在已结束的课堂里继续作答。**建议把轮询搬进外壳**（它是会话生命期，不是模块呈现），顺带让 §4.9② 要求的「给它加 `active` 门」变成不必要。
+2. **autofocus 的两条路径在保留策略下会双双失效，且失效方向取决于策略。** `visibility:hidden` 下元素**不可聚焦**，`el.focus()` 静默 no-op，iOS 的 `readOnly→focus→readOnly` 技巧一并失效 ⇒ 回到学伴 tab 键盘不再自动弹出（基线是自动弹的）；而 §4.6 动画期的 `opacity:0 + transform` 阶段元素**仍可聚焦** ⇒ 键盘可能弹在另一个 tab 上。**两条路径都要改**（`autoFocus` 属性与 `[waitingAI]` effect）。
+3. **必须在动画容器里逃出去的 `position: fixed` 元素不止标记条与 tooltip。** 全屏图片查看器（z-index 9999）、avatar 模态（z-index 100）、`Toast`（z-index 99999）**同样嵌在 `composerArea` 内**。§4.6 的两个面板在动画期共存 ⇒ 面板即 `transform` 容器 ⇒ 查看器被重新锚定到面板盒子、图被裁切、暗色遮罩跟着平移。**需要 portal 或提取，这是 M1b 的必须项而非整洁问题。** 附带：切 tab 时若查看器/模态仍开着，状态保留 ⇒ 切回来它还在（跨学生不泄漏了，但跨 tab 泄漏）。
+4. **「只渲染最近 N 条消息」与现有标记机制相撞。** `data-msg-id` 用的是**渲染数组下标**，而 `updateMarkers`/`scrollToMarker`/`lastUserMessageIndex` 全部基于该下标。`messages` 现在归外壳（全量），一旦面板只渲染切片，标记条位置、点击跳转、`isRespondingToThis` 全部错位。**修法**：标记与跳转改用 `msg.id`/`roundIndex` 做键。
+5. **三处 generation 判等都写 `!==`**（`use-chat-socket.ts:56/165/208`），所以「handler 里 +1、卸载清理里再 +1」不互相破坏。**M1b 若把任何一处改成 `===`（读起来更自然），双次自增会开始静默吞掉回调。**
+6. **面板卸载清理是 `useEffect(..., [])` + eslint-disable，闭包捕获首帧的 props。** 今天安全（9 个 ref 对象由 `page.tsx` 稳定持有）；M1b 若做成 per-tab 或按会话重建 ref，清理会去复位**旧对象**。
+7. **面板必须在首帧就带 `visibility:hidden` 挂载**，否则 `autoFocus`/模态会有一次可见闪现。身份页是一张无 z-index 的全屏不透明屏，而面板带 5 个 z-index 层级（20/30/100/9999/99999）——若 M1b 改用 `opacity:0`/移出视口/裁切高度而非 `visibility`，这些 fixed 元素会压在首页与身份页之上。
+8. **外壳的 step 机与 socket 的直写会打架**（见 B）。
+9. **未 memo 的 handler 是 M1b 的陷阱**：`handleRetryRestore` 未 memo（今天只进 `onClick`），`handleExit`/`handleSwitchIdentity` 也未 memo。**M1b 若给任何 effect 加 `active` 门而把 handler 放进依赖数组，必须先 memo** —— `handleClassroomEnded` 已经踩过这个坑（不 memo 则每次渲染重建 `setInterval` 并立即重跑 `poll()`），它是 M1a 里唯一一处「搬家会静默弄坏功能」的位置。注意 `handleExit`/`handleSwitchIdentity` 读 `waitingAI`/`code`，依赖要写全，不能照抄 `handleClassroomEnded` 的 `[code]`。
+
+#### D. 一条「不要做」的警告
+
+**不要用「让重试按钮走 `restoreSessionFromUrl`」来消除两个 URL 码解析器的重复。** `use-student-session.ts:29` 的 `const o = optionsRef.current` 是**一次性快照**——一旦从重渲染后的回调调用，语义会静默变成「调用时刻的 options」。当前它只有 `[]` effect 一个调用点，所以快照是安全的；**重试按钮复制一份解析逻辑反而是正确选择**。要统一就把 `parseCodeFromUrl()` 提到 util 里两边共用（含基线那个 regex 兜底，Safari 15 受限 WebView 才需要它）。
+
+---
+
 ## 5. P2：探究助手
 
 ### 5.1 源隔离方案

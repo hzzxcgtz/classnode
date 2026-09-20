@@ -293,7 +293,78 @@ git commit -m "refactor(classroom): 上移编排职责，chat-panel 收敛为面
 
 ---
 
-## Task 3: `useChatSocket` 回调化（Ruling A）
+## Task 3: 把 `useChatSocket` 上移到外壳（**原计划的「回调化」已作废**）
+
+> **⚠️ 本节已按 Task 2 的实测结果重写。** 原计划是「保留 `useChatSocket` 在面板内，把 `router`/`setStep` 换成外壳回调」。Task 2 证明该方案的**前提不成立**，且其实现形态有严重缺陷，故改为**整体上移**。
+
+### 为什么改了
+
+**原方案（Ruling A）的前提被证伪。** 它断言 `useChatSocket` 该留在面板，因为 `messages` 是模块数据、由该 hook 独占写入。但 Task 2 证明 `messages` **本来就必须住在外壳** —— `loadMessages` 是外壳函数，且它对 `messages` 的写入发生在面板挂载之前。前提没了，结论不成立。
+
+**更关键的是原方案留下的失败模式。** Task 2 用 `startChatSessionRef` 让外壳取到面板的 `startChatSession`，实现在 `use-classroom-session.ts:182-185`：
+
+```ts
+const start = optionsRef.current.startChatSessionRef.current;
+return start ? start(studentId, studentName, classroomCode, token) : Promise.resolve();
+```
+
+而注册发生在 `chat-panel.tsx:140` 的 **`useEffect`**（paint 之后）。存在一个窗口：恢复路径读 ref 时面板尚未完成注册。**此时不报错、不打日志、什么都不做** —— 学生停在没有 socket、没有消息、也没有任何提示的聊天页上。「进不去课堂」是本产品最不能接受的失败模式，且偶发难查。**用 ref 透传把编译期能保证的东西变成了运行期时序依赖，还把失败伪装成成功。**
+
+### 改成什么
+
+把 `useChatSocket` 的调用从 `chat-panel.tsx` 移到 `use-classroom-session.ts`（外壳）。收益：
+
+1. 消除 `startChatSessionRef` 及其时序不变量（外壳直接持有 `startChatSession`，无需跨组件传递）
+2. 外壳成为**会话生命周期的唯一持有者** —— 正是 M1b 需要的（面板变成 tab，不该拥有 session socket）
+3. 符合 §4.1「薄面板」的终态
+
+**代价（如实记录）**：`setStreamingContent`、`setThinkingContent`、`setConnected`、`setConnectionError` 等当前仍在面板的状态，因为被 socket 写入，也必须跟着上移。**Task 3 比原计划大，面板会进一步变薄 —— 这正是方向，但工作量要按实调整。**
+
+### 执行要求
+
+- [ ] **Step 1: 用 grep 枚举 `useChatSocket` 的全部 options 与它们的归属**
+
+```bash
+cd /Users/zxc/myprojects/classnode
+echo "=== options 接口全文 ===" && sed -n '1,50p' src/app/classroom/chat/use-chat-socket.ts
+echo "=== 该 hook 写到哪些 setter ===" 
+grep -oE 'optionsRef\.current\.set[A-Za-z]+' src/app/classroom/chat/use-chat-socket.ts | sort -u
+echo "=== 这些 setter 目前声明在哪 ==="
+grep -n "setStreamingContent\|setThinkingContent\|setConnected\|setConnectionError" src/app/classroom/chat/chat-panel.tsx | head
+```
+
+**不得信任任何清单（包括本节）——以 grep 输出为准。** M0 实测：计划清单漏了 8 个依赖、多列了 2 个假依赖。
+
+- [ ] **Step 2: 上移 hook 调用与它写入的状态**
+
+被 socket 写入的面板状态随之上移到 `use-classroom-session.ts`；外壳通过 props 把它们传给面板。**8 个 ref 仍按 `{ current: T }` 透传**（M0 Ruling 8）。
+
+- [ ] **Step 3: 删除 `startChatSessionRef`**
+
+外壳直接持有 `startChatSession`，`useStudentSession` 的 options 直接传它 —— 不再有 ref、不再有注册时序、不再有静默兜底。
+
+**同时确认：`useStudentSession` 与 `useChatSocket` 的调用顺序约束**现在同处一个 hook 内，是普通 TDZ 约束（`useChatSocket` 必须先调），由 `const` 声明顺序保证 —— 比原来的跨组件时序可靠得多。**给出证明行号。**
+
+- [ ] **Step 4: 验证**
+
+```bash
+npx tsc --noEmit; echo "tsc 退出码: $?"
+npx eslint src/app/classroom/; echo "eslint 退出码: $?"
+pnpm build; echo "build 退出码: $?"
+```
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add src/app/classroom/
+git commit -m "refactor(classroom): useChatSocket 上移到外壳，消除 startChatSessionRef 时序依赖"
+```
+
+---
+
+## ~~Task 3（原）: `useChatSocket` 回调化（Ruling A）~~ 已作废
+
+原内容保留于 git 历史（计划提交 `6b23057`）。作废理由见上。
 
 **Files:**
 - Modify: `src/app/classroom/chat/use-chat-socket.ts`

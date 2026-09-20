@@ -12,8 +12,9 @@ type Emitted = { room: string; event: string; payload: unknown };
  * 手写 prisma mock：只实现本端点会调到的方法。
  * `writes` 记录所有写库调用，非法输入用例断言它必须为空。
  * `modules` 是 classroomModule.findMany 的返回值 —— 两个读端点都用它拼三态。
+ * `modulesError` 让 findMany 抛错，模拟「ClassroomModule 表不存在」（老库启动 DDL 被跳过）。
  */
-function createHarness(options: { classroom: unknown; modules?: unknown[] }) {
+function createHarness(options: { classroom: unknown; modules?: unknown[]; modulesError?: boolean }) {
   const emits: Emitted[] = [];
   const writes: unknown[] = [];
   const prisma = {
@@ -21,7 +22,10 @@ function createHarness(options: { classroom: unknown; modules?: unknown[] }) {
       findUnique: async () => options.classroom,
     },
     classroomModule: {
-      findMany: async () => options.modules ?? [],
+      findMany: async () => {
+        if (options.modulesError) throw new Error('no such table: ClassroomModule');
+        return options.modules ?? [];
+      },
       upsert: async (args: unknown) => {
         writes.push(args);
         return { id: 'module-row-1' };
@@ -44,7 +48,7 @@ function createHarness(options: { classroom: unknown; modules?: unknown[] }) {
 
 async function startServer(
   t: { after: (fn: () => void) => void },
-  options: { classroom: unknown; modules?: unknown[] },
+  options: { classroom: unknown; modules?: unknown[]; modulesError?: boolean },
 ) {
   const harness = createHarness(options);
   const server = createServer(harness.app);
@@ -307,4 +311,39 @@ test('两个读端点在同样的记录下给出同一份三态', async (t) => {
     { moduleKey: 'explorer', state: 'preview' },
     { moduleKey: 'companion', state: 'hidden' },
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// 读路径不可失败：ClassroomModule 表不存在时（老库启动 DDL 被跳过）也必须降级，
+// 而不是把学生挡在课堂门外。三态本身可以退化成「都可见但锁定」，进不来不行。
+// ---------------------------------------------------------------------------
+
+test('学生端：模块表查询抛错时仍返回 200，三态降级为三个默认态', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: studentClassroom(),
+    modulesError: true,
+  });
+
+  const response = await getByCode(baseUrl, '1234');
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.id, 'classroom-1');
+  assert.equal(body.modules.length, 3);
+  assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
+});
+
+test('教师端：模块表查询抛错时仍返回 200，三态降级为三个默认态', async (t) => {
+  const { baseUrl } = await startServer(t, {
+    classroom: teacherClassroom(),
+    modulesError: true,
+  });
+
+  const response = await getClassroom(baseUrl, 'classroom-1');
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.id, 'classroom-1');
+  assert.equal(body.modules.length, 3);
+  assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
 });

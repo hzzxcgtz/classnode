@@ -453,10 +453,11 @@ router.get('/:id', async (req, res) => {
     }));
     // 教师端看板也依赖三态（刷新后要还原模块的开关状态）。
     // 与 /code/:code 共用 mergeModuleStates，老课堂的零行兜底只在这一处定义。
-    const moduleRecords = await prisma.classroomModule.findMany({
-      where: { classroomId: classroom.id },
-      select: { moduleKey: true, state: true },
-    });
+    // 读路径不可失败：ClassroomModule 表缺失（老库启动 DDL 被跳过）时降级为全默认态，
+    // 绝不能因为查不到模块而把教师/学生挡在课堂之外。
+    const moduleRecords = await prisma.classroomModule
+      .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
+      .catch(() => [] as { moduleKey: string; state: string }[]);
     res.json({ ...classroom, students, groupMembersMap, modules: mergeModuleStates(moduleRecords) });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });
@@ -540,10 +541,11 @@ router.get('/code/:code', async (req, res) => {
 
     // 三态随课堂信息一起下发：学生端每 15 秒轮询本端点，加字段即自动获得首屏与兜底两条路径。
     // 写入端点只为被设置的那一个模块建行，老课堂一行都没有，故必须按 MODULE_KEYS 补齐。
-    const moduleRecords = await prisma.classroomModule.findMany({
-      where: { classroomId: classroom.id },
-      select: { moduleKey: true, state: true },
-    });
+    // 读路径不可失败：ClassroomModule 表缺失（老库启动 DDL 被跳过）时降级为全默认态
+    // ——「三个模块可见但锁定」是能接受的退化，把学生挡在课堂门外不是。
+    const moduleRecords = await prisma.classroomModule
+      .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
+      .catch(() => [] as { moduleKey: string; state: string }[]);
 
     res.json({
       id: classroom.id,

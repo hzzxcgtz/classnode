@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
 
 let studentSessionToken = '';
 
@@ -172,6 +172,10 @@ export const api = {
   getAllClassrooms: () => request<DashboardClassroom[]>('/api/classroom/all'),
   updateClassroomSettings: (id: string, data: { title?: string }) =>
     request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
+  // 三态用 PUT 而非 toggle：没有「取反」语义，PUT 幂等、带目标态、可重试。
+  // 成功时服务端已向 classroom:<id> 与 teacher:<id> 双发 module-state-changed。
+  setClassroomModuleState: (id: string, moduleKey: ClassroomModuleKey, state: ClassroomModuleState) =>
+    request<{ moduleKey: ClassroomModuleKey; state: ClassroomModuleState }>(`/api/classroom/${id}/modules/${moduleKey}`, { method: 'PUT', body: JSON.stringify({ state }) }),
   getOnlineStudentIds: (id: string) =>
     request<{ studentIds: string[] }>(`/api/classroom/${id}/online`),
 

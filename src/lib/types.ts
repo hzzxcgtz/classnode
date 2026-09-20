@@ -39,6 +39,19 @@ export interface ClassroomSummary {
   agentIds?: string[];
 }
 
+/**
+ * 课堂三个模块的标识与三态取值。与后端 server/src/services/classroom-module-state.ts
+ * 的 ModuleKey / ModuleState 逐字对齐 —— 两边各写一份就会漂移，改这里必须同步改那边。
+ */
+export type ClassroomModuleKey = 'learning-sheet' | 'explorer' | 'companion';
+export type ClassroomModuleState = 'open' | 'preview' | 'hidden';
+
+/** 单个模块的态。读端点 GET /code/:code 与 GET /:id 恒返回三个（缺失按默认态补齐）。 */
+export interface ClassroomModuleSetting {
+  moduleKey: ClassroomModuleKey;
+  state: ClassroomModuleState;
+}
+
 export interface StudentSessionResponse {
   token: string;
   expiresIn: number;
@@ -193,6 +206,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
     groupName: string;
     members: Array<Pick<StudentSummary, 'id' | 'name' | 'studentNo'>>;
   }>;
+  modules: ClassroomModuleSetting[];
 }
 
 export interface ClassroomHistoryItem extends ClassroomSummary {
@@ -220,6 +234,7 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
   agents: AgentSummary[];
   groups?: Array<ClassroomCardGroup & { agent: AgentSummary }>;
+  modules: ClassroomModuleSetting[];
 }
 
 export interface ClassroomSettingsGroup {

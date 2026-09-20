@@ -23,6 +23,11 @@ export type AvatarRewardEvent = { tokens?: number };
 export type TeacherNotificationEvent = { id?: string; message: string };
 export type ShieldWarnEvent = { studentName?: string; filteredContent?: string };
 export type PermissionEvent = { allow: boolean };
+/**
+ * 模块三态变更事件。两个字段都是 string 而非 lib/types 里的联合类型：这是线缆上的
+ * 原始载荷，取值必须过 isClassroomModuleKey / isClassroomModuleState 才能当联合类型用。
+ */
+export type ModuleStateEvent = { moduleKey: string; state: string };
 export type BrowserSpeechRecognitionResult = {
   isFinal: boolean;
   length: number;

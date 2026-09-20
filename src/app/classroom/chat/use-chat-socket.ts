@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
 import { setStudentSessionToken } from '@/lib/api';
+import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type {
-  AiResponseEvent, AvatarRewardEvent, PermissionEvent, ShieldWarnEvent,
+  AiResponseEvent, AvatarRewardEvent, ModuleStateEvent, PermissionEvent, ShieldWarnEvent,
   SocketErrorEvent, SocketTextEvent, StudentChatMessage, StudentIdEvent,
   TeacherNotificationEvent,
 } from '../classroom-types';
@@ -252,6 +253,14 @@ export function useChatSocket(options: ChatSocketOptions) {
 
       socket.on('follow-ups-changed', (data: PermissionEvent) => {
         optionsRef.current.setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
+      });
+
+      // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。学生端原先只靠
+      // 15 秒轮询，最坏延迟 15 秒，而设计 §4.4 要求实时。载荷是线缆上的值，先过类型守卫。
+      socket.on('module-state-changed', (data: ModuleStateEvent) => {
+        const { moduleKey, state } = data;
+        if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
+        optionsRef.current.setClassroom((prev) => prev ? { ...prev, modules: applyModuleState(prev.modules, moduleKey, state) } : prev);
       });
 
       optionsRef.current.wsRef.current = socket;

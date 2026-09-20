@@ -12,7 +12,8 @@ function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g,
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
-import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, StudentSummary } from '@/lib/types';
+import { applyModuleState, isClassroomModuleKey, isClassroomModuleState, MODULE_KEYS, MODULE_STATES, moduleStateOf } from '@/lib/classroom-modules';
+import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
 type ClassroomAgentDisplay = Pick<AgentSummary, 'id' | 'name' | 'logo'>;
@@ -47,6 +48,47 @@ function PermissionMenuItem({ label, enabled, busy, onToggle }: {
     </button>
   );
 }
+/** 模块名与三态的中文文案。用 Record<联合类型, string> 是为了让三态词汇表扩项时这里报错。 */
+const MODULE_LABELS: Record<ClassroomModuleKey, string> = {
+  'learning-sheet': '学习单',
+  explorer: '探究助手',
+  companion: '智能学伴',
+};
+
+const MODULE_STATE_LABELS: Record<ClassroomModuleState, string> = {
+  open: '开放',
+  preview: '预告',
+  hidden: '隐藏',
+};
+
+const MODULE_STATE_HINTS: Record<ClassroomModuleState, string> = {
+  open: '学生可直接使用',
+  preview: '学生可见但被锁定',
+  hidden: '学生端不显示',
+};
+
+/**
+ * 三态里的一个选项。与 PermissionMenuItem 的开关刻意分开：那是布尔、
+ * role="menuitemcheckbox"；这里是三选一、role="menuitemradio"。混在一起
+ * 会让同一份菜单里出现两套互斥语义，读起来像坏了。
+ */
+function ModuleStateRadio({ label, hint, selected, busy, disabled, onSelect }: {
+  label: string;
+  hint: string;
+  selected: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button type="button" role="menuitemradio" aria-checked={selected} aria-busy={busy} title={hint}
+      disabled={disabled} onClick={onSelect}
+      style={{ flex: 1, minHeight: 30, padding: '5px 6px', border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#eff6ff' : 'white', color: selected ? '#1d4ed8' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
+      {label}
+    </button>
+  );
+}
+
 type StudentPresenceEvent = { studentId: string };
 type StudentThinkingEvent = StudentPresenceEvent & { status: boolean };
 type StudentMessageEvent = StudentPresenceEvent & {
@@ -251,16 +293,19 @@ function ClassroomBoardContent() {
   const controlBusyRef = useRef(false);
   const [showPermissionsMenu, setShowPermissionsMenu] = useState(false);
   const permissionsMenuRef = useRef<HTMLDivElement>(null);
+  const [showModulesMenu, setShowModulesMenu] = useState(false);
+  const modulesMenuRef = useRef<HTMLDivElement>(null);
   const [studentBoardFilter, setStudentBoardFilter] = useState<StudentBoardFilter>('all');
   const [clearBusy, setClearBusy] = useState<string | null>(null);
   const clearBusyRef = useRef(false);
 
   useEffect(() => {
-    const closePermissionsMenu = (event: PointerEvent) => {
+    const closeMenusOnOutsidePointerDown = (event: PointerEvent) => {
       if (!permissionsMenuRef.current?.contains(event.target as Node)) setShowPermissionsMenu(false);
+      if (!modulesMenuRef.current?.contains(event.target as Node)) setShowModulesMenu(false);
     };
-    document.addEventListener('pointerdown', closePermissionsMenu);
-    return () => document.removeEventListener('pointerdown', closePermissionsMenu);
+    document.addEventListener('pointerdown', closeMenusOnOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', closeMenusOnOutsidePointerDown);
   }, []);
 
   // 分组/高级模式：按小组聚合卡片
@@ -520,7 +565,16 @@ function ClassroomBoardContent() {
       setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); };
+    // 模块三态回显：服务端在 PUT 成功后向 classroom:<id> 与 teacher:<id> 双发，
+    // 所以另一台教师机（或本机另一个标签页）改态时这里立刻跟上，不必等轮询。
+    // 载荷是线缆上的值，先过类型守卫 —— 非法 key/state 直接忽略，不写进本地三元素数组。
+    const unsub15 = on('module-state-changed', (data) => {
+      const { moduleKey, state } = data;
+      if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
+      setClassroom((prev) => prev ? { ...prev, modules: applyModuleState(prev.modules, moduleKey, state) } : prev);
+    });
+
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -665,6 +719,24 @@ function ClassroomBoardContent() {
     const result = await api.toggleAllowFollowUps(id);
     setClassroom((previous) => previous ? { ...previous, allowFollowUps: result.allowFollowUps } : previous);
   });
+
+  // 模块三态：与前三个开关不同，PUT 不返回「服务端权威的全量态」，所以要自己乐观更新。
+  // 点击立刻写本地（下拉框里选中项马上跟手），失败则回滚到点击前的快照并抛错，
+  // 由 runControlAction 统一 Toast。busy 键按模块区分，请求期间这一行整体禁用，防连点。
+  const setModuleState = (moduleKey: ClassroomModuleKey, state: ClassroomModuleState) => {
+    // 点到当前态是空操作：服务端 upsert 幂等，但没必要为一次没有变化的写入惊动全体学生端。
+    if (moduleStateOf(classroom?.modules, moduleKey) === state) return;
+    return runControlAction(`module:${moduleKey}`, async () => {
+      const previousModules = classroom?.modules;
+      setClassroom((previous) => previous ? { ...previous, modules: applyModuleState(previous.modules, moduleKey, state) } : previous);
+      try {
+        await api.setClassroomModuleState(id, moduleKey, state);
+      } catch (error) {
+        setClassroom((previous) => previous ? { ...previous, modules: previousModules ?? previous.modules } : previous);
+        throw error;
+      }
+    });
+  };
 
 
   if (!classroom) {
@@ -886,6 +958,41 @@ function ClassroomBoardContent() {
                     <PermissionMenuItem label="允许中断 AI 回答" enabled={classroom.allowStudentStop !== false} busy={controlBusy === 'stop'} onToggle={() => void toggleStop()} />
                     <PermissionMenuItem label="允许导出对话" enabled={classroom.allowStudentExport !== false} busy={controlBusy === 'export'} onToggle={() => void toggleExport()} />
                     <PermissionMenuItem label="显示追问建议" enabled={classroom.allowFollowUps !== false} busy={controlBusy === 'follow-ups'} onToggle={() => void toggleFollowUps()} />
+                  </div>
+                )}
+              </div>
+              <div ref={modulesMenuRef} style={{ position: 'relative' }}>
+                <button className="btn btn-secondary" aria-haspopup="menu" aria-expanded={showModulesMenu} onClick={() => setShowModulesMenu((visible) => !visible)} style={{ minHeight: 36, padding: '7px 12px' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                  模块状态
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                {showModulesMenu && (
+                  <div role="menu" aria-label="课堂模块状态" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
+                    <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
+                    {MODULE_KEYS.map((moduleKey) => {
+                      const currentState = moduleStateOf(classroom.modules, moduleKey);
+                      const moduleBusy = controlBusy === `module:${moduleKey}`;
+                      return (
+                        <div key={moduleKey} role="group" aria-label={MODULE_LABELS[moduleKey]} style={{ padding: '4px 10px 10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.813rem', color: '#334155' }}>
+                            <span style={{ flex: 1 }}>{MODULE_LABELS[moduleKey]}</span>
+                            {moduleBusy && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>更新中...</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {MODULE_STATES.map((state) => (
+                              <ModuleStateRadio key={state}
+                                label={MODULE_STATE_LABELS[state]}
+                                hint={MODULE_STATE_HINTS[state]}
+                                selected={currentState === state}
+                                busy={moduleBusy}
+                                disabled={controlBusy !== null}
+                                onSelect={() => void setModuleState(moduleKey, state)} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -84,7 +84,7 @@ export function useStudentSession(options: StudentSessionOptions) {
           o.setStep('identity');
           return;
         }
-        // 有有效会话，直接进入对话页恢复聊天（identity-conflict 事件兜底处理设备冲突）
+        // 有有效会话，直接进入对话页恢复聊天（课堂是否结束由 15s 轮询与 classroom-ended 事件兜底）
         o.setStep('chat');
         // 从数据库加载教师通知（持久化后可导出，且刷新不丢失）
         if (cr.id) {

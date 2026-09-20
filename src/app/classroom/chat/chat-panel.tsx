@@ -66,6 +66,7 @@ export function StudentChatContent({
   sendingRef,
   identityConflictTimerRef,
   teacherNotifTimerRef,
+  streamingBufferRef,
   streamingRafRef,
 }: ChatPanelProps) {
   // M1a：会话所有权（code/step/classroom/selectedStudent/messages/... ）已上移到
@@ -99,6 +100,11 @@ export function StudentChatContent({
     if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
     if (statusSocketRef.current) { statusSocketRef.current.disconnect(); statusSocketRef.current = null; }
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
+    // 两个 streaming ref 由 page.tsx 持有，跨面板挂载存活；只 cancel 不置空会让下一次
+    // 会话带着已取消的 raf id 重建 —— ai-chunk 的 `if (!streamingRafRef.current)` 会
+    // 永远为假，RAF 不再调度，流式文字完全不显示。这里显式复位成 useRef 的初值。
+    streamingRafRef.current = null;
+    streamingBufferRef.current = '';
     if (identityConflictTimerRef.current) window.clearTimeout(identityConflictTimerRef.current);
     if (teacherNotifTimerRef.current) window.clearTimeout(teacherNotifTimerRef.current);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 卸载清理只跑一次；ref 由 page.tsx 创建、按对象身份传入，是稳定对象

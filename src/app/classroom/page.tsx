@@ -142,6 +142,7 @@ function ClassroomOrchestrator() {
       sendingRef={sendingRef}
       identityConflictTimerRef={identityConflictTimerRef}
       teacherNotifTimerRef={teacherNotifTimerRef}
+      streamingBufferRef={streamingBufferRef}
       streamingRafRef={streamingRafRef}
     />
   );

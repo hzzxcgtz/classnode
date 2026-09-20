@@ -131,13 +131,15 @@ export interface ChatPanelProps {
   // —— 共享 ref：按对象身份透传，两侧必须是同一个对象（M0 Ruling 8）——
   // socket 上移后，其内部使用的 ref 仍由 page.tsx 声明，同时交给外壳（useChatSocket）
   // 与面板（卸载清理、发送闸门、停止生成），任何一侧重新声明都会拿到另一个对象。
-  // （seenNotifIdsRef / streamingBufferRef 只被 useChatSocket 使用，已随 hook 上移到
-  //   外壳，面板不再接收。）
+  // 面板持有的是长生命周期对象，卸载时不会像过去的 useRef 那样拿到全新初值，
+  // 所以卸载清理必须把它们复位成初值，而不是只 cancel。
+  // （seenNotifIdsRef 只被 useChatSocket 使用，已随 hook 上移到外壳，面板不再接收。）
   wsRef: { current: Socket | null };
   statusSocketRef: { current: Socket | null };
   chatConnectionGenerationRef: { current: number };
   sendingRef: { current: boolean };
   identityConflictTimerRef: { current: number | null };
   teacherNotifTimerRef: { current: number | null };
+  streamingBufferRef: { current: string };
   streamingRafRef: { current: number | null };
 }

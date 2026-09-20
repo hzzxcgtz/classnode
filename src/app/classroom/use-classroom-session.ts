@@ -218,6 +218,18 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     optionsRef.current.router.push('/');
   }, [code]);
 
+  /**
+   * 最近一次渲染时的 `classroom.modules` 对象身份，只给下面那条轮询判断「快照是否陈旧」用。
+   *
+   * 为什么必须是 ref 而不是把 `classroom.modules` 放进轮询 effect 的依赖：那样每来一次广播
+   * （`applyModuleState` 换新数组）就会重建定时器，15 秒的兜底会被广播刷没。
+   *
+   * ⚠️ 本 effect 必须声明在轮询 effect **之前**：同一次提交里 effect 按声明顺序执行，而轮询
+   * 一挂载就会立刻 `poll()` 一次 —— 排在后面的话，首次请求会拿着上一轮的初值去比。
+   */
+  const modulesSnapshotRef = useRef<StudentClassroom['modules'] | undefined>(undefined);
+  useEffect(() => { modulesSnapshotRef.current = classroom?.modules; }, [classroom?.modules]);
+
   // 课堂生命期轮询（15 秒）：课堂是否结束、智能体是否被停用、课堂是否暂停，外加三态兜底。
   // M1b-2 Task 6 把它从学伴面板（chat-panel.tsx 的 poll）搬到这里。
   //
@@ -253,6 +265,9 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     if (!code) return;
     if (step !== 'home' && step !== 'shell') return;
     const poll = async () => {
+      // 发起请求那一刻的 `modules` 对象身份，用来在后面判断「这份快照是不是已经陈旧」。
+      // 只读 ref，不进依赖：`classroom.modules` 一变就重建定时器，15 秒的兜底会被广播刷没。
+      const modulesAtRequest = modulesSnapshotRef.current;
       try {
         const cr = await api.getClassroomByCode(code);
         if (cr.status === 'ended') {
@@ -274,11 +289,24 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         if (!freshModules) return;
         setClassroom((prev) => {
           if (!prev) return prev;
+          // 陈旧快照守卫：请求发出之后有广播落地（`applyModuleState` 每次都换一个新数组）
+          // ⇒ 这份响应的 `modules` 是**广播之前**的视角，合并回去会把老师刚改的态写回旧值
+          // （例如广播已把 X 改成 hidden，随后到达的旧快照说 open）。跳过本轮，等下一轮 ——
+          // 15 秒内自愈，而且往「保留更新值」的方向错。
+          if (prev.modules !== modulesAtRequest) return prev;
           const current = prev.modules ?? [];
           // 只在真的变了时才写回。无条件 `{...prev, modules}` 会每 15 秒换一次 `classroom`
           // 的对象身份 ⇒ 整个外壳（含常驻的学伴面板）每 15 秒重渲染一次，老 iPad 上不值当。
+          //
+          // 逐**键**比较而不是指名 `moduleKey` / `state` 两个字段：今天两者等价
+          // （`ClassroomModuleSetting` 只有这两个字段），但将来给元素加一个被 UI 读取的
+          // 字段时，指名的写法会**静默压掉**它的合法更新。键集合来自元素自身，加了就自动比。
           const unchanged = current.length === freshModules.length
-            && current.every((m, i) => m.moduleKey === freshModules[i].moduleKey && m.state === freshModules[i].state);
+            && current.every((m, i) => {
+              const next = freshModules[i];
+              const keys = Object.keys(m) as (keyof typeof m)[];
+              return keys.length === Object.keys(next).length && keys.every((key) => m[key] === next[key]);
+            });
           return unchanged ? prev : { ...prev, modules: freshModules };
         });
       } catch (error: unknown) {

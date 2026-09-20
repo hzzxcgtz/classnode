@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useRef } from 'react';
+import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
 import { IdentityPicker } from './identity/identity-picker';
@@ -10,11 +10,15 @@ import { ClassroomShell } from './shell/classroom-shell';
 export default function StudentChatPage() {
   return (
     <>
+      {/* 这一块只放**全课堂共用**的样式与关键帧。三个 keyframe 各自的消费者：
+          · thinkingWave → chat/streaming-indicator.tsx（「正在思考」逐字波浪）
+          · notifSlideUp → chat/chat-panel.tsx（教师通知气泡）、chat/message-item.tsx
+          · spin         → chat/chat-panel.tsx（发送中菊花）。⚠️ globals.css 里另有一份同名
+            的 `spin`，本文件这份是历史冗余（不是死代码，删它要连着确认全局那份仍在）。
+          （`blink` / `teacherBubbleIn` 已随 Task 9 删除：全树零引用。） */}
       <style>{`
         :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
-        @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:0 } }
         @keyframes thinkingWave { 0%,60%,100% { color: #94a3b8 } 30% { color: #818cf8 } }
-        @keyframes teacherBubbleIn { from { opacity:0; transform: translateY(-8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         ::-webkit-scrollbar { width: 4px; }
@@ -22,9 +26,13 @@ export default function StudentChatPage() {
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
-      <Suspense fallback={<div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)',color:'white'}}>加载中...</div>}>
-        <ClassroomOrchestrator />
-      </Suspense>
+      {/* 这里原本套着一层 `<Suspense>`（fallback 是「加载中...」全屏态）。它当年是为
+          `useSearchParams` 准备的：静态导出预渲染时，读 search params 的组件必须被
+          Suspense 边界包住。现在课堂码直接从 `window.location.search` 解析
+          （use-classroom-session.ts / use-student-session.ts），同步渲染、没有可挂起的分支，
+          那个 fallback 永远不会出现 —— 摆饰。真要有挂起，`ClassroomOrchestrator` 自己的
+          `step === 'loading'` 分支才是那屏「正在连接课堂...」。 */}
+      <ClassroomOrchestrator />
     </>
   );
 }

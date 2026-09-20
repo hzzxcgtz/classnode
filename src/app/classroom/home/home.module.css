@@ -321,8 +321,12 @@
   cursor: default;
 }
 
-/* 锁住的卡片不该「抬起来迎客」——按下仍有回弹（:active）作为「我收到了」的反馈。 */
-.cardLocked:hover {
+/* 锁住的卡片不该「抬起来迎客」——按下仍有回弹（:active）作为「我收到了」的反馈。
+   ⚠️ `:not(:active)` 是必需的，不是修辞：`.card:active` 与 `.cardLocked:hover` 特异性
+   相同(0,2,0)，靠源码顺序取胜，而指针按下时**必然同时命中 `:hover`** —— 少了这个 `:not`，
+   后面的 `.cardLocked:hover` 会把 `.card:active` 的回弹吃掉，上面那句承诺就完全不生效。
+   加上之后特异性升到 (0,3,0)，且按下期间不匹配 ⇒ 回弹回来。 */
+.cardLocked:not(:active):hover {
   transform: none;
 }
 

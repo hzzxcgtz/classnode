@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { api } from '@/lib/api';
 import type { AvatarSummary } from '@/lib/types';
+import type { ClassroomInfo, StudentSession } from '../classroom-types';
+import { fixSvgUrl } from '../avatar-utils';
 import { SvgAvatar } from './svg-avatar';
 
 export interface AvatarChangerContentProps {
@@ -168,4 +171,116 @@ export function AvatarChangerContent({ studentId, avatars, onChanged, setToast }
       </div>
     </div>
   );
+}
+
+export interface AvatarChangerModalProps {
+  /**
+   * 标题元素的 id，用于 `aria-labelledby`。
+   *
+   * 必须是入参而不是常量：首页层与学伴层**同时挂载**，两层各开一次弹窗时 DOM 里会同时存在
+   * 两个标题元素，共用一个 id 会让 `aria-labelledby` 解析到先出现的那个（并且是非法 HTML）。
+   */
+  titleId: string;
+  avatarTokenCount: number;
+  studentId: string;
+  avatars: AvatarSummary[];
+  setToast: (t: { msg: string; type: 'success' | 'error' | 'info' } | null) => void;
+  onChanged: (result: { avatarId: number; svgContent: string }) => void;
+  onClose: () => void;
+}
+
+/**
+ * 头像更换弹窗的**外壳**：遮罩 + 卡片 + 关闭按钮 + 标题 + 两段说明。
+ *
+ * 首页与学伴面板此前各有一份逐字相同的拷贝（约 15 行 HTML 与内联样式）。拷贝出来的不只是
+ * 重复，还有「改了一处标题字号、另一处还是旧的」这类**没有编译期信号**的漂移。内容
+ * （`AvatarChangerContent`）与收尾（`finishAvatarChange`）各自也只有一份，外壳一并收在这里。
+ */
+export function AvatarChangerModal({
+  titleId, avatarTokenCount, studentId, avatars, setToast, onChanged, onClose,
+}: AvatarChangerModalProps) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(event) => event.stopPropagation()}
+        style={{ maxWidth: 480, padding: 24 }}
+      >
+        <button
+          type="button"
+          aria-label="关闭更换头像窗口"
+          onClick={onClose}
+          style={{ float: 'right', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.25rem', color: '#64748b', lineHeight: 1 }}
+        >
+          ×
+        </button>
+        <h3 id={titleId} style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
+        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 4px' }}>
+          剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
+        </p>
+        <p style={{ fontSize: '0.688rem', color: '#94a3b8', margin: '0 0 16px' }}>
+          可从教师头像库中选择，也可粘贴自定义 SVG 代码
+        </p>
+        <AvatarChangerContent
+          studentId={studentId}
+          avatars={avatars}
+          onChanged={onChanged}
+          setToast={setToast}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 换头像成功后的收尾所依赖的那部分外壳状态。首页与学伴面板的 props 都**结构性地**满足它，
+ * 所以两处可以直接把自己的 props 名字传进来。
+ */
+export interface AvatarChangeHost {
+  classroom: ClassroomInfo | null;
+  selectedStudent: StudentSession | null;
+  setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
+  setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
+  setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;
+  fetchStudentTokens: () => Promise<void>;
+}
+
+/**
+ * 换头像成功后的收尾：先写透当前会话，再拉一次服务端权威数据。
+ *
+ * 两处入口（首页的头像位、学伴面板顶部栏）此前各写了一份**逐字相同**的实现，连注释都一样。
+ * 那不只是重复，是会漂移的重复：任何一处改了 await 顺序或漏掉一次 `setAllStudentAvatars`，
+ * 两边的头像就会在切层之后对不上，而且没有任何编译期信号。
+ *
+ * `onDone` 由调用方给（两处都是关掉自己的那个弹窗）。
+ */
+export async function finishAvatarChange(
+  host: AvatarChangeHost,
+  result: { avatarId: number; svgContent: string },
+  onDone: () => void,
+): Promise<void> {
+  // 接口返回的是服务端最终保存（并已清理）的头像，先立即更新当前会话。
+  host.setAvatarSvgs((current) => ({ ...current, [result.avatarId]: fixSvgUrl(result.svgContent) }));
+  host.setSelectedStudent((current) => current ? { ...current, avatarId: result.avatarId } : current);
+  onDone();
+  void host.fetchStudentTokens();
+  try {
+    const [allAvatars, teacherAvatars] = await Promise.all([
+      api.getAvatarsAll('student'),
+      api.getAvatars('student'),
+    ]);
+    const svgMap: Record<number, string> = {};
+    allAvatars.forEach((avatar) => { svgMap[avatar.id] = fixSvgUrl(avatar.svgContent); });
+    host.setAvatarSvgs(svgMap);
+    host.setAllStudentAvatars(teacherAvatars);
+    // 重新加载 classroom students 更新 selectedStudent
+    if (host.classroom?.id && host.selectedStudent?.id) {
+      const students = await api.getClassroomStudents(host.classroom.id);
+      const updated = students.find((student) => student.id === host.selectedStudent?.id);
+      if (updated) host.setSelectedStudent(updated);
+    }
+  } catch {}
 }

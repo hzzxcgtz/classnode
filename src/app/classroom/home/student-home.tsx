@@ -1,17 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
-import { createPortal } from 'react-dom';
-import { api } from '@/lib/api';
-import { Toast } from '@/lib/components';
 import type { AvatarSummary } from '@/lib/types';
 import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
-import { fixSvgUrl } from '../avatar-utils';
+import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
 import { SvgAvatar } from '../chat/svg-avatar';
-import { AvatarChangerContent } from '../chat/avatar-changer';
+import { AvatarChangerModal, finishAvatarChange } from '../chat/avatar-changer';
 import styles from './home.module.css';
 
 export interface StudentHomeProps {
@@ -107,8 +104,8 @@ export function StudentHome({
   // 浮层一律走 portal：Task 5 的切换动画会让首页成为 `transform` 容器，届时留在树内的
   // `position: fixed` 会被重新锚定到首页盒子（Task 2 同类问题）。现在就先摆正，
   // 顺带避开 SSR（静态导出）期没有 document 的问题。
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  // 与学伴面板同一套机制 —— 实现只留在 layer-overlays.tsx 一份。
+  const overlayPortal = useOverlayPortal(active);
 
   const studentName = selectedStudent?.name || '同学';
   const studentAvatarSvg = selectedStudent?.avatarId ? avatarSvgs[selectedStudent.avatarId] : undefined;
@@ -116,12 +113,17 @@ export function StudentHome({
 
   // 与学伴面板顶部栏同一套取值顺序（小组智能体优先，其次课堂第一个智能体），
   // 否则首页说「小科老师」、进去变成另一个名字。
+  //
+  // 兜底用模块的身份名（`MODULE_META.companion.label`，也就是卡片上的「智能学伴」）而不是
+  // 再写一遍字面量：零智能体的课堂里，首页卡片、Tab 与面板标题必须说同一个名字，而三处
+  // 各写一份字面量必然漂移。面板那一侧读的是同一个字段。
   const agentName = (() => {
-    if (!classroom) return '智能学伴';
+    const fallbackName = MODULE_META.companion.label;
+    if (!classroom) return fallbackName;
     const group = selectedStudent?.groupId
       ? classroom.groups?.find((item) => item.id === selectedStudent.groupId)
       : undefined;
-    return group?.agent?.name || classroom.agents?.[0]?.name || '智能学伴';
+    return group?.agent?.name || classroom.agents?.[0]?.name || fallbackName;
   })();
 
   // 换头像要消耗老师奖励的机会（服务端 `avatarChangeTokens >= 1` 才放行）。没有机会时
@@ -152,27 +154,14 @@ export function StudentHome({
     // `hidden` 是「不显示」而不是「灰掉」（§4.4）：教师没安排这个环节，学生不该看见它。
     .filter((entry) => entry.state !== 'hidden');
 
+  // 换头像的收尾（写透当前会话 → 拉服务端权威数据）与学伴面板共用一份实现：
+  // 首页的 props 结构性地满足 `AvatarChangeHost`，所以直接按名字传进去。
   const handleAvatarChanged = async (result: { avatarId: number; svgContent: string }) => {
-    // 与学伴面板的头像弹窗同一套收尾：先写透当前会话，再拉一次服务端权威数据。
-    setAvatarSvgs((current) => ({ ...current, [result.avatarId]: fixSvgUrl(result.svgContent) }));
-    setSelectedStudent((current) => (current ? { ...current, avatarId: result.avatarId } : current));
-    setShowAvatarChanger(false);
-    void fetchStudentTokens();
-    try {
-      const [allAvatars, teacherAvatars] = await Promise.all([
-        api.getAvatarsAll('student'),
-        api.getAvatars('student'),
-      ]);
-      const svgMap: Record<number, string> = {};
-      allAvatars.forEach((avatar) => { svgMap[avatar.id] = fixSvgUrl(avatar.svgContent); });
-      setAvatarSvgs(svgMap);
-      setAllStudentAvatars(teacherAvatars);
-      if (classroom?.id && selectedStudent?.id) {
-        const students = await api.getClassroomStudents(classroom.id);
-        const updated = students.find((student) => student.id === selectedStudent.id);
-        if (updated) setSelectedStudent(updated);
-      }
-    } catch {}
+    await finishAvatarChange(
+      { classroom, selectedStudent, setAvatarSvgs, setSelectedStudent, setAllStudentAvatars, fetchStudentTokens },
+      result,
+      () => setShowAvatarChanger(false),
+    );
   };
 
   return (
@@ -272,49 +261,24 @@ export function StudentHome({
         </main>
       </div>
 
-      {mounted && createPortal(
-        // Task 5：portal 逃出了本层的 `visibility:hidden`（Ruling 5），所以这里必须**显式**
+      {overlayPortal(
+        // Task 5：弹窗与提示条都逃出了本层的 `visibility:hidden`（Ruling 5），所以要**显式**
         // 按 `active` 决定可见性 —— 否则学生在首页打开换头像弹窗后进入任一模块，弹窗会浮在
-        // 模块之上。与 Task 2 给学伴面板四个浮层用的是同一个做法（保持挂载 + 可见性受控），
-        // 不是「非 active 就卸载」：那会丢掉弹窗里已经选到一半的状态。
-        <div style={{ visibility: active ? 'visible' : 'hidden' }}>
-          {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+        // 模块之上。具体机制见 layer-overlays.tsx（与学伴面板同一份实现）。
+        <>
+          {toast && <ClassroomToast toast={toast} setToast={setToast} />}
           {showAvatarChanger && (
-            <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
-              <div
-                className="modal-content"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="home-avatar-changer-title"
-                onClick={(event) => event.stopPropagation()}
-                style={{ maxWidth: 480, padding: 24 }}
-              >
-                <button
-                  type="button"
-                  aria-label="关闭更换头像窗口"
-                  onClick={() => setShowAvatarChanger(false)}
-                  style={{ float: 'right', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.25rem', color: '#64748b', lineHeight: 1 }}
-                >
-                  ×
-                </button>
-                <h3 id="home-avatar-changer-title" style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>更换头像</h3>
-                <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 4px' }}>
-                  剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
-                </p>
-                <p style={{ fontSize: '0.688rem', color: '#94a3b8', margin: '0 0 16px' }}>
-                  可从教师头像库中选择，也可粘贴自定义 SVG 代码
-                </p>
-                <AvatarChangerContent
-                  studentId={selectedStudent?.id ?? ''}
-                  avatars={allStudentAvatars}
-                  onChanged={handleAvatarChanged}
-                  setToast={setToast}
-                />
-              </div>
-            </div>
+            <AvatarChangerModal
+              titleId="home-avatar-changer-title"
+              avatarTokenCount={avatarTokenCount}
+              studentId={selectedStudent?.id ?? ''}
+              avatars={allStudentAvatars}
+              setToast={setToast}
+              onClose={() => setShowAvatarChanger(false)}
+              onChanged={handleAvatarChanged}
+            />
           )}
-        </div>,
-        document.body,
+        </>,
       )}
     </div>
   );

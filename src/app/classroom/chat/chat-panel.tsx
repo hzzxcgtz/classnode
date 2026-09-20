@@ -1,17 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { api, getStudentSessionAuthorization } from '@/lib/api';
-import { Toast } from '@/lib/components';
+import { getStudentSessionAuthorization } from '@/lib/api';
 import type { ChatAgent, ChatPanelProps } from '../classroom-types';
-import { API_BASE_URL, fixSvgUrl } from '../avatar-utils';
+import { API_BASE_URL } from '../avatar-utils';
+import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
+import { MODULE_META } from '../module-meta';
 import { SvgAvatar } from './svg-avatar';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
-import { AvatarChangerContent } from './avatar-changer';
+import { AvatarChangerModal, finishAvatarChange } from './avatar-changer';
 import { useVoiceInput } from './use-voice-input';
 import styles from './chat.module.css';
 
@@ -94,28 +93,9 @@ export function StudentChatContent({
   // ===== 浮层逃生舱（M1b-2 Task 2）=====
   // 面板里有五个 `position: fixed` 元素：滚动标记条（z-index 20）、标记 tooltip（30）、
   // 头像更换模态（`.modal-overlay` → 100）、全屏图片查看器（9999）、Toast（99999）。
-  // §4.6 的切换动画会给面板加 `transform`，面板随即成为它们的**包含块** —— 它们会被重新
-  // 锚定到面板盒子、被裁切、暗色遮罩跟着平移。提到 `document.body` 才能逃出去。
-  //
-  // Ruling 5：**portal 本身不够**。提到 body 之后它们不再继承面板的 `visibility:hidden`，
-  // 会浮在首页与另外两个 tab 之上。所以每个浮层都必须**显式按所属模块的 active 决定可见性**。
-  //   · 不能用「非 active 就卸载」：那会丢掉全屏查看器的缩放/位置与模态的展开状态，
-  //     而 §4.5 要求模块挂载后状态完整保留（切回来查看器还开着、还停在原缩放）。
-  //   · 所以这里保持挂载，只把 `active` 翻译成 `visibility`（与面板自身被隐藏的方式一致，
-  //     顺带获得「隐藏时不可聚焦/不可点」的语义，见 §4.10 C2）。
-  //
-  // SSR 守卫：Next.js 静态导出会在构建期预渲染本页，那时没有 `document`。用 mounted 标志
-  // 而不是 `typeof document !== 'undefined'` 内联判断 —— 后者会让服务端输出与首次客户端
-  // 渲染不一致（hydration 不匹配）。浮层的初始状态全是关闭，所以只晚一帧，肉眼不可见。
-  const [portalReady, setPortalReady] = useState(false);
-  useEffect(() => { setPortalReady(true); }, []);
-  const overlayPortal = (node: ReactNode) => {
-    if (!portalReady || !node) return null;
-    return createPortal(
-      <div style={{ visibility: active ? 'visible' : 'hidden' }}>{node}</div>,
-      document.body,
-    );
-  };
+  // 它们在 `transform` 下的处境与「portal 本身不够」的理由，见 layer-overlays.tsx ——
+  // 那套机制（连同 `active` → `visibility` 的翻译）首页也要用，所以实现只留那一份。
+  const overlayPortal = useOverlayPortal(active);
 
   // ⚠️ M1b-2 Task 5 起面板常驻（切 Tab 只隐藏不卸载，§4.5），这条清理只在「面板真正卸载」
   // 时执行：换身份、课堂结束、或整页离开。§4.10 A 记录的缺口 ——
@@ -705,7 +685,7 @@ export function StudentChatContent({
                   const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
                   if (group?.agent?.name) return group.agent.name;
                 }
-                return classroom?.agents?.[0]?.name || 'AI 学习助手';
+                return classroom?.agents?.[0]?.name || MODULE_META.companion.label;
               })()}
             </div>
             <div className={styles.classroomMeta}>
@@ -844,7 +824,7 @@ export function StudentChatContent({
               {renderAgentAvatar(88, 26, 22)}
             </div>
             <h2>
-              {getCurrentAgent()?.name || 'AI 学习助手'}
+              {getCurrentAgent()?.name || MODULE_META.companion.label}
             </h2>
             {getCurrentAgent()?.enabled === false ? (
               <div style={{ fontSize: "0.938rem", color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
@@ -1235,52 +1215,24 @@ export function StudentChatContent({
         </div>
       {/* 头像更换弹窗（`.modal-overlay` 是 position: fixed / z-index 100，已 portal 到 body） */}
       {overlayPortal(showAvatarChanger && (
-        <div className="modal-overlay" onClick={() => setShowAvatarChanger(false)}>
-          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="avatar-changer-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
-            <button type="button" aria-label="关闭更换头像窗口" onClick={() => setShowAvatarChanger(false)} style={{ float: 'right', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: "1.25rem", color: '#64748b', lineHeight: 1 }}>×</button>
-            <h3 id="avatar-changer-title" style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
-            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 4px' }}>
-              剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
-            </p>
-            <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: '0 0 16px' }}>
-              可从教师头像库中选择，也可粘贴自定义 SVG 代码
-            </p>
-            <AvatarChangerContent
-              studentId={selectedStudent?.id ?? ''}
-              avatars={allStudentAvatars}
-              onChanged={async (result) => {
-                // 接口返回的是服务端最终保存（并已清理）的头像，先立即更新当前会话。
-                setAvatarSvgs((current) => ({
-                  ...current,
-                  [result.avatarId]: fixSvgUrl(result.svgContent),
-                }));
-                setSelectedStudent((current) => current ? { ...current, avatarId: result.avatarId } : current);
-                setShowAvatarChanger(false);
-                fetchStudentTokens();
-                try {
-                  const [allAv, teacherAv] = await Promise.all([
-                    api.getAvatarsAll('student'),
-                    api.getAvatars('student'),
-                  ]);
-                  const m: Record<number, string> = {};
-                  allAv.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
-                  setAvatarSvgs(m);
-                  setAllStudentAvatars(teacherAv);
-                  // 重新加载 classroom students 更新 selectedStudent
-                  if (classroom?.id && selectedStudent?.id) {
-                    const sts = await api.getClassroomStudents(classroom.id);
-                    const updated = sts.find((student) => student.id === selectedStudent.id);
-                    if (updated) setSelectedStudent(updated);
-                  }
-                } catch {}
-              }}
-              setToast={setToast}
-            />
-          </div>
-        </div>
+        <AvatarChangerModal
+          titleId="avatar-changer-title"
+          avatarTokenCount={avatarTokenCount}
+          studentId={selectedStudent?.id ?? ''}
+          avatars={allStudentAvatars}
+          setToast={setToast}
+          onClose={() => setShowAvatarChanger(false)}
+          onChanged={async (result) => {
+            await finishAvatarChange(
+              { classroom, selectedStudent, setAvatarSvgs, setSelectedStudent, setAllStudentAvatars, fetchStudentTokens },
+              result,
+              () => setShowAvatarChanger(false),
+            );
+          }}
+        />
       ))}
       {/* Toast 自身是 position: fixed / z-index 99999，同样要逃出动画容器 */}
-      {overlayPortal(toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />)}
+      {overlayPortal(toast && <ClassroomToast toast={toast} setToast={setToast} />)}
 
       {/* 全屏图片预览（支持无极缩放；已 portal 到 body） */}
       {overlayPortal(fullscreenImg && (

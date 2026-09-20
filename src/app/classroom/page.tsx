@@ -37,8 +37,6 @@ function useIsMobile(): boolean {
 }
 const MAX_ATTACHED_FILES = 5;
 
-// ===== 组件优化：抽离为 memo 子组件，避免父级 state 变化时重渲染全部消息 =====
-
 function StudentChatContent() {
   const router = useRouter();
   const [code, setCode] = useState('');

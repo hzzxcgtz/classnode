@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import type { Server } from 'node:http';
-import { SDK_PATH, injectSdk } from './webapp-sdk.js';
+import { SDK_PATH, SDK_SOURCE, injectSdk } from './webapp-sdk.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -308,6 +308,16 @@ export async function startWebappHost(
   });
 }
 
+/**
+ * 送给浏览器的 SDK 源码。
+ *
+ * T1 时这里返回一个占位串，T4 换成真正的源码 —— **函数体一行之差**，
+ * 调用点（上面的 `app.get(SDK_PATH, …)`）一个字都没动。
+ *
+ * ⚠️ 之所以让 webapp-sdk.ts **导出字符串**而不是让本文件去读一个 .js 文件：
+ * `tsc` 不拷资源文件，独立文件会让 dev（读 src/）与打包产物（读 dist/）走上
+ * 两条不同的路径。详见 webapp-sdk.ts 里 SDK_SOURCE 的说明。
+ */
 function readSdkSource(): string {
-  return '/* ClassNode SDK — 实现见 Task 4 */\n';
+  return SDK_SOURCE;
 }

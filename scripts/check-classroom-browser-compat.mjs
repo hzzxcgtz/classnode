@@ -273,7 +273,26 @@ const ALLOWED = {
 // src/app/layout.tsx：/classroom/ 继承根 layout，在可达范围内，必须纳入。
 // 刻意**不**整个加 src/app —— 教师端页面有不同的兼容约束，纳进来只会引入
 // 无关误报。新增学生端可达目录时，记得同步这里。
-const SCAN_ROOTS = ['src/app/classroom', 'src/lib', 'src/app/globals.css', 'src/app/layout.tsx'];
+//
+// ⚠️ **server/src/services/webapp-sdk.ts 为什么在一个前端扫描根里**：
+// 它住在 server/ 下，但它的**内容**（SDK_SOURCE 那个模板字符串里的 JS）是
+// **注入到学生 iframe 里、在学生的老 iPad 上执行**的代码 —— 与 /classroom/ 是
+// 同一个约束面。它此前**不在任何闸门的覆盖范围内**：本数组全是 src/ 下的路径，
+// 于是「一个跑在受约束设备上、却不受任何检查的新文件」。闸门看着有六条标记、
+// 很严，但它守的是另一扇门。
+//
+// 本闸门按**标记（token）**扫、不要求能被解析，所以扫一个含模板字符串的 .ts
+// 文件是可行的（模板串里的 JS 与 TS 代码一视同仁地被逐行 includes 检查）。
+// 已知的粗糙处：模板串里的**注释**会被 stripComments 剥掉 ⇒ 注释里写这些标记
+// 不会触发（这是安全的那个方向）；代价是理论上也可以把真代码藏在注释形状里，
+// 但那需要刻意伪造注释语法，不是「不小心」能发生的。
+const SCAN_ROOTS = [
+  'src/app/classroom',
+  'src/lib',
+  'src/app/globals.css',
+  'src/app/layout.tsx',
+  'server/src/services/webapp-sdk.ts',
+];
 const EXTS = ['.ts', '.tsx', '.css', '.mjs'];
 
 function walk(target, out = []) {
@@ -320,6 +339,20 @@ function checkSourceTokens() {
   // 反向检查：豁免表里点名的文件必须还在，否则豁免表在悄悄腐烂
   for (const rel of Object.keys(ALLOWED)) {
     if (!files.includes(rel)) failures.push(`豁免表引用了不存在的文件: ${rel}`);
+  }
+
+  // 反向检查：**每一条扫描根都必须存在**。
+  // `walk()` 对不存在的路径静默返回空集 —— 一个拼错的根就等于「这条根从未被扫过」，
+  // 而闸门仍然是**绿的**。这正是「只改数组不做反证，你无法区分『扫到了』与
+  // 『路径写错了但没命中』」那个洞，在这里被堵成一条**永久**的不变量：
+  // 将来谁把根改错、或把被扫的文件挪走/改名，构建会红，而不是静默地少扫一个根。
+  for (const rel of SCAN_ROOTS) {
+    if (!fs.existsSync(path.join(root, rel))) {
+      failures.push(
+        `扫描根不存在: ${rel}\n` +
+        `  walk() 对不存在的路径静默返回空集 ⇒ 这条根从未被扫过，而闸门是绿的。`,
+      );
+    }
   }
 
   return { failures, fileCount: files.length };

@@ -1,3 +1,31 @@
+## 🔁 执行约定（供执行本计划的会话读取）
+
+> 本节由上一个会话写入，用于跨会话交接。**执行前请完整读一遍。**
+
+**当前状态**：分支 `feat/m1b1-module-tri-state` 已创建（从 `main` 的 `cd94dbf` 切出），本计划已提交（`980a704`）。**尚无任何代码改动**，Step 0 的建分支要求已满足。
+
+**用 `superpowers:subagent-driven-development` 执行**：每个任务派一个全新实施者子代理 → 生成审查包 → 派审查者 → 有 Critical/Important 就走修复轮 → 通过后进下一任务。M0（11 任务）与 M1a（5 任务）都是这么跑的，效果好。
+
+**四条 M0/M1a 用血换来的教训，请照做：**
+
+1. **实施者必须用 `grep` 自行枚举依赖，不得信任任何清单——包括本计划和调度里写的。** 这条在两次里程碑里生效了三次：M0 的依赖清单漏了 8 个、M1a 的 T3 漏了 `setBlacklisted`（后果：黑屏学生切换身份后新学生被蒙版挡住）、M1a 的 T4 漏了 `setLoadError`。**计划是人写的，会错。**
+
+2. **只允许一个 `pnpm build` / `pnpm test` 在跑。** 两者都会写 `.next/`、`out/`、`dist/`，并发会互相破坏。控制器在实施者工作期间**不得**并行构建。
+
+3. **测试或审查的机械主张要用命令证明，不要用眼睛看。** 前两次里程碑的审查者用过的有效手段：把 diff 的删除块与新增块抽出来做 `diff`（证明搬家零改动）、md5 比对、断言行号并 `sed` 核对、`comm` 比对集合。**「看起来一样」不算证据。**
+
+4. **`scripts/task-brief` 生成的简报只含任务本身，不含 Global Constraints。** 每次调度必须由控制器在 prompt 里自带完整约束与基线。
+
+**已知的既有缺陷（不在本计划范围内，不要顺手修）**：
+- `src/lib/socket-events.ts:3` 的 `joined` 类型声明与服务端实际 payload 不符（Task 4 会顺带修，其余不要动）。
+- `server/src/index.ts` 的 schema 同步块整段包在一个 `try/catch` 里，单个 ALTER 失败会静默中断后续所有检查。
+
+**若发现本计划有错**：以代码为准，别硬照计划做；把裁定记进台账并回写计划。
+
+**本计划的验收标准**：Task 6 的端到端走查通过 + 全量门禁（`tsc` 0 错、`eslint` 恰好 1 条既有 warning、`pnpm build` 通过含 Safari 检查、`pnpm test` 既有 32 项 + 新增用例全过）。**教师端的 UI 走查必须由用户执行**——子代理没有浏览器。
+
+---
+
 # M1b-1：课堂模块三态控制（后端 + 教师端）实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -38,7 +38,6 @@ export function StudentChatContent({
   thinkingContent,
   teacherNotifBubble,
   blacklisted,
-  setStep,
   setSelectedStudent,
   setAvatarSvgs,
   setAllStudentAvatars,
@@ -48,18 +47,15 @@ export function StudentChatContent({
   setAgentDisabled,
   setShieldWarning,
   setToast,
-  setLoadError,
   setConnectionError,
   setStreamingContent,
   setThinkingContent,
   setTeacherNotifBubble,
-  loadClassroom,
-  loadMessages,
   fetchStudentTokens,
-  startChatSession,
   onSwitchIdentity,
   onExit,
-  router,
+  onClassroomEnded,
+  onRetryRestore,
   wsRef,
   statusSocketRef,
   chatConnectionGenerationRef,
@@ -388,9 +384,8 @@ export function StudentChatContent({
       try {
         const cr = await api.getClassroomByCode(code);
         if (cr.status === 'ended') {
-          localStorage.removeItem(`chat_session_${code}`);
-          setToast({ msg: '课堂已结束', type: 'info' });
-          router.push('/');
+          // 课堂已结束：清本地会话、提示、整页回首页 —— 编排归外壳
+          onClassroomEnded();
           return;
         }
         // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个
@@ -405,16 +400,14 @@ export function StudentChatContent({
         // 课堂已结束（API 返回 404 或 400）
         const msg = error instanceof Error ? error.message : '';
         if (msg.includes('课堂已结束') || msg.includes('互动码无效')) {
-          localStorage.removeItem(`chat_session_${code}`);
-          setToast({ msg: '课堂已结束', type: 'info' });
-          router.push('/');
+          onClassroomEnded();
         }
       }
     };
     poll(); // 立即执行一次
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [code, router, selectedStudent?.groupId, setAgentDisabled, setPaused, setToast]); // 三个 setter 由外壳传入，是稳定引用
+  }, [code, onClassroomEnded, selectedStudent?.groupId, setAgentDisabled, setPaused]); // 两个 setter 与 onClassroomEnded 都由外壳提供，是稳定引用
 
   // 如果选中的学生被登录了，取消选中
   useEffect(() => {
@@ -729,33 +722,7 @@ export function StudentChatContent({
             <div style={{ fontSize: "1rem", fontWeight: 600, color: '#dc2626' }}>{loadError}</div>
             <p style={{ fontSize: "0.875rem", color: '#6b7280', margin: 0 }}>请确认课堂仍在进行中，或联系老师获取最新互动码</p>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => {
-                const tryRestore = async () => {
-                  const codeFromUrl = new URLSearchParams(window.location.search).get('code') || '';
-                  setLoadError(null);
-                  const cr = await loadClassroom(codeFromUrl);
-                  if (cr) {
-                    try {
-                      const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
-                      if (saved) {
-                        const session = JSON.parse(saved);
-                        loadMessages(cr.id, session.studentId);
-                        startChatSession(session.studentId, session.studentName, codeFromUrl);
-                        api.getAvatarsAll('student').then(data => {
-                          const m: Record<number, string> = {};
-                          data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
-                          setAvatarSvgs(m);
-                        }).catch(() => {});
-                      } else {
-                        setStep('identity');
-                      }
-                    } catch {
-                      setStep('identity');
-                    }
-                  }
-                };
-                tryRestore();
-              }}
+              <button onClick={onRetryRestore}
                 style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontSize: "0.813rem", cursor: 'pointer' }}>
                 重试
               </button>

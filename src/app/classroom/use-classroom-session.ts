@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
@@ -200,6 +200,50 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     o.router.push('/');
   };
 
+  // 课堂已结束（15 秒轮询兜底发现「已结束」状态，或 API 报「课堂已结束/互动码无效」）。
+  // 与 handleExit 刻意不同：不主动断 socket、不清学生 token、没有 waitingAI 闸门 ——
+  // 课堂已经结束了，这里只清本地会话、提示、整页回首页。这三步与 useChatSocket 的
+  // classroom-ended 处理等价（那边用 optionsRef.current.code，同一会话期取值相同），
+  // 也就是说外壳内目前有两份同样的三行逻辑 —— 合并要动 ChatSocketOptions，留给 M1b。
+  // 必须 useCallback：[code] 之外身份稳定，否则面板的轮询 effect 每次渲染都会重建
+  // setInterval —— 流式回复期间渲染频繁，15 秒的兜底轮询将几乎永不触发。
+  const handleClassroomEnded = useCallback(() => {
+    localStorage.removeItem(`chat_session_${code}`);
+    setToast({ msg: '课堂已结束', type: 'info' });
+    optionsRef.current.router.push('/');
+  }, [code]);
+
+  // 面板「重试」按钮的编排（对应面板 chat-panel.tsx 的错误态卡片）：按 URL 里的互动码
+  // 重建课堂与历史消息，再续接会话；取不到本地会话就退回身份选择页。
+  // M1a 之前这段长在面板按钮的 onClick 里，属于「渲染在模块 DOM 里的页面编排」。
+  const handleRetryRestore = () => {
+    const tryRestore = async () => {
+      const codeFromUrl = new URLSearchParams(window.location.search).get('code') || '';
+      setLoadError(null);
+      const cr = await loadClassroom(codeFromUrl);
+      if (cr) {
+        try {
+          const saved = localStorage.getItem(`chat_session_${codeFromUrl}`);
+          if (saved) {
+            const session = JSON.parse(saved);
+            loadMessages(cr.id, session.studentId);
+            startChatSession(session.studentId, session.studentName, codeFromUrl);
+            api.getAvatarsAll('student').then(data => {
+              const m: Record<number, string> = {};
+              data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
+              setAvatarSvgs(m);
+            }).catch(() => {});
+          } else {
+            setStep('identity');
+          }
+        } catch {
+          setStep('identity');
+        }
+      }
+    };
+    void tryRestore();
+  };
+
   // 实时通信归外壳：socket 与 step 状态机同处一个 hook，会话生命周期只有一个持有者。
   // useChatSocket 必须先于 useStudentSession 调用 —— 后者的 options 在 render 期就求值，
   // 直接读下面这个 const。这是普通 TDZ 约束（const 声明顺序），不是运行期时序：
@@ -360,6 +404,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     handleIdentityConfirm,
     handleSwitchIdentity,
     handleExit,
+    handleClassroomEnded,
+    handleRetryRestore,
     startChatSession,
   };
 }

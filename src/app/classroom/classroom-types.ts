@@ -93,8 +93,8 @@ export interface ChatPanelProps {
 
   // —— 外壳 setter：面板自身仍要写这些状态 ——
   // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket
-  //   在写，随 hook 上移后已从面板契约中移除。）
-  setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'chat'>>;
+  //   在写，随 hook 上移后已从面板契约中移除。setLoadError 与 setStep 过去只有面板的
+  //   重试卡片在写，随重试逻辑上移后也已移除。）
   setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
   setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
   setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;
@@ -104,29 +104,22 @@ export interface ChatPanelProps {
   setAgentDisabled: Dispatch<SetStateAction<boolean>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
-  setLoadError: Dispatch<SetStateAction<string | null>>;
   setConnectionError: Dispatch<SetStateAction<string | null>>;
   setStreamingContent: Dispatch<SetStateAction<string>>;
   setThinkingContent: Dispatch<SetStateAction<string>>;
   setTeacherNotifBubble: Dispatch<SetStateAction<string | null>>;
 
-  // —— 外壳逻辑：面板的重试卡片与顶部栏调用 ——
-  // 外壳 useChatSocket 的返回值。面板的重试卡片直接调用它重连（与上移前调用面板自己
-  // 那份是同一个函数）。
-  startChatSession: (
-    studentId: string,
-    studentName: string,
-    classroomCode?: string,
-    token?: string,
-  ) => Promise<void>;
-  loadClassroom: (classroomCode?: string, sessionStudentId?: string) => Promise<StudentClassroom | undefined>;
-  loadMessages: (classroomId: string, studentId: string) => Promise<void>;
+  // —— 外壳逻辑：面板的顶部栏、错误态重试卡片与轮询兜底调用 ——
+  // 上移前，面板的重试卡片直接持有 loadClassroom / loadMessages / startChatSession /
+  // setStep、轮询兜底直接持有 router —— 那都是渲染在模块 DOM 里的页面编排。现在面板
+  // 只留按钮与调用点，编排全部由外壳提供，面板不再持有任何整页导航入口。
   fetchStudentTokens: () => Promise<void>;
   onSwitchIdentity: () => void;
   onExit: () => void;
-
-  // —— 路由入口 ——
-  router: { push: (href: string) => void };
+  /** 课堂已结束（轮询兜底发现）：外壳清本地会话、提示并整页回首页。 */
+  onClassroomEnded: () => void;
+  /** 错误态的「重试」：外壳按 URL 互动码恢复课堂、历史消息与会话。 */
+  onRetryRestore: () => void;
 
   // —— 共享 ref：按对象身份透传，两侧必须是同一个对象（M0 Ruling 8）——
   // socket 上移后，其内部使用的 ref 仍由 page.tsx 声明，同时交给外壳（useChatSocket）

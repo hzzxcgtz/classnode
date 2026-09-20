@@ -205,9 +205,21 @@ async function main() {
         CONSTRAINT "ClassroomModule_classroomId_fkey" FOREIGN KEY ("classroomId")
           REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       )`);
-      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomModule_classroomId_moduleKey_key" ON "ClassroomModule"("classroomId", "moduleKey")`);
-      await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomModule_classroomId_idx" ON "ClassroomModule"("classroomId")`);
       console.log('[server] ClassroomModule table created');
+    }
+    // 索引同样按名探测：若曾出现「表建好但索引创建失败」的中间态，可在下次启动自愈。
+    // 只判断表存在是不够的——那样中间态会永久缺唯一键，而课堂模块的 upsert 依赖它。
+    const moduleIndexes = await prisma.$queryRawUnsafe<{ name: string }[]>(
+      `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('ClassroomModule_classroomId_moduleKey_key', 'ClassroomModule_classroomId_idx')`
+    );
+    const moduleIndexNames = moduleIndexes.map(i => i.name);
+    if (!moduleIndexNames.includes('ClassroomModule_classroomId_moduleKey_key')) {
+      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "ClassroomModule_classroomId_moduleKey_key" ON "ClassroomModule"("classroomId", "moduleKey")`);
+      console.log('[server] ClassroomModule unique index created');
+    }
+    if (!moduleIndexNames.includes('ClassroomModule_classroomId_idx')) {
+      await prisma.$executeRawUnsafe(`CREATE INDEX "ClassroomModule_classroomId_idx" ON "ClassroomModule"("classroomId")`);
+      console.log('[server] ClassroomModule classroomId index created');
     }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);

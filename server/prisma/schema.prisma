@@ -191,6 +191,8 @@ model ClassroomModule {
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+  // 勿删 @default(now())：它与 index.ts 里的手写 DDL 对齐，是承重的。改成裸 @updatedAt 会造成漂移，
+  // 下次 db push 会重建本表，而同步块按表名探测、不会重跑，两边就此不一致。
   updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([classroomId, moduleKey])

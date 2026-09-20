@@ -211,14 +211,25 @@ export interface ChatPanelProps {
   setThinkingContent: Dispatch<SetStateAction<string>>;
   setTeacherNotifBubble: Dispatch<SetStateAction<string | null>>;
 
-  // —— 外壳逻辑：面板的顶部栏与错误态重试卡片调用 ——
+  // —— 外壳逻辑：面板只留调用点，编排全在外壳 ——
   // 上移前，面板的重试卡片直接持有 loadClassroom / loadMessages / startChatSession /
   // setStep，轮询兜底直接持有 router —— 那都是渲染在模块 DOM 里的页面编排。现在面板
   // 只留按钮与调用点，编排全部由外壳提供，面板不再持有任何整页导航入口。
   // （onClassroomEnded 过去由面板的 15 秒轮询调用，M1b-2 Task 6 把轮询搬进
   //   use-classroom-session 后已从面板契约中移除：课堂生命期不属于模块呈现。）
+  // M1b-3 T4 撤掉面板整行头部之后，「面板的顶部栏」这个调用点不再存在：下面四项里只有
+  // `onExit`（错误态重试卡片的「返回首页」）与 `onRetryRestore` 还留着面板自己的调用点，
+  // 另两项的实际消费者只剩外壳。四项**都**仍是活字段（外壳从同一个 `chat` 对象里读它们），
+  // 所以一个都不删。
   fetchStudentTokens: () => Promise<void>;
+  /**
+   * 切换身份。M1b-3 T4 起**面板自己不再消费**：它在本文件里最后的读者是面板头那枚
+   * 「切换」按钮，随整行头部一并撤除。消费者只剩外壳 —— `shell/classroom-shell.tsx`
+   * 从同一个 `chat` 对象里读它并接给顶栏的操作组。字段留在契约上的理由与上面
+   * `teacherMsgs` 那一段逐字相同（`chat` 就是 `Omit<ChatPanelProps, 'active'>`）。
+   */
   onSwitchIdentity: () => void;
+  /** 退出课堂。面板**仍有一个**调用点（错误态重试卡片的「返回首页」），所以它不是死字段。 */
   onExit: () => void;
   /** 错误态的「重试」：外壳按 URL 互动码恢复课堂、历史消息与会话。 */
   onRetryRestore: () => void;

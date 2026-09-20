@@ -6,7 +6,6 @@ import type { ChatAgent, ChatPanelProps } from '../classroom-types';
 import { API_BASE_URL } from '../avatar-utils';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
-import { SvgAvatar } from './svg-avatar';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
@@ -47,7 +46,10 @@ export function StudentChatContent({
   setStreamingContent,
   setThinkingContent,
   setTeacherNotifBubble,
-  onSwitchIdentity,
+  // ⚠️ 这里**没有** `onSwitchIdentity`（M1b-3 T4）：它在本文件里唯一的读者是面板头那枚
+  // 「切换」按钮，随整行头部一并撤除。字段仍留在 `ChatPanelProps` 上 —— 外壳从同一个
+  // `chat` 对象里读它并接给顶栏的操作组，理由与上面 `teacherMsgs` 那一段逐字相同；
+  // 下面不再解构（解构了就是 unused-vars）。
   onExit,
   onRetryRestore,
   wsRef,
@@ -667,65 +669,6 @@ export function StudentChatContent({
 
   return (
     <div ref={chatShellRef} className={styles.chatShell}>
-      {/* === 顶部栏 === */}
-      <div className={styles.topBar}>
-        <div className={styles.agentIdentity}>
-          <div className={styles.headerAgentAvatar}>{renderAgentAvatar(48, 14, 20)}</div>
-          <div className={styles.agentIdentityText}>
-            <div className={styles.agentTitle}>
-              {(() => {
-                if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-                  const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
-                  if (group?.agent?.name) return group.agent.name;
-                }
-                return classroom?.agents?.[0]?.name || MODULE_META.companion.label;
-              })()}
-            </div>
-            <div className={styles.classroomMeta}>
-              {classroom?.title || ''}
-              <span>课堂 #{code}</span>
-            </div>
-          </div>
-        </div>
-        <div className={styles.headerActions}>
-          <div className={`${styles.connectionBadge} ${connected ? styles.connectionOnline : styles.connectionOffline}`}>
-            <span />
-            {connected ? '已连接' : '连接断开'}
-          </div>
-          {/* 当前登录用户姓名标签。⚠️ 这里原本还有一枚「⭐ N」换头像入口（点击开弹窗），
-              M1b-3 T2 已撤除：换头像的入口收敛到顶栏的学生 chip 一个（Ruling 1），
-              留两个入口就会出现「面板头一个、顶栏一个」的第二次漂移。 */}
-          {selectedStudent?.name && (
-            <div className={styles.studentBadge}>
-              <div className={styles.studentBadgeAvatar}>
-                {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
-                  <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={28} fallback={selectedStudent.name[0]} />
-                ) : selectedStudent.name[0]}
-              </div>
-              {selectedStudent.name}
-            </div>
-          )}
-          {/* ⚠️ 「消息 N」按钮与它的下拉 M1b-3 T3 已整体搬去顶栏（外壳 + ModuleTabBar）：
-              入口是顶栏，而顶栏在外壳挂载期间**始终可见**（它不属于任何一层）；这条面板头
-              则会随 T4 整行撤除，两个入口并存没有必要。下拉之所以必须 portal 到 body，
-              见 classroom-shell.tsx 里那条注释（顶栏的 overflow-y: hidden 会把它纵向裁掉）。 */}
-          {/* 切换用户按钮 */}
-          <button onClick={onSwitchIdentity} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '切换用户'}
-            className={styles.headerButton}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
-            </svg>
-            切换
-          </button>
-          {/* 退出按钮 */}
-          <button onClick={onExit} disabled={waitingAI} title={waitingAI ? '请等待 AI 回答完成' : '退出课堂'}
-            className={`${styles.headerButton} ${styles.exitButton}`}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            退出
-          </button>
-        </div>
-      </div>
-
       {/* === 消息区域 === */}
       <div ref={chatContainerRef} onScroll={handleChatScroll}
         className={styles.chatScroller}>

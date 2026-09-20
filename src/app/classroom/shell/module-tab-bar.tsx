@@ -141,9 +141,10 @@ function ExitIcon() {
  * 角色）。可点的那两个（切换身份 / 退出 / 头像 chip 的按钮形态）一律是原生 `<button>` +
  * `aria-label`；只有**真的不可点**的元素（连接点、小组的 chip）才用 `role="img"`。
  *
- * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionOnline`）是 T1 的
- * 参考，但**样式全部写在 shell.module.css**，不 import 面板的 CSS module：层级不对，而且
- * 面板头整行会随 T4 撤除（面板头那枚「换头像」星标计数已随 T2 撤除，面板那一侧的入口先走一步）。
+ * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionBadge`）曾是 T1 的
+ * 参考，但**样式全部写在 shell.module.css**，不 import 面板的 CSS module：层级不对。现在
+ * 面板头整行已随 M1b-3 T4 撤除（面板头那枚「换头像」星标计数先一步随 T2 撤除），两份并存的
+ * 过渡期结束 —— 本文件所依赖的样式是这一组能力的**唯一**来源。
  */
 export function ModuleTabBar({
   tabs,

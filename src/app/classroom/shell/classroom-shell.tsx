@@ -460,7 +460,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
     <div className={styles.shell}>
       {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
           外壳只是转手，因此这里**不新增任何状态、不新增 effect**。
-          与面板头那四个同源同义（面板头整行随 T4 撤除），所以此刻两处并存是刻意的。 */}
+          面板头那四个同名同义的入口已随 M1b-3 T4 整行撤除，所以顶栏这一组是**唯一**一份。 */}
       <ModuleTabBar
         tabs={tabs}
         activeId={activeModuleId}

@@ -253,9 +253,9 @@
   margin-left: 4px;
 }
 
-/* 连接状态点。配色与面板头的连接徽章同源（chat.module.css 的
-   `.connectionOnline` / `.connectionOffline`）—— 两份并存的理由见 module-tab-bar.tsx 的文件头，
-   T4 撤掉面板头那行之后这里成为唯一一份。
+/* 连接状态点。**本文件是它唯一的来源**（M1b-3 T4）：面板头那套同源的配色
+   （`chat.module.css` 的 `.connectionOnline` / `.connectionOffline`）随整行头部一并撤除，
+   原先「两份并存、T4 之后收敛成一份」的过渡期到此结束。
 
    绿点本身是纯装饰，信息载体是元素的 aria-label / title（Ruling 3 续）。 */
 .connectionDot {

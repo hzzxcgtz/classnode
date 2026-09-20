@@ -240,6 +240,11 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
    *
    * 归属按 `front` 而不是 `activate`：动画那 240ms 里两层都没「就位」，按后者会把提示条
    * 掐断一瞬（学生看到的是闪一下又回来）。
+   *
+   * **每个前台层都必须能渲染**（Task 11）：规则是无条件的，按层分而不是按模块实现度分 ——
+   * 占位面板也接住了 `toast` / `setToast`（契约里那两项）。前一版占位面板不接，于是学生站在
+   * 占位模块上时设的提示没有任何渲染点：既看不见，又因为没有 `<Toast>` 实例而**没有任何
+   * 3 秒计时器**，提示会滞留在会话状态里，等学生切回首页时突然弹出几分钟前的旧提示。
    */
   const toastFor = (key: LayerKey) => (phase.front === key ? chat.toast : null);
 
@@ -278,6 +283,10 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               state={moduleStateFor(chat.classroom?.modules, id)}
               classroom={chat.classroom}
               session={chat.selectedStudent}
+              // 占位面板也要接住 Toast：学生站在它上面时设的提示必须有渲染点（Task 11）。
+              // `setToast` 与首页、学伴面板是同一个会话级 setter，所以关闭仍然是唯一一处写入。
+              toast={toastFor(id)}
+              setToast={setToast}
             />
           ))
         ))}

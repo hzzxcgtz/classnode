@@ -79,7 +79,7 @@ export type ChatToast = { msg: string; type: 'success' | 'error' | 'info' };
  * （如探究助手在此向 iframe 发挂起信号）；外壳不关心模块内部，模块不关心有几个兄弟。
  * 加一个模块 = 加一个组件。
  *
- * 「每个模块都满足它」说的是外壳一定把这四件事给到面板；**面板自己的 props 会更多**
+ * 「每个模块都满足它」说的是外壳一定把这六件事给到面板；**面板自己的 props 会更多**
  * （学伴面板几十个，见下面的 ChatPanelProps），契约是共同的下限而不是完整清单。
  *
  * `active` 与 `state` 是两件不同的事，不能合成一个字段：
@@ -87,6 +87,21 @@ export type ChatToast = { msg: string; type: 'success' | 'error' | 'info' };
  *   · `state`  = **教师设定的三态**（开放 / 预告 / 隐藏）。它决定模块在首页与 Tab 栏能否
  *     进入，与此刻在不在前台无关 —— 一个 `preview` 的模块可以在前台，一个 `open` 的
  *     模块也可以在后台。
+ *
+ * `toast` / `setToast` 是 M1b-2 Task 11 补进契约的第五、六项，它们**不是**可选的装饰：
+ * 外壳的 Toast 归属规则是「**前台那一层**渲染，别的层拿到 null」（T4 消除双份叠加的做法），
+ * 而提示的 3 秒自动关闭计时器长在 `<Toast>` 组件内部（`lib/components.tsx`）——**没人渲染
+ * 它就没有任何计时器**。规则本身是无条件的、按层而不是按模块类型分的，所以任何一层当前台时
+ * 都必须能渲染：占位面板也不例外，否则「点未开放的 Tab ⇒ 提示『老师还没开放』」（§4.4）在
+ * 「前台是占位模块」这个配置下会静默失效，`avatar-rewarded` 的提示还会滞留在会话状态里，
+ * 等学生切回首页时才突然弹出几分钟前的旧提示。
+ *
+ * 为什么不把「不会渲染 Toast 的层」在外壳里列成一张表、由外壳转给首页：那张表会随 M2/M3
+ * 把占位换成真面板而**过期**（学习单变成真面板后外壳仍把它的提示转给首页），而且首页的
+ * Toast 渲染在 `useOverlayPortal(active)` 里（`visibility` 由首页自己的 `active` 决定），
+ * 要让它替别的前台层显示提示，就得把 Toast 从这里摘出去单独无条件渲染 —— 反而动了
+ * Ruling 5 立下的「portal 必须显式按 active 收敛」这条唯一的收口。契约加一项则让
+ * 「外壳给了、模块没接住」变成**编译错误**（`ModulePlaceholderProps extends` 本接口）。
  */
 export interface ModulePanelProps {
   /** 此刻是否可见。 */
@@ -95,6 +110,10 @@ export interface ModulePanelProps {
   state: ModuleState;
   classroom: ClassroomInfo | null;
   session: StudentSession | null;
+  /** 会话级浮动提示。**只在前台层非 null**（见上面的归属规则）；非前台层拿到 null。 */
+  toast: ChatToast | null;
+  /** 关闭提示 = 清空会话级的 `toast`（与首页、学伴面板同一个 setter）。 */
+  setToast: Dispatch<SetStateAction<ChatToast | null>>;
 }
 
 /**
@@ -204,12 +223,14 @@ export interface ChatPanelProps {
  *
  * 为什么需要它：`ModulePanelProps` 今天没有 `extends` 它的实现者（三条理由见上面的注释），
  * 于是「学伴面板满足契约」这句话只活在一段注释里 —— 注释拦不住漂移。这个别名把「面板至少
- * 得接住 `active` 与 `classroom`」变成编译期事实：`active` 一旦被删掉或改宽（例如退回
- * `active?: boolean`）、`classroom` 一旦换了类型，这里立刻报错。
+ * 得接住 `active`、`classroom`、`toast` 与 `setToast`」变成编译期事实：`active` 一旦被删掉
+ * 或改宽（例如退回 `active?: boolean`）、`classroom` 一旦换了类型、`toast` 一旦被改名或
+ * 放宽成可选，这里立刻报错。
  *
  * 为什么 `Omit` 掉 `state` 与 `session`：这两项今天的名字/落地还没对齐（`session` 在本面板叫
  * `selectedStudent`；`state` 面板尚未读）。要求它们就位，只能往 `page.tsx` 传假值 ——
- * 那是把闸门伪装成通过。`Omit` 之后剩下的两项恰好是「两边名字一致且都已落地」的部分。
+ * 那是把闸门伪装成通过。`Omit` 之后剩下的四项恰好是「两边名字一致且都已落地」的部分
+ * （`toast` / `setToast` 由 Task 11 补进契约，面板本来就在用这两个名字）。
  *
  * ⚠️ 断言必须落在 `AssertTrue` 这种**要求 `T extends true`** 的位置上才算数：
  * `type X = 条件 ? true : never` 只是求值成 `never`，别名本身依旧合法、**不报错**；

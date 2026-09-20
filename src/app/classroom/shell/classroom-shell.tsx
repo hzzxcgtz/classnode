@@ -253,7 +253,20 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
 
   return (
     <div className={styles.shell}>
-      <ModuleTabBar tabs={tabs} activeId={activeModuleId} onSelect={openModule} onHome={goHome} />
+      {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
+          外壳只是转手，因此这里**不新增任何状态、不新增 effect**。
+          与面板头那四个同源同义（面板头整行随 T4 撤除），所以此刻两处并存是刻意的。 */}
+      <ModuleTabBar
+        tabs={tabs}
+        activeId={activeModuleId}
+        onSelect={openModule}
+        onHome={goHome}
+        connected={chat.connected}
+        selectedStudent={chat.selectedStudent}
+        avatarSvgs={chat.avatarSvgs}
+        onSwitchIdentity={chat.onSwitchIdentity}
+        onExit={chat.onExit}
+      />
 
       <div className={styles.stage}>
         {renderLayer(

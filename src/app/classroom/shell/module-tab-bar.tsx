@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { MODULE_META } from '../module-meta';
-import type { ModuleId } from '../classroom-types';
+import type { ModuleId, StudentSession } from '../classroom-types';
+import { SvgAvatar } from '../chat/svg-avatar';
 import type { ModuleTabEntry } from './use-module-tabs';
 import styles from './shell.module.css';
 
@@ -14,6 +15,15 @@ export interface ModuleTabBarProps {
   activeId: ModuleId | null;
   onSelect: (id: ModuleId) => void;
   onHome: () => void;
+  // ── 操作组（M1b-3 T1）：四项能力全部由外壳转手，栏自己不持有状态 ──
+  /** 与课堂服务端的连接是否存活。`false` = 红点 + 「连接断开」。 */
+  connected: boolean;
+  /** 当前身份。`null`（理论上只在身份选择页出现）时不渲染学生头像与姓名。 */
+  selectedStudent: StudentSession | null;
+  /** 头像 SVG 池，键是 `Avatar.id`。缺项时头像降级成姓名首字。 */
+  avatarSvgs: Record<number, string>;
+  onSwitchIdentity: () => void;
+  onExit: () => void;
 }
 
 /** 首页图标。内联 SVG 而不是 emoji：与三件套同一套线条，缩放不糊。 */
@@ -36,6 +46,29 @@ function LockIcon() {
   );
 }
 
+/** 切换身份（左右对向箭头）。与三件套同一套线条，缩放不糊。 */
+function SwitchIdentityIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 3 4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="m16 21 4-4-4-4" />
+      <path d="M20 17H4" />
+    </svg>
+  );
+}
+
+/** 退出课堂（开门 + 外走箭头）。 */
+function ExitIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 /**
  * 顶部 Tab 栏（§4.1 / §4.2 / §4.7）。
  *
@@ -53,8 +86,36 @@ function LockIcon() {
  * 滑块是一枚**半透明**的模块色药丸（见 shell.module.css 的 `.tabIndicator`），
  * 位置与宽度由 `offsetLeft` / `offsetWidth` 量出来 —— 不用 `getBoundingClientRect()`，
  * 因为它含祖先的 `transform`，而本壳的切换动画正在平移整个层。
+ *
+ * ── 操作组（M1b-3 T1）───────────────────────────────────────────────────────
+ * 栏右侧追加一组操作：连接状态点、学生头像 + 姓名、切换身份、退出课堂。四项能力**全部**
+ * 由外壳从 `useClassroomSession` 转手进来（`connected` / `selectedStudent` / `avatarSvgs` /
+ * `onSwitchIdentity` / `onExit`），栏自己不持有任何状态、不新增 effect —— 它只是一个展示点。
+ *
+ * 三条从控制器裁定下来的规矩，改这里时不要丢：
+ *   ① **图标化只减视觉宽度，不减无障碍信息**（Ruling 3）：每个操作 36px 见方（与 Tab 同高），
+ *      两个图标按钮必须有 `aria-label` + `title`；
+ *   ② **颜色不能是唯一的信息载体**（Ruling 3 续）：连接状态不是一个孤零零的绿点/红点，
+ *      它有 `aria-label` / `title` 的「已连接」/「连接断开」；`role="img"` 是让这个标签
+ *      稳定成为该元素的无障碍名字（纯装饰的圆点本身 `aria-hidden`）。
+ *   ③ **不把操作钉死在右侧**（Ruling 4）：操作组是栏里的普通流内兄弟项，与 Tab 组一起
+ *      横向滚动。窄屏仍会横向滚动 —— 这是已知残留，没有修在本次范围内。
+ *
+ * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionOnline`）是本次的
+ * 参考，但**样式全部写在 shell.module.css**，不 import 面板的 CSS module：层级不对，而且
+ * 面板头整行会随 T4 撤除。两处并存是**刻意的**，T4 收口。
  */
-export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarProps) {
+export function ModuleTabBar({
+  tabs,
+  activeId,
+  onSelect,
+  onHome,
+  connected,
+  selectedStudent,
+  avatarSvgs,
+  onSwitchIdentity,
+  onExit,
+}: ModuleTabBarProps) {
   const homeActive = activeId === null;
   const showTabs = tabs.length >= 2;
 
@@ -178,6 +239,68 @@ export function ModuleTabBar({ tabs, activeId, onSelect, onHome }: ModuleTabBarP
           })}
         </nav>
       )}
+
+      {/* ── 操作组（M1b-3 T1）。四项都是**共用**能力：任何层（首页或三个模块）下都在，
+          因为它们属于「这一节课的会话」，不属于任何一个模块。 */}
+      <div className={styles.actions}>
+        {/* 连接状态点。**不是按钮** —— 它没有可执行的动作，做成按钮只会让学生去点它。
+            颜色由 `.connectionOnline` / `.connectionOffline` 给，文字信息走 aria-label /
+            title（Ruling 3 续：颜色不能是唯一的信息载体）。 */}
+        <span
+          className={`${styles.connectionDot} ${connected ? styles.connectionOnline : styles.connectionOffline}`}
+          role="img"
+          aria-label={connected ? '已连接' : '连接断开'}
+          title={connected ? '已连接' : '连接断开'}
+        >
+          <span className={styles.connectionDotMark} aria-hidden="true" />
+        </span>
+
+        {/* 学生头像 + 姓名。姓名在窄屏由媒体查询隐藏、头像保留（见 shell.module.css
+            的 `.studentName`）。降级写法逐字对齐面板：有 avatarId 且池里有这张 SVG 才画
+            `SvgAvatar`，否则退到姓名首字（底色由 `.studentChipAvatar` 给）。
+            当前**不可点** —— 换头像入口是 T2 的事，这里不抢。
+
+            `role="img"` + `aria-label` 是**刻意的**，不是装饰：窄屏那个媒体查询用
+            `display: none` 拿掉了姓名文本，没有这两个属性时整个 chip 在无障碍树里就是空的
+            —— 而 Ruling 3 的原则是「只减视觉宽度，不减无障碍信息」。`img` 是叶子角色，
+            内部的头像与姓名文本不再单独进无障碍树，所以宽屏下姓名也**只念一次**（不会
+            「aria-label 一次 + 可见文本一次」重复播报）。 */}
+        {selectedStudent?.name && (
+          <span
+            className={styles.studentChip}
+            role="img"
+            aria-label={selectedStudent.name}
+            title={selectedStudent.name}
+          >
+            <span className={styles.studentChipAvatar} aria-hidden="true">
+              {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
+                <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={28} fallback={selectedStudent.name[0]} />
+              ) : selectedStudent.name[0]}
+            </span>
+            <span className={styles.studentName}>{selectedStudent.name}</span>
+          </span>
+        )}
+
+        <button
+          type="button"
+          className={styles.action}
+          onClick={onSwitchIdentity}
+          aria-label="切换身份"
+          title="切换身份"
+        >
+          <SwitchIdentityIcon />
+        </button>
+
+        <button
+          type="button"
+          className={styles.action}
+          onClick={onExit}
+          aria-label="退出课堂"
+          title="退出课堂"
+        >
+          <ExitIcon />
+        </button>
+      </div>
     </header>
   );
 }

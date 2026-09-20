@@ -219,6 +219,133 @@
   text-overflow: ellipsis;
 }
 
+/* ─────────────────── 操作组（M1b-3 T1：连接 / 学生 / 切换 / 退出）───────────────────
+   栏右侧那一组共用操作。**位置是流内兄弟项，不是右侧固定**（Ruling 4）：本任务只做「图标化」，
+   没选「Tab 组滚动 + 操作钉在右侧」。所以这里不写 `margin-left: auto` —— 那会在 `.bar` 的
+   `overflow-x: auto` 里把这一组推到滚动区的右端，窄屏上与 Tab 组一起滚走，行为反而更怪。
+   留 4px（而非 0）是为了让操作组与 Tab 组之间比栏内默认的 4px 间距再宽一点，读得出分界。
+
+   ⚠️ 高度一律 36px、与 `.home` / `.tab` 同高 —— 栏高 52px 是面板与首页层的布局常量
+   （见文件头），本任务**不动**它，也不引入比 Tab 更高的东西。
+
+   ⚠️ 宽度（768px 的实测估算，见 .studentName 的媒体查询注释）：本组约 202px，
+   栏在没有本组时约 396px，合计约 598px < 768px。手机宽度仍然放不下（已知残留）。 */
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+/* 连接状态点。配色与面板头的连接徽章同源（chat.module.css 的
+   `.connectionOnline` / `.connectionOffline`）—— 两份并存的理由见 module-tab-bar.tsx 的文件头，
+   T4 撤掉面板头那行之后这里成为唯一一份。
+
+   绿点本身是纯装饰，信息载体是元素的 aria-label / title（Ruling 3 续）。 */
+.connectionDot {
+  flex: 0 0 auto;
+  display: inline-flex;
+  min-width: 36px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.connectionOnline {
+  color: #079669;
+  background: #ecfdf5;
+}
+
+.connectionOffline {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+/* 圆点用 `currentColor`：颜色只有 `.connectionOnline` / `.connectionOffline` 一处来源，
+   这里不抄十六进制（同一手法见 `.homeActive` / `.tabActive`）。 */
+.connectionDotMark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* 学生头像 + 姓名。画法照抄面板头的 `studentBadge` / `studentBadgeAvatar`（含降级：
+   `SvgAvatar` 渲染不出来时 `SvgAvatar` 自己退回首字，池里没这张 SVG 时由 JSX 退回首字），
+   但**不 import** 面板的 CSS module —— 层级不对，且面板头整行随 T4 撤除。 */
+.studentChip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  max-width: 180px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px 0 4px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dcdcff;
+  border-radius: 999px;
+  color: #4f46c8;
+  background: #f5f5ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.studentChipAvatar {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  font-size: 0.7rem;
+}
+
+.studentName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 图标按钮（切换身份 / 退出课堂）。与 `.home` / `.tab` 同一套静置灰 + 悬停淡紫药丸，
+   只是里面只有 16px 的图标。`min-width` / `min-height` 36px 是 Ruling 3 的硬要求：
+   图标化只减视觉宽度，不减点击目标，也不减无障碍信息（两个按钮都带 aria-label + title）。
+
+   悬停/按下只改颜色与 `transform`，**没有 transition** —— 与 `.home` / `.tab` 一致：
+   本文件里会动的只有指示器滑块与四条层切换动画，别的一律瞬间生效（动效纪律见文件末尾）。 */
+.action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.action:active {
+  transform: translateY(1px);
+}
+
 /* ───────────────────────── 舞台与层 ───────────────────────── */
 
 /* 舞台。`overflow: hidden` 是**动画期**需要的：入场层从 `translateX(100%)` 起步、
@@ -404,8 +531,35 @@
   }
 
   .home:active,
-  .tab:active {
+  .tab:active,
+  .action:active {
     transform: none;
+  }
+}
+
+/* ── 窄屏：姓名隐藏、头像保留（简报要求）──
+
+   断点取 640px 不是随手挑的，是按栏的宽度预算算出来的（13px 字号下汉字按 1em ≈ 13px 宽估）：
+
+     首页 72 +（学习单 90 + 4 + 探究助手 103 + 4 + 智能学伴 103）= 304
+     + 栏左右内边距 16 + 栏内三个 flex 项之间的 2×4 = 8
+     ⇒ 只有 Tab 时约 **396px**
+     操作组（连接 36 + 4 + 学生 chip ≈ 82 + 4 + 切换 36 + 4 + 退出 36）= 202，外加与 Tab 组的 4px
+     ⇒ 带姓名时约 **602px**，不带姓名（chip 收成 36px 的圆）时约 **560px**
+
+   所以 640px 是「带姓名的 602px 还留得住 ~38px 余量」的最小整断点；768px（iPad 竖屏）下
+   602 < 768，余量约 166px，宽裕。640px 以下姓名让位。
+
+   带上姓名在本断点以上一律够放 —— 学生姓名长度不受控，所以 `.studentChip` 另有
+   `max-width: 180px` + 省略号兜底（姓名超长时 chip 不会无限撑宽）。 */
+@media (max-width: 640px) {
+  .studentName {
+    display: none;
+  }
+
+  /* 姓名一走，chip 收成与其它操作同宽的圆（28 + 4 + 4 = 36px）。 */
+  .studentChip {
+    padding: 0 4px;
   }
 }
 

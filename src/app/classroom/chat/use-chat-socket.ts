@@ -255,8 +255,12 @@ export function useChatSocket(options: ChatSocketOptions) {
         optionsRef.current.setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
       });
 
-      // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。学生端原先只靠
-      // 15 秒轮询，最坏延迟 15 秒，而设计 §4.4 要求实时。载荷是线缆上的值，先过类型守卫。
+      // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。
+      // 这条订阅是学生端唯一的传播路径：面板那条 15 秒轮询（chat-panel.tsx 的 poll）只读
+      // status / agents / paused，拿到 cr 后从不调用 setClassroom —— 学生端 setClassroom 的
+      // 写入点只有外壳的 loadClassroom（进入会话 / 重试恢复时各一次）与下面这几条 socket 回调。
+      // 所以改动前三态是「冻结在首次加载的值」，不是「最多慢 15 秒」。设计 §4.4 要求实时，
+      // 这条不能省。载荷是线缆上的值，先过类型守卫。
       socket.on('module-state-changed', (data: ModuleStateEvent) => {
         const { moduleKey, state } = data;
         if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;

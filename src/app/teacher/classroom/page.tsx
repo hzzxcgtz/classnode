@@ -721,18 +721,20 @@ function ClassroomBoardContent() {
   });
 
   // 模块三态：与前三个开关不同，PUT 不返回「服务端权威的全量态」，所以要自己乐观更新。
-  // 点击立刻写本地（下拉框里选中项马上跟手），失败则回滚到点击前的快照并抛错，
-  // 由 runControlAction 统一 Toast。busy 键按模块区分，请求期间这一行整体禁用，防连点。
+  // 点击立刻写本地（下拉框里选中项马上跟手），失败则回滚并抛错，由 runControlAction 统一 Toast。
+  // busy 键按模块区分，请求期间这一行整体禁用，防连点。
   const setModuleState = (moduleKey: ClassroomModuleKey, state: ClassroomModuleState) => {
+    const previousState = moduleStateOf(classroom?.modules, moduleKey);
     // 点到当前态是空操作：服务端 upsert 幂等，但没必要为一次没有变化的写入惊动全体学生端。
-    if (moduleStateOf(classroom?.modules, moduleKey) === state) return;
+    if (previousState === state) return;
     return runControlAction(`module:${moduleKey}`, async () => {
-      const previousModules = classroom?.modules;
       setClassroom((previous) => previous ? { ...previous, modules: applyModuleState(previous.modules, moduleKey, state) } : previous);
       try {
         await api.setClassroomModuleState(id, moduleKey, state);
       } catch (error) {
-        setClassroom((previous) => previous ? { ...previous, modules: previousModules ?? previous.modules } : previous);
+        // 只回滚被点击的这一个模块。回滚整个数组快照会把这一个 RTT 窗口内其它模块收到的
+        // 广播一并抹掉（窗口内另一位教师改了别的模块时，本机会显示成旧态直到刷新）。
+        setClassroom((previous) => previous ? { ...previous, modules: applyModuleState(previous.modules, moduleKey, previousState) } : previous);
         throw error;
       }
     });

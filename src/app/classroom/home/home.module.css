@@ -101,8 +101,9 @@
 }
 
 /* 70px = 64px 头像 + 两侧各 3px 描边。`*{box-sizing:border-box}` 之下，
-   若按钮给 64px，内容盒只有 58px，头像会被裁掉一圈。 */
-.avatarButton,
+   若给 64px，内容盒只有 58px，头像会被裁掉一圈。
+   （同一份样式原本还有一个 `.avatarButton` 变体 + 悬停放大，随 M1b-3 T2 撤除：首页的头像
+   不再是换头像的入口，只负责显示 —— 唯一入口是顶栏的学生 chip。） */
 .avatarStatic {
   display: block;
   flex-shrink: 0;
@@ -113,15 +114,6 @@
   border: 3px solid #e0e7ff;
   border-radius: 50%;
   background: #f1f5f9;
-}
-
-.avatarButton {
-  cursor: pointer;
-  transition: transform 0.16s ease;
-}
-
-.avatarButton:hover {
-  transform: scale(1.04);
 }
 
 .avatarFallback {
@@ -153,44 +145,9 @@
   color: #64748b;
 }
 
-.changeAvatarButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 8px 16px;
-  border: 1px solid #c7d2fe;
-  border-radius: 999px;
-  background: #fff;
-  color: #4338ca;
-  font-size: 0.875rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: transform 0.16s ease;
-}
-
-.changeAvatarButton:hover {
-  transform: translateY(-1px);
-}
-
-.tokenCount {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #4338ca;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.tokenHint {
-  flex-shrink: 0;
-  max-width: 152px;
-  text-align: right;
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: #94a3b8;
-}
+/* `.changeAvatarButton`（「换头像 N」）、`.tokenCount` 与 `.tokenHint`（「换头像的机会由老师
+   奖励」那行常驻提示）随 M1b-3 T2 一并撤除：首页的两个换头像入口都没了，入口收敛到顶栏的
+   学生 chip 上，那句提示改由外壳在点击时说出。 */
 
 .rule {
   height: 1px;
@@ -433,25 +390,17 @@
     padding: 16px 16px 18px;
     border-radius: 16px;
   }
-
-  .tokenHint {
-    max-width: 104px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card,
   .card::before,
-  .avatarButton,
-  .changeAvatarButton,
   .exitButton {
     transition: none;
   }
 
   .card:hover,
-  .card:active,
-  .avatarButton:hover,
-  .changeAvatarButton:hover {
+  .card:active {
     transform: none;
   }
 }

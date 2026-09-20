@@ -1,14 +1,11 @@
 'use client';
 
-import { useState } from 'react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
-import type { AvatarSummary } from '@/lib/types';
 import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
 import { SvgAvatar } from '../chat/svg-avatar';
-import { AvatarChangerModal, finishAvatarChange } from '../chat/avatar-changer';
 import styles from './home.module.css';
 
 export interface StudentHomeProps {
@@ -16,25 +13,19 @@ export interface StudentHomeProps {
    * 首页此刻是否在前台（Task 5 引入，**无默认值**）。
    *
    * 首页常驻之后（§4.5 的挂载策略同样适用于它）「挂载」不再等于「可见」：学生进入任一
-   * 模块后首页仍在 DOM 里，只为保留它自己的状态（滚动位置、换头像弹窗是否开着）。
-   * 它自己没有任何页面级副作用，唯一需要这道闸的是下面那个 portal —— 提到 `document.body`
-   * 的元素不继承本层的 `visibility:hidden`，会在模块之上浮起来（Ruling 5 / Task 2 同类问题）。
+   * 模块后首页仍在 DOM 里，只为保留它自己的状态（滚动位置）。它自己没有任何页面级副作用，
+   * 唯一需要这道闸的是下面那个 portal —— 提到 `document.body` 的元素不继承本层的
+   * `visibility:hidden`，会在模块之上浮起来（Ruling 5 / Task 2 同类问题）。
    */
   active: boolean;
   code: string;
   classroom: ClassroomInfo | null;
   selectedStudent: StudentSession | null;
   avatarSvgs: Record<number, string>;
-  allStudentAvatars: AvatarSummary[];
-  avatarTokenCount: number;
   /** 学伴的历史消息：只读最后一次非空内容，用于「上次聊到…」。 */
   messages: StudentChatMessage[];
   toast: ChatToast | null;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
-  setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
-  setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;
-  setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
-  fetchStudentTokens: () => Promise<void>;
   onOpenModule: (moduleId: ModuleId) => void;
   onExit: () => void;
 }
@@ -75,8 +66,14 @@ function summarizeLastRound(messages: StudentChatMessage[]): string | null {
 /**
  * 学生端首页（常驻门户，§4.2）：进入课堂后的默认落点，不是直接掉进某个模块。
  *
- * 三件事：我是谁（头像/姓名，可换头像）、这是哪堂课（班级名 + 互动码）、今天能做什么
+ * 三件事：我是谁（头像/姓名）、这是哪堂课（班级名 + 互动码）、今天能做什么
  * （三张模块卡片，三态由教师实时决定）。
+ *
+ * **换头像的入口不在这里**（M1b-3 T2 / Ruling 1）：顶栏的学生 chip 是唯一入口，弹窗与它的
+ * 状态一并归外壳。首页这里只**显示**当前头像（不再是一个按钮）—— 撤掉的两个入口是那枚
+ * 可点头像与「换头像 N」按钮，随之撤掉的还有「换头像的机会由老师奖励」那行常驻提示
+ * （同一句话改由外壳在点击顶栏头像时说出口）。同理，首页也不再需要 `setAvatarSvgs` /
+ * `setSelectedStudent` / `setAllStudentAvatars` / `fetchStudentTokens` 这四个 props。
  *
  * **卡片从 `MODULE_KEYS` 渲染，不按 `classroom.modules` 的数组下标**（§4.11 B6）：
  * `applyModuleState` 在键缺失时会追加元素，下标会漂移 —— 按下标渲染，教师改一次态就可能
@@ -88,19 +85,12 @@ export function StudentHome({
   classroom,
   selectedStudent,
   avatarSvgs,
-  allStudentAvatars,
-  avatarTokenCount,
   messages,
   toast,
   setToast,
-  setAvatarSvgs,
-  setAllStudentAvatars,
-  setSelectedStudent,
-  fetchStudentTokens,
   onOpenModule,
   onExit,
 }: StudentHomeProps) {
-  const [showAvatarChanger, setShowAvatarChanger] = useState(false);
   // 浮层一律走 portal：Task 5 的切换动画会让首页成为 `transform` 容器，届时留在树内的
   // `position: fixed` 会被重新锚定到首页盒子（Task 2 同类问题）。现在就先摆正，
   // 顺带避开 SSR（静态导出）期没有 document 的问题。
@@ -109,7 +99,6 @@ export function StudentHome({
 
   const studentName = selectedStudent?.name || '同学';
   const studentAvatarSvg = selectedStudent?.avatarId ? avatarSvgs[selectedStudent.avatarId] : undefined;
-  const canChangeAvatar = Boolean(selectedStudent?.studentId) && avatarTokenCount > 0;
 
   // 与学伴面板顶部栏同一套取值顺序（小组智能体优先，其次课堂第一个智能体），
   // 否则首页说「小科老师」、进去变成另一个名字。
@@ -126,10 +115,10 @@ export function StudentHome({
     return group?.agent?.name || classroom.agents?.[0]?.name || fallbackName;
   })();
 
-  // 换头像要消耗老师奖励的机会（服务端 `avatarChangeTokens >= 1` 才放行）。没有机会时
-  // 不留一个按不动的按钮，而是说清楚为什么 —— 空状态要给出方向，不是把入口藏掉。
-  // 小组参与者没有这个入口（`studentId` 为空），也就没有这句提示。
-  const avatarHint = !canChangeAvatar && selectedStudent?.studentId ? '换头像的机会由老师奖励' : null;
+  // 换头像要消耗老师奖励的机会（服务端 `avatarChangeTokens >= 1` 才放行）。那套「没有机会
+  // 时要说清为什么」的反馈没有丢，只是搬到了顶栏那个入口上：M1b-3 T2 起点击顶栏头像时由
+  // 外壳说一句同样的「换头像的机会由老师奖励」（这里原本有一行常驻提示与 `canChangeAvatar`
+  // 判断，随首页的两个入口一并撤除）。
 
   const lastRound = summarizeLastRound(messages);
 
@@ -154,15 +143,9 @@ export function StudentHome({
     // `hidden` 是「不显示」而不是「灰掉」（§4.4）：教师没安排这个环节，学生不该看见它。
     .filter((entry) => entry.state !== 'hidden');
 
-  // 换头像的收尾（写透当前会话 → 拉服务端权威数据）与学伴面板共用一份实现：
-  // 首页的 props 结构性地满足 `AvatarChangeHost`，所以直接按名字传进去。
-  const handleAvatarChanged = async (result: { avatarId: number; svgContent: string }) => {
-    await finishAvatarChange(
-      { classroom, selectedStudent, setAvatarSvgs, setSelectedStudent, setAllStudentAvatars, fetchStudentTokens },
-      result,
-      () => setShowAvatarChanger(false),
-    );
-  };
+  // 换头像的收尾（写透当前会话 → 拉服务端权威数据）不再长在这里：它随两个入口一起搬进了
+  // 外壳（`shell/classroom-shell.tsx` 的 `handleAvatarChanged`）。共用实现没变，仍是
+  // `avatar-changer.tsx` 的 `finishAvatarChange` —— 只是换成外壳把自己的 `chat` 传进去。
 
   return (
     <div className={styles.page}>
@@ -180,21 +163,11 @@ export function StudentHome({
 
         <main className={styles.desk}>
           <section className={styles.identity}>
-            {canChangeAvatar ? (
-              <button
-                type="button"
-                className={styles.avatarButton}
-                onClick={() => setShowAvatarChanger(true)}
-                title="更换头像"
-                aria-label="更换头像"
-              >
-                <AvatarFace svg={studentAvatarSvg} name={studentName} size={64} />
-              </button>
-            ) : (
-              <span className={styles.avatarStatic}>
-                <AvatarFace svg={studentAvatarSvg} name={studentName} size={64} />
-              </span>
-            )}
+            {/* 头像只**显示**，不再是一个按钮（M1b-3 T2）：换头像的唯一入口是顶栏的学生
+                chip，两个入口并存正是本次要消掉的那种重复。 */}
+            <span className={styles.avatarStatic}>
+              <AvatarFace svg={studentAvatarSvg} name={studentName} size={64} />
+            </span>
             <div className={styles.identityText}>
               <div className={styles.studentName}>{studentName}</div>
               <div className={styles.studentMeta}>
@@ -205,14 +178,6 @@ export function StudentHome({
                     : '本班同学'}
               </div>
             </div>
-            {canChangeAvatar ? (
-              <button type="button" className={styles.changeAvatarButton} onClick={() => setShowAvatarChanger(true)}>
-                换头像
-                <span className={styles.tokenCount}>{avatarTokenCount}</span>
-              </button>
-            ) : avatarHint ? (
-              <div className={styles.tokenHint}>{avatarHint}</div>
-            ) : null}
           </section>
 
           <div className={styles.rule} />
@@ -262,23 +227,14 @@ export function StudentHome({
       </div>
 
       {overlayPortal(
-        // Task 5：弹窗与提示条都逃出了本层的 `visibility:hidden`（Ruling 5），所以要**显式**
-        // 按 `active` 决定可见性 —— 否则学生在首页打开换头像弹窗后进入任一模块，弹窗会浮在
-        // 模块之上。具体机制见 layer-overlays.tsx（与学伴面板同一份实现）。
-        <>
-          {toast && <ClassroomToast toast={toast} setToast={setToast} />}
-          {showAvatarChanger && (
-            <AvatarChangerModal
-              titleId="home-avatar-changer-title"
-              avatarTokenCount={avatarTokenCount}
-              studentId={selectedStudent?.id ?? ''}
-              avatars={allStudentAvatars}
-              setToast={setToast}
-              onClose={() => setShowAvatarChanger(false)}
-              onChanged={handleAvatarChanged}
-            />
-          )}
-        </>,
+        // Task 5：提示条逃出了本层的 `visibility:hidden`（Ruling 5），所以要**显式**按 `active`
+        // 决定可见性 —— 否则学生在首页拿到一条提示后进入任一模块，它会浮在模块之上。具体
+        // 机制见 layer-overlays.tsx（与学伴面板同一份实现）。
+        //
+        // 这里原本还并排渲染着首页自己的换头像弹窗，M1b-3 T2 撤除：换头像的入口只剩顶栏
+        // 一个，弹窗跟着入口一起上移到外壳，而外壳那个 portal 传的是**恒为真**的 `active`
+        // （理由见 classroom-shell.tsx）。首页这个 portal 继续只管提示条，`active` 语义不变。
+        toast && <ClassroomToast toast={toast} setToast={setToast} />,
       )}
     </div>
   );

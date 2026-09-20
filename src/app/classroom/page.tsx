@@ -162,15 +162,9 @@ function ClassroomOrchestrator() {
         classroom: session.classroom,
         selectedStudent: session.selectedStudent,
         avatarSvgs: session.avatarSvgs,
-        allStudentAvatars: session.allStudentAvatars,
-        avatarTokenCount: session.avatarTokenCount,
         messages: session.messages,
         toast: session.toast,
         setToast: session.setToast,
-        setAvatarSvgs: session.setAvatarSvgs,
-        setAllStudentAvatars: session.setAllStudentAvatars,
-        setSelectedStudent: session.setSelectedStudent,
-        fetchStudentTokens: session.fetchStudentTokens,
         onExit: session.handleExit,
       }}
     />

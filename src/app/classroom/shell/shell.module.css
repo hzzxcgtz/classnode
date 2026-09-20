@@ -228,10 +228,20 @@
    ⚠️ 高度一律 36px、与 `.home` / `.tab` 同高 —— 栏高 52px 是面板与首页层的布局常量
    （见文件头），本任务**不动**它，也不引入比 Tab 更高的东西。
 
-   ⚠️ 宽度（768px 的实测估算，见 .studentName 的媒体查询注释）：本组约 202px，
-   栏在没有本组时约 396px，合计约 598px < 768px。手机宽度仍然放不下（已知残留）。 */
+   ⚠️ 宽度（M1b-3 T2 实测，Chrome @ 768px，见 .studentName 的媒体查询注释）：
+   本组 = **120 + chip**（连接 36 + 4 + chip + 4 + 切换 36 + 4 + 退出 36），
+   3 字姓名时 chip = 86 ⇒ 本组 206px；栏在没有本组时 396px。
+
+   ── 可收缩（M1b-3 T2 修 C1）──
+   `flex: 0 1 auto` + `min-width: 0`：**这一组必须能收缩，否则里面的 chip 永远不会缩**。
+   `.bar` 里另外两项（`.home` / `.tabs`）都是 0 0 auto 或受 min-content 兜住的，撑不下时
+   整条的溢出**只能由本组吸收**；而本组若是 `flex: 0 0 auto`，它的 min-content 兜底
+   （36 + 4 + chip 的 min-content + 4 + 36 + 4 + 36 ≈ 174）只放得下约 28px 的收缩量，
+   够不着 641~704px 区间实际需要的 44px 以上。`min-width: 0` 解掉那层兜底，缺口才传得进
+   chip 里（实测：660px + 撞满上限的姓名，「退出课堂」右缘从 696 回到 652，栏不再横向滚动）。 */
 .actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -272,11 +282,24 @@
   background: currentColor;
 }
 
-/* 学生头像 + 姓名。画法照抄面板头的 `studentBadge` / `studentBadgeAvatar`（含降级：
-   `SvgAvatar` 渲染不出来时 `SvgAvatar` 自己退回首字，池里没这张 SVG 时由 JSX 退回首字），
-   但**不 import** 面板的 CSS module —— 层级不对，且面板头整行随 T4 撤除。 */
+/* 学生头像 + 姓名・**换头像的唯一入口**（M1b-3 T2 / Ruling 1）。画法照抄面板头的
+   `studentBadge` / `studentBadgeAvatar`（含降级：`SvgAvatar` 渲染不出来时 `SvgAvatar` 自己
+   退回首字，池里没这张 SVG 时由 JSX 退回首字），但**不 import** 面板的 CSS module —— 层级
+   不对，且面板头整行随 T4 撤除。
+
+   ⚠️ 这个 `min-width: 36px` 是**刻意保留**的地板，不是漏改（T2 修 C1）：chip 的 min-content
+   是 28px 头像 + 6 gap + 14 内边距 + 2 边框 = **50px**，缩到 50 以下头像就会溢出到「切换身份」
+   按钮上。36px 与 50px 都低于这条线，但 36px 只在**姓名已被媒体查询隐藏**（≤640px，此时
+   chip 的自然宽是 38px）的区间才起作用 —— 那一段收缩量只有 2px，实测头像仍完整落在 chip 的
+   边框盒内（`avatarFullyInsideChip === true`），页面上就是「光环贴身」而不是「头像跑出去」。
+   换成控制器原话里的 `min-width: 0` 则会在手机宽度下出事：实测 **375px 时 chip 从 38 一路
+   缩到 10px**，28px 的头像随即溢出 chip 的边框盒（`avatarFullyInsideChip === false`）压到
+   相邻按钮上 —— 那是 T1 没有过的新退化。而在 C1 真正要修的区间两者**完全等价**：实测
+   **660px + 撞满上限的姓名，`min-width: 36px` 与 `0` 都得到 chip 136、栏溢出 0**，因为那时
+   chip 只需要从 180 缩到 136，离任何一条地板都远。641px 以上同理（实测 **641px + 7 字姓名：
+   chip 117、姓名 84px 落在 67px 里打了省略号**，离 36px 的地板还有 81px）。 */
 .studentChip {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   display: inline-flex;
   max-width: 180px;
   min-width: 36px;
@@ -292,6 +315,28 @@
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* chip 的**按钮**形态（真实学生参与者才有；小组拿到的是上面那个不可点的 `<span>`）。
+
+   `font-family: inherit` 是必须的：`<button>` 不继承字体，UA 样式把它设成
+   `font: 400 13.333px Arial`。这里只补 `font-family`（不用 `font` 简写）—— `.studentChip`
+   的 0.75rem / 700 字重是同特异性的前一条规则，被简写覆盖掉就会静默掉字号。
+
+   悬停/按下与 `.action` 同一套语言（淡紫药丸 + `translateY(1px)`），**没有 transition**：
+   本文件里会动的只有指示器滑块与四条层切换动画（动效纪律见文件末尾）。 */
+.studentChipButton {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.studentChipButton:hover {
+  border-color: #c4c4f7;
+  background: #ececff;
+}
+
+.studentChipButton:active {
+  transform: translateY(1px);
 }
 
 .studentChipAvatar {
@@ -512,7 +557,7 @@
 /* 本文件里**所有**会动的东西都必须在这里被关掉，一条不漏：
    · 四条层切换动画（`.enterRight` / `.enterLeft` / `.exitLeft` / `.exitRight`）
    · 指示器滑块的过渡（`.tabIndicator` / `.tabIndicatorInstant`）
-   · 两处按下反馈（`.home:active` / `.tab:active`）
+   · 三处按下反馈（`.home:active` / `.tab:active` / `.action:active` / `.studentChipButton:active`）
    `animation: none` 之后离场层落回 `.layer` 自身的 `visibility:hidden`、入场层落回
    `.layerFront` 的 `visibility:visible` —— 也就是「直接切换」。外壳从计算样式里读到的
    `animation-duration` 也一并归零（globals.css 的全局降级规则把它压成 0.01ms），它那边的
@@ -532,32 +577,43 @@
 
   .home:active,
   .tab:active,
-  .action:active {
+  .action:active,
+  .studentChipButton:active {
     transform: none;
   }
 }
 
 /* ── 窄屏：姓名隐藏、头像保留（简报要求）──
 
-   断点取 640px 不是随手挑的，是按栏的宽度预算算出来的（13px 字号下汉字按 1em ≈ 13px 宽估）：
+   断点取 640px 不是随手挑的，是按栏的宽度预算算出来的（字号 0.813rem = 13px，汉字全角
+   ≈ 1em；**T2 起这些数字是实测值**，Chrome 下 `scrollWidth` 刚好不溢出所需的最小视口）：
 
      首页 72 +（学习单 90 + 4 + 探究助手 103 + 4 + 智能学伴 103）= 304
-     + 栏左右内边距 16 + 栏内三个 flex 项之间的 2×4 = 8
-     ⇒ 只有 Tab 时约 **396px**
-     操作组（连接 36 + 4 + 学生 chip ≈ 82 + 4 + 切换 36 + 4 + 退出 36）= 202，外加与 Tab 组的 4px
-     ⇒ 带姓名时约 **602px**，不带姓名（chip 收成 36px 的圆）时约 **560px**
+     + 栏左右内边距 16 + 栏内三项之间的 2×4 = 8
+     ⇒ 只有 Tab 时 **396px**
+     操作组 = 120 + chip（见 .actions），栏的 gap 4 + 本组 margin-left 4
+     ⇒ 需要的最小栏宽 = **524 + chip**（与实测逐项对上）
 
-   所以 640px 是「带姓名的 602px 还留得住 ~38px 余量」的最小整断点；768px（iPad 竖屏）下
-   602 < 768，余量约 166px，宽裕。640px 以下姓名让位。
+   chip 自身（见 .studentChip）= 50 + 12×字数，上限 `max-width: 180px`：
+     · 3 字姓名 ⇒ chip 86 ⇒ 栏需 **610px**（实测 610）
+     · 姓名隐藏 ⇒ chip 收成 **38px** 的圆（28 头像 + 8 内边距 + **2px 边框**，
+       边框两侧各 1px 所以是 38 而不是 36）⇒ 栏需 **562px**（实测 562）
+     · 撞满 180 上限（≈11 字以上）⇒ 栏需 **704px**
 
-   带上姓名在本断点以上一律够放 —— 学生姓名长度不受控，所以 `.studentChip` 另有
-   `max-width: 180px` + 省略号兜底（姓名超长时 chip 不会无限撑宽）。 */
+   所以 640px 是「带姓名的 610px 还留得住 ~30px 余量」的最小整断点；768px（iPad 竖屏）下
+   610 < 768，余量约 158px，宽裕。640px 以下姓名让位。
+
+   ⚠️ 极限需求 704px > 640px，**这不是断点能兜住的范围**：641~703px 之间长姓名会把「切换
+   身份」「退出课堂」推出视野（T1 审查 C1）。修法不在这个断点上，而在 `.actions` /
+   `.studentChip` 的 `flex-shrink`（见那两条规则的注释）：chip 自己缩、姓名走已有的省略号，
+   栏不再横向滚动。（`.studentName` 的省略号本来就生效 —— 实测 chip 顶到 180px 时姓名
+   144px 的文本落在 130px 里、已经打了省略号；C1 真正的病根只是 chip 从不收缩。） */
 @media (max-width: 640px) {
   .studentName {
     display: none;
   }
 
-  /* 姓名一走，chip 收成与其它操作同宽的圆（28 + 4 + 4 = 36px）。 */
+  /* 姓名一走，chip 收成与其它操作同宽的圆（28 + 4 + 4 + 2 = 38px）。 */
   .studentChip {
     padding: 0 4px;
   }

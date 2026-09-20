@@ -6,6 +6,8 @@ import type { ChatPanelProps, ModuleId } from '../classroom-types';
 import type { StudentHomeProps } from '../home/student-home';
 import { StudentHome } from '../home/student-home';
 import { StudentChatContent } from '../chat/chat-panel';
+import { useOverlayPortal } from '../layer-overlays';
+import { AvatarChangerModal, finishAvatarChange } from '../chat/avatar-changer';
 import { ModuleTabBar } from './module-tab-bar';
 import { ModulePlaceholder } from './module-placeholder';
 import { moduleStateFor, useModuleTabs } from './use-module-tabs';
@@ -251,6 +253,82 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
    */
   const toastFor = (key: LayerKey) => (phase.front === key ? chat.toast : null);
 
+  /**
+   * ── 换头像（M1b-3 T2）────────────────────────────────────────────────────────
+   *
+   * 入口只剩顶栏那一个（Ruling 1），所以编排上移到外壳：面板头与首页此前各有一份逐字等价的
+   * 调用（模态渲染 + `finishAvatarChange`），两份都随本次撤除。共享实现
+   * （`AvatarChangerModal` / `finishAvatarChange`）一行没动，只换了调用方 ——
+   * `finishAvatarChange` 要的六项 `host` 全挂在 `chat` 这个对象上（它们本来就是会话级状态，
+   * 外壳只是转手），所以这里**不新增任何状态**。
+   */
+  const [showAvatarChanger, setShowAvatarChanger] = useState(false);
+
+  /**
+   * 换头像弹窗的浮层 `active` 传**恒为真**，不是 `activate(...)`。
+   *
+   * `useOverlayPortal` 的 `active` 语义是「**这一层**此刻是不是前台」，它存在的唯一理由是
+   * 把 portal 到 body 的浮层收敛回宿主层的可见性（见 layer-overlays.tsx 的文件头）。而换头像
+   * 不属于任何一层：它由**四个 tab 共用、始终可见**的顶栏触发 —— `activate` 是 `front &&
+   * settled`，顶栏连切换动画期间都必须可用，两者的语义本就不同。挂在任何模块层的 `active`
+   * 上都是错的答案，两种错法各有症状：
+   *   · 挂 `activate('companion')`：教师在弹窗开着时把学伴模块关掉 → `use-module-tabs` 的
+   *     `:102-107` 把学生送回首页 ⇒ `front` 变、`settled` 在动画期翻假 ⇒ 弹窗被隐藏，
+   *     而 `showAvatarChanger` 仍是 true ⇒ 再点顶栏头像**什么都不会发生**（`true → true`
+   *     被 React 丢弃，不重渲染）⇒ 学生卡在一个「状态说开着、屏幕上没有」的弹窗上，
+   *     只能靠刷新脱身；
+   *   · 挂「当前前台那一层」：同一个窗口里切一次 tab 就让它凭空消失。
+   * 恒为真 = 弹窗的存活期与它的宿主（顶栏，也就是外壳本身）一致。这与 `active` 那套语义
+   * 不冲突：外壳只在学生进了课堂之后才存在，而弹窗关闭时 `showAvatarChanger` 为 false、
+   * 传给 portal 的 node 是 `null`，`useOverlayPortal` 对它直接返回 `null`（什么都不渲染）。
+   *
+   * ⚠️ 必须走 `useOverlayPortal`（Ruling 2）：`.bar` 是 `overflow-x: auto; overflow-y: hidden`，
+   * 就地渲染的浮层会被纵向裁掉；自己另写一个 portal 则会丢掉「按 active 显式收敛」这条唯一
+   * 的收口（同上）。实测确认：弹窗的祖先链里没有 `.bar`（`closest('header') === null`），
+   * 且整块落在视口内。
+   *
+   * ⚠️ 变量名带 `avatar` 是给 T3 让路（Ruling 8）：教师消息下拉会在这个文件里**另加一个
+   * 独立的 portal**、`active` 语义很可能与本条不同。两条各叫各的名字，谁也不要去「复用」
+   * 或「合并」对方那一个 —— 合并会让一个浮层的可见性被另一个的 `active` 决定。
+   */
+  const avatarOverlayPortal = useOverlayPortal(true);
+
+  /** 顶栏头像是否表现为「可换」：真实学生参与者（小组没有这个能力）且教师奖励过机会。 */
+  const canChangeAvatar = Boolean(chat.selectedStudent?.studentId) && chat.avatarTokenCount > 0;
+
+  /**
+   * 顶栏头像被点击。**任何情况下都要有反馈**（Ruling 1）：有机会就开弹窗，没机会就说清
+   * 为什么 —— 文案与首页原来那行常驻提示（`avatarHint`）逐字相同。
+   *
+   * 从「常驻的一行灰字」改成「点击时的一句提示」是刻意的：顶栏高 52px、chip 只有 36px，
+   * 放不下一行常驻说明；而 §4.4 那条「空状态要给出方向、不是把入口藏掉」照样成立 ——
+   * 入口还在（可点），理由在点下去的那一刻说清楚。这个分支只有「是真实学生、机会为 0」
+   * 一种情形能走到（小组参与者渲染的不是按钮），所以这句话在这里**永远是真的**。
+   */
+  const handleChangeAvatar = () => {
+    if (canChangeAvatar) {
+      setShowAvatarChanger(true);
+      return;
+    }
+    setToast({ msg: '换头像的机会由老师奖励', type: 'info' });
+  };
+
+  /** 换头像的收尾（写透当前会话 → 拉服务端权威数据）：`chat` 结构性地满足 `AvatarChangeHost`。 */
+  const handleAvatarChanged = async (result: { avatarId: number; svgContent: string }) => {
+    await finishAvatarChange(
+      {
+        classroom: chat.classroom,
+        selectedStudent: chat.selectedStudent,
+        setAvatarSvgs: chat.setAvatarSvgs,
+        setSelectedStudent: chat.setSelectedStudent,
+        setAllStudentAvatars: chat.setAllStudentAvatars,
+        fetchStudentTokens: chat.fetchStudentTokens,
+      },
+      result,
+      () => setShowAvatarChanger(false),
+    );
+  };
+
   return (
     <div className={styles.shell}>
       {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
@@ -264,6 +342,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
         connected={chat.connected}
         selectedStudent={chat.selectedStudent}
         avatarSvgs={chat.avatarSvgs}
+        onChangeAvatar={handleChangeAvatar}
         onSwitchIdentity={chat.onSwitchIdentity}
         onExit={chat.onExit}
       />
@@ -307,6 +386,22 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
           ))
         ))}
       </div>
+
+      {/* 换头像弹窗（`.modal-overlay` 是 `position: fixed` / z-index 100，已 portal 到 body）。
+          `titleId` 仍是入参而不是常量：DOM 里同时存在几个弹窗由调用方决定，共用 id 会让
+          `aria-labelledby` 解析到先出现的那个（而且那是非法 HTML）—— 收敛成一处之后这个
+          约束在此刻是「恰好只有一个」，但契约留在 prop 上，将来多一个入口不用改实现。 */}
+      {avatarOverlayPortal(showAvatarChanger && (
+        <AvatarChangerModal
+          titleId="shell-avatar-changer-title"
+          avatarTokenCount={chat.avatarTokenCount}
+          studentId={chat.selectedStudent?.id ?? ''}
+          avatars={chat.allStudentAvatars}
+          setToast={setToast}
+          onClose={() => setShowAvatarChanger(false)}
+          onChanged={handleAvatarChanged}
+        />
+      ))}
     </div>
   );
 }

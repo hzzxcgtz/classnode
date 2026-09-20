@@ -10,7 +10,6 @@ import { SvgAvatar } from './svg-avatar';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
-import { AvatarChangerModal, finishAvatarChange } from './avatar-changer';
 import { useVoiceInput } from './use-voice-input';
 import styles from './chat.module.css';
 
@@ -23,8 +22,6 @@ export function StudentChatContent({
   classroom,
   selectedStudent,
   avatarSvgs,
-  avatarTokenCount,
-  allStudentAvatars,
   teacherMsgs,
   messages,
   loadingMessages,
@@ -40,9 +37,6 @@ export function StudentChatContent({
   thinkingContent,
   teacherNotifBubble,
   blacklisted,
-  setSelectedStudent,
-  setAvatarSvgs,
-  setAllStudentAvatars,
   setMessages,
   setWaitingAI,
   setShieldWarning,
@@ -51,7 +45,6 @@ export function StudentChatContent({
   setStreamingContent,
   setThinkingContent,
   setTeacherNotifBubble,
-  fetchStudentTokens,
   onSwitchIdentity,
   onExit,
   onRetryRestore,
@@ -67,7 +60,12 @@ export function StudentChatContent({
   // page.tsx 的 useClassroomSession；task 3 又把 useChatSocket 连同它写入的
   // connected/connectionError/streamingContent/thinkingContent/teacherNotifBubble/
   // blacklisted 一并上移。这里只剩下学伴模块自身、与 socket 无关的状态。
-  const [showAvatarChanger, setShowAvatarChanger] = useState(false);
+  //
+  // 注意**没有** `showAvatarChanger`（M1b-3 T2）：换头像的入口只剩顶栏一个，弹窗与它的状态
+  // 一并归外壳（shell/classroom-shell.tsx）—— 面板头那枚「头像 + 机会计数」星标是它在本
+  // 文件里的最后两个读者，随本次一并撤除。`avatarTokenCount` / `allStudentAvatars` 仍留在
+  // `ChatPanelProps` 上（外壳从同一个 `chat` 对象里读它们），但面板自己不再消费，
+  // 所以下面不解构。
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
@@ -712,7 +710,9 @@ export function StudentChatContent({
             <span />
             {connected ? '已连接' : '连接断开'}
           </div>
-          {/* 当前登录用户姓名标签 */}
+          {/* 当前登录用户姓名标签。⚠️ 这里原本还有一枚「⭐ N」换头像入口（点击开弹窗），
+              M1b-3 T2 已撤除：换头像的入口收敛到顶栏的学生 chip 一个（Ruling 1），
+              留两个入口就会出现「面板头一个、顶栏一个」的第二次漂移。 */}
           {selectedStudent?.name && (
             <div className={styles.studentBadge}>
               <div className={styles.studentBadgeAvatar}>
@@ -721,13 +721,6 @@ export function StudentChatContent({
                 ) : selectedStudent.name[0]}
               </div>
               {selectedStudent.name}
-              {selectedStudent.studentId && avatarTokenCount > 0 && (
-                <span onClick={() => setShowAvatarChanger(true)}
-                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '1px 5px', borderRadius: 10, background: '#fffbeb', color: '#d97706', fontSize: "0.688rem", fontWeight: 700 }}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                  {avatarTokenCount}
-                </span>
-              )}
             </div>
           )}
           {/* 消息按钮 */}
@@ -1231,24 +1224,9 @@ export function StudentChatContent({
             )}
           </div>
         </div>
-      {/* 头像更换弹窗（`.modal-overlay` 是 position: fixed / z-index 100，已 portal 到 body） */}
-      {overlayPortal(showAvatarChanger && (
-        <AvatarChangerModal
-          titleId="avatar-changer-title"
-          avatarTokenCount={avatarTokenCount}
-          studentId={selectedStudent?.id ?? ''}
-          avatars={allStudentAvatars}
-          setToast={setToast}
-          onClose={() => setShowAvatarChanger(false)}
-          onChanged={async (result) => {
-            await finishAvatarChange(
-              { classroom, selectedStudent, setAvatarSvgs, setSelectedStudent, setAllStudentAvatars, fetchStudentTokens },
-              result,
-              () => setShowAvatarChanger(false),
-            );
-          }}
-        />
-      ))}
+      {/* 换头像弹窗已随 M1b-3 T2 移到外壳（`shell/classroom-shell.tsx`）：入口只剩顶栏一个，
+          弹窗与其编排不该留在任何一个模块层里 —— 留在面板里就会跟着 `active` 一起隐藏（见
+          外壳里 `useOverlayPortal(true)` 的那段注释）。 */}
       {/* Toast 自身是 position: fixed / z-index 99999，同样要逃出动画容器 */}
       {overlayPortal(toast && <ClassroomToast toast={toast} setToast={setToast} />)}
 

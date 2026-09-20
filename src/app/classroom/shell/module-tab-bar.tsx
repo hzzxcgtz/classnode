@@ -22,6 +22,13 @@ export interface ModuleTabBarProps {
   selectedStudent: StudentSession | null;
   /** 头像 SVG 池，键是 `Avatar.id`。缺项时头像降级成姓名首字。 */
   avatarSvgs: Record<number, string>;
+  /**
+   * 顶栏头像被点击（M1b-3 T2）。
+   *
+   * 栏不判断「能不能换」—— 决定权（有机会就开弹窗、没机会就说为什么）与弹窗本身都归外壳，
+   * 栏只负责把点击转出去。理由与它其余四项一致：这里不持有任何会话级状态。
+   */
+  onChangeAvatar: () => void;
   onSwitchIdentity: () => void;
   onExit: () => void;
 }
@@ -87,23 +94,29 @@ function ExitIcon() {
  * 位置与宽度由 `offsetLeft` / `offsetWidth` 量出来 —— 不用 `getBoundingClientRect()`，
  * 因为它含祖先的 `transform`，而本壳的切换动画正在平移整个层。
  *
- * ── 操作组（M1b-3 T1）───────────────────────────────────────────────────────
+ * ── 操作组（M1b-3 T1 / T2）──────────────────────────────────────────────────
  * 栏右侧追加一组操作：连接状态点、学生头像 + 姓名、切换身份、退出课堂。四项能力**全部**
  * 由外壳从 `useClassroomSession` 转手进来（`connected` / `selectedStudent` / `avatarSvgs` /
- * `onSwitchIdentity` / `onExit`），栏自己不持有任何状态、不新增 effect —— 它只是一个展示点。
+ * `onChangeAvatar` / `onSwitchIdentity` / `onExit`），栏自己不持有任何状态、不新增 effect ——
+ * 它只是一个展示点。T2 给头像 chip 加的那次点击（换头像）同样是转手：能不能换、换完怎么收尾
+ * 都由外壳决定，栏连「有没有机会」都不判断。
  *
  * 三条从控制器裁定下来的规矩，改这里时不要丢：
  *   ① **图标化只减视觉宽度，不减无障碍信息**（Ruling 3）：每个操作 36px 见方（与 Tab 同高），
  *      两个图标按钮必须有 `aria-label` + `title`；
  *   ② **颜色不能是唯一的信息载体**（Ruling 3 续）：连接状态不是一个孤零零的绿点/红点，
  *      它有 `aria-label` / `title` 的「已连接」/「连接断开」；`role="img"` 是让这个标签
- *      稳定成为该元素的无障碍名字（纯装饰的圆点本身 `aria-hidden`）。
+ *      稳定成为该元素的无障碍名字（纯装饰的圆点本身 `aria-hidden`）；
  *   ③ **不把操作钉死在右侧**（Ruling 4）：操作组是栏里的普通流内兄弟项，与 Tab 组一起
- *      横向滚动。窄屏仍会横向滚动 —— 这是已知残留，没有修在本次范围内。
+ *      横向滚动。
  *
- * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionOnline`）是本次的
+ * ⚠️ ① 在 T2 之后多了一层：`role="img"` 与「可点的入口」不可兼得（显式角色会覆盖掉 button
+ * 角色）。可点的那两个（切换身份 / 退出 / 头像 chip 的按钮形态）一律是原生 `<button>` +
+ * `aria-label`；只有**真的不可点**的元素（连接点、小组的 chip）才用 `role="img"`。
+ *
+ * 面板头里那套同样的画法（`chat-panel.tsx` 的 `studentBadge` / `connectionOnline`）是 T1 的
  * 参考，但**样式全部写在 shell.module.css**，不 import 面板的 CSS module：层级不对，而且
- * 面板头整行会随 T4 撤除。两处并存是**刻意的**，T4 收口。
+ * 面板头整行会随 T4 撤除（面板头那枚「换头像」星标计数已随 T2 撤除，面板那一侧的入口先走一步）。
  */
 export function ModuleTabBar({
   tabs,
@@ -113,11 +126,39 @@ export function ModuleTabBar({
   connected,
   selectedStudent,
   avatarSvgs,
+  onChangeAvatar,
   onSwitchIdentity,
   onExit,
 }: ModuleTabBarProps) {
   const homeActive = activeId === null;
   const showTabs = tabs.length >= 2;
+
+  /**
+   * 头像 chip 是不是一个**按钮**：只有真实学生参与者能换头像（小组没有这项能力 ——
+   * `studentId` 为空，服务端的 `avatarChangeTokens` 长在 `Student` 上，小组根本没有），
+   * 所以小组拿到的是原来那个不可点的 `<span>`。
+   *
+   * 不做成「恒为按钮 + 小组点了没反应」：一个点下去什么都不发生的按钮比不可点的头像更糟，
+   * 而给小组另编一句提示又会替产品决定一件没定过的事（首页面对小组时也是**没有入口**）。
+   */
+  const changeable = Boolean(selectedStudent?.studentId);
+
+  /**
+   * chip 的内容：头像 + 姓名。两个形态（按钮 / 不可点的 span）逐字共用同一份。
+   *
+   * 头像圆是 `aria-hidden` 的纯装饰（头像 SVG 与姓名首字对读屏没有增量信息，姓名本身就在
+   * 旁边），所以两个形态的无障碍名都由外层元素给。
+   */
+  const renderChipContent = (student: StudentSession) => (
+    <>
+      <span className={styles.studentChipAvatar} aria-hidden="true">
+        {student.avatarId && avatarSvgs[student.avatarId] ? (
+          <SvgAvatar svg={avatarSvgs[student.avatarId]} size={28} fallback={student.name[0]} />
+        ) : student.name[0]}
+      </span>
+      <span className={styles.studentName}>{student.name}</span>
+    </>
+  );
 
   const navRef = useRef<HTMLElement | null>(null);
   const itemRefs = useRef<Partial<Record<ModuleId, HTMLButtonElement | null>>>({});
@@ -258,27 +299,43 @@ export function ModuleTabBar({
         {/* 学生头像 + 姓名。姓名在窄屏由媒体查询隐藏、头像保留（见 shell.module.css
             的 `.studentName`）。降级写法逐字对齐面板：有 avatarId 且池里有这张 SVG 才画
             `SvgAvatar`，否则退到姓名首字（底色由 `.studentChipAvatar` 给）。
-            当前**不可点** —— 换头像入口是 T2 的事，这里不抢。
 
-            `role="img"` + `aria-label` 是**刻意的**，不是装饰：窄屏那个媒体查询用
-            `display: none` 拿掉了姓名文本，没有这两个属性时整个 chip 在无障碍树里就是空的
-            —— 而 Ruling 3 的原则是「只减视觉宽度，不减无障碍信息」。`img` 是叶子角色，
-            内部的头像与姓名文本不再单独进无障碍树，所以宽屏下姓名也**只念一次**（不会
-            「aria-label 一次 + 可见文本一次」重复播报）。 */}
+            ── 换头像的**唯一**入口（M1b-3 T2 / Ruling 1）──
+            真实学生这里是 `<button>`：点它就换头像（有机会开弹窗，没机会由外壳给一句
+            「换头像的机会由老师奖励」）。首页那个换头像按钮与面板头那枚星标计数随本次一并
+            撤除，所以**这是学生唯一的入口**，删掉它等于把功能整个拿掉。
+
+            ⚠️ 两个形态的无障碍名都是外层给，且**按钮上不能再有 `role="img"`**（T1 审查
+            C3）：`<button role="img">` 的显式角色会覆盖掉 button 角色，读屏就不再把它念成
+            可点的按钮 —— 这是「把它变成入口」这一步引入的新坑。`role="img"` 留在下面那个
+            **不可点**的 span 上（那里它是对的：`img` 是叶子角色，窄屏 `display:none` 掉姓名
+            之后，它仍让这个 chip 在无障碍树里是一个有名字的节点，而不是空的）。
+
+            按钮的 `aria-label` 把姓名一起带上（`${name}，更换头像`）：窄屏下姓名文本被
+            `display:none` 拿掉，只写「更换头像」的话学生就再也听不到自己在用哪个身份 ——
+            T1 的 Ruling 3「只减视觉宽度、不减无障碍信息」在这里同样成立。宽屏下
+            `aria-label` 覆盖子内容，姓名也**只念一次**（不会「标签一遍 + 可见文本一遍」）。 */}
         {selectedStudent?.name && (
-          <span
-            className={styles.studentChip}
-            role="img"
-            aria-label={selectedStudent.name}
-            title={selectedStudent.name}
-          >
-            <span className={styles.studentChipAvatar} aria-hidden="true">
-              {selectedStudent.avatarId && avatarSvgs[selectedStudent.avatarId] ? (
-                <SvgAvatar svg={avatarSvgs[selectedStudent.avatarId]} size={28} fallback={selectedStudent.name[0]} />
-              ) : selectedStudent.name[0]}
+          changeable ? (
+            <button
+              type="button"
+              className={`${styles.studentChip} ${styles.studentChipButton}`}
+              onClick={onChangeAvatar}
+              aria-label={`${selectedStudent.name}，更换头像`}
+              title="更换头像"
+            >
+              {renderChipContent(selectedStudent)}
+            </button>
+          ) : (
+            <span
+              className={styles.studentChip}
+              role="img"
+              aria-label={selectedStudent.name}
+              title={selectedStudent.name}
+            >
+              {renderChipContent(selectedStudent)}
             </span>
-            <span className={styles.studentName}>{selectedStudent.name}</span>
-          </span>
+          )
         )}
 
         <button

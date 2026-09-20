@@ -153,6 +153,16 @@ export interface ChatPanelProps {
   classroom: ClassroomInfo | null;
   selectedStudent: StudentSession | null;
   avatarSvgs: Record<number, string>;
+  /**
+   * 换头像用的两项（M1b-3 T2 起**面板自己不再消费**，外壳从同一个 `chat` 对象里读）。
+   *
+   * 它们留在这个接口上而不是搬去外壳的入参，是因为 `chat` 就是 `Omit<ChatPanelProps,
+   * 'active'>` —— 会话级状态仍然只在这一处声明，外壳拿到的还是**同一份**类型。T2 把换头像
+   * 的入口收敛到顶栏之后，面板头那枚「头像 + 机会计数」是这两个字段在本文件里的最后两个
+   * 读者（同批撤除的有 `setAvatarSvgs` / `setSelectedStudent` / `setAllStudentAvatars` /
+   * `fetchStudentTokens` 的解构）。删掉这里的字段会立刻在 `shell/classroom-shell.tsx` 的
+   * `chat.avatarTokenCount` 上报错，所以「误删」这一路有编译期信号。
+   */
   avatarTokenCount: number;
   allStudentAvatars: AvatarSummary[];
   teacherMsgs: TeacherMessage[];
@@ -178,6 +188,10 @@ export interface ChatPanelProps {
   //   在写，随 hook 上移后已从面板契约中移除。setLoadError 与 setStep 过去只有面板的
   //   重试卡片在写，随重试逻辑上移后也已移除。setPaused 与 setAgentDisabled 过去只有
   //   面板的 15 秒轮询在写，M1b-2 Task 6 把轮询搬进 use-classroom-session 后同样移除。）
+  // ⚠️ 下面这三项 setter（setSelectedStudent / setAvatarSvgs / setAllStudentAvatars）与
+  //    `fetchStudentTokens` 本身，M1b-3 T2 起**面板自己也不再调用** —— 它们的读者只剩换头像
+  //    的收尾（`finishAvatarChange`），而那个调用点已经上移到外壳。字段仍然留在这里，理由与
+  //    上面 `avatarTokenCount` 那一段相同（同一份 `chat` 类型、同一处声明）。
   setSelectedStudent: Dispatch<SetStateAction<StudentSession | null>>;
   setAvatarSvgs: Dispatch<SetStateAction<Record<number, string>>>;
   setAllStudentAvatars: Dispatch<SetStateAction<AvatarSummary[]>>;

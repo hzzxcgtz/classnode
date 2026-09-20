@@ -56,7 +56,6 @@ export function StudentChatContent({
   onExit,
   onRetryRestore,
   wsRef,
-  statusSocketRef,
   chatConnectionGenerationRef,
   sendingRef,
   identityConflictTimerRef,
@@ -103,10 +102,24 @@ export function StudentChatContent({
   // **路线 A**（Ruling 4：`key={selectedStudent?.id}`）兜底：换身份即重挂 ⇒ 这条清理照跑，
   // 今天的 ref/清理语义完整保留。外壳在 classroom-shell.tsx 里给的正是那个 key。
   // 谁把那个 key 换掉，M1a 修过的「RAF id 已取消但非空 ⇒ 流式文字完全不显示」就会原样回来。
+  //
+  // ⚠️⚠️ **这里不得断开任何 socket**（M1b-2 收尾修）：聊天 socket 与状态 socket 从 M1a /
+  // M1b-2 起**都归外壳所有** —— 前者由 `use-chat-socket.ts` 创建，后者由
+  // `use-classroom-session.ts` 创建并自行断开。面板只是消费者，**消费者不能在自己的
+  // 挂载/卸载周期里拆掉生产者的连接**。
+  //
+  // 为什么这条曾经是致命的：面板在 M1b-2 里是**惰性挂载**的（先进首页，点进学伴才挂载），
+  // 所以它第一次挂载时 socket **早已存在**。而 React 严格模式（开发模式下默认开启）会为每个
+  // effect 走一遍「执行 → 清理 → 执行」——于是面板刚挂载就把活着的 socket 掐了，学生端
+  // 徽章显示「连接断开」、发送闸门（`!connected`）把消息全挡在本地，表现为**无法与智能体对话**。
+  // 单页刷新后 `restoreSessionFromUrl` 的 socket 也一样被它掐掉。生产构建不走这遍模拟卸载，
+  // 所以**只在开发模式下复现** —— 但这正是「消费者越权拆生产者连接」的必然结果，不是
+  // 严格模式的错，别靠关掉严格模式来绕。
+  //
+  // 换身份（`handleSwitchIdentity`）与退出（`handleExit`）都已在外壳里显式断开这两个 socket
+  // 并自增代际，面板这里重复一次既多余又会误伤。
   useEffect(() => () => {
     chatConnectionGenerationRef.current += 1;
-    if (wsRef.current) { wsRef.current.disconnect(); wsRef.current = null; }
-    if (statusSocketRef.current) { statusSocketRef.current.disconnect(); statusSocketRef.current = null; }
     if (streamingRafRef.current) cancelAnimationFrame(streamingRafRef.current);
     // 两个 streaming ref 由 page.tsx 持有，跨面板挂载存活；只 cancel 不置空会让下一次
     // 会话带着已取消的 raf id 重建 —— ai-chunk 的 `if (!streamingRafRef.current)` 会

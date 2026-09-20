@@ -150,7 +150,6 @@ function ClassroomOrchestrator() {
         onExit: session.handleExit,
         onRetryRestore: session.handleRetryRestore,
         wsRef,
-        statusSocketRef,
         chatConnectionGenerationRef,
         sendingRef,
         identityConflictTimerRef,

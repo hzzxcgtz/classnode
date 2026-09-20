@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useSyncExternalStore, Suspense, useCallback } from 'react';
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, getStudentSessionAuthorization, setStudentSessionToken } from '@/lib/api';
 import { Toast } from '@/lib/components';
@@ -16,25 +16,9 @@ import { SvgAvatar } from './chat/svg-avatar';
 import { MessageItem } from './chat/message-item';
 import { StreamingIndicator } from './chat/streaming-indicator';
 import { ThinkingContent } from './chat/thinking-content';
+import { useIsMobile } from './use-is-mobile';
 import styles from './chat.module.css';
 
-function useIsMobile(): boolean {
-  return useSyncExternalStore(
-    (onStoreChange) => {
-      const media = window.matchMedia('(max-width: 640px)');
-      // iPadOS 15 and older WebKit builds still expose the legacy listener API
-      // in some embedded/browser configurations.
-      if (typeof media.addEventListener === 'function') {
-        media.addEventListener('change', onStoreChange);
-        return () => media.removeEventListener('change', onStoreChange);
-      }
-      media.addListener(onStoreChange);
-      return () => media.removeListener(onStoreChange);
-    },
-    () => window.matchMedia('(max-width: 640px)').matches,
-    () => false,
-  );
-}
 const MAX_ATTACHED_FILES = 5;
 
 function StudentChatContent() {

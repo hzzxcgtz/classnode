@@ -116,7 +116,8 @@ export interface ChatPanelProps {
    * 面板常驻后「挂载」不再等于「可见」（§4.5：惰性挂载 + 一旦挂载永不卸载），所以面板里
    * 所有页面级副作用都挂在这道闸上。**不给默认值**：默认 `true` 会把「外壳忘了传」伪装成
    * 「一直可见」，那正是这道闸要防的事。Task 5 的外壳传入真实值；今天 page.tsx 只在
-   * `step === 'chat'` 时挂载面板，所以传 `active`（恒真，与基线逐字一致）。
+   * `step === 'shell'` 时挂载面板，所以传 `active`（恒真，与基线逐字一致 —— `'chat'`
+   * 改名 `'shell'` 是 Task 4 的事，语义未变）。
    */
   active: boolean;
   // —— 外壳状态：面板只读 ——
@@ -136,7 +137,7 @@ export interface ChatPanelProps {
   toast: ChatToast | null;
   loadError: string | null;
   // 下面这批状态的写入点在 useChatSocket 的回调里；M1a Task 3 把该 hook 上移到外壳后，
-  // 它们的所有者也随之上移（面板在 step !== 'chat' 时会卸载，不能持有 socket 写入的状态）。
+  // 它们的所有者也随之上移（面板在 step !== 'shell' 时会卸载，不能持有 socket 写入的状态）。
   connected: boolean;
   connectionError: string | null;
   streamingContent: string;
@@ -189,3 +190,25 @@ export interface ChatPanelProps {
   streamingBufferRef: { current: string };
   streamingRafRef: { current: number | null };
 }
+
+/**
+ * 学伴面板确实满足 `ModulePanelProps` 的**结构锚点**。
+ *
+ * 为什么需要它：`ModulePanelProps` 今天没有 `extends` 它的实现者（三条理由见上面的注释），
+ * 于是「学伴面板满足契约」这句话只活在一段注释里 —— 注释拦不住漂移。这个别名把「面板至少
+ * 得接住 `active` 与 `classroom`」变成编译期事实：`active` 一旦被删掉或改宽（例如退回
+ * `active?: boolean`）、`classroom` 一旦换了类型，这里立刻报错。
+ *
+ * 为什么 `Omit` 掉 `state` 与 `session`：这两项今天的名字/落地还没对齐（`session` 在本面板叫
+ * `selectedStudent`；`state` 面板尚未读）。要求它们就位，只能往 `page.tsx` 传假值 ——
+ * 那是把闸门伪装成通过。`Omit` 之后剩下的两项恰好是「两边名字一致且都已落地」的部分。
+ *
+ * ⚠️ 断言必须落在 `AssertTrue` 这种**要求 `T extends true`** 的位置上才算数：
+ * `type X = 条件 ? true : never` 只是求值成 `never`，别名本身依旧合法、**不报错**；
+ * 而 `AssertTrue<never>` 也不报错（`never` 可赋给一切）。所以失败分支写 `false`。
+ * 二者都由本任务实测确认。
+ */
+type AssertTrue<T extends true> = T;
+
+/** 学伴面板与模块契约的结构锚点，见上。导出理由同 `lib/classroom-modules.ts`：避免 unused-vars 警告。 */
+export type _ContractCheck = AssertTrue<ChatPanelProps extends Omit<ModulePanelProps, 'state' | 'session'> ? true : false>;

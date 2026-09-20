@@ -24,11 +24,49 @@ export type ModuleId = 'worksheet' | 'explore' | 'companion';
  */
 export type ModuleState = ClassroomModuleState;
 
-/** 展示顺序，与后端 MODULE_KEYS 一致。 */
-export const MODULE_KEYS: readonly ClassroomModuleKey[] = ['learning-sheet', 'explorer', 'companion'];
+/**
+ * 编译期断言：`T` 必须是 `true`，否则**本行**编译失败。
+ *
+ * 为什么必须有这一层：`type X = <条件> ? true : false` 这种别名**永远不会报错** ——
+ * 条件为假时它只是求值成 `false`，别名本身依旧合法。断言要有牙齿，就得让结果落进
+ * 「必须满足 `T extends true`」的位置。
+ */
+type AssertTrue<T extends true> = T;
 
-/** 三态的展示顺序，与后端 MODULE_STATES 一致。 */
-export const MODULE_STATES: readonly ClassroomModuleState[] = ['open', 'preview', 'hidden'];
+/** 「`Listed` 是否覆盖 `All` 全集」：漏一个成员即求值为 `false`。 */
+type CoversAll<All extends string, Listed extends string> = Exclude<All, Listed> extends never ? true : false;
+
+/**
+ * 展示顺序，与后端 MODULE_KEYS 一致。
+ *
+ * `as const satisfies readonly ClassroomModuleKey[]` 而不是 `: readonly ClassroomModuleKey[]`：
+ * 后者会把类型**宽化成数组**，元组里的字面量全丢，下面那条全集断言就无从下手（`[number]`
+ * 会退化成整个联合类型，断言恒真）。
+ *
+ * ⚠️ 但**只做这一步挡不住删项** —— 删掉一项后剩下的元组仍然满足 `readonly ClassroomModuleKey[]`，
+ * 编译照过（本任务实测）。真正拦得住的是下面每条常量后面那条 `CoversAll` 断言，两者缺一不可：
+ * `as const` 保住字面量，`CoversAll` 用它去比全集。
+ */
+export const MODULE_KEYS = ['learning-sheet', 'explorer', 'companion'] as const satisfies readonly ClassroomModuleKey[];
+
+/**
+ * `MODULE_KEYS` 覆盖 `ClassroomModuleKey` 全集的编译期门。
+ *
+ * 为什么值得专门设一道门：学生端首页（`classroom/home/`）与教师端的模块菜单都**遍历
+ * `MODULE_KEYS` 生成卡片**，而不是按 `classroom.modules` 的数组下标（§4.11 B6：数组下标
+ * 会漂移）。收益是顺序稳定、卡片不会凭空消失；代价是**从这里删掉一项 = 学生端少一张
+ * 卡片，且没有任何运行时错误**。所以「不许静默少一张卡片」只能由编译器把守。
+ *
+ * 导出是**必需的**，不是 API：不导出的话 `@typescript-eslint/no-unused-vars` 会把只用于
+ * 编译期的别名判成未使用变量，门禁就多一条警告。
+ */
+export type _ModuleKeysCoverAll = AssertTrue<CoversAll<ClassroomModuleKey, (typeof MODULE_KEYS)[number]>>;
+
+/** 三态的展示顺序，与后端 MODULE_STATES 一致。理由同 `MODULE_KEYS`。 */
+export const MODULE_STATES = ['open', 'preview', 'hidden'] as const satisfies readonly ClassroomModuleState[];
+
+/** `MODULE_STATES` 覆盖 `ClassroomModuleState` 全集的编译期门（教师端菜单遍历它渲染三个选项）。 */
+export type _ModuleStatesCoverAll = AssertTrue<CoversAll<ClassroomModuleState, (typeof MODULE_STATES)[number]>>;
 
 /** 老课堂没有模块行时的兜底态，与后端 DEFAULT_MODULE_STATE 一致。 */
 export const DEFAULT_MODULE_STATE: ClassroomModuleState = 'preview';

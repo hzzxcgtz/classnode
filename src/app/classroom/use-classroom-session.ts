@@ -33,7 +33,9 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const SOCKET_URL = API_BASE_URL;
 
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'loading' | 'identity' | 'chat'>('loading');
+  // step 词表（§4.2）：loading → identity → home（常驻门户）→ shell（外壳，Task 5 建）。
+  // 身份确认后落点是 **home** 而不是某个模块 —— 学生进入课堂先看到门户是三件套的前提。
+  const [step, setStep] = useState<'loading' | 'identity' | 'home' | 'shell'>('loading');
   const [joiningClassroom, setJoiningClassroom] = useState(false);
   const [classroom, setClassroom] = useState<StudentClassroom | null>(null);
   const [students, setStudents] = useState<ClassroomStudentSummary[]>([]);
@@ -47,7 +49,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [onlineStudentIds, setOnlineStudentIds] = useState<Set<string>>(new Set());
   // 下面这些状态由面板渲染，但写入点在本文件的 loadClassroom / loadMessages /
   // handleIdentityConfirm / handleSwitchIdentity 里，其中挂载恢复路径上的写入发生在
-  // 面板挂载之前（面板只在 step === 'chat' 时才渲染），所以所有者必须是外壳。
+  // 面板挂载之前（面板只在 step === 'shell' 时才渲染），所以所有者必须是外壳。
   const [messages, setMessages] = useState<StudentChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [waitingAI, setWaitingAI] = useState(false);
@@ -57,7 +59,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [toast, setToast] = useState<ChatToast | null>(null);
   // 下面这批状态的写入点同样在 useChatSocket 的回调里。M1a Task 3 把该 hook 上移到本文件
   // 之前，它们住在面板里，靠「面板挂载/卸载」隐式重置；socket 归外壳后，面板在
-  // step !== 'chat' 时会卸载（socket 仍在），所以所有者必须是外壳，否则 socket 回调写进
+  // step !== 'shell' 时会卸载（socket 仍在），所以所有者必须是外壳，否则 socket 回调写进
   // 卸载中的面板会被丢弃。面板重新挂载时的隐式重置，由 handleIdentityConfirm 显式补齐。
   const [connected, setConnected] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -141,7 +143,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       setJoiningClassroom(false);
       return;
     }
-    // 会话级状态复位，与 setStep('chat') 同批提交，保证面板首帧看到的就是复位值。
+    // 会话级状态复位，与 setStep('home') 同批提交，保证面板首帧看到的就是复位值。
+    // （Task 4 起落点是首页；面板要到学生点开学伴卡片才挂载，那之前这批值已经就位。）
     // 上移前面板每次挂载都会用 useState 的初始值重新初始化这批状态；上移后它们由外壳
     // 持有、不随面板挂载而重置，所以在这里显式补齐同样的语义 —— 否则「切换身份」后会
     // 残留上一位学生的黑屏蒙版 / 连接错误提示。
@@ -151,7 +154,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setThinkingContent('');
     setTeacherNotifBubble(null);
     setBlacklisted(false);
-    setStep('chat');
+    // 落点是首页门户（§4.2）：学生自己从卡片里选今天要做什么，而不是被直接丢进某个模块。
+    setStep('home');
     // 保存会话到 localStorage
     localStorage.setItem(`chat_session_${code}`, JSON.stringify({
       studentId: selectedStudent.id,
@@ -349,7 +353,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // 由上面那条身份页 socket effect 实时更新。M1a 之前这段长在面板里，而面板当时恒挂载，
   // 所以它在身份选择页上是活的 —— 学生在身份页选中一位离线同学后，该同学从另一台设备
   // 登录会立刻清空选择、置灰确认按钮，避免确认时走服务端「后登录踢先登录」分支把对方踢下线。
-  // 面板改为只在 step === 'chat' 时挂载后这段会失去身份页窗口，故上移到外壳恢复基线行为。
+  // 面板改为只在 step === 'shell' 时挂载后这段会失去身份页窗口，故上移到外壳恢复基线行为。
   // 依赖数组与基线完全一致（无 step / active 闸门）。
   useEffect(() => {
     if (selectedStudent && onlineStudentIds.has(selectedStudent.id)) {

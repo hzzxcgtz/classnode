@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
 import { IdentityPicker } from './identity/identity-picker';
 import { useClassroomSession } from './use-classroom-session';
+import { StudentHome } from './home/student-home';
 import { StudentChatContent } from './chat/chat-panel';
+import type { ModuleId } from './classroom-types';
 
 export default function StudentChatPage() {
   return (
@@ -30,7 +32,7 @@ export default function StudentChatPage() {
 }
 
 /**
- * 编排者：step 状态机 + loading/identity 分支 + 挂载面板。
+ * 编排者：step 状态机 + loading/identity/home 分支 + 挂载面板。
  * 这里创建的 ref 同时交给外壳与面板，两侧必须是同一个对象（M0 Ruling 8）。
  */
 function ClassroomOrchestrator() {
@@ -60,6 +62,19 @@ function ClassroomOrchestrator() {
     streamingRafRef,
   });
 
+  // ⚠️ 垫脚石（Task 5 删掉它）：M1b-2 到 Task 5 才有外壳，此刻三件套里只有学伴面板存在
+  // （Ruling 2：学习单与探究助手是占位面板，Task 5 才建）。所以学生点开一个 `open` 的模块时，
+  // 只有学伴能真的进去；另外两个给一句与 Ruling 2 同一套说法的提示，而不是把学伴面板
+  // 冒充成它们（那会让「点开学习单却进了聊天」变成一个说不清的假象）。
+  // Task 5 的 use-module-tabs 接管这里：选模块 = 挂载 / 切前台。
+  const handleOpenModule = (moduleId: ModuleId) => {
+    if (moduleId === 'companion') {
+      session.setStep('shell');
+      return;
+    }
+    session.setToast({ msg: '这个模块还在准备中，敬请期待', type: 'info' });
+  };
+
   if (session.step === 'loading') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
@@ -85,6 +100,28 @@ function ClassroomOrchestrator() {
         loadError={session.loadError}
         onSelectStudent={session.setSelectedStudent}
         onConfirm={session.handleIdentityConfirm}
+        onExit={session.handleExit}
+      />
+    );
+  }
+
+  if (session.step === 'home') {
+    return (
+      <StudentHome
+        code={session.code}
+        classroom={session.classroom}
+        selectedStudent={session.selectedStudent}
+        avatarSvgs={session.avatarSvgs}
+        allStudentAvatars={session.allStudentAvatars}
+        avatarTokenCount={session.avatarTokenCount}
+        messages={session.messages}
+        toast={session.toast}
+        setToast={session.setToast}
+        setAvatarSvgs={session.setAvatarSvgs}
+        setAllStudentAvatars={session.setAllStudentAvatars}
+        setSelectedStudent={session.setSelectedStudent}
+        fetchStudentTokens={session.fetchStudentTokens}
+        onOpenModule={handleOpenModule}
         onExit={session.handleExit}
       />
     );

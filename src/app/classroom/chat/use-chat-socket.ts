@@ -35,7 +35,7 @@ interface ChatSocketOptions {
   setPaused: Dispatch<SetStateAction<boolean>>;
   setSelectedStudent: Dispatch<SetStateAction<ClassroomStudentSummary | null>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
-  setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'chat'>>;
+  setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'home' | 'shell'>>;
   setStreamingContent: Dispatch<SetStateAction<string>>;
   setTeacherMsgs: Dispatch<SetStateAction<{ message: string; time: string }[]>>;
   setTeacherNotifBubble: Dispatch<SetStateAction<string | null>>;

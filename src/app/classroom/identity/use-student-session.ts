@@ -13,7 +13,7 @@ interface StudentSessionOptions {
   startChatSession: (studentId: string, studentName: string, classroomCode?: string, token?: string) => Promise<void>;
   setCode: (v: string) => void;
   setSelectedStudent: (v: ClassroomStudentSummary | null) => void;
-  setStep: (v: 'loading' | 'identity' | 'chat') => void;
+  setStep: (v: 'loading' | 'identity' | 'home' | 'shell') => void;
   setTeacherMsgs: (v: { message: string; time: string }[]) => void;
   setAvatarSvgs: (v: Record<number, string>) => void;
   setAllStudentAvatars: (v: AvatarSummary[]) => void;
@@ -84,8 +84,10 @@ export function useStudentSession(options: StudentSessionOptions) {
           o.setStep('identity');
           return;
         }
-        // 有有效会话，直接进入对话页恢复聊天（课堂是否结束由 15s 轮询与 classroom-ended 事件兜底）
-        o.setStep('chat');
+        // 有有效会话，直接进首页门户恢复（课堂是否结束由 15s 轮询与 classroom-ended 事件兜底）。
+        // 刷新后的落点与身份确认一致：门户，而不是上次待着的模块 —— 首页三张卡片的态
+        // 每次都由服务端最新数据重新算，学生一眼看到「今天能做什么」。
+        o.setStep('home');
         // 从数据库加载教师通知（持久化后可导出，且刷新不丢失）
         if (cr.id) {
           try {

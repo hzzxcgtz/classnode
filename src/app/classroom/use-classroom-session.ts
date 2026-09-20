@@ -301,6 +301,12 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
           // 逐**键**比较而不是指名 `moduleKey` / `state` 两个字段：今天两者等价
           // （`ClassroomModuleSetting` 只有这两个字段），但将来给元素加一个被 UI 读取的
           // 字段时，指名的写法会**静默压掉**它的合法更新。键集合来自元素自身，加了就自动比。
+          //
+          // ⚠️ 「键集合自动跟着元素长」只在新增字段**是 UI 字段**时是收益，方向反过来就是代价：
+          // 若将来给元素加一个**非 UI 字段**（例如 `updatedAt`）且它在**同一状态**下会变化，
+          // 逐键比较就会判成「变了」⇒ 换掉数组身份 ⇒ 每 15 秒整树重渲染一次（含常驻的学伴
+          // 面板），恰好把这个守卫存在的意义抵消掉，且没有任何信号 —— 看起来只是「多渲染了
+          // 几次」。所以将来加字段时：**要么只比一个稳定的字段集，要么加白名单**。
           const unchanged = current.length === freshModules.length
             && current.every((m, i) => {
               const next = freshModules[i];

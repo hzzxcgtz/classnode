@@ -84,11 +84,69 @@ async function generateUniqueClassroomCode(prisma: PrismaClient | Prisma.Transac
   throw new Error('无可用的互动码');
 }
 
+/**
+ * 解析并校验创建课堂时勾选的探究网页。
+ *
+ * ⚠️ **这是 `ClassroomWebapp` 唯一的写入口**。T3 只建了表与读取/删除路径，关联是在这里
+ * 建立的 —— 少这一处，教师勾了网页、课堂照样建出来，而学生端永远看不到任何网页：
+ * 一次**没有任何报错**的「看起来成功」。
+ *
+ * 三条口径：
+ *   · 未传 / 非数组 ⇒ `[]`（老客户端不发这个字段，必须当「没勾」而不是报错）。
+ *   · 去重 —— `@@unique([classroomId, webappId])` 撞上重复 id 会让整个事务失败，
+ *     而那会表现成「创建课堂失败」，与真实原因（前端重复发了一个 id）对不上。
+ *   · **有一个 id 不存在就整条 400**，不是静默跳过：静默跳过 = 教师勾了三个、进去只有两个，
+ *     而界面上没有任何痕迹。id 来自刚刚拉取的列表，对不上只可能是教师的页面已经过期。
+ */
+async function resolveWebappIds(
+  prisma: PrismaClient,
+  raw: unknown,
+): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
+  if (raw === undefined || raw === null) return { ok: true, ids: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: '探究网页参数无效' };
+  const ids = Array.from(new Set<string>((raw as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
+  if (ids.length === 0) return { ok: true, ids: [] };
+  const found = await prisma.webapp.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  if (found.length !== ids.length) return { ok: false, error: '所选探究网页已不存在，请刷新后重试' };
+  return { ok: true, ids };
+}
+
+/**
+ * `ClassroomWebapp` 的关联行 —— **`createdAt` 显式写入**，不用 `@default(now())`。
+ *
+ * 🔴 实测（见 task-7 报告）：SQLite 的 `CURRENT_TIMESTAMP` 只有**秒**精度，而这里是一次
+ * 嵌套 create 写多行 ⇒ 同一课堂的所有行**拿到逐字相同的 `createdAt`**。读路径是
+ * `orderBy: [{createdAt:'asc'},{id:'asc'}]`（`loadClassroomWebapps`），时间戳打平时排序
+ * 落到兜底的 **uuid**，也就是**随机**。实测输出：
+ *
+ * ```
+ * 选中顺序 : 6d603c56… b1a9ca72… 1ea3a382…
+ * 读回顺序 : b1a9ca72… 6d603c56… 1ea3a382…   ← 不是选中顺序
+ * createdAt: 三个逐字相同
+ * ```
+ *
+ * 后果不是「顺序难看」，而是**学生打开的网页不是教师以为的那个**：学生端目前只加载
+ * `webapps[0]`（P2 的已知收窄），而 `[0]` 是随机的 —— 教师勾了 A、B、C，学生可能拿到
+ * 任意一个，界面上没有任何地方能看出来。
+ *
+ * 所以这里按**勾选顺序**写出一组严格递增的时间戳（都落在过去，彼此差 1ms）。
+ * 这与 schema 里那句话是一致的：`createdAt` 在本表上**就是排序键**
+ * （`schema.prisma` 的 `ClassroomWebapp` 注释：「没有时间列就没有稳定次序」）——
+ * 本函数只是让那个次序等于教师的选择，而不是等于 uuid 的字典序。
+ */
+function webappLinkRows(ids: readonly string[], now: number = Date.now()) {
+  return ids.map((webappId, index) => ({
+    webappId,
+    // index 0 最早。全部 ≤ now-1，不产生「未来」的时间戳。
+    createdAt: new Date(now - (ids.length - index)),
+  }));
+}
+
 // 创建课堂（标准模式）
 router.post('/create', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, classIds, agentIds, mode = 'standard' } = req.body;
+    const { title, classIds, agentIds, mode = 'standard', webappIds } = req.body;
 
     if (!classIds?.length || !agentIds?.length) {
       return res.status(400).json({ error: '请选择班级和智能体' });
@@ -98,6 +156,9 @@ router.post('/create', async (req, res) => {
     const uniqueAgentIds: string[] = Array.from(new Set<string>((agentIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
     if (uniqueClassIds.length === 0 || uniqueAgentIds.length === 0) return res.status(400).json({ error: '班级或智能体无效' });
     if (mode === 'group' && uniqueClassIds.length !== 1) return res.status(400).json({ error: '分组模式一次只能选择一个班级' });
+
+    const webapps = await resolveWebappIds(prisma, webappIds);
+    if (!webapps.ok) return res.status(400).json({ error: webapps.error });
 
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const code = await generateUniqueClassroomCode(tx);
@@ -112,6 +173,8 @@ router.post('/create', async (req, res) => {
         classroomAgents: {
           create: uniqueAgentIds.map(agentId => ({ agentId })),
         },
+        // 关联顺序 = 勾选顺序（见 webappLinkRows 的实测注释：不显式写 createdAt 就是随机序）
+        webapps: { create: webappLinkRows(webapps.ids) },
       },
       include: {
         classes: { include: { class: { include: { students: true } } } },
@@ -183,7 +246,7 @@ router.post('/create', async (req, res) => {
 router.post('/create-advanced', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, classId, groups } = req.body;
+    const { title, classId, groups, webappIds } = req.body;
 
     if (!classId || !groups?.length) {
       return res.status(400).json({ error: '请选择班级和分组' });
@@ -199,6 +262,9 @@ router.post('/create-advanced', async (req, res) => {
     if (normalizedGroups.some(group => !group.name || !group.agentId)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
     if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
+    const webapps = await resolveWebappIds(prisma, webappIds);
+    if (!webapps.ok) return res.status(400).json({ error: webapps.error });
+
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.classroom.create({
         data: {
@@ -206,6 +272,9 @@ router.post('/create-advanced', async (req, res) => {
         title: title || null,
         mode: 'advanced',
           classes: { create: { classId } },
+          // 高级模式与标准模式走同一个写入口，口径必须一致 —— 否则「高级模式不支持网页」
+        // 会变成一条只有教师自己会发现的静默差异。
+          webapps: { create: webappLinkRows(webapps.ids) },
         },
       });
 

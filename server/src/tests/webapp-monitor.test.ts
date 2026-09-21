@@ -338,6 +338,45 @@ test('staleTeacherRooms：当前课堂的看板房间与监控房间都保留，
   assert.equal(staleTeacherRooms(rooms, 'classroom-a').includes('status:classroom-a'), false);
 });
 
+test('同一 tick 连发「加入看板 + 订阅监控」：订阅必须生效，不得回 teacher-auth-error', async () => {
+  resetMonitor();
+  const harness = createHarness();
+  const teacher = harness.connect({ cookie: teacherCookie() });
+
+  // ⚠️ **不 await 第一条**：`call` 是 async，但它在第一个 await 之前就**同步调用**了
+  // handler（`await handler(payload)` 里 handler 是先被调用的）。所以这两行就是
+  // 「同一个 tick 里先后到达两个包」，与服务端 Socket.IO 的同步派发同构
+  // （真实 socket.io 服务端 + 真实客户端的实测见 task-7 报告：同一 tick 连发两条时
+  //   join-teacher-board 的 handler 已经跑完）。
+  const joining = teacher.call('join-teacher-board', 'classroom-a');
+  const watching = teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  await Promise.all([joining, watching]);
+
+  assert.deepEqual(
+    harness.events('teacher-auth-error'), [],
+    '同一 tick 连发不得产生任何鉴权错误 —— 这条依赖一旦存在，表现是「图墙一直是空的」且无报错',
+  );
+  assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), true, '订阅必须真的生效');
+  assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), [teacher.id], '必须真的进了监控房间');
+
+  // ── 阴性对照：证明上面不是恒真 ─────────────────────────────────────────
+  // 少了这两条，「鉴权整个被删掉」也会让上面全过。两条各挡一个判据：
+  //   ① 没有教师 cookie 的连接 → 第 1 条判据（身份）
+  //   ② 已经绑在**别的课堂**的教师连接 → 第 2 条判据（课堂归属）
+  const anon = harness.connect();
+  await anon.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.equal(anon.members('teacher:classroom-a:webapp').includes(anon.id), false, '无教师 cookie 的连接不得进监控房间');
+
+  const elsewhere = harness.connect({ cookie: teacherCookie() });
+  await elsewhere.call('join-teacher-board', 'classroom-b');
+  await elsewhere.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.equal(elsewhere.members('teacher:classroom-a:webapp').includes(elsewhere.id), false, '绑在别的课堂的连接不得订阅本课堂');
+
+  // 失败**只**发给这两条越权连接，成功那条一条错误都不该收到。
+  const errorRooms = harness.events('teacher-auth-error').map(item => item.room).sort();
+  assert.deepEqual(errorRooms, [anon.id, elsewhere.id].sort());
+});
+
 test('预审 1 的真实失败场景：join-teacher-board 之后监控房间必须还活着（否则图墙会静默冻住）', async () => {
   resetMonitor();
   const harness = createHarness();

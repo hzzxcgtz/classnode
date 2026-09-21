@@ -11,7 +11,8 @@ const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
-import { Toast } from '@/lib/components';
+import { Toast, TeacherPageTabs } from '@/lib/components';
+import { WebappMonitorView } from './webapp-monitor-view';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, MODULE_KEYS, MODULE_STATES, moduleStateOf } from '@/lib/classroom-modules';
 import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -274,6 +275,15 @@ function ClassroomBoardContent() {
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [classroomAgent, setClassroomAgent] = useState<ClassroomAgentDisplay | null>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
+  /**
+   * 看板的两个视图：`board` = 学生互动面板（原有），`webapp` = 探究助手实时视图（P2）。
+   *
+   * ⚠️ 用 `TeacherPageTabs`（仓内既有的视图切换件）而不是复用 `gridFullscreen` ——
+   * 后者是**布尔**（全屏/不全屏），不是「看哪个视图」，拿它兼职会让两个正交的状态互相污染。
+   *
+   * 默认 `board`：教师绝大多数时候是来看学生的，探究助手视图是一次主动的切换。
+   */
+  const [teacherView, setTeacherView] = useState<'board' | 'webapp'>('board');
   const [fsCols, setFsCols] = useState(5);
   const gridRef = useRef<HTMLDivElement>(null);
   const fsContentRef = useRef<HTMLDivElement>(null);
@@ -1017,12 +1027,31 @@ function ClassroomBoardContent() {
                   </div>
                 )}
               </div>
-              <button className="btn btn-secondary" onClick={() => setGridFullscreen(true)} title="全屏显示学生面板" style={{ minHeight: 36, padding: '7px 12px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
-                全屏
-              </button>
+              {/* 全屏是**学生面板**的功能，探究助手视图下不提供（它没有对应的全屏态，
+                  留着这个按钮只会把教师带到一个与当前视图无关的覆盖层上）。 */}
+              {teacherView === 'board' && (
+                <button className="btn btn-secondary" onClick={() => setGridFullscreen(true)} title="全屏显示学生面板" style={{ minHeight: 36, padding: '7px 12px' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+                  全屏
+                </button>
+              )}
             </div>
           </div>
+          {/* 视图切换。⚠️ **独立一行**，不塞进上面那条横向 flex：塞进去会让标题行在窄屏
+              （教师也用 iPad 看板）被压成多行，而独立一行只多占约 40px 且始终可用。
+              与 `gridFullscreen` 同进退 —— 全屏时整个 header 都被藏掉，这一条也不该留下。 */}
+          {!gridFullscreen && (
+            <TeacherPageTabs<'board' | 'webapp'>
+              value={teacherView}
+              onChange={setTeacherView}
+              items={[
+                { value: 'board', label: '学生面板', badge: classroom.students.length },
+                { value: 'webapp', label: '探究助手' },
+              ]}
+            />
+          )}
+
+          {teacherView === 'board' ? (<>
           <div aria-label="学生状态筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
             {([
               ['all', '全部'], ['online', '在线'], ['thinking', '互动中'], ['attention', '需关注'], ['offline', '离线'],
@@ -1289,6 +1318,16 @@ function ClassroomBoardContent() {
               })
             )}
           </div>
+          </>) : (
+            /* 探究助手实时视图。**只在切到这个视图时才挂载** —— 挂载即订阅、
+               卸载即退订（`unwatch-webapp-monitor`），切回学生面板就退订，
+               学生端随即停止推流（Ruling 9 的按需推流）。详见 webapp-monitor-view.tsx。 */
+            <WebappMonitorView
+              classroomId={id}
+              students={classroom.students}
+              webapps={classroom.webapps ?? []}
+            />
+          )}
         </div>
 
         {/* 右侧对话详情 - 浮层模式 */}

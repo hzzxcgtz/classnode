@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult } from './types';
 
 let studentSessionToken = '';
 
@@ -130,9 +130,12 @@ export const api = {
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>
     request<StudentSummary>(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom
-  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string }) =>
+  // `webappIds`：课堂要关联的探究网页。**两条创建路径都必须带** —— 高级模式一样能关联，
+  // 只给标准模式加会让「高级模式不支持网页」成为一条只有教师自己会发现的静默差异。
+  // 服务端 `resolveWebappIds` 是 ClassroomWebapp 唯一的写入口，见 routes/classroom.ts。
+  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; webappIds?: string[] }) =>
     request<ClassroomSummary>('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
-  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[] }) =>
+  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[]; webappIds?: string[] }) =>
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
   getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),
@@ -335,6 +338,28 @@ export const api = {
     request(`/api/shield/classroom/${classroomId}/warnings`, { method: 'DELETE' }),
   getWarningsSummary: () =>
     request<ClassroomWarningSummary[]>('/api/shield/warnings-summary'),
+
+  // 服务端信息（局域网 IP / 学生入口 / 探究网页托管源）。
+  // ⚠️ `webappOrigin` 是**服务端实算**的完整地址（`http://${selectedIp}:${webappPort}`），
+  // 与课堂详情下发的 `webappPort`（端口，由客户端自己拼）是两条不同的口径：
+  // 管理页不在课堂上下文里，拿不到那个端口，所以用它。
+  getServerInfo: () =>
+    request<{ webappOrigin?: string; studentUrl?: string; selectedIp?: string; port?: number }>('/api/server-info'),
+
+  // 探究网页（P2 / 规格 §5.3）。上传走 multipart（`formRequest`），其余是 JSON。
+  //
+  // ⚠️ 上传的响应是 `webapp` + `externalDeps: { count, files }`，**没有 urls 字段**。
+  // 服务端刻意只给数量与文件名（T2 的 `url` 只保证「识别出这是一条外部依赖」，
+  // CSS 场景可能被 `;` 截断）—— 类型里就没有那个字段，后面的人也没法顺手列出来。
+  getWebapps: () => request<WebappSummary[]>('/api/webapps'),
+  createWebapp: (data: FormData) => formRequest<WebappUploadResult>('/api/webapps', 'POST', data),
+  updateWebapp: (id: string, data: { name?: string; entryPath?: string }) =>
+    request<WebappSummary>(`/api/webapps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteWebapp: (id: string) => request(`/api/webapps/${id}`, { method: 'DELETE' }),
+  checkWebappUsage: (id: string) =>
+    request<{ used: boolean; classroomCount: number }>(`/api/webapps/${id}/usage`),
+  getWebappEntries: (id: string) =>
+    request<{ entries: string[] }>(`/api/webapps/${id}/entries`),
 
   // Storage stats
   getStorageStats: () =>

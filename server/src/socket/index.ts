@@ -1068,7 +1068,28 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     socket.on('watch-webapp-monitor', (data: unknown) => {
       const classroomId = validateWebappWatchPayload(data);
       if (!classroomId) return;
-      if (!socket.data.isTeacher || socket.data.classroomId !== classroomId || !hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
+      // 鉴权由两部分组成，**都只读这条 socket 自己就有的事实**：
+      //
+      //  1. **身份**：握手 cookie 里的教师会话。原先这里写的是 `!socket.data.isTeacher`，
+      //     而那个字段是 **join-teacher-board 置位的** —— 读它等于让订阅的成败取决于
+      //     「两条事件谁先到」。这种依赖的失败形态是静默的（客户端只收到一条
+      //     teacher-auth-error，或什么都收不到；界面上表现为「图墙一直是空的」）。
+      //     实测：真实 socket.io 服务端 + 真实客户端下，同一 tick 连发两条时
+      //     join-teacher-board 的 handler 恰好体内无 `await` 而先跑完，所以旧写法**没有
+      //     复现出拒绝**；但这是「碰巧对」，给它加一个 `await` 就会翻车（报告里有那条
+      //     变异实测）。⇒ 身份一律自己判。
+      //
+      //  2. **课堂归属**：`socket.data.classroomId` 是 join-teacher-board 写下的，
+      //     判据写成**「写过才比」**：
+      //       · 没写过（这条连接还没加入过任何看板）⇒ 放行。凭据已由第 1 条把住，
+      //         而 `join-teacher-board` 自己也不校验「这个教师是不是这个课堂的」——
+      //         两边同一把尺子。放行的是**同一个权限**，没有多给任何东西。
+      //       · 写过且不是这个课堂 ⇒ 拒绝。这条是既有行为（回归用例：
+      //         webapp-monitor.test.ts 的「教师不能订阅别的课堂」），必须留着。
+      //     ⚠️ 「写过才比」是**有方向的**：信息越多越严。写成无条件比较就把第 1 条好不容易
+      //     去掉的顺序依赖又请了回来（只是换了字段名），而那正是本函数要修的东西。
+      const boundClassroomId = socket.data.classroomId as string | undefined;
+      if (!hasTeacherSessionCookie(socket.handshake.headers.cookie) || (boundClassroomId !== undefined && boundClassroomId !== classroomId)) {
         socket.emit('teacher-auth-error', { error: '无权订阅探究助手监控' });
         return;
       }
@@ -1088,6 +1109,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 任何权限；而如果因为它失败了（教师会话刚好过期，或 T7 卸载时 socket 已重连），
      * 房间就永远留着 → hasWatchers 恒为真 → **学生端一直推流**（T7 brief 明写
      * 「unwatch 不能省」说的就是这个）。降级动作失败的方向必须是安全的那一侧。
+     *
+     * ⚠️ 与订阅那侧的「顺序耦合」无关：本 handler **从来没有读过 `socket.data.*`**
+     * （只用 `socket.id` 与房间名），所以它本来就不受 join-teacher-board 先后的影响。
+     * 它的「不对称」是刻意的安全取舍，不是为了绕开顺序问题 —— 别把它改成对称的。
      */
     socket.on('unwatch-webapp-monitor', (data: unknown) => {
       const classroomId = validateWebappWatchPayload(data);

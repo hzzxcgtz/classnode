@@ -66,6 +66,29 @@ export interface ClassroomWebappSummary {
   entryPath: string;
 }
 
+/**
+ * 管理页（`/teacher/webapps/`）看到的网页形状 —— 与 `ClassroomWebappSummary` 同样是
+ * `PUBLIC_WEBAPP_SELECT` 的子集，**没有任何磁盘路径字段**。
+ */
+export interface WebappSummary {
+  id: string;
+  name: string;
+  entryPath: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 上传响应。
+ *
+ * ⚠️ `externalDeps` **只有数量与文件名，没有 URL** —— 这是服务端的结构性约束
+ * （见 `routes/webapps.ts` 的 `scanExternalDepsSafe`），不是 UI 约定。
+ * 界面上因此也只能说「本网页依赖 N 个外部资源」，不能列出具体地址。
+ */
+export interface WebappUploadResult extends WebappSummary {
+  externalDeps: { count: number; files: string[] };
+}
+
 export interface StudentSessionResponse {
   token: string;
   expiresIn: number;
@@ -232,6 +255,18 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
    * —— 那会把「不知道」当成「没有」。
    */
   hasModuleRows?: boolean;
+  /**
+   * 本课堂关联的探究网页。`GET /api/classroom/:id` 与 `/code/:code` **共用**
+   * `loadClassroomWebapps`（`routes/webapps.ts`），两个端点的形状逐字相同 ——
+   * 教师看板的探究助手视图按它渲染格子标题。
+   *
+   * 可选的理由同 `StudentClassroom.webapps`：查询失败（老库缺表）时服务端降级为
+   * 空数组，更老的版本则根本不发这个字段；读的地方按「没有网页」处理。
+   *
+   * ⚠️ 教师端这条路径**没有** `webappPort`（那个只在 `/code/:code` 下发）：
+   * 教师看板不需要自己拼地址，管理页的预览走 `/api/server-info` 的 `webappOrigin`。
+   */
+  webapps?: ClassroomWebappSummary[];
 }
 
 export interface ClassroomHistoryItem extends ClassroomSummary {

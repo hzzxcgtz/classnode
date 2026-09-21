@@ -8,9 +8,15 @@ import { APP_VERSION } from '@/lib/version';
 import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 
+/**
+ * 侧边栏导航。⚠️ **每一项的 `icon` 都必须在下面的图标 switch 里有一支对应的分支。**
+ * 漏了不会报错、也不会构建失败 —— 那一项只是渲染成一个没有图标的空位（label 还在，
+ * 布局不塌，所以肉眼很容易放过）。改这个数组时请顺手 grep 一次图标 switch。
+ */
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
+  { path: '/teacher/webapps', label: '探究网页', icon: 'globe' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
   { path: '/teacher/avatars', label: '头像管理', icon: 'avatar' },
@@ -548,6 +554,13 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 {item.icon === 'shield' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
+                )}
+                {item.icon === 'globe' && (
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
                   </svg>
                 )}
               </span>

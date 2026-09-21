@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { TeacherPageHeader } from '@/lib/components';
-import type { AgentSummary, ClassGroup, ClassSummary } from '@/lib/types';
+import type { AgentSummary, ClassGroup, ClassSummary, WebappSummary } from '@/lib/types';
 
 type CreateMode = 'standard' | 'group' | 'advanced';
 
@@ -14,6 +14,18 @@ export default function NewClassroomPage() {
   const [title, setTitle] = useState('');
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [classes, setClasses] = useState<ClassSummary[]>([]);
+  /**
+   * 可关联的探究网页。**多选**（`Set<string>`）—— 一个课堂可以关联多个网页，
+   * 而智能体是单选（课堂只有一条对话链路）。两种语义不要混用同一个 state 形状。
+   */
+  const [webapps, setWebapps] = useState<WebappSummary[]>([]);
+  const [selectedWebappIds, setSelectedWebappIds] = useState<Set<string>>(new Set());
+  /**
+   * 网页列表自身的加载结果。它**不阻断创建**（网页是可选配置），但要在界面上说出来：
+   * 「没勾」与「加载失败导致没得勾」在提交流程里长得一模一样，而后者建出来的课堂
+   * 会在课堂里显示「老师还没有添加探究网页」—— 教师找不到原因。
+   */
+  const [webappLoadError, setWebappLoadError] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
   const [mode, setMode] = useState<CreateMode>('standard');
@@ -30,9 +42,18 @@ export default function NewClassroomPage() {
   const titleInputRef = useRef<HTMLInputElement>(null);
   const classSectionRef = useRef<HTMLDivElement>(null);
   const agentSectionRef = useRef<HTMLDivElement>(null);
+  /** `agentSectionRef` 的兄弟：网页列表加载失败时，提交后要滚到这里（原因写在这一块里）。 */
+  const webappSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+    // 网页列表**单独一条**：它挂了不该让「智能体 / 班级」也一起判失败 ——
+    // 后者是必填项，前者是可选配置，两者的失败后果完全不同。
+    void api.getWebapps()
+      .then(list => { if (mountedRef.current) setWebapps(list); })
+      .catch(error => {
+        if (mountedRef.current) setWebappLoadError(error instanceof Error ? error.message : '请求异常');
+      });
     Promise.all([api.getAgents(), api.getClasses()]).then(([a, c]) => {
       if (!mountedRef.current) return;
       setAgents(a.filter((agent) => agent.enabled !== false));
@@ -105,15 +126,25 @@ export default function NewClassroomPage() {
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       window.setTimeout(() => {
+        // ⚠️ `agentSectionRef` 只在**非高级模式**下挂着（那一块用 `mode !== 'advanced'` 包着）。
+        // 高级模式里分组配置是另一个 DOM 节点，ref 是 null ⇒ 原来的写法在高级模式下
+        // 「按了发起课堂但屏幕没动」。加 `?.` 之外的判空是必要的：`null?.scrollIntoView()`
+        // 本来就安全，真正的问题是**没有备选目标**，所以补上网页区那一支。
         if (errors.title) titleInputRef.current?.focus();
         else if (errors.class) classSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        else agentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        else if (agentSectionRef.current) agentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 网页列表加载失败**不阻断创建**（它是可选配置），但提交时必须把教师送到那一块 ——
+        // 否则他会在课堂里看到「老师还没有添加探究网页」，而原因写在另一个屏幕外的地方。
+        else if (webappLoadError && webappSectionRef.current) webappSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 0);
       return;
     }
 
     savingRef.current = true;
     setSaving(true);
+    // 两条创建路径都带上勾选的网页。`Set` 的插入顺序就是勾选顺序 ⇒ 关联顺序即勾选顺序
+    // （服务端按 createdAt 升序下发，学生端与教师端看到的是同一个次序）。
+    const webappIds = Array.from(selectedWebappIds);
     try {
       if (mode === 'advanced') {
         const groups = classGroups.map(g => ({
@@ -125,6 +156,7 @@ export default function NewClassroomPage() {
           title: title || undefined,
           classId: selectedClassId,
           groups,
+          webappIds,
         });
         router.push(`/teacher/classroom?id=${result.id}`);
       } else {
@@ -133,6 +165,7 @@ export default function NewClassroomPage() {
           classIds: [selectedClassId],
           agentIds: [selectedAgentId],
           mode: mode === 'group' ? 'group' : 'standard',
+          webappIds,
         });
         router.push(`/teacher/classroom?id=${result.id}`);
       }
@@ -152,7 +185,11 @@ export default function NewClassroomPage() {
     { label: '课堂信息', complete: Boolean(title.trim()) },
     { label: '参与班级', complete: Boolean(selectedClassId) },
     {
-      label: 'AI 配置',
+      // 「AI 与网页」：探究网页并入这一步，**不加第 4 格**（控制器裁定）—— 进度条加一格
+      // 会让一个可选配置看起来与「选哪个班」同等重要，而它是可选的。
+      // ⇒ 完成度判据**只看智能体**：把可选配置算进去，会让「不想要网页」的教师
+      //    永远看不到这一步完成。
+      label: 'AI 与网页',
       complete: mode === 'advanced'
         ? classGroups.length > 0 && configuredGroupCount === classGroups.length
         : Boolean(selectedAgentId),
@@ -512,6 +549,58 @@ export default function NewClassroomPage() {
           </div>
         )}
 
+        {/* 关联探究网页（可选）—— 与「AI 配置」同属进度条的第 3 步。
+            ⚠️ 三种模式下都渲染：网页与「选哪个智能体」无关，只被 `mode !== 'advanced'`
+            包起来会让高级模式永远关联不上网页，而且不报任何错。 */}
+        <div ref={webappSectionRef} style={{
+          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
+          padding: '16px 20px', marginBottom: 20,
+        }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
+            关联探究网页
+            <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 可多选</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
+            学生在「探究助手」里会打开这些网页。不选也可以，之后在课堂里就看不到探究助手网页。
+          </div>
+          {webappLoadError ? (
+            <div role="alert" style={{ padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
+              探究网页列表没有加载成功（{webappLoadError}）。
+              这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
+            </div>
+          ) : webapps.length === 0 ? (
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
+              还没有探究网页，可以先在「探究网页」里添加
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {webapps.map(w => {
+                const selected = selectedWebappIds.has(w.id);
+                return (
+                  <button type="button" key={w.id} aria-pressed={selected}
+                    onClick={() => setSelectedWebappIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(w.id)) next.delete(w.id); else next.add(w.id);
+                      return next;
+                    })}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                      padding: '8px 14px', borderRadius: 8, userSelect: 'none', textAlign: 'left',
+                      border: `1.5px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
+                      background: selected ? '#eef2ff' : 'white',
+                      cursor: 'pointer', fontSize: "0.875rem", fontWeight: selected ? 500 : 400,
+                      transition: 'all 0.12s', fontFamily: 'inherit', maxWidth: 260,
+                    }}>
+                    <span style={{ color: '#0f172a', wordBreak: 'break-all' }}>{w.name}</span>
+                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', wordBreak: 'break-all' }}>入口 {w.entryPath}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {fieldErrors.submit && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {fieldErrors.submit}
@@ -525,6 +614,7 @@ export default function NewClassroomPage() {
               {modeLabel} · {selectedClass?.name || '未选班级'} · {mode === 'advanced'
                 ? `${configuredGroupCount}/${classGroups.length} 个小组已配置`
                 : selectedAgent?.name || '未选智能体'}
+              {selectedWebappIds.size > 0 ? ` · ${selectedWebappIds.size} 个探究网页` : ''}
             </span>
           </div>
           <div className="new-classroom-action-buttons">

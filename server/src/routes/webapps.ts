@@ -564,6 +564,38 @@ router.post('/', webappUpload, async (req, res) => {
 });
 
 /**
+ * 列出某个网页包里的 HTML 入口候选。
+ *
+ * 存在的唯一理由：`PUT /:id` 允许教师改指另一个入口，而**没有这个列表，UI 就只能让教师
+ * 手打一个路径** —— 打错了服务端会 400（「指定的入口文件不存在」），但教师在那之前
+ * 无从知道包里到底有哪些 HTML。
+ *
+ * ⚠️ **只回 HTML，不回整棵树**：整棵树会把服务端的目录结构（哪些资源、怎么组织）
+ * 顺带告诉客户端，而这里需要的信息只有「入口能选哪几个」。路径是**包内相对路径**，
+ * 绝对路径与 `webappsRoot` 都不出现在响应里（与 PUBLIC_WEBAPP_SELECT 同一条口径）。
+ *
+ * 上限 500 与 WEBAPP_LIMITS.maxFiles 对齐：超过它的包上传时就被拒了，这里只是兜底。
+ */
+router.get('/:id/entries', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const webapp = await prisma.webapp.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!webapp) return res.status(404).json({ error: '网页不存在' });
+    const dir = resolveInsideWebappsRoot(req.params.id);
+    if (!dir) return res.status(404).json({ error: '网页不存在' });
+    const entries = walkTree(dir).files
+      .map(file => file.path)
+      .filter(isHtmlPath)
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, WEBAPP_LIMITS.maxFiles);
+    res.json({ entries });
+  } catch (error) {
+    console.error('[webapps] 列出入口失败:', error);
+    res.status(500).json({ error: '列出入口失败' });
+  }
+});
+
+/**
  * 更新网页：**只做两件事** —— 改名，或改指另一个入口 HTML。
  *
  * ⚠️ **它不做什么（说清边界比说清功能重要）：**

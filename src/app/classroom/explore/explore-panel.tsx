@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { WebappEvent } from '@/lib/socket-events';
 import type { ClassroomWebappSummary } from '@/lib/types';
+import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
 import { MODULE_META } from '../module-meta';
 import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
@@ -12,19 +13,11 @@ import { useExploreBridge } from './use-explore-bridge';
 import styles from './explore.module.css';
 
 /**
- * iframe 的 sandbox 集合（规格 §5.1 / Ruling 13）。**照抄，不要增减。**
- *
- * 为什么是这一组：
- *   · `allow-scripts` 与 `allow-same-origin` 同时给，在**同源**时是危险的组合
- *     （iframe 可以自己把 sandbox 属性摘掉）；这里安全的前提是 iframe 来自**独立源**
- *     （另一个端口），它够不到父页面，也够不到教师会话。
- *   · `allow-forms` / `allow-pointer-lock` / `allow-downloads` 是教学网页的常见需要。
- *   · ⚠️ **故意不给** `allow-top-navigation`（网页不能把整个 ClassNode 页面导走，
- *     那会让学生丢掉课堂）与 `allow-modals`（`alert` 会把老 iPad 卡死）。
- *   · ⚠️ **`allow` 属性不加**：不申请任何权限（摄像头 / 麦克风 / 地理位置），
- *     与主服务 `Permissions-Policy` 的收紧方向一致。
+ * iframe 的 sandbox 集合。**定义已移到 `@/lib/webapp-sandbox.ts`** —— 教师端的在线预览
+ * 必须与学生端用**同一份**，两份复制粘贴迟早漂移。语义与取舍（为什么是这一组、
+ * 为什么故意不给 `allow-top-navigation` / `allow-modals`）都在那个文件里。
  */
-const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads';
+const SANDBOX = WEBAPP_IFRAME_SANDBOX;
 
 /**
  * 白屏兜底（规格 §12：iframe 失败 → 友好提示 + 重试，不让白屏把学生卡住）。

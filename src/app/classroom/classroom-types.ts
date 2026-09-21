@@ -189,6 +189,16 @@ export interface ChatPanelProps {
   thinkingContent: string;
   teacherNotifBubble: string | null;
   blacklisted: boolean;
+  /**
+   * 探究助手按需推流：本课堂此刻有没有教师在看探究助手视图（P2 / Ruling 9）。
+   *
+   * 与上面几项同源 —— 写入点在 `use-chat-socket` 的回调里（socket 的家），所有者是会话层。
+   * **不能改成由探究助手面板自己订阅**：初值只在 `join-classroom` 成功后下发一次，而那个
+   * 时刻面板还没挂载（惰性挂载），面板自己订阅会永远停在「没人看」，学生端在源头就不推，
+   * 教师图墙空着且没有任何报错。学生端唯一的消费者是探究助手面板（外壳从 `chat` 里读它
+   * 再传下去）。
+   */
+  webappWatching: boolean;
 
   // —— 外壳 setter：面板自身仍要写这些状态 ——
   // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket

@@ -6,6 +6,7 @@ import type { ChatPanelProps, ModuleId } from '../classroom-types';
 import type { StudentHomeProps } from '../home/student-home';
 import { StudentHome } from '../home/student-home';
 import { StudentChatContent } from '../chat/chat-panel';
+import { ExplorePanel } from '../explore/explore-panel';
 import { useOverlayPortal } from '../layer-overlays';
 import { AvatarChangerModal, finishAvatarChange } from '../chat/avatar-changer';
 import { ModuleTabBar } from './module-tab-bar';
@@ -530,6 +531,25 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               {...chat}
               active={activate(id)}
               toast={toastFor(id)}
+            />
+          ) : id === 'explore' ? (
+            // 探究助手（P2）：真 iframe 面板。三路分发到此为止 —— 剩下的一路是占位面板，
+            // 它接到的 `id` 已被上面两个守卫收窄成「还没实现的模块」，所以
+            // `ModulePlaceholderProps.moduleId` 的收窄类型能原样兜住（见该文件）。
+            <ExplorePanel
+              active={activate(id)}
+              state={moduleStateFor(chat.classroom?.modules, id)}
+              classroom={chat.classroom}
+              session={chat.selectedStudent}
+              toast={toastFor(id)}
+              setToast={setToast}
+              // socket 的归属仍在会话层（page.tsx 的 wsRef），面板只是**借它发消息**：
+              // 事件与帧必须走这条已有的连接，不能另开一条（§4.8 的内存门槛）。
+              wsRef={chat.wsRef}
+              // 而「此刻有没有教师在看」是**会话级状态**（写入点在 use-chat-socket 的
+              // 回调里），外壳只做传递 —— 理由见 classroom-types.ts 上那个字段的注释：
+              // 面板自己订阅会漏掉 join-classroom 那一次初值。
+              watching={chat.webappWatching}
             />
           ) : (
             <ModulePlaceholder

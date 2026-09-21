@@ -1,0 +1,110 @@
+/* 探究助手面板（P2）：一个铺满模块层的 iframe + 两种非网页态（没关联网页 / 网页打不开）。
+ *
+ * 硬约束与 shell.module.css / home.module.css 同源（Safari 15，老 iPad）：
+ * 不用 `:has()` / `content-visibility` / `@container` / `color-mix()`；
+ * `dvh` 与 `:focus-visible` 只在不带降级时可用（本文件两者都没用）。
+ *
+ * ── 为什么面板要自己让开栏高 ─────────────────────────────────────────────────
+ * 顶层 Tab 栏是 `position: fixed`（shell.module.css 的 .bar），不占流内空间。
+ * `.moduleLayer` 刻意不加上内边距（学伴面板自己算进 100vh 的预算、占位面板压根不需要），
+ * 所以**由面板自己**用 `padding-top: var(--shell-topbar-height)` 让出那条带子 ——
+ * 不让的话网页顶部 52px 会被栏永久盖住，而网页的头部通常正好是标题与按钮。
+ * `--shell-topbar-height` 继承自 `.shell`，与首页层、学伴面板读的是同一个变量。
+ *
+ * ── 为什么卡片区与占位面板长得像 ─────────────────────────────────────────────
+ * 两者都是「这个模块此刻没有内容可看」的诚实交代，学生看到的是同一种语气与同一套配色
+ * （渐变底 + 白卡片 + 模块身份色的顶边）。规格 §4.6 要求「学生在卡片上认到的颜色和进到
+ * 模块里是同一个」，所以这里也从 `MODULE_META.explore.accent` 取色，CSS 里不写死十六进制。 */
+
+.panel {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  padding-top: var(--shell-topbar-height);
+  background: #fff;
+}
+
+/* iframe 铺满面板的内容盒（父级的 padding-top 已经把它推到栏下面）。
+   `border: 0` 是必需的：Chrome/Safari 给 iframe 的默认边框是 inset 2px 且**不可继承**，
+   留着它会在网页四周露出一圈灰边。
+   `background: #fff` 是底：网页自己的背景若是半透明，下面露出的不该是页面底色。 */
+.frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* ─────────────────── 没关联网页 / 网页打不开（规格 §12）─────────────────── */
+
+/* 覆盖层的定位与 iframe **完全重合**：它盖住的是一个仍然挂载着的 iframe
+   （失败时也不卸载 —— 卸载即丢状态，§4.5 的核心承诺），所以不能改 iframe 的尺寸、
+   也不能用 `display: none`，只能是同一块区域上的另一层。 */
+.overlay {
+  position: absolute;
+  top: var(--shell-topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 24px;
+  border-radius: 18px;
+  border-top: 4px solid var(--module-accent);
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(30, 27, 75, 0.16);
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--module-accent);
+  font-size: 0.813rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.title {
+  margin: 0 0 6px;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.note {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.813rem;
+  line-height: 1.6;
+}
+
+/* 重试按钮。触控目标是老 iPad 上的硬要求：44px 高、字号不低于 0.875rem。 */
+.retry {
+  margin-top: 18px;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--module-accent);
+  font-size: 0.938rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.retry:active { opacity: 0.85; }

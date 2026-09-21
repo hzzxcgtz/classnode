@@ -6,8 +6,15 @@ import type { ModuleId, ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import styles from './shell.module.css';
 
-/** 学习单与探究助手：M1b-2 里它们是**占位面板**（Ruling 2），M3 / M2 才实现。 */
-type PlaceholderModuleId = Exclude<ModuleId, 'companion'>;
+/**
+ * 还没实现的模块：学习单（M3 才实现）。
+ *
+ * ⚠️ 收窄必须跟着「谁已经是真面板」走。探究助手在 P2（T6）变成真 iframe 面板之后，
+ * 这里就只剩学习单 —— 没收窄的话，占位面板仍然**在类型上声称**自己能渲染探究助手，
+ * 于是「外壳把探究助手渲染成占位」会变成合法代码，而那正是 Ruling 2 要防的假象
+ * （学生看到「这个模块还在准备中」，而它其实早就能用了，且不报任何错）。
+ */
+type PlaceholderModuleId = Exclude<ModuleId, 'companion' | 'explore'>;
 
 /**
  * 占位面板的 props。**`extends ModulePanelProps` 是刻意的**：契约（§4.3）要求「每个模块
@@ -16,8 +23,9 @@ type PlaceholderModuleId = Exclude<ModuleId, 'companion'>;
  * `_ContractCheck`）。用 `extends` 而不是另写一遍字段：契约加一项时这里会**编译失败**，
  * 而不是悄悄少接一个 prop。
  *
- * `moduleId` 收窄到非 `companion`：学伴是真面板。写宽了会让「外壳把学伴也渲染成占位」
- * 变成合法代码，而那正是 Ruling 2 要防的假象。
+ * `moduleId` 收窄到既不是 `companion` 也不是 `explore`：那两个都是真面板（学伴面板、
+ * 探究助手面板）。写宽了会让「外壳把真面板也渲染成占位」变成合法代码，而那正是
+ * Ruling 2 要防的假象。
  */
 export interface ModulePlaceholderProps extends ModulePanelProps {
   moduleId: PlaceholderModuleId;

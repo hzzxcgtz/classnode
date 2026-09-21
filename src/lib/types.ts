@@ -52,6 +52,20 @@ export interface ClassroomModuleSetting {
   state: ClassroomModuleState;
 }
 
+/**
+ * 探究助手「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
+ *
+ * **只有这三个字段**：`id` 与 `entryPath` 够学生端拼出
+ * `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`，`name` 是显示名。
+ * `Webapp` 表里任何指向文件系统的字段（绝对路径、`webappsRoot()` 之下的相对路径）
+ * **一律不进响应** —— 多一个字段就是把服务端的目录结构告诉客户端。
+ */
+export interface ClassroomWebappSummary {
+  id: string;
+  name: string;
+  entryPath: string;
+}
+
 export interface StudentSessionResponse {
   token: string;
   expiresIn: number;
@@ -246,6 +260,26 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
   agents: AgentSummary[];
   groups?: Array<ClassroomCardGroup & { agent: AgentSummary }>;
   modules: ClassroomModuleSetting[];
+  /**
+   * 探究助手托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
+   *
+   * ⚠️ 是端口而**不是**拼好的 URL：学生端本来就知道自己是从哪个 IP / 域名进来的
+   * （`location.hostname`），所以自己拼出来的源永远正确、无缓存、不会陈旧 ——
+   * 一个由服务端拼好的绝对 URL 反而会在「服务端挑的绑定 IP 与学生实际用的入口不同」
+   * 时把人送到一个打不开的地址上。服务端侧的理由见 `server/src/routes/classroom.ts`。
+   *
+   * 可选：托管服务起不来时服务端拿到的是 `undefined`（Ruling 1：托管服务故障不拖垮主服务），
+   * 更老的版本则根本不发这个字段 —— 读的地方必须按「不可用」处理，不能当成 0。
+   */
+  webappPort?: number;
+  /**
+   * 本课堂关联的网页，按关联顺序；查询失败（老库缺表）时服务端降级为空数组。
+   *
+   * 可选的理由同上（旧服务端不发这个字段），与 `hasModuleRows?` 同一条口径：
+   * 「没发」与「发了但是空」在 UI 上都是「老师还没添加网页」，但读路径不能因为
+   * 字段缺失就崩。
+   */
+  webapps?: ClassroomWebappSummary[];
 }
 
 export interface ClassroomSettingsGroup {

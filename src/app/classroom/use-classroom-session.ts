@@ -55,6 +55,14 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [waitingAI, setWaitingAI] = useState(false);
   const [paused, setPaused] = useState(false);
   const [agentDisabled, setAgentDisabled] = useState(false);
+  /**
+   * 探究助手按需推流：本课堂此刻有没有教师在看探究助手视图（P2 / Ruling 9）。
+   *
+   * 初值只在 `join-classroom` 成功后由服务端下发一次，而探究助手面板是**惰性挂载**的
+   * （学生点开才挂）—— 所以这条状态必须由会话层持有，面板只能读。写在 `use-chat-socket`
+   * 的回调里（那批 socket 监听器的家），与 `paused` 同一类。
+   */
+  const [webappWatching, setWebappWatching] = useState(false);
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<ChatToast | null>(null);
   // 下面这批状态的写入点同样在 useChatSocket 的回调里。M1a Task 3 把该 hook 上移到本文件
@@ -424,6 +432,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setThinkingContent,
     setToast,
     setWaitingAI,
+    setWebappWatching,
   });
 
   // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
@@ -524,6 +533,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     waitingAI,
     paused,
     agentDisabled,
+    webappWatching,
     shieldWarning,
     toast,
     connected,

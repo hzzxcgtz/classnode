@@ -134,6 +134,7 @@ function ClassroomOrchestrator() {
         thinkingContent: session.thinkingContent,
         teacherNotifBubble: session.teacherNotifBubble,
         blacklisted: session.blacklisted,
+        webappWatching: session.webappWatching,
         setSelectedStudent: session.setSelectedStudent,
         setAvatarSvgs: session.setAvatarSvgs,
         setAllStudentAvatars: session.setAllStudentAvatars,

@@ -47,6 +47,17 @@ function LockBadge() {
 }
 
 /**
+ * 卡片上的一行文案：太长就截断并留一个省略号。
+ *
+ * 卡片主内容区没有 `overflow: hidden` / `text-overflow`，超长文案会**换行把卡片撑高**，
+ * 而三张卡的按钮是靠 `.cardMeta` 的 `min-height` 对齐的 —— 一张卡被撑高，三个按钮就错位。
+ * 所以长度在 JS 这一侧收口（与「上次聊到…」同一个 32 字口径，改这里请两处一起想）。
+ */
+function clipCardText(text: string, max = 32): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
  * 把最后一条有内容的消息压成一句短摘要。
  *
  * 从后往前找而不是取末条：助手回复可能只有空白或附件占位，那边界情况下取末条会得到
@@ -56,9 +67,31 @@ function LockBadge() {
 function summarizeLastRound(messages: StudentChatMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const text = (messages[i].content || '').replace(/[#*`>~\s]+/g, ' ').trim();
-    if (text) return text.length > 32 ? `${text.slice(0, 32)}…` : text;
+    if (text) return clipCardText(text);
   }
   return null;
+}
+
+/**
+ * 「探究助手」卡片的主内容 —— **老师说这个课堂有哪些网页，这里就说那个网页的名字**。
+ *
+ * ⚠️ 这条以前是硬编码的占位（`还没有资料` / `老师添加网页后会出现在这里`），与「学伴」那张
+ * 卡读真数据（`agentName` / `lastRound`）的做法不一致。后果是**卡片撒谎**：课堂已经关联了
+ * 网页、学生点进去看到的是一张真网页，卡片却还说「还没有资料」。
+ * 数据一直都在（`classroom.webapps`，T3 起随 `GET /code/:code` 下发，只含
+ * `id`/`name`/`entryPath`），所以这里不需要任何新字段。
+ *
+ * ⚠️ **有关联网页时刻意不写「共 N 个」**：面板此刻只加载第一个网页（多网页的列表选择是
+ * P2 已知的收窄，见 T6 报告 §4.2）。写「共 3 个网页」而学生点进去只看得到第一个，
+ * 是**同一类撒谎换了个方向** —— 承诺一个点不到的东西。等多网页选择落地后再谈计数。
+ *
+ * 服务端保证 `name` 非空且不超过 120 字（`rawName || '未命名网页'`），所以这里不必兜空串，
+ * 只需按卡片宽度截断。
+ */
+function exploreCardContent(webapps: ClassroomInfo['webapps']): { title: string; meta: string } {
+  const first = webapps?.[0];
+  if (!first) return { title: '还没有资料', meta: '老师添加网页后会出现在这里' };
+  return { title: clipCardText(first.name), meta: '老师准备的探究网页' };
 }
 
 /**
@@ -127,16 +160,15 @@ export function StudentHome({
 
   const lastRound = summarizeLastRound(messages);
 
-  // 三态的「主内容」：M2/M3 到位后只换这两个字符串，卡片结构不动。
+  // 三态的「主内容」：M3 的学习单到位后只换那两个字符串，卡片结构不动。
+  // `explore` 与 `companion` 读的都是**真数据**（关联网页 / 智能体与最后一轮对话），
+  // 只有学习单还是占位（P1 未落地，它的资源关联字段 `worksheetId` 今天恒为空）。
   const cardContent: Record<ModuleId, { title: string; meta: string }> = {
     worksheet: {
       title: '还没有布置',
       meta: '老师布置后会出现在这里',
     },
-    explore: {
-      title: '还没有资料',
-      meta: '老师添加网页后会出现在这里',
-    },
+    explore: exploreCardContent(classroom?.webapps),
     companion: {
       title: agentName,
       meta: lastRound ? `上次聊到：${lastRound}` : '还没开始对话，打个招呼吧',

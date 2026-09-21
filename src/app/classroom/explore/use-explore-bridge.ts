@@ -145,8 +145,17 @@ export function useExploreBridge(options: ExploreBridgeOptions): ExploreBridge {
   useLayoutEffect(() => {
     const handler = (e: MessageEvent) => {
       // ⚠️ 唯一的准入判据：消息必须来自我们刚挂载的那个 iframe 的 contentWindow。
-      //    比 e.source 更弱的判据（`e.data.source === 'classnode-sdk'`、`e.origin`）都不算数：
-      //    前者是对方自己写的字符串，后者在托管服务与学生端同主机不同端口时只能比到主机名。
+      //
+      //    ── 为什么不用 `e.origin`（它看起来更自然，务必读完再改）──────────────────
+      //    `e.origin` 是 `scheme://host:port`，**它比得到端口**。所以「比到主机名」不是
+      //    不用它的理由（这句话本文件早前写错过，已改正）。真正的理由是：
+      //    **这里要挡的冒充者与面板 iframe 是同一个源** —— 托管服务的 origin 对所有学生
+      //    都一样，任何同源的兄弟 iframe（学生页里随便插一个指向同一网页的 iframe）发来的
+      //    消息，`e.origin` 与真 iframe **逐字相同** ⇒ 基于 `e.origin` 的判据会把冒充者
+      //    一个不漏地放进来。能区分的只有「这条消息出自哪个窗口对象」。
+      //    同理 `e.data.source === 'classnode-sdk'` 只是对方自己写的字符串，谁都会写。
+      //    ⇒ 唯一不可伪造的判据是 `e.source === frameRef.current.contentWindow`。
+      //
       //    iframe 还没创建时 `frameRef.current` 是 null —— 此时任何消息都不认，正确。
       const frame = frameRef.current;
       if (!frame || e.source !== frame.contentWindow) return;

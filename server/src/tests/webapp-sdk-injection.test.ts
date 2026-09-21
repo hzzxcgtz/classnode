@@ -109,6 +109,113 @@ test('已知粗糙：正文含标签样文本的 JSON 会被判成 HTML 并注�
   assert.equal(out, `<script src="${SDK_PATH}"></script>` + json);
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// 注入点必须落在**活的位置**（审查者实测出来的第二类静默失效）
+//
+// `html.search(/<\/head\s*>/i)` 取的是**第一个**匹配。而教师网页的正文、注释、
+// `<title>` 文本、或 JS 字符串里出现字面量 `</head>` 是常见的（HTML 教学页里的代码
+// 示例尤其如此）⇒ 注入的 `<script>` 落在那段文本里 ⇒ 它不是一个元素、SDK 根本不执行、
+// `ClassNode.report` 不存在、**一个事件都不采集，而且没有任何报错**。
+//
+// 这与 T4 修掉的「裸路径 includes 被正文绊倒」是同族但**方向相反**的失效
+// （那是跳过注入，这是注入到死处），而且更隐蔽：页面看起来完全正常。
+// ══════════════════════════════════════════════════════════════════════════
+
+const SDK_TAG = `<script src="${SDK_PATH}"></script>`;
+
+/**
+ * 每个 fixture 都满足一个条件：**第一个** `</head>` 的字面量出现在一个「会吞掉标签」
+ * 的位置里，而**最后一个** `</head>` 才是真的那个。下面每条用例都会顺手断言
+ * `indexOf !== lastIndexOf` —— 否则这个 fixture 区分不了新旧实现，是一条假绿。
+ */
+const HOSTILE_PAGES: { name: string; html: string }[] = [
+  {
+    name: '</head> 出现在 JS 注释里',
+    html: '<html><head><script>\n// 注意：闭合标签要写成 </head> 才对\nvar a = 1;\n</script><title>t</title></head><body><p>ok</p></body></html>',
+  },
+  {
+    name: '</head> 出现在 HTML 注释里',
+    html: '<html><head><!-- 复制粘贴示例： </head> --><title>t</title></head><body><p>ok</p></body></html>',
+  },
+  {
+    name: '</head> 出现在 JS 字符串里',
+    html: '<html><head><script>var tpl = "</head>";</script></head><body><p>ok</p></body></html>',
+  },
+  {
+    name: '</head> 出现在 <title> 文本里（RCDATA）',
+    html: '<html><head><title>如何写 </head> 这个标签</title></head><body><p>ok</p></body></html>',
+  },
+  {
+    name: '</head> 出现在 <style> 里（RAWTEXT）',
+    html: '<html><head><style>/* 示例： </head> */ body{margin:0}</style></head><body><p>ok</p></body></html>',
+  },
+];
+
+test('注入点跳过「死处」：JS 注释 / HTML 注释 / JS 字符串 / title / style 里的 </head>', () => {
+  for (const page of HOSTILE_PAGES) {
+    const out = injectSdk(page.html, { sdkPath: SDK_PATH });
+    // 期望值是**独立于实现**算出来的：这个 fixture 的最后一个 </head> 才是真的那个
+    const expectedAt = page.html.lastIndexOf('</head>');
+    assert.equal(
+      out,
+      page.html.slice(0, expectedAt) + SDK_TAG + page.html.slice(expectedAt),
+      `${page.name}：SDK 必须插在真正的 head 收尾处`,
+    );
+    // 判据自检：这个 fixture 必须**能区分**新旧实现
+    assert.notEqual(
+      page.html.indexOf('</head>'), expectedAt,
+      `${page.name}：这个 fixture 的第一个 </head> 就是对的 —— 它区分不了新旧实现，是一条假绿`,
+    );
+  }
+});
+
+test('阳性对照：注入后的标签不在任何 <script> / HTML 注释内部（计数式独立判据）', () => {
+  const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
+  const pages = [
+    ...HOSTILE_PAGES,
+    { name: '普通页面（无任何死处）', html: '<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>' },
+    // head 里**正常地**含一段闭合的 script —— 这条是「配平逻辑别把正常页面误判成死处」
+    { name: 'head 里有一段正常闭合的 script', html: '<html><head><script>var a=1;</script></head><body><p>x</p></body></html>' },
+  ];
+  for (const page of pages) {
+    const out = injectSdk(page.html, { sdkPath: SDK_PATH });
+    const at = out.indexOf(SDK_TAG);
+    assert.notEqual(at, -1, page.name);
+    const prefix = out.slice(0, at);
+    assert.equal(count(prefix, '<script'), count(prefix, '</script'), `${page.name}：注入点落在未闭合的 script 里`);
+    assert.equal(count(prefix, '<!--'), count(prefix, '-->'), `${page.name}：注入点落在未闭合的注释里`);
+  }
+});
+
+test('阴性对照：正常页面（只有一处 </head>）的注入点与输出一字不变', () => {
+  const html = '<html><head><meta charset="utf-8"></head><body><p>x</p></body></html>';
+  const out = injectSdk(html, { sdkPath: SDK_PATH });
+  assert.equal(out, html.replace('</head>', SDK_TAG + '</head>'));
+  assert.equal(out.indexOf(SDK_TAG), html.indexOf('</head>'));
+});
+
+test('head 里正常闭合的 script 不算死处：SDK 仍然插在 head 收尾处', () => {
+  const html = '<html><head><script>var a = 1;</script><title>t</title></head><body><p>x</p></body></html>';
+  const out = injectSdk(html, { sdkPath: SDK_PATH });
+  assert.equal(out, html.replace('</head>', SDK_TAG + '</head>'));
+});
+
+test('只认 </head> 不认 </head >：带空白的收尾也照旧认（与既有行为一致）', () => {
+  const html = '<html><HEAD ><title>t</title></HEAD ><body>b</body></html>';
+  const out = injectSdk(html, { sdkPath: SDK_PATH });
+  assert.equal(out.indexOf(SDK_TAG) < out.indexOf('</HEAD >'), true);
+  assert.equal(out.replace(SDK_TAG, ''), html);
+});
+
+test('所有 </head> 都在死处时退到 <html> 之后：位置更早，但仍然是活的', () => {
+  // head 从未闭合（教师漏写了），唯一的 </head> 字面量在一个 JS 字符串里
+  const html = '<html><head><script>var s = "</head>";</script>';
+  const out = injectSdk(html, { sdkPath: SDK_PATH });
+  assert.equal(out, '<html>' + SDK_TAG + '<head><script>var s = "</head>";</script>');
+  const prefix = out.slice(0, out.indexOf(SDK_TAG));
+  assert.equal(prefix.includes('<script'), false, '插入点之前不能再有未闭合的 script');
+});
+
 // ── SDK 源码：三条书写约束 ──────────────────────────────────────────────
 // SDK 整体是 webapp-sdk.ts 里一个模板字符串的内容。这三条一旦被破坏，
 // 后果都是**静默**的：反引号会截断模板串、插值序列会被求值、反斜杠会被吃掉一层。
@@ -228,8 +335,21 @@ test('红线：navigate 只报 hash 的**长度**，绝不报 hash 的值', () =
   // 极常见的一行 UI 代码，与 ClassNode 无关，却让学生的输入经由**默认采集通道**
   // 原样出门（实测：输入 HX7QM2VK → navigate.to = "#HX7QM2VK"）。
   assert.equal(code.includes('to: location.hash'), false, 'navigate 不得传出 hash 值');
-  assert.ok(code.includes('length: location.hash.length'), 'navigate 仍须保留「跳了、大概多长」的信号');
-  assert.equal(/location\.(hash|href|search|pathname)/.test(code.replace(/location\.hash\.length/g, '')), false);
+  assert.ok(code.includes("emit('navigate', { length: hashLength() })"), 'navigate 仍须保留「跳了、大概多长」的信号');
+
+  // hashLength() 是唯一碰 location.hash 的地方，而且只返回一个数字。
+  // （T5 把原来的内联 `location.hash.length` 抽成这个函数，为了先解码再取长度：
+  //   percent-encoded 的中文会让长度虚高 9 倍 —— 见下面那条用例。）
+  const start = code.indexOf('function hashLength()');
+  assert.notEqual(start, -1, 'hashLength() 必须存在');
+  const body = code.slice(start, code.indexOf('function ', start + 10));
+  assert.ok(body.includes('location.hash'), '它得真的从 location.hash 取值');
+  assert.ok(body.includes('.length'), '返回的必须是长度');
+  assert.equal(body.includes('return raw;'), false, '不得把原文（未取长度）当成返回值');
+  assert.ok(body.includes('catch'), 'decodeURIComponent 对畸形序列会抛 —— 必须有兜底，见该函数的注释');
+  // 除它之外，全文一律不得再读 location.*（免得有人绕过这个函数直接上报）
+  const rest = code.slice(0, start) + code.slice(start + body.length);
+  assert.equal(/location\.(hash|href|search|pathname)/.test(rest), false);
 });
 
 test('红线：没有任何字段被直接喂上一个自由文本源', () => {

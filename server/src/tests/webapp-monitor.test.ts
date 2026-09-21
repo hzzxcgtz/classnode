@@ -10,6 +10,7 @@ import classroomRoutes from '../routes/classroom.js';
 import { createTeacherSession } from '../middleware/auth.js';
 import { createStudentToken } from '../middleware/student-auth.js';
 import {
+  createWebappMonitorFacade,
   drainWebappMonitor,
   hasWatchers,
   peekWebappMonitor,
@@ -68,7 +69,10 @@ function teacherCookie(): string {
  * `classroom.findUnique` 的结果比对，两处不一致就会静默走到 student-auth-error
  * （什么都不发生）—— 所以这里必须能跟着用例里的课堂 id 走。
  */
-function socketPrisma(classroomId: () => string, options: { membership?: boolean; linkedWebapp?: boolean } = {}) {
+function socketPrisma(
+  classroomId: () => string,
+  options: { membership?: boolean; linkedWebapp?: boolean; classroomStatus?: string } = {},
+) {
   return {
     classroom: {
       findUnique: async () => ({
@@ -86,7 +90,10 @@ function socketPrisma(classroomId: () => string, options: { membership?: boolean
       updateMany: async () => ({ count: 1 }),
     },
     classroomWebapp: {
-      findFirst: async () => (options.linkedWebapp === false ? null : { id: 'link-1' }),
+      // 与生产代码同形：一次查询里把课堂状态也带回来（select 里 join）
+      findFirst: async () => (options.linkedWebapp === false
+        ? null
+        : { id: 'link-1', classroom: { status: options.classroomStatus ?? 'active' } }),
     },
   };
 }
@@ -96,7 +103,7 @@ function socketPrisma(classroomId: () => string, options: { membership?: boolean
  * socket.join / socket.leave 变化**的房间表 —— 按需推流的判据（hasWatchers）读的就是它，
  * 用一份不随 join 变化的假表会让那条断言变成恒真。
  */
-function createHarness(options: { membership?: boolean; linkedWebapp?: boolean } = {}) {
+function createHarness(options: { membership?: boolean; linkedWebapp?: boolean; classroomStatus?: string } = {}) {
   const emits: Emitted[] = [];
   const roomMembers = new Map<string, Set<string>>();
   const sockets = new Map<string, FakeSocket>();
@@ -115,6 +122,17 @@ function createHarness(options: { membership?: boolean; linkedWebapp?: boolean }
     },
     emit(event: string, payload?: unknown) {
       emits.push({ room: '*', event, payload });
+    },
+    /** 与真实 Socket.IO 同效果：把该房间的成员全部踢出去（成员表与 socket.rooms 一起改）。 */
+    in() {
+      return {
+        socketsLeave(target: string) {
+          for (const socketId of [...(roomMembers.get(target) ?? [])]) {
+            roomMembers.get(target)?.delete(socketId);
+            sockets.get(socketId)?.rooms.delete(target);
+          }
+        },
+      };
     },
     sockets: { sockets, adapter: { rooms: roomMembers } },
     engine: { clientsCount: 0 },
@@ -190,9 +208,15 @@ async function joinAsStudent(harness: ReturnType<typeof createHarness>, classroo
  * 撞上这里那些精确断言（`clicks === 120`）会立刻变红，不会变成假绿。
  */
 function resetMonitor(): void {
-  drainWebappMonitor('classroom-a');
-  drainWebappMonitor('classroom-b');
+  drainWebappMonitor(NOOP_IO, 'classroom-a');
+  drainWebappMonitor(NOOP_IO, 'classroom-b');
 }
+
+/**
+ * drain 现在还要负责把订阅者踢出房间（裁定 3），所以需要一个 io。
+ * 只做内存清理时用这个 noop；「踢房间」本身在专门的用例里用假的真实 io 验。
+ */
+const NOOP_IO = { in: () => ({ socketsLeave: () => {} }) } as unknown as Server;
 
 // ══════════════════════════════════════════════════════════════════════════
 // 纯函数：学生上报载荷的形状校验（白名单式重建）
@@ -400,7 +424,7 @@ test('没有教师在看时上报：仍然不转发，但数据照记（课后�
   const teacher = harness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
-  const rows = drainWebappMonitor('classroom-a');
+  const rows = drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
   assert.equal(rows.length, 1, '没人看时记下的数据必须仍然在内存里、能被汇总取到');
   assert.equal(rows[0].clicks, 1);
   assert.equal(rows[0].frameCount, 1);
@@ -794,7 +818,7 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
   // 另一个网页，只有事件没有帧（时长必须退化成 0，而不是让这一行消失）
   await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-2', events: [{ kind: 'report' }] });
 
-  const rows = drainWebappMonitor('classroom-a');
+  const rows = drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
 
   assert.equal(rows.length, 2);
   const first = rows.find(row => row.webappId === 'webapp-1');
@@ -822,14 +846,14 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
 
   // 三个 Map 都被清空（本课堂的部分）
   assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 0 });
-  assert.deepEqual(drainWebappMonitor('classroom-a'), [], '再 drain 一次必须什么都没有（已经取走了）');
+  assert.deepEqual(drainWebappMonitor(harness.io as unknown as Server, 'classroom-a'), [], '再 drain 一次必须什么都没有（已经取走了）');
 
   // 别的课堂的数据一条都不能被顺手带走
   const other = createHarness();
   const otherStudent = await joinAsStudent(other, 'classroom-b');
   await otherStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'click' }] });
   assert.deepEqual(webappMonitorSizes('classroom-b').counters, 1);
-  assert.deepEqual(drainWebappMonitor('classroom-a'), []);
+  assert.deepEqual(drainWebappMonitor(harness.io as unknown as Server, 'classroom-a'), []);
   assert.equal(webappMonitorSizes('classroom-b').counters, 1, 'drain 只能清自己那个课堂');
 });
 
@@ -842,7 +866,7 @@ test('drain 会取消待触发的停止推流定时器（不给已结束的课�
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   await teacher.call('unwatch-webapp-monitor', { classroomId: 'classroom-a' });
 
-  drainWebappMonitor('classroom-a');
+  drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
   t.mock.timers.tick(60_000);
 
   assert.deepEqual(
@@ -851,9 +875,30 @@ test('drain 会取消待触发的停止推流定时器（不给已结束的课�
   );
 });
 
-test('recordWebappSummary 落盘：一行一个（参与者的 studentId 用的是参与记录 ID）', async () => {
+/**
+ * recordWebappSummary 的假 prisma：必须实现**数组形式**的 $transaction
+ * （生产代码用的是 `prisma.$transaction([deleteMany, createMany])` —— 原子替换）。
+ * 把「删了什么 / 写了什么 / 几个操作在一个事务里」都记下来。
+ */
+function summaryPrisma() {
+  const deletes: { where: unknown }[] = [];
   const writes: { data: Record<string, unknown>[] }[] = [];
-  const prisma = { webappUsage: { createMany: async (args: { data: Record<string, unknown>[] }) => { writes.push(args); return { count: args.data.length }; } } };
+  const batches: number[] = [];
+  const prisma = {
+    $transaction: async (operations: Promise<unknown>[]) => {
+      batches.push(operations.length);
+      return Promise.all(operations);
+    },
+    webappUsage: {
+      deleteMany: async (args: { where: unknown }) => { deletes.push(args); return { count: 0 }; },
+      createMany: async (args: { data: Record<string, unknown>[] }) => { writes.push(args); return { count: args.data.length }; },
+    },
+  };
+  return { prisma, deletes, writes, batches };
+}
+
+test('recordWebappSummary 落盘：在同一事务里「先删该课堂的旧汇总、再写新的」', async () => {
+  const { prisma, deletes, writes, batches } = summaryPrisma();
   const rows = [
     { studentId: 'p1', webappId: 'w1', durationMs: 1000, clicks: 2, inputs: 1, maxDepth: 80, reports: 0, frameCount: 3 },
     { studentId: 'p2', webappId: 'w1', durationMs: 0, clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frameCount: 0 },
@@ -862,26 +907,105 @@ test('recordWebappSummary 落盘：一行一个（参与者的 studentId 用的�
   const written = await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', rows);
 
   assert.equal(written, 2);
+  // 删除的是**这个课堂**的全部旧汇总（不是按学生逐条删，退课的学生才不会留下残行）
+  assert.deepEqual(deletes, [{ where: { classroomId: 'classroom-a' } }]);
   assert.deepEqual(writes, [{
     data: [
       { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p1', durationMs: 1000, clicks: 2, inputs: 1, maxDepth: 80, reports: 0, frameCount: 3 },
       { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p2', durationMs: 0, clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frameCount: 0 },
     ],
   }]);
+  // 两件事必须在**同一个** $transaction 里（否则删完失败就把旧数据丢了）
+  assert.deepEqual(batches, [2], '删 + 写必须在同一个事务里');
 });
 
-test('recordWebappSummary：没有数据时不写库（不产生空行）', async () => {
-  const writes: unknown[] = [];
-  const prisma = { webappUsage: { createMany: async (args: unknown) => { writes.push(args); return { count: 0 }; } } };
+test('recordWebappSummary 的替换语义：第二次结束是替换而不是追加（撞唯一键会让整批失败）', async () => {
+  const { prisma, deletes, writes } = summaryPrisma();
+  const firstClass = [
+    { studentId: 'p1', webappId: 'w1', durationMs: 100, clicks: 1, inputs: 0, maxDepth: 0, reports: 0, frameCount: 1 },
+    { studentId: 'p2', webappId: 'w1', durationMs: 100, clicks: 1, inputs: 0, maxDepth: 0, reports: 0, frameCount: 1 },
+  ];
+  const secondClass = [
+    { studentId: 'p1', webappId: 'w1', durationMs: 999, clicks: 7, inputs: 3, maxDepth: 90, reports: 1, frameCount: 42 },
+  ];
+
+  await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', firstClass);
+  await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', secondClass);
+
+  // 每次写入前都先删掉该课堂的旧行 ⇒ 第二次不会撞 @@unique([classroomId, studentId, webappId])
+  assert.deepEqual(deletes, [{ where: { classroomId: 'classroom-a' } }, { where: { classroomId: 'classroom-a' } }]);
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1].data, [{
+    classroomId: 'classroom-a', webappId: 'w1', studentId: 'p1',
+    durationMs: 999, clicks: 7, inputs: 3, maxDepth: 90, reports: 1, frameCount: 42,
+  }], '第二节课写下去的必须是第二节课的数值');
+  // 第二节课里 p2 没上报 ⇒ 它上一节课的行必须被删掉（替换语义，不是叠加）
+  assert.equal(writes[1].data.length, 1);
+});
+
+test('recordWebappSummary：空 drain 既不写也不删（成因不可区分时的保守方向）', async () => {
+  const { prisma, deletes, writes, batches } = summaryPrisma();
 
   assert.equal(await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', []), 0);
   assert.deepEqual(writes, []);
+  assert.deepEqual(deletes, [], '空 drain 可能是「没人打开看板」而不是「没人用」，不能据此删掉上一节课的真实汇总');
+  assert.deepEqual(batches, [], '空 drain 不该开事务');
+});
+
+test('drain 之后「结束即释放」是终态：订阅者被踢出房间，hasWatchers 为假', async () => {
+  // 审查者在真实适配器上实测：drain 只清了记账 Map，没踢人 ⇒ webapp 房间 size 仍是 1
+  // ⇒ hasWatchers 为真 ⇒ 教师那块图墙继续收一个**已经结束**的课堂的数据。
+  resetMonitor();
+  const harness = createHarness();
+  const io = harness.io as unknown as Server;
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.equal(hasWatchers(io, 'classroom-a'), true);
+  assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), [teacher.id]);
+
+  drainWebappMonitor(io, 'classroom-a');
+
+  assert.equal(hasWatchers(io, 'classroom-a'), false, '只清记账不踢人 ⇒ 房间还在，hasWatchers 仍然为真');
+  assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), []);
+  assert.equal(teacher.socket.rooms.has('teacher:classroom-a:webapp'), false, 'socket 自己也必须真的离开房间');
+  assert.equal(webappMonitorSizes('classroom-a').watchers, 0);
+  // 阳性对照：踢的只是**监控**房间 —— 教师还在课堂看板房间里，别把看板也踢了
+  assert.equal(teacher.socket.rooms.has('teacher:classroom-a'), true);
+});
+
+test('课堂已结束后，学生再上报既不转发也不重新占内存（否则 drain 白做）', async () => {
+  // 学生这条连接是在课堂结束**之前**建立的（join-classroom 只挡新连接），
+  // 所以「结束之后还没跳走的学生继续上报」是真实存在的路径。
+  resetMonitor();
+  const harness = createHarness({ classroomStatus: 'ended' });
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+
+  assert.deepEqual(harness.events('webapp-student-frame'), [], '已结束的课堂不该再有转发');
+  assert.deepEqual(harness.events('webapp-student-event'), []);
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 1 },
+    '内存不能在这里重新长回来 —— 那些数据要等 6 小时 TTL 或下一次 drain 才释放');
+
+  // 阳性对照：**同样的上报**在一个 active 的课堂里必须被收下（否则上一条在
+  // 「上报路径整个坏了」时也成立）
+  const active = createHarness({ classroomStatus: 'active' });
+  const activeStudent = await joinAsStudent(active, 'classroom-b');
+  await activeStudent.call('webapp-frame', { classroomId: 'classroom-b', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  await activeStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  assert.deepEqual(webappMonitorSizes('classroom-b'), { frames: 1, counters: 1, watchers: 0 });
 });
 
 test('TTL：课堂永不结束（教师直接关掉浏览器）时内存最终也会被回收', async (t) => {
   // 预审 5：只有「课堂结束释放」是不够的 —— 课堂可以不结束，而 index.ts 是桌面端
   // 长期驻留的进程。这条用例驱动的是**真实的定时器路径**（setupSocketHandlers 里
   // 那个 10 分钟一次的 setInterval → pruneSocketCaches → pruneWebappMonitor）。
+  resetMonitor();
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
   t.mock.timers.setTime(1_700_000_000_000);
   const harness = createHarness();
@@ -909,9 +1033,17 @@ test('TTL：课堂永不结束（教师直接关掉浏览器）时内存最终�
 // 端到端：课堂结束那条真实路径（POST /:id/end）—— 唯一落盘项 + 内存释放
 // ══════════════════════════════════════════════════════════════════════════
 
-/** 结束课堂这条路径用到的 prisma 表面（只实现它真会调到的方法）。 */
+/**
+ * 结束课堂这条路径用到的 prisma 表面（只实现它真会调到的方法）。
+ *
+ * ⚠️ `$transaction` 有两种形态，**都要实现**：路由自己的状态流转用的是回调形式
+ * （`$transaction(async tx => …)`），而 recordWebappSummary 用的是数组形式
+ * （`$transaction([deleteMany, createMany])`）。只实现一种，另一条路会静默走到
+ * 「不是函数」的 TypeError 上。
+ */
 function endRoutePrisma() {
   const usageWrites: { data: Record<string, unknown>[] }[] = [];
+  const usageDeletes: { where: unknown }[] = [];
   const classroomRow = { id: 'classroom-a', status: 'ended' };
   const tx = {
     classroom: {
@@ -921,9 +1053,14 @@ function endRoutePrisma() {
   };
   return {
     usageWrites,
+    usageDeletes,
     prisma: {
-      $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx),
+      $transaction: async (input: unknown) => {
+        if (typeof input === 'function') return (input as (client: typeof tx) => Promise<unknown>)(tx);
+        return Promise.all(input as Promise<unknown>[]);
+      },
       webappUsage: {
+        deleteMany: async (args: { where: unknown }) => { usageDeletes.push(args); return { count: 0 }; },
         createMany: async (args: { data: Record<string, unknown>[] }) => { usageWrites.push(args); return { count: args.data.length }; },
       },
     },
@@ -954,7 +1091,8 @@ test('走真实的 POST /:id/end：汇总写了一条，且该课堂的三个 Ma
   app.set('io', {
     to: () => ({ emit: () => {} }),
   });
-  app.set('webappMonitor', { drain: drainWebappMonitor, record: recordWebappSummary });
+  // 用生产代码的**同一个工厂**（把 io 绑在 drain 上），不要在这里手拼闭包
+  app.set('webappMonitor', createWebappMonitorFacade(monitorHarness.io as unknown as Server));
   app.use(classroomRoutes);
   const server = createServer(app);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -991,7 +1129,7 @@ test('汇总落盘失败不能让「结束课堂」这个请求失败（课堂�
   app.set('prisma', routePrisma.prisma);
   app.set('io', { to: () => ({ emit: () => {} }) });
   app.set('webappMonitor', {
-    drain: drainWebappMonitor,
+    ...createWebappMonitorFacade(monitorHarness.io as unknown as Server),
     record: async () => { throw new Error('database is locked'); },
   });
   app.use(classroomRoutes);

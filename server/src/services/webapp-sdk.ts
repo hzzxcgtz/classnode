@@ -13,6 +13,89 @@ export const SDK_PATH = '/__classnode/sdk.js';
  * `readSdkSource()`，两边必然要接一次。当时的接法是「T1 留一个返回占位串的私有函数，
  * T4 把它的函数体换成 SDK 源码」—— 也就是 T4 只动那一处、一行。
  */
+/**
+ * 这个位置能不能安全地插一个 `<script>` 标签？
+ *
+ * 「不安全」= 它落在**未闭合的 `<script>` / `<style>` / `<title>` / `<textarea>` /
+ * `<xmp>` 内部**，或者落在**未闭合的 HTML 注释 `<!-- -->` 内部**。落进去的标签不是
+ * 元素、只是文本 ⇒ SDK 不会执行、`ClassNode.report` 不存在、**一个事件都不采集，
+ * 而且没有任何报错**（页面看起来完全正常）。这与 T4 修掉的「裸路径 includes 被正文
+ * 绊倒」是**同族但方向相反**的失效（那是跳过注入，这是注入到死处），而且更隐蔽。
+ *
+ * 做法：只看 `index` 之前的部分，用一个有序的状态机走过去 —— 遇到 `<!--` 就跳到
+ * `-->`，遇到这些开标记就跳到对应的闭标记；任何一个找不到闭标记就说明 index
+ * 落在它里面。
+ *
+ * ⚠️ **已知边界（启发式只覆盖到这里，不是「因此安全」）**：
+ *   · **不建模** `<noscript>`、`<iframe>`、`<svg>` / `<math>` 这些外来内容里的
+ *     文本规则（HTML 在这几处的解析规则各不相同）；
+ *   · **不建模属性值**：`<div data-x="<script>">` 里那个 `<script` 会被当成真开标记，
+ *     于是后面的候选点被误判成「在 script 内部」而跳过 —— 方向上只是让我们退到更早的
+ *     插入点（甚至退到 `<html>` 之后），不会插进死处；
+ *   · 自闭合的 `<script src=x />` 按 HTML5 语义当作**未闭合**（浏览器就是这么做的），
+ *     所以后面那个 `</head>` 会被判为不安全 —— 同样只影响插到哪，不影响能不能插。
+ *   这几种情况下最坏结果是「插到更早的位置」，而不是「插进死处」。
+ */
+function isSafeInsertionPoint(html: string, index: number): boolean {
+  const prefix = html.slice(0, index).toLowerCase();
+  // 会吞掉后续文本、到自己的闭标记为止的开标记（HTML 把这些内容当 RCDATA / RAWTEXT 处理，
+  // 里面的标签样文本不是标签）。`<script` 与 `</script` 单独处理，因为它俩不成对出现时
+  // 前面的判断会失准。
+  const rawTextTags = ['style', 'title', 'textarea', 'xmp'];
+  let cursor = 0;
+  while (cursor < prefix.length) {
+    const commentAt = prefix.indexOf('<!--', cursor);
+    const scriptAt = prefix.indexOf('<script', cursor);
+    let rawAt = -1;
+    let rawTag = '';
+    for (const rawTagName of rawTextTags) {
+      const at = prefix.indexOf(`<${rawTagName}`, cursor);
+      if (at !== -1 && (rawAt === -1 || at < rawAt)) {
+        rawAt = at;
+        rawTag = rawTagName;
+      }
+    }
+    // 剩下三段里最早的那个决定进入哪个状态；都没有就说明 index 之前再无吞噬区
+    const candidates: { at: number; kind: string }[] = [];
+    if (commentAt !== -1) candidates.push({ at: commentAt, kind: 'comment' });
+    if (scriptAt !== -1) candidates.push({ at: scriptAt, kind: 'script' });
+    if (rawAt !== -1) candidates.push({ at: rawAt, kind: rawTag });
+    if (candidates.length === 0) return true;
+    const next = candidates.reduce((left, right) => (right.at < left.at ? right : left));
+
+    let closeAt: number;
+    if (next.kind === 'comment') closeAt = prefix.indexOf('-->', next.at + 4);
+    else if (next.kind === 'script') closeAt = prefix.indexOf('</script', next.at + 7);
+    else closeAt = prefix.indexOf(`</${next.kind}`, next.at + next.kind.length + 1);
+    // 闭标记在 index 之后（或根本不存在）⇒ index 落在这个吞噬区里面
+    if (closeAt === -1) return false;
+    cursor = closeAt + 1;
+  }
+  return true;
+}
+
+/** 从 `from` 开始找第一个安全的 `</head …>` 位置；找不到返回 -1。 */
+function findSafeHeadClose(html: string): number {
+  const pattern = /<\/head\s*>/gi;
+  let match = pattern.exec(html);
+  while (match !== null) {
+    if (isSafeInsertionPoint(html, match.index)) return match.index;
+    match = pattern.exec(html);
+  }
+  return -1;
+}
+
+/** 从 `from` 开始找第一个安全的 `<html …>` 开标记的结束位置；找不到返回 -1。 */
+function findSafeHtmlOpenEnd(html: string): number {
+  const pattern = /<html[^>]*>/gi;
+  let match = pattern.exec(html);
+  while (match !== null) {
+    if (isSafeInsertionPoint(html, match.index)) return html.indexOf('>', match.index) + 1;
+    match = pattern.exec(html);
+  }
+  return -1;
+}
+
 export function injectSdk(html: string, opts: { sdkPath: string }): string {
   if (!html) return html;
   // 幂等：已经注入过就原样返回。教师自己也可能手写了一个 <script src="…/sdk.js">，
@@ -28,15 +111,17 @@ export function injectSdk(html: string, opts: { sdkPath: string }): string {
 
   const tag = `<script src="${opts.sdkPath}"></script>`;
 
-  // 大小写不敏感地找 </head>。找不到就退到 <html ...> 之后，再找不到就整体前置 ——
+  // 大小写不敏感地找 </head>，但**只认落在安全位置的那个**：教师网页的正文、注释、
+  // `<title>` 文本、或 JS 字符串里出现字面量 `</head>` 是常见的（HTML 教学页里的代码
+  // 示例尤其如此），取第一个匹配会把 SDK 插进那段文本里 ⇒ 整页静默零采集。
+  // 第一个不安全就试下一个候选，全部不安全才退到下面两种兜底 ——
   // 三种兜底都不改 HTML 的其余部分，最坏情况只是脚本早一点执行。
-  const headClose = html.search(/<\/head\s*>/i);
+  const headClose = findSafeHeadClose(html);
   if (headClose !== -1) return html.slice(0, headClose) + tag + html.slice(headClose);
 
-  const htmlOpen = html.search(/<html[^>]*>/i);
-  if (htmlOpen !== -1) {
-    const end = html.indexOf('>', htmlOpen) + 1;
-    return html.slice(0, end) + tag + html.slice(end);
+  const htmlOpenEnd = findSafeHtmlOpenEnd(html);
+  if (htmlOpenEnd !== -1) {
+    return html.slice(0, htmlOpenEnd) + tag + html.slice(htmlOpenEnd);
   }
 
   // 连 <html> 都没有（片段式 HTML）—— 只在看起来像 HTML 时才注入，
@@ -48,6 +133,7 @@ export function injectSdk(html: string, opts: { sdkPath: string }): string {
   // 真正的防线在**调用点**：webapp-host.ts 只在 `target` 以 `.html` 结尾时才调用本函数
   // （`if (!target.toLowerCase().endsWith('.html')) return next();`），
   // 所以非 HTML 响应根本走不到这一行。
+  // 整体前置天然是安全位置（前面什么都没有），所以这条分支不需要检查。
   if (!/<[a-z!]/i.test(html)) return html;
   return tag + html;
 }
@@ -353,8 +439,30 @@ export const SDK_SOURCE = `/*
   // 长度与「输入框长度 N」是**同一类信息**，规格明确允许（它本身就是红线的
   // 惯例形状）；值不是。事件的确切形状由 T5 定，本文件只保证**值不出门**。
   addEventListener('hashchange', function () {
-    emit('navigate', { length: location.hash.length });
+    emit('navigate', { length: hashLength() });
   });
+
+  /**
+   * hash 的**字符数**（不是 percent-encoded 之后的码元数）。
+   *
+   * location.hash 是**编码后**的形式：一个中文是 3 个 UTF-8 字节、percent-encode
+   * 成 9 个码元（%E4%B8%AD）。直接取 .length 会让「跳转长度」在中文页面上
+   * 报出 9 倍的数字（T7 的看板上就显示这个数字）。规格要的是「长度」，不是「编码后的
+   * 字节数」，所以能解码就取解码后的长度。
+   *
+   * decodeURIComponent 对畸形的 percent 序列会**抛**（例如教师页面写了
+   * location.hash = '%E4'）—— 必须 try/catch，否则一个畸形 hash 会把这次采集
+   * 整个打断（连带下面什么都不执行），而这条通道本身不该有那么大的能量。
+   * 解不开就退回原长度：宁可数字偏大，也不要丢掉这次上报或抛异常。
+   */
+  function hashLength() {
+    var raw = location.hash;
+    try {
+      return decodeURIComponent(raw).length;
+    } catch (err) {
+      return raw.length;
+    }
+  }
 
   // 可见性变化：既上报，也顺带停/启截图 —— 学生切走时没人看缩略图，不必画。
   document.addEventListener('visibilitychange', function () {

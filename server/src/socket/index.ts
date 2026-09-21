@@ -673,7 +673,7 @@ export function webappMonitorSizes(classroomId: string): { frames: number; count
  * 首帧→末帧少一次状态机，且得到的是墙上时钟跨度（会把中途的间隔算进去）。
  * 选它，并且在 WebappUsage.durationMs 的注释里写明了这个口径。
  */
-export function drainWebappMonitor(classroomId: string): WebappUsageRow[] {
+export function drainWebappMonitor(io: Server, classroomId: string): WebappUsageRow[] {
   const prefix = `${classroomId}:`;
   const rows = new Map<string, WebappUsageRow>();
 
@@ -720,34 +720,78 @@ export function drainWebappMonitor(classroomId: string): WebappUsageRow[] {
   // 广播 watching:false（无害但没意义），且定时器会一直挂到那时。
   cancelDemandNotification(classroomId);
 
+  // ⚠️ 还要让订阅者**真的退出房间**（只清上面那本记账是不够的）。
+  // hasWatchers 读的是 Socket.IO 自己的房间表，不是这本 Map —— 不踢人的话
+  // `drain` 之后 `hasWatchers` 仍然是 true：「结束即释放」不是终态，教师那块图墙
+  // 还会继续收到一个已经结束的课堂的帧，而 Redis/内存里被踢掉的记账再也说不清谁在看。
+  // （审查者在真实适配器上实测过：drain 之后 webapp 房间 size 仍是 1。）
+  io.in(webappMonitorRoom(classroomId)).socketsLeave(webappMonitorRoom(classroomId));
+
   return [...rows.values()];
 }
 
 /**
  * 唯一落盘项（规格 §5.5）：把 drain 出来的汇总写进 WebappUsage。
  *
- * `createMany` 而不是逐条 upsert：一个参与者在一次课堂里对一个网页只有一行，
- * 而课堂结束这条路径本身只可能成功一次（状态机在路由里把守）。表上的
- * `@@unique([classroomId, studentId, webappId])` 是「万一重放也不会写重」的兜底。
+ * ⚠️ **按唯一键 (classroomId, studentId, webappId) 替换，不是追加。**
  *
- * ⚠️ 抛错由调用方处理（路由那边已经结束课堂、无法回滚，所以它记日志而不是报 500）。
+ * 「一个课堂只会结束一次」是**错的**，而这一点被仓内代码证否：`canTransition` 允许
+ * `restore: ['ended']`（services/classroom-state.ts），也就是「结束错了 → 恢复 →
+ * 上完 → 再结束」是一条**合法且常见**的路径。用 createMany 追加的话，第二次结束
+ * 会撞上 WebappUsage 的唯一索引 —— 而 **createMany 撞唯一键是整批失败，不是只丢
+ * 冲突的那一行** ⇒ 第二节课**全体学生、全部网页**的汇总一起丢。路由又按设计吞掉
+ * 错误回 200（课堂已经结束、不可回滚），教师端看不到任何异常。审查者用 dev.db 的
+ * **副本** + 真实服务器实测复现过：第二次结束后行数仍然是 1，日志里是
+ * `Unique constraint failed on the fields: (classroomId, studentId, webappId)`。
+ *
+ * 语义上「替换」本来就是对的那一个：那把唯一键说的是「一个参与者一个网页一行」，
+ * 所以这个课堂的汇总 = **最后一次结束时的状态**（中途退出课堂的学生也不会留下残行）。
+ *
+ * 删除与写入在**同一个事务**里：任一步失败整体回滚，旧数据不会被半途删掉。
+ *
+ * ⚠️ **边界（明说，不藏）**：`rows` 为空时**什么都不做**，连删除也不做。
+ * 因为「空 drain」有两种无法在这一层区分的成因：① 这节课确实没人用探究助手；
+ * ② 这节课没有教师打开过看板 ⇒ 学生按 Ruling 9 根本没推流 ⇒ 一条数据都没收到
+ * （后者是已知的按需推流代价，见 task-5-report.md §6.4）。② 会把上一节课**真实存在**
+ * 的汇总删掉，而按「空 = 覆盖成空」处理就会丢掉那些数据 —— 在成因不可区分时，
+ * 保守方向是**不删**。有数据时（≥1 行）才整体替换。
  */
 export async function recordWebappSummary(prisma: PrismaClient, classroomId: string, rows: WebappUsageRow[]): Promise<number> {
-  if (rows.length === 0) return 0;
-  await prisma.webappUsage.createMany({
-    data: rows.map(row => ({
-      classroomId,
-      webappId: row.webappId,
-      studentId: row.studentId,
-      durationMs: row.durationMs,
-      clicks: row.clicks,
-      inputs: row.inputs,
-      maxDepth: row.maxDepth,
-      reports: row.reports,
-      frameCount: row.frameCount,
-    })),
-  });
-  return rows.length;
+  const data = rows.map(row => ({
+    classroomId,
+    webappId: row.webappId,
+    studentId: row.studentId,
+    durationMs: row.durationMs,
+    clicks: row.clicks,
+    inputs: row.inputs,
+    maxDepth: row.maxDepth,
+    reports: row.reports,
+    frameCount: row.frameCount,
+  }));
+  if (data.length === 0) return 0;
+  await prisma.$transaction([
+    prisma.webappUsage.deleteMany({ where: { classroomId } }),
+    prisma.webappUsage.createMany({ data }),
+  ]);
+  return data.length;
+}
+
+/**
+ * 路由取用的门面（经 `app.set('webappMonitor', …)` 暴露）。
+ *
+ * 存在的理由：**drain 需要 io，而路由手里只有 `req.app`**。把 io 绑在这里，
+ * 路由就只需要 `monitor.drain(classroomId)`；更重要的是，生产与测试走的是
+ * **同一个工厂**，不会出现「测试自己拼了一个参数顺序不对的闭包」这种事
+ * （那会让整条落盘路径静默写出 0 行，而用例只看行数时才发现）。
+ */
+export function createWebappMonitorFacade(io: Server): {
+  drain: (classroomId: string) => WebappUsageRow[];
+  record: typeof recordWebappSummary;
+} {
+  return {
+    drain: (classroomId: string) => drainWebappMonitor(io, classroomId),
+    record: recordWebappSummary,
+  };
 }
 
 export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: import('express').Application) {
@@ -759,7 +803,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     app.set('activeStreams', activeStreams);
     // 探究助手的内存态住在**本模块**，而「课堂结束」在 routes/classroom.ts（预审 2）。
     // 照上面两行的既有做法经 app.set 暴露，而不是让路由 import 本模块的内部状态。
-    app.set('webappMonitor', { drain: drainWebappMonitor, record: recordWebappSummary });
+    app.set('webappMonitor', createWebappMonitorFacade(io));
   }
   const cacheCleanupTimer = setInterval(() => pruneSocketCaches(), NOTIFICATION_CACHE_TTL);
   cacheCleanupTimer.unref();
@@ -944,9 +988,18 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       if (!membership) return null;
       const linked = await prisma.classroomWebapp.findFirst({
         where: { classroomId, webappId },
-        select: { id: true },
+        // 顺带把课堂状态一起取回来（同一次查询里 join，不是第二次往返）——
+        // 见下面「已结束的课堂不再收上报」那一段。
+        select: { id: true, classroom: { select: { status: true } } },
       });
       if (!linked) return null;
+      // 课堂已结束 ⇒ 不再收上报。少了这一条，「结束即释放」仍然不是终态：drain 把内存
+      // 清空之后，还没断线的学生（客户端还没来得及跳走）每 5 秒继续上报，内存条目会
+      // **重新长回来**，而它们要等到 6 小时 TTL 或下一次 drain 才会被释放
+      // （审查者的实测：结束之后学生再上报 → 内存条目又变成 {frames:1,counters:1}）。
+      // 只挡 'ended'，不挡 'paused'：暂停时教师往往正是要看看学生屏幕上现在是什么。
+      // 只对 status 做判断，所以 restore 之后（status 回到 active）上报自动恢复。
+      if (linked.classroom?.status === 'ended') return null;
       return { classroomId, studentId: membership.id };
     }
 

@@ -272,8 +272,13 @@ model WebappUsage {
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   webapp    Webapp    @relation(fields: [webappId], references: [id], onDelete: Cascade)
 
-  // 一个参与者在一次课堂里对同一个网页只会写一行（课堂结束只发生一次，这个唯一键
-  // 是「重试 / 重复请求也不会写重」的兜底，而 upsert 形态的实现依赖它）。
+  // 一个参与者对一个网页只留一行 —— **后一次课堂结束覆盖前一次**。
+  //
+  // ⚠️ 这条唯一键存在的理由**不是**「防止重复请求写重」（曾经这里是这么写的，那句话
+  // 没有依据，而且被仓内代码直接证否）：`canTransition` 允许 `restore: ['ended']`，
+  // 也就是「结束错了 → 恢复 → 上完 → 再结束」是一条**合法且常见**的路径，一个课堂
+  // 被结束两次是正常的。写入方（socket/index.ts 的 recordWebappSummary）因此必须
+  // **按这把键替换**而不是追加，见那里的注释。
   @@unique([classroomId, studentId, webappId])
   // 课后报告按课堂取全量；按 webappId 的维度留给「这个网页被哪些课堂用过」。
   @@index([classroomId])

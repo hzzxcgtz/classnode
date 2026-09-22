@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Socket } from 'socket.io-client';
-import type { WebappEvent } from '@/lib/socket-events';
 import type { ClassroomWebappSummary } from '@/lib/types';
+import type { WebappDemand, WebappEvent } from '@/lib/socket-events';
 import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
 import { MODULE_META } from '../module-meta';
 import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
-import { useExploreBridge } from './use-explore-bridge';
+import { useExploreBridge, type CaptureLevel, type WebappDiag } from './use-explore-bridge';
 import styles from './explore.module.css';
 
 /**
@@ -32,7 +32,13 @@ const SANDBOX = WEBAPP_IFRAME_SANDBOX;
  */
 const LOAD_TIMEOUT_MS = 15_000;
 
-/** 事件攒多久发一次。SDK 一条事件发一条 postMessage，逐条 socket 上行会碎成一地小包。 */
+/**
+ * 文字档事件攒多久发一次。
+ *
+ * ⚠️ **必须有这一层。** 学生在网页上一下滚好几下是**突发**：SDK 一条事件发一条
+ * postMessage，逐条 socket 上行会碎成一地小包，而「滚到第几档」这件事本来就允许
+ * 几百毫秒的延迟。400ms 是旧实现留下的那个数，它同时压住了突发与延迟。
+ */
 const EVENT_BATCH_MS = 400;
 
 /**
@@ -69,7 +75,7 @@ function buildWebappSrc(webapp: ClassroomWebappSummary, port: number): string {
  * 而不是悄悄少接一个 prop。
  *
  * `wsRef` 与 `watching` 是**本面板自己的** props，不进契约（契约是共同的下限，不是完整清单）：
- *   · `wsRef`：事件与帧经**已有的那条** socket 上报。⚠️ **绝不新建第二条连接** ——
+ *   · `wsRef`：缩略图帧经**已有的那条** socket 上报。⚠️ **绝不新建第二条连接** ——
  *     那会给学生端多一条常驻连接（违背 §4.8 的内存门槛），服务端还要处理重复连接。
  *   · `watching`：本课堂此刻有没有教师在看探究助手视图。**由会话层持有、外壳传下来**，
  *     面板自己不订阅 —— 初值只在 `join-classroom` 成功后下发一次，而本面板是惰性挂载的，
@@ -77,12 +83,20 @@ function buildWebappSrc(webapp: ClassroomWebappSummary, port: number): string {
  */
 export interface ExplorePanelProps extends ModulePanelProps {
   wsRef: { current: Socket | null };
-  /** 有教师在看探究助手视图 ⇒ 才值得推。没人看时学生端在源头就不发（Ruling 9）。 */
-  watching: boolean;
+  /**
+   * 服务端**逐学生**下发的推流档位（`{ watching, detail }`）。
+   *
+   * `watching` 有教师在看本课堂的探究助手视图；`detail` 表示教师**点开了这个学生**的
+   * 详情。两者都不成立时学生端在**源头**就不截图（Ruling 9）—— 注意这里管的是
+   * 「画不画」，与父页面那条管「发不发」的闸门是两道独立的闸。
+   */
+  demand: WebappDemand;
 }
 
 /**
- * 学生端的探究助手面板：一个跨源 iframe（托管服务）+ postMessage 桥 + 事件上报。
+ * 学生端的探究助手面板：一个跨源 iframe（托管服务）+ postMessage 桥 +
+ * 上行两条链路（缩略图帧、文字档事件）。
+ * （点击 / 输入 / 页面内跳转**不采集、不上报** —— 详见 `use-explore-bridge.ts` 的文件头。）
  *
  * 三条不变量，都在下面的代码里各有对应的一处：
  *   1. **一旦挂载永不卸载**（§4.5）：切走只是挂起（`active` 变假 ⇒ 发 `pause`），
@@ -95,7 +109,7 @@ export interface ExplorePanelProps extends ModulePanelProps {
  *   3. **提交顺序**：`armed` 为真（= postMessage 监听已挂好）之前不创建 iframe，
  *      见 `use-explore-bridge.ts` 的预审 6a 注释。
  */
-export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watching }: ExplorePanelProps) {
+export function ExplorePanel({ active, classroom, toast, setToast, wsRef, demand }: ExplorePanelProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   /** 第几次加载。重试按钮 +1 ⇒ iframe 换 key 重挂（监听不受影响，它挂在 window 上）。 */
   const [reloadKey, setReloadKey] = useState(0);
@@ -115,14 +129,22 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watchi
     readyKey === reloadKey ? 'ready' : failedKey === reloadKey ? 'failed' : 'loading';
 
   // ── 上报：事件攒批、帧立即发 ────────────────────────────────────────────
+  //
+  // ⚠️ 两条链路的**闸门条件不同**，这是刻意的：
+  //   · 帧：要求 watching **且** captureEnabled（由 SDK 在源头就不截，
+  //     `captureLevel === 'off'` / `captureEnabled === false` 两道都在 SDK 里）；
+  //   · 事件：**只要求 watching**。captureEnabled 为 false 时**照样要发** ——
+  //     那正是文字档的用武之地（教师关掉了画面，但仍然要知道「这个学生有没有在用」）。
+  // 共同的那一条是 watching（Ruling 9）：**没人在看就一条都不发**，
+  // 学生端的开销是零，而不是「推了再说」。
   const pendingRef = useRef<WebappEvent[]>([]);
   const flushTimerRef = useRef<number | null>(null);
   /**
    * `watching` 的 ref 镜像：上报的三个回调**都不是**每次渲染重建的（`useCallback` 的依赖
    * 里没有 `watching`），它们读到的必须是**当下**的值，所以经 ref 读，不经闭包。
    */
-  const watchingRef = useRef(watching);
-  useEffect(() => { watchingRef.current = watching; }, [watching]);
+  const watchingRef = useRef(demand.watching);
+  useEffect(() => { watchingRef.current = demand.watching; }, [demand.watching]);
 
   const flush = useCallback(() => {
     if (flushTimerRef.current !== null) {
@@ -133,12 +155,14 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watchi
     pendingRef.current = [];
     if (events.length === 0) return;
     const socket = wsRef.current;
+    // ⚠️ 没人看就**丢掉**而不是留着：攒下来的那几条在教师重新打开看板时已经没有意义了
+    // （用户看的是「现在」），而留着会让下一次 flush 发一批陈旧的事件。
     if (!watchingRef.current || !socket || !classroomId || !webappId) return;
     socket.emit('webapp-event', { classroomId, webappId, events: events.slice(0, MAX_EVENTS_PER_MESSAGE) });
   }, [classroomId, webappId, wsRef]);
 
   const handleEvents = useCallback((incoming: WebappEvent[]) => {
-    // 源头闸门（Ruling 9）：没人看就不攒也不发，学生端的开销是零而不是「推了再说」。
+    // 源头闸门（Ruling 9）：没人看就不攒也不发。
     if (!watchingRef.current) return;
     pendingRef.current.push(...incoming);
     if (pendingRef.current.length >= MAX_EVENTS_PER_MESSAGE) {
@@ -151,18 +175,65 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watchi
   const handleFrame = useCallback((dataUrl: string) => {
     if (!watchingRef.current) return;
     const socket = wsRef.current;
-    if (!socket || !classroomId || !webappId) return;
+    if (!socket || !classroomId || !webappId) {
+      return;
+    }
     socket.emit('webapp-frame', { classroomId, webappId, dataUrl });
   }, [classroomId, webappId, wsRef]);
 
   const handleReady = useCallback(() => { setReadyKey(reloadKey); }, [reloadKey]);
 
+  /**
+   * 诊断（`diag` 通道）。
+   *
+   * 🔴 **两条去向，都不是可选的**：
+   *   · 本机 console —— 方便在桌面机上直接看（桌面 Chrome 的跨源 iframe 是能检查的）；
+   *   · 服务端日志 —— **这才是关键那条**：Safari 在 iOS 上不把跨源 iframe 单列成
+   *     可检查目标（实测：Mac 的「开发」菜单下那台 iPad 只有父页面一个目标），
+   *     所以 iPad 上的失败只能靠服务端日志才看得见。
+   *
+   * ⚠️ 与帧同理，**不检查 `watchingRef`**：诊断本身就是「为什么没有帧」的答案，
+   * 而它出现时 `watching` 恰恰可能已经翻了。少发一条诊断的代价远大于多发一条。
+   * ⚠️ 但**必须检查 socket**：没连上就没处送，这时本机 console 那条仍然生效。
+   */
+  const handleDiag = useCallback((diag: WebappDiag) => {
+    console.warn('[探究助手] SDK 诊断：' + diag.code + ' n=' + diag.n + ' w=' + diag.w + ' h=' + diag.h);
+    const socket = wsRef.current;
+    if (!socket || !classroomId || !webappId) return;
+    socket.emit('webapp-diag', { classroomId, webappId, ...diag });
+  }, [classroomId, webappId, wsRef]);
+
+  /**
+   * 截图档位。
+   *
+   * ⚠️ **两个条件是「与」的关系，任一不成立就是 `'off'`（= SDK 根本不截）**：
+   *   · `active`：模块在不在前台。不在前台就没有「当前画面」可言。
+   *   · `watching`：有没有教师在看（Ruling 9 的按需推流）。
+   *
+   * 这里与父页面那条 `watchingRef` 闸门是**两道独立的闸**，不是重复：
+   * 那条管「发不发」，这条管「**画不画**」。对 canvas 直读，「画了但不发」只是白费
+   * 几毫秒；对纯 DOM 光栅化，那是每 10 秒白烤一遍整页 —— 学生停在探究助手页面上
+   * 而教师没在看时，老 iPad 会一直这么烧下去。**Ruling 9 说的「学生端开销是零」，
+   * 只有加上这道闸才真的成立。**
+   *
+   * `'detail'` 由服务端**逐学生**下发（`broadcastWebappDemand`）：整间教室里只有被
+   * 教师点开详情的那一个学生的 `demand.detail` 为真 —— 若做成整班一起升，40 人的班
+   * 会让 40 台老 iPad 同时从 10 秒一帧变成 2 秒一帧。
+   */
+  const level: CaptureLevel = !active || !demand.watching ? 'off' : demand.detail ? 'detail' : 'wall';
+
   const { armed } = useExploreBridge({
     frameRef,
-    suspended: !active,
-    onEvents: handleEvents,
+    level,
+    // 服务端按课堂下发的采集参数，**原样转发**：学生端不推导、不改写、不兜默认值
+    // （归一化与兜底都在服务端做过一遍，这里再猜一次只会多一种漂移）。
+    captureEnabled: demand.captureEnabled,
+    captureWidth: demand.width,
+    captureIntervalMs: demand.frameIntervalMs,
     onFrame: handleFrame,
+    onEvents: handleEvents,
     onReady: handleReady,
+    onDiag: handleDiag,
   });
 
   // ── 加载超时（规格 §12）─────────────────────────────────────────────────
@@ -171,13 +242,6 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watchi
     const timer = window.setTimeout(() => setFailedKey(reloadKey), LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [src, reloadKey, readyKey]);
-
-  // 卸载时清掉攒批定时器：组件没了，pending 队列也不会再有人消费，直接丢。
-  useEffect(() => () => {
-    if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
-    flushTimerRef.current = null;
-    pendingRef.current = [];
-  }, []);
 
   const overlayPortal = useOverlayPortal(active);
   const accent = MODULE_META.explore.accent;
@@ -195,7 +259,8 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, watchi
       //   · data-watching：本面板以为「有没有教师在看」。它错了的表现是「教师图墙一直是空的」
       //     或者「没人看时学生仍在推」—— 两种都不会有任何报错。
       data-sdk={phase}
-      data-watching={watching ? '1' : '0'}
+      data-watching={demand.watching ? '1' : '0'}
+      data-level={level}
     >
       {src && armed ? (
         <iframe

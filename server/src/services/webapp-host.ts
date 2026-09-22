@@ -3,9 +3,32 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import type { Server } from 'node:http';
-import { SDK_PATH, SDK_SOURCE, injectSdk } from './webapp-sdk.js';
+import { SDK_PATH, SDK_SOURCE, SHOT_PATH, injectSdk } from './webapp-sdk.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 记录两个 SDK 脚本的请求 —— 这是**一条诊断，不是访问日志**。
+ *
+ * 它回答一个用别的方式回答不了的问题：**这台设备走的是哪一档截图？**
+ *   · 请求过 `shot.js` ⇒ 页面里没有大 canvas，走的是 snapdom 光栅化那一档；
+ *   · 没请求过 ⇒ 走的是 canvas 直读那一档（或者 `captureFrame` 根本没跑到 ——
+ *     后者由 socket 那侧的 `webapp-frameless` 告警指出来）。
+ *
+ * 老 iPad 上报「有浏览位置、没有图片」时，**这一行就是第一刀**：两档的失败原因
+ * 完全不同（一档是 `toDataURL` 被污染，另一档是整个截图库的行为），不先分开就只能猜。
+ *
+ * ⚠️ **带 UA 是必需的，不是顺手**：同一个服务端同时接着几十台设备，不带 UA 就分不清
+ * 那一行是 iPad 发的还是桌面机发的 —— 而这次要查的恰好是**设备差异**。
+ * ⚠️ 带远端地址：同一型号可能有多台学生机。地址是局域网内网地址，不是公网标识。
+ * ⚠️ **量级有界**：`shot.js` 每个 iframe 生命周期只请求一次（SDK 加载成功后不再重取），
+ * SDK 本身每个 HTML 文档一次 —— **不是每帧一条**。
+ */
+function logScriptRequest(kind: 'sdk' | 'shot', req: express.Request): void {
+  const agent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : '(无 UA)';
+  const label = kind === 'shot' ? 'shot.js（DOM 光栅化档）' : 'sdk.js';
+  console.log(`[webapp-host] 📥 ${label} ← ${req.socket.remoteAddress || '?'} | ${agent}`);
+}
 
 /**
  * 独立源服务的端口。
@@ -214,10 +237,32 @@ export async function startWebappHost(
   });
 
   // SDK 脚本。⚠️ 挂载必须在静态之前，否则会被 /webapps 的静态中间件抢走。
-  app.get(SDK_PATH, (_req, res) => {
+  app.get(SDK_PATH, (req, res) => {
+    logScriptRequest('sdk', req);
     res.type('application/javascript');
     res.setHeader('Cache-Control', 'no-store'); // 与 HTML 同样的理由：升级后不能留旧的
     res.send(readSdkSource());
+  });
+
+  // 按需加载的 DOM 截图库（供应商产物，见 server/vendor/README.md）。
+  //
+  // **只有「页面里没有大 canvas」的纯 DOM 网页才会请求它。** 有大 canvas 的网页走 SDK
+  // 的第一档直读，永远不下载这 83KB（gzip）—— 这就是规格 §5.4 说的「按需加载截图库」。
+  // 所以本路由可以是独立文件而不进学生端 bundle：它的下载时机由页面形态决定。
+  app.get(SHOT_PATH, (req, res) => {
+    logScriptRequest('shot', req);
+    const source = readShotSource();
+    if (source === null) {
+      // ⚠️ 缺文件时**明确报 503**，不要静默送一个空响应。空响应在浏览器那头表现为
+      // 「脚本加载成功、但没有 window.snapdom」，SDK 会以为加载失败并重试或放弃，
+      // 排查时要从「文件到底有没有被打进安装包」一路倒查 —— 不如在这里直说。
+      console.error(`❌ 缺少 DOM 截图库文件：${shotPath()}（见 server/vendor/README.md）`);
+      res.status(503).type('text/plain').send('shot library missing');
+      return;
+    }
+    res.type('application/javascript');
+    res.setHeader('Cache-Control', 'no-store'); // 与 SDK/HTML 同一理由：升级后不能留旧的
+    res.send(source);
   });
 
   // 注入 SDK：只拦 .html，其余一律 next() 交给下面的 express.static。
@@ -320,4 +365,38 @@ export async function startWebappHost(
  */
 function readSdkSource(): string {
   return SDK_SOURCE;
+}
+
+/**
+ * 供应商化的 DOM 截图库在磁盘上的位置。
+ *
+ * ⚠️ **`'../..'` 的深度与 `webappsRoot()` 同源**：产物在 `server/dist/services/`，
+ * 往上两级才是 `server/`；打包后是 `resources/server/dist/services/` → `resources/server/`。
+ * **不要照抄 `routes/upload.ts` 的 `'../../uploads'`**（那是从 `dist/routes/` 往上两级，
+ * 深度相同但基准不同）。dev 与打包走同一条路径，是这里唯一要保证的事。
+ */
+function shotPath(): string {
+  return path.join(__dirname, '../../vendor/snapdom.js');
+}
+
+/**
+ * 读一次，之后常驻内存。
+ *
+ * 247KB 常驻是可以接受的；每次请求都 `readFileSync` 则会让每个学生的每次页面加载
+ * 都摸一次磁盘 —— 而这是个老 iPad 场景，页面加载本来就不宽裕。
+ *
+ * **不做「文件变了自动重读」**：升级会重启服务，缓存自然失效。反过来，加上 mtime 检查
+ * 只会多一条要维护、且几乎不会被走到的分支。
+ *
+ * 读不到就返回 `null`，由调用点决定怎么应答（现在是 503 + 一行能直接指向 README 的报错）。
+ */
+let shotCache: string | null | undefined;
+function readShotSource(): string | null {
+  if (shotCache !== undefined) return shotCache;
+  try {
+    shotCache = fs.readFileSync(shotPath(), 'utf8');
+  } catch {
+    shotCache = null;
+  }
+  return shotCache;
 }

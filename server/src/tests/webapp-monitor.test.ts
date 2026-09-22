@@ -7,16 +7,19 @@ import type { Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import classroomRoutes from '../routes/classroom.js';
+import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { createTeacherSession } from '../middleware/auth.js';
 import { createStudentToken } from '../middleware/student-auth.js';
 import {
   createWebappMonitorFacade,
   drainWebappMonitor,
   hasWatchers,
-  peekWebappMonitor,
+  peekWebappFrame,
+  peekWebappPresence,
   recordWebappSummary,
   sanitizeWebappEvent,
   staleTeacherRooms,
+  validateWebappDiagPayload,
   validateWebappEventPayload,
   validateWebappFramePayload,
   validateWebappWatchPayload,
@@ -40,6 +43,20 @@ import {
 
 type Emitted = { room: string; event: string; payload: unknown };
 
+/**
+ * P2.2 之后 `webapp-monitor-demand` 的**完整**载荷（五个字段，一个不少）。
+ *
+ * 类型写在这里是为了让「载荷长大了」这件事在编译期就撞上：任何一个字段改名/消失，
+ * 下面所有用 `demand()` 造期望值的用例都会一起报错，而不是悄悄比少一个字段。
+ */
+type Demand = {
+  watching: boolean;
+  detail: boolean;
+  captureEnabled: boolean;
+  width: number;
+  frameIntervalMs: number;
+};
+
 type FakeSocket = {
   id: string;
   rooms: Set<string>;
@@ -54,12 +71,38 @@ type FakeSocket = {
 /** 学生的课堂参与者记录 ID（与 Interaction.studentId 同口径：参与者而不是 Student 表）。 */
 const PARTICIPANT_ID = 'participant-1';
 
+/**
+ * 第二 / 第三个参与者 ID。逐 socket 下发**靠 studentId 认人**（`broadcastWebappDemand`
+ * 与 join 时的初值都拿它比对），所以「只影响甲、不影响乙」这类用例必须让两条连接
+ * 真的有不同的 studentId —— 否则甲和乙会被折叠成同一个学生。
+ */
+const PARTICIPANT_2_ID = 'participant-2';
+const PARTICIPANT_3_ID = 'participant-3';
+
 function teacherCookie(): string {
   const setCookies: string[] = [];
   const res = { setHeader: (_name: string, value: string) => { setCookies.push(value); } };
   createTeacherSession(res as unknown as Response);
   return setCookies[0].split(';')[0];
 }
+
+/**
+ * `createHarness` / `socketPrisma` 的覆盖项。
+ *
+ * `captureEnabled` / `captureWidth` / `captureFrameIntervalMs` 是 P2.2 新增的三列
+ * （课堂级采集设置）。默认值 **与生产默认值逐字一致**（开 / 320 / 10000）——
+ * 大部分用例不关心它们，但假 prisma 必须**真的把它们返回**，否则生产代码里
+ * `normalizeCaptureConfig(await prisma.classroom.findUnique(...))` 拿到的是缺字段的行，
+ * 于是「默认值」这件事在这份测试里根本没被走到。
+ */
+type HarnessOptions = {
+  membership?: boolean;
+  linkedWebapp?: boolean;
+  classroomStatus?: string;
+  captureEnabled?: boolean;
+  captureWidth?: number;
+  captureFrameIntervalMs?: number;
+};
 
 /**
  * socket 侧用到的 prisma 表面。`membership: false` 让课堂成员复查失败，
@@ -69,12 +112,12 @@ function teacherCookie(): string {
  * `classroom.findUnique` 的结果比对，两处不一致就会静默走到 student-auth-error
  * （什么都不发生）—— 所以这里必须能跟着用例里的课堂 id 走。
  */
-function socketPrisma(
-  classroomId: () => string,
-  options: { membership?: boolean; linkedWebapp?: boolean; classroomStatus?: string } = {},
-) {
+function socketPrisma(classroomId: () => string, options: HarnessOptions = {}) {
   return {
     classroom: {
+      // ⚠️ 这一个 findUnique 有**两个**调用方：生产代码的 broadcastWebappDemand 与
+      //    join-classroom 的初值分支。两边读的都是同样三列采集设置，所以这里多返回它们
+      //    是无害的；但**上面那几个字段一个都不能删** —— join-classroom 拿它们做归属校验。
       findUnique: async () => ({
         id: classroomId(),
         code: '1234',
@@ -83,10 +126,18 @@ function socketPrisma(
         allowStudentStop: true,
         classroomAgents: [],
         groups: [],
+        webappCaptureEnabled: options.captureEnabled ?? true,
+        webappThumbnailWidth: options.captureWidth ?? 320,
+        webappFrameIntervalMs: options.captureFrameIntervalMs ?? 10_000,
       }),
     },
     classroomStudent: {
-      findFirst: async () => (options.membership === false ? null : { id: PARTICIPANT_ID, blacklisted: false }),
+      // ⚠️ 必须**回显 where.id**，不能永远返回 PARTICIPANT_ID：join-classroom 把这里的
+      // 返回值写进 `socket.data.studentId`，而那正是逐 socket 下发时用来认人的字段。
+      // 固定返回同一个 id 会把「两个不同学生」折叠成同一条连接，于是「只让甲转高频」
+      // 的用例无论生产代码对不对都会过（阴性对照整个消失）。
+      findFirst: async (args?: { where?: { id?: string } }) =>
+        (options.membership === false ? null : { id: args?.where?.id ?? PARTICIPANT_ID, blacklisted: false }),
       updateMany: async () => ({ count: 1 }),
     },
     classroomWebapp: {
@@ -103,7 +154,7 @@ function socketPrisma(
  * socket.join / socket.leave 变化**的房间表 —— 按需推流的判据（hasWatchers）读的就是它，
  * 用一份不随 join 变化的假表会让那条断言变成恒真。
  */
-function createHarness(options: { membership?: boolean; linkedWebapp?: boolean; classroomStatus?: string } = {}) {
+function createHarness(options: HarnessOptions = {}) {
   const emits: Emitted[] = [];
   const roomMembers = new Map<string, Set<string>>();
   const sockets = new Map<string, FakeSocket>();
@@ -187,16 +238,76 @@ function createHarness(options: { membership?: boolean; linkedWebapp?: boolean; 
   };
 }
 
-/** 学生身份：走真实的 join-classroom（令牌是真的，verifyStudentToken 会验签）。 */
-async function joinAsStudent(harness: ReturnType<typeof createHarness>, classroomId: string) {
+/**
+ * 学生身份：走真实的 join-classroom（令牌是真的，verifyStudentToken 会验签）。
+ *
+ * `studentId` 可选：默认 PARTICIPANT_ID（既有调用点一个都不用改）。需要**两个不同学生**
+ * 的用例（逐 socket 下发要按 studentId 区分收件人）才传它。
+ */
+async function joinAsStudent(
+  harness: ReturnType<typeof createHarness>,
+  classroomId: string,
+  studentId: string = PARTICIPANT_ID,
+) {
   harness.setClassroomId(classroomId);
   const student = harness.connect();
   await student.call('join-classroom', {
     classroomCode: '1234',
-    studentId: PARTICIPANT_ID,
-    token: createStudentToken(classroomId, PARTICIPANT_ID),
+    studentId,
+    token: createStudentToken(classroomId, studentId),
   });
   return student;
+}
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * `demand()` —— 需求载荷的**期望值构造器**（下面所有用例都用它）
+ *
+ * 它存在的**唯一**理由是：P2.2 之后载荷是五个字段，逐条手写会把「这条用例到底在测
+ * 什么」淹没在五字段噪音里。
+ *
+ * 🔴 它**不是**用来放宽比对的。每个用到它的用例仍然把**整份载荷**交给
+ * `assert.deepEqual` 逐字段比对；这个助手只是把五个字段**显式列全**（默认值写死在
+ * 函数体里，见下）。于是：
+ *   - 生产代码少发一个字段 → 期望值里有、实际值里没有 → 红；
+ *   - 生产代码多发一个没人审查的字段 → 实际值里有、期望值里没有 → 红；
+ *   - 两个字段串味（width 塞进 frameIntervalMs）→ 值对不上 → 红。
+ *
+ * ⚠️ 因此**不许**把它改写成 `expect.objectContaining` 那种「只挑几个字段比」，
+ *    也不许在这里用展开运算把「没提到的字段」糊过去 —— 那正是上述三种失效
+ *    再也抓不住的那一刻。`overrides` 只允许逐字段覆盖。
+ * ══════════════════════════════════════════════════════════════════════════
+ */
+function demand(
+  watching: boolean,
+  detail: boolean,
+  overrides: { captureEnabled?: boolean; width?: number; frameIntervalMs?: number } = {},
+): Demand {
+  return {
+    watching,
+    detail,
+    captureEnabled: overrides.captureEnabled ?? true,
+    width: overrides.width ?? 320,
+    // ⚠️ 这里是**图墙基准**（生产默认 10000）。detail 档的周期由服务端算成
+    //    `max(2000, round(基准/5))`，所以 detail 的用例必须**显式**写出那个数字
+    //    （如 `{ frameIntervalMs: 2000 }`），不能在这里用生产公式推 —— 用被测代码
+    //    算期望值，等于把公式写错这件事从测试里删掉。
+    frameIntervalMs: overrides.frameIntervalMs ?? 10_000,
+  };
+}
+
+/**
+ * 某个学生那条连接收到的全部 demand 载荷。
+ *
+ * 需求是**逐 socket 下发**的（不是广播到 classroom 房间），所以「收件人」就是
+ * `room === socket.id`。⚠️ 过滤出来的可能是空数组 —— 空数组在「不得有 watching:false」
+ * 这类断言下**天然为真**，所以每条用到它的用例都另外配了阳性对照（断言确实收到过
+ * watching:true 或确实收到过 detail:true），否则整条链路没接上也会绿。
+ */
+function demandsFor(harness: ReturnType<typeof createHarness>, student: { id: string }): Demand[] {
+  return harness.events('webapp-monitor-demand')
+    .filter(item => item.room === student.id)
+    .map(item => item.payload as Demand);
 }
 
 /**
@@ -205,7 +316,7 @@ async function joinAsStudent(harness: ReturnType<typeof createHarness>, classroo
  *
  * ⚠️ 用的是**生产代码里的 drain**，不是测试专用的后门 —— 于是「drain 能把这个课堂清干净」
  * 这件事被每个用例顺带验证一次；而漏调它只会造成跨用例的**多**数据，
- * 撞上这里那些精确断言（`clicks === 120`）会立刻变红，不会变成假绿。
+ * 撞上这里那些精确断言（`frames === 0` 之类）会立刻变红，不会变成假绿。
  */
 function resetMonitor(): void {
   drainWebappMonitor(NOOP_IO, 'classroom-a');
@@ -218,67 +329,104 @@ function resetMonitor(): void {
  */
 const NOOP_IO = { in: () => ({ socketsLeave: () => {} }) } as unknown as Server;
 
+/**
+ * 让「**定时器回调里**发起的异步广播」跑完（P2.2 之后必需）。
+ *
+ * ⚠️ `broadcastWebappDemand` 是 async —— 它要读一次课堂配置。于是
+ * `t.mock.timers.tick(15_000)` 只把定时器**触发**掉，回调里那次 `await` 之后的
+ * `emit` 要等微任务队列排空才发生。不等这一步，断言会在「广播还没发出去」时
+ * 读到空数组：**「收到了停推」会变红，而「没收到停推」会假绿** ——
+ * 后者正是本文件处处提防的那种失败形态。
+ *
+ * 用 setImmediate 而不是 `Promise.resolve()`：一次 setImmediate 保证微任务队列
+ * **全部**排空，而单个 Promise 只让出一轮。mock timers 只打桩了 setTimeout/setInterval/Date，
+ * setImmediate 仍是真实的。
+ */
+function flushAsyncBroadcast(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
 // ══════════════════════════════════════════════════════════════════════════
-// 纯函数：学生上报载荷的形状校验（白名单式重建）
+// 纯函数：学生上报载荷的形状校验
+//
+// ⚠️ 这里曾经有**四条**关于**事件**载荷的用例，随整条事件链路一起删除；P2.2 的 T5
+// 按**更窄的契约**（只有 visibility / scroll，四字段、无自由文本）恢复了这条入站路径，
+// 于是它们**按新契约重写了**（不是把旧的搬回来）：
+//   · 白名单式重建 —— 保留，而且现在**额外断言旧的三项字段进不来**；
+//   · 未知 kind 被丢弃 —— 保留，白名单换成了 ['visibility','scroll']；
+//   · 自由字符串被截到上界 —— **删掉**：新契约里不再有任何自由字符串
+//     （to 是短枚举字面量的白名单判据，不是 slice），没有东西可以截；
+//   · 外层形状整条丢弃 —— 保留。
+// 有一条**新增**：`to` 与 `depth` 必须与 kind 自洽（visibility 不带深度、
+// scroll 不带 to）—— 这是新契约里唯一一处「字段之间有关系」的地方。
+//
+// 帧的校验（`validateWebappFramePayload`）也还在链路上，用例在下面。
 // ══════════════════════════════════════════════════════════════════════════
 
-test('事件载荷是白名单式重建：契约之外的字段进不来', () => {
+test('事件载荷是白名单式重建：契约之外的字段进不来，旧的三项尤其进不来', () => {
   // JSON.parse 造出来的 __proto__ 是**真 own 属性**（对象字面量里的 __proto__ 会去改原型，
   // 那不是这里要测的东西）。用来确认重建过程不会顺手把它带进结果或污染原型。
   const hostile = JSON.parse('{"__proto__":{"polluted":true}}') as Record<string, unknown>;
   const sanitized = sanitizeWebappEvent({
-    kind: 'input',
+    kind: 'visibility',
+    to: 'hidden',
+    depth: 30,
+    at: 1700000000000,
+    // 旧契约的三个字段：它们正是「点了哪个元素」「输入框里有多少字符」的载体。
     selector: 'input#answer',
     inputType: 'text',
     length: 12,
-    depth: 0,
-    to: '',
-    at: 1700000000000,
+    // 客户端硬塞的自由文本与嵌套对象
     value: '学生的真实输入内容',
     nested: { deep: true },
     ...hostile,
   });
   assert.deepEqual(sanitized, {
-    kind: 'input',
-    selector: 'input#answer',
-    inputType: 'text',
-    length: 12,
+    kind: 'visibility',
+    to: 'hidden',
+    // visibility 的 depth 恒为 0 —— 客户端塞进来的 30 被丢掉（见下面那条自洽性用例）
     depth: 0,
-    to: '',
     at: 1700000000000,
   });
-  assert.equal(Object.keys(sanitized ?? {}).length, 7, '结果必须**恰好**是契约的 7 个字段');
+  assert.equal(Object.keys(sanitized ?? {}).length, 4, '结果必须**恰好**是契约的 4 个字段');
   assert.equal(({} as Record<string, unknown>).polluted, undefined, '不得出现原型污染');
   assert.equal(JSON.stringify(sanitized).includes('学生的真实输入内容'), false);
-  // 阴性：上面那条「恰好 7 个字段」不能因为 sanitize 返回 null 而空过。
+  assert.equal(JSON.stringify(sanitized).includes('input#answer'), false, 'selector 不得进入结果');
+  // 阴性：上面那条「恰好 4 个字段」不能因为 sanitize 返回 null 而空过。
   assert.notEqual(sanitized, null);
 });
 
 test('未知 kind 被丢弃（白名单，而不是「不在黑名单里就放行」）', () => {
-  assert.equal(sanitizeWebappEvent({ kind: 'screenshot', selector: 'canvas' }), null);
-  assert.equal(sanitizeWebappEvent({ kind: '', selector: 'canvas' }), null);
+  // 旧契约里的四个 kind 一个都不许通过 —— 它们是「内容」的载体。
+  for (const gone of ['click', 'input', 'navigate', 'report']) {
+    assert.equal(sanitizeWebappEvent({ kind: gone, to: 'visible', depth: 0 }), null, `${gone} 不得回来`);
+  }
+  assert.equal(sanitizeWebappEvent({ kind: 'screenshot', to: 'visible' }), null);
+  assert.equal(sanitizeWebappEvent({ kind: '' }), null);
   // 阳性对照：同一形状、只把 kind 换成白名单里的，就必须通过 ——
-  // 否则上一条断言在「sanitize 对什么都返回 null」时也成立。
-  assert.notEqual(sanitizeWebappEvent({ kind: 'click', selector: 'canvas' }), null);
+  // 否则上面那几条在「sanitize 对什么都返回 null」时也成立。
+  assert.notEqual(sanitizeWebappEvent({ kind: 'scroll', depth: 10 }), null);
+  assert.notEqual(sanitizeWebappEvent({ kind: 'visibility', to: 'visible' }), null);
 });
 
-test('自由字符串字段被截到上界，数字字段被规范成非负整数', () => {
-  const event = sanitizeWebappEvent({
-    kind: 'click',
-    selector: 'x'.repeat(5000),
-    inputType: 'y'.repeat(5000),
-    to: 'z'.repeat(5000),
-    length: -5,
-    depth: Number.NaN,
-    at: Number.POSITIVE_INFINITY,
-  });
-  assert.ok(event);
-  assert.equal(event.selector.length, 200);
-  assert.equal(event.inputType.length, 64);
-  assert.equal(event.to.length, 64);
-  assert.equal(event.length, 0);
-  assert.equal(event.depth, 0);
-  assert.equal(event.at, 0);
+test('to / depth 必须与 kind 自洽：认不出的组合整条丢弃', () => {
+  // visibility 的 to 只有两个字面量；别的一律丢弃（不是"兜成 visible"）。
+  assert.equal(sanitizeWebappEvent({ kind: 'visibility', to: 'VISIBLE' }), null);
+  assert.equal(sanitizeWebappEvent({ kind: 'visibility', to: '' }), null);
+  assert.equal(sanitizeWebappEvent({ kind: 'visibility' }), null);
+  // visibility 的 depth 恒为 0，客户端说什么都不算。
+  const vis = sanitizeWebappEvent({ kind: 'visibility', to: 'visible', depth: 999 });
+  assert.equal(vis?.depth, 0);
+  // scroll 的 to 恒为空串、depth 被夹到 0…100 的十分位上。
+  const scroll = sanitizeWebappEvent({ kind: 'scroll', to: 'visible', depth: 37 });
+  assert.equal(scroll?.to, '');
+  assert.equal(scroll?.depth, 40, '37 落到最近的十分位');
+  assert.equal(sanitizeWebappEvent({ kind: 'scroll', depth: 9999 })?.depth, 100);
+  assert.equal(sanitizeWebappEvent({ kind: 'scroll', depth: -5 })?.depth, 0);
+  assert.equal(sanitizeWebappEvent({ kind: 'scroll', depth: Number.NaN })?.depth, 0);
+  assert.equal(sanitizeWebappEvent({ kind: 'scroll', depth: Number.POSITIVE_INFINITY })?.depth, 0);
+  // at 是数字字段，坏值当 0（不是 NaN 进内存）。
+  assert.equal(sanitizeWebappEvent({ kind: 'scroll', at: 'x' })?.at, 0);
 });
 
 test('外层形状：非数组 / 空数组 / 超量 / 字段缺失都整条丢弃', () => {
@@ -286,15 +434,15 @@ test('外层形状：非数组 / 空数组 / 超量 / 字段缺失都整条丢�
   assert.equal(validateWebappEventPayload(null), null);
   assert.equal(validateWebappEventPayload({ ...base, events: 'not-an-array' }), null);
   assert.equal(validateWebappEventPayload({ ...base, events: [] }), null);
-  assert.equal(validateWebappEventPayload({ classroomId: '', webappId: 'webapp-1', events: [{ kind: 'click' }] }), null);
-  assert.equal(validateWebappEventPayload({ classroomId: 'classroom-x', events: [{ kind: 'click' }] }), null);
+  assert.equal(validateWebappEventPayload({ classroomId: '', webappId: 'webapp-1', events: [{ kind: 'scroll', depth: 0 }] }), null);
+  assert.equal(validateWebappEventPayload({ classroomId: 'classroom-x', events: [{ kind: 'scroll', depth: 0 }] }), null);
   // 51 条 → 超过单条消息的上界（50），整条丢弃而不是截断
-  const many = Array.from({ length: 51 }, () => ({ kind: 'click' }));
+  const many = Array.from({ length: 51 }, () => ({ kind: 'scroll', depth: 10 }));
   assert.equal(validateWebappEventPayload({ ...base, events: many }), null);
   // 数组里全是非法事件 ⇒ 过滤后为空 ⇒ 丢弃（不是「返回一个空 events 的载荷」）
-  assert.equal(validateWebappEventPayload({ ...base, events: [{ kind: 'nope' }] }), null);
+  assert.equal(validateWebappEventPayload({ ...base, events: [{ kind: 'click' }] }), null);
   // 阳性对照：合法的一条必须通过，且长度恰好 1
-  const ok = validateWebappEventPayload({ ...base, events: [{ kind: 'click' }, { kind: 'nope' }] });
+  const ok = validateWebappEventPayload({ ...base, events: [{ kind: 'scroll', depth: 10 }, { kind: 'nope' }] });
   assert.ok(ok);
   assert.equal(ok.events.length, 1);
 });
@@ -309,11 +457,111 @@ test('帧载荷：只接 data URL 图片，且有长度上界', () => {
   assert.notEqual(validateWebappFramePayload({ ...base, dataUrl: 'data:image/jpeg;base64,AAAA' }), null);
 });
 
+test('帧载荷是**白名单式重建**：契约之外的字段进不来', () => {
+  // ⚠️ 判定的是「重建」，不是「过滤」：客户端塞进来的东西**到不了**校验结果里。
+  // （事件载荷那条同款的重建在 `sanitizeWebappEvent`，上面已单独覆盖 ——
+  //   两条入站路径**各有一层**，互不代替。）
+  const base = { classroomId: 'classroom-x', webappId: 'webapp-1' };
+  // JSON.parse 造出来的 __proto__ 是**真 own 属性**（对象字面量里的 __proto__ 会去改原型，
+  // 那不是这里要测的东西）。用来确认重建过程不会顺手把它带进结果或污染原型。
+  const hostile = JSON.parse('{"__proto__":{"polluted":true}}') as Record<string, unknown>;
+  const rebuilt = validateWebappFramePayload({
+    ...base,
+    dataUrl: 'data:image/jpeg;base64,AAAA',
+    // 客户端硬塞的几个字段：事件的形状、一个自由文本、嵌套对象
+    events: [{ kind: 'scroll', depth: 10 }],
+    value: '学生的答案',
+    nested: { deep: true },
+    ...hostile,
+  });
+  assert.ok(rebuilt, '合法的一张帧必须通过 —— 否则下面那两条在「什么都不通过」时也成立');
+  assert.deepEqual(rebuilt, {
+    classroomId: 'classroom-x',
+    webappId: 'webapp-1',
+    dataUrl: 'data:image/jpeg;base64,AAAA',
+  });
+  assert.equal(Object.keys(rebuilt).length, 3, '结果必须**恰好**是契约的 3 个字段');
+  assert.equal(({} as Record<string, unknown>).polluted, undefined, '不得出现原型污染');
+  assert.equal(JSON.stringify(rebuilt).includes('学生的答案'), false);
+});
+
 test('订阅载荷只认非空 classroomId', () => {
   assert.equal(validateWebappWatchPayload({ classroomId: 'c1' }), 'c1');
   assert.equal(validateWebappWatchPayload({ classroomId: '  ' }), null);
   assert.equal(validateWebappWatchPayload(null), null);
   assert.equal(validateWebappWatchPayload(['c1']), null);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// P2.2 采集设置的归一化（`services/webapp-capture.ts`）
+//
+// 归一化**只发生在服务端**，客户端拿到的永远是已经合法的值。所以这一层是「老师
+// 手滑填了 99999」与「学生设备被要求每 100ms 截一张图」之间唯一的那道闸。
+// ══════════════════════════════════════════════════════════════════════════
+
+test('normalizeCaptureConfig：越界的宽度与周期被夹进合法范围，范围内的原样保留', () => {
+  // 上界 / 下界
+  assert.equal(normalizeCaptureConfig({ webappThumbnailWidth: 9999 }).width, 640);
+  assert.equal(normalizeCaptureConfig({ webappThumbnailWidth: 10 }).width, 160);
+  assert.equal(normalizeCaptureConfig({ webappFrameIntervalMs: 100 }).frameIntervalMs, 5000);
+  assert.equal(normalizeCaptureConfig({ webappFrameIntervalMs: 999_999 }).frameIntervalMs, 60_000);
+  // 阳性对照：范围内的值必须原样留下 —— 少了这一半，「无论输入什么都返回边界值」
+  // 那种实现也会让上面四条通过
+  assert.equal(normalizeCaptureConfig({ webappThumbnailWidth: 480 }).width, 480);
+  assert.equal(normalizeCaptureConfig({ webappFrameIntervalMs: 20_000 }).frameIntervalMs, 20_000);
+  // 刚好落在边界上的两个值也属于「范围内」，不得被推走
+  assert.equal(normalizeCaptureConfig({ webappThumbnailWidth: 640 }).width, 640);
+  assert.equal(normalizeCaptureConfig({ webappFrameIntervalMs: 5000 }).frameIntervalMs, 5000);
+});
+
+test('🔴 normalizeCaptureConfig：认不出就当**开** —— undefined 绝不能变成 enabled:false', () => {
+  // 这条钉的是**方向**，不是某个具体数字：`webappCaptureEnabled` 用的是 `!== false`
+  // 而不是 `Boolean(...)`。老库加列之前这个字段是 `undefined`，`Boolean(undefined)`
+  // 会把「默认开」变成「关」⇒ **所有老课堂静默停止截图**，而且没有任何报错。
+  assert.equal(normalizeCaptureConfig({}).enabled, true, '整行缺字段 = 老数据，必须当开');
+  assert.equal(normalizeCaptureConfig({ webappCaptureEnabled: undefined }).enabled, true, 'undefined 必须当开');
+  assert.equal(normalizeCaptureConfig(null).enabled, true, 'null 整行必须当开');
+  assert.equal(normalizeCaptureConfig(undefined).enabled, true);
+  // 阳性对照：**显式**的 false 必须真的变成 false（否则上面四条在「enabled 恒真」时也成立）
+  assert.equal(normalizeCaptureConfig({ webappCaptureEnabled: false }).enabled, false);
+});
+
+test('normalizeCaptureConfig：整行 null / undefined 时返回整份默认值', () => {
+  const defaults = { enabled: true, width: 320, frameIntervalMs: 10_000 };
+  assert.deepEqual(normalizeCaptureConfig(null), defaults);
+  assert.deepEqual(normalizeCaptureConfig(undefined), defaults);
+  // 阳性对照：给了一行的（哪怕是空的）走的是另一条分支，但三列同样落到默认值 ——
+  // 与上面两条**逐字段相同**，区别只在「有没有那一行」，所以这里把两者放在一起比。
+  assert.deepEqual(normalizeCaptureConfig({}), defaults);
+});
+
+test('captureFieldsFromInput：只产出**真的提到了**的列，且同样夹范围', () => {
+  // {} → 空对象：这次什么都不改。⚠️ 不是「改回默认值」—— 那会把教师没碰过的两列一起重置。
+  assert.deepEqual(captureFieldsFromInput({}), {});
+  // 只给一列 ⇒ 结果里**只有**那一列
+  assert.deepEqual(captureFieldsFromInput({ enabled: false }), { webappCaptureEnabled: false });
+  assert.deepEqual(captureFieldsFromInput({ width: 9999 }), { webappThumbnailWidth: 640 });
+  assert.deepEqual(captureFieldsFromInput({ width: 10 }), { webappThumbnailWidth: 160 });
+  assert.deepEqual(captureFieldsFromInput({ frameIntervalMs: 100 }), { webappFrameIntervalMs: 5000 });
+  assert.deepEqual(captureFieldsFromInput({ frameIntervalMs: 999_999 }), { webappFrameIntervalMs: 60_000 });
+  // 三列一起给：三列都在，各自合法（且**没有**多余的列）
+  assert.deepEqual(captureFieldsFromInput({ enabled: true, width: 480, frameIntervalMs: 20_000 }), {
+    webappCaptureEnabled: true,
+    webappThumbnailWidth: 480,
+    webappFrameIntervalMs: 20_000,
+  });
+  // 垃圾类型：非布尔的 enabled、非数值的 width/interval 都不落列（不能把 NaN 写进库）
+  assert.deepEqual(captureFieldsFromInput({ enabled: 'yes', width: 'abc', frameIntervalMs: 'abc' }), {});
+  // 🔴 「没给」的三种形态都必须是**这次不改**，不能落列。
+  //    `null` 曾经是**真 bug**：`Number(null)` 是 0（有限），于是 `{"width": null}` 被当成
+  //    「给了数值 0」→ 夹到 160 写进库 —— 教师端一个空输入框序列化成 null，
+  //    就会把这个课堂的缩略图宽度**悄悄改成最小档**，而界面上看不出任何异常。
+  //    同类的还有空字符串（表单常见）。判据见 webapp-capture.ts 的 isProvidedNumber()。
+  assert.deepEqual(captureFieldsFromInput({ width: null }), {}, 'null = 这次不改');
+  assert.deepEqual(captureFieldsFromInput({ width: '' }), {}, '空字符串 = 这次不改');
+  assert.deepEqual(captureFieldsFromInput({ frameIntervalMs: null }), {}, 'null = 这次不改');
+  // 阳性对照：真给了数值时**必须**落列 —— 否则上面三条在「这条路整个不工作」时也会过。
+  assert.deepEqual(captureFieldsFromInput({ width: '320' }), { webappThumbnailWidth: 320 }, '数字字符串要认');
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -409,34 +657,29 @@ test('教师订阅前，学生上报不产生任何转发；订阅后同一份�
   resetMonitor();
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
-  const payload = { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click', selector: 'button#go' }] };
+  const payload = { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' };
 
   // ── 订阅前
-  await student.call('webapp-event', payload);
-  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
-  assert.deepEqual(harness.events('webapp-student-event'), [], '没有教师订阅时不得转发事件');
+  await student.call('webapp-frame', payload);
   assert.deepEqual(harness.events('webapp-student-frame'), [], '没有教师订阅时不得转发帧');
 
   // ── 订阅后，**同一份载荷**必须被转发（这一半是必需的：少了它，「整条链路没接上」也会让上面全过）
   const teacher = harness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
-  await student.call('webapp-event', payload);
-  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  await student.call('webapp-frame', payload);
 
-  const forwarded = harness.events('webapp-student-event');
-  assert.equal(forwarded.length, 1);
-  assert.equal(forwarded[0].room, 'teacher:classroom-a:webapp');
-  assert.deepEqual(forwarded[0].payload, {
-    studentId: PARTICIPANT_ID,
-    webappId: 'webapp-1',
-    events: [{ kind: 'click', selector: 'button#go', inputType: '', length: 0, depth: 0, to: '', at: 0 }],
-  });
   const frames = harness.events('webapp-student-frame');
   assert.equal(frames.length, 1);
   assert.equal(frames[0].room, 'teacher:classroom-a:webapp', '帧只能进监控房间，不能进 teacher:<id>（那样每个开着看板的教师都会收到）');
-  assert.equal((frames[0].payload as { dataUrl: string }).dataUrl, 'data:image/jpeg;base64,AA');
-  assert.equal(typeof (frames[0].payload as { at: number }).at, 'number');
+  const forwarded = frames[0].payload as { studentId: string; webappId: string; dataUrl: string; at: number };
+  assert.equal(forwarded.studentId, PARTICIPANT_ID);
+  assert.equal(forwarded.webappId, 'webapp-1');
+  assert.equal(forwarded.dataUrl, 'data:image/jpeg;base64,AA');
+  // at 由**服务端**盖（学生机器的时间戳不参与），所以这里只断言它的类型。
+  // 另外：载荷**恰好**这四项 —— 事件字段（events）一个都不该有。
+  assert.deepEqual(Object.keys(forwarded).sort(), ['at', 'dataUrl', 'studentId', 'webappId']);
+  assert.equal(typeof forwarded.at, 'number');
 });
 
 test('没有教师在看时上报：仍然不转发，但数据照记（课后汇总不因「没人开看板」整块为空）', async () => {
@@ -444,20 +687,12 @@ test('没有教师在看时上报：仍然不转发，但数据照记（课后�
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
 
-  await student.call('webapp-event', {
-    classroomId: 'classroom-a',
-    webappId: 'webapp-1',
-    events: [{ kind: 'click' }, { kind: 'input', length: 5 }, { kind: 'scroll', depth: 40 }],
-  });
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
 
-  assert.deepEqual(harness.events('webapp-student-event'), [], '没人看时一个字节都不转发');
   assert.deepEqual(harness.events('webapp-student-frame'), []);
-  const { frame, counter } = peekWebappMonitor('classroom-a', PARTICIPANT_ID, 'webapp-1');
-  assert.equal(counter?.clicks, 1, '计数必须照记：否则教师没开看板的那节课，唯一的落盘汇总会是空的');
-  assert.equal(counter?.inputs, 1);
-  assert.equal(counter?.maxDepth, 40);
-  assert.equal(frame?.dataUrl, 'data:image/jpeg;base64,AA');
+  const frame = peekWebappFrame('classroom-a', PARTICIPANT_ID, 'webapp-1');
+  assert.equal(frame?.dataUrl, 'data:image/jpeg;base64,AA', '帧必须照存：否则教师没开看板的那节课，唯一的落盘汇总会是空的');
+  assert.equal(frame?.count, 1, '收到的**总数**也要记（汇总的 frameCount 取它）');
 
   // 阳性对照：此时再让教师订阅，**已经记下的**数据要能被 drain 出来
   const teacher = harness.connect({ cookie: teacherCookie() });
@@ -465,7 +700,6 @@ test('没有教师在看时上报：仍然不转发，但数据照记（课后�
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   const rows = drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
   assert.equal(rows.length, 1, '没人看时记下的数据必须仍然在内存里、能被汇总取到');
-  assert.equal(rows[0].clicks, 1);
   assert.equal(rows[0].frameCount, 1);
 });
 
@@ -491,31 +725,221 @@ test('按需推流的判据是「监控房间」而不是「教师看板房间�
 
 test('学生加入课堂时立刻收到一次当前需求状态（否则「教师先开、学生后进」时图墙永远空着）', async () => {
   resetMonitor();
-  // 场景一：没人在看 ⇒ watching:false
+  // 场景一：没人在看 ⇒ watching:false（此时 detail 必须也是假 —— 「没人看却是高频档」
+  // 是客户端最容易照着推导错的一种非法组合）
   const idle = createHarness();
   const idleStudent = await joinAsStudent(idle, 'classroom-a');
   const idleDemand = idle.events('webapp-monitor-demand').filter(item => item.room === idleStudent.id);
-  assert.deepEqual(idleDemand.map(item => item.payload), [{ watching: false }]);
+  assert.deepEqual(idleDemand.map(item => item.payload), [demand(false, false)]);
 
   // 场景二：教师已经在看 ⇒ watching:true（阳性对照：否则上一条在「这条消息根本没发」时也过）
+  //        但教师没点开任何人的详情 ⇒ detail 仍然是假
   const busy = createHarness();
   const teacher = busy.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-b');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-b' });
   const busyStudent = await joinAsStudent(busy, 'classroom-b');
   const busyDemand = busy.events('webapp-monitor-demand').filter(item => item.room === busyStudent.id);
-  assert.deepEqual(busyDemand.map(item => item.payload), [{ watching: true }]);
+  assert.deepEqual(busyDemand.map(item => item.payload), [demand(true, false)]);
 });
 
-test('教师订阅时向课堂广播 watching:true', async () => {
+test('教师订阅后，课堂里的学生立刻收到 watching:true（订阅路径必须真的推到学生那条连接）', async () => {
+  resetMonitor();
+  const harness = createHarness();
+  // 先放学生进来：这样「订阅」这一步才是**唯一**能产生第二条 demand 的原因，
+  // 订阅路径整条没接上就会立刻变红（若学生后进，订阅期间根本没有收件人，
+  // 这条用例就会退化成「学生加入时收到初值」—— 那是上一条已经守过的东西）。
+  const student = await joinAsStudent(harness, 'classroom-a');
+  assert.deepEqual(demandsFor(harness, student), [demand(false, false)], '前置：订阅之前学生只该收到初值 watching:false');
+
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  assert.deepEqual(
+    demandsFor(harness, student),
+    [demand(false, false), demand(true, false)],
+    '订阅必须逐 socket 推到学生那条连接，且 detail 为假（教师还没点开任何人的详情）',
+  );
+});
+
+test('教师点开某个学生的详情：只有那个学生转高频，其他学生不受影响', async () => {
   resetMonitor();
   const harness = createHarness();
   const teacher = harness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
-  const demand = harness.events('webapp-monitor-demand');
-  assert.deepEqual(demand, [{ room: 'classroom:classroom-a', event: 'webapp-monitor-demand', payload: { watching: true } }]);
+  // ⚠️ 顺序：两个学生都在**订阅之后**加入，初值才是 watching:true。
+  //    学生若在订阅前加入，初值就是 watching:false —— 那与这里的 detail 无关，
+  //    却会让下面「乙不得转高频」的断言被一条无关的 false 混过去。
+  const focused = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_2_ID);
+  const other = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_3_ID);
+
+  // 前提（阴性对照的地基）：两条连接都**真的**收到了 demand，而且是各自的档位。
+  // 少了这一句，「乙的 detail 是假」在「乙根本没收到任何东西」时也会通过。
+  assert.deepEqual(demandsFor(harness, focused), [demand(true, false)], '前提：甲收到了初值');
+  assert.deepEqual(demandsFor(harness, other), [demand(true, false)], '前提：乙收到了初值');
+
+  await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: PARTICIPANT_2_ID });
+
+  // ⚠️ 基准是默认的 10000 ⇒ detail 档 = max(2000, round(10000/5)) = 2000。这个数字
+  //    **显式写在这里**（不用生产公式推），否则公式改了测试会跟着一起改。
+  assert.deepEqual(
+    demandsFor(harness, focused),
+    [demand(true, false), demand(true, true, { frameIntervalMs: 2000 })],
+    '被点开的学生必须转高频',
+  );
+  assert.deepEqual(
+    demandsFor(harness, other),
+    [demand(true, false), demand(true, false)],
+    '没被点开的学生不得跟着转高频（否则教师点一个人，全班的设备一起烧）',
+  );
+
+  // 关掉详情（studentId: null）：甲必须回到 wall 档
+  await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: null });
+
+  assert.deepEqual(
+    demandsFor(harness, focused),
+    [demand(true, false), demand(true, true, { frameIntervalMs: 2000 }), demand(true, false)],
+    '关掉详情之后甲必须回到 wall 档',
+  );
+  // 乙这边：焦点事件会向房间里**每个学生**重发一次 demand（每个人都得按新焦点重算自己的档位），
+  // 所以「只影响甲」指的不是**条数**，而是**档位** —— 乙三次收到的 detail 必须始终为假。
+  // 这条断言不空过：乙确有 3 条 demand，且第 2 条正是「教师点开甲」那一下发的。
+  assert.deepEqual(
+    demandsFor(harness, other),
+    [demand(true, false), demand(true, false), demand(true, false)],
+    '没被点开的学生不得跟着转高频（否则教师点一个人，全班的设备一起烧）',
+  );
+});
+
+test('教师先点开详情、学生后加入：那条连接一进来就是高频档（初值必须带上 detail）', async () => {
+  // ⚠️ **这条补的是一个实测出来的覆盖空洞**（由实施者的变异测试发现，见
+  // task-t3b-tests-report.md 的「变异 B」）：把 join-classroom 里初值的 detail 改成恒
+  // false（也就是让这条路径失效），**原来的 41 条用例全绿**。
+  //
+  // 它守的是「教师先开看板、点开某个学生的详情，然后那个学生才扫码进课堂」这个顺序
+  // —— 生产代码 `socket/index.ts` 的 join 分支专门为它写了注释：若只给 watching，
+  // 那个学生一进来就是 wall 档，直到教师**重新**点一次详情才会转高频，
+  // 而教师根本不知道要再点一次，**两边都不报错**。
+  resetMonitor();
+  const harness = createHarness();
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  // 焦点**先于**学生到达。生产代码明写这条路径不能 gate 在「此刻有没有 watcher」上，
+  // 所以这里连 watch 都还没发就先发焦点 —— 正是要构造那个顺序。
+  await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: PARTICIPANT_2_ID });
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  const student = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_2_ID);
+
+  assert.deepEqual(
+    demandsFor(harness, student),
+    [demand(true, true, { frameIntervalMs: 2000 })],
+    '教师已经点开了他，他一进来就该是 detail 档 —— 恒 false 的实现会在这里红',
+  );
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// P2.2：课堂级采集设置（要不要采画面 / 多清楚 / 多久一次）真的走到了学生那条连接
+//
+// 上面那些纯函数用例守的是「归一化算得对」；这里守的是**这三个值真的上了载荷**。
+// 两者缺一不可：归一化再对，只要 broadcast 那一步没把它们填进去，教师调完设置
+// 也一样什么都不发生 —— 而且**没有任何报错**。
+// ══════════════════════════════════════════════════════════════════════════
+
+test('课堂设置里关掉了画面：学生收到的 captureEnabled 是 false（并配阳性对照）', async () => {
+  resetMonitor();
+  // 阴性侧：本课堂明确不采画面（`classroom.findUnique` 返回 webappCaptureEnabled:false）
+  const off = createHarness({ captureEnabled: false });
+  const offStudent = await joinAsStudent(off, 'classroom-a');
+  assert.deepEqual(demandsFor(off, offStudent), [demand(false, false, { captureEnabled: false })],
+    '初值就必须带上 false —— 学生端靠这一条决定要不要开始截图');
+
+  // 订阅那条路径同样要带上 false（不只是 join 的初值那一条）
+  const offTeacher = off.connect({ cookie: teacherCookie() });
+  await offTeacher.call('join-teacher-board', 'classroom-a');
+  await offTeacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.deepEqual(demandsFor(off, offStudent), [
+    demand(false, false, { captureEnabled: false }),
+    demand(true, false, { captureEnabled: false }),
+  ], '订阅时重新下发的档位也必须带 false（否则教师一进视图，画面又回来了）');
+
+  // ── 阳性对照：不覆盖时必须是 true ────────────────────────────────────────
+  // 少了它，「false 生效」在「这条路径根本没跑 / 载荷里压根没这个字段」时也会过
+  // （`undefined === false` 为假，但那种情况下三条断言里两条会同时失效，
+  //   而这里明确要求另一台设备上确实拿到 true）。
+  const on = createHarness();
+  const onStudent = await joinAsStudent(on, 'classroom-b');
+  assert.deepEqual(demandsFor(on, onStudent), [demand(false, false)],
+    '默认（未覆盖）必须仍是采集开着');
+
+  // 另外两列也真的走到了学生那条连接，而且**没有串味**：把宽度与周期同时改掉，
+  // 载荷里两个数字必须各就各位（把 width 填进 frameIntervalMs 会在这里红）。
+  const tuned = createHarness({ captureWidth: 640, captureFrameIntervalMs: 20_000 });
+  const tunedStudent = await joinAsStudent(tuned, 'classroom-c');
+  assert.deepEqual(
+    demandsFor(tuned, tunedStudent),
+    [demand(false, false, { width: 640, frameIntervalMs: 20_000 })],
+  );
+});
+
+test('detail 档的周期是 max(2000, round(基准/5))，没被点开的学生仍是基准值', async () => {
+  resetMonitor();
+  // 基准设成 30000 ⇒ detail = max(2000, 6000) = **6000**。两个数字差得够远，
+  // 「没跟着变」或「全班一起变」都能一眼看出来。
+  const harness = createHarness({ captureFrameIntervalMs: 30_000 });
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  // ⚠️ 顺序：两个学生都在**订阅之后**加入，初值才是 watching:true（同「点开详情」那条的口径）
+  const focused = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_2_ID);
+  const other = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_3_ID);
+
+  // 前提（阴性对照的地基）：两条连接都**真的**收到了基准档。少了这一句，
+  // 「乙没跟着变」在「乙根本没收到任何东西」时也会通过。
+  assert.deepEqual(demandsFor(harness, focused), [demand(true, false, { frameIntervalMs: 30_000 })],
+    '前提：甲收到了基准档的初值');
+  assert.deepEqual(demandsFor(harness, other), [demand(true, false, { frameIntervalMs: 30_000 })],
+    '前提：乙收到了基准档的初值');
+
+  await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: PARTICIPANT_2_ID });
+
+  assert.deepEqual(
+    demandsFor(harness, focused),
+    [demand(true, false, { frameIntervalMs: 30_000 }), demand(true, true, { frameIntervalMs: 6000 })],
+    '被点开的学生必须转成 detail 档的周期（基准的 1/5，这里 30000 → 6000）',
+  );
+  assert.deepEqual(
+    demandsFor(harness, other),
+    [demand(true, false, { frameIntervalMs: 30_000 }), demand(true, false, { frameIntervalMs: 30_000 })],
+    '没被点开的学生必须仍然是**基准**周期，不许跟着转高频',
+  );
+});
+
+test('detail 档有下界 2000：基准很密（5000）时不再按五分之一算', async () => {
+  // ⚠️ 上一条只走到 `round(基准/5)` 那个分支；`max(2000, …)` 的外层没人守。
+  //    基准 5000 ⇒ 五分之一是 1000，低于下界 ⇒ 必须被抬到 2000。
+  //    少了这条，「下界被删掉」不会有任何用例红。
+  resetMonitor();
+  const harness = createHarness({ captureFrameIntervalMs: 5000 });
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  const student = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_2_ID);
+  assert.deepEqual(demandsFor(harness, student), [demand(true, false, { frameIntervalMs: 5000 })],
+    '前提：学生拿到了基准档 5000（不是 detail 档）');
+
+  await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: PARTICIPANT_2_ID });
+
+  assert.deepEqual(
+    demandsFor(harness, student),
+    [demand(true, false, { frameIntervalMs: 5000 }), demand(true, true, { frameIntervalMs: 2000 })],
+    '5000/5 = 1000 低于下界 ⇒ 必须是 2000，不能是 1000',
+  );
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -530,16 +954,24 @@ test('教师刷新页面（0→1→0 抖动）不得立刻通知学生停推，�
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
+  // ⚠️ 顺序：学生必须在**订阅之后**加入。需求是逐 socket 下发的，「只有教师、没有学生」
+  //    时 filter 出来是空数组 —— 「没有任何 watching:false」会变成恒真的假绿；
+  //    而学生若在订阅**之前**加入，那条初值恰好就是 watching:false（与防抖无关），
+  //    同样会混进下面的断言里。
+  const student = await joinAsStudent(harness, 'classroom-a');
+  assert.deepEqual(demandsFor(harness, student), [demand(true, false)],
+    '前置：教师已经在看，学生的初值必须是 watching:true（否则下面那条「不得有 false」是空过的）');
+
   // 刷新开始：视图卸载 ⇒ unwatch
   await teacher.call('unwatch-webapp-monitor', { classroomId: 'classroom-a' });
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), false, '订阅数确实归零了（否则这条用例什么都没构造出来）');
 
   // ① 立刻：不得有任何 watching:false
-  assert.deepEqual(harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === false), []);
+  assert.deepEqual(demandsFor(harness, student).filter(item => item.watching === false), []);
 
   // ② 抖动期间（1 秒后，仍远小于 15 秒）：仍然不得有
   t.mock.timers.tick(1000);
-  assert.deepEqual(harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === false), []);
+  assert.deepEqual(demandsFor(harness, student).filter(item => item.watching === false), []);
 
   // ③ 刷新完成：视图重新挂载 ⇒ watch（这一下必须取消掉那个待触发的定时器）
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
@@ -547,16 +979,19 @@ test('教师刷新页面（0→1→0 抖动）不得立刻通知学生停推，�
 
   // ④ 把时间推过 15 秒：那次「停止推流」永远不该出现
   t.mock.timers.tick(60_000);
+  // ⚠️ 必须先让定时器回调里那次异步广播跑完，这条断言才**不是空过**：
+  //    不 flush 的话，「停止通知确实被取消了」与「广播压根还没发出去」看起来一模一样。
+  await flushAsyncBroadcast();
   assert.deepEqual(
-    harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === false),
+    demandsFor(harness, student).filter(item => item.watching === false),
     [],
     '重新订阅之后，之前那次归零的停止通知必须被取消',
   );
-  // 阳性对照：这一路确实产生了 watching:true 的广播（否则「没有任何 watching:false」
-  // 可能只是因为 watch 这条路径整个没生效，什么都没发）
+  // 阳性对照：这一路确实向学生推了 watching:true（否则「没有任何 watching:false」
+  // 可能只是因为 watch 这条路径整个没生效，什么都没发）。两条：学生加入时的初值 + 重新订阅那一次。
   assert.deepEqual(
-    harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === true).length,
-    2,
+    demandsFor(harness, student).filter(item => item.watching === true),
+    [demand(true, false), demand(true, false)],
   );
 });
 
@@ -571,6 +1006,11 @@ test('教师从 X 的看板切到 Y 的看板：X 的监控订阅被清掉，且
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), true);
 
+  // ⚠️ 顺序：学生在订阅之后加入（见上一条的顺序说明）
+  const student = await joinAsStudent(harness, 'classroom-a');
+  assert.deepEqual(demandsFor(harness, student), [demand(true, false)],
+    '前置：X 的学生此刻确实在按需推流（否则下面的「收到停推」无从谈起）');
+
   await teacher.call('join-teacher-board', 'classroom-b');
 
   assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), [], 'X 的监控房间必须退掉');
@@ -578,9 +1018,10 @@ test('教师从 X 的看板切到 Y 的看板：X 的监控订阅被清掉，且
   assert.equal(webappMonitorSizes('classroom-a').watchers, 0, '记账也要跟着清');
 
   t.mock.timers.tick(15_000);
+  await flushAsyncBroadcast();
   assert.deepEqual(
-    harness.events('webapp-monitor-demand').filter(item => item.room === 'classroom:classroom-a').map(item => item.payload),
-    [{ watching: true }, { watching: false }],
+    demandsFor(harness, student),
+    [demand(true, false), demand(false, false)],
     'X 的学生必须收到停推通知（只退房间不发通知 = 学生一直推）',
   );
 });
@@ -593,15 +1034,21 @@ test('教师真的走光了：15 秒后学生确实收到 watching:false（防�
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
+  // ⚠️ 顺序：学生在订阅之后加入（见「刷新抖动」那条的顺序说明）
+  const student = await joinAsStudent(harness, 'classroom-a');
+  assert.deepEqual(demandsFor(harness, student), [demand(true, false)],
+    '前置：学生已经收到过一条 watching:true —— 少了它，下面「还没有 false」只是空过');
+
   await teacher.call('unwatch-webapp-monitor', { classroomId: 'classroom-a' });
   t.mock.timers.tick(14_999);
-  assert.deepEqual(harness.events('webapp-monitor-demand').filter(item => item.room === 'classroom:classroom-a').slice(1), [], '14.999 秒时还不该通知');
+  await flushAsyncBroadcast();
+  assert.deepEqual(demandsFor(harness, student).slice(1), [], '14.999 秒时还不该通知');
 
   t.mock.timers.tick(1);
-  const after = harness.events('webapp-monitor-demand').filter(item => item.room === 'classroom:classroom-a');
-  assert.deepEqual(after, [
-    { room: 'classroom:classroom-a', event: 'webapp-monitor-demand', payload: { watching: true } },
-    { room: 'classroom:classroom-a', event: 'webapp-monitor-demand', payload: { watching: false } },
+  await flushAsyncBroadcast();
+  assert.deepEqual(demandsFor(harness, student), [
+    demand(true, false),
+    demand(false, false),
   ]);
 });
 
@@ -613,14 +1060,23 @@ test('教师连接断开与 unwatch 同路：先摘记账，再走防抖', async
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
+  // ⚠️ 顺序：学生在订阅之后加入（见「刷新抖动」那条的顺序说明）
+  const student = await joinAsStudent(harness, 'classroom-a');
+  assert.deepEqual(demandsFor(harness, student), [demand(true, false)],
+    '前置：学生已经收到过一条 watching:true —— 少了它，下面「还没有 false」只是空过');
+
   await teacher.disconnect();
 
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), false);
   assert.equal(webappMonitorSizes('classroom-a').watchers, 0, 'watchers 这个账本必须跟着断开清掉，否则它会无界增长');
-  assert.deepEqual(harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === false), []);
+  assert.deepEqual(demandsFor(harness, student).filter(item => item.watching === false), []);
 
   t.mock.timers.tick(15_000);
-  assert.equal(harness.events('webapp-monitor-demand').filter(item => item.payload && (item.payload as { watching: boolean }).watching === false).length, 1);
+  await flushAsyncBroadcast();
+  assert.deepEqual(
+    demandsFor(harness, student).filter(item => item.watching === false),
+    [demand(false, false)],
+  );
 });
 
 test('hasWatchers（房间）与 watchers（记账 Map）必须一致 —— 两处口径不许漂移', async () => {
@@ -691,13 +1147,13 @@ test('学生上报别的课堂的 classroomId：不转发、不写内存', async
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
-  await student.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  await student.call('webapp-frame', { classroomId: 'classroom-b', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
 
-  assert.deepEqual(harness.events('webapp-student-event'), []);
-  assert.deepEqual(webappMonitorSizes('classroom-b'), { frames: 0, counters: 0, watchers: 0 });
+  assert.deepEqual(harness.events('webapp-student-frame'), []);
+  assert.deepEqual(webappMonitorSizes('classroom-b'), { frames: 0, presence: 0, watchers: 0 });
   // 阳性对照：换成自己的课堂就必须进来
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
-  assert.equal(harness.events('webapp-student-event').length, 1);
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  assert.equal(harness.events('webapp-student-frame').length, 1);
 });
 
 test('学生上报本课堂没关联的 webappId：不转发、不写内存（否则能污染别的网页的统计）', async () => {
@@ -708,12 +1164,10 @@ test('学生上报本课堂没关联的 webappId：不转发、不写内存（�
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-OTHER', events: [{ kind: 'click' }] });
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-OTHER', dataUrl: 'data:image/jpeg;base64,AA' });
 
-  assert.deepEqual(harness.events('webapp-student-event'), []);
   assert.deepEqual(harness.events('webapp-student-frame'), []);
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 1 });
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 1 });
 });
 
 test('已被移出课堂的学生（成员复查失败）不能再上报', async () => {
@@ -724,10 +1178,10 @@ test('已被移出课堂的学生（成员复查失败）不能再上报', async
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
 
-  assert.deepEqual(harness.events('webapp-student-event'), []);
-  assert.deepEqual(webappMonitorSizes('classroom-a').counters, 0);
+  assert.deepEqual(harness.events('webapp-student-frame'), []);
+  assert.deepEqual(webappMonitorSizes('classroom-a').frames, 0);
 });
 
 test('没走 join-classroom 的连接（不在 classroom:<id> 房间里）上报无效', async () => {
@@ -741,14 +1195,26 @@ test('没走 join-classroom 的连接（不在 classroom:<id> 房间里）上报
   // 手动伪造 socket.data（模拟「只有一个裸连接，会话是编的」）
   stranger.socket.data.classroomId = 'classroom-a';
   stranger.socket.data.studentId = PARTICIPANT_ID;
-  await stranger.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  await stranger.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
 
-  assert.deepEqual(harness.events('webapp-student-event'), []);
-  assert.deepEqual(webappMonitorSizes('classroom-a').counters, 0);
+  assert.deepEqual(harness.events('webapp-student-frame'), []);
+  assert.deepEqual(webappMonitorSizes('classroom-a').frames, 0);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// 内存模型：帧覆盖 + 事件计数（Ruling 8 的有界化）
+// 内存模型：帧覆盖（Ruling 8 的有界化）+ 文字档的**当前状态**（P2.2 的 T5）
+//
+// ⚠️ 这里曾经有**三条**用例守事件的累计计数：`事件是累计计数而不是流水账`
+// （120 条事件只占 1 条内存）、`滚动取最大深度、report 单独计数`、
+// `输入只记长度不记内容`。P2.2 的 T5 把文字档按**更窄的契约**恢复了（只有
+// visibility / scroll，四字段），那三条**按新语义重写**（见下面 `文字档…` 那几条）：
+//   · 「不是流水账」—— 保留，而且现在是**更强的**：旧版留的是四个计数、
+//     新版留的是**当前状态**（visible / depth / at / switches），键恒为 1 条；
+//   · 「滚动取最大深度」—— **语义改了**：现在存的是**当前**深度，不是历史最大值
+//     （教师图墙要回答的是「现在滚到哪」，不是「最远滚到哪」）。用例按新语义写；
+//   · 「输入只记长度不记内容」—— **删掉**：输入这条通道根本不存在，
+//     新契约里连一个能装内容的字段都没有（纯函数用例守着形状）。
+// **帧那条一条没少**（见下面这条）。
 // ══════════════════════════════════════════════════════════════════════════
 
 test('帧只留最新一帧：连发三帧后内存里仍然只有 1 条，而且是最后一帧', async () => {
@@ -761,12 +1227,14 @@ test('帧只留最新一帧：连发三帧后内存里仍然只有 1 条，而�
   }
 
   assert.equal(webappMonitorSizes('classroom-a').frames, 1, '三帧之后内存里必须仍然只有 1 条');
-  const { frame, counter } = peekWebappMonitor('classroom-a', PARTICIPANT_ID, 'webapp-1');
+  const frame = peekWebappFrame('classroom-a', PARTICIPANT_ID, 'webapp-1');
   assert.equal(frame?.dataUrl, 'data:image/jpeg;base64,third', '留下的必须是**最后一帧**（覆盖，不是追加也不是保留第一帧）');
-  assert.equal(counter?.frames, 3, '收到的**总数**记在计数里（内存只留 1 条，数量不丢）');
+  assert.equal(frame?.count, 3, '收到的**总数**记在条目里（内存只留 1 条，数量不丢 —— 汇总的 frameCount 取它）');
+  // 非空过自检：上面那条「只有 1 条」与这条 count=3 是**一起**成立的 ——
+  // 三帧全都没进来的话 frames 会是 0 而不是 1，frames 变成 3 条的话 count 也不会是 3。
 });
 
-test('事件是累计计数而不是流水账：内存条目不随事件条数增长', async () => {
+test('文字档：120 条事件之后内存里仍然只有 1 条**当前状态**（不是流水账）', async () => {
   resetMonitor();
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
@@ -776,46 +1244,40 @@ test('事件是累计计数而不是流水账：内存条目不随事件条数�
 
   const total = 120;
   for (let i = 0; i < total; i += 1) {
+    // 模拟「学生一下滚了好几下」：深度在几个十分位之间来回。
     await student.call('webapp-event', {
       classroomId: 'classroom-a',
       webappId: 'webapp-1',
-      events: [{ kind: 'click', selector: `button:nth-of-type(${i})` }],
+      events: [{ kind: 'scroll', depth: (i % 11) * 10, at: 1_700_000_000_000 + i }],
     });
   }
 
-  const sizes = webappMonitorSizes('classroom-a');
-  assert.equal(sizes.counters, 1, '120 条事件之后内存里仍然只有 1 条计数 —— 存流水账会让它变成 120');
-  assert.equal(sizes.frames, 0);
-  const { counter } = peekWebappMonitor('classroom-a', PARTICIPANT_ID, 'webapp-1');
-  assert.equal(counter?.clicks, total, '累计值必须一条不漏');
-  // 阳性对照：这 120 条确实**被转发过**（否则上面那个计数可能来自别的东西，
-  // 或者事件根本没进 handler）
-  assert.equal(harness.events('webapp-student-event').length, total);
+  assert.equal(
+    webappMonitorSizes('classroom-a').presence, 1,
+    '120 条事件之后内存里仍然只有 1 条 —— 存流水账会让它变成 120（规格 §5.5 的硬要求）',
+  );
+  const presence = peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1');
+  // i=119 时 (119 % 11) = 9 ⇒ 最后一条报的是 90。
+  assert.equal(presence?.depth, 90, '深度是**最后一条**说的那个（当前深度），不是历史最大值');
+  assert.equal(presence?.switches, 0, '一次可见性都没报过 ⇒ 切换次数是 0，不是"没这个字段"');
+  // 阳性对照：这 120 条确实**被转发过**（否则上面那些数字可能来自别的东西）
+  assert.equal(harness.events('webapp-student-presence').length, total);
+  // 转发的是**当前状态**，不是刚收到的那条事件。逐字段比，**不整体 deepEqual**：
+  // `at` 是服务端收到的时刻（刻意不用客户端时间戳），那个值在这里不可预测 ——
+  // 把它写成期望值等于让这条用例依赖墙上时钟。
+  const forwarded = harness.events('webapp-student-presence');
+  const last = forwarded[forwarded.length - 1]?.payload as Record<string, unknown>;
+  assert.equal(last.studentId, PARTICIPANT_ID);
+  assert.equal(last.webappId, 'webapp-1');
+  assert.equal(last.visible, false);
+  assert.equal(last.depth, 90);
+  assert.equal(last.switches, 0);
+  assert.equal(typeof last.at, 'number', 'at 必须是数字（服务端时刻）');
+  assert.deepEqual(Object.keys(last).sort(), ['at', 'depth', 'studentId', 'switches', 'visible', 'webappId'],
+    '转发的形状是**封闭的六项** —— 多一个字段就是多一条没人审查过的通道');
 });
 
-test('滚动取最大深度、report 单独计数', async () => {
-  resetMonitor();
-  const harness = createHarness();
-  const student = await joinAsStudent(harness, 'classroom-a');
-
-  for (const depth of [30, 90, 10, 70]) {
-    await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'scroll', depth }] });
-  }
-  await student.call('webapp-event', {
-    classroomId: 'classroom-a',
-    webappId: 'webapp-1',
-    events: [{ kind: 'report', selector: '{"score":3}' }, { kind: 'navigate', length: 12 }],
-  });
-
-  const { counter } = peekWebappMonitor('classroom-a', PARTICIPANT_ID, 'webapp-1');
-  assert.equal(counter?.maxDepth, 90, '滚动报的是「到过第几个十分位」，取最大值而不是最后一条');
-  assert.equal(counter?.reports, 1);
-  // navigate 只转发不计数：汇总要的是「时长 + 交互次数」，跳转不是交互次数
-  assert.equal(counter?.clicks, 0);
-  assert.equal(counter?.inputs, 0);
-});
-
-test('输入只记长度不记内容 —— 载荷里根本没有装内容的地方', async () => {
+test('文字档：可见性状态与切换次数（切走 → 切回 → 再切走 是 3 次）', async () => {
   resetMonitor();
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
@@ -823,17 +1285,114 @@ test('输入只记长度不记内容 —— 载荷里根本没有装内容的地
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
+  const send = (to: string) =>
+    student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'visibility', to, at: 1 }] });
+
+  // 加载时那一次 presence：'visible'（初值 visible=false ⇒ 这算第一次切换）
+  await send('visible');
+  const afterFirst = peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1');
+  assert.equal(afterFirst?.visible, true);
+  assert.equal(afterFirst?.depth, 0);
+  assert.equal(afterFirst?.switches, 1);
+  assert.equal(typeof afterFirst?.at, 'number', 'at 是服务端时刻，必须是个数字');
+  // ⚠️ 这条断言是**契约**，不是实现细节的快照：它钉住的是「内存里装不下任何页面内容」。
+  // 第 5 个字段 `framelessLoggedAt` 是「有文字档却一帧都没有」这条诊断的**已报过**标记，
+  // 取值只有「服务端时间戳 / 不存在」两种，**没有 selector / inputType / length 的位置**。
+  // ⇒ 实质保证没有被放宽；字段表变了就必须显式改这里，这正是这条断言存在的意义。
+  assert.deepEqual(
+    Object.keys(afterFirst ?? {}).sort(),
+    ['at', 'depth', 'framelessLoggedAt', 'switches', 'visible'],
+    '内存里的形状是**封闭的五项** —— 没有 selector / inputType / length 的位置',
+  );
+  await send('visible');
+  assert.equal(peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1')?.switches, 1, '同样的状态再来一次不算切换');
+  await send('hidden');
+  assert.equal(peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1')?.visible, false);
+  await send('visible');
+  assert.equal(peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1')?.switches, 3);
+
+  // 一批里同时带 visibility 与 scroll：两者都落到同一条状态上（顺序即语义）
   await student.call('webapp-event', {
     classroomId: 'classroom-a',
     webappId: 'webapp-1',
-    // 客户端硬塞一个 value —— 契约里没有这个字段的位置，服务端必须把它丢掉而不是转发
-    events: [{ kind: 'input', selector: 'input#answer', inputType: 'text', length: 7, value: '学生的答案' }],
+    events: [
+      { kind: 'scroll', depth: 20, at: 2 },
+      { kind: 'visibility', to: 'hidden', at: 3 },
+      { kind: 'scroll', depth: 60, at: 4 },
+    ],
   });
+  const final = peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1');
+  assert.equal(final?.visible, false);
+  assert.equal(final?.depth, 60, '同一批里的最后一条 scroll 决定深度');
+  assert.equal(webappMonitorSizes('classroom-a').presence, 1, '一批三条也仍然只有 1 条状态');
+});
 
-  const payload = harness.events('webapp-student-event')[0].payload as { events: Record<string, unknown>[] };
-  assert.equal(payload.events[0].length, 7);
-  assert.equal('value' in payload.events[0], false, '客户端硬塞的 value 不得穿过服务端');
-  assert.equal(JSON.stringify(payload).includes('学生的答案'), false);
+test('🔴 关掉画面的课堂里，文字档**照样**收发（那正是它的用武之地）', async () => {
+  // 回归门：谁要是给事件这条路加一道 captureEnabled 闸，这条会红。
+  // 服务端**没有**那道闸是刻意的 —— 闸在发送端的 SDK 里，而且它只管帧。
+  resetMonitor();
+  const harness = createHarness({ captureEnabled: false });
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+
+  assert.equal(webappMonitorSizes('classroom-a').presence, 1, '关掉画面不得影响文字档的入站');
+  assert.equal(harness.events('webapp-student-presence').length, 1, '关掉画面不得影响文字档的转发');
+  // 阳性对照：同一份上报在「没有教师在看」时**不转发**（按需推流仍然管着这条路）
+  const quiet = createHarness({ captureEnabled: false });
+  const quietStudent = await joinAsStudent(quiet, 'classroom-b');
+  await quietStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+  assert.deepEqual(quiet.events('webapp-student-presence'), [], '没人看时一个字节都不转发（Ruling 9）');
+  assert.equal(webappMonitorSizes('classroom-b').presence, 1, '但状态照记 —— 教师打开看板时才有一条现成的可读');
+});
+
+test('文字档的归属校验与帧同款：别的课堂 / 没关联的网页 / 没加入课堂一律不收', async () => {
+  const events = [{ kind: 'visibility', to: 'visible', at: 1 }];
+
+  // ① 上报**别的课堂**的 classroomId
+  resetMonitor();
+  const wrongClassroom = createHarness();
+  const s1 = await joinAsStudent(wrongClassroom, 'classroom-a');
+  const t1 = wrongClassroom.connect({ cookie: teacherCookie() });
+  await t1.call('join-teacher-board', 'classroom-a');
+  await t1.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  await s1.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events });
+  assert.equal(webappMonitorSizes('classroom-b').presence, 0, '别的课堂一个字都不该进内存');
+  assert.deepEqual(wrongClassroom.events('webapp-student-presence'), []);
+
+  // ② 上报本课堂**没关联**的 webappId（假 prisma 的 linkedWebapp:false 就是这个意思）
+  const unlinked = createHarness({ linkedWebapp: false });
+  const s2 = await joinAsStudent(unlinked, 'classroom-a');
+  const t2 = unlinked.connect({ cookie: teacherCookie() });
+  await t2.call('join-teacher-board', 'classroom-a');
+  await t2.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  await s2.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-OTHER', events });
+  assert.equal(webappMonitorSizes('classroom-a').presence, 0, '没关联的网页不该被写进来（否则能污染别的网页的状态）');
+  assert.deepEqual(unlinked.events('webapp-student-presence'), []);
+
+  // ③ 没走 join-classroom 的连接（不在 classroom:<id> 房间里）
+  const strangerHarness = createHarness();
+  await joinAsStudent(strangerHarness, 'classroom-a');
+  const stranger = strangerHarness.connect();
+  stranger.socket.data.classroomId = 'classroom-a';
+  stranger.socket.data.studentId = PARTICIPANT_ID;
+  await stranger.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events });
+  assert.equal(webappMonitorSizes('classroom-a').presence, 0, '没加入课堂的连接不该被采信');
+
+  // 阳性对照：同样的一条上报在**合法**的连接上必须收下 ——
+  // 否则上面三条在「事件路径整个坏了」时也成立。
+  resetMonitor();
+  const ok = createHarness();
+  const student = await joinAsStudent(ok, 'classroom-a');
+  const teacher = ok.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events });
+  assert.equal(webappMonitorSizes('classroom-a').presence, 1);
+  assert.equal(ok.events('webapp-student-presence').length, 1);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -851,11 +1410,10 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,one' });
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }, { kind: 'input', length: 3 }] });
   t.mock.timers.tick(60_000);
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,two' });
-  // 另一个网页，只有事件没有帧（时长必须退化成 0，而不是让这一行消失）
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-2', events: [{ kind: 'report' }] });
+  // 第二个网页：只**发过一帧**。它也必须成行，而且时长退化成 0（首帧=末帧）。
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-2', dataUrl: 'data:image/jpeg;base64,three' });
 
   const rows = drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
 
@@ -865,10 +1423,6 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
     studentId: PARTICIPANT_ID,
     webappId: 'webapp-1',
     durationMs: 60_000,
-    clicks: 1,
-    inputs: 1,
-    maxDepth: 0,
-    reports: 0,
     frameCount: 2,
   });
   const second = rows.find(row => row.webappId === 'webapp-2');
@@ -876,24 +1430,49 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
     studentId: PARTICIPANT_ID,
     webappId: 'webapp-2',
     durationMs: 0,
-    clicks: 0,
-    inputs: 0,
-    maxDepth: 0,
-    reports: 1,
-    frameCount: 0,
+    frameCount: 1,
   });
+  // 行的形状**恰好**这四项 —— 操作行为的四个计数（clicks / inputs / maxDepth / reports）
+  // 不再产出。这一条写死，免得它们悄悄回来。
+  // ⚠️ 文字档恢复之后这里**仍然**是四项：文字档存的是"此刻的状态"（可见性 / 深度），
+  //    它不是一项可以汇总的课外统计 —— 见 drainWebappMonitor 里那段注释。
+  assert.deepEqual(Object.keys(first ?? {}).sort(), ['durationMs', 'frameCount', 'studentId', 'webappId']);
 
   // 三个 Map 都被清空（本课堂的部分）
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 0 });
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 0 });
   assert.deepEqual(drainWebappMonitor(harness.io as unknown as Server, 'classroom-a'), [], '再 drain 一次必须什么都没有（已经取走了）');
 
   // 别的课堂的数据一条都不能被顺手带走
   const other = createHarness();
   const otherStudent = await joinAsStudent(other, 'classroom-b');
-  await otherStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'click' }] });
-  assert.deepEqual(webappMonitorSizes('classroom-b').counters, 1);
+  await otherStudent.call('webapp-frame', { classroomId: 'classroom-b', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  assert.deepEqual(webappMonitorSizes('classroom-b').frames, 1);
   assert.deepEqual(drainWebappMonitor(harness.io as unknown as Server, 'classroom-a'), []);
-  assert.equal(webappMonitorSizes('classroom-b').counters, 1, 'drain 只能清自己那个课堂');
+  assert.equal(webappMonitorSizes('classroom-b').frames, 1, 'drain 只能清自己那个课堂');
+});
+
+test('drain 也清空文字档的当前状态，而且同样只清自己那个课堂', async () => {
+  // ⚠️ 这条**必须是独立的一条**：上面那条 drain 用例里一个字的事件都没发过，
+  // 于是它对 presence 的 `presence: 0` 断言是**空过**的（0 是因为从来没有过，
+  // 不是因为被清掉了）。这条先把状态建起来，再 drain。
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const other = createHarness();
+  const otherStudent = await joinAsStudent(other, 'classroom-b');
+
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+  await otherStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+  // 前置条件：两边都真的有状态，否则下面两条断言在「事件路径整个坏了」时也成立
+  assert.equal(webappMonitorSizes('classroom-a').presence, 1);
+  assert.equal(webappMonitorSizes('classroom-b').presence, 1);
+
+  drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
+
+  assert.equal(webappMonitorSizes('classroom-a').presence, 0, 'drain 必须把文字档的当前状态一起释放');
+  assert.equal(peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1'), null);
+  assert.equal(webappMonitorSizes('classroom-b').presence, 1, 'drain 只能清自己那个课堂（整本 clear 会抹掉别的课堂）');
+  assert.notEqual(peekWebappPresence('classroom-b', PARTICIPANT_ID, 'webapp-1'), null);
 });
 
 test('drain 会取消待触发的停止推流定时器（不给已结束的课堂广播）', async (t) => {
@@ -939,8 +1518,8 @@ function summaryPrisma() {
 test('recordWebappSummary 落盘：在同一事务里「先删该课堂的旧汇总、再写新的」', async () => {
   const { prisma, deletes, writes, batches } = summaryPrisma();
   const rows = [
-    { studentId: 'p1', webappId: 'w1', durationMs: 1000, clicks: 2, inputs: 1, maxDepth: 80, reports: 0, frameCount: 3 },
-    { studentId: 'p2', webappId: 'w1', durationMs: 0, clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frameCount: 0 },
+    { studentId: 'p1', webappId: 'w1', durationMs: 1000, frameCount: 3 },
+    { studentId: 'p2', webappId: 'w1', durationMs: 0, frameCount: 0 },
   ];
 
   const written = await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', rows);
@@ -948,10 +1527,12 @@ test('recordWebappSummary 落盘：在同一事务里「先删该课堂的旧汇
   assert.equal(written, 2);
   // 删除的是**这个课堂**的全部旧汇总（不是按学生逐条删，退课的学生才不会留下残行）
   assert.deepEqual(deletes, [{ where: { classroomId: 'classroom-a' } }]);
+  // ⚠️ 写下去**恰好这五列**：clicks / inputs / maxDepth / reports 不再产出，
+  // 落库时走它们在 schema 上的 @default(0)（表结构一行没改，也没有 db push）。
   assert.deepEqual(writes, [{
     data: [
-      { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p1', durationMs: 1000, clicks: 2, inputs: 1, maxDepth: 80, reports: 0, frameCount: 3 },
-      { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p2', durationMs: 0, clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frameCount: 0 },
+      { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p1', durationMs: 1000, frameCount: 3 },
+      { classroomId: 'classroom-a', webappId: 'w1', studentId: 'p2', durationMs: 0, frameCount: 0 },
     ],
   }]);
   // 两件事必须在**同一个** $transaction 里（否则删完失败就把旧数据丢了）
@@ -961,11 +1542,11 @@ test('recordWebappSummary 落盘：在同一事务里「先删该课堂的旧汇
 test('recordWebappSummary 的替换语义：第二次结束是替换而不是追加（撞唯一键会让整批失败）', async () => {
   const { prisma, deletes, writes } = summaryPrisma();
   const firstClass = [
-    { studentId: 'p1', webappId: 'w1', durationMs: 100, clicks: 1, inputs: 0, maxDepth: 0, reports: 0, frameCount: 1 },
-    { studentId: 'p2', webappId: 'w1', durationMs: 100, clicks: 1, inputs: 0, maxDepth: 0, reports: 0, frameCount: 1 },
+    { studentId: 'p1', webappId: 'w1', durationMs: 100, frameCount: 1 },
+    { studentId: 'p2', webappId: 'w1', durationMs: 100, frameCount: 1 },
   ];
   const secondClass = [
-    { studentId: 'p1', webappId: 'w1', durationMs: 999, clicks: 7, inputs: 3, maxDepth: 90, reports: 1, frameCount: 42 },
+    { studentId: 'p1', webappId: 'w1', durationMs: 999, frameCount: 42 },
   ];
 
   await recordWebappSummary(prisma as unknown as PrismaClient, 'classroom-a', firstClass);
@@ -976,7 +1557,7 @@ test('recordWebappSummary 的替换语义：第二次结束是替换而不是追
   assert.equal(writes.length, 2);
   assert.deepEqual(writes[1].data, [{
     classroomId: 'classroom-a', webappId: 'w1', studentId: 'p1',
-    durationMs: 999, clicks: 7, inputs: 3, maxDepth: 90, reports: 1, frameCount: 42,
+    durationMs: 999, frameCount: 42,
   }], '第二节课写下去的必须是第二节课的数值');
   // 第二节课里 p2 没上报 ⇒ 它上一节课的行必须被删掉（替换语义，不是叠加）
   assert.equal(writes[1].data.length, 1);
@@ -1024,11 +1605,11 @@ test('课堂已结束后，学生再上报既不转发也不重新占内存（�
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
 
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
 
   assert.deepEqual(harness.events('webapp-student-frame'), [], '已结束的课堂不该再有转发');
-  assert.deepEqual(harness.events('webapp-student-event'), []);
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 1 },
+  assert.deepEqual(harness.events('webapp-student-presence'), [], '文字档同样不该再有转发');
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 1 },
     '内存不能在这里重新长回来 —— 那些数据要等 6 小时 TTL 或下一次 drain 才释放');
 
   // 阳性对照：**同样的上报**在一个 active 的课堂里必须被收下（否则上一条在
@@ -1036,8 +1617,8 @@ test('课堂已结束后，学生再上报既不转发也不重新占内存（�
   const active = createHarness({ classroomStatus: 'active' });
   const activeStudent = await joinAsStudent(active, 'classroom-b');
   await activeStudent.call('webapp-frame', { classroomId: 'classroom-b', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
-  await activeStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'click' }] });
-  assert.deepEqual(webappMonitorSizes('classroom-b'), { frames: 1, counters: 1, watchers: 0 });
+  await activeStudent.call('webapp-event', { classroomId: 'classroom-b', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+  assert.deepEqual(webappMonitorSizes('classroom-b'), { frames: 1, presence: 1, watchers: 0 });
 });
 
 test('TTL：课堂永不结束（教师直接关掉浏览器）时内存最终也会被回收', async (t) => {
@@ -1050,22 +1631,23 @@ test('TTL：课堂永不结束（教师直接关掉浏览器）时内存最终�
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
 
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, counters: 1, watchers: 0 });
+  // 文字档也留一条：TTL 必须把**三个 Map** 都回收，不能只顾着帧那本。
+  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'visibility', to: 'visible', at: 1 }] });
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, presence: 1, watchers: 0 });
 
   // 阳性对照一：TTL 之内（推 5 小时 + 一次定时器）不得被清掉 ——
   // 少了这一条，「6 小时 TTL」实现成「10 分钟 TTL」也会让下面那条通过
   t.mock.timers.tick(5 * 60 * 60 * 1000);
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, counters: 1, watchers: 0 }, 'TTL 之内不许裁剪');
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, presence: 1, watchers: 0 }, 'TTL 之内不许裁剪');
 
   // 超过 TTL：下一次定时器到点时必须清掉
   t.mock.timers.tick(2 * 60 * 60 * 1000);
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 0 }, '超过 TTL 必须被回收');
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 0 }, '超过 TTL 必须被回收');
 
   // 阳性对照二：清掉之后再有新上报，数据要能重新进来（不是「清一次就永久坏了」）
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
-  assert.deepEqual(webappMonitorSizes('classroom-a').counters, 1);
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  assert.deepEqual(webappMonitorSizes('classroom-a').frames, 1);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1108,19 +1690,14 @@ function endRoutePrisma() {
 
 test('走真实的 POST /:id/end：汇总写了一条，且该课堂的三个 Map 被清空', async (t) => {
   resetMonitor();
-  // 1) 先用真实的 socket handler 造出内存数据（教师在看、学生在上报）
+  // 1) 先用真实的 socket handler 造出内存数据（教师在看、学生在推帧）
   const monitorHarness = createHarness();
   const student = await joinAsStudent(monitorHarness, 'classroom-a');
   const teacher = monitorHarness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,one' });
-  await student.call('webapp-event', {
-    classroomId: 'classroom-a',
-    webappId: 'webapp-1',
-    events: [{ kind: 'click' }, { kind: 'click' }, { kind: 'input', length: 4 }, { kind: 'scroll', depth: 60 }],
-  });
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, counters: 1, watchers: 1 }, '前置条件：内存里必须真的有数据，否则这条用例什么都没验证');
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 1, presence: 0, watchers: 1 }, '前置条件：内存里必须真的有数据，否则这条用例什么都没验证');
 
   // 2) 起真实的 express 路由，把本模块的真实 drain / record 经 app.set 接进去
   const routePrisma = endRoutePrisma();
@@ -1147,20 +1724,16 @@ test('走真实的 POST /:id/end：汇总写了一条，且该课堂的三个 Ma
     webappId: 'webapp-1',
     studentId: PARTICIPANT_ID,
     durationMs: 0,
-    clicks: 2,
-    inputs: 1,
-    maxDepth: 60,
-    reports: 0,
     frameCount: 1,
   }]);
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 0 }, '落盘的同一处必须清空本课堂的三个 Map');
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 0 }, '落盘的同一处必须清空本课堂的三个 Map');
 });
 
 test('汇总落盘失败不能让「结束课堂」这个请求失败（课堂已经结束，不可回滚）', async (t) => {
   resetMonitor();
   const monitorHarness = createHarness();
   const student = await joinAsStudent(monitorHarness, 'classroom-a');
-  await student.call('webapp-event', { classroomId: 'classroom-a', webappId: 'webapp-1', events: [{ kind: 'click' }] });
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
 
   const routePrisma = endRoutePrisma();
   const app = express();
@@ -1182,7 +1755,7 @@ test('汇总落盘失败不能让「结束课堂」这个请求失败（课堂�
   assert.equal(response.status, 200, '落盘失败必须是「记日志继续」，不是 500');
   // 内存仍然被取走了（drain 在 record 之前）——这是**有意的**：宁可丢汇总，
   // 也不能让一个已结束课堂的内存永远留着。这里把它钉住，免得以后有人「顺手」调换顺序。
-  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, counters: 0, watchers: 0 });
+  assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 0 });
 });
 
 test('没有经 app.set 暴露监控时，结束课堂照常工作（老进程 / 精简环境下的降级）', async (t) => {
@@ -1201,4 +1774,339 @@ test('没有经 app.set 暴露监控时，结束课堂照常工作（老进程 /
 
   assert.equal(response.status, 200);
   assert.deepEqual(routePrisma.usageWrites, []);
+});
+
+// ---------------------------------------------------------------------------
+// `webapp-frameless` 诊断
+//
+// 背景：老 iPad 上报「教师端只看得到浏览位置、看不到图片」。这种形状此前**一个字都不说**
+// —— 失败只写进 iframe 的 console，而 iPad 上没有开发者工具，于是只能靠猜。
+// 这条告警把「学生报了文字档却一帧都没有」变成服务端日志里的一行。
+//
+// ⚠️ 这两条用例必须成对存在：只测「会出现」证明不了它**没有**在正常情形下乱报，
+// 而一条总在响的告警等于没有告警。
+// ---------------------------------------------------------------------------
+
+/**
+ * 临时接管 `console.warn` 与 `console.log`，收集一段时间内的行。
+ *
+ * ⚠️ **两者都要收**：诊断行的级别本身是有语义的 —— `webapp-frameless` 是「出问题了」
+ * 所以走 `warn`，`webapp-frame-first` 是「成功了」所以走 `log`。只截获其中一种，
+ * 会让「实现用了另一个级别」表现成「这条日志没打出来」，而那是最容易看错的一类失败。
+ */
+function captureServerLogs() {
+  const lines: string[] = [];
+  const originalWarn = console.warn;
+  const originalLog = console.log;
+  const record = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  console.warn = record;
+  console.log = record;
+  return {
+    lines,
+    restore: () => { console.warn = originalWarn; console.log = originalLog; },
+    matching: (needle: string) => lines.filter(line => line.includes(needle)),
+  };
+}
+
+/**
+ * 只数**本用例那个学生**的告警。
+ *
+ * ⚠️ 不能只按 `webapp-frameless` 这个字符串数：本文件里不少既有用例（别的课堂、别的
+ * 学生）同样满足这条告警的条件，它们会落进同一个 console 窗口。按 `needle` 裸数会把
+ * 别人的行算成自己的 —— 那种断言在并行或重排之下时绿时红，而失败信息还指不到原因。
+ */
+function framelessFor(captured: ReturnType<typeof captureServerLogs>, classroomId: string, studentId: string) {
+  return captured.matching('webapp-frameless').filter(
+    line => line.includes(`classroom=${classroomId}`) && line.includes(`student=${studentId}`),
+  );
+}
+
+test('🔴 诊断：有文字档却一帧都没有 ⇒ 报一次 webapp-frameless，且**只报一次**', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  const captured = captureServerLogs();
+  t.after(captured.restore);
+
+  const sendPresence = (to: string, depth: number) => student.call('webapp-event', {
+    classroomId: 'classroom-a',
+    webappId: 'webapp-1',
+    events: [{ kind: 'visibility', to, at: 1 }, { kind: 'scroll', depth, at: 1 }],
+  });
+
+  // 三批文字档，一帧都不发。
+  await sendPresence('visible', 10);
+  await sendPresence('hidden', 20);
+  await sendPresence('visible', 30);
+
+  assert.equal(
+    framelessFor(captured, 'classroom-a', PARTICIPANT_ID).length,
+    1,
+    '必须且只报一次 —— 文字档是 ≥400ms 一批的，每批都报就是刷屏，而刷屏等于没有诊断。'
+    + `实际收到的行：${JSON.stringify(framelessFor(captured, 'classroom-a', PARTICIPANT_ID))}`,
+  );
+
+  // 前置确认：这个学生**确实**有 presence（否则上面那次告警可能来自别的路径）。
+  assert.ok(peekWebappPresence('classroom-a', PARTICIPANT_ID, 'webapp-1'), '前置：presence 真的存下来了');
+  // 前置确认：这一路真的没有帧（告警的判据成立，不是碰巧）。
+  assert.equal(peekWebappFrame('classroom-a', PARTICIPANT_ID, 'webapp-1'), null, '前置：确实一帧都没有');
+
+  // 补一帧之后，这个学生不再是 frameless ⇒ 不该再有新的告警。
+  await student.call('webapp-frame', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AAAA',
+  });
+  await sendPresence('hidden', 40);
+  assert.equal(framelessFor(captured, 'classroom-a', PARTICIPANT_ID).length, 1, '发过帧之后条件已不成立');
+});
+
+test('阴性对照：先发过帧的学生，文字档再多也不触发 webapp-frameless', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  const captured = captureServerLogs();
+  t.after(captured.restore);
+
+  // ⚠️ 顺序是先帧后文字档 —— 这条要证明的正是「有帧就不报」，
+  // 反过来的话它可能与第一条用例测到的是同一件事。
+  await student.call('webapp-frame', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AAAA',
+  });
+  assert.ok(peekWebappFrame('classroom-a', PARTICIPANT_ID, 'webapp-1'), '前置：帧真的存下来了');
+
+  for (const depth of [10, 20, 30]) {
+    await student.call('webapp-event', {
+      classroomId: 'classroom-a',
+      webappId: 'webapp-1',
+      events: [{ kind: 'scroll', depth, at: 1 }],
+    });
+  }
+
+  assert.deepEqual(
+    framelessFor(captured, 'classroom-a', PARTICIPANT_ID),
+    [],
+    '有帧的学生不该触发这条告警 —— 一条总在响的告警等于没有告警',
+  );
+});
+
+test('诊断：形状不合规的帧不再静默丢弃，而是留下一行**原因**', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const captured = captureServerLogs();
+  t.after(captured.restore);
+
+  const sendFrame = (dataUrl: unknown) =>
+    student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl });
+
+  // 三种拒因各来一次。它们走的是 `validateWebappFramePayload` 的三条不同分支 ——
+  // 这一条用例要证明的是**日志能说出是哪一条**，而不是只证明「被拒了」。
+  await sendFrame('not-an-image');                       // 前缀不合规
+  await sendFrame(123);                                  // 类型不合规
+  await sendFrame('data:image/png;base64,' + 'A'.repeat(40 * 1024)); // 超长
+
+  const lines = captured.matching('webapp-frame 被拒');
+  assert.equal(lines.length, 3, `三条不合规的帧各该留一行：${JSON.stringify(lines)}`);
+  assert.ok(lines.some(line => line.includes('前缀不是')), `要能看出是前缀问题：${JSON.stringify(lines)}`);
+  assert.ok(lines.some(line => line.includes('不是字符串')), `要能看出是类型问题：${JSON.stringify(lines)}`);
+  assert.ok(lines.some(line => line.includes('超长')), `要能看出是超长：${JSON.stringify(lines)}`);
+
+  // 阴性对照：合规的帧**一行都不该**产生「被拒」日志 ——
+  // 否则上面那三条可能只是「这条路径总在打日志」，而不是真的在区分类别。
+  await sendFrame('data:image/jpeg;base64,AAAA');
+  assert.equal(captured.matching('webapp-frame 被拒').length, 3, '合规的帧不该被记成"被拒"');
+});
+
+test('诊断：先 frameless、后第一帧，两行合起来才讲得出完整故事', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const captured = captureServerLogs();
+  t.after(captured.restore);
+
+  const frameFirst = () => captured.matching('webapp-frame-first');
+  const sendFrame = () => student.call('webapp-frame', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AAAA',
+  });
+
+  // 先来一批文字档：此时确实一帧都没有 ⇒ frameless 那条应该响。
+  await student.call('webapp-event', {
+    classroomId: 'classroom-a', webappId: 'webapp-1',
+    events: [{ kind: 'scroll', depth: 10, at: 1 }],
+  });
+  assert.equal(captured.matching('webapp-frameless').length, 1, '前置：无帧时 frameless 确实报了');
+  assert.deepEqual(frameFirst(), [], '前置：此时还没有帧');
+
+  await sendFrame();
+  assert.equal(frameFirst().length, 1, `第一帧必须留一行：${JSON.stringify(frameFirst())}`);
+
+  // 只报第一帧：之后每 10 秒一张地报下去就是刷屏。
+  await sendFrame();
+  await sendFrame();
+  assert.equal(frameFirst().length, 1, '后续帧不该再报 —— 这条日志回答的是「有没有成功过」');
+  assert.equal(peekWebappFrame('classroom-a', PARTICIPANT_ID, 'webapp-1')?.count, 3, '前置：三帧确实都存下来了');
+
+  // 读日志的配方就长这样：`frameless` + `frame-first` 两条一起看。
+  // **只有 frameless、没有 frame-first** 才是一帧都没成功过的确证 ——
+  // 单看 frameless 得不出结论（首帧有 0~3s 抖动，告警可能早于被观测的截图档启动）。
+});
+
+// ---------------------------------------------------------------------------
+// `webapp-diag`（第 5 条通道）
+//
+// 存在的唯一理由：Safari 在 iOS 上不把跨源 iframe 单列成可检查目标，SDK 在 iframe 里的
+// console 日志**结构上取不到**。所以这条通道的**实质保证**是它不能变成内容后门 ——
+// 下面这一组断言就是那条保证的执行点。
+// ---------------------------------------------------------------------------
+
+test('webapp-diag：只认白名单里的码，其余一律丢', () => {
+  const base = { classroomId: 'c1', webappId: 'w1' };
+
+  // 阳性：码表里的都放行，且形状被**重建**成固定四项。
+  const ok = validateWebappDiagPayload({ ...base, code: 'empty-canvas', n: 3, w: 20, h: 30 });
+  assert.deepEqual(ok, { classroomId: 'c1', webappId: 'w1', code: 'empty-canvas', n: 3, w: 20, h: 30 });
+
+  // 🔴 阴性：不在表里的码一律丢 —— 这条是「白名单」而非「黑名单」的判据。
+  assert.equal(validateWebappDiagPayload({ ...base, code: 'made-up' }), null);
+  assert.equal(validateWebappDiagPayload({ ...base, code: '' }), null);
+  assert.equal(validateWebappDiagPayload({ ...base, code: 42 }), null);
+
+  // 🔴 阴性：**多带的字段不会被转发** —— 「这条通道不能变成内容后门」的执行点。
+  const withExtra = validateWebappDiagPayload({
+    ...base, code: 'timeout', n: 1,
+    // 客户端硬塞的自由文本与嵌套对象（模拟「SDK 被改坏 / 被替换」）
+    message: '学生的真实输入内容', nested: { deep: true }, selector: 'input#answer',
+  });
+  assert.deepEqual(Object.keys(withExtra ?? {}).sort(), ['classroomId', 'code', 'h', 'n', 'w', 'webappId']);
+  assert.equal(JSON.stringify(withExtra).includes('学生的真实输入内容'), false, '自由文本绝不能被带出去');
+
+  // 数字一律夹成非负整数：NaN / Infinity / 负数 / 小数都不许原样过。
+  const clamped = validateWebappDiagPayload({ ...base, code: 'capture-error', n: Number.NaN, w: -5, h: 12.7 });
+  assert.equal(clamped?.n, 0);
+  assert.equal(clamped?.w, 0);
+  assert.equal(clamped?.h, 13);
+
+  // 形状不合规（非对象 / 缺 id）
+  assert.equal(validateWebappDiagPayload(null), null);
+  assert.equal(validateWebappDiagPayload([]), null);
+  assert.equal(validateWebappDiagPayload({ ...base, classroomId: '', code: 'timeout' }), null);
+});
+
+test('webapp-diag：走 socket 到服务端日志（含归属判定，且**不因归属失败而丢**）', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const captured = captureServerLogs();
+  t.after(captured.restore);
+
+  const diagLines = () => captured.matching('webapp-diag code=');
+
+  // ① 合法归属：诊断照记，并带上学生 id。
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'empty-canvas', n: 0, w: 0, h: 0,
+  });
+  assert.equal(diagLines().length, 1, `合法归属的诊断要记下来：${JSON.stringify(diagLines())}`);
+  assert.ok(diagLines()[0].includes('empty-canvas'), diagLines()[0]);
+  assert.ok(diagLines()[0].includes(PARTICIPANT_ID), `归属要带上学生 id：${diagLines()[0]}`);
+
+  // ② 🔴 **归属不成立时也必须记**：诊断的价值在于「为什么失败」，而失败很可能正是
+  //    归属不通过（重连未重新 join 之类）。若这里也要求是有效学生，
+  //    最需要的那一类诊断恰好会被丢掉 —— 这正是这条用例守的东西。
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-b', webappId: 'webapp-1', code: 'timeout', n: 15000, w: 0, h: 0,
+  });
+  const afterForeign = diagLines();
+  assert.equal(afterForeign.length, 2, `归属不通过的诊断同样要记：${JSON.stringify(afterForeign)}`);
+  assert.ok(afterForeign[1].includes('timeout'), afterForeign[1]);
+  assert.ok(afterForeign[1].includes('无（'), `要写明归属为何不成立：${afterForeign[1]}`);
+
+  // ③ 阴性对照：形状不合规的一条**不该**留下诊断日志（只留一条形状告警）。
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'not-a-real-code', n: 0, w: 0, h: 0,
+  });
+  assert.equal(diagLines().length, 2, '不合规的码不得被记成一条诊断');
+  assert.equal(captured.matching('webapp-diag 形状不合规').length, 1, '但要留下一条形状告警');
+});
+
+
+
+// ---------------------------------------------------------------------------
+// 「这个学生的设备拍不出画面」（`dom-tier-gave-up` → 教师端）
+//
+// 实测背景（2026-09-22）：老 iPad 上的纯 DOM 网页，snapdom 生成的那张 SVG 在 Safari 15
+// 上解码不出来 ⇒ 永远没有缩略图。这是**平台限制**，不是待修的 bug（见
+// server/vendor/README.md 的「本地补丁」一节）。教师端必须能把它与「等待画面…」分开 ——
+// 后者说的是「第一帧还在路上」，会自愈；这条不会。
+// ---------------------------------------------------------------------------
+
+test('拍不出画面：dom-tier-gave-up 会**存下来**并推给教师看板', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'dom-tier-gave-up', n: 2, w: 0, h: 0,
+  });
+
+  const pushed = harness.events('webapp-student-capture-blocked');
+  assert.equal(pushed.length, 1, `要推一条给教师：${JSON.stringify(pushed)}`);
+  assert.equal((pushed[0].payload as { studentId: string }).studentId, PARTICIPANT_ID);
+  assert.equal((pushed[0].payload as { webappId: string }).webappId, 'webapp-1');
+
+  // 阴性对照：**别的**诊断码不得置起这个标记 —— 否则「等待画面…」会被它盖住，
+  // 而那正是这两句话要分开的理由。
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'capture-error', n: 200, w: 100, h: 100,
+  });
+  assert.equal(harness.events('webapp-student-capture-blocked').length, 1, 'capture-error 不该置这个标记');
+});
+
+test('拍不出画面：教师**事后**才订阅也会收到回放（这一条是粘性事件，不是在流的）', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+
+  // ① 先发生：学生设备放弃采集，此时**没有**教师在看。
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'dom-tier-gave-up', n: 2, w: 0, h: 0,
+  });
+  assert.deepEqual(harness.events('webapp-student-capture-blocked'), [], '前置：此刻还没人订阅，不该有推送');
+
+  // ② 教师随后才打开看板 ⇒ 必须**回放**那条标记。
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  const replayed = harness.events('webapp-student-capture-blocked');
+  assert.equal(replayed.length, 1, `教师事后订阅要收到回放：${JSON.stringify(replayed)}`);
+  assert.equal((replayed[0].payload as { studentId: string }).studentId, PARTICIPANT_ID);
+});
+
+test('拍不出画面：drain 之后不再回放（标记随课堂一起释放）', async (t) => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  await student.call('webapp-diag', {
+    classroomId: 'classroom-a', webappId: 'webapp-1', code: 'dom-tier-gave-up', n: 2, w: 0, h: 0,
+  });
+
+  drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
+
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.deepEqual(
+    harness.events('webapp-student-capture-blocked'), [],
+    'drain 之后那本 Map 里不该还留着这个课堂的键 —— 它是"此刻"的设备状态，课堂结束就没有意义',
+  );
 });

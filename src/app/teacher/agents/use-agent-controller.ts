@@ -1,18 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
-import type { AgentSummary } from '@/lib/types';
+import type { AgentSummary, RelatedClassroom } from '@/lib/types';
 
 type Notice = { message: string; type: 'success' | 'error' };
 
+/** 卡片上「关联课堂」弹窗的状态。`classrooms` 为空数组时是「读到了、确实没有」。 */
+export interface RelatedClassroomsState {
+  agent: AgentSummary;
+  classrooms: RelatedClassroom[];
+}
+
 export function useAgentController({ onNotice, onDeleteBlocked }: {
   onNotice: (notice: Notice) => void;
-  onDeleteBlocked: (agent: AgentSummary) => void;
+  onDeleteBlocked: (agent: AgentSummary, classrooms: RelatedClassroom[]) => void;
 }) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
   const [busyOperation, setBusyOperation] = useState<string | null>(null);
+  const [relatedClassrooms, setRelatedClassrooms] = useState<RelatedClassroomsState | null>(null);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
   const callbacksRef = useRef({ onNotice, onDeleteBlocked });
@@ -74,7 +82,8 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
     try {
       const usage = await api.checkAgentUsage(agent.id);
       if (usage.used) {
-        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(agent);
+        // 把清单一起交给弹窗 —— 它已经在这个响应里了，不要再发一次请求。
+        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(agent, usage.classrooms);
         return;
       }
       if (!window.confirm(`确定删除 "${agent.name}" 吗？`)) return;
@@ -103,5 +112,41 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
     }
   }, [testing]);
 
-  return { agents, loading, testing, busyOperation, loadAgents, toggleAgent, deleteAgent, testAgent };
+  /**
+   * 打开「关联课堂」弹窗。
+   *
+   * ⚠️ **点击时才请求**，不在卡片挂载时取：列表接口只给计数，清单要靠 `:id/usage`，
+   * 若每张卡片自己挂载即取，一页 12 张卡就是 12 个请求（N+1）。
+   *
+   * ⚠️ 先开弹窗（清单为空、`relatedLoading` 为真）再取数：让「正在读取」有一个
+   * 明确的载体，而不是点下去什么都不发生。
+   */
+  const openRelatedClassrooms = useCallback(async (agent: AgentSummary) => {
+    setRelatedClassrooms({ agent, classrooms: [] });
+    setRelatedLoading(true);
+    try {
+      const usage = await api.checkAgentUsage(agent.id);
+      if (mountedRef.current) setRelatedClassrooms({ agent, classrooms: usage.classrooms });
+    } catch (error) {
+      // 读不到就关掉弹窗并明说 —— 留一个空清单会让教师以为「确实没有关联」，
+      // 而那是与「没读到」完全不同的结论。
+      if (mountedRef.current) {
+        setRelatedClassrooms(null);
+        callbacksRef.current.onNotice({ message: `无法读取“${agent.name}”的关联课堂：${error instanceof Error ? error.message : '请求失败'}`, type: 'error' });
+      }
+    } finally {
+      if (mountedRef.current) setRelatedLoading(false);
+    }
+  }, []);
+
+  const closeRelatedClassrooms = useCallback(() => {
+    setRelatedClassrooms(null);
+    setRelatedLoading(false);
+  }, []);
+
+  return {
+    agents, loading, testing, busyOperation,
+    relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms,
+    loadAgents, toggleAgent, deleteAgent, testAgent,
+  };
 }

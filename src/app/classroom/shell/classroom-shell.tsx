@@ -127,12 +127,54 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
   /** 前台层：`activeModuleId` 为 `null` 时是首页。**点击即刻生效**，不等动画。 */
   const frontKey: LayerKey = activeModuleId ?? 'home';
 
+  /**
+   * 上报「我此刻在看哪个模块」（P2.3）。教师看板的「跟随」模式靠它 ——
+   * 没有它，教师只能看到一个全班统一的视图，看不到"谁在哪一件套里"。
+   *
+   * ⚠️ 只在**变化时**发一次（几十字节），**不是心跳**；教师中途进来看板时由服务端
+   * **回放**当前状态（见 `socket/index.ts` 的 `join-teacher-board`）。两条路各管一半，
+   * 少任何一条都会让"已经在模块里待着"的学生显示成"不知道他在哪"。
+   *
+   * ⚠️ 走**已有的那条** socket（`chat.wsRef`），**绝不另开连接** —— 那会给学生端多一条
+   * 常驻连接，违背 §4.8 的内存门槛（与探究助手面板同款约束）。
+   *
+   * ⚠️ 载荷里**只有"在哪个模块"，没有任何内容**。
+   */
+  useEffect(() => {
+    const socket = chat.wsRef.current;
+    const classroomId = chat.classroom?.id;
+    if (!socket || !classroomId) return;
+    socket.emit('module-focus', { classroomId, moduleId: activeModuleId });
+  }, [activeModuleId, chat.wsRef, chat.classroom?.id]);
+
   /** 层的位次，只用来判方向：首页最左，模块按 Tab 栏顺序向右排。 */
   const orderOf = (key: LayerKey): number => {
     if (key === 'home') return 0;
     const index = tabs.findIndex((tab) => tab.id === key);
     return index === -1 ? 2 : index + 1; // 不在 tabs 里（刚被教师关掉）时给一个中性位次
   };
+
+  /**
+   * 用户是否**主动**切换过视图（点 Tab 栏 / 点首页卡片 / 点回首页）。
+   *
+   * 判据是「挂载后、首次主动切换之前的任何前台变化都算**落位**，而不是切换」——
+   * 落位不播动画。刷新恢复（`use-module-tabs` 读 localStorage 把上次的模块放回前台）
+   * 正是其中之一，也是当前唯一的一个。
+   *
+   * ⚠️ 为什么不能只判「这次是不是从首页出发」：那样将来任何新增的程序化跳转都会被
+   * 误判成恢复，症状是**那次跳转没有动画，且哪里都不报错**。用「用户有没有主动动过」
+   * 这个信号，规则是完备的：主动切换一定有动画，之前的一切都是落位。
+   *
+   * ⚠️ 只在事件处理器里置真，**永不清零** —— 清零会让「第二次切换」退化成落位。
+   * 也刻意**不**放在 `use-module-tabs` 里：外壳才知道哪些入口是用户发起的
+   * （`openModule` 共三个调用点，其中两个在 Tab 栏内部）。
+   */
+  const hasNavigatedRef = useRef(false);
+  /** 三个用户入口的唯一包装点：先记「用户动过了」，再执行真正的切换。 */
+  const userNavigate = useCallback((run: () => void) => {
+    hasNavigatedRef.current = true;
+    run();
+  }, []);
 
   const [phase, setPhase] = useState<ViewPhase>({
     front: frontKey,
@@ -142,19 +184,35 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
   });
 
   /**
-   * 「渲染期调整 state」（React 官方模式）：前台一变，就把离场层、方向、未就位三件事
+   * 「渲染期调整 state」（React 官方模式）：前台一变，就把离场层、方向、就位与否三件事
    * 在**同一个 commit 里**算好交给 DOM。
    *
    * 为什么不能放在 effect 里：effect 在绘制之后跑，于是会先画出一帧「新前台已经可见、
    * 旧前台已经不可见」，下一帧才补上离场动画 —— 那一帧就是闪烁（§4.6 要求两层面共存）。
    * 条件写成本身保证不会死循环：调整之后 `phase.front === frontKey`，下一次渲染不再进分支。
+   *
+   * ⚠️ 「就位与否」不恒为「未就位」：用户主动切换才播动画，之前的一切变化都是落位。
+   * 这条规则只为修「刷新也播动画」，见下面分支里的说明。
    */
   if (phase.front !== frontKey) {
+    /**
+     * 🔴 刷新恢复不是切换，**不该播动画**（学生反馈：单纯刷新时也看到切换动画）。
+     *
+     * 恢复走的是 `use-module-tabs` 里的一个 effect —— 它在首帧绘制之后才把上次的模块
+     * 放回前台，于是 `frontKey` 变了、命中本分支，与「用户点了 Tab」走的是同一条路径。
+     * 首次挂载那个 `settled: true`（上面 state 的初值）够不着它：那只豁免了**构造 state
+     * 的那一次**，而恢复是首帧之后的第二次变化。
+     *
+     * 顺带修掉一个副作用：从前落位要等 280ms 动画结束才 `activate()`，恢复的模块
+     * 在那段时间里是「前台但未激活」，页面级副作用（如滚动锚定）要晚一拍才跑。
+     */
+    const isPlacement = !hasNavigatedRef.current;
     setPhase({
       front: frontKey,
-      leaving: phase.front,
+      // 落位没有「上一屏」：首页那一帧不该被推走，否则就是一次假切换。
+      leaving: isPlacement ? null : phase.front,
       dir: orderOf(frontKey) >= orderOf(phase.front) ? 1 : -1,
-      settled: false,
+      settled: isPlacement,
     });
   }
 
@@ -493,8 +551,8 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
       <ModuleTabBar
         tabs={tabs}
         activeId={activeModuleId}
-        onSelect={openModule}
-        onHome={goHome}
+        onSelect={(id) => userNavigate(() => openModule(id))}
+        onHome={() => userNavigate(goHome)}
         connected={chat.connected}
         selectedStudent={chat.selectedStudent}
         avatarSvgs={chat.avatarSvgs}
@@ -516,7 +574,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
             {...home}
             active={activate('home')}
             toast={toastFor('home')}
-            onOpenModule={openModule}
+            onOpenModule={(id) => userNavigate(() => openModule(id))}
           />,
         )}
 
@@ -546,10 +604,10 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               // socket 的归属仍在会话层（page.tsx 的 wsRef），面板只是**借它发消息**：
               // 事件与帧必须走这条已有的连接，不能另开一条（§4.8 的内存门槛）。
               wsRef={chat.wsRef}
-              // 而「此刻有没有教师在看」是**会话级状态**（写入点在 use-chat-socket 的
-              // 回调里），外壳只做传递 —— 理由见 classroom-types.ts 上那个字段的注释：
+              // 而「此刻的推流档位」是**会话级状态**（写入点在 use-chat-socket 的回调里），
+              // 外壳只做传递 —— 理由见 classroom-types.ts 上那个字段的注释：
               // 面板自己订阅会漏掉 join-classroom 那一次初值。
-              watching={chat.webappWatching}
+              demand={chat.webappDemand}
             />
           ) : (
             <ModulePlaceholder

@@ -402,7 +402,18 @@ function createHarness(webapp: unknown, usageCount = 0) {
       delete: async (args: unknown) => { deleted.push({ delete: args }); return webapp; },
       findMany: async () => [],
     },
-    classroomWebapp: { count: async () => usageCount },
+    classroomWebapp: {
+      // 删除守卫用它**数**（`routes/webapps.ts` 的 DELETE 分支仍是 count）。
+      count: async () => usageCount,
+      // usage 端点用它**取清单**（响应里的 `classrooms`）。
+      // ⚠️ 形状必须与端点真实读到的结构一致：`include: { classroom: … }` 出来的是
+      // `{ classroom: {...} }` 的包装，不是裸的关联行。桩在这里简化了行数之外的东西
+      // （id/title 是编的），但**包装层级不能简化** —— 简化掉的话，端点里
+      // `link.classroom.id` 这类取法就会在真库上炸，而这里照样绿。
+      findMany: async () => Array.from({ length: usageCount }, (_, index) => ({
+        classroom: { id: `classroom-${index + 1}`, title: `课堂${index + 1}`, status: 'active', mode: 'standard' },
+      })),
+    },
   };
   return { prisma, deleted };
 }
@@ -487,7 +498,16 @@ test('删除被课堂引用的网页必须 400 + 中文文案，且不删库不�
 
     const { baseUrl, deleted } = await startServer(t, SAMPLE, 3);
     const usage = await fetch(`${baseUrl}/api/webapps/${WEBAPP_ID}/usage`, { headers: { Cookie: teacherCookie() } });
-    assert.deepEqual(await usage.json(), { used: true, classroomCount: 3 });
+    // `classrooms` 是新增的课堂清单（卡片上的「关联课堂」入口与「无法删除」弹窗要用）。
+    // 逐字段断言而不是只挑一个看：`used`/`classroomCount` 仍必须是删除守卫的判据口径。
+    const usageBody = await usage.json() as {
+      used: boolean; classroomCount: number;
+      classrooms: { id: string; title: string; status: string; mode: string }[];
+    };
+    assert.equal(usageBody.used, true);
+    assert.equal(usageBody.classroomCount, 3);
+    assert.equal(usageBody.classrooms.length, 3, JSON.stringify(usageBody));
+    assert.deepEqual(usageBody.classrooms.map(row => row.title), ['课堂1', '课堂2', '课堂3']);
 
     const res = await fetch(`${baseUrl}/api/webapps/${WEBAPP_ID}`, {
       method: 'DELETE',

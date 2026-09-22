@@ -20,6 +20,29 @@ export interface AgentSummary {
   lastCheckAt: string | null;
   lastCheckOk: boolean | null;
   lastCheckError: string | null;
+  /**
+   * 关联到的**去重后**的课堂数。
+   *
+   * ⚠️ **只有管理页的列表接口（`GET /api/agents`）会填它**，所以是可选的 ——
+   * 这个类型是复用类型：课堂详情里下发的 `agents[]`（`GET /api/classroom/code/:code`
+   * 等）走的是同一条类型，那些端点不算这个数。声明成必填会逼那些构造点塞假值。
+   */
+  classroomCount?: number;
+}
+
+/**
+ * 一个「关联到的课堂」—— 智能体 / 探究网页的卡片上「关联课堂」入口与
+ * 「无法删除」弹窗共用同一份形状。
+ *
+ * `mode` 是可选：网页侧的两条查询都带了它，但界面不依赖它存在。
+ */
+export interface RelatedClassroom {
+  id: string;
+  /** 服务端已经回退过：标题为空时是 `'未命名课堂'`。 */
+  title: string;
+  /** `'active' | 'paused' | 'ended'`。 */
+  status: string;
+  mode?: string;
 }
 
 export interface ClassroomSummary {
@@ -76,6 +99,15 @@ export interface WebappSummary {
   entryPath: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * 被多少个课堂关联。管理页的概览条（已关联 / 未关联）、「按关联状态筛选」与
+   * 卡片左边那条色条都读它。
+   *
+   * ⚠️ 与 `AgentSummary.classroomCount` 不同，这里是**必填**：网页只有一个来源
+   * （`GET /api/webapps`），而这个类型不被任何别的端点复用，没有「某些构造点不填」
+   * 的问题。缺失就是 bug，让它编译期暴露比留个可选字段好。
+   */
+  classroomCount: number;
 }
 
 /**
@@ -267,6 +299,21 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
    * 教师看板不需要自己拼地址，管理页的预览走 `/api/server-info` 的 `webappOrigin`。
    */
   webapps?: ClassroomWebappSummary[];
+  /**
+   * 探究助手画面的采集设置（P2.2，`Classroom` 表的三个标量列；`GET /api/classroom/:id`
+   * 靠 `...classroom` 原样带出，`POST /:id/webapp-capture` 则返回归一化后的全量）。
+   *
+   * 三个都**可选**：老库加列之前建的行、或服务端降级响应都可能没有。
+   * 🔴 读的地方方向必须是「**认不出 = 开 / 用默认**」——
+   * `webappCaptureEnabled !== false`、`webappThumbnailWidth ?? 320`、
+   * `webappFrameIntervalMs ?? 10000`，与 `server/src/services/webapp-capture.ts`
+   * 的 `normalizeCaptureConfig` 对齐。写成 `!enabled` 或 `Boolean(enabled)`
+   * 会把「不知道」渲染成「已关闭」，教师看到的是一个假的关闭态，
+   * 然后他会去点一次「开启」，把一个本来开着的功能关掉。
+   */
+  webappCaptureEnabled?: boolean;
+  webappThumbnailWidth?: number;
+  webappFrameIntervalMs?: number;
 }
 
 export interface ClassroomHistoryItem extends ClassroomSummary {
@@ -289,6 +336,17 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
   _count: { students: number };
   participantCount: number;
   realStudentCount: number;
+  /**
+   * 本课堂关联的探究网页（`GET /api/classroom/active`，为管理页的「课堂设置」弹窗而发）。
+   *
+   * 单选之后**至多一条**；老数据里可能有多条，那种课堂在弹窗里会显示成
+   * 「只有第一个生效，保存设置后多余的会被移除」—— 服务端确实会在保存时裁掉
+   * （`trimExtraClassroomWebapps`）。
+   *
+   * 可选：服务端查询失败（老库缺表）时降级为空数组，更老的版本根本不发这个字段。
+   * ⚠️ 因此「没发」与「空数组」在界面上都是「没有网页」—— 这与学生端 `webapps?` 同一条口径。
+   */
+  webapps?: ClassroomWebappSummary[];
 }
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {

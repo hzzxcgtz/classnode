@@ -161,7 +161,42 @@ router.get('/', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const agents = await prisma.agent.findMany({ orderBy: { createdAt: 'desc' } });
     await Promise.all(agents.map(agent => migrateAgentSecrets(prisma, agent)));
-    res.json(agents.map(toPublicAgent));
+
+    // 每个智能体关联到的**去重后**的课堂数 —— 管理页的概览条与「按关联状态筛选」要用它。
+    //
+    // 🔴 **两条关联路径都要算**：`ClassroomAgent`（标准模式建的课堂）与
+    // `ClassroomGroup`（分组/高级模式里每组绑的智能体）。只数前者的实现会让高级模式的
+    // 课堂**从计数里整个消失，却不报任何错** —— 卡片显示「未关联」，而删除时守卫
+    // （数的是两张表）回 400，界面与守卫自相矛盾。
+    //
+    // 去重按 `classroomId`：高级模式建课堂时两张表**同时**有行（见 create-advanced 里
+    // 从各组 agentId 派生 classroomAgents 的那段），所以这是常态而非边界。
+    //
+    // ⚠️ **三次查询解决全部智能体，不要在 map 里逐个查**（那是 N+1）。
+    const classroomIdsByAgent = new Map<string, Set<string>>();
+    const agentIds = agents.map(agent => agent.id);
+    if (agentIds.length > 0) {
+      const [directRows, groupRows] = await Promise.all([
+        prisma.classroomAgent.findMany({
+          where: { agentId: { in: agentIds } },
+          select: { agentId: true, classroomId: true },
+        }),
+        prisma.classroomGroup.findMany({
+          where: { agentId: { in: agentIds } },
+          select: { agentId: true, classroomId: true },
+        }),
+      ]);
+      for (const row of [...directRows, ...groupRows]) {
+        const seen = classroomIdsByAgent.get(row.agentId) ?? new Set<string>();
+        seen.add(row.classroomId);
+        classroomIdsByAgent.set(row.agentId, seen);
+      }
+    }
+
+    res.json(agents.map(agent => ({
+      ...toPublicAgent(agent),
+      classroomCount: classroomIdsByAgent.get(agent.id)?.size ?? 0,
+    })));
   } catch (error) {
     res.status(500).json({ error: '获取智能体列表失败' });
   }
@@ -330,6 +365,10 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
 });
 
 // 检查智能体是否被课堂使用
+//
+// ⚠️ 三个计数字段（`used` / `classroomCount` / `groupCount`）是**删除守卫的判据**
+// （见本文件 DELETE /:id 的分支），任何改动都会连带改掉「能不能删」，
+// 所以它们原样不动 —— 新增的 `classrooms` 只是给界面看的清单。
 router.get('/:id/usage', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
@@ -339,10 +378,42 @@ router.get('/:id/usage', async (req, res) => {
     const cgCount = await prisma.classroomGroup.count({
       where: { agentId: req.params.id },
     });
+
+    // 关联课堂清单必须 **union 两张表**：`ClassroomAgent`（标准模式建的课堂）
+    // 与 `ClassroomGroup`（分组/高级模式里每组绑的智能体）。
+    // 只查前者不会报错，只会让高级模式的课堂整个消失 —— 界面显示「没有关联」，
+    // 教师照着去删，删除守卫却回 400，两边自相矛盾。
+    //
+    // 去重按 `classroomId`（照 :306-316 的 Set 写法）：同一个课堂既在 ClassroomAgent
+    // 又在某个 ClassroomGroup 里时只出现一次，且保留先遇到的那条。
+    const classroomAgents = await prisma.classroomAgent.findMany({
+      where: { agentId: req.params.id },
+      include: { classroom: { select: { id: true, title: true, status: true, mode: true } } },
+    });
+    const classroomGroups = await prisma.classroomGroup.findMany({
+      where: { agentId: req.params.id },
+      include: { classroom: { select: { id: true, title: true, status: true, mode: true } } },
+    });
+    const byClassroomId = new Map<string, { id: string; title: string; status: string; mode: string }>();
+    const collect = (rows: Array<{ classroom: { id: string; title: string | null; status: string; mode: string } }>) => {
+      rows.forEach(row => {
+        if (byClassroomId.has(row.classroom.id)) return;
+        byClassroomId.set(row.classroom.id, {
+          id: row.classroom.id,
+          title: row.classroom.title || '未命名课堂',
+          status: row.classroom.status,
+          mode: row.classroom.mode,
+        });
+      });
+    };
+    collect(classroomAgents);
+    collect(classroomGroups);
+
     res.json({
       used: caCount > 0 || cgCount > 0,
       classroomCount: caCount,
       groupCount: cgCount,
+      classrooms: [...byClassroomId.values()],
     });
   } catch (error) {
     res.status(500).json({ error: '查询失败' });

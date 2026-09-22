@@ -419,7 +419,26 @@ router.get('/', async (req, res) => {
       select: PUBLIC_WEBAPP_SELECT,
       orderBy: { createdAt: 'desc' },
     });
-    res.json(webapps);
+
+    // 每个网页被多少个课堂关联 —— 管理页的概览条与「按关联状态筛选」都要用它。
+    //
+    // ⚠️ **一次取全再在 JS 里统计，不要在 map 里逐个 count**（那是 N+1：教师传了
+    //    30 个网页就是 31 次查询）。`webapps` 为空时索性不发这条查询。
+    const linkCounts = new Map<string, number>();
+    if (webapps.length > 0) {
+      const links = await prisma.classroomWebapp.findMany({
+        where: { webappId: { in: webapps.map(webapp => webapp.id) } },
+        select: { webappId: true },
+      });
+      for (const link of links) {
+        linkCounts.set(link.webappId, (linkCounts.get(link.webappId) ?? 0) + 1);
+      }
+    }
+
+    res.json(webapps.map(webapp => ({
+      ...webapp,
+      classroomCount: linkCounts.get(webapp.id) ?? 0,
+    })));
   } catch (error) {
     console.error('[webapps] 获取网页列表失败:', error);
     res.status(500).json({ error: '获取网页列表失败' });
@@ -441,12 +460,31 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 检查网页是否被课堂使用（照 agents.ts:333-350）
+// 检查网页是否被课堂使用（照 agents.ts 的同名端点）
+//
+// `used` / `classroomCount` 是删除守卫的判据，原样不动；`classrooms` 是新增的课堂清单，
+// 给「无法删除」弹窗和卡片上的「关联课堂」入口用。
+//
+// 这里只走一张表（`ClassroomWebapp`）就够了 —— 网页只有这一条关联路径，没有智能体那种
+// 「分组里也绑一个」的第二条。`@@unique([classroomId, webappId])` 保证一行一个课堂，
+// 所以 `classrooms.length` 与 `classroomCount` 天然同口径，不需要去重。
 router.get('/:id/usage', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const classroomCount = await prisma.classroomWebapp.count({ where: { webappId: req.params.id } });
-    res.json({ used: classroomCount > 0, classroomCount });
+    const classroomLinks = await prisma.classroomWebapp.findMany({
+      where: { webappId: req.params.id },
+      include: { classroom: { select: { id: true, title: true, status: true, mode: true } } },
+    });
+    res.json({
+      used: classroomLinks.length > 0,
+      classroomCount: classroomLinks.length,
+      classrooms: classroomLinks.map(link => ({
+        id: link.classroom.id,
+        title: link.classroom.title || '未命名课堂',
+        status: link.classroom.status,
+        mode: link.classroom.mode,
+      })),
+    });
   } catch (error) {
     res.status(500).json({ error: '查询失败' });
   }

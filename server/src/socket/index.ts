@@ -7,6 +7,7 @@ import { buildShieldFilter } from '../services/shield-filter.js';
 import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
+import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -329,31 +330,58 @@ export function staleTeacherRooms(rooms: Iterable<string>, currentClassroomId: s
 // 由 drainWebappMonitor() + recordWebappSummary() 完成，见下面两个函数。
 // ══════════════════════════════════════════════════════════════════════════
 
-/** 一个学生在一个网页上的最新一帧。**覆盖式**：一个键恒为 1 条。 */
+/**
+ * 一个学生在一个网页上的最新一帧。**覆盖式**：一个键恒为 1 条。
+ *
+ * ⚠️ 这里曾经还有一个与它成对的 `counters` Map（点了几次 / 输入几次 / 滚到多深 /
+ * 上报几次）—— 随学生操作行为的采集链路一起删除了（用户裁定：操作行为不记录）。
+ * 帧**总数**因此挪进本条目（`count`），因为课后汇总的 `frameCount` 仍然要写。
+ */
 interface WebappFrameEntry {
   dataUrl: string;
   /** 服务端**收到**这一帧的时刻 —— 不用客户端时间戳，避免客户端时钟偏移污染时长。 */
   at: number;
   /** 本键**第一帧**的时刻，覆盖时保留：时长 = at - firstAt（见下）。 */
   firstAt: number;
+  /** 收到的帧**总数**（内存里永远只有最新 1 条，这个数字是它的对照，也是汇总的 frameCount）。 */
+  count: number;
 }
 
 /**
- * 累计计数，**不是流水账**。
+ * 一个学生在一个网页上的**当前状态**（文字档）：可见性 + 滚动深度 + 切换次数。
  *
- * ⚠️ 存流水账（每个事件 push 进数组）会让内存随课堂时长线性增长，而教师看板上要显示的
- * 本来就是「点了多少次、滚到多深」。原始事件仍然**逐条转发**给教师房间（图墙抽屉要看
- * 事件流），但**不留存** —— 留存的是这里的计数。
+ * 🔴 **这是一个「当前状态」，不是流水账** —— 这是本结构唯一重要的性质。
+ * 一个键恒为 **1 条**（覆盖式），所以内存**不随课堂时长增长**：学生滚 500 次、
+ * 切 50 次，这里仍然只有这四项，只是 `switches` 这个**计数器**在加。
+ * 存流水（每次滚动追加一条）会让内存线性增长 —— 那是规格 §5.5 的硬要求，
+ * 也是这个模块里最容易悄悄违反的一条。
+ *
+ * ⚠️ 这里**没有**任何自由文本字段：`visible` 是布尔、`depth` 是 0/10/…/100、
+ * `at` 是服务端时刻、`switches` 是一个计数。
  */
-interface WebappCounterEntry {
-  clicks: number;
-  inputs: number;
-  maxDepth: number;
-  reports: number;
-  /** 收到的帧**总数**（frames Map 里永远只有最新 1 条，这个数字是它的对照）。 */
-  frames: number;
-  /** 最后一次收到该学生该网页任何上报的时刻，TTL 裁剪用（见 pruneWebappMonitor）。 */
-  lastAt: number;
+export interface WebappPresenceEntry {
+  /** 学生此刻是不是在前台看着这个网页。 */
+  visible: boolean;
+  /** 此刻的滚动深度（十分位）。0 表示没滚 / 还在顶部。 */
+  depth: number;
+  /** 服务端**收到**这条状态的时刻 —— 不用客户端时间戳，避免学生机器的时钟偏移。 */
+  at: number;
+  /**
+   * 本节课里可见性**切换过几次**（一个计数，不是一条流水）。
+   * 它替代了旧的 clicks / inputs 计数：教师想知道「这个学生是不是一直在用」，
+   * 切换次数是这件事最省的一个代理量。
+   */
+  switches: number;
+  /**
+   * 「有文字档、却一帧都没有」这条诊断**报过没有**（值是服务端时钟）。
+   *
+   * 挂在 presence 条目上、而不是另开一张 Map：它会随 presence 一起被 TTL 裁剪
+   * 与课堂结束的清空带走，不必在三个清理点各补一遍 —— 漏任何一个都是一处长期泄漏，
+   * 而泄漏的症状要等很久才看得见。`accumulateWebappPresence` 会把它原样带过。
+   *
+   * 为什么需要它：文字档是 ≥400ms 一批的，不节流会刷屏，而刷屏等于没有诊断。
+   */
+  framelessLoggedAt?: number;
 }
 
 const webappMonitor = {
@@ -366,9 +394,51 @@ const webappMonitor = {
    * 遍历全部条目做反查，而**课堂结束释放**是规格 §5.5 的硬要求。
    */
   frames: new Map<string, WebappFrameEntry>(),
-  counters: new Map<string, WebappCounterEntry>(),
+  /**
+   * 文字档的**当前状态**（键同上，恒为 1 条 / 键）。
+   *
+   * ⚠️ 与 frames 分开两本：它们的入站频率差一个量级（帧每 10 秒一条，事件是突发），
+   * 且 TTL / drain 的语义相同但**读出者不同**（帧给图墙，presence 给「已打开」那一行）。
+   * 合成一条会逼着两个字段互相兜默认值，而「认不出 = 用默认」在这种复合结构上
+   * 很容易写成「没帧就把状态清空」。
+   */
+  presence: new Map<string, WebappPresenceEntry>(),
+  /**
+   * 「这个学生的设备**拍不出**这个网页的画面」—— key 与 frames / presence 同格式，
+   * 值只有收到时刻。
+   *
+   * 🔴 为什么必须单独记一条：SDK 连续失败到阈值后会**放弃并退避**（诊断码
+   * `dom-tier-gave-up`），而那条诊断是**一次性**的（退避之后约每分钟才重发一次）。
+   * 教师若在中途才打开看板，只靠实时转发会看到「等待画面…」—— 而那句话说的是
+   * 「第一帧还在路上」，与事实不符。这与本仓既有的那条原则是同一条尺子：
+   * **「已打开 / 等待画面… / 未打开」必须分开，因为它们说的是不同的事。**
+   *
+   * 实测背景（2026-09-22）：老 iPad 上的纯 DOM 网页，snapdom 生成的 SVG 在 Safari 15
+   * 上解码不出来 ⇒ 永远没有缩略图。这是平台限制（见 server/vendor/README.md），
+   * 不是待修的 bug —— 所以教师端要能说出这两个字的区别。
+   *
+   * 生命周期与另外两本完全相同（同一套 TTL 裁剪、同一套 drain 释放）。
+   */
+  captureBlocked: new Map<string, { at: number }>(),
+  /**
+   * 学生**此刻在看哪个模块**（P2.3）：key `classroomId:studentId`，值只有
+   * 「哪个模块」+ 收到时刻 —— **没有任何内容**。
+   *
+   * 读它的是教师看板的「跟随」模式（每格显示该学生当前在用的模块）。
+   * 放在这个对象里是因为**生命周期与帧/状态完全相同**（同一套 TTL 裁剪、同一套 drain
+   * 释放），单开一份必然要再写一遍那两条路径。
+   */
+  moduleFocus: new Map<string, { moduleId: string | null; at: number }>(),
   /** classroomId → 订阅了本课堂探究助手视图的 socketId 集合（Ruling 9 的记账）。 */
   watchers: new Map<string, Set<string>>(),
+  /**
+   * classroomId → 教师此刻**点开了详情**的那个 studentId（没点开则无此键）。
+   *
+   * 与 watchers 的区别是**粒度**：watchers 是整间课堂「有没有人看」，
+   * 这个是「在看**哪一个**」。只有被点开的那个学生才升高频档 ——
+   * 若做成整班一起升，40 人的班会让 40 台老 iPad 同时从 10 秒一帧变成 2 秒一帧。
+   */
+  focus: new Map<string, string>(),
 };
 
 /**
@@ -427,42 +497,58 @@ const WEBAPP_MONITOR_TTL_MS = 6 * 60 * 60 * 1000;
  */
 const MAX_WEBAPP_DATA_URL_CHARS = 32 * 1024;
 
-/** 单条 webapp-event 里最多几条事件（拉长一次上报而不是高频小包是 SDK 的自由，但要有上界）。 */
-const MAX_WEBAPP_EVENTS_PER_MESSAGE = 50;
-/** selector 是结构定位串，正常几十字符；自由字符串必须有上界。 */
-const MAX_WEBAPP_SELECTOR_CHARS = 200;
-/** inputType / to 是短枚举字面量，给足余量。 */
-const MAX_WEBAPP_SHORT_FIELD_CHARS = 64;
 /** 只接受 data URL 形式的图片，不接 http(s) 链（那会把教师看板变成外链加载器）。 */
 const WEBAPP_DATA_URL_PREFIX = 'data:image/';
 
-/**
- * 允许的 kind 白名单 —— 与 SDK 的 buildEvent 调用点一一对应
- * （click / input / scroll / navigate / visibility），加 SDK 的 report()。
- * 不在表里的整条丢弃：**白名单**而不是黑名单，将来 SDK 加通道时要显式改这里。
- */
-const WEBAPP_EVENT_KINDS = new Set(['click', 'input', 'scroll', 'navigate', 'visibility', 'report']);
+/** 一个短字符串字段的上界（课堂 id / 网页 id / 学生 id / to 这类）。 */
+const MAX_WEBAPP_SHORT_FIELD_CHARS = 64;
 
-/** 服务端侧的 WebappEvent —— 与 src/lib/socket-events.ts 的声明同形（两边是独立包，不互相 import）。 */
+/** 单条 webapp-event 里最多几条事件（拉长一次上报而不是高频小包是客户端自由，但要有上界）。 */
+const MAX_WEBAPP_EVENTS_PER_MESSAGE = 50;
+
+/**
+ * 允许的 kind **白名单** —— 与 SDK 的 buildEvent 调用点**一一对应**，只有两种：
+ *   · visibility —— 只有 'visible' / 'hidden' 两个取值；
+ *   · scroll     —— 只有 0 / 10 / … / 100 这十一个十分位。
+ *
+ * ⚠️ 旧的 click / input / navigate / report 四项**不在表里**，而且不该被加回来：
+ * 它们都要带「内容」才能用（点了哪个元素 / 输入框里有多少字符 / 跳到哪个锚点），
+ * 而学生是未成年人（P2.2 用户裁定）。不在表里就整条丢弃：**白名单**而不是黑名单，
+ * 将来 SDK 加通道时必须显式改这里。
+ */
+const WEBAPP_EVENT_KINDS = new Set(['visibility', 'scroll']);
+
+/** 滚动深度的合法档位步长与上限（十分位：0 / 10 / … / 100）。 */
+const WEBAPP_DEPTH_STEP = 10;
+const WEBAPP_DEPTH_MAX = 100;
+
+/**
+ * 服务端侧的 WebappEvent —— 与 src/lib/socket-events.ts 的声明同形
+ * （两边是独立包，不互相 import）。
+ *
+ * 🔴 **恰好四个字段，而里面没有任何自由文本字段**：`to` 是一个短枚举字面量，
+ * `depth` 是一个十分位整数。旧的 selector / inputType / length 三项
+ * **一项都没有回来**（P2.2 的 T5 刻意如此）。
+ */
 export interface WebappEvent {
   kind: string;
-  selector: string;
-  inputType: string;
-  length: number;
-  depth: number;
   to: string;
+  depth: number;
   at: number;
 }
 
-/** 课堂结束时写进 WebappUsage 的一行（谁、用了哪个网页、时长、交互次数）。 */
+/**
+ * 课堂结束时写进 WebappUsage 的一行（谁、用了哪个网页、看了多久）。
+ *
+ * ⚠️ 这里曾经还有 clicks / inputs / maxDepth / reports 四项（学生操作行为的计数）。
+ * 它们随事件链路一起**不再产出**（用户裁定）。**表结构没动**：WebappUsage 上那四个
+ * 列还在，只是不再写入 —— 落库时走它们各自的 `@default(0)`，于是列里的值是 0，
+ * 而不是「保留着上一节课的旧数字」。
+ */
 export interface WebappUsageRow {
   studentId: string;
   webappId: string;
   durationMs: number;
-  clicks: number;
-  inputs: number;
-  maxDepth: number;
-  reports: number;
   frameCount: number;
 }
 
@@ -477,13 +563,9 @@ function splitWebappKey(key: string, classroomId: string): { studentId: string; 
   return { studentId: rest[0], webappId: rest.slice(1).join(':') };
 }
 
+/** 数字字段的规范：非有限值 / 负数一律当 0，其余取整。 */
 function clampNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-}
-
-function clampString(value: unknown, maxChars: number): string {
-  if (typeof value !== 'string') return '';
-  return value.length > maxChars ? value.slice(0, maxChars) : value;
 }
 
 /**
@@ -493,19 +575,39 @@ function clampString(value: unknown, maxChars: number): string {
  * 来自学生机器上的任意页面（教师网页里也能跑 JS）。逐字段重建 ⇒ 客户端塞不进
  * 契约之外的东西（超大字符串、嵌套对象、`__proto__` 之类），落在服务端内存里的
  * 形状与大小都是这里说了算的。
+ *
+ * 🔴 **它也是「窄契约」的执行点之一**：返回的对象**只可能是四个键**
+ * （kind / to / depth / at）。旧的 selector / inputType / length 三项即使被客户端
+ * 塞进载荷，也在这里被丢掉 —— 而不是「靠客户端不发」。
+ * 学生端父页面还有一层同款的重建（`use-explore-bridge.ts` 的 `toWebappEvent`），
+ * 两层是刻意的：每一层都假定上一层可能已经坏了。
+ *
+ * 字段语义（与 SDK 的 buildEvent 一一对应）：
+ *   · kind  = 'visibility' ⇒ to 只能是 'visible' / 'hidden'，depth 恒为 0；
+ *   · kind  = 'scroll'     ⇒ to 恒为 ''，depth 是 0 / 10 / … / 100 的十分位。
+ * 认不出的组合**整条丢弃**（不是"修一修留下"）：形状错的载荷没有可信的部分。
  */
 export function sanitizeWebappEvent(value: unknown): WebappEvent | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
   const kind = typeof raw.kind === 'string' ? raw.kind : '';
   if (!WEBAPP_EVENT_KINDS.has(kind)) return null;
+  if (kind === 'visibility') {
+    if (raw.to !== 'visible' && raw.to !== 'hidden') return null;
+    return {
+      kind,
+      to: raw.to,
+      depth: 0,
+      at: clampNumber(raw.at),
+    };
+  }
+  // scroll：深度夹到 0…100 的十分位上（越界不丢整条 —— 那只是一个数字，
+  // 而"学生滚过头了"不该让教师看到「什么都没发生」）。
+  const depth = Math.min(WEBAPP_DEPTH_MAX, Math.round(clampNumber(raw.depth) / WEBAPP_DEPTH_STEP) * WEBAPP_DEPTH_STEP);
   return {
     kind,
-    selector: clampString(raw.selector, MAX_WEBAPP_SELECTOR_CHARS),
-    inputType: clampString(raw.inputType, MAX_WEBAPP_SHORT_FIELD_CHARS),
-    length: clampNumber(raw.length),
-    depth: clampNumber(raw.depth),
-    to: clampString(raw.to, MAX_WEBAPP_SHORT_FIELD_CHARS),
+    to: '',
+    depth,
     at: clampNumber(raw.at),
   };
 }
@@ -540,6 +642,51 @@ export function validateWebappFramePayload(value: unknown): { classroomId: strin
   return { classroomId, webappId, dataUrl };
 }
 
+/**
+ * `diag` 通道允许的枚举码 —— **与 SDK 的 `DIAG_CODES`、父页面的 `DIAG_CODES` 三处一致**。
+ *
+ * ⚠️ 三处必须同时改：改漏一处的后果是那条诊断**静默消失**（不报错，只是永远看不到），
+ * 而这正是这条通道存在的意义所在。
+ */
+export const WEBAPP_DIAG_CODES = new Set([
+  'dom-tier-gave-up',
+  'lib-ready',
+  'lib-load-failed',
+  'viewport-zero',
+  'sync-throw',
+  'not-promise',
+  'capture-error',
+  'empty-canvas',
+  'canvas-empty',
+  'timeout',
+  'over-budget',
+]);
+
+/**
+ * 校验 `webapp-diag` 的载荷。
+ *
+ * ⚠️ **逐字段白名单重建**（与 `sanitizeWebappEvent` 同款）：只看白名单里的码，
+ * 数字一律夹成非负整数。这条通道**不接受任何字符串字段** ——
+ * 「诊断」不能变成绕开「装不下页面内容」那条保证的后门。
+ */
+export function validateWebappDiagPayload(value: unknown): {
+  classroomId: string; webappId: string; code: string; n: number; w: number; h: number;
+} | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const classroomId = typeof raw.classroomId === 'string' ? raw.classroomId.trim() : '';
+  const webappId = typeof raw.webappId === 'string' ? raw.webappId.trim() : '';
+  if (!classroomId || !webappId) return null;
+  const code = raw.code;
+  if (typeof code !== 'string' || !WEBAPP_DIAG_CODES.has(code)) return null;
+  const toInt = (input: unknown): number => (
+    typeof input === 'number' && Number.isFinite(input) && input >= 0
+      ? Math.min(Math.round(input), 100000000)
+      : 0
+  );
+  return { classroomId, webappId, code, n: toInt(raw.n), w: toInt(raw.w), h: toInt(raw.h) };
+}
+
 /** watch / unwatch 共用的载荷形状校验。 */
 export function validateWebappWatchPayload(value: unknown): string | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -561,6 +708,77 @@ export function hasWatchers(io: Server, classroomId: string): boolean {
   return (io.sockets.adapter.rooms.get(webappMonitorRoom(classroomId))?.size ?? 0) > 0;
 }
 
+/**
+ * 逐学生下发按需推流档位。
+ *
+ * ⚠️ **必须逐个 socket 发，不能 `io.to(classroom:<id>)` 广播。** 两条理由：
+ *   1. `detail` 是**每个学生不同**的（只有被点开详情的那一个为真）。若走广播，就得把
+ *      studentId 放进载荷让各端自己筛 —— 那等于**告诉全班「教师正在看谁」**。
+ *   2. 逐发之后每个学生收到的就是它自己该用的档位，客户端不需要任何推导，
+ *      也不存在「推导写错了」这种失效模式。
+ *
+ * ⚠️ **不能用 `activeConnections` 遍历**：那份 Map 是 socket 装配函数**内部的**闭包变量
+ * （不在模块作用域），而本函数要在模块级被 `drainWebappMonitor` 那条路径也用到。
+ * 走房间成员 + `socket.data.studentId` 反而更稳 —— studentId 是 join-classroom 自己
+ * 写在 socket 上的（与 activeConnections 同源、同时机），不必再反查 roster。
+ */
+/**
+ * `focus-webapp-student` 的载荷校验。
+ *
+ * `studentId` 允许为 `null`（= 关掉详情）。**不校验它是否真在本课堂名册上**：
+ * 这条只是「让某个学生的端转高频」，而档位是发给房间里真实存在的**学生** socket 的
+ * —— 一个不在册的 id 匹配不到任何连接，效果自然为零。为它多查一次库买不到任何东西。
+ * 长度仍然夹住，免得有人拿它塞垃圾进来。
+ */
+function validateWebappFocusPayload(data: unknown): { classroomId: string; studentId: string | null } | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  const classroomId = d.classroomId;
+  if (typeof classroomId !== 'string' || !classroomId || classroomId.length > MAX_WEBAPP_SHORT_FIELD_CHARS) return null;
+  const sid = d.studentId;
+  if (sid === null || sid === undefined) return { classroomId, studentId: null };
+  if (typeof sid !== 'string' || sid.length > MAX_WEBAPP_SHORT_FIELD_CHARS) return null;
+  return { classroomId, studentId: sid || null };
+}
+
+export async function broadcastWebappDemand(io: Server, prisma: PrismaClient, classroomId: string): Promise<void> {
+  const watching = hasWatchers(io, classroomId);
+  const focused = webappMonitor.focus.get(classroomId) ?? null;
+  const room = io.sockets.adapter.rooms.get(`classroom:${classroomId}`);
+  if (!room) {
+    return;
+  }
+
+  // 每堂课只读一次库。这条路径只在**订阅 / 退订 / 焦点变化**时走 —— 一堂课十来次，
+  // 而它决定的是学生设备接下来干什么，值得这一次读。
+  const config = normalizeCaptureConfig(
+    await prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true },
+    }),
+  );
+
+  for (const socketId of room) {
+    const target = io.sockets.sockets.get(socketId);
+    // 只发给**学生**（靠 studentId 辨认）。教师端也可能在这个房间里，而一条发给教师的
+    // demand 只会让它多跑一次无用推导 —— 判定「谁该用什么档位」是服务端的事。
+    const studentId = target?.data?.studentId as string | undefined;
+    if (!target || !studentId) continue;
+    // ⚠️ 没人看时 detail 必须为假 —— 否则会留下一个「watching=false 但 detail=true」
+    // 的非法组合，而那正是客户端最容易推导错的一种状态。
+    const detail = watching && focused === studentId;
+    target.emit('webapp-monitor-demand', {
+      watching,
+      detail,
+      captureEnabled: config.enabled,
+      width: config.width,
+      // ⚠️ 下发的是**本档的最终周期**，不是「图墙基准」：wall 与 detail 的差别由服务端算好。
+      //    让学生端自己乘一个比例，等于把这个比例的定义复制到另一个语言、另一个位置。
+      frameIntervalMs: detail ? detailIntervalFor(config.frameIntervalMs) : config.frameIntervalMs,
+    });
+  }
+}
+
 /** 订阅到达：取消待触发的「停止推流」。 */
 export function cancelDemandNotification(classroomId: string): void {
   const timer = pendingDemandTimers.get(classroomId);
@@ -575,40 +793,22 @@ export function cancelDemandNotification(classroomId: string): void {
  * 已经有了待触发的定时器就不重置 —— 否则持续抖动（每次刷新都重新计时）会让
  * 停止通知永远推不出去，学生端一直白推。
  */
-export function scheduleDemandNotification(io: Server, classroomId: string): void {
+export function scheduleDemandNotification(io: Server, prisma: PrismaClient, classroomId: string): void {
   if (pendingDemandTimers.has(classroomId)) return;
   const timer = setTimeout(() => {
     pendingDemandTimers.delete(classroomId);
     // 期间又有人订阅就什么都不做（订阅那条路径已经 cancel 过了，这里是二重保险）。
     if (hasWatchers(io, classroomId)) return;
-    io.to(`classroom:${classroomId}`).emit('webapp-monitor-demand', { watching: false });
+    // 定时器回调里不能 await：这条路径要读一次课堂配置。失败只记日志 ——
+    // 通知没发出去的最坏后果是学生多推一会儿，不该把进程带下去。
+    broadcastWebappDemand(io, prisma, classroomId).catch((error) => {
+      console.error('[Socket] 下发推流档位失败:', error);
+    });
   }, WEBAPP_DEMAND_DEBOUNCE_MS);
   // unref：这是一个纯粹的「延迟通知」，不该在关闭流程里把一个已经没人等的进程钉住
   // 15 秒（同 :302 的 cacheCleanupTimer）。node:test 的 mock timers 也提供 unref。
   timer.unref();
   pendingDemandTimers.set(classroomId, timer);
-}
-
-/** 把一个学生的一次上报累加进内存（帧走覆盖，事件走计数）。 */
-function accumulateWebappEvents(
-  classroomId: string,
-  studentId: string,
-  webappId: string,
-  events: WebappEvent[],
-  now: number,
-): void {
-  const key = webappKey(classroomId, studentId, webappId);
-  const counter = webappMonitor.counters.get(key) ?? { clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frames: 0, lastAt: now };
-  for (const event of events) {
-    if (event.kind === 'click') counter.clicks += 1;
-    else if (event.kind === 'input') counter.inputs += 1;
-    else if (event.kind === 'scroll') counter.maxDepth = Math.max(counter.maxDepth, event.depth);
-    else if (event.kind === 'report') counter.reports += 1;
-    // navigate / visibility 只转发不计数：规格要的汇总项是「时长 + 交互次数」，
-    // 而时长另由首帧→末帧给出（见 WebappUsage.durationMs 的注释）。
-  }
-  counter.lastAt = now;
-  webappMonitor.counters.set(key, counter);
 }
 
 /**
@@ -617,16 +817,72 @@ function accumulateWebappEvents(
  * 这条不是优化而是内存上界本身 —— 40 人 × 每帧 ~10-31KB（见上面的实测注释），
  * 追加式存储会让内存随课堂时长线性增长。
  *
- * counter.frames 仍然累加：内存里只留 1 条，**收到的总数**在计数里（课后汇总要用）。
+ * `count` 仍然累加：内存里只留 1 条，**收到的总数**在这个数字里（课后汇总要用）。
  */
 function storeWebappFrame(classroomId: string, studentId: string, webappId: string, dataUrl: string, now: number): void {
   const key = webappKey(classroomId, studentId, webappId);
   const previous = webappMonitor.frames.get(key);
-  webappMonitor.frames.set(key, { dataUrl, at: now, firstAt: previous ? previous.firstAt : now });
-  const counter = webappMonitor.counters.get(key) ?? { clicks: 0, inputs: 0, maxDepth: 0, reports: 0, frames: 0, lastAt: now };
-  counter.frames += 1;
-  counter.lastAt = now;
-  webappMonitor.counters.set(key, counter);
+  webappMonitor.frames.set(key, {
+    dataUrl,
+    at: now,
+    firstAt: previous ? previous.firstAt : now,
+    count: (previous ? previous.count : 0) + 1,
+  });
+}
+
+/**
+ * 把一批文字档事件收成**当前状态**（覆盖式，键恒为 1 条）。
+ *
+ * 🔴 **这是「不存流水账」这条要求的执行点。** 无论这一批有几条事件、一节课来多少批，
+ * 落进 Map 的永远是一个 `WebappPresenceEntry`：**五个字段，全是标量或短枚举**。
+ * 事件里的 `at` **刻意不用** —— 存的是服务端收到的时刻，学生机器的时钟不可信。
+ *
+ * ⚠️ **把保证说准**（原来写的是「四个字段」）：这条保证的实质是
+ * **这里装不下任何页面内容** —— 没有 selector / inputType / length / value 的位置，
+ * 每个字段的取值范围都被逐一枚举过。第 5 个字段 `framelessLoggedAt` 是一个服务端
+ * 时间戳（诊断用的「报过没有」标记），仍然落在这个范围内，**没有放宽**上面那条实质保证。
+ * 往这里加字段仍然是需要刻意为之的改动 —— `webapp-monitor.test.ts` 有一条契约测试
+ * 钉着这张字段表，就是为此存在的。
+ *
+ * 「当前状态」的语义要写清楚，否则很容易被误读成"丢了数据"：
+ *   · visibility —— **最后一条**说的是什么，状态就是什么；`switches` 记录它变过几次；
+ *   · scroll     —— **最后一条**的深度就是当前深度（学生往回滚，深度就变小）。
+ * 这两个语义正是教师图墙要的（「现在是什么样」），而流水账给不了这个答案。
+ */
+function accumulateWebappPresence(
+  classroomId: string,
+  studentId: string,
+  webappId: string,
+  events: WebappEvent[],
+  now: number,
+): void {
+  const key = webappKey(classroomId, studentId, webappId);
+  const previous = webappMonitor.presence.get(key);
+  let visible = previous ? previous.visible : false;
+  let depth = previous ? previous.depth : 0;
+  let switches = previous ? previous.switches : 0;
+
+  for (const event of events) {
+    if (event.kind === 'visibility') {
+      const next = event.to !== 'hidden';
+      if (next !== visible) switches += 1;
+      visible = next;
+    } else if (event.kind === 'scroll') {
+      depth = event.depth;
+    }
+  }
+
+  // `framelessLoggedAt` 必须**原样带过**：这个函数每次都用新对象覆盖旧条目，
+  // 漏带的话「只报一次」会退化成「每批都报」，而那正是要避免的刷屏。
+  // 用条件展开而不是直接写 `framelessLoggedAt: previous?.framelessLoggedAt`：
+  // 后者在开启 `exactOptionalPropertyTypes` 时会把 `undefined` 当成非法值。
+  webappMonitor.presence.set(key, {
+    visible,
+    depth,
+    at: now,
+    switches,
+    ...(previous?.framelessLoggedAt !== undefined ? { framelessLoggedAt: previous.framelessLoggedAt } : {}),
+  });
 }
 
 /** TTL 裁剪（由 pruneSocketCaches 驱动）。 */
@@ -635,8 +891,14 @@ function pruneWebappMonitor(now: number): void {
   for (const [key, frame] of webappMonitor.frames) {
     if (frame.at <= cutoff) webappMonitor.frames.delete(key);
   }
-  for (const [key, counter] of webappMonitor.counters) {
-    if (counter.lastAt <= cutoff) webappMonitor.counters.delete(key);
+  for (const [key, presence] of webappMonitor.presence) {
+    if (presence.at <= cutoff) webappMonitor.presence.delete(key);
+  }
+  for (const [key, focus] of webappMonitor.moduleFocus) {
+    if (focus.at <= cutoff) webappMonitor.moduleFocus.delete(key);
+  }
+  for (const [key, blocked] of webappMonitor.captureBlocked) {
+    if (blocked.at <= cutoff) webappMonitor.captureBlocked.delete(key);
   }
   // 空 Set 只可能在「订阅者的 disconnect 没跑到」时出现；正常路径上 disconnect 会删掉
   // 整个键。这里兜底，避免 Map 本身随课堂数无界增长。
@@ -645,20 +907,24 @@ function pruneWebappMonitor(now: number): void {
   }
 }
 
-/** 测试与诊断用：读一条帧 / 一条计数（不改变内存）。 */
-export function peekWebappMonitor(classroomId: string, studentId: string, webappId: string): { frame: WebappFrameEntry | null; counter: WebappCounterEntry | null } {
-  const key = webappKey(classroomId, studentId, webappId);
-  return { frame: webappMonitor.frames.get(key) ?? null, counter: webappMonitor.counters.get(key) ?? null };
+/** 测试与诊断用：读一条帧（不改变内存）。没有则返回 null。 */
+export function peekWebappFrame(classroomId: string, studentId: string, webappId: string): WebappFrameEntry | null {
+  return webappMonitor.frames.get(webappKey(classroomId, studentId, webappId)) ?? null;
+}
+
+/** 测试与诊断用：读一条文字档状态（不改变内存）。没有则返回 null。 */
+export function peekWebappPresence(classroomId: string, studentId: string, webappId: string): WebappPresenceEntry | null {
+  return webappMonitor.presence.get(webappKey(classroomId, studentId, webappId)) ?? null;
 }
 
 /** 测试与诊断用：某个课堂当前的内存条目数。 */
-export function webappMonitorSizes(classroomId: string): { frames: number; counters: number; watchers: number } {
+export function webappMonitorSizes(classroomId: string): { frames: number; presence: number; watchers: number } {
   const prefix = `${classroomId}:`;
   let frames = 0;
-  let counters = 0;
+  let presence = 0;
   for (const key of webappMonitor.frames.keys()) if (key.startsWith(prefix)) frames += 1;
-  for (const key of webappMonitor.counters.keys()) if (key.startsWith(prefix)) counters += 1;
-  return { frames, counters, watchers: webappMonitor.watchers.get(classroomId)?.size ?? 0 };
+  for (const key of webappMonitor.presence.keys()) if (key.startsWith(prefix)) presence += 1;
+  return { frames, presence, watchers: webappMonitor.watchers.get(classroomId)?.size ?? 0 };
 }
 
 /**
@@ -676,43 +942,40 @@ export function webappMonitorSizes(classroomId: string): { frames: number; count
 export function drainWebappMonitor(io: Server, classroomId: string): WebappUsageRow[] {
   const prefix = `${classroomId}:`;
   const rows = new Map<string, WebappUsageRow>();
+  // 课堂结束：焦点与帧一起释放（规格 §5.5 要求课堂结束释放全部监控内存）。
+  webappMonitor.focus.delete(classroomId);
 
-  for (const [key, counter] of webappMonitor.counters) {
-    if (!key.startsWith(prefix)) continue;
-    const ids = splitWebappKey(key, classroomId);
-    webappMonitor.counters.delete(key);
-    if (!ids) continue;
-    rows.set(`${ids.studentId}:${ids.webappId}`, {
-      studentId: ids.studentId,
-      webappId: ids.webappId,
-      durationMs: 0,
-      clicks: counter.clicks,
-      inputs: counter.inputs,
-      maxDepth: counter.maxDepth,
-      reports: counter.reports,
-      frameCount: counter.frames,
-    });
-  }
-
+  // 现在**一个键只有一条帧记录**，所以汇总是一趟循环：帧在就有行，没有就没有行。
+  // （原先还有 counters 那一趟 —— 事件计数的那趟随事件链路删掉了，而文字档恢复之后
+  //   它**也没有回来**：文字档要的是「现在是什么样」，不是「点了多少次」，
+  //   所以它不进汇总，只在内存里有一个覆盖式的当前状态。）
   for (const [key, frame] of webappMonitor.frames) {
     if (!key.startsWith(prefix)) continue;
     const ids = splitWebappKey(key, classroomId);
     webappMonitor.frames.delete(key);
     if (!ids) continue;
-    const row = rows.get(`${ids.studentId}:${ids.webappId}`) ?? {
+    // durationMs 只在这一处算，用的是服务端收到首帧与末帧的时刻。
+    rows.set(`${ids.studentId}:${ids.webappId}`, {
       studentId: ids.studentId,
       webappId: ids.webappId,
-      durationMs: 0,
-      clicks: 0,
-      inputs: 0,
-      maxDepth: 0,
-      reports: 0,
-      frameCount: 0,
-    };
-    // 帧数由 counters 记（这里只是补一条「只发过帧、没发过事件」的行）；
-    // durationMs 只在这一处算，用的是服务端收到首帧与末帧的时刻。
-    row.durationMs = Math.max(0, frame.at - frame.firstAt);
-    rows.set(`${ids.studentId}:${ids.webappId}`, row);
+      durationMs: Math.max(0, frame.at - frame.firstAt),
+      frameCount: frame.count,
+    });
+  }
+
+  // 文字档的当前状态随课堂一起释放（规格 §5.5）。⚠️ 两个要点：
+  //   · 只删**本课堂**的键（下面按前缀扫），不是整本 clear —— drain 是 per-classroom 的，
+  //     整本清会把别的课堂的状态一起抹掉（用例「drain 只能清自己那个课堂」守着这条）；
+  //   · 它**不产出汇总行**：它是"此刻"的状态，课堂结束后没有意义，也没有对应的落盘列。
+  for (const key of [...webappMonitor.presence.keys()]) {
+    if (key.startsWith(prefix)) webappMonitor.presence.delete(key);
+  }
+  for (const key of [...webappMonitor.moduleFocus.keys()]) {
+    if (key.startsWith(prefix)) webappMonitor.moduleFocus.delete(key);
+  }
+  // 「拍不出画面」标记同样随课堂释放 —— 它是"此刻"的设备状态，课堂结束后没有意义。
+  for (const key of [...webappMonitor.captureBlocked.keys()]) {
+    if (key.startsWith(prefix)) webappMonitor.captureBlocked.delete(key);
   }
 
   webappMonitor.watchers.delete(classroomId);
@@ -755,6 +1018,10 @@ export function drainWebappMonitor(io: Server, classroomId: string): WebappUsage
  * （后者是已知的按需推流代价，见 task-5-report.md §6.4）。② 会把上一节课**真实存在**
  * 的汇总删掉，而按「空 = 覆盖成空」处理就会丢掉那些数据 —— 在成因不可区分时，
  * 保守方向是**不删**。有数据时（≥1 行）才整体替换。
+ *
+ * ⚠️ **写入的列变少了**（clicks / inputs / maxDepth / reports 不再产出）：那四列**留在
+ * 表里**（不动 schema、不跑 db push），落库时走它们各自的 `@default(0)` ⇒ 值恒为 0。
+ * 这件事是有意的、也是可验证的：旧版本写进去的旧数字会被下一次替换抹平。
  */
 export async function recordWebappSummary(prisma: PrismaClient, classroomId: string, rows: WebappUsageRow[]): Promise<number> {
   const data = rows.map(row => ({
@@ -762,10 +1029,6 @@ export async function recordWebappSummary(prisma: PrismaClient, classroomId: str
     webappId: row.webappId,
     studentId: row.studentId,
     durationMs: row.durationMs,
-    clicks: row.clicks,
-    inputs: row.inputs,
-    maxDepth: row.maxDepth,
-    reports: row.reports,
     frameCount: row.frameCount,
   }));
   if (data.length === 0) return 0;
@@ -916,7 +1179,27 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // 学生端默认不推，由这条消息决定要不要开始 —— 少了它，「教师先开看板、学生后进课堂」
         // 这个顺序下学生永远等不到 watching:true，图墙会一直空着且没有任何报错。
         // 不做「本课堂有没有关联网页」的判断：那要多一次查询，而这条消息只有几十字节。
-        socket.emit('webapp-monitor-demand', { watching: hasWatchers(io, classroom.id) });
+        // ⚠️ 这里必须**同时**给出 detail：教师先开看板、再点开某个学生的详情、
+        //    然后学生才进课堂 —— 这个顺序下若只给 watching，那个学生一进来就是
+        //    wall 档，直到教师重新点一次详情才会转高频（而教师不会知道要再点一次）。
+        const demandWatching = hasWatchers(io, classroom.id);
+        const demandDetail = demandWatching && webappMonitor.focus.get(classroom.id) === classroomStudent.id;
+        // 与 broadcastWebappDemand 用**同一套**归一化 —— 两条路径各写一份默认值必然漂移。
+        const joinConfig = normalizeCaptureConfig(
+          await prisma.classroom.findUnique({
+            where: { id: classroom.id },
+            select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true },
+          }),
+        );
+        socket.emit('webapp-monitor-demand', {
+          watching: demandWatching,
+          detail: demandDetail,
+          captureEnabled: joinConfig.enabled,
+          width: joinConfig.width,
+          frameIntervalMs: demandDetail
+            ? detailIntervalFor(joinConfig.frameIntervalMs)
+            : joinConfig.frameIntervalMs,
+        });
 
         console.log(`[Socket] Participant ${classroomStudent.id} joined classroom ${classroom.id}`);
       } catch (error) {
@@ -948,11 +1231,30 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           socketIds.delete(socket.id);
           if (socketIds.size === 0) webappMonitor.watchers.delete(watchedClassroomId);
         }
-        if (!hasWatchers(io, watchedClassroomId)) scheduleDemandNotification(io, watchedClassroomId);
+        if (!hasWatchers(io, watchedClassroomId)) scheduleDemandNotification(io, prisma, watchedClassroomId);
       }
       socket.join(`teacher:${classroomId}`);
       socket.data.classroomId = classroomId;
       socket.data.isTeacher = true;
+
+      /**
+       * ⚠️ **回放当前状态**（P2.3）。学生只在**变化时**上报「我在哪个模块」，所以教师
+       * 中途进来看板时，那些「已经在某个模块里待着」的学生**一条消息都不会补发** ——
+       * 看板的「跟随」模式会把它们显示成"不知道他在哪"，而学生明明正开着。
+       *
+       * 与 `webapp-monitor-demand` 在 join 时下发那一条是**同一类问题**
+       * （「教师先开、学生后进」与「学生先进、教师后开」两个顺序都得成立）。
+       */
+      const focusPrefix = `${classroomId}:`;
+      for (const [key, focus] of webappMonitor.moduleFocus) {
+        if (!key.startsWith(focusPrefix)) continue;
+        socket.emit('student-module-focus', {
+          studentId: key.slice(focusPrefix.length),
+          moduleId: focus.moduleId,
+          at: focus.at,
+        });
+      }
+
       console.log(`[Socket] Teacher joined board: ${classroomId}`);
     });
 
@@ -978,74 +1280,194 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 失败**不 emit 任何错误事件**：探究助手是学生端的次要通道，一条 auth 错误弹窗打断
      * 学生做题是净损失；而「这个 webappId 属不属于本课堂」也不该变成可探测的信息。
      */
-    async function resolveWebappReporter(classroomId: string, webappId: string) {
-      if (!socket.data.studentId || socket.data.classroomId !== classroomId) return null;
-      if (!socket.rooms.has(`classroom:${classroomId}`)) return null;
+    /**
+     * 判定「这个 socket 能不能代表该课堂上报」。
+     *
+     * ⚠️ 返回**拒因**而不是裸 `null`：五条判据的处置完全不同，而它们从前被压成同一句话
+     * ——2026-09-22 实测里一次重连后冲刷出 15 条「不是本课堂的有效学生」，
+     * 光凭那句话查不出到底是哪一条，也就没法定位。
+     */
+    async function resolveWebappReporter(classroomId: string, webappId: string): Promise<
+      { ok: true; classroomId: string; studentId: string } | { ok: false; reason: string }
+    > {
+      if (!socket.data.studentId || socket.data.classroomId !== classroomId) {
+        return { ok: false, reason: '这个 socket 不是学生，或它认的课堂不是这个' };
+      }
+      if (!socket.rooms.has(`classroom:${classroomId}`)) {
+        // ⚠️ 这一条最常见，也最容易被误读成「学生搞错了」：socket 连着、身份也对，
+        // 只是（重连之后）**还没重新 join 课堂房间**。客户端把断线期间缓冲的帧
+        // 一次性冲刷出去时，撞的正是这一条 —— 那些帧会被整批丢掉。
+        return { ok: false, reason: '还没 join 课堂房间（重连后尚未重新加入？）' };
+      }
       const membership = await prisma.classroomStudent.findFirst({
         where: { classroomId, id: socket.data.studentId },
         select: { id: true },
       });
-      if (!membership) return null;
+      if (!membership) return { ok: false, reason: '不在本课堂的学生名册里' };
       const linked = await prisma.classroomWebapp.findFirst({
         where: { classroomId, webappId },
         // 顺带把课堂状态一起取回来（同一次查询里 join，不是第二次往返）——
         // 见下面「已结束的课堂不再收上报」那一段。
         select: { id: true, classroom: { select: { status: true } } },
       });
-      if (!linked) return null;
+      if (!linked) return { ok: false, reason: '这个网页没有关联到本课堂' };
       // 课堂已结束 ⇒ 不再收上报。少了这一条，「结束即释放」仍然不是终态：drain 把内存
       // 清空之后，还没断线的学生（客户端还没来得及跳走）每 5 秒继续上报，内存条目会
       // **重新长回来**，而它们要等到 6 小时 TTL 或下一次 drain 才会被释放
-      // （审查者的实测：结束之后学生再上报 → 内存条目又变成 {frames:1,counters:1}）。
+      // （审查者的实测：结束之后学生再上报 → 内存条目又长回来）。
       // 只挡 'ended'，不挡 'paused'：暂停时教师往往正是要看看学生屏幕上现在是什么。
       // 只对 status 做判断，所以 restore 之后（status 回到 active）上报自动恢复。
-      if (linked.classroom?.status === 'ended') return null;
-      return { classroomId, studentId: membership.id };
+      if (linked.classroom?.status === 'ended') return { ok: false, reason: '课堂已结束' };
+      return { ok: true, classroomId, studentId: membership.id };
     }
 
+    // ⚠️ 这里曾经是 `webapp-event`（学生的结构事件上报：点击 / 输入 / 滚动 / 跳转 /
+    // 前后台切换）。**整条删掉了**（用户裁定：学生的操作行为不需要记录）——
+    // 服务端不再有这个入站事件，它的形状校验与累计计数也一并删除。
+    // **留在链路上的只有下面这一条帧上报。**
+
     /**
-     * 学生的结构事件上报。
+     * 学生的**文字档**上报（P2.2 的 T5）。
      *
-     * **先累加、后看有没有人订阅**：内存里留下的是计数（有界），而「按需推流」管的是
-     * **转发**。理由见下面那行注释 —— 反过来（没人看就不记）会让课后汇总在教师没开
-     * 看板时整批为空，而汇总正是本模块唯一的落盘项。
+     * ⚠️ 与帧那条链路的差别有两处，都是刻意的：
+     *   1. **入站不受 captureEnabled 影响** —— 教师关掉画面时这条就是唯一的信号来源，
+     *      所以服务端这一侧根本没有那道闸（闸在**发送端**的 SDK 里，而它只管帧）；
+     *   2. **存的是「当前状态」而不是事件本身**（见 accumulateWebappPresence）——
+     *      内存里恒为一条，不随课堂时长增长。
+     *
+     * **先累加、后看有没有人订阅**：内存里留下的是一个有界的当前状态，而「按需推流」
+     * 管的是**转发**。理由与帧那条同款 —— 反过来（没人看就不记）会让教师打开看板时
+     * 图墙上一片「未打开」，而学生其实一直开着页面。
      */
     socket.on('webapp-event', async (data: unknown) => {
       try {
         const payload = validateWebappEventPayload(data);
         if (!payload) return;
         const reporter = await resolveWebappReporter(payload.classroomId, payload.webappId);
-        if (!reporter) return;
+        if (!reporter.ok) {
+          // 文字档被拒也要留痕（否则「学生明明在用、教师却看到未在线」无从查起），
+          // 但**每个 socket 只记一次**：文字档是 ≥400ms 一批的，一个坏掉的 socket
+          // 40 分钟能刷出几千行，那等于把日志淹掉。
+          // 标记挂在 socket 上，随连接一起消失 —— 不需要任何清理。
+          if (!socket.data.webappRejectionLogged) {
+            socket.data.webappRejectionLogged = true;
+            console.warn(
+              `[Socket] webapp-event 被拒：${reporter.reason}`
+              + ` classroom=${payload.classroomId} webappId=${payload.webappId}`,
+            );
+          }
+          return;
+        }
 
-        accumulateWebappEvents(reporter.classroomId, reporter.studentId, payload.webappId, payload.events, Date.now());
+        const now = Date.now();
+        accumulateWebappPresence(reporter.classroomId, reporter.studentId, payload.webappId, payload.events, now);
+
+        // 🔴 诊断（iPad 事故的直接产物）：学生报了文字档，却**一帧都没有**。
+        //
+        // 这正是「教师端只看得到浏览位置、看不到图片」的形状 —— 而它此前**一个字都不说**：
+        // 失败只写进 iframe 的 console，而 iPad 上没有开发者工具。出问题时只能靠猜。
+        //
+        // 判据是 `peekWebappFrame` 为空：帧是**覆盖式**存的（每个键恒 1 条），
+        // 所以「没有这一条」就等于「这个学生这个网页一帧都没成功送到过」。
+        //
+        // ⚠️ 只报一次（标记挂在 presence 条目上，随它一起被 TTL 清掉）—— 文字档是
+        //    ≥400ms 一批的，不节流就是刷屏，而刷屏等于没有诊断。
+        // ⚠️ 刻意放在 `hasWatchers` 那个提前返回**之前**：它是一条独立观测，
+        //    不该因为教师此刻没开看板就消失。
+        const presenceNow = peekWebappPresence(reporter.classroomId, reporter.studentId, payload.webappId);
+        if (
+          presenceNow
+          && !presenceNow.framelessLoggedAt
+          && !peekWebappFrame(reporter.classroomId, reporter.studentId, payload.webappId)
+        ) {
+          presenceNow.framelessLoggedAt = now;
+          console.warn(
+            '[Socket] webapp-frameless：只收到文字档、一帧都没有'
+            + ` classroom=${reporter.classroomId} student=${reporter.studentId} webapp=${payload.webappId}`
+            + ` events=${payload.events.length}`
+            + ' —— 若这一行只在老 iPad 上出现、桌面机上没有，问题在截图那一档'
+            + '（SDK 的 canvas 直读或 snapdom 光栅化），不在传输或渲染',
+          );
+        }
 
         // 按需推流：没有教师在看探究助手视图时**一个字节都不转发**（Ruling 9）。
-        // 注意这不是省内存的手段 —— 学生端的「零开销」靠的是 webapp-monitor-demand
-        // 让它在源头就不发；这一行挡的是「学生还在发（刚订阅/刚恢复）而教师已经走了」。
         if (!hasWatchers(io, reporter.classroomId)) return;
 
-        io.to(webappMonitorRoom(reporter.classroomId)).emit('webapp-student-event', {
+        const presence = peekWebappPresence(reporter.classroomId, reporter.studentId, payload.webappId);
+        if (!presence) return;
+        // 转发的是**当前状态**，不是刚收到的那几条事件 —— 教师图墙要回答的是
+        // 「这个学生现在有没有在用」，流水账给不了这个答案（也给不出有界的内存）。
+        io.to(webappMonitorRoom(reporter.classroomId)).emit('webapp-student-presence', {
           studentId: reporter.studentId,
           webappId: payload.webappId,
-          events: payload.events,
+          visible: presence.visible,
+          depth: presence.depth,
+          // at 用**服务端**收到的时刻，不用客户端时间戳（与帧同款）。
+          at: presence.at,
+          switches: presence.switches,
         });
       } catch (error) {
         console.error('[Socket] webapp-event error:', error);
       }
     });
 
-    /** 学生的缩略图帧上报（每个键只留最新一帧，见 storeWebappFrame）。 */
+    /**
+     * 学生的缩略图帧上报（每个键只留最新一帧，见 storeWebappFrame）。
+     *
+     * **先存、后看有没有人订阅**：内存里留下的是一帧（有界），而「按需推流」管的是
+     * **转发**。反过来（没人看就不存）会让课后汇总在教师没开看板时整批为空，
+     * 而汇总正是本模块唯一的落盘项。
+     */
     socket.on('webapp-frame', async (data: unknown) => {
       try {
         const payload = validateWebappFramePayload(data);
-        if (!payload) return;
+        if (!payload) {
+          // ⚠️ 这条日志是**刻意保留的诊断**，不是临时调试。这里从前是裸 `return` ——
+          //    于是「学生端在发帧、服务端却一帧都没转发」这种情况完全没有痕迹，
+          //    而它的形状与「学生端根本没发帧」在教师端看起来一模一样（都是空白）。
+          //    下面只解释**为什么被拒**，不复述那条判定本身（判定只有一处，在
+          //    `validateWebappFramePayload` 里）。
+          const raw = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : null;
+          const dataUrl = raw?.dataUrl;
+          const reason = typeof dataUrl !== 'string'
+            ? 'dataUrl 不是字符串'
+            : !dataUrl.startsWith(WEBAPP_DATA_URL_PREFIX)
+              ? `dataUrl 前缀不是 ${WEBAPP_DATA_URL_PREFIX}（实际 ${dataUrl.slice(0, 24)}）`
+              : `dataUrl 超长 ${dataUrl.length} > ${MAX_WEBAPP_DATA_URL_CHARS}`;
+          console.warn(`[Socket] webapp-frame 被拒：${reason}`);
+          return;
+        }
         const reporter = await resolveWebappReporter(payload.classroomId, payload.webappId);
-        if (!reporter) return;
+        if (!reporter.ok) {
+          // 帧本来就低频（≤ 每 5 秒一条），不需要节流 —— 每条都留，连同拒因。
+          console.warn(
+            `[Socket] webapp-frame 被拒：${reporter.reason}`
+            + ` classroom=${payload.classroomId} webappId=${payload.webappId}`,
+          );
+          return;
+        }
 
         const now = Date.now();
+        // 「**第一帧到达**」必须留痕，否则日志讲不出完整的故事。
+        //
+        // 这是 2026-09-22 那次真机实测暴露的缺口：`webapp-frameless` 只在**首次**观察到
+        // 无帧时报一次，而首帧本身有 0~3s 的随机抖动 —— 实测里告警在 +0.5s 就报了，
+        // 那台设备的 DOM 档 +1.8s 才开始。于是「告警」早于被观测的对象启动，
+        // **之后到底有没有帧到达，光看日志分不出来**，我就没法凭它下结论。
+        //
+        // 有了这一行，判据才闭合：**有 frameless、却永远没有 frame-first** = 确证失败。
+        const firstFrame = peekWebappFrame(reporter.classroomId, reporter.studentId, payload.webappId) === null;
         storeWebappFrame(reporter.classroomId, reporter.studentId, payload.webappId, payload.dataUrl, now);
+        if (firstFrame) {
+          console.log(
+            '[Socket] webapp-frame-first：第一帧到达'
+            + ` classroom=${reporter.classroomId} student=${reporter.studentId} webapp=${payload.webappId}`
+            + ` dataUrl=${payload.dataUrl.length} 字符`,
+          );
+        }
 
-        if (!hasWatchers(io, reporter.classroomId)) return;
+        const watching = hasWatchers(io, reporter.classroomId);
+        if (!watching) return;
         io.to(webappMonitorRoom(reporter.classroomId)).emit('webapp-student-frame', {
           studentId: reporter.studentId,
           webappId: payload.webappId,
@@ -1055,6 +1477,58 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         });
       } catch (error) {
         console.error('[Socket] webapp-frame error:', error);
+      }
+    });
+
+    /**
+     * 学生端的**截图失败诊断**（第 5 条通道的落点）。
+     *
+     * 🔴 这条存在的唯一理由：Safari 在 iOS 上不把跨源 iframe 单列成可检查目标，
+     * SDK 在 iframe 里的 console 日志**结构上取不到** —— 老 iPad「有浏览位置、
+     * 没有图片」的失败原因因此一直不可见。这里把「哪一类失败」落到服务端日志。
+     *
+     * ⚠️ 载荷里**只有一个封闭枚举码 + 三个整数**（见 `validateWebappDiagPayload`），
+     * 装不下任何页面内容。
+     * ⚠️ **不做归属校验就记**：诊断的价值在于「为什么会失败」，而失败很可能正是
+     * 归属校验不通过（重连未重新 join 之类）。若这里也要求是有效学生，
+     * 最需要的那一类诊断恰好会被丢掉。所以只校验**形状**，然后连同拒因一起记。
+     */
+    socket.on('webapp-diag', async (data: unknown) => {
+      try {
+        const payload = validateWebappDiagPayload(data);
+        if (!payload) {
+          console.warn('[Socket] webapp-diag 形状不合规，已丢弃');
+          return;
+        }
+        // 能否归属到某个学生另记 —— 它本身就是一条有用的信息（为 null 说明这个 socket
+        // 此刻不是该课堂的有效学生，见上面 `webapp-frame 被拒` 的同一套判据）。
+        const reporter = await resolveWebappReporter(payload.classroomId, payload.webappId);
+        console.warn(
+          `[Socket] webapp-diag code=${payload.code} n=${payload.n} w=${payload.w} h=${payload.h}`
+          + ` classroom=${payload.classroomId} webappId=${payload.webappId}`
+          + ` reporter=${reporter.ok ? reporter.studentId : '无（' + reporter.reason + '）'}`,
+        );
+
+        // 「这台设备拍不出画面」要**推给教师看板**，不只是写日志。
+        //
+        // ⚠️ 两条都要做（**存 + 转发**），理由与帧那条不同：帧是「有就覆盖」的流，
+        // 而这条是**一次性事件**（退避后约每分钟才可能重发）。只转发的话，
+        // 教师中途打开看板会看到「等待画面…」—— 那句话说的是「第一帧还在路上」，
+        // 与事实不符。存一份，才能让后来的人看到同一句话。
+        if (payload.code === 'dom-tier-gave-up' && reporter.ok) {
+          const key = webappKey(reporter.classroomId, reporter.studentId, payload.webappId);
+          webappMonitor.captureBlocked.set(key, { at: Date.now() });
+          if (hasWatchers(io, reporter.classroomId)) {
+            io.to(webappMonitorRoom(reporter.classroomId)).emit('webapp-student-capture-blocked', {
+              studentId: reporter.studentId,
+              webappId: payload.webappId,
+              // 这是**学生设备**上的采集失败，与「教师关掉了画面」是两回事（见 T7 的文案表）。
+              at: Date.now(),
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[Socket] webapp-diag error:', error);
       }
     });
 
@@ -1095,11 +1569,81 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       }
       if (!webappMonitor.watchers.has(classroomId)) webappMonitor.watchers.set(classroomId, new Set());
       webappMonitor.watchers.get(classroomId)!.add(socket.id);
+
+      // 回放「设备拍不出画面」的标记。
+      //
+      // ⚠️ **为什么只有这一项要回放，而帧与 presence 不回放**：那两项是**流**，学生端
+      // 每 10 秒 / 每次交互都会重发，教师等一会儿自然就看到当前状态；而这条是
+      // **一次性的粘性事件**（SDK 放弃时发一次，之后约每分钟才可能重发），不回放的话
+      // 教师中途进来会看到「等待画面…」—— 那句话说的是「第一帧还在路上」，与事实不符。
+      // 一句话：**流的等待是有界的，粘性事件的等待是无限的。**
+      for (const key of webappMonitor.captureBlocked.keys()) {
+        const ids = splitWebappKey(key, classroomId);
+        if (!ids) continue;
+        socket.emit('webapp-student-capture-blocked', {
+          studentId: ids.studentId,
+          webappId: ids.webappId,
+          at: webappMonitor.captureBlocked.get(key)!.at,
+        });
+      }
       socket.join(webappMonitorRoom(classroomId));
       // 有人回来了：取消待触发的「停止推流」（Ruling 9 第 2 条的防抖）。
       cancelDemandNotification(classroomId);
-      io.to(`classroom:${classroomId}`).emit('webapp-monitor-demand', { watching: true });
+      broadcastWebappDemand(io, prisma, classroomId);
       console.log(`[Socket] Teacher watching webapp monitor: ${classroomId}`);
+    });
+
+    /**
+     * 教师点开 / 关掉某个学生的详情 —— 决定**那个学生**要不要转高频截图。
+     *
+     * ⚠️ 鉴权与订阅同款（教师 cookie + 课堂绑定）。这不只是形式：这条直接改变
+     * **学生设备**的开销，是少数几个「教师端能让学生的老 iPad 多干活」的入口之一。
+     * 失败一律静默返回，不给探测者任何反馈。
+     *
+     * 不 gate 在「此刻有没有 watcher」上：焦点可以先于订阅到达（教师恢复页面时
+     * 抽屉本来就是开的），随后 `watch-webapp-monitor` 会用 broadcastWebappDemand
+     * 把正确的组合一起发出去。
+     */
+    socket.on('focus-webapp-student', (raw: unknown) => {
+      const payload = validateWebappFocusPayload(raw);
+      if (!payload) return;
+      const boundClassroomId = socket.data.classroomId as string | undefined;
+      if (
+        !hasTeacherSessionCookie(socket.handshake.headers.cookie) ||
+        (boundClassroomId !== undefined && boundClassroomId !== payload.classroomId)
+      ) {
+        return;
+      }
+      if (payload.studentId) webappMonitor.focus.set(payload.classroomId, payload.studentId);
+      else webappMonitor.focus.delete(payload.classroomId);
+      broadcastWebappDemand(io, prisma, payload.classroomId);
+    });
+
+    /**
+     * 学生上报「我此刻在看哪个模块」（P2.3 的看板「跟随」模式）。`moduleId: null` = 首页。
+     *
+     * ⚠️ 判据是 **socket.data**（join-classroom 时经令牌校验写进去的），不是载荷自报的
+     * classroomId —— 载荷只用来与 socket 会话**比对**，不采信它。
+     *
+     * ⚠️ 模块 key 走白名单：只认三件套与 null。拼错的**整条丢掉**，不要把垃圾写进状态
+     * —— 教师端的「跟随」会照着它渲染，写进去就会渲染出一个不存在的模块。
+     */
+    socket.on('module-focus', (data: unknown) => {
+      if (!data || typeof data !== 'object') return;
+      const d = data as { classroomId?: unknown; moduleId?: unknown };
+      const classroomId = socket.data.classroomId as string | undefined;
+      const studentId = socket.data.studentId as string | undefined;
+      if (!classroomId || !studentId) return;
+      if (d.classroomId !== classroomId) return;
+
+      let moduleId: string | null;
+      if (d.moduleId === null || d.moduleId === undefined) moduleId = null;
+      else if (d.moduleId === 'worksheet' || d.moduleId === 'explore' || d.moduleId === 'companion') moduleId = d.moduleId;
+      else return;
+
+      const now = Date.now();
+      webappMonitor.moduleFocus.set(`${classroomId}:${studentId}`, { moduleId, at: now });
+      io.to(`teacher:${classroomId}`).emit('student-module-focus', { studentId, moduleId, at: now });
     });
 
     /**
@@ -1123,7 +1667,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         if (socketIds.size === 0) webappMonitor.watchers.delete(classroomId);
       }
       socket.leave(webappMonitorRoom(classroomId));
-      if (!hasWatchers(io, classroomId)) scheduleDemandNotification(io, classroomId);
+      // ⚠️ **焦点必须一起清掉。** 教师离开视图时抽屉自然也没了，但 `focus` 是服务端
+      // 自己的一份状态，不会跟着客户端的卸载走。留着它的后果是：教师下次再进来、
+      // 而某个学生恰好还是那个 studentId ⇒ 那个学生**一上来就是 detail 档**，
+      // 白白按 2 秒一帧烧自己的设备，而教师根本没点开他。
+      webappMonitor.focus.delete(classroomId);
+      if (!hasWatchers(io, classroomId)) scheduleDemandNotification(io, prisma, classroomId);
     });
 
     // 学生发送消息（流式）
@@ -1682,7 +2231,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       for (const [watchedClassroomId, socketIds] of webappMonitor.watchers) {
         if (!socketIds.delete(socket.id)) continue;
         if (socketIds.size === 0) webappMonitor.watchers.delete(watchedClassroomId);
-        if (!hasWatchers(io, watchedClassroomId)) scheduleDemandNotification(io, watchedClassroomId);
+        if (!hasWatchers(io, watchedClassroomId)) scheduleDemandNotification(io, prisma, watchedClassroomId);
       }
 
       // 清理活跃连接记录

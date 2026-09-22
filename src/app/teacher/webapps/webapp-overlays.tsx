@@ -2,13 +2,46 @@
 
 import { useEffect, useState } from 'react';
 import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
-import type { WebappSummary } from '@/lib/types';
+import { RelatedClassroomList } from '@/lib/components';
+import type { WebappSummary, RelatedClassroom } from '@/lib/types';
 
-/** 「无法删除」弹窗。骨架照 `agents/agent-overlays.tsx` 的 DeleteBlockedDialog，只改文案。 */
-export function WebappDeleteBlockedDialog({ webappName, onClose }: { webappName: string; onClose: () => void }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="webapp-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 420, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+/**
+ * 「无法删除」弹窗。
+ *
+ * ⚠️ 它必须**列出是哪些课堂**：从前只说「正被课堂使用中」，教师唯一的出路是自己
+ * 一间接一间去翻。usage 接口本来就返回了清单（`classrooms`），调用方在删除守卫
+ * 那一次请求里已经拿到了 —— 直接传进来，不要为了展示再请求一次。
+ */
+export function WebappDeleteBlockedDialog({ webappName, classrooms, onClose }: {
+  webappName: string;
+  classrooms: RelatedClassroom[];
+  onClose: () => void;
+}) {
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="webapp-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="webapp-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除探究网页</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>这个网页正被课堂使用中，删掉会让那些课堂里的学生打不开它。</p></div>
-    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 4, wordBreak: 'break-all' }}>「{webappName}」</div><div style={{ fontSize: '0.813rem', color: '#b91c1c' }}>想删的话，先在这些课堂里取消关联（目前课堂关联只能在创建课堂时勾选）。</div></div>
+    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8, wordBreak: 'break-all' }}>「{webappName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /><div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: 8 }}>课堂关联目前只能在创建课堂时勾选。</div></div>
+    <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
+  </div></>;
+}
+
+/**
+ * 卡片上「关联课堂」入口打开的清单。
+ *
+ * 与「无法删除」弹窗共用同一个 `RelatedClassroomList` —— 两处的清单必须长得一样，
+ * 否则教师会以为它们说的不是同一件事。
+ */
+export function WebappRelatedClassroomsDialog({ webappName, classrooms, loading, onClose }: {
+  webappName: string;
+  classrooms: RelatedClassroom[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="webapp-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <h3 id="webapp-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{webappName}」关联的课堂</h3>
+    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选探究网页。</p>
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
+      <RelatedClassroomList classrooms={classrooms} loading={loading} emptyText="还没有课堂关联这个网页" />
+    </div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;
 }

@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
-import type { AgentSummary } from '@/lib/types';
+import type { AgentSummary, RelatedClassroom } from '@/lib/types';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
 import { AgentCredentialsFields, AgentPlatformNotice } from './credentials-fields';
 import { AgentCard } from './agent-card';
-import { AgentDeleteBlockedDialog, AgentErrorTip, type AgentErrorTipData } from './agent-overlays';
+import { AgentDeleteBlockedDialog, AgentErrorTip, AgentRelatedClassroomsDialog, type AgentErrorTipData } from './agent-overlays';
 import { useAgentController } from './use-agent-controller';
 import { useAgentFormFields } from './use-agent-form-fields';
 import { useAgentLogo } from './use-agent-logo';
@@ -23,18 +23,18 @@ export default function AgentsPage() {
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: 'success' | 'error' }>({ show: false, msg: '', type: 'success' });
   const toastTimerRef = useRef<number | null>(null);
   const [errorTip, setErrorTip] = useState<AgentErrorTipData | null>(null);
-  const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string } | null>(null);
+  const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string; classrooms: RelatedClassroom[] } | null>(null);
   const [agentSearch, setAgentSearch] = useState('');
   const [platformFilter, setPlatformFilter] = useState<'all' | AgentPlatform>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'healthy' | 'error'>('all');
 
-  const { agents, loading, testing, busyOperation, loadAgents, toggleAgent, deleteAgent, testAgent } = useAgentController({
+  const { agents, loading, testing, busyOperation, relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms, loadAgents, toggleAgent, deleteAgent, testAgent } = useAgentController({
     onNotice: notice => {
       setToast({ show: true, msg: notice.message, type: notice.type });
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
       toastTimerRef.current = window.setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
     },
-    onDeleteBlocked: agent => setDeleteBlocked({ agentName: agent.name }),
+    onDeleteBlocked: (agent, classrooms) => setDeleteBlocked({ agentName: agent.name, classrooms }),
   });
 
   useEffect(() => () => {
@@ -144,6 +144,7 @@ export default function AgentsPage() {
               onDelete={() => void deleteAgent(agent)}
               onShowError={(text, top, left) => setErrorTip({ text, top, left })}
               onHideError={() => setErrorTip(null)}
+              onShowRelatedClassrooms={() => void openRelatedClassrooms(agent)}
             />
           ))}
         </div>
@@ -152,7 +153,15 @@ export default function AgentsPage() {
         <Pagination current={agentPage} total={filteredAgents.length} pageSize={agentPageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setAgentPage} onPageSizeChange={setAgentPageSize} />
       )}
 
-      {deleteBlocked && <AgentDeleteBlockedDialog agentName={deleteBlocked.agentName} onClose={() => setDeleteBlocked(null)} />}
+      {deleteBlocked && <AgentDeleteBlockedDialog agentName={deleteBlocked.agentName} classrooms={deleteBlocked.classrooms} onClose={() => setDeleteBlocked(null)} />}
+      {relatedClassrooms && (
+        <AgentRelatedClassroomsDialog
+          agentName={relatedClassrooms.agent.name}
+          classrooms={relatedClassrooms.classrooms}
+          loading={relatedLoading}
+          onClose={closeRelatedClassrooms}
+        />
+      )}
       {errorTip && <AgentErrorTip tip={errorTip} />}
 
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}

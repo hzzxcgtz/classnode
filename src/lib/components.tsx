@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import type { RelatedClassroom } from './types';
 
 /** 统一教师端页面的标题、说明和主操作区域。 */
 export function TeacherPageHeader({
@@ -240,3 +241,76 @@ export function Pagination({
     </div>
   );
 }
+
+/**
+ * 「关联到的课堂」清单 —— 智能体与探究网页**共用同一份渲染**。
+ *
+ * 两处消费同样的形状（`RelatedClassroom`），所以不各写一份：复制两份的下场是
+ * 状态徽章的颜色和文案会在某一侧先漂移，而两个页面长得几乎一样，漂移很难被看出来。
+ *
+ * `loading` 与空态都由这里负责，调用方只给一句空态文案 —— 空态文案要说清
+ * **是这个东西还没被用过**，而不是「出错了」。
+ */
+export function RelatedClassroomList({
+  classrooms,
+  loading = false,
+  emptyText,
+}: {
+  classrooms: RelatedClassroom[];
+  loading?: boolean;
+  emptyText: string;
+}) {
+  if (loading) {
+    return (
+      <div className="related-classroom-list is-pending">
+        <span className="related-classroom-hint">正在读取…</span>
+      </div>
+    );
+  }
+
+  if (classrooms.length === 0) {
+    return (
+      <div className="related-classroom-list is-empty">
+        <span className="related-classroom-hint">{emptyText}</span>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="related-classroom-list">
+      {classrooms.map(classroom => (
+        <li key={classroom.id} className="related-classroom-item">
+          <span className="related-classroom-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="21" x2="9" y2="9" />
+            </svg>
+          </span>
+          <span className="related-classroom-title">{classroom.title}</span>
+          {classroom.mode && (
+            <span className="related-classroom-mode">{CLASSROOM_MODE_LABELS[classroom.mode] ?? classroom.mode}</span>
+          )}
+          <span className={`related-classroom-status is-${classroom.status}`}>
+            {CLASSROOM_STATUS_LABELS[classroom.status] ?? classroom.status}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** 状态文案与 `classes/page.tsx` 的既有口径一致（进行中 / 已暂停 / 已结束）。 */
+const CLASSROOM_STATUS_LABELS: Record<string, string> = {
+  active: '进行中',
+  paused: '已暂停',
+  ended: '已结束',
+};
+
+/** 课堂模式文案。认不出的模式原样显示 —— 不猜，也不吞掉。 */
+const CLASSROOM_MODE_LABELS: Record<string, string> = {
+  standard: '标准模式',
+  group: '分组模式',
+  advanced: '高级模式',
+};
+

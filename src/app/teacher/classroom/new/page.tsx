@@ -15,11 +15,13 @@ export default function NewClassroomPage() {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   /**
-   * 可关联的探究网页。**多选**（`Set<string>`）—— 一个课堂可以关联多个网页，
-   * 而智能体是单选（课堂只有一条对话链路）。两种语义不要混用同一个 state 形状。
+   * 可关联的探究网页。**单选**（`string`，P2.3 起）—— 一个课堂只关联一个网页。
+   *
+   * 从前这里是 `Set<string>`（多选），但学生端一直只加载 `webapps[0]`，第二个及以后
+   * **从未生效过**（勾了 A、B、C，学生拿到哪个是随机的）。单选是把界面与实际行为对齐。
    */
   const [webapps, setWebapps] = useState<WebappSummary[]>([]);
-  const [selectedWebappIds, setSelectedWebappIds] = useState<Set<string>>(new Set());
+  const [selectedWebappId, setSelectedWebappId] = useState('');
   /**
    * 网页列表自身的加载结果。它**不阻断创建**（网页是可选配置），但要在界面上说出来：
    * 「没勾」与「加载失败导致没得勾」在提交流程里长得一模一样，而后者建出来的课堂
@@ -44,6 +46,8 @@ export default function NewClassroomPage() {
   const agentSectionRef = useRef<HTMLDivElement>(null);
   /** `agentSectionRef` 的兄弟：网页列表加载失败时，提交后要滚到这里（原因写在这一块里）。 */
   const webappSectionRef = useRef<HTMLDivElement>(null);
+  /** 三件套「至少一项」没满足时的那条横幅：它挂在操作按钮正上方，滚到它就能同时看到按钮。 */
+  const materialErrorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -114,13 +118,21 @@ export default function NewClassroomPage() {
     if (savingRef.current) return;
     const errors: Record<string, string> = {};
     if (!title.trim()) errors.title = '请输入课堂标题';
+    // 参与班级与三件套是**两件事**（班级是学生名册的来源，必填；三件套至少选一项），
+    // 所以这里也是两条独立的判据 —— 报错文案要能告诉教师该去哪一栏动手。
     if (!selectedClassId) errors.class = '请选择班级';
-    if (mode !== 'advanced' && !selectedAgentId) errors.agent = '请选择AI智能体';
     if (mode === 'advanced') {
       const allAssigned = classGroups.every(g => groupAgentIds[g.id]);
       if (loadingGroups) errors.groupAgents = '班级分组仍在加载，请稍候';
       else if (classGroups.length === 0) errors.groupAgents = '当前班级没有可用分组，请重新选择班级';
       else if (!allAssigned) errors.groupAgents = '请为每个小组分配智能体';
+    } else if (!selectedAgentId && !selectedWebappId) {
+      // 三件套「至少一项」：AI 智能体 / 探究网页 / 学习单。
+      // ⚠️ 这条**只是即时反馈**，服务端 `classroomMaterialError` 才是权威（前端能被绕过）。
+      // 两边的判据必须一致 —— 只选网页不选智能体是**合法**的，别在这里拦住提交。
+      // 将来做学习单：把学习单那一项并进这个条件即可（`|| Boolean(selectedWorksheetId)`），
+      // 结构不用动。
+      errors.material = '请至少选择一项课堂内容：AI 智能体 / 探究网页（学习单即将支持）';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -132,6 +144,8 @@ export default function NewClassroomPage() {
         // 本来就安全，真正的问题是**没有备选目标**，所以补上网页区那一支。
         if (errors.title) titleInputRef.current?.focus();
         else if (errors.class) classSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 三件套的错误挂在按钮正上方，滚到它时按钮还在视野里（`block: 'center'`）。
+        else if (errors.material) materialErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         else if (agentSectionRef.current) agentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // 网页列表加载失败**不阻断创建**（它是可选配置），但提交时必须把教师送到那一块 ——
         // 否则他会在课堂里看到「老师还没有添加探究网页」，而原因写在另一个屏幕外的地方。
@@ -142,9 +156,9 @@ export default function NewClassroomPage() {
 
     savingRef.current = true;
     setSaving(true);
-    // 两条创建路径都带上勾选的网页。`Set` 的插入顺序就是勾选顺序 ⇒ 关联顺序即勾选顺序
-    // （服务端按 createdAt 升序下发，学生端与教师端看到的是同一个次序）。
-    const webappIds = Array.from(selectedWebappIds);
+    // 探究网页**单选**：数组里最多一个元素（或空数组）。字段名仍是复数 ——
+    // 服务端要兼容旧前端发来的多元素数组（按「取第一个」处理，见 resolveSingleWebappId）。
+    const webappIds = selectedWebappId ? [selectedWebappId] : [];
     try {
       if (mode === 'advanced') {
         const groups = classGroups.map(g => ({
@@ -163,7 +177,10 @@ export default function NewClassroomPage() {
         const result = await api.createClassroom({
           title: title || undefined,
           classIds: [selectedClassId],
-          agentIds: [selectedAgentId],
+          // 智能体是**选填**（三件套之一）⇒ 没选就发空数组，**不要发 `['']`**：
+          // 那会让「没选」在服务端表现为「给了一个空 id」，虽然两边都会过滤掉，
+          // 但它把「空数组 = 没选」这条明确语义弄脏了（也让人以为智能体是必填的）。
+          agentIds: selectedAgentId ? [selectedAgentId] : [],
           mode: mode === 'group' ? 'group' : 'standard',
           webappIds,
         });
@@ -179,26 +196,29 @@ export default function NewClassroomPage() {
 
   const selectedClass = classes.find((classItem) => classItem.id === selectedClassId);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const selectedWebapp = webapps.find((webapp) => webapp.id === selectedWebappId);
   const configuredGroupCount = classGroups.filter((group) => groupAgentIds[group.id]).length;
   const modeLabel = mode === 'standard' ? '标准模式' : mode === 'group' ? '分组模式' : '高级模式';
   const steps = [
     { label: '课堂信息', complete: Boolean(title.trim()) },
     { label: '参与班级', complete: Boolean(selectedClassId) },
     {
-      // 「AI 与网页」：探究网页并入这一步，**不加第 4 格**（控制器裁定）—— 进度条加一格
-      // 会让一个可选配置看起来与「选哪个班」同等重要，而它是可选的。
-      // ⇒ 完成度判据**只看智能体**：把可选配置算进去，会让「不想要网页」的教师
-      //    永远看不到这一步完成。
-      label: 'AI 与网页',
+      // 「课堂内容」= 三件套（AI 智能体 / 探究网页 / 学习单），并入这一步、**不加第 4 格**。
+      //
+      // 🔴 完成度判据是「**任一项已选**」，不是「智能体已选」（P2.3 之前是后者）。
+      //    改这一处是有原因的：那条旧判据会把「只选了探究网页」显示成这一步没完成，
+      //    而服务端和提交逻辑都允许这么建 —— 进度条会说谎，教师会以为自己没弄完。
+      //    将来做学习单：把学习单那一项并进 `Boolean(...) ||` 这一串即可。
+      label: '课堂内容',
       complete: mode === 'advanced'
         ? classGroups.length > 0 && configuredGroupCount === classGroups.length
-        : Boolean(selectedAgentId),
+        : Boolean(selectedAgentId) || Boolean(selectedWebappId),
     },
   ];
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <TeacherPageHeader title="创建新课堂" description="依次选择模式、班级和智能体后发起课堂。" />
+      <TeacherPageHeader title="创建新课堂" description="选好模式与班级，再从 AI 智能体 / 探究网页里挑至少一项，即可发起课堂。" />
 
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
         <div className="new-classroom-steps" aria-label="课堂创建进度">
@@ -496,7 +516,9 @@ export default function NewClassroomPage() {
             <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
               选择AI智能体
-              <span className="required-field-mark">必填</span>
+              {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
+                  这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
+              <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 三件套任选其一</span>
             </div>
             {loadingOptions ? (
               <div className="new-classroom-loading" role="status">正在加载智能体...</div>
@@ -514,7 +536,11 @@ export default function NewClassroomPage() {
                 {agents.map(a => {
                   const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
                   return (
-                    <button type="button" key={a.id} onClick={() => { setSelectedAgentId(a.id); clearError('agent'); }}
+                    <button type="button" key={a.id}
+                      // 单选：点中的那个成为唯一选择，**再点一次取消**（它是选填项，必须能取消）。
+                      // ⚠️ 与下面探究网页那一块同一套语义。从前这里是一次性写入
+                      //    （`setSelectedAgentId(a.id)`），于是选中之后再也回不到未选状态。
+                      onClick={() => { setSelectedAgentId(prev => (prev === a.id ? '' : a.id)); clearError('agent'); clearError('material'); }}
                       aria-pressed={selectedAgentId === a.id}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
@@ -559,10 +585,11 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
             关联探究网页
-            <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 可多选</span>
+            <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一个 · 三件套任选其一</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
-            学生在「探究助手」里会打开这些网页。不选也可以，之后在课堂里就看不到探究助手网页。
+            学生在「探究助手」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
+            不选也可以 —— 那就记得至少选一个 AI 智能体。
           </div>
           {webappLoadError ? (
             <div role="alert" style={{ padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
@@ -576,14 +603,15 @@ export default function NewClassroomPage() {
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {webapps.map(w => {
-                const selected = selectedWebappIds.has(w.id);
+                const selected = selectedWebappId === w.id;
                 return (
                   <button type="button" key={w.id} aria-pressed={selected}
-                    onClick={() => setSelectedWebappIds(prev => {
-                      const next = new Set(prev);
-                      if (next.has(w.id)) next.delete(w.id); else next.add(w.id);
-                      return next;
-                    })}
+                    // 单选：点中的那个成为唯一选择，再点一次取消（它是选填项，必须能取消）。
+                    // ⚠️ 不要写回 `Set` 那套 add/delete —— 那正是要改掉的旧语义。
+                    onClick={() => {
+                      setSelectedWebappId(prev => (prev === w.id ? '' : w.id));
+                      clearError('material');
+                    }}
                     style={{
                       display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
                       padding: '8px 14px', borderRadius: 8, userSelect: 'none', textAlign: 'left',
@@ -601,6 +629,19 @@ export default function NewClassroomPage() {
           )}
         </div>
 
+        {/* 三件套「至少一项」的横幅。
+            它跨了「AI 智能体」与「探究网页」两块，所以不能挂在其中任何一块的错误位上
+            —— 挂在智能体那块会让「只选了网页」的教师以为问题出在网页那一栏。
+            位置紧贴操作按钮：教师点「发起课堂」时它就在眼前，不需要往上翻。 */}
+        {fieldErrors.material && <div ref={materialErrorRef} role="alert" style={{
+          fontSize: "0.813rem", color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a',
+          borderRadius: 8, padding: '10px 14px', marginBottom: 16, marginTop: -4,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+          {fieldErrors.material}
+        </div>}
+
         {fieldErrors.submit && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {fieldErrors.submit}
@@ -614,7 +655,7 @@ export default function NewClassroomPage() {
               {modeLabel} · {selectedClass?.name || '未选班级'} · {mode === 'advanced'
                 ? `${configuredGroupCount}/${classGroups.length} 个小组已配置`
                 : selectedAgent?.name || '未选智能体'}
-              {selectedWebappIds.size > 0 ? ` · ${selectedWebappIds.size} 个探究网页` : ''}
+              {selectedWebapp ? ` · 探究网页：${selectedWebapp.name}` : ''}
             </span>
           </div>
           <div className="new-classroom-action-buttons">

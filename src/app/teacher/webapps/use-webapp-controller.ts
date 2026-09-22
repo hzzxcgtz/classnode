@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import type { WebappSummary } from '@/lib/types';
+import type { WebappSummary, RelatedClassroom } from '@/lib/types';
 
 type Notice = { message: string; type: 'success' | 'error' };
+
+/** 卡片上「关联课堂」弹窗的状态。`classrooms` 为空数组时是「读到了、确实没有」。 */
+export interface RelatedClassroomsState {
+  webapp: WebappSummary;
+  classrooms: RelatedClassroom[];
+}
 
 /**
  * 网页列表的数据层 + **删除前的使用量守卫**。
@@ -17,11 +23,13 @@ type Notice = { message: string; type: 'success' | 'error' };
  */
 export function useWebappController({ onNotice, onDeleteBlocked }: {
   onNotice: (notice: Notice) => void;
-  onDeleteBlocked: (webapp: WebappSummary) => void;
+  onDeleteBlocked: (webapp: WebappSummary, classrooms: RelatedClassroom[]) => void;
 }) {
   const [webapps, setWebapps] = useState<WebappSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyOperation, setBusyOperation] = useState<string | null>(null);
+  const [relatedClassrooms, setRelatedClassrooms] = useState<RelatedClassroomsState | null>(null);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
   const callbacksRef = useRef({ onNotice, onDeleteBlocked });
@@ -59,7 +67,8 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
     try {
       const usage = await api.checkWebappUsage(webapp.id);
       if (usage.used) {
-        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(webapp);
+        // 清单已经在这个响应里了 —— 一并交给弹窗，不要为了展示再请求一次。
+        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(webapp, usage.classrooms);
         return;
       }
       if (!window.confirm(`确定删除 "${webapp.name}" 吗？网页文件会一并删除，且无法恢复。`)) return;
@@ -79,5 +88,40 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
     }
   }, [loadWebapps]);
 
-  return { webapps, loading, busyOperation, loadWebapps, deleteWebapp };
+  /**
+   * 打开「关联课堂」弹窗。⚠️ **点击时才请求** —— 列表接口只给计数，清单在 `:id/usage` 里，
+   * 让每张卡片挂载即取会变成一页 12 个请求（N+1）。
+   *
+   * 先开弹窗（空清单 + `relatedLoading`）再取数，让「正在读取」有明确的载体。
+   */
+  const openRelatedClassrooms = useCallback(async (webapp: WebappSummary) => {
+    setRelatedClassrooms({ webapp, classrooms: [] });
+    setRelatedLoading(true);
+    try {
+      const usage = await api.checkWebappUsage(webapp.id);
+      if (mountedRef.current) setRelatedClassrooms({ webapp, classrooms: usage.classrooms });
+    } catch (error) {
+      // 读不到就关掉并明说 —— 留一个空清单会让教师以为「确实没有关联」。
+      if (mountedRef.current) {
+        setRelatedClassrooms(null);
+        callbacksRef.current.onNotice({
+          message: `无法读取“${webapp.name}”的关联课堂：${error instanceof Error ? error.message : '请求失败'}`,
+          type: 'error',
+        });
+      }
+    } finally {
+      if (mountedRef.current) setRelatedLoading(false);
+    }
+  }, []);
+
+  const closeRelatedClassrooms = useCallback(() => {
+    setRelatedClassrooms(null);
+    setRelatedLoading(false);
+  }, []);
+
+  return {
+    webapps, loading, busyOperation,
+    relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms,
+    loadWebapps, deleteWebapp,
+  };
 }

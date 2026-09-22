@@ -14,6 +14,8 @@ interface AgentCardProps {
   onDelete: () => void;
   onShowError: (text: string, top: number, left: number) => void;
   onHideError: () => void;
+  /** 打开「关联课堂」清单。 */
+  onShowRelatedClassrooms: () => void;
 }
 
 const actionStyle = (danger = false) => ({
@@ -22,7 +24,7 @@ const actionStyle = (danger = false) => ({
   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
 });
 
-export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest, onEdit, onDelete, onShowError, onHideError }: AgentCardProps) {
+export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest, onEdit, onDelete, onShowError, onHideError, onShowRelatedClassrooms }: AgentCardProps) {
   const platform = AGENT_PLATFORM_MAP[agent.platform as AgentPlatform];
   const color = platform?.color || '#64748b';
   const enabled = agent.enabled !== false;
@@ -48,6 +50,23 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
             </span>
             {['coze-agent', 'wenxin'].includes(agent.platform) && <CapabilityTag>纯文字</CapabilityTag>}
             {agent.platform === 'wenxin' && <CapabilityTag>非流式</CapabilityTag>}
+            {/*
+              关联课堂入口。⚠️ 这里**刻意不**用左色条表达「被几个课堂用着」——
+              智能体卡片的左色条已经承载「启用/停用」（那是这一页的主状态），
+              再叠一层语义会让两种状态互相盖住。网页页没有启用概念，所以那边
+              让色条承载使用状态。两页这点**故意不同**，不是不一致。
+              ⚠️ 计数只在确实有值时才渲染：显示硬凑的 0 会让「数据没读到」和
+              「读了、确实是 0」长得一样。
+            */}
+            <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
+              </svg>
+              关联课堂
+              {typeof agent.classroomCount === 'number' && agent.classroomCount > 0 && (
+                <span className="related-classrooms-chip-count">{agent.classroomCount}</span>
+              )}
+            </button>
           </div>
         </div>
         <button type="button" onClick={onToggle} aria-pressed={enabled} aria-label={`${enabled ? '停用' : '启用'}${agent.name}`} style={{

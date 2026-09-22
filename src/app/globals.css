@@ -1450,6 +1450,293 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
+/* ── 探究网页管理页（/teacher/webapps/）────────────────────────────────
+   与 `.agent-management-*` 是**同一套视觉语言**：两者都是教师端的资产管理页，
+   并排出现在同一个侧边栏里，所以取值照抄那一组，而不是另起一套。
+
+   ⚠️ 从前这四个类名（`-grid` / `-card` / `-card-footer` / `-card-actions`）是**空壳**：
+   TSX 认真写了类名，`globals.css` 里却一条规则都没有，样式全靠内联 style ——
+   后果很具体：**这一页完全没有小屏适配**（智能体页有 900 / 720 两档断点），
+   而教师同样会用 iPad 打开它。
+
+   这里刻意写成**自成一块**，而不是把选择器并进上面那几组共享规则：这一页概览是
+   3 格（那边 4 格）、色调语义也不同，并进去收益很小，而自成一块能保证**零风险**地
+   不动到智能体页与「进行中课堂」页。代价是搜索框那几条规则与 `.agent-management-search`
+   重复 —— 那是一个通用搜索框，将来若要合并，两处一起抽即可。 */
+
+/* 概览条：全部 / 已关联课堂 / 未关联。与智能体页同款——数字大、标签小、两端对齐。 */
+.webapp-management-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.webapp-management-overview > div {
+  min-height: 68px;
+  padding: 12px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.webapp-management-overview strong {
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.webapp-management-overview span {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+/* 三格的色调只用来互相区分，不额外承载语义（与智能体页的四格同理）。 */
+.webapp-management-overview .tone-blue strong { color: #2563eb; }
+.webapp-management-overview .tone-green strong { color: #059669; }
+.webapp-management-overview .tone-grey strong { color: #94a3b8; }
+
+/* 筛选行：搜索框 + 关联状态下拉。尺寸照智能体页（38px 高、8px 圆角）。 */
+.webapp-management-filters {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.webapp-management-search {
+  min-width: 240px;
+  max-width: 380px;
+  flex: 1;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.webapp-management-search:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.webapp-management-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.813rem;
+}
+
+.webapp-management-search button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.webapp-management-filters select {
+  height: 38px;
+  padding: 0 32px 0 10px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 0.813rem;
+  cursor: pointer;
+}
+
+.webapp-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* 卡片。`.card` 基类已经给了白底 / 圆角 / 边框 / 阴影，这里只加资产卡自己的东西：
+   左边那条色条**承载信息**（已被课堂使用 vs 未被使用），与智能体卡片用左色条表示
+   启用 / 停用是**同一条视觉语法** —— 教师一眼就能挑出还没派上用场的网页。 */
+.webapp-management-card {
+  border-left: 5px solid #2563eb;
+  padding: 16px 20px;
+}
+
+.webapp-management-card.is-unused {
+  border-left-color: #e2e8f0;
+}
+
+.webapp-management-card-footer,
+.webapp-management-card-actions {
+  flex-wrap: wrap;
+}
+
+/* ── 「关联课堂」入口 chip（智能体页与网页页共用）────────────────────
+   放在徽章行里、紧挨着「平台」/「入口」那些只读标签。**必须是按钮而不是标签**：
+   它长得像标签但可以点，所以给边框与 hover 态把它区分出来。
+   ⚠️ `.related-classrooms-chip-count` 只在**确实有**关联时才渲染 —— 显示一个
+   硬凑的 0 会让「没读过数据」和「读了、结果是 0」长得一样。 */
+.related-classrooms-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 4px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 0.688rem;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.related-classrooms-chip:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.related-classrooms-chip-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #2563eb;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 「关联到的课堂」清单（智能体页与网页页共用）────────────────────
+   渲染件是 `src/lib/components.tsx` 的 `RelatedClassroomList`，两个管理页的
+   「关联课堂」弹窗与「无法删除」弹窗都用它。放在这里而不是各页自己的模块里，
+   是因为这三处必须长得一样。 */
+.related-classroom-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.related-classroom-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.813rem;
+  color: #475569;
+}
+
+.related-classroom-item:last-child {
+  border-bottom: 0;
+}
+
+.related-classroom-icon {
+  flex-shrink: 0;
+  color: #94a3b8;
+  display: flex;
+}
+
+/* 标题占满剩余宽度：长标题截断，不让徽章被挤走。 */
+.related-classroom-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1e293b;
+}
+
+.related-classroom-mode {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.688rem;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+}
+
+.related-classroom-status {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.688rem;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+/* 配色与 `classes/page.tsx` 里那份既有实现一致：绿=进行中、黄=已暂停、灰=已结束。 */
+.related-classroom-status.is-active { background: #dcfce7; color: #16a34a; }
+.related-classroom-status.is-paused { background: #fef3c7; color: #d97706; }
+.related-classroom-status.is-ended { background: #f1f5f9; color: #94a3b8; }
+
+.related-classroom-list.is-pending,
+.related-classroom-list.is-empty {
+  padding: 12px 0;
+  text-align: center;
+}
+
+.related-classroom-hint {
+  font-size: 0.813rem;
+  color: #94a3b8;
+}
+
+@media (max-width: 900px) {
+  .webapp-management-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .webapp-management-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .webapp-management-search,
+  .webapp-management-filters select {
+    width: 100%;
+    max-width: none;
+  }
+
+  /* `!important` 是照着 `.agent-management-grid` 那条抄的：卡片网格的
+     `grid-template-columns` 现在由 TSX 的内联样式给出，类选择器赢不过内联样式。
+     去掉内联样式之后这里其实可以不加，但留着与智能体页保持同款写法。 */
+  .webapp-management-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .webapp-management-card-footer {
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  .webapp-management-card-actions {
+    width: 100%;
+  }
+
+  .webapp-management-card-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 @media (max-width: 900px) {
   .classes-layout {
     flex-direction: column;

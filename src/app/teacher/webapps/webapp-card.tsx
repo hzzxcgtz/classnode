@@ -6,6 +6,8 @@ interface WebappCardProps {
   onPreview: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** 打开「关联课堂」清单。 */
+  onShowRelatedClassrooms: () => void;
 }
 
 const actionStyle = (danger = false) => ({
@@ -21,18 +23,26 @@ const actionStyle = (danger = false) => ({
  * ⚠️ 卡片上**只显示入口文件名（`entryPath`），不显示任何 URL**。`entryPath` 是教师上传时
  * 自己的目录里的相对路径，不是地址；把它渲染成 `<a href>` 或补上托管源都会让「托管服务的
  * 地址」出现在界面上，而那是本模块刻意只在服务端拼的东西（规格 §5.3）。
+ *
+ * ⚠️ 左色条与头像的配色**承载信息**（已被课堂使用 / 一次都没被用过），不是装饰。
+ * 从前它对每一张卡片都写死 `#2563eb`，于是教师看不出哪些上传的网页是死资产 ——
+ * 而「清理没在用的网页」正是这一页最常做的事。智能体卡片用同一条色条表示启用/停用，
+ * 两页是同一条视觉语法。
  */
-export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete }: WebappCardProps) {
+export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onShowRelatedClassrooms }: WebappCardProps) {
   const createdAt = new Date(webapp.createdAt).toLocaleString('zh-CN', {
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+  const used = webapp.classroomCount > 0;
 
   return (
-    <div className="card webapp-management-card" style={{ borderLeft: '5px solid #2563eb', padding: '16px 20px' }}>
+    <div className={used ? 'card webapp-management-card' : 'card webapp-management-card is-unused'}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{
-          width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: '#2563eb12',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb',
+          width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+          background: used ? '#2563eb12' : '#f1f5f9',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: used ? '#2563eb' : '#94a3b8',
         }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" />
@@ -45,6 +55,13 @@ export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete }: We
             <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.688rem', fontWeight: 600, background: '#f1f5f9', color: '#475569' }}>
               入口 {webapp.entryPath}
             </span>
+            <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
+              </svg>
+              关联课堂
+              {used && <span className="related-classrooms-chip-count">{webapp.classroomCount}</span>}
+            </button>
           </div>
         </div>
       </div>

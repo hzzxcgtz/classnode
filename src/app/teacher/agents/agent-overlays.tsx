@@ -1,9 +1,45 @@
+import { RelatedClassroomList } from '@/lib/components';
+import type { RelatedClassroom } from '@/lib/types';
+
 export interface AgentErrorTipData { text: string; top: number; left: number }
 
-export function AgentDeleteBlockedDialog({ agentName, onClose }: { agentName: string; onClose: () => void }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 400, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>该智能体正在被课堂使用中，请先删除关联的课堂后再试。</p></div>
-    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>「{agentName}」</div><div style={{ fontSize: '0.813rem', color: '#b91c1c' }}>该智能体已被配置到课堂中使用，无法直接删除。</div></div>
+/**
+ * 「无法删除」弹窗。
+ *
+ * ⚠️ 它必须**列出是哪些课堂**：从前只说「正在被课堂使用中」，教师唯一的出路是
+ * 自己一间接一间去翻。usage 接口本来就返回了清单（`classrooms`），调用方在
+ * 删除守卫那一次请求里已经拿到了，直接传进来即可 —— 不要为了展示再请求一次。
+ */
+export function AgentDeleteBlockedDialog({ agentName, classrooms, onClose }: {
+  agentName: string;
+  classrooms: RelatedClassroom[];
+  onClose: () => void;
+}) {
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>它正被这些课堂使用中，删掉会让那些课堂的学生失去这个智能体。</p></div>
+    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>「{agentName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /></div>
+    <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
+  </div></>;
+}
+
+/**
+ * 卡片上「关联课堂」入口打开的清单。
+ *
+ * 与「无法删除」弹窗共用同一个 `RelatedClassroomList` —— 两处的清单必须长得一样，
+ * 否则教师会以为它们说的不是同一件事。
+ */
+export function AgentRelatedClassroomsDialog({ agentName, classrooms, loading, onClose }: {
+  agentName: string;
+  classrooms: RelatedClassroom[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="agent-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <h3 id="agent-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{agentName}」关联的课堂</h3>
+    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选智能体。</p>
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
+      <RelatedClassroomList classrooms={classrooms} loading={loading} emptyText="还没有课堂关联这个智能体" />
+    </div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;
 }

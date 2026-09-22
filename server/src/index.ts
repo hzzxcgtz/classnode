@@ -30,13 +30,21 @@ import defaultShieldWords from './services/default-shield-words.js';
 import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
+import { ensureGroupMaterials } from './services/group-materials-migration.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient();
 
-function backupDatabaseBeforeParticipantMigration(): string | null {
+/**
+ * 备份当前 SQLite 库，文件名带 `label` 以区分是哪一次迁移产生的。
+ *
+ * ⚠️ `label` 是**已有备份文件名的组成部分**：参与者迁移传 `'participant-migration'`，
+ * 产出的 `before-participant-migration-<stamp>.db` 与历史备份逐字一致，
+ * 变更 label 会让老备份与新备份看起来像两套东西。
+ */
+function backupDatabase(label: string): string | null {
   const databaseUrl = process.env.DATABASE_URL || '';
   if (!databaseUrl.startsWith('file:')) return null;
   const configuredPath = databaseUrl.slice('file:'.length);
@@ -47,7 +55,7 @@ function backupDatabaseBeforeParticipantMigration(): string | null {
   const backupDir = path.join(path.dirname(databasePath), 'backups');
   fs.mkdirSync(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(backupDir, `before-participant-migration-${stamp}.db`);
+  const backupPath = path.join(backupDir, `before-${label}-${stamp}.db`);
   fs.copyFileSync(databasePath, backupPath);
   return backupPath;
 }
@@ -386,7 +394,7 @@ async function main() {
     const migrationKey = 'participant-model-migration-v1';
     const completed = await prisma.setting.findUnique({ where: { key: migrationKey } });
     if (!completed) {
-      const backupPath = backupDatabaseBeforeParticipantMigration();
+      const backupPath = backupDatabase('participant-migration');
       if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
     }
     await migrateClassroomParticipants(prisma);
@@ -396,6 +404,15 @@ async function main() {
     console.log('[server] Classroom participant migration complete');
   } catch (e) {
     console.error('[server] Classroom participant migration failed:', e);
+    throw e;
+  }
+
+  // 「按组的课堂材料」：新增 ClassroomGroupMaterial，并把 ClassroomGroup.agentId 迁进去、删列。
+  // ⚠️ 必须排在上面那条参与者迁移之后 —— 那条保证 ClassroomGroup 的结构已经是它预期的形状。
+  try {
+    await ensureGroupMaterials(prisma, backupDatabase);
+  } catch (e) {
+    console.error('[server] Classroom group materials migration failed:', e);
     throw e;
   }
 

@@ -383,12 +383,26 @@ router.post('/create-advanced', async (req, res) => {
         webappId: toId(input.webappId),
       };
     });
-    if (normalizedGroups.some(group => !group.name)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
+    // ⚠️ 文案只说**名称**。智能体在高级模式里是**选填**（每组可以不指定），把它写进这条
+    // 文案会把「只忘了填组名」的教师指到「智能体」那一栏去找原因 —— 那一栏根本没有错。
+    if (normalizedGroups.some(group => !group.name)) return res.status(400).json({ error: '分组名称不能为空' });
     if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
-    // 探究网页同样是**单选**，与标准模式走同一个解析函数（口径不能分叉）。
+    // 课堂级网页在高级模式下**不落库**（理由见下面 `classroom.create` 的注释）。仍然解析它
+    // 有两个用处：① 保持「口径只有一套」（与标准模式同一个 `resolveSingleWebappId`）；
+    // ② id 不存在时照样 400 —— 旧前端发来的「页面已过期」值得让教师刷新一次，
+    // 而不是让他拿到一个自己没预期的课堂。
+    // ⚠️ 但**必须留痕**：解析通过之后它就被丢掉了，而教师端看到的是「创建成功」。
+    // 静默丢掉一个教师勾过的选项属于改数据不留痕（同 `trimExtraClassroomWebapps`
+    // 与 `resolveSingleWebappId` 里那两条「丢掉多余选项要写日志」的规矩）。
     const webapp = await resolveSingleWebappId(prisma, webappIds, 'create-advanced');
     if (!webapp.ok) return res.status(400).json({ error: webapp.error });
+    if (webapp.id) {
+      console.warn(
+        `[Classroom] 高级模式的课堂级网页不再生效（${webapp.id}）—— 该模式下网页的权威来源是「每组一份」，`
+        + '这一项已被忽略。请在每个小组那一行单独选择网页（旧版创建页仍在发这个字段）。',
+      );
+    }
 
     // 组级网页也要校验它存在 —— 走**同一个** `resolveWebappIds`，不新长第二套口径。
     // 一次把所有组的网页 id 合起来校验（逐组调一次会变成 N 次同样的查询）。
@@ -401,9 +415,13 @@ router.post('/create-advanced', async (req, res) => {
     // 三件套「至少一项」——走**同一个**判据，但数的是**真的配了的材料数**。
     // ⚠️ 用「组的数量」冒充会让「所有组都不配」的空课堂建出来（见 `classroomMaterialError`
     // 的注释：那正是这条规则要防的形态）。
+    // 🔴 课堂级网页**不计入**这一项：上面已经解析过它，但本模式**不写它**（下面 `create`
+    // 的注释）。计一个不落库的材料，等于把「所有组都不指定 + 教师勾了课堂级网页」这条
+    // 路径放行 —— 而它建出来的正是一个**三件套全空的课堂**，也就是这条规则唯一要防的形态。
+    // 判据是「真的配了的材料数」，所以只数会落库的那些：每组的智能体与网页。
     const materialError = classroomMaterialError({
       agent: normalizedGroups.filter((group) => group.agentId).length,
-      webapp: (webapp.id ? 1 : 0) + normalizedGroups.filter((group) => group.webappId).length,
+      webapp: normalizedGroups.filter((group) => group.webappId).length,
       worksheet: 0,
     });
     if (materialError) return res.status(400).json({ error: materialError });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getStudentSessionAuthorization } from '@/lib/api';
+import { effectiveGroupAgent } from '@/lib/classroom-material';
 import type { ChatAgent, ChatPanelProps } from '../classroom-types';
 import { API_BASE_URL } from '../avatar-utils';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
@@ -292,14 +293,16 @@ export function StudentChatContent({
   const SOCKET_URL = API_BASE_URL;
   const apiBase = SOCKET_URL;
 
-  /** 获取当前学生/小组绑定的智能体 */
-  const getCurrentAgent = () => {
-    if ((classroom?.mode === 'group' || classroom?.mode === 'advanced') && selectedStudent?.groupId && classroom?.groups) {
-      const group = classroom.groups.find((group) => group.id === selectedStudent.groupId);
-      if (group?.agent) return group.agent;
-    }
-    return classroom?.agents?.[0] || null;
-  };
+  /**
+   * 当前学生/小组此刻生效的智能体（头像、欢迎卡片的名字 / 问候语 / 停用态、消息头像）。
+   *
+   * 🔴 **解析不在本文件**：统一走 `@/lib/classroom-material` 的 `effectiveGroupAgent`。
+   * 这里原来自己写了一遍「先找自己组的，找不到回落到 `classroom.agents[0]`」—— 而那个数组
+   * 在高级模式下曾是各组智能体的并集 ⇒ 组里没配智能体的学生会看到**别的组的名字和头像**，
+   * AI 照常回答、教师完全看不出（spec §1.2 ①）。高级模式**不回落**这条只有一份实现。
+   * ⚠️ `student-home.tsx`（学伴卡名称）读的是同一个函数：两张卡说同一个名字。
+   */
+  const getCurrentAgent = () => effectiveGroupAgent(classroom, selectedStudent);
 
   const renderAgentAvatar = (size: number, borderRadius = 8, fontSize = 13, agent?: ChatAgent) => {
     const theAgent = agent || getCurrentAgent();

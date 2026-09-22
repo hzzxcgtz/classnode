@@ -6,7 +6,15 @@ export interface ServerToClientEvents {
   joined: (data: {
     classroomId: string;
     agents: { id: string; name: string; logo: string | null; platform: string }[];
-    groups: { id: string; name: string; agentId: string; agent: { id: string; name: string; logo: string | null; platform: string } }[];
+    // P2 起每组的材料是 `{ agent, webapp }`，**两个都可以是 `null`**
+    // （`ClassroomGroupMaterial` 解析而来，见 server/src/socket/index.ts 的 `emit('joined')`
+    // 与 services/group-material-resolve.ts 的 GroupMaterialView）。`agentId` 已随那一列删掉。
+    groups: {
+      id: string;
+      name: string;
+      agent: { id: string; name: string; logo: string | null; platform: string; enabled: boolean; greeting: string | null } | null;
+      webapp: { id: string; name: string; entryPath: string } | null;
+    }[];
     blacklisted: boolean;
   }) => void;
   'student-auth-error': (data: { error: string }) => void;

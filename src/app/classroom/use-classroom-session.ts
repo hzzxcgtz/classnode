@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { WebappDemand } from '@/lib/socket-events';
+import { effectiveGroupAgent } from '@/lib/classroom-material';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
@@ -93,19 +94,21 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       const cr = await api.getClassroomByCode(classroomCode || code);
       setClassroom(cr);
       if (cr.status === 'paused') setPaused(true);
-      // 如果是从缓存恢复会话，检查该学生/小组绑定的智能体是否停用
+      // 如果是从缓存恢复会话，检查该学生/小组绑定的智能体是否停用。
+      // 🔴 「该用哪个智能体」不在本文件判断 —— 统一走 `@/lib/classroom-material` 的
+      // `effectiveGroupAgent`（**高级模式不回落**）。这里原来是又一份「先找自己组的、
+      // 找不到回落到 `classroom.agents[0]`」，而该数组在高级模式下曾是各组智能体的并集
+      // ⇒ 没配智能体的组会按**别的组的**停用态显示（spec §1.2 ①）。取不到就是取不到，
+      // 没有可停用的智能体 ⇒ 不置位（「本组没有智能体」与「智能体被停用」是两件事）。
       if (sessionStudentId && (cr.mode === 'group' || cr.mode === 'advanced') && cr.groups) {
-        // 需要先获取学生的 groupId
+        // 需要先获取学生的 groupId（它只在这个名单接口里下发）
         try {
           const sts = await api.getClassroomStudents(cr.id);
           const myStudent = sts.find((student) => student.id === sessionStudentId);
-          if (myStudent?.groupId) {
-            const g = cr.groups.find((group) => group.id === myStudent.groupId);
-            if (g?.agent?.enabled === false) setAgentDisabled(true);
-          }
+          if (effectiveGroupAgent(cr, myStudent)?.enabled === false) setAgentDisabled(true);
         } catch {}
       } else {
-        if (cr.agents?.[0]?.enabled === false) setAgentDisabled(true);
+        if (effectiveGroupAgent(cr, null)?.enabled === false) setAgentDisabled(true);
       }
       return cr;
     } catch (error: unknown) {
@@ -307,6 +310,11 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     if (!code) return;
     if (step !== 'home' && step !== 'shell') return;
     const poll = async () => {
+      // 只取**原始值**再交给解析函数，不把 `selectedStudent` 整个对象传进去：依赖数组里放的是
+      // `selectedStudent?.groupId`（这个 effect 的注释上面写了为什么不能放整个对象 —— 身份一变
+      // 就重建定时器，15 秒的兜底会被广播刷没）。传 `{ groupId }` 与传整个对象等价：
+      // `effectiveGroupAgent` 只读 `groupId` 这一个字段。
+      const groupId = selectedStudent?.groupId;
       // 发起请求那一刻的 `modules` 对象身份，用来在后面判断「这份快照是不是已经陈旧」。
       // 只读 ref，不进依赖：`classroom.modules` 一变就重建定时器，15 秒的兜底会被广播刷没。
       const modulesAtRequest = modulesSnapshotRef.current;
@@ -319,17 +327,13 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
           handleClassroomEnded();
           return;
         }
-        // 分组/高级模式下检查当前小组绑定的智能体，否则使用第一个。
-        // 两个分支都过陈旧守卫：中间有 socket 广播落地过（`prev` 已不是发起时那个值）就跳过本轮，
-        // 与下面 modules 那条同一条理由、同一个方向。
-        if ((cr.mode === 'group' || cr.mode === 'advanced') && selectedStudent?.groupId && cr.groups) {
-          const g = cr.groups.find((group) => group.id === selectedStudent.groupId);
-          const freshAgentDisabled = g?.agent?.enabled === false;
-          setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
-        } else {
-          const freshAgentDisabled = cr.agents?.[0]?.enabled === false;
-          setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
-        }
+        // 这一轮该看的智能体是不是被停用了 —— 取哪一个是 `effectiveGroupAgent` 一家的事
+        // （**高级模式不回落**，与 `loadClassroom` 那处、以及 `chat-panel` / `student-home`
+        // 两个展示点是同一个函数）。原来这里也有自己的一份「找组、回落课堂级」。
+        // ⚠️ 轮询这一路**两个方向都会写**（停用后又被启用要能恢复），与 `loadClassroom` 那条
+        // 「只置位、不清除」不同 —— 这里靠下面的陈旧守卫防止用旧快照把新值写回去。
+        const freshAgentDisabled = effectiveGroupAgent(cr, { groupId })?.enabled === false;
+        setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
         const freshPaused = cr.status === 'paused';
         setPaused((prev) => (prev === flagsAtRequest.paused ? freshPaused : prev));
         // 三态兜底。`freshModules` 先落成局部量：旧服务端/老库可能真的不带这个字段，

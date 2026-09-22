@@ -57,7 +57,20 @@ export interface ClassroomSummary {
   createdAt?: string;
   endedAt?: string | null;
   agents?: AgentSummary[];
-  groups?: Array<{ id: string; name: string; agentId?: string; groupId?: string; agent?: AgentSummary; [key: string]: unknown }>;
+  /**
+   * 各组的材料。⚠️ **`agentId` 已随 P2 的 `ClassroomGroupMaterial` 一并消失**
+   * （`ClassroomGroup.agentId` 那一列被删掉了），而且 `agent` / `webapp` **都可以是 `null`**
+   * ——「这组没配这种材料」是合法状态，高级模式下**不回落**到课堂级数组。
+   * 学生端取材料一律走 `@/lib/classroom-material` 的两个解析函数，不要在这里自己找组。
+   */
+  groups?: Array<{
+    id: string;
+    name: string;
+    groupId?: string;
+    agent?: AgentSummary | null;
+    webapp?: ClassroomWebappSummary | null;
+    [key: string]: unknown;
+  }>;
   students?: unknown[];
   agentIds?: string[];
 }
@@ -331,7 +344,12 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
   createdAt: string;
   classes: Array<{ classId: string; class: Pick<ClassSummary, 'id' | 'name'> }>;
   classroomAgents: Array<{ agentId: string; agent: AgentSummary }>;
-  groups: Array<ClassroomCardGroup & { agent: AgentSummary }>;
+  /**
+   * ⚠️ `agent` / `webapp` **都可能为 `null`**：P2 起材料按组走，高级模式下「这组没配」
+   * 是合法状态（`group-material-resolve.ts` 条件构造）。写成非空是**陈述上的谎言**，
+   * 会让读的地方少一层判空。
+   */
+  groups: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
   students: Array<{ studentId: string; totalRounds: number }>;
   _count: { students: number };
   participantCount: number;
@@ -351,7 +369,22 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
   agents: AgentSummary[];
-  groups?: Array<ClassroomCardGroup & { agent: AgentSummary }>;
+  /**
+   * 各组的材料（`GET /code/:code` 与 `join-classroom` 的 `joined` 事件）。
+   *
+   * 🔴 **`agent` / `webapp` 都可为 `null`，且高级模式下这是「该组没有这种材料」的唯一表达
+   * —— 不得回落到 `agents[]` / `webapps[]`**（那是课堂级数组，高级模式下曾是各组材料的
+   * 并集 ⇒ 回落到它等于让学生静默地用别的组的智能体/网页）。解析一律经
+   * `@/lib/classroom-material` 的 `effectiveGroupAgent` / `effectiveGroupWebapp`。
+   *
+   * ⚠️ `agent` 的**运行时**形状是 `AgentSummary` 的子集（服务端 `GroupMaterialView`：
+   * `id` / `name` / `logo` / `platform` / `enabled` / `greeting`）—— 声明按 `AgentSummary`
+   * 是为了与 `agents[]` 同一个类型、读 `enabled` / `greeting` 时不必分支；但**不要**从这个
+   * 对象上读 `apiUrl` / `apiKey` / `hasApiKey` 之类的管理字段，服务端在这里根本不下发。
+   *
+   * 可选：更老的服务端不发这个字段；标准模式下服务端也刻意不发（`groups` 为 `undefined`）。
+   */
+  groups?: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
   modules: ClassroomModuleSetting[];
   /**
    * 探究助手托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
@@ -384,7 +417,8 @@ export interface ClassroomSettingsGroup {
 export interface DashboardClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
   classes: Array<{ classId: string; class: Pick<ClassSummary, 'id' | 'name'> }>;
   classroomAgents: Array<{ agentId: string; agent: AgentSummary }>;
-  groups: Array<ClassroomCardGroup & { agent: AgentSummary }>;
+  /** ⚠️ 同 `ActiveClassroom.groups`：`agent` / `webapp` 都可为 `null`（`/all` 也走 `resolveGroupMaterialViews`）。 */
+  groups: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
   _count: { students: number; interactions: number };
   participantCount: number;
   realStudentCount: number;

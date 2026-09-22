@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { ClassroomWebappSummary } from '@/lib/types';
 import type { WebappDemand, WebappEvent } from '@/lib/socket-events';
+import { effectiveGroupWebapp } from '@/lib/classroom-material';
 import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
 import { MODULE_META } from '../module-meta';
 import type { ModulePanelProps } from '../classroom-types';
@@ -109,7 +110,7 @@ export interface ExplorePanelProps extends ModulePanelProps {
  *   3. **提交顺序**：`armed` 为真（= postMessage 监听已挂好）之前不创建 iframe，
  *      见 `use-explore-bridge.ts` 的预审 6a 注释。
  */
-export function ExplorePanel({ active, classroom, toast, setToast, wsRef, demand }: ExplorePanelProps) {
+export function ExplorePanel({ active, classroom, session, toast, setToast, wsRef, demand }: ExplorePanelProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   /** 第几次加载。重试按钮 +1 ⇒ iframe 换 key 重挂（监听不受影响，它挂在 window 上）。 */
   const [reloadKey, setReloadKey] = useState(0);
@@ -118,7 +119,13 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, demand
   /** 判为失败的是第几次加载。理由同上。 */
   const [failedKey, setFailedKey] = useState<number | null>(null);
 
-  const webapp: ClassroomWebappSummary | null = classroom?.webapps?.[0] ?? null;
+  // 🔴 网页来自**学生自己的组**，不是课堂级那个（`classroom.webapps`）。
+  // 改动前这里写的是 `classroom?.webapps?.[0] ?? null` —— 高级模式下课堂级的那一行
+  // （`ClassroomWebapp` 只有教师给「分组/标准模式」配的那一个；按组迁移**有意没删**老课堂
+  // 残留的那一行）会让**没配网页的组**照样打开一个网页：学生静默地在用别的组的材料，
+  // 而画面看起来完全正常（spec §1.2 ① / §4.6）。解析口径统一在 `@/lib/classroom-material`，
+  // 高级模式下它**不回落**。
+  const webapp: ClassroomWebappSummary | null = effectiveGroupWebapp(classroom, session);
   const port = typeof classroom?.webappPort === 'number' ? classroom.webappPort : null;
   const classroomId = classroom?.id ?? null;
   const webappId = webapp?.id ?? null;
@@ -247,9 +254,30 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, demand
   const accent = MODULE_META.explore.accent;
   const label = MODULE_META.explore.label;
 
-  // 卡片态的两种成因：没关联网页（老师的配置问题）与网页打不开（网络 / 托管服务问题）。
+  // 卡片态的三种成因：**本组**没配网页、课堂没配网页、配了但网页打不开（网络 / 托管服务问题）。
   // 文案分开写，学生与老师看到的都是「该找谁」。
   const noWebapp = !webapp || !port;
+  /**
+   * 网页是不是「按组」的（高级模式）。
+   *
+   * ⚠️ 这里**只决定空状态怎么说**，不参与「用哪一个网页」的判断 —— 那个判断在
+   * `effectiveGroupWebapp` 里，且已经返回过了（它不回落）。两处读到的是同一个
+   * `mode === 'advanced'`；若将来「按组」的判据变了，这段文案会跟着说谎，而它俩在同一个
+   * 文件里、`webapp` 就在上面几行，改的时候看得见。
+   *
+   * 为什么必须区分：「老师还没有添加探究网页」在高级模式下是**错的** —— 老师可能给别的组
+   * 配了，只是没给这一组配。说错成「整间课堂都没有」会把学生引向「等老师加」，而正确的话
+   * 是「问老师要你们组的那一个」。
+   */
+  const groupScoped = classroom?.mode === 'advanced';
+  const emptyTitle = webapp
+    ? '探究网页服务暂时不可用'
+    : groupScoped ? '本组未配置探究网页' : '老师还没有添加探究网页';
+  const emptyNote = webapp
+    ? '网页服务没有就绪，稍后再试一次；还不行就告诉老师。'
+    : groupScoped
+      ? '你们这一组没有安排探究网页，先和小组同伴一起讨论，或者问问老师。'
+      : '等老师把网页放进来，这里就能直接打开。';
 
   return (
     <div
@@ -293,12 +321,8 @@ export function ExplorePanel({ active, classroom, toast, setToast, wsRef, demand
             <span className={styles.badge}>{label}</span>
             {noWebapp ? (
               <>
-                <p className={styles.title}>{webapp ? '探究网页服务暂时不可用' : '老师还没有添加探究网页'}</p>
-                <p className={styles.note}>
-                  {webapp
-                    ? '网页服务没有就绪，稍后再试一次；还不行就告诉老师。'
-                    : '等老师把网页放进来，这里就能直接打开。'}
-                </p>
+                <p className={styles.title}>{emptyTitle}</p>
+                <p className={styles.note}>{emptyNote}</p>
               </>
             ) : (
               <>

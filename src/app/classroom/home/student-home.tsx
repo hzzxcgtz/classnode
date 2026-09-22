@@ -2,6 +2,8 @@
 
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
+import { effectiveGroupAgent, effectiveGroupWebapp } from '@/lib/classroom-material';
+import type { ClassroomWebappSummary } from '@/lib/types';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
@@ -73,25 +75,34 @@ function summarizeLastRound(messages: StudentChatMessage[]): string | null {
 }
 
 /**
- * 「探究助手」卡片的主内容 —— **老师说这个课堂有哪些网页，这里就说那个网页的名字**。
+ * 「探究助手」卡片的主内容 —— **这个学生此刻能打开的那个网页叫什么，这里就说那个名字**。
  *
  * ⚠️ 这条以前是硬编码的占位（`还没有资料` / `老师添加网页后会出现在这里`），与「学伴」那张
  * 卡读真数据（`agentName` / `lastRound`）的做法不一致。后果是**卡片撒谎**：课堂已经关联了
  * 网页、学生点进去看到的是一张真网页，卡片却还说「还没有资料」。
- * 数据一直都在（`classroom.webapps`，T3 起随 `GET /code/:code` 下发，只含
- * `id`/`name`/`entryPath`），所以这里不需要任何新字段。
+ * 数据是**这个学生自己组的**那一个网页（P2 起：`effectiveGroupWebapp` 解析，高级模式
+ * 不回落；T3 起随 `GET /code/:code` 下发的组材料只含 `id`/`name`/`entryPath`）。
  *
- * ⚠️ **有关联网页时刻意不写「共 N 个」**：面板此刻只加载第一个网页（多网页的列表选择是
- * P2 已知的收窄，见 T6 报告 §4.2）。写「共 3 个网页」而学生点进去只看得到第一个，
+ * 🔴 **取哪个网页由 `effectiveGroupWebapp` 决定，本函数不自己挑**：它原来读的是
+ * `classroom.webapps[0]`（课堂级），高级模式下会让卡片写着 A 组网页的名字、点进去却是
+ * 「本组未配置探究网页」—— 同一张卡与面板两个说法，跟学伴卡那边「首页说一个名字、进去
+ * 变成另一个」是同一类漂移。**卡片与面板必须说同一个网页。**
+ *
+ * ⚠️ **有关联网页时刻意不写「共 N 个」**：面板此刻只加载那一个网页（多网页的列表选择是
+ * P2 已知的收窄，见 T6 报告 §4.2）。写「共 3 个网页」而学生点进去只看得到那一个，
  * 是**同一类撒谎换了个方向** —— 承诺一个点不到的东西。等多网页选择落地后再谈计数。
  *
  * 服务端保证 `name` 非空且不超过 120 字（`rawName || '未命名网页'`），所以这里不必兜空串，
  * 只需按卡片宽度截断。
+ *
+ * 空状态的文案两种模式**共用**「还没有资料」：卡片只有一行位置，而「本组没配」这个更精确
+ * 的说法（`explore-panel.tsx` 的那张空状态卡）在点进去之后说 —— 那里有整张卡的地方讲清楚
+ * 「问老师要你们组的那一个」。这里说「老师添加网页后会出现在这里」不构成误导：对这个学生
+ * 而言，确实就是「（我这边）还没有」+「以后会出现」。
  */
-function exploreCardContent(webapps: ClassroomInfo['webapps']): { title: string; meta: string } {
-  const first = webapps?.[0];
-  if (!first) return { title: '还没有资料', meta: '老师添加网页后会出现在这里' };
-  return { title: clipCardText(first.name), meta: '老师准备的探究网页' };
+function exploreCardContent(webapp: ClassroomWebappSummary | null): { title: string; meta: string } {
+  if (!webapp) return { title: '还没有资料', meta: '老师添加网页后会出现在这里' };
+  return { title: clipCardText(webapp.name), meta: '老师准备的探究网页' };
 }
 
 /**
@@ -134,24 +145,22 @@ export function StudentHome({
   const studentName = selectedStudent?.name || '同学';
   const studentAvatarSvg = selectedStudent?.avatarId ? avatarSvgs[selectedStudent.avatarId] : undefined;
 
-  // 与学伴面板**欢迎卡片**同一套取值顺序（小组智能体优先，其次课堂第一个智能体），
-  // 否则首页说「小科老师」、进去变成另一个名字。
+  // 与学伴面板**欢迎卡片**说同一个名字，否则首页说「小科老师」、进去变成另一个名字。
   // ⚠️ 原文写的是「与学伴面板顶部栏同一套取值顺序」—— 那行头部已由 M1b-3 T4 整个撤除。
   // 但这条不变量**仍然真实存在**：面板仅存的展示点是欢迎卡片（chat-panel.tsx 的
-  // renderAgentAvatar 那一处），它读的是**同一个字段、同一套顺序**。改这里的顺序之前，
-  // 先去看那一处 —— 这条注释防的正是两边漂移。
+  // renderAgentAvatar 那一处）。
+  //
+  // 🔴 **P2 起两边不再「各写一份、保证顺序一致」，而是读同一个函数**
+  // （`@/lib/classroom-material` 的 `effectiveGroupAgent`，chat-panel.tsx 那侧同款调用）。
+  // 各写一份的代价实测出来过：那两份都写了「找不到自己组的就回落到 `classroom.agents[0]`」，
+  // 而该数组在高级模式下曾是各组智能体的并集 ⇒ 组里没配智能体的学生在首页看到**别的组的
+  // 名字**，AI 照常回答、教师完全看不出（spec §1.2 ①）。高级模式**不回落**这条现在只有
+  // 一份实现，顺序漂移这件事在结构上不可能再发生。
   //
   // 兜底用模块的身份名（`MODULE_META.companion.label`，也就是卡片上的「智能学伴」）而不是
   // 再写一遍字面量：零智能体的课堂里，首页卡片、Tab 与面板标题必须说同一个名字，而三处
-  // 各写一份字面量必然漂移。面板那一侧读的是同一个字段。
-  const agentName = (() => {
-    const fallbackName = MODULE_META.companion.label;
-    if (!classroom) return fallbackName;
-    const group = selectedStudent?.groupId
-      ? classroom.groups?.find((item) => item.id === selectedStudent.groupId)
-      : undefined;
-    return group?.agent?.name || classroom.agents?.[0]?.name || fallbackName;
-  })();
+  // 各写一份字面量必然漂移。面板那一侧读的是同一个函数、同一份兜底。
+  const agentName = effectiveGroupAgent(classroom, selectedStudent)?.name || MODULE_META.companion.label;
 
   // 换头像要消耗老师奖励的机会（服务端 `avatarChangeTokens >= 1` 才放行）。那套「没有机会
   // 时要说清为什么」的反馈没有丢，只是搬到了顶栏那个入口上：M1b-3 T2 起点击顶栏头像时由
@@ -168,7 +177,8 @@ export function StudentHome({
       title: '还没有布置',
       meta: '老师布置后会出现在这里',
     },
-    explore: exploreCardContent(classroom?.webapps),
+    // 同一个 `effectiveGroupWebapp`：卡片说的网页就是面板会打开的那一个（见上面的注释）。
+    explore: exploreCardContent(effectiveGroupWebapp(classroom, selectedStudent)),
     companion: {
       title: agentName,
       meta: lastRound ? `上次聊到：${lastRound}` : '还没开始对话，打个招呼吧',

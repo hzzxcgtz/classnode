@@ -4,6 +4,9 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+// 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
+// classroom-types 转一手 —— 那边只是**消费**它。
+import type { WebappDemand } from '@/lib/socket-events';
 import type {
   AiResponseEvent, AvatarRewardEvent, ModuleStateEvent, PermissionEvent, ShieldWarnEvent,
   SocketErrorEvent, SocketTextEvent, StudentChatMessage, StudentIdEvent,
@@ -48,7 +51,7 @@ interface ChatSocketOptions {
    * 归会话层而不是面板：初值只在 `join-classroom` 成功后下发一次，而面板是惰性挂载的
    * （见上面那条订阅的注释）。会话级的布尔量，与 `paused` / `agentDisabled` 同一类。
    */
-  setWebappWatching: Dispatch<SetStateAction<boolean>>;
+  setWebappDemand: Dispatch<SetStateAction<WebappDemand>>;
 }
 
 export function useChatSocket(options: ChatSocketOptions) {
@@ -305,9 +308,32 @@ export function useChatSocket(options: ChatSocketOptions) {
       //
       // 载荷**只有** `watching` 一个字段（T5 定死的契约）：截图降频的档位不在这里，
       // 耗时是学生设备自己测的，档位由 SDK 自己升降。
-      socket.on('webapp-monitor-demand', (data: { watching?: unknown } | null) => {
+      socket.on('webapp-monitor-demand', (data: {
+        watching?: unknown; detail?: unknown;
+        captureEnabled?: unknown; width?: unknown; frameIntervalMs?: unknown;
+      } | null) => {
         const watching = data?.watching;
-        if (typeof watching === 'boolean') optionsRef.current.setWebappWatching(watching);
+        const detail = data?.detail;
+        // 字段逐个过类型守卫（载荷是线缆上的值，null/undefined 都会走到这里）。
+        // ⚠️ `detail` 再与 `watching` 取一次「与」：服务端已经保证不会发出
+        // 「没人在看但你在高频」的组合，这里**再挡一次**是因为那个组合的代价不对称 ——
+        // 它会让学生的老 iPad 无端按 2 秒一帧烧自己，而没有任何界面对得上。
+        if (typeof watching !== 'boolean') return;
+
+        // ⚠️ 下面三个的兜底方向必须与 SDK 一致：**认不出就用默认，绝不能让"认不出"
+        //    变成"关掉"** —— 那会让所有课堂静默地停止截图，且没有任何报错。
+        //    服务端已经归一化过一遍，这里只为「老服务端 / 半截载荷」兜底。
+        const captureEnabled = data?.captureEnabled;
+        const width = Number(data?.width);
+        const frameIntervalMs = Number(data?.frameIntervalMs);
+
+        optionsRef.current.setWebappDemand({
+          watching,
+          detail: watching && detail === true,
+          captureEnabled: captureEnabled !== false,
+          width: Number.isFinite(width) && width > 0 ? width : 320,
+          frameIntervalMs: Number.isFinite(frameIntervalMs) && frameIntervalMs > 0 ? frameIntervalMs : 10_000,
+        });
       });
 
       // 教师端改模块三态后，服务端向 classroom:<id> 与 teacher:<id> 双发。

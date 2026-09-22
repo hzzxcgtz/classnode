@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+import type { WebappDemand } from '@/lib/socket-events';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
@@ -62,7 +63,15 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
    * （学生点开才挂）—— 所以这条状态必须由会话层持有，面板只能读。写在 `use-chat-socket`
    * 的回调里（那批 socket 监听器的家），与 `paused` 同一类。
    */
-  const [webappWatching, setWebappWatching] = useState(false);
+  // 初值必须是「认不出就用默认」那一侧：在服务端下发第一条 demand 之前，
+  // 学生端**不该**因为"还不知道设置"就当成关闭。
+  const [webappDemand, setWebappDemand] = useState<WebappDemand>({
+    watching: false,
+    detail: false,
+    captureEnabled: true,
+    width: 320,
+    frameIntervalMs: 10_000,
+  });
   const [shieldWarning, setShieldWarning] = useState<string | null>(null);
   const [toast, setToast] = useState<ChatToast | null>(null);
   // 下面这批状态的写入点同样在 useChatSocket 的回调里。M1a Task 3 把该 hook 上移到本文件
@@ -432,7 +441,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setThinkingContent,
     setToast,
     setWaitingAI,
-    setWebappWatching,
+    setWebappDemand,
   });
 
   // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
@@ -533,7 +542,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     waitingAI,
     paused,
     agentDisabled,
-    webappWatching,
+    webappDemand,
     shieldWarning,
     toast,
     connected,

@@ -1677,6 +1677,113 @@ export default function TeacherDashboard() {
                     </div>
                   </div>
                 )}
+              {/* 探究网页（只读展示）。
+                  ⚠️ 不放在上面那两个 `allAgents.length > 0` / `mode === 'advanced'` 条件里：
+                  网页与「有没有加载到智能体」「是哪种模式」都无关，被哪个条件包住都会让
+                  某类课堂的网页**无声地**不显示。 */}
+              <div style={{ marginTop: 20 }}>
+                <label
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    color: "#475569",
+                    marginBottom: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
+                  </svg>
+                  探究网页
+                  <span
+                    style={{
+                      fontSize: "0.688rem",
+                      color: "#94a3b8",
+                      fontWeight: 400,
+                      marginLeft: 4,
+                    }}
+                  >
+                    （创建后不可更改）
+                  </span>
+                </label>
+                {(() => {
+                  // 服务端与前端同一版本发布 ⇒ 这个字段总是随 /api/classroom/active 下发；
+                  // 用 `?? []` 兜住的是「更老的服务端」，那种情况下显示成「未关联」是可接受的
+                  // 退化（读路径不能因为一个可选字段就崩）。
+                  const webapps = settingsModalClassroom.webapps ?? [];
+                  if (webapps.length === 0) {
+                    return (
+                      <span style={{ fontSize: "0.813rem", color: "#94a3b8" }}>
+                        未关联
+                      </span>
+                    );
+                  }
+                  // 单选：只有第一个生效（学生端只加载 webapps[0]）。
+                  const [effective, ...extra] = webapps;
+                  return (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 6,
+                          opacity: 0.7,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #e2e8f0",
+                            background: "#f8fafc",
+                            fontSize: "0.813rem",
+                            color: "#64748b",
+                          }}
+                        >
+                          <span>{effective.name}</span>
+                        </div>
+                      </div>
+                      {/* 多选时代留下的课堂可能挂着多条。这种情况必须**当面说清**：
+                          保存设置时服务端会把多余的裁掉（并写服务端日志），
+                          教师有权在按下保存之前知道这一次保存会顺带删掉什么。 */}
+                      {extra.length > 0 && (
+                        <div
+                          role="alert"
+                          style={{
+                            marginTop: 8,
+                            fontSize: "0.75rem",
+                            color: "#92400e",
+                            background: "#fffbeb",
+                            border: "1px solid #fde68a",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          本课堂关联了 {webapps.length} 个探究网页，只有第一个（
+                          {effective.name}）会生效。保存设置后，另外 {extra.length}{" "}
+                          个关联会被自动移除（服务端日志会记录删除了哪些）。
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </div>
             {/* 弹窗底部按钮 */}
             <div

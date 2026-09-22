@@ -267,6 +267,32 @@ const ALLOWED = {
     // 不支持只丢焦点环，布局与功能不受影响
     ':focus-visible': 5,
   },
+  // 供应商化的 DOM 截图库（@zumer/snapdom 3.0.0，见 server/vendor/README.md）。
+  //
+  // ⚠️ **这两处是「特性检测 / 属性名字符串」，不是语法**，所以在 Safari 15 上是空操作：
+  //   · `':has('` ×1 —— 原文是 `a.includes(":has(")&&(r.usesHas=!0)`：检查**页面自己的
+  //     CSS** 里有没有用 `:has()`，只是记一个标记。它是**字符串字面量**，标记扫描器
+  //     分不出字面量与真用法 —— 这就是本条豁免存在的原因，而不是「懒得看」。
+  //   · `'content-visibility'` ×6 —— 分布是 **1+2+1+2**：一个属性名数组里的字符串 ×1；
+  //     `(i["content-visibility"]||getPropertyValue("content-visibility"))==="hidden"` 读+
+  //     强制写 ×3；`(o.contentVisibility||getPropertyValue("content-visibility")||"")==="auto"`
+  //     读 + 覆盖 ×2。不支持的浏览器返回 `""` ⇒ 全部短路，什么都不做。
+  //
+  // ⚠️ **额度是「出现次数」不是「命中行数」，而且是靠 `grep -o … | wc -l` 量的。**
+  // 这个文件被压缩成极少数几行，`grep -c` 会数成 3（行数）—— 实测就是这样差点把额度
+  // 填错。定宽上下文的 `grep -o '.\{0,50\}…'` 同样不可靠：**重叠的匹配报不出来**，
+  // 也会少报。复核对数时只用 `grep -o -F <token> <file> | wc -l`。
+  //
+  // 为什么这跟 lookbehind 是两回事：CSS 类特性不被支持时**规则被忽略**，不报错、
+  // 不中断脚本；而 lookbehind 是**解析期 SyntaxError**，会让整个文件一个字都不执行。
+  // 所以 CSS 类标记能豁免，lookbehind 不能 —— 后者由 `webapp-vendor.test.ts` 单独守。
+  //
+  // 计数是**冻结**的：升级 snapdom 后这两条一旦增长（说明新版本真的开始用它们），
+  // 构建会失败 —— 那时要**重新审**，而不是顺手把数字改大。
+  'server/vendor/snapdom.js': {
+    ':has(': 1,
+    'content-visibility': 6,
+  },
 };
 
 // ---- 4. 扫描目标 --------------------------------------------------------
@@ -292,8 +318,14 @@ const SCAN_ROOTS = [
   'src/app/globals.css',
   'src/app/layout.tsx',
   'server/src/services/webapp-sdk.ts',
+  // ⚠️ 同上一条的理由，而且更硬：这是**第三方产物**，由托管服务直接发给学生的老 iPad
+  // 执行（`webapp-host.ts` 的 `SHOT_PATH` 路由），一个字节都不经过我们的构建流程。
+  // 「不是我们写的」**不是**跳过兼容闸门的理由 —— 它跑在受约束设备上，就必须受检。
+  'server/vendor/snapdom.js',
 ];
-const EXTS = ['.ts', '.tsx', '.css', '.mjs'];
+// ⚠️ `.js` 是给上面那条供应商文件加的。加之前已确认 `src/app/classroom` 与 `src/lib`
+// 下**没有任何 .js 文件**（`find` 实测为空），所以这个扩展名不会让别的扫描根多扫出东西。
+const EXTS = ['.ts', '.tsx', '.css', '.mjs', '.js'];
 
 function walk(target, out = []) {
   const abs = path.join(root, target);
@@ -320,6 +352,18 @@ function checkSourceTokens() {
     for (const token of HARD_TOKENS) {
       const hit = lines.findIndex((line) => line.includes(token));
       if (hit !== -1) {
+        // 豁免：本文件的豁免表点名了这个标记，且**出现次数在额度内**。
+        //
+        // 口径与下面那段配额检查**完全一致**（出现次数 `split(token).length - 1`，
+        // 不是命中行数），两边共用同一个额度。这样「硬标记」与「软标记」只有一套语义：
+        // **这个文件可以出现这么多次，一次都不许新增**；超了由下面那段报错，
+        // 报的文案更准（带具体次数与额度）。
+        //
+        // ⚠️ 这不是「把硬标记变软了」：额度是**冻结**的常量，写在豁免表里、带理由，
+        // 且下面那条「豁免表引用了不存在的文件」的反向检查会挡住腐烂。新增用法
+        // 仍然让构建变红 —— 与 Part A 容忍表的「容忍 ≠ 静默」是同一条原则。
+        const budget = ALLOWED[rel]?.[token];
+        if (budget !== undefined && source.split(token).length - 1 <= budget) continue;
         // ⚠️ 行号是**剥注释后**的口径：stripComments 会把块注释整段删掉，
         // 所以这里的行号与编辑器里的真实行号可能差很多（实测差过 62 行）。
         // **文件名是准的，行号只是线索**，不要拿它直接跳转。

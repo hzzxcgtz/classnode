@@ -156,6 +156,10 @@ console.log('[package-server] 复制运行时文件');
 copy('server/dist', 'dist');
 copy('server/prisma/schema.prisma', 'prisma/schema.prisma');
 copy('server/changelogs', 'changelogs');
+// 供应商化的第三方产物（DOM 截图库，见 server/vendor/README.md）。
+// ⚠️ 漏了这行的表现是**打包版的学生端静默没有缩略图**：`readShotSource()` 读不到文件
+// 会返回 null ⇒ 路由 503 ⇒ SDK 拿不到 window.snapdom。dev 下一切正常，只有安装包坏。
+copy('server/vendor', 'vendor');
 copy('server/package.json', 'package.json');
 copy('out', 'frontend');
 fs.writeFileSync(path.join(resourceDir, '.env'), 'DATABASE_URL="file:./dev.db"\n');

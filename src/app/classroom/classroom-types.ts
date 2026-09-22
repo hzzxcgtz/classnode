@@ -5,6 +5,7 @@ import type { AgentSummary, AvatarSummary, ClassroomStudentSummary, StudentClass
 // lib/classroom-modules.ts：教师端也读那两张表，另写一份必然漂移。
 // 这里只做转出，让外壳能从本文件一处取到模块契约相关的全部类型。
 import type { ModuleId, ModuleState } from '@/lib/classroom-modules';
+import type { WebappDemand } from '@/lib/socket-events';
 
 export type { ModuleId, ModuleState };
 
@@ -198,7 +199,13 @@ export interface ChatPanelProps {
    * 教师图墙空着且没有任何报错。学生端唯一的消费者是探究助手面板（外壳从 `chat` 里读它
    * 再传下去）。
    */
-  webappWatching: boolean;
+  /**
+   * 探究助手的按需推流档位（`{ watching, detail }`，服务端**逐学生**下发）。
+   *
+   * 从 boolean 升成对象是 P2.1 的 T3b：教师点开**某个**学生的详情时，只有那个学生
+   * 该转高频 —— 一个布尔表达不了「在看谁」。
+   */
+  webappDemand: WebappDemand;
 
   // —— 外壳 setter：面板自身仍要写这些状态 ——
   // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket

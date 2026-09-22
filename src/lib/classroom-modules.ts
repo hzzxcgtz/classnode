@@ -122,6 +122,21 @@ export const MODULE_KEY_BY_ID = {
 } as const satisfies Record<ModuleId, ClassroomModuleKey>;
 
 /**
+ * `ModuleId` 的类型守卫（P2.3：教师看板「跟随」模式要读 `student-module-focus` 的
+ * 线缆值 `moduleId: string | null`）。
+ *
+ * 为什么要有它：`Record<string, ModuleId | null>` 的查表在类型上永远「有值」，
+ * 线缆上真来了一个拼错的 key（'explore ' / 'explorer' / ''），不挡的话会被原样存进状态、
+ * 再原样拿去渲染分支 —— 结果是那一格空白且不报错。
+ *
+ * 用 `hasOwnProperty` 而不是 `value in MODULE_KEY_BY_ID`：`in` 会把原型链上的
+ * `toString` / `constructor` 也算命中（线缆值不设防时那是一条静默的错配）。
+ */
+export function isModuleId(value: unknown): value is ModuleId {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(MODULE_KEY_BY_ID, value);
+}
+
+/**
  * 由正向表推出反向表的类型：每个 moduleKey 只允许对应「唯一那个映射到它的」ModuleId。
  *
  * 外层刻意映射 `ClassroomModuleKey` 全集而不是 `T[keyof T]`（即正向表的值集合）：

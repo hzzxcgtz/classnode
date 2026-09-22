@@ -5,8 +5,9 @@ import { hasTeacherSession } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
 import { isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
-import { abortClassroomStreams } from '../socket/index.js';
+import { abortClassroomStreams, broadcastWebappDemand } from '../socket/index.js';
 import type { WebappUsageRow } from '../socket/index.js';
+import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { loadClassroomWebapps } from './webapps.js';
 
 const router: Router = Router();
@@ -142,23 +143,140 @@ function webappLinkRows(ids: readonly string[], now: number = Date.now()) {
   }));
 }
 
+/**
+ * 课堂三件套 —— **AI 智能体 / 探究网页 / 学习单**。
+ *
+ * 真实的一堂课由这三样东西组成，但**每一项都不是必填**：教师可以只挂一个智能体让孩子对话，
+ * 也可以只放一个网页让孩子自己探究。**唯一的硬性要求是三项里至少有一项** ——
+ * 三项全空的课堂建出来，学生进去看到的是一片空白，而教师以为自己成功了。
+ *
+ * ⚠️ **学习单尚未实现**，调用处目前给 `worksheet` 传 0（见 `classroomMaterialError` 的调用点）。
+ * 将来做学习单时**只改那一行的数字**，本表与本函数的判断结构、文案都不用动 ——
+ * 把三件套写成一张表而不是一串 `if`，就是为了让那次改动只落在一个字段上。
+ */
+const CLASSROOM_MATERIAL_LABELS = {
+  agent: 'AI 智能体',
+  webapp: '探究网页',
+  worksheet: '学习单',
+} as const;
+
+type ClassroomMaterialCounts = Record<keyof typeof CLASSROOM_MATERIAL_LABELS, number>;
+
+/**
+ * 三件套的「至少一项」判据。**这是全项目唯一的判据**，两条创建路径都走它。
+ *
+ * 返回 `null` 表示通过；否则返回可直接回给教师的中文文案。
+ * 文案的落点是「该怎么办」——「至少需要一项内容」+ 三项的名字，而不是一句「参数无效」。
+ */
+function classroomMaterialError(counts: ClassroomMaterialCounts): string | null {
+  const kinds = Object.keys(CLASSROOM_MATERIAL_LABELS) as (keyof typeof CLASSROOM_MATERIAL_LABELS)[];
+  const total = kinds.reduce((sum, kind) => sum + Math.max(0, counts[kind] || 0), 0);
+  if (total > 0) return null;
+  return `课堂至少要有一项内容：${Object.values(CLASSROOM_MATERIAL_LABELS).join(' / ')}（三项都不是必填，选其中任意一项即可）`;
+}
+
+/**
+ * 探究网页**单选**：一个课堂只关联一个网页（P2.3）。
+ *
+ * 表结构不动（`ClassroomWebapp` 仍是多对多，只是每个课堂最多留一行）。学生端本来就只加载
+ * `webapps[0]`，第二个及以后**从来没有生效过** —— 这一处是把界面与实际行为对齐，
+ * 不是砍掉一个正在用的功能（旧的行为本身是个陷阱：教师勾了 A、B、C，学生拿到哪个是随机的，
+ * 见 `webappLinkRows` 的实测注释）。
+ *
+ * 为什么是「取第一个 + 留痕」而不是「多于一个就 400」：
+ * 已经部署出去的旧版前端发的是数组，400 会让那些教师**建不出课堂**，而它们发来的第一个 id
+ * 恰好就是当时唯一生效的那个 ⇒ 取第一个对教师无损。被丢掉的那些**必须写进日志** ——
+ * 丢掉一个教师勾过的选项属于改数据，不留痕就成了静默改写（与 `trimExtraClassroomWebapps`
+ * 同一条规矩）。
+ *
+ * 校验仍然是**整条**的：`resolveWebappIds` 先确认每一个 id 都存在，再有 id 不存在就 400。
+ * 哪怕多出来的那个会被丢掉也不放行 —— 「页面已过期」值得让教师刷新一次，
+ * 而不是让他拿到一个自己没预期的课堂。
+ */
+async function resolveSingleWebappId(
+  prisma: PrismaClient,
+  raw: unknown,
+  context: string,
+): Promise<{ ok: true; id: string | null } | { ok: false; error: string }> {
+  const resolved = await resolveWebappIds(prisma, raw);
+  if (!resolved.ok) return resolved;
+  const [first, ...dropped] = resolved.ids;
+  if (dropped.length > 0) {
+    console.warn(
+      `[Classroom] 探究网页为单选，已忽略多余选项（${context}）：保留 ${first}，忽略 ${dropped.join(', ')}`,
+    );
+  }
+  return { ok: true, id: first ?? null };
+}
+
+/**
+ * 把课堂的探究网页裁剪到「只留第一个」。
+ *
+ * 历史数据里可能有课堂关联了多个网页（多选时代留下的）。那些多出来的关联行**从未生效过**
+ * （学生端只读 `webapps[0]`），留着只会让「这个课堂到底用哪个网页」在界面上说不清。
+ * 教师在管理页保存课堂设置时顺手对齐。
+ *
+ * ⚠️ **删了哪些由调用方写进服务端日志**（`file-logger` 会把 console 落到
+ * `CLASSNODE_DATA_DIR/logs/`）。这是本项目自己定的规矩：改数据要留痕 ——
+ * 静默删除会让「网页怎么没了」变成一件无法追查的事，而且删掉的是教师以为自己配好的东西。
+ * 日志由调用方在**事务提交之后**写：写在事务里会在回滚时留下一句没发生过的「已裁剪」。
+ *
+ * @returns 被删掉的关联行（`{id, webappId}`），没删就是空数组。
+ */
+async function trimExtraClassroomWebapps(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  classroomId: string,
+): Promise<{ id: string; webappId: string }[]> {
+  // 与读路径（`loadClassroomWebapps`）**同一套排序**，否则会出现
+  // 「保存前看到的第一个」与「保存后留下的那个」不是同一个 —— 那是最坏的一种不一致。
+  const links = await prisma.classroomWebapp.findMany({
+    where: { classroomId },
+    select: { id: true, webappId: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  if (links.length <= 1) return [];
+  const dropped = links.slice(1);
+  await prisma.classroomWebapp.deleteMany({ where: { id: { in: dropped.map(link => link.id) } } });
+  return dropped;
+}
+
 // 创建课堂（标准模式）
 router.post('/create', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { title, classIds, agentIds, mode = 'standard', webappIds } = req.body;
 
-    if (!classIds?.length || !agentIds?.length) {
-      return res.status(400).json({ error: '请选择班级和智能体' });
+    // ① 参与班级 —— **不属于三件套**。它是学生名册的来源，仍然必填。
+    //    与三件套**分开报错**：从前合在一句「请选择班级和智能体」里，只缺班级的教师
+    //    会跑去智能体那一栏找问题，而那里本来就是好的。
+    if (!classIds?.length) {
+      return res.status(400).json({ error: '请选择参与课堂的班级（学生名册来自班级）' });
     }
     if (!['standard', 'group'].includes(mode)) return res.status(400).json({ error: '课堂模式无效' });
-    const uniqueClassIds: string[] = Array.from(new Set<string>((classIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
-    const uniqueAgentIds: string[] = Array.from(new Set<string>((agentIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!id)));
-    if (uniqueClassIds.length === 0 || uniqueAgentIds.length === 0) return res.status(400).json({ error: '班级或智能体无效' });
+    // ⚠️ 必须先 `Array.isArray` 再 `.filter`：智能体现在是**选填**，`agentIds` 缺席是常态
+    // （从前那条 `!agentIds?.length` 的守卫顺带挡住了这一句，拆开报错后它就没人挡了）。
+    // 顺带把 `classIds` 也收紧 —— 传个字符串进来 `"abc".length` 为真、`.filter` 却不存在，
+    // 那是 500 而不是「请选择班级」，与「报错要告诉教师该怎么办」相悖。
+    const toIdList = (raw: unknown): string[] => Array.from(new Set<string>(
+      (Array.isArray(raw) ? raw : []).filter((id): id is string => typeof id === 'string' && !!id),
+    ));
+    const uniqueClassIds = toIdList(classIds);
+    const uniqueAgentIds = toIdList(agentIds);
+    if (uniqueClassIds.length === 0) return res.status(400).json({ error: '所选班级无效，请刷新页面后重新选择' });
     if (mode === 'group' && uniqueClassIds.length !== 1) return res.status(400).json({ error: '分组模式一次只能选择一个班级' });
 
-    const webapps = await resolveWebappIds(prisma, webappIds);
-    if (!webapps.ok) return res.status(400).json({ error: webapps.error });
+    // ② 探究网页（**单选**，`webappIds` 里最多只有第一个生效）。
+    const webapp = await resolveSingleWebappId(prisma, webappIds, 'create');
+    if (!webapp.ok) return res.status(400).json({ error: webapp.error });
+
+    // ③ 三件套「至少一项」。智能体不是必填 —— 只选网页同样能建课堂。
+    //    学习单尚未实现，所以这里固定传 0；**将来做学习单时只改这一行**。
+    const materialError = classroomMaterialError({
+      agent: uniqueAgentIds.length,
+      webapp: webapp.id ? 1 : 0,
+      worksheet: 0,
+    });
+    if (materialError) return res.status(400).json({ error: materialError });
 
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const code = await generateUniqueClassroomCode(tx);
@@ -173,8 +291,8 @@ router.post('/create', async (req, res) => {
         classroomAgents: {
           create: uniqueAgentIds.map(agentId => ({ agentId })),
         },
-        // 关联顺序 = 勾选顺序（见 webappLinkRows 的实测注释：不显式写 createdAt 就是随机序）
-        webapps: { create: webappLinkRows(webapps.ids) },
+        // 单选 ⇒ 至多一行（`webappLinkRows` 仍按勾选顺序写 createdAt，见其注释）
+        webapps: { create: webappLinkRows(webapp.id ? [webapp.id] : []) },
       },
       include: {
         classes: { include: { class: { include: { students: true } } } },
@@ -262,8 +380,18 @@ router.post('/create-advanced', async (req, res) => {
     if (normalizedGroups.some(group => !group.name || !group.agentId)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
     if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
-    const webapps = await resolveWebappIds(prisma, webappIds);
-    if (!webapps.ok) return res.status(400).json({ error: webapps.error });
+    // 探究网页同样是**单选**，与标准模式走同一个解析函数（口径不能分叉）。
+    const webapp = await resolveSingleWebappId(prisma, webappIds, 'create-advanced');
+    if (!webapp.ok) return res.status(400).json({ error: webapp.error });
+
+    // 三件套「至少一项」——走**同一个**判据。高级模式的智能体来自分组（每组的智能体本就必填），
+    // 所以这一项天然满足；仍然照走一遍是为了两条创建路径不会再长出两套口径。
+    const materialError = classroomMaterialError({
+      agent: normalizedGroups.length,
+      webapp: webapp.id ? 1 : 0,
+      worksheet: 0,
+    });
+    if (materialError) return res.status(400).json({ error: materialError });
 
     const classroom = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.classroom.create({
@@ -274,7 +402,7 @@ router.post('/create-advanced', async (req, res) => {
           classes: { create: { classId } },
           // 高级模式与标准模式走同一个写入口，口径必须一致 —— 否则「高级模式不支持网页」
         // 会变成一条只有教师自己会发现的静默差异。
-          webapps: { create: webappLinkRows(webapps.ids) },
+          webapps: { create: webappLinkRows(webapp.id ? [webapp.id] : []) },
         },
       });
 
@@ -368,13 +496,18 @@ router.get('/active', async (req, res) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(classrooms.map(classroom => ({
+    // 管理页的「课堂设置」弹窗要把探究网页**只读展示**出来（P2.3），所以随列表一起下发。
+    // 用**同一个** `loadClassroomWebapps`（与 `GET /:id`、`GET /code/:code` 同口径）逐课堂查一次：
+    // 这里的行数就是「正在进行的课堂数」，通常只有 1~2 个，为省这几条查询去写第二套批量实现
+    // 得不偿失 —— 口径分叉（比如排序不同）会让「管理页显示的那个」与「学生打开的那个」不是同一个。
+    res.json(await Promise.all(classrooms.map(async classroom => ({
       ...classroom,
       participantCount: classroom._count.students,
       realStudentCount: classroom.mode === 'group' || classroom.mode === 'advanced'
         ? classroom.groups.reduce((count, group) => count + group.members.length, 0)
         : classroom._count.students,
-    })));
+      webapps: await loadClassroomWebapps(prisma, classroom.id),
+    }))));
   } catch (error) {
     res.status(500).json({ error: '获取活跃课堂失败' });
   }
@@ -812,16 +945,40 @@ router.post('/:id/end', async (req, res) => {
   }
 });
 
-// 更新课堂设置
+/**
+ * 更新课堂设置。
+ *
+ * 🔴 **只有课堂名称可以改，其余一律只读**。参与班级、参与模式、智能体、探究网页都是
+ * 创建时冻结的：课堂已经开在学生面前了，中途换班级或换智能体等于换了另一堂课，
+ * 历史对话与统计（`Interaction` 按参与者记）会对不上。
+ *
+ * 所以这里**只读 `title`** —— body 里其它字段不是「没校验」，是**不采用**：
+ * 前端把它们渲染成只读展示，服务端则根本不看。两边都拦，任一被绕过都不会改到数据。
+ *
+ * 顺带对齐一次探究网页的单选约束（见 `trimExtraClassroomWebapps`）：多选时代留下的
+ * 多余关联在这里裁掉，删了什么写进服务端日志。
+ */
 router.put('/:id/settings', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const { title } = req.body;
 
-    await prisma.classroom.update({
-      where: { id: req.params.id },
-      data: { title: title || null },
+    const dropped = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.classroom.update({
+        where: { id: req.params.id },
+        data: { title: title || null },
+      });
+      return trimExtraClassroomWebapps(tx, req.params.id);
     });
+
+    // ⚠️ 日志在**事务提交之后**才写：写在事务里的话，一次回滚会留下一句没发生过的「已裁剪」。
+    // 内容必须如实 —— 删了哪几条、留下了哪个，让「网页怎么少了一个」能查。
+    if (dropped.length > 0) {
+      console.warn(
+        `[Classroom] 课堂 ${req.params.id} 保存设置时裁剪了 ${dropped.length} 条多余的探究网页关联：` +
+        `删除 ${dropped.map(link => link.webappId).join(', ')}（探究网页为单选，保存后只保留第一位）`,
+      );
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -953,6 +1110,41 @@ router.post('/:id/toggle-allow-export', async (req, res) => {
   } catch (error) {
     console.error('[Classroom] toggle allow-export error:', error);
     res.status(500).json({ error: '切换失败' });
+  }
+});
+
+/**
+ * 设置本课堂的探究助手采集参数（P2.2）：要不要采画面、多清楚、多久一次。
+ *
+ * ⚠️ **改完必须重新下发一次档位。** 学生端不会主动来问 —— 它只在收到
+ * `webapp-monitor-demand` 时才换档。少了这一步，教师调完之后要等到下一次
+ * 订阅/退订才生效，而那时教师很可能已经离开这个视图了 ⇒ **"设置没生效"且没有任何报错**。
+ *
+ * ⚠️ 归一化在服务端做（`captureFieldsFromInput`）：宽度与周期都会被夹进合法范围。
+ * 客户端拿到的永远是已经合法的值。
+ *
+ * 注：多标签页的教师端同步（`webapp-capture-changed`）跟着 T4 的界面一起接，
+ * 这里先不发那条事件 —— 教师自己的界面用本次响应更新即可。
+ */
+router.post('/:id/webapp-capture', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({ where: { id: req.params.id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const fields = captureFieldsFromInput(req.body ?? {});
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: '没有要修改的采集参数' });
+    }
+
+    const updated = await prisma.classroom.update({ where: { id: req.params.id }, data: fields });
+
+    await broadcastWebappDemand(req.app.get('io'), prisma, classroom.id);
+
+    res.json(normalizeCaptureConfig(updated));
+  } catch (error) {
+    console.error('[Classroom] set webapp-capture error:', error);
+    res.status(500).json({ error: '设置失败' });
   }
 });
 

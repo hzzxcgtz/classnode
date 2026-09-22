@@ -111,6 +111,13 @@ model Classroom {
   allowStudentStop Boolean @default(true)
   allowStudentExport Boolean @default(true)
   allowFollowUps Boolean @default(true)
+  /// 探究助手：是否采集**画面**（截图）。关掉后学生端不传任何图片，
+  /// 只传文字档（可见性 + 滚动深度）—— 那是给老设备用的便宜档。
+  webappCaptureEnabled Boolean @default(true)
+  /// 探究助手：缩略图目标宽度（像素）。服务端夹在 160~640 之间再下发。
+  webappThumbnailWidth Int @default(320)
+  /// 探究助手：**图墙档**的截图基准周期（毫秒）。详情档由学校端按比例推。
+  webappFrameIntervalMs Int @default(10000)
   createdAt DateTime @default(now())
   endedAt   DateTime?
 

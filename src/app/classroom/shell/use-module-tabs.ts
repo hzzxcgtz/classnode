@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { MODULE_ID_BY_KEY, MODULE_KEY_BY_ID, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
 import type { ClassroomModuleKey, ClassroomModuleSetting } from '@/lib/types';
@@ -45,11 +45,70 @@ export function moduleStateFor(modules: readonly ClassroomModuleSetting[] | unde
  * 这些状态一起消失。换身份同理（回到身份页 ⇒ 外壳卸载），所以不存在「上一个学生的模块
  * 还留在 DOM 里」的窗口。
  */
+/**
+ * 「上次停在哪个模块」的存储键（P2.3）。
+ *
+ * ⚠️ 存在 **localStorage** 而不是服务端：模块状态本来就是**客户端状态**
+ * （`activeModuleId` 从来没有上报过），为了它去动会话与服务端存储，收益不明显。
+ * 代价是换设备就没了 —— 学生本来也是「这台 iPad 进这个课堂」，可以接受。
+ */
+const LAST_MODULE_KEY = 'classnode:last-module';
+
+function readStoredModule(): ModuleId | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_MODULE_KEY);
+    return raw === 'worksheet' || raw === 'explore' || raw === 'companion' ? raw : null;
+  } catch {
+    // 隐私模式 / 存储被禁用时访问会抛。**静默回首页**是这里正确的降级：
+    // 记不住上次的模块不该让学生进不来。
+    return null;
+  }
+}
+
+function writeStoredModule(id: ModuleId | null): void {
+  try {
+    if (id === null) window.localStorage.removeItem(LAST_MODULE_KEY);
+    else window.localStorage.setItem(LAST_MODULE_KEY, id);
+  } catch {}
+}
+
 export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
   /** 前台是哪个模块；`null` = 首页在前台（首页也是这个外壳的一层）。 */
   const [activeModuleId, setActiveModuleId] = useState<ModuleId | null>(null);
   /** 挂载集合，按「第一次进入」的顺序（层是绝对定位的，顺序不影响显示）。 */
   const [mountedIds, setMountedIds] = useState<ModuleId[]>([]);
+
+  /**
+   * 刷新后**停在上次的模块**（P2.3）。
+   *
+   * ⚠️ 恢复必须等 `classroom.modules` 到位才能判「那个模块现在还开着吗」—— 模块状态是
+   * 异步来的，早于它恢复会把一切都判成"没开放"而全部丢掉。
+   * `restoredRef` 保证**只恢复一次**：否则教师每改一次模块状态，都会把学生从他自己刚切到
+   * 的地方**拽回**上次那个模块。
+   */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    if (!classroom?.modules) return;
+    restoredRef.current = true;
+    const saved = readStoredModule();
+    if (saved && moduleStateFor(classroom.modules, saved) === 'open') {
+      setMountedIds((prev) => (prev.indexOf(saved) === -1 ? [...prev, saved] : prev));
+      setActiveModuleId(saved);
+    }
+  }, [classroom?.modules]);
+
+  /**
+   * 变化时记住。**首页也记**（即清掉存档）—— 学生主动回首页是一个明确的选择，
+   * 刷新后该回首页，而不是被拽回他刚离开的那个模块。
+   *
+   * ⚠️ **恢复之前不许写**：挂载时 `activeModuleId` 还是 null，先写就把存档覆盖掉了，
+   * 恢复再也读不到东西。这条不写清楚，症状是"记忆功能时灵时不灵"。
+   */
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    writeStoredModule(activeModuleId);
+  }, [activeModuleId]);
 
   // Tab 栏的内容：**遍历词汇表** `MODULE_KEYS` 逐键查态，不按 `classroom.modules` 的数组
   // 下标（§4.11 B6：`applyModuleState` 在键缺失时会追加元素，下标会漂移 ⇒ 教师改一次态

@@ -364,6 +364,19 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentExport" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added allowStudentExport column to Classroom');
     }
+    // 探究助手的三项按课堂设置（P2.2）。默认值 = 改动前的行为（开、320 宽、10 秒）。
+    if (!classroomColNames.includes('webappCaptureEnabled')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappCaptureEnabled" BOOLEAN NOT NULL DEFAULT 1`);
+      console.log('[server] Added webappCaptureEnabled column to Classroom');
+    }
+    if (!classroomColNames.includes('webappThumbnailWidth')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappThumbnailWidth" INTEGER NOT NULL DEFAULT 320`);
+      console.log('[server] Added webappThumbnailWidth column to Classroom');
+    }
+    if (!classroomColNames.includes('webappFrameIntervalMs')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappFrameIntervalMs" INTEGER NOT NULL DEFAULT 10000`);
+      console.log('[server] Added webappFrameIntervalMs column to Classroom');
+    }
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
   }

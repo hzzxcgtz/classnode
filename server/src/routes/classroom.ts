@@ -9,6 +9,7 @@ import { abortClassroomStreams, broadcastWebappDemand } from '../socket/index.js
 import type { WebappUsageRow } from '../socket/index.js';
 import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { loadClassroomWebapps } from './webapps.js';
+import { resolveGroupMaterialViews } from '../services/group-material-resolve.js';
 
 const router: Router = Router();
 
@@ -310,7 +311,6 @@ router.post('/create', async (req, res) => {
           data: {
             classroomId: created.id,
             name: classGroup.name,
-            agentId: uniqueAgentIds[0],
             sourceClassGroupId: classGroup.id,
           },
         });
@@ -372,23 +372,38 @@ router.post('/create-advanced', async (req, res) => {
     if (!Array.isArray(groups) || groups.length > 100) return res.status(400).json({ error: '分组数量无效' });
     const normalizedGroups = groups.map((group: unknown) => {
       const input = typeof group === 'object' && group !== null ? group as Record<string, unknown> : {};
+      // 空串与缺字段一律归一成 `null`。`''` 会成为**第三种**状态落库：它在 `?.` 判空里
+      // 与 `null` 表现一致、看起来是对的，直到有人写 `where: { targetId: null }` 的统计 ——
+      // 那一刻空串那一行不在结果里，而没有任何地方报错。
+      const toId = (raw: unknown): string | null =>
+        (typeof raw === 'string' && raw.trim() ? raw.trim() : null);
       return {
         name: typeof input.name === 'string' ? input.name.trim() : '',
-        agentId: typeof input.agentId === 'string' ? input.agentId : '',
+        agentId: toId(input.agentId),
+        webappId: toId(input.webappId),
       };
     });
-    if (normalizedGroups.some(group => !group.name || !group.agentId)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
+    if (normalizedGroups.some(group => !group.name)) return res.status(400).json({ error: '分组名称和智能体不能为空' });
     if (new Set(normalizedGroups.map(group => group.name)).size !== normalizedGroups.length) return res.status(400).json({ error: '分组名称不能重复' });
 
     // 探究网页同样是**单选**，与标准模式走同一个解析函数（口径不能分叉）。
     const webapp = await resolveSingleWebappId(prisma, webappIds, 'create-advanced');
     if (!webapp.ok) return res.status(400).json({ error: webapp.error });
 
-    // 三件套「至少一项」——走**同一个**判据。高级模式的智能体来自分组（每组的智能体本就必填），
-    // 所以这一项天然满足；仍然照走一遍是为了两条创建路径不会再长出两套口径。
+    // 组级网页也要校验它存在 —— 走**同一个** `resolveWebappIds`，不新长第二套口径。
+    // 一次把所有组的网页 id 合起来校验（逐组调一次会变成 N 次同样的查询）。
+    const groupWebappCheck = await resolveWebappIds(
+      prisma,
+      normalizedGroups.map(group => group.webappId).filter((id): id is string => id !== null),
+    );
+    if (!groupWebappCheck.ok) return res.status(400).json({ error: groupWebappCheck.error });
+
+    // 三件套「至少一项」——走**同一个**判据，但数的是**真的配了的材料数**。
+    // ⚠️ 用「组的数量」冒充会让「所有组都不配」的空课堂建出来（见 `classroomMaterialError`
+    // 的注释：那正是这条规则要防的形态）。
     const materialError = classroomMaterialError({
-      agent: normalizedGroups.length,
-      webapp: webapp.id ? 1 : 0,
+      agent: normalizedGroups.filter((group) => group.agentId).length,
+      webapp: (webapp.id ? 1 : 0) + normalizedGroups.filter((group) => group.webappId).length,
       worksheet: 0,
     });
     if (materialError) return res.status(400).json({ error: materialError });
@@ -400,9 +415,10 @@ router.post('/create-advanced', async (req, res) => {
         title: title || null,
         mode: 'advanced',
           classes: { create: { classId } },
-          // 高级模式与标准模式走同一个写入口，口径必须一致 —— 否则「高级模式不支持网页」
-        // 会变成一条只有教师自己会发现的静默差异。
-          webapps: { create: webappLinkRows(webapp.id ? [webapp.id] : []) },
+          // 🔴 高级模式**不再写课堂级网页**。网页在这个模式下的权威来源是「每组一份」，
+          // 留着课堂级那一行会长出「它到底谁在用」的第二套解释，而运行期规定了不回落
+          // ⇒ 它会变成一个**永远看不见、却挡得住删除守卫**的幽灵。
+          // ⚠️ 已存在的课堂由 §4.2 第 5 步的实体化保证不回归（老课堂的课堂级网页已搬成每组一份）。
         },
       });
 
@@ -414,10 +430,16 @@ router.post('/create-advanced', async (req, res) => {
         data: {
           classroomId: created.id,
           name: group.name,
-          agentId: group.agentId,
           sourceClassGroupId: sourceGroup?.id,
         },
       });
+      // 该组的材料各写一行。**唯一写入口** —— 运行期读的就是这些行（`resolveMaterialTargetId`）。
+      // ⚠️ `targetId` 没有真外键，所以「目标已不存在」的兜底在删除守卫（agents.ts / webapps.ts）
+      // 与读路径的容忍里，不在这里。
+      for (const [kind, targetId] of [['agent', group.agentId], ['webapp', group.webappId]] as const) {
+        if (!targetId) continue;
+        await tx.classroomGroupMaterial.create({ data: { groupId: classroomGroup.id, kind, targetId } });
+      }
       let memberIds: string[] = [];
       try { memberIds = JSON.parse(sourceGroup?.studentIds || '[]'); } catch {}
       const members = memberIds.length > 0 ? await tx.student.findMany({
@@ -433,16 +455,17 @@ router.post('/create-advanced', async (req, res) => {
       await tx.interaction.create({ data: { classroomId: created.id, studentId: participant.id } });
     }
 
-    // Create classroomAgent records from unique group agentIds
-    const uniqueAgentIds = [...new Set(normalizedGroups.map(group => group.agentId))];
-    for (const agentId of uniqueAgentIds as string[]) {
-      await tx.classroomAgent.create({ data: { classroomId: created.id, agentId } });
-    }
+    // 🔴 这里**不再**从各组 agentId 派生 `ClassroomAgent`。
+    // 理由：迁移后组不再有 agentId，而高级模式下那个数组本就是「各组智能体的并集」，
+    // 语义可疑 —— §1.2 ① 的学生静默用错智能体正是它造成的（运行期不再回落它）。
+    // 学生端的智能体一律来自自己的组（`resolveMaterialTargetId`）。
+    // ⚠️ 老课堂里已有的派生行**仍在**，它们是惰性的（读不到），本次不删 —— 删历史行
+    // 属于另一个决定，而且删错了不可逆。
 
       return tx.classroom.findUnique({
       where: { id: created.id },
       include: {
-        groups: true,
+        groups: { include: { materials: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: { include: { students: true } } } },
       },
@@ -465,12 +488,21 @@ router.get('/all', async (req, res) => {
         _count: { select: { students: true, interactions: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: true } },
-        groups: { include: { agent: true, members: { select: { id: true } } } },
+        groups: { include: { materials: true, members: { select: { id: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
+    // 组的材料（智能体 / 网页）走**同一个**解析口径（`resolveGroupMaterialViews`）。
+    // 一次把全部课堂的组喂进去 ⇒ 总共只多两条 `in` 查询，与课堂数、组数无关。
+    const groupMaterialViews = await resolveGroupMaterialViews(
+      prisma, classrooms.flatMap(classroom => classroom.groups),
+    );
     res.json(classrooms.map(classroom => ({
       ...classroom,
+      groups: classroom.groups.map(({ materials: _materials, ...group }) => ({
+        ...group,
+        ...(groupMaterialViews.get(group.id) ?? { agent: null, webapp: null }),
+      })),
       participantCount: classroom._count.students,
       realStudentCount: classroom.mode === 'group' || classroom.mode === 'advanced'
         ? classroom.groups.reduce((count, group) => count + group.members.length, 0)
@@ -492,16 +524,24 @@ router.get('/active', async (req, res) => {
         students: { select: { studentId: true, totalRounds: true } },
         classroomAgents: { include: { agent: true } },
         classes: { include: { class: true } },
-        groups: { include: { agent: true, members: { select: { id: true } } } },
+        groups: { include: { materials: true, members: { select: { id: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
+    // 与 `/all` 同一条口径：组材料一次解析，两条 `in` 查询。
+    const groupMaterialViews = await resolveGroupMaterialViews(
+      prisma, classrooms.flatMap(classroom => classroom.groups),
+    );
     // 管理页的「课堂设置」弹窗要把探究网页**只读展示**出来（P2.3），所以随列表一起下发。
     // 用**同一个** `loadClassroomWebapps`（与 `GET /:id`、`GET /code/:code` 同口径）逐课堂查一次：
     // 这里的行数就是「正在进行的课堂数」，通常只有 1~2 个，为省这几条查询去写第二套批量实现
     // 得不偿失 —— 口径分叉（比如排序不同）会让「管理页显示的那个」与「学生打开的那个」不是同一个。
     res.json(await Promise.all(classrooms.map(async classroom => ({
       ...classroom,
+      groups: classroom.groups.map(({ materials: _materials, ...group }) => ({
+        ...group,
+        ...(groupMaterialViews.get(group.id) ?? { agent: null, webapp: null }),
+      })),
       participantCount: classroom._count.students,
       realStudentCount: classroom.mode === 'group' || classroom.mode === 'advanced'
         ? classroom.groups.reduce((count, group) => count + group.members.length, 0)
@@ -523,8 +563,11 @@ router.post('/:id/sync-groups', async (req, res) => {
         where: { id: req.params.id },
         include: {
           classes: { select: { classId: true } },
-          groups: { select: { id: true, name: true, agentId: true, sourceClassGroupId: true } },
+          groups: { select: { id: true, name: true, sourceClassGroupId: true } },
           classroomAgents: { select: { agentId: true } },
+          // 高级模式补新组时要照迁移（§4.2 第 5 步）的同一条规则把课堂级网页实体化，
+          // 否则新补的组与它同组的老组不是一套材料（老组看得到网页、新组看不到）。
+          webapps: { select: { webappId: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
         },
       });
       if (!classroom) throw new Error('CLASSROOM_NOT_FOUND');
@@ -534,8 +577,16 @@ router.post('/:id/sync-groups', async (req, res) => {
 
       const classId = classroom.classes[0].classId;
       const sourceGroups = await tx.classGroup.findMany({ where: { classId }, orderBy: { createdAt: 'asc' } });
-      const fallbackAgentId = classroom.classroomAgents[0]?.agentId;
-      if (!fallbackAgentId) throw new Error('MISSING_AGENT');
+      // 分组模式的学生仍用**课堂级**智能体（§4.4），所以它必须存在 —— 这条守卫只对分组模式成立。
+      // ⚠️ 高级模式不能要求它：那里每组各自配材料，而 `classroomAgents` 已**不再派生**
+      //    （Step 7 第 5 点）⇒ 新建的高级课堂这个数组是空的，照旧抛 MISSING_AGENT 会让
+      //    「同步分组」对所有新的高级课堂永久 400。
+      const fallbackAgentId = classroom.classroomAgents[0]?.agentId ?? null;
+      if (classroom.mode === 'group' && !fallbackAgentId) throw new Error('MISSING_AGENT');
+      // 高级模式：新补的组照迁移的同一条规则继承课堂级网页（单选 ⇒ 第一行）。
+      const classroomWebappId = classroom.mode === 'advanced'
+        ? (classroom.webapps[0]?.webappId ?? null)
+        : null;
 
       let addedGroups = 0;
       let updatedGroups = 0;
@@ -555,10 +606,18 @@ router.post('/:id/sync-groups', async (req, res) => {
             data: {
               classroomId: classroom.id,
               name: sourceGroup.name,
-              agentId: fallbackAgentId,
               sourceClassGroupId: sourceGroup.id,
             },
           });
+          // ⚠️ 这里**不**继承课堂级智能体。高级模式里那个数组是「各组智能体的并集」，
+          //    取第一个等于给新组随机挑一个别人的智能体 —— 正是 §1.2 ① 那个静默缺陷。
+          //    新组没有材料就是「未配置」，由教师显式配置（读路径会如实显示成未配置）。
+          //    分组模式不写材料：它的权威来源是课堂级（§4.4）。
+          if (classroomWebappId) {
+            await tx.classroomGroupMaterial.create({
+              data: { groupId: classroomGroup.id, kind: 'webapp', targetId: classroomWebappId },
+            });
+          }
           const participant = await tx.classroomStudent.create({
             data: { classroomId: classroom.id, type: 'group', groupId: classroomGroup.id },
           });
@@ -622,7 +681,7 @@ router.get('/:id', async (req, res) => {
       include: {
         classes: { include: { class: true } },
         classroomAgents: { include: { agent: true } },
-        groups: { include: { agent: true, members: { orderBy: { studentNo: 'asc' } } } },
+        groups: { include: { materials: true, members: { orderBy: { studentNo: 'asc' } } } },
         students: {
           include: {
             student: true,
@@ -667,8 +726,15 @@ router.get('/:id', async (req, res) => {
     // 探究助手：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
     // 两条路径口径不一。只含 id / name / entryPath，磁盘根路径不进响应。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
+    // 组的材料（智能体 / 网页）走**同一个**解析口径 —— 「管理页显示的那个」与
+    // 「学生打开的那个」必须是同一个。
+    const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
     res.json({
       ...classroom,
+      groups: classroom.groups.map(({ materials: _materials, ...group }) => ({
+        ...group,
+        ...(groupMaterialViews.get(group.id) ?? { agent: null, webapp: null }),
+      })),
       students,
       groupMembersMap,
       webapps,
@@ -755,7 +821,7 @@ router.get('/code/:code', async (req, res) => {
       where: { code: req.params.code },
       include: {
         classroomAgents: { include: { agent: true } },
-        groups: { include: { agent: true } },
+        groups: { include: { materials: true } },
       },
     });
     if (!classroom) return res.status(404).json({ error: '互动码无效' });
@@ -777,6 +843,9 @@ router.get('/code/:code', async (req, res) => {
     // `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}` 自己拼。
     // 查询失败（老库缺表）时降级为空数组 —— 读路径不可失败，不能把学生挡在课堂门外。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
+
+    // 各组的材料（智能体 / 网页）。与 `/:id`、`/all`、`/active` 共用同一个解析口径。
+    const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
 
     res.json({
       id: classroom.id,
@@ -802,19 +871,17 @@ router.get('/code/:code', async (req, res) => {
         greeting: ca.agent.greeting,
       })),
       groups: (classroom.mode === 'advanced' || classroom.mode === 'group')
-        ? classroom.groups.map(group => ({
-            id: group.id,
-            name: group.name,
-            agentId: group.agentId,
-            agent: {
-              id: group.agent.id,
-              name: group.agent.name,
-              logo: group.agent.logo,
-              platform: group.agent.platform,
-              enabled: group.agent.enabled,
-              greeting: group.agent.greeting,
-            },
-          }))
+        ? classroom.groups.map(group => {
+            const view = groupMaterialViews.get(group.id);
+            return {
+              id: group.id,
+              name: group.name,
+              // ⚠️ 两个都可能是 null（组可以不配，而且没有真外键 ⇒ 目标可能已被删）。
+              //    今天那处非空解引用（`group.agent.id`）会让**整间课堂** 500。
+              agent: view?.agent ?? null,
+              webapp: view?.webapp ?? null,
+            };
+          })
         : undefined,
     });
   } catch (error) {

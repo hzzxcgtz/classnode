@@ -38,7 +38,6 @@ model Agent {
   updatedAt DateTime @updatedAt
 
   classroomAgents ClassroomAgent[]
-  classroomGroups ClassroomGroup[]
 }
 
 // 头像库
@@ -150,15 +149,33 @@ model ClassroomGroup {
   id          String @id @default(uuid())
   classroomId String
   name        String // 创建课堂时的小组名称快照
-  agentId    String // 该组绑定的智能体
   sourceClassGroupId String? // 创建时关联的班级分组；仅作溯源，不参与运行时匹配
 
   classroom Classroom       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
-  agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
   students  ClassroomStudent[]
   members   ClassroomGroupMember[]
+  materials ClassroomGroupMaterial[]
 
   @@index([classroomId])
+}
+
+/// 小组级课堂材料：高级模式下每个小组各自指定的智能体 / 探究网页 /（将来）学习单。
+/// ⚠️ `targetId` 是**多态**的（Agent.id / Webapp.id / 将来 Worksheet.id），
+/// 所以**没有真外键** —— 补偿是 routes 里的删除守卫（见 agents.ts / webapps.ts），
+/// 以及运行期容忍悬空 id（读不到 ⇒ 当作未配置）。
+model ClassroomGroupMaterial {
+  id        String   @id @default(uuid())
+  groupId   String
+  kind      String
+  targetId  String
+  createdAt DateTime @default(now())
+
+  group ClassroomGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  /// 每组每种材料**至多一个** ⇒ 「单选」是数据库层面的约束，不是 UI 约定。
+  @@unique([groupId, kind])
+  /// 反查「这个材料被哪些组用了」—— 删除守卫与 /usage 走这条。
+  @@index([kind, targetId])
 }
 
 // 课堂创建时冻结的小组成员名单。班级分组日后改名、换人不会影响课堂及历史记录。

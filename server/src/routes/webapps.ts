@@ -465,9 +465,13 @@ router.get('/:id', async (req, res) => {
 // `used` / `classroomCount` 是删除守卫的判据，原样不动；`classrooms` 是新增的课堂清单，
 // 给「无法删除」弹窗和卡片上的「关联课堂」入口用。
 //
-// 这里只走一张表（`ClassroomWebapp`）就够了 —— 网页只有这一条关联路径，没有智能体那种
-// 「分组里也绑一个」的第二条。`@@unique([classroomId, webappId])` 保证一行一个课堂，
-// 所以 `classrooms.length` 与 `classroomCount` 天然同口径，不需要去重。
+// 🔴 **必须 union 两张表**：`ClassroomWebapp`（课堂级，标准/分组模式）与
+// `ClassroomGroupMaterial(kind='webapp')`（组级，高级模式每组一份）。
+// 网页这一侧**今天只有课堂级一条路径**，加了组级之后变**两条** —— 这正是最容易漏的地方。
+// 只查前者不会报错，只会让「用了这个网页的高级课堂」整个从清单里消失 ⇒
+// 界面显示「没有关联」、教师照着去删、删除守卫却回 400，两边自相矛盾。
+// ⚠️ 两条路径都命中同一个课堂时要去重（照 agents.ts 的 Set 写法），
+// 否则 `classroomCount` 会把同一间课堂数两次。
 router.get('/:id/usage', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
@@ -475,15 +479,29 @@ router.get('/:id/usage', async (req, res) => {
       where: { webappId: req.params.id },
       include: { classroom: { select: { id: true, title: true, status: true, mode: true } } },
     });
+    const groupMaterials = await prisma.classroomGroupMaterial.findMany({
+      where: { kind: 'webapp', targetId: req.params.id },
+      include: { group: { select: { classroom: { select: { id: true, title: true, status: true, mode: true } } } } },
+    });
+    const byClassroomId = new Map<string, { id: string; title: string; status: string; mode: string }>();
+    const collect = (rows: Array<{ classroom: { id: string; title: string | null; status: string; mode: string } }>) => {
+      rows.forEach(row => {
+        if (byClassroomId.has(row.classroom.id)) return;
+        byClassroomId.set(row.classroom.id, {
+          id: row.classroom.id,
+          title: row.classroom.title || '未命名课堂',
+          status: row.classroom.status,
+          mode: row.classroom.mode,
+        });
+      });
+    };
+    collect(classroomLinks);
+    collect(groupMaterials.map(material => ({ classroom: material.group.classroom })));
+    const classrooms = [...byClassroomId.values()];
     res.json({
-      used: classroomLinks.length > 0,
-      classroomCount: classroomLinks.length,
-      classrooms: classroomLinks.map(link => ({
-        id: link.classroom.id,
-        title: link.classroom.title || '未命名课堂',
-        status: link.classroom.status,
-        mode: link.classroom.mode,
-      })),
+      used: classrooms.length > 0,
+      classroomCount: classrooms.length,
+      classrooms,
     });
   } catch (error) {
     res.status(500).json({ error: '查询失败' });
@@ -689,10 +707,18 @@ router.delete('/:id', async (req, res) => {
     const webapp = await prisma.webapp.findUnique({ where: { id: req.params.id }, select: { id: true } });
     if (!webapp) return res.status(404).json({ error: '网页不存在' });
 
-    const classroomCount = await prisma.classroomWebapp.count({ where: { webappId: req.params.id } });
-    if (classroomCount > 0) {
+    // 🔴 两条关联路径都要数：课堂级（`ClassroomWebapp`）与组级
+    // （`ClassroomGroupMaterial(kind='webapp')`，高级模式每组一份）。
+    // 漏掉组级那一支 ⇒ 删掉一个只被组级材料引用的网页，留下一行**悬空 targetId**
+    // （`targetId` 没有真外键，数据库不会拦），那个组从此读不到网页、界面显示成「未配置」，
+    // 而教师以为自己只是删了一个没人用的网页。
+    const [classroomCount, groupMaterialCount] = await Promise.all([
+      prisma.classroomWebapp.count({ where: { webappId: req.params.id } }),
+      prisma.classroomGroupMaterial.count({ where: { kind: 'webapp', targetId: req.params.id } }),
+    ]);
+    if (classroomCount > 0 || groupMaterialCount > 0) {
       return res.status(400).json({
-        error: `该网页已被 ${classroomCount} 个课堂使用，无法删除。请先从这些课堂中移除后再试。`,
+        error: `该网页已被 ${classroomCount} 个课堂和 ${groupMaterialCount} 个小组使用，无法删除。请先从这些课堂中移除后再试。`,
       });
     }
 

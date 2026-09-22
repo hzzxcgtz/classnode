@@ -17,7 +17,7 @@ import webappRoutes from '../routes/webapps.js';
  *
  * 这一层要守的核心事实只有一条，但它**不会自己报错**：
  * 智能体的关联有**两条**独立的落库路径 —— `ClassroomAgent`（标准模式建的课堂）
- * 与 `ClassroomGroup`（高级/分组模式里每组绑的智能体）。`classrooms` 必须 union 两张表。
+ * 与 `ClassroomGroupMaterial`（高级模式里每组绑的智能体）。`classrooms` 必须 union 两张表。
  * 只查前者的实现会让高级模式的课堂**从清单里整个消失，却不报任何错**：
  * 教师看到「没有课堂关联这个智能体」，照着界面去删，删除守卫（数的是两张表）却回 400 ——
  * 界面与守卫自相矛盾，且没有任何一处把它标出来。
@@ -118,6 +118,27 @@ async function makeClassroom(
   });
 }
 
+/**
+ * 造一个「绑了某个智能体」的小组。
+ *
+ * ⚠️ 组级智能体现在落在 `ClassroomGroupMaterial`（`kind='agent'`）里，
+ * **不是** `ClassroomGroup.agentId` —— 那一列已经不存在了（迁移把它搬进了新表）。
+ * 所以「某个小组用了这个智能体」这件事只能经新表表达，夹具也必须照这个形状造，
+ * 否则这些用例测的是已经消失的那条关联路径，永远绿而真实路径坏着（假绿）。
+ */
+async function makeGroupWithAgent(
+  prisma: PrismaClient,
+  classroomId: string,
+  name: string,
+  agentId: string,
+) {
+  const group = await prisma.classroomGroup.create({ data: { classroomId, name } });
+  await prisma.classroomGroupMaterial.create({
+    data: { groupId: group.id, kind: 'agent', targetId: agentId },
+  });
+  return group;
+}
+
 interface RelatedClassroom {
   id: string;
   title: string;
@@ -146,7 +167,7 @@ function cleanup(t: { after: (fn: () => void) => void }, db: TempDb) {
 }
 
 // ---------------------------------------------------------------------------
-// 智能体：classrooms 必须 union ClassroomAgent 与 ClassroomGroup 两张表
+// 智能体：classrooms 必须 union ClassroomAgent 与 ClassroomGroupMaterial 两张表
 // ---------------------------------------------------------------------------
 
 test('智能体只经 ClassroomAgent 关联（标准模式）：classrooms 里查得到那个课堂', async (t) => {
@@ -173,25 +194,25 @@ test('智能体只经 ClassroomAgent 关联（标准模式）：classrooms 里�
 });
 
 /**
- * 🔴 本文件最关键的一条 —— 高级/分组模式里智能体只落在 `ClassroomGroup` 上。
+ * 🔴 本文件最关键的一条 —— 高级模式里智能体只落在 `ClassroomGroupMaterial` 上。
  *
  * 阴性对照写在夹具里：`ClassroomAgent` 对这个智能体**一行都没有**。
  * 只查一张表的实现会让 `classrooms` 变成空数组（而 `used` 仍是 true），
  * 于是界面说「没有课堂关联」、删除守卫说「不能删」。
  */
-test('智能体只经 ClassroomGroup 关联（高级/分组模式）：classrooms 里同样查得到（只查一张表会让它红）', async (t) => {
+test('智能体只经组级材料关联（高级/分组模式）：classrooms 里同样查得到（只查一张表会让它红）', async (t) => {
   const db = await openTempDb();
   cleanup(t, db);
   const { agent } = await seed(db.prisma, 0);
   const server = await startServer(t, db.prisma);
 
   const classroom = await makeClassroom(db.prisma, { title: '高级模式的课堂', status: 'paused', mode: 'advanced' });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组', agentId: agent.id } });
+  await makeGroupWithAgent(db.prisma, classroom.id, '第一组', agent.id);
 
   assert.equal(
     await db.prisma.classroomAgent.count({ where: { agentId: agent.id } }),
     0,
-    '前置条件：这个夹具里只经 ClassroomGroup 关联，ClassroomAgent 一行都没有',
+    '前置条件：这个夹具里只经组级材料关联，ClassroomAgent 一行都没有',
   );
 
   const usage = await readUsage(server.get, `/api/agents/${agent.id}/usage`);
@@ -203,10 +224,10 @@ test('智能体只经 ClassroomGroup 关联（高级/分组模式）：classroom
   assert.equal(usage.classrooms[0].mode, 'advanced');
   assert.equal(usage.used, true);
   assert.equal(usage.classroomCount, 0, 'classroomCount 仍只数 ClassroomAgent');
-  assert.equal(usage.groupCount, 1, 'groupCount 仍只数 ClassroomGroup');
+  assert.equal(usage.groupCount, 1, 'groupCount 仍只数组级材料行');
 });
 
-test('同一个课堂既在 ClassroomAgent 又在 ClassroomGroup：classrooms 里只出现一次（按 classroomId 去重）', async (t) => {
+test('同一个课堂既在 ClassroomAgent 又在组级材料：classrooms 里只出现一次（按 classroomId 去重）', async (t) => {
   const db = await openTempDb();
   cleanup(t, db);
   const { agent } = await seed(db.prisma, 0);
@@ -214,11 +235,11 @@ test('同一个课堂既在 ClassroomAgent 又在 ClassroomGroup：classrooms �
 
   const classroom = await makeClassroom(db.prisma, { title: '两边都关联的课堂', status: 'active', mode: 'advanced' });
   await db.prisma.classroomAgent.create({ data: { classroomId: classroom.id, agentId: agent.id } });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组', agentId: agent.id } });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第二组', agentId: agent.id } });
+  await makeGroupWithAgent(db.prisma, classroom.id, '第一组', agent.id);
+  await makeGroupWithAgent(db.prisma, classroom.id, '第二组', agent.id);
 
   assert.equal(await db.prisma.classroomAgent.count({ where: { classroomId: classroom.id } }), 1, '前置条件：两边都有行');
-  assert.equal(await db.prisma.classroomGroup.count({ where: { classroomId: classroom.id } }), 2, '前置条件：分组表里两条');
+  assert.equal(await db.prisma.classroomGroup.count({ where: { classroomId: classroom.id } }), 2, '前置条件：组级材料里两条');
 
   const usage = await readUsage(server.get, `/api/agents/${agent.id}/usage`);
 
@@ -344,7 +365,7 @@ test('title 为空的课堂回退成「未命名课堂」（智能体与网页�
 /**
  * 回归：`used` / `classroomCount` / `groupCount` 三个字段是**删除守卫的判据**
  * （`agents.ts` 的 DELETE 分支），加了 `classrooms` 之后取值口径必须一字不变 ——
- * `classroomCount` 只数 `ClassroomAgent`、`groupCount` 只数 `ClassroomGroup`，
+ * `classroomCount` 只数 `ClassroomAgent`、`groupCount` 只数 `ClassroomGroupMaterial`，
  * `used` 仍是「两者任一 > 0」。这里把三种情形都钉住，并顺带真的打一次 DELETE。
  */
 test('回归：used / classroomCount / groupCount 与改动前一致（无关联、单表关联、双表关联三种情形）', async (t) => {
@@ -364,17 +385,17 @@ test('回归：used / classroomCount / groupCount 与改动前一致（无关联
   const standardClassroom = await makeClassroom(db.prisma, { title: '标准课堂', mode: 'standard' });
   const advancedClassroom = await makeClassroom(db.prisma, { title: '高级课堂', mode: 'advanced' });
   await db.prisma.classroomAgent.create({ data: { classroomId: standardClassroom.id, agentId: agent.id } });
-  await db.prisma.classroomGroup.create({ data: { classroomId: advancedClassroom.id, name: '第一组', agentId: agent.id } });
+  await makeGroupWithAgent(db.prisma, advancedClassroom.id, '第一组', agent.id);
 
   const linked = await readUsage(server.get, usageUrl);
   assert.equal(linked.used, true);
   assert.equal(linked.classroomCount, 1, 'classroomCount = ClassroomAgent 行数');
-  assert.equal(linked.groupCount, 1, 'groupCount = ClassroomGroup 行数');
+  assert.equal(linked.groupCount, 1, 'groupCount = 组级材料行数');
   // 删除守卫用的就是这条恒等式；清单去重不得让它失配。
   assert.equal(linked.used, linked.classroomCount > 0 || linked.groupCount > 0);
   assert.equal(linked.classrooms.length, 2, `两个课堂都要在清单里：${JSON.stringify(linked)}`);
 
-  // 情形三：删除守卫的**可观察行为**没变 —— 只被分组关联也照样删不掉。
+  // 情形三：删除守卫的**可观察行为**没变 —— 只被组级材料关联也照样删不掉。
   const blocked = await server.del(`/api/agents/${agent.id}`);
   const blockedBody = await blocked.json() as { error: string };
   assert.equal(blocked.status, 400, JSON.stringify(blockedBody));
@@ -418,19 +439,19 @@ test('列表 GET /api/webapps：classroomCount 反映被几个课堂关联（未
   assert.ok(linked?.createdAt, 'createdAt 仍在');
 });
 
-test('🔴 列表 GET /api/agents：只经 ClassroomGroup 关联的智能体，classroomCount 是 1 不是 0', async (t) => {
+test('🔴 列表 GET /api/agents：只经组级材料关联的智能体，classroomCount 是 1 不是 0', async (t) => {
   const db = await openTempDb();
   cleanup(t, db);
   const { agent } = await seed(db.prisma, 0);
   const server = await startServer(t, db.prisma);
 
   const classroom = await makeClassroom(db.prisma, { title: '高级模式课堂', mode: 'advanced' });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组', agentId: agent.id } });
+  await makeGroupWithAgent(db.prisma, classroom.id, '第一组', agent.id);
 
   assert.equal(
     await db.prisma.classroomAgent.count({ where: { agentId: agent.id } }),
     0,
-    '前置条件：只经 ClassroomGroup 关联，ClassroomAgent 一行都没有',
+    '前置条件：只经组级材料关联，ClassroomAgent 一行都没有',
   );
 
   const res = await server.get('/api/agents');
@@ -449,12 +470,14 @@ test('🔴 列表 GET /api/agents：同一个课堂两张表都有行时只算�
   const { agent } = await seed(db.prisma, 0);
   const server = await startServer(t, db.prisma);
 
-  // 高级模式建出来的课堂就是这种形状：classroomAgents 从各组 agentId 派生，
-  // 于是同一对 (课堂, 智能体) 在两张表里同时有行。
+  // 同一对 (课堂, 智能体) 在两张表里同时有行 —— 老的高级课堂就是这个形状：
+  // 迁移前它既从各组 agentId 派生过 `ClassroomAgent`，迁移又把那几个 agentId 搬成了
+  // 组级材料行（派生的旧行**不删**，见 create-advanced 的注释）。
+  // 所以「两边都有行」现在是**历史数据的常态**，去重不是边界情形。
   const classroom = await makeClassroom(db.prisma, { title: '两边都关联', mode: 'advanced' });
   await db.prisma.classroomAgent.create({ data: { classroomId: classroom.id, agentId: agent.id } });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组', agentId: agent.id } });
-  await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第二组', agentId: agent.id } });
+  await makeGroupWithAgent(db.prisma, classroom.id, '第一组', agent.id);
+  await makeGroupWithAgent(db.prisma, classroom.id, '第二组', agent.id);
 
   const res = await server.get('/api/agents');
   const rows = await res.json() as AgentListRow[];
@@ -482,4 +505,94 @@ test('列表 GET /api/agents：无任何关联的智能体 classroomCount 为 0�
   assert.equal(row?.name, '测试智能体');
   assert.equal(row?.platform, 'coze');
   assert.equal(typeof row?.enabled, 'boolean', 'enabled 仍在且是布尔');
+});
+
+// ---------------------------------------------------------------------------
+// 🔴 删除守卫的**新关联路径**：组级材料（`ClassroomGroupMaterial`）。
+//
+// 智能体那一侧以前还能靠 `ClassroomGroup.agentId` 兜住「组里绑了它」，
+// 而**网页那一侧以前只有课堂级一条路径**（见文件顶部对 `/usage` 的说明）——
+// 加了组级之后变两条。这一节把两条路径各自钉一遍，因为「漏一处就删出悬空引用」：
+// `targetId` 是**多态**的、没有真外键，删掉目标不会报错，只会留一行读不到的 id，
+// 那个组从此显示成「未配置」，而教师以为自己删的是一个没人用的东西。
+// ---------------------------------------------------------------------------
+
+/** 造一个「关联了某个网页」的小组（组级材料）。 */
+async function makeGroupWithWebapp(
+  prisma: PrismaClient,
+  classroomId: string,
+  name: string,
+  webappId: string,
+) {
+  const group = await prisma.classroomGroup.create({ data: { classroomId, name } });
+  await prisma.classroomGroupMaterial.create({
+    data: { groupId: group.id, kind: 'webapp', targetId: webappId },
+  });
+  return group;
+}
+
+test('🔴 只被组级材料引用的网页：/usage 的 used 为真，DELETE 被 400 拦下', async (t) => {
+  const db = await openTempDb();
+  cleanup(t, db);
+  const { webapps } = await seed(db.prisma, 2);
+  const server = await startServer(t, db.prisma);
+
+  const classroom = await makeClassroom(db.prisma, { title: '高级模式课堂', mode: 'advanced' });
+  await makeGroupWithWebapp(db.prisma, classroom.id, '第一组', webapps[0].id);
+
+  // 前置条件：课堂级一条都没有 —— 这是纯粹的「只经组级材料关联」夹具。
+  assert.equal(
+    await db.prisma.classroomWebapp.count({ where: { webappId: webapps[0].id } }),
+    0,
+    '前置条件：只经组级材料关联，ClassroomWebapp 一行都没有',
+  );
+
+  const usage = await readUsage(server.get, `/api/webapps/${webapps[0].id}/usage`);
+  // 老实现只查 `ClassroomWebapp`：`used` 会是 false、清单会是空的，
+  // 教师要删、界面说「没关联」，而删除守卫本该回 400 —— 两边自相矛盾。
+  assert.equal(usage.used, true, `组级引用也算「被使用」：${JSON.stringify(usage)}`);
+  assert.equal(usage.classroomCount, 1);
+  assert.equal(usage.classrooms.length, 1);
+  assert.equal(usage.classrooms[0].id, classroom.id);
+
+  const blocked = await server.del(`/api/webapps/${webapps[0].id}`);
+  const blockedBody = await blocked.json() as { error: string };
+  assert.equal(blocked.status, 400, `只被组级材料引用的网页必须删不掉：${JSON.stringify(blockedBody)}`);
+  assert.match(blockedBody.error, /无法删除/);
+  // 拦下之后目标必须还在（守卫不得「先删后判」）。
+  assert.ok(await db.prisma.webapp.findUnique({ where: { id: webapps[0].id } }), '被拦下的删除不得真的删掉网页');
+
+  // 阳性对照：同一个夹具里没被引用的那个网页必须删得掉 ——
+  // 少了这一半，「400 是因为别的原因」也会让上面那条通过。
+  const allowed = await server.del(`/api/webapps/${webapps[1].id}`);
+  assert.equal(allowed.status, 200, JSON.stringify(await allowed.json()));
+});
+
+test('🔴 只被组级材料引用的智能体：/usage 的 used 为真，DELETE 被 400 拦下', async (t) => {
+  const db = await openTempDb();
+  cleanup(t, db);
+  const { agent } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+
+  const classroom = await makeClassroom(db.prisma, { title: '高级模式课堂', mode: 'advanced' });
+  await makeGroupWithAgent(db.prisma, classroom.id, '第一组', agent.id);
+
+  assert.equal(
+    await db.prisma.classroomAgent.count({ where: { agentId: agent.id } }),
+    0,
+    '前置条件：只经组级材料关联，ClassroomAgent 一行都没有',
+  );
+
+  const usage = await readUsage(server.get, `/api/agents/${agent.id}/usage`);
+  assert.equal(usage.used, true, `组级引用也算「被使用」：${JSON.stringify(usage)}`);
+  assert.equal(usage.groupCount, 1, 'groupCount 数的是组级材料行');
+  assert.equal(usage.classroomCount, 0, 'classroomCount 仍只数 ClassroomAgent');
+
+  const blocked = await server.del(`/api/agents/${agent.id}`);
+  const blockedBody = await blocked.json() as { error: string };
+  assert.equal(blocked.status, 400, `只被组级材料引用的智能体必须删不掉：${JSON.stringify(blockedBody)}`);
+  assert.match(blockedBody.error, /无法删除/);
+  // 文案说的是「小组」而不是「分组」：现在数的是组级材料行，一条行 = 一个小组用了它。
+  assert.match(blockedBody.error, /小组/);
+  assert.ok(await db.prisma.agent.findUnique({ where: { id: agent.id } }), '被拦下的删除不得真的删掉智能体');
 });

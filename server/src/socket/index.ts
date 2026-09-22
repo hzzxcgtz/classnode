@@ -8,6 +8,7 @@ import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
+import { resolveMaterialTargetId, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -1086,7 +1087,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           where: { code: data.classroomCode },
           include: {
             classroomAgents: { include: { agent: true } },
-            groups: { include: { agent: true } },
+            groups: { include: { materials: true } },
           },
         });
 
@@ -1135,6 +1136,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         socket.data.classroomId = classroom.id;
         socket.data.studentId = classroomStudent.id;
 
+        // 各组的材料（`agent` / `webapp`，都可能为 null）走**同一个**解析口径
+        // （`resolveGroupMaterialViews`）—— 学生端拿到的组材料必须与 `GET /code/:code`
+        // 逐字一致，否则「首屏显示的那个智能体」与「真正对话用的那个」可能不是一个。
+        const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
         socket.emit('joined', {
           classroomId: classroom.id,
           agents: classroom.classroomAgents.map((ca: Prisma.ClassroomAgentGetPayload<{ include: { agent: true } }>) => ({
@@ -1143,7 +1148,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             logo: ca.agent.logo,
             platform: ca.agent.platform,
           })),
-          groups: classroom.groups,
+          groups: classroom.groups.map((group) => ({
+            id: group.id,
+            name: group.name,
+            ...(groupMaterialViews.get(group.id) ?? { agent: null, webapp: null }),
+          })),
           blacklisted: classroomStudent?.blacklisted || false,
         });
 
@@ -1694,7 +1703,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
               include: { agent: true },
             },
             groups: {
-              include: { agent: true },
+              include: { materials: true },
             },
           },
         });
@@ -1813,14 +1822,30 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           }
         }
 
-        // Determine agent: for group/advanced mode, use the group's agent; otherwise use the first classroom agent
-        let agent;
-        if ((classroom.mode === 'group' || classroom.mode === 'advanced') && classroomStudent.group?.agentId) {
-          const classroomGroup = classroom.groups.find(g => g.id === classroomStudent.groupId);
-          agent = classroomGroup?.agent || null;
-        } else {
-          agent = classroom.classroomAgents[0]?.agent;
-        }
+        // 该用哪个智能体：**唯一**的口径在 `resolveMaterialTargetId` 里。
+        // 这里只负责把「课堂里有哪些组的哪份材料」与「课堂级那一份」喂给它。
+        //
+        // 🔴 高级模式下**不得回落**到课堂级：那个数组在高级模式里曾是「各组智能体的并集」，
+        //    回落到它等于让学生静默地跟另一个组的智能体对话（错名字、错提示词、错平台账号），
+        //    而 AI 正常回答、教师完全看不出（§1.2 ①）。
+        const agentId = resolveMaterialTargetId({
+          mode: classroom.mode,
+          studentGroupId: classroomStudent.groupId,
+          groupMaterials: classroom.groups.flatMap((g) => g.materials.map((m) => ({
+            groupId: g.id, kind: m.kind, targetId: m.targetId,
+          }))),
+          classroomLevelId: classroom.classroomAgents[0]?.agentId ?? null,
+          kind: 'agent',
+        });
+        // `agentById` 直接由**已有的那一次** classroom 查询构成，不额外查库：
+        // 它完整覆盖标准/分组模式（那两种模式的权威来源就是课堂级，§4.4）⇒ 那两条路径
+        // **零额外查询**。高级模式的目标（组级材料指向的智能体）通常不在其中，缺了才补
+        // **至多一次** `findUnique` —— 比按「本课堂所有组的 agent 材料」一次 `findMany(in …)`
+        // 更省（这里只关心当前这一个学生的那一个智能体）。
+        const agentById = new Map(classroom.classroomAgents.map((ca) => [ca.agentId, ca.agent]));
+        const agent = agentId
+          ? (agentById.get(agentId) ?? await prisma.agent.findUnique({ where: { id: agentId } }))
+          : null;
         if (!agent) {
           socket.emit('ai-error', { error: '未配置AI智能体' });
           return;

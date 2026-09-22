@@ -392,7 +392,7 @@ test('删目录前的路径校验：越界一律拒绝，且磁盘不被触碰',
 
 // ── 路由层：鉴权与关联删除拦截 ────────────────────────────────────────
 
-function createHarness(webapp: unknown, usageCount = 0) {
+function createHarness(webapp: unknown, usageCount = 0, groupMaterialCount = 0) {
   const deleted: unknown[] = [];
   const prisma: Record<string, unknown> = {
     webapp: {
@@ -414,6 +414,22 @@ function createHarness(webapp: unknown, usageCount = 0) {
         classroom: { id: `classroom-${index + 1}`, title: `课堂${index + 1}`, status: 'active', mode: 'standard' },
       })),
     },
+    // 网页在「按组的课堂材料」之后有**两条**关联路径：课堂级（上）与组级（这里，
+    // 高级模式每组一份）。删除守卫与 usage 端点都要 union 两者 ——
+    // 这个桩缺了这一支时端点是 500（`Cannot read properties of undefined`），
+    // 而那正是「漏一处就删出悬空引用」在生产里的形态。
+    classroomGroupMaterial: {
+      count: async () => groupMaterialCount,
+      // ⚠️ 比课堂级那条**多一层包装**：`include: { group: { select: { classroom } } }`
+      // 出来的是 `{ group: { classroom: {...} } }`。简化掉这一层，端点里
+      // `material.group.classroom.id` 的取法就会在真库上炸而这里照样绿
+      // （同上面那条包装层级的告诫）。
+      findMany: async () => Array.from({ length: groupMaterialCount }, (_, index) => ({
+        group: {
+          classroom: { id: `group-classroom-${index + 1}`, title: `小组课堂${index + 1}`, status: 'active', mode: 'advanced' },
+        },
+      })),
+    },
   };
   return { prisma, deleted };
 }
@@ -426,8 +442,13 @@ function createAuthedApp(prisma: unknown) {
   return app;
 }
 
-async function startServer(t: { after: (fn: () => void) => void }, webapp: unknown, usageCount = 0) {
-  const harness = createHarness(webapp, usageCount);
+async function startServer(
+  t: { after: (fn: () => void) => void },
+  webapp: unknown,
+  usageCount = 0,
+  groupMaterialCount = 0,
+) {
+  const harness = createHarness(webapp, usageCount, groupMaterialCount);
   const server = createServer(createAuthedApp(harness.prisma));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
@@ -535,5 +556,43 @@ test('无人引用的网页：DELETE 删库并删盘（阳性对照）', async (
     assert.equal(res.status, 200);
     assert.equal(deleted.length, 1, '无人引用时必须删库');
     assert.equal(fs.existsSync(dir), false, '无人引用时必须删盘');
+  });
+});
+
+/**
+ * 🔴 只被**组级材料**引用的网页（高级模式每组一份）：同样删不掉。
+ *
+ * 夹具里课堂级关联是 **0**（`usageCount = 0`），唯一挡住删除的是组级那一支 ——
+ * 所以「只查 `ClassroomWebapp`」的实现会让这条 404/200 地放开删除，
+ * 留下一行读不到的 `targetId`（多态、没有真外键，数据库不会拦）。
+ * 上一节的阳性对照（`usageCount = 0` 时删得掉）保证这条红的不是别的原因。
+ */
+test('🔴 只被组级材料引用的网页：usage 的 used 为真、DELETE 被 400 拦下', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const dir = path.join(dataDir, 'webapps', WEBAPP_ID);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'index.html'), '<html></html>');
+
+    // usageCount = 0（课堂级一条都没有），groupMaterialCount = 1（组级一行）。
+    const { baseUrl, deleted } = await startServer(t, SAMPLE, 0, 1);
+
+    const usage = await fetch(`${baseUrl}/api/webapps/${WEBAPP_ID}/usage`, { headers: { Cookie: teacherCookie() } });
+    const usageBody = await usage.json() as { used: boolean; classroomCount: number; classrooms: { title: string }[] };
+    assert.equal(usageBody.used, true, `组级引用也算「被使用」：${JSON.stringify(usageBody)}`);
+    assert.equal(usageBody.classroomCount, 1);
+    assert.deepEqual(usageBody.classrooms.map(row => row.title), ['小组课堂1']);
+
+    const res = await fetch(`${baseUrl}/api/webapps/${WEBAPP_ID}`, {
+      method: 'DELETE',
+      headers: { Cookie: teacherCookie() },
+    });
+    assert.equal(res.status, 400, '只被组级材料引用的网页必须删不掉');
+    const body = await res.json() as { error: string };
+    assert.match(body.error, /无法删除/);
+    // 文案要念出「小组」那一项 —— 网页这一侧从一条路径变成两条，教师得知道
+    // 是谁在挡（去课堂里改那个小组的配置，而不是去找课堂级关联）。
+    assert.match(body.error, /小组/);
+    assert.deepEqual(deleted, [], '被引用时绝不能走到删库');
+    assert.equal(fs.existsSync(path.join(dir, 'index.html')), true, '被引用时绝不能删盘');
   });
 });

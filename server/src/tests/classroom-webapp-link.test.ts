@@ -80,7 +80,12 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
       headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify(body),
     });
-  return { post: send('POST'), put: send('PUT') };
+  return {
+    post: send('POST'),
+    put: send('PUT'),
+    // GET 没有 body：包一层，免得每个调用点都要写个多余的 `undefined`。
+    get: (pathname: string) => send('GET')(pathname, undefined),
+  };
 }
 
 /** 一套最小可用夹具：一个班 + 一名学生 + 一个智能体 + N 个网页。 */
@@ -139,7 +144,18 @@ test('标准模式：webappIds 只取第一个写进 ClassroomWebapp（真 Prism
   }
 });
 
-test('高级模式：同一条写入口，关联同样生效（否则「高级模式静默不支持网页」）', async (t) => {
+/**
+ * ⚠️ 这条用例在「按组的课堂材料」改动里被**改写**过。原本它断言的是
+ * 「高级模式也往 `ClassroomWebapp` 写一行」（当时的口径是「高级模式不支持网页」
+ * 会变成一条只有教师自己会发现的静默差异）。
+ *
+ * 规则现在变了（spec §4.3）：高级模式下网页的**权威来源是每组一份**
+ * （`ClassroomGroupMaterial`），课堂级那一行**不再写** —— 留着它会长出
+ * 「它到底谁在用」的第二套解释，而运行期规定了高级模式不回落 ⇒
+ * 它会变成一个**永远看不见、却挡得住删除守卫**的幽灵。
+ * 阴性对照因此反了过来：现在要断言的是「课堂级确实**没有**写」。
+ */
+test('高级模式：不再写课堂级网页，网页落在每组一行（阴性对照已反转）', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const { cls, agent, webapps } = await seed(db.prisma, 2);
@@ -148,13 +164,27 @@ test('高级模式：同一条写入口，关联同样生效（否则「高级�
   const res = await server.post('/api/classroom/create-advanced', {
     title: '高级课堂',
     classId: cls.id,
-    groups: [{ name: '第一组', agentId: agent.id }],
+    groups: [{ name: '第一组', agentId: agent.id, webappId: webapps[1].id }],
     webappIds: [webapps[1].id],
   });
   const classroom = await res.json() as { id: string };
   assert.equal(res.status, 200, JSON.stringify(classroom));
-  const links = await db.prisma.classroomWebapp.findMany({ where: { classroomId: classroom.id }, select: { webappId: true } });
-  assert.deepEqual(links.map(link => link.webappId), [webapps[1].id]);
+
+  assert.equal(
+    await db.prisma.classroomWebapp.count({ where: { classroomId: classroom.id } }),
+    0,
+    '高级模式不得再写课堂级网页 —— 那是一个学生会「看不见」、却挡得住删除守卫的幽灵',
+  );
+  const groups = await db.prisma.classroomGroup.findMany({
+    where: { classroomId: classroom.id },
+    include: { materials: true },
+  });
+  assert.equal(groups.length, 1);
+  assert.deepEqual(
+    groups[0].materials.map(m => `${m.kind}:${m.targetId}`).sort(),
+    [`agent:${agent.id}`, `webapp:${webapps[1].id}`].sort(),
+    '每组的材料各自落一行（智能体 + 网页）',
+  );
 });
 
 test('传了不存在的 webappId：整条 400，且**一个课堂都不建**（不静默跳过）', async (t) => {
@@ -290,7 +320,13 @@ test('缺班级与缺三件套是**两条**不同的报错：只缺班级时不�
   );
 });
 
-test('高级模式同样只关联第一个网页（与标准模式一个口径）', async (t) => {
+/**
+ * ⚠️ 同一条改写（见上一条用例的注释）：高级模式的网页口径从「课堂级一行」变成
+ * 「每组一行」，所以「只关联第一个」这条规则在高级模式下的落点也变了 ——
+ * 现在它由每组的 `webappId`（本就是**单选**，`toId` 后一个字符串）承载。
+ * 课堂级那一条写入口已删，这里断言它**没有**被写。
+ */
+test('高级模式：组级网页落库，课堂级不写（与标准模式不再是同一个写入口）', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const { cls, agent, webapps } = await seed(db.prisma, 3);
@@ -299,13 +335,21 @@ test('高级模式同样只关联第一个网页（与标准模式一个口径�
   const res = await server.post('/api/classroom/create-advanced', {
     title: '高级课堂',
     classId: cls.id,
-    groups: [{ name: '第一组', agentId: agent.id }],
+    groups: [{ name: '第一组', agentId: agent.id, webappId: webapps[2].id }],
     webappIds: [webapps[1].id, webapps[2].id],
   });
   const classroom = await res.json() as { id: string };
   assert.equal(res.status, 200, JSON.stringify(classroom));
-  const links = await db.prisma.classroomWebapp.findMany({ where: { classroomId: classroom.id }, select: { webappId: true } });
-  assert.deepEqual(links.map(link => link.webappId), [webapps[1].id]);
+  assert.equal(
+    await db.prisma.classroomWebapp.count({ where: { classroomId: classroom.id } }),
+    0,
+    '课堂级一行都不写',
+  );
+  const materials = await db.prisma.classroomGroupMaterial.findMany({
+    where: { kind: 'webapp', group: { classroomId: classroom.id } },
+    select: { targetId: true },
+  });
+  assert.deepEqual(materials.map(m => m.targetId), [webapps[2].id], '组级只落它自己那一个');
 });
 
 // ---------------------------------------------------------------------------
@@ -399,4 +443,173 @@ test('保存设置：除课堂名称外的字段一律不采用（body 里塞了
   assert.deepEqual(after.classroomAgents.map(a => a.agentId), [agent.id], '智能体不可改');
   assert.deepEqual(after.classes.map(c => c.classId), [cls.id], '参与班级不可改');
   assert.deepEqual(after.webapps.map(w => w.webappId), [webapps[0].id], '探究网页不可通过保存设置换掉');
+});
+
+// ---------------------------------------------------------------------------
+// 按组的课堂材料（`ClassroomGroupMaterial`）：高级模式下每组各自配
+// 智能体 / 探究网页，且**各自可以什么都不配**。
+//
+// 🔴 这一组的核心事实是「组可以不配」不再等于「建不出来」也不再等于「500」：
+//    · 服务端以前要求每组必须有智能体（`!group.agentId ⇒ 400`）；
+//    · 读路径以前对 `group.agent.id` 做**非空解引用** ⇒ 组无智能体时整间课堂 500
+//      （该课堂所有学生都进不去）。
+//    两条都要有用例钉住，否则下次改动会把它们一起带回来。
+// ---------------------------------------------------------------------------
+
+test('高级模式：某组只配网页不配智能体 ⇒ 200，该组只有 webapp 一行、agent 为 null', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '只配网页的高级课堂',
+    classId: cls.id,
+    groups: [{ name: '第一组', webappId: webapps[0].id }],
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+
+  const groups = await db.prisma.classroomGroup.findMany({
+    where: { classroomId: classroom.id! },
+    include: { materials: true },
+  });
+  assert.equal(groups.length, 1);
+  assert.deepEqual(
+    groups[0].materials.map(m => `${m.kind}:${m.targetId}`),
+    [`webapp:${webapps[0].id}`],
+    '只该有 webapp 一行 —— 没配的智能体不得落一行空串',
+  );
+});
+
+test('高级模式：某组什么都没配 + 另一组配了 ⇒ 200，空组不产生任何材料行', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '有组没配的高级课堂',
+    classId: cls.id,
+    groups: [{ name: '第一组', agentId: agent.id }, { name: '第二组' }],
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+
+  const groups = await db.prisma.classroomGroup.findMany({
+    where: { classroomId: classroom.id! },
+    include: { materials: true },
+    orderBy: { name: 'asc' },
+  });
+  const byName = new Map(groups.map(g => [g.name, g]));
+  assert.equal(byName.get('第一组')?.materials.length, 1, '配了的那组有材料');
+  assert.equal(
+    byName.get('第二组')?.materials.length,
+    0,
+    '什么都没配的组不得产生任何材料行（空串/缺字段一律归一成 null）',
+  );
+});
+
+test('三件套全空（所有组都不配 + 无课堂级材料）⇒ 400，且一个课堂都不建', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '空课堂',
+    classId: cls.id,
+    groups: [{ name: '第一组' }, { name: '第二组' }],
+  });
+  const body = await res.json() as { error: string };
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /AI 智能体/);
+  assert.equal(await db.prisma.classroom.count(), before, '被拒的请求不得留下任何课堂');
+});
+
+test('🔴 GET /code/:code 对「某组没配材料」的课堂返回 200（不是 500），该组 agent/webapp 均为 null', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create-advanced', {
+    title: '含空材料的课堂',
+    classId: cls.id,
+    groups: [{ name: '配了的组', agentId: agent.id }, { name: '没配的组' }],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  assert.equal(created.status, 200, JSON.stringify(createdBody));
+
+  const res = await server.get(`/api/classroom/code/${createdBody.code}`);
+  const body = await res.json() as {
+    error?: string;
+    groups?: Array<{ id: string; name: string; agent: { id: string } | null; webapp: unknown | null }>;
+  };
+  // 这就是 §1.2 ② 的那处：`agent: { id: group.agent.id, … }` 在组无智能体时抛 TypeError，
+  // 被 catch 吞成 500 ⇒ **该课堂所有学生都进不去**。
+  assert.equal(res.status, 200, `读路径不得 500：${JSON.stringify(body)}`);
+  assert.ok(Array.isArray(body.groups), `groups 必须是数组：${JSON.stringify(body)}`);
+  assert.equal(body.groups!.length, 2);
+
+  const configured = body.groups!.find(g => g.name === '配了的组');
+  const empty = body.groups!.find(g => g.name === '没配的组');
+  assert.equal(configured?.agent?.id, agent.id, '配了的那组要如实下发它的智能体');
+  assert.equal(empty?.agent, null, '没配的组 agent 必须是 null（不是 500、也不是别人的智能体）');
+  assert.equal(empty?.webapp, null);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(empty, 'agentId'),
+    false,
+    'agentId 字段已随列删除 —— 它没有真外键，留着会诱使调用方继续按列名读取',
+  );
+});
+
+test('agentId 传空串 ⇒ 不落库（不是落一行空串）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '空串归一成 null',
+    classId: cls.id,
+    // 三件套靠网页那一项满足（否则会先被 400 拦住，测不到空串这一条）。
+    groups: [{ name: '第一组', agentId: '   ', webappId: webapps[0].id }],
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+
+  assert.equal(
+    await db.prisma.classroomGroupMaterial.count({ where: { targetId: '' } }),
+    0,
+    '空串不得成为第三种状态落库 —— 它在 `?.` 判空里与 null 表现一致，'
+      + '直到有人写 `where: { targetId: null }` 的统计才会暴露',
+  );
+  assert.equal(
+    await db.prisma.classroomGroupMaterial.count({ where: { kind: 'agent', group: { classroomId: classroom.id! } } }),
+    0,
+    '这一组不该有任何 agent 材料行',
+  );
+});
+
+test('回归：分组模式「不选智能体 + 选网页」⇒ 200（原来是 500）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  // §1.2 ③：`agentId: uniqueAgentIds[0]` 在空数组时是 `undefined`，而 TS 认为它是
+  // `string` ⇒ tsc 一声不吭，Prisma 在事务里抛必填缺失 ⇒ 500「创建课堂失败」。
+  // 前端「分组模式」是一等入口，且明确允许「只选网页」。
+  const res = await server.post('/api/classroom/create', {
+    title: '分组模式只有网页',
+    classIds: [cls.id],
+    mode: 'group',
+    webappIds: [webapps[0].id],
+  });
+  const body = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, `分组模式不得再 500：${JSON.stringify(body)}`);
+  assert.ok(body.id, '课堂必须真的建出来');
+  assert.equal(await db.prisma.classroomWebapp.count({ where: { classroomId: body.id! } }), 1);
 });

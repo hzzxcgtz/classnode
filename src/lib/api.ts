@@ -134,16 +134,21 @@ export const api = {
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>
     request<StudentSummary>(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom
-  // `webappIds`：课堂要关联的探究网页。**两条创建路径都必须带** —— 高级模式一样能关联，
-  // 只给标准模式加会让「高级模式不支持网页」成为一条只有教师自己会发现的静默差异。
-  // 服务端 `resolveWebappIds` 是 ClassroomWebapp 唯一的写入口，见 routes/classroom.ts。
+  // `webappIds`：**课堂级**的探究网页（只属于标准 / 分组模式）。服务端 `resolveWebappIds`
+  // 是 `ClassroomWebapp` 唯一的写入口，见 routes/classroom.ts。
   //
   // 🔴 **探究网页是单选，这个数组最多放一个**（P2.3）。字段名保留复数是为了不破坏
   // 已经部署出去的旧前端（它们发的就是数组，服务端按「取第一个」兼容，见
   // `resolveSingleWebappId`），但新代码一律只发 0 或 1 个元素。
+  //
+  // ⚠️ **`createAdvancedClassroom` 没有这个字段，这不是漏了**：高级模式下网页的权威来源
+  // 是**每组一份**（`AdvancedClassroomGroupInput.webappId`），服务端也**不写**课堂级那一行
+  // （见 create-advanced 里 `classroom.create` 的注释）。从前这里两边都有，于是创建页在
+  // 高级模式下仍然发课堂级 `webappIds` ⇒ 服务端校验通过后**把它丢掉**，教师看到
+  // 「创建成功」而网页不见了。去掉这个字段是让那种状态**在类型上不可表达**。
   createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; webappIds?: string[] }) =>
     request<ClassroomSummary>('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
-  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[]; webappIds?: string[] }) =>
+  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[] }) =>
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
   getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),

@@ -423,9 +423,17 @@ export interface TeacherNotification {
   createdAt: string;
 }
 
+/** 高级模式每个小组要提交的材料。
+ *
+ * 🔴 `agentId` / `webappId` 都可以是 `null`，含义是**该组显式「不指定」这种材料** ——
+ * 它与「这个字段没传」在服务端归一成同一件事（都会不落库，见 `create-advanced` 的
+ * `toId`）。高级模式下**不回落课堂级材料**：某组没指定智能体，那组的学生就没有智能体，
+ * 不会静默拿到别的组的。
+ */
 export interface AdvancedClassroomGroupInput {
   name: string;
-  agentId: string;
+  agentId: string | null;
+  webappId: string | null;
   studentIds: string[];
 }
 

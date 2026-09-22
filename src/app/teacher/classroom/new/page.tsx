@@ -9,6 +9,150 @@ import type { AgentSummary, ClassGroup, ClassSummary, WebappSummary } from '@/li
 
 type CreateMode = 'standard' | 'group' | 'advanced';
 
+/** 高级模式里每一格材料的两种 kind。与 `AdvancedClassroomGroupInput` 的字段一一对应。 */
+type GroupMaterialKind = 'agent' | 'webapp';
+
+/** 「哪个小组的哪一种材料」—— 展开状态用的键。格式只在这里拼，别在 JSX 里手写。 */
+const pickerKey = (groupId: string, kind: GroupMaterialKind) => `${groupId}:${kind}`;
+
+interface GroupMaterialOption {
+  id: string;
+  name: string;
+  logo?: string | null;
+}
+
+/**
+ * 高级模式每一组的**一格材料**（智能体或网页）的单选下拉。
+ *
+ * 与「班级级」那几个下拉的区别只有一个：这里的值多一种状态。`value` 的三种取值
+ * （`undefined` 还没选 / `null` 不指定 / `string` 选了哪个）在**外观上必须能区分**，
+ * 否则教师分不清「我这组是决定了不要网页，还是我忘了选」—— 而这两种状态一个能提交、
+ * 一个会被拦住，看起来却一模一样。
+ */
+function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, open, onToggle, onPick }: {
+  label: string;
+  placeholder: string;
+  value: string | null | undefined;
+  options: GroupMaterialOption[];
+  emptyHint: string;
+  open: boolean;
+  onToggle: () => void;
+  onPick: (id: string | null) => void;
+}) {
+  const selected = typeof value === 'string' ? options.find(option => option.id === value) : undefined;
+  const selectedLogo = selected?.logo
+    ? (selected.logo.startsWith('/') ? `${getApiBaseUrl()}${selected.logo}` : selected.logo)
+    : null;
+  // 无障碍名字要**自带材料名与当前值**：两个下拉的可见内容（「不指定」/「选择AI智能体」）
+  // 单独看分不出是智能体还是网页那一格，屏幕阅读器只念可见内容时会指错。
+  // ⚠️ 不用 `aria-labelledby` 指到上面那行小标题：`label` 是中文（且「AI 智能体」含空格），
+  // 拿它拼 HTML `id` 会产出 `id="group-AI 智能体-caption"` —— 空格会把一个 id 切成两个词，
+  // `aria-labelledby` 于是指向不存在的元素，读出来是空的（比不加更糟）。
+  const currentLabel = selected ? selected.name : value === null ? '不指定' : '尚未选择';
+  return (
+    <div style={{ position: 'relative', flex: '1 1 160px', minWidth: 150 }}>
+      <div style={{ fontSize: '0.688rem', color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+      <button type="button" onClick={onToggle} aria-expanded={open}
+        aria-label={`${label}：${currentLabel}`}
+        style={{
+          width: '100%', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 10px', borderRadius: 6, fontSize: '0.813rem',
+          border: '1px solid #e2e8f0', cursor: 'pointer',
+          background: 'white', minHeight: 32,
+        }}>
+        {selected ? (
+          <>
+            {selectedLogo ? (
+              <img src={selectedLogo} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+            ) : (
+              <div style={{
+                width: 20, height: 20, borderRadius: 4,
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.625rem', fontWeight: 700, flexShrink: 0,
+              }}>{selected.name[0] || '?'}</div>
+            )}
+            <span style={{ color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.name}</span>
+          </>
+        ) : value === null ? (
+          // 「不指定」：给一个**实底色的小标签**。它是「已经做过决定」的样子，
+          // 与下面那种纯灰占位文字从颜色到形状都不同 —— 这两者必须一眼分得开。
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '1px 7px', borderRadius: 4,
+            background: '#e2e8f0', color: '#475569',
+            fontSize: '0.75rem', fontWeight: 500,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            不指定
+          </span>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>{placeholder}</span>
+        )}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 'auto', flexShrink: 0 }}><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+          marginTop: 4, background: 'white', borderRadius: 8,
+          border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          maxHeight: 200, overflowY: 'auto',
+        }}>
+          {/* 「不指定」是列表的**第一项**（不是「清空」按钮）：它是一种与其他选项并列的
+              合法选择，不是撤销操作。用下边框与真选项分开，免得被当成其中一个智能体。 */}
+          <button type="button" onClick={() => onPick(null)}
+            style={{
+              width: '100%', border: 0, borderBottom: '1px solid #f1f5f9', fontFamily: 'inherit', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer',
+              fontSize: '0.813rem', background: value === null ? '#eef2ff' : 'white',
+            }}>
+            <span style={{ width: 20, height: 20, borderRadius: 4, background: '#e2e8f0', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </span>
+            <span style={{ color: '#0f172a' }}>不指定</span>
+            {value === null && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </button>
+          {options.map(option => {
+            const logoUrl = option.logo
+              ? (option.logo.startsWith('/') ? `${getApiBaseUrl()}${option.logo}` : option.logo)
+              : null;
+            return (
+              <button type="button" key={option.id} onClick={() => onPick(option.id)}
+                style={{
+                  width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 12px', cursor: 'pointer', fontSize: '0.813rem',
+                  background: value === option.id ? '#eef2ff' : 'white',
+                  transition: 'background 0.1s',
+                }}>
+                {logoUrl ? (
+                  <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700 }}>{option.name[0]}</div>
+                )}
+                <span>{option.name}</span>
+                {value === option.id && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+          {options.length === 0 && (
+            <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#94a3b8' }}>{emptyHint}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function NewClassroomPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
@@ -32,12 +176,33 @@ export default function NewClassroomPage() {
   const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
   const [mode, setMode] = useState<CreateMode>('standard');
   const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [groupAgentIds, setGroupAgentIds] = useState<Record<string, string>>({});
+  /**
+   * 高级模式：每个小组各自的两份材料，键是 `ClassGroup.id`。
+   *
+   * 🔴 **值的三种状态是这一格的全部要点**（两个记录语义相同）：
+   *   · 键**不存在** = 教师还没做出决定（初始态，会拦住提交）；
+   *   · `null`      = 显式「不指定」这种材料（合法决定，允许提交）；
+   *   · `string`    = 选了哪一个。
+   *
+   * ⚠️ 「不指定」**不能用 `''` 表达** —— `g.id in ids` 会把 `''` 判成「已决定」而放行，
+   * 但服务端的 `toId` 又把它归一成 `null`，两边对「教师到底选了什么」的理解就此分叉。
+   * 用 `null` 表达时，「不指定」与「还没选」在**这个页面上**也是两件不同的事。
+   */
+  const [groupAgentIds, setGroupAgentIds] = useState<Record<string, string | null>>({});
+  /** 与 `groupAgentIds` 同形状、同语义，只是另一种材料（探究网页）。 */
+  const [groupWebappIds, setGroupWebappIds] = useState<Record<string, string | null>>({});
   const [saving, setSaving] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [openDropdownGroupId, setOpenDropdownGroupId] = useState<string | null>(null);
+  /**
+   * 当前展开的下拉，键是 `${groupId}:${kind}`。
+   *
+   * ⚠️ 从前这里只存 `groupId` —— 每组只有一个下拉时才够用。现在每组有两个，
+   * 只存 id 会让「点开智能体」把同组的网页下拉**一起**打开（两个都渲染在同一个
+   * `open === true` 下），而且关不掉其中一个。
+   */
+  const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
   const groupRequestRef = useRef(0);
@@ -85,6 +250,8 @@ export default function NewClassroomPage() {
     clearError('submit');
     setClassGroups([]);
     setGroupAgentIds({});
+    setGroupWebappIds({});
+    setOpenDropdownKey(null);
     setLoadingGroups(true);
     api.getGroups(id).then(groups => {
       if (!mountedRef.current || requestId !== groupRequestRef.current) return;
@@ -109,6 +276,8 @@ export default function NewClassroomPage() {
         setSelectedClassId('');
         setClassGroups([]);
         setGroupAgentIds({});
+        setGroupWebappIds({});
+        setOpenDropdownKey(null);
         setLoadingGroups(false);
       }
     }
@@ -122,10 +291,14 @@ export default function NewClassroomPage() {
     // 所以这里也是两条独立的判据 —— 报错文案要能告诉教师该去哪一栏动手。
     if (!selectedClassId) errors.class = '请选择班级';
     if (mode === 'advanced') {
-      const allAssigned = classGroups.every(g => groupAgentIds[g.id]);
+      // 🔴 判据是「**每种材料**都做过决定」，不是「选了智能体」。
+      // ⚠️ 用 `in` 而不是取值判真：`null`（显式「不指定」）要算**已决定**，
+      //    而 `groupAgentIds[g.id]` 为 `null` 时是假 —— 那样会把「不指定」判成
+      //    「没配置」而拦住提交，整个「每组可以不指定」的功能等于没做。
+      const allDecided = classGroups.every(g => g.id in groupAgentIds && g.id in groupWebappIds);
       if (loadingGroups) errors.groupAgents = '班级分组仍在加载，请稍候';
       else if (classGroups.length === 0) errors.groupAgents = '当前班级没有可用分组，请重新选择班级';
-      else if (!allAssigned) errors.groupAgents = '请为每个小组分配智能体';
+      else if (!allDecided) errors.groupAgents = '请为每个小组选择智能体与探究网页，或都选「不指定」';
     } else if (!selectedAgentId && !selectedWebappId) {
       // 三件套「至少一项」：AI 智能体 / 探究网页 / 学习单。
       // ⚠️ 这条**只是即时反馈**，服务端 `classroomMaterialError` 才是权威（前端能被绕过）。
@@ -156,21 +329,27 @@ export default function NewClassroomPage() {
 
     savingRef.current = true;
     setSaving(true);
-    // 探究网页**单选**：数组里最多一个元素（或空数组）。字段名仍是复数 ——
-    // 服务端要兼容旧前端发来的多元素数组（按「取第一个」处理，见 resolveSingleWebappId）。
+    // **课堂级**探究网页，只属于标准 / 分组模式。单选：数组里最多一个元素（或空数组）。
+    // 字段名仍是复数 —— 服务端要兼容旧前端发来的多元素数组（按「取第一个」处理，
+    // 见 resolveSingleWebappId）。
     const webappIds = selectedWebappId ? [selectedWebappId] : [];
     try {
       if (mode === 'advanced') {
+        // ⚠️ **不要在这里发课堂级的 `webappIds`**：高级模式下服务端不写课堂级网页
+        // （权威来源是每组一份），发过去只会被校验通过后**丢掉** —— 教师看到「创建成功」，
+        // 而自己勾的网页不见了。那种状态已经从 `createAdvancedClassroom` 的参数类型里删掉。
         const groups = classGroups.map(g => ({
           name: g.name,
-          agentId: groupAgentIds[g.id],
+          // 值只在 `string` 时是选中的 id；`null`（不指定）与键不存在（还没选）都发 `null`，
+          // 两者在服务端归一成同一件事（`toId` 把空值一律变成 null ⇒ 不落库）。
+          agentId: groupAgentIds[g.id] ?? null,
+          webappId: groupWebappIds[g.id] ?? null,
           studentIds: g.studentIds || [],
         }));
         const result = await api.createAdvancedClassroom({
           title: title || undefined,
           classId: selectedClassId,
           groups,
-          webappIds,
         });
         router.push(`/teacher/classroom?id=${result.id}`);
       } else {
@@ -197,7 +376,14 @@ export default function NewClassroomPage() {
   const selectedClass = classes.find((classItem) => classItem.id === selectedClassId);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   const selectedWebapp = webapps.find((webapp) => webapp.id === selectedWebappId);
-  const configuredGroupCount = classGroups.filter((group) => groupAgentIds[group.id]).length;
+  /**
+   * 已经「两种材料都做过决定」的小组数。
+   *
+   * ⚠️ 判据必须与提交校验（`allDecided`）**逐字一致**，否则进度条与摘要会说谎：
+   * 用取值判真会把「不指定」算成没配置 ⇒ 明明所有组都决定了，摘要却显示 0/N。
+   */
+  const hasDecided = (groupId: string) => groupId in groupAgentIds && groupId in groupWebappIds;
+  const configuredGroupCount = classGroups.filter((group) => hasDecided(group.id)).length;
   const modeLabel = mode === 'standard' ? '标准模式' : mode === 'group' ? '分组模式' : '高级模式';
   const steps = [
     { label: '课堂信息', complete: Boolean(title.trim()) },
@@ -209,6 +395,10 @@ export default function NewClassroomPage() {
       //    改这一处是有原因的：那条旧判据会把「只选了探究网页」显示成这一步没完成，
       //    而服务端和提交逻辑都允许这么建 —— 进度条会说谎，教师会以为自己没弄完。
       //    将来做学习单：把学习单那一项并进 `Boolean(...) ||` 这一串即可。
+      //
+      // 高级模式的口径不同：那里不是「任一项」而是「**每组每种材料都做过决定**」
+      //   （`configuredGroupCount` 的判据与提交校验一致）。所以「不指定」也算完成 ——
+      //   每个组都选了「不指定」是**合法**的配置，只要整间课堂还有别的材料。
       label: '课堂内容',
       complete: mode === 'advanced'
         ? classGroups.length > 0 && configuredGroupCount === classGroups.length
@@ -287,7 +477,7 @@ export default function NewClassroomPage() {
               {
                 id: 'advanced' as CreateMode,
                 label: '高级模式',
-                desc: '每个小组绑定不同的AI智能体，分组独立对话',
+                desc: '每个小组各自选AI智能体与探究网页，分组独立对话',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -398,104 +588,105 @@ export default function NewClassroomPage() {
           </div>}
         </div>
 
-        {/* 高级模式：每个组分配智能体 */}
+        {/* 高级模式：每个小组各自选智能体与网页（两种材料各一格）。
+            ⚠️ 这一块**替代了**下面那块课堂级的「关联探究网页」—— 高级模式的网页是每组一份，
+            见 `mode !== 'advanced'` 那个条件上的注释。 */}
         {selectedClassId && mode === 'advanced' && classGroups.length > 0 && (
           <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10,
             border: `1px solid ${fieldErrors.groupAgents ? '#ef4444' : '#eef2f6'}`,
             padding: '16px 20px', marginBottom: 20,
           }}>
-            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
-              为每个小组分配AI智能体
+              为每个小组选择课堂内容
+              {/* 「必填」在这里的意思是**每组都要做出决定**，不是「每组都要选智能体」：
+                  每个下拉都可以选「不指定」，那也是一个决定。 */}
               <span className="required-field-mark">必填</span>
             </div>
-            {classGroups.map((g, i) => (
-              <div key={g.id} className="new-classroom-group-row" style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
-                marginBottom: 8, background: 'white',
-              }}>
-                <div style={{
-                  width: 26, height: 26, borderRadius: 6,
-                  background: '#2563eb', color: 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
+            {/* ⚠️ 进度一定发生在「还没有任何一组配了材料」的那条路径上（全局三件套全空的课堂
+                是服务端 400 拦下的），所以这句得说清楚「不指定」也是选项 —— 否则教师会以为
+                留着不选和选「不指定」是同一件事，而它们一个能提交、一个不能。 */}
+            <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
+              每个小组的智能体与探究网页**各自独立**，互不影响，也**不会**回落到课堂级的配置。
+              某种材料这一组不需要，就在那个下拉里选「<strong style={{ fontWeight: 600 }}>不指定</strong>」（留空不选会拦住提交）。
+            </div>
+            {classGroups.map((g, i) => {
+                const agentKey = pickerKey(g.id, 'agent');
+                const webappKey = pickerKey(g.id, 'webapp');
+                return (
+                <div key={g.id} className="new-classroom-group-row" style={{
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                  padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8,
+                  marginBottom: 8, background: 'white',
                 }}>
-                  {i + 1}
+                  <div style={{
+                    width: 26, height: 26, borderRadius: 6,
+                    background: '#2563eb', color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {i + 1}
+                  </div>
+                  {/* 组名一栏 `flex: 1 1 120px`（而不是 `flex: 1`）：两个下拉并排时它要能让位，
+                      窄到放不下时整行会 wrap —— 见下面两个下拉容器的 `flex-wrap`。 */}
+                  <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                    <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
+                    <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
+                  </div>
+                  {/* 两个下拉**并排**放在一个容器里，容器自己 `flex-wrap`。
+                      ⚠️ 排布是刻意这么定的（不是「随手把两个下拉塞进一行」）：
+                        · 每个下拉**带小标签**（「AI 智能体」/「探究网页」）—— 两个下拉长得一模一样，
+                          没有标签就分不清哪个是哪个；
+                        · 容器 `flex: 1 1 320px` + `flexWrap: 'wrap'`，每个下拉 `flex: 1 1 160px`
+                          ⇒ 宽屏时两个并排、窄屏时第二个换行落到第一个下面，**任何宽度都不会溢出**；
+                        · 组名栏 `flex: 1 1 120px` 让位，所以窄屏优先牺牲的是组名那一栏的宽度，
+                          而不是把下拉挤到看不见。
+                      ⇒ 为什么不做成「每组一个折叠区」：那会让「这一组配全了没有」在折叠状态下
+                        看不出来，而这块的核心诉求正好是「一眼看出哪组还没决定」。 */}
+                  <div className="new-classroom-group-material" style={{
+                    display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap', flex: '1 1 320px', minWidth: 0,
+                  }}>
+                    <GroupMaterialPicker
+                      label="AI 智能体"
+                      placeholder="选择AI智能体"
+                      value={groupAgentIds[g.id]}
+                      options={agents.map(a => ({ id: a.id, name: a.name, logo: a.logo }))}
+                      emptyHint="还没有可用的智能体，请先在「AI智能体」里接入"
+                      open={openDropdownKey === agentKey}
+                      onToggle={() => setOpenDropdownKey(openDropdownKey === agentKey ? null : agentKey)}
+                      onPick={(id) => {
+                        setGroupAgentIds(prev => ({ ...prev, [g.id]: id }));
+                        clearError('groupAgents');
+                        setOpenDropdownKey(null);
+                      }}
+                    />
+                    <GroupMaterialPicker
+                      label="探究网页"
+                      placeholder="选择探究网页"
+                      value={groupWebappIds[g.id]}
+                      options={webapps.map(w => ({ id: w.id, name: w.name }))}
+                      emptyHint="还没有探究网页，可以先在「探究网页」里添加"
+                      open={openDropdownKey === webappKey}
+                      onToggle={() => setOpenDropdownKey(openDropdownKey === webappKey ? null : webappKey)}
+                      onPick={(id) => {
+                        setGroupWebappIds(prev => ({ ...prev, [g.id]: id }));
+                        clearError('groupAgents');
+                        setOpenDropdownKey(null);
+                      }}
+                    />
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a' }}>{g.name}</div>
-                  <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>{(g.studentIds?.length || 0)} 名学生</div>
-                </div>
-                <div className="new-classroom-group-agent" style={{ position: 'relative', width: 200, flexShrink: 0 }}>
-                  <button type="button"
-                    onClick={() => setOpenDropdownGroupId(openDropdownGroupId === g.id ? null : g.id)}
-                    aria-expanded={openDropdownGroupId === g.id}
-                    style={{
-                      width: '100%', fontFamily: 'inherit',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px', borderRadius: 6, fontSize: "0.813rem",
-                      border: '1px solid #e2e8f0', cursor: 'pointer',
-                      background: 'white', minHeight: 32,
-                    }}>
-                    {groupAgentIds[g.id] ? (() => {
-                      const agent = agents.find(a => a.id === groupAgentIds[g.id]);
-                      const logoUrl = agent?.logo ? (agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo) : null;
-                      return <>
-                        {logoUrl ? (
-                          <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{agent?.name?.[0] || '?'}</div>
-                        )}
-                        <span style={{ color: '#0f172a' }}>{agent?.name || ''}</span>
-                      </>;
-                    })() : (
-                      <span style={{ color: '#94a3b8' }}>选择AI智能体</span>
-                    )}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 'auto' }}><polyline points="6 9 12 15 18 9" /></svg>
-                  </button>
-                  {openDropdownGroupId === g.id && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                      marginTop: 4, background: 'white', borderRadius: 8,
-                      border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                      maxHeight: 200, overflowY: 'auto',
-                    }}>
-                      {agents.map(a => {
-                        const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
-                        return (
-                          <button type="button" key={a.id} onClick={() => {
-                            setGroupAgentIds(prev => ({ ...prev, [g.id]: a.id }));
-                            clearError('groupAgents');
-                            setOpenDropdownGroupId(null);
-                          }}
-                          style={{
-                            width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            padding: '8px 12px', cursor: 'pointer', fontSize: "0.813rem",
-                            background: groupAgentIds[g.id] === a.id ? '#eef2ff' : 'white',
-                            transition: 'background 0.1s',
-                          }}>
-                            {logoUrl ? (
-                              <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                            ) : (
-                              <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.625rem", fontWeight: 700 }}>{a.name[0]}</div>
-                            )}
-                            <span>{a.name}</span>
-                            {groupAgentIds[g.id] === a.id && (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                );
+              })}
+            {/* 网页列表加载失败时，组级那个下拉会**空着**。不在这里说出来，「没勾」与
+                「加载失败导致没得勾」在界面上长得一模一样（同课堂级那一块的告诫）。 */}
+            {webappLoadError && (
+              <div role="alert" style={{ marginTop: 8, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
+                探究网页列表没有加载成功（{webappLoadError}），所以上面的「探究网页」下拉里没有可选项。
+                智能体那一栏不受影响；也可以去「探究网页」页确认后再发一次课堂。
               </div>
-            ))}
+            )}
             {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.groupAgents}
@@ -503,8 +694,9 @@ export default function NewClassroomPage() {
           </div>
         )}
 
-        {openDropdownGroupId && (
-          <div onClick={() => setOpenDropdownGroupId(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
+        {/* 点在下拉外面收起它。键在 `openDropdownKey` 里跟着两个下拉一起变了（见其注释）。 */}
+        {openDropdownKey && (
+          <div onClick={() => setOpenDropdownKey(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
         )}
 
         {/* 标准/分组模式：选择AI智能体 */}
@@ -575,9 +767,17 @@ export default function NewClassroomPage() {
           </div>
         )}
 
-        {/* 关联探究网页（可选）—— 与「AI 配置」同属进度条的第 3 步。
-            ⚠️ 三种模式下都渲染：网页与「选哪个智能体」无关，只被 `mode !== 'advanced'`
-            包起来会让高级模式永远关联不上网页，而且不报任何错。 */}
+        {/* 关联探究网页（可选）—— **课堂级**的网页，只属于标准 / 分组模式。
+            🔴 高级模式**不再渲染这一块**，这不是漏了：那个模式下网页的权威来源是**每组一份**
+            （上面每个小组的「探究网页」下拉），服务端也**不写**课堂级那一行。从前两边都渲染，
+            于是教师在这里勾的网页会被服务端校验通过后**丢掉** —— 界面显示「创建成功」，
+            网页却不见了，而且没有任何地方报错。
+            ⚠️ 历史上这里写过「三种模式下都渲染」并把 `mode !== 'advanced'` 说成 bug，
+            那是**当时**的口径（高级模式没有别的地方能挂网页）。口径变了，注释也跟着变 ——
+            留着旧注释会让下一个人把这段代码「修」回去。
+            ⚠️ `webappSectionRef` 因此只在非高级模式下存在：高级模式下提交校验里那条
+            滚动兜底会落到 `agentSectionRef`（那个模式里挂的是每组材料那一块）。 */}
+        {mode !== 'advanced' && (
         <div ref={webappSectionRef} style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '16px 20px', marginBottom: 20,
@@ -628,6 +828,7 @@ export default function NewClassroomPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* 三件套「至少一项」的横幅。
             它跨了「AI 智能体」与「探究网页」两块，所以不能挂在其中任何一块的错误位上
@@ -653,9 +854,13 @@ export default function NewClassroomPage() {
             <strong>{title.trim() || '尚未填写课堂标题'}</strong>
             <span>
               {modeLabel} · {selectedClass?.name || '未选班级'} · {mode === 'advanced'
-                ? `${configuredGroupCount}/${classGroups.length} 个小组已配置`
+                ? `${configuredGroupCount}/${classGroups.length} 个小组已决定`
                 : selectedAgent?.name || '未选智能体'}
-              {selectedWebapp ? ` · 探究网页：${selectedWebapp.name}` : ''}
+              {/* 高级模式的网页是**每组一份**，汇总在每行自己的两个下拉里（以及上面那句
+                  「N/M 个小组已决定」）。这里只报课堂级那一个 —— 否则摘要会把 `selectedWebapp`
+                  说成「这个课堂用的网页」，而它在高级模式下**根本不生效**。
+                  文案用「已决定」而不是「已配置」：选了「不指定」也是决定，也是完成。 */}
+              {mode !== 'advanced' && selectedWebapp ? ` · 探究网页：${selectedWebapp.name}` : ''}
             </span>
           </div>
           <div className="new-classroom-action-buttons">

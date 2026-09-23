@@ -30,10 +30,51 @@ P0（外壳）与 P2（探究空间）都已落地 —— 当前分支 `feat/p2-
 - 今天**没有任何地方**写 `kind='worksheet'`；`Classroom.worksheetId` 这个列**不存在**
 
   > **2026-09-23 过期（写作当天的 B2 落地后即失效）**：前半句已不成立 ——
-  > `routes/classroom.ts` 的两条创建路径都在写它（标准/分组一次、高级模式逐组一次，
-  > 写入口是那个 `for (const [kind, targetId] of …)` 循环）。
+  > 它今天**确有**写入口。
   > 后半句**仍然成立**：`Classroom.worksheetId` 这个列**至今不存在**，权威来源是
   > **关联表 `ClassroomWorksheet`**（课堂级）+ **`ClassroomGroupMaterial(kind='worksheet')`**（组级）。
+
+  > 🔴 **2026-09-23 二次更正（本次审查核出的 —— 上一版更正自己写错了一句）。**
+  > 上面那段更正原先写的是「**两条创建路径都在写它**（**标准/分组一次**、高级模式逐组一次，
+  > 写入口是那个 `for (const [kind, targetId] of …)` 循环）」。**这是新的假话**，两半都不对：
+  >
+  > ```
+  > $ grep -an "classroomGroupMaterial" server/src/routes/classroom.ts
+  > 592:        await tx.classroomGroupMaterial.create({ data: { groupId: classroomGroup.id, kind, targetId } });
+  > 770:            await tx.classroomGroupMaterial.create({
+  > ```
+  >
+  > 全文件只有**两处** `classroomGroupMaterial.create`，且**两处都只对高级模式生效**：
+  >   · `:592` 在 **`create-advanced`** 里（那个 `for (const [kind, targetId] of …)` 循环，
+  >     逐组写 `agent` / `webapp` / `worksheet` 三种 kind）；
+  >   · `:770` 在 **`sync-groups`** 里，**只写 `kind: 'webapp'`**，且它的 `classroomWebappId`
+  >     在非 `advanced` 模式恒为 `null`（`:740-742`）⇒ 同样轮不到标准 / 分组模式。
+  >
+  > 标准 / 分组模式写的是**另一张表**，与 `ClassroomGroupMaterial` 无关：
+  >
+  > ```
+  > $ grep -an "classroomWorksheet\.\|worksheetLinkRows" server/src/routes/classroom.ts
+  > 181:function worksheetLinkRows(ids: readonly string[], now: number = Date.now()) {
+  > 215: * ⚠️ 排序 `[{createdAt:'asc'},{id:'asc'}]` **必须**与写入口（`worksheetLinkRows` /
+  > 226:    rows = await prisma.classroomWorksheet.findMany({
+  > 391:        // 单选 ⇒ 各自至多一行（`webappLinkRows` / `worksheetLinkRows` 仍按勾选顺序写
+  > 394:        worksheets: { create: worksheetLinkRows(worksheet.id ? [worksheet.id] : []) },
+  > ```
+  >
+  > `:394` 是 `/create`（标准 / 分组那一支）里对 `ClassroomWorksheet` 的写入 ——
+  > 而 `ClassroomWorksheet` **没有 `kind` 列**（`schema.prisma:444-455`：只有
+  > `classroomId` / `worksheetId` / `createdAt`）。
+  > ⇒ **`kind='worksheet'` 只有高级模式的创建路径会写。**
+  >
+  > ⚠️ **这条更正本身就是一份告诫，别把它当噪音。** 它与同一份文件 §5.1 那块更正
+  > （本文件里搜「**2026-09-23 更正（实施 D2 时核出的）**」，就在「学生从哪知道自己是哪一份」表下）
+  > 引用的服务端注释**正好对打** —— `routes/classroom.ts:192` 逐字写着：
+  >
+  > > 标准 / 分组模式下 `ClassroomGroupMaterial` 里**没有任何行**（那两种模式的材料权威来源
+  > > 就是课堂级，见 `resolveMaterialTargetId`）
+  >
+  > 两句话互相否证，而**两句都曾经以「已核过代码」的语气写下来**。同一份文件里能同时住着
+  > 这两句，说明「核过」这个说法本身没有担保 —— 所以本节（以及全文）每一句都得能挂一条命令。
 
 - `server/src/services/group-material-resolve.ts` 的 `resolveMaterialTargetId({..., kind })` 是纯函数、
   已有单测，`kind` 联合类型今天是 `'agent' | 'webapp'` —— **加一个 `'worksheet'` 是一处改动**
@@ -682,16 +723,31 @@ socket 只承担「服务端 → 教师看板」的单向广播。
 > 🔴 **第一态是「还没收到作答」，不是「还没有开始作答」；而且不画方格阵。代码是对的。**
 > （2026-09-23 实施 D3 时裁定；本节原先写的是「`还没有开始作答` + 全灰方格阵」。）
 >
-> **理由是一条端点事实**：看板**没有拉取历史的端点** —— 它拿不到「打开这一页之前」的作答行，
-> 只知道「打开之后收到的广播」。⇒ 教师**每次刷新看板**，一个早就做完的学生也会落到这一态。
+> **理由是一条数据源事实**：格子那一态的输入只有 `worksheet-answer-updated` 广播攒出来的
+> `worksheetProgress` —— 它拿不到「打开这一页之前」的作答行，只知道「打开之后收到的广播」。
+> ⇒ 教师**每次刷新看板**，一个早就做完的学生也会落到这一态。
 > 写成「还没有开始作答」就是**编了一个假事实**（它把「我不知道」说成了「他没开始」）；
 > 画全灰方格阵更糟 —— 那是**逐题**宣称「未答」，而逐题恰恰是我们最不知道的那一层。
 >
+> ⚠️ **2026-09-23 二次更正（本次审查核出的）。** 这里原先写的是「看板**没有拉取历史的端点**」，
+> **在 HEAD 上不成立** —— 那个端点已经落地（`server/src/routes/worksheets.ts` 的
+> `GET /classroom/:classroomId/answers`），看板也确实在调它（D4 的抽屉两种形态都靠它，
+> `page.tsx` 的 `loadWorksheetBoard`）。**今天真正缺的不是端点，是格子没消费它**：
+> 格子的 `progress` 仍然只由广播写入（`setWorksheetProgress` 只有一个调用点，在
+> `worksheet-answer-updated` 的处理里），而那个读端点缺**两个字段**才够格子用 ——
+> 它回的 `answerRows` 只有 `{ questionId, status, isCorrect, reviewedAt, value }`
+> （`routes/worksheets.ts:677` 的 `select`），**没有**：
+>   1. **哪一题是最后一次保存的**（`lastQuestionId`，格子「正在做第 N 题」的唯一依据）；
+>   2. **最后一次保存的时刻**（格子判「停住了」用的 5 分钟阈值靠它）。
+> ⇒ 结论不变（这一态仍然只能报「还没收到作答」），但**理由换成了真话**：
+> 不是「没有端点」，是「端点给不了那两个字段、格子也还没接它」。
+>
 > 所以这一态说的是**能确证的那一句**（`还没收到作答`），第二行同时解释了「这个格子为什么不动」。
 >
-> ⚠️ **不要把它「改回去」。** 回到「还没开始 + 全灰方格阵」需要的是**新的数据源**
-> （教师端按课堂读作答全貌的读端点，见 §5.3 的占位），**不是改文案**。
-> 只改文案而不补端点，那是一次**引入假话的回归** —— 看上去更锐利，实际是把「不知道」
+> ⚠️ **不要把它「改回去」。** 回到「还没开始 + 全灰方格阵」需要的是**把已有的那份数据喂给格子**
+> —— 具体就是把上面那两个字段补进 `GET /api/worksheets/classroom/:classroomId/answers`
+> （§5.3，**它已落地、不再是占位**）并让格子消费它，**不是改文案**。
+> 只改文案而不补数据，那是一次**引入假话的回归** —— 看上去更锐利，实际是把「不知道」
 > 渲染成了「知道」。
 >
 > 四态的**判据**在数据到手后是逐条实现的；差别只在这一态**画不画**格子。
@@ -716,13 +772,23 @@ socket 只承担「服务端 → 教师看板」的单向广播。
 │ 1. 单选   ✓  (已看)          │
 │ 2. 填空   ✗  (已看)          │
 │ 3. 问答   ◐  作答中          │   ← 主观题没有 ✓/✗（无 isCorrect）
-│ 4. 问答   ✓  [标记已查看]    │   ← 主观题只有「已查看」（§3-D）
+│ 4. 问答   ◐  已提交          │   ← 主观题没有 ✓/✗：已提交也只画 ◐，只有「已查看」（§3-D）
 │ 5. 单选   ─  未作答          │
 └─────────────────────────────┘
 ```
 
-> 用词说明：`✓` = 答对，`◐` = 作答中，`─` = 未作答（与 09-19 §9.5 的图例一致）。
-> 未开启自动判分时 `✓` 退化为「已提交」（09-19 §9.5）。
+> ⚠️ **2026-09-23 二次更正（本次审查核出的）。** 上面第 4 行原先是 `问答   ✓  [标记已查看]` ——
+> 那一行**左边画着 ✓、右边同一行注着「主观题只有「已查看」」**，自相矛盾；而且与实现对不上：
+> `worksheet-drawer-state.ts:52` 的 `GRADED_QUESTION_TYPES` 只含
+> `['single-choice', 'fill-blank']` ⇒ 问答**恒无对错**，`OutcomeMark` 落到
+> 「`◐` + `statusLabel(status)`」那一支（`worksheet-drawer.tsx:445-453`），
+> 已提交的问答画的是 **`◐ 已提交`**，永远不是 `✓`。**✓ 已去掉。**
+> （图例里「`✓` = 答对」那句本身是对的 —— 错的是把它画到了一道**没有对错**的题上。）
+
+> 用词说明：`✓` = 答对，`✗` = 答错，`◐` = 作答中 / 已提交但**没有对错**，`─` = 未作答。
+> ⚠️ `✓` 只在**有对错**的题上出现（`GRADED_QUESTION_TYPES` = 单选 / 填空）；
+> 主观题的已提交态画 **`◐ 已提交`**、**不是**「`✓` 退化成已提交」
+> （`worksheet-drawer.tsx:445-453`：`✓/✗` 与 `◐/─` 是两支互斥的渲染）。
 
 **形态 B — 点顶栏「学习单」**：先按学习单分组，再按题
 

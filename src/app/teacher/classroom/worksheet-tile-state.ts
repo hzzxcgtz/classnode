@@ -75,11 +75,23 @@ export const WORKSHEET_STUCK_AFTER_MS = 5 * 60 * 1000;
  *   · `empty`        —— 这份学习单一道题都没有（分母是 0，四态全都无从谈起）。
  *
  * ⚠️ `no-progress` 与规格里那个「还没开始」**不是同一句话**，这是刻意的：
- * 看板没有拉取历史的 REST 端点（`GET /api/worksheets/:id` 只给题目，不给答案行，
- * 全文只有学生端那三个端点能读 `WorksheetAnswer`），所以「打开看板之后一条广播都没收到」
- * 既可能是「学生还没开始」，也可能是「他早就做完了，只是教师刚刷新过页面」。
+ * 这一态的唯一输入是 `worksheet-answer-updated` 广播攒出来的进度（`page.tsx` 的
+ * `worksheetProgress`），所以「打开看板之后一条广播都没收到」既可能是「学生还没开始」，
+ * 也可能是「他早就做完了，只是教师刚刷新过页面」。
  * 写成「还没有开始作答」会把后一种说成一个**假事实**——正是本项目反复出现的那类缺陷。
  * 所以这里说的是能确证的那一句，见 `worksheet-tiles.tsx` 里 `no-progress` 的文案。
+ *
+ * 🔴 **2026-09-23 更正。** 上面这段原先写的是「看板**没有拉取历史的 REST 端点**（…
+ * 全文只有学生端那三个端点能读 `WorksheetAnswer`）」——**那句话在本文件落地的同一个批次里
+ * 就不再成立了**：教师端的读端点 `GET /api/worksheets/classroom/:classroomId/answers`
+ * 已落地（`server/src/routes/worksheets.ts`），它读的正是 `WorksheetAnswer`。
+ * **它不成立的方式值得记下来**：端点有了，但**格子没有消费它** —— 格子的进度仍然只由广播写入，
+ * 而那个读端点缺**两个字段**才够格子用（它的 `answerRows` 只有
+ * `{ questionId, status, isCorrect, reviewedAt, value }`，见 `routes/worksheets.ts` 的 `select`）：
+ *   1. **哪一题是最后一次保存的**（`lastQuestionId`，本文件「正在做第 N 题」的唯一依据）；
+ *   2. **最后一次保存的时刻**（本文件判「停住了」用的 5 分钟阈值靠它）。
+ * ⇒ 结论不变（这一态仍然只能报「还没收到作答」），但理由要写成真话：
+ * 不是「没有端点」，是「端点给不了那两个字段、格子也还没接它」。
  */
 export type WorksheetTileState =
   | { kind: 'unconfigured' }

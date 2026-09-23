@@ -28,6 +28,71 @@ export function resolveMaterialTargetId(input: {
 }
 
 /**
+ * 某个**参与者**（学生或小组）在本课堂里实际该用哪个探究网页。
+ *
+ * 与 `resolveMaterialTargetId` 的关系：那个函数是**唯一口径**，本函数只负责把它的入参
+ * 查齐 ——「高级模式不回落」这类规则一条都不在这里重写。
+ *
+ * 抽出来的理由：这个判定原本内联在 `socket/index.ts` 的 `resolveWebappReporter` 里，
+ * **测试够不着**，于是它按一个已经失效的假设（课堂级关联表是权威）跑了好几轮都没人发现：
+ * 分组材料那一轮把高级模式的网页权威改成了「每组一份」，`ClassroomWebapp` 在该模式下
+ * **恒为空** ⇒ 学生端每一帧都被拒，而学生端一直在正常上报
+ * （2026-09-23 用户报「探究助手的快照完全不显示」，电脑端与 iPad 都一样）。
+ *
+ * @returns 该参与者该用的网页 id；没有（或课堂/参与者不存在）就是 `null`。
+ */
+export async function resolveParticipantWebappId(
+  prisma: PrismaClient,
+  input: { classroomId: string; participantId: string },
+): Promise<string | null> {
+  const { classroomId, participantId } = input;
+
+  // 两条互不依赖的查询**并行**（帧虽然低频 —— ≤ 每 5 秒一条 / 人 —— 但没有理由串行）。
+  const [classroom, participant] = await Promise.all([
+    prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: { mode: true },
+    }),
+    prisma.classroomStudent.findFirst({
+      // ⚠️ `classroomId` 必须留在 where 里：参与者 id 是全局唯一的，但少了这半边，
+      //    一个「属于别的课堂」的 id 会拿到那个课堂的材料。
+      where: { id: participantId, classroomId },
+      select: { groupId: true },
+    }),
+  ]);
+  if (!classroom || !participant) return null;
+
+  // 再并行两条：本课堂各组配的网页 + 课堂级那一份。
+  //
+  // 🔴 `orderBy` 必须与读路径的 `loadClassroomWebapps`（`routes/webapps.ts`）**逐字一致**。
+  //    学生端目前只加载 `webapps[0]`（P2 的已知收窄），读路径的「第一个」就是学生的
+  //    「唯一那一个」；两处顺序一旦不同，就会出现「教师看到的」与「学生实际用的」
+  //    不是同一个，而界面上**没有任何地方**能看出来。
+  //    兜底的 `id` 那一级不是装饰：`ClassroomWebapp.createdAt` 在 SQLite 上只有秒精度，
+  //    一次嵌套 create 写多行会拿到**逐字相同**的时间戳（见 `routes/classroom.ts`
+  //    的 `webappLinkRows`），少了它就退化成「随机取一个」。
+  const [groupMaterials, classroomLevel] = await Promise.all([
+    prisma.classroomGroupMaterial.findMany({
+      where: { kind: 'webapp', group: { classroomId } },
+      select: { groupId: true, kind: true, targetId: true },
+    }),
+    prisma.classroomWebapp.findFirst({
+      where: { classroomId },
+      select: { webappId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
+  ]);
+
+  return resolveMaterialTargetId({
+    mode: classroom.mode,
+    studentGroupId: participant.groupId,
+    groupMaterials,
+    classroomLevelId: classroomLevel?.webappId ?? null,
+    kind: 'webapp',
+  });
+}
+
+/**
  * 读路径下发给客户端的「组」里的材料：`agent` / `webapp` **都可能为 null**。
  * 字段集合与 `classroomAgents[].agent` 一致，避免前端拿到两种 Agent 形状。
  */

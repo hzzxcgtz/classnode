@@ -8,7 +8,7 @@ import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
-import { resolveMaterialTargetId, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
+import { resolveMaterialTargetId, resolveGroupMaterialViews, resolveParticipantWebappId } from '../services/group-material-resolve.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -1313,20 +1313,36 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         select: { id: true },
       });
       if (!membership) return { ok: false, reason: '不在本课堂的学生名册里' };
-      const linked = await prisma.classroomWebapp.findFirst({
-        where: { classroomId, webappId },
-        // 顺带把课堂状态一起取回来（同一次查询里 join，不是第二次往返）——
-        // 见下面「已结束的课堂不再收上报」那一段。
-        select: { id: true, classroom: { select: { status: true } } },
-      });
-      if (!linked) return { ok: false, reason: '这个网页没有关联到本课堂' };
+      // 「这个 socket 报的网页算不算它的」——判定整体交给 `resolveParticipantWebappId`，
+      // 唯一口径是 `resolveMaterialTargetId`（高级模式不回落那条规则在那边，这里不重写）。
+      //
+      // ⚠️ **这条判据改严了，改前改后的差别是**：
+      //   · 改前问的是「**本课堂**关联过这个网页吗」—— 查的是课堂级的 `ClassroomWebapp`。
+      //     两个后果：① 高级模式下那张表**恒为空**（该模式的网页权威来源是「每组一份」，
+      //     见 `POST /create-advanced`），于是每一帧都在这里被拒（2026-09-23 用户报
+      //     「探究助手的快照完全不显示」的根因，学生端一直是好的、一直在正常上报）；
+      //     ② 只要课堂级关联过，学生就能替**别的组**送帧，污染那个网页的统计。
+      //   · 改后问的是「**这是你自己的**网页吗」：按该参与者自己的模式/组解析出唯一
+      //     有效网页再比对。① 与 ② 一起堵上。
+      //
+      // 课堂状态与「有效网页」两条查询互不依赖，**并行**发。
+      // （旧实现把状态搭在「关联过吗」那次查询上顺带取回；那条判据整体作废了，
+      //   状态因此单独查一次 —— 一次主键查找。）
+      const [classroom, effective] = await Promise.all([
+        prisma.classroom.findUnique({ where: { id: classroomId }, select: { status: true } }),
+        resolveParticipantWebappId(prisma, { classroomId, participantId: membership.id }),
+      ]);
+      if (effective === null) return { ok: false, reason: '该学生（或其小组）没有配置探究网页' };
+      if (effective !== webappId) {
+        return { ok: false, reason: `上报的网页不是该学生的有效网页（有效 ${effective}，上报 ${webappId}）` };
+      }
       // 课堂已结束 ⇒ 不再收上报。少了这一条，「结束即释放」仍然不是终态：drain 把内存
       // 清空之后，还没断线的学生（客户端还没来得及跳走）每 5 秒继续上报，内存条目会
       // **重新长回来**，而它们要等到 6 小时 TTL 或下一次 drain 才会被释放
       // （审查者的实测：结束之后学生再上报 → 内存条目又长回来）。
       // 只挡 'ended'，不挡 'paused'：暂停时教师往往正是要看看学生屏幕上现在是什么。
       // 只对 status 做判断，所以 restore 之后（status 回到 active）上报自动恢复。
-      if (linked.classroom?.status === 'ended') return { ok: false, reason: '课堂已结束' };
+      if (classroom?.status === 'ended') return { ok: false, reason: '课堂已结束' };
       return { ok: true, classroomId, studentId: membership.id };
     }
 

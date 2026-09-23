@@ -15,10 +15,10 @@ import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
-import type { AgentSummary, AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
+import { effectiveGroupAgent } from '@/lib/classroom-material';
+import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
-type ClassroomAgentDisplay = Pick<AgentSummary, 'id' | 'name' | 'logo'>;
 type ClassroomGroupDisplay = { id: string; name: string };
 type DisplayMessage = Pick<ClassroomMessage, 'content' | 'role' | 'createdAt' | 'roundIndex' | 'fileUrls' | 'fileNames'> & { id?: string };
 type ClassroomGroupCard = { group: ClassroomCardGroup | null; members: ClassroomCardStudent[] };
@@ -448,7 +448,6 @@ function ClassroomBoardContent() {
 
   const [paused, setPaused] = useState(false);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
-  const [classroomAgent, setClassroomAgent] = useState<ClassroomAgentDisplay | null>(null);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
@@ -676,13 +675,11 @@ function ClassroomBoardContent() {
           return { ...s, messages: preview };
         }));
       } catch {}
-      // 加载课堂关联的智能体
-      try {
-        const agents = await api.getAgents();
-        const agentIds = cr.agentIds || [];
-        const found = agents.find((a) => agentIds.includes(a.id));
-        setClassroomAgent(found || (agents.length > 0 ? agents[0] : null));
-      } catch {}
+      // ⚠️ 这里原来还顺手拉一次 `api.getAgents()` 来定抽屉里那个智能体署名。删掉了：
+      // 它读的 `cr.agentIds` **服务端从来不下发**（只在创建课堂的请求体里被读），
+      // 于是恒回落 `agents[0]` = 整个智能体库的第一个，抽屉里每条助手消息都挂着错的
+      // 名字与头像。署名改由 `drawerAgent`（下方，走 `effectiveGroupAgent`）算，
+      // 顺带省掉一次「把整个智能体库拉下来只为挑第一个」的请求。
     } catch {}
   }, [id]);
 
@@ -1309,6 +1306,31 @@ function ClassroomBoardContent() {
    * 查不到就当作没打开 —— 一个已经不在名册上的 id 不该让浮层继续挂在屏幕上。
    */
   const exploreDetailStudent = exploreDetailId ? students.find(s => s.id === exploreDetailId) ?? null : null;
+
+  /**
+   * 对话抽屉里给助手消息**署名**的那一个智能体（名字 + 头像）。
+   *
+   * 🔴 **必须与该学生（或小组）此刻实际在用的那一个是同一个。** 署名错了，教师看到的
+   * 是一条张冠李戴的记录 —— 名字和头像都属于别的组 —— 而且**不会报任何错**。
+   *
+   * 取法与「这间课堂在用什么材料」同一条规矩，**不在这里另写一份回落**：
+   * `effectiveGroupAgent`（`@/lib/classroom-material`）。它已经带着那条关键约束 ——
+   * **高级模式只认学生自己那个组，该组没配就是 `null`（不回落）**；标准 / 分组模式
+   * 才读课堂级（spec §1.3 / §4.4）。
+   *
+   * ⚠️ 课堂级那一个在教师端这条路径上叫 `classroomAgents`（`GET /:id` 的 include），
+   * 不叫 `agents` —— 这里**只做改名**，解析仍交给那个函数（它的注释里写明了调用方要
+   * 「拼一下」）。不改名的话 `classroom.agents` 恒为 `undefined`，标准模式下会退化成
+   * 没名字，那是把一处谎换成另一处空白。
+   *
+   * ⚠️ 学生 → 组的映射从**名册**现查（与 `exploreDetailStudent` 同一条理由：名册会变，
+   * 存对象就是留一份不更新的旧快照）。查不到时 `groupId` 给 `null` ⇒ 高级模式下
+   * 解析结果就是 `null`（不猜、也不拿课堂级顶上），界面显示「AI 助手」。
+   */
+  const drawerAgent = effectiveGroupAgent(
+    { ...classroom, agents: classroom.classroomAgents?.map((item) => item.agent) },
+    { groupId: students.find((s) => s.id === selectedStudent?.id)?.groupId ?? null },
+  );
 
   /**
    * 打开某个学生的探究详情。
@@ -2409,16 +2431,16 @@ function ClassroomBoardContent() {
                             {selectedStudent?.name?.[0] || '学'}
                           </div>
                         )
-                      ) : classroomAgent && (
+                      ) : drawerAgent && (
                         <div style={{
                           width: 48, height: 48, borderRadius: 8,
                           background: 'linear-gradient(135deg, #667eea, #764ba2)',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: "0.938rem", fontWeight: 700, overflow: 'hidden',
                         }}>
-                          {classroomAgent.logo
-                            ? <img src={`${getApiBaseUrl()}${classroomAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : classroomAgent.name[0]
+                          {drawerAgent.logo
+                            ? <img src={`${getApiBaseUrl()}${drawerAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : drawerAgent.name[0]
                           }
                         </div>
                       )}
@@ -2426,7 +2448,7 @@ function ClassroomBoardContent() {
                         fontSize: "1.25rem", fontWeight: 600,
                         color: m.role === 'user' ? '#667eea' : '#475569',
                       }}>
-                        {m.role === 'user' ? selectedStudent?.name || '学生' : (classroomAgent?.name || 'AI 助手')}
+                        {m.role === 'user' ? selectedStudent?.name || '学生' : (drawerAgent?.name || 'AI 助手')}
                       </span>
                     </div>
 

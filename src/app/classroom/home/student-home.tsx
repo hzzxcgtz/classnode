@@ -171,7 +171,10 @@ export function StudentHome({
 
   // 三态的「主内容」：M3 的学习单到位后只换那两个字符串，卡片结构不动。
   // `explore` 与 `companion` 读的都是**真数据**（关联网页 / 智能体与最后一轮对话），
-  // 只有学习单还是占位（P1 未落地，它的资源关联字段 `worksheetId` 今天恒为空）。
+  // 只有学习单还是占位 —— ⚠️ 注意读的是「学生端面板还没做」（P1 的 D 阶段），
+  // **不是**「服务端没做」：P1 的服务端（建表 / 组材料 `kind='worksheet'` / 下发）已经落地，
+  // 学生端这边连资源关联字段都还没有，所以卡片暂时只能写死「还没有布置」。
+  // 别因为这句话去服务端补活。
   const cardContent: Record<ModuleId, { title: string; meta: string }> = {
     worksheet: {
       title: '还没有布置',

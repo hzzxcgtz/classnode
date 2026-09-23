@@ -237,8 +237,10 @@ test('标准 / 分组模式：材料来自**课堂级**（那是该模式的权�
   assert.deepEqual(inUse.webapps[0].groupNames, []);
 });
 
-test('学习单：今天服务端不下发，但形状就位 —— 有数据就列得出来', () => {
-  // 三件套的分类显示要求学习单那一类**现在就能显示**，而不是等 P1 落地再改一遍读路径。
+test('学习单（高级模式）：读 `groups[].worksheet`，带组名 —— 服务端就是这个形状', () => {
+  // ⚠️ 这条测试原来叫「今天服务端不下发，但形状就位」。那在 P1 服务端合并**之前**是真的，
+  // 合并之后是假的：`resolveGroupMaterialViews` 逐组下发 `worksheet`（`{ id, title } | null`）。
+  // 用例本身（形状可读、组名带上）继续有效，改的只是名字与理由。
   const inUse = classroomMaterialsInUse({
     mode: 'advanced',
     groups: [{ id: 'g1', name: '第1组', agent: null, webapp: null, worksheet: { id: 's1', title: '第一课练习' } }],

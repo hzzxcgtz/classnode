@@ -22,7 +22,7 @@ interface GroupMaterials {
   name?: string | null;
   agent?: AgentSummary | null;
   webapp?: ClassroomWebappSummary | null;
-  /** P1（学习单）落地后才有；今天恒为 `undefined`，见 `WorksheetMaterialSummary`。 */
+  /** 该组的学习单（`resolveGroupMaterialViews` 下发；高级模式下「本组没配」是 `null`）。 */
   worksheet?: WorksheetMaterialSummary | null;
 }
 
@@ -43,7 +43,7 @@ interface ClassroomMaterials {
   agents?: AgentSummary[];
   /** 课堂级网页（**标准 / 分组模式**的权威来源）。 */
   webapps?: ClassroomWebappSummary[];
-  /** 课堂级学习单（P1 落地后才有；今天恒为 `undefined`）。 */
+  /** 课堂级学习单（`loadClassroomWorksheets` 下发；标准 / 分组模式的权威来源）。 */
   worksheets?: WorksheetMaterialSummary[];
 }
 

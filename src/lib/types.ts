@@ -105,14 +105,20 @@ export interface ClassroomWebappSummary {
 /**
  * 课堂材料里那一份**学习单**的最小读形状。
  *
- * 🔴 **P1 尚未落地**：今天 `Worksheet` 表不存在、没有任何地方写
- * `ClassroomGroupMaterial.kind='worksheet'`、`GET /api/classroom/active` 也不下发这个字段
- * ⇒ 凡是读它的地方（`@/lib/classroom-material` 的 `classroomMaterialsInUse`）**今天恒为空**。
+ * **服务端确实下发它**（2026-09-23 合并 P1 学习单的服务端实现之后 —— 本注释的上一版写在
+ * 那条分支合并**之前**，当时「表不存在、没人写 `kind='worksheet'`、接口不下发」三句都是真的，
+ * 合并后三句全部失效；本次改写成当前成立的版本，别再照着旧话说「还没做」）：
+ *   · 组级 —— `groups[].worksheet`，`{ id, title } | null`（高级模式下「本组没配」是 `null`）；
+ *     由 `resolveGroupMaterialViews` 拼出（`server/src/services/group-material-resolve.ts:188`），
+ *     `GET /code/:code`、`GET /:id`、`GET /active`、`join-classroom` 都走它。
+ *   · 课堂级 —— 顶层 `worksheets`，`{ id, title }[]`，来自 `loadClassroomWorksheets`
+ *     （`server/src/routes/classroom.ts:217`，调用点 `:700` / `:882` / `:1005`）。
+ * 读它的地方（`@/lib/classroom-material` 的 `classroomMaterialsInUse`）因此**今天就有货**，
+ * 不需要再等谁「接上服务端」。
  *
- * 那为什么还要定义它：教师端的「课堂卡片」必须按**三件套**分类显示材料引用
- * （用户 2026-09-23），而学习单那一类不能写成「以后再说」—— 读路径改一遍的代价远高于
- * 现在照 P1 规格（`specs/2026-09-23-p1-worksheet.md` §4.1：`Worksheet.title` ＋ 组材料
- * `kind='worksheet'`）把槽留出来。接上服务端那一天，界面**不用再改**。
+ * ⚠️ 形状**只有** `id` 与 `title`：题目结构（`content`）与答案都不进这两个载荷，
+ * 学生端按 id 单独拉取（服务端剥掉答案字段）。**别照着网页那套扩字段** ——
+ * 想加字段先看服务端的 `select`，它不加，这里加了就是一份凭空来的字面量。
  *
  * ⚠️ 字段名是 `title` 不是 `name`（`Worksheet` 模型就是这么定的），别顺手对齐成网页那套。
  */
@@ -372,9 +378,14 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
     agent: AgentSummary | null;
     webapp: ClassroomWebappSummary | null;
     /**
-     * 🔴 **P1 尚未落地，今天服务端不下发这个字段**（见 `WorksheetMaterialSummary` 的注释）。
-     * 这里先按 P1 的组材料形状声明成可选，为的是「接上就显示」而不是那时候再改读路径；
-     * 缺字段时一律当 `null`（该组没配学习单），**不是**当成错误。
+     * 该组的**学习单**（本注释的上一版写在 P1 服务端合并**之前**，说的「服务端不下发」
+     * 当时是真的，今天不是了 —— 见 `WorksheetMaterialSummary`）。
+     *
+     * 服务端**会发**：`GET /api/classroom/active` 的 `groups[]` 来自 `resolveGroupMaterialViews`
+     * （`server/src/services/group-material-resolve.ts:188`），逐组给 `agent` / `webapp` /
+     * `worksheet` 三个槽。高级模式下 `null` 是**合法值**（本组没配学习单），**不回落**到
+     * 课堂级；组不在 `groups[]` 里、或更老的响应里没这个字段时才取到 `undefined`。
+     * 两种都当 `null` 处理（该组没配），**不是**当成错误。
      */
     worksheet?: WorksheetMaterialSummary | null;
   }>;
@@ -394,13 +405,14 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
    */
   webapps?: ClassroomWebappSummary[];
   /**
-   * 本课堂**课堂级**关联的学习单（P1 落地后才有）。
+   * 本课堂**课堂级**关联的学习单。服务端**会发**（`loadClassroomWorksheets`，
+   * `server/src/routes/classroom.ts:217`；`GET /active` 在 `:700` 调用它）。
    *
-   * 与 `webapps` 同构：**标准 / 分组模式**的权威来源；高级模式下权威来源是各组
-   * （`groups[].worksheet`），这一条会是幽灵（服务端在该模式下不写它）。
+   * 与 `webapps` 同构、同源、同一条口径：**标准 / 分组模式**的权威来源；高级模式下权威来源
+   * 是各组（`groups[].worksheet`），这一条会是空数组（服务端在该模式下不写它）。
    *
-   * 🔴 今天服务端不查询也不下发它 —— 声明成可选正是为了如实表达「没发」与「空数组」在
-   * 界面上是一回事（与 `webapps?` 同一条口径），而不是把「还没做」伪装成一个空数组。
+   * 可选的理由与 `webapps?` 逐字相同：服务端读取失败（老库缺 `ClassroomWorksheet` 表）时
+   * 降级为空数组，更老的版本根本不发这个字段 —— 「没发」与「空数组」在界面上都是「没有学习单」。
    */
   worksheets?: WorksheetMaterialSummary[];
 }

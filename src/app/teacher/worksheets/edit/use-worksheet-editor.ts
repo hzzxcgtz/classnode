@@ -254,9 +254,16 @@ export function useWorksheetEditor({ id, onNotice }: {
     // 保存成功后这份草稿就多余了。⚠️ 键要在 id 变化**之前**取，
     // 否则新建那一支会去删一个不存在的键，把 `new` 那份留在本机。
     const keyBefore = draftKeyFor(currentId);
-    // 保存前再读一次 `/usage`（规格 §6.4）：顶栏那句警告说的是「保存会立刻传到学生端」，
+    // 保存前再读一次 `/usage`（规格 §6.4）：顶栏那句警告说的是「本单正在被 N 堂课使用」，
     // 读到的是几秒前的数字就可能少报一间课堂。**不 await** —— 它是给横幅用的，
     // 不该挡在保存前面；失败也只是这句警告晚一步。
+    //
+    // ⚠️ 那句警告的**后半句**（原先写「保存后学生端会**立即**看到变化」）是假的、已改：
+    // 服务端对学习单**内容**变更**没有任何广播**（`PUT /api/worksheets/:id` 一个 socket 事件
+    // 都不发；`routes/worksheets.ts` 里唯一的 `emit` 是作答变化，发给 `teacher:<id>`），
+    // 学生端面板也只在**挂载时**拉一次 `student-view` ⇒ 学生要**刷新或重新进入**才看得到。
+    // 所以 `refreshUsage` 的新鲜度只关系「几堂课在用」这一半，与「学生什么时候看到」无关 ——
+    // 别因为后半句改了就顺手把这次刷新删掉。理由与待定项见规格 §3-J / §6.4 / §13-7。
     if (currentId) void refreshUsage(currentId);
     try {
       const saved = currentId

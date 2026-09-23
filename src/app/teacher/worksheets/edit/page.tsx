@@ -164,7 +164,7 @@ function WorksheetEditorBody() {
 
       {usageHead && (
         <div className="worksheet-editor-banner is-warning" role="status">
-          ⚠ {usageHead} · 保存后学生端会立即看到变化
+          ⚠ {usageHead} · 学生需刷新或重新进入学习单才能看到新内容
         </div>
       )}
 

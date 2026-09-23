@@ -16,9 +16,10 @@ import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
 import { stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
+import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
-import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/types';
+import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetBoard, WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
 type ClassroomGroupDisplay = { id: string; name: string };
@@ -515,6 +516,23 @@ function ClassroomBoardContent() {
    */
   const [worksheetNodes, setWorksheetNodes] = useState<Record<string, WorksheetQuestionNode[]>>({});
   /**
+   * 学习单抽屉（规格 §7.3）开在哪一层、以及它的**历史读端点**的结果。
+   *
+   * 🔴 为什么需要那个读端点：上面 `worksheetProgress` 那种「键不在 = 没收到过」的数据源
+   * 让看板**在教师刷新一次页面之后失忆**（早做完的学生掉回「还没收到作答」）。抽屉更是
+   * 一开始就要整批历史数据，光靠广播根本画不出来。端点的形状与鉴权见
+   * `server/src/routes/worksheets.ts` 的 `/classroom/:classroomId/answers`。
+   *
+   * ⚠️ 每次打开都塞一个**新的对象**（`token` 只是让这件事显式化）：抽屉内部的下钻栈
+   * （学习单 → 题 → 作答）以这个对象的**引用**为依赖重置，换一个学生、再点一次同一个入口
+   * 都算新的一次 —— 少了它，教师从「张三」切到「李四」时抽屉会停在张三那个下钻层次上。
+   */
+  const [worksheetDrawer, setWorksheetDrawer] = useState<WorksheetDrawerEntry | null>(null);
+  const [worksheetBoard, setWorksheetBoard] = useState<WorksheetBoard | null>(null);
+  const [worksheetBoardLoading, setWorksheetBoardLoading] = useState(false);
+  /** 正在标记「已查看」的那一条（`participantId:questionId`）—— 防止连点，并让按钮显示「标记中…」。 */
+  const [worksheetReviewBusy, setWorksheetReviewBusy] = useState<string | null>(null);
+  /**
    * 「停在第 N 题 · X 分钟」需要一只会走的表：没有新的作答广播时也要让分钟数自己往上走
    * （以及 5 分钟那一刻从「正在做」翻成「停住了」）。30 秒一格 —— 分钟数最多差半分钟，
    * 而这段时间里的渲染开销与一次 socket 消息同级。
@@ -701,6 +719,81 @@ function ClassroomBoardContent() {
       for (const entry of loaded) { if (entry) next[entry[0]] = entry[1]; }
       return next;
     });
+  }, []);
+
+  /**
+   * 拉这一堂课的**整批作答行**（抽屉两种形态的唯一数据源，规格 §7.4）。
+   *
+   * ⚠️ 抽屉**每次打开都重拉**（而不是复用上一次的结果）：教师课上看的是「此刻」，
+   * 而这条数据在两次打开之间会变（学生一直在答）。这也顺带修掉了「看板失忆」——
+   * 刷新页面后再打开抽屉，早做完的学生照样在。
+   *
+   * ⚠️ 拉失败时**不清空**已有的那一份（与 `loadWorksheetNodes` 同一条规矩）：
+   * 抽屉会如实说「还没有读到这一堂课的作答」，而不是画一个看起来「全班都没作答」的空表。
+   */
+  const loadWorksheetBoard = useCallback(async () => {
+    if (!id) return;
+    setWorksheetBoardLoading(true);
+    try {
+      const board = await api.getWorksheetBoard(id);
+      setWorksheetBoard(board);
+      // 顺带把题目树补齐：抽屉的题号 / 题型 / 选项文字全靠它，而它可能与首屏那次不同
+      // （教师课上加题，规格 §3-J 只警告不拦）。
+      void loadWorksheetNodes(board.worksheets.map((worksheet) => worksheet.id));
+    } catch {
+      // 状态由 `worksheetBoard === null` + `loading === false` 表达，见抽屉里那一段文案。
+    } finally {
+      setWorksheetBoardLoading(false);
+    }
+  }, [id, loadWorksheetNodes]);
+
+  /**
+   * 打开抽屉。`token` 每次换新 ⇒ 抽屉内部的下钻栈从这一层重新开始。
+   *
+   * ⚠️ 顺手把**对话抽屉**关掉：两者是同一块位置（右上角、宽 420）的浮层，
+   * 同时开着会叠在一起，而教师只会看到上面那一个。
+   */
+  const openWorksheetDrawer = useCallback((view: WorksheetDrawerView) => {
+    setSelectedStudent(null);
+    setSelectedGroup(null);
+    selectedStudentIdRef.current = null;
+    setExploreDetailId(null);
+    setWorksheetDrawer({ token: Date.now(), view });
+    void loadWorksheetBoard();
+  }, [loadWorksheetBoard]);
+
+  /**
+   * 标记「已查看」（`POST /api/worksheets/:id/review`，粒度是**参与者 × 题**）。
+   *
+   * ⚠️ 成功后**就地更新**那一行的 `reviewedAt`，不重拉整批：教师的动作是逐题点的，
+   * 每点一次重拉一次整堂课的作答行没有必要（而且会让滚动位置跳）。
+   * 时间戳用服务端回的**那一个**，不是本地 `Date.now()` —— 看板上的「刚看过」以它为准。
+   */
+  const reviewWorksheetAnswer = useCallback(async (worksheetId: string, participantId: string, questionId: string) => {
+    const key = `${participantId}:${questionId}`;
+    setWorksheetReviewBusy(key);
+    try {
+      const result = await api.reviewWorksheetAnswer(worksheetId, { participantId, questionId });
+      setWorksheetBoard((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          worksheets: prev.worksheets.map((worksheet) => worksheet.id !== worksheetId ? worksheet : {
+            ...worksheet,
+            participants: worksheet.participants.map((participant) => participant.participantId !== participantId ? participant : {
+              ...participant,
+              answerRows: participant.answerRows.map((row) => row.questionId !== questionId ? row : { ...row, reviewedAt: result.reviewedAt }),
+            }),
+          }),
+        };
+      });
+    } catch (error) {
+      // 服务端的文案直接给学生看（409 那句是「该学生还没有作答这道题」）——
+      // 本组件已经不给未作答的题按钮了，所以走到这里的是真的异常（断网 / 会话过期）。
+      setToast({ msg: error instanceof Error ? error.message : '标记「已查看」失败', type: 'error' });
+    } finally {
+      setWorksheetReviewBusy(null);
+    }
   }, []);
 
   /**
@@ -988,6 +1081,8 @@ function ClassroomBoardContent() {
 
   const openStudentDrawer = async (student: StudentSummary) => {
     if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
+    // 对话抽屉与学习单抽屉是**同一块位置**（右上角、宽 420）的浮层，同时开着会叠在一起。
+    setWorksheetDrawer(null);
     selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
     setLoadingMessages(true);
@@ -1547,6 +1642,8 @@ function ClassroomBoardContent() {
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
+    // 与另外两个浮层互斥（同一块 420px 位置，见 `openStudentDrawer` 的同款一行）。
+    setWorksheetDrawer(null);
     setExploreDetailId(studentId);
   };
 
@@ -1930,6 +2027,21 @@ function ClassroomBoardContent() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
                 通知全体
               </button>
+              {/* 学习单抽屉的入口（规格 §7.1 的「顶栏入口」／§7.3 形态 B）。
+                  🔴 **必须与「跟随 / 指定」两种模式无关**：挂在 `boardMode === 'follow'`
+                  那一段里会让它在指定模式下消失，反之亦然 —— 而它是「这一堂课谁做到哪、
+                  哪道题错得多」的唯一入口，与「每格显示哪个模块」是同一个问题的两面。
+                  所以它挂在这一行（`!gridFullscreen` 的公共头部），不挂任何模式分支。
+                  ⚠️ 这一行已经很挤（1440px 下四个按钮刚好一行），加按钮前先看截图：
+                  `.superpowers/sdd/2026-09-23-p1-worksheet-plan/evidence-d4/`
+                  before-1440.png 与 after-1440.png 是改前 / 改后那两张。 */}
+              <button className="btn btn-secondary"
+                onClick={() => openWorksheetDrawer({ kind: 'worksheets' })}
+                title="按学习单看全班：先按学习单分组，再按题看正确率与作答"
+                style={{ minHeight: 36, padding: '7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2h9a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6"/><path d="M4 6h5V2"/><line x1="9" y1="12" x2="16" y2="12"/><line x1="9" y1="16" x2="14" y2="16"/></svg>
+                学习单
+              </button>
               {/* 触发按钮。打开的是**浮动窗**（aria-haspopup 从 "menu" 改成 "dialog"），
                   窗本身在文件末尾与其他浮层放在一起。
                   包裹层留着只是为了让按钮与相邻按钮的缩进/盒子一致；它不再需要 ref
@@ -2135,6 +2247,15 @@ function ClassroomBoardContent() {
                       // 点开的内容跟着格子显示的内容走：显示探究画面的格子点开的是**探究详情**
                       // （同时把那个学生转成高频截图），其余仍旧打开对话抽屉。
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
+                      // 显示**学习单**的格子点开的是逐题作答详情（规格 §7.3 形态 A）——
+                      // 与上面探究空间那一条同一条规矩。
+                      // ⚠️ 参与者 id 用 `cs.id`（`ClassroomStudent.id`）而**不是** `student.id`：
+                      // 小组 / 高级模式下它是「组」那一个参与者，而抽屉与 `review` 端点要的
+                      // 正是这个 id。用 `student.id` 会指向一个不在课堂里的人（且不报错）。
+                      if (tileModule === 'worksheet') {
+                        openWorksheetDrawer({ kind: 'participant', participantId: cs.id });
+                        return;
+                      }
                       setExploreDetailId(null);
                       if (isGroup) setSelectedGroup(item.group);
                       else setSelectedGroup(null);
@@ -2329,6 +2450,24 @@ function ClassroomBoardContent() {
             )}
           </div>
         </div>
+
+        {/* 学习单抽屉（规格 §7.3）——与下面的对话抽屉**同一块 420px 位置**。
+            两者互斥：`openWorksheetDrawer` 会把对话抽屉关掉，`openStudentDrawer`
+            反过来（见各自的注释）。所以这里不需要再判「另一个开着没有」。
+            ⚠️ 它必须与对话抽屉挂在**同一个层级**（格子容器的**外面**）：抽屉是
+            `position: fixed`，而格子容器是 `overflow: auto` —— 挂进去会被裁掉，
+            表现是「抽屉一打开就只剩一半」，且不报任何错。 */}
+        {worksheetDrawer && (
+          <WorksheetDrawer
+            entry={worksheetDrawer}
+            onClose={() => setWorksheetDrawer(null)}
+            board={worksheetBoard}
+            nodesByWorksheet={worksheetNodes}
+            loading={worksheetBoardLoading}
+            reviewBusy={worksheetReviewBusy}
+            onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
+          />
+        )}
 
         {/* 右侧对话详情 - 浮层模式 */}
         {selectedStudent && (
@@ -2834,6 +2973,11 @@ function ClassroomBoardContent() {
                     <div key={isGroup ? item.group?.id : cs.id}
                       onClick={() => {
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
+                      // 与主看板那一条同款（全屏与主看板共用同一套「点开的内容跟着格子走」规则）。
+                      if (tileModule === 'worksheet') {
+                        openWorksheetDrawer({ kind: 'participant', participantId: cs.id });
+                        return;
+                      }
                       setExploreDetailId(null);
                       if (isGroup) setSelectedGroup(item.group);
                       else setSelectedGroup(null);

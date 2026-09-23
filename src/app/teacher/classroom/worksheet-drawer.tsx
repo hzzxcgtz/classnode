@@ -1,0 +1,454 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
+import {
+  indexQuestions,
+  participantColumnTitle,
+  participantUnitLabel,
+  questionAggregate,
+  questionHeading,
+  questionOutcome,
+  statusLabel,
+  type WorksheetQuestionStatus,
+} from './worksheet-drawer-state';
+
+/**
+ * 教师看板的**学习单抽屉**（规格 §7.3）—— 同一块 420px 位置，两种形态：
+ *
+ *   · **形态 A —— 点某个学生/组**：逐题作答详情（题号 / 题型 / 状态 / 对错 / 学生原答案 /
+ *     「标记已查看」）。主观题**没有对错**，未作答的题**不给**「标记已查看」按钮
+ *     （服务端对它会回 409 —— 界面上不该给一个必然失败的按钮）。
+ *   · **形态 B —— 顶栏入口**：**先按学习单分组，再按题**。
+ *
+ * 🔴 那一层「先按学习单」不是多余的：高级模式下**每个组可以是不同的学习单**（规格 §1.2），
+ * 「全班共有的第 3 题」并不存在。标准 / 分组模式下只有一份，本组件会**自动退化成一层**
+ * （见下面那段 `useEffect`）—— 那正是规格 §7.3 说的「它会自动退化成一层」。
+ *
+ * ⚠️ **本文件只画，不判断**：每一条判据都在 `worksheet-drawer-state.ts`（纯函数、有测试）。
+ * 把判据写进 JSX 就没有任何回归网了（本仓没有前端测试框架，`node --test` 加载不了 JSX）——
+ * 与 `worksheet-tiles.tsx` 同一条规矩。
+ *
+ * ⚠️ **抽屉里读 `content`（题目树）只为了画题号 / 题型 / 选项文字**。答案字段
+ * （`correctKeys` / `answers` / `explanation`）住在同一棵树里，永远不从这里下发到别处；
+ * 而服务端的历史读端点（`/classroom/:id/answers`）压根不返回 `content`（规格 §5.4）。
+ */
+
+/**
+ * 抽屉当前停在哪一层。
+ *
+ * 「层次」是**栈**而不是单个值（`stack`）：形态 B 是三层下钻（学习单 → 题 → 该题的全部作答），
+ * 反过来也要能一层层退回。形态 A 只有一层，但它可以从形态 B 的第三层点进来。
+ */
+export type WorksheetDrawerView =
+  | { kind: 'worksheets' }
+  | { kind: 'questions'; worksheetId: string }
+  | { kind: 'question'; worksheetId: string; questionId: string }
+  | { kind: 'participant'; participantId: string };
+
+export interface WorksheetDrawerEntry {
+  /** 每次「打开」换一个新对象 ⇒ 抽屉内的下钻栈随之重置（组件用它的引用做依赖）。 */
+  token: number;
+  view: WorksheetDrawerView;
+}
+
+export function WorksheetDrawer({
+  entry, onClose, board, nodesByWorksheet, loading, reviewBusy, onReview,
+}: {
+  entry: WorksheetDrawerEntry;
+  onClose: () => void;
+  /** 历史读端点的结果；`null` = 还没到（第一次打开时它总要先来一趟）。 */
+  board: WorksheetBoard | null;
+  /** 学习单 id → 题目树（`loadWorksheetNodes` 拉的，格子的格数也用它）。 */
+  nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
+  loading: boolean;
+  /** 正在标记的那一条（`participantId:questionId`），点过的按钮显示「标记中…」。 */
+  reviewBusy: string | null;
+  onReview: (worksheetId: string, participantId: string, questionId: string) => void;
+}) {
+  const [stack, setStack] = useState<WorksheetDrawerView[]>([entry.view]);
+
+  // 每次「打开」都从入口那一层重新开始（换一个学生、再点一次同一个入口都算新的一次）。
+  useEffect(() => { setStack([entry.view]); }, [entry]);
+
+  // 🔴 **自动退化成一层**（规格 §7.3）：标准 / 分组模式下全班只有一份学习单，
+  // 「先按学习单分组」那一层就只剩一行，等于让教师多点一次。所以板子到齐之后，
+  // 若栈上只有「学习单列表」这一层、而它恰好只有一份，就把它换掉。
+  // ⚠️ **只在栈恰好是 `[worksheets]` 时换**：教师自己从第三层退回第二层时栈比这长，
+  // 那种情况下把他再推回题目列表会变成一个按不动的「返回」。
+  useEffect(() => {
+    if (!board) return;
+    if (board.worksheets.length !== 1) return;
+    setStack((prev) => (
+      prev.length === 1 && prev[0].kind === 'worksheets'
+        ? [{ kind: 'questions', worksheetId: board.worksheets[0].id }]
+        : prev
+    ));
+  }, [board]);
+
+  const current = stack[stack.length - 1];
+  const push = (view: WorksheetDrawerView) => setStack((prev) => [...prev, view]);
+  const back = () => setStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+
+  /** 这一层能不能退（退到上一层，而不是关掉抽屉）。 */
+  const canGoBack = stack.length > 1;
+
+  const header = useMemo(
+    () => describeHeader(current, board, nodesByWorksheet),
+    [current, board, nodesByWorksheet],
+  );
+
+  return (
+    <>
+      {/* 遮罩层。与对话抽屉同一块位置、同一个 z-index 层（两者互斥，见 page.tsx 的打开处）。 */}
+      <div onClick={onClose}
+        style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
+      <div data-worksheet-drawer style={{
+        position: 'fixed', top: 96, right: 24, bottom: 24,
+        width: 420, zIndex: 291,
+        background: 'white', borderRadius: 14,
+        border: '1px solid #e2e8f0',
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+      }}>
+        {/* 头部：标题随层次变，左上角是「返回」（只在有多层时出现）。 */}
+        <div style={{
+          padding: '14px 18px', borderBottom: '1px solid var(--border)',
+          background: 'linear-gradient(135deg, #f8faff, #f0f4ff)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          {canGoBack && (
+            <button type="button" onClick={back} aria-label="返回上一层"
+              className="btn btn-ghost" style={{ fontSize: '0.688rem', padding: '4px 8px', flexShrink: 0 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              返回
+            </button>
+          )}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {header.title}
+            </h3>
+            {header.hint && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>{header.hint}</div>
+            )}
+          </div>
+          <button type="button" className="btn btn-ghost" onClick={onClose}
+            style={{ fontSize: '0.688rem', padding: '4px 10px', flexShrink: 0 }}>关闭</button>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: 14 }}>
+          {loading && (
+            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>正在读取作答…</div>
+          )}
+          {!loading && !board && (
+            // 读失败 / 还没到：**如实说**，不要画一个像是「全班都没作答」的空列表
+            // （那正是本任务要修的那类假象）。
+            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem', lineHeight: 1.7 }}>
+              还没有读到这一堂课的作答。<br />请确认服务正在运行，或稍后再打开一次。
+            </div>
+          )}
+          {!loading && board && current.kind === 'worksheets' && (
+            <WorksheetList board={board} onOpen={(worksheetId) => push({ kind: 'questions', worksheetId })} />
+          )}
+          {!loading && board && current.kind === 'questions' && (
+            <QuestionList board={board} worksheetId={current.worksheetId}
+              nodes={nodesByWorksheet[current.worksheetId] ?? null}
+              onOpen={(questionId) => push({ kind: 'question', worksheetId: current.worksheetId, questionId })} />
+          )}
+          {!loading && board && current.kind === 'question' && (
+            <QuestionAnswers board={board} worksheetId={current.worksheetId} questionId={current.questionId}
+              nodes={nodesByWorksheet[current.worksheetId] ?? null}
+              onOpenParticipant={(participantId) => push({ kind: 'participant', participantId })} />
+          )}
+          {!loading && board && current.kind === 'participant' && (
+            <ParticipantAnswers board={board} participantId={current.participantId}
+              nodesByWorksheet={nodesByWorksheet} reviewBusy={reviewBusy} onReview={onReview} />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── 头部标题 ─────────────────────────────────────────────────────────
+
+function describeHeader(
+  view: WorksheetDrawerView,
+  board: WorksheetBoard | null,
+  nodesByWorksheet: Record<string, WorksheetQuestionNode[]>,
+): { title: string; hint: string | null } {
+  const worksheetOf = (worksheetId: string) => board?.worksheets.filter((item) => item.id === worksheetId)[0] ?? null;
+
+  if (view.kind === 'worksheets') {
+    return { title: '学习单', hint: board ? `${board.worksheets.length} 份在用` : null };
+  }
+  if (view.kind === 'questions') {
+    const worksheet = worksheetOf(view.worksheetId);
+    return { title: worksheet ? `${worksheet.title} · 按题` : '按题', hint: '点某一题看全部作答' };
+  }
+  if (view.kind === 'question') {
+    const worksheet = worksheetOf(view.worksheetId);
+    const nodes = nodesByWorksheet[view.worksheetId] ?? [];
+    const { questions, indexOf } = indexQuestions(nodes);
+    const index = indexOf(view.questionId);
+    const node = index >= 0 ? questions[index] : null;
+    const kinds = worksheet?.participants.map((participant) => participant.kind) ?? [];
+    // 标题写「全部作答」而不是「全班答案」：分组/高级模式下这里列的是**参与者**（是组不是人），
+    // 而且「答案」在本项目里已被 §5.4 占用为「正确答案」（规格 §7.3 的原话）。
+    return {
+      title: (node ? questionHeading(node, index) : '题目') + ` · ${participantColumnTitle(kinds)}`,
+      hint: worksheet?.title ?? null,
+    };
+  }
+  const found = findParticipant(board, view.participantId);
+  return {
+    title: found ? `${found.participant.name} · 学习单` : '学习单',
+    hint: found ? found.worksheet.title : null,
+  };
+}
+
+function findParticipant(board: WorksheetBoard | null, participantId: string) {
+  for (const worksheet of board?.worksheets ?? []) {
+    for (const participant of worksheet.participants) {
+      if (participant.participantId === participantId) return { worksheet, participant };
+    }
+  }
+  return null;
+}
+
+// ── 形态 B · 第一层：学习单列表 ──────────────────────────────────────
+
+function WorksheetList({ board, onOpen }: { board: WorksheetBoard; onOpen: (worksheetId: string) => void }) {
+  if (board.worksheets.length === 0) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem', lineHeight: 1.7 }}>
+        这一堂课还没有配学习单。
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {board.worksheets.map((worksheet) => {
+        const unit = participantUnitLabel(worksheet.participants.map((participant) => participant.kind));
+        return (
+          <button key={worksheet.id} type="button" onClick={() => onOpen(worksheet.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+              padding: '12px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
+            }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                《{worksheet.title}》
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+                {worksheet.participants.length} {unit}在用
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 形态 B · 第二层：题目列表（正确率 / 已交 N/M）────────────────────
+
+function QuestionList({
+  board, worksheetId, nodes, onOpen,
+}: {
+  board: WorksheetBoard;
+  worksheetId: string;
+  nodes: WorksheetQuestionNode[] | null;
+  onOpen: (questionId: string) => void;
+}) {
+  const worksheet = board.worksheets.filter((item) => item.id === worksheetId)[0];
+  if (!worksheet) return null;
+  if (!nodes) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
+        学习单内容还没加载到。
+      </div>
+    );
+  }
+  const { questions } = indexQuestions(nodes);
+  if (questions.length === 0) {
+    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {questions.map((node, index) => {
+        // ⚠️ 一个参与者一格（没作答的是 `undefined`）：`questionAggregate` 的两个分母都靠
+        // 「参与者数」这个长度，把没作答的人过滤掉会让「已交 N/M」凭空满员。
+        const rows = worksheet.participants.map((participant) =>
+          participant.answerRows.filter((row) => row.questionId === node.id)[0]);
+        const aggregate = questionAggregate(rows);
+        const accuracy = aggregate.accuracy;
+        return (
+          <button key={node.id} type="button" onClick={() => onOpen(node.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+              padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
+            }}>
+            <div style={{ minWidth: 0, flex: 1, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {questionHeading(node, index)}
+            </div>
+            {/* 主观题恒不判分 ⇒ 这里自然是「—」，不是 0%（见 questionAggregate 的注释）。 */}
+            <span style={{ fontSize: '0.75rem', color: accuracy === null ? '#94a3b8' : accuracy >= 60 ? '#15803d' : '#b45309', whiteSpace: 'nowrap' }}
+              title="正确率 = 已判对 ÷ 已判过的作答（主观题与关闭自动判分时没有这一项）">
+              正确 {accuracy === null ? '—' : `${accuracy}%`}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+              已交 {aggregate.submitted}/{aggregate.total}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 形态 B · 第三层：某题的全部作答（按参与者列，可能是组不是人）────
+
+function QuestionAnswers({
+  board, worksheetId, questionId, nodes, onOpenParticipant,
+}: {
+  board: WorksheetBoard;
+  worksheetId: string;
+  questionId: string;
+  nodes: WorksheetQuestionNode[] | null;
+  onOpenParticipant: (participantId: string) => void;
+}) {
+  const worksheet = board.worksheets.filter((item) => item.id === worksheetId)[0];
+  if (!worksheet) return null;
+  const node = nodes ? indexQuestions(nodes).byId.get(questionId) ?? null : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {worksheet.participants.map((participant) => {
+        const row = participant.answerRows.filter((item) => item.questionId === questionId)[0];
+        const outcome = node ? questionOutcome(node, row) : null;
+        return (
+          <button key={participant.participantId} type="button" onClick={() => onOpenParticipant(participant.participantId)}
+            style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', textAlign: 'left',
+              padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
+            }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#334155' }}>{participant.name}</div>
+              <div style={{ fontSize: '0.813rem', color: '#0f172a', marginTop: 3, wordBreak: 'break-word' }}>
+                {/* 未作答就**不显示空白**：一句「未作答」比一个空框有信息量。 */}
+                {outcome?.answerText ?? <span style={{ color: '#94a3b8' }}>未作答</span>}
+              </div>
+            </div>
+            <OutcomeMark mark={outcome?.mark ?? 'none'} status={outcome?.status ?? 'unanswered'} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 形态 A：某参与者的逐题详情 ───────────────────────────────────────
+
+function ParticipantAnswers({
+  board, participantId, nodesByWorksheet, reviewBusy, onReview,
+}: {
+  board: WorksheetBoard;
+  participantId: string;
+  nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
+  reviewBusy: string | null;
+  onReview: (worksheetId: string, participantId: string, questionId: string) => void;
+}) {
+  const found = findParticipant(board, participantId);
+  if (!found) {
+    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这一格（参与者）此刻没有配学习单。</div>;
+  }
+  const { worksheet, participant } = found;
+  const nodes = nodesByWorksheet[worksheet.id] ?? null;
+  if (!nodes) {
+    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>学习单内容还没加载到。</div>;
+  }
+  const { questions } = indexQuestions(nodes);
+  if (questions.length === 0) {
+    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {questions.map((node, index) => {
+        const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
+        const outcome = questionOutcome(node, row);
+        const busyKey = `${participantId}:${node.id}`;
+        return (
+          <div key={node.id} style={{
+            padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white',
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {questionHeading(node, index)}
+              </span>
+              <OutcomeMark mark={outcome.mark} status={outcome.status} />
+            </div>
+            {/* 学生原答案。未作答时如实说，不画一个空框。 */}
+            <div style={{ fontSize: '0.813rem', color: outcome.answerText ? '#0f172a' : '#94a3b8', wordBreak: 'break-word' }}>
+              {outcome.answerText ?? '未作答'}
+            </div>
+            {/* 🔴 「标记已查看」只在**作答过**的题上出现（`canReview`）：服务端对未作答的题回
+                409，给一个必然失败的按钮是本任务明确要避免的那件事。
+                已看过的题也留着按钮 —— 再点一次是**刷新**「最后查看时间」（服务端就是这么写的）。 */}
+            {outcome.canReview && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
+                  onClick={() => onReview(worksheet.id, participantId, node.id)}
+                  style={{ fontSize: '0.688rem', padding: '3px 8px' }}>
+                  {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
+                </button>
+                {outcome.reviewed && (
+                  <span style={{ fontSize: '0.688rem', color: '#15803d' }}>已看</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 两处共用的小组件 ─────────────────────────────────────────────────
+
+/**
+ * 这一题的对错那一小块。
+ *
+ * 🔴 用词与图形取自规格 §7.3 的图例：`✓` 答对 / `✗` 答错 / `─` 未作答；
+ * 而 `◐ ○` 那两个圆是**服务端未判分**的情形（主观题、关闭自动判分）——
+ * 那里显示的是状态「作答中 / 已提交」，**不显示 ✓ 也不显示 ✗**。
+ * 把它画成「✗」是本任务最要防的一类假象：系统根本不知道学生对不对。
+ */
+function OutcomeMark({
+  mark, status,
+}: {
+  mark: 'correct' | 'wrong' | 'none';
+  status: WorksheetQuestionStatus;
+}) {
+  if (mark === 'correct') {
+    return <span style={{ fontSize: '0.813rem', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>✓ 答对</span>;
+  }
+  if (mark === 'wrong') {
+    return <span style={{ fontSize: '0.813rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>✗ 答错</span>;
+  }
+  if (status === 'unanswered') {
+    return <span style={{ fontSize: '0.813rem', color: '#cbd5e1', whiteSpace: 'nowrap' }}>─ 未作答</span>;
+  }
+  // 作答中 / 已提交但**没有对错**（主观题、关闭自动判分）。
+  return (
+    <span style={{ fontSize: '0.75rem', color: status === 'submitted' ? '#1d4ed8' : '#b45309', whiteSpace: 'nowrap' }}>
+      ◐ {statusLabel(status)}
+    </span>
+  );
+}

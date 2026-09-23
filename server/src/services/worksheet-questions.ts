@@ -63,10 +63,15 @@ export function grade(node: QuestionNode, value: unknown): boolean | null {
     return selected.length === 1 && correct.length === 1 && selected[0] === correct[0];
   }
   if (node.type === 'fill-blank') {
-    const answers = Array.isArray(node.data.answers) ? (node.data.answers as string[]) : [];
+    // ⚠️ `Array.isArray` 只保证「是数组」，不保证元素是字符串 —— `data` 是
+    // `Record<string, unknown>`，内容来自库里的 JSON，任何手工改过的行都可能有
+    // 非字符串元素。逐个元素判类型而不是整体断言成 `string[]`：少了这一步，
+    // `answers: [42, '光合作用']` 会在 `normalizeFillText` 里抛 `raw.replace is not a function`，
+    // 而学生提交路径上的一次抛错就是 500。非字符串元素直接跳过（当作不匹配）。
+    const answers = Array.isArray(node.data.answers) ? node.data.answers : [];
     if (typeof v.text !== 'string') return false;
     const normalized = normalizeFillText(v.text);
-    return answers.some((answer) => normalizeFillText(answer) === normalized);
+    return answers.some((answer) => typeof answer === 'string' && normalizeFillText(answer) === normalized);
   }
   return null;
 }

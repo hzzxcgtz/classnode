@@ -6,13 +6,19 @@ import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components'
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { QuestionCard } from './question-card';
 import { WorksheetPreviewModal } from './preview-modal';
+// 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
+// `use-worksheet-editor.ts` 里有 `export * from './worksheet-editor-core'`，所以同一个
+// `QUESTION_TYPE_OPTIONS` 有**两条 import 路径**。那不是一个假想的风险：`question-card.tsx`
+// 与 `preview-modal.tsx` 已经改指内核了，而这一页还指着 hook —— 下一次给题型加一个字段时，
+// 只更新一处就会让两边的标签表分叉，且没有任何编译期信号。
+// ⚠️ 只把**内核里的**符号改成从内核取：`useWorksheetEditor` 是 hook（本身就在 hook 文件里），
+// `SaveStatus` 是 hook 的状态类型（内核里没有），这两个留在原处。
+import { useWorksheetEditor, type SaveStatus } from './use-worksheet-editor';
 import {
   QUESTION_TYPE_OPTIONS,
-  useWorksheetEditor,
   type QuestionType,
-  type SaveStatus,
   type WorksheetDraft,
-} from './use-worksheet-editor';
+} from './worksheet-editor-core';
 
 /**
  * 学习单编辑页（`/teacher/worksheets/edit/?id=xxx`）。

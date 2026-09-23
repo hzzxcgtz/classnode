@@ -41,8 +41,15 @@ interface GroupMaterialOption {
  * · **标准 / 分组模式的课堂级一格**（`allowUnspecified = false`）：那一格**不需要**
  *   做出决定（三件套任选其一即可），所以没有「不指定」这个选项 —— 不选就是没配。
  *   多给一个与「没选」等价的选项只会让教师以为两者不同。
+ *   ⚠️ 但「没有『不指定』」**不等于**「不能清空」：`allowUnspecified = false` 只是把列表里
+ *   那一项拿掉了，若不配 `clearOnReselect`，这个下拉就**没有任何清空路径** ——
+ *   选错一份只能刷新整个页面，而「先选了、又想改成不关联」这个**表单本身支持**的状态
+ *   （`worksheetIds: []`）在界面上不可达。所以课堂级那一格必须带 `clearOnReselect`。
+ *
+ * `clearOnReselect` 让「点已选中的那一项」变成取消选择 —— 与上面两张卡片
+ * （智能体、探究网页）的「再点一次取消」**同一套语义**，只是载体从卡片换成了列表项。
  */
-function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, open, onToggle, onPick, allowUnspecified = true }: {
+function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, open, onToggle, onPick, allowUnspecified = true, clearOnReselect = false }: {
   label: string;
   placeholder: string;
   value: string | null | undefined;
@@ -57,6 +64,16 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
    * 传 `null` 进去会渲染成占位文字，与服务端语义对不上。
    */
   allowUnspecified?: boolean;
+  /**
+   * 点**已选中**的那一项时是否取消选择（回调收到 `null`）。
+   *
+   * **默认 false** —— 高级模式那三格不要它：那里的「取消」由列表第一项「不指定」承担，
+   * 而且「不指定」是一个**与「还没选」不同的、有意义的状态**，让它同时承担「再点一次取消」
+   * 会让两种语义挤在同一个手势上。
+   *
+   * `allowUnspecified = false` 的格子（课堂级学习单）**需要**它，理由见上面的组件注释。
+   */
+  clearOnReselect?: boolean;
 }) {
   const selected = typeof value === 'string' ? options.find(option => option.id === value) : undefined;
   const selectedLogo = selected?.logo
@@ -146,7 +163,10 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
               ? (option.logo.startsWith('/') ? `${getApiBaseUrl()}${option.logo}` : option.logo)
               : null;
             return (
-              <button type="button" key={option.id} onClick={() => onPick(option.id)}
+              <button type="button" key={option.id}
+                // 单选的两半：点没选中的 ⇒ 选它；点已选中的 ⇒ 在 `clearOnReselect` 的格子里
+                // 取消（`null`），否则是空操作（幂等重选）。见这两个 prop 的注释。
+                onClick={() => onPick(clearOnReselect && value === option.id ? null : option.id)}
                 style={{
                   width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -392,8 +412,11 @@ export default function NewClassroomPage() {
         //    整个 `setTimeout` 块的门禁是「`errors` 非空」，而 `errors` 只可能是
         //    title / class / groupAgents / material 四者之一（本文件里只有那四处赋值）；
         //    前三个在上面已经 `return` 掉，只剩 groupAgents —— 它只在**高级模式**下产生，
-        //    而高级模式下 `webappSectionRef` / `worksheetSectionRef` 恒为 null（那两块用
-        //    `mode !== 'advanced'` 包着）。⇒ 两个条件互斥，这条永不执行。
+        //    而高级模式下 `webappSectionRef` 恒为 null（那一块用 `mode !== 'advanced'` 包着）。
+        //    ⇒ 两个条件互斥，这条永不执行。
+        //    ⚠️ 学习单那一块**没有**自己的 ref（本轮未加）：上面这句从前把它和网页那块的 ref
+        //    并列写成「恒为 null」，而 `worksheetSectionRef` 这个符号**从未存在过** ——
+        //    一个指向幽灵符号的注释会让下一个人去找一个找不到的东西。
         //    真要让「点发起课堂时把教师送到失败的那一块」生效，得把这一段挪出校验分支，
         //    那会改动既有行为（且创建成功就跳走了，留在原地也没意义）—— 属于另一个决定，
         //    本次不做。学习单那一块因此**不加**一条同样到不了的兄弟分支。
@@ -485,6 +508,22 @@ export default function NewClassroomPage() {
         : Boolean(selectedAgentId) || Boolean(selectedWebappId) || Boolean(selectedWorksheetId),
     },
   ];
+
+  /**
+   * 「学习单只拿到了一部分」的如实告知。
+   *
+   * 定义在这里、而不是直接写在课堂级那一块里，是因为**同一个被截断的 `worksheets`
+   * 也在高级模式下喂给每组的学习单下拉**（服务端 `pageSize` 上限 100，
+   * 拉取处写死了 `pageSize: 100`）。只把提示挂在课堂级那一块里，超过 100 份时
+   * 高级模式的教师看到的就是**被截断的列表且没有任何提示** —— 正是「把一小截当成全部」
+   * 那种假信号，而它恰好是本块最想避免的东西。两处都渲染这一份。
+   */
+  const worksheetTruncationHint = !worksheetLoadError && worksheetTotal > worksheets.length ? (
+    <div style={{ marginTop: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
+      共 {worksheetTotal} 份学习单，下拉里只列出了前 {worksheets.length} 份（按更新时间倒序）。
+      其余的到「学习单」页搜索确认。
+    </div>
+  ) : null;
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -800,6 +839,9 @@ export default function NewClassroomPage() {
                 另外两栏不受影响；也可以去「学习单」页确认后再发一次课堂。
               </div>
             )}
+            {/* 同课堂级那一块的截断告知 —— 每组的「学习单」下拉吃的是**同一份**被截断的列表，
+                高级模式不说不等于没发生。见变量定义处的注释。 */}
+            {worksheetTruncationHint}
             {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.groupAgents}
@@ -954,7 +996,11 @@ export default function NewClassroomPage() {
             平铺几十份会把这一块撑成一堵墙；下拉的列表自身 `maxHeight: 200` 滚动，
             与高级模式里那三格用的是**同一个** `GroupMaterialPicker`。
             `allowUnspecified={false}`：课堂级这一格**不需要**做出决定（三件套任选其一即可），
-            所以没有「不指定」这一项 —— 多给一个与「没选」等价的选项只会让教师以为两者不同。 */}
+            所以没有「不指定」这一项 —— 多给一个与「没选」等价的选项只会让教师以为两者不同。
+            ⚠️ 但必须同时给 `clearOnReselect`：`allowUnspecified={false}` 拿掉的是列表里那一项，
+            不是清空能力。少写它，这个下拉就成了**单向门** —— 选错一份只能刷新整个页面，
+            而「先选了、又想改成不关联」（`worksheetIds: []`）这个表单本身支持的状态在界面上
+            不可达。上面那两张卡片早就是「再点一次取消」，这一格是同一套语义的第三个载体。 */}
         {mode !== 'advanced' && (
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
@@ -989,11 +1035,15 @@ export default function NewClassroomPage() {
                 options={worksheets.map(w => ({ id: w.id, name: w.title }))}
                 emptyHint="还没有学习单，可以先在「学习单」里创建"
                 allowUnspecified={false}
+                // 再点一次已选中的那份 = 取消关联（`onPick(null)` ⇒ `''`）。见上面那段注释：
+                // 没有它，这一格没有任何清空路径。
+                clearOnReselect
                 open={openDropdownKey === CLASSROOM_WORKSHEET_KEY}
                 onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_WORKSHEET_KEY ? null : CLASSROOM_WORKSHEET_KEY)}
                 onPick={(id) => {
-                  // `allowUnspecified={false}` ⇒ 列表里没有「不指定」，`id` 只会是 string。
-                  // 仍然写 `?? ''` 是为了让类型收窄成 `string`，语义上「没选」就是 `''`。
+                  // `allowUnspecified={false}` ⇒ 列表里没有「不指定」，`id` 要么是 string（选了），
+                  // 要么是 `null`（`clearOnReselect` 取消）。写 `?? ''` 把两者收窄成 `string`，
+                  // 语义上「没选」就是 `''`。
                   setSelectedWorksheetId(id ?? '');
                   clearError('material');
                   setOpenDropdownKey(null);
@@ -1002,13 +1052,9 @@ export default function NewClassroomPage() {
             </div>
           )}
           {/* 拿不全时如实说。`pageSize: 100` 是服务端上限 ⇒ 超过 100 份时下拉里只有前 100 份，
-              不写这一句，「这里就是全部」这个假信号会让教师找不到自己刚建的那一份。 */}
-          {!worksheetLoadError && worksheetTotal > worksheets.length && (
-            <div style={{ marginTop: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
-              共 {worksheetTotal} 份学习单，下拉里只列出了前 {worksheets.length} 份（按更新时间倒序）。
-              其余的到「学习单」页搜索确认。
-            </div>
-          )}
+              不写这一句，「这里就是全部」这个假信号会让教师找不到自己刚建的那一份。
+              ⚠️ 这一份提示**同时**渲染在高级模式那一块里（同一个变量），原因见它的定义。 */}
+          {worksheetTruncationHint}
         </div>
         )}
 

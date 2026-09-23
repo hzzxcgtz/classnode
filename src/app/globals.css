@@ -2630,19 +2630,20 @@ tr:hover td {
     white-space: nowrap;
   }
 
-  .new-classroom-group-row {
-    flex-wrap: wrap;
-  }
+  /* （`.new-classroom-group-row { flex-wrap: wrap }` 与 `.new-classroom-group-material
+     { width: 100% !important }` 两条规则**已删**：它们是「组名与下拉挤在同一条 flex 行」
+     那套布局的遗留，对现在的两行布局完全失效，留着会让下一个人以为这里还有排版逻辑。
+     · `flex-wrap` 那条：那一行现在是 `flex-direction: column`，而它的高度是自适应的
+       —— 纵向容器的 flex-wrap 要有确定高度约束才会触发，这里永远没有。
+     · `width: 100% !important` 那条：三个下拉在 column 容器里靠默认的 `align-items: stretch`
+       就已经占满整行宽度，它只是把同一件事又说了一遍。
+     窄屏的排布现在由网格自身的 `repeat(auto-fit, minmax(min(150px, 100%), 1fr))` 负责：
+     容器不够宽时自动降为两列、再降为一列，不需要这里再插手。
+     ⚠️ 顺带纠正一句旧的注释：它写的是「每组那**两个**下拉（智能体 / 探究网页）」，
+     而高级模式每组现在是**三件套三个**（智能体 / 探究网页 / 学习单）。） */
 
   /* （`.new-classroom-group-agent` 那条规则已随「每组一个下拉」被删掉 —— 它包装的元素
-     现在由 `.new-classroom-group-material` 取代：两个下拉而不是一个。） */
-
-  /* 高级模式每组那两个下拉（智能体 / 探究网页）。窄屏时整行已经 wrap，这里再把
-     下拉容器拉满一行 —— 否则它会按 `flex: 1 1 320px` 缩到组名旁边，两个下拉挤成
-     一条几像素宽的东西（容器内的 `flex-wrap` 会让它们纵向堆叠，但仍占不满宽度）。 */
-  .new-classroom-group-material {
-    width: 100% !important;
-  }
+     现在由 `.new-classroom-group-material` 取代：三件套三个下拉而不是一个。） */
 
   .classroom-management-toolbar,
   .classroom-management-toolbar-actions {

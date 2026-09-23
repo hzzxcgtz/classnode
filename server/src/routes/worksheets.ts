@@ -760,12 +760,51 @@ function broadcastAnswerUpdate(
 }
 
 /**
- * 取（或建）这个参与者在**这份学习单**上的作答会话。
+ * 取（或建）这个参与者在**这份学习单**上的作答会话。**整卷状态的回退就发生在下面这一行。**
+ *
+ * ── `WorksheetResponse.status` / `.submittedAt` 的口径 ─────────────────
+ * ★ **唯一权威**。改这两列（包括在别处加第三条写入路径）之前先读这一段。
+ *
+ * 规格 §5.3 只规定了正向（全部题都提交 ⇒ `submittedAt = now`），**回退是本实现自定的**。
+ * 之所以要把它写死在这里：D 的看板一旦开始读这两列，它就成为一份**没有任何测试能替你
+ * 判断对错**的输入 —— 与其让 D 自己猜，不如把口径一次说清。
+ *
+ *   · 置 `submitted` + `submittedAt = now`：**只**发生在 `POST /:id/answers/submit` 里、
+ *     当前 `content` 中的**每一道题**都已 `status='submitted'` 时
+ *     （那一段的判定是 `total > 0 && submittedCount >= total`）。
+ *   · 回退 `in-progress` + `submittedAt = null`：就是下面这条 `update` —— **任何**一次
+ *     保存或提交都无条件先回退；提交路径紧接着若判定交齐，会立刻再置回 `submitted`，
+ *     并写上**这一次**的时间戳。
+ *
+ * ⇒ 在「学生只做保存 / 提交」的世界里，这两列**恒为下列二者之一**：
+ *   `submitted` + 最后一次交齐的时刻，或 `in-progress` + `null`。不存在中间态。
+ *
+ * ⚠️ 别被 `schema.prisma` 那句 `// not-started | in-progress | submitted` 误导：
+ * `not-started` **只是 DDL 的 DEFAULT**（`services/worksheet-schema.ts` 里的建表语句），
+ * **没有任何代码路径会写它** —— 本文件是全项目唯一建/改 `WorksheetResponse` 的地方，
+ * 而这里 `create` 一律写 `in-progress`。所以「没有这一行」= 学生没开始，
+ * 「有这一行且 `in-progress`」= 开始了。两者不是同一件事，别用 `not-started` 去表示前者。
+ *
+ * 🔴 **未定义的情形 —— 如实记下，没有替它编规则。** 下面三种今天**没有任何代码路径处理**，
+ * 也没有测试覆盖；看板遇到其中任何一种都**不能**假定这两列仍然成立，要自己现算：
+ *   ① 已交卷后教师**加题**：整卷仍是 `submitted` + **旧的** `submittedAt`，而它此刻并不
+ *      覆盖新加的那道题（教师端 `PUT /:id` 只写 `Worksheet.content`，一行
+ *      `WorksheetResponse` 都不碰）。
+ *   ② 未交卷时教师**删题**：把没交的那道删掉之后，剩下的题其实已经全部提交，但**没有**
+ *      任何路径会在改单之后重算整卷状态 ⇒ 它会一直停在 `in-progress`。
+ *   ③（① 与 ② 的合意）所以 `status === 'submitted'` 的准确含义是
+ *      「**最后一次由学生触发的重算**那一刻，`content` 里的题全交了」，
+ *      **不是**「此刻 `content` 里的题全交了」。要后者请现算（拿 `content` 的题数与
+ *      `WorksheetAnswer` 比），别信这两列。
  *
  * ⚠️ `create` 里写 `startedAt`、`update` 里**不写**，合起来就是规格要的 `startedAt ??= now`：
  * 它是「什么时候开始做的」，之后每次保存都刷一遍等于没有这个字段。
  * ⚠️ `status: 'in-progress'` 则**无条件**写：一次保存意味着这份卷子此刻正在被作答 ——
  * 整卷交过之后学生又改了一题（`allowResubmit`），它必须回到 `in-progress`。
+ * ⚠️ `submittedAt: null` 与 `status` **同进同退**，不能只写一个：只拨 `status` 会持久化一行
+ * `in-progress` + **上一次的交卷时间戳** —— 一对互相矛盾的字段。题级那条路径
+ * （`PUT /:id/answers` 的 `update`）早就做了对偶处理（同一行的 `submittedAt: null`），
+ * 整卷级漏掉它纯属不对称：规格没规定回退，但两处要么同对偶、要么同错。
  * 用 `upsert` 而不是「先查再建」：前者在 SQLite 上是单条 `INSERT … ON CONFLICT`，
  * 学生端两题接连保存时不会撞 `@@unique([classroomId, worksheetId, participantId])`。
  */
@@ -778,7 +817,7 @@ function ensureResponse(ctx: StudentWorksheetContext, now: Date) {
   return ctx.prisma.worksheetResponse.upsert({
     where: { classroomId_worksheetId_participantId: key },
     create: { ...key, status: 'in-progress', startedAt: now },
-    update: { status: 'in-progress' },
+    update: { status: 'in-progress', submittedAt: null },
   });
 }
 
@@ -935,6 +974,8 @@ router.post('/:id/answers/submit', async (req, res) => {
     const total = inContent.size;
     const submittedCount = submitted.filter(row => inContent.has(row.questionId)).length;
     if (total > 0 && submittedCount >= total) {
+      // ⚠️ 这是**全项目唯一**把整卷置为 `submitted` 的地方（回退在 `ensureResponse`）。
+      // 这两列的口径与三种**未定义**情形写在 `ensureResponse` 的注释里，改这里之前先读那一段。
       await ctx.prisma.worksheetResponse.update({
         where: { id: response.id },
         data: { status: 'submitted', submittedAt: now },

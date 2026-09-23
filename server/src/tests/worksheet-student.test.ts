@@ -588,7 +588,17 @@ test('状态：allowResubmit 为真时改已提交的题，本题回 draft、整
   assert.equal(q1.status, 'draft', 'allowResubmit 为真 ⇒ 改了就回到 draft');
   assert.equal(q1.submittedAt, null, 'draft 的题不该留着定稿时间戳');
   assert.equal(q1.isCorrect, null, 'draft 的题不该留着上一次的判分（看板会显示成「刚判过」）');
-  assert.equal((await db.prisma.worksheetResponse.findFirstOrThrow()).status, 'in-progress');
+  // 整卷也回退。⚠️ 读的是**库里的那一行**（不是处理器的返回值）：`PUT /:id/answers`
+  // 只回 `{ success, questionId, status }`，整卷那两列根本不在响应里 ——
+  // 拿返回值断言等于什么都没断。
+  //
+  // 🔴 `submittedAt` 必须**一起**清掉：只拨 `status` 会持久化一行
+  // `in-progress` + 上一次的交卷时间戳。今天没有代码读这两列，所以它不会立刻炸；
+  // 但 §7.4 的看板一旦开始信这一行，拿到的就是一个**错的交卷时间**。
+  // （规格 §5.3 只规定了正向，回退是实现自定的语义 —— 口径写在 `ensureResponse` 的注释里。）
+  const rolledBack = await db.prisma.worksheetResponse.findFirstOrThrow();
+  assert.equal(rolledBack.status, 'in-progress');
+  assert.equal(rolledBack.submittedAt, null, '整卷回退必须同时清掉上一次的交卷时间戳，否则两列自相矛盾');
 
   // 再提交一次 ⇒ 重新判分（§8.4：「再次提交时重新判分并更新 submittedAt」）
   const resubmit = await (await submit('q_1')).json() as { isCorrect: boolean | null };

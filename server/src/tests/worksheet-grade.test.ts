@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenQuestions, grade, normalizeFillText, stripAnswers, type QuestionNode, type WorksheetContent } from '../services/worksheet-questions.js';
+import {
+  ANSWER_KEYS,
+  QUESTION_TYPES,
+  flattenQuestions,
+  grade,
+  normalizeFillText,
+  stripAnswers,
+  type QuestionNode,
+  type QuestionType,
+  type WorksheetContent,
+} from '../services/worksheet-questions.js';
 
 const choice: QuestionNode = { id: 'q1', type: 'single-choice', prompt: '…', inputMode: 'keyboard',
   data: { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'] }, children: [] };
@@ -119,4 +129,85 @@ test('🔴 stripAnswers 剥掉答案，且不改原对象', () => {
   assert.equal(JSON.stringify(content).includes('correctKeys'), true, '原对象不得被改动');
   assert.equal(stripped.nodes.length, 3, '题数与题序不变');
   assert.equal(stripped.nodes[0].prompt, choice.prompt, '题干保留');
+});
+
+// ---------------------------------------------------------------------------
+// ⑥ 答案键的**泄漏门**（规格 §5.4 第一条）
+// ---------------------------------------------------------------------------
+
+/**
+ * 每个题型 `data` 里的键，以及它是「答案」还是「给学生看的」。
+ *
+ * 🔴 这个 Record **同时是编译期门**：`QuestionType` 多一个成员而这里没补样本时，
+ * `tsc` 直接报错（`pnpm test` 先编译再跑，所以题型加漏了连测试都跑不起来）。
+ */
+interface AnswerKeyAudit {
+  /** 该题型 `data` 里**会出现**的全部键（每条都必须被下面两个数组恰好覆盖一次）。 */
+  data: Record<string, unknown>;
+  /** 属于答案的键：必须 ∈ `ANSWER_KEYS`，剥离时必须消失。 */
+  answerKeys: string[];
+  /** 属于学生的键：必须 ∉ `ANSWER_KEYS`，剥离后必须原样留下。 */
+  safeKeys: string[];
+}
+
+const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerKeyAudit> = {
+  'single-choice': {
+    data: { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'], explanation: '光合作用需要光' },
+    answerKeys: ['correctKeys', 'explanation'],
+    safeKeys: ['options'],
+  },
+  'fill-blank': {
+    data: { answers: ['光合作用'], explanation: '见课本 P42' },
+    answerKeys: ['answers', 'explanation'],
+    safeKeys: [],
+  },
+  'short-answer': {
+    data: { explanation: '参考答案要点：光照、CO₂、水' },
+    answerKeys: ['explanation'],
+    safeKeys: [],
+  },
+};
+
+/**
+ * 🔴 **每个题型的答案键都必须 ∈ `ANSWER_KEYS`**。
+ *
+ * 为什么需要这条：`ANSWER_KEYS` 是一张**黑名单**，而 `normalizeNode` 把 `data`
+ * **原样透传** —— 没被列进去的键会不声不响地跟着 `student-view` 发给学生。
+ * 今天三种题型的答案键恰好都被覆盖到了，但这是一次**巧合**：规格 §5.4 自己的措辞
+ * 是单数的 `answer`，而代码里是复数的 `answers`。M4 加一种答案键叫 `answer` 的题型，
+ * 泄漏会**静默**发生，且没有任何编译期检查、没有任何既有测试会红。
+ *
+ * ⚠️ 这条门只能保证「**已声明**的答案键都在表里」——它挡不住「加了答案键却**不声明**」。
+ * 真正的根治是改成 allowlist 投影（按题型列出安全键），那需要另一个决定，不在本批。
+ * 所以它是**回归门**，不是证明。
+ */
+test('🔴 每个题型的答案键都必须 ∈ ANSWER_KEYS（黑名单漏一个 = 静默泄漏给学生）', () => {
+  for (const type of QUESTION_TYPES) {
+    const audit = ANSWER_KEY_AUDIT[type];
+    assert.ok(audit, `题型「${type}」没有登记答案键样本 —— 新增题型时必须在 ANSWER_KEY_AUDIT 里补一条`);
+
+    const allKeys = Object.keys(audit.data).sort();
+    const declared = [...audit.answerKeys, ...audit.safeKeys].sort();
+    assert.deepEqual(declared, allKeys,
+      `题型「${type}」的样本里每个键都要被声明成「答案」或「给学生」之一（多一个或少一个都说明样本与代码脱节了）`);
+
+    for (const key of audit.answerKeys) {
+      assert.ok((ANSWER_KEYS as readonly string[]).includes(key),
+        `题型「${type}」的答案键「${key}」不在 ANSWER_KEYS 里 ⇒ student-view 会把它原样下发给学生（规格 §5.4）`);
+    }
+    for (const key of audit.safeKeys) {
+      assert.ok(!(ANSWER_KEYS as readonly string[]).includes(key),
+        `题型「${type}」把「${key}」声明成给学生看的，但它却在 ANSWER_KEYS 里 ⇒ 会被一起剥掉，学生拿到残缺的题`);
+    }
+
+    // 行为对照：把样本做成一道真题跑一遍**真实的剥离链路**（只比键名的话，一个
+    // 「stripAnswers 什么都不删」的实现也能让上面全绿）。
+    const node: QuestionNode = {
+      id: `q_${type}`, type, prompt: '题干', inputMode: 'keyboard',
+      data: { ...audit.data }, children: [],
+    };
+    const stripped = stripAnswers({ schemaVersion: 1, nodes: [node] });
+    assert.deepEqual(Object.keys(stripped.nodes[0].data).sort(), [...audit.safeKeys].sort(),
+      `题型「${type}」剥离后剩下的键必须正好是 safeKeys —— 多了是漏剥（泄漏），少了是多剥（学生拿到残缺的题）`);
+  }
 });

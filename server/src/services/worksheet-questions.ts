@@ -1,6 +1,15 @@
 /** 学习单的题型注册表。**纯函数，全部在服务端** —— 本项目不引入前端测试框架（规格 §11）。 */
 
-export type QuestionType = 'single-choice' | 'fill-blank' | 'short-answer';
+/**
+ * 题型注册表。**导出的是运行时列表**，`QuestionType` 由它派生 —— 这样「有哪些题型」
+ * 只有一处定义，测试可以**遍历**它（而不是在测试里把类型名抄一遍）。
+ *
+ * ⚠️ 它**不是**校验用的那张表：`routes/worksheets.ts` 的 `normalizeNode` 另有一份
+ * `QUESTION_TYPES`。两份不一致的后果是「新增题型被 400 拒绝」（响亮失败），
+ * 不是静默放行，所以第一批没有合并它们。
+ */
+export const QUESTION_TYPES = ['single-choice', 'fill-blank', 'short-answer'] as const;
+export type QuestionType = (typeof QUESTION_TYPES)[number];
 
 export interface QuestionNode {
   id: string;
@@ -35,8 +44,16 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
   return out;
 }
 
-/** 答案字段的键名。**唯一来源** —— stripAnswers 与各题型共用，防止漏剥一个。 */
-const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation'] as const;
+/**
+ * 答案字段的键名。**唯一来源** —— stripAnswers 与各题型共用，防止漏剥一个。
+ *
+ * 🔴 这是一张**黑名单**：`normalizeNode` 把 `data` 原样透传，所以没被列在这里的键
+ * 会**原样下发到 `student-view`**（即泄漏给学生）。规格 §5.4 自己的措辞是单数的
+ * `answer`，而这里的键是复数的 `answers` —— 一个字的差别就是一次静默泄漏，
+ * 且没有任何编译期检查会红。防线是 `worksheet-grade.test.ts` 里的
+ * 「每个题型的答案键都必须 ∈ ANSWER_KEYS」那条用例：**加题型时先看它**。
+ */
+export const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation'] as const;
 
 /**
  * 剥离答案 —— 学生端 `student-view` 的唯一过滤点（规格 §5.4）。

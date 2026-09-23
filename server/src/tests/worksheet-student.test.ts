@@ -158,6 +158,21 @@ const SAMPLE_SETTINGS = { allowResubmit: true, autoGrade: true, defaultInputMode
 /** 答案字段的**三个**键名 —— 与 `worksheet-questions.ts` 的 `ANSWER_KEYS` 同源。 */
 const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation'] as const;
 
+/**
+ * 递归收集一棵 JSON 里出现过的**所有键名**（不是字符串包含 —— 键名判据必须精确）。
+ * 照 `worksheet-board.test.ts` 的那一个：判据一（键名级）在本文件里比字符串包含更硬。
+ */
+function collectKeys(value: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) { value.forEach(item => collectKeys(item, out)); return out; }
+  if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      out.add(key);
+      collectKeys(child, out);
+    }
+  }
+  return out;
+}
+
 async function seedWorksheet(
   prisma: PrismaClient,
   title = '光合作用学习单',
@@ -764,7 +779,7 @@ test('allowResubmit 为假 ⇒ 改已提交的题 409 且库里那行不动；�
  * **必须自己**处理「没有学生会话」。少了这一步，教师误点学生端 URL 会拿到 500
  * （`student.studentId` 打在 null 上），而日志里只有一句 TypeError。
  */
-test('鉴权：教师 cookie 打学生端三个端点 ⇒ 401（不是 500）', async (t) => {
+test('鉴权：教师 cookie 打学生端四个端点 ⇒ 401（不是 500）', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
@@ -775,6 +790,10 @@ test('鉴权：教师 cookie 打学生端三个端点 ⇒ 401（不是 500）', 
 
   const res = await Promise.all([
     server.get(`/api/worksheets/${worksheet.id}/student-view`),
+    // ⚠️ 第四条是本任务（水合修复）新增的：**没有学生会话时它必须是 401，不是 500** ——
+    // 闸门认的是「有没有学生 token」，而教师 cookie 也能过闸门 ⇒ 处理器自己那一层
+    // `requireOwnWorksheet` 是唯一的防线。漏了它，教师误点这个 URL 会得到一句 TypeError。
+    server.get(`/api/worksheets/${worksheet.id}/answers`),
     server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['B']) }),
     server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }),
   ]);
@@ -812,4 +831,183 @@ test('边界：本组的学习单目标已被删（悬空 targetId）⇒ 404，�
   // 所以这里必须把「路由自己回的那句」与兜底那句区分开。
   assert.notEqual(body.error, 'not found', '404 必须是处理器自己回的，不是 express 的兜底');
   assert.match(String(body.error), /不存在/, '要能诊断「这一份没了」，而不是一句泛泛的错误');
+});
+
+// ---------------------------------------------------------------------------
+// ⑦ 学生已有的作答回读（`GET /:id/answers`）—— 「刷新后做好的题没了」的修复
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 **「学生做了一半刷新页面后，做好的题没了」** —— 这一条钉的就是它。
+ *
+ * 成因不是数据丢了，而是**服务端从来不下发**：`WorksheetAnswer` 的行一直在库里，
+ * 而 `student-view` 只回 `{ id, title, description, content, settings }`；学生端的
+ * `localStorage` 队列又**只留还没保存成功的条目**（PUT 一 200 就出队）⇒ 保存成功的题
+ * 在客户端没有任何留底，刷新即空白。
+ *
+ * 所以本用例刻意分**两段**，它们回答的是两个不同的问题：
+ *   · ①「**数据丢没丢**」—— 直接查库，那三行必须原样还在（这是分水岭：库里有 = 没丢）；
+ *   · ②「**刷新后学生还能不能看到**」—— 换成刷新后重建的**新 token**，重新 GET，
+ *     那三题必须带着 `value` / `status` / `submittedAt` / `isCorrect` 一起回来。
+ *
+ * ⚠️ 只断言 ① 是一条**假绿**：库里有而学生看不到，正是这次要修的那个 bug。
+ * 只断言 ② 也不够：一个「回读时现编一份」的实现也能让它绿，而学生的作答其实早没了。
+ *
+ * ★ **反证**：把新端点摘掉（或把 `worksheetAccessGate` 的学生放行集回退成三条），
+ * ② 立刻变红（403 / 404）—— 这条用例测的正是「有没有把已有的作答发回去」。
+ */
+test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value/status/submittedAt/isCorrect）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma);
+  const { classroom, participant } = await seedClassroom(db.prisma, '9016');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const save = (questionId: string, value: unknown) =>
+    server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId, value }, bearer(token));
+  const submit = (questionId: string) =>
+    server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token));
+
+  // ── 学生做完整卷：q_1 答**错**、q_2 答**错**、q_3 问答（不判分）──────────────
+  // ⚠️ 两道客观题刻意都答错，且答的是一个**正确里没有的字符串**（`CO2` / `A`）——
+  // 下面靠它做「下发的是学生自己写的那个值、不是正确答案」的阳性对照。
+  await save('q_1', CHOICE(['A']));
+  await submit('q_1');
+  await save('q_2', FILL('CO2'));
+  await submit('q_2');
+  await save('q_3', { format: 'text/v1', text: '叶子冒泡' });
+  await submit('q_3');
+
+  // ── ① 数据丢没丢：直接查库（分水岭）────────────────────────────────────
+  const stored = await db.prisma.worksheetAnswer.findMany({ orderBy: { questionId: 'asc' } });
+  assert.equal(stored.length, 3, '三道题的作答必须都在库里 —— 这是「数据没丢」的直接证据');
+  assert.equal((await db.prisma.worksheetResponse.findFirstOrThrow()).status, 'submitted');
+
+  // ── 「刷新页面」：会话重建（新 token），重新读一次 ─────────────────────────
+  const refreshed = createStudentToken(classroom.id, participant.id);
+  const res = await server.get(`/api/worksheets/${worksheet.id}/answers`, bearer(refreshed));
+  const raw = await res.text();
+  assert.equal(res.status, 200, raw);
+  const body = JSON.parse(raw) as {
+    rows: Array<{
+      questionId: string; value: unknown; status: string;
+      submittedAt: string | null; isCorrect: boolean | null;
+    }>;
+  };
+
+  // ── ② 刷新后学生还能不能看到 ──────────────────────────────────────────
+  // ⚠️ 信封那个键是 `rows`（「作答行」），**不是** `answers` —— 后者是 `ANSWER_KEYS`
+  // 里**正确答案**那个字段的名字，见 `routes/worksheets.ts` 那段注释。逐字钉住它，
+  // 免得将来有人「顺手改个更自然的名字」而把下面那条键名扫描变成一处误报。
+  assert.deepEqual(Object.keys(body), ['rows'], `信封只能是 rows：${raw}`);
+  const byId = new Map(body.rows.map(row => [row.questionId, row]));
+  assert.equal(body.rows.length, 3, `三道题的作答一道都不能少：${raw}`);
+  assert.deepEqual(
+    [...byId.keys()].sort(),
+    ['q_1', 'q_2', 'q_3'],
+    'key 是 questionId —— 前端靠它把作答贴回对应的题（规格 §3-P：题 id 稳定）',
+  );
+
+  const q1 = byId.get('q_1')!;
+  assert.deepEqual(q1.value, CHOICE(['A']), '回读的必须是**学生自己写的那个值**');
+  assert.equal(q1.status, 'submitted');
+  assert.ok(q1.submittedAt, 'submittedAt 要带上（「什么时候交的」是看板与回顾的输入）');
+  assert.equal(q1.isCorrect, false, '答错了就如实回 false —— 奖励要靠它才能在刷新后重新画出来');
+
+  const q2 = byId.get('q_2')!;
+  assert.deepEqual(q2.value, FILL('CO2'));
+  assert.equal(q2.status, 'submitted');
+  assert.ok(q2.submittedAt);
+  assert.equal(q2.isCorrect, false);
+
+  const q3 = byId.get('q_3')!;
+  assert.deepEqual(q3.value, { format: 'text/v1', text: '叶子冒泡' });
+  assert.equal(q3.status, 'submitted');
+  assert.equal(q3.isCorrect, null, '主观题不判分 ⇒ null（**不是** false）');
+
+  // ── ③ 🔴 安全：这条新路径不得把正确答案捎出来（规格 §5.4）───────────────
+  // 判据一（键名级、递归）：`ANSWER_KEYS` 一个都不许作为**键**出现。
+  const keys = collectKeys(JSON.parse(raw));
+  for (const key of ANSWER_KEYS) {
+    assert.ok(!keys.has(key), `回读响应里出现了答案键「${key}」（规格 §5.4 红线）：${raw}`);
+  }
+  // 判据二（原文级）：correctKeys / explanation 在整串里连字面量都不该有。
+  for (const literal of ['correctKeys', 'explanation']) {
+    assert.ok(!raw.includes(literal), `回读响应原文里不该出现「${literal}」：${raw}`);
+  }
+  // 判据三（**阳性对照**，两条缺一不可）：
+  //   · 学生写的那个错答案**在** —— 否则「搜不到正确答案」可能只是因为响应是空的；
+  //   · 正确答案（`H2O` / 单选的正确项 `B`）**不在** —— 这才是这条真正要证明的事。
+  assert.ok(raw.includes('CO2'), '学生自己写的作答必须在响应里（否则上面「搜不到」是空的）');
+  assert.ok(!raw.includes('H2O'), `正确答案不得随作答回读一起下发：${raw}`);
+  // ⚠️ 单选的正确项是一个字母（`B`），拿子串搜它会与 uuid / 时间戳里的同名字母混淆，
+  // 所以那一半用**值相等**来断，而不是 `includes`：q_1 的 value 里只能有 `A`。
+  assert.deepEqual(q1.value, CHOICE(['A']), '单选题回读的是学生选的那一项，不是正确项');
+
+  // 阳性对照（夹具侧）：同一份学习单走**教师端**读时答案是**在**的 ——
+  // 少了它，上面那三条「搜不到」可能只是因为夹具里根本没有答案。
+  const teacherRaw = await (await server.get(`/api/worksheets/${worksheet.id}`)).text();
+  assert.ok(teacherRaw.includes('H2O') && teacherRaw.includes('correctKeys'), '夹具里必须有答案，否则红线断言无效');
+});
+
+/**
+ * 边界与越权（三条，都是「新端点必须和另外三条学生形状同款」）：
+ *   · 还没作答 ⇒ `{ rows: [] }`，**不是** 404/500（没开始是合法状态）；
+ *   · 高级模式下**别人组**那一份 ⇒ 403（与 `student-view` 同一条判据，
+ *     `requireOwnWorksheet` 是三条学生路径共用的前置校验）；
+ *   · 教师 cookie ⇒ 401（闸门放行 ≠ 有学生会话；少了这一步会 500）。
+ */
+test('回读：没作答是空数组；别人组那份 403；教师 cookie 401', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  // ① 空
+  const worksheet = await seedWorksheet(db.prisma);
+  const { classroom, participant } = await seedClassroom(db.prisma, '9017');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const empty = await server.get(`/api/worksheets/${worksheet.id}/answers`, bearer(token));
+  const emptyRaw = await empty.text();
+  assert.equal(empty.status, 200, emptyRaw);
+  assert.deepEqual(JSON.parse(emptyRaw), { rows: [] }, '没开始作答 = 空数组，不是 404、也不是 500');
+  // ⚠️ 空响应对**没有作答会话**的学生同样成立：读路径不得顺手建一行
+  // `WorksheetResponse`（那会让教师看板把一个什么都没做的学生显示成「已开始作答」）。
+  assert.equal(await db.prisma.worksheetResponse.count(), 0, '读作答不得留下作答会话');
+
+  // ② 越权：高级模式下 A 组的学生读 B 组那一份的作答 ⇒ 403
+  const { classroom: advClass, worksheetA, worksheetB, participantA } = await seedAdvancedClassroom(db.prisma, '9018');
+  const tokenA = createStudentToken(advClass.id, participantA.id);
+  const stolen = await server.get(`/api/worksheets/${worksheetB.id}/answers`, bearer(tokenA));
+  assert.equal(stolen.status, 403, `不得读别人组那份的作答：${await stolen.text()}`);
+  // 阳性对照：同一 token 读**自己组**那份必须 200
+  const own = await server.get(`/api/worksheets/${worksheetA.id}/answers`, bearer(tokenA));
+  assert.equal(own.status, 200, JSON.stringify(await own.json()));
+
+  // ③ 教师 cookie（闸门放行，但没有学生会话）⇒ 401，不是 500
+  const asTeacher = await server.get(`/api/worksheets/${worksheet.id}/answers`);
+  assert.equal(asTeacher.status, 401, await asTeacher.text());
+
+  // ④ **「清空」的往返**：学生做过一题、又把它删干净（客户端为此**不发 `value` 键**，
+  //    见 `use-worksheet-answers.ts` 的 `putAnswer`）⇒ 库里那一行还在、`value` 是 SQL NULL。
+  //    回读时它必须解析成 `null`，前端才认得出「这一题是空的」而不是「这一题有值但读不出来」。
+  //    ⚠️ 这一条钉的是**列的类型**：`value` 是 `Json?`，Prisma 读 SQL NULL 回来的是 `null`
+  //    而不是 `undefined`（后者会被 `JSON.stringify` 整个丢掉，字段直接消失 ——
+  //    前端拿到的就是「没有这个键」，两种都还能跑，但形状必须是有人决定过的）。
+  const { classroom: clearClass, participant: clearStudent } = await seedClassroom(db.prisma, '9019');
+  const clearWs = await seedWorksheet(db.prisma, '会被清空的学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: clearClass.id, worksheetId: clearWs.id } });
+  const clearToken = createStudentToken(clearClass.id, clearStudent.id);
+  await server.put(`/api/worksheets/${clearWs.id}/answers`, { questionId: 'q_2', value: FILL('H2O') }, bearer(clearToken));
+  const cleared = await server.put(`/api/worksheets/${clearWs.id}/answers`, { questionId: 'q_2' }, bearer(clearToken));
+  assert.equal(cleared.status, 200, JSON.stringify(await cleared.json()));
+  const clearedBody = await (await server.get(`/api/worksheets/${clearWs.id}/answers`, bearer(clearToken))).json() as {
+    rows: Array<{ questionId: string; value: unknown; status: string }>;
+  };
+  assert.equal(clearedBody.rows.length, 1, '清空**不删行** —— 那一行还在，只是值是空的');
+  assert.equal(clearedBody.rows[0].questionId, 'q_2');
+  assert.equal(clearedBody.rows[0].value, null, '清空过的行回读时 `value` 必须是 null');
+  assert.equal(clearedBody.rows[0].status, 'draft', '清空之后回到 draft');
 });

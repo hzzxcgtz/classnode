@@ -1,4 +1,12 @@
-import type { WorksheetAnswerValue } from '@/lib/worksheet-questions';
+// ⚠️ **相对路径 + `.ts` 后缀**（不是联名路径 `@/…`）：本文件要被 `node --test` 直接跑，
+// 而 Node 的类型擦除不认 tsconfig 的 `paths`。`worksheet-editor-core.ts` 里那份纯逻辑核
+// 引同一个模块时用的是同一条写法 —— `allowImportingTsExtensions` 已开。
+import {
+  draftFromValue,
+  emptyDraft,
+  type AnswerDraft,
+  type WorksheetAnswerValue,
+} from '../../../lib/worksheet-questions.ts';
 
 /**
  * 作答的**本地队列** —— 学习单模块「最不能出错」的一块（规格 §8.3）。
@@ -186,4 +194,110 @@ export function permanentFailureMessage(status: number, serverMessage?: string |
  */
 export function sessionExpiredMessage(): string {
   return '登录状态过期了，刷新一下页面就好 —— 你答过的题都还在，刷新后会自动重发';
+}
+
+// ── 服务端回读的水合（「学生做了一半刷新页面后，做好的题没了」）──────────────
+
+/**
+ * 服务端回读的一行 —— `GET /api/worksheets/:id/answers` 的 `rows` 元素。
+ *
+ * ⚠️ 信封那个键是 `rows`（「作答行」），不是 `answers`：后者是**正确答案**那个字段的
+ * 名字（`ANSWER_KEYS`），两个端点都被「响应里不许出现 `ANSWER_KEYS` 里的键」扫着。
+ */
+export interface SavedAnswerRow {
+  questionId: string;
+  /** 学生自己写的值。`null` = 这一题的作答**被清空了**（库里那一行还在）。 */
+  value: WorksheetAnswerValue | null;
+  /** 服务端那一行的状态。不认识的字符串按 `draft` 处置（见 `hydrateAnswers`）。 */
+  status: string;
+  /** `boolean` = 判了对错；`null` = **没判分**（主观题 / 关掉自动判分）。 */
+  isCorrect: boolean | null;
+}
+
+/**
+ * 线缆上的 `isCorrect` → 界面用的**得分**。全项目**唯一**一处做这个转换的地方。
+ *
+ * 🔴 判据必须是 `=== true` / `=== false` 两条正面命中，其余一律 `null`：
+ * 服务端的 `isCorrect` 是 `boolean | null`（`grade()` 对主观题回 `null`、关掉自动判分
+ * 也回 `null`），而 `.json()` 失败时这里是 `undefined`。把 `undefined` 当成 `0`
+ * 会让一次读不出来的响应变成「答错了」——静默地把学生判错。
+ *
+ * 🔴 今天只可能是 `0` 或 `1`（第一批没建 `score` 字段，规格 §3-S），而接口按**得分**
+ * 写：M4 引入部分得分（`0.5`）时，改的只有这一个转换点。
+ *
+ * ⚠️ 它住在**本文件**（纯逻辑、被 `node --test` 跑）而不是 `use-worksheet-answers.ts`：
+ * 水合（`hydrateAnswers`）与服务端响应（`submit`）两处都要用它，而「`null` 不是 `0`」
+ * 这条判据必须有一条能跑到的用例钉住 —— 那个文件引 React，跑不了。
+ */
+export function scoreFromWire(isCorrect: unknown): number | null {
+  if (isCorrect === true) return 1;
+  if (isCorrect === false) return 0;
+  return null;
+}
+
+/** `hydrateAnswers` 的产物：四张按 `questionId` 索引的表，直接灌进 `useState` / ref。 */
+export interface HydratedAnswerState {
+  /** 界面上的输入态。 */
+  drafts: Record<string, AnswerDraft>;
+  /** 每一题在服务端的状态（`✓ 已提交` 芯片与进度条的判据）。 */
+  statuses: Record<string, 'draft' | 'submitted'>;
+  /** 每一题的得分（奖励）。 */
+  scores: Record<string, number | null>;
+  /** 「库里**确实已经有这一行**」的题的「上一次落库的值」——「清空」判据吃它。 */
+  lastSent: Record<string, WorksheetAnswerValue | null>;
+}
+
+/**
+ * 把**服务端已有的作答**与**本地还没发出去的队列**合成一份界面态。
+ *
+ * 🔴 合并规则只有一条，但它是整个修复里最容易写错的地方：
+ *   **队列赢。** 队列里那一题是**本地更新、还没被服务端确认**的改动（学生刚改完，
+ *   或者上一次会话断网留下的），服务端那一行的值一定更旧 —— 拿它覆盖，
+ *   学生看到的就正是他刚删掉的那个旧答案。
+ *
+ * 逐条口径（每一条都有 `worksheet-queue.test.ts` 第 5 节的用例钉着）：
+ *   · 服务端那一行 ⇒ 草稿 + 状态 + 得分 + `lastSent`（**库里确实有这一行**，
+ *     所以学生随后把它清空时必须发一条「清空」出去）；
+ *   · 队列里那一题 ⇒ 草稿**覆盖**，状态与得分**删掉**（本地这次改动马上会被 PUT
+ *     拨回 `draft` 并把 `isCorrect` 清成 `null`，留着它们会一边显示「✓ 已提交 ⭐」
+ *     一边让学生继续改 —— 一句关于他自己的谎话），`lastSent` **刻意不填**
+ *     （这一条还没被确认过，不知道库里那行在不在；理由与 `use-worksheet-answers.ts`
+ *     里那段逐字相同）；
+ *   · 两边都没有的题 ⇒ 什么都不给（保持空白，不是「有值但值是空」）。
+ *
+ * ⚠️ 纯函数，**不改入参**：`use-worksheet-answers.ts` 的水合 effect 会把结果整个灌进
+ * state 与 ref，就地改会让「刷新后重算一次」变成一次累加。
+ */
+export function hydrateAnswers(
+  saved: SavedAnswerRow[],
+  queue: WorksheetQueueItem[],
+): HydratedAnswerState {
+  const drafts: Record<string, AnswerDraft> = {};
+  const statuses: Record<string, 'draft' | 'submitted'> = {};
+  const scores: Record<string, number | null> = {};
+  const lastSent: Record<string, WorksheetAnswerValue | null> = {};
+
+  // ① 服务端已有的每一行 —— 这些是**已经落库**的作答，刷新后必须回到屏幕上。
+  saved.forEach((row) => {
+    // `value` 为 `null`（学生清空过）时 `draftFromValue` 给空草稿，正是要的。
+    drafts[row.questionId] = draftFromValue(row.value);
+    // ⚠️ 不认识的 `status` 落到 **`draft`**（保守的一侧）：反过来落到 `submitted`
+    // 会给出一道**在学生眼里改不动**的题（`allowResubmit: false` 时界面会收起输入控件
+    // 并显示「老师已设置本题提交后不可修改」），而服务端其实还收得下他的改动。
+    statuses[row.questionId] = row.status === 'submitted' ? 'submitted' : 'draft';
+    scores[row.questionId] = scoreFromWire(row.isCorrect);
+    lastSent[row.questionId] = row.value;
+  });
+
+  // ② 🔴 队列赢（见上面那段）。
+  queue.forEach((item) => {
+    // `value` 为 `null` 是「学生把这一题删干净了」的标记 —— 草稿要是**空的**，
+    // 不是「没有这一题」。
+    drafts[item.questionId] = item.value === null ? emptyDraft() : draftFromValue(item.value);
+    delete statuses[item.questionId];
+    delete scores[item.questionId];
+    delete lastSent[item.questionId];
+  });
+
+  return { drafts, statuses, scores, lastSent };
 }

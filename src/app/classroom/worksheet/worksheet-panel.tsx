@@ -19,6 +19,7 @@ import {
   type WorksheetQuestionStatus,
   type WorksheetScore,
 } from './use-worksheet-answers';
+import type { SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardTotal } from './reward-badge';
 import styles from './worksheet.module.css';
 
@@ -52,6 +53,39 @@ import styles from './worksheet.module.css';
  * `loadClassroomWorksheets`）。题目结构再按 id 单独拉（服务端已剥掉答案字段，§5.4）。
  */
 
+/**
+ * 从 `GET /:id/answers` 的响应里读出作答行。**容错**：读不出来就当「还没有作答」。
+ *
+ * ⚠️ 这是**渲染路径**：一次 TypeError 会让整个面板白屏，而白屏的学生会以为
+ * 「老师没布置」。所以逐条校验形状、坏条目丢掉（照 `readQueue` 对存储的取舍），
+ * 而不是把响应整体断言成那个类型。
+ *
+ * ⚠️ 信封那个键是 `rows`（「作答行」），**不是** `answers` —— 后者是**正确答案**那个
+ * 字段的名字，服务端两个端点都被「响应里不许出现 `ANSWER_KEYS` 里的键」扫着。
+ */
+function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
+  const rows = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>).rows
+    : undefined;
+  if (!Array.isArray(rows)) return [];
+  const out: SavedAnswerRow[] = [];
+  rows.forEach((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+    const row = entry as Record<string, unknown>;
+    if (typeof row.questionId !== 'string' || !row.questionId) return;
+    out.push({
+      questionId: row.questionId,
+      // `null` / `undefined` 都是「这一题的作答被清空了」——与队列里的 `null` 同义。
+      value: (row.value ?? null) as SavedAnswerRow['value'],
+      status: typeof row.status === 'string' ? row.status : 'draft',
+      // ⚠️ 只认 `boolean`：`undefined`（`.json()` 失败）必须落到 `null`（**没判分**），
+      // 不能变成 `false`（判错）—— `scoreFromWire` 那条注释里有完整理由。
+      isCorrect: typeof row.isCorrect === 'boolean' ? row.isCorrect : null,
+    });
+  });
+  return out;
+}
+
 /** `student-view` 的一次读取。`questions` 已拍平（见 `flattenQuestions`）。 */
 interface LoadedWorksheet {
   id: string;
@@ -72,12 +106,32 @@ interface LoadedWorksheet {
    * 与服务端 `normalizeSettings` 是同一对默认值，所以学生看到的那一档与教师配的是同一个。
    */
   reward: RewardScale;
+  /**
+   * 这名学生**已有的作答**（`GET /:id/answers` 的 `rows`）。
+   *
+   * 🔴 它是「学生做了一半刷新页面后，做好的题没了」的修复：作答走 HTTP、保存成功即出队
+   * （规格 §8.3 的队列只管**还没发出去**的），所以**已经保存成功的题只能从服务端读回来**。
+   *
+   * ⚠️ 它放在 `LoadedWorksheet` 里、与题目一起**由同一次 `Promise.all` 灌进同一个 state**，
+   * 这不是顺手：这个数组的身份决定了水合 effect 什么时候重跑（见
+   * `UseWorksheetAnswersOptions.savedAnswers` 那条注释），而「每次 fetch 只建一份」
+   * 是它引用稳定的**唯一**来源。挪出去现 map 一份，学生每敲一个字都会被水合抹掉。
+   */
+  savedAnswers: SavedAnswerRow[];
 }
 
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'ready'; worksheet: LoadedWorksheet }
   | { kind: 'error'; message: string };
+
+/**
+ * 还没读到作答时给水合用的**空数组**。
+ *
+ * ⚠️ 必须是模块级常量，不能在渲染里现写 `[]`：那会让 `savedAnswers` 每次渲染都换一个
+ * 身份 ⇒ 水合 effect 每次都重跑 ⇒ 学生敲进去的字被整体抹掉。
+ */
+const NO_SAVED_ANSWERS: SavedAnswerRow[] = [];
 
 /**
  * ── 作答态渲染（唯一一份）────────────────────────────────────────────────────
@@ -300,24 +354,38 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
     let cancelled = false;
     setLoad({ kind: 'loading' });
     (async () => {
+      const auth = { ...getStudentSessionAuthorization() };
+      const base = `${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}`;
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/student-view`, {
-          credentials: 'include',
-          headers: { ...getStudentSessionAuthorization() },
-        });
+        // 🔴 **两次读取并行、一起失败**（`Promise.all`，不是一个接一个）：
+        //   · 并行的理由是延迟 —— 学生端那台老 iPad 上，两次串行就是两个来回；
+        //   · 「一起失败」是**本修复要害**的一条：作答读不回来而题目照常显示的话，
+        //     学生看到的是一份**空白**的卷子，而他的作答其实好好地躺在服务端 ——
+        //     那正是这次要修的那个症状，只是换了个成因。宁可整块报错 + 给一个重试按钮
+        //     （下面那个 `error` 卡片），也不要让他看着空白以为自己白写了。
+        const [viewRes, rowsRes] = await Promise.all([
+          fetch(`${base}/student-view`, { credentials: 'include', headers: auth }),
+          // ⚠️ 与 `student-view` **分两条路**（不是把那五列塞进 `student-view` 的响应体）：
+          // 理由写在服务端 `GET /:id/answers` 的注释里 —— 一句话是「那条响应体被一条
+          // 对整串做 `!includes('answers')` 的红线用例守着，红线不该为新功能让路」。
+          fetch(`${base}/answers`, { credentials: 'include', headers: auth }),
+        ]);
         if (cancelled) return;
-        if (!res.ok) {
-          const payload = await res.json().catch(() => null);
+        if (!viewRes.ok || !rowsRes.ok) {
+          // 拿**失败那一个**的 `error`（服务端给的是中文、且比客户端更清楚为什么）。
+          const failed = !viewRes.ok ? viewRes : rowsRes;
+          const payload = await failed.json().catch(() => null);
           const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : null;
-          setLoad({ kind: 'error', message: message || `读取学习单失败（错误 ${res.status}）` });
+          setLoad({ kind: 'error', message: message || `读取学习单失败（错误 ${failed.status}）` });
           return;
         }
-        const data = await res.json() as {
+        const data = await viewRes.json() as {
           id: string;
           title: string;
           content?: { nodes?: unknown };
           settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown };
         };
+        const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;
         const rawNodes = data.content && Array.isArray(data.content.nodes) ? data.content.nodes : [];
         setLoad({
@@ -332,6 +400,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
             allowResubmit: data.settings?.allowResubmit !== false,
             // 奖励同理：缺字段落到默认档（星星 / 1），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
+            // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
+            savedAnswers: parseSavedAnswers(rowsData),
           },
         });
       } catch {
@@ -347,6 +417,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
     participantId: session?.id ?? null,
     worksheetId,
     questions,
+    // ⚠️ 走 `NO_SAVED_ANSWERS`（模块级常量）而不是现写 `[]`：水合 effect 拿它当依赖项，
+    // 每次渲染换一个数组身份就会把学生正在敲的字抹掉。见那个常量的注释。
+    savedAnswers: load.kind === 'ready' ? load.worksheet.savedAnswers : NO_SAVED_ANSWERS,
     setToast,
   });
 

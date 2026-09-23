@@ -31,8 +31,9 @@ import {
 // ── 鉴权闸门（★ 安全关键）───────────────────────────────────────────
 
 /**
- * 学生只放行**三种形状**，其余一律拦下。三种形状：
+ * 学生只放行**四种形状**，其余一律拦下。四种形状：
  *   · `GET  /:id/student-view`     读自己那一份（服务端已剥离答案，§5.4）
+ *   · `GET  /:id/answers`          读**自己已有的作答**（水合，见下面的读端点）
  *   · `PUT  /:id/answers`          保存单题（幂等）
  *   · `POST /:id/answers/submit`   提交单题
  *
@@ -41,21 +42,28 @@ import {
  * 「这接口学生不能用」两件事在日志与前端提示里混成一团。没有凭据时仍然回落到
  * `requireTeacher`（401），所以这一支不会把 401 这条路径吞掉。
  *
- * ⚠️ 「已查看」是 `POST /:id/review`，**不在**上面三种形状里 ⇒ 自然走教师那一支。
- * 改动下面这三条正则时务必确认它仍然**不匹配** `review`（B4 的第一条用例钉的就是它）。
+ * ⚠️ 「已查看」是 `POST /:id/review`，**不在**上面四种形状里 ⇒ 自然走教师那一支。
+ * 改动下面这四条正则时务必确认它仍然**不匹配** `review`（B4 的第一条用例钉的就是它）。
  *
  * ⚠️ D4 新增的教师读端点 `GET /classroom/:classroomId/answers` 同样是**三段**路径，
- * 而那三条正则里最宽的一条（`^\/[^/]+\/answers\/?$`）只匹配**恰好两段** ⇒ 它也落在
- * 教师那一支。**这三条正则不需要改**（本任务一行都没动），
+ * 而 `^\/[^/]+\/answers\/?$` 这一条只匹配**恰好两段** ⇒ 它也落在教师那一支。
  * `worksheet-board.test.ts` 有一条「学生 token 打这个路径回 403」的用例把它钉住。
+ *
+ * 🔴 **新增的 `GET /:id/answers` 与它只差一个方法**：同一条正则、同一个「恰好两段」的形状。
+ * 也就是说这两条**天然是一对**：将来若有人把 `answers` 这一段挪成三段（比如
+ * `/:id/answers/list`），学生放行集会连带**打开教师看板那个端点** —— 而它带全班学生
+ * 的作答。改这一行时先看 `worksheet-board.test.ts` 里那条 403 用例。
  */
 export const worksheetAccessGate: RequestHandler = (req, res, next) => {
   const student = getStudentSession(req);
   if (student) {
     const view = req.method === 'GET' && /^\/[^/]+\/student-view\/?$/.test(req.path);
+    // 🔴 「读自己的作答」与下面那条 `PUT` **共用** `^\/[^/]+\/answers\/?$` 这一条正则 ——
+    // 形状一样、只有方法不同。两处要一起改（判据见上面第 47 行那一段）。
+    const read = req.method === 'GET' && /^\/[^/]+\/answers\/?$/.test(req.path);
     const save = req.method === 'PUT' && /^\/[^/]+\/answers\/?$/.test(req.path);
     const submit = req.method === 'POST' && /^\/[^/]+\/answers\/submit\/?$/.test(req.path);
-    if (view || save || submit) return next();
+    if (view || read || save || submit) return next();
     res.status(403).json({ error: '该接口仅教师可用' });
     return;
   }
@@ -766,14 +774,15 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
 // ── 学生端 ──────────────────────────────────────────────────────────
 //
 //   GET  /:id/student-view        读自己那一份（服务端剥离答案，§5.4）
+//   GET  /:id/answers             读**自己已有的作答**（刷新后水合，规格 §8.3）
 //   PUT  /:id/answers             保存单题（幂等）
 //   POST /:id/answers/submit      提交单题
 //   POST /:id/review              「已查看」标记（**教师专用**，B4）—— 实现**在上面教师端
-//                                 那一段**，这里列出来只是为了让闸门那三条正则的对照物
-//                                 在同一处看得全（闸门只放行上面三条）。
+//                                 那一段**，这里列出来只是为了让闸门那四条正则的对照物
+//                                 在同一处看得全（闸门只放行上面四条）。
 //
-// 这四条形状的**放行判据**在文件顶部的 `worksheetAccessGate` 里，那一段是安全关键：
-// 前三条是学生放行集，`review` **不在**其中（它走教师那一支）。
+// 这五条形状的**放行判据**在文件顶部的 `worksheetAccessGate` 里，那一段是安全关键：
+// 前四条是学生放行集，`review` **不在**其中（它走教师那一支）。
 //
 // 🔴 闸门只校验「这是一个持有效 token 的学生」，**不知道**这个学生该拿哪一份 ——
 // 高级模式下不同组拿的是不同的学习单，只认 token 等于谁都能读别人组那份。
@@ -1051,8 +1060,19 @@ function ensureResponse(ctx: StudentWorksheetContext, now: Date) {
  * 剥离发生在**服务端、返回之前**，且返回的是**新对象**（`stripAnswers` 不就地改）。
  * 前端过滤等同于未过滤：`content` 一旦离开这台机器，学生就能在网络面板里看到答案。
  *
- * ⚠️ 不下发这名学生已有的作答：第一批没有「断线重进接着答」的入口（规格 §8 只要求
- * 本地 `localStorage` 队列），多下发一份作答只会多一处需要脱敏的表。
+ * 🔴 **这里刻意不下发这名学生已有的作答**（那是下面 `GET /:id/answers` 的事），
+ * 理由有两个，第二个才是决定性的：
+ *   ① 本响应体是红线用例（`worksheet-student.test.ts` 第一条）唯一看守的东西，
+ *      而它守的方式是对**整串**做 `!raw.includes('answers')`。加一个叫 `answers`
+ *      的顶层键会让那条钝器误报 ⇒ 逼人去把它磨细。**红线不该为新功能让路。**
+ *   ② 「学生做了一半刷新后做好的题没了」要的是**客户端读回服务端已有状态**，
+ *      与「题目长什么样」是两次不同用途的读取：前者每挂载一次就要拉、还会随作答变化，
+ *      后者只在打开面板时拉一次。捆在一起会让这条路径的失败模式变成两件事一起失败。
+ *
+ * ⚠️ 曾经这里写的是另一句话：「第一批没有『断线重进接着答』的入口（本地队列就够了），
+ * 多下发一份作答只会多一处需要脱敏的表」。**那个理由是错的** —— 队列只留**还没保存成功**
+ * 的条目，保存成功的题在客户端一点留底都没有，所以「本地队列就够了」从来就不成立。
+ * 实测与修法见 `GET /:id/answers` 的注释。
  */
 router.get('/:id/student-view', async (req, res) => {
   try {
@@ -1070,6 +1090,104 @@ router.get('/:id/student-view', async (req, res) => {
   } catch (error) {
     console.error('[worksheets] 学生读取学习单失败:', error);
     res.status(500).json({ error: '读取学习单失败' });
+  }
+});
+
+/**
+ * 读**自己已有的作答**（学生端面板挂载时与 `student-view` **并行**拉一次）。
+ *
+ * ── 为什么必须有它：「学生做了一半刷新页面后，做好的题没了」────────────────
+ *
+ * 🔴 成因不是数据丢了，是**从来不下发**。保存是好的 —— 那一行一直在
+ * `WorksheetAnswer` 里（`PUT` 回 200 就是落库成功）；丢的是**客户端的那一份留底**：
+ * 学生端的 `localStorage` 队列（`src/app/classroom/worksheet/worksheet-queue.ts`）
+ * 只管**还没保存成功**的条目，服务端一 200 就立刻出队（那是规格 §8.3 要的语义）。
+ * 于是「保存成功」的题在客户端**一点都不剩**，刷新即空白 ——
+ * 而界面上没有任何报错，学生只会以为自己白写了，然后重敲一遍。
+ *
+ * ⚠️ 上面 `student-view` 那段注释里「不下发这名学生已有的作答」的**旧理由**
+ * （「多下发一份作答只会多一处需要脱敏的表」）**是错的**，它把两件事混成了一件事：
+ * 队列确实不需要服务端再发一份，但**屏幕**需要 —— 队列是「还没发出去的」，
+ * 不是「已经发出去的」。所以这条读端点是补上后者，而不是给队列加一条旁路。
+ *
+ * ── 形状（规格 §8.3 的水合输入）─────────────────────────────────────────
+ *
+ * ```json
+ * { "rows": [ { "questionId", "value", "status", "submittedAt", "isCorrect" } ] }
+ * ```
+ *
+ * ⚠️ 信封那个键叫 `rows`（「作答行」，本文件通篇的用词），**不叫 `answers`** ——
+ * 那个词是 `ANSWER_KEYS` 里**正确答案**那个字段的名字。两个端点都被
+ * 「响应里不许出现 `ANSWER_KEYS` 里的任何一个键」这条红线扫，而 `answers` 一旦成为
+ * 键名，扫描器就分不清「正确答案泄漏了」与「这是作答行」。改名的代价是零，误报的代价
+ * 是有人去把扫描器改松一点。
+ *
+ * 五件都必须在，各自对应界面上的**一件**东西（少一件就是一处静默的失灵）：
+ *   · `questionId` —— 贴回哪一道题（规格 §3-P：题 id 稳定；`value` 与它配对）；
+ *   · `value`      —— **学生自己写的那个值**，填回输入框（`draftFromValue` 的反向）；
+ *   · `status`     —— `✓ 已提交` 芯片与顶栏进度条 «已交 N/M» 的判据；
+ *   · `submittedAt`—— 交卷时间（回顾与看板的输入，与 `student-view` 同级地下发）；
+ *   · `isCorrect`  —— **奖励**。D5 报告里那条 concern「刷新后奖励会消失」与本条是
+ *                     同一个根因（客户端不从服务端读回已有状态），这一条把它一起解决：
+ *                     星星由 `isCorrect` 现算，而它现在撑得过刷新。
+ *                     ⚠️ 它仍然是 `boolean | null`：`null` 是「没判分」，
+ *                     **不是**「判错」（`grade()` 对主观题回 `null`、关掉 `autoGrade` 也回 `null`）。
+ *
+ * ── 为什么不塞进 `student-view` ─────────────────────────────────────────
+ *
+ * `student-view` 的红线用例（`worksheet-student.test.ts` 第一条）对**整串响应**做
+ * `!raw.includes('answers')` —— 那是一件**刻意钝**的兵器：它不区分「键名」与「恰好
+ * 出现的字符串」，宁可误报也不放过。往那个响应体里加一个叫 `answers` 的顶层键，
+ * 就只剩两条路：把那条钝器磨细（削掉它本来就有的过度覆盖），或者给字段起一个
+ * 为了绕开子串检查的名字。两条都是**为了新功能去动红线**，都不是这里该付的代价。
+ * 所以作答走自己的路径：`student-view` 那个响应体**一个字节都没变**，钝器照旧。
+ *
+ * ── 安全（规格 §5.4）────────────────────────────────────────────────────
+ *
+ * 🔴 这里下发的是**学生自己写的 `value`**，**不含任何正确答案**：
+ * `correctKeys` / `answers`（正确答案那个字段）/ `explanation` 都住在
+ * `Worksheet.content` 的题目节点里，而本端点**根本不碰 `content`**
+ * ——它只从 `WorksheetAnswer` 选五列，那五列里没有一样是题的元数据。
+ * ⚠️ **不要**为了「顺手」把 `content` 也带上（那会把剥离责任挪到这里，
+ * 而这个端点没有 `stripAnswers`）。判据有实测：见 `worksheet-student.test.ts`
+ * 第 ⑦ 节的三条（键名级递归扫描 + 原文级子串 + 正确/错误答案的阳性对照）。
+ *
+ * ⚠️ 返回**空数组**而不是 404：没开始作答是**合法状态**（一份新卷子就是这样）。
+ * ⚠️ 读路径**不建**任何行：`requireOwnWorksheet` 只查不写，这里也只 `findMany`
+ * ——顺手建一个 `WorksheetResponse` 会让教师看板把一个什么都没做的学生
+ * 显示成「已开始作答」，而这条路径只是打开面板而已。
+ */
+router.get('/:id/answers', async (req, res) => {
+  try {
+    const ctx = await requireOwnWorksheet(req, res);
+    if (!ctx) return;
+
+    const rows = await ctx.prisma.worksheetAnswer.findMany({
+      // 三件一起收窄：只有**这一间课堂 × 这一份学习单 × 这一个参与者**的行。
+      // 与 `PUT` 里那条 `allowResubmit` 的查询同一个嵌套形状（同一份判据，两处一致）。
+      where: {
+        response: {
+          classroomId: ctx.classroomId,
+          worksheetId: ctx.worksheet.id,
+          participantId: ctx.participantId,
+        },
+      },
+      select: { questionId: true, value: true, status: true, submittedAt: true, isCorrect: true },
+      // 顺序无关（前端按 `questionId` 配对），但固定下来让响应可比对 ——
+      // 用例里的 `deepEqual` 与人工排障都因此少一处「这次顺序为什么不一样」。
+      orderBy: { questionId: 'asc' },
+    });
+
+    // ⚠️ **不按当前 `content` 过滤**：教师删掉一道题之后，留给它的那行答案照样发回去。
+    // 前端只画 `content` 里的题，多出来的键落不到屏幕上；而在这里过滤等于把
+    // 「这一题还在不在」这条判据抄第二遍 —— 抄错的表现是**学生的作答静默消失**。
+    //
+    // ⚠️ `value` 为 SQL NULL（学生把这题清空了）时它读出来就是 `null`，
+    // 前端按「清空」处置（`draftFromValue(null)` ⇒ 空草稿），与队列里的 `null` 同义。
+    res.json({ rows });
+  } catch (error) {
+    console.error('[worksheets] 读取学生作答失败:', error);
+    res.status(500).json({ error: '读取作答失败' });
   }
 });
 

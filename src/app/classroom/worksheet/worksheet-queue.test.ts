@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import {
   classifyFailure,
   dropQueueItem,
+  hydrateAnswers,
   isPermanentFailure,
   permanentFailureMessage,
   readQueue,
@@ -28,6 +29,7 @@ import {
   worksheetQueueKey,
   writeQueue,
   type QueueStorage,
+  type SavedAnswerRow,
   type WorksheetQueueItem,
 } from './worksheet-queue.ts';
 
@@ -223,4 +225,102 @@ test('🔴 队列键同时含课堂与参与者：换学生 / 换课堂就是另
   assert.notEqual(base, worksheetQueueKey('c2', 'p1'), '同一个学生进另一个课堂必须换队列');
   assert.equal(base, worksheetQueueKey('c1', 'p1'), '同键必须稳定（否则下一次挂载读不回来）');
   assert.match(base, /^worksheet-queue:c1:p1$/);
+});
+
+// ── 5. 🔴 服务端回读的水合（「做了一半刷新，做好的题没了」）──────────────
+
+/**
+ * 这一段钉的是本模块**最新**的一处要害：服务端已经有了这名学生的作答
+ * （`GET /api/worksheets/:id/answers`），刷新后必须把它填回输入框。
+ *
+ * 三条不变量，每条一个用例：
+ *   ① 服务端那一行 ⇒ 输入框有内容、状态芯片对、得分也在（奖励因此撑得过刷新）；
+ *   ② 🔴 **队列赢** —— 队列里那一题有**更新的、还没发出去的**改动，服务端的旧值
+ *      绝不能覆盖它。这一条错了的表现是「学生刚改完，一刷新又变回旧答案」。
+ *   ③ 队列里的「清空」标记（`value: null`）同样赢过服务端的旧值。
+ *
+ * ★ 三条都是**反向断言**：把 `hydrateAnswers` 里的合并顺序改坏（先队列后服务端），
+ * ② 与 ③ 立刻变红。
+ */
+const row = (
+  questionId: string,
+  value: SavedAnswerRow['value'],
+  status = 'submitted',
+  isCorrect: boolean | null = null,
+): SavedAnswerRow => ({ questionId, value, status, isCorrect });
+
+test('🔴 hydrateAnswers：服务端已保存的作答要填回输入框，并带上状态与得分', () => {
+  const hydrated = hydrateAnswers(
+    [
+      row('q1', { format: 'choice/v1', selected: ['B'] }, 'submitted', false),
+      row('q2', { format: 'fill/v1', text: 'H2O' }, 'draft', null),
+    ],
+    [],
+  );
+
+  // ① 输入框：三种格式各自读回它该有的那一个字段
+  assert.deepEqual(hydrated.drafts.q1, { selected: 'B', text: '' }, '单选题要回填选中的那一项');
+  assert.deepEqual(hydrated.drafts.q2, { selected: '', text: 'H2O' }, '填空题要回填文本');
+
+  // ② 状态：✓ 已提交 / ◐ 作答中 的判据（进度条的分母也吃它）
+  assert.equal(hydrated.statuses.q1, 'submitted');
+  assert.equal(hydrated.statuses.q2, 'draft');
+
+  // ③ 得分：`isCorrect` 是 `false` ⇒ **0 分**（不是「没判分」）；`null` ⇒ 没判分
+  assert.equal(hydrated.scores.q1, 0, '答错了是 0 分，不是 null —— 两者在奖励上不一样');
+  assert.equal(hydrated.scores.q2, null, '没判分（draft / 主观题）是 null');
+
+  // ④ `lastSent`：库里**确实有**这一行 ⇒ 学生随后清空它时，必须发一条「清空」出去。
+  //    不填的话，服务端那一行会一直留着学生已经删掉的答案，教师看板上看得见。
+  assert.deepEqual(hydrated.lastSent.q1, { format: 'choice/v1', selected: ['B'] });
+});
+
+test('🔴 hydrateAnswers：队列里那一题**赢** —— 服务端的旧值不得冲掉刚改完还没保存的新答案', () => {
+  const hydrated = hydrateAnswers(
+    [row('q1', { format: 'choice/v1', selected: ['A'] }, 'submitted', true)],
+    [{ questionId: 'q1', value: { format: 'choice/v1', selected: ['C'] }, at: 100 }],
+  );
+
+  assert.deepEqual(hydrated.drafts.q1, { selected: 'C', text: '' }, '本地那条更新的作答必须赢');
+  // 服务端那一行的状态与得分**也要让位**：本地这次改动马上会被 PUT 拨回 draft
+  // 并把 `isCorrect` 清成 null（`routes/worksheets.ts` 的 update 分支）。
+  // 留着它们，界面会一边显示「✓ 已提交 / ⭐」一边让学生继续改 —— 一句关于他自己的谎话。
+  assert.equal(hydrated.statuses.q1, undefined, '本地有未保存改动 ⇒ 不得沿用服务端的「已提交」');
+  assert.equal(hydrated.scores.q1, undefined, '本地有未保存改动 ⇒ 不得沿用服务端的判分');
+  // ⚠️ `lastSent` 刻意**不填**：这一条还没被服务端确认过，我们不知道库里那行在不在
+  // —— 理由与 `use-worksheet-answers.ts` 里那段「刻意不填 lastSent」逐字相同。
+  assert.equal(hydrated.lastSent.q1, undefined);
+});
+
+test('🔴 hydrateAnswers：队列里的「清空」也要赢过服务端的旧值', () => {
+  const hydrated = hydrateAnswers(
+    [row('q1', { format: 'fill/v1', text: '光合作用' }, 'submitted', true)],
+    // `value: null` 是「学生把这一题删干净了」的标记，不是「没有值」
+    [{ questionId: 'q1', value: null, at: 100 }],
+  );
+  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' }, '学生删掉的内容不得被服务端顶回来');
+  assert.equal(hydrated.statuses.q1, undefined);
+  assert.equal(hydrated.scores.q1, undefined);
+});
+
+test('hydrateAnswers：服务端「已清空」的行（value 为 null）不得被填成有内容', () => {
+  // 库里那一行还在（学生开始作答过又清空了）⇒ `lastSent` 必须是**已定义**的 `null`，
+  // 否则学生随后「敲一个再删掉」不会发清空请求，而库里那一行会一直留着。
+  const hydrated = hydrateAnswers([row('q1', null, 'draft', null)], []);
+  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' });
+  assert.equal(hydrated.lastSent.q1, null, 'null 是「发过，值是空的」—— 与 undefined（没发过）不是一回事');
+});
+
+test('hydrateAnswers：读不出来的坏值不抛，回落成空草稿（渲染路径不许 TypeError）', () => {
+  const hydrated = hydrateAnswers([row('q1', { format: '不认识/v9' } as never)], []);
+  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' });
+  assert.equal(hydrated.statuses.q1, 'submitted', '草稿读不出来不该连带把状态也丢掉');
+});
+
+test('hydrateAnswers：没作答、队列也空 ⇒ 四张表都是空的（刷新后不凭空多出东西）', () => {
+  const hydrated = hydrateAnswers([], []);
+  assert.deepEqual(hydrated.drafts, {});
+  assert.deepEqual(hydrated.statuses, {});
+  assert.deepEqual(hydrated.scores, {});
+  assert.deepEqual(hydrated.lastSent, {});
 });

@@ -7,7 +7,6 @@ import { getStudentSessionAuthorization } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   buildAnswerValue,
-  draftFromValue,
   isDraftEmpty,
   type AnswerDraft,
   type WorksheetAnswerValue,
@@ -16,13 +15,16 @@ import type { ChatToast } from '../classroom-types';
 import {
   classifyFailure,
   dropQueueItem,
+  hydrateAnswers,
   permanentFailureMessage,
   readQueue,
   replayOrder,
+  scoreFromWire,
   sessionExpiredMessage,
   upsertQueueItem,
   worksheetQueueKey,
   writeQueue,
+  type SavedAnswerRow,
   type WorksheetQueueItem,
 } from './worksheet-queue';
 
@@ -66,19 +68,9 @@ export type WorksheetQuestionStatus = 'draft' | 'submitted';
  */
 export type WorksheetScore = number | null;
 
-/**
- * 线缆上的 `isCorrect` → 界面用的**得分**。全项目**唯一**一处做这个转换的地方。
- *
- * 🔴 判据必须是 `=== true` / `=== false` 两条正面命中，其余一律 `null`：
- * 服务端的 `isCorrect` 是 `boolean | null`（`grade()` 对主观题回 `null`、关掉自动判分
- * 也回 `null`），而 `.json()` 失败时这里是 `undefined`。把 `undefined` 当成 `0`
- * 会让一次读不出来的响应变成「答错了」——静默地把学生判错。
- */
-function scoreFromWire(isCorrect: unknown): WorksheetScore {
-  if (isCorrect === true) return 1;
-  if (isCorrect === false) return 0;
-  return null;
-}
+// ⚠️ `scoreFromWire`（`isCorrect` → 得分）**搬到了 `worksheet-queue.ts`**：水合这一侧
+// （`hydrateAnswers`）也要用它，而那个文件是**纯逻辑、被 `node --test` 跑**的那一个 ——
+// 「`null` 不是 `0`」这条判据必须有一条跑得到的用例钉着。定义仍然只有一处。
 
 /** 一次 `PUT` 的结果。`status: null` = 网络错误（连状态码都没有）⇒ 暂时失败。 */
 type SaveOutcome = { ok: true } | { ok: false; status: number | null; error: string | null };
@@ -92,6 +84,19 @@ export interface UseWorksheetAnswersOptions {
   worksheetId: string | null;
   /** 当前这份学习单的题目树。用来把输入态变成作答值、并在入队前校验题号。 */
   questions: WorksheetQuestionNode[];
+  /**
+   * **服务端已有的作答**（`GET /api/worksheets/:id/answers` 的 `rows`）。
+   *
+   * 🔴 这是「学生做了一半刷新页面后，做好的题没了」的修法本体：保存成功的那一刻
+   * 队列就出队了（规格 §8.3），所以「已经保存成功的作答」在客户端**一点留底都没有**，
+   * 只有服务端有。不把它读回来，刷新后必然是空白。
+   *
+   * ⚠️ **引用必须稳定**：水合 effect 的依赖里有它，而那个 effect 的开头会
+   * **整个替换** `drafts` / `statuses` / `scores`。每次渲染都传一个新数组的话，
+   * 学生每敲一个字都会被一次水合抹掉。调用方请把它放进**每次请求只建一次**的那个
+   * state 里（`worksheet-panel.tsx` 的 `load` 就是这么做的），不要现 map 一份。
+   */
+  savedAnswers: SavedAnswerRow[];
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
 }
 
@@ -136,6 +141,7 @@ export function useWorksheetAnswers({
   participantId,
   worksheetId,
   questions,
+  savedAnswers,
   setToast,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
@@ -187,45 +193,64 @@ export function useWorksheetAnswers({
     if (key) writeQueue(window.localStorage, key, items);
   }, []);
 
-  // ── 水合：挂载 / 换键时把存储里的队列读回来 ────────────────────────────────
+  // ── 水合：挂载 / 换键 / 服务端作答到达时，把三个来源合成一份界面态 ───────────
+  //
+  // 三个来源，**优先级从低到高**：
+  //   ① 什么都没有 ⇒ 空白（一道没做过的题就该是空白）；
+  //   ② **服务端已有的作答**（`savedAnswers`）⇒ 填回输入框 + 状态 + 得分。
+  //      这是「刷新后做好的题还在」的那一条 —— 保存成功就出队了，服务端是**唯一**的留底；
+  //   ③ **本地队列**（`localStorage`，还没保存成功的）⇒ 覆盖 ②。
+  //
+  // 🔴 ③ 必须赢过 ②，判据与理由都写在 `hydrateAnswers` 里（`worksheet-queue.ts`）。
+  //    这一段的职责只是把它的产物灌进 state 与 ref —— **合并规则一个字都不在这里**，
+  //    因为它必须是一条能被 `node --test` 直接跑到的用例（`worksheet-queue.test.ts` 第 5 节）。
   //
   // ⚠️ 这里**顺手重置** drafts / statuses / scores / lastSent：换了参与者或学习单，上一个的
   // 输入态、作答态与得分都不再适用。不清的话，新学生会带着上一个学生的草稿与星星出现在屏幕上。
+  //
+  // ⚠️ 依赖里的两个值都必须**引用稳定**，否则这个 effect 会在学生打字的中途重跑，
+  // 把刚敲进去的东西整体抹掉：`queueKey` 是字符串（天然稳定），`savedAnswers` 的稳定性
+  // 由调用方保证（见 `UseWorksheetAnswersOptions` 那条注释）。它在这里是**依赖项**
+  // （不是 ref）：作答读回来的那一刻正是水合该发生的时刻，漏了它，
+  // 服务端的作答永远填不回屏幕 —— 那正是这次要修的 bug。
   useEffect(() => {
     queueKeyRef.current = queueKey;
-    setDrafts({});
-    setStatuses({});
-    setScores({});
     setSubmitting({});
     setOffline(false);
-    lastSentRef.current = {};
     if (!queueKey) {
       pendingRef.current = [];
       setPendingCount(0);
+      setDrafts({});
+      setStatuses({});
+      setScores({});
+      lastSentRef.current = {};
       return;
     }
-    const hydrated = readQueue(window.localStorage, queueKey);
-    pendingRef.current = hydrated;
-    setPendingCount(hydrated.length);
-    // 🔴 **把队列里还没发出去的作答填回输入框。** 刷新一下不该让答案从屏幕上消失 ——
-    // 队列还在（数据没丢），但输入框空着的话，学生会以为自己白写了，然后**重新敲一遍**；
-    // 更糟的是他会先清空那个字段，而「清空」在 `setDraft` 里是一条真实的操作
-    // （有内容 ⇒ 覆盖；空的且发过 ⇒ 入队一条清空；空的且没发过 ⇒ 出队）。
-    const restored: Record<string, AnswerDraft> = {};
-    hydrated.forEach((item) => {
-      // `value === null` 是「清空这一题」的标记，不是一份作答 —— 它没有可填回的内容。
-      if (item.value !== null) restored[item.questionId] = draftFromValue(item.value);
-    });
-    setDrafts(restored);
-    // ⚠️ **刻意不填 `lastSentRef`**：队列里这一条还没被服务端确认过（可能发出去过、
-    // 200 丢在路上了，也可能根本没发出去），我们**不知道**库里有没有这一行。
-    // 填了的代价是：学生随后清空这个字段 ⇒ 我们发一条「清空」⇒ 若服务端本来没有这一行，
-    // 它就凭空多出一行 `value` 为 NULL 的作答，教师看板立刻把这名学生显示成「已开始作答」，
-    // 而这一题之后还能被提交成一个空答案。不填的代价小得多（极少数情况下库里留着一个
-    // 学生已经删掉的值），所以选不填。
-    // 上一次会话遗留的作答（刷新 / 断网关掉页面）在这里立刻排队重放一次。
-    if (hydrated.length > 0) setDebouncing(true);
-  }, [queueKey]);
+    const queued = readQueue(window.localStorage, queueKey);
+    pendingRef.current = queued;
+    setPendingCount(queued.length);
+
+    const merged = hydrateAnswers(savedAnswers, queued);
+    setDrafts(merged.drafts);
+    setStatuses(merged.statuses);
+    setScores(merged.scores);
+    // `lastSentRef` **由水合结果整个替换**（不是「只填不删」）：换了参与者 / 换了一份学习单，
+    // 上一个的「发过什么」不再适用。
+    //
+    // ⚠️ 这里与队列那一条是**刻意不对称**的，别顺手把它们看齐：
+    //   · 服务端回读得来的行 ⇒ **填**（库里确实有这一行，所以学生随后清空它时必须发一条
+    //     「清空」出去，否则服务端会一直留着学生已经删掉的答案）；
+    //   · 队列里那一条 ⇒ **不填**（它还没被服务端确认过 —— 可能发出去过、200 丢在路上了，
+    //     也可能根本没发出去，我们**不知道**库里有没有这一行。填了的代价是：学生随后清空
+    //     这个字段 ⇒ 我们发一条「清空」⇒ 若服务端本来没有这一行，它就凭空多出一行
+    //     `value` 为 NULL 的作答，教师看板立刻把这名学生显示成「已开始作答」，
+    //     而这一题之后还能被提交成一个空答案。不填的代价小得多）。
+    //   判据与取舍写在 `hydrateAnswers` 里，两边是同一个函数产出的，不会漂移。
+    lastSentRef.current = merged.lastSent;
+
+    // 上一次会话遗留的队列（刷新 / 断网关掉页面）在这里立刻排队重放一次。
+    if (queued.length > 0) setDebouncing(true);
+  }, [queueKey, savedAnswers]);
 
   // ── 写入通道 ────────────────────────────────────────────────────────────
 

@@ -32,6 +32,7 @@ import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
 import { ensureGroupMaterials } from './services/group-materials-migration.js';
 import { ensureWorksheetTables } from './services/worksheet-schema.js';
+import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,8 +150,14 @@ async function main() {
     // ⚠️ DDL 在 services/worksheet-schema.ts 里，与 schema.prisma 的定义**逐字对齐**
     // （含外键约束名、索引名、JSONB、updatedAt 无 DEFAULT）。对齐不是靠眼睛：
     // DDL 由 `prisma db push` 到一个空库后 dump sqlite_master 得到，见规格 §4.1.2 与
-    // task-A1-report.md 的实测记录。改了 schema 就要同步改那里，否则下次 db push 会
-    // 重建表，而本同步块按表名探测、不会重跑，两边就此不一致。
+    // task-A1-report.md 的实测记录。改了 schema 就要同步改那里。
+    //
+    // 两种分叉的自愈能力**不一样**，别记混：
+    //   · **表的形状**不会自愈。`ensureWorksheetTables` 只按表名探测**存在性** ——
+    //     列多了少了、外键约束变了，它一概看不出来（表在，就直接跳过）。于是下次
+    //     `db push` 会按 schema.prisma 重建表，两边就此不一致。
+    //   · **索引会按名自愈**。每张表的索引是逐个按名到 sqlite_master 里查的，
+    //     缺哪个补哪个 —— 「表建好了但建索引那一步失败」的中间态能在下次启动补回来。
     try {
       await ensureWorksheetTables(prisma);
     } catch (error) {
@@ -528,6 +535,20 @@ async function main() {
   // 学生靠 iframe 直接向托管源（另一个端口）取静态文件，不经过 /api。
   // ⚠️ **绝不给本路由开学生 token 通道**：一旦开了，学生就能列出全库网页。
   app.use('/api/webapps', requireTeacher, webappRoutes);
+  // 学习单：教师端 CRUD 与学生端读取/作答**同一条路由混装**，所以这里的闸门是安全的关键。
+  //
+  // 判据（学生只放行三种形状、其余一律拦下）实现在 `worksheetAccessGate` 里，
+  // 而不是内联在这个箭头函数里 —— 理由是**可测性**：挂在 `app.use` 里的匿名中间件
+  // 测试拿不到（`index.ts` 一 import 就 `main()` 起服务），测试只能自己再抄一份，
+  // 于是「鉴权写了但没生效」这一类假绿跑不掉也没人发现。放在 routes/worksheets.ts
+  // 里，测试引用的就是**这一个**函数。
+  //
+  // ⚠️ 三种学生形状是：`GET /:id/student-view`、`PUT /:id/answers`、
+  //    `POST /:id/answers/submit`。**「已查看」是 `POST /:id/review`，不在其中** ⇒
+  //    自然走教师那一支。改动那段正则时务必确认它仍然不匹配 review。
+  // ⚠️ 路由处理器**内部**还必须校验：该学生所属参与者的学习单解析结果 `=== :id`。
+  //    这里只校验「是本课堂的学生」，不够 —— 高级模式下不同组拿的是不同的学习单。
+  app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
 
   // Health check
   app.get('/api/health', (_req, res) => {

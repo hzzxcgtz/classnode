@@ -282,6 +282,65 @@ export interface WorksheetDetail {
   updatedAt: string;
 }
 
+/**
+ * 教师看板的**逐题作答行**（`GET /api/worksheets/classroom/:classroomId/answers`）。
+ *
+ * 🔴 这个端点是 D4 补的，它存在的理由是 D3 实测出来的一个洞：看板格子完全由
+ * `worksheet-answer-updated` 广播驱动 ⇒ **教师刷新一次页面，早做完的学生就掉回
+ * 「还没收到作答」态**（看板失忆，且不报错）。抽屉的两种形态本来也要同一份数据。
+ *
+ * `value` 是**学生自己写的**那个作答值，不是正确答案 —— 正确答案
+ * （`data.correctKeys` / `data.answers`）住在 `Worksheet.content` 里，
+ * 服务端**从不**把它放进这个响应（规格 §5.4 红线）。
+ */
+export interface WorksheetBoardAnswerRow {
+  questionId: string;
+  /** `'unanswered' | 'draft' | 'submitted'`（服务端 DDL 的取值域）。 */
+  status: string;
+  /** 只有「已提交」且服务端判过分时才有值；主观题与关闭自动判分时是 `null`。 */
+  isCorrect: boolean | null;
+  /** 教师的「已查看」时间；`null` = 还没看过（规格 §7.4 的「已看 N/M」数据源）。 */
+  reviewedAt: string | null;
+  /** 学生原答案。读不出来时是 `null`（旧版本 / 手改过的行）。 */
+  value: unknown;
+}
+
+/**
+ * 这一份学习单上的一个参与者。**可能是学生，也可能是小组** ——
+ * 分组 / 高级模式下「一块设备 = 一个小组」，参与者就是组（规格 §1.2）。
+ */
+export interface WorksheetBoardParticipant {
+  /** `ClassroomStudent.id` —— 与看板格子的 `cs.id` 同源，也是 `review` 端点要的 id。 */
+  participantId: string;
+  name: string;
+  /** `'student' | 'group'`。 */
+  kind: string;
+  groupName: string | null;
+  /**
+   * 逐题作答行。⚠️ **没作答的人是空数组，不是缺字段** ——「已交 N/M」的分母是参与者数，
+   * 少一个人分母就少一个，而那个数没有任何地方会报错。
+   */
+  answerRows: WorksheetBoardAnswerRow[];
+}
+
+export interface WorksheetBoardWorksheet {
+  id: string;
+  title: string;
+  participants: WorksheetBoardParticipant[];
+}
+
+/**
+ * 整个课堂的作答行，**先按学习单分组**。
+ *
+ * 🔴 那第一层不是多余的：高级模式下每个组可以是**不同的学习单**（规格 §1.2），
+ * 「全班共有的第 3 题」并不存在。标准 / 分组模式下这个数组只有一个元素，
+ * 界面上会退化成一层（规格 §7.3）。
+ */
+export interface WorksheetBoard {
+  classroomId: string;
+  worksheets: WorksheetBoardWorksheet[];
+}
+
 export interface StudentSessionResponse {
   token: string;
   expiresIn: number;

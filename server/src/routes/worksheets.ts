@@ -42,6 +42,11 @@ import {
  *
  * ⚠️ 「已查看」是 `POST /:id/review`，**不在**上面三种形状里 ⇒ 自然走教师那一支。
  * 改动下面这三条正则时务必确认它仍然**不匹配** `review`（B4 的第一条用例钉的就是它）。
+ *
+ * ⚠️ D4 新增的教师读端点 `GET /classroom/:classroomId/answers` 同样是**三段**路径，
+ * 而那三条正则里最宽的一条（`^\/[^/]+\/answers\/?$`）只匹配**恰好两段** ⇒ 它也落在
+ * 教师那一支。**这三条正则不需要改**（本任务一行都没动），
+ * `worksheet-board.test.ts` 有一条「学生 token 打这个路径回 403」的用例把它钉住。
  */
 export const worksheetAccessGate: RequestHandler = (req, res, next) => {
   const student = getStudentSession(req);
@@ -554,6 +559,153 @@ router.post('/:id/review', async (req, res) => {
   } catch (error) {
     console.error('[worksheets] 标记已查看失败:', error);
     res.status(500).json({ error: '标记已查看失败' });
+  }
+});
+
+/**
+ * 教师看板：**这一堂课的整批作答行**（`GET /classroom/:classroomId/answers`）。
+ *
+ * ── 它为什么必须存在（D3 实测出来的洞）────────────────────────────────
+ * D3 的看板格子**完全由广播驱动**：`worksheet-answer-updated` 只在「学生刚保存/提交」那一刻
+ * 发一次，而在此之前发生的作答没有任何办法补读。于是**教师刷新一次页面，早做完的学生就
+ * 掉回「还没收到作答」态** —— 看板失忆，且不报任何错（`worksheet-tile-state.ts` 的
+ * `no-progress` 那一态就是被这件事逼出来的）。抽屉（本任务的形态 A / B）本来也要同一份数据。
+ *
+ * ── 🔴 形状：为什么按「课堂」而不是按「学习单」────────────────────────
+ * 高级模式下**每个组可以是不同的学习单**（规格 §1.2）——「全班共有的第 3 题」并不存在。
+ * 所以响应天生是两层：`worksheets[] → participants[] → answerRows[]`，
+ * 每一层都按**解析结果**分组（`resolveMaterialTargetId`，全项目唯一口径），
+ * 而不是假设全班共用一份。标准 / 分组模式下 `worksheets[]` 只有一个元素，两层退化成一层的
+ * 观感由前端负责（规格 §7.3：会「自动退化成一层」）。
+ *
+ * ── 🔴 不泄漏答案（规格 §5.4 红线）──────────────────────────────────
+ * 读的是 `WorksheetAnswer` 行，**从不读 `Worksheet.content`** —— 正确答案
+ * （`data.correctKeys` / `data.answers` / `data.explanation`）住在 content 的题目节点里，
+ * 而这里只 `select` 学习单的 `{ id, title }`。逐题作答行里的 `value` 是**学生自己写的**
+ * 那一个（§7.3 形态 A 的「学生原答案」要求它），与「正确答案」是两件事。
+ * ⚠️ 改这个 handler 时**不要**顺手把 `content` 或题目节点的 `data` 加进来：
+ * 那一步会把全班试卷的答案一起送到教师浏览器（虽然教师合法，但这个端点没有任何一处需要它）。
+ *
+ * ── 鉴权 ────────────────────────────────────────────────────────────
+ * 🔴 **教师专用**。路径是 `/classroom/:classroomId/answers`（**三段**），
+ * 刻意不落在 `worksheetAccessGate` 放行的那三种学生形状里：
+ *   · `^\/[^/]+\/student-view\/?$` —— 末段必须是 `student-view`；
+ *   · `^\/[^/]+\/answers\/?$`     —— **恰好两段**，而本路径是三段；
+ *   · `^\/[^/]+\/answers\/submit\/?$` —— 末段必须是 `submit`。
+ * 所以学生 token 打到这里会走 `requireTeacher` 那一支 ⇒ **403**（不是 401）。
+ * 用例钉在 `worksheet-routes.test.ts` 与 `worksheet-board.test.ts` 两处。
+ *
+ * ── 口径上的两处取舍（都不是随手）────────────────────────────────────
+ * ① **只回「此刻该答的那一份」上的作答行**。教师课上换过学习单时，旧那一份的作答行仍在库里，
+ *    但学生此刻答的不是它 —— 混进来只会让抽屉显示一个与他手上那张单无关的进度。
+ * ② **目标已被删（组级 `targetId` 悬空）的那一份不出现在响应里**：它没有标题、也没有题目
+ *    （`Worksheet` 行已经没了），前端对它画不出任何东西；学生那边同样是读不到的（404）。
+ *    这不是「静默丢数据」：那节课的那道题本来就已经不存在了。
+ */
+router.get('/classroom/:classroomId/answers', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroomId = req.params.classroomId;
+
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: classroomId },
+      select: {
+        id: true,
+        mode: true,
+        groups: {
+          select: {
+            id: true,
+            name: true,
+            materials: { select: { kind: true, targetId: true } },
+          },
+        },
+        students: {
+          select: {
+            id: true,
+            type: true,
+            groupId: true,
+            student: { select: { name: true } },
+            group: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const classroomLevelId = await loadClassroomLevelWorksheetId(prisma, classroomId);
+    const groupMaterials = classroom.groups.flatMap(group =>
+      group.materials.map(material => ({ groupId: group.id, kind: material.kind, targetId: material.targetId })));
+
+    // 参与者 → 他此刻该答的那一份。**同一个函数**是全部三种模式唯一的解析口径。
+    const participantsByWorksheet = new Map<string, Array<{ id: string; name: string; kind: string; groupName: string | null }>>();
+    for (const participant of classroom.students) {
+      const worksheetId = resolveMaterialTargetId({
+        mode: classroom.mode,
+        studentGroupId: participant.groupId,
+        groupMaterials,
+        classroomLevelId,
+        kind: 'worksheet',
+      });
+      if (!worksheetId) continue;
+      const list = participantsByWorksheet.get(worksheetId) ?? [];
+      list.push({
+        id: participant.id,
+        // 小组 / 高级模式下这里是**一个组一行参与者**（`ClassroomStudent.type === 'group'`），
+        // 所以名字优先取组名 —— 取 `student?.name` 会是 undefined。
+        name: participant.student?.name ?? participant.group?.name ?? '未命名参与者',
+        kind: participant.type,
+        groupName: participant.group?.name ?? null,
+      });
+      participantsByWorksheet.set(worksheetId, list);
+    }
+
+    // 只查**存在**的那几份（取舍 ② 见 handler 注释）。
+    const worksheets = await prisma.worksheet.findMany({
+      where: { id: { in: [...participantsByWorksheet.keys()] } },
+      select: { id: true, title: true },
+    });
+    const titleById = new Map(worksheets.map(worksheet => [worksheet.id, worksheet.title]));
+
+    // 作答行**一次查全**（不是逐份 / 逐个参与者查 —— 40 人 × 20 题会变成 N+1）。
+    // ⚠️ 只 select 答案行自己的列，不 `include` worksheet（那会把 content 拖出来）。
+    const responses = await prisma.worksheetResponse.findMany({
+      where: { classroomId },
+      select: {
+        participantId: true,
+        worksheetId: true,
+        answers: {
+          select: { questionId: true, status: true, isCorrect: true, reviewedAt: true, value: true },
+        },
+      },
+    });
+    const rowsByPair = new Map<string, Array<{
+      questionId: string; status: string; isCorrect: boolean | null; reviewedAt: Date | null; value: Prisma.JsonValue | null;
+    }>>();
+    for (const response of responses) {
+      rowsByPair.set(`${response.participantId} ${response.worksheetId}`, response.answers);
+    }
+
+    res.json({
+      classroomId: classroom.id,
+      worksheets: [...participantsByWorksheet.entries()]
+        .filter(([worksheetId]) => titleById.has(worksheetId))
+        .map(([worksheetId, participants]) => ({
+          id: worksheetId,
+          title: titleById.get(worksheetId)!,
+          participants: participants.map(participant => ({
+            participantId: participant.id,
+            name: participant.name,
+            kind: participant.kind,
+            groupName: participant.groupName,
+            // 没有答案行 = 这个人这道题没有任何动作（包括「从没开始」）。**空数组照发**：
+            // 「已交 N/M」的分母是参与者数，把没作答的人整个删掉会让分母只剩作答过的人。
+            answerRows: rowsByPair.get(`${participant.id} ${worksheetId}`) ?? [],
+          })),
+        })),
+    });
+  } catch (error) {
+    console.error('[worksheets] 读取课堂作答行失败:', error);
+    res.status(500).json({ error: '读取课堂作答行失败' });
   }
 });
 

@@ -1,0 +1,392 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import express from 'express';
+import { PrismaClient } from '@prisma/client';
+import { worksheetAccessGate, worksheetRoutes } from '../routes/worksheets.js';
+import { createTeacherSession } from '../middleware/auth.js';
+import { createStudentToken } from '../middleware/student-auth.js';
+import { ANSWER_KEYS } from '../services/worksheet-questions.js';
+
+/**
+ * 教师看板的**历史读端点**：`GET /api/worksheets/classroom/:classroomId/answers`。
+ *
+ * 它补的是 D3 实测出来的一个洞：看板格子完全由广播驱动 ⇒ **教师刷新一次页面，
+ * 早做完的学生就掉回「还没收到作答」态**。抽屉（形态 A / B）本来也要同一份数据。
+ *
+ * 四条硬要求，每条一个用例：
+ *   ① **教师专用** —— 它挂在 `/api/worksheets` 那条混装鉴权路由下，而放行正则只放三种
+ *      学生形状（`GET /:id/student-view`、`PUT /:id/answers`、`POST /:id/answers/submit`）。
+ *      新路径是**三段** `/classroom/:id/answers`，绝不落进那三条里。除了「学生被拦」，
+ *      还必须有「三种学生形状仍然放行」的阳性对照 —— 否则一个「一律 403」的闸门也能通过。
+ *   ② **不泄漏答案**（规格 §5.4 红线）—— 判据不是「搜不到某几个词」，而是
+ *      **`ANSWER_KEYS` 里的每一个键在整份响应里都不存在**（递归扫，不是字符串包含），
+ *      外加两条阳性对照：题目在、且同一份学习单走教师读端点时那些键**在**。
+ *   ③ **高级模式下不同组是不同的学习单** —— 形状必须能表达，不能假设全班共用一份。
+ *   ④ **「已查看」的时间与「学生原答案」都要在**（抽屉形态 A 的两列）。
+ *
+ * ⚠️ 这个文件用**真 Prisma + 真 SQLite**（照 worksheet-routes.test.ts）。
+ * 临时库由 `prisma db push` 建在 `os.tmpdir()` 下，用例开头第一件事就是断言这一点 ——
+ * 本项目出过一次「`db push` 打在真实库上」的事故，那条断言是它的直接产物。
+ */
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+/** server/node_modules/.bin/prisma（dist/tests → server 根） */
+const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
+const SCHEMA = path.resolve(HERE, '../../prisma/schema.prisma');
+
+interface TempDb {
+  prisma: PrismaClient;
+  file: string;
+}
+
+async function openTempDb(): Promise<TempDb> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-worksheet-board-'));
+  const file = path.join(dir, 'test.db');
+  const url = `file:${file}`;
+  // 🔴 这条断言是安全闸门，不是装饰：它保证下面那次 db push 不可能落在真实库上。
+  assert.ok(
+    url.startsWith(`file:${os.tmpdir()}`),
+    `DATABASE_URL 必须指向临时目录，实际是 ${url}`,
+  );
+  assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
+    env: { ...process.env, DATABASE_URL: url },
+    stdio: 'pipe',
+  });
+  const prisma = new PrismaClient({ datasources: { db: { url } } });
+  return { prisma, file };
+}
+
+function teacherCookie(): string {
+  const setCookies: string[] = [];
+  createTeacherSession({ setHeader: (_name: string, value: string) => { setCookies.push(value); } } as never);
+  return setCookies[0].split(';')[0];
+}
+
+interface TestServer {
+  get: (pathname: string, headers?: Record<string, string>) => Promise<Response>;
+  post: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
+  put: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
+  cookie: string;
+}
+
+/**
+ * 起真实路由 + **真实的鉴权闸门**（`worksheetAccessGate`，index.ts 用的就是同一个函数，
+ * 本文件不含 `index.ts` 的挂载语句 —— 那条由 `worksheet-routes.test.ts` 的源码断言兜底）。
+ */
+async function startServer(t: { after: (fn: () => void) => void }, prisma: PrismaClient): Promise<TestServer> {
+  const app = express();
+  app.use(express.json());
+  app.set('prisma', prisma);
+  app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
+  // 兜底 404 一律回 JSON：express 默认回 HTML，断言失败时 `await res.json()` 会抛
+  // `Unexpected token '<'`，把「状态码不对」这个真正的原因盖成一句解析错误。
+  app.use((_req, res) => { res.status(404).json({ error: 'not found' }); });
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { port } = server.address() as AddressInfo;
+  const cookie = teacherCookie();
+  const call = (method: string) => (pathname: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`http://127.0.0.1:${port}${pathname}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: method === 'GET' ? undefined : JSON.stringify(body),
+    });
+  return {
+    // ⚠️ 教师 cookie **不默认带上**（与另外两个学习单用例文件不同）：本文件的核心用例是
+    // 「学生 token 打教师端点」，多带一个教师 cookie 会让「到底是谁放行的」变成一件
+    // 要靠闸门内部顺序去推的事。需要教师身份的调用显式传 `{ Cookie: cookie }`。
+    get: (pathname, headers) => call('GET')(pathname, undefined, headers),
+    post: (pathname, body, headers) => call('POST')(pathname, body, headers),
+    put: (pathname, body, headers) => call('PUT')(pathname, body, headers),
+    cookie,
+  };
+}
+
+/**
+ * 夹具里的每一道题都**带着答案**（`correctKeys` / `answers` / `explanation`），
+ * 否则「响应里没有答案键」那句什么都没证明 —— 阳性对照见下面最后一条用例。
+ */
+const SAMPLE_CONTENT = {
+  schemaVersion: 1,
+  nodes: [
+    {
+      id: 'q_1',
+      type: 'single-choice',
+      prompt: '光合作用需要哪些条件？',
+      inputMode: 'keyboard',
+      data: { options: [{ key: 'A', text: '水' }, { key: 'B', text: '阳光' }], correctKeys: ['B'], explanation: '光是光合作用的能量来源' },
+      children: [],
+    },
+    {
+      id: 'q_2',
+      type: 'fill-blank',
+      prompt: '水的化学式是____',
+      inputMode: 'keyboard',
+      data: { answers: ['H2O'], explanation: '两个氢一个氧' },
+      children: [],
+    },
+    {
+      id: 'q_3',
+      type: 'short-answer',
+      prompt: '说说你观察到的现象。',
+      inputMode: 'keyboard',
+      data: {},
+      children: [],
+    },
+  ],
+};
+
+const SAMPLE_SETTINGS = { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' };
+
+async function seedWorksheet(prisma: PrismaClient, title: string) {
+  return prisma.worksheet.create({
+    data: { title, description: null, content: SAMPLE_CONTENT, settings: SAMPLE_SETTINGS },
+  });
+}
+
+/** 递归收集一棵 JSON 里出现过的**所有键名**（不是字符串包含 —— 键名判据必须精确）。 */
+function collectKeys(value: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) { value.forEach(item => collectKeys(item, out)); return out; }
+  if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      out.add(key);
+      collectKeys(child, out);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// ① 鉴权：教师专用
+// ---------------------------------------------------------------------------
+
+test('鉴权：新读端点是**教师专用** —— 学生 token 403、教师 200、无凭据 401', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma, '光合作用学习单');
+  const classroom = await db.prisma.classroom.create({ data: { code: '9001', title: '鉴权课堂', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+  const boardPath = `/api/worksheets/classroom/${classroom.id}/answers`;
+
+  // 🔴 学生 token：**403**（已认证但无权），不是 401。
+  const asStudentRes = await server.get(boardPath, asStudent);
+  const asStudentBody = await asStudentRes.json() as { error?: string };
+  assert.equal(asStudentRes.status, 403, JSON.stringify(asStudentBody));
+  assert.equal(asStudentBody.error, '该接口仅教师可用', '403 必须是**闸门**回的那一句，不是偶然的 403');
+
+  // 教师 cookie：200。
+  const asTeacherRes = await server.get(boardPath, { Cookie: server.cookie });
+  assert.equal(asTeacherRes.status, 200, JSON.stringify(await asTeacherRes.json()));
+
+  // 无凭据：401（`requireTeacher` 的那一支）。这条同时证明上面那个 403 **不是**
+  // 「闸门把谁都拦成 403」——没有凭据时它仍然会说「未认证」。
+  const anon = await server.get(boardPath);
+  assert.equal(anon.status, 401);
+
+  // ── 阳性对照：三种学生形状**仍然放行**。没有这一段，一个把什么都 403 掉的闸门
+  //    也能让上面那条通过，而学生端会整个坏掉。
+  const shapes: Array<[string, Promise<Response>]> = [
+    ['GET  /:id/student-view', server.get(`/api/worksheets/${worksheet.id}/student-view`, asStudent)],
+    ['PUT  /:id/answers', server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] } }, asStudent)],
+    ['POST /:id/answers/submit', server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, asStudent)],
+  ];
+  for (const [label, pending] of shapes) {
+    const res = await pending;
+    assert.notEqual(res.status, 403, `${label} 必须放行，实际 403：${JSON.stringify(await res.json())}`);
+  }
+
+  // 既有教师端点「已查看」同样不受影响（闸门那三条正则一个字都没改）。
+  const review = await server.post(`/api/worksheets/${worksheet.id}/review`, { participantId: participant.id, questionId: 'q_2' }, asStudent);
+  assert.equal(review.status, 403, '「已查看」是教师端点，学生 token 不得放行');
+});
+
+// ---------------------------------------------------------------------------
+// ② 不泄漏答案（规格 §5.4 红线）
+// ---------------------------------------------------------------------------
+
+test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不含 content', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma, '光合作用学习单');
+  const classroom = await db.prisma.classroom.create({ data: { code: '9002', title: '安全课堂', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const response = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id, status: 'in-progress' },
+  });
+  await db.prisma.worksheetAnswer.create({
+    data: { responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] }, status: 'submitted', isCorrect: true },
+  });
+
+  const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
+  assert.equal(res.status, 200);
+  const raw = await res.text();
+
+  // ── 阳性对照之一：这一份学习单**确实带着答案**（同一份夹具走教师读端点是有的）。
+  //    没有它，下面「找不到答案键」只说明夹具里压根没有答案。
+  const detailRaw = await (await server.get(`/api/worksheets/${worksheet.id}`, { Cookie: server.cookie })).text();
+  for (const key of ANSWER_KEYS) {
+    assert.ok(detailRaw.includes(key), `夹具里应当有答案键 ${key}（否则本用例无效）：${key} 不在教师读端点响应里`);
+  }
+
+  // ── 判据一：键名级（递归）—— 不是字符串包含，避免「响应里恰好有个学生叫 answers」这类假阳性。
+  const keys = collectKeys(JSON.parse(raw));
+  for (const key of ANSWER_KEYS) {
+    assert.ok(!keys.has(key), `响应里出现了答案键 ${key}（规格 §5.4 红线）`);
+  }
+  assert.ok(!keys.has('content'), '响应里不得有 content —— 题目节点的 data 就住在它里面');
+
+  // ── 判据二：原始字面量级（报告里那三条 grep 的同一判据）。
+  for (const literal of [...ANSWER_KEYS, 'content']) {
+    assert.ok(!raw.includes(literal), `响应原文里不该出现「${literal}」`);
+  }
+
+  // ── 阳性对照之二：题目与作答**在**（一个 `res.json({})` 的实现也能让上面全部通过）。
+  const body = JSON.parse(raw) as { worksheets: Array<{ id: string; participants: Array<{ participantId: string; answerRows: Array<{ questionId: string; value: unknown; isCorrect: boolean | null }> }> }> };
+  assert.equal(body.worksheets.length, 1);
+  assert.equal(body.worksheets[0].id, worksheet.id);
+  const rows = body.worksheets[0].participants[0].answerRows;
+  assert.equal(rows.length, 1, '逐题作答行必须下发');
+  assert.equal(rows[0].questionId, 'q_1');
+  assert.equal(rows[0].isCorrect, true, '对错必须下发（抽屉形态 A 的那一列）');
+  // 「学生原答案」是学生自己写的那个值，与「正确答案」是两件事 —— 抽屉要它（§7.3 形态 A）。
+  assert.deepEqual(rows[0].value, { format: 'choice/v1', selected: ['B'] });
+});
+
+// ---------------------------------------------------------------------------
+// ③ 高级模式：不同组是不同的学习单
+// ---------------------------------------------------------------------------
+
+test('高级模式：**每组一份不同的学习单**，形状必须能表达（两组各只看到自己那份与自己那些人）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const first = await seedWorksheet(db.prisma, '第一组的学习单');
+  const second = await seedWorksheet(db.prisma, '第二组的学习单');
+  const classroom = await db.prisma.classroom.create({ data: { code: '9003', title: '高级课堂', mode: 'advanced' } });
+
+  const groupA = await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组' } });
+  const groupB = await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第二组' } });
+  await db.prisma.classroomGroupMaterial.create({ data: { groupId: groupA.id, kind: 'worksheet', targetId: first.id } });
+  await db.prisma.classroomGroupMaterial.create({ data: { groupId: groupB.id, kind: 'worksheet', targetId: second.id } });
+
+  // 高级模式下**一个组一行参与者**（`type: 'group'`）。
+  const participantA = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'group', groupId: groupA.id } });
+  const participantB = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'group', groupId: groupB.id } });
+
+  const responseA = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: first.id, participantId: participantA.id, status: 'submitted' },
+  });
+  await db.prisma.worksheetAnswer.create({
+    data: { responseId: responseA.id, questionId: 'q_2', value: { format: 'fill/v1', text: 'H2O' }, status: 'submitted', isCorrect: true, reviewedAt: new Date('2026-09-23T02:00:00Z') },
+  });
+
+  const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
+  assert.equal(res.status, 200);
+  const body = await res.json() as { worksheets: Array<{ id: string; title: string; participants: Array<{ participantId: string; name: string; kind: string; groupName: string | null; answerRows: Array<{ questionId: string; reviewedAt: string | null }> }> }> };
+
+  // 「全班共有的第 3 题」并不存在 —— 所以**先按学习单分组**，两份都在。
+  assert.equal(body.worksheets.length, 2, '两份不同的学习单必须各成一组（§7.3 形态 B 的第一层）');
+  const byId = new Map(body.worksheets.map(item => [item.id, item]));
+  assert.equal(byId.get(first.id)?.title, '第一组的学习单');
+  assert.equal(byId.get(second.id)?.title, '第二组的学习单');
+
+  // 每组只看到**自己那些人**，不串到另一组。
+  assert.deepEqual(byId.get(first.id)?.participants.map(p => p.participantId), [participantA.id]);
+  assert.deepEqual(byId.get(second.id)?.participants.map(p => p.participantId), [participantB.id]);
+
+  // 参与者是**组不是人**（§7.3 的「全部作答」那个标题就是为它改的），名字取组名。
+  const groupParticipant = byId.get(first.id)!.participants[0];
+  assert.equal(groupParticipant.kind, 'group');
+  assert.equal(groupParticipant.name, '第一组');
+  assert.equal(groupParticipant.groupName, '第一组');
+
+  // 「已查看」的时间在（B4 的 `reviewedAt`，规格 §7.4）。
+  const rows = groupParticipant.answerRows;
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].reviewedAt, '已查看时间必须下发（规格 §7.4：「已看 N/M」的数据源）');
+  assert.equal(new Date(rows[0].reviewedAt!).toISOString(), '2026-09-23T02:00:00.000Z');
+
+  // 阴性对照：第二组（没答过）的 answerRows 是**空数组而不是缺字段** ——
+  // 「已交 N/M」的分母是参与者数，缺字段会让分母只剩作答过的人。
+  assert.deepEqual(byId.get(second.id)?.participants[0].answerRows, []);
+});
+
+test('标准模式：只配了学习单的学生在列、没配的**不进分母**；未作答者的 answerRows 为空数组', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma, '标准模式学习单');
+  const withoutSheet = await db.prisma.classroom.create({ data: { code: '9004', title: '没配单的课堂', mode: 'standard' } });
+  const classroom = await db.prisma.classroom.create({ data: { code: '9005', title: '标准课堂', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+
+  const answered = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const idle = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  await db.prisma.classroomStudent.create({ data: { classroomId: withoutSheet.id, type: 'student' } });
+
+  const response = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: answered.id, status: 'in-progress' },
+  });
+  await db.prisma.worksheetAnswer.create({
+    data: { responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['A'] }, status: 'submitted', isCorrect: false },
+  });
+
+  const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
+  const body = await res.json() as { worksheets: Array<{ participants: Array<{ participantId: string; answerRows: Array<{ isCorrect: boolean | null }> }> }> };
+  assert.equal(body.worksheets.length, 1);
+  const participants = body.worksheets[0].participants;
+  assert.deepEqual(participants.map(p => p.participantId).sort(), [answered.id, idle.id].sort(), '两条都在：分母是「这一份学习单的人」，不是「答过的人」');
+  const idleRows = participants.find(p => p.participantId === idle.id)!.answerRows;
+  assert.deepEqual(idleRows, [], '一次都没作答的人要回空数组，不是缺字段');
+  // 判错也要如实下发（`false` 与「没有对错」的 `null` 是两件事）。
+  assert.equal(participants.find(p => p.participantId === answered.id)!.answerRows[0].isCorrect, false);
+
+  // 另一间课堂不受影响（按 `classroomId` 收口，不是「把全库作答行都发出去」）。
+  const other = await server.get(`/api/worksheets/classroom/${withoutSheet.id}/answers`, { Cookie: server.cookie });
+  assert.equal(other.status, 200);
+  assert.deepEqual((await other.json() as { worksheets: unknown[] }).worksheets, [], '没配学习单的课堂回空数组');
+});
+
+// ---------------------------------------------------------------------------
+// 边界：课堂不存在 / 目标已删（组级 targetId 悬空）
+// ---------------------------------------------------------------------------
+
+test('边界：课堂不存在 ⇒ 404；组级目标已删（悬空 targetId）⇒ 那份不出现，也不 500', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const missing = await server.get('/api/worksheets/classroom/根本不存在的课堂/answers', { Cookie: server.cookie });
+  assert.equal(missing.status, 404);
+
+  // 高级模式 + 一组配了一份**已经不在了**的学习单（组级 targetId 没有真外键，删得掉）。
+  const classroom = await db.prisma.classroom.create({ data: { code: '9006', title: '悬空课堂', mode: 'advanced' } });
+  const group = await db.prisma.classroomGroup.create({ data: { classroomId: classroom.id, name: '第一组' } });
+  await db.prisma.classroomGroupMaterial.create({ data: { groupId: group.id, kind: 'worksheet', targetId: '已经被删掉的学习单' } });
+  await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'group', groupId: group.id } });
+
+  const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
+  assert.equal(res.status, 200, '读路径不得因为一条悬空引用整个 500');
+  const body = await res.json() as { worksheets: Array<{ id: string }> };
+  assert.deepEqual(body.worksheets, [], '那一份没有标题也没有题目，前端画不出任何东西 ⇒ 不出现在响应里');
+});

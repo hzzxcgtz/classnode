@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage } from './types';
 
 let studentSessionToken = '';
 
@@ -432,6 +432,21 @@ export const api = {
     request<WorksheetUsage>(`/api/worksheets/${id}/usage`),
   // 详情。列表页不用它（列表项没有 `content` 也不需要），留给编辑器（C2）。
   getWorksheet: (id: string) => request<WorksheetDetail>(`/api/worksheets/${id}`),
+  // 教师看板的**历史读端点**（D4 补）：这一堂课的整批作答行，按学习单 → 参与者 → 题分组。
+  //
+  // 🔴 少了它，看板只能看到「打开之后发生的作答」：教师刷新一次页面，早做完的学生就会
+  // 掉回「还没收到作答」态（格子完全由广播驱动 —— D3 实测出来的洞）。
+  // ⚠️ `classroomId` 而不是 `worksheetId`：高级模式下每个组是不同的学习单，
+  // 「按学习单读」回答不了「这一堂课有哪些人、分别在答哪一份」。
+  getWorksheetBoard: (classroomId: string) =>
+    request<WorksheetBoard>(`/api/worksheets/classroom/${classroomId}/answers`),
+  // 教师的「已查看」标记（规格 §3-AA）。粒度是**参与者 × 题**，可重复调用（刷新时间）。
+  // ⚠️ 对**没有作答过**的那道题服务端回 **409**：界面上就不该给那种题一个必然失败的按钮。
+  reviewWorksheetAnswer: (worksheetId: string, data: { participantId: string; questionId: string }) =>
+    request<{ success: true; participantId: string; questionId: string; reviewedAt: string }>(
+      `/api/worksheets/${worksheetId}/review`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
 
   // Storage stats
   getStorageStats: () =>

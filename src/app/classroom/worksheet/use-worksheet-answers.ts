@@ -14,11 +14,12 @@ import {
 } from '@/lib/worksheet-questions';
 import type { ChatToast } from '../classroom-types';
 import {
+  classifyFailure,
   dropQueueItem,
-  isPermanentFailure,
   permanentFailureMessage,
   readQueue,
   replayOrder,
+  sessionExpiredMessage,
   upsertQueueItem,
   worksheetQueueKey,
   writeQueue,
@@ -35,7 +36,12 @@ import {
  *   3. **永久失败要说话**：4xx（含 `allowResubmit: false` 的 409）从队列里丢弃，
  *      **并且弹一句提示** —— 丢弃是对的（重放一万次也是同一个答案），
  *      但静默丢弃正是本节要防的那件事。判据在 `worksheet-queue.ts` 的
- *      `isPermanentFailure`，那里有完整理由。
+ *      `classifyFailure`，那里有完整理由。
+ *
+ * 🔴 第 2 条对 **401（会话过期）** 有额外的分量：服务端的学生 token 用每进程随机的密钥签，
+ * **服务端每重启一次所有学生 token 就失效一次**，所以 401 的成因全在服务端、与学生的答案
+ * 无关。它因此**不是永久失败、绝不出队** —— 队列留在 `localStorage`，刷新页面重新建会话
+ * 会把它整个重放。详见 `worksheet-queue.ts` 的 `sessionExpiredMessage`。
  *
  * ⚠️ **提交某题之前必须先 flush**（`submit()` 的第一步）：服务端对「还没作答就提交」回 400
  * （`routes/worksheets.ts`），而此刻这一题的作答完全可能还躺在队列里（断网 / 刚敲完还没到
@@ -248,6 +254,18 @@ export function useWorksheetAnswers({
   }, []);
 
   const flushRef = useRef<Promise<void> | null>(null);
+  /**
+   * 会话**当前**是不是过期的（上一次尝试吃了 401）。
+   *
+   * 两个用途，缺一不可：
+   *   · **别重复弹同一句**。会话过期后学生每敲一次字都会走一遍 flush、每遍都吃一个 401，
+   *     不设这道闸就是每 1.5 秒弹一次同样的话 —— 而噪音的结局是学生**不再看提示**，
+   *     那比不提示还糟。
+   *   · **给 `submit()` 一个判据**：那时这一题必然还在队列里，而
+   *     「先等网络恢复再提交」对 401 是一句错话（网络是好的，是登录状态过期了）。
+   * 保存成功即置回 false：那说明会话已经好了（多半是刷新过），下一次过期该重新说话。
+   */
+  const sessionExpiredRef = useRef(false);
 
   /**
    * 把队列**排干**。
@@ -274,6 +292,7 @@ export function useWorksheetAnswers({
         const outcome = await putAnswer(target, next);
         if (outcome.ok) {
           // ★ 只有服务端 200 才出队（规格 §8.3）。
+          sessionExpiredRef.current = false;
           lastSentRef.current[next.questionId] = next.value;
           commitQueue(dropQueueItem(pendingRef.current, next.questionId));
           if (next.value !== null) {
@@ -288,7 +307,11 @@ export function useWorksheetAnswers({
           setOffline(false);
           continue;
         }
-        if (isPermanentFailure(outcome.status)) {
+        // 🔴 出队的判据**只有 `'permanent'` 这一档**，而它的定义在
+        // `worksheet-queue.ts` 的 `classifyFailure`（测试断言的也正是那一个函数 ——
+        // 这里若自己写 `status >= 400`，测试就会变成一条不看实现的假绿）。
+        const kind = classifyFailure(outcome.status);
+        if (kind === 'permanent') {
           // 永久失败：出队**并说话**。留着重试只会让队列永远清不空（服务端每次都拒）。
           commitQueue(dropQueueItem(pendingRef.current, next.questionId));
           setToastRef.current({
@@ -296,6 +319,17 @@ export function useWorksheetAnswers({
             type: 'error',
           });
           continue;
+        }
+        if (kind === 'session-expired') {
+          // 🔴 **不出队**（理由见 `worksheet-queue.ts` 的 `sessionExpiredMessage`）：
+          // 队列留在 `localStorage`，刷新页面重新建会话会把它整个重放，答案一条都不会少。
+          // ⚠️ `break` 而不是 `continue`：token 已经失效，后面每一条都会是同一个 401，
+          // 继续发只是白打服务端。⚠️ 也**不设 `offline`**：网络是好的，说「离线」是另一句谎话。
+          if (!sessionExpiredRef.current) {
+            sessionExpiredRef.current = true;
+            setToastRef.current({ msg: sessionExpiredMessage(), type: 'error' });
+          }
+          break;
         }
         // 暂时失败（5xx / 网络）：**这一条和后面全部留着**，顶栏转琥珀。
         setOffline(true);
@@ -406,7 +440,14 @@ export function useWorksheetAnswers({
     try {
       await flush();
       if (pendingRef.current.some((item) => item.questionId === node.id)) {
-        setToastRef.current({ msg: '这一题还没保存成功，先等网络恢复再提交', type: 'info' });
+        // ⚠️ 两种成因，文案必须分开：401 是登录状态过期（网络是好的），
+        // 说成「等网络恢复」会让学生去检查 Wi-Fi —— 一次白费的排查。
+        setToastRef.current({
+          msg: sessionExpiredRef.current
+            ? sessionExpiredMessage()
+            : '这一题还没保存成功，先等网络恢复再提交',
+          type: sessionExpiredRef.current ? 'error' : 'info',
+        });
         return;
       }
       let res: Response;
@@ -435,8 +476,13 @@ export function useWorksheetAnswers({
       }
       const payload = await res.json().catch(() => null);
       const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : null;
+      // ⚠️ 401 的服务端原话是 `middleware/auth.ts` 的「教师会话已失效，请重新登录」——
+      // 那是说给教师的，学生没有教师会话可登。照抄过来就是一句谎话，所以不走那条回落。
+      if (res.status === 401) sessionExpiredRef.current = true;
       setToastRef.current({
-        msg: message || (res.status >= 500 ? '服务端出了点问题，这一题没提交上，再点一次试试' : `提交失败（错误 ${res.status}）`),
+        msg: res.status === 401
+          ? sessionExpiredMessage()
+          : message || (res.status >= 500 ? '服务端出了点问题，这一题没提交上，再点一次试试' : `提交失败（错误 ${res.status}）`),
         type: 'error',
       });
     } finally {

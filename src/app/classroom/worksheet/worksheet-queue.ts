@@ -121,22 +121,35 @@ export function replayOrder(items: WorksheetQueueItem[]): WorksheetQueueItem[] {
 }
 
 /**
- * 这一次失败该**丢弃**还是该**留着重试**。
+ * 这一次失败该怎么处置。**三档，不是一个布尔值** —— `'permanent'` 是**唯一**会让作答
+ * 出队（即真的丢掉）的那一档，判据只有这一个出口（`use-worksheet-answers.ts` 的 flush 循环）。
  *
  * 🔴 这条判据是本模块唯一一条不能含糊的规则：
- *   · **4xx（含 `allowResubmit: false` 的 409）⇒ 永久失败，丢弃**。留着重试 =
- *     每一次联网、每一次输入都重放同一条被服务端拒绝的请求，队列永远清不空、
+ *   · **`'permanent'`：4xx（含 `allowResubmit: false` 的 409）⇒ 从队列里丢弃**。
+ *     留着重试 = 每一次联网、每一次输入都重放同一条被服务端拒绝的请求，队列永远清不空、
  *     顶部永远挂着「⚠ 离线」，而学生看到的是一句「保存中…」永远不结束。
- *   · **5xx 与网络错误（`status` 为 `null`）⇒ 暂时失败，保留并重试**。
+ *   · **`'transient'`：5xx 与网络错误（`status` 为 `null`）⇒ 保留并重试**。
  *     这两类的共同点是「服务端此刻没能处理，但这条作答本身没错」。
+ *   · 🔴 **`'session-expired'`：401 ⇒ 保留，且**不出队**。** 它不是「永久失败」，
+ *     理由见下面 `sessionExpiredMessage` 上方那一段。
  *
  * 服务端那侧的配合是刻意的（`routes/worksheets.ts` 的注释写明）：409 用来表示
  * 「当前状态不允许这个操作」、400 表示「请求本身有问题」，两者都不与 5xx 混用。
  * **客户端这条判据与那条约定是一对**，改一边就要看另一边。
  */
+export type FailureKind = 'permanent' | 'session-expired' | 'transient';
+
+export function classifyFailure(status: number | null): FailureKind {
+  if (status === null) return 'transient';
+  // 🔴 401 走单独一档，**绝不能与 400/403/409 合并**。见 `sessionExpiredMessage`。
+  if (status === 401) return 'session-expired';
+  if (status >= 400 && status < 500) return 'permanent';
+  return 'transient';
+}
+
+/** 「这一条该丢掉吗」。**只为读起来顺**——判据本体在 `classifyFailure`，不在这里。 */
 export function isPermanentFailure(status: number | null): boolean {
-  if (status === null) return false;
-  return status >= 400 && status < 500;
+  return classifyFailure(status) === 'permanent';
 }
 
 /**
@@ -150,4 +163,27 @@ export function permanentFailureMessage(status: number, serverMessage?: string |
   if (serverMessage) return serverMessage;
   if (status === 409) return '老师已设置本题提交后不可修改，这一题这次没能保存';
   return `这一题没能保存（错误 ${status}），请告诉老师`;
+}
+
+/**
+ * 会话过期（401）时给学生的**一句人话**。
+ *
+ * 🔴 为什么 401 绝不能走「丢弃」那一支（`classifyFailure` 里单独一档就是为它）：
+ * 服务端的学生 token 是用**每进程随机**的密钥签的（`middleware/student-auth.ts` 的
+ * `crypto.randomBytes(32)`），所以**服务端每重启一次，所有学生 token 立刻失效** ——
+ * 开发时 `tsx watch` 改一次文件就重启一次，桌面端每次升级重启同理。也就是说 401 的成因
+ * **全在服务端**，与这道题的答案毫无关系。按「4xx 一律永久」处置的后果是双重的：
+ * 那条作答被**真的丢掉**，而学生看到的还是 `middleware/auth.ts` 那句
+ * 「教师会话已失效，请重新登录」—— 那是说给教师的，学生根本没有教师会话可登。
+ * 一句谎话 + 一次真丢数据，正是规格 §8.3 明令禁止的那件事。
+ *
+ * 不丢的**底气**来自队列本身：键是「课堂 + 参与者」且落在 `localStorage`，
+ * 刷新页面会重新 `createStudentSession` 并**重放整个队列** ⇒ 只要不出队，
+ * 学生的答案一条都不会少。所以这里的出路是「刷新一下」，不是「重新作答」。
+ *
+ * ⚠️ 服务端那句 `error` 在这里**故意不用**（与 `permanentFailureMessage` 相反）：
+ * 它是写给教师的，照抄过来就是上面那句谎话。
+ */
+export function sessionExpiredMessage(): string {
+  return '登录状态过期了，刷新一下页面就好 —— 你答过的题都还在，刷新后会自动重发';
 }

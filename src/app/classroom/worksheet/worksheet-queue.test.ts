@@ -17,11 +17,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  classifyFailure,
   dropQueueItem,
   isPermanentFailure,
   permanentFailureMessage,
   readQueue,
   replayOrder,
+  sessionExpiredMessage,
   upsertQueueItem,
   worksheetQueueKey,
   writeQueue,
@@ -80,6 +82,56 @@ test('permanentFailureMessage：优先用服务端那句，拿不到才回落；
   assert.match(permanentFailureMessage(400, null), /400/);
   // 服务端那句是空串时也算「没有」——空串当消息用就是一句无声的提示。
   assert.match(permanentFailureMessage(400, ''), /400/);
+});
+
+// ── 1b. 🔴 401（会话过期）不是永久失败（本模块第二要害）──────────────────
+
+/**
+ * 「出队吗」——**唯一**的判据复刻自 `use-worksheet-answers.ts` 的 flush 循环：
+ * 只有 `classifyFailure(...) === 'permanent'` 那一支会 `dropQueueItem`。
+ *
+ * ⚠️ 这里的 `drops` 必须与被测实现共用 `classifyFailure` 本身。若测试自己写一遍
+ * `status >= 400`，它就会在实现把 401 归回 permanent 时**照样通过** —— 一条不看实现的假绿。
+ */
+const drops = (status: number | null): boolean => classifyFailure(status) === 'permanent';
+
+test('🔴 401 不出队（会话过期），409 仍出队（阳性对照）', () => {
+  // 401：服务端的学生 token 用**每进程随机**的密钥签（`middleware/student-auth.ts` 的
+  // `crypto.randomBytes(32)`）⇒ **服务端每重启一次，所有学生 token 立刻失效**。
+  // 也就是说 401 的成因全在服务端，与这道题的答案毫无关系 ——
+  // 按「4xx 一律永久」处置就是把学生的作答**真的删掉**，而提示还是说给教师的
+  // 「教师会话已失效，请重新登录」（`middleware/auth.ts`）。谎话 + 真丢数据。
+  assert.equal(drops(401), false, '会话过期一出队，那条作答就真没了 —— 队列才是唯一的那份');
+  assert.equal(classifyFailure(401), 'session-expired');
+  // ★ 阳性对照：409（`allowResubmit: false`）是 B3 定下的契约，**必须仍然出队**。
+  // 没有这一条，把 `classifyFailure` 改成「永不丢弃」也能让上面那句变绿。
+  assert.equal(drops(409), true, '409 必须仍然是永久失败，否则队列会被一条被拒的作答永久堵死');
+  assert.equal(drops(400), true);
+  assert.equal(drops(403), true);
+  // 5xx / 网络错误本来就是暂时，这条顺带钉住「别顺手把 5xx 也归进 permanent」。
+  assert.equal(drops(500), false);
+  assert.equal(drops(null), false);
+});
+
+test('🔴 反向断言：把 401 归回「永久失败」⇒ 上一条红', () => {
+  // 这不是重复：它钉住的正是修好之前那段代码的形状 ——「4xx 一律永久」。
+  const legacy = (status: number | null): 'permanent' | 'transient' =>
+    (status !== null && status >= 400 ? 'permanent' : 'transient');
+  assert.equal(legacy(401), 'permanent', '这就是回退后的样子');
+  assert.notEqual(legacy(401), classifyFailure(401), '回退 ⇒ 这一条必须红');
+  // ⚠️ 409 在回退前后**恰好相同**：它是这条反证的阴性对照 ——
+  // 别把「挡住回退」写成「凡 409 都特殊」。
+  assert.equal(legacy(409), classifyFailure(409));
+});
+
+test('会话过期的提示说「刷新页面」，且**不是**服务端那句说给教师听的话', () => {
+  const message = sessionExpiredMessage();
+  assert.match(message, /刷新/);
+  // ⚠️ 服务端在 401 里给的原话（`middleware/auth.ts`）是「教师会话已失效，请重新登录」。
+  // 学生没有教师会话可登，照抄就是把教师那套词安在学生头上。
+  assert.doesNotMatch(message, /教师会话|重新登录/);
+  // 阳性对照：永久失败那条路的文案**没有被顺手改掉**（409 仍用服务端原话）。
+  assert.equal(permanentFailureMessage(409, '老师已设置本题提交后不可修改'), '老师已设置本题提交后不可修改');
 });
 
 // ── 2. 队列的增删与覆盖 ─────────────────────────────────────────────────

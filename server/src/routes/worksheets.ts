@@ -1,11 +1,14 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
+import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import {
   flattenQuestions,
+  grade,
+  stripAnswers,
   validateQuestion,
   type QuestionNode,
   type QuestionType,
@@ -489,19 +492,315 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ── 学生端（★ 处理器由 B3 / B4 实现，本任务只负责**放行**）──────────
+// ── 学生端 ──────────────────────────────────────────────────────────
 //
-//   GET  /:id/student-view        读自己那一份（服务端剥离答案，§5.4）      —— B3
-//   PUT  /:id/answers             保存单题（幂等）                          —— B3
-//   POST /:id/answers/submit      提交单题                                 —— B3
-//   POST /:id/review              「已查看」标记（**教师专用**）             —— B4
+//   GET  /:id/student-view        读自己那一份（服务端剥离答案，§5.4）
+//   PUT  /:id/answers             保存单题（幂等）
+//   POST /:id/answers/submit      提交单题
+//   POST /:id/review              「已查看」标记（**教师专用**，B4）
 //
-// 这四条形状的**放行判据**在文件顶部的 `worksheetAccessGate` 里，那一段才是安全关键：
+// 这四条形状的**放行判据**在文件顶部的 `worksheetAccessGate` 里，那一段是安全关键：
 // 前三条是学生放行集，`review` **不在**其中（它走教师那一支）。
 //
-// ⚠️ 处理器实现时必须自己校验：该学生所属参与者的学习单解析结果 `=== :id`。
-// 闸门只校验「是持有效 token 的学生」，不知道这个学生该拿哪一份 ——
-// 高级模式下不同组拿的是不同的学习单，只校验 token 等于谁都能读别人组的那份。
+// 🔴 闸门只校验「这是一个持有效 token 的学生」，**不知道**这个学生该拿哪一份 ——
+// 高级模式下不同组拿的是不同的学习单，只认 token 等于谁都能读别人组那份。
+// 所以下面**每一个**处理器都先走 `requireOwnWorksheet`，它把这件事一次做完。
+
+/**
+ * 学生端三条路径共用的前置校验。
+ *
+ * 按顺序做四件事，任何一步不通过就**自己写好响应**并返回 `null`（调用方直接 return）：
+ *   ① 没有学生会话 ⇒ **401**（教师 cookie 能过闸门，但过不了这里 —— 少了这一步，
+ *      教师误点学生端 URL 会拿到 `student.studentId` 打在 null 上的 500）；
+ *   ② 参与者不存在、或不属于 token 里的那间课堂 ⇒ 403（伪造/过期 token）；
+ *   ③ 该参与者**此刻该拿的那一份**（`resolveMaterialTargetId`，全项目唯一口径）
+ *      `!== :id` ⇒ **403**；
+ *   ④ 那一份在库里不存在（组级 `targetId` 没有真外键，目标可能已被删）⇒ 404。
+ *
+ * 🔴 ③ 用 **403 而不是 404**（B3 的明确裁定）：404 会让「这不是你的那一份」与
+ * 「这一份不存在」在学生端与日志里混成同一个信号，而这两件事的处置完全不同。
+ * 顺带它也**不泄露存在性** —— 拿别人的 id 来试，得到的是同一句「不是你的」。
+ */
+interface StudentWorksheetContext {
+  prisma: PrismaClient;
+  classroomId: string;
+  participantId: string;
+  worksheet: {
+    id: string; title: string; description: string | null;
+    content: Prisma.JsonValue; settings: Prisma.JsonValue;
+  };
+}
+
+async function requireOwnWorksheet(req: Request, res: Response): Promise<StudentWorksheetContext | null> {
+  const student = getStudentSession(req);
+  if (!student) {
+    res.status(401).json({ error: '需要学生身份' });
+    return null;
+  }
+  const prisma: PrismaClient = req.app.get('prisma');
+
+  const participant = await prisma.classroomStudent.findUnique({
+    where: { id: student.studentId },
+    select: {
+      id: true,
+      classroomId: true,
+      groupId: true,
+      classroom: {
+        select: {
+          mode: true,
+          groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
+        },
+      },
+    },
+  });
+  if (!participant || participant.classroomId !== student.classroomId) {
+    res.status(403).json({ error: '该参与者不属于当前课堂' });
+    return null;
+  }
+
+  const classroomLevelId = await loadClassroomLevelWorksheetId(prisma, participant.classroomId);
+  const targetId = resolveMaterialTargetId({
+    mode: participant.classroom.mode,
+    studentGroupId: participant.groupId,
+    groupMaterials: participant.classroom.groups.flatMap(group =>
+      group.materials.map(material => ({ groupId: group.id, kind: material.kind, targetId: material.targetId }))),
+    classroomLevelId,
+    kind: 'worksheet',
+  });
+
+  if (targetId !== req.params.id) {
+    res.status(403).json({ error: '这不是你的学习单' });
+    return null;
+  }
+
+  const worksheet = await prisma.worksheet.findUnique({ where: { id: req.params.id } });
+  if (!worksheet) {
+    res.status(404).json({ error: '学习单不存在' });
+    return null;
+  }
+
+  return { prisma, classroomId: participant.classroomId, participantId: participant.id, worksheet };
+}
+
+/**
+ * 课堂级学习单（标准 / 分组模式的权威来源，规格 §1.2）。
+ *
+ * ⚠️ 排序 `[{createdAt:'asc'},{id:'asc'}]` 必须与 `routes/classroom.ts` 的
+ * `loadClassroomWorksheets` 和写入口的 `worksheetLinkRows` **逐字一致** ——
+ * 三者不同口径就会出现「教师保存时看到的第一份」与「学生拿到的那份」不是同一份。
+ * 第一批按**单选**收窄（规格 §4），所以取第一条就是那一份。
+ *
+ * ⚠️ 老库缺表时降级为 `null`（读路径不可失败，与 `loadClassroomWorksheets` 同一条规矩）：
+ * 降级的结果是学生拿到 403「这不是你的学习单」，而不是一个 500。
+ */
+async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: string): Promise<string | null> {
+  try {
+    const row = await prisma.classroomWorksheet.findFirst({
+      where: { classroomId },
+      select: { worksheetId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return row?.worksheetId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 学生端只拿 `settings` 里的**两个**字段（B3 的明确要求）。
+ *
+ * `defaultInputMode` 刻意不下发：第一批恒为 `keyboard`（规格 §3-V），多给一个字段
+ * 只是给前端多一个能读错的开关。库里手工改过的行缺字段时按 `DEFAULT_SETTINGS` 兜底。
+ */
+function readStudentSettings(raw: unknown): { allowResubmit: boolean; autoGrade: boolean } {
+  const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
+    ? raw as Record<string, unknown>
+    : {};
+  return {
+    allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
+    autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
+  };
+}
+
+function findQuestion(content: Prisma.JsonValue, questionId: string): QuestionNode | null {
+  return flattenQuestions(content as unknown as WorksheetContent).find(node => node.id === questionId) ?? null;
+}
+
+/**
+ * 学生发来的作答值原样落库（格式由题型注册表定义，规格 §4.3）。
+ *
+ * ⚠️ `undefined` 必须转成 `Prisma.DbNull`（SQL NULL）而不是留给 Prisma 忽略：
+ * 前者的语义是「这一题的作答被清空了」，后者是「这次请求不动这一列」——
+ * 学生把输入框删干净再保存时，要的是前者。
+ */
+function toJsonValue(raw: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return raw === undefined ? Prisma.DbNull : (raw as Prisma.InputJsonValue);
+}
+
+/**
+ * 取（或建）这个参与者在**这份学习单**上的作答会话。
+ *
+ * ⚠️ `create` 里写 `startedAt`、`update` 里**不写**，合起来就是规格要的 `startedAt ??= now`：
+ * 它是「什么时候开始做的」，之后每次保存都刷一遍等于没有这个字段。
+ * ⚠️ `status: 'in-progress'` 则**无条件**写：一次保存意味着这份卷子此刻正在被作答 ——
+ * 整卷交过之后学生又改了一题（`allowResubmit`），它必须回到 `in-progress`。
+ * 用 `upsert` 而不是「先查再建」：前者在 SQLite 上是单条 `INSERT … ON CONFLICT`，
+ * 学生端两题接连保存时不会撞 `@@unique([classroomId, worksheetId, participantId])`。
+ */
+function ensureResponse(ctx: StudentWorksheetContext, now: Date) {
+  const key = {
+    classroomId: ctx.classroomId,
+    worksheetId: ctx.worksheet.id,
+    participantId: ctx.participantId,
+  };
+  return ctx.prisma.worksheetResponse.upsert({
+    where: { classroomId_worksheetId_participantId: key },
+    create: { ...key, status: 'in-progress', startedAt: now },
+    update: { status: 'in-progress' },
+  });
+}
+
+/**
+ * 读自己那一份。🔴 **答案在这里被剥掉**（规格 §5.4 第一条）。
+ *
+ * 剥离发生在**服务端、返回之前**，且返回的是**新对象**（`stripAnswers` 不就地改）。
+ * 前端过滤等同于未过滤：`content` 一旦离开这台机器，学生就能在网络面板里看到答案。
+ *
+ * ⚠️ 不下发这名学生已有的作答：第一批没有「断线重进接着答」的入口（规格 §8 只要求
+ * 本地 `localStorage` 队列），多下发一份作答只会多一处需要脱敏的表。
+ */
+router.get('/:id/student-view', async (req, res) => {
+  try {
+    const ctx = await requireOwnWorksheet(req, res);
+    if (!ctx) return;
+
+    const { worksheet } = ctx;
+    res.json({
+      id: worksheet.id,
+      title: worksheet.title,
+      description: worksheet.description,
+      content: stripAnswers(worksheet.content as unknown as WorksheetContent),
+      settings: readStudentSettings(worksheet.settings),
+    });
+  } catch (error) {
+    console.error('[worksheets] 学生读取学习单失败:', error);
+    res.status(500).json({ error: '读取学习单失败' });
+  }
+});
+
+/**
+ * 保存单题（学生端防抖 1.5s 调一次）。**幂等**：同一个 `(参与者, 学习单, 题)`
+ * 连打两次只留一行，`value` 是后一次（规格 §5.3）。
+ */
+router.put('/:id/answers', async (req, res) => {
+  try {
+    const ctx = await requireOwnWorksheet(req, res);
+    if (!ctx) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';
+    if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
+    // `questionId` 必须**属于这份 content**：题目 id 是答案行的关联键（规格 §3-P），
+    // 收下一个不属于它的 id 会在看板上凭空多出一道题。
+    if (!findQuestion(ctx.worksheet.content, questionId)) {
+      return res.status(400).json({ error: '该题不属于这份学习单' });
+    }
+
+    const now = new Date();
+    const response = await ensureResponse(ctx, now);
+    await ctx.prisma.worksheetAnswer.upsert({
+      where: { responseId_questionId: { responseId: response.id, questionId } },
+      create: { responseId: response.id, questionId, value: toJsonValue(body.value), status: 'draft' },
+      // ⚠️ `isCorrect: null` 不是顺手清一下：`WorksheetAnswer.isCorrect` 的语义是
+      // 「autoGrade 开启**且已提交**时才有值」（规格 §4.1）。改回 draft 却留着上次的
+      // `true`，看板会显示成「这题刚判对」，而学生此刻正在把它改错。
+      update: { value: toJsonValue(body.value), status: 'draft', submittedAt: null, isCorrect: null },
+    });
+    // ⚠️ `allowResubmit` 为假时这里**不拦**（服务端只按规格 §5.3 的「保存单题」办）。
+    // 留意的两点：① 第一道防线是学生端（D2 交卷后收起输入框），本端不是鉴权点；
+    // ② 断言在这里回 4xx 会让 D2 的离线队列把一条**永远重放不成功**的保存卡在队里，
+    // 而那条队列的硬要求是「绝不静默丢数据」（规格 §8.3）。若控制器裁定服务端必须拦，
+    // 这里要一起定「队列遇到 4xx 怎么办」。
+
+    // 广播由 B4 接在这里（`worksheet-answer-updated` → 房间 `classroom:<id>`）。
+    res.json({ success: true, questionId, status: 'draft' });
+  } catch (error) {
+    console.error('[worksheets] 保存作答失败:', error);
+    res.status(500).json({ error: '保存作答失败' });
+  }
+});
+
+/**
+ * 提交单题。🔴 **判分在这里做**（规格 §5.4 第二条）：服务端算，前端只拿 `{ isCorrect }`。
+ * 按 §3-S **不返回 `score`** —— 分值一旦下发就有人拿它做统计，而它可由 `isCorrect` 推导。
+ */
+router.post('/:id/answers/submit', async (req, res) => {
+  try {
+    const ctx = await requireOwnWorksheet(req, res);
+    if (!ctx) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';
+    if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
+    const node = findQuestion(ctx.worksheet.content, questionId);
+    if (!node) return res.status(400).json({ error: '该题不属于这份学习单' });
+
+    // 没作答过就没有可判的答案。若照判，空题会被记成「已提交 · 判错」并推进整卷进度 ——
+    // 而看板的唯一数据源就是这些行，学生什么都没写、看板上显示他做完了。
+    //
+    // ⚠️ 这一步排在 `ensureResponse` **之前**（所以它只查答案行、不建作答会话）：
+    // 被拒的提交不该留下任何痕迹 —— 一次 400 顺手给这名学生开一份「已开始作答」，
+    // 教师看板会把一个什么都没做的学生显示成正在做。
+    const answer = await ctx.prisma.worksheetAnswer.findFirst({
+      where: {
+        questionId,
+        response: {
+          classroomId: ctx.classroomId,
+          worksheetId: ctx.worksheet.id,
+          participantId: ctx.participantId,
+        },
+      },
+      select: { responseId: true, value: true },
+    });
+    if (!answer) return res.status(400).json({ error: '请先作答再提交本题' });
+
+    const now = new Date();
+    const response = await ensureResponse(ctx, now);
+
+    const { autoGrade } = readStudentSettings(ctx.worksheet.settings);
+    // ⚠️ 关掉自动判分是「**不判**」（`null`），不是「判错」（`false`）—— 两者在学生端
+    // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
+    const isCorrect = autoGrade ? grade(node, answer.value) : null;
+
+    await ctx.prisma.worksheetAnswer.update({
+      where: { responseId_questionId: { responseId: response.id, questionId } },
+      data: { status: 'submitted', submittedAt: now, isCorrect },
+    });
+
+    // 整卷进度：当前 content 里的每一题都 `submitted` 才算交卷。
+    // ⚠️ 只数**还在 content 里的**题：教师删掉一道题之后，库里留给它的那行答案
+    // 不该让整卷永远交不了（改单只警告不拦，规格 §3-J）。
+    const submitted = await ctx.prisma.worksheetAnswer.findMany({
+      where: { responseId: response.id, status: 'submitted' },
+      select: { questionId: true },
+    });
+    const inContent = new Set(flattenQuestions(ctx.worksheet.content as unknown as WorksheetContent).map(q => q.id));
+    const total = inContent.size;
+    const submittedCount = submitted.filter(row => inContent.has(row.questionId)).length;
+    if (total > 0 && submittedCount >= total) {
+      await ctx.prisma.worksheetResponse.update({
+        where: { id: response.id },
+        data: { status: 'submitted', submittedAt: now },
+      });
+    }
+
+    // 广播由 B4 接在这里。
+    res.json({ isCorrect });
+  } catch (error) {
+    console.error('[worksheets] 提交作答失败:', error);
+    res.status(500).json({ error: '提交作答失败' });
+  }
+});
 
 // ── 内部工具 ────────────────────────────────────────────────────────
 

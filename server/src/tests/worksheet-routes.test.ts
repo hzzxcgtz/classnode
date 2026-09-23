@@ -432,12 +432,15 @@ test('鉴权：三种学生形状必须**放行**（判据：既不是 403 也�
 
   const { classroom, participant } = await seedClassroom(db.prisma, '8007');
   const worksheet = await seedWorksheet(db.prisma);
+  // 🔴 B3 起学生端处理器已经实现，**403 不再只可能来自闸门** —— 处理器自己也会回
+  // 403（「这不是你的学习单」）。所以夹具必须让这名学生**真的拥有**这份学习单
+  // （课堂级关联），否则这条用例会退化成在测 B3 的越权判定，而不是在测 B1 的闸门。
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const token = createStudentToken(classroom.id, participant.id);
   const asStudent = { Authorization: `Bearer ${token}` };
 
-  // ⚠️ 本任务（B1）**只负责放行**，学生端处理器由 B3 实现。
-  // 所以判据是「闸门没有拦」（≠403，也 ≠401），**不是**「返回 200」——
-  // 未实现时 express 的兜底 404 同样是合格的放行证据。实际观察到的状态码见报告。
+  // 判据是「闸门没有拦」（≠403，也 ≠401）—— 夹具把「拥有这份学习单」补齐之后，
+  // 这三个形状上的 403 就只可能来自闸门了。实际观察到的状态码见报告。
   const shapes: Array<[string, Promise<Response>]> = [
     ['GET  /:id/student-view', server.get(`/api/worksheets/${worksheet.id}/student-view`, asStudent)],
     ['PUT  /:id/answers', server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] } }, asStudent)],
@@ -452,7 +455,11 @@ test('鉴权：三种学生形状必须**放行**（判据：既不是 403 也�
   // 阴性对照：同一 token 打**不在**三种形状里的路径必须被拦 ——
   // 少了它，「闸门把什么都放过去」也能让上面三条通过。
   const blocked = await server.get(`/api/worksheets/${worksheet.id}/usage`, asStudent);
+  const blockedBody = await blocked.json() as { error?: string };
   assert.equal(blocked.status, 403, '/usage 是教师端端点，学生 token 不得放行');
+  // 这一句钉住「403 是**闸门**回的那句」：`/usage` 根本没有学生分支，
+  // 但将来若有人把闸门换成「一律 403」，这里必须能看出差别。
+  assert.equal(blockedBody.error, '该接口仅教师可用', JSON.stringify(blockedBody));
 });
 
 /**

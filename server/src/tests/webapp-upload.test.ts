@@ -392,7 +392,12 @@ test('删目录前的路径校验：越界一律拒绝，且磁盘不被触碰',
 
 // ── 路由层：鉴权与关联删除拦截 ────────────────────────────────────────
 
-function createHarness(webapp: unknown, usageCount = 0, groupMaterialCount = 0) {
+function createHarness(
+  webapp: unknown,
+  usageCount = 0,
+  groupMaterialCount = 0,
+  options: { listedWebapps?: unknown[]; groupClassroomIds?: string[] } = {},
+) {
   const deleted: unknown[] = [];
   const prisma: Record<string, unknown> = {
     webapp: {
@@ -400,22 +405,29 @@ function createHarness(webapp: unknown, usageCount = 0, groupMaterialCount = 0) 
       create: async (args: { data: unknown }) => args.data,
       update: async (args: unknown) => { deleted.push({ update: args }); return webapp; },
       delete: async (args: unknown) => { deleted.push({ delete: args }); return webapp; },
-      findMany: async () => [],
+      // `GET /api/webapps` 的列表来源。默认空数组 = 「这页没有任何网页」，
+      // 那条路径下关联计数整段被跳过（见路由里 `webapps.length > 0` 那道闸）。
+      findMany: async () => options.listedWebapps ?? [],
     },
     classroomWebapp: {
       // 删除守卫用它**数**（`routes/webapps.ts` 的 DELETE 分支仍是 count）。
       count: async () => usageCount,
-      // usage 端点用它**取清单**（响应里的 `classrooms`）。
+      // usage 端点用它**取清单**（响应里的 `classrooms`），列表端点用它**数关联**。
       // ⚠️ 形状必须与端点真实读到的结构一致：`include: { classroom: … }` 出来的是
       // `{ classroom: {...} }` 的包装，不是裸的关联行。桩在这里简化了行数之外的东西
       // （id/title 是编的），但**包装层级不能简化** —— 简化掉的话，端点里
       // `link.classroom.id` 这类取法就会在真库上炸，而这里照样绿。
+      //
+      // `webappId` / `classroomId` 是列表端点的 `select: { webappId, classroomId }`
+      // 真正取的两个字段（它按课堂去重，不像 usage 端点那样要课堂详情）。
       findMany: async () => Array.from({ length: usageCount }, (_, index) => ({
+        webappId: WEBAPP_ID,
+        classroomId: `classroom-${index + 1}`,
         classroom: { id: `classroom-${index + 1}`, title: `课堂${index + 1}`, status: 'active', mode: 'standard' },
       })),
     },
     // 网页在「按组的课堂材料」之后有**两条**关联路径：课堂级（上）与组级（这里，
-    // 高级模式每组一份）。删除守卫与 usage 端点都要 union 两者 ——
+    // 高级模式每组一份）。删除守卫、usage 端点与**列表端点的关联计数**都要 union 两者 ——
     // 这个桩缺了这一支时端点是 500（`Cannot read properties of undefined`），
     // 而那正是「漏一处就删出悬空引用」在生产里的形态。
     classroomGroupMaterial: {
@@ -424,11 +436,20 @@ function createHarness(webapp: unknown, usageCount = 0, groupMaterialCount = 0) 
       // 出来的是 `{ group: { classroom: {...} } }`。简化掉这一层，端点里
       // `material.group.classroom.id` 的取法就会在真库上炸而这里照样绿
       // （同上面那条包装层级的告诫）。
-      findMany: async () => Array.from({ length: groupMaterialCount }, (_, index) => ({
-        group: {
-          classroom: { id: `group-classroom-${index + 1}`, title: `小组课堂${index + 1}`, status: 'active', mode: 'advanced' },
-        },
-      })),
+      //
+      // `targetId` 与 `group.classroomId` 是列表端点的
+      // `select: { targetId, group: { select: { classroomId } } }` 真正取的两个字段。
+      // `groupClassroomIds[index]` 让调用方能造出「同一间课堂的多个组」这种夹具。
+      findMany: async () => Array.from({ length: groupMaterialCount }, (_, index) => {
+        const classroomId = options.groupClassroomIds?.[index] ?? `group-classroom-${index + 1}`;
+        return {
+          targetId: WEBAPP_ID,
+          group: {
+            classroomId,
+            classroom: { id: classroomId, title: `小组课堂${index + 1}`, status: 'active', mode: 'advanced' },
+          },
+        };
+      }),
     },
   };
   return { prisma, deleted };
@@ -447,8 +468,9 @@ async function startServer(
   webapp: unknown,
   usageCount = 0,
   groupMaterialCount = 0,
+  options: { listedWebapps?: unknown[]; groupClassroomIds?: string[] } = {},
 ) {
-  const harness = createHarness(webapp, usageCount, groupMaterialCount);
+  const harness = createHarness(webapp, usageCount, groupMaterialCount, options);
   const server = createServer(createAuthedApp(harness.prisma));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
@@ -595,4 +617,50 @@ test('🔴 只被组级材料引用的网页：usage 的 used 为真、DELETE �
     assert.deepEqual(deleted, [], '被引用时绝不能走到删库');
     assert.equal(fs.existsSync(path.join(dir, 'index.html')), true, '被引用时绝不能删盘');
   });
+});
+
+// ── 列表端点的关联计数：同样必须 union 组级 ─────────────────────────────
+//
+// `GET /api/webapps` 的 `classroomCount` 驱动管理页三处 UI：概览条的
+// 「已关联 / 未关联」、`usageFilter` 的筛选、卡片左边那条色条（`used = classroomCount > 0`）。
+// 与 `/:id/usage`、DELETE 守卫是**同一条口径**（union 两张表），所以两处必须一起对 ——
+// 只对后者的话，教师会看到「未关联」（色条变灰），照着去清理却收到 400。
+
+test('🔴 只被组级材料引用的网页：GET /api/webapps 的 classroomCount 必须算上组级', async (t) => {
+  // 课堂级 0 条、组级 1 条。只读 `ClassroomWebapp` 的实现给 0 ⇒ 本测试红。
+  const { baseUrl } = await startServer(t, SAMPLE, 0, 1, { listedWebapps: [SAMPLE] });
+
+  const res = await fetch(`${baseUrl}/api/webapps`, { headers: { Cookie: teacherCookie() } });
+  assert.equal(res.status, 200);
+  const body = await res.json() as Array<{ id: string; classroomCount: number }>;
+  assert.equal(body.length, 1, `列表要有那一页网页：${JSON.stringify(body)}`);
+  assert.equal(
+    body[0].classroomCount, 1,
+    `只被小组引用的网页也算「已关联」，否则管理页会显示成未关联：${JSON.stringify(body)}`,
+  );
+});
+
+test('同一课堂的多个组引用同一网页：classroomCount 按**课堂**去重，不是按组数', async (t) => {
+  // 高级模式里一间课堂有 3 个组，3 个组都引用了同一个网页 —— 是 1 个课堂在用。
+  const { baseUrl } = await startServer(t, SAMPLE, 0, 3, {
+    listedWebapps: [SAMPLE],
+    groupClassroomIds: ['dup-classroom', 'dup-classroom', 'dup-classroom'],
+  });
+
+  const res = await fetch(`${baseUrl}/api/webapps`, { headers: { Cookie: teacherCookie() } });
+  const body = await res.json() as Array<{ id: string; classroomCount: number }>;
+  assert.equal(body[0].classroomCount, 1, `按课堂去重后是 1：${JSON.stringify(body)}`);
+});
+
+test('正对照：课堂级与组级指向**同一间**课堂时也算 1，不是把两条路径相加', async (t) => {
+  // 课堂级 1 条（classroom-1）+ 组级 1 条（同一间 classroom-1）⇒ 1 个课堂在用。
+  // 这条同样是去重的对照：实现若只是「两张表行数相加」会得到 2。
+  const { baseUrl } = await startServer(t, SAMPLE, 1, 1, {
+    listedWebapps: [SAMPLE],
+    groupClassroomIds: ['classroom-1'],
+  });
+
+  const res = await fetch(`${baseUrl}/api/webapps`, { headers: { Cookie: teacherCookie() } });
+  const body = await res.json() as Array<{ id: string; classroomCount: number }>;
+  assert.equal(body[0].classroomCount, 1, `两条路径同课堂时只算 1：${JSON.stringify(body)}`);
 });

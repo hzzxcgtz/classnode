@@ -372,10 +372,6 @@ function readField(value: unknown, key: string): unknown {
  *     `selected: ['A', 42]` 会被读成「只选了 A」，在「漏选算半对」下反而**多给**半分；
  *     `order: ['i2', 42, 'i3']` 会被读成两项，后面每一位的位置全部错开。
  *     两种都是**安静的虚高 / 错位**，所以坏形状一律整体判错。
- *
- * ⚠️ 连线题的 `links` 不走这里，走 `readPairs`：那里的每个元素（一条连线）是**独立的**，
- * 丢掉一条形状不全的连线不会改变其余任何一条的含义（而一条形状不全的连线本来就
- * 不可能匹配上任何正确配对）。
  */
 function readStrictStrings(raw: unknown): string[] | null {
   if (!Array.isArray(raw)) return null;
@@ -383,6 +379,54 @@ function readStrictStrings(raw: unknown): string[] | null {
     if (typeof item !== 'string' || !item) return null;
   }
   return raw as string[];
+}
+
+/**
+ * 读学生提交的**连线**（`Array<{ leftId; rightId }>`），**一条不合格就整体作废**（返回 `null`）。
+ *
+ * 🔴 与上面 `readStrictStrings` 同一条纪律，而这里的代价更隐蔽：`readPairs` 会**丢掉**
+ * 形状不全的那条线，于是它**凭空消失**—— 包括它在「一条线只能连一个端点」这个检测里的
+ * 那一票。实测（审查者探针，正确配对 `[{l1,r1},{l2,r2}]`）：
+ *
+ * | 学生的 `links`（前两条都对） | 丢掉坏元素之后 | 判定 |
+ * |---|---|---|
+ * | `[{l1,r1},{l2,r2},{l1}]`（第三条缺 `rightId`） | 剩下两条**全对** | `correct`（2 分）❌ |
+ * | `[{l1,r1},{l2,r2},{l1,r3}]`（第三条两边齐全、连错） | 三条都在 | `partial`（1 分）✅ |
+ *
+ * ⇒ **越残缺的作答反而拿到越高的分**。这正是「过滤不是忽略噪声，是改写答案」那句话的
+ * 一个具体形态，所以坏元素一律整体判错。
+ *
+ * ⚠️ 教师那一侧的 `data.pairs` **继续走 `readPairs`**（宽松）：那里是「教师少填一项不该
+ * 让学生拿不到分」的方向，而且 `validateQuestion` 的 `isCompleteMatching` 已经把
+ * 「每一项都连到不同的一项上」钉在写入口了。
+ */
+function readStrictPairs(raw: unknown): Array<{ leftId: string; rightId: string }> | null {
+  if (!Array.isArray(raw)) return null;
+  const pairs: Array<{ leftId: string; rightId: string }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.leftId !== 'string' || !row.leftId) return null;
+    if (typeof row.rightId !== 'string' || !row.rightId) return null;
+    pairs.push({ leftId: row.leftId, rightId: row.rightId });
+  }
+  return pairs;
+}
+
+/**
+ * 填空题的**可接受答案**：`readStrings` 之后再丢掉「**归一化之后**是空串」的那些。
+ *
+ * 🔴 `readStrings` 丢的只是**空串**，丢不掉**只含空白**的串 —— 而 `normalizeFillText(' ')`
+ * 就是 `''`。于是教师答案表里的一个 `' '`（多行输入框里很容易留下的一行）会变成
+ * 「**学生什么都不填也算对**」：`normalizeFillText('') === normalizeFillText(' ')`。
+ *
+ * ⚠️ 这条坏数据**进得了库**：`validateQuestion` 只要求 `answers.some((a) => a.trim())` ——
+ * `[' ', '光合作用']` **另一个元素非空即通过**（实测）。⇒ 判分这一侧必须自己挡住，
+ * 不能指望写入口。（审查者实测的原始结果见 `worksheet-grade-m4.test.ts`：
+ * `[' ', '光合作用']` + 学生 `''` / `'   '` 在修之前都是**满分**。）
+ */
+function readAcceptableAnswers(raw: unknown): string[] {
+  return readStrings(raw).filter((answer) => normalizeFillText(answer) !== '');
 }
 
 /** 读一个 `字符串 → 非空字符串` 的映射（归类题的 `placement` / `assignment`），别的值丢掉。 */
@@ -459,8 +503,15 @@ function judgeSingleChoice(data: Record<string, unknown>, value: unknown): Grade
   // `correctKeys` 不是恰好一个 ⇒ 这道题**没有人能答对**（数据被改坏了）。三态里没有
   // 「题目坏了」这一档，只能判错 —— 出路是编辑期的 `validateQuestion`，不是判分。
   if (correct.length !== 1 || selected === null) return 'incorrect';
-  // 选中不止一个 ⇒ 不符合题型（**不是**「部分对」）：单选只有一个组成部分，没有半对。
+  // 🔴 先**去重**再判「是不是只选了一个」。这里有一处**有意的行为变更**：
+  // `selected: ['B','B']` 在旧实现下是 `false`（`selected.length === 1` 不成立），
+  // 现在是 `correct`（去重后就是「选了 B」）。方向是**松**的 —— 理由有两条：
+  //   ① 学生端那个勾选控件**产生不了**这种值（手搓请求才可达）；
+  //   ② 多选那一侧去重是**必须**的（不去重会让 `['A','A']` 凑成满分），两处得是
+  //      同一套「作答值是一个集合」的语义，否则同一个形状在两个题型上含义不同。
+  // `worksheet-grade-m4.test.ts` 有一条用例把这个口径**显式钉住**。
   const picked = [...new Set(selected)];
+  // 选中不止一个 ⇒ 不符合题型（**不是**「部分对」）：单选只有一个组成部分，没有半对。
   if (picked.length !== 1) return 'incorrect';
   return picked[0] === correct[0] ? 'correct' : 'incorrect';
 }
@@ -503,10 +554,17 @@ function allowsMissing(data: Record<string, unknown>): boolean {
  * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
  */
 function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeState {
-  // ⚠️ **向后兼容**：`data.blanks` 缺席时走 M3 的单空路径（不动）。第一批落库的填空题
-  // 一个 `blanks` 都没有，把它当成「零个空」会让全班的历史题目集体判错。
+  // ⚠️ **向后兼容**：`data.blanks` 缺席时走 M3 的单空路径（**形状**不动）。
+  // 第一批落库的填空题一个 `blanks` 都没有，把它当成「零个空」会让全班的历史题目集体判错。
+  //
+  // 🔴 但**判据**有一处**有意扩大的行为变更**（不是「沿用不动」）：这里走
+  // `readAcceptableAnswers`，它比旧实现多丢掉「归一化之后是空串」的答案元素。
+  // 旧实现是 `answers.some(a => typeof a === 'string' && normalizeFillText(a) === normalized)` ——
+  // **不过滤空白串**，于是教师的 `[' ', '光合作用']`（能存进库）+ 学生的空提交 = **满分**。
+  // ⇒ `['', '光合作用']` 从「空提交算对」变成「算错」。方向是收紧，见
+  // `readAcceptableAnswers` 的注释与 `worksheet-grade-m4.test.ts` 里的用例。
   if (!Array.isArray(data.blanks)) {
-    const answers = readStrings(data.answers);
+    const answers = readAcceptableAnswers(data.answers);
     const text = readField(value, 'text');
     if (typeof text !== 'string') return 'incorrect';
     const normalized = normalizeFillText(text);
@@ -530,7 +588,9 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeSta
     const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
       ? ((blank as Record<string, unknown>).answers)
       : undefined;
-    const acceptable = readStrings(answers);
+    // ⚠️ 多空这一侧同样要丢掉空白串（同一个洞的第二处），否则「这一空什么都不填」
+    // 会因为 `normalizeFillText(' ') === normalizeFillText('')` 而被算成答对。
+    const acceptable = readAcceptableAnswers(answers);
     const text = list[index];
     // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
     if (acceptable.length === 0 || typeof text !== 'string') continue;
@@ -577,12 +637,20 @@ function judgeOrder(data: Record<string, unknown>, value: unknown): GradeState {
  * `isCompleteMatching` 把它钉在教师那一侧）。学生两端有重复的连法时，那条线**不算对**：
  * 否则一个「l1 连到 r1、又连到 r3」的矛盾作答会因为「里面含有正确的那条」而拿满分，
  * 而学生端画出来的明明是三条线。
+ *
+ * ⚠️ 「重复」的判据是**每一个端点 id 只许出现一次**（左右各自）——
+ * 所以**同一条线被原样提交两次**（`[{l1,r1},{l1,r1}]`）也算重复、那条也不算对。
+ * 这比「只有两条**不同**的线共用端点才算重复」更严，**刻意保留**：它偏严，
+ * 而偏严的代价是「一份正确作答 + 一条重复的线」掉到 `partial`（不会虚高），
+ * 偏松的代价是矛盾作答拿满分（虚高，且教师查不出来）。
  */
 function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
   const pairs = readPairs(data.pairs);
   if (pairs.length === 0) return 'incorrect';
-  const links = readPairs(readField(value, 'links'));
-  if (links.length === 0) return 'incorrect';
+  // 🔴 `readStrictPairs`（含坏元素 ⇒ 整体判错），**不是** `readPairs` ——
+  // 丢掉坏元素会让「更残缺的作答拿到更高的分」，见 `readStrictPairs` 的注释。
+  const links = readStrictPairs(readField(value, 'links'));
+  if (links === null || links.length === 0) return 'incorrect';
 
   // 两端各数一次出现次数：某条连线的左项或右项被**别的**连线重复使用时，它不算对。
   const leftUse = new Map<string, number>();

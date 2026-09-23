@@ -16,9 +16,15 @@ import {
 /**
  * 判分用的分值档（A2 起 `grade()` 要收它）。
  *
- * 🔴 这里刻意用 **2 / 1** 而不是默认的 1 / 0：默认档下 `score` 恰好等于旧布尔值的
- * `Number()`，一个「把 `state` 当 `score` 用」或者「忘了乘 `points.full`」的实现
- * 在这份用例里**看不出来**。2 / 1 让「得分是教师填的绝对值」这件事在这里就可判。
+ * ⚠️ **本文件只钉 `state`，不钉 `score`。** 下面 15 条断言全都只读 `?.state`，
+ * 所以 `P` 的取值在这份文件里**不可观测**。实测（审查者探针）：把 `grade()` 的得分改成
+ * 完全忽略 `points` 的 `verdict === 'correct' ? 1 : 0`，**本文件 10/10 全绿**，
+ * 而 `worksheet-grade-m4.test.ts` 同时红 27/47。
+ *
+ * ⇒ **`score` 的判据全部在 `worksheet-grade-m4.test.ts`**（那里用 2 / 1 而不是默认的
+ * 1 / 0：默认档下 `score` 恰好等于旧布尔值的 `Number()`，「把 `state` 当 `score` 用」
+ * 「忘了乘 `points.full`」「得分写成比例」三种错会**全部绿**）。
+ * ⚠️ 别以为这里传了 `P` 就等于测了分值 —— 那正是本注释第一版写错的地方。
  */
 const P: QuestionPoints = { full: 2, half: 1 };
 

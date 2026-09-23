@@ -154,6 +154,24 @@ test('🔴 单选：选中项里混进非字符串元素 ⇒ 整体判错（跳�
   assertIncorrect(sc, { format: 'choice/v1', selected: ['B', null] });
 });
 
+test('🔴 单选：选中项先**去重** —— `selected: ["B","B"]` 判对（旧实现判错，有意的行为变更）', () => {
+  // 旧实现是 `selected.length === 1 && correct.length === 1 && selected[0] === correct[0]`，
+  // 所以 `['B','B']` ⇒ `false`。现在是「去重后就是选了 B」⇒ `correct`。
+  // 🔴 **方向是松的，这是一处有意的行为变更**（不是实现顺带改掉的）：
+  //   ① 学生端那个勾选控件**产生不了**这种值（手搓请求才可达）；
+  //   ② 多选那一侧去重是**必须**的（不去重会让 `['A','A']` 在 allow-missing 下凑成满分），
+  //      两处得是同一套「作答值是一个集合」的语义，否则同一个形状在两个题型上含义不同。
+  // 这条用例的作用就是把这个口径**显式固定下来** —— 否则下一个人会以为它是漏网的 bug。
+  const sc = question('single-choice', { options: [{ key: 'A' }, { key: 'B' }], correctKeys: ['B'] });
+  assertVerdict(sc, { format: 'choice/v1', selected: ['B', 'B'] }, 'correct', P.full);
+  // 但不是「怎么重复都对」：重复一个**错的**仍然错，重复两个不同的仍是「多选 ⇒ 错」。
+  assertIncorrect(sc, { format: 'choice/v1', selected: ['A', 'A'] });
+  assertIncorrect(sc, { format: 'choice/v1', selected: ['B', 'A', 'B'] });
+  // 判断题与单选共用同一个判分器 ⇒ 同一个口径。
+  const tf = question('true-false', { correctKeys: ['T'] });
+  assertVerdict(tf, { format: 'choice/v1', selected: ['T', 'T'] }, 'correct', P.full);
+});
+
 test('🔴 score 是教师填的**绝对值**，不是 0/0.5/1 的比例', () => {
   const tf = question('true-false', { correctKeys: ['T'] });
   const right = { format: 'choice/v1', selected: ['T'] };
@@ -286,6 +304,38 @@ test('🔴 填空（单空）：answers 里的非字符串元素跳过、不抛�
   assertIncorrect(question('fill-blank', { answers: [] }), { format: 'fill/v1', text: '光合作用' });
 });
 
+test('🔴 填空（单空）：只含空白的可接受答案不算答案 —— 学生交空串不得满分', () => {
+  // 「洞只关了一半」。审查者实测（修之前）：
+  //   `['',  '光合作用']` + 学生 `''`    ⇒ incorrect ✅（空串那半关上了）
+  //   `[' ', '光合作用']` + 学生 `''`    ⇒ **correct（满分）** ❌ ← 这一行
+  // 根因：`readStrings` 丢的是**空串**，丢不掉**只含空白**的串，而 `normalizeFillText(' ')`
+  // 就是 `''` ⇒「学生什么都没填」命中了教师答案表里的那个空白行。
+  // ⚠️ `[' ', '光合作用']` **存得进库**：`validateQuestion` 只要求
+  // `answers.some((a) => a.trim())` —— 另一个元素非空即通过。
+  const node = question('fill-blank', { answers: [' ', '光合作用'] });
+  assertIncorrect(node, { format: 'fill/v1', text: '' });
+});
+
+test('🔴 填空（单空）：同上 —— 学生交全空白串也不得满分', () => {
+  // 审查者实测的那一行：`[' ', '光合作用']` + 学生 `'   '` ⇒ **correct** ❌（修之前）
+  // 与上一条**分开**成两个 `test`：`node:test` 在首条断言失败时就中止本 `test`，
+  // 一个 `test` 里的两行等于**只测了一行**（反证 ② 踩过这个坑）。
+  const node = question('fill-blank', { answers: [' ', '光合作用'] });
+  assertIncorrect(node, { format: 'fill/v1', text: '   ' });
+  assertIncorrect(node, { format: 'fill/v1', text: '\t' });
+});
+
+test('填空（单空）：答案表里只有空白项 ⇒ 没有人能答对；非空白那一档不受影响', () => {
+  // 「只有空白」时不能因为 `answers.some(...)` 空数组恒假而**抛**，也不能反过来判对。
+  assertIncorrect(question('fill-blank', { answers: [' ', '  '] }), { format: 'fill/v1', text: '' });
+  assertIncorrect(question('fill-blank', { answers: [' ', '  '] }), { format: 'fill/v1', text: '光合作用' });
+  // 上面三条不是「把这道题整体判死」—— 同一份答案里非空白的那个照样算对。
+  assertVerdict(question('fill-blank', { answers: [' ', '光合作用'] }),
+    { format: 'fill/v1', text: '光合作用' }, 'correct', P.full);
+});
+
+
+
 // ---------------------------------------------------------------------------
 // ④ 填空 · 多空（M4a 新形状：答案在第二层 `data.blanks[*].answers`）
 // ---------------------------------------------------------------------------
@@ -321,6 +371,20 @@ test('🔴 填空（多空）：空数组 blanks（教师建了题但没填空�
   const node = question('fill-blank', { blanks: [] });
   assertIncorrectWithoutThrow(node, { format: 'fill-multi/v1', texts: [] });
   assertIncorrectWithoutThrow(node, { format: 'fill-multi/v1', texts: ['随便'] });
+});
+
+test('🔴 填空（多空）：只含空白的可接受答案同样不算答案（同一个洞的第二处）', () => {
+  // 单空那处修好了不算修好 —— `judgeFillBlank` 两条分支各读一次答案表，
+  // 只在单空那一支过滤等于把洞留在多空这一支上。
+  // 这里第 1 个空的可接受答案是 `' '`：不过滤的话「第 1 空什么都不填」会被算成对，
+  // 于是 `texts: ['', 'CO2']` 拿到**满分**（而不是 partial 或 incorrect）。
+  const node = question('fill-blank', { blanks: [{ answers: [' '] }, { answers: ['CO2'] }] });
+  assertVerdict(node, { format: 'fill-multi/v1', texts: ['', 'CO2'] }, 'partial', P.half);
+  assertVerdict(node, { format: 'fill-multi/v1', texts: ['   ', 'CO2'] }, 'partial', P.half);
+  // 两个空都是空白答案 ⇒ 什么都交都拿不到分（这一空的 `acceptable` 为空 ⇒ 算错）。
+  const allBlank = question('fill-blank', { blanks: [{ answers: [' '] }, { answers: ['  '] }] });
+  assertIncorrect(allBlank, { format: 'fill-multi/v1', texts: ['', ''] });
+  assertIncorrect(allBlank, { format: 'fill-multi/v1', texts: [' ', ' '] });
 });
 
 test('填空（多空）：blanks 里的坏元素算那一空错，不抛', () => {
@@ -461,10 +525,42 @@ test('🔴 连线：重复连同一个右项 —— 那一条不算对，且**�
   ] }, 'partial', P.half);
 });
 
-test('连线：形状不全的 links 元素被丢掉，剩下的一条仍可判定（不抛）', () => {
+test('🔴 连线：links 里含形状不全的元素 ⇒ 整个作答判错', () => {
+  // ⚠️ 这里**刻意不是**「丢掉坏元素、剩下的一条仍可判定」（那是本用例的第一版，
+  // 按它写的话判分是错的）。审查者探针（正确配对 `[{l1,r1},{l2,r2}]`）：
+  //
+  //   学生 links = [{l1,r1}, {l2,r2}, {l1}]      → 丢掉第三条 ⇒ 剩下两条**全对** ⇒ `correct`（2 分）
+  //   学生 links = [{l1,r1}, {l2,r2}, {l1,r3}]   → 三条都在 ⇒ `partial`（1 分）
+  //
+  // ⇒ **越残缺的作答反而拿到越高的分**。根因是丢掉的那条线在「一条线只能连一个端点」
+  // 这个检测里的那一票也一起消失了 —— 过滤不是忽略噪声，是**改写答案**。
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
+  assertIncorrect(node, { format: 'match/v1', links: [
+    { leftId: 'l1', rightId: 'r1' },
+    { leftId: 'l2', rightId: 'r2' },
+    { leftId: 'l1' },                                  // ← 缺 rightId
+  ] });
+});
+
+test('🔴 连线：形状乱七八糟的 links（null / 数字 / 字符串 / 缺字段）⇒ 整体判错，不抛', () => {
   const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
   assertIncorrectWithoutThrow(node, { format: 'match/v1', links: [null, 42, { leftId: 'l1' }, 'x'] });
+  assertIncorrectWithoutThrow(node, { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, null] });
+  assertIncorrectWithoutThrow(node, { format: 'match/v1', links: [{ leftId: 'l1', rightId: '' }] });
   assertIncorrectWithoutThrow(node, { format: 'match/v1', links: undefined });
+  assertIncorrectWithoutThrow(node, { format: 'match/v1', links: 'x' });
+});
+
+test('🔴 连线：同一条线换成形状**齐全**的错线 ⇒ partial（这就是上面那条的对照）', () => {
+  // 与上面同一种作答，只把第三条从「形状不全」换成「两边齐全、连错了」：
+  // 它现在**参与**重复端检测 ⇒ 0 < 1，`incorrect` < `partial`。
+  // ⇒ 有了这条对照，上面那条「坏元素整体判错」才是在**纠正顺序**，而不是「一刀切」。
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
+  assertVerdict(node, { format: 'match/v1', links: [
+    { leftId: 'l1', rightId: 'r1' },
+    { leftId: 'l2', rightId: 'r2' },
+    { leftId: 'l1', rightId: 'r3' },                   // ← 两边齐全，但 l1 被连了两次
+  ] }, 'partial', P.half);
 });
 
 test('连线：pairs 坏掉 / 缺字段 ⇒ 判错，不抛', () => {

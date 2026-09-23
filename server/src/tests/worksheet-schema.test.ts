@@ -200,6 +200,9 @@ test('🔴 手写建表 DDL 与 prisma db push 的产物逐表逐字一致（差
  * 库的形状用 `ALTER TABLE … DROP COLUMN` 造（SQLite 3.35+）：模板库是**新**形状，
  * 而这里要的是**升级前**的形状。比手抄一份老 DDL 更可靠 —— 手抄的那份会随
  * `schema.prisma` 一起漂。
+ *
+ * ⚠️ 本条测的是「**本次进程**加了列」那条路；「列已经在、但库里没有标记」那条路
+ *（= 桌面版 `db push` 先加列的形状）由下面 `回填的边界` 那条用例单独钉。
  */
 test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次调用不覆盖新判的分', async () => {
   const { db, file } = makeCopy('cols');
@@ -266,6 +269,97 @@ test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次�
       [{ id: 'a_right', gradeState: 'partial', score: 0.5 }],
       '🔴 幂等：新判的 partial 与 score 不得被回填覆盖（WHERE 少了 gradeState IS NULL 就会）',
     );
+  } finally {
+    await db.$disconnect();
+    fs.rmSync(file, { force: true });
+  }
+});
+
+/**
+ * 🔴 **回填只在「第一次」跑，之后永不回头** —— 两层判据各自要挡的东西（B1）。
+ *
+ * 这条用例钉两件事，缺任何一件都会让回填在**某一条真实路径上**变成死代码或变成凶手：
+ *
+ * ① **列已经在了，回填照样要跑。** 桌面版的升级路径是
+ *    `src-tauri/src/lib.rs` 先 `prisma db push`（`:340`，加出这两列）、**然后**才
+ *    spawn 起 Node 服务（`:390`），本函数在服务起来之后才跑 ⇒ 那一刻 `columnsAdded`
+ *    **恒为空**。所以「本次进程加了列才回填」这条判据在发行版上会让 M3 的历史作答
+ *    **永远补不上**（E1 的「新列是权威」与 D3 的 `score` 兜底都建立在「回填已跑过」之上）。
+ *    本用例的样本正是那个形状：模板库先天带两列（`columnsAdded` 为空）而**没有标记**。
+ *
+ * ② **标记在，就再也不回填。** A2 之后「半对」会落成 `isCorrect=false` +
+ *    `gradeState=NULL`（B1 才写这两列），它与「M3 老行」在**列上完全同形** ——
+ *    没有任何列能把两者区分开。少了标记，任何一次重启都会把它永久钉成
+ *    `incorrect`/`score=NULL`，而它此后再也不被回填碰。
+ *
+ * ⚠️ 反证（brief 硬要求 2）：把标记那道 `if (!done)` 去掉 ⇒ 第 ② 段变红；
+ * 把回填改成 `columnsAdded.includes('gradeState') && …` ⇒ 第 ① 段变红。
+ */
+test('🔴 回填的边界：列已在（桌面版 db push 加的）也要跑；标记写完之后再不回头', async () => {
+  const { db, file } = makeCopy('backfill-once');
+  try {
+    await db.$executeRawUnsafe(`INSERT INTO "Classroom" ("id") VALUES ('c1')`);
+    await db.$executeRawUnsafe(`INSERT INTO "ClassroomStudent" ("id","classroomId") VALUES ('p1','c1')`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "Worksheet" ("id","title","content","settings","updatedAt") VALUES ('w1','t','{}','{}',CURRENT_TIMESTAMP)`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetResponse" ("id","classroomId","worksheetId","participantId","status","updatedAt")
+       VALUES ('r1','c1','w1','p1','submitted',CURRENT_TIMESTAMP)`);
+
+    // 前置条件：模板库先天就有这两列（= 桌面版 db push 之后的形状），且**没有**标记。
+    const cols = await db.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+    assert.deepEqual(
+      cols.map((c) => c.name).filter((n) => n === 'gradeState' || n === 'score').sort(),
+      ['gradeState', 'score'],
+      '前置条件：模板库天生带这两列（本用例测的就是「列不是本次加的」那条路）',
+    );
+    assert.equal(await db.setting.count(), 0, '前置条件：还没有任何标记');
+
+    // 一段 M3 历史：`isCorrect` 是那时唯一的信息。
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetAnswer" ("id","responseId","questionId","status","isCorrect") VALUES
+         ('a_right','r1','q1','submitted',1),
+         ('a_wrong','r1','q2','submitted',0)`);
+
+    // ── ① 列已有 ⇒ 回填**照样**要跑（桌面版升级路径）────────────────────
+    const first = await ensureWorksheetAnswerColumns(db);
+    assert.deepEqual(first.columnsAdded, [], '前置：这次是「列已经在了」，所以一列都没加');
+    assert.equal(
+      first.backfilled,
+      2,
+      '🔴 列不是本次加的，但这是这个库**第一次**具备回填条件 ⇒ 历史行必须补上。' +
+      '若这条红了，说明判据被写成了「本次进程加了列才回填」——那在桌面版上是死代码。',
+    );
+
+    // ── ② 标记已写 ⇒ 之后新出现的同形行**不许**再被碰 ────────────────────
+    // 这一行模拟「A2 之后写进来的半对」：与上面两行在列上完全同形
+    //（`isCorrect=0` 且 `gradeState IS NULL` 且 `score IS NULL`），**无法靠列区分**。
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetAnswer" ("id","responseId","questionId","status","isCorrect")
+       VALUES ('a_partial_after','r1','q3','submitted',0)`);
+    const second = await ensureWorksheetAnswerColumns(db);
+    assert.deepEqual(second.columnsAdded, []);
+    assert.equal(
+      second.backfilled,
+      0,
+      '🔴 标记已经写过 ⇒ 这一行**不许**被回填。红了就说明标记那道 `if` 没了，' +
+      '而代价是：任何一次重启都把半对永久钉成 incorrect/score=NULL。',
+    );
+    const afterPartial = await db.$queryRawUnsafe<{ gradeState: string | null; score: number | null }[]>(
+      `SELECT "gradeState","score" FROM "WorksheetAnswer" WHERE "id"='a_partial_after'`);
+    assert.deepEqual(
+      afterPartial,
+      [{ gradeState: null, score: null }],
+      'A2 形状的行必须**原样留着**（`gradeState` 保持 null，等 B1 之后的写入路径自己填）',
+    );
+
+    // 阳性对照：①里补上的历史行确实补对了 —— 否则上面两条可能只是「回填什么都没干」。
+    const legacy = await db.$queryRawUnsafe<{ id: string; gradeState: string | null }[]>(
+      `SELECT "id","gradeState" FROM "WorksheetAnswer" WHERE "id" IN ('a_right','a_wrong') ORDER BY "id"`);
+    assert.deepEqual(legacy, [
+      { id: 'a_right', gradeState: 'correct' },
+      { id: 'a_wrong', gradeState: 'incorrect' },
+    ]);
   } finally {
     await db.$disconnect();
     fs.rmSync(file, { force: true });

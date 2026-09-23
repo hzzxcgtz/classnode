@@ -328,8 +328,25 @@ export interface WorksheetBoardAnswerRow {
   questionId: string;
   /** `'unanswered' | 'draft' | 'submitted'`（服务端 DDL 的取值域）。 */
   status: string;
-  /** 只有「已提交」且服务端判过分时才有值；主观题与关闭自动判分时是 `null`。 */
+  /**
+   * 只有「已提交」且服务端判过分时才有值；主观题与关闭自动判分时是 `null`。
+   *
+   * ⚠️ 语义已**收窄为「全对」**（规格 §12「得分与正确率的口径」）：`false` **同时**覆盖
+   * `incorrect` 与 `partial`，所以看板格子要画「◐ 半对」时**不能**靠它，得看 `gradeState`。
+   * 🔴 字段名只增不改（协议字段）。
+   */
   isCorrect: boolean | null;
+  /**
+   * ★ M4a：三态（`correct` / `partial` / `incorrect`），`null` = 没判分。
+   * ⚠️ 旧行（M3 落的）已由启动期回填补齐；**回填没跑到**时它是 `null`，`isCorrect` 才是兜底。
+   */
+  gradeState: string | null;
+  /**
+   * ★ M4a：这道题拿到的**绝对数**（教师逐题填的两个档之一），`null` = 没判分**或旧行**。
+   * ⚠️ 旧行**永远是 `null`**（A1 刻意不回填：那时没有逐题分值，写死一个 1 是编的），
+   * 读的一侧按 `gradeState` 兜底推导。
+   */
+  score: number | null;
   /** 教师的「已查看」时间；`null` = 还没看过（规格 §7.4 的「已看 N/M」数据源）。 */
   reviewedAt: string | null;
   /** 学生原答案。读不出来时是 `null`（旧版本 / 手改过的行）。 */

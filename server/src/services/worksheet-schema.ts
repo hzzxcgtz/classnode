@@ -152,6 +152,10 @@ export async function ensureWorksheetTables(
  * 而内联在启动流程里**没有任何东西能测它们**。抽到这里之后
  * `worksheet-schema.test.ts` 能在 /tmp 的探针库上真跑一遍（见那两条用例）。
  *
+ * 🔴 **回填是「一辈子只跑一次」的，靠 `Setting` 里的一次性标记**
+ * （`worksheet-gradestate-backfill-v1`）—— 为什么不能靠「本次进程加了列」、也不能
+ * 只靠 `WHERE` 子句，两条理由都在下面那段注释里，动手改之前先读它。
+ *
  * 🔴 **列的类型写 `REAL` 而不是 `DOUBLE PRECISION`**：Prisma 对 SQLite 的 `Float` 落库
  * 写的就是 `REAL`（本文件的建表 DDL 也是它）。实测：写 `DOUBLE PRECISION` 的话，
  * 桌面版下一次 `db push` 会认为「与 schema 不一致」而**静默重建这张表**；
@@ -185,17 +189,53 @@ export async function ensureWorksheetAnswerColumns(
   // 升级后所有历史作答的 `gradeState` 都是 null ⇒ 看板把它们当成「没判过」
   // ⇒ 正确率的分母凭空变小，且没有任何报错。
   //
-  // ⚠️ `WHERE gradeState IS NULL AND isCorrect IS NOT NULL` 是**幂等的关键**：
-  // 每次启动都会跑，缺了这两个条件就会把新判的 `partial` 覆盖成 `correct`/`incorrect`
-  // —— 半对从此消失，而它看起来只是「分算错了」。
+  // ── 为什么靠**一次性标记**、而不是靠「本次进程加了列」或 `WHERE` 子句 ────────────
   //
-  // ⚠️ **`isCorrect` 不回填成 `score`**：旧行没有逐题分值，任何写死的数（1？）都是编的。
-  // `score` 留 null，读的一侧按 `gradeState` 兜底（B1 处理）。写一个 1 进去等于声称
-  // 「全班历史作答每一题都正好值 1 分」，而那个数谁都没填过。
-  const backfilled = await prisma.$executeRawUnsafe(
-    `UPDATE "WorksheetAnswer" SET "gradeState" = CASE WHEN "isCorrect" THEN 'correct' ELSE 'incorrect' END
-     WHERE "gradeState" IS NULL AND "isCorrect" IS NOT NULL`,
-  );
+  // 🔴 **不能靠「本次真的新加了 `gradeState` 列」当判据**（B1 的原计划写的就是它，
+  // 实测后改成标记）。原因在桌面版的升级路径上：`src-tauri/src/lib.rs` 先在**用户的
+  // 数据目录库**上跑 `prisma db push`（`:340`），**然后**才 `spawn` 起 Node 服务（`:390`），
+  // 本函数在服务起来之后才跑。所以桌面版升级时两列**不是这个进程加的** ⇒
+  // `columnsAdded` 恒为空 ⇒ 那样写出来的守卫会让回填**在发行版上变成死代码**，
+  // M3 的历史作答永远补不上（E1 的「新列是权威」与 D3 的 `score` 兜底都建立在
+  // 「回填已跑过」之上）。实测（/tmp 探针库）：
+  //   `db push` 到空库 ⇒ 两列在；`ALTER TABLE … DROP COLUMN` 掉两列 ⇒ 不在；
+  //   再 `db push` ⇒ **两列又回来了**（输出「already in sync」之前的同步动作）。
+  // 判据看起来在工作，而它守的那条路永远不会执行 —— 正是本项目反复吃的形状。
+  //
+  // 🔴 **也不能只靠 `WHERE` 子句**：A2 之后「半对」会落成 `isCorrect=false` +
+  // `gradeState=NULL`（B1 才写这两列），那样的行与「M3 老行」在**列上完全同形** ——
+  // 没有任何列能把它们区分开（见 `ensureWorksheetAnswerColumns` 的用例里那条
+  // 「A2 形状的行不得被回填」）。任何一次重启都会把它永久钉成 `incorrect`/`score=NULL`，
+  // 而它此后再也不被回填碰。所以必须有一个**时间上**的判据，那就是下面这个标记。
+  //
+  // ⚠️ **标记在回填成功之后才写**：先写标记、再回填，而回填抛错的话，历史行就
+  // **永远**补不上了（下一次启动看到标记在就跳过）—— 而「补不上历史行」正是本函数
+  // 要防的那件事。顺序反过来最坏只是「下次再试一遍」。
+  //
+  // ⚠️ **`WHERE gradeState IS NULL AND isCorrect IS NOT NULL` 仍然保留**，它与标记是
+  // 两层、各有各的理由：标记挡的是「跑过一次就别再跑」（时间维度），`WHERE` 挡的是
+  // 「标记写了、但同一进程里后来又冒出一行 `gradeState IS NULL` 的旧形状行」这种脏情况
+  // （行维度）。少了 `WHERE`，一次重启就能把新判的 `partial` 覆盖成 `correct`/`incorrect`
+  // —— 半对从此消失，而它看起来只是「分算错了」。
+  const BACKFILL_MARKER = 'worksheet-gradestate-backfill-v1';
+  const done = await prisma.setting.findUnique({ where: { key: BACKFILL_MARKER } });
+  let backfilled = 0;
+  if (!done) {
+    // ⚠️ **`isCorrect` 不回填成 `score`**：旧行没有逐题分值，任何写死的数（1？）都是编的。
+    // `score` 留 null，读的一侧按 `gradeState` 兜底（D3 处理）。写一个 1 进去等于声称
+    // 「全班历史作答每一题都正好值 1 分」，而那个数谁都没填过。
+    backfilled = await prisma.$executeRawUnsafe(
+      `UPDATE "WorksheetAnswer" SET "gradeState" = CASE WHEN "isCorrect" THEN 'correct' ELSE 'incorrect' END
+       WHERE "gradeState" IS NULL AND "isCorrect" IS NOT NULL`,
+    );
+    // ★ 回填成功之后才落标记（理由见上）。`upsert` 而不是 `create`：与
+    // `index.ts` 的 `participant-model-migration-v1` 同一手法，且并发启动时不会抛唯一键冲突。
+    await prisma.setting.upsert({
+      where: { key: BACKFILL_MARKER },
+      update: {},
+      create: { key: BACKFILL_MARKER, value: 'completed' },
+    });
+  }
   if (columnsAdded.length > 0) console.log(`[server] 学习单作答表已加列：${columnsAdded.join(', ')}`);
   if (backfilled > 0) console.log(`[server] 学习单作答表已回填 gradeState：${backfilled} 行`);
   return { columnsAdded, backfilled };

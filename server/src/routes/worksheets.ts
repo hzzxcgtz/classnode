@@ -199,6 +199,32 @@ function normalizeNode(
       .filter((child): child is QuestionNode => child !== null)
     : [];
 
+  // ★ M4a：多选题的 `partialCredit` **在这里归一化**（裁定：写入口跟写入口同一个提交）。
+  //
+  // 🔴 为什么值得挡：这个键今天**全仓只有判分侧读它一处**（`worksheet-questions.ts` 的
+  // `allowsMissing`，判据是逐字等于 `'allow-missing'`），写入口在此之前是**原样透传**。
+  // 于是编辑 UI 把那个值写错一个字符（`'allowmissing'` / `'allow missing'` / 布尔 `true`）
+  // 就**原样落库**，判分静默退化成「全对才算」—— 教师明明选了「漏选算半对」，
+  // 而分一直不对、**无任何报错**，他会去怀疑学生。
+  //
+  // ⚠️ 只认这两个字面量，认不出就**拒绝保存**（走 `parseContent` 既有的校验错误路径 ⇒ 400）。
+  // 方向与 `allowsMissing` 同款：把认不出的值当成「允许漏选」会让一道本该判错的题
+  // **静默给学生半分**，而教师看不出异常；拒绝保存是**响亮**的。
+  //
+  // ⚠️ **只对 `multi-choice` 认这个键**：另外 7 个题型的判分器都不读它（`true-false`
+  // 走的是 `judgeSingleChoice`，不是多选那一支），所以别处出现它只是一段死数据，
+  // 不是一句谎话 —— 为它拒掉整份保存属于越界。
+  //
+  // ⚠️ **缺席时保持缺席**，不补写 `'all-or-nothing'`：`allowsMissing` 对缺席的回答本来就是
+  // 「全对才算」，语义已经完备；补一个键等于在教师**没碰过**这道题的情况下改写它的 `data`
+  //（`data` 一律黑名单透传是这张表的既定手法）。⇒ 「归一化」的落点是
+  // **「库里出现的值必然是这两个字面量之一」**，不是「每个多选节点都长出一个键」。
+  if (type === 'multi-choice' && data.partialCredit !== undefined) {
+    if (data.partialCredit !== 'all-or-nothing' && data.partialCredit !== 'allow-missing') {
+      errors.push(`${label}：多选的「漏选算不算半对」取值不合法（只认 all-or-nothing / allow-missing）`);
+    }
+  }
+
   const points = normalizePoints(node.points);
 
   return {
@@ -756,12 +782,21 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
         participantId: true,
         worksheetId: true,
         answers: {
-          select: { questionId: true, status: true, isCorrect: true, reviewedAt: true, value: true },
+          // ⚠️ `isCorrect` **在，且只增不改**（协议字段）；`gradeState` / `score` 是 B1 新增的，
+          // 看板的 ◐ 半对档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
+          // 表现是**那个档永远画不出来**，而响应里也没有任何东西缺一块 —— 只是数字不对。
+          select: {
+            questionId: true, status: true, isCorrect: true,
+            gradeState: true, score: true,
+            reviewedAt: true, value: true,
+          },
         },
       },
     });
     const rowsByPair = new Map<string, Array<{
-      questionId: string; status: string; isCorrect: boolean | null; reviewedAt: Date | null; value: Prisma.JsonValue | null;
+      questionId: string; status: string; isCorrect: boolean | null;
+      gradeState: string | null; score: number | null;
+      reviewedAt: Date | null; value: Prisma.JsonValue | null;
     }>>();
     for (const response of responses) {
       rowsByPair.set(`${response.participantId}\x00${response.worksheetId}`, response.answers);
@@ -961,6 +996,10 @@ interface AnswerRow {
   questionId: string;
   status: string;
   isCorrect: boolean | null;
+  /** ★ M4a：三态判定结果（`correct` / `partial` / `incorrect`），`null` = 没判分。 */
+  gradeState: string | null;
+  /** ★ M4a：这道题实际拿到的数（教师逐题填的绝对值），`null` = 没判分。 */
+  score: number | null;
   reviewedAt: Date | null;
 }
 
@@ -1007,7 +1046,12 @@ function broadcastAnswerUpdate(
     participantId: ctx.participantId,
     questionId: answer.questionId,
     status: answer.status,
+    // ⚠️ **`isCorrect` 在，且只增不改**：它是协议字段，改名 ⇒ 看板与学生端拿到
+    // `undefined` ⇒ 静默不画 ✓/✗ 与奖励，没有任何报错。新增的两个是 `gradeState`
+    // 与 `score`（规格 §12），`src/lib/socket-events.ts` 的同名事件类型要一起改。
     isCorrect: answer.isCorrect,
+    gradeState: answer.gradeState,
+    score: answer.score,
     reviewedAt: answer.reviewedAt,
   });
 }
@@ -1133,7 +1177,7 @@ router.get('/:id/student-view', async (req, res) => {
  * ── 形状（规格 §8.3 的水合输入）─────────────────────────────────────────
  *
  * ```json
- * { "rows": [ { "questionId", "value", "status", "submittedAt", "isCorrect" } ] }
+ * { "rows": [ { "questionId", "value", "status", "submittedAt", "isCorrect", "gradeState", "score" } ] }
  * ```
  *
  * ⚠️ 信封那个键叫 `rows`（「作答行」，本文件通篇的用词），**不叫 `answers`** ——
@@ -1142,7 +1186,7 @@ router.get('/:id/student-view', async (req, res) => {
  * 键名，扫描器就分不清「正确答案泄漏了」与「这是作答行」。改名的代价是零，误报的代价
  * 是有人去把扫描器改松一点。
  *
- * 五件都必须在，各自对应界面上的**一件**东西（少一件就是一处静默的失灵）：
+ * 七件都必须在，各自对应界面上的**一件**东西（少一件就是一处静默的失灵）：
  *   · `questionId` —— 贴回哪一道题（规格 §3-P：题 id 稳定；`value` 与它配对）；
  *   · `value`      —— **学生自己写的那个值**，填回输入框（`draftFromValue` 的反向）；
  *   · `status`     —— `✓ 已提交` 芯片与顶栏进度条 «已交 N/M» 的判据；
@@ -1152,6 +1196,14 @@ router.get('/:id/student-view', async (req, res) => {
  *                     星星由 `isCorrect` 现算，而它现在撑得过刷新。
  *                     ⚠️ 它仍然是 `boolean | null`：`null` 是「没判分」，
  *                     **不是**「判错」（`grade()` 对主观题回 `null`、关掉 `autoGrade` 也回 `null`）。
+ *                     ⚠️ 语义已**收窄为「全对」**（规格 §12）：`false` 同时覆盖
+ *                     `incorrect` 与 `partial`，所以它**推不出**下面那两个。
+ *   · `gradeState` —— ★ M4a 新增：三态（`correct` / `partial` / `incorrect`）。
+ *                     学生端要画「◐ 半对」、看板要按三态统计，都只能来自它。
+ *   · `score`      —— ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的两个档之一）。
+ *                     奖励显示**由得分驱动**（规格 §9），所以缺了它学生刷新后画不出奖励。
+ *                     ⚠️ 旧行（M3 落的）它一直是 `null`：那时没有逐题分值，读的一侧按
+ *                     `gradeState` 兜底推导（D3 处理），**不要**在这里编一个数补上。
  *
  * ── 为什么不塞进 `student-view` ─────────────────────────────────────────
  *
@@ -1167,7 +1219,7 @@ router.get('/:id/student-view', async (req, res) => {
  * 🔴 这里下发的是**学生自己写的 `value`**，**不含任何正确答案**：
  * `correctKeys` / `answers`（正确答案那个字段）/ `explanation` 都住在
  * `Worksheet.content` 的题目节点里，而本端点**根本不碰 `content`**
- * ——它只从 `WorksheetAnswer` 选五列，那五列里没有一样是题的元数据。
+ * ——它只从 `WorksheetAnswer` 选上面那七列，那七列里没有一样是题的元数据。
  * ⚠️ **不要**为了「顺手」把 `content` 也带上（那会把剥离责任挪到这里，
  * 而这个端点没有 `stripAnswers`）。判据有实测：见 `worksheet-student.test.ts`
  * 第 ⑦ 节的三条（键名级递归扫描 + 原文级子串 + 正确/错误答案的阳性对照）。
@@ -1192,7 +1244,11 @@ router.get('/:id/answers', async (req, res) => {
           participantId: ctx.participantId,
         },
       },
-      select: { questionId: true, value: true, status: true, submittedAt: true, isCorrect: true },
+      // ⚠️ `isCorrect` **在，且只增不改**；`gradeState` / `score` 是 B1 新增的（规格 §12）。
+      select: {
+        questionId: true, value: true, status: true, submittedAt: true,
+        isCorrect: true, gradeState: true, score: true,
+      },
       // 顺序无关（前端按 `questionId` 配对），但固定下来让响应可比对 ——
       // 用例里的 `deepEqual` 与人工排障都因此少一处「这次顺序为什么不一样」。
       orderBy: { questionId: 'asc' },
@@ -1265,7 +1321,20 @@ router.put('/:id/answers', async (req, res) => {
       // ⚠️ `isCorrect: null` 不是顺手清一下：`WorksheetAnswer.isCorrect` 的语义是
       // 「autoGrade 开启**且已提交**时才有值」（规格 §4.1）。改回 draft 却留着上次的
       // `true`，看板会显示成「这题刚判对」，而学生此刻正在把它改错。
-      update: { value: toJsonValue(body.value), status: 'draft', submittedAt: null, isCorrect: null },
+      //
+      // 🔴 **`gradeState` 与 `score` 必须跟着一起清**（B1）。它们是同一次判分的另外两个
+      // 面，只清 `isCorrect` 会让这一行变成「没判对、但有态有分」的自相矛盾形状：
+      // 学生端会照 `score` 画出一个**库里已经不成立**的奖励，而看板照 `gradeState` 画一个 ✓/◐。
+      // 三列一起清是唯一的自洽写法 —— 这与 `use-worksheet-answers.ts:327` 那条
+      // 「得分必须跟着清」是同一件事的两端。
+      update: {
+        value: toJsonValue(body.value),
+        status: 'draft',
+        submittedAt: null,
+        isCorrect: null,
+        gradeState: null,
+        score: null,
+      },
     });
 
     // 规格 §5.7 的第 ③ 步：写库走 HTTP，socket 只承担「服务端 → 教师看板」的单向广播。
@@ -1279,8 +1348,17 @@ router.put('/:id/answers', async (req, res) => {
 });
 
 /**
- * 提交单题。🔴 **判分在这里做**（规格 §5.4 第二条）：服务端算，前端只拿 `{ isCorrect }`。
- * 按 §3-S **不返回 `score`** —— 分值一旦下发就有人拿它做统计，而它可由 `isCorrect` 推导。
+ * 提交单题。🔴 **判分在这里做**（规格 §5.4 第二条）：服务端算，前端只拿判分结果。
+ *
+ * ⚠️ 这里曾经写着「按 §3-S **不返回 `score`** —— 分值一旦下发就有人拿它做统计，
+ * 而它可由 `isCorrect` 推导」。**那句话已经作废，两句都不成立**（规格 §12 明写
+ * M4 重开了 §3-S）：
+ *   · 三态之后 `score` **不再可由 `isCorrect` 推导** —— `isCorrect=false` 同时覆盖
+ *     `incorrect` 与 `partial`，而这两者对应的 `score` 是 0 与「半对那个数」（可以是 0，
+ *     也可以是教师填的 2），同一个 `false` 底下有两个不同的数；
+ *   · §3-S 那条「不下发」的理由（怕人拿它做统计）也被 M4 一起推翻了：奖励显示现在
+ *     **由得分驱动**（规格 §9），不下发 `score` 恰恰等于学生端画不出奖励。
+ * 所以现在返回 `{ isCorrect, gradeState, score }`。
  */
 router.post('/:id/answers/submit', async (req, res) => {
   try {
@@ -1316,22 +1394,35 @@ router.post('/:id/answers/submit', async (req, res) => {
     const response = await ensureResponse(ctx, now);
 
     const { autoGrade } = readStudentSettings(ctx.worksheet.settings);
+    // 🔴 **`points` 只许来自这一行**（规格 §12 裁定 4 / 5：逐题优先，留空回落学习单级）。
+    // 别在调用点手拼 `{ full: 2, half: 1 }`，也别写 `node.points ?? pointsFromSettings(...)`
+    // —— 手拼出来的东西**没有任何东西会拦**：实测 `{full: NaN}` ⇒ `grade()` 回
+    // `score: NaN`（`isCorrect` 还是对的，所以界面上只表现为分数是 `NaN`），
+    // `{full: -5}` ⇒ `score: -5`（学生的奖励累计变成负数）。今天安全**仅因为**
+    // 唯一的生产调用点照抄了 `resolvePoints` —— 它同时负责 `normalizePoints` 的
+    // 坏形状回落，那是手拼拿不到的。
+    const points = resolvePoints(node, pointsFromSettings(ctx.worksheet.settings));
     // ⚠️ 关掉自动判分是「**不判**」（`null`），不是「判错」（`false`）—— 两者在学生端
     // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
-    //
-    // ⚠️ **A2 的最小适配**：`grade()` 的返回值从布尔改成了「三态 + 数值」的判定对象
-    // （规格 §12「M4 重开了 §3-S」）。这里只把 `isCorrect` 这一列**原样**填回去
-    // （它的语义已收窄为「全对」，由 `state` 派生 —— 它不再是第二真相源）。
-    // 🔴 把 `gradeState` / `score` 两个新列**落库并上线缆**是 **B1** 的活：
-    // 本步骤只让树变绿、**不改这一行的行为**（落库的仍然只有 `isCorrect`）。
-    const graded = autoGrade
-      ? grade(node, answer.value, resolvePoints(node, pointsFromSettings(ctx.worksheet.settings)))
-      : null;
-    const isCorrect = graded ? graded.state === 'correct' : null;
+    // ⇒ `verdict === null` 与 `verdict.state === 'incorrect'` 是**两件事**：
+    // 前者界面上画不出奖励，后者画 0。
+    const verdict = autoGrade ? grade(node, answer.value, points) : null;
+    // ★ `isCorrect` 的语义**收窄为「全对」**（规格 §12「得分与正确率的口径」），
+    // 由 `verdict.state` 派生 —— 它**不再是第二真相源**。⚠️ 但**字段名一个字符都不许改**：
+    // 它是协议字段，线缆另一头是 `use-worksheet-answers.ts` 的
+    // `scoreFromWire(payload?.isCorrect)`。改名 ⇒ 前端拿到 `undefined` ⇒ `scoreFromWire`
+    // 回 `null` ⇒ **不画奖励**，而且没有任何报错、没有任何测试会红（`worksheet-realtime.test.ts`
+    // 里那条「广播体仍然含 `isCorrect`」的用例就是为这条加的哨兵）。
+    const isCorrect = verdict ? verdict.state === 'correct' : null;
+    const gradeState = verdict ? verdict.state : null;
+    // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null。
+    // 只写一个会让读的一侧在「有分无态」与「有态无分」之间猜（D3 的兜底就是按
+    // 「`score` 是 null 才回落到 `gradeState` 推导」写的）。
+    const score = verdict ? verdict.score : null;
 
     const updated = await ctx.prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId: response.id, questionId } },
-      data: { status: 'submitted', submittedAt: now, isCorrect },
+      data: { status: 'submitted', submittedAt: now, isCorrect, gradeState, score },
     });
 
     // 整卷进度：当前 content 里的每一题都 `submitted` 才算交卷。
@@ -1357,7 +1448,9 @@ router.post('/:id/answers/submit', async (req, res) => {
     // （§7.4：不做按需推流）。整卷状态那一次 `update` **不**单独广播 —— 它没有新的
     // questionId 可带，而看板的「已交 N/M」由逐题广播累加即可。
     broadcastAnswerUpdate(req, ctx, updated);
-    res.json({ isCorrect });
+    // ⚠️ `isCorrect` **在**，且**只增不改**（见上面那段注释）。`gradeState` / `score`
+    // 是 B1 新增的两个字段；前端今天只读 `isCorrect`，改读的那一步在 D3/E1。
+    res.json({ isCorrect, gradeState, score });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);
     res.status(500).json({ error: '提交作答失败' });

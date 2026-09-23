@@ -86,7 +86,12 @@ export interface ServerToClientEvents {
    * `join-teacher-board` 量出房间前缀，再与路由实际广播的房间比对，并正面断言它不是学生房间。
    *
    * ⚠️ **只发「刚落库的那一行」**（不是请求体）：看板看到的必须是库里的真相。
-   * `isCorrect` 为 `null` = 没开自动判分或这题是主观题（规格 §3-S：不下发 `score`）。
+   * `isCorrect` / `gradeState` / `score` 三者**同生共死**：为 `null` = 没开自动判分
+   * 或这题是主观题（`grade()` 回 `null`）。
+   *
+   * ⚠️ 这里曾经写着「规格 §3-S：不下发 `score`」—— **那句话已作废**（规格 §12 明写
+   * M4 重开了 §3-S）：奖励显示现在**由得分驱动**，不下发 `score` 恰恰等于画不出奖励。
+   * 三态之后 `score` 也**不再可由 `isCorrect` 推导**（`false` 同时覆盖 incorrect 与 partial）。
    *
    * ⚠️ 没有历史回放、也没有拉取历史的 REST 端点：看板只知道**打开之后**发生的作答，
    * 所以格子上「一条都没收到」的情形**不能说成「还没开始作答」**（见
@@ -100,7 +105,22 @@ export interface ServerToClientEvents {
     questionId: string;
     /** `'draft'`（保存）或 `'submitted'`（提交本题）。 */
     status: string;
+    /**
+     * 🔴 **协议字段，只增不改**：语义已收窄为「**全对**」（规格 §12），由 `gradeState` 派生。
+     * 改名 ⇒ 前端拿到 `undefined` ⇒ 静默不画 ✓/✗，**没有任何报错**。
+     * `null` = 没判分（主观题 / 关了自动判分）。
+     */
     isCorrect: boolean | null;
+    /**
+     * ★ M4a 新增：三态（`correct` / `partial` / `incorrect`），`null` = 没判分。
+     * 看板的 ◐ 半对档只能来自它 —— `isCorrect: false` 推不出「是错还是半对」。
+     */
+    gradeState: string | null;
+    /**
+     * ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的档），`null` = 没判分。
+     * ⚠️ 与 `gradeState` 同生共死，别只读一个。
+     */
+    score: number | null;
     /** 教师标记「已查看」的时刻（ISO 串），没看过是 `null`。 */
     reviewedAt: string | null;
   }) => void;

@@ -652,7 +652,11 @@ function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
   const links = readStrictPairs(readField(value, 'links'));
   if (links === null || links.length === 0) return 'incorrect';
 
-  // 两端各数一次出现次数：某条连线的左项或右项被**别的**连线重复使用时，它不算对。
+  // 两端各数一次出现次数：某个左项或右项**一共被用到超过一次**时，用到它的那些线都不算对。
+  // ⚠️ 「重复使用」**不限于「被别的连线用了」**：同一条线被原样提交两次
+  // （`[{l1,r1},{l1,r1}]`）同样算重复 —— 上面 JSDoc 那句「每一个端点 id 只许出现一次」
+  // 就是这么写的，这里是对它的行内复述（曾经写成「被**别的**连线重复使用时」，
+  // 那句话把同一条线提交两次的情形漏在外面，与实现不符）。
   const leftUse = new Map<string, number>();
   const rightUse = new Map<string, number>();
   for (const link of links) {

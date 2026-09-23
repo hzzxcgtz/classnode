@@ -458,9 +458,17 @@ test('广播：保存作答 ⇒ 房间是教师看板房间，载荷含 question
     '不得发到学生房间：载荷里有每名学生的作答状态与对错，而那个房间里是全班学生',
   );
 
-  // 载荷的**字段集合**也是契约的一部分（B4 brief 的 Produces 一节把它逐个列了出来）：
+  // 载荷的**字段集合**也是契约的一部分（brief 的 Produces 一节把它逐个列了出来）：
   // 多一个字段就是协议变更，应当是一次有意识的改动，而不是顺手带出来的。
-  assert.deepEqual(Object.keys(payload).sort(), ['classroomId', 'isCorrect', 'participantId', 'questionId', 'reviewedAt', 'status']);
+  //
+  // 🔴 **`isCorrect` 必须在这个集合里**（B1）。它是协议字段：改名 ⇒ 前端与看板拿到
+  // `undefined` ⇒ 静默不画 ✓/✗，没有任何报错。本行就是防改名回归的哨兵 ——
+  // 把它从期望集合里删掉、或让实现不再发它，这里都会红。
+  // `gradeState` / `score` 是 B1 新增的两项（规格 §12：三态 + 数值）。
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ['classroomId', 'gradeState', 'isCorrect', 'participantId', 'questionId', 'reviewedAt', 'score', 'status'],
+  );
   assert.equal(payload.classroomId, classroom.id);
   assert.equal(payload.participantId, participant.id);
   assert.equal(
@@ -470,6 +478,10 @@ test('广播：保存作答 ⇒ 房间是教师看板房间，载荷含 question
   );
   assert.equal(payload.status, 'draft', '保存后是 draft，看板据此显示「作答中」');
   assert.equal(payload.isCorrect, null, 'draft 没有判分结果');
+  // ★ 草稿行的另外两个判分列也必须被清掉 —— 只清 `isCorrect` 会留下一行
+  // 「没判对、但有态有分」的自相矛盾形状（`PUT` 那一段注释写着理由）。
+  assert.equal(payload.gradeState, null, 'draft 没有三态结果');
+  assert.equal(payload.score, null, 'draft 没有得分');
   assert.equal(payload.reviewedAt, null, '没被标记过就是 null');
 
   // 阴性对照：另一道题带来的是**另一条**广播、另一个 questionId ——
@@ -495,6 +507,13 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
   const graded = await seedClassroomUsingWorksheet(db.prisma, '9106');
   const ungraded = await seedClassroomUsingWorksheet(db.prisma, '9107');
   const boardRoom = `${boardPrefix}${graded.classroom.id}`;
+  // ★ 学习单级的档用 **2**，不是默认的 1：默认档下 `score` 恰好等于旧布尔值的
+  // `Number()`（对 = 1、错 = 0），于是「把 `state` 当 `score` 用」「忘了乘 `points.full`」
+  // 「得分写成比例」三种错会**全部绿**。这个数在这里唯一的作用就是让 `score` 可观测。
+  await db.prisma.worksheet.update({
+    where: { id: graded.worksheet.id },
+    data: { settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStep: 2 } },
+  });
   await db.prisma.worksheet.update({
     where: { id: ungraded.worksheet.id },
     data: { settings: { allowResubmit: true, autoGrade: false, defaultInputMode: 'keyboard' } },
@@ -519,6 +538,10 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
   assert.equal(gradedPush.payload.participantId, graded.participant.id);
   assert.equal(gradedPush.payload.status, 'submitted');
   assert.equal(gradedPush.payload.isCorrect, true, '判分结果必须在广播里，否则抽屉的 ✓/✗ 只能靠轮询');
+  // ★ B1：三态与数值一起上线缆。三个字段**同生共死** —— 只断言 `isCorrect` 的话，
+  // 「新增的两个字段压根没发」也能全绿（那正是 B1 之前的状态）。
+  assert.equal(gradedPush.payload.gradeState, 'correct', '三态必须随广播下发（看板的 ◐ 半对档只能来自它）');
+  assert.equal(gradedPush.payload.score, 2, '得分必须随广播下发（奖励显示由得分驱动），且用的是学习单级的档 2 而不是默认的 1');
 
   // ── autoGrade 关：**不判**（null），不是「判错」 ────────────────────────
   await save(ungraded, ungradedToken, CHOICE(['B']));
@@ -530,6 +553,74 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
     null,
     '关掉自动判分是「不判」（null），不是「判错」（false）—— 看板上是两种显示',
   );
+  // ★ 「不判分」在三个字段上是**同一个回答**：全是 null。
+  assert.equal(ungradedPush?.payload.gradeState, null, '不判分 ⇒ gradeState 也是 null（不是 incorrect）');
+  assert.equal(ungradedPush?.payload.score, null, '不判分 ⇒ score 也是 null（不是 0）');
+});
+
+/**
+ * 🔴 **半对**：`isCorrect` 一个人表达不了它 —— 这就是 §12 重开 §3-S 的全部理由。
+ *
+ * 这道题是多选（正确 = A+C），教师的「漏选算不算半对」选了**算**，逐题赋分 3 / 2。
+ * 学生只选了 A ⇒ `partial`：
+ *   · `isCorrect === false`（语义收窄为「全对」，它**不是**错的）；
+ *   · `gradeState === 'partial'`；
+ *   · `score === 2`（不是 0 —— 半对那个数）。
+ *
+ * ⚠️ 断言里 `false` 与 `partial` 必须在**同一条**用例里出现：分开写等于允许一个
+ * 「`isCorrect=false` 就一定是错」的实现通过，而那正是三态要否掉的东西。
+ */
+test('广播：半对（多选漏选）⇒ isCorrect=false 与 gradeState=partial 同时成立，score 是半对档', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  // 逐题赋分（`points` 落在**题目节点**上，不进 `data`）是这里唯一能拿到「半对 ≠ 0」的路径：
+  // 学习单级的 `halfStep` 要到 B2 才进写入口，此刻 `pointsFromSettings` 读到的是
+  // 缺席 ⇒ 半对档 = 0，那样 `score` 与「判错」撞成同一个数、断言就不再可观测。
+  const worksheet = await db.prisma.worksheet.create({
+    data: {
+      title: '多选半对的学习单',
+      content: {
+        schemaVersion: 1,
+        nodes: [{
+          id: 'm_1',
+          type: 'multi-choice',
+          prompt: '下列哪些是光合作用的原料？',
+          inputMode: 'keyboard',
+          points: { full: 3, half: 2 },
+          data: {
+            options: [{ key: 'A', text: '水' }, { key: 'B', text: '氧气' }, { key: 'C', text: '二氧化碳' }],
+            correctKeys: ['A', 'C'],
+            partialCredit: 'allow-missing',
+          },
+          children: [],
+        }],
+      },
+      settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' },
+    },
+  });
+  const classroom = await db.prisma.classroom.create({ data: { code: '9110', title: '测试课堂', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'm_1', value: CHOICE(['A']) }, bearer(token));
+  const res = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'm_1' }, bearer(token));
+  const body = await res.json() as Record<string, unknown>;
+  assert.equal(res.status, 200, JSON.stringify(body));
+  assert.equal(body.isCorrect, false, '半对不是「全对」⇒ isCorrect 收窄后就是 false');
+  assert.equal(body.gradeState, 'partial', '🔴 但它**不是**错 —— 三态必须由 gradeState 说出来');
+  assert.equal(body.score, 2, '得分是教师填的**半对**那一档（逐题 3/2 里的 2），不是 0');
+
+  const push = server.broadcasts.filter(item => item.event === 'worksheet-answer-updated').at(-1);
+  assert.equal(push?.payload.isCorrect, false, '广播与响应体必须是同一个回答（看板看到的必须是库里的真相）');
+  assert.equal(push?.payload.gradeState, 'partial');
+  assert.equal(push?.payload.score, 2);
+
+  const row = await db.prisma.worksheetAnswer.findFirstOrThrow();
+  assert.equal(row.gradeState, 'partial', '三态必须**落库**，不能只在线缆上（看板的统计走库里那一列）');
+  assert.equal(row.score, 2);
 });
 
 /**

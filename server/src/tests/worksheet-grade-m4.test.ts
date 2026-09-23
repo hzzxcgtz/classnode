@@ -329,7 +329,8 @@ test('填空（单空）：答案表里只有空白项 ⇒ 没有人能答对；
   // 「只有空白」时不能因为 `answers.some(...)` 空数组恒假而**抛**，也不能反过来判对。
   assertIncorrect(question('fill-blank', { answers: [' ', '  '] }), { format: 'fill/v1', text: '' });
   assertIncorrect(question('fill-blank', { answers: [' ', '  '] }), { format: 'fill/v1', text: '光合作用' });
-  // 上面三条不是「把这道题整体判死」—— 同一份答案里非空白的那个照样算对。
+  // 上面的用例不是「把这道题整体判死」—— 同一份答案里非空白的那个照样算对。
+  // ⚠️ 这里刻意不数「上面 N 条」：那种数每加一条用例就漂，而拿旧数字当期望值是假绿。
   assertVerdict(question('fill-blank', { answers: [' ', '光合作用'] }),
     { format: 'fill/v1', text: '光合作用' }, 'correct', P.full);
 });
@@ -373,11 +374,18 @@ test('🔴 填空（多空）：空数组 blanks（教师建了题但没填空�
   assertIncorrectWithoutThrow(node, { format: 'fill-multi/v1', texts: ['随便'] });
 });
 
-test('🔴 填空（多空）：只含空白的可接受答案同样不算答案（同一个洞的第二处）', () => {
-  // 单空那处修好了不算修好 —— `judgeFillBlank` 两条分支各读一次答案表，
-  // 只在单空那一支过滤等于把洞留在多空这一支上。
-  // 这里第 1 个空的可接受答案是 `' '`：不过滤的话「第 1 空什么都不填」会被算成对，
-  // 于是 `texts: ['', 'CO2']` 拿到**满分**（而不是 partial 或 incorrect）。
+test('🔴 填空（多空）：只含空白的可接受答案同样不算答案（纵深防御）', () => {
+  // ⚠️ **这不是「同一个洞的第二处」**（本条注释曾经这么写，与实情不符）。
+  // 多空这一处**在写入口就是堵着的**：`validateQuestion` 的填空题（有 `blanks` 时）
+  // 逐个空要求「至少要有一个可接受的答案」，而它的判据是 `answer.trim()` ——
+  // 所以 `blanks: [{ answers: [' '] }, …]` **存不进库**（实测：`validateQuestion` 回
+  // 「填空题每个空至少要有一个可接受的答案」⇒ 保存路径 400）。单空那一支同理。
+  //
+  // ⇒ 下面过滤的是**纵深防御**：它挡的是不经过写入口的行 —— 手工改过的库、旧版本落的、
+  // 或将来某个绕过 `parseContent` 的写入点。`judgeFillBlank` 两条分支各读一次答案表，
+  // 只在单空那一支过滤等于把这条路留给另一支，而它的代价是**满分**：
+  // 这里第 1 个空的可接受答案是 `' '`，不过滤的话「第 1 空什么都不填」会被算成对，
+  // 于是 `texts: ['', 'CO2']` 拿到满分（而不是 partial 或 incorrect）。
   const node = question('fill-blank', { blanks: [{ answers: [' '] }, { answers: ['CO2'] }] });
   assertVerdict(node, { format: 'fill-multi/v1', texts: ['', 'CO2'] }, 'partial', P.half);
   assertVerdict(node, { format: 'fill-multi/v1', texts: ['   ', 'CO2'] }, 'partial', P.half);

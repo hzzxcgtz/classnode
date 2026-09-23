@@ -51,7 +51,12 @@ const fill = node({ id: 'q_2', type: 'fill-blank', prompt: '水的化学式是__
 const short = node({ id: 'q_3', type: 'short-answer', prompt: '说说你观察到的现象。' });
 
 function row(over: Partial<WorksheetBoardAnswerRow>): WorksheetBoardAnswerRow {
-  return { questionId: 'q_1', status: 'draft', isCorrect: null, reviewedAt: null, value: null, ...over };
+  return {
+    questionId: 'q_1', status: 'draft',
+    isCorrect: null, gradeState: null, score: null,
+    reviewedAt: null, value: null,
+    ...over,
+  };
 }
 
 // ---------------------------------------------------------------------------

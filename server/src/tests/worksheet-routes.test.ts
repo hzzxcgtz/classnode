@@ -600,6 +600,83 @@ test('CRUD：题目不合法（单选题没有正确答案）⇒ 400，且一个
   assert.equal(await db.prisma.worksheet.count(), 0, '被拒的请求不得留下任何学习单');
 });
 
+/**
+ * 🔴 **多选的 `partialCredit` 在写入口归一化**（B1）。
+ *
+ * 这个键在 B1 之前是**原样透传**的，而全仓只有判分侧读它一处（`allowsMissing`，
+ * 判据是逐字等于 `'allow-missing'`）。于是编辑 UI 把那个值写错一个字符
+ * （`'allowmissing'` / `'allow missing'` / 布尔 `true`）就**原样落库**，
+ * 判分静默退化成「全对才算」—— 教师明明选了「漏选算半对」，而分一直不对、
+ * **无任何报错**，他会去怀疑学生。这条用例就是把它变成**响亮**的 400。
+ *
+ * ⚠️ 缺席**保持缺席**（不补写 `'all-or-nothing'`）：`allowsMissing` 对缺席的回答
+ * 本来就是「全对才算」，而补一个键等于在教师没碰过这道题的情况下改写它的 `data`。
+ * 所以这里同时正面钉住「合法的两个字面量原样落库」与「没给就还是没给」。
+ */
+test('CRUD：多选的 partialCredit 只认两个字面量，认不出 ⇒ 400（不许原样落库）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const multi = (data: Record<string, unknown>) => ({
+    schemaVersion: 1,
+    nodes: [{
+      id: 'm_1', type: 'multi-choice', prompt: '下列哪些是光合作用的原料？', inputMode: 'keyboard',
+      data: {
+        options: [{ key: 'A', text: '水' }, { key: 'B', text: '氧气' }, { key: 'C', text: '二氧化碳' }],
+        correctKeys: ['A', 'C'],
+        ...data,
+      },
+      children: [],
+    }],
+  });
+  const post = (content: unknown) => server.post('/api/worksheets', { title: '多选学习单', content, settings: SAMPLE_SETTINGS });
+
+  // ── ① 认不出的值必须被拒，且**一个学习单都不建** ────────────────────────
+  // ⚠️ `'allowMissing'`（驼峰）是最可能被写出来的那一个 —— 前端函数名是 `allowsMissing`。
+  for (const bad of ['allowMissing', 'allow missing', 'allow_missing', true, 1, '', null]) {
+    const res = await post(multi({ partialCredit: bad }));
+    const body = await res.json() as { error?: string };
+    assert.equal(
+      res.status,
+      400,
+      `partialCredit=${JSON.stringify(bad)} 必须当场拒绝，否则它会原样落库、` +
+      `判分静默退化成「全对才算」：${JSON.stringify(body)}`,
+    );
+    assert.match(String(body.error), /漏选算不算半对/, '报错要点到具体是哪个设置项');
+  }
+  assert.equal(await db.prisma.worksheet.count(), 0, '被拒的请求不得留下任何学习单');
+
+  // ── ② 两个字面量原样落库 ───────────────────────────────────────────────
+  for (const good of ['allow-missing', 'all-or-nothing']) {
+    const res = await post(multi({ partialCredit: good }));
+    const created = await res.json() as { content: { nodes: Array<{ data: Record<string, unknown> }> } };
+    assert.equal(res.status, 200, JSON.stringify(created));
+    assert.equal(
+      created.content.nodes[0].data.partialCredit,
+      good,
+      '合法的值必须**原样**落库（归一化不是「洗成另一个值」）',
+    );
+  }
+
+  // ── ③ 没给就还是没给（不补默认值）─────────────────────────────────────
+  const absent = await post(multi({}));
+  const absentBody = await absent.json() as { content: { nodes: Array<{ data: Record<string, unknown> }> } };
+  assert.equal(absent.status, 200, JSON.stringify(absentBody));
+  assert.ok(
+    !('partialCredit' in absentBody.content.nodes[0].data),
+    '缺席必须保持缺席 —— 补一个 `all-or-nothing` 等于在教师没碰过这道题的情况下改写它的 data',
+  );
+
+  // ── ④ 别的题型上出现这个键不拒（它只是死数据，不是谎话）────────────────
+  // 另外 7 个题型的判分器都不读它（判断题走的是 `judgeSingleChoice`），所以为它拒掉
+  // 整份保存属于越界 —— 这条是防止上面那条 `if` 被顺手写成「全题型通用」。
+  const onOtherType = structuredClone(SAMPLE_CONTENT);
+  (onOtherType.nodes[0] as { data: Record<string, unknown> }).data.partialCredit = 'allowMissing';
+  const otherRes = await server.post('/api/worksheets', { title: '单选带杂键', content: onOtherType, settings: SAMPLE_SETTINGS });
+  assert.equal(otherRes.status, 200, `别的题型上的 partialCredit 不该拒绝保存：${JSON.stringify(await otherRes.json())}`);
+});
+
 test('CRUD：标题为空 ⇒ 400（不静默建成「未命名」）', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });

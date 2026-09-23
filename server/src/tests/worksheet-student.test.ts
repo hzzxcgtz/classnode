@@ -32,7 +32,9 @@ import { ANSWER_KEYS } from '../services/worksheet-questions.js';
  *      不同的学习单 ⇒「只校验 classroomId」等于谁都能读别人组那份。
  *      高级模式**不回落**到课堂级 —— 那会让学生静默地做另一份卷子。
  *   ③ **判分在服务端（§5.4 第二条 / §5.6）**。主观题是 `null` 不是 `false`；
- *      `autoGrade` 关是 `null`；返回体**不含 `score`**（规格 §3-S）。
+ *      `autoGrade` 关是 `null`；返回体含 `{ isCorrect, gradeState, score }` 三个判分字段。
+ *      ⚠️ 这里曾经写着「返回体**不含 `score`**（规格 §3-S）」—— **那句话已作废**，
+ *      规格 §12 明写 M4 重开了 §3-S（奖励由得分驱动；三态之后 `score` 也不再可推导）。
  *
  * ⚠️ 这个文件用**真 Prisma + 真 SQLite**（照 worksheet-routes.test.ts）。
  * 临时库由 `prisma db push` 建在 `os.tmpdir()` 下，用例开头第一件事就是断言这一点 ——
@@ -639,8 +641,18 @@ test('作答：questionId 不属于这份 content ⇒ 400，且一行都不落�
 // ④ 判分（规格 §5.4 第二条 / §5.6 / §3-S）
 // ---------------------------------------------------------------------------
 
-/** `autoGrade` 关 ⇒ **不判分**（`null`），不是「判错」（`false`）—— 两者在界面上完全不同。 */
-test('判分：autoGrade 关 ⇒ isCorrect 为 null（不是 false），且返回体不含 score', async (t) => {
+/**
+ * `autoGrade` 关 ⇒ **不判分**（`null`），不是「判错」（`false`）—— 两者在界面上完全不同。
+ *
+ * ⚠️ 这条用例的名字与断言**在 B1 改过一次**，这是有意的决定、不是「把测试改松」：
+ * 它原来钉的是「返回体**只能有** `isCorrect`」+「规格 §3-S：不建也不返回 `score`」。
+ * 规格 §12 明写 **M4 重开了 §3-S**，理由有两条、各自独立成立：
+ *   · 奖励显示现在**由得分驱动**（§9），不下发 `score` 恰恰等于学生端画不出奖励；
+ *   · 三态之后 `score` **不再可由 `isCorrect` 推导**（`false` 同时覆盖
+ *     `incorrect` 与 `partial`，两者的 `score` 是两个不同的数）。
+ * ⇒ 现在钉的是「**三个判分字段同生共死**」：不判分时它们**全是** `null`。
+ */
+test('判分：autoGrade 关 ⇒ isCorrect / gradeState / score 三个字段同为 null', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
@@ -655,13 +667,21 @@ test('判分：autoGrade 关 ⇒ isCorrect 为 null（不是 false），且返�
   const body = await res.json() as Record<string, unknown>;
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.equal(body.isCorrect, null, '关掉自动判分是「不判」，不是「判错」');
-  // 规格 §3-S：**不建也不返回 score**。分值一旦下发就有人拿它做统计，而它可推导。
-  assert.deepEqual(Object.keys(body), ['isCorrect'], `返回体只能有 isCorrect：${JSON.stringify(body)}`);
+  // 🔴 `isCorrect` **必须在**这个集合里（协议字段，只增不改），另外两个是 B1 新增的。
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    ['gradeState', 'isCorrect', 'score'],
+    `返回体只许有这三个字段：${JSON.stringify(body)}`,
+  );
+  assert.equal(body.gradeState, null, '不判分 ⇒ 没有三态（**不是** incorrect）');
+  assert.equal(body.score, null, '不判分 ⇒ 没有得分（**不是** 0）');
 
   const row = await db.prisma.worksheetAnswer.findFirstOrThrow();
   assert.equal(row.status, 'submitted', '提交这一动作本身照常生效');
   assert.ok(row.submittedAt, 'submittedAt 必须写上');
   assert.equal(row.isCorrect, null);
+  assert.equal(row.gradeState, null, '三个判分列一起落库、一起为空');
+  assert.equal(row.score, null);
 });
 
 /**
@@ -674,22 +694,34 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
 
-  const worksheet = await seedWorksheet(db.prisma);
+  // ★ 学习单级的档取 **2** 而不是默认的 1：默认档下 `score` 恰好等于旧布尔值的
+  // `Number()`，「把 `state` 当 `score` 用」「忘了乘 `points.full`」两种错会**全绿**。
+  const worksheet = await seedWorksheet(db.prisma, '判分学习单', {
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStep: 2,
+  });
   const { classroom, participant } = await seedClassroom(db.prisma, '9009');
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const token = createStudentToken(classroom.id, participant.id);
   const save = (questionId: string, value: unknown) =>
     server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId, value }, bearer(token));
   const submit = async (questionId: string) =>
-    (await (await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token))).json()) as { isCorrect: boolean | null };
+    (await (await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token))).json()) as {
+      isCorrect: boolean | null; gradeState: string | null; score: number | null;
+    };
 
   // 单选题：对
   await save('q_1', CHOICE(['B']));
-  assert.equal((await submit('q_1')).isCorrect, true);
+  const q1Right = await submit('q_1');
+  assert.equal(q1Right.isCorrect, true);
+  assert.equal(q1Right.gradeState, 'correct', '三态必须由 gradeState 说出来，不能只靠 isCorrect');
+  assert.equal(q1Right.score, 2, '得分用的是学习单级的档 2（不是默认的 1，也不是比例 1）');
 
   // 同一题改错、再提交 ⇒ **重新判分**（规格 §8.4：改已提交的题重新判分）
   await save('q_1', CHOICE(['A']));
-  assert.equal((await submit('q_1')).isCorrect, false, '改过之后必须重新判分，不是沿用上一次的结论');
+  const q1Wrong = await submit('q_1');
+  assert.equal(q1Wrong.isCorrect, false, '改过之后必须重新判分，不是沿用上一次的结论');
+  assert.equal(q1Wrong.gradeState, 'incorrect');
+  assert.equal(q1Wrong.score, 0, '判错是 0 分（不是「没得分」的 null —— 那是不判分）');
 
   // 填空题：全角的 `Ｈ２Ｏ` 与首尾空格都要被归一化掉（§5.6）
   await save('q_2', FILL('  Ｈ２Ｏ  '));
@@ -703,10 +735,21 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   await save('q_3', { format: 'text/v1', text: '叶子冒泡了' });
   const shortAnswer = await submit('q_3');
   assert.equal(shortAnswer.isCorrect, null, '主观题不参与判分，返回 null');
-  assert.deepEqual(Object.keys(shortAnswer), ['isCorrect']);
+  assert.equal(shortAnswer.gradeState, null, '三态也一起是 null');
+  assert.equal(shortAnswer.score, null, '得分也一起是 null（**不是 0**：0 是「判错」那个数）');
+  assert.deepEqual(Object.keys(shortAnswer).sort(), ['gradeState', 'isCorrect', 'score']);
 
   const rows = await db.prisma.worksheetAnswer.findMany({ orderBy: { questionId: 'asc' } });
-  assert.deepEqual(rows.map(r => [r.questionId, r.isCorrect]), [['q_1', false], ['q_2', false], ['q_3', null]]);
+  assert.deepEqual(
+    rows.map(r => [r.questionId, r.isCorrect, r.gradeState, r.score]),
+    [
+      ['q_1', false, 'incorrect', 0],
+      ['q_2', false, 'incorrect', 0],
+      // 主观题：三列**一起**是 null —— 「没判」在三个字段上是同一个回答。
+      ['q_3', null, null, null],
+    ],
+    '三列必须一起落库；少写一列的表现是看板/奖励那一侧静默用一个默认值顶上',
+  );
 });
 
 /**
@@ -876,6 +919,80 @@ test('allowResubmit 为假 ⇒ 改已提交的题 409 且库里那行不动；�
   const editableRow = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { response: { worksheetId: editable.id } } });
   assert.equal(editableRow.status, 'draft', '为真时改完要回到 draft');
   assert.deepEqual(editableRow.value, CHOICE(['B']));
+  // ★ B1：三列**一起**清。只清 `isCorrect` 会留下一行「没判对、但有态有分」的自相矛盾
+  // 形状 —— 学生端会照 `score` 画出一个库里已经不成立的奖励，而看板照 `gradeState`
+  // 画一个 ✓/◐。（断言写在这里而不是另开一条：这条 `PUT` 与上面那个 409 是同一个
+  // 处理器的两侧，分开写等于允许「一侧对、另一侧忘」通过。）
+  assert.equal(editableRow.isCorrect, null, '改回 draft ⇒ isCorrect 清空');
+  assert.equal(editableRow.gradeState, null, '改回 draft ⇒ gradeState 必须一起清（B1）');
+  assert.equal(editableRow.score, null, '改回 draft ⇒ score 必须一起清（B1）');
+});
+
+/**
+ * 🔴 **409 / 401 的契约不得因为 B1 加了两列而变**（本用例是 B1 新增的）。
+ *
+ * 这条 `PUT` 的 `update` 里现在多了 `gradeState` / `score` 两个赋值，所以「被拒的保存
+ * 一个字节都不动」这句话必须**重新证明一次**（上面那条用例的整行 JSON 快照也会盖住它，
+ * 但那是顺带的，不是为它写的）。用例刻意用**半对**的行做样本：它是唯一一种
+ * 「`isCorrect` 是 `false`、而这一行**有**非空得分」的形状 —— 拿一条 `incorrect` 的行
+ * 测，`score` 恰好是 0，与「没清干净」的区别在有些实现里看不出来。
+ *
+ * 401 那一半同理：提交端点在 B1 里改了响应体形状，而**鉴权那一层与响应体形状无关** ——
+ * 没有学生会话时它必须仍然是 401（不是 500，也不是一个「形状对了但泄漏了」的 200）。
+ */
+test('契约不变（B1）：半对的行被 409 拒绝时三列原样；学生端端点无会话仍是 401', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await db.prisma.worksheet.create({
+    data: {
+      title: '半对且不可重交的学习单',
+      content: {
+        schemaVersion: 1,
+        nodes: [{
+          id: 'm_1', type: 'multi-choice', prompt: '下列哪些是光合作用的原料？', inputMode: 'keyboard',
+          points: { full: 3, half: 2 },
+          data: {
+            options: [{ key: 'A', text: '水' }, { key: 'B', text: '氧气' }, { key: 'C', text: '二氧化碳' }],
+            correctKeys: ['A', 'C'], partialCredit: 'allow-missing',
+          },
+          children: [],
+        }],
+      },
+      settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'keyboard' },
+    },
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, '9021');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  // 先落一个**半对**的行：`isCorrect=false` + `gradeState='partial'` + `score=2`。
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'm_1', value: CHOICE(['A']) }, bearer(token));
+  const submitted = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'm_1' }, bearer(token));
+  assert.equal(submitted.status, 200, JSON.stringify(await submitted.json()));
+  const before = await db.prisma.worksheetAnswer.findFirstOrThrow();
+  assert.deepEqual(
+    [before.isCorrect, before.gradeState, before.score],
+    [false, 'partial', 2],
+    '前置条件：这一行必须是半对（否则下面测的不是它）',
+  );
+
+  // ① 409：改已提交的题被拒 ⇒ 三个判分列原样（含 `isCorrect=false` 这个**不是**「错」的值）。
+  const rejected = await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'm_1', value: CHOICE(['A', 'B']) }, bearer(token));
+  assert.equal(rejected.status, 409, await rejected.text());
+  const after = await db.prisma.worksheetAnswer.findFirstOrThrow();
+  assert.deepEqual(
+    [after.isCorrect, after.gradeState, after.score, after.status],
+    [false, 'partial', 2, 'submitted'],
+    '被拒的保存不得改动 value / status / submittedAt，也不得改动判分的三列',
+  );
+
+  // ② 401：没有学生会话（只带教师 cookie）⇒ 401，且**不得**落一个形状正确的 200。
+  const asTeacher = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'm_1' });
+  assert.equal(asTeacher.status, 401, await asTeacher.text());
+  const stillThere = await db.prisma.worksheetAnswer.findFirstOrThrow();
+  assert.deepEqual([stillThere.gradeState, stillThere.score], ['partial', 2], '被拒的提交不得改动判分列');
 });
 
 // ---------------------------------------------------------------------------
@@ -1009,6 +1126,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
     rows: Array<{
       questionId: string; value: unknown; status: string;
       submittedAt: string | null; isCorrect: boolean | null;
+      gradeState: string | null; score: number | null;
     }>;
   };
 
@@ -1030,17 +1148,25 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   assert.equal(q1.status, 'submitted');
   assert.ok(q1.submittedAt, 'submittedAt 要带上（「什么时候交的」是看板与回顾的输入）');
   assert.equal(q1.isCorrect, false, '答错了就如实回 false —— 奖励要靠它才能在刷新后重新画出来');
+  // ★ B1：三态与得分也必须撑得过刷新（这一条端点的存在理由就是「刷新后奖励消失」，
+  // 而 M4a 的奖励**由得分驱动** ⇒ 只回 `isCorrect` 的话刷新后照样画不出奖励）。
+  assert.equal(q1.gradeState, 'incorrect', '三态要回读出来（看板的 ◐/✓/✗ 靠它）');
+  assert.equal(q1.score, 0, '判错是 0 分 —— 学习单级没配 `rewardStep` ⇒ 全对档 = 默认的 1');
 
   const q2 = byId.get('q_2')!;
   assert.deepEqual(q2.value, FILL('CO2'));
   assert.equal(q2.status, 'submitted');
   assert.ok(q2.submittedAt);
   assert.equal(q2.isCorrect, false);
+  assert.equal(q2.gradeState, 'incorrect');
+  assert.equal(q2.score, 0);
 
   const q3 = byId.get('q_3')!;
   assert.deepEqual(q3.value, { format: 'text/v1', text: '叶子冒泡' });
   assert.equal(q3.status, 'submitted');
   assert.equal(q3.isCorrect, null, '主观题不判分 ⇒ null（**不是** false）');
+  assert.equal(q3.gradeState, null, '三态一起是 null —— 「没判」不是「判错」');
+  assert.equal(q3.score, null, '得分一起是 null —— 「没判」不是 0 分');
 
   // ── ③ 🔴 安全：这条新路径不得把正确答案捎出来（规格 §5.4）───────────────
   // 判据一（键名级、递归）：`ANSWER_KEYS` 一个都不许作为**键**出现 —— **整份响应**都扫，
@@ -1054,11 +1180,14 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   }
 
   // 判据一之补强：行的**形状**也要钉死 —— 多出任何一个键都可能是捎带出来的题目数据。
+  // ⚠️ B1 往这个集合里加了 `gradeState` / `score` 两个键，那是**有意的协议变更**
+  // （规格 §12），不是「红线松了」：两个键都是判分结果，与题目数据无关 ——
+  // 而上面那条键名级红线照样逐字扫整份响应，`ANSWER_KEYS` 仍然一个都不许出现。
   for (const row of body.rows) {
     assert.deepEqual(
       Object.keys(row).sort(),
-      ['isCorrect', 'questionId', 'status', 'submittedAt', 'value'],
-      `每一行只许有这五个键（多一个就可能是捎带出来的题目数据）：${raw}`,
+      ['gradeState', 'isCorrect', 'questionId', 'score', 'status', 'submittedAt', 'value'],
+      `每一行只许有这几个键（多一个就可能是捎带出来的题目数据）：${raw}`,
     );
   }
 

@@ -16,15 +16,17 @@ import {
 /**
  * 判分用的分值档（A2 起 `grade()` 要收它）。
  *
- * ⚠️ **本文件只钉 `state`，不钉 `score`。** 下面 15 条断言全都只读 `?.state`，
+ * ⚠️ **本文件只钉 `state`，不钉 `score`。** 下面的断言全都只读 `?.state`，
  * 所以 `P` 的取值在这份文件里**不可观测**。实测（审查者探针）：把 `grade()` 的得分改成
- * 完全忽略 `points` 的 `verdict === 'correct' ? 1 : 0`，**本文件 10/10 全绿**，
- * 而 `worksheet-grade-m4.test.ts` 同时红 27/47。
+ * 完全忽略 `points` 的 `verdict === 'correct' ? 1 : 0`，**本文件一条都不红**，
+ * 变红的是 `worksheet-grade-m4.test.ts`。
  *
- * ⇒ **`score` 的判据全部在 `worksheet-grade-m4.test.ts`**（那里用 2 / 1 而不是默认的
+ * ⇒ **`score` 的判据全在 `worksheet-grade-m4.test.ts`**（那里用 2 / 1 而不是默认的
  * 1 / 0：默认档下 `score` 恰好等于旧布尔值的 `Number()`，「把 `state` 当 `score` 用」
  * 「忘了乘 `points.full`」「得分写成比例」三种错会**全部绿**）。
  * ⚠️ 别以为这里传了 `P` 就等于测了分值 —— 那正是本注释第一版写错的地方。
+ * ⚠️ **这里刻意不写「几条红 / 几条绿」**：那种数每加一条用例就会漂，而
+ * 「拿旧数字当期望值」正是本项目反复出现的假绿形态。要总数就当场跑一遍。
  */
 const P: QuestionPoints = { full: 2, half: 1 };
 

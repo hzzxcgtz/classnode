@@ -24,6 +24,15 @@
 | 探究网页 | `ClassroomWebapp`（`schema.prisma:235-248`），**课堂级** | ❌ 而且**单选**（创建页 `selectedWebappId`） |
 | 学习单 | 无模型（`classroomMaterialError` 里固定传 `worksheet: 0`） | ❌ 尚未实现 |
 
+> 🔴 **2026-09-23 过期（P1 学习单的第一批服务端落地后即失效）**：上表第三行**整行都不再成立** ——
+> `Worksheet` / `ClassroomWorksheet` / `WorksheetResponse` / `WorksheetAnswer` 四张表已建，
+> `ClassroomGroupMaterial` 的 `kind` 已在写 `'worksheet'`，
+> `classroomMaterialError` 那两处 `worksheet` 也**已经是真数字**（不再是固定 0）：
+> 标准/分组数课堂级那一份，高级模式数**真的配了的组级学习单数**。
+> 本节余下的分析（推广「按组指定」到三种材料）**结论仍然有效**，
+> 只是第三行描述的那个「尚未实现」的空白已经被填上 —— 见 `specs/2026-09-23-p1-worksheet.md` §4 / §5。
+> 写作时（09-22）这句话是真的，保留原文是为了留下「当时以为学习单要零成本接入、结果确实只差一个枚举」这个判断痕迹。
+
 ⇒ 本任务把「按组指定」从智能体一种**推广到三种**，并让学习单将来零成本接入。
 
 ### 1.2 顺带修掉的三处既有缺陷（都逐行核过，不是推断）
@@ -117,7 +126,15 @@ model ClassroomGroupMaterial {
 4. **重建 `ClassroomGroup` 去掉 `agentId`**：照 `participant-migration.ts:84-114` 的既有范式（`PRAGMA foreign_keys = OFF` → CREATE new → INSERT SELECT → DROP → RENAME → 重建索引 → `foreign_keys = ON`）。
    - 🔴 `ClassroomGroup` 被两张子表外键引用：`ClassroomStudent.groupId`（真实库实测 **ON DELETE SET NULL**）与 `ClassroomGroupMember.groupId`（**ON DELETE CASCADE**）。pragma 没生效就会**静默毁掉子表数据**。
    - 🔴 `PRAGMA foreign_keys` **按连接生效**（Prisma 有连接池）**且在事务内无效**。所以不得包进 `$transaction`，且**必须有带子表数据的测试**当裁判（见 §6.1）。
-5. **DDL 必须与 Prisma 的输出逐字一致** —— 否则桌面版下次 `db push` 会再重建一次，而按 `table_info` 探测的同步块不会重跑，两边分叉。
+5. 🔴 **把课堂级网页「实体化」成每组一份**（这一步不能省，否则是**行为回归**）。
+   今天**高级模式也会写一条课堂级的 `ClassroomWebapp`**（`routes/classroom.ts:405`），所有组共用它。改成按组之后，那些组每组的「没配网页」都会触发 §4.4 的「不回落」⇒ **已存在的课堂会突然什么都看不到**。
+   ⇒ 迁移时对**每一个高级模式、且有一条课堂级网页关联**的课堂：给它的**每个组**写一行 `kind='webapp'`、`targetId = 该课堂级网页`。
+   - 判据是 `Classroom.mode = 'advanced'`；标准/分组模式不动（它们继续用课堂级网页）。
+   - 这一步放在第 3 步之后、第 4 步之前都行，但**必须在标记置位之前**完成。
+   - ⚠️ 它同样是「改数据」，所以**备份要先于它**（备份在第 1 步）。
+6. **DDL 必须与 Prisma 的输出逐字一致** —— 否则桌面版下次 `db push` 会再重建一次，而按 `table_info` 探测的同步块不会重跑，两边分叉。
+
+**迁移后仍然存在、但变成惰性的东西（如实记）**：今天高级模式从各组 agentId 派生出 `ClassroomAgent` 行（`routes/classroom.ts:437-438`）。派生被删掉之后**新课堂不再产生它们**，但**老课堂里已有的那些行还在**。它们是惰性的（§4.4 规定高级模式不回落，读不到它们），**本次不删** —— 删历史行属于另一个决定，而且删错了不可逆。
 
 **方法说明（怎么拿到权威 DDL）**：把改动写到 `schema.prisma`，复制到 `/tmp`，`DATABASE_URL="file:/tmp/probe.db" prisma db push`，再 `sqlite3 .schema`。**不碰真实库。**
 
@@ -131,7 +148,14 @@ groups: [{ name, agentId: string | null, webappIds: string[] | null, studentIds 
 
 - **空串与缺字段一律归一成 `null`**（否则 `''` 会成为第三种状态落库；它与 `null` 在 `?.` 判空里表现一致，看起来是对的，直到有人写 `where: { targetId: null }` 的统计）。
 - 落库：对每个非 null 的材料写一行 `ClassroomGroupMaterial`。
+- 🔴 **高级模式不再写课堂级网页**（`routes/classroom.ts:405` 那一行删掉）：网页在高级模式下的权威来源变成「每组一份」。留着它会长出「这个课堂级网页到底谁在用」的第二套解释，而 §4.4 又规定了不回落 ⇒ 它会变成一个**永远看不见、但删不掉**（会挡住删除守卫）的幽灵。
+  ⚠️ 已存在的课堂由 §4.2 第 5 步实体化保证不回归。
 - **三件套判据**（`:389-394`）改成按**真的配了的材料数**计：`agent` / `webapp` 都改成数非空项，`worksheet` 仍为 0。用组的数量冒充会让「所有组都不配 + 没有课堂级材料」的空课堂建出来（而 `:151-152` 的注释写明这正是这条规则要防的）。
+
+  > 🔴 **2026-09-23 过期（P1 落地后即失效）**：上面这句里的「`worksheet` 仍为 0」**已不成立** ——
+  > P1 把第三项也改成了真数字：标准/分组数课堂级那份（`worksheet: worksheet.id ? 1 : 0`），
+  > 高级模式数真的配了的组级学习单数（`normalizedGroups.filter(g => g.worksheetId).length`）。
+  > 本行其余部分（`agent` / `webapp` 数非空项、以及「不能用组的数量冒充」的理由）**继续有效**。
 - `:437-438` 从各组 agentId 派生 `classroomAgents` 的那段**删掉**：迁移后组不再有 agentId，而且高级模式下这个数组本就是「各组并集」，语义可疑（§1.2 ① 正是它造成的）。⇒ 高级模式下 `classroomAgents` **不再派生**，学生端的智能体一律来自自己的组。
 
 ### 4.4 运行期：学生用哪一份材料
@@ -164,6 +188,19 @@ groups: groups.map(group => ({
 
 - 🔴 **`agent` 必须是条件构造**：`group.agent ? {…} : null`。今天那处非空解引用就是 §1.2 ②，会让整间课堂 500。
 - ⚠️ 形状变化是**破坏性**的（`agentId`/`agent` 两个字段被 `materials` 取代）⇒ 客户端与 `socket-events.ts` 的契约、以及 `classroom-webapp-link.test.ts` 里断言该形状的用例都要一起改。
+
+> 🔴 **2026-09-23 更正（P1 落地后回溯）**：上面那段形状**两处与实现不符**，都已在代码里定形：
+>   1. **不是嵌套的 `materials`，是扁平的**。服务端下发的是
+>      `groups[].{ id, name, agent, webapp, worksheet }` —— `classroom-material.ts` 的注释
+>      逐字记着这件事：「计划草稿里写的 `groups[].materials.{agent,webapp}` 那种嵌套形状
+>      **没有落地**，服务端下发的是扁平的 `{ id, name, agent, webapp }`」。
+>      （09-22 时 `webapp` 确实先落成了扁平，P1 又照同一个形状加了 `worksheet`。）
+>   2. **`worksheet: null` 已过期** —— 它就是「学习单尚未实现」那句话的残影（见 §1.1 的更正）。
+>      今天这里是真的三态：`worksheet: { id, title } | null`，由
+>      `resolveGroupMaterialViews()` 拼出（三条 `in` 查询，不是逐组 `findUnique`）。
+>
+> ⚠️ 顺带一句仍然有效的提醒：**`targetId` 是多态的**，三种 `kind` 共用一列 ⇒
+> 解析时绝不能「有材料行就用它的 targetId」（那会让「这一组只配了网页」变成「它有学习单」）。
 
 ### 4.6 学生端
 

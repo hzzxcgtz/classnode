@@ -193,7 +193,9 @@ function worksheetLinkRows(ids: readonly string[], now: number = Date.now()) {
  * （那两种模式的材料权威来源就是课堂级，见 `resolveMaterialTargetId` —— 它对
  * `standard` / `group` 直接返回 `classroomLevelId`）。而 `groups[]` 在 `standard` 模式
  * 根本不下发（`GET /code/:code` 里它是 `undefined`）、在 `group` 模式下每组的 `worksheet`
- * 恒为 `null`。⇒ **只有高级模式能靠 `groups[].materials.worksheet` 拿到学习单**；
+ * 恒为 `null`。⇒ **只有高级模式能靠 `groups[].worksheet` 拿到学习单**
+ * （⚠️ 是**扁平**的 `groups[].worksheet`，不是 `groups[].materials.worksheet` ——
+ * 嵌套的 `materials` 那种形状**从来没有落地**，`classroom-material.ts` 记着这件事）；
  * 少了本函数，标准/分组模式的学生端就**完全没有**「老师布置了哪一份」的来源，
  * 而界面上只会显示「还没有布置」—— 一次没有任何报错的静默差异。
  *
@@ -1023,7 +1025,8 @@ router.get('/code/:code', async (req, res) => {
       webappPort: req.app.get('webappPort') as number | undefined,
       webapps,
       // 课堂级学习单（数组，与 `webapps` 同形）。学生端按 `mode` 二选一取用：
-      // 高级 ⇒ `groups[].materials.worksheet`（自己组那份）；标准/分组 ⇒ 本数组的第 0 个。
+      // 高级 ⇒ `groups[].worksheet`（自己组那份）；标准/分组 ⇒ 本数组的第 0 个。
+      // ⚠️ 扁平字段（`groups[].worksheet`），不是 `groups[].materials.worksheet`。
       worksheets,
       modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({

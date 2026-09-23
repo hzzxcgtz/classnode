@@ -116,6 +116,48 @@ export interface QuestionNode {
 export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[] }
 
 /**
+ * 学习单级的**两个档**（`Worksheet.settings`）—— 规格 §12 裁定 4 的「兜底」。
+ *
+ * 语义是「**本单未单独设置的题**用这个」。缺字段 / 坏形状一律回落到 `DEFAULT_POINTS`
+ * （= 第一批的默认档 1 / 0）。
+ *
+ * 🔴 **取值域是 `normalizePointValue` 的 0..99，不是 `rewardStep` 的 1/2/3/5。**
+ * 那个四选一的下拉是**学习单级**的 UI 约束（`src/lib/worksheet-reward.ts` 的 `REWARD_STEPS`），
+ * 而**逐题**的两个输入框是自由的（规格 §12 裁定 5：教师可以填 2 或 4）。
+ * ⚠️ 这个差异是**有意的**，不要「统一」它们：把这里改成 `normalizeRewardStep` 会让库里
+ * 一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了取值域）**静默变回 1**，
+ * 而教师看到的是「我配的档没生效」。
+ *
+ * ⚠️ `halfStep` 要到任务 B2 才进 `normalizeSettings`（写入口）。**这个窗口期是安全的**：
+ * 此刻没有任何 UI 能写出那个键 ⇒ `source.halfStep` 是 `undefined` ⇒ `normalizePointValue`
+ * 回落到 `DEFAULT_POINTS.half = 0`，与规格的默认值相同 —— 也就是第一批的行为。
+ */
+export function pointsFromSettings(settings: unknown): QuestionPoints {
+  const source = (settings && typeof settings === 'object' && !Array.isArray(settings))
+    ? settings as Record<string, unknown> : {};
+  return {
+    full: normalizePointValue(source.rewardStep, DEFAULT_POINTS.full),
+    half: normalizePointValue(source.halfStep, DEFAULT_POINTS.half),
+  };
+}
+
+/**
+ * 这道题**实际用**的两个档：逐题优先，留空回落学习单级（规格 §12 裁定 4）。
+ *
+ * 🔴 判分只认这个函数吐出来的值。它存在的理由与 `isUsablePointValue` 同款：
+ * 「逐题填了没有」这个判断**只有一处**回答，否则改了一处就静默分叉。
+ *
+ * ⚠️ 走 `normalizePoints(node.points)` 而不是直接 `node.points ?? fallback`：
+ * `node.points` 来自库里的 JSON，手工改过的行可能是 `{}` 或 `{ full: '五' }`。
+ * 前者在 `normalizePoints` 的语义里**就是「留空」**（A1 的裁定：两个字段都不是有效数字
+ * ⇒ `undefined` ⇒ 继承学习单级）；后者由它补上 `DEFAULT_POINTS` 的另一半 ——
+ * 逐题**既然填了**，它就脱离了学习单级，不再跟随（裁定 4 要防的正是「看起来跟随了」）。
+ */
+export function resolvePoints(node: QuestionNode, fallback: QuestionPoints): QuestionPoints {
+  return normalizePoints(node.points) ?? fallback;
+}
+
+/**
  * 填空题的文本归一化。
  *
  * 🔴 **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的大小写是语义的一部分，
@@ -200,31 +242,51 @@ export function stripAnswers(content: WorksheetContent): WorksheetContent {
 }
 
 /**
- * 判分。返回 `null` 表示该题型不参与判分（主观题）。
+ * 判分的三态（规格 §12「得分与正确率的口径」）。
  *
- * ⚠️ M4a 的 A1 只扩题型、**不动这里**：5 个新题型此刻走末尾的 `return null` 兜底，
- * 即「不判分」。这是**预期的中间态**（A2 才把返回值改成三态 + 数值），不是 bug。
+ * ⚠️ 没有第四档「题目坏了」—— 一道 `data` 被改坏的题只能落到 `incorrect`。
+ * 这是**知情的取舍**：加第四档要让看板、奖励、导出三处都多一个分支，
+ * 而它表达的是「教师建题时出错」，那件事的出路是编辑期校验（`validateQuestion`），
+ * 不是判分。
  */
-export function grade(node: QuestionNode, value: unknown): boolean | null {
-  if (node.type === 'short-answer') return null;
-  const v = (value ?? {}) as { selected?: unknown; text?: unknown };
-  if (node.type === 'single-choice') {
-    const correct = Array.isArray(node.data.correctKeys) ? (node.data.correctKeys as string[]) : [];
-    const selected = Array.isArray(v.selected) ? (v.selected as string[]) : [];
-    return selected.length === 1 && correct.length === 1 && selected[0] === correct[0];
-  }
-  if (node.type === 'fill-blank') {
-    // ⚠️ `Array.isArray` 只保证「是数组」，不保证元素是字符串 —— `data` 是
-    // `Record<string, unknown>`，内容来自库里的 JSON，任何手工改过的行都可能有
-    // 非字符串元素。逐个元素判类型而不是整体断言成 `string[]`：少了这一步，
-    // `answers: [42, '光合作用']` 会在 `normalizeFillText` 里抛 `raw.replace is not a function`，
-    // 而学生提交路径上的一次抛错就是 500。非字符串元素直接跳过（当作不匹配）。
-    const answers = Array.isArray(node.data.answers) ? node.data.answers : [];
-    if (typeof v.text !== 'string') return false;
-    const normalized = normalizeFillText(v.text);
-    return answers.some((answer) => typeof answer === 'string' && normalizeFillText(answer) === normalized);
-  }
-  return null;
+export type GradeState = 'correct' | 'partial' | 'incorrect';
+
+/**
+ * 一次判分的结果。**两个字段缺一不可**：
+ *   · `state` 供看板的正确率与「哪道题错得多」；
+ *   · `score` 供显示与累计。
+ * 它们不是彼此的派生 —— `score` 是教师逐题填的**绝对值**，同一个 `partial`
+ * 在两道题上可以是 1 分也可以是 0 分（教师把半对档填成 0）。
+ */
+export interface GradeResult { state: GradeState; score: number }
+
+/**
+ * 判分。`null` = 该题型不参与判分（主观题）。
+ *
+ * 🔴 **返回的是判定对象，不是布尔**（规格 §12「M4 重开了 §3-S」）：`isCorrect: boolean`
+ * 表达不了「一半对」，而多选题的「漏选算半对」、排序 / 连线 / 归类的部分正确都要它。
+ * ⇒ `isCorrect` 的语义**收窄为「全对」**，由 `state` 派生写入，它不再是第二真相源。
+ *
+ * ⚠️ `score` 是**绝对值**（该题「全对」或「半对」那个数），**不是** 0/0.5/1 的比例 ——
+ * 逐题分值可以不同（§12 的例子：单选 2/1，填空 1/0），比例在各题之间不可比。
+ *
+ * ⚠️ 部分正确的统一口径：凡是「多个组成部分」的题（多选 / 填空多空 / 排序 / 连线 / 归类），
+ * **部分正确 = 半对**。唯一的开关是多选题的「漏选算不算」（教师逐题选，§12 已裁定）。
+ * 「选了错的」一律不给部分分 —— 半对只奖励「少做了」，不奖励「做错了」。
+ *
+ * 🔴 具体判分器在下面的 `JUDGES` 那张表里，与 `VALIDATORS` 同一手法：`Record<QuestionType, …>`
+ * 把「加了题型却忘了写判分」变成**编译错误**，而不是一道永远没人判得了的题。
+ *
+ * ⚠️ `points` 由 `resolvePoints(node, pointsFromSettings(settings))` 给出 —— **别在调用点手拼**：
+ * 手拼一次就有一处「忘了回落学习单级」的机会，而它唯一的表现是分数不对（没有报错）。
+ *
+ * @see judge — 三态是怎么判出来的
+ */
+export function grade(node: QuestionNode, value: unknown, points: QuestionPoints): GradeResult | null {
+  const verdict = judge(node, value);            // 'correct' | 'partial' | 'incorrect' | null
+  if (verdict === null) return null;
+  const score = verdict === 'correct' ? points.full : verdict === 'partial' ? points.half : 0;
+  return { state: verdict, score };
 }
 
 // ── `data` 的读取助手 ────────────────────────────────────────────────
@@ -285,6 +347,55 @@ function readPairs(raw: unknown): Array<{ leftId: string; rightId: string }> {
 }
 
 /**
+ * 从**作答值**里取一个字段。
+ *
+ * 🔴 作答值来自**请求体**（`WorksheetAnswer.value` 是一个 `Json` 列），可能根本不是对象 ——
+ * `null` / 数字 / 字符串 / 数组都有。整体不是对象时一律回答 `undefined`，于是各判分器
+ * 自己那条「取不到 ⇒ 判错」的路自然生效。
+ * ⚠️ 数组要**单独挡掉**：`['B']` 也是 `typeof === 'object'`，而 `value.selected` 在它身上
+ * 是 `undefined` —— 不挡会得到同样的结果，但挡掉之后「作答值必须是一个对象」这件事
+ * 在代码里是显式的，而不是靠巧合。
+ */
+function readField(value: unknown, key: string): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+/**
+ * 读「一串非空字符串」，**一个元素不合格就整体作废**（返回 `null`）。
+ *
+ * 🔴 与 `readStrings` 的「跳过坏元素」**方向相反**，这是刻意的，别把两者混用：
+ *   · `readStrings` 读的是**教师**的数据（`data.answers` 之类）—— 跳过坏元素，
+ *     因为教师少填一个答案不该让学生拿不到分；
+ *   · 本函数读的是**学生**的作答值（`selected` / `order`）—— 那里的元素**共同**构成
+ *     一个集合或一个序列，跳过它就不是「忽略噪声」而是**改写答案**：
+ *     `selected: ['A', 42]` 会被读成「只选了 A」，在「漏选算半对」下反而**多给**半分；
+ *     `order: ['i2', 42, 'i3']` 会被读成两项，后面每一位的位置全部错开。
+ *     两种都是**安静的虚高 / 错位**，所以坏形状一律整体判错。
+ *
+ * ⚠️ 连线题的 `links` 不走这里，走 `readPairs`：那里的每个元素（一条连线）是**独立的**，
+ * 丢掉一条形状不全的连线不会改变其余任何一条的含义（而一条形状不全的连线本来就
+ * 不可能匹配上任何正确配对）。
+ */
+function readStrictStrings(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  for (const item of raw) {
+    if (typeof item !== 'string' || !item) return null;
+  }
+  return raw as string[];
+}
+
+/** 读一个 `字符串 → 非空字符串` 的映射（归类题的 `placement` / `assignment`），别的值丢掉。 */
+function readStringMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' && value) out[key] = value;
+  }
+  return out;
+}
+
+/**
  * `candidate` 是不是 `ids` 的**一个排列（各出现一次）**。
  *
  * 🔴 用「排序后逐项相等」而不是「集合相等」：集合相等会把 `['a','a','b']` 与 `['a','b','b']`
@@ -325,6 +436,246 @@ function isCompleteMatching(
     seenRight.add(pair.rightId);
   }
   return seenLeft.size === leftIds.length;
+}
+
+// ── 判分器（`grade()` 的内部实现，不导出）────────────────────────────
+//
+// 🔴 全部走「**先判类型再取**」，与上面那批读取助手同一条纪律：`data` 是库里的 JSON、
+// 作答值来自请求体，任何手工改过的行都可能有别的形状。**判分在提交路径上，一次抛错
+// 就是 500**，而学生会看到「提交失败」并重试 —— 所以坏形状一律落到 `incorrect`。
+//
+// ⚠️ 三态里**没有第四档「读不懂」**：`null` 的语义是「这题型不判分」（主观题），
+// 拿它表示「读不懂」会让看板把一个 500 级的问题显示成一道主观题。
+
+/**
+ * 单选与判断题**共用**的判分器。
+ *
+ * 两者在规格 §12 里「作答值与判分逐字相同」，差别只在编辑 UI（判断题不存 `options`，
+ * 选项恒为对 / 错）—— 所以这里刻意是**同一个函数引用**，而不是复制一遍。
+ */
+function judgeSingleChoice(data: Record<string, unknown>, value: unknown): GradeState {
+  const correct = readStrings(data.correctKeys);
+  const selected = readStrictStrings(readField(value, 'selected'));
+  // `correctKeys` 不是恰好一个 ⇒ 这道题**没有人能答对**（数据被改坏了）。三态里没有
+  // 「题目坏了」这一档，只能判错 —— 出路是编辑期的 `validateQuestion`，不是判分。
+  if (correct.length !== 1 || selected === null) return 'incorrect';
+  // 选中不止一个 ⇒ 不符合题型（**不是**「部分对」）：单选只有一个组成部分，没有半对。
+  const picked = [...new Set(selected)];
+  if (picked.length !== 1) return 'incorrect';
+  return picked[0] === correct[0] ? 'correct' : 'incorrect';
+}
+
+function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeState {
+  const correct = [...new Set(readStrings(data.correctKeys))];
+  const selected = readStrictStrings(readField(value, 'selected'));
+  if (correct.length === 0 || selected === null) return 'incorrect';
+
+  // 🔴 **先去重再比个数。** 不去重的话 `selected: ['A','A']`（学生只勾了一个）会被读成
+  // 「选了两个」—— 在「漏选算半对」下正好凑成 `size === correct.length` ⇒ **静默的满分**。
+  const picked = new Set(selected);
+  // 选了错的 ⇒ 一律不给部分分。半对只奖励「少做了」，不奖励「做错了」。
+  for (const key of picked) {
+    if (!correct.includes(key)) return 'incorrect';
+  }
+  if (picked.size === correct.length) return 'correct';
+  // 空选不是「漏选」：什么都没做不该拿分（否则一道允许漏选的题在零作答时给半分）。
+  if (picked.size === 0) return 'incorrect';
+  return allowsMissing(data) ? 'partial' : 'incorrect';
+}
+
+/**
+ * 多选题的「漏选算不算半对」（教师逐题选，规格 §12 的裁定）。
+ *
+ * 🔴 **只有逐字等于 `'allow-missing'` 才算「算」** —— 认不出的值（缺字段、拼错、
+ * 换了个别的写法）一律按「全对才算」走。方向是刻意选的：把「认不出」当成「允许漏选」
+ * 会让一道本该判错的题**静默地给学生半分**，而教师看不出任何异常（他以为自己选的是
+ * 「全对才算」）；反过来，认不出的值当成「不给部分分」，教师至少能看到
+ * 「我选了算半对但分数没给」—— 那是**可见的**。
+ */
+function allowsMissing(data: Record<string, unknown>): boolean {
+  return data.partialCredit === 'allow-missing';
+}
+
+/**
+ * 填空题（单空 + 多空）。
+ *
+ * 两个形状的分派判据与 `VALIDATORS` 里那支**逐字一致**（`Array.isArray(data.blanks)` 在不在）——
+ * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
+ */
+function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeState {
+  // ⚠️ **向后兼容**：`data.blanks` 缺席时走 M3 的单空路径（不动）。第一批落库的填空题
+  // 一个 `blanks` 都没有，把它当成「零个空」会让全班的历史题目集体判错。
+  if (!Array.isArray(data.blanks)) {
+    const answers = readStrings(data.answers);
+    const text = readField(value, 'text');
+    if (typeof text !== 'string') return 'incorrect';
+    const normalized = normalizeFillText(text);
+    // 🔴 `normalizeFillText` **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的
+    // 大小写是语义的一部分，把 `CO2` 判成 `co2` 正确比不判更糟。要多收几种写法请教师
+    // 在 `answers` 里多列几个。
+    // 单空只有一个组成部分 ⇒ **没有半对**。
+    return answers.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
+  }
+
+  const blanks = data.blanks;
+  // 🔴 空数组（教师建了题但一个空都没填）⇒ 判错。**不能**落到下面那句「全对」：
+  // `hit === blanks.length` 在空数组上恒真（0 === 0），一道没有任何空的题会拿到满分，
+  // 且全程无报错。
+  if (blanks.length === 0) return 'incorrect';
+
+  const texts = readField(value, 'texts');
+  const list = Array.isArray(texts) ? texts : [];
+  let hit = 0;
+  for (const [index, blank] of blanks.entries()) {
+    const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
+      ? ((blank as Record<string, unknown>).answers)
+      : undefined;
+    const acceptable = readStrings(answers);
+    const text = list[index];
+    // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
+    if (acceptable.length === 0 || typeof text !== 'string') continue;
+    const normalized = normalizeFillText(text);
+    if (acceptable.some((answer) => normalizeFillText(answer) === normalized)) hit += 1;
+  }
+  if (hit === blanks.length) return 'correct';
+  return hit > 0 ? 'partial' : 'incorrect';
+}
+
+/**
+ * 排序题：**逐位**比。
+ *
+ * ⚠️ 基准是 `data.correctOrder`，**不是** `data.items` —— `items` 是学生看到的**显示顺序**。
+ * 拿 `items` 当基准就是「学生原封不动提交即满分」，而那正是 `validateQuestion` 拒绝
+ * 「两者相同」的原因（它有自己的一条校验与注释）。
+ *
+ * 口径是**位置制**（「至少有 1 个位置对就不是全错」），不做移位距离、不做最长公共子序列 ——
+ * 后两者会让「调换了 3 个」与「只调换了 1 个」在同一个分数上，而教师看到的是一个数。
+ */
+function judgeOrder(data: Record<string, unknown>, value: unknown): GradeState {
+  const correct = readStrings(data.correctOrder);
+  const order = readStrictStrings(readField(value, 'order'));
+  if (correct.length === 0 || order === null) return 'incorrect';
+  let hit = 0;
+  const positions = Math.min(correct.length, order.length);
+  for (let index = 0; index < positions; index += 1) {
+    if (order[index] === correct[index]) hit += 1;
+  }
+  // 「全对」还要求**长度相同**：少放了条目 = 这题没做完，哪怕前面每一位都碰巧对上了。
+  if (hit === correct.length && order.length === correct.length) return 'correct';
+  return hit > 0 ? 'partial' : 'incorrect';
+}
+
+/**
+ * 连线题。
+ *
+ * 🔴 **键名分工是已下的裁定**：教师的正确答案在 `data` 里叫 **`pairs`**，学生的作答值里
+ * 叫 **`links`**（裁定 2026-09-23）。撞名会让那条「响应不得含答案键」的扫描
+ * （`ANSWER_KEYS` 黑名单 + `worksheet-grade.test.ts` 的 `ANSWER_KEY_AUDIT`）
+ * 把「学生答对了」读成「答案泄漏了」。两份都不能改。
+ *
+ * ⚠️ 「一条左项只能连一个右项」是连线题的**题面约束**（`validateQuestion` 用
+ * `isCompleteMatching` 把它钉在教师那一侧）。学生两端有重复的连法时，那条线**不算对**：
+ * 否则一个「l1 连到 r1、又连到 r3」的矛盾作答会因为「里面含有正确的那条」而拿满分，
+ * 而学生端画出来的明明是三条线。
+ */
+function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
+  const pairs = readPairs(data.pairs);
+  if (pairs.length === 0) return 'incorrect';
+  const links = readPairs(readField(value, 'links'));
+  if (links.length === 0) return 'incorrect';
+
+  // 两端各数一次出现次数：某条连线的左项或右项被**别的**连线重复使用时，它不算对。
+  const leftUse = new Map<string, number>();
+  const rightUse = new Map<string, number>();
+  for (const link of links) {
+    leftUse.set(link.leftId, (leftUse.get(link.leftId) ?? 0) + 1);
+    rightUse.set(link.rightId, (rightUse.get(link.rightId) ?? 0) + 1);
+  }
+  let hit = 0;
+  for (const pair of pairs) {
+    const matched = links.some((link) =>
+      link.leftId === pair.leftId
+      && link.rightId === pair.rightId
+      && leftUse.get(link.leftId) === 1
+      && rightUse.get(link.rightId) === 1);
+    if (matched) hit += 1;
+  }
+  if (hit === pairs.length) return 'correct';
+  return hit > 0 ? 'partial' : 'incorrect';
+}
+
+/**
+ * 归类题。
+ *
+ * 🔴 **键名分工同连线题**：教师侧是 **`placement`**，学生侧是 **`assignment`**（同一条裁定）。
+ *
+ * ⚠️「有条目没放 ⇒ 那一条算错」在**两个方向**上都要成立，而它们在代码上是同一条路
+ * （都要 `assignment[id] === placement[id]` 才记一次对）：
+ *   · 学生的 `assignment` 缺键 ⇒ 这一条算错（他没放）；
+ *   · 教师的 `placement` 缺键 ⇒ 这一条**没有任何人**能落对（他建题时漏填）。
+ * 用例里把两者**分开钉住**，因为它们代价不同：后者会让一个「其他都对」的学生
+ * **答对了却拿不到满分**，而教师查不出来（§14.4 那一类）。
+ */
+function judgeCategorize(data: Record<string, unknown>, value: unknown): GradeState {
+  const items = readItemIds(data.items).ids;
+  const placement = readStringMap(data.placement);
+  const assignment = readStringMap(readField(value, 'assignment'));
+  // 没有条目 ⇒ 没有可判的东西。`hit === items.length` 在空数组上恒真（0 === 0）——
+  // 少了这条守卫，一道零条目的题会给满分且无报错。
+  if (items.length === 0) return 'incorrect';
+
+  let hit = 0;
+  for (const id of items) {
+    const expected = placement[id];
+    if (!expected) continue;   // 教师的漏填 ⇒ 这一条谁也落不对
+    if (assignment[id] === expected) hit += 1;
+  }
+  if (hit === items.length) return 'correct';
+  return hit > 0 ? 'partial' : 'incorrect';
+}
+
+/**
+ * 题型 → 判分器。**这张表就是「这道题判不判分、怎么判」这个问题的唯一答案。**
+ *
+ * 🔴 与 `VALIDATORS` 同一手法（`Record<QuestionType, …>`）：往 `QUESTION_TYPES` 里加题型
+ * 而忘了在这里补一条是**编译错误**（TS2739「缺少属性」），不是一道「永远不判分、
+ * 看板上永远没有对错、整卷永远停在 in-progress」的题。`VALIDATORS` 的注释记着这条纪律
+ * 的由来，这里是它的第二个受益者。
+ *
+ * ⚠️ `short-answer` 那支 `() => null` **不只是「不判分」的口径，也是一个必须被明确作出的
+ * 决定**：`Record` 缺一个键就是编译错误，所以它不能靠「忘了写」来达成。
+ */
+const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknown) => GradeState | null> = {
+  'single-choice': judgeSingleChoice,
+  // 判断题与单选**共用同一个判分器**（规格 §12：作答值与判分逐字相同）。
+  'true-false': judgeSingleChoice,
+  'multi-choice': judgeMultiChoice,
+  'fill-blank': judgeFillBlank,
+  'short-answer': () => null,
+  order: judgeOrder,
+  match: judgeMatch,
+  categorize: judgeCategorize,
+};
+
+/**
+ * 判分的分派。**不导出** —— 绕过 `points` 直接拿三态会让「得分」与「对错」在两条路上
+ * 各算一次，而规格 §12 要收口的正是这件事（`isCorrect` 的语义收窄为「全对」，
+ * 由 `gradeState` 派生写入）。
+ */
+function judge(node: QuestionNode, value: unknown): GradeState | null {
+  // ⚠️ `node.data` 也走「先判类型再取」：`Record<string, unknown>` 是**编译期的承诺**，
+  // 而库里的 JSON 可能是 `null` / 数组 / 别的标量 —— `null.correctKeys` 会在提交路径上
+  // 抛一次 500，学生看到的是「提交失败」。
+  const data = (node.data && typeof node.data === 'object' && !Array.isArray(node.data))
+    ? node.data as Record<string, unknown>
+    : {};
+  // ⚠️ `node.type` 同样是编译期的承诺：手工改过的行可能是一个**不存在的题型**。
+  // 取不到判分器时回答 `null`（= 不判分）—— 与主观题同一档，看板不会把它算进
+  // 「已判分」的分母，也就不会报出一个错的正确率。
+  const judgeForType: ((data: Record<string, unknown>, value: unknown) => GradeState | null) | undefined =
+    JUDGES[node.type];
+  if (!judgeForType) return null;
+  return judgeForType(data, value);
 }
 
 /** 单选与判断题**共用**的校验：`correctKeys` 恰好一个。`checkOptions` 只对单选为真。 */

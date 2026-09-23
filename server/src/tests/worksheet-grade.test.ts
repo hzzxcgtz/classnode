@@ -8,9 +8,19 @@ import {
   normalizeFillText,
   stripAnswers,
   type QuestionNode,
+  type QuestionPoints,
   type QuestionType,
   type WorksheetContent,
 } from '../services/worksheet-questions.js';
+
+/**
+ * 判分用的分值档（A2 起 `grade()` 要收它）。
+ *
+ * 🔴 这里刻意用 **2 / 1** 而不是默认的 1 / 0：默认档下 `score` 恰好等于旧布尔值的
+ * `Number()`，一个「把 `state` 当 `score` 用」或者「忘了乘 `points.full`」的实现
+ * 在这份用例里**看不出来**。2 / 1 让「得分是教师填的绝对值」这件事在这里就可判。
+ */
+const P: QuestionPoints = { full: 2, half: 1 };
 
 const choice: QuestionNode = { id: 'q1', type: 'single-choice', prompt: '…', inputMode: 'keyboard',
   data: { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'] }, children: [] };
@@ -20,16 +30,16 @@ const short: QuestionNode = { id: 'q3', type: 'short-answer', prompt: '…', inp
   data: {}, children: [] };
 
 test('单选：选中正确键即对，多选不给分', () => {
-  assert.equal(grade(choice, { format: 'choice/v1', selected: ['B'] }), true);
-  assert.equal(grade(choice, { format: 'choice/v1', selected: ['A'] }), false);
-  assert.equal(grade(choice, { format: 'choice/v1', selected: ['A', 'B'] }), false);
-  assert.equal(grade(choice, { format: 'choice/v1', selected: [] }), false);
+  assert.equal(grade(choice, { format: 'choice/v1', selected: ['B'] }, P)?.state, 'correct');
+  assert.equal(grade(choice, { format: 'choice/v1', selected: ['A'] }, P)?.state, 'incorrect');
+  assert.equal(grade(choice, { format: 'choice/v1', selected: ['A', 'B'] }, P)?.state, 'incorrect');
+  assert.equal(grade(choice, { format: 'choice/v1', selected: [] }, P)?.state, 'incorrect');
 });
 
 test('填空：任一可接受答案即对', () => {
-  assert.equal(grade(fill, { format: 'fill/v1', text: '光合作用' }), true);
-  assert.equal(grade(fill, { format: 'fill/v1', text: '光合作用作用' }), true);
-  assert.equal(grade(fill, { format: 'fill/v1', text: '呼吸作用' }), false);
+  assert.equal(grade(fill, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'correct');
+  assert.equal(grade(fill, { format: 'fill/v1', text: '光合作用作用' }, P)?.state, 'correct');
+  assert.equal(grade(fill, { format: 'fill/v1', text: '呼吸作用' }, P)?.state, 'incorrect');
 });
 
 test('归一化：去首尾空格、全角转半角、折叠连续空格', () => {
@@ -49,12 +59,15 @@ test('🔴 归一化不做大小写不敏感 —— 化学式必须区分', () =
   // 这条测试才真的在验证「不做大小写归一」。
   const co2: QuestionNode = { id: 'q4', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: ['CO2'] }, children: [] };
-  assert.equal(grade(co2, { format: 'fill/v1', text: 'CO2' }), true);
-  assert.equal(grade(co2, { format: 'fill/v1', text: 'co2' }), false);
+  assert.equal(grade(co2, { format: 'fill/v1', text: 'CO2' }, P)?.state, 'correct');
+  assert.equal(grade(co2, { format: 'fill/v1', text: 'co2' }, P)?.state, 'incorrect');
 });
 
 test('问答题永远不判分', () => {
-  assert.equal(grade(short, { format: 'text/v1', text: '随便' }), null);
+  // ⚠️ 这一条**刻意不写 `?.state`**：`?.state` 会把「`grade` 返回 `null`」与
+  // 「返回了一个 `state` 字段缺失的对象」collapse 成同一个 `undefined`，
+  // 而这条用例正是要钉住前者。断言整个返回值是 `null` 才是最强的形状。
+  assert.equal(grade(short, { format: 'text/v1', text: '随便' }, P), null);
 });
 
 test('🔴 填空题：answers 里的非字符串元素不得让判分抛错', () => {
@@ -63,24 +76,24 @@ test('🔴 填空题：answers 里的非字符串元素不得让判分抛错', (
   // `['光合作用', 42]` 恰好不炸（先命中了），`[42, '光合作用']` 才炸。三条都钉住。
   const withNumber: QuestionNode = { id: 'q5', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: [42, '光合作用'] }, children: [] };
-  assert.equal(grade(withNumber, { format: 'fill/v1', text: '光合作用' }), true, '非字符串元素应被跳过，不得抛错');
+  assert.equal(grade(withNumber, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'correct', '非字符串元素应被跳过，不得抛错');
 
   const withNull: QuestionNode = { id: 'q6', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: [null, '光合作用'] }, children: [] };
-  assert.equal(grade(withNull, { format: 'fill/v1', text: '光合作用' }), true);
+  assert.equal(grade(withNull, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'correct');
 
   const withObject: QuestionNode = { id: 'q7', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: [{}, '光合作用'] }, children: [] };
-  assert.equal(grade(withObject, { format: 'fill/v1', text: '光合作用' }), true);
+  assert.equal(grade(withObject, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'correct');
 
   const withArray: QuestionNode = { id: 'q8', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: [['光合作用'], '光合作用'] }, children: [] };
-  assert.equal(grade(withArray, { format: 'fill/v1', text: '光合作用' }), true);
+  assert.equal(grade(withArray, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'correct');
 
   // 全是非字符串时退化为「不匹配」，而不是抛错
   const allJunk: QuestionNode = { id: 'q9', type: 'fill-blank', prompt: '…', inputMode: 'keyboard',
     data: { answers: [42, null] }, children: [] };
-  assert.equal(grade(allJunk, { format: 'fill/v1', text: '光合作用' }), false);
+  assert.equal(grade(allJunk, { format: 'fill/v1', text: '光合作用' }, P)?.state, 'incorrect');
 });
 
 test('flattenQuestions 深度优先展开（含嵌套 children）', () => {

@@ -12,7 +12,12 @@ import {
   // `normalizePoints` 与 `isUsablePointValue` 同处一地定义（service）—— 「什么算有效分值」
   // 只有一处回答，而它直接决定「这题是继承学习单级还是脱离」。
   normalizePoints,
+  // ⚠️ A2 的最小适配用到这两个：`grade()` 现在要求调用点给出**这道题实际用的两个档**
+  // （规格 §12 裁定 4：逐题优先、留空回落学习单级）。把「怎么算这两档」写在调用点
+  // 就等于让每个调用点各抄一遍回落规则 —— 所以走这两个函数。
+  pointsFromSettings,
   QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
+  resolvePoints,
   stripAnswers,
   validateQuestion,
   type QuestionNode,
@@ -1313,7 +1318,16 @@ router.post('/:id/answers/submit', async (req, res) => {
     const { autoGrade } = readStudentSettings(ctx.worksheet.settings);
     // ⚠️ 关掉自动判分是「**不判**」（`null`），不是「判错」（`false`）—— 两者在学生端
     // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
-    const isCorrect = autoGrade ? grade(node, answer.value) : null;
+    //
+    // ⚠️ **A2 的最小适配**：`grade()` 的返回值从布尔改成了「三态 + 数值」的判定对象
+    // （规格 §12「M4 重开了 §3-S」）。这里只把 `isCorrect` 这一列**原样**填回去
+    // （它的语义已收窄为「全对」，由 `state` 派生 —— 它不再是第二真相源）。
+    // 🔴 把 `gradeState` / `score` 两个新列**落库并上线缆**是 **B1** 的活：
+    // 本步骤只让树变绿、**不改这一行的行为**（落库的仍然只有 `isCorrect`）。
+    const graded = autoGrade
+      ? grade(node, answer.value, resolvePoints(node, pointsFromSettings(ctx.worksheet.settings)))
+      : null;
+    const isCorrect = graded ? graded.state === 'correct' : null;
 
     const updated = await ctx.prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId: response.id, questionId } },

@@ -377,7 +377,17 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 否则教师会拿到一份缺了刚才那些改动的副本（而且他多半不会发现）。
       if (!sourceId || dirtyRef.current) {
         const saved = await save();
-        if (!saved) return;
+        if (!saved) {
+          // 🔴 `save()` 有三种 `null`，只有第一种是**静默**的：它自己那道防重入
+          // （`savingRef.current`）直接 return，既不动 `saveStatus` 也不弹提示。
+          // 不在这里说话，教师点「复制一份」就什么也看不到 —— 按钮只闪了一瞬
+          // （`duplicating` 被置真又立刻置假），看起来像按钮坏了。
+          // 另外两种（标题为空 / 请求失败）`save()` 自己会写 `saveStatus` 与提示，不重复。
+          if (savingRef.current) {
+            callbacksRef.current.onNotice({ message: '正在保存中，等这次保存完再点「复制一份」', type: 'error' });
+          }
+          return;
+        }
         sourceId = saved.id;
       }
       const copy = await api.duplicateWorksheet(sourceId);

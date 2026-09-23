@@ -599,6 +599,77 @@ test('状态：allowResubmit 为真时改已提交的题，本题回 draft、整
   assert.equal((await db.prisma.worksheetResponse.findFirstOrThrow()).status, 'submitted');
 });
 
+/**
+ * 🔴 `allowResubmit` 必须在**服务端**生效（规格 §8.4 那三层里的第一层）。
+ *
+ * 只靠学生端「不让他改」，这个设置就是对教师说的假话 —— 与答案剥离同一条原则：
+ * **过滤在服务端执行，不在前端**（规格 §5.4）。
+ *
+ * 拒绝用 **409**（Conflict：当前状态不允许这个操作），**不是 400**：本文件里 400 已经
+ * 表示「请求本身有问题」（缺 `questionId`、题不属于这份学习单）。混用会让 D2 的离线队列
+ * 没法区分「这一条该丢弃」与「这一条该修参数重试」—— 那是队列永远卡死的成因。
+ *
+ * 阳性对照与它并排：默认（`allowResubmit: true`）时同一操作必须 200 且回到 `draft`。
+ * 少了它，一个「所有 PUT 都 409」的实现也能让上面全绿。
+ */
+test('allowResubmit 为假 ⇒ 改已提交的题 409 且库里那行不动；为真（默认）⇒ 200 且回 draft', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const frozen = await seedWorksheet(db.prisma, '不可重交的学习单', { allowResubmit: false, autoGrade: true, defaultInputMode: 'keyboard' });
+  const editable = await seedWorksheet(db.prisma, '可重交的学习单');
+  const { classroom: frozenClass, participant: frozenStudent } = await seedClassroom(db.prisma, '9014');
+  const { classroom: freeClass, participant: freeStudent } = await seedClassroom(db.prisma, '9015');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: frozenClass.id, worksheetId: frozen.id } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: freeClass.id, worksheetId: editable.id } });
+
+  const save = (worksheetId: string, token: string, value: unknown) =>
+    server.put(`/api/worksheets/${worksheetId}/answers`, { questionId: 'q_1', value }, bearer(token));
+  const submit = (worksheetId: string, token: string) =>
+    server.post(`/api/worksheets/${worksheetId}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+
+  // ── ① allowResubmit: false ────────────────────────────────────────────
+  const frozenToken = createStudentToken(frozenClass.id, frozenStudent.id);
+  assert.equal((await save(frozen.id, frozenToken, CHOICE(['A']))).status, 200, '第一次作答必须放行');
+  const submitted = await submit(frozen.id, frozenToken);
+  assert.equal(submitted.status, 200, JSON.stringify(await submitted.json()));
+
+  const before = await db.prisma.worksheetAnswer.findFirstOrThrow();
+  const beforeSnapshot = JSON.stringify(before);
+  const answerCountBefore = await db.prisma.worksheetAnswer.count();
+  const responseCountBefore = await db.prisma.worksheetResponse.count();
+
+  const rejected = await save(frozen.id, frozenToken, CHOICE(['B']));
+  const rejectedBody = await rejected.json() as { error?: string };
+  assert.equal(
+    rejected.status,
+    409,
+    `allowResubmit 为假时改已提交的题必须被拒（409 = 当前状态不允许）：${JSON.stringify(rejectedBody)}`,
+  );
+  assert.match(String(rejectedBody.error), /不可修改/, '要给学生一句能看懂的中文');
+
+  // 🔴 不只看状态码：库里那一行**一个字节都不能变**。
+  const after = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { id: before.id } });
+  assert.equal(JSON.stringify(after), beforeSnapshot, '被拒的保存不得改动任何字段（含 value / status / submittedAt）');
+  assert.equal(after.status, 'submitted');
+  assert.deepEqual(after.value, CHOICE(['A']), 'value 必须还是被拒之前的那一次');
+  assert.equal(await db.prisma.worksheetAnswer.count(), answerCountBefore, '被拒的保存不得建新行');
+  assert.equal(await db.prisma.worksheetResponse.count(), responseCountBefore, '被拒的保存不得顺手建作答会话');
+
+  // ── ② allowResubmit: true（默认）—— 阳性对照 ──────────────────────────
+  const freeToken = createStudentToken(freeClass.id, freeStudent.id);
+  await save(editable.id, freeToken, CHOICE(['A']));
+  // ⚠️ 断言提交成功：否则下面那条 200 可能只是因为「这份还没提交过」
+  assert.equal((await submit(editable.id, freeToken)).status, 200);
+
+  const allowed = await save(editable.id, freeToken, CHOICE(['B']));
+  assert.equal(allowed.status, 200, `默认 allowResubmit 为真时必须允许改：${JSON.stringify(await allowed.json())}`);
+  const editableRow = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { response: { worksheetId: editable.id } } });
+  assert.equal(editableRow.status, 'draft', '为真时改完要回到 draft');
+  assert.deepEqual(editableRow.value, CHOICE(['B']));
+});
+
 // ---------------------------------------------------------------------------
 // ⑥ 鉴权边角：教师 cookie 打学生端端点、目标已被删
 // ---------------------------------------------------------------------------

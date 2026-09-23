@@ -706,6 +706,34 @@ router.put('/:id/answers', async (req, res) => {
       return res.status(400).json({ error: '该题不属于这份学习单' });
     }
 
+    // 🔴 `allowResubmit: false` 在**服务端**生效（规格 §8.4 三层控制里的第一层）。
+    // 只靠学生端收起输入框，这个设置就是对教师说的假话 —— 与答案剥离同一条原则：
+    // **过滤在服务端执行，不在前端**（规格 §5.4）。
+    //
+    // ⚠️ 用 **409**（Conflict：「当前状态不允许这个操作」），**不是 400**：本文件里 400
+    // 已经表示「请求本身有问题」（缺 `questionId`、题不属于这份学习单）。混用会让客户端的
+    // 离线队列没法区分「这一条该丢弃」与「这一条该修参数重试」。
+    //
+    // ⚠️ 这一步排在 `ensureResponse` **之前**：被拒的保存不留任何痕迹
+    // （建会话/把整卷从 submitted 拨回 in-progress 都算痕迹）。
+    const { allowResubmit } = readStudentSettings(ctx.worksheet.settings);
+    if (!allowResubmit) {
+      const current = await ctx.prisma.worksheetAnswer.findFirst({
+        where: {
+          questionId,
+          response: {
+            classroomId: ctx.classroomId,
+            worksheetId: ctx.worksheet.id,
+            participantId: ctx.participantId,
+          },
+        },
+        select: { status: true },
+      });
+      if (current?.status === 'submitted') {
+        return res.status(409).json({ error: '老师已设置本题提交后不可修改' });
+      }
+    }
+
     const now = new Date();
     const response = await ensureResponse(ctx, now);
     await ctx.prisma.worksheetAnswer.upsert({
@@ -716,11 +744,6 @@ router.put('/:id/answers', async (req, res) => {
       // `true`，看板会显示成「这题刚判对」，而学生此刻正在把它改错。
       update: { value: toJsonValue(body.value), status: 'draft', submittedAt: null, isCorrect: null },
     });
-    // ⚠️ `allowResubmit` 为假时这里**不拦**（服务端只按规格 §5.3 的「保存单题」办）。
-    // 留意的两点：① 第一道防线是学生端（D2 交卷后收起输入框），本端不是鉴权点；
-    // ② 断言在这里回 4xx 会让 D2 的离线队列把一条**永远重放不成功**的保存卡在队里，
-    // 而那条队列的硬要求是「绝不静默丢数据」（规格 §8.3）。若控制器裁定服务端必须拦，
-    // 这里要一起定「队列遇到 4xx 怎么办」。
 
     // 广播由 B4 接在这里（`worksheet-answer-updated` → 房间 `classroom:<id>`）。
     res.json({ success: true, questionId, status: 'draft' });

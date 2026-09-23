@@ -1,0 +1,398 @@
+/* 学生端学习单面板（P1 / 规格 §8）。
+ *
+ * 硬约束与 shell.module.css / explore.module.css / chat.module.css 同源（Safari 15，老 iPad）：
+ * 不用 `:has()` / `content-visibility` / `@container` / `color-mix()`，也不用 `dvh` 与
+ * `:focus-visible`（两者都需要降级链，本文件一个都没用 —— 焦点样式交给浏览器默认的那一圈，
+ * 它在这三种控件上都存在且可见）。
+ *
+ * ── 为什么面板要自己让开栏高 ───────────────────────────────────────────────
+ * 顶层 Tab 栏是 `position: fixed`（shell.module.css 的 .bar），不占流内空间；
+ * `.moduleLayer` 刻意不加上内边距（注释里写明「学伴面板自己算进 100vh 的预算」）。
+ * 所以**由面板自己**用 `padding-top: var(--shell-topbar-height)` 让出那条带子。
+ *
+ * ── 层内滚动（规格 §8.1）────────────────────────────────────────────────────
+ * `.stage` 是 `overflow: hidden`，每一层自己管自己的滚动。所以这里是
+ * 「`height:100%` 的纵向 flex + 一个内部滚动容器」：顶栏（标题 / 进度 / 保存状态 / 奖励）
+ * 固定在带子下面不动，只有题目区滚。**不是滚页面** —— 滚页面的写法会让那条状态栏
+ * 随着整卷滚出视口，而学生正需要一直看见「保存了没有」。 */
+
+.panel {
+  /* 模块身份色由组件用行内样式写进来（`MODULE_META.worksheet.accent`），
+     这里给一个同值的兜底：教师端的「学生端预览」也会渲染本文件的题目部分，
+     那条路径上没有外壳给这个变量。 */
+  --ws-accent: var(--module-accent, #2563eb);
+  position: relative;
+  /* 可用高度：Safari 15 不认识 `dvh`（整条声明被丢弃 ⇒ 退化成 auto），所以这三行是
+     渐进增强链，**顺序不能动**（chat.module.css 的 `.chatShell` 是同一套）。 */
+  height: 100vh;
+  height: 100dvh;
+  height: var(--module-viewport-height, 100dvh);
+  min-height: 0;
+  max-height: var(--module-viewport-height, 100dvh);
+  padding-top: var(--shell-topbar-height, 0px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #1e293b;
+  background: #fff;
+}
+
+/* ───────────────────────── 顶部那一条（规格 §8.2）───────────────────────── */
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e6ebf5;
+  background: #fff;
+  /* 断网时**整条变琥珀**（规格 §8.2）。用属性选择器而不是拼类名：
+     状态只有一个来源（`offline`），样式跟着它走，不必在 JSX 里再算一次类名。 */
+  transition: background-color .2s;
+}
+
+.topbar[data-offline='1'] {
+  background: #fffbeb;
+  border-bottom-color: #fcd34d;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .95rem;
+  font-weight: 700;
+  color: #1e3a8a;
+}
+
+.progress {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressTrack {
+  width: 84px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ws-accent);
+  transition: width .25s ease-out;
+}
+
+.progressText {
+  font-size: .78rem;
+  font-weight: 700;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+
+.saveState {
+  flex: 0 0 auto;
+  font-size: .75rem;
+  font-weight: 650;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.topbar[data-offline='1'] .saveState {
+  color: #b45309;
+}
+
+/* 奖励累计的位置（规格 §9.3：奖励出现在两处，这一处是「顶部累计」）。
+   D5 才往里面放东西；现在留的是**位置**，不是占位文字 —— 一个空盒子不占宽度，
+   不会在 D5 落地时把顶栏挤成另一种排布。 */
+.rewardSlot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .82rem;
+  font-weight: 750;
+  color: #b45309;
+}
+
+/* ───────────────────────── 整卷滚动容器 ───────────────────────────────── */
+
+.scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 题目列：窄屏铺满，宽屏（iPad 横屏 / 桌面）居中限宽 —— 一行 90 个字符的题干很难读。 */
+.questions {
+  --ws-accent: var(--module-accent, #2563eb);
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px 16px 96px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ───────────────────────── 一道题 ─────────────────────────────────────── */
+
+.question {
+  border: 1px solid #e6ebf5;
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  background: #fff;
+}
+
+.questionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.questionIndex {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: var(--ws-accent);
+  font-size: .8rem;
+  font-weight: 800;
+}
+
+.questionType {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+/* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
+   用属性选择器分三态，文案由组件给（同一个判据只有一处）。 */
+.questionState {
+  flex: 0 0 auto;
+  font-size: .74rem;
+  font-weight: 750;
+}
+
+.questionState[data-state='submitted'] { color: #15803d; }
+.questionState[data-state='drafting'] { color: #b45309; }
+
+.prompt {
+  font-size: .95rem;
+  line-height: 1.7;
+  color: #1e293b;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.placeholder {
+  color: #a3aec2;
+  font-style: normal;
+}
+
+/* ───────────────────────── 作答控件 ───────────────────────────────────── */
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  min-height: 44px;      /* 44px 是触屏命中区的下限，老 iPad 上手指更粗 */
+  box-sizing: border-box;
+}
+
+.optionSelected {
+  border-color: var(--ws-accent);
+  background: #f5f8ff;
+}
+
+.optionInput {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--ws-accent);
+}
+
+.optionKey {
+  flex: 0 0 auto;
+  font-weight: 800;
+  color: var(--ws-accent);
+}
+
+.optionText {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 1rem;        /* ≥16px：小于它 iOS 会在聚焦时自动放大整页 */
+  line-height: 1.6;
+  color: #1e293b;
+  background: #fff;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.input:disabled,
+.optionInput:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+/* ───────────────────────── 「提交本题」（规格 §3-AC）──────────────────────
+   内联在每题下方，**不做固定底栏** —— 固定底栏要先回答「当前是哪题」，
+   而学生滚回去看时那是个歧义源。 */
+
+.submitRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* 锁住那一句话（`allowResubmit` 为假 + 已提交）：不渲染按钮，但必须说清楚为什么 ——
+   一个按不动的「重新提交」比一句话难懂得多，学生会反复点它。 */
+.lockedNote {
+  margin: 12px 0 0;
+  font-size: .76rem;
+  color: #94a3b8;
+  text-align: right;
+}
+
+.submitButton {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--ws-accent);
+  border-radius: 10px;
+  background: var(--ws-accent);
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.submitButton:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.submitButtonResubmit {
+  background: #fff;
+  color: var(--ws-accent);
+}
+
+/* ───────────────────────── 空态 / 加载 / 出错卡（与探究空间同款语气）──────
+   三种「此刻没有内容可看」：本组没配学习单、整卷一道题都没有、读取失败。
+   颜色取模块身份色，与首页卡片、Tab 栏、占位面板读的是同一个来源。 */
+
+.overlay {
+  position: absolute;
+  top: var(--shell-topbar-height, 0px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  box-sizing: border-box;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 18px;
+  border-top: 5px solid var(--module-accent, #2563eb);
+  background: #fff;
+  padding: 26px 22px;
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, .18);
+  box-sizing: border-box;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: var(--module-accent, #2563eb);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.cardTitle {
+  margin: 14px 0 8px;
+  font-size: 1.02rem;
+  font-weight: 750;
+  color: #1e293b;
+}
+
+.cardNote {
+  margin: 0;
+  font-size: .84rem;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.retry {
+  margin-top: 16px;
+  min-height: 40px;
+  padding: 0 20px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* 只读态（教师端「学生端预览」）：没有任何可点的东西，所以把命中区的暗示收掉。 */
+.questions[data-interactive='0'] .option {
+  cursor: default;
+}

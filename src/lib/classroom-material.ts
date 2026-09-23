@@ -98,6 +98,28 @@ export function effectiveGroupWebapp(
   return classroom.webapps?.[0] ?? null;
 }
 
+/**
+ * 「这个学生此刻该作答哪一份学习单」。语义与上面两个**逐字相同**。
+ *
+ * 🔴 高级模式下 `null` 的含义是**「本组未配置学习单」**，不是「老师还没布置」——
+ * 后者会让学生以为整间课堂都没有，而实际上可能是别的组有。调用方
+ * （`worksheet-panel.tsx`）的文案必须照着这个区分写，**不拿课堂级那份顶上**
+ * （规格 §8.4：与探究空间同口径）。
+ *
+ * ⚠️ 这个值是 `GET /api/worksheets/:id/student-view` 的 `:id` 来源。取错一份时
+ * **服务端会拦住**（`requireOwnWorksheet` 的 ③：目标不是这一份就 403）—— 也就是说
+ * 这里错了的表现是「学习单打不开」，而不是「学生答到了别人的单子上」。
+ * 那层兜底在服务端，但它只说明错误可见，不说明这里可以随便写。
+ */
+export function effectiveGroupWorksheet(
+  classroom: ClassroomMaterials | null | undefined,
+  selectedStudent: { groupId?: string | null } | null | undefined,
+): WorksheetMaterialSummary | null {
+  if (!classroom) return null;
+  if (classroom.mode === 'advanced') return ownGroup(classroom, selectedStudent)?.worksheet ?? null;
+  return classroom.worksheets?.[0] ?? null;
+}
+
 /* ————————————— 教师端：「这间课堂在用什么材料」（按类型） ————————————— */
 
 /** 一条材料引用：材料本身 + 高级模式下它属于哪个（或哪些）组。 */

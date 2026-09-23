@@ -1,9 +1,12 @@
 /**
  * 学习单编辑器的**纯函数内核**：不碰 React、不碰 DOM、不碰网络，只依赖类型。
  *
- * 🔴 **本文件不得出现任何运行时 import。** 这不是风格要求，而是下面这件事的前提：
- * 本仓没有前端测试框架（规格 §11），但 `node --test` 能直接执行本文件 —— 因为
- * Node 24 的类型擦除会把 `import type` 整段删掉，运行时一行模块解析都不发生。
+ * 🔴 **本文件不得出现 `@/…` 联名路径的运行时 import，也不得引 React / DOM。**
+ * 这不是风格要求，而是下面这件事的前提：本仓没有前端测试框架（规格 §11），但
+ * `node --test` 能直接执行本文件 —— Node 24 的类型擦除会把 `import type` 整段删掉，
+ * 而**剩下那几行运行时 import 必须是 Node 也能解析的相对路径**（带 `.ts` 后缀，
+ * 见下面从 `lib/worksheet-questions.ts` 转出的那几行）。联名路径 Node 解析不了，
+ * 加一行就会让本文件的唯一回归网整个跑不起来。
  *
  * ```bash
  * node --test src/app/teacher/worksheets/edit/worksheet-editor-core.test.ts
@@ -21,22 +24,21 @@
  */
 
 import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+// 题型词汇表与「选项怎么读出来」的唯一一份在 `src/lib/worksheet-questions.ts`：
+// 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
+// ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
+import { optionKey, QUESTION_TYPE_OPTIONS, readOptions } from '../../../../lib/worksheet-questions.ts';
+import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
+
+export { optionKey, QUESTION_TYPE_OPTIONS, readOptions };
+export type { ChoiceOption, QuestionType };
 
 
 /**
- * 题型。⚠️ 这是**服务端注册表**（`server/src/services/worksheet-questions.ts` 的
- * `QUESTION_TYPES`）在教师端的投影，不是第二份权威：真正的校验在服务端
- * （`routes/worksheets.ts` 的 `parseContent`），多出来的题型会被 400 拒绝。
- * 这里窄一点只影响「能新建哪几种」，不会让非法题型落库。
+ * 题型。⚠️ 定义在 `src/lib/worksheet-questions.ts`（学生端与教师端共用一份），
+ * 上面已转出。它是**服务端注册表**（`server/src/services/worksheet-questions.ts` 的
+ * `QUESTION_TYPES`）在前端的投影，不是第二份权威。
  */
-export type QuestionType = 'single-choice' | 'fill-blank' | 'short-answer';
-
-/** 题型清单。**加题弹窗与每张卡片右上角的题型名共用这一份**，不要在两处各写一遍。 */
-export const QUESTION_TYPE_OPTIONS: Array<{ value: QuestionType; label: string; hint: string }> = [
-  { value: 'single-choice', label: '单选题', hint: '若干选项，只有一个正确答案' },
-  { value: 'fill-blank', label: '填空题', hint: '学生填一段文字，答对任一可接受答案即算正确' },
-  { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分' },
-];
 
 export const SCHEMA_VERSION = 1;
 
@@ -59,15 +61,7 @@ export const MAX_OPTIONS = 26;
 /** 自动保存草稿的间隔（规格 §6.4：每 10 秒**或失焦**）。 */
 export const DRAFT_INTERVAL_MS = 10_000;
 
-export interface ChoiceOption {
-  key: string;
-  text: string;
-}
-
-/** 选项的 key 由**位置**派生（A、B、C…），与规格 §4.3 的示例一致。 */
-export function optionKey(index: number): string {
-  return String.fromCharCode(65 + index);
-}
+// `ChoiceOption` / `optionKey` 定义在 `src/lib/worksheet-questions.ts`，上面已转出。
 
 /**
  * 内容树的**唯一写入口**。
@@ -153,23 +147,8 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   return question;
 }
 
-/** 读某道题的选项。**容错**：`data` 来自库里的 JSON，任何手改过的行都可能有别的形状。 */
-export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
-  const raw = node.data.options;
-  if (!Array.isArray(raw)) return [];
-  const options: ChoiceOption[] = [];
-  raw.forEach((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
-    const option = item as Record<string, unknown>;
-    // 缺 key 的正常行由 `newQuestion` 保证不会出现；这里按**已收下的条数**补一个，
-    // 而不是按原始下标 —— 跳过垃圾条目之后下标会留下空洞（A、C、D…）。
-    options.push({
-      key: typeof option.key === 'string' && option.key ? option.key : optionKey(options.length),
-      text: typeof option.text === 'string' ? option.text : '',
-    });
-  });
-  return options;
-}
+// `readOptions` 定义在 `src/lib/worksheet-questions.ts`，上面已转出（学生端渲染同一份
+// `content` 的题面，读法必须只有一份）。
 
 /**
  * 写回选项：**重新按位置编号**，并让正确答案跟着那道选项走。

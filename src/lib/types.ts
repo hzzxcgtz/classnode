@@ -545,19 +545,28 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
   /**
    * 各组的材料（`GET /code/:code` 与 `join-classroom` 的 `joined` 事件）。
    *
-   * 🔴 **`agent` / `webapp` 都可为 `null`，且高级模式下这是「该组没有这种材料」的唯一表达
-   * —— 不得回落到 `agents[]` / `webapps[]`**（那是课堂级数组，高级模式下曾是各组材料的
-   * 并集 ⇒ 回落到它等于让学生静默地用别的组的智能体/网页）。解析一律经
-   * `@/lib/classroom-material` 的 `effectiveGroupAgent` / `effectiveGroupWebapp`。
+   * 🔴 **`agent` / `webapp` / `worksheet` 都可为 `null`，且高级模式下这是「该组没有这种材料」
+   * 的唯一表达 —— 不得回落到 `agents[]` / `webapps[]` / `worksheets[]`**（那三个是课堂级
+   * 数组，高级模式下曾是各组材料的并集 ⇒ 回落到它等于让学生静默地用别的组的智能体/网页/
+   * 学习单）。解析一律经 `@/lib/classroom-material` 的
+   * `effectiveGroupAgent` / `effectiveGroupWebapp` / `effectiveGroupWorksheet`。
    *
    * ⚠️ `agent` 的**运行时**形状是 `AgentSummary` 的子集（服务端 `GroupMaterialView`：
    * `id` / `name` / `logo` / `platform` / `enabled` / `greeting`）—— 声明按 `AgentSummary`
    * 是为了与 `agents[]` 同一个类型、读 `enabled` / `greeting` 时不必分支；但**不要**从这个
    * 对象上读 `apiUrl` / `apiKey` / `hasApiKey` 之类的管理字段，服务端在这里根本不下发。
    *
+   * ⚠️ `worksheet` 与那个顶层 `worksheets` 数组是**同源**的（服务端都走
+   * `resolveGroupMaterialViews` / 组材料行）：标准 / 分组模式下本字段恒为 `null`
+   * （材料是课堂级的），权威来源是顶层数组 —— 这与 `webapp` 的口径逐字相同。
+   *
    * 可选：更老的服务端不发这个字段；标准模式下服务端也刻意不发（`groups` 为 `undefined`）。
    */
-  groups?: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
+  groups?: Array<ClassroomCardGroup & {
+    agent: AgentSummary | null;
+    webapp: ClassroomWebappSummary | null;
+    worksheet?: WorksheetMaterialSummary | null;
+  }>;
   modules: ClassroomModuleSetting[];
   /**
    * 探究空间托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。

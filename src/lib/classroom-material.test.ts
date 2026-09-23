@@ -21,8 +21,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWebapp } from './classroom-material.ts';
-import type { AgentSummary, ClassroomWebappSummary } from './types';
+import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet } from './classroom-material.ts';
+import type { AgentSummary, ClassroomWebappSummary, WorksheetMaterialSummary } from './types';
 
 /** 只填本测试读到的字段；其余字段的存在与否与本函数无关（服务端下发的组材料也只是子集）。 */
 function agent(id: string, name: string, enabled = true): AgentSummary {
@@ -30,6 +30,9 @@ function agent(id: string, name: string, enabled = true): AgentSummary {
 }
 function webapp(id: string, name: string): ClassroomWebappSummary {
   return { id, name, entryPath: 'index.html' };
+}
+function worksheet(id: string, title: string): WorksheetMaterialSummary {
+  return { id, title };
 }
 
 // ── 高级模式：只认自己的组，没有就是没有 ──────────────────────────────────
@@ -136,6 +139,64 @@ test('课堂级数组为空 / 缺失 ⇒ null，不抛', () => {
   assert.equal(effectiveGroupAgent({ mode: 'advanced', agents: [], webapps: [], groups: [] }, { groupId: 'g1' }), null);
 });
 
+// ── 学习单：同一枚硬币的第三面（P1 / 规格 §8.4）────────────────────────────
+//
+// 🔴 与上面两组**逐字同源**，所以同一套断言要再来一遍：这个函数的错法不是崩溃，
+// 而是「本组没配学习单的学生，打开的是**别组**的那一份」—— 学生照常作答、服务端照常判分，
+// 教师看板上那些答案会挂在**另一个组**的格子下。没有任何报错。
+// （服务端对此有兜底：`requireOwnWorksheet` 的 ③ 会 403 —— 但它拦的是「打开了不属于自己的
+// 那一份」，而**本函数返回 null 时**面板压根不该发那个请求，两层各管一半。）
+
+test('学习单 · 高级模式：自己组配了就用自己组的', () => {
+  const classroom = {
+    mode: 'advanced',
+    worksheets: [worksheet('ws-class', '课堂级学习单')],
+    groups: [{ id: 'g1', agent: null, webapp: null, worksheet: worksheet('ws-mine', '我组的学习单') }],
+  };
+  assert.equal(effectiveGroupWorksheet(classroom, { groupId: 'g1' })?.title, '我组的学习单');
+});
+
+test('🔴 学习单 · 高级模式：本组没配 ⇒ null，不回落到课堂级 worksheets[0]', () => {
+  const classroom = {
+    mode: 'advanced',
+    worksheets: [worksheet('ws-class', '课堂级学习单')],
+    groups: [{ id: 'g1', agent: null, webapp: null, worksheet: null }],
+  };
+  assert.equal(effectiveGroupWorksheet(classroom, { groupId: 'g1' }), null);
+});
+
+test('🔴 学习单 · 高级模式：没有组 / groups 没下发 / 组不在列表里 ⇒ 都是 null', () => {
+  const classroom = {
+    mode: 'advanced',
+    worksheets: [worksheet('ws-class', '课堂级学习单')],
+    groups: [{ id: 'g1', agent: null, webapp: null, worksheet: worksheet('ws-mine', '我组的学习单') }],
+  };
+  assert.equal(effectiveGroupWorksheet(classroom, { groupId: null }), null);
+  assert.equal(effectiveGroupWorksheet(classroom, null), null);
+  assert.equal(effectiveGroupWorksheet(classroom, undefined), null);
+  assert.equal(effectiveGroupWorksheet(classroom, { groupId: 'g-不存在' }), null);
+  assert.equal(effectiveGroupWorksheet({ mode: 'advanced', worksheets: [worksheet('ws-class', '课堂级学习单')] }, { groupId: 'g1' }), null);
+});
+
+test('学习单 · 分组模式 / 标准模式：权威来源是**课堂级**第一个，组里那份不参与', () => {
+  const grouped = {
+    mode: 'group',
+    worksheets: [worksheet('ws-class', '课堂级学习单')],
+    groups: [{ id: 'g1', agent: null, webapp: null, worksheet: worksheet('ws-mine', '我组的学习单') }],
+  };
+  assert.equal(effectiveGroupWorksheet(grouped, { groupId: 'g1' })?.id, 'ws-class');
+
+  const standard = { mode: 'standard', worksheets: [worksheet('ws-1', '第一份'), worksheet('ws-2', '第二份')] };
+  assert.equal(effectiveGroupWorksheet(standard, null)?.id, 'ws-1');
+});
+
+test('学习单 · mode 缺失（更老的服务端）⇒ 按非高级处理；什么都没有 ⇒ null，不抛', () => {
+  assert.equal(effectiveGroupWorksheet({ worksheets: [worksheet('ws-1', '第一份')] }, { groupId: 'g1' })?.id, 'ws-1');
+  assert.equal(effectiveGroupWorksheet(null, { groupId: 'g1' }), null);
+  assert.equal(effectiveGroupWorksheet(undefined, null), null);
+  assert.equal(effectiveGroupWorksheet({ mode: 'standard' }, null), null);
+});
+
 // ── 接线：消费点必须走上面这两个函数 ──────────────────────────────────────
 
 /**
@@ -161,16 +222,18 @@ const CONSUMER_FILES = [
   'src/app/classroom/chat/chat-panel.tsx',
   'src/app/classroom/home/student-home.tsx',
   'src/app/classroom/use-classroom-session.ts',
+  // 学习单面板（P1/D2）：三种材料里最后接上的一个消费点，同一条闸。
+  'src/app/classroom/worksheet/worksheet-panel.tsx',
 ];
 
-test('🔴 四个消费点都接线到解析函数，没有自己读课堂级数组', () => {
+test('🔴 五个消费点都接线到解析函数，没有自己读课堂级数组', () => {
   for (const relativePath of CONSUMER_FILES) {
     const source = stripComments(readFileSync(new URL(`../../${relativePath}`, import.meta.url), 'utf8'));
     // 用 `assert.ok` + `test()` 而不是 `assert.match`：后者失败时会把**整个源文件**打进
     // 报错里（实测过，几十行，真正的原因淹在里面）。这里只留一句话。
-    assert.ok(/effectiveGroup(Agent|Webapp)\(/.test(source), `${relativePath} 没有调用解析函数`);
+    assert.ok(/effectiveGroup(Agent|Webapp|Worksheet)\(/.test(source), `${relativePath} 没有调用解析函数`);
     assert.ok(
-      !/(classroom|cr)\s*\??\.\s*(agents|webapps)\s*\??\.\s*\[0\]/.test(source),
+      !/(classroom|cr)\s*\??\.\s*(agents|webapps|worksheets)\s*\??\.\s*\[0\]/.test(source),
       `${relativePath} 又自己读了课堂级数组 —— 高级模式下那是错的来源`,
     );
   }

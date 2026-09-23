@@ -263,6 +263,15 @@ const ALLOWED = {
     // 6 次：一行（选择器组）里 5 个 + 另一处 1 个。见上面「出现次数」口径的说明。
     ':focus-visible': 6,
   },
+  // 学习单面板（P1/D2）：与 chat.module.css **逐字同一条**渐进增强链
+  // （`height: 100vh` → `100dvh` → `var(--module-viewport-height, 100dvh)` 三行，
+  // 外加 `min-height` / `max-height` 各一处 100dvh —— 打字机键盘弹出时可用高度由
+  // 那个 CSS 变量给，三行是给「变量还没被设过」的第一帧用的，Safari 15 落到 `100vh`）。
+  // 冻结在这里而不是留白：本文件是新加的学生端文件，不写进这张表的话它的 dvh 用法
+  // **一次都不会被数到**（下面那段按 `ALLOWED[rel]` 迭代，没进表的文件不检查）。
+  'src/app/classroom/worksheet/worksheet.module.css': {
+    'dvh': 3,
+  },
   'src/app/globals.css': {
     // 不支持只丢焦点环，布局与功能不受影响
     ':focus-visible': 5,

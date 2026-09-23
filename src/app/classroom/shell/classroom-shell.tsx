@@ -7,6 +7,7 @@ import type { StudentHomeProps } from '../home/student-home';
 import { StudentHome } from '../home/student-home';
 import { StudentChatContent } from '../chat/chat-panel';
 import { ExplorePanel } from '../explore/explore-panel';
+import { WorksheetPanel } from '../worksheet/worksheet-panel';
 import { useOverlayPortal } from '../layer-overlays';
 import { AvatarChangerModal, finishAvatarChange } from '../chat/avatar-changer';
 import { ModuleTabBar } from './module-tab-bar';
@@ -609,15 +610,35 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               // 面板自己订阅会漏掉 join-classroom 那一次初值。
               demand={chat.webappDemand}
             />
+          ) : id === 'worksheet' ? (
+            // 学习单（P1 / D2）：真面板。
+            <WorksheetPanel
+              // 与学伴面板同一条理由：换身份即重挂。学习单这一侧还多一件 ——
+              // 本地队列的键是「课堂 + 参与者」，重挂让 hook 的输入态、上传中标志、
+              // 「发过什么」的镜像一起清零，绝不带着上一个学生的草稿出现在屏幕上。
+              key={chat.selectedStudent?.id ?? 'no-student'}
+              active={activate(id)}
+              state={moduleStateFor(chat.classroom?.modules, id)}
+              classroom={chat.classroom}
+              session={chat.selectedStudent}
+              toast={toastFor(id)}
+              setToast={setToast}
+            />
           ) : (
+            // 🔴 **这一支是那道编译期门本身，别删。** 三个模块全落地之后 `id` 到这里是
+            // `never` —— 也就是说这一支今天**永远不会执行**，留着它的唯一理由是
+            // `ModulePlaceholderProps.moduleId` 正是 `never`：
+            //   · 「把某个真面板渲染成占位」（`moduleId={'worksheet'}`）⇒ 编译失败；
+            //   · 将来 `ModuleId` 多出第四项时，`id` 在这里**不再是 `never`** ⇒
+            //     这一行编译失败，逼着新模块在这里分支。删掉这一支，新模块会被
+            //     **静默地**渲染成学习单面板 —— 一个学生看得见、却没有任何报错的谎。
+            // 占位面板自己不再有调用点，那个文件的文件头写清了它的状态。
             <ModulePlaceholder
               moduleId={id}
               active={activate(id)}
               state={moduleStateFor(chat.classroom?.modules, id)}
               classroom={chat.classroom}
               session={chat.selectedStudent}
-              // 占位面板也要接住 Toast：学生站在它上面时设的提示必须有渲染点（Task 11）。
-              // `setToast` 与首页、学伴面板是同一个会话级 setter，所以关闭仍然是唯一一处写入。
               toast={toastFor(id)}
               setToast={setToast}
             />

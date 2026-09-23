@@ -54,7 +54,7 @@ src-tauri/resources/
 src-tauri/target/
 server/backups/
 server/uploads/
-# dev 下探究助手托管网页的根目录（与 uploads 平级，见 services/webapp-host.ts）；
+# dev 下探究空间托管网页的根目录（与 uploads 平级，见 services/webapp-host.ts）；
 # 桌面端走 CLASSNODE_DATA_DIR，不会落到这里。与 uploads 同样绝不能进版本库 ——
 # 里面是教师上传的内容，可能含学生信息。
 server/webapps/

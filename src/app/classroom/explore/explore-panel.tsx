@@ -68,7 +68,7 @@ function buildWebappSrc(webapp: ClassroomWebappSummary, port: number): string {
 }
 
 /**
- * 探究助手面板的 props。
+ * 探究空间面板的 props。
  *
  * `extends ModulePanelProps` 是刻意的（Ruling 10 之外的新增部分走这条路，与占位面板同款）：
  * 契约（§4.3）要求每个模块都接住 `active` / `state` / `classroom` / `session` / Toast 两项，
@@ -78,7 +78,7 @@ function buildWebappSrc(webapp: ClassroomWebappSummary, port: number): string {
  * `wsRef` 与 `watching` 是**本面板自己的** props，不进契约（契约是共同的下限，不是完整清单）：
  *   · `wsRef`：缩略图帧经**已有的那条** socket 上报。⚠️ **绝不新建第二条连接** ——
  *     那会给学生端多一条常驻连接（违背 §4.8 的内存门槛），服务端还要处理重复连接。
- *   · `watching`：本课堂此刻有没有教师在看探究助手视图。**由会话层持有、外壳传下来**，
+ *   · `watching`：本课堂此刻有没有教师在看探究空间视图。**由会话层持有、外壳传下来**，
  *     面板自己不订阅 —— 初值只在 `join-classroom` 成功后下发一次，而本面板是惰性挂载的，
  *     自己订阅必然漏掉那一次（详见 `classroom-types.ts` 里那个字段的注释）。
  */
@@ -87,7 +87,7 @@ export interface ExplorePanelProps extends ModulePanelProps {
   /**
    * 服务端**逐学生**下发的推流档位（`{ watching, detail }`）。
    *
-   * `watching` 有教师在看本课堂的探究助手视图；`detail` 表示教师**点开了这个学生**的
+   * `watching` 有教师在看本课堂的探究空间视图；`detail` 表示教师**点开了这个学生**的
    * 详情。两者都不成立时学生端在**源头**就不截图（Ruling 9）—— 注意这里管的是
    * 「画不画」，与父页面那条管「发不发」的闸门是两道独立的闸。
    */
@@ -95,7 +95,7 @@ export interface ExplorePanelProps extends ModulePanelProps {
 }
 
 /**
- * 学生端的探究助手面板：一个跨源 iframe（托管服务）+ postMessage 桥 +
+ * 学生端的探究空间面板：一个跨源 iframe（托管服务）+ postMessage 桥 +
  * 上行两条链路（缩略图帧、文字档事件）。
  * （点击 / 输入 / 页面内跳转**不采集、不上报** —— 详见 `use-explore-bridge.ts` 的文件头。）
  *
@@ -104,7 +104,7 @@ export interface ExplorePanelProps extends ModulePanelProps {
  *      iframe 留在 DOM 里 ⇒ 滚动位置、输入框草稿、网页自身的状态原样保留。
  *      这也是为什么「加载失败」的提示卡是**盖上去**的，而不是把 iframe 换成卡片 ——
  *      卸载即丢状态，一次网络抖动不该让学生丢掉整段作答。
- *   2. **没人看时不推**（Ruling 9）：教师没打开探究助手视图时，服务端会下发
+ *   2. **没人看时不推**（Ruling 9）：教师没打开探究空间视图时，服务端会下发
  *      `webapp-monitor-demand { watching:false }`，学生端在**源头**就不发 ——
  *      这与服务端「不转发」是两道独立的闸，学生端这道决定的是「根本不产生流量」。
  *   3. **提交顺序**：`armed` 为真（= postMessage 监听已挂好）之前不创建 iframe，
@@ -204,7 +204,7 @@ export function ExplorePanel({ active, classroom, session, toast, setToast, wsRe
    * ⚠️ 但**必须检查 socket**：没连上就没处送，这时本机 console 那条仍然生效。
    */
   const handleDiag = useCallback((diag: WebappDiag) => {
-    console.warn('[探究助手] SDK 诊断：' + diag.code + ' n=' + diag.n + ' w=' + diag.w + ' h=' + diag.h);
+    console.warn('[探究空间] SDK 诊断：' + diag.code + ' n=' + diag.n + ' w=' + diag.w + ' h=' + diag.h);
     const socket = wsRef.current;
     if (!socket || !classroomId || !webappId) return;
     socket.emit('webapp-diag', { classroomId, webappId, ...diag });
@@ -219,7 +219,7 @@ export function ExplorePanel({ active, classroom, session, toast, setToast, wsRe
    *
    * 这里与父页面那条 `watchingRef` 闸门是**两道独立的闸**，不是重复：
    * 那条管「发不发」，这条管「**画不画**」。对 canvas 直读，「画了但不发」只是白费
-   * 几毫秒；对纯 DOM 光栅化，那是每 10 秒白烤一遍整页 —— 学生停在探究助手页面上
+   * 几毫秒；对纯 DOM 光栅化，那是每 10 秒白烤一遍整页 —— 学生停在探究空间页面上
    * 而教师没在看时，老 iPad 会一直这么烧下去。**Ruling 9 说的「学生端开销是零」，
    * 只有加上这道闸才真的成立。**
    *
@@ -295,7 +295,7 @@ export function ExplorePanel({ active, classroom, session, toast, setToast, wsRe
           ref={frameRef}
           key={reloadKey}
           src={src}
-          title={webapp?.name || '探究助手'}
+          title={webapp?.name || '探究空间'}
           className={styles.frame}
           sandbox={SANDBOX}
           referrerPolicy="no-referrer"

@@ -9,9 +9,9 @@ import styles from './shell.module.css';
 /**
  * 还没实现的模块：学习单（M3 才实现）。
  *
- * ⚠️ 收窄必须跟着「谁已经是真面板」走。探究助手在 P2（T6）变成真 iframe 面板之后，
- * 这里就只剩学习单 —— 没收窄的话，占位面板仍然**在类型上声称**自己能渲染探究助手，
- * 于是「外壳把探究助手渲染成占位」会变成合法代码，而那正是 Ruling 2 要防的假象
+ * ⚠️ 收窄必须跟着「谁已经是真面板」走。探究空间在 P2（T6）变成真 iframe 面板之后，
+ * 这里就只剩学习单 —— 没收窄的话，占位面板仍然**在类型上声称**自己能渲染探究空间，
+ * 于是「外壳把探究空间渲染成占位」会变成合法代码，而那正是 Ruling 2 要防的假象
  * （学生看到「这个模块还在准备中」，而它其实早就能用了，且不报任何错）。
  */
 type PlaceholderModuleId = Exclude<ModuleId, 'companion' | 'explore'>;
@@ -24,7 +24,7 @@ type PlaceholderModuleId = Exclude<ModuleId, 'companion' | 'explore'>;
  * 而不是悄悄少接一个 prop。
  *
  * `moduleId` 收窄到既不是 `companion` 也不是 `explore`：那两个都是真面板（学伴面板、
- * 探究助手面板）。写宽了会让「外壳把真面板也渲染成占位」变成合法代码，而那正是
+ * 探究空间面板）。写宽了会让「外壳把真面板也渲染成占位」变成合法代码，而那正是
  * Ruling 2 要防的假象。
  */
 export interface ModulePlaceholderProps extends ModulePanelProps {

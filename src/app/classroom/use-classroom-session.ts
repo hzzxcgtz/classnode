@@ -58,9 +58,9 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [paused, setPaused] = useState(false);
   const [agentDisabled, setAgentDisabled] = useState(false);
   /**
-   * 探究助手按需推流：本课堂此刻有没有教师在看探究助手视图（P2 / Ruling 9）。
+   * 探究空间按需推流：本课堂此刻有没有教师在看探究空间视图（P2 / Ruling 9）。
    *
-   * 初值只在 `join-classroom` 成功后由服务端下发一次，而探究助手面板是**惰性挂载**的
+   * 初值只在 `join-classroom` 成功后由服务端下发一次，而探究空间面板是**惰性挂载**的
    * （学生点开才挂）—— 所以这条状态必须由会话层持有，面板只能读。写在 `use-chat-socket`
    * 的回调里（那批 socket 监听器的家），与 `paused` 同一类。
    */

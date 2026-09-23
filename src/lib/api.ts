@@ -184,7 +184,7 @@ export const api = {
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
   toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),
-  // 探究助手画面采集（P2.2）：要不要采、多清楚、多久一次。
+  // 探究空间画面采集（P2.2）：要不要采、多清楚、多久一次。
   //
   // 三个字段**都可选**，语义是「没给 = 这次不改它」—— 所以只发被改动的那一个，
   // 不要图省事把当前值整个塞进去（那会把另一个字段钉死在本地可能已经过期的值上）。

@@ -58,7 +58,7 @@ function PermissionMenuItem({ label, enabled, busy, onToggle }: {
  * 观感不变；只是外面那层从 320px 的窄条换成了浮窗。
  *
  * `label` 由调用方用 `MODULE_ID_LABELS` 传进来，不在这里再写一遍
- * 「学习单 / 探究助手 / 智能学伴」——那三个名字已经有唯一出处（见文件上方 MODULE_LABELS 的注释）。
+ * 「学习单 / 探究空间 / 智能学伴」——那三个名字已经有唯一出处（见文件上方 MODULE_LABELS 的注释）。
  */
 function PermissionSection({ label, note, first = false, children }: {
   label: string;
@@ -80,7 +80,7 @@ function PermissionSection({ label, note, first = false, children }: {
 /** 模块名与三态的中文文案。用 Record<联合类型, string> 是为了让三态词汇表扩项时这里报错。 */
 const MODULE_LABELS: Record<ClassroomModuleKey, string> = {
   'learning-sheet': '学习单',
-  explorer: '探究助手',
+  explorer: '探究空间',
   companion: '智能学伴',
 };
 
@@ -110,7 +110,7 @@ const MODULE_STATE_HINTS: Record<ClassroomModuleState, string> = {
 };
 
 /**
- * 探究助手画面的分辨率档位。
+ * 探究空间画面的分辨率档位。
  *
  * `hint` 是**实测的单帧体积**（真实教师网页、桌面浏览器），直接写在按钮上给教师看：
  * 采集的代价不是一个抽象概念，是每帧几十 K 字符的传输与存盘。640 一帧约 24K，
@@ -436,7 +436,7 @@ function ClassroomBoardContent() {
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
    * ⚠️ 这里**曾经**是 `teacherView: 'board' | 'webapp'` + `TeacherPageTabs` 的视图切换。
-   * 两个视图各自有用的东西（学生的在线/轮数、探究助手的缩略图与「已打开/滚到哪」）
+   * 两个视图各自有用的东西（学生的在线/轮数、探究空间的缩略图与「已打开/滚到哪」）
    * 现在都长在**同一批格子**里，切换按钮因此没有了存在意义。
    *
    * 默认 `follow`：教师绝大多数时候想知道「这个学生此刻在干什么」，
@@ -957,7 +957,7 @@ function ClassroomBoardContent() {
     setClassroom((previous) => previous ? { ...previous, allowFollowUps: result.allowFollowUps } : previous);
   });
 
-  // 探究助手画面采集（P2.2）。三个参数各是一个 busy 键，请求期间那一行整体禁用，防连点。
+  // 探究空间画面采集（P2.2）。三个参数各是一个 busy 键，请求期间那一行整体禁用，防连点。
   //
   // 只发**本次改动的那一个**字段：服务端把「没给这个字段」读作「这次不改它」，
   // 三个一起发会把本地可能已经过期的另外两个值一起写回去（另一位教师刚调过就被覆盖）。
@@ -1007,7 +1007,7 @@ function ClassroomBoardContent() {
 
 
   /**
-   * 探究助手（缩略图 + 文字档）的**唯一**一份订阅。
+   * 探究空间（缩略图 + 文字档）的**唯一**一份订阅。
    *
    * 🔴 这里必须是**唯一**调用点（P2.3 看板合成时从 `webapp-monitor-view.tsx` 搬上来的）。
    * 看板合成之后每个格子都要显示自己那一份画面/文字档，而把订阅塞进格子里就是
@@ -1016,14 +1016,14 @@ function ClassroomBoardContent() {
    * ⇒ 状态在这一层，格子只从里面取自己那一条。
    *
    * ⚠️ 与合并前的一处**行为差异**（有意为之）：订阅跟着**看板**走，而不是某个视图。
-   * 合并前教师必须切到探究助手视图才会让学生开始推流；现在**跟随模式**下每格都可能显示
+   * 合并前教师必须切到探究空间视图才会让学生开始推流；现在**跟随模式**下每格都可能显示
    * 画面，所以「开着看板」就该在推流档位上。
    *
    * 🔴 但**不能**因此变成"只要开着看板就无脑推流"：watch 一旦下发，全班学生立刻开始
    * 按档位截图（老 iPad 上 55~68ms/帧）。「指定 · 智能学伴」这种课堂上，屏幕上**一格**
    * 都不会用到那些图，却会让 40 台设备白白每 10 秒光栅化一次整页。
    * ⇒ 由 `needsExploreFrames` 把这件事说清楚：跟随模式要；指定模式下只有指定的正是
-   *    探究助手时才要。**这是成本闸门，不是优化**（见 use-webapp-monitor.ts 的 prop 注释）。
+   *    探究空间时才要。**这是成本闸门，不是优化**（见 use-webapp-monitor.ts 的 prop 注释）。
    */
   const webappStates = useWebappMonitor({
     classroomId: id,
@@ -1052,7 +1052,7 @@ function ClassroomBoardContent() {
   const modulesNeverConfigured = classroom.hasModuleRows === false
     && MODULE_KEYS.every((moduleKey) => moduleStateOf(classroom.modules, moduleKey) === DEFAULT_MODULE_STATE);
 
-  // 探究助手画面的采集设置。老数据/老响应里这三个字段可能**根本不存在**。
+  // 探究空间画面的采集设置。老数据/老响应里这三个字段可能**根本不存在**。
   //
   // 🔴 方向至关重要：**认不出 = 开 / 用默认**。写成 `!classroom.webappCaptureEnabled`
   // 会让「不知道」显示成「已关闭」，教师看到的是一个假的关闭态 —— 而实际学生端还在传画面。
@@ -1123,7 +1123,7 @@ function ClassroomBoardContent() {
    * 这一格要不要显示「清除对话」垃圾桶。
    *
    * 🔴 用户原话：它**只针对学生与智能体对话的内容**。所以只在内容区真的显示着
-   * 「智能学伴」的对话时才出现 —— 探究助手那格、学习单那格、在首页/状态未知那格
+   * 「智能学伴」的对话时才出现 —— 探究空间那格、学习单那格、在首页/状态未知那格
    * **都不显示**。一个点了没用的按钮比没有按钮更糟。
    *
    * 小组格是唯一的灰度情形：组内混着几个模块时，只要**有成员在学伴**，垃圾桶就还有
@@ -1152,7 +1152,7 @@ function ClassroomBoardContent() {
   /**
    * 探究画面的两个全局计数（合并前那面「图墙」顶部那一行就是它们）。
    *
-   * 按**人**数、覆盖全班：与刚才那面图墙的语义一致 ——「这个班上有多少人在用探究助手」
+   * 按**人**数、覆盖全班：与刚才那面图墙的语义一致 ——「这个班上有多少人在用探究空间」
    * 与「这一格是谁」是两个问题，第 2 个由每格的缩略图回答。
    */
   const exploreWithFrame = students.filter(s => webappStates[s.id]?.dataUrl).length;
@@ -1461,7 +1461,7 @@ function ClassroomBoardContent() {
           </div>
           {boardMode === 'follow' ? (
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              {/* 顺序 = 三件套本身（学习单 / 探究助手 / 智能学伴），学习单**留位**并标明尚未支持
+              {/* 顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴），学习单**留位**并标明尚未支持
                   —— 三件套的布局一次定形，以后接上学习单时不用重排。 */}
               <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} hint="尚未支持" muted />
               <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} />
@@ -1477,12 +1477,12 @@ function ClassroomBoardContent() {
             </div>
           )}
           {/* 合并前那面「图墙」顶部那一行：M 名已有画面、K 名已打开网页。
-              它答的是「这个班上有多少人在用探究助手」，与每格答的「这一格是谁」是两个问题，
+              它答的是「这个班上有多少人在用探究空间」，与每格答的「这一格是谁」是两个问题，
               两个都要留着（关掉画面的课堂里「有画面」恒为 0，而「已打开」照旧有信息量）。
               没有任何探究信号时整行不出现 —— 一句「0 人有画面、0 人已打开」只是噪音。 */}
           {(exploreWithFrame > 0 || exploreOpened > 0) && (
             <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>
-              探究助手：{exploreWithFrame} 人已有画面，{exploreOpened} 人正打开着网页
+              探究空间：{exploreWithFrame} 人已有画面，{exploreOpened} 人正打开着网页
             </div>
           )}
         </div>
@@ -1527,7 +1527,7 @@ function ClassroomBoardContent() {
                   课堂权限
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-                {/* ⚠️ 原来的下拉菜单内容（三个开关 + 探究助手画面那一组）整段搬进了文件末尾的
+                {/* ⚠️ 原来的下拉菜单内容（三个开关 + 探究空间画面那一组）整段搬进了文件末尾的
                     「课堂权限」浮动窗，见那里的 JSX。这里是**搬家**不是删除：
                     控件、handler、置灰的三道闸一个都没少。 */}
               </div>
@@ -2034,7 +2034,7 @@ function ClassroomBoardContent() {
           </>
         )}
 
-        {/* 探究详情浮层（P2.3：原来长在「探究助手视图」里，现在跟着**格子内容**走
+        {/* 探究详情浮层（P2.3：原来长在「探究空间视图」里，现在跟着**格子内容**走
             —— 点开一个显示着缩略图的格子就是它）。 */}
         {exploreDetailStudent && (
           <ExploreDetailPanel
@@ -2642,13 +2642,13 @@ function ClassroomBoardContent() {
                 </div>
               </PermissionSection>
 
-              {/* ② 探究助手 —— 画面采集（P2.2）。这一整组是从「课堂权限」菜单里原样搬来的：
+              {/* ② 探究空间 —— 画面采集（P2.2）。这一整组是从「课堂权限」菜单里原样搬来的：
                   同样是**按课堂**的开关，只是换了容器（窄菜单 → 浮窗的一段）。
                   容器上只去掉了 marginTop/borderTop/paddingTop 三个样式属性 —— 它们原本是用来和
                   菜单里上面那三个开关隔开的，而段与段之间的分隔线现在由 PermissionSection 画。 */}
               <PermissionSection label={MODULE_ID_LABELS.explore}>
-                <div role="group" aria-label="探究助手画面">
-                  <div style={{ padding: '6px 10px 4px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>探究助手画面</div>
+                <div role="group" aria-label="探究空间画面">
+                  <div style={{ padding: '6px 10px 4px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>探究空间画面</div>
                   <div style={{ padding: '0 10px 6px', fontSize: '0.688rem', color: '#94a3b8', lineHeight: 1.5 }}>
                     采集学生探究网页的画面。设备跑不动时可以整个关掉。
                   </div>
@@ -2916,7 +2916,7 @@ function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElem
 }
 
 /**
- * ⚠️ `memo` 不是装饰（P2.3 起才需要）：探究助手的订阅搬到了 `page.tsx`，于是**每一帧**
+ * ⚠️ `memo` 不是装饰（P2.3 起才需要）：探究空间的订阅搬到了 `page.tsx`，于是**每一帧**
  * （每个学生每 10 秒左右一帧）都会让那一层重渲染，而这个面板挂在那层下面。
  * 它真正依赖的只有三样：`classroomId`、`allMessages`（只在加载时换引用）、`loadAnalytics`
  * （`useCallback` 稳定）—— `memo` 让它的重渲染次数回到这三个的节奏，

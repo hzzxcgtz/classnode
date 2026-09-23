@@ -219,7 +219,7 @@ export async function startWebappHost(
   // **不自动 +1** —— 自动改端口会让「用户配了什么」与「实际监听什么」不一致。
   if (opts.port === opts.serverPort) {
     console.error(
-      `❌ 探究助手托管端口(${opts.port}) 不能与服务端口相同。` +
+      `❌ 探究空间托管端口(${opts.port}) 不能与服务端口相同。` +
       `同源 iframe 会让 sandbox 隔离失效，已拒绝启动该服务。` +
       `请设置 CLASSNODE_WEBAPP_PORT 为其他端口。`,
     );
@@ -341,13 +341,13 @@ export async function startWebappHost(
 
   return await new Promise<Server | null>((resolve) => {
     const server = app.listen(opts.port, '0.0.0.0', () => {
-      console.log(`📦 探究助手托管服务 http://0.0.0.0:${opts.port}`);
+      console.log(`📦 探究空间托管服务 http://0.0.0.0:${opts.port}`);
       resolve(server);
     });
     server.on('error', (error: NodeJS.ErrnoException) => {
       // Ruling 1：本服务起不来**不能**拖垮主服务。EADDRINUSE 只 warn。
-      console.error(`⚠️ 探究助手托管服务启动失败（${error.code}）：${error.message}`);
-      console.error('   主服务继续运行；学生端的探究助手将无法加载。');
+      console.error(`⚠️ 探究空间托管服务启动失败（${error.code}）：${error.message}`);
+      console.error('   主服务继续运行；学生端的探究空间将无法加载。');
       resolve(null);
     });
   });

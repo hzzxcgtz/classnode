@@ -136,7 +136,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
    * 少任何一条都会让"已经在模块里待着"的学生显示成"不知道他在哪"。
    *
    * ⚠️ 走**已有的那条** socket（`chat.wsRef`），**绝不另开连接** —— 那会给学生端多一条
-   * 常驻连接，违背 §4.8 的内存门槛（与探究助手面板同款约束）。
+   * 常驻连接，违背 §4.8 的内存门槛（与探究空间面板同款约束）。
    *
    * ⚠️ 载荷里**只有"在哪个模块"，没有任何内容**。
    */
@@ -591,7 +591,7 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               toast={toastFor(id)}
             />
           ) : id === 'explore' ? (
-            // 探究助手（P2）：真 iframe 面板。三路分发到此为止 —— 剩下的一路是占位面板，
+            // 探究空间（P2）：真 iframe 面板。三路分发到此为止 —— 剩下的一路是占位面板，
             // 它接到的 `id` 已被上面两个守卫收窄成「还没实现的模块」，所以
             // `ModulePlaceholderProps.moduleId` 的收窄类型能原样兜住（见该文件）。
             <ExplorePanel

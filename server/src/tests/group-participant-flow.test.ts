@@ -39,7 +39,7 @@ test('group classroom exposes a group participant without a virtual Student', as
       findUnique: async () => ({
         id: 'group-classroom', code: '2468', title: '小组探究', mode: 'group', status: 'active',
         allowStudentStop: true, allowStudentExport: true,
-        classroomAgents: [], groups: [{ id: 'group-a', name: '探索组', agent: { id: 'agent-a', name: '探究助手', logo: null, platform: 'coze', enabled: true, greeting: null } }],
+        classroomAgents: [], groups: [{ id: 'group-a', name: '探索组', agent: { id: 'agent-a', name: '探究空间', logo: null, platform: 'coze', enabled: true, greeting: null } }],
       }),
     },
     classroomStudent: {

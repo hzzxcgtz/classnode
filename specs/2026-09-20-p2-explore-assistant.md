@@ -1,8 +1,8 @@
-# P2（探究助手）实现计划
+# P2（探究空间）实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 教师上传一个静态网页（ZIP 或多选文件）→ 学生在「探究助手」tab 里真的打开它 → 学生在网页里的操作实时出现在教师看板的图墙上。
+**Goal:** 教师上传一个静态网页（ZIP 或多选文件）→ 学生在「探究空间」tab 里真的打开它 → 学生在网页里的操作实时出现在教师看板的图墙上。
 
 **Architecture:** 新增**第二个 Express 实例**（同进程、独立端口 `CLASSNODE_WEBAPP_PORT`）只做静态托管，**不挂任何 API、不带任何 cookie、不设 `X-Frame-Options`** —— 于是学生端 `<iframe sandbox="allow-scripts allow-same-origin …">` 加载它时是**跨源**的，`allow-same-origin` 因此安全。托管服务在返回 HTML 时向 `</head>` 前注入一段 SDK；SDK 用 `postMessage` 把事件与截图交给学生端父页面，父页面经已有的 socket.io 连接送到服务端内存，再推给教师看板。
 
@@ -136,7 +136,7 @@ dev 下的链路因此是：页面来自 `:4000`（Next dev）→ 接口 `:4001`
 
 端口默认是「服务端口 + 1」，但 `CLASSNODE_WEBAPP_PORT` 可覆盖 —— 一旦被设成与服务端口相同，隔离**静默失效**。
 
-⇒ 启动时若 `webappPort === port`：**不监听该端口**，打印明确错误，学生端的探究助手面板因此无法加载（可见的失败，优于静默的同源）。**不自动 +1** —— 自动改端口会让「用户配了什么」与「实际监听什么」不一致，排查时误导人。
+⇒ 启动时若 `webappPort === port`：**不监听该端口**，打印明确错误，学生端的探究空间面板因此无法加载（可见的失败，优于静默的同源）。**不自动 +1** —— 自动改端口会让「用户配了什么」与「实际监听什么」不一致，排查时误导人。
 
 **若判断有误的代价**：无（这是收紧而不是放宽）。
 
@@ -211,7 +211,7 @@ dev 下的链路因此是：页面来自 `:4000`（Next dev）→ 接口 `:4001`
 
 **Ruling 10：学生端 iframe 面板**不改** `ModulePanelProps` 契约。**
 
-`classroom-types.ts:106-117` 的六字段契约里，`active` 的语义已经**正是**「此刻是否可见」，且 `:78-79` 的注释逐字点名了「如探究助手在此向 iframe 发挂起信号」。⇒ 挂起/恢复直接由 `active` 的**边沿**驱动，**不新增 prop、不改契约**（契约的「加一个模块 = 加一个组件」原则照旧成立）。
+`classroom-types.ts:106-117` 的六字段契约里，`active` 的语义已经**正是**「此刻是否可见」，且 `:78-79` 的注释逐字点名了「如探究空间在此向 iframe 发挂起信号」。⇒ 挂起/恢复直接由 `active` 的**边沿**驱动，**不新增 prop、不改契约**（契约的「加一个模块 = 加一个组件」原则照旧成立）。
 
 **若判断有误的代价**：无（这是最小改动路径）。
 
@@ -637,7 +637,7 @@ export async function startWebappHost(
   // **不自动 +1** —— 自动改端口会让「用户配了什么」与「实际监听什么」不一致。
   if (opts.port === opts.serverPort) {
     console.error(
-      `❌ 探究助手托管端口(${opts.port}) 不能与服务端口相同。` +
+      `❌ 探究空间托管端口(${opts.port}) 不能与服务端口相同。` +
       `同源 iframe 会让 sandbox 隔离失效，已拒绝启动该服务。` +
       `请设置 CLASSNODE_WEBAPP_PORT 为其他端口。`,
     );
@@ -677,13 +677,13 @@ export async function startWebappHost(
 
   return await new Promise<Server | null>((resolve) => {
     const server = app.listen(opts.port, '0.0.0.0', () => {
-      console.log(`📦 探究助手托管服务 http://0.0.0.0:${opts.port}`);
+      console.log(`📦 探究空间托管服务 http://0.0.0.0:${opts.port}`);
       resolve(server);
     });
     server.on('error', (error: NodeJS.ErrnoException) => {
       // Ruling 1：本服务起不来**不能**拖垮主服务。EADDRINUSE 只 warn。
-      console.error(`⚠️ 探究助手托管服务启动失败（${error.code}）：${error.message}`);
-      console.error('   主服务继续运行；学生端的探究助手将无法加载。');
+      console.error(`⚠️ 探究空间托管服务启动失败（${error.code}）：${error.message}`);
+      console.error('   主服务继续运行；学生端的探究空间将无法加载。');
       resolve(null);
     });
   });
@@ -742,7 +742,7 @@ webappOrigin: `http://${chosenIp}:${webappPort}`,
 2. 后端进程的 env 注入（`:99-100` 与前台模式 `:158`）加 `CLASSNODE_WEBAPP_PORT="$WEBAPP_PORT"`
 3. `cmd_status`（`:173-185`）：server 那一行附带打印 webapp 端口。⚠️ 不要新增第三个 service 项 —— `cmd_stop`（`:167-171`）只按 PID 文件停，webapp 与 server **同进程**（Ruling 1），加了反而会去找一个不存在的 PID 文件。
 4. `cmd_start`（`:148-149`）与 help（`:280`、`:305`）的端口说明一并更新
-5. **`cmd_foreground`（`:155-156`）也要加 `assert_port_free "$WEBAPP_PORT"`** —— 否则前台模式下端口被占会表现为「服务起来了但探究助手加载不出来」，而不是明确的启动失败
+5. **`cmd_foreground`（`:155-156`）也要加 `assert_port_free "$WEBAPP_PORT"`** —— 否则前台模式下端口被占会表现为「服务起来了但探究空间加载不出来」，而不是明确的启动失败
 
 ⚠️ 注意 `assert_port_free`（`:59-63`）是 `die`（直接退出）—— 新增端口会把这个失败面从 2 扩大到 3。这是**有意的**：宁可启动失败，也不要静默的半可用状态。
 
@@ -1514,7 +1514,7 @@ for (const room of rooms) {
 
 ⇒ **`teacher:<id>:webapp` 以 `teacher:` 开头、又不等于 `keep` ⇒ 每次 `join-teacher-board` 都会被踢出去。**
 
-**失败场景（全程无报错）**：教师打开探究助手视图（`join` 了那个房间）→ 任何重新触发 `join-teacher-board` 的动作（effect 依赖变化、断线重连）把它扫掉 → `io.sockets.adapter.rooms.get('teacher:<id>:webapp').size` 归零 → **学生停止推流** → 教师看到一块**冻住的图墙**。
+**失败场景（全程无报错）**：教师打开探究空间视图（`join` 了那个房间）→ 任何重新触发 `join-teacher-board` 的动作（effect 依赖变化、断线重连）把它扫掉 → `io.sockets.adapter.rooms.get('teacher:<id>:webapp').size` 归零 → **学生停止推流** → 教师看到一块**冻住的图墙**。
 
 **裁定**：把 `staleTeacherRooms` 改成**保留当前课堂的两种房间**（`teacher:<id>` 与 `teacher:<id>:webapp`）。
 - 语义上这是对的：两者都是「本课堂的教师房间」，该函数要清的本来就是「**别的课堂**的」。
@@ -1596,7 +1596,7 @@ for (const room of rooms) {
 interface WebappMonitorState {
   frames: Map<string, { dataUrl: string; at: number }>;   // key: `${studentId}:${webappId}`
   counters: Map<string, { clicks: number; inputs: number; maxDepth: number; reports: unknown[] }>;
-  /** 订阅了本课堂探究助手视图的教师连接数（Ruling 9）。 */
+  /** 订阅了本课堂探究空间视图的教师连接数（Ruling 9）。 */
   watchers: Map<string, Set<string>>;  // classroomId → Set<socketId>
 }
 ```
@@ -1624,13 +1624,13 @@ test('教师刷新页面（0→1→0 的瞬时抖动）不会立刻通知学生�
 - [ ] **Step 2: 按需推流（Ruling 9）**
 
 ```ts
-/** 本课堂是否有教师在看探究助手视图。房间空时 adapter 会把房间删掉 ⇒ get() 返回 undefined。 */
+/** 本课堂是否有教师在看探究空间视图。房间空时 adapter 会把房间删掉 ⇒ get() 返回 undefined。 */
 function hasWatchers(io: Server, classroomId: string): boolean {
   return (io.sockets.adapter.rooms.get(`${TEACHER_ROOM_PREFIX}${classroomId}${WEBAPP_SUFFIX}`)?.size ?? 0) > 0;
 }
 ```
 
-⚠️ **不要用 `teacher:<id>` 房间本身** —— 教师只要打开课堂看板就进了那个房间，而「在看探究助手视图」是更窄的一件事。⇒ 另开一个房间 `teacher:<classroomId>:webapp`，只有 T7 的探究助手视图挂载时才 `join`。
+⚠️ **不要用 `teacher:<id>` 房间本身** —— 教师只要打开课堂看板就进了那个房间，而「在看探究空间视图」是更窄的一件事。⇒ 另开一个房间 `teacher:<classroomId>:webapp`，只有 T7 的探究空间视图挂载时才 `join`。
 
 **防抖**（Ruling 9 第 2 条）：watchers 归零后**延迟 15 秒**再通知学生停推，且这 15 秒内若又有人订阅则取消。用 `setTimeout` + 在订阅时 `clearTimeout`，写成一个小的 `scheduleDemandNotification(classroomId)`。
 
@@ -1668,7 +1668,7 @@ git commit -m "feat(webapp): 实时监控链路（按需推流、计数式内存
 
 ---
 
-## Task 6: 学生端「探究助手」面板
+## Task 6: 学生端「探究空间」面板
 
 ## 🔴 T6 派发前的预审裁定（控制器已逐条拿代码核过）
 
@@ -1717,7 +1717,7 @@ type PlaceholderModuleId = Exclude<ModuleId, 'companion'>;
 
 **Interfaces:**
 - Consumes: `ModulePanelProps`（`classroom-types.ts:106-117`，**不改契约** —— Ruling 10）、T5 的 postMessage 消息形状与 socket 事件名、`GET /code/:code` 的 `webappOrigin`（T1）
-- Produces: 学生端的真实探究助手面板
+- Produces: 学生端的真实探究空间面板
 
 **已核实的现场事实（实施者可直接用，但**仍须自己 `grep` 复核**）**：
 
@@ -1725,7 +1725,7 @@ type PlaceholderModuleId = Exclude<ModuleId, 'companion'>;
 - `use-module-tabs.ts:70-77` 的 `openModule` 只在 `state === 'open'` 时挂载，`mountedIds` **只增不减**，`:102-107` 的 effect 会在教师改态时把 `activeModuleId` 送回首页。
 - `active` 的定义在 `classroom-shell.tsx:207`：`phase.front === key && phase.settled`。**这两个条件的合取意味着 `active` 在切换动画的中途是 `false`** —— 这正是要用来驱动挂起协议的边沿。
 - `shell.module.css` 用 `visibility: hidden` 隐藏非前台层。⚠️ **`visibility: hidden` 不会让 iframe 停止运行** —— 浏览器节流只是兜底，所以必须走 postMessage 挂起协议（`classroom-types.ts:78-79` 的注释就是为这件事写的）。
-- `module-placeholder.tsx` 的 `ModulePlaceholderProps` 把 `moduleId` 收窄为 `Exclude<ModuleId,'companion'>`（`:22-24`）。⇒ **`explore` 分出去之后，这个收窄要跟着变成 `Exclude<ModuleId,'companion'|'explore'>`**，否则占位面板仍然声称自己能渲染探究助手。
+- `module-placeholder.tsx` 的 `ModulePlaceholderProps` 把 `moduleId` 收窄为 `Exclude<ModuleId,'companion'>`（`:22-24`）。⇒ **`explore` 分出去之后，这个收窄要跟着变成 `Exclude<ModuleId,'companion'|'explore'>`**，否则占位面板仍然声称自己能渲染探究空间。
 
 - [ ] **Step 1: iframe 面板**
 
@@ -1770,7 +1770,7 @@ export function ExplorePanel({ active, state, classroom, session }: ModulePanelP
   ref={frameRef}
   key={reloadKey}
   src={src}
-  title={webapp?.name || '探究助手'}
+  title={webapp?.name || '探究空间'}
   sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads"
   referrerPolicy="no-referrer"
   onLoad={() => setStatus('ready')}
@@ -1806,24 +1806,24 @@ export function useExploreBridge(opts: {
 
 - socket 在 `chat/use-chat-socket.ts:302` 建立，存进 `wsRef.current`（**`wsRef` 是外部传进去的**，见同文件 `:19`）。
 - `wsRef` 由 `src/app/classroom/page.tsx:46` 创建。
-- 它**已经在传给外壳的 `chat` 对象里**（`page.tsx:152`）。⇒ 外壳手里就有 `chat.wsRef`，把它按 `ModulePanelProps` 之外的方式传给探究助手面板即可。
+- 它**已经在传给外壳的 `chat` 对象里**（`page.tsx:152`）。⇒ 外壳手里就有 `chat.wsRef`，把它按 `ModulePanelProps` 之外的方式传给探究空间面板即可。
 
 ⚠️ **不要新建第二条 socket 连接** —— 那会让学生端多一条常驻连接，违背 §4.8 的内存门槛，服务端还要处理重复连接。
 
-⚠️ **不要改 `ModulePanelProps` 契约**（Ruling 10）。`wsRef` 是**探究助手面板自己的 props**（面板的 props 多于契约的下限，这正是契约 `classroom-types.ts:82-83` 明说允许的）。照学伴面板的做法：`ExplorePanelProps extends ModulePanelProps` 再加 `wsRef`。
+⚠️ **不要改 `ModulePanelProps` 契约**（Ruling 10）。`wsRef` 是**探究空间面板自己的 props**（面板的 props 多于契约的下限，这正是契约 `classroom-types.ts:82-83` 明说允许的）。照学伴面板的做法：`ExplorePanelProps extends ModulePanelProps` 再加 `wsRef`。
 
 - [ ] **Step 4: 三路分发 + 占位面板收窄**
 
-`classroom-shell.tsx:522-523` 改成三路（学伴 / 探究助手 / 占位），`module-placeholder.tsx` 的收窄类型跟着改。
+`classroom-shell.tsx:522-523` 改成三路（学伴 / 探究空间 / 占位），`module-placeholder.tsx` 的收窄类型跟着改。
 
 - [ ] **Step 5: 真机验证（**不能只看代码**）**
 
 这是 P2 里唯一直接验证 P0 容器设计的地方（规格 §2：P2 的意义是「用小的验证大的」）：
 
-1. 切走再切回探究助手，**网页内容必须还在**（滚动位置、输入框里的草稿）
+1. 切走再切回探究空间，**网页内容必须还在**（滚动位置、输入框里的草稿）
 2. 切走时 iframe **确实收到 `pause`**（在 SDK 里 `console.log` 验证）
 3. **切回时键盘不弹、布局不跳** —— 这条与 P0 未做的那 15 分钟验收是同一条
-4. 教师把探究助手改成 `preview`/`hidden` → 学生被送回首页，**网页内容仍在**，改回 `open` 后原样恢复
+4. 教师把探究空间改成 `preview`/`hidden` → 学生被送回首页，**网页内容仍在**，改回 `open` 后原样恢复
 
 - [ ] **Step 6: 门禁 + 提交**
 
@@ -1831,7 +1831,7 @@ export function useExploreBridge(opts: {
 npx tsc --noEmit && pnpm lint
 ./dev.sh stop && pnpm build && ./dev.sh start && ./dev.sh status
 git add src/app/classroom/explore/ src/app/classroom/shell/ src/app/classroom/classroom-types.ts src/lib/api.ts
-git commit -m "feat(classroom): 探究助手面板换成真 iframe（沙箱 + 挂起协议）"
+git commit -m "feat(classroom): 探究空间面板换成真 iframe（沙箱 + 挂起协议）"
 ```
 
 ---
@@ -1865,7 +1865,7 @@ git commit -m "feat(classroom): 探究助手面板换成真 iframe（沙箱 + �
 
 ### 预审 7c（⚠️ 与 T5 的 `staleTeacherRooms` 有交互）
 
-T7 的探究助手视图挂载时会 `join` 房间 `teacher:<id>:webapp`。**这个房间会被 `staleTeacherRooms` 扫掉**（见 T5 的预审 1）。
+T7 的探究空间视图挂载时会 `join` 房间 `teacher:<id>:webapp`。**这个房间会被 `staleTeacherRooms` 扫掉**（见 T5 的预审 1）。
 
 ⇒ **T5 会先把 `staleTeacherRooms` 改对并加测试；T7 不要自己另起房间名或绕开它。** 动手前 `grep` 一下 `staleTeacherRooms` 看 T5 改成什么样了。
 
@@ -1881,7 +1881,7 @@ T7 的探究助手视图挂载时会 `join` 房间 `teacher:<id>:webapp`。**这
 - Create: `src/app/teacher/webapps/page.tsx` + 拆分组件
 - Modify: `src/app/teacher/layout.tsx:11-21`（导航）+ `:477+`（**图标 switch，两处必须同时改**）
 - Modify: `src/app/teacher/classroom/new/page.tsx`（勾选探究网页）
-- Modify: `src/app/teacher/classroom/page.tsx`（探究助手视图）
+- Modify: `src/app/teacher/classroom/page.tsx`（探究空间视图）
 - Modify: `src/lib/api.ts`
 
 **Interfaces:**
@@ -1919,7 +1919,7 @@ T7 的探究助手视图挂载时会 `join` 房间 `teacher:<id>:webapp`。**这
 2. 错误聚焦的 `agentSectionRef`（`:32`）要有一个兄弟 ref，且 `:107-111` 的滚动聚焦分支要补一支。
 3. `api.createClassroom` 的签名（`src/lib/api.ts:133-134`）与 `createAdvancedClassroom`（`:135`）**都要加 `webappIds`** —— 高级模式也有这条路径。
 
-- [ ] **Step 4: 探究助手视图**
+- [ ] **Step 4: 探究空间视图**
 
 在 `teacher/classroom/page.tsx` 里用 `TeacherPageTabs` 加视图，或用 `gridFullscreen` 同款的全屏切换。**控制器裁定：用 `TeacherPageTabs`** —— 它是仓内既有的视图切换件（`shield`/`classes`/`avatars` 三处在用），而 `gridFullscreen` 是布尔而不是视图。
 
@@ -1956,7 +1956,7 @@ git commit -m "feat(teacher): 探究网页管理页与实时看板视图"
 - [ ] 删除被课堂引用的网页 → 被拦下
 
 **B. 学生端**
-- [ ] 打开探究助手，网页真的加载出来
+- [ ] 打开探究空间，网页真的加载出来
 - [ ] **在网页里输入一段内容，教师看板上看不到输入内容**（只看得到「输入了 N 个字符」）★ 红线
 - [ ] 切走再切回，**网页内容原样还在**
 - [ ] 教师改成 `preview` → 学生回首页；改回 `open` → 内容仍在

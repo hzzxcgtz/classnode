@@ -29,7 +29,7 @@ import {
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
- * 这个文件守的是**真实 handler**，不是纯函数 —— 探究助手实时链路的每一个失败模式
+ * 这个文件守的是**真实 handler**，不是纯函数 —— 探究空间实时链路的每一个失败模式
  * 都是静默的（没有报错、没有异常，只有「图墙冻住」或「学生白推」），所以每条断言
  * 都刻意配了**阴性对照**：只断言「不该发生时确实没发生」是不够的，同一份输入还必须
  * 在条件反过来时**确实生效**，否则「整条链路根本没接上」也会让断言通过。
@@ -745,13 +745,13 @@ test('按需推流的判据是「监控房间」而不是「教师看板房间�
   const student = await joinAsStudent(harness, 'classroom-a');
   const teacher = harness.connect({ cookie: teacherCookie() });
 
-  // 只开看板（教师看作业、没点开探究助手视图）⇒ 不算有订阅者
+  // 只开看板（教师看作业、没点开探究空间视图）⇒ 不算有订阅者
   await teacher.call('join-teacher-board', 'classroom-a');
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), false);
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
   assert.deepEqual(harness.events('webapp-student-frame'), [], '教师只是开着看板不该触发学生推流');
 
-  // 点开探究助手视图 ⇒ 才算
+  // 点开探究空间视图 ⇒ 才算
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), true);
   assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), [teacher.id]);
@@ -1228,7 +1228,7 @@ test('课堂级一行都没有（本课堂没配网页）⇒ 帧被拒', async (
 // ══════════════════════════════════════════════════════════════════════════
 // 🔴 高级模式：网页的权威来源是「每组一份」，**不是**课堂级关联
 //
-// 2026-09-23 用户报「探究助手的快照完全不显示」——电脑端与性能良好的 iPad 都一样。
+// 2026-09-23 用户报「探究空间的快照完全不显示」——电脑端与性能良好的 iPad 都一样。
 // 根因：归属校验问的是「本课堂的 `ClassroomWebapp` 关联过这个网页吗」，而高级模式下
 // **那张表恒为空**（`POST /create-advanced` 刻意不写课堂级行，那个模式下网页的权威
 // 来源是「每组一份」）⇒ 学生端每一帧都在这里被拒。学生端一直是好的，它正常上报。

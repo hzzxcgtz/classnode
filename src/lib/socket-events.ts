@@ -30,13 +30,13 @@ export interface ServerToClientEvents {
   'avatar-rewarded': (data: { tokens: number }) => void;
   'online-students': (data: { classroomId: string; studentIds: string[] }) => void;
   'export-progress': (data: { progress: number; stage: string }) => void;
-  // ── 探究助手实时监控（P2 / 规格 §5.5）────────────────────────────────
+  // ── 探究空间实时监控（P2 / 规格 §5.5）────────────────────────────────
   // 事件名与载荷由 T5 定死，T6（学生端面板）与 T7（教师看板）都照这里写，不得自行发明。
   //
   // ⚠️ **文字档只恢复了两项**（P2.2 的 T5）：`visibility` 与 `scroll`。
   // 点击 / 输入 / 页面内跳转**不采集**，那条通道没有回来，也不要加回来。
   //
-  // 教师看板：只发给 `teacher:<id>:webapp` 房间里的人（= 正开着探究助手视图的教师）。
+  // 教师看板：只发给 `teacher:<id>:webapp` 房间里的人（= 正开着探究空间视图的教师）。
   // 没有教师订阅时服务端**一个字节都不转发**（Ruling 9 的按需推流）。
   // 缩略图：每个学生每个网页**只保留最新一帧**，旧的直接被覆盖（不是追加）。
   'webapp-student-frame': (data: { studentId: string; webappId: string; dataUrl: string; at: number }) => void;
@@ -79,13 +79,13 @@ export interface ServerToClientEvents {
 }
 
 /**
- * 探究助手按需推流的档位。服务端**逐学生**下发，每个学生收到的就是它自己该用的那一份。
+ * 探究空间按需推流的档位。服务端**逐学生**下发，每个学生收到的就是它自己该用的那一份。
  *
  * `watching=false` 时 `detail` 必然为假 —— 服务端保证不发出「没人在看但你在高频」
  * 这种组合（见 `broadcastWebappDemand`）。
  */
 export interface WebappDemand {
-  /** 本课堂此刻有没有教师在看探究助手视图。 */
+  /** 本课堂此刻有没有教师在看探究空间视图。 */
   watching: boolean;
   /** 教师是否**点开了这个学生**的详情 —— 整间教室里只有那一个学生为真。 */
   detail: boolean;
@@ -111,7 +111,7 @@ export interface ClientToServerEvents {
   'send-message': (data: { classroomCode: string; studentId: string; content: string; fileUrls?: string[]; fileNames?: string[] }) => void;
   'stop-generation': () => void;
   'teacher-send-notification': (data: { classroomId: string; studentId?: string; groupId?: string; message: string }) => void;
-  // ── 探究助手实时监控（P2 / 规格 §5.5）────────────────────────────────
+  // ── 探究空间实时监控（P2 / 规格 §5.5）────────────────────────────────
   // 学生端 → 服务端。带 classroomId：服务端要拿它与 socket 会话比对（归属校验），
   // 光靠 socket 想定身份会让「同一条连接换课堂」这类错误无声通过。
   // ⚠️ 两条通道的**内容范围**不同，别把它们当成同一件事：

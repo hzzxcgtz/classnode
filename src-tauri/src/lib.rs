@@ -25,7 +25,7 @@ use tauri::{
 };
 
 const SERVER_PORT: u16 = 3001;
-// 探究助手托管服务的端口：必须与主服务不同源，否则 sandbox 的 allow-same-origin
+// 探究空间托管服务的端口：必须与主服务不同源，否则 sandbox 的 allow-same-origin
 // 会让 iframe 能自行摘除 sandbox。这里与服务端 resolveWebappPort 的默认值保持一致
 // （serverPort + 1），并显式下发给子进程，避免两边各自推算。
 const WEBAPP_PORT: u16 = SERVER_PORT + 1;
@@ -264,10 +264,10 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     ensure_port_free(SERVER_PORT)?;
     // 托管端口**只警告**：它与主服务是同一个进程里的两个监听，服务端自己遇到 EADDRINUSE
     // 也只是 warn（见 webapp-host.ts）。这里若用 `?`，一个无关进程占了 3002 就会让整节课
-    // 开不了 —— 那是拿「探究助手不可用」换「完全无法上课」，与「该端口故障不影响主服务」
+    // 开不了 —— 那是拿「探究空间不可用」换「完全无法上课」，与「该端口故障不影响主服务」
     // 的承诺自相矛盾。宁可少一个模块，不可整节课停摆。
     if let Err(e) = ensure_port_free(WEBAPP_PORT) {
-        eprintln!("⚠️ 探究助手托管端口预检失败，主服务照常启动，该模块将无法加载: {e}");
+        eprintln!("⚠️ 探究空间托管端口预检失败，主服务照常启动，该模块将无法加载: {e}");
     }
 
     let server_dir = get_server_dir(app)?;

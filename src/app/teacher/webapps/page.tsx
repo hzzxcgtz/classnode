@@ -81,7 +81,7 @@ export default function WebappsPage() {
 
   return (
     <div>
-      <TeacherPageHeader title="探究网页" description="上传课堂用的静态网页，学生会在探究助手里打开它。" actions={
+      <TeacherPageHeader title="探究网页" description="上传课堂用的静态网页，学生会在探究空间里打开它。" actions={
         <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           添加网页
@@ -136,7 +136,7 @@ export default function WebappsPage() {
         <TeacherEmptyState
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>}
           title="还没有探究网页"
-          description="上传一个静态网页（推荐整个文件夹压成 ZIP），课堂上学生就能在探究助手里打开它。"
+          description="上传一个静态网页（推荐整个文件夹压成 ZIP），课堂上学生就能在探究空间里打开它。"
           action={<button className="btn btn-primary" onClick={() => setShowForm(true)}>添加第一个网页</button>}
         />
       ) : filteredWebapps.length === 0 ? (

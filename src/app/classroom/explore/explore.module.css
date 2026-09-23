@@ -1,4 +1,4 @@
-/* 探究助手面板（P2）：一个铺满模块层的 iframe + 两种非网页态（没关联网页 / 网页打不开）。
+/* 探究空间面板（P2）：一个铺满模块层的 iframe + 两种非网页态（没关联网页 / 网页打不开）。
  *
  * 硬约束与 shell.module.css / home.module.css 同源（Safari 15，老 iPad）：
  * 不用 `:has()` / `content-visibility` / `@container` / `color-mix()`；

@@ -89,7 +89,7 @@ export interface ClassroomModuleSetting {
 }
 
 /**
- * 探究助手「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
+ * 探究空间「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
  *
  * **只有这三个字段**：`id` 与 `entryPath` 够学生端拼出
  * `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`，`name` 是显示名。
@@ -303,7 +303,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
   /**
    * 本课堂关联的探究网页。`GET /api/classroom/:id` 与 `/code/:code` **共用**
    * `loadClassroomWebapps`（`routes/webapps.ts`），两个端点的形状逐字相同 ——
-   * 教师看板的探究助手视图按它渲染格子标题。
+   * 教师看板的探究空间视图按它渲染格子标题。
    *
    * 可选的理由同 `StudentClassroom.webapps`：查询失败（老库缺表）时服务端降级为
    * 空数组，更老的版本则根本不发这个字段；读的地方按「没有网页」处理。
@@ -313,7 +313,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
    */
   webapps?: ClassroomWebappSummary[];
   /**
-   * 探究助手画面的采集设置（P2.2，`Classroom` 表的三个标量列；`GET /api/classroom/:id`
+   * 探究空间画面的采集设置（P2.2，`Classroom` 表的三个标量列；`GET /api/classroom/:id`
    * 靠 `...classroom` 原样带出，`POST /:id/webapp-capture` 则返回归一化后的全量）。
    *
    * 三个都**可选**：老库加列之前建的行、或服务端降级响应都可能没有。
@@ -387,7 +387,7 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
   groups?: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
   modules: ClassroomModuleSetting[];
   /**
-   * 探究助手托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
+   * 探究空间托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
    *
    * ⚠️ 是端口而**不是**拼好的 URL：学生端本来就知道自己是从哪个 IP / 域名进来的
    * （`location.hostname`），所以自己拼出来的源永远正确、无缓存、不会陈旧 ——

@@ -100,6 +100,17 @@ async function seed(prisma: PrismaClient, webappCount: number) {
   return { cls, student, agent, webapps };
 }
 
+/** N 份学习单 —— 与 `seed` 的网页同形（题目结构不是本文件关心的事，给个空壳即可）。 */
+async function seedWorksheets(prisma: PrismaClient, count: number) {
+  const worksheets = [];
+  for (let i = 0; i < count; i++) {
+    worksheets.push(await prisma.worksheet.create({
+      data: { title: `学习单${i + 1}`, content: { schemaVersion: 1, nodes: [] }, settings: {} },
+    }));
+  }
+  return worksheets;
+}
+
 /**
  * ⚠️ 这条用例在 P2.3 被**改写**过，从前断言的是「勾两个 ⇒ 关联两行」。
  *
@@ -612,4 +623,224 @@ test('回归：分组模式「不选智能体 + 选网页」⇒ 200（原来是 
   assert.equal(res.status, 200, `分组模式不得再 500：${JSON.stringify(body)}`);
   assert.ok(body.id, '课堂必须真的建出来');
   assert.equal(await db.prisma.classroomWebapp.count({ where: { classroomId: body.id! } }), 1);
+});
+
+// ---------------------------------------------------------------------------
+// 学习单（三件套的第三项，P1）—— 与探究网页**同构**，但**数法不同**：
+//   · 标准 / 分组：课堂级那一份（`ClassroomWorksheet`，0 或 1 行）；
+//   · 高级：**真的配了的**组级学习单数（不是组的数量）。
+// 数法混淆的后果不是「报错难看」，而是「三件套全空的课堂被放行」—— 学生进去一片空白。
+// ---------------------------------------------------------------------------
+
+test('标准模式：worksheetIds ⇒ ClassroomWorksheet 落库一行（三件套只靠学习单也建得出来）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create', {
+    title: '只有学习单的课堂',
+    classIds: [cls.id],
+    // 既没有 agentIds 也没有 webappIds —— 三件套里**只有学习单**这一项。
+    worksheetIds: [ws.id],
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+  assert.equal(await db.prisma.classroom.count(), before + 1, '课堂必须真的建出来，不是「200 但没建」');
+  const links = await db.prisma.classroomWorksheet.findMany({ where: { classroomId: classroom.id! } });
+  assert.equal(links.length, 1, '学习单关联必须落库 —— 少这一处，学生看到的永远是「老师还没布置」');
+  assert.equal(links[0].worksheetId, ws.id);
+});
+
+test('标准模式：worksheetIds 只取第一个（与探究网页同一条单选口径）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const worksheets = await seedWorksheets(db.prisma, 3);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create', {
+    title: '多传了两份学习单',
+    classIds: [cls.id],
+    worksheetIds: worksheets.map(w => w.id),
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+  const links = await db.prisma.classroomWorksheet.findMany({ where: { classroomId: classroom.id! } });
+  assert.deepEqual(links.map(l => l.worksheetId), [worksheets[0].id], '只留第一个，多余的不静默多写');
+});
+
+test('标准模式：worksheetIds 里的 id 不存在 ⇒ 400（不静默建出一个没学习单的课堂）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create', {
+    title: '学习单已被删',
+    classIds: [cls.id],
+    webappIds: [webapps[0].id],
+    worksheetIds: ['does-not-exist'],
+  });
+  const body = await res.json() as { error: string };
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /学习单/, '文案要念出是**哪一项**过期了 —— 与网页那条分开');
+  assert.equal(await db.prisma.classroom.count(), before, '被拒的请求不得留下任何课堂');
+});
+
+test('标准/分组模式：只选学习单 ⇒ 200；三件套全空 ⇒ 400（学习单让「至少一项」成立）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  // 阳性：只有学习单。
+  for (const mode of ['standard', 'group']) {
+    const ok = await server.post('/api/classroom/create', {
+      title: `${mode} 只有学习单`, classIds: [cls.id], mode, worksheetIds: [ws.id],
+    });
+    const okBody = await ok.json() as { id?: string; error?: string };
+    assert.equal(ok.status, 200, `${mode} 只选学习单必须建得出来：${JSON.stringify(okBody)}`);
+  }
+
+  // 阴性对照：同一间班、什么都不选 ⇒ 仍然 400（这一条在 P1 之前就存在，此处防回归）。
+  const before = await db.prisma.classroom.count();
+  const bad = await server.post('/api/classroom/create', { title: '空课堂', classIds: [cls.id] });
+  assert.equal(bad.status, 400);
+  assert.equal(await db.prisma.classroom.count(), before);
+});
+
+test('高级模式：groups[].worksheetId 落库；空串 / 缺字段一律归一成 null（不产生第三种状态）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '组级学习单',
+    classId: cls.id,
+    groups: [
+      { name: '有学习单的组', worksheetId: ws.id },
+      { name: '空串的组', worksheetId: '   ' },
+      { name: '缺字段的组' },
+    ],
+  });
+  const classroom = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(classroom));
+
+  const rows = await db.prisma.classroomGroupMaterial.findMany({
+    where: { kind: 'worksheet', group: { classroomId: classroom.id! } },
+  });
+  assert.equal(rows.length, 1, '只有真配了的那一组写材料行');
+  assert.equal(rows[0].targetId, ws.id);
+  assert.equal(await db.prisma.classroomGroupMaterial.count({ where: { targetId: '' } }), 0,
+    '空串不得成为第三种状态落库');
+});
+
+test('高级模式：groups[].worksheetId 指向不存在的东西 ⇒ 400（targetId 没有真外键，只能靠这里拦）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '学习单已被删', classId: cls.id,
+    groups: [{ name: '第一组', worksheetId: 'does-not-exist' }],
+  });
+  const body = await res.json() as { error: string };
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /学习单/);
+  assert.equal(await db.prisma.classroom.count(), before);
+});
+
+// 🔴 本任务两处「数法」的分水岭。混淆的形态：高级模式用 `normalizedGroups.length` 冒充
+//    「配了学习单的组数」⇒ 「所有组都不配 + 无课堂级材料」这条路径被放行，
+//    建出来的正是一个**三件套全空的课堂**（`classroomMaterialError` 唯一要防的形态）。
+test('🔴 高级模式：所有组都不配 + 无课堂级材料 ⇒ 400；只要**有一组**配了学习单 ⇒ 200', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  // 阴性：三个组，全都不配任何材料 ⇒ 三件套全空 ⇒ 400，且一个课堂都不建。
+  const before = await db.prisma.classroom.count();
+  const bad = await server.post('/api/classroom/create-advanced', {
+    title: '三件套全空', classId: cls.id,
+    groups: [{ name: '第一组' }, { name: '第二组' }, { name: '第三组' }],
+  });
+  const badBody = await bad.json() as { error: string };
+  assert.equal(bad.status, 400, JSON.stringify(badBody));
+  assert.match(badBody.error, /学习单/, '文案要按三件套念 —— 三项都要念出来');
+  assert.equal(await db.prisma.classroom.count(), before, '被拒的请求不得留下任何课堂');
+
+  // 阳性：三个组里**只有一组**配了学习单 ⇒ 三件套非空 ⇒ 200。
+  // （「组的数量」这一版实现下阳性也是 200，所以阳性单独不足以证明口径 ——
+  //   上面那条阴性才是判据；两条一起才把「数的是什么」钉住。）
+  const ok = await server.post('/api/classroom/create-advanced', {
+    title: '只有一组配了学习单', classId: cls.id,
+    groups: [{ name: '第一组', worksheetId: ws.id }, { name: '第二组' }, { name: '第三组' }],
+  });
+  const okBody = await ok.json() as { id?: string; error?: string };
+  assert.equal(ok.status, 200, JSON.stringify(okBody));
+  assert.equal(
+    await db.prisma.classroomGroupMaterial.count({ where: { kind: 'worksheet', group: { classroomId: okBody.id! } } }),
+    1,
+    '只有配了的那一组写行',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 形状一致：五条下发 groups[] 的路径都必须带上 worksheet。
+// 「少了这个键」与「这个键是 null」在服务端看起来只差一点，但前端要靠区分它们
+// 来讲「本组未配置学习单」—— 少一个键的那条路径会让学生的界面**什么都不说**。
+// ---------------------------------------------------------------------------
+
+test('读路径：/code/:code、/:id、/all、/active 的 groups[] 都带 worksheet（形状逐字一致）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create-advanced', {
+    title: '含学习单的课堂', classId: cls.id,
+    groups: [
+      { name: '配了的组', agentId: agent.id, worksheetId: ws.id },
+      { name: '没配的组' },
+    ],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  assert.equal(created.status, 200, JSON.stringify(createdBody));
+
+  type GroupView = { id: string; name: string; agent: { id: string } | null; webapp: unknown | null; worksheet: { id: string; title: string } | null };
+  const check = (label: string, groups: GroupView[] | undefined) => {
+    assert.ok(Array.isArray(groups), `${label}: groups 必须是数组`);
+    const configured = groups!.find(g => g.name === '配了的组');
+    const empty = groups!.find(g => g.name === '没配的组');
+    // 用 hasOwnProperty 而不是 `!== undefined`：**键必须存在**（值为 null 才是「未配置」）。
+    assert.ok(Object.prototype.hasOwnProperty.call(configured, 'worksheet'), `${label}: 配了的组必须有 worksheet 键`);
+    assert.equal(configured?.worksheet?.id, ws.id, `${label}: 配了的组要如实下发它的学习单`);
+    assert.equal(configured?.worksheet?.title, ws.title, `${label}: 要带标题（学生端卡片要显示它）`);
+    assert.ok(Object.prototype.hasOwnProperty.call(empty, 'worksheet'), `${label}: 没配的组必须有 worksheet 键`);
+    assert.equal(empty?.worksheet, null, `${label}: 没配的组必须如实是 null（不是别人的、也不是缺少这个键）`);
+  };
+
+  const byCode = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as { groups?: GroupView[] };
+  check('GET /code/:code', byCode.groups);
+
+  const byId = await (await server.get(`/api/classroom/${createdBody.id}`)).json() as { groups?: GroupView[] };
+  check('GET /:id', byId.groups);
+
+  const all = await (await server.get('/api/classroom/all')).json() as Array<{ id: string; groups: GroupView[] }>;
+  check('GET /all', all.find(c => c.id === createdBody.id)?.groups);
+
+  const active = await (await server.get('/api/classroom/active')).json() as Array<{ id: string; groups: GroupView[] }>;
+  check('GET /active', active.find(c => c.id === createdBody.id)?.groups);
 });

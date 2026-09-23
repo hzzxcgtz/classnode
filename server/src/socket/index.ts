@@ -8,7 +8,7 @@ import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
-import { resolveMaterialTargetId, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
+import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -1136,7 +1136,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         socket.data.classroomId = classroom.id;
         socket.data.studentId = classroomStudent.id;
 
-        // 各组的材料（`agent` / `webapp`，都可能为 null）走**同一个**解析口径
+        // 各组的材料（`agent` / `webapp` / `worksheet`，都可能为 null）走**同一个**解析口径
         // （`resolveGroupMaterialViews`）—— 学生端拿到的组材料必须与 `GET /code/:code`
         // 逐字一致，否则「首屏显示的那个智能体」与「真正对话用的那个」可能不是一个。
         const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
@@ -1151,7 +1151,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           groups: classroom.groups.map((group) => ({
             id: group.id,
             name: group.name,
-            ...(groupMaterialViews.get(group.id) ?? { agent: null, webapp: null }),
+            ...(groupMaterialViews.get(group.id) ?? EMPTY_GROUP_MATERIAL_VIEW),
           })),
           blacklisted: classroomStudent?.blacklisted || false,
         });

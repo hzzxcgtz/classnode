@@ -1174,7 +1174,7 @@ P4 的分析型智能体都要面对一个「⭐ 是什么数」的问题。
 3. **`PUT /api/worksheets/:id` 是整份替换 `settings`。**
    `server/src/routes/worksheets.ts:126` 的 `normalizeSettings` 注释自陈这条：
    少认一个键 ⇒ 保存一次「只改标题」的请求就把那个键**静默抹掉**（教师配好的档变回默认，
-   界面上没有任何提示）。新增奖励相关的键时，这**四处必须一起加**：
+   界面上没有任何提示）。新增奖励相关的键时，这**五处必须一起加**：
    `normalizeSettings`（服务端写入口，`:126`）· `readStudentSettings`（服务端读出，`:905`）·
    `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS`（`:369`）与 `normalizeLoadedSettings`（`:472`）。
 

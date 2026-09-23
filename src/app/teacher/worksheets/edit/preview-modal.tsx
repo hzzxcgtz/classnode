@@ -1,9 +1,11 @@
 'use client';
 
+import { flattenQuestions } from '@/lib/worksheet-questions';
 import type { WorksheetContent } from '@/lib/types';
-// 从**纯函数内核**直接取：这个文件不需要 hook（React 状态 / 路由 / 网络），
-// 内核也正是 `node --test` 直接跑的那一份（`worksheet-editor-core.test.ts`）。
-import { QUESTION_TYPE_OPTIONS, readOptions } from './worksheet-editor-core';
+// 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
+// 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
+// 两个模块各自的路径在这里交汇，分叉在结构上不可能。
+import { WorksheetQuestionList } from '@/app/classroom/worksheet/worksheet-panel';
 
 /**
  * 学生端的宽度（规格 §6.3：「按 iPad 宽度渲染的弹窗 —— 价值正在于教师看到的就是
@@ -14,34 +16,41 @@ const STUDENT_STAGE_WIDTH = 768;
 /**
  * 预览弹窗。
  *
- * 🔴 **这里渲染的是本文件手写的一份只读模仿，不是学生端那个作答组件** —— 学生端的学习单
- * 面板还没落地（D2）。它之所以此刻成立，是因为还没有第二份实现可以跟它分叉；D2 一落地，
- * 这句话就不再成立：同一份 `content` 会被两段各自演化的 JSX 画出来，而**教师是拿这个
- * 弹窗当验收依据的**（规格 §6.3 的原话是「教师看到的就是学生看到的宽度」），
- * 于是「预览里长这样、学生那里不是」会成为一种没有任何报错的失真。
+ * ── 它渲染的是**真的那个组件**（P1 / D2 起）────────────────────────────────
  *
- * 所以 D2 落地时**必须**把下面这块只读模仿换成学生端的作答组件本身 —— 换的人要找
- * D2 / 学生端学习单面板（`src/app/classroom/` 下新增的那个面板），把它按学生身份渲染。
- * 换完之后两件事一起变好：预览不再是一份需要同步维护的第二实现，且「按 iPad 宽度渲染」
- * 的那句承诺由真组件自己兑现（现在它靠的是下面这个写死的 768px）。
+ * 在本文件的前一版里，这里是一份**手写的只读模仿**：同一份 `content` 被两段各自演化的
+ * JSX 画出来。当时那么写是成立的（学生端面板还没落地，没有第二份实现可以跟它分叉），
+ * 但那句话在 D2 落地的那一刻就失效了 —— 而**教师是拿这个弹窗当验收依据的**
+ * （规格 §6.3 的原话是「教师看到的就是学生看到的宽度」），于是「预览里长这样、
+ * 学生那里不是」会成为一种没有任何报错的失真。这是本项目最忌讳的那种缺陷：
+ * 两份真源，谁都不知道它们什么时候分了岔。
  *
- * 在换掉之前，本文件的每一条规则（只读、不显示 `correctKeys` / `answers`、不进真实作答）
- * 都只在这份模仿里有效 —— 学生端的真实规则以 D2 为准。
+ * 现在这里渲染的是 `WorksheetQuestionList`（`src/app/classroom/worksheet/worksheet-panel.tsx`
+ * 导出的**同一个**组件）—— 学生的作答面板用的也是它。因此：
+ *   · 题面怎么排、选项怎么标号（A/B/C…）、空题干怎么显示、未知题型怎么办，
+ *     全部只有一份实现；
+ *   · 样式也共用同一份 CSS module，教师看到的是**像素级**的那一份，不是「大致像」。
  *
- * 两条刻意的取舍：
+ * ── 两条刻意的取舍 ────────────────────────────────────────────────────────
  *   1. **内层舞台是写死的 768px**，不是百分比 —— 一旦跟着窗口缩放，它就退化成
  *      「一个窄一点的预览」，那句「教师看到的就是学生看到的宽度」也就不成立了。
  *      教师的窗口比 768 窄时**横向滚动**，而不是把舞台压窄。
- *   2. 渲染的是**学生看到的题面**：没有正确答案、没有判分、控件全部只读
- *      （规格 §6.3 的「作答态」，第一批不接真实作答）。所以这里不显示
- *      `correctKeys` / `answers` —— 那会让教师误以为学生也看得到。
+ *   2. **只读**（`interactive={false}`）：没有「提交本题」、控件全部 `disabled`、
+ *      不显示任何作答状态。这里**不接真实作答**（规格 §6.3），也**不显示正确答案** ——
+ *      那会让教师误以为学生也看得到。
+ *
+ * ⚠️ 顶栏（标题 / 进度 / 保存状态 / 奖励累计）**不**在这个共享组件里：它读的是
+ * 学生的会话状态（保存中、离线条数、奖励累计），教师端没有对应物。所以这里只画一个
+ * 标题条 + 题目列 —— 与学生在面板里看到的上半部分一致，而不是假装连状态都一样。
  */
 export function WorksheetPreviewModal({ title, content, onClose }: {
   title: string;
   content: WorksheetContent;
   onClose: () => void;
 }) {
-  const questions = content.nodes;
+  // 与面板同一条口径：拍平在调用方做（`flattenQuestions`），所以「屏幕上有几道题」
+  // 在预览与学生端是同一个数。
+  const questions = flattenQuestions(content.nodes);
 
   return (
     <>
@@ -56,7 +65,7 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
           <div>
             <h3 id="worksheet-preview-title">学生端预览</h3>
             <p>
-             按 iPad 宽度 {STUDENT_STAGE_WIDTH}px 渲染，共 {questions.length} 题。这里只显示学生会看到的题目与作答控件，不含正确答案。
+             按 iPad 宽度 {STUDENT_STAGE_WIDTH}px 渲染，共 {questions.length} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
             </p>
           </div>
           <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
@@ -65,41 +74,18 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
         <div className="worksheet-editor-preview-scroll">
           <div className="worksheet-editor-preview-stage" style={{ width: STUDENT_STAGE_WIDTH }}>
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
-            <div className="worksheet-editor-preview-progress">已作答 0 / {questions.length}</div>
-
-            {questions.length === 0 ? (
-              <p className="worksheet-editor-preview-empty">这份学习单还没有题目。</p>
-            ) : questions.map((node, index) => (
-              <div className="worksheet-editor-preview-question" key={node.id}>
-                <div className="worksheet-editor-preview-question-head">
-                  <span>第 {index + 1} 题</span>
-                  <span className="worksheet-editor-preview-question-type">
-                    {QUESTION_TYPE_OPTIONS.find(option => option.value === node.type)?.label ?? node.type}
-                  </span>
-                </div>
-                <div className="worksheet-editor-preview-prompt">
-                  {node.prompt.trim() ? node.prompt : <span className="worksheet-editor-preview-placeholder">（这道题的题干还没写）</span>}
-                </div>
-
-                {node.type === 'single-choice' && (
-                  <div className="worksheet-editor-preview-options">
-                    {readOptions(node).map(option => (
-                      <label className="worksheet-editor-preview-option" key={option.key}>
-                        <input type="radio" name={`preview-${node.id}`} disabled />
-                        <span className="worksheet-editor-preview-option-key">{option.key}</span>
-                        <span>{option.text.trim() || <span className="worksheet-editor-preview-placeholder">（选项 {option.key} 还没写）</span>}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-                {node.type === 'fill-blank' && (
-                  <input className="input worksheet-editor-preview-input" disabled placeholder="在这里填写答案" />
-                )}
-                {node.type === 'short-answer' && (
-                  <textarea className="input worksheet-editor-preview-input" rows={3} disabled placeholder="在这里作答" />
-                )}
-              </div>
-            ))}
+            <WorksheetQuestionList
+              questions={questions}
+              // 预览没有作答态可言：空输入态、空状态、空提交中。**不传** `onChange` /
+              // `onSubmit`，配合 `interactive={false}` ⇒ 一行都不会被写出去。
+              drafts={{}}
+              statuses={{}}
+              submitting={{}}
+              interactive={false}
+              // 只读态没有「已提交」可言（`statuses` 是空的），这个开关在预览里不生效；
+              // 传 `true` 只是不给读的人留一个「这里为什么是 false」的问题。
+              allowResubmit
+            />
           </div>
         </div>
       </div>

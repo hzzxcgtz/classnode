@@ -1688,11 +1688,11 @@ tr:hover td {
   color: #2563eb;
 }
 
-.worksheet-management-card-title:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-  border-radius: 3px;
-}
+/* ⚠️ 这里**刻意没有** `.worksheet-management-card-title:focus-visible` 规则。
+   全局那条（文件开头 `:focus-visible`）已经给所有元素画了焦点环，为这一个类再写一条
+   是纯装饰性重复 —— 而 `:focus-visible` 在 Safari 15 上**静默失效**，本项目因此给它设了
+   一份**不可增长的豁免额度**（`scripts/check-classroom-browser-compat.mjs`）。
+   加一条就会撞破额度、让 `pnpm build` 直接失败。想改焦点样式请改全局那条。 */
 
 @media (max-width: 720px) {
   .worksheet-management-filters {
@@ -2179,7 +2179,11 @@ tr:hover td {
 
 .worksheet-editor-preview-stage {
   margin: 0 auto;
-  padding: 24px 26px 28px;
+  /* ⚠️ **水平方向不加内边距**（P1/D2 起）：这一个盒子的宽度就是「学生那台 iPad 的视口宽度」
+     （768px），里面的题目由学生端那个组件的样式自己排版（`worksheet.module.css` 的
+     `.questions`，自身限宽 720 + 16px 内边距）。加了水平内边距，这里的内容宽度就比学生
+     真实看到的窄几十像素 —— 而「教师看到的就是学生看到的那个宽度」正是这个弹窗的全部价值。 */
+  padding: 24px 0 0;
   border-radius: 14px;
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -2187,82 +2191,18 @@ tr:hover td {
 }
 
 .worksheet-editor-preview-title {
+  padding: 0 16px;
   font-size: 1.125rem;
   font-weight: 700;
   color: #0f172a;
 }
 
-.worksheet-editor-preview-progress {
-  margin-top: 2px;
-  margin-bottom: 18px;
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-
-.worksheet-editor-preview-empty {
-  font-size: 0.875rem;
-  color: #94a3b8;
-}
-
-.worksheet-editor-preview-question {
-  padding: 14px 0 16px;
-  border-top: 1px solid #eef2f6;
-}
-
-.worksheet-editor-preview-question-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #2563eb;
-  margin-bottom: 6px;
-}
-
-.worksheet-editor-preview-question-type {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-weight: 400;
-}
-
-.worksheet-editor-preview-prompt {
-  font-size: 0.938rem;
-  color: #0f172a;
-  line-height: 1.8;
-  white-space: pre-wrap;
-  margin-bottom: 10px;
-}
-
-.worksheet-editor-preview-placeholder {
-  color: #cbd5e1;
-}
-
-.worksheet-editor-preview-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.worksheet-editor-preview-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.875rem;
-  color: #334155;
-}
-
-.worksheet-editor-preview-option-key {
-  font-weight: 600;
-  color: #2563eb;
-}
-
-.worksheet-editor-preview-input {
-  width: 100%;
-  opacity: 1;
-  background: #f8fafc;
-}
+/* ⚠️ `worksheet-editor-preview-question*` / `-options` / `-option*` / `-prompt` / `-placeholder`
+   / `-input` / `-progress` / `-empty` 这一整组规则**已随 P1/D2 删除**。它们服务的是本文件
+   曾经手写的那一份「只读模仿」；现在预览渲染的是学生端那个**真的**组件
+   （`WorksheetQuestionList`），题面、选项、控件、空态全部由它自己的 CSS module 负责。
+   留在这里就是第二份真源 —— 谁改了一处、另一处不动，教师端与学生端就开始分岔，
+   而且没有任何报错。 */
 
 @media (max-width: 900px) {
   .worksheet-editor-topbar-actions {

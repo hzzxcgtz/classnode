@@ -24,6 +24,8 @@ type DisplayMessage = Pick<ClassroomMessage, 'content' | 'role' | 'createdAt' | 
 type ClassroomGroupCard = { group: ClassroomCardGroup | null; members: ClassroomCardStudent[] };
 type ClassroomDisplayCard = ClassroomCardStudent | ClassroomGroupCard;
 type StudentBoardFilter = 'all' | 'online' | 'thinking' | 'attention' | 'offline';
+/** 第二组筛选胶囊（按模块）的取值。`all` = 不按模块筛。 */
+type StudentModuleFilter = 'all' | TileModule;
 
 function isClassroomGroupCard(card: ClassroomDisplayCard): card is ClassroomGroupCard {
   return 'members' in card;
@@ -208,23 +210,39 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
 }
 
 /**
- * 「此刻各模块人数」里的一个计数块。
+ * 模块筛选行里的一个胶囊（原「此刻各模块人数」里的一个计数块）。
  *
- * `muted` 用在两类项上：**不是三件套**的（首页 / 未知），以及**尚未支持**的学习单
+ * P2.3 修正把这一行从**纯信息**变成**筛选器**：原来顶部那张卡里显示的是同一批数字，
+ * 两处并存会让人以为是冗余，所以只留一处 —— 留下的这处必须能点，于是计数块本身
+ * 改成了按钮（用户 2026-09-23：「另加一组」，不是替换已有的状态筛选）。
+ *
+ * `muted` 保留原义：**不是三件套**的（首页 / 未知），以及**尚未支持**的学习单
  * —— 它们与真正能用的模块不是一个分量，同样的着色会让人以为它们也一样能用。
  */
-function ModuleCountChip({ label, value, hint, muted = false }: {
+function ModuleCountChip({ label, value, hint, muted = false, selected, onSelect }: {
   label: string;
   value: number;
   hint?: string;
   muted?: boolean;
+  selected: boolean;
+  onSelect: () => void;
 }) {
+  const idleColor = muted ? '#94a3b8' : '#475569';
+  const numberColor = muted ? '#cbd5e1' : '#1d4ed8';
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap' }}>
-      <span style={{ fontSize: '0.75rem', color: muted ? '#94a3b8' : '#475569' }}>{label}</span>
-      <span style={{ fontSize: '1.125rem', fontWeight: 700, color: muted ? '#cbd5e1' : '#1d4ed8', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-      {hint && <span style={{ fontSize: '0.625rem', color: '#cbd5e1' }}>{hint}</span>}
-    </span>
+    <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
+      style={{
+        display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
+        minHeight: 32, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
+        border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
+        background: selected ? '#2563eb' : 'white',
+        color: selected ? 'white' : idleColor,
+        fontSize: '0.813rem', fontWeight: selected ? 600 : 500,
+      }}>
+      <span>{label}</span>
+      <span style={{ fontSize: '1rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: selected ? 'white' : numberColor }}>{value}</span>
+      {hint && <span style={{ fontSize: '0.625rem', color: selected ? 'rgba(255,255,255,.75)' : '#cbd5e1' }}>{hint}</span>}
+    </button>
   );
 }
 
@@ -482,6 +500,11 @@ function ClassroomBoardContent() {
   const [showModulesMenu, setShowModulesMenu] = useState(false);
   const modulesMenuRef = useRef<HTMLDivElement>(null);
   const [studentBoardFilter, setStudentBoardFilter] = useState<StudentBoardFilter>('all');
+  /**
+   * 第二组筛选：按**该生此刻所在的模块**。与上面那组**同时生效**（「与」关系）——
+   * 两组答的是两个不同的问题（「他掉线了吗」/「他在用哪一件」），教师要的是交集。
+   */
+  const [studentModuleFilter, setStudentModuleFilter] = useState<StudentModuleFilter>('all');
   const [clearBusy, setClearBusy] = useState<string | null>(null);
   const clearBusyRef = useRef(false);
 
@@ -1082,33 +1105,32 @@ function ClassroomBoardContent() {
     const members = isClassroomGroupCard(card) ? card.members : [card];
     return members.some((member) => studentBlacklisted[member.id] || (studentWarnings[member.id] || 0) > 0);
   };
-  const displayCards = allDisplayCards.filter((card) => {
-    if (studentBoardFilter === 'all') return true;
-    if (studentBoardFilter === 'attention') return cardNeedsAttention(card);
-    return getDisplayCardStatus(card) === studentBoardFilter;
-  });
-  const boardFilterCounts: Record<StudentBoardFilter, number> = {
-    all: allDisplayCards.length,
-    online: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'online').length,
-    thinking: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'thinking').length,
-    attention: allDisplayCards.filter(cardNeedsAttention).length,
-    offline: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'offline').length,
-  };
-
   /* ═══════════ P2.3：一个格子的内容区显示什么 ═══════════ */
 
   /**
-   * 单个学生此刻该显示哪个模块。
+   * 该生**实际**所在的模块 —— 与看板模式无关。
    *
-   * `hasOwnProperty` 而不是读值判 `undefined`：**键不在 = 从没收到过**（`unknown`），
-   * 与「收到了 null = 他在首页」是两件不同的事 —— 合并成一件就会把「不知道」说成
-   * 「在首页」，而那是**编造**出来的一条事实。
+   * 与 `resolveTileModule` 的差别只在「指定」模式：那时格子显示的是教师指定的那个，
+   * 而学生人还在自己点开的模块里。两者的差只有这里读得到，格子上那行「实际在：X」
+   * 与小组格的实际位置统计都靠它（见 `tileLocationNote`）。
    */
-  const resolveTileModule = (studentId: string): TileModule => {
-    if (boardMode === 'assign') return assignModule;
+  const resolveStudentFocus = (studentId: string): TileModule => {
     if (!Object.prototype.hasOwnProperty.call(studentModuleFocus, studentId)) return 'unknown';
     const focus = studentModuleFocus[studentId];
     return focus === null ? 'home' : focus;
+  };
+
+  /**
+   * 单个学生**这一格**该显示哪个模块。
+   *
+   * `hasOwnProperty` 而不是读值判 `undefined`：**键不在 = 从没收到过**（`unknown`），
+   * 与「收到了 null = 他在首页」是两件不同的事 —— 合并成一件就会把「不知道」说成
+   * 「在首页」，而那是**编造**出来的一条事实。（这一层判断在 `resolveStudentFocus` 里，
+   * 指定模式下不走它 —— 那时格子的内容由教师指定，与学生位置无关。）
+   */
+  const resolveTileModule = (studentId: string): TileModule => {
+    if (boardMode === 'assign') return assignModule;
+    return resolveStudentFocus(studentId);
   };
 
   /** 小组格子：组内成员**全在同一个模块**就是那个模块，否则 `mixed`。 */
@@ -1142,12 +1164,131 @@ function ClassroomBoardContent() {
     return MODULE_ID_LABELS[module];
   };
 
+  /**
+   * 徽章行里那个**模块相关**的徽章的文字（`null` = 这一格不该有它）。
+   *
+   * 🔴 用户 2026-09-23（截图批注）：「这个『几轮』只在智能学伴里有」。在此之前这一行
+   * 无条件写着 `{rounds} 轮`，于是「学生在学习单里」的格子上也挂着一个学伴对话数。
+   *
+   * 三件套**各判各的**，外加兜底 —— 徽章行从此是模块相关的，不是一行固定内容：
+   *   · 智能学伴 → `{rounds} 轮`
+   *   · 学习单   → 今天没有数据源（`Worksheet` 表都还没建），返回 `null` 而不是编一个数；
+   *                学习单接进看板后这里改显示「已看 N/M」（用户 2026-09-23 的裁定）
+   *   · 探究空间 → 不显示（那一格显示的是画面，与对话轮数无关）
+   *   · 兜底     → `home` / `unknown` / 线缆上多出来的取值都不显示
+   *
+   * 小组格的灰度情形与 `tileShowsClear` 同款：组内混着几个模块时，只要有成员在学伴，
+   * 这个数字就还有意义（`rounds` 数的是**学伴对话**，不是「在这个模块里说了几句」）；
+   * 全组都不在学伴时不显示。
+   */
+  const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[], rounds: number): string | null => {
+    switch (module) {
+      case 'companion':
+        return `${rounds} 轮`;
+      case 'worksheet':
+        return null;
+      case 'explore':
+        return null;
+      case 'mixed':
+        return members.some((member) => resolveTileModule(member.id) === 'companion') ? `${rounds} 轮` : null;
+      default:
+        return null;
+    }
+  };
+
+  /**
+   * 格子内容区那行小字：这个学生**实际**在哪个模块（「当前位置」）。
+   *
+   * 🔴 只在「指定」模式下出现。跟随模式下格子的模块就是这个学生的实际位置
+   * （同一个来源 `resolveStudentFocus`），写出来只是把同一件事说两遍；小组格的逐人差异
+   * 也已经由 `mixed` 分支列出来了。指定模式下则不然：教师选的是「探究空间」，而某个
+   * 学生可能正待在「学习单」里 —— 格子上显示的是等待画面，这行小字是唯一告诉教师
+   * 「他在哪儿」的东西（用户 2026-09-23 的截图批注：箭头指向格子空白处）。
+   *
+   * 学生格说他自己在哪；小组格只列**不在**指定模块里的那些人，都在就不显示
+   * （否则「3 人都在探究空间」会盖在每一格上，那是噪音，不是信息）。
+   */
+  const tileLocationNote = (module: GroupTileModule, members: ClassroomCardStudent[]): string | null => {
+    if (boardMode !== 'assign') return null;
+    if (members.length === 0) return null;
+    // 学生格（含只有 1 人的小组）：他自己的实际位置。
+    if (members.length === 1) {
+      const actual = resolveStudentFocus(members[0].id);
+      if (actual === module) return null;
+      // `unknown` 在 `moduleLabelOf` 里是「…」（给格子标题用的），这句话里要说清楚。
+      return actual === 'unknown' ? '位置未知' : `实际在：${moduleLabelOf(actual)}`;
+    }
+    // 小组格：按实际位置归类。
+    const tally = new Map<TileModule, number>();
+    for (const member of members) {
+      const actual = resolveStudentFocus(member.id);
+      if (actual === module) continue;
+      tally.set(actual, (tally.get(actual) ?? 0) + 1);
+    }
+    if (tally.size === 0) return null;
+    const parts = [...tally.entries()].map(([actual, count]) =>
+      `${actual === 'unknown' ? '位置未知' : moduleLabelOf(actual)} ${count}`);
+    return `实际：${parts.join('、')}`;
+  };
+
   /** 三件套各几人（+ 首页 / 未知）。**按人**数，不按格子 —— 小组格会把这些学生藏起来。 */
   const moduleDistribution: Record<TileModule, number> = (() => {
     const counts: Record<TileModule, number> = { worksheet: 0, explore: 0, companion: 0, home: 0, unknown: 0 };
-    for (const student of students) counts[resolveTileModule(student.id)] += 1;
+    for (const student of students) counts[resolveStudentFocus(student.id)] += 1;
     return counts;
   })();
+
+  /**
+   * 模块筛选的**生效值**。
+   *
+   * 🔴 只在「跟随」模式下生效：指定模式下全班的格子都是教师选的那一个模块
+   * （`resolveTileModule` 直接返回 `assignModule`），按模块筛就只剩「全中」与「全不中」
+   * 两种结果 —— 那种筛选器对教师毫无用处，却会让人以为它坏了。所以指定模式下这一行
+   * 不渲染（见下面筛选行的 JSX），筛选值也**不生效**而不是偷偷清空 state：
+   * 切回跟随时教师原来挑的那一项还在。
+   */
+  const effectiveModuleFilter: StudentModuleFilter = boardMode === 'follow' ? studentModuleFilter : 'all';
+
+  /**
+   * 一个格子是否属于某个模块的筛选。
+   *
+   * ⚠️ 按**人**判（任一成员在该模块即命中），不是按格子的 `tileModule` 判：
+   * 小组格的 `tileModule` 可能是 `mixed`，而它确实**含有**在「学习单」里的人
+   * —— 教师点「学习单」是想找出这些学生，把 mixed 格整格藏掉正好把他们藏起来了。
+   * 代价是一个 mixed 格会在多个模块筛选下都出现（它本来就横跨多个模块）。
+   */
+  const cardInModule = (card: ClassroomDisplayCard, module: TileModule): boolean => {
+    const members = isClassroomGroupCard(card) ? card.members : [card];
+    return members.some((member) => resolveStudentFocus(member.id) === module);
+  };
+
+  /* ═══════════ 筛选：状态那一组 + 模块那一组（「与」关系） ═══════════ */
+
+  /**
+   * ⚠️ 这两段刻意排在**模块判定之后**：过滤器里要调 `cardInModule` / `resolveStudentFocus`，
+   * 而它们是 `const` 箭头函数 —— 排到前面就是 TDZ 的 `ReferenceError`（首屏即崩），
+   * 不是「还没算好」那种能靠默认值兜住的错。
+   */
+  const displayCards = allDisplayCards.filter((card) => {
+    if (studentBoardFilter !== 'all') {
+      if (studentBoardFilter === 'attention') {
+        if (!cardNeedsAttention(card)) return false;
+      } else if (getDisplayCardStatus(card) !== studentBoardFilter) {
+        return false;
+      }
+    }
+    // 两组筛选是**「与」**关系：状态那一组答「他掉线了吗」，模块这一组答「他在用哪一件」。
+    // 模块那一组的生效值见 `effectiveModuleFilter`（指定模式下恒为 `all`）。
+    return effectiveModuleFilter === 'all' || cardInModule(card, effectiveModuleFilter);
+  });
+  const boardFilterCounts: Record<StudentBoardFilter, number> = {
+    all: allDisplayCards.length,
+    online: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'online').length,
+    thinking: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'thinking').length,
+    attention: allDisplayCards.filter(cardNeedsAttention).length,
+    offline: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'offline').length,
+  };
+
 
   /**
    * 探究画面的两个全局计数（合并前那面「图墙」顶部那一行就是它们）。
@@ -1247,7 +1388,9 @@ function ClassroomBoardContent() {
       </div>
     );
 
-    switch (module) {
+    // 按这一格的模块渲染。**唯一**的实现：主看板与全屏网格都调它（见函数头的注释）。
+    const content = (() => {
+      switch (module) {
       case 'companion':
         return companion;
       case 'explore':
@@ -1296,7 +1439,27 @@ function ClassroomBoardContent() {
         // TS 认为不可达（联合类型已被上面穷尽）。留一条兜底是因为**线缆值**可能不在联合里：
         // 服务端只放行三件套与 null，但看板不该因为上游多了一种取值就渲染出一片空白。
         return placeholder('…', '这个模块看板还不认识');
-    }
+      }
+    })();
+
+    // 「当前所在位置」那行小字。只在指定模式下、且与该格显示的模块不同时出现 ——
+    // 判断全在 `tileLocationNote` 里，两处看板（主看板 / 全屏）共用这一个出口。
+    const locationNote = tileLocationNote(module, members);
+    if (!locationNote) return content;
+    return (
+      <>
+        <div title="该学生此刻实际所在的模块（指定模式下与他被指定的可能不同）"
+          style={{
+            flexShrink: 0, padding: compact ? '2px 6px' : '3px 8px', borderRadius: compact ? 4 : 6,
+            background: '#f8fafc', border: '1px solid #eef2f6',
+            fontSize: compact ? '0.563rem' : '0.688rem', color: '#64748b', lineHeight: 1.4,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+          {locationNote}
+        </div>
+        {content}
+      </>
+    );
   };
 
   // 投屏轮次预计算
@@ -1442,8 +1605,14 @@ function ClassroomBoardContent() {
           </div>
         ))}
 
-        {/* 三件套各几人。⚠️ 只有**跟随**模式下这四项才有信息量：指定模式下全班都是同一个模块，
-            分布恒等于「全班 N 人」，写出来只会让人以为看错了。 */}
+        {/* 探究空间的两个全局计数。
+            ⚠️ 这张卡**曾经**也显示「此刻各模块人数」（学习单/探究空间/智能学伴/首页/未知）。
+            那些数字搬到了看板上方的**模块筛选行**（同一批数字，但那里能点着筛格子）——
+            P2.3 修正：两处显示同样的数字会让人以为是冗余，唯一无歧义的做法是只留一处，
+            而留下的那处必须承担筛选。这张卡于是只剩探究空间的两项计数。
+            ⚠️ 跟随模式下没有任何探究信号时**整张卡不出现**（原来那行就是这么办的）：
+            一句「0 人有画面、0 人已打开」只是噪音，而此刻这张卡已经没有别的内容可显示。 */}
+        {(boardMode === 'assign' || exploreWithFrame > 0 || exploreOpened > 0) && (
         <div data-board-distribution={boardMode} style={{
           flex: '2 1 320px', minWidth: 0,
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
@@ -1451,7 +1620,7 @@ function ClassroomBoardContent() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b' }}>
-              {boardMode === 'follow' ? '此刻各模块人数' : '指定模式'}
+              {boardMode === 'follow' ? '探究空间' : '指定模式'}
             </span>
             {boardMode === 'assign' && (
               <span style={{ fontSize: "0.75rem", color: '#1d4ed8', fontWeight: 600 }}>
@@ -1459,37 +1628,37 @@ function ClassroomBoardContent() {
               </span>
             )}
           </div>
-          {boardMode === 'follow' ? (
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              {/* 顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴），学习单**留位**并标明尚未支持
-                  —— 三件套的布局一次定形，以后接上学习单时不用重排。 */}
-              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} hint="尚未支持" muted />
-              <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} />
-              <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} />
-              {/* 首页与「状态未知」不是三件套，放在后面用弱化样式 —— 少了它们，
-                  这几个学生在上面那三项里都找不到，教师会以为人丢了。 */}
-              <ModuleCountChip label="首页" value={moduleDistribution.home} muted />
-              <ModuleCountChip label="未知" value={moduleDistribution.unknown} muted />
-            </div>
-          ) : (
-            <div style={{ fontSize: "0.75rem", color: '#94a3b8', lineHeight: 1.5 }}>
-              各模块人数只在「跟随」模式下有意义（指定模式下全班都是同一个）。
-            </div>
-          )}
           {/* 合并前那面「图墙」顶部那一行：M 名已有画面、K 名已打开网页。
               它答的是「这个班上有多少人在用探究空间」，与每格答的「这一格是谁」是两个问题，
               两个都要留着（关掉画面的课堂里「有画面」恒为 0，而「已打开」照旧有信息量）。
-              没有任何探究信号时整行不出现 —— 一句「0 人有画面、0 人已打开」只是噪音。 */}
-          {(exploreWithFrame > 0 || exploreOpened > 0) && (
+              跟随模式下没有任何探究信号时整行不出现 —— 一句「0 人有画面、0 人已打开」只是噪音。 */}
+          {(exploreWithFrame > 0 || exploreOpened > 0) ? (
             <div style={{ fontSize: "0.688rem", color: '#94a3b8' }}>
               探究空间：{exploreWithFrame} 人已有画面，{exploreOpened} 人正打开着网页
             </div>
+          ) : (
+            <div style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>
+              全班还没有人打开探究网页
+            </div>
           )}
         </div>
+        )}
       </div>
       </>)}
-      {/* 对话分析面板（始终渲染，全屏时被 fixed 遮罩覆盖） */}
-      <AnalyticsPanel classroomId={id} allMessages={allMessages} loadAnalytics={loadAnalytics} />
+      {/* 对话分析面板（只属于**智能学伴**）。
+          🔴 模块态为 `hidden` 时不渲染 —— 学生端看不见学伴了，教师端还挂着一块
+          「谁说了多少轮、高频词是什么」的面板，等于在讲一件课堂上已经不存在的事。
+          `open` / `preview` 都渲染（两种看板模式下同理：这块面板与看板模式无关）。
+          全屏时它仍在 DOM 里，由上面那层 fixed 遮罩盖住 —— 不再依赖「始终渲染」那个说法。
+
+          ⚠️ **为什么只管 companion**：这块面板统计的**全部**是学伴对话
+          （`allMessages` 来自学伴聊天记录、`topStudents` 数的是学伴轮数）。
+          探究空间不需要同类面板（它有自己的画面/事件监控，见看板顶部的探究那一行）。
+          「学习单」将来要有（谁做到哪、哪道题错得多），但**要另行设计** ——
+          用户 2026-09-23 明确：「探究空间不需要，学习单要有的，但是需要后期重新设计」。 */}
+      {moduleStateOf(classroom.modules, MODULE_KEY_BY_ID.companion) !== 'hidden' && (
+        <AnalyticsPanel classroomId={id} allMessages={allMessages} loadAnalytics={loadAnalytics} />
+      )}
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -1627,6 +1796,33 @@ function ClassroomBoardContent() {
               );
             })}
           </div>
+          {/* 第二组筛选：按**模块**（P2.3 修正，用户 2026-09-23：「这里需要改为：三件套中
+              各有多少人、需关注多少人、离线多少人」—— 控制器裁定为**另加一组**）。
+              与上面那组是**「与」**关系：状态那组答「他掉线了吗」，模块这组答「他在用哪一件」。
+              ⚠️ 只在**跟随**模式下渲染：指定模式全班都是同一个模块，按模块筛只剩「全中 /
+              全不中」两种结果，那种筛选器只会让人以为它坏了（见 `effectiveModuleFilter`）。
+              全屏**只在指定模式下可达**，所以不需要额外判 `gridFullscreen`。
+              顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴），后面跟着两项**不是模块**的位置
+              （首页 / 未知）—— 顶部那张卡里同样的计数已经撤掉，这里再不给它们留位，
+              这几个学生在筛选行里就彻底找不到了。 */}
+          {boardMode === 'follow' && (
+            <div aria-label="按模块筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>模块</span>
+              <ModuleCountChip label="全部" value={allDisplayCards.length}
+                selected={studentModuleFilter === 'all'} onSelect={() => setStudentModuleFilter('all')} />
+              {/* 学习单**留位**并标明尚未支持 —— 三件套的布局一次定形，以后接上时不用重排。 */}
+              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} hint="尚未支持" muted
+                selected={studentModuleFilter === 'worksheet'} onSelect={() => setStudentModuleFilter('worksheet')} />
+              <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore}
+                selected={studentModuleFilter === 'explore'} onSelect={() => setStudentModuleFilter('explore')} />
+              <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion}
+                selected={studentModuleFilter === 'companion'} onSelect={() => setStudentModuleFilter('companion')} />
+              <ModuleCountChip label="首页" value={moduleDistribution.home} muted
+                selected={studentModuleFilter === 'home'} onSelect={() => setStudentModuleFilter('home')} />
+              <ModuleCountChip label="未知" value={moduleDistribution.unknown} muted
+                selected={studentModuleFilter === 'unknown'} onSelect={() => setStudentModuleFilter('unknown')} />
+            </div>
+          )}
           {/* `data-webapp-monitor` 三个属性是给**离线 E2E 探针**用的锚点
               （`.superpowers/sdd/…/dom-shot-e2e` 下那几个 verify 脚本按选择器取本块 innerText）。
               合并前它挂在 `webapp-monitor-view.tsx` 的根节点上，那个文件删掉之后锚点会断，
@@ -1655,7 +1851,9 @@ function ClassroomBoardContent() {
             ) : displayCards.length === 0 ? (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '44px 20px', background: 'white', borderRadius: 14, border: '1px dashed #cbd5e1', color: '#64748b' }}>
                 <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>当前筛选下没有学生</div>
-                <button type="button" onClick={() => setStudentBoardFilter('all')} style={{ marginTop: 10, border: 0, background: 'transparent', color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
+                {/* 🔴 两组筛选都要清掉。只清状态那一组的话，教师点完「查看全部学生」仍然
+                    看不到人（模块那一组还卡着），而按钮的字面意思正是「全部学生」。 */}
+                <button type="button" onClick={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} style={{ marginTop: 10, border: 0, background: 'transparent', color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
               </div>
             ) : (
               displayCards.map((item: ClassroomDisplayCard) => {
@@ -1674,6 +1872,9 @@ function ClassroomBoardContent() {
                 // 这一格的内容区该显示哪个模块（跟随 = 该学生的 focus；指定 = 教师选的）。
                 const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                 const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
+                // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次 ——
+                // 下面「渲染与否」与「显示什么」读的是同一个值，算两遍就是两份口径。
+                const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
                     onClick={() => {
@@ -1834,9 +2035,11 @@ function ClassroomBoardContent() {
                               </div>
                             );
                           })()}
-                          <div title="对话轮数" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
-                            {rounds} 轮
-                          </div>
+                          {moduleBadge !== null && (
+                            <div title="对话轮数（只在智能学伴模块下显示）" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                              {moduleBadge}
+                            </div>
+                          )}
                           {student.avatarChangeTokens > 0 && (
                             <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
@@ -2375,6 +2578,8 @@ function ClassroomBoardContent() {
                   // —— 仍然走同一个 `renderTileContent`，不另写一份「全屏专用」的渲染。
                   const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                   const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
+                  // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次。
+                  const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
                       onClick={() => {
@@ -2501,9 +2706,11 @@ function ClassroomBoardContent() {
                               <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                             </div>
-                            <div title="对话轮数" style={{ padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
-                              {rounds} 轮
-                            </div>
+                            {moduleBadge !== null && (
+                              <div title="对话轮数（只在智能学伴模块下显示）" style={{ padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                                {moduleBadge}
+                              </div>
+                            )}
                             {student.avatarChangeTokens > 0 && (
                               <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
                                 <svg width={compact ? 8 : 10} height={compact ? 8 : 10} viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>

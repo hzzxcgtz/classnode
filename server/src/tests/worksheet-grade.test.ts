@@ -166,6 +166,59 @@ const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerKeyAudit> = {
     answerKeys: ['explanation'],
     safeKeys: [],
   },
+  // ── M4a 新增的 5 个题型 ──────────────────────────────────────────
+  'true-false': {
+    data: { correctKeys: ['T'], explanation: '蒸发吸热' },
+    // 判断题**不存 `options`**（选项恒为对/错两个），所以它的 `data` 里只有答案。
+    answerKeys: ['correctKeys', 'explanation'],
+    safeKeys: [],
+  },
+  'multi-choice': {
+    data: {
+      options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }],
+      correctKeys: ['A', 'C'],
+      partialCredit: 'allow-missing',
+      explanation: '甲与丙',
+    },
+    answerKeys: ['correctKeys', 'explanation'],
+    // `partialCredit` 是**给学生看的规则**（他要知道漏选算不算半对），不是答案 ——
+    // 它决定的是「怎么算分」，不是「哪个选项对」。
+    safeKeys: ['options', 'partialCredit'],
+  },
+  order: {
+    data: {
+      // ⚠️ 样本里 `items` 的顺序（i1 → i2）与 `correctOrder`（i2 → i1）**刻意不同**：
+      // 两者相同是一道「学生什么都不做就满分」的坏题（`validateQuestion` 会拒绝它）。
+      items: [{ id: 'i1', text: '甲' }, { id: 'i2', text: '乙' }],
+      correctOrder: ['i2', 'i1'],
+      explanation: '先乙后甲',
+    },
+    // 🔴 `correctOrder` **就是答案本身**：泄漏它 = 学生打开 `student-view` 就看到正确顺序。
+    answerKeys: ['correctOrder', 'explanation'],
+    safeKeys: ['items'],
+  },
+  match: {
+    data: {
+      left: [{ id: 'l1', text: '甲' }],
+      right: [{ id: 'r1', text: 'A' }],
+      pairs: [{ leftId: 'l1', rightId: 'r1' }],
+      explanation: '甲对 A',
+    },
+    // 🔴 `pairs` 是答案（哪一对连哪一对）；`left` / `right` 是必须发给学生的题面。
+    answerKeys: ['pairs', 'explanation'],
+    safeKeys: ['left', 'right'],
+  },
+  categorize: {
+    data: {
+      items: [{ id: 'i1', text: '猫' }],
+      zones: [{ id: 'z1', label: '哺乳类' }, { id: 'z2', label: '鸟类' }],
+      placement: { i1: 'z1' },
+      explanation: '猫是哺乳类',
+    },
+    // 🔴 `placement` 是答案（哪个条目归到哪个框）；`items` / `zones` 是题面。
+    answerKeys: ['placement', 'explanation'],
+    safeKeys: ['items', 'zones'],
+  },
 };
 
 /**

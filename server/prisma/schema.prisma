@@ -482,7 +482,9 @@ model WorksheetAnswer {
   questionId   String    // ★ content 树里的稳定 id，**不是下标**（§3-P）
   value        Json?     // 答案（格式见 4.3）
   status       String   @default("unanswered")  // unanswered | draft | submitted
-  isCorrect    Boolean?  // 仅 autoGrade 开启且已提交时有值
+  isCorrect    Boolean?  // 仅 autoGrade 开启且已提交时有值。★ M4a 起语义**收窄为「全对」**，由 gradeState 派生写入
+  gradeState   String?   // ★ M4a（§12）：correct | partial | incorrect —— null = 未判分（主观题 / 关掉自动判分）
+  score        Float?    // ★ M4a（§12）：数值得分（= 该题「全对」或「半对」那个数）。与 gradeState 同生共死
   reviewedAt   DateTime? // ★ 教师的「已查看」标记（§3-AA）
   submittedAt  DateTime? // 定稿时间戳（供 P4 智能体分析）
 

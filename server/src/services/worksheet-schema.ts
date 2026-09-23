@@ -8,8 +8,17 @@ import type { PrismaClient } from '@prisma/client';
  * 两边分叉。DDL 来源见规格 §4.1.2（在 /tmp 探针库上 dump，不碰真实库）。
  *
  * 已实测对齐：`DATABASE_URL="file:/tmp/wsv.db" prisma db push --skip-generate` 后
- * `SELECT sql FROM sqlite_master` 的输出与规格 §4.1.2、与本文件**逐字一致**
+ * `SELECT sql FROM sqlite_master` 的输出与本文件**逐字一致**
  * （差异只有本文件按 SQL 语句补的行尾分号）。改了任何一边都要重新对一次。
+ * ⇒ `pnpm test` 里那条「建表产物与 db push 产物逐表逐字相同」的用例就是这条的机器化
+ * （`worksheet-schema.test.ts`），改 DDL 忘了同步会红。
+ *
+ * 🔴 **`"score"` 必须写成 `REAL`，不是 `DOUBLE PRECISION`**：Prisma 对 SQLite 的
+ * `Float` 落库时写的就是 `REAL`。实测（`/tmp` 探针库）：用 `DOUBLE PRECISION` 建出来的列，
+ * 下一次 `db push` 会被判成「与 schema 不一致」而**静默重建整张表**；写成 `REAL` 时
+ * `db push` 原样回一句「The database is already in sync」。两边都实测过，数据都不丢，
+ * 但重建是这节课上 40 人 × 20 题那张表不该付的代价。
+ * ⚠️ 同理，`server/src/index.ts` 里那条 `ALTER TABLE` 也写 `REAL`（同一个理由）。
  *
  * 建表顺序与 `prisma db push` 的输出一致（Worksheet 无依赖，ClassroomWorksheet 依赖它，
  * WorksheetResponse 依赖 Classroom / Worksheet / ClassroomStudent，WorksheetAnswer 最后）。
@@ -75,6 +84,8 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
     "value" JSONB,
     "status" TEXT NOT NULL DEFAULT 'unanswered',
     "isCorrect" BOOLEAN,
+    "gradeState" TEXT,
+    "score" REAL,
     "reviewedAt" DATETIME,
     "submittedAt" DATETIME,
     CONSTRAINT "WorksheetAnswer_responseId_fkey" FOREIGN KEY ("responseId") REFERENCES "WorksheetResponse" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -132,4 +143,60 @@ export async function ensureWorksheetTables(
   if (created.length > 0) console.log(`[server] 学习单表已创建：${created.join(', ')}`);
   if (indexesCreated.length > 0) console.log(`[server] 学习单索引已创建：${indexesCreated.join(', ')}`);
   return { created, indexesCreated };
+}
+
+/**
+ * M4a：给**已有库**的 `WorksheetAnswer` 补 `gradeState` / `score` 两列，并把旧行回填。
+ *
+ * 🔴 **为什么不放在 `index.ts` 里内联**：回填那两条 SQL 有两个「错了不报错」的性质，
+ * 而内联在启动流程里**没有任何东西能测它们**。抽到这里之后
+ * `worksheet-schema.test.ts` 能在 /tmp 的探针库上真跑一遍（见那两条用例）。
+ *
+ * 🔴 **列的类型写 `REAL` 而不是 `DOUBLE PRECISION`**：Prisma 对 SQLite 的 `Float` 落库
+ * 写的就是 `REAL`（本文件的建表 DDL 也是它）。实测：写 `DOUBLE PRECISION` 的话，
+ * 桌面版下一次 `db push` 会认为「与 schema 不一致」而**静默重建这张表**；
+ * 写 `REAL` 时 `db push` 回一句「already in sync」、一个字节都不动。两条路都实测过、
+ * 数据都不丢，但重建是课上那张 40 人 × 20 题的表不该付的代价。
+ *
+ * 🔴 **`isCorrect` 只增不改** —— 它是协议字段，全仓 21 行代码在读它（含学生端
+ * `use-worksheet-answers.ts` 的 `scoreFromWire`）。改名 ⇒ 前端拿到 `undefined`
+ * ⇒ 不画奖励，**且没有任何报错**。这里只加两列，那一列原样留着。
+ *
+ * ⚠️ 表不存在时**什么都不做**（返回 `columnsAdded: []`）：建表是
+ * `ensureWorksheetTables` 的职责，而且 `db push` 出来的新库天生就有这两列。
+ */
+export async function ensureWorksheetAnswerColumns(
+  prisma: PrismaClient,
+): Promise<{ columnsAdded: string[]; backfilled: number }> {
+  const columnsAdded: string[] = [];
+  const cols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+  if (cols.length === 0) return { columnsAdded, backfilled: 0 };
+
+  if (!cols.some((c) => c.name === 'gradeState')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "gradeState" TEXT`);
+    columnsAdded.push('gradeState');
+  }
+  if (!cols.some((c) => c.name === 'score')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "score" REAL`);
+    columnsAdded.push('score');
+  }
+
+  // 🔴 **回填**：旧行的 `isCorrect` 是那时**全部**的信息（当时没有半对）。不回填的话，
+  // 升级后所有历史作答的 `gradeState` 都是 null ⇒ 看板把它们当成「没判过」
+  // ⇒ 正确率的分母凭空变小，且没有任何报错。
+  //
+  // ⚠️ `WHERE gradeState IS NULL AND isCorrect IS NOT NULL` 是**幂等的关键**：
+  // 每次启动都会跑，缺了这两个条件就会把新判的 `partial` 覆盖成 `correct`/`incorrect`
+  // —— 半对从此消失，而它看起来只是「分算错了」。
+  //
+  // ⚠️ **`isCorrect` 不回填成 `score`**：旧行没有逐题分值，任何写死的数（1？）都是编的。
+  // `score` 留 null，读的一侧按 `gradeState` 兜底（B1 处理）。写一个 1 进去等于声称
+  // 「全班历史作答每一题都正好值 1 分」，而那个数谁都没填过。
+  const backfilled = await prisma.$executeRawUnsafe(
+    `UPDATE "WorksheetAnswer" SET "gradeState" = CASE WHEN "isCorrect" THEN 'correct' ELSE 'incorrect' END
+     WHERE "gradeState" IS NULL AND "isCorrect" IS NOT NULL`,
+  );
+  if (columnsAdded.length > 0) console.log(`[server] 学习单作答表已加列：${columnsAdded.join(', ')}`);
+  if (backfilled > 0) console.log(`[server] 学习单作答表已回填 gradeState：${backfilled} 行`);
+  return { columnsAdded, backfilled };
 }

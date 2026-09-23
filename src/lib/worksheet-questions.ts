@@ -32,14 +32,39 @@ import type { WorksheetQuestionNode } from './types';
  * `QUESTION_TYPES`）在前端的投影，不是第二份权威：真正的校验在服务端
  * （`routes/worksheets.ts` 的 `parseContent`），多出来的题型会被 400 拒绝。
  * 这里窄一点只影响「能新建哪几种」，不会让非法题型落库。
+ *
+ * ⚠️ 两边的**顺序也是同一个**（`QUESTION_TYPES` 与下面的 `QUESTION_TYPE_OPTIONS`）：
+ * 加题弹窗按这份的顺序列出来，而学生端的题号旁标签按那份的语义走。
+ * 顺序不同不会报错，只会让两处的题型列表读起来不是一套。
  */
-export type QuestionType = 'single-choice' | 'fill-blank' | 'short-answer';
+export type QuestionType =
+  | 'single-choice' | 'true-false' | 'multi-choice' | 'fill-blank' | 'short-answer'
+  | 'order' | 'match' | 'categorize';
 
-/** 题型清单。**加题弹窗、每张卡片右上角的题型名、学生端的题号旁标签共用这一份。** */
-export const QUESTION_TYPE_OPTIONS: Array<{ value: QuestionType; label: string; hint: string }> = [
-  { value: 'single-choice', label: '单选题', hint: '若干选项，只有一个正确答案' },
-  { value: 'fill-blank', label: '填空题', hint: '学生填一段文字，答对任一可接受答案即算正确' },
-  { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分' },
+/**
+ * 题型清单。**加题弹窗、每张卡片右上角的题型名、学生端的题号旁标签共用这一份。**
+ *
+ * 🔴 `graded` 这一格是 M4a 加的，**它不是描述、是判据**：`true` ⇒ 教师看板的格子上会画
+ * ✓/◐/✗，`false` ⇒ 只统计作答进度。它存在的理由是「加题型」这个动作**必须**同时回答
+ * 「它判不判分」—— 见 `src/app/teacher/classroom/worksheet-drawer-state.ts` 的
+ * `GRADED_QUESTION_TYPES`（它现在从这一格**派生**，不再是一份并列的白名单，
+ * 那份白名单漏改的表现是「正确率把新题型算进分母，格子上却不画任何标记」，全程无报错）。
+ */
+export const QUESTION_TYPE_OPTIONS: Array<{
+  value: QuestionType;
+  label: string;
+  hint: string;
+  /** 能不能自动判分。`true` ⇒ 看板会画 ✓/◐/✗；`false` ⇒ 只统计作答进度。 */
+  graded: boolean;
+}> = [
+  { value: 'single-choice', label: '单选题', hint: '若干选项，只有一个正确答案', graded: true },
+  { value: 'true-false', label: '判断题', hint: '对 / 错两个选项', graded: true },
+  { value: 'multi-choice', label: '多选题', hint: '若干选项，正确答案可以不止一个', graded: true },
+  { value: 'fill-blank', label: '填空题', hint: '学生填一段文字，答对任一可接受答案即算正确', graded: true },
+  { value: 'order', label: '排序题', hint: '把打乱的条目排成正确顺序', graded: true },
+  { value: 'match', label: '连线题', hint: '把左栏与右栏一一连起来', graded: true },
+  { value: 'categorize', label: '归类题', hint: '把若干条目拖到对应的框里', graded: true },
+  { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分', graded: false },
 ];
 
 /**

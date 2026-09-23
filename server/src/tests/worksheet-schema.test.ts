@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
-import { ensureWorksheetTables } from '../services/worksheet-schema.js';
+import { ensureWorksheetAnswerColumns, ensureWorksheetTables } from '../services/worksheet-schema.js';
 
 /** 4 张新表 —— 也是「老库形状」的判据。 */
 const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer'];
@@ -119,6 +119,153 @@ test('在缺表的库上建出 4 张表，且第二次调用不重复建', async
       `INSERT INTO "Worksheet" ("id","title","content","settings","updatedAt") VALUES ('w1','t','{}','{}',CURRENT_TIMESTAMP)`);
     const inserted = await db.$queryRawUnsafe<{ title: string }[]>(`SELECT "title" FROM "Worksheet" WHERE "id"='w1'`);
     assert.deepEqual(inserted, [{ title: 't' }]);
+  } finally {
+    await db.$disconnect();
+    fs.rmSync(file, { force: true });
+  }
+});
+
+/** 比对用的归一化：只允许差一个行尾分号（以及缩进/换行）。 */
+function normalizeDdl(sql: string): string {
+  return sql.trim().replace(/;$/, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * 🔴 **手写 DDL 必须与 `prisma db push` 的产物逐表逐字一致。**
+ *
+ * `worksheet-schema.ts` 的注释把这条写成了规矩，但在此之前**没有任何东西在检查它** ——
+ * 规矩靠人记得。而漏掉一个类型的表现是：桌面版下次 `db push` 认为库与 schema 不一致，
+ * **静默重建这张表**；同时 `index.ts` 里按 `sqlite_master` 探测的同步块**不会重跑**
+ * （表还在），两边从此分叉。
+ *
+ * 判据的来源是 `before()` 里那个用**当前** `schema.prisma` `db push` 出来的模板库 ——
+ * 所以改 `schema.prisma` 而不同步 `worksheet-schema.ts`，这条用例就红。
+ * （M4a 实测抓到过一次：`Float` 在 SQLite 上 db push 写的是 `REAL`，
+ * 而规格里那段手写的是 `DOUBLE PRECISION`。）
+ */
+test('🔴 手写建表 DDL 与 prisma db push 的产物逐表逐字一致（差一个类型下次 db push 就重建）', async () => {
+  const { db, file } = makeCopy('ddl');
+  const template = new PrismaClient({ datasources: { db: { url: `file:${TEMPLATE_DB}` } } });
+  try {
+    // 把 4 张表删掉，再让被测函数按手写 DDL 建回来 —— 比的是「建出来的东西」，
+    // 不是「文件里写了什么字符串」。
+    for (const t of DROP_ORDER) {
+      await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "${t}"`);
+    }
+    await ensureWorksheetTables(db);
+
+    const names = [...WORKSHEET_TABLES, ...INDEX_NAMES];
+    const placeholders = names.map(() => '?').join(', ');
+    const read = async (client: PrismaClient): Promise<Map<string, string>> => {
+      const rows = await client.$queryRawUnsafe<{ name: string; sql: string }[]>(
+        `SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name IN (${placeholders})`,
+        ...names,
+      );
+      return new Map(rows.map((row) => [row.name, row.sql]));
+    };
+
+    const ours = await read(db);
+    const theirs = await read(template);
+
+    // 前置条件：**两边都要有全部 10 项**。少一项就跳过比对的话，这条用例会在
+    // 「表根本没建出来」时静默通过 —— 那正是它要挡的东西。
+    assert.deepEqual([...ours.keys()].sort(), [...names].sort(), '手写 DDL 应建出 4 张表 + 6 个索引');
+    assert.deepEqual([...theirs.keys()].sort(), [...names].sort(), 'db push 的产物里也应有这 10 项');
+
+    for (const name of names) {
+      assert.equal(
+        normalizeDdl(ours.get(name) ?? ''),
+        normalizeDdl(theirs.get(name) ?? ''),
+        `「${name}」的手写 DDL 与 prisma db push 的产物不一致 —— ` +
+        '桌面版下次 db push 会重建它，而 index.ts 里按 sqlite_master 探测的同步块不会重跑，两边分叉。' +
+        '修法：把 db push 的输出逐字抄回 worksheet-schema.ts 的 TABLES。',
+      );
+    }
+  } finally {
+    await db.$disconnect();
+    await template.$disconnect();
+    fs.rmSync(file, { force: true });
+  }
+});
+
+/**
+ * 🔴 **加列 + 回填旧行**（M4a）。
+ *
+ * 这条用例存在的理由是两个「错了不报错」的性质：
+ *   1. 不回填 ⇒ 升级后所有历史作答的 `gradeState` 都是 null ⇒ 看板把它们当成
+ *      「没判过」⇒ **正确率的分母凭空变小**，而屏幕上没有任何东西变红；
+ *   2. 回填的 `WHERE` 少了 `gradeState IS NULL` ⇒ 每次启动都把新判的 `partial`
+ *      覆盖成 `correct`/`incorrect` ⇒ 半对从此消失，看起来只是「分算错了」。
+ *
+ * 库的形状用 `ALTER TABLE … DROP COLUMN` 造（SQLite 3.35+）：模板库是**新**形状，
+ * 而这里要的是**升级前**的形状。比手抄一份老 DDL 更可靠 —— 手抄的那份会随
+ * `schema.prisma` 一起漂。
+ */
+test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次调用不覆盖新判的分', async () => {
+  const { db, file } = makeCopy('cols');
+  try {
+    // 造「升级前」的形状：把两列删掉（索引不受影响，它们在别的列上）。
+    for (const column of ['gradeState', 'score']) {
+      await db.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" DROP COLUMN "${column}"`);
+    }
+    const legacyCols = await db.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+    assert.deepEqual(
+      legacyCols.map((c) => c.name).filter((name) => name === 'gradeState' || name === 'score'),
+      [],
+      '前置条件：两列都应已不在（这才是升级前的形状）',
+    );
+
+    // 放进三种旧行：判对、判错、以及**从来没判过**（未作答 / 关了自动判分）。
+    // ⚠️ 父行必须真造出来：`WorksheetResponse` 的外键指向 Classroom 与 ClassroomStudent，
+    // 而 SQLite 的连接默认开着 `foreign_keys`（外键失败是 `FOREIGN KEY constraint failed`）。
+    // 这两个模型的标量列里只有 `ClassroomStudent.classroomId` 没有默认值。
+    await db.$executeRawUnsafe(`INSERT INTO "Classroom" ("id") VALUES ('c1')`);
+    await db.$executeRawUnsafe(`INSERT INTO "ClassroomStudent" ("id","classroomId") VALUES ('p1','c1')`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "Worksheet" ("id","title","content","settings","updatedAt") VALUES ('w1','t','{}','{}',CURRENT_TIMESTAMP)`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetResponse" ("id","classroomId","worksheetId","participantId","status","updatedAt")
+       VALUES ('r1','c1','w1','p1','submitted',CURRENT_TIMESTAMP)`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetAnswer" ("id","responseId","questionId","status","isCorrect") VALUES
+         ('a_right','r1','q1','submitted',1),
+         ('a_wrong','r1','q2','submitted',0),
+         ('a_ungraded','r1','q3','submitted',NULL)`);
+
+    const first = await ensureWorksheetAnswerColumns(db);
+    assert.deepEqual(first.columnsAdded.sort(), ['gradeState', 'score'], '两列都应被补上');
+    assert.equal(first.backfilled, 2, '只有 isCorrect 非空的那两行该被回填');
+
+    const rows = await db.$queryRawUnsafe<{ id: string; gradeState: string | null; score: number | null }[]>(
+      `SELECT "id","gradeState","score" FROM "WorksheetAnswer" ORDER BY "id"`);
+    assert.deepEqual(rows, [
+      // ⚠️ `score` **必须是 null**：旧行没有逐题分值，任何写死的数（1？）都是编的 ——
+      // 写进去等于声称「全班历史作答每一题都正好值 1 分」，而那个数谁都没填过。
+      { id: 'a_right', gradeState: 'correct', score: null },
+      { id: 'a_ungraded', gradeState: null, score: null },
+      { id: 'a_wrong', gradeState: 'incorrect', score: null },
+    ]);
+
+    // 列的类型必须是 `REAL`：Prisma 的 `Float` 落库写的就是它，写 `DOUBLE PRECISION`
+    // 会让桌面版下一次 `db push` 认为「与 schema 不一致」而静默重建整张表（已实测）。
+    const typed = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+    assert.equal(typed.filter((c) => c.name === 'score')[0]?.type, 'REAL');
+    assert.equal(typed.filter((c) => c.name === 'gradeState')[0]?.type, 'TEXT');
+
+    // 幂等：模拟 A2 之后新判的一行（半对），再跑一次启动流程。
+    await db.$executeRawUnsafe(
+      `UPDATE "WorksheetAnswer" SET "gradeState"='partial', "score"=0.5, "isCorrect"=0 WHERE "id"='a_right'`);
+    const second = await ensureWorksheetAnswerColumns(db);
+    assert.deepEqual(second.columnsAdded, [], '第二次调用不该重复加列');
+    assert.equal(second.backfilled, 0, '第二次调用不该回填任何行');
+
+    const after = await db.$queryRawUnsafe<{ id: string; gradeState: string | null; score: number | null }[]>(
+      `SELECT "id","gradeState","score" FROM "WorksheetAnswer" WHERE "id"='a_right'`);
+    assert.deepEqual(
+      after,
+      [{ id: 'a_right', gradeState: 'partial', score: 0.5 }],
+      '🔴 幂等：新判的 partial 与 score 不得被回填覆盖（WHERE 少了 gradeState IS NULL 就会）',
+    );
   } finally {
     await db.$disconnect();
     fs.rmSync(file, { force: true });

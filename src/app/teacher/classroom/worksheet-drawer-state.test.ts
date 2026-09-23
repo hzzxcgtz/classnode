@@ -2,12 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoardAnswerRow, WorksheetQuestionNode } from '@/lib/types';
 import {
+  QUESTION_TYPE_OPTIONS,
+  type QuestionType,
+} from '../../../lib/worksheet-questions.ts';
+import {
   formatAnswer,
   indexQuestions,
   participantColumnTitle,
   participantUnitLabel,
   questionAggregate,
   questionHeading,
+  GRADED_QUESTION_TYPES,
+  isGradedType,
   questionOutcome,
   statusLabel,
 } from './worksheet-drawer-state.ts';
@@ -194,4 +200,74 @@ test('题号一律由题目树算，**绝不**拿 answerRows 的下标当题号'
   // 题已被教师删掉 / 改过 id ⇒ 查不到下标，**不编题号**，只给题型。
   assert.equal(indexOf('已经不在的题'), -1);
   assert.equal(questionHeading(choice, -1), '单选题');
+});
+
+// ---------------------------------------------------------------------------
+// 题型 × 判分：`GRADED_QUESTION_TYPES` 是派生的 —— 但**派生出来的结论**要单独钉住
+// ---------------------------------------------------------------------------
+
+/**
+ * 一份**独立写出来**的期望值：哪些题型有对错。
+ *
+ * 🔴 为什么还要抄这一份「第二处」：`GRADED_QUESTION_TYPES` 现在是从
+ * `QUESTION_TYPE_OPTIONS` 的 `graded` 那一格**派生**的，所以「派生得对不对」不再是
+ * 一个可以断言的问题（它恒等于自己）。真正要挡的是**那一格填错了** ——
+ * 比如顺手把 `multi-choice` 写成 `graded: false`。
+ * 派生消掉的是「漏改」，消不掉「改错」；这一份就是后者。
+ *
+ * `Record<QuestionType, boolean>` ⇒ 题型清单加一个成员而这里没补，`tsc` 直接红。
+ */
+const EXPECTED_GRADED: Record<QuestionType, boolean> = {
+  'single-choice': true,
+  'true-false': true,
+  'multi-choice': true,
+  'fill-blank': true,
+  order: true,
+  match: true,
+  categorize: true,
+  'short-answer': false,
+};
+
+test('🔴 每个题型的 graded 标记都要与「它判不判分」的决策一致', () => {
+  for (const option of QUESTION_TYPE_OPTIONS) {
+    assert.equal(
+      option.graded,
+      EXPECTED_GRADED[option.value],
+      `题型「${option.value}」的 graded 标记不对 —— 看板会不会画 ✓/◐/✗ 由它决定`,
+    );
+    assert.equal(isGradedType(option.value), option.graded, 'isGradedType 必须与那一格同源');
+  }
+
+  // 派生关系本身：`GRADED_QUESTION_TYPES` 必须就是我们期望的那些题型。
+  // 这条同时防止它某天被改回「并列的第二份白名单」。
+  assert.deepEqual(
+    [...GRADED_QUESTION_TYPES].sort(),
+    QUESTION_TYPE_OPTIONS.filter((option) => EXPECTED_GRADED[option.value]).map((option) => option.value).sort(),
+  );
+});
+
+test('🔴 分母与格子必须同进同出：能判分的题型既要进正确率的分母，也要在格子上画标记', () => {
+  const rows: Array<WorksheetBoardAnswerRow | undefined> = [
+    row({ questionId: 'q_x', status: 'submitted', isCorrect: false }),
+    row({ questionId: 'q_x', status: 'submitted', isCorrect: true }),
+  ];
+
+  for (const option of QUESTION_TYPE_OPTIONS) {
+    const outcome = questionOutcome(node({ id: 'q_x', type: option.value }), rows[0]);
+
+    if (!EXPECTED_GRADED[option.value]) {
+      assert.equal(outcome.mark, 'none', `题型「${option.value}」不判分，格子上就不该有标记`);
+      continue;
+    }
+
+    // 这正是那份并列白名单漏改时的症状：服务端判了分、`isCorrect` 非空
+    // ⇒ 下面这个分母把它算进去，而格子上什么都不画 —— 全程无报错。
+    assert.equal(questionAggregate(rows).graded, 2, '分母读的是 isCorrect 非空，与题型无关');
+    assert.notEqual(
+      outcome.mark,
+      'none',
+      `题型「${option.value}」已经被判了分（进了分母），格子上却不画标记 —— ` +
+      '这就是「新题型算进正确率、格子上没有 ✓」那个静默不一致',
+    );
+  }
 });

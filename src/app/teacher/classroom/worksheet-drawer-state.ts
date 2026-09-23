@@ -5,7 +5,9 @@ import type { WorksheetBoardAnswerRow, WorksheetQuestionNode } from '@/lib/types
 // （Node 24 的类型擦除会把 `import type` 整段删掉，剩下的运行时 import 必须是
 // Node 也解析得了的相对路径）。加一行 `@/…` 的运行时 import 就会让
 // `worksheet-drawer-state.test.ts` 整个跑不起来 —— `import type` 那一行是唯一的例外。
-import { draftFromValue, flattenQuestions, questionTypeLabel, readOptions } from '../../../lib/worksheet-questions.ts';
+import {
+  draftFromValue, flattenQuestions, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
+} from '../../../lib/worksheet-questions.ts';
 
 /**
  * 教师看板**学习单抽屉**的两种形态的判据 —— 纯函数，不碰 React / DOM / 网络。
@@ -44,12 +46,24 @@ export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
 export type WorksheetOutcomeMark = 'correct' | 'wrong' | 'none';
 
 /**
- * 只有这两种题型有对错。**唯一一份** —— 与 `grade()` 的分派一致，但它是**白名单**：
- * 将来加一种新题型时，它会自动落到「没有对错」那一侧（少显示一个 ✓ 不会骗人，
- * 多显示一个会）。⚠️ 顺带它也是「主观题没有 ✓/✗」那条要求的**第二道闸**：
- * 即使库里某一行 `short-answer` 的 `isCorrect` 被手工改成了 `true`，这里也不会显示 ✓。
+ * 哪些题型有对错（看板格子上画 ✓/◐/✗ 的那些）。
+ *
+ * 🔴 **派生，不再并列。** 这里曾经是与题型清单并列的第二份白名单
+ * （`['single-choice', 'fill-blank']`），靠它自己的一句注释提醒「将来加新题型时它会自动
+ * 落到『没有对错』那一侧」—— 而**漏改的表现不是少一个 ✓，是正确率算错**：
+ * 正确率的分母（`questionAggregate` 里 `isCorrect` 非空的行数）与服务端判分走的是
+ * **题型无关**的路，于是一个新的可判分题型会**进分母却不进格子**，全程无报错。
+ *
+ * 现在「加一个题型」这个动作本身就必须在 `QUESTION_TYPE_OPTIONS` 里回答
+ * 「它判不判分」（`graded` 那一格），漂移在结构上不可能发生。
+ *
+ * ⚠️ 它顺带也是「主观题没有 ✓/✗」那条要求的**第二道闸**：即使库里某一行
+ * `short-answer` 的 `isCorrect` 被手工改成了 `true`，这里也不会显示 ✓。
+ * 这条闸靠的是 `short-answer` 在 `QUESTION_TYPE_OPTIONS` 里是 `graded: false` ——
+ * `worksheet-drawer-state.test.ts` 有一条用例把这两件事钉在一起。
  */
-export const GRADED_QUESTION_TYPES: readonly string[] = ['single-choice', 'fill-blank'];
+export const GRADED_QUESTION_TYPES: readonly string[] =
+  QUESTION_TYPE_OPTIONS.filter((option) => option.graded).map((option) => option.value);
 
 export function isGradedType(type: string): boolean {
   return GRADED_QUESTION_TYPES.includes(type);

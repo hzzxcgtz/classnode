@@ -515,6 +515,61 @@ test('CRUD：新建 → 列表能搜到 → 详情含完整 content → 更新�
   assert.equal(JSON.stringify(after.content), JSON.stringify(SAMPLE_CONTENT), '只改标题时 content 不得被动过');
 });
 
+test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（补了就静默切断继承）；坏值归一化', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const content = structuredClone(SAMPLE_CONTENT) as {
+    schemaVersion: number;
+    nodes: Array<Record<string, unknown>>;
+  };
+  // ① 显式填了分值 —— 原样落库
+  content.nodes[0].points = { full: 3, half: 1 };
+  // ② **留空** —— 规格 §12 裁定 4：留空 = 继承学习单级。这个键必须**不被发明出来**。
+  // ③ 坏值 —— `full` 是字符串、`half` 越界。归一化后应回落到默认档（1 / 0）。
+  content.nodes[1].points = { full: '两朵', half: 1000 };
+
+  const res = await server.post('/api/worksheets', { title: '带分值的单', content, settings: SAMPLE_SETTINGS });
+  const body = await res.json() as { id: string; error?: string };
+  assert.equal(res.status, 200, JSON.stringify(body));
+
+  const saved = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: body.id } });
+  const nodes = (saved.content as { nodes: Array<Record<string, unknown>> }).nodes;
+
+  assert.deepEqual(nodes[0].points, { full: 3, half: 1 }, '教师填的分值必须原样落库');
+
+  // 坏值：`'两朵'` 与非整数 / 越界的 1000 都回落到默认档，**不是**被原样存进去
+  // （`points.full` 是字符串时算出来的分数是个字符串拼接），也**不是**整块丢掉。
+  assert.deepEqual(nodes[1].points, { full: 1, half: 0 }, '坏值必须被归一化，不能原样落库');
+
+  // 🔴 这一条是「留空 = 继承」的地基：补上 `{ full: 1, half: 0 }` 会让这道题**脱离**学习单级，
+  // 教师改学习单级的档时它不再跟着变，而他看不到任何提示。
+  assert.equal('points' in nodes[2], false, '留空的分值不得被补成默认值（那会静默切断继承）');
+
+  // ── 顺带确认新题型真的走得通保存这条路（服务端校验是它的唯一权威）──
+  // 合法的新题型能存进来：`order` 的显示顺序与正确顺序不同
+  const withOrder = structuredClone(SAMPLE_CONTENT) as { schemaVersion: number; nodes: Array<Record<string, unknown>> };
+  withOrder.nodes.push({
+    id: 'q_4',
+    type: 'order',
+    prompt: '把步骤排好',
+    inputMode: 'keyboard',
+    data: { items: [{ id: 'i1', text: '甲' }, { id: 'i2', text: '乙' }], correctOrder: ['i2', 'i1'] },
+    children: [],
+  });
+  const okRes = await server.post('/api/worksheets', { title: '带排序题的单', content: withOrder, settings: SAMPLE_SETTINGS });
+  assert.equal(okRes.status, 200, JSON.stringify(await okRes.json()));
+
+  // 阴性对照：同一道题把显示顺序改成与正确顺序相同 ⇒ 400（否则学生什么都不做就是满分）
+  const badOrder = structuredClone(withOrder);
+  badOrder.nodes[3].data = { items: [{ id: 'i1', text: '甲' }, { id: 'i2', text: '乙' }], correctOrder: ['i1', 'i2'] };
+  const badRes = await server.post('/api/worksheets', { title: '坏排序题', content: badOrder, settings: SAMPLE_SETTINGS });
+  const badBody = await badRes.json() as { error: string };
+  assert.equal(badRes.status, 400, JSON.stringify(badBody));
+  assert.match(badBody.error, /打乱/, '报错要告诉教师怎么改');
+});
+
 test('CRUD：题目不合法（单选题没有正确答案）⇒ 400，且一个学习单都不建', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });

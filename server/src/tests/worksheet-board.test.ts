@@ -112,8 +112,14 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
 }
 
 /**
- * 夹具里的每一道题都**带着答案**（`correctKeys` / `answers` / `explanation`），
- * 否则「响应里没有答案键」那句什么都没证明 —— 阳性对照见下面最后一条用例。
+ * 夹具里的每一道题都**带着答案**，否则「响应里没有答案键」那句什么都没证明 ——
+ * 阳性对照见下面最后一条用例。
+ *
+ * 🔴 **`ANSWER_KEYS` 里的每一个键都必须在这份夹具里出现一次**，而这不是靠人记得：
+ * 那条用例会逐个键断言「教师读端点里看得到它」，漏一个就红。
+ * M4a 往 `ANSWER_KEYS` 加 `correctOrder` / `pairs` / `placement` 时，正是这条把
+ * q_4 / q_5 / q_6 逼出来的 —— 它要的是「这道题**真的**带着那个键」，不是往某道题里
+ * 塞一个空数组凑字符串。
  */
 const SAMPLE_CONTENT = {
   schemaVersion: 1,
@@ -140,6 +146,47 @@ const SAMPLE_CONTENT = {
       prompt: '说说你观察到的现象。',
       inputMode: 'keyboard',
       data: {},
+      children: [],
+    },
+    {
+      // 排序题：答案是 `correctOrder`（**不是** `items` —— 那是学生看到的初始顺序）。
+      id: 'q_4',
+      type: 'order',
+      prompt: '把光合作用的步骤排好',
+      inputMode: 'keyboard',
+      data: {
+        items: [{ id: 'i1', text: '吸收光能' }, { id: 'i2', text: '合成有机物' }],
+        correctOrder: ['i2', 'i1'],
+        explanation: '先吸光再合成',
+      },
+      children: [],
+    },
+    {
+      // 连线题：答案是 `pairs`；`left` / `right` 是必须留给学生的题面。
+      id: 'q_5',
+      type: 'match',
+      prompt: '把名称与化学式连起来',
+      inputMode: 'keyboard',
+      data: {
+        left: [{ id: 'l1', text: '水' }, { id: 'l2', text: '二氧化碳' }],
+        right: [{ id: 'r1', text: 'H2O' }, { id: 'r2', text: 'CO2' }],
+        pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }],
+        explanation: '水是 H2O',
+      },
+      children: [],
+    },
+    {
+      // 归类题：答案是 `placement`；`items` / `zones` 是题面。
+      id: 'q_6',
+      type: 'categorize',
+      prompt: '把下面的动物分到相应的框里',
+      inputMode: 'keyboard',
+      data: {
+        items: [{ id: 'i1', text: '猫' }],
+        zones: [{ id: 'z1', label: '哺乳类' }, { id: 'z2', label: '鸟类' }],
+        placement: { i1: 'z1' },
+        explanation: '猫是哺乳类',
+      },
       children: [],
     },
   ],
@@ -254,6 +301,14 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   assert.ok(!keys.has('content'), '响应里不得有 content —— 题目节点的 data 就住在它里面');
 
   // ── 判据二：原始字面量级（报告里那三条 grep 的同一判据）。
+  //
+  // ⚠️ **这条判据有一个已知的撞名陷阱，本题的夹具还没踩到它**：`value` 里是学生**自己
+  //    写的**作答，而 M4a 的作答值格式（D1）里 `match/v1` 的字段叫 `pairs`、
+  //    `categorize/v1` 的叫 `placement` —— 与 `ANSWER_KEYS` 里那两个「正确答案」的键名
+  //    逐字相同。⇒ 只要这份夹具里出现一行**连线题 / 归类题**的作答，本判据就会把
+  //    「学生答对了」读成「答案泄漏了」。
+  //    真到那一天，改法照 `worksheet-student.test.ts` 的回读用例：键名扫描排除每行的
+  //    `value`，并把**行的键集合**钉死（那一条不受撞名影响）。
   for (const literal of [...ANSWER_KEYS, 'content']) {
     assert.ok(!raw.includes(literal), `响应原文里不该出现「${literal}」`);
   }

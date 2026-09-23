@@ -7,12 +7,15 @@ import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
 import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import {
+  DEFAULT_POINTS,
   flattenQuestions,
   grade,
+  normalizePointValue,
   QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
   stripAnswers,
   validateQuestion,
   type QuestionNode,
+  type QuestionPoints,
   type QuestionType,
   type WorksheetContent,
 } from '../services/worksheet-questions.js';
@@ -143,11 +146,37 @@ function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
 }
 
 /**
+ * 归一化题目的**逐题分值**（M4a，规格 §12 裁定 5）。
+ *
+ * 🔴 **`points` 整个缺失时返回 `undefined`，绝不补默认值。** 留空 = **继承学习单级**
+ * （规格 §12 裁定 4），所以 `undefined` 是一个有意义的取值。补上 `DEFAULT_POINTS` 会
+ * **静默切断继承**：教师改学习单级的档，已保存的题不再跟着变，而他看不到任何提示 ——
+ * 他会以为「改了没生效」，然后把每一道题都手工改一遍。
+ *
+ * ⚠️ `data` 在 `normalizeNode` 里是**原样透传**的，`points` 不能跟着蹭那条路：
+ * 一个 `points: { full: '两朵' }`（前端改过、或手工改过库）会一路走到判分里，
+ * 而 `points.full` 是 `'两朵'` 时算出来的分数是个字符串拼接。所以必须在这里显式归一化。
+ */
+function normalizePoints(raw: unknown): QuestionPoints | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const source = raw as Record<string, unknown>;
+  return {
+    full: normalizePointValue(source.full, DEFAULT_POINTS.full),
+    half: normalizePointValue(source.half, DEFAULT_POINTS.half),
+  };
+}
+
+/**
  * 归一化一道题。
  *
  * `id` 缺失时由服务端补一个 `q_<uuid>`（规格 §4.3 的占位形状）：创建时前端可能还没生成，
  * 而**提交之后这个 id 就是答案行的外键**（`WorksheetAnswer.questionId`），
  * 一旦落地就不能再变 —— 所以「补 id」只能发生在写入之前，不能发生在读取时。
+ *
+ * 🔴 返回值里**漏掉哪个字段，那个字段就被静默丢掉**：`PUT /api/worksheets/:id` 是整份替换
+ * （`content = parseContent(...).content`），与 `normalizeSettings` 少认一个键是同一种毛病。
+ * M4a 新增的 `points` 必须在下面显式带出来 —— 漏了的表现是「教师逐题填的分值，
+ * 保存一次就全没了」，而界面上没有任何提示。
  */
 function normalizeNode(
   raw: unknown,
@@ -186,11 +215,18 @@ function normalizeNode(
       .filter((child): child is QuestionNode => child !== null)
     : [];
 
+  const points = normalizePoints(node.points);
+
   return {
     id,
     type: type as QuestionType,
     prompt: typeof node.prompt === 'string' ? node.prompt : '',
     inputMode: node.inputMode === 'handwriting' ? 'handwriting' : 'keyboard',
+    // ⚠️ 只在**有值**时写这个键：`points: undefined` 落到 JSON 里是**整个键消失**
+    // （`JSON.stringify` 会丢掉 undefined 的属性），所以两种写法在库里长得一样 ——
+    // 但显式展开一个 `undefined` 会让「这个键到底存不存在」在读的一侧多一种形状。
+    // 统一成「没有 = 键不存在」，`resolvePoints` 只看 `node.points` 的真假。
+    ...(points ? { points } : {}),
     data,
     children,
   };

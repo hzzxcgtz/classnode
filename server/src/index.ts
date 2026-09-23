@@ -31,7 +31,7 @@ import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
 import { ensureGroupMaterials } from './services/group-materials-migration.js';
-import { ensureWorksheetTables } from './services/worksheet-schema.js';
+import { ensureWorksheetAnswerColumns, ensureWorksheetTables } from './services/worksheet-schema.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -412,6 +412,14 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappFrameIntervalMs" INTEGER NOT NULL DEFAULT 10000`);
       console.log('[server] Added webappFrameIntervalMs column to Classroom');
     }
+
+    // M4a：三态判分结果与数值得分（规格 §12）——加列 + 回填旧行。
+    // ⚠️ 实现在 `services/worksheet-schema.ts` 里（**不是**内联在这儿）：那两列的类型
+    // 与那句回填各有一个「错了不报错」的性质，内联在启动流程里就没有任何东西测得动它们。
+    // 抽出去之后 `worksheet-schema.test.ts` 能在 /tmp 的探针库上真跑一遍。
+    // 细节理由见那个函数的注释（`REAL` 而不是 `DOUBLE PRECISION`、`isCorrect` 只增不改、
+    // 回填不写 `score` 的由头）。
+    await ensureWorksheetAnswerColumns(prisma);
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
   }

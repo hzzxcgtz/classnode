@@ -12,6 +12,11 @@ import { PrismaClient } from '@prisma/client';
 import { worksheetAccessGate, worksheetRoutes } from '../routes/worksheets.js';
 import { createTeacherSession } from '../middleware/auth.js';
 import { createStudentToken } from '../middleware/student-auth.js';
+// 🔴 答案键的名单**只有一份**（服务端的 `ANSWER_KEYS`）。这里曾经抄过一份自己的
+// 三元素副本，而它不会跟着注册表漂 —— M4a 往黑名单里加了 `correctOrder` / `pairs` /
+// `placement` 之后，那份副本让这条**泄漏红线**用例对三个新的答案键完全失明，
+// 而它仍然是绿的。
+import { ANSWER_KEYS } from '../services/worksheet-questions.js';
 
 /**
  * 学习单**学生端**：读取（`student-view`）、作答（`PUT`）、提交判分。
@@ -115,9 +120,10 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
 }
 
 /**
- * 夹具里**三种答案字段都有**（`correctKeys` / `answers` / `explanation`）——
- * 剥离测试要逐个字段证明「学生端搜不到」而「教师端搜得到」。
- * 少放一个，那个字段的断言就是恒真的（搜不到的真正原因是夹具里没有它）。
+ * 夹具里**每一种答案字段都有** —— 剥离测试要逐个字段证明「学生端搜不到」而
+ * 「教师端搜得到」。少放一个，那个字段的断言就是恒真的
+ * （搜不到的真正原因是夹具里没有它）。下面第三条阳性对照还会逐个键断言
+ * 「库里那一份没被动过」，所以每个键都必须**真的**出现在某道题里。
  */
 const SAMPLE_CONTENT = {
   schemaVersion: 1,
@@ -150,13 +156,52 @@ const SAMPLE_CONTENT = {
       data: {},
       children: [],
     },
+    {
+      // 排序题：答案是 `correctOrder`（`items` 是学生看到的初始顺序，要留给他）。
+      // ⚠️ 两者**必须不同** —— 相同等于「学生什么都不做就是满分」。
+      id: 'q_4',
+      type: 'order',
+      prompt: '把光合作用的步骤排好',
+      inputMode: 'keyboard',
+      data: {
+        items: [{ id: 'i1', text: '吸收光能' }, { id: 'i2', text: '合成有机物' }],
+        correctOrder: ['i2', 'i1'],
+        explanation: '先吸光再合成',
+      },
+      children: [],
+    },
+    {
+      // 连线题：答案是 `pairs`；`left` / `right` 必须留给学生。
+      id: 'q_5',
+      type: 'match',
+      prompt: '把名称与化学式连起来',
+      inputMode: 'keyboard',
+      data: {
+        left: [{ id: 'l1', text: '水' }, { id: 'l2', text: '二氧化碳' }],
+        right: [{ id: 'r1', text: 'H2O' }, { id: 'r2', text: 'CO2' }],
+        pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }],
+        explanation: '水是 H2O',
+      },
+      children: [],
+    },
+    {
+      // 归类题：答案是 `placement`；`items` / `zones` 必须留给学生。
+      id: 'q_6',
+      type: 'categorize',
+      prompt: '把下面的动物分到相应的框里',
+      inputMode: 'keyboard',
+      data: {
+        items: [{ id: 'i1', text: '猫' }],
+        zones: [{ id: 'z1', label: '哺乳类' }, { id: 'z2', label: '鸟类' }],
+        placement: { i1: 'z1' },
+        explanation: '猫是哺乳类',
+      },
+      children: [],
+    },
   ],
 };
 
 const SAMPLE_SETTINGS = { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' };
-
-/** 答案字段的**三个**键名 —— 与 `worksheet-questions.ts` 的 `ANSWER_KEYS` 同源。 */
-const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation'] as const;
 
 /**
  * 递归收集一棵 JSON 里出现过的**所有键名**（不是字符串包含 —— 键名判据必须精确）。
@@ -222,8 +267,8 @@ const FILL = (text: string) => ({ format: 'fill/v1', text });
  * 🔴 **本任务最重要的一条**：`student-view` 的返回体里搜不到任何答案字段。
  *
  * 「测试绿了」与「剥离真的生效了」是两件事，所以本用例有三层：
- *   · 学生的返回体里三个答案键**一个都搜不到**；
- *   · 同一份学习单走**教师端**读，三个键**都在**（证明夹具里确实有答案）；
+ *   · 学生的返回体里答案键**一个都搜不到**（名单是 `ANSWER_KEYS`，逐字遍历）；
+ *   · 同一份学习单走**教师端**读，每一个键**都在**（证明夹具里确实有答案）；
  *   · 库里的行**没被动过**（防止有人用「写库时把答案删掉」来让这条测试变绿 ——
  *     那会让教师的答案键永久消失，是比泄露更糟的修法）。
  */
@@ -249,7 +294,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     );
   }
 
-  // 阳性对照 ①：题**在**。一个 `res.json({})` 的实现也能让上面三条通过。
+  // 阳性对照 ①：题**在**。一个 `res.json({})` 的实现也能让上面那几条通过。
   const body = JSON.parse(raw) as {
     id: string; title: string; description: string;
     content: { nodes: Array<{ id: string; prompt: string; data: Record<string, unknown> }> };
@@ -258,7 +303,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   assert.equal(body.id, worksheet.id);
   assert.equal(body.title, '光合作用学习单');
   assert.equal(body.description, '第一课时');
-  assert.equal(body.content.nodes.length, 3, '三道题一道都不能少');
+  assert.equal(body.content.nodes.length, 6, '六道题一道都不能少');
   assert.equal(body.content.nodes[0].prompt, '光合作用需要哪些条件？');
   assert.deepEqual(
     body.content.nodes[0].data.options,
@@ -272,14 +317,14 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   //    奖励两项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
   assert.deepEqual(body.settings, { allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1 });
 
-  // 阳性对照 ②：同一份学习单走**教师端**读，三个答案键都必须在 ——
-  // 否则上面那三条可能只是因为夹具里根本没有答案。
+  // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
+  // 否则上面那几条可能只是因为夹具里根本没有答案。
   const teacherRaw = await (await server.get(`/api/worksheets/${worksheet.id}`)).text();
   for (const key of ANSWER_KEYS) {
     assert.ok(teacherRaw.includes(key), `教师端读同一份时必须能看到「${key}」—— 否则剥离测试是空的`);
   }
 
-  // 阳性对照 ③：库里的行没被动过。「写库时删掉答案」也能让最上面三条变绿，
+  // 阳性对照 ③：库里的行没被动过。「写库时删掉答案」也能让最上面那几条变绿，
   // 而那会让教师的答案键永久消失 —— 比泄露更糟的修法。
   const stored = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } });
   const storedRaw = JSON.stringify(stored.content);
@@ -658,18 +703,27 @@ test('状态：allowResubmit 为真时改已提交的题，本题回 draft、整
   const submit = (questionId: string) =>
     server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token));
 
-  // 三道题全部提交 ⇒ 整卷 submitted
+  // 六道题全部提交 ⇒ 整卷 submitted
+  // ⚠️ 夹具里的题型在 M4a 扩到了 6 道，而「整卷交齐」判的是**全卷**（服务端递归数题目树）。
+  // 只提交前几道就断言 `submitted` 会永远失败 —— 那不是这道题坏了，是夹具长大了。
+  // 作答值的形状照 `AnswerDraft` 的联合（D1），这里只是把它当**不透明值**收发。
   await save('q_1', CHOICE(['B']));
   await submit('q_1');
   await save('q_2', FILL('H2O'));
   await submit('q_2');
   const half = await db.prisma.worksheetResponse.findFirstOrThrow();
-  assert.equal(half.status, 'in-progress', '还剩一题没提交，整卷不能算交卷');
+  assert.equal(half.status, 'in-progress', '还剩题没提交，整卷不能算交卷');
 
   await save('q_3', { format: 'text/v1', text: '冒泡' });
   await submit('q_3');
+  await save('q_4', { format: 'order/v1', order: ['i2', 'i1'] });
+  await submit('q_4');
+  await save('q_5', { format: 'match/v1', pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
+  await submit('q_5');
+  await save('q_6', { format: 'categorize/v1', placement: { i1: 'z1' } });
+  await submit('q_6');
   const whole = await db.prisma.worksheetResponse.findFirstOrThrow();
-  assert.equal(whole.status, 'submitted', '三道题都提交了 ⇒ 整卷 submitted');
+  assert.equal(whole.status, 'submitted', '六道题都提交了 ⇒ 整卷 submitted');
   assert.ok(whole.submittedAt, '整卷的 submittedAt 必须写上');
 
   // 改一题：本题回 draft（规格 §8.4 的第三行），整卷回 in-progress
@@ -870,7 +924,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   const submit = (questionId: string) =>
     server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token));
 
-  // ── 学生做完整卷：q_1 答**错**、q_2 答**错**、q_3 问答（不判分）──────────────
+  // ── 学生做完整卷：q_1 答**错**、q_2 答**错**、q_3 问答（不判分）、q_4~q_6 新题型 ──
   // ⚠️ 两道客观题刻意都答错，且答的是一个**正确里没有的字符串**（`CO2` / `A`）——
   // 下面靠它做「下发的是学生自己写的那个值、不是正确答案」的阳性对照。
   await save('q_1', CHOICE(['A']));
@@ -879,10 +933,17 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   await submit('q_2');
   await save('q_3', { format: 'text/v1', text: '叶子冒泡' });
   await submit('q_3');
+  // M4a 新增的三道题也要作答：整卷交齐判的是**全卷**（见 `ensureResponse`）。
+  await save('q_4', { format: 'order/v1', order: ['i2', 'i1'] });
+  await submit('q_4');
+  await save('q_5', { format: 'match/v1', pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
+  await submit('q_5');
+  await save('q_6', { format: 'categorize/v1', placement: { i1: 'z1' } });
+  await submit('q_6');
 
   // ── ① 数据丢没丢：直接查库（分水岭）────────────────────────────────────
   const stored = await db.prisma.worksheetAnswer.findMany({ orderBy: { questionId: 'asc' } });
-  assert.equal(stored.length, 3, '三道题的作答必须都在库里 —— 这是「数据没丢」的直接证据');
+  assert.equal(stored.length, 6, '六道题的作答必须都在库里 —— 这是「数据没丢」的直接证据');
   assert.equal((await db.prisma.worksheetResponse.findFirstOrThrow()).status, 'submitted');
 
   // ── 「刷新页面」：会话重建（新 token），重新读一次 ─────────────────────────
@@ -903,10 +964,10 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   // 免得将来有人「顺手改个更自然的名字」而把下面那条键名扫描变成一处误报。
   assert.deepEqual(Object.keys(body), ['rows'], `信封只能是 rows：${raw}`);
   const byId = new Map(body.rows.map(row => [row.questionId, row]));
-  assert.equal(body.rows.length, 3, `三道题的作答一道都不能少：${raw}`);
+  assert.equal(body.rows.length, 6, `六道题的作答一道都不能少：${raw}`);
   assert.deepEqual(
     [...byId.keys()].sort(),
-    ['q_1', 'q_2', 'q_3'],
+    ['q_1', 'q_2', 'q_3', 'q_4', 'q_5', 'q_6'],
     'key 是 questionId —— 前端靠它把作答贴回对应的题（规格 §3-P：题 id 稳定）',
   );
 
@@ -929,12 +990,35 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
 
   // ── ③ 🔴 安全：这条新路径不得把正确答案捎出来（规格 §5.4）───────────────
   // 判据一（键名级、递归）：`ANSWER_KEYS` 一个都不许作为**键**出现。
-  const keys = collectKeys(JSON.parse(raw));
+  //
+  // 🔴 扫的范围**排除每一行作答的 `value`**。这不是放宽红线，是修一处**判据撞名**：
+  //    `value` 是学生**自己写的**那份作答（这条端点的全部意义就是把它还给学生本人），
+  //    而 M4a 的作答值格式里 `match/v1` 的字段就叫 `pairs`、`categorize/v1` 的叫
+  //    `placement` —— 与 `ANSWER_KEYS` 里那两个「正确答案」的键名**逐字相同**。
+  //    不排除它的话，一份**答对了**的连线题作答会被这条红线判成泄漏（判据把「学生自己
+  //    写的」与「题目里带的」混成了一件东西）。真正的泄漏面是题目的 `content`，
+  //    它由下面那条 `Object.keys(body)` 与逐行的键集合断言独立钉住。
+  const scanTarget = { rows: body.rows.map((row) => ({ ...row, value: null })) };
+  const keys = collectKeys(scanTarget);
   for (const key of ANSWER_KEYS) {
     assert.ok(!keys.has(key), `回读响应里出现了答案键「${key}」（规格 §5.4 红线）：${raw}`);
   }
-  // 判据二（原文级）：correctKeys / explanation 在整串里连字面量都不该有。
-  for (const literal of ['correctKeys', 'explanation']) {
+
+  // 判据一之补强：既然键名扫描对 `value` 内部是不设防的，那就把**行的形状**钉死 ——
+  // 多出任何一个键都可能是捎带出来的题目数据，而这一条不受撞名影响。
+  for (const row of body.rows) {
+    assert.deepEqual(
+      Object.keys(row).sort(),
+      ['isCorrect', 'questionId', 'status', 'submittedAt', 'value'],
+      `每一行只许有这五个键（多一个就可能是捎带出来的题目数据）：${raw}`,
+    );
+  }
+
+  // 判据二（原文级）：这几个键名在整串里连字面量都不该有。
+  // ⚠️ 名单**不是** `ANSWER_KEYS` 全体，而是其中「不可能出现在学生作答值里」的那些：
+  //    `answers` / `pairs` / `placement` 都同时是作答值格式的字段名（D1 的联合），
+  //    拿它们做字面量扫描会误报学生自己写的作答（见判据一那段）。
+  for (const literal of ['correctKeys', 'correctOrder', 'explanation']) {
     assert.ok(!raw.includes(literal), `回读响应原文里不该出现「${literal}」：${raw}`);
   }
   // 判据三（**阳性对照**，两条缺一不可）：
@@ -947,7 +1031,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   assert.deepEqual(q1.value, CHOICE(['A']), '单选题回读的是学生选的那一项，不是正确项');
 
   // 阳性对照（夹具侧）：同一份学习单走**教师端**读时答案是**在**的 ——
-  // 少了它，上面那三条「搜不到」可能只是因为夹具里根本没有答案。
+  // 少了它，上面那几条「搜不到」可能只是因为夹具里根本没有答案。
   const teacherRaw = await (await server.get(`/api/worksheets/${worksheet.id}`)).text();
   assert.ok(teacherRaw.includes('H2O') && teacherRaw.includes('correctKeys'), '夹具里必须有答案，否则红线断言无效');
 });

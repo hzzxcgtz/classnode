@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage } from './types';
 
 let studentSessionToken = '';
 
@@ -392,6 +392,41 @@ export const api = {
     request<{ used: boolean; classroomCount: number; classrooms: RelatedClassroom[] }>(`/api/webapps/${id}/usage`),
   getWebappEntries: (id: string) =>
     request<{ entries: string[] }>(`/api/webapps/${id}/entries`),
+
+  // 学习单（P1 / 规格 §5.2）。教师端 CRUD，全部走教师 cookie。
+  //
+  // ⚠️ 列表是本仓**唯一一个服务端分页**的端点，所以参数与形状都与其他列表不同：
+  // 它收 `?page=&pageSize=&search=`（`pageSize` 服务端封顶 100），回
+  // `{ items, total, page, pageSize }` —— `total` 是**全库匹配数**，分页控件读它，
+  // 不要拿 `items.length` 顶替。搜索也是服务端做的（`title` 模糊匹配），
+  // 所以调用方要**去抖**，否则每个按键一次请求。
+  getWorksheets: (params?: { page?: number; pageSize?: number; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params?.search) query.set('search', params.search);
+    const suffix = query.toString();
+    return request<WorksheetListResponse>(`/api/worksheets${suffix ? `?${suffix}` : ''}`);
+  },
+  // 新建 / 复制 / 更新都回**完整详情**（含 `content`）。列表页拿到它只是为了「确实建好了」，
+  // 真正要读内容的是编辑器；列表刷新一律重新拉列表，不要拿这个返回值去拼列表项
+  // —— 它没有 `questionCount` / `classroomCount`（见 `WorksheetDetail` 的注释）。
+  createWorksheet: (data: { title: string; description?: string | null; content?: WorksheetContent; settings?: WorksheetSettings }) =>
+    request<WorksheetDetail>('/api/worksheets', { method: 'POST', body: JSON.stringify(data) }),
+  // 部分更新：`content` 传了就**整体替换**（题目树没有「按 id 打补丁」的语义）。
+  updateWorksheet: (id: string, data: { title?: string; description?: string | null; content?: WorksheetContent; settings?: WorksheetSettings }) =>
+    request<WorksheetDetail>(`/api/worksheets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteWorksheet: (id: string) => request(`/api/worksheets/${id}`, { method: 'DELETE' }),
+  // 复制一份：服务端**只复制内容，不复制关系**（课堂关联与作答都不带过来），
+  // 所以副本一定是一份「还没人用过」的学习单 —— 这也正是它作为删除守卫出路的原因。
+  duplicateWorksheet: (id: string) =>
+    request<WorksheetDetail>(`/api/worksheets/${id}/duplicate`, { method: 'POST' }),
+  // 删除守卫的三样引用（课堂级 / 组级 / 历史作答）。`used` 由服务端算好，
+  // 前端不要自己重新拼这个判据 —— 拼错了就会给出一个与 DELETE 不一致的结论。
+  getWorksheetUsage: (id: string) =>
+    request<WorksheetUsage>(`/api/worksheets/${id}/usage`),
+  // 详情。列表页不用它（列表项没有 `content` 也不需要），留给编辑器（C2）。
+  getWorksheet: (id: string) => request<WorksheetDetail>(`/api/worksheets/${id}`),
 
   // Storage stats
   getStorageStats: () =>

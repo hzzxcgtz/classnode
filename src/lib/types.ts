@@ -159,6 +159,129 @@ export interface WebappUploadResult extends WebappSummary {
   externalDeps: { count: number; files: string[] };
 }
 
+/**
+ * 学习单列表项（`GET /api/worksheets` 的 `items[]`）。
+ *
+ * 🔴 **刻意没有 `content`**（题目树）。服务端读它但不发它 —— 一页 20 份、每份几十 KB，
+ * 列表页根本用不到；要题目结构得走详情 `GET /api/worksheets/:id`。所以别把
+ * `WorksheetMaterialSummary` 那套（`{ id, title }`）当成这个类型：那是**课堂材料槽**的
+ * 最小形状，与「管理页列表项」是两件事。
+ *
+ * ⚠️ 字段名一律 `title` / `description`（`Worksheet` 模型如此），不要顺手对齐成网页那套 `name`。
+ */
+export interface WorksheetSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  /** `content.schemaVersion` 的冗余，题型演进时迁移的依据。 */
+  schemaVersion: number;
+  /** 题数 —— 唯一从 `content` 算出来、但**值得进列表**的一列。 */
+  questionCount: number;
+  /**
+   * 被多少个课堂关联。与网页同口径：**课堂级（`ClassroomWorksheet`）与组级
+   * （`ClassroomGroupMaterial(kind='worksheet')`）按课堂去重后的并集** ——
+   * 只数课堂级会让高级模式的课堂整个从计数里消失。
+   */
+  classroomCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 列表响应。**本仓唯一一个服务端分页的接口**（B1 定的形状），其余列表都是一次给全。
+ *
+ * ⚠️ `total` 是**全库匹配数**，不是 `items.length` —— 分页控件必须读它。反过来，
+ * 「已关联 / 未被使用」这种按 `classroomCount` 的计数**不能在这一页上算**：
+ * 那只会统计当前这一页，教师读到的是一个假数字。列表页因此不做那个筛选（见 `page.tsx`）。
+ */
+export interface WorksheetListResponse {
+  items: WorksheetSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * 删除守卫要讲清的三样引用（规格 §5.5）—— `GET /api/worksheets/:id/usage`。
+ *
+ * 🔴 `responseCount`（历史作答）不是可选的第三项：Prisma 对必填关系默认 `ON DELETE RESTRICT`，
+ * 删一份有作答的学习单会被**数据库直接拒绝**。少了它，界面会给出「没人用、可以删」的
+ * 假信号，然后删除失败 —— 一个说谎的文案。
+ *
+ * `used` 是服务端算好的「三样里是否有一样非零」，界面直接读它，不要在前端重新拼这个判据
+ * （拼错了就是一个与删除守卫不一致的判据）。
+ */
+export interface WorksheetUsage {
+  used: boolean;
+  /** 课堂级 + 组级按课堂去重后的数量，`classrooms.length` 与它相等。 */
+  classroomCount: number;
+  /** 上面那些课堂里已结束的个数。**已结束的课堂同样占着引用**，所以它只是解释性的。 */
+  endedClassroomCount: number;
+  /** 组级材料行数（`ClassroomGroupMaterial(kind='worksheet')`）。 */
+  groupCount: number;
+  /** 历史作答（`WorksheetResponse`）份数。 */
+  responseCount: number;
+  classrooms: RelatedClassroom[];
+  /**
+   * 服务端拼好的整句中文。⚠️ **弹窗不直接用这句**：它里面含「请先从这些课堂或小组中
+   * 移除后再试」，而本仓**没有「移除」这个端点**（课堂设置只有标题可改），那是一句
+   * 误导。弹窗按上面四个数字自己讲（见 `worksheet-overlays.tsx`）。
+   */
+  message: string;
+}
+
+/**
+ * 题目节点的**读形状**。
+ *
+ * ⚠️ 题型注册表与判分**只在服务端**（`server/src/services/worksheet-questions.ts`，09-19 §13
+ * 「不引入前端测试框架，重逻辑全部放服务端」）。这里只有结构，没有「一道填空题的
+ * `data` 里该有哪些键」——那是编辑器（C2）与服务端要共同遵守的东西，前端不该自作主张
+ * 再定义一份。`data` 因此是 `Record<string, unknown>`。
+ */
+export interface WorksheetQuestionNode {
+  id: string;
+  /** `'single-choice' | 'fill-blank' | 'short-answer'`（服务端的 `QUESTION_TYPES`）。 */
+  type: string;
+  prompt: string;
+  inputMode: 'keyboard' | 'handwriting';
+  data: Record<string, unknown>;
+  children: WorksheetQuestionNode[];
+}
+
+export interface WorksheetContent {
+  schemaVersion: number;
+  nodes: WorksheetQuestionNode[];
+}
+
+/**
+ * 设置。三件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts:73`），
+ * 落库的 JSON 里三个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
+ */
+export interface WorksheetSettings {
+  allowResubmit: boolean;
+  autoGrade: boolean;
+  defaultInputMode: 'keyboard' | 'handwriting';
+}
+
+/**
+ * 详情（`GET /api/worksheets/:id`）。新建 / 更新 / 复制三个端点回的也是它（写完全量读回）。
+ *
+ * 🔴 **不是 `WorksheetSummary` 的超集，别让它们互相 `extends`**：这一份是 `Worksheet` 表的
+ * 原始行，**没有** `questionCount` 与 `classroomCount` —— 那两个是列表端点从 `content`
+ * 算出来、再查一次关联表才拼上的投影字段，详情端点根本不产出它们。写成继承会让
+ * 类型说谎，编辑器照着读就会在运行期拿到 `undefined`。
+ */
+export interface WorksheetDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  schemaVersion: number;
+  content: WorksheetContent;
+  settings: WorksheetSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StudentSessionResponse {
   token: string;
   expiresIn: number;

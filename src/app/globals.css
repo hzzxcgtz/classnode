@@ -1728,6 +1728,553 @@ tr:hover td {
   }
 }
 
+/* ── 学习单编辑页（`/teacher/worksheets/edit/`）────────────────────────
+   规则与 `.worksheet-management-*` 一样**刻意自成一块**：这一页与列表页是两套
+   版式，抽共享类只会让改一边时悄悄动到另一边。
+
+   ⚠️ 顶栏是 `position: sticky`：一份 20 题的学习单滚到第 15 题时，「保存」不该
+   需要先滚回顶部。用圆角 + 阴影而不是铺满整行，是因为 `.teacher-main` 的左右内边距
+   是 `clamp(24px, 2.5vw, 48px)` —— 要把背景铺到边就得把那个 clamp 抄一遍，
+   抄错了在某个宽度下会露出底下滚过去的内容。 */
+
+.worksheet-editor-topbar {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+/* 标题是个输入框，但要长得像标题（规格 §6.3：它改得最勤，所以留在顶栏）。 */
+.worksheet-editor-title {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 1.063rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.worksheet-editor-title:hover {
+  border-color: #e2e8f0;
+}
+
+.worksheet-editor-title:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.worksheet-editor-status {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.worksheet-editor-status.is-dirty {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.worksheet-editor-status.is-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.worksheet-editor-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 顶栏横幅（被使用时警告 / 草稿 / 保存失败）。三种颜色承载三种后果，
+   与 `.worksheet-management-*` 那套红框「无法删除」是同一条语法。 */
+.worksheet-editor-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  font-size: 0.813rem;
+  line-height: 1.7;
+}
+
+.worksheet-editor-banner.is-warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.worksheet-editor-banner.is-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.worksheet-editor-banner.is-danger {
+  display: block;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.worksheet-editor-banner-note {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 0.75rem;
+}
+
+.worksheet-editor-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.worksheet-editor-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.worksheet-editor-question {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #2563eb;
+  border-radius: 12px;
+  padding: 14px 18px 16px;
+}
+
+.worksheet-editor-question-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.worksheet-editor-question-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #2563eb;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-question-type {
+  font-size: 0.813rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.worksheet-editor-question-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.worksheet-editor-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worksheet-editor-icon-button:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.worksheet-editor-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.worksheet-editor-icon-button.is-danger:hover:not(:disabled) {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.worksheet-editor-field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.worksheet-editor-field > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.worksheet-editor-field textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.worksheet-editor-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.worksheet-editor-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worksheet-editor-option .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.worksheet-editor-option-correct {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.worksheet-editor-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.worksheet-editor-hint {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+
+.worksheet-editor-warn-hint {
+  font-size: 0.75rem;
+  color: #b45309;
+}
+
+.worksheet-editor-empty {
+  padding: 48px 20px;
+  margin-bottom: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.worksheet-editor-add {
+  width: 100%;
+  padding: 14px;
+  border: 1px dashed #93c5fd;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #2563eb;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.worksheet-editor-add:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
+/* 加题弹窗 / 设置弹窗。与 C1 那两个弹窗一样是 `.modal-overlay` 的兄弟节点，
+   靠 `position: fixed` 自己居中（`.modal-overlay` 只负责遮罩）。 */
+.worksheet-editor-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 26px 28px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.worksheet-editor-dialog h3 {
+  margin: 0 0 4px;
+  font-size: 1.063rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-dialog-note {
+  margin: 0 0 16px;
+  font-size: 0.813rem;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.worksheet-editor-type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.worksheet-editor-type-option {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.worksheet-editor-type-option:hover {
+  border-color: #2563eb;
+  background: #f8fbff;
+}
+
+.worksheet-editor-type-option-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.worksheet-editor-type-option-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.worksheet-editor-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.worksheet-editor-switch input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.worksheet-editor-switch strong {
+  display: block;
+  font-size: 0.813rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.worksheet-editor-switch em {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  font-style: normal;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+
+/* ── 预览弹窗（规格 §6.3：按 iPad 宽度渲染）
+   内层舞台宽度写死 768px，**不跟着窗口缩放** —— 缩放之后「教师看到的就是学生看到的
+   那个宽度」就不成立了。窗口比它窄时让 `.worksheet-editor-preview-scroll` 横向滚动。 */
+.worksheet-editor-preview-modal {
+  position: fixed;
+  top: 4vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 201;
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+}
+
+.worksheet-editor-preview-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.worksheet-editor-preview-head h3 {
+  margin: 0 0 2px;
+  font-size: 1.063rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-preview-head p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.worksheet-editor-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px;
+  background: #f1f5f9;
+}
+
+.worksheet-editor-preview-stage {
+  margin: 0 auto;
+  padding: 24px 26px 28px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.worksheet-editor-preview-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.worksheet-editor-preview-progress {
+  margin-top: 2px;
+  margin-bottom: 18px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.worksheet-editor-preview-empty {
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.worksheet-editor-preview-question {
+  padding: 14px 0 16px;
+  border-top: 1px solid #eef2f6;
+}
+
+.worksheet-editor-preview-question-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2563eb;
+  margin-bottom: 6px;
+}
+
+.worksheet-editor-preview-question-type {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 400;
+}
+
+.worksheet-editor-preview-prompt {
+  font-size: 0.938rem;
+  color: #0f172a;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  margin-bottom: 10px;
+}
+
+.worksheet-editor-preview-placeholder {
+  color: #cbd5e1;
+}
+
+.worksheet-editor-preview-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.worksheet-editor-preview-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.worksheet-editor-preview-option-key {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.worksheet-editor-preview-input {
+  width: 100%;
+  opacity: 1;
+  background: #f8fafc;
+}
+
+@media (max-width: 900px) {
+  .worksheet-editor-topbar-actions {
+    width: 100%;
+  }
+
+  .worksheet-editor-topbar-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 /* ── 「关联课堂」入口 chip（智能体页与网页页共用）────────────────────
    放在徽章行里、紧挨着「平台」/「入口」那些只读标签。**必须是按钮而不是标签**：
    它长得像标签但可以点，所以给边框与 hover 态把它区分出来。

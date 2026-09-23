@@ -279,7 +279,13 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
     data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id, status: 'in-progress' },
   });
   await db.prisma.worksheetAnswer.create({
-    data: { responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] }, status: 'submitted', isCorrect: true },
+    data: {
+      responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] },
+      status: 'submitted', isCorrect: true,
+      // ★ B1：三态与数值也要落进行里，下面才有东西可钉（`score` 用 2 而不是默认的 1 ——
+      // 默认档下它与旧布尔值的 `Number()` 撞成同一个数，断言就不再可观测）。
+      gradeState: 'correct', score: 2,
+    },
   });
 
   const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
@@ -311,13 +317,19 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   }
 
   // ── 阳性对照之二：题目与作答**在**（一个 `res.json({})` 的实现也能让上面全部通过）。
-  const body = JSON.parse(raw) as { worksheets: Array<{ id: string; participants: Array<{ participantId: string; answerRows: Array<{ questionId: string; value: unknown; isCorrect: boolean | null }> }> }> };
+  const body = JSON.parse(raw) as { worksheets: Array<{ id: string; participants: Array<{ participantId: string; answerRows: Array<{ questionId: string; value: unknown; isCorrect: boolean | null; gradeState: string | null; score: number | null }> }> }> };
   assert.equal(body.worksheets.length, 1);
   assert.equal(body.worksheets[0].id, worksheet.id);
   const rows = body.worksheets[0].participants[0].answerRows;
   assert.equal(rows.length, 1, '逐题作答行必须下发');
   assert.equal(rows[0].questionId, 'q_1');
   assert.equal(rows[0].isCorrect, true, '对错必须下发（抽屉形态 A 的那一列）');
+  // ★ B1：三态与数值是这条线缆的**第三段**（提交响应 / 学生读端点 / 教师读端点），
+  // 而它此前没有任何哨兵。漏 `select` 一列的表现与「压根没实现」一模一样：事件照发、
+  // 日志干净、档位永远画不出来 —— 而**响应里也没有任何东西缺一块**（键不存在与值为
+  // `null` 在 `Object.keys` 之外几乎不可区分）。所以这里**钉值**，不是钉键存在。
+  assert.equal(rows[0].gradeState, 'correct', '三态必须下发（看板的 ✓/◐/✗ 只能来自它）');
+  assert.equal(rows[0].score, 2, '得分必须下发（奖励由得分驱动），且是库里那个 2 而不是默认的 1');
   // 「学生原答案」是学生自己写的那个值，与「正确答案」是两件事 —— 抽屉要它（§7.3 形态 A）。
   assert.deepEqual(rows[0].value, { format: 'choice/v1', selected: ['B'] });
 });
@@ -399,19 +411,33 @@ test('标准模式：只配了学习单的学生在列、没配的**不进分母
   const response = await db.prisma.worksheetResponse.create({
     data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: answered.id, status: 'in-progress' },
   });
+  // ★ B1：这一行刻意做成**半对**（排序题部分正确），因为它是 `isCorrect` **一个人
+  // 表达不了**的那一档 —— `false` 底下同时住着「判错」与「半对」，而两者的分是 0 与 2。
+  // 库里只留这一行，`answerRows[0]` 才是确定的（这个端点的 `select` 里没有 `orderBy`，
+  // 加第二行会让下标变成不确定的）。
   await db.prisma.worksheetAnswer.create({
-    data: { responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['A'] }, status: 'submitted', isCorrect: false },
+    data: {
+      responseId: response.id, questionId: 'q_4', value: { format: 'order/v1', order: ['i1', 'i2'] },
+      status: 'submitted', isCorrect: false, gradeState: 'partial', score: 2,
+    },
   });
 
   const res = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
-  const body = await res.json() as { worksheets: Array<{ participants: Array<{ participantId: string; answerRows: Array<{ isCorrect: boolean | null }> }> }> };
+  const body = await res.json() as { worksheets: Array<{ participants: Array<{ participantId: string; answerRows: Array<{ questionId: string; isCorrect: boolean | null; gradeState: string | null; score: number | null }> }> }> };
   assert.equal(body.worksheets.length, 1);
   const participants = body.worksheets[0].participants;
   assert.deepEqual(participants.map(p => p.participantId).sort(), [answered.id, idle.id].sort(), '两条都在：分母是「这一份学习单的人」，不是「答过的人」');
   const idleRows = participants.find(p => p.participantId === idle.id)!.answerRows;
   assert.deepEqual(idleRows, [], '一次都没作答的人要回空数组，不是缺字段');
   // 判错也要如实下发（`false` 与「没有对错」的 `null` 是两件事）。
-  assert.equal(participants.find(p => p.participantId === answered.id)!.answerRows[0].isCorrect, false);
+  const answeredRow = participants.find(p => p.participantId === answered.id)!.answerRows[0];
+  assert.equal(answeredRow.isCorrect, false);
+  // ★ B1：`false` 之上的那一层 —— 这条线缆必须说得出「这是半对，不是错」，也必须
+  // 带着教师填的那一档分。少了 `select` 里的一列，这里会拿到 `undefined`
+  //（键不存在），而看板的 ◐ 与奖励会静默地永远画不出来。
+  assert.equal(answeredRow.gradeState, 'partial', '半对必须能由 gradeState 说出来 —— isCorrect=false 推不出它');
+  assert.equal(answeredRow.score, 2, '得分必须是半对那一档（2），不是 0（那是判错的数）');
+  assert.equal(answeredRow.questionId, 'q_4', '钉住是这一行，别让夹具漂到别的题上而断言还是绿的');
 
   // 另一间课堂不受影响（按 `classroomId` 收口，不是「把全库作答行都发出去」）。
   const other = await server.get(`/api/worksheets/classroom/${withoutSheet.id}/answers`, { Cookie: server.cookie });

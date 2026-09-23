@@ -29,8 +29,9 @@ import { flattenQuestions, questionTypeLabel } from '../../../lib/worksheet-ques
  * ── 数据来源（规格 §7.4）──────────────────────────────────────────────
  *   · 题目清单 / 题数 —— `GET /api/worksheets/:id` 的 `content.nodes`；
  *   · 逐题状态与「最后一次保存哪题」—— `worksheet-answer-updated` 广播（房间 `teacher:<id>`，
- *     载荷含 `questionId`，B4 落地）。**没有**拉取历史的 REST 端点，所以看板只知道
- *     「打开之后发生的作答」——`no-progress` 那一态就是为它准备的，见下面的注释。
+ *     载荷含 `questionId`，B4 落地）。⚠️ 读端点**是存在的**（`GET /api/worksheets/classroom/:id/answers`，
+ *     D4 落地），**缺的是格子没消费它** —— 所以看板仍然只知道「打开之后发生的作答」，
+ *     `no-progress` 那一态就是为它准备的，见下面的注释。
  */
 
 /** 一道题在方格阵里的三种状态。**只有状态，没有对错**（规格 §7.2）。 */
@@ -81,10 +82,11 @@ export const WORKSHEET_STUCK_AFTER_MS = 5 * 60 * 1000;
  * 写成「还没有开始作答」会把后一种说成一个**假事实**——正是本项目反复出现的那类缺陷。
  * 所以这里说的是能确证的那一句，见 `worksheet-tiles.tsx` 里 `no-progress` 的文案。
  *
- * 🔴 **2026-09-23 更正。** 上面这段原先写的是「看板**没有拉取历史的 REST 端点**（…
- * 全文只有学生端那三个端点能读 `WorksheetAnswer`）」——**那句话在本文件落地的同一个批次里
- * 就不再成立了**：教师端的读端点 `GET /api/worksheets/classroom/:classroomId/answers`
- * 已落地（`server/src/routes/worksheets.ts`），它读的正是 `WorksheetAnswer`。
+ * 🔴 **2026-09-23 更正。** 本文件这一段、以及 `page.tsx` 的两处注释，原先都写着
+ * 「看板**没有拉取历史的 REST 端点**（全文只有学生端那三个端点能读 `WorksheetAnswer`）」
+ * ——**那句话在本文件落地的同一个批次里就不再成立了**：教师端的读端点
+ * `GET /api/worksheets/classroom/:classroomId/answers` 已落地
+ * （`server/src/routes/worksheets.ts`），它读的正是 `WorksheetAnswer`。
  * **它不成立的方式值得记下来**：端点有了，但**格子没有消费它** —— 格子的进度仍然只由广播写入，
  * 而那个读端点缺**两个字段**才够格子用（它的 `answerRows` 只有
  * `{ questionId, status, isCorrect, reviewedAt, value }`，见 `routes/worksheets.ts` 的 `select`）：
@@ -205,9 +207,14 @@ export function stateHasCells(
  *
  * 🔴 规格 §3-I 写的是「已看 N/M」，而 `已看` 在 §7.4 里指的是
  * `WorksheetAnswer.reviewedAt`（**教师**标记的「已查看」，B4 的 `POST /:id/review`）。
- * 今天拿不到它，两处都拿不到：
- *   · 那个端点**不广播**（只有 `PUT /answers` 与 `POST /answers/submit` 会广播）；
- *   · 也没有任何教师端读答案行的端点（`GET /api/worksheets/:id` 只给题目）。
+ * 今天拿不到它，**原因不是「没有来源」**（那样写是错的，2026-09-23 已改），
+ * 而是徽章的数据源到不了它：
+ *   · `POST /:id/review` **不广播**（只有 `PUT /answers` 与 `POST /answers/submit` 会广播）
+ *     ⇒ 教师点「已查看」的那一下没有任何推送；
+ *   · 徽章算的是 `worksheetProgress`，而它只由 `worksheet-answer-updated` 广播写入
+ *     （`page.tsx`）。教师端的读端点**存在**（`GET /api/worksheets/classroom/:classroomId/answers`，
+ *     D4 落地，它的 `answerRows` 里就有 `reviewedAt`），**缺的是格子没有消费它** ——
+ *     理由见上面 `WorksheetTileState` 那一段附的更正（那个端点还差两个字段才够格子用）。
  * ⇒ 按 `reviewedAt` 算出来的 N 恒为 0，而「已看 0/3」是一句**假话**（教师可能早就看过 2 题）。
  * 所以这里落的是**同一批答案行上算得出来的那个数**：已**交** N/M（术语取自 §7.3 的「已交 5/5」）。
  * 要把它换回「已看 N/M」，需要的是数据源（review 广播 + 历史拉取），不是文案。

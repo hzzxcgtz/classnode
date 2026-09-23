@@ -28,6 +28,14 @@ import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from 
 // 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
 import { optionKey, QUESTION_TYPE_OPTIONS, readOptions } from '../../../../lib/worksheet-questions.ts';
+// 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
+// （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
+import {
+  DEFAULT_REWARD_STEP,
+  DEFAULT_REWARD_STYLE,
+  normalizeRewardStep,
+  normalizeRewardStyle,
+} from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 
 export { optionKey, QUESTION_TYPE_OPTIONS, readOptions };
@@ -362,6 +370,13 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   allowResubmit: true,
   autoGrade: true,
   defaultInputMode: 'keyboard',
+  // 奖励形式（规格 §9.2）：学习单级配置，默认「星星 ⭐、每答对一题 1 个」——
+  // 依据（§9.2 的图里 ● 打在星星上、§8.2 的学生端版式图顶栏画着 `⭐×3`）写在
+  // `worksheet-reward.ts` 的 `DEFAULT_REWARD_STYLE` 上。**两处必须是同一对默认值**：
+  // 这里决定「新建的学习单长什么样」，服务端 `normalizeSettings` 决定「缺字段的行
+  // 长什么样」，不一致的话新建出来与学生看到的就是两回事。
+  rewardStyle: DEFAULT_REWARD_STYLE,
+  rewardStep: DEFAULT_REWARD_STEP,
 };
 
 /**
@@ -426,6 +441,11 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       allowResubmit: settings.allowResubmit !== false,
       autoGrade: settings.autoGrade !== false,
       defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
+      // 奖励两项与 `normalizeLoadedSettings` 走的是**同一对**归一化函数（不是各写一遍：
+      // 草稿来自 localStorage、详情来自服务端，两边的判据分叉会让「恢复草稿」与
+      // 「打开已保存的单」给出不同的奖励档）。
+      rewardStyle: normalizeRewardStyle(settings.rewardStyle),
+      rewardStep: normalizeRewardStep(settings.rewardStep),
     },
     content: { schemaVersion: typeof content.schemaVersion === 'number' ? content.schemaVersion : SCHEMA_VERSION, nodes },
   };
@@ -456,5 +476,10 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     allowResubmit: settings.allowResubmit !== false,
     autoGrade: settings.autoGrade !== false,
     defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
+    // ⚠️ 这两项**必须**原样带过来，哪怕是本编辑器没有 UI 的旧字段：编辑页保存时是把
+    // `settings` 整份发回去的（`buildPayload`），漏掉一个键就等于用默认值覆盖了库里的设置
+    // —— 一次「只改了个标题」的保存会把教师配好的奖励形式悄悄改回星星。
+    rewardStyle: normalizeRewardStyle(settings.rewardStyle),
+    rewardStep: normalizeRewardStep(settings.rewardStep),
   };
 }

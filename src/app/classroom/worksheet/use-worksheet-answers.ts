@@ -50,6 +50,30 @@ import {
 /** 一道题在服务端的状态。`undefined` = 还没提交过（也没保存过）。 */
 export type WorksheetQuestionStatus = 'draft' | 'submitted';
 
+/**
+ * 一道题的**得分**。`null` = 没判分（主观题 / 关掉自动判分）—— **不是「0 分」**：
+ * 「不知道」与「答错了」在奖励上都不画东西，但把它们混成一个数，将来做统计时
+ * 就会把没判的题算成答错。
+ *
+ * 🔴 今天只可能是 `0` 或 `1`（第一批没建 `score` 字段，规格 §3-S），而接口按**得分**
+ * 写：M4 引入部分得分（`0.5`）时，改的只有下面 `scoreFromWire` 那一个转换点。
+ */
+export type WorksheetScore = number | null;
+
+/**
+ * 线缆上的 `isCorrect` → 界面用的**得分**。全项目**唯一**一处做这个转换的地方。
+ *
+ * 🔴 判据必须是 `=== true` / `=== false` 两条正面命中，其余一律 `null`：
+ * 服务端的 `isCorrect` 是 `boolean | null`（`grade()` 对主观题回 `null`、关掉自动判分
+ * 也回 `null`），而 `.json()` 失败时这里是 `undefined`。把 `undefined` 当成 `0`
+ * 会让一次读不出来的响应变成「答错了」——静默地把学生判错。
+ */
+function scoreFromWire(isCorrect: unknown): WorksheetScore {
+  if (isCorrect === true) return 1;
+  if (isCorrect === false) return 0;
+  return null;
+}
+
 /** 一次 `PUT` 的结果。`status: null` = 网络错误（连状态码都没有）⇒ 暂时失败。 */
 type SaveOutcome = { ok: true } | { ok: false; status: number | null; error: string | null };
 
@@ -70,6 +94,16 @@ export interface UseWorksheetAnswersResult {
   drafts: Record<string, AnswerDraft>;
   /** 每道题在服务端的状态（只由**服务端确认过的事件**写入，见下面 `applyStatus`）。 */
   statuses: Record<string, WorksheetQuestionStatus>;
+  /**
+   * 每道题的**得分**（`0` / `1`；M4 会有 `0.5`）。键不在 = 这道题没判过分。
+   *
+   * 🔴 它是**呈现层**的输入，不是数据：星星 / 花朵 / 分数**不落库**（规格 §9.1）。
+   * 这里只存「服务端判定的那个得分」，画成什么由 `lib/worksheet-reward.ts` 决定。
+   * 唯一的写入点是 `submit()` 拿到 200 之后（得分只可能来自服务端的判分），
+   * 以及保存成功把已提交的题拨回 `draft` 时**清掉**它（那时服务端那一行的
+   * `isCorrect` 已被清成 `null`，留着旧的会让星星停在一个库里已不成立的判分上）。
+   */
+  scores: Record<string, WorksheetScore>;
   /** 正在提交的题（按钮转圈、防连点）。 */
   submitting: Record<string, boolean>;
   /** 队列里还有几条没发出去。 */
@@ -100,6 +134,7 @@ export function useWorksheetAnswers({
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
+  const [scores, setScores] = useState<Record<string, WorksheetScore>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [pendingCount, setPendingCount] = useState(0);
   const [offline, setOffline] = useState(false);
@@ -148,12 +183,13 @@ export function useWorksheetAnswers({
 
   // ── 水合：挂载 / 换键时把存储里的队列读回来 ────────────────────────────────
   //
-  // ⚠️ 这里**顺手重置** drafts / statuses / lastSent：换了参与者或学习单，上一个的输入态
-  // 与「发过什么」都不再适用。不清的话，新学生会带着上一个学生的草稿出现在屏幕上。
+  // ⚠️ 这里**顺手重置** drafts / statuses / scores / lastSent：换了参与者或学习单，上一个的
+  // 输入态、作答态与得分都不再适用。不清的话，新学生会带着上一个学生的草稿与星星出现在屏幕上。
   useEffect(() => {
     queueKeyRef.current = queueKey;
     setDrafts({});
     setStatuses({});
+    setScores({});
     setSubmitting({});
     setOffline(false);
     lastSentRef.current = {};
@@ -244,6 +280,10 @@ export function useWorksheetAnswers({
             // 服务端在 `PUT` 里把这一行拨回 `draft`（`allowResubmit` 为假且已提交时
             // 它根本不会走到这里 —— 那种情况是 409，走下面那条分支）。
             setStatuses((prev) => (prev[next.questionId] === 'submitted' ? { ...prev, [next.questionId]: 'draft' } : prev));
+            // ⚠️ 得分必须**跟着清**：同一条 `PUT` 的 `update` 把 `isCorrect` 写成了 `null`
+            // （那一段注释写着理由：改回 draft 却留着上次的 `true`，看板会显示成
+            // 「这题刚判对」）。不清这里，学生会看着一颗已经作废的星星继续改答案。
+            setScores((prev) => (prev[next.questionId] === undefined ? prev : { ...prev, [next.questionId]: null }));
           }
           setOffline(false);
           continue;
@@ -385,6 +425,11 @@ export function useWorksheetAnswers({
       }
       if (res.ok) {
         setStatuses((prev) => ({ ...prev, [node.id]: 'submitted' }));
+        // 判分结果就在这个响应体里（`{ isCorrect }`）。⚠️ 读失败**不**当 0 分：
+        // `scoreFromWire(undefined)` 是 `null`（没判分），学生只是少一个奖励，
+        // 而不是被判错（见那个函数的注释）。
+        const payload = await res.json().catch(() => null);
+        setScores((prev) => ({ ...prev, [node.id]: scoreFromWire(payload?.isCorrect) }));
         setOffline(false);
         return;
       }
@@ -402,6 +447,7 @@ export function useWorksheetAnswers({
   return {
     drafts,
     statuses,
+    scores,
     submitting,
     pendingCount,
     offline,

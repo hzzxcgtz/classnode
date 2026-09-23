@@ -503,9 +503,15 @@ function ClassroomBoardContent() {
    * 广播（房间 `teacher:<id>`，载荷含 `questionId`）。
    *
    * 🔴 **键不在 = 打开看板后没收到过这个人的作答**，与「收到了、内容是空的」不是一件事
-   * （与 `studentModuleFocus` 同一条规矩）。⚠️ 看板**没有**拉取历史的 REST 端点
-   * （教师端能读 `WorksheetAnswer` 的端点一个都不存在），所以刷新一次页面就会把这里清空 ——
-   * 格子上那一态因此说的是「还没收到作答」，**不是**「还没有开始作答」。
+   * （与 `studentModuleFocus` 同一条规矩）。
+   *
+   * ⚠️ **2026-09-23 更正：读端点已经存在了**（教师端能读 `WorksheetAnswer` 的端点是
+   * `GET /api/worksheets/classroom/:classroomId/answers`，D4 落地，本文件由
+   * `loadWorksheetBoard` 在**打开抽屉时**拉它）。这一段原先写着「一个都不存在」——
+   * **结论仍然成立、理由已经换了**：`worksheetProgress` 这个 state 依然**只由广播写入**，
+   * 格子还没有消费那个读端点（它还差两个字段才够格子用，见
+   * `worksheet-tile-state.ts` 里 `WorksheetTileState` 那一段的更正），所以刷新一次页面
+   * 仍然会把这里清空 —— 格子上那一态说的是「还没收到作答」，**不是**「还没有开始作答」。
    */
   const [worksheetProgress, setWorksheetProgress] = useState<Record<string, ParticipantWorksheetProgress>>({});
   /**
@@ -1462,7 +1468,11 @@ function ClassroomBoardContent() {
    * 三件套**各判各的**，外加兜底 —— 徽章行从此是模块相关的，不是一行固定内容：
    *   · 智能学伴 → `{rounds} 轮`
    *   · 学习单   → `已交 N/M`（**不是**规格 §3-I 写的「已看 N/M」，理由见 `TileBadge` 那段注释：
-   *                「已看」= 教师标记的 `reviewedAt`，而它今天既没有广播也没有 REST 来源）
+   *                「已看」= 教师标记的 `reviewedAt`，而徽章的数据源 —— 只由广播写入的
+   *                `worksheetProgress` —— 到不了它。⚠️ 2026-09-23 更正：REST 来源**是有的**
+   *                （`GET /classroom/:id/answers` 的 `answerRows` 里就有 `reviewedAt`），
+   *                缺的是格子没有消费它；原文「既没有广播也没有 REST 来源」把前一半说对了、
+   *                后一半说错了）
    *   · 探究空间 → 不显示（那一格显示的是画面，与对话轮数无关）
    *   · 兜底     → `home` / `unknown` / 线缆上多出来的取值都不显示
    *

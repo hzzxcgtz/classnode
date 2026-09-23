@@ -57,7 +57,13 @@ function contentOf(...nodes: WorksheetQuestionNode[]): WorksheetContent {
   return { schemaVersion: 1, nodes };
 }
 
-const SETTINGS: WorksheetSettings = { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' };
+const SETTINGS: WorksheetSettings = {
+  allowResubmit: true,
+  autoGrade: true,
+  defaultInputMode: 'keyboard',
+  rewardStyle: 'star',
+  rewardStep: 1,
+};
 
 /** 题干为 `p1`…`pN` 的一份内容，用来数栈深。 */
 function contentWithPrompt(prompt: string): WorksheetContent {
@@ -440,7 +446,9 @@ function draftWith(nodeValue: unknown): string {
     savedAt: 1_700_000_000_000,
     title: '第一课',
     description: '说明',
-    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting' },
+    // 奖励两项刻意给**非默认**的值（默认是 star / 1）：草稿里配好的奖励形式要是被
+    // 解析时丢掉，教师恢复一次草稿就会发现自己的「花朵 ×5」变回了星星。
+    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5 },
     content: { schemaVersion: 9, nodes: [nodeValue] },
   });
 }
@@ -452,7 +460,9 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
   assert.ok(draft);
   assert.equal(draft.title, '第一课');
   assert.equal(draft.content.schemaVersion, 9);
-  assert.deepEqual(draft.settings, { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting' });
+  assert.deepEqual(draft.settings, {
+    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5,
+  });
 });
 
 test('parseDraft：不是 JSON / 是 JSON 但不是对象 ⇒ null', () => {
@@ -534,4 +544,19 @@ test('normalizeLoadedSettings：不是对象 ⇒ 默认值；只认 handwriting 
   assert.deepEqual(normalizeLoadedSettings([1]), DEFAULT_SETTINGS);
   assert.deepEqual(normalizeLoadedSettings({ defaultInputMode: 'handwriting' }).defaultInputMode, 'handwriting');
   assert.equal(normalizeLoadedSettings({ allowResubmit: false }).allowResubmit, false);
+});
+
+test('normalizeLoadedSettings：奖励两项原样带过来（漏掉就等于用默认值覆盖库里配好的档）', () => {
+  // 🔴 编辑页保存时是把 `settings` **整份**发回去的（`buildPayload`）。这里漏一个键，
+  // 「打开 → 只改了个标题 → 保存」就会把教师配好的奖励形式悄悄改回星星。
+  const loaded = normalizeLoadedSettings({
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5,
+  });
+  assert.deepEqual(loaded, {
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5,
+  });
+  // 坏值回落到与取值域同一份默认（不是就地编一个第五档）
+  assert.equal(normalizeLoadedSettings({ rewardStyle: '彩虹' }).rewardStyle, DEFAULT_SETTINGS.rewardStyle);
+  assert.equal(normalizeLoadedSettings({ rewardStep: 4 }).rewardStep, DEFAULT_SETTINGS.rewardStep);
+  assert.equal(normalizeLoadedSettings({ rewardStep: '3' }).rewardStep, DEFAULT_SETTINGS.rewardStep);
 });

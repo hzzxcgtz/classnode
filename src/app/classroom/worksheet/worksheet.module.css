@@ -111,8 +111,7 @@
 }
 
 /* 奖励累计的位置（规格 §9.3：奖励出现在两处，这一处是「顶部累计」）。
-   D5 才往里面放东西；现在留的是**位置**，不是占位文字 —— 一个空盒子不占宽度，
-   不会在 D5 落地时把顶栏挤成另一种排布。 */
+   一个都还没拿到时里面是**空的**，盒子不占宽度 —— 顶栏的排布不会随奖励的有无而变。 */
 .rewardSlot {
   flex: 0 0 auto;
   display: flex;
@@ -121,6 +120,11 @@
   font-size: .82rem;
   font-weight: 750;
   color: #b45309;
+}
+
+.rewardTotal {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ───────────────────────── 整卷滚动容器 ───────────────────────────────── */
@@ -194,6 +198,25 @@
 
 .questionState[data-state='submitted'] { color: #15803d; }
 .questionState[data-state='drafting'] { color: #b45309; }
+
+/* 每题旁的奖励（规格 §9.3）。只在学生端出现 —— 教师端的「学生端预览」渲染同一个组件，
+   但它不传奖励配置（规格 §3-U），所以这里没有「教师端的那一套样式」可言。
+   `data-right` 只在对错档下有意义（✓ 绿 / ✗ 红）；符号档只有一个颜色。 */
+.questionReward {
+  flex: 0 0 auto;
+  font-size: .86rem;
+  font-weight: 750;
+  line-height: 1;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+.questionReward[data-style='correctness'] {
+  font-size: .95rem;
+  color: #15803d;
+}
+
+.questionReward[data-style='correctness'][data-right='0'] { color: #b91c1c; }
 
 .prompt {
   font-size: .95rem;

@@ -251,9 +251,11 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     '选项要留给学生（剥掉的只有答案）',
   );
 
-  // ⚠️ `settings` 只给学生需要的两个字段（B3 的明确要求）—— 整份原样丢出去会连带
-  //    下发第一批用不到的 `defaultInputMode`，前端就多一个能读错的开关。
-  assert.deepEqual(body.settings, { allowResubmit: true, autoGrade: true });
+  // ⚠️ `settings` 只给学生需要的**四**个字段（B3 的两个 + D5 的奖励两项）——
+  //    整份原样丢出去会连带下发第一批用不到的 `defaultInputMode`，前端就多一个能读错的开关。
+  //    🔴 这是一条**逐字**的断言，键多一个少一个都会红：学生端下发什么必须有人明确决定过。
+  //    奖励两项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
+  assert.deepEqual(body.settings, { allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1 });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，三个答案键都必须在 ——
   // 否则上面那三条可能只是因为夹具里根本没有答案。
@@ -269,6 +271,79 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   for (const key of ANSWER_KEYS) {
     assert.ok(storedRaw.includes(key), `剥离只发生在**返回前**，库里的「${key}」一个字节都不许动`);
   }
+});
+
+/**
+ * 奖励形式（规格 §9.2，D5）：**配过的那一档要原样到学生手里**，坏值落到默认档。
+ *
+ * 🔴 这条用例存在的理由是「静默丢键」这一类失效：`PUT /api/worksheets/:id` 是
+ * **整份替换** `settings`（`data.settings = normalizeSettings(body.settings)`），
+ * 所以 `normalizeSettings` 少认一个键，教师配好的「花朵 ×3」就会被一次改标题的保存
+ * 悄悄改回星星 —— 保存照常 200，界面上没有任何提示，只有学生第二天发现奖励变了样。
+ *
+ * 四层，缺一层都可能是假绿：
+ *   ① 配过的档**原样下发**（不是默认值 —— 夹具里的默认档就是星星/1）；
+ *   ② **只改标题**的 `PUT` 不许动 settings（证明那条路不会顺手把奖励抹掉）；
+ *   ③ 坏值（不认识的样式、越界的步长）落到默认档，而不是把坏值存进去；
+ *   ④ 库里**手工改过**的行（缺这两个键）也要能读出默认档，不能 500。
+ */
+test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；坏值落到默认档', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma, '带奖励设置的学习单', {
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard',
+    rewardStyle: 'flower', rewardStep: 3,
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, '9008');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const settingsOf = async (id: string) =>
+    (await (await server.get(`/api/worksheets/${id}/student-view`, bearer(token))).json() as {
+      settings: Record<string, unknown>;
+    }).settings;
+
+  // ① 配过的档原样下发
+  assert.deepEqual(await settingsOf(worksheet.id), {
+    allowResubmit: true, autoGrade: true, rewardStyle: 'flower', rewardStep: 3,
+  });
+
+  // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
+  const before = JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings);
+  const putRes = await server.put(`/api/worksheets/${worksheet.id}`, { title: '改过名的学习单' });
+  assert.equal(putRes.status, 200, JSON.stringify(await putRes.json()));
+  const after = JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings);
+  assert.equal(after, before, '只改标题的那次 PUT 不得动 settings');
+  assert.equal(JSON.parse(after).rewardStyle, 'flower');
+
+  // ③ 坏值落到默认档（而不是把「第四档」存进库）
+  const badPut = await server.put(`/api/worksheets/${worksheet.id}`, {
+    settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: '彩虹', rewardStep: 4 },
+  });
+  assert.equal(badPut.status, 200, JSON.stringify(await badPut.json()));
+  const bad = JSON.parse(JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings));
+  assert.deepEqual(
+    { rewardStyle: bad.rewardStyle, rewardStep: bad.rewardStep },
+    { rewardStyle: 'star', rewardStep: 1 },
+    '不认识的样式与越界的步长都必须落到默认档',
+  );
+
+  // ④ 库里手工改过的行（`settings` 里根本没有这两个键）⇒ 默认档，不是 500。
+  //    ⚠️ 用**另一间课堂**：课堂级容器是 `@@unique([classroomId, worksheetId])` 而不是
+  //    「一间课堂一份」，往同一间课堂再挂一份会让「这个学生该拿哪一份」变成模糊的
+  //    （`loadClassroomLevelWorksheetId` 取的是第一条）—— 那样这一条断言的失败原因
+  //    会是一句 403，与它要证明的事无关。
+  const handEdited = await seedWorksheet(db.prisma, '手改过的学习单', { allowResubmit: true, autoGrade: true });
+  const other = await seedClassroom(db.prisma, '9009');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: other.classroom.id, worksheetId: handEdited.id } });
+  const otherToken = createStudentToken(other.classroom.id, other.participant.id);
+  const handEditedSettings = (await (await server.get(
+    `/api/worksheets/${handEdited.id}/student-view`, bearer(otherToken),
+  )).json() as { settings: Record<string, unknown> }).settings;
+  assert.deepEqual(handEditedSettings, {
+    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1,
+  });
 });
 
 // ---------------------------------------------------------------------------

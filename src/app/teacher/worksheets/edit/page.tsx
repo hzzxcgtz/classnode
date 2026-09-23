@@ -3,7 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
-import type { WorksheetQuestionNode } from '@/lib/types';
+import type { WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+// 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
+// 与学生端那个徽章用的是同一份，加一档只改那一处。
+import { REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -284,29 +287,37 @@ function AddQuestionPicker({ onPick, onClose }: {
 }
 
 /**
- * 「设置」面板（规格 §6.3）。只装三样里能改的两样 + 描述：
+ * 「设置」面板（规格 §6.3）。装的是**这一张单**的设置：
  *   · 描述（标题在顶栏直接编 —— 它改得最勤）
  *   · 自动判分（学习单级开关，规格 §3-L）
  *   · 提交后可否修改（`allowResubmit`，规格 §8.4）
+ *   · 奖励形式 + 步长（规格 §9.2 —— 2026-09-23 用户裁定：奖励是**学习单级**的，
+ *     不做全局设置。「这堂课用得分制还是发小花」是这一张单的事）
  * 输入方式**不做 UI**（规格 §3-V，第一批恒为 keyboard），`settings.defaultInputMode`
  * 只是原样带着走，不在这里改。
  *
- * 两个开关都写明了**关掉之后会怎样**，因为它们的后果都不在教师眼前：
- * 一个让看板失去正确率，一个会让学生的修改请求被服务端拒绝。
+ * 每一项都写明了**关掉 / 改了之后会怎样**，因为它们的后果都不在教师眼前：
+ * 一个让看板失去正确率，一个会让学生的修改请求被服务端拒绝，而奖励形式教师自己
+ * **根本看不到**（规格 §3-U：教师端只有对错与正确率，一个星星都不出现）——
+ * 所以那一行必须说清「这是给学生看的」。
  */
 function SettingsModal({ description, onDescriptionChange, settings, onSettingsChange, onClose }: {
   description: string;
   onDescriptionChange: (value: string) => void;
-  settings: { allowResubmit: boolean; autoGrade: boolean };
-  onSettingsChange: (patch: { allowResubmit?: boolean; autoGrade?: boolean }) => void;
+  settings: WorksheetSettings;
+  onSettingsChange: (patch: Partial<WorksheetSettings>) => void;
   onClose: () => void;
 }) {
+  // 每个形式的符号与量词都从那一份取值域里取（规格 §9.2：星星/花朵论「个/朵」、
+  // 分数论「分」、对错没有步长）。这里**不写**任何一档的字面量。
+  const currentStyle = REWARD_STYLE_OPTIONS.find(option => option.value === settings.rewardStyle)
+    ?? REWARD_STYLE_OPTIONS[0];
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
       <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title" style={{ width: 480 }}>
         <h3 id="worksheet-settings-title">学习单设置</h3>
-        <p className="worksheet-editor-dialog-note">标题在顶栏直接改。这里的三项要按「保存」才会生效。</p>
+        <p className="worksheet-editor-dialog-note">标题在顶栏直接改。这里的每一项都要按「保存」才会生效。</p>
 
         <label className="worksheet-editor-field">
           <span>描述（只给教师看）</span>
@@ -335,6 +346,49 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             <em>关掉之后，学生点了「提交本题」就定稿，再改会被拒绝（由服务端拦下，不是只做个提示）。</em>
           </span>
         </label>
+
+        {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
+            用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。
+            放在「自动判分」下面也是刻意的：关掉自动判分就没有判分，也就没有奖励
+            （规格 §9.3），两行挨着才看得出这层依赖。 */}
+        {/* `fieldset` + `legend` 而不是「一段标签 + 四个按钮」：这是一组单选，读屏要能
+            念出「奖励形式」这个组名。四个选项各自是 `label`，所以点文字也能选中。 */}
+        <fieldset className="worksheet-editor-reward">
+          <legend className="worksheet-editor-reward-legend">奖励形式</legend>
+          <div className="worksheet-editor-reward-options">
+            {REWARD_STYLE_OPTIONS.map(option => (
+              <label key={option.value} className="worksheet-editor-reward-option">
+                <input
+                  type="radio"
+                  name="worksheet-reward-style"
+                  checked={settings.rewardStyle === option.value}
+                  onChange={() => onSettingsChange({ rewardStyle: option.value })}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+          <em className="worksheet-editor-switch-note">{currentStyle.hint}</em>
+        </fieldset>
+
+        {/* 步长：选了「对错」时**这一行不出现**（规格 §9.2 的原话）。 */}
+        {settings.rewardStyle === 'correctness' ? null : (
+          <label className="worksheet-editor-field">
+            <span>每答对一题得几{currentStyle.unit}</span>
+            <select
+              className="input"
+              value={settings.rewardStep}
+              onChange={event => onSettingsChange({ rewardStep: Number(event.target.value) })}
+            >
+              {REWARD_STEPS.map(step => <option key={step} value={step}>{step}</option>)}
+            </select>
+          </label>
+        )}
+
+        <p className="worksheet-editor-dialog-note" style={{ margin: '12px 0 16px' }}>
+          奖励只在<b>学生端</b>显示（每道题旁边 + 顶栏累计）。教师看板、抽屉与「按题看」始终是对错与正确率，不会出现星星。
+          关掉自动判分之后没有判分，也就没有奖励；主观题不判分，同样没有奖励。
+        </p>
 
         <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
       </div>

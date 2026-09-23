@@ -1,3 +1,8 @@
+// 奖励形式的取值域与取值规则都在那个文件里（规格 §9）—— 本文件只转出它的类型。
+// ⚠️ 必须是 `import type`：`worksheet-reward.ts` 要能被 `node --test` 直接跑，
+// 而类型在 Node 的类型擦除里整段消失，所以这条 import 不会把它拖进任何运行期依赖。
+import type { RewardStyle } from './worksheet-reward';
+
 export interface InitStatus {
   initialized: boolean;
   authenticated: boolean;
@@ -254,13 +259,25 @@ export interface WorksheetContent {
 }
 
 /**
- * 设置。三件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts:73`），
- * 落库的 JSON 里三个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
+ * 设置。五件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），
+ * 落库的 JSON 里五个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
+ *
+ * ⚠️ `rewardStyle` / `rewardStep` 是**学生端奖励形式**的配置（规格 §9.2，学习单级）。
+ * 它们只影响**画法**，与 `isCorrect` 那个布尔值是两回事：星星、花朵、分数**不落库**
+ * （规格 §9.1）。取值规则与可选项在 `src/lib/worksheet-reward.ts`，别在这里再定义一遍。
  */
 export interface WorksheetSettings {
   allowResubmit: boolean;
   autoGrade: boolean;
   defaultInputMode: 'keyboard' | 'handwriting';
+  /**
+   * 奖励形式的取值域只有一份，在 `worksheet-reward.ts`（那里还有标签、符号、量词与
+   * 取值函数）。这里**转出**同一个类型而不是再写一遍字面量联合 —— 两处各写一份，
+   * 加了第五档时必然只改一处。
+   */
+  rewardStyle: RewardStyle;
+  /** 答对一题的步长，取值域 `1 | 2 | 3 | 5`。 */
+  rewardStep: number;
 }
 
 /**

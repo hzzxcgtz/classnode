@@ -2129,6 +2129,56 @@ tr:hover td {
   line-height: 1.7;
 }
 
+/* ── 奖励形式（规格 §9.2）───────────────────────────────────────────────
+   四选一横排、可换行：铺成四行会让「这是同一组里的一个选择」看不出来。
+   fieldset 自带一圈边框，与这个对话框里其它控件的边框会叠成两道线，所以显式收掉。
+   ⚠️ **不用 `:has()` 做选中态**：这一份 CSS 在学生端的兼容扫描根内
+   （`scripts/check-classroom-browser-compat.mjs` 的 `src/app/globals.css`），
+   而 Safari 15 不认识它。选中的样子由单选按钮自己的原生样式给 —— 这就够了。 */
+.worksheet-editor-reward {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.worksheet-editor-reward-legend {
+  /* 与 `.worksheet-editor-field > span` 同一个字号与颜色（那条规则管不到 legend）。 */
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.worksheet-editor-reward-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.worksheet-editor-reward-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.813rem;
+  color: #0f172a;
+}
+
+/* 选中态由浏览器给的 `:checked` 决定，不另开一个 JS 状态 ——
+   单选按钮的原生选中态在这里是可见的（默认控件样式没被覆盖掉）。 */
+.worksheet-editor-switch-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  font-style: normal;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+
 /* ── 预览弹窗（规格 §6.3：按 iPad 宽度渲染）
    内层舞台宽度写死 768px，**不跟着窗口缩放** —— 缩放之后「教师看到的就是学生看到的
    那个宽度」就不成立了。窗口比它窄时让 `.worksheet-editor-preview-scroll` 横向滚动。 */

@@ -69,20 +69,54 @@ const QUESTION_TYPES: readonly string[] = ['single-choice', 'fill-blank', 'short
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
+/**
+ * 奖励形式的**取值域**（规格 §9.2 的四选一）。
+ *
+ * ⚠️ 这四个字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
+ * 服务端读不到 `src/`，而前端也不该把「什么值合法」的判据放在只有自己看得见的地方。
+ * 与题型注册表（`QUESTION_TYPES` 对 `QUESTION_TYPE_OPTIONS`）同一个由来 ——
+ * **两处必须一起改**。改一处不会报错，只会让存进去的档在学生端落到默认档（画成星星）。
+ */
+const REWARD_STYLES: readonly string[] = ['correctness', 'star', 'flower', 'points'];
+/** 步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
+const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
+
 const DEFAULT_SETTINGS = {
   allowResubmit: true,
   autoGrade: true,
   defaultInputMode: 'keyboard',
+  // 默认档「星星 ⭐、每答对一题 1 个」的依据写在 `src/lib/worksheet-reward.ts` 的
+  // `DEFAULT_REWARD_STYLE` 上（§9.2 的图与 §8.2 的版式图）。⚠️ 两处必须是同一对默认值：
+  // 这里决定**缺字段的行**长什么样，前端那份决定**新建的单**长什么样。
+  rewardStyle: 'star',
+  rewardStep: 1,
 } as const;
 
+/**
+ * 归一化 `settings`。**五个键都会写出来**（缺的补默认）—— 落库的 JSON 因此总是完整的，
+ * 学生端与编辑器都不必自己写 `?? 默认值`。
+ *
+ * 🔴 这里也是**奖励配置唯一的写入口**：`PUT /api/worksheets/:id` 是整份替换
+ * （`data.settings = normalizeSettings(body.settings)`），所以本函数少认一个键，
+ * 那个键就会被**静默丢掉** —— 教师配好「花朵 ×3」，保存一次改标题的请求就变回星星，
+ * 而界面上没有任何提示。新增奖励相关的键时，这里与 `readStudentSettings` 要一起加。
+ */
 function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
     : {};
+  const rewardStyle = typeof source.rewardStyle === 'string' && REWARD_STYLES.includes(source.rewardStyle)
+    ? source.rewardStyle
+    : DEFAULT_SETTINGS.rewardStyle;
+  const rewardStep = typeof source.rewardStep === 'number' && REWARD_STEPS.includes(source.rewardStep)
+    ? source.rewardStep
+    : DEFAULT_SETTINGS.rewardStep;
   return {
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
     defaultInputMode: source.defaultInputMode === 'handwriting' ? 'handwriting' : DEFAULT_SETTINGS.defaultInputMode,
+    rewardStyle,
+    rewardStep,
   };
 }
 
@@ -826,18 +860,36 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
 }
 
 /**
- * 学生端只拿 `settings` 里的**两个**字段（B3 的明确要求）。
+ * 学生端只拿 `settings` 里的**四个**字段：`allowResubmit` / `autoGrade` /
+ * `rewardStyle` / `rewardStep`。
  *
- * `defaultInputMode` 刻意不下发：第一批恒为 `keyboard`（规格 §3-V），多给一个字段
+ * 前两个是 B3 就有的，后两个是 D5 加的（规格 §9.2：奖励形式是**学习单级**配置，
+ * 而学生端要拿它才知道该把判分画成对错、星星、花朵还是分数）。**它不下发分数** ——
+ * 星星/花朵/分数在服务端从来不是数据，只是一个「怎么画」的开关（§9.1）。
+ *
+ * `defaultInputMode` 仍然刻意不下发：第一批恒为 `keyboard`（规格 §3-V），多给一个字段
  * 只是给前端多一个能读错的开关。库里手工改过的行缺字段时按 `DEFAULT_SETTINGS` 兜底。
+ *
+ * ⚠️ 返回体的键数**被 `worksheet-student.test.ts` 逐字钉着**（`deepEqual`）。加字段要
+ * 一起改那条用例 —— 那是有意的：学生端下发什么，必须是有人明确决定过的事。
  */
-function readStudentSettings(raw: unknown): { allowResubmit: boolean; autoGrade: boolean } {
+function readStudentSettings(raw: unknown): {
+  allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number;
+} {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
     : {};
+  // ⚠️ 与 `normalizeSettings` 走**同一对取值域与同一条回落规则**：两处各判一次的话，
+  // 库里的坏值会让「教师看到的」与「学生看到的」不是同一个档。
   return {
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
+    rewardStyle: typeof source.rewardStyle === 'string' && REWARD_STYLES.includes(source.rewardStyle)
+      ? source.rewardStyle
+      : DEFAULT_SETTINGS.rewardStyle,
+    rewardStep: typeof source.rewardStep === 'number' && REWARD_STEPS.includes(source.rewardStep)
+      ? source.rewardStep
+      : DEFAULT_SETTINGS.rewardStep,
   };
 }
 

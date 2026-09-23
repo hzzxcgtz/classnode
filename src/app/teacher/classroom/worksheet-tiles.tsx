@@ -91,7 +91,8 @@ export function WorksheetTileContent({ state, compact }: {
     case 'empty':
       return placeholder('这份学习单还没有题目', '老师还没有出题', compact);
     // 「还没收到」而不是「还没开始作答」：看板只能看到**打开之后**发生的作答
-    // （没有拉取历史的 REST 端点，见 `worksheet-tile-state.ts` 的注释），
+    // （读端点有，但**格子没有消费它** —— 数据源仍然只有广播，见
+    // `worksheet-tile-state.ts` 里 `WorksheetTileState` 那一段的更正），
     // 教师刷新一次页面，早就做完的学生也会落到这一态。说「还没开始」就是编了一个假事实。
     // 第二行把这个局限说明白 —— 它同时解释了「为什么这个格子不动」。
     case 'no-progress':

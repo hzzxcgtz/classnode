@@ -6,6 +6,8 @@ import { getStudentSessionAuthorization } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetQuestionNode } from '@/lib/types';
+// 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
+import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { flattenQuestions, isDraftEmpty, questionTypeLabel, readOptions, type AnswerDraft } from '@/lib/worksheet-questions';
 import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
@@ -15,7 +17,9 @@ import {
   questionDisplayState,
   useWorksheetAnswers,
   type WorksheetQuestionStatus,
+  type WorksheetScore,
 } from './use-worksheet-answers';
+import { QuestionReward, RewardTotal } from './reward-badge';
 import styles from './worksheet.module.css';
 
 /**
@@ -62,6 +66,12 @@ interface LoadedWorksheet {
    * 与规格 §8.4 那张表说的「学生改已提交的题」的唯一合法前提（`allowResubmit` 为真）对齐。
    */
   allowResubmit: boolean;
+  /**
+   * 这一份单的奖励配置（规格 §9.2，**学习单级**）。由 `resolveRewardScale` 收成
+   * 「一定合法」的那两个值：缺字段与坏值都落到默认档（星星 / 1），与新建学习单、
+   * 与服务端 `normalizeSettings` 是同一对默认值，所以学生看到的那一档与教师配的是同一个。
+   */
+  reward: RewardScale;
 }
 
 type LoadState =
@@ -101,6 +111,15 @@ export interface WorksheetQuestionListProps {
    * 那里 `statuses` 是空的，没有「已提交」可言。
    */
   allowResubmit: boolean;
+  /**
+   * 这一份单的奖励配置（规格 §9.2）。**不传 = 这个列表一处奖励都不画** ——
+   * 教师端的「学生端预览」就是靠不传它来保证「教师端不出现奖励」（规格 §3-U）
+   * 的，而不是靠某处 `if (是教师)`。⚠️ 与下面 `interactive` 那道闸门是**两道**，
+   * 不是重复：这一道管「没有配置就没有奖励」，那一道管「只读的预览永远没有奖励」。
+   */
+  reward?: RewardScale | null;
+  /** 每道题的得分（`useWorksheetAnswers` 的 `scores`）。不传 = 一道题都没判分。 */
+  scores?: Record<string, WorksheetScore>;
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   onSubmit?: (node: WorksheetQuestionNode) => void;
 }
@@ -112,6 +131,8 @@ export function WorksheetQuestionList({
   submitting,
   interactive,
   allowResubmit,
+  reward,
+  scores,
   onChange,
   onSubmit,
 }: WorksheetQuestionListProps) {
@@ -145,6 +166,14 @@ export function WorksheetQuestionList({
               <span className={styles.questionState} data-state={state}>
                 {state === 'submitted' ? '✓ 已提交' : state === 'drafting' ? '◐ 作答中' : ''}
               </span>
+              {/* 奖励出现在**每题旁**（规格 §9.3），交完立刻出现。
+                  🔴 `interactive` 是第二道闸：本组件同时被教师端的「学生端预览」渲染
+                  （`preview-modal.tsx`，`interactive={false}`），而奖励**教师端一处都不许出现**
+                  （规格 §3-U：那里问的是「哪道题错得多」）。所以即使将来有人往预览里
+                  传了奖励配置，这一行也不会画出来。 */}
+              {interactive && reward ? (
+                <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+              ) : null}
             </div>
 
             <div className={styles.prompt}>
@@ -287,7 +316,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
           id: string;
           title: string;
           content?: { nodes?: unknown };
-          settings?: { allowResubmit?: unknown };
+          settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown };
         };
         if (cancelled) return;
         const rawNodes = data.content && Array.isArray(data.content.nodes) ? data.content.nodes : [];
@@ -297,10 +326,12 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
             id: data.id,
             title: data.title,
             questions: flattenQuestions(rawNodes as WorksheetQuestionNode[]),
-            // 缺字段时按**允许**处理：服务端的 `readStudentSettings` 一定会补齐这两个键
+            // 缺字段时按**允许**处理：服务端的 `readStudentSettings` 一定会补齐这几个键
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
             allowResubmit: data.settings?.allowResubmit !== false,
+            // 奖励同理：缺字段落到默认档（星星 / 1），不抛也不画一个错的档。
+            reward: resolveRewardScale(data.settings),
           },
         });
       } catch {
@@ -330,6 +361,19 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
 
   const submittedCount = questions.filter((node) => answers.statuses[node.id] === 'submitted').length;
   const total = questions.length;
+
+  /**
+   * 顶栏的奖励累计（规格 §9.3 的 `⭐×3`）。
+   *
+   * 🔴 与**每题旁**那一个用同一条公式（`rewardAmount`），只是这里把所有题加起来 ——
+   * 两处各写一份累加口径，「顶栏 3 颗星、题目里只有 2 颗」这种偏差不会有任何报错。
+   * 只数**当前这份 `content` 里的题**：教师删掉一道题之后，`scores` 里可能还留着它的
+   * 得分（键在、题没了），把它算进累计会让顶栏多出学生看不见的那几分。
+   */
+  const rewardScale = load.kind === 'ready' ? load.worksheet.reward : null;
+  const rewardTotal = rewardScale
+    ? questions.reduce((sum, node) => sum + rewardAmount(answers.scores[node.id] ?? null, rewardScale), 0)
+    : 0;
 
   /**
    * 顶部那一条的保存状态（规格 §8.2）。四种文案，**判据只在这里一处**：
@@ -371,8 +415,11 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
               <span className={styles.progressText}>{submittedCount}/{total}</span>
             </div>
             <div className={styles.saveState}>{saveText}</div>
-            {/* 奖励累计的位置（规格 §9.3）。D5 才往里放东西，这里现在是个空盒子。 */}
-            <div className={styles.rewardSlot} />
+            {/* 奖励累计（规格 §9.3）。一个都还没拿到时盒子里是空的 —— 不写 `⭐×0`：
+                「还没有」与「统计过了，是 0」在屏幕上是同一行字，而后者是假话。 */}
+            <div className={styles.rewardSlot}>
+              {rewardScale ? <RewardTotal scale={rewardScale} amount={rewardTotal} /> : null}
+            </div>
           </div>
 
           <div className={styles.scroller}>
@@ -383,6 +430,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
               submitting={answers.submitting}
               interactive
               allowResubmit={load.worksheet.allowResubmit}
+              reward={load.worksheet.reward}
+              scores={answers.scores}
               onChange={handleChange}
               onSubmit={handleSubmit}
             />

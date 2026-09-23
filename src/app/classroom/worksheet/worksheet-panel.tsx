@@ -383,7 +383,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
           id: string;
           title: string;
           content?: { nodes?: unknown };
-          settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown };
+          // ⚠️ 这份内联类型是**下发的 settings 的形状**（不是「本文件读的那几个键」）：
+          // 奖励三项都经由 `resolveRewardScale` 消费，所以新增一个键时这里与它要一起看
+          //（`halfStep` 是 M4a 加的，服务端 `readStudentSettings` 会下发它）。
+          settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown; halfStep?: unknown };
         };
         const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;

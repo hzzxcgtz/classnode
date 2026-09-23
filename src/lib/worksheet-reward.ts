@@ -92,28 +92,49 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
  */
 export const DEFAULT_REWARD_STYLE: RewardStyle = 'star';
 export const DEFAULT_REWARD_STEP = 1;
-/** 步长的可选项（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
+/** 全对档步长的可选项（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
 export const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
+
+/**
+ * ★ M4a：**半对档**步长的默认值与取值域。
+ *
+ * 🔴 `HALF_STEPS` **比 `REWARD_STEPS` 多一个 `0`** —— 这不是笔误，两者**本来就不同**：
+ * `rewardStep` 是「答对一题得几个」，`0` 在那里无意义（答对却得 0 个）；而半对档的 `0`
+ * 是**一个合法的选择** = 这单不给部分分（规格 §12 裁定 3 定的默认值就是它）。
+ *
+ * ⚠️ **别复用 `normalizeRewardStep` 来归一化半对档**（这是 2026-09-24 实测定下的一条）：
+ * `REWARD_STEPS.includes(0)` 为假 ⇒ `normalizeRewardStep(0)` 回落到 `DEFAULT_REWARD_STEP = 1`
+ * ⇒ 教师配的「半对 0」在学生端变成「半对 1」，既与裁定 3 的「与第一批行为逐字相同」打架，
+ * 也与服务端下发的 0 打架。另一个修法（给 `normalizeRewardStep` 加个 `fallback` 参数）
+ * 也不行：那样 `0` 之所以合法**只是因为它恰好等于 fallback**
+ * （`normalizeRewardStep(4, 0)` 也回 0），一个合法值与一个越界值产生**同一个观测**，
+ * 读者没法从代码看出「0 算不算数」。
+ *
+ * ⚠️ 这三个字面量在**服务端**（`server/src/routes/worksheets.ts` 的 `HALF_STEPS` 与
+ * `DEFAULT_SETTINGS.halfStep`）各有一份：服务端读不到 `src/`。**两处必须一起改**，
+ * 改一处不会报错，只会让教师配的档与学生看到的档不是同一个。
+ */
+export const DEFAULT_HALF_STEP = 0;
+export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 /**
  * 一份学习单上的奖励配置。
  *
- * `style` 与 `step` 就是落库的那两个键（`Worksheet.settings`，规格 §4.4 / §9.2）。
+ * `style` 与 `step` / `halfStep` 就是落库的那三个键（`Worksheet.settings`，规格 §4.4 / §9.2）。
  */
 export interface RewardScale {
   style: RewardStyle;
   /** 答对一题的步长（教师可配 1 / 2 / 3 / 5）。 */
   step: number;
   /**
-   * **半对**那一档的步长。今天**没有任何调用方传它**，教师也配不了它 ——
-   * 第一批不做部分得分（规格 §3-S），「半对档的那一行配置」也刻意不做（YAGNI）。
+   * ★ M4a：**半对**那一档的步长（教师可配 0 / 1 / 2 / 3 / 5，`0` = 这单不给部分分）。
    *
-   * 留着一个没人传的字段，是为了让这个取值函数的**形状按 M4 定下来**：M4 引入部分得分后
-   * 教师可配两档（用户原话「全对给两朵小花，半对半错给一朵」），那时只需把库里那个键
-   * 读出来传进来，**不必回头改这个函数与它的全部调用点**。若现在把入参写成布尔，
-   * 将来要改的就不只是这里，学生还会看到累计值跳变。
+   * 它从 D5 起就留在这个形状里、却一直没人传（那时教师配不了它）；M4a 起由
+   * `resolveRewardScale` 从库里那个键读出来 —— 走那条路进来的 `RewardScale` **总是带着它**。
    *
-   * 缺席时按 `Math.floor(step × score)` 折算 —— 那是**兜底**，不是产品定的规则。
+   * ⚠️ 它仍然写成可选的，是因为 `rewardAmount` 里那条 `?? Math.floor(step × score)` 的兜底
+   * 要对**手工拼的** `RewardScale`（用例里直接写 `{ style, step }` 的那些）成立 ——
+   * 那是兜底，**不是**产品定的规则（产品规则是「半对得半对档那个数」）。
    */
   halfStep?: number;
 }
@@ -136,6 +157,16 @@ export function normalizeRewardStep(raw: unknown): number {
   return typeof raw === 'number' && REWARD_STEPS.includes(raw) ? raw : DEFAULT_REWARD_STEP;
 }
 
+/**
+ * 半对档只认 0 / 1 / 2 / 3 / 5 这五个值（越界与缺字段一律回落到 **0**）。
+ *
+ * ⚠️ 与 `normalizeRewardStep` **不是**同一条规则，也**不许**合并 —— 两者的域不同、
+ * 默认值也不同（这里是 0、那里是 1）。理由与代价写在 `HALF_STEPS` 上。
+ */
+export function normalizeHalfStep(raw: unknown): number {
+  return typeof raw === 'number' && HALF_STEPS.includes(raw) ? raw : DEFAULT_HALF_STEP;
+}
+
 /** 从 `Worksheet.settings` 那一坨里取出奖励配置（缺字段 / 坏值一律回落到默认）。 */
 export function resolveRewardScale(settings: unknown): RewardScale {
   const source = settings && typeof settings === 'object' && !Array.isArray(settings)
@@ -144,6 +175,11 @@ export function resolveRewardScale(settings: unknown): RewardScale {
   return {
     style: normalizeRewardStyle(source.rewardStyle),
     step: normalizeRewardStep(source.rewardStep),
+    // ★ M4a：这一行就是「学习单级半对档」到学生端的**唯一**一条路（服务端那边是
+    // `readStudentSettings` 把它下发出来）。少这一行 ⇒ `rewardAmount` 永远走
+    // `Math.floor(step × score)` 那条兜底 ⇒ 教师配的「半对 0」被当成「按比例折算」，
+    // 而界面上没有任何提示。
+    halfStep: normalizeHalfStep(source.halfStep),
   };
 }
 

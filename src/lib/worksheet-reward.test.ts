@@ -14,8 +14,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_HALF_STEP,
   DEFAULT_REWARD_STEP,
   DEFAULT_REWARD_STYLE,
+  HALF_STEPS,
+  normalizeHalfStep,
   normalizeRewardStep,
   normalizeRewardStyle,
   resolveRewardScale,
@@ -64,16 +67,43 @@ test('normalizeRewardStep：只认 1/2/3/5，越界值回落到默认（不是�
   }
 });
 
+/**
+ * ★ M4a：半对档是**另一条规则**（域含 0、默认是 0）。
+ *
+ * 🔴 这一条钉住的正是「两档的取值域**不同**」这件事：`0` 在 `normalizeRewardStep` 那里
+ * 是**越界值**（回落到 1），在这里是**合法值**（原样返回 0）。两处一旦合并，
+ * 教师配的「半对 0」就会变成 1 —— 而界面上只是多出一个符号，没有任何报错。
+ */
+test('normalizeHalfStep：0/1/2/3/5 原样；越界与缺字段回落到 0（**不是** 1）', () => {
+  for (const half of HALF_STEPS) assert.equal(normalizeHalfStep(half), half);
+  // 阳性对照：同一个 0 在两条规则下**必须是两个结果** —— 否则上面那条循环可能只是碰巧全绿。
+  assert.equal(normalizeRewardStep(0), DEFAULT_REWARD_STEP);
+  assert.equal(normalizeHalfStep(0), DEFAULT_HALF_STEP);
+  assert.notEqual(DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, '两条规则的默认值不同，别把它们并成一个常量');
+  for (const bad of [4, -1, 0.5, 100, '2', null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(normalizeHalfStep(bad), DEFAULT_HALF_STEP, `${JSON.stringify(bad)} 应当回落到 0`);
+  }
+});
+
 test('resolveRewardScale：从 settings 那一坨里取，缺字段与坏值都回落，**不抛**', () => {
-  assert.deepEqual(resolveRewardScale({ rewardStyle: 'flower', rewardStep: 3 }), { style: 'flower', step: 3 });
-  assert.deepEqual(resolveRewardScale({}), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP });
-  assert.deepEqual(resolveRewardScale(null), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP });
-  assert.deepEqual(resolveRewardScale([1, 2]), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP });
-  assert.deepEqual(resolveRewardScale('star'), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP });
+  assert.deepEqual(resolveRewardScale({ rewardStyle: 'flower', rewardStep: 3 }), { style: 'flower', step: 3, halfStep: DEFAULT_HALF_STEP });
+  assert.deepEqual(resolveRewardScale({}), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
+  assert.deepEqual(resolveRewardScale(null), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
+  assert.deepEqual(resolveRewardScale([1, 2]), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
+  assert.deepEqual(resolveRewardScale('star'), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
   // 一个坏键不该把另一个好键也带坏
-  assert.deepEqual(resolveRewardScale({ rewardStyle: '不知道', rewardStep: 5 }), { style: DEFAULT_REWARD_STYLE, step: 5 });
-  // 返回值里**没有** `halfStep` —— 它不是配置，教师今天配不了（M4 才有一行）
-  assert.deepEqual(Object.keys(resolveRewardScale({ rewardStep: 2 })).sort(), ['step', 'style']);
+  assert.deepEqual(
+    resolveRewardScale({ rewardStyle: '不知道', rewardStep: 5 }),
+    { style: DEFAULT_REWARD_STYLE, step: 5, halfStep: DEFAULT_HALF_STEP },
+  );
+  // ★ M4a：半对档也要取出**配过的**值 —— 少了这一项，`rewardAmount` 永远走
+  // `Math.floor(step × score)` 那条兜底，教师配的「半对 0」在界面上是个「按比例折算」。
+  assert.equal(resolveRewardScale({ halfStep: 2 }).halfStep, 2);
+  assert.equal(resolveRewardScale({ halfStep: 0 }).halfStep, 0, '0 是一个**配过的**值，不许被当成缺字段');
+  assert.equal(resolveRewardScale({ halfStep: 4 }).halfStep, DEFAULT_HALF_STEP, '越界值回落');
+  assert.equal(resolveRewardScale({ halfStep: '2' }).halfStep, DEFAULT_HALF_STEP);
+  // 返回值里的键就这三个 —— 多一个键在这里不会报错，只会让下游多一个能读错的开关。
+  assert.deepEqual(Object.keys(resolveRewardScale({ rewardStep: 2 })).sort(), ['halfStep', 'step', 'style']);
 });
 
 // ── 2. 得分 → 奖励个数（规格 §9.1）────────────────────────────────────────

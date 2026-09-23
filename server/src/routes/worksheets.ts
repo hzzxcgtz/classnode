@@ -108,8 +108,22 @@ const DESCRIPTION_MAX = 2000;
  * **两处必须一起改**。改一处不会报错，只会让存进去的档在学生端落到默认档（画成星星）。
  */
 const REWARD_STYLES: readonly string[] = ['correctness', 'star', 'flower', 'points'];
-/** 步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
+/** 全对档步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
 const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
+/**
+ * ★ M4a：**半对档**步长的取值域 —— 🔴 它**比 `REWARD_STEPS` 多一个 `0`**，两者是不同的域：
+ * `rewardStep` 是「答对一题得几个」，`0` 在那里无意义（答对却得 0 个）；而半对档的 `0`
+ * 是**一个合法的选择** = 这单不给部分分（规格 §12 裁定 3 定的默认值就是它）。
+ *
+ * ⚠️ **别复用 `REWARD_STEPS` 判它**：`REWARD_STEPS.includes(0)` 为假 ⇒ `halfStep: 0`
+ * 会因为「不在域里」落回默认值（恰好也是 0，**碰巧**对），但 `halfStep: 4` 这样的越界值
+ * **同样**落成 0 —— 合法值与越界值产生同一个观测，读者没法从代码看出「0 到底算不算数」。
+ *
+ * ⚠️ 这三个字面量与取值函数在**前端**（`src/lib/worksheet-reward.ts` 的 `HALF_STEPS` /
+ * `DEFAULT_HALF_STEP` / `normalizeHalfStep`）各有一份，理由与上面的 `REWARD_STYLES` 逐字相同
+ * —— **两处必须一起改**，改一处不会报错，只会让存进去的档在学生端变成另一个档。
+ */
+const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 const DEFAULT_SETTINGS = {
   allowResubmit: true,
@@ -120,16 +134,22 @@ const DEFAULT_SETTINGS = {
   // 这里决定**缺字段的行**长什么样，前端那份决定**新建的单**长什么样。
   rewardStyle: 'star',
   rewardStep: 1,
+  // 半对档的默认值是 **0**（规格 §12 裁定 3：「每题 全对 1 / 半对 0」）—— 与第一批行为
+  // 逐字相同，所以已在用的学习单升级后学生端什么都不变。前端那一份是
+  // `worksheet-reward.ts` 的 `DEFAULT_HALF_STEP`。
+  halfStep: 0,
 } as const;
 
 /**
- * 归一化 `settings`。**五个键都会写出来**（缺的补默认）—— 落库的 JSON 因此总是完整的，
+ * 归一化 `settings`。**六个键都会写出来**（缺的补默认）—— 落库的 JSON 因此总是完整的，
  * 学生端与编辑器都不必自己写 `?? 默认值`。
  *
  * 🔴 这里也是**奖励配置唯一的写入口**：`PUT /api/worksheets/:id` 是整份替换
  * （`data.settings = normalizeSettings(body.settings)`），所以本函数少认一个键，
  * 那个键就会被**静默丢掉** —— 教师配好「花朵 ×3」，保存一次改标题的请求就变回星星，
  * 而界面上没有任何提示。新增奖励相关的键时，这里与 `readStudentSettings` 要一起加。
+ * （M4a 的 `halfStep` 就是这么加进来的：B2 之前它进不了这里，于是 `pointsFromSettings`
+ * 读到的永远是默认的 0 —— 教师填的值会被一次「只改标题」的保存抹掉。）
  */
 function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
@@ -141,12 +161,17 @@ function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
   const rewardStep = typeof source.rewardStep === 'number' && REWARD_STEPS.includes(source.rewardStep)
     ? source.rewardStep
     : DEFAULT_SETTINGS.rewardStep;
+  // ⚠️ 判据是 `HALF_STEPS`（含 0），**不是** `REWARD_STEPS` —— 理由与代价写在它的定义上。
+  const halfStep = typeof source.halfStep === 'number' && HALF_STEPS.includes(source.halfStep)
+    ? source.halfStep
+    : DEFAULT_SETTINGS.halfStep;
   return {
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
     defaultInputMode: source.defaultInputMode === 'handwriting' ? 'handwriting' : DEFAULT_SETTINGS.defaultInputMode,
     rewardStyle,
     rewardStep,
+    halfStep,
   };
 }
 
@@ -944,11 +969,13 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
 }
 
 /**
- * 学生端只拿 `settings` 里的**四个**字段：`allowResubmit` / `autoGrade` /
- * `rewardStyle` / `rewardStep`。
+ * 学生端只拿 `settings` 里的**五个**字段：`allowResubmit` / `autoGrade` /
+ * `rewardStyle` / `rewardStep` / `halfStep`。
  *
- * 前两个是 B3 就有的，后两个是 D5 加的（规格 §9.2：奖励形式是**学习单级**配置，
- * 而学生端要拿它才知道该把判分画成对错、星星、花朵还是分数）。**它不下发分数** ——
+ * 前两个是 B3 就有的，中间两个是 D5 加的（规格 §9.2：奖励形式是**学习单级**配置，
+ * 而学生端要拿它才知道该把判分画成对错、星星、花朵还是分数），`halfStep` 是 M4a 的 B2 加的
+ * —— 它到这里为止才是**活的**：在此之前 `normalizeSettings` 不认那个键（写不进去），
+ * 所以下发它等于下发一个恒为 `undefined` 的字段。**它不下发分数** ——
  * 星星/花朵/分数在服务端从来不是数据，只是一个「怎么画」的开关（§9.1）。
  *
  * `defaultInputMode` 仍然刻意不下发：第一批恒为 `keyboard`（规格 §3-V），多给一个字段
@@ -958,7 +985,7 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
  * 一起改那条用例 —— 那是有意的：学生端下发什么，必须是有人明确决定过的事。
  */
 function readStudentSettings(raw: unknown): {
-  allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number;
+  allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number; halfStep: number;
 } {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
@@ -974,6 +1001,10 @@ function readStudentSettings(raw: unknown): {
     rewardStep: typeof source.rewardStep === 'number' && REWARD_STEPS.includes(source.rewardStep)
       ? source.rewardStep
       : DEFAULT_SETTINGS.rewardStep,
+    // ⚠️ 域是 `HALF_STEPS`（含 0），与上一行**不是**同一个数组 —— 见它的定义。
+    halfStep: typeof source.halfStep === 'number' && HALF_STEPS.includes(source.halfStep)
+      ? source.halfStep
+      : DEFAULT_SETTINGS.halfStep,
   };
 }
 

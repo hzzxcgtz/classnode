@@ -63,6 +63,9 @@ const SETTINGS: WorksheetSettings = {
   defaultInputMode: 'keyboard',
   rewardStyle: 'star',
   rewardStep: 1,
+  // 刻意给一个**非默认**的半对档（默认是 0）：这一份 `SETTINGS` 是「保存载荷」那一组用例
+  // 的入参，配成默认值的话「它被原样带过去了」与「它被换成默认值」是同一个观测。
+  halfStep: 2,
 };
 
 /** 题干为 `p1`…`pN` 的一份内容，用来数栈深。 */
@@ -479,9 +482,9 @@ function draftWith(nodeValue: unknown): string {
     savedAt: 1_700_000_000_000,
     title: '第一课',
     description: '说明',
-    // 奖励两项刻意给**非默认**的值（默认是 star / 1）：草稿里配好的奖励形式要是被
-    // 解析时丢掉，教师恢复一次草稿就会发现自己的「花朵 ×5」变回了星星。
-    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5 },
+    // 奖励三项刻意给**非默认**的值（默认是 star / 1 / 0）：草稿里配好的奖励形式要是被
+    // 解析时丢掉，教师恢复一次草稿就会发现自己的「花朵 ×5、半对 2」变回了星星。
+    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 3 },
     content: { schemaVersion: 9, nodes: [nodeValue] },
   });
 }
@@ -494,7 +497,7 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
   assert.equal(draft.title, '第一课');
   assert.equal(draft.content.schemaVersion, 9);
   assert.deepEqual(draft.settings, {
-    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5,
+    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
   });
 });
 
@@ -579,17 +582,27 @@ test('normalizeLoadedSettings：不是对象 ⇒ 默认值；只认 handwriting 
   assert.equal(normalizeLoadedSettings({ allowResubmit: false }).allowResubmit, false);
 });
 
-test('normalizeLoadedSettings：奖励两项原样带过来（漏掉就等于用默认值覆盖库里配好的档）', () => {
+test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用默认值覆盖库里配好的档）', () => {
   // 🔴 编辑页保存时是把 `settings` **整份**发回去的（`buildPayload`）。这里漏一个键，
   // 「打开 → 只改了个标题 → 保存」就会把教师配好的奖励形式悄悄改回星星。
+  // ★ M4a：`halfStep` 就是新加的那一个 —— 它最容易在这条路上被漏掉（服务端认它、
+  // 下发给学生，而前端读回来时没带上，于是原样发回去的 settings 里没有那个键）。
   const loaded = normalizeLoadedSettings({
-    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5,
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
   });
   assert.deepEqual(loaded, {
-    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5,
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
   });
   // 坏值回落到与取值域同一份默认（不是就地编一个第五档）
   assert.equal(normalizeLoadedSettings({ rewardStyle: '彩虹' }).rewardStyle, DEFAULT_SETTINGS.rewardStyle);
   assert.equal(normalizeLoadedSettings({ rewardStep: 4 }).rewardStep, DEFAULT_SETTINGS.rewardStep);
   assert.equal(normalizeLoadedSettings({ rewardStep: '3' }).rewardStep, DEFAULT_SETTINGS.rewardStep);
+  // ★ 半对档：0 是**合法值**（要原样带过来），4 是越界值（回落到 0）。
+  //   ⚠️ 这里**不能**用 `normalizeRewardStep` —— 它的域不含 0，会把「半对 0」变成 1，
+  //   而 0 恰恰是新单的默认值（规格 §12 裁定 3），也就是最常见的那个取值。
+  assert.equal(normalizeLoadedSettings({ halfStep: 0 }).halfStep, 0, '0 是配过的半对档，不是缺字段');
+  assert.equal(normalizeLoadedSettings({ halfStep: 5 }).halfStep, 5);
+  assert.equal(normalizeLoadedSettings({ halfStep: 4 }).halfStep, DEFAULT_SETTINGS.halfStep);
+  assert.equal(normalizeLoadedSettings({ halfStep: '3' }).halfStep, DEFAULT_SETTINGS.halfStep);
+  assert.notEqual(DEFAULT_SETTINGS.halfStep, DEFAULT_SETTINGS.rewardStep, '两档的默认值不同（0 与 1），别互换');
 });

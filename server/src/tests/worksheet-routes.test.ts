@@ -586,6 +586,75 @@ test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（�
   assert.match(badBody.error, /打乱/, '报错要告诉教师怎么改');
 });
 
+/**
+ * ★ M4a（B2）：学习单级的**半对档**（`settings.halfStep`）必须走完
+ * 「写入口 → 库里 → 读回来 → 原样发回去」整条路。
+ *
+ * 🔴 这条用例存在的理由是**整份替换**：`PUT /api/worksheets/:id` 写的是
+ * `data.settings = normalizeSettings(body.settings)`，而编辑页保存时把 `settings`
+ * **整份**发回来（`buildPayload`）。所以 `normalizeSettings` 少认一个键 ⇒
+ * 教师配好的「半对给 1 朵」会被一次「只改了个标题」的保存**静默抹掉**：
+ * 保存照常 200、界面上没有任何提示，只有学生第二天发现奖励变了样。
+ * （规格 §12「三处改错了不会报错的地方」之 ③。）
+ *
+ * 四步各自钉一件事，缺一步就会出现假绿：
+ *   ① 写入口**认**这个键 —— 显式配 1 ⇒ 落库是 1，而不是默认的 0；
+ *   ② 教师读端点能把它读回来（编辑页下次打开时看到的就是这个数）；
+ *   ③ 🔴 **把读回来的那一份原样发回去**（编辑页一次保存的逐字模拟）⇒ 它一个字节都不许变。
+ *      ③ 才是真正的哨兵：只做 ①② 的话，一个「写的时候存下、读的时候补默认」的实现照样全绿，
+ *      而教师在真实操作里必走的正是 ③ 这条路。
+ *   ④ 越界值（4）落回默认档 —— 域是 `0/1/2/3/5`（`HALF_STEPS`），不是 `rewardStep` 的 1/2/3/5。
+ */
+test('🔴 半对档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回去也不变**；越界回落默认', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const settingsOf = async (id: string) =>
+    (await (await server.get(`/api/worksheets/${id}`)).json() as { settings: Record<string, unknown> }).settings;
+
+  // ① 写入口认它。夹具里刻意**不配**默认值（1 而不是 0）—— 配 0 的话「落库是 0」
+  //    与「那个键被整个丢掉、读的时候补默认 0」是同一个观测，这条断言就废了。
+  const created = await (await server.post('/api/worksheets', {
+    title: '带半对档的学习单', content: SAMPLE_CONTENT, settings: { ...SAMPLE_SETTINGS, halfStep: 1 },
+  })).json() as { id: string };
+  const stored = JSON.parse(JSON.stringify(
+    (await db.prisma.worksheet.findUniqueOrThrow({ where: { id: created.id } })).settings,
+  )) as Record<string, unknown>;
+  assert.equal(stored.halfStep, 1, '教师配的半对档必须落库 —— `normalizeSettings` 少认一个键就会静默丢掉它');
+
+  // ② 读得回来（教师读端点 = 编辑页打开时走的那一条）。
+  const loaded = await settingsOf(created.id);
+  assert.equal(loaded.halfStep, 1, '读端点的 settings 里必须有它，否则编辑页改一次标题就会把它写没');
+
+  // ③ 🔴 哨兵：编辑页保存 = 把读到的那一份**整份**发回去。此处的 `title` 变了、`settings`
+  //    没变 —— 与「教师只改了个标题」逐字同形。
+  const putRes = await server.put(`/api/worksheets/${created.id}`, { title: '改过名的学习单', settings: loaded });
+  assert.equal(putRes.status, 200, JSON.stringify(await putRes.json()));
+  const afterSave = await settingsOf(created.id);
+  assert.equal(
+    afterSave.halfStep, 1,
+    '把读回来的 settings 原样发回去之后半对档必须还是 1 —— 变回 0 就是「保存一次改标题的请求把它抹掉了」',
+  );
+  assert.deepEqual(afterSave, loaded, '整份发回去的 settings 不该有任何一项被改写');
+
+  // 顺带（**不是**哨兵，只做记录）：只发 `{title}`、根本不带 `settings` 的那种请求走的是
+  // 另一条分支（`body.settings === undefined` ⇒ 不动这一列），所以它本来就安全 ——
+  // 真正会抹掉配置的是上面 ③ 那条「整份发回」的路，而不是这一条。
+  const titleOnly = await server.put(`/api/worksheets/${created.id}`, { title: '再改一次名' });
+  assert.equal(titleOnly.status, 200, JSON.stringify(await titleOnly.json()));
+  assert.equal((await settingsOf(created.id)).halfStep, 1, '不带 settings 的 PUT 不得动这一列');
+
+  // ④ 越界回落：域是 0/1/2/3/5，`4` 不在里面 ⇒ 默认档 0（不是 1 —— 那是 `rewardStep` 的默认值）。
+  const badPut = await server.put(`/api/worksheets/${created.id}`, {
+    settings: { ...SAMPLE_SETTINGS, halfStep: 4 },
+  });
+  assert.equal(badPut.status, 200, JSON.stringify(await badPut.json()));
+  assert.equal(
+    (await settingsOf(created.id)).halfStep, 0,
+    '越界的半对档要落回它自己的默认值 0，不能把 4 原样存进去（也不能落成 rewardStep 的 1）',
+  );
+});
+
 test('CRUD：题目不合法（单选题没有正确答案）⇒ 400，且一个学习单都不建', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });

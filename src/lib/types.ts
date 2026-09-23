@@ -273,12 +273,12 @@ export interface WorksheetContent {
 }
 
 /**
- * 设置。五件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），
- * 落库的 JSON 里五个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
+ * 设置。六件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），
+ * 落库的 JSON 里六个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
  *
- * ⚠️ `rewardStyle` / `rewardStep` 是**学生端奖励形式**的配置（规格 §9.2，学习单级）。
- * 它们只影响**画法**，与 `isCorrect` 那个布尔值是两回事：星星、花朵、分数**不落库**
- * （规格 §9.1）。取值规则与可选项在 `src/lib/worksheet-reward.ts`，别在这里再定义一遍。
+ * ⚠️ `rewardStyle` / `rewardStep` / `halfStep` 是**学生端奖励形式**的配置（规格 §9.2，
+ * 学习单级）。它们只影响**画法**，与 `isCorrect` 那个布尔值是两回事：星星、花朵、分数
+ * **不落库**（规格 §9.1）。取值规则与可选项在 `src/lib/worksheet-reward.ts`，别在这里再定义一遍。
  */
 export interface WorksheetSettings {
   allowResubmit: boolean;
@@ -290,8 +290,14 @@ export interface WorksheetSettings {
    * 加了第五档时必然只改一处。
    */
   rewardStyle: RewardStyle;
-  /** 答对一题的步长，取值域 `1 | 2 | 3 | 5`。 */
+  /** 全对一题的步长，取值域 `1 | 2 | 3 | 5`。 */
   rewardStep: number;
+  /**
+   * ★ M4a：半对一题的步长，取值域 `0 | 1 | 2 | 3 | 5` —— 🔴 **比 `rewardStep` 多一个 `0`**
+   * （`0` = 这单不给部分分，也是新单的默认值，规格 §12 裁定 3）。归一化函数是
+   * `worksheet-reward.ts` 的 `normalizeHalfStep`，**不是** `normalizeRewardStep`（它的域不含 0）。
+   */
+  halfStep: number;
 }
 
 /**

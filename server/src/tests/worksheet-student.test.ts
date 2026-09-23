@@ -367,11 +367,15 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     '选项要留给学生（剥掉的只有答案）',
   );
 
-  // ⚠️ `settings` 只给学生需要的**四**个字段（B3 的两个 + D5 的奖励两项）——
+  // ⚠️ `settings` 只给学生需要的**五**个字段（B3 的两个 + D5 的奖励两项 + M4a 的半对档）——
   //    整份原样丢出去会连带下发第一批用不到的 `defaultInputMode`，前端就多一个能读错的开关。
   //    🔴 这是一条**逐字**的断言，键多一个少一个都会红：学生端下发什么必须有人明确决定过。
-  //    奖励两项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
-  assert.deepEqual(body.settings, { allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1 });
+  //    （M4a 加 `halfStep` 时这条用例**一起改了** —— 那是**有意的决定**，不是把测试改松：
+  //    学生端要拿半对档才知道「半对」该画几个，见 `src/lib/worksheet-reward.ts`。）
+  //    奖励三项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
+  assert.deepEqual(body.settings, {
+    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1, halfStep: 0,
+  });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
   // 否则上面那几条可能只是因为夹具里根本没有答案。
@@ -401,7 +405,11 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
  *   ① 配过的档**原样下发**（不是默认值 —— 夹具里的默认档就是星星/1）；
  *   ② **只改标题**的 `PUT` 不许动 settings（证明那条路不会顺手把奖励抹掉）；
  *   ③ 坏值（不认识的样式、越界的步长）落到默认档，而不是把坏值存进去；
- *   ④ 库里**手工改过**的行（缺这两个键）也要能读出默认档，不能 500。
+ *   ④ 库里**手工改过**的行（缺这三个键）也要能读出默认档，不能 500。
+ *
+ * ★ M4a（B2）：半对档 `halfStep` 加进来时，这四层**每层都要带上它** —— 它是最新加的那个键，
+ * 也正因为如此最容易在某一条路上漏掉（服务端写入口 / 读出口 / 前端默认 / 前端读回，
+ * 少一处就静默抹除，见 `worksheet-routes.test.ts` 里那条整份发回的哨兵）。
  */
 test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；坏值落到默认档', async (t) => {
   const db = await openTempDb();
@@ -410,7 +418,9 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
 
   const worksheet = await seedWorksheet(db.prisma, '带奖励设置的学习单', {
     allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard',
-    rewardStyle: 'flower', rewardStep: 3,
+    // ⚠️ 三个值**都不是默认档**（默认是 star / 1 / 0）：配默认值的话，「原样下发」与
+    // 「那个键被整个丢掉、读的时候补默认」是同一个观测，下面 ① 就废了。
+    rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
   });
   const { classroom, participant } = await seedClassroom(db.prisma, '9008');
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
@@ -422,7 +432,7 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
 
   // ① 配过的档原样下发
   assert.deepEqual(await settingsOf(worksheet.id), {
-    allowResubmit: true, autoGrade: true, rewardStyle: 'flower', rewardStep: 3,
+    allowResubmit: true, autoGrade: true, rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
   });
 
   // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
@@ -432,20 +442,23 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   const after = JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings);
   assert.equal(after, before, '只改标题的那次 PUT 不得动 settings');
   assert.equal(JSON.parse(after).rewardStyle, 'flower');
+  assert.equal(JSON.parse(after).halfStep, 2, '半对档同样不许被这次 PUT 动到');
 
   // ③ 坏值落到默认档（而不是把「第四档」存进库）
+  //    ⚠️ 半对档的域是 `0/1/2/3/5`（含 0，`HALF_STEPS`），与 `rewardStep` 的 1/2/3/5 **不同**：
+  //    所以这里两边都用越界值（4），它们各自的默认值却是 1 与 0 —— 别指望它们落成同一个数。
   const badPut = await server.put(`/api/worksheets/${worksheet.id}`, {
-    settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: '彩虹', rewardStep: 4 },
+    settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: '彩虹', rewardStep: 4, halfStep: 4 },
   });
   assert.equal(badPut.status, 200, JSON.stringify(await badPut.json()));
   const bad = JSON.parse(JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings));
   assert.deepEqual(
-    { rewardStyle: bad.rewardStyle, rewardStep: bad.rewardStep },
-    { rewardStyle: 'star', rewardStep: 1 },
-    '不认识的样式与越界的步长都必须落到默认档',
+    { rewardStyle: bad.rewardStyle, rewardStep: bad.rewardStep, halfStep: bad.halfStep },
+    { rewardStyle: 'star', rewardStep: 1, halfStep: 0 },
+    '不认识的样式与越界的步长都必须落到各自的默认档（半对档的默认是 0，不是 1）',
   );
 
-  // ④ 库里手工改过的行（`settings` 里根本没有这两个键）⇒ 默认档，不是 500。
+  // ④ 库里手工改过的行（`settings` 里根本没有这三个键）⇒ 默认档，不是 500。
   //    ⚠️ 用**另一间课堂**：课堂级容器是 `@@unique([classroomId, worksheetId])` 而不是
   //    「一间课堂一份」，往同一间课堂再挂一份会让「这个学生该拿哪一份」变成模糊的
   //    （`loadClassroomLevelWorksheetId` 取的是第一条）—— 那样这一条断言的失败原因
@@ -458,7 +471,7 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
     `/api/worksheets/${handEdited.id}/student-view`, bearer(otherToken),
   )).json() as { settings: Record<string, unknown> }).settings;
   assert.deepEqual(handEditedSettings, {
-    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1,
+    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1, halfStep: 0,
   });
 });
 

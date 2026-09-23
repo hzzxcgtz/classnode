@@ -4,9 +4,16 @@
  * 题型注册表。**导出的是运行时列表**，`QuestionType` 由它派生 —— 这样「有哪些题型」
  * 只有一处定义，测试可以**遍历**它（而不是在测试里把类型名抄一遍）。
  *
- * ⚠️ 它**不是**校验用的那张表：`routes/worksheets.ts` 的 `normalizeNode` 另有一份
- * `QUESTION_TYPES`。两份不一致的后果是「新增题型被 400 拒绝」（响亮失败），
- * 不是静默放行，所以第一批没有合并它们。
+ * 🔴 它**同时是校验用的那张表**：`routes/worksheets.ts` 的 `normalizeNode` 直接从
+ * 这里 `import { QUESTION_TYPES }`，不再另抄一份。
+ *
+ * ⚠️ 曾经那里抄了一份自己的字面量，而当时的注释只分析了**一个方向**（「注册表有、
+ * 校验那份没有 ⇒ 400 响亮失败，所以没关系」）。反向**不是**响亮的：校验那份多出一个
+ * 题型 ⇒ `normalizeNode` 收下它，而下面的 `validateQuestion` 不认识它 ⇒ 返回空错误 ⇒
+ * 那道题永远无法作答、也永远无法提交，整卷永远停在 `in-progress`、看板「已交 N/M」
+ * 永远填不满，**全程无一处报错**。合并成一份之后两个方向一起消失。
+ * ⚠️ 往这个数组里加题型时，`validateQuestion` 的 `if` 链要同步加一支 ——
+ * 它今天只认 `single-choice` / `fill-blank`，其余题型它一律返回空错误（即「通过」）。
  */
 export const QUESTION_TYPES = ['single-choice', 'fill-blank', 'short-answer'] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];

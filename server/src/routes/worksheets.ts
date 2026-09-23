@@ -9,6 +9,7 @@ import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import {
   flattenQuestions,
   grade,
+  QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
   stripAnswers,
   validateQuestion,
   type QuestionNode,
@@ -65,7 +66,20 @@ const router: Router = Router();
 
 // ── content / settings 的解析与校验 ─────────────────────────────────
 
-const QUESTION_TYPES: readonly string[] = ['single-choice', 'fill-blank', 'short-answer'];
+/**
+ * 校验用的题型白名单。**唯一真源是注册表**（`services/worksheet-questions.ts` 的
+ * `QUESTION_TYPES`）—— 这里只是把它放宽成 `readonly string[]`，好对任意输入做
+ * `includes`（注册表是 `as const` 的字面量联合）。
+ *
+ * 🔴 这里曾经**另抄了一份自己的字面量**，而两份表的**反向**不一致是**静默**的：
+ * 校验这份多、注册表少 ⇒ `normalizeNode` 高高兴兴收下这道题，而注册表的
+ * `validateQuestion` 不认识这个题型 ⇒ 返回空错误（它只对 `single-choice` /
+ * `fill-blank` 两支做检查）⇒ 这道题**永远无法作答、也永远无法提交** ⇒
+ * 整卷永远停在 `in-progress`、看板「已交 N/M」永远填不满，**全程无一处报错**。
+ * （反方向是响亮的：注册表有、这里没有 ⇒ 保存时 400。）
+ * M4 会一次加 8 个题型，所以这两份表在那之前就必须是同一份。
+ */
+const QUESTION_TYPES: readonly string[] = QUESTION_TYPE_REGISTRY;
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
@@ -314,7 +328,13 @@ function describeUsage(usage: WorksheetUsage): string {
   const head = `该学习单${parts.join('，')}，无法删除。`;
   const tail = usage.responseCount > 0
     ? `删除后这 ${usage.responseCount} 份作答会一起消失。`
-    : '请先从这些课堂或小组中移除后再试。';
+    // ⚠️ 这里曾经写「请先从这些课堂或小组中移除后再试」—— 本仓**没有那个操作**，
+    // 那句是一条**走不通的出路**（前端已经两次绕开它）。实测依据：
+    // `PUT /api/classroom/:id/settings` 的 body 只取 `title`（`classroom.ts`），
+    // `ClassroomGroupMaterial` 全仓只有两处 `create`（都在建课堂那一支）、
+    // 没有任何删除或改写它的端点，也没有删除课堂的端点。教师照着那句话去找按钮
+    // 会找不到，然后以为是自己没找对地方。所以说清现状，而不是指一条不存在的路。
+    : '它被课堂或小组引用着，而当前版本还没有提供「解除引用」的入口。';
   return `${head}${tail}若只是想改内容，请直接编辑；若想要一份新的，请用「复制一份」。`;
 }
 
@@ -716,7 +736,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
       questionId: string; status: string; isCorrect: boolean | null; reviewedAt: Date | null; value: Prisma.JsonValue | null;
     }>>();
     for (const response of responses) {
-      rowsByPair.set(`${response.participantId} ${response.worksheetId}`, response.answers);
+      rowsByPair.set(`${response.participantId}\x00${response.worksheetId}`, response.answers);
     }
 
     res.json({
@@ -733,7 +753,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
             groupName: participant.groupName,
             // 没有答案行 = 这个人这道题没有任何动作（包括「从没开始」）。**空数组照发**：
             // 「已交 N/M」的分母是参与者数，把没作答的人整个删掉会让分母只剩作答过的人。
-            answerRows: rowsByPair.get(`${participant.id} ${worksheetId}`) ?? [],
+            answerRows: rowsByPair.get(`${participant.id}\x00${worksheetId}`) ?? [],
           })),
         })),
     });

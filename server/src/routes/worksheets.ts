@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import type { Request, RequestHandler, Response } from 'express';
+import type { Server } from 'socket.io';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
@@ -492,12 +493,78 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/**
+ * 「已查看」标记（规格 §3-AA / §3-D）：教师给**某个参与者的某一道题**打 `reviewedAt`。
+ * 课上问的是「还剩几个我没看」，所以它按 `(参与者 × 题)` 存 —— 「这题看了几人」与
+ * 「这人看了几题」两个方向都能算出来。
+ *
+ * 🔴 **教师专用**。`POST /:id/review` **不在** `worksheetAccessGate` 的学生放行三种形状里
+ * （见文件顶部那个闸门与 `index.ts` 注册处的注释），所以学生 token 到这里是 **403**；
+ * 少了这条，学生就能伪造「老师已看过我的作业」，而看板的「已看 N/M」不会报错、
+ * 只会显示一个教师以为自己点过的数字。用例钉在 `worksheet-realtime.test.ts` 与
+ * `worksheet-routes.test.ts` 两处。
+ *
+ * ⚠️ **只对已经存在的答案行生效**：学生没答过这一题时回 **409**（当前状态不允许）。
+ * 另一种做法是「顺手建一行 `status: 'unanswered'`、只填 `reviewedAt`」，但那条路会
+ * 把一个假信号喂给下游 —— `POST /:id/answers/submit` 的前置检查只问「这一行在不在」
+ * （`if (!answer) return 400`），凭空建出来的空行会让**从未作答**的题可以提交，
+ * 进而在看板上记成「已提交 · 答错」并推进整卷进度。那正是看板数据里最坏的一类
+ * **坏数据**（看板唯一的进度来源就是这些行）。
+ * 这是个待裁定的语义点，取舍与备选改法写在 `worksheet-realtime.test.ts` 的对应用例里。
+ */
+router.post('/:id/review', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheet = await prisma.worksheet.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!worksheet) return res.status(404).json({ error: '学习单不存在' });
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const participantId = typeof body.participantId === 'string' ? body.participantId.trim() : '';
+    const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';
+    if (!participantId) return res.status(400).json({ error: '缺少 participantId' });
+    if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
+
+    // 参与者必须先存在：否则一个手滑的 id 会一路走到「没有答案行」那一支，
+    // 教师拿到的是一句「该学生还没有作答这道题」—— 说了一个不存在的人没作答，
+    // 与「这个人根本不在课堂里」是两种不同的处置。
+    const participant = await prisma.classroomStudent.findUnique({
+      where: { id: participantId },
+      select: { id: true },
+    });
+    if (!participant) return res.status(404).json({ error: '参与者不存在' });
+
+    // 答案行的定位口径与 PUT / submit 一致：`(参与者, 学习单, 题)` ⇒ 那一条 response
+    // 下的那一行（`@@unique([responseId, questionId])` 保证至多一行）。
+    const existing = await prisma.worksheetAnswer.findFirst({
+      where: { questionId, response: { worksheetId: req.params.id, participantId } },
+      select: { id: true },
+    });
+    if (!existing) {
+      return res.status(409).json({ error: '该学生还没有作答这道题，无法标记「已查看」' });
+    }
+
+    // 重复调用是**刷新**而不是「第一次有效」：教师连点两次、或换台设备再看一遍都是正常
+    // 形态，而 `reviewedAt` 的语义是「**最后**一次查看的时间」（看板靠它判断「刚看过」）。
+    const updated = await prisma.worksheetAnswer.update({
+      where: { id: existing.id },
+      data: { reviewedAt: new Date() },
+      select: { questionId: true, reviewedAt: true },
+    });
+    res.json({ success: true, participantId, questionId: updated.questionId, reviewedAt: updated.reviewedAt });
+  } catch (error) {
+    console.error('[worksheets] 标记已查看失败:', error);
+    res.status(500).json({ error: '标记已查看失败' });
+  }
+});
+
 // ── 学生端 ──────────────────────────────────────────────────────────
 //
 //   GET  /:id/student-view        读自己那一份（服务端剥离答案，§5.4）
 //   PUT  /:id/answers             保存单题（幂等）
 //   POST /:id/answers/submit      提交单题
-//   POST /:id/review              「已查看」标记（**教师专用**，B4）
+//   POST /:id/review              「已查看」标记（**教师专用**，B4）—— 实现**在上面教师端
+//                                 那一段**，这里列出来只是为了让闸门那三条正则的对照物
+//                                 在同一处看得全（闸门只放行上面三条）。
 //
 // 这四条形状的**放行判据**在文件顶部的 `worksheetAccessGate` 里，那一段是安全关键：
 // 前三条是学生放行集，`review` **不在**其中（它走教师那一支）。
@@ -637,6 +704,61 @@ function toJsonValue(raw: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull
   return raw === undefined ? Prisma.DbNull : (raw as Prisma.InputJsonValue);
 }
 
+interface AnswerRow {
+  questionId: string;
+  status: string;
+  isCorrect: boolean | null;
+  reviewedAt: Date | null;
+}
+
+/**
+ * 教师看板的 socket 房间名。
+ *
+ * 🔴 这里是 `teacher:<id>`，**不是**规格 §5.7 示意图里写的 `classroom:<id>`。
+ * 代码里 `classroom:<id>` 是**学生**房间（`socket/index.ts` 的 `join-classroom` 里
+ * `socket.join(...)`，`routes/classroom.ts` 各处 `io.to('classroom:'+id)` 全都是在发学生），
+ * 教师看板加入的是 `teacher:<id>`（同文件的 `join-teacher-board`，前端由
+ * `src/lib/socket.ts` 的 `joinTeacherBoard` 触发）。
+ *
+ * ⚠️ 写错房间的后果与「压根没实现」一模一样：事件照发、日志干净、看板永远不动，
+ * 没有任何报错。更要紧的是载荷里有每名学生的作答状态与对错，而学生房间里是**全班学生**。
+ * 所以 `worksheet-realtime.test.ts` 不把这个名字当常量抄一遍：它先跑一遍真实的
+ * `join-teacher-board` 量出看板进了哪个房间，再与这里的广播目标对比。
+ */
+function worksheetBoardRoom(classroomId: string): string {
+  return `teacher:${classroomId}`;
+}
+
+/**
+ * 把一次作答变化推给教师看板（规格 §5.7 链路的第 ③ 步）。
+ *
+ * ⚠️ 只在**落库成功之后**调用：广播是「库里已经这样了」的通知，先发后写会让看板显示
+ * 一个尚未提交（甚至可能被回滚）的状态。
+ * 🔴 载荷**必须**含 `questionId`：看板格子的「正在做第 N 题」只靠它（§7.4 的数据来源表），
+ * 缺了会退化成一句笼统的进度 —— 而且**没有任何报错**。
+ */
+function broadcastAnswerUpdate(
+  req: Request,
+  ctx: { classroomId: string; participantId: string },
+  answer: AnswerRow,
+): void {
+  // `io` 从 `req.app.get('io')` 取（本项目约定：路由不直接 import io）。
+  const io = req.app.get('io') as Server | undefined;
+  if (!io) {
+    // 不明着吞掉：缺 io 时广播会静默消失，而看板只会「不动」——那是最难查的一种表现。
+    console.error('[worksheets] app 上没有注册 io，学习单进度广播被跳过');
+    return;
+  }
+  io.to(worksheetBoardRoom(ctx.classroomId)).emit('worksheet-answer-updated', {
+    classroomId: ctx.classroomId,
+    participantId: ctx.participantId,
+    questionId: answer.questionId,
+    status: answer.status,
+    isCorrect: answer.isCorrect,
+    reviewedAt: answer.reviewedAt,
+  });
+}
+
 /**
  * 取（或建）这个参与者在**这份学习单**上的作答会话。
  *
@@ -736,7 +858,7 @@ router.put('/:id/answers', async (req, res) => {
 
     const now = new Date();
     const response = await ensureResponse(ctx, now);
-    await ctx.prisma.worksheetAnswer.upsert({
+    const answer = await ctx.prisma.worksheetAnswer.upsert({
       where: { responseId_questionId: { responseId: response.id, questionId } },
       create: { responseId: response.id, questionId, value: toJsonValue(body.value), status: 'draft' },
       // ⚠️ `isCorrect: null` 不是顺手清一下：`WorksheetAnswer.isCorrect` 的语义是
@@ -745,7 +867,9 @@ router.put('/:id/answers', async (req, res) => {
       update: { value: toJsonValue(body.value), status: 'draft', submittedAt: null, isCorrect: null },
     });
 
-    // 广播由 B4 接在这里（`worksheet-answer-updated` → 房间 `classroom:<id>`）。
+    // 规格 §5.7 的第 ③ 步：写库走 HTTP，socket 只承担「服务端 → 教师看板」的单向广播。
+    // ⚠️ 载荷用的是**刚落库那一行**的字段（不是请求体）：看板看到的必须是库里的真相。
+    broadcastAnswerUpdate(req, ctx, answer);
     res.json({ success: true, questionId, status: 'draft' });
   } catch (error) {
     console.error('[worksheets] 保存作答失败:', error);
@@ -795,7 +919,7 @@ router.post('/:id/answers/submit', async (req, res) => {
     // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
     const isCorrect = autoGrade ? grade(node, answer.value) : null;
 
-    await ctx.prisma.worksheetAnswer.update({
+    const updated = await ctx.prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId: response.id, questionId } },
       data: { status: 'submitted', submittedAt: now, isCorrect },
     });
@@ -817,7 +941,10 @@ router.post('/:id/answers/submit', async (req, res) => {
       });
     }
 
-    // 广播由 B4 接在这里。
+    // 规格 §5.7 的第 ③ 步。⚠️ 这里带上 `isCorrect`：看板抽屉的逐题 ✓/✗ 只能来自这条广播
+    // （§7.4：不做按需推流）。整卷状态那一次 `update` **不**单独广播 —— 它没有新的
+    // questionId 可带，而看板的「已交 N/M」由逐题广播累加即可。
+    broadcastAnswerUpdate(req, ctx, updated);
     res.json({ isCorrect });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);

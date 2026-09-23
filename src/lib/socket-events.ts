@@ -76,6 +76,34 @@ export interface ServerToClientEvents {
    * "不知道他在哪"，而他们明明正开着。
    */
   'student-module-focus': (data: { studentId: string; moduleId: string | null; at: number }) => void;
+
+  /**
+   * 服务端 → 教师：**某参与者的某道题有了一次作答**（保存或者提交单题）。学习单看板格子的数据源。
+   *
+   * 🔴 房间是 **`teacher:<classroomId>`**，不是 `classroom:<id>`（那是**学生**房间）：
+   * 载荷里带着每名学生的作答状态与对错，发到学生房间等于把全班情况广播给全班。
+   * 这条由 `server/src/tests/worksheet-realtime.test.ts` 钉住 —— 那条用例先跑一次真实的
+   * `join-teacher-board` 量出房间前缀，再与路由实际广播的房间比对，并正面断言它不是学生房间。
+   *
+   * ⚠️ **只发「刚落库的那一行」**（不是请求体）：看板看到的必须是库里的真相。
+   * `isCorrect` 为 `null` = 没开自动判分或这题是主观题（规格 §3-S：不下发 `score`）。
+   *
+   * ⚠️ 没有历史回放、也没有拉取历史的 REST 端点：看板只知道**打开之后**发生的作答，
+   * 所以格子上「一条都没收到」的情形**不能说成「还没开始作答」**（见
+   * `src/app/teacher/classroom/worksheet-tile-state.ts` 的 `no-progress`）。
+   */
+  'worksheet-answer-updated': (data: {
+    classroomId: string;
+    /** 参与者 id（= 课堂参与者 `ClassroomStudent.id`，小组模式下就是那个组）。 */
+    participantId: string;
+    /** 哪一题。看板的「正在做第 N 题」完全靠它（规格 §3-H / §5.7）。 */
+    questionId: string;
+    /** `'draft'`（保存）或 `'submitted'`（提交本题）。 */
+    status: string;
+    isCorrect: boolean | null;
+    /** 教师标记「已查看」的时刻（ISO 串），没看过是 `null`。 */
+    reviewedAt: string | null;
+  }) => void;
 }
 
 /**

@@ -2,8 +2,8 @@
 
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
-import { effectiveGroupAgent, effectiveGroupWebapp } from '@/lib/classroom-material';
-import type { ClassroomWebappSummary } from '@/lib/types';
+import { effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet } from '@/lib/classroom-material';
+import type { ClassroomWebappSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
@@ -106,6 +106,35 @@ function exploreCardContent(webapp: ClassroomWebappSummary | null): { title: str
 }
 
 /**
+ * 「学习单」卡片的主内容 —— **这个学生（这一组）此刻该作答的是哪一份，这里就说那一份的标题**。
+ *
+ * 🔴 这条一直到 D2 都还是硬编码的占位（`还没有布置`），与另外两张卡读真数据的做法不一致。
+ * 后果与探究空间那张卡逐字相同：**卡片撒谎** —— 教师已经布置了、学生点进去就是题目，
+ * 卡片却还说「还没有布置」。改成读真数据（走 `effectiveGroupWorksheet`，见下）之后，
+ * 卡片与面板说同一句话。
+ *
+ * 🔴 **取哪一份由 `effectiveGroupWorksheet` 决定，本函数不自己挑**（与 `exploreCardContent`
+ * 同一个理由、同一个函数族）：它带着那条关键约束 —— 高级模式**只认学生自己那个组，
+ * 本组没配就是 `null`，不回落**到课堂级那一份。自己挑就会在学生端造成「卡片说一份、
+ * 点进去是另一份」的漂移，而那不报任何错。
+ *
+ * ⚠️ **`null` 时分成两种说法**，不能合并（规格 §8.4，与学生端面板 `worksheet-panel.tsx` 的
+ * 空状态**逐字对齐**）：
+ *   · 高级模式 —— `null` 是「**本组**没配」，不是「老师没布置」：别的组可能有。
+ *     面板在那里说「本组未配置学习单」，卡片必须说同一件事，否则同一张卡与面板两个说法。
+ *   · 其余 —— 才是「老师还没有布置」。
+ * 两者都说清「以后会出现 / 该问谁」，因为卡片的两行位置只有这么多，而这两句都给出路。
+ */
+function worksheetCardContent(
+  classroom: ClassroomInfo | null,
+  worksheet: WorksheetMaterialSummary | null,
+): { title: string; meta: string } {
+  if (worksheet) return { title: clipCardText(worksheet.title), meta: '老师布置的学习单' };
+  if (classroom?.mode === 'advanced') return { title: '本组未配置学习单', meta: '先和同伴讨论，或问问老师' };
+  return { title: '还没有布置', meta: '老师布置后会出现在这里' };
+}
+
+/**
  * 学生端首页（常驻门户，§4.2）：进入课堂后的默认落点，不是直接掉进某个模块。
  *
  * 今天只做一件事：**今天能做什么**（三张模块卡片，三态由教师实时决定）。
@@ -169,17 +198,12 @@ export function StudentHome({
 
   const lastRound = summarizeLastRound(messages);
 
-  // 三态的「主内容」：M3 的学习单到位后只换那两个字符串，卡片结构不动。
-  // `explore` 与 `companion` 读的都是**真数据**（关联网页 / 智能体与最后一轮对话），
-  // 只有学习单还是占位 —— ⚠️ 注意读的是「学生端面板还没做」（P1 的 D 阶段），
-  // **不是**「服务端没做」：P1 的服务端（建表 / 组材料 `kind='worksheet'` / 下发）已经落地，
-  // 学生端这边连资源关联字段都还没有，所以卡片暂时只能写死「还没有布置」。
-  // 别因为这句话去服务端补活。
+  // 三态的「主内容」：卡片结构不动，换的只是标题与副标题那两个字符串。
+  // 三张卡**都读真数据**（关联网页 / 智能体与最后一轮对话 / 学习单标题）。
+  // `worksheet` 到 D3 也改成读真数据了（见 `worksheetCardContent`）—— 此前它写死
+  // 「还没有布置」，而那一句在教师布置之后就是假的。
   const cardContent: Record<ModuleId, { title: string; meta: string }> = {
-    worksheet: {
-      title: '还没有布置',
-      meta: '老师布置后会出现在这里',
-    },
+    worksheet: worksheetCardContent(classroom, effectiveGroupWorksheet(classroom, selectedStudent)),
     // 同一个 `effectiveGroupWebapp`：卡片说的网页就是面板会打开的那一个（见上面的注释）。
     explore: exploreCardContent(effectiveGroupWebapp(classroom, selectedStudent)),
     companion: {

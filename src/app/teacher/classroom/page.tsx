@@ -14,9 +14,11 @@ import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
+import { WorksheetTileContent } from './worksheet-tiles';
+import { stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
-import { effectiveGroupAgent } from '@/lib/classroom-material';
-import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary } from '@/lib/types';
+import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
+import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
 type ClassroomGroupDisplay = { id: string; name: string };
@@ -254,6 +256,31 @@ function ModuleCountChip({ label, value, hint, muted = false, selected, onSelect
 type BoardMode = 'follow' | 'assign';
 
 /**
+ * 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。
+ *
+ * ⚠️ 它在**主看板与全屏网格两处**都渲染，而这两个地方本来就是逐字重复的两段 JSX
+ * （`renderTileContent` 那条注释说的就是这件事）。抽成一个组件，是为了让「学习单说已交
+ * 题数、学伴说轮数」这条规则只写一遍 —— 两处各写一份必然在某一处先漂移。
+ */
+function TileBadgeChip({ badge, compact = false }: { badge: TileBadge; compact?: boolean }) {
+  const positive = badge.kind === 'rounds' ? badge.rounds > 0 : badge.submitted > 0;
+  return (
+    <div
+      title={badge.kind === 'rounds'
+        ? '对话轮数（只在智能学伴模块下显示）'
+        : `这份学习单已提交 ${badge.submitted}/${badge.total} 题`}
+      style={{
+        padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6,
+        fontSize: compact ? 8 : '0.625rem', fontWeight: 600,
+        background: positive ? '#eef2ff' : '#f3f4f6', color: positive ? '#2563eb' : '#9ca3af',
+        whiteSpace: 'nowrap',
+      }}>
+      {tileBadgeText(badge)}
+    </div>
+  );
+}
+
+/**
  * 一个格子**内容区**该渲染什么。
  *   · `ModuleId`  —— 三件套之一（跟随模式下由该学生的 focus 决定，指定模式下是教师选的）
  *   · `'home'`    —— 学生此刻停在**首页**（focus 明确是 `null`）
@@ -470,6 +497,29 @@ function ClassroomBoardContent() {
    * 所以下面 `resolveTileModule` 用 `hasOwnProperty` 判在场，而不是读值判空。
    */
   const [studentModuleFocus, setStudentModuleFocus] = useState<Record<string, ModuleId | null>>({});
+  /**
+   * 参与者 id → 他在**当前这份学习单**上的作答进度。数据源是 `worksheet-answer-updated`
+   * 广播（房间 `teacher:<id>`，载荷含 `questionId`）。
+   *
+   * 🔴 **键不在 = 打开看板后没收到过这个人的作答**，与「收到了、内容是空的」不是一件事
+   * （与 `studentModuleFocus` 同一条规矩）。⚠️ 看板**没有**拉取历史的 REST 端点
+   * （教师端能读 `WorksheetAnswer` 的端点一个都不存在），所以刷新一次页面就会把这里清空 ——
+   * 格子上那一态因此说的是「还没收到作答」，**不是**「还没有开始作答」。
+   */
+  const [worksheetProgress, setWorksheetProgress] = useState<Record<string, ParticipantWorksheetProgress>>({});
+  /**
+   * 学习单 id → 它的**原始题目树**（`content.nodes`）。整份 content 只用来算格子有几格、
+   * 第几题是什么题型，所以这里存下来的是题目树本身，拍平与题数口径交给
+   * `worksheet-tile-state.ts`（它才是那份规则唯一的落点）。
+   * 键不在 = 还没加载到（正在加载 / 加载失败），格子如实说「内容还没加载到」。
+   */
+  const [worksheetNodes, setWorksheetNodes] = useState<Record<string, WorksheetQuestionNode[]>>({});
+  /**
+   * 「停在第 N 题 · X 分钟」需要一只会走的表：没有新的作答广播时也要让分钟数自己往上走
+   * （以及 5 分钟那一刻从「正在做」翻成「停住了」）。30 秒一格 —— 分钟数最多差半分钟，
+   * 而这段时间里的渲染开销与一次 socket 消息同级。
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
   /** 教师点开的**探究详情**是哪个学生（`null` = 没点开）。它会让学生转高频截图。 */
   const [exploreDetailId, setExploreDetailId] = useState<string | null>(null);
   const [fsCols, setFsCols] = useState(5);
@@ -610,6 +660,60 @@ function ClassroomBoardContent() {
     }
   }, [showFullscreen, messages]);
 
+  /* 「停住了」那只表 —— 见 `nowMs` 的注释。 */
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /**
+   * 课堂里**在用的那几份学习单**的 id（首屏从 `GET /:id` 算出来，存进 ref 给定期的重拉用）。
+   *
+   * ⚠️ 走 ref 而不是 state：那份清单只在 `loadClassroom` 里变，而下面的定时期
+   * **不想**因为它变化就重建（重建会重置计时，教师频繁操作时可能永远等不到那一次重拉）。
+   */
+  const worksheetIdsRef = useRef<string[]>([]);
+
+  /**
+   * 拉「课堂里在用的那几份学习单」的题目树。
+   *
+   * ⚠️ 单独抽出来是因为它**要能被重复调用**：教师课上可以改学习单（规格 §3-J：只警告不拦，
+   * 加题 / 删题都是合法形态），而**服务端对内容变更不广播**。不重拉的表现是格子的格数与
+   * 题目对不上 —— 教师加了一道题，学生答它时看板上要么少一格、要么整格退回「还没收到作答」，
+   * 全程不报错。所以除了首屏，下面还有一条 60 秒的定期重拉（学生端的 `/code/:code`
+   * 本来就是 15 秒轮询，同一个量级、同一类理由）。
+   *
+   * ⚠️ 某一份拉不到（离线 / 500）时**不清空已有的那一份**：格子上会如实说「内容还没加载到」，
+   * 而不是拿上一份的题目冒充这一份的。
+   */
+  const loadWorksheetNodes = useCallback(async (worksheetIds: string[]) => {
+    if (worksheetIds.length === 0) return;
+    const loaded = await Promise.all(worksheetIds.map(async (worksheetId) => {
+      try {
+        const detail = await api.getWorksheet(worksheetId);
+        return [worksheetId, detail.content.nodes] as const;
+      } catch {
+        return null;
+      }
+    }));
+    setWorksheetNodes((prev) => {
+      const next = { ...prev };
+      for (const entry of loaded) { if (entry) next[entry[0]] = entry[1]; }
+      return next;
+    });
+  }, []);
+
+  /**
+   * 定期重拉学习单内容（60 秒）—— 理由见 `loadWorksheetNodes`。
+   *
+   * ⚠️ 没有学习单时不发请求（`loadWorksheetNodes` 自己短路），所以标准模式下没配学习单的
+   * 课堂一次多余的请求都不会有。
+   */
+  useEffect(() => {
+    const timer = window.setInterval(() => { void loadWorksheetNodes(worksheetIdsRef.current); }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadWorksheetNodes]);
+
   const loadClassroom = useCallback(async () => {
     if (!id) return;
     try {
@@ -675,13 +779,24 @@ function ClassroomBoardContent() {
           return { ...s, messages: preview };
         }));
       } catch {}
+      // 学习单：把课堂里**在用的那几份**的题目树拉下来（格子的格数、题号、题型全靠它）。
+      //
+      // ⚠️ 取哪几份：课堂级 `worksheets` 与各组 `groups[].worksheet` **都收**，去重。
+      // 两处各对应一种模式（标准/分组读课堂级、高级读各组），看板在两种模式下都要能画格子。
+      const worksheetIds = Array.from(new Set([
+        ...(cr.worksheets ?? []).map((worksheet) => worksheet.id),
+        ...(cr.groups ?? []).map((group) => group.worksheet?.id),
+      ].filter((value): value is string => !!value)));
+      worksheetIdsRef.current = worksheetIds;
+      await loadWorksheetNodes(worksheetIds);
+
       // ⚠️ 这里原来还顺手拉一次 `api.getAgents()` 来定抽屉里那个智能体署名。删掉了：
       // 它读的 `cr.agentIds` **服务端从来不下发**（只在创建课堂的请求体里被读），
       // 于是恒回落 `agents[0]` = 整个智能体库的第一个，抽屉里每条助手消息都挂着错的
       // 名字与头像。署名改由 `drawerAgent`（下方，走 `effectiveGroupAgent`）算，
       // 顺带省掉一次「把整个智能体库拉下来只为挑第一个」的请求。
     } catch {}
-  }, [id]);
+  }, [id, loadWorksheetNodes]);
 
   const loadAnalytics = useCallback(async () => {
     if (!id) return;
@@ -831,7 +946,44 @@ function ClassroomBoardContent() {
       setStudentModuleFocus((prev) => ({ ...prev, [studentId]: resolved }));
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); };
+    /**
+     * 学习单的作答进度（规格 §5.7 的第 ③ 步）：房间 `teacher:<id>`，只在**落库成功之后**
+     * 由服务端发出（`routes/worksheets.ts` 的 `broadcastAnswerUpdate`）。
+     *
+     * 🔴 载荷里的 `questionId` 是「正在做第 N 题」的**唯一**依据（规格 §3-H）：没有它，
+     * 格子只能给一个笼统的进度，而**不会报任何错**。所以这里对它的校验是硬性的 ——
+     * 缺题号的广播整条丢掉（存进去会得到一条「在做的题是 undefined」的记录）。
+     *
+     * ⚠️ 逐题记录按 `questionId` 存（规格 §3-P），不是按下标：教师改序 / 增删题时按下标的
+     * 记录会整片错位，而那是静默的。
+     *
+     * ⚠️ 判 `classroomId` 而不是只信房间：房间名是服务端 join 时定的（`teacher:<id>`），
+     * 而 join-teacher-board 会**先离开上一个课堂的房间**再进新的 —— 比对一下是零成本的
+     * 第二道闸，防的是「切换课堂时混进上一个课堂的进度」这类不报错的串台。
+     */
+    const unsub17 = on('worksheet-answer-updated', (data) => {
+      const { classroomId, participantId, questionId, status } = data ?? {};
+      if (classroomId !== id) return;
+      if (typeof participantId !== 'string' || !participantId) return;
+      if (typeof questionId !== 'string' || !questionId) return;
+      // 线缆上的 `status` 是自由字符串（类型只声明了形状）。认不出的值**整条丢掉**：
+      // 存进去会让格子对这一题画不出颜色（既不是未答、也不是在答、也不是已交）。
+      if (status !== 'draft' && status !== 'submitted') return;
+      const at = Date.now();
+      setWorksheetProgress((prev) => {
+        const current = prev[participantId];
+        return {
+          ...prev,
+          [participantId]: {
+            cells: { ...(current?.cells ?? {}), [questionId]: status },
+            lastQuestionId: questionId,
+            lastAt: at,
+          },
+        };
+      });
+    });
+
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub17?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1162,6 +1314,51 @@ function ClassroomBoardContent() {
   };
 
   /**
+   * 这一格里**显示着学习单的那个参与者**（`null` = 这一格里没人显示学习单）。
+   *
+   * ⚠️ 为什么是「取一个参与者」而不是「把全组的加起来」：一格就是一个参与者
+   * （§1.2/§3-Q —— 分组与高级模式下参与者是**组**，一张组卡里就是那一个组参与者；
+   * 标准模式一张卡就是一个学生）。混着几个模块的组卡（`mixed`）是唯一的灰度情形，
+   * 那时取**第一个显示着学习单的成员** —— 卡片的 `mixed` 分支本来就把每个人的模块
+   * 列了出来，所以「这个数字是谁的」在屏幕上读得到。
+   */
+  const tileWorksheetParticipant = (module: GroupTileModule, members: ClassroomCardStudent[]): ClassroomCardStudent | null => {
+    if (module === 'worksheet') return members[0] ?? null;
+    if (module === 'mixed') return members.filter((member) => resolveTileModule(member.id) === 'worksheet')[0] ?? null;
+    return null;
+  };
+
+  /**
+   * 这一格的参与者此刻该作答的那一份学习单（`null` = 没有）。
+   *
+   * 交给 `effectiveGroupWorksheet`（与学生端**同一个**解析口径：高级模式只认自己那个组，
+   * 本组没配就是 `null`，不拿课堂级的顶上）——看板这一侧**不自己挑**，否则
+   * 「学生答的那份」与「教师看到的那份」会分叉，而且分叉时不报任何错。
+   */
+  const tileWorksheetOf = (participant: ClassroomCardStudent | null): WorksheetMaterialSummary | null =>
+    effectiveGroupWorksheet(classroom, { groupId: participant?.groupId ?? null });
+
+  /**
+   * 一个参与者的学习单统计（`null` = 今天还说不出来 —— 没有学习单 / 题目没加载到 /
+   * 一条作答广播都没收到 / 这份单一道题都没有）。
+   *
+   * 🔴 分母与格子里的方块数**必须**是同一个数，所以这里走的是**同一个** `worksheetTileState`
+   * （连在线状态都传真的那个）：徽章写「已交 3/5」而下面只有 4 个方块这种事，
+   * 没有任何人会去核对，只能靠结构上不可能发生。
+   */
+  const tileWorksheetStats = (participant: ClassroomCardStudent | null, online: boolean): { submitted: number; total: number } | null => {
+    if (!participant) return null;
+    const worksheet = tileWorksheetOf(participant);
+    if (!worksheet) return null;
+    const nodes = worksheetNodes[worksheet.id];
+    const progress = worksheetProgress[participant.id];
+    if (!nodes || !progress) return null;
+    const state = worksheetTileState({ worksheet, nodes, progress, online, now: nowMs });
+    if (!stateHasCells(state)) return null;
+    return { submitted: state.cells.filter((status) => status === 'submitted').length, total: state.cells.length };
+  };
+
+  /**
    * 徽章行里那个**模块相关**的徽章的文字（`null` = 这一格不该有它）。
    *
    * 🔴 用户 2026-09-23（截图批注）：「这个『几轮』只在智能学伴里有」。在此之前这一行
@@ -1169,25 +1366,32 @@ function ClassroomBoardContent() {
    *
    * 三件套**各判各的**，外加兜底 —— 徽章行从此是模块相关的，不是一行固定内容：
    *   · 智能学伴 → `{rounds} 轮`
-   *   · 学习单   → 今天没有数据源（`Worksheet` 表都还没建），返回 `null` 而不是编一个数；
-   *                学习单接进看板后这里改显示「已看 N/M」（用户 2026-09-23 的裁定）
+   *   · 学习单   → `已交 N/M`（**不是**规格 §3-I 写的「已看 N/M」，理由见 `TileBadge` 那段注释：
+   *                「已看」= 教师标记的 `reviewedAt`，而它今天既没有广播也没有 REST 来源）
    *   · 探究空间 → 不显示（那一格显示的是画面，与对话轮数无关）
    *   · 兜底     → `home` / `unknown` / 线缆上多出来的取值都不显示
    *
    * 小组格的灰度情形与 `tileShowsClear` 同款：组内混着几个模块时，只要有成员在学伴，
    * 这个数字就还有意义（`rounds` 数的是**学伴对话**，不是「在这个模块里说了几句」）；
-   * 全组都不在学伴时不显示。
+   * 学伴没人时再看有没有人在学习单上。
    */
-  const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[], rounds: number): string | null => {
+  const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[], rounds: number, online: boolean): TileBadge | null => {
     switch (module) {
       case 'companion':
-        return `${rounds} 轮`;
-      case 'worksheet':
-        return null;
+        return { kind: 'rounds', rounds };
+      case 'worksheet': {
+        const stats = tileWorksheetStats(tileWorksheetParticipant(module, members), online);
+        // 还没有数字时**不给一个假的 0**：格子正文那一行已经说了「还没收到作答」，
+        // 徽章写「已交 0/3」会把「不知道」说成「一题都没交」。
+        return stats ? { kind: 'submitted', ...stats } : null;
+      }
       case 'explore':
         return null;
-      case 'mixed':
-        return members.some((member) => resolveTileModule(member.id) === 'companion') ? `${rounds} 轮` : null;
+      case 'mixed': {
+        if (members.some((member) => resolveTileModule(member.id) === 'companion')) return { kind: 'rounds', rounds };
+        const stats = tileWorksheetStats(tileWorksheetParticipant(module, members), online);
+        return stats ? { kind: 'submitted', ...stats } : null;
+      }
       default:
         return null;
     }
@@ -1433,10 +1637,28 @@ function ClassroomBoardContent() {
             compact={compact}
           />
         );
-      // 三件套的布局一次定形：学习单这一格**留位**、标明尚未支持，
-      // 以后接上学习单时不用重排（用户裁定）。
-      case 'worksheet':
-        return placeholder('学习单 · 尚未支持', '这个模块还没接进看板');
+      // 学习单那一格：状态 + 逐题方格阵（规格 §7.2）。
+      //
+      // ⚠️ 取哪一份、进度是什么，**在这里算一次**再交给 `worksheetTileState`（纯函数）——
+      // 判据写在 JSX 里就没有回归网了（本仓没有前端测试框架，那一份逻辑有 18 条断言）。
+      case 'worksheet': {
+        const participant = members[0] ?? null;
+        const worksheet = tileWorksheetOf(participant);
+        return (
+          <WorksheetTileContent
+            state={worksheetTileState({
+              worksheet,
+              // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
+              nodes: worksheet ? worksheetNodes[worksheet.id] ?? null : null,
+              // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
+              progress: participant ? worksheetProgress[participant.id] : undefined,
+              online,
+              now: nowMs,
+            })}
+            compact={compact}
+          />
+        );
+      }
       case 'home':
         return placeholder('在首页', '学生此刻停在首页，不在任何模块里');
       case 'unknown':
@@ -1795,7 +2017,7 @@ function ClassroomBoardContent() {
                   {(['worksheet', 'explore', 'companion'] as ModuleId[]).map((moduleId) => (
                     <SegmentedButton key={moduleId}
                       label={MODULE_ID_LABELS[moduleId]}
-                      hint={moduleId === 'worksheet' ? '学习单尚未支持，选中后每格显示占位' : `全班格子都显示「${MODULE_ID_LABELS[moduleId]}」`}
+                      hint={`全班格子都显示「${MODULE_ID_LABELS[moduleId]}」`}
                       selected={assignModule === moduleId} onSelect={() => setAssignModule(moduleId)} />
                   ))}
                 </>
@@ -1840,8 +2062,8 @@ function ClassroomBoardContent() {
                   合并之前这两处数字分处两个区域、没人会去比，合并之后它们并排了。 */}
               <ModuleCountChip label="全部" value={students.length}
                 selected={studentModuleFilter === 'all'} onSelect={() => setStudentModuleFilter('all')} />
-              {/* 学习单**留位**并标明尚未支持 —— 三件套的布局一次定形，以后接上时不用重排。 */}
-              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} hint="尚未支持" muted
+              {/* 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。 */}
+              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet}
                 selected={studentModuleFilter === 'worksheet'} onSelect={() => setStudentModuleFilter('worksheet')} />
               <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore}
                 selected={studentModuleFilter === 'explore'} onSelect={() => setStudentModuleFilter('explore')} />
@@ -1904,7 +2126,9 @@ function ClassroomBoardContent() {
                 const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
                 // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次 ——
                 // 下面「渲染与否」与「显示什么」读的是同一个值，算两遍就是两份口径。
-                const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
+                // ⚠️ 在线状态传**这一格真实的那一个**（不是常量）：徽章里那个数走的是
+                // 与格子正文同一个 `worksheetTileState`，传假的就会算出另一个数。
+                const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds, status !== 'offline');
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
                     onClick={() => {
@@ -2065,11 +2289,7 @@ function ClassroomBoardContent() {
                               </div>
                             );
                           })()}
-                          {moduleBadge !== null && (
-                            <div title="对话轮数（只在智能学伴模块下显示）" style={{ padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
-                              {moduleBadge}
-                            </div>
-                          )}
+                          {moduleBadge && <TileBadgeChip badge={moduleBadge} />}
                           {student.avatarChangeTokens > 0 && (
                             <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
@@ -2609,7 +2829,7 @@ function ClassroomBoardContent() {
                   const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                   const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
                   // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次。
-                  const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
+                  const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds, status !== 'offline');
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
                       onClick={() => {
@@ -2736,11 +2956,7 @@ function ClassroomBoardContent() {
                               <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                             </div>
-                            {moduleBadge !== null && (
-                              <div title="对话轮数（只在智能学伴模块下显示）" style={{ padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 600, background: rounds > 0 ? '#eef2ff' : '#f3f4f6', color: rounds > 0 ? '#2563eb' : '#9ca3af', whiteSpace: 'nowrap' }}>
-                                {moduleBadge}
-                              </div>
-                            )}
+                            {moduleBadge && <TileBadgeChip badge={moduleBadge} compact />}
                             {student.avatarChangeTokens > 0 && (
                               <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
                                 <svg width={compact ? 8 : 10} height={compact ? 8 : 10} viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
@@ -2870,12 +3086,15 @@ function ClassroomBoardContent() {
                 style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: '6px 12px 10px' }}>
-              {/* ① 学习单 —— **占位**。学习单本身还没做，所以这里如实写「尚未支持」，
-                  而不是留一段空白（空白会被读成加载失败），也不是先摆几个点不动的开关。
-                  这一段留着是为了让三件套的分段一次定形：以后接上学习单，往里加开关就行。 */}
+              {/* ① 学习单 —— 这一段**还没有专属开关**（它的模块三态在另一个菜单里，学生端的
+                  开关也还没有）。所以如实说这一件事，而不是留一段空白（空白会被读成加载失败），
+                  也不是先摆几个点不动的开关。
+                  ⚠️ 原文写的是「学习单还没有做」—— D3 起那句话**是假的**（看板格子、学生端面板
+                  都已经在了），改掉。这一段留着是为了让三件套的分段一次定形：以后接上学习单的
+                  开关，往里加就行。 */}
               <PermissionSection label={MODULE_ID_LABELS.worksheet} first>
                 <div style={{ margin: '0 10px', padding: '10px 12px', borderRadius: 8, background: '#f8fafc', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '0.75rem', lineHeight: 1.6 }}>
-                  <strong style={{ color: '#64748b' }}>尚未支持。</strong>学习单还没有做，这里先留位。
+                  <strong style={{ color: '#64748b' }}>这一段还没有专属开关。</strong>学习单已经在看板上（格子里显示进度与逐题状态）。
                 </div>
               </PermissionSection>
 

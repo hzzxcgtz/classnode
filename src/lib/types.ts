@@ -430,7 +430,24 @@ export interface ClassroomCardStudent {
 export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'groups'> {
   classes: Array<{ classId: string; class: ClassSummary }>;
   classroomAgents: Array<{ agentId: string; agent: AgentSummary }>;
-  groups: Array<ClassroomCardGroup & { agent?: AgentSummary }>;
+  /**
+   * 各组的材料。
+   *
+   * ⚠️ `worksheet` 直到 P1 的 D3 才写进这个类型 —— **服务端一直在发它**
+   * （`GET /:id` 的 `groups[]` 来自 `resolveGroupMaterialViews`，与 `/active`、`/code/:code`
+   * 同一个解析口径），只是这个接口当初（P2.3）只补了 `agent`，读它的人当时还不存在。
+   * 高级模式下 `null` 是**合法值**（本组没配学习单），**不回落**到课堂级那一份 ——
+   * 取法一律走 `@/lib/classroom-material` 的 `effectiveGroupWorksheet`。
+   */
+  groups: Array<ClassroomCardGroup & { agent?: AgentSummary; worksheet?: WorksheetMaterialSummary | null }>;
+  /**
+   * 本课堂**课堂级**关联的学习单（`GET /:id` 的 `res.json`，`routes/classroom.ts:882`）。
+   *
+   * 与 `ActiveClassroom.worksheets` **逐字同源**（同一个 `loadClassroomWorksheets`）：
+   * **标准 / 分组模式**的权威来源；高级模式下权威来源是各组（`groups[].worksheet`），
+   * 这一条是空数组。可选的读法与 `webapps?` 相同（老服务端不发这个字段）。
+   */
+  worksheets?: WorksheetMaterialSummary[];
   students: ClassroomCardStudent[];
   groupMembersMap: Record<string, {
     groupName: string;

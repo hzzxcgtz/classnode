@@ -9,7 +9,9 @@ import {
   readOptions,
   writeFillAnswers,
   writeOptions,
-} from './use-worksheet-editor';
+  // 从**纯函数内核**直接取：这张卡片只用纯逻辑，不碰 hook（React 状态 / 路由 / 网络）。
+  // 内核就是 `node --test` 直接跑的那一份，回归网在 `worksheet-editor-core.test.ts`。
+} from './worksheet-editor-core';
 
 /**
  * 一道题的编辑卡片（规格 §6.2 的题流）。

@@ -1,7 +1,9 @@
 'use client';
 
 import type { WorksheetContent } from '@/lib/types';
-import { QUESTION_TYPE_OPTIONS, readOptions } from './use-worksheet-editor';
+// 从**纯函数内核**直接取：这个文件不需要 hook（React 状态 / 路由 / 网络），
+// 内核也正是 `node --test` 直接跑的那一份（`worksheet-editor-core.test.ts`）。
+import { QUESTION_TYPE_OPTIONS, readOptions } from './worksheet-editor-core';
 
 /**
  * 学生端的宽度（规格 §6.3：「按 iPad 宽度渲染的弹窗 —— 价值正在于教师看到的就是

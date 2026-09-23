@@ -30,7 +30,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让教师在一堂课进行中实时把三个模块（学习单 / 探究助手 / 智能学伴）各自切为 `open`（可见可点）/ `preview`（可见但锁定）/ `hidden`（不显示），学生端通过既有 socket 通道实时收到。
+**Goal:** 让教师在一堂课进行中实时把三个模块（学习单 / 探究空间 / 智能学伴）各自切为 `open`（可见可点）/ `preview`（可见但锁定）/ `hidden`（不显示），学生端通过既有 socket 通道实时收到。
 
 **Architecture:** 新增一张 `ClassroomModule` 关联表（仿 `ClassroomAgent`），一个幂等的 `PUT` 端点（**不是 toggle** —— 三态不是布尔），一次**双发**广播。学生的初始三态走既有的 `GET /code/:code`（它已被 15 秒轮询兜底），**不走 `joined` 事件**（见下）。
 
@@ -123,7 +123,7 @@ echo "=== 加列先例（最贴近本场景）===" && sed -n '184,193p' server/s
 - [ ] **Step 2: 在 `schema.prisma` 新增模型**
 
 ```prisma
-// 课堂模块三态（学习单 / 探究助手 / 智能学伴）
+// 课堂模块三态（学习单 / 探究空间 / 智能学伴）
 model ClassroomModule {
   id          String @id @default(uuid())
   classroomId String

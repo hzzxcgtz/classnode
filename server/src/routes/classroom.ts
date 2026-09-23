@@ -874,7 +874,7 @@ router.get('/:id', async (req, res) => {
     const moduleRecords = await prisma.classroomModule
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
       .catch(() => null);
-    // 探究助手：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
+    // 探究空间：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
     // 两条路径口径不一。只含 id / name / entryPath，磁盘根路径不进响应。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
     // 课堂级学习单：与 `webapps` 同形同源（标准 / 分组模式的权威来源）。教师看板的
@@ -993,7 +993,7 @@ router.get('/code/:code', async (req, res) => {
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
       .catch(() => [] as { moduleKey: string; state: string }[]);
 
-    // 探究助手：该课堂关联的网页，按关联顺序下发。
+    // 探究空间：该课堂关联的网页，按关联顺序下发。
     // ⚠️ **只发 id / name / entryPath**，不发任何磁盘路径。学生端用
     // `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}` 自己拼。
     // 查询失败（老库缺表）时降级为空数组 —— 读路径不可失败，不能把学生挡在课堂门外。
@@ -1016,7 +1016,7 @@ router.get('/code/:code', async (req, res) => {
       status: classroom.status,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
-      // 探究助手托管服务的**端口**（不是拼好的 URL）。学生端用
+      // 探究空间托管服务的**端口**（不是拼好的 URL）。学生端用
       // `http://${location.hostname}:${webappPort}` 自己拼 —— 它本来就知道自己是从哪个
       // IP 进来的，所以永远正确、无缓存、不会陈旧。托管源必须与父页面**跨源**，
       // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
@@ -1149,7 +1149,7 @@ router.post('/:id/end', async (req, res) => {
     const activeStreams = req.app.get('activeStreams') as Map<string, AbortController> | undefined;
     if (activeConnections && activeStreams) abortClassroomStreams(classroom.id, activeConnections, activeStreams);
 
-    // 探究助手：取走本课堂的内存监控数据（取完即清空）→ 写唯一一条落盘汇总。
+    // 探究空间：取走本课堂的内存监控数据（取完即清空）→ 写唯一一条落盘汇总。
     // 内存态住在 socket 模块、结束逻辑在这里（预审 2），所以经 app.set('webappMonitor') 取用。
     //
     // ⚠️ 汇总失败**不能让本请求失败**：课堂在上面那个事务里已经结束（不可回滚），
@@ -1349,7 +1349,7 @@ router.post('/:id/toggle-allow-export', async (req, res) => {
 });
 
 /**
- * 设置本课堂的探究助手采集参数（P2.2）：要不要采画面、多清楚、多久一次。
+ * 设置本课堂的探究空间采集参数（P2.2）：要不要采画面、多清楚、多久一次。
  *
  * ⚠️ **改完必须重新下发一次档位。** 学生端不会主动来问 —— 它只在收到
  * `webapp-monitor-demand` 时才换档。少了这一步，教师调完之后要等到下一次

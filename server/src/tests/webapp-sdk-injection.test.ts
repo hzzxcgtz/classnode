@@ -87,7 +87,7 @@ test('教师自己写了 SDK 的 script 标签时不重复插（哪怕带查询�
 test('红线外：正文/注释里提到 sdk.js 这几个字，不得让注入整体跳过（原先的静默 fail-open）', () => {
   const html =
     `<html><head><!-- 本页已接入 ${SDK_PATH} --></head>` +
-    `<body><p>探究助手由 ${SDK_PATH} 提供支持</p></body></html>`;
+    `<body><p>探究空间由 ${SDK_PATH} 提供支持</p></body></html>`;
   const out = injectSdk(html, { sdkPath: SDK_PATH });
   assert.ok(
     out.includes(`<script src="${SDK_PATH}"></script>`),

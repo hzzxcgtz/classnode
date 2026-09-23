@@ -29,7 +29,7 @@ import {
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
- * 这个文件守的是**真实 handler**，不是纯函数 —— 探究助手实时链路的每一个失败模式
+ * 这个文件守的是**真实 handler**，不是纯函数 —— 探究空间实时链路的每一个失败模式
  * 都是静默的（没有报错、没有异常，只有「图墙冻住」或「学生白推」），所以每条断言
  * 都刻意配了**阴性对照**：只断言「不该发生时确实没发生」是不够的，同一份输入还必须
  * 在条件反过来时**确实生效**，否则「整条链路根本没接上」也会让断言通过。
@@ -97,16 +97,30 @@ function teacherCookie(): string {
  */
 type HarnessOptions = {
   membership?: boolean;
-  linkedWebapp?: boolean;
   classroomStatus?: string;
   captureEnabled?: boolean;
   captureWidth?: number;
   captureFrameIntervalMs?: number;
+  /** 课堂模式。`advanced` 下网页的权威来源是「每组一份」，课堂级那张表**恒为空**。 */
+  mode?: string;
+  /** 该参与者所属的组（`ClassroomStudent.groupId`）。 */
+  studentGroupId?: string | null;
+  /** 本课堂各组的材料行（`ClassroomGroupMaterial`）。 */
+  groupWebapps?: { groupId: string; kind: string; targetId: string }[];
+  /**
+   * 课堂级那一份网页（`ClassroomWebapp`）。不传默认是 `'webapp-1'`（既有用例都按这个 id 上报）；
+   * 传 `null` 表示**本课堂课堂级一行都没有** —— 这正是高级模式的真实状态。
+   */
+  linkedWebappId?: string | null;
 };
 
 /**
  * socket 侧用到的 prisma 表面。`membership: false` 让课堂成员复查失败，
- * `linkedWebapp: false` 让「本课堂是否关联了这个网页」失败 —— 两者都是归属校验的阴性对照。
+ * `linkedWebappId: null` 让「课堂级关联」为空 —— 两者都是归属校验的阴性对照。
+ *
+ * ⚠️ **本节只模拟单个课堂**：`classroomGroupMaterial.findMany` 认 `where.kind`，
+ *    但**不**认 `where.group.classroomId`（没有第二个课堂可区分）。跨课堂隔离由
+ *    `group-material-participant-webapp.test.ts` 用真 SQLite 守（那份才是证明）。
  *
  * `classroomId()` 是**可变**的：join-classroom 会拿令牌里的 classroomId 与
  * `classroom.findUnique` 的结果比对，两处不一致就会静默走到 student-auth-error
@@ -115,14 +129,15 @@ type HarnessOptions = {
 function socketPrisma(classroomId: () => string, options: HarnessOptions = {}) {
   return {
     classroom: {
-      // ⚠️ 这一个 findUnique 有**两个**调用方：生产代码的 broadcastWebappDemand 与
-      //    join-classroom 的初值分支。两边读的都是同样三列采集设置，所以这里多返回它们
-      //    是无害的；但**上面那几个字段一个都不能删** —— join-classroom 拿它们做归属校验。
+      // ⚠️ 这一个 findUnique 有**三个**调用方：生产代码的 broadcastWebappDemand、
+      //    join-classroom 的初值分支，以及 `resolveWebappReporter` 里的课堂状态复查
+      //    （「已结束的课堂不再收上报」那条判据，它只读 `status`）。
+      //    这些字段**一个都不能删** —— join-classroom 拿它们做归属校验。
       findUnique: async () => ({
         id: classroomId(),
         code: '1234',
-        status: 'active',
-        mode: 'standard',
+        status: options.classroomStatus ?? 'active',
+        mode: options.mode ?? 'standard',
         allowStudentStop: true,
         classroomAgents: [],
         groups: [],
@@ -136,15 +151,36 @@ function socketPrisma(classroomId: () => string, options: HarnessOptions = {}) {
       // 返回值写进 `socket.data.studentId`，而那正是逐 socket 下发时用来认人的字段。
       // 固定返回同一个 id 会把「两个不同学生」折叠成同一条连接，于是「只让甲转高频」
       // 的用例无论生产代码对不对都会过（阴性对照整个消失）。
+      // `groupId` 是 `resolveParticipantWebappId` 要的那一列（高级模式按组解析）。
       findFirst: async (args?: { where?: { id?: string } }) =>
-        (options.membership === false ? null : { id: args?.where?.id ?? PARTICIPANT_ID, blacklisted: false }),
+        (options.membership === false
+          ? null
+          : { id: args?.where?.id ?? PARTICIPANT_ID, blacklisted: false, groupId: options.studentGroupId ?? null }),
       updateMany: async () => ({ count: 1 }),
     },
+    // 组的材料行（`resolveParticipantWebappId` 在高级模式下读这一份）。
+    // 与生产代码同形：`where.kind` 真的会过滤 —— 用例若只配了 agent，这里就得回空。
+    classroomGroupMaterial: {
+      findMany: async (args?: { where?: { kind?: string } }) =>
+        (options.groupWebapps ?? []).filter((row) => !args?.where?.kind || row.kind === args.where.kind),
+    },
     classroomWebapp: {
-      // 与生产代码同形：一次查询里把课堂状态也带回来（select 里 join）
-      findFirst: async () => (options.linkedWebapp === false
-        ? null
-        : { id: 'link-1', classroom: { status: options.classroomStatus ?? 'active' } }),
+      // 与生产代码同形：按 `orderBy: [{createdAt:'asc'},{id:'asc'}]` 取**第一行**的
+      // `webappId`（这里是单行，次序对断言没有影响；次序本身由
+      // `group-material-participant-webapp.test.ts` 用真 SQLite 与读路径对照）。
+      //
+      // ⚠️ 这里**同时**模拟旧判据问的那个问题（「(classroomId, webappId) 有没有关联行」）
+      //    并**如实回答**：`where.webappId` 对不上就是 `null`，课堂级为空也是 `null`。
+      //    少了这份如实，把判定临时改回旧口径那条**反证**就会红在别的理由上
+      //    （替身缺字段），而不是红在「高级模式下那张表恒为空」这个真实理由上 ——
+      //    反证也就不成立了。多返回的 `id` 是旧代码 `select` 的另一个字段，无害。
+      findFirst: async (args?: { where?: { webappId?: string } }) => {
+        const linked = options.linkedWebappId === null ? null : (options.linkedWebappId ?? 'webapp-1');
+        const asked = args?.where?.webappId;
+        if (linked === null) return null;
+        if (asked !== undefined && asked !== linked) return null;
+        return { id: 'link-1', webappId: linked, classroom: { status: options.classroomStatus ?? 'active' } };
+      },
     },
   };
 }
@@ -709,13 +745,13 @@ test('按需推流的判据是「监控房间」而不是「教师看板房间�
   const student = await joinAsStudent(harness, 'classroom-a');
   const teacher = harness.connect({ cookie: teacherCookie() });
 
-  // 只开看板（教师看作业、没点开探究助手视图）⇒ 不算有订阅者
+  // 只开看板（教师看作业、没点开探究空间视图）⇒ 不算有订阅者
   await teacher.call('join-teacher-board', 'classroom-a');
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), false);
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
   assert.deepEqual(harness.events('webapp-student-frame'), [], '教师只是开着看板不该触发学生推流');
 
-  // 点开探究助手视图 ⇒ 才算
+  // 点开探究空间视图 ⇒ 才算
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
   assert.equal(hasWatchers(harness.io as unknown as Server, 'classroom-a'), true);
   assert.deepEqual(teacher.members('teacher:classroom-a:webapp'), [teacher.id]);
@@ -1158,7 +1194,8 @@ test('学生上报别的课堂的 classroomId：不转发、不写内存', async
 
 test('学生上报本课堂没关联的 webappId：不转发、不写内存（否则能污染别的网页的统计）', async () => {
   resetMonitor();
-  const harness = createHarness({ linkedWebapp: false });
+  // 课堂级关联的是 `webapp-1`（默认值），学生报的是**另一个**网页 ⇒ 必须被拒。
+  const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
   const teacher = harness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
@@ -1168,6 +1205,77 @@ test('学生上报本课堂没关联的 webappId：不转发、不写内存（�
 
   assert.deepEqual(harness.events('webapp-student-frame'), []);
   assert.deepEqual(webappMonitorSizes('classroom-a'), { frames: 0, presence: 0, watchers: 1 });
+  // 阳性对照：同一个 socket 报**有效**的那个网页必须进来 —— 否则上一条在
+  // 「上报路径整个坏了」时也成立。
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+  assert.equal(harness.events('webapp-student-frame').length, 1);
+});
+
+test('课堂级一行都没有（本课堂没配网页）⇒ 帧被拒', async () => {
+  resetMonitor();
+  const harness = createHarness({ linkedWebappId: null });
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+
+  assert.deepEqual(harness.events('webapp-student-frame'), []);
+  assert.equal(webappMonitorSizes('classroom-a').frames, 0);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🔴 高级模式：网页的权威来源是「每组一份」，**不是**课堂级关联
+//
+// 2026-09-23 用户报「探究空间的快照完全不显示」——电脑端与性能良好的 iPad 都一样。
+// 根因：归属校验问的是「本课堂的 `ClassroomWebapp` 关联过这个网页吗」，而高级模式下
+// **那张表恒为空**（`POST /create-advanced` 刻意不写课堂级行，那个模式下网页的权威
+// 来源是「每组一份」）⇒ 学生端每一帧都在这里被拒。学生端一直是好的，它正常上报。
+//
+// 下面两条是那个形状的正反对照：**同一个处理器、同一份假 prisma 表面**，
+// 差别只在「网页配在哪个组名下」。
+// ══════════════════════════════════════════════════════════════════════════
+
+test('🔴 高级模式：本组配了网页、课堂级关联为空 ⇒ 帧必须被接收', async () => {
+  resetMonitor();
+  const harness = createHarness({
+    mode: 'advanced',
+    studentGroupId: 'group-a',
+    linkedWebappId: null,                 // 高级模式下课堂级那张表就是空的
+    groupWebapps: [{ groupId: 'group-a', kind: 'webapp', targetId: 'webapp-1' }],
+  });
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,AA' });
+
+  assert.equal(harness.events('webapp-student-frame').length, 1,
+    '本组配了网页 ⇒ 这一帧必须转发给教师看板（线上症状就是这里被拒）');
+  assert.equal(webappMonitorSizes('classroom-a').frames, 1,
+    '也必须写进内存 —— 那是课后汇总的唯一来源');
+});
+
+test('🔴 高级模式：本组没配、别的组配了 ⇒ 帧被拒（不得替别的组上报）', async () => {
+  resetMonitor();
+  const harness = createHarness({
+    mode: 'advanced',
+    studentGroupId: 'group-a',
+    linkedWebappId: null,
+    groupWebapps: [{ groupId: 'group-b', kind: 'webapp', targetId: 'webapp-OTHER' }],
+  });
+  const student = await joinAsStudent(harness, 'classroom-a');
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+
+  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-OTHER', dataUrl: 'data:image/jpeg;base64,AA' });
+
+  assert.deepEqual(harness.events('webapp-student-frame'), [],
+    '乙组配的网页不是甲组学生的有效网页 —— 送帧进来会污染另一个网页的统计');
+  assert.equal(webappMonitorSizes('classroom-a').frames, 0);
 });
 
 test('已被移出课堂的学生（成员复查失败）不能再上报', async () => {
@@ -1363,8 +1471,8 @@ test('文字档的归属校验与帧同款：别的课堂 / 没关联的网页 /
   assert.equal(webappMonitorSizes('classroom-b').presence, 0, '别的课堂一个字都不该进内存');
   assert.deepEqual(wrongClassroom.events('webapp-student-presence'), []);
 
-  // ② 上报本课堂**没关联**的 webappId（假 prisma 的 linkedWebapp:false 就是这个意思）
-  const unlinked = createHarness({ linkedWebapp: false });
+  // ② 上报本课堂**没有网页**时的任意 webappId（假 prisma 的 linkedWebappId:null 就是这个意思）
+  const unlinked = createHarness({ linkedWebappId: null });
   const s2 = await joinAsStudent(unlinked, 'classroom-a');
   const t2 = unlinked.connect({ cookie: teacherCookie() });
   await t2.call('join-teacher-board', 'classroom-a');
@@ -1399,12 +1507,20 @@ test('文字档的归属校验与帧同款：别的课堂 / 没关联的网页 /
 // drain：取走数据 + 清空三个 Map（规格 §5.5「课堂结束释放」）
 // ══════════════════════════════════════════════════════════════════════════
 
-test('drain 返回每个参与者每个网页一行、时长按首帧→末帧算，并清空本课堂的三个 Map', async (t) => {
+test('drain 每个参与者一行、时长按首帧→末帧算，并清空本课堂的三个 Map', async (t) => {
   resetMonitor();
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   t.mock.timers.setTime(1_700_000_000_000);
   const harness = createHarness();
   const student = await joinAsStudent(harness, 'classroom-a');
+  // ⚠️ 第二个参与者（不是同一个人报第二个网页）。
+  //    这条用例从前是「同一个学生报 webapp-1 与 webapp-2」—— 那是**旧口径**下才成立的：
+  //    归属校验问的是「本课堂关联过这个网页吗」，而假 prisma 会替那一问放行任意 webappId。
+  //    2026-09-23 起校验问的是「**这是你自己的**网页吗」（一个参与者只有一个有效网页），
+  //    所以「同一个学生报两个网页」在生产里已经是**被拒**的形状，用例照旧写就是自欺。
+  //    改成两个参与者后，这条用例真正守的东西（一行一个参与者、单帧时长退化 0、
+  //    行的形状恰好四项、drain 只清自己那个课堂）一条都没少。
+  const second = await joinAsStudent(harness, 'classroom-a', PARTICIPANT_2_ID);
   const teacher = harness.connect({ cookie: teacherCookie() });
   await teacher.call('join-teacher-board', 'classroom-a');
   await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
@@ -1412,23 +1528,23 @@ test('drain 返回每个参与者每个网页一行、时长按首帧→末帧�
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,one' });
   t.mock.timers.tick(60_000);
   await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,two' });
-  // 第二个网页：只**发过一帧**。它也必须成行，而且时长退化成 0（首帧=末帧）。
-  await student.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-2', dataUrl: 'data:image/jpeg;base64,three' });
+  // 第二个参与者：只**发过一帧**。他同样必须成行，而且时长退化成 0（首帧=末帧）。
+  await second.call('webapp-frame', { classroomId: 'classroom-a', webappId: 'webapp-1', dataUrl: 'data:image/jpeg;base64,three' });
 
   const rows = drainWebappMonitor(harness.io as unknown as Server, 'classroom-a');
 
   assert.equal(rows.length, 2);
-  const first = rows.find(row => row.webappId === 'webapp-1');
+  const first = rows.find(row => row.studentId === PARTICIPANT_ID);
   assert.deepEqual(first, {
     studentId: PARTICIPANT_ID,
     webappId: 'webapp-1',
     durationMs: 60_000,
     frameCount: 2,
   });
-  const second = rows.find(row => row.webappId === 'webapp-2');
-  assert.deepEqual(second, {
-    studentId: PARTICIPANT_ID,
-    webappId: 'webapp-2',
+  const secondRow = rows.find(row => row.studentId === PARTICIPANT_2_ID);
+  assert.deepEqual(secondRow, {
+    studentId: PARTICIPANT_2_ID,
+    webappId: 'webapp-1',
     durationMs: 0,
     frameCount: 1,
   });

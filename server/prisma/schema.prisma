@@ -110,12 +110,12 @@ model Classroom {
   allowStudentStop Boolean @default(true)
   allowStudentExport Boolean @default(true)
   allowFollowUps Boolean @default(true)
-  /// 探究助手：是否采集**画面**（截图）。关掉后学生端不传任何图片，
+  /// 探究空间：是否采集**画面**（截图）。关掉后学生端不传任何图片，
   /// 只传文字档（可见性 + 滚动深度）—— 那是给老设备用的便宜档。
   webappCaptureEnabled Boolean @default(true)
-  /// 探究助手：缩略图目标宽度（像素）。服务端夹在 160~640 之间再下发。
+  /// 探究空间：缩略图目标宽度（像素）。服务端夹在 160~640 之间再下发。
   webappThumbnailWidth Int @default(320)
-  /// 探究助手：**图墙档**的截图基准周期（毫秒）。详情档由学校端按比例推。
+  /// 探究空间：**图墙档**的截图基准周期（毫秒）。详情档由学校端按比例推。
   webappFrameIntervalMs Int @default(10000)
   createdAt DateTime @default(now())
   endedAt   DateTime?
@@ -209,7 +209,7 @@ model ClassroomAgent {
   @@unique([classroomId, agentId])
 }
 
-// 课堂模块三态（学习单 / 探究助手 / 智能学伴）
+// 课堂模块三态（学习单 / 探究空间 / 智能学伴）
 model ClassroomModule {
   id          String @id @default(uuid())
   classroomId String
@@ -227,7 +227,7 @@ model ClassroomModule {
   @@index([classroomId])
 }
 
-// 探究助手：教师上传的静态网页（规格 §5.2）。
+// 探究空间：教师上传的静态网页（规格 §5.2）。
 // entryPath 存的是**包内相对路径**（如 index.html），不是磁盘路径 ——
 // 绝对路径会把数据目录的位置写进数据库，换机器就废；而磁盘目录由 id 直接决定
 // （<webappsRoot>/<id>/），不需要在库里再存一份。
@@ -242,7 +242,7 @@ model Webapp {
   usages     WebappUsage[]
 }
 
-// 课堂关联的探究助手网页。
+// 课堂关联的探究空间网页。
 //
 // ⚠️ 本模型的 schema 定义**必须与 index.ts 的手写 DDL 逐字对齐**，否则下次 db push
 // 会重建本表，而同步块按表名探测、不会重跑，两边就此不一致
@@ -266,7 +266,7 @@ model ClassroomWebapp {
   @@index([webappId])
 }
 
-// 探究助手使用汇总 —— 规格 §5.5 的「唯一落盘项」，也是 P2 唯一落盘的东西。
+// 探究空间使用汇总 —— 规格 §5.5 的「唯一落盘项」，也是 P2 唯一落盘的东西。
 //
 // 整条实时链路的帧与计数**只存内存**（Ruling 8），课堂结束时由 drainWebappMonitor()
 // 一次性取出、写进本表、再清空内存。所以这里留下的就是课后报告的全部数据来源。

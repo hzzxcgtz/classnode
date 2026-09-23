@@ -29,7 +29,7 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
     classroomModule: {
       findMany: async () => [],
     },
-    // 本课堂没有关联任何探究助手网页：GET /code/:code 仍须下发 webapps: [] 而不是省略/报错。
+    // 本课堂没有关联任何探究空间网页：GET /code/:code 仍须下发 webapps: [] 而不是省略/报错。
     classroomWebapp: {
       findMany: async () => [],
     },
@@ -86,7 +86,7 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
       { moduleKey: 'explorer', state: 'preview' },
       { moduleKey: 'companion', state: 'preview' },
     ],
-    // 探究助手：只发 id / name / entryPath，不含任何磁盘路径（本课堂未关联任何网页，空数组）。
+    // 探究空间：只发 id / name / entryPath，不含任何磁盘路径（本课堂未关联任何网页，空数组）。
     webapps: [],
     // 课堂级学习单：只发 id / title（本课堂未关联，空数组）。形状与组级那份一致。
     worksheets: [],

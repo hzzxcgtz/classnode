@@ -8,7 +8,7 @@ import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
-import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
+import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews, resolveParticipantWebappId } from '../services/group-material-resolve.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -271,10 +271,10 @@ export function abortClassroomStreams(
 const TEACHER_ROOM_PREFIX = 'teacher:';
 
 /**
- * 「教师正在看探究助手视图」的房间后缀（规格 §5.5 的按需推流，Ruling 9）。
+ * 「教师正在看探究空间视图」的房间后缀（规格 §5.5 的按需推流，Ruling 9）。
  *
  * ⚠️ **不能用 `teacher:<id>` 本身**：教师只要打开课堂看板就进了那个房间，而
- * 「在看探究助手视图」是更窄的一件事 —— 用宽的那个，会让每个只是开着看板的教师
+ * 「在看探究空间视图」是更窄的一件事 —— 用宽的那个，会让每个只是开着看板的教师
  * 都触发全体学生推流，Ruling 9 的按需推流就白做了。
  *
  * ⚠️ **也不要换个前缀**（例如 `webapp:<id>`）来躲开 staleTeacherRooms：那个函数只清
@@ -283,7 +283,7 @@ const TEACHER_ROOM_PREFIX = 'teacher:';
  */
 const WEBAPP_MONITOR_ROOM_SUFFIX = ':webapp';
 
-/** 本课堂的探究助手监控房间名（只有 T7 的探究助手视图挂载时才 join）。 */
+/** 本课堂的探究空间监控房间名（只有 T7 的探究空间视图挂载时才 join）。 */
 function webappMonitorRoom(classroomId: string): string {
   return `${TEACHER_ROOM_PREFIX}${classroomId}${WEBAPP_MONITOR_ROOM_SUFFIX}`;
 }
@@ -299,8 +299,8 @@ function webappMonitorRoom(classroomId: string): string {
  *
  * ⚠️ **保留的是当前课堂的「两种」房间**：`teacher:<id>` 与 `teacher:<id>:webapp`。
  * 两者都是「本课堂的教师房间」，本函数要清的本来就是**别的课堂**的。曾经只保留前者的
- * 写法会**每次都把探究助手监控房间也扫掉**（它以 `teacher:` 开头、又不等于 keep）：
- * 教师打开探究助手视图后，任何重新触发 join-teacher-board 的动作（effect 依赖变化、
+ * 写法会**每次都把探究空间监控房间也扫掉**（它以 `teacher:` 开头、又不等于 keep）：
+ * 教师打开探究空间视图后，任何重新触发 join-teacher-board 的动作（effect 依赖变化、
  * 断线重连）都会把他踢出监控房间 ⇒ hasWatchers 归零 ⇒ 学生停止推流 ⇒ 教师看到
  * **一块冻住的图墙，全程没有任何报错**。回归用例见 webapp-monitor.test.ts。
  *
@@ -322,7 +322,7 @@ export function staleTeacherRooms(rooms: Iterable<string>, currentClassroomId: s
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// 探究助手实时监控的服务端内存态（规格 §5.5，Ruling 8 / Ruling 9）
+// 探究空间实时监控的服务端内存态（规格 §5.5，Ruling 8 / Ruling 9）
 //
 // 链路：iframe(SDK) ──postMessage──▶ 学生端父页面 ──socket.io──▶ 这里的三个 Map
 //       ──socket.io──▶ 教师看板的 teacher:<id>:webapp 房间
@@ -430,7 +430,7 @@ const webappMonitor = {
    * 释放），单开一份必然要再写一遍那两条路径。
    */
   moduleFocus: new Map<string, { moduleId: string | null; at: number }>(),
-  /** classroomId → 订阅了本课堂探究助手视图的 socketId 集合（Ruling 9 的记账）。 */
+  /** classroomId → 订阅了本课堂探究空间视图的 socketId 集合（Ruling 9 的记账）。 */
   watchers: new Map<string, Set<string>>(),
   /**
    * classroomId → 教师此刻**点开了详情**的那个 studentId（没点开则无此键）。
@@ -697,7 +697,7 @@ export function validateWebappWatchPayload(value: unknown): string | null {
 }
 
 /**
- * 本课堂是否有教师在看探究助手视图（Ruling 9 的按需推流判据）。
+ * 本课堂是否有教师在看探究空间视图（Ruling 9 的按需推流判据）。
  *
  * 房间空时 Socket.IO 会把房间删掉 ⇒ `get()` 返回 undefined ⇒ 必须有 `?? 0`。
  *
@@ -1014,7 +1014,7 @@ export function drainWebappMonitor(io: Server, classroomId: string): WebappUsage
  * 删除与写入在**同一个事务**里：任一步失败整体回滚，旧数据不会被半途删掉。
  *
  * ⚠️ **边界（明说，不藏）**：`rows` 为空时**什么都不做**，连删除也不做。
- * 因为「空 drain」有两种无法在这一层区分的成因：① 这节课确实没人用探究助手；
+ * 因为「空 drain」有两种无法在这一层区分的成因：① 这节课确实没人用探究空间；
  * ② 这节课没有教师打开过看板 ⇒ 学生按 Ruling 9 根本没推流 ⇒ 一条数据都没收到
  * （后者是已知的按需推流代价，见 task-5-report.md §6.4）。② 会把上一节课**真实存在**
  * 的汇总删掉，而按「空 = 覆盖成空」处理就会丢掉那些数据 —— 在成因不可区分时，
@@ -1065,7 +1065,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
   if (app) {
     app.set('activeConnections', activeConnections);
     app.set('activeStreams', activeStreams);
-    // 探究助手的内存态住在**本模块**，而「课堂结束」在 routes/classroom.ts（预审 2）。
+    // 探究空间的内存态住在**本模块**，而「课堂结束」在 routes/classroom.ts（预审 2）。
     // 照上面两行的既有做法经 app.set 暴露，而不是让路由 import 本模块的内部状态。
     app.set('webappMonitor', createWebappMonitorFacade(io));
   }
@@ -1184,7 +1184,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // 广播在线状态给身份选择页
         io.to(`status:${classroom.id}`).emit('online-students', { classroomId: classroom.id, studentIds: getOnlineStudentIds(classroom.id, activeConnections) });
 
-        // 探究助手按需推流的**初始状态**（规格 §5.5 / Ruling 9）。
+        // 探究空间按需推流的**初始状态**（规格 §5.5 / Ruling 9）。
         // 学生端默认不推，由这条消息决定要不要开始 —— 少了它，「教师先开看板、学生后进课堂」
         // 这个顺序下学生永远等不到 watching:true，图墙会一直空着且没有任何报错。
         // 不做「本课堂有没有关联网页」的判断：那要多一次查询，而这条消息只有几十字节。
@@ -1228,7 +1228,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       // 放在鉴权之后：会话失效的请求不得造成任何房间变更。
       for (const room of staleTeacherRooms(socket.rooms, classroomId)) {
         socket.leave(room);
-        // 被离开的若正好是**探究助手监控房间**，记账与「按需推流」都得跟着走。
+        // 被离开的若正好是**探究空间监控房间**，记账与「按需推流」都得跟着走。
         // 少了这一段就是一条静默的泄漏：教师从 X 的看板直接切到 Y 的看板（或任何让
         // staleTeacherRooms 代劳退房的路径）时，X 的房间没了、watchers 还留着 →
         // hasWatchers(X) 虽然会正确变 false，但**没有任何人通知 X 的学生停推**
@@ -1268,7 +1268,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // ══════════════════════════════════════════════════════════════════════
-    // 探究助手实时监控（规格 §5.5）
+    // 探究空间实时监控（规格 §5.5）
     // ══════════════════════════════════════════════════════════════════════
 
     /**
@@ -1286,7 +1286,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 超过 2 小时的课堂加一条**静默**的截止线（chat 照常、监控悄悄停），
      * 而安全上并没有多买到东西（socket 会话本身不可伪造）。
      *
-     * 失败**不 emit 任何错误事件**：探究助手是学生端的次要通道，一条 auth 错误弹窗打断
+     * 失败**不 emit 任何错误事件**：探究空间是学生端的次要通道，一条 auth 错误弹窗打断
      * 学生做题是净损失；而「这个 webappId 属不属于本课堂」也不该变成可探测的信息。
      */
     /**
@@ -1313,20 +1313,36 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         select: { id: true },
       });
       if (!membership) return { ok: false, reason: '不在本课堂的学生名册里' };
-      const linked = await prisma.classroomWebapp.findFirst({
-        where: { classroomId, webappId },
-        // 顺带把课堂状态一起取回来（同一次查询里 join，不是第二次往返）——
-        // 见下面「已结束的课堂不再收上报」那一段。
-        select: { id: true, classroom: { select: { status: true } } },
-      });
-      if (!linked) return { ok: false, reason: '这个网页没有关联到本课堂' };
+      // 「这个 socket 报的网页算不算它的」——判定整体交给 `resolveParticipantWebappId`，
+      // 唯一口径是 `resolveMaterialTargetId`（高级模式不回落那条规则在那边，这里不重写）。
+      //
+      // ⚠️ **这条判据改严了，改前改后的差别是**：
+      //   · 改前问的是「**本课堂**关联过这个网页吗」—— 查的是课堂级的 `ClassroomWebapp`。
+      //     两个后果：① 高级模式下那张表**恒为空**（该模式的网页权威来源是「每组一份」，
+      //     见 `POST /create-advanced`），于是每一帧都在这里被拒（2026-09-23 用户报
+      //     「探究空间的快照完全不显示」的根因，学生端一直是好的、一直在正常上报）；
+      //     ② 只要课堂级关联过，学生就能替**别的组**送帧，污染那个网页的统计。
+      //   · 改后问的是「**这是你自己的**网页吗」：按该参与者自己的模式/组解析出唯一
+      //     有效网页再比对。① 与 ② 一起堵上。
+      //
+      // 课堂状态与「有效网页」两条查询互不依赖，**并行**发。
+      // （旧实现把状态搭在「关联过吗」那次查询上顺带取回；那条判据整体作废了，
+      //   状态因此单独查一次 —— 一次主键查找。）
+      const [classroom, effective] = await Promise.all([
+        prisma.classroom.findUnique({ where: { id: classroomId }, select: { status: true } }),
+        resolveParticipantWebappId(prisma, { classroomId, participantId: membership.id }),
+      ]);
+      if (effective === null) return { ok: false, reason: '该学生（或其小组）没有配置探究网页' };
+      if (effective !== webappId) {
+        return { ok: false, reason: `上报的网页不是该学生的有效网页（有效 ${effective}，上报 ${webappId}）` };
+      }
       // 课堂已结束 ⇒ 不再收上报。少了这一条，「结束即释放」仍然不是终态：drain 把内存
       // 清空之后，还没断线的学生（客户端还没来得及跳走）每 5 秒继续上报，内存条目会
       // **重新长回来**，而它们要等到 6 小时 TTL 或下一次 drain 才会被释放
       // （审查者的实测：结束之后学生再上报 → 内存条目又长回来）。
       // 只挡 'ended'，不挡 'paused'：暂停时教师往往正是要看看学生屏幕上现在是什么。
       // 只对 status 做判断，所以 restore 之后（status 回到 active）上报自动恢复。
-      if (linked.classroom?.status === 'ended') return { ok: false, reason: '课堂已结束' };
+      if (classroom?.status === 'ended') return { ok: false, reason: '课堂已结束' };
       return { ok: true, classroomId, studentId: membership.id };
     }
 
@@ -1399,7 +1415,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           );
         }
 
-        // 按需推流：没有教师在看探究助手视图时**一个字节都不转发**（Ruling 9）。
+        // 按需推流：没有教师在看探究空间视图时**一个字节都不转发**（Ruling 9）。
         if (!hasWatchers(io, reporter.classroomId)) return;
 
         const presence = peekWebappPresence(reporter.classroomId, reporter.studentId, payload.webappId);
@@ -1542,7 +1558,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     /**
-     * 教师订阅 / 取消订阅本课堂的探究助手视图（T7 的视图挂载与卸载）。
+     * 教师订阅 / 取消订阅本课堂的探究空间视图（T7 的视图挂载与卸载）。
      *
      * 订阅：鉴权 + 必须是本课堂的教师会话，然后 join `teacher:<id>:webapp`
      *      （按需推流的判据就是这个房间）+ 立刻广播 watching:true，
@@ -1573,7 +1589,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       //     去掉的顺序依赖又请了回来（只是换了字段名），而那正是本函数要修的东西。
       const boundClassroomId = socket.data.classroomId as string | undefined;
       if (!hasTeacherSessionCookie(socket.handshake.headers.cookie) || (boundClassroomId !== undefined && boundClassroomId !== classroomId)) {
-        socket.emit('teacher-auth-error', { error: '无权订阅探究助手监控' });
+        socket.emit('teacher-auth-error', { error: '无权订阅探究空间监控' });
         return;
       }
       if (!webappMonitor.watchers.has(classroomId)) webappMonitor.watchers.set(classroomId, new Set());
@@ -2249,7 +2265,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       const { classroomId, studentId, isTeacher } = socket.data;
       const connKey = classroomId && studentId ? `${classroomId}:${studentId}` : null;
 
-      // 探究助手监控的订阅记账：Socket.IO 会在断开时自动把本 socket 从所有房间摘掉
+      // 探究空间监控的订阅记账：Socket.IO 会在断开时自动把本 socket 从所有房间摘掉
       // （所以 hasWatchers 立刻就是对的），但 watchers 这个 Map 是我们的账本，必须自己清 ——
       // 不清的话它不仅会无界增长，还会让「这个课堂还有没有订阅者」永远说不清。
       // 归零则走与 unwatch 相同的防抖路径。

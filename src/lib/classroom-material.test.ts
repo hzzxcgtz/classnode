@@ -21,7 +21,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { effectiveGroupAgent, effectiveGroupWebapp } from './classroom-material.ts';
+import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWebapp } from './classroom-material.ts';
 import type { AgentSummary, ClassroomWebappSummary } from './types';
 
 /** 只填本测试读到的字段；其余字段的存在与否与本函数无关（服务端下发的组材料也只是子集）。 */
@@ -174,4 +174,82 @@ test('🔴 四个消费点都接线到解析函数，没有自己读课堂级数
       `${relativePath} 又自己读了课堂级数组 —— 高级模式下那是错的来源`,
     );
   }
+});
+
+// ── 「这间课堂在用什么材料」（教师端课堂卡片 / 课堂设置弹窗的读口径）──────────
+//
+// 与上面那两组是同一枚硬币的两面：上面问「**某个学生**用哪一份」，这里问
+// 「**这间课堂**在用哪些」。权威来源的规矩是同一句 —— 高级模式只认各组，标准/分组认课堂级。
+// 抽出来的理由就是它**已经错过一次**：卡片与弹窗都只读课堂级，于是高级模式那些课堂
+// 显示成「未关联」而其实每个组都配了（用户 2026-09-23：「这部分显示为空白，其实已经有关联了」）。
+
+test('高级模式：探究网页来自**各组**，同类多份全部列出', () => {
+  const classroom = {
+    mode: 'advanced',
+    // 高级模式下课堂级那张关联表服务端**根本不写**，所以这里是空的 —— 而它空了不影响结果。
+    webapps: [] as ClassroomWebappSummary[],
+    groups: [
+      { id: 'g1', name: '第1组', agent: null, webapp: webapp('w1', '光合作用') },
+      { id: 'g2', name: '第2组', agent: null, webapp: webapp('w2', '水循环') },
+      { id: 'g3', name: '第3组', agent: null, webapp: null },
+    ],
+  };
+  const inUse = classroomMaterialsInUse(classroom);
+  assert.deepEqual(inUse.webapps.map((item) => item.material.name), ['光合作用', '水循环']);
+  assert.deepEqual(inUse.webapps.map((item) => item.groupNames), [['第1组'], ['第2组']]);
+});
+
+test('高级模式：同一个材料被两个组引用 → 合成一条，组名并列（不是列两遍）', () => {
+  const shared = webapp('w1', '光合作用');
+  const inUse = classroomMaterialsInUse({
+    mode: 'advanced',
+    groups: [
+      { id: 'g1', name: '第1组', agent: null, webapp: shared },
+      { id: 'g2', name: '第2组', agent: null, webapp: shared },
+    ],
+  });
+  assert.equal(inUse.webapps.length, 1);
+  assert.deepEqual(inUse.webapps[0].groupNames, ['第1组', '第2组']);
+});
+
+test('🔴 高级模式：各组都没配就是**空**，绝不回落到课堂级', () => {
+  // 老课堂可能还留着课堂级的关联行（迁移前写的），高级模式下它**不生效**。
+  // 读它就是让教师看到一份「学生根本不会打开」的网页，还顺便掩盖了「各组都没配」这件事。
+  // 反证：把实现改成只读 `classroom.webapps`，本条的期望会变成 ['w-legacy'] ⇒ 红。
+  const inUse = classroomMaterialsInUse({
+    mode: 'advanced',
+    webapps: [webapp('w-legacy', '幽灵网页')],
+    groups: [{ id: 'g1', name: '第1组', agent: null, webapp: null }],
+  });
+  assert.deepEqual(inUse.webapps, [], '高级模式不得读课堂级网页');
+});
+
+test('标准 / 分组模式：材料来自**课堂级**（那是该模式的权威来源）', () => {
+  const inUse = classroomMaterialsInUse({
+    mode: 'group',
+    agents: [agent('a1', '全班共用')],
+    webapps: [webapp('w1', '光合作用')],
+    groups: [{ id: 'g1', name: '第1组', agent: null, webapp: null }],
+  });
+  assert.deepEqual(inUse.agents.map((item) => item.material.name), ['全班共用']);
+  assert.deepEqual(inUse.webapps.map((item) => item.material.name), ['光合作用']);
+  // 课堂级材料不属于任何组 ⇒ 不该显示组名（否则界面上会凭空多出一句「第1组」）。
+  assert.deepEqual(inUse.webapps[0].groupNames, []);
+});
+
+test('学习单：今天服务端不下发，但形状就位 —— 有数据就列得出来', () => {
+  // 三件套的分类显示要求学习单那一类**现在就能显示**，而不是等 P1 落地再改一遍读路径。
+  const inUse = classroomMaterialsInUse({
+    mode: 'advanced',
+    groups: [{ id: 'g1', name: '第1组', agent: null, webapp: null, worksheet: { id: 's1', title: '第一课练习' } }],
+  });
+  assert.deepEqual(inUse.worksheets.map((item) => item.material.title), ['第一课练习']);
+  assert.deepEqual(inUse.worksheets[0].groupNames, ['第1组']);
+});
+
+test('没有任何材料（含 classroom 为 null）时三组都是空数组，不抛错', () => {
+  const empty = { agents: [], webapps: [], worksheets: [] };
+  assert.deepEqual(classroomMaterialsInUse(null), empty);
+  assert.deepEqual(classroomMaterialsInUse({ mode: 'standard' }), empty);
+  assert.deepEqual(classroomMaterialsInUse({ mode: 'advanced', groups: [] }), empty);
 });

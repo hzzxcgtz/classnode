@@ -46,7 +46,7 @@ interface ChatSocketOptions {
   setToast: Dispatch<SetStateAction<{ msg: string; type: 'success' | 'error' | 'info' } | null>>;
   setWaitingAI: Dispatch<SetStateAction<boolean>>;
   /**
-   * 探究助手按需推流：本课堂此刻有没有教师在看探究助手视图（P2）。
+   * 探究空间按需推流：本课堂此刻有没有教师在看探究空间视图（P2）。
    *
    * 归会话层而不是面板：初值只在 `join-classroom` 成功后下发一次，而面板是惰性挂载的
    * （见上面那条订阅的注释）。会话级的布尔量，与 `paused` / `agentDisabled` 同一类。
@@ -295,12 +295,12 @@ export function useChatSocket(options: ChatSocketOptions) {
         optionsRef.current.setClassroom((prev) => prev ? { ...prev, allowFollowUps: data.allow } : prev);
       });
 
-      // 探究助手按需推流（P2 / Ruling 9）：本课堂此刻有没有教师在看探究助手视图。
+      // 探究空间按需推流（P2 / Ruling 9）：本课堂此刻有没有教师在看探究空间视图。
       //
-      // ⚠️ **必须在这里订阅，不能等到探究助手面板挂载才订阅。** 服务端在
+      // ⚠️ **必须在这里订阅，不能等到探究空间面板挂载才订阅。** 服务端在
       // `join-classroom` 成功后**立刻**发一次（那是学生端唯一的初值来源），而面板是
-      // **惰性挂载**的（学生切到探究助手才挂，§4.8 的内存门槛）—— 学生从进课堂到点开
-      // 探究助手之间隔着任意长的时间，那时这条消息早就过去了，而 socket.io 的事件不会
+      // **惰性挂载**的（学生切到探究空间才挂，§4.8 的内存门槛）—— 学生从进课堂到点开
+      // 探究空间之间隔着任意长的时间，那时这条消息早就过去了，而 socket.io 的事件不会
       // 为「当时没有监听者」留档。后果是**完全无声**的：面板一直以为没人看 ⇒ 学生端在
       // 源头就不推 ⇒ 教师图墙一直空着，两边都不报错。
       // （T5 在服务端专门补了这条 join 时的下发，就是为了「教师先开看板、学生后进课堂」

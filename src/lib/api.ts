@@ -184,7 +184,7 @@ export const api = {
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
   toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),
-  // 探究助手画面采集（P2.2）：要不要采、多清楚、多久一次。
+  // 探究空间画面采集（P2.2）：要不要采、多清楚、多久一次。
   //
   // 三个字段**都可选**，语义是「没给 = 这次不改它」—— 所以只发被改动的那一个，
   // 不要图省事把当前值整个塞进去（那会把另一个字段钉死在本地可能已经过期的值上）。
@@ -384,7 +384,10 @@ export const api = {
   updateWebapp: (id: string, data: { name?: string; entryPath?: string }) =>
     request<WebappSummary>(`/api/webapps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWebapp: (id: string) => request(`/api/webapps/${id}`, { method: 'DELETE' }),
-  // 网页只有 `ClassroomWebapp` 一条关联路径，所以 `classrooms.length === classroomCount`。
+  // 网页有**两条**关联路径：课堂级（`ClassroomWebapp`，标准/分组模式）与组级
+  // （`ClassroomGroupMaterial(kind='webapp')`，高级模式每组一份）。`/:id/usage` 两条都查
+  // 并按**课堂**去重，所以 `classrooms.length === classroomCount` 仍然成立 ——
+  // 但「网页只有课堂级一条路径」那句话已经过期了（列表端点的 `classroomCount` 同样 union 两者）。
   checkWebappUsage: (id: string) =>
     request<{ used: boolean; classroomCount: number; classrooms: RelatedClassroom[] }>(`/api/webapps/${id}/usage`),
   getWebappEntries: (id: string) =>

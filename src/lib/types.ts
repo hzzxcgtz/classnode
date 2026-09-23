@@ -89,7 +89,7 @@ export interface ClassroomModuleSetting {
 }
 
 /**
- * 探究助手「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
+ * 探究空间「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
  *
  * **只有这三个字段**：`id` 与 `entryPath` 够学生端拼出
  * `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`，`name` 是显示名。
@@ -100,6 +100,25 @@ export interface ClassroomWebappSummary {
   id: string;
   name: string;
   entryPath: string;
+}
+
+/**
+ * 课堂材料里那一份**学习单**的最小读形状。
+ *
+ * 🔴 **P1 尚未落地**：今天 `Worksheet` 表不存在、没有任何地方写
+ * `ClassroomGroupMaterial.kind='worksheet'`、`GET /api/classroom/active` 也不下发这个字段
+ * ⇒ 凡是读它的地方（`@/lib/classroom-material` 的 `classroomMaterialsInUse`）**今天恒为空**。
+ *
+ * 那为什么还要定义它：教师端的「课堂卡片」必须按**三件套**分类显示材料引用
+ * （用户 2026-09-23），而学习单那一类不能写成「以后再说」—— 读路径改一遍的代价远高于
+ * 现在照 P1 规格（`specs/2026-09-23-p1-worksheet.md` §4.1：`Worksheet.title` ＋ 组材料
+ * `kind='worksheet'`）把槽留出来。接上服务端那一天，界面**不用再改**。
+ *
+ * ⚠️ 字段名是 `title` 不是 `name`（`Worksheet` 模型就是这么定的），别顺手对齐成网页那套。
+ */
+export interface WorksheetMaterialSummary {
+  id: string;
+  title: string;
 }
 
 /**
@@ -303,7 +322,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
   /**
    * 本课堂关联的探究网页。`GET /api/classroom/:id` 与 `/code/:code` **共用**
    * `loadClassroomWebapps`（`routes/webapps.ts`），两个端点的形状逐字相同 ——
-   * 教师看板的探究助手视图按它渲染格子标题。
+   * 教师看板的探究空间视图按它渲染格子标题。
    *
    * 可选的理由同 `StudentClassroom.webapps`：查询失败（老库缺表）时服务端降级为
    * 空数组，更老的版本则根本不发这个字段；读的地方按「没有网页」处理。
@@ -313,7 +332,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
    */
   webapps?: ClassroomWebappSummary[];
   /**
-   * 探究助手画面的采集设置（P2.2，`Classroom` 表的三个标量列；`GET /api/classroom/:id`
+   * 探究空间画面的采集设置（P2.2，`Classroom` 表的三个标量列；`GET /api/classroom/:id`
    * 靠 `...classroom` 原样带出，`POST /:id/webapp-capture` 则返回归一化后的全量）。
    *
    * 三个都**可选**：老库加列之前建的行、或服务端降级响应都可能没有。
@@ -349,7 +368,16 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
    * 是合法状态（`group-material-resolve.ts` 条件构造）。写成非空是**陈述上的谎言**，
    * 会让读的地方少一层判空。
    */
-  groups: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
+  groups: Array<ClassroomCardGroup & {
+    agent: AgentSummary | null;
+    webapp: ClassroomWebappSummary | null;
+    /**
+     * 🔴 **P1 尚未落地，今天服务端不下发这个字段**（见 `WorksheetMaterialSummary` 的注释）。
+     * 这里先按 P1 的组材料形状声明成可选，为的是「接上就显示」而不是那时候再改读路径；
+     * 缺字段时一律当 `null`（该组没配学习单），**不是**当成错误。
+     */
+    worksheet?: WorksheetMaterialSummary | null;
+  }>;
   students: Array<{ studentId: string; totalRounds: number }>;
   _count: { students: number };
   participantCount: number;
@@ -365,6 +393,16 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
    * ⚠️ 因此「没发」与「空数组」在界面上都是「没有网页」—— 这与学生端 `webapps?` 同一条口径。
    */
   webapps?: ClassroomWebappSummary[];
+  /**
+   * 本课堂**课堂级**关联的学习单（P1 落地后才有）。
+   *
+   * 与 `webapps` 同构：**标准 / 分组模式**的权威来源；高级模式下权威来源是各组
+   * （`groups[].worksheet`），这一条会是幽灵（服务端在该模式下不写它）。
+   *
+   * 🔴 今天服务端不查询也不下发它 —— 声明成可选正是为了如实表达「没发」与「空数组」在
+   * 界面上是一回事（与 `webapps?` 同一条口径），而不是把「还没做」伪装成一个空数组。
+   */
+  worksheets?: WorksheetMaterialSummary[];
 }
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
@@ -387,7 +425,7 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
   groups?: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
   modules: ClassroomModuleSetting[];
   /**
-   * 探究助手托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
+   * 探究空间托管服务的**端口**（P2；`GET /api/classroom/code/:code` 下发）。
    *
    * ⚠️ 是端口而**不是**拼好的 URL：学生端本来就知道自己是从哪个 IP / 域名进来的
    * （`location.hostname`），所以自己拼出来的源永远正确、无缓存、不会陈旧 ——

@@ -13,7 +13,7 @@ import type { ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState }
  * 学生端外壳用的模块语义名。**只在前端存在** —— 后端（含 lib/types 的
  * ClassroomModuleKey）一律用 'learning-sheet' / 'explorer' / 'companion'。
  *
- * 之所以不复用后端那套名字：学生端 UI 的文案是「学习单 / 探究助手 / 学伴」，
+ * 之所以不复用后端那套名字：学生端 UI 的文案是「学习单 / 探究空间 / 学伴」，
  * 组件与 Tab 栏按语义名分支比按 'learning-sheet' 分支好读；代价就是下面那两张表。
  */
 export type ModuleId = 'worksheet' | 'explore' | 'companion';
@@ -154,7 +154,7 @@ type InverseOf<T extends Record<ModuleId, ClassroomModuleKey>> = {
  *
  * 两个方向都必须是全的，缺哪一边都是同一种静默失败，所以同样是 `Record` 约束；
  * 但 `Record` 只保证「键齐、值的类型对」，**查不出错配**（例如正向表把 worksheet
- * 写成 'explorer' —— 两张表各自都还是完整的，可「学习单」会一直读到「探究助手」的
+ * 写成 'explorer' —— 两张表各自都还是完整的，可「学习单」会一直读到「探究空间」的
  * 态，依旧不报错）。所以再并上 `InverseOf<typeof MODULE_KEY_BY_ID>`：反向表必须是
  * 正向表的逆，错配即编译失败。`Record` 那半保留着，作为 `InverseOf` 万一被削弱时的
  * 兜底。

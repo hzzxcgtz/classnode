@@ -788,7 +788,7 @@ export default function NewClassroomPage() {
             <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一个 · 三件套任选其一</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
-            学生在「探究助手」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
+            学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
             不选也可以 —— 那就记得至少选一个 AI 智能体。
           </div>
           {webappLoadError ? (

@@ -57,7 +57,7 @@ function toFrameDataUrl(payload: unknown): string | null {
    * 前缀只印前 24 个字符 —— 完整 data URL 是一整张图，印出来只会淹掉日志。
    */
   const reject = (why: string): null => {
-    console.warn(`[探究助手] 丢弃一帧：${why}`);
+    console.warn(`[探究空间] 丢弃一帧：${why}`);
     return null;
   };
 
@@ -173,7 +173,7 @@ function toWebappDiag(payload: unknown): WebappDiag | null {
 }
 
 export interface ExploreBridgeOptions {
-  /** 探究助手 iframe 的 ref。父侧的准入判据就是它的 `contentWindow`。 */
+  /** 探究空间 iframe 的 ref。父侧的准入判据就是它的 `contentWindow`。 */
   frameRef: RefObject<HTMLIFrameElement | null>;
   /** 缩略图帧的 data URL。 */
   onFrame: (dataUrl: string) => void;

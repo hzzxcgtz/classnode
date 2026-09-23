@@ -106,7 +106,7 @@ async function main() {
   const lanAccessSetting = await prisma.setting.findUnique({ where: { key: 'lan-access' } }).catch(() => null);
   app.set('lanAccessEnabled', lanAccessSetting?.value !== 'false');
 
-  // 探究助手托管服务的端口。**只在这里算一次**，路由层经 app.get('webappPort') 取值
+  // 探究空间托管服务的端口。**只在这里算一次**，路由层经 app.get('webappPort') 取值
   // （与 prisma / io / lanAccessEnabled 同一套注入方式）。
   // 下发的是端口而不是拼好的 URL：客户端本来就知道自己是从哪个 IP 进来的
   // （location.hostname），自己拼永远正确、也不存在缓存陈旧。教师端的 /api/server-info
@@ -212,7 +212,7 @@ async function main() {
       console.warn('[server] ClassroomModule schema sync failed (module tri-state will be unavailable):', e);
     }
 
-    // 检查 Webapp / ClassroomWebapp 表是否存在（探究助手，v1.7 新增）。
+    // 检查 Webapp / ClassroomWebapp 表是否存在（探究空间，v1.7 新增）。
     //
     // 位置与 ClassroomModule 同款理由：排在下面前面那些 legacy 条件语句**之前**，
     // 这样无论后面哪条老语句抛错，这两张表都已经建好了。
@@ -268,10 +268,10 @@ async function main() {
         console.log('[server] ClassroomWebapp webappId index created');
       }
     } catch (e) {
-      console.warn('[server] Webapp schema sync failed (探究助手 will be unavailable):', e);
+      console.warn('[server] Webapp schema sync failed (探究空间 will be unavailable):', e);
     }
 
-    // 检查 WebappUsage 表是否存在（探究助手的使用汇总，v1.7 新增）。
+    // 检查 WebappUsage 表是否存在（探究空间的使用汇总，v1.7 新增）。
     //
     // 为什么不挂在上面那个 Webapp 的 try 里：那样任何一步失败都会让**两条**同步都被
     // 跳过，而两者依赖的东西不同 —— 本表的外键同时指向 Classroom 与 Webapp，
@@ -399,7 +399,7 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentExport" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added allowStudentExport column to Classroom');
     }
-    // 探究助手的三项按课堂设置（P2.2）。默认值 = 改动前的行为（开、320 宽、10 秒）。
+    // 探究空间的三项按课堂设置（P2.2）。默认值 = 改动前的行为（开、320 宽、10 秒）。
     if (!classroomColNames.includes('webappCaptureEnabled')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappCaptureEnabled" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added webappCaptureEnabled column to Classroom');
@@ -531,7 +531,7 @@ async function main() {
   }, avatarRoutes);
   app.use('/api/system', requireTeacher, systemRoutes);
   app.use('/api/upgrade', requireTeacher, upgradeRoutes);
-  // 探究助手的网页管理**全部是教师端**，没有学生可访问的端点。
+  // 探究空间的网页管理**全部是教师端**，没有学生可访问的端点。
   // 学生靠 iframe 直接向托管源（另一个端口）取静态文件，不经过 /api。
   // ⚠️ **绝不给本路由开学生 token 通道**：一旦开了，学生就能列出全库网页。
   app.use('/api/webapps', requireTeacher, webappRoutes);
@@ -575,7 +575,7 @@ async function main() {
       interfaces,
       selectedIp,
       studentUrl,
-      // 探究助手托管服务的源。端口来自 main() 里那一个 webappPort 变量，不在这里重算。
+      // 探究空间托管服务的源。端口来自 main() 里那一个 webappPort 变量，不在这里重算。
       webappOrigin: `http://${selectedIp}:${webappPort}`,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
       classroomUrl: interfaces.map(i => `http://${i.ip}:${fePort}`),
@@ -601,7 +601,7 @@ async function main() {
       .catch((error) => console.warn('[upgrade] 后台检查失败:', error instanceof Error ? error.message : String(error)));
   });
 
-  // 探究助手托管服务：独立源的第二个 Express 实例（规格 §5.1）。
+  // 探究空间托管服务：独立源的第二个 Express 实例（规格 §5.1）。
   // 它起不来**不能**拖垮主服务 —— EADDRINUSE 时 startWebappHost 只 warn 并返回 null。
   const webappServer = await startWebappHost({
     port: webappPort,

@@ -115,7 +115,7 @@ export function injectSdk(html: string, opts: { sdkPath: string }): string {
   // 重复注入会让 SDK 跑两遍、每一帧都翻倍。
   // ⚠️ 判据必须匹配**我们实际插入的那个标签形状**，不能是裸路径。
   // 裸路径的 `includes` 是**整篇子串包含**：教师网页的正文或注释里只要出现过
-  // 「/__classnode/sdk.js」这几个字（哪怕只是一句「本页已接入探究助手，由
+  // 「/__classnode/sdk.js」这几个字（哪怕只是一句「本页已接入探究空间，由
   // /__classnode/sdk.js 提供支持」的说明文案），注入就会被**整体跳过** ——
   // 该页一帧都不上报，而且没有任何报错。方向安全（不采集 ≠ 泄漏）但**静默**。
   // 匹配 `<script src="<sdkPath>` 仍然容得下教师自己写的 `?v=2` 查询串
@@ -178,7 +178,7 @@ export function injectSdk(html: string, opts: { sdkPath: string }): string {
  *      这个失效模式根本不存在。代价是这里不能用正则简写，一律用等价写法替代。
  */
 export const SDK_SOURCE = `/*
- * ClassNode 探究助手 SDK
+ * ClassNode 探究空间 SDK
  *
  * 由独立源的托管服务（规格 §5.1）注入到学生 iframe 打开的教师网页里，做四件事：
  * 与父页面握手、**定时拍缩略图**（两档：canvas 直读 / 纯 DOM 光栅化）、

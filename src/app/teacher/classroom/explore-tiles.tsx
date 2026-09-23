@@ -4,7 +4,7 @@ import type { ClassroomCardStudent, ClassroomWebappSummary } from '@/lib/types';
 import { tileCaption, timeLabel, type StudentMonitorState } from './use-webapp-monitor';
 
 /**
- * 探究助手在**看板格子里**的那一块（P2.3 把原来的「探究助手视图」拆成了这些零件）。
+ * 探究空间在**看板格子里**的那一块（P2.3 把原来的「探究空间视图」拆成了这些零件）。
  *
  * 这个文件里**没有 socket**：订阅只有一份，在 `use-webapp-monitor.ts` 里，
  * 由 `page.tsx` 调用一次。这里全是纯渲染 —— 传进来什么就画什么。
@@ -19,7 +19,7 @@ const shotBoxStyle = {
 } as const;
 
 /**
- * 学生格子内容区里的「探究助手」。
+ * 学生格子内容区里的「探究空间」。
  *
  * ⚠️ `objectFit: contain` 而不是 `cover`：cover 是**裁切填满**，会把画面切掉一块。
  * 学生端截的是**视口**，比例由他自己的窗口决定，未必是 16:10 ——
@@ -64,7 +64,7 @@ export function ExploreTile({ name, state, online, captureEnabled, compact = fal
 /**
  * 小组格子里的探究画面：**每个成员一条**。
  *
- * 为什么需要它：分组 / 高级模式下看板按**小组**成格（不是按人），而老的「探究助手视图」
+ * 为什么需要它：分组 / 高级模式下看板按**小组**成格（不是按人），而老的「探究空间视图」
  * 是按人不按组的（它遍历 `students`）。合并之后如果小组格子不画成员画面，
  * 这些课堂就**再也看不到任何缩略图**了 —— 一条静默的能力丢失。
  */

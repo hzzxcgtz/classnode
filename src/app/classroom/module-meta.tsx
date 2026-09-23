@@ -56,7 +56,7 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     ),
   },
   explore: {
-    label: '探究助手',
+    label: '探究空间',
     accent: '#7c3aed',
     accentStrong: '#6d28d9',
     cta: '去探究',

@@ -424,20 +424,42 @@ router.get('/', async (req, res) => {
     //
     // ⚠️ **一次取全再在 JS 里统计，不要在 map 里逐个 count**（那是 N+1：教师传了
     //    30 个网页就是 31 次查询）。`webapps` 为空时索性不发这条查询。
-    const linkCounts = new Map<string, number>();
+    //
+    // 🔴 **必须 union 两张表**（与下面 `/:id/usage`、DELETE 守卫同一条口径）：
+    //    `ClassroomWebapp`（课堂级，标准/分组模式）与
+    //    `ClassroomGroupMaterial(kind='webapp')`（组级，高级模式每组一份）。
+    //    只数前者时，高级模式下被小组引用的网页会显示成「未关联」——概览条的数字、
+    //    「按关联状态筛选」的结果、卡片左边那条色条（`used = classroomCount > 0`）
+    //    会一起说错，而教师照着去清理时删除守卫回 400 挡住，两边自相矛盾。
+    const classroomCounts = new Map<string, Set<string>>();
     if (webapps.length > 0) {
-      const links = await prisma.classroomWebapp.findMany({
-        where: { webappId: { in: webapps.map(webapp => webapp.id) } },
-        select: { webappId: true },
-      });
-      for (const link of links) {
-        linkCounts.set(link.webappId, (linkCounts.get(link.webappId) ?? 0) + 1);
-      }
+      const ids = webapps.map(webapp => webapp.id);
+      const [classroomLinks, groupMaterials] = await Promise.all([
+        prisma.classroomWebapp.findMany({
+          where: { webappId: { in: ids } },
+          select: { webappId: true, classroomId: true },
+        }),
+        prisma.classroomGroupMaterial.findMany({
+          where: { kind: 'webapp', targetId: { in: ids } },
+          select: { targetId: true, group: { select: { classroomId: true } } },
+        }),
+      ]);
+      // 按**课堂**去重，不是按行数。`ClassroomWebapp` 有 `@@unique([classroomId, webappId])`
+      // ⇒ 课堂级那一支本来就「一行 = 一间课堂」，去重不改变它原来的数；
+      // 组级那一支同一间课堂可以有多个组引用同一个网页，按行数会把它数成好几间课堂。
+      // 口径与 `/:id/usage` 的 `classroomCount`（那里是 `byClassroomId` 那张表）一致。
+      const addLink = (webappId: string, classroomId: string) => {
+        const classrooms = classroomCounts.get(webappId) ?? new Set<string>();
+        classrooms.add(classroomId);
+        classroomCounts.set(webappId, classrooms);
+      };
+      for (const link of classroomLinks) addLink(link.webappId, link.classroomId);
+      for (const material of groupMaterials) addLink(material.targetId, material.group.classroomId);
     }
 
     res.json(webapps.map(webapp => ({
       ...webapp,
-      classroomCount: linkCounts.get(webapp.id) ?? 0,
+      classroomCount: classroomCounts.get(webapp.id)?.size ?? 0,
     })));
   } catch (error) {
     console.error('[webapps] 获取网页列表失败:', error);

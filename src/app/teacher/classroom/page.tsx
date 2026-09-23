@@ -1830,7 +1830,15 @@ function ClassroomBoardContent() {
           {boardMode === 'follow' && (
             <div aria-label="按模块筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>模块</span>
-              <ModuleCountChip label="全部" value={allDisplayCards.length}
+              {/* 🔴 单位是**人数**，与下面那几个模块项同一把尺子（`moduleDistribution` 逐 `students`
+                  计数）—— 所以这里必须是 `students.length`，**不是** `allDisplayCards.length`。
+                  后者是**格子数**：小组 / 高级模式下格子是一个组一格，于是这一行会出现
+                  「全部 3」紧挨着「学习单 4」两个对不上的数（3 个组、4 个人是同时成立的），
+                  而这一行恰恰是用来回答「三件套中各有多少人」的。
+                  ⚠️ 状态那一组（在线 / 需关注 / 离线）用的仍是 `boardFilterCounts` 的格子数 ——
+                  那是对的：一组是一个在线单位，不能拆成人。两组各按自己的语义，但同一组内一致；
+                  合并之前这两处数字分处两个区域、没人会去比，合并之后它们并排了。 */}
+              <ModuleCountChip label="全部" value={students.length}
                 selected={studentModuleFilter === 'all'} onSelect={() => setStudentModuleFilter('all')} />
               {/* 学习单**留位**并标明尚未支持 —— 三件套的布局一次定形，以后接上时不用重排。 */}
               <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} hint="尚未支持" muted

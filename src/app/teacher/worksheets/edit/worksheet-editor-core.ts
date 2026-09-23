@@ -46,7 +46,14 @@ export const SCHEMA_VERSION = 1;
  */
 export const HISTORY_LIMIT = 200;
 
-/** 单选题的选项数上限 —— 由 `optionKey` 的值域（A–Z）决定，不是随手定的数。 */
+/**
+ * 单选题**由界面新建**的选项数上限 —— 由 `optionKey` 的值域（A–Z）决定，不是随手定的数。
+ *
+ * ⚠️ 它是「加号按不动了」的那条线，**不是**读一份既有内容时的硬顶：服务端对选项数
+ * 不设上限（`validateQuestion` 只要求 `>= 2`），所以库里可能存在 26 个以上的题。
+ * `writeOptions` 对超出部分**不丢弃**（见那里的说明），否则一份 30 选项的单子会在
+ * 教师改任意一处选项时被悄悄砍掉 4 个。
+ */
 export const MAX_OPTIONS = 26;
 
 /** 自动保存草稿的间隔（规格 §6.4：每 10 秒**或失焦**）。 */
@@ -172,21 +179,32 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
  * 原来的「B」必须变成「A」—— 否则学生会答一个不存在的选项。而正确答案若只按字母跟着变，
  * 就会从「光合作用」跳到「呼吸作用」上，**判分从此全错且没有任何报错**。
  * 所以：先把旧 key 映射到新位置，再用它翻译 `correctKeys`。
+ *
+ * 🔴 **超出 A–Z 的选项原样保留，不截断。** 服务端对选项数不设上限，所以库里可能存在
+ * 26 个以上的题；在这里 `slice(0, MAX_OPTIONS)` 会把它们悄悄砍掉，而被砍掉的选项让
+ * `correctKeys` 找不到映射 —— 于是「改一处选项文字」这一步会顺手删掉几个选项、
+ * 并把正确答案清空，**没有任何报错**。保留下来只是 key 不再是单字母（`optionKey`
+ * 的值域到 Z 为止，第 27 个起沿用原来的 key），而教师把选项删回 26 个以内时会自然
+ * 重新编号回 A–Z。
  */
 export function writeOptions(rawOptions: ChoiceOption[], correctKeys: unknown): { options: ChoiceOption[]; correctKeys: string[] } {
   const remap = new Map<string, string>();
-  const options = rawOptions.slice(0, MAX_OPTIONS).map((option, index) => {
+  const options = rawOptions.map((option, index) => {
+    // A–Z 之内按位置重编号；之外原样保留（不重编号、也不丢弃）。
+    if (index >= MAX_OPTIONS) return option;
     const key = optionKey(index);
     remap.set(option.key, key);
     return { key, text: option.text };
   });
+  // 超上限那些选项的 key 没有新旧之分（上面原样返回），翻译 `correctKeys` 时按原值放行。
+  const keptKeys = new Set(options.slice(MAX_OPTIONS).map((option) => option.key));
 
   const previous = Array.isArray(correctKeys)
     ? correctKeys.filter((key): key is string => typeof key === 'string')
     : [];
   const translated: string[] = [];
   for (const key of previous) {
-    const next = remap.get(key);
+    const next = remap.get(key) ?? (keptKeys.has(key) ? key : undefined);
     if (next && !translated.includes(next)) translated.push(next);
   }
   // 单选：最多一个正确答案。多出来的（例如两道选项被手工合并到同一位置）截掉。
@@ -261,9 +279,20 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
       ));
 
     case 'updateData':
-      return replaceNode(content, action.id, (node) => (
-        { ...node, data: { ...node.data, ...action.patch } }
-      ));
+      // 与 `updatePrompt` 同一条规矩：补丁里每个键的值都与现值相同时返回原对象，
+      // 否则 `replaceNode` 会无条件造一个新对象，于是一次「按下去什么也没发生」的
+      // 动作也会占掉一格撤销栈 —— 教师按撤销时看到屏幕纹丝不动，只能再按一次。
+      // 空补丁同理（`every` 对空数组为真）。
+      //
+      // ⚠️ 比较是**逐个键的 `===`**（与 `updatePrompt` 逐字同形），不递归比较内容：
+      // 补丁里的 `options` / `correctKeys` 每次都是新造的数组，按引用比必然不同，
+      // 所以它们照常进栈。刻意不做深比较 —— 深比较遇上「就地改了数组再交进来」
+      // 会把**真的变化**判成没变，那比多一格撤销严重得多。
+      return replaceNode(content, action.id, (node) => {
+        const keys = Object.keys(action.patch);
+        if (keys.every((key) => node.data[key] === action.patch[key])) return node;
+        return { ...node, data: { ...node.data, ...action.patch } };
+      });
 
     case 'move': {
       const index = content.nodes.findIndex((node) => node.id === action.id);
@@ -372,10 +401,19 @@ export function draftKeyFor(worksheetId: string | null): string {
   return `worksheet-draft:${worksheetId ?? 'new'}`;
 }
 
+/**
+ * 一个节点**能不能当题目用**。这是 `parseDraft` 与 `normalizeLoadedContent` 共用的守卫。
+ *
+ * 🔴 `data` 必须一起查：`readOptions` 读 `node.data.options`、`readFillAnswers` 读
+ * `node.data.answers`，两处都是**直接解引用**。只查 `id`/`type` 的话，一份缺 `data`
+ * 的草稿会整份通过这道守卫，然后在第一次渲染时抛 TypeError —— 编辑页白屏，
+ * 而那正是这两处的注释承诺过「形状不对就整份作废」要挡掉的结果。
+ */
 function isQuestionNode(value: unknown): value is WorksheetQuestionNode {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const node = value as Record<string, unknown>;
-  return typeof node.id === 'string' && node.id.length > 0 && typeof node.type === 'string';
+  if (typeof node.id !== 'string' || node.id.length === 0 || typeof node.type !== 'string') return false;
+  return Boolean(node.data) && typeof node.data === 'object' && !Array.isArray(node.data);
 }
 
 /**
@@ -415,8 +453,11 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
 }
 
 /**
- * 服务端 `normalizeNode` 保证了下发形状，这里只兜一层「整棵树不可用」的情况：
+ * 服务端 `normalizeNode` 保证了下发形状，这里只兜一层「这棵树不可用」的情况：
  * 手改过的库行不该让整个编辑页白屏。
+ *
+ * ⚠️ 逐题过 `isQuestionNode`，用的是与 `parseDraft` **同一道**守卫 —— 两处各写一份
+ * 「差不多」的判据，就是漏掉 `data` 那一处的地方（见 `isQuestionNode` 的说明）。
  */
 export function normalizeLoadedContent(content: unknown): WorksheetContent {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return createEmptyContent();
@@ -425,7 +466,7 @@ export function normalizeLoadedContent(content: unknown): WorksheetContent {
   const schemaVersion = (content as Record<string, unknown>).schemaVersion;
   return {
     schemaVersion: typeof schemaVersion === 'number' ? schemaVersion : SCHEMA_VERSION,
-    nodes: nodes.filter((node): node is WorksheetQuestionNode => Boolean(node) && typeof node === 'object' && !Array.isArray(node)),
+    nodes: nodes.filter(isQuestionNode),
   };
 }
 

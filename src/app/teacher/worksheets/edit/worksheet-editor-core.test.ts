@@ -138,10 +138,35 @@ test('异值 updatePrompt 造新对象，且新内容正确', () => {
   assert.equal(next.past.length, 1);
 });
 
+test('🔴 同值 updateData 返回同一个对象（与 updatePrompt 同一条规矩）', () => {
+  const state = createHistory(contentOf(node('q_a', '', { explanation: '因为所以', inputMode: 'keyboard' })));
+  const next = contentReducer(state, { kind: 'updateData', id: 'q_a', patch: { explanation: '因为所以' } });
+  assert.equal(next, state, '补丁与现值相同时不该进栈');
+  assert.equal(next.past.length, 0);
+});
 
+test('updateData 的比较是**逐个键的引用比较**：交同一个数组引用算没变，交新数组算变了', () => {
+  // 这条写的不是「应该」，而是**实际**的边界 —— 免得下一个读代码的人以为它会做深比较。
+  // 补丁里的 `options` / `correctKeys` 由 `writeOptions` 每次新造，按引用比必然不同，
+  // 所以它们照常进栈；深比较会把「就地改了数组再交进来」判成没变，那是更坏的方向。
+  const options = [{ key: 'A', text: '甲' }];
+  const state = createHistory(contentOf(node('q_a', '', { options })));
+  assert.equal(
+    contentReducer(state, { kind: 'updateData', id: 'q_a', patch: { options } }),
+    state,
+    '同一个数组引用 ⇒ 没变',
+  );
+  assert.notEqual(
+    contentReducer(state, { kind: 'updateData', id: 'q_a', patch: { options: [{ key: 'A', text: '甲' }] } }),
+    state,
+    '内容相同但引用不同的新数组 ⇒ 照常进栈（不做深比较）',
+  );
+});
 
-
-
+test('空补丁 updateData 也返回同一个对象', () => {
+  const state = createHistory(contentOf(node('q_a', '', { answers: [] })));
+  assert.equal(contentReducer(state, { kind: 'updateData', id: 'q_a', patch: {} }), state);
+});
 
 test('补丁里只要有一个键的值真的变了，就进栈', () => {
   const state = createHistory(contentOf(node('q_a', '', { answers: ['光合作用'], explanation: 'x' })));
@@ -272,6 +297,22 @@ test('correctKeys 不是数组时当作空（不抛）', () => {
 // 服务端对选项数不设上限（`validateQuestion` 只要求 >= 2），所以库里可能存在
 // 26 个以上的题。原来这里 `slice(0, MAX_OPTIONS)`：教师改任意一处选项文字，
 // 多出来的选项就被悄悄砍掉，而 `correctKeys` 找不到映射后变空 —— 全都没有报错。
+
+test('🔴 30 个选项的单子：改一处选项后仍然是 30 个，一个都没被砍掉', () => {
+  const raw = Array.from({ length: 30 }, (_, index) => ({ key: optionKey(index), text: `选项 ${index + 1}` }));
+  const written = writeOptions(raw, ['A']);
+  assert.equal(written.options.length, 30, `${MAX_OPTIONS} 是界面新建的上限，不是读既有内容时的硬顶`);
+  assert.deepEqual(written.options.map((option) => option.text), raw.map((option) => option.text));
+  assert.deepEqual(written.correctKeys, ['A']);
+});
+
+test('🔴 30 个选项、正确答案在第 28 个：答案**不丢**（原来会变成空数组）', () => {
+  const raw = Array.from({ length: 30 }, (_, index) => ({ key: `k${index + 1}`, text: `选项 ${index + 1}` }));
+  const written = writeOptions(raw, ['k28']);
+  assert.deepEqual(written.correctKeys, ['k28']);
+  // 且那个 key 在结果里真的对得上一段文本（不是悬空的字母）。
+  assert.equal(written.options.find((option) => option.key === 'k28')?.text, '选项 28');
+});
 
 test('A–Z 之内的选项照常重新编号（超限那条支路不改变原有行为）', () => {
   const raw = Array.from({ length: MAX_OPTIONS }, (_, index) => ({ key: `old-${index}`, text: `选项 ${index + 1}` }));
@@ -439,7 +480,17 @@ test('parseDraft：顶层字段缺一不可（savedAt / title / description / se
   assert.equal(parseDraft(JSON.stringify({ ...base, content: { schemaVersion: 1, nodes: '不是数组' } })), null);
 });
 
-
+test('🔴 parseDraft：节点缺 id / 缺 type / **缺 data** ⇒ 整份作废', () => {
+  // 缺 data 的那一条是本轮补上的：`readOptions` 读 `node.data.options`、`readFillAnswers`
+  // 读 `node.data.answers`，都是直接解引用 —— 放它过去，编辑页会在第一次渲染时 TypeError 白屏。
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, id: '' })), null);
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, id: 42 })), null);
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, type: undefined })), null);
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, data: undefined })), null);
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, data: null })), null);
+  assert.equal(parseDraft(draftWith({ ...GOOD_NODE, data: [] })), null);
+  assert.equal(parseDraft(draftWith(null)), null);
+});
 
 test('parseDraft：settings 缺失的键按默认走（只认那几个值）', () => {
   const draft = parseDraft(JSON.stringify({
@@ -458,7 +509,13 @@ test('draftKeyFor：新建用 new，编辑用真实 id（两者不能互相覆�
 
 // ── 10. 从服务端加载的内容：同一道守卫 ───────────────────────────────────
 
-
+test('🔴 normalizeLoadedContent：缺 data 的节点被丢掉（否则编辑页 TypeError）', () => {
+  const loaded = normalizeLoadedContent({
+    schemaVersion: 1,
+    nodes: [GOOD_NODE, { id: 'q_2', type: 'fill-blank', prompt: '题干', inputMode: 'keyboard', children: [] }],
+  });
+  assert.deepEqual(loaded.nodes.map((item) => item.id), ['q_1']);
+});
 
 test('normalizeLoadedContent：整棵树不可用 ⇒ 空内容（不抛）', () => {
   assert.deepEqual(normalizeLoadedContent(null), createEmptyContent());

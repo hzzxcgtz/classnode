@@ -9,6 +9,7 @@ import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
 import { Toast, TeacherPageHeader } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
+import { classroomMaterialsInUse } from "@/lib/classroom-material";
 import type { Socket } from "socket.io-client";
 
 const SOCKET_URL = getApiBaseUrl();
@@ -735,18 +736,70 @@ export default function TeacherDashboard() {
                   ))}
                 </div>
               </div>
-              {/* 中间部分：智能体信息 */}
+              {/* 中间部分：材料引用。**按类型分组**，每类可容纳多份。
+                  🔴 用户 2026-09-23（截图批注）：「这个区域要分类显示学习单、探究网页、
+                  智能学伴的引用情况，因为高级模式同一类不止一个，这些事要认真思考」。
+                  在此之前这里只有一类（智能体），而且与网页/学习单混在一行里无从分辨。
+
+                  ⚠️ **来源由 `classroomMaterialsInUse` 统一决定**：高级模式取 `groups[]`
+                  （每组一份），标准 / 分组模式取课堂级（`classroomAgents` / `webapps` /
+                  `worksheets`）。这里曾经只读课堂级那一条 —— 高级模式下会显示成
+                  「未关联」而其实每个组都配了，与 2026-09-23 修掉的那个快照 bug 同源。
+                  ⚠️ 三件套的名字与别处一致：**学习单 / 探究空间 / 智能学伴**。
+                  ⚠️ 空的那几类不渲染（整行都没有材料时整块不渲染），但「有数据就显示得出来」
+                  —— 三类走同一套渲染，学习单接上服务端那天这里一个字都不用改。 */}
               {(() => {
-                // 收集智能体（从 classroomAgents 和 groups 去重）
-                const agentMap = new Map<string, AgentSummary>();
-                cr.classroomAgents.forEach((ca) => {
-                  if (ca.agent) agentMap.set(ca.agent.id, ca.agent);
+                const materials = classroomMaterialsInUse({
+                  mode: cr.mode,
+                  groups: cr.groups,
+                  // ⚠️ `/api/classroom/active` 里课堂级智能体叫 `classroomAgents`（外面包着一层
+                  // `agentId`），与学生端的 `agents` 不是同一个名字 —— 在这里对一次，
+                  // 别把两种形状散到后面去。
+                  agents: cr.classroomAgents.map((ca) => ca.agent).filter(Boolean),
+                  webapps: cr.webapps,
+                  worksheets: cr.worksheets,
                 });
-                cr.groups.forEach((g) => {
-                  if (g.agent) agentMap.set(g.agent.id, g.agent);
-                });
-                const agents = [...agentMap.values()];
-                if (agents.length === 0) return null;
+                const total = materials.worksheets.length + materials.webapps.length + materials.agents.length;
+                if (total === 0) return null;
+
+                /** 一个材料条。三类共用一套长相，只有左侧那个图标不同。 */
+                const chip = (key: string, icon: ReactNode, name: string, groupNames: string[]) => (
+                  <span key={key} style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    padding: "3px 10px 3px 4px", borderRadius: 6,
+                    background: "#f8fafc", border: "1px solid #eef2f6",
+                    fontSize: "0.75rem", color: "#475569",
+                  }}>
+                    {icon}
+                    {name}
+                    {/* 高级模式下同一类有多份，光看名字不知道为什么有多个 ——
+                        把「这一份是谁的」写在旁边（用户要求「认真思考」的那一点）。 */}
+                    {groupNames.length > 0 && (
+                      <span style={{ fontSize: "0.625rem", color: "#94a3b8" }}>{groupNames.join("、")}</span>
+                    )}
+                  </span>
+                );
+
+                /** 一个方形的图标块（与原来智能体那个 logo 块同一个形状）。 */
+                const iconBox = (background: string, content: ReactNode) => (
+                  <span style={{
+                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                    background, color: "white",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.563rem", fontWeight: 700, overflow: "hidden",
+                  }}>
+                    {content}
+                  </span>
+                );
+
+                /** 一类材料：一个类名 + 它的全部条目。空类不渲染。 */
+                const section = (label: string, chips: ReactNode[]) => chips.length === 0 ? null : (
+                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "0.688rem", color: "#94a3b8", fontWeight: 700, marginRight: 2 }}>{label}</span>
+                    {chips}
+                  </span>
+                );
+
                 return (
                   <div
                     className="active-classroom-agent-row"
@@ -755,75 +808,35 @@ export default function TeacherDashboard() {
                       borderTop: "1px solid #f1f5f9",
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
+                      gap: 12,
                       flexWrap: "wrap",
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: "0.688rem",
-                        color: "#94a3b8",
-                        fontWeight: 700,
-                        marginRight: 2,
-                      }}
-                    >
-                      智能体
-                    </span>
-                    {agents.map((agt) => {
-                      const pc = platformColors[agt.platform] || "#64748b";
-                      return (
-                        <span
-                          key={agt.id}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            padding: "3px 10px 3px 4px",
-                            borderRadius: 6,
-                            background: "#f8fafc",
-                            border: "1px solid #eef2f6",
-                            fontSize: "0.75rem",
-                            color: "#475569",
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 18,
-                              height: 18,
-                              borderRadius: 4,
-                              flexShrink: 0,
-                              background: pc,
-                              color: "white",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "0.563rem",
-                              fontWeight: 700,
-                              overflow: "hidden",
-                            }}
-                          >
-                            {agt.logo ? (
-                              <img
-                                src={
-                                  agt.logo.startsWith("/")
-                                    ? `${getApiBaseUrl()}${agt.logo}`
-                                    : agt.logo
-                                }
-                                alt=""
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }}
-                              />
-                            ) : (
-                              agt.name[0]
-                            )}
-                          </span>
-                          {agt.name}
-                        </span>
-                      );
-                    })}
+                    {/* 顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴）。 */}
+                    {section("学习单", materials.worksheets.map(({ material, groupNames }) => chip(
+                      material.id,
+                      iconBox("#0ea5e9", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>),
+                      material.title,
+                      groupNames,
+                    )))}
+                    {section("探究网页", materials.webapps.map(({ material, groupNames }) => chip(
+                      material.id,
+                      iconBox("#2563eb", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
+                      material.name,
+                      groupNames,
+                    )))}
+                    {section("智能学伴", materials.agents.map(({ material: agt, groupNames }) => chip(
+                      agt.id,
+                      iconBox(platformColors[agt.platform] || "#64748b", agt.logo ? (
+                        <img
+                          src={agt.logo.startsWith("/") ? `${getApiBaseUrl()}${agt.logo}` : agt.logo}
+                          alt=""
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : agt.name[0]),
+                      agt.name,
+                      groupNames,
+                    )))}
                     <span className="active-classroom-permissions" style={{ marginLeft: 'auto' }}>
                       <span className="active-classroom-permissions-label">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1719,19 +1732,40 @@ export default function TeacherDashboard() {
                   </span>
                 </label>
                 {(() => {
-                  // 服务端与前端同一版本发布 ⇒ 这个字段总是随 /api/classroom/active 下发；
-                  // 用 `?? []` 兜住的是「更老的服务端」，那种情况下显示成「未关联」是可接受的
-                  // 退化（读路径不能因为一个可选字段就崩）。
-                  const webapps = settingsModalClassroom.webapps ?? [];
-                  if (webapps.length === 0) {
+                  // 🔴 **权威来源随模式变**（与 `effectiveGroupWebapp`、服务端
+                  // `resolveMaterialTargetId` 同一条规矩）：高级模式下探究网页的权威来源是
+                  // **各组**，课堂级那张关联表在该模式下服务端**根本不写**（spec §4.3）
+                  // ⇒ 只读 `webapps` 恒为空、这里显示「未关联」而其实每个组都配了。
+                  // 用户 2026-09-23：「这部分显示为空白，其实已经有关联了」。
+                  const materials = classroomMaterialsInUse({
+                    mode: settingsModalClassroom.mode,
+                    groups: settingsModalClassroom.groups,
+                    agents: settingsModalClassroom.classroomAgents.map((ca) => ca.agent).filter(Boolean),
+                    webapps: settingsModalClassroom.webapps,
+                    worksheets: settingsModalClassroom.worksheets,
+                  }).webapps;
+
+                  if (materials.length === 0) {
                     return (
                       <span style={{ fontSize: "0.813rem", color: "#94a3b8" }}>
-                        未关联
+                        {/* 两种模式的「没有」不是同一件事：高级模式是「一个组都没配」，
+                            课堂级那张表在该模式下压根不被读。 */}
+                        {settingsModalClassroom.mode === "advanced"
+                          ? "各组均未配置探究网页"
+                          : "未关联"}
                       </span>
                     );
                   }
-                  // 单选：只有第一个生效（学生端只加载 webapps[0]）。
-                  const [effective, ...extra] = webapps;
+
+                  // 多选时代留下的课堂可能挂着多条。这种情况必须**当面说清**：
+                  // 保存设置时服务端会把多余的裁掉（并写服务端日志），
+                  // 教师有权在按下保存之前知道这一次保存会顺带删掉什么。
+                  // ⚠️ 只对**课堂级**这条路径说：高级模式下网页按组配置，保存时不会被裁。
+                  const classroomWebapps = settingsModalClassroom.webapps ?? [];
+                  const trimmedCount = settingsModalClassroom.mode === "advanced"
+                    ? 0
+                    : Math.max(0, classroomWebapps.length - 1);
+
                   return (
                     <>
                       <div
@@ -1742,26 +1776,32 @@ export default function TeacherDashboard() {
                           opacity: 0.7,
                         }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "6px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #e2e8f0",
-                            background: "#f8fafc",
-                            fontSize: "0.813rem",
-                            color: "#64748b",
-                          }}
-                        >
-                          <span>{effective.name}</span>
-                        </div>
+                        {materials.map(({ material, groupNames }) => (
+                          <div
+                            key={material.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #e2e8f0",
+                              background: "#f8fafc",
+                              fontSize: "0.813rem",
+                              color: "#64748b",
+                            }}
+                          >
+                            <span>{material.name}</span>
+                            {/* 高级模式下同一类不止一个 —— 光看名字不知道为什么有多个。 */}
+                            {groupNames.length > 0 && (
+                              <span style={{ fontSize: "0.688rem", color: "#94a3b8" }}>
+                                {groupNames.join("、")}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      {/* 多选时代留下的课堂可能挂着多条。这种情况必须**当面说清**：
-                          保存设置时服务端会把多余的裁掉（并写服务端日志），
-                          教师有权在按下保存之前知道这一次保存会顺带删掉什么。 */}
-                      {extra.length > 0 && (
+                      {trimmedCount > 0 && (
                         <div
                           role="alert"
                           style={{
@@ -1775,8 +1815,8 @@ export default function TeacherDashboard() {
                             lineHeight: 1.6,
                           }}
                         >
-                          本课堂关联了 {webapps.length} 个探究网页，只有第一个（
-                          {effective.name}）会生效。保存设置后，另外 {extra.length}{" "}
+                          本课堂关联了 {classroomWebapps.length} 个探究网页，只有第一个（
+                          {classroomWebapps[0].name}）会生效。保存设置后，另外 {trimmedCount}{" "}
                           个关联会被自动移除（服务端日志会记录删除了哪些）。
                         </div>
                       )}

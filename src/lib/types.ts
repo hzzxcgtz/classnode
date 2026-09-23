@@ -103,6 +103,25 @@ export interface ClassroomWebappSummary {
 }
 
 /**
+ * 课堂材料里那一份**学习单**的最小读形状。
+ *
+ * 🔴 **P1 尚未落地**：今天 `Worksheet` 表不存在、没有任何地方写
+ * `ClassroomGroupMaterial.kind='worksheet'`、`GET /api/classroom/active` 也不下发这个字段
+ * ⇒ 凡是读它的地方（`@/lib/classroom-material` 的 `classroomMaterialsInUse`）**今天恒为空**。
+ *
+ * 那为什么还要定义它：教师端的「课堂卡片」必须按**三件套**分类显示材料引用
+ * （用户 2026-09-23），而学习单那一类不能写成「以后再说」—— 读路径改一遍的代价远高于
+ * 现在照 P1 规格（`specs/2026-09-23-p1-worksheet.md` §4.1：`Worksheet.title` ＋ 组材料
+ * `kind='worksheet'`）把槽留出来。接上服务端那一天，界面**不用再改**。
+ *
+ * ⚠️ 字段名是 `title` 不是 `name`（`Worksheet` 模型就是这么定的），别顺手对齐成网页那套。
+ */
+export interface WorksheetMaterialSummary {
+  id: string;
+  title: string;
+}
+
+/**
  * 管理页（`/teacher/webapps/`）看到的网页形状 —— 与 `ClassroomWebappSummary` 同样是
  * `PUBLIC_WEBAPP_SELECT` 的子集，**没有任何磁盘路径字段**。
  */
@@ -349,7 +368,16 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
    * 是合法状态（`group-material-resolve.ts` 条件构造）。写成非空是**陈述上的谎言**，
    * 会让读的地方少一层判空。
    */
-  groups: Array<ClassroomCardGroup & { agent: AgentSummary | null; webapp: ClassroomWebappSummary | null }>;
+  groups: Array<ClassroomCardGroup & {
+    agent: AgentSummary | null;
+    webapp: ClassroomWebappSummary | null;
+    /**
+     * 🔴 **P1 尚未落地，今天服务端不下发这个字段**（见 `WorksheetMaterialSummary` 的注释）。
+     * 这里先按 P1 的组材料形状声明成可选，为的是「接上就显示」而不是那时候再改读路径；
+     * 缺字段时一律当 `null`（该组没配学习单），**不是**当成错误。
+     */
+    worksheet?: WorksheetMaterialSummary | null;
+  }>;
   students: Array<{ studentId: string; totalRounds: number }>;
   _count: { students: number };
   participantCount: number;
@@ -365,6 +393,16 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
    * ⚠️ 因此「没发」与「空数组」在界面上都是「没有网页」—— 这与学生端 `webapps?` 同一条口径。
    */
   webapps?: ClassroomWebappSummary[];
+  /**
+   * 本课堂**课堂级**关联的学习单（P1 落地后才有）。
+   *
+   * 与 `webapps` 同构：**标准 / 分组模式**的权威来源；高级模式下权威来源是各组
+   * （`groups[].worksheet`），这一条会是幽灵（服务端在该模式下不写它）。
+   *
+   * 🔴 今天服务端不查询也不下发它 —— 声明成可选正是为了如实表达「没发」与「空数组」在
+   * 界面上是一回事（与 `webapps?` 同一条口径），而不是把「还没做」伪装成一个空数组。
+   */
+  worksheets?: WorksheetMaterialSummary[];
 }
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {

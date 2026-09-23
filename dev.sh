@@ -8,7 +8,7 @@ PID_DIR="$STATE_DIR/pids"
 LOG_DIR="$STATE_DIR/logs"
 CLIENT_PORT="${CLASSNODE_CLIENT_PORT:-4000}"
 SERVER_PORT="${CLASSNODE_SERVER_PORT:-4001}"
-# 探究助手托管服务的端口。必须与服务端口不同源，否则 sandbox 的 allow-same-origin
+# 探究空间托管服务的端口。必须与服务端口不同源，否则 sandbox 的 allow-same-origin
 # 会让 iframe 能自行摘除 sandbox；服务端会拒绝「两者相同」并在日志里说明。
 WEBAPP_PORT="${CLASSNODE_WEBAPP_PORT:-$((SERVER_PORT + 1))}"
 
@@ -147,16 +147,16 @@ stop_service() {
 cmd_start() {
   ensure_runtime
   require_command lsof
-  # 探究助手与 server 同进程，start_service 只按它自己那个 port 检查，所以这里补一条。
+  # 探究空间与 server 同进程，start_service 只按它自己那个 port 检查，所以这里补一条。
   # assert_port_free 是 die（直接退出），这是**有意的**：不检查的话症状会是
-  # 「服务起来了、主功能正常、只有探究助手加载不出来、status 也不提示」——
+  # 「服务起来了、主功能正常、只有探究空间加载不出来、status 也不提示」——
   # 宁可启动失败，也不要静默的半可用状态。放在 start_service 之前，避免半启动。
   assert_port_free "$WEBAPP_PORT"
   start_service server "$SERVER_PORT"
   start_service client "$CLIENT_PORT"
   printf '\n  前端: %shttp://localhost:%s%s\n' "$CYAN" "$CLIENT_PORT" "$NC"
   printf '  后端: %shttp://localhost:%s%s\n' "$CYAN" "$SERVER_PORT" "$NC"
-  printf '  托管: %shttp://localhost:%s%s  （探究助手）\n' "$CYAN" "$WEBAPP_PORT" "$NC"
+  printf '  托管: %shttp://localhost:%s%s  （探究空间）\n' "$CYAN" "$WEBAPP_PORT" "$NC"
 }
 
 cmd_foreground() {
@@ -164,7 +164,7 @@ cmd_foreground() {
   require_command lsof
   assert_port_free "$CLIENT_PORT"
   assert_port_free "$SERVER_PORT"
-  # 前台模式下端口被占会表现为「服务起来了但探究助手加载不出来」，而不是明确的启动失败。
+  # 前台模式下端口被占会表现为「服务起来了但探究空间加载不出来」，而不是明确的启动失败。
   assert_port_free "$WEBAPP_PORT"
   cd "$ROOT_DIR"
   env PORT="$SERVER_PORT" FRONTEND_PORT="$CLIENT_PORT" \
@@ -188,9 +188,9 @@ cmd_status() {
   local service pid port note
   for service in client server; do
     [[ "$service" == client ]] && port="$CLIENT_PORT" || port="$SERVER_PORT"
-    # 探究助手与 server **同进程**，所以只附加在 server 那行，不新增第三个 service 项 ——
+    # 探究空间与 server **同进程**，所以只附加在 server 那行，不新增第三个 service 项 ——
     # cmd_stop 只按 PID 文件停，单列一项会去找一个不存在的 PID 文件。
-    [[ "$service" == server ]] && note="（探究助手 ${WEBAPP_PORT}）" || note=""
+    [[ "$service" == server ]] && note="（探究空间 ${WEBAPP_PORT}）" || note=""
     pid="$(read_pid "$service" || true)"
     if pid_running "$pid" && pid_belongs_to_project "$pid"; then
       printf '  %s●%s %-7s PID %-7s 端口 %s%s\n' "$GREEN" "$NC" "$service" "$pid" "$port" "$note"
@@ -293,7 +293,7 @@ ${BOLD}ClassNode 开发工具${NC}
 用法: ./dev.sh <命令>
 
 ${BOLD}日常${NC}
-  start                 后台启动开发环境（前端 ${CLIENT_PORT} / 后端 ${SERVER_PORT} / 探究助手 ${WEBAPP_PORT}）—— 默认命令
+  start                 后台启动开发环境（前端 ${CLIENT_PORT} / 后端 ${SERVER_PORT} / 探究空间 ${WEBAPP_PORT}）—— 默认命令
   fg                    前台启动，Ctrl-C 退出
   stop                  关闭
   restart               重启
@@ -319,7 +319,7 @@ ${BOLD}说明${NC}
   pkg 要求工作区无未提交改动；临时放行可设 CLASSNODE_ALLOW_DIRTY_RELEASE=1。
   db reset 会删除开发数据库，需输入 reset 确认。
   端口可通过 CLASSNODE_CLIENT_PORT / CLASSNODE_SERVER_PORT /
-  CLASSNODE_WEBAPP_PORT 覆盖。探究助手托管端口必须与后端端口不同（同源会让
+  CLASSNODE_WEBAPP_PORT 覆盖。探究空间托管端口必须与后端端口不同（同源会让
   iframe 的 sandbox 隔离失效），服务端遇到两者相同会拒绝启动该服务。
 EOF
 }

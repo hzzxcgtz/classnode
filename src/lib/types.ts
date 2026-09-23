@@ -228,9 +228,10 @@ export interface WorksheetUsage {
   responseCount: number;
   classrooms: RelatedClassroom[];
   /**
-   * 服务端拼好的整句中文。⚠️ **弹窗不直接用这句**：它里面含「请先从这些课堂或小组中
-   * 移除后再试」，而本仓**没有「移除」这个端点**（课堂设置只有标题可改），那是一句
-   * 误导。弹窗按上面四个数字自己讲（见 `worksheet-overlays.tsx`）。
+   * 服务端拼好的整句中文。⚠️ **弹窗不直接用这句**：它是一段给一行字用的整段话，
+   * 把三样引用压成一个逗号串，而弹窗要列清单、要点名是哪几间课堂。
+   * （历史：它曾经含「请先从这些课堂或小组中移除后再试」，而本仓**没有「移除」这个端点**
+   * ——课堂设置只有标题可改。那句误导已从 `routes/worksheets.ts` 的 `describeUsage` 里删掉。）
    */
   message: string;
 }

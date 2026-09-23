@@ -142,10 +142,11 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
         await api.deleteWorksheet(worksheet.id);
       } catch (deleteError) {
         // 竞态：查完 usage 到真正 DELETE 之间它被引用了。服务端这时回 400 + 一段描述，
-        // 但**那段描述里有「请先从这些课堂或小组中移除后再试」** —— 本仓没有「移除」
-        // 这个端点（`classroom.ts` 的 `/settings` 注释写明只有 title 可改），照搬就是把
-        // 教师指向一个不存在的操作。所以这里不把服务端原话抛出去，而是重查一次 usage
-        // 走同一个「无法删除」弹窗 —— 那里的措辞与服务端共用同一批发给前端的数字。
+        // 但这里**不用那段描述**：它的措辞是为「一行字」写的，而这里要弹出完整弹窗
+        // （清单 + 每一样各是什么 + 哪几间课堂）。所以重查一次 usage，走同一个
+        // 「无法删除」弹窗 —— 那里的措辞与服务端共用同一批发给前端的数字。
+        // （历史：那段描述里曾经有「请先从这些课堂或小组中移除后再试」这句指向不存在
+        // 操作的误导，服务端已在 `routes/worksheets.ts` 的 `describeUsage` 里改掉。）
         const retried = await api.getWorksheetUsage(worksheet.id).catch(() => null);
         if (retried?.used) {
           if (mountedRef.current) callbacksRef.current.onDeleteBlocked(worksheet, retried);

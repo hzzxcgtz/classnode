@@ -127,6 +127,8 @@ model Classroom {
   classroomAgents  ClassroomAgent[]
   modules          ClassroomModule[]
   webapps          ClassroomWebapp[]
+  worksheets         ClassroomWorksheet[]
+  worksheetResponses WorksheetResponse[]
   webappUsages     WebappUsage[]
   interactions     Interaction[]
   shieldWarnings   ShieldWarning[]
@@ -326,6 +328,7 @@ model ClassroomStudent {
   student   Student?       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   group     ClassroomGroup? @relation(fields: [groupId], references: [id])
   messages  Message[]
+  worksheetResponses WorksheetResponse[]
 
   @@unique([classroomId, studentId])
   @@unique([classroomId, groupId])
@@ -412,4 +415,79 @@ model Interaction {
 
   @@unique([classroomId, studentId])
   @@index([classroomId])
+}
+
+// ——— 学习单（P1）———
+
+/// 学习单（模板，可复用）。题目结构存 JSON 树，见 09-19 §6.1 的三条决策。
+///
+/// ⚠️ 本模型的 schema 定义**必须与 index.ts 的手写 DDL 逐字对齐**（DDL 在
+/// services/worksheet-schema.ts 里），理由同 ClassroomWebapp :262-264 ——
+/// 手写 DDL 是从 `prisma db push` 到空库后 dump sqlite_master 得到的，
+/// 不是照着这里手抄的。两边分叉的后果见规格 §4.1.2 的告诫。
+model Worksheet {
+  id            String   @id @default(uuid())
+  title         String
+  description   String?
+  schemaVersion Int      @default(1)   // ★ 题型演进时迁移的依据
+  content       Json                    // 题目结构（嵌套树；见 4.3）
+  settings      Json                    // { allowResubmit, autoGrade } —— 见 4.4
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  classrooms    ClassroomWorksheet[]
+  responses     WorksheetResponse[]
+}
+
+/// 学习单 ↔ 课堂的**课堂级**关联（standard / group 模式的权威来源）。
+/// ⚠️ 与 ClassroomWebapp 同构：进 advanced 模式后权威来源变成「每组一份」。
+model ClassroomWorksheet {
+  id          String   @id @default(uuid())
+  classroomId String
+  worksheetId String
+  createdAt   DateTime @default(now())   // ★ 排序键。理由与 ClassroomWebapp 逐字同源
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  worksheet Worksheet @relation(fields: [worksheetId], references: [id])
+
+  @@unique([classroomId, worksheetId])
+  @@index([worksheetId])
+}
+
+/// 参与者在某个课堂里对某份学习单的作答会话。
+/// 🔴 participantId 指向 ClassroomStudent.id —— 那个 id **既可能是学生、也可能是小组**（§1.2）。
+model WorksheetResponse {
+  id            String   @id @default(uuid())
+  classroomId   String
+  worksheetId   String
+  participantId String
+  status        String   @default("not-started")  // not-started | in-progress | submitted
+  startedAt     DateTime?
+  submittedAt   DateTime?
+  updatedAt     DateTime @updatedAt
+
+  classroom   Classroom        @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  worksheet   Worksheet        @relation(fields: [worksheetId], references: [id])
+  participant ClassroomStudent @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  answers     WorksheetAnswer[]
+
+  @@unique([classroomId, worksheetId, participantId])
+  @@index([classroomId])
+}
+
+/// 逐题一行 —— 实时看板的**唯一**数据源（09-19 §6.1 决策 2：40 人 × 20 题 = 800 行/课，SQLite 无压力）。
+model WorksheetAnswer {
+  id           String   @id @default(uuid())
+  responseId   String
+  questionId   String    // ★ content 树里的稳定 id，**不是下标**（§3-P）
+  value        Json?     // 答案（格式见 4.3）
+  status       String   @default("unanswered")  // unanswered | draft | submitted
+  isCorrect    Boolean?  // 仅 autoGrade 开启且已提交时有值
+  reviewedAt   DateTime? // ★ 教师的「已查看」标记（§3-AA）
+  submittedAt  DateTime? // 定稿时间戳（供 P4 智能体分析）
+
+  response WorksheetResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@index([responseId])
 }

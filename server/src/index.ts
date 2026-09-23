@@ -31,6 +31,7 @@ import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
 import { ensureGroupMaterials } from './services/group-materials-migration.js';
+import { ensureWorksheetTables } from './services/worksheet-schema.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -136,6 +137,25 @@ async function main() {
   try {
     const dbVersion = await prisma.$queryRawUnsafe<{ version: string }[]>(`SELECT sqlite_version() as version`);
     console.log(`[server] SQLite version: ${dbVersion[0].version}`);
+
+    // 检查学习单的 4 张表是否存在（P1 新增）。
+    //
+    // 位置与 ClassroomModule / Webapp 同款理由：排在下面前面那些 legacy 条件语句
+    // **之前**，这样无论后面哪条老语句抛错（控制流会直接跳到外层 catch），这 4 张表
+    // 都已经建好了。只把内层 try/catch 套在末尾挡不住这种「前面先炸」。
+    // 可依赖 Classroom / ClassroomStudent 表已存在：那是安装时 `prisma db push`
+    // 建的基础 schema，不是本同步块建的（本块建的两张新表都带指向它们的外键）。
+    //
+    // ⚠️ DDL 在 services/worksheet-schema.ts 里，与 schema.prisma 的定义**逐字对齐**
+    // （含外键约束名、索引名、JSONB、updatedAt 无 DEFAULT）。对齐不是靠眼睛：
+    // DDL 由 `prisma db push` 到一个空库后 dump sqlite_master 得到，见规格 §4.1.2 与
+    // task-A1-report.md 的实测记录。改了 schema 就要同步改那里，否则下次 db push 会
+    // 重建表，而本同步块按表名探测、不会重跑，两边就此不一致。
+    try {
+      await ensureWorksheetTables(prisma);
+    } catch (error) {
+      console.warn('[server] 学习单建表失败，学习单功能可能不可用：', error);
+    }
 
     // 检查 ClassroomModule 表是否存在（v1.7 新增）。
     //

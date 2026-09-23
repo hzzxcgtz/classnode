@@ -641,6 +641,13 @@ export interface AdvancedClassroomGroupInput {
   name: string;
   agentId: string | null;
   webappId: string | null;
+  /**
+   * 学习单。与上面两个字段**逐字同语义**（都是 `toId` 归一）。
+   *
+   * ⚠️ 写成**必填**是刻意的：唯一调用点是创建页，而「忘了发这个字段」的后果是
+   * 教师明明给每组选了学习单、课堂里却是空的 —— 让它编译期暴露，比留个可选字段好。
+   */
+  worksheetId: string | null;
   studentIds: string[];
 }
 

@@ -146,7 +146,12 @@ export const api = {
   // （见 create-advanced 里 `classroom.create` 的注释）。从前这里两边都有，于是创建页在
   // 高级模式下仍然发课堂级 `webappIds` ⇒ 服务端校验通过后**把它丢掉**，教师看到
   // 「创建成功」而网页不见了。去掉这个字段是让那种状态**在类型上不可表达**。
-  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; webappIds?: string[] }) =>
+  //
+  // `worksheetIds`（学习单）与 `webappIds` 逐条同构：**课堂级**、只属于标准 / 分组模式、
+  // 单选（数组里最多一个元素）。服务端 `resolveSingleMaterialId` 是它的唯一写入口。
+  // 🔴 高级模式同样**不发**它 —— 服务端在那个分支里会解析它、然后**丢掉**（只写个 warn），
+  // 理由与上面那段逐字相同：静默丢掉教师勾过的选项属于改数据不留痕。
+  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; webappIds?: string[]; worksheetIds?: string[] }) =>
     request<ClassroomSummary>('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
   createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[] }) =>
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),

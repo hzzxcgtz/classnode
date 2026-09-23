@@ -57,9 +57,45 @@ export const POINTS_MAX = 99;
  * `WorksheetAnswer.score` 是 `Float`，一个 2.5 会一路走进奖励累计里。
  */
 export function normalizePointValue(raw: unknown, fallback: number): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback;
+  if (!isUsablePointValue(raw)) return fallback;
+  return Math.round(raw as number);
+}
+
+/**
+ * 这个值**能不能当作分值用**（= `normalizePointValue` 的回落条件的反面）。
+ *
+ * ⚠️ 单独抽出来是为了**只有一处**回答「什么算有效分值」：`normalizePoints` 要按这个判据
+ * 决定「这题是填了分还是留空」，而那个决定直接决定「继承还是脱离学习单级」（裁定 4）。
+ * 两处各写一份 `typeof raw === 'number' && …` 的话，改了一处就静默分叉。
+ */
+export function isUsablePointValue(raw: unknown): boolean {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return false;
   const rounded = Math.round(raw);
-  return rounded >= 0 && rounded <= POINTS_MAX ? rounded : fallback;
+  return rounded >= 0 && rounded <= POINTS_MAX;
+}
+
+/**
+ * 归一化题目的**逐题分值**（M4a，规格 §12 裁定 4 / 5）。
+ *
+ * 🔴 **两个字段都不是有效数字时返回 `undefined` —— 那是「留空 = 继承学习单级」，
+ * 不是「用默认值」。** 曾经这里无条件构造
+ * `{ full: normalizePointValue(source.full, 1), half: normalizePointValue(source.half, 0) }`，
+ * 于是 `points: {}`（前端清空了两个输入框）会落成**显式**的 `{ full: 1, half: 0 }`。
+ * 而 `DEFAULT_POINTS` 恰好等于第一批的默认档 ⇒ 教师**看不出任何差别**，直到他改了
+ * 学习单级的档，才发现这一道题不跟随 —— 且没有任何提示。裁定 4 要防的就是这个。
+ *
+ * 只有一个字段有效时，取有效的那个，另一个回落 `DEFAULT_POINTS`（它还是要有个数）。
+ */
+export function normalizePoints(raw: unknown): QuestionPoints | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const source = raw as Record<string, unknown>;
+  const hasFull = isUsablePointValue(source.full);
+  const hasHalf = isUsablePointValue(source.half);
+  if (!hasFull && !hasHalf) return undefined;
+  return {
+    full: hasFull ? normalizePointValue(source.full, DEFAULT_POINTS.full) : DEFAULT_POINTS.full,
+    half: hasHalf ? normalizePointValue(source.half, DEFAULT_POINTS.half) : DEFAULT_POINTS.half,
+  };
 }
 
 export interface QuestionNode {
@@ -127,15 +163,39 @@ export const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation', 'correctOrd
  * 🔴 **必须在服务端做，且必须返回新对象**：前端过滤等同于未过滤；就地改动会让
  * 后续复用同一份 content 的代码拿到已经被破坏的数据。
  *
+ * 🔴 **递归剥，不是只剥顶层。** 这里曾经的实现是 `for (key of ANSWER_KEYS) delete data[key]`，
+ * 只够得到 `data` 的**第一层**。而 M4a 的多空填空题把答案放在**第二层** ——
+ * `data.blanks = [{ answers: […] }, …]` ⇒ 一次 `GET /:id/student-view` 就让全班学生
+ * 拿到每一个空的可接受答案，**全程无报错**：顶层键扫描看不见嵌套层（`Object.keys`
+ * 也看不进 `blanks[*]`），而 `validateQuestion` 那边是**故意**要把 `blanks` 收下的。
+ *
+ * 现在按**同一张黑名单**逐层剥。刻意不为嵌套层另立一份名单 —— 另立一份就会再漂一次。
+ * `ANSWER_KEYS` 的语义就是「这些键名在**任何深度**都装答案」。
+ *
+ * ⚠️ 剥的**方向**是刻意选的：多剥一个键 ⇒ 学生看到一道残缺的题（看得见、当场就报）；
+ * 少剥一个 ⇒ 答案静默泄漏给未成年人。两者代价差着量级，所以这里宁可过剥。
+ * `worksheet-grade.test.ts` 的答案键审计对**每个形状**断言「剥完之后逐字等于期望」。
+ *
  * ⚠️ 只剥 `data` 里的键，不动 `points`：`points` 是分值不是答案，学生端要靠它画
  * 「这题值几个 ⭐」（规格 §12：得分与奖励是同一个数的两种画法）。
  */
 export function stripAnswers(content: WorksheetContent): WorksheetContent {
-  const stripNode = (node: QuestionNode): QuestionNode => {
-    const data: Record<string, unknown> = { ...node.data };
-    for (const key of ANSWER_KEYS) delete data[key];
-    return { ...node, data, children: (node.children ?? []).map(stripNode) };
+  /** 递归重建：命中黑名单的键整个丢掉，其余原样（数组保序、对象保键）。 */
+  const stripValue = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(stripValue);
+    if (!value || typeof value !== 'object') return value;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if ((ANSWER_KEYS as readonly string[]).includes(key)) continue;
+      out[key] = stripValue(child);
+    }
+    return out;
   };
+  const stripNode = (node: QuestionNode): QuestionNode => ({
+    ...node,
+    data: stripValue(node.data) as Record<string, unknown>,
+    children: (node.children ?? []).map(stripNode),
+  });
   return { ...content, nodes: (content.nodes ?? []).map(stripNode) };
 }
 

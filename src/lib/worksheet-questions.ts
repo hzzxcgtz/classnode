@@ -33,9 +33,12 @@ import type { WorksheetQuestionNode } from './types';
  * （`routes/worksheets.ts` 的 `parseContent`），多出来的题型会被 400 拒绝。
  * 这里窄一点只影响「能新建哪几种」，不会让非法题型落库。
  *
- * ⚠️ 两边的**顺序也是同一个**（`QUESTION_TYPES` 与下面的 `QUESTION_TYPE_OPTIONS`）：
- * 加题弹窗按这份的顺序列出来，而学生端的题号旁标签按那份的语义走。
- * 顺序不同不会报错，只会让两处的题型列表读起来不是一套。
+ * ⚠️ 两边的**成员必须逐字相同**，但**顺序不必相同** —— 实测两边今天就不一样：
+ * 服务端的 `QUESTION_TYPES` 把 `short-answer` 排在**第 5 位**（紧跟 `fill-blank`），
+ * 而下面的 `QUESTION_TYPE_OPTIONS` 把它排在**最后**（加题弹窗里主观题垫底更好找）。
+ * 没有任何代码依赖这两个顺序一致：弹窗按本数组的顺序列出来，学生端的题号旁标签按题型查名。
+ * ⇒ 「顺序不一样」不是缺陷；**成员不一样**才是（前端多一个 ⇒ 保存时被服务端 400 拒；
+ * 服务端多一个 ⇒ 加题弹窗里根本没有它）。
  */
 export type QuestionType =
   | 'single-choice' | 'true-false' | 'multi-choice' | 'fill-blank' | 'short-answer'

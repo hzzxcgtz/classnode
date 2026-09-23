@@ -264,6 +264,60 @@ const FILL = (text: string) => ({ format: 'fill/v1', text });
 // ---------------------------------------------------------------------------
 
 /**
+ * 🔴 **多空填空题（M4a）的答案在第二层**：`data.blanks = [{ answers: [...] }, …]`。
+ *
+ * 这条用例存在的唯一理由：上面那条红线用例的判据在**键名/字面量**层，而 A1 的第一版
+ * `stripAnswers` 只 `delete data[key]`（顶层），多空题的第二层答案**原样跟着
+ * `student-view` 下发** —— 一次 `GET` 就让全班拿到每一个空的可接受答案，
+ * 而上面那条**全绿**。
+ *
+ * 这里刻意**不改**上面那份夹具（它背着判分与整卷交齐的用例），而是另起一份最小夹具：
+ * 一道多空填空题，一路走到真实的 `student-view` 端点上。
+ */
+test('🔴 多空填空题：第二层（blanks[*].answers）的答案也不得跟着 student-view 下发', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  // 哨兵值都是独一无二的串（`H2O` 这种会和别处撞），搜不到才说明真被剥了。
+  const worksheet = await db.prisma.worksheet.create({
+    data: {
+      title: '多空填空',
+      description: null,
+      settings: SAMPLE_SETTINGS,
+      content: {
+        schemaVersion: 1,
+        nodes: [{
+          id: 'q_1',
+          type: 'fill-blank',
+          prompt: '水的化学式是____，二氧化碳的化学式是____',
+          inputMode: 'keyboard',
+          data: { blanks: [{ answers: ['哨兵甲A', '哨兵甲B'] }, { answers: ['哨兵乙A'] }] },
+          children: [],
+        }],
+      },
+    },
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, '9003');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  const raw = await (await server.get(`/api/worksheets/${worksheet.id}/student-view`, bearer(token))).text();
+
+  for (const sentinel of ['哨兵甲A', '哨兵甲B', '哨兵乙A']) {
+    assert.ok(!raw.includes(sentinel), `多空题的答案「${sentinel}」跟着 student-view 下发了（规格 §5.4 红线）：${raw}`);
+  }
+  // 阳性对照：**题目本身必须还在，而且空的数量要对**。
+  // 一个「把 `blanks` 整个删掉」的实现也能让上面三条通过 —— 那不是更安全，是把这道题
+  // 变成一道**没有空的填空题**（学生端画不出输入框）。
+  const body = JSON.parse(raw) as { content: { nodes: Array<{ data: Record<string, unknown> }> } };
+  assert.equal(body.content.nodes.length, 1, '题目必须在');
+  const blanks = body.content.nodes[0].data.blanks as Array<Record<string, unknown>>;
+  assert.equal(blanks.length, 2, '两个空一个都不能少（学生端按数量画输入框）');
+  assert.deepEqual(blanks, [{}, {}], '每个空只剩一个空对象 —— 答案没了，空还在');
+});
+
+/**
  * 🔴 **本任务最重要的一条**：`student-view` 的返回体里搜不到任何答案字段。
  *
  * 「测试绿了」与「剥离真的生效了」是两件事，所以本用例有三层：
@@ -718,9 +772,9 @@ test('状态：allowResubmit 为真时改已提交的题，本题回 draft、整
   await submit('q_3');
   await save('q_4', { format: 'order/v1', order: ['i2', 'i1'] });
   await submit('q_4');
-  await save('q_5', { format: 'match/v1', pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
+  await save('q_5', { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
   await submit('q_5');
-  await save('q_6', { format: 'categorize/v1', placement: { i1: 'z1' } });
+  await save('q_6', { format: 'categorize/v1', assignment: { i1: 'z1' } });
   await submit('q_6');
   const whole = await db.prisma.worksheetResponse.findFirstOrThrow();
   assert.equal(whole.status, 'submitted', '六道题都提交了 ⇒ 整卷 submitted');
@@ -936,9 +990,9 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   // M4a 新增的三道题也要作答：整卷交齐判的是**全卷**（见 `ensureResponse`）。
   await save('q_4', { format: 'order/v1', order: ['i2', 'i1'] });
   await submit('q_4');
-  await save('q_5', { format: 'match/v1', pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
+  await save('q_5', { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }] });
   await submit('q_5');
-  await save('q_6', { format: 'categorize/v1', placement: { i1: 'z1' } });
+  await save('q_6', { format: 'categorize/v1', assignment: { i1: 'z1' } });
   await submit('q_6');
 
   // ── ① 数据丢没丢：直接查库（分水岭）────────────────────────────────────
@@ -989,23 +1043,17 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   assert.equal(q3.isCorrect, null, '主观题不判分 ⇒ null（**不是** false）');
 
   // ── ③ 🔴 安全：这条新路径不得把正确答案捎出来（规格 §5.4）───────────────
-  // 判据一（键名级、递归）：`ANSWER_KEYS` 一个都不许作为**键**出现。
-  //
-  // 🔴 扫的范围**排除每一行作答的 `value`**。这不是放宽红线，是修一处**判据撞名**：
-  //    `value` 是学生**自己写的**那份作答（这条端点的全部意义就是把它还给学生本人），
-  //    而 M4a 的作答值格式里 `match/v1` 的字段就叫 `pairs`、`categorize/v1` 的叫
-  //    `placement` —— 与 `ANSWER_KEYS` 里那两个「正确答案」的键名**逐字相同**。
-  //    不排除它的话，一份**答对了**的连线题作答会被这条红线判成泄漏（判据把「学生自己
-  //    写的」与「题目里带的」混成了一件东西）。真正的泄漏面是题目的 `content`，
-  //    它由下面那条 `Object.keys(body)` 与逐行的键集合断言独立钉住。
-  const scanTarget = { rows: body.rows.map((row) => ({ ...row, value: null })) };
-  const keys = collectKeys(scanTarget);
+  // 判据一（键名级、递归）：`ANSWER_KEYS` 一个都不许作为**键**出现 —— **整份响应**都扫，
+  // 不排除任何子树。（曾短暂地排除过每行作答的 `value`，理由是 `match/v1` / `categorize/v1`
+  // 的字段名与黑名单里 `pairs` / `placement` 撞名；**那个理由已经作废** ——
+  // 2026-09-23 裁定把作答值的键名改成 `links` / `assignment`，撞名从协议侧消失了。
+  // 排除子树这件事本身是危险的：它正好会漏掉「答案被塞进学生自己的作答里」这一类。）
+  const keys = collectKeys(JSON.parse(raw));
   for (const key of ANSWER_KEYS) {
     assert.ok(!keys.has(key), `回读响应里出现了答案键「${key}」（规格 §5.4 红线）：${raw}`);
   }
 
-  // 判据一之补强：既然键名扫描对 `value` 内部是不设防的，那就把**行的形状**钉死 ——
-  // 多出任何一个键都可能是捎带出来的题目数据，而这一条不受撞名影响。
+  // 判据一之补强：行的**形状**也要钉死 —— 多出任何一个键都可能是捎带出来的题目数据。
   for (const row of body.rows) {
     assert.deepEqual(
       Object.keys(row).sort(),
@@ -1014,11 +1062,8 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
     );
   }
 
-  // 判据二（原文级）：这几个键名在整串里连字面量都不该有。
-  // ⚠️ 名单**不是** `ANSWER_KEYS` 全体，而是其中「不可能出现在学生作答值里」的那些：
-  //    `answers` / `pairs` / `placement` 都同时是作答值格式的字段名（D1 的联合），
-  //    拿它们做字面量扫描会误报学生自己写的作答（见判据一那段）。
-  for (const literal of ['correctKeys', 'correctOrder', 'explanation']) {
+  // 判据二（原文级）：`ANSWER_KEYS` 每一个连**字面量**都不该有（键名级漏掉的编码形式）。
+  for (const literal of ANSWER_KEYS) {
     assert.ok(!raw.includes(literal), `回读响应原文里不该出现「${literal}」：${raw}`);
   }
   // 判据三（**阳性对照**，两条缺一不可）：

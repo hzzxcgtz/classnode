@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  normalizePoints,
   QUESTION_TYPES,
   validateQuestion,
   type QuestionNode,
@@ -140,6 +141,11 @@ test('填空题：有 blanks 时逐个非空', () => {
   rejected('fill-blank', { blanks: [{ answers: ['H2O'] }, { answers: [] }] });
   rejected('fill-blank', { blanks: [{ answers: ['H2O'] }, {}] });
   rejected('fill-blank', { blanks: [{ answers: ['H2O'] }, { answers: ['  '] }] });
+  // 🔴 空串与纯空白**单独**钉一条：`readStrings` 会先丢掉空串，剩下的空数组必须仍然算
+  // 「这个空没有答案」。漏了它，`['']` 会被当成一个可接受答案 ⇒ 学生的空作答判成正确。
+  rejected('fill-blank', { blanks: [{ answers: [''] }] });
+  rejected('fill-blank', { blanks: [{ answers: [''] }, { answers: ['CO2'] }] });
+  rejected('fill-blank', { blanks: [{ answers: ['   '] }] });
 
   // ⚠️ 同一个毛病只报一条：一道 10 个空都没填的题甩 10 条一样的错，教师会以为有 10 个问题。
   const errors = validateQuestion(node('fill-blank', { blanks: [{}, {}, {}, {}] }));
@@ -251,4 +257,41 @@ test('主观题：只要题干在就算通过（它真的没有别的字段要�
     validateQuestion({ id: 'q', type: 'short-answer', prompt: '  ', inputMode: 'keyboard', data: {}, children: [] }),
     ['题干不能为空'],
   );
+});
+
+// ---------------------------------------------------------------------------
+// ⑧ 分值归一化（points）
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 **「留空」与「坏值」都必须落成 `undefined`（= 继承学习单级），不是默认档。**
+ *
+ * 落成显式 `{ full: 1, half: 0 }` 的后果是**静默切断继承**：`DEFAULT_POINTS` 恰好等于
+ * 第一批的默认档 ⇒ 教师**看不出任何差别**，直到他改了学习单级的档，才发现这一道题
+ * 不跟随 —— 且没有任何提示。裁定 4 要防的就是这个。
+ */
+test('🔴 分值留空或两个字段都无效 ⇒ undefined（继承学习单级），不是 DEFAULT_POINTS', () => {
+  assert.equal(normalizePoints({}), undefined, '空对象 = 教师清空了两个输入框');
+  assert.equal(normalizePoints({ full: null, half: '两朵' }), undefined, '两个字段都不是有效数字');
+  assert.equal(normalizePoints({ full: '两朵', half: 1000 }), undefined, '越界与字符串都算无效');
+  assert.equal(normalizePoints(undefined), undefined);
+  assert.equal(normalizePoints(null), undefined);
+  assert.equal(normalizePoints('3'), undefined, '整个 points 不是一个对象');
+  assert.equal(normalizePoints([]), undefined);
+  assert.equal(normalizePoints({ full: -1, half: Number.NaN }), undefined);
+  assert.equal(normalizePoints({ full: Number.POSITIVE_INFINITY, half: 100 }), undefined, '100 > POINTS_MAX');
+});
+
+test('分值归一化：只填了一个字段 ⇒ 取那个，另一个回落默认档', () => {
+  assert.deepEqual(normalizePoints({ full: 3 }), { full: 3, half: 0 });
+  assert.deepEqual(normalizePoints({ half: 2 }), { full: 1, half: 2 });
+  // 小数四舍五入到整数（`WorksheetAnswer.score` 是 Float，2.5 会一路走进奖励累计）
+  assert.deepEqual(normalizePoints({ full: 3.4, half: '两朵' }), { full: 3, half: 0 });
+  // 🔴 `0` 是**有效**分值（「半对 0 分」就是默认档本身）：它假值，但不是「留空」。
+  // 判据写成 `source.full ? … : …` 的话，这里会静默变成 `undefined` ⇒ 那道题变成继承。
+  assert.deepEqual(normalizePoints({ full: 0, half: 0 }), { full: 0, half: 0 });
+  assert.deepEqual(normalizePoints({ full: 0 }), { full: 0, half: 0 });
+  // 边界：POINTS_MAX 本身合法，超一个就无效
+  assert.deepEqual(normalizePoints({ full: 99 }), { full: 99, half: 0 });
+  assert.deepEqual(normalizePoints({ full: 100 }), undefined);
 });

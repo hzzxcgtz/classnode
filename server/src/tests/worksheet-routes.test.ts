@@ -526,9 +526,20 @@ test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（�
   };
   // ① 显式填了分值 —— 原样落库
   content.nodes[0].points = { full: 3, half: 1 };
-  // ② **留空** —— 规格 §12 裁定 4：留空 = 继承学习单级。这个键必须**不被发明出来**。
-  // ③ 坏值 —— `full` 是字符串、`half` 越界。归一化后应回落到默认档（1 / 0）。
+  // ② **两个字段都无效** —— `full` 是字符串、`half` 越界。
+  //    判据是「这题没填分」⇒ **留空 = 继承学习单级**，这个键必须**不被发明出来**
+  //    （落成 `{full:1,half:0}` 的话教师看不出差别，改了学习单级的档才发现它不跟随）。
   content.nodes[1].points = { full: '两朵', half: 1000 };
+  // ③ 只填了一个（且另一个是坏值）⇒ 取有效的那个，坏的回落默认档。
+  content.nodes.push({
+    id: 'q_4',
+    type: 'single-choice',
+    prompt: '光合作用的产物是什么？',
+    inputMode: 'keyboard',
+    data: { options: [{ key: 'A', text: '有机物' }, { key: 'B', text: '石头' }], correctKeys: ['A'] },
+    points: { full: '两朵', half: 2 },
+    children: [],
+  });
 
   const res = await server.post('/api/worksheets', { title: '带分值的单', content, settings: SAMPLE_SETTINGS });
   const body = await res.json() as { id: string; error?: string };
@@ -539,9 +550,14 @@ test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（�
 
   assert.deepEqual(nodes[0].points, { full: 3, half: 1 }, '教师填的分值必须原样落库');
 
-  // 坏值：`'两朵'` 与非整数 / 越界的 1000 都回落到默认档，**不是**被原样存进去
-  // （`points.full` 是字符串时算出来的分数是个字符串拼接），也**不是**整块丢掉。
-  assert.deepEqual(nodes[1].points, { full: 1, half: 0 }, '坏值必须被归一化，不能原样落库');
+  assert.equal(
+    'points' in nodes[1], false,
+    '两个字段都无效 ⇒ 当成「没填」= 继承学习单级；落成 {full:1,half:0} 会让教师看不出差别',
+  );
+
+  // 只填了一个：有效的那个原样落库，坏的（'两朵'）回落默认档 —— **不是**原样存进去
+  // （`points.full` 是字符串时算出来的分数是个字符串拼接）。
+  assert.deepEqual(nodes[3].points, { full: 1, half: 2 }, '有效字段保留、无效字段回落默认档');
 
   // 🔴 这一条是「留空 = 继承」的地基：补上 `{ full: 1, half: 0 }` 会让这道题**脱离**学习单级，
   // 教师改学习单级的档时它不再跟着变，而他看不到任何提示。

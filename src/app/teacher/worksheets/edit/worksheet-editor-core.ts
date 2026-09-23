@@ -211,23 +211,53 @@ export function writeFillAnswers(text: string): string[] {
 }
 
 /**
- * 保存前的最后一道清理：填空题的 `answers` 去掉空行。
+ * 去掉一组可接受答案里的空行（非字符串元素也一并丢掉）。
+ * 返回 `null` = **一个都没去掉**（调用方据此判断要不要造新对象）。
+ */
+function withoutEmptyAnswers(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const answers = raw.filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0);
+  return answers.length === raw.length ? null : answers;
+}
+
+/**
+ * 保存前的最后一道清理：填空题的 `answers` 去掉空行（**单空与多空两种形状都清**）。
  *
  * 🔴 不清理的后果是**安静的满分**：`grade()` 用 `normalizeFillText` 比较，
  * 空串归一化之后还是空串 —— `answers: ['']` 会把学生的**空作答**判成正确，
  * 而且看板上会显示为「全班都对」。编辑期允许空行存在（textarea 的换行需要它），
  * 但**出网之前必须去掉**，唯一出网点是 `buildPayload()`。
+ *
+ * 🔴 **多空（M4a）的答案在第二层**：`data.blanks = [{ answers: […] }, …]`。
+ * 只清 `data.answers` 的话，M3 修过的那个毛病会在新形状上**原样重现** ——
+ * 而这次连「有没有清」都不会有人发现（单空那条路看起来还好好的）。
+ * 两个形状的清法**必须是同一段代码**（`withoutEmptyAnswers`）。
  */
 export function sanitizeContentForSave(content: WorksheetContent): WorksheetContent {
   let touched = false;
   const nodes = content.nodes.map((node) => {
     if (node.type !== 'fill-blank') return node;
-    const raw = node.data.answers;
-    if (!Array.isArray(raw)) return node;
-    const answers = raw.filter((answer): answer is string => typeof answer === 'string' && answer.trim().length > 0);
-    if (answers.length === raw.length) return node;
+    const next: Record<string, unknown> = { ...node.data };
+    let changed = false;
+
+    const flat = withoutEmptyAnswers(next.answers);
+    if (flat) { next.answers = flat; changed = true; }
+
+    if (Array.isArray(next.blanks)) {
+      let blanksChanged = false;
+      const blanks = next.blanks.map((blank) => {
+        if (!blank || typeof blank !== 'object' || Array.isArray(blank)) return blank;
+        const cleaned = withoutEmptyAnswers((blank as Record<string, unknown>).answers);
+        if (!cleaned) return blank;
+        blanksChanged = true;
+        return { ...(blank as Record<string, unknown>), answers: cleaned };
+      });
+      if (blanksChanged) { next.blanks = blanks; changed = true; }
+    }
+
+    if (!changed) return node;
     touched = true;
-    return { ...node, data: { ...node.data, answers } };
+    return { ...node, data: next };
   });
   return touched ? { ...content, nodes } : content;
 }

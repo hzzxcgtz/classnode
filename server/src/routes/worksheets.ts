@@ -7,15 +7,15 @@ import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
 import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import {
-  DEFAULT_POINTS,
   flattenQuestions,
   grade,
-  normalizePointValue,
+  // `normalizePoints` 与 `isUsablePointValue` 同处一地定义（service）—— 「什么算有效分值」
+  // 只有一处回答，而它直接决定「这题是继承学习单级还是脱离」。
+  normalizePoints,
   QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
   stripAnswers,
   validateQuestion,
   type QuestionNode,
-  type QuestionPoints,
   type QuestionType,
   type WorksheetContent,
 } from '../services/worksheet-questions.js';
@@ -142,27 +142,6 @@ function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     defaultInputMode: source.defaultInputMode === 'handwriting' ? 'handwriting' : DEFAULT_SETTINGS.defaultInputMode,
     rewardStyle,
     rewardStep,
-  };
-}
-
-/**
- * 归一化题目的**逐题分值**（M4a，规格 §12 裁定 5）。
- *
- * 🔴 **`points` 整个缺失时返回 `undefined`，绝不补默认值。** 留空 = **继承学习单级**
- * （规格 §12 裁定 4），所以 `undefined` 是一个有意义的取值。补上 `DEFAULT_POINTS` 会
- * **静默切断继承**：教师改学习单级的档，已保存的题不再跟着变，而他看不到任何提示 ——
- * 他会以为「改了没生效」，然后把每一道题都手工改一遍。
- *
- * ⚠️ `data` 在 `normalizeNode` 里是**原样透传**的，`points` 不能跟着蹭那条路：
- * 一个 `points: { full: '两朵' }`（前端改过、或手工改过库）会一路走到判分里，
- * 而 `points.full` 是 `'两朵'` 时算出来的分数是个字符串拼接。所以必须在这里显式归一化。
- */
-function normalizePoints(raw: unknown): QuestionPoints | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const source = raw as Record<string, unknown>;
-  return {
-    full: normalizePointValue(source.full, DEFAULT_POINTS.full),
-    half: normalizePointValue(source.half, DEFAULT_POINTS.half),
   };
 }
 

@@ -246,10 +246,23 @@ export interface WorksheetUsage {
  */
 export interface WorksheetQuestionNode {
   id: string;
-  /** `'single-choice' | 'fill-blank' | 'short-answer'`（服务端的 `QUESTION_TYPES`）。 */
+  /**
+   * 题型串，取值域是服务端的 `QUESTION_TYPES`（**不由前端复述** —— 复述一遍就是第二份
+   * 真源，而它漂了不会红）。窄写在这里只会让「界面上不认识的题型」变成类型错误，
+   * 而库里手工改过的行本来就可能有任何字符串，所以这里如实写 `string`。
+   */
   type: string;
   prompt: string;
   inputMode: 'keyboard' | 'handwriting';
+  /**
+   * ★ M4a：**逐题分值**。与服务端的 `QuestionNode.points` 对应（规格 §12 裁定 5：落在
+   * 题目节点上，**不进 `data`** —— 它是题型无关的）。
+   *
+   * ⚠️ **`undefined` 是一个有意义的取值**：留空 = 继承学习单级（裁定 4）。
+   * UI 读它时不要写 `?? { full: 1, half: 0 }` —— 那会把「跟随学习单级」变成
+   * 「钉死在默认档」，教师改学习单级的档时这道题不跟随，而他看不到任何提示。
+   */
+  points?: { full: number; half: number };
   data: Record<string, unknown>;
   children: WorksheetQuestionNode[];
 }

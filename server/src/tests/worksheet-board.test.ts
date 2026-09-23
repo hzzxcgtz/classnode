@@ -301,14 +301,11 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   assert.ok(!keys.has('content'), '响应里不得有 content —— 题目节点的 data 就住在它里面');
 
   // ── 判据二：原始字面量级（报告里那三条 grep 的同一判据）。
-  //
-  // ⚠️ **这条判据有一个已知的撞名陷阱，本题的夹具还没踩到它**：`value` 里是学生**自己
-  //    写的**作答，而 M4a 的作答值格式（D1）里 `match/v1` 的字段叫 `pairs`、
-  //    `categorize/v1` 的叫 `placement` —— 与 `ANSWER_KEYS` 里那两个「正确答案」的键名
-  //    逐字相同。⇒ 只要这份夹具里出现一行**连线题 / 归类题**的作答，本判据就会把
-  //    「学生答对了」读成「答案泄漏了」。
-  //    真到那一天，改法照 `worksheet-student.test.ts` 的回读用例：键名扫描排除每行的
-  //    `value`，并把**行的键集合**钉死（那一条不受撞名影响）。
+  //    ⚠️ 本判据扫的是**整份响应**（含学生自己的作答 `value`），所以它成立的前提是
+  //    「`ANSWER_KEYS` 的键名与学生作答值格式的字段名不撞车」。2026-09-23 之前
+  //    `match/v1` / `categorize/v1` 用的 `pairs` / `placement` 正好撞上黑名单里那两个
+  //    同名键，那条裁定把它们改成了 `links` / `assignment` —— **撞名是协议侧解决的**，
+  //    判据这里一个字都不用让。若将来又有新格式想借黑名单里的名字，先看这条注释。
   for (const literal of [...ANSWER_KEYS, 'content']) {
     assert.ok(!raw.includes(literal), `响应原文里不该出现「${literal}」`);
   }

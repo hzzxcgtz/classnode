@@ -365,6 +365,39 @@ test('sanitizeContentForSave 只碰填空题；没有可清理的东西时返回
   assert.equal(sanitizeContentForSave(odd), odd, 'answers 不是数组时原样保留');
 });
 
+/** 多空填空题（M4a）—— 答案在**第二层**。 */
+function fillBlanks(id: string, blanks: unknown): WorksheetQuestionNode {
+  return { id, type: 'fill-blank', prompt: '题干', inputMode: 'keyboard', data: { blanks }, children: [] };
+}
+
+test('🔴 sanitizeContentForSave 也要清**多空**（M4a）的第二层空行', () => {
+  // 🔴 这条是「单空修过、多空原样重现」的直接产物：`blanks[*].answers` 在第二层，
+  // 只清 `data.answers` 的那一版够不到它 ⇒ `['']` 会被当成一个可接受答案
+  // ⇒ 学生的**空作答**判成正确，而看板上显示「全班都对」。
+  const cleaned = sanitizeContentForSave(contentOf(fillBlanks('q_a', [
+    { answers: ['H2O', '', '   '] },
+    { answers: [''] },
+    { answers: ['CO2', '二氧化碳'] },
+  ])));
+  assert.deepEqual(
+    (cleaned.nodes[0].data.blanks as Array<{ answers: string[] }>).map((blank) => blank.answers),
+    [['H2O'], [], ['CO2', '二氧化碳']],
+    '每个空各自清空行，**空的数量与顺序不变**',
+  );
+
+  // 阳性对照：干净的输入不该被造新对象（与单空那条同一个判据）。
+  const clean = contentOf(fillBlanks('q_b', [{ answers: ['H2O'] }]));
+  assert.equal(sanitizeContentForSave(clean), clean, '没有可清理的东西就不该造新对象');
+
+  // 单空与多空同时在场时，两边都要清（形状不是二选一，读的一侧两种都认）。
+  const both = sanitizeContentForSave(contentOf(
+    fillBlank('q_c', ['', '光合作用']),
+    fillBlanks('q_d', [{ answers: ['', 'CO2'] }]),
+  ));
+  assert.deepEqual(both.nodes[0].data.answers, ['光合作用']);
+  assert.deepEqual((both.nodes[1].data.blanks as Array<{ answers: string[] }>)[0].answers, ['CO2']);
+});
+
 test('buildPayload 是 sanitize 的**唯一**出网点：发出去的载荷里没有空答案', () => {
   const payload = buildPayload('  第一课  ', '   ', SETTINGS, contentOf(fillBlank('q_a', ['光合作用', ''])));
   assert.equal(payload.title, '第一课');

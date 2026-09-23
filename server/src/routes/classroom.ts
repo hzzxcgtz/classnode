@@ -186,6 +186,53 @@ function worksheetLinkRows(ids: readonly string[], now: number = Date.now()) {
 }
 
 /**
+ * 课堂关联的**学习单**，下发给学生端与教师端看板 —— 与 `loadClassroomWebapps`
+ * （`routes/webapps.ts`）**同一个模式**，是读路径上课堂级学习单的**唯一**来源。
+ *
+ * 🔴 **为什么必须有它**：标准 / 分组模式下 `ClassroomGroupMaterial` 里**没有任何行**
+ * （那两种模式的材料权威来源就是课堂级，见 `resolveMaterialTargetId` —— 它对
+ * `standard` / `group` 直接返回 `classroomLevelId`）。而 `groups[]` 在 `standard` 模式
+ * 根本不下发（`GET /code/:code` 里它是 `undefined`）、在 `group` 模式下每组的 `worksheet`
+ * 恒为 `null`。⇒ **只有高级模式能靠 `groups[].materials.worksheet` 拿到学习单**；
+ * 少了本函数，标准/分组模式的学生端就**完全没有**「老师布置了哪一份」的来源，
+ * 而界面上只会显示「还没有布置」—— 一次没有任何报错的静默差异。
+ *
+ * ⚠️ **只发 `id` / `title`**（与 `GroupMaterialView.worksheet` **同一个形状**）：
+ * 字段名与形状跟组级那份一致，前端就只需要处理**一种**学习单形状（同 `GroupMaterialView`
+ * 对 `agent` 的那条规矩）。题目结构（`content`）**不进引导载荷** —— 学生端按 id 单独拉取，
+ * 由服务端剥掉答案字段（B3 的 `student-view`）。
+ *
+ * ⚠️ 三条路径（`GET /code/:code`、`GET /:id`、`GET /active`）**共用本函数** ——
+ * 与 `loadClassroomWebapps` 的调用点一一对应（`/all` 两者都不发，故不含）。
+ * 形状在其中一条上分叉一次，「教师看到的」与「学生打开的」就不是同一个了。
+ *
+ * ⚠️ **读路径不可失败**：ClassroomWorksheet 表缺失（老库启动 DDL 被跳过）时降级为空数组，
+ * 绝不能因为查不到学习单把学生挡在课堂门外。用 try/catch 而不是 `.catch()`：老库缺表时
+ * Prisma 拒绝的是一个 Promise，而「模型整个不存在」时是**同步**抛，`.catch()` 接不住后者。
+ *
+ * ⚠️ 排序 `[{createdAt:'asc'},{id:'asc'}]` **必须**与写入口（`worksheetLinkRows` /
+ * `linkRowCreatedAt`）和 `trimExtraClassroomWebapps` 的读法逐字相同 —— 三者不同口径就会出现
+ * 「保存前看到的第一个」与「保存后留下的那个」不是同一个。
+ */
+async function loadClassroomWorksheets(
+  prisma: PrismaClient,
+  classroomId: string,
+): Promise<{ id: string; title: string }[]> {
+  type Row = { worksheet: { id: string; title: string } };
+  let rows: Row[] = [];
+  try {
+    rows = await prisma.classroomWorksheet.findMany({
+      where: { classroomId },
+      select: { worksheet: { select: { id: true, title: true } } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  } catch {
+    return [];
+  }
+  return rows.map(row => ({ id: row.worksheet.id, title: row.worksheet.title }));
+}
+
+/**
  * 课堂三件套 —— **AI 智能体 / 探究网页 / 学习单**。
  *
  * 真实的一堂课由这三样东西组成，但**每一项都不是必填**：教师可以只挂一个智能体让孩子对话，
@@ -413,7 +460,7 @@ router.post('/create', async (req, res) => {
 router.post('/create-advanced', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, classId, groups, webappIds } = req.body;
+    const { title, classId, groups, webappIds, worksheetIds } = req.body;
 
     if (!classId || !groups?.length) {
       return res.status(400).json({ error: '请选择班级和分组' });
@@ -451,6 +498,26 @@ router.post('/create-advanced', async (req, res) => {
       console.warn(
         `[Classroom] 高级模式的课堂级网页不再生效（${webapp.id}）—— 该模式下网页的权威来源是「每组一份」，`
         + '这一项已被忽略。请在每个小组那一行单独选择网页（旧版创建页仍在发这个字段）。',
+      );
+    }
+
+    // 课堂级学习单在高级模式下**同样不落库**，处理与上面那段逐字同构（口径只有一套：
+    // 同一个 `resolveSingleMaterialId`；id 不存在照样 400；解析通过后被丢掉就必须留痕）。
+    //
+    // ⚠️ 与网页那处的**事实差异**，如实记下以免后人误判：网页那次是有**已部署的旧前端**在发
+    // `webappIds`（今天的创建页已不发，见 `src/app/teacher/classroom/new/page.tsx` 里
+    // 「不要在这里发课堂级的 `webappIds`」那段）。`worksheetIds` 是本次新加的字段，
+    // **今天没有任何前端会在高级模式下发它**。所以这一处是**门禁**（口径同构 + 将来不会再
+    // 长出「发了却被静默丢掉」这条路径），不是兼容旧版。
+    // 留着它的理由仍然充分：静默丢掉一个教师勾过的选项属于改数据不留痕
+    // （同 `trimExtraClassroomWebapps` 的规矩），而这个字段一旦有人发（比如把标准模式那一段
+    // 同构地抄到高级分支里），失效将是**完全无声**的。
+    const worksheet = await resolveSingleMaterialId(prisma, worksheetIds, 'worksheet', 'create-advanced');
+    if (!worksheet.ok) return res.status(400).json({ error: worksheet.error });
+    if (worksheet.id) {
+      console.warn(
+        `[Classroom] 高级模式的课堂级学习单不再生效（${worksheet.id}）—— 该模式下学习单的权威来源是`
+        + '「每组一份」，这一项已被忽略。请在每个小组那一行单独选择学习单。',
       );
     }
 
@@ -629,6 +696,8 @@ router.get('/active', async (req, res) => {
         ? classroom.groups.reduce((count, group) => count + group.members.length, 0)
         : classroom._count.students,
       webapps: await loadClassroomWebapps(prisma, classroom.id),
+      // 课堂级学习单：与 `webapps` 同形同源（标准 / 分组模式的权威来源，高级模式恒为空数组）。
+      worksheets: await loadClassroomWorksheets(prisma, classroom.id),
     }))));
   } catch (error) {
     res.status(500).json({ error: '获取活跃课堂失败' });
@@ -808,6 +877,9 @@ router.get('/:id', async (req, res) => {
     // 探究助手：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
     // 两条路径口径不一。只含 id / name / entryPath，磁盘根路径不进响应。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
+    // 课堂级学习单：与 `webapps` 同形同源（标准 / 分组模式的权威来源）。教师看板的
+    // 「课堂设置」弹窗要把这一项只读展示出来，与网页并列。
+    const worksheets = await loadClassroomWorksheets(prisma, classroom.id);
     // 组的材料（智能体 / 网页 / 学习单）走**同一个**解析口径 —— 「管理页显示的那个」与
     // 「学生打开的那个」必须是同一个。
     const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
@@ -820,6 +892,7 @@ router.get('/:id', async (req, res) => {
       students,
       groupMembersMap,
       webapps,
+      worksheets,
       modules: mergeModuleStates(moduleRecords ?? []),
       // 该课堂有没有 ClassroomModule 行。mergeModuleStates 会把缺失的 key 补齐成默认态，
       // 所以「三态全是 preview」既可能是「教师把三项都设成了预告」也可能是「从未设置过」，
@@ -926,6 +999,11 @@ router.get('/code/:code', async (req, res) => {
     // 查询失败（老库缺表）时降级为空数组 —— 读路径不可失败，不能把学生挡在课堂门外。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
 
+    // 课堂级学习单：**标准 / 分组模式下学生知道「老师布置了哪一份」的唯一下发点**
+    // （那两种模式 `groups[]` 里没有材料行，`standard` 下 `groups` 甚至是 `undefined`）。
+    // 与 `webapps` 同形同源，学生端照 `mode` 二选一：高级看自己组，其余看这一个。
+    const worksheets = await loadClassroomWorksheets(prisma, classroom.id);
+
     // 各组的材料（智能体 / 网页 / 学习单）。与 `/:id`、`/all`、`/active`、`join-classroom`
     // 共用同一个解析口径 —— 五条路径的形状必须逐字一致。
     const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
@@ -944,6 +1022,9 @@ router.get('/code/:code', async (req, res) => {
       // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
       webappPort: req.app.get('webappPort') as number | undefined,
       webapps,
+      // 课堂级学习单（数组，与 `webapps` 同形）。学生端按 `mode` 二选一取用：
+      // 高级 ⇒ `groups[].materials.worksheet`（自己组那份）；标准/分组 ⇒ 本数组的第 0 个。
+      worksheets,
       modules: mergeModuleStates(moduleRecords),
       agents: classroom.classroomAgents.map((ca) => ({
         id: ca.agent.id,

@@ -844,3 +844,221 @@ test('读路径：/code/:code、/:id、/all、/active 的 groups[] 都带 worksh
   const active = await (await server.get('/api/classroom/active')).json() as Array<{ id: string; groups: GroupView[] }>;
   check('GET /active', active.find(c => c.id === createdBody.id)?.groups);
 });
+
+// ---------------------------------------------------------------------------
+// F1：**课堂级**学习单下发（`worksheets`，与课堂级 `webapps` 同形同源）。
+//
+// 为什么这一项是必需的（不是「顺手加的字段」）：标准 / 分组模式下
+// `ClassroomGroupMaterial` 里**没有任何行** —— 那两种模式的材料权威来源就是课堂级。
+// 而 `groups[]` 在 standard 模式下根本不下发（`GET /code/:code` 里是 `undefined`）、
+// 在 `group` 模式下每组的 `worksheet` 恒为 `null`。
+// ⇒ 少了课堂级这一项，标准/分组的学生端**完全没有**「老师布置了哪一份」的来源，
+//    界面上只会显示「还没有布置」，且没有任何报错。
+// ---------------------------------------------------------------------------
+
+test('🔴 标准模式：GET /code/:code 下发**课堂级** worksheets（standard 没有 groups，这里是唯一来源）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create', {
+    title: '标准模式带学习单', classIds: [cls.id], worksheetIds: [ws.id],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  assert.equal(created.status, 200, JSON.stringify(createdBody));
+
+  const body = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as {
+    mode?: string; groups?: unknown; worksheets?: Array<{ id: string; title: string }>;
+  };
+  assert.equal(body.mode, 'standard');
+  // 前提：standard 模式本来就不下发 groups —— 这正是「必须另有课堂级来源」的原因。
+  assert.equal(body.groups, undefined, 'standard 模式不下发 groups（本条用例的前提）');
+  assert.ok(Array.isArray(body.worksheets), `worksheets 必须是数组：${JSON.stringify(body)}`);
+  assert.equal(body.worksheets!.length, 1, '课堂级那一份要下发');
+  assert.equal(body.worksheets![0].id, ws.id);
+  assert.equal(body.worksheets![0].title, ws.title, '要带标题 —— 首页卡片要显示它');
+  // 形状与组级 `worksheet` 一致：前端只需要处理**一种**学习单形状。
+  assert.deepEqual(Object.keys(body.worksheets![0]).sort(), ['id', 'title']);
+});
+
+test('分组模式：课堂级 worksheets 有值，而每组的 worksheet 恒为 null（组级不是分组模式的权威来源）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create', {
+    title: '分组模式带学习单', classIds: [cls.id], mode: 'group', worksheetIds: [ws.id],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  assert.equal(created.status, 200, JSON.stringify(createdBody));
+
+  const body = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as {
+    worksheets?: Array<{ id: string }>;
+    groups?: Array<{ name: string; worksheet: unknown }>;
+  };
+  assert.equal(body.worksheets?.[0]?.id, ws.id, '分组模式的权威来源是课堂级');
+  // 阳性对照的另一半：组级那份**不该**有值 —— 不然前端会以为该按组取。
+  for (const group of body.groups ?? []) {
+    assert.equal(group.worksheet, null, `分组模式的组不该有组级学习单（${group.name}）`);
+  }
+});
+
+test('未关联学习单：worksheets 下发空数组（不是省略这个键、也不是报错）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create', {
+    title: '只有网页', classIds: [cls.id], webappIds: [webapps[0].id],
+  });
+  const createdBody = await created.json() as { code: string };
+  const body = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as { worksheets?: unknown };
+  assert.deepEqual(body.worksheets, [], '与 webapps 同款：空数组，不是省略');
+});
+
+test('高级模式：课堂级 worksheets 恒为**空**（该模式不写课堂级），组级那份照常有值', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create-advanced', {
+    title: '高级模式', classId: cls.id,
+    groups: [{ name: '第一组', worksheetId: ws.id }],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  assert.equal(created.status, 200, JSON.stringify(createdBody));
+
+  const byCode = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as {
+    worksheets?: unknown; groups?: Array<{ worksheet: { id: string } | null }>;
+  };
+  assert.deepEqual(byCode.worksheets, [], '高级模式的课堂级学习单恒为空（运行期也不回落它）');
+  assert.equal(byCode.groups?.[0]?.worksheet?.id, ws.id, '组级那份才是高级模式的权威来源');
+
+  // 幽灵防线：课堂级那条关联**一行都不该有**（留着会长出「它到底谁在用」的第二套解释，
+  // 且挡得住删除守卫）。这里直接数库，别只看响应。
+  assert.equal(await db.prisma.classroomWorksheet.count({ where: { classroomId: createdBody.id } }), 0);
+});
+
+test('课堂级 worksheets 与 webapps 的下发路径完全对齐（/code/:code、/:id、/active 有；/all 两者都没有）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 1);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create', {
+    title: '两条路径对齐', classIds: [cls.id], worksheetIds: [ws.id],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+
+  const has = (label: string, body: Record<string, unknown>) => {
+    for (const key of ['webapps', 'worksheets']) {
+      assert.ok(Object.prototype.hasOwnProperty.call(body, key), `${label} 必须下发 ${key}`);
+      assert.ok(Array.isArray(body[key]), `${label} 的 ${key} 必须是数组`);
+    }
+    assert.equal((body.worksheets as unknown[]).length, 1, `${label} 的 worksheets 要含那一份`);
+  };
+
+  has('GET /code/:code', await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as Record<string, unknown>);
+  has('GET /:id', await (await server.get(`/api/classroom/${createdBody.id}`)).json() as Record<string, unknown>);
+  const active = await (await server.get('/api/classroom/active')).json() as Array<Record<string, unknown>>;
+  has('GET /active', active.find(c => c.id === createdBody.id)!);
+
+  // `/all` 两个都不发 —— 这是与 `loadClassroomWebapps` **刻意对齐**的结果，不是漏了学习单。
+  const all = await (await server.get('/api/classroom/all')).json() as Array<Record<string, unknown>>;
+  const row = all.find(c => c.id === createdBody.id)!;
+  for (const key of ['webapps', 'worksheets']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(row, key), false, `/all 两者都不发（对齐），实际多了 ${key}`);
+  }
+});
+
+test('课堂级 worksheets 的排序 = 写入顺序（orderBy createdAt,id，与写入口/裁剪同一套）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const worksheets = await seedWorksheets(db.prisma, 2);
+  const server = await startServer(t, db.prisma);
+
+  const created = await server.post('/api/classroom/create', {
+    title: '顺序', classIds: [cls.id], worksheetIds: [worksheets[0].id],
+  });
+  const createdBody = await created.json() as { id: string; code: string };
+  // 第二行只能直接写库（创建端点是单选）。用**同一套**时间戳规则中「更晚」的那个值 ——
+  // 若读路径的 orderBy 丢了 createdAt，顺序就会落到 uuid 字典序。
+  await db.prisma.classroomWorksheet.create({
+    data: { classroomId: createdBody.id, worksheetId: worksheets[1].id, createdAt: new Date(Date.now() + 1000) },
+  });
+
+  const body = await (await server.get(`/api/classroom/code/${createdBody.code}`)).json() as { worksheets?: Array<{ id: string }> };
+  assert.deepEqual(body.worksheets?.map(w => w.id), [worksheets[0].id, worksheets[1].id],
+    '按 createdAt 升序 —— 读路径必须与写入口同一套排序键');
+});
+
+// ---------------------------------------------------------------------------
+// F2：高级模式对**课堂级** `worksheetIds` 与 `webappIds` 同口径：解析 + 留痕 + 不落库。
+// 只「忽略」的话，教师勾过的选项会**完全无声**地消失。
+// ---------------------------------------------------------------------------
+
+test('高级模式：课堂级 worksheetIds 被解析但不落库（不写幽灵行）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '高级模式带课堂级学习单', classId: cls.id,
+    groups: [{ name: '第一组', agentId: agent.id }],
+    // 与 webappIds 同款：解析通过后被丢掉，且必须留痕（写在服务端日志里）。
+    worksheetIds: [ws.id],
+  });
+  const body = await res.json() as { id?: string; error?: string };
+  assert.equal(res.status, 200, `旧字段不该让创建失败：${JSON.stringify(body)}`);
+  assert.equal(await db.prisma.classroomWorksheet.count({ where: { classroomId: body.id! } }), 0,
+    '课堂级学习单在高级模式下不落库 —— 否则它会成为一个永远看不见、却挡得住删除守卫的幽灵');
+});
+
+test('🔴 高级模式：课堂级 worksheetIds 里的 id 不存在 ⇒ 400（证明真的解析了，不是静默忽略）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '学习单已被删', classId: cls.id,
+    groups: [{ name: '第一组', agentId: agent.id }],
+    worksheetIds: ['does-not-exist'],
+  });
+  const body = await res.json() as { error: string };
+  // 只把字段「忽略」的实现下，这一条会 200 —— 所以它是 F2 那条改动的判据。
+  assert.equal(res.status, 400, `必须与 webappIds 同口径地校验：${JSON.stringify(body)}`);
+  assert.match(body.error, /学习单/);
+  assert.equal(await db.prisma.classroom.count(), before, '被拒的请求不得留下任何课堂');
+});
+
+test('高级模式：只有课堂级 worksheetIds、所有组都不配 ⇒ 仍然 400（不落库的材料不计入三件套）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const [ws] = await seedWorksheets(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const before = await db.prisma.classroom.count();
+  const res = await server.post('/api/classroom/create-advanced', {
+    title: '课堂级学习单不算数', classId: cls.id,
+    groups: [{ name: '第一组' }, { name: '第二组' }],
+    worksheetIds: [ws.id],
+  });
+  const body = await res.json() as { error: string };
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.match(body.error, /学习单/, '文案要按三件套念');
+  assert.equal(await db.prisma.classroom.count(), before);
+});

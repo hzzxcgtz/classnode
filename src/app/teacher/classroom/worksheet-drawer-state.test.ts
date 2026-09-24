@@ -124,7 +124,7 @@ test('🔴 形态 A：三档标记读 gradeState —— 半对画出自己那一
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false })).mark,
     'partial',
-    '半对落到 wrong 的话，「算进分母却不算对」就看起来是答错了（规格 §12 要它在格子上画得出来）',
+    '半对落到 wrong 的话，「算进分母却不算对」就看起来是答错了（规格 §12 要它在看板那一侧、即抽屉里画得出来）',
   );
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).mark,
@@ -496,7 +496,12 @@ test('🔴 每个题型的 graded 标记都要与「它判不判分」的决策�
   );
 });
 
-test('🔴 分母与格子必须同进同出：能判分的题型既要进正确率的分母，也要在格子上画标记', () => {
+// ⚠️ 这条的**名字**于 2026-09-24 改过（原为「分母与**格子**必须同进同出…也要在**格子上**画标记」）。
+// 改名的理由与 §12 那句字面更正是同一件事：标记画在**抽屉里**、不在方格阵上（规格 §7.2）。
+// 留着旧名字是一个**给下一个人抄的模板** —— F1 的验收项正要从这类句子写起，
+// 而「半对在格子上画得出来」恰恰是 E2 核清掉的那个 §7.2 违规。
+// 代价如实记：E1 报告里引用的那条名册（「分母与格子同进同出」）与本文件不再逐字相同。
+test('🔴 分母与抽屉里的标记必须同进同出：能判分的题型既要进正确率的分母，也要在抽屉里画标记', () => {
   const rows: Array<WorksheetBoardAnswerRow | undefined> = [
     row({ questionId: 'q_x', status: 'submitted', isCorrect: false }),
     row({ questionId: 'q_x', status: 'submitted', isCorrect: true }),

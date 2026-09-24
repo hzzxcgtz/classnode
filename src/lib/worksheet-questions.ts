@@ -71,6 +71,20 @@ export const QUESTION_TYPE_OPTIONS: Array<{
 ];
 
 /**
+ * ★ M4a：**逐题分值**（全对 / 半对两档）的取值上限 —— 与服务端
+ * `services/worksheet-questions.ts` 的 `POINTS_MAX` 是**同一对**字面量（服务端读不到 `src/`）。
+ *
+ * 🔴 两处必须一起改，且**不能只改一处**：服务端的 `normalizePointValue` 对越界值
+ * **回落** `DEFAULT_POINTS`（全对 1 / 半对 0），不是拒绝保存 —— 所以前端放宽而服务端不放宽时，
+ * 教师填的 `200` 会变成 `1`，保存照常 200，**没有任何报错**。
+ *
+ * ⚠️ 它是**两个档共用的**（`full` 与 `half` 各自在 0..99），不是「`full + half <= 99`」；
+ * 也**不是** `HALF_STEPS` / `REWARD_STEPS` 那套四选一 —— 学习单级是下拉，逐题是两个自由输入框
+ * （规格 §12 裁定 4/5）。把两者「统一」起来会让教师填的 `4` 被静默改成 `1`。
+ */
+export const POINTS_MAX = 99;
+
+/**
  * 题型的中文名。未知题型（库里手工改过的行）**回落成类型串本身**，不回落成「单选题」——
  * 后者会让一道不认识的题在界面上谎称自己是单选。
  */
@@ -133,11 +147,37 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
 /**
  * 提交给服务端的**作答值**（规格 §4.3）。
  *
- * 🔴 **格式串是协议的一部分**，不是给界面看的：服务端的判分（`grade()`）按 `format` 分派。
- * 改这里的字符串等于改协议，两边必须同时改。
+ * 🔴 **协议是「判分器读哪些字段名」，不是 `format` 串。** 服务端的 `grade()` 按
+ * **`node.type`** 分派（`server/src/services/worksheet-questions.ts` 的 `JUDGES`），
+ * 再从**作答值里按字段名**取值 —— 各题型读的是：
+ *
+ * | 作答值的键 | 谁读 |
+ * |---|---|
+ * | `selected: string[]` | 单选 / 判断 / 多选 |
+ * | `text: string` | 单空填空 |
+ * | `texts: string[]` | 多空填空（与教师的 `data.blanks` 逐位对应） |
+ * | `order: string[]` | 排序 |
+ * | `links: Array<{leftId, rightId}>` | 连线（教师那侧的配对叫 `pairs`，**刻意不同名**） |
+ * | `assignment: Record<string, string>` | 归类（教师那侧叫 `placement`） |
+ *
+ * ⚠️ **`format` 服务端一个字节都不读。** 实测（2026-09-24）：
+ * `grep -c format server/src/services/worksheet-questions.ts` ⇒ `0`；
+ * `grep -rn "\.format\b\|'format'\|\"format\"" server/src`（排除 tests）⇒ 无输出。
+ * 它只随作答值一起存进 `WorksheetAnswer.value`，读者是**前端**的 `draftFromValue`
+ * （把作答值读回输入态：学生端队列回填、教师端抽屉的「原答案」都走它）。
+ *
+ * ⇒ 两个方向不要写反：
+ *   · 改**上表里那些字段名**才是改协议，而且**错了不报错** —— 那道题永远判错/判不了分；
+ *   · 改 `format` 串只影响 `draftFromValue` 读不读得回输入态（读不回的后果是画成空白作答）。
+ * 🔴 **不得**为了「让 `format` 名副其实」去给服务端补一条格式校验：那会让库里已有的行
+ * 与旧客户端**静默不判分**（判分器本来只认字段名，多一道校验就多一道拒绝的理由）。
  *
  * ⚠️ 手写与绘图（`ink/v1` / `drawing/v1`）**第一批不产生**，所以这个联合里没有它们 ——
  * 第一批的 UI 也不提供产生它们的路径。
+ *
+ * ⚠️ 这个联合**不是**上面那张表的全量：M4a 新增的 `order` / `match` / `categorize`
+ * 三种作答值还没有成员（D 阶段才加）。别把它当成「作答值只有这三种」的权威 ——
+ * 判分器读什么，以上表与服务端代码为准。
  */
 export type WorksheetAnswerValue =
   | { format: 'choice/v1'; selected: string[] }

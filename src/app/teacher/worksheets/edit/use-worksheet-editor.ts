@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import type { WorksheetDetail, WorksheetSettings, WorksheetUsage } from '@/lib/types';
+import type { QuestionPointsDraft, WorksheetDetail, WorksheetSettings, WorksheetUsage } from '@/lib/types';
 import {
   buildPayload,
   contentReducer,
@@ -12,6 +12,8 @@ import {
   DEFAULT_SETTINGS,
   DRAFT_INTERVAL_MS,
   draftKeyFor,
+  findPartialPoints,
+  POINTS_MAX,
   type QuestionType,
   normalizeLoadedContent,
   normalizeLoadedSettings,
@@ -248,6 +250,27 @@ export function useWorksheetEditor({ id, onNotice }: {
       setSaveStatus({ kind: 'error', at: null, message: '学习单标题不能为空' });
       return null;
     }
+    /**
+     * 🔴 **逐题分值只填了一个框 ⇒ 不许保存**（规格 §12 裁定 4 的连带，2026-09-24 实测）。
+     *
+     * 拦在这里而不是靠界面提示，是因为后果**不可见**：服务端的 `normalizePoints` 会把缺的
+     * 那一端补成 `DEFAULT_POINTS`（全对 1 / 半对 0），**不是**补成学习单级的档 —— 于是
+     * 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时半对得 **0 分**，
+     * 而教师以为自己只是把全对调成了 7。完整实测与推理见 `findPartialPoints`。
+     *
+     * ⚠️ 必须在 `savingRef.current = true` **之前**返回：那之后 return 会让防重入的旗子
+     * 永远立着（`finally` 不会跑到），这个页面从此再也保存不了任何东西。
+     * ⚠️ 与上面那条「标题不能为空」同一个位置、同一种失败形状（`saveStatus.kind = 'error'`
+     * ⇒ 顶栏横幅把原因原样显示出来），教师看到的是**哪几题**、以及两条出路。
+     */
+    const partial = findPartialPoints(next.content);
+    if (partial.length > 0) {
+      const numbers = partial.map((item) => item.index + 1).join('、');
+      const message = `第 ${numbers} 题的「全对 / 半对」只填了一个。两个框要么都填（0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
+      setSaveStatus({ kind: 'error', at: null, message });
+      callbacksRef.current.onNotice({ message: `保存失败：第 ${numbers} 题的分值只填了一个框`, type: 'error' });
+      return null;
+    }
     savingRef.current = true;
     setSaveStatus({ kind: 'saving', at: null, message: null });
     const currentId = worksheetIdRef.current;
@@ -465,6 +488,19 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'updateData', id: questionId, patch });
   }, []);
 
+  /**
+   * 逐题分值的写入口（规格 §12 裁定 4 / 5）。
+   *
+   * ⚠️ 与 `updatePrompt` / `updateData` **走同一个 reducer**（所以撤销栈、同值去重、
+   * `dirty` 快照全都自动成立）—— 这里散一个 `setState` 就是 undo 开始漏的第一处，
+   * 而它唯一的表现是「撤销时这个框不跟着回退」，没有任何报错。
+   *
+   * `points === undefined` = 教师把两个框都清空了 = **跟随学习单级**（不是「没填」）。
+   */
+  const updatePoints = useCallback((questionId: string, points: QuestionPointsDraft | undefined) => {
+    dispatch({ kind: 'updatePoints', id: questionId, points });
+  }, []);
+
   const moveQuestion = useCallback((questionId: string, delta: -1 | 1) => {
     dispatch({ kind: 'move', id: questionId, delta });
   }, []);
@@ -495,7 +531,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, updatePrompt, updateData, moveQuestion, removeQuestion,
+    addQuestion, updatePrompt, updateData, updatePoints, moveQuestion, removeQuestion,
     save, duplicate, goBack, ensureUsage,
   };
 }

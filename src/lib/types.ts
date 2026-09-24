@@ -237,6 +237,23 @@ export interface WorksheetUsage {
 }
 
 /**
+ * ★ M4a：逐题分值的**编辑期**形状 —— 与服务端 `QuestionPoints`（`{ full: number; half: number }`，
+ * 两端必填）**刻意不同名**，因为它确实不是同一个东西。
+ *
+ * 服务端那一个描述的是**落库后**的形状：`normalizePoints` 要么给出完整的两端，要么整个
+ * 取值不存在（= 继承学习单级）。而这一份描述的是**编辑器里**的形状 —— 教师可以在一个框里
+ * 输入、另一个框还空着，那一刻 `{ full: 7 }` 必须在状态里存在（受控输入框的值从它算出来）。
+ *
+ * ⚠️ 两者的「半填」含义**不相同**，所以不要把一个当成另一个的别名：
+ *   · 编辑期的半填 = 「还没填完」，编辑器会拦住保存（`findPartialPoints`）；
+ *   · 服务端若收到半填（`{ full: 7 }`），`normalizePoints` 会补成 `{ full: 7, half: 0 }`
+ *     —— **半对变成 0 分**，而教师以为它继承了学习单级的档。这正是要拦住的原因。
+ *
+ * `undefined` 在两边同义且有意义：**留空 = 继承学习单级**（规格 §12 裁定 4）。
+ */
+export type QuestionPointsDraft = { full?: number; half?: number };
+
+/**
  * 题目节点的**读形状**。
  *
  * ⚠️ 题型注册表与判分**只在服务端**（`server/src/services/worksheet-questions.ts`，09-19 §13
@@ -261,8 +278,18 @@ export interface WorksheetQuestionNode {
    * ⚠️ **`undefined` 是一个有意义的取值**：留空 = 继承学习单级（裁定 4）。
    * UI 读它时不要写 `?? { full: 1, half: 0 }` —— 那会把「跟随学习单级」变成
    * 「钉死在默认档」，教师改学习单级的档时这道题不跟随，而他看不到任何提示。
+   *
+   * 🔴 **它比服务端那个 `QuestionPoints` 松一档：两个字段都是可选的。** 那不是笔误 ——
+   * 「教师在一端输入、另一端还空着」是屏幕上真实存在的一瞬间状态，而编辑器的两个输入框
+   * 是**受控**的（显示值从 `node.points` 算出来）⇒ 表达不了它，就等于把教师刚打的字吞掉。
+   *
+   * ⇒ 半填（`{ full: 7 }`）是**编辑期**的合法状态，但**不是一个能保存的状态**：
+   * 服务端的 `normalizePoints` 会把缺的那一端补成 `DEFAULT_POINTS`（全对 1 / 半对 0），
+   * 而**不是**补成学习单级的档 —— 于是教师填了「全对 7」、半对留空，**半对静默变成 0 分**，
+   * 而他以为它跟随学习单级的 2（2026-09-24 A2 审查实测）。所以编辑器在保存前用
+   * `findPartialPoints` 把它拦下，要求两端都填、或者两端都清空（= 跟随学习单）。
    */
-  points?: { full: number; half: number };
+  points?: QuestionPointsDraft;
   data: Record<string, unknown>;
   children: WorksheetQuestionNode[];
 }

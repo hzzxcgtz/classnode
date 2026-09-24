@@ -152,6 +152,28 @@ export function pointsFromSettings(settings: unknown): QuestionPoints {
  * 前者在 `normalizePoints` 的语义里**就是「留空」**（A1 的裁定：两个字段都不是有效数字
  * ⇒ `undefined` ⇒ 继承学习单级）；后者由它补上 `DEFAULT_POINTS` 的另一半 ——
  * 逐题**既然填了**，它就脱离了学习单级，不再跟随（裁定 4 要防的正是「看起来跟随了」）。
+ *
+ * 🔴 **「留空 = 继承」是整对象级的，不是字段级的。** 2026-09-24 实测确认，写在这里免得
+ * 下一个读这段的人以为可以「只让半对档跟随学习单」：
+ *
+ * | 教师填了 | 落库的 `points`（`normalizeNode` → `normalizePoints`） | 本函数的结果 |
+ * |---|---|---|
+ * | 两个框都留空 | 键**不存在** | 整份回落学习单级 ✅ |
+ * | 全对 7 / 半对留空 | `{ full: 7, half: 0 }` —— 缺的那一端被补成 `DEFAULT_POINTS` | `{ full: 7, half: 0 }` ⇒ **半对得 0 分** |
+ * | 全对 7 / 半对 2 | `{ full: 7, half: 2 }` | 原样 |
+ *
+ * ⚠️ 第二行**真的会发生**（不是理论风险）：在隔离库上 `POST /api/worksheets`、载荷
+ * `points: {full: 7}` 的实测结果是回包与库里**都是** `points: {full: 7, half: 0}`。
+ * ⇒ **把这个函数改成逐字段回落修不了它**：库里那个 `half: 0` 是一个**有效分值**
+ * （`isUsablePointValue(0)` 为真），逐字段回落会照用它。
+ * 真正的防线在**写入口**：编辑器的 UI 不允许只填一个框（`src/app/teacher/worksheets/edit/`
+ * 的 `findPartialPoints` + `save()` 把它拦下）⇒ 第二行在**走编辑器的数据上不可达**。
+ * 它仍可能出现在手工改过的库行上，届时半对得 0 分 —— 那是这条整对象语义的**已知代价**，
+ * 不是一处漏判。
+ *
+ * ⚠️ 所以**别**把这里改成 `{ full: node.points?.full ?? fallback.full, half: … }`：
+ * 那会让读出口与写入口对同一个库里形状给出**不同**的答案（写入口补 0、读出口补学习单级），
+ * 而两者都不会报错 —— 正是本文件反复在防的那种失效。
  */
 export function resolvePoints(node: QuestionNode, fallback: QuestionPoints): QuestionPoints {
   return normalizePoints(node.points) ?? fallback;

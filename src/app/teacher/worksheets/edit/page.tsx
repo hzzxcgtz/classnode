@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
 import type { WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -81,6 +81,21 @@ function WorksheetEditorBody() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const { content, worksheetId, usage, saveStatus, draftFound } = editor;
+
+  /**
+   * 学习单级的**两档**（逐题留空的题继承的就是它们）—— 传给每张卡片当占位符。
+   *
+   * ⚠️ 只做**显示**与「半对 0 分」那条提示的判据，**绝不**拿它去预填逐题的输入框：
+   * 预填等于把「跟随学习单」拍成一份副本，教师之后改这两档时已保存的题不会跟随，
+   * 而他看不到任何提示（规格 §12 裁定 4 的理由）。
+   *
+   * `useMemo` 只是让每张卡片拿到同一个引用（值不变时不造新对象）；
+   * ⚠️ 必须在下面那两个提前 return **之前**调用（Hooks 的调用顺序不许跳）。
+   */
+  const inheritedPoints = useMemo(
+    () => ({ full: editor.settings.rewardStep, half: editor.settings.halfStep }),
+    [editor.settings.rewardStep, editor.settings.halfStep],
+  );
 
   /**
    * 删题确认（规格 §6.4）。文案里必须含**已收到的作答份数** —— 不说的后果是教师
@@ -200,8 +215,10 @@ function WorksheetEditorBody() {
               index={index}
               total={content.nodes.length}
               node={node}
+              inheritedPoints={inheritedPoints}
               onPromptChange={prompt => editor.updatePrompt(node.id, prompt)}
               onDataChange={patch => editor.updateData(node.id, patch)}
+              onPointsChange={points => editor.updatePoints(node.id, points)}
               onMove={delta => editor.moveQuestion(node.id, delta)}
               onRemove={() => void requestRemove(node, index)}
             />

@@ -28,16 +28,22 @@ import {
   createHistory,
   DEFAULT_SETTINGS,
   draftKeyFor,
+  findPartialPoints,
   HISTORY_LIMIT,
+  isPartialPoints,
   MAX_OPTIONS,
   newQuestion,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
   parseDraft,
+  parsePointInput,
+  POINTS_MAX,
+  type QuestionPointsDraft,
   readFillAnswers,
   readOptions,
   sanitizeContentForSave,
+  shouldWarnZeroHalfCredit,
   writeFillAnswers,
   writeOptions,
 } from './worksheet-editor-core.ts';
@@ -483,8 +489,17 @@ function draftWith(nodeValue: unknown): string {
     title: '第一课',
     description: '说明',
     // 奖励三项刻意给**非默认**的值（默认是 star / 1 / 0）：草稿里配好的奖励形式要是被
-    // 解析时丢掉，教师恢复一次草稿就会发现自己的「花朵 ×5、半对 2」变回了星星。
-    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 3 },
+    // 解析时丢掉，教师恢复一次草稿就会发现自己的「花朵 ×5、半对 0」变回了星星。
+    //
+    // 🔴 `halfStep` 这里**必须用 `0`**（2026-09-24 控制器裁定，替换掉原来的 `3`）：
+    //   `HALF_STEPS = [0,1,2,3,5]` 与 `REWARD_STEPS = [1,2,3,5]` 除 `0` 之外**完全重合**
+    //   ⇒ `3` 同时属于两个域，`normalizeHalfStep(3) === normalizeRewardStep(3) === 3`，
+    //   这条断言**分不出「parseDraft 误用了 `normalizeRewardStep`」** —— 而紧邻的源码注释
+    //   恰恰在警告这件事（`parseDraft` 里那两行 ⚠️）。用 `0` 才分得出：
+    //   正确 ⇒ 0；误用 `normalizeRewardStep` ⇒ 回落成 `DEFAULT_REWARD_STEP = 1`。
+    // ⚠️ 但 `0` 恰好也是 `DEFAULT_HALF_STEP`，所以它**分不出「根本没读这个键」** ——
+    //   那个方向由下面「草稿里的 halfStep 被原样读进来」那条用 `5` 单独钉住。
+    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0 },
     content: { schemaVersion: 9, nodes: [nodeValue] },
   });
 }
@@ -497,8 +512,32 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
   assert.equal(draft.title, '第一课');
   assert.equal(draft.content.schemaVersion, 9);
   assert.deepEqual(draft.settings, {
-    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
+    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
   });
+});
+
+test('🔴 parseDraft：草稿里的 `halfStep` 被**原样读进来**（漏读 ⇒ 恢复草稿就把半对档抹成 0）', () => {
+  // 与 `normalizeLoadedSettings` 那条「奖励三项原样带过来」是同一件事的**另一条路**：
+  // `parseDraft` 读的是 localStorage，`normalizeLoadedSettings` 读的是服务端详情 ——
+  // 两条路各写一份判据，只改一处就会让「恢复草稿」与「打开已保存的单」给出不同的奖励档。
+  //
+  // ⚠️ 这里用 `5` 而**不是** `0`：`0` 恰好是 `DEFAULT_HALF_STEP`，表达式写错成
+  // 「不读草稿里那个键」也会得到 `0`（假绿）。`5` 只有真的读进来才可能出现
+  // —— `normalizeHalfStep(5) === 5`，而 `normalizeRewardStep(5) === 5` 也一样，
+  // 所以这条**不**负责区分误用函数（那个由上面 `draftWith` 里的 `0` 负责）。
+  const draft = parseDraft(JSON.stringify({
+    savedAt: 1, title: 't', description: 'd',
+    settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'star', rewardStep: 1, halfStep: 5 },
+    content: { schemaVersion: 1, nodes: [GOOD_NODE] },
+  }));
+  assert.ok(draft);
+  assert.equal(draft.settings.halfStep, 5);
+  // 反面：越界的 4 回落到默认的 0（而不是 1）。
+  assert.equal(parseDraft(JSON.stringify({
+    savedAt: 1, title: 't', description: 'd',
+    settings: { halfStep: 4 },
+    content: { schemaVersion: 1, nodes: [GOOD_NODE] },
+  }))?.settings.halfStep, 0);
 });
 
 test('parseDraft：不是 JSON / 是 JSON 但不是对象 ⇒ null', () => {
@@ -605,4 +644,214 @@ test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用
   assert.equal(normalizeLoadedSettings({ halfStep: 4 }).halfStep, DEFAULT_SETTINGS.halfStep);
   assert.equal(normalizeLoadedSettings({ halfStep: '3' }).halfStep, DEFAULT_SETTINGS.halfStep);
   assert.notEqual(DEFAULT_SETTINGS.halfStep, DEFAULT_SETTINGS.rewardStep, '两档的默认值不同（0 与 1），别互换');
+});
+
+// ── 11. 逐题分值（M4a，规格 §12 裁定 4 / 5）─────────────────────────────
+//
+// 这一组是**编辑器侧**的判据，与服务端那三个函数（`normalizePointValue` /
+// `normalizePoints` / `resolvePoints`）回答的**不是**同一个问题：那边回答「判分时用哪两个数」，
+// 这边回答「教师在屏幕上填了什么、那个状态能不能保存」。
+//
+// ⚠️ 两半判据别混：
+//   · **「留空 = 继承」**（`updatePoints` / `sanitizeContentForSave`）—— 错了的后果是
+//     教师改学习单级的档时那些题**不跟随**，而屏幕上没有任何变化；
+//   · **「半填拦得住」**（`findPartialPoints` / `save()`）—— 错了的后果是半对**静默变 0 分**。
+// 两半都有反证（把实现反转一次、观测到具名的那几条变红），过程写在
+// `.superpowers/sdd/2026-09-23-m4a-plan/task-C1-report.md`。
+
+/** 一道带 `points` 的题。`points === undefined` 时**保留那个键**（值为 undefined）——
+ *  `reducer` 把两个框清空时产出的就是这个形状，`sanitizeContentForSave` 要处理它。 */
+function withPoints(id: string, points: QuestionPointsDraft | undefined): WorksheetQuestionNode {
+  return { ...node(id, '题干'), points };
+}
+
+/** 多选题 —— 「半对 0 分」那条提示只对它成立。 */
+function multiChoice(id: string, partialCredit: unknown, points?: QuestionPointsDraft): WorksheetQuestionNode {
+  return {
+    id,
+    type: 'multi-choice',
+    prompt: '题干',
+    inputMode: 'keyboard',
+    data: {
+      options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }],
+      correctKeys: ['A'],
+      ...(partialCredit === undefined ? {} : { partialCredit }),
+    },
+    ...(points === undefined ? {} : { points }),
+    children: [],
+  };
+}
+
+test('🔴 updatePoints：两个框都清空 ⇒ `points` 真的是 undefined（留空 = 继承，不是「填了默认档」）', () => {
+  const state = createHistory(contentOf(withPoints('q_a', { full: 7, half: 2 })));
+  const cleared = contentReducer(state, { kind: 'updatePoints', id: 'q_a', points: undefined });
+  assert.equal(cleared.present.nodes[0].points, undefined, 'undefined 才是「跟随学习单级」这个取值本身');
+  // 🔴 与「填了一份默认档 1 / 0」**必须分得开**：后者会让教师改学习单级的档时这道题不跟随，
+  // 而屏幕上什么都看不出来（服务端 `normalizePoints` 也认这一条：两个字段都无效 ⇒ undefined）。
+  assert.notDeepEqual(cleared.present.nodes[0].points, { full: 1, half: 0 });
+  assert.equal(cleared.past.length, 1, '清空是一次真实的改动，要进栈');
+});
+
+test('🔴 updatePoints 走的是撤销栈，undo 回得去（不是散落的 setState）', () => {
+  const initial = contentOf(node('q_a', '题干'));
+  const state = contentReducer(createHistory(initial), { kind: 'updatePoints', id: 'q_a', points: { full: 7, half: 2 } });
+  assert.deepEqual(state.present.nodes[0].points, { full: 7, half: 2 });
+  const undone = contentReducer(state, { kind: 'undo' });
+  assert.equal(undone.present, initial, '撤销回到「还没有 points」的那一份');
+  assert.deepEqual(contentReducer(undone, { kind: 'redo' }).present.nodes[0].points, { full: 7, half: 2 });
+});
+
+test('updatePoints：同值不造历史；半填也照常进栈（每一次击键一条）', () => {
+  const state = createHistory(contentOf(withPoints('q_a', { full: 7, half: 2 })));
+  assert.equal(
+    contentReducer(state, { kind: 'updatePoints', id: 'q_a', points: { full: 7, half: 2 } }),
+    state,
+    '重新赋成同一对值不该占掉一格撤销（与 updatePrompt 同一条规矩）',
+  );
+  // 半填是一次**真实**的变化（另一端还没填）—— 它必须能被渲染出来，否则教师刚打的字会消失。
+  const partial = contentReducer(state, { kind: 'updatePoints', id: 'q_a', points: { full: 7 } });
+  assert.notEqual(partial, state);
+  assert.deepEqual(partial.present.nodes[0].points, { full: 7 });
+  assert.equal(partial.past.length, 1);
+});
+
+test('updatePoints：命中的是那道题，别的题原样不动', () => {
+  const other = node('q_b', '另一题');
+  const state = createHistory(contentOf(node('q_a', '题干'), other));
+  const next = contentReducer(state, { kind: 'updatePoints', id: 'q_a', points: { full: 3, half: 1 } });
+  assert.equal(next.present.nodes[1], other);
+  assert.deepEqual(next.present.nodes[0].points, { full: 3, half: 1 });
+});
+
+test('🔴 sanitizeContentForSave：`points` 为 undefined 时**键被删掉**（不是留一个 undefined）', () => {
+  const raw = contentOf(withPoints('q_a', undefined));
+  assert.ok('points' in raw.nodes[0], '前提：reducer 把两个框清空时产出的就是这个形状');
+  const cleaned = sanitizeContentForSave(raw);
+  assert.equal('points' in cleaned.nodes[0], false, '「没有 = 键不存在」这条约定要在**内存里**也成立');
+});
+
+test('sanitizeContentForSave：本来就没有 points 的节点返回**同一个对象**（不造空的改动）', () => {
+  const clean = contentOf(node('q_a', '题干'));
+  assert.equal(sanitizeContentForSave(clean), clean);
+});
+
+test('🔴 sanitizeContentForSave：**半填**原样保留（草稿恢复时教师刚打的字不能消失）', () => {
+  const cleaned = sanitizeContentForSave(contentOf(withPoints('q_a', { full: 7 })));
+  assert.deepEqual(cleaned.nodes[0].points, { full: 7 }, '拦住半填出网的是 save()，不是这个纯清理函数');
+});
+
+test('🔴 串起来：`buildPayload` 的产物上仍然看得见半填 —— `save()` 检查的正是它', () => {
+  // `save()` 的判据是 `findPartialPoints(payloadRef.current.content)`，而 `payloadRef.current`
+  // 就是 `buildPayload` 的产物（已经过 `sanitizeContentForSave`）。这条钉住的是
+  // **拦阻点在正确的对象上**：只要 sanitize 哪天「顺手」把半填补成默认档，
+  // `save()` 的拦阻就会**静默失效**，而又没有任何用例会红 —— 除非有这一条。
+  const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 7 })));
+  assert.deepEqual(findPartialPoints(payload.content), [{ id: 'q_a', index: 0 }]);
+  // 两个框都空（= 跟随学习单）**不是**半填，不该拦住保存。
+  const inherited = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_b', undefined)));
+  assert.deepEqual(findPartialPoints(inherited.content), []);
+});
+
+test('🔴 findPartialPoints：只填了一个框的题被找出来，留空 / 两端齐全 / 空对象都不算', () => {
+  const content = contentOf(
+    withPoints('q_a', { full: 7, half: 2 }),
+    withPoints('q_b', { full: 7 }),
+    node('q_c', '留空'),
+    withPoints('q_d', { half: 2 }),
+    withPoints('q_e', {}),
+  );
+  assert.deepEqual(
+    findPartialPoints(content),
+    [{ id: 'q_b', index: 1 }, { id: 'q_d', index: 3 }],
+    '`{}` 与留空同义（服务端 normalizePoints({}) 也回 undefined），不是「半填」',
+  );
+  assert.deepEqual(findPartialPoints(createEmptyContent()), []);
+});
+
+test('findPartialPoints：只查顶层 —— 嵌套里的题不该让教师卡在一个改不了的红字上', () => {
+  // 编辑器的题流只渲染顶层（第一批没有容器编辑 UI，规格 §4.3）。把嵌套里的半填也算进去，
+  // 教师会看到「保存失败：第 1 题…」而那棵树里根本没有第 1 题可改 —— 保存按钮就废了。
+  const nested: WorksheetContent = {
+    schemaVersion: 1,
+    nodes: [{ ...node('q_parent', '材料题'), children: [withPoints('q_child', { full: 7 })] }],
+  };
+  assert.deepEqual(findPartialPoints(nested), []);
+});
+
+test('isPartialPoints：判据只有一处 —— undefined 与 `{}` 都不是半填', () => {
+  assert.equal(isPartialPoints(undefined), false);
+  assert.equal(isPartialPoints({}), false);
+  assert.equal(isPartialPoints({ full: 0, half: 0 }), false, '0 是一个填过的值，不是「没填」');
+  assert.equal(isPartialPoints({ full: 7 }), true);
+  assert.equal(isPartialPoints({ half: 0 }), true, '半对填 0 也算半填 —— 「0 分」是一个决定，不能靠留空表达');
+});
+
+test('🔴 parsePointInput：空 / 合法 / 非法三态分清（`Number()` 会骗人的那五个输入）', () => {
+  assert.deepEqual(parsePointInput(''), { kind: 'empty' });
+  assert.deepEqual(parsePointInput('   '), { kind: 'empty' });
+  assert.deepEqual(parsePointInput('0'), { kind: 'value', value: 0 });
+  assert.deepEqual(parsePointInput(' 7 '), { kind: 'value', value: 7 });
+  assert.deepEqual(parsePointInput(String(POINTS_MAX)), { kind: 'value', value: POINTS_MAX });
+  // 🔴 下面这几个**全都是 `Number()` 会当成合法分值**的输入 —— 用 `Number()` 的话，
+  // 教师会看到一个自己没填过的数出现在框里，而界面上没有任何提示。
+  assert.equal(parsePointInput(String(POINTS_MAX + 1)).kind, 'invalid', '> POINTS_MAX（服务端会静默回落成 1）');
+  assert.equal(parsePointInput('-1').kind, 'invalid');
+  assert.equal(parsePointInput('7.5').kind, 'invalid', '`Number("7.5")` 是 7.5 —— 不是整数');
+  assert.equal(parsePointInput('0x10').kind, 'invalid', '`Number("0x10")` 是 16');
+  assert.equal(parsePointInput('1e2').kind, 'invalid', '`Number("1e2")` 是 100');
+  assert.equal(parsePointInput('７').kind, 'invalid', '全角数字：教师看着是「7」，`Number` 给 NaN');
+  assert.equal(parsePointInput('七').kind, 'invalid');
+  assert.equal(parsePointInput('+7').kind, 'invalid');
+});
+
+test('🔴 shouldWarnZeroHalfCredit：多选 + 漏选算半对 + 半对档 0 ⇒ 必须提示（规格 §12 裁定 3 的连带）', () => {
+  const inherited = { full: 1, half: 0 };
+  // —— 提示的两种情形
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing'), inherited),
+    true,
+    '逐题留空 ⇒ 用学习单级的 0：教师以为跟随了「不给部分分」的默认档，其实这题就是不给',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', { full: 2, half: 0 }), inherited),
+    true,
+    '逐题把半对填成 0 —— 这就是「教师以为自己开了部分得分」的那一格',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', {}), inherited),
+    true,
+    '`{}` 与留空同义（服务端 normalizePoints({}) 也回 undefined）⇒ 按学习单级算',
+  );
+  // —— 不提示的四种情形（提示多了教师就学会无视它）
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', { full: 2, half: 1 }), inherited),
+    false,
+    '半对给了正数',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing'), { full: 1, half: 2 }),
+    false,
+    '学习单级的半对档是 2',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'all-or-nothing'), inherited),
+    false,
+    '没选「漏选算半对」—— 这题根本没有部分得分，半对 0 是合法的',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', undefined), inherited),
+    false,
+    '缺字段 = 全对才算（认不出的值一律按最严的走）',
+  );
+  assert.equal(
+    shouldWarnZeroHalfCredit({ ...node('q', '题干'), type: 'single-choice' }, inherited),
+    false,
+    '单选题没有「漏选」这回事 —— 其他题型的部分得分是自动的，半对填 0 是一个合法的选择',
+  );
+  // 半填：服务端会把它补成 0 分，但这道题**存不进去**（`save()` 会拦），
+  // 而它自己那条「另一个框也要填」的红字更靠前 —— 两条提示挤在一起只会让教师不知道先看哪条。
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', { full: 2 }), inherited),
+    false,
+  );
 });

@@ -23,11 +23,16 @@
  * 解释设计取舍的注释也跟着搬了过来。
  */
 
-import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 // 题型词汇表与「选项怎么读出来」的唯一一份在 `src/lib/worksheet-questions.ts`：
 // 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
-import { optionKey, QUESTION_TYPE_OPTIONS, readOptions } from '../../../../lib/worksheet-questions.ts';
+import {
+  optionKey,
+  POINTS_MAX,
+  QUESTION_TYPE_OPTIONS,
+  readOptions,
+} from '../../../../lib/worksheet-questions.ts';
 // 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
 // （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
 import {
@@ -40,8 +45,8 @@ import {
 } from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 
-export { optionKey, QUESTION_TYPE_OPTIONS, readOptions };
-export type { ChoiceOption, QuestionType };
+export { optionKey, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions };
+export type { ChoiceOption, QuestionPointsDraft, QuestionType };
 
 
 /**
@@ -92,6 +97,7 @@ export type ContentAction =
   | { kind: 'add'; questionType: QuestionType }
   | { kind: 'updatePrompt'; id: string; prompt: string }
   | { kind: 'updateData'; id: string; patch: Record<string, unknown> }
+  | { kind: 'updatePoints'; id: string; points: QuestionPointsDraft | undefined }
   | { kind: 'move'; id: string; delta: -1 | 1 }
   | { kind: 'remove'; id: string }
   | { kind: 'reset'; content: WorksheetContent }
@@ -238,8 +244,25 @@ function withoutEmptyAnswers(raw: unknown): string[] | null {
 export function sanitizeContentForSave(content: WorksheetContent): WorksheetContent {
   let touched = false;
   const nodes = content.nodes.map((node) => {
-    if (node.type !== 'fill-blank') return node;
-    const next: Record<string, unknown> = { ...node.data };
+    // ★ M4a：`points` 为 `undefined` 时**把键删掉**，而不是留一个 `{ points: undefined }`。
+    //
+    // 两种形状在 `JSON.stringify` 之后长得一样（`undefined` 的属性会被丢掉），所以这不是
+    // 在修一个能观察到的 bug —— 它让「**没有 = 键不存在**」这条约定在**内存里**也成立
+    // （服务端 `normalizeNode` 那句 `...(points ? { points } : {})` 就是按这条约定的写法）。
+    // 留着一个值为 `undefined` 的键，下游任何一处 `'points' in node` 式的判断都会被它骗到。
+    //
+    // ⚠️ 半填（只填了一个字段）**原样保留**：`buildPayload` 的产物同时也是**草稿**的内容，
+    // 丢掉它等于教师恢复草稿时屏幕上刚打的字消失。拦住半填出网的是 `save()` 里的
+    // `findPartialPoints`，不是这里 —— 一个纯清理函数不该承担「拒绝保存」这件事。
+    let current = node;
+    if (current.points === undefined && 'points' in current) {
+      const dropped: WorksheetQuestionNode = { ...current };
+      delete dropped.points;
+      current = dropped;
+      touched = true;
+    }
+    if (current.type !== 'fill-blank') return current;
+    const next: Record<string, unknown> = { ...current.data };
     let changed = false;
 
     const flat = withoutEmptyAnswers(next.answers);
@@ -257,11 +280,113 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
       if (blanksChanged) { next.blanks = blanks; changed = true; }
     }
 
-    if (!changed) return node;
+    if (!changed) return current;
     touched = true;
-    return { ...node, data: next };
+    return { ...current, data: next };
   });
   return touched ? { ...content, nodes } : content;
+}
+
+// ── 逐题分值（M4a，规格 §12 裁定 4 / 5）────────────────────────────────
+//
+// 这一组是**编辑器这一侧**的判据，服务端那三个函数（`normalizePointValue` /
+// `normalizePoints` / `resolvePoints`）**不是**它们的对应物 —— 两边回答的是不同的问题：
+//   · 服务端回答「这题**判分时**用哪两个数」（`resolvePoints`，只认落库后的形状）；
+//   · 这里回答「教师**在屏幕上填了什么**、那个状态能不能保存」。
+// ⚠️ 所以不要把一个搬到另一边去：服务端拿到的是**已经归一化过的** `points`，
+// 那里不存在「半填」这个状态（`normalizePoints` 会把缺的那一端补成 `DEFAULT_POINTS`）。
+
+/**
+ * 输入框文本 → 分值。**三种结果必须分开**（`''` 与「填错了」不是一回事）：
+ *   · `empty`   —— 空框。**这是一个有意义的取值**：留空 = 继承学习单级（裁定 4）。
+ *   · `invalid` —— 填了东西但不是 `0..POINTS_MAX` 的整数。界面要**当场**提示，
+ *     不能等到保存时才报 —— 服务端的 `normalizePointValue` 对越界值**回落** `DEFAULT_POINTS`，
+ *     保存照常成功，教师会以为自己填的数生效了。
+ *   · `value`   —— 合法。
+ *
+ * ⚠️ **不用 `Number()`**（那个想法很容易顺手写下去）：`Number('')` 与 `Number('   ')` 是 `0`
+ * （空框会变成一个合法的 0 分）、`Number('0x10')` 是 16、`Number('1e2')` 是 100、
+ * `Number('7.5')` 是 7.5 —— 每一个都会把一个「不是分值」的输入变成一个合法分值，
+ * 而教师在框里看到的明明是自己打的那串字。所以只认纯十进制数字串。
+ */
+export type ParsedPointInput = { kind: 'empty' } | { kind: 'invalid' } | { kind: 'value'; value: number };
+
+export function parsePointInput(raw: string): ParsedPointInput {
+  const text = raw.trim();
+  if (!text) return { kind: 'empty' };
+  if (!/^\d+$/.test(text)) return { kind: 'invalid' };
+  const value = Number(text);
+  if (value > POINTS_MAX) return { kind: 'invalid' };
+  return { kind: 'value', value };
+}
+
+/**
+ * 这道题的逐题分值是不是**只填了一个**（`{ full: 7 }` / `{ half: 2 }`）。
+ *
+ * 两个字段都填 = 已单独配分；两个都没填 = 跟随学习单级；**只有一个**是编辑期的中间态，
+ * 而它**不是一个能保存的状态** —— 理由见 `findPartialPoints`。
+ */
+export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
+  if (!points) return false;
+  return (points.full === undefined) !== (points.half === undefined);
+}
+
+/**
+ * 🔴 **只填了一个框**的题（顶层，按题目顺序）—— `save()` 用它拦下保存。
+ *
+ * 为什么必须拦（2026-09-24 实测，A2 审查带出）：服务端的 `normalizePoints` 对
+ * 「只填了一端」的处理是**用 `DEFAULT_POINTS` 补另一端**（全对 1 / 半对 0），
+ * **不是**用学习单级的档。于是「学习单级 `{full:3, half:2}` + 这道题 `points:{full:7}`」
+ * 在判分时半对得 **0 分**，而教师以为自己只是把全对调成了 7、半对还在跟随学习单。
+ *
+ * 实测（隔离库 + 真实 `POST /api/worksheets`，载荷 `points: {full: 7}`）：
+ * 回包与库里的都是 `points: {full: 7, half: 0}` —— **`half` 被补齐成了 0，不是缺席**。
+ * ⇒ 「改 `resolvePoints` 为逐字段回落」那条路**修不了这个**：库里那个 `half: 0` 是一个
+ * 有效分值，逐字段回落会照用它。**这才是这里必须拦、而不是去改判分的原因。**
+ *
+ * ⚠️ **只看顶层 `nodes`**：编辑器的题流只渲染顶层（第一批没有容器编辑 UI，规格 §4.3），
+ * 嵌套 `children` 里的题教师**看不见也改不了** —— 对它拦下保存会让教师卡死在一个
+ * 无法修复的错误上。手工改过的库行若在嵌套里带了半填的 `points`，它的后果与「没配过」
+ * 一致（服务端补 0），属于第一批的已知边界。
+ *
+ * 返回的下标是**数组下标（0-based）**；调用方要拼「第 N 题」时自己 +1（界面上的题号是 1-based）。
+ */
+export function findPartialPoints(content: WorksheetContent): Array<{ id: string; index: number }> {
+  const found: Array<{ id: string; index: number }> = [];
+  content.nodes.forEach((node, index) => {
+    if (isPartialPoints(node.points)) found.push({ id: node.id, index });
+  });
+  return found;
+}
+
+/**
+ * 🔴 规格 §12 裁定 3 的**连带要求**：教师给多选题选了「漏选算半对」、而半对档是 **0** 时，
+ * 界面必须说一句 —— 否则他以为自己开了部分得分，而学生**一分都拿不到**，且没有任何报错。
+ *
+ * 判据是「**这题实际会用到的半对档**」，只有两种可能（能保存的状态下）：
+ *   · 逐题填了 ⇒ 用逐题那个数；
+ *   · 逐题留空 ⇒ 用学习单级的 `halfStep`。
+ *
+ * ⚠️ **半填时返回 `false`（不提示）**，这**不是**漏判：半填的题已经被 `findPartialPoints`
+ * 拦下、根本存不进去，而它自己那条「另一个框也要填」的提示更靠前 —— 一张卡片上同时挂两条
+ * 红字只会让教师不知道先看哪条。（也正因为如此，这里**不**去模拟服务端「半填补 0」的行为：
+ * 那要再抄一份 `DEFAULT_POINTS`，而它在这条路上永远不会被用到。）
+ *
+ * ⚠️ `points` 存在但两个字段都缺（`{}`，只会来自手工改过的库行）**与留空同义** ——
+ * 服务端 `normalizePoints({})` 也回 `undefined`（整份继承），所以这里按学习单级算。
+ */
+export function shouldWarnZeroHalfCredit(
+  node: WorksheetQuestionNode,
+  inherited: { full: number; half: number },
+): boolean {
+  if (node.type !== 'multi-choice') return false;
+  if (node.data.partialCredit !== 'allow-missing') return false;
+  const points = node.points;
+  let half: number | null;
+  if (!points || (points.full === undefined && points.half === undefined)) half = inherited.half;
+  else if (points.half === undefined) half = null;   // 半填：见上面的说明，不判断
+  else half = points.half;
+  return half === 0;
 }
 
 /** 顶层题目列表里替换一道题。没命中就**返回原对象**，免得制造一条空的历史。 */
@@ -311,6 +436,26 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
         const keys = Object.keys(action.patch);
         if (keys.every((key) => node.data[key] === action.patch[key])) return node;
         return { ...node, data: { ...node.data, ...action.patch } };
+      });
+
+    case 'updatePoints':
+      // 与 `updatePrompt` / `updateData` 走**同一条**路（进撤销栈、同值去重）——
+      // 散落的 `setState` 是 undo 开始漏的第一处，这条纪律在本文件头与
+      // `ContentAction` 上各写了一遍，这里是它的第三个使用者。
+      //
+      // ⚠️ 比较是**逐字段的 `===`**：两个框各自的每一次击键都该进栈（与 `updatePrompt`
+      // 逐字同形），但「重新赋成同一对值」（例如失焦时又提交了一次）不该占掉一格撤销 ——
+      // 否则教师按撤销时屏幕纹丝不动，只能再按一次。
+      //
+      // ⚠️ `points` 允许**半填**（`{ full: 7 }`，另一个框还空着）：那是屏幕上真实存在的
+      // 一瞬间状态，受控输入框要靠它渲染。拦住它出网的是 `save()` 里的 `findPartialPoints`，
+      // 不是这里 —— reducer 只负责如实记录教师在屏幕上做了什么。
+      return replaceNode(content, action.id, (node) => {
+        const current = node.points;
+        const next = action.points;
+        if (current === undefined && next === undefined) return node;
+        if (current && next && current.full === next.full && current.half === next.half) return node;
+        return { ...node, points: next };
       });
 
     case 'move': {

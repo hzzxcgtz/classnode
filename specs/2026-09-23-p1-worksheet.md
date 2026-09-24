@@ -923,7 +923,12 @@ socket 只承担「服务端 → 教师看板」的单向广播。
 > 三态与**绝对数值得分**之后：数据层是 `gradeState`（三态）+ `score`（绝对值，教师逐题填的那个数），
 > 显示值 = `score`（对错档画 ✓/✗ 不看数值），累计 = 每题 `score` 之和。
 > **乘法模型（显示值 = 对错 × 步长）已被 D3 拆掉**；`RewardScale` 的 `step`/`halfStep` 两个成员
-> 在改完后全仓零读取，已删除（常量与两个 normalize 保留 —— 它们仍服务服务端的 `pointsFromSettings`）。
+> 在改完后全仓零读取，已删除。
+> ⚠️ **2026-09-24 更正（D3 审查者核出，控制器写错了归属）**：保留的常量与两个 normalize
+> （`REWARD_STEPS` / `HALF_STEPS` / `normalizeRewardStep` / `normalizeHalfStep`）在 `src/lib` 这一份的
+> **活消费方是教师端编辑器**（`worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` / `normalizeLoadedSettings`），
+> **不是**服务端的 `pointsFromSettings` —— 后者走的是 `server/` 自己那份副本，**读不到 `src/`**。
+> 另外「对错档不看数值」也不准确：`rewardAmount` 那一支判的是 `score > 0`（看的是「有没有分」，不是「得几分」）。
 > 下面这段留着是为了让「它曾经长什么样」有据可查，**不要照着它去实现或验收**。
 
 🔴 **绝不把星星/花朵/分数存进数据库。** 一旦落库，教师端「哪道题错得多」、导出、

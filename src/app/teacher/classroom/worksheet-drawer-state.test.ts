@@ -511,28 +511,28 @@ test('🔴 分母与抽屉里的标记必须同进同出：能判分的题型既
     const outcome = questionOutcome(node({ id: 'q_x', type: option.value }), rows[0]);
 
     if (!EXPECTED_GRADED[option.value]) {
-      assert.equal(outcome.mark, 'none', `题型「${option.value}」不判分，格子上就不该有标记`);
+      assert.equal(outcome.mark, 'none', `题型「${option.value}」不判分，抽屉里就不该有标记`);
       continue;
     }
 
     // 这正是那份并列白名单漏改时的症状：服务端判了分、`isCorrect` 非空
-    // ⇒ 下面这个分母把它算进去，而格子上什么都不画 —— 全程无报错。
+    // ⇒ 下面这个分母把它算进去，而抽屉里什么都不画 —— 全程无报错。
     assert.equal(questionAggregate(rows).graded, 2, '分母读的是判分结论非空，与题型无关');
     assert.notEqual(
       outcome.mark,
       'none',
-      `题型「${option.value}」已经被判了分（进了分母），格子上却不画标记 —— ` +
-      '这就是「新题型算进正确率、格子上没有 ✓」那个静默不一致',
+      `题型「${option.value}」已经被判了分（进了分母），抽屉里却不画标记 —— ` +
+      '这就是「新题型算进正确率、抽屉里没有 ✓」那个静默不一致',
     );
 
     // ★ M4a：半对那一档**也**要同进同出，而且比另外两档更要紧 ——
-    // 它是唯一「算进分母却不算对」的行（规格 §12），格子上少了它就只能看起来像答错。
+    // 它是唯一「算进分母却不算对」的行（规格 §12），抽屉里少了它就只能看起来像答错。
     const partialRow = row({ questionId: 'q_x', status: 'submitted', gradeState: 'partial', isCorrect: false });
     assert.equal(questionAggregate([partialRow, partialRow]).graded, 2, '半对也进分母');
     assert.equal(
       questionOutcome(node({ id: 'q_x', type: option.value }), partialRow).mark,
       'partial',
-      `题型「${option.value}」被判成半对，格子上却没画出半对档 —— ` +
+      `题型「${option.value}」被判成半对，抽屉里却没画出半对档 —— ` +
       '它会看起来像答错（或像没判分），两句话都是假的',
     );
   }

@@ -296,6 +296,10 @@ test('🔴 draftFromValue：多空填空的**空串不许被吞掉**（位置就
     { kind: 'fill', texts: ['', ''] });
   // `texts: []`（一份没填过的多空作答）⇒ 也要补成与空数等长，不能回落去读 `text`
   //（多空值里没有那个键 ⇒ 整列变空、连框都不见了）。
+  // ⊘ 2026-09-24 更正：括号里那半句**是反事实的** —— 回落去读 `text` 得到 `[]`，而下面
+  // 那个按 `count` 补位的循环照样补满，两种判据在这条断言上**同结果**（本条在两种判据下
+  // 都绿，它并不区分它们）。判据本体已退回 `length > 0`，理由与实测写在
+  // `worksheet-answer-value.ts` 的 `draftFromValue` 那一段注释上。
   assert.deepEqual(draftFromValue(fillMultiNode(), { format: 'fill-multi/v1', texts: [] }),
     { kind: 'fill', texts: ['', ''] });
   // 坏元素（不是字符串）⇒ 落成空串**占住它那个位子**，不许丢掉它（丢掉就是错位）。

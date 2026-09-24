@@ -31,8 +31,16 @@ import {
   type RewardScale,
 } from './worksheet-reward.ts';
 
-function scale(step: number, over: Partial<RewardScale> = {}): RewardScale {
-  return { style: 'star', step, ...over };
+/**
+ * 一份奖励配置。
+ *
+ * ★ M4a（绝对值模型）：它过去还要一个**步长**（`scale(2)` = 星星 ×2），而奖励层现在
+ * **不再有步长**（`RewardScale` 上那两个数已删，理由见那个类型的注释）。
+ * 所以入参从「步长」变成了「哪一档」，而用例里原来那个数**挪去了 `rewardAmount` 的第一个入参**
+ *（画出来的个数就是得分本身）。
+ */
+function scale(over: Partial<RewardScale> = {}): RewardScale {
+  return { style: 'star', ...over };
 }
 
 // ── 1. 取值域与默认档 ────────────────────────────────────────────────────
@@ -85,136 +93,140 @@ test('normalizeHalfStep：0/1/2/3/5 原样；越界与缺字段回落到 0（**�
   }
 });
 
-test('resolveRewardScale：从 settings 那一坨里取，缺字段与坏值都回落，**不抛**', () => {
-  assert.deepEqual(resolveRewardScale({ rewardStyle: 'flower', rewardStep: 3 }), { style: 'flower', step: 3, halfStep: DEFAULT_HALF_STEP });
-  assert.deepEqual(resolveRewardScale({}), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
-  assert.deepEqual(resolveRewardScale(null), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
-  assert.deepEqual(resolveRewardScale([1, 2]), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
-  assert.deepEqual(resolveRewardScale('star'), { style: DEFAULT_REWARD_STYLE, step: DEFAULT_REWARD_STEP, halfStep: DEFAULT_HALF_STEP });
+test('resolveRewardScale：从 settings 那一坨里取**档位**，缺字段与坏值都回落，**不抛**', () => {
+  assert.deepEqual(resolveRewardScale({ rewardStyle: 'flower', rewardStep: 3 }), { style: 'flower' });
+  assert.deepEqual(resolveRewardScale({}), { style: DEFAULT_REWARD_STYLE });
+  assert.deepEqual(resolveRewardScale(null), { style: DEFAULT_REWARD_STYLE });
+  assert.deepEqual(resolveRewardScale([1, 2]), { style: DEFAULT_REWARD_STYLE });
+  assert.deepEqual(resolveRewardScale('star'), { style: DEFAULT_REWARD_STYLE });
   // 一个坏键不该把另一个好键也带坏
   assert.deepEqual(
     resolveRewardScale({ rewardStyle: '不知道', rewardStep: 5 }),
-    { style: DEFAULT_REWARD_STYLE, step: 5, halfStep: DEFAULT_HALF_STEP },
+    { style: DEFAULT_REWARD_STYLE },
   );
-  // ★ M4a：半对档也要取出**配过的**值 —— 少了这一项，`rewardAmount` 永远走
-  // `Math.floor(step × score)` 那条兜底，教师配的「半对 0」在界面上是个「按比例折算」。
-  assert.equal(resolveRewardScale({ halfStep: 2 }).halfStep, 2);
-  assert.equal(resolveRewardScale({ halfStep: 0 }).halfStep, 0, '0 是一个**配过的**值，不许被当成缺字段');
-  assert.equal(resolveRewardScale({ halfStep: 4 }).halfStep, DEFAULT_HALF_STEP, '越界值回落');
-  assert.equal(resolveRewardScale({ halfStep: '2' }).halfStep, DEFAULT_HALF_STEP);
-  // 返回值里的键就这三个 —— 多一个键在这里不会报错，只会让下游多一个能读错的开关。
-  assert.deepEqual(Object.keys(resolveRewardScale({ rewardStep: 2 })).sort(), ['halfStep', 'step', 'style']);
+  assert.deepEqual(resolveRewardScale({ rewardStyle: 'points', rewardStep: '不知道' }), { style: 'points' });
+  // ★ M4a：`rewardStep` / `halfStep` **不进这个返回值**（规格 §12 裁定 4：学习单级那两个数
+  // 由服务端 `pointsFromSettings` 读出来折算成**得分**；学生端不复制第三份归一化）。
+  // ⇒ 返回值里的键就这一个。多回来的键在这里不会报错，只会让下游多一个能读错的开关 ——
+  // 那正是本次**删掉 `RewardScale` 上那两个数**要防的事（见那个类型的注释）。
+  assert.deepEqual(
+    Object.keys(resolveRewardScale({ rewardStyle: 'star', rewardStep: 2, halfStep: 5 })).sort(),
+    ['style'],
+  );
+  // ⚠️ 「那两个数怎么归一化」的判据**没有丢**，只是不在本函数上：
+  // `normalizeRewardStep` / `normalizeHalfStep` 在上面各有自己的用例（两档的域与默认值都不一样），
+  // 教师端走 `worksheet-editor-core.ts` 的 `normalizeLoadedSettings`（`worksheet-editor-core.test.ts`），
+  // 服务端走 `pointsFromSettings`（`worksheet-grade-m4.test.ts`）。
 });
 
-// ── 2. 得分 → 奖励个数（规格 §9.1）────────────────────────────────────────
+// ── 2. 得分 → 奖励个数（规格 §9.1 / §12 的绝对值模型）──────────────────────
 
-test('🔴 rewardAmount：今天的得分只可能是 0/1，行为与「isCorrect ? step : 0」逐字相同', () => {
-  // 这一条是本次改动的**形状契约**：接口按得分写，但今天的输出与布尔版一模一样。
-  // 反证：把 `rewardAmount` 改回 `score >= 1 ? step : 0` 之外的任何规则，它必须变红。
-  for (const step of REWARD_STEPS) {
-    for (const score of [0, 1] as const) {
-      const booleanVersion = score >= 1 ? step : 0;
-      assert.equal(
-        rewardAmount(score, scale(step)),
-        booleanVersion,
-        `步长 ${step}、得分 ${score}：应当与布尔版一致`,
-      );
-    }
+test('🔴 rewardAmount：**得分就是画出来的那个数** —— 5 分画 5 个，不乘任何步长', () => {
+  // 这是本次改动（M4a 裁定，2026-09-24）的**形状契约**（规格 §12：「得分」与「奖励」
+  // 不再是两件事，而是同一个数的两种画法）。
+  // 反证：把函数体改回乘法模型（`score >= 1 ? scale.step : …`）⇒ 本条与它后面三条一起变红。
+  for (const score of [1, 2, 3, 5]) {
+    assert.equal(rewardAmount(score, scale()), score, `${score} 分就该画 ${score} 个`);
   }
+  // 🔴 旧模型的反例（B2 那轮抓的）：学习单级 `rewardStep = 3` + 某题 `full = 5`。
+  // 旧的 `score >= 1 ? scale.step : …` 返回 **3** ⇒ 学生看到 ⭐⭐⭐，而规格 §12 要的是 5 个。
+  assert.equal(rewardAmount(5, scale()), 5, '学习单级 ×3 + 本题 5 分 ⇒ 画 5 个，不是 3 个');
+  // 三档符号的规则是同一条（只有对错档不同，见下一条用例）
+  assert.equal(rewardAmount(4, scale({ style: 'flower' })), 4);
+  assert.equal(rewardAmount(4, scale({ style: 'points' })), 4);
 });
 
 test('rewardAmount：没判分（null）⇒ 0，而不是「0 分」', () => {
-  assert.equal(rewardAmount(null, scale(2)), 0);
+  assert.equal(rewardAmount(null, scale()), 0);
 });
 
-test('🔴 rewardAmount：对错档**不理**库里那个步长（否则累计会变成 ✓×9）', () => {
-  // 教师从「星星 ×3」改选「对错」时，库里那个 3 仍然留着（切回星星时他配的档还在 ——
-  // 刻意不清）。若累计去读它，3 道答对会画成 `✓×9`。这一档的口径是「答对一题一个 ✓」。
-  for (const step of REWARD_STEPS) {
-    assert.equal(rewardAmount(1, { style: 'correctness', step }), 1);
+test('🔴 rewardAmount：对错档**只看有没有分**，不看得几分（否则累计会变成 ✓×9）', () => {
+  // 这一档画的是 ✓/✗，不是一串符号 ⇒ 一次只算 1；它的累计画成 `✓×N`，N 是「有分几题」。
+  // 旧实现读 `scale.step`，教师在「星星 ×3」与「对错」之间来回选时库里那个 3 一直留着
+  //（这是好事，切回星星时他配的 ×3 还在）⇒ 拿它去算对错档的累计会得到 `✓×9`。
+  for (const score of [1, 2, 5]) {
+    assert.equal(rewardAmount(score, scale({ style: 'correctness' })), 1);
   }
-  const correctness: RewardScale = { style: 'correctness', step: 3 };
-  const scores: Array<number | null> = [1, 1, 0, 1];
+  const correctness: RewardScale = scale({ style: 'correctness' });
+  const scores: Array<number | null> = [5, 1, 0, 2];
   const total = scores.reduce<number>((sum, score) => sum + rewardAmount(score, correctness), 0);
-  assert.equal(total, 3, '三题答对 ⇒ 累计 3');
+  assert.equal(total, 3, '三题有分（含半对拿到的 2 分）⇒ 累计 3 枚 ✓');
   assert.equal(rewardTotalText(correctness, total), '✓×3');
-  // 阴性对照：同一批得分换到星星档就必须吃那个 3（否则这条断言证明不了什么）
-  assert.equal(scores.reduce<number>((sum, score) => sum + rewardAmount(score, scale(3)), 0), 9);
+  // 阴性对照：同一批得分换到星星档就必须**按分数**画（否则这条断言证明不了什么）
+  assert.equal(scores.reduce<number>((sum, score) => sum + rewardAmount(score, scale()), 0), 8);
 });
 
-test('rewardAmount：非 0/1 的得分**不崩、不越界**（M4 的部分得分走这条）', () => {
-  // 今天判分只会给出 0 或 1，所以下面这些值一次都不会出现 —— 但函数必须是得分驱动的，
-  // 而不是靠「反正只有 0/1」活着。没有配半对档时按比例向下取整（兜底，不是产品规则）。
-  assert.equal(rewardAmount(0.5, scale(1)), 0, '步长 1 的半对：向下取整到 0');
-  assert.equal(rewardAmount(0.5, scale(2)), 1);
-  assert.equal(rewardAmount(0.5, scale(3)), 1);
-  assert.equal(rewardAmount(0.5, scale(5)), 2);
-  assert.equal(rewardAmount(0.25, scale(4)), 1);
-  for (const step of REWARD_STEPS) {
-    for (const score of [0, 0.25, 0.5, 0.75, 1]) {
-      const amount = rewardAmount(score, scale(step));
-      assert.ok(
-        amount >= 0 && amount <= step,
-        `得分 ${score}、步长 ${step}：奖励个数 ${amount} 越出了 [0, step]`,
-      );
-    }
-  }
+test('rewardAmount：不做任何数学变换（不乘、不折算、不取整）', () => {
+  // 旧模型把 [0,1] 当成**比例**（`score = 0.5` ⇒ 半对档）、把 `step` 当成**上界**
+  //（`Math.floor(step × score)`）。这两个概念在绝对值模型下都不存在了：教师逐题填的就是
+  // 绝对数（规格 §12 裁定 5），所以画出来的个数可以大于任何「步长」。
+  assert.equal(rewardAmount(9, scale()), 9, '上界来自教师填的分值，不是一个步长');
+  assert.equal(rewardAmount(99, scale()), 99);
+  // ⚠️ 下面这一条在真机上**不会出现**：服务端 `normalizePointValue` 把得分归一化到 0..99
+  // 的整数。它钉的是「本函数不做数学变换」这件事本身 —— 旧模型在这里是 `Math.floor(step × 0.5)`。
+  assert.equal(rewardAmount(0.5, scale()), 0.5);
 });
 
-test('rewardAmount：配了半对档就照它给（M4 的那条路，今天没人传）', () => {
-  assert.equal(rewardAmount(0.5, scale(2, { halfStep: 1 })), 1);
-  assert.equal(rewardAmount(0.5, scale(5, { halfStep: 2 })), 2);
-  // 半对档**不参与**全对：1 分永远是 `step`，不会被 `halfStep` 顶掉
-  assert.equal(rewardAmount(1, scale(5, { halfStep: 2 })), 5);
+test('rewardAmount：半对不是奖励层的事 —— 那一档给了几分就画几个', () => {
+  // 教师给某题填「全对 5 / 半对 2」：服务端判出 5 或 2（`resolvePoints` + `pointsFromSettings`），
+  // 显示层照画。旧实现在这里读 `RewardScale.halfStep`，而那条分支**在真实数据上一次都走不到**
+  //（归一化后的得分是整数 ⇒ 不存在 `0 < score < 1`）；现在连字段都没有了。
+  assert.equal(rewardAmount(5, scale()), 5);
+  assert.equal(rewardAmount(2, scale()), 2);
+  assert.equal(rewardMark(scale(), 2), '⭐⭐', '半对拿到 2 分就在星星档画两颗');
+  assert.equal(rewardMark(scale({ style: 'points' }), 2), '+2');
+  // 半对填 0（默认档，规格 §12 裁定 3）⇒ 得分 0 ⇒ 什么都不画（对错档除外，那档画 ✗）
+  assert.equal(rewardMark(scale(), 0), null);
+  assert.equal(rewardMark(scale({ style: 'correctness' }), 0), '✗');
 });
 
 test('rewardAmount：坏数字（NaN / Infinity）当成 0，不画出一串长度未定义的符号', () => {
-  assert.equal(rewardAmount(Number.NaN, scale(2)), 0);
-  assert.equal(rewardAmount(Number.POSITIVE_INFINITY, scale(2)), 0);
-  assert.equal(rewardAmount(-1, scale(2)), 0);
+  assert.equal(rewardAmount(Number.NaN, scale()), 0);
+  assert.equal(rewardAmount(Number.POSITIVE_INFINITY, scale()), 0);
+  assert.equal(rewardAmount(-1, scale()), 0);
 });
 
 // ── 3. 画出来的字面（规格 §9.3 的两处）───────────────────────────────────
 
-test('rewardMark：每题旁那个字 —— 对错档画 ✓/✗，符号档重复 N 次，分数档画 +N', () => {
-  assert.equal(rewardMark(scale(2, { style: 'correctness' }), 1), '✓');
-  assert.equal(rewardMark(scale(2, { style: 'correctness' }), 0), '✗');
-  assert.equal(rewardMark(scale(2), 1), '⭐⭐');
-  assert.equal(rewardMark(scale(1, { style: 'flower' }), 1), '🌸');
-  assert.equal(rewardMark(scale(3, { style: 'points' }), 1), '+3');
-  assert.equal(rewardMark(scale(5, { style: 'points' }), 1), '+5');
+test('rewardMark：每题旁那个字 —— 对错档画 ✓/✗，符号档按**得分**重复，分数档画 +N', () => {
+  assert.equal(rewardMark(scale({ style: 'correctness' }), 5), '✓');
+  assert.equal(rewardMark(scale({ style: 'correctness' }), 0), '✗');
+  assert.equal(rewardMark(scale(), 2), '⭐⭐');
+  assert.equal(rewardMark(scale({ style: 'flower' }), 1), '🌸');
+  assert.equal(rewardMark(scale({ style: 'points' }), 3), '+3');
+  assert.equal(rewardMark(scale({ style: 'points' }), 5), '+5');
 });
 
 test('rewardMark：没判分 ⇒ null；符号档拿了 0 个 ⇒ null（不是画一个「0 颗星」）', () => {
-  assert.equal(rewardMark(scale(2), null), null);
-  assert.equal(rewardMark(scale(2, { style: 'correctness' }), null), null);
-  assert.equal(rewardMark(scale(2), 0), null);
-  assert.equal(rewardMark(scale(2, { style: 'flower' }), 0), null);
-  assert.equal(rewardMark(scale(2, { style: 'points' }), 0), null);
+  assert.equal(rewardMark(scale(), null), null);
+  assert.equal(rewardMark(scale({ style: 'correctness' }), null), null);
+  assert.equal(rewardMark(scale(), 0), null);
+  assert.equal(rewardMark(scale({ style: 'flower' }), 0), null);
+  assert.equal(rewardMark(scale({ style: 'points' }), 0), null);
   // 对错档相反：答错**必须**画出来 —— 那是这一档存在的意义
-  assert.notEqual(rewardMark(scale(2, { style: 'correctness' }), 0), null);
+  assert.notEqual(rewardMark(scale({ style: 'correctness' }), 0), null);
 });
 
 test('rewardTotalText：顶部累计 —— 符号档 `⭐×3`、对错档 `✓×3`、分数档是 `+3 分`', () => {
-  assert.equal(rewardTotalText(scale(1), 3), '⭐×3');
-  assert.equal(rewardTotalText(scale(1, { style: 'flower' }), 2), '🌸×2');
-  assert.equal(rewardTotalText(scale(1, { style: 'correctness' }), 3), '✓×3');
-  assert.equal(rewardTotalText(scale(1, { style: 'points' }), 5), '+5 分');
+  assert.equal(rewardTotalText(scale(), 3), '⭐×3');
+  assert.equal(rewardTotalText(scale({ style: 'flower' }), 2), '🌸×2');
+  assert.equal(rewardTotalText(scale({ style: 'correctness' }), 3), '✓×3');
+  assert.equal(rewardTotalText(scale({ style: 'points' }), 5), '+5 分');
   // 一个都没有 ⇒ 不画（`⭐×0` 会让「还没有」看起来像「统计过了」）
-  assert.equal(rewardTotalText(scale(1), 0), null);
-  assert.equal(rewardTotalText(scale(1, { style: 'points' }), 0), null);
-  assert.equal(rewardTotalText(scale(1), -1), null);
+  assert.equal(rewardTotalText(scale(), 0), null);
+  assert.equal(rewardTotalText(scale({ style: 'points' }), 0), null);
+  assert.equal(rewardTotalText(scale(), -1), null);
 });
 
 test('累计 = 每题之和：同一份配置下，逐个求和的桶与逐步累加**同值**', () => {
   // 面板里那两处（每题旁的徽章与顶栏的累计）用的是同一个 `rewardAmount`，
   // 这里把「两边算出来的是同一个数」钉住 —— 分叉的表现是顶栏与题目里的星星对不上，
   // 而那种偏差没有任何报错。
-  const star = scale(2);
-  const scores: Array<number | null> = [1, 0, 1, null, 1, 0.5];
+  const star = scale();
+  const scores: Array<number | null> = [2, 0, 5, null, 1, 3];
   let running = 0;
   for (const score of scores) running += rewardAmount(score, star);
   const summed = scores.reduce<number>((sum, score) => sum + rewardAmount(score, star), 0);
   assert.equal(running, summed);
-  assert.equal(running, 7, '2 + 0 + 2 + 0 + 2 + 1（半对兜底向下取整）');
+  assert.equal(running, 11, '2 + 0 + 5 + 0 + 1 + 3（`null` 那题既不画也不加）');
 });

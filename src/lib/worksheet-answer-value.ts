@@ -460,7 +460,20 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     // ⚠️ 判据是「`texts` **在不在**」，不是「它是不是非空数组」：`texts: []` 是一份
     // 合法（只是没填）的多空作答，落到下面补位成与空数等长的一列；而拿 `length > 0`
     // 当判据会让它去读 `text`（多空值里根本没有那个键）⇒ 整列变空。
-    const texts = Array.isArray(row.texts)
+    //
+    // ⊘ 2026-09-24（控制器裁定）**上面那段因果是反事实的，判据已退回 `length > 0`**：
+    //   ① 「`texts: []` 回落去读 `text` ⇒ 整列变空」**不会发生** —— 多空值里没有 `text`
+    //      键 ⇒ 得到 `[]` ⇒ 下面那个**按 `count` 补位**的循环照样补出与空数等长的一列
+    //      空框（「连框都不见了」是推演出来的，不是观测到的）；
+    //   ② 两种判据**唯一**可观测的差异在另一个方向，而且是**丢数据**：
+    //      `{ format: 'fill/v1', text: 'H2O', texts: [] }`（单空值上多挂一个空数组 ——
+    //      手改过的行 / 上一个版本可能留下）旧判据读 `text` ⇒ 显示 `H2O`；
+    //      `Array.isArray` 判据读 `texts: []` ⇒ 整列空 ⇒ **学生写过的字不见了**；
+    //   ③ 复查者实测：只退回判据 ⇒ `worksheet-answer-value.test.ts` **23/23 全绿**
+    //      —— 没有任何用例钉着这两种判据的差异（也就是说那句理由从未被验证过）。
+    //   ⇒ 一句「看起来更稳」的判据改动，唯一的可观测方向是丢数据 ⇒ 退回。
+    //   （这也是本仓那条纪律的由来：**「因此不会…」的结论必须附一条命令或一段实测输出**。）
+    const texts = Array.isArray(row.texts) && row.texts.length > 0
       ? readTextList(row.texts)
       : (typeof row.text === 'string' ? [row.text] : []);
     const count = readBlankCount(node);

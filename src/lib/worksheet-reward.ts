@@ -18,7 +18,7 @@
  *
  * ── 单独成文件、单独可跑 ───────────────────────────────────────────────────
  *
- * 与 `worksheet-questions.ts` 同一个理由：取值的规则**错了不报错** —— 步长算错只会让
+ * 与 `worksheet-questions.ts` 同一个理由：取值的规则**错了不报错** —— 个数算错只会让
  * 学生少拿一朵花、多拿一颗星，界面上一切正常。所以它必须能被 `node --test` 直接断言：
  *
  * ```bash
@@ -118,25 +118,30 @@ export const DEFAULT_HALF_STEP = 0;
 export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 /**
- * 一份学习单上的奖励配置。
+ * 一份学习单上的奖励配置：**哪一档**（规格 §9.2 的四选一）。
  *
- * `style` 与 `step` / `halfStep` 就是落库的那三个键（`Worksheet.settings`，规格 §4.4 / §9.2）。
+ * ── ★ M4a：这里曾经还有 `step` / `halfStep` 两个数，**已删** ────────────────
+ *
+ * 那两个数是 0/1 时代「得分 → 奖励」的**乘法模型**的输入
+ *（`答对 ⇒ step`、`半对 ⇒ halfStep ?? floor(step × score)`）。M4a 把奖励层改成
+ * **绝对值模型**（`rewardAmount` 直接返回 `score`，规格 §12「得分与奖励不再是两件事，
+ * 而是同一个数的两种画法」）之后，本文件与它的两个消费方（`reward-badge.tsx` /
+ * `worksheet-panel.tsx`）**一个字节都不再读它们**：2026-09-24 实测（改完之后）
+ * `grep -rn "scale\.step\|scale\.halfStep" src server/src` **零命中**（只剩注释里的历史引用），
+ * 而改之前全仓仅有的两处读取都在 `rewardAmount` 内部。⇒ 删除，而不是留着当历史：
+ * 它们就摆在 `rewardAmount` 旁边，下一个人看见「本单的步长」会顺手乘回去，
+ * 而那正是本次要拆掉的那个模型。
+ *
+ * ⚠️ **那两个数没有消失，只是换了消费方。** 学习单级的 `rewardStep` / `halfStep` 仍然落在
+ * `Worksheet.settings` 里（规格 §12 裁定 4：「本单未单独设置的题用这个」），由**服务端**的
+ * `pointsFromSettings` 读出来、经 `resolvePoints` 折算成**得分** —— 它们现在走的是
+ * 「先变成 `score`、再被画出来」这一条路，而不是「在显示层被乘一次」。
+ * 教师端也照旧读写它们（那是 `WorksheetSettings`，`worksheet-editor-core.ts` 的
+ * `normalizeRewardStep` / `normalizeHalfStep` 归一化的是那一份，**不是**本类型）。
  */
 export interface RewardScale {
+  /** 哪一档：对错 / 星星 / 花朵 / 分数。**只有它决定画什么**；画几个由得分定。 */
   style: RewardStyle;
-  /** 答对一题的步长（教师可配 1 / 2 / 3 / 5）。 */
-  step: number;
-  /**
-   * ★ M4a：**半对**那一档的步长（教师可配 0 / 1 / 2 / 3 / 5，`0` = 这单不给部分分）。
-   *
-   * 它从 D5 起就留在这个形状里、却一直没人传（那时教师配不了它）；M4a 起由
-   * `resolveRewardScale` 从库里那个键读出来 —— 走那条路进来的 `RewardScale` **总是带着它**。
-   *
-   * ⚠️ 它仍然写成可选的，是因为 `rewardAmount` 里那条 `?? Math.floor(step × score)` 的兜底
-   * 要对**手工拼的** `RewardScale`（用例里直接写 `{ style, step }` 的那些）成立 ——
-   * 那是兜底，**不是**产品定的规则（产品规则是「半对得半对档那个数」）。
-   */
-  halfStep?: number;
 }
 
 /** 认不出的样式一律落到默认档（库里手工改过的行不该让面板画不出东西）。 */
@@ -167,44 +172,60 @@ export function normalizeHalfStep(raw: unknown): number {
   return typeof raw === 'number' && HALF_STEPS.includes(raw) ? raw : DEFAULT_HALF_STEP;
 }
 
-/** 从 `Worksheet.settings` 那一坨里取出奖励配置（缺字段 / 坏值一律回落到默认）。 */
+/**
+ * 从 `Worksheet.settings` 那一坨里取出奖励配置（缺字段 / 坏值一律回落到默认档）。
+ *
+ * ★ M4a：它过去还顺带归一化 `rewardStep` / `halfStep`，**现在只归一化 `style`** ——
+ * 那两个数改由服务端的 `pointsFromSettings` 消费（理由与实测写在 `RewardScale` 上）。
+ * 它们各自「缺字段 / 越界值回落到哪一个默认」的判据因此只剩两处：服务端那一份
+ *（判分用）与教师端 `worksheet-editor-core.ts` 那一份（面板的受控 `<select>` 用）。
+ * **学生端不再复制第三份** —— 复制出来的那份没有消费方，只有漂移的机会。
+ */
 export function resolveRewardScale(settings: unknown): RewardScale {
   const source = settings && typeof settings === 'object' && !Array.isArray(settings)
     ? settings as Record<string, unknown>
     : {};
   return {
     style: normalizeRewardStyle(source.rewardStyle),
-    step: normalizeRewardStep(source.rewardStep),
-    // ★ M4a：这一行就是「学习单级半对档」到学生端的**唯一**一条路（服务端那边是
-    // `readStudentSettings` 把它下发出来）。少这一行 ⇒ `rewardAmount` 永远走
-    // `Math.floor(step × score)` 那条兜底 ⇒ 教师配的「半对 0」被当成「按比例折算」，
-    // 而界面上没有任何提示。
-    halfStep: normalizeHalfStep(source.halfStep),
   };
 }
 
 /**
- * **得分 → 奖励个数**（规格 §9.1）。
+ * **得分 → 奖励个数**（规格 §9.1 / §12「得分与奖励是同一个数的两种画法」）。
  *
- * 🔴 入参是**得分**，不是 `isCorrect` 布尔：
- *   `score = 1` ⇒ 全对档的步长；`score = 0.5` ⇒ 半对档；`score = 0` ⇒ 0；
- *   `null` ⇒ 没判分（主观题 / 关掉自动判分）⇒ 0 —— **不是「0 分」**，两者在界面上
- *   都画不出奖励，但「没判」是「不知道」，把它当成 0 会让将来的统计把它算成答错。
+ * 🔴 ★ M4a（2026-09-24 裁定）：**绝对值模型 —— 画出来的就是得分本身，不乘任何步长。**
+ * 教师逐题填的「全对给几 / 半对给几」**就是**那个数：全对填 5 ⇒ ⭐⭐⭐⭐⭐（分数档 `+5`）、
+ * 半对填 2 ⇒ ⭐⭐。所以本函数在符号档上是一行 `return score`。
  *
- * 今天得分只可能是 0 或 1（第一批没建 score 字段，规格 §3-S），所以在**论步长的那三档**
- * （星星 / 花朵 / 分数）上，本函数的行为与「`isCorrect ? step : 0`」**逐字相同**
- * （对错档根本没有步长，见下面那条分支）—— 变的是**接口的形状**，不是行为。
- * 这正是要按得分写的原因：M4 只需改判分与多一行配置，这里一行都不用动。
+ * ── 为什么不能再乘 `step`（这是本次改动的全部理由）────────────────────────
+ *
+ * `score` 与旧的步长**是同一个数走两条路**：逐题分值留空时服务端按「继承学习单级」
+ * 折算（`pointsFromSettings` ⇒ `resolvePoints`），所以学习单级的 `rewardStep` **已经进了
+ * `score`**——再乘一次就是乘两遍。乘法模型只在「每题都是学习单级那个档」时看起来对，
+ * 而那正是默认配置（留空 ⇒ `rewardStep` 恰好也是 1）下的巧合。
+ *
+ * 🔴 实测反例（2026-09-24，B2 那轮抓的）：学习单级 `rewardStep = 3` + 某题 `full = 5`
+ * ⇒ 旧实现先 `score >= 1` 判真、返回 `scale.step` ⇒ 学生看到 **⭐⭐⭐**，
+ * 而规格 §12 明写「得分与奖励是同一个数的两种画法」（应是 ⭐⭐⭐⭐⭐）。
+ * 同一条路还会把「半对 1 分」画成 3 个符号（`1 >= 1` ⇒ 走全对那一支）——两个方向都错。
+ *
+ * 旧模型里那条 `score < 1` 的分支（`halfStep ?? floor(step × score)`）在真实数据上
+ * **一次都走不到**：归一化后的 `score` 是整数（`normalizePointValue`），`0 < score < 1`
+ * 不存在。这也是 `RewardScale` 上那两个数被删掉的原因之一（见那个类型的注释）。
+ *
+ * 🔴 入参是**得分**，不是 `isCorrect` 布尔：`null` ⇒ 没判分（主观题 / 关掉自动判分）
+ * ⇒ 0 —— **不是「0 分」**，两者在界面上都画不出奖励，但「没判」是「不知道」，
+ * 把它当成 0 会让将来的统计把它算成答错。
+ *
+ * ⚠️ 坏数字（`NaN` / `Infinity` / 负数）与 0 同路：符号档的 `repeat(N)` 拿到 `NaN` 会
+ * **抛 RangeError**（渲染路径上的一次白屏），负数同理由此挡住。
  */
 export function rewardAmount(score: number | null, scale: RewardScale): number {
   if (score === null || !Number.isFinite(score) || score <= 0) return 0;
-  // 🔴 **对错档没有步长**（规格 §9.2：选了「对错」时那一行不出现）⇒ 答对一题就是 1。
-  // 不能读 `scale.step`：教师在「星星 ×3」与「对错」之间来回选时，库里那个 3 一直留着
-  // （这是好事，切回星星时他配的 ×3 还在），但拿它去算对错档的累计会得到 `✓×9`
-  // ——一个没有任何依据、也不会报错的数。这一条就是本文件存在的理由之一。
+  // 🔴 **对错档画的是一枚 ✓，不是一串符号**（规格 §9.2：选了「对错」时步长那一行不出现）
+  // ⇒ 无论得了几分，这一档每次只算 1（它的累计画成 `✓×N`，N 是「答对几题」）。
   if (scale.style === 'correctness') return 1;
-  if (score >= 1) return scale.step;
-  return scale.halfStep ?? Math.floor(scale.step * score);
+  return score;
 }
 
 /** 这一档的符号（对错档没有符号，返回 `null`）。 */
@@ -223,8 +244,14 @@ export function rewardSymbol(style: RewardStyle): string | null {
  */
 export function rewardMark(scale: RewardScale, score: number | null): string | null {
   if (score === null) return null;
-  // 对错档只有两种画法，半对（M4）在这档里画 ✗ —— 「半对」不是「对」。
-  // 想看半对该给几朵花，就选星星 / 花朵 / 分数那三档。
+  // 对错档只有两种画法：**有分就画 ✓、一分没有画 ✗**。
+  // ⊘ 2026-09-24（M4a）更正：这里曾经写着「半对（M4）在这档里画 ✗ —— 『半对』不是『对』」，
+  // 而那句只在 0/1 时代成立。得分改成**绝对值**之后，「半对」不再是一个固定的 0.5
+  //（教师可以给半对填 2 分），而这一层**拿不到题目的满分**（它只有 `score`）⇒ 判据只能是
+  // `score >= 1`，于是一道满分 5、半对 2 的题在这档里画的是 **✓**。
+  // 这是**本层的能力边界**，不是算错：想区分「全对 / 半对 / 错」要选星星、花朵或分数那三档
+  //（它们按分数画，半对自然少几个）。要在这档里区分，得把 `gradeState` 也接进来 ——
+  // 那超出了「显示层只读得分」这条边界，本次**不做**（见 D3 报告的顾虑）。
   if (scale.style === 'correctness') return score >= 1 ? '✓' : '✗';
   const amount = rewardAmount(score, scale);
   if (amount <= 0) return null;
@@ -236,8 +263,9 @@ export function rewardMark(scale: RewardScale, score: number | null): string | n
 /**
  * **顶部累计**那个字面（规格 §9.3 的 `⭐×3`）。`null` = 一个都不画（累计为 0）。
  *
- * 累计的口径是「全部答对题目的奖励之和」（规格 §9.1：累计 = 答对题数 × N）。分数档
- * 累加出来是一个数，所以它画成 `+3 分` 而不是 `＋×3` —— 后者是对着样式图硬套。
+ * 累计的口径是**各题得分之和**（M4a 起：得分是绝对值，所以它同时就是「奖励之和」——
+ * 规格 §12「同一个数的两种画法」；0/1 时代那一句「答对题数 × N」是这句话的特例）。
+ * 分数档累加出来是一个数，所以它画成 `+3 分` 而不是 `＋×3` —— 后者是对着样式图硬套。
  */
 export function rewardTotalText(scale: RewardScale, amount: number): string | null {
   if (amount <= 0) return null;

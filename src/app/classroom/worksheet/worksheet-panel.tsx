@@ -113,8 +113,11 @@ interface LoadedWorksheet {
   allowResubmit: boolean;
   /**
    * 这一份单的奖励配置（规格 §9.2，**学习单级**）。由 `resolveRewardScale` 收成
-   * 「一定合法」的那两个值：缺字段与坏值都落到默认档（星星 / 1），与新建学习单、
-   * 与服务端 `normalizeSettings` 是同一对默认值，所以学生看到的那一档与教师配的是同一个。
+   * 「一定合法」的那一档：缺字段与坏值都落到默认档（星星），与新建学习单、
+   * 与服务端 `normalizeSettings` 是同一个默认值，所以学生看到的那一档与教师配的是同一个。
+   *
+   * ★ M4a：它**只剩「哪一档」**（`RewardScale` 上的 `step` / `halfStep` 已删）——
+   * 画出来的个数是**得分**（绝对值模型，规格 §12），学习单级那两个数由服务端折算进得分。
    */
   reward: RewardScale;
   /**
@@ -358,8 +361,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
           title: string;
           content?: { nodes?: unknown };
           // ⚠️ 这份内联类型是**下发的 settings 的形状**（不是「本文件读的那几个键」）：
-          // 奖励三项都经由 `resolveRewardScale` 消费，所以新增一个键时这里与它要一起看
-          //（`halfStep` 是 M4a 加的，服务端 `readStudentSettings` 会下发它）。
+          // 奖励那三项里**只有 `rewardStyle` 经 `resolveRewardScale` 消费** ——
+          // `rewardStep` / `halfStep` 仍在下发（服务端的 `readStudentSettings` 会带上它们），
+          // 但学生端的显示层不读：它们已经由服务端折算进**得分**（M4a 的绝对值模型，
+          // 规格 §12），照原样列在这里只是为了让「下发的形状」一眼看得全。
           settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown; halfStep?: unknown };
         };
         const rowsData = await rowsRes.json().catch(() => null);
@@ -375,7 +380,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
             allowResubmit: data.settings?.allowResubmit !== false,
-            // 奖励同理：缺字段落到默认档（星星 / 1），不抛也不画一个错的档。
+            // 奖励同理：缺字段落到默认档（星星 ⭐），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
             // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
             savedAnswers: parseSavedAnswers(rowsData),

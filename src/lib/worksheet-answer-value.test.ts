@@ -45,8 +45,12 @@ function node(type: string, data: Record<string, unknown> = {}): WorksheetQuesti
 
 /**
  * 作答方式 = 手写的节点（★ M4b）—— `worksheet-ink.ts` 的 `isInkNode` 认的就是它。
- * ⚠️ 与 `node()` 只差 `inputMode` 一个字段：本文件里好几条用例的**全部区别**就在这一个字段上
- *（「键盘问答是 text 起点、手写问答是 ink 起点」），所以它们必须能被并排放在一起看。
+ * ⚠️ 与 `node()` 只差 `inputMode` 一个字段 —— 用例里用它 **7 行 / 8 次**（有一行是
+ * `buildAnswerValue(handwritingNode(…), emptyDraftFor(handwritingNode(…)))`，所以次数比行数多 1）。
+ * 这 8 次里只有**一次**是刻意让两个节点只差这一个字段、成对断言：「★ emptyDraftFor：画布题
+ * 给 ink 起点」那一条里 `handwritingNode('short-answer')` 与 `node('short-answer')` 并排
+ *（键盘问答是 `text` 起点、手写问答是 `ink` 起点）。其余各次都只用它这一侧、没有键盘对照 ——
+ * 别把这条辅助函数读成「本文件到处都在做那一种对照」。
  */
 function handwritingNode(type: string, data: Record<string, unknown> = {}): WorksheetQuestionNode {
   return { ...node(type, data), inputMode: 'handwriting' };

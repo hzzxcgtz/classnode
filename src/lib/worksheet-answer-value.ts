@@ -70,8 +70,16 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  * 存储与渲染逐字相同）。所以上面那张表里没有它的行：笔迹的「协议」是
  * `format` / `canvas` / `strokes` 这三个键（`InkValue`），而它的**读者不是判分器** ——
  * 手写与绘图不参与自动判分（规格 §12 裁定 3），服务端的 `JUDGES` 里没有它。
- * ⚠️ 这三个键名与 `ANSWER_KEYS` **零交集**（Global Constraint 17），实测命令与逐字输出
- * 见 `task-A2-report.md`（同一份核对也钉在 `worksheet-ink.ts` 的键名上）。
+ * 🔴 这三个键名**都在 `ANSWER_KEYS` 之外**（Global Constraint 17：作答值里不许出现答案键名，
+ * 否则本仓那些「响应里不得出现答案键」的扫描会分不出「学生画了东西」与「答案泄漏了」）。
+ * `ANSWER_KEYS` 是 `['correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement']`
+ *（`server/src/services/worksheet-questions.ts:333`）。M4b 实测（2026-09-24）：
+ * ```
+ * $ /usr/bin/grep -c "correctKeys\|answers\|explanation\|correctOrder\|pairs\|placement" src/lib/worksheet-ink.ts
+ * 0
+ * ```
+ * ⇒ 六个笔迹键名（`format` / `canvas` / `strokes` / `color` / `width` / `points`）逐条与上面那张表
+ * 做整行精确匹配，**全部零命中**。
  */
 export type WorksheetAnswerValue =
   | { format: 'choice/v1'; selected: string[] }
@@ -288,9 +296,14 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
  *   · 选择 / 判断 / 多选 ⇒ 一个都没选；
  *   · 填空 ⇒ 与空数等长的空串数组（单空是 `['']`）—— 少一个框，学生就填不了那个空；
  *   · 问答 ⇒ 空文本（⚠️ **键盘的**问答；作答方式 = 手写的那种走下面那一条 `ink`）；
- *   · 画布（绘图题 / 手写作答）⇒ 空画布：**一笔都没有** + 题型默认的框（占位，见下）。
- *     ★ M4b：它是**唯一**一种「起点里带一个不是空值的字段」的输入态（那个 `box`）——
- *     画布挂载后第一件事就是量真实框并覆盖它，所以这个默认值不会留下来；
+ *   · 画布（绘图题 / 手写作答）⇒ 空画布：**一笔都没有** + 题型默认的框。
+ *     ★ M4b：起点里**带非空字段的不止一种** —— 这里那个 `box`（`{ w: 320, h: 240 }` /
+ *     `{ w: 320, h: 160 }`）与下面排序那一列 id（`['i1','i2','i3']` 这种）；`fill` 的 `texts`
+ *     不算，那个数组里**装的全是空串**（它表示「有那几个空位」，不是「空位里有内容」）。
+ *     两者的区别是**会不会被覆盖**：排序那一列 id 是**一份合法作答**（`isDraftEmpty` 判它非空、
+ *     `valueFromDraft` 也**永远**为它产出作答值 —— 见那两处各自的注释），而画布这个 `box` 是
+ *     **占位** —— 画布挂载后第一件事就是量出真实框并覆盖它，所以它不会留下来、
+ *     `isDraftEmpty` 也**刻意不看它**；
  *     但「一笔都没有」这一半是硬的：`strokes: []` ⇒ `isDraftEmpty` 为真 ⇒
  *     学生按不动「提交本题」（服务端对空作答回 400）；
  *   · 排序 ⇒ **`data.items` 的存储顺序**（学生看到的打乱顺序）。⚠️ 它**不是空的**，
@@ -514,11 +527,19 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   //   ⚠️ 这一条与下面那句「`format` 是第一判据」**不冲突**：`readInkValue` 自己也先过
   //   `format`（`isInkFormat`），它只是把那两行的判据收在 `worksheet-ink.ts` 里一份。
   //   读回来之后 `draft.kind` 与题型家族**可以**对不上（`short-answer` 的键盘节点 + `ink/v1`
-  //   值），这是**有意的** —— 提交那一侧由 `valueFromDraft` 的 `isInkNode(node)` 闸拦着
-  //   （非 ink 节点上的 ink 输入态交不出去），屏幕上出不出现画布则由**分派器**
-  //   （`src/app/classroom/worksheet/questions/index.tsx` 按 `node.type` 分支，C1 才加 ink 支）
-  //   决定；而**教师抽屉**按 `format` 读（`worksheet-drawer-state.ts` 的 `formatAnswer`），
-  //   所以学生交过的那幅画在教师那一侧照旧看得见。三处各管一件事，互不代替。
+  //   值），这是**有意的**，三个读者各管一件事、互不代替：
+  //     · **提交**那一侧由 `valueFromDraft` 的 `isInkNode(node)` 闸拦着 —— 非 ink 节点上的
+  //       ink 输入态交不出去；
+  //     · **屏幕上出不出画布**由**分派器**决定（`src/app/classroom/worksheet/questions/index.tsx`
+  //       按 `node.type` 分支；它的 ink 支是 C1 加的）；
+  //     · **那幅画本身不会丢**：值照样躺在 `WorksheetAnswer.value` 那个 Json 列里，教师抽屉
+  //       由 **E1** 按 `format` 把它读出来渲染（`worksheet-ink.ts` 的 `strokePath` 就是给它用的）。
+  //   ⚠️ **A2 这一刻抽屉还读不出它**：`formatAnswer`（`src/app/teacher/classroom/
+  //   worksheet-drawer-state.ts:238`）只抽 `text` / `fill` 两族 —— 它里面那条三元链
+  //   （`:248`）只认 `draft.kind === 'text'` 与 `'fill'`，ink 输入态落进最后的 `''`
+  //   ⇒ 那一格返回 `null`（实测：`/usr/bin/grep -rn "strokePath\|InkPreview\|readInkValue"
+  //   src/app` ⇒ 零命中）。⇒ 这是**渲染还没接上**，不是「那幅画丢了」——学生的笔迹
+  //   一个字节都没少，接上的是 E1。别在这里把它读成「读回来没意义」。
   const ink = readInkValue(row);
   if (ink) return { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
   // 画布题的值读不成笔迹（手改过的行 / 上一个版本）⇒ 回**空画布**：

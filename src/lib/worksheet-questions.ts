@@ -100,9 +100,10 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'categorize', label: '归类题', hint: '把若干条目拖到对应的框里', graded: true },
   { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
-  // `graded: false` **是有意的决定，不是补测试**（见 `task-A2-report.md`）：手写 / 绘图
-  // 不参与自动判分（规格 §12 裁定 3），服务端的 `JUDGES` 里没有它，`grade` 读不到它的
-  // `format`（全局约束那条「`format` 服务端一个字节都不读」）；这一格是 false ⇒ 看板抽屉里
+  // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3），
+  // 服务端的 `JUDGES` 里没有它，`grade` 也读不到它的 `format` —— 那句话的出处是
+  // `worksheet-answer-value.ts:48`（「**`format` 服务端一个字节都不读**」，实测在它那儿），
+  // **不是** Global Constraints 里的某一条（那里没有这句话）。这一格是 false ⇒ 看板抽屉里
   // 只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
   { value: 'drawing', label: '绘图题', hint: '学生在画布上画图，不自动判分', graded: false },
 ];
@@ -227,7 +228,11 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
  * 非题型**（所以它不在这里，它是题目节点上的 `inputMode: 'handwriting'`，由
  * `worksheet-ink.ts` 的 `isInkNode` 认），而「绘图题」是**题型** —— 题型必须有题型名。
  *
- * ⚠️ 由此 `QUESTION_TYPE_OPTIONS` 从 **8 条变 9 条**，与 M4 范围表的**行数**（6 个题型 +
- * 2 个能力）不是一回事。这处矛盾不是本任务发明的（M4a 就按「`QUESTION_TYPE_OPTIONS` 的
- * 条目数」在数），本计划沿用 M4a 的口径并把它交给控制器裁定，见 `task-A2-report.md`。
+ * ⚠️ 由此 `QUESTION_TYPE_OPTIONS` 从 **8 条变 9 条**，而那句「**8 个题型**」说的**不是这个数** ——
+ * 它的 8 是 **M4 范围表的行数**（6 个题型 + 2 个能力）：`specs/2026-09-23-milestones.md:73`
+ * 逐字列着「… · 手写笔迹 · 绘图题」，那两项里只有后一项是题型。
+ * ★ 规格自己对这件事有一条 2026-09-24 的追认，逐字在 `specs/2026-09-23-p1-worksheet.md:1263`：
+ * 「§12 的『8 个题型』那张表列的是 **M4 范围的行数**，含手写笔迹与绘图题两项；而
+ * `QUESTION_TYPES` 的**条目数**在 M4a 起就是另一回事」⇒ 两个计数**不是同一个数**，别混。
+ * 本文件数的是**条目数**（沿用 M4a 的口径），所以是 9。
  */

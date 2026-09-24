@@ -1207,12 +1207,26 @@ P4 的分析型智能体都要面对一个「⭐ 是什么数」的问题。
    `server/src/routes/worksheets.ts` 的 `normalizeSettings` 注释自陈这条：
    少认一个键 ⇒ 保存一次「只改标题」的请求就把那个键**静默抹掉**（教师配好的档变回默认，
    界面上没有任何提示）。新增奖励相关的键时，下面这**五处**必须一起加：
-   `normalizeSettings`（服务端写入口）· `readStudentSettings`（服务端读出）·
-   `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` 与 `normalizeLoadedSettings`。
-   ⊘ 2026-09-24 更正：这里原先写「这**五处**必须一起加」而只列了四条 —— 数词与清单对不上。
-   要数实际有几处，先跑一遍 `/usr/bin/grep -rn <你新加的键> src server/src | /usr/bin/grep -v '\.test\.'`
-   看它落在哪几个文件里（2026-09-24 实测：`halfStep` 落在 **8 个文件**）——
-   所以「五处」指的是**必须同步改的写入口 / 读出口**，不是「全仓会出现这个键的地方」。
+
+   | # | 位置 | 角色 |
+   |---|---|---|
+   | 1 | `server/src/routes/worksheets.ts` 的 `normalizeSettings` | 服务端**写入口** |
+   | 2 | 同文件的 `readStudentSettings` | 服务端**读到学生端** |
+   | 3 | `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` | 前端**新建学习单的默认值** |
+   | 4 | 同文件的 `normalizeLoadedSettings` | 前端**从服务端读回** |
+   | 5 | 同文件的 **`parseDraft`** | 前端**从 localStorage 恢复草稿 → 保存**那条路 |
+
+   ⊘ **2026-09-24 两次更正，第二次推翻第一次**：
+   本处最初写「五处」却只列了四条。修复轮把它**改成「四处」**（理由是「数词与清单对不上」）——
+   **那个方向是错的**：它删掉了唯一那个「还有第五处」的信号。
+   第 5 处 `parseDraft` 是**真实存在**的（`worksheet-editor-core.ts`，实施 B2 时实测补出），
+   它与 `normalizeLoadedSettings` 是**两个不同的函数**（一个读 localStorage、一个读服务端）。
+   **漏它的后果**：新键在「恢复草稿 → 保存」那条路上被按默认写回，而保存照常 **200**、界面无提示 ——
+   正是本节要防的那件事。⇒ 现在**列全五条**，数字与清单一致。
+
+   ⚠️ 要数「全仓有几处会出现这个键」，跑
+   `/usr/bin/grep -rn <你新加的键> src server/src | /usr/bin/grep -v '\.test\.'`
+   —— 那是**另一个问题**（B2 实测 `halfStep` 落在 8 个文件里），与本节这五条**不是同一件事**。
 
 #### 得分与正确率的口径
 

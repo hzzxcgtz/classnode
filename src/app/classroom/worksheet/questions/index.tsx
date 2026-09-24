@@ -3,9 +3,11 @@
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor } from '@/lib/worksheet-answer-value';
+import { isInkNode } from '@/lib/worksheet-ink';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
 import { FillBody } from './fill-body';
+import { InkBody } from './ink-body';
 import { MatchBody } from './match-body';
 import { OrderBody } from './order-body';
 import styles from '../worksheet.module.css';
@@ -81,6 +83,37 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
     return null;
   };
 
+  /**
+   * ★ M4b：画布支（`InkBody`）。**两条判据都要**：题型是画布题（`isInkNode(node)`）
+   * **且**输入态是 ink 形状（`pick('ink')` 非空）。
+   *
+   * ⚠️ 只写 `pick('ink')` 会在**可达**的路上走成死胡同：教师用编辑器里那个「作答方式」
+   * 开关，把一道**已经被学生作答过**的手写问答改回键盘 ⇒ 库里那一行仍是 `ink/v1` ⇒
+   * `draftFromValue` 会把它读回来（A2 的既有用例逐字要求它读得回来：教师改题不该让
+   * 学生那幅画消失）⇒ `pick('ink')` 非空 ⇒ **一道键盘问答题上出现画布，而学生画完提交不了**
+   * （`buildAnswerValue` 对 `short-answer` + ink 输入态回 `null` ⇒ 「提交本题」按死）。
+   * ⇒ 判据是「**题型是画布题 且 输入态是 ink 形状**」。题型这一半赢，代价是那个学生
+   * 在自己屏幕上看到的是空 textarea 而不是旧笔画 —— 值在库里、教师在抽屉里都还看得到，
+   * 而且他现在能正常作答（那正是这道题当下该有的样子）。
+   *
+   * ⚠️ 必须排在下面那条 `node.type === 'single-choice' || …` 之前，理由与 A2 的
+   * `valueFromDraft` 里「ink 支必须排在题型分支之前」逐字相同：手写的**问答题**会先命中
+   * `short-answer` 那一支，`pick('text')` 回 `null` ⇒ 落到写死的 `{ kind: 'text', text: '' }`
+   * ⇒ 学生看到一个**空 textarea**，而他的笔迹在库里、在教师抽屉里都能看见。
+   *
+   * 🔴 这里**不**给 ink 写 `?? { kind: 'ink', … }` 那种字面量兜底：`pick('ink')` 取的已经是
+   * `emptyDraftFor(node)` 给的那一份（画布题的起点就是 ink），凭空写一个字面量就是在
+   * 本文件里立第二份真源 —— 上面 `pick` 的文档注释（本文件 `:72-79`）点名的
+   * 「六个 `?? { kind: … }` 是死代码、**没有任何回归网**」说的正是这件事。
+   */
+  if (isInkNode(node)) {
+    const ink = pick('ink');
+    if (ink) {
+      return (
+        <InkBody node={node} draft={ink} onChange={(next) => onChange?.(node, next)} disabled={disabled} />
+      );
+    }
+  }
   if (node.type === 'single-choice' || node.type === 'true-false' || node.type === 'multi-choice') {
     return (
       <ChoiceBody

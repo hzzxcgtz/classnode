@@ -23,7 +23,7 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
  *      （来电、多任务手势、滚动接管）会把元素永久留在拖动态 —— 屏幕上看着它一直亮着。
  *   ④ 拖动过程中**不写 draft**：只在**落位那一下**调一次 `onDrop`。每一帧都写会打爆
  *      `use-worksheet-answers.ts` 的防抖队列（每一帧一条 PUT）。
- *
+ * ⚠️ M4b/C1：**同一份清单的第二个副本**在 `ink-canvas.tsx`（手写画布）的文件头 —— 裁定 5 的「复用纪律、**不共用实现**」⇒ 两处各有自己的 pointer 代码、会各自漂移：**改一处必须改另一处**。
  * ── 点选与拖拽为什么不会互相打架 ──────────────────────────────────────────
  * 点选走 `onClick`（原生事件，键盘 Enter 也能触发），拖拽走 pointer 事件。两者的分界是
  * **这一次手势有没有移动超过 `DRAG_THRESHOLD_PX`**：移动过 ⇒ 那一次 `click` 被吞掉

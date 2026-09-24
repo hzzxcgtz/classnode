@@ -1,0 +1,298 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import {
+  INK_MAX_POINTS,
+  INK_MIN_POINT_DISTANCE_PX,
+  INK_STROKE_COLOR,
+  INK_STROKE_WIDTH,
+  countPoints,
+  inkLimitReason,
+  isFarEnough,
+  normalizeAxis,
+  strokeWidthPx,
+  toPixel,
+} from '@/lib/worksheet-ink';
+// ⚠️ A1 已经导出一个**类型** `InkCanvas`（作答那一刻的框 `{ w, h }`），而本文件导出的是
+// **组件** `InkCanvas`（文件叫 `ink-canvas.tsx`、props 叫 `InkCanvasProps`）。两者在同一个
+// 模块里其实能共存（`import type` 只占类型名字空间），但那样 `InkCanvasProps.box` 的类型
+// 会比它自己的名字更值得解释。⇒ 类型侧引入为 `InkCanvasBox`：**同一个类型**，只改本文件的
+// 本地名，不是第二份定义。
+import type { InkCanvas as InkCanvasBox, InkPoint, InkStroke } from '@/lib/worksheet-ink';
+import styles from './worksheet.module.css';
+
+/**
+ * 手写画布（M4b / C1）—— 绘图题与「作答方式 = 手写」的那些题在**学生端与教师端预览**上
+ * 的同一个控件。它是**唯一只能真机验**的那一环：本仓没有 jsdom / testing-library，
+ * 「指针 → 笔迹」这条链没有任何自动化能替它作证（Global Constraint 16）。
+ *
+ * ── 判据一行都不在这里 ────────────────────────────────────────────────────
+ * 形状 / 上限 / 归一化 / 换算 / 撤销 / 清空全部来自 `@/lib/worksheet-ink`（A1，有用例）。
+ * 本文件只做三件事：把指针事件变成点、把点画到 canvas 上、把**收笔**那一刻的结果交出去。
+ * ⇒ 画布上「画出来的形状」与教师抽屉里（E1 的 SVG）用的是**同一个** `toPixel` ——
+ * 各写一份的后果是两处画出来的形状不一样，而两边都「看起来正常」（A1 的注释同一条）。
+ *
+ * ── 🔴 三条硬纪律（M4a/D1+D2 栽过一次，逐条照抄；这一份与 `use-pointer-drag.ts` 的那一份
+ *     是同一条清单的两个副本，**改一处必须改另一处**）────────────────────────
+ *   ① `setPointerCapture`（`pointerdown` 里）—— 手指移出画布之后 `pointermove` / `pointerup`
+ *      仍然送给它。不做的话「画到一半滑出画布」就再也收不到 `pointerup`，
+ *      画布**永久卡在落笔态**（后续每一次落笔都被忽略 ⇒ 学生再也画不了，屏幕上无任何报错）。
+ *      ⚠️ `try/catch` 吞掉：老 WebKit 会抛，而抛出去会让后面几行不执行 ——
+ *      那正是「永久卡住」的来源（`use-pointer-drag.ts:159-164` 同一条）。
+ *   ② **静态 CSS 里的 `touch-action: none`**（`.inkCanvas` 那个类）。这是**唯一的开关**：
+ *      按 Pointer Events 规范，`touch-action` 在**手势开始那一刻**求值，事后再写**不影响
+ *      已经在进行的那一次手势**，而 `pointerdown` 已经是那一刻之后。
+ *      🔴 **M4a 曾因漏挂这个类让整层失效**（`worksheet.module.css:472-474` 记着：
+ *      排序题那份漏了，而报告把「`touch-action: none`」列为已交付）。
+ *      ⇒ 本文件的 `pointerdown` 里**也再写一次行内值**（收尾时还原成空串）：那不是开关，
+ *      是「落笔态下不许滚动」这条语义在桌面浏览器与第二次手势上的落实。
+ *   ③ `pointerup` **与** `pointercancel` **都要收尾** —— 只处理前者 ⇒ 一次被系统中断的手势
+ *      （来电、多任务手势、滚动接管）把画布永久留在落笔态。
+ *      ⚠️ ink 与拖拽有一处**刻意的差异**：`pointercancel` 时**丢掉那一笔**（不落位），
+ *      与 `use-pointer-drag.ts` 的「中断不落位、也不点选」同一条口径。
+ *      代价（如实记）：一次来电会让学生丢掉**正在画的那一笔**（已经收笔的都在）——
+ *      比「把半截线留在屏幕上，而学生不知道为什么」好。
+ *   ④（本条是 ink 新增的）**落笔过程中不写 draft** —— 只在**收笔**那一下调一次 `onChange`。
+ *      每一帧都写会打爆 `use-worksheet-answers.ts` 的防抖队列（1.5s 防抖被每一帧重置，
+ *      而每次 `setDraft` 都会 `buildAnswerValue` + 序列化进 `localStorage`）。
+ *      ⇒ 进行中的那一笔住在 `useRef` 里，**不进 React state**（每帧一次 setState 会让
+ *      老 iPad 掉帧，而这是手感问题里最要紧的那一档）。
+ *
+ * ── 本文件里这四条各自落在哪（行号是**写下这一刻**的，改代码后请重核）──────────
+ *   ① `setPointerCapture`：`:210`；`releasePointerCapture`：`:244`（两处都 `try/catch` 吞掉）；
+ *   ② `.inkCanvas` 的静态 `touch-action`：`worksheet.module.css:783`（`touch-action` 在 `:790`）
+ *      + 落笔时补一次行内值 `:211`；③ `handlePointerUp`（`:261`）与 `handlePointerCancel`（`:266`）
+ *      都在，且都走 `endStroke`（`:239`）；④ 点只进 `liveRef`（`:212`），`onChange` 只在
+ *      `endStroke` 收笔那一条路上出现（`:257`，**全文件唯一**一处）。
+ */
+
+/**
+ * ⚠️ 工具栏（撤销 / 清空）**不在这里**，在 `questions/ink-body.tsx`：那两个按钮调的是 A1 的
+ * `undoStroke` / `clearStrokes`，而它们要一份 `InkValue` —— 那个形状多一个 `format` 字段
+ * （`inkFormatOf(node)`），而本组件的入参里**没有 node**（`InkCanvasProps` 逐字如此：
+ * 画布只认框与笔画）。硬凑一个 `format` 占位值会在这里留下一个**谁都不读**的假字段，
+ * 而那正是「下一个人以为它是这道题的 format」的来源。⇒ 分工：本组件管**指针与像素**，
+ * `ink-body.tsx` 管**题型与作答值**。
+ */
+export interface InkCanvasProps {
+  /** 空输入态时的**名义**框（`defaultInkBox(node)`）。它的 `h` 同时是元素的高度。 */
+  box: InkCanvasBox;
+  strokes: readonly InkStroke[];
+  /** 画布下面那句提示语（`inkHint(node)`）。 */
+  hint: string;
+  /** 一笔结束 / 撤销 / 清空时调一次。`box` 是**这一刻量出来的**框。 */
+  onChange: (next: { box: InkCanvasBox; strokes: InkStroke[] }) => void;
+  disabled: boolean;
+}
+
+/** 正在画的那一笔。⚠️ **不进 React state**（纪律 ④）—— 它每一帧都在变。 */
+interface LiveStroke {
+  el: HTMLCanvasElement;
+  pointerId: number;
+  box: InkCanvasBox;
+  points: InkPoint[];
+}
+
+export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
+   *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
+  const strokesRef = useRef<readonly InkStroke[]>(strokes);
+  strokesRef.current = strokes;              // 每次渲染同步（不在 effect 里：`pointerup` 可能先到）
+  const liveRef = useRef<LiveStroke | null>(null);
+  /**
+   * 落笔**被拦**那一刻记下的原因。它只是上限提示的**第二个来源** ——
+   * 主来源是每次渲染重算的 `inkLimitReason(strokes)`（见下面 `limitReason` 那一段）。
+   */
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
+
+  // 一帧的全量重绘是**廉价**的：上限 2000 个点（A1）保证了这个循环最多 2000 次 lineTo。
+  // 🔴 不要为了「优化」改成增量绘制 —— 增量绘制在「撤销 / 清空 / 水合」三条路上都要
+  // 自己算该擦掉哪一段，而算错的表现是**屏幕上留着一条已经撤销掉的线**（学生以为没撤销成功）。
+  const redraw = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ctx = el.getContext('2d');
+    if (!ctx) return;
+    // ⚠️ 量框**只能**用 `getBoundingClientRect()`，**不许**用 `event.offsetX/offsetY`：
+    // `offsetX` 在滚动 / 页面缩放 / 键盘弹起后的老 WebKit 上会错位，而它的表现是
+    // 「整幅画偏移一个固定的量」—— 只在某些设备上出现（**未验证**），本机复现不了。
+    const rect = el.getBoundingClientRect();
+    // 🔴 宽高两件事分开：**CSS 框**由样式决定（宽 100%、高 = `box.h`），
+    // **位图**由这里按 DPR 放大。不乘 DPR 的话在老 iPad 上（DPR=2）线是糊的。
+    const dpr = window.devicePixelRatio || 1;
+    const bitmapW = Math.max(1, Math.round(rect.width * dpr));
+    const bitmapH = Math.max(1, Math.round(rect.height * dpr));
+    if (el.width !== bitmapW || el.height !== bitmapH) {
+      el.width = bitmapW;
+      el.height = bitmapH;
+    }
+    // ⚠️ 顺序：赋 `width` / `height` 会把画布整个清掉**并重置变换**，所以是「先定尺寸、
+    // 再设变换、再清」；清的范围用 CSS 像素（变换已经把 DPR 乘进去了）。
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    // 画的时候用的框 = **当下量出来的 CSS 框**。🔴 不能拿 `box` 那个 prop 顶替：
+    // 元素的宽是 CSS 的 100%，而 `box.w` 是**名义**宽（320），两者在 720px 的容器上差一倍。
+    // 归一化那一侧（`normalizeAxis`）用的也正是这个框，两边必须是同一个。
+    const scale = { w: rect.width, h: rect.height };
+    const drawStroke = (stroke: InkStroke) => {
+      if (stroke.points.length === 0) return;
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = strokeWidthPx(stroke, scale);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      stroke.points.forEach((point, index) => {
+        const [x, y] = toPixel(point, scale);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      // 单点笔画（学生在屏幕上点了一下）必须画出一个点。理由与 A1 的 `strokePath` 逐字相同：
+      // 零长度子路径在 Safari 上画不画得出来各家不同，补一段极短的线段最稳。
+      if (stroke.points.length === 1) {
+        const [x, y] = toPixel(stroke.points[0], scale);
+        ctx.lineTo(x + 0.01, y);
+      }
+      ctx.stroke();
+    };
+    strokesRef.current.forEach(drawStroke);
+    // 进行中的那一笔照**收笔后会用到的同一份样式**画（同一个常量），否则收笔的一瞬间
+    // 线的颜色 / 粗细会跳一下。
+    const live = liveRef.current;
+    if (live) drawStroke({ color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points });
+  }, []);
+
+  // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
+  useEffect(() => { redraw(); }, [redraw, strokes]);
+
+  /**
+   * 上限提示的**第一个来源**（主来源）：当下就在上限上时它自己就在屏幕上。
+   *
+   * 🔴 为什么这一条不能省：只在「落笔那一刻」显示的话，学生**看不到它为什么画不上**
+   * —— 他会反复戳屏幕。而画布上此刻一笔都加不进去这件事，在**渲染期**就是可判的
+   *（`inkLimitReason(strokes)`），所以提示不该等到下一次落笔才出现。
+   * ⚠️ 这一条与 `blockedReason` 是**同一个 `useState` 的两个来源**，不是两套提示：
+   * 下面 `limitReason` 把两者合成一句；`blockedReason` 在上限解除后清掉，否则学生会
+   * 看到一句过期的话（他明明已经撤销了几笔）。
+   */
+  useEffect(() => {
+    if (inkLimitReason(strokes) === null) setBlockedReason(null);
+  }, [strokes]);
+
+  // 卸载也要收尾：画到一半切走模块 / 面板被卸载时 `pointerup` 永远等不到
+  // —— 与 `use-pointer-drag.ts:127` 的 `useEffect(() => endGesture, …)` 同一条。
+  useEffect(() => () => { liveRef.current = null; }, []);
+
+  /**
+   * 落笔。
+   *
+   * ⚠️ `disabled` 的闸门在**每个 handler 的入口**（不是「不挂 handler」）：判据因此只有一处，
+   * 而不是「挂 / 不挂」那种两处写法。
+   */
+  const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (disabled) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    // 多点触控 / 手掌误触：已经有一根手指在画 ⇒ **忽略这一次**（不做多指同时画）。
+    // ⚠️ 手掌误触本身**本机验不了**（Global Constraint 16）：这一行只能保证
+    // 「第二根手指不会打乱正在画的那一笔」，不能证明「手掌压上来时不会画出一条线」。
+    if (liveRef.current) return;
+    const filled = strokesRef.current;
+    const reason = inkLimitReason(filled);
+    if (reason) { setBlockedReason(reason); return; }        // ★ 到上限：不落笔，把提示留在屏幕上
+    setBlockedReason(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const liveBox = { w: rect.width, h: rect.height };
+    const point: InkPoint = [
+      normalizeAxis(event.clientX - rect.left, rect.width),
+      normalizeAxis(event.clientY - rect.top, rect.height),
+    ];
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
+    event.currentTarget.style.touchAction = 'none';        // 纪律 ②
+    liveRef.current = { el: event.currentTarget, box: liveBox, pointerId: event.pointerId, points: [point] };
+    redraw();
+    event.stopPropagation();
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const live = liveRef.current;
+    if (!live || live.pointerId !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const liveBox = { w: rect.width, h: rect.height };
+    const point: InkPoint = [
+      normalizeAxis(event.clientX - rect.left, rect.width),
+      normalizeAxis(event.clientY - rect.top, rect.height),
+    ];
+    const last = live.points[live.points.length - 1];
+    // 🔴 采样过滤（A1 的 `isFarEnough`）：不过滤的话一次涂鸦就是上千个点，
+    //    学生几乎一落笔就撞上 2000 点的上限，而他以为是自己画得太多。
+    if (!isFarEnough(last, point, liveBox, INK_MIN_POINT_DISTANCE_PX)) return;
+    // 点数预算用尽 ⇒ **冻住这一笔**（继续收点会让收笔时整笔被 `appendStroke` 丢掉，
+    // 而学生看到的是「我画的最后一笔没了」）。冻住时屏幕上那一笔是完整的。
+    if (countPoints(strokesRef.current) + live.points.length >= INK_MAX_POINTS) return;
+    live.points.push(point);
+    redraw();
+    event.stopPropagation();
+  };
+
+  /** 收笔：**唯一**写 draft 的地方（纪律 ④）。`commit` 为 false 时丢掉这一笔。 */
+  const endStroke = (commit: boolean) => {
+    const live = liveRef.current;
+    liveRef.current = null;
+    if (live?.el) {
+      live.el.style.touchAction = '';
+      try { live.el.releasePointerCapture(live.pointerId); } catch { /* 纪律 ① */ }
+    }
+    if (!live || !commit) { redraw(); return; }
+    const stroke: InkStroke = { color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points };
+    // ⚠️ 这里**不**走 A1 的 `appendStroke`，两个理由：
+    //   ① 它要一份 `InkValue`（多一个 `format` 字段，而本组件**拿不到 node** —— 与工具栏
+    //      不在本文件的那条理由逐字相同，见 `InkCanvasProps` 上面那段）；
+    //   ② 它的「超上限时原样返回」在**收笔那一下**会把学生刚画的一整笔**静默丢掉**
+    //      （屏幕上少一条完整的线，而没有任何提示）。本组件的两道闸（落笔前
+    //      `inkLimitReason`、落笔中按 `INK_MAX_POINTS` 冻结）已经保证这一笔落在预算内；
+    //      真的越界时宁可让它画上，也不要让它无声消失 —— 上限提示由 `limitReason` 那一行给。
+    // ⇒ 代价如实记：A1 的 `appendStroke` 在本文件里**没有消费者**（它自己有用例钉着，
+    //   服务端 B1 的写入口是另一条路）。
+    onChange({ box: live.box, strokes: [...strokesRef.current, stroke] });
+  };
+
+  // ★ 纪律 ③：**两条都要**。少任何一条都会让一次被系统中断的手势留下状态。
+  const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (liveRef.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    endStroke(true);                       // 收笔 ⇒ 落一笔
+  };
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (liveRef.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    endStroke(false);                      // 中断 ⇒ **丢掉这一笔**（与拖拽的「中断不落位」同一条口径）
+  };
+
+  /**
+   * 上限提示的**第二个来源** + 合成：`inkLimitReason(strokes)` 优先（它在上限解除后自己消失，
+   * 不需要任何清理），它为空时再看有没有一次「刚才被拦下」的记录。
+   */
+  const limitReason = inkLimitReason(strokes) ?? blockedReason;
+
+  return (
+    <div className={styles.inkFrame}>
+      <canvas
+        ref={canvasRef}
+        className={styles.inkCanvas}
+        // 高 = `box.h`（`defaultInkBox` 那两个数是**界面上看得见的**），宽由 CSS 给 100%。
+        style={{ height: box.h }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      />
+      <p className={styles.inkHint}>{hint}</p>
+      {/* 🔴 上限提示：到上限时它**在屏幕上等着**，不是等到学生再戳一次才出现。
+          文案由 A1 的 `inkLimitReason` 给（带上限数字与两条出路）。 */}
+      {limitReason ? (
+        <p className={styles.inkLimit} role="status">⚠️ {limitReason}</p>
+      ) : null}
+    </div>
+  );
+}

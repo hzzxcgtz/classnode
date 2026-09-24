@@ -761,8 +761,93 @@
   word-break: break-word;
 }
 
+/* ───────────────────────── 手写画布（M4b / C1）─────────────────────────
+ *
+ * 🔴 **`touch-action: none` 写在类上（静态）才是那个开关** —— 理由与 `.dragSource`
+ * 那一份逐字相同（Pointer Events 规范：`touch-action` 在**手势开始**时求值，事后修改
+ * 不影响已经在进行的那一次手势）。`ink-canvas.tsx` 在 `pointerdown` 里还会**再写一次
+ * 行内值**（收尾时还原成空串）：那不是开关，是「落笔态下不许滚动」这条语义在桌面浏览器
+ * 与第二次手势上的落实。两处都留着是有意的，别删其中一处。
+ * ⚠️ **本机未验证**（Global Constraint 16）：这条规则在真机上有没有把落笔从滚动手里
+ * 抢过来，只能由老 iPad 上的手指作答；鼠标下的效果**不算**手写验收。
+ *
+ * ⚠️ 高度**不在这里**：它由组件按 `box.h` 写行内样式（`defaultInkBox` 给的 240 / 160
+ * 是界面上看得见的数）。这里只管宽（100%）与外观。
+ *
+ * ⚠️ 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根内，且那个脚本把本文件的
+ * `dvh` 用量**冻结为 3** —— 这一节一行 `dvh` 都没有（也不许加）。 */
+.inkFrame {
+  margin-top: 12px;
+}
+
+.inkCanvas {
+  display: block;              /* 不给行内元素留基线间隙（否则画布下面会多出几像素） */
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+  touch-action: none;
+  cursor: crosshair;
+  /* 长按弹出「拷贝 / 查询」菜单会把落笔打断（而且菜单挡在屏幕上）—— 与 `.dragSource` 同一条。 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 画布下面那句提示语（文案由 `inkHint(node)` 给）。 */
+.inkHint {
+  margin: 8px 0 0;
+  font-size: .78rem;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+/* 上限提示（`inkLimitReason` 的文案）。它出现时**必须在屏幕上看得见** ——
+   学生看不到它就会反复戳屏幕，而那正是「画不上」这个现象的由来。 */
+.inkLimit {
+  margin: 8px 0 0;
+  font-size: .78rem;
+  font-weight: 700;
+  line-height: 1.7;
+  color: #b45309;
+}
+
+.inkToolbar {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.inkButton {
+  min-height: 44px;            /* 触屏命中区的下限，老 iPad 上手指更粗（与 `.orderItem` 同一条） */
+  padding: 0 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.inkButton:disabled {
+  color: #94a3b8;
+  background: #f1f5f9;
+  cursor: default;
+}
+
 /* 只读态（教师端预览）：拖拽的暗示一并收掉 —— 那里一个手势都不生效。 */
 .questions[data-interactive='0'] .dragSource {
+  cursor: default;
+  touch-action: auto;
+}
+
+/* 只读态（教师端预览）的画布：与上面那条 `.dragSource` 逐字同一条。
+   🔴 少了它，铺满整宽的画布会把预览弹窗变成**不能触摸滚动的区域**（画布那一层
+   `touch-action: none`，而弹窗在教师窗口比 768px 窄时要能横向滚动）。 */
+.questions[data-interactive='0'] .inkCanvas {
   cursor: default;
   touch-action: auto;
 }

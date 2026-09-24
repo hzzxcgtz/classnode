@@ -73,7 +73,9 @@ export type WorksheetScore = number | null;
 // 「`null` 不是 `0`」与「旧行用 `isCorrect` 兜底」这两条判据必须有用例钉着。定义只有一处。
 
 /** 一次 `PUT` 的结果。`status: null` = 网络错误（连状态码都没有）⇒ 暂时失败。 */
-type SaveOutcome = { ok: true } | { ok: false; status: number | null; error: string | null };
+type SaveOutcome =
+  | { ok: true }
+  | { ok: false; status: number | null; error: string | null; code: string | null };
 
 export interface UseWorksheetAnswersOptions {
   /** 课堂 id（队列键的一半）。 */
@@ -279,11 +281,15 @@ export function useWorksheetAnswers({
       if (res.ok) return { ok: true };
       const payload = await res.json().catch(() => null);
       const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : null;
-      return { ok: false, status: res.status, error: message };
+      // ★ M5a：服务端那句 409 带一个机器可读的 `code`（`answers-locked`）。
+      // 🔴 一定要读它：靠状态码分不出「锁定」与「本题不许重交」（两者都是 409），
+      // 靠中文文案判则会在改文案时静默失效（后果是学生的作答被真的丢掉）。
+      const code = payload && typeof payload.code === 'string' ? payload.code : null;
+      return { ok: false, status: res.status, error: message, code };
     } catch {
       // 连请求都没发出去（断网 / DNS / 被中断）⇒ `status` 为 null ⇒ **暂时失败**，
       // 由调用方留在队列里等下一次。绝不在这里把作答丢掉。
-      return { ok: false, status: null, error: null };
+      return { ok: false, status: null, error: null, code: null };
     }
   }, []);
 
@@ -344,7 +350,16 @@ export function useWorksheetAnswers({
         // 🔴 出队的判据**只有 `'permanent'` 这一档**，而它的定义在
         // `worksheet-queue.ts` 的 `classifyFailure`（测试断言的也正是那一个函数 ——
         // 这里若自己写 `status >= 400`，测试就会变成一条不看实现的假绿）。
-        const kind = classifyFailure(outcome.status);
+        const kind = classifyFailure(outcome.status, outcome.code);
+        if (kind === 'locked') {
+          // ★ M5a：锁定期保存被拒 —— **保留这一条、不设 offline、不弹提示**。
+          // 🔴 保留是关键：按永久失败处置会把它从队列里丢掉，而学生在锁定前写的东西
+          //    就**真的没了**（`localStorage` 是唯一那份）。
+          // 不弹提示的理由：锁定态本身就在屏幕上（面板那句「老师已锁定作答」），
+          // 每 1.5 秒弹一次同样的话只会让学生不再看提示。
+          // `break` 而不是 `continue`：锁还在，后面每一条都会是同一个 409 —— 白打服务端。
+          break;
+        }
         if (kind === 'permanent') {
           // 永久失败：出队**并说话**。留着重试只会让队列永远清不空（服务端每次都拒）。
           commitQueue(dropQueueItem(pendingRef.current, next.questionId));

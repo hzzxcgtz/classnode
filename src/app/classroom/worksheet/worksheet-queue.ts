@@ -136,7 +136,7 @@ export function replayOrder(items: WorksheetQueueItem[]): WorksheetQueueItem[] {
 }
 
 /**
- * 这一次失败该怎么处置。**三档，不是一个布尔值** —— `'permanent'` 是**唯一**会让作答
+ * 这一次失败该怎么处置。**四档，不是一个布尔值** —— `'permanent'` 是**唯一**会让作答
  * 出队（即真的丢掉）的那一档，判据只有这一个出口（`use-worksheet-answers.ts` 的 flush 循环）。
  *
  * 🔴 这条判据是本模块唯一一条不能含糊的规则：
@@ -147,14 +147,30 @@ export function replayOrder(items: WorksheetQueueItem[]): WorksheetQueueItem[] {
  *     这两类的共同点是「服务端此刻没能处理，但这条作答本身没错」。
  *   · 🔴 **`'session-expired'`：401 ⇒ 保留，且**不出队**。** 它不是「永久失败」，
  *     理由见下面 `sessionExpiredMessage` 上方那一段。
+ *   · ★ **`'locked'`：课堂被老师锁定作答 ⇒ 保留、不重试、不弹提示**（M5a 新增）。
+ *     它与 `'permanent'` **必须分开**：按 4xx 一律永久处置，学生在锁定**之前**写的、
+ *     还没发出去的作答会被**静默丢掉**（`localStorage` 是唯一那份）；
+ *     它也不能算 `'transient'`（重试没用，锁还在）。
  *
  * 服务端那侧的配合是刻意的（`routes/worksheets.ts` 的注释写明）：409 用来表示
  * 「当前状态不允许这个操作」、400 表示「请求本身有问题」，两者都不与 5xx 混用。
  * **客户端这条判据与那条约定是一对**，改一边就要看另一边。
  */
-export type FailureKind = 'permanent' | 'session-expired' | 'transient';
+export type FailureKind = 'permanent' | 'session-expired' | 'locked' | 'transient';
 
-export function classifyFailure(status: number | null): FailureKind {
+/**
+ * @param status HTTP 状态码；`null` = 请求根本没发出去（网络错误）
+ * @param code   服务端响应体里那个**机器可读**的 `code`。
+ *   🔴 **可选第二参**，这是刻意的：既有调用点与既有断言一个字都不用改。
+ *   今天只有 `'answers-locked'` 一个取值。
+ *
+ * 🔴 **判据是 `code`，不是状态码**：`allowResubmit: false` 那条拒绝**也是 409**，
+ * 靠状态码分不开「锁着（暂时的）」与「这题不许重交（永久的）」，而两者处置相反。
+ * **更不许按中文文案判** —— 改文案时它会静默失效，后果是把学生的作答真的丢掉。
+ */
+export function classifyFailure(status: number | null, code?: string | null): FailureKind {
+  // 🔴 这一句必须排在**状态码判断之前**：锁定走的是 409，否则会被下面那条 4xx 吃掉。
+  if (code === 'answers-locked') return 'locked';
   if (status === null) return 'transient';
   // 🔴 401 走单独一档，**绝不能与 400/403/409 合并**。见 `sessionExpiredMessage`。
   if (status === 401) return 'session-expired';

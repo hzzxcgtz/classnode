@@ -99,7 +99,8 @@ test('permanentFailureMessage：优先用服务端那句，拿不到才回落；
  * ⚠️ 这里的 `drops` 必须与被测实现共用 `classifyFailure` 本身。若测试自己写一遍
  * `status >= 400`，它就会在实现把 401 归回 permanent 时**照样通过** —— 一条不看实现的假绿。
  */
-const drops = (status: number | null): boolean => classifyFailure(status) === 'permanent';
+const drops = (status: number | null, code?: string | null): boolean =>
+  classifyFailure(status, code) === 'permanent';
 
 test('🔴 401 不出队（会话过期），409 仍出队（阳性对照）', () => {
   // 401：服务端的学生 token 用**每进程随机**的密钥签（`middleware/student-auth.ts` 的
@@ -138,6 +139,41 @@ test('会话过期的提示说「刷新页面」，且**不是**服务端那句�
   assert.doesNotMatch(message, /教师会话|重新登录/);
   // 阳性对照：永久失败那条路的文案**没有被顺手改掉**（409 仍用服务端原话）。
   assert.equal(permanentFailureMessage(409, '老师已设置本题提交后不可修改'), '老师已设置本题提交后不可修改');
+});
+
+// ── 1c. ★ M5a：课堂锁定（`code: 'answers-locked'`）是**第四档**，不出队 ──────
+
+/**
+ * 🔴 **锁定绝不能被归进 `'permanent'`。**
+ *
+ * 老师在课上按下「锁定作答」之后，学生每一次保存都会吃到
+ * `409 { code: 'answers-locked' }`（`routes/worksheets.ts` 的 PUT 门控）。
+ * 按 4xx 一律永久处置的后果是**学生在锁定之前写的、还没发出去的作答被静默丢掉** ——
+ * 而 `localStorage` 里那份是**唯一**的一份（GC 21）。
+ *
+ * ⚠️ 必须与下面那条 409 **分开**：`allowResubmit: false` 的 409 同样要出队（重试没用），
+ * 而锁定只是**暂时**的 —— 老师会解锁，解锁后队列要继续发。两者状态码相同、
+ * 处置相反 ⇒ 判据只能落在 `code` 上。
+ */
+test('🔴 M5a：锁定的 409 不出队（`code` 是唯一判据）', () => {
+  assert.equal(drops(409, 'answers-locked'), false, '一出队，学生锁定前写的东西就真没了');
+  assert.equal(classifyFailure(409, 'answers-locked'), 'locked');
+});
+
+test('★ M5a：阳性对照 —— 不带 code 的 409 必须仍然出队', () => {
+  // 没有这一条，把 `classifyFailure` 改成「凡 409 都保留」也能让上一条变绿，
+  // 而那会让一条被永久拒绝的作答把队列永远堵住。
+  assert.equal(drops(409), true, '`allowResubmit: false` 那条 409 没有 code，必须仍然出队');
+  assert.equal(drops(409, null), true);
+});
+
+test('M5a：认不出的 code 不影响原判据（只增不改）', () => {
+  assert.equal(classifyFailure(409, 'nobody-knows'), 'permanent', '将来的新 code 不该被这一档吃掉');
+  assert.equal(classifyFailure(400, 'answers-locked'), 'locked', 'code 优先于状态码 —— 钉住实现里那句判断的顺序');
+  assert.equal(classifyFailure(500, 'answers-locked'), 'locked', '同上：判据排在状态码分支之前');
+  // 老客户端不传第二个参数的既有行为逐字不变。
+  assert.equal(classifyFailure(401), 'session-expired');
+  assert.equal(classifyFailure(null), 'transient');
 });
 
 // ── 2. 队列的增删与覆盖 ─────────────────────────────────────────────────

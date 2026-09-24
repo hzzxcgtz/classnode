@@ -190,6 +190,17 @@ export interface WorksheetQuestionListProps {
   scores?: Record<string, WorksheetScore>;
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   onSubmit?: (node: WorksheetQuestionNode) => void;
+  /**
+   * ★ M5a：课堂级「锁定作答」。
+   *
+   * 🔴 与上面那条 `allowResubmit`（本题已提交且不许重交）是**两件事**，刻意分成两个字段：
+   * 一个是**题级**的、由学习单的设置决定；一个是**课堂级**的、由老师此刻按下的按钮决定。
+   * 合并成一个布尔值之后，「锁定期间还能交卷、而已提交的题不能重交」就表达不出来了。
+   *
+   * ⚠️ **必填**（不给默认值）：本组件同时被教师端的「学生端预览」渲染，那条路永远是
+   * `false` —— 但让它**显式**写出来，比留一个默认值更能防止学生端那条路忘传。
+   */
+  answersLocked: boolean;
 }
 
 export function WorksheetQuestionList({
@@ -203,6 +214,9 @@ export function WorksheetQuestionList({
   scores,
   onChange,
   onSubmit,
+  // 改名解构：下面那个 map 里 `locked` 已经表示「本题已提交且不许重交」，
+  // 两个都叫 locked 会让 `controlsDisabled` 那一行读不出是哪一条在起作用。
+  answersLocked: classroomLocked,
 }: WorksheetQuestionListProps) {
   if (questions.length === 0) {
     return (
@@ -231,7 +245,9 @@ export function WorksheetQuestionList({
         const untouched = raw === undefined || isDraftEmpty(raw);
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
         const submitDisabled = Boolean(submitting[node.id]) || (!submitted && untouched);
-        const controlsDisabled = !interactive || locked;
+        // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
+        // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
+        const controlsDisabled = !interactive || locked || classroomLocked;
         return (
           <section className={styles.question} key={node.id}>
             <div className={styles.questionHead}>
@@ -277,16 +293,24 @@ export function WorksheetQuestionList({
               locked ? (
                 <p className={styles.lockedNote}>老师已设置本题提交后不可修改</p>
               ) : (
-                <div className={styles.submitRow}>
-                  <button
-                    type="button"
-                    className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
-                    disabled={submitDisabled}
-                    onClick={() => onSubmit?.(node)}
-                  >
-                    {submitting[node.id] ? '提交中…' : submitted ? '重新提交' : '提交本题'}
-                  </button>
-                </div>
+                <>
+                  {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
+                      「只能提交已保存的内容」不是修辞 —— 有未保存改动的那道题会被拦下
+                      （见 `use-worksheet-answers.ts` 的 `submit`）。 */}
+                  {classroomLocked && (
+                    <p className={styles.lockedNote}>老师已锁定作答 —— 只能提交已保存的内容</p>
+                  )}
+                  <div className={styles.submitRow}>
+                    <button
+                      type="button"
+                      className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
+                      disabled={submitDisabled}
+                      onClick={() => onSubmit?.(node)}
+                    >
+                      {submitting[node.id] ? '提交中…' : submitted ? '重新提交' : '提交本题'}
+                    </button>
+                  </div>
+                </>
               )
             ) : null}
           </section>
@@ -323,7 +347,7 @@ export interface WorksheetPanelProps extends ModulePanelProps {
   answersLocked: boolean;
 }
 
-export function WorksheetPanel({ active, classroom, session, toast, setToast }: WorksheetPanelProps) {
+export function WorksheetPanel({ active, classroom, session, toast, setToast, answersLocked }: WorksheetPanelProps) {
   const accent = MODULE_META.worksheet.accent;
   const label = MODULE_META.worksheet.label;
 
@@ -424,6 +448,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
     // 每次渲染换一个数组身份就会把学生正在敲的字抹掉。见那个常量的注释。
     savedAnswers: load.kind === 'ready' ? load.worksheet.savedAnswers : NO_SAVED_ANSWERS,
     setToast,
+    // ★ M5a：**从 props 进来**（D1 铺好的那条路：会话层专门 state → 外壳 → 本面板）。
+    // ⚠️ 不要改成读 `classroom?.answersLocked`：那个对象 15 秒才刷新一次，
+    // 而锁定要**立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
+    answersLocked,
   });
 
   const handleChange = useCallback((node: WorksheetQuestionNode, draft: AnswerDraft) => {
@@ -510,6 +538,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast }: 
               scores={answers.scores}
               onChange={handleChange}
               onSubmit={handleSubmit}
+              // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。
+              answersLocked={answersLocked}
             />
           </div>
         </>

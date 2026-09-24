@@ -100,6 +100,16 @@ export interface UseWorksheetAnswersOptions {
    */
   savedAnswers: SavedAnswerRow[];
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
+  /**
+   * ★ M5a：这间课堂此刻是否锁定了作答。
+   *
+   * 用途两个：`submit` 前**跳过** flush（锁期间 flush 必然吃 409），
+   * 以及「锁定到达的那一瞬尽力把队列发一次」。
+   *
+   * ⚠️ **不要**改成读 `classroom?.answersLocked`（那个快照 15 秒才刷新一次）——
+   * 它由会话层的专门 state + socket 事件供着，一路 props 递到本 hook。
+   */
+  answersLocked: boolean;
 }
 
 export interface UseWorksheetAnswersResult {
@@ -145,6 +155,7 @@ export function useWorksheetAnswers({
   questions,
   savedAnswers,
   setToast,
+  answersLocked,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
@@ -176,6 +187,10 @@ export function useWorksheetAnswers({
   useEffect(() => { setToastRef.current = setToast; }, [setToast]);
   const worksheetIdRef = useRef(worksheetId);
   useEffect(() => { worksheetIdRef.current = worksheetId; }, [worksheetId]);
+  // ★ M5a：`submit` 是个 `useCallback`，读 state 会让它每变一次就换一个新身份
+  // （`WorksheetPanel` 那侧的 effect 依赖它）。镜像进 ref 是照 `worksheetIdRef` 的写法。
+  const answersLockedRef = useRef(answersLocked);
+  answersLockedRef.current = answersLocked;
 
   /**
    * 队列键的 ref 镜像。
@@ -409,6 +424,24 @@ export function useWorksheetAnswers({
   }, [commitQueue, flush]);
 
   /**
+   * ★ M5a：锁态**刚变成 true** 的那一瞬，若队列非空就立刻试一次（不等 1.5 秒防抖）。
+   *
+   * ⚠️ 这一次**大概率**会被服务端拒（锁已经在服务端生效了）—— 那不是 bug：
+   * 它救的是「广播还在路上、队列先到」的那一档，以及服务端与客户端之间的那个短暂窗口。
+   * 之后 flush 会被 `'locked'` 支挡住（条目保留），所以这里只做一次。
+   *
+   * ⚠️ 判据是**边沿**（`answersLocked && !wasLocked`），不是电平：电平会在每次渲染后重跑，
+   * 而 `flush` 的依赖里没有 `answersLocked`，`[answersLocked, flush]` 这个依赖数组
+   * 恰好只在锁态翻转时触发一次。
+   */
+  const wasLockedRef = useRef(answersLocked);
+  useEffect(() => {
+    const wasLocked = wasLockedRef.current;
+    wasLockedRef.current = answersLocked;
+    if (answersLocked && !wasLocked && pendingRef.current.length > 0) void flush();
+  }, [answersLocked, flush]);
+
+  /**
    * 学生的每一次输入。**本地状态立即变**（零延迟），然后进队列。
    *
    * 三种情形，第三条是最容易被漏掉的：
@@ -487,15 +520,24 @@ export function useWorksheetAnswers({
     if (!target) return;
     setSubmitting((prev) => ({ ...prev, [node.id]: true }));
     try {
-      await flush();
+      // ★ M5a：锁定期**不发 flush** —— 那一步是 PUT，而 PUT 锁定期必然吃 409。
+      // 跳过它，直接看队列：队列里还有这一题 ⇒ 屏幕上那份还没存住 ⇒ **拦下并说明**。
+      // 🔴 不拦的后果是把「库里那份旧的」交上去，而学生从屏幕上分不清哪部分存住了
+      //    （规格 §3.3 的修正条款：拦下 + 一句明说，是更小的谎）。
+      if (!answersLockedRef.current) {
+        await flush();
+      }
       if (pendingRef.current.some((item) => item.questionId === node.id)) {
-        // ⚠️ 两种成因，文案必须分开：401 是登录状态过期（网络是好的），
+        // ⚠️ 三种成因，文案必须分开：401 是登录状态过期（网络是好的），
         // 说成「等网络恢复」会让学生去检查 Wi-Fi —— 一次白费的排查。
+        // ★ M5a 第三档：课堂被锁定 ⇒ 也不是网络问题。
         setToastRef.current({
-          msg: sessionExpiredRef.current
-            ? sessionExpiredMessage()
-            : '这一题还没保存成功，先等网络恢复再提交',
-          type: sessionExpiredRef.current ? 'error' : 'info',
+          msg: answersLockedRef.current
+            ? '这一题有还没保存的改动，锁定期间只能提交已保存的内容'
+            : sessionExpiredRef.current
+              ? sessionExpiredMessage()
+              : '这一题还没保存成功，先等网络恢复再提交',
+          type: answersLockedRef.current || sessionExpiredRef.current ? 'error' : 'info',
         });
         return;
       }

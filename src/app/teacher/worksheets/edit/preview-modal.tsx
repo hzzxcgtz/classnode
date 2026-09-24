@@ -93,6 +93,9 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
               // 只读态没有「已提交」可言（`statuses` 是空的），这个开关在预览里不生效；
               // 传 `true` 只是不给读的人留一个「这里为什么是 false」的问题。
               allowResubmit
+              // ★ M5a：锁定是**课堂级**的运行时状态，教师端的「学生端预览」没有课堂可言
+              // ⇒ 恒 `false`。显式写出来（而不是靠默认值）是刻意的，见那个字段的注释。
+              answersLocked={false}
             />
           </div>
         </div>

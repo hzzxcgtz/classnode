@@ -88,8 +88,11 @@ export const WORKSHEET_STUCK_AFTER_MS = 5 * 60 * 1000;
  * `GET /api/worksheets/classroom/:classroomId/answers` 已落地
  * （`server/src/routes/worksheets.ts`），它读的正是 `WorksheetAnswer`。
  * **它不成立的方式值得记下来**：端点有了，但**格子没有消费它** —— 格子的进度仍然只由广播写入，
- * 而那个读端点缺**两个字段**才够格子用（它的 `answerRows` 只有
- * `{ questionId, status, isCorrect, reviewedAt, value }`，见 `routes/worksheets.ts` 的 `select`）：
+ * 而那个读端点缺**两个字段**才够格子用（它的 `answerRows` 是
+ * `{ questionId, status, isCorrect, gradeState, score, reviewedAt, value }`，
+ * 见 `routes/worksheets.ts` 的 `select`；★ M4a 起多了 `gradeState` / `score` 两列，
+ * ⚠️ 它们**不改变这条结论** —— 那两个字段说的是「这道题得了几分、判成哪一档」，
+ * 而格子按规格 §7.2 只编码**状态**、不编码对错，缺的仍然是下面这两个）：
  *   1. **哪一题是最后一次保存的**（`lastQuestionId`，本文件「正在做第 N 题」的唯一依据）；
  *   2. **最后一次保存的时刻**（本文件判「停住了」用的 5 分钟阈值靠它）。
  * ⇒ 结论不变（这一态仍然只能报「还没收到作答」），但理由要写成真话：

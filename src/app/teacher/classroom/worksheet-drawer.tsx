@@ -10,6 +10,7 @@ import {
   questionHeading,
   questionOutcome,
   statusLabel,
+  type WorksheetOutcomeMark,
   type WorksheetQuestionStatus,
 } from './worksheet-drawer-state';
 
@@ -429,11 +430,19 @@ function ParticipantAnswers({
  * 而 `◐ ○` 那两个圆是**服务端未判分**的情形（主观题、关闭自动判分）——
  * 那里显示的是状态「作答中 / 已提交」，**不显示 ✓ 也不显示 ✗**。
  * 把它画成「✗」是本任务最要防的一类假象：系统根本不知道学生对不对。
+ *
+ * ★ M4a：`mark` 多了一档 `'partial'`（规格 §12 要它「在格子上画得出来」）。
+ * ⚠️ **画那一档是 E2 的活**（符号选哪个是产品判断：`◐` 已被学生端用作「作答中」）。
+ * 在那之前 `'partial'` 落到最后那一支，显示「◐ 已提交」—— 那句话**是真的**
+ * （它确实交了），只是没说「半对」，所以这里不留一个假话。
+ * 类型取 `WorksheetOutcomeMark` 而**不再重写一份字面量联合**：本文件曾经手抄过
+ * `'correct' | 'wrong' | 'none'`，多一档时它会安静地少一档（真正的报错点会被
+ * 「类型对不上」挡住，但那是运气好 —— 手抄的第二份清单本来就该消失）。
  */
 function OutcomeMark({
   mark, status,
 }: {
-  mark: 'correct' | 'wrong' | 'none';
+  mark: WorksheetOutcomeMark;
   status: WorksheetQuestionStatus;
 }) {
   if (mark === 'correct') {

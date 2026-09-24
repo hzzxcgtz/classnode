@@ -22,9 +22,11 @@ import {
  * 学习单抽屉的判据（形态 A / B）。
  *
  * 每个 describe 对应一条**错了不报错**的规则，报告里的实测输出就是这些用例：
- *   · 主观题没有 ✓/✗（并且 `isCorrect` 被手工改成 true 也一样没有）；
+ *   · 主观题没有 ✓/◐/✗（并且 `gradeState` / `isCorrect` 被手工改成「对」也一样没有）；
  *   · 未作答的题**不给**「标记已查看」按钮（服务端对它会回 409）；
  *   · 正确率的分母是「已判过的行」，不是参与者数；
+ *   · ★ M4a **正确率的分子只数全对**（半对进分母不进分子 ⇒ 10 行 4/3/3 是 **40%**）；
+ *   · ★ M4a 三档标记以 `gradeState` 为**真源**，`isCorrect` 只在它缺失时兜底；
  *   · 「已交 N/M」的分母是参与者数，不是答过的人；
  *   · 量词跟着模式走（高级模式下列的是组）。
  *
@@ -59,6 +61,19 @@ function row(over: Partial<WorksheetBoardAnswerRow>): WorksheetBoardAnswerRow {
   };
 }
 
+/**
+ * 造一条**线缆上真会出现、类型却说不会**的行：`gradeState` 是个本地类型没写到的值。
+ *
+ * 🔴 为什么要留这个口子：`WorksheetBoardAnswerRow.gradeState` 被收窄成了三态联合，而
+ * **浏览器里的 bundle 与服务端不保证同一个版本**（服务端将来加第四档时，本地这份类型
+ * 根本不知道）。`rowVerdict` 第 3 条分支防的正是这件事，可它**只有绕过类型才验得了** ——
+ * 断言不是多余的：把那一支删掉（改成掉回 `isCorrect`）在类型上完全合法、跑起来也不报错，
+ * 表现却是「新档被判成答错」。
+ */
+function wireRow(over: Record<string, unknown>): WorksheetBoardAnswerRow {
+  return row(over as Partial<WorksheetBoardAnswerRow>);
+}
+
 // ---------------------------------------------------------------------------
 // 形态 A · 逐题详情
 // ---------------------------------------------------------------------------
@@ -78,19 +93,91 @@ test('形态 A：未作答的题「无对错、无按钮、无原答案」', () 
   assert.deepEqual(questionOutcome(choice, row({ status: 'unanswered' })), outcome);
 });
 
-test('形态 A：主观题**永远没有对错**，即使库里那行的 isCorrect 被改成了 true', () => {
+test('形态 A：主观题**永远没有对错**，即使库里那行的 isCorrect / gradeState 被改成了「对」', () => {
   const submitted = row({ questionId: 'q_3', status: 'submitted', isCorrect: true, value: { format: 'text/v1', text: '冒泡了' } });
   const outcome = questionOutcome(short, submitted);
   assert.equal(outcome.status, 'submitted', '状态是「已提交」（它确实交了）');
-  assert.equal(outcome.mark, 'none', '主观题不该出现 ✓/✗ —— 系统根本不知道学生对不对');
+  assert.equal(outcome.mark, 'none', '主观题不该出现 ✓/◐/✗ —— 系统根本不知道学生对不对');
   assert.equal(outcome.canReview, true, '主观题照样可以「标记已查看」');
   assert.equal(outcome.answerText, '冒泡了', '原答案照给');
+
+  // ★ M4a 的第二道闸：`isCorrect` 之外，`gradeState` 也被手工写成「对」时同样什么都没有
+  //（服务端的 `grade()` 对主观题恒回 null，所以这一行只可能是手改出来的）。
+  assert.equal(
+    questionOutcome(short, row({ questionId: 'q_3', status: 'submitted', gradeState: 'correct', isCorrect: true })).mark,
+    'none',
+    '主观题不看 gradeState —— `short-answer` 在注册表里是 graded: false',
+  );
 
   // 阳性对照：同样一行数据换到单选题上**必须**显示对错 —— 否则上面那句只是「什么都不显示」。
   assert.equal(questionOutcome(choice, { ...submitted, questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] } }).mark, 'correct');
 });
 
-test('形态 A：客观题的对错只认「已提交 + isCorrect 是真布尔值」', () => {
+test('🔴 形态 A：三档标记读 gradeState —— 半对画出自己那一档，既不是「对」也不是「错」', () => {
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).mark,
+    'correct',
+  );
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false })).mark,
+    'partial',
+    '半对落到 wrong 的话，「算进分母却不算对」就看起来是答错了（规格 §12 要它在格子上画得出来）',
+  );
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).mark,
+    'wrong',
+    '界面这一档叫 wrong（规格 §12 逐字），不叫服务端的 incorrect',
+  );
+  // 判据没变的两条：没提交就没有标记（哪怕库里已经有结论），没有结论就是 none。
+  assert.equal(questionOutcome(choice, row({ status: 'draft', gradeState: 'correct' })).mark, 'none', '作答中不判有对错');
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: null, isCorrect: null })).mark,
+    'none',
+    '关闭自动判分时服务端两个字段都给 null ⇒ 退化成「已提交」，不显示 ✗（把「没判」说成「错」是最坏的一种）',
+  );
+});
+
+test('🔴 形态 A：gradeState 与 isCorrect 打架时以 gradeState 为准（它是真源，另一个是派生）', () => {
+  // 半对那一行**必然**是 `isCorrect: false`（那个布尔的语义已收窄为「全对」）——
+  // 光看布尔值，它与「答错」长得一模一样，这正是要加 gradeState 这一列的原因。
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false })).mark,
+    'partial',
+    '半对的 isCorrect 是 false ⇒ 读布尔值会把半对说成答错',
+  );
+  // 反过来也一样：库里 isCorrect 是脏的（true）也不改结论 —— 两张表打架时真源只有一个。
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: true })).mark,
+    'wrong',
+  );
+});
+
+test('🔴 形态 A：gradeState 缺失时 isCorrect 兜底（回填没跑到的旧行），认不出的值不猜', () => {
+  // ⚠️ 这两行是**兜底**不是第二条路：A1 的启动期回填已把 M3 旧行的 gradeState 补齐，
+  // 所以它只在「回填没跑到」时生效。删掉它不会让任何用例变红，
+  // 表现是「升级当天所有历史作答的标记消失」。
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', isCorrect: true })).mark,
+    'correct',
+    'gradeState 为 null ⇒ 退到 isCorrect（旧行）',
+  );
+  assert.equal(
+    questionOutcome(choice, row({ status: 'submitted', isCorrect: false })).mark,
+    'wrong',
+    '旧行里没有「半对」这个概念（M4a 才有）⇒ false 只能落 incorrect，猜成 partial 是编的',
+  );
+  // 🔴 认不出的新档 ⇒ 什么都不画。**不**掉回 isCorrect：一个 false 会把新档说成「答错」，
+  // 而「没有标记」至少是一句真话（系统没给出这一档）。
+  assert.equal(
+    questionOutcome(choice, wireRow({ status: 'submitted', gradeState: 'exempt', isCorrect: false })).mark,
+    'none',
+    '类型没写到的档位不许猜 —— 猜错的方向是把「不知道」说成「错」',
+  );
+});
+
+test('形态 A：客观题的标记只认「已提交 + 有一份判分结论」，作答中一概不判', () => {
+  // ★ M4a：这一组走的是 `rowVerdict` 的**兜底**那一支（`gradeState` 为 null、只有 isCorrect）。
+  // 上面那条用例把三态与优先级都钉住了，这里保留的是「判据的边界」这一层：
   assert.equal(questionOutcome(choice, row({ status: 'draft', isCorrect: true })).mark, 'none', '作答中不判对错');
   assert.equal(questionOutcome(choice, row({ status: 'submitted', isCorrect: false })).mark, 'wrong');
   assert.equal(
@@ -99,7 +186,7 @@ test('形态 A：客观题的对错只认「已提交 + isCorrect 是真布尔�
   );
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', isCorrect: false })).status, 'submitted',
-    '没有 ✓/✗ 不代表状态栏空着',
+    '没有 ✓/◐/✗ 不代表状态栏空着',
   );
 });
 
@@ -139,6 +226,51 @@ test('状态标签：三态各一个词，与看板方格阵同一组', () => {
 // ---------------------------------------------------------------------------
 // 形态 B · 按题聚合
 // ---------------------------------------------------------------------------
+
+test('🔴 形态 B：正确率是「全对才算对」—— 10 行 4 全对 / 3 半对 / 3 错 = **40%**，不是 70%', () => {
+  const rows: Array<WorksheetBoardAnswerRow | undefined> = [];
+  const submit = (gradeState: 'correct' | 'partial' | 'incorrect'): void => {
+    // 半对那一行的 `isCorrect` 按规格 §12 只能是 false（那个布尔的语义已收窄为「全对」）——
+    // 所以这一组数据里，**光看 isCorrect 根本分不出半对与答错**，这正是本用例的意义。
+    rows.push(row({ status: 'submitted', gradeState, isCorrect: gradeState === 'correct' }));
+  };
+  for (let i = 0; i < 4; i += 1) submit('correct');
+  for (let i = 0; i < 3; i += 1) submit('partial');
+  for (let i = 0; i < 3; i += 1) submit('incorrect');
+
+  const aggregate = questionAggregate(rows);
+  assert.equal(aggregate.graded, 10, '半对**进分母**（分母是「已判过的行」，三档都算判过）');
+  assert.equal(aggregate.correct, 4, '半对**不进分子**');
+  assert.equal(
+    aggregate.accuracy, 40,
+    '把分子写成「非 incorrect 即算对」会得到 70%（7/10）—— 半对被算成了对，教师看到的正确率凭空变高',
+  );
+
+  // 🔴 反面对照：同一组数据把 3 行半对**改判**成答错，正确率必须**一模一样**（40%）。
+  // 这是「半对既不算对、也不算得比错更差」那句话的实测形状 —— 顺带证明上面那个 40
+  // 不是碰巧（它只由 4 与分母 10 决定）。
+  const allOrNothing = rows.map((item) => (
+    item && item.gradeState === 'partial'
+      ? row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })
+      : item
+  ));
+  assert.equal(questionAggregate(allOrNothing).accuracy, 40);
+});
+
+test('★ 形态 B：全是半对 ⇒ 正确率 **0**（进了分母、一个也没进分子），不是「—」', () => {
+  const allPartial = questionAggregate([
+    row({ status: 'submitted', gradeState: 'partial', isCorrect: false }),
+    row({ status: 'submitted', gradeState: 'partial', isCorrect: false }),
+  ]);
+  assert.equal(allPartial.graded, 2, '半对不是「没判过」—— 它进分母');
+  assert.equal(
+    allPartial.accuracy, 0,
+    '0% 与 null 是两句不同的话：这句是「一道全对的都没有」（是真的），null 才是「没有已判过的行」',
+  );
+
+  // 阴性对照：一行都没判过时仍然是 null（界面显示「—」），别把上面那个 0 说成通用结论。
+  assert.equal(questionAggregate([row({ status: 'submitted', gradeState: null, isCorrect: null })]).accuracy, null);
+});
 
 test('形态 B：「已交 N/M」的分母是**参与者数**，正确率的分母是**已判过的行数**', () => {
   const aggregate = questionAggregate([
@@ -267,12 +399,23 @@ test('🔴 分母与格子必须同进同出：能判分的题型既要进正确
 
     // 这正是那份并列白名单漏改时的症状：服务端判了分、`isCorrect` 非空
     // ⇒ 下面这个分母把它算进去，而格子上什么都不画 —— 全程无报错。
-    assert.equal(questionAggregate(rows).graded, 2, '分母读的是 isCorrect 非空，与题型无关');
+    assert.equal(questionAggregate(rows).graded, 2, '分母读的是判分结论非空，与题型无关');
     assert.notEqual(
       outcome.mark,
       'none',
       `题型「${option.value}」已经被判了分（进了分母），格子上却不画标记 —— ` +
       '这就是「新题型算进正确率、格子上没有 ✓」那个静默不一致',
+    );
+
+    // ★ M4a：半对那一档**也**要同进同出，而且比另外两档更要紧 ——
+    // 它是唯一「算进分母却不算对」的行（规格 §12），格子上少了它就只能看起来像答错。
+    const partialRow = row({ questionId: 'q_x', status: 'submitted', gradeState: 'partial', isCorrect: false });
+    assert.equal(questionAggregate([partialRow, partialRow]).graded, 2, '半对也进分母');
+    assert.equal(
+      questionOutcome(node({ id: 'q_x', type: option.value }), partialRow).mark,
+      'partial',
+      `题型「${option.value}」被判成半对，格子上却没画出半对档 —— ` +
+      '它会看起来像答错（或像没判分），两句话都是假的',
     );
   }
 });

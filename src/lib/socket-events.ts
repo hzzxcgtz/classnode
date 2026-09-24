@@ -1,3 +1,8 @@
+// 判分三态的取值域只有一份，在 `types.ts`（服务端的 `GradeState` 与它逐字相同）。
+// ⚠️ `import type` —— 这一行在运行期**整段消失**（本文件是**纯类型**文件，一个字节的
+// 运行时代码都没有；加一条真 import 会让它从「类型声明」变成有副作用的模块）。
+import type { WorksheetGradeState } from './types';
+
 export interface ServerToClientEvents {
   [event: string]: (...args: never[]) => void;
   // 服务端 join-classroom 成功后下发（server/src/socket/index.ts 的 socket.emit('joined', …)）。
@@ -115,7 +120,7 @@ export interface ServerToClientEvents {
      * ★ M4a 新增：三态（`correct` / `partial` / `incorrect`），`null` = 没判分。
      * 看板的 ◐ 半对档只能来自它 —— `isCorrect: false` 推不出「是错还是半对」。
      */
-    gradeState: string | null;
+    gradeState: WorksheetGradeState | null;
     /**
      * ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的档），`null` = 没判分。
      * ⚠️ 与 `gradeState` 同生共死，别只读一个。

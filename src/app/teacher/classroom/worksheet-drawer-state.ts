@@ -1,4 +1,4 @@
-import type { WorksheetBoardAnswerRow, WorksheetQuestionNode } from '@/lib/types';
+import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 // 题型的读法（选项、作答值 → 输入态）只有一份，在 `src/lib/worksheet-questions.ts`
 // （学生端作答面板与教师端预览都引它）。这里**转出**同一份，不是抄一份。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**：本文件要能被 `node --test` 直接执行
@@ -14,10 +14,13 @@ import {
  *
  * 🔴 为什么单独成文件、单独断言：这里每一条判据错了都**不抛异常、不让编译失败**，
  * 只会让教师在课上看到一句错的结论 ——
- *   · 主观题上冒出一个 ✓/✗（学生答得对不对，系统根本不知道）；
+ *   · 主观题上冒出一个 ✓/◐/✗（学生答得对不对，系统根本不知道）；
  *   · 未作答的题上冒出一个「标记已查看」按钮（点下去服务端回 **409**，纯属必然失败）；
  *   · 正确率的分母用错（拿参与者数当分母 ⇒ 一份交了一半的卷子显示「正确率 50%」，
  *     而它其实一道没错）；
+ *   · ★ M4a：正确率的**分子**把半对算成对（`非 incorrect 即算对` 这种写法在类型上完全合法），
+ *     10 行 4 全对 3 半对 3 错会显示 70% 而不是 40% —— 见 `questionAggregate` 上面那段；
+ *   · ★ M4a：半对那一行落进 `wrong` ⇒ 教师把「算进分母却不算对」读成「答错了」；
  *   · 「已交 N/M」的分母漏掉没作答的人（那个数没有任何地方会报错）。
  * 本仓没有前端测试框架（规格 §11），但 `node --test` 能直接跑本文件：
  *
@@ -26,7 +29,7 @@ import {
  * ```
  *
  * ── 数据来源（规格 §7.4）──────────────────────────────────────────────
- *   · 逐题状态 / 对错 / 「已查看」 —— `GET /api/worksheets/classroom/:id/answers`
+ *   · 逐题状态 / 判分档（三态）/ 「已查看」 —— `GET /api/worksheets/classroom/:id/answers`
  *     （D4 补的历史读端点；在此之前只有广播，教师刷新一次页面看板就失忆）；
  *   · 题目清单 / 题号 / 题型 / 选项文字 —— `GET /api/worksheets/:id` 的 `content.nodes`
  *     （**只有**它会带答案字段，而它只留在教师端内存里，见 §5.4 的边界：
@@ -37,13 +40,24 @@ import {
 export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
 
 /**
- * 这一道题的**对错**。
+ * 这一道题的**判分档**（规格 §12：`✓ / ◐ / ✗ / 空`）。
  *
- * `none` 有两种来源，界面上都不显示 ✓/✗：
+ * ★ M4a：从三档（`correct | wrong | none`）扩成**四档**，多出来的是 `partial`。
+ * 🔴 为什么必须画得出来：正确率的口径是「**全对才算对**」⇒ 半对**进分母、不进分子**，
+ * 于是半对是**唯一**一种「算进分母却不算对」的行。格子上若没有它自己那一档，它就只能
+ * 落到 `wrong`（看起来是答错了）或 `none`（看起来是没判分）—— 两句话都是假的。
+ *
+ * `none` 的来源（界面上都不显示 ✓/◐/✗）没变：
  *   · 主观题（问答题）**本来就没有对错** —— 服务端的 `grade()` 对它恒返回 `null`；
- *   · 自动判分关掉时 / 还没提交时 —— `WorksheetAnswer.isCorrect` 为 `null`。
+ *   · 自动判分关掉时 / 还没提交时 —— `gradeState`（以及兜底的 `isCorrect`）为 `null`。
+ * ⚠️ 注意「`gradeState` 认不出来的值」也走这一档（见 `rowVerdict`）：**不猜**。
+ *
+ * ⚠️ **`◐` 这个符号在本项目里有两个含义**，这是知情的取舍不是疏忽：学生端
+ * `worksheet-panel.tsx` 用它表示「**作答中**」（作答进度），教师端用它表示「**半对**」
+ * （得分档）。两者不同屏（学生看不到教师抽屉），E2 负责在教师端把它画出来并决定要不要
+ * 换符号或加图例 —— 本文件只出**数据**，不选符号。
  */
-export type WorksheetOutcomeMark = 'correct' | 'wrong' | 'none';
+export type WorksheetOutcomeMark = 'correct' | 'partial' | 'wrong' | 'none';
 
 /**
  * 哪些题型有对错（看板格子上画 ✓/◐/✗ 的那些）。
@@ -51,14 +65,16 @@ export type WorksheetOutcomeMark = 'correct' | 'wrong' | 'none';
  * 🔴 **派生，不再并列。** 这里曾经是与题型清单并列的第二份白名单
  * （`['single-choice', 'fill-blank']`），靠它自己的一句注释提醒「将来加新题型时它会自动
  * 落到『没有对错』那一侧」—— 而**漏改的表现不是少一个 ✓，是正确率算错**：
- * 正确率的分母（`questionAggregate` 里 `isCorrect` 非空的行数）与服务端判分走的是
+ * 正确率的分母（★ M4a 起是 `questionAggregate` 里 `rowVerdict` 非空的行数，
+ * 在那之前是 `isCorrect` 非空的行数）与服务端判分走的是
  * **题型无关**的路，于是一个新的可判分题型会**进分母却不进格子**，全程无报错。
+ * ★ M4a 换的是**读哪个字段**，不是结构：分母仍然与题型无关，这条闸仍然必须存在。
  *
  * 现在「加一个题型」这个动作本身就必须在 `QUESTION_TYPE_OPTIONS` 里回答
  * 「它判不判分」（`graded` 那一格），漂移在结构上不可能发生。
  *
- * ⚠️ 它顺带也是「主观题没有 ✓/✗」那条要求的**第二道闸**：即使库里某一行
- * `short-answer` 的 `isCorrect` 被手工改成了 `true`，这里也不会显示 ✓。
+ * ⚠️ 它顺带也是「主观题没有 ✓/◐/✗」那条要求的**第二道闸**：即使库里某一行
+ * `short-answer` 的 `gradeState`（或兜底的 `isCorrect`）被手工改成了 `'correct'`，这里也不会显示 ✓。
  * 这条闸靠的是 `short-answer` 在 `QUESTION_TYPE_OPTIONS` 里是 `graded: false` ——
  * `worksheet-drawer-state.test.ts` 有一条用例把这两件事钉在一起。
  */
@@ -71,7 +87,7 @@ export function isGradedType(type: string): boolean {
 
 export interface QuestionOutcome {
   status: WorksheetQuestionStatus;
-  /** ✓ / ✗ / 什么都没有（主观题、未提交、关闭自动判分）。 */
+  /** ✓ / ◐ / ✗ / 什么都没有（主观题、未提交、关闭自动判分）。 */
   mark: WorksheetOutcomeMark;
   /** 教师是否已经「查看」过这道题（`reviewedAt` 非空）。 */
   reviewed: boolean;
@@ -88,10 +104,56 @@ export interface QuestionOutcome {
 }
 
 /**
+ * 一行作答的**判分结论**。`null` = 这一行没有判分 —— 与 `'incorrect'` 是**两件事**
+ * （服务端的 `grade()` 对主观题恒回 `null`；关掉自动判分时全班都是 `null`）。
+ *
+ * 🔴 判据的**优先级**就是下面三条分支的顺序，改顺序 = 改结论：
+ *
+ *   1. `gradeState` 是三个认得的取值之一 ⇒ **就按它**。它是 M4a 的新列，也是**唯一**能区分
+ *      `incorrect` 与 `partial` 的东西（`isCorrect: false` 把两者混成了一个值）。
+ *   2. `gradeState` 为 `null` / 整个字段缺失 ⇒ 退到 `isCorrect`。
+ *      ⚠️ 这是**兜底，不是第二真相源**：A1 的启动期回填已把 M3 落库的旧行的 `gradeState` 补齐
+ *      （`server/src/services/worksheet-schema.ts` 的
+ *      `UPDATE … CASE WHEN "isCorrect" THEN 'correct' ELSE 'incorrect' END`），
+ *      所以这条只该在**回填没跑到**时生效（回填失败、或浏览器里的旧 bundle 配新服务端）。
+ *      落点的选择也是它该有的样子：旧行里**不存在半对**（那时没有这个概念），
+ *      所以 `false` 只能落 `incorrect` —— 把旧行的 `false` 猜成 `partial` 是编的。
+ *      ⚠️ 这条兜底还留着这件事本身值得记：**删掉它不会让任何用例变红**（旧行的
+ *      `gradeState` 今天都非空），删掉的表现是「升级当天所有历史作答的标记消失」。
+ *   3. `gradeState` 是个**认不出来的字符串** ⇒ `null`，**不猜、也不掉回 `isCorrect`**。
+ *      将来服务端加第四档判分时，旧客户端会走到这一支；那时「没有标记」是唯一诚实的一档
+ *      （画 `✗` 是假话），而掉回 `isCorrect` 更糟 —— 一个 `false` 会把新档说成「答错」。
+ */
+export function rowVerdict(row: WorksheetBoardAnswerRow | undefined): WorksheetGradeState | null {
+  // ⚠️ 读成 `unknown` 而不是直接信类型：这个字段来自线缆（两条读端点 + 一条广播），
+  // 而浏览器里的 bundle 与服务端**不保证同一个版本** —— 第 3 条分支要真能走到。
+  const state: unknown = row?.gradeState;
+  if (state === 'correct' || state === 'partial' || state === 'incorrect') return state;
+  if (state === null || state === undefined) {
+    return typeof row?.isCorrect === 'boolean' ? (row.isCorrect ? 'correct' : 'incorrect') : null;
+  }
+  return null;
+}
+
+/**
+ * 判分结论 → 界面上那一档。
+ *
+ * ⚠️ 名字对不上是有意的：服务端叫 `incorrect`、界面这一档叫 **`wrong`**
+ * （规格 §12 逐字写的 `'correct' | 'partial' | 'wrong' | 'none'`）。
+ * 这里**不做**改名统一 —— `worksheet-drawer.tsx` 与两处用例都按 `'wrong'` 分支。
+ */
+function markFromVerdict(verdict: WorksheetGradeState | null): WorksheetOutcomeMark {
+  if (verdict === 'correct') return 'correct';
+  if (verdict === 'partial') return 'partial';
+  if (verdict === 'incorrect') return 'wrong';
+  return 'none';
+}
+
+/**
  * 一道题的完整结论。`row` 是**这个参与者在**这道题上的作答行；`undefined` = 一道没动过。
  *
- * 分支顺序：状态 → 对错 → 按钮 → 原答案。其中对错的判据是**三条并列**的与：
- * 题型有对错 + 已提交 + `isCorrect` 是个真布尔值。
+ * 分支顺序：状态 → 判分档 → 按钮 → 原答案。其中判分档的判据是**三条并列**的与：
+ * 题型有对错 + 已提交 + `rowVerdict` 给出了结论（见那个函数的三条优先级）。
  */
 export function questionOutcome(
   node: WorksheetQuestionNode,
@@ -101,9 +163,7 @@ export function questionOutcome(
     row?.status === 'submitted' ? 'submitted' : row?.status === 'draft' ? 'draft' : 'unanswered';
 
   const mark: WorksheetOutcomeMark =
-    isGradedType(node.type) && status === 'submitted' && typeof row?.isCorrect === 'boolean'
-      ? (row.isCorrect ? 'correct' : 'wrong')
-      : 'none';
+    isGradedType(node.type) && status === 'submitted' ? markFromVerdict(rowVerdict(row)) : 'none';
 
   return {
     status,
@@ -178,8 +238,17 @@ export function statusLabel(status: WorksheetQuestionStatus): string {
  * 🔴 **两个分母是两件事，不能互相顶替**：
  *   · 「已交 N/M」的 M 是**参与者数**（有几个人/组该答这道题），不是「答过的人」——
  *     用后者算，一份只有一半人交的卷子会显示「已交 5/5」，而那正是教师要看的东西；
- *   · 「正确率」的分母是**已判过对错的行数**（`isCorrect` 非 `null`），不是已交的人数 ——
+ *   · 「正确率」的分母是**已判过的行数**（`rowVerdict` 非 `null`），不是已交的人数 ——
  *     主观题恒不判分、关闭自动判分时全班都不判分，拿已交人数当分母会得到 0%。
+ *
+ * 🔴 **「正确」的口径 = 全对才算对**（规格 §12 的裁定，**不是**这里能自由发挥的地方）：
+ *   · **半对进分母、不进分子** ⇒ 10 行里 4 全对 / 3 半对 / 3 错 = **40%**，不是 70%；
+ *   · 这**不是自动成立的**：把分子写成「非 `incorrect` 即算对」在类型上完全合法、
+ *     跑起来也不报错，只是把半对算成了对（教师看到的正确率凭空变高）。
+ *     `worksheet-drawer-state.test.ts` 里那条 10 行 4/3/3 的用例就是钉它用的 ——
+ *     ⚠️ 那条用例是**唯一**能区分「全对才算对」与「非错即对」的用例，别把它改成别的形状。
+ *   · 全部都是半对 ⇒ `accuracy` 是 **0**（它们进了分母、一个也没进分子），**不是 `null`**：
+ *     `null` 的意思只有一句 —— 一行都没判过（界面显示「—」）。
  *
  * `accuracy === null` 表示**没有已判过的行** ⇒ 界面上显示「—」（主观题那一行就是它）。
  * 返回的是**已四舍五入的整数百分比**：界面上写的是 `92%`，多给小数位只会让人以为更精确。
@@ -188,8 +257,9 @@ export interface QuestionAggregate {
   /** 分母：参与者数（`rows.length` —— 每个参与者一格，没作答的那一格是 `undefined`）。 */
   total: number;
   submitted: number;
-  /** 已判过对错的行数（`isCorrect` 非 `null`）—— 正确率的分母。 */
+  /** 已判过的行数（`rowVerdict` 非 `null`，**含半对**）—— 正确率的分母。 */
   graded: number;
+  /** 判为**全对**的行数 —— 正确率的分子。半对**不在**这里。 */
   correct: number;
   /** 0–100 的整数；`null` = 没有已判过的行（显示「—」）。 */
   accuracy: number | null;
@@ -202,9 +272,14 @@ export function questionAggregate(rows: Array<WorksheetBoardAnswerRow | undefine
   for (const row of rows) {
     if (!row) continue;
     if (row.status === 'submitted') submitted += 1;
-    if (typeof row.isCorrect === 'boolean') {
+    // ⚠️ 分母与分子读的是**同一个结论**（`rowVerdict`），只是筛的档不同 ——
+    // 两处各读一个字段（比如分母读 `gradeState`、分子读 `isCorrect`）会让它们
+    // 在旧行上分叉，而那种分叉的表现是「分母里有一行，分子里永远数不到」。
+    const verdict = rowVerdict(row);
+    if (verdict !== null) {
       graded += 1;
-      if (row.isCorrect) correct += 1;
+      // 🔴 只有 `correct` 进分子 —— `partial` **不**进（规格 §12 的裁定）。
+      if (verdict === 'correct') correct += 1;
     }
   }
   return {

@@ -347,6 +347,22 @@ export interface WorksheetDetail {
 }
 
 /**
+ * ★ M4a：一道题的**判分结论三态**（规格 §12「得分与正确率的口径」）。
+ *
+ * 取值域与**服务端** `server/src/services/worksheet-questions.ts` 的 `GradeState` 逐字相同，
+ * 也就是 `grade()` 的返回值域（它为 `null` = 该题型不参与判分，与 `'incorrect'` 是两件事）。
+ *
+ * 🔴 **`isCorrect: boolean` 表达不了它**（`false` 同时覆盖 `'incorrect'` 与 `'partial'`），
+ * 所以 M4a 在 `WorksheetAnswer` 上加了 `gradeState` 列，并把 `isCorrect` 的语义**收窄为「全对」**、
+ * 由 `gradeState` 派生写入 —— `isCorrect` 因此**不再是第二真相源**。
+ *
+ * ⚠️ 「这一行没判分」= `gradeState === null`（主观题 / 关掉自动判分 / 还没提交），
+ * 那是 `null` 而不是这个联合里的一员 —— 别为了省一个 `??` 给它加一个 `'none'` 成员，
+ * 那会让「没判」与「判错」在类型上长得一样。
+ */
+export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
+
+/**
  * 教师看板的**逐题作答行**（`GET /api/worksheets/classroom/:classroomId/answers`）。
  *
  * 🔴 这个端点是 D4 补的，它存在的理由是 D3 实测出来的一个洞：看板格子完全由
@@ -371,9 +387,10 @@ export interface WorksheetBoardAnswerRow {
   isCorrect: boolean | null;
   /**
    * ★ M4a：三态（`correct` / `partial` / `incorrect`），`null` = 没判分。
-   * ⚠️ 旧行（M3 落的）已由启动期回填补齐；**回填没跑到**时它是 `null`，`isCorrect` 才是兜底。
+   * ⚠️ 旧行（M3 落的）已由启动期回填补齐；**回填没跑到**时它是 `null`，`isCorrect` 才是兜底
+   * （读的一侧 —— `worksheet-drawer-state.ts` 的 `rowVerdict` —— 里那条兜底还留着）。
    */
-  gradeState: string | null;
+  gradeState: WorksheetGradeState | null;
   /**
    * ★ M4a：这道题拿到的**绝对数**（教师逐题填的两个档之一），`null` = 没判分**或旧行**。
    * ⚠️ 旧行**永远是 `null`**（A1 刻意不回填：那时没有逐题分值，写死一个 1 是编的），

@@ -59,6 +59,14 @@ export interface ClassroomSummary {
   allowStudentStop: boolean;
   allowStudentExport: boolean;
   allowFollowUps: boolean;
+  /**
+   * ★ M5a：课堂级「锁定作答」。`true` = 停笔（保存被 409 拒），但**交卷仍然放行**。
+   *
+   * ⚠️ **可选**：更老的版本根本不发这个字段 ⇒ 读的地方必须按「未锁定」处理
+   * （`classroom.answersLocked === true`），不能把它当成必填。
+   * `StudentClassroom` 与 `ClassroomDetail` 都继承本接口，所以这一处两端都生效。
+   */
+  answersLocked?: boolean;
   createdAt?: string;
   endedAt?: string | null;
   agents?: AgentSummary[];

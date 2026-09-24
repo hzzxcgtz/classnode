@@ -1016,6 +1016,8 @@ router.get('/code/:code', async (req, res) => {
       title: classroom.title,
       mode: classroom.mode,
       status: classroom.status,
+      // ★ M5a：课堂级「锁定作答」。学生端读它来显示锁定态（与 `status` 同一条通道）。
+      answersLocked: classroom.answersLocked,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
       // 探究空间托管服务的**端口**（不是拼好的 URL）。学生端用
@@ -1266,6 +1268,52 @@ router.post('/:id/resume', async (req, res) => {
   }
 });
 
+// M5a：锁定作答（停笔，但交卷仍然放行 —— 规格 §3.2）
+router.post('/:id/lock-answers', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    // 先判存在：`update` 对不存在的 id 会抛，而我们要的是 404（不是 500）。
+    const exists = await prisma.classroom.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: '课堂不存在' });
+    // 🔴 **幂等**：已经锁着再锁一次也 200，而且**照样广播** ——
+    // 客户端的状态可能与服务端不同步（另一个标签页、刚重连），一次多余的广播是自愈，
+    // 不是噪音（载荷是空的，一个事件名而已）。
+    const classroom = await prisma.classroom.update({ where: { id: req.params.id }, data: { answersLocked: true } });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`classroom:${classroom.id}`).emit('answers-locked');
+      io.to(`teacher:${classroom.id}`).emit('answers-locked');
+    }
+
+    res.json(classroom);
+  } catch (error) {
+    console.error('[Classroom] lock answers error:', error);
+    res.status(500).json({ error: '锁定作答失败' });
+  }
+});
+
+// M5a：解锁作答
+router.post('/:id/unlock-answers', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const exists = await prisma.classroom.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!exists) return res.status(404).json({ error: '课堂不存在' });
+    const classroom = await prisma.classroom.update({ where: { id: req.params.id }, data: { answersLocked: false } });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`classroom:${classroom.id}`).emit('answers-unlocked');
+      io.to(`teacher:${classroom.id}`).emit('answers-unlocked');
+    }
+
+    res.json(classroom);
+  } catch (error) {
+    console.error('[Classroom] unlock answers error:', error);
+    res.status(500).json({ error: '解锁作答失败' });
+  }
+});
+
 // 恢复已结束的课堂（重新生成互动码）
 router.post('/:id/restore', async (req, res) => {
   try {
@@ -1283,7 +1331,9 @@ router.post('/:id/restore', async (req, res) => {
       const newCode = await generateUniqueClassroomCode(tx);
       const changed = await tx.classroom.updateMany({
         where: { id: req.params.id, status: ALLOWED_SOURCE_STATUSES.restore[0] },
-        data: { status: 'active', code: newCode, endedAt: null },
+        // ★ M5a：恢复课堂 = 重新开始上课 ⇒ 顺手解锁（仍停笔是自相矛盾的）。
+        // 这里**只通知教师端**（学生要用新码重新加入，不在房间里）—— 与这段既有注释一致。
+        data: { status: 'active', code: newCode, endedAt: null, answersLocked: false },
       });
       if (changed.count !== 1) throw new Error('INVALID_CLASSROOM_STATE');
       return tx.classroom.findUniqueOrThrow({ where: { id: req.params.id } });

@@ -110,6 +110,10 @@ model Classroom {
   allowStudentStop Boolean @default(true)
   allowStudentExport Boolean @default(true)
   allowFollowUps Boolean @default(true)
+  /// M5a：课堂级「锁定作答」。`false`（默认）= 未锁定。
+  /// ⚠️ 改成 true 之后，学习单的**保存**会被 409 拒（`code: 'answers-locked'`），
+  /// 而**交卷仍然放行**（规格 §3.2）。与 `allowResubmit`（学习单级、题级语义）是两层。
+  answersLocked Boolean @default(false)
   /// 探究空间：是否采集**画面**（截图）。关掉后学生端不传任何图片，
   /// 只传文字档（可见性 + 滚动深度）—— 那是给老设备用的便宜档。
   webappCaptureEnabled Boolean @default(true)

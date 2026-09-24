@@ -412,6 +412,11 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappFrameIntervalMs" INTEGER NOT NULL DEFAULT 10000`);
       console.log('[server] Added webappFrameIntervalMs column to Classroom');
     }
+    // M5a：课堂级「锁定作答」。默认未锁定 ⇒ `DEFAULT 0`（布尔列的先例见上面几行）。
+    if (!classroomColNames.includes('answersLocked')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "answersLocked" BOOLEAN NOT NULL DEFAULT 0`);
+      console.log('[server] Added answersLocked column to Classroom');
+    }
 
     // M4a：三态判分结果与数值得分（规格 §12）——加列 + 回填旧行。
     // ⚠️ 实现在 `services/worksheet-schema.ts` 里（**不是**内联在这儿）：那两列的类型

@@ -15,7 +15,7 @@ import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
-import { stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
+import { moduleCountUnit, stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
@@ -222,9 +222,11 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
  * `muted` 保留原义：**不是三件套**的（首页 / 未知），以及**尚未支持**的学习单
  * —— 它们与真正能用的模块不是一个分量，同样的着色会让人以为它们也一样能用。
  */
-function ModuleCountChip({ label, value, hint, muted = false, selected, onSelect }: {
+function ModuleCountChip({ label, value, unit, hint, muted = false, selected, onSelect }: {
   label: string;
   value: number;
+  /** ★ M5a：量词（「人」/「组」）。放在数字后面，字号比数字小一档。 */
+  unit?: string;
   hint?: string;
   muted?: boolean;
   selected: boolean;
@@ -244,6 +246,11 @@ function ModuleCountChip({ label, value, hint, muted = false, selected, onSelect
       }}>
       <span>{label}</span>
       <span style={{ fontSize: '1rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: selected ? 'white' : numberColor }}>{value}</span>
+      {unit && (
+        <span style={{ fontSize: '0.688rem', fontWeight: 500, color: selected ? 'rgba(255,255,255,.85)' : '#94a3b8' }}>
+          {unit}
+        </span>
+      )}
       {hint && <span style={{ fontSize: '0.625rem', color: selected ? 'rgba(255,255,255,.75)' : '#cbd5e1' }}>{hint}</span>}
     </button>
   );
@@ -1567,6 +1574,10 @@ function ClassroomBoardContent() {
     return counts;
   })();
 
+  // ★ M5a：模块筛选行那六个数字的量词（分组/高级模式下参与者是组 ⇒ 那是组数）。
+  // 与 `moduleDistribution` 同一处：两者必须同源，否则量词与数字会各说各的。
+  const moduleCountUnitSuffix = moduleCountUnit(classroom.mode);
+
   /**
    * 模块筛选的**生效值**。
    *
@@ -2208,26 +2219,27 @@ function ClassroomBoardContent() {
           {boardMode === 'follow' && (
             <div aria-label="按模块筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>模块</span>
-              {/* 🔴 单位是**人数**，与下面那几个模块项同一把尺子（`moduleDistribution` 逐 `students`
-                  计数）—— 所以这里必须是 `students.length`，**不是** `allDisplayCards.length`。
-                  后者是**格子数**：小组 / 高级模式下格子是一个组一格，于是这一行会出现
-                  「全部 3」紧挨着「学习单 4」两个对不上的数（3 个组、4 个人是同时成立的），
-                  而这一行恰恰是用来回答「三件套中各有多少人」的。
+              {/* 🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
+                  的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
+                  所以那些模式下这一行是**组数**，量词由 `moduleCountUnit(mode)` 给。
+                  ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
+                  （后者是格子数，与参与者数在某些筛选下并不相等）。
+                  ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
+                  两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
                   ⚠️ 状态那一组（在线 / 需关注 / 离线）用的仍是 `boardFilterCounts` 的格子数 ——
-                  那是对的：一组是一个在线单位，不能拆成人。两组各按自己的语义，但同一组内一致；
-                  合并之前这两处数字分处两个区域、没人会去比，合并之后它们并排了。 */}
-              <ModuleCountChip label="全部" value={students.length}
+                  那是对的：一组是一个在线单位，不能拆成人。两组各按自己的语义，但同一组内一致。 */}
+              <ModuleCountChip label="全部" value={students.length} unit={moduleCountUnitSuffix}
                 selected={studentModuleFilter === 'all'} onSelect={() => setStudentModuleFilter('all')} />
               {/* 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。 */}
-              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet}
+              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
                 selected={studentModuleFilter === 'worksheet'} onSelect={() => setStudentModuleFilter('worksheet')} />
-              <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore}
+              <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
                 selected={studentModuleFilter === 'explore'} onSelect={() => setStudentModuleFilter('explore')} />
-              <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion}
+              <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
                 selected={studentModuleFilter === 'companion'} onSelect={() => setStudentModuleFilter('companion')} />
-              <ModuleCountChip label="首页" value={moduleDistribution.home} muted
+              <ModuleCountChip label="首页" value={moduleDistribution.home} unit={moduleCountUnitSuffix} muted
                 selected={studentModuleFilter === 'home'} onSelect={() => setStudentModuleFilter('home')} />
-              <ModuleCountChip label="未知" value={moduleDistribution.unknown} muted
+              <ModuleCountChip label="未知" value={moduleDistribution.unknown} unit={moduleCountUnitSuffix} muted
                 selected={studentModuleFilter === 'unknown'} onSelect={() => setStudentModuleFilter('unknown')} />
             </div>
           )}

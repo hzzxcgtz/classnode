@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
+  moduleCountUnit,
   tileBadgeText,
   WORKSHEET_STUCK_AFTER_MS,
   worksheetTileState,
@@ -171,4 +172,35 @@ test('收到的作答全都不在这份学习单上了（题被删光）⇒ no-p
 test('徽章：学伴说轮数，学习单说已交题数', () => {
   assert.equal(tileBadgeText({ kind: 'rounds', rounds: 3 }), '3 轮');
   assert.equal(tileBadgeText({ kind: 'submitted', submitted: 2, total: 3 }), '已交 2/3');
+});
+
+/* ── ⑥ ★ M5a：模块筛选行那六个数字的量词 ──────────────────────────────── */
+
+/**
+ * 🔴 这一条修的是一个**假断言**：`page.tsx` 模块筛选行上方原写着「单位是**人数**」，
+ * 而 `moduleDistribution` 是逐 `students` 计数的 —— 分组 / 高级模式下 `students` 的
+ * 每一行是一个**参与者**，而参与者**就是组**（规格 §1.2）⇒ 那些模式下这一行是**组数**。
+ *
+ * ⚠️ 改的**只有量词**，数字算法一个字不动：那个数字与「点它会筛出几张卡片」是同一件事，
+ * 那正是筛选控件应有的口径；页头那个「N 名学生」在分组模式下按成员求和（真·人数），
+ * 两者都对、只是单位不同。
+ */
+test('★ M5a：模块筛选行的量词按 mode 走（个人=人 / 分组与高级=组）', () => {
+  assert.equal(moduleCountUnit('standard'), '人');
+  assert.equal(moduleCountUnit('group'), '组');
+  assert.equal(moduleCountUnit('advanced'), '组');
+  // 未知 / 缺失一律按标准模式 —— 与 `ClassroomSummary.mode` 是可选字段同源：
+  // 老服务端不发它时，按「人」说比按「组」说更保守（标准模式下参与者就是学生）。
+  assert.equal(moduleCountUnit(''), '人');
+  assert.equal(moduleCountUnit('nobody-knows'), '人');
+});
+
+test('★ M5a 反证：把量词改成恒回「组」⇒ 上一条的前两条必红', () => {
+  const alwaysGroup = (): '人' | '组' => '组';
+  assert.equal(alwaysGroup(), '组', '这就是改坏之后的样子');
+  assert.notEqual(alwaysGroup(), moduleCountUnit('standard'), '个人模式必须与人不同');
+  assert.notEqual(alwaysGroup(), moduleCountUnit(''));
+  // 阳性对照：分组 / 高级那两条在改坏前后**恰好相同**（别把「挡住回退」写成「凡 mode 都特殊」）。
+  assert.equal(alwaysGroup(), moduleCountUnit('group'));
+  assert.equal(alwaysGroup(), moduleCountUnit('advanced'));
 });

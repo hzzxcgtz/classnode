@@ -244,3 +244,22 @@ export function stateHasCells(
 export function tileBadgeText(badge: TileBadge): string {
   return badge.kind === 'rounds' ? `${badge.rounds} 轮` : `已交 ${badge.submitted}/${badge.total}`;
 }
+
+/**
+ * ★ M5a：模块筛选行那六个数字的**量词**。
+ *
+ * 🔴 判据是 `mode`：分组 / 高级模式下「一块设备 = 一个组」（规格 §1.2 逐字：
+ * 「一个组一行参与者」），而那一行的六个数字数的正是**参与者**（`moduleDistribution` 逐
+ * `students` 计数、`students` 的每一行是一个参与者）⇒ 那些模式下它是**组数**。
+ * 个人（标准）模式下参与者就是学生 ⇒ 「人」。
+ *
+ * ⚠️ **只改量词，不改数字**：这个数字与「点它会筛出几张卡片」是同一件事，那正是筛选控件
+ * 应有的口径；页头那个「N 名学生」是另一个口径（分组模式下按成员求和），两者都对、只是单位不同。
+ *
+ * ⚠️ 认不出的 `mode` 一律按**标准模式**（保守的一侧）：标准模式下参与者就是学生，
+ * 而误说成「组」会让教师把 12 看成 12 个组。与 `ClassroomSummary.mode` 是可选字段同源 ——
+ * 老服务端不发它时也会走到这里。
+ */
+export function moduleCountUnit(mode: string): '人' | '组' {
+  return mode === 'group' || mode === 'advanced' ? '组' : '人';
+}

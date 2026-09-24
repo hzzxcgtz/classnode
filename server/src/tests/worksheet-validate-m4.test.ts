@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isRejectedFullPointValue,
+  isUsableFullPointValue,
+  isUsablePointValue,
   normalizePoints,
+  POINTS_MAX,
   QUESTION_TYPES,
   validateQuestion,
   type QuestionNode,
@@ -287,11 +291,55 @@ test('分值归一化：只填了一个字段 ⇒ 取那个，另一个回落默
   assert.deepEqual(normalizePoints({ half: 2 }), { full: 1, half: 2 });
   // 小数四舍五入到整数（`WorksheetAnswer.score` 是 Float，2.5 会一路走进奖励累计）
   assert.deepEqual(normalizePoints({ full: 3.4, half: '两朵' }), { full: 3, half: 0 });
-  // 🔴 `0` 是**有效**分值（「半对 0 分」就是默认档本身）：它假值，但不是「留空」。
-  // 判据写成 `source.full ? … : …` 的话，这里会静默变成 `undefined` ⇒ 那道题变成继承。
-  assert.deepEqual(normalizePoints({ full: 0, half: 0 }), { full: 0, half: 0 });
-  assert.deepEqual(normalizePoints({ full: 0 }), { full: 0, half: 0 });
+  // 🔴 **`half: 0` 是有效分值**（「半对 0 分」就是默认档本身）：它假值，但不是「留空」。
+  // 判据写成 `source.half ? … : …` 的话，这里会静默变成「没填」⇒ 那道题变成继承学习单级，
+  // 而 `shouldWarnZeroHalfCredit` 那条提示正建立在「半对 0 是一个有效值」上面。
+  //
+  // ★ M4a/I1 更正：**这一条只对 `half` 成立，`full` 不是。** 两档的域**不同**
+  //（`full` 是 1..99，见 `POINTS_FULL_MIN`）。原先这里把 `full: 0` 也写成「有效分值」，
+  // 而那正是 I1：答对的题拿到 0 分 ⇒ 学生端画红叉、教师端画绿勾、正确率还算它全对。
+  // 下面三行是更正后的行为（`full: 0` 按「没填」走，`half: 0` 照旧有效）：
+  assert.deepEqual(normalizePoints({ full: 0, half: 0 }), { full: 1, half: 0 },
+    'full: 0 不再算有效 ⇒ 它按「没填」回落 DEFAULT_POINTS.full；half: 0 仍然是有效分值');
+  assert.deepEqual(normalizePoints({ full: 0 }), undefined,
+    '两端都无效（`full` 那一端的 0 不算数）⇒ 与「留空」同义：继承学习单级');
+  assert.deepEqual(normalizePoints({ full: 0, half: 2 }), { full: 1, half: 2 },
+    '半对那一端有效 ⇒ 整题脱离学习单级，全对回落默认档 1');
   // 边界：POINTS_MAX 本身合法，超一个就无效
   assert.deepEqual(normalizePoints({ full: 99 }), { full: 99, half: 0 });
   assert.deepEqual(normalizePoints({ full: 100 }), undefined);
+});
+
+/**
+ * 🔴 ★ M4a/I1：**两个档的域不同**，而这条差异就是缺陷 I1 的全部内容。
+ *
+ * 反向断言（GC 14 的反证实跑过，见报告）：把 `isUsableFullPointValue` 的下界改回 0、
+ * 或把它整个换成 `isUsablePointValue` ⇒ 本条与 `worksheet-routes.test.ts` 里那条
+ * 「full: 0 拒绝保存」一起变红。
+ * 反过来的「统一两个域」也拦得住：把 `isUsablePointValue` 的下界抬到 1 ⇒ 下面 `half` 那几行变红。
+ */
+test('🔴 两个域：`full` 是 1..99、`half` 是 0..99（合并任何一边都会红）', () => {
+  assert.equal(isUsableFullPointValue(0), false, '0 不是合法的「全对」分值 —— 这就是 I1');
+  assert.equal(isUsableFullPointValue(0.4), false, '取整之后是 0 ⇒ 同样不在域里（与 normalizePointValue 同一把尺子）');
+  assert.equal(isUsableFullPointValue(0.5), true, '取整之后是 1 ⇒ 在域里');
+  assert.equal(isUsableFullPointValue(1), true);
+  assert.equal(isUsableFullPointValue(POINTS_MAX), true);
+  assert.equal(isUsableFullPointValue(POINTS_MAX + 1), false);
+  assert.equal(isUsableFullPointValue(-1), false);
+  assert.equal(isUsableFullPointValue('3'), false, '字符串不是数');
+  assert.equal(isUsableFullPointValue(undefined), false);
+  // half：0 **必须**在域里（规格 §12 裁定 3 的默认档就是它）
+  assert.equal(isUsablePointValue(0), true, '⚠️ 别顺手把 half 的 0 也挡掉 —— 那是「不给部分分」，合法');
+  assert.equal(isUsablePointValue(POINTS_MAX), true);
+  assert.equal(isUsablePointValue(POINTS_MAX + 1), false);
+  // 拒绝判据只认「宽域认它、窄域不认它」的那一个值 —— 0
+  assert.equal(isRejectedFullPointValue(0), true);
+  assert.equal(isRejectedFullPointValue(1), false);
+  assert.equal(isRejectedFullPointValue(0.4), true, '取整到 0 的也拒（否则屏幕上「0.4」与「0」走两条路）');
+  // ⚠️ 这三个**故意不拒**：它们在 A1 的语义里就是「没填 = 继承学习单级」，
+  // 把它们一起改成 400 等于顺手改掉另一条已经生效、有用例钉着的裁定。
+  assert.equal(isRejectedFullPointValue(-1), false, '越界 / 字符串 / 缺失走的是「没填」，不是「拒绝」');
+  assert.equal(isRejectedFullPointValue('两朵'), false);
+  assert.equal(isRejectedFullPointValue(undefined), false);
+  assert.equal(isRejectedFullPointValue(POINTS_MAX + 1), false);
 });

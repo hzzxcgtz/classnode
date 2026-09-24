@@ -401,7 +401,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             他没做过的事）。补上这一行之后它才回到本意：只在半对档**实际为 0** 时才响
             —— ⚠️ **不是**「只在教师真的把半对配成 0 时才响」：新建学习单的 `halfStep`
             默认就是 0，而下面那两行的注释自己写着「它恰好是新单的默认值」。加一道多选、
-            选「漏算算半对」、半对留空 ⇒ 提示照样出现（判据是「这题**实际用到**的半对档」，
+            选「漏选算半对」、半对留空 ⇒ 提示照样出现（判据是「这题**实际用到**的半对档」，
             见 `effectiveHalfStep`）。
             （判据是 `shouldWarnZeroHalfCredit(multi, { full: 1, half: 0 }) === true`，
             `worksheet-editor-core.test.ts` 里那条用例在 `a4b1a11` 就已存在。）

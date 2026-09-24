@@ -178,6 +178,11 @@ test('🔴 score 是教师填的**绝对值**，不是 0/0.5/1 的比例', () =>
   // 同一个判定，三份不同的分值档 ⇒ 三个不同的得分。任何「返回比例」的实现在这里必红。
   assertVerdict(tf, right, 'correct', 1, { full: 1, half: 0 });
   assertVerdict(tf, right, 'correct', 5, { full: 5, half: 2 });
+  // ⚠️ ★ M4a/I1：这一行的 `{ full: 0 }` 是**判分层**的输入，不是一处可达状态 ——
+  // 写入口之后 `full: 0` 会被拒（400，见 `isRejectedFullPointValue` 与
+  // `routes/worksheets.ts` 的 `normalizeNode`），`resolvePoints` 也不会吐出它。
+  // 留着它是为了钉住**这一层的边界**：`grade()` 只做算术（score = full），
+  // **它不负责守 `full` 的域** —— 守域的是写入口。删掉这条会让人以为判分器会拒 0。
   assertVerdict(tf, right, 'correct', 0, { full: 0, half: 0 });
 });
 

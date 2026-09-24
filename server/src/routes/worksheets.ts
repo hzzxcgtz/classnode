@@ -9,9 +9,16 @@ import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import {
   flattenQuestions,
   grade,
+  // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
+  // 「什么算有效分值」仍然**只有一处**回答 —— 与 `normalizePoints` /
+  // `isUsablePointValue` 同处一地定义（service），这里只用，不另抄。
+  isRejectedFullPointValue,
   // `normalizePoints` 与 `isUsablePointValue` 同处一地定义（service）—— 「什么算有效分值」
   // 只有一处回答，而它直接决定「这题是继承学习单级还是脱离」。
   normalizePoints,
+  // ⚠️ `POINTS_MAX` 只用在下面那条拒绝文案里（「必须是 1–99 的整数」）——
+  // 不写字面量：它改了而这里没改，报错文案就会与真正的域不一致。
+  POINTS_MAX,
   // ⚠️ A2 的最小适配用到这两个：`grade()` 现在要求调用点给出**这道题实际用的两个档**
   // （规格 §12 裁定 4：逐题优先、留空回落学习单级）。把「怎么算这两档」写在调用点
   // 就等于让每个调用点各抄一遍回落规则 —— 所以走这两个函数。
@@ -248,6 +255,27 @@ function normalizeNode(
     if (data.partialCredit !== 'all-or-nothing' && data.partialCredit !== 'allow-missing') {
       errors.push(`${label}：多选的「漏选算不算半对」取值不合法（只认 all-or-nothing / allow-missing）`);
     }
+  }
+
+  // ★ M4a/I1：`full` 的域是 `1..POINTS_MAX`（`half` 才是 `0..`）—— **`full: 0` 拒绝保存**。
+  //
+  // 🔴 为什么值得拒（2026-09-24 终审实测的完整链条）：`full: 0` 让**答对**的题拿到 0 分，
+  // 于是同一次提交里学生屏幕画**红叉**（对错档按 `score >= 1` 画）、教师抽屉画**绿 `✓ 答对`**
+  // 并把它计进正确率的分子、学生顶栏的奖励累计 +0 —— 四个观测互相打架，**全程无一处报错**。
+  //
+  // ⚠️ 与 `partialCredit` 同一种处置（认不出就**拒绝保存**，而不是回落到默认值）：
+  // 回落会让教师的输入静默变成另一个数（0 ⇒ 1），而这条链上看起来一切正常。
+  // 判据本身在 `isRejectedFullPointValue` 上 —— 它只拒「认得出但不合法」的那一个值，
+  // 字符串 / `undefined` / 越界值仍是 A1 裁定的「没填 = 继承学习单级」。
+  const rawPoints = (node.points && typeof node.points === 'object' && !Array.isArray(node.points))
+    ? node.points as Record<string, unknown>
+    : null;
+  if (rawPoints && isRejectedFullPointValue(rawPoints.full)) {
+    // ⚠️ 这是**发给教师看的**错误串（前端原样展示，不走 markdown）⇒ 不许出现 `**` 这类记号。
+    errors.push(
+      `${label}：「全对给几分」不能是 0 —— 必须是 1–${POINTS_MAX} 的整数`
+      + `（填 0 会让答对的学生看到红叉：他答对了，却一分都没有）`,
+    );
   }
 
   const points = normalizePoints(node.points);
@@ -1077,9 +1105,16 @@ function broadcastAnswerUpdate(
     participantId: ctx.participantId,
     questionId: answer.questionId,
     status: answer.status,
-    // ⚠️ **`isCorrect` 在，且只增不改**：它是协议字段，改名 ⇒ 看板与学生端拿到
-    // `undefined` ⇒ 静默不画 ✓/✗ 与奖励，没有任何报错。新增的两个是 `gradeState`
+    // ⚠️ **`isCorrect` 在，且只增不改**：它是协议字段，改名 ⇒ **看板**拿到 `undefined`
+    // ⇒ `gradeState` 为 null 的那些行**静默不画 ✓/✗**，没有任何报错。新增的两个是 `gradeState`
     // 与 `score`（规格 §12），`src/lib/socket-events.ts` 的同名事件类型要一起改。
+    // ⊘ 2026-09-24 更正：这句原先写「看板**与学生端**拿到 `undefined`」—— **学生端不订这条广播**
+    // 实测 `/usr/bin/grep -rn "worksheet-answer-updated" src` ⇒ 5 处，**全在教师端**
+    //（`src/app/teacher/classroom/` 的 4 处在注释里、1 处是 `page.tsx` 的 `on(...)` 订阅；
+    // `src/app/classroom/` 下零命中）。⚠️ 同时删掉了原句尾巴上的「与奖励」—— 奖励是**学生端**的
+    // 东西（`reward-badge.tsx`），看板不画它；主语收窄之后那个宾语就越界了。
+    // 补主语不只是措辞：写成「学生端也会坏」会让人以为这条载荷是学生可见的，而它**不是** ——
+    // 载荷里有每名学生的作答状态与对错，学生房间是**全班学生**（见 `worksheetBoardRoom`）。
     isCorrect: answer.isCorrect,
     gradeState: answer.gradeState,
     score: answer.score,
@@ -1440,10 +1475,16 @@ router.post('/:id/answers/submit', async (req, res) => {
     const verdict = autoGrade ? grade(node, answer.value, points) : null;
     // ★ `isCorrect` 的语义**收窄为「全对」**（规格 §12「得分与正确率的口径」），
     // 由 `verdict.state` 派生 —— 它**不再是第二真相源**。⚠️ 但**字段名一个字符都不许改**：
-    // 它是协议字段，线缆另一头是 `use-worksheet-answers.ts` 的
-    // `scoreFromWire(payload?.isCorrect)`。改名 ⇒ 前端拿到 `undefined` ⇒ `scoreFromWire`
-    // 回 `null` ⇒ **不画奖励**，而且没有任何报错、没有任何测试会红（`worksheet-realtime.test.ts`
-    // 里那条「广播体仍然含 `isCorrect`」的用例就是为这条加的哨兵）。
+    // 它是协议字段，而**只靠它读得出来的行还在**（A1 的回填只补了 `gradeState`，
+    // `score` 刻意留 null —— 旧行没有逐题分值，写死任何一个数都是编的）。
+    // ⇒ 改名 ⇒ **未回填的行同时丢奖励与丢标记**，而两处都不报错：
+    //   · 学生端 `worksheet-queue.ts` 的 `scoreFromWire(row)`：`score` 不是数时用它折出奖励；
+    //   · 教师端 `worksheet-drawer-state.ts` 的 `rowVerdict(row)`：`gradeState` 为 null 时用它折出 ✓/✗。
+    // ⚠️ 哨兵用例：`worksheet-realtime.test.ts` 里那条「广播体仍然含 `isCorrect`」。
+    // ⊘ 2026-09-24 更正：这里原先给的理由是「改名 ⇒ `scoreFromWire` 回 `null` ⇒ 不画奖励」。
+    // 那句在 D1+D2 改了入参（收**整行**而不是一个布尔）、D3 把 `score` 提为第一优先级之后
+    // **已经不成立**（新行有 `score`，兜底那两行根本走不到）。理由换成了上面那条**旧行**的理由 ——
+    // 「不许改名」这个结论没变，因为它从来不只是关于奖励的。
     const isCorrect = verdict ? verdict.state === 'correct' : null;
     const gradeState = verdict ? verdict.state : null;
     // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null。

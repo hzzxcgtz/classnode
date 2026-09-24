@@ -65,6 +65,7 @@ import {
   parsePointInput,
   placementSet,
   planPointInputChange,
+  POINTS_FULL_MIN,
   POINTS_MAX,
   pointsSignature,
   type QuestionPointsDraft,
@@ -900,21 +901,31 @@ test('isPartialPoints：判据只有一处 —— undefined 与 `{}` 都不是�
 });
 
 test('🔴 parsePointInput：空 / 合法 / 非法三态分清（`Number()` 会骗人的那五个输入）', () => {
-  assert.deepEqual(parsePointInput(''), { kind: 'empty' });
-  assert.deepEqual(parsePointInput('   '), { kind: 'empty' });
-  assert.deepEqual(parsePointInput('0'), { kind: 'value', value: 0 });
-  assert.deepEqual(parsePointInput(' 7 '), { kind: 'value', value: 7 });
-  assert.deepEqual(parsePointInput(String(POINTS_MAX)), { kind: 'value', value: POINTS_MAX });
+  assert.deepEqual(parsePointInput('', 'half'), { kind: 'empty' });
+  assert.deepEqual(parsePointInput('   ', 'half'), { kind: 'empty' });
+  assert.deepEqual(parsePointInput('0', 'half'), { kind: 'value', value: 0 }, '半对 0 = 不给部分分，合法');
+  assert.deepEqual(parsePointInput(' 7 ', 'half'), { kind: 'value', value: 7 });
+  assert.deepEqual(parsePointInput(String(POINTS_MAX), 'half'), { kind: 'value', value: POINTS_MAX });
+  assert.deepEqual(parsePointInput(String(POINTS_MAX), 'full'), { kind: 'value', value: POINTS_MAX });
+  // 🔴 ★ M4a/I1：**两档的域不同** —— 同一个 `'0'`，半对合法、全对非法。
+  // 全对填 0 的后果是「答对了却给 0 分」：学生端对错档按 `score >= 1` 画 ⇒ 红叉，
+  // 而教师抽屉读 `gradeState` ⇒ 绿 `✓ 答对`。域的理由在 `POINTS_FULL_MIN` 上。
+  assert.equal(parsePointInput('0', 'full').kind, 'invalid', '`full: 0` 当场判非法（不是等保存才报）');
+  assert.deepEqual(parsePointInput(String(POINTS_FULL_MIN), 'full'), { kind: 'value', value: POINTS_FULL_MIN },
+    '下界本身合法');
+  assert.equal(parsePointInput(String(POINTS_FULL_MIN), 'half').kind, 'value');
   // 🔴 下面这几个**全都是 `Number()` 会当成合法分值**的输入 —— 用 `Number()` 的话，
   // 教师会看到一个自己没填过的数出现在框里，而界面上没有任何提示。
-  assert.equal(parsePointInput(String(POINTS_MAX + 1)).kind, 'invalid', '> POINTS_MAX（服务端会静默回落成 1）');
-  assert.equal(parsePointInput('-1').kind, 'invalid');
-  assert.equal(parsePointInput('7.5').kind, 'invalid', '`Number("7.5")` 是 7.5 —— 不是整数');
-  assert.equal(parsePointInput('0x10').kind, 'invalid', '`Number("0x10")` 是 16');
-  assert.equal(parsePointInput('1e2').kind, 'invalid', '`Number("1e2")` 是 100');
-  assert.equal(parsePointInput('７').kind, 'invalid', '全角数字：教师看着是「7」，`Number` 给 NaN');
-  assert.equal(parsePointInput('七').kind, 'invalid');
-  assert.equal(parsePointInput('+7').kind, 'invalid');
+  assert.equal(parsePointInput(String(POINTS_MAX + 1), 'full').kind, 'invalid', '> POINTS_MAX（服务端会静默回落成 1）');
+  assert.equal(parsePointInput(String(POINTS_MAX + 1), 'half').kind, 'invalid');
+  assert.equal(parsePointInput('-1', 'half').kind, 'invalid');
+  assert.equal(parsePointInput('-1', 'full').kind, 'invalid');
+  assert.equal(parsePointInput('7.5', 'half').kind, 'invalid', '`Number("7.5")` 是 7.5 —— 不是整数');
+  assert.equal(parsePointInput('0x10', 'half').kind, 'invalid', '`Number("0x10")` 是 16');
+  assert.equal(parsePointInput('1e2', 'half').kind, 'invalid', '`Number("1e2")` 是 100');
+  assert.equal(parsePointInput('７', 'half').kind, 'invalid', '全角数字：教师看着是「7」，`Number` 给 NaN');
+  assert.equal(parsePointInput('七', 'half').kind, 'invalid');
+  assert.equal(parsePointInput('+7', 'half').kind, 'invalid');
 });
 
 test('🔴 shouldWarnZeroHalfCredit：多选 + 漏选算半对 + 半对档 0 ⇒ 必须提示（规格 §12 裁定 3 的连带）', () => {
@@ -1037,26 +1048,33 @@ test('pointsSignature：只随 id 与两个数值变（它决定那段输入什�
   assert.notEqual(pointsSignature(withPoints('q_a', { full: 4, half: 2 })), pointsSignature(withPoints('q_b', { full: 4, half: 2 })));
 });
 
-test('🔴 findInvalidPoints：`points` 里已有一个不是 0–99 整数的值 ⇒ 拦（否则服务端静默换成 1）', () => {
+test('🔴 findInvalidPoints：`points` 里已有一个非法分值 ⇒ 拦（否则服务端静默换成 1，或直接 400）', () => {
   const content = contentOf(
     withPoints('q_ok', { full: 99, half: 0 }),
+    withPoints('q_full_zero', { full: 0, half: 2 }),
     withPoints('q_over', { full: 200, half: 1 }),
     withPoints('q_frac', { full: 7.5, half: 2 }),
     withPoints('q_neg', { full: -1, half: 2 }),
-    withPoints('q_both', { full: -1, half: 1000 }),
+    withPoints('q_half_zero', { full: 2, half: 0 }),
+    withPoints('q_both', { full: 0, half: 1000 }),
     node('q_none', '没有 points'),
     withPoints('q_empty', {}),
   );
   assert.deepEqual(
     findInvalidPoints(content),
     [
-      { id: 'q_over', index: 1, which: 'full' },
-      { id: 'q_frac', index: 2, which: 'full' },
-      { id: 'q_neg', index: 3, which: 'full' },
-      { id: 'q_both', index: 4, which: 'both' },
+      { id: 'q_full_zero', index: 1, which: 'full' },
+      { id: 'q_over', index: 2, which: 'full' },
+      { id: 'q_frac', index: 3, which: 'full' },
+      { id: 'q_neg', index: 4, which: 'full' },
+      { id: 'q_both', index: 6, which: 'both' },
     ],
     '⚠️ 7.5 算非法：输入框那一侧的判据（parsePointInput）就不接受小数 —— 让屏幕上打不出来的值落库 = 两套规则',
   );
+  // ★ M4a/I1：`full: 0` 也在这一条里（域是 1..99），而 `half: 0` **不在**
+  //（`q_ok` 与 `q_half_zero` 都没出现在上面那张名单里）。
+  // 这两个方向都必须钉住：把 `half: 0` 顺手挡掉 ⇒ 教师配的「不给部分分」变成一条改不掉的红字；
+  // 不挡 `full: 0` ⇒ 服务端 400，而教师点了保存才知道。
 });
 
 test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**签名失配就不算数**', () => {
@@ -1084,6 +1102,17 @@ test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**
     findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '4', half: '2' } }),
     [],
   );
+  // ★ M4a/I1：屏幕上的文本按**各自那一档**的域判 —— 同一个 `'0'`，全对那格算非法、半对那格不算。
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '0', half: '2' } }),
+    [{ id: 'q_a', index: 0, which: 'full' }],
+    '全对填 0 ⇒ 当场非法，且保存被拦住（服务端也会 400）',
+  );
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '4', half: '0' } }),
+    [],
+    '半对填 0 合法（= 不给部分分）—— 它的 0 不该拦住保存',
+  );
   assert.deepEqual(findUncommittedPointInput(content, {}), []);
 });
 
@@ -1093,6 +1122,10 @@ test('🔴 串起来（修复轮 1）：非法值在 `buildPayload` 的产物上
   const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 200, half: 1 })));
   assert.deepEqual(findInvalidPoints(payload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
   assert.deepEqual(findPartialPoints(payload.content), []);
+  // ★ M4a/I1：`full: 0` 走的是**同一条**拦阻 —— 它在 `buildPayload`（sanitize 的唯一出网点）
+  // 之后仍然看得见。少这一条的话，「把 0 顺手清成 undefined」那种改法不会红。
+  const zeroPayload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 0, half: 0 })));
+  assert.deepEqual(findInvalidPoints(zeroPayload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
 });
 
 // ── 12. 6 个题型的编辑形状（M4a/C2）──────────────────────────────────────

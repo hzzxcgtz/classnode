@@ -29,6 +29,7 @@ import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, Work
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
 import {
   optionKey,
+  POINTS_FULL_MIN,
   POINTS_MAX,
   QUESTION_TYPE_OPTIONS,
   readOptions,
@@ -46,7 +47,7 @@ import {
 } from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 
-export { optionKey, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
+export { optionKey, POINTS_FULL_MIN, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
 export type { ChoiceOption, QuestionPointsDraft, QuestionType };
 
 
@@ -979,10 +980,17 @@ export function categorizeRemoveZone(state: CategorizeData, index: number): Cate
 /**
  * 输入框文本 → 分值。**三种结果必须分开**（`''` 与「填错了」不是一回事）：
  *   · `empty`   —— 空框。**这是一个有意义的取值**：留空 = 继承学习单级（裁定 4）。
- *   · `invalid` —— 填了东西但不是 `0..POINTS_MAX` 的整数。界面要**当场**提示，
+ *   · `invalid` —— 填了东西但不是这一档的合法整数。界面要**当场**提示，
  *     不能等到保存时才报 —— 服务端的 `normalizePointValue` 对越界值**回落** `DEFAULT_POINTS`，
  *     保存照常成功，教师会以为自己填的数生效了。
  *   · `value`   —— 合法。
+ *
+ * 🔴 ★ M4a/I1：**两档的域不同，所以必须传 `field`**（`full` 是 `1..POINTS_MAX`、
+ * `half` 是 `0..POINTS_MAX`）。`full = 0` 不是「0 分」而是「答对了却给 0 分」——
+ * 学生端对错档按 `score >= 1` 画 ⇒ **红叉**，而教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**。
+ * 域的理由写在 `POINTS_FULL_MIN`（`src/lib/worksheet-questions.ts`）上。
+ * ⚠️ 参数**没有默认值**是刻意的：默认成 `'half'` 会让「忘了传字段」的那一处静默接受 0，
+ * 而这条路上「静默」正是要防的东西。
  *
  * ⚠️ **不用 `Number()`**（那个想法很容易顺手写下去）：`Number('')` 与 `Number('   ')` 是 `0`
  * （空框会变成一个合法的 0 分）、`Number('0x10')` 是 16、`Number('1e2')` 是 100、
@@ -991,12 +999,14 @@ export function categorizeRemoveZone(state: CategorizeData, index: number): Cate
  */
 export type ParsedPointInput = { kind: 'empty' } | { kind: 'invalid' } | { kind: 'value'; value: number };
 
-export function parsePointInput(raw: string): ParsedPointInput {
+export function parsePointInput(raw: string, field: 'full' | 'half'): ParsedPointInput {
   const text = raw.trim();
   if (!text) return { kind: 'empty' };
   if (!/^\d+$/.test(text)) return { kind: 'invalid' };
   const value = Number(text);
   if (value > POINTS_MAX) return { kind: 'invalid' };
+  // ★ I1：只有「全对」那一档有下界（半对的 0 是合法的「不给部分分」）。
+  if (field === 'full' && value < POINTS_FULL_MIN) return { kind: 'invalid' };
   return { kind: 'value', value };
 }
 
@@ -1053,8 +1063,8 @@ export function planPointInputChange(
   const nextFull = which === 'full' ? raw : (shown?.full ?? pointText(node.points?.full));
   const nextHalf = which === 'half' ? raw : (shown?.half ?? pointText(node.points?.half));
 
-  const full = parsePointInput(nextFull);
-  const half = parsePointInput(nextHalf);
+  const full = parsePointInput(nextFull, 'full');
+  const half = parsePointInput(nextHalf, 'half');
   if (full.kind === 'invalid' || half.kind === 'invalid') {
     // 🔴 **两格都记**，不只是刚动的那一格 —— 见上面的坑 1。
     return { kind: 'rejected', input: { signature, full: nextFull, half: nextHalf } };
@@ -1100,14 +1110,23 @@ export function describePoints(items: Array<{ index: number; which: PointField }
  *     可能来自手工改过的行或将来的批量工具；
  *   · 这里要求**整数**，因为输入框那一侧的判据（`parsePointInput`）就不接受小数 ——
  *     让一个屏幕上根本打不出来的值悄悄落库，等于界面与服务端两套规则。
+ *
+ * 🔴 ★ M4a/I1：**它现在是 `parsePointInput` 的一层薄封装，不自己写判据。**
+ * 原先它自己抄了一份 `Number.isInteger(value) && value >= 0 && value <= POINTS_MAX`
+ * ——两档的域一变，两处就得各改一次，而**漏改一处不会红**（2026-09-24 的反证实测：
+ * 只把 `parsePointInput` 的全对下界去掉时，`findInvalidPoints` 那条用例**仍然全绿**，
+ * 因为库里那份走的是这个复制品）。走 `String(value)` 把数变回文本、交给同一个判据，
+ * 「屏幕上打不出来的值不许落库」就只剩一处实现。
+ * 逐条对照（实测）：`7.5` / `-1` / `200` / `NaN` / `Infinity` / `0.4` 都非法；
+ * `0` 只在 `half` 合法；`undefined` 表示「这一格没填」⇒ 不算非法。
  */
-function isValidPointNumber(value: number | undefined): boolean {
+function isValidPointNumber(value: number | undefined, field: 'full' | 'half'): boolean {
   if (value === undefined) return true;
-  return Number.isInteger(value) && value >= 0 && value <= POINTS_MAX;
+  return parsePointInput(String(value), field).kind === 'value';
 }
 
 /**
- * 🔴 **`points` 里已经有一个不是 0–99 整数的值**的题（顶层）—— 与 `findPartialPoints`
+ * 🔴 **`points` 里已经有一个不是合法分值的题**（顶层）—— 与 `findPartialPoints`
  * 并列，由 `save()` 拦下。
  *
  * 它拦的是**库里那一份**（`content`）。编辑器的输入路径产生不了这种值
@@ -1117,6 +1136,10 @@ function isValidPointNumber(value: number | undefined): boolean {
  * `DEFAULT_POINTS`（`full: 200` ⇒ `1`），保存照常 200，而卡片上还写着 200 ——
  * 教师没有任何办法知道他的分数已经变成了 1。
  *
+ * ⚠️ ★ M4a/I1：`full: 0` 现在也在这里被拦（域是 `1..99`）。它的后果与越界值不同 ——
+ * 不是「静默变成 1」而是**服务端 400**（那一侧也拒收），所以拦住它同时是
+ * 「别让教师点了保存才看到一句报错」。
+ *
  * ⚠️ 与 `findPartialPoints` 一样**只看顶层**（嵌套里的题教师看不见也改不了，
  * 拦了会让保存按钮废掉）。
  */
@@ -1125,8 +1148,8 @@ export function findInvalidPoints(content: WorksheetContent): Array<{ id: string
   content.nodes.forEach((node, index) => {
     const points = node.points;
     if (!points) return;
-    const fullBad = !isValidPointNumber(points.full);
-    const halfBad = !isValidPointNumber(points.half);
+    const fullBad = !isValidPointNumber(points.full, 'full');
+    const halfBad = !isValidPointNumber(points.half, 'half');
     if (!fullBad && !halfBad) return;
     found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });
@@ -1158,8 +1181,9 @@ export function findUncommittedPointInput(
   content.nodes.forEach((node, index) => {
     const entry = rejected[node.id];
     if (!entry || entry.signature !== pointsSignature(node)) return;
-    const fullBad = entry.full !== undefined && parsePointInput(entry.full).kind === 'invalid';
-    const halfBad = entry.half !== undefined && parsePointInput(entry.half).kind === 'invalid';
+    // ⚠️ 两格的域不同（`full` 是 1..99），所以按格传 `field` —— 与 `parsePointInput` 同一个判据。
+    const fullBad = entry.full !== undefined && parsePointInput(entry.full, 'full').kind === 'invalid';
+    const halfBad = entry.half !== undefined && parsePointInput(entry.half, 'half').kind === 'invalid';
     if (!fullBad && !halfBad) return;
     found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });

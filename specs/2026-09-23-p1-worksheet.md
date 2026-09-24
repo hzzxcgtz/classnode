@@ -1158,36 +1158,61 @@ P4 的分析型智能体都要面对一个「⭐ 是什么数」的问题。
 > **裁定 3 的连带**：选题 3 意味着**不迁移**已有学习单；配套要求是 UI 必须在
 > 「教师选了『漏选算半对』、但半对填 0」时给出提示 —— 否则教师会把半对**静默**做成 0 分。
 
-#### 🔴 三处「改错了不会报错」的地方（2026-09-23 勘查实测，写 M4a 计划前必读）
+#### 🔴 三处「改错了不会报错」的地方（2026-09-23 勘查；写 M4a 计划前必读）
 
 本项目的审计是 grep 驱动的，而这三处**没有一个会抛异常、没有一个会红**：
 
+> ⚠️ **2026-09-24 更正（本节的位置与数量）**：下面每一条原先都挂着 `file:line` 与计数，
+> 而它们**读到这一行时已经全部漂了**（M4a 把相关文件各改了几十上百行，有的还改了名字）。
+> ⇒ 本节现在**只写能定位的东西**（文件名 + 符号名 / 字面量）加**一条可跑的命令**，
+> 命令都**实跑过**、输出逐字贴在下面。**动手前自己跑一遍，以你跑出来的位置与数字为准** ——
+> 不要抄本文的行号，也不要抄数字（本文的也会漂）。
+> ⚠️ 命令一律写 `/usr/bin/grep`：本仓的 `grep` **不一定**是 GNU grep（2026-09-24 实测：
+> 本会话里 `grep` 是一个 shell wrapper，把它转发给 `claude -G`，即 ugrep）。而 `rg` 与
+> POSIX grep 在这类查询上**语义不同**：**`rg` 里 `\|` 是字面量**（不是「或」）、也**不认
+> `--include`** ⇒ 同一条命令在两种实现下给出**不同的数**（实测：`rg -n "scale\.step\|scale\.halfStep"
+> src server/src` **回 0 行** —— 整串被当成了一个字面量，而 `/usr/bin/grep -rn` 用同一条模式
+> **有命中**；反过来，`rg … --include='*.ts'` 直接报 `unrecognized flag --include`）。
+> **量词先 `grep -c` 再写，别拿一个没验证过的零命中当结论。**
+
 1. **`isCorrect` 这个协议字段名不能改（只能增）。**
-   线缆两端是 `server/src/routes/worksheets.ts:1331` 的 `res.json({ isCorrect })`
-   与 `src/app/classroom/worksheet/use-worksheet-answers.ts:498` 的
-   `scoreFromWire(payload?.isCorrect)`。**改名 ⇒ 前端拿到 `undefined` ⇒ `scoreFromWire` 回 `null`
-   ⇒ 不画奖励，且没有任何报错。**
-   实测：`isCorrect` 出现在**全仓 21 行代码**里，横跨 **8 个文件** + 1 条建表 DDL
-   （`server/src/services/worksheet-schema.ts:77` 的 `"isCorrect" BOOLEAN`），
-   含服务端两条读端点（`worksheets.ts:990` / `:1175`）、看板的正确率分子与分母
-   （`worksheet-drawer-state.ts:162`/`:164`）、socket 事件类型（`src/lib/socket-events.ts:103`）。
-   （复现：`grep -rn isCorrect src/ server/src/ --include='*.ts' --include='*.tsx' | grep -v '\.test\.'`
-   去掉注释行。）
+   线缆两端是 `server/src/routes/worksheets.ts` 提交端点里的
+   `res.json({ isCorrect, gradeState, score })`，与 `src/app/classroom/worksheet/worksheet-queue.ts`
+   的 `scoreFromWire(row)` —— 后者按「`score` 优先、`isCorrect` 兜底」折算奖励，
+   而**教师端**的 `worksheet-drawer-state.ts` 的 `rowVerdict(row)` 有同形的一条兜底。
+   ⇒ **改名 ⇒ 未回填的旧行同时丢奖励与丢标记**（A1 的回填只补了 `gradeState`、`score` 刻意留 null），
+   且没有任何报错。
+   实测（2026-09-24，命令与输出逐字，两个数都**会漂**，引它之前重跑）：
+   `/usr/bin/grep -rn isCorrect src/ server/src/ --include='*.ts' --include='*.tsx' | /usr/bin/grep -v '\.test\.'`
+   ⇒ **83 行、13 个文件**（含注释与注释续行）；再去掉注释行与注释续行 ⇒ **19 行、7 个文件**
+   （这一步没有命令，是手数的 —— 所以它更容易漂）。
+   那 19 行落在：服务端两条读端点的 `select`、看板的正确率分子与分母
+   （`worksheet-drawer-state.ts` 的 `questionAggregate`，两者都走 `rowVerdict`）、
+   socket 事件类型（`src/lib/socket-events.ts` 的 `worksheet-answer-updated` 载荷）、
+   以及建表 DDL（`worksheet-schema.ts` 的 `"isCorrect" BOOLEAN`）。
    ⇒ M4a **只增不改**：响应体加 `gradeState` / `score`，`isCorrect` 原样留着。
 
-2. **教师看板有第四份题型清单，漏改不会报错。**
-   `src/app/teacher/classroom/worksheet-drawer-state.ts:52`
-   `GRADED_QUESTION_TYPES = ['single-choice', 'fill-blank']` 是**白名单**
-   （它自己的注释写着「将来加新题型时它会自动落到『没有对错』那一侧」）。
-   加了可自动判分的新题型却不动它 ⇒ 服务端判分并落库、**正确率把它算进分母**
-   （`:162` 读的是 `isCorrect` 非空），而格子上**不显示 ✓/✗** —— 一处静默的不一致。
+2. **教师看板有一份自己的题型清单，漏改不会报错。**
+   `src/app/teacher/classroom/worksheet-drawer-state.ts` 的 `GRADED_QUESTION_TYPES`。
+   2026-09-23 勘查时它是一份**手写白名单**（`['single-choice', 'fill-blank']`），
+   而 **M4a/A1 之后它不再是手写的**：它由 `QUESTION_TYPE_OPTIONS` 的 `graded` 标记**派生**。
+   ⇒ 漏改的风险**换了地方**：今天要盯的是 `src/lib/worksheet-questions.ts` 里
+   `QUESTION_TYPE_OPTIONS` 的 `graded` 标记，与服务端 `validateQuestion` / `grade()` 是否一致；
+   不一致的表现还是当年那一个 —— 服务端判分并落库、**正确率把它算进分母**，
+   而看板上**不显示 ✓/✗**。
+   （顺带更正同一条里的另一句：正确率的分子与分母今天读的是 `rowVerdict`
+   —— `gradeState` 优先、`isCorrect` 兜底 —— 不是「读的是 `isCorrect` 非空」。）
 
 3. **`PUT /api/worksheets/:id` 是整份替换 `settings`。**
-   `server/src/routes/worksheets.ts:126` 的 `normalizeSettings` 注释自陈这条：
+   `server/src/routes/worksheets.ts` 的 `normalizeSettings` 注释自陈这条：
    少认一个键 ⇒ 保存一次「只改标题」的请求就把那个键**静默抹掉**（教师配好的档变回默认，
-   界面上没有任何提示）。新增奖励相关的键时，这**五处必须一起加**：
-   `normalizeSettings`（服务端写入口，`:126`）· `readStudentSettings`（服务端读出，`:905`）·
-   `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS`（`:369`）与 `normalizeLoadedSettings`（`:472`）。
+   界面上没有任何提示）。新增奖励相关的键时，下面这**四处**必须一起加：
+   `normalizeSettings`（服务端写入口）· `readStudentSettings`（服务端读出）·
+   `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` 与 `normalizeLoadedSettings`。
+   ⊘ 2026-09-24 更正：这里原先写「这**五处**必须一起加」而只列了四条 —— 数词与清单对不上。
+   要数实际有几处，先跑一遍 `/usr/bin/grep -rn <你新加的键> src server/src | /usr/bin/grep -v '\.test\.'`
+   看它落在哪几个文件里（2026-09-24 实测：`halfStep` 落在 **8 个文件**）——
+   所以「四处」指的是**必须同步改的写入口 / 读出口**，不是「全仓会出现这个键的地方」。
 
 #### 得分与正确率的口径
 

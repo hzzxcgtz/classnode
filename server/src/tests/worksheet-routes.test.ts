@@ -587,6 +587,65 @@ test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（�
 });
 
 /**
+ * 🔴 ★ M4a/I1：**`points.full = 0` 拒绝保存**（400，指名道姓）；`half: 0` 照常收下。
+ *
+ * 为什么值得一条真路由的用例（而不是只测 `normalizePoints`）：判据分两层，
+ * `normalizePoints` 只回答「落库的形状」，**400 是 `normalizeNode` 那一层的事** ——
+ * 把拒绝写在 service 里、忘了在路由里调用它，纯函数用例会全绿而缺陷照旧。
+ * 本用例走的是「真实路由 + 真实鉴权闸门」那条路（同文件的其他用例一样）。
+ *
+ * 反面（不拦的后果，2026-09-24 终审实测的链条）：`full: 0` 让**答对**的题拿到 0 分 ⇒
+ * 学生端对错档按 `score >= 1` 画 ⇒ **红叉**；教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**
+ * 并把它计进正确率分子 ⇒ 同一次提交里两个角色看到相反的话，而全程无一处报错。
+ */
+test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 0` 与「只填半对 0」照常收下', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  /** 样本复制一份，只改第一题的分值。 */
+  const withPoints = (points: Record<string, unknown>) => {
+    const content = structuredClone(SAMPLE_CONTENT) as { schemaVersion: number; nodes: Array<Record<string, unknown>> };
+    content.nodes[0].points = points;
+    return content;
+  };
+  const post = (points: Record<string, unknown>) =>
+    server.post('/api/worksheets', { title: '分值域', content: withPoints(points), settings: SAMPLE_SETTINGS });
+
+  // ── 拒绝的那一侧 ─────────────────────────────────────────────
+  const rejected = await post({ full: 0, half: 0 });
+  const rejectedBody = await rejected.json() as { error?: string };
+  assert.equal(rejected.status, 400, `full: 0 必须当场拒绝，实际回了：${JSON.stringify(rejectedBody)}`);
+  // 文案要**指名道姓**：教师得知道是第几题、以及错在哪一格 —— 一句笼统的
+  // 「内容不合法」会让他翻遍整份单子。
+  assert.match(rejectedBody.error ?? '', /第 1 题/, '报错要点出是第几题');
+  assert.match(rejectedBody.error ?? '', /全对/, '报错要点出是「全对」那一格（半对填 0 是合法的）');
+
+  // 旁边有一个合法值也救不了它（0 不是「因为半对合法就跟着合法」）
+  const mixed = await post({ full: 0, half: 2 });
+  assert.equal(mixed.status, 400, 'full: 0 与 half 填什么无关');
+
+  // ── 收下的那一侧（对照，防止「顺手把两个域一起收窄」）──────────────
+  const halfZero = await post({ full: 2, half: 0 });
+  const halfZeroBody = await halfZero.json() as { id: string; error?: string };
+  assert.equal(halfZero.status, 200, JSON.stringify(halfZeroBody));
+  const halfZeroSaved = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: halfZeroBody.id } });
+  const halfZeroNodes = (halfZeroSaved.content as { nodes: Array<Record<string, unknown>> }).nodes;
+  assert.deepEqual(halfZeroNodes[0].points, { full: 2, half: 0 },
+    '⚠️ 半对填 0 是**合法**的（规格 §12 裁定 3 的默认档就是它）—— 别把它的 0 也判成「没填」');
+
+  // 「只填半对 0」不是半填的非法态：`full` 缺席 ⇒ 按老语义回落 DEFAULT_POINTS.full（1），
+  // 而 `half: 0` 原样保留 —— 这条同时钉住「半对的 0 没有被判成『没填』」。
+  const halfOnly = await post({ half: 0 });
+  const halfOnlyBody = await halfOnly.json() as { id: string; error?: string };
+  assert.equal(halfOnly.status, 200, JSON.stringify(halfOnlyBody));
+  const saved = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: halfOnlyBody.id } });
+  const nodes = (saved.content as { nodes: Array<Record<string, unknown>> }).nodes;
+  assert.deepEqual(nodes[0].points, { full: 1, half: 0 },
+    'full 缺席 ⇒ 回落 1；half: 0 是有效分值，**不许**被当成「没填」');
+});
+
+/**
  * ★ M4a（B2）：学习单级的**半对档**（`settings.halfStep`）必须走完
  * 「写入口 → 库里 → 读回来 → 原样发回去」整条路。
  *

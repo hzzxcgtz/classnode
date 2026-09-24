@@ -38,19 +38,41 @@ export const DEFAULT_POINTS: QuestionPoints = { full: 1, half: 0 };
 /**
  * 分值的取值上限。
  *
- * ⚠️ 它是**两个档共用的**（`full` 与 `half` 各自在 0..99），不是「`full + half <= 99`」——
+ * ⚠️ 它是**两个档共用的上界**（`full` 与 `half` 各自上到 99），不是「`full + half <= 99`」——
  * 后者会让「全对 60 / 半对 50」这种（半对拿得比全对多的笔误）悄悄通过，
  * 而它唯一的表现是看板上的数字怪怪的。要挡那种笔误得靠在 UI 上比大小，不在这里。
  */
 export const POINTS_MAX = 99;
 
 /**
- * 取一个 0..99 的整数；非整数 / 越界 / 缺失一律回落到 `fallback`。
+ * ★ M4a/I1：**「全对」档的下界**。`half` 的下界是 `0`，`full` 的不是。
+ *
+ * 🔴 `full = 0` 的后果是**三个观测互相打架、而全程无一处报错**（2026-09-24 终审实测的链条）：
+ *   1. `grade()` 对**答对**的题给出 `{ state: 'correct', score: 0 }`；
+ *   2. 学生端对错档按 `score >= 1` 画 ⇒ **红叉**（他答对了，却没有分）；
+ *      符号档 `rewardAmount(0) = 0` ⇒ 一个符号都不画；
+ *   3. 教师抽屉读 `gradeState` ⇒ **`✓ 答对`（绿）**，并把它计进正确率的分子。
+ * ⇒ 同一次提交，学生屏幕说「错」、教师说「对且绿」、正确率 100%、学生总奖励 0。
+ *
+ * ⇒ `full` 的域是 `1..POINTS_MAX`，`half` 的域是 `0..POINTS_MAX`。**两个域是有意不同的**，
+ * 别把它们「统一」：`half = 0` 是合法选择（= 不给部分分，规格 §12 裁定 3 的默认值就是它，
+ * 服务端的 `HALF_STEPS` 与 `shouldWarnZeroHalfCredit` 都建立在它上面），
+ * 而 `full = 0` 是「答对了却一个都不给」—— 与 `REWARD_STEPS` 里刻意不放 `0` 是同一件事。
+ */
+export const POINTS_FULL_MIN = 1;
+
+/**
+ * 取一个 `0..POINTS_MAX` 的整数；非整数 / 越界 / 缺失一律回落到 `fallback`。
  *
  * 🔴 它**同时被两条路用到**，这是它被导出的原因：`routes/worksheets.ts` 归一化
  * 题目上的 `points`（写入口），与 A2 的 `pointsFromSettings` 读学习单级的档（读出口）。
  * 各写一份会让「`points: { full: "两朵" }` 到底算 1 还是算 0」在两条路上给出不同答案 ——
  * 而两个答案都不会报错。
+ *
+ * ⚠️ 它的域是**宽的那个**（`0..POINTS_MAX`，与 `isUsablePointValue` 同一对判据）：
+ * 学习单级的 `rewardStep` / `halfStep` 走它，而 `halfStep = 0` 合法。
+ * `full` 那一侧更窄（`isUsableFullPointValue`），所以 `normalizePoints` 是**先判域、
+ * 再调本函数**，不是反过来 —— 反过来会把 `full: 0` 归一化成一个合法的 0 分。
  *
  * `Math.round` 而不是拒绝小数：教师端将来可能出现 `2.5` 这种输入，四舍五入到 3 比
  * 静默回落到默认值（1）更接近他填的东西。**取整必须在这里做**，因为
@@ -67,11 +89,50 @@ export function normalizePointValue(raw: unknown, fallback: number): number {
  * ⚠️ 单独抽出来是为了**只有一处**回答「什么算有效分值」：`normalizePoints` 要按这个判据
  * 决定「这题是填了分还是留空」，而那个决定直接决定「继承还是脱离学习单级」（裁定 4）。
  * 两处各写一份 `typeof raw === 'number' && …` 的话，改了一处就静默分叉。
+ *
+ * ⚠️ 这是**宽的那个域**（`0..POINTS_MAX`）—— 它回答的是「形状对不对」，不是「这一档收不收」。
+ * `full` 还要再过一道 `isUsableFullPointValue`。
  */
 export function isUsablePointValue(raw: unknown): boolean {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return false;
   const rounded = Math.round(raw);
   return rounded >= 0 && rounded <= POINTS_MAX;
+}
+
+/**
+ * ★ M4a/I1：**「全对」档**的判据（`1..POINTS_MAX`）。下界的理由写在 `POINTS_FULL_MIN` 上。
+ *
+ * 🔴 与 `isUsablePointValue` **是两个域，不许合并**：合并的那个方向有两种，都很坏 ——
+ *   · 用窄的（本函数）替掉宽的 ⇒ `half: 0` 被判成「没填」，**教师配的「不给部分分」
+ *     静默变成「继承学习单级」**，而 `shouldWarnZeroHalfCredit` 那条提示正建立在
+ *     「半对 0 是一个有效值」上面；
+ *   · 用宽的替掉窄的 ⇒ 就是 I1 那个缺陷本身。
+ *
+ * ⚠️ 判据是 `Math.round` 之后的值（与 `normalizePointValue` 同一把尺子）：
+ * `full: 0.4` 落到 0，一样不收 —— 否则屏幕上「0.4」与「0」会走出两条不同的路。
+ */
+export function isUsableFullPointValue(raw: unknown): boolean {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return false;
+  const rounded = Math.round(raw);
+  return rounded >= POINTS_FULL_MIN && rounded <= POINTS_MAX;
+}
+
+/**
+ * 写入口的**拒绝判据**：这个 `full` 是不是**认得出、但不合法**（今天只有 `0` 一种）。
+ *
+ * 🔴 为什么不是「`isUsableFullPointValue` 为假就拒」：字符串 / `null` / `undefined` /
+ * 越界值（`-1`、`100`）在 A1 的语义里**就是「没填」**（`normalizePoints` 把它们当留空
+ * ⇒ 那道题继承学习单级），而那是一条已经生效、有用例钉着的裁定 —— 把它们一起改成 400
+ * 等于顺手改掉另一条语义。只有 `0` 落在两个域**之间**：它**是一个数**、宽判据认它有效
+ * （所以会被当成「教师真的填了 0 分」落进库里），而它作为 `full` 的后果正是上面那条自相矛盾的链。
+ * ⇒ 只拒它一个，且**拒绝保存**（与 `partialCredit` 同一种处置）而不是回落到默认 ——
+ * 回落会让教师的输入静默变成另一个数，而这条链上看起来一切正常。
+ *
+ * ⚠️ 它只回答「该不该拒」；真正落 400 的地方在 `routes/worksheets.ts` 的
+ * `normalizeNode`（错误串要说出**第几题**，而这里不知道）。
+ */
+export function isRejectedFullPointValue(raw: unknown): boolean {
+  return isUsablePointValue(raw) && !isUsableFullPointValue(raw);
 }
 
 /**
@@ -85,11 +146,19 @@ export function isUsablePointValue(raw: unknown): boolean {
  * 学习单级的档，才发现这一道题不跟随 —— 且没有任何提示。裁定 4 要防的就是这个。
  *
  * 只有一个字段有效时，取有效的那个，另一个回落 `DEFAULT_POINTS`（它还是要有个数）。
+ *
+ * 🔴 ★ M4a/I1：**两个字段用的不是同一个判据** —— `full` 走 `isUsableFullPointValue`（`1..99`），
+ * `half` 走 `isUsablePointValue`（`0..99`）。`full: 0` 因此在这里就是「没填」，
+ * 它**落不进库**（写入口拒收：`isRejectedFullPointValue` / `normalizeNode`）。
+ * 于是两种来路各自得到一个**不会打架**的结果：
+ *   · 走编辑器的数据 —— 服务端 400，教师当场看到是第几题；
+ *   · 手工改过的库行 —— 这里当成「没填」⇒ 继承学习单级（学习单级的 `full` 恒 ≥ 1，
+ *     见 `REWARD_STEPS`），**不会**再出现「答对却拿 0 分 ⇒ 学生画红叉、教师画绿勾」。
  */
 export function normalizePoints(raw: unknown): QuestionPoints | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const source = raw as Record<string, unknown>;
-  const hasFull = isUsablePointValue(source.full);
+  const hasFull = isUsableFullPointValue(source.full);
   const hasHalf = isUsablePointValue(source.half);
   if (!hasFull && !hasHalf) return undefined;
   return {
@@ -121,10 +190,10 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * 语义是「**本单未单独设置的题**用这个」。缺字段 / 坏形状一律回落到 `DEFAULT_POINTS`
  * （= 第一批的默认档 1 / 0）。
  *
- * 🔴 **取值域是 `normalizePointValue` 的 0..99，不是 `rewardStep` / `halfStep` 的
- * 1/2/3/5 与 0/1/2/3/5。** 那两个下拉是**学习单级**的 UI 约束（`src/lib/worksheet-reward.ts`
- * 的 `REWARD_STEPS` / `HALF_STEPS`），而**逐题**的两个输入框是自由的（规格 §12 裁定 5：
- * 教师可以填 2 或 4）。
+ * 🔴 **取值域是 `normalizePointValue` 的 0..99（`full` 那一档是 1..99，见 `POINTS_FULL_MIN`），
+ * 不是 `rewardStep` / `halfStep` 的 1/2/3/5 与 0/1/2/3/5。** 那两个下拉是**学习单级**的 UI 约束
+ * （`src/lib/worksheet-reward.ts` 的 `REWARD_STEPS` / `HALF_STEPS`），而**逐题**的两个输入框
+ * 是自由的（规格 §12 裁定 5：教师可以填 2 或 4）。
  * ⚠️ 这个差异是**有意的**，不要「统一」它们。但两个函数换上来的后果**不一样**，别用一句
  * 「静默变回默认档」把两件事说成一件：
  *    · 换成 `normalizeRewardStep` ⇒ 库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了

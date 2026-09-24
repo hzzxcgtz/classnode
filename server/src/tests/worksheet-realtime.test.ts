@@ -461,9 +461,12 @@ test('广播：保存作答 ⇒ 房间是教师看板房间，载荷含 question
   // 载荷的**字段集合**也是契约的一部分（brief 的 Produces 一节把它逐个列了出来）：
   // 多一个字段就是协议变更，应当是一次有意识的改动，而不是顺手带出来的。
   //
-  // 🔴 **`isCorrect` 必须在这个集合里**（B1）。它是协议字段：改名 ⇒ 前端与看板拿到
-  // `undefined` ⇒ 静默不画 ✓/✗，没有任何报错。本行就是防改名回归的哨兵 ——
+  // 🔴 **`isCorrect` 必须在这个集合里**（B1）。它是协议字段：改名 ⇒ **看板**（这条广播
+  // 唯一的订阅方，`src/app/teacher/classroom/page.tsx`）拿到 `undefined` ⇒ 静默不画 ✓/✗，
+  // 没有任何报错。本行就是防改名回归的哨兵 ——
   // 把它从期望集合里删掉、或让实现不再发它，这里都会红。
+  // ⊘ 2026-09-24 更正：原先写的是「**前端与**看板拿到」—— 学生端**不订这条广播**
+  //（`/usr/bin/grep -rn "worksheet-answer-updated" src` ⇒ `src/app/classroom/` 下零命中）。
   // `gradeState` / `score` 是 B1 新增的两项（规格 §12：三态 + 数值）。
   assert.deepEqual(
     Object.keys(payload).sort(),

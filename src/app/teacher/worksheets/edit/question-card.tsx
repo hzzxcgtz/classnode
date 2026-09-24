@@ -6,6 +6,7 @@ import {
   parsePointInput,
   planPointInputChange,
   pointText,
+  POINTS_FULL_MIN,
   POINTS_MAX,
   pointsSignature,
   QUESTION_TYPE_OPTIONS,
@@ -161,7 +162,8 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
  * ⇒ 教师填了「全对 7」、半对留空，半对**静默变成 0 分**。实测与完整理由见
  * `findPartialPoints`。这里给红字，保存时 `save()` 会真的拦下。
  *
- * ⚠️ **非法输入不进 reducer**（`onPointsChange` 不被调用）：`points` 只装 0..99 的整数，
+ * ⚠️ **非法输入不进 reducer**（`onPointsChange` 不被调用）：`points` 只装整数
+ *（**全对 1–99 / 半对 0–99**，★ M4a/I1 —— 两档的下界不同，见上面的红字分支），
  * 塞不进 `'7.5'`。被拒的文本靠 `rejectedInput` 留在屏幕上 —— 它是**受控**的，
  * 由 `useWorksheetEditor` 持有（**不是**这里的 `useState`），因为 `save()` 必须看得见它：
  * 否则教师看到框里写着 `7.5`、顶栏写着「已保存」，而发出去的其实是上一次的合法值
@@ -195,16 +197,29 @@ function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputC
     onPointsChange(plan.points);
   };
 
-  const invalidHint = (parsePointInput(fullText).kind === 'invalid' || parsePointInput(halfText).kind === 'invalid')
-    // 这一条同时覆盖两种来路：
-    //   · 教师**刚打的**那个字（`rejectedInput` 把它留在屏幕上）—— 它没进 reducer，
-    //     而且 `save()` 也会拦住保存（`findUncommittedPointInput`）；
-    //   · 库里**已经存在**的越界值（只能来自手工改过的行，编辑器的输入路径产生不了它）
-    //     —— `save()` 由 `findInvalidPoints` 拦。
-    //     第二种没有这条提示就等于**静默**：服务端的 `normalizePointValue` 对越界值
-    //     **回落** `DEFAULT_POINTS`（200 变成 1），保存照常 200，而框里还写着 200。
-    ? `分值只能是 0–${POINTS_MAX} 的整数，请改一下。`
-    : null;
+  // 两格的域不同（全对 1–99 / 半对 0–99），所以**提示文案必须分开** —— 一句
+  // 「只能是 0–99 的整数」对着填了 0 的全对框就是错的（0 确实在 0–99 里）。
+  const fullInvalid = parsePointInput(fullText, 'full').kind === 'invalid';
+  const halfInvalid = parsePointInput(halfText, 'half').kind === 'invalid';
+  const invalidHint = fullInvalid
+    // 🔴 ★ I1：这句必须**指名道姓**说清「全对」那一档，并交代「不计分」今天没有出口 ——
+    // 教师填 0 的动机通常就是「这题不计分」，而**今天没有这个设置**（留空只是跟随学习单的
+    // 档，不是不计分）。不写这一句，他就会去找一个不存在的选项，或者干脆留下 0。
+    ? `「全对给几分」必须是 ${POINTS_FULL_MIN} 以上（${POINTS_FULL_MIN}–${POINTS_MAX} 的整数）——`
+      // ⚠️ 这段字是**教师看到的原文**（`<p>` 里渲染，不走 markdown）⇒ 不许出现 `**` 这类记号。
+      + ` 填 0 的话，答对这道题的学生会看到红叉：他答对了，却一分都没有。`
+      + ` 今天没有「这题不计分」这个设置 —— 两个框都留空只表示跟随学习单的档`
+      + `（${inheritedPoints.full} / ${inheritedPoints.half}），不是不计分。`
+    : halfInvalid
+      // 这一条同时覆盖两种来路：
+      //   · 教师**刚打的**那个字（`rejectedInput` 把它留在屏幕上）—— 它没进 reducer，
+      //     而且 `save()` 也会拦住保存（`findUncommittedPointInput`）；
+      //   · 库里**已经存在**的越界值（只能来自手工改过的行，编辑器的输入路径产生不了它）
+      //     —— `save()` 由 `findInvalidPoints` 拦。
+      //     第二种没有这条提示就等于**静默**：服务端的 `normalizePointValue` 对越界值
+      //     **回落** `DEFAULT_POINTS`（200 变成 1），保存照常 200，而框里还写着 200。
+      ? `半对只能是 0–${POINTS_MAX} 的整数（0 = 不给部分分），请改一下。`
+      : null;
   // ⚠️ 非法值优先：两框非法 + 只填了一个时只显示前一条 —— 两条红字挤在一起，
   // 教师会先去改那个**更靠前**的错，而两条的路数是同一个（先把框改成合法值）。
   const partialHint = !invalidHint && isPartialPoints(node.points)

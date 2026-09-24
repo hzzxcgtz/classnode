@@ -267,7 +267,16 @@ export function abortClassroomStreams(
   return count;
 }
 
-/** 教师看板房间的前缀，与下面 join-teacher-board 及各处 io.to(`teacher:${id}`) 的写法一致。 */
+/**
+ * 教师看板房间的前缀，与下面 join-teacher-board 及各处 io.to(`teacher:${id}`) 的写法一致。
+ *
+ * 🔴 **那个 `<id>` 是「课堂 id」，不是「教师 id」**（2026-09-24 在此处澄清；F2 的裁定是
+ * **不改**其余各处的写法 —— `teacher:<id>` 是全仓通用的记法而不是笔误，只改一处是拿一致性
+ * 换一次注释。要数它有几处就自己跑 `grep -rn "teacher:<id>" src server/src`，别引用数字）。
+ * 但它读起来确实像个教师 id，而**认错它的后果是静默的**：房间名对不上 ⇒ 事件照发、
+ * 日志干净、看板永远不动（`routes/worksheets.ts` 的 `worksheetBoardRoom` 上有完整说明）。
+ * ⇒ 在唯一的声明处点明这件事，比在每个使用点各改一次便宜。
+ */
 const TEACHER_ROOM_PREFIX = 'teacher:';
 
 /**

@@ -302,7 +302,28 @@ export function WorksheetQuestionList({
  * props 就是契约那六项，没有额外项 —— 与探究空间面板不同，学习单**不需要**借 socket
  * （作答走 HTTP，实时广播是服务端 → 教师看板那一侧的事，§5.7）。
  */
-export function WorksheetPanel({ active, classroom, session, toast, setToast }: ModulePanelProps) {
+/**
+ * ★ M5a 给学习单面板加的 props —— **在 `ModulePanelProps` 之外**，不往上加字段。
+ *
+ * 🔴 **为什么不加进 `ModulePanelProps`**（两条都是 `tsc` 当场给的，不是推演）：
+ *   · 那个接口被 `ExplorePanelProps` / `ModulePlaceholderProps` 继承 ⇒ 加一个必填字段会
+ *     逼着**探究空间面板与占位面板**各背一个它们根本不用的 prop（`error TS2741`，
+ *     两个调用点都要改）；
+ *   · 它还被 `_ContractCheck`（`ChatPanelProps extends Omit<ModulePanelProps, …>`，
+ *     `classroom-types.ts:308`）钉着 ⇒ 学伴面板也得跟着加（`error TS2344`）。
+ * 而「锁定作答」只有学习单这一个模块会读。外壳本来就持有这个布尔量，直接递给本面板即可。
+ */
+export interface WorksheetPanelProps extends ModulePanelProps {
+  /**
+   * ★ M5a：这间课堂此刻是否锁定了作答（会话层的专门 state + socket 事件，外壳转手）。
+   *
+   * ⚠️ **不要**改成读 `classroom?.answersLocked`：那个对象 15 秒才刷新一次，而锁定要
+   * **立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
+   */
+  answersLocked: boolean;
+}
+
+export function WorksheetPanel({ active, classroom, session, toast, setToast }: WorksheetPanelProps) {
   const accent = MODULE_META.worksheet.accent;
   const label = MODULE_META.worksheet.label;
 

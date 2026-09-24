@@ -36,6 +36,11 @@ interface ChatSocketOptions {
   setConnectionError: Dispatch<SetStateAction<string | null>>;
   setMessages: Dispatch<SetStateAction<StudentChatMessage[]>>;
   setPaused: Dispatch<SetStateAction<boolean>>;
+  /**
+   * ★ M5a：课堂级「锁定作答」。与 `setPaused` 同一类 —— 专门 state + socket 事件，
+   * 不依赖那个 15 秒才刷新一次的快照对象（锁定要**立刻**生效）。
+   */
+  setAnswersLocked: Dispatch<SetStateAction<boolean>>;
   setSelectedStudent: Dispatch<SetStateAction<ClassroomStudentSummary | null>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'home' | 'shell'>>;
@@ -175,6 +180,16 @@ export function useChatSocket(options: ChatSocketOptions) {
 
       socket.on('classroom-resumed', () => {
         optionsRef.current.setPaused(false);
+      });
+
+      // ★ M5a：锁定/解锁作答。与 `classroom-paused` 不同，这里**不做**流式收尾 ——
+      // 锁定管的是学习单的作答（另一个模块），与学伴的流没有关系。
+      socket.on('answers-locked', () => {
+        optionsRef.current.setAnswersLocked(true);
+      });
+
+      socket.on('answers-unlocked', () => {
+        optionsRef.current.setAnswersLocked(false);
       });
 
       socket.on('identity-conflict', (data: SocketErrorEvent) => {

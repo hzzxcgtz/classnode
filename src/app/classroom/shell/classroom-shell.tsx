@@ -35,6 +35,13 @@ export interface ClassroomShellProps {
    * 引用），effect 只在相位真的变化时才会引起重渲染（同值 setState 会被 React 丢弃）。
    */
   onStepChange: (step: 'home' | 'shell') => void;
+  /**
+   * ★ M5a：这间课堂此刻是否锁定了作答。
+   *
+   * 外壳只是**搬运工**：`session.answersLocked`（专门 state + socket 事件）→ 学习单面板。
+   * ⚠️ 不从 `chat.classroom.answersLocked` 取 —— 那个对象 15 秒才刷新一次，锁定要立刻生效。
+   */
+  answersLocked: boolean;
 }
 
 /** 层的键空间：首页 + 三个模块。 */
@@ -117,7 +124,7 @@ function slideDurationMs(el: HTMLElement | null): number {
  * （滚动位置、换头像弹窗开着没关），而且 §4.6 的切换动画要求两个面板在动画期共存 ——
  * 首页与模块之间也要动画。写成 `step` 的两个分支就没有共存的窗口了。
  */
-export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps) {
+export function ClassroomShell({ chat, home, onStepChange, answersLocked }: ClassroomShellProps) {
   // 外壳与学伴面板共用同一个 setToast（会话级状态由 page.tsx 持有，这里只是转手）。
   const { setToast } = chat;
   const { activeModuleId, mountedIds, tabs, openModule, goHome } = useModuleTabs({
@@ -623,9 +630,12 @@ export function ClassroomShell({ chat, home, onStepChange }: ClassroomShellProps
               session={chat.selectedStudent}
               toast={toastFor(id)}
               setToast={setToast}
+              // ★ M5a：课堂级「锁定作答」。⚠️ 走 props 而不是读 `chat.classroom.answersLocked`
+              // —— 那个对象 15 秒才刷新一次，而锁定要**立刻**生效。
+              answersLocked={answersLocked}
             />
           ) : (
-            // 🔴 **这一支是那道编译期门本身，别删。** 三个模块全落地之后 `id` 到这里是
+            // 🔴 **这一支是这道编译期门本身，别删。** 三个模块全落地之后 `id` 到这里是
             // `never` —— 也就是说这一支今天**永远不会执行**，留着它的唯一理由是
             // `ModulePlaceholderProps.moduleId` 正是 `never`：
             //   · 「把某个真面板渲染成占位」（`moduleId={'worksheet'}`）⇒ 编译失败；

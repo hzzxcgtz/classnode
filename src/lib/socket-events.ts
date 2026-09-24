@@ -27,6 +27,10 @@ export interface ServerToClientEvents {
   'classroom-ended': () => void;
   'classroom-paused': () => void;
   'classroom-resumed': () => void;
+  // ★ M5a：课堂级「锁定作答」。载荷为空 —— 状态本身由 `GET /code/:code` 的快照兜底，
+  // 这两个事件只负责「让在线的学生立刻知道」，与 `classroom-paused` 同一条口径。
+  'answers-locked': () => void;
+  'answers-unlocked': () => void;
   'allow-stop-changed': (data: { allow: boolean }) => void;
   'allow-export-changed': (data: { allow: boolean }) => void;
   'follow-ups-changed': (data: { allow: boolean }) => void;

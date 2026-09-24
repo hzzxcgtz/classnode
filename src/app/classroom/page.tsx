@@ -112,6 +112,9 @@ function ClassroomOrchestrator() {
   return (
     <ClassroomShell
       onStepChange={session.setStep}
+      // ★ M5a：课堂级「锁定作答」。会话层是唯一持有者（专门 state + socket 事件），
+      // 外壳只把它搬给学习单面板 —— 不从 `session.classroom` 那个 15 秒快照里读。
+      answersLocked={session.answersLocked}
       chat={{
         code: session.code,
         classroom: session.classroom,

@@ -56,6 +56,9 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [waitingAI, setWaitingAI] = useState(false);
   const [paused, setPaused] = useState(false);
+  // ★ M5a：课堂级「锁定作答」。与 `paused` 同一类（专门 state + socket 事件），
+  // 理由见 `use-chat-socket.ts` 的那两条监听器与 `classroom-types.ts` 的 `ModulePanelProps`。
+  const [answersLocked, setAnswersLocked] = useState(false);
   const [agentDisabled, setAgentDisabled] = useState(false);
   /**
    * 探究空间按需推流：本课堂此刻有没有教师在看探究空间视图（P2 / Ruling 9）。
@@ -94,6 +97,11 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       const cr = await api.getClassroomByCode(classroomCode || code);
       setClassroom(cr);
       if (cr.status === 'paused') setPaused(true);
+      // ★ M5a：与 `status` 同一条通道（这条快照就是 `api.getClassroomByCode`）。
+      // ⚠️ **只置位、不清除** —— 与上面那行 `paused` 逐字同款：刷新页面/重进课堂时
+      // 服务端说的是真话，而清除会把一次还没到达的广播态误判成「已解锁」。
+      // `=== true` 是刻意的：老服务端不发这个字段 ⇒ 按「未锁定」处理。
+      if (cr.answersLocked === true) setAnswersLocked(true);
       // 如果是从缓存恢复会话，检查该学生/小组绑定的智能体是否停用。
       // 🔴 「该用哪个智能体」不在本文件判断 —— 统一走 `@/lib/classroom-material` 的
       // `effectiveGroupAgent`（**高级模式不回落**）。这里原来是又一份「先找自己组的、
@@ -269,11 +277,12 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
    * ⚠️ 本 effect 同样必须声明在轮询 effect **之前**（同一次提交里 effect 按声明顺序执行，
    * 而轮询一挂载就立刻 `poll()` 一次）。
    */
-  const flagsSnapshotRef = useRef<{ paused: boolean; agentDisabled: boolean }>({
-    paused: false, // 与上面两个 useState 的初值一致
+  const flagsSnapshotRef = useRef<{ paused: boolean; agentDisabled: boolean; answersLocked: boolean }>({
+    paused: false, // 与上面几个 useState 的初值一致
     agentDisabled: false,
+    answersLocked: false,
   });
-  useEffect(() => { flagsSnapshotRef.current = { paused, agentDisabled }; }, [paused, agentDisabled]);
+  useEffect(() => { flagsSnapshotRef.current = { paused, agentDisabled, answersLocked }; }, [paused, agentDisabled, answersLocked]);
 
   // 课堂生命期轮询（15 秒）：课堂是否结束、智能体是否被停用、课堂是否暂停，外加三态兜底。
   // M1b-2 Task 6 把它从学伴面板（chat-panel.tsx 的 poll）搬到这里。
@@ -336,6 +345,10 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
         const freshPaused = cr.status === 'paused';
         setPaused((prev) => (prev === flagsAtRequest.paused ? freshPaused : prev));
+        // ★ M5a：锁定态走**同一条**陈旧守卫 —— 同一份快照、同一个 RTT，
+        // 少了它，锁定广播会被一个在它之前发出的旧快照压回去（最长 15 秒）。
+        const freshAnswersLocked = cr.answersLocked === true;
+        setAnswersLocked((prev) => (prev === flagsAtRequest.answersLocked ? freshAnswersLocked : prev));
         // 三态兜底。`freshModules` 先落成局部量：旧服务端/老库可能真的不带这个字段，
         // 那种情况保留现有三态，不要把已就绪的态清成默认值。
         const freshModules = cr.modules;
@@ -436,6 +449,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setConnectionError,
     setMessages,
     setPaused,
+    setAnswersLocked,
     setSelectedStudent,
     setShieldWarning,
     setStep,
@@ -545,6 +559,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     loadingMessages,
     waitingAI,
     paused,
+    answersLocked,
     agentDisabled,
     webappDemand,
     shieldWarning,
@@ -573,6 +588,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setLoadingMessages,
     setWaitingAI,
     setPaused,
+    setAnswersLocked,
     setAgentDisabled,
     setShieldWarning,
     setToast,

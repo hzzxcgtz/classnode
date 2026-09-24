@@ -10,11 +10,15 @@ import {
   createEmptyContent,
   createHistory,
   DEFAULT_SETTINGS,
+  describePoints,
   DRAFT_INTERVAL_MS,
   draftKeyFor,
+  findInvalidPoints,
   findPartialPoints,
+  findUncommittedPointInput,
   POINTS_MAX,
   type QuestionType,
+  type RejectedPointInput,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   parseDraft,
@@ -104,6 +108,18 @@ export function useWorksheetEditor({ id, onNotice }: {
   const [usage, setUsage] = useState<WorksheetUsage | null>(null);
   const [draftFound, setDraftFound] = useState<{ key: string; draft: WorksheetDraft } | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  /**
+   * 逐题分值那两格里**还没进 reducer** 的文本（按题 id），由 `PointsRow` 写、由 `save()` 读。
+   *
+   * 🔴 **它必须住在这一层，不能住在 `PointsRow` 里**（2026-09-24 审查实机复现的那个 bug）：
+   * 教师把全对填成 `7.5`，那串字因为非法而进不了 `points`（只装整数），于是点保存发出去的是
+   * **上一次的合法值** `4`，顶栏显示「已保存」，而框里还写着 `7.5` —— **界面在说假话**。
+   * 组件本地的 `useState` 是 `save()` 看不见的；放在这一层，`save()` 才能拦下它。
+   *
+   * 它是**输入态**不是内容：不进撤销栈、不进载荷、不进 `dirty` 快照
+   * （`content` 才决定这三件事）。
+   */
+  const [rejectedPoints, setRejectedPoints] = useState<Record<string, RejectedPointInput>>({});
 
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
@@ -186,6 +202,9 @@ export function useWorksheetEditor({ id, onNotice }: {
     setLoadError(null);
     setDraftFound(null);
     setUsage(null);
+    // 换了一份内容 ⇒ 所有签名都失效了。不清也只是留下一批永远不匹配的死条目，
+    // 但清掉之后「屏幕上这两格是什么」这件事从头就是干净的。
+    setRejectedPoints({});
 
     if (!targetId) {
       const content = createEmptyContent();
@@ -243,6 +262,26 @@ export function useWorksheetEditor({ id, onNotice }: {
   const payloadRef = useRef(payload);
   useEffect(() => { payloadRef.current = payload; }, [payload]);
 
+  /**
+   * 给 `save()` 读的 `rejectedPoints`。走 ref 而不是把它加进 `save` 的依赖 ——
+   * 与上面的 `payloadRef` 同一个手法（`save` 是 `useCallback`，它不需要因为每一次击键重建）。
+   */
+  const rejectedPointsRef = useRef(rejectedPoints);
+  useEffect(() => { rejectedPointsRef.current = rejectedPoints; }, [rejectedPoints]);
+
+  /** `PointsRow` 写它：`null` = 那一题的两格现在都是合法的（或者已被清空）。 */
+  const setPointsInput = useCallback((questionId: string, input: RejectedPointInput | null) => {
+    setRejectedPoints((previous) => {
+      if (input === null) {
+        if (previous[questionId] === undefined) return previous;
+        const next = { ...previous };
+        delete next[questionId];
+        return next;
+      }
+      return { ...previous, [questionId]: input };
+    });
+  }, []);
+
   const save = useCallback(async (): Promise<WorksheetDetail | null> => {
     if (savingRef.current) return null;
     const next = payloadRef.current;
@@ -251,20 +290,40 @@ export function useWorksheetEditor({ id, onNotice }: {
       return null;
     }
     /**
-     * 🔴 **逐题分值只填了一个框 ⇒ 不许保存**（规格 §12 裁定 4 的连带，2026-09-24 实测）。
+     * 🔴 **三条拦阻，顺序有讲究。** 三条拦的都是「发出去的结果与教师屏幕上看到的不一样」，
+     * 所以它们都必须在 `savingRef.current = true` **之前**返回 —— 那之后 return 会让防重入的
+     * 旗子永远立着（`finally` 不跑），这个页面从此再也保存不了任何东西。
      *
-     * 拦在这里而不是靠界面提示，是因为后果**不可见**：服务端的 `normalizePoints` 会把缺的
-     * 那一端补成 `DEFAULT_POINTS`（全对 1 / 半对 0），**不是**补成学习单级的档 —— 于是
-     * 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时半对得 **0 分**，
-     * 而教师以为自己只是把全对调成了 7。完整实测与推理见 `findPartialPoints`。
-     *
-     * ⚠️ 必须在 `savingRef.current = true` **之前**返回：那之后 return 会让防重入的旗子
-     * 永远立着（`finally` 不会跑到），这个页面从此再也保存不了任何东西。
-     * ⚠️ 与上面那条「标题不能为空」同一个位置、同一种失败形状（`saveStatus.kind = 'error'`
-     * ⇒ 顶栏横幅把原因原样显示出来），教师看到的是**哪几题**、以及两条出路。
+     * 顺序：教师**刚打的字** → **库里那一份** → **只有一端**。
+     * 一条题可能同时命中多条（`{full: 200}` 既越界又只填了一个），只报最先命中的那条 ——
+     * 三条的出路都是同一个（把那两格改成合法且齐全的值）。
      */
+    const uncommitted = findUncommittedPointInput(next.content, rejectedPointsRef.current);
+    if (uncommitted.length > 0) {
+      // 🔴 这条是 2026-09-24 审查实机复现出来的：教师看到框里写着 `7.5`、顶栏写着「已保存」，
+      // 而真正发出去的是上一次的合法值 —— **界面在说假话，且没有任何报错**。
+      // （brief Step 1 的「非整数即时提示」讲的是**不要拖到保存才报**，不是「不许拦」。）
+      const message = `${describePoints(uncommitted)}填的不是 0–${POINTS_MAX} 的整数。请改成一个整数，或把那一格清空（清空 = 跟随学习单的两档）。`;
+      setSaveStatus({ kind: 'error', at: null, message });
+      callbacksRef.current.onNotice({ message: '保存失败：有分值填的不是 0–99 的整数', type: 'error' });
+      return null;
+    }
+    const invalid = findInvalidPoints(next.content);
+    if (invalid.length > 0) {
+      // 这一条拦的是**库里那一份**：编辑器的输入路径产生不了越界值，所以命中的只可能是
+      // 手工改过的行。不拦的后果是**静默改写** —— 服务端的 `normalizePointValue` 对越界值
+      // 回落 `DEFAULT_POINTS`（200 变成 1），保存照常 200，而卡片上还写着 200。
+      const message = `${describePoints(invalid)}不是一个 0–${POINTS_MAX} 的整数。照这样保存，服务端会把它静默换成「全对 1 / 半对 0」，分数与你屏幕上看到的不是一回事，所以先拦下。`;
+      setSaveStatus({ kind: 'error', at: null, message });
+      callbacksRef.current.onNotice({ message: '保存失败：有分值的取值不合法', type: 'error' });
+      return null;
+    }
     const partial = findPartialPoints(next.content);
     if (partial.length > 0) {
+      // 🔴 半填的后果**不可见**：服务端的 `normalizePoints` 会把缺的那一端补成
+      // `DEFAULT_POINTS`（全对 1 / 半对 0），**不是**补成学习单级的档 —— 于是
+      // 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时半对得 **0 分**，
+      // 而教师以为自己只是把全对调成了 7。完整实测与推理见 `findPartialPoints`。
       const numbers = partial.map((item) => item.index + 1).join('、');
       const message = `第 ${numbers} 题的「全对 / 半对」只填了一个。两个框要么都填（0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
       setSaveStatus({ kind: 'error', at: null, message });
@@ -301,6 +360,8 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 「保存期间教师继续打的字」覆盖掉。载荷已经与本地状态同构
       // （见 `buildPayload` 的 trim），所以拿它当基线是准的。
       setBaseline(JSON.stringify(next));
+      // 保存成功 ⇒ 屏幕上那两格与库里一致，输入态没有再留的意义。
+      setRejectedPoints({});
       setSaveStatus({ kind: 'saved', at: Date.now(), message: null });
       if (!currentId) {
         worksheetIdRef.current = saved.id;
@@ -365,6 +426,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     // 恢复之后 `dirty` 自然为真（基线仍是服务端那份），所以保存按钮会亮起来。
     dispatch({ kind: 'reset', content: found.draft.content });
     setDraftFound(null);
+    setRejectedPoints({});
   }, [draftFound]);
 
   const discardDraft = useCallback(() => {
@@ -531,7 +593,8 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, updatePrompt, updateData, updatePoints, moveQuestion, removeQuestion,
+    addQuestion, updatePrompt, updateData, updatePoints, setPointsInput, moveQuestion, removeQuestion,
+    rejectedPoints,
     save, duplicate, goBack, ensureUsage,
   };
 }

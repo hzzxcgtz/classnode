@@ -216,8 +216,10 @@ function WorksheetEditorBody() {
               total={content.nodes.length}
               node={node}
               inheritedPoints={inheritedPoints}
+              rejectedPointInput={editor.rejectedPoints[node.id]}
               onPromptChange={prompt => editor.updatePrompt(node.id, prompt)}
               onDataChange={patch => editor.updateData(node.id, patch)}
+              onPointsInputChange={input => editor.setPointsInput(node.id, input)}
               onPointsChange={points => editor.updatePoints(node.id, points)}
               onMove={delta => editor.moveQuestion(node.id, delta)}
               onRemove={() => void requestRemove(node, index)}

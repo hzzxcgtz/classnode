@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
   isPartialPoints,
   MAX_OPTIONS,
   optionKey,
   parsePointInput,
+  planPointInputChange,
+  pointText,
   POINTS_MAX,
+  pointsSignature,
   QUESTION_TYPE_OPTIONS,
   readFillAnswers,
   readOptions,
+  type RejectedPointInput,
   shouldWarnZeroHalfCredit,
   writeFillAnswers,
   writeOptions,
@@ -34,7 +37,7 @@ import {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ index, total, node, inheritedPoints, onPromptChange, onDataChange, onPointsChange, onMove, onRemove }: {
+export function QuestionCard({ index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onMove, onRemove }: {
   index: number;
   total: number;
   node: WorksheetQuestionNode;
@@ -44,8 +47,11 @@ export function QuestionCard({ index, total, node, inheritedPoints, onPromptChan
    * **不要**拿它去预填输入框 —— 预填等于把继承拍成了副本（规格 §12 裁定 4 的理由）。
    */
   inheritedPoints: { full: number; half: number };
+  /** 这一题那两格里**还没进 reducer** 的文本（`useWorksheetEditor` 持有，见 `PointsRow`）。 */
+  rejectedPointInput: RejectedPointInput | undefined;
   onPromptChange: (prompt: string) => void;
   onDataChange: (patch: Record<string, unknown>) => void;
+  onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
@@ -109,6 +115,8 @@ export function QuestionCard({ index, total, node, inheritedPoints, onPromptChan
         index={index}
         node={node}
         inheritedPoints={inheritedPoints}
+        rejectedInput={rejectedPointInput}
+        onPointsInputChange={onPointsInputChange}
         onPointsChange={onPointsChange}
       />
 
@@ -119,11 +127,6 @@ export function QuestionCard({ index, total, node, inheritedPoints, onPromptChan
       )}
     </section>
   );
-}
-
-/** `points` 里那一格的文本（`undefined` ⇒ 空串 = 没填）。半填靠它渲染出来。 */
-function pointText(value: number | undefined): string {
-  return value === undefined ? '' : String(value);
 }
 
 /**
@@ -145,45 +148,45 @@ function pointText(value: number | undefined): string {
  * `findPartialPoints`。这里给红字，保存时 `save()` 会真的拦下。
  *
  * ⚠️ **非法输入不进 reducer**（`onPointsChange` 不被调用）：`points` 只装 0..99 的整数，
- * 塞不进 `'7.5'`。被拒的文本**临时留在屏幕上**（否则教师打的字会当着他的面消失），
- * 靠 `rejected` 那一格 —— 它带**签名**，`node.points` 一变（撤销 / 恢复草稿 / 换题）
- * 就自动失效，所以不会出现「撤销之后框里还留着刚才那段非法文本」。
+ * 塞不进 `'7.5'`。被拒的文本靠 `rejectedInput` 留在屏幕上 —— 它是**受控**的，
+ * 由 `useWorksheetEditor` 持有（**不是**这里的 `useState`），因为 `save()` 必须看得见它：
+ * 否则教师看到框里写着 `7.5`、顶栏写着「已保存」，而发出去的其实是上一次的合法值
+ * （2026-09-24 审查实机复现的「界面在说假话」）。它带**签名**，
+ * `node.points` 一变（撤销 / 恢复草稿 / 换题）就自动失效。
  */
-function PointsRow({ index, node, inheritedPoints, onPointsChange }: {
+function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputChange, onPointsChange }: {
   index: number;
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
+  /** 屏幕上还没进 reducer 的那两格文本（父层持有，因为 `save()` 要看得见它）。 */
+  rejectedInput: RejectedPointInput | undefined;
+  onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
-  // 只在「用户刚打了非法文本」时才有值；`signature` 让它随 `node.points` 自动失效。
-  const [rejected, setRejected] = useState<{ signature: string; which: 'full' | 'half'; text: string } | null>(null);
+  const signature = pointsSignature(node);
+  const shown = rejectedInput && rejectedInput.signature === signature ? rejectedInput : null;
 
-  const signature = `${node.id}:${pointText(node.points?.full)}/${pointText(node.points?.half)}`;
-  const shownRejected = rejected && rejected.signature === signature ? rejected : null;
+  const fullText = shown?.full !== undefined ? shown.full : pointText(node.points?.full);
+  const halfText = shown?.half !== undefined ? shown.half : pointText(node.points?.half);
 
-  const fullText = shownRejected?.which === 'full' ? shownRejected.text : pointText(node.points?.full);
-  const halfText = shownRejected?.which === 'half' ? shownRejected.text : pointText(node.points?.half);
-
+  // 判据整个在 `planPointInputChange`（内核）里 —— 「非法时两格都记」「半填如实提交」
+  // 这两条都有回归网，而组件这一层没有。
   const commit = (which: 'full' | 'half', raw: string) => {
-    const full = parsePointInput(which === 'full' ? raw : fullText);
-    const half = parsePointInput(which === 'half' ? raw : halfText);
-    if (full.kind === 'invalid' || half.kind === 'invalid') {
-      setRejected({ signature, which, text: raw });
+    const plan = planPointInputChange(node, which, raw, rejectedInput);
+    if (plan.kind === 'rejected') {
+      onPointsInputChange(plan.input);
       return;
     }
-    setRejected(null);
-    // ⚠️ 半填要**如实**交给 reducer（不能因为「另一端还没填」就不提交）—— 否则教师刚打的
-    // 那个字会被下一次渲染吞掉（输入框的值是从 `node.points` 算出来的）。
-    const next: QuestionPointsDraft = {};
-    if (full.kind === 'value') next.full = full.value;
-    if (half.kind === 'value') next.half = half.value;
-    onPointsChange(next.full === undefined && next.half === undefined ? undefined : next);
+    onPointsInputChange(null);
+    onPointsChange(plan.points);
   };
 
   const invalidHint = (parsePointInput(fullText).kind === 'invalid' || parsePointInput(halfText).kind === 'invalid')
     // 这一条同时覆盖两种来路：
-    //   · 教师**刚打的**那个字（`shownRejected` 把它留在屏幕上）—— 它没进 reducer；
-    //   · 库里**已经存在**的越界值（只能来自手工改过的行，编辑器的输入路径产生不了它）。
+    //   · 教师**刚打的**那个字（`rejectedInput` 把它留在屏幕上）—— 它没进 reducer，
+    //     而且 `save()` 也会拦住保存（`findUncommittedPointInput`）；
+    //   · 库里**已经存在**的越界值（只能来自手工改过的行，编辑器的输入路径产生不了它）
+    //     —— `save()` 由 `findInvalidPoints` 拦。
     //     第二种没有这条提示就等于**静默**：服务端的 `normalizePointValue` 对越界值
     //     **回落** `DEFAULT_POINTS`（200 变成 1），保存照常 200，而框里还写着 200。
     ? `分值只能是 0–${POINTS_MAX} 的整数，请改一下。`

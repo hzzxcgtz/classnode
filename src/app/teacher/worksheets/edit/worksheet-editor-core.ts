@@ -332,6 +332,161 @@ export function isPartialPoints(points: QuestionPointsDraft | undefined): boolea
 }
 
 /**
+ * 逐题分值那两格的**文本签名** —— 「这段输入还是不是当前这一题、这两个值的样子」。
+ *
+ * 🔴 它存在的唯一理由是：编辑器允许屏幕上存在**还没进 reducer** 的文本
+ * （教师打了一半、或打了一个非法值，见 `PointsRow` 的 `rejected`）。那段文本要能
+ * ① 在 `node.points` 变化时自动失效（撤销 / 恢复草稿 / 换题），② 被 `save()` 看见。
+ * 两处用**同一个**签名算法是 ② 不落空的前提 —— 各写一份就会「组件认为它还有效、
+ * 而 `save()` 认为它已经失效」（或反过来），而两者都不会报错。
+ */
+export function pointsSignature(node: WorksheetQuestionNode): string {
+  const full = node.points?.full === undefined ? '' : String(node.points.full);
+  const half = node.points?.half === undefined ? '' : String(node.points.half);
+  return `${node.id}:${full}/${half}`;
+}
+
+/** `points` 里那一格的文本（`undefined` ⇒ 空串 = 没填）。半填靠它渲染出来。 */
+export function pointText(value: number | undefined): string {
+  return value === undefined ? '' : String(value);
+}
+
+/**
+ * 教师动了某一格之后该做什么 —— `PointsRow` 的 `onChange` 整个逻辑都在这里。
+ *
+ * 🔴 **它必须在内核里**（而不是留在组件里）：这条路上有两个「错了不报错」的坑，
+ * 而组件没有回归网：
+ *   1. 非法文本只记**刚动的那一格** ⇒ 另一格里还没提交的文本被 `node.points` 顶掉，
+ *      教师没碰那个框、字却没了（2026-09-24 审查实测的原始 bug）；
+ *   2. 合法时忘了把另一格的值一起算进来 ⇒ 半填 / 覆盖的次序一错，落库的值就与屏幕不符。
+ * ⇒ 两格一起算、非法时**两格都记**，这里一条路走完。
+ */
+export function planPointInputChange(
+  node: WorksheetQuestionNode,
+  which: 'full' | 'half',
+  raw: string,
+  currentInput: RejectedPointInput | undefined,
+): { kind: 'rejected'; input: RejectedPointInput } | { kind: 'commit'; points: QuestionPointsDraft | undefined } {
+  const signature = pointsSignature(node);
+  // 签名不匹配 ⇒ 那段输入是上一份内容留下的，已经作废（撤销 / 恢复草稿 / 换题之后）。
+  const shown = currentInput && currentInput.signature === signature ? currentInput : undefined;
+  const nextFull = which === 'full' ? raw : (shown?.full ?? pointText(node.points?.full));
+  const nextHalf = which === 'half' ? raw : (shown?.half ?? pointText(node.points?.half));
+
+  const full = parsePointInput(nextFull);
+  const half = parsePointInput(nextHalf);
+  if (full.kind === 'invalid' || half.kind === 'invalid') {
+    // 🔴 **两格都记**，不只是刚动的那一格 —— 见上面的坑 1。
+    return { kind: 'rejected', input: { signature, full: nextFull, half: nextHalf } };
+  }
+
+  // ⚠️ 半填要**如实**交出去（不能因为「另一端还没填」就不提交）—— 否则教师刚打的那个字
+  // 会被下一次渲染吞掉（输入框的值是从 `node.points` 算出来的）。
+  const points: QuestionPointsDraft = {};
+  if (full.kind === 'value') points.full = full.value;
+  if (half.kind === 'value') points.half = half.value;
+  return {
+    kind: 'commit',
+    points: points.full === undefined && points.half === undefined ? undefined : points,
+  };
+}
+
+/** 屏幕上**还没进 reducer** 的那两格文本（按题 id 存）。`undefined` 的字段 = 那一格没被拒过。 */
+export interface RejectedPointInput {
+  /** `pointsSignature(node)` 在当时的值 —— 不匹配就整条失效。 */
+  signature: string;
+  full?: string;
+  half?: string;
+}
+
+/** 哪一格。`both` 只在拼文案时用得上。 */
+export type PointField = 'full' | 'half' | 'both';
+
+export function describeWhich(which: PointField): string {
+  if (which === 'both') return '全对与半对';
+  return which === 'full' ? '全对' : '半对';
+}
+
+/** 把 `Array<{index, which}>` 拼成「第 2 题的全对、第 5 题的全对与半对」。 */
+export function describePoints(items: Array<{ index: number; which: PointField }>): string {
+  return items.map((item) => `第 ${item.index + 1} 题的${describeWhich(item.which)}`).join('、');
+}
+
+/**
+ * 这个数**能不能当分值落库**（编辑期的判据）。
+ *
+ * 🔴 它比服务端的 `isUsablePointValue` **更严**，这个差异是**有意的**，别「统一」：
+ *   · 服务端那个用 `Math.round`，所以 `7.5` 算有效（⇒ 8）—— 它的入参是**库里的 JSON**，
+ *     可能来自手工改过的行或将来的批量工具；
+ *   · 这里要求**整数**，因为输入框那一侧的判据（`parsePointInput`）就不接受小数 ——
+ *     让一个屏幕上根本打不出来的值悄悄落库，等于界面与服务端两套规则。
+ */
+function isValidPointNumber(value: number | undefined): boolean {
+  if (value === undefined) return true;
+  return Number.isInteger(value) && value >= 0 && value <= POINTS_MAX;
+}
+
+/**
+ * 🔴 **`points` 里已经有一个不是 0–99 整数的值**的题（顶层）—— 与 `findPartialPoints`
+ * 并列，由 `save()` 拦下。
+ *
+ * 它拦的是**库里那一份**（`content`）。编辑器的输入路径产生不了这种值
+ * （`parsePointInput` 会把小数 / 越界 / 十六进制都拒掉），所以命中它的只有**手工改过的库行**。
+ *
+ * ⚠️ 不拦的后果是**静默改写**：服务端的 `normalizePointValue` 对越界值**回落**
+ * `DEFAULT_POINTS`（`full: 200` ⇒ `1`），保存照常 200，而卡片上还写着 200 ——
+ * 教师没有任何办法知道他的分数已经变成了 1。
+ *
+ * ⚠️ 与 `findPartialPoints` 一样**只看顶层**（嵌套里的题教师看不见也改不了，
+ * 拦了会让保存按钮废掉）。
+ */
+export function findInvalidPoints(content: WorksheetContent): Array<{ id: string; index: number; which: PointField }> {
+  const found: Array<{ id: string; index: number; which: PointField }> = [];
+  content.nodes.forEach((node, index) => {
+    const points = node.points;
+    if (!points) return;
+    const fullBad = !isValidPointNumber(points.full);
+    const halfBad = !isValidPointNumber(points.half);
+    if (!fullBad && !halfBad) return;
+    found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
+  });
+  return found;
+}
+
+/**
+ * 🔴 **屏幕上有一段还没进 reducer 的非法文本**的题 —— `save()` 的第三条拦阻。
+ *
+ * 为什么必须有它（2026-09-24 审查实机复现）：教师把全对填成 `7.5`，框里**明明白白写着
+ * `7.5`**，那串字却因为非法而没进 reducer（`points` 只装整数）⇒ 点保存发出的是**上一次的
+ * 合法值** `4` ⇒ 顶栏显示「已保存」，而框里还是 `7.5`。**界面在说假话，且没有任何报错。**
+ *
+ * ⇒ 只提示是不够的（brief Step 1 的「非整数即时提示」讲的是**不要拖到保存才报**，
+ * 不是「不许拦」）。所以：**没提交的非法文本同样拦住保存。**
+ *
+ * ⚠️ 判据要连签名一起比：`rejected` 里那一段文本只有在 **`signature` 仍然等于当前节点**
+ * 时才作数 —— 撤销 / 恢复草稿 / 换题之后 `node.points` 会变，那串文本就作废了
+ * （否则教师撤销之后还会被一段早已不存在的文本拦住）。
+ *
+ * ⚠️ `rejected` 里**合法的**那一格不构成拦阻：教师可能在全对留着一格非法文本的同时
+ * 把半对改成了合法值，而那一格只在整题提交时才有意义（见 `PointsRow` 的 `commit`）。
+ */
+export function findUncommittedPointInput(
+  content: WorksheetContent,
+  rejected: Record<string, RejectedPointInput>,
+): Array<{ id: string; index: number; which: PointField }> {
+  const found: Array<{ id: string; index: number; which: PointField }> = [];
+  content.nodes.forEach((node, index) => {
+    const entry = rejected[node.id];
+    if (!entry || entry.signature !== pointsSignature(node)) return;
+    const fullBad = entry.full !== undefined && parsePointInput(entry.full).kind === 'invalid';
+    const halfBad = entry.half !== undefined && parsePointInput(entry.half).kind === 'invalid';
+    if (!fullBad && !halfBad) return;
+    found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
+  });
+  return found;
+}
+
+/**
  * 🔴 **只填了一个框**的题（顶层，按题目顺序）—— `save()` 用它拦下保存。
  *
  * 为什么必须拦（2026-09-24 实测，A2 审查带出）：服务端的 `normalizePoints` 对
@@ -360,20 +515,39 @@ export function findPartialPoints(content: WorksheetContent): Array<{ id: string
 }
 
 /**
+ * 这道题**实际会用到的半对档**；`null` = **说不准**（调用方据此不判断）。
+ *
+ * 只有两种情形说得准（能保存的状态下）：
+ *   · 逐题填了（两端齐全）⇒ 用它那个数；
+ *   · 逐题留空（或 `{}` —— 服务端 `normalizePoints({})` 也回 `undefined`，同义）⇒ 用学习单级的。
+ */
+function effectiveHalfStep(
+  node: WorksheetQuestionNode,
+  inherited: { full: number; half: number },
+): number | null {
+  const points = node.points;
+  // ⚠️ **半填（只填了一个字段）⇒ 说不准**，`{ half: 0 }` 与 `{ full: 7 }` 都算。
+  // 2026-09-24 修：这里原来只挡住了「半对为空」那一半（`points.half === undefined`），
+  // 于是 `{ half: 0 }` 会走下面那一支算出 0 ⇒ 返回 true，与本函数文档说的「半填不判断」
+  // 矛盾。今天够不着（编辑器还写不出多选），但 C2 补上多选编辑体之后，
+  // 教师在多选卡上先填半对 0、还没填全对时，同一张卡会同时挂两条红字 ——
+  // 正是 `shouldWarnZeroHalfCredit` 要避免的情形。
+  if (points && isPartialPoints(points)) return null;
+  if (!points || points.half === undefined) return inherited.half;
+  return points.half;
+}
+
+/**
  * 🔴 规格 §12 裁定 3 的**连带要求**：教师给多选题选了「漏选算半对」、而半对档是 **0** 时，
  * 界面必须说一句 —— 否则他以为自己开了部分得分，而学生**一分都拿不到**，且没有任何报错。
  *
- * 判据是「**这题实际会用到的半对档**」，只有两种可能（能保存的状态下）：
- *   · 逐题填了 ⇒ 用逐题那个数；
- *   · 逐题留空 ⇒ 用学习单级的 `halfStep`。
+ * 判据是「**这题实际会用到的半对档**」（`effectiveHalfStep`）。
  *
- * ⚠️ **半填时返回 `false`（不提示）**，这**不是**漏判：半填的题已经被 `findPartialPoints`
- * 拦下、根本存不进去，而它自己那条「另一个框也要填」的提示更靠前 —— 一张卡片上同时挂两条
- * 红字只会让教师不知道先看哪条。（也正因为如此，这里**不**去模拟服务端「半填补 0」的行为：
- * 那要再抄一份 `DEFAULT_POINTS`，而它在这条路上永远不会被用到。）
- *
- * ⚠️ `points` 存在但两个字段都缺（`{}`，只会来自手工改过的库行）**与留空同义** ——
- * 服务端 `normalizePoints({})` 也回 `undefined`（整份继承），所以这里按学习单级算。
+ * ⚠️ **半填时返回 `false`（不提示）**，`{ full: 7 }` 与 `{ half: 0 }` **都是**：半填的题
+ * 已经被 `findPartialPoints` 拦下、根本存不进去，而它自己那条「两个框要么都填」的提示
+ * 更靠前 —— 一张卡片上同时挂两条红字只会让教师不知道先看哪条。（也正因为如此，这里
+ * **不**去模拟服务端「半填补 0」的行为：那要再抄一份 `DEFAULT_POINTS`，而它在这条路上
+ * 永远不会被用到。）
  */
 export function shouldWarnZeroHalfCredit(
   node: WorksheetQuestionNode,
@@ -381,12 +555,7 @@ export function shouldWarnZeroHalfCredit(
 ): boolean {
   if (node.type !== 'multi-choice') return false;
   if (node.data.partialCredit !== 'allow-missing') return false;
-  const points = node.points;
-  let half: number | null;
-  if (!points || (points.full === undefined && points.half === undefined)) half = inherited.half;
-  else if (points.half === undefined) half = null;   // 半填：见上面的说明，不判断
-  else half = points.half;
-  return half === 0;
+  return effectiveHalfStep(node, inherited) === 0;
 }
 
 /** 顶层题目列表里替换一道题。没命中就**返回原对象**，免得制造一条空的历史。 */

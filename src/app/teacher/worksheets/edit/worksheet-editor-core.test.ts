@@ -28,7 +28,9 @@ import {
   createHistory,
   DEFAULT_SETTINGS,
   draftKeyFor,
+  findInvalidPoints,
   findPartialPoints,
+  findUncommittedPointInput,
   HISTORY_LIMIT,
   isPartialPoints,
   MAX_OPTIONS,
@@ -38,8 +40,11 @@ import {
   optionKey,
   parseDraft,
   parsePointInput,
+  planPointInputChange,
   POINTS_MAX,
+  pointsSignature,
   type QuestionPointsDraft,
+  type RejectedPointInput,
   readFillAnswers,
   readOptions,
   sanitizeContentForSave,
@@ -848,10 +853,136 @@ test('🔴 shouldWarnZeroHalfCredit：多选 + 漏选算半对 + 半对档 0 ⇒
     false,
     '单选题没有「漏选」这回事 —— 其他题型的部分得分是自动的，半对填 0 是一个合法的选择',
   );
-  // 半填：服务端会把它补成 0 分，但这道题**存不进去**（`save()` 会拦），
-  // 而它自己那条「另一个框也要填」的红字更靠前 —— 两条提示挤在一起只会让教师不知道先看哪条。
+  // 🔴 半填的两半都**不提示**：服务端会把它们补成 0 分，但这道题**存不进去**
+  // （`save()` 会拦），而它自己那条「两个框要么都填」的红字更靠前 ——
+  // 两条提示挤在一起只会让教师不知道先看哪条。
+  //
+  // ⚠️ `{ half: 0 }` 这一半是 2026-09-24 审查抓出来的：判据原来只挡住了缺 `half` 的那一半
+  // （`points.half === undefined`），于是 `{ half: 0 }` 会算出 0 ⇒ 返回 true，
+  // 与本函数的文档**自相矛盾**。今天够不着（编辑器还写不出多选），但 C2 补上多选编辑体之后
+  // 就可达：教师在多选卡上先填半对 0、还没填全对 ⇒ 同一张卡两条红字。
   assert.equal(
     shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', { full: 2 }), inherited),
     false,
+    '缺 half 的那一半',
   );
+  assert.equal(
+    shouldWarnZeroHalfCredit(multiChoice('q', 'allow-missing', { half: 0 }), inherited),
+    false,
+    '缺 full 的那一半（`{ half: 0 }` 同样不是「半对档就是 0」，而是「还没填完」）',
+  );
+});
+
+// ── 12. 修复轮 1（2026-09-24 独立审查实机复现的三条）──────────────────────
+//
+// 三条都在「教师屏幕上看到的东西 ≠ 将被保存的东西」这同一个面上，而它们的共同点是
+// **只看代码看不出来**：审查者是拿 CDP 驱动 headless Chrome 走了一遍才抓到的。
+// 所以每一条都在这里落一条纯函数的回归网。
+
+test('🔴 planPointInputChange：非法时**两格都记** —— 教师没碰的那个框不能自己变回去', () => {
+  // 审查实测的原始序列：`{全对:4, 半对:2}` → 在全对打 `x`（显示 `x` + 红字）
+  // → **接着去动半对填 `3`** → 全对无声地变回 `4`、红字也消失。
+  // 原因是 `rejected` 只有一格，第二次写入把第一格的文本顶掉了。
+  const node = withPoints('q_a', { full: 4, half: 2 });
+
+  const first = planPointInputChange(node, 'full', 'x', undefined);
+  assert.equal(first.kind, 'rejected');
+  assert.deepEqual(
+    first.kind === 'rejected' ? first.input : null,
+    { signature: pointsSignature(node), full: 'x', half: '2' },
+    '非法时把**两格当前的文本**都记下来（`half` 那格是它当时显示的值）',
+  );
+
+  // 第二步：教师去动半对 —— 用的还是上一步那份 input（组件就是把它原样传回来的）。
+  const second = planPointInputChange(node, 'half', '3', first.kind === 'rejected' ? first.input : undefined);
+  assert.equal(second.kind, 'rejected');
+  assert.deepEqual(
+    second.kind === 'rejected' ? second.input : null,
+    { signature: pointsSignature(node), full: 'x', half: '3' },
+    '🔴 全对那一格仍然是 `x` —— 它没被半对那次改动顶掉',
+  );
+
+  // 第三步：教师把全对改回合法值 ⇒ 两格一起提交，半对那个 `3` **不丢**。
+  const third = planPointInputChange(node, 'full', '5', second.kind === 'rejected' ? second.input : undefined);
+  assert.equal(third.kind, 'commit');
+  assert.deepEqual(third.kind === 'commit' ? third.points : null, { full: 5, half: 3 });
+});
+
+test('planPointInputChange：两格都空 ⇒ 提交 undefined（= 跟随学习单级，不是 {}）', () => {
+  const node = withPoints('q_a', { full: 4, half: 2 });
+  assert.deepEqual(planPointInputChange(node, 'full', '', undefined), { kind: 'commit', points: { half: 2 } });
+  const both = planPointInputChange(node, 'full', '', { signature: pointsSignature(node), full: '', half: '' });
+  assert.deepEqual(both, { kind: 'commit', points: undefined });
+});
+
+test('🔴 planPointInputChange：签名不匹配的旧输入**作废**（撤销之后不能被一段早没了的文本拦住）', () => {
+  const node = withPoints('q_a', { full: 4, half: 2 });
+  const stale: RejectedPointInput = { signature: 'q_a:9/9', full: 'x', half: '9' };
+  // 教师现在打一个合法值 ⇒ 旧输入不参与，提交的是「4 / 2 里的 half 加上新值」。
+  assert.deepEqual(planPointInputChange(node, 'full', '6', stale), { kind: 'commit', points: { full: 6, half: 2 } });
+});
+
+test('pointsSignature：只随 id 与两个数值变（它决定那段输入什么时候失效）', () => {
+  assert.equal(pointsSignature(withPoints('q_a', { full: 4, half: 2 })), 'q_a:4/2');
+  assert.equal(pointsSignature(withPoints('q_a', { full: 4 })), 'q_a:4/');
+  assert.equal(pointsSignature(withPoints('q_a', undefined)), 'q_a:/');
+  assert.notEqual(pointsSignature(withPoints('q_a', { full: 4, half: 2 })), pointsSignature(withPoints('q_b', { full: 4, half: 2 })));
+});
+
+test('🔴 findInvalidPoints：`points` 里已有一个不是 0–99 整数的值 ⇒ 拦（否则服务端静默换成 1）', () => {
+  const content = contentOf(
+    withPoints('q_ok', { full: 99, half: 0 }),
+    withPoints('q_over', { full: 200, half: 1 }),
+    withPoints('q_frac', { full: 7.5, half: 2 }),
+    withPoints('q_neg', { full: -1, half: 2 }),
+    withPoints('q_both', { full: -1, half: 1000 }),
+    node('q_none', '没有 points'),
+    withPoints('q_empty', {}),
+  );
+  assert.deepEqual(
+    findInvalidPoints(content),
+    [
+      { id: 'q_over', index: 1, which: 'full' },
+      { id: 'q_frac', index: 2, which: 'full' },
+      { id: 'q_neg', index: 3, which: 'full' },
+      { id: 'q_both', index: 4, which: 'both' },
+    ],
+    '⚠️ 7.5 算非法：输入框那一侧的判据（parsePointInput）就不接受小数 —— 让屏幕上打不出来的值落库 = 两套规则',
+  );
+});
+
+test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**签名失配就不算数**', () => {
+  const node = withPoints('q_a', { full: 4, half: 2 });
+  const content = contentOf(node, withPoints('q_b', { full: 1, half: 0 }));
+
+  // 签名匹配 + 有一格非法 ⇒ 命中
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '7.5', half: '2' } }),
+    [{ id: 'q_a', index: 0, which: 'full' }],
+  );
+  // 两格都非法 ⇒ both
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: 'x', half: 'y' } }),
+    [{ id: 'q_a', index: 0, which: 'both' }],
+  );
+  // 🔴 签名失配（撤销 / 恢复草稿 / 换题之后）⇒ **不拦** —— 否则教师会被一段屏幕上早已
+  // 不存在的文本挡住，而且他没有任何办法让它消失。
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:9/9', full: 'x', half: '2' } }),
+    [],
+  );
+  // 两格都合法（方案：非法时连合法的那格也一起记）⇒ 不构成拦阻
+  assert.deepEqual(
+    findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '4', half: '2' } }),
+    [],
+  );
+  assert.deepEqual(findUncommittedPointInput(content, {}), []);
+});
+
+test('🔴 串起来（修复轮 1）：非法值在 `buildPayload` 的产物上同样看得见 —— `save()` 拦的就是它', () => {
+  // 与上面那条「半填」的串起来同一个理由：只要 `sanitizeContentForSave` 哪天「顺手」
+  // 把越界值清掉或改写，`save()` 这两条拦阻就会**静默失效**，而没有用例会红。
+  const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 200, half: 1 })));
+  assert.deepEqual(findInvalidPoints(payload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
+  assert.deepEqual(findPartialPoints(payload.content), []);
 });

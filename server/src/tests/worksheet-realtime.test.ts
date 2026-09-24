@@ -576,8 +576,11 @@ test('广播：半对（多选漏选）⇒ isCorrect=false 与 gradeState=partia
   const server = await startServer(t, db.prisma);
 
   // 逐题赋分（`points` 落在**题目节点**上，不进 `data`）是这里唯一能拿到「半对 ≠ 0」的路径：
-  // 学习单级的 `halfStep` 要到 B2 才进写入口，此刻 `pointsFromSettings` 读到的是
+  // 本用例下面写进库的那份 `settings` 里**没有** `halfStep` ⇒ `pointsFromSettings` 读到的是
   // 缺席 ⇒ 半对档 = 0，那样 `score` 与「判错」撞成同一个数、断言就不再可观测。
+  // ⊘ 2026-09-24（C3）更正理由：这里原先写的是「学习单级的 `halfStep` 要到 B2 才进写入口」。
+  // B2 已经让写入口认它、C3 又让编辑器设置面板能写出它 ⇒ 那半句当天作废。
+  // **用例本身不用改**（夹具里确实没有那个键，行为逐字不变），过期的只是理由。
   const worksheet = await db.prisma.worksheet.create({
     data: {
       title: '多选半对的学习单',

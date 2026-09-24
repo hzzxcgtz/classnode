@@ -121,16 +121,29 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * 语义是「**本单未单独设置的题**用这个」。缺字段 / 坏形状一律回落到 `DEFAULT_POINTS`
  * （= 第一批的默认档 1 / 0）。
  *
- * 🔴 **取值域是 `normalizePointValue` 的 0..99，不是 `rewardStep` 的 1/2/3/5。**
- * 那个四选一的下拉是**学习单级**的 UI 约束（`src/lib/worksheet-reward.ts` 的 `REWARD_STEPS`），
- * 而**逐题**的两个输入框是自由的（规格 §12 裁定 5：教师可以填 2 或 4）。
- * ⚠️ 这个差异是**有意的**，不要「统一」它们：把这里改成 `normalizeRewardStep` 会让库里
- * 一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了取值域）**静默变回 1**，
- * 而教师看到的是「我配的档没生效」。
+ * 🔴 **取值域是 `normalizePointValue` 的 0..99，不是 `rewardStep` / `halfStep` 的
+ * 1/2/3/5 与 0/1/2/3/5。** 那两个下拉是**学习单级**的 UI 约束（`src/lib/worksheet-reward.ts`
+ * 的 `REWARD_STEPS` / `HALF_STEPS`），而**逐题**的两个输入框是自由的（规格 §12 裁定 5：
+ * 教师可以填 2 或 4）。
+ * ⚠️ 这个差异是**有意的**，不要「统一」它们：把这里改成 `normalizeRewardStep` /
+ * `normalizeHalfStep` 会让库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了取值域）
+ * **静默变回 1**，而教师看到的是「我配的档没生效」。
  *
- * ⚠️ `halfStep` 要到任务 B2 才进 `normalizeSettings`（写入口）。**这个窗口期是安全的**：
- * 此刻没有任何 UI 能写出那个键 ⇒ `source.halfStep` 是 `undefined` ⇒ `normalizePointValue`
+ * ⚠️ 半对档**有第三个消费方**，域与上面两个下拉都不同（2026-09-24 记，**不改行为**）：
+ * 落库那条路（`routes/worksheets.ts` 的 `normalizeSettings`）把 `halfStep` 夹在
+ * `HALF_STEPS` 的 `{0,1,2,3,5}` 里，而**判分**这条兜底走的是本函数的 `0..99`。
+ * 一行手改过的库写成 `halfStep: 7` ⇒ 判分**按 7 分算**、而编辑器的两个下拉里没有 7
+ *（`normalizeLoadedSettings` 把它读成默认的 0）⇒ **界面上显示 0**，两处对同一个键给出
+ * 两个数。`rewardStep` 早就有同一条缝（`rewardStep: 4`），它是有意为之；
+ * 这里把 `halfStep` 一并点名，免得下一个人以为只有全对档有这条缝。
+ *
+ * ⚠️ 半对档缺席（`source.halfStep` 是 `undefined` / 形状不对）时 `normalizePointValue`
  * 回落到 `DEFAULT_POINTS.half = 0`，与规格的默认值相同 —— 也就是第一批的行为。
+ * ⊘ 2026-09-24（C3）更正：这一段原先写的是「`halfStep` 要到任务 B2 才进 `normalizeSettings`
+ *（写入口）。**这个窗口期是安全的**：此刻没有任何 UI 能写出那个键」。那个窗口期已经
+ * **关闭两次**：B2 让写入口认它，C3 让编辑器设置面板也能写出它（`page.tsx` 的那一行下拉）。
+ * ⇒ 「库里那个键缺席」不再是常态，只是「这张单是在 C3 之前配的」或「那行是手改的」。
+ * 上面那条兜底行为**本身仍然成立**，作废的只是那半句理由。
  */
 export function pointsFromSettings(settings: unknown): QuestionPoints {
   const source = (settings && typeof settings === 'object' && !Array.isArray(settings))

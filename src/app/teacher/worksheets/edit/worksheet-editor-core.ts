@@ -736,11 +736,18 @@ export function shuffleOrderItems(
  * ⇒ 复用 `shuffleOrderItems`（它保证结果不同），于是点一下就得到一个能保存的状态。
  */
 export function orderUseCurrentOrder(state: OrderData, random: () => number = Math.random): OrderData {
-  // 🔴 **先把缺 id 的条目补上 id，再拿它们当答案键。** 反过来写的后果是一处**死局**（审查者实测）：
+  // 🔴 **先把缺 id 的条目补上 id，再拿它们当答案键。** 反过来写会产出一个**点一次修不好**的状态：
   // 缺 id 的条目被读成空串 ⇒ 答案是 `['','']`；而写回时 `writeEntries` 给条目补了**全新的** id，
-  // 于是 `correctOrder` 里那两个空串永远指不到任何条目 ⇒ 排列不成立 ⇒ 保存被 400 拦下，
-  // 而**屏幕上看不出能怎么办**（两行「这个条目已经被删掉了」）。补 id 之后，答案键落在
-  // 补好的那些 id 上 —— 一次点击就得到一个合法的状态（`writeEntries` 那侧是幂等的）。
+  // 所以 `correctOrder` 里那两个空串指不到任何条目 ⇒ 排列不成立 ⇒ 保存被 400 拦下，
+  // 而界面上**看不出能怎么办** —— 那一行只显示「还没设置正确顺序」，教师得**再点一次**
+  // 「取当前顺序」才拿到补好的 id。补 id 之后，答案键落在补好的那些 id 上 ——
+  // 一次点击就得到一个合法的状态（`writeEntries` 那侧是幂等的）。
+  //
+  // ⚠️ 2026-09-24（C3）更正：这里原先写的是「反过来写是一处**死局**，屏幕上看不出能怎么办
+  //（两行『这个条目已经被删掉了』），教师唯一出路是删掉这道题」。**实测证伪** ——
+  // `readStringList` 丢空串 ⇒ 落库的 `["",""]` 读回界面是 `[]` ⇒ 老判据照样渲染那个按钮，
+  // 所以它是「两次点击」而不是「死局」。真正会被藏掉按钮的是 `correctOrder` **非空但不合法**
+  // （见 `isOrderAnswerUsable`）。反转本行后的实测：9377e87 那一版要点 2 次才合法。
   const items = ensureEntryIds(state.items);
   const correctOrder = items.map((entry) => entry.id);
   return { items: shuffleOrderItems(items, correctOrder, random), correctOrder };

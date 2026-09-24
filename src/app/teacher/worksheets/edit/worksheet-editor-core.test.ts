@@ -21,6 +21,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+// ★ C3：设置面板那两个下拉的**选项清单**。⚠️ 运行时 import 必须是**相对路径 + `.ts` 后缀**
+// （Node 解析不了 `@/…`，见 `worksheet-editor-core.ts` 的文件头）——
+// 与 `worksheet-drawer-state.test.ts` 引 `lib/worksheet-questions.ts` 是同一个写法。
+import { HALF_STEPS, REWARD_STEPS } from '../../../../lib/worksheet-reward.ts';
 import {
   addBlank,
   buildPayload,
@@ -688,6 +692,63 @@ test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用
   assert.equal(normalizeLoadedSettings({ halfStep: 4 }).halfStep, DEFAULT_SETTINGS.halfStep);
   assert.equal(normalizeLoadedSettings({ halfStep: '3' }).halfStep, DEFAULT_SETTINGS.halfStep);
   assert.notEqual(DEFAULT_SETTINGS.halfStep, DEFAULT_SETTINGS.rewardStep, '两档的默认值不同（0 与 1），别互换');
+});
+
+// ── 10b. 设置面板的那两行步长（M4a / C3）────────────────────────────────
+//
+// C3 之前，学习单级的半对档在服务端与内核里都通了、**却没有 UI** ⇒ 它恒为默认值 0。
+// 加那一行改的是 `page.tsx` 里的 JSX（**组件层没有回归网**，本仓没有 jsdom），
+// 所以这里钉的是它必须成立的两条**纯逻辑**不变式 —— 两条都「错了不报错」：
+//   · 受控 `<select>` 的值不在 `<option>` 里 ⇒ 显示的是**另一个档**，而保存载荷是原值；
+//   · 面板每改一个键就整份发一遍 `settings`（`PUT /:id` 是整份替换）⇒ 少一个键就被抹掉。
+
+test('🔴 C3：两个步长下拉的选项必须覆盖内核能产出的每一个值（不在选项里的值会显示成别的档）', () => {
+  // 设置面板那两个 `<select>` 是**受控**的：`value={settings.halfStep}`。这个值不在
+  // `<option>` 里时，浏览器**显示第一个选项**（看起来就是选中了它），而 React 的 state
+  // 与保存载荷仍是原来那个数 —— 屏幕上的档与存进库里的档不是同一个，且没有任何报错。
+  // 所以「下拉的选项」与「归一化能产出的值」必须是同一个集合，这条不变式今天别处没有钉着。
+  for (const bad of [undefined, null, '3', 4, 7, -1, 2.5, Number.NaN, Infinity]) {
+    const half = normalizeLoadedSettings({ halfStep: bad }).halfStep;
+    assert.ok(HALF_STEPS.includes(half), `半对档归一化产出的 ${String(half)} 必须能在下拉里被选中`);
+    const full = normalizeLoadedSettings({ rewardStep: bad }).rewardStep;
+    assert.ok(REWARD_STEPS.includes(full), `全对档归一化产出的 ${String(full)} 必须能在下拉里被选中`);
+  }
+  // 默认值同样必须在下拉里 —— 新建的学习单打开设置面板时，显示的就是它。
+  assert.ok(HALF_STEPS.includes(DEFAULT_SETTINGS.halfStep));
+  assert.ok(REWARD_STEPS.includes(DEFAULT_SETTINGS.rewardStep));
+  // 🔴 两个下拉的选项**不是同一个数组**：半对档多一个 `0`。合并它们会二选一地出错 ——
+  // `0` 要么从半对档里消失（教师配不了「这单不给部分分」，而那正是新单的默认值），
+  // 要么混进全对档（「答对一题得 0 个」）。
+  assert.ok(HALF_STEPS.includes(0) && !REWARD_STEPS.includes(0), '半对档含 0、全对档不含 0');
+  assert.deepEqual(HALF_STEPS.filter(step => step !== 0), [...REWARD_STEPS], '两个域除 0 之外应当逐字相同');
+});
+
+test('🔴 C3：面板改一个键 ⇒ 收回来仍是完整一份 settings（整份替换的 PUT 少一个键就是静默抹除）', () => {
+  // 面板那几行控件都走 `updateSettings({ …一个键 })` = 在**上一份之上合一个补丁**，
+  // 结果是一份仍然六个键齐全的 `settings`（那一层在 `use-worksheet-editor` 里，没有回归网）。
+  // 这里钉的是它必须成立的那条不变式：**任何一份完整的 settings，走「保存载荷 → JSON 往返
+  // → 读回来」之后逐字不变** —— 少任何一个键，`PUT /:id` 都会把它在库里抹成默认值，
+  // 而屏幕上没有任何提示（B2 与 C3 各修过一次这类静默抹除）。
+  const patched: WorksheetSettings[] = [
+    { ...DEFAULT_SETTINGS, rewardStyle: 'flower' }, // 面板第 1 行：奖励形式
+    { ...DEFAULT_SETTINGS, rewardStep: 5 },         // 面板第 2 行：全对档
+    { ...DEFAULT_SETTINGS, halfStep: 5 },           // 面板第 3 行：半对档（C3 新增的那一行）
+    // ⚠️ `0` 单列一条：它既是**合法档**又恰好等于默认值 0 ⇒ 光看上面那条 `5`，
+    // 「原样读回来了」与「回落成默认了」是同一个观测（误用 `normalizeRewardStep`
+    // 会把 0 变成 1，也只有这一条抓得住）。
+    { ...DEFAULT_SETTINGS, halfStep: 0 },
+    { ...DEFAULT_SETTINGS, allowResubmit: false },
+    { ...DEFAULT_SETTINGS, autoGrade: false },
+  ];
+  for (const settings of patched) {
+    const payload = buildPayload('标题', '说明', settings, createEmptyContent());
+    // JSON 往返 = 过线缆那一步；`undefined` 的键在这里被丢掉，与真实 PUT 一致。
+    const roundTripped = normalizeLoadedSettings(JSON.parse(JSON.stringify(payload.settings)));
+    assert.deepEqual(roundTripped, settings, `往返之后必须逐字不变：${JSON.stringify(settings)}`);
+    assert.equal(Object.keys(roundTripped).length, 6, '六个键一个都不能少');
+  }
+  // 而 `undefined` **不是**「配过的值」：整份对象缺这个键时它回落到默认（这两件事必须分得开）。
+  assert.equal(normalizeLoadedSettings({ ...DEFAULT_SETTINGS, halfStep: undefined }).halfStep, DEFAULT_SETTINGS.halfStep);
 });
 
 // ── 11. 逐题分值（M4a，规格 §12 裁定 4 / 5）─────────────────────────────

@@ -6,7 +6,7 @@ import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components'
 import type { WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
-import { REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
+import { HALF_STEPS, REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -310,8 +310,10 @@ function AddQuestionPicker({ onPick, onClose }: {
  *   · 描述（标题在顶栏直接编 —— 它改得最勤）
  *   · 自动判分（学习单级开关，规格 §3-L）
  *   · 提交后可否修改（`allowResubmit`，规格 §8.4）
- *   · 奖励形式 + 步长（规格 §9.2 —— 2026-09-23 用户裁定：奖励是**学习单级**的，
- *     不做全局设置。「这堂课用得分制还是发小花」是这一张单的事）
+ *   · 奖励形式 + **两档**步长（规格 §9.2 与 §12 裁定 3 —— 2026-09-23 用户裁定：奖励是
+ *     **学习单级**的，不做全局设置。「这堂课用得分制还是发小花」是这一张单的事。
+ *     两档是 M4a 的「全对给几 / 半对给几」，它们同时是**逐题留空的题的默认值**，
+ *     所以下面那两行必须说清这层关系 —— 见那一段注释）
  * 输入方式**不做 UI**（规格 §3-V，第一批恒为 keyboard），`settings.defaultInputMode`
  * 只是原样带着走，不在这里改。
  *
@@ -390,18 +392,50 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
           <em className="worksheet-editor-switch-note">{currentStyle.hint}</em>
         </fieldset>
 
-        {/* 步长：选了「对错」时**这一行不出现**（规格 §9.2 的原话）。 */}
+        {/* 步长**两行**：选了「对错」时**两行都不出现** —— 对错档没有步长（规格 §9.2 的原话）。
+            ★ M4a（C3）补的是第二行（半对档）。在它之前，学习单级的半对档在服务端与内核里
+            都通了、却**没有 UI** ⇒ 它只能是默认值 0 ⇒ 逐题留空的题一律「半对 0 分」，
+            而 `shouldWarnZeroHalfCredit` 那条提示在「学习单级半对 = 0」时不成立也说得通
+            （那种状态下它永远不会响）。两行放在一起也是刻意的：它们是**同一件事的两个数**，
+            拆开摆会让人以为半对档与奖励形式无关。
+
+            ⚠️ 两个下拉的选项来自同一个文件的**两个不同数组**：`REWARD_STEPS`（1/2/3/5）与
+            `HALF_STEPS`（**多一个 0**）。这里不许写任何字面量 —— 写成两处硬编码的
+            `[1,2,3,5]` 就会把「半对 0」这个合法档从界面上抹掉，而它恰好是新单的默认值。 */}
         {settings.rewardStyle === 'correctness' ? null : (
-          <label className="worksheet-editor-field">
-            <span>每答对一题得几{currentStyle.unit}</span>
-            <select
-              className="input"
-              value={settings.rewardStep}
-              onChange={event => onSettingsChange({ rewardStep: Number(event.target.value) })}
-            >
-              {REWARD_STEPS.map(step => <option key={step} value={step}>{step}</option>)}
-            </select>
-          </label>
+          <>
+            <label className="worksheet-editor-field">
+              <span>每答对一题得几{currentStyle.unit}</span>
+              <select
+                className="input"
+                value={settings.rewardStep}
+                onChange={event => onSettingsChange({ rewardStep: Number(event.target.value) })}
+              >
+                {REWARD_STEPS.map(step => <option key={step} value={step}>{step}</option>)}
+              </select>
+            </label>
+
+            <label className="worksheet-editor-field">
+              <span>每半对一题得几{currentStyle.unit}</span>
+              <select
+                className="input"
+                value={settings.halfStep}
+                onChange={event => onSettingsChange({ halfStep: Number(event.target.value) })}
+              >
+                {HALF_STEPS.map(step => <option key={step} value={step}>{step}</option>)}
+              </select>
+            </label>
+
+            {/* 这两行与**逐题**那两个数不是同一件事（规格 §12 裁定 4）：学习单级是
+                「默认值 + 兜底」，逐题留空的题才用它。这句话不能省 —— 不说，教师会以为
+                改这里能改全班已经逐题填过的题，**而它不会**（那些题甚至不会重新保存）。
+                「0」那句同理：半对填 0 是一个合法的选择（不给部分分），但它在屏幕上
+                与「忘了配」长得一样，所以要说清它是**什么意思**。 */}
+            <em className="worksheet-editor-switch-note">
+              这两档是<b>默认值</b>：只有逐题<b>留空</b>的题用它们。题干上自己填过「全对 / 半对」的题按它自己的数，改这里不会动它。
+              半对档填 0 = 这一单不给部分分（答对才算全对）。
+            </em>
+          </>
         )}
 
         <p className="worksheet-editor-dialog-note" style={{ margin: '12px 0 16px' }}>

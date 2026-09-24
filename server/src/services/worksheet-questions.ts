@@ -1,5 +1,9 @@
 /** 学习单的题型注册表。**纯函数，全部在服务端** —— 本项目不引入前端测试框架（规格 §11）。 */
 
+// ★ M4b：判分前的 ink 短路，以及写入口的体积校验，都建立在同一份格式判据上。
+// ⚠️ 这是**本文件唯一**的 import —— 它不引入任何循环（`worksheet-ink.ts` 自身不 import）。
+import { isInkFormat } from './worksheet-ink.js';
+
 /**
  * 题型注册表。**导出的是运行时列表**，`QuestionType` 由它派生 —— 这样「有哪些题型」
  * 只有一处定义，测试可以**遍历**它（而不是在测试里把类型名抄一遍）。
@@ -23,6 +27,13 @@
 export const QUESTION_TYPES = [
   'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer',
   'order', 'match', 'categorize',
+  // ★ M4b：绘图题。**不判分**（`graded: false`）—— 学生画图，教师人眼看。
+  // 🔴 它同时收口一个真实存在过的窗口：前端 A2 已把 `drawing` 加进
+  // `QUESTION_TYPE_OPTIONS`，而服务端当时还没有它 ⇒ 教师在「添加题目」弹窗里选
+  // 「绘图题」保存必被 400 拒。加进来之后那个窗口关闭。
+  // ⚠️ 它的作答值是**笔迹**（`ink/v1` / `drawing/v1`），判分的两处闸门见 `judge()`
+  // 与 `JUDGES`；写入口的体积校验见 `services/worksheet-ink.ts`（B1）。
+  'drawing',
 ] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
@@ -860,6 +871,11 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
   order: judgeOrder,
   match: judgeMatch,
   categorize: judgeCategorize,
+  // ★ M4b：绘图题**不判分**（规格 §12 裁定 3）。与 `'short-answer': () => null`
+  // 逐字同一个处置 —— 学生画图，教师人眼看，看板上它落在 `'none'` 那一档。
+  // ⚠️ 别写成 `() => ({ state: 'incorrect', score: 0 })`：那会让一幅画被画成「✗ 答错」
+  // 并计进正确率的分母（裁定 3 明写 `'none'` **不得画成答错**）。
+  drawing: () => null,
 };
 
 /**
@@ -868,6 +884,23 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
  * 由 `gradeState` 派生写入）。
  */
 function judge(node: QuestionNode, value: unknown): GradeState | null {
+  // 🔴 ★ M4b：手写 / 绘图**不参与判分**（规格 §12 裁定 3：「`grade()` 恒回 `null`」）。
+  //
+  // 判据是**作答值的格式**，不是题型 —— 教师在 D1 才拿到「作答方式」那个开关，
+  // 所以一道问答题可能「之前是键盘作答（text/v1），之后改成手写」，学生那份**已经交上来**
+  // 的 text 值仍然该被正常处置，而 ink 值一个判分字段都读不到。
+  //
+  // ⚠️ 这里是**读** `format`（不是校验它）：读它多出来的结论只有一个 —— `null`（不判分），
+  // 而 `null` 正是裁定 3 要的那一档。**没有新增任何拒绝路径**，所以
+  // `worksheet-answer-value.ts:42-52` 那条「不得给服务端补 format 校验」的纪律没被违反。
+  //
+  // 🔴 **必须是 `null`，不能是 `{ state: 'incorrect', score: 0 }`**：后者会让学生的一幅画
+  // 在看板上被画成「✗ 答错」并计进正确率的分母 —— 裁定 3 明写「`'none'` **不得画成答错**」。
+  //
+  // ⚠️ 与 `JUDGES.drawing` 的 `() => null` 是**两条独立的闸**，两条都要：
+  // 一条管「值是 ink」（教师把作答模式改回键盘之后仍然挡得住 —— 那时题型不再是 `drawing`），
+  // 一条管「题型就是绘图题」（值被手改成别的形状时也挡得住 —— 那时 `format` 不是 ink）。
+  if (isInkFormat(readField(value, 'format'))) return null;
   // ⚠️ `node.data` 也走「先判类型再取」：`Record<string, unknown>` 是**编译期的承诺**，
   // 而库里的 JSON 可能是 `null` / 数组 / 别的标量 —— `null.correctKeys` 会在提交路径上
   // 抛一次 500，学生看到的是「提交失败」。
@@ -1017,6 +1050,15 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
       errors.push('归类题每个条目都必须落到一个框里');
     }
   },
+
+  // ★ M4b：绘图题**没有答案要配**（学生画图，教师人眼看）—— 所以它不走任何题型专属判据，
+  // 只留下 `validateQuestion` 里那条**公共**校验（题干不能为空，`validateQuestion` 的函数体里
+  // 只有这一条）。这一支是**刻意的空实现**，不是「还没写」。
+  //
+  // ⚠️ **别给它加一条「必须有 data」之类的规则**：绘图题在 `newQuestion` 里的 `data` 是
+  // `{}`，加了就等于「新建的绘图题永远存不下去」，而那条错误文案说的是「题干不能为空」
+  // —— 一个**说得通但与真实原因无关**的提示（C2 的 Step 1 为同一件事写过这条代价）。
+  drawing: () => {},
 };
 
 /** 编辑期校验。返回中文错误列表，空数组表示通过。 */

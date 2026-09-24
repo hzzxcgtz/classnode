@@ -31,6 +31,9 @@ import {
   type QuestionType,
   type WorksheetContent,
 } from '../services/worksheet-questions.js';
+// ★ M4b：笔迹的体积校验（规格 §12 裁定 4 的后半句「服务端也要校验」）。
+// 它是 `src/lib/worksheet-ink.ts` 在服务端的**第二份**实现 —— 服务端读不到 `src/`。
+import { findInkValueError } from '../services/worksheet-ink.js';
 
 /**
  * 学习单路由。
@@ -1354,6 +1357,24 @@ router.put('/:id/answers', async (req, res) => {
     if (!findQuestion(ctx.worksheet.content, questionId)) {
       return res.status(400).json({ error: '该题不属于这份学习单' });
     }
+
+    // ★ M4b：笔迹的**体积校验**排在**所有落库动作之前** —— 与下面那条 409 同一条纪律
+    // （「被拒的保存不留任何痕迹」：`ensureResponse` 会建作答会话、会把整卷的状态拨回去）。
+    // 🔴 不排在这里的后果：一个超限的值把学生的整卷从 `submitted` 拨回 `in-progress`，
+    // 然后这一条又被 400 拒掉 —— 教师看板上那次交卷**凭空消失**。
+    //
+    // ⚠️ **只挂在 PUT 上**：
+    //   · 不挂 `submit` —— 值是上一次 PUT 存进来的，提交路径读的是库里那一份
+    //     （`worksheetAnswer.findFirst` 的 `value`）⇒ 再校验一次不增加安全性，
+    //     只多一处会与这里分叉的判据；
+    //   · 不挂读端点（`GET /:id/answers` / `student-view`）—— 挡在读的一侧等于让一个
+    //     已经存在的超限值**永远读不回来**（学生的画在屏幕上消失）。
+    //
+    // ⚠️ 它**不是格式门**：`findInkValueError` 对认不出的 `format` 一律放行（认得出才查体积）。
+    // 往这里加一句「认不出的 `format` ⇒ 400」是**另一件事**，会违反
+    // `worksheet-answer-value.ts:42-52` 那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
+    const inkError = findInkValueError(body.value);
+    if (inkError) return res.status(400).json({ error: inkError });
 
     // 🔴 `allowResubmit: false` 在**服务端**生效（规格 §8.4 三层控制里的第一层）。
     // 只靠学生端收起输入框，这个设置就是对教师说的假话 —— 与答案剥离同一条原则：

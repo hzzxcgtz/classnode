@@ -294,6 +294,15 @@ const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
       zones: [{ id: 'z1', label: '哺乳类' }, { id: 'z2', label: '鸟类' }],
     },
   }],
+  // ★ M4b：绘图题**没有答案键** —— 学生画的东西在 `WorksheetAnswer.value` 里，不在 `data` 里。
+  // 本题型在编辑器新建时的初始 `data` 就是 `{}`，所以三个数组全空、`afterStrip` 是 `{}`。
+  drawing: [{
+    label: '绘图题（M4b：没有答案键，data 恒为空）',
+    data: {},
+    answerKeys: [],
+    safeKeys: [],
+    afterStrip: {},
+  }],
 };
 
 /**

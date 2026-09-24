@@ -109,6 +109,11 @@ const GRADED: Record<QuestionType, boolean> = {
   order: true,
   match: true,
   categorize: true,
+  // ★ M4b：绘图题**不判分**（规格 §12 裁定 3）—— 与主观题同一档。
+  // ⚠️ 这一支会让文件末尾那条「坏形状一律判错」的遍历**跳过** drawing，那是**对的**
+  // （不判分就没有「判错」这一档）；它挡不住的那件事 —— 「绘图题会不会被画出三态」——
+  // 由下面那条专门的用例（`🔴 绘图题的任何作答值都判不出三态`）补上。
+  drawing: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -650,6 +655,8 @@ const SAMPLE_NODES: Record<QuestionType, QuestionNode> = {
   order: orderNode(ORDER_ITEMS, ['i2', 'i1', 'i3']),
   match: matchNode([{ leftId: 'l1', rightId: 'r1' }]),
   categorize: categorizeNode({ i1: 'z1' }),
+  // ★ M4b：绘图题的合法数据就是空对象（教师没有答案要配）。
+  drawing: question('drawing', {}),
 };
 
 test('🔴 形状容错：value 是 null / 数字 / 字符串 / 数组 / 缺字段 ⇒ 一律判错，绝不抛', () => {
@@ -690,6 +697,42 @@ test('🔴 「参不参与判分」只有两个取值：主观题 ⇒ null，其
       assert.equal(result, null, `题型「${type}」不参与判分，应返回 null（null 才是「没判分」）`);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// ⑧.1 ★ M4b：手写 / 绘图**不参与判分**（规格 §12 裁定 3）—— 两条独立的闸
+// ---------------------------------------------------------------------------
+//
+// 🔴 为什么是**两条**：判「作答值是 ink」与判「题型是 drawing」管的是两件不同的事 ——
+//   · 教师把作答模式从手写改回键盘之后，那道题**不再是 drawing**，而学生库里那份
+//     ink 值还在 ⇒ 挡住它的是**值**那一闸；
+//   · 值被手改成别的形状（或某个旧客户端发来 `{ text: … }`）时，挡住它的是**题型**那一闸。
+// 少任何一条，那一侧就会静默地掉进判分器 —— 而判分器对 ink 值一个判分字段都读不到，
+// 于是**每一幅画都被判成「✗ 答错」**，并计进正确率的分母。
+
+test('🔴 绘图题的任何作答值都判不出三态（不判分，不是判错）', () => {
+  const node = question('drawing', {});
+  for (const value of [null, 0, {}, { format: 'ink/v1' }, { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] }]) {
+    assert.equal(grade(node, value, P), null, `绘图题不该有判定：${JSON.stringify(value)}`);
+  }
+});
+
+test('🔴 闸二：**任何题型**收到 ink 作答值都判不出三态（`format` 是判据，题型不是）', () => {
+  // ⚠️ 这条盯的是「教师把手写改回键盘」那一半 —— 用一个**会判分**的题型（填空题）
+  // 装一个 ink 值。没有 `judge()` 开头那条短路时，`judgeFillBlank` 读 `value.text`
+  // 读到 `undefined` ⇒ 回 `'incorrect'`，也就是把一幅手写的字判成答错。
+  const node = question('fill-blank', { answers: ['光合作用'] });
+  const inkValues = [
+    { format: 'ink/v1', canvas: { w: 320, h: 160 }, strokes: [{ color: '#1f2937', width: 0.016, points: [[0.1, 0.2]] }] },
+    { format: 'drawing/v1', canvas: { w: 320, h: 240 }, strokes: [] },
+  ];
+  for (const value of inkValues) {
+    assert.equal(grade(node, value, P), null, `ink 值不该有判定：${JSON.stringify(value)}`);
+  }
+  // 对照（**同一道题、同一条路径**）：非 ink 的坏形状仍然照常判错 —— 短路只对 ink 生效，
+  // 它不是「把判分器关掉」。
+  assert.equal(grade(node, { format: 'text/v1' }, P)?.state, 'incorrect');
+  assert.equal(grade(node, null, P)?.state, 'incorrect');
 });
 
 // ---------------------------------------------------------------------------

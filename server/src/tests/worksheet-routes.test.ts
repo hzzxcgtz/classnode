@@ -835,3 +835,143 @@ test('CRUD：不给 id 的题目由服务端补一个稳定 id，且同一次请
   const dupRes = await server.post('/api/worksheets', { title: '重复 id', content: dup, settings: SAMPLE_SETTINGS });
   assert.equal(dupRes.status, 400, `id 重复必须当场拒绝：${JSON.stringify(await dupRes.json())}`);
 });
+
+// ---------------------------------------------------------------------------
+// ★ M4b（B1）：笔迹的**体积校验**落在写入口 `PUT /:id/answers` 上（规格 §12 裁定 4）
+// ---------------------------------------------------------------------------
+
+/** 造一份笔迹值：`strokeCount` 笔、每笔 `pointsPerStroke` 个点。 */
+function inkValue(strokeCount: number, pointsPerStroke: number) {
+  return {
+    format: 'ink/v1',
+    canvas: { w: 320, h: 240 },
+    strokes: Array.from({ length: strokeCount }, () => ({
+      color: '#1f2937',
+      width: 0.016,
+      points: Array.from({ length: pointsPerStroke }, (_item, index) => [index / 100, index / 200]),
+    })),
+  };
+}
+
+/**
+ * 🔴 一条**超限的笔迹**必须被 400 挡在写入口，且**什么都不留**。
+ *
+ * 判错的代价（brief Step 4）：`express.json({ limit: '10mb' })` 是服务器唯一的上限，
+ * 一个 8MB 的笔迹值会进 `WorksheetAnswer.value` 这个 Json 列，再经两条读端点与一次广播
+ * 送到教师那台机器上（抽屉要把它画出来）⇒ 看板卡死，而服务端不报任何错。
+ *
+ * ⚠️ 夹具用**手搓的** `fetch` 请求体（`server.put` 就是 `JSON.stringify`），
+ * 所以这条走的是「前端拦不住的那个方向」——手搓请求。
+ */
+test('🔴 M4b：超限的笔迹值在 PUT 上被 400 拒，且响应体里没有 success', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { classroom, participant } = await seedClassroom(db.prisma, '8011');
+  const worksheet = await seedWorksheet(db.prisma, '绘图题学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+
+  // 401 笔 —— 恰好越过 400 的上限（数字从被拒的那条文案里读，见下面的断言）。
+  const res = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: inkValue(401, 1) },
+    asStudent,
+  );
+  const body = await res.json() as Record<string, unknown>;
+  assert.equal(res.status, 400, `超限的笔迹必须被 400 拒：${JSON.stringify(body)}`);
+  // 🔴 响应体里**不许有 success** —— 学生端是按「`success` 在不在」判断这一条存没存上的。
+  // 一个 200 + `{ success: false }` 会让离线队列把它当成「已保存」并从队列里删掉。
+  assert.ok(!('success' in body), `400 的响应体里不许出现 success：${JSON.stringify(body)}`);
+  assert.equal(typeof body.error, 'string', `400 必须给一句给学生看的话：${JSON.stringify(body)}`);
+
+  // 阴性对照：一份**合法**的笔迹值在同一路径上必须 200 —— 否则上面那条 400 可能只是
+  // 「这条路根本不工作」，而不是「体积校验挡住了它」。
+  const ok = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: inkValue(400, 5) },
+    asStudent,
+  );
+  assert.equal(ok.status, 200, `恰好到上限的笔迹必须收下：${JSON.stringify(await ok.json())}`);
+});
+
+/**
+ * 🔴 **被拒的保存不留任何痕迹**（与那条 409 同一条纪律）。
+ *
+ * 这条用例是 brief 点名的那条，它同时钉住两件事：
+ *   ① 库里那一行还是**上一次那个合法的值**（超限值一个字节都没写进去）；
+ *   ② 整卷状态**没有被拨回 `in-progress`** —— `ensureResponse` 的 `update` 是
+ *      `{ status: 'in-progress', submittedAt: null }`，**无条件**写（源码在
+ *      `routes/worksheets.ts` 的 `ensureResponse`）。所以校验若排在它后面，
+ *      一次被 400 拒掉的保存会把学生**已经交过的**那份卷子从 `submitted` 拨回去 ——
+ *      教师看板上那次交卷凭空消失。
+ *
+ * ⚠️ 夹具刻意用 `allowResubmit: true`：`false` 时那条 409 会先一步拦下，本用例就退化成了
+ * 在测 409，而不是在测 B1 的体积校验的位置。
+ */
+test('🔴 M4b：超限值被拒之后，库里的值与整卷状态都还是上一次那个（被拒的保存不留痕迹）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { classroom, participant } = await seedClassroom(db.prisma, '8012');
+  const worksheet = await seedWorksheet(db.prisma, '绘图题学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+
+  const legal = inkValue(2, 3);
+
+  // ① 先给三题各存一份合法值。
+  // ⚠️ 三步不能省：`POST /:id/answers/submit` 的前置检查只问「这一行在不在」
+  // （缺行 ⇒ 400「请先作答再提交本题」），而整卷那条「交齐」判定要 `current content`
+  // 里的**每一道题**都 `submitted` —— 少交一题，下面的前置条件就立不住。
+  // 这一步顺带把 `WorksheetResponse` 建出来（`status='in-progress'`）。
+  for (const questionId of ['q_1', 'q_2', 'q_3']) {
+    const saved = await server.put(
+      `/api/worksheets/${worksheet.id}/answers`,
+      { questionId, value: questionId === 'q_1' ? legal : { format: 'text/v1', text: 'x' } },
+      asStudent,
+    );
+    assert.equal(saved.status, 200, `保存 ${questionId}：${JSON.stringify(await saved.json())}`);
+  }
+
+  // ② 三题全部提交 ⇒ 整卷置 `submitted`（`POST /:id/answers/submit` 里那条「交齐」判定）。
+  for (const questionId of ['q_1', 'q_2', 'q_3']) {
+    const submit = await server.post(
+      `/api/worksheets/${worksheet.id}/answers/submit`,
+      { questionId },
+      asStudent,
+    );
+    assert.equal(submit.status, 200, `提交 ${questionId}：${JSON.stringify(await submit.json())}`);
+  }
+  const before = await db.prisma.worksheetResponse.findFirstOrThrow({
+    where: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id },
+  });
+  // 前置条件必须**真的**成立：不成立时下面那条「没被拨回去」的断言是恒真的假绿。
+  assert.equal(before.status, 'submitted', '前置条件：三题都交完之后整卷应当是 submitted');
+  assert.ok(before.submittedAt, '前置条件：submitted 必须有时间戳');
+
+  // ③ 再 PUT 一个超限值 ⇒ 400。
+  const rejected = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: inkValue(401, 1) },
+    asStudent,
+  );
+  assert.equal(rejected.status, 400, JSON.stringify(await rejected.json()));
+
+  // ④ 痕迹一：答案行的 `value` **逐字**还是那个合法值。
+  const row = await db.prisma.worksheetAnswer.findFirstOrThrow({
+    where: { questionId: 'q_1', responseId: before.id },
+    select: { value: true, status: true },
+  });
+  assert.deepEqual(row.value, legal, '被拒的保存不得改动库里的值');
+  assert.equal(row.status, 'submitted', '被拒的保存不得把这一题拨回 draft');
+
+  // ⑤ 痕迹二：整卷状态**没被拨回** `in-progress`（这条就是「校验排在 ensureResponse 之前」）。
+  const after = await db.prisma.worksheetResponse.findFirstOrThrow({ where: { id: before.id } });
+  assert.equal(after.status, 'submitted', '被拒的保存不得把整卷拨回 in-progress（教师看板上那次交卷会凭空消失）');
+  assert.deepEqual(after.submittedAt, before.submittedAt, '被拒的保存不得清掉交卷时间戳');
+});

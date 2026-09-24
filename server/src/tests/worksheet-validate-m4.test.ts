@@ -59,7 +59,16 @@ const accepted = (type: QuestionType, data: Record<string, unknown>): void => {
 
 test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支 = 那道题永远交不了）', () => {
   // 只有主观题豁免：它**真的**没有别的字段要校验（题干在上面的公共检查里）。
-  const EXEMPT: readonly QuestionType[] = ['short-answer'];
+  //
+  // ★ M4b/B1 补第二个豁免：**绘图题**。它与主观题逐字同一条理由 —— 它没有答案要配
+  // （学生画图，教师人眼看，`JUDGES.drawing` 恒回 `null`），所以 `data` 的合法形状就是 `{}`。
+  // 🔴 **这条豁免不会削弱本用例对它的把关**：「`VALIDATORS` 里根本没有 `drawing` 这个键」
+  // 是**编译错误**（`Record<QuestionType, …>` 少一个键 ⇒ TS2741），不靠这条用例。
+  // 而「键在、内容是空的」对绘图题**就是正确行为**，本用例无法也不该在这里判它。
+  // ⚠️ 别顺手把 `drawing: () => {}` 改成 `drawing: () => { errors.push('…') }` 来让它从
+  // EXEMPT 里挪出来：绘图题在 `newQuestion` 里的 `data` 是 `{}` ⇒ 那等于**新建的绘图题
+  // 永远存不下去**，而那句错误文案说的是「题干不能为空」（一个说得通但与真实原因无关的提示）。
+  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing'];
   const checked: QuestionType[] = [];
 
   for (const type of QUESTION_TYPES) {
@@ -76,7 +85,23 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
     '每个非豁免题型都应真的被跑过',
   );
   assert.equal(checked.length, QUESTION_TYPES.length - EXEMPT.length);
+  // ⚠️ M4b 之后这个数**恰好等于 7**（9 个题型 - 2 个豁免）：`>= 7` 现在卡在下界上，
+  // 动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里 —— 再加一个豁免就会红。
   assert.ok(checked.length >= 7, `实际只跑到 ${checked.length} 个题型`);
+});
+
+test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data 恒为 {}）', () => {
+  // 上面那条用例把 `drawing` 豁免掉了，所以「它接受 `{}`」这件事必须**另有**一条用例钉住 ——
+  // 否则「绘图题能不能存下去」在这份文件里就没有任何观测点了。
+  accepted('drawing', {});
+  // ⚠️ 连一个**非空**的 data 也照收：绘图题的 data 今天没有约定字段，服务端不该替它立规矩。
+  // （它不可能是答案的载体 —— 学生的笔迹在 `WorksheetAnswer.value` 里，不在 `data` 里。）
+  accepted('drawing', { whatever: 1 });
+  // 反向对照：公共那条「题干不能为空」对它**照样**生效 —— 豁免的只是它自己那一支校验器。
+  assert.deepEqual(
+    validateQuestion({ id: 'q', type: 'drawing', prompt: '  ', inputMode: 'keyboard', data: {}, children: [] }),
+    ['题干不能为空'],
+  );
 });
 
 test('题干为空是公共检查：所有题型都拦（含主观题）', () => {

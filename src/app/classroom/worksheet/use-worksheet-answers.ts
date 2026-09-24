@@ -14,6 +14,7 @@ import {
 import type { ChatToast } from '../classroom-types';
 import {
   classifyFailure,
+  shouldFlushOnLockChange,
   dropQueueItem,
   hydrateAnswers,
   permanentFailureMessage,
@@ -424,21 +425,22 @@ export function useWorksheetAnswers({
   }, [commitQueue, flush]);
 
   /**
-   * ★ M5a：锁态**刚变成 true** 的那一瞬，若队列非空就立刻试一次（不等 1.5 秒防抖）。
+   * ★ M5a：锁态**翻转**的那一瞬，若队列非空就立刻试一次（不等 1.5 秒防抖）。
    *
-   * ⚠️ 这一次**大概率**会被服务端拒（锁已经在服务端生效了）—— 那不是 bug：
-   * 它救的是「广播还在路上、队列先到」的那一档，以及服务端与客户端之间的那个短暂窗口。
-   * 之后 flush 会被 `'locked'` 支挡住（条目保留），所以这里只做一次。
+   * 🔴 **两个沿都要**（判据在 `shouldFlushOnLockChange`，那里写了完整理由与代价）：
+   *   · 上升沿（未锁 → 锁）—— 救「广播还在路上、队列先到」那一档，大概率被拒、不是 bug；
+   *   · 下降沿（锁 → 未锁）—— 规格 §3.3 逐字要求「解锁后继续重发」。
+   *     **只写上升沿是一个已经发生过的错误**（独立审查抓到的）：锁前写的那一条会一直不发出，
+   *     直到学生碰一下别的东西 —— 那段时间屏幕上是他刚写的字、库里是旧的。
    *
-   * ⚠️ 判据是**边沿**（`answersLocked && !wasLocked`），不是电平：电平会在每次渲染后重跑，
-   * 而 `flush` 的依赖里没有 `answersLocked`，`[answersLocked, flush]` 这个依赖数组
-   * 恰好只在锁态翻转时触发一次。
+   * ⚠️ 判据是**边沿**，不是电平：电平会在每次渲染后重跑。而 `flush` 的依赖里没有
+   * `answersLocked`，`[answersLocked, flush]` 这个依赖数组恰好只在锁态翻转时触发一次。
    */
   const wasLockedRef = useRef(answersLocked);
   useEffect(() => {
     const wasLocked = wasLockedRef.current;
     wasLockedRef.current = answersLocked;
-    if (answersLocked && !wasLocked && pendingRef.current.length > 0) void flush();
+    if (shouldFlushOnLockChange(wasLocked, answersLocked, pendingRef.current.length)) void flush();
   }, [answersLocked, flush]);
 
   /**

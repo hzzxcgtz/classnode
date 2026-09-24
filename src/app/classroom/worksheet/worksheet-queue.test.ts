@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyFailure,
+  shouldFlushOnLockChange,
   dropQueueItem,
   hydrateAnswers,
   isPermanentFailure,
@@ -174,6 +175,42 @@ test('M5a：认不出的 code 不影响原判据（只增不改）', () => {
   // 老客户端不传第二个参数的既有行为逐字不变。
   assert.equal(classifyFailure(401), 'session-expired');
   assert.equal(classifyFailure(null), 'transient');
+});
+
+// ── 1d. ★ M5a：锁态**翻转**时该不该立刻试发一次（两个沿都要）──────────────
+
+/**
+ * 🔴 **两个沿都要，只有上升沿是漏的。**
+ *
+ * 上升沿（未锁 → 锁）：救「广播还在路上、队列先到」那一档。
+ * 下降沿（锁 → 未锁）：规格 §3.3 逐字写着「队列条目留在 `localStorage`，**解锁后继续重发**」。
+ *
+ * ⚠️ 少了下降沿的后果**不是**数据丢失（条目还在、刷新/再敲一个字都会发出去），
+ * 而是一段**长度不受限的未同步窗口**：学生屏幕上是他刚写的那几个字，而库里是旧的 ——
+ * 学生从屏幕上分不清哪部分存住了。那正是规格 §3.3 的修正条款（R6）专门要消灭的那件事。
+ */
+test('🔴 M5a：锁态翻转**两个沿**都要试发（有积压时）', () => {
+  assert.equal(shouldFlushOnLockChange(false, true, 1), true, '上升沿：广播可能还在路上，先试一次');
+  assert.equal(shouldFlushOnLockChange(true, false, 1), true, '下降沿：解锁后必须继续重发（规格 §3.3）');
+});
+
+test('M5a：没有翻转就不试发（免得每轮渲染都白打一次服务端）', () => {
+  assert.equal(shouldFlushOnLockChange(false, false, 3), false);
+  assert.equal(shouldFlushOnLockChange(true, true, 3), false);
+});
+
+test('M5a：队列空时不试发（没有东西可发）', () => {
+  assert.equal(shouldFlushOnLockChange(false, true, 0), false);
+  assert.equal(shouldFlushOnLockChange(true, false, 0), false);
+});
+
+test('★ M5a 反证：只认上升沿（也就是修好之前那段代码）⇒ 下降沿那条必红', () => {
+  // 这就是那个 bug 的形状：`isLocked && !wasLocked && …`
+  const risingEdgeOnly = (wasLocked: boolean, isLocked: boolean, pendingCount: number): boolean =>
+    isLocked && !wasLocked && pendingCount > 0;
+  assert.equal(risingEdgeOnly(false, true, 1), true, '上升沿两种写法一样');
+  assert.notEqual(risingEdgeOnly(true, false, 1), shouldFlushOnLockChange(true, false, 1),
+    '下降沿必须能区分出「修好了」与「没修」');
 });
 
 // ── 2. 队列的增删与覆盖 ─────────────────────────────────────────────────

@@ -480,19 +480,28 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     : 0;
 
   /**
-   * 顶部那一条的保存状态（规格 §8.2）。四种文案，**判据只在这里一处**：
+   * 顶部那一条的保存状态（规格 §8.2）。**五种**文案，**判据只在这里一处**：
    *   · 有积压且上一次尝试失败/浏览器自报离线 ⇒ 「⚠ 离线 · N 条待同步」（整条变琥珀）
    *   · 自报离线但暂时没有积压 ⇒ 「⚠ 离线」（那时说「已保存」是一句假话）
+   *   · ★ 锁定中且队列非空 ⇒ 「已锁定 · N 条未保存」（见下）
    *   · 有改动在防抖窗口里 / 有请求在途 / 队列非空 ⇒ 「保存中…」
    *   · 其余 ⇒ 「已保存 ✓」
+   *
+   * ★ M5a 那一档为什么必须有：锁定期间每条 PUT 都被 409 拒、而条目又**必须保留**
+   * （丢掉就是学生锁前写的东西真没了）⇒ `pendingCount` **永远降不到 0**。
+   * 少了这一档，顶栏会在整节课上写着「保存中…」，而**没有任何东西在保存** ——
+   * 一句承诺了「正在进行、且不会自行完成」的动作的假话，而且它与同一屏那句
+   * 「老师已锁定作答」互相矛盾。⚠️ 也**不能**改成「已保存 ✓」：那同样是假话（那些字确实没存住）。
    */
   const saveText = answers.pendingCount > 0 && answers.offline
     ? `⚠ 离线 · ${answers.pendingCount} 条待同步`
     : answers.offline
       ? '⚠ 离线'
-      : answers.saving
-        ? '保存中…'
-        : '已保存 ✓';
+      : answersLocked && answers.pendingCount > 0
+        ? `已锁定 · ${answers.pendingCount} 条未保存`
+        : answers.saving
+          ? '保存中…'
+          : '已保存 ✓';
 
   return (
     <div

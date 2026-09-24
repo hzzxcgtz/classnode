@@ -184,6 +184,28 @@ export function isPermanentFailure(status: number | null): boolean {
 }
 
 /**
+ * ★ M5a：锁态**翻转**时该不该立刻试发一次（`use-worksheet-answers.ts` 的那个 effect 用它）。
+ *
+ * 🔴 **两个沿都要**，而「只认上升沿」是最自然、也已经被写错过一次的那一种：
+ *   · **上升沿**（未锁 → 锁）：救「广播还在路上、队列先到」那一档 —— 这一次**大概率**被拒，
+ *     那不是 bug（理由见 flush 里 `'locked'` 那一支）。
+ *   · **下降沿**（锁 → 未锁）：规格 §3.3 逐字写着「队列条目留在 `localStorage`，
+ *     **解锁后继续重发**」。少了它，锁前写的那一条会**一直不发出**，直到学生碰一下别的东西
+ *     （再敲一个字 / 刷新 / 断网重连）—— 那段时间里屏幕上是他刚写的字、而库里是旧的。
+ *
+ * ⚠️ 少了下降沿**不是**数据丢失（条目还在 `localStorage`），而是一段**长度不受限的未同步窗口**。
+ * 而「屏幕上看得见的那份 ≠ 交上去的那份」正是规格 §3.3 的修正条款（R6）专门要消灭的那件事
+ * —— 只不过那一条管的是**提交**，这一条管的是**保存**。
+ *
+ * ⚠️ 为什么它住在本文件（纯逻辑、被 `node --test` 跑）而不是那个 hook 里：理由与 `scoreFromWire`
+ * 逐字同源 —— `use-worksheet-answers.ts` 引 React，本仓没有 jsdom，跑不了用例。
+ * 「两个沿」这件事**已经被写错过一次**（只写了上升沿），必须有一条能跑到的用例钉住它。
+ */
+export function shouldFlushOnLockChange(wasLocked: boolean, isLocked: boolean, pendingCount: number): boolean {
+  return wasLocked !== isLocked && pendingCount > 0;
+}
+
+/**
  * 服务端拒了之后给学生的**一句人话**。
  *
  * 优先用服务端给的 `error`（它是中文、且比客户端更清楚为什么），拿不到才回落。

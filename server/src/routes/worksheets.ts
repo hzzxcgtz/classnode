@@ -1485,11 +1485,15 @@ router.post('/:id/answers/submit', async (req, res) => {
     const ctx = await requireOwnWorksheet(req, res);
     if (!ctx) return;
 
-    // ★ M5a：锁定作答**不拦这里** —— 裁定 ③ 是「停笔，但还能交卷」。
+    // ★ M5a：`answersLocked` **不拦这里** —— 裁定 ③ 是「停笔，但还能交卷」。
     // 交卷读的是库里已经存住的那份（下面那条 `worksheetAnswer.findFirst`），
     // 而「保存」已经在 PUT 上被拦住了 ⇒ 锁定之后交上去的一定是锁定前的最后一份。
+    //
     // ⚠️ 判据**不在这里**再写一遍：那会变成第二个会与 PUT 分叉的门（同 `findInkValueError`
-    // 只挂 PUT 那条纪律）。要改锁的语义，改 PUT 上那一处。
+    // 只挂 PUT 那条纪律）。要改锁的语义，改 PUT 上那一处 ——
+    // 🔴 本注释**刻意带上 `answersLocked` 这个标识符**（而不是只说「锁定作答」）：
+    // 这样 `grep -n answersLocked server/src/routes/worksheets.ts` 会同时命中医处与这里，
+    // 「改语义时不会静默漏掉第二处」才是真的。中文注释命不中标识符 grep。
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';

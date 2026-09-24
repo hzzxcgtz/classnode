@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ModuleId } from './classroom-types';
+import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 
 /**
  * 三个模块的**展示身份**：名字、主色、按钮动作词、图标。
@@ -46,14 +47,7 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     accentStrong: '#1d4ed8',
     cta: '继续作答',
     iconSrc: '/images/module-icons/worksheet.svg',
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="5" y="3.5" width="14" height="18" rx="2" />
-        <path d="M9 2.5h6v3H9z" fill="currentColor" stroke="none" />
-        <circle cx="9" cy="10" r="1.2" />
-        <path d="M12 10h4.5m-8.7 5 1.3 1.3 2.2-2.5M13 15.5h3.5" />
-      </svg>
-    ),
+    icon: <WorksheetNavigationIcon size={21} strokeWidth={1.9} />,
   },
   explore: {
     label: '探究空间',
@@ -61,14 +55,7 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     accentStrong: '#6d28d9',
     cta: '去探究',
     iconSrc: '/images/module-icons/explore.svg',
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="2.5" y="3" width="19" height="17" rx="2.5" />
-        <path d="M2.5 8h19M6 5.5h.01M9 5.5h.01" />
-        <path d="M6.5 15c1.7-3.3 4.2-3.3 5.5-1 1.3 2.3 3.8 2.3 5.5-2" />
-        <path d="m15 16 5 2-2.3 1.1-1.1 1.9-1.6-5Z" fill="currentColor" stroke="none" />
-      </svg>
-    ),
+    icon: <ExploreSpaceNavigationIcon size={21} strokeWidth={1.9} />,
   },
   companion: {
     label: '智能学伴',

@@ -7,6 +7,7 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
 import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
+import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 
 /**
  * 侧边栏导航。⚠️ **每一项的 `icon` 都必须在下面的图标 switch 里有一支对应的分支。**
@@ -16,7 +17,7 @@ import { FieldError, Toast } from '@/lib/components';
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
-  { path: '/teacher/webapps', label: '探究网页', icon: 'globe' },
+  { path: '/teacher/webapps', label: '探究网页', icon: 'explore' },
   { path: '/teacher/worksheets', label: '学习单', icon: 'clipboard' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
@@ -557,24 +558,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                   </svg>
                 )}
-                {item.icon === 'globe' && (
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="9" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
-                  </svg>
+                {item.icon === 'explore' && (
+                  <ExploreSpaceNavigationIcon size={iconSize} strokeWidth={1.5} />
                 )}
-                {/* 学习单：带勾选的答题板 —— 与列表页空态那个图标同一支，
-                    免得同一件事在侧边栏和页面里画成两个样子。 */}
+                {/* 两个新增学习模块与学生端 Tab 复用同一份图标组件，避免两端语义和轮廓漂移。 */}
                 {item.icon === 'clipboard' && (
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4" />
-                    <rect x="9" y="2" width="6" height="4" rx="1" />
-                    <path d="M8 11l1.5 1.5L12 10" />
-                    <path d="M8 17l1.5 1.5L12 16" />
-                    <line x1="15" y1="12" x2="17" y2="12" />
-                    <line x1="15" y1="18" x2="17" y2="18" />
-                  </svg>
+                  <WorksheetNavigationIcon size={iconSize} strokeWidth={1.5} />
                 )}
               </span>
               {!sidebarCollapsed && <span className="teacher-nav-label">{item.label}</span>}

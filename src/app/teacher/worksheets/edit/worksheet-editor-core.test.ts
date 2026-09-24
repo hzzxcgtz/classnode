@@ -723,12 +723,20 @@ test('🔴 C3：两个步长下拉的选项必须覆盖内核能产出的每一�
   assert.deepEqual(HALF_STEPS.filter(step => step !== 0), [...REWARD_STEPS], '两个域除 0 之外应当逐字相同');
 });
 
-test('🔴 C3：面板改一个键 ⇒ 收回来仍是完整一份 settings（整份替换的 PUT 少一个键就是静默抹除）', () => {
-  // 面板那几行控件都走 `updateSettings({ …一个键 })` = 在**上一份之上合一个补丁**，
-  // 结果是一份仍然六个键齐全的 `settings`（那一层在 `use-worksheet-editor` 里，没有回归网）。
-  // 这里钉的是它必须成立的那条不变式：**任何一份完整的 settings，走「保存载荷 → JSON 往返
-  // → 读回来」之后逐字不变** —— 少任何一个键，`PUT /:id` 都会把它在库里抹成默认值，
-  // 而屏幕上没有任何提示（B2 与 C3 各修过一次这类静默抹除）。
+test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 读回来」之后逐字不变（六个键一个都不能少）', () => {
+  // 🔴 **这条用例钉的是哪一层，名字里就说清哪一层**（2026-09-24 修复轮 1 改名，原名是
+  // 「面板改一个键 ⇒ 收回来仍是完整一份 settings」—— 那是**过宽**的：它没管「面板改一个键」
+  // 那一步）。它钉的是：**任何一份完整的 settings，走「保存载荷 → JSON 往返 → 读回来」
+  // 之后逐字不变** —— 少任何一个键，`PUT /:id` 都会把它在库里抹成默认值，而屏幕上没有任何
+  // 提示（B2 与 C3 各修过一次这类静默抹除）。
+  //
+  // ⚠️ **面板真正的那一步不在这条用例的射程内**：`use-worksheet-editor.ts` 里
+  // `setSettings(previous => ({ ...previous, ...patch }))` 所在的那一层是 React hook，
+  // `node --test` 根本加载不了它（本仓没有 jsdom / testing-library，规格 §11）。
+  // 把它换成 `setSettings(patch)` —— **正是 B2 修过的那种静默抹除** —— 这 207 条**照样全绿**。
+  // 想盖住它得先给本仓装测试框架，那是另一个决定；在那之前，这一层是**知情的**缺口
+  // （报告第五节第 2 条已记），不是被这条用例盖住的。
+  // 下面这几份 `patched` 的形状仍然是与「面板合过一个补丁之后那一份」逐字同形的。
   const patched: WorksheetSettings[] = [
     { ...DEFAULT_SETTINGS, rewardStyle: 'flower' }, // 面板第 1 行：奖励形式
     { ...DEFAULT_SETTINGS, rewardStep: 5 },         // 面板第 2 行：全对档

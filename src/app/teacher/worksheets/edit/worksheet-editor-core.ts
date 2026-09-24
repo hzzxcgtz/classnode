@@ -743,11 +743,13 @@ export function orderUseCurrentOrder(state: OrderData, random: () => number = Ma
   // 「取当前顺序」才拿到补好的 id。补 id 之后，答案键落在补好的那些 id 上 ——
   // 一次点击就得到一个合法的状态（`writeEntries` 那侧是幂等的）。
   //
-  // ⚠️ 2026-09-24（C3）更正：这里原先写的是「反过来写是一处**死局**，屏幕上看不出能怎么办
-  //（两行『这个条目已经被删掉了』），教师唯一出路是删掉这道题」。**实测证伪** ——
-  // `readStringList` 丢空串 ⇒ 落库的 `["",""]` 读回界面是 `[]` ⇒ 老判据照样渲染那个按钮，
-  // 所以它是「两次点击」而不是「死局」。真正会被藏掉按钮的是 `correctOrder` **非空但不合法**
-  // （见 `isOrderAnswerUsable`）。反转本行后的实测：9377e87 那一版要点 2 次才合法。
+  // ⚠️ 2026-09-24（C3）更正：这里原先写的是（逐字照抄 `a4b1a11`，只省掉中间那半句）
+  //   「反过来写的后果是一处**死局**（审查者实测）：… ⇒ 排列不成立 ⇒ 保存被 400 拦下，
+  //     而**屏幕上看不出能怎么办**（两行「这个条目已经被删掉了」）。」
+  // **实测证伪** —— `readStringList` 丢空串 ⇒ 落库的 `["",""]` 读回界面是 `[]` ⇒
+  // 老判据照样渲染那个按钮，所以它是「两次点击」而不是「死局」。真正会被藏掉按钮的是
+  // `correctOrder` **非空但不合法**（见 `isOrderAnswerUsable`；「教师唯一的出路是删掉这道题」
+  // 那句在 `order-body.tsx` 里，本文件从来没写过）。反转本行后的实测：9377e87 那一版要点 2 次。
   const items = ensureEntryIds(state.items);
   const correctOrder = items.map((entry) => entry.id);
   return { items: shuffleOrderItems(items, correctOrder, random), correctOrder };

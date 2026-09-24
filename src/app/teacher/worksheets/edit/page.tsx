@@ -395,8 +395,13 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
         {/* 步长**两行**：选了「对错」时**两行都不出现** —— 对错档没有步长（规格 §9.2 的原话）。
             ★ M4a（C3）补的是第二行（半对档）。在它之前，学习单级的半对档在服务端与内核里
             都通了、却**没有 UI** ⇒ 它只能是默认值 0 ⇒ 逐题留空的题一律「半对 0 分」，
-            而 `shouldWarnZeroHalfCredit` 那条提示在「学习单级半对 = 0」时不成立也说得通
-            （那种状态下它永远不会响）。两行放在一起也是刻意的：它们是**同一件事的两个数**，
+            而 `shouldWarnZeroHalfCredit`（规格 §12 裁定 3 的连带要求）**到处都会响** ——
+            教师只要在多选卡上选一次「漏选算半对」，`effectiveHalfStep` 就是那个恒为 0 的
+            学习单级档 ⇒ 提示条一概弹出来，**信号被稀释成噪音**（一张卡一句，说的都是同一件
+            他没做过的事）。补上这一行之后它才回到本意：只在教师真的把半对配成 0 时才响。
+            （判据是 `shouldWarnZeroHalfCredit(multi, { full: 1, half: 0 }) === true`，
+            `worksheet-editor-core.test.ts` 里那条用例在 `a4b1a11` 就已存在。）
+            两行放在一起也是刻意的：它们是**同一件事的两个数**，
             拆开摆会让人以为半对档与奖励形式无关。
 
             ⚠️ 两个下拉的选项来自同一个文件的**两个不同数组**：`REWARD_STEPS`（1/2/3/5）与

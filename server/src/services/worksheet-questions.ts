@@ -125,17 +125,27 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * 1/2/3/5 与 0/1/2/3/5。** 那两个下拉是**学习单级**的 UI 约束（`src/lib/worksheet-reward.ts`
  * 的 `REWARD_STEPS` / `HALF_STEPS`），而**逐题**的两个输入框是自由的（规格 §12 裁定 5：
  * 教师可以填 2 或 4）。
- * ⚠️ 这个差异是**有意的**，不要「统一」它们：把这里改成 `normalizeRewardStep` /
- * `normalizeHalfStep` 会让库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了取值域）
- * **静默变回 1**，而教师看到的是「我配的档没生效」。
+ * ⚠️ 这个差异是**有意的**，不要「统一」它们。但两个函数换上来的后果**不一样**，别用一句
+ * 「静默变回默认档」把两件事说成一件：
+ *    · 换成 `normalizeRewardStep` ⇒ 库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了
+ *      取值域）**静默变回 1**，教师看到的是「我配的档没生效」；
+ *    · 换成 `normalizeHalfStep` ⇒ `halfStep: 4` **静默变回 0**，而半对 0 的含义是
+ *      **「不给部分分」** —— 比变 1 更险：教师配的「漏选给 2 分」会变成「漏选一分不给」，
+ *      学生只是少拿分，界面上一切正常，没有任何提示。
+ *      更麻烦的是这个兜底值恰好等于一个**合法值**：`0` 与「越界回落」是同一个观测，
+ *      所以「半对档坏了」这件事在数据上**看不出来**（`HALF_STEPS` 那边的说明也提到这点）。
  *
  * ⚠️ 半对档**有第三个消费方**，域与上面两个下拉都不同（2026-09-24 记，**不改行为**）：
- * 落库那条路（`routes/worksheets.ts` 的 `normalizeSettings`）把 `halfStep` 夹在
- * `HALF_STEPS` 的 `{0,1,2,3,5}` 里，而**判分**这条兜底走的是本函数的 `0..99`。
- * 一行手改过的库写成 `halfStep: 7` ⇒ 判分**按 7 分算**、而编辑器的两个下拉里没有 7
- *（`normalizeLoadedSettings` 把它读成默认的 0）⇒ **界面上显示 0**，两处对同一个键给出
- * 两个数。`rewardStep` 早就有同一条缝（`rewardStep: 4`），它是有意为之；
- * 这里把 `halfStep` 一并点名，免得下一个人以为只有全对档有这条缝。
+ * 写入口（`routes/worksheets.ts` 的 `normalizeSettings`）认的是 `HALF_STEPS` 的
+ * `{0,1,2,3,5}`，而**判分**这条兜底走的是本函数的 `0..99`。
+ * ⚠️ 写入口那侧的机制是**越界即回落 `DEFAULT_SETTINGS.halfStep`（0）**，不是「夹到区间里」
+ *（`normalizeHalfStep` 与它同一条口径：越界不夹逼，见那份文件上的说明）。
+ * ⇒ 一行手改过的库写成 `halfStep: 7`（**它没走过写入口**）时，两侧对同一个键给出两个数：
+ * 判分**按 7 分算**，而编辑器的下拉里没有 7（`normalizeLoadedSettings` 把它读成 0）
+ * ⇒ **界面上显示 0**；而这行**一旦被编辑器保存一次**，写入口就把它落成 0，判分也跟着变 0 ——
+ * 也就是「教师只要打开这张单改个标题再保存，半对档就会从 7 变成 0」，同样没有任何提示。
+ * `rewardStep` 早就有同一条缝（`rewardStep: 4`），它是有意为之；这里把 `halfStep`
+ * 一并点名，免得下一个人以为只有全对档有这条缝。
  *
  * ⚠️ 半对档缺席（`source.halfStep` 是 `undefined` / 形状不对）时 `normalizePointValue`
  * 回落到 `DEFAULT_POINTS.half = 0`，与规格的默认值相同 —— 也就是第一批的行为。

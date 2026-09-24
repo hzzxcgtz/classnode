@@ -217,9 +217,15 @@ sed -n '230,234p;277,278p' src/app/classroom/worksheet/worksheet-panel.tsx
   解锁后继续重发（§2.8 的客户端一半）。
   ⚠️ 这一次 flush 会**大概率**被服务端拒（锁已经在服务端生效），那不是 bug —— 它的意义是
   「万一锁在路上、队列先到」的那一档能救回来。
-- ⚠️ **一句必须写进文案的副作用**：屏幕上若还有未同步的改动（1.5 秒防抖没到），
-  学生交上去的是**已保存的那份**，与屏幕不完全一致 ⇒ 上面那句提示必须提到这件事，
-  否则学生会以为自己交的是刚写的。
+- ⚠️ **有未保存改动的那一道题：提交被拦下，且说清原因**（2026-09-25 修正，见下）。
+  学生端提交前本来就会先 `flush()`，然后查一次「这一题还在队列里吗」；
+  锁定期我们**跳过 flush**，但**那条 pending 闸保留** ⇒ 队列里还有这一题时，
+  提交会被拦下、给一句**锁定专属**的话（**不是**「先等网络恢复」，那是另一件事）。
+  ⊘ **为什么改了这一条**：本文件初稿写的是「照样提交已保存的那份，用提示说明」。
+  那条路会让**屏幕上看得见的作答**与**交上去的作答**不是同一份 —— 而学生无法从屏幕上
+  分辨哪部分存住了。拦下 + 一句明说，是更小的谎。
+  **代价（如实记）**：锁定瞬间若正好有 1.5 秒内未同步的改动，那道题**这一次交不了**；
+  教师仍能在抽屉里看到它的草稿值（`value` 已由上一次成功保存写进库）。
 
 ### 3.4 教师端
 
@@ -286,3 +292,43 @@ sed -n '230,234p;277,278p' src/app/classroom/worksheet/worksheet-panel.tsx
 1. **复用 `paused`**：零 DDL，但会改掉「暂停学生提问」这个**已在用**功能的意思，并把「只禁提问、不禁答题」这个能力抹掉。
 2. **锁存进学习单 `settings`**：语义不对（学习单跨课堂复用），且会**影响别的课堂**用同一张单的学生；
    外加 `PUT /:id` 整份替换 settings 的前科。
+
+---
+
+## 八、实施期更正（2026-09-25，逐条实跑取证）
+
+> 两条都**不改上面的裁定**，只把**不成立的事实断言**标出来 —— 照本文件 §3.3 那处 ⊘ 的惯例。
+> 写在这里而不是就地改，是为了让读到旧版本的人看得出哪一句变陈旧了。
+
+**⊘ 8.1 —— §5.1 第 1 条「（有测试盯着，见 `worksheet-schema.ts` 一带）」不成立。**
+实测：
+
+```bash
+/usr/bin/grep -n "CREATE TABLE|ALTER TABLE|Classroom" server/src/tests/worksheet-schema.test.ts
+#   11: const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer'];
+#   13: const DROP_ORDER = ...
+#   81: assert.deepEqual(first.created.sort(), ['ClassroomWorksheet', 'Worksheet', ...]);
+#  114: ... AND tbl_name IN ('ClassroomWorksheet','WorksheetResponse','WorksheetAnswer')
+/usr/bin/grep -rn "dflt_value" server/src/tests/            # 零命中
+/usr/bin/grep -rln "DEFAULT 0" server/src/tests/            # 零命中
+```
+
+⇒ `worksheet-schema.test.ts` 盯的是 `services/worksheet-schema.ts` 里**手写的那 4 张
+学习单表**的 CREATE TABLE，与 `Classroom` 的 `ALTER … ADD COLUMN` **默认值**没有关系。
+**本轮新加的那一列（`answersLocked`）没有任何机器护栏** —— schema 与同步块两处的默认值
+若漂开，没有任何测试会红。那条护栏是**声称有、实际没有**的。
+（本轮的实情是两处**同值不同文**，理由与代价见执行 ledger 的 R12；本条只更正「有测试盯着」这半句。）
+
+**⊘ 8.2 —— §3.4 的「且按钮会**可见地**翻回未锁（不是静默改状态）」没有客户端落点。**
+实测：
+
+```bash
+/usr/bin/grep -rn "classroom-restored" src/ server/src/
+#   server/src/routes/classroom.ts:1345:  io.to(`teacher:${classroom.id}`).emit('classroom-restored', { classroom });
+```
+
+⇒ **只有 1 条命中，是服务端那条 emit**；`src/` 下**没有任何** `on('classroom-restored', …)`。
+「恢复即解锁」这件事在教师端**不是靠广播**成立的，而是靠：`restore` 的唯一入口在历史页
+（教师此刻不在看板页），他回到看板时是**全新挂载**，按钮态读 `GET /api/classroom/:id` 的
+`answersLocked`。⇒ 裁定本身（恢复即解锁）**不受影响**，服务端那条由
+`classroom-answers-lock.test.ts` 的用例 5 钉着；变陈旧的只是**它给的那条理由**。

@@ -152,8 +152,15 @@ export function isRejectedFullPointValue(raw: unknown): boolean {
  * 它**落不进库**（写入口拒收：`isRejectedFullPointValue` / `normalizeNode`）。
  * 于是两种来路各自得到一个**不会打架**的结果：
  *   · 走编辑器的数据 —— 服务端 400，教师当场看到是第几题；
- *   · 手工改过的库行 —— 这里当成「没填」⇒ 继承学习单级（学习单级的 `full` 恒 ≥ 1，
- *     见 `REWARD_STEPS`），**不会**再出现「答对却拿 0 分 ⇒ 学生画红叉、教师画绿勾」。
+ *   · 手工改过的库行 —— 这里当成「没填」⇒ 继承学习单级，而**学习单级那一侧的 `full`
+ *     也恒 ≥ 1**（`pointsFromSettings` 同样走 `isUsableFullPointValue`，见那个函数）——
+ *     **不会**再出现「答对却拿 0 分 ⇒ 学生画红叉、教师画绿勾」。
+ *
+ * ⚠️ 「学习单级那一侧」这半句是**后补的**：原先写的是「见 `REWARD_STEPS`」，
+ * 而 `REWARD_STEPS = [1,2,3,5]` 只约束**写入口**（`normalizeSettings`）——
+ * 一条手工改过的 `rewardStep: 0` 会绕过它，`pointsFromSettings` 原样吐出 `full: 0`，
+ * 于是 `resolvePoints` ⇒ `grade(答对)` 又是 `{state:'correct', score:0}`，I1 那四个观测原样回来
+ * （2026-09-24 终审的限定复查实测）。⇒ 那条链现在也从**读出口**堵上了，这半句才是真的。
  */
 export function normalizePoints(raw: unknown): QuestionPoints | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
@@ -223,12 +230,24 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * **关闭两次**：B2 让写入口认它，C3 让编辑器设置面板也能写出它（`page.tsx` 的那一行下拉）。
  * ⇒ 「库里那个键缺席」不再是常态，只是「这张单是在 C3 之前配的」或「那行是手改的」。
  * 上面那条兜底行为**本身仍然成立**，作废的只是那半句理由。
+ *
+ * 🔴 ★ M4a/I1（2026-09-24 终审的限定复查带出）：**`full` 那一档在这里也要过窄判据。**
+ * 原先它走的是宽的 `normalizePointValue`（`0..99`）⇒ 一行手工改过的 `rewardStep: 0`
+ * （`REWARD_STEPS` 只约束**写入口**，管不到这种行）会原样吐出 `full: 0` ⇒
+ * `resolvePoints` ⇒ `grade(答对)` = `{state:'correct', score:0}` ——
+ * **I1 那四个观测原样回来**（学生画红叉、教师画绿勾、正确率算全对、奖励 +0）。
+ * 那条链因此有**两个**读出口，这是第二个（第一个是 `normalizePoints`）。
+ * ⇒ 不在区间里就回落 `DEFAULT_POINTS.full`（= 1），与越界值的处置同一条路。
+ * ⚠️ 只影响「取整之后是 0」的那一个值：`rewardStep: 7`（手改的、不在 `REWARD_STEPS` 里）
+ * 照旧按 7 算 —— 那条缝**有意保留**（见下面 `halfStep: 7` 那段）。
  */
 export function pointsFromSettings(settings: unknown): QuestionPoints {
   const source = (settings && typeof settings === 'object' && !Array.isArray(settings))
     ? settings as Record<string, unknown> : {};
   return {
-    full: normalizePointValue(source.rewardStep, DEFAULT_POINTS.full),
+    full: isUsableFullPointValue(source.rewardStep)
+      ? normalizePointValue(source.rewardStep, DEFAULT_POINTS.full)
+      : DEFAULT_POINTS.full,
     half: normalizePointValue(source.halfStep, DEFAULT_POINTS.half),
   };
 }

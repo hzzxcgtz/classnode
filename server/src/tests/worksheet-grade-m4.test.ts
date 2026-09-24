@@ -712,7 +712,7 @@ test('pointsFromSettings：读 rewardStep（全对档）与 halfStep（半对档
   assert.deepEqual(pointsFromSettings({ rewardStep: -1, halfStep: -1 }), DEFAULT_POINTS);
 });
 
-test('🔴 pointsFromSettings：取值域是 0..99，**不是** 1/2/3/5 —— 两者故意不一致', () => {
+test('🔴 pointsFromSettings：`full` 的域是 1..99（0 不算数）、`half` 是 0..99 —— 与那个四选一故意不一致', () => {
   // `rewardStep` 在前端那个下拉里今天只有 1 / 2 / 3 / 5 四选一（`REWARD_STEPS`），
   // 而**逐题**的 `points` 不受那个取值域限制（教师可以填 2 或 4）。这个差异是**有意的**：
   // 学习单级是一个四选一的下拉，逐题是两个自由输入框（规格 §12 裁定 4/5）。
@@ -723,6 +723,21 @@ test('🔴 pointsFromSettings：取值域是 0..99，**不是** 1/2/3/5 —— �
   assert.deepEqual(pointsFromSettings({ rewardStep: 2, halfStep: 4 }), { full: 2, half: 4 });
   // 小数四舍五入（`WorksheetAnswer.score` 是 Float，一个 2.5 会一路走进奖励累计里）。
   assert.deepEqual(pointsFromSettings({ rewardStep: 1.6 }), { full: 2, half: 0 });
+  // ★ M4a/I1（2026-09-24 终审的限定复查带出）：**`rewardStep: 0` 不是「全对 0 分」。**
+  // `REWARD_STEPS` 只约束**写入口**（`normalizeSettings`），管不到手工改过的行 ——
+  // 原先本函数走宽的 `normalizePointValue`（0..99），会把 `rewardStep: 0` 原样吐成
+  // `{full: 0}` ⇒ `resolvePoints` ⇒ `grade(答对)` = `{state:'correct', score:0}` ⇒
+  // **I1 那四个观测原样回来**（学生画红叉、教师画绿勾、正确率算全对、奖励 +0）。
+  // ⇒ 现在 `full` 也过 `isUsableFullPointValue`，不在域里就回落 `DEFAULT_POINTS.full`。
+  // 反证：把 `pointsFromSettings` 的 `full` 改回 `normalizePointValue(source.rewardStep, …)`
+  // ⇒ **本用例变红**（2026-09-24 实测：1 条红、其余 475 绿 —— 三行断言在同一个用例里，
+  // 而 `node:test` 在第一条断言就停，所以红的是**一条用例**而不是三条）。
+  assert.deepEqual(pointsFromSettings({ rewardStep: 0 }), { full: 1, half: 0 }, '0 落回默认档 1，不是「答对 0 分」');
+  assert.deepEqual(pointsFromSettings({ rewardStep: 0.4 }), { full: 1, half: 0 }, '取整到 0 的同样落回（与 normalizePoints 同一把尺子）');
+  assert.deepEqual(pointsFromSettings({ rewardStep: 0, halfStep: 2 }), { full: 1, half: 2 }, '只动全对档，半对那一档不受影响');
+  // ⚠️ 反过来：**半对档的 0 必须原样保留** —— 它是「不给部分分」，是 §12 裁定 3 的默认档，
+  // 也是 `shouldWarnZeroHalfCredit` 那条提示的地基。把这一行改红就是把两个域又合并了。
+  assert.deepEqual(pointsFromSettings({ rewardStep: 3, halfStep: 0 }), { full: 3, half: 0 });
 });
 
 test('resolvePoints：逐题优先，留空（undefined）才回落学习单级', () => {

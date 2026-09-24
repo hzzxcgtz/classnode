@@ -1108,11 +1108,15 @@ function broadcastAnswerUpdate(
     // ⚠️ **`isCorrect` 在，且只增不改**：它是协议字段，改名 ⇒ **看板**拿到 `undefined`
     // ⇒ `gradeState` 为 null 的那些行**静默不画 ✓/✗**，没有任何报错。新增的两个是 `gradeState`
     // 与 `score`（规格 §12），`src/lib/socket-events.ts` 的同名事件类型要一起改。
-    // ⊘ 2026-09-24 更正：这句原先写「看板**与学生端**拿到 `undefined`」—— **学生端不订这条广播**
-    // 实测 `/usr/bin/grep -rn "worksheet-answer-updated" src` ⇒ 5 处，**全在教师端**
-    //（`src/app/teacher/classroom/` 的 4 处在注释里、1 处是 `page.tsx` 的 `on(...)` 订阅；
-    // `src/app/classroom/` 下零命中）。⚠️ 同时删掉了原句尾巴上的「与奖励」—— 奖励是**学生端**的
-    // 东西（`reward-badge.tsx`），看板不画它；主语收窄之后那个宾语就越界了。
+    // ⊘ 2026-09-24 更正：这句原先写「看板**与学生端**拿到 `undefined`」—— **学生端不订这条广播**。
+    // 实测 `/usr/bin/grep -rn "worksheet-answer-updated" src` ⇒ **7 处**：
+    // `src/app/teacher/classroom/` 5 处（其中 4 处在注释里、1 处是 `page.tsx` 的 `on(...)`，
+    // 那是**唯一真正的订阅方**）· `src/lib/` 2 处（`types.ts` 的说明 + `socket-events.ts`
+    // 的事件类型声明）· **`src/app/classroom/`（学生端）零命中**。
+    // ⚠️ 我第一次写这一条时只跑了 `… src | grep classroom/` 这条**过滤过**的命令，
+    // 却按全量口吻写成「5 处、全在教师端」—— 终审的限定复查抓到。**过滤过的输出不能当全量的数用。**
+    // ⚠️ 同时删掉了原句尾巴上的「与奖励」—— 奖励是**学生端**的东西（`reward-badge.tsx`），
+    // 看板不画它；主语收窄之后那个宾语就越界了。
     // 补主语不只是措辞：写成「学生端也会坏」会让人以为这条载荷是学生可见的，而它**不是** ——
     // 载荷里有每名学生的作答状态与对错，学生房间是**全班学生**（见 `worksheetBoardRoom`）。
     isCorrect: answer.isCorrect,
@@ -1521,7 +1525,11 @@ router.post('/:id/answers/submit', async (req, res) => {
     // questionId 可带，而看板的「已交 N/M」由逐题广播累加即可。
     broadcastAnswerUpdate(req, ctx, updated);
     // ⚠️ `isCorrect` **在**，且**只增不改**（见上面那段注释）。`gradeState` / `score`
-    // 是 B1 新增的两个字段；前端今天只读 `isCorrect`，改读的那一步在 D3/E1。
+    // 是 B1 新增的两个字段。
+    // ⊘ 2026-09-24 更正：这里原先写「前端今天只读 `isCorrect`，改读的那一步在 D3/E1」——
+    // 那一步**早就做完了**：学生端读 `score`（奖励，`worksheet-queue.ts` 的 `scoreFromWire`）、
+    // 看板读 `gradeState`（✓ / ½ / ✗，`worksheet-drawer-state.ts` 的 `rowVerdict`）；
+    // `isCorrect` 今天只在**未回填的旧行**上兜底。它仍不许改名，但理由换了（见 `rowVerdict`）。
     res.json({ isCorrect, gradeState, score });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);

@@ -3,8 +3,8 @@
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   matchAddRow,
+  matchPairLeftRow,
   matchRemoveRow,
-  matchSetPair,
   readMatch,
   renameEntryAt,
   writeMatch,

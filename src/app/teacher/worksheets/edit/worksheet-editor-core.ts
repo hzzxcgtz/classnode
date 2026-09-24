@@ -198,6 +198,20 @@ export function writeEntries(entries: ItemEntry[], field: EntryTextField = 'text
   return entries.map((entry) => ({ id: entry.id || newItemId(), [field]: entry.text }));
 }
 
+/**
+ * 给缺 id 的条目补上 id（**返回新的数组，不改入参**；已经有 id 的一个字都不动）。
+ *
+ * 🔴 与 `writeEntries` 的关系：那个函数在**写**的时候补（顺带把形状摆成 `{id, text}`）；
+ * 本函数是同一件事的**条目形状**版本，给那些「要先在内存里把 id 补齐、再拿它们当答案键」
+ * 的地方用 —— 答案键必须在**补完之后**才算得出来。
+ *
+ * ⚠️ 它**不能在渲染路径上调**（每渲染一次就换一批新 id = 另一种「id 会变」）。
+ * 只许由教师的动作触发，且同一次动作里算出的答案键与补好的条目**一起**写回去。
+ */
+export function ensureEntryIds(entries: ItemEntry[]): ItemEntry[] {
+  return entries.map((entry) => (entry.id ? entry : { ...entry, id: newItemId() }));
+}
+
 /** 一组条目里**能当答案键用**的 id（非空者，按出现顺序）。 */
 export function readEntryIds(raw: unknown): string[] {
   return readEntries(raw)
@@ -620,8 +634,8 @@ export function addBlank(node: WorksheetQuestionNode): Record<string, unknown> {
 /**
  * 「🗑 删掉这个空」。
  *
- * ⚠️ 界面在**只剩一个空**时把按钮禁掉（服务端要求「至少要有一个空」），所以这里够不到
- * 「零个空」。够得到的话，单空形状返回**空补丁**而不是 `{ answers: [] }` ——
+ * ⚠️ 界面在**只剩一个空**时**不渲染**那个删除按钮（服务端要求「至少要有一个空」），
+ * 所以这里够不到「零个空」。够得到的话，单空形状返回**空补丁**而不是 `{ answers: [] }` ——
  * 后者会把一道「还没填答案」的题变成「填了空答案」的题，而教师只是按了一个禁用的按钮。
  */
 export function removeBlank(node: WorksheetQuestionNode, index: number): Record<string, unknown> {
@@ -721,8 +735,32 @@ export function shuffleOrderItems(
  * ⇒ 复用 `shuffleOrderItems`（它保证结果不同），于是点一下就得到一个能保存的状态。
  */
 export function orderUseCurrentOrder(state: OrderData, random: () => number = Math.random): OrderData {
-  const correctOrder = state.items.map((entry) => entry.id);
-  return { items: shuffleOrderItems(state.items, correctOrder, random), correctOrder };
+  // 🔴 **先把缺 id 的条目补上 id，再拿它们当答案键。** 反过来写的后果是一处**死局**（审查者实测）：
+  // 缺 id 的条目被读成空串 ⇒ 答案是 `['','']`；而写回时 `writeEntries` 给条目补了**全新的** id，
+  // 于是 `correctOrder` 里那两个空串永远指不到任何条目 ⇒ 排列不成立 ⇒ 保存被 400 拦下，
+  // 而**屏幕上看不出能怎么办**（两行「这个条目已经被删掉了」）。补 id 之后，答案键落在
+  // 补好的那些 id 上 —— 一次点击就得到一个合法的状态（`writeEntries` 那侧是幂等的）。
+  const items = ensureEntryIds(state.items);
+  const correctOrder = items.map((entry) => entry.id);
+  return { items: shuffleOrderItems(items, correctOrder, random), correctOrder };
+}
+
+/**
+ * 「正确顺序」现在**能不能用** —— 即它正好是这些条目 id 的一个排列（服务端那条校验的判据）。
+ *
+ * `false` 的每一种来路都必须让界面**留着**一个重设它的入口（「取当前顺序」），
+ * 否则教师会卡在一个**既存不下、又从界面上修不好**的僵局里，唯一出路是删掉这道题：
+ *   · 还没配过（`correctOrder` 空）；
+ *   · 条目**缺 id**（服务端会以「排序题里有条目缺少 id」拦下，任何 `correctOrder` 都救不了）；
+ *   · 长度对不上 / 有重复 / 内容对不上（手工改过的行，或早先版本写进去的空串）。
+ */
+export function isOrderAnswerUsable(items: ItemEntry[], correctOrder: string[]): boolean {
+  if (items.length < 2) return false;
+  if (items.some((entry) => !entry.id)) return false;
+  if (correctOrder.length !== items.length) return false;
+  if (new Set(correctOrder).size !== correctOrder.length) return false;
+  const ids = items.map((entry) => entry.id);
+  return correctOrder.every((id) => ids.includes(id));
 }
 
 /**
@@ -791,6 +829,27 @@ export function writeMatch(left: ItemEntry[], right: ItemEntry[], pairs: PairEnt
 export function matchSetPair(pairs: PairEntry[], leftId: string, rightId: string): PairEntry[] {
   const kept = pairs.filter((pair) => pair.leftId !== leftId && pair.rightId !== rightId);
   return rightId ? [...kept, { leftId, rightId }] : kept;
+}
+
+/**
+ * 给**第 `index` 个左项**配一个右项 —— 下拉的 `onChange` 整个逻辑在这里。
+ *
+ * 🔴 **先把缺 id 的条目的 id 补上，再配**（审查者实测的原始缺陷）：左项缺 id 时它是空串，
+ * `matchSetPair(pairs, '', rightId)` 产出的那条配对会被 `readPairs`（以及服务端）
+ * 按「leftId 为空即丢掉」过滤掉 —— 教师看到的是**下拉当场弹回「请选择」**，
+ * 而他不知道自己做错了什么（那条配对本该正是他刚选的）。补 id 之后，这一次点击
+ * 就把配对落在补好的 id 上，同一次提交里完成，屏幕上立刻显示他选的那一项。
+ *
+ * ⚠️ 与 `orderUseCurrentOrder` 同一个道理：**答案键必须在补完 id 之后才算得出来**。
+ * ⚠️ 右栏也一起补（下拉的 `value` 是右项的 id，右栏缺 id 时它根本选不中 ——
+ * 那个情形由界面显式画成一条禁用的选项说明怎么修，见 `match-body.tsx`）。
+ */
+export function matchPairLeftRow(state: MatchData, index: number, rightId: string): MatchData {
+  const left = ensureEntryIds(state.left);
+  const right = ensureEntryIds(state.right);
+  const target = left[index];
+  if (!target) return state;
+  return { left, right, pairs: matchSetPair(state.pairs, target.id, rightId) };
 }
 
 /**

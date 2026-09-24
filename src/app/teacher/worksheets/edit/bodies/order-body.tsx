@@ -3,6 +3,7 @@
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   isOrderAmbiguous,
+  isOrderAnswerUsable,
   moveIdInList,
   orderAddItem,
   orderRemoveItem,
@@ -44,6 +45,16 @@ export function OrderBody({ node, onDataChange }: {
   const { items, correctOrder } = order;
   const byId = new Map(items.map(entry => [entry.id, entry]));
   const ambiguous = isOrderAmbiguous(items, correctOrder);
+  /**
+   * 「正确顺序」这一栏现在能不能用（是不是条目的 id 的一个排列）。
+   *
+   * 🔴 `!answerReady` 时**必须留着**「取当前顺序」那个按钮（不只是 `correctOrder` 为空时）——
+   * 审查者实测过一条**死局**：条目缺 id 的行点过一次「取当前顺序」之后，`correctOrder` 里
+   * 留着两个空串（既指不到任何条目、也不为空），而那个按钮原来只在「为空」时渲染
+   * ⇒ 屏幕上是两行「这个条目已经被删掉了」、保存被 400 拦下、**修复入口已经被它自己藏掉**
+   * ⇒ 教师唯一的出路是删掉这道题。（判据在核心里，这里只画状态。）
+   */
+  const answerReady = isOrderAnswerUsable(items, correctOrder);
   /** 三个键一起写（`items` 陪着 `correctOrder`）—— 见内核里那一节的纪律 1。 */
   const commit = (next: OrderData) => onDataChange(writeOrder(next.items, next.correctOrder));
 
@@ -93,7 +104,15 @@ export function OrderBody({ node, onDataChange }: {
             })}
           </ol>
         )}
-        {correctOrder.length === 0 ? (
+        {!answerReady && correctOrder.length > 0 && (
+          // 「正确顺序」与条目对不上（缺 id / 长度不符 / 有重复）—— 它是**存不下**的状态
+          //（服务端：「排序题的『正确顺序』必须正好是这些条目各一次」），所以必须说清怎么重设。
+          <p className="worksheet-editor-warn-hint">
+            ⚠ 这一栏与下面的条目对不上（库里那一份被改过，或者条目缺了 id），照这样保存会被服务端拒绝。
+            点「取当前顺序」按现在的条目重设一遍即可。
+          </p>
+        )}
+        {!answerReady ? (
           <div className="worksheet-editor-inline-actions">
             <button
               type="button"

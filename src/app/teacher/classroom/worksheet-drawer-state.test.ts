@@ -220,6 +220,26 @@ test('形态 A：原答案的读法 —— 单选给选项文字，读不出来�
   assert.equal(formatAnswer(choice, { format: 'choice/v1', selected: [] }), null);
 });
 
+test('🔴 形态 M4b：笔迹作答 —— answerText 回 null，但 ink 非空（抽屉不许说「未作答」）', () => {
+  // ⚠️ 两个助手是既有的：`node({id, type, …})`（单对象）与 `row({status, value, …})`，
+  //    **不是** `node('drawing')` 那种形状 —— 照该文件既有的调用写。
+  const drawing = node({ id: 'q_9', type: 'drawing', inputMode: 'handwriting' });
+  const value = {
+    format: 'drawing/v1',
+    canvas: { w: 320, h: 240 },
+    strokes: [{ color: '#1f2937', width: 0.016, points: [[0.5, 0.5]] as [number, number][] }],
+  };
+  const outcome = questionOutcome(drawing, row({ questionId: 'q_9', status: 'submitted', value }));
+  assert.equal(outcome.answerText, null, '笔迹不是文字');
+  assert.equal(outcome.ink?.strokes.length, 1, '★ 但笔迹必须在（否则抽屉把画了画的学生显示成未作答）');
+  assert.equal(outcome.mark, 'none', '★ 不判分 ⇒ none，**不是 wrong**（裁定 3：none 不得画成答错）');
+  // 未作答的行不许画出空画布
+  assert.equal(questionOutcome(drawing, row({ questionId: 'q_9', status: 'unanswered', value: null })).ink, null);
+  // 教师把题型改回键盘之后，学生之前交的那幅画仍然显示得出来（只认 format，不看题型）
+  const backToKeyboard = node({ id: 'q_9', type: 'short-answer' });
+  assert.equal(questionOutcome(backToKeyboard, row({ questionId: 'q_9', status: 'submitted', value })).ink?.strokes.length, 1);
+});
+
 test('状态标签：三态各一个词，与看板方格阵同一组', () => {
   assert.equal(statusLabel('unanswered'), '未作答');
   assert.equal(statusLabel('draft'), '作答中');
@@ -477,7 +497,15 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   categorize: true,
   'short-answer': false,
   // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分
-  // （规格 §12 裁定 3），服务端 `JUDGES` 里没有它。这一格决定了看板抽屉里画不画 ✓/½/✗。
+  // （规格 §12 裁定 3）。这一格决定了看板抽屉里画不画 ✓/½/✗。
+  // ⊘ 2026-09-24（E1）：这一句原写作「服务端 `JUDGES` 里没有它」—— **B1 之后它不成立了**：
+  //   服务端 `JUDGES.drawing` 有它，处置是**恒回 `() => null`**（与 `'short-answer': () => null`
+  //   逐字同一个处置，见 `server/src/services/worksheet-questions.ts` 的 `JUDGES` 表），
+  //   而 `judge()` 里还**多**一条闸：见到 ink 值（`ink/v1` / `drawing/v1`）就短路回 `null`。
+  //   两条是**独立**的闸，各管一半：一条管「题型就是绘图题」（值被手改成别的形状时也挡得住），
+  //   一条管「值是 ink」（教师把作答方式改回键盘之后仍然挡得住 —— 那时题型不再是 `drawing`）。
+  //   ⇒ 「`JUDGES` 里没有它」这句话今天读起来像「服务端没为绘图题做任何事」，而真相是
+  //   服务端做了两件事、只是**都不判分**。留着它是一个给下一个人抄的模板。
   drawing: false,
 };
 

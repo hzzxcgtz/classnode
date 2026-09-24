@@ -8,6 +8,15 @@ import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNod
 import {
   draftFromValue, flattenQuestions, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
 } from '../../../lib/worksheet-questions.ts';
+// ★ M4b/E1：笔迹的读数**只有一份实现**（`readInkValue`），这里直接引它。
+// 🔴 **刻意不包一层 `readAnswerInk(node, value)`**：包一层多出来的那个 `node` 参数
+// 今天用不上，而下一个人会照着它猜「这里是不是该按题型分支」—— 判据**只认 `format`，不看题型**
+// （理由见 `formatAnswer` 里那一支的注释）。
+// ⚠️ 路径**必须是相对路径 + `.ts` 后缀**（与上面那条同一条纪律，理由在文件头那段）：
+// 本文件要能被 `node --test` 直接执行，`@/lib/worksheet-ink` 会让
+// `worksheet-drawer-state.test.ts` 整个跑不起来（实测见 E1 报告）。
+// `worksheet-ink.ts` 自己**没有任何 import**，所以这条值 import 不会把 `@/` 传染进来。
+import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
 
 /**
  * 教师看板**学习单抽屉**的两种形态的判据 —— 纯函数，不碰 React / DOM / 网络。
@@ -119,6 +128,19 @@ export interface QuestionOutcome {
   canReview: boolean;
   /** 学生原答案的人类可读文字；`null` = 没有可显示的东西（未作答 / 读不出来）。 */
   answerText: string | null;
+  /**
+   * ★ M4b：学生画的笔迹（`null` = 这一行不是笔迹作答 / 读不出来）。
+   *
+   * 🔴 **它与 `answerText` 不互相顶替，两个都要看**：笔迹作答的 `answerText` **恒为 `null`**
+   *（笔迹不是文字，见 `formatAnswer`），所以抽屉里那句 `{answerText ?? '未作答'}` 会把
+   * 「画了一整幅画」说成「未作答」。`ink` 就是给渲染点的第二问 —— 判据在
+   * `worksheet-drawer.tsx` 里逐字是「先看 `ink`，没有才落到 `answerText` / 未作答」。
+   *
+   * ⚠️ 读数直接引 `src/lib/worksheet-ink.ts` 的 `readInkValue`（**不包一层**）：判据是
+   * 作答值的 `format`，**与 `node.type` 无关** —— 教师把一道题从手写改回键盘之后，
+   * 学生**之前交的**那幅画仍然要显示得出来（库里那一行没变）。
+   */
+  ink: InkValue | null;
 }
 
 /**
@@ -177,8 +199,12 @@ function markFromVerdict(verdict: WorksheetGradeState | null): WorksheetOutcomeM
 /**
  * 一道题的完整结论。`row` 是**这个参与者在**这道题上的作答行；`undefined` = 一道没动过。
  *
- * 分支顺序：状态 → 判分档 → 按钮 → 原答案。其中判分档的判据是**三条并列**的与：
+ * 分支顺序：状态 → 判分档 → 按钮 → 原答案 → 笔迹。其中判分档的判据是**三条并列**的与：
  * 题型有对错 + 已提交 + `rowVerdict` 给出了结论（见那个函数的三条优先级）。
+ *
+ * ★ M4b：`ink` 与 `answerText` **同一口径的空值** —— `status === 'unanswered'` 时两个都回
+ * `null`。不给 `ink` 的理由与 `answerText` 逐字相同：抽屉会为一个「没作答」的行画出一幅
+ * **空画布**，而那个空框与「学生画了东西但读不出来」长得一模一样，也没有任何报错。
  */
 export function questionOutcome(
   node: WorksheetQuestionNode,
@@ -190,12 +216,17 @@ export function questionOutcome(
   const mark: WorksheetOutcomeMark =
     isGradedType(node.type) && status === 'submitted' ? markFromVerdict(rowVerdict(row)) : 'none';
 
+  // ⚠️ 读的是 `row?.value`（不是 `formatAnswer` 的结果）：笔迹那条路**不经过**
+  // `draftFromValue` 的文字分支，两件事各读各的、互不顶替。
+  const ink = status === 'unanswered' ? null : readInkValue(row?.value);
+
   return {
     status,
     mark,
     reviewed: Boolean(row?.reviewedAt),
     canReview: status !== 'unanswered',
     answerText: status === 'unanswered' ? null : formatAnswer(node, row?.value),
+    ink,
   };
 }
 
@@ -236,6 +267,23 @@ export function questionOutcome(
  *   · 判断题同理：不展开「对 / 错」两个选项，也返回 `null`（既有口径）。
  */
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
+  // ★ M4b：**笔迹不是文字** ⇒ `answerText` 回 `null`（`readInkValue` 认得它）。那一幅画由
+  // `questionOutcome` 的 `ink` 带走、由 `worksheet-drawer.tsx` 的 `InkPreview` 画出来 ——
+  // 这里回 `null` **不是**「学生没作答」。
+  //
+  // 🔴 为什么要**在最前面**判这一次：不判的话它落到下面那条
+  // `draft.kind === 'text' ? … : draft.kind === 'fill' ? … : ''` 上，得到的就是**空串 ⇒ `null`**
+  // —— 结果**碰巧一样**，但那是巧合（本函数的分支里没有一条认得 ink），而下一个人会以为
+  // 「这里已经处理过笔迹了」。更坏的是他可能顺手把 ink 的输入态读成文字：
+  // `draftFromValue` 对 ink 值返回的是 `{ kind: 'ink', box, strokes }`，上面那两分支都取不到
+  // 东西 —— 一旦有人给它加一条 `draft.kind === 'ink' ? …` 的读法，教师看到的就会是
+  // **一串坐标**。
+  //
+  // ⚠️ **只认 `format`，不看题型**（与 `draftFromValue` 里先读 ink 那一段同一条纪律）：
+  // 教师把一道题从「手写」改回「键盘」之后，学生**之前交的**仍然是一幅画（库里那一行没变），
+  // 而抽屉的天职是「把学生写过的东西显示出来」。按题型判会让那幅画从抽屉里消失 ——
+  // 而它与「学生什么都没写」长得一模一样。
+  if (readInkValue(value)) return null;
   const draft = draftFromValue(node, value);
   if (node.type === 'single-choice') {
     const selected = draft.kind === 'choice' ? draft.selected[0] ?? '' : '';

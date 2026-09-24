@@ -30,6 +30,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  INK_MAX_POINTS,
   INK_MAX_STROKES,
   INK_MIN_POINT_DISTANCE_PX,
   INK_STROKE_COLOR,
@@ -152,6 +153,26 @@ test('isInkFormat：只有 ink/v1 与 drawing/v1 认', () => {
 });
 
 // ── 上限 ────────────────────────────────────────────────────────────────
+
+/**
+ * 🔴 ★ **这两个数字被钉死在字面量上**（本文件唯一一处硬编码它们的地方）。
+ *
+ * 它们与 `server/src/services/worksheet-ink.ts` 的同名常量是**同一对**（服务端读不到
+ * `src/`，所以是**两份**、不是共享）—— 而这一条是「两处必须一起改」那句话**唯一**能被
+ * 机器观测到的地方。服务端那侧有一条逐字对称的用例
+ * （`server/src/tests/worksheet-ink.test.ts` 的「两个上限的字面量」那一条）。
+ *
+ * ⚠️ 为什么必须打**字面量**：本文件其余的上限用例**全部从常量自推导**
+ *（`strokes(INK_MAX_STROKES - 1, 1)` / `strokes(INK_MAX_STROKES, 1)` / `strokes(1, 1999)` …）
+ * —— 那是刻意的（它抓的是「判据方向写错」：`>` 写成 `>=` 时「恰好到上限」那条当场红）。
+ * 但**只**有那种写法时，常量本身被改会让边界用例**跟着漂**、一条都不红：
+ * 本轮的实测（反证）—— 把 `INK_MAX_STROKES` 从 400 改成 **500** ⇒
+ * 本文件**其余 34 条全绿**，只有下面这一条变红。
+ */
+test('🔴 两个上限的字面量：400 笔 / 2000 点（与 `server/src/services/worksheet-ink.ts` 是同一对）', () => {
+  assert.equal(INK_MAX_STROKES, 400, '笔数上限改了 ⇒ 必须同步改 server/src/services/worksheet-ink.ts');
+  assert.equal(INK_MAX_POINTS, 2000, '点数上限改了 ⇒ 必须同步改 server/src/services/worksheet-ink.ts');
+});
 
 test('countPoints：空 ⇒ 0；两笔 3 + 2 点 ⇒ 5（总数，不是「每笔最多多少点」）', () => {
   assert.equal(countPoints([]), 0);

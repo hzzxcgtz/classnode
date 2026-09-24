@@ -1372,7 +1372,7 @@ router.put('/:id/answers', async (req, res) => {
     //
     // ⚠️ 它**不是格式门**：`findInkValueError` 对认不出的 `format` 一律放行（认得出才查体积）。
     // 往这里加一句「认不出的 `format` ⇒ 400」是**另一件事**，会违反
-    // `worksheet-answer-value.ts:48-71`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
+    // `worksheet-answer-value.ts:48-76`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
 

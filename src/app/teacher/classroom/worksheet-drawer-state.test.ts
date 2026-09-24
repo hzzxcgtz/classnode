@@ -233,11 +233,49 @@ test('🔴 形态 M4b：笔迹作答 —— answerText 回 null，但 ink 非空
   assert.equal(outcome.answerText, null, '笔迹不是文字');
   assert.equal(outcome.ink?.strokes.length, 1, '★ 但笔迹必须在（否则抽屉把画了画的学生显示成未作答）');
   assert.equal(outcome.mark, 'none', '★ 不判分 ⇒ none，**不是 wrong**（裁定 3：none 不得画成答错）');
-  // 未作答的行不许画出空画布
-  assert.equal(questionOutcome(drawing, row({ questionId: 'q_9', status: 'unanswered', value: null })).ink, null);
+  // 未作答的行不许画出空画布。
+  // 🔴 传的必须是**同一份 ink 值**（终审 I3）：传 `value: null` 的话 `readInkValue(null)`
+  //    本来就是 `null`，把 `questionOutcome` 里那句 `status === 'unanswered' ?` 整段删掉
+  //    这条断言**照样绿**（实测 22/22 —— 一条测不到它所声称守卫的假绿）。
+  assert.equal(
+    questionOutcome(drawing, row({ questionId: 'q_9', status: 'unanswered', value })).ink,
+    null,
+  );
   // 教师把题型改回键盘之后，学生之前交的那幅画仍然显示得出来（只认 format，不看题型）
   const backToKeyboard = node({ id: 'q_9', type: 'short-answer' });
   assert.equal(questionOutcome(backToKeyboard, row({ questionId: 'q_9', status: 'submitted', value })).ink?.strokes.length, 1);
+});
+
+test('🔴 形态 M4b：教师把**已被键盘作答**的题改成「手写」⇒ 学生写过的字照样显示（不许说未作答）', () => {
+  // 🔴 这是终审 ①（Critical）的**症状**：改那道题的「作答方式」**不动库里那一行** ——
+  //    值仍是 `text/v1`，而题目此刻是手写 ⇒ `draftFromValue` 曾经有一句
+  //    `if (isInkNode(node)) return empty;`（R2）**先于** kind 分派生效 ⇒ 回空 ink 态 ⇒
+  //    `formatAnswer` 的三元链只认 `text` / `fill` ⇒ `null` ⇒ **抽屉把那个学生显示成
+  //    「未作答」**。那一句守卫已按 R18 撤掉。
+  // 🔴 反证：把 `if (isInkNode(node)) return empty;` 加回 `src/lib/worksheet-answer-value.ts`
+  //    的 `draftFromValue` ⇒ 本条变红（`answerText` 变回 `null`）。
+  const stillKeyboardValue = { format: 'text/v1', text: '光合作用' };
+  const typedThenHandwriting = node({ id: 'q_8', type: 'short-answer', inputMode: 'handwriting' });
+  const outcome = questionOutcome(
+    typedThenHandwriting,
+    row({ questionId: 'q_8', status: 'submitted', value: stillKeyboardValue }),
+  );
+  assert.equal(outcome.status, 'submitted', '值仍是那份提交过的作答 —— 学生自己没有任何变化');
+  assert.equal(outcome.answerText, '光合作用', '★ 文字值 + 手写节点 ⇒ 原答案必须读得出来');
+  assert.equal(outcome.ink, null, '它不是笔迹 ⇒ 抽屉不该画空画布');
+  // 对照组（**同一个节点、只是值换成笔迹**）：`answerText` 回 null 而 `ink` 有东西 ——
+  // 两件事各读各的，谁也不顶替谁。
+  const inkValue = {
+    format: 'ink/v1',
+    canvas: { w: 320, h: 160 },
+    strokes: [{ color: '#1f2937', width: 0.016, points: [[0.5, 0.5]] as [number, number][] }],
+  };
+  const inkOutcome = questionOutcome(
+    typedThenHandwriting,
+    row({ questionId: 'q_8', status: 'submitted', value: inkValue }),
+  );
+  assert.equal(inkOutcome.answerText, null);
+  assert.equal(inkOutcome.ink?.strokes.length, 1);
 });
 
 test('状态标签：三态各一个词，与看板方格阵同一组', () => {

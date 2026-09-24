@@ -45,20 +45,20 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  * | `links: Array<{leftId, rightId}>` | 连线（教师那侧的配对叫 `pairs`，**刻意不同名**） |
  * | `assignment: Record<string, string>` | 归类（教师那侧叫 `placement`） |
  *
- * ⚠️ **`format` 在服务端只被读两处，而且两处都不拿它当「判据」。** 实测（2026-09-24，B1 之后重跑）：
+ * ⚠️ **`format` 在服务端只被读两处，而且两处都不拿它当「判据」。** 实测（2026-09-24，终审修复轮之后重跑）：
  * ```
- * $ grep -c format server/src/services/worksheet-questions.ts
+ * $ /usr/bin/grep -c format server/src/services/worksheet-questions.ts
  * 5
- * $ grep -rn "\.format\b\|'format'\|\"format\"" server/src --include='*.ts' | grep -v "/tests/"
- * server/src/services/worksheet-ink.ts:60:  if (!isInkFormat(row.format)) return null;
+ * $ /usr/bin/grep -rn "\.format\b\|'format'\|\"format\"" server/src --include='*.ts' | /usr/bin/grep -v "/tests/"
  * server/src/services/worksheet-questions.ts:904:  if (isInkFormat(readField(value, 'format'))) return null;
+ * server/src/services/worksheet-ink.ts:68:  if (!isInkFormat(row.format)) return null;
  * ```
  * 那**5**个命中全部在 B1 新增的行上（1 行代码 + 4 行注释）—— B1 之前这个文件的读数是 `0`。
  * 两处读它的地方，各自的结论都只有一个，且**都不给非 ink 值增加任何拒绝路径**：
  *   · `worksheet-questions.ts:904` —— `judge()` 里的**短路**：读到 ink 值就回 `null`（不判分，
  *     规格 §12 裁定 3）。非 ink 值走原来那条路，**判定结果逐字不变**（这一行只是先读一次
  *     `format`，没有任何副作用）；
- *   · `worksheet-ink.ts:60` —— `findInkValueError` 里的**体积校验**（B1 的写入口校验）：
+ *   · `worksheet-ink.ts:68` —— `findInkValueError` 里的**体积校验**（B1 的写入口校验）：
  *     认不出 ink 就放行。它只在 `format` 明说是笔迹时才去数笔数 / 点数 ⇒ 它多出来的拒绝理由
  *     **只可能落在** `ink/v1` / `drawing/v1` 这两个 M4b 才诞生的形状上，而库里已有的行
  *     没有一个是它。
@@ -67,6 +67,12 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  * ⊘ 2026-09-24（B1，提交 `e1ff80c`）：这一段原写「**`format` 服务端一个字节都不读**」并附两条
  *   实测命令（当时 ⇒ `0` / 无输出）。那两句被 B1 打陈旧了，所以按上面的当次输出逐字替换；
  *   结论从「一个字节都不读」改成「只读两处、两处都不校验」，**被它保护的纪律没有动**。
+ * ⊘ 2026-09-24（终审修复轮，I1 + M3）：上面那段 grep 输出是**重跑的当次输出**。两处改动：
+ *   ① 命令换成 `/usr/bin/grep`，且第二行的**顺序与上次相反** —— 同一条命令两次输出顺序不同，
+ *      所以上一版贴的那两行**不能逐字复现**（那是它必须重跑的真正理由，不是「过时了」）；
+ *   ② `server/src/services/worksheet-ink.ts:60` ⇒ **`:68`**：I1 给 `findInkValueError` 加了
+ *      逐点校验（`isInkPoint`），那个文件的下半部分整体下移。**判据本身逐字未变**（仍只读、
+ *      不校验），`worksheet-questions.ts:904` 那一行也没有动。
  * 它只随作答值一起存进 `WorksheetAnswer.value`，读者是**前端**的 `draftFromValue`
  * （把作答值读回输入态：学生端队列回填、教师端抽屉的「原答案」都走它）。
  *
@@ -565,10 +571,21 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   //   一个字节都没少，接上的是 E1。别在这里把它读成「读回来没意义」。
   const ink = readInkValue(row);
   if (ink) return { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
-  // 画布题的值读不成笔迹（手改过的行 / 上一个版本）⇒ 回**空画布**：
-  // 屏幕上恒是画布，不回落到别的形状（回落到别的形状会让一道画布题出现一个
-  // 学生无法撤销、也无法提交的控件）。非 ink 节点不在这里拦 —— 它们由分派器按题型渲染。
-  if (isInkNode(node)) return empty;
+  // 🔴 **没有「题型是画布题 ⇒ 一律回空画布」这一支。** R2 在这里加过一句
+  // `if (isInkNode(node)) return empty;`，终审裁定 **R18 撤掉**，理由是它在两个方向上
+  // **不对称**：
+  //   · **学生渲染**那一侧它是**多余的** —— 屏幕上出不出画布由**分派器**决定
+  //     （`src/app/classroom/worksheet/questions/index.tsx` 的 `isInkNode(node)` 闸 **加**
+  //     `pick('ink')`，而 `pick` 自己回落到 `start` = `emptyDraftFor(node)`）⇒
+  //     「ink 节点 + 非 ink 输入态」照样画成空画布，不靠这里；
+  //   · **教师读数**那一侧它**有害** —— 教师把一道**已被键盘作答**的题改成「手写」并保存后，
+  //     库里那一行的值仍是 `text/v1`，而抽屉的「原答案」走的是本函数 ⇒ 空 ink 态 ⇒
+  //     `formatAnswer` 的三元链只认 `text` / `fill` ⇒ 回 `null` ⇒
+  //     **抽屉把那个学生显示成「未作答」**（终审的探针逐字抓到）。
+  // ⚠️ 「ink 节点 + 读不出的值 ⇒ 空画布」这一档**没有失去覆盖**，只是保证**不在这里**：
+  //    `format` 分派认不出那个值时落回 `draftKindOf(node)` 的 `'ink'`，而下面**没有任何
+  //    分支匹配 `'ink'`** ⇒ 走到函数末尾的 `return empty`。用例逐字钉着它
+  //    （`worksheet-answer-value.test.ts` 的「读不出来的值 ⇒ 空画布」那一条）。
   // `format` 是**第一判据**（它就是这个字段存在的理由，见 `WorksheetAnswerValue` 的注释）；
   // 它缺席 / 不认识时（手改过的行、第一批之前的老形状）再按 `node.type` 落回本文件的默认值。
   const kind = format === 'choice/v1' ? 'choice'

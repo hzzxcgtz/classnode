@@ -507,11 +507,59 @@ test('🔴 draftFromValue：笔迹值原样读回来 —— 笔画数与 `canvas
   );
 });
 
-test('🔴 draftFromValue：画布题上的**非笔迹值** ⇒ 空画布（不抛、不回落成别的形状）', () => {
-  // 回落到别的形状（比如 `text`）会让一道画布题在屏幕上出现一个学生**无法撤销、
-  // 也无法提交**的控件；而空白画布至少是他认识的、能重画的。
+test('🔴 draftFromValue：`format` 是第一判据 —— 画布题上的**可读**值按它的 format 读回来', () => {
+  // ⊘ 2026-09-24（终审 R18）：本条原钉的是「画布题上的非笔迹值 ⇒ 空画布」，依据是
+  //   `draftFromValue` 里那句 `if (isInkNode(node)) return empty;`（R2 加的）。那句守卫
+  //   **已撤掉** ⇒ 现在的真行为是**格式优先**：值读得出来就按它的 `format` 读回来。
+  //
+  //   🔴 为什么撤：那句守卫只看**题型**、不看**值**，而它在两个方向上不对称 ——
+  //     · 学生渲染那一侧**多余**：屏幕上出不出画布由分派器决定（`questions/index.tsx`
+  //       的 `isInkNode(node)` 闸 + `pick('ink')`，`pick` 自己回落到 `emptyDraftFor`），
+  //       所以「ink 节点 + 非 ink 输入态」照样画成空画布，不靠这句守卫；
+  //     · 教师读数那一侧**有害**：教师把一道**已被键盘作答**的题改成「手写」并保存后，
+  //       库里那一行的值仍是 `text/v1`，而抽屉的「原答案」走的是 `draftFromValue`
+  //       ⇒ 空 ink 态 ⇒ `formatAnswer` 的三元链只认 `text` / `fill` ⇒ 回 `null`
+  //       ⇒ **抽屉把那个学生显示成「未作答」**。
+  //   ⇒ **「空画布由分派器（R5 的 `isInkNode(node)` 闸 + `pick` 回落 `start`）保证，
+  //     不是本函数的职责。」** 本函数在画布题上只保留一件事：读不出笔迹时回空画布
+  //     （下一条用例，撤掉守卫之后**新的回归网**）。
+  assert.deepEqual(
+    draftFromValue(drawingNode(), { format: 'choice/v1', selected: ['A'] }),
+    { kind: 'choice', selected: ['A'] },
+  );
+});
+
+test('🔴 draftFromValue：文字值 + `inputMode: \'handwriting\'` 的节点 ⇒ 仍按 `text/v1` 读回来（终审 ①）', () => {
+  // ★ 终审点名的用例：**文字值 + `inputMode: 'handwriting'` 的节点**。
+  //   它就是上面那个缺陷的最短复现 —— 教师把一道键盘作答过的问答题改成手写 **不动库里
+  //   那一行** ⇒ 值仍是 `text/v1` ⇒ 学生写过的字必须照样读得回来（读不回 = 抽屉说「未作答」）。
+  // 🔴 反证：把 `if (isInkNode(node)) return empty;` 加回 `draftFromValue` ⇒ 本条变红
+  //    （`{ kind: 'ink', box: { w: 320, h: 160 }, strokes: [] }`）。
+  // ⚠️ 这一条与上一条**分成两个 test** 是刻意的：写成一条时第一句断言先红，
+  //    「文字值这一句有没有牙」就观测不到（一次归错因的红等于没验）。
+  assert.deepEqual(
+    draftFromValue(handwritingNode('short-answer'), { format: 'text/v1', text: '光合作用' }),
+    { kind: 'text', text: '光合作用' },
+  );
+  // ⚠️ 另一半（**不许动**的那一条）：键盘问答 + ink 值 ⇒ 仍然读成 ink
+  //    （教师把题改回键盘之后，学生之前交的那幅画不许从抽屉里消失）。
+  assert.deepEqual(
+    draftFromValue(node('short-answer'), { format: 'ink/v1', canvas: DRAWN_BOX, strokes: [STROKE] }),
+    { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] },
+  );
+});
+
+test('🔴 draftFromValue：画布题上**读不出来的值** ⇒ 空画布（不抛、不回落成别的形状）', () => {
+  // ★ 这一条是撤掉 R2 守卫之后的**新回归网**：上面那条守卫管的是「ink 节点 + 非 ink 值」，
+  //   撤掉之后「ink 节点 + **读不出来的**值」仍然必须回**空 ink 态**。保证**不在**本函数
+  //   的显式分支里，而在**分派链的末尾**：`format` 认不出 ⇒ 落回 `draftKindOf(node)`
+  //   给的那个 `'ink'` ⇒ 下面没有任何分支匹配 `'ink'` ⇒ `return empty`。
+  //   把这条链上任何一环改坏（给 `'ink'` 补一条分支 / 让 `draftKindOf` 对 ink 节点回别的
+  //   kind）都会变红 —— 而那正是「撤掉守卫之后这一档会不会失去覆盖」的答案：不会。
+  //
+  // ⚠️ 回落到别的形状（比如 `text`）会让一道画布题在屏幕上出现一个学生**无法撤销、
+  //    也无法提交**的控件；而空白画布至少是他认识的、能重画的。
   const empty = { kind: 'ink', box: { w: 320, h: 240 }, strokes: [] };
-  assert.deepEqual(draftFromValue(drawingNode(), { format: 'choice/v1', selected: ['A'] }), empty);
   assert.deepEqual(draftFromValue(drawingNode(), { format: '不认识/v9' }), empty);
   // 手改过的行：`format` 是笔迹但 `strokes` 不是数组 ⇒ `readInkValue` 回 `null` ⇒ 空画布。
   assert.deepEqual(
@@ -524,7 +572,7 @@ test('🔴 draftFromValue：画布题上的**非笔迹值** ⇒ 空画布（不�
   assert.deepEqual(draftFromValue(drawingNode(), []), empty);
   // 手写问答同样是画布题，只是框不同（2:1）。
   assert.deepEqual(
-    draftFromValue(handwritingNode('short-answer'), { format: 'choice/v1', selected: ['A'] }),
+    draftFromValue(handwritingNode('short-answer'), { format: '不认识/v9' }),
     { kind: 'ink', box: { w: 320, h: 160 }, strokes: [] },
   );
 });

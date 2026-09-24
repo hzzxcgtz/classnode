@@ -22,35 +22,71 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import {
+  addBlank,
   buildPayload,
+  categorizeAddItem,
+  categorizeAddZone,
+  categorizeRemoveItem,
+  categorizeRemoveZone,
   contentReducer,
   createEmptyContent,
   createHistory,
   DEFAULT_SETTINGS,
   draftKeyFor,
+  ensureOrderDistinct,
+  fillShape,
   findInvalidPoints,
   findPartialPoints,
   findUncommittedPointInput,
   HISTORY_LIMIT,
+  isOrderAmbiguous,
   isPartialPoints,
+  type ItemEntry,
+  matchAddRow,
+  matchRemoveRow,
+  matchSetPair,
   MAX_OPTIONS,
+  moveIdInList,
   newQuestion,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
+  orderAddItem,
+  orderRemoveItem,
+  orderUseCurrentOrder,
   parseDraft,
   parsePointInput,
+  placementSet,
   planPointInputChange,
   POINTS_MAX,
   pointsSignature,
   type QuestionPointsDraft,
-  type RejectedPointInput,
+  readBlankAnswers,
+  readBlankText,
+  readCategorize,
+  readCorrectKeys,
+  readEntries,
+  readEntryIds,
   readFillAnswers,
+  readMatch,
   readOptions,
+  readOrder,
+  readPlacement,
+  type RejectedPointInput,
+  removeBlank,
+  renameEntryAt,
   sanitizeContentForSave,
   shouldWarnZeroHalfCredit,
+  shuffleOrderItems,
+  TRUE_FALSE_OPTIONS,
+  writeBlankText,
+  writeCategorize,
+  writeEntries,
   writeFillAnswers,
+  writeMatch,
+  writeMultipleOptions,
   writeOptions,
+  writeOrder,
 } from './worksheet-editor-core.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
@@ -985,4 +1021,456 @@ test('🔴 串起来（修复轮 1）：非法值在 `buildPayload` 的产物上
   const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 200, half: 1 })));
   assert.deepEqual(findInvalidPoints(payload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
   assert.deepEqual(findPartialPoints(payload.content), []);
+});
+
+// ── 12. 6 个题型的编辑形状（M4a/C2）──────────────────────────────────────
+//
+// 这一节盯的是三类**错了不报错**的东西：
+//   · `newQuestion` 的初始值里有没有**臆造答案键**（有 ⇒ 教师填完题干忘了配答案
+//     ⇒ 一道拿着臆造答案键的题**静默判分**）；
+//   · 条目 id 有没有被下标代替 / 有没有在读的时候被重新生成（它是学生作答值里的键）；
+//   · 排序题的「学生看到的顺序 ≠ 正确顺序」这条不变量有没有在**每一次结构改动**之后
+//     仍然成立（两者相同 ⇒ 学生什么都不做就是满分）。
+//
+// 需求原文（2026-09-24 更正，见计划 §Task C2 Step 1）：初始 `data` **只给非答案内容占位**，
+// 答案键一律留空。
+
+/** 按题型造一道题（上面的 `node()` 恒为 short-answer）。 */
+function typed(type: string, data: Record<string, unknown>): WorksheetQuestionNode {
+  return { id: `q_${type}`, type, prompt: '题干', inputMode: 'keyboard', data, children: [] };
+}
+
+/** 一个条目（id 手写，好断言）。 */
+function entry(id: string, text: string): ItemEntry {
+  return { id, text };
+}
+
+test('🔴 newQuestion：6 个新题型的**答案键一律留空**（臆造答案 ⇒ 一道静默判分的题）', () => {
+  // 反向断言：把任何一条改成 `['A']` / `['T']` / identity 配对 / 全部丢进第一个框，
+  // 这一条必须变红 —— 而它在屏幕上**看不出来**（教师只填了题干，答案那一栏是预先填好的）。
+  assert.deepEqual(newQuestion('true-false').data.correctKeys, []);
+  assert.deepEqual(newQuestion('multi-choice').data.correctKeys, []);
+  assert.deepEqual(newQuestion('fill-blank').data.answers, []);
+  assert.deepEqual(newQuestion('order').data.correctOrder, []);
+  assert.deepEqual(newQuestion('match').data.pairs, []);
+  assert.deepEqual(newQuestion('categorize').data.placement, {});
+  // 与 M3 立的同一条纪律（单选那条注释：「默认选中 A 会安静地把一道没配答案的题变成
+  // 『所有选 A 的学生都对』」）—— 判断题/多选题上的理由逐字相同。
+  assert.deepEqual(newQuestion('single-choice').data.correctKeys, []);
+});
+
+test('newQuestion：**非答案**内容给占位条目（让教师替换，而不是从零填）', () => {
+  assert.deepEqual(readOptions(newQuestion('multi-choice')), [
+    { key: 'A', text: '选项一' },
+    { key: 'B', text: '选项二' },
+  ]);
+  // ⚠️ 占位条目的文字刻意**不是**「一、二」的升序：`items` 是学生看到的顺序，
+  // 而「取当前顺序」会把屏幕上这个顺序变成答案。
+  assert.deepEqual(readEntries(newQuestion('order').data.items).map((item) => item.text), ['条目二', '条目一']);
+  const match = newQuestion('match');
+  assert.deepEqual(readEntries(match.data.left).map((item) => item.text), ['左项一', '左项二']);
+  assert.deepEqual(readEntries(match.data.right).map((item) => item.text), ['右项一', '右项二']);
+  const categorize = newQuestion('categorize');
+  assert.deepEqual(readEntries(categorize.data.items).map((item) => item.text), ['条目一', '条目二']);
+  assert.deepEqual(readEntries(categorize.data.zones, 'label').map((item) => item.text), ['框一', '框二']);
+});
+
+test('🔴 newQuestion 的填空题仍然是**单空形状**（`blanks` 键不出现），多选带上判分口径', () => {
+  const fill = newQuestion('fill-blank');
+  assert.deepEqual(fill.data, { answers: [] });
+  assert.equal(fillShape(fill), 'single');
+  // `correctKeys`/`answers` 那一类**答案键**留空，而 `partialCredit` 不是答案键、是判分口径：
+  // 界面上那两个单选按钮要有一个选中态。只能是那两个字面量之一（服务端只认它们）。
+  assert.equal(newQuestion('multi-choice').data.partialCredit, 'all-or-nothing');
+});
+
+test('🔴 newQuestion 的条目 id：非空、互不相同（重复 = 两个条目在判分里永远只算一个）', () => {
+  readEntryIds(newQuestion('order').data.items).forEach((id) => assert.ok(id, 'id 不能是空串'));
+  const orderIds = readEntryIds(newQuestion('order').data.items);
+  assert.equal(orderIds.length, 2);
+  assert.equal(new Set(orderIds).size, 2);
+
+  const match = newQuestion('match');
+  const matchIds = [...readEntryIds(match.data.left), ...readEntryIds(match.data.right)];
+  assert.equal(matchIds.length, 4);
+  assert.equal(new Set(matchIds).size, 4);
+
+  const zones = readEntryIds(newQuestion('categorize').data.zones);
+  assert.equal(new Set(zones).size, 2);
+});
+
+test('两次 newQuestion 的条目 id 不相同（不重号）', () => {
+  const first = readEntryIds(newQuestion('order').data.items);
+  const second = readEntryIds(newQuestion('order').data.items);
+  assert.equal(first.filter((id) => second.includes(id)).length, 0);
+});
+
+test('TRUE_FALSE_OPTIONS 的 key 是协议里的 T/F（改它 = 库里已有的判断题没人答得对）', () => {
+  assert.deepEqual(TRUE_FALSE_OPTIONS, [{ key: 'T', text: '对' }, { key: 'F', text: '错' }]);
+});
+
+// —— 条目数组的读写容错 ─────────────────────────────────────────────────
+
+test('readEntries 容错：非对象丢掉、text 非字符串当空串、缺 id 读成**空串**', () => {
+  assert.deepEqual(
+    readEntries([{ id: 'i1', text: '甲' }, null, 42, 'x', { text: '乙' }, { id: 'i3' }, { id: 'i4', text: 7 }]),
+    [entry('i1', '甲'), entry('', '乙'), entry('i3', ''), entry('i4', '')],
+  );
+  assert.deepEqual(readEntries('不是数组'), []);
+  assert.deepEqual(readEntries(undefined), []);
+  // `zones` 的文案键名是 `label`（服务端读的就是它）
+  assert.deepEqual(readEntries([{ id: 'z1', label: '框一' }], 'label'), [entry('z1', '框一')]);
+  assert.deepEqual(readEntryIds([{ id: 'i1' }, { text: '没有 id' }, { id: '' }]), ['i1']);
+});
+
+test('🔴 writeEntries 给缺 id 的条目补一个（教师动一下列表就能修好一行坏数据）', () => {
+  // 读的时候**不补**（每渲染一次换一个 id = 另一种「id 会变」）；写的时候补一次。
+  const written = writeEntries([entry('', '甲'), entry('i2', '乙')]);
+  assert.equal(written.length, 2);
+  assert.equal(written[1].id, 'i2', '已经有 id 的一个字都不许变');
+  assert.equal(written[0].text, '甲');
+  assert.ok(typeof written[0].id === 'string' && written[0].id !== '', '缺的那一个被补上了');
+  // 补出来的 id **不会挪动任何已答数据**：一个没有 id 的条目在学生的作答值里根本没有键。
+  assert.deepEqual(writeEntries([entry('z1', '框一')], 'label'), [{ id: 'z1', label: '框一' }]);
+});
+
+test('renameEntryAt / readPlacement 的往返与边界', () => {
+  const entries = [entry('i1', '甲'), entry('i2', '乙')];
+  // 🔴 改文字**不许碰 id**：它是学生作答值里的键（改一次文字就让已答数据全部错位）。
+  assert.deepEqual(renameEntryAt(entries, 0, '甲改'), [entry('i1', '甲改'), entry('i2', '乙')]);
+  assert.deepEqual(entries.map((item) => item.text), ['甲', '乙'], '不改入参');
+  // 缺 id 的条目（id 是空串）按**位置**改，不会一次改掉所有那种行
+  assert.deepEqual(renameEntryAt([entry('', '甲'), entry('', '乙')], 1, '乙改'), [entry('', '甲'), entry('', '乙改')]);
+  assert.deepEqual(readPlacement({ i1: 'z1', i2: '', i3: 42, i4: 'z2' }), { i1: 'z1', i4: 'z2' });
+  assert.deepEqual(readPlacement('不是对象'), {});
+  assert.deepEqual(readPlacement(['z1']), {});
+});
+
+test('moveIdInList：▲▼ 挪一格；越界 / 未知 id ⇒ **原样返回**（不造无谓的改动）', () => {
+  assert.deepEqual(moveIdInList(['a', 'b', 'c'], 'b', -1), ['b', 'a', 'c']);
+  assert.deepEqual(moveIdInList(['a', 'b', 'c'], 'b', 1), ['a', 'c', 'b']);
+  const ids = ['a', 'b', 'c'];
+  assert.equal(moveIdInList(ids, 'a', -1), ids);
+  assert.equal(moveIdInList(ids, 'c', 1), ids);
+  assert.equal(moveIdInList(ids, 'nope', 1), ids);
+});
+
+// —— 多选题：`writeMultipleOptions` 不截断 ───────────────────────────────
+
+test('🔴 writeMultipleOptions：三个正确答案**全部留下**（单选那条路只留一个）', () => {
+  const options = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }];
+  assert.deepEqual(writeMultipleOptions(options, ['A', 'B', 'C']).correctKeys, ['A', 'B', 'C']);
+  // 🔴 这条**对照**是上面那句断言的意义所在：没有它，「三个都留下」也可以是一个
+  // 什么都没做的实现的产物（而多选直接复用单选那一条路正是「静默丢掉第 2 个答案」的形态）。
+  assert.deepEqual(writeOptions(options, ['A', 'B', 'C']).correctKeys, ['A']);
+});
+
+test('🔴 writeMultipleOptions 删掉一个选项之后，正确答案仍然落在**同一段文本**上', () => {
+  const options = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }];
+  const written = writeMultipleOptions(options.slice(1), ['B', 'C']);
+  assert.deepEqual(written.options, [{ key: 'A', text: '乙' }, { key: 'B', text: '丙' }]);
+  assert.deepEqual(written.correctKeys, ['A', 'B']);
+});
+
+test('writeMultipleOptions：重复 key 只算一次；`correctKeys` 不是数组 ⇒ 空（不抛）', () => {
+  const options = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }];
+  assert.deepEqual(writeMultipleOptions(options, ['A', 'A', 'B']).correctKeys, ['A', 'B']);
+  assert.deepEqual(writeMultipleOptions(options, 'A').correctKeys, []);
+  assert.deepEqual(writeMultipleOptions(options, [1, null, 'B']).correctKeys, ['B']);
+});
+
+// —— 填空题：单空 / 多空两种形状 ─────────────────────────────────────────
+
+test('readBlankAnswers：单空 ⇒ **恰好一个**空；多空 ⇒ 每个空一组（坏元素当空答案，不抛）', () => {
+  assert.deepEqual(readBlankAnswers(typed('fill-blank', { answers: ['甲', '乙'] })), [['甲', '乙']]);
+  assert.deepEqual(readBlankAnswers(typed('fill-blank', { answers: [] })), [[]]);
+  assert.deepEqual(readBlankAnswers(typed('fill-blank', { answers: '不是数组' })), [[]]);
+  assert.deepEqual(
+    readBlankAnswers(typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: [] }, { answers: ['丙', '丁'] }] })),
+    [['甲'], [], ['丙', '丁']],
+  );
+  // 零个空（教师把空删光了）⇒ **零行**，不替它造一个教师没建过的空
+  assert.deepEqual(readBlankAnswers(typed('fill-blank', { blanks: [] })), []);
+  assert.deepEqual(readBlankAnswers(typed('fill-blank', { blanks: [null, { answers: '甲' }, { answers: ['乙'] }] })), [[], [], ['乙']]);
+});
+
+test('readBlankText / readFillAnswers：第 N 个空的文本；单空形状逐字不变', () => {
+  const multi = typed('fill-blank', { blanks: [{ answers: ['甲', '甲2'] }, { answers: [] }] });
+  assert.equal(readBlankText(multi, 0), '甲\n甲2');
+  assert.equal(readBlankText(multi, 1), '');
+  // 越界 ⇒ 空串（不抛）—— 界面在「＋／🗑」之间会短暂读到刚被删掉的下标
+  assert.equal(readBlankText(multi, 9), '');
+  assert.equal(readFillAnswers(typed('fill-blank', { answers: ['甲', '乙'] })), '甲\n乙');
+  assert.equal(readFillAnswers(typed('fill-blank', { answers: '不是数组' })), '');
+  // ★ 本函数改成「第 0 个空」之后，多空形状不再返回空串（旧取值没有任何调用方依赖）
+  assert.equal(readFillAnswers(multi), '甲\n甲2');
+});
+
+test('🔴 writeBlankText 保持形状：单空写回 `answers`（**不产生 blanks**）、多空写回 `blanks`', () => {
+  const single = typed('fill-blank', { answers: ['甲'] });
+  const written = writeBlankText(single, 0, '甲\n乙');
+  assert.deepEqual(written, { answers: ['甲', '乙'] });
+  assert.equal('blanks' in written, false, '打字不能让一道单空题悄悄换形状（库里那份数据换了结构，学生那边也跟着变）');
+
+  const multi = typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }] });
+  assert.deepEqual(writeBlankText(multi, 1, '乙\n丙'), { blanks: [{ answers: ['甲'] }, { answers: ['乙', '丙'] }] });
+  // 越界 ⇒ 空补丁
+  assert.deepEqual(writeBlankText(multi, 5, 'x'), {});
+  assert.deepEqual(writeBlankText(single, 1, 'x'), {});
+});
+
+test('🔴 addBlank 把单空**升级**成多空：平面的 answers 成为第一个空，且 `answers` 键被置为 undefined', () => {
+  const patch = addBlank(typed('fill-blank', { answers: ['甲', '乙'] }));
+  assert.deepEqual(patch.blanks, [{ answers: ['甲', '乙'] }, { answers: [] }]);
+  // 🔴 两份答案并存会让「哪一份算数」有两个答案（服务端按 `blanks` 走，前端再读 `answers` 就分岔）。
+  // ⚠️ 必须是**置 undefined** 而不是「不写这个键」：补丁是 merge，不写就删不掉旧的那个键。
+  assert.equal('answers' in patch, true);
+  assert.equal(patch.answers, undefined);
+});
+
+test('addBlank / removeBlank 的边界：多空追加在末尾；单空删不掉（空补丁，不造「零个空的单空题」）', () => {
+  assert.deepEqual(
+    addBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] })).blanks,
+    [{ answers: ['甲'] }, { answers: [] }],
+  );
+  assert.deepEqual(removeBlank(typed('fill-blank', { answers: ['甲'] }), 0), {});
+  assert.deepEqual(removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] }), 0), {
+    blanks: [],
+  });
+  assert.deepEqual(removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] }), 9), {});
+});
+
+test('🔴 删回一个空**不退回**单空形状（形状只升不降：换形状不带来任何好处，却让它随增删来回变）', () => {
+  const removed = removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }] }), 1);
+  assert.deepEqual(removed, { blanks: [{ answers: ['甲'] }] });
+  assert.equal('answers' in removed, false);
+  assert.equal(fillShape(typed('fill-blank', { blanks: [{ answers: ['甲'] }] })), 'multi');
+});
+
+// —— 排序题：两个顺序的不变量 ───────────────────────────────────────────
+
+test('🔴 isOrderAmbiguous：**逐位相同**才算「学生什么都不做就是满分」', () => {
+  const items = [entry('i1', '一'), entry('i2', '二')];
+  assert.equal(isOrderAmbiguous(items, ['i1', 'i2']), true);
+  assert.equal(isOrderAmbiguous(items, ['i2', 'i1']), false);
+  // 长度不同 / 还没配答案 ⇒ false（那两种情形有它们自己的错，不在这里再说一句）
+  assert.equal(isOrderAmbiguous(items, []), false);
+  assert.equal(isOrderAmbiguous(items, ['i1']), false);
+  // 只有一个条目 ⇒ false（服务端另有「至少两个条目」拦着）
+  assert.equal(isOrderAmbiguous([entry('i1', '一')], ['i1']), false);
+});
+
+test('🔴 ensureOrderDistinct：相同 ⇒ 挪开；不同 ⇒ **原样返回同一个引用**（不造无谓的改动）', () => {
+  const moved = ensureOrderDistinct([entry('i1', '一'), entry('i2', '二')], ['i1', 'i2']);
+  assert.deepEqual(moved.map((item) => item.id), ['i2', 'i1']);
+  assert.deepEqual(moved.map((item) => item.text), ['二', '一'], 'id 与文字一起搬（id 是键，不能只搬文字）');
+  const same = [entry('i1', '一'), entry('i2', '二')];
+  assert.equal(ensureOrderDistinct(same, ['i2', 'i1']), same);
+});
+
+test('🔴 shuffleOrderItems **保证**结果不等于正确答案的顺序（纯随机洗牌有 1/2 的概率撞上）', () => {
+  const items = [entry('i1', '一'), entry('i2', '二')];
+  const correctOrder = ['i1', 'i2'];
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const shuffled = shuffleOrderItems(items, correctOrder);
+    assert.equal(
+      isOrderAmbiguous(shuffled, correctOrder),
+      false,
+      `第 ${attempt} 次洗出了与正确答案相同的顺序 —— 那一刻学生什么都不做就是满分`,
+    );
+    assert.deepEqual(shuffled.map((item) => item.id).sort(), ['i1', 'i2'], 'id 集合一个都不能变');
+  }
+});
+
+test('shuffleOrderItems：注入 random 之后可复现（这个保证只能靠用例钉住，组件那层没有回归网）', () => {
+  // 常量 0 ⇒ Fisher–Yates 恰好把两个元素换位 ⇒ 与 correctOrder ['i1','i2'] 不同
+  const shuffled = shuffleOrderItems([entry('i1', '一'), entry('i2', '二')], ['i1', 'i2'], () => 0);
+  assert.deepEqual(shuffled.map((item) => item.id), ['i2', 'i1']);
+  // 正确答案**还没配**（[]）时也要能洗 —— 「打乱顺序」在配答案之前就该可用
+  assert.deepEqual(shuffleOrderItems([entry('i1', '一'), entry('i2', '二')], [], () => 0).map((item) => item.id), ['i2', 'i1']);
+});
+
+test('🔴 orderRemoveItem：删一个条目之后两个顺序**可能碰巧相同** ⇒ 必须挪开（实测的例子）', () => {
+  // items=[b,a,c] / correctOrder=[a,c,b]，删掉 b ⇒ 两边都变成 [a,c] —— 那一刻学生什么都不做
+  // 就是满分。这不是构造出来的：任何一次删除都可能撞上（而这个状态**没有任何报错**）。
+  const removed = orderRemoveItem(
+    { items: [entry('b', '乙'), entry('a', '甲'), entry('c', '丙')], correctOrder: ['a', 'c', 'b'] },
+    0,
+  );
+  assert.deepEqual(removed.correctOrder, ['a', 'c']);
+  assert.deepEqual(removed.items.map((item) => item.id).sort(), ['a', 'c'], 'id 一个都不能少');
+  assert.equal(isOrderAmbiguous(removed.items, removed.correctOrder), false);
+  // 越界 ⇒ 原样返回同一个对象（不占撤销栈）
+  const state = { items: [entry('a', '甲')], correctOrder: [] };
+  assert.equal(orderRemoveItem(state, 9), state);
+});
+
+test('orderAddItem：`correctOrder` 还没配过（[]）时**不往里加**；已配时追加到两个列表末尾', () => {
+  const unset = orderAddItem({ items: [entry('a', '甲'), entry('b', '乙')], correctOrder: [] }, '丙');
+  assert.deepEqual(unset.correctOrder, [], '空数组是「还没配答案」的中间态 —— 塞一个 id 会让那句提示消失，而它其实还是配不全');
+  assert.equal(unset.items.length, 3);
+  const set = orderAddItem({ items: [entry('b', '乙'), entry('a', '甲')], correctOrder: ['a', 'b'] }, '丙');
+  assert.equal(set.correctOrder.length, 3);
+  assert.equal(set.correctOrder[2], set.items[2].id, '两个列表追加的是同一个 id');
+  assert.equal(isOrderAmbiguous(set.items, set.correctOrder), false);
+});
+
+test('🔴 orderUseCurrentOrder：「取当前顺序」不能产出一道**立即无效**的题', () => {
+  const items = [entry('i1', '一'), entry('i2', '二'), entry('i3', '三')];
+  const next = orderUseCurrentOrder({ items, correctOrder: [] }, () => 0.5);
+  assert.deepEqual(next.correctOrder, ['i1', 'i2', 'i3'], '答案就是屏幕上那个顺序');
+  assert.deepEqual(next.items.map((item) => item.id).sort(), ['i1', 'i2', 'i3'], 'id 集合不变');
+
+  // 🔴 答案取自 items ⇒ **不打乱的话两者逐位相同**，服务端会拒绝整道题
+  //（「请先把条目打乱，或点『打乱顺序』」）—— 教师点一下得到的是一个不能保存的状态。
+  //
+  // ⚠️ 这里**必须循环跑真随机**，不能只跑一次注入的常量：3 个条目时有 1/6 的概率
+  // 恰好洗回原顺序，而那一次就是「教师点了一下、得到一道学生什么都不做就满分的题」。
+  // 只跑一次的话，把保证去掉也有一半以上的概率仍然绿 —— 那正是本仓反复出现的**假绿**。
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const each = orderUseCurrentOrder({ items, correctOrder: [] });
+    assert.equal(
+      isOrderAmbiguous(each.items, each.correctOrder),
+      false,
+      `第 ${attempt} 次「取当前顺序」得到的是一道学生什么都不做就满分的题`,
+    );
+  }
+});
+
+test('writeOrder：`items` 与 `correctOrder` **一起**写（分开写会有一个答案指着旧 id 的窗口期）', () => {
+  const items = [entry('i2', '二'), entry('i1', '一')];
+  assert.deepEqual(writeOrder(items, ['i1', 'i2']), {
+    items: [{ id: 'i2', text: '二' }, { id: 'i1', text: '一' }],
+    correctOrder: ['i1', 'i2'],
+  });
+});
+
+// —— 连线题 ────────────────────────────────────────────────────────────
+
+test('🔴 matchSetPair：同一个右项只能被一个左项占用（重复连 ⇒ **旧的被顶掉**，不是并存）', () => {
+  const pairs = matchSetPair([], 'l1', 'r1');
+  assert.deepEqual(pairs, [{ leftId: 'l1', rightId: 'r1' }]);
+  // 并存会让服务端的 `isCompleteMatching` 拒绝**整道题**（一个学生都判不了分），
+  // 而教师看到的只是两个下拉选着同一个值。
+  assert.deepEqual(matchSetPair(pairs, 'l2', 'r1'), [{ leftId: 'l2', rightId: 'r1' }]);
+  // 同一个左项改连另一个右项 ⇒ 旧的也去掉
+  assert.deepEqual(matchSetPair([{ leftId: 'l2', rightId: 'r1' }], 'l2', 'r2'), [{ leftId: 'l2', rightId: 'r2' }]);
+  // 传空串 ⇒ 清掉这一条
+  assert.deepEqual(matchSetPair([{ leftId: 'l1', rightId: 'r1' }], 'l1', ''), []);
+  // 不改入参
+  const source = [{ leftId: 'l1', rightId: 'r1' }];
+  matchSetPair(source, 'l1', '');
+  assert.deepEqual(source, [{ leftId: 'l1', rightId: 'r1' }]);
+});
+
+test('🔴 matchRemoveRow：删一组时，指向这两个 id 的配对**都要清掉**（哪怕它属于别的左项）', () => {
+  // 配对与行位置**无关**：被删掉的右项 r1 正是 l2 的答案。留着它，服务端会以
+  // 「必须把左栏每一项都连到右栏的一个不同项上」拒绝整道题。
+  const odd = {
+    left: [entry('l1', '甲'), entry('l2', '乙')],
+    right: [entry('r1', 'A'), entry('r2', 'B')],
+    pairs: [{ leftId: 'l2', rightId: 'r1' }],
+  };
+  const removed = matchRemoveRow(odd, 0);
+  assert.deepEqual(removed.pairs, []);
+  assert.deepEqual(removed.left.map((item) => item.id), ['l2']);
+  assert.deepEqual(removed.right.map((item) => item.id), ['r2'], '左右两栏条数必须仍然相同');
+  // 越界 ⇒ 原样返回同一个对象
+  assert.equal(matchRemoveRow(odd, 9), odd);
+});
+
+test('matchAddRow：左右**各加一个**（条数恒等 ⇒ 服务端那条校验在界面上够不着）；新的一对没有配对', () => {
+  const added = matchAddRow({
+    left: [entry('l1', '甲'), entry('l2', '乙')],
+    right: [entry('r1', 'A'), entry('r2', 'B')],
+    pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }],
+  });
+  assert.equal(added.left.length, 3);
+  assert.equal(added.right.length, 3);
+  assert.deepEqual(added.pairs, [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }], '不臆造一条连线');
+  assert.deepEqual(readEntryIds(writeMatch(added.left, added.right, added.pairs).left).length, 3);
+});
+
+test('🔴 readMatch / writeMatch：教师侧是 `pairs`、学生侧是 `links`（写反 = 判分永远对不上）', () => {
+  const node = typed('match', {
+    left: [entry('l1', '甲')],
+    right: [entry('r1', 'A')],
+    pairs: [{ leftId: 'l1', rightId: 'r1' }],
+    // 学生那一侧的键名混进教师的数据里也不会被读成配对
+    links: [{ leftId: 'l1', rightId: 'r9' }],
+  });
+  assert.deepEqual(readMatch(node).pairs, [{ leftId: 'l1', rightId: 'r1' }]);
+  assert.deepEqual(writeMatch([entry('l1', '甲')], [entry('r1', 'A')], [{ leftId: 'l1', rightId: 'r1' }]), {
+    left: [{ id: 'l1', text: '甲' }],
+    right: [{ id: 'r1', text: 'A' }],
+    pairs: [{ leftId: 'l1', rightId: 'r1' }],
+  });
+});
+
+// —— 归类题 ────────────────────────────────────────────────────────────
+
+test('🔴 categorizeRemoveZone：指向它的 `placement` 一起清掉（留着 ⇒ 那个条目永远落不到任何框里）', () => {
+  const state = readCategorize(typed('categorize', {
+    items: [entry('i1', '甲'), entry('i2', '乙')],
+    zones: [{ id: 'z1', label: '框一' }, { id: 'z2', label: '框二' }],
+    placement: { i1: 'z2', i2: 'z1' },
+  }));
+  const removed = categorizeRemoveZone(state, 1);
+  assert.deepEqual(removed.zones.map((zone) => zone.id), ['z1']);
+  assert.deepEqual(removed.placement, { i2: 'z1' }, 'i1 原本归在框二 ⇒ 它回到「请选择」');
+  assert.deepEqual(removed.items.map((item) => item.id), ['i1', 'i2'], '条目一个都不能少');
+  assert.equal(categorizeRemoveZone(state, 9), state);
+});
+
+test('categorize 的增删与归放：新增的条目**没有**归属；删条目时 `placement` 里那条一起删', () => {
+  const state = readCategorize(typed('categorize', {
+    items: [entry('i1', '甲')],
+    zones: [{ id: 'z1', label: '框一' }, { id: 'z2', label: '框二' }],
+    placement: { i1: 'z1' },
+  }));
+  const added = categorizeAddItem(state, '乙');
+  assert.equal(added.items.length, 2);
+  assert.deepEqual(added.placement, { i1: 'z1' }, '不替教师臆造一个框');
+  assert.equal(Object.keys(added.placement).length, 2 - 1, '新条目没有归属');
+
+  assert.deepEqual(categorizeRemoveItem(state, 0).placement, {}, '删掉的条目在 placement 里那条也要删');
+  assert.deepEqual(categorizeRemoveItem(state, 9), state);
+
+  const withZone = categorizeAddZone(state, '框三');
+  assert.equal(withZone.zones.length, 3);
+  assert.deepEqual(withZone.placement, { i1: 'z1' });
+
+  // 🔴 写回的键名必须与服务端读的一致：条目是 `text`、**框是 `label`**。
+  // 把框也写成 `text` 的话校验仍然会过（服务端读 id 与 `label` 两处，`text` 那个键它根本不看），
+  // 学生端与预览里**框的名字会全是空的** —— 而没有一处会报错。
+  assert.deepEqual(
+    writeCategorize([entry('i1', '甲')], [entry('z1', '框一')], { i1: 'z1' }),
+    { items: [{ id: 'i1', text: '甲' }], zones: [{ id: 'z1', label: '框一' }], placement: { i1: 'z1' } },
+  );
+
+  assert.deepEqual(placementSet({ i1: 'z1' }, 'i1', ''), {});
+  assert.deepEqual(placementSet({}, 'i1', 'z2'), { i1: 'z2' });
+  assert.deepEqual(placementSet({ i1: 'z1' }, 'i2', 'z1'), { i1: 'z1', i2: 'z1' });
+  const source = { i1: 'z1' };
+  placementSet(source, 'i1', '');
+  assert.deepEqual(source, { i1: 'z1' }, '不改入参');
+});
+
+test('🔴 readCategorize / readOrder / readMatch 的容错：形状不对给空值，**不抛**（渲染路径）', () => {
+  const weird = typed('categorize', { items: 'x', zones: 42, placement: 'y' });
+  assert.deepEqual(readCategorize(weird), { items: [], zones: [], placement: {} });
+  assert.deepEqual(readOrder(typed('order', { items: null, correctOrder: 'x' })), { items: [], correctOrder: [] });
+  assert.deepEqual(readMatch(typed('match', { left: {}, right: 7, pairs: 'x' })), { left: [], right: [], pairs: [] });
+  // `correctOrder` 里的空串/非字符串元素被丢掉（服务端 `readStrings` 同形）
+  assert.deepEqual(readOrder(typed('order', { items: [], correctOrder: ['', 42, 'i1'] })).correctOrder, ['i1']);
+  // 连线题的坏配对（缺一端）丢掉，而不是留下一个 `rightId: undefined`
+  assert.deepEqual(readMatch(typed('match', { pairs: [{ leftId: 'l1' }, { rightId: 'r1' }, { leftId: 'l1', rightId: 'r1' }] })).pairs, [
+    { leftId: 'l1', rightId: 'r1' },
+  ]);
+});
+
+test('🔴 readCorrectKeys：空串与坏元素丢掉（服务端 `readStrings` 同一条口径）', () => {
+  assert.deepEqual(readCorrectKeys(typed('multi-choice', { correctKeys: ['A', '', 42, 'B'] })), ['A', 'B']);
+  assert.deepEqual(readCorrectKeys(typed('multi-choice', { correctKeys: 'A' })), []);
+  assert.deepEqual(readCorrectKeys(typed('multi-choice', {})), []);
 });

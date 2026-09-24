@@ -99,6 +99,24 @@ export interface ChoiceOption {
 }
 
 /**
+ * 判断题的**固定选项**。★ M4a：它是唯一一份 —— 教师端的判断题编辑体（`true-false-body.tsx`）
+ * 与学生端的作答体（D2 的 `choice-body.tsx`）都从这里取，两处各写一份就会漂移
+ *（教师看到「对 / 错」，学生那边不一样，**没有任何报错**）。
+ *
+ * 🔴 **判断题不存 `options`**（规格 §12）：题面只有题干 + 对/错两个按钮，
+ * `data` 里只有 `correctKeys`。所以这份常量是「学生看到哪两个选项」的唯一答案，
+ * 而它**不是** `data` 的一部分 —— 服务端判分（`judgeSingleChoice`）只读 `correctKeys`，
+ * 学生的作答值是 `{ format: 'choice/v1', selected: ['T'] }`。
+ *
+ * ⚠️ `key` 用 `'T'` / `'F'` 是**协议**（A2 的判分用例逐字钉着 `correctKeys: ['T']`），
+ * 改它等于改协议：库里已经落下的判断题会变成「没有任何学生能答对」。
+ */
+export const TRUE_FALSE_OPTIONS: ChoiceOption[] = [
+  { key: 'T', text: '对' },
+  { key: 'F', text: '错' },
+];
+
+/**
  * 拍平题目树（含嵌套）。
  *
  * 规格 §4.3 的 `content` 是**嵌套树**（`children` 为将来的材料题组预留），第一批虽然

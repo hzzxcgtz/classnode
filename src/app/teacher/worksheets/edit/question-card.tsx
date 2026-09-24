@@ -3,23 +3,27 @@
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
   isPartialPoints,
-  MAX_OPTIONS,
-  optionKey,
   parsePointInput,
   planPointInputChange,
   pointText,
   POINTS_MAX,
   pointsSignature,
   QUESTION_TYPE_OPTIONS,
-  readFillAnswers,
-  readOptions,
   type RejectedPointInput,
   shouldWarnZeroHalfCredit,
-  writeFillAnswers,
-  writeOptions,
   // 从**纯函数内核**直接取：这张卡片只用纯逻辑，不碰 hook（React 状态 / 路由 / 网络）。
   // 内核就是 `node --test` 直接跑的那一份，回归网在 `worksheet-editor-core.test.ts`。
 } from './worksheet-editor-core';
+// ★ M4a：6 个题型的编辑体（单选复用 `choice-options` 那一个受控组件）。
+// 组件与内核分家的理由见各文件头：内核里全是可以 `node --test` 的纯函数，
+// 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
+import { ChoiceOptionsEditor } from './bodies/choice-options';
+import { TrueFalseBody } from './bodies/true-false-body';
+import { MultiChoiceBody } from './bodies/multi-choice-body';
+import { FillBlanksBody } from './bodies/fill-blanks-body';
+import { OrderBody } from './bodies/order-body';
+import { MatchBody } from './bodies/match-body';
+import { CategorizeBody } from './bodies/categorize-body';
 
 /**
  * 一道题的编辑卡片（规格 §6.2 的题流）。
@@ -120,8 +124,18 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
         onPointsChange={onPointsChange}
       />
 
+      {/* 题型 → 编辑体。⚠️ 这里是一条**平铺的 && 链**，不是按 `QUESTION_TYPE_OPTIONS` 驱动的
+          分派：那个数组在 `src/lib/worksheet-questions.ts` 里，而它必须能被 `node --test`
+          直接执行（无 React）—— 往它里面塞组件就是两份真源。代价是**加题型要记得在这里加一支**，
+          而漏加的后果是「那道题在新题型上只有题干、没有任何输入控件」，教师看得出不对
+          （卡片上什么都没有），不像题目注册表那条漏改是静默的。 */}
       {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'fill-blank' && <FillBlankBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} />}
       {node.type === 'short-answer' && (
         <p className="worksheet-editor-hint">问答题是主观题，不自动判分 —— 看板上只统计作答进度。</p>
       )}
@@ -243,107 +257,15 @@ function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputC
 /**
  * 单选题：选项列表（增删改）+ 正确答案单选。
  *
- * 🔴 每次改动都把 `options` 与 `correctKeys` **一起**交给 `writeOptions`。
- * 分开写会有一个窗口期：选项已经重编号、正确答案还指着旧字母 —— 而那个窗口期
- * 一旦被保存或撤销命中，落库的就是一张判分全错的题（没有任何报错）。
+ * ★ M4a：选项编辑的**逻辑与实现**搬进了 `bodies/choice-options.tsx`（单选/多选共用一份，
+ * 用 `multiple` 开关区分），这里只剩「按单选口径调它」这一层。
+ * 那条「`options` 与 `correctKeys` 必须**一起**提交」的纪律也跟着搬了过去 —— 它现在只有
+ * 一处需要遵守（那正是拆出这个组件的目的：多选直接用 `SingleChoiceBody` 的话，
+ * `writeOptions` 结尾的 `slice(0, 1)` 会把第 2 个正确答案静默丢掉）。
  */
 function SingleChoiceBody({ node, onDataChange }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
 }) {
-  const options = readOptions(node);
-  const correctKeys = Array.isArray(node.data.correctKeys)
-    ? (node.data.correctKeys as unknown[]).filter((key): key is string => typeof key === 'string')
-    : [];
-
-  const commit = (nextOptions: typeof options, nextCorrect: unknown) => {
-    const written = writeOptions(nextOptions, nextCorrect);
-    onDataChange({ options: written.options, correctKeys: written.correctKeys });
-  };
-
-  return (
-    <>
-      <div className="worksheet-editor-options">
-        {options.map((option, optionIndex) => (
-          <div className="worksheet-editor-option" key={option.key}>
-            <label className="worksheet-editor-option-correct" title="选为正确答案">
-              <input
-                type="radio"
-                name={`correct-${node.id}`}
-                checked={correctKeys.includes(option.key)}
-                onChange={() => commit(options, [option.key])}
-              />
-              <span>{option.key}</span>
-            </label>
-            <input
-              className="input"
-              value={option.text}
-              placeholder={`选项 ${option.key}`}
-              onChange={event => {
-                const nextOptions = options.map((item, itemIndex) => (
-                  itemIndex === optionIndex ? { key: item.key, text: event.target.value } : item
-                ));
-                commit(nextOptions, correctKeys);
-              }}
-            />
-            <button
-              type="button"
-              className="worksheet-editor-icon-button is-danger"
-              disabled={options.length <= 2}
-              title={options.length <= 2 ? '单选题至少要有两个选项' : '删除这个选项'}
-              aria-label={`删除选项 ${option.key}`}
-              onClick={() => commit(options.filter((_, itemIndex) => itemIndex !== optionIndex), correctKeys)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="worksheet-editor-inline-actions">
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={options.length >= MAX_OPTIONS}
-          title={options.length >= MAX_OPTIONS ? `选项最多 ${MAX_OPTIONS} 个（A–Z）` : '再加一个选项'}
-          onClick={() => commit([...options, { key: optionKey(options.length), text: '' }], correctKeys)}
-        >
-          ＋ 添加选项
-        </button>
-        {correctKeys.length !== 1 && (
-          <span className="worksheet-editor-warn-hint">还没有指定正确答案 —— 点选项左边的圆点选一个</span>
-        )}
-      </div>
-    </>
-  );
-}
-
-/**
- * 填空题：题干 + 「答案」textarea，**一行一个可接受答案**（规格 §3-R）。
- *
- * textarea 的文本与 `data.answers` 之间是**无损**往返（`writeFillAnswers` 只按 `\n` 切分、
- * 不丢空行），所以这里不需要额外的本地缓冲：`value` 直接由节点算出来即可，
- * 撤销 / 恢复草稿 / 换题都能立刻反映到光标那一行上。
- */
-function FillBlankBody({ node, onDataChange }: {
-  node: WorksheetQuestionNode;
-  onDataChange: (patch: Record<string, unknown>) => void;
-}) {
-  return (
-    <>
-      <label className="worksheet-editor-field">
-        <span>答案</span>
-        <textarea
-          className="input"
-          rows={3}
-          value={readFillAnswers(node)}
-          onChange={event => onDataChange({ answers: writeFillAnswers(event.target.value) })}
-          placeholder={'一行一个可接受答案，例如：\n光合作用\n碳氧平衡'}
-        />
-      </label>
-      <p className="worksheet-editor-hint">
-        学生的答案与其中任意一行一致即算正确（忽略多余空格与全角/半角差异，<strong>区分大小写</strong> —— 英文题请把大小写不同的写法各写一行）。
-      </p>
-    </>
-  );
+  return <ChoiceOptionsEditor node={node} multiple={false} onDataChange={onDataChange} />;
 }

@@ -32,6 +32,7 @@ import {
   POINTS_MAX,
   QUESTION_TYPE_OPTIONS,
   readOptions,
+  TRUE_FALSE_OPTIONS,
 } from '../../../../lib/worksheet-questions.ts';
 // 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
 // （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
@@ -45,7 +46,7 @@ import {
 } from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 
-export { optionKey, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions };
+export { optionKey, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
 export type { ChoiceOption, QuestionPointsDraft, QuestionType };
 
 
@@ -131,6 +132,140 @@ function randomIdSuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// ── 条目数组（M4a/C2）：order 的 `items` · match 的 `left`/`right` · categorize 的 `items`/`zones`
+//
+// 🔴 **条目 id 生成一次就不能再变** —— 与题目 id（规格 §3-P）**逐字同一条纪律**，
+// 理由也逐字相同：它是**学生作答值里的键**（`order: string[]`、`links[].leftId/rightId`、
+// `assignment` 的键），**绝不能用下标代替**。改一次条目的先后顺序就会让已经收上来的
+// 作答全部错位，而且**没有任何报错**（判分只是把每一条都判错）。
+//
+// ⚠️ 唯一不用 id 的是填空题的「空」：服务端读的是 `texts: string[]`，**按位置对应**。
+// 那是 D1/D2 的协议（`fill-multi/v1`），不是这里的取舍 —— 代价是改空的个数会让已收上来的
+// 作答与空错位，见 `fill-blanks-body.tsx` 上那句注释。
+
+/** 一个带 id 的条目。`text` / `label` 由 `EntryTextField` 决定（服务端读的就是这两个键名）。 */
+export interface ItemEntry {
+  id: string;
+  text: string;
+}
+
+/** 条目文本的键名：`items` / `left` / `right` 用 `text`，`zones` 用 `label`。 */
+export type EntryTextField = 'text' | 'label';
+
+/** 条目 id。前缀只是让人在日志/库里认得出这是哪一类 id，**不参与任何判据**。 */
+export function newItemId(): string {
+  return `i_${randomIdSuffix()}`;
+}
+
+/** 归类题「框」的 id（与条目同一条纪律）。 */
+export function newZoneId(): string {
+  return `z_${randomIdSuffix()}`;
+}
+
+/**
+ * 读一组条目。**容错**（`data` 是库里的 JSON，手改过的行可能有别的形状）：
+ * 非对象元素丢掉、`text` 不是字符串当空串、**缺 id 读成空串**。
+ *
+ * 🔴 「缺 id 读成空串」而**不是**在这里补一个：补 id 必须**恰好补一次**，而在读的时候补
+ * 等于每渲染一次就换一个 id（组件一秒钟能重渲染很多次）—— 那正是「id 会变」这个毛病的形态，
+ * 只是从「错位」变成了「每次刷新都不一样」。补的动作放在**写**那一侧（`writeEntries`），
+ * 因为写是教师的动作触发的，一次就是一次。
+ */
+export function readEntries(raw: unknown, field: EntryTextField = 'text'): ItemEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const entries: ItemEntry[] = [];
+  raw.forEach((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+    const row = item as Record<string, unknown>;
+    const text = row[field];
+    entries.push({
+      id: typeof row.id === 'string' ? row.id : '',
+      text: typeof text === 'string' ? text : '',
+    });
+  });
+  return entries;
+}
+
+/**
+ * 写回条目（`{ id, text }` / `{ id, label }`，**只带这两个键**）。
+ *
+ * 🔴 缺 id 的条目在这里**补一个** —— 见 `readEntries` 的说明。补出来的 id 与原来的条目
+ * 没有血缘关系，但它**不可能错位任何已答数据**：一个没有 id 的条目在学生的作答值里
+ * 根本不存在键（学生端按 id 索引），所以补一个只是让这道题变得可保存。
+ * 触发补 id 的是教师**动一下这个列表**（改文字 / 增删），不是「打开页面」。
+ */
+export function writeEntries(entries: ItemEntry[], field: EntryTextField = 'text'): Array<Record<string, unknown>> {
+  return entries.map((entry) => ({ id: entry.id || newItemId(), [field]: entry.text }));
+}
+
+/** 一组条目里**能当答案键用**的 id（非空者，按出现顺序）。 */
+export function readEntryIds(raw: unknown): string[] {
+  return readEntries(raw)
+    .map((entry) => entry.id)
+    .filter((id) => id !== '');
+}
+
+/** 读一串非空字符串（`correctOrder` / `correctKeys`），别的元素丢掉。 */
+function readStringList(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string' && !!item) : [];
+}
+
+/**
+ * 读正确答案的选项 key（单选 / 判断 / 多选共用）。
+ *
+ * ⚠️ 与**服务端** `readStrings` 同一条口径（丢掉空串）：`correctKeys: ['']` 在服务端
+ * 等于「没有正确答案」，前端若把它读成一个有效的 key，界面就会显示「已选」而保存被拒。
+ */
+export function readCorrectKeys(node: WorksheetQuestionNode): string[] {
+  return readStringList(node.data.correctKeys);
+}
+
+/** 读一个 `id → id` 的映射（归类题的 `placement`），只收非空字符串值。 */
+export function readPlacement(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    if (typeof value === 'string' && value) out[key] = value;
+  });
+  return out;
+}
+
+/** 一条连线（教师侧的 `data.pairs`；学生那一侧叫 `links`，见 §12 的裁定）。 */
+export interface PairEntry {
+  leftId: string;
+  rightId: string;
+}
+
+/** 读连线题的配对，形状不全的条目直接丢掉（与服务端 `readPairs` 同形）。 */
+export function readPairs(raw: unknown): PairEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const pairs: PairEntry[] = [];
+  raw.forEach((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+    const row = item as Record<string, unknown>;
+    if (typeof row.leftId === 'string' && row.leftId && typeof row.rightId === 'string' && row.rightId) {
+      pairs.push({ leftId: row.leftId, rightId: row.rightId });
+    }
+  });
+  return pairs;
+}
+
+/** 改一个条目的文字（按**位置**，id 原样留着 —— 它是学生作答值里的键，改文字不能碰它）。 */
+export function renameEntryAt(entries: ItemEntry[], index: number, text: string): ItemEntry[] {
+  return entries.map((entry, itemIndex) => (itemIndex === index ? { ...entry, text } : entry));
+}
+
+/** 把一个 id 在列表里挪一格（▲▼）。越界 / 未知 id ⇒ **原样返回**（不造无谓的改动）。 */
+export function moveIdInList(ids: string[], id: string, delta: -1 | 1): string[] {
+  const index = ids.indexOf(id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= ids.length) return ids;
+  const next = ids.slice();
+  next[index] = next[target];
+  next[target] = id;
+  return next;
+}
+
 /**
  * 一道新题。
  *
@@ -139,8 +274,23 @@ function randomIdSuffix(): string {
  * 前缀 `q_` 与服务端补 id 时的形状（`routes/worksheets.ts` 的 `` `q_${crypto.randomUUID()}` ``）
  * 一致，所以「前端漏给 id、服务端补一个」这条支路产出的行与这里长得一样。
  *
- * ⚠️ 单选题的 `correctKeys` 默认是**空的**，不是 `['A']`：默认选中 A 会安静地把
- * 一道没配答案的题变成「所有选 A 的学生都对」。空数组会让保存时被服务端拦下并说清原因。
+ * ⚠️ **答案键一律留空**（`correctKeys: []` / `answers: []` / `correctOrder: []` /
+ * `pairs: []` / `placement: {}`），单选题那条注释里的理由对**每一个**题型都成立：
+ * 默认选中 A 会安静地把一道没配答案的题变成「所有选 A 的学生都对」。
+ *
+ * 🔴 **2026-09-24 更正**：本函数的前一版需求写着「产出的题必须立刻能通过
+ * `validateQuestion`」，那句话既做不到、也不该做 ——
+ *   · **做不到**：`validateQuestion` 的第一句是「题干不能为空」，而这里的 `prompt` 恒为 `''`
+ *     ⇒ 任何题型的初始值都过不了；教师「什么都不改就保存」的失败原因永远是题干，他看得懂。
+ *   · **不该做**：满足它的唯一办法是给每个题型**臆造一份完整答案**（多选 `['A']`、
+ *     判断 `['T']`、填空 `['答案一']`、连线 identity 配对…）⇒ 教师填完题干忘了配答案
+ *     ⇒ **一道拿着臆造答案键的题静默判分**。
+ * ⇒ 代价如实记：教师要**多按一次保存**（服务端 400 的文案指名道姓，如「多选题至少要指定一个正确答案」），
+ * 换来的是一道不会静默判分的题。
+ *
+ * ⚠️ 各题型的**非答案**内容给两三个已填好文案的占位条目（`选项一` / `条目一` / `框一`…），
+ * 让教师**替换**而不是从零填。占位文案会被原样保存（教师只填题干时会留下它们），
+ * 但那时答案键是空的 ⇒ 保存被拦下，不会有任何静默判分。
  */
 export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   const question: WorksheetQuestionNode = {
@@ -153,12 +303,72 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     children: [],
   };
   if (type === 'single-choice') {
+    // ⚠️ 单选的选项文案**保持空串**（不是这次的「占位文案」那一条）：它的初始形状有既有用例
+    // 逐字钉着（`worksheet-editor-core.test.ts` 的「newQuestion 的单选题 correctKeys 默认是空的」），
+    // 而 Step 1 要改的是**新增的 6 个题型**。改它没有需求、却要动一条既有断言。
     question.data = {
       options: [{ key: optionKey(0), text: '' }, { key: optionKey(1), text: '' }],
       correctKeys: [],
     };
+  } else if (type === 'true-false') {
+    // 选项**固定为对/错**（不存 `options`，规格 §12），所以这里只有答案键，且它是空的。
+    question.data = { correctKeys: [] };
+  } else if (type === 'multi-choice') {
+    question.data = {
+      options: [{ key: optionKey(0), text: '选项一' }, { key: optionKey(1), text: '选项二' }],
+      correctKeys: [],
+      // ⚠️ `partialCredit` **不是**答案键，是判分口径，所以它有默认值：
+      // 界面上那两个单选按钮需要有一个选中态，而服务端只认这两个字面量
+      //（认不出的值一律按「全对才算」走，见 `allowsMissing`）——
+      // 显式写 `'all-or-nothing'` 与「不写这个键」在判分上是同一件事，
+      // 区别只是教师能在屏幕上看见自己选的是哪一个。
+      partialCredit: 'all-or-nothing',
+    };
   } else if (type === 'fill-blank') {
+    // ⚠️ **单空形状，不是 `blanks`**（规格 §12：单空仍是 `{ answers }`，不动）。
+    // 编辑体把它画成**一个空**，教师点「＋ 增加一个空」时才升级成多空。
     question.data = { answers: [] };
+  } else if (type === 'order') {
+    question.data = {
+      // ⚠️ 占位条目的**文字刻意不是「一、二」的升序**：`items` 是**学生看到的顺序**，
+      // 而「取当前顺序」会把屏幕上这个顺序变成答案 —— 先给它一个看着就是打乱的形状，
+      // 教师替换文字时便不会以为这个顺序本身有任何含义。
+      items: [
+        { id: newItemId(), text: '条目二' },
+        { id: newItemId(), text: '条目一' },
+      ],
+      // 空数组 = **还没配过答案**（教师用「取当前顺序」或 ▲▼ 配上）。
+      // ⚠️ 它同时让 A1 Step 5 那条「显示顺序必须与正确顺序不同」暂时无从谈起
+      //（长度都不同，谈不上相同）—— 那条校验要等答案配好之后才有内容，
+      // 而配好之后维持它的是 `ensureOrderDistinct`（见那里）。
+      correctOrder: [],
+    };
+  } else if (type === 'match') {
+    question.data = {
+      left: [
+        { id: newItemId(), text: '左项一' },
+        { id: newItemId(), text: '左项二' },
+      ],
+      right: [
+        { id: newItemId(), text: '右项一' },
+        { id: newItemId(), text: '右项二' },
+      ],
+      // 一条配对都没有 = 还没配答案。教师用每行的下拉一条一条配。
+      pairs: [],
+    };
+  } else if (type === 'categorize') {
+    question.data = {
+      items: [
+        { id: newItemId(), text: '条目一' },
+        { id: newItemId(), text: '条目二' },
+      ],
+      zones: [
+        { id: newZoneId(), label: '框一' },
+        { id: newZoneId(), label: '框二' },
+      ],
+      // 每个条目都还没归到框里（下拉显示「请选择」）。
+      placement: {},
+    };
   }
   return question;
 }
@@ -183,6 +393,22 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
  * 重新编号回 A–Z。
  */
 export function writeOptions(rawOptions: ChoiceOption[], correctKeys: unknown): { options: ChoiceOption[]; correctKeys: string[] } {
+  return writeChoiceOptions(rawOptions, correctKeys, false);
+}
+
+/**
+ * 写回选项的**唯一实现**（单选与多选共用）；`multiple` 只决定**正确答案留几个**。
+ *
+ * 🔴 `multiple` 这个开关**不是**可选的装饰：`writeOptions` 结尾的 `slice(0, 1)` 是单选的
+ * 口径（只有一个正确答案），多选题直接走它会把**第 2 个正确答案静默丢掉** ——
+ * 教师勾了三个正确答案，保存下来只剩一个，而屏幕上一直显示着三个勾。
+ * ⇒ 重编号 + 翻译 `correctKeys` 的逻辑只能有这一份，两个导出各自调它。
+ */
+function writeChoiceOptions(
+  rawOptions: ChoiceOption[],
+  correctKeys: unknown,
+  multiple: boolean,
+): { options: ChoiceOption[]; correctKeys: string[] } {
   const remap = new Map<string, string>();
   const options = rawOptions.map((option, index) => {
     // A–Z 之内按位置重编号；之外原样保留（不重编号、也不丢弃）。
@@ -203,14 +429,28 @@ export function writeOptions(rawOptions: ChoiceOption[], correctKeys: unknown): 
     if (next && !translated.includes(next)) translated.push(next);
   }
   // 单选：最多一个正确答案。多出来的（例如两道选项被手工合并到同一位置）截掉。
-  return { options, correctKeys: translated.slice(0, 1) };
+  // 多选：全留下 —— 一个都不许丢（见 `writeChoiceOptions` 的说明）。
+  return { options, correctKeys: multiple ? translated : translated.slice(0, 1) };
 }
 
-/** 填空题的「答案」textarea 值 ⇄ `data.answers`（规格 §3-R：一行一个可接受答案）。 */
+/** `writeOptions` 的多选变体。见 `writeChoiceOptions`。 */
+export function writeMultipleOptions(
+  rawOptions: ChoiceOption[],
+  correctKeys: unknown,
+): { options: ChoiceOption[]; correctKeys: string[] } {
+  return writeChoiceOptions(rawOptions, correctKeys, true);
+}
+
+/**
+ * 填空题**单空形状**的「答案」textarea 值（规格 §3-R：一行一个可接受答案）。
+ *
+ * ★ M4a/C2：本函数改成「**第 0 个空**的文本」（`readBlankText` 的同一份实现）。
+ * 单空形状下它与原实现逐字相同（`data.answers` 就是第 0 个空）；
+ * 多空形状下它原来返回空串 —— 那个取值没有任何调用方依赖，而「第 0 个空」更符合它的名字。
+ * 多空的每一个空请用 `readBlankText(node, index)`。
+ */
 export function readFillAnswers(node: WorksheetQuestionNode): string {
-  const raw = node.data.answers;
-  if (!Array.isArray(raw)) return '';
-  return raw.filter((answer): answer is string => typeof answer === 'string').join('\n');
+  return readBlankText(node, 0);
 }
 
 /** 反向的 `readFillAnswers`。**刻意保留空行**：textarea 的换行要靠它，往返才是无损的。 */
@@ -285,6 +525,377 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
     return { ...current, data: next };
   });
   return touched ? { ...content, nodes } : content;
+}
+
+// ── 6 个题型的编辑形状（M4a / C2）──────────────────────────────────────
+//
+// 这一节是**编辑器这一侧**的形状读写；权威是服务端 `worksheet-questions.ts` 的
+// `VALIDATORS` / `JUDGES`（同一份协议的另外两侧）。每个写函数都遵守两条纪律：
+//
+//   1. **每次改动把题面与答案一起提交**（`items` 陪着 `correctOrder`、`left`/`right` 陪着
+//      `pairs`…）。分开写会有一个「题面已经变了、答案还指着旧 id」的窗口期，
+//      而那个窗口期一旦被保存或撤销命中，落库的就是一张判分全错的题（**没有任何报错**）。
+//   2. **维持题型的结构不变量**（如「学生看到的顺序 ≠ 正确顺序」）。这与 `writeOptions`
+//      的重编号是同一条纪律：每一次结构改动都要维持它，而不是把教师留在一个
+//      「自己能看出问题在哪」其实并不成立的状态里。
+
+// —— 填空（多空）──────────────────────────────────────────────────────
+
+/**
+ * 这道填空题现在是哪一种形状。判据与服务端**逐字一致**：`Array.isArray(data.blanks)` 在不在
+ * （`VALIDATORS` 的 `fill-blank` 支与 `judgeFillBlank` 用的都是它）——
+ * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
+ */
+export function fillShape(node: WorksheetQuestionNode): 'single' | 'multi' {
+  return Array.isArray(node.data.blanks) ? 'multi' : 'single';
+}
+
+/**
+ * 每个空的可接受答案，**编辑期原样**（含空行 —— textarea 的换行要靠它，见 `writeFillAnswers`）。
+ *
+ * ⚠️ 单空形状返回**恰好一个**空（`[answers]`），哪怕 `answers` 是空的：教师看到的是一个
+ * 可以往里填的框，「＋ 增加一个空」才有一个升级的起点。
+ * ⚠️ 多空形状的 `blanks: []`（教师把空删光了）返回**零个**空 —— 界面上一行都没有，
+ * 只有「＋ 增加一个空」。不替它造一个空：那样屏幕上就有一行教师没建过的框。
+ */
+export function readBlankAnswers(node: WorksheetQuestionNode): string[][] {
+  if (fillShape(node) === 'multi') {
+    const blanks = node.data.blanks as unknown[];
+    return blanks.map((blank) => {
+      if (!blank || typeof blank !== 'object' || Array.isArray(blank)) return [];
+      const answers = (blank as Record<string, unknown>).answers;
+      return Array.isArray(answers) ? answers.filter((answer): answer is string => typeof answer === 'string') : [];
+    });
+  }
+  const raw = node.data.answers;
+  return [Array.isArray(raw) ? raw.filter((answer): answer is string => typeof answer === 'string') : []];
+}
+
+/** 第 `index` 个空的 textarea 值（一行一个可接受答案）。往返无损。 */
+export function readBlankText(node: WorksheetQuestionNode, index: number): string {
+  const answers = readBlankAnswers(node)[index];
+  return answers ? answers.join('\n') : '';
+}
+
+/**
+ * 写第 `index` 个空的答案。**形状保持不变** —— 单空写回 `answers`、多空写回 `blanks`。
+ *
+ * 单空题不会因为打字而悄悄换形状：一道在用中的题换形状 = 库里那份数据换了结构，
+ * 而学生那边的作答形状（`text` → `texts`）也跟着变。
+ */
+export function writeBlankText(node: WorksheetQuestionNode, index: number, text: string): Record<string, unknown> {
+  const answers = writeFillAnswers(text);
+  if (fillShape(node) === 'multi') {
+    const blanks = readBlankAnswers(node);
+    if (index < 0 || index >= blanks.length) return {};
+    return { blanks: blanks.map((current, blankIndex) => ({ answers: blankIndex === index ? answers : current })) };
+  }
+  // 单空只有一个空，下标越界 = 调用方算错了（界面上没有第二条路），返回空补丁而不是写进一个空。
+  return index === 0 ? { answers } : {};
+}
+
+/**
+ * 「＋ 增加一个空」。
+ *
+ * 🔴 单空形状在这一步**升级成多空**：平面的 `answers` 成为第一个空，并且把 `answers` 键
+ * 置成 `undefined`（`JSON.stringify` 会丢掉值为 `undefined` 的键 ⇒ 落库的形状只有 `blanks` 一份）。
+ * 两份答案并存会让「哪一份算数」有两个答案 —— 服务端按 `blanks` 走，前端若再读 `answers`
+ * 就与服务端分岔了。
+ *
+ * 🔴 **升级之后不再退回。** 把空删回一个时仍然是 `blanks` 形状。理由：退回是一条
+ * **会静默改形状的路径**，而它换不来任何好处 —— 服务端两种都收，一个空时判分也逐字相同
+ *（`hit === blanks.length` ⇒ 全对，否则全错，`partial` 不可能出现）。
+ * 代价是「这道题在库里是什么形状」不再随教师的增删来回变。
+ */
+export function addBlank(node: WorksheetQuestionNode): Record<string, unknown> {
+  if (fillShape(node) === 'multi') {
+    return { blanks: [...readBlankAnswers(node).map((answers) => ({ answers })), { answers: [] }] };
+  }
+  return {
+    answers: undefined,
+    blanks: [{ answers: writeFillAnswers(readFillAnswers(node)) }, { answers: [] }],
+  };
+}
+
+/**
+ * 「🗑 删掉这个空」。
+ *
+ * ⚠️ 界面在**只剩一个空**时把按钮禁掉（服务端要求「至少要有一个空」），所以这里够不到
+ * 「零个空」。够得到的话，单空形状返回**空补丁**而不是 `{ answers: [] }` ——
+ * 后者会把一道「还没填答案」的题变成「填了空答案」的题，而教师只是按了一个禁用的按钮。
+ */
+export function removeBlank(node: WorksheetQuestionNode, index: number): Record<string, unknown> {
+  const blanks = readBlankAnswers(node);
+  if (index < 0 || index >= blanks.length) return {};
+  if (fillShape(node) === 'multi') {
+    return { blanks: blanks.filter((_, blankIndex) => blankIndex !== index).map((answers) => ({ answers })) };
+  }
+  return {};
+}
+
+// —— 排序 ──────────────────────────────────────────────────────────────
+
+export interface OrderData {
+  items: ItemEntry[];
+  correctOrder: string[];
+}
+
+/** 读排序题：`items` 是**学生看到的顺序**、`correctOrder` 是**正确顺序**（A1 的判据）。 */
+export function readOrder(node: WorksheetQuestionNode): OrderData {
+  return {
+    items: readEntries(node.data.items),
+    correctOrder: readStringList(node.data.correctOrder),
+  };
+}
+
+/** 写回排序题。**两个键一起写**（见本节的纪律 1）。 */
+export function writeOrder(items: ItemEntry[], correctOrder: string[]): Record<string, unknown> {
+  return { items: writeEntries(items), correctOrder };
+}
+
+/**
+ * 「学生看到的顺序」与「正确顺序」现在是不是**逐位相同**。
+ * `true` ⇒ 学生什么都不做就是满分（A1 Step 5 那条校验会拦下它）。
+ *
+ * ⚠️ 长度不同 / `correctOrder` 还不是一个排列时返回 `false`：那两种情形有它们自己的错
+ *（「正确顺序必须正好是这些条目各一次」），在这里再报一句只会让教师同时看到两条红字，
+ * 而它们指向的是同一处。
+ */
+export function isOrderAmbiguous(items: ItemEntry[], correctOrder: string[]): boolean {
+  if (items.length < 2 || items.length !== correctOrder.length) return false;
+  return items.every((entry, index) => entry.id === correctOrder[index]);
+}
+
+/**
+ * 需要的话，把「学生看到的顺序」挪到一个与正确顺序**不同**的位置。
+ *
+ * 相同 ⇒ 返回**循环左移一位**的结果：id 互不相同 ⇒ 移完之后第一位是原来的第二位 ⇒
+ * **一定**不等。确定性、不用随机数、不重试。
+ * 不同 ⇒ **原样返回同一个引用**（不造无谓的改动，也就不占撤销栈）。
+ *
+ * 🔴 为什么结构改动会自动重排「学生看到的顺序」，而不是只提示一句、让教师自己去点「打乱顺序」：
+ * 「两个顺序相同」是一个**学生什么都不做就满分**的状态，而它有一个不带任何提示的来路 ——
+ * 删掉一个条目之后，剩下的两个列表可能刚好变得逐位相同
+ *（实测的一个例子：`items=[b,a,c]` / `correctOrder=[a,c,b]`，删掉 `b` ⇒ 两边都是 `[a,c]`）。
+ * ⇒ 与 `writeOptions` 的重编号同一条纪律：**每一次结构改动都要维持那道不变量**。
+ * 重排是**看得见**的（「学生看到的顺序」那一行就在屏幕上），而服务端的 400 只有点保存之后才来。
+ */
+export function ensureOrderDistinct(items: ItemEntry[], correctOrder: string[]): ItemEntry[] {
+  if (!isOrderAmbiguous(items, correctOrder)) return items;
+  return [...items.slice(1), items[0]];
+}
+
+/**
+ * 「打乱顺序」：重排 `items`，并**保证**结果不等于 `correctOrder`。
+ *
+ * 🔴 保证是必须的，不是谨慎：随机洗牌**有**可能洗出与正确答案一样的顺序
+ * （2 个条目时是一半的概率），那一刻学生什么都不做就是满分，而屏幕上只是
+ * 「顺序看起来没怎么变」—— 没有任何报错。
+ * ⇒ Fisher–Yates 之后检查一次，相同就再洗（上限 20 次）；试不出来（例如只有一个条目、
+ * 而正确答案就是它）就退回确定性的循环左移。
+ * `random` 可注入：本仓前端没有别的回归网，这个保证只能靠用例钉住。
+ */
+export function shuffleOrderItems(
+  items: ItemEntry[],
+  correctOrder: string[],
+  random: () => number = Math.random,
+): ItemEntry[] {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const shuffled = items.slice();
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(random() * (index + 1));
+      const held = shuffled[index];
+      shuffled[index] = shuffled[swap];
+      shuffled[swap] = held;
+    }
+    if (!isOrderAmbiguous(shuffled, correctOrder)) return shuffled;
+  }
+  return ensureOrderDistinct(items, correctOrder);
+}
+
+/**
+ * 「取当前顺序」：把屏幕上现在的顺序**定为正确答案**，同时把学生看到的顺序打乱。
+ *
+ * 🔴 两件事必须**一起**做，否则这个按钮产出的是一道**立刻无效**的题：
+ * 答案取自 `items` ⇒ 两边逐位相同 ⇒ A1 Step 5 那条校验会拒绝它。
+ * ⇒ 复用 `shuffleOrderItems`（它保证结果不同），于是点一下就得到一个能保存的状态。
+ */
+export function orderUseCurrentOrder(state: OrderData, random: () => number = Math.random): OrderData {
+  const correctOrder = state.items.map((entry) => entry.id);
+  return { items: shuffleOrderItems(state.items, correctOrder, random), correctOrder };
+}
+
+/**
+ * 加一个条目：`items` 与 `correctOrder` **一起**变。
+ *
+ * ⚠️ `correctOrder` **还没配过**（空数组）时**不往里加**：那是「还没配答案」的中间态，
+ * 往里塞一个 id 会让界面上那句「还没有设置正确顺序」的提示消失，而它其实仍然配不全
+ *（服务端会以「正确顺序必须正好是这些条目各一次」拦下 —— 只是理由变得难懂）。
+ * 已经配过时：新条目**追加在两个列表的末尾**（两个列表都追加同一个 id，
+ * 「是否逐位相同」的结论不变），再兜一次 `ensureOrderDistinct`。
+ */
+export function orderAddItem(state: OrderData, text: string): OrderData {
+  const entry: ItemEntry = { id: newItemId(), text };
+  const nextCorrect = state.correctOrder.length === 0 ? state.correctOrder : [...state.correctOrder, entry.id];
+  return { items: ensureOrderDistinct([...state.items, entry], nextCorrect), correctOrder: nextCorrect };
+}
+
+/**
+ * 删一个条目（按**位置**，不是按 id：缺 id 的条目 id 是空串，按 id 删会一次删掉所有那种行）。
+ * `items` 与 `correctOrder` 一起删 —— 留着它，服务端那句「正确顺序必须正好是这些条目各一次」
+ * 会拦下整道题，而教师看到的只是一条他看不懂的红字。
+ */
+export function orderRemoveItem(state: OrderData, index: number): OrderData {
+  const target = state.items[index];
+  if (!target) return state;
+  const nextItems = state.items.filter((_, itemIndex) => itemIndex !== index);
+  // ⚠️ 按 id 过滤：id 是空串时 `correctOrder` 里本来就没有它（`readStringList` 丢掉空串）⇒ 不动。
+  const nextCorrect = state.correctOrder.filter((entryId) => entryId !== target.id);
+  return { items: ensureOrderDistinct(nextItems, nextCorrect), correctOrder: nextCorrect };
+}
+
+// —— 连线 ──────────────────────────────────────────────────────────────
+
+export interface MatchData {
+  left: ItemEntry[];
+  right: ItemEntry[];
+  pairs: PairEntry[];
+}
+
+/** 读连线题（教师侧叫 `pairs`，学生侧叫 `links` —— §12 的裁定，别写反）。 */
+export function readMatch(node: WorksheetQuestionNode): MatchData {
+  return {
+    left: readEntries(node.data.left),
+    right: readEntries(node.data.right),
+    pairs: readPairs(node.data.pairs),
+  };
+}
+
+/** 写回连线题。三个键**一起写**（左栏 + 右栏 + 答案）。 */
+export function writeMatch(left: ItemEntry[], right: ItemEntry[], pairs: PairEntry[]): Record<string, unknown> {
+  return { left: writeEntries(left), right: writeEntries(right), pairs };
+}
+
+/**
+ * 设定一个左项的配对（`rightId` 传空串 = 清掉这一条）。
+ *
+ * 🔴 **同一个右项只能被一个左项占用**：重复连同一个右项时**旧的被顶掉**、不是并存 ——
+ * 并存会让服务端的 `isCompleteMatching` 拒绝**整道题**（「必须把左栏每一项都连到
+ * 右栏的一个不同项上」），而教师看到的只是两个下拉选着同一个值。
+ * 那道题**一个学生都判不了分**，而看板上只表现为「正确率 0%」。
+ *
+ * ⚠️ D1 的 `src/lib/worksheet-drag.ts` 里有一个同名同义的 `setPair`（学生端**作答态**
+ * 的 `links`）；这一个管教师侧的 `pairs`（**答案**）。两者各有回归网，别合并成一份 ——
+ * 键名相同（`{leftId, rightId}`）是协议规定，不是它们是一回事。
+ */
+export function matchSetPair(pairs: PairEntry[], leftId: string, rightId: string): PairEntry[] {
+  const kept = pairs.filter((pair) => pair.leftId !== leftId && pair.rightId !== rightId);
+  return rightId ? [...kept, { leftId, rightId }] : kept;
+}
+
+/**
+ * 加一组（左栏、右栏**各一个**）。
+ *
+ * ⚠️ 刻意不做「单独加一个左项」：服务端要求左右栏条数相同，而两个独立的「＋」按钮
+ * 能产出的中间态里有一半是必然被拒的。加一组则让那条校验在界面上够不着。
+ * ⚠️ 新左项**没有配对**（下拉显示「请选择」）—— 不替教师臆造一条连线。
+ */
+export function matchAddRow(state: MatchData): MatchData {
+  return {
+    left: [...state.left, { id: newItemId(), text: '' }],
+    right: [...state.right, { id: newItemId(), text: '' }],
+    pairs: state.pairs,
+  };
+}
+
+/**
+ * 删一组（左 i 与同位置的右 i），并清掉**任何一端**指向这两个 id 的配对。
+ *
+ * ⚠️ 那一对里的右项可能正是**另一个左项**的答案（配对与行位置无关）—— 那条配对会被一起
+ * 清掉，教师会在那个下拉里看到它回到「请选择」。**代价如实记**：他要重新配一次。
+ * 不清的代价更大：那条配对指向一个已经不存在的右项，服务端会拒绝**整道题**，一个学生都判不了。
+ */
+export function matchRemoveRow(state: MatchData, index: number): MatchData {
+  const leftEntry = state.left[index];
+  const rightEntry = state.right[index];
+  if (!leftEntry || !rightEntry) return state;
+  return {
+    left: state.left.filter((_, itemIndex) => itemIndex !== index),
+    right: state.right.filter((_, itemIndex) => itemIndex !== index),
+    pairs: state.pairs.filter((pair) => pair.leftId !== leftEntry.id && pair.rightId !== rightEntry.id),
+  };
+}
+
+// —— 归类 ──────────────────────────────────────────────────────────────
+
+export interface CategorizeData {
+  items: ItemEntry[];
+  zones: ItemEntry[];
+  placement: Record<string, string>;
+}
+
+/** 读归类题（`zones` 的文案键名是 `label`，不是 `text`）。 */
+export function readCategorize(node: WorksheetQuestionNode): CategorizeData {
+  return {
+    items: readEntries(node.data.items),
+    zones: readEntries(node.data.zones, 'label'),
+    placement: readPlacement(node.data.placement),
+  };
+}
+
+/** 写回归类题。三个键**一起写**（条目 + 框 + 答案）。 */
+export function writeCategorize(
+  items: ItemEntry[],
+  zones: ItemEntry[],
+  placement: Record<string, string>,
+): Record<string, unknown> {
+  return { items: writeEntries(items), zones: writeEntries(zones, 'label'), placement };
+}
+
+/** 把一个条目归到某个框（`zoneId` 传空串 = 取消归放）。**不改入参**。 */
+export function placementSet(placement: Record<string, string>, itemId: string, zoneId: string): Record<string, string> {
+  const next = { ...placement };
+  if (zoneId) next[itemId] = zoneId;
+  else delete next[itemId];
+  return next;
+}
+
+/** 加一个条目。它**没有归放**（下拉显示「请选择」）—— 不替教师臆造一个框。 */
+export function categorizeAddItem(state: CategorizeData, text: string): CategorizeData {
+  return { ...state, items: [...state.items, { id: newItemId(), text }] };
+}
+
+/** 删一个条目（按位置），`placement` 里那一条一起删 —— 留着它就是一个指向不存在条目的键。 */
+export function categorizeRemoveItem(state: CategorizeData, index: number): CategorizeData {
+  const target = state.items[index];
+  if (!target) return state;
+  return {
+    ...state,
+    items: state.items.filter((_, itemIndex) => itemIndex !== index),
+    placement: placementSet(state.placement, target.id, ''),
+  };
+}
+
+/** 加一个框（`placement` 不受影响 —— 新框里本来就是空的）。 */
+export function categorizeAddZone(state: CategorizeData, label: string): CategorizeData {
+  return { ...state, zones: [...state.zones, { id: newZoneId(), text: label }] };
+}
+
+/**
+ * 删一个框（按位置）。
+ *
+ * 🔴 指向它的 `placement` **必须一起清掉**：留着它，那个条目就永远落不到任何框里
+ *（服务端那条「每个条目都必须落到一个框里」会拒绝**整道题**），而界面上那个条目
+ * 还显示着「已经归到框二」—— 教师看不出问题在哪。清掉之后它回到「请选择」，重新选一个即可。
+ */
+export function categorizeRemoveZone(state: CategorizeData, index: number): CategorizeData {
+  const target = state.zones[index];
+  if (!target) return state;
+  const nextPlacement: Record<string, string> = {};
+  Object.entries(state.placement).forEach(([itemId, zoneId]) => {
+    if (zoneId !== target.id) nextPlacement[itemId] = zoneId;
+  });
+  return { ...state, zones: state.zones.filter((_, zoneIndex) => zoneIndex !== index), placement: nextPlacement };
 }
 
 // ── 逐题分值（M4a，规格 §12 裁定 4 / 5）────────────────────────────────

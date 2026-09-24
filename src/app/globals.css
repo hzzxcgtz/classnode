@@ -1989,6 +1989,78 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
+/* ── M4a/C2：6 个新题型的编辑体 ──────────────────────────────────────────
+   规则刻意少而通用：`.worksheet-editor-option` / `.worksheet-editor-options` /
+   `.worksheet-editor-icon-button` / `.input` / `.btn` 是单选框那一屏就在用的，
+   新的题型直接复用它们（同一张卡片里两套长得不一样的控件比少几条 CSS 糟得多）。 */
+
+.worksheet-editor-block {
+  margin-bottom: 10px;
+}
+
+/* 一组控件的标题（「正确答案」「框（学生把这些条目放进去）」…）。
+   与 `.worksheet-editor-field > span` 同一套字号与颜色；它同时被放在
+   `.worksheet-editor-inline-actions` 的横排里当行首标签用，所以是 inline-block。 */
+.worksheet-editor-block-label {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* 排序题「正确答案的顺序」那一栏：一个带序号的有序列表。
+   ⚠️ 去掉 list-style 是因为序号由 `.worksheet-editor-order-index` 自己画
+   （▲▼ 要跟它同一行对齐，交给浏览器的列表标记对不齐）。 */
+.worksheet-editor-order-answer {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.worksheet-editor-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worksheet-editor-order-index {
+  flex-shrink: 0;
+  min-width: 18px;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* 名字/文字在一行里占满剩下的宽度（`.worksheet-editor-option .input` 只覆盖 input）。 */
+.worksheet-editor-option-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+/* 连线/归类的下拉：不跟着 input 一起占满，够放下「框 1（还没写名字）」就行。 */
+.worksheet-editor-pair-select {
+  flex: 0 0 auto;
+  max-width: 220px;
+}
+
+.worksheet-editor-blank {
+  margin-bottom: 6px;
+}
+
+.worksheet-editor-blank-remove {
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
+
 .worksheet-editor-hint {
   margin: 4px 0 0;
   font-size: 0.75rem;

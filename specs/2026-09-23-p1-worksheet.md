@@ -1206,13 +1206,13 @@ P4 的分析型智能体都要面对一个「⭐ 是什么数」的问题。
 3. **`PUT /api/worksheets/:id` 是整份替换 `settings`。**
    `server/src/routes/worksheets.ts` 的 `normalizeSettings` 注释自陈这条：
    少认一个键 ⇒ 保存一次「只改标题」的请求就把那个键**静默抹掉**（教师配好的档变回默认，
-   界面上没有任何提示）。新增奖励相关的键时，下面这**四处**必须一起加：
+   界面上没有任何提示）。新增奖励相关的键时，下面这**五处**必须一起加：
    `normalizeSettings`（服务端写入口）· `readStudentSettings`（服务端读出）·
    `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` 与 `normalizeLoadedSettings`。
    ⊘ 2026-09-24 更正：这里原先写「这**五处**必须一起加」而只列了四条 —— 数词与清单对不上。
    要数实际有几处，先跑一遍 `/usr/bin/grep -rn <你新加的键> src server/src | /usr/bin/grep -v '\.test\.'`
    看它落在哪几个文件里（2026-09-24 实测：`halfStep` 落在 **8 个文件**）——
-   所以「四处」指的是**必须同步改的写入口 / 读出口**，不是「全仓会出现这个键的地方」。
+   所以「五处」指的是**必须同步改的写入口 / 读出口**，不是「全仓会出现这个键的地方」。
 
 #### 得分与正确率的口径
 

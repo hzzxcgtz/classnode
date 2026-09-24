@@ -636,7 +636,8 @@ export function addBlank(node: WorksheetQuestionNode): Record<string, unknown> {
  *
  * ⚠️ 界面在**只剩一个空**时**不渲染**那个删除按钮（服务端要求「至少要有一个空」），
  * 所以这里够不到「零个空」。够得到的话，单空形状返回**空补丁**而不是 `{ answers: [] }` ——
- * 后者会把一道「还没填答案」的题变成「填了空答案」的题，而教师只是按了一个禁用的按钮。
+ * 后者会把一道「还没填答案」的题变成「填了空答案」的题，而教师只是按了一下那个按钮
+ *（它本来就不该按得动：界面上没有它）。
  */
 export function removeBlank(node: WorksheetQuestionNode, index: number): Record<string, unknown> {
   const blanks = readBlankAnswers(node);

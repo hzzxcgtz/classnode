@@ -33,6 +33,7 @@ import {
   createHistory,
   DEFAULT_SETTINGS,
   draftKeyFor,
+  ensureEntryIds,
   ensureOrderDistinct,
   fillShape,
   findInvalidPoints,
@@ -40,9 +41,11 @@ import {
   findUncommittedPointInput,
   HISTORY_LIMIT,
   isOrderAmbiguous,
+  isOrderAnswerUsable,
   isPartialPoints,
   type ItemEntry,
   matchAddRow,
+  matchPairLeftRow,
   matchRemoveRow,
   matchSetPair,
   MAX_OPTIONS,
@@ -1337,6 +1340,66 @@ test('🔴 orderUseCurrentOrder：「取当前顺序」不能产出一道**立�
   }
 });
 
+test('🔴 ensureEntryIds：只给**缺 id** 的补，有 id 的原样留着（返回新数组，不改入参）', () => {
+  const source: ItemEntry[] = [entry('i1', '一'), { id: '', text: '二' }, entry('i3', '三')];
+  const next = ensureEntryIds(source);
+  assert.notEqual(next, source, '返回新数组');
+  assert.equal(next[0], source[0], '有 id 的条目引用都不变 —— 不造无谓的改动');
+  assert.equal(next[2], source[2]);
+  assert.equal(next[1].id.length > 0, true, '缺 id 的补一个');
+  assert.deepEqual(source[1], { id: '', text: '二' }, '不改入参');
+  assert.deepEqual(next.map((item) => item.text), ['一', '二', '三'], '文字与顺序一个都不动');
+  // 两个都缺 ⇒ 拿到**不同**的 id（同一个 id 会让服务端以「有重复的条目 id」拒绝整道题）
+  const two = ensureEntryIds([{ id: '', text: '甲' }, { id: '', text: '乙' }]);
+  assert.equal(new Set(two.map((item) => item.id)).size, 2);
+});
+
+test('🔴 isOrderAnswerUsable：`correctOrder` 必须是这些条目 id 的**排列**才算能用', () => {
+  const items = [entry('a', '甲'), entry('b', '乙')];
+  assert.equal(isOrderAnswerUsable(items, ['a', 'b']), true);
+  assert.equal(isOrderAnswerUsable(items, ['b', 'a']), true, '顺序本身随意 —— 只要正好各一次');
+  // 还没配过
+  assert.equal(isOrderAnswerUsable(items, []), false);
+  // 🔴 「两个空串」—— 老实现（用 `items.map(e=>e.id)` 造答案、条目缺 id）写进库里的那种行。
+  // 它是「不是排列」里最隐蔽的形态：**看起来**是配过的（长度也对得上）。
+  assert.equal(isOrderAnswerUsable([entry('', '甲'), entry('', '乙')], ['', '']), false);
+  // 🔴 **非空但不合法**：老判据（`correctOrder.length === 0` 才渲染修复按钮）在这些行上
+  // 没有留下任何修复入口 —— 实测「加一个条目 / 删一个条目」都救不回来（见报告）。
+  assert.equal(isOrderAnswerUsable(items, ['a', 'a']), false, '有重复');
+  assert.equal(isOrderAnswerUsable(items, ['a']), false, '长度对不上');
+  assert.equal(isOrderAnswerUsable(items, ['a', 'zzz']), false, '指向一个不存在的条目 id');
+  // 条目缺 id：服务端以「排序题里有条目缺少 id」拦下 —— 任何 `correctOrder` 都救不了它，
+  // 所以界面必须留着「取当前顺序」（它会把 id 补齐）
+  assert.equal(isOrderAnswerUsable([entry('', '甲'), entry('b', '乙')], ['b']), false);
+  // 少于两个条目：服务端另有「至少需要两个条目」，这时按钮本来就按不动（disabled）
+  assert.equal(isOrderAnswerUsable([entry('a', '甲')], ['a']), false);
+});
+
+test('🔴 缺 id 的坏行点「取当前顺序」：答案键落在**补好的** id 上（空串答案 = 存不下也修不好）', () => {
+  // 2026-09-24 审查报的原始缺陷（我在 9377e87 的内核上逐字复现过）：
+  // 老实现用 `items.map(e => e.id)` 造答案，而 `readEntries` 把缺 id 读成空串 ⇒ 答案是 `['','']`；
+  // 写回时 `writeEntries` 给条目补了**全新的** id，那两个空串却永远指不到任何条目：
+  //   取当前顺序后 correctOrder = ["",""] · 再加一个条目 = ["","","i_…"] · 删一个条目 = ["",""]
+  // 而服务端 `readStrings` 丢掉空串 ⇒ 那道题永远过不了「正确顺序必须正好是这些条目各一次」。
+  const broken = { items: [{ id: '', text: '甲' }, { id: '', text: '乙' }], correctOrder: [] };
+  const next = orderUseCurrentOrder(broken, () => 0.5);
+  const patch = writeOrder(next.items, next.correctOrder);
+  const ids = (patch.items as ItemEntry[]).map((item) => item.id);
+  const written = patch.correctOrder as string[];
+  assert.equal(written.includes(''), false, '答案里不能再有空串');
+  assert.deepEqual([...written].sort(), [...ids].sort(), 'correctOrder 必须正好是 items 的 id 各一次');
+  // ⚠️ 判据要吃**读回界面**之后的形状（组件的判据是 `readOrder` 之后的那个对象）
+  const readBack = readOrder(typed('order', patch));
+  assert.equal(isOrderAnswerUsable(readBack.items, readBack.correctOrder), true, '一次点击就离开僵局');
+  assert.deepEqual(readBack.correctOrder, written, '写—读往返里答案键一个都不变');
+  // 补过 id 的条目在被重设答案时**id 不被换掉**（`writeEntries` 那侧对已有 id 是恒等的）
+  // —— 否则「取当前顺序」会把学生已经答过的那道题的键全部作废。
+  const settled = typed('order', { items: [{ id: 'i_x', text: '甲' }, { id: 'i_y', text: '乙' }], correctOrder: ['', ''] });
+  const repaired = orderUseCurrentOrder(readOrder(settled), () => 0.5);
+  const repairedPatch = writeOrder(repaired.items, repaired.correctOrder);
+  assert.deepEqual(repairedPatch.correctOrder as string[], ['i_x', 'i_y'], '答案指回原来那两个条目');
+});
+
 test('writeOrder：`items` 与 `correctOrder` **一起**写（分开写会有一个答案指着旧 id 的窗口期）', () => {
   const items = [entry('i2', '二'), entry('i1', '一')];
   assert.deepEqual(writeOrder(items, ['i1', 'i2']), {
@@ -1361,6 +1424,42 @@ test('🔴 matchSetPair：同一个右项只能被一个左项占用（重复连
   const source = [{ leftId: 'l1', rightId: 'r1' }];
   matchSetPair(source, 'l1', '');
   assert.deepEqual(source, [{ leftId: 'l1', rightId: 'r1' }]);
+});
+
+test('🔴 matchPairLeftRow：左项缺 id 时下拉选了**当场生效**（老实现回弹「请选择」）', () => {
+  // 2026-09-24 审查报的原始缺陷：左项缺 id ⇒ 它是空串 ⇒ `matchSetPair(pairs, '', 'r1')`
+  // 产出的那条配对 `leftId` 为空 ⇒ 被 `readPairs`（与服务端）丢掉 ⇒ 教师选完那一项，
+  // 下拉**当场弹回「请选择」**，而他看不出自己错在哪（那条配对本该正是他刚选的那个）。
+  const state = {
+    left: [{ id: '', text: '甲' }, entry('l2', '乙')],
+    right: [entry('r1', 'A'), entry('r2', 'B')],
+    pairs: [],
+  };
+  const next = matchPairLeftRow(state, 0, 'r1');
+  assert.equal(next.left[0].id.length > 0, true, '左项补上了 id');
+  assert.equal(next.left[0].text, '甲', '只补 id，文字不动');
+  // ⚠️ 判据必须过**落库再读回来**这一趟：下拉的 `value` 与配对都是 `readMatch` 算出来的
+  //（只断言内存里那个对象的话，`readPairs` 把空 leftId 丢掉这一步就被跳过了 —— 那正是 bug 本身）。
+  const roundTrip = readMatch(typed('match', writeMatch(next.left, next.right, next.pairs)));
+  assert.deepEqual(roundTrip.pairs, [{ leftId: next.left[0].id, rightId: 'r1' }], '读得回来 ⇒ 下拉显示他刚选的那一项');
+  assert.equal(roundTrip.left[0].id, next.left[0].id, 'id 在写—读往返里不变（否则下一次渲染又对不上）');
+  // 同一个右项只能被一个左项占用这条纪律照旧（本函数内部走的就是 `matchSetPair`）
+  const shared = matchPairLeftRow({ ...state, left: [entry('l1', '甲'), entry('l2', '乙')], pairs: [{ leftId: 'l2', rightId: 'r1' }] }, 0, 'r1');
+  assert.deepEqual(shared.pairs, [{ leftId: 'l1', rightId: 'r1' }], '旧的被顶掉，不是并存');
+  // 右栏缺 id 时**一起补**：下拉的 `value` 是右项的 id，右栏缺 id 时那一项根本选不中
+  const rightMissing = {
+    left: [entry('l1', '甲'), entry('l2', '乙')],
+    right: [{ id: '', text: 'A' }, entry('r2', 'B')],
+    pairs: [],
+  };
+  const fixed = matchPairLeftRow(rightMissing, 0, 'r2');
+  assert.deepEqual(fixed.right.map((item) => item.id !== ''), [true, true], '右栏两个都补上');
+  assert.deepEqual(
+    readMatch(typed('match', writeMatch(fixed.left, fixed.right, fixed.pairs))).pairs,
+    [{ leftId: 'l1', rightId: 'r2' }],
+  );
+  // 越界 ⇒ 原样返回同一个对象（不占撤销栈）
+  assert.equal(matchPairLeftRow(state, 9, 'r1'), state);
 });
 
 test('🔴 matchRemoveRow：删一组时，指向这两个 id 的配对**都要清掉**（哪怕它属于别的左项）', () => {

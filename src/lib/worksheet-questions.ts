@@ -16,16 +16,44 @@ import type { WorksheetQuestionNode } from './types';
  *     它自己的 `question-card.tsx`、编辑器页面与 `worksheet-editor-core.test.ts`
  *     仍然从内核 import，一行都不用改。
  *
+ * ★ M4a/D1：**作答值形状与拖拽/点选状态机已经搬去两个新文件**，这里只**转出**它们
+ *（`worksheet-answer-value.ts` / `worksheet-drag.ts`），消费者一行都不用改：
+ *   · `worksheet-answer-value.ts` —— `WorksheetAnswerValue` / `AnswerDraft` /
+ *     `emptyDraftFor` / `isDraftEmpty` / `buildAnswerValue` / `draftFromValue`；
+ *   · `worksheet-drag.ts` —— 排序 / 连线 / 归类共用的点选态与落位操作（纯逻辑，
+ *     本批唯一能被 `node --test` 钉住的那一半）。
+ * 搬家的理由只有一个但很硬：作答值要读题目 `data` 里的条目，而本文件要转出它们 ——
+ * 留在同一个文件里就变成自我引用。依赖因此是**单向**的：本文件 → 那两个文件 → `./types`。
+ *
  * ⚠️ **本文件不引任何 React / DOM，也不引任何联名路径（`@/…`）**：它要能被
  * `node --test` 直接执行（Node 24 的类型擦除），而内核是**相对路径**引它的
  * （`'../../../../lib/worksheet-questions.ts'`）—— 带 `.ts` 后缀是那件事的前提，
  * `tsconfig.json` 的 `allowImportingTsExtensions` 已开。
  * 同理，`import type` 是**唯一**的 import 形态（类型擦除会整段删掉它）。
+ * ⚠️ 下面这几条 `export … from './…ts'` **必须带 `.ts` 后缀**（同上：`node --test` 直接跑）。
  *
  * ⚠️ 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根（`src/lib`）内：
  * 不得出现 `Object.hasOwn` / `structuredClone` / `findLast` / `.at(` / `:has(` /
  * `@container` / `content-visibility` / `color-mix(`（学生端跑在 Safari 15 的老 iPad 上）。
  */
+export {
+  buildAnswerValue,
+  draftFromValue,
+  emptyDraftFor,
+  isDraftEmpty,
+  isMultiBlank,
+  readBlankCount,
+  readCategorizeItems,
+  readCategorizeZones,
+  readEntries,
+  readMatchLeft,
+  readMatchRight,
+  readOrderItems,
+  type AnswerDraft,
+  type EntryTextField,
+  type WorksheetAnswerValue,
+  type WorksheetEntry,
+} from './worksheet-answer-value.ts';
 
 /**
  * 题型。⚠️ 这是**服务端注册表**（`server/src/services/worksheet-questions.ts` 的
@@ -163,110 +191,10 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
 }
 
 /**
- * 提交给服务端的**作答值**（规格 §4.3）。
+ * ⚠️ **`WorksheetAnswerValue` / `AnswerDraft` 与四个转换函数已经搬到
+ * `worksheet-answer-value.ts`**（D1），本文件**转出**它们（见文件头）。契约说明
+ *（「协议是判分器读哪些字段名，不是 `format` 串」那张表、`links` / `assignment` 的裁定）
+ * 也一起搬去了那边 —— 只有一份，别在这里再写一遍。
  *
- * 🔴 **协议是「判分器读哪些字段名」，不是 `format` 串。** 服务端的 `grade()` 按
- * **`node.type`** 分派（`server/src/services/worksheet-questions.ts` 的 `JUDGES`），
- * 再从**作答值里按字段名**取值 —— 各题型读的是：
- *
- * | 作答值的键 | 谁读 |
- * |---|---|
- * | `selected: string[]` | 单选 / 判断 / 多选 |
- * | `text: string` | 单空填空 |
- * | `texts: string[]` | 多空填空（与教师的 `data.blanks` 逐位对应） |
- * | `order: string[]` | 排序 |
- * | `links: Array<{leftId, rightId}>` | 连线（教师那侧的配对叫 `pairs`，**刻意不同名**） |
- * | `assignment: Record<string, string>` | 归类（教师那侧叫 `placement`） |
- *
- * ⚠️ **`format` 服务端一个字节都不读。** 实测（2026-09-24）：
- * `grep -c format server/src/services/worksheet-questions.ts` ⇒ `0`；
- * `grep -rn "\.format\b\|'format'\|\"format\"" server/src`（排除 tests）⇒ 无输出。
- * 它只随作答值一起存进 `WorksheetAnswer.value`，读者是**前端**的 `draftFromValue`
- * （把作答值读回输入态：学生端队列回填、教师端抽屉的「原答案」都走它）。
- *
- * ⇒ 两个方向不要写反：
- *   · 改**上表里那些字段名**才是改协议，而且**错了不报错** —— 那道题永远判错/判不了分；
- *   · 改 `format` 串只影响 `draftFromValue` 读不读得回输入态（读不回的后果是画成空白作答）。
- * 🔴 **不得**为了「让 `format` 名副其实」去给服务端补一条格式校验：那会让库里已有的行
- * 与旧客户端**静默不判分**（判分器本来只认字段名，多一道校验就多一道拒绝的理由）。
- *
- * ⚠️ 手写与绘图（`ink/v1` / `drawing/v1`）**第一批不产生**，所以这个联合里没有它们 ——
- * 第一批的 UI 也不提供产生它们的路径。
- *
- * ⚠️ 这个联合**不是**上面那张表的全量：M4a 新增的 `order` / `match` / `categorize`
- * 三种作答值还没有成员（D 阶段才加）。别把它当成「作答值只有这三种」的权威 ——
- * 判分器读什么，以上表与服务端代码为准。
+ * ⚠️ 手写与绘图（`ink/v1` / `drawing/v1`）**第一批不产生**，所以那个联合里没有它们。
  */
-export type WorksheetAnswerValue =
-  | { format: 'choice/v1'; selected: string[] }
-  | { format: 'fill/v1'; text: string }
-  | { format: 'text/v1'; text: string };
-
-/**
- * 界面上**一道题的输入态**（还没变成作答值）。
- *
- * 单选只用 `selected`（存选中的 key，空串 = 没选），填空与问答只用 `text`。
- * 一个形状两种题型都用，是因为两者**互斥**：一道题是哪一种由 `node.type` 决定，
- * 拆成两个状态容器只会让「哪道题现在是哪种」多一处需要同步的地方。
- */
-export interface AnswerDraft {
-  selected: string;
-  text: string;
-}
-
-export function emptyDraft(): AnswerDraft {
-  return { selected: '', text: '' };
-}
-
-/** 这一题的输入态里**有没有东西**。空白字符不算（单选没有这个问题）。 */
-export function isDraftEmpty(draft: AnswerDraft): boolean {
-  return !draft.selected && !draft.text.trim();
-}
-
-/**
- * 把界面上的输入态变成**作答值**；`null` = 「这一题没有内容可提交」。
- *
- * 单选：没选任何选项 ⇒ `null`；填空 / 问答：全是空白 ⇒ `null`。
- * ⚠️ 判断题面与空值的是**这里**，别在调用点再写一遍 —— 服务端对「没作答就提交」回 400,
- * 而那条 400 的文案是「请先作答再提交本题」；前端如果自己算错了「有没有内容」，
- * 学生就会点到一个必然失败的按钮。
- */
-export function buildAnswerValue(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
-  if (node.type === 'single-choice') {
-    return draft.selected ? { format: 'choice/v1', selected: [draft.selected] } : null;
-  }
-  if (node.type === 'fill-blank') {
-    return draft.text.trim() ? { format: 'fill/v1', text: draft.text } : null;
-  }
-  if (node.type === 'short-answer') {
-    return draft.text.trim() ? { format: 'text/v1', text: draft.text } : null;
-  }
-  // 未知题型：**不产生作答**。给它编一种格式会让服务端收到一个它判不了的形状，
-  // 而那份作答会以「已提交」的样子出现在教师看板上。
-  return null;
-}
-
-/**
- * `buildAnswerValue` 的**反向**：把一个作答值读回界面上的输入态。
- *
- * 用在两处，都是「屏幕上的东西必须和学生写过的一致」：
- *   · 学生端面板挂载时，把 `localStorage` 队列里**还没发出去**的作答填回输入框
- *     （刷新一下不该让答案从屏幕上消失，哪怕它还在队列里）；
- *   · 教师端抽屉显示「原答案」（D4）。
- *
- * ⚠️ 容错：值可能来自手改过的行或上一个版本，读不出来就返回 `emptyDraft()`，
- * **不抛**。它是渲染路径上的东西，一次 TypeError 会让整个面板白屏。
- */
-export function draftFromValue(value: unknown): AnswerDraft {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return emptyDraft();
-  const row = value as Record<string, unknown>;
-  if (row.format === 'choice/v1') {
-    const selected = Array.isArray(row.selected) ? row.selected : [];
-    const first = selected.filter((key): key is string => typeof key === 'string' && !!key)[0];
-    return { selected: first ?? '', text: '' };
-  }
-  if (row.format === 'fill/v1' || row.format === 'text/v1') {
-    return { selected: '', text: typeof row.text === 'string' ? row.text : '' };
-  }
-  return emptyDraft();
-}

@@ -63,14 +63,14 @@ export type WorksheetQuestionStatus = 'draft' | 'submitted';
  * 「不知道」与「答错了」在奖励上都不画东西，但把它们混成一个数，将来做统计时
  * 就会把没判的题算成答错。
  *
- * 🔴 今天只可能是 `0` 或 `1`（第一批没建 `score` 字段，规格 §3-S），而接口按**得分**
- * 写：M4 引入部分得分（`0.5`）时，改的只有下面 `scoreFromWire` 那一个转换点。
+ * ★ M4a：**它是绝对值**（教师逐题填的那个数，规格 §12），不再是 0/1 的比例 ——
+ * 「全对 5 分」就是 `5`。唯一一处换算点在 `scoreFromWire`（`worksheet-queue.ts`）。
  */
 export type WorksheetScore = number | null;
 
-// ⚠️ `scoreFromWire`（`isCorrect` → 得分）**搬到了 `worksheet-queue.ts`**：水合这一侧
+// ⚠️ `scoreFromWire`（线缆上的一行 → 得分）**在 `worksheet-queue.ts`**：水合这一侧
 // （`hydrateAnswers`）也要用它，而那个文件是**纯逻辑、被 `node --test` 跑**的那一个 ——
-// 「`null` 不是 `0`」这条判据必须有一条跑得到的用例钉着。定义仍然只有一处。
+// 「`null` 不是 `0`」与「旧行用 `isCorrect` 兜底」这两条判据必须有用例钉着。定义只有一处。
 
 /** 一次 `PUT` 的结果。`status: null` = 网络错误（连状态码都没有）⇒ 暂时失败。 */
 type SaveOutcome = { ok: true } | { ok: false; status: number | null; error: string | null };
@@ -106,13 +106,13 @@ export interface UseWorksheetAnswersResult {
   /** 每道题在服务端的状态（只由**服务端确认过的事件**写入，见下面 `applyStatus`）。 */
   statuses: Record<string, WorksheetQuestionStatus>;
   /**
-   * 每道题的**得分**（`0` / `1`；M4 会有 `0.5`）。键不在 = 这道题没判过分。
+   * 每道题的**得分**（教师逐题填的那个绝对数；旧行按 `isCorrect` 兜底）。键不在 = 没判过分。
    *
    * 🔴 它是**呈现层**的输入，不是数据：星星 / 花朵 / 分数**不落库**（规格 §9.1）。
    * 这里只存「服务端判定的那个得分」，画成什么由 `lib/worksheet-reward.ts` 决定。
    * 唯一的写入点是 `submit()` 拿到 200 之后（得分只可能来自服务端的判分），
    * 以及保存成功把已提交的题拨回 `draft` 时**清掉**它（那时服务端那一行的
-   * `isCorrect` 已被清成 `null`，留着旧的会让星星停在一个库里已不成立的判分上）。
+   * `isCorrect` / `score` 已被清成 `null`，留着旧的会让星星停在一个库里已不成立的判分上）。
    */
   scores: Record<string, WorksheetScore>;
   /** 正在提交的题（按钮转圈、防连点）。 */
@@ -230,7 +230,16 @@ export function useWorksheetAnswers({
     pendingRef.current = queued;
     setPendingCount(queued.length);
 
-    const merged = hydrateAnswers(savedAnswers, queued);
+    // ⚠️ 题目树**经 ref 读**，且**故意不进依赖**（依赖只有 `queueKey` 与 `savedAnswers`）：
+    // 调用方在「还没读完」时给的是现写的 `[]`（`worksheet-panel.tsx` 的
+    // `load.kind === 'ready' ? … : []`），把它列进依赖会让这条 effect **每次渲染都重跑**
+    // —— 而它的第一件事就是整体替换 drafts / statuses / scores，
+    // 于是一个 `setDrafts({})` → 重渲染 → 新 `[]` → 再重跑的**死循环**（学生屏幕上
+    // 的字全被抹掉，而且 CPU 打满）。
+    // 读 ref 之所以**时机正确**：`questions` 与 `savedAnswers` 是**同一次 `setLoad`**
+    // 灌进来的（`Promise.all` 那一处），而 `questionsRef` 的赋值 effect 声明在这条之前
+    // ⇒ 同一次提交里它先跑（React 按声明顺序执行 effect）。
+    const merged = hydrateAnswers(savedAnswers, queued, questionsRef.current);
     setDrafts(merged.drafts);
     setStatuses(merged.statuses);
     setScores(merged.scores);
@@ -324,9 +333,9 @@ export function useWorksheetAnswers({
             // 服务端在 `PUT` 里把这一行拨回 `draft`（`allowResubmit` 为假且已提交时
             // 它根本不会走到这里 —— 那种情况是 409，走下面那条分支）。
             setStatuses((prev) => (prev[next.questionId] === 'submitted' ? { ...prev, [next.questionId]: 'draft' } : prev));
-            // ⚠️ 得分必须**跟着清**：同一条 `PUT` 的 `update` 把 `isCorrect` 写成了 `null`
-            // （那一段注释写着理由：改回 draft 却留着上次的 `true`，看板会显示成
-            // 「这题刚判对」）。不清这里，学生会看着一颗已经作废的星星继续改答案。
+            // ⚠️ 得分必须**跟着清**：同一条 `PUT` 的 `update` 把 `isCorrect` 与 `score`
+            // 一起写成了 `null`（那一段注释写着理由：改回 draft 却留着上次的 `true`，
+            // 看板会显示成「这题刚判对」）。不清这里，学生会看着一颗已经作废的星星继续改答案。
             setScores((prev) => (prev[next.questionId] === undefined ? prev : { ...prev, [next.questionId]: null }));
           }
           setOffline(false);
@@ -491,11 +500,13 @@ export function useWorksheetAnswers({
       }
       if (res.ok) {
         setStatuses((prev) => ({ ...prev, [node.id]: 'submitted' }));
-        // 判分结果就在这个响应体里（`{ isCorrect }`）。⚠️ 读失败**不**当 0 分：
-        // `scoreFromWire(undefined)` 是 `null`（没判分），学生只是少一个奖励，
-        // 而不是被判错（见那个函数的注释）。
+        // 判分结果就在这个响应体里（`{ isCorrect, gradeState, score }`）。
+        // ⚠️ 传**整行**（不是 `payload?.isCorrect`）：`score` 优先、`isCorrect` 兜底 ——
+        // 后者是给**升级前落库的旧行**用的（A1 没回填 `score`），而这条响应体两者都在。
+        // ⚠️ 读失败**不**当 0 分：`scoreFromWire(null)` 是 `null`（没判分），
+        // 学生只是少一个奖励，而不是被判错（见那个函数的注释）。
         const payload = await res.json().catch(() => null);
-        setScores((prev) => ({ ...prev, [node.id]: scoreFromWire(payload?.isCorrect) }));
+        setScores((prev) => ({ ...prev, [node.id]: scoreFromWire(payload) }));
         setOffline(false);
         return;
       }

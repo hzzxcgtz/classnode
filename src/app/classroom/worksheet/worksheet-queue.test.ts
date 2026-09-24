@@ -24,6 +24,7 @@ import {
   permanentFailureMessage,
   readQueue,
   replayOrder,
+  scoreFromWire,
   sessionExpiredMessage,
   upsertQueueItem,
   worksheetQueueKey,
@@ -32,6 +33,9 @@ import {
   type SavedAnswerRow,
   type WorksheetQueueItem,
 } from './worksheet-queue.ts';
+// ⚠️ `import type`：类型擦除会整段删掉它，所以这个**不带 `.ts` 后缀**的相对路径
+// 不影响本文件被 `node --test` 直接执行（与 `worksheet-queue.ts` 里那条同源）。
+import type { WorksheetQuestionNode } from '../../../lib/types';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
 
@@ -241,13 +245,30 @@ test('🔴 队列键同时含课堂与参与者：换学生 / 换课堂就是另
  *
  * ★ 三条都是**反向断言**：把 `hydrateAnswers` 里的合并顺序改坏（先队列后服务端），
  * ② 与 ③ 立刻变红。
+ *
+ * ★ M4a/D1：`hydrateAnswers` 多了第三个入参（题目树）。理由写在它的 JSDoc 上 ——
+ * 输入态是**逐题型**的形状，读回时必须与题目当下的样子对齐（空数 / 条目表）。
+ * 所以下面的脚手架里有几个最小题目节点，与 `src/lib/worksheet-answer-value.test.ts`
+ * 那批是同一套形状（两边不必逐字相同：那边测的是形状本身，这边只借它把水合跑起来）。
  */
 const row = (
   questionId: string,
   value: SavedAnswerRow['value'],
   status = 'submitted',
   isCorrect: boolean | null = null,
-): SavedAnswerRow => ({ questionId, value, status, isCorrect });
+  score: number | null = null,
+): SavedAnswerRow => ({ questionId, value, status, isCorrect, score });
+
+const qNode = (id: string, type: string, data: Record<string, unknown> = {}): WorksheetQuestionNode =>
+  ({ id, type, prompt: '题干', inputMode: 'keyboard', data, children: [] });
+
+const CHOICE_OPTIONS = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }];
+const choiceNode = (id: string) => qNode(id, 'single-choice', { options: CHOICE_OPTIONS });
+const fillNode = (id: string) => qNode(id, 'fill-blank', { answers: ['H2O'] });
+const orderNode = (id: string) => qNode(id, 'order', {
+  items: [{ id: 'i1', text: '甲' }, { id: 'i2', text: '乙' }],
+  correctOrder: ['i2', 'i1'],
+});
 
 test('🔴 hydrateAnswers：服务端已保存的作答要填回输入框，并带上状态与得分', () => {
   const hydrated = hydrateAnswers(
@@ -256,19 +277,28 @@ test('🔴 hydrateAnswers：服务端已保存的作答要填回输入框，并�
       row('q2', { format: 'fill/v1', text: 'H2O' }, 'draft', null),
     ],
     [],
+    [choiceNode('q1'), fillNode('q2')],
   );
 
-  // ① 输入框：三种格式各自读回它该有的那一个字段
-  assert.deepEqual(hydrated.drafts.q1, { selected: 'B', text: '' }, '单选题要回填选中的那一项');
-  assert.deepEqual(hydrated.drafts.q2, { selected: '', text: 'H2O' }, '填空题要回填文本');
+  // ① 输入框：每个格式各自读回它该有的那一个字段（形状是**逐题型**的）
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'choice', selected: ['B'] }, '单选题要回填选中的那一项');
+  assert.deepEqual(hydrated.drafts.q2, { kind: 'fill', texts: ['H2O'] }, '填空题要回填文本');
 
   // ② 状态：✓ 已提交 / ◐ 作答中 的判据（进度条的分母也吃它）
   assert.equal(hydrated.statuses.q1, 'submitted');
   assert.equal(hydrated.statuses.q2, 'draft');
 
   // ③ 得分：`isCorrect` 是 `false` ⇒ **0 分**（不是「没判分」）；`null` ⇒ 没判分
+  //    ⚠️ 这一行是**旧行兜底**：`score` 为 `null` 时回落到 `isCorrect`。
   assert.equal(hydrated.scores.q1, 0, '答错了是 0 分，不是 null —— 两者在奖励上不一样');
   assert.equal(hydrated.scores.q2, null, '没判分（draft / 主观题）是 null');
+  // ★ 新行：`score` 是绝对值（教师逐题填的那个数），**优先于** `isCorrect`。
+  const scored = hydrateAnswers(
+    [row('q1', { format: 'choice/v1', selected: ['B'] }, 'submitted', true, 4)],
+    [],
+    [choiceNode('q1')],
+  );
+  assert.equal(scored.scores.q1, 4, '有 score 就用 score（4 分不是 1 分）');
 
   // ④ `lastSent`：库里**确实有**这一行 ⇒ 学生随后清空它时，必须发一条「清空」出去。
   //    不填的话，服务端那一行会一直留着学生已经删掉的答案，教师看板上看得见。
@@ -279,11 +309,12 @@ test('🔴 hydrateAnswers：队列里那一题**赢** —— 服务端的旧值�
   const hydrated = hydrateAnswers(
     [row('q1', { format: 'choice/v1', selected: ['A'] }, 'submitted', true)],
     [{ questionId: 'q1', value: { format: 'choice/v1', selected: ['C'] }, at: 100 }],
+    [choiceNode('q1')],
   );
 
-  assert.deepEqual(hydrated.drafts.q1, { selected: 'C', text: '' }, '本地那条更新的作答必须赢');
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'choice', selected: ['C'] }, '本地那条更新的作答必须赢');
   // 服务端那一行的状态与得分**也要让位**：本地这次改动马上会被 PUT 拨回 draft
-  // 并把 `isCorrect` 清成 null（`routes/worksheets.ts` 的 update 分支）。
+  // 并把 `isCorrect` / `score` 清成 null（`routes/worksheets.ts` 的 update 分支）。
   // 留着它们，界面会一边显示「✓ 已提交 / ⭐」一边让学生继续改 —— 一句关于他自己的谎话。
   assert.equal(hydrated.statuses.q1, undefined, '本地有未保存改动 ⇒ 不得沿用服务端的「已提交」');
   assert.equal(hydrated.scores.q1, undefined, '本地有未保存改动 ⇒ 不得沿用服务端的判分');
@@ -297,8 +328,9 @@ test('🔴 hydrateAnswers：队列里的「清空」也要赢过服务端的旧�
     [row('q1', { format: 'fill/v1', text: '光合作用' }, 'submitted', true)],
     // `value: null` 是「学生把这一题删干净了」的标记，不是「没有值」
     [{ questionId: 'q1', value: null, at: 100 }],
+    [fillNode('q1')],
   );
-  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' }, '学生删掉的内容不得被服务端顶回来');
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'fill', texts: [''] }, '学生删掉的内容不得被服务端顶回来');
   assert.equal(hydrated.statuses.q1, undefined);
   assert.equal(hydrated.scores.q1, undefined);
 });
@@ -306,21 +338,94 @@ test('🔴 hydrateAnswers：队列里的「清空」也要赢过服务端的旧�
 test('hydrateAnswers：服务端「已清空」的行（value 为 null）不得被填成有内容', () => {
   // 库里那一行还在（学生开始作答过又清空了）⇒ `lastSent` 必须是**已定义**的 `null`，
   // 否则学生随后「敲一个再删掉」不会发清空请求，而库里那一行会一直留着。
-  const hydrated = hydrateAnswers([row('q1', null, 'draft', null)], []);
-  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' });
+  const hydrated = hydrateAnswers([row('q1', null, 'draft', null)], [], [fillNode('q1')]);
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'fill', texts: [''] });
   assert.equal(hydrated.lastSent.q1, null, 'null 是「发过，值是空的」—— 与 undefined（没发过）不是一回事');
 });
 
-test('hydrateAnswers：读不出来的坏值不抛，回落成空草稿（渲染路径不许 TypeError）', () => {
-  const hydrated = hydrateAnswers([row('q1', { format: '不认识/v9' } as never)], []);
-  assert.deepEqual(hydrated.drafts.q1, { selected: '', text: '' });
+test('hydrateAnswers：读不出来的坏值不抛，回落成空输入态（渲染路径不许 TypeError）', () => {
+  const hydrated = hydrateAnswers([row('q1', { format: '不认识/v9' } as never)], [], [fillNode('q1')]);
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'fill', texts: [''] });
   assert.equal(hydrated.statuses.q1, 'submitted', '草稿读不出来不该连带把状态也丢掉');
 });
 
 test('hydrateAnswers：没作答、队列也空 ⇒ 四张表都是空的（刷新后不凭空多出东西）', () => {
-  const hydrated = hydrateAnswers([], []);
+  const hydrated = hydrateAnswers([], [], [choiceNode('q1')]);
   assert.deepEqual(hydrated.drafts, {});
   assert.deepEqual(hydrated.statuses, {});
   assert.deepEqual(hydrated.scores, {});
   assert.deepEqual(hydrated.lastSent, {});
+});
+
+test('🔴 hydrateAnswers：内容里已经没有的题**整行跳过**（读出来也没有地方画它）', () => {
+  // 教师删掉了那道题、作答行还留在库里。塞进 `drafts` 只会让「这份图里有几个键」
+  // 与「屏幕上有几道题」不再对应，而面板只渲染 `content` 里有的题。
+  const hydrated = hydrateAnswers(
+    [row('q9', { format: 'choice/v1', selected: ['A'] }, 'submitted', true)],
+    [{ questionId: 'q9', value: { format: 'choice/v1', selected: ['A'] }, at: 1 }],
+    [choiceNode('q1')],
+  );
+  assert.equal(hydrated.drafts.q9, undefined);
+  assert.equal(hydrated.statuses.q9, undefined);
+  assert.equal(hydrated.scores.q9, undefined);
+  assert.equal(hydrated.lastSent.q9, undefined);
+});
+
+test('🔴 hydrateAnswers：排序题的旧作答按题目当下的条目表**补齐 / 裁掉**', () => {
+  // 教师删了一个条目、又加了一个：旧作答里那个 id 必须消失（否则画成一个没有文字的条目），
+  // 新条目必须补上（否则那一列里永远看不到它）。
+  const hydrated = hydrateAnswers(
+    [row('q1', { format: 'order/v1', order: ['i9', 'i2'] }, 'draft', null)],
+    [],
+    [orderNode('q1')],
+  );
+  assert.deepEqual(hydrated.drafts.q1, { kind: 'order', order: ['i2', 'i1'] });
+});
+
+// ── 6. 🔴 得分从线缆上读回来（新行读 `score`，旧行兜底 `isCorrect`）──────
+
+/**
+ * ★ M4a/D1：`scoreFromWire` 的入参从「线缆上的 `isCorrect`」换成了**整行**。
+ *
+ * 🔴 两件事同时成立才叫对：
+ *   · **新行**拿教师逐题填的**绝对值**（`score`，规格 §12）；
+ *   · **旧行**（A1 只回填了 `gradeState`，`score` 刻意没回填）靠 `isCorrect` 兜底 ——
+ *     没有兜底 ⇒ 升级后所有历史作答的奖励**凭空消失**，而学生看到的只是「星星不见了」。
+ *
+ * ⚠️ 这里刻意**不**用 `row()` 脚手架：那一个的字段顺序（`isCorrect` 在前）会把
+ * 「到底读了哪个键」这件事藏起来。直接写字面量，让两条路径一眼可见。
+ */
+test('🔴 scoreFromWire：有 `score` 就用 `score`（绝对值），一个字节都不换算', () => {
+  assert.equal(scoreFromWire({ score: 2, isCorrect: false }), 2, '半对 2 分：不许因为 isCorrect=false 变成 0');
+  assert.equal(scoreFromWire({ score: 0, isCorrect: false }), 0);
+  assert.equal(scoreFromWire({ score: 5, isCorrect: true }), 5);
+  assert.equal(scoreFromWire({ score: 0.5, isCorrect: true }), 0.5, 'M4b 的部分得分走这条');
+  assert.equal(scoreFromWire({ score: -3 }), -3, '负分照收：判据是「是不是数」，不是「是不是正数」');
+});
+
+test('🔴 scoreFromWire：旧行没有 `score` ⇒ 用 `isCorrect` 兜底（否则历史奖励凭空消失）', () => {
+  // 升级前落库的行长这样：只有 `isCorrect`。少了这两行，全班的历史星星一次全没。
+  assert.equal(scoreFromWire({ isCorrect: true }), 1);
+  assert.equal(scoreFromWire({ isCorrect: false }), 0);
+  assert.equal(scoreFromWire({ isCorrect: null }), null, '没判分是 null，不是 0');
+  assert.equal(scoreFromWire({}), null);
+  // ⚠️ `score` 坏掉（不是有限数）时也走兜底，而不是把坏值当分用。
+  assert.equal(scoreFromWire({ score: null, isCorrect: true }), 1);
+  assert.equal(scoreFromWire({ score: Number.NaN, isCorrect: true }), 1, 'NaN 会让累计变成 NaN');
+  assert.equal(scoreFromWire({ score: Number.POSITIVE_INFINITY, isCorrect: true }), 1, 'Infinity 会让累计变成 Infinity');
+  assert.equal(scoreFromWire({ score: '3', isCorrect: false }), 0, '字符串不是数 ⇒ 兜底');
+});
+
+test('🔴 scoreFromWire：读不出来的东西一律 `null`（**不是** 0）', () => {
+  // `undefined`（`.json()` 失败）当成 0 是把一次读不出来的响应变成「答错了」——
+  // 静默地把学生判错，而他屏幕上只是少了一颗星。
+  assert.equal(scoreFromWire(undefined), null);
+  assert.equal(scoreFromWire(null), null);
+  assert.equal(scoreFromWire({}), null);
+  assert.equal(scoreFromWire({ isCorrect: undefined }), null);
+  assert.equal(scoreFromWire(1), null, '整行是数字 ⇒ 拿不到 `score` 键 ⇒ null');
+  assert.equal(scoreFromWire('true'), null);
+  assert.equal(scoreFromWire([{ score: 3 }]), null, '数组不是「整行」');
+  // 阳性对照：`false` 必须是 **0**（答错），与上面那些 `null` 不是一回事。
+  assert.notEqual(scoreFromWire({ isCorrect: false }), null);
 });

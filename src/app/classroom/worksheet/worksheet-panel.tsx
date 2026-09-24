@@ -8,11 +8,18 @@ import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { flattenQuestions, isDraftEmpty, questionTypeLabel, readOptions, type AnswerDraft } from '@/lib/worksheet-questions';
+import { flattenQuestions, questionTypeLabel } from '@/lib/worksheet-questions';
+// ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
+//（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
+// 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
+import { emptyDraftFor, isDraftEmpty, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
 import { useModuleViewport } from '../shell/use-module-viewport';
+// ★ M4a/D2：作答区**只有一份实现**（`questions/index.tsx` 的分派器 + 6 个作答体）。
+// 教师端的「学生端预览」渲染的是下面这个 `WorksheetQuestionList`，所以它自动用上同一份。
+import { QuestionInput } from './questions';
 import {
   questionDisplayState,
   useWorksheetAnswers,
@@ -81,6 +88,10 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
       // ⚠️ 只认 `boolean`：`undefined`（`.json()` 失败）必须落到 `null`（**没判分**），
       // 不能变成 `false`（判错）—— `scoreFromWire` 那条注释里有完整理由。
       isCorrect: typeof row.isCorrect === 'boolean' ? row.isCorrect : null,
+      // ★ M4a：逐题得分的**绝对值**（教师填的那个数）。同一个纪律：只认有限数，
+      // 读不出来落到 `null`（= 没判分），而 `scoreFromWire` 会回落到 `isCorrect` ——
+      // **升级前落库的旧行没有 `score`**，那正是那条兜底存在的理由。
+      score: typeof row.score === 'number' && isFinite(row.score) ? row.score : null,
     });
   });
   return out;
@@ -201,14 +212,22 @@ export function WorksheetQuestionList({
   return (
     <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
       {questions.map((node, index) => {
-        const draft = drafts[node.id] ?? { selected: '', text: '' };
-        const state = questionDisplayState(statuses[node.id], draft);
+        // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
+        //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列
+        //     排好的条目（`data.items` 的顺序），所以「还没碰过」也不能画成空的；
+        //   · `raw` —— 负责**判「这一题有没有内容」**。`undefined` = 学生一个指头都没动过，
+        //     那时「提交本题」必须按死：排序题的起点虽然是合法作答，但它**还没被保存过**
+        //     （服务端要那一行存在才收提交，见 `routes/worksheets.ts` 的
+        //     「请先作答再提交本题」），点下去只会换来一句把网络问题说成学生问题的话。
+        const raw = drafts[node.id];
+        const draft = raw ?? emptyDraftFor(node);
+        const state = questionDisplayState(statuses[node.id], raw);
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
         const locked = submitted && !allowResubmit;
-        const options = readOptions(node);
+        const untouched = raw === undefined || isDraftEmpty(raw);
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || (!submitted && isDraftEmpty(draft));
+        const submitDisabled = Boolean(submitting[node.id]) || (!submitted && untouched);
         const controlsDisabled = !interactive || locked;
         return (
           <section className={styles.question} key={node.id}>
@@ -236,62 +255,17 @@ export function WorksheetQuestionList({
                 : <span className={styles.placeholder}>（这道题的题干还没写）</span>}
             </div>
 
-            {node.type === 'single-choice' ? (
-              options.length === 0 ? (
-                <p className={styles.cardNote}>（这道题还没有选项）</p>
-              ) : (
-                <div className={styles.options}>
-                  {options.map((option) => (
-                    <label
-                      className={`${styles.option}${draft.selected === option.key ? ` ${styles.optionSelected}` : ''}`}
-                      key={option.key}
-                    >
-                      <input
-                        className={styles.optionInput}
-                        type="radio"
-                        // ⚠️ name 必须带 `node.id`：同卷多题如果共用名字，选了第 1 题会把
-                        // 第 2 题的选择顶掉 —— 而两份 JSX（学生端 / 预览）也不会同时挂载。
-                        name={`worksheet-choice-${node.id}`}
-                        checked={draft.selected === option.key}
-                        disabled={controlsDisabled}
-                        onChange={() => onChange?.(node, { ...draft, selected: option.key })}
-                      />
-                      <span className={styles.optionKey}>{option.key}</span>
-                      <span className={styles.optionText}>
-                        {option.text.trim() || <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )
-            ) : null}
-
-            {node.type === 'fill-blank' ? (
-              <input
-                className={styles.input}
-                type="text"
-                value={draft.text}
-                disabled={controlsDisabled}
-                placeholder="在这里填写答案"
-                onChange={(event) => onChange?.(node, { ...draft, text: event.target.value })}
-              />
-            ) : null}
-
-            {node.type === 'short-answer' ? (
-              <textarea
-                className={`${styles.input} ${styles.textarea}`}
-                value={draft.text}
-                rows={3}
-                disabled={controlsDisabled}
-                placeholder="在这里作答"
-                onChange={(event) => onChange?.(node, { ...draft, text: event.target.value })}
-              />
-            ) : null}
-
-            {/* 未知题型：说清楚，而不是渲染成一个空的题（学生会以为界面坏了）。 */}
-            {node.type !== 'single-choice' && node.type !== 'fill-blank' && node.type !== 'short-answer' ? (
-              <p className={styles.cardNote}>（这道题的题型暂时没法在这里作答）</p>
-            ) : null}
+            {/* ★ M4a/D2：作答区**一个分派器**（6 个作答体 + 判断题/单选/多选合成一个）。
+                在这之前这里是三条平铺的 `node.type === …`，而教师端的预览渲染同一个组件
+                —— 再加 6 个题型就是两处各加 6 支，必然漂移（症状：预览里画得出来、
+                学生那里画不出来，**没有任何报错**）。见 `questions/index.tsx` 的文件头。
+                ⚠️ `draft` 而不是 `raw`：渲染用的起点必须是有形状的那一份。 */}
+            <QuestionInput
+              node={node}
+              draft={draft}
+              onChange={onChange}
+              disabled={controlsDisabled}
+            />
 
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比

@@ -297,6 +297,41 @@
   resize: vertical;
 }
 
+/* 填空题：单空就是一个输入框（没有 `.fillList` 的额外结构），多空每空一行。
+   ⚠️ 输入框的 `font-size: 1rem`（≥16px）是**不能降**的（见 `.input` 的注释）——
+   多空时行更密，很容易顺手把它调小，而那样 iOS 会在聚焦时自动放大整页。 */
+.fillList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fillRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fillRow .input {
+  /* 行里已经有 margin 了，输入框自己那个上边距会让每一行都对不齐 */
+  margin-top: 0;
+}
+
+.fillLabel {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: var(--ws-accent);
+  font-size: .74rem;
+  font-weight: 800;
+}
+
 .input:disabled,
 .optionInput:disabled {
   background: #f8fafc;
@@ -418,4 +453,308 @@
 /* 只读态（教师端「学生端预览」）：没有任何可点的东西，所以把命中区的暗示收掉。 */
 .questions[data-interactive='0'] .option {
   cursor: default;
+}
+
+/* ───────────────────────── 拖拽源（M4a / D2）─────────────────────────────
+ *
+ * 🔴 **`touch-action: none` 写在类上（静态），不是等到 `pointerdown` 再写。**
+ * 浏览器是在**手势开始的那一刻**决定这条手势归谁（滚动还是页面），而 `pointerdown`
+ * 已经是那一刻之后了 —— 那时再设 `touch-action` 对**当前**这一次手势无效（实测口径：
+ * iOS Safari 的 touch-action 在 touchstart 时求值）。代价如实记：**从条目上开始滑动
+ * 不会滚动页面**（那些条目不再是滚动手柄），页面其余部分照常滚。
+ * 不设的代价更大：iOS 把手势判成滚动 ⇒ 元素不跟手，而且在滚动开始的一瞬间收到
+ * `pointercancel`（拖拽当场作废，学生看到的是「拖不动」）。
+ *
+ * ⚠️ 组件在 `pointerdown` 里还会**再写一次行内的 `touch-action: none`**（收尾时还原成
+ * 空串）。那不是这个开关，而是「拖动态下不许滚动」这条语义在桌面浏览器与第二次手势上的
+ * 落实。两处都留着是有意的，别删其中一处。 */
+.dragSource {
+  touch-action: none;
+  cursor: grab;
+  /* 长按弹出「拷贝 / 查询」菜单会把拖拽打断（而且菜单挡在屏幕上）。 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 正在被拖的那一条：**屏幕上必须看得见拖动态**（规格 §12 的硬要求）——
+   看不见的话学生不知道自己在拖什么，只觉得手指底下有东西在动。
+   ⚠️ 刻意**不**做「元素跟手」（那样要每帧写 transform），这一层只要一个可见的高亮，
+   而它不依赖任何测量 —— 拖拽挂掉时也不会画出一个错位的影子。 */
+.dragActive {
+  border-color: var(--ws-accent);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, .28);
+  transform: scale(1.02);
+}
+
+/* 手指底下的落点。`dragActive` 说的是「我手里拿着什么」，这一条说的是「它要落到哪」。 */
+.dropActive {
+  border-color: var(--ws-accent);
+  background: #eef2ff;
+}
+
+/* 操作提示（拖拽 / 点选两条路都要说一句 —— 老 iPad 上没人会去猜手势）。 */
+.dragHint {
+  margin: 8px 0 0;
+  font-size: .76rem;
+  line-height: 1.6;
+  color: #94a3b8;
+}
+
+/* ───────────────────────── 排序题 ─────────────────────────────────────── */
+
+.orderList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.orderItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 44px;      /* 触屏命中区的下限，老 iPad 上手指更粗 */
+  box-sizing: border-box;
+}
+
+.orderItemSelected {
+  border-color: var(--ws-accent);
+  background: #f5f8ff;
+}
+
+.orderItemDragging {
+  opacity: .95;
+}
+
+.orderItemOver {
+  border-color: var(--ws-accent);
+  background: #eef2ff;
+}
+
+.orderIndex {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: var(--ws-accent);
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.orderText {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.orderButtons {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+.orderButton {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  font-size: .8rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.orderButton:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* ───────────────────────── 连线题 ─────────────────────────────────────── */
+
+.matchWrap { margin-top: 4px; }
+
+.matchGrid {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 34px;             /* 中间这条空隙就是连线画过的地方 */
+  margin-top: 10px;
+}
+
+.matchColumn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matchItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.matchItemSelected {
+  border-color: var(--ws-accent);
+  background: #f5f8ff;
+}
+
+.matchItemLinked { border-color: #bfdbfe; }
+
+.matchSide {
+  flex: 0 0 auto;
+  font-size: .7rem;
+  font-weight: 800;
+  color: #94a3b8;
+}
+
+.matchText {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 连线的号（两端同号）。它是**永远正确**的那一份：不依赖任何测量。 */
+.matchBadge {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ws-accent);
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+/* 「连到了哪一条」的一句话。与徽标同时存在是刻意的冗余：线画歪了也读得出配对。 */
+.matchChip {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .72rem;
+  color: #2563eb;
+}
+
+.matchLines {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* 🔴 必须让开：否则这一层会盖在落点上面，`document.elementFromPoint` 返回的就是它，
+     拖拽永远找不到落点（而点选不受影响 —— 那种「一半好一半坏」最难查）。 */
+  pointer-events: none;
+  overflow: visible;
+}
+
+.matchLine {
+  stroke: var(--ws-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* ───────────────────────── 归类题 ─────────────────────────────────────── */
+
+.categorizeWrap { margin-top: 4px; }
+
+.pool {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 56px;
+  box-sizing: border-box;
+}
+
+.poolHead {
+  flex: 0 0 100%;
+  font-size: .72rem;
+  font-weight: 800;
+  color: #94a3b8;
+}
+
+.poolItem {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 40px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  word-break: break-word;
+}
+
+.poolItemSelected {
+  border-color: var(--ws-accent);
+  background: #f5f8ff;
+}
+
+.zoneGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.zone {
+  flex: 1 1 44%;         /* 窄屏两列，宽屏也是两列 —— 框里还要放条目，别太细 */
+  min-width: 140px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 72px;
+  box-sizing: border-box;
+}
+
+.zoneHead {
+  flex: 0 0 100%;
+  font-size: .78rem;
+  font-weight: 750;
+  color: #334155;
+  word-break: break-word;
+}
+
+/* 只读态（教师端预览）：拖拽的暗示一并收掉 —— 那里一个手势都不生效。 */
+.questions[data-interactive='0'] .dragSource {
+  cursor: default;
+  touch-action: auto;
 }

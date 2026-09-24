@@ -124,16 +124,26 @@ export function questionOutcome(
  *
  * ⚠️ 用 `draftFromValue`（学生端面板读回本地队列用的是同一个函数）：值可能来自手改过的行，
  * 读不出来时它返回空输入态而不是抛错 —— 这里是渲染路径，一次 TypeError 会让整个抽屉白屏。
+ *
+ * ★ M4a/D1：`draftFromValue` 的签名多了第一个入参（题目）—— 输入态的形状是**逐题型**的，
+ * 读回时要与题目当下的样子对齐。这里本来就拿得到 `node`，所以只是把它递进去。
+ * ⚠️ 顺带把「读哪个字段」收成 `draft.kind` 的分派：过去读 `draft.text` / `draft.selected`
+ * 是因为那时的输入态只有一个形状。**行为逐字不变**（多选仍然只显示第一个选中的 key、
+ * 判断题仍然给 `null` —— 后者是 D4 的既有口径，不在这里顺手改）。
  */
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
-  const draft = draftFromValue(value);
+  const draft = draftFromValue(node, value);
   if (node.type === 'single-choice') {
-    if (!draft.selected) return null;
-    const option = readOptions(node).filter((item) => item.key === draft.selected)[0];
-    return option ? `${option.key}. ${option.text}` : draft.selected;
+    const selected = draft.kind === 'choice' ? draft.selected[0] ?? '' : '';
+    if (!selected) return null;
+    const option = readOptions(node).filter((item) => item.key === selected)[0];
+    return option ? `${option.key}. ${option.text}` : selected;
   }
-  const text = draft.text.trim();
-  return text ? text : null;
+  // 填空（单空 / 多空）与问答都是「一段文字」。多空用空格接起来 —— 逐空分行是 D4 的
+  // 呈现细节，这里只保证**有内容就显示出来**（学生写过的字不许在抽屉里变成空白）。
+  const text = draft.kind === 'text' ? draft.text : draft.kind === 'fill' ? draft.texts.join(' ') : '';
+  const trimmed = text.trim();
+  return trimmed ? trimmed : null;
 }
 
 /** 状态 → 界面上的那一个词。三态与看板方格阵同一组（规格 §7.2 / §7.3 的图例）。 */

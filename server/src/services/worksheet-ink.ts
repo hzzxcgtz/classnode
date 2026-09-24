@@ -42,7 +42,8 @@ export function isInkFormat(raw: unknown): raw is InkFormat {
  * 它只拦得住自己客户端产生的值。
  *
  * ⚠️ 只对 ink 值生效。**别把它写成一道格式门**：认不出的 `format` 一律放行 ——
- * `format` 在服务端从来不是判据（`worksheet-answer-value.ts:42-52` 立过这条：
+ * `format` 在服务端从来不是判据（`worksheet-answer-value.ts:48-71`，那段「`format` 在服务端只被读
+ * 两处、两处都不拿它当判据」立过这条：
  * 「加一道格式校验就多一道拒绝的理由，而它会让库里已有的行与旧客户端**静默不判分**」）。
  * 本函数不违反它，理由是两条：
  *   · 它**只**在 `format === 'ink/v1' | 'drawing/v1'` 时生效（M4b 才诞生的形状，

@@ -23,12 +23,20 @@
 /**
  * 🔴 与 `server/src/services/worksheet-ink.ts` 的同名常量是**同一对**字面量，两处必须一起改。
  *
- * ⚠️ 服务端读不到 `src/`，所以那一份是**第二份**、不是共享（它由本批的 B1 新建）。
- * 此刻它还不存在 —— 实测（2026-09-24）：
+ * ⚠️ 服务端读不到 `src/`，所以那一份是**第二份**、不是共享 —— 它由 M4b 的 B1 新建（`e1ff80c`）。
+ * 两份有没有漂，跑这一条（实测 2026-09-24，B1 之后）：
  * ```
  * $ ls server/src/services/worksheet-ink.ts
- * "server/src/services/worksheet-ink.ts": No such file or directory (os error 2)
+ * server/src/services/worksheet-ink.ts
+ * $ /usr/bin/grep -n '^export const INK_MAX' src/lib/worksheet-ink.ts server/src/services/worksheet-ink.ts
+ * src/lib/worksheet-ink.ts:43:export const INK_MAX_STROKES = 400;
+ * src/lib/worksheet-ink.ts:44:export const INK_MAX_POINTS = 2000;
+ * server/src/services/worksheet-ink.ts:15:export const INK_MAX_STROKES = 400;
+ * server/src/services/worksheet-ink.ts:16:export const INK_MAX_POINTS = 2000;
  * ```
+ * ⊘ 2026-09-24（B1）：这一段原是一段 `ls … No such file or directory (os error 2)` 的实测输出，
+ * 用来记「服务端那一份还不存在」。B1 把那个文件建出来了 ⇒ 换成上面这条能**同时**证明
+ * 「两份都在」与「两份的字面量逐字相同」的命令，而「第二份、不是共享」这个结论没变。
  * 两处各写一份的代价是「改了一处、另一处没改」，而它不报错：客户端收下一幅 400 笔的画、
  * 服务端按旧上限拒绝 ⇒ 学生看到的是「提交失败」，且提示里的数字与他自己屏幕上的不一致。
  */

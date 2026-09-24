@@ -45,9 +45,28 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  * | `links: Array<{leftId, rightId}>` | 连线（教师那侧的配对叫 `pairs`，**刻意不同名**） |
  * | `assignment: Record<string, string>` | 归类（教师那侧叫 `placement`） |
  *
- * ⚠️ **`format` 服务端一个字节都不读。** 实测（2026-09-24）：
- * `grep -c format server/src/services/worksheet-questions.ts` ⇒ `0`；
- * `grep -rn "\.format\b\|'format'\|\"format\"" server/src`（排除 tests）⇒ 无输出。
+ * ⚠️ **`format` 在服务端只被读两处，而且两处都不拿它当「判据」。** 实测（2026-09-24，B1 之后重跑）：
+ * ```
+ * $ grep -c format server/src/services/worksheet-questions.ts
+ * 5
+ * $ grep -rn "\.format\b\|'format'\|\"format\"" server/src --include='*.ts' | grep -v "/tests/"
+ * server/src/services/worksheet-ink.ts:60:  if (!isInkFormat(row.format)) return null;
+ * server/src/services/worksheet-questions.ts:904:  if (isInkFormat(readField(value, 'format'))) return null;
+ * ```
+ * 那**5**个命中全部在 B1 新增的行上（1 行代码 + 4 行注释）—— B1 之前这个文件的读数是 `0`。
+ * 两处读它的地方，各自的结论都只有一个，且**都不给非 ink 值增加任何拒绝路径**：
+ *   · `worksheet-questions.ts:904` —— `judge()` 里的**短路**：读到 ink 值就回 `null`（不判分，
+ *     规格 §12 裁定 3）。非 ink 值走原来那条路，**判定结果逐字不变**（这一行只是先读一次
+ *     `format`，没有任何副作用）；
+ *   · `worksheet-ink.ts:60` —— `findInkValueError` 里的**体积校验**（B1 的写入口校验）：
+ *     认不出 ink 就放行。它只在 `format` 明说是笔迹时才去数笔数 / 点数 ⇒ 它多出来的拒绝理由
+ *     **只可能落在** `ink/v1` / `drawing/v1` 这两个 M4b 才诞生的形状上，而库里已有的行
+ *     没有一个是它。
+ * ⇒ 两处都是**读**它、不是**校验**它 —— 下面那条纪律（「不得给它补一条格式校验」）因此仍然成立，
+ *   而且它现在有了一个可判的判据：**新增的拒绝路径不许落在非 ink 值上**（实测：一处都没落）。
+ * ⊘ 2026-09-24（B1，提交 `e1ff80c`）：这一段原写「**`format` 服务端一个字节都不读**」并附两条
+ *   实测命令（当时 ⇒ `0` / 无输出）。那两句被 B1 打陈旧了，所以按上面的当次输出逐字替换；
+ *   结论从「一个字节都不读」改成「只读两处、两处都不校验」，**被它保护的纪律没有动**。
  * 它只随作答值一起存进 `WorksheetAnswer.value`，读者是**前端**的 `draftFromValue`
  * （把作答值读回输入态：学生端队列回填、教师端抽屉的「原答案」都走它）。
  *
@@ -58,7 +77,7 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  * 与旧客户端**静默不判分**（判分器本来只认字段名，多一道校验就多一道拒绝的理由）。
  *
  * 🔴 **`links` / `assignment` 这两个键名是已下的裁定（2026-09-23），不是命名口味。**
- * `ANSWER_KEYS`（`server/src/services/worksheet-questions.ts:245`）里也有 `pairs` /
+ * `ANSWER_KEYS`（`server/src/services/worksheet-questions.ts:344`）里也有 `pairs` /
  * `placement`，但那指的是**教师的正确答案**（在题目 `data` 里，必须被 `stripAnswers` 剥掉、
  * 绝不能下发）；而这里同名的那两个键是**学生自己写的作答**（必须原样保留、要回显给教师看）。
  * 同一个键名承担两个相反的判据 ⇒ 任何「响应里不得出现答案键」的扫描会把「学生连线答对了」
@@ -69,11 +88,15 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  *（裁定 6：一个实现、两个 format 名 —— 差别只在题型默认的画布尺寸与提示语，
  * 存储与渲染逐字相同）。所以上面那张表里没有它的行：笔迹的「协议」是
  * `format` / `canvas` / `strokes` 这三个键（`InkValue`），而它的**读者不是判分器** ——
- * 手写与绘图不参与自动判分（规格 §12 裁定 3），服务端的 `JUDGES` 里没有它。
+ * 手写与绘图不参与自动判分（规格 §12 裁定 3）。服务端那一侧有**两条**闸（M4b 的 B1 落地）：
+ * `JUDGES.drawing` 恒回 `null`，以及 `judge()` 见到 ink 值**直接短路回 `null`**
+ *（后一条管的是「题型不是 `drawing`、但值被改成了 ink」那一半）。
+ * ⊘ 2026-09-24（B1）：这里原写「服务端的 `JUDGES` 里没有它」—— 那句被 B1 打陈旧了（现在是**有**它、
+ * 恒回 `null`），结论（不参与判分）没变，理由换成了上面这两条。
  * 🔴 这三个键名**都在 `ANSWER_KEYS` 之外**（Global Constraint 17：作答值里不许出现答案键名，
  * 否则本仓那些「响应里不得出现答案键」的扫描会分不出「学生画了东西」与「答案泄漏了」）。
  * `ANSWER_KEYS` 是 `['correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement']`
- *（`server/src/services/worksheet-questions.ts:333`）。M4b 实测（2026-09-24）：
+ *（`server/src/services/worksheet-questions.ts:344`）。M4b 实测（2026-09-24）：
  * ```
  * $ /usr/bin/grep -c "correctKeys\|answers\|explanation\|correctOrder\|pairs\|placement" src/lib/worksheet-ink.ts
  * 0

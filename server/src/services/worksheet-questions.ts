@@ -892,7 +892,8 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   //
   // ⚠️ 这里是**读** `format`（不是校验它）：读它多出来的结论只有一个 —— `null`（不判分），
   // 而 `null` 正是裁定 3 要的那一档。**没有新增任何拒绝路径**，所以
-  // `worksheet-answer-value.ts:42-52` 那条「不得给服务端补 format 校验」的纪律没被违反。
+  // `worksheet-answer-value.ts:48-71`（那段「`format` 在服务端只被读两处」）那条
+  // 「不得给服务端补 format 校验」的纪律没被违反。
   //
   // 🔴 **必须是 `null`，不能是 `{ state: 'incorrect', score: 0 }`**：后者会让学生的一幅画
   // 在看板上被画成「✗ 答错」并计进正确率的分母 —— 裁定 3 明写「`'none'` **不得画成答错**」。

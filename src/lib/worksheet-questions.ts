@@ -100,11 +100,13 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'categorize', label: '归类题', hint: '把若干条目拖到对应的框里', graded: true },
   { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
-  // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3），
-  // 服务端的 `JUDGES` 里没有它，`grade` 也读不到它的 `format` —— 那句话的出处是
-  // `worksheet-answer-value.ts:48`（「**`format` 服务端一个字节都不读**」，实测在它那儿），
-  // **不是** Global Constraints 里的某一条（那里没有这句话）。这一格是 false ⇒ 看板抽屉里
-  // 只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
+  // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
+  // 服务端那一侧有**两条**闸（B1，提交 `e1ff80c`）：`JUDGES.drawing` 恒回 `null`；
+  // `judge()` 见到 ink 值**直接短路回 `null`**（后一条管的是「题型不是 `drawing`、值却是 ink」）。
+  // ⚠️ 这句话的依据**不是** Global Constraints 里的某一条（那里没有这句话），
+  // 而是规格 §12 裁定 3 本身 + `worksheet-answer-value.ts` 里那段「`format` 在服务端只被读两处、
+  // 两处都不拿它当判据」（现在在 `:48-71`）—— B1 之前它写的是「`format` 服务端一个字节都不读」。
+  // 这一格是 false ⇒ 看板抽屉里只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
   { value: 'drawing', label: '绘图题', hint: '学生在画布上画图，不自动判分', graded: false },
 ];
 

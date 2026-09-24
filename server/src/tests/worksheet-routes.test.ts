@@ -977,3 +977,147 @@ test('🔴 M4b：超限值被拒之后，库里的值与整卷状态都还是上
   assert.equal(after.status, 'submitted', '被拒的保存不得把整卷拨回 in-progress（教师看板上那次交卷会凭空消失）');
   assert.deepEqual(after.submittedAt, before.submittedAt, '被拒的保存不得清掉交卷时间戳');
 });
+
+// ---------------------------------------------------------------------------
+// M5a：课堂级「锁定作答」的门控（规格 §3.2）
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 **锁定⇒保存被拒，且被拒的保存不留任何痕迹。**
+ *
+ * 两条判据缺一不可：
+ *   ① **状态码 + 一个机器可读的 `code`**。今天本文件里有两个 409（另一条是
+ *      `allowResubmit: false` 的「本题提交后不可修改」），而那条**只有中文文案**
+ *      ⇒ 客户端若按状态码或按文案判，就分不出「锁着」与「这题不许重交」。
+ *      分不出的后果不是文案难看：离线队列会把学生在**锁定之前**写的、还没发出去的
+ *      作答当成永久失败**丢掉**（GC 21）。
+ *   ② **库里的值一个字都没变** —— 这条同时钉住门控的位置：它排在 `ensureResponse` 之前。
+ *      排在之后的话，这次被拒的保存会先把整卷从 `submitted` 拨回 `in-progress`。
+ *
+ * 🔴 反证（GC 14）：把 `if (ctx.answersLocked)` 那一段注释掉 ⇒ 本用例必红，
+ *    下面两条（交卷放行 / 解锁恢复）仍然绿。
+ */
+test('🔴 M5a：锁定时 PUT 被 409 拒（带 code），且库里那一行一个字没变', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { classroom, participant } = await seedClassroom(db.prisma, '8021');
+  const worksheet = await seedWorksheet(db.prisma, '锁定作答学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+
+  // ① 锁之前先正常存一个值（这一步顺带把 `WorksheetResponse` 建出来）。
+  const first = { format: 'choice/v1', selected: ['B'] };
+  const saved = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: first },
+    asStudent,
+  );
+  assert.equal(saved.status, 200, `锁定前保存应当成功：${JSON.stringify(await saved.json())}`);
+
+  // ② 锁上。
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { answersLocked: true } });
+
+  // ③ 再存另一个值 ⇒ 409 + `code`。
+  const rejected = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: { format: 'choice/v1', selected: ['A'] } },
+    asStudent,
+  );
+  assert.equal(rejected.status, 409, '锁定时保存必须被拒');
+  const body = await rejected.json() as { error?: unknown; code?: unknown };
+  assert.equal(body.code, 'answers-locked', '必须有一个机器可读的 code —— 客户端按它判，不按状态码也不按中文');
+  assert.equal(typeof body.error, 'string', '中文文案仍然要有（人要读得懂）');
+
+  // ④ 库里那一行**逐字**还是第一次那个值。
+  const row = await db.prisma.worksheetAnswer.findFirstOrThrow({
+    where: { questionId: 'q_1', response: { classroomId: classroom.id, participantId: participant.id } },
+    select: { value: true, status: true },
+  });
+  assert.deepEqual(row.value, first, '被拒的保存不得改动库里的值');
+  assert.equal(row.status, 'draft');
+});
+
+/**
+ * ★ **锁定⇒交卷仍然放行**（裁定 ③：停笔，但还能交卷）。
+ *
+ * 这条与上面那条是一对：只有两条都在，才说明门控挂在了**保存**上，
+ * 而不是「一锁就什么都写不进去」。
+ *
+ * ⚠️ 三题都要交：整卷那条「交齐」判定要 `current content` 里每一题都 `submitted`，
+ * 少交一题 `WorksheetResponse.status` 就停在中途 —— 那样的断言会因为**别的原因**
+ * 是 false，而不是因为在测锁定。
+ */
+test('★ M5a：锁定时交卷仍然放行，整卷照样置为 submitted', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { classroom, participant } = await seedClassroom(db.prisma, '8022');
+  const worksheet = await seedWorksheet(db.prisma, '锁定时交卷学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+
+  for (const questionId of ['q_1', 'q_2', 'q_3']) {
+    const saved = await server.put(
+      `/api/worksheets/${worksheet.id}/answers`,
+      { questionId, value: questionId === 'q_1' ? { format: 'choice/v1', selected: ['B'] } : { format: 'text/v1', text: 'x' } },
+      asStudent,
+    );
+    assert.equal(saved.status, 200, `锁定前保存 ${questionId}：${JSON.stringify(await saved.json())}`);
+  }
+
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { answersLocked: true } });
+
+  for (const questionId of ['q_1', 'q_2', 'q_3']) {
+    const submit = await server.post(
+      `/api/worksheets/${worksheet.id}/answers/submit`,
+      { questionId },
+      asStudent,
+    );
+    assert.equal(submit.status, 200, `锁定时提交 ${questionId} 必须放行：${JSON.stringify(await submit.json())}`);
+  }
+
+  const response = await db.prisma.worksheetResponse.findFirstOrThrow({
+    where: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id },
+  });
+  assert.equal(response.status, 'submitted', '三题交齐之后整卷必须是 submitted');
+  const rows = await db.prisma.worksheetAnswer.findMany({ where: { responseId: response.id }, select: { status: true } });
+  assert.equal(rows.length, 3);
+  for (const row of rows) assert.equal(row.status, 'submitted');
+});
+
+/** 解锁之后同一个 PUT 必须恢复正常 —— 证明上面那条 409 来自锁，而不是别的什么拦着。 */
+test('M5a：解锁之后保存恢复（同一个 PUT 从 409 变 200）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { classroom, participant } = await seedClassroom(db.prisma, '8023');
+  const worksheet = await seedWorksheet(db.prisma, '解锁恢复学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const asStudent = { Authorization: `Bearer ${token}` };
+
+  const put = (selected: string) => server.put(
+    `/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_1', value: { format: 'choice/v1', selected: [selected] } },
+    asStudent,
+  );
+
+  assert.equal((await put('B')).status, 200);
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { answersLocked: true } });
+  assert.equal((await put('A')).status, 409, '前置条件：锁着的时候这一条确实是 409');
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { answersLocked: false } });
+  const unlocked = await put('A');
+  assert.equal(unlocked.status, 200, '解锁之后同一个 PUT 必须恢复正常');
+
+  const row = await db.prisma.worksheetAnswer.findFirstOrThrow({
+    where: { questionId: 'q_1', response: { classroomId: classroom.id, participantId: participant.id } },
+    select: { value: true },
+  });
+  assert.deepEqual(row.value, { format: 'choice/v1', selected: ['A'] }, '解锁后这次保存必须真的落库');
+});

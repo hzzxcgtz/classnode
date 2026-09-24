@@ -918,6 +918,8 @@ interface StudentWorksheetContext {
   prisma: PrismaClient;
   classroomId: string;
   participantId: string;
+  /** ★ M5a：这间课堂此刻是否锁定了作答（判据在 `requireOwnWorksheet` 里取）。 */
+  answersLocked: boolean;
   worksheet: {
     id: string; title: string; description: string | null;
     content: Prisma.JsonValue; settings: Prisma.JsonValue;
@@ -941,6 +943,8 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
       classroom: {
         select: {
           mode: true,
+          // ★ M5a：锁定作答的判据跟着 context 走 —— 写路径要用它，免得每个端点再查一次课堂。
+          answersLocked: true,
           groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
         },
       },
@@ -972,7 +976,13 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
     return null;
   }
 
-  return { prisma, classroomId: participant.classroomId, participantId: participant.id, worksheet };
+  return {
+    prisma,
+    classroomId: participant.classroomId,
+    participantId: participant.id,
+    answersLocked: participant.classroom.answersLocked,
+    worksheet,
+  };
 }
 
 /**
@@ -1376,6 +1386,25 @@ router.put('/:id/answers', async (req, res) => {
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
 
+    // ★ M5a：课堂级「锁定作答」—— 保存被拒，**交卷仍然放行**（规格 §3.2 / 裁定 ③）。
+    //
+    // 🔴 判据排在**所有落库动作之前**（与上面那条体积校验、下面那条 409 同一条纪律）：
+    // `ensureResponse` 的 `update` 支是**无条件**的（`status:'in-progress', submittedAt:null`）
+    // ⇒ 排在它之后判，被拒的保存会先把整卷从 `submitted` 拨回 `in-progress`，
+    // 教师看板上那次交卷**凭空消失**（GC 22）。
+    //
+    // 🔴 状态码 **409** 与一个**机器可读**的 `code`：本文件里 409 已经表示「当前状态不允许这个操作」，
+    // 而客户端必须能把它与下面那条 `allowResubmit` 的 409 **分开** —— 那条**只有中文文案**，
+    // 靠文案判会在改文案时静默失效（后果：离线队列把学生的作答当永久失败**丢掉**，GC 21）。
+    //
+    // ⚠️ **只挂在 PUT 上**，`submit` 那条路径不判 —— 与上面那条体积校验逐字同源的理由：
+    // 交卷读的是库里已经存住的那份，而「保存」已经被这里拦住了 ⇒ 再判一次不改变结果，
+    // 只多一处会与这里**分叉**的判据（规格 §3.2 的「一处判据、两条路径」= 判据只有一份，
+    // 不是「在两个端点各写一遍」）。`submit` 那边有一句注释说明它为什么故意不判。
+    if (ctx.answersLocked) {
+      return res.status(409).json({ error: '老师已锁定作答', code: 'answers-locked' });
+    }
+
     // 🔴 `allowResubmit: false` 在**服务端**生效（规格 §8.4 三层控制里的第一层）。
     // 只靠学生端收起输入框，这个设置就是对教师说的假话 —— 与答案剥离同一条原则：
     // **过滤在服务端执行，不在前端**（规格 §5.4）。
@@ -1455,6 +1484,12 @@ router.post('/:id/answers/submit', async (req, res) => {
   try {
     const ctx = await requireOwnWorksheet(req, res);
     if (!ctx) return;
+
+    // ★ M5a：锁定作答**不拦这里** —— 裁定 ③ 是「停笔，但还能交卷」。
+    // 交卷读的是库里已经存住的那份（下面那条 `worksheetAnswer.findFirst`），
+    // 而「保存」已经在 PUT 上被拦住了 ⇒ 锁定之后交上去的一定是锁定前的最后一份。
+    // ⚠️ 判据**不在这里**再写一遍：那会变成第二个会与 PUT 分叉的门（同 `findInkValueError`
+    // 只挂 PUT 那条纪律）。要改锁的语义，改 PUT 上那一处。
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';

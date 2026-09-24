@@ -69,6 +69,7 @@ import {
   POINTS_MAX,
   pointsSignature,
   type QuestionPointsDraft,
+  QUESTION_TYPE_OPTIONS,
   readBlankAnswers,
   readBlankText,
   readCategorize,
@@ -1674,4 +1675,85 @@ test('🔴 readCorrectKeys：空串与坏元素丢掉（服务端 `readStrings` 
   assert.deepEqual(readCorrectKeys(typed('multi-choice', { correctKeys: ['A', '', 42, 'B'] })), ['A', 'B']);
   assert.deepEqual(readCorrectKeys(typed('multi-choice', { correctKeys: 'A' })), []);
   assert.deepEqual(readCorrectKeys(typed('multi-choice', {})), []);
+});
+
+// ── 13. 作答方式（M4b / D1，规格 §3-V）──────────────────────────────────
+//
+// 这一节盯的是**手写笔迹唯一的入口**：节点上的 `inputMode` 那一格。
+// 它错了**不报错** —— 卡片上那两个单选若写进一个 reducer 不认的动作，屏幕上什么都不会
+// 发生（连一句提示都没有），而 `inputMode: 'handwriting'` 就永远只活在手工改过的库行里，
+// 于是整条手写链路（C1 的画布、E1 的抽屉预览）**没有任何教师可达的入口**。
+//
+// ⚠️ 「那一行画不画」的判据在 `question-card.tsx`（组件层，本仓没有 jsdom / testing-library，
+// 没有回归网）—— 这里能钉住的只有它脚下的那三格数据。
+
+test('★ newQuestion(drawing)：inputMode 恒为 handwriting、`data` 逐字等于 {}', () => {
+  const question = newQuestion('drawing');
+  assert.equal(question.inputMode, 'handwriting');
+  // 🔴 `data` 不许有**任何**键：给它臆造一份「画布题的空壳 data」正是 M4a/C2 Step 1 禁的
+  // 那件事（代价是静默判分）。它与 `short-answer` 同一档 —— 没有答案键、也没有条目。
+  assert.deepEqual(question.data, {});
+  assert.equal(Object.keys(question.data).length, 0);
+  assert.equal(question.prompt, '');
+  assert.deepEqual(question.children, []);
+});
+
+test('🔴 newQuestion：**只有** drawing 破例成 handwriting，其余题型恒为 keyboard（规格 §3-V 仍然成立）', () => {
+  // 反向断言：把 `type === 'drawing' ? … : 'keyboard'` 改成恒 `'handwriting'`，这一条必须变红。
+  // 它与上面 `:479` 那条「newQuestion：id 带 q_ 前缀、第一批恒为 keyboard、children 为空」
+  // **一起**才卡得住这个例外：那一条钉住的是**具体一个**题型（问答题），这一条钉住
+  // 「除 drawing 外**全部**题型」—— 少了这一条，将来给第二个题型破例时没有任何信号。
+  const others = QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'drawing');
+  assert.equal(others.length, QUESTION_TYPE_OPTIONS.length - 1, '前提：drawing 在清单里，恰好被摘掉一条');
+  for (const option of others) {
+    assert.equal(newQuestion(option.value).inputMode, 'keyboard', `${option.value} 不该跟着破例`);
+  }
+});
+
+test('🔴 updateInputMode 走的是撤销栈，undo 回到 keyboard（不是散落的 setState）', () => {
+  const initial = contentOf(node('q_a', '题干'));
+  const state = contentReducer(createHistory(initial), { kind: 'updateInputMode', id: 'q_a', inputMode: 'handwriting' });
+  assert.equal(state.present.nodes[0].inputMode, 'handwriting');
+  assert.equal(state.past.length, 1, '改一次 ⇒ 进栈一格');
+  const undone = contentReducer(state, { kind: 'undo' });
+  assert.equal(undone.present, initial, '撤销回到「还没改过作答方式」的那一份');
+  assert.equal(undone.present.nodes[0].inputMode, 'keyboard');
+  assert.equal(contentReducer(undone, { kind: 'redo' }).present.nodes[0].inputMode, 'handwriting');
+});
+
+test('updateInputMode：同值不造历史（重新点一次已经选中的那一档不占撤销栈）', () => {
+  const state = createHistory(contentOf(node('q_a', '题干')));
+  // `node()` 构造出来的就是 keyboard。
+  assert.equal(contentReducer(state, { kind: 'updateInputMode', id: 'q_a', inputMode: 'keyboard' }), state);
+  // 已经是 handwriting 的节点再点一次「手写」同理（它同时是「手工改过的库行被教师点了一下」那条路）。
+  const ink = createHistory(contentOf({ ...node('q_a', '题干'), inputMode: 'handwriting' }));
+  assert.equal(contentReducer(ink, { kind: 'updateInputMode', id: 'q_a', inputMode: 'handwriting' }), ink);
+});
+
+test('updateInputMode：改一道**不存在**的题 ⇒ 内容逐字不变、不进栈、不抛', () => {
+  const state = createHistory(contentOf(node('q_a', '题干')));
+  const next = contentReducer(state, { kind: 'updateInputMode', id: 'q_没有这道题', inputMode: 'handwriting' });
+  assert.equal(next, state, '没命中 ⇒ `replaceNode` 回原对象 ⇒ 连状态对象都不该换');
+  assert.equal(next.past.length, 0);
+  assert.deepEqual(next.present, state.present);
+});
+
+test('🔴 sanitizeContentForSave：`inputMode` 原样保留（手写这一档不能被出网前的清理抹掉）', () => {
+  // 🔴 **这一条的内容必须同时有别的可清理之处**（`points: undefined` 那个键）。
+  // 只放一个无可清理的节点的话，`sanitizeContentForSave` 会走 `touched === false` 那条路
+  // 把**原对象**一交到底 —— 那时「inputMode 还在」是被**没做事**保证的：
+  // 反证（让 sanitize 把这一格改写成 keyboard）照样全绿，这条断言**没有牙**。
+  // 2026-09-24 实跑过一次：第一版用例就是这么写的，反证时 124/124 全绿。
+  const content = contentOf({ ...withPoints('q_a', undefined), inputMode: 'handwriting' });
+  const cleaned = sanitizeContentForSave(content);
+  assert.notEqual(cleaned, content, '前提：这一份确实被清理过（否则下面那条断言没有牙）');
+  assert.equal(cleaned.nodes[0].inputMode, 'handwriting');
+  assert.equal('points' in cleaned.nodes[0], false, '顺带：它该清的那一处仍然清了');
+});
+
+test('sanitizeContentForSave：无可清理之处的节点返回**同一个对象**（不造空的改动）', () => {
+  const clean = contentOf({ ...node('q_a', '题干'), inputMode: 'handwriting' });
+  // ⚠️ 这条与上面那条是**两个方向**：这一条测的是「没做事时别造新对象」，
+  // 上面那条测的是「做事时别顺手改别的字段」。只有这一条的话会假绿（见上面的说明）。
+  assert.equal(sanitizeContentForSave(clean), clean);
 });

@@ -25,6 +25,11 @@ import { FillBlanksBody } from './bodies/fill-blanks-body';
 import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
+// ★ M4b/D1：「这道题是不是手写作答」这个判据只有一份，在 `src/lib/worksheet-ink.ts`
+//（学生端的分派器 `questions/index.tsx` 用的也是它）。此处**不重写**那条判据 ——
+// 重写一遍就是两份真源，而它们漂移的后果是「教师在教师端选的档」与「学生端拿到的输入形态」
+// 不一致，且屏幕上看不出来。
+import { isInkNode } from '@/lib/worksheet-ink';
 
 /**
  * 一道题的编辑卡片（规格 §6.2 的题流）。
@@ -42,7 +47,7 @@ import { CategorizeBody } from './bodies/categorize-body';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onMove, onRemove }: {
+export function QuestionCard({ index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onMove, onRemove }: {
   index: number;
   total: number;
   node: WorksheetQuestionNode;
@@ -58,10 +63,33 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
   onDataChange: (patch: Record<string, unknown>) => void;
   onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
+  /** ★ M4b/D1：逐题的作答方式（键盘 / 手写）。走 reducer，所以进撤销栈。 */
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting') => void;
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
 }) {
-  const typeLabel = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type)?.label ?? node.type;
+  const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
+  const typeLabel = typeOption?.label ?? node.type;
+
+  /**
+   * ★ M4b/D1：「作答方式」那一行**画不画**（三个判据，逐个说清）：
+   *
+   * ① 题型**不判分**（`QUESTION_TYPE_OPTIONS` 里那一条的 `graded === false`）⇒ 画。
+   *    今天这类题型有**两个**（问答题、绘图题），而绘图题走 ③ 那一支。
+   *    理由：判分题型的作答区**就是**它的交互（选项 / 条目 / 空），它们没有「手写」这个形态
+   *    —— 一道排序题没法手写排序。给它们一个能选到「手写」的开关，等于让教师**把这道题
+   *    改坏**：学生会拿到一个画布，而那道题的 `data` 里是条目表。
+   * ② 兜底：一道**判分题**的 `inputMode` 已经是 `handwriting`（只可能来自手工改过的库行）
+   *    ⇒ **仍然画**。不画的话教师没有任何办法把它改回键盘（他只能去改库）。
+   *    ⚠️ 这一条看的是 `node.inputMode`，**不是**题型。判据取自 A1 的 `isInkNode` ——
+   *    它在非 `drawing` 的节点上恰好等于 `node.inputMode === 'handwriting'`（那正是这里要的
+   *    那一条；`isInkNode` 的另一半是 `type === 'drawing'`，而那种节点压根到不了这里）。
+   * ③ `drawing` 例外：它**不画开关**，画一行静态说明（见下面那个分支）。它的作答方式由题型
+   *    决定，与这一格无关 —— `inkFormatOf` 是**题型优先**的，所以就算这一格被改成 `keyboard`，
+   *    作答值仍然是 `drawing/v1`，学生拿到的仍然是画布。
+   */
+  const isDrawing = node.type === 'drawing';
+  const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
 
   return (
     <section className="worksheet-editor-question" aria-label={`第 ${index + 1} 题 ${typeLabel}`}>
@@ -125,6 +153,12 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
         onPointsChange={onPointsChange}
       />
 
+      {/* ★ M4b/D1：「作答方式」那一行。位置钉在**分值行之下、题型编辑体之上**，
+          不因题型而变 —— 教师换题型时控件的位置不该跳。
+          它是**唯一**能让手写笔迹变成可达的开关：没有它，`inputMode: 'handwriting'`
+          永远只在手工改过的库行里。 */}
+      {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
+
       {/* 题型 → 编辑体。⚠️ 这里是一条**平铺的 && 链**，不是按 `QUESTION_TYPE_OPTIONS` 驱动的
           分派：那个数组在 `src/lib/worksheet-questions.ts` 里，而它必须能被 `node --test`
           直接执行（无 React）—— 往它里面塞组件就是两份真源。代价是**加题型要记得在这里加一支**，
@@ -139,6 +173,16 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
       {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} />}
       {node.type === 'short-answer' && (
         <p className="worksheet-editor-hint">问答题是主观题，不自动判分 —— 看板上只统计作答进度。</p>
+      )}
+      {node.type === 'drawing' && (
+        // ★ M4b/D1：绘图题的**静态说明** —— 它在这个链上刻意**没有编辑体分支**：
+        // `data` 恒为 `{}`（没有答案键、也没有条目），教师那边没有可配的东西。
+        // 它也没有那个「作答方式」开关（`showInputModeRow` 的 ③）：作答方式由题型决定，
+        // `inkFormatOf` 是**题型优先**的 —— 就算那一格被改成 `keyboard`，作答值仍然是
+        // `drawing/v1`、学生拿到的仍然是画布 ⇒ 那会是一个**改不动任何东西**的开关。
+        // ⚠️ 它落在**与上面那一行相同的槽位**（分值行之下、编辑体之上 —— 绘图题没有编辑体，
+        // 而这个分支就在编辑体那一段的位置），所以「换题型时控件的位置不该跳」对它也成立。
+        <p className="worksheet-editor-hint">绘图题固定为手写作答，不自动判分。</p>
       )}
     </section>
   );
@@ -266,6 +310,78 @@ function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputC
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * ★ M4b/D1：逐题的**作答方式**（规格 §3-V 那个字段落到 UI 上的地方）。
+ *
+ * ```
+ * 作答方式   ○ 键盘   ○ 手写
+ * 手写作答的题不自动判分 —— 看板上只统计作答进度，答案要靠人眼看。
+ * ```
+ *
+ * 画不画这一行由 `QuestionCard` 的 `showInputModeRow` 决定（三条判据写在那里），
+ * 本组件只管画。
+ *
+ * 🔴 **那句提示不能省**（与 C1 的「半对给 0 分」那句是同一条纪律）：手写作答**不参与判分**
+ * （规格 §12 裁定 3，服务端两条闸见 B1）。教师把一道题改成手写之后，**看板的抽屉里不会再有
+ * ✓/½/✗**，而屏幕上没有任何报错 —— 不写这句话，他会以为自己开了一个新功能，
+ * 而整题的自动反馈其实消失了。
+ *
+ * ⚠️ **两个 `radio` 的 `name` 必须带 `node.id`**：同卷多题如果共用名字，选了第 1 题会把
+ * 第 2 题的选择顶掉（这条纪律逐字来自学生端 `questions/choice-body.tsx` 的
+ * `name={`worksheet-choice-${node.id}`}` 那一处注释；教师端同一张卡片里的
+ * `bodies/multi-choice-body.tsx`「评分方式」那一组用 `partial-${node.id}` 是同一条）。
+ *
+ * ⚠️ **`<label>` 必须包住 `<input>`**（不是 `<span>` + 裸 `input`）：这样整块文字都是点击热区。
+ * 教师端这一页**没有**学生端那套 `styles.option`（实测 `src/app/teacher/worksheets/edit/`
+ * 下零个 CSS module），省掉这一层的话热区就只剩那个小圆点 ——「看起来能用、用起来别扭」那一类。
+ *
+ * ⚠️ 复用「评分方式」那一组的类名与版式是**有意的**（`.worksheet-editor-inline-actions`
+ * + `.worksheet-editor-option-correct`，两者都已在 `globals.css` 里 —— 见 `:1985` / `:1970`）：
+ * `globals.css` 那一节的注释自己写着这条理由 ——
+ * 「新的题型直接复用它们（同一张卡片里两套长得不一样的控件比少几条 CSS 糟得多）」。
+ */
+function InputModeRow({ node, onInputModeChange }: {
+  node: WorksheetQuestionNode;
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting') => void;
+}) {
+  // ⚠️ 「键盘」那一档的判据写成 `!== 'handwriting'`（不是 `=== 'keyboard'`）：
+  // 库里的值域虽然就是这两个字面量（服务端 `normalizeNode` 保证），但草稿是**外部输入**
+  // （`parseDraft` 只查 id / type / data，不查这一格），一个缺这一格的旧草稿会让**两个**
+  // 按钮都没有选中态 —— 而运行时的实际行为（`isInkNode` 回 false ⇒ 学生拿到文本框）是键盘。
+  // 屏幕上显示的档与运行时的档必须一致。
+  const handwriting = node.inputMode === 'handwriting';
+  return (
+    <>
+      <div className="worksheet-editor-inline-actions">
+        <span className="worksheet-editor-block-label">作答方式</span>
+        <label className="worksheet-editor-option-correct">
+          <input
+            type="radio"
+            name={`worksheet-inputmode-${node.id}`}
+            checked={!handwriting}
+            onChange={() => onInputModeChange('keyboard')}
+          />
+          <span>键盘</span>
+        </label>
+        <label className="worksheet-editor-option-correct">
+          <input
+            type="radio"
+            name={`worksheet-inputmode-${node.id}`}
+            checked={handwriting}
+            onChange={() => onInputModeChange('handwriting')}
+          />
+          <span>手写</span>
+        </label>
+      </div>
+      {/* 🔴 后果提示，写在开关旁边（不是藏在悬停里、也不是只在选中「手写」之后才出现）：
+          它说的是一件**已经发生**的事，教师要在点下去**之前**就看得见。 */}
+      <p className="worksheet-editor-hint">
+        手写作答的题不自动判分 —— 看板上只统计作答进度，答案要靠人眼看。
+      </p>
+    </>
   );
 }
 

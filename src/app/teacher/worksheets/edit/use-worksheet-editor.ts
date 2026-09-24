@@ -567,6 +567,17 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'updatePoints', id: questionId, points });
   }, []);
 
+  /**
+   * 逐题作答方式（键盘 / 手写，★ M4b/D1）。
+   *
+   * ⚠️ 与上面三个写入口**逐字同一条规矩**：走同一个 reducer（撤销栈、同值去重、
+   * `dirty` 快照都自动成立）。这里散一个 `setState` 就是 undo 开始漏的**第一处**，
+   * 而它唯一的表现是「撤销时那一档不跟着回退」，没有任何报错。
+   */
+  const updateInputMode = useCallback((questionId: string, inputMode: 'keyboard' | 'handwriting') => {
+    dispatch({ kind: 'updateInputMode', id: questionId, inputMode });
+  }, []);
+
   const moveQuestion = useCallback((questionId: string, delta: -1 | 1) => {
     dispatch({ kind: 'move', id: questionId, delta });
   }, []);
@@ -597,7 +608,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, updatePrompt, updateData, updatePoints, setPointsInput, moveQuestion, removeQuestion,
+    addQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
     save, duplicate, goBack, ensureUsage,
   };

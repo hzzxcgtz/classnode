@@ -221,6 +221,7 @@ function WorksheetEditorBody() {
               onDataChange={patch => editor.updateData(node.id, patch)}
               onPointsInputChange={input => editor.setPointsInput(node.id, input)}
               onPointsChange={points => editor.updatePoints(node.id, points)}
+              onInputModeChange={inputMode => editor.updateInputMode(node.id, inputMode)}
               onMove={delta => editor.moveQuestion(node.id, delta)}
               onRemove={() => void requestRemove(node, index)}
             />

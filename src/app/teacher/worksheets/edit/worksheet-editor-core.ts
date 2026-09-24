@@ -100,6 +100,11 @@ export type ContentAction =
   | { kind: 'updatePrompt'; id: string; prompt: string }
   | { kind: 'updateData'; id: string; patch: Record<string, unknown> }
   | { kind: 'updatePoints'; id: string; points: QuestionPointsDraft | undefined }
+  // ★ M4b/D1：逐题的作答方式（键盘 / 手写）。它是**唯一**能让手写笔迹变成可达的开关 ——
+  // 没有它，`inputMode: 'handwriting'` 永远只活在手工改过的库行里。
+  // 取值域是 `WorksheetQuestionNode.inputMode` 那两个字面量，**不是**学习单级的
+  // `settings.defaultInputMode`（那一个今天仍然是死的，见 `DEFAULT_SETTINGS`）。
+  | { kind: 'updateInputMode'; id: string; inputMode: 'keyboard' | 'handwriting' }
   | { kind: 'move'; id: string; delta: -1 | 1 }
   | { kind: 'remove'; id: string }
   | { kind: 'reset'; content: WorksheetContent }
@@ -312,11 +317,18 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     id: `q_${randomIdSuffix()}`,
     type,
     prompt: '',
-    // 规格 §3-V：第一批恒为 keyboard，字段先建好（手写输入不做 UI）。
-    inputMode: 'keyboard',
+    // ★ M4b：绘图题**恒为手写**（它的作答值格式由题型决定，与这一格无关 —— 见
+    // `src/lib/worksheet-ink.ts` 的 `inkFormatOf`，它是**题型优先**的）。
+    // 其余题型不动：规格 §3-V 那条「第一批的题恒为 keyboard」继续成立，
+    // 改它的是教师逐题点的那一个开关（`updateInputMode`）。
+    inputMode: type === 'drawing' ? 'handwriting' : 'keyboard',
     data: {},
     children: [],
   };
+  // ⚠️ `drawing` **不进下面这条链**（它不在这里出现，也**不许**在这里出现）：
+  // 它的 `data` 恒为 `{}` —— 没有答案键、也没有条目，与 `short-answer` 同一档。
+  // 给它臆造一份 `data`（哪怕只是一个空壳键）就是 M4a/C2 Step 1 立过的那条纪律
+  // 所禁的事，代价是**静默判分**。
   if (type === 'single-choice') {
     // ⚠️ 单选的选项文案**保持空串**（不是这次的「占位文案」那一条）：它的初始形状有既有用例
     // 逐字钉着（`worksheet-editor-core.test.ts` 的「newQuestion 的单选题 correctKeys 默认是空的」），
@@ -1330,6 +1342,18 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
         if (current && next && current.full === next.full && current.half === next.half) return node;
         return { ...node, points: next };
       });
+
+    case 'updateInputMode':
+      // 与 `updatePrompt` / `updateData` / `updatePoints` 走**同一条**路（进撤销栈、
+      // **同值去重**）—— 散落的 `setState` 是 undo 开始漏的第一处，这条纪律在本文件头与
+      // `ContentAction` 上各写了一遍，这里是它的第四个使用者。
+      // ⚠️ 助手是既有的 `replaceNode(content, id, fn)`（**不是** `mapNode` —— 那个名字不存在），
+      // 形状逐字照 `updatePoints` 那一支。
+      return replaceNode(content, action.id, (node) => (
+        // 同值 ⇒ 返回原对象：否则「重新点一次已经选中的那一档」也会占掉一格撤销栈，
+        // 教师按撤销时屏幕纹丝不动，只能再按一次。
+        node.inputMode === action.inputMode ? node : { ...node, inputMode: action.inputMode }
+      ));
 
     case 'move': {
       const index = content.nodes.findIndex((node) => node.id === action.id);

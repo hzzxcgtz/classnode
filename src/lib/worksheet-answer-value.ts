@@ -1,7 +1,9 @@
 import type { WorksheetQuestionNode } from './types';
+import { defaultInkBox, inkFormatOf, isInkNode, readInkValue } from './worksheet-ink.ts';
+import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
 
 /**
- * 学习单的**作答值形状**与**它到界面输入态的双向转换** —— 8 个题型，全项目唯一一份。
+ * 学习单的**作答值形状**与**它到界面输入态的双向转换** —— 9 个题型，全项目唯一一份。
  *
  * 🔴 它从 `worksheet-questions.ts` 里**搬出来**（M4a/D1），不是新起的一份：那个文件是
  * 「题型词汇表」，而这个文件是「作答的形状」。分开的理由只有一个，但它是硬的 ——
@@ -14,7 +16,11 @@ import type { WorksheetQuestionNode } from './types';
  *   · **不引任何 React / DOM，也不引任何联名路径（`@/…`）** —— 它要能被 `node --test`
  *     直接执行（Node 24 的类型擦除），所以两个测试文件（`worksheet-answer-value.test.ts`、
  *     `worksheet-drag.test.ts`）能真的跑到这些判据；
- *   · `import type` 是**唯一**的 import 形态；
+ *   · `import type` 是**唯一**的 import 形态 —— ★ M4b 的唯一例外是 `./worksheet-ink.ts`
+ *     那一条**值 import**（`isInkNode` / `inkFormatOf` / `readInkValue` / `defaultInkBox`
+ *     是函数，擦不掉）。它同样是**相对路径 + `.ts` 后缀**、不引任何联名路径（`@/…`），
+ *     所以 `node --test` 那一条路照旧成立；`worksheet-ink.ts` 自己**没有任何 import**，
+ *     不存在环。
  *   · 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根（`src/lib`）内：
  *     不得出现 `Object.hasOwn` / `structuredClone` / `findLast` / `.at(` / `:has(` /
  *     `@container` / `content-visibility` / `color-mix(`（学生端跑在 Safari 15 的老 iPad 上）。
@@ -59,8 +65,13 @@ import type { WorksheetQuestionNode } from './types';
  * 读成「答案泄漏」，而且**方向是漏判与误判都有**：误判会拦下合法数据，漏判会放走真泄漏。
  * ⇒ 学生这一侧改名，教师那侧的 `data` 键名不动（两条红线用例逐字钉着它）。
  *
- * ⚠️ 手写与绘图（`ink/v1` / `drawing/v1`）**第一批不产生**，所以这个联合里没有它们 ——
- * 第一批的 UI 也不提供产生它们的路径（`buildAnswerValue` 对未知题型回 `null`）。
+ * ★ M4b：笔迹（`ink/v1` / `drawing/v1`）加进来了，而且**是同一个成员** `InkValue`
+ *（裁定 6：一个实现、两个 format 名 —— 差别只在题型默认的画布尺寸与提示语，
+ * 存储与渲染逐字相同）。所以上面那张表里没有它的行：笔迹的「协议」是
+ * `format` / `canvas` / `strokes` 这三个键（`InkValue`），而它的**读者不是判分器** ——
+ * 手写与绘图不参与自动判分（规格 §12 裁定 3），服务端的 `JUDGES` 里没有它。
+ * ⚠️ 这三个键名与 `ANSWER_KEYS` **零交集**（Global Constraint 17），实测命令与逐字输出
+ * 见 `task-A2-report.md`（同一份核对也钉在 `worksheet-ink.ts` 的键名上）。
  */
 export type WorksheetAnswerValue =
   | { format: 'choice/v1'; selected: string[] }
@@ -69,7 +80,8 @@ export type WorksheetAnswerValue =
   | { format: 'text/v1'; text: string }
   | { format: 'order/v1'; order: string[] }
   | { format: 'match/v1'; links: Array<{ leftId: string; rightId: string }> }
-  | { format: 'categorize/v1'; assignment: Record<string, string> };
+  | { format: 'categorize/v1'; assignment: Record<string, string> }
+  | InkValue;
 
 /**
  * 界面上**一道题的输入态**（还没变成作答值）。
@@ -83,6 +95,12 @@ export type WorksheetAnswerValue =
  * ⚠️ 与 `WorksheetAnswerValue` **刻意不同形**：输入态是**屏幕上此刻的东西**（单选是
  * 一个 key、多空填空是一列框、排序是一列 id），而作答值是**判分器读得懂的东西**。
  * 两者之间只有 `buildAnswerValue` / `draftFromValue` 这一对转换函数，别在组件里各写一遍。
+ *
+ * ★ M4b：`ink` 这一支带 `box` —— 它是**学生作答那一刻量出来的框**（`InkCanvas` 的单位规则
+ * 写在 `worksheet-ink.ts` 的 `InkStroke` 上），**不是**题型的默认框。`emptyDraftFor` 给的
+ * 起点里那个 `box` 是 `defaultInkBox(node)`，只在「还没量过」时当占位（C1 的画布挂载后
+ * 第一件事就是量它）。⇒ `buildAnswerValue` 交出去的是 `draft.box`，别在那里换成默认框：
+ * 换掉之后教师抽屉里那幅图的宽高比与学生画的那一版不同，而两边都「看起来正常」。
  */
 export type AnswerDraft =
   | { kind: 'choice'; selected: string[] }
@@ -90,7 +108,8 @@ export type AnswerDraft =
   | { kind: 'text'; text: string }
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
-  | { kind: 'categorize'; assignment: Record<string, string> };
+  | { kind: 'categorize'; assignment: Record<string, string> }
+  | { kind: 'ink'; box: InkCanvas; strokes: InkStroke[] };
 
 /**
  * 条目文本的键名：`items` / `left` / `right` 用 `text`，`zones` 用 `label`。
@@ -238,8 +257,21 @@ function readLinks(raw: unknown): Array<{ leftId: string; rightId: string }> {
   return links;
 }
 
-/** 题型家族 → 输入态的 `kind`。未知题型回 `null`（调用方落回可安全渲染的默认值）。 */
-function draftKindOf(type: string): AnswerDraft['kind'] | null {
+/**
+ * 题型 → 输入态的 `kind`。未知题型回 `null`（调用方落回可安全渲染的默认值）。
+ *
+ * ★ M4b：签名从 `(type: string)` 变成 `(node)` —— 判据是**节点级**的一个函数
+ * （`isInkNode`），不是在这里再写一遍「`type === 'drawing' || inputMode === 'handwriting'`」。
+ * 那份判据同时被 `emptyDraftFor` / `valueFromDraft` / 编辑器（D1）用，三处各写一遍必然漂移，
+ * 而漂移的表现是「屏幕上给的是画布、提交上去的是 `text/v1`」（判分器读不到那个键
+ * ⇒ 恒判错，全程无报错）。
+ * ⚠️ `isInkNode` 那一条必须排在**所有** `node.type` 判断之前：手写的**问答题**同时满足
+ * 「`type === 'short-answer'`」与「`inputMode === 'handwriting'`」两条，而**这台机器上**
+ * 要的是 `inputMode` 那一条赢（它决定屏幕上给不给画布，见 `isInkNode` 自己的注释）。
+ */
+function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
+  if (isInkNode(node)) return 'ink';
+  const type = node.type;
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') return 'choice';
   if (type === 'fill-blank') return 'fill';
   if (type === 'short-answer') return 'text';
@@ -255,7 +287,12 @@ function draftKindOf(type: string): AnswerDraft['kind'] | null {
  * 逐题型的「起点」都是**学生屏幕上第一眼看到的东西**，所以它们不是同一个形状：
  *   · 选择 / 判断 / 多选 ⇒ 一个都没选；
  *   · 填空 ⇒ 与空数等长的空串数组（单空是 `['']`）—— 少一个框，学生就填不了那个空；
- *   · 问答 ⇒ 空文本；
+ *   · 问答 ⇒ 空文本（⚠️ **键盘的**问答；作答方式 = 手写的那种走下面那一条 `ink`）；
+ *   · 画布（绘图题 / 手写作答）⇒ 空画布：**一笔都没有** + 题型默认的框（占位，见下）。
+ *     ★ M4b：它是**唯一**一种「起点里带一个不是空值的字段」的输入态（那个 `box`）——
+ *     画布挂载后第一件事就是量真实框并覆盖它，所以这个默认值不会留下来；
+ *     但「一笔都没有」这一半是硬的：`strokes: []` ⇒ `isDraftEmpty` 为真 ⇒
+ *     学生按不动「提交本题」（服务端对空作答回 400）；
  *   · 排序 ⇒ **`data.items` 的存储顺序**（学生看到的打乱顺序）。⚠️ 它**不是空的**，
  *     这正是「排序题永远可以提交」的由来；防「什么都不做就满分」的那一条在服务端的
  *     `validateQuestion`（它拒绝「条目顺序与正确顺序相同」），不在前端；
@@ -269,7 +306,8 @@ function draftKindOf(type: string): AnswerDraft['kind'] | null {
  * 屏幕上也不会因此多出任何控件。
  */
 export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
-  const kind = draftKindOf(node.type);
+  const kind = draftKindOf(node);
+  if (kind === 'ink') return { kind: 'ink', box: defaultInkBox(node), strokes: [] };
   if (kind === 'choice') return { kind: 'choice', selected: [] };
   if (kind === 'fill') {
     const count = readBlankCount(node);
@@ -297,6 +335,10 @@ export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
 export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'choice') return draft.selected.length === 0;
   if (draft.kind === 'fill') return !draft.texts.some((text) => text.trim() !== '');
+  // ★ M4b：「一笔都没有」才算空 —— 与选择 / 连线 / 归类同一条口径（只有 `text` 那两支
+  // 才看 trim）。⚠️ 不看 `box`：起点那个默认框是占位，把它当内容会让一道**没画过**的
+  // 画布题变成「有内容可提交」。
+  if (draft.kind === 'ink') return draft.strokes.length === 0;
   if (draft.kind === 'order') return draft.order.length === 0;
   if (draft.kind === 'match') return draft.links.length === 0;
   if (draft.kind === 'categorize') return Object.keys(draft.assignment).length === 0;
@@ -306,6 +348,32 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
 /** 输入态 → 作答值。`null` = 「这一题没有内容可提交」（面板据此把按钮按死）。 */
 function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
   const type = node.type;
+  // ★ M4b：手写 / 绘图**不参与判分**（规格 §12 裁定 3），但**照样要交** ——
+  // 它是学生的作答，教师要人眼看。`null` 只表示「一笔都没画」。
+  //
+  // 🔴 **这一支必须排在下面那批题型分支之前**，判据是 `valueFromDraft` 的**函数体顺序**，
+  // 而不是 `draftKindOf` 里那一条 `isInkNode` ——「手写的**问答题**」同时满足
+  // 「`isInkNode(node)`」与「`type === 'short-answer'`」，放到下面去就会先命中
+  // `if (type === 'short-answer')`、在那里读到 `draft.kind !== 'text'` ⇒ 回 `null`：
+  // 学生**画完了却按不动「提交本题」**，而屏幕上没有任何报错。
+  // ⇒ 反证用例逐字钉着它（`worksheet-answer-value.test.ts` 那条
+  //   「手写问答的 ink 输入态能提交」）；把这一支挪到下面去，它必红。
+  if (isInkNode(node)) {
+    if (draft.kind !== 'ink' || draft.strokes.length === 0) return null;
+    return {
+      format: inkFormatOf(node),
+      // 🔴 `canvas` 用的是**学生作答那一刻量出来的框**（`worksheet-ink.ts` 的单位规则），
+      // 不是 `defaultInkBox(node)` —— 后者只在「还没量过」时当占位（`emptyDraftFor`）。
+      // 记错这一个字段的后果是教师在抽屉里看到的宽高比与学生画的那一版不同，
+      // 而两处都「看起来正常」。
+      canvas: { w: draft.box.w, h: draft.box.h },
+      strokes: draft.strokes.map((stroke) => ({
+        color: stroke.color,
+        width: stroke.width,
+        points: stroke.points.map((point): InkPoint => [point[0], point[1]]),
+      })),
+    };
+  }
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') {
     if (draft.kind !== 'choice' || draft.selected.length === 0) return null;
     return { format: 'choice/v1', selected: [...draft.selected] };
@@ -373,6 +441,10 @@ export function buildAnswerValue(
  * 因为教师端抽屉的「原答案」要靠它把学生当初写的那个 key 显示出来
  * （`worksheet-drawer-state.ts` 的 `formatAnswer` 明写「选项对不上时退回 key 本身，
  * 不显示空白」）。这两件事方向相反，所以裁剪只发生在**渲染吃它**的那三个题型上。
+ *
+ * ★ M4b 复核：**ink 不裁** —— 笔迹的渲染依据是**笔画自己**（`draft.strokes` / `draft.box`），
+ * 不是题目的条目表，所以它和选择 / 填空 / 问答一样走最后那条 `return draft`。
+ * 它不需要在这里加一支，加了反而会引入一条凭空「裁剪」学生笔迹的路径。
  */
 function reconcileWithNode(node: WorksheetQuestionNode, draft: AnswerDraft): AnswerDraft {
   if (draft.kind === 'order') {
@@ -437,6 +509,22 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   if (!value || typeof value !== 'object' || Array.isArray(value)) return empty;
   const row = value as Record<string, unknown>;
   const format = typeof row.format === 'string' ? row.format : '';
+  // ★ M4b：先读 ink —— 读得出东西就一定是笔迹（只认形状，不看题型：教师把一道题
+  //   从手写改回键盘之后，学生**之前交的**那幅画仍然要读得回来）。
+  //   ⚠️ 这一条与下面那句「`format` 是第一判据」**不冲突**：`readInkValue` 自己也先过
+  //   `format`（`isInkFormat`），它只是把那两行的判据收在 `worksheet-ink.ts` 里一份。
+  //   读回来之后 `draft.kind` 与题型家族**可以**对不上（`short-answer` 的键盘节点 + `ink/v1`
+  //   值），这是**有意的** —— 提交那一侧由 `valueFromDraft` 的 `isInkNode(node)` 闸拦着
+  //   （非 ink 节点上的 ink 输入态交不出去），屏幕上出不出现画布则由**分派器**
+  //   （`src/app/classroom/worksheet/questions/index.tsx` 按 `node.type` 分支，C1 才加 ink 支）
+  //   决定；而**教师抽屉**按 `format` 读（`worksheet-drawer-state.ts` 的 `formatAnswer`），
+  //   所以学生交过的那幅画在教师那一侧照旧看得见。三处各管一件事，互不代替。
+  const ink = readInkValue(row);
+  if (ink) return { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
+  // 画布题的值读不成笔迹（手改过的行 / 上一个版本）⇒ 回**空画布**：
+  // 屏幕上恒是画布，不回落到别的形状（回落到别的形状会让一道画布题出现一个
+  // 学生无法撤销、也无法提交的控件）。非 ink 节点不在这里拦 —— 它们由分派器按题型渲染。
+  if (isInkNode(node)) return empty;
   // `format` 是**第一判据**（它就是这个字段存在的理由，见 `WorksheetAnswerValue` 的注释）；
   // 它缺席 / 不认识时（手改过的行、第一批之前的老形状）再按 `node.type` 落回本文件的默认值。
   const kind = format === 'choice/v1' ? 'choice'
@@ -445,7 +533,7 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     : format === 'order/v1' ? 'order'
     : format === 'match/v1' ? 'match'
     : format === 'categorize/v1' ? 'categorize'
-    : draftKindOf(node.type);
+    : draftKindOf(node);
 
   if (kind === 'choice') return { kind: 'choice', selected: readStringList(row.selected) };
   if (kind === 'fill') {

@@ -476,6 +476,9 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   match: true,
   categorize: true,
   'short-answer': false,
+  // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分
+  // （规格 §12 裁定 3），服务端 `JUDGES` 里没有它。这一格决定了看板抽屉里画不画 ✓/½/✗。
+  drawing: false,
 };
 
 test('🔴 每个题型的 graded 标记都要与「它判不判分」的决策一致', () => {

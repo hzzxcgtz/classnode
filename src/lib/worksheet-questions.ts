@@ -70,7 +70,8 @@ export {
  */
 export type QuestionType =
   | 'single-choice' | 'true-false' | 'multi-choice' | 'fill-blank' | 'short-answer'
-  | 'order' | 'match' | 'categorize';
+  | 'order' | 'match' | 'categorize'
+  | 'drawing';
 
 /**
  * 题型清单。**加题弹窗、每张卡片右上角的题型名、学生端的题号旁标签共用这一份。**
@@ -98,6 +99,12 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'match', label: '连线题', hint: '把左栏与右栏一一连起来', graded: true },
   { value: 'categorize', label: '归类题', hint: '把若干条目拖到对应的框里', graded: true },
   { value: 'short-answer', label: '问答题', hint: '主观题，不自动判分', graded: false },
+  // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
+  // `graded: false` **是有意的决定，不是补测试**（见 `task-A2-report.md`）：手写 / 绘图
+  // 不参与自动判分（规格 §12 裁定 3），服务端的 `JUDGES` 里没有它，`grade` 读不到它的
+  // `format`（全局约束那条「`format` 服务端一个字节都不读」）；这一格是 false ⇒ 看板抽屉里
+  // 只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
+  { value: 'drawing', label: '绘图题', hint: '学生在画布上画图，不自动判分', graded: false },
 ];
 
 /**
@@ -214,5 +221,13 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
  *（「协议是判分器读哪些字段名，不是 `format` 串」那张表、`links` / `assignment` 的裁定）
  * 也一起搬去了那边 —— 只有一份，别在这里再写一遍。
  *
- * ⚠️ 手写与绘图（`ink/v1` / `drawing/v1`）**第一批不产生**，所以那个联合里没有它们。
+ * ★ M4b：手写与绘图（`ink/v1` / `drawing/v1`）**已经加进那个联合**（共用同一个成员
+ * `InkValue`，裁定 6「一个实现、两个 format 名」）。上面那个 `QuestionType` 多出来的
+ * `'drawing'` 是**这一半的落地方式**：规格 §12 的 M4 范围表里「手写笔迹」是**输入方式、
+ * 非题型**（所以它不在这里，它是题目节点上的 `inputMode: 'handwriting'`，由
+ * `worksheet-ink.ts` 的 `isInkNode` 认），而「绘图题」是**题型** —— 题型必须有题型名。
+ *
+ * ⚠️ 由此 `QUESTION_TYPE_OPTIONS` 从 **8 条变 9 条**，与 M4 范围表的**行数**（6 个题型 +
+ * 2 个能力）不是一回事。这处矛盾不是本任务发明的（M4a 就按「`QUESTION_TYPE_OPTIONS` 的
+ * 条目数」在数），本计划沿用 M4a 的口径并把它交给控制器裁定，见 `task-A2-report.md`。
  */

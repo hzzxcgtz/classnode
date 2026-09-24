@@ -32,7 +32,9 @@ import {
   readMatchLeft,
   readMatchRight,
   readOrderItems,
+  type AnswerDraft,
 } from './worksheet-answer-value.ts';
+import type { InkCanvas, InkStroke } from './worksheet-ink.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
@@ -40,6 +42,28 @@ import type { WorksheetQuestionNode } from './types.ts';
 function node(type: string, data: Record<string, unknown> = {}): WorksheetQuestionNode {
   return { id: `q_${type}`, type, prompt: '题干', inputMode: 'keyboard', data, children: [] };
 }
+
+/**
+ * 作答方式 = 手写的节点（★ M4b）—— `worksheet-ink.ts` 的 `isInkNode` 认的就是它。
+ * ⚠️ 与 `node()` 只差 `inputMode` 一个字段：本文件里好几条用例的**全部区别**就在这一个字段上
+ *（「键盘问答是 text 起点、手写问答是 ink 起点」），所以它们必须能被并排放在一起看。
+ */
+function handwritingNode(type: string, data: Record<string, unknown> = {}): WorksheetQuestionNode {
+  return { ...node(type, data), inputMode: 'handwriting' };
+}
+
+/** 绘图题（★ M4b 新题型）。它的 `inputMode` 是什么都不影响结论 —— 判据看 `node.type`。 */
+const drawingNode = () => node('drawing', {});
+
+/** 一笔：两个点 + 本批唯一那个常量色 / 常量粗细（裁定 2）。 */
+const STROKE: InkStroke = { color: '#1f2937', width: 0.016, points: [[0.1, 0.2], [0.3, 0.4]] };
+
+/**
+ * 学生作答那一刻**量出来**的框。⚠️ 它**刻意不等于**任何一道题的默认框
+ *（绘图题 320×240 / 手写问答 320×160）—— 相等的话「用 `draft.box`」与
+ * 「用 `defaultInkBox(node)`」两种写法在那条用例上**同结果**，那条用例就成了假保证。
+ */
+const DRAWN_BOX: InkCanvas = { w: 300, h: 200 };
 
 const ITEMS = [
   { id: 'i1', text: '甲' },
@@ -324,6 +348,10 @@ test('draftFromValue：读-写往返', () => {
     [orderNode(), { kind: 'order', order: ['i3', 'i1', 'i2'] }],
     [matchNode(), { kind: 'match', links: [{ leftId: 'l2', rightId: 'r1' }] }],
     [categorizeNode(), { kind: 'categorize', assignment: { i1: 'z2', i2: 'z1' } }],
+    // ★ M4b：笔迹也走这条往返 —— `canvas` 与每一笔的几何必须**逐字**回来
+    //（`box` 是这条往返里唯一一个「不是空的、又不是学生输入」的字段，最容易在转换中丢掉）。
+    [drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }],
+    [handwritingNode('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }],
   ];
   cases.forEach(([target, draft]) => {
     const value = buildAnswerValue(target, draft);
@@ -388,4 +416,111 @@ test('draftFromValue：选择 / 填空**不裁**（教师端抽屉要把学生�
   // 不显示空白（空白像是没选）」—— 裁掉就退回不了。
   assert.deepEqual(draftFromValue(node('single-choice', { options: [{ key: 'A', text: '甲' }] }),
     { format: 'choice/v1', selected: ['Z'] }), { kind: 'choice', selected: ['Z'] });
+});
+
+// ── 6. ★ M4b：画布题的输入态与作答值（`ink/v1` / `drawing/v1`）──────────────
+//
+// 这一节钉住的是**形状的接线**，不是画布本身 —— C1 之前屏幕上还看不到任何画布
+//（分派器 `src/app/classroom/worksheet/questions/index.tsx` 按 `node.type` 分支，
+// ink 支是 C1 加的）。所以这里断言的全是「值长什么样」，没有一条断言「屏幕上画出什么」。
+//
+// 📌 本节**一条都没有**、也不可能覆盖手写手感（跟不跟手 / 延迟 / 手掌误触 / 与滚动抢）——
+//   那是 Global Constraint 16 说的本机验不了的那一半，只能写「未验证」。
+
+test('★ emptyDraftFor：画布题给 ink 起点（绘图题 4:3、手写问答 2:1）；键盘问答不受影响', () => {
+  assert.deepEqual(emptyDraftFor(drawingNode()), { kind: 'ink', box: { w: 320, h: 240 }, strokes: [] });
+  assert.deepEqual(emptyDraftFor(handwritingNode('short-answer')),
+    { kind: 'ink', box: { w: 320, h: 160 }, strokes: [] });
+  // ⚠️ 同一条 `short-answer`、只差 `inputMode` 一个字段 ⇒ 两种起点。判据在 `isInkNode` 一处。
+  assert.deepEqual(emptyDraftFor(node('short-answer')), { kind: 'text', text: '' });
+  // ⚠️ 「一笔都没有」这一半：起点必须是**空**的，否则白送一份「有内容可提交」的作答。
+  assert.equal(isDraftEmpty(emptyDraftFor(drawingNode())), true);
+});
+
+test('★ isDraftEmpty：ink 的判据是「一笔都没有」，不看那个占位框', () => {
+  assert.equal(isDraftEmpty({ kind: 'ink', box: { w: 320, h: 240 }, strokes: [] }), true);
+  assert.equal(isDraftEmpty({ kind: 'ink', box: { w: 320, h: 240 }, strokes: [STROKE] }), false);
+  // 照 `box` 判会反过来：空画布带着一个非零的占位框 ⇒ 误判成「有内容」。
+  assert.equal(isDraftEmpty({ kind: 'ink', box: DRAWN_BOX, strokes: [] }), true);
+});
+
+test('🔴 buildAnswerValue：画布题的 `canvas` 必须是**学生量出来的框**，不是默认框', () => {
+  // 🔴 反证：把 `valueFromDraft` 里那一行 `canvas: { w: draft.box.w, h: draft.box.h }`
+  // 改成 `defaultInkBox(node)` ⇒ 这条变红（`DRAWN_BOX` 刻意不等于两个默认框）。
+  // 记错这一个字段的后果：教师在抽屉里看到的宽高比与学生画的那一版不同，而两边都「看起来正常」。
+  assert.deepEqual(
+    buildAnswerValue(drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }),
+    { format: 'drawing/v1', canvas: { w: 300, h: 200 }, strokes: [STROKE] },
+  );
+  // 同一份解答，换题型只换 `format` 名（裁定 6：一个实现、两个 format 名）。
+  assert.deepEqual(
+    buildAnswerValue(handwritingNode('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }),
+    { format: 'ink/v1', canvas: { w: 300, h: 200 }, strokes: [STROKE] },
+  );
+  // 一笔都没画 ⇒ `null`（服务端对空作答回 400「请先作答再提交本题」）。
+  assert.equal(buildAnswerValue(drawingNode(), emptyDraftFor(drawingNode())), null);
+  assert.equal(
+    buildAnswerValue(handwritingNode('short-answer'), emptyDraftFor(handwritingNode('short-answer'))),
+    null,
+  );
+});
+
+test('🔴 buildAnswerValue：手写的问答**能提交** —— ink 支必须排在题型分支之前', () => {
+  // 🔴 反证（Global Constraint 14）：把 `valueFromDraft` 的 ink 支挪到那批题型分支
+  // **之后** ⇒ 这条变红。顺序放反时先命中 `if (type === 'short-answer')`，在那里读到
+  // `draft.kind !== 'text'` ⇒ 回 `null`：学生**画完了却按不动「提交本题」**，
+  // 而屏幕上没有任何报错、没有一条既有用例会红。
+  const value: AnswerDraft = { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] };
+  const built = buildAnswerValue(handwritingNode('short-answer'), value);
+  assert.notEqual(built, null, '手写问答画完了必须能提交');
+  assert.equal(
+    built && (built.format === 'ink/v1' || built.format === 'drawing/v1'),
+    true,
+    '手写问答交出去的必须是笔迹格式',
+  );
+});
+
+test('🔴 buildAnswerValue：ink 也不「尽力读一读」—— 输入态与题型对不上就回 null', () => {
+  // 🔴 这一条是上一条的**对偶面**：输入态与题型对不上时，读出来的东西会被当成学生的作答
+  // 存进库，而屏幕上根本没有那个控件（学生没动过它，却「答了」）。
+  assert.equal(buildAnswerValue(handwritingNode('short-answer'), { kind: 'text', text: '画了一笔' }), null);
+  assert.equal(buildAnswerValue(node('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }), null);
+  assert.equal(buildAnswerValue(drawingNode(), { kind: 'text', text: '画了一笔' }), null);
+});
+
+test('🔴 draftFromValue：笔迹值原样读回来 —— 笔画数与 `canvas` 逐字不变', () => {
+  assert.deepEqual(
+    draftFromValue(drawingNode(), { format: 'drawing/v1', canvas: DRAWN_BOX, strokes: [STROKE] }),
+    { kind: 'ink', box: { w: 300, h: 200 }, strokes: [STROKE] },
+  );
+  // 🔴 这一条**刻意**让「`kind` 与题型对不上」也读得回来（只认 `format`，不看题型）：
+  // 教师把一道题从手写改回键盘之后，学生**之前交的**那幅画仍然要读得回来 ——
+  // 读不回来的表现是屏幕上一片空白，与「学生没写过」无法区分，而学生写的东西没有丢。
+  // ⚠️ 不要因为它「看起来矛盾」而把它改成 empty。
+  assert.deepEqual(
+    draftFromValue(node('short-answer'), { format: 'ink/v1', canvas: DRAWN_BOX, strokes: [STROKE] }),
+    { kind: 'ink', box: { w: 300, h: 200 }, strokes: [STROKE] },
+  );
+});
+
+test('🔴 draftFromValue：画布题上的**非笔迹值** ⇒ 空画布（不抛、不回落成别的形状）', () => {
+  // 回落到别的形状（比如 `text`）会让一道画布题在屏幕上出现一个学生**无法撤销、
+  // 也无法提交**的控件；而空白画布至少是他认识的、能重画的。
+  const empty = { kind: 'ink', box: { w: 320, h: 240 }, strokes: [] };
+  assert.deepEqual(draftFromValue(drawingNode(), { format: 'choice/v1', selected: ['A'] }), empty);
+  assert.deepEqual(draftFromValue(drawingNode(), { format: '不认识/v9' }), empty);
+  // 手改过的行：`format` 是笔迹但 `strokes` 不是数组 ⇒ `readInkValue` 回 `null` ⇒ 空画布。
+  assert.deepEqual(
+    draftFromValue(drawingNode(), { format: 'drawing/v1', canvas: { w: 1, h: 1 }, strokes: '不是数组' }),
+    empty,
+  );
+  // 坏值本身（null / 数字 / 数组）—— **不抛**。
+  assert.deepEqual(draftFromValue(drawingNode(), null), empty);
+  assert.deepEqual(draftFromValue(drawingNode(), 42), empty);
+  assert.deepEqual(draftFromValue(drawingNode(), []), empty);
+  // 手写问答同样是画布题，只是框不同（2:1）。
+  assert.deepEqual(
+    draftFromValue(handwritingNode('short-answer'), { format: 'choice/v1', selected: ['A'] }),
+    { kind: 'ink', box: { w: 320, h: 160 }, strokes: [] },
+  );
 });

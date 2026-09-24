@@ -808,7 +808,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
         worksheetId: true,
         answers: {
           // ⚠️ `isCorrect` **在，且只增不改**（协议字段）；`gradeState` / `score` 是 B1 新增的，
-          // 看板的 ◐ 半对档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
+          // 看板的 ½ 半对档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
           // 表现是**那个档永远画不出来**，而响应里也没有任何东西缺一块 —— 只是数字不对。
           select: {
             questionId: true, status: true, isCorrect: true,
@@ -1230,7 +1230,7 @@ router.get('/:id/student-view', async (req, res) => {
  *                     ⚠️ 语义已**收窄为「全对」**（规格 §12）：`false` 同时覆盖
  *                     `incorrect` 与 `partial`，所以它**推不出**下面那两个。
  *   · `gradeState` —— ★ M4a 新增：三态（`correct` / `partial` / `incorrect`）。
- *                     学生端要画「◐ 半对」、看板要按三态统计，都只能来自它。
+ *                     看板要画「½ 半对」（抽屉里的逐题行）、要按三态统计，都只能来自它。
  *   · `score`      —— ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的两个档之一）。
  *                     奖励显示**由得分驱动**（规格 §9），所以缺了它学生刷新后画不出奖励。
  *                     ⚠️ 旧行（M3 落的）它一直是 `null`：那时没有逐题分值，读的一侧按
@@ -1355,7 +1355,7 @@ router.put('/:id/answers', async (req, res) => {
       //
       // 🔴 **`gradeState` 与 `score` 必须跟着一起清**（B1）。它们是同一次判分的另外两个
       // 面，只清 `isCorrect` 会让这一行变成「没判对、但有态有分」的自相矛盾形状：
-      // 学生端会照 `score` 画出一个**库里已经不成立**的奖励，而看板照 `gradeState` 画一个 ✓/◐。
+      // 学生端会照 `score` 画出一个**库里已经不成立**的奖励，而看板照 `gradeState` 画一个 ✓/½/✗。
       // 三列一起清是唯一的自洽写法 —— 这与 `use-worksheet-answers.ts:327` 那条
       // 「得分必须跟着清」是同一件事的两端。
       update: {

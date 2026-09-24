@@ -328,7 +328,7 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   // 而它此前没有任何哨兵。漏 `select` 一列的表现与「压根没实现」一模一样：事件照发、
   // 日志干净、档位永远画不出来 —— 而**响应里也没有任何东西缺一块**（键不存在与值为
   // `null` 在 `Object.keys` 之外几乎不可区分）。所以这里**钉值**，不是钉键存在。
-  assert.equal(rows[0].gradeState, 'correct', '三态必须下发（看板的 ✓/◐/✗ 只能来自它）');
+  assert.equal(rows[0].gradeState, 'correct', '三态必须下发（看板的 ✓/½/✗ 只能来自它）');
   assert.equal(rows[0].score, 2, '得分必须下发（奖励由得分驱动），且是库里那个 2 而不是默认的 1');
   // 「学生原答案」是学生自己写的那个值，与「正确答案」是两件事 —— 抽屉要它（§7.3 形态 A）。
   assert.deepEqual(rows[0].value, { format: 'choice/v1', selected: ['B'] });
@@ -443,7 +443,7 @@ test('标准模式：只配了学习单的学生在列、没配的**不进分母
   assert.equal(answeredRow.isCorrect, false);
   // ★ B1：`false` 之上的那一层 —— 这条线缆必须说得出「这是半对，不是错」，也必须
   // 带着库里那一行的数。少了 `select` 里的一列，这里会拿到 `undefined`
-  //（键不存在），而看板的 ◐ 与奖励会静默地永远画不出来。
+  //（键不存在），而看板的 ½ 与奖励会静默地永远画不出来。
   assert.equal(answeredRow.gradeState, 'partial', '半对必须能由 gradeState 说出来 —— isCorrect=false 推不出它');
   assert.equal(answeredRow.score, 2, '得分必须是**库里那一行的 2**（构造值，见上面的说明）—— 不是 0，也不是默认的 1');
   assert.equal(answeredRow.questionId, 'q_4', '钉住是这一行，别让夹具漂到别的题上而断言还是绿的');

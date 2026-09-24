@@ -14,7 +14,7 @@ import {
  *
  * 🔴 为什么单独成文件、单独断言：这里每一条判据错了都**不抛异常、不让编译失败**，
  * 只会让教师在课上看到一句错的结论 ——
- *   · 主观题上冒出一个 ✓/◐/✗（学生答得对不对，系统根本不知道）；
+ *   · 主观题上冒出一个 ✓/½/✗（学生答得对不对，系统根本不知道）；
  *   · 未作答的题上冒出一个「标记已查看」按钮（点下去服务端回 **409**，纯属必然失败）；
  *   · 正确率的分母用错（拿参与者数当分母 ⇒ 一份交了一半的卷子显示「正确率 50%」，
  *     而它其实一道没错）；
@@ -40,27 +40,41 @@ import {
 export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
 
 /**
- * 这一道题的**判分档**（规格 §12：`✓ / ◐ / ✗ / 空`）。
+ * 这一道题的**判分档**。
  *
  * ★ M4a：从三档（`correct | wrong | none`）扩成**四档**，多出来的是 `partial`。
  * 🔴 为什么必须画得出来：正确率的口径是「**全对才算对**」⇒ 半对**进分母、不进分子**，
- * 于是半对是**唯一**一种「算进分母却不算对」的行。格子上若没有它自己那一档，它就只能
+ * 于是半对是**唯一**一种「算进分母却不算对」的行。它若没有自己那一档，就只能
  * 落到 `wrong`（看起来是答错了）或 `none`（看起来是没判分）—— 两句话都是假的。
  *
- * `none` 的来源（界面上都不显示 ✓/◐/✗）没变：
+ * `none` 的来源（界面上都不显示 ✓/½/✗）没变：
  *   · 主观题（问答题）**本来就没有对错** —— 服务端的 `grade()` 对它恒返回 `null`；
  *   · 自动判分关掉时 / 还没提交时 —— `gradeState`（以及兜底的 `isCorrect`）为 `null`。
  * ⚠️ 注意「`gradeState` 认不出来的值」也走这一档（见 `rowVerdict`）：**不猜**。
  *
- * ⚠️ **`◐` 这个符号在本项目里有两个含义**，这是知情的取舍不是疏忽：学生端
- * `worksheet-panel.tsx` 用它表示「**作答中**」（作答进度），教师端用它表示「**半对**」
- * （得分档）。两者不同屏（学生看不到教师抽屉），E2 负责在教师端把它画出来并决定要不要
- * 换符号或加图例 —— 本文件只出**数据**，不选符号。
+ * ── 🔴 画在哪、画成什么（E2 的裁定，规格 §12 与 §7.2 的冲突已核清）──────
+ *
+ * **画在抽屉里，不在看板的方格阵里。** §12 那句「半对必须在**格子**上画得出来」里的
+ * 「格子」要读作「看板那一侧」—— §7.2 把逐题对错**明确排除**在格子之外
+ * （「方格阵着色 = 状态…不编码对错」＋「**对错在抽屉里**（7.3），不在格子里」），
+ * 而且 §12 自己点名的实现物 `WorksheetOutcomeMark` 本来就只由抽屉消费
+ * （全仓只有 `worksheet-drawer.tsx` 引它；`worksheet-tile-state.ts` 里连一个
+ * `mark` / `gradeState` 都没有）。⇒ 实测结论见 E2 报告。
+ *
+ * **符号是 `½`，不是 §12 字面写的 `◐`。** 这是**知情的产品判断**：
+ *   · `◐` 在同一份抽屉列表里**已经被占用两次** —— `◐ 作答中` / `◐ 已提交`（没有对错的那一支，
+ *     见 `NO_VERDICT_VIEW`），而 §7.3 的图例逐字写着「`◐` = 作答中 / 已提交但**没有对错**」。
+ *     同一个符号在一列上带三种含义，「画得出来」就落空了 —— 教师得逐行读字才分得清。
+ *   · 学生端 `worksheet-panel.tsx` 也用它表示「作答中」（那倒是不同屏，不是主要理由）。
+ *   · `½` 直接读作「一半」，与 `✓ 答对` / `✗ 答错` 并排时同族同宽，且全仓此前零占用。
+ * ⇒ 落到代码里是 `{ glyph: '½', label: '半对' }`，见 `VERDICT_VIEW`。
+ * ⚠️ 规格 §12 的那两个字面尚未回填 —— 需要控制器裁定，E2 不擅自改规格。
  */
 export type WorksheetOutcomeMark = 'correct' | 'partial' | 'wrong' | 'none';
 
 /**
- * 哪些题型有对错（看板格子上画 ✓/◐/✗ 的那些）。
+ * 哪些题型有对错（**抽屉里**画 ✓/½/✗ 的那些 —— ⚠️ 不是看板格子，见上面 `WorksheetOutcomeMark`
+ * 那一段对 §12「格子」二字的核清）。
  *
  * 🔴 **派生，不再并列。** 这里曾经是与题型清单并列的第二份白名单
  * （`['single-choice', 'fill-blank']`），靠它自己的一句注释提醒「将来加新题型时它会自动
@@ -73,7 +87,7 @@ export type WorksheetOutcomeMark = 'correct' | 'partial' | 'wrong' | 'none';
  * 现在「加一个题型」这个动作本身就必须在 `QUESTION_TYPE_OPTIONS` 里回答
  * 「它判不判分」（`graded` 那一格），漂移在结构上不可能发生。
  *
- * ⚠️ 它顺带也是「主观题没有 ✓/◐/✗」那条要求的**第二道闸**：即使库里某一行
+ * ⚠️ 它顺带也是「主观题没有 ✓/½/✗」那条要求的**第二道闸**：即使库里某一行
  * `short-answer` 的 `gradeState`（或兜底的 `isCorrect`）被手工改成了 `'correct'`，这里也不会显示 ✓。
  * 这条闸靠的是 `short-answer` 在 `QUESTION_TYPE_OPTIONS` 里是 `graded: false` ——
  * `worksheet-drawer-state.test.ts` 有一条用例把这两件事钉在一起。
@@ -87,7 +101,7 @@ export function isGradedType(type: string): boolean {
 
 export interface QuestionOutcome {
   status: WorksheetQuestionStatus;
-  /** ✓ / ◐ / ✗ / 什么都没有（主观题、未提交、关闭自动判分）。 */
+  /** ✓ / ½ / ✗ / 什么都没有（主观题、未提交、关闭自动判分）。 */
   mark: WorksheetOutcomeMark;
   /** 教师是否已经「查看」过这道题（`reviewedAt` 非空）。 */
   reviewed: boolean;
@@ -230,6 +244,74 @@ export function statusLabel(status: WorksheetQuestionStatus): string {
   if (status === 'submitted') return '已提交';
   if (status === 'draft') return '作答中';
   return '未作答';
+}
+
+/**
+ * 一档判分结论在界面上长什么样（符号 / 词 / 颜色 / 强调档）。
+ *
+ * 🔴 为什么把「画什么」从 JSX 搬到这里、而不是留在 `worksheet-drawer.tsx` 里：
+ * 本任务（E2）的全部要求就是「**四档在界面上可区分**」，而这一层判据写在 JSX 里就
+ * **没有任何回归网**（本仓没有前端测试框架，`node --test` 加载不了 JSX）——
+ * 把 `'partial'` 那一支改成与 `'wrong'` 一模一样，不会有任何东西变红。
+ * 所以哪怕只是「哪个符号」也住在有测试的这一侧，与 `statusLabel` 同一个理由、同一个去处。
+ */
+export interface OutcomeMarkView {
+  /** 图形符号。 */
+  glyph: string;
+  /** 符号右边那个词。 */
+  label: string;
+  color: string;
+  /**
+   * 强调档。分成三档而不是一个布尔，是为了**逐字保留** E2 之前那两支各自的字号
+   * （判分结论 0.813rem 加粗 / `─ 未作答` 0.813rem / 状态词 0.75rem）——
+   * 顺手统一字号会让一处既有渲染发生没人要求的变化。
+   */
+  emphasis: 'verdict' | 'plain' | 'status';
+}
+
+/**
+ * 三档**判分结论**的长相。`'none'` 不在这里 —— 它要按状态再分三种说法（见下一张表）。
+ *
+ * 🔴 键类型是 `Exclude<WorksheetOutcomeMark, 'none'>`：给 `WorksheetOutcomeMark` 加第五档
+ * 而忘了补这张表，`tsc` 直接红（`Record` 的键集合就是那个联合）。这正是 M4a 之前
+ * `'correct' | 'wrong' | 'none'` 手抄第二份时漏掉的那件事。
+ *
+ * ★ `partial` 那一行是 E2 的交付物：**`½ 半对`**，琥珀色（与三档的另外两端同字号同字重）。
+ *   符号为什么不沿用规格 §12 字面写的 `◐`：见 `WorksheetOutcomeMark` 上面那一段
+ *   —— `◐` 在同一列上已经被「作答中 / 已提交但没有对错」占用了两次。
+ */
+const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkView> = {
+  // 绿色只表示**结论为对**，而半对不是对（正确率的分子里没有它）—— 所以半对不用绿。
+  correct: { glyph: '✓', label: '答对', color: '#15803d', emphasis: 'verdict' },
+  // 琥珀是这块看板既有的「**中间档**」色（`停住了`、`作答中` 都用它），而红/绿是两端。
+  // 不为半对再引入第四种色相：同屏出现两个近似橙黄，教师反而分不出来。
+  // 同列上它与 `◐ 作答中` 同色 —— 靠**符号与词**区分（这正是本任务要的那一层）。
+  partial: { glyph: '½', label: '半对', color: '#b45309', emphasis: 'verdict' },
+  wrong: { glyph: '✗', label: '答错', color: '#dc2626', emphasis: 'verdict' },
+};
+
+/**
+ * **没有判分结论**时按状态给的那三种说法。三个词都取自 `statusLabel`（同一份，不另抄）。
+ *
+ * 🔴 这一档**必须既不像「答错」也不像「半对」**：它说的是「系统没判过」这个事实，
+ * 画成 `✗` 就是把「不知道」说成「错」，画成 `½` 就是把「不知道」说成「半对」。
+ * 所以符号只有 `─`（未作答）与 `◐`（作答中 / 已提交）两个，都与那三档判分结论不重样。
+ */
+const NO_VERDICT_VIEW: Record<WorksheetQuestionStatus, OutcomeMarkView> = {
+  unanswered: { glyph: '─', label: statusLabel('unanswered'), color: '#cbd5e1', emphasis: 'plain' },
+  draft: { glyph: '◐', label: statusLabel('draft'), color: '#b45309', emphasis: 'status' },
+  submitted: { glyph: '◐', label: statusLabel('submitted'), color: '#1d4ed8', emphasis: 'status' },
+};
+
+/**
+ * 判分档 + 状态 → 抽屉里那一小块。
+ *
+ * ⚠️ `status` **只在没有判分结论时**才影响长相（`'none'` 那一支）。判分结论自己说完了话，
+ * 就不再拿状态去修饰它 —— 否则「已提交的半对」与「作答中的半对」会长得不一样，
+ * 而后者根本不可能存在（`questionOutcome` 已经把它挡在 `'none'` 上）。
+ */
+export function outcomeMarkView(mark: WorksheetOutcomeMark, status: WorksheetQuestionStatus): OutcomeMarkView {
+  return mark === 'none' ? NO_VERDICT_VIEW[status] : VERDICT_VIEW[mark];
 }
 
 /**

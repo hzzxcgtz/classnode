@@ -9,7 +9,9 @@ import {
   questionAggregate,
   questionHeading,
   questionOutcome,
-  statusLabel,
+  // `statusLabel` 不再从这里引：它的唯一调用点（`◐ 作答中` / `◐ 已提交` 那两个词）
+  // 随 E2 一起搬进了 `worksheet-drawer-state.ts` 的 `NO_VERDICT_VIEW`（那里引它，同一份）。
+  outcomeMarkView,
   type WorksheetOutcomeMark,
   type WorksheetQuestionStatus,
 } from './worksheet-drawer-state';
@@ -426,18 +428,19 @@ function ParticipantAnswers({
 /**
  * 这一题的对错那一小块。
  *
- * 🔴 用词与图形取自规格 §7.3 的图例：`✓` 答对 / `✗` 答错 / `─` 未作答；
- * 而 `◐ ○` 那两个圆是**服务端未判分**的情形（主观题、关闭自动判分）——
- * 那里显示的是状态「作答中 / 已提交」，**不显示 ✓ 也不显示 ✗**。
- * 把它画成「✗」是本任务最要防的一类假象：系统根本不知道学生对不对。
+ * 🔴 用词与图形与规格 §7.3 的图例同源：`✓ 答对` / `½ 半对` / `✗ 答错` / `─ 未作答`；
+ * 而 `◐ 作答中` / `◐ 已提交` 是**服务端未判分**的情形（主观题、关闭自动判分）——
+ * 那里显示的是状态，**不显示 ✓ 也不显示 ✗**。把它画成「✗」是本任务最要防的一类假象：
+ * 系统根本不知道学生对不对。
  *
- * ★ M4a：`mark` 多了一档 `'partial'`（规格 §12 要它「在格子上画得出来」）。
- * ⚠️ **画那一档是 E2 的活**（符号选哪个是产品判断：`◐` 已被学生端用作「作答中」）。
- * 在那之前 `'partial'` 落到最后那一支，显示「◐ 已提交」—— 那句话**是真的**
- * （它确实交了），只是没说「半对」，所以这里不留一个假话。
+ * ★ M4a：`mark` 多了一档 `'partial'`（规格 §12 要它画得出来）。E2 之前它落到最后那一支，
+ * 显示「◐ 已提交」—— 那句话是真的，却与「没有对错」**完全不可区分**。
+ *
+ * ⚠️ **本组件只把 `outcomeMarkView` 的结果贴上去，一个判据都不含**：
+ * 「哪一档画哪个符号/词/颜色」住在 `worksheet-drawer-state.ts`（纯函数、有测试）——
+ * 留在 JSX 里的话，把 `'partial'` 那一支改成与 `'wrong'` 一模一样不会有任何东西变红。
  * 类型取 `WorksheetOutcomeMark` 而**不再重写一份字面量联合**：本文件曾经手抄过
- * `'correct' | 'wrong' | 'none'`，多一档时它会安静地少一档（真正的报错点会被
- * 「类型对不上」挡住，但那是运气好 —— 手抄的第二份清单本来就该消失）。
+ * `'correct' | 'wrong' | 'none'`，多一档时它会安静地少一档。
  */
 function OutcomeMark({
   mark, status,
@@ -445,19 +448,17 @@ function OutcomeMark({
   mark: WorksheetOutcomeMark;
   status: WorksheetQuestionStatus;
 }) {
-  if (mark === 'correct') {
-    return <span style={{ fontSize: '0.813rem', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>✓ 答对</span>;
-  }
-  if (mark === 'wrong') {
-    return <span style={{ fontSize: '0.813rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>✗ 答错</span>;
-  }
-  if (status === 'unanswered') {
-    return <span style={{ fontSize: '0.813rem', color: '#cbd5e1', whiteSpace: 'nowrap' }}>─ 未作答</span>;
-  }
-  // 作答中 / 已提交但**没有对错**（主观题、关闭自动判分）。
+  const view = outcomeMarkView(mark, status);
   return (
-    <span style={{ fontSize: '0.75rem', color: status === 'submitted' ? '#1d4ed8' : '#b45309', whiteSpace: 'nowrap' }}>
-      ◐ {statusLabel(status)}
+    <span style={{
+      // 三个档位与 E2 之前那两支**逐字同值**（判分结论 0.813rem/加粗、未作答 0.813rem、
+      // 状态词 0.75rem）—— 只是现在由数据决定，而不是由 JSX 里的分支决定。
+      fontSize: view.emphasis === 'status' ? '0.75rem' : '0.813rem',
+      fontWeight: view.emphasis === 'verdict' ? 700 : undefined,
+      color: view.color,
+      whiteSpace: 'nowrap',
+    }}>
+      {view.glyph} {view.label}
     </span>
   );
 }

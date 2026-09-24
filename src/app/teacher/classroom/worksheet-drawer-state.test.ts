@@ -14,6 +14,7 @@ import {
   questionHeading,
   GRADED_QUESTION_TYPES,
   isGradedType,
+  outcomeMarkView,
   questionOutcome,
   statusLabel,
 } from './worksheet-drawer-state.ts';
@@ -22,11 +23,13 @@ import {
  * 学习单抽屉的判据（形态 A / B）。
  *
  * 每个 describe 对应一条**错了不报错**的规则，报告里的实测输出就是这些用例：
- *   · 主观题没有 ✓/◐/✗（并且 `gradeState` / `isCorrect` 被手工改成「对」也一样没有）；
+ *   · 主观题没有 ✓/½/✗（并且 `gradeState` / `isCorrect` 被手工改成「对」也一样没有）；
  *   · 未作答的题**不给**「标记已查看」按钮（服务端对它会回 409）；
  *   · 正确率的分母是「已判过的行」，不是参与者数；
  *   · ★ M4a **正确率的分子只数全对**（半对进分母不进分子 ⇒ 10 行 4/3/3 是 **40%**）；
  *   · ★ M4a 三档标记以 `gradeState` 为**真源**，`isCorrect` 只在它缺失时兜底；
+ *   · ★ E2 **四档在界面上两两可区分**（半对是 `½ 半对`，既不长得像答错、也不像没判分，
+ *     而且**不许**沿用 `◐` —— 那个符号在同一列上已经是「作答中 / 已提交但没有对错」）；
  *   · 「已交 N/M」的分母是参与者数，不是答过的人；
  *   · 量词跟着模式走（高级模式下列的是组）。
  *
@@ -97,7 +100,7 @@ test('形态 A：主观题**永远没有对错**，即使库里那行的 isCorre
   const submitted = row({ questionId: 'q_3', status: 'submitted', isCorrect: true, value: { format: 'text/v1', text: '冒泡了' } });
   const outcome = questionOutcome(short, submitted);
   assert.equal(outcome.status, 'submitted', '状态是「已提交」（它确实交了）');
-  assert.equal(outcome.mark, 'none', '主观题不该出现 ✓/◐/✗ —— 系统根本不知道学生对不对');
+  assert.equal(outcome.mark, 'none', '主观题不该出现 ✓/½/✗ —— 系统根本不知道学生对不对');
   assert.equal(outcome.canReview, true, '主观题照样可以「标记已查看」');
   assert.equal(outcome.answerText, '冒泡了', '原答案照给');
 
@@ -186,7 +189,7 @@ test('形态 A：客观题的标记只认「已提交 + 有一份判分结论」
   );
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', isCorrect: false })).status, 'submitted',
-    '没有 ✓/◐/✗ 不代表状态栏空着',
+    '没有 ✓/½/✗ 不代表状态栏空着',
   );
 });
 
@@ -221,6 +224,116 @@ test('状态标签：三态各一个词，与看板方格阵同一组', () => {
   assert.equal(statusLabel('unanswered'), '未作答');
   assert.equal(statusLabel('draft'), '作答中');
   assert.equal(statusLabel('submitted'), '已提交');
+});
+
+// ---------------------------------------------------------------------------
+// 「画成什么样」：四档判分结论在界面上必须两两可区分（E2）
+//
+// 🔴 这一节存在的理由：E2 之前 `'partial'` 落到「没有对错」那一支，画出的是「◐ 已提交」
+// —— 一句话是真的（它确实交了），但它与「系统没判分」**完全不可区分**，而 §12 的要求
+// 是「半对必须画得出来」。这一段判据原本写在 `worksheet-drawer.tsx` 的 JSX 里，
+// 那里**没有任何回归网**（本仓没有前端测试框架，`node --test` 加载不了 JSX）——
+// 把它改成与 `'wrong'` 一模一样不会有任何东西变红。所以搬到这里来。
+// ---------------------------------------------------------------------------
+
+/**
+ * 一道题**最终画出来**的那一小块 —— 把「判据」（`questionOutcome`）与「长相」
+ * （`outcomeMarkView`）两段接起来。JSX 里就是这个顺序，一行都不多。
+ */
+function viewOf(question: WorksheetQuestionNode, answerRow?: WorksheetBoardAnswerRow | undefined) {
+  const outcome = questionOutcome(question, answerRow);
+  return outcomeMarkView(outcome.mark, outcome.status);
+}
+
+/** 一个长相「像不像」另一个 —— 拿教师真能看见的那三样（符号 / 词 / 颜色）比。 */
+function look(view: { glyph: string; label: string; color: string }): string {
+  return `${view.glyph}|${view.label}|${view.color}`;
+}
+
+test('🔴 四档判分结论在界面上两两可区分 —— 半对既不长得像答错，也不长得像没判分', () => {
+  const correct = outcomeMarkView('correct', 'submitted');
+  const partial = outcomeMarkView('partial', 'submitted');
+  const wrong = outcomeMarkView('wrong', 'submitted');
+  // 没有判分结论的那一档取「已提交」来比 —— 它是最容易被误认成半对的那一个
+  //（E2 之前半对画的就是它）。
+  const none = outcomeMarkView('none', 'submitted');
+
+  const looks = [correct, partial, wrong, none].map(look);
+  assert.equal(new Set(looks).size, 4, `四档里有两档长得一模一样：${looks.join(' / ')}`);
+
+  // 逐对点名 —— 上面那一条只说得清「有重复」，说不出是哪一对。
+  assert.notEqual(
+    look(partial), look(wrong),
+    '半对画成答错 —— 「算进分母却不算对」（规格 §12）就变成了一句假话',
+  );
+  assert.notEqual(
+    look(partial), look(none),
+    '半对画成「没判分」—— 这正是 E2 之前的样子，教师看不出这道题被扣了分',
+  );
+  assert.notEqual(
+    look(partial), look(correct),
+    '半对画成答对 —— 正确率的分子里没有它，那是另一句假话',
+  );
+  assert.notEqual(look(wrong), look(none), '「答错」与「没判分」是两件事：一个系统知道，一个系统不知道');
+
+  // 三档判分结论同字号同字重（并排扫视时才是一组），差别只在符号、词与颜色。
+  // ⚠️ 这条改坏了的表现是「半对比答对矮半头」—— 教师会把它读成次要信息，而不是一个扣分结论。
+  assert.deepEqual(
+    [correct, partial, wrong].map((view) => view.emphasis), ['verdict', 'verdict', 'verdict'],
+    '三档判分结论必须是同一个强调档',
+  );
+  assert.equal(partial.glyph, '½', '半对的符号');
+  assert.equal(partial.label, '半对');
+});
+
+test('🔴 半对的符号**不能**是 ◐ —— 它在同一列上已经带了两个别的意思', () => {
+  const partial = outcomeMarkView('partial', 'submitted');
+  assert.notEqual(
+    partial.glyph, '◐',
+    '◐ 在同一个抽屉列表里已经是「◐ 作答中」与「◐ 已提交」（没有对错的那一支），' +
+    '而规格 §7.3 的图例逐字写着「◐ = 作答中 / 已提交但没有对错」—— 再拿它当半对，' +
+    '同一列上就有三种含义，「画得出来」也就落空了（得逐行读字才分得清）',
+  );
+  // 阴性对照：◐ 确实还在用（用在那两处状态词上）—— 否则上面那条断言可以靠「删掉 ◐」蒙过去。
+  assert.equal(outcomeMarkView('none', 'draft').glyph, '◐');
+  assert.equal(outcomeMarkView('none', 'submitted').glyph, '◐');
+});
+
+test('🔴 没有判分结论的那一档既不像「答错」也不像「半对」（未作答 / 作答中 / 已提交 三种状态）', () => {
+  const verdictGlyphs = ['✓', '½', '✗'];
+  for (const status of ['unanswered', 'draft', 'submitted'] as const) {
+    const view = outcomeMarkView('none', status);
+    assert.ok(
+      !verdictGlyphs.includes(view.glyph),
+      `状态「${status}」在系统根本没判分时画出了判分符号「${view.glyph}」—— ` +
+      '把「不知道」说成「对 / 半对 / 错」是本任务最要防的一类假象',
+    );
+    assert.ok(
+      ['未作答', '作答中', '已提交'].includes(view.label),
+      `状态「${status}」的词必须是状态词，不是判分词：${view.label}`,
+    );
+  }
+  // 三态各有各的词（别把三种状态压成一句）。
+  const labels = (['unanswered', 'draft', 'submitted'] as const).map((status) => outcomeMarkView('none', status).label);
+  assert.equal(new Set(labels).size, 3);
+});
+
+test('🔴 端到端（纯函数这一段）：库里判成半对的那一行，画出来是「½ 半对」而不是「✗ 答错」', () => {
+  const partialView = viewOf(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false }));
+  assert.equal(partialView.glyph, '½');
+  assert.equal(partialView.label, '半对');
+
+  // 同一条管线上的另外两档各就各位 —— 否则上面那两行可以靠「所有档都画 ½」蒙过去。
+  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).glyph, '✓');
+  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).glyph, '✗');
+
+  // 主观题**永远没有对错** ⇒ 哪怕库里那一行写着 `partial` 也不画 ½
+  //（`short-answer` 在注册表里是 `graded: false`，它走的是「没有对错」那一支）。
+  assert.equal(
+    viewOf(short, row({ questionId: 'q_3', status: 'submitted', gradeState: 'partial' })).glyph, '◐',
+  );
+  // 一次都没动过的题：`─ 未作答`，不许是任何判分符号。
+  assert.equal(viewOf(choice, undefined).glyph, '─');
 });
 
 // ---------------------------------------------------------------------------
@@ -370,7 +483,7 @@ test('🔴 每个题型的 graded 标记都要与「它判不判分」的决策�
     assert.equal(
       option.graded,
       EXPECTED_GRADED[option.value],
-      `题型「${option.value}」的 graded 标记不对 —— 看板会不会画 ✓/◐/✗ 由它决定`,
+      `题型「${option.value}」的 graded 标记不对 —— 看板会不会画 ✓/½/✗ 由它决定`,
     );
     assert.equal(isGradedType(option.value), option.graded, 'isGradedType 必须与那一格同源');
   }

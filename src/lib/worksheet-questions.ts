@@ -76,7 +76,7 @@ export type QuestionType =
  * 题型清单。**加题弹窗、每张卡片右上角的题型名、学生端的题号旁标签共用这一份。**
  *
  * 🔴 `graded` 这一格是 M4a 加的，**它不是描述、是判据**：`true` ⇒ 教师看板的格子上会画
- * ✓/◐/✗，`false` ⇒ 只统计作答进度。它存在的理由是「加题型」这个动作**必须**同时回答
+ * ✓/½/✗，`false` ⇒ 只统计作答进度。它存在的理由是「加题型」这个动作**必须**同时回答
  * 「它判不判分」—— 见 `src/app/teacher/classroom/worksheet-drawer-state.ts` 的
  * `GRADED_QUESTION_TYPES`（它现在从这一格**派生**，不再是一份并列的白名单，
  * 那份白名单漏改的表现是「正确率把新题型算进分母，格子上却不画任何标记」，全程无报错）。
@@ -85,7 +85,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   value: QuestionType;
   label: string;
   hint: string;
-  /** 能不能自动判分。`true` ⇒ 看板会画 ✓/◐/✗；`false` ⇒ 只统计作答进度。 */
+  /** 能不能自动判分。`true` ⇒ 看板会画 ✓/½/✗；`false` ⇒ 只统计作答进度。 */
   graded: boolean;
 }> = [
   { value: 'single-choice', label: '单选题', hint: '若干选项，只有一个正确答案', graded: true },

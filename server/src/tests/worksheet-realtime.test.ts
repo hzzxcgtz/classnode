@@ -540,7 +540,7 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
   assert.equal(gradedPush.payload.isCorrect, true, '判分结果必须在广播里，否则抽屉的 ✓/✗ 只能靠轮询');
   // ★ B1：三态与数值一起上线缆。三个字段**同生共死** —— 只断言 `isCorrect` 的话，
   // 「新增的两个字段压根没发」也能全绿（那正是 B1 之前的状态）。
-  assert.equal(gradedPush.payload.gradeState, 'correct', '三态必须随广播下发（看板的 ◐ 半对档只能来自它）');
+  assert.equal(gradedPush.payload.gradeState, 'correct', '三态必须随广播下发（看板的 ½ 半对档只能来自它）');
   assert.equal(gradedPush.payload.score, 2, '得分必须随广播下发（奖励显示由得分驱动），且用的是学习单级的档 2 而不是默认的 1');
 
   // ── autoGrade 关：**不判**（null），不是「判错」 ────────────────────────

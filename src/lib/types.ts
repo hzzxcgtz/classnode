@@ -381,7 +381,7 @@ export interface WorksheetBoardAnswerRow {
    * 只有「已提交」且服务端判过分时才有值；主观题与关闭自动判分时是 `null`。
    *
    * ⚠️ 语义已**收窄为「全对」**（规格 §12「得分与正确率的口径」）：`false` **同时**覆盖
-   * `incorrect` 与 `partial`，所以看板格子要画「◐ 半对」时**不能**靠它，得看 `gradeState`。
+   * `incorrect` 与 `partial`，所以**抽屉里**要画「½ 半对」时**不能**靠它，得看 `gradeState`（对错标记在抽屉里、不在看板格子上，规格 §7.2）。
    * 🔴 字段名只增不改（协议字段）。
    */
   isCorrect: boolean | null;

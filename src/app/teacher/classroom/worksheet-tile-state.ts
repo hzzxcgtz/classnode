@@ -34,7 +34,23 @@ import { flattenQuestions, questionTypeLabel } from '../../../lib/worksheet-ques
  *     `no-progress` 那一态就是为它准备的，见下面的注释。
  */
 
-/** 一道题在方格阵里的三种状态。**只有状态，没有对错**（规格 §7.2）。 */
+/**
+ * 一道题在方格阵里的三种状态。**只有状态，没有对错**（规格 §7.2）。
+ *
+ * 🔴 **不要往这里加判分档**（E2 核清的一处规格字面冲突，结论写在这里免得下一个人重走一遍）：
+ * 规格 §12 有一句「**半对必须在格子上画得出来**」，而 §7.2 明写「方格阵着色 = 状态…**不编码
+ * 对错**」＋「**对错在抽屉里**（7.3），不在格子里」。两句按字面读是打架的。
+ * 实测结论：**§7.2 赢**，§12 那句里的「格子」要读作「看板那一侧」——
+ *   · 全仓唯一产出对错标记的 `WorksheetOutcomeMark` 只由抽屉消费
+ *     （`worksheet-drawer.tsx` 的 `OutcomeMark`）；本文件的 `WorksheetCellStatus` 里
+ *     **一个** `mark` / `gradeState` / `isCorrect` 都没有；
+ *   · 格子这一侧连数据都没有：`ParticipantWorksheetProgress` 只有 `status`
+ *     （那个读端点也还没被格子消费，见 `WorksheetTileState` 那一段的更正）；
+ *   · §7.2 给了理由：五档颜色在十几像素的方块上分不清、红绿对色觉障碍教师尤其不友好，
+ *     而「哪个学生第 3 题错了」不是课上能当场处理的信息（「哪道题错得多」走按题聚合）。
+ * ⇒ 半对画在**抽屉**里（`½ 半对`，见 `worksheet-drawer-state.ts` 的 `VERDICT_VIEW`）。
+ * 往方格阵里塞对错是**为了满足字面而加一层规格明确排除的编码**，不是修 bug。
+ */
 export type WorksheetCellStatus = 'unanswered' | 'draft' | 'submitted';
 
 /** 一条作答广播攒出来的、**一名参与者在一份学习单上**的进度。 */

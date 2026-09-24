@@ -934,7 +934,7 @@ test('allowResubmit 为假 ⇒ 改已提交的题 409 且库里那行不动；�
   assert.deepEqual(editableRow.value, CHOICE(['B']));
   // ★ B1：三列**一起**清。只清 `isCorrect` 会留下一行「没判对、但有态有分」的自相矛盾
   // 形状 —— 学生端会照 `score` 画出一个库里已经不成立的奖励，而看板照 `gradeState`
-  // 画一个 ✓/◐。（断言写在这里而不是另开一条：这条 `PUT` 与上面那个 409 是同一个
+  // 画一个 ✓/½/✗。（断言写在这里而不是另开一条：这条 `PUT` 与上面那个 409 是同一个
   // 处理器的两侧，分开写等于允许「一侧对、另一侧忘」通过。）
   assert.equal(editableRow.isCorrect, null, '改回 draft ⇒ isCorrect 清空');
   assert.equal(editableRow.gradeState, null, '改回 draft ⇒ gradeState 必须一起清（B1）');
@@ -1163,7 +1163,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   assert.equal(q1.isCorrect, false, '答错了就如实回 false —— 奖励要靠它才能在刷新后重新画出来');
   // ★ B1：三态与得分也必须撑得过刷新（这一条端点的存在理由就是「刷新后奖励消失」，
   // 而 M4a 的奖励**由得分驱动** ⇒ 只回 `isCorrect` 的话刷新后照样画不出奖励）。
-  assert.equal(q1.gradeState, 'incorrect', '三态要回读出来（看板的 ◐/✓/✗ 靠它）');
+  assert.equal(q1.gradeState, 'incorrect', '三态要回读出来（看板的 ½/✓/✗ 靠它）');
   assert.equal(q1.score, 0, '判错是 0 分 —— 学习单级没配 `rewardStep` ⇒ 全对档 = 默认的 1');
 
   const q2 = byId.get('q_2')!;

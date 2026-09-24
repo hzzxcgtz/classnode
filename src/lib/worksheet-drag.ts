@@ -97,19 +97,25 @@ export function moveInOrder(order: string[], id: string, delta: -1 | 1): string[
  *
  * ⚠️ 顶掉旧的那条（而不是拒绝新的那一条）：学生的意图是「改连到这个」，拒绝会表现为
  * 「点了没反应」。
+ *
+ * 🔴 **形参叫 `links` 不叫 `pairs`**：本文件正是执行「学生侧改名」那条裁定的地方，
+ * 而 `pairs` / `placement` 是**教师侧答案键**的名字（在服务端的 `ANSWER_KEYS` 里、
+ * 必须被 `stripAnswers` 剥掉）。在本文件里留着教师侧的名字，将来会有人顺手写成
+ * `{ pairs }` 简写 —— 而本仓「响应里不得出现答案键」那条红线是**原文扫描**的，
+ * 它不会区分「学生的作答」与「教师的答案」。两个名字只差一个词，代价却是一次静默的泄漏。
  */
-export function setPair(pairs: DragLink[], leftId: string, rightId: string): DragLink[] {
-  if (!Array.isArray(pairs)) return pairs;
-  if (!leftId || !rightId) return pairs;
-  const kept = pairs.filter((pair) => pair.leftId !== leftId && pair.rightId !== rightId);
+export function setPair(links: DragLink[], leftId: string, rightId: string): DragLink[] {
+  if (!Array.isArray(links)) return links;
+  if (!leftId || !rightId) return links;
+  const kept = links.filter((link) => link.leftId !== leftId && link.rightId !== rightId);
   return [...kept, { leftId, rightId }];
 }
 
 /** 连线：拆掉左项 `leftId` 的那条线（它本来就没连 ⇒ 返回原数组）。 */
-export function clearPair(pairs: DragLink[], leftId: string): DragLink[] {
-  if (!Array.isArray(pairs)) return pairs;
-  if (!pairs.some((pair) => pair.leftId === leftId)) return pairs;
-  return pairs.filter((pair) => pair.leftId !== leftId);
+export function clearPair(links: DragLink[], leftId: string): DragLink[] {
+  if (!Array.isArray(links)) return links;
+  if (!links.some((link) => link.leftId === leftId)) return links;
+  return links.filter((link) => link.leftId !== leftId);
 }
 
 /**
@@ -118,24 +124,26 @@ export function clearPair(pairs: DragLink[], leftId: string): DragLink[] {
  * ⚠️ 一个条目**只能在一个框里**（判分器按 `assignment[id]` 取值），所以这是覆盖而不是追加 ——
  * 追加会让一个条目同时落在两个框里，而判分只认其中一个、界面却画两个。
  * 与 `setPair` 不同，这里**没有**「一个框只能放一个条目」的限制：框是能装很多个的。
+ *
+ * 🔴 形参叫 `assignment` 不叫 `placement` —— 与 `setPair` 上面那段同一个理由。
  */
 export function setPlacement(
-  placement: Record<string, string>,
+  assignment: Record<string, string>,
   itemId: string,
   zoneId: string,
 ): Record<string, string> {
-  if (!placement || typeof placement !== 'object') return placement;
-  if (!itemId || !zoneId) return placement;
-  return { ...placement, [itemId]: zoneId };
+  if (!assignment || typeof assignment !== 'object') return assignment;
+  if (!itemId || !zoneId) return assignment;
+  return { ...assignment, [itemId]: zoneId };
 }
 
 /** 归类：把条目 `itemId` 取回条目池（它本来就不在任何框里 ⇒ 返回原对象）。 */
-export function unplace(placement: Record<string, string>, itemId: string): Record<string, string> {
-  if (!placement || typeof placement !== 'object') return placement;
-  if (!Object.prototype.hasOwnProperty.call(placement, itemId)) return placement;
+export function unplace(assignment: Record<string, string>, itemId: string): Record<string, string> {
+  if (!assignment || typeof assignment !== 'object') return assignment;
+  if (!Object.prototype.hasOwnProperty.call(assignment, itemId)) return assignment;
   const next: Record<string, string> = {};
-  Object.keys(placement).forEach((key) => {
-    if (key !== itemId) next[key] = placement[key];
+  Object.keys(assignment).forEach((key) => {
+    if (key !== itemId) next[key] = assignment[key];
   });
   return next;
 }

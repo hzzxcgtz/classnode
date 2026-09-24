@@ -34,11 +34,10 @@ const picked = (id: string): DragSelection => ({ kind: 'item', id });
 
 // ── 1. 点选态：点条目 → 点目标（三个题型共用的那套）───────────────────────
 
-test('🔴 tapSource 的往返：点 A（选中）→ 点 A（取消）→ 点 B（改选）→ 落位后清空', () => {
-  // 这是「点选为主」那一层的最小完备描述（规格 §12 裁定 1）。四步各有各的错法：
+test('🔴 tapSource 的往返：点 A（选中）→ 点 A（取消）→ 点 B（改选）', () => {
+  // 这是「点选为主」那一层的最小完备描述（规格 §12 裁定 1）。三步各有各的错法：
   //   · 第二步不取消 ⇒ 学生点错了没有退路（唯一的退路就是再点一次）；
-  //   · 第三步不「改选」而是「都要」⇒ 落位时落哪一个是不确定的；
-  //   · 第四步不清 ⇒ 下一个条目会带着上一次的选中态一起挂上去。
+  //   · 第三步不「改选」而是「都要」⇒ 落位时落哪一个是不确定的。
   let selection: DragSelection = clearSelection();
   assert.deepEqual(selection, { kind: 'none' });
 
@@ -52,14 +51,22 @@ test('🔴 tapSource 的往返：点 A（选中）→ 点 A（取消）→ 点 B
   selection = tapSource(selection, 'b');
   assert.deepEqual(selection, picked('b'), '点另一个 ⇒ 改选，不是两个都选');
 
-  // 「点目标（落位）」那一下走的是组件里的 setPair / setPlacement / reorder，
-  // 落位之后**必须**调 clearSelection（组件里有对应的一行）。
-  selection = clearSelection();
-  assert.deepEqual(selection, { kind: 'none' }, '落位后清空选择');
-  // ⚠️ 清空**不能**靠再点一次源来实现：落位那一下点的不是源，`tapSource` 走不到。
+  // ⚠️ **这条用例曾经声称的第四步（「落位后清空选择」）在自动化上没有任何判据，
+  // 那一行断言只是把 `clearSelection()` 的返回值拿来断言它自己（恒真）** ——
+  // 2026-09-24 审查抓出，已把名字改成它真正钉的三步。理由与射程：
+  //   · 「点目标」（`onTap` 里走 `setPair` / `setPlacement` / `reorder`）与「清空」
+  //     （`setSelection(clearSelection())`）都发生在**组件**里（`questions/*.tsx`），
+  //     本仓没有 jsdom / testing-library ⇒ 这两行代码**跑不到**，写在这里的断言只能是假绿；
+  //   · 真判据在 F1 的真机清单里（报告 §4「未验证」第 1 条），**不得**用这条用例代替。
+  // 能钉的只有 `clearSelection()` 自己的契约 —— 见下一条用例。
 });
 
-test('clearSelection 每次都返回一个新的空态对象（常量会被调用方共享出去）', () => {
+test('clearSelection 的契约：只返回空态，且每次都是新对象（不是共享常量）', () => {
+  // ⚠️ 名字按它真正钉的东西写（旧名字是「点目标 → 落位并清空」，那一步本文件钉不住）。
+  // `notEqual` 在这里**不是重言式**：实现若改成返回一个模块级常量
+  //（`const NONE = { kind: 'none' }`），两次调用就是同一个引用 ⇒ 这一条变红。
+  // 那正是要挡的：常量会被调用方共享出去，一处改了处处跟着改。
+  assert.notEqual(clearSelection(), clearSelection());
   assert.notEqual(clearSelection(), clearSelection());
   assert.deepEqual(clearSelection(), { kind: 'none' });
 });

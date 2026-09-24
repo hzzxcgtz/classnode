@@ -127,9 +127,18 @@ export function questionOutcome(
  *
  * ★ M4a/D1：`draftFromValue` 的签名多了第一个入参（题目）—— 输入态的形状是**逐题型**的，
  * 读回时要与题目当下的样子对齐。这里本来就拿得到 `node`，所以只是把它递进去。
- * ⚠️ 顺带把「读哪个字段」收成 `draft.kind` 的分派：过去读 `draft.text` / `draft.selected`
- * 是因为那时的输入态只有一个形状。**行为逐字不变**（多选仍然只显示第一个选中的 key、
- * 判断题仍然给 `null` —— 后者是 D4 的既有口径，不在这里顺手改）。
+ *
+ * ⚠️ 顺带把「读哪个字段」收成 `draft.kind` 的分派（过去读 `draft.text` / `draft.selected`
+ * 是因为那时的输入态只有一个形状）。**差异逐条列清**，两处都是「变多」不是「变少」：
+ *   · **`fill-multi/v1`（多空）从「看不见」变成「看得见」**：旧实现读 `draft.text`，而
+ *     多空的作答值里根本没有 `text` 键 ⇒ 恒 `null` ⇒ 学生在多空填空题里写的东西在抽屉里
+ *     **一片空白**。现在 join 成一段文字（`texts.join(' ')`）。所以「行为逐字不变」这句话
+ *     **不严格** —— 落在多空填空上时是修好了一处旧缺陷。
+ *   · **单选 / 单空填空 / 问答** 逐字不变（含「选项对不上时退回 key 本身」那条）。
+ *   · 🔴 **多选不在这里展开**：只有 `single-choice` 走上面那一支，多选落到下面 ⇒ 返回
+ *     `null`（它**不会**「显示第一个选中的 key」—— 那句注释曾经写错，2026-09-24 更正）。
+ *     这是**既有**口径（D4 的地盘），本轮没改，别把它读成新引入的行为。
+ *   · 判断题同理：不展开「对 / 错」两个选项，也返回 `null`（既有口径）。
  */
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
   const draft = draftFromValue(node, value);

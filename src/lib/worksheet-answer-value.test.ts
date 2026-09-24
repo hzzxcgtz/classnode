@@ -55,6 +55,9 @@ const matchNode = () => node('match', { left: LEFT, right: RIGHT, pairs: [{ left
 const categorizeNode = () => node('categorize', { items: ITEMS, zones: ZONES, placement: { i1: 'z2' } });
 const fillNode = () => node('fill-blank', { answers: ['光合作用'] });
 const fillMultiNode = () => node('fill-blank', { blanks: [{ answers: ['H2O'] }, { answers: ['CO2'] }] });
+const fillThreeNode = () => node('fill-blank', {
+  blanks: [{ answers: ['甲'] }, { answers: ['乙'] }, { answers: ['丙'] }],
+});
 
 // ── 1. 读条目：三处键名（`text` / `label`）必须与服务端一致 ───────────────
 
@@ -266,10 +269,54 @@ test('🔴 draftFromValue：单空值读进多空题 ⇒ 补成与空数等长�
     { kind: 'fill', texts: ['H2O'] });
 });
 
-test('draftFromValue：读-写往返（除了「还没碰过」的排序题，一律回到同一份输入态）', () => {
+test('🔴 draftFromValue：多空填空的**空串不许被吞掉**（位置就是判据）', () => {
+  // 🔴 这是本文件第二次抓到「按下标错位」那一族的缺陷（第一次是 M3 的合并顺序）。
+  // 修之前 `texts` 走的是 `readStringList`（**丢空串**），于是每个空往前挪一格：
+  //
+  //   实测（审查者的探针，2026-09-24 修之前）：
+  //     只填第 2 空（两空）: 落库 ["","H2O"] → 刷新后显示 ["H2O",""]      ❌
+  //     填 1、3（三空）:      落库 ["甲","","丙"] → 刷新后显示 ["甲","丙",""] ❌
+  //     只填第 1 空 / 全填:  不变                                         ✅
+  //
+  // 真机路径：教师在填空题上点一次「＋ 增加一个空」→ 学生**只填第 2 空** →
+  // 自动保存落库 → **刷新** → 屏幕上第 1 空显示 H2O、第 2 空是空的 →
+  // 学生照屏幕去改 ⇒ 把**错位的那一份**写回库 ⇒ 第 2 空的答案真的没了。
+  // 全程无异常、无日志 —— 所以这几条断言必须逐字钉住**位置**，不是「有没有内容」。
+  assert.deepEqual(draftFromValue(fillMultiNode(), { format: 'fill-multi/v1', texts: ['', 'H2O'] }),
+    { kind: 'fill', texts: ['', 'H2O'] }, '只填第 2 空 ⇒ 第 2 空还得是 H2O');
+  assert.deepEqual(draftFromValue(fillThreeNode(), { format: 'fill-multi/v1', texts: ['甲', '', '丙'] }),
+    { kind: 'fill', texts: ['甲', '', '丙'] }, '跳过第 2 空 ⇒ 第 3 空不许往前挤');
+  assert.deepEqual(draftFromValue(fillThreeNode(), { format: 'fill-multi/v1', texts: ['', '', '丙'] }),
+    { kind: 'fill', texts: ['', '', '丙'] });
+  // 长度不足 ⇒ 尾部补空（补位是**从后面**补，不能反过来把已有的往前挪）。
+  assert.deepEqual(draftFromValue(fillThreeNode(), { format: 'fill-multi/v1', texts: ['甲'] }),
+    { kind: 'fill', texts: ['甲', '', ''] });
+  // 全空（学生把两个空都删干净了）⇒ 仍然是**两个**空框，不是零个。
+  assert.deepEqual(draftFromValue(fillMultiNode(), { format: 'fill-multi/v1', texts: ['', ''] }),
+    { kind: 'fill', texts: ['', ''] });
+  // `texts: []`（一份没填过的多空作答）⇒ 也要补成与空数等长，不能回落去读 `text`
+  //（多空值里没有那个键 ⇒ 整列变空、连框都不见了）。
+  assert.deepEqual(draftFromValue(fillMultiNode(), { format: 'fill-multi/v1', texts: [] }),
+    { kind: 'fill', texts: ['', ''] });
+  // 坏元素（不是字符串）⇒ 落成空串**占住它那个位子**，不许丢掉它（丢掉就是错位）。
+  assert.deepEqual(draftFromValue(fillThreeNode(), { format: 'fill-multi/v1', texts: ['甲', 42, '丙'] }),
+    { kind: 'fill', texts: ['甲', '', '丙'] });
+});
+
+test('draftFromValue：读-写往返', () => {
+  // ⚠️ **这条用例曾经是一条假保证，留痕如下（2026-09-24 审查抓出）**：
+  // 它的名字声称「一律回到同一份输入态」，而填空那一格的夹具是 `texts: ['H2O', '']`
+  //（**只有尾部空**）—— 尾部空恰好被补位 `texts[index] ?? ''` **意外修好**，
+  // 所以它在 `readStringList` 吞空串的缺陷下**照绿**。也就是说：它在断言一个
+  // **它没有覆盖到的性质**，而真缺陷（内部的空被吞掉 ⇒ 按下标错位）就藏在它旁边。
+  // 上面的「多空填空的空串不许被吞掉」那条用例现在是真正的判据；这里补上内部空的夹具，
+  // 让这条往返用例真的覆盖它名字里的射程。
   const cases: Array<[WorksheetQuestionNode, Parameters<typeof buildAnswerValue>[1]]> = [
     [node('multi-choice', { options: [] }), { kind: 'choice', selected: ['A', 'C'] }],
     [fillMultiNode(), { kind: 'fill', texts: ['H2O', ''] }],
+    [fillMultiNode(), { kind: 'fill', texts: ['', 'H2O'] }],
+    [fillThreeNode(), { kind: 'fill', texts: ['甲', '', '丙'] }],
+    [fillNode(), { kind: 'fill', texts: ['光合作用'] }],
     [orderNode(), { kind: 'order', order: ['i3', 'i1', 'i2'] }],
     [matchNode(), { kind: 'match', links: [{ leftId: 'l2', rightId: 'r1' }] }],
     [categorizeNode(), { kind: 'categorize', assignment: { i1: 'z2', i2: 'z1' } }],

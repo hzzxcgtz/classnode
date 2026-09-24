@@ -66,6 +66,14 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
    *
    * ⚠️ `as` 断言只有一个出口（这里）：下面每个分支各写一遍 `draft.kind === …`
    * 会在某一次改动里漏掉一支，而漏掉的表现是**白屏**。
+   *
+   * 🔴 **下面那六个 `?? { kind: … }` 是死代码**（已知题型的 `start` 一定同族），
+   * 它们的唯一作用是让类型完整 —— **它们因此没有任何回归网**：谁把某一支改回写死的值
+   * （比如把填空那支写成 `{ kind: 'fill', texts: [''] }`），**测试一条都不会红**，
+   * 而屏幕上多空填空题会少画几个框。2026-09-24 的渲染烟测正是这样抓到那个缺陷的
+   * （写死的 `['']` vs 起点 `['', '']`）。判据在**上一层**：`emptyDraftFor` 对每个题型
+   * 给的起点由 `worksheet-answer-value.test.ts` 逐条钉着（多空是 `['', '']`），
+   * 所以正确的写法是**永远从 `emptyDraftFor` 取**，别在这里写任何字面量。
    */
   const pick = <K extends AnswerDraft['kind']>(kind: K): Extract<AnswerDraft, { kind: K }> | null => {
     if (draft && draft.kind === kind) return draft as Extract<AnswerDraft, { kind: K }>;

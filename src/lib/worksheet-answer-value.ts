@@ -185,6 +185,34 @@ function readStringList(raw: unknown): string[] {
   return raw.filter((item): item is string => typeof item === 'string' && !!item);
 }
 
+/**
+ * 读**按位的**一串文本（多空填空的 `texts`）。
+ *
+ * 🔴 它与 `readStringList` **刻意不同**，而且这个区别是致命的：
+ * `readStringList` 把**空串**也丢掉 —— 对 `selected` / `order` 无害（空 key 本来就不是
+ * 一个选项），但对 `texts` 是**按下标错位**：`['', 'H2O']`（学生只填了第 2 空）被读成
+ * `['H2O']`，再补位成 `['H2O', '']` ⇒ 屏幕上第 1 空显示 H2O、第 2 空是空的。
+ * 学生照屏幕改一个字 ⇒ `PUT` 把**错位的那一份**写回库 ⇒ 第 2 空的答案真的没了。
+ * 全程无异常、无日志。
+ *
+ * ⚠️ **实测（2026-09-24，审查者的探针，修之前）**：
+ * ```
+ * 只填第 2 空（两空）: 落库 ["","H2O"] → 刷新后显示 ["H2O",""]     ❌
+ * 填 1、3（三空）:      落库 ["甲","","丙"] → 刷新后显示 ["甲","丙",""] ❌
+ * 只填第 1 空 / 全填:  不变                                        ✅
+ * ```
+ * ⇒ 判据是「**位置**」：非字符串元素落成空串（**占住位子**），长度因此不变；
+ * 只有整份不是数组才是空。
+ *
+ * ⚠️ 两条读取函数都留着是刻意的：把 `selected` 也改成保空串会让一个 `['']` 成为
+ * 「选了一个空 key」的作答；把 `texts` 改成丢空串就是上面那个缺陷。**用哪一条由语义决定**，
+ * 不要「统一」它们。
+ */
+function readTextList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => (typeof item === 'string' ? item : ''));
+}
+
 /** `id → 非空字符串` 的映射（归类题的作答）。坏值丢掉。 */
 function readStringMap(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -424,9 +452,17 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     // 单空（`fill/v1`）与多空（`fill-multi/v1`）在输入态里是**同一个形状**：
     // 一列文本。短的补空串、长的截掉，长度恒等于题目当下的空数 ——
     // 那是 `fill-body.tsx` 画几个输入框的依据。
-    const raw = Array.isArray(row.texts) ? readStringList(row.texts) : [];
-    const single = typeof row.text === 'string' ? [row.text] : [];
-    const texts = raw.length > 0 ? raw : single;
+    //
+    // 🔴 `texts` 走 `readTextList`（**保住空串、位置不变**），不是 `readStringList` ——
+    // 后者会把 `['', 'H2O']` 读成 `['H2O']`，补位之后每个空往前挪一格。理由与实测输出
+    // 写在 `readTextList` 上；那是一条「学生刷新后答案错位、再一碰就被写坏」的缺陷。
+    //
+    // ⚠️ 判据是「`texts` **在不在**」，不是「它是不是非空数组」：`texts: []` 是一份
+    // 合法（只是没填）的多空作答，落到下面补位成与空数等长的一列；而拿 `length > 0`
+    // 当判据会让它去读 `text`（多空值里根本没有那个键）⇒ 整列变空。
+    const texts = Array.isArray(row.texts)
+      ? readTextList(row.texts)
+      : (typeof row.text === 'string' ? [row.text] : []);
     const count = readBlankCount(node);
     const aligned: string[] = [];
     for (let index = 0; index < count; index += 1) aligned.push(texts[index] ?? '');

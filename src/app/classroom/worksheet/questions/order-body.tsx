@@ -83,6 +83,12 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
         const over = drag.hoverTargetId === id;
         const className = [
           styles.orderItem,
+          // 🔴 `dragSource` 给的是**静态**的 `touch-action: none` —— 拖拽能不能起作用
+          // 全看它（`use-pointer-drag.ts` 文件头第 ② 条：浏览器在手势开始的那一刻就定了
+          // 这条手势归谁，`pointerdown` 里再设已经晚了）。少了它，iPad 上一按就变成滚动，
+          // 学生看到的只是「拖不动」。⚠️ 2026-09-24 审查抓出：这里**曾经漏了这一行**，
+          // 而报告把「touch-action: none」列为已交付 —— 三个拖拽源里只有两个真的拿到了。
+          styles.dragSource,
           picked ? styles.orderItemSelected : '',
           dragging ? styles.orderItemDragging : '',
           over ? styles.orderItemOver : '',

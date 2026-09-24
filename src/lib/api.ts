@@ -186,6 +186,9 @@ export const api = {
   endClassroom: (id: string) => request(`/api/classroom/${id}/end`, { method: 'POST' }),
   pauseClassroom: (id: string) => request(`/api/classroom/${id}/pause`, { method: 'POST' }),
   resumeClassroom: (id: string) => request(`/api/classroom/${id}/resume`, { method: 'POST' }),
+  // ★ M5a：课堂级「锁定作答」（停笔但可交卷）
+  lockAnswers: (id: string) => request(`/api/classroom/${id}/lock-answers`, { method: 'POST' }),
+  unlockAnswers: (id: string) => request(`/api/classroom/${id}/unlock-answers`, { method: 'POST' }),
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
   toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),

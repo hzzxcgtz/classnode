@@ -475,6 +475,8 @@ function ClassroomBoardContent() {
   };
 
   const [paused, setPaused] = useState(false);
+  // ★ M5a：课堂级「锁定作答」。与 `paused` 同一类：本地乐观更新 + 收自己的广播校正。
+  const [answersLocked, setAnswersLocked] = useState(false);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   /**
@@ -820,6 +822,9 @@ function ClassroomBoardContent() {
       setClassroom(cr);
       setTeacherCode(cr.code || '');
       setPaused(cr.status === 'paused');
+      // ★ M5a：`=== true` 是刻意的 —— 老服务端不发这个字段（`ClassroomSummary.answersLocked?`
+      // 是可选的），必须按「未锁定」处理，不能把它当成必填读出个 undefined 当真值。
+      setAnswersLocked(cr.answersLocked === true);
       const students = cr.students || [];
       // 排序：标准模式按学号，分组/高级模式按组名
       const mode = cr.mode || 'standard';
@@ -1082,7 +1087,13 @@ function ClassroomBoardContent() {
       });
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub17?.(); };
+    // ★ M5a：锁定/解锁作答。⚠️ 编号接着 17 往下排 —— 计划里给的 `unsub7`/`unsub8`
+    // 在本文件里**已经被占用**（`classroom-ended` 与 `shield-warning`），
+    // 照抄那两个名字会静默覆盖掉那两个监听器（名字相同 ⇒ 前者泄漏、后者被退订两次）。
+    const unsub18 = on('answers-locked', () => setAnswersLocked(true));
+    const unsub19 = on('answers-unlocked', () => setAnswersLocked(false));
+
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub17?.(); unsub18?.(); unsub19?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1191,6 +1202,18 @@ function ClassroomBoardContent() {
       setControlBusy(null);
     }
   };
+
+  // ★ M5a：锁定/解锁作答。乐观更新 + 收自己的广播校正（与下面的 `toggleQuestions` 同一套）。
+  // ⚠️ 它**不**动 `classroom.status` —— 锁定是另一个维度（停笔），与「暂停学生提问」无关（GC 23）。
+  const toggleAnswersLock = () => runControlAction('answers-lock', async () => {
+    if (answersLocked) {
+      await api.unlockAnswers(id);
+      setAnswersLocked(false);
+    } else {
+      await api.lockAnswers(id);
+      setAnswersLocked(true);
+    }
+  });
 
   const toggleQuestions = () => runControlAction('questions', async () => {
     if (paused) {
@@ -2032,6 +2055,17 @@ function ClassroomBoardContent() {
                   {paused ? <><path d="M8 5v14l11-7z" /></> : <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>}
                 </svg>
                 {controlBusy === 'questions' ? '更新中...' : paused ? '恢复学生提问' : '暂停学生提问'}
+              </button>
+              {/* ★ M5a：锁定作答。🔴 文案**必须带「作答」二字** —— 上面那个按钮是「暂停学生提问」，
+                  不带限定词的话教师分不清自己按的是哪一个（一个是禁提问、一个是停笔）。 */}
+              <button className={answersLocked ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleAnswersLock()} disabled={controlBusy !== null}
+                title="停笔：学生不能再修改答案，但仍然可以交卷"
+                style={{ minHeight: 36, padding: '7px 12px', color: answersLocked ? 'white' : '#2563eb' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+                {controlBusy === 'answers-lock' ? '更新中...' : answersLocked ? '解锁作答' : '锁定作答'}
               </button>
               <button className="btn btn-secondary" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }} style={{ minHeight: 36, padding: '7px 12px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>

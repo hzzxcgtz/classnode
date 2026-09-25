@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 /**
  * ★ 2026-09-25：`allowStudentAsk`（教师端「允许学生提问」）的**方向**。

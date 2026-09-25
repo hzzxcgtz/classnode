@@ -326,6 +326,63 @@ function TileBadgeChip({ badge, compact = false }: { badge: TileBadge; compact?:
 }
 
 /**
+ * ★ 2026-09-25（教师截图批注）：格子上的**模块指示字**。
+ *
+ * 教师原话：「增加一个当前监看的三件套中哪一个的状态图标，简单的用『学』『探』『智』来演示，
+ * 好看一些」。
+ *
+ * 🔴 为什么值得一个专门的指示：格子正文虽然已经画着当前模块的内容，但**四十个格子扫过去**
+ * 时，「这一格是探究网页的截图 / 学习单的表 / 学伴的对话」要靠逐格辨认内容才分得出来。
+ * 一个汉字就够扫了 —— 这也是它只在**一个字**上做的原因，写成「学习单」三个字反而变慢。
+ *
+ * ⚠️ 颜色**与学生端 `MODULE_META` 的 `accent` 同源**（学习单蓝 / 探究空间紫 / 智能学伴青）：
+ * 学生在卡片上认到的颜色、进到模块里看到的颜色、教师在看板上看到的颜色是同一个，
+ * 这条在 §4.6 就立过。改这里必须同步改 `src/app/classroom/module-meta.tsx`。
+ */
+const MODULE_INITIALS: Record<ModuleId, { char: string; color: string; bg: string }> = {
+  worksheet: { char: '学', color: '#2563eb', bg: '#eff6ff' },
+  explore: { char: '探', color: '#7c3aed', bg: '#f5f3ff' },
+  companion: { char: '智', color: '#0e7490', bg: '#ecfeff' },
+};
+
+/** 「首页」那一档：不在任何模块里，但**也不是不知道**（与 `unknown` 是两回事）。 */
+const HOME_INITIAL = { char: '首', color: '#94a3b8', bg: '#f1f5f9' };
+
+/**
+ * 一个格子的「他此刻在哪一件套」。
+ *
+ * ⊘ 两种情况**刻意什么都不画**：
+ *   · `unknown` —— 还没收到这个学生的 focus。画一个「？」会把「不知道」说成一个状态，
+ *     而刚上课那几十秒里几乎每一格都是它，一屏问号纯属噪声；
+ *   · `mixed`  —— **组内成员此刻不在同一个模块**。画任何**一个**字都是**撒谎**
+ *     （这正是 `GroupTileModule` 比 `TileModule` 多出 `mixed` 这一档的理由）。
+ *     组内逐人的位置由 `tileLocationNote` 说，那是另一个读者、另一个时机。
+ *
+ * ⚠️ 无障碍：一个光秃秃的「学」对读屏是无意义的，所以给整块 `role="img"` +
+ * `aria-label`，汉字本身 `aria-hidden`。本仓立过「图标化只减视觉宽度、不减无障碍信息」。
+ */
+function ModuleInitialChip({ module, compact = false }: { module: GroupTileModule; compact?: boolean }) {
+  if (module === 'unknown' || module === 'mixed') return null;
+  const meta = module === 'home' ? HOME_INITIAL : MODULE_INITIALS[module];
+  const label = module === 'home' ? '首页' : MODULE_ID_LABELS[module];
+  return (
+    <div
+      role="img"
+      aria-label={`当前在：${label}`}
+      title={`当前在：${label}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        minWidth: compact ? 14 : 18, height: compact ? 14 : 18, padding: '0 4px',
+        borderRadius: compact ? 4 : 6,
+        fontSize: compact ? 8 : 10, fontWeight: 700, lineHeight: 1,
+        background: meta.bg, color: meta.color, whiteSpace: 'nowrap',
+      }}>
+      <span aria-hidden="true">{meta.char}</span>
+    </div>
+  );
+}
+
+/**
  * 一个格子**内容区**该渲染什么。
  *   · `ModuleId`  —— 三件套之一（跟随模式下由该学生的 focus 决定，指定模式下是教师选的）
  *   · `'home'`    —— 学生此刻停在**首页**（focus 明确是 `null`）
@@ -2610,6 +2667,7 @@ function ClassroomBoardContent() {
                               </div>
                             );
                           })()}
+                          <ModuleInitialChip module={tileModule} />
                           {moduleBadge && <TileBadgeChip badge={moduleBadge} />}
                           {student.avatarChangeTokens > 0 && (
                             <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>
@@ -3310,6 +3368,7 @@ function ClassroomBoardContent() {
                               <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#f59e0b' : '#94a3b8', display: 'inline-block' }} />
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                             </div>
+                            <ModuleInitialChip module={tileModule} compact />
                             {moduleBadge && <TileBadgeChip badge={moduleBadge} compact />}
                             {student.avatarChangeTokens > 0 && (
                               <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 700, background: '#fffbeb', color: '#d97706', whiteSpace: 'nowrap' }}>

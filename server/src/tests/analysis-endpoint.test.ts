@@ -287,3 +287,47 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
   assert.equal(again.total, 1);
   assert.deepEqual(again.entries, payload.entries, '同一份 aggregate 重读出的条目必须一致');
 });
+
+test('🔴 端点把 `stale` 发出来：算完之后又有人交了 ⇒ GET 报过期', async (t) => {
+  // ⚠️ 判据在服务端（前端那份看板数据里**没有** `submittedAt`）——
+  // 所以这条必须走端点才证得了，纯函数用例证不到「接线通了」。
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+
+  const worksheet = await seedWorksheet(p, [SHORT_ANSWER_NODE]);
+  const classroom = await p.classroom.create({ data: { title: '课', code: '7006', status: 'active', mode: 'standard' } });
+  await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const a = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const b = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const ra = await p.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: a.id } });
+  const rb = await p.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: b.id } });
+  await p.worksheetAnswer.create({
+    // ⚠️ 必须是**过去**的时刻（相对 `Date.now()`）：写一个固定 ISO 串的话，
+    // 若它落在本机当前时刻之后，分析一算出来就「已经过期」，而这条用例要测的是
+    // 「后来者让它过期」—— 夹具先自己过期了，测出来的就不是那件事。
+    data: { responseId: ra.id, questionId: 'q1', status: 'submitted', value: { format: 'text/v1', text: '甲' }, submittedAt: new Date(Date.now() - 3_600_000) },
+  });
+  const pending = await p.worksheetAnswer.create({
+    data: { responseId: rb.id, questionId: 'q1', status: 'draft', value: { format: 'text/v1', text: '写到一半' } },
+  });
+
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const base = `${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`;
+  const post = await fetch(base, { method: 'POST' });
+  if (post.status !== 200) assert.fail(`POST HTTP ${post.status}: ${await post.text()}`);
+  assert.equal((await post.json() as Record<string, unknown>).stale, false, '刚算完不可能过期');
+
+  const fresh = await fetch(base);
+  assert.equal((await fresh.json() as Record<string, unknown>).stale, false);
+
+  // b 现在交了，且比那次分析晚 ⇒ 过期
+  await p.worksheetAnswer.update({
+    where: { id: pending.id },
+    data: { status: 'submitted', submittedAt: new Date(Date.now() + 60_000) },
+  });
+  const after = await fetch(base);
+  const body = await after.json() as Record<string, unknown>;
+  assert.equal(body.stale, true, '算完之后又有人交了 —— 教师必须看得见，否则会把一份不完整的名单当成当前的');
+});

@@ -17,6 +17,14 @@ export interface RawAnswer {
   questionId: string;
   status: string;
   value: unknown;
+  /**
+   * 定稿时刻（ISO 串）。**只有「陈旧判定」读它** —— `selectAnalyzeEntries` 不看。
+   *
+   * ⚠️ 它**不是** `WorksheetResponse.submittedAt`（那是「整卷」的时间戳）。
+   * 拿整卷的去比，会让「有人交了**别的**题」也算成这份分析过期 ——
+   * 而假提示会训练教师忽略真提示，比没有提示更坏。
+   */
+  submittedAt?: string | null;
 }
 
 /** 一个参与者（`ClassroomStudent` 一行 —— 分组 / 高级模式下是**组**）。 */
@@ -440,4 +448,34 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
     out.push({ studentId: row.studentId, displayName, kind: 'unknown' });
   }
   return out;
+}
+
+/* ── 陈旧判定 ─────────────────────────────────────────────────────────── */
+
+/** 这批作答行里，**这一道题**最后一次定稿的时刻（没有交过 ⇒ `null`）。 */
+export function lastSubmittedAt(answers: RawAnswer[], questionId: string): string | null {
+  let latest: string | null = null;
+  for (const answer of answers) {
+    if (answer.questionId !== questionId) continue;
+    const at = answer.submittedAt;
+    if (typeof at !== 'string' || at === '') continue;
+    if (latest === null || at > latest) latest = at;
+  }
+  return latest;
+}
+
+/**
+ * ★ M7a：一份分析是不是**过期**了 —— 即「算完之后又有人交了」。
+ *
+ * 🔴 为什么由**服务端**判、并把结果放进响应（而不是前端自己算）：
+ * 前端手上那份看板数据里**压根没有 `submittedAt`**（`WorksheetBoardAnswerRow` 没这个字段），
+ * 而这件事要的是「**这道题**最后一次提交的时刻」。让前端算就得给看板端点加字段 ——
+ * 那是改一个 M5b 的既有端点去成全一个新功能。数据在服务端，判据就该在服务端。
+ *
+ * 比较按字符串序：ISO 8601 的字典序就是时间序，不需要建 `Date`。
+ * 同一时刻**不算**陈旧（`>` 不是 `>=`）—— 算完之后立刻打开预览不该显示「可能已过期」。
+ */
+export function isAnalysisStale(computedAt: string, lastSubmittedAtValue: string | null): boolean {
+  if (!lastSubmittedAtValue) return false;
+  return lastSubmittedAtValue > computedAt;
 }

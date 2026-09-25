@@ -11,8 +11,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANSWER_TEXT_MAX, DEFAULT_ANALYSIS_KNOBS, KNOBS_SETTING_KEY, SHEET_GAP, SHEET_LABEL_H,
-  SHEET_MARGIN, buildTextDocument, entriesFromAggregate, entriesToAggregate, layoutSheets,
-  normalizeAnalysisKnobs, payloadKindOf, selectAnalyzeEntries,
+  SHEET_MARGIN, buildTextDocument, entriesFromAggregate, entriesToAggregate, isAnalysisStale,
+  lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadKindOf, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
 
@@ -317,4 +317,35 @@ test('🔴 脏 aggregate 不抛：坏行落 unknown / 被跳过，整体不是�
   // displayName 缺失 ⇒ 回落 studentId（图上的标签不会空着）
   const noName = entriesFromAggregate([{ studentId: 'p9', kind: 'text', text: 'x' }]);
   assert.equal(noName[0].displayName, 'p9');
+});
+
+/* ── 陈旧判定 ─────────────────────────────────────────────────────────── */
+
+test('★ lastSubmittedAt：只数**这一道题**的定稿时刻，取最新的那个', () => {
+  const answers: RawAnswer[] = [
+    { participantId: 'p1', questionId: 'q1', status: 'submitted', value: null, submittedAt: '2026-09-25T10:00:00.000Z' },
+    { participantId: 'p2', questionId: 'q1', status: 'submitted', value: null, submittedAt: '2026-09-25T10:05:00.000Z' },
+    { participantId: 'p3', questionId: 'q1', status: 'submitted', value: null, submittedAt: null },
+    // 别的题交得再晚也不算 —— 否则「有人交了别的题」也会让这份分析显示过期（假提示）
+    { participantId: 'p4', questionId: 'q2', status: 'submitted', value: null, submittedAt: '2026-09-25T11:00:00.000Z' },
+  ];
+  assert.equal(lastSubmittedAt(answers, 'q1'), '2026-09-25T10:05:00.000Z');
+  assert.equal(lastSubmittedAt(answers, 'q2'), '2026-09-25T11:00:00.000Z');
+  assert.equal(lastSubmittedAt([], 'q1'), null);
+  assert.equal(lastSubmittedAt(answers, 'nope'), null);
+});
+
+test('★ isAnalysisStale：算完之后又有人交 ⇒ 陈旧；同一时刻不算', () => {
+  const t = '2026-09-25T10:00:00.000Z';
+  assert.equal(isAnalysisStale(t, null), false, '这道题没人交过 ⇒ 不存在陈旧');
+  assert.equal(isAnalysisStale(t, '2026-09-25T09:59:59.000Z'), false);
+  assert.equal(isAnalysisStale(t, t), false, '同一时刻不算（`>` 不是 `>=`）');
+  assert.equal(isAnalysisStale(t, '2026-09-25T10:00:01.000Z'), true);
+});
+
+test('反证：把 `isAnalysisStale` 的方向写反 ⇒ 上一条必须红', () => {
+  const t = '2026-09-25T10:00:00.000Z';
+  assert.equal(isAnalysisStale(t, '2026-09-25T10:00:01.000Z'), true);
+  assert.equal(isAnalysisStale('2026-09-25T10:00:01.000Z', t), false,
+    '把「算完的时刻」往后挪一秒，同一个提交就不再是「之后」的 —— 方向写反时两条会同真');
 });

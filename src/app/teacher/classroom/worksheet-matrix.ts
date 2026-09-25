@@ -26,6 +26,15 @@ export interface MatrixRow {
   index: number;
   /** 题型的中文名（`questionTypeLabel`）。 */
   typeLabel: string;
+  /**
+   * ★ M7a：**原始题型串**（取值域是服务端的 `QUESTION_TYPES`）。
+   *
+   * 题行上的「分析」入口靠它判「这题是不是主观题」—— **不能反过来从 `typeLabel` 解**：
+   * 那是给人看的中文名，改成「问答题（主观）」就会让判据失效，而**屏幕上一点异常都没有**
+   * （只是「分析」按钮不见了）。判据是 `isGradedQuestion`（它派生自题型表的 `graded` 旗标），
+   * 与 `worksheet-drawer-state.ts` 里抽屉画不画 ✓/✗ 用的是**同一把尺子**。
+   */
+  type: string;
   /** 题干原文。截断由 CSS 做，不在这一层切字符串。 */
   prompt: string;
   /** 参与者 id → 这一格的状态。**每个参与者都有一项**（没作答就是 `'unanswered'`）。 */
@@ -100,7 +109,7 @@ export function buildWorksheetMatrix(
       const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
       cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
     });
-    return { questionId: node.id, index, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, cells };
+    return { questionId: node.id, index, typeLabel: questionTypeLabel(node.type), type: node.type, prompt: node.prompt, cells };
   });
 }
 
@@ -193,3 +202,4 @@ export function uncoveredCount(participantCount: number, sheets: WorksheetBoardW
   // ⚠️ 钳在 0：两个快照取自不同时刻时差额**可以是负数**，而「另有 -1 个」是一句胡话。
   return Math.max(0, participantCount - covered);
 }
+

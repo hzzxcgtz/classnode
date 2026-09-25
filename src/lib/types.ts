@@ -381,6 +381,40 @@ export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
  * （`data.correctKeys` / `data.answers`）住在 `Worksheet.content` 里，
  * 服务端**从不**把它放进这个响应（规格 §5.4 红线）。
  */
+/**
+ * ★ M7a：一道题的**聚合载荷**（分析预览用）。
+ *
+ * ⚠️ 图**不在**里面 —— 它走 `…/sheet/:index` 单独取（库里只存结构化快照，图是按需重渲的
+ * 派生物，见规格 §3.1 决定 1）。所以这个类型里只有 `sheetLayouts`（每张的尺寸与格数）。
+ */
+export interface WorksheetAnalysisPayload {
+  worksheetId: string;
+  questionId: string;
+  /** 「第 N 题」（服务端按拍平题序算好，1-based）。 */
+  questionLabel: string;
+  typeLabel: string;
+  prompt: string;
+  payloadKind: 'text' | 'image' | 'mixed';
+  /** 已提交该题的**参与者**数。单位（人 / 组）由界面按课堂 mode 定，见 `moduleCountUnit`。 */
+  covered: number;
+  /** **该题应作答的**参与者数（高级模式下**不是**全班人数）。 */
+  total: number;
+  /** 格序（与联系表上的格、编号对照表一一对应）。 */
+  entries: Array<{ studentId: string; anonLabel: string }>;
+  /** 文字类（或 mixed）的聚合文档；纯绘图题是 `null`。 */
+  text: string | null;
+  sheetLayouts: Array<{ sheetIndex: number; width: number; height: number; cells: unknown[] }>;
+  knobs: { cellWidth: number; cellHeight: number; columns: number; maxCellsPerSheet: number };
+  /**
+   * 标签**这一次**能不能渲染出来。`false` = 图上没有标签（本机渲染不出文字），
+   * 界面**必须**给出编号对照表，否则教师与模型都认不出哪一格是谁。
+   */
+  labeled: boolean | null;
+  /** 「算完之后又有人交了这道题」—— 服务端算的，界面必须显眼说出来。 */
+  stale: boolean;
+  computedAt: string;
+}
+
 export interface WorksheetBoardAnswerRow {
   questionId: string;
   /** `'unanswered' | 'draft' | 'submitted'`（服务端 DDL 的取值域）。 */

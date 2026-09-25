@@ -16,6 +16,7 @@ import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
 import { MatrixOverlay } from './matrix-overlay';
+import { AnalysisOverlay } from './analysis-overlay';
 import { moduleCountUnit, stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
@@ -490,6 +491,12 @@ function ClassroomBoardContent() {
   // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
   const [matrixOpen, setMatrixOpen] = useState(false);
+  /**
+   * ★ M7a：正在看哪一道题的分析载荷（`null` = 没开）。
+   * ⚠️ 与 `matrixOpen` **可以同时为真** —— 分析浮层（270）就叠在矩阵浮层（250）之上，
+   * 关掉分析会回到矩阵，而不是回到课堂页。
+   */
+  const [analysisTarget, setAnalysisTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
   /**
    * ★ M5b：矩阵**最近一次 REST 快照发起的时刻**（浏览器时钟）。
    *
@@ -3270,6 +3277,21 @@ function ClassroomBoardContent() {
           onClose={() => setMatrixOpen(false)}
           onOpenQuestion={openMatrixQuestion}
           onOpenParticipant={openMatrixParticipant}
+          onOpenAnalysis={(worksheetId, questionId) => setAnalysisTarget({ worksheetId, questionId })}
+        />
+      )}
+
+      {/* ★ M7a：分析载荷预览。**独立浮层**（zIndex 270：矩阵 250 之上、学习单抽屉 290/291 之下）。
+          它**不复用**学生端外壳的 `layer-overlays` —— 那条「非前台层的浮层不得浮在上面」
+          的不变量属于学生端的三层结构，与教师端这两个浮层无关。
+          ⚠️ `mode` 是**必需**的：浮层里「已交 N/M」的单位靠 `moduleCountUnit(mode)` 定
+          （分组 / 高级模式下是「组」而不是「人」）。 */}
+      {analysisTarget && (
+        <AnalysisOverlay
+          worksheetId={analysisTarget.worksheetId}
+          questionId={analysisTarget.questionId}
+          mode={classroom?.mode ?? 'standard'}
+          onClose={() => setAnalysisTarget(null)}
         />
       )}
 

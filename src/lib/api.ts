@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './api-base';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload } from './types';
 
 let studentSessionToken = '';
 
@@ -445,6 +445,20 @@ export const api = {
     request<WorksheetUsage>(`/api/worksheets/${id}/usage`),
   // 详情。列表页不用它（列表项没有 `content` 也不需要），留给编辑器（C2）。
   getWorksheet: (id: string) => request<WorksheetDetail>(`/api/worksheets/${id}`),
+  // ★ M7a：分析载荷。**本版零外发** —— 这三条一个字节都不往第三方发。
+  /** 算 + 落库 + 回载荷结构（不含图）。**这是唯一会重算的动作**（`[重新生成]`）。 */
+  computeWorksheetAnalysis: (worksheetId: string, questionId: string) =>
+    request<WorksheetAnalysisPayload>(
+      `/api/worksheets/${worksheetId}/analysis/${questionId}`, { method: 'POST' }),
+  /** 读已存的载荷（没算过 ⇒ 404）。 */
+  getWorksheetAnalysis: (worksheetId: string, questionId: string) =>
+    request<WorksheetAnalysisPayload>(`/api/worksheets/${worksheetId}/analysis/${questionId}`),
+  /**
+   * 第 index 张联系表的图片 URL（**给 `<img src>` 用**，不走 `request`）。
+   * ⚠️ 它每次请求都会重渲（服务端不存图）—— 这是「旋钮改了，旧图不会变成按旧参数画的」的代价。
+   */
+  worksheetAnalysisSheetUrl: (worksheetId: string, questionId: string, index: number) =>
+    `${getApiBaseUrl()}/api/worksheets/${worksheetId}/analysis/${questionId}/sheet/${index}`,
   // 教师看板的**历史读端点**（D4 补）：这一堂课的整批作答行，按学习单 → 参与者 → 题分组。
   //
   // 🔴 少了它，看板只能看到「打开之后发生的作答」：教师刷新一次页面，早做完的学生就会

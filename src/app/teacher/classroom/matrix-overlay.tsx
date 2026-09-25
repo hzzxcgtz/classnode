@@ -4,6 +4,7 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 import type { CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
+import { isGradedType } from './worksheet-drawer-state';
 import { buildWorksheetMatrix, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
@@ -32,6 +33,7 @@ export function MatrixOverlay({
   onClose,
   onOpenQuestion,
   onOpenParticipant,
+  onOpenAnalysis,
 }: {
   board: WorksheetBoard | null;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
@@ -45,6 +47,8 @@ export function MatrixOverlay({
   onClose: () => void;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
+  /** ★ M7a：打开这道题的**分析载荷**（只对主观题有入口）。 */
+  onOpenAnalysis: (worksheetId: string, questionId: string) => void;
 }) {
   // ⚠️ 算术在纯函数里（GC 26）：JSX 里只调用，不再自己算一遍。
   // ⚠️ **两个入参取自不同时刻的快照**（`participantCount` 来自课堂详情、`board` 来自作答端点），
@@ -86,6 +90,7 @@ export function MatrixOverlay({
                 liveTrustedAfter={liveTrustedAfter}
                 sheet={sheet}
                 onOpenQuestion={onOpenQuestion}
+                onOpenAnalysis={onOpenAnalysis}
                 onOpenParticipant={onOpenParticipant}
               />
             ))}
@@ -105,7 +110,7 @@ export function MatrixOverlay({
 
 /** 一块 = 一份学习单。 */
 function MatrixBlock({
-  sheet, title, nodes, live, liveTrustedAfter, onOpenQuestion, onOpenParticipant,
+  sheet, title, nodes, live, liveTrustedAfter, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
 }: {
   sheet: WorksheetBoard['worksheets'][number];
   title: string;
@@ -114,6 +119,7 @@ function MatrixBlock({
   liveTrustedAfter: number | undefined;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
+  onOpenAnalysis: (worksheetId: string, questionId: string) => void;
 }) {
   if (!nodes) return <p style={{ fontSize: '0.875rem', color: '#64748b' }}>《{title}》正在读取题目…</p>;
 
@@ -156,6 +162,7 @@ function MatrixBlock({
               stuck={row.questionId === stuckId}
               onOpenQuestion={() => onOpenQuestion(sheet.id, row.questionId)}
               onOpenParticipant={onOpenParticipant}
+              onOpenAnalysis={() => onOpenAnalysis(sheet.id, row.questionId)}
             />
           ))}
         </tbody>
@@ -165,7 +172,7 @@ function MatrixBlock({
 }
 
 function MatrixRowView({
-  row, participantIds, stuck, onOpenQuestion, onOpenParticipant,
+  row, participantIds, stuck, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
 }: {
   row: MatrixRow;
   /** 列的循环顺序（= `sheet.participants` 的顺序）。 */
@@ -173,6 +180,7 @@ function MatrixRowView({
   stuck: boolean;
   onOpenQuestion: () => void;
   onOpenParticipant: (participantId: string) => void;
+  onOpenAnalysis: () => void;
 }) {
   // ★ 屏幕上的「已交 N/M」走**用例断言的那个函数**（GC 26）。
   //   原先这里自己 `filter` 了一遍 —— 两份实现等价时三道门禁全绿，改了口径则屏幕先变而测试不红。
@@ -192,6 +200,21 @@ function MatrixRowView({
             {promptLabel(row.prompt)}
           </span>
         </button>
+        {/* ★ M7a：「分析」入口 —— **只对主观题出现**。客观题本来就判分，看板的对错已经
+            回答了「这题答得怎么样」，再给一个分析入口只会让教师多点一下。
+            判据走 `isGradedType`（它派生自题型表的 `graded` 旗标）—— 与抽屉画不画 ✓/✗
+            是**同一把尺子**；而 `graded` 那张表由 `analysis-gate-parity.test.ts` 与服务端闸门对拍。
+            ⚠️ 这是**兄弟节点**（不是嵌在上面那个按钮里 —— 嵌 `<button>` 是非法 HTML，
+            点它会同时打开抽屉）。兄弟之间不需要 `stopPropagation`。 */}
+        {!isGradedType(row.type) && (
+          <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么"
+            style={{
+              marginLeft: 8, padding: '2px 8px', fontSize: '0.7rem', borderRadius: 6,
+              border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
+            }}>
+            分析
+          </button>
+        )}
       </th>
       {participantIds.map((participantId) => (
         <td key={participantId} style={bodyCellStyle}>

@@ -131,6 +131,12 @@ test('题号是 0-based 的拍平序（与 `worksheetTileState` 的 `index` 同�
   assert.deepEqual(rows.map((r) => r.index), [0, 1]);
   assert.equal(rows[0].typeLabel, '单选题');
   assert.equal(rows[1].typeLabel, '填空题');
+  // ★ M7a：`type` 是**原始题型串**（`typeLabel` 是它的中文名）。矩阵题行上的「分析」入口
+  // 靠它判「这题是不是主观题」—— **不能反过来从 `typeLabel` 解**：那是给人看的中文名，
+  // 改成「问答题（主观）」就会让判据失效，而**屏幕上一点异常都没有**（只是按钮不见了）。
+  // 两条断言放在同一个用例里，是为了让 `type` 与 `typeLabel` 由**同一个夹具**钉住、不会各自漂。
+  assert.equal(rows[0].type, 'single-choice');
+  assert.equal(rows[1].type, 'fill-blank');
 });
 
 test('题目树为空 ⇒ 零行（调用方走「这份学习单还没有题目」那条空态）', () => {

@@ -40,7 +40,7 @@ import { isAnalyzableType } from '../services/analysis-gate.js';
 import { questionTypeLabel } from '../services/question-type-labels.js';
 import {
   KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
-  layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
+  isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
 } from '../services/analysis-payload.js';
 import { renderSheets } from '../services/analysis-render.js';
@@ -1006,7 +1006,13 @@ async function loadAnalysisAnswers(
 ): Promise<RawAnswer[]> {
   const responses = await prisma.worksheetResponse.findMany({
     where: { classroomId, worksheetId },
-    select: { participantId: true, answers: { select: { questionId: true, status: true, value: true } } },
+    select: {
+      participantId: true,
+      // ⚠️ `submittedAt` 是给**陈旧判定**用的（「这道题最后一次定稿」）——
+      // `selectAnalyzeEntries` 不看它，但少 select 它的表现是「永远不显示过期」，
+      // 而那是**静默**的：屏幕上没有任何东西缺一块。
+      answers: { select: { questionId: true, status: true, value: true, submittedAt: true } },
+    },
   });
   return responses.flatMap((response) =>
     response.answers.map((answer) => ({
@@ -1014,6 +1020,7 @@ async function loadAnalysisAnswers(
       questionId: answer.questionId,
       status: answer.status,
       value: answer.value,
+      submittedAt: answer.submittedAt ? answer.submittedAt.toISOString() : null,
     })));
 }
 
@@ -1033,9 +1040,17 @@ function payloadFromStoredRow(
   });
 }
 
-/** 回给前端的载荷（图不在里面 —— 它走 sheet 端点单独取）。 */
-function payloadResponse(payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean | null): Record<string, unknown> {
-  return { ...payload, labeled };
+/**
+ * 回给前端的载荷（图不在里面 —— 它走 sheet 端点单独取）。
+ *
+ * `labeled`：标签**这一次**能不能渲染出来（缺 fontconfig 时是 `false`，界面据此给编号对照表）。
+ * `stale`：「算完之后又有人交了这道题」—— 界面必须显眼说出来，否则教师会把一份不完整的
+ * 名单当成当前的。
+ */
+function payloadResponse(
+  payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean | null, stale: boolean,
+): Record<string, unknown> {
+  return { ...payload, labeled, stale };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1077,7 +1092,8 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     // 「教师重算一次，之前花掉的 AI 解读没了」，而**没有任何报错**。
     // （`analysis-endpoint.test.ts` 有一条用例钉着它。）
 
-    res.json(payloadResponse(payload, null));
+    // 刚算完 ⇒ 不可能已过期（`computedAt` 是此刻）。仍然照发这一格，让前端只有一个形状要处理。
+    res.json(payloadResponse(payload, null, false));
   } catch (error) {
     console.error('[worksheets] 生成分析载荷失败:', error);
     res.status(500).json({ error: '生成分析载荷失败' });
@@ -1096,7 +1112,14 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     const target = await loadAnalysisTarget(prisma, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
     const knobs = await loadAnalysisKnobs(prisma);
-    res.json(payloadResponse(payloadFromStoredRow(row, target.node, target.index, knobs), null));
+    // ★ 陈旧 = 「算完之后又有人交了这道题」。**服务端算**（前端那份看板数据里没有
+    // `submittedAt`），判据是纯函数，与 `computedAt` 比字符串序。
+    // ⚠️ 第三个实参是 **worksheetId**，不是 questionId —— 传错的后果是这里永远查到 0 行、
+    // 于是**永远不报过期**，而屏幕上一点异常都没有（这一条被 `analysis-endpoint.test.ts`
+    // 的 stale 用例当场抓住）。
+    const answers = await loadAnalysisAnswers(prisma, target.classroomId, worksheetId);
+    const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
+    res.json(payloadResponse(payloadFromStoredRow(row, target.node, target.index, knobs), null, stale));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
     res.status(500).json({ error: '读取分析载荷失败' });

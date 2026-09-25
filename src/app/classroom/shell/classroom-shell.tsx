@@ -619,8 +619,9 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
         <div className={styles.notifyWrap}>
           <div className={styles.notifyRow}>
             <div className={styles.notifyBubble}>
-              {/* 三角尾巴 */}
-              <div className={styles.notifyTail} />
+              {/* ⊘ 2026-09-25：原来那个三角尾巴去掉了 —— 它是「贴着某个东西说」的记号
+                  （原来贴在学习单面板的左下角），而现在是**屏幕正中的一张浮窗**，
+                  尾巴没有指向的对象，留着只会显得错位。 */}
               <div className={styles.notifyHead}>
                 <span className={styles.notifyIcon}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>

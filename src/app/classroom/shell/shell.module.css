@@ -930,18 +930,20 @@
 /* 教师通知：原来在面板里是 `position: sticky; bottom: 0`（贴着输入条上方）。
    搬出来必须改成 `fixed` —— `sticky` 只在滚动容器里有意义，而外壳不是滚动容器；
    位置也从**底部**挪到**顶栏之下**：贴着底部会被学伴的输入区压住。 */
+/* ⊘ 2026-09-25 二次修订：教师要求「弹出的小窗在页面**正中间**」，
+ * 并且「框的宽度要**自适应消息长度**，设一个最大值，超过就换行」。
+ * 原来是 `top: 顶栏之下` 的一条顶部带子。 */
 .notifyWrap {
   position: fixed;
-  top: var(--shell-topbar-height);
-  left: 0;
-  right: 0;
+  inset: 0;
   z-index: 9000;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 8px 20px 0;
-  /* 🔴 这一条是**必须的**：`notifyWrap` 是一条横贯视口的固定带子，
-     不设 `pointer-events: none` 的话它会**挡住底下那一整条区域的点击** ——
-     而它绝大多数时候是空的（没有通知时不渲染，但即便渲染了也只该在气泡上吃事件）。 */
+  padding: 24px;
+  /* 🔴 这一条是**必须的**：`notifyWrap` 现在铺满整个视口，不设 `pointer-events: none`
+     的话它会把**整页的点击全部吃掉** —— 学生除了关掉消息什么都做不了。
+     事件只该在气泡与 ✕ 上生效（下面两处 `auto`）。 */
   pointer-events: none;
   animation: notifSlideUp 0.3s ease-out;
 }
@@ -960,37 +962,31 @@
 
 .notifyRow {
   display: flex;
-  justify-content: center;
   align-items: flex-start;
-  padding-left: 4px;
-  max-width: 800px;
-  width: 100%;
+  gap: 8px;
+  max-width: 100%;
   pointer-events: none;
 }
 
 .notifyBubble {
-  position: relative;
   pointer-events: auto;
-  padding: 10px 14px;
-  border-radius: 6px 16px 16px 16px;
+  /* 🔴 宽度**自适应内容**、到上限才换行（教师要求）。
+     `fit-content` 是「自适应」的那一半，`max-width` 是「最大值」的那一半 ——
+     少了 `fit-content`，一条只写着「安静」的消息也会被撑到满宽，占掉半屏。 */
+  width: fit-content;
+  max-width: min(85vw, 420px);
+  padding: 12px 16px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #fff7ed, #fffbeb);
-  font-size: 0.813rem;
+  border: 1px solid #fed7aa;
+  font-size: 0.875rem;
   color: #451a03;
   line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(251, 146, 60, 0.08), 0 8px 24px rgba(251, 146, 60, 0.1);
-  max-width: 85%;
+  box-shadow: 0 8px 28px rgba(120, 83, 12, 0.18), 0 2px 8px rgba(251, 146, 60, 0.1);
+  /* 超过最大值就换行。⚠️ 两个都写：`break-word` 对 CJK 与长英文串的行为不同，
+     只写一个时总有一类会溢出（长 URL 那类最明显）。 */
   word-break: break-word;
-}
-
-.notifyTail {
-  position: absolute;
-  top: 0;
-  left: -6px;
-  width: 12px;
-  height: 12px;
-  background: #fff7ed;
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-  border-radius: 0 0 0 2px;
+  overflow-wrap: break-word;
 }
 
 .notifyHead {

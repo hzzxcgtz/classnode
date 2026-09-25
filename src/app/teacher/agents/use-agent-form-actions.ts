@@ -6,7 +6,7 @@ import type { AgentPlatform } from './agent-platforms';
 
 interface FormActionOptions {
   agent: AgentSummary | null;
-  values: { name: string; platform: AgentPlatform; apiKey: string; apiUrl: string; botId: string; projectId: string; apiSecret: string; greeting: string };
+  values: { name: string; platform: AgentPlatform; apiKey: string; apiUrl: string; botId: string; projectId: string; apiSecret: string; greeting: string; purpose: string };
   hasSavedApiKey: boolean;
   hasSavedApiSecret: boolean;
   setName: (value: string) => void;
@@ -72,6 +72,9 @@ export function useAgentFormActions(options: FormActionOptions) {
       else if (values.platform === 'zhipuai') form.append('extra', JSON.stringify({ apiSecret: values.apiSecret.trim() }));
       else if (agent) form.append('extra', '{}');
       appendLogoTo(form); form.append('greeting', values.greeting || '');
+      // ★ M7b：用途（服务端两个端点都已认它）。**这一行是那个功能能不能被用上的关键** ——
+      // 没有它，新建的 bot 永远是 `tutoring`，学习单里那个下拉永远是空的（独立审查 C1）。
+      form.append('purpose', values.purpose || 'tutoring');
       if (agent) await api.updateAgent(agent.id, form); else await api.createAgent(form);
       if (mountedRef.current) onSaved();
     } catch (error) {

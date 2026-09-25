@@ -16,6 +16,9 @@ export function useAgentFormFields(agent: AgentSummary | null) {
   const [apiUrl, setApiUrl] = useState(agent?.apiUrl || '');
   const [botId, setBotId] = useState(agent?.botId || '');
   const [projectId, setProjectId] = useState(extra.projectId || '');
+  // ★ M7b：用途。默认「学伴」—— 与库里的 `DEFAULT 'tutoring'` 同一条默认值。
+  // ⚠️ 缺字段的旧行按「学伴」算（那时还没有分析型这个概念）。
+  const [purpose, setPurpose] = useState<string>(agent?.purpose || 'tutoring');
   const [apiSecret, setApiSecret] = useState('');
   const [greeting, setGreeting] = useState(agent?.greeting || '');
   const initialDrafts: Record<AgentPlatform, AgentCredentialValues & { name: string; greeting: string }> = {
@@ -56,6 +59,7 @@ export function useAgentFormFields(agent: AgentSummary | null) {
 
   return {
     name, setName, platform, setPlatform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
+    purpose, setPurpose,
     setApiKey, setApiUrl, setBotId, setProjectId, setApiSecret, updateCredential,
     hasSavedApiKey: samePlatformAsSaved && !!agent?.hasApiKey,
     hasSavedApiSecret: samePlatformAsSaved && !!extra.hasApiSecret,

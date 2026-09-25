@@ -452,7 +452,8 @@ export const api = {
     request<WorksheetUsage>(`/api/worksheets/${id}/usage`),
   // 详情。列表页不用它（列表项没有 `content` 也不需要），留给编辑器（C2）。
   getWorksheet: (id: string) => request<WorksheetDetail>(`/api/worksheets/${id}`),
-  // ★ M7a：分析载荷。**本版零外发** —— 这三条一个字节都不往第三方发。
+  // ★ M7a：分析载荷。⚠️ **这三条仍然零外发**；紧接着的 `runWorksheetAnalysis`（M7b）
+  // 才是外发的那一条 —— 出口只有一处（服务端的 `proxyAnalysisRequest`）。
   /**
    * 算 + 落库 + 回载荷结构（不含图）。**这是唯一会重算的动作**（`[重新生成]`）。
    * 🔴 `classroomId` 是**必填**的：同一份学习单可以被多个课堂引用（`/usage` 就统计这件事），

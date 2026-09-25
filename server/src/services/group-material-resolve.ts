@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { studentAgentViewOf } from './agent-purpose.js';
 
 /**
  * 「该学生此刻该用哪一份材料」——**唯一**的解析口径。
@@ -177,12 +178,11 @@ export async function resolveGroupMaterialViews(
     const webapp = webappRow ? webappById.get(webappRow.targetId) : undefined;
     const worksheet = worksheetRow ? worksheetById.get(worksheetRow.targetId) : undefined;
     views.set(group.id, {
-      agent: agent
-        ? {
-            id: agent.id, name: agent.name, logo: agent.logo, platform: agent.platform,
-            enabled: agent.enabled, greeting: agent.greeting,
-          }
-        : null,
+      // ★ M7b：**组材料也走学生端那道闸**（独立审查 C2）。它与 `classroomAgents[].agent`
+      // 是同一条货 —— 都是下发给学生的 —— 所以必须同一把尺子（两者的视图形状逐字相同）。
+      // 不走闸的后果：高级模式下一组选了分析型 bot ⇒ 那组学生的聊天面板顶上就是
+      // 那个「会收到全班作业」的 bot。
+      agent: agent ? studentAgentViewOf(agent) : null,
       webapp: webapp ? { id: webapp.id, name: webapp.name, entryPath: webapp.entryPath } : null,
       // `title` 而已 —— 题目结构不进引导载荷（见 `GroupMaterialView` 的注释）。
       worksheet: worksheet ? { id: worksheet.id, title: worksheet.title } : null,

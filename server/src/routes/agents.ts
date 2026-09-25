@@ -454,18 +454,31 @@ router.delete('/:id', async (req, res) => {
 
     // 检查是否有课堂关联此智能体
     // ⚠️ 组级那一支查 `ClassroomGroupMaterial`（`ClassroomGroup.agentId` 已删）。
-    const [agent, caCount, cgCount] = await Promise.all([
+    const [agent, caCount, cgCount, worksheets] = await Promise.all([
       prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } }),
       prisma.classroomAgent.count({ where: { agentId: req.params.id } }),
       prisma.classroomGroupMaterial.count({ where: { kind: 'agent', targetId: req.params.id } }),
+      // ★ M7b（独立审查 M5）：**第三处引用**。`settings.analysisAgentId` 住在学习单的
+      // JSON blob 里，两张关联表都数不到它 ⇒ 删掉一个正在被学习单引用的分析 bot，
+      // 学习单里会留下一个**悬空 id**：矩阵浮层那边是响亮的（会说「不存在或已停用」），
+      // 而学习单编辑器那一侧是**静默**的 —— 那个 id 不在候选项里，`<select>` 渲染不出它，
+      // 教师看到的不是真实存着的值，而再保存一次会把悬空 id 接着存下去。
+      // ⚠️ JSON 列在 SQLite 上没法用 Prisma 的 where 查内部字段 ⇒ 取回来在 JS 里筛
+      //（学习单是几十行的量级，`select` 只取 id/title/settings）。
+      prisma.worksheet.findMany({ select: { id: true, title: true, settings: true } }),
     ]);
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
-    if (caCount > 0 || cgCount > 0) {
+    const usedByWorksheets = worksheets.filter(
+      (worksheet) => (worksheet.settings as Record<string, unknown> | null)?.analysisAgentId === req.params.id);
+    if (caCount > 0 || cgCount > 0 || usedByWorksheets.length > 0) {
+      const titles = usedByWorksheets.map((worksheet) => `《${worksheet.title}》`).join('、');
       return res.status(400).json({
         // 文案说「小组」而不是「分组」：`cgCount` 现在数的是**组级材料行**，
         // 一条行代表「某个小组用了这个智能体」—— 用「分组」会让教师去班级分组页找，
         // 而真正要解除的是课堂里那个小组的配置。
-        error: `该智能体已关联 ${caCount} 个课堂和 ${cgCount} 个小组，无法删除。请先删除关联的课堂后再试。`,
+        error: `该智能体已关联 ${caCount} 个课堂和 ${cgCount} 个小组`
+          + (usedByWorksheets.length > 0 ? `，还被学习单 ${titles} 指定为分析型智能体` : '')
+          + '，无法删除。请先解除这些关联后再试。',
       });
     }
 

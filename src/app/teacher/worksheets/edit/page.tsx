@@ -401,8 +401,8 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             ))}
           </select>
           <em style={{ display: 'block', marginTop: 4, fontSize: '0.78rem', color: '#64748b' }}>
-            没配到候选？去「智能体管理」把要用的那个的**用途**改成「分析」。
-            ⚠️ 绘图题的分析**只有 Coze 平台收得了图**（其他平台只能分析文字作答）。
+            没配到候选？去「智能体管理」新建一个、或把某个的**用途**改成「分析」。
+            ⚠️ 本版的分析**只接了 Coze 平台**（绘图题更是只有它收得了图）。
           </em>
         </label>
 

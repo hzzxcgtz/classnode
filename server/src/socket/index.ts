@@ -9,7 +9,7 @@ import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews, resolveParticipantWebappId } from '../services/group-material-resolve.js';
-import { studentAgentView } from '../services/agent-purpose.js';
+import { studentAgentView, studentVisibleAgents } from '../services/agent-purpose.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -1860,7 +1860,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           groupMaterials: classroom.groups.flatMap((g) => g.materials.map((m) => ({
             groupId: g.id, kind: m.kind, targetId: m.targetId,
           }))),
-          classroomLevelId: classroom.classroomAgents[0]?.agentId ?? null,
+          // ★ M7b：**取「筛过之后的第一个」**（独立审查 C2 的第二个口子）。原先取的是
+          // 未筛过的 `classroomAgents[0]` —— 若课堂级那个 bot 是分析型，学生**看不见**它
+          // （`agents[]` 那处筛了）而**真正回答的是它** ⇒ 「看得见的」与「回答的」分叉，
+          // 而下面那条注释立的不变量正是「两者必须逐字一致」。
+          classroomLevelId: studentVisibleAgents(classroom.classroomAgents)[0]?.agentId ?? null,
           kind: 'agent',
         });
         // `agentById` 直接由**已有的那一次** classroom 查询构成，不额外查库：

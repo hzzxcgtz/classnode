@@ -913,9 +913,10 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
 //   GET  /:id/analysis/:questionId              读已存的载荷结构（没算过 ⇒ 404）
 //   GET  /:id/analysis/:questionId/sheet/:index 按需渲染第 index 张联系表（PNG）
 //
-// 🔴 **本版零外发** —— 这三条一个字节都不往第三方发。它们把「将来要发什么」在本机
-// 算出来、存下来、给教师看。将来接 AI 时**只加一处**（读这份载荷再发），
-// 那是全仓唯一的网络出口，便于合规审查。
+// 🔴 **M7a 那一版这三条零外发**（把「将来要发什么」在本机算出来、存下来、给教师看）。
+// **M7b 起多了第四条 `…/run`** —— 它才是外发的那一条，而它的出口**只有一处**
+// （`ai-proxy.ts` 的 `proxyAnalysisRequest`），这就是 M7a 留那道缝的兑现：
+// 合规审查只看那一个函数。
 //
 // 🔴 **鉴权**：这三条路径是三段 / 四段，**不匹配** `worksheetAccessGate` 放行学生的
 // 那四条放行学生的形状里，三条是「恰好两段」、`answers/submit` 是**三段** ——
@@ -1104,6 +1105,9 @@ async function payloadResponse(
     const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
     if (!agent || !agent.enabled) {
       canSend = { ok: false, reason: '指定的分析型智能体不存在或已停用' };
+    } else if (agent.purpose !== 'analysis') {
+      // 与 `run` 端点**逐字同一条判据** —— 界面据此禁用按钮，教师就不会被邀请去点一个必然 400 的操作。
+      canSend = { ok: false, reason: '这个智能体的用途是「学伴」，不能用来接收全班作业（去智能体管理里把它改成「分析」）' };
     } else {
       analysisAgent = { name: agent.name, platform: agent.platform };
       canSend = analysisGateOf(payload, agent.platform);
@@ -1275,6 +1279,13 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
     if (!agent || !agent.enabled) {
       return res.status(400).json({ error: '指定的分析型智能体不存在或已停用' });
+    }
+    // 🔴 ★ M7b（独立审查 I2）：**那道闸必须是双向的**。`purpose` 原先只挡「学生看不见分析型」，
+    // 而分析这一侧**什么型都收** ⇒ 两条现实路径会让**一个学伴 bot 收到全班作业**：
+    // ① 教师把一个 bot 从「分析」改回「学伴」（同一个 bot，学生也在跟它聊）；
+    // ② 任何能写 `settings.analysisAgentId` 的路径（导入 / 手改 / 复制学习单）。
+    if (agent.purpose !== 'analysis') {
+      return res.status(400).json({ error: '这个智能体的用途是「学伴」，不能用来接收全班作业（去智能体管理里把它改成「分析」）' });
     }
 
     const knobs = await loadAnalysisKnobs(prisma);

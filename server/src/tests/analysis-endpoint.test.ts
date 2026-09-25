@@ -255,6 +255,9 @@ test('🔴 安全边界：学生 token 打这三条路径一律 403（它们不�
     [`/api/worksheets/${worksheet.id}/analysis/q1`, 'POST'],
     [`/api/worksheets/${worksheet.id}/analysis/q1`, 'GET'],
     [`/api/worksheets/${worksheet.id}/analysis/q1/sheet/0`, 'GET'],
+    // ★ M7b（独立审查 M3）：`run` 是这一族里的**第四条**，而它是**唯一触发外发**的那一条 ——
+    // 学生若能打它，等于**反复**把全班作业推到第三方平台（外加平台的计费）。
+    [`/api/worksheets/${worksheet.id}/analysis/q1/run`, 'POST'],
   ];
   for (const [url, method] of paths) {
     const res = await fetch(`${srv.base}${url}`, { method, headers: { Authorization: `Bearer ${token}` } });

@@ -233,3 +233,28 @@ test('缺 classroomId ⇒ 400（分析是按课堂存的）', async (t) => {
   const run = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q3/run`, { method: 'POST' });
   assert.equal(run.status, 400);
 });
+
+test('🔴 指定的智能体是**学伴** ⇒ 400，且一次网络都不发（独立审查 I2）', async (t) => {
+  // 为什么这条要紧：`purpose` 那道闸原先**是单向的** —— 学生看不到分析型（挡了），
+  // 但分析这条路**什么型都收**。两条现实路径：① 教师把一个 bot 从「分析」改回「学伴」
+  // （同一个 bot，学生也在跟它聊）⇒ 从那以后全班作业发到那个学生天天聊的 bot 上；
+  // ② 任何能写 `settings.analysisAgentId` 的路径（导入 / 手改 / 复制学习单）。
+  const db = await openTempDb();
+  const fake = await startFakeCoze('不该被调用的解读');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const tutor = await p.agent.create({
+    data: { name: '学伴', platform: 'coze', apiKey: 'k', botId: 'bot-1', apiUrl: fake.base, enabled: true, purpose: 'tutoring' },
+  });
+  const { worksheet, classroom } = await seed(p, { analysisAgentId: tutor.id });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 400, '学伴 bot 不能接收全班作业');
+  assert.match(String((await run.json() as Record<string, unknown>).error), /学伴|分析型/);
+  assert.deepEqual(fake.hits, [], '🔴 一个字节都不许发出去');
+  const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  assert.equal(row.narrative, null, '也不许写库');
+});

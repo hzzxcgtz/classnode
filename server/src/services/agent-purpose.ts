@@ -37,6 +37,36 @@ export function normalizeAgentPurpose(raw: unknown): AgentPurpose {
 }
 
 /**
+ * 学生端那一份视图的**核心**：给一个 agent 行，回视图或 `null`（分析型）。
+ *
+ * 🔴 **两条来源都要走它**（独立审查 C2 抓到的漏点）：
+ *   ① `classroomAgents[].agent`（课堂级）—— `studentAgentView`；
+ *   ② **组级材料**（`resolveGroupMaterialViews` 的 `groups[].agent`）—— 同样是发给学生的，
+ *      而它最初**没有任何 purpose 判断** ⇒ 高级模式下一组的「AI 智能体」若选了分析型，
+ *      那组学生打开聊天面板看到的就是那个「会收到全班作业」的 bot。
+ * 两者的视图形状逐字相同（`id/name/logo/platform/enabled/greeting`），那正是为了共用。
+ */
+export function studentAgentViewOf(agent: {
+  id: string; name: string; logo: string | null; platform: string;
+  enabled: boolean; greeting?: string | null; purpose?: unknown;
+}): StudentAgentView | null {
+  if (agent.purpose === 'analysis') return null;
+  return {
+    id: agent.id,
+    name: agent.name,
+    logo: agent.logo,
+    platform: agent.platform,
+    enabled: agent.enabled,
+    greeting: agent.greeting ?? null,
+  };
+}
+
+/** 学生可见的那几个（**路由**那一侧要用：见 `socket/index.ts` 的 `classroomLevelId`）。 */
+export function studentVisibleAgents<T extends { agent: { purpose?: unknown } }>(rows: T[]): T[] {
+  return rows.filter((row) => row.agent.purpose !== 'analysis');
+}
+
+/**
  * 学生端那一份视图。**两处调用点必须共用同一个构造**（否则学生**首屏**与**连接后**
  * 看到的列表会分叉）：`routes/classroom.ts` 的 HTTP 首屏、`socket/index.ts` 的 `joined` 载荷。
  * 分析型回 `null`（调用方 `.filter()` 掉）。
@@ -45,9 +75,11 @@ export function normalizeAgentPurpose(raw: unknown): AgentPurpose {
  * （`purpose` 列刚加上的旧行、或手改过的行）整个吞掉 —— 那些 bot 本来就是学伴，
  * 让学生看不见它们是**静默的功能损失**。
  *
- * ⚠️ 这里**刻意没有**一个 `studentVisibleAgents(rows)` 的「过滤」助手：两处调用点都是
- * 「map 成视图 + 丢掉 null」，多一个只被用例调用的导出就是一件**装饰品**
- * （本项目栽过：`unmappedParticipantsNotice` 有定义、有用例、没人调用）。
+ * ⚠️ 上面那段最初写的是「这里**刻意没有**一个 `studentVisibleAgents(rows)` 的过滤助手 ——
+ * 多一个只被用例调用的导出就是装饰品」。那句话在 C2 之后**不成立了**：
+ * **路由**那一侧需要「筛过之后的第一个」（`socket/index.ts` 的 `classroomLevelId` 原先取的是
+ * 未筛过的 `classroomAgents[0]` ⇒ 学生**看得见的**与**真正回答的**分叉了），
+ * 所以它现在有一个**真的**生产调用者。
  */
 export function studentAgentView(row: {
   agent: {
@@ -60,14 +92,5 @@ export function studentAgentView(row: {
     purpose?: unknown;
   };
 }): StudentAgentView | null {
-  const { agent } = row;
-  if (agent.purpose === 'analysis') return null;
-  return {
-    id: agent.id,
-    name: agent.name,
-    logo: agent.logo,
-    platform: agent.platform,
-    enabled: agent.enabled,
-    greeting: agent.greeting ?? null,
-  };
+  return studentAgentViewOf(row.agent);
 }

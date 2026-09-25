@@ -306,7 +306,11 @@ export default function NewClassroomPage() {
       .catch(error => {
         if (mountedRef.current) setWorksheetLoadError(error instanceof Error ? error.message : '请求异常');
       });
-    Promise.all([api.getAgents(), api.getClasses()]).then(([a, c]) => {
+    // ★ M7b：**只列「学伴」**（独立审查 C2 的根因修法）。这个选择器建的是一条**发给学生**的
+    // 关联（课堂级 `ClassroomAgent` 或组级 `ClassroomGroupMaterial`）—— 让分析型 bot 进来，
+    // 下游三条路径就都得各自记着「别忘了筛」（而那正是 C2 漏掉第三处的原因）。
+    // ⇒ **挡在上游**：过滤器由服务端做（`?purpose=tutoring`），前端不复述那条规则。
+    Promise.all([api.getAgents('tutoring'), api.getClasses()]).then(([a, c]) => {
       if (!mountedRef.current) return;
       setAgents(a.filter((agent) => agent.enabled !== false));
       setClasses(c);

@@ -6,6 +6,7 @@ import type { AgentSummary, RelatedClassroom } from '@/lib/types';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
+import { AgentPurposeSelector } from './purpose-selector';
 import { AgentCredentialsFields, AgentPlatformNotice } from './credentials-fields';
 import { AgentCard } from './agent-card';
 import { AgentDeleteBlockedDialog, AgentErrorTip, AgentRelatedClassroomsDialog, type AgentErrorTipData } from './agent-overlays';
@@ -172,12 +173,13 @@ export default function AgentsPage() {
 function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; onClose: () => void; onSaved: () => void }) {
   const fields = useAgentFormFields(agent);
   const { name, setName, platform, setPlatform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
+    purpose, setPurpose,
     updateCredential,
     hasSavedApiKey, hasSavedApiSecret, savedApiKeyLabel, savedApiSecretLabel, editingSavedPlatform } = fields;
   const logo = useAgentLogo(agent);
   const { fileRef, preview: logoPreview, selectFile: handleLogoChange, applyRemote: applyRemoteLogo, remove: handleRemoveLogo, resetForPlatform: resetLogoForPlatform, appendTo: appendLogoTo } = logo;
   const actions = useAgentFormActions({
-    agent, values: { name, platform, apiKey, apiUrl, botId, projectId, apiSecret, greeting },
+    agent, values: { name, platform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, purpose },
     hasSavedApiKey, hasSavedApiSecret, setName, setGreeting, applyRemoteLogo, appendLogoTo, onSaved,
   });
   const { fetchingInfo, saving, fieldErrors, toast, setToast, clearError, clearErrors, fetchInfo: handleFetchInfo, submit } = actions;
@@ -235,6 +237,12 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
 
           <div className="agent-form-platform">
             <AgentPlatformSelector platform={platform} onChange={handlePlatformChange} />
+          </div>
+
+          {/* ★ M7b：用途 —— `Agent.purpose` 的**唯一写入口**（独立审查 C1）。
+              没有它，分析型智能体一个都建不出来，整条 M7b 在界面上不可达。 */}
+          <div className="agent-form-section">
+            <AgentPurposeSelector purpose={purpose} onChange={setPurpose} />
           </div>
 
           <div className="agent-form-section agent-form-credentials" style={{

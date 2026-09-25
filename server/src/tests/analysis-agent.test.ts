@@ -34,18 +34,22 @@ test('★ 平台能力：只有 coze 收得了图（其余三个都不行，各�
   assert.deepEqual([...IMAGE_CAPABLE_PLATFORMS], ['coze']);
 });
 
-test('🔴 有图 + 非 coze ⇒ 拒绝，且说清为什么（不是悄悄只发文档）', () => {
+test('🔴 非 coze 一律拒绝 —— **不分有没有图**（这是独立审查 I1 修的口径）', () => {
+  // 🔴 原先这里只挡「有图 + 非 coze」，而 `proxyAnalysisRequest` 对**任何**非 coze 都直接回失败
+  // ⇒ 纯文字载荷上**两道闸说的不是一件事**：预览说「可以发」，点确认之后必 502。
+  // 而 `analysisGateOf` 是**界面唯一**的依据（`canSend`）⇒ 教师会被邀请去点一个必然失败的操作。
+  // ⇒ 口径统一成「本版只接 coze」（与 `proxyAnalysisRequest` 逐字一致）。
   for (const platform of ['wenxin', 'zhipuai', 'coze-agent']) {
-    for (const kind of ['image', 'mixed'] as const) {
+    for (const kind of ['text', 'image', 'mixed'] as const) {
       const gate = analysisGateOf(payloadOf(kind), platform);
       assert.equal(gate.ok, false, `${platform} + ${kind} 必须被拦下`);
       if (!gate.ok) {
-        assert.match(gate.reason, /收不了图|Coze/, '理由要说清是平台的问题，以及换哪个平台');
+        assert.match(gate.reason, /Coze/, '理由要指向换哪个平台');
         assert.match(gate.reason, new RegExp(platform), '理由里要点名是哪个平台');
       }
     }
   }
-  assert.equal(analysisGateOf(payloadOf('text'), 'wenxin').ok, true, '纯文字任何平台都行');
+  assert.equal(analysisGateOf(payloadOf('text'), 'coze').ok, true);
   assert.equal(analysisGateOf(payloadOf('image'), 'coze').ok, true);
   assert.equal(analysisGateOf(payloadOf('mixed'), 'coze').ok, true);
 });
@@ -113,6 +117,23 @@ test('🔴 normalizeNarrative：空白 ⇒ 空串（⇒ 不写库）；超长 �
   assert.match(out, /已截断/);
   assert.match(out, new RegExp(String(NARRATIVE_MAX + 300)), '要说清原文多长');
   assert.ok(!out.includes(long), '不许原样带出超长内容');
+});
+
+test('🔴 纯零宽/格式字符也算空（`trim()` 不认识 U+200B）—— 否则会写进一段看不见的「解读」', () => {
+  // 后果：`narrative` 变成「有值但看不见」⇒ 界面那块「AI 解读」渲染出来是空白，
+  // 而教师以为分析过了（`payload?.narrative &&` 为真）。
+  assert.equal(normalizeNarrative('\u200b'), '', 'U+200B 零宽空格');
+  assert.equal(normalizeNarrative('\u200b\u200b\u200b'), '');
+  assert.equal(normalizeNarrative('\ufeff'), '', 'U+FEFF BOM');
+  assert.equal(normalizeNarrative(' \u200b \n '), '');
+});
+
+test('🔴 截断不许切出孤立代理对（否则那半个字符会一路进库）', () => {
+  // 一个 emoji 是代理对（2 个 code unit）。切在第 4000 个 code unit 上会留下半个。
+  const body = 'a'.repeat(NARRATIVE_MAX - 1) + '😀'.repeat(10);
+  const out = normalizeNarrative(body);
+  const isolated = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  assert.ok(!isolated.test(out), '截断之后不许留下孤立代理');
 });
 
 test('normalizeNarrative 边界：刚好到上限不截断', () => {

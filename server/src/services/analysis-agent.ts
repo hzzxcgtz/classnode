@@ -30,9 +30,17 @@ export const NARRATIVE_MAX = 4000;
 export function normalizeNarrative(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   const trimmed = raw.trim();
-  if (trimmed === '') return '';
+  // 🔴 **不能只判 `trim() === ''`**：`trim()` 不认识 U+200B（零宽空格）与 U+FEFF（BOM）
+  // ⇒ 模型只回一个零宽字符时，`narrative` 会变成「有值但看不见」，而界面那块「AI 解读」
+  // 渲染出来是**空白**的 —— 教师以为分析过了。判据是「去掉所有空白**与格式类字符**
+  // （`\p{Cf}`）之后是否为空」，而**返回的仍是原文本**（只做首尾 trim，不改中间的内容）。
+  if (trimmed.replace(/[\s\p{Cf}]/gu, '') === '') return '';
   if (trimmed.length <= NARRATIVE_MAX) return trimmed;
-  return `${trimmed.slice(0, NARRATIVE_MAX)}\n（已截断：原文共 ${trimmed.length} 字，只保留前 ${NARRATIVE_MAX} 字）`;
+  // ⚠️ 一个 emoji 是**代理对**（2 个 code unit）。切在中间会留下半个 —— 它会一路进库，
+  // 而某些渲染路径遇到孤立代理会显示成「�」。⇒ 末尾是**高代理**时多退一个。
+  let cut = trimmed.slice(0, NARRATIVE_MAX);
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+  return `${cut}\n（已截断：原文共 ${trimmed.length} 字，只保留前 ${NARRATIVE_MAX} 字）`;
 }
 
 /**
@@ -49,11 +57,22 @@ export function analysisGateOf(
   if (payload.covered === 0) {
     return { ok: false, reason: '这道题还没有已提交的作答 —— 发一个空载荷只会得到一段编造的解读。' };
   }
-  const hasImage = payload.payloadKind === 'image' || payload.payloadKind === 'mixed';
-  if (hasImage && !IMAGE_CAPABLE_PLATFORMS.includes(platform)) {
+  // 🔴 **本版只接 coze，不分有没有图**（独立审查 I1 修的口径）。
+  //
+  // 原先这里只挡「有图 + 非 coze」，而 `proxyAnalysisRequest` 对**任何**非 coze 都直接回失败
+  // ⇒ 纯文字载荷上**两道闸说的不是一件事**：`canSend` 说「可以发」（预览于是邀请教师确认），
+  // 点下去必 502。而 `canSend` 是**界面唯一**的依据 ⇒ 教师被邀请去点一个必然失败的操作，
+  // 失败之后也分不清是平台的问题还是功能坏了。
+  //
+  // ⚠️ 要放开这一条，得先在 `ai-proxy.ts` 里补非 coze 的分支（那要先把 `anonymizer`
+  // 从 `proxyWenxin/Zhipu` 里拆出来）—— 那时**这里与第二道闸要一起改**。
+  if (!IMAGE_CAPABLE_PLATFORMS.includes(platform)) {
+    const why = payload.payloadKind === 'text'
+      ? '本版的分析**只接了 Coze**'
+      : '这份载荷里有手写/绘图内容，而它只有 Coze 收得了图';
     return {
       ok: false,
-      reason: `当前平台的智能体（${platform}）**收不了图** —— 这份载荷里有手写/绘图内容。`
+      reason: `当前平台的智能体（${platform}）用不了 —— ${why}。`
         + '请在学习单里改用一个 **Coze** 平台的分析型智能体。',
     };
   }

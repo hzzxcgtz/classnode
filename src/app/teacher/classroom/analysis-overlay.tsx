@@ -8,9 +8,10 @@
  * ⚠️ 这是**教师端**的浮层，**不要**去复用学生端外壳的 `layer-overlays` 机制 ——
  * 那条「非前台层的浮层不得浮在上面」的不变量属于学生端的三层结构，与这里无关。
  *
- * 🔴 **本版零外发**：底部那个「发给 AI 分析」按钮**是禁用的**，并且旁边逐字写着
- * 「尚未接入第三方 AI」。它存在的意义是让那道缝看得见、且只有**一处**
- * （将来接上时只改那一个调用点，合规审查才只看一处）。
+ * 🔴 **M7b 起它真的会外发了**（M7a 那一版这里是「按钮禁用 + 尚未接入第三方 AI」的占位）。
+ * 外发那一次**只有一处**（`ai-proxy.ts` 的 `proxyAnalysisRequest`）—— 这条不变量没变，
+ * 变的是它不再禁用。⇒ **发之前必须让教师看见「本次将发什么」并确认**（用户裁定 3），
+ * 那一步的实现在下面那个 `confirming` 块与 `analysis-preview.ts`。
  *
  * ⚠️ 本机**看不见界面** ⇒ 这个文件没有任何回归网。所以这里**不写判断**：
  * 单位来自 `moduleCountUnit`（纯函数、有用例），新鲜度来自服务端的 `stale`，
@@ -252,7 +253,8 @@ export function AnalysisOverlay({
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
         borderTop: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',
       }}>
-        {/* 本版零外发：唯一会重算的动作是「重新生成」（重渲 + 重新聚合，全在本机）。 */}
+        {/* 「重新生成」= **全在本机**（重渲 + 重新聚合）；「发给 AI 分析」才是外发的那一步，
+            而它必须先过上面那个确认块。 */}
         <button type="button" onClick={regenerate} disabled={busy}
           style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 10, padding: '8px 16px', cursor: busy ? 'default' : 'pointer', color: '#334155', opacity: busy ? 0.5 : 1 }}>
           {busy ? '生成中…' : '重新生成'}

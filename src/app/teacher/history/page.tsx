@@ -5,6 +5,11 @@ import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { BackupFile, ClassroomHistoryItem, ConversationExportReport, ExportConversationStudent } from '@/lib/types';
+// ★ M6c 终审修复：**量词必须按 mode 走**（复用 M5a 为同一个问题写的那个纯函数）。
+// 🔴 `WebappUsage.studentId` 存的是**参与者** id，而分组 / 高级模式下**参与者就是组**
+//    （`ClassroomStudent.type = 'group'`）⇒ 恒写「N 人」在那些模式下是**假话**：
+//    4 个组（12 个人）都打开过探究空间时，那一格写「4 人」，而同一行的「参与人数」列写「4 组/12 人」。
+import { moduleCountUnit } from '../classroom/worksheet-tile-state';
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -272,7 +277,10 @@ export default function HistoryPage() {
             {/* 三件套三列加上之后**明显变宽** ⇒ 允许横向滚动。
                 ⚠️ **不许为了塞下去而缩字号**（规格 §3.3：教师屏幕上的可读性优先）。 */}
             <div style={{ overflowX: 'auto' }}>
-            <table>
+            {/* 🔴 **必须给 min-width**（照 `globals.css` 里 `.student-table-scroll table` 的先例）：
+                `globals.css` 有 `table { width: 100% }` ⇒ 只写 `overflow-x: auto` 时浏览器会
+                **优先压窄列 / 换行**，横向滚动条**永不出现**，而规格 §3.3 的意图（可读性优先）落空。 */}
+            <table style={{ minWidth: 1180 }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: 'center' }}>课堂名称</th>
@@ -369,7 +377,10 @@ export default function HistoryPage() {
                       </td>
                       <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
                         {cr.webappUsageCount > 0
-                          ? `${cr.webappUsageCount} 人 · ${cr.webappDurationText}`
+                          // 🔴 「累计」二字是承重的：这个时长是 SUM(durationMs)，**按人相加**
+                          //    （3 人各 22 分钟 ⇒ 1 小时 6 分，可以比这一节课本身还长）。
+                          //    不写「累计」的话，它紧挨着的「时长」列会与它自相矛盾。
+                          ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 累计 ${cr.webappDurationText}`
                           : <span style={{ color: '#cbd5e1' }}>无记录</span>}
                       </td>
                       <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>

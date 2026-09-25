@@ -49,8 +49,10 @@ router.use('/code', limitPublicCodeRequests);
  * 🔴 **一轮查完 50 个课堂，不许 N+1**（GC 35）—— 形状与上面 `Message` 那条聚合**逐字同款**：
  * 同一组 `?` 占位符、`IN (…)`、`GROUP BY "classroomId"`。
  *
- * 🔴 **空表不许回 `null`**：`SUM` 对空集回 `NULL`，而 `null` 传到前端会渲染成**空白**
- * （看起来像「还没加载」，而真相是「这节课没有记录」）⇒ `COALESCE(SUM(…), 0)` 是承重的。
+ * ⚠️ **空表那一路靠的不是 `COALESCE`**（终审实测：去掉它，4 条用例仍全绿）：
+ * 查询带 `GROUP BY` ⇒ **空集根本没有行**，`COALESCE` 永无机会触发；而下面那句
+ * 「先给每个 id 落一个全 0 的条目」才是真正让「没有记录」与「查询漏了」分开的那一步。
+ * `COALESCE` 留着是防御性的（`durationMs` 是 `NOT NULL DEFAULT 0`，它今天不可能被触发）。
  *
  * 🔴 **`worksheetSubmitted` 只数 `status='submitted'`**：草稿不是交卷（GC 34 的分母同理）。
  */

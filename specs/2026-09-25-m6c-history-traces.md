@@ -93,7 +93,8 @@ sed -n '1243,1256p;1315,1320p' server/src/services/export-service.ts
 
 | 新字段 | 口径 | 出处 |
 |---|---|---|
-| `webappUsageCount` | 该课堂 `WebappUsage` 的**行数** | 「几个参与者用过网页」（一个参与者一个网页一行） |
+| `webappUsageCount` | 该课堂 `WebappUsage` 里 **`COUNT(DISTINCT studentId)`** | 「几个参与者用过网页」 |
+| ⚠️ **不是 `COUNT(*)`** | 该表有唯一约束 `(classroomId, studentId, webappId)` ⇒ **行数是「参与者 × 网页」** | 一节 3 网页 × 5 人 = 15 行，而人是 5 —— 用行数就是把「N 人」写成假的（**跑用例时才发现**，见 ledger R2） |
 | `webappDurationMs` | `SUM(durationMs)` | 总时长。⚠️ 与 M6a 报告同源 |
 | `worksheetSubmitted` | 该课堂 `WorksheetAnswer` 里 `status='submitted'` 的行数 | |
 | `worksheetTotal` | 该课堂 `WorksheetAnswer` 的**总行数** | |

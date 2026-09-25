@@ -32,6 +32,8 @@ import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
 import { ensureGroupMaterials } from './services/group-materials-migration.js';
 import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from './services/worksheet-schema.js';
+import { ensurePlatformTokenSchema } from './services/platform-token-schema.js';
+import { migratePlatformTokens } from './services/platform-token-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -453,8 +455,36 @@ async function main() {
     // 细节理由见那个函数的注释（`REAL` 而不是 `DOUBLE PRECISION`、`isCorrect` 只增不改、
     // 回填不写 `score` 的由头）。
     await ensureWorksheetAnswerColumns(prisma);
+    // ★ 2026-09-25：共享 API Token（`PlatformToken` 表 + `Agent.credentialId` 列）。
+    // ⚠️ 必须在这个 try 块里、且在下面那条迁移**之前** —— 迁移要写的就是这张表。
+    await ensurePlatformTokenSchema(prisma);
   } catch (e) {
     console.warn('[server] Schema sync skipped:', e);
+  }
+
+  // ★ 2026-09-25：把现有 Coze 低代码智能体的 Token 抽成共享的 `PlatformToken`。
+  // 与参与者迁移**没有顺序依赖**（它只碰 `Agent` 与 `PlatformToken`），但它依赖上面那次
+  // `ensurePlatformTokenSchema` —— 所以排在这里（schema 同步之后）。
+  // ⚠️ 备份 + 完成标记的做法与下面那条逐字相同：动的是**凭据**，出问题要能退回上一个库。
+  try {
+    const tokenMigrationKey = 'platform-token-migration-v1';
+    const tokenMigrationDone = await prisma.setting.findUnique({ where: { key: tokenMigrationKey } });
+    if (!tokenMigrationDone) {
+      const backupPath = backupDatabase('platform-token-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    const migrated = await migratePlatformTokens(prisma);
+    if (!tokenMigrationDone) {
+      await prisma.setting.upsert({ where: { key: tokenMigrationKey }, update: { value: 'completed' }, create: { key: tokenMigrationKey, value: 'completed' } });
+    }
+    // ⚠️ 只在**真的做了事**时打日志：这个方法每次启动都会跑（幂等），
+    //    每次都打一行「已迁移 0 份」只会让日志里全是噪声，真出问题时更难找。
+    if (migrated.tokens > 0 || migrated.linked > 0) {
+      console.log(`[server] Platform token migration: ${migrated.tokens} 份凭据，${migrated.linked} 个智能体接上`);
+    }
+  } catch (e) {
+    console.error('[server] Platform token migration failed:', e);
+    throw e;
   }
 
   // v1.7：小组不再伪装为 Student。首次迁移先备份，成功后记录标记避免重复备份。

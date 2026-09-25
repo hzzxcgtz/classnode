@@ -27,6 +27,11 @@ model Agent {
   apiUrl    String?  // API URL (for Coze Agent)
   apiKey    String   // AES 加密后的 API Key / Token
   botId     String?  // Bot ID (for Coze)
+  /// ★ 2026-09-25：指向一份**共享** API Token（`PlatformToken`）。可空。
+  /// 🔴 `NULL` 是一条**真路**，不是「还没填」：老数据全是 `NULL` ⇒ 沿用自带的 `apiKey`，
+  /// 行为与改动前**逐字相同**；把这一列全部置空就等于**回滚**。
+  /// 判据：`platform === 'coze'` 且本列非空 ⇒ 用共享那份，忽略 `apiKey`。
+  credentialId String?
   extra     String?  // 额外配置 (JSON)
   enabled   Boolean  @default(true)
   /// ★ M7b：用途。`tutoring`（学伴，学生可见）| `analysis`（分析型，**学生绝不可见**）。
@@ -41,6 +46,34 @@ model Agent {
   updatedAt DateTime @updatedAt
 
   classroomAgents ClassroomAgent[]
+  credential      PlatformToken?  @relation(fields: [credentialId], references: [id], onDelete: Restrict)
+}
+
+/// ★ 2026-09-25：**共享的 API Token**。
+///
+/// 🔴 存在的理由：Coze 低代码的 Token 属于**扣子账号**、不属于 Bot ——
+/// 同一个号做出来的多个智能体本该共用一份。从前它是 `Agent.apiKey`，
+/// 每个智能体一份 ⇒ 换一次要改 N 遍，而且没有任何地方记着它 30 天后会过期。
+///
+/// ⚠️ **表里可以有多份**：一个老师完全可能有两个扣子号。
+/// ⚠️ 系统**认不出账号**，只认「Token 字符串一样」—— 所以不做任何自动合并，
+///    由教师自己决定哪几个智能体指向同一份。
+model PlatformToken {
+  id        String   @id @default(uuid())
+  /// 今天是 `'coze'`（Coze 低代码）。留通用是为了将来别的平台要挂时不用再迁一次表。
+  platform  String
+  /// **备注：这是谁的账号**（教师自己写）。必填 —— 一份没有名字的凭据在列表里等于没有。
+  label     String
+  /// AES 加密后的 Token（同一个 `services/crypto.ts`）。响应里一律掩码。
+  token     String
+  /// 有效期。
+  /// 🔴 **可空，且「空」是一个要被催促的状态**，不是沉默的默认：迁移来的记录**不猜日期**
+  /// （见 `platform-token-migration.ts`），界面上显示「未设置有效期」并催教师去填。
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agents Agent[]
 }
 
 // 头像库

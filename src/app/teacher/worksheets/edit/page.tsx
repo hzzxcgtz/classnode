@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { HALF_STEPS, REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
+import { editorRenderBlocks } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -91,6 +92,8 @@ function WorksheetEditorBody() {
   const [pickerFor, setPickerFor] = useState<{ parentId: string | null } | null>(null);
 
   const { content, worksheetId, usage, saveStatus, draftFound } = editor;
+  // ★ 2026-09-25：页面只做**哑映射** —— 切段与题号在核心里（纯函数、有测试）。
+  const blocks = editorRenderBlocks(content.nodes);
 
   /**
    * 学习单级的**两档**（逐题留空的题继承的就是它们）—— 传给每张卡片当占位符。
@@ -115,7 +118,7 @@ function WorksheetEditorBody() {
    * 不是「这道题被答了多少次」—— 服务端没有按题统计的字段。所以措辞刻意分开：
    * 一个数字讲整卷，一句话讲这道题的答案会怎样，不能把它们说成同一件事。
    */
-  const requestRemove = useCallback(async (node: WorksheetQuestionNode, index: number) => {
+  const requestRemove = useCallback(async (node: WorksheetQuestionNode, heading: string) => {
     // 🔴 任务是**一整块**，而它的删除按钮就在任务头行上 —— 与小题的删除按钮只隔几十像素。
     // 说成「确定删除第 1 题吗？」的后果是：教师以为在删一道题，实际删掉了整个任务
     // （在那之前更糟：迁移之后顶层往往只有一个任务，删它 = **清空整份学习单**）。
@@ -124,7 +127,7 @@ function WorksheetEditorBody() {
     const lines = [
       isTask
         ? (count > 0 ? `确定删除这个任务吗？它里面的 ${count} 道小题会一起删掉。` : '确定删除这个任务吗？')
-        : `确定删除第 ${index + 1} 题吗？`,
+        : `确定删除第 ${heading} 题吗？`,
     ];
     if (!editor.worksheetId) {
       lines.push(isTask ? '这个任务还没保存过，删掉之后本机草稿里也不会再有它。' : '这道题还没保存过，删掉之后本机草稿里也不会再有它。');
@@ -133,7 +136,7 @@ function WorksheetEditorBody() {
       if (usageNow === null) {
         lines.push(isTask ? '这次没能读到作答情况，无法确认这个任务里有没有学生答过的题。' : '这次没能读到作答情况，无法确认这道题是否已经被学生作答过。');
       } else if (usageNow.responseCount > 0) {
-        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生${isTask ? '在这个任务里' : '在第 ' + (index + 1) + ' 题上'}写下的答案会在看板与导出里变成孤立数据。`);
+        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生${isTask ? '在这个任务里' : `在第 ${heading} 题上`}写下的答案会在看板与导出里变成孤立数据。`);
       } else {
         lines.push('这份学习单还没有收到过作答，删掉不影响任何学生。');
       }
@@ -222,64 +225,58 @@ function WorksheetEditorBody() {
         </div>
       )}
 
-      {content.nodes.length === 0 ? (
+      {blocks.length === 0 ? (
         <div className="worksheet-editor-empty">
           还没有题目。点下面的「＋ 添加任务」开始。
         </div>
       ) : (
         <div className="worksheet-editor-questions">
-          {content.nodes.map((node, index) => (
-            // ★ 2026-09-25：顶层有两种节点 —— **任务**（迁移之后都是它）与**散题**
-            //（老数据 / 手工改过的库）。散题照旧画成一张卡；任务是容器，里面装小题。
-            node.type === TASK_TYPE ? (
-              <TaskCard
-                key={node.id}
-                index={index}
-                total={content.nodes.length}
-                node={node}
-                onTitleChange={prompt => editor.updatePrompt(node.id, prompt)}
-                onMove={delta => editor.moveQuestion(node.id, delta)}
-                onRemove={() => void requestRemove(node, index)}
-                onAddQuestion={() => setPickerFor({ parentId: node.id })}
-              >
-                {node.children.map((child, childIndex) => (
-                  // ⚠️ `index` / `total` 传的是**任务内**的序号与个数 —— 卡上的
-                  // 「1 2 3」与上移/下移的边界都以任务为单位（页面级那个是任务自己的 ▲▼）。
-                  <QuestionCard
-                    key={child.id}
-                    index={childIndex}
-                    total={node.children.length}
-                    node={child}
-                    inheritedPoints={inheritedPoints}
-                    rejectedPointInput={editor.rejectedPoints[child.id]}
-                    onPromptChange={prompt => editor.updatePrompt(child.id, prompt)}
-                    onDataChange={patch => editor.updateData(child.id, patch)}
-                    onPointsInputChange={input => editor.setPointsInput(child.id, input)}
-                    onPointsChange={points => editor.updatePoints(child.id, points)}
-                    onInputModeChange={inputMode => editor.updateInputMode(child.id, inputMode)}
-                    onMove={delta => editor.moveQuestion(child.id, delta)}
-                    onRemove={() => void requestRemove(child, childIndex)}
-                  />
-                ))}
-              </TaskCard>
-            ) : (
+          {/*
+            ★ 2026-09-25（第二轮终审 F2/F3）：这里**只做哑映射** —— 切段与题号全在
+            `editorRenderBlocks`（纯函数、有测试）。判据写进 JSX 就没有回归网（本仓没有前端测试框架）。
+
+            块有两种：任务（`TaskCard` 包着它的小题）与散题（各自成块）。
+            散题是老数据 / 手工改过的库才有的形态，仍然画得出来。
+          */}
+          {blocks.map((block, blockIndex) => {
+            const questionCards = block.questions.map((row) => (
               <QuestionCard
-                key={node.id}
-                index={index}
-                total={content.nodes.length}
-                node={node}
+                key={row.node.id}
+                // 🔴 显示的是**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出 / 保存报错同一份。
+                // `index` / `total` 只服务 ▲▼ 的边界（换位是**同层内**的）。
+                heading={row.heading}
+                index={row.index}
+                total={row.total}
+                node={row.node}
                 inheritedPoints={inheritedPoints}
-                rejectedPointInput={editor.rejectedPoints[node.id]}
-                onPromptChange={prompt => editor.updatePrompt(node.id, prompt)}
-                onDataChange={patch => editor.updateData(node.id, patch)}
-                onPointsInputChange={input => editor.setPointsInput(node.id, input)}
-                onPointsChange={points => editor.updatePoints(node.id, points)}
-                onInputModeChange={inputMode => editor.updateInputMode(node.id, inputMode)}
-                onMove={delta => editor.moveQuestion(node.id, delta)}
-                onRemove={() => void requestRemove(node, index)}
+                rejectedPointInput={editor.rejectedPoints[row.node.id]}
+                onPromptChange={prompt => editor.updatePrompt(row.node.id, prompt)}
+                onDataChange={patch => editor.updateData(row.node.id, patch)}
+                onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
+                onPointsChange={points => editor.updatePoints(row.node.id, points)}
+                onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
+                onMove={delta => editor.moveQuestion(row.node.id, delta)}
+                onRemove={() => void requestRemove(row.node, row.heading)}
               />
-            )
-          ))}
+            ));
+            if (!block.task) return questionCards;
+            // ⚠️ `key` 挂在**外层数组**上：React 要求 map 的每一项有 key，而散题那一支
+            // 返回的是一个数组（每一项自己带 key）。
+            return (
+              <TaskCard
+                key={block.task.node.id}
+                index={block.task.index}
+                total={block.task.total}
+                node={block.task.node}
+                onTitleChange={prompt => editor.updatePrompt(block.task!.node.id, prompt)}
+                onMove={delta => editor.moveQuestion(block.task!.node.id, delta)}
+                onRemove={() => void requestRemove(block.task!.node, '')}
+                onAddQuestion={() => setPickerFor({ parentId: block.task!.node.id })}
+              >
+                {questionCards}
+              </TaskCard>
+            );
+          })}
         </div>
       )}
 
@@ -350,7 +347,10 @@ function AddQuestionPicker({ onPick, onClose }: {
       <div className="modal-overlay" onClick={onClose} />
       <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 420 }}>
         <h3 id="worksheet-add-question-title">添加题目</h3>
-        <p className="worksheet-editor-dialog-note">题目会加到这份学习单的最后，之后可以用每题右上角的 ▲▼ 调整顺序。</p>
+        {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
+            你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
+            一句说错的帮助文字比没有更糟：教师会按它去找一个不存在的行为。 */}
+        <p className="worksheet-editor-dialog-note">题目会加到这个任务的最后，之后可以用每题右上角的 ▲▼ 在任务内调整顺序。</p>
         <div className="worksheet-editor-type-list">
           {QUESTION_TYPE_OPTIONS.map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>

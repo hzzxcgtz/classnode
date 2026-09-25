@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 
 /**
  * ★ 2026-09-25：**任务制迁移** —— 把现有学习单的平铺题包进一个任务容器。

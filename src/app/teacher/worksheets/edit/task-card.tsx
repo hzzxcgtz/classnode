@@ -45,7 +45,11 @@ export function TaskCard({
   /** 这个任务里的小题目卡（由页面渲染 —— 它要传一堆各自的回调）。 */
   children: ReactNode;
 }) {
-  const hasChildren = node.children.length > 0;
+  // ⚠️ `Array.isArray` 守卫：节点的 `children` 是外部输入（手改过的库行 / 旧草稿）。
+  // 直接读 `.length` 会在一个坏形状上抛 TypeError ⇒ **整页白屏**（本仓没有 error.tsx）。
+  // ⚠️ 变量名用 `kids` 而不是 `children` —— `children` 是本组件的 prop（下面那堆卡片）。
+  const kids = Array.isArray(node.children) ? node.children : [];
+  const hasChildren = kids.length > 0;
 
   return (
     <section className="worksheet-editor-task" aria-label={`任务 ${index + 1}`}>

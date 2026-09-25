@@ -37,6 +37,8 @@ import {
   createHistory,
   DEFAULT_SETTINGS,
   draftKeyFor,
+  editorRenderBlocks,
+  editorRenderRows,
   ensureEntryIds,
   ensureOrderDistinct,
   fillShape,
@@ -55,6 +57,7 @@ import {
   MAX_OPTIONS,
   moveIdInList,
   newQuestion,
+  nextTaskTitle,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
@@ -1977,4 +1980,108 @@ test('载入守卫：正常的两级树**逐字不变**（别把好数据也改�
   const good = taskNode('t_1', '任务一', [node('q_a', '题干'), node('q_b', '题干')]);
   const loaded = normalizeLoadedContent({ schemaVersion: 1, nodes: [good] });
   assert.deepEqual(loaded.nodes, [good]);
+});
+
+/* ── 修复轮（第二轮终审的 Important）────────────────────────────────── */
+
+test('🔴 F1：草稿里任务的孩子形状不对 ⇒ **整份作废**（`parseDraft` 也要递归守卫）', () => {
+  // 同一个提交把 `normalizeLoadedContent` 递归化了，`parseDraft` 没跟上 —— 而草稿同样是
+  // 「上一版本写的 / 手改过的」外部输入，这是它自己的文件头承诺要挡的东西。
+  // 放行的后果：教师点「恢复」之后 `TaskCard` 的 `node.children.length` 抛 TypeError
+  // ⇒ **整页白屏**（本仓没有 error.tsx），而 `setDraftFound(null)` 已经执行 ⇒
+  // 连「丢弃」按钮都回不去，只能手清 localStorage。
+  const bad = JSON.stringify({
+    savedAt: Date.now(), title: 't', description: '', settings: DEFAULT_SETTINGS,
+    content: { schemaVersion: 1, nodes: [{ id: 't1', type: 'task', prompt: '任务一', inputMode: 'keyboard', data: {}, children: 'nope' }] },
+  });
+  assert.equal(parseDraft(bad), null, '坏形状的草稿必须整份作废，不能带进渲染');
+});
+
+test('🔴 F1：正常的草稿仍然解析得出来（阳性对照）', () => {
+  const good = JSON.stringify({
+    savedAt: Date.now(), title: 't', description: '', settings: DEFAULT_SETTINGS,
+    content: { schemaVersion: 1, nodes: [taskNode('t1', '任务一', [node('q_a', '题干')])] },
+  });
+  const draft = parseDraft(good);
+  assert.ok(draft, '好草稿不该被这条守卫误伤');
+  assert.equal(draft.content.nodes[0].children.length, 1);
+});
+
+test('🔴 F4：删掉中间一个任务之后新建的**不许撞名**（原来按「个数 + 1」推）', () => {
+  // 实跑过的序列：新建 → 任务一、再新建 → 任务二、删掉任务一、再新建 ⇒ **两个「任务二」**
+  // ⇒ 题号逐字撞车（`任务二 · 1` 出现两次），而 C3 那次改判据要防的就是撞号，只是换了条来路。
+  const three = contentOf(taskNode('t1', '任务一'), taskNode('t2', '任务二'), taskNode('t3', '任务三'));
+  assert.equal(nextTaskTitle(three.nodes), '任务四');
+  // 删掉「任务一」之后还剩 任务二 / 任务三 ⇒ 下一个必须是「任务四」，不是「任务三」
+  const afterDelete = contentOf(taskNode('t2', '任务二'), taskNode('t3', '任务三'));
+  assert.equal(nextTaskTitle(afterDelete.nodes), '任务四');
+  // 删光 ⇒ 从「任务一」重来（不与任何已用的号冲突）
+  assert.equal(nextTaskTitle([]), '任务一');
+  // 教师改过名的任务**不参与**序号推断：全是自定义名字时，下一个仍是「任务一」
+  assert.equal(nextTaskTitle([taskNode('t1', '读材料'), taskNode('t2', '写结论')]), '任务一');
+});
+
+test('🔴 F2/F3：编辑页要渲染的行由**一个纯函数**给出，且与判据同一份覆盖', () => {
+  // 两条 Important 的共同正解：
+  //  · F2 —— **渲染深度必须等于判据深度**。判据（三个拦阻函数）经 `answerableOf` 递归**任意深**，
+  //    而界面只画「顶层 + 任务里的小题」⇒ 一道深度 ≥2 的题（散题带 children）带半填的分值
+  //    会**永久拦住保存**，而报错里那个题号在界面上找不到、也改不了
+  //    —— 正是旧注释当年担心的「卡在一个修不了的错误上」，只是换了个来路。
+  //  · F3 —— 卡片上的题号必须是**看板/导出/报错用的那一份**（两级），
+  //    不能是「容器内下标 + 1」（同屏两张「第 1 题」）。
+  const rows = editorRenderRows(contentOf(
+    node('q_a', '散题一'),
+    { ...node('q_parent', '材料题'), children: [node('q_child1', '子一'), node('q_child2', '子二')] },
+    taskNode('t_1', '任务一', [node('q_b', '任务里的题')]),
+    taskNode('t_2', '任务二', [node('q_c', '任务二的题')]),
+  ).nodes);
+
+  assert.deepEqual(rows.map((row) => row.kind), ['question', 'question', 'question', 'question', 'task', 'question', 'task', 'question']);
+  assert.deepEqual(
+    rows.map((row) => (row.kind === 'task' ? `[任务]${row.node.prompt}` : row.heading)),
+    ['1', '2', '3', '4', '[任务]任务一', '任务一 · 1', '[任务]任务二', '任务二 · 1'],
+    '★ 题号就是 `flattenAnswerable` 那一份；任务自己占一行（`[任务]`）',
+  );
+  // 🔴 F2 的要害：深度 ≥2 的那两道题**在渲染行里**（旧实现里它们不渲染、判据却查它们）。
+  assert.deepEqual(
+    rows.filter((row) => row.kind === 'question' && row.node.id.startsWith('q_child')).map((row) => row.node.id),
+    ['q_child1', 'q_child2'],
+  );
+  // 每个 question 行都必须有题号（题号取不到就会是空串 —— 那是一条静默的坏行）。
+  assert.equal(rows.some((row) => row.kind === 'question' && row.heading === ''), false);
+});
+
+test('🔴 F2/F3：`index` / `total` 是**同层**的位置与个数（▲▼ 的边界判据），任务行是顶层那层', () => {
+  const rows = editorRenderRows(contentOf(
+    { ...node('q_parent'), children: [node('q_child1'), node('q_child2')] },
+    taskNode('t_1', '任务一', [node('q_b'), node('q_c')]),
+  ).nodes);
+  const parent = rows[0];
+  assert.equal(parent.kind === 'question' && parent.index, 0, '散题在**顶层**那一层是第 0 个');
+  assert.equal(parent.kind === 'question' && parent.total, 2, '顶层那一层共 2 个（散题 + 任务）');
+  assert.equal(rows[1].kind === 'question' && rows[1].index, 0, '子题在**自己那一层**是第 0 个');
+  assert.equal(rows[1].kind === 'question' && rows[1].total, 2);
+  const task = rows[3];
+  assert.equal(task.kind === 'task' && task.index, 1, '任务在顶层那一层是第 1 个');
+  assert.equal(task.kind === 'task' && task.total, 2);
+  assert.equal(rows[4].kind === 'question' && rows[4].taskId, 't_1', '任务里的小题知道自己在哪个任务里');
+  assert.equal(rows[1].kind === 'question' && rows[1].taskId, null, '散题不属于任何任务');
+});
+
+test('坏形状的 children 不让渲染行炸（与载入守卫同一条）', () => {
+  const rows = editorRenderRows([{ ...node('q_a'), children: 42 as unknown as WorksheetQuestionNode[] }]);
+  assert.deepEqual(rows.map((row) => row.kind === 'question' && row.node.id), ['q_a']);
+});
+
+test('🔴 切块：小题必须落在它**自己的**任务块里，散题各自成块（切错了没有任何报错）', () => {
+  const blocks = editorRenderBlocks(contentOf(
+    node('q_a'),
+    taskNode('t_1', '任务一', [node('q_b'), node('q_c')]),
+    node('q_d'),
+    taskNode('t_2', '任务二', [node('q_e')]),
+  ).nodes);
+  assert.deepEqual(
+    blocks.map((block) => (block.task ? `[${block.task.node.prompt}]` : '[散题]') + block.questions.map((q) => q.node.id).join(',')),
+    ['[散题]q_a', '[任务一]q_b,q_c', '[散题]q_d', '[任务二]q_e'],
+  );
 });

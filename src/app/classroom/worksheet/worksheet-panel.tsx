@@ -8,7 +8,7 @@ import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
+import { questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
@@ -255,7 +255,7 @@ export function WorksheetQuestionList({
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
         <div className={styles.group} key={`${groupIndex}:${group.title ?? ''}`}>
           {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}
-          {group.items.map(({ node }) => {
+          {group.items.map(({ node, heading }) => {
         // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
         //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列
         //     排好的条目（`data.items` 的顺序），所以「还没碰过」也不能画成空的；
@@ -275,8 +275,12 @@ export function WorksheetQuestionList({
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
+        // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
+        // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
+        // 加它的理由：去掉那个题号徽章时，顺带把这一题在页面里唯一的身份一起删了 ——
+        // 读屏用户听到的只有「题干 + 控件」，说不出自己在做哪一题。
         return (
-          <section className={styles.question} key={node.id}>
+          <section className={styles.question} key={node.id} aria-label={`${heading} ${questionTypeLabel(node.type)}`}>
             <div className={styles.questionHead}>
               {/*
                 ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——

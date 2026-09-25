@@ -2032,9 +2032,13 @@ tr:hover td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
+  /* ★ 2026-09-25（第二轮终审 F3）：题号从「1」变成了**两级题号**（`任务一 · 1`）⇒
+     那个 22×22 的圆装不下。改成按内容撑开的小药丸（`min-width` 保住一位数时仍是圆的观感）。
+     ⚠️ 与旧写法一样是**灰阶**：它只是序号，不承载状态。 */
+  min-width: 22px;
   height: 22px;
-  border-radius: 50%;
+  padding: 0 8px;
+  border-radius: 11px;
   /* ★ 2026-09-25（重设计第 2 步「立主次」）：**去蓝**。
      它原来是蓝底蓝字 —— 而它只是**一个序号**，不承载任何状态。
      满页二十个蓝圆点会把视线从题干上拉走，而题干才是这一屏唯一的主角。

@@ -47,7 +47,18 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onMove, onRemove }: {
+  /**
+   * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
+   * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
+   *
+   * 🔴 它取代了原来的 `index + 1`（容器内下标）。那个数在正常路径上就错：两个任务时
+   * 同屏有**两张「第 1 题」**，而保存失败说「任务二 · 1 的分值只填了一个框」——
+   * 教师得在两处「第 1 题」之间猜是哪一张。
+   * ⚠️ `index` / `total` **留着**，但它们只服务 ▲▼ 的边界（换位是**同层内**的）。
+   */
+  heading: string;
+  /** 同层内的位置与个数（0-based）—— ▲▼ 的边界判据，**不用于显示**。 */
   index: number;
   total: number;
   node: WorksheetQuestionNode;
@@ -92,9 +103,9 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
   const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
 
   return (
-    <section className="worksheet-editor-question" aria-label={`第 ${index + 1} 题 ${typeLabel}`}>
+    <section className="worksheet-editor-question" aria-label={`${heading} ${typeLabel}`}>
       <header className="worksheet-editor-question-head">
-        <span className="worksheet-editor-question-index">{index + 1}</span>
+        <span className="worksheet-editor-question-index">{heading}</span>
         <span className="worksheet-editor-question-type">{typeLabel}</span>
         <div className="worksheet-editor-question-tools">
           <button
@@ -145,7 +156,7 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
       </label>
 
       <PointsRow
-        index={index}
+        heading={heading}
         node={node}
         inheritedPoints={inheritedPoints}
         rejectedInput={rejectedPointInput}
@@ -214,8 +225,9 @@ export function QuestionCard({ index, total, node, inheritedPoints, rejectedPoin
  * （2026-09-24 审查实机复现的「界面在说假话」）。它带**签名**，
  * `node.points` 一变（撤销 / 恢复草稿 / 换题）就自动失效。
  */
-function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputChange, onPointsChange }: {
-  index: number;
+function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInputChange, onPointsChange }: {
+  /** 两级题号 —— 只用于两个输入框的 `aria-label`（读屏要能说清是哪一题的分值）。 */
+  heading: string;
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
   /** 屏幕上还没进 reducer 的那两格文本（父层持有，因为 `save()` 要看得见它）。 */
@@ -281,7 +293,7 @@ function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputC
           inputMode="numeric"
           value={fullText}
           placeholder={String(inheritedPoints.full)}
-          aria-label={`第 ${index + 1} 题全对得分`}
+          aria-label={`${heading} 全对得分`}
           onChange={event => commit('full', event.target.value)}
         />
       </label>
@@ -293,7 +305,7 @@ function PointsRow({ index, node, inheritedPoints, rejectedInput, onPointsInputC
           inputMode="numeric"
           value={halfText}
           placeholder={String(inheritedPoints.half)}
-          aria-label={`第 ${index + 1} 题半对得分`}
+          aria-label={`${heading} 半对得分`}
           onChange={event => commit('half', event.target.value)}
         />
       </label>

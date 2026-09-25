@@ -1436,10 +1436,101 @@ function removeFromTree(nodes: WorksheetQuestionNode[], id: string): WorksheetQu
   return touched ? next : nodes;
 }
 
+/**
+ * ★ 2026-09-25（第二轮终审 F2/F3）：编辑页**要渲染的行** —— 一个纯函数给出。
+ *
+ * 🔴 它存在的理由有两条，都是终审抓出来的：
+ *
+ * 1. **渲染深度必须等于判据深度。** 三个拦阻保存的判据（`findInvalidPoints` /
+ *    `findPartialPoints` / `findUncommittedPointInput`）经 `answerableOf` 递归**任意深**，
+ *    而界面原先只画「顶层 + 任务里的小题」。于是一道**深度 ≥2** 的题（散题带 `children`，
+ *    只有手改过的库能造出来）带半填的分值 ⇒ **保存被永久拦下**，而报错里那个题号在界面上
+ *    找不到、也改不了（唯一出路是删掉它的父题，等于连坐删掉整棵子树）——
+ *    正是旧注释当年担心的「卡在一个修不了的错误上」，只是换了个来路。
+ *    ⇒ 两边的覆盖由**同一个规则**给出：这里按 `flattenAnswerable` 的同一套 DFS 展开。
+ *
+ * 2. **题号必须只有一份。** 卡片上原先显示「容器内下标 + 1」，而保存报错、看板列头、
+ *    抽屉、导出用的都是两级题号 ⇒ 两个任务时同屏有**两张「第 1 题」**，保存失败说
+ *    「任务二 · 1 的分值只填了一个框」而教师得在两处「第 1 题」之间猜。
+ *
+ * ⚠️ `index` / `total` 是**同层**的位置与个数 —— ▲▼ 的边界判据吃的是它
+ *（换位是**同层内**的，见 `moveInTree`），与显示用的 `heading` 是两件事。
+ */
+export type EditorRow =
+  | { kind: 'task'; node: WorksheetQuestionNode; index: number; total: number }
+  | {
+    kind: 'question';
+    node: WorksheetQuestionNode;
+    /** 两级题号（与看板 / 抽屉 / 导出 / 报错同一份）。 */
+    heading: string;
+    index: number;
+    total: number;
+    /** 属于哪个任务；`null` = 散题。 */
+    taskId: string | null;
+  };
+
+export function editorRenderRows(nodes: WorksheetQuestionNode[]): EditorRow[] {
+  const rows: EditorRow[] = [];
+  // 题号只算一次（`flattenAnswerable` 的 DFS 顺序与本函数逐字相同，所以查表拿得到）。
+  const headings = new Map(flattenAnswerable(nodes).map((item) => [item.node.id, item.heading]));
+
+  const pushQuestion = (
+    node: WorksheetQuestionNode,
+    index: number,
+    total: number,
+    taskId: string | null,
+  ) => {
+    // 取不到题号 = 两套遍历漂了。给空串而不是编一个号（屏幕上会看得出来）。
+    rows.push({ kind: 'question', node, heading: headings.get(node.id) ?? '', index, total, taskId });
+    const kids = kidsOf(node);
+    kids.forEach((child, childIndex) => pushQuestion(child, childIndex, kids.length, taskId));
+  };
+
+  nodes.forEach((node, index) => {
+    if (node.type === TASK_TYPE) {
+      rows.push({ kind: 'task', node, index, total: nodes.length });
+      const kids = kidsOf(node);
+      kids.forEach((child, childIndex) => pushQuestion(child, childIndex, kids.length, node.id));
+      return;
+    }
+    pushQuestion(node, index, nodes.length, null);
+  });
+  return rows;
+}
+
+/** 编辑页的**一块**：一个任务行 + 它下面那些小题行；散题各自成块（`task: null`）。 */
+export interface EditorBlock {
+  task: Extract<EditorRow, { kind: 'task' }> | null;
+  questions: Array<Extract<EditorRow, { kind: 'question' }>>;
+}
+
+/**
+ * 把行按「任务一段」切块。**放在核心里而不是 JSX 里**：切错了的表现是
+ * 「小题跑到别的任务下面」—— 那是一条**没有任何报错**的判据，写在 JSX 里就没有回归网
+ *（本仓没有前端测试框架）。页面因此只剩一个哑映射。
+ */
+export function editorRenderBlocks(nodes: WorksheetQuestionNode[]): EditorBlock[] {
+  const blocks: EditorBlock[] = [];
+  for (const row of editorRenderRows(nodes)) {
+    if (row.kind === 'task') { blocks.push({ task: row, questions: [] }); continue; }
+    const last = blocks[blocks.length - 1];
+    // 任务行一定在它的小题行之前 ⇒ 有 `taskId` 时最后一块必然是那个任务。
+    if (row.taskId !== null && last && last.task && last.task.node.id === row.taskId) {
+      last.questions.push(row);
+      continue;
+    }
+    blocks.push({ task: null, questions: [row] });
+  }
+  return blocks;
+}
+
 /** 中文序号（任务标题预填用）。够 1..99 —— 一份学习单不会有更多任务。 */
 const TASK_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 function taskNumeral(n: number): string {
   if (n <= 9) return TASK_NUMERALS[n - 1];
+  // ⚠️ 10..99 走中文序号；≥100 超出这套写法 ⇒ 回落阿拉伯数字（原来会产出「任务undefined十」）。
+  // 一份学习单不会有 100 个任务，但产出「undefined」是一个**看着像 bug 的**字符串。
+  if (n > 99) return String(n);
   const tens = Math.floor(n / 10);
   const ones = n % 10;
   return `${tens === 1 ? '' : TASK_NUMERALS[tens - 1]}十${ones === 0 ? '' : TASK_NUMERALS[ones - 1]}`;
@@ -1454,8 +1545,34 @@ function taskNumeral(n: number): string {
  * 两个任务的题号才不会长得一模一样（都是 `1 2 3`）。
  */
 export function nextTaskTitle(nodes: WorksheetQuestionNode[]): string {
-  const count = nodes.filter((node) => node.type === TASK_TYPE).length;
-  return `任务${taskNumeral(count + 1)}`;
+  // ★ 2026-09-25（第二轮终审 F4）：按**已有最大序号 + 1**，不是「已有任务个数 + 1」。
+  // 按个数推的实测序列：新建→任务一、再新建→任务二、**删掉任务一**、再新建 ⇒ 两个「任务二」
+  // ⇒ 题号逐字撞车（`任务二 · 1` 出现两次）。而 C3 那次改迁移判据要防的就是撞号 ——
+  // 这条是同一件事的另一条来路（创建路径），所以一起堵上。
+  // ⚠️ 教师改过名的任务**不参与**推断（解析不出序号的忽略）：一份全是自定义名字的学习单里，
+  // 下一个新任务从「任务一」开始，不与任何**已用的号**冲突（它压根没占号）。
+  let max = 0;
+  for (const node of nodes) {
+    if (node.type !== TASK_TYPE) continue;
+    const match = /^任务([一二三四五六七八九十]+)$/.exec((node.prompt ?? '').trim());
+    if (!match) continue;
+    const value = numeralValue(match[1]);
+    if (value > max) max = value;
+  }
+  return `任务${taskNumeral(max + 1)}`;
+}
+
+/** 中文序号 → 数（`taskNumeral` 的逆）。认不出回 0（调用方据此忽略那个名字）。 */
+function numeralValue(text: string): number {
+  const digits = '一二三四五六七八九';
+  const ten = text.indexOf('十');
+  if (ten < 0) {
+    const only = digits.indexOf(text);
+    return only < 0 ? 0 : only + 1;
+  }
+  const high = ten === 0 ? 1 : digits.indexOf(text[0]) + 1;
+  const low = ten === text.length - 1 ? 0 : digits.indexOf(text[ten + 1]) + 1;
+  return high * 10 + low;
 }
 
 /** 一个新任务容器：**空的是合法的**（教师 2026-09-25 裁定），所以不预置小题。 */
@@ -1679,6 +1796,28 @@ function isQuestionNode(value: unknown): value is WorksheetQuestionNode {
 }
 
 /**
+ * ★ 2026-09-25（第二轮终审 F1）：草稿的**递归**守卫 —— 树的**每一层**都要是节点。
+ *
+ * 🔴 为什么草稿这一侧是「判对错」而 `normalizeLoadedTree` 那一侧是「归一」：
+ *   · **库里的行**（`normalizeLoadedContent`）：要**让页面能打开** —— 坏孩子丢掉、
+ *     `children` 归一成空数组，教师至少还能看见并抢救其余的题；
+ *   · **草稿**：它**是我们自己写的东西**（`draftPayload` 存的是 `history.present`），
+ *     形状不对说明版本错位或有人手改过 localStorage ⇒ 按它自己的契约**整份作废**
+ *    （`parseDraft` 的文件头逐字写着「半个草稿比没有草稿更危险」）。
+ *
+ * 放行的后果（实测过）：教师点「恢复」之后 `TaskCard` 读 `node.children.length` 抛
+ * TypeError ⇒ **整页白屏**（本仓没有 error.tsx），而 `setDraftFound(null)` 已经执行
+ * ⇒ 连「丢弃」按钮都回不去，只能手清 localStorage。
+ */
+function isDraftNode(value: unknown): boolean {
+  if (!isQuestionNode(value)) return false;
+  const raw = (value as { children?: unknown }).children;
+  // 缺 `children` 当没有（渲染那一侧有 `Array.isArray` 守卫，见 `TaskCard`）。
+  if (raw === undefined) return true;
+  return Array.isArray(raw) && raw.every(isDraftNode);
+}
+
+/**
  * ★ 2026-09-25：把一棵**载入的**树归一成可渲染的形状 —— **递归**。
  *
  * 🔴 为什么必须递归：`normalizeLoadedContent` 是 `nodes.filter(isQuestionNode)`，
@@ -1721,7 +1860,7 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
   if (!draft.settings || typeof draft.settings !== 'object' || Array.isArray(draft.settings)) return null;
   if (!draft.content || typeof draft.content !== 'object' || Array.isArray(draft.content)) return null;
   const nodes = (draft.content as Record<string, unknown>).nodes;
-  if (!Array.isArray(nodes) || !nodes.every(isQuestionNode)) return null;
+  if (!Array.isArray(nodes) || !nodes.every(isDraftNode)) return null;
 
   const settings = draft.settings as Record<string, unknown>;
   const content = draft.content as WorksheetContent;

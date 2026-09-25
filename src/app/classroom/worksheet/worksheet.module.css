@@ -612,6 +612,12 @@
   background: #fff;
   min-height: 44px;      /* 触屏命中区的下限，老 iPad 上手指更粗 */
   box-sizing: border-box;
+  /* ★ 2026-09-26（教师第 3 条）：**让位**走得平滑一点。只碰 `transform` ——
+     动 `top/margin` 会每帧触发重排，老 iPad 上直接掉帧。
+     ⚠️ 跟手那一项不能有这个过渡（它会慢半拍地追手指）：`.orderItemDragging` 把它关掉，
+     而**第一帧**元素上还没挂那个类 —— 所以 JS 在写 `transform` 的同一帧
+     也写一行内 `transition: none` 盖住（见 `order-body.tsx` 的 `clearDragStyles`）。 */
+  transition: transform .18s ease-out;
 }
 
 .orderItemSelected {
@@ -619,14 +625,24 @@
   background: #f5f8ff;
 }
 
+/* ★ 2026-09-26（教师第 3 条）：拖起来的那一项 —— 它**跟手**（`transform` 由 JS 每帧写），
+   而且要**浮在**其余项上面，否则让位的那几项会从它身上穿过去。
+   🔴 `transition: none` 是必须的：`.orderItem` 那条过渡会让它慢半拍地追手指。
+   ⚠️ 它同时挂着 `.dragActive`（那一份给的是 `transform: scale(1.02)`）——
+   行内的跟手 `transform` **会盖掉它**（内联优先），所以这里的「拿起来了」由
+   `z-index` + `box-shadow` 承担，不靠缩放。 */
 .orderItemDragging {
   opacity: .95;
+  position: relative;
+  z-index: 3;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, .24);
+  transition: none;
 }
 
-.orderItemOver {
-  border-color: var(--ws-accent);
-  background: #eef2ff;
-}
+/* `orderItemOver`（手指底下那一条的高亮）★ 2026-09-26 **删掉了** —— 排序题改成让位之后，
+   「会落到哪一格」由**让位让出来的那个空位**交代，而 `hoverTargetId`（手指底下是谁）
+   与让位算出来的落点是两份各自独立的判据、会对不上。两份真相里必须删一份。
+   ⚠️ 别把它加回来：`.dropActive` 还在（连线题的落点高亮），那一个没有这个问题。 */
 
 .orderIndex {
   flex: 0 0 auto;
@@ -985,16 +1001,24 @@
    `globals.css` 那条全局 `0.01ms` 兜底。那确实生效，但意味着本文件「所有会动的东西」
    **既没有清单、也没有例外可言**：谁新加一条动画，不会有任何信号告诉他要不要降级。
    ⚠️ 与 `shell.module.css` / `home.module.css` 的降级块**同形**（那两处都把它当一条纪律）。
-   ⚠️ 本文件今天会动的东西：**4 条 `transition`**（顶栏底色 `:52`、进度条宽度 `:91`、
-   状态三态 `:197`、选项选中态 `:270`）+ **3 条 `animation`**（`.rewardTotal` `:126`、
-   `.questionReward` `:219`、`.spinner` `:391`）—— 下面**逐条**列全。
-   （🔴 原写「只有两条 transition」，那是加 M6b/12/16/13 之前的旧账，已改正。）
+   ⚠️ 本文件今天会动的东西：**5 条 `transition`**（顶栏底色、进度条宽度、状态三态、
+   选项选中态、**排序题的让位 `.orderItem`** ← ★ 2026-09-26 新加）+ **3 条 `animation`**
+   （`.rewardTotal`、`.questionReward`、`.spinner`）—— 下面**逐条**列全。
+   （🔴 原写「只有两条 transition」，那是加 M6b/12/16/13 之前的旧账，已改正；
+   后又补上排序题那一条。行号会漂，所以这里改成按名字指认。）
    加了新动效要**同批**补进来。 */
 @media (prefers-reduced-motion: reduce) {
   .topbar,
   .progressFill,
   .questionState,
   .optionSelected {
+    transition: none;
+  }
+
+  /* ★ 排序题的**让位**：直接换位，不做平滑（这正是本规格裁定 ③ 那句
+     「`prefers-reduced-motion` 下不做过渡，直接换位」）。
+     ⚠️ 跟手那一项本来就 `transition: none`，不必再列 —— 它是**直接操纵**，不是动画。 */
+  .orderItem {
     transition: none;
   }
 

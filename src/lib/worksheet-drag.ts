@@ -87,6 +87,68 @@ export function moveInOrder(order: string[], id: string, delta: -1 | 1): string[
 }
 
 /**
+ * 排序题：拖动时**手指底下是第几个槽位**。
+ *
+ * ★ 2026-09-26（教师第 3 条「排序题的拖动动画也要优化」）。`centers` 是每一项**中线**
+ * 的客户端 y 坐标 —— 拖动开始时量一次（`order-body.tsx`），之后每帧只做这一下比较。
+ *
+ * 🔴 **为什么不问 DOM**（`elementFromPoint` / 再量一次 `getBoundingClientRect`）：
+ * 其余项这时候**正在让位**（它们的 `transform` 每帧在变），而 transform 会一并改变
+ * 命中测试的位置 ⇒ 「谁在手指底下」与「谁该让位」互为因果，会**来回抖**。
+ * 拿一开始那份**静止**布局做判据，这条回路就断了。
+ *
+ * ⚠️ 等距时取**更靠前**的那一个（严格小于才换）：手指停在两格正中间时不许来回跳。
+ * ⚠️ 空表 ⇒ `-1`（「一个槽位都没有」），调用方按「没有落点」处置。
+ */
+export function slotIndexAt(centers: number[], y: number): number {
+  if (!Array.isArray(centers) || centers.length === 0) return -1;
+  let best = 0;
+  let bestDistance = Math.abs(y - centers[0]);
+  for (let i = 1; i < centers.length; i += 1) {
+    const distance = Math.abs(y - centers[i]);
+    if (distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * 排序题：拖动中的**让位** —— 返回每一项应当平移多少像素（下标与 `centers` 对齐）。
+ *
+ * `from` 是拖起来那一项的位置，`to` 是它此刻要落到的槽位。规则是**轮转一格**：
+ * 夹在中间的每一项各往 `from` 原来的方向挪**一格**。
+ *
+ * 🔴 **一格是多少，由 `centers` 决定**（`centers[index + shift] - centers[index]`），
+ * 不是「一个固定高度」—— 排序题的条目会折行，长句子那一格就是更高。
+ * 写成固定高度会让长条目那一带的让位**差半个条目**，而它看起来只是「有点飘」。
+ *
+ * ⚠️ 被拖的那一项返回 `0`：它的位置由**跟手**那一份 `transform` 负责，不是让位。
+ * ⚠️ 越界 / 空表一律返回**全 0 的数组**（长度对齐 `centers`），不抛 ——
+ * 下标是从 DOM 事件里算出来的，一次手指乱动就能算出越界值。
+ */
+export function dragShifts(centers: number[], from: number, to: number): number[] {
+  if (!Array.isArray(centers)) return [];
+  const still = centers.map(() => 0);
+  if (from < 0 || from >= centers.length) return still;
+  if (to < 0 || to >= centers.length) return still;
+  if (from === to) return still;
+  return centers.map((center, index) => {
+    if (index === from) return 0;
+    const shift = from < to
+      ? (index > from && index <= to ? -1 : 0)
+      : (index >= to && index < from ? 1 : 0);
+    if (shift === 0) return 0;
+    const target = centers[index + shift];
+    // 理论上到不了（`to` 已在界内），但 `centers` 是从 DOM 量回来的 ——
+    // 量少了一个就宁可不动，也不抛（抛出去是整个作答面板白屏）。
+    if (typeof target !== 'number') return 0;
+    return target - center;
+  });
+}
+
+/**
  * 连线：把左项 `leftId` 连到右项 `rightId`。
  *
  * 🔴 **两条不变量，方向都是「顶掉」而不是「并存」**：

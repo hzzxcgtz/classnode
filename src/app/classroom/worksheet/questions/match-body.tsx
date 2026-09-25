@@ -208,6 +208,10 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
       if (next !== links) onChange({ kind: 'match', links: next });
     },
     onDrop: (sourceId, targetId) => {
+      // ★ 2026-09-26：`onDrop` 现在在「拖到空白处松手」（`targetId === null`）时**也会**被调用。
+      // 连线题在这里什么都不做（松手前的那一次拖拽本来就没连上任何东西）——
+      // 选择态也留着，学生可以直接接着点右项。
+      if (targetId === null) return;
       setSelection(clearSelection());
       onChange({ kind: 'match', links: setPair(links, sourceId, targetId) });
     },

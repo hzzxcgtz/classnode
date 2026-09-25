@@ -80,6 +80,10 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
       setSelection(tapSource(selection, id));
     },
     onDrop: (sourceId, targetId) => {
+      // ★ 2026-09-26：`onDrop` 现在在「拖到空白处松手」（`targetId === null`）时**也会**被调用。
+      // 这里什么都不做 —— ⚠️ 别把 `null` 当成条目池：池子是一个**明确的目标**、
+      // 有自己的 id（`POOL_TARGET`），把 null 当池子会让「拖歪了」变成「把条目扔回池子」。
+      if (targetId === null) return;
       if (targetId === POOL_TARGET) take(sourceId);
       else place(sourceId, targetId);
     },

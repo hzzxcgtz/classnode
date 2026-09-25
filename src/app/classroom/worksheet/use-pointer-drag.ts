@@ -62,8 +62,18 @@ export interface DragPoint {
 export interface PointerDragOptions {
   /** 点了一下（没移动）时调它。id 由组件解释（连线的左项 / 归类的条目 /…）。 */
   onTap: (id: string) => void;
-  /** 落位（移动过且手指底下是一个落点）时调它。**整个手势只调一次**。 */
-  onDrop: (sourceId: string, targetId: string) => void;
+  /**
+   * 落位：**移动过之后松手**时调它（移动没过阈值的那一下走 `onTap`）。**整个手势只调一次**。
+   *
+   * ★ 2026-09-26：`targetId` 可以是 **`null`**（拖到空白处松手）。
+   * 在此之前「底下没有落点」是**根本不会调** `onDrop` 的，而那条规则对排序题是错的：
+   * 它的落点由**让位算出来的槽位**决定（`order-body.tsx`），与手指底下有没有元素无关 ——
+   * 而让位之后被拖那一项的**原槽位是空的**，手指底下常常什么都没有。
+   * 照旧规则，症状是「拖到列表末尾松手，什么都不发生」。
+   * ⇒ 现在由**每个题型自己**决定 `null` 是什么意思（连线/归类是「什么都不做」，
+   * 排序是「照落位算出来的那一格落下」）。
+   */
+  onDrop: (sourceId: string, targetId: string | null) => void;
   /**
    * ★ 2026-09-26：拖动中**每一帧**（只在越过 `DRAG_THRESHOLD_PX` 之后，与拖动态同时开始）。
    *
@@ -271,8 +281,10 @@ export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: 
     // 先收尾再落位：`onDrop` 里会 setState（写 draft），而收尾也要 setState ——
     // 顺序反过来的话，落位那一次渲染里元素还带着「正在拖」的类名（闪一帧）。
     endGesture();
-    // ⚠️ 移动过但**没有落点**（拖到空白处松手）⇒ 什么都不做：既不落位，也不当成点选。
-    if (moved && target) onDrop(id, target);
+    // ⚠️ 移动过但**没有落点**（拖到空白处松手）也照调 —— `target` 是 `null`，
+    // 怎么处置由题型自己决定（见 `onDrop` 的注释：排序题靠这一条才落得下去）。
+    // ⚠️ 反过来，**没移动**过就绝不调：那一下是点选，走 `onTap`。
+    if (moved) onDrop(id, target);
   }, [endGesture, onDrop]);
 
   const handlePointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {

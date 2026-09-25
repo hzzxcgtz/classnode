@@ -19,10 +19,12 @@ import assert from 'node:assert/strict';
 import {
   clearPair,
   clearSelection,
+  dragShifts,
   moveInOrder,
   reorder,
   setPair,
   setPlacement,
+  slotIndexAt,
   tapSource,
   tapTarget,
   unplace,
@@ -112,6 +114,59 @@ test('🔴 reorder：越界下标返回原数组，不抛（下标是从 DOM 事
 });
 
 // ── 3. 连线：两条不变量（左项唯一、**右项也唯一**）──────────────────────
+
+// ── 3a. 排序：拖动中的槽位与让位（★ 2026-09-26，教师第 3 条）─────────────
+
+test('slotIndexAt：取离 y 最近的槽位；越出两端就收到两端', () => {
+  const centers = [100, 200, 300];
+  assert.equal(slotIndexAt(centers, 100), 0);
+  assert.equal(slotIndexAt(centers, 190), 1);
+  assert.equal(slotIndexAt(centers, 260), 2);
+  // 拖到列表上方 / 下方之外 ⇒ 两端（不是 -1：那是「一个槽位都没有」的意思）。
+  assert.equal(slotIndexAt(centers, -400), 0);
+  assert.equal(slotIndexAt(centers, 9999), 2);
+});
+
+test('🔴 slotIndexAt：等距时保留**更靠前**的那一个（拖在两格正中间不许抖）', () => {
+  // 这是「不许抖」那条约束在这一层的落实：如果等距时来回取整，手指停在两格中间
+  // 会让 `to` 每帧在 i / i+1 之间跳，屏幕上就是其余项反复让位、回位。
+  assert.equal(slotIndexAt([0, 10], 5), 0);
+  assert.equal(slotIndexAt([0, 10], 4.9), 0);
+  assert.equal(slotIndexAt([0, 10], 5.1), 1);
+});
+
+test('slotIndexAt：一个槽位都没有 ⇒ -1（调用方按「没有落点」处置，不许抛）', () => {
+  assert.equal(slotIndexAt([], 100), -1);
+  assert.equal(slotIndexAt(undefined as unknown as number[], 100), -1);
+});
+
+test('🔴 dragShifts：均匀间距下就是「各挪一格」，被拖的那一项不动', () => {
+  const centers = [0, 10, 20, 30];
+  // 把第 2 项（下标 1）拖到下标 3：原来的 3、4 项各往上让一格。
+  assert.deepEqual(dragShifts(centers, 1, 3), [0, 0, -10, -10]);
+  // 反向：把最后一项拖到最前，中间三项各往下让一格。
+  assert.deepEqual(dragShifts(centers, 3, 0), [10, 10, 10, 0]);
+  // 没挪动 ⇒ 谁都不动。
+  assert.deepEqual(dragShifts(centers, 2, 2), [0, 0, 0, 0]);
+});
+
+test('🔴 dragShifts：条目**高度不一**时每项挪的像素不同（这正是它不能写成「挪一个固定高度」的理由）', () => {
+  // 排序题的条目会折行（长句子），所以「一格 = 固定 44px」那条捷径是错的：
+  // 让位让出的必须是**那一个槽位实际有多高**。
+  const centers = [0, 10, 30, 60];
+  // 第 1 项（下标 0）拖到下标 2 ⇒ 下标 1 顶到槽 0（-10）、下标 2 顶到槽 1（-20）。
+  assert.deepEqual(dragShifts(centers, 0, 2), [0, -10, -20, 0]);
+});
+
+test('🔴 dragShifts：越界 / 空表 ⇒ 全 0 的数组，不抛（下标是从 DOM 事件里算出来的）', () => {
+  const centers = [0, 10, 20];
+  assert.deepEqual(dragShifts(centers, -1, 1), [0, 0, 0]);
+  assert.deepEqual(dragShifts(centers, 0, 9), [0, 0, 0]);
+  assert.deepEqual(dragShifts([], 0, 0), []);
+  assert.deepEqual(dragShifts(undefined as unknown as number[], 0, 1), []);
+});
+
+// ── 3b（原来的顺序）／连线的不变量 ──────────────────────────────────────
 
 test('🔴 setPair 的不变量一：同一个左项只能有一条线（改连 ⇒ 顶掉旧的）', () => {
   const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];

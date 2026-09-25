@@ -1899,9 +1899,18 @@ tr:hover td {
 .worksheet-editor-question {
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-left: 4px solid #2563eb;
+  /* ★ 2026-09-25（教师裁定）：「4px 蓝竖条去掉，只给当前编辑的那一张亮」。
+     🔴 竖条**恒定占位**（透明），只在 `:focus-within` 时上色 ——
+     写成仅在焦点态加 `border-left: 4px` 会让**卡片内容横向跳 3px**，
+     而那种跳动在点进题目的一瞬间发生，看起来像「页面抖了一下」，极难归因。
+     `:focus-within` 零 JS：光标在卡片里任何一个输入框里，这一张就亮。 */
+  border-left: 4px solid transparent;
   border-radius: 12px;
   padding: 16px;
+}
+
+.worksheet-editor-question:focus-within {
+  border-left-color: #2563eb;
 }
 
 .worksheet-editor-question-head {

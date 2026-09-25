@@ -2088,6 +2088,27 @@ tr:hover td {
   white-space: nowrap;
 }
 
+/* ★ 2026-09-26（教师）：「鼠标移到某题上要有突出的显示，当前正在编辑的也要有特殊的显示，
+   **否则一题的范围无法区分**。」—— 折叠之后每题只差一层 1px 的浅边框，边界确实看不出来。
+   ⇒ 两种态**各自一条**，而它们**不是同一种视觉**（否则「移上去」与「正在改」分不开）：
+     · hover   = 深一档的边框 + 极淡的底色（「你的鼠标在这一题上」）
+     · 正在编辑 = **蓝竖条 + 蓝边框 + 纯白**（「这一张是当前生效的那一个」）
+   强调色只给后者 —— 与简报「强调色只留给可点的、当前生效的」是同一条。 */
+.worksheet-editor-question:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+/* ⚠️ `[data-expanded='1']` 与 `:focus-within` **两道都要**：教师「点开」之后光标不一定
+   落在某个输入框里（比如他点的是空白处），那时也该看得出是哪一张 ——
+   而 `:focus-within` 只在光标真的在卡里时才亮。 */
+.worksheet-editor-question[data-expanded='1'],
+.worksheet-editor-question[data-expanded='1']:focus-within {
+  border-color: #bfdbfe;
+  border-left-color: #2563eb;
+  background: #fff;
+}
+
 /* 折起来的那一行**矮**：整张卡的 16px 内边距在 20 行时会白占一屏。 */
 .worksheet-editor-question[data-expanded='0'] {
   padding: 8px 12px;

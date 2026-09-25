@@ -189,7 +189,10 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
         </div>
       </header>
 
-      {expanded && (<>)
+      {/* ⚠️ `(<>` 后面**不能**多一个 `)`：多了会被 JSX 当成**文本节点**渲染出一个孤零零的
+          `)`，而 tsc / eslint / 用例**全都不会红**（语法合法）。教师 2026-09-26 在真机上
+          就是这么发现的 —— 见那一天的提交。 */}
+      {expanded && (<>
       <label className="worksheet-editor-field">
         <span>题干</span>
         <textarea

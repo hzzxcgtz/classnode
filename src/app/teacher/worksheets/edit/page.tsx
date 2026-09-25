@@ -89,6 +89,17 @@ function WorksheetEditorBody() {
    * 迁移之后顶层的题都在任务里，所以绝大多数情况 `parentId` 是一个任务 id ——
    * 旧写法（没有这个参数）会让教师新加的题永远落在任务**外面**。
    */
+  /**
+   * ★ 2026-09-26（spec 第 2 步）：**当前展开的那一道**（`null` = 全折起来）。
+   * 一页 20 题时只展开一张 —— 与焦点态同源：两张都展开就都没有重点。
+   * ⚠️ **刻意不持久化**：刷新回到全折叠。对 20 题的页面那是可接受的默认
+   *（先扫全卷、再点开要改的那一道），而持久化会让「我明明刷新了怎么还停在那张」变成一个疑问。
+   */
+  const [openId, setOpenId] = useState<string | null>(null);
+  const toggleOpen = useCallback((id: string) => {
+    setOpenId(current => (current === id ? null : id));
+  }, []);
+
   const [pickerFor, setPickerFor] = useState<{ parentId: string | null } | null>(null);
 
   const { content, worksheetId, usage, saveStatus, draftFound } = editor;
@@ -249,6 +260,8 @@ function WorksheetEditorBody() {
                 heading={row.heading}
                 index={row.index}
                 total={row.total}
+                expanded={openId === row.node.id}
+                onToggle={() => toggleOpen(row.node.id)}
                 node={row.node}
                 inheritedPoints={inheritedPoints}
                 rejectedPointInput={editor.rejectedPoints[row.node.id]}

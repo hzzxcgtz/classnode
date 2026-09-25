@@ -3,6 +3,7 @@
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
   canGivePartial,
+  displayPoints,
   effectiveHalfStep,
   gradesOnSubmit,
   isGradedQuestionType,
@@ -52,7 +53,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, expanded, onToggle, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -66,6 +67,12 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
   /** 同层内的位置与个数（0-based）—— ▲▼ 的边界判据，**不用于显示**。 */
   index: number;
   total: number;
+  /**
+   * ★ 2026-09-26（spec 第 2 步）：**这张卡展开了没有**（一页 20 题，只展开一张）。
+   * 折叠态只画一行摘要（题号 · 题型 · 题干一行 · 分值 · 工具）；展开态才是今天这一整张。
+   */
+  expanded: boolean;
+  onToggle: () => void;
   node: WorksheetQuestionNode;
   /**
    * 学习单级的**两档**（`settings.rewardStep` / `settings.halfStep`）—— 逐题留空时继承的就是它们。
@@ -114,10 +121,33 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
   const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
 
   return (
-    <section className="worksheet-editor-question" aria-label={`${heading} ${typeLabel}`}>
+    <section
+      className="worksheet-editor-question"
+      data-expanded={expanded ? '1' : '0'}
+      aria-label={`${heading} ${typeLabel}`}
+    >
       <header className="worksheet-editor-question-head">
-        <span className="worksheet-editor-question-index">{heading}</span>
-        <span className="worksheet-editor-question-type">{typeLabel}</span>
+        {/*
+          ★ 2026-09-26（spec 第 2 步）：**折叠态那一行**。整行是一个按钮（点它展开/收起）。
+          ⚠️ 题干在这里是**纯文本 + 省略号**（CSS 做），不是 textarea —— 折叠时不该有输入框，
+          否则 `Tab` 会依次落进 20 个看不见的框里，而那一整页的键盘导航就废了。
+          ⚠️ 分值用的是 `displayPoints`（核心里、有用例），不是 `effectiveHalfStep`
+          —— 后者半填时回 `null`（给警告条用的判据），而这一行**必须**有个数。
+        */}
+        <button
+          type="button"
+          className="worksheet-editor-question-summary"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          title={expanded ? '收起这道题' : '展开这道题'}
+        >
+          <span className="worksheet-editor-question-index">{heading}</span>
+          <span className="worksheet-editor-question-type">{typeLabel}</span>
+          <span className="worksheet-editor-question-brief">{node.prompt.trim() || '（题干还没写）'}</span>
+          <span className="worksheet-editor-question-points">
+            {displayPoints(node, inheritedPoints).full} / {displayPoints(node, inheritedPoints).half}
+          </span>
+        </button>
         <div className="worksheet-editor-question-tools">
           <button
             type="button"
@@ -155,6 +185,7 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
         </div>
       </header>
 
+      {expanded && (<>)
       <label className="worksheet-editor-field">
         <span>题干</span>
         <textarea
@@ -251,6 +282,7 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
         // 而这个分支就在编辑体那一段的位置），所以「换题型时控件的位置不该跳」对它也成立。
         <p className="worksheet-editor-hint">绘图题固定为手写作答，不自动判分。</p>
       )}
+      </>)}
     </section>
   );
 }

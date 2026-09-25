@@ -1114,6 +1114,22 @@ export function toleranceOf(node: WorksheetQuestionNode): number | null {
   return raw;
 }
 
+/**
+ * ★ 2026-09-26（spec 第 2 步）：**折叠态那一行**要显示的分值。
+ *
+ * 逐题优先，`points` 被清空时用默认档。⚠️ 与判分那侧的 `resolvePoints(node, DEFAULT_POINTS)`
+ * 是**同一把尺子**（服务端迁移之后逐题分值恒存在，清空是编辑期的中间态）。
+ *
+ * ⚠️ 不要拿 `effectiveHalfStep` 来拼这一行：它半填时回 `null`（「说不准」），
+ * 那是给**警告条**用的判据；而折叠态那一行**必须**显示一个数（显示 `—` 会更让人困惑）。
+ */
+export function displayPoints(
+  node: WorksheetQuestionNode,
+  fallback: { full: number; half: number },
+): { full: number; half: number } {
+  return { full: node.points?.full ?? fallback.full, half: node.points?.half ?? fallback.half };
+}
+
 export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
   if (!points) return false;
   return (points.full === undefined) !== (points.half === undefined);

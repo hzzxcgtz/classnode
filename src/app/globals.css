@@ -2051,6 +2051,59 @@ tr:hover td {
   border-color: #2563eb;
 }
 
+/* ── 折叠（★ 2026-09-26，spec 第 2 步）──────────────────────────────────
+   一页 20 题时**只展开一张**：折叠态是一行摘要（题号 · 题型 · 题干一行 · 分值 · 工具），
+   点它才展开成原来那张卡。教师靠折叠态扫全卷、也是他校对的地方。
+   ⚠️ 折叠态的间距用 8（行与行是**同一个列表的项**），而任务与任务之间仍是 24。 */
+.worksheet-editor-question-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 题干那一行：**一行 + 省略号**（CSS 做，不在 JS 里切字符串 —— 那会把空题干那条文案一起吃掉）。 */
+.worksheet-editor-question-brief {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+/* 折叠态的分值：配角（灰阶、不回绕）。 */
+.worksheet-editor-question-points {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* 折起来的那一行**矮**：整张卡的 16px 内边距在 20 行时会白占一屏。 */
+.worksheet-editor-question[data-expanded='0'] {
+  padding: 8px 12px;
+}
+
+/* 折起来时**不亮**（蓝竖条只属于当前编辑的那一张 —— 简报第 2 步的裁定）。 */
+.worksheet-editor-question[data-expanded='0']:focus-within {
+  border-left-color: transparent;
+}
+
+/* ⚠️ 焦点环**不在这里写**：`globals.css` 顶部有一条全局的 `:focus-visible`
+   （`outline: 3px solid rgba(37,99,235,.55)` + `outline-offset: 2px`），它已经覆盖折叠态那一行。
+   🔴 而且这个文件对该标记有**配额**（`check-classroom-browser-compat.mjs` 卡在 5 次，
+   给的是「既有用法是有意的降级、不得新增」）—— 我在这里补的那一条当场把门禁跑红，
+   而它**本来就是多余的**。别再加。 */
+
 .worksheet-editor-question {
   background: #fff;
   border: 1px solid #e2e8f0;

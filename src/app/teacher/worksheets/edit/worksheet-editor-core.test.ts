@@ -37,6 +37,7 @@ import {
   createHistory,
   DEFAULT_SETTINGS,
   canGivePartial,
+  displayPoints,
   draftKeyFor,
   editorRenderBlocks,
   editorRenderRows,
@@ -2161,4 +2162,15 @@ test('🔴 `canGivePartial`：只有**真会给部分分**的五个题型为真�
   // 这一条必须在两者之间划出那道界线（否则「判分依据」会画到永远用不到它的题上）。
   assert.equal(isGradedQuestionType('single-choice'), true);
   assert.equal(canGivePartial('single-choice'), false);
+});
+
+test('🔴 `displayPoints`：折叠态那一行的分值（逐题优先，清空时用默认档）', () => {
+  const fallback = { full: 1, half: 0 };
+  assert.deepEqual(displayPoints(node('q_a', '题干', {}, 'single-choice'), fallback), fallback, '没有 points ⇒ 默认档');
+  const pinned = { ...node('q_b', '题干', {}, 'single-choice'), points: { full: 3, half: 2 } };
+  assert.deepEqual(displayPoints(pinned, fallback), { full: 3, half: 2 });
+  // ⚠️ 与 `effectiveHalfStep` 的分工：那个半填时回 `null`（给警告条用），
+  // 而这一行**必须**有个数 —— 半填时缺的那一端用默认档补上。
+  const halfFilled = { ...node('q_c', '题干', {}, 'single-choice'), points: { full: 5 } };
+  assert.deepEqual(displayPoints(halfFilled, fallback), { full: 5, half: 0 });
 });

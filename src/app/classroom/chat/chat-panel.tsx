@@ -38,7 +38,10 @@ export function StudentChatContent({
   connectionError,
   streamingContent,
   thinkingContent,
-  teacherNotifBubble,
+  // ⚠️ 这里**没有** `teacherNotifBubble` / `setTeacherNotifBubble`（2026-09-25）：教师通知
+  // 气泡搬去**外壳**了 —— 它必须出现在学生的**每一个 tab** 上，而面板只覆盖学伴那一层。
+  // 字段仍留在 `ChatPanelProps` 上（外壳从同一个 `chat` 对象里读它们），理由与上面
+  // `teacherMsgs` 那一段逐字相同；下面不再解构 —— 解构了就是 unused-vars。
   blacklisted,
   setMessages,
   setWaitingAI,
@@ -47,7 +50,6 @@ export function StudentChatContent({
   setConnectionError,
   setStreamingContent,
   setThinkingContent,
-  setTeacherNotifBubble,
   // ⚠️ 这里**没有** `onSwitchIdentity`（M1b-3 T4）：它在本文件里唯一的读者是面板头那枚
   // 「切换」按钮，随整行头部一并撤除。字段仍留在 `ChatPanelProps` 上 —— 外壳从同一个
   // `chat` 对象里读它并接给顶栏的操作组，理由与上面 `teacherMsgs` 那一段逐字相同；
@@ -687,29 +689,6 @@ export function StudentChatContent({
           </div>
         )}
 
-        {/* 黑屏蒙版 */}
-        {blacklisted && (
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 100,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24,
-            backdropFilter: 'blur(6px)',
-          }}>
-            <div style={{
-              width: 100, height: 100, borderRadius: '50%',
-              background: 'rgba(239,68,68,0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 40px rgba(239,68,68,0.2)',
-            }}>
-              <svg width= "52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fca5a5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-              </svg>
-            </div>
-            <div style={{ fontSize: "1.625rem", fontWeight: 700, color: '#ffffff', letterSpacing: 2, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>你已被教师黑屏</div>
-            <div style={{ fontSize: "0.938rem", color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>请注意课堂纪律</div>
-          </div>
-        )}
-
         {/* 历史消息加载指示 */}
         {loadingMessages && messages.length === 0 && (
           <div style={{
@@ -818,58 +797,6 @@ export function StudentChatContent({
           {hoveredMarker.text}
         </div>
       ))}
-
-      {/* 教师通知气泡 — 立体气泡样式 */}
-      {teacherNotifBubble && (
-        <div style={{
-          position: 'sticky', bottom: 0, zIndex: 20,
-          maxWidth: 800, margin: '0 auto', padding: '0 20px 10px',
-          animation: 'notifSlideUp 0.3s ease-out',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'center', paddingLeft: 4 }}>
-            <div style={{
-              position: 'relative',
-              padding: '10px 14px', borderRadius: '6px 16px 16px 16px',
-              background: 'linear-gradient(135deg, #fff7ed, #fffbeb)',
-              fontSize: "0.813rem", color: '#451a03', lineHeight: 1.6,
-              boxShadow: '0 2px 8px rgba(251,146,60,0.08), 0 8px 24px rgba(251,146,60,0.10)',
-              maxWidth: '85%',
-            }}>
-              {/* 三角尾巴 */}
-              <div style={{
-                position: 'absolute', top: 0, left: -6,
-                width: 12, height: 12,
-                background: '#fff7ed',
-                clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
-                borderRadius: '0 0 0 2px',
-              }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 18, height: 18, borderRadius: 5,
-                  background: '#fed7aa', color: '#c2410c', flexShrink: 0,
-                }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-                </span>
-                <span style={{ fontWeight: 600, fontSize: "0.688rem", color: '#c2410c' }}>老师</span>
-              </div>
-              <div>{teacherNotifBubble}</div>
-            </div>
-            <button onClick={() => setTeacherNotifBubble(null)}
-              style={{
-                flexShrink: 0, marginLeft: 8, alignSelf: 'flex-start', marginTop: 4,
-                width: 20, height: 20, border: 'none', borderRadius: '50%',
-                background: 'rgba(0,0,0,0.03)', cursor: 'pointer',
-                color: '#cbd5e1', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', padding: 0, fontSize: "0.75rem", lineHeight: 1,
-                transition: 'all 0.12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#94a3b8'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.03)'; e.currentTarget.style.color = '#cbd5e1'; }}
-            >✕</button>
-          </div>
-        </div>
-      )}
 
       {/* === 输入区域 === */}
       <div className={styles.composerArea}>

@@ -584,6 +584,59 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
       {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
           外壳只是转手，因此这里**不新增任何状态、不新增 effect**。
           面板头那四个同名同义的入口已随 M1b-3 T4 整行撤除，所以顶栏这一组是**唯一**一份。 */}
+      {/* ★ 2026-09-25：**黑屏蒙版与教师通知从 `chat-panel` 升到外壳**。
+          教师原话：「黑屏和发消息这两个功能要针对学生的**所有 tab 标签页面**」——
+          而它们原来都画在 `chat-panel.tsx` 里 ⇒ 只盖住/只显示在**学伴那一层**：
+          学生待在首页、学习单或探究空间时，被黑屏了他看不见，老师发的消息他也看不见
+          （而老师那边以为已经生效了）。
+
+          🔴 两块的**观感逐字保留**（内联样式照抄），只把定位从「面板内」改成「视口级」：
+          黑屏从 `absolute`（相对面板）改成 `fixed`（整个视口），通知从 `sticky bottom`
+          改成 `fixed top`（顶栏之下）—— 后者是必须的：`sticky` 只在滚动容器里有意义，
+          而外壳不是一个滚动容器。
+
+          ⚠️ z-index 的分层，照着已经排好的那几层夹：
+            黑屏 10100 ＞ 暂停覆盖层 10000 ＞ 通知 9000 ＞ 面板内模态 100 ＞ 顶栏 60。
+          黑屏最高：它比「整节课暂停」更具体（是**这个学生**的事），两条同时成立时该看见它。
+          通知压在暂停层之下：暂停时学生已经被明确告知「等老师继续」，
+          再让一条消息浮在最上面会把那句话盖掉。 */}
+
+      {/* 黑屏蒙版 */}
+      {chat.blacklisted && (
+        <div className={styles.blackout}>
+          <div className={styles.blackoutBadge}>
+            <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fca5a5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            </svg>
+          </div>
+          <div className={styles.blackoutTitle}>你已被教师黑屏</div>
+          <div className={styles.blackoutHint}>请注意课堂纪律</div>
+        </div>
+      )}
+
+      {/* 教师通知气泡 — 立体气泡样式 */}
+      {chat.teacherNotifBubble && (
+        <div className={styles.notifyWrap}>
+          <div className={styles.notifyRow}>
+            <div className={styles.notifyBubble}>
+              {/* 三角尾巴 */}
+              <div className={styles.notifyTail} />
+              <div className={styles.notifyHead}>
+                <span className={styles.notifyIcon}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+                </span>
+                <span className={styles.notifyFrom}>老师</span>
+              </div>
+              <div>{chat.teacherNotifBubble}</div>
+            </div>
+            <button type="button" onClick={() => chat.setTeacherNotifBubble(null)}
+              className={styles.notifyClose}
+              aria-label="关闭老师消息"
+            >✕</button>
+          </div>
+        </div>
+      )}
+
       {/* ★ 2026-09-25：**课堂暂停的覆盖层**（教师选的「方案 1」）。
           🔴 用 `position: fixed` 而不是流内的一块 —— 第一版写成了流内横幅，
           而 `.bar` 是 `position: fixed; z-index: 60` 的：横幅被它**整个盖住**，

@@ -689,6 +689,11 @@
     transition: none;
   }
 
+  /* ★ 2026-09-25：教师通知那条入场动画。 */
+  .notifyWrap {
+    animation: none;
+  }
+
   /* ★ 2026-09-25：暂停覆盖层那个呼吸点。关掉之后留一个**常亮**的点 ——
      `animation: none` 会让它停在 `opacity: .25`（动画的首帧），那看起来像是坏了；
      覆盖层是暂停期间唯一的解释来源，不能让它显得半死不活。 */
@@ -870,4 +875,174 @@
 @keyframes pauseBreathe {
   0%, 100% { opacity: 0.25; }
   50% { opacity: 1; }
+}
+
+/* ───────── 黑屏蒙版 / 教师通知（★ 2026-09-25 从 chat-panel 升到外壳）─────────
+ * 两块原来都画在 `chat-panel.tsx` 里 ⇒ 只作用于**学伴那一层**。教师要求它们
+ * 「针对学生的所有 tab 标签页面」，所以搬到这里，改成**视口级**定位。
+ * 观感逐字保留（颜色、圆角、阴影、字号都照抄原内联样式）。
+ * ------------------------------------------------------------------------- */
+
+/* 黑屏：`position: absolute`（相对面板）→ `fixed`（整个视口）。
+   z-index 10100 是这一层里最高的：它比「整节课暂停」（10000）更具体
+   —— 是**这个学生**的事，两条同时成立时该看见黑屏。 */
+.blackout {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  background: rgba(0, 0, 0, 0.7);
+  /* ⊘ 2026-09-25：原来面板内那一份带 `backdrop-filter: blur(6px)`（而且只写了标准属性，
+     Safari 15 下本来也不生效）。搬成全屏之后**去掉**了：老 iPad 上一整屏的实时模糊
+     是一笔很实的代价，而底下已经压了 0.7 的黑 —— 那点视觉收益换不回这个开销。
+     要恢复就加 `-webkit-backdrop-filter` + `backdrop-filter` 两行。 */
+}
+
+.blackoutBadge {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 40px rgba(239, 68, 68, 0.2);
+}
+
+.blackoutTitle {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.blackoutHint {
+  font-size: 0.938rem;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 1px;
+}
+
+/* 教师通知：原来在面板里是 `position: sticky; bottom: 0`（贴着输入条上方）。
+   搬出来必须改成 `fixed` —— `sticky` 只在滚动容器里有意义，而外壳不是滚动容器；
+   位置也从**底部**挪到**顶栏之下**：贴着底部会被学伴的输入区压住。 */
+.notifyWrap {
+  position: fixed;
+  top: var(--shell-topbar-height);
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  display: flex;
+  justify-content: center;
+  padding: 8px 20px 0;
+  /* 🔴 这一条是**必须的**：`notifyWrap` 是一条横贯视口的固定带子，
+     不设 `pointer-events: none` 的话它会**挡住底下那一整条区域的点击** ——
+     而它绝大多数时候是空的（没有通知时不渲染，但即便渲染了也只该在气泡上吃事件）。 */
+  pointer-events: none;
+  animation: notifSlideUp 0.3s ease-out;
+}
+
+/* 🔴 **必须在本文件里再定义一份**，不能靠 `page.tsx` 那个全局的 `notifSlideUp`：
+ * css-loader 的模块模式会把 `animation-name` 当成局部名字改写（加 `shell_...__hash` 前缀），
+ * 而改写**只在同文件找得到同名 `@keyframes` 时**才指向真实定义 —— 否则产物里是一个
+ * 悬空引用：`next build` 退出 0、grep 看得见那一行、而元素**不会动**。
+ * （原来是 `chat-panel.tsx` 里的**内联**样式字符串，内联不走模块改写，所以那时能用全局的；
+ *   搬进 CSS 模块之后这条前提就没了。本仓 `css-module-animation.test.ts` 正是拦这个的 ——
+ *   它当场就红了，指名道姓地报出这一行。） */
+@keyframes notifSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notifyRow {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-left: 4px;
+  max-width: 800px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.notifyBubble {
+  position: relative;
+  pointer-events: auto;
+  padding: 10px 14px;
+  border-radius: 6px 16px 16px 16px;
+  background: linear-gradient(135deg, #fff7ed, #fffbeb);
+  font-size: 0.813rem;
+  color: #451a03;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(251, 146, 60, 0.08), 0 8px 24px rgba(251, 146, 60, 0.1);
+  max-width: 85%;
+  word-break: break-word;
+}
+
+.notifyTail {
+  position: absolute;
+  top: 0;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  background: #fff7ed;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  border-radius: 0 0 0 2px;
+}
+
+.notifyHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.notifyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: #fed7aa;
+  color: #c2410c;
+  flex-shrink: 0;
+}
+
+.notifyFrom {
+  font-weight: 600;
+  font-size: 0.688rem;
+  color: #c2410c;
+}
+
+.notifyClose {
+  flex-shrink: 0;
+  margin-left: 8px;
+  align-self: flex-start;
+  margin-top: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+/* 悬停态：原来靠两段内联 `onMouseEnter/Leave` 改样式，收进 CSS 更省事，
+   ⚠️ 也顺带**去掉了那一处 `transition: all 0.12s`** —— 一个 20px 的 ✕ 上，
+   那个过渡既看不出来、又要在降级块里多守一条。 */
+.notifyClose:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #94a3b8;
 }

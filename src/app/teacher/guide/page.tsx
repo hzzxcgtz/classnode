@@ -311,12 +311,12 @@ export default function GuidePage() {
             <SectionHeading icon="bot" eyebrow="步骤 2" title="接入智能体：把你已经做好的 AI 助教带进来" intro="ClassNode 不负责替你创作智能体，而是把各平台上的智能体安全、可控地接入真实课堂。" />
             <Steps items={[
               { title: "选择平台", text: <>在“智能体管理”点击接入，先选择智能体所在的平台。不同平台需要的凭据会随标签切换。</> },
-              { title: "填写接入凭据", text: <>按表单填写 Bot ID、API Token、App ID 等信息。密钥会加密保存在教师电脑上，不需要也不应该告诉任何人。</> },
+              { title: "填写接入凭据", text: <>按表单填写 Bot ID、访问令牌、App ID 等信息。密钥会加密保存在教师电脑上，不需要也不应该告诉任何人。</> },
               { title: "补充展示资料", text: <>填写学生在课堂中看到的名称、头像和开场白。Coze 低代码可以在凭据完整后自动获取，再由你确认或修改。</> },
               { title: "保存并检测", text: <>保存后执行连通性检测。只有能够正常回复的智能体，才建议用于正式课堂。</> },
             ]} />
             <PlatformComparison />
-            <Screenshot id="agent-form" title="截图 1：接入 / 编辑智能体弹窗" instruction="请选择 Coze 低代码标签，完整显示顶部平台标签、左侧接入凭据、右侧智能体资料和底部操作区。建议窗口宽度 1400px 左右。" avoid="请使用演示 Bot ID；API Token 必须保持掩码状态，不要出现真实密钥。" />
+            <Screenshot id="agent-form" title="截图 1：接入 / 编辑智能体弹窗" instruction="请选择 Coze 低代码标签，完整显示顶部平台标签、左侧接入凭据、右侧智能体资料和底部操作区。建议窗口宽度 1400px 左右。" avoid="请使用演示 Bot ID；访问令牌必须保持掩码状态，不要出现真实密钥。" />
           </GuideSection>
 
           <GuideSection id="roster">

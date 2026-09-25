@@ -56,7 +56,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
   const submit = async () => {
     if (busy) return;
     if (label.trim() === '') { onError('请填写备注（这是谁的账号）'); return; }
-    if (editingId === '' && token.trim() === '') { onError('请填写 API Token'); return; }
+    if (editingId === '' && token.trim() === '') { onError('请填写访问令牌'); return; }
     setBusy(true);
     try {
       if (editingId === '') {
@@ -103,15 +103,15 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
       <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="api-token-title"
         style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 24, width: 560, maxWidth: '92vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
-        <h3 id="api-token-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>API Token</h3>
+        <h3 id="api-token-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>访问令牌</h3>
         <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px', lineHeight: 1.7 }}>
-          Coze 低代码的 Token 属于<strong>扣子账号</strong>，同一个号做出来的智能体共用一份。
+          Coze 低代码的访问令牌属于<strong>扣子账号</strong>，同一个号做出来的智能体共用一份。
           在这里存好，接入智能体时直接选。
         </p>
 
         {tokens.length === 0 && editingId === null && (
           <div style={{ padding: '18px 16px', background: '#f8fafc', borderRadius: 10, fontSize: '0.813rem', color: '#94a3b8', textAlign: 'center', marginBottom: 14 }}>
-            还没有 API Token
+            还没有访问令牌
           </div>
         )}
 
@@ -163,10 +163,10 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
               placeholder="例如：张老师的号" style={{ fontSize: '0.813rem', marginBottom: 10 }} />
 
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>
-              API Token {editingId !== '' && <span style={{ color: '#94a3b8' }}>（留空 = 不改）</span>}
+              访问令牌 {editingId !== '' && <span style={{ color: '#94a3b8' }}>（留空 = 不改）</span>}
             </label>
             <input className="input" value={token} onChange={(e) => setToken(e.target.value)}
-              placeholder={editingId === '' ? '在扣子平台获取' : '留空则沿用原来的'}
+              placeholder={editingId === '' ? '在扣子平台获取，以 pat_ 开头' : '留空则沿用原来的'}
               style={{ fontSize: '0.813rem', marginBottom: 10, fontFamily: 'monospace' }} autoComplete="off" />
 
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>

@@ -66,12 +66,12 @@ test('🔴 出参永不包含明文 Token（只给掩码）', async (t) => {
   const { call } = await start(t);
   const created = await call('POST', '/', { label: '张老师的号', token: TOKEN });
   assert.equal(created.status, 200);
-  assert.equal(created.json?.maskedToken, 'pat_*********************uvwx');
+  assert.equal(created.json?.maskedToken, 'pat_******uvwx');
   assert.equal(JSON.stringify(created.json).includes(TOKEN), false, '★ 创建响应里不许出现明文');
 
   const listed = await call('GET', '/');
   assert.equal(JSON.stringify(listed.json).includes(TOKEN), false, '★ 列表响应里不许出现明文');
-  assert.equal((listed.json as unknown as { maskedToken: string }[])[0].maskedToken, 'pat_*********************uvwx');
+  assert.equal((listed.json as unknown as { maskedToken: string }[])[0].maskedToken, 'pat_******uvwx');
 });
 
 test('落库的是密文，不是明文', async (t) => {

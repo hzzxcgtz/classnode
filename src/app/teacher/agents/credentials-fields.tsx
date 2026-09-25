@@ -104,7 +104,9 @@ export function AgentPlatformNotice({ platform }: { platform: AgentPlatform }) {
 export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
   const { platform, editing, savedApiKeyLabel, savedApiSecretLabel, fieldErrors, onChange } = props;
   const update = (field: CredentialField) => (value: string) => onChange(field, value);
-  const apiKeyLabel = platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : 'API Token';
+  // ★ 2026-09-25：`coze` 那一档改叫「访问令牌」（教师：官网里更多这么叫）。
+  // ⚠️ 智谱的 `API Key` 是**那个平台自己的叫法**，不是同一个东西，别一起改。
+  const apiKeyLabel = platform === 'wenxin' ? '密钥' : platform === 'zhipuai' ? 'API Key' : '访问令牌';
   const apiKeyPlaceholder = editing
     ? savedApiKeyLabel || SAVED_SECRET_PLACEHOLDER
     : platform === 'coze' ? '在 Coze 个人令牌页面创建，以 pat_ 开头'
@@ -124,7 +126,7 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
       )}
       {/* ★ 2026-09-25：**Coze 低代码的 Token 改成「选一份共享的」**。
           Token 属于扣子账号、不属于 Bot —— 同一个号做出来的智能体共用一份，
-          换一次只需改那一份（新建/管理在「API Token」弹窗里）。
+          换一次只需改那一份（新建/管理在「访问令牌」弹窗里）。
 
           ⚠️ 仍保留「自带 Token」这一项（= `credentialId` 为空）：
           「这个 Bot 用的不是我的号」是真实存在的情况，去掉它等于逼教师绕路。
@@ -137,21 +139,25 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select className="input" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
               style={{ fontSize: '0.813rem', padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }}>
-              <option value="">自带 Token（只给这一个智能体用）</option>
+              {/* ★ 2026-09-25（教师）：「我的扣子是我自己在管理里面设置的，要排在最上面，
+                  排在最后面的才是『自定义……』」。⇒ 已存的凭据在前，「自定义」垫底。
+                  ⚠️ 这不是纯口味：**常用的是上面那几个**，而 `<select>` 默认选中第一项 ——
+                  「自定义」排第一时，每次新建都要先把它划过去。 */}
               {(props.tokens ?? []).filter((row) => row.platform === 'coze').map((row) => (
                 <option key={row.id} value={row.id}>{row.label}</option>
               ))}
+              <option value="">自定义（只给这一个智能体用）</option>
             </select>
             <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px', flexShrink: 0 }}
               onClick={() => props.onManageTokens?.()}>管理</button>
           </div>
           {props.credentialId ? (
             <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 4 }}>
-              这一份由多个智能体共用，换 Token 只需在「API Token」里改一次。
+              这一份由多个智能体共用，换令牌只需在「访问令牌」里改一次。
             </div>
           ) : (
             <div style={{ marginTop: 10 }}>
-              <RequiredField label="Token" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+              <RequiredField label="访问令牌" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
             </div>
           )}
         </div>
@@ -182,7 +188,7 @@ export function validateAgentCredentials(platform: AgentPlatform, values: AgentC
   // 「能保存但不能再获取信息」这种极难归因的错位）。
   const usesSharedCredential = platform === 'coze' && !!values.credentialId;
   if (!usesSharedCredential && !hasSavedApiKey && !values.apiKey.trim()) {
-    errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写 API Token';
+    errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写访问令牌';
   }
   return errors;
 }

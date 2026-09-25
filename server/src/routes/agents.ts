@@ -270,13 +270,13 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
     // ⚠️ 放宽的是**必填**，不是**校验**：下面仍然要求那个凭据真的存在（防一个悬空 id 落库）。
     const sharedCredentialId = typeof credentialId === 'string' && credentialId.trim() ? credentialId.trim() : null;
     if (!sharedCredentialId && (typeof apiKey !== 'string' || !apiKey.trim())) {
-      return res.status(400).json({ error: '请填写 API 密钥，或者选一份共享的 API Token' });
+      return res.status(400).json({ error: '请填写 API 密钥，或者选一份共享的访问令牌' });
     }
     if (sharedCredentialId) {
       const credential = await prisma.platformToken.findUnique({ where: { id: sharedCredentialId }, select: { id: true } });
       if (!credential) {
         discardUploadedLogo(req);
-        return res.status(400).json({ error: '选中的 API Token 不存在，请刷新后重试' });
+        return res.status(400).json({ error: '选中的访问令牌不存在，请刷新后重试' });
       }
     }
     const apiUrlError = validateAgentApiUrl(apiUrl);
@@ -353,7 +353,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
       const nextId = typeof credentialId === 'string' && credentialId.trim() ? credentialId.trim() : null;
       if (nextId) {
         const credential = await prisma.platformToken.findUnique({ where: { id: nextId }, select: { id: true } });
-        if (!credential) return res.status(400).json({ error: '选中的 API Token 不存在，请刷新后重试' });
+        if (!credential) return res.status(400).json({ error: '选中的访问令牌不存在，请刷新后重试' });
       }
       // ⚠️ `data` 标注的是 `Prisma.AgentUpdateInput`（checked input）—— 它**没有**裸外键列
       // `credentialId`，只有关系 `credential`。写 `data.credentialId` 会编译失败（好事：

@@ -42,7 +42,7 @@ export function useAgentFormActions(options: FormActionOptions) {
     // 判据要与 `validateAgentCredentials` 那条**同源**，否则会出现「能保存但不能再获取信息」。
     const hasKey = hasSavedApiKey || !!values.apiKey.trim() || !!values.credentialId;
     if (!values.botId.trim() || !hasKey) {
-      setToast({ msg: '请先填写 Bot ID 和 API Token 后再获取信息', type: 'error' }); return;
+      setToast({ msg: '请先填写 Bot ID 和访问令牌后再获取信息', type: 'error' }); return;
     }
     setFetchingInfo(true);
     try {
@@ -52,7 +52,7 @@ export function useAgentFormActions(options: FormActionOptions) {
       if (response.name) setName(response.name);
       if (response.iconUrl) applyRemoteLogo(response.iconUrl);
       if (response.greeting) setGreeting(response.greeting);
-      if (!response.name && !response.iconUrl) setToast({ msg: '未能从 Coze 获取到智能体信息，请检查 Bot ID 和 API Token 是否正确', type: 'error' });
+      if (!response.name && !response.iconUrl) setToast({ msg: '未能从 Coze 获取到智能体信息，请检查 Bot ID 和访问令牌是否正确', type: 'error' });
     } catch (error) {
       if (mountedRef.current) setToast({ msg: `获取信息失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
     } finally { if (mountedRef.current) setFetchingInfo(false); }

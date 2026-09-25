@@ -8,6 +8,9 @@ import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
 import { useChatSocket } from './chat/use-chat-socket';
+// ★ 2026-09-25：清「上次停在哪个模块」那条存档。**函数由键的所有者导出**，这里不写键名
+//（键名一份拷贝的纪律由 `shell/last-module-storage.test.ts` 钉着）。
+import { clearStoredModule } from './shell/use-module-tabs';
 
 export interface ClassroomSessionOptions {
   router: { push: (href: string) => void };
@@ -185,6 +188,16 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setBlacklisted(false);
     // 落点是首页门户（§4.2）：学生自己从卡片里选今天要做什么，而不是被直接丢进某个模块。
     setStep('home');
+    // ★ 2026-09-25（教师 2026-09-23 截图批注）：**进入时丢掉「上次停在哪个模块」那条存档**。
+    // 🔴 只写 `setStep('home')` 是不够的：外壳挂载时那个恢复 effect
+    //（`shell/use-module-tabs.ts`）会把存档读回来，把学生直接送进**上一个学生离开的模块**。
+    // 共用 iPad 上这是必然发生的 —— 上一位留在探究空间，下一位一进来就在探究空间，
+    // 而他什么都没点；教师看板跟着 `module-focus` 走，监测到的也是错的模块。
+    // ⚠️ **刷新不走这里**（刷新走 `chat_session_<code>` 自动重连，不过身份页）⇒
+    //    刷新仍然停在他原来那一块，P2.3 的行为一个字没动。
+    // ⚠️ 顺序要紧：必须在 `setStep('home')` 之后、外壳挂载**之前** —— 挂载时那个 effect
+    //    读的就是这条存档。
+    clearStoredModule();
     // 保存会话到 localStorage
     localStorage.setItem(`chat_session_${code}`, JSON.stringify({
       studentId: selectedStudent.id,

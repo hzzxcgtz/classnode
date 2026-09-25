@@ -72,6 +72,26 @@ function writeStoredModule(id: ModuleId | null): void {
   } catch {}
 }
 
+/**
+ * ★ 2026-09-25：丢掉「上次停在哪个模块」这条存档。
+ *
+ * 🔴 谁该调它、谁**不该**调它，是这个函数存在的全部理由：
+ *   · **该**：学生**选姓名进入**那一下（`use-classroom-session.ts` 的
+ *     `handleIdentityConfirm`）。共用 iPad 上，上一个学生留在探究空间 ⇒ 下一个学生
+ *     一进来就在探究空间，**而他什么都没点**；教师看板跟着 `module-focus` 走，
+ *     于是监测到的也是错的模块。
+ *   · **不该**：刷新。刷新走的是 `chat_session_<code>` 那条自动重连
+ *     （`identity/use-student-session.ts:70`），**根本不过身份页** ——
+ *     所以恢复存档那条路（本文件上面那个 effect）照旧管刷新，见 P2.3。
+ *
+ * ⚠️ 导出它而不是让调用方自己 `removeItem`：键名必须只有**一个**所有者
+ * （用例 `shell/last-module-storage.test.ts` 钉着这一点）——三个字面量各写一份的话，
+ * 表现是「清档清了个空气」，而 `removeItem` 传错键名**不会抛**，没有任何东西会红。
+ */
+export function clearStoredModule(): void {
+  writeStoredModule(null);
+}
+
 export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
   /** 前台是哪个模块；`null` = 首页在前台（首页也是这个外壳的一层）。 */
   const [activeModuleId, setActiveModuleId] = useState<ModuleId | null>(null);

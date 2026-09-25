@@ -253,7 +253,15 @@ export function WorksheetQuestionList({
       {groups.map((group, groupIndex) => (
         // ⚠️ `key` 用下标 + 标题：散题那几段的 `title` 恒为 `null`，拿它当 key 会撞。
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
-        <div className={styles.group} key={`${groupIndex}:${group.title ?? ''}`}>
+        // ★ 2026-09-26（教师）：「题目要**装在**任务容器里」—— 原来只有一个标题 + 一串平铺的卡，
+        // 标题看起来像它自己也是一道题（而它没有提交，只是看着像）。
+        // ⚠️ **只在有标题的那几段**加容器：散题那一段（`title === null`）没有名字，
+        // 给它套一个框只是噪音 —— 而它本来就是老数据才有的形态。
+        <div
+          className={styles.group}
+          data-container={group.title ? '1' : '0'}
+          key={`${groupIndex}:${group.title ?? ''}`}
+        >
           {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}
           {/* ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
               它挂在任务上（`data.description`），不是题目的一部分。 */}

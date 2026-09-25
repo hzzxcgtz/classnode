@@ -17,11 +17,17 @@ import { readCorrectKeys, TRUE_FALSE_OPTIONS } from '../worksheet-editor-core';
  * ⚠️ 初始 `correctKeys` 是**空的**（不是 `['T']`）：见 `newQuestion` 的注释 ——
  * 默认选中一个答案会安静地把一道没配答案的题变成「所有选对的学生都对」。
  */
-export function TrueFalseBody({ node, onDataChange }: {
+export function TrueFalseBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ **整个编辑体就是答案选择器**，整块不渲染。 */
+  showAnswer?: boolean;
 }) {
   const correctKeys = readCorrectKeys(node);
+
+  // 🔴 判断题的编辑体**整个就是「选正确答案」**（题面只有题干 + 固定的对/错两个按钮，
+  // 不存 `options`）⇒ 关掉自动评分时它整块不渲染，而不是只藏一半。
+  if (!showAnswer) return null;
 
   return (
     <div className="worksheet-editor-inline-actions">

@@ -1081,6 +1081,21 @@ export function isGradedQuestionType(type: string): boolean {
   return option?.graded === true;
 }
 
+/**
+ * ★ 2026-09-26：**哪些题型会给部分分** —— 判分器里真会返回 `partial` 的那五个。
+ *
+ * 🔴 它是一条**判据**（决定「判分依据」那一行画不画），所以住在核心里而不是 JSX 里：
+ * 一道单选 / 判断题**永远拿不到部分分**（`judgeSingleChoice` 只有对与错），
+ * 给它画一行「部分给分怎么算」是**一句谎话**。问答 / 绘图连判分都没有，更不画。
+ * ⚠️ 与 `QUESTION_TYPE_OPTIONS` 的 `graded` **不是同一件事**：那一格是「判不判分」，
+ * 这一条是「判不判得出部分对」—— 五个题型两者皆是，单选/判断只有前者。
+ */
+const PARTIAL_TYPES: readonly string[] = ['multi-choice', 'fill-blank', 'order', 'match', 'categorize'];
+
+export function canGivePartial(type: string): boolean {
+  return PARTIAL_TYPES.includes(type);
+}
+
 export function gradesOnSubmit(node: WorksheetQuestionNode): boolean {
   // ★ 2026-09-25（教师最终裁定）：判不判分**只看那个开关**，不再以「有没有答案」推断。
   // ⚠️ 上一版（同一个下午）是 `isChoice ? readCorrectKeys(node).length > 0 : true` ——
@@ -1312,7 +1327,7 @@ export function findPartialPoints(content: WorksheetContent): Array<{ id: string
  *   · 逐题填了（两端齐全）⇒ 用它那个数；
  *   · 逐题留空（或 `{}` —— 服务端 `normalizePoints({})` 也回 `undefined`，同义）⇒ 用学习单级的。
  */
-function effectiveHalfStep(
+export function effectiveHalfStep(
   node: WorksheetQuestionNode,
   inherited: { full: number; half: number },
 ): number | null {

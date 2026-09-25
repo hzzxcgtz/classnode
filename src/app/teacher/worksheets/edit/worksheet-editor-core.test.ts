@@ -36,6 +36,7 @@ import {
   createEmptyContent,
   createHistory,
   DEFAULT_SETTINGS,
+  canGivePartial,
   draftKeyFor,
   editorRenderBlocks,
   editorRenderRows,
@@ -49,6 +50,7 @@ import {
   toleranceOf,
   HISTORY_LIMIT,
   isOrderAmbiguous,
+  isGradedQuestionType,
   isOrderAnswerUsable,
   isPartialPoints,
   type ItemEntry,
@@ -2144,4 +2146,19 @@ test('🔴 新建的题把分值**落成真实数字**（学习单当前那两�
   // 那条路留给老数据，不是给新题的默认。
   const noSeed = contentReducer(state, { kind: 'addQuestion', questionType: 'fill-blank', parentId: null });
   assert.equal('points' in noSeed.present.nodes[1], false);
+});
+
+test('🔴 `canGivePartial`：只有**真会给部分分**的五个题型为真（画「判分依据」那一行的判据）', () => {
+  // 给一道单选画一行「部分给分怎么算」是**一句谎话** —— `judgeSingleChoice` 只有对与错，
+  // 永远返回不了 `partial`。问答/绘图连判分都没有。任务不是题。
+  for (const type of ['multi-choice', 'fill-blank', 'order', 'match', 'categorize']) {
+    assert.equal(canGivePartial(type), true, type);
+  }
+  for (const type of ['single-choice', 'true-false', 'short-answer', 'drawing', 'task', '不认识的题型']) {
+    assert.equal(canGivePartial(type), false, type);
+  }
+  // ⚠️ 与 `isGradedQuestionType` **不是同一件事**：单选/判断「判分但不给部分分」，
+  // 这一条必须在两者之间划出那道界线（否则「判分依据」会画到永远用不到它的题上）。
+  assert.equal(isGradedQuestionType('single-choice'), true);
+  assert.equal(canGivePartial('single-choice'), false);
 });

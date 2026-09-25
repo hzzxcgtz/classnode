@@ -18,9 +18,11 @@ import { ChoiceOptionsEditor } from './choice-options';
  * 教师会以为部分得分已经开好了。那句话在 `PointsRow` 里（`shouldWarnZeroHalfCredit`），
  * 因为判据要用到学习单级的两档，而这张卡片的这一层拿不到它。
  */
-export function MultiChoiceBody({ node, onDataChange }: {
+export function MultiChoiceBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ 答案那一块不渲染（题面照常）。 */
+  showAnswer?: boolean;
 }) {
   // 判据与服务端 `allowsMissing` 逐字一致：**只有** 'allow-missing' 算「漏选算部分给分」。
   // 认不出的值 ⇒ 这个按钮显示成未选中（= 全对才算），与判分的行为一致 ——
@@ -29,9 +31,10 @@ export function MultiChoiceBody({ node, onDataChange }: {
 
   return (
     <>
-      <ChoiceOptionsEditor node={node} multiple onDataChange={onDataChange} />
+      <ChoiceOptionsEditor node={node} multiple onDataChange={onDataChange} showAnswer={showAnswer} />
 
-      <div className="worksheet-editor-inline-actions">
+      {showAnswer && (<>
+<div className="worksheet-editor-inline-actions">
         <span className="worksheet-editor-block-label">评分方式</span>
         <label className="worksheet-editor-option-correct">
           <input
@@ -52,6 +55,7 @@ export function MultiChoiceBody({ node, onDataChange }: {
           <span>漏选算部分给分</span>
         </label>
       </div>
+      </>)}
 
       <p className="worksheet-editor-hint">
         选了「漏选算部分给分」之后，学生只勾了正确答案里的一部分（<strong>一个错的都没勾</strong>）时得上面

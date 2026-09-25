@@ -34,9 +34,11 @@ function zoneLabel(text: string, index: number): string {
  * 不存在的框的键，服务端会拒绝**整道题**（「每个条目都必须落到一个框里」），
  * 而教师看到的只是某个条目还显示着「已归到框二」。清掉之后它回到「请选择」。
  */
-export function CategorizeBody({ node, onDataChange }: {
+export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
+  showAnswer?: boolean;
 }) {
   const categorize = readCategorize(node);
   const { items, zones, placement } = categorize;
@@ -94,7 +96,8 @@ export function CategorizeBody({ node, onDataChange }: {
                   placeholder={`条目 ${index + 1}`}
                   onChange={event => commit({ ...categorize, items: renameEntryAt(items, index, event.target.value) })}
                 />
-                <select
+                {showAnswer && (<>
+<select
                   className="input worksheet-editor-pair-select"
                   value={zoneId}
                   aria-label={`「${entry.text.trim() || `条目 ${index + 1}`}」归到哪个框`}
@@ -110,6 +113,7 @@ export function CategorizeBody({ node, onDataChange }: {
                     <option value={zoneId}>（原来的框已经不在了）</option>
                   ) : null}
                 </select>
+                </>)}
                 <button
                   type="button"
                   className="worksheet-editor-icon-button is-danger"

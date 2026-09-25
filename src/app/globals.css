@@ -2397,6 +2397,50 @@ tr:hover td {
   font-size: 0.75rem;
 }
 
+/* ── 「允许自动评分」开关 + 「判分依据」（★ 2026-09-26）────────────────────
+   两者都属于「这一题怎么算分」的设置，所以与分值行**同一档**（灰、小字、配角）——
+   简报第 2 步立的规矩：题干是唯一的主角，设置项一律退灰。 */
+.worksheet-editor-autograde {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  color: #475569;
+  font-size: 0.813rem;
+}
+
+.worksheet-editor-autograde input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
+.worksheet-editor-autograde em {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.worksheet-editor-tolerance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 下拉只占它需要的那点宽度（与分值那两个框同一条理由：`.input` 的 `width: 100%`
+   会把一行撑满，而这是一个「选一档」的小控件）。 */
+.worksheet-editor-tolerance-select {
+  width: auto;
+  max-width: 240px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
 /* 加题弹窗 / 设置弹窗。与 C1 那两个弹窗一样是 `.modal-overlay` 的兄弟节点，
    靠 `position: fixed` 自己居中（`.modal-overlay` 只负责遮罩）。 */
 /* 探究网页预览浮窗（★ 2026-09-25）。

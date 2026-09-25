@@ -550,7 +550,22 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 教师新加的题永远落在任务外面。
    */
   const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null) => {
-    dispatch({ kind: 'addQuestion', questionType, parentId });
+    // ★ 2026-09-26（教师裁定）：新题的分值**落成真实数字**（学习单当前那两档），
+    // 于是框里显示的是数字而不是灰色提示。⚠️ 老题一个字不改（它们仍「跟随学习单」）。
+    dispatch({
+      kind: 'addQuestion', questionType, parentId,
+      points: { full: settings.rewardStep, half: settings.halfStep },
+    });
+  }, [settings.rewardStep, settings.halfStep]);
+
+  /** ★ 2026-09-26：逐题的「允许自动评分」开关。 */
+  const updateAutoGrade = useCallback((questionId: string, autoGrade: boolean) => {
+    dispatch({ kind: 'updateAutoGrade', id: questionId, autoGrade });
+  }, []);
+
+  /** ★ 2026-09-26：部分给分的容错档（`null` = 缺省 = 旧规则）。 */
+  const updateTolerance = useCallback((questionId: string, tolerance: number | null) => {
+    dispatch({ kind: 'updateTolerance', id: questionId, tolerance });
   }, []);
 
   /** 新建一个任务容器（标题按序号预填，教师可改）。 */
@@ -620,7 +635,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, addTask, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
+    addQuestion, addTask, updateAutoGrade, updateTolerance, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
     save, duplicate, goBack, ensureUsage,
   };

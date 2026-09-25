@@ -26,11 +26,13 @@ import {
  * 「把控件画出来、把改动交上去」，不做任何判断 —— 组件这一层**没有回归网**
  *（本仓前端没有 jsdom / testing-library），判据留在这里就等于没有验证过。
  */
-export function ChoiceOptionsEditor({ node, multiple, onDataChange }: {
+export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   /** `true` = 多选题（可勾多个、正确答案可以不止一个）。`false` = 单选/判断以外的单选口径。 */
   multiple: boolean;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ **只隐藏「正确答案」那几个圆点/勾选框**，选项列表照常。 */
+  showAnswer?: boolean;
 }) {
   const options = readOptions(node);
   const correctKeys = readCorrectKeys(node);
@@ -47,7 +49,8 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange }: {
       <div className="worksheet-editor-options">
         {options.map((option, optionIndex) => (
           <div className="worksheet-editor-option" key={option.key}>
-            <label className="worksheet-editor-option-correct" title="选为正确答案">
+            {showAnswer && (<>
+<label className="worksheet-editor-option-correct" title="选为正确答案">
               <input
                 // ⚠️ 多选是勾选框、单选是圆点。`name` 必须带 `node.id`：同卷多题如果共用名字，
                 // 第 1 题的选择会把第 2 题的顶掉（学生端 `worksheet-panel.tsx` 上有一条同源的注释）。
@@ -68,6 +71,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange }: {
               />
               <span>{option.key}</span>
             </label>
+            </>)}
             <input
               className="input"
               value={option.text}

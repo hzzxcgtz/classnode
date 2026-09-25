@@ -255,6 +255,8 @@ function WorksheetEditorBody() {
                 onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
                 onPointsChange={points => editor.updatePoints(row.node.id, points)}
                 onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
+                onAutoGradeChange={autoGrade => editor.updateAutoGrade(row.node.id, autoGrade)}
+                onToleranceChange={tolerance => editor.updateTolerance(row.node.id, tolerance)}
                 onMove={delta => editor.moveQuestion(row.node.id, delta)}
                 onRemove={() => void requestRemove(row.node, row.heading)}
               />

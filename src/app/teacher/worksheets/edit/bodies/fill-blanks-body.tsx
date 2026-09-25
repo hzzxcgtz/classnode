@@ -40,9 +40,11 @@ import {
  * ⇒ 现在它在**两个地方**对教师可见：删除按钮的 `title`（悬停即见）、以及多空题目下面
  * 常显的那一句「⚠ 删掉中间的空会让已经交上来的答案往后错一位」。**改这里时别把界面那两处删掉。**
  */
-export function FillBlanksBody({ node, onDataChange }: {
+export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
+  showAnswer?: boolean;
 }) {
   const blanks = readBlankAnswers(node);
   const shape = fillShape(node);
@@ -55,13 +57,15 @@ export function FillBlanksBody({ node, onDataChange }: {
         <div className="worksheet-editor-blank" key={index}>
           <label className="worksheet-editor-field">
             <span>{blanks.length > 1 ? `第 ${index + 1} 个空的答案` : '答案'}</span>
-            <textarea
+            {showAnswer && (<>
+<textarea
               className="input"
               rows={2}
               value={readBlankText(node, index)}
               onChange={event => onDataChange(writeBlankText(node, index, event.target.value))}
               placeholder={'一行一个可接受答案，例如：\n光合作用\n碳氧平衡'}
             />
+            </>)}
           </label>
           {/* ⚠️ 只剩一个空时**不渲染**这个按钮（服务端要求「至少要有一个空」）——
               不是渲染成禁用态。`removeBlank` 的注释里写着同一条。 */}

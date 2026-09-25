@@ -44,9 +44,11 @@ function rightLabel(text: string, index: number): string {
  * ⚠️ 教师侧的键叫 `pairs`、学生那侧的作答值叫 `links`（§12 的裁定，**别写反**）：
  * 撞名会让「学生连线答对了」被那条「响应不得含答案键」的扫描读成「答案泄漏」。
  */
-export function MatchBody({ node, onDataChange }: {
+export function MatchBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
+  showAnswer?: boolean;
 }) {
   const match = readMatch(node);
   const { left, right, pairs } = match;
@@ -81,7 +83,8 @@ export function MatchBody({ node, onDataChange }: {
                 placeholder={`右项 ${index + 1}`}
                 onChange={event => commit({ ...match, right: renameEntryAt(right, index, event.target.value) })}
               />
-              <select
+              {showAnswer && (<>
+<select
                 className="input worksheet-editor-pair-select"
                 value={pairedRightId}
                 aria-label={`「${entry.text.trim() || `左项 ${index + 1}`}」连到哪一项`}
@@ -112,6 +115,7 @@ export function MatchBody({ node, onDataChange }: {
                   <option value={pairedRightId}>（原来的右项已经不在了）</option>
                 ) : null}
               </select>
+              </>)}
               <button
                 type="button"
                 className="worksheet-editor-icon-button is-danger"

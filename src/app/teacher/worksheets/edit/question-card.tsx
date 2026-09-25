@@ -2,8 +2,11 @@
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
+  canGivePartial,
+  effectiveHalfStep,
   gradesOnSubmit,
   isGradedQuestionType,
+  toleranceOf,
   isPartialPoints,
   parsePointInput,
   planPointInputChange,
@@ -49,7 +52,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -78,6 +81,10 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
   /** ★ M4b/D1：逐题的作答方式（键盘 / 手写）。走 reducer，所以进撤销栈。 */
   onInputModeChange: (inputMode: 'keyboard' | 'handwriting') => void;
+  /** ★ 2026-09-26：「允许自动评分」那个开关。 */
+  onAutoGradeChange: (autoGrade: boolean) => void;
+  /** ★ 2026-09-26：部分给分的容错档。`null` = 缺省（旧规则「只要有一部分对就给分」）。 */
+  onToleranceChange: (tolerance: number | null) => void;
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
 }) {
@@ -102,6 +109,8 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
    *    作答值仍然是 `drawing/v1`，学生拿到的仍然是画布。
    */
   const isDrawing = node.type === 'drawing';
+  /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
+  const gradedOn = gradesOnSubmit(node);
   const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
 
   return (
@@ -165,7 +174,25 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
         ⚠️ 区分两种情况，话不一样：题型**本来就不判分**（问答 / 绘图）时什么都不说，
         因为那是题型的性质、教师改不了；只有「能判分却没设答案」才需要一句话告诉他为什么。
       */}
-      {gradesOnSubmit(node) ? (
+      {/*
+        ★ 2026-09-26（教师裁定）：**「允许自动评分」这个开关 + 由它决定显示什么**。
+        开着（缺省）⇒ 答案、全对分、部分给分都要设；关掉 ⇒ 三样一起隐藏，这道题不判分。
+        ⚠️ 开关**只对「本来就能判分」的题型画**（问答 / 绘图 / 任务没有它 ——
+        它们本来就不判分，给一个开了也没用的开关是骗人）。
+      */}
+      {isGradedQuestionType(node.type) && (
+        <label className="worksheet-editor-autograde">
+          <input
+            type="checkbox"
+            checked={node.autoGrade !== false}
+            onChange={event => onAutoGradeChange(event.target.checked)}
+          />
+          <span>允许自动评分</span>
+          <em>关掉之后，这道题的答案与分值都不参与判分，只统计有多少人作答。</em>
+        </label>
+      )}
+
+      {gradesOnSubmit(node) && (
         <PointsRow
           heading={heading}
           node={node}
@@ -174,11 +201,24 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
           onPointsInputChange={onPointsInputChange}
           onPointsChange={onPointsChange}
         />
-      ) : isGradedQuestionType(node.type) ? (
+      )}
+
+      {/*
+        ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。
+        ⚠️ 判据用的是 `effectiveHalfStep`（内核里、有 6 条用例）—— 「这一题**实际会用到**的
+        部分给分档」。半填（只填了一个框）时它回 `null`（说不准）⇒ 那时**不显示**这一行：
+        教师还在打字的中间态，弹出一行要他选容错档是打断。
+      */}
+      {gradesOnSubmit(node) && canGivePartial(node.type)
+        && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
+        <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
+      )}
+
+      {!gradesOnSubmit(node) && isGradedQuestionType(node.type) && (
         <p className="worksheet-editor-ungraded-hint">
-          没有勾选正确答案 ⇒ 这道题<strong>不判分</strong>，只统计有多少人作答。想让它算分，勾上正确答案即可。
+          关掉了自动评分 ⇒ 这道题<strong>不判分</strong>，只统计有多少人作答。答案与分值都已隐藏（重新打开即恢复）。
         </p>
-      ) : null}
+      )}
 
       {/* ★ M4b/D1：「作答方式」那一行。位置钉在**分值行之下、题型编辑体之上**，
           不因题型而变 —— 教师换题型时控件的位置不该跳。
@@ -191,13 +231,13 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
           直接执行（无 React）—— 往它里面塞组件就是两份真源。代价是**加题型要记得在这里加一支**，
           而漏加的后果是「那道题在新题型上只有题干、没有任何输入控件」，教师看得出不对
           （卡片上什么都没有），不像题目注册表那条漏改是静默的。 */}
-      {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} />}
-      {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} />}
+      {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+      {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
       {node.type === 'short-answer' && (
         <p className="worksheet-editor-hint">问答题是主观题，不自动判分 —— 看板上只统计作答进度。</p>
       )}
@@ -347,6 +387,49 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
 }
 
 /**
+ * ★ 2026-09-26（教师裁定）：「**判分依据**」—— 部分给分给到哪一步。
+ *
+ * 只有部分给分 > 0 时才画（=0 表示不给部分分，那时这一行没有意义）；
+ * 也只有 `canGivePartial` 的五个题型才画（单选/判断**永远拿不到部分分**）。
+ *
+ * 两档语义（与内核 `meetsTolerance` 逐字对应）：
+ *   · 缺省 = **旧规则**「只要有一部分对就给分」（`undefined`，不写键）；
+ *   · `N` = 「错不超过 N 处」。
+ * ⚠️ 档位只列到 3：再大就与缺省档等效（一道 3 项的题「错不超过 2 处」＝「只要有一部分对」），
+ * 列出来只会让教师以为两者有区别。真需要更大的容错时缺省档本来就覆盖了。
+ */
+const TOLERANCE_WORDING: Record<string, { unit: string; verb: string }> = {
+  'multi-choice': { unit: '个', verb: '漏选不超过' },
+  'fill-blank': { unit: '个空', verb: '错不超过' },
+  order: { unit: '处', verb: '位置错不超过' },
+  match: { unit: '条', verb: '连错不超过' },
+  categorize: { unit: '个', verb: '归错不超过' },
+};
+
+function ToleranceRow({ node, onToleranceChange }: {
+  node: WorksheetQuestionNode;
+  onToleranceChange: (tolerance: number | null) => void;
+}) {
+  const wording = TOLERANCE_WORDING[node.type] ?? { unit: '处', verb: '错不超过' };
+  const current = toleranceOf(node);
+  return (
+    <label className="worksheet-editor-tolerance">
+      <span className="worksheet-editor-points-label">判分依据</span>
+      <select
+        className="input worksheet-editor-tolerance-select"
+        value={current === null ? '' : String(current)}
+        onChange={event => onToleranceChange(event.target.value === '' ? null : Number(event.target.value))}
+      >
+        <option value="">只要有一部分对就给分</option>
+        {[1, 2, 3].map((n) => (
+          <option key={n} value={n}>{wording.verb} {n} {wording.unit}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
  * ★ M4b/D1：逐题的**作答方式**（规格 §3-V 那个字段落到 UI 上的地方）。
  *
  * ```
@@ -427,9 +510,10 @@ function InputModeRow({ node, onInputModeChange }: {
  * 一处需要遵守（那正是拆出这个组件的目的：多选直接用 `SingleChoiceBody` 的话，
  * `writeOptions` 结尾的 `slice(0, 1)` 会把第 2 个正确答案静默丢掉）。
  */
-function SingleChoiceBody({ node, onDataChange }: {
+function SingleChoiceBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  showAnswer?: boolean;
 }) {
-  return <ChoiceOptionsEditor node={node} multiple={false} onDataChange={onDataChange} />;
+  return <ChoiceOptionsEditor node={node} multiple={false} onDataChange={onDataChange} showAnswer={showAnswer} />;
 }

@@ -37,9 +37,11 @@ function entryLabel(text: string): string {
  * （「打乱顺序」与「取当前顺序」时，后者**保证**结果不同）。这一屏只负责把当下的状态画出来，
  * 并在它们相同的时候说一句 —— 判据一条都不在这里（组件这一层没有回归网）。
  */
-export function OrderBody({ node, onDataChange }: {
+export function OrderBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /** 关掉「允许自动评分」时为 `false` ⇒ **正确答案那一块**不渲染（题面照常）。 */
+  showAnswer?: boolean;
 }) {
   const order = readOrder(node);
   const { items, correctOrder } = order;
@@ -74,6 +76,8 @@ export function OrderBody({ node, onDataChange }: {
 
   return (
     <>
+      {/* ★ 2026-09-26：关掉「允许自动评分」时这一块不渲染（它是**答案**，题面在下面） */}
+      {showAnswer && (<>
       {/* ── 正确答案的顺序（学生看不到）──────────────────────────────── */}
       <div className="worksheet-editor-block">
         <span className="worksheet-editor-block-label">正确答案的顺序（学生看不到）</span>
@@ -140,6 +144,7 @@ export function OrderBody({ node, onDataChange }: {
           </div>
         ) : null}
       </div>
+      </>)}
 
       {/* ── 条目（学生要排的东西）────────────────────────────────────── */}
       <div className="worksheet-editor-block">

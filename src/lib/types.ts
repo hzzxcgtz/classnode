@@ -65,6 +65,17 @@ export interface ClassroomSummary {
   mode: 'standard' | 'group' | 'advanced';
   status: 'active' | 'paused' | 'ended';
   allowStudentStop: boolean;
+  /**
+   * ★ 2026-09-25：是否允许学生**提问**（智能学伴的输入）。
+   *
+   * 🔴 与 `status === 'paused'`（「暂停课堂」）**不是一件事**：那个封住三件套整体，
+   * 这个只关掉「问问题」；学生仍能看学习单、看探究网页。
+   *
+   * ⚠️ 可选，且判据必须是 `!== false`（**认不出就当允许**）：老服务端的响应里没有这一格。
+   * 写成 `!allowStudentAsk` 会让「不知道」渲染成「老师禁止提问」，
+   * 而学生那边输入框会**静默地打不了字**。
+   */
+  allowStudentAsk?: boolean;
   allowStudentExport: boolean;
   allowFollowUps: boolean;
   /**

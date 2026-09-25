@@ -1072,6 +1072,8 @@ router.get('/code/:code', async (req, res) => {
       answersLocked: classroom.answersLocked,
       allowStudentStop: classroom.allowStudentStop,
       allowStudentExport: classroom.allowStudentExport,
+      // ★ 2026-09-25：只禁提问（与 `status` 的整节课暂停区分开）。
+      allowStudentAsk: classroom.allowStudentAsk,
       // 探究空间托管服务的**端口**（不是拼好的 URL）。学生端用
       // `http://${location.hostname}:${webappPort}` 自己拼 —— 它本来就知道自己是从哪个
       // IP 进来的，所以永远正确、无缓存、不会陈旧。托管源必须与父页面**跨源**，
@@ -1424,6 +1426,37 @@ router.post('/:id/toggle-allow-stop', async (req, res) => {
     res.json({ allowStudentStop: updated.allowStudentStop });
   } catch (error) {
     console.error('[Classroom] toggle allow-stop error:', error);
+    res.status(500).json({ error: '切换失败' });
+  }
+});
+
+/**
+ * 切换是否允许学生**提问**（★ 2026-09-25）。
+ *
+ * 🔴 它与 `POST /:id/pause`（「暂停课堂」）是**两件事**，别合并：
+ *   · `pause` 改的是 `status`，封住**三件套整体**（学习单 / 探究空间 / 智能学伴都进不去）；
+ *   · 这一条只关掉「问问题」这一件事 —— 学生仍然能看学习单、看探究网页。
+ * 拆开的直接原因：工具栏上那个按钮**标签写着「暂停学生提问」而调的是 `pause`**
+ * （2026-09-25 之前一直如此），教师要求「暂停课堂」归按钮、只禁提问归课堂权限。
+ */
+router.post('/:id/toggle-allow-ask', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroom = await prisma.classroom.findUnique({ where: { id: req.params.id } });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const updated = await prisma.classroom.update({
+      where: { id: req.params.id },
+      data: { allowStudentAsk: !classroom.allowStudentAsk },
+    });
+
+    const io = req.app.get('io');
+    io.to(`classroom:${classroom.id}`).emit('allow-ask-changed', { allow: updated.allowStudentAsk });
+    io.to(`teacher:${classroom.id}`).emit('allow-ask-changed', { allow: updated.allowStudentAsk });
+
+    res.json({ allowStudentAsk: updated.allowStudentAsk });
+  } catch (error) {
+    console.error('[Classroom] toggle allow-ask error:', error);
     res.status(500).json({ error: '切换失败' });
   }
 });

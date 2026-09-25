@@ -62,6 +62,14 @@ export function StudentChatContent({
   streamingBufferRef,
   streamingRafRef,
 }: ChatPanelProps) {
+  /**
+   * ★ 2026-09-25：教师把「允许学生提问」关掉了（与「暂停课堂」是两件事）。
+   *
+   * 🔴 判据必须是 `=== false`（**认不出就当作允许**）：`allowStudentAsk` 是可选的
+   * （老服务端的响应里没有这一格），写成 `!classroom?.allowStudentAsk` 会让
+   * 「不知道」渲染成「老师禁止提问」—— 学生那边输入框**静默地打不了字**。
+   */
+  const askBlocked = classroom?.allowStudentAsk === false;
   // M1a：会话所有权（code/step/classroom/selectedStudent/messages/... ）已上移到
   // page.tsx 的 useClassroomSession；task 3 又把 useChatSocket 连同它写入的
   // connected/connectionError/streamingContent/thinkingContent/teacherNotifBubble/
@@ -544,7 +552,7 @@ export function StudentChatContent({
     const files = attachedFiles;
     setConnectionError(null);
     if (!text && files.length === 0) return;
-    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !selectedStudent) return;
+    if (sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !selectedStudent) return;
     if (!wsRef.current || !connected) {
       setToast({ msg: '连接暂不可用，请稍后重试', type: 'error' });
       return;
@@ -575,7 +583,7 @@ export function StudentChatContent({
 
   /** 点击追问建议时自动发送该问题 */
   const handleFollowUp = (question: string) => {
-    if (sendingRef.current || waitingAI || paused || agentDisabled || blacklisted || !wsRef.current || !connected || !selectedStudent) return;
+    if (sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !wsRef.current || !connected || !selectedStudent) return;
     sendingRef.current = true;
     setWaitingAI(true);
     setConnectionError(null);
@@ -969,7 +977,7 @@ export function StudentChatContent({
 
           {!blacklisted && (<>
           {/* 附件按钮 */}
-          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || agentDisabled}
+          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || askBlocked || agentDisabled}
             title="上传图片或文件"
             className={styles.attachmentButton}>
             {uploading ? (
@@ -982,7 +990,7 @@ export function StudentChatContent({
           </button>
 
           <button type="button" onClick={toggleVoiceInput}
-            disabled={waitingAI || paused || agentDisabled || blacklisted}
+            disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted}
             aria-pressed={voiceListening}
             aria-label={voiceListening ? '停止语音输入' : '开始语音输入'}
             title={voiceListening ? '正在听写，点击停止' : voiceInputAvailable ? '语音输入' : '当前浏览器可能不支持语音输入'}
@@ -1015,7 +1023,7 @@ export function StudentChatContent({
                 if (voiceListening) return;
                 sendMessage();
               }
-            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || agentDisabled || blacklisted} autoComplete="off"
+            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : askBlocked ? '老师暂时关闭了提问' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted} autoComplete="off"
               rows={1}
               className={styles.composerTextarea} />
             {waitingAI && classroom?.allowStudentStop !== false ? (
@@ -1025,7 +1033,7 @@ export function StudentChatContent({
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
               </button>
             ) : (
-              <button type="button" onClick={sendMessage} disabled={voiceListening || waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || agentDisabled || blacklisted || !connected}
+              <button type="button" onClick={sendMessage} disabled={voiceListening || waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || askBlocked || agentDisabled || blacklisted || !connected}
                 className={styles.composerAction}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

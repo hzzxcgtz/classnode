@@ -19,6 +19,12 @@ export interface ModuleTabBarProps {
   /** 与课堂服务端的连接是否存活。`false` = 红点 + 「连接断开」。 */
   connected: boolean;
   /** 当前身份。`null`（理论上只在身份选择页出现）时不渲染学生头像与姓名。 */
+  /**
+   * ★ 2026-09-25：课堂暂停中 ⇒ 三件套那几格全部置灰（点下去会被 `openModule` 拒掉）。
+   * ⚠️ 与 `state === 'preview'`（教师只锁了那一件）**不是一回事**，但**共用同一个灰化样式**——
+   * 两条不同的原因画成两种灰，学生会以为是两种不同的问题。原因由顶上的横幅说。
+   */
+  paused?: boolean;
   selectedStudent: StudentSession | null;
   /** 头像 SVG 池，键是 `Avatar.id`。缺项时头像降级成姓名首字。 */
   avatarSvgs: Record<number, string>;
@@ -177,6 +183,7 @@ export function ModuleTabBar({
   activeId,
   onSelect,
   onHome,
+  paused = false,
   connected,
   selectedStudent,
   avatarSvgs,
@@ -344,7 +351,7 @@ export function ModuleTabBar({
           {tabs.map(({ id, state }) => {
             const meta = MODULE_META[id];
             const selected = activeId === id;
-            const locked = state === 'preview';
+            const locked = state === 'preview' || paused;
             // 选中态与锁定的类都挂在同一个按钮上；锁定优先（一个 preview 的模块不会在
             // 前台 —— 那正是 use-module-tabs 要把学生送回首页的情形）。
             const className = [

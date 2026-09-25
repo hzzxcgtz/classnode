@@ -432,6 +432,14 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappDetailIntervalMs" INTEGER`);
       console.log('[server] Added webappDetailIntervalMs column to Classroom');
     }
+    // ★ 2026-09-25：是否允许学生提问。默认**允许**（`DEFAULT 1`）—— 与
+    // `allowStudentStop` / `allowStudentExport` 同一方向（认不出就当开）。
+    // ⚠️ 若这里写成 0，所有老课堂会**静默地禁止学生提问**，而教师端那条开关显示「关」，
+    //    看起来像是他自己关的。
+    if (!classroomColNames.includes('allowStudentAsk')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentAsk" BOOLEAN NOT NULL DEFAULT 1`);
+      console.log('[server] Added allowStudentAsk column to Classroom');
+    }
     // M5a：课堂级「锁定作答」。默认未锁定 ⇒ `DEFAULT 0`（布尔列的先例见上面几行）。
     if (!classroomColNames.includes('answersLocked')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "answersLocked" BOOLEAN NOT NULL DEFAULT 0`);

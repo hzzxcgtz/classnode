@@ -111,6 +111,12 @@ model Classroom {
   mode      String   @default("standard") // standard / advanced
   status    String   @default("active") // active / paused / ended
   allowStudentStop Boolean @default(true)
+  /// ★ 2026-09-25：是否允许学生**提问**（智能学伴的输入）。
+  /// 🔴 与 `status = 'paused'`（「暂停课堂」）是**两件事**：那个封住三件套整体，
+  /// 这个只封住「问问题」这一件事（学生仍可看学习单、看探究网页）。
+  /// 它承接的是**原来那个名字起错的按钮**：工具栏上写着「暂停学生提问」的按钮
+  /// 其实调的是 `POST /:id/pause`（整节课），教师 2026-09-25 要求把它拆开。
+  allowStudentAsk Boolean @default(true)
   allowStudentExport Boolean @default(true)
   allowFollowUps Boolean @default(true)
   /// M5a：课堂级「锁定作答」。`false`（默认）= 未锁定。

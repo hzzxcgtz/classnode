@@ -298,6 +298,10 @@ export function useChatSocket(options: ChatSocketOptions) {
       });
 
 
+      socket.on('allow-ask-changed', (data: PermissionEvent) => {
+        optionsRef.current.setClassroom((prev) => prev ? { ...prev, allowStudentAsk: data.allow } : prev);
+      });
+
       socket.on('allow-stop-changed', (data: PermissionEvent) => {
         optionsRef.current.setClassroom((prev) => prev ? { ...prev, allowStudentStop: data.allow } : prev);
       });

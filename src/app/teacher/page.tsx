@@ -174,7 +174,9 @@ export default function TeacherDashboard() {
         if (willEnable) await api.resumeClassroom(classroom.id);
         else await api.pauseClassroom(classroom.id);
         patch = { status: willEnable ? 'active' : 'paused' };
-        message = willEnable ? '已恢复学生提问' : '已暂停学生提问';
+        // ★ 2026-09-25：文案由「已恢复/暂停学生提问」改为课堂。它调的**一直**是
+        // `pauseClassroom`（改 `status`）—— 暂停的是整节课，旧文案是错的。
+        message = willEnable ? '已恢复课堂' : '已暂停课堂';
       } else if (permission === 'stop') {
         const result = await api.toggleAllowStop(classroom.id);
         patch = { allowStudentStop: result.allowStudentStop };

@@ -32,6 +32,8 @@ export interface ServerToClientEvents {
   'answers-locked': () => void;
   'answers-unlocked': () => void;
   'allow-stop-changed': (data: { allow: boolean }) => void;
+  // ★ 2026-09-25：只禁提问（与 `classroom-paused` 那个整节课暂停是两件事）。
+  'allow-ask-changed': (data: { allow: boolean }) => void;
   'allow-export-changed': (data: { allow: boolean }) => void;
   'follow-ups-changed': (data: { allow: boolean }) => void;
   // 教师端 PUT /:id/modules/:moduleKey 后向 classroom:<id> 与 teacher:<id> 双发。

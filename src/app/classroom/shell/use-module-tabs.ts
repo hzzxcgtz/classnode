@@ -19,6 +19,14 @@ export interface UseModuleTabsOptions {
    * 见 classroom-shell.tsx 里「只有可见层渲染 Toast」那条规则。
    */
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
+  /**
+   * ★ 2026-09-25：课堂是否处于**暂停**（`Classroom.status === 'paused'`，教师端「暂停课堂」）。
+   *
+   * 🔴 暂停 = 三件套**整体**不可用（学习单 / 探究空间 / 智能学伴都进不去），
+   * 与「某个模块被教师设成 preview」不是一回事：后者只锁那一件。
+   * 判据收在这一处，调用点（首页卡片、Tab 栏、将来的任何入口）不需要各判一次。
+   */
+  paused: boolean;
 }
 
 /**
@@ -92,7 +100,7 @@ export function clearStoredModule(): void {
   writeStoredModule(null);
 }
 
-export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
+export function useModuleTabs({ classroom, setToast, paused }: UseModuleTabsOptions) {
   /** 前台是哪个模块；`null` = 首页在前台（首页也是这个外壳的一层）。 */
   const [activeModuleId, setActiveModuleId] = useState<ModuleId | null>(null);
   /** 挂载集合，按「第一次进入」的顺序（层是绝对定位的，顺序不影响显示）。 */
@@ -147,6 +155,12 @@ export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
    * 但闸门只有一处，将来多一个入口（教师推送、深链）也绕不过它。
    */
   const openModule = (id: ModuleId) => {
+    // 🔴 暂停优先于模块三态：暂停期间**任何**模块都进不去，哪怕它是 `open`。
+    // 文案要**温馨**（教师要求）：这是一句安抚，不是一条错误。
+    if (paused) {
+      setToast({ msg: '课堂正在休息，等老师继续吧', type: 'info' });
+      return;
+    }
     if (moduleStateFor(classroom?.modules, id) !== 'open') {
       setToast({ msg: '老师还没开放', type: 'info' });
       return;
@@ -184,6 +198,21 @@ export function useModuleTabs({ classroom, setToast }: UseModuleTabsOptions) {
     setActiveModuleId(null);
     setToast({ msg: '老师暂时关闭了这个模块，先回到首页', type: 'info' });
   }, [activeModuleId, classroom?.modules, setToast]);
+
+  /**
+   * ★ 2026-09-25：**暂停时把已经在模块里的学生送回首页**。
+   *
+   * 做法与上面那条「模块被关闭」逐字同源（同一把尺子：前台必须是一个可用的地方）。
+   * 🔴 但**不发 toast** —— 学生一抬头就能看到那条常驻的暂停横幅，它才是解释；
+   * 再弹一条只会把屏幕糊住。横幅在 `classroom-shell.tsx`。
+   *
+   * ⚠️ 草稿与已作答**一个字节都不丢**：`mountedIds` 只增不减（§4.5），
+   * 学生只是被切走，模块仍挂在 DOM 里；教师恢复后切回去，内容原样。
+   */
+  useEffect(() => {
+    if (!paused) return;
+    setActiveModuleId(null);
+  }, [paused]);
 
   return { activeModuleId, mountedIds, tabs, openModule, goHome };
 }

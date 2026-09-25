@@ -1298,7 +1298,7 @@ function ClassroomBoardContent() {
   };
 
   // ★ M5a：锁定/解锁作答。乐观更新 + 收自己的广播校正（与下面的 `toggleQuestions` 同一套）。
-  // ⚠️ 它**不**动 `classroom.status` —— 锁定是另一个维度（停笔），与「暂停学生提问」无关（GC 23）。
+  // ⚠️ 它**不**动 `classroom.status` —— 锁定是另一个维度（停笔），与「暂停课堂」无关（GC 23）。
   const toggleAnswersLock = () => runControlAction('answers-lock', async () => {
     if (answersLocked) {
       await api.unlockAnswers(id);
@@ -1335,6 +1335,15 @@ function ClassroomBoardContent() {
   const toggleStop = () => runControlAction('stop', async () => {
     const result = await api.toggleAllowStop(id);
     setClassroom((previous) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
+  });
+
+  // ★ 2026-09-25：**只禁提问**。与上面那个 `toggleQuestions`（整节课暂停）是两件事 ——
+  // 这条只关掉「问问题」，学生仍可看学习单、看探究网页。
+  // 🔴 名字里必须带「提问」：两个开关并排放在同一块界面里，分不清哪个是哪个的代价是
+  // 教师按错了还以为没生效。
+  const toggleAllowAsk = () => runControlAction('allow-ask', async () => {
+    const result = await api.toggleAllowAsk(id);
+    setClassroom((previous) => previous ? { ...previous, allowStudentAsk: result.allowStudentAsk } : previous);
   });
 
   const toggleExport = () => runControlAction('export', async () => {
@@ -2163,15 +2172,19 @@ function ClassroomBoardContent() {
                   {controlBusy === 'sync-groups' ? '同步中...' : '同步分组'}
                 </button>
               )}
+              {/* ★ 2026-09-25：标签由「暂停学生提问」改为「暂停课堂」。
+                  🔴 它**一直**调的是 `api.pauseClassroom()`（改 `status`）—— 暂停的是整节课，
+                  标签写着「学生提问」是错的，教师照那个名字理解就会以为学习单还能用。 */}
               <button className={paused ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
+                title="暂停后学生无法使用三件套中的任何功能"
                 style={{ minHeight: 36, padding: '7px 12px', color: paused ? 'white' : '#2563eb' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {paused ? <><path d="M8 5v14l11-7z" /></> : <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>}
                 </svg>
-                {controlBusy === 'questions' ? '更新中...' : paused ? '恢复学生提问' : '暂停学生提问'}
+                {controlBusy === 'questions' ? '更新中...' : paused ? '恢复课堂' : '暂停课堂'}
               </button>
-              {/* ★ M5a：锁定作答。🔴 文案**必须带「作答」二字** —— 上面那个按钮是「暂停学生提问」，
-                  不带限定词的话教师分不清自己按的是哪一个（一个是禁提问、一个是停笔）。 */}
+              {/* ★ M5a：锁定作答。🔴 文案**必须带「作答」二字** —— 上面那个按钮是「暂停课堂」，
+                  不带限定词的话教师分不清自己按的是哪一个（一个是停课、一个是停笔）。 */}
               <button className={answersLocked ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleAnswersLock()} disabled={controlBusy !== null}
                 title="停笔：学生不能再修改答案，但仍然可以交卷"
                 style={{ minHeight: 36, padding: '7px 12px', color: answersLocked ? 'white' : '#2563eb' }}>
@@ -3550,6 +3563,10 @@ function ClassroomBoardContent() {
               <PermissionSection label={MODULE_ID_LABELS.companion} note="学生端智能学伴页面的三项能力开关。">
                 <PermissionMenuItem label="允许中断 AI 回答" enabled={classroom.allowStudentStop !== false} busy={controlBusy === 'stop'} onToggle={() => void toggleStop()} />
                 <PermissionMenuItem label="允许导出对话" enabled={classroom.allowStudentExport !== false} busy={controlBusy === 'export'} onToggle={() => void toggleExport()} />
+                {/* ★ 2026-09-25：从工具栏搬过来的一条。原来工具栏上那个按钮**标签写着
+                    「暂停学生提问」而调的是 `pauseClassroom`**（整节课），
+                    教师要求把两件事拆开：「暂停课堂」留在工具栏，只禁提问归这里。 */}
+                <PermissionMenuItem label="允许学生提问" enabled={classroom.allowStudentAsk !== false} busy={controlBusy === 'allow-ask'} onToggle={() => void toggleAllowAsk()} />
                 <PermissionMenuItem label="显示追问建议" enabled={classroom.allowFollowUps !== false} busy={controlBusy === 'follow-ups'} onToggle={() => void toggleFollowUps()} />
               </PermissionSection>
             </div>

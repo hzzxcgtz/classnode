@@ -25,7 +25,9 @@ export interface ClassroomShellProps {
    */
   chat: Omit<ChatPanelProps, 'active'>;
   /** 首页的全部 props，**除 `active` 与 `onOpenModule`**：两者都由外壳注入（同理）。 */
-  home: Omit<StudentHomeProps, 'active' | 'onOpenModule'>;
+  /** ⚠️ `paused` 与 `active` / `onOpenModule` 一样由**外壳**注入（它才知道课堂暂停了没），
+      所以也从 `Omit` 里去掉 —— 留着会逼 `page.tsx` 造一个它不该负责的字面量。 */
+  home: Omit<StudentHomeProps, 'active' | 'onOpenModule' | 'paused'>;
   /**
    * 视图相位的单向镜像（`'home'` = 学生在首页，`'shell'` = 在某个模块里）。
    *
@@ -130,9 +132,17 @@ function slideDurationMs(el: HTMLElement | null): number {
 export function ClassroomShell({ chat, home, onStepChange, answersLocked }: ClassroomShellProps) {
   // 外壳与学伴面板共用同一个 setToast（会话级状态由 page.tsx 持有，这里只是转手）。
   const { setToast } = chat;
+  /**
+   * ★ 2026-09-25：教师端的**「暂停课堂」**（`Classroom.status === 'paused'`）。
+   *
+   * 读的是 `chat` 里的会话状态（与 `paused` 同一份，`use-chat-socket` 的
+   * `classroom-paused` / `classroom-resumed` 维护它），**不新开状态**。
+   */
+  const paused = chat.paused;
   const { activeModuleId, mountedIds, tabs, openModule, goHome } = useModuleTabs({
     classroom: chat.classroom,
     setToast,
+    paused,
   });
 
   /** 前台层：`activeModuleId` 为 `null` 时是首页。**点击即刻生效**，不等动画。 */
@@ -560,11 +570,32 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
       {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
           外壳只是转手，因此这里**不新增任何状态、不新增 effect**。
           面板头那四个同名同义的入口已随 M1b-3 T4 整行撤除，所以顶栏这一组是**唯一**一份。 */}
+      {/* ★ 2026-09-25：**暂停横幅**（教师要求：温馨 + 醒目）。
+          🔴 它是暂停期间学生**唯一**的解释来源 —— 所以 `use-module-tabs` 那条「暂停 ⇒ 送回
+          首页」的 effect **刻意不发 toast**（再弹一条只会把屏幕糊住，而这一条是常驻的）。
+          ⚠️ 语气是安抚，不是报错：琥珀色而不是红色，且明说「你写过的东西都还在」——
+          那句话是**真的**（§4.5：`mountedIds` 只增不减，模块仍挂在 DOM 里）。 */}
+      {paused && (
+        <div role="status" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '10px 16px',
+          background: 'linear-gradient(135deg, #fffbeb, #fef3c7)',
+          borderBottom: '1px solid #fcd34d',
+          color: '#92400e', fontSize: '0.938rem', fontWeight: 600,
+        }}>
+          <span aria-hidden="true" style={{ fontSize: '1.125rem' }}>☕</span>
+          <span>课堂暂时休息一下，等老师继续</span>
+          <span style={{ fontWeight: 400, fontSize: '0.813rem', color: '#b45309' }}>
+            你写过的东西都还在，不会丢
+          </span>
+        </div>
+      )}
       <ModuleTabBar
         tabs={tabs}
         activeId={activeModuleId}
         onSelect={(id) => userNavigate(() => openModule(id))}
         onHome={() => userNavigate(goHome)}
+        paused={paused}
         connected={chat.connected}
         selectedStudent={chat.selectedStudent}
         avatarSvgs={chat.avatarSvgs}
@@ -584,6 +615,7 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
           styles.homeLayer,
           <StudentHome
             {...home}
+            paused={paused}
             active={activate('home')}
             toast={toastFor('home')}
             onOpenModule={(id) => userNavigate(() => openModule(id))}

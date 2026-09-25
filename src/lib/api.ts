@@ -197,6 +197,8 @@ export const api = {
   lockAnswers: (id: string) => request(`/api/classroom/${id}/lock-answers`, { method: 'POST' }),
   unlockAnswers: (id: string) => request(`/api/classroom/${id}/unlock-answers`, { method: 'POST' }),
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
+  // ★ 2026-09-25：只禁提问（与「暂停课堂」那个 `pauseClassroom` 是两件事，别混用）。
+  toggleAllowAsk: (id: string) => request<{ allowStudentAsk: boolean }>(`/api/classroom/${id}/toggle-allow-ask`, { method: 'POST' }),
   toggleAllowExport: (id: string) => request<{ allowStudentExport: boolean }>(`/api/classroom/${id}/toggle-allow-export`, { method: 'POST' }),
   toggleAllowFollowUps: (id: string) => request<{ allowFollowUps: boolean }>(`/api/classroom/${id}/toggle-allow-follow-ups`, { method: 'POST' }),
   // 探究空间画面采集（P2.2）：要不要采、多清楚、多久一次。

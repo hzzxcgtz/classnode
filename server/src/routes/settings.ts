@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
-import { hashPassword, SCRYPT_PREFIX, verifyPassword } from '../services/password-security.js';
+import { hashPassword, isAcceptablePassword, SCRYPT_PREFIX, verifyPassword } from '../services/password-security.js';
 import {
   createTeacherSession,
   destroyTeacherSession,
@@ -73,8 +73,16 @@ router.post('/admin-password', async (req, res) => {
     const existing = await prisma.setting.findUnique({ where: { key: 'admin_password' } });
     if (existing) return res.status(409).json({ error: '管理密码已设置，请使用修改密码功能' });
     const { password } = req.body;
-    if (typeof password !== 'string' || password.length < 8) {
-      return res.status(400).json({ error: '密码至少8位' });
+    // ★ 2026-09-25（教师要求「登录密码不限长度」）：原来的 `length < 8` 已去掉。
+    // 🔴 **但「非空」这一条必须留着**，它不是长度限制、是登录本身：
+    //    空密码会被哈希后存进 `admin_password` 那一行 ⇒ 那一行存在 ⇒ 首屏的
+    //    `if (!stored) return { firstTime: true }` 不再成立（那本来是「还没设密码」），
+    //    于是**任何人提交一个空密码就能登录教师端**。放开它不是「方便」，是拆门。
+    // ⚠️ 代价说清：去掉 8 位这条之后，挡在学生（同一局域网）与教师端之间的**只剩**
+    //    `nextLoginAttempt` 那 5 次 / 60 秒的限流。1~2 位的密码在那个限流下
+    //    几分钟就能撞开 —— 教师自便，但别让下一个人以为这里还有一道强度要求。
+    if (!isAcceptablePassword(password)) {
+      return res.status(400).json({ error: '密码不能为空' });
     }
     await prisma.setting.create({ data: { key: 'admin_password', value: hashPassword(password) } });
     createTeacherSession(res);
@@ -125,8 +133,10 @@ router.post('/logout', (req, res) => {
 router.post('/change-password', requireTeacher, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (typeof newPassword !== 'string' || newPassword.length < 8) {
-      return res.status(400).json({ error: '新密码至少8位' });
+    // 同上：不限长度，但**非空**（空密码 = 谁都能进）。判据与上面那一处**同一个函数** ——
+    // 两个端点各写一份 `length === 0` 的话，将来改策略只会改到一处。
+    if (!isAcceptablePassword(newPassword)) {
+      return res.status(400).json({ error: '新密码不能为空' });
     }
     const prisma: PrismaClient = req.app.get('prisma');
     const stored = await prisma.setting.findUnique({ where: { key: 'admin_password' } });

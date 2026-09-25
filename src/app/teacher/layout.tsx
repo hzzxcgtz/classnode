@@ -216,7 +216,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const handleSetup = async () => {
     if (setupRef.current) return;
     const errors: Record<string, string> = {};
-    if (setupPwd.length < 8) errors.setupPwd = '密码至少8位';
+    // ★ 2026-09-25：不限长度（教师要求），但**非空** —— 空密码 = 谁都能进教师端。
+    // 这里与服务端 `routes/settings.ts` 的两条判据必须一致，否则会出现
+    // 「前端放过、服务端 400」或反过来「前端拦住、服务端其实收」两种都很难查的错位。
+    if (setupPwd.length === 0) errors.setupPwd = '请输入密码';
     if (setupPwd !== setupConfirm) errors.setupConfirm = '两次密码输入不一致';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setupRef.current = true;
@@ -258,7 +261,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     setPwdSuccess('');
     const errors: Record<string, string> = {};
     if (!oldPwd) errors.oldPwd = '请输入当前密码';
-    if (!newPwd || newPwd.length < 8) errors.newPwd = '新密码至少8位';
+    if (!newPwd) errors.newPwd = '请输入新密码';
     if (newPwd !== confirmPwd) errors.confirmPwd = '两次输入的新密码不一致';
     if (Object.keys(errors).length > 0) { setPwdFieldErrors(errors); return; }
     changePwdRef.current = true;
@@ -348,7 +351,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
           <div style={{ marginBottom: 14 }}>
-            <input type="password" className="input" placeholder="设置管理密码（至少8位）" value={setupPwd}
+            <input type="password" className="input" placeholder="设置管理密码" value={setupPwd}
               onChange={e => { setSetupPwd(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupPwd; return n; }); }}
               onKeyDown={e => e.key === 'Enter' && void handleSetup()}
               disabled={settingUp}
@@ -730,7 +733,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
                   <input type="password" className="input" value={newPwd}
                     onChange={e => { setNewPwd(e.target.value); clearPwdError('newPwd'); }}
-                    placeholder="至少8位"
+                    placeholder="新密码"
                     style={{ borderColor: pwdFieldErrors.newPwd ? '#ef4444' : undefined }} />
                   {pwdFieldErrors.newPwd && <FieldError message={pwdFieldErrors.newPwd} />}
                 </div>

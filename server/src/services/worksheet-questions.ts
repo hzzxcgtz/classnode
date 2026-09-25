@@ -34,6 +34,11 @@ export const QUESTION_TYPES = [
   // ⚠️ 它的作答值是**笔迹**（`ink/v1` / `drawing/v1`），判分的两处闸门见 `judge()`
   // 与 `JUDGES`；写入口的体积校验见 `services/worksheet-ink.ts`（B1）。
   'drawing',
+  // ★ 2026-09-25：**任务**（分组容器）—— 它不是一道题，见下面 `JUDGES` / `VALIDATORS` 里
+  //    它那两条各自的注释。放进本联合而不是另开一个 node kind 的理由：
+  //    下面两张表都是 `Record<QuestionType, …>` ⇒ 加一项会让**每一处编译报错**，
+  //    而「另开一个 kind」会让它们**静默漏掉**（那是本仓反复栽的那一类）。
+  'task',
 ] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
@@ -862,6 +867,11 @@ function judgeCategorize(data: Record<string, unknown>, value: unknown): GradeSt
  * 决定**：`Record` 缺一个键就是编译错误，所以它不能靠「忘了写」来达成。
  */
 const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknown) => GradeState | null> = {
+  // 🔴 **任务没有作答值，永远不该走到判分**。所以这里**抛**，不返回 `null`。
+  //    返回 `null`（= 没判过）会让「任务被当成一道题」这件事**一路滑到界面上**：
+  //    看板多一格、抽屉多一行、统计的分母悄悄变大，而全程没有一处报错。
+  //    抛出去则当场暴露，且暴露在**服务端日志**里 —— 那里才是能查的地方。
+  task: () => { throw new Error('task 不是可作答的题：判分器不该被调到它'); },
   'single-choice': judgeSingleChoice,
   // 判断题与单选**共用同一个判分器**（规格 §12：作答值与判分逐字相同）。
   'true-false': judgeSingleChoice,
@@ -953,6 +963,25 @@ function validateSingleAnswer(
  * `worksheet-grade.test.ts` 的「空 `data` 必须被拒绝」那条用例行为性地钉住。
  */
 const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) => void> = {
+  /**
+   * ★ 2026-09-25：**任务容器**的校验。
+   *
+   * 🔴 它要拦住的是两件事，两件都会让下游静默出错：
+   *   1. **任务里嵌套任务** —— 题号会变成三级，而 UI 那套「重复」的优势立刻消失
+   *      （教师裁定：任务只装小题）。schema 里没有禁止它的东西，所以只能在这里拦。
+   *   2. **任务里一道小题都没有** —— 一个空任务在界面上是一块空白，而学生端会渲染出
+   *      一个只有标题、没有任何可作答东西的段落。**允许它存在没有任何好处**，
+   *      而迁移造出来的「任务一」如果原学习单是空的，正好会命中这一条 ——
+   *      ⇒ 迁移那边要保证不造空任务（见 `specs/2026-09-25-学习单-任务制与编辑页重设计.md` §五）。
+   *
+   * ⚠️ **任务的说明允许留空**（教师裁定 ①a：任务只是分组 + 一段说明）——
+   * 所以这里**不校验 `prompt` 非空**。「任务一」这种纯分组是合法的。
+   */
+  task: (node, errors) => {
+    const children = node.children ?? [];
+    if (children.length === 0) errors.push('任务里至少要有一道小题');
+    if (children.some((child) => child.type === 'task')) errors.push('任务里不能再嵌套任务');
+  },
   'single-choice': (node, errors) => validateSingleAnswer(node, errors, '单选题', true),
   // 判断题与单选**共用同一个校验器**：作答值与判分逐字相同（规格 §12），
   // 差别只在编辑 UI —— 判断题不存 `options`（选项恒为对/错两个），所以不查选项数。

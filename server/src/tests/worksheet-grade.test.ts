@@ -187,6 +187,12 @@ interface AnswerShapeSample {
 }
 
 const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
+  // ★ 2026-09-25：**空数组 = 这一格的答案**，不是漏填 ——
+  //    这张表审计的是「题型 × 作答值的形状」，而**任务根本没有作答值**
+  //    （教师裁定 ①a）。⇒ 它没有任何形状可审计。
+  //    ⚠️ 空数组在这里是**可判定的**：文件末尾那条遍历按题型逐个跑，
+  //    空数组不会让任何断言变绿，只是不出现在循环里。
+  task: [],
   'single-choice': [{
     label: '单选（M3 形状）',
     data: { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'], explanation: '光合作用需要光' },
@@ -350,13 +356,23 @@ function collectAnswerValues(
 test('🔴 每个题型的答案键都必须 ∈ ANSWER_KEYS（黑名单漏一个 = 静默泄漏给学生）', () => {
   for (const type of QUESTION_TYPES) {
     const shapes = ANSWER_KEY_AUDIT[type];
+    // ★ 2026-09-25：**容器是这条规则的唯一例外，而且必须是显式的**。
+    //    `task`（任务）没有 `data`（教师裁定 ①a：任务只是分组 + 一段说明，作答全在小题上）
+    //    ⇒ **它没有答案键可登记**，空数组就是它的**答案**，不是漏登记。
+    //    ⚠️ 开这个口子**只给它一个**：别的题型仍然必须至少有一条样本 ——
+    //    把 `length > 0` 整体删掉会让「新增题型忘了登记」重新变成静默的，
+    //    而这条门存在的全部意义就是拦那个。
+    if (type === 'task') {
+      assert.deepEqual(shapes, [], 'task 没有答案键，它在样本表里必须恰好是空的');
+      continue;
+    }
     assert.ok(
       shapes && shapes.length > 0,
       `题型「${type}」没有登记答案键样本 —— 新增题型时必须在 ANSWER_KEY_AUDIT 里补一条`,
     );
 
     for (const sample of shapes) {
-      const where = `题型「${type}」/ ${sample.label}`;
+      const where: string = `题型「${type}」/ ${sample.label}`;
       const allKeys = Object.keys(sample.data).sort();
       const declared = [...sample.answerKeys, ...sample.safeKeys].sort();
 

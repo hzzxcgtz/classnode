@@ -19,6 +19,18 @@
  *      显示成「主观题」。
  */
 import { test } from 'node:test';
+
+/**
+ * ★ 2026-09-25：**可作答的**题型 —— 即 `QUESTION_TYPES` 去掉容器（`task`）。
+ *
+ * 🔴 本文件那几条遍历测的是**二分法**：「每个题型，要么判分、要么送去 AI 分析」。
+ * 而 `task`（任务容器）**两者都不是** —— 它**根本没有作答值**（教师裁定 ①a）。
+ * ⇒ 它不该进那两个集合中的任何一个，但**必须被显式地排除**：
+ * 直接用 `QUESTION_TYPES` 会让 `task` 从缝里掉进「不判分 ⇒ 那就该送去分析」那一侧，
+ * 而那正是这道闸存在的意义（把「没作答值」误判成「主观题」）。
+ * 下面另有一条用例专门钉住 `task` 两边都不属于。
+ */
+const ANSWERABLE_TYPES = QUESTION_TYPES.filter((t) => t !== 'task');
 import assert from 'node:assert/strict';
 import {
   DEFAULT_POINTS,
@@ -101,6 +113,10 @@ function assertIncorrectWithoutThrow(node: QuestionNode, value: unknown): void {
 
 /** 每个可自动判分的题型都要能拿到「坏形状」用例 —— 见文件末尾那条遍历。 */
 const GRADED: Record<QuestionType, boolean> = {
+  // ★ 2026-09-25：**任务不判分**（教师裁定 ①a：任务只是分组 + 一段说明，作答全在小题上）。
+  //    ⇒ `false` 不是「还没填」，是这一格的**答案**。它与 `drawing: false` 同一档，
+  //    但理由不同：绘图是「有人工判读、不自动判」，任务是「**根本没有作答值**」。
+  task: false,
   'single-choice': true,
   'true-false': true,
   'multi-choice': true,
@@ -647,6 +663,12 @@ test('归类：assignment 里的非字符串值不算「落对」（不抛）', 
 
 /** 每个题型的**一份合法数据**（用来把「value 坏掉」与「data 坏掉」分开测）。 */
 const SAMPLE_NODES: Record<QuestionType, QuestionNode> = {
+  // ★ 2026-09-25：任务的「一份合法数据」= **一个装着小题的容器**。
+  //    ⚠️ 里面必须**真的有**一道小题：`VALIDATORS['task']` 会把空任务判为不合法
+  //    （一个空任务在界面上是一块空白，学生端会渲染出只有标题、没东西可答的一段）。
+  //    ⚠️ `inputMode` 对任务是**无意义**的（它没有作答控件），但它是 `QuestionNode` 的必填字段
+  //    ⇒ 这里给 `'keyboard'` 只是为了满足形状，别把它读成「任务用键盘作答」。
+  task: { id: 'q_task', type: 'task', prompt: '', data: {}, inputMode: 'keyboard', children: [question('single-choice', { options: MULTI_OPTIONS, correctKeys: ['A'] })] },
   'single-choice': question('single-choice', { options: MULTI_OPTIONS, correctKeys: ['A'] }),
   'true-false': question('true-false', { correctKeys: ['T'] }),
   'multi-choice': multiNode('allow-missing'),
@@ -661,7 +683,7 @@ const SAMPLE_NODES: Record<QuestionType, QuestionNode> = {
 
 test('🔴 形状容错：value 是 null / 数字 / 字符串 / 数组 / 缺字段 ⇒ 一律判错，绝不抛', () => {
   const junkValues: unknown[] = [null, undefined, 0, 42, '', 'abc', true, [], ['B'], { selected: 'B' }, {}, { format: 'choice/v1' }];
-  for (const type of QUESTION_TYPES) {
+  for (const type of ANSWERABLE_TYPES) {
     if (!GRADED[type]) continue;
     for (const value of junkValues) {
       assertIncorrectWithoutThrow(SAMPLE_NODES[type], value);
@@ -672,7 +694,7 @@ test('🔴 形状容错：value 是 null / 数字 / 字符串 / 数组 / 缺字�
 test('🔴 形状容错：data 是空对象 / 缺字段 / 根本不是对象 ⇒ 一律判错，绝不抛', () => {
   // `data: null` 这一条是最要命的：`node.data.correctKeys` 会在 `null` 上抛
   // `Cannot read properties of null` —— 提交路径上的一次抛错就是 500。
-  for (const type of QUESTION_TYPES) {
+  for (const type of ANSWERABLE_TYPES) {
     if (!GRADED[type]) continue;
     const blank = question(type, {});
     assertIncorrectWithoutThrow(blank, { format: 'choice/v1', selected: ['A'] });
@@ -689,7 +711,7 @@ test('🔴 形状容错：data 是空对象 / 缺字段 / 根本不是对象 ⇒
 });
 
 test('🔴 「参不参与判分」只有两个取值：主观题 ⇒ null，其余题型 ⇒ 一个判定对象', () => {
-  for (const type of QUESTION_TYPES) {
+  for (const type of ANSWERABLE_TYPES) {
     const result = grade(SAMPLE_NODES[type], { format: 'text/v1', text: 'x' }, P);
     if (GRADED[type]) {
       assert.ok(result !== null, `题型「${type}」应当参与判分，却返回了 null`);

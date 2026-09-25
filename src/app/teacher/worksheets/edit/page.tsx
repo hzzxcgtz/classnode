@@ -131,6 +131,38 @@ function WorksheetEditorBody() {
    * 不是「这道题被答了多少次」—— 服务端没有按题统计的字段。所以措辞刻意分开：
    * 一个数字讲整卷，一句话讲这道题的答案会怎样，不能把它们说成同一件事。
    */
+  /**
+   * ★ 2026-09-26（spec 第 3 步）：**↑ / ↓ 在题与题之间跳**。
+   *
+   * 一页 20 题时，改完第 3 题要改第 4 题 —— 用鼠标滚 + 找 + 点，是这一页最频繁的动作之一。
+   *
+   * 🔴 **必须放行输入框里的上下键**：在题干 / 选项里，上下键是**移动光标**（多行文本框里
+   * 尤其明显）。抢了它的后果是教师打字时按一下上就跳到别的题上 —— 而这一条与
+   * `⌘Z` 那处**有意相反**（那里抢是对的：历史栈每次改动一条，退掉的正是上一个字符）。
+   * ⇒ 判据是「焦点在不在输入类控件里」，`input` / `textarea` / `select` / `contenteditable` 一律放行。
+   *
+   * ⚠️ 只**移动焦点**，不展开、不折叠：教师是去「看下一题」，展开与否由他自己决定
+   *（`Enter` / 空格 / 点一下才是展开 —— 那是按钮自带的键盘行为）。
+   * ⚠️ 用 `focus()` 而不是自己算滚动：浏览器会把它滚进视野，且尊重 `prefers-reduced-motion`。
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      const target = event.target as HTMLElement | null;
+      // 焦点在输入类控件里 ⇒ 放行（那是光标移动，不是跳题）。
+      if (!target || target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const current = target.closest('[data-question-id]');
+      if (!current) return;
+      const all = Array.from(document.querySelectorAll<HTMLElement>('[data-question-id]'));
+      const next = all[all.indexOf(current as HTMLElement) + (event.key === 'ArrowDown' ? 1 : -1)];
+      if (!next) return;
+      event.preventDefault();
+      next.querySelector<HTMLElement>('.worksheet-editor-question-summary')?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const requestRemove = useCallback(async (node: WorksheetQuestionNode, heading: string) => {
     // 🔴 任务是**一整块**，而它的删除按钮就在任务头行上 —— 与小题的删除按钮只隔几十像素。
     // 说成「确定删除第 1 题吗？」的后果是：教师以为在删一道题，实际删掉了整个任务

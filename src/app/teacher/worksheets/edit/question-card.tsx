@@ -141,6 +141,8 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
     <section
       className="worksheet-editor-question"
       data-expanded={expanded ? '1' : '0'}
+      /* ★ 2026-09-26（spec 第 3 步）：↑/↓ 在题间跳时靠它定位（见 `page.tsx` 的那段 effect）。 */
+      data-question-id={node.id}
       aria-label={`${heading} ${typeLabel}`}
       /*
         ★ 2026-09-26（教师）：「鼠标在某题上停留时，可以点击这题框中的**任何位置**都可以

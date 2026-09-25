@@ -10,8 +10,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ANSWER_TEXT_MAX, buildTextDocument, payloadKindOf, selectAnalyzeEntries,
-  type Participant, type RawAnswer,
+  ANSWER_TEXT_MAX, DEFAULT_ANALYSIS_KNOBS, KNOBS_SETTING_KEY, SHEET_GAP, SHEET_LABEL_H,
+  SHEET_MARGIN, buildTextDocument, layoutSheets, normalizeAnalysisKnobs, payloadKindOf,
+  selectAnalyzeEntries, type AnalyzeEntry, type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
 
 const ink = (strokes: number) => ({
@@ -185,4 +186,101 @@ test('缺伪名时回落成参与者 id（不抛、不留空）', () => {
 test('题干为空时不留一个空洞（写「（题干为空）」）', () => {
   const doc = buildTextDocument({ ...meta, prompt: '' }, [], docLabels, 0, 3);
   assert.match(doc, /题干为空/);
+});
+
+/* ── Task 4：联系表的排版与旋钮 ───────────────────────────────────────── */
+
+const PT: [number, number] = [0, 0];
+const inkEntries = (n: number): AnalyzeEntry[] => Array.from({ length: n }, (_, i) => ({
+  studentId: `p${String(i + 1).padStart(3, '0')}`,
+  displayName: `学生${i + 1}`,
+  kind: 'ink' as const,
+  ink: { format: 'ink/v1' as const, canvas: { w: 320, h: 240 }, strokes: [{ points: [PT, [1, 1]], width: 0.01, color: '#111111' }] },
+}));
+const inkLabels = (n: number): Map<string, string> => new Map(
+  Array.from({ length: n }, (_, i) => [`p${String(i + 1).padStart(3, '0')}`, `User_${String(i + 1).padStart(3, '0')}`]));
+
+test('默认旋钮就是规格裁定 3 定下的那四个值', () => {
+  assert.deepEqual(DEFAULT_ANALYSIS_KNOBS, { cellWidth: 320, cellHeight: 240, columns: 3, maxCellsPerSheet: 12 });
+  assert.equal(KNOBS_SETTING_KEY, 'worksheet-analysis-knobs');
+});
+
+test('12 份 ⇒ 1 张 3×4 · 40 份 ⇒ 4 张（最后一张装剩下的）', () => {
+  const one = layoutSheets(inkEntries(12), inkLabels(12), DEFAULT_ANALYSIS_KNOBS);
+  assert.equal(one.length, 1);
+  assert.equal(one[0].cells.length, 12);
+  const four = layoutSheets(inkEntries(40), inkLabels(40), DEFAULT_ANALYSIS_KNOBS);
+  assert.equal(four.length, 4);
+  assert.deepEqual(four.map((s) => s.cells.length), [12, 12, 12, 4]);
+  assert.deepEqual(four.map((s) => s.sheetIndex), [0, 1, 2, 3]);
+});
+
+test('格子坐标按行列排：外边距 → 标签行 → 格子；换行回第一列', () => {
+  const [sheet] = layoutSheets(inkEntries(4), inkLabels(4), DEFAULT_ANALYSIS_KNOBS);
+  const [c0, c1, c2, c3] = sheet.cells;
+  assert.deepEqual([c0.x, c0.y], [SHEET_MARGIN, SHEET_MARGIN + SHEET_LABEL_H]);
+  assert.equal(c1.x, SHEET_MARGIN + 320 + SHEET_GAP);
+  assert.equal(c1.y, c0.y, '同一行的 y 相同');
+  // ⚠️ 3 列时 index 2 **仍在第一行**（第 3 列），换行的是 index 3 —— 计划里这条断言
+  // 把 c2/c3 标反了，被这条用例当场抓住。
+  assert.equal(c2.x, SHEET_MARGIN + 2 * (320 + SHEET_GAP), 'index 2 是第 3 列');
+  assert.equal(c2.y, c0.y, 'index 2 仍在第一行');
+  assert.equal(c3.x, c0.x, 'index 3 才换行回第一列');
+  assert.equal(c3.y, c0.y + 240 + SHEET_LABEL_H + SHEET_GAP);
+  assert.equal(c0.labelY, SHEET_MARGIN, '标签在格子上方、且在外边距之内');
+  assert.equal(c0.labelX, c0.x);
+  assert.equal(c3.labelY, c0.y + 240 + SHEET_LABEL_H + SHEET_GAP - SHEET_LABEL_H, '第二行的标签也在它自己格子之上');
+  assert.equal(c0.w, 320); assert.equal(c0.h, 240);
+  assert.equal(c0.anonLabel, 'User_001', '标签来自 labels 映射');
+  assert.equal(c0.studentId, 'p001');
+  assert.deepEqual(sheet.cells.map((c) => c.index), [0, 1, 2, 3], 'index 是全局的格序');
+});
+
+test('画布尺寸 = 外边距 + 列宽 + 间距 + 行高（含每行的标签行）', () => {
+  const [sheet] = layoutSheets(inkEntries(12), inkLabels(12), DEFAULT_ANALYSIS_KNOBS);
+  assert.equal(sheet.width, SHEET_MARGIN * 2 + 3 * 320 + 2 * SHEET_GAP);
+  assert.equal(sheet.height, SHEET_MARGIN * 2 + 4 * (240 + SHEET_LABEL_H) + 3 * SHEET_GAP);
+});
+
+test('🔴 空笔迹与「认不出」也要占一格（丢了就让 covered 与格子数对不上）', () => {
+  const entries: AnalyzeEntry[] = [
+    { studentId: 'p001', displayName: '甲', kind: 'ink',
+      ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
+    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
+    { studentId: 'p003', displayName: '丙', kind: 'text', text: '这题我写文字了' },
+  ];
+  const labels = new Map([['p001', 'User_001'], ['p002', 'User_002'], ['p003', 'User_003']]);
+  const [sheet] = layoutSheets(entries, labels, DEFAULT_ANALYSIS_KNOBS);
+  assert.equal(sheet.cells.length, 3, '三种条目各占一格');
+  assert.deepEqual(sheet.cells.map((c) => c.hasInk), [false, false, false], '空笔迹与 unknown 都没有画可渲');
+});
+
+test('有笔画的笔迹格 hasInk 为真', () => {
+  const [sheet] = layoutSheets(inkEntries(2), inkLabels(2), DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(sheet.cells.map((c) => c.hasInk), [true, true]);
+});
+
+test('零份 ⇒ 零张（不给一张空图）', () => {
+  assert.deepEqual(layoutSheets([], new Map(), DEFAULT_ANALYSIS_KNOBS), []);
+});
+
+test('🔴 旋钮可配：改 maxCellsPerSheet 就改分张数，不需要改代码', () => {
+  const sheets = layoutSheets(inkEntries(12), inkLabels(12), { ...DEFAULT_ANALYSIS_KNOBS, maxCellsPerSheet: 4 });
+  assert.equal(sheets.length, 3);
+  assert.deepEqual(sheets.map((s) => s.cells.length), [4, 4, 4]);
+  const wide = layoutSheets(inkEntries(2), inkLabels(2), { ...DEFAULT_ANALYSIS_KNOBS, columns: 1, cellWidth: 640, cellHeight: 480 });
+  assert.equal(wide[0].width, SHEET_MARGIN * 2 + 640);
+  assert.equal(wide[0].cells[1].y, SHEET_MARGIN + SHEET_LABEL_H + 480 + SHEET_LABEL_H + SHEET_GAP);
+});
+
+test('🔴 旋钮归一化：坏值/越界/缺字段一律回落默认（不抛、不产出一张 0 宽图）', () => {
+  assert.deepEqual(normalizeAnalysisKnobs(null), DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(normalizeAnalysisKnobs('nope'), DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(normalizeAnalysisKnobs({}), DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(normalizeAnalysisKnobs({ cellWidth: -5, columns: 0, maxCellsPerSheet: 1e9 }), DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(normalizeAnalysisKnobs({ cellWidth: 200 }), { ...DEFAULT_ANALYSIS_KNOBS, cellWidth: 200 }, '合法的那个要留下');
+  assert.deepEqual(normalizeAnalysisKnobs({ columns: 4.7 }), { ...DEFAULT_ANALYSIS_KNOBS, columns: 4 }, '小数取整');
+  assert.deepEqual(normalizeAnalysisKnobs({ columns: NaN }), DEFAULT_ANALYSIS_KNOBS, 'NaN 不是数');
+  assert.deepEqual(normalizeAnalysisKnobs('{"columns":2}'), { ...DEFAULT_ANALYSIS_KNOBS, columns: 2 }, 'JSON 串也要认');
+  assert.deepEqual(normalizeAnalysisKnobs('{坏 json'), DEFAULT_ANALYSIS_KNOBS, '坏 JSON 回落而不是抛');
 });

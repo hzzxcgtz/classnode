@@ -173,3 +173,217 @@ export function buildTextDocument(
   });
   return `${head}\n\n${body.join('\n\n')}\n`;
 }
+
+/* ── 联系表的排版与旋钮 ───────────────────────────────────────────────── */
+
+/**
+ * 「一张联系表多大」的旋钮。**必须可配**（用户 2026-09-25 裁定 3）：
+ * 「每格多大才够模型看清」本机验不了（没有视觉模型、看不见图）⇒ 只能用真模型调参，
+ * 而**调参不许改代码**。
+ *
+ * 四个字段、**三个**旋钮：每格的宽与高算一个（「一张格子多大」），另两个是「几列」「每张最多几格」。
+ */
+export interface SheetKnobs {
+  cellWidth: number;
+  cellHeight: number;
+  columns: number;
+  maxCellsPerSheet: number;
+}
+
+/**
+ * 默认值。取绘图题的原生画布尺寸 —— `ink-render.ts:31-33` 的注释逐字写着
+ * 「绘图题的默认框就是 320 × 240」。
+ *
+ * 🔴 **这三个数是我猜的**（规格 §七 裁定 3，用户已知情并选择「先试」）：
+ * 40 人 ⇒ 3 列 × 4 行 = 12 格 ⇒ 4 张。真模型上够不够看清，只能用真模型调。
+ */
+export const DEFAULT_ANALYSIS_KNOBS: SheetKnobs = { cellWidth: 320, cellHeight: 240, columns: 3, maxCellsPerSheet: 12 };
+
+/** 旋钮落在 `Setting` 表里的键。 */
+export const KNOBS_SETTING_KEY = 'worksheet-analysis-knobs';
+
+/** 格子之间的间距 · 整张图的外边距 · 每格上方标签条的高度（像素）。 */
+export const SHEET_GAP = 12;
+export const SHEET_MARGIN = 16;
+export const SHEET_LABEL_H = 22;
+
+/**
+ * 各旋钮的合法区间 —— 归一化时越界回落默认。
+ *
+ * 🔴 下界刻意不为 0：0 宽的格子会让渲染函数画出一张**没有格子**（或格子叠在一起）的图，
+ * 而**构建不报错、产物是真 PNG**，教师只看到一张白图。
+ */
+const KNOB_RANGE: Record<keyof SheetKnobs, [number, number]> = {
+  cellWidth: [64, 1024],
+  cellHeight: [48, 1024],
+  columns: [1, 8],
+  maxCellsPerSheet: [1, 64],
+};
+
+/**
+ * 把 `Setting` 里的原始值归一化成旋钮。**坏值一律回落默认，不是拒绝** ——
+ * 与本仓既有的 `normalizePointValue` / `normalizeSettings` 同一条纪律：
+ * 一个手改坏的数字不该让教师的「分析」按钮 500。
+ *
+ * ⚠️ `NaN` / `Infinity` **不是**合法数值（`typeof NaN === 'number'`，只判类型会放它过去），
+ * 所以额外走 `Number.isFinite`。
+ */
+export function normalizeAnalysisKnobs(raw: unknown): SheetKnobs {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ...DEFAULT_ANALYSIS_KNOBS };
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_ANALYSIS_KNOBS };
+  const source = parsed as Record<string, unknown>;
+  const out = { ...DEFAULT_ANALYSIS_KNOBS };
+  for (const key of Object.keys(KNOB_RANGE) as Array<keyof SheetKnobs>) {
+    const value = source[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    const rounded = Math.trunc(value);
+    const [min, max] = KNOB_RANGE[key];
+    if (rounded < min || rounded > max) continue;
+    out[key] = rounded;
+  }
+  return out;
+}
+
+/** 联系表里的一格。`hasInk` 为假时这一格只画标签与底板（空笔迹 / unknown / 文字条目）。 */
+export interface SheetCell {
+  index: number;
+  studentId: string;
+  anonLabel: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  labelX: number;
+  labelY: number;
+  hasInk: boolean;
+}
+
+export interface SheetLayout {
+  sheetIndex: number;
+  width: number;
+  height: number;
+  cells: SheetCell[];
+}
+
+/**
+ * 一行占的高度 = 标签条 + 格子 + 行间距。
+ *
+ * ⚠️ 几何顺序是 **外边距 → 标签条 → 格子**（不是「格子上面贴一条越出外边距的标签」）：
+ * 所以格子的 y 要比「这一行的起点」再往下让一个 `SHEET_LABEL_H`。
+ * 计划里那段示例代码把这两个偏移写反了（标签跑到外边距之上），这条断言在用例里
+ * （`c0.labelY === SHEET_MARGIN` 且 `c0.y === SHEET_MARGIN + SHEET_LABEL_H`）。
+ */
+function rowPitch(knobs: SheetKnobs): number {
+  return knobs.cellHeight + SHEET_LABEL_H + SHEET_GAP;
+}
+
+/**
+ * 把 N 份作答排成一张或多张联系表。
+ *
+ * 🔴 **`unknown` 与空笔迹的条目也要占一格**（`hasInk: false`）：不占格的后果是
+ * 联系表上少一格，而 `coveredCount` 仍然是原来的数 —— 教师看到「12 人已交」却只有 11 幅画，
+ * 且**没有任何报错**。空那一格由渲染层画成灰底 + 一句「（空白）」/「（形状认不出）」。
+ *
+ * 顺序与 `entries` 一致（调用方已按 `studentId` 排好）⇒ 第 n 格永远是同一个人，
+ * 于是「第 3 格」这句话在载荷、图、编号对照表三处指的是同一个人。
+ */
+export function layoutSheets(entries: AnalyzeEntry[], labels: Map<string, string>, knobs: SheetKnobs): SheetLayout[] {
+  const capacity = knobs.maxCellsPerSheet;
+  if (entries.length === 0 || capacity < 1) return [];
+  const sheetCount = Math.ceil(entries.length / capacity);
+  const sheets: SheetLayout[] = [];
+  for (let s = 0; s < sheetCount; s++) {
+    const slice = entries.slice(s * capacity, (s + 1) * capacity);
+    const rows = Math.ceil(slice.length / knobs.columns);
+    const cells: SheetCell[] = slice.map((entry, i) => {
+      const col = i % knobs.columns;
+      const row = Math.floor(i / knobs.columns);
+      const x = SHEET_MARGIN + col * (knobs.cellWidth + SHEET_GAP);
+      const labelY = SHEET_MARGIN + row * rowPitch(knobs);
+      const y = labelY + SHEET_LABEL_H;
+      return {
+        index: s * capacity + i,
+        studentId: entry.studentId,
+        anonLabel: labels.get(entry.studentId) ?? entry.studentId,
+        x, y, w: knobs.cellWidth, h: knobs.cellHeight,
+        labelX: x, labelY,
+        hasInk: entry.kind === 'ink' && Array.isArray(entry.ink?.strokes) && entry.ink.strokes.length > 0,
+      };
+    });
+    sheets.push({
+      sheetIndex: s,
+      width: SHEET_MARGIN * 2 + knobs.columns * knobs.cellWidth + Math.max(0, knobs.columns - 1) * SHEET_GAP,
+      height: SHEET_MARGIN * 2 + rows * (knobs.cellHeight + SHEET_LABEL_H) + Math.max(0, rows - 1) * SHEET_GAP,
+      cells,
+    });
+  }
+  return sheets;
+}
+
+/* ── 编排层（薄，不写判断）────────────────────────────────────────────── */
+
+/** 一道题的聚合载荷。图**不在**里面 —— 它是派生物，走单独的端点按需渲染。 */
+export interface AnalysisPayload {
+  questionId: string;
+  questionLabel: string;
+  typeLabel: string;
+  prompt: string;
+  payloadKind: 'text' | 'image' | 'mixed';
+  covered: number;
+  total: number;
+  entries: Array<{ studentId: string; anonLabel: string }>;
+  text: string | null;
+  sheetLayouts: SheetLayout[];
+  knobs: SheetKnobs;
+}
+
+/**
+ * 按载荷的**格序**生成伪名（`User_001`…）。
+ *
+ * 🔴 **刻意不用全局 `anonymizer`**，两个理由：
+ *   ① 它是有状态的单例（`MAX_ENTRIES = 500`，满了或换课堂就重置）——
+ *      为一次分析再塞 40 条进去会**加快**它重置，而重置会让**正在进行的一段聊天**
+ *      里同一个学生的伪名中途换掉（`anonymizer.ts:7`）；
+ *   ② 这里要的语义不同：载荷的伪名只需**在这份载荷内**稳定且可复算
+ *      （同一份 aggregate 重渲必须得到同一组标签），不需要与聊天那边一致。
+ * ⇒ 由排序后的下标派生，纯函数、无共享状态。
+ */
+export function payloadLabels(entries: AnalyzeEntry[]): Map<string, string> {
+  return new Map(entries.map((entry, i) => [entry.studentId, `User_${String(i + 1).padStart(3, '0')}`]));
+}
+
+/**
+ * ★ 组装载荷。**薄编排层，不写判断**（规格 §3.2 的硬要求）：
+ * 伪名、形态、文档、排版全调上面那几个纯函数。
+ *
+ * `total` 由调用方给 —— 它是「**该题应作答的**参与者数」（高级模式下不是全班人数），
+ * 口径在路由那一层（复用 `resolveMaterialTargetId`）；本函数不读库、算不出它。
+ */
+export function buildAnalysisPayload(input: {
+  question: QuestionMeta; entries: AnalyzeEntry[]; total: number; knobs: SheetKnobs;
+}): AnalysisPayload {
+  const { question, entries, total, knobs } = input;
+  const labels = payloadLabels(entries);
+  const payloadKind = payloadKindOf(entries);
+  return {
+    questionId: question.questionId,
+    questionLabel: `第 ${question.index + 1} 题`,
+    typeLabel: question.typeLabel,
+    prompt: question.prompt,
+    payloadKind,
+    covered: entries.length,
+    total,
+    entries: entries.map((entry) => ({ studentId: entry.studentId, anonLabel: labels.get(entry.studentId)! })),
+    // 形态是 image 时不给文档（一张联系表就是全部内容）；mixed 两样都给。
+    text: payloadKind === 'image' ? null : buildTextDocument(question, entries, labels, entries.length, total),
+    sheetLayouts: payloadKind === 'text' ? [] : layoutSheets(entries, labels, knobs),
+    knobs,
+  };
+}

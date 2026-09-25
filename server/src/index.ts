@@ -13,6 +13,7 @@ import './services/file-logger.js';
 
 import { setupSocketHandlers } from './socket/index.js';
 import agentRoutes from './routes/agents.js';
+import platformTokenRoutes from './routes/platform-tokens.js';
 import classRoutes from './routes/classes.js';
 import classroomRoutes from './routes/classroom.js';
 import exportRoutes from './routes/export.js';
@@ -563,6 +564,8 @@ async function main() {
 
   // Routes
   app.use('/api/agents', requireTeacher, agentRoutes);
+  // ★ 2026-09-25：共享 API Token（Coze 低代码）。与智能体同一道教师门。
+  app.use('/api/platform-tokens', requireTeacher, platformTokenRoutes);
   app.use('/api/classes', requireTeacher, classRoutes);
   app.use('/api/classroom', (req, res, next) => {
     const publicStudentAccess =

@@ -110,8 +110,10 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
     Object.keys(els).forEach((id) => {
       const el = els[id];
       if (!el) return;
-      el.style.transform = '';
-      el.style.transition = '';
+      // ⚠️ 只写**非空**的那些：收尾那个 effect 每渲染都会跑一遍，
+      // 而给已经空着的 `style.transform` 再赋一次空串会让浏览器白标一次脏。
+      if (el.style.transform !== '') el.style.transform = '';
+      if (el.style.transition !== '') el.style.transition = '';
     });
     appliedRef.current = [];
     geomRef.current = null;

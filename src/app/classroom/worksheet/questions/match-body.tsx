@@ -136,7 +136,6 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
     ghost.style.visibility = 'visible';
   }, []);
 
-
   const links = draft.links;
   const measure = useCallback(() => {
     const box = containerRef.current;

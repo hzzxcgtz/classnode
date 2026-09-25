@@ -2032,6 +2032,52 @@ tr:hover td {
   font-variant-numeric: tabular-nums;
 }
 
+/* ★ 2026-09-26（spec 第 5 步）：**拖拽把手**。
+   ⚠️ `touch-action: none` 是**必须**的：不写的话触屏上浏览器会先把这次拖动解释成滚动，
+   `pointermove` 到一半就断了（而桌面上看不出来 —— 这正是那种「只在教师的那台设备上坏」
+   的缺陷）。`cursor: grab/grabbing` 是它唯一的手势提示。 */
+.worksheet-editor-drag-handle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.worksheet-editor-drag-handle:hover {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.worksheet-editor-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* 落点那条线（`position: fixed` + 指针量出来的坐标，见 `page.tsx`）。
+   ⚠️ `pointer-events: none`：它是**画上去**的，不能自己去接指针事件（否则
+   `pointermove` 的目标一变，拖动会当场断掉）。
+   ⚠️ 强调色只在这里出现 —— 与简报「强调色只留给可点的、当前生效的」一致：
+   拖动那一刻，这条线就是「当前生效的那个东西」。 */
+.worksheet-editor-drop-line {
+  position: fixed;
+  z-index: 30;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: #2563eb;
+  pointer-events: none;
+}
+
 .worksheet-editor-task-tools {
   display: flex;
   align-items: center;

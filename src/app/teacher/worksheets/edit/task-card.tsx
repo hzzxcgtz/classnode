@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { scoreSummary } from './worksheet-editor-core';
 
@@ -34,6 +34,7 @@ export function TaskCard({
   onMove,
   onRemove,
   onAddQuestion,
+  onDragStart,
   inheritedPoints,
   children,
 }: {
@@ -47,6 +48,8 @@ export function TaskCard({
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onAddQuestion: () => void;
+  /** ★ 2026-09-26（spec 第 5 步）：指针落在把手上 ⇒ 开始拖。 */
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   /** ★ 2026-09-26：任务头上那两个数（几道题 / 满分）要用它算逐题分值。 */
   inheritedPoints: { full: number; half: number };
   /** 这个任务里的小题目卡（由页面渲染 —— 它要传一堆各自的回调）。 */
@@ -59,7 +62,13 @@ export function TaskCard({
   const hasChildren = kids.length > 0;
 
   return (
-    <section className="worksheet-editor-task" aria-label={`任务 ${index + 1}`}>
+    <section
+      className="worksheet-editor-task"
+      aria-label={`任务 ${index + 1}`}
+      /* ★ 2026-09-26（spec 第 5 步）：任务自己也在**顶层**那一层（与散题同级）⇒ `data-layer=""`。 */
+      data-row-id={node.id}
+      data-layer=""
+    >
       <header className="worksheet-editor-task-head">
         {/*
           🔴 任务的 `prompt` **就是它的标题**（教师裁定 ①a 的口径 + 迁移写下的「任务一」）。
@@ -84,6 +93,16 @@ export function TaskCard({
           {scoreSummary(node.children, inheritedPoints).questions} 道 · 满分 {scoreSummary(node.children, inheritedPoints).maxScore}
         </span>
         <div className="worksheet-editor-task-tools">
+          {/* ★ 2026-09-26（spec 第 5 步）：任务级的拖拽把手（与小题级同一个手势）。 */}
+          <button
+            type="button"
+            className="worksheet-editor-drag-handle"
+            onPointerDown={onDragStart}
+            title="拖这个任务调整顺序"
+            aria-label={`拖动任务 ${index + 1} 调整顺序`}
+          >
+            ⠿
+          </button>
           <button
             type="button"
             className="worksheet-editor-icon-button"

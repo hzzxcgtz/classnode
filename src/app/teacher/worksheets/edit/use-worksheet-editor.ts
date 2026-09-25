@@ -613,6 +613,11 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'move', id: questionId, delta });
   }, []);
 
+  /** ★ 2026-09-26（spec 第 5 步）：拖拽落点 —— **一次到位、只占一格撤销**（不是连按 move）。 */
+  const reorderQuestion = useCallback((questionId: string, toIndex: number) => {
+    dispatch({ kind: 'reorder', id: questionId, toIndex });
+  }, []);
+
   const removeQuestion = useCallback((questionId: string) => {
     dispatch({ kind: 'remove', id: questionId });
   }, []);
@@ -639,7 +644,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, addTask, updateAutoGrade, updateTolerance, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
+    addQuestion, addTask, updateAutoGrade, updateTolerance, reorderQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
     save, duplicate, goBack, ensureUsage,
   };

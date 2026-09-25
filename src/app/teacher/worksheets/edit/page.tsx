@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
 import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -10,7 +11,7 @@ import { api } from '@/lib/api';
 import { DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
-import { editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
+import { dropIndexAt, editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -167,6 +168,75 @@ function WorksheetEditorBody() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  /**
+   * ★ 2026-09-26（spec 第 5 步）：**指针拖拽排序**（含落点那条线）。
+   *
+   * 🔴 用**指针事件**，不是 HTML5 拖放：学生端 `use-pointer-drag.ts` 已经踩过一遍
+   * （老 iPad 上 HTML5 DnD 不可用），而这一页也可能在触屏笔记本上开。
+   * ⚠️ 必须在把手上写 `touch-action: none`（CSS），否则触屏上浏览器会先把这次拖动
+   * 解释成滚动，`pointermove` 到一半就断了。
+   *
+   * 落点只认**同层**的兄弟行（`data-layer`）：任务内的小题在同一个层里排，
+   * 顶层那些（任务 + 散题）在另一个层里排。**跨层拖动是另一件事**（换组），
+   * 内核的 `canReorder` 明确不许 —— 所以同层之外根本没有落点，线也不会跑出去。
+   */
+  const [drag, setDrag] = useState<{ id: string; layer: string; from: number } | null>(null);
+  const [dropLine, setDropLine] = useState<{ y: number; left: number; width: number } | null>(null);
+  const dropIndexRef = useRef<number | null>(null);
+
+  const startDrag = useCallback((
+    event: ReactPointerEvent<HTMLElement>, id: string, layer: string, from: number,
+  ) => {
+    // ⚠️ `preventDefault`：不拦的话按住把手拖到文字上会**顺带选中一片文字**。
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dropIndexRef.current = null;
+    setDropLine(null);
+    setDrag({ id, layer, from });
+  }, []);
+
+  useEffect(() => {
+    if (!drag) return;
+    const rowsInLayer = () => Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-layer="${CSS.escape(drag.layer)}"]`),
+    );
+    const onMove = (event: PointerEvent) => {
+      const rows = rowsInLayer();
+      if (rows.length === 0) return;
+      const rects = rows.map((row) => row.getBoundingClientRect());
+      const index = dropIndexAt(rects.map((rect) => ({ top: rect.top, height: rect.height })), event.clientY);
+      dropIndexRef.current = index;
+      // 线画在**行的边界**上（第 0 位画在第一行上沿，其余画在第 index-1 行的下沿）。
+      const first = rects[0];
+      setDropLine({
+        y: index === 0 ? first.top : rects[index - 1].bottom,
+        left: first.left,
+        width: first.width,
+      });
+    };
+    const onUp = () => {
+      const index = dropIndexRef.current;
+      // 🔴 **落点是从「还带着被拖那一行」的列表里量出来的** ⇒ 往下拖时下标要多减一
+      //（先抽走它，后面的行整体前移一位）。差这一下的表现是「拖到两行之间，结果插到了下一行后面」。
+      if (index !== null) {
+        const to = index > drag.from ? index - 1 : index;
+        if (to !== drag.from) editor.reorderQuestion(drag.id, to);
+      }
+      dropIndexRef.current = null;
+      setDrag(null);
+      setDropLine(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    // ⚠️ `pointercancel` 也要收尾（系统手势抢走指针时）：不然线会**永远留在屏幕上**。
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [drag, editor]);
+
   const requestRemove = useCallback(async (node: WorksheetQuestionNode, heading: string) => {
     // 🔴 任务是**一整块**，而它的删除按钮就在任务头行上 —— 与小题的删除按钮只隔几十像素。
     // 说成「确定删除第 1 题吗？」的后果是：教师以为在删一道题，实际删掉了整个任务
@@ -296,7 +366,7 @@ function WorksheetEditorBody() {
             块有两种：任务（`TaskCard` 包着它的小题）与散题（各自成块）。
             散题是老数据 / 手工改过的库才有的形态，仍然画得出来。
           */}
-          {blocks.map((block, blockIndex) => {
+          {blocks.map((block) => {
             const questionCards = block.questions.map((row) => (
               <QuestionCard
                 key={row.node.id}
@@ -309,6 +379,8 @@ function WorksheetEditorBody() {
                 onToggle={() => toggleOpen(row.node.id)}
                 // 任务里的小题徽章只显示序号（任务名在容器头上，别重复）
                 inTask={row.taskId !== null}
+                taskId={row.taskId}
+                onDragStart={event => startDrag(event, row.node.id, row.taskId ?? '', row.index)}
                 node={row.node}
                 inheritedPoints={inheritedPoints}
                 rejectedPointInput={editor.rejectedPoints[row.node.id]}
@@ -337,6 +409,7 @@ function WorksheetEditorBody() {
                 onDescriptionChange={description => editor.updateData(block.task!.node.id, { description })}
                 onMove={delta => editor.moveQuestion(block.task!.node.id, delta)}
                 onRemove={() => void requestRemove(block.task!.node, '')}
+                onDragStart={event => startDrag(event, block.task!.node.id, '', block.task!.index)}
                 onAddQuestion={() => setPickerFor({ parentId: block.task!.node.id })}
                 inheritedPoints={inheritedPoints}
               >
@@ -352,6 +425,15 @@ function WorksheetEditorBody() {
       <button type="button" className="worksheet-editor-add" onClick={() => editor.addTask()}>
         ＋ 添加任务
       </button>
+
+      {/* ★ 2026-09-26（spec 第 5 步）：**落点那条线**（不是整块高亮 —— 高亮会盖住行本身，
+          而教师要看的是「插到哪两行之间」）。`position: fixed` + 指针量出来的坐标。 */}
+      {drag && dropLine && (
+        <div
+          className="worksheet-editor-drop-line"
+          style={{ top: dropLine.y, left: dropLine.left, width: dropLine.width }}
+        />
+      )}
 
       {pickerFor && (
         <AddQuestionPicker

@@ -1,5 +1,7 @@
 'use client';
 
+import type { PointerEvent as ReactPointerEvent } from 'react';
+
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
   canGivePartial,
@@ -57,7 +59,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, expanded, onToggle, inTask, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, expanded, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -79,6 +81,10 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
   onToggle: () => void;
   /** ★ 2026-09-26：这道题是不是**任务里的小题**（决定徽章显不显示任务名前缀）。 */
   inTask: boolean;
+  /** ★ 2026-09-26（spec 第 5 步）：它所在的那一层 —— 任务 id，顶层散题是 `null`。 */
+  taskId: string | null;
+  /** ★ 2026-09-26：指针落在把手上 ⇒ 开始拖（拖动中不该顺手把卡片展开）。 */
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   node: WorksheetQuestionNode;
   /**
    * 学习单级的**两档**（`settings.rewardStep` / `settings.halfStep`）—— 逐题留空时继承的就是它们。
@@ -143,6 +149,10 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
       data-expanded={expanded ? '1' : '0'}
       /* ★ 2026-09-26（spec 第 3 步）：↑/↓ 在题间跳时靠它定位（见 `page.tsx` 的那段 effect）。 */
       data-question-id={node.id}
+      /* ★ 2026-09-26（spec 第 5 步）：拖拽要靠它找**同层**的兄弟行（任务内的小题同一层、
+         顶层散题同一层）—— 见 `page.tsx` 的指针处理。 */
+      data-row-id={node.id}
+      data-layer={taskId ?? ''}
       aria-label={`${heading} ${typeLabel}`}
       /*
         ★ 2026-09-26（教师）：「鼠标在某题上停留时，可以点击这题框中的**任何位置**都可以
@@ -189,6 +199,22 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
             不拦住的话按一下 ▲ 会顺带把整张卡展开（而教师只想挪一位）。 */}
         <div className="worksheet-editor-question-tools" onClick={event => event.stopPropagation()}>
+          {/*
+            ★ 2026-09-26（spec 第 5 步）：**拖拽把手**。
+            ⚠️ 为什么必须是把手、不能让整行可拖：整行已经挂「点一下展开」了 ——
+            两者会抢同一个手势（教师想展开却被拖走）。
+            ⚠️ `touch-action: none`（CSS）是**必须**的：不写的话触屏上浏览器会先把这次
+            拖动解释成滚动，`pointermove` 到一半就断了。`▲▼` 留着：拖拽对键盘用户不可用。
+          */}
+          <button
+            type="button"
+            className="worksheet-editor-drag-handle"
+            onPointerDown={onDragStart}
+            title="拖这一行调整顺序"
+            aria-label={`拖动「${heading}」调整顺序`}
+          >
+            ⠿
+          </button>
           <button
             type="button"
             className="worksheet-editor-icon-button"

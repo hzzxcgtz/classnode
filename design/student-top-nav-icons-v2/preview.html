@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:1500px;height:800px;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f3f6fb;color:#334155}
+svg{display:block;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.stage{padding:50px 64px}.title{margin:0;font-size:30px;color:#172554}.sub{margin:8px 0 34px;color:#64748b;font-size:16px}
+.panel{border:1px solid #e3e9f2;border-radius:22px;background:#fff;box-shadow:0 14px 38px rgba(30,41,59,.08)}
+.panel-label{padding:23px 28px 13px;color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:.08em}
+.navs{padding:0 24px 28px}
+.nav{display:flex;align-items:center;height:86px;padding:0 16px;border:1px solid #e6eaf2;border-radius:16px;background:#fff;box-shadow:0 7px 20px rgba(30,41,59,.05)}
+.item{display:flex;align-items:center;gap:11px;height:58px;padding:0 20px;border-radius:999px;color:#64748b;font-size:22px;font-weight:650}
+.item svg{width:25px;height:25px;stroke-width:1.8}.item.active-blue{background:#e8eeff;color:#2563eb}.item.active-purple{background:#f1eaff;color:#7c3aed}.item.active-teal{background:#e3f7f4;color:#0e7490}
+.details{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px}.detail{display:flex;align-items:center;gap:20px;padding:25px 28px;border:1px solid #e6eaf2;border-radius:18px;background:#fff}.detail svg{width:60px;height:60px;stroke-width:1.5;color:#475569}.name{font-size:20px;font-weight:750;color:#334155}.desc{margin-top:5px;font-size:14px;line-height:1.5;color:#94a3b8}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="worksheet" viewBox="0 0 24 24">
+    <path d="M6.5 2.5h8L19.5 7v12.5a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2Z"/><path d="M14.5 2.5V7h5"/><path d="m7.5 11 1.3 1.3 2.3-2.6M13.5 11.2h3"/><path d="m7.5 16.5 1.3 1.3 2.3-2.6M13.5 16.7h3"/>
+  </symbol>
+  <symbol id="explore" viewBox="0 0 24 24">
+    <rect x="2.5" y="3" width="19" height="18" rx="2.7"/><path d="M2.5 8h19"/><circle cx="6" cy="5.5" r=".7" fill="currentColor" stroke="none"/><circle cx="8.7" cy="5.5" r=".7" fill="currentColor" stroke="none"/><path d="M6 13h12M6 17h12"/><circle cx="10" cy="13" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r="1.5" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="companion" viewBox="0 0 24 24">
+    <path d="M13 4c4.8 0 8.5 3 8.5 6.8 0 1.7-.8 3.3-2.1 4.5l.8 3.2-3.7-1.9c-1.1.5-2.3.8-3.5.8-4.8 0-8.5-2.9-8.5-6.6S8.2 4 13 4Z"/><path d="M8.5 8.1C5 8.5 2.5 10.8 2.5 13.7c0 1.4.6 2.7 1.7 3.7l-.7 2.8 3.1-1.6c1 .5 2 .7 3.1.7 1.8 0 3.4-.5 4.7-1.4"/><circle cx="10.1" cy="10.8" r="1" fill="currentColor" stroke="none"/><circle cx="13.1" cy="10.8" r="1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="10.8" r="1" fill="currentColor" stroke="none"/><path d="M19.2 1.8v3.4M17.5 3.5h3.4"/>
+  </symbol>
+</svg>
+<main class="stage">
+  <h1 class="title">学生顶部导航 · 三枚学习模块图标</h1>
+  <p class="sub">统一 24×24 网格、圆角线条和视觉重量；实际显示建议 21–24px</p>
+  <section class="panel">
+    <div class="panel-label">导航实际尺寸与三种选中状态</div>
+    <div class="navs">
+      <div class="nav">
+        <div class="item">⌂&nbsp; 首页</div>
+        <div class="item active-blue"><svg><use href="#worksheet"/></svg>学习单</div>
+        <div class="item"><svg><use href="#explore"/></svg>探究空间</div>
+        <div class="item"><svg><use href="#companion"/></svg>智能学伴</div>
+      </div>
+      <div class="nav" style="margin-top:15px">
+        <div class="item">⌂&nbsp; 首页</div>
+        <div class="item"><svg><use href="#worksheet"/></svg>学习单</div>
+        <div class="item active-purple"><svg><use href="#explore"/></svg>探究空间</div>
+        <div class="item"><svg><use href="#companion"/></svg>智能学伴</div>
+      </div>
+      <div class="nav" style="margin-top:15px">
+        <div class="item">⌂&nbsp; 首页</div>
+        <div class="item"><svg><use href="#worksheet"/></svg>学习单</div>
+        <div class="item"><svg><use href="#explore"/></svg>探究空间</div>
+        <div class="item active-teal"><svg><use href="#companion"/></svg>智能学伴</div>
+      </div>
+    </div>
+  </section>
+  <section class="details">
+    <div class="detail"><svg><use href="#worksheet"/></svg><div><div class="name">学习单</div><div class="desc">任务页面＋两项作答状态</div></div></div>
+    <div class="detail"><svg><use href="#explore"/></svg><div><div class="name">探究空间</div><div class="desc">交互网页＋可拖动控制</div></div></div>
+    <div class="detail"><svg><use href="#companion"/></svg><div><div class="name">智能学伴</div><div class="desc">学生与 AI 的双向对话</div></div></div>
+  </section>
+</main>
+</body>
+</html>

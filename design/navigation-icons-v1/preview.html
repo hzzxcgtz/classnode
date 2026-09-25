@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:1440px;height:760px;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f3f6fb;color:#334155}
+svg{display:block;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+.stage{padding:52px 60px}.title{margin:0 0 8px;font-size:30px;color:#172554}.sub{margin:0 0 36px;font-size:16px;color:#64748b}
+.grid{display:grid;grid-template-columns:420px 1fr;gap:32px}
+.panel{overflow:hidden;border:1px solid #e3e9f2;border-radius:22px;background:#fff;box-shadow:0 12px 35px rgba(30,41,59,.08)}
+.panel-title{padding:22px 26px 14px;font-size:14px;font-weight:700;color:#94a3b8;letter-spacing:.08em}
+.sidebar{padding:0 18px 22px}.side-item{display:flex;align-items:center;gap:15px;height:58px;padding:0 18px;border-radius:12px;color:#475569;font-size:22px}.side-item svg{width:25px;height:25px;stroke-width:1.6}.side-item.active{background:#eef2ff;color:#2563eb;font-weight:650}.side-item.active::before{content:"";position:absolute}.spacer{height:4px}
+.student-wrap{padding:32px}.student-bar{display:flex;align-items:center;height:82px;padding:0 18px;border:1px solid #e6eaf2;border-radius:15px;background:#fff;box-shadow:0 7px 20px rgba(30,41,59,.06)}
+.tab{display:flex;align-items:center;gap:10px;height:52px;padding:0 18px;border-radius:999px;color:#64748b;font-size:21px;font-weight:600}.tab svg{width:24px;height:24px;stroke-width:1.9}.tab.active{background:#e7edff;color:#2563eb}.tab.explore-active{background:#f1eaff;color:#6d28d9}
+.scale{display:flex;align-items:center;gap:32px;margin-top:34px;padding:25px;border-top:1px solid #eef2f7}.sample{display:flex;align-items:center;gap:13px;color:#475569;font-size:17px}.sample svg{width:48px;height:48px;stroke-width:1.5}.caption{font-size:13px;color:#94a3b8}
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <symbol id="worksheet" viewBox="0 0 24 24">
+    <path d="M8 4H6.5A2.5 2.5 0 0 0 4 6.5v12A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-12A2.5 2.5 0 0 0 17.5 4H16"/>
+    <rect x="8" y="2.5" width="8" height="4" rx="1.5"/>
+    <path d="m8 11 1.4 1.4 2.4-2.7M14.5 11.2H17"/>
+    <path d="m8 16.5 1.4 1.4 2.4-2.7M14.5 16.7H17"/>
+  </symbol>
+  <symbol id="explore" viewBox="0 0 24 24">
+    <rect x="2.5" y="3" width="19" height="18" rx="2.5"/>
+    <path d="M2.5 8h19"/>
+    <circle cx="6" cy="5.5" r=".7" fill="currentColor" stroke="none"/>
+    <circle cx="8.8" cy="5.5" r=".7" fill="currentColor" stroke="none"/>
+    <circle cx="7.5" cy="14.5" r="2.2"/>
+    <rect x="15.2" y="12.7" width="3.5" height="3.5" rx=".7"/>
+    <path d="M9.8 14.4c1.8-2.4 3.5 2 5.3 0"/>
+  </symbol>
+</svg>
+<main class="stage">
+  <h1 class="title">学习功能导航图标</h1>
+  <p class="sub">同一套 24×24 网格，同时适配教师侧栏和学生顶部导航</p>
+  <div class="grid">
+    <section class="panel">
+      <div class="panel-title">教师端 · 左侧导航</div>
+      <div class="sidebar">
+        <div class="side-item"><span>◉</span>仪表盘</div>
+        <div class="side-item"><span>▣</span>AI智能体</div>
+        <div class="side-item"><svg><use href="#explore"/></svg>探究网页</div>
+        <div class="side-item active"><svg><use href="#worksheet"/></svg>学习单</div>
+        <div class="side-item"><span>◎</span>班级管理</div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-title">学生端 · 顶部导航</div>
+      <div class="student-wrap">
+        <div class="student-bar">
+          <div class="tab">⌂&nbsp; 首页</div>
+          <div class="tab active"><svg><use href="#worksheet"/></svg>学习单</div>
+          <div class="tab"><svg><use href="#explore"/></svg>探究空间</div>
+          <div class="tab">◌&nbsp; 智能学伴</div>
+        </div>
+        <div class="student-bar" style="margin-top:22px">
+          <div class="tab">⌂&nbsp; 首页</div>
+          <div class="tab"><svg><use href="#worksheet"/></svg>学习单</div>
+          <div class="tab explore-active"><svg><use href="#explore"/></svg>探究空间</div>
+          <div class="tab">◌&nbsp; 智能学伴</div>
+        </div>
+        <div class="scale">
+          <div class="sample"><svg><use href="#worksheet"/></svg><div>学习单<div class="caption">48px 设计检查</div></div></div>
+          <div class="sample"><svg><use href="#explore"/></svg><div>探究空间<div class="caption">48px 设计检查</div></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+</body>
+</html>
+

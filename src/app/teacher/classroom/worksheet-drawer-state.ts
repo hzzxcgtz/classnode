@@ -8,6 +8,7 @@ import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNod
 import {
   draftFromValue, flattenQuestions, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
   readCategorizeItems, readCategorizeZones, readMatchLeft, readMatchRight, readOrderItems,
+  TRUE_FALSE_OPTIONS,
 } from '../../../lib/worksheet-questions.ts';
 // ★ M4b/E1：笔迹的读数**只有一份实现**（`readInkValue`），这里直接引它。
 // 🔴 **刻意不包一层 `readAnswerInk(node, value)`**：包一层多出来的那个 `node` 参数
@@ -231,6 +232,12 @@ export function questionOutcome(
   };
 }
 
+/** 条目表里按 id 取文本；查不到就**退回 id 本身**（与单选「选项对不上时退回 key」同一条纪律）。 */
+function entryText(entries: Array<{ id: string; text: string }>, id: string): string {
+  const entry = entries.filter((item) => item.id === id)[0];
+  return entry ? entry.text || entry.id : id;
+}
+
 /**
  * 把一份作答值读成人话。
  *
@@ -262,16 +269,13 @@ export function questionOutcome(
  *       `formatAnswer(单空题, { format: 'fill-multi/v1', texts: ['H2O'] })`
  *         · 58e9b7d 之前：`null`　· 现在：`"H2O"`
  *     对照组（值本身是单空形状）两边都是 `"H2O"` —— **那一支**才是逐字不变的那一支。
- *   · 🔴 **多选不在这里展开**：只有 `single-choice` 走上面那一支，多选落到下面 ⇒ 返回
- *     `null`（它**不会**「显示第一个选中的 key」—— 那句注释曾经写错，2026-09-24 更正）。
- *     这是**既有**口径（D4 的地盘），本轮没改，别把它读成新引入的行为。
- *   · 判断题同理：不展开「对 / 错」两个选项，也返回 `null`（既有口径）。
+ *   · ⊘ **2026-09-25 更正**：上面那两条原先写的是「**多选 / 判断题** 不在本函数展开，
+ *     一律返回 `null`（既有口径，本轮没改）」。
+ *     🔴 **那个「口径」是一个缺陷**：两条都落到最后那条只认 `text` / `fill` 的三元链上
+ *     ⇒ 抽屉把**答过**的学生显示成「未作答」。现已各成一族（下面 `multi-choice` /
+ *     `true-false` 两支），与本文件其余各题型同一条路。
+ *     ⇒ 今天 `formatAnswer` 覆盖**全部 9 个题型**，没有一支是「故意不管」的。
  */
-function entryText(entries: Array<{ id: string; text: string }>, id: string): string {
-  const entry = entries.filter((item) => item.id === id)[0];
-  return entry ? entry.text || entry.id : id;
-}
-
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
   // ★ M4b：**笔迹不是文字** ⇒ `answerText` 回 `null`（`readInkValue` 认得它）。那一幅画由
   // `questionOutcome` 的 `ink` 带走、由 `worksheet-drawer.tsx` 的 `InkPreview` 画出来 ——
@@ -361,6 +365,34 @@ export function formatAnswer(node: WorksheetQuestionNode, value: unknown): strin
     if (!selected) return null;
     const option = readOptions(node).filter((item) => item.key === selected)[0];
     return option ? `${option.key}. ${option.text}` : selected;
+  }
+  // ★ 2026-09-25：**多选**。它与单选同一个缺陷（只认 `single-choice` ⇒ 落进最后那条
+  // 三元链 ⇒ `null` ⇒ 「未作答」），只是从没人报过。
+  if (node.type === 'multi-choice') {
+    const selected = draft.kind === 'choice' ? draft.selected : [];
+    if (selected.length === 0) return null;
+    const options = readOptions(node);
+    const parts: string[] = [];
+    // 按**选项表**的顺序输出，不是 `selected` 自己的顺序 —— 后者是学生的点击顺序，
+    // 逐人不同（与排序 / 连线 / 归类那三支同一条理由：教师要横着比一串学生）。
+    options.forEach((option) => {
+      if (selected.includes(option.key)) parts.push(`${option.key}. ${option.text}`);
+    });
+    // 选中的 key 不在选项表里（题被改过 / 上个版本的值）⇒ 退回 key 本身，与单选同一条纪律
+    selected.forEach((key) => {
+      if (!options.some((item) => item.key === key)) parts.push(key);
+    });
+    return parts.length > 0 ? parts.join('；') : null;
+  }
+  // ★ 2026-09-25：**判断题**。🔴 它**不存 `options`**（规格 §12：`data` 里只有 `correctKeys`）
+  // ⇒ 这里必须读 `TRUE_FALSE_OPTIONS` 那一份常量。用 `readOptions(node)` 会读回空表，
+  // 于是每个学生都「退回 key 本身」，抽屉里印出 `T` / `F` 两个字母 —— 判分协议对教师没有意义。
+  if (node.type === 'true-false') {
+    const selected = draft.kind === 'choice' ? draft.selected[0] ?? '' : '';
+    if (!selected) return null;
+    const option = TRUE_FALSE_OPTIONS.filter((item) => item.key === selected)[0];
+    // 只给那个字（「对」），**不印 key**（与多选刻意不同：`A.` 那种前缀在判断题上是噪声）
+    return option ? option.text : selected;
   }
   // 填空（单空 / 多空）与问答都是「一段文字」。多空用空格接起来 —— 逐空分行是 D4 的
   // 呈现细节，这里只保证**有内容就显示出来**（学生写过的字不许在抽屉里变成空白）。

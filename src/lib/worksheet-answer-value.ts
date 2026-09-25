@@ -569,6 +569,9 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   //   ⇒ 那一格返回 `null`（实测：`/usr/bin/grep -rn "strokePath\|InkPreview\|readInkValue"
   //   src/app` ⇒ 零命中）。⇒ 这是**渲染还没接上**，不是「那幅画丢了」——学生的笔迹
   //   一个字节都没少，接上的是 E1。别在这里把它读成「读回来没意义」。
+  //   ⊘ **2026-09-25 更正**：上面引的行号（`:238` / `:248`）已经不对了，而且
+  //     `formatAnswer` **不再只抽 `text` / `fill`** —— 它现在有 ink / 排序 / 连线 / 归类 /
+  //     多选 / 判断六支。那一段留在这里只作为 E1 存在的**理由**，别拿它当现状读。
   const ink = readInkValue(row);
   if (ink) return { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
   // 🔴 **没有「题型是画布题 ⇒ 一律回空画布」这一支。** R2 在这里加过一句
@@ -582,6 +585,9 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   //     库里那一行的值仍是 `text/v1`，而抽屉的「原答案」走的是本函数 ⇒ 空 ink 态 ⇒
   //     `formatAnswer` 的三元链只认 `text` / `fill` ⇒ 回 `null` ⇒
   //     **抽屉把那个学生显示成「未作答」**（终审的探针逐字抓到）。
+  //     ⊘ **2026-09-25 更正**：那三元链已经不存在了（`formatAnswer` 现在按 `draft.kind`
+  //     逐族分派）⇒ 这一条**今天不再是「有害」的理由**。R18 的裁定不变 —— 撤掉那句
+  //     `isInkNode(node) return empty` 本来就对，只是它当时那条反例已经修好了。
   // ⚠️ 「ink 节点 + 读不出的值 ⇒ 空画布」这一档**没有失去覆盖**，只是保证**不在这里**：
   //    `format` 分派认不出那个值时落回 `draftKindOf(node)` 的 `'ink'`，而下面**没有任何
   //    分支匹配 `'ink'`** ⇒ 走到函数末尾的 `return empty`。用例逐字钉着它

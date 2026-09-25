@@ -285,6 +285,99 @@ test('🔴 形态 A：排序 / 连线 / 归类的原答案 —— 条目型过�
   assert.equal(formatAnswer(matchNode, 'x'), null);
 });
 
+test('🔴 形态 A：多选给「键. 文字」，判断只给那个字（**不印 T / F**）', () => {
+  // 与上游那条同一个缺陷：`node.type === 'single-choice'` 是唯一的选项型分支，
+  // 多选与判断落到最后那条只认 `text` / `fill` 的三元链 ⇒ `null` ⇒ 「未作答」。
+  const multi = node({
+    id: 'q_9', type: 'multi-choice',
+    data: {
+      options: [{ key: 'A', text: '水' }, { key: 'B', text: '阳光' }, { key: 'C', text: '土壤' }],
+      correctKeys: ['A', 'B'],
+    },
+  });
+  // ⚠️ 故意给一个**乱序**的 selection：显示按**选项表**的顺序走（与排序/连线/归类同一条：
+  // 学生的点击顺序逐人不同，教师横着比会以为每个人选得都不一样）。
+  assert.equal(formatAnswer(multi, { format: 'choice/v1', selected: ['C', 'A'] }), 'A. 水；C. 土壤');
+  // 选中的 key 不在选项表里（题被改过 / 上个版本的值）⇒ 退回 key 本身，与单选同一条纪律
+  assert.equal(formatAnswer(multi, { format: 'choice/v1', selected: ['A', 'Z'] }), 'A. 水；Z');
+  assert.equal(formatAnswer(multi, { format: 'choice/v1', selected: [] }), null, '一个都没选 ⇒ 未作答');
+
+  // 🔴 判断题**不存 `options`**（规格 §12：`data` 里只有 `correctKeys`）⇒ 这里要走
+  //    `TRUE_FALSE_OPTIONS` 那一份常量。用 `readOptions(node)` 会读回空表，于是每个学生
+  //    都「退回 key 本身」，抽屉里印出 `T` / `F` 两个字母 —— 对教师没有意义。
+  const tf = node({ id: 'q_10', type: 'true-false', data: { correctKeys: ['T'] } });
+  assert.equal(formatAnswer(tf, { format: 'choice/v1', selected: ['T'] }), '对');
+  assert.equal(formatAnswer(tf, { format: 'choice/v1', selected: ['F'] }), '错');
+  assert.equal(formatAnswer(tf, { format: 'choice/v1', selected: [] }), null, '没选 ⇒ 未作答');
+  // 读不出来的形状不抛（渲染路径上一次 TypeError 会让整个抽屉白屏）
+  assert.equal(formatAnswer(tf, null), null);
+  assert.equal(formatAnswer(multi, null), null);
+});
+
+test('🔴 每个题型在抽屉里都「有话说」—— 没有哪个题型会静默地回 null', () => {
+  // 这条网的由来：排序 / 连线 / 归类 / 多选 / 判断**五个**题型同时缺分支，而它们的表现
+  // 一模一样 —— **静默回 `null`**，屏幕上就是「未作答」。没有任何东西会红，
+  // 所以这五个是一起被发现的，不是一个个报出来的。
+  // ⇒ 判据挂在新题型**清单**（`QUESTION_TYPE_OPTIONS`）上：将来加第 10 个题型，
+  //    忘了给 `formatAnswer` 补分支时**这一条会红**，而不是等教师上课时发现。
+  const samples: Record<string, { node: WorksheetQuestionNode; value: unknown }> = {
+    'single-choice': {
+      node: node({ id: 's1', type: 'single-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } }),
+      value: { format: 'choice/v1', selected: ['A'] },
+    },
+    'true-false': {
+      node: node({ id: 's2', type: 'true-false', data: { correctKeys: ['T'] } }),
+      value: { format: 'choice/v1', selected: ['T'] },
+    },
+    'multi-choice': {
+      node: node({ id: 's3', type: 'multi-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } }),
+      value: { format: 'choice/v1', selected: ['A'] },
+    },
+    'fill-blank': {
+      node: node({ id: 's4', type: 'fill-blank', data: { answers: ['H2O'] } }),
+      value: { format: 'fill/v1', text: 'H2O' },
+    },
+    'short-answer': {
+      node: node({ id: 's5', type: 'short-answer' }),
+      value: { format: 'text/v1', text: '光合作用' },
+    },
+    order: {
+      node: node({ id: 's6', type: 'order', data: { items: [{ id: 'i1', text: '苹果' }] } }),
+      value: { format: 'order/v1', order: ['i1'] },
+    },
+    match: {
+      node: node({ id: 's7', type: 'match', data: { left: [{ id: 'l1', text: '苹果' }], right: [{ id: 'r1', text: '红色' }] } }),
+      value: { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }] },
+    },
+    categorize: {
+      node: node({ id: 's8', type: 'categorize', data: { items: [{ id: 'i1', text: '猫' }], zones: [{ id: 'z1', label: '哺乳类' }] } }),
+      value: { format: 'categorize/v1', assignment: { i1: 'z1' } },
+    },
+    // ⚠️ 画布题**故意**让 `answerText` 是 `null`（笔迹不是文字）⇒ 它的「话」在 `ink` 上，
+    //    由 `InkPreview` 画出来。下面那条断言两个都认，正是为了它。
+    drawing: {
+      node: node({ id: 's9', type: 'drawing', inputMode: 'handwriting' }),
+      value: {
+        format: 'drawing/v1',
+        canvas: { w: 320, h: 240 },
+        strokes: [{ color: '#1f2937', width: 0.016, points: [[0.5, 0.5]] as [number, number][] }],
+      },
+    },
+  };
+
+  for (const option of QUESTION_TYPE_OPTIONS) {
+    const sample = samples[option.value];
+    assert.ok(sample, `题型 \`${option.value}\` 没有样本 —— 新增题型时必须在这里补一行`);
+    const outcome = questionOutcome(sample.node, row({ status: 'submitted', value: sample.value }));
+    assert.ok(
+      outcome.answerText !== null || outcome.ink !== null,
+      `题型 \`${option.value}\` 在抽屉里既没有文字、也没有画 ⇒ 教师看到的是「未作答」`,
+    );
+  }
+  // 样本表不许比清单**多**（删掉一个题型之后留下的孤儿样本会掩盖它已经不存在）
+  assert.equal(Object.keys(samples).length, QUESTION_TYPE_OPTIONS.length);
+});
+
 test('🔴 形态 M4b：笔迹作答 —— answerText 回 null，但 ink 非空（抽屉不许说「未作答」）', () => {
   // ⚠️ 两个助手是既有的：`node({id, type, …})`（单对象）与 `row({status, value, …})`，
   //    **不是** `node('drawing')` 那种形状 —— 照该文件既有的调用写。

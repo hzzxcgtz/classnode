@@ -316,6 +316,12 @@ html, body {
   cursor: not-allowed;
 }
 
+/* ★ M6b/5：状态点的**第三态**（还不知道）。原先只有 online/offline 两态，
+   而初值是 `true` ⇒ 首帧就画绿点。 */
+.status-dot.unknown {
+  background: #94a3b8;
+}
+
 .btn-primary {
   background: var(--primary);
   color: white;

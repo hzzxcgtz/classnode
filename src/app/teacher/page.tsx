@@ -7,7 +7,7 @@ import { platformColors } from "@/lib/constants";
 import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
-import { Toast, TeacherPageHeader } from "@/lib/components";
+import { Toast, TeacherPageHeader, TeacherLoadingState } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
 import { classroomMaterialsInUse } from "@/lib/classroom-material";
 import type { Socket } from "socket.io-client";
@@ -126,13 +126,21 @@ export default function TeacherDashboard() {
     });
   }, [activeClassrooms]);
 
+  // ★ M6b/3：列表**加载失败**必须与「你确实一堂课都没有」分开。
+  //    原先这里是 `catch {}`（空块）⇒ 失败后 activeClassrooms 停在 []，界面走到
+  //    「创建第一个课堂」，与「真的一堂课都没有」**逐字相同** —— 教师会以为数据没了。
+  const [loadError, setLoadError] = useState(false);
+
   async function loadData() {
     setLoading(true);
+    setLoadError(false);
     try {
       const [data, settings] = await Promise.all([api.getActiveClassrooms(), api.getSettings().catch((): Record<string, string> => ({}))]);
       setActiveClassrooms(data);
       setLanAccess(settings['lan-access'] !== 'false');
-    } catch {}
+    } catch {
+      setLoadError(true);
+    }
     setLoading(false);
   }
 
@@ -376,20 +384,10 @@ export default function TeacherDashboard() {
     return matchesSearch && matchesStatus;
   });
 
+  // ★ M6b/4：改用现成的 `TeacherLoadingState`（带旋转圈 + `role="status"`）——
+  //   这里原先是个只有三个字的居中 div，而同仓早就有那个组件。**不新写任何东西。**
   if (loading) {
-    return (
-      <div
-        className="classroom-management-toolbar"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "60vh",
-        }}
-      >
-        加载中...
-      </div>
-    );
+    return <TeacherLoadingState label="正在加载课堂…" />;
   }
 
   return (
@@ -1003,7 +1001,9 @@ export default function TeacherDashboard() {
               marginBottom: 6,
             }}
           >
-            暂无活跃课堂
+            {/* ★ M6b/3：加载失败时**不许**说「暂无活跃课堂」——
+                那与「你确实一堂课都没有」是两件事，而失败时它们逐字相同。 */}
+            {loadError ? '课堂列表加载失败' : '暂无活跃课堂'}
           </div>
           <p
             style={{
@@ -1012,10 +1012,13 @@ export default function TeacherDashboard() {
               margin: "0 0 20px",
             }}
           >
-            创建新课堂后，学生通过互动码加入，即可开始互动教学
+            {loadError
+              ? '请确认本机的 ClassNode 服务正在运行，然后重试'
+              : '创建新课堂后，学生通过互动码加入，即可开始互动教学'}
           </p>
           <button
-            onClick={() => router.push("/teacher/classroom/new")}
+            // ★ M6b/3：失败时这个按钮是**重试**，不是「去建课堂」。
+            onClick={() => { if (loadError) { void loadData(); } else { router.push("/teacher/classroom/new"); } }}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -1042,7 +1045,7 @@ export default function TeacherDashboard() {
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            创建第一个课堂
+            {loadError ? '重试' : '创建第一个课堂'}
           </button>
         </div>
       )}

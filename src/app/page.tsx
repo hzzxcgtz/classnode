@@ -15,7 +15,10 @@ export default function StudentHomePage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [logoErr, setLogoErr] = useState(false);
-  const [serverOnline, setServerOnline] = useState(true);
+  // ★ M6b/5：`null` = **还不知道**。原先初值是 `true` ⇒ 健康检查回来之前就报「服务在线」
+  //    （首帧的绿点是一句没根据的话），而失败后文案又写「连接中...」⇒ 「红点 + 连接中」
+  //    两个互相矛盾的说法，且「服务未连接」这句话**永远不可能出现**。
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
     api.health().then(() => setServerOnline(true)).catch(() => setServerOnline(false));
@@ -104,9 +107,9 @@ export default function StudentHomePage() {
     >
       {/* 服务状态 */}
       <div style={{ position: 'absolute', top: 20, right: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span className={`status-dot ${serverOnline ? 'online' : 'offline'}`} />
+        <span className={`status-dot ${serverOnline === null ? 'unknown' : serverOnline ? 'online' : 'offline'}`} />
         <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: "0.813rem" }}>
-          {serverOnline ? '服务在线' : '连接中...'}
+          {serverOnline === null ? '正在检查服务...' : serverOnline ? '服务在线' : '服务未连接'}
         </span>
       </div>
 

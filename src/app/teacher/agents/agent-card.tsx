@@ -24,6 +24,37 @@ const actionStyle = (danger = false) => ({
   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
 });
 
+/**
+ * 用途那一枚汉字（学 / 析）。
+ *
+ * ⚠️ 只在**确实是分析型**时才画「析」；其余一律「学」——
+ * `Agent.purpose` 是后加的列，老行可能是 `null` / 缺字段，而那些**本来就是学伴**
+ * （与 `normalizeAgentPurpose` 同一条回落方向：认不出就当学伴）。
+ */
+const PURPOSE_CHIPS: Record<string, { char: string; color: string; bg: string; label: string }> = {
+  tutoring: { char: '学', color: '#0e7490', bg: '#ecfeff', label: '学伴' },
+  analysis: { char: '析', color: '#7c3aed', bg: '#f5f3ff', label: '分析' },
+};
+
+function PurposeChip({ purpose }: { purpose?: string | null }) {
+  const meta = PURPOSE_CHIPS[purpose === 'analysis' ? 'analysis' : 'tutoring'];
+  return (
+    <span
+      role="img"
+      aria-label={`用途：${meta.label}`}
+      title={`用途：${meta.label}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        minWidth: 18, height: 18, padding: '0 4px', borderRadius: 6,
+        fontSize: 10, fontWeight: 700, lineHeight: 1,
+        background: meta.bg, color: meta.color, whiteSpace: 'nowrap', flexShrink: 0,
+      }}
+    >
+      <span aria-hidden="true">{meta.char}</span>
+    </span>
+  );
+}
+
 export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest, onEdit, onDelete, onShowError, onHideError, onShowRelatedClassrooms }: AgentCardProps) {
   const platform = AGENT_PLATFORM_MAP[agent.platform as AgentPlatform];
   const color = platform?.color || '#64748b';
@@ -65,7 +96,16 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
               标签多就掉到下一行（左边那张）。⇒ 同一个组件在不同数据下**行数不一样**，
               一排卡片扫过去是散的。
               现在**结构固定**：平台标签自己一行，关联课堂自己一行，与标签多少无关。 */}
-          <div style={{ marginTop: 5 }}>
+          <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* ★ 2026-09-25（教师截图批注）：「这里可以加个类别『学』『析』」。
+                🔴 一个汉字就够扫 —— 一排卡片扫过去时，「学伴」和「分析」是两种完全不同的东西
+                （后者**绝不会出现在学生的列表里**），而它们在卡片上原本长得一模一样。
+                ⚠️ 颜色与**课堂看板那枚模块字**同源（`classroom/page.tsx` 的 `ModuleInitialChip`）：
+                学伴用学生端「智能学伴」的青色，分析用与「深度思考」同族的紫色 ——
+                同一件事在两页认到的颜色必须是同一个（§4.6 立过的规矩）。
+                ⚠️ 无障碍：光秃秃一个「学」对读屏无意义 ⇒ `role="img"` + `aria-label`，
+                汉字本身 `aria-hidden`（本仓立过「图标化只减视觉宽度、不减无障碍信息」）。 */}
+            <PurposeChip purpose={agent.purpose} />
             <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />

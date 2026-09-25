@@ -167,7 +167,7 @@ $ ls node_modules | /usr/bin/grep -cE '^(jsdom|happy-dom|@testing-library)$'
 
 | 门禁 | 命令 | 实测 |
 |---|---|---|
-| 服务端全量 | `rm -rf server/dist && pnpm test` | **519 pass / 0 fail** |
+| 服务端全量 | `rm -rf server/dist && pnpm test` | **522 pass / 0 fail** |
 | 前端全量 | `node --test "src/**/*.test.ts"` | **346 pass / 0 fail** |
 | 类型 | `npx tsc --noEmit` | 退出 **0** |
 | 静态检查 | `npx eslint src server/src` | **0 errors / 5 warnings**（全部是既有的） |
@@ -177,8 +177,8 @@ $ ls node_modules | /usr/bin/grep -cE '^(jsdom|happy-dom|@testing-library)$'
 
 | 文件 | 条数 | 钉住什么 |
 |---|---|---|
-| `src/lib/worksheet-ink-parity.test.ts` | 6 | 笔迹路径与前端**逐字相同** · 三份 `INK_FORMATS` / `isInkFormat` 同判 · 题型中文名与前端那张表逐条相同 |
-| `server/src/tests/worksheet-report.test.ts` | 12 | 评分三态 · 清空/未作答分开 · 八种作答值形状 · 不印恒 0 的列 · 七句话互不相同 · 时长文案 |
+| `src/lib/worksheet-ink-parity.test.ts` | 6 | 笔迹路径与前端**逐字相同**（两份画线实现）· 三份 `INK_FORMATS` / `isInkFormat` 同判 · 题型中文名与前端那张表逐条相同 |
+| `server/src/tests/worksheet-report.test.ts` | 12 | 评分三态 · 清空/未作答分开 · 八种作答值形状 · 不印恒 0 的列 · 全部固定文案互不相同 · 表头走判据层 · 时长文案 |
 | `server/src/tests/ink-render.test.ts` | 5 | 出的是真 PNG · 尺寸上限（不放大）· 空笔画回 `null` · 框量不出来仍出图 · 单点笔画也出图 |
 | `server/src/tests/worksheet-report-docx.test.ts` | 6 | 🔴 **端到端 smoke** + **纸面核对**（解开 docx 读 `word/document.xml`）：合法 zip · 空态也产得出 · 课堂不存在时抛 · **题干/学习单名/半对真的印上去了且没印选项文本** · **高级模式下没配学习单的那组被点名** · **探究空间只有时长与帧数** |
 
@@ -189,7 +189,7 @@ $ ls node_modules | /usr/bin/grep -cE '^(jsdom|happy-dom|@testing-library)$'
 
 ## 12. 🔴 不得标绿（沿用全项目的账）
 
-- M4a / M4b / M5a / M5b 的真机项**一条都没做过**（合计 84 个可填槽位、已填 0）。
+- M4a / M4b / M5a / M5b 的真机项**一条都没做过**（合计 **85** 个可填槽位、已填 0 —— 见上面的实测口径）。
 - 本文件 §1–§10 的 **10 组条目，已填 0**。
 - `webapp-host.test.js` 抖动：**confound 至今没摘**（本批实测到过一次，单独跑与重跑全量都绿 ——
   它是 test runner 子进程消息反序列化的偶发）。

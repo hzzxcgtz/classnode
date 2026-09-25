@@ -872,7 +872,7 @@ test('🔴 串起来：`buildPayload` 的产物上仍然看得见半填 —— `
   // **拦阻点在正确的对象上**：只要 sanitize 哪天「顺手」把半填补成默认档，
   // `save()` 的拦阻就会**静默失效**，而又没有任何用例会红 —— 除非有这一条。
   const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 7 })));
-  assert.deepEqual(findPartialPoints(payload.content), [{ id: 'q_a', index: 0 }]);
+  assert.deepEqual(findPartialPoints(payload.content), [{ id: 'q_a', heading: '1' }]);
   // 两个框都空（= 跟随学习单）**不是**半填，不该拦住保存。
   const inherited = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_b', undefined)));
   assert.deepEqual(findPartialPoints(inherited.content), []);
@@ -888,20 +888,27 @@ test('🔴 findPartialPoints：只填了一个框的题被找出来，留空 / �
   );
   assert.deepEqual(
     findPartialPoints(content),
-    [{ id: 'q_b', index: 1 }, { id: 'q_d', index: 3 }],
+    [{ id: 'q_b', heading: '2' }, { id: 'q_d', heading: '4' }],
     '`{}` 与留空同义（服务端 normalizePoints({}) 也回 undefined），不是「半填」',
   );
   assert.deepEqual(findPartialPoints(createEmptyContent()), []);
 });
 
-test('findPartialPoints：只查顶层 —— 嵌套里的题不该让教师卡在一个改不了的红字上', () => {
-  // 编辑器的题流只渲染顶层（第一批没有容器编辑 UI，规格 §4.3）。把嵌套里的半填也算进去，
-  // 教师会看到「保存失败：第 1 题…」而那棵树里根本没有第 1 题可改 —— 保存按钮就废了。
+test('🔴 findPartialPoints：嵌套里的题**也要查** —— 它那条「只查顶层」的理由已经失效', () => {
+  // ⚠️ 本条 2026-09-25 **反转**。原断言是 `deepEqual(findPartialPoints(nested), [])`，
+  // 理由逐字写着：「编辑器的题流只渲染顶层（第一批没有容器编辑 UI，规格 §4.3）。
+  // 把嵌套里的半填也算进去，教师会看到「保存失败：…」而那棵树里根本没有那一题可改
+  // —— 保存按钮就废了。」
+  //
+  // 🔴 那个前提**在第 2 步的迁移之后不成立**：库里的题**都在任务里**，而编辑页现在把它们
+  // 画出来、也改得动（`TaskCard`）。继续「只查顶层」的后果反过来变成了：
+  // 任务里一道半填的题**拦不住保存** ⇒ 服务端把 `half` 补成 **0**（不是跟随学习单级）
+  // ⇒ 教师以为半对还在跟随，而学生在半对那一档**只拿 0 分**，全程无报错。
   const nested: WorksheetContent = {
     schemaVersion: 1,
     nodes: [{ ...node('q_parent', '材料题'), children: [withPoints('q_child', { full: 7 })] }],
   };
-  assert.deepEqual(findPartialPoints(nested), []);
+  assert.deepEqual(findPartialPoints(nested), [{ id: 'q_child', heading: '2' }]);
 });
 
 test('isPartialPoints：判据只有一处 —— undefined 与 `{}` 都不是半填', () => {
@@ -1075,11 +1082,11 @@ test('🔴 findInvalidPoints：`points` 里已有一个非法分值 ⇒ 拦（�
   assert.deepEqual(
     findInvalidPoints(content),
     [
-      { id: 'q_full_zero', index: 1, which: 'full' },
-      { id: 'q_over', index: 2, which: 'full' },
-      { id: 'q_frac', index: 3, which: 'full' },
-      { id: 'q_neg', index: 4, which: 'full' },
-      { id: 'q_both', index: 6, which: 'both' },
+      { id: 'q_full_zero', heading: '2', which: 'full' },
+      { id: 'q_over', heading: '3', which: 'full' },
+      { id: 'q_frac', heading: '4', which: 'full' },
+      { id: 'q_neg', heading: '5', which: 'full' },
+      { id: 'q_both', heading: '7', which: 'both' },
     ],
     '⚠️ 7.5 算非法：输入框那一侧的判据（parsePointInput）就不接受小数 —— 让屏幕上打不出来的值落库 = 两套规则',
   );
@@ -1096,12 +1103,12 @@ test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**
   // 签名匹配 + 有一格非法 ⇒ 命中
   assert.deepEqual(
     findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '7.5', half: '2' } }),
-    [{ id: 'q_a', index: 0, which: 'full' }],
+    [{ id: 'q_a', heading: '1', which: 'full' }],
   );
   // 两格都非法 ⇒ both
   assert.deepEqual(
     findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: 'x', half: 'y' } }),
-    [{ id: 'q_a', index: 0, which: 'both' }],
+    [{ id: 'q_a', heading: '1', which: 'both' }],
   );
   // 🔴 签名失配（撤销 / 恢复草稿 / 换题之后）⇒ **不拦** —— 否则教师会被一段屏幕上早已
   // 不存在的文本挡住，而且他没有任何办法让它消失。
@@ -1117,7 +1124,7 @@ test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**
   // ★ M4a/I1：屏幕上的文本按**各自那一档**的域判 —— 同一个 `'0'`，全对那格算非法、半对那格不算。
   assert.deepEqual(
     findUncommittedPointInput(content, { q_a: { signature: 'q_a:4/2', full: '0', half: '2' } }),
-    [{ id: 'q_a', index: 0, which: 'full' }],
+    [{ id: 'q_a', heading: '1', which: 'full' }],
     '全对填 0 ⇒ 当场非法，且保存被拦住（服务端也会 400）',
   );
   assert.deepEqual(
@@ -1132,12 +1139,12 @@ test('🔴 串起来（修复轮 1）：非法值在 `buildPayload` 的产物上
   // 与上面那条「半填」的串起来同一个理由：只要 `sanitizeContentForSave` 哪天「顺手」
   // 把越界值清掉或改写，`save()` 这两条拦阻就会**静默失效**，而没有用例会红。
   const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 200, half: 1 })));
-  assert.deepEqual(findInvalidPoints(payload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
+  assert.deepEqual(findInvalidPoints(payload.content), [{ id: 'q_a', heading: '1', which: 'full' }]);
   assert.deepEqual(findPartialPoints(payload.content), []);
   // ★ M4a/I1：`full: 0` 走的是**同一条**拦阻 —— 它在 `buildPayload`（sanitize 的唯一出网点）
   // 之后仍然看得见。少这一条的话，「把 0 顺手清成 undefined」那种改法不会红。
   const zeroPayload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 0, half: 0 })));
-  assert.deepEqual(findInvalidPoints(zeroPayload.content), [{ id: 'q_a', index: 0, which: 'full' }]);
+  assert.deepEqual(findInvalidPoints(zeroPayload.content), [{ id: 'q_a', heading: '1', which: 'full' }]);
 });
 
 // ── 12. 6 个题型的编辑形状（M4a/C2）──────────────────────────────────────
@@ -1767,4 +1774,207 @@ test('sanitizeContentForSave：无可清理之处的节点返回**同一个对�
   // ⚠️ 这条与上面那条是**两个方向**：这一条测的是「没做事时别造新对象」，
   // 上面那条测的是「做事时别顺手改别的字段」。只有这一条的话会假绿（见上面的说明）。
   assert.equal(sanitizeContentForSave(clean), clean);
+});
+
+// ---------------------------------------------------------------------------
+// 任务容器：**递归**定位 + 两级操作
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 这一节钉的是终审 C1 —— 第 2 步的迁移已经把库里的学习单包进了任务，而编辑器的
+ * 所有编辑动作**只认顶层 `nodes`**（`applyEdit` 的文件注释原话就是这么写的）。
+ * 后果不是「丑」，是：
+ *   · 任务里的小题**一个字都改不动**（`updatePrompt`/`updateData`/`updatePoints`/
+ *     `updateInputMode` 全部静默返回原对象，连撤销栈都不进 —— 按下去什么也没发生）；
+ *   · `remove` 只删得掉顶层节点 ⇒ 删掉那个任务 = **清空整份学习单**；
+ *   · `add` 只往顶层追加 ⇒ 老师加的题永远在任务外面。
+ * ⇒ 下面每一条都是「先看它红」写出来的。
+ */
+
+/** 一个任务容器。`prompt` 是它的**标题**，不是说明（与迁移写下的「任务一」同形）。 */
+function taskNode(id: string, prompt: string, children: WorksheetQuestionNode[] = []): WorksheetQuestionNode {
+  return { id, type: 'task', prompt, inputMode: 'keyboard', data: {}, children };
+}
+
+/** 造一个历史：[任务一(题目 q_a, q_b)]，游标停在最后一步之后。 */
+function twoLevel(...nodes: WorksheetQuestionNode[]) {
+  return createHistory(contentOf(...nodes));
+}
+
+test('🔴 任务里的小题**改得动题干**（C1：`replaceNode` 只认顶层 ⇒ 按下去什么也没发生）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a', '旧题干'), node('q_b')]));
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '新题干' });
+  assert.notEqual(next, state, '任务里的题必须能被改到 —— 原实现连撤销栈都不进');
+  assert.equal(next.present.nodes[0].children[0].prompt, '新题干');
+  assert.equal(next.past.length, state.past.length + 1, '这一改必须进撤销栈');
+});
+
+test('🔴 任务里的小题改 `data` / `points` / `inputMode` 同样要生效（四条编辑动作同一个定位）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a')]));
+  const data = contentReducer(state, { kind: 'updateData', id: 'q_a', patch: { answers: ['甲'] } });
+  assert.deepEqual(data.present.nodes[0].children[0].data.answers, ['甲']);
+
+  const points = contentReducer(state, { kind: 'updatePoints', id: 'q_a', points: { full: 3, half: 1 } });
+  assert.deepEqual(points.present.nodes[0].children[0].points, { full: 3, half: 1 });
+
+  const mode = contentReducer(state, { kind: 'updateInputMode', id: 'q_a', inputMode: 'handwriting' });
+  assert.equal(mode.present.nodes[0].children[0].inputMode, 'handwriting');
+});
+
+test('🔴 任务内的小题**上移/下移**只在任务内换位（不跨任务、不挪到任务外）', () => {
+  const state = twoLevel(
+    taskNode('t_1', '任务一', [node('q_a'), node('q_b')]),
+    taskNode('t_2', '任务二', [node('q_c')]),
+  );
+  const moved = contentReducer(state, { kind: 'move', id: 'q_b', delta: -1 });
+  assert.deepEqual(moved.present.nodes[0].children.map((child) => child.id), ['q_b', 'q_a']);
+  assert.deepEqual(moved.present.nodes[1].children.map((child) => child.id), ['q_c'], '另一个任务不受影响');
+
+  // 越界 ⇒ **不制造历史**（与顶层那条逐字同一条规矩）：任务内第一道按 ▲ 什么也不该发生。
+  const edge = contentReducer(state, { kind: 'move', id: 'q_a', delta: -1 });
+  assert.equal(edge, state);
+});
+
+test('🔴 任务自己也能上移/下移（按 order 换位）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一'), taskNode('t_2', '任务二'));
+  const moved = contentReducer(state, { kind: 'move', id: 't_1', delta: 1 });
+  assert.deepEqual(moved.present.nodes.map((item) => item.id), ['t_2', 't_1']);
+});
+
+test('🔴 删得掉任务里的**一道小题**，也删得掉**整个任务**（原实现只删得到顶层）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a'), node('q_b')]));
+  const one = contentReducer(state, { kind: 'remove', id: 'q_a' });
+  assert.deepEqual(one.present.nodes[0].children.map((child) => child.id), ['q_b']);
+  assert.equal(one.present.nodes.length, 1, '任务本身还在');
+
+  const whole = contentReducer(state, { kind: 'remove', id: 't_1' });
+  assert.deepEqual(whole.present.nodes, [], '删任务 = 删掉它和它的全部小题');
+});
+
+test('🔴 新建的任务追加在**末尾**，且标题按序号预填（教师可改）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a')]));
+  const next = contentReducer(state, { kind: 'addTask' });
+  assert.equal(next.present.nodes.length, 2);
+  assert.equal(next.present.nodes[1].type, 'task');
+  assert.equal(next.present.nodes[1].prompt, '任务二', '预填「任务二」—— 与迁移写下的「任务一」同一套惯例');
+  assert.deepEqual(next.present.nodes[1].children, [], '空任务是合法的（教师 2026-09-25 裁定）');
+});
+
+test('🔴 新建**小题**进指定的任务（`parentId`），不是追加到顶层', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a')]));
+  const next = contentReducer(state, { kind: 'addQuestion', questionType: 'single-choice', parentId: 't_1' });
+  assert.equal(next.present.nodes.length, 1, '顶层仍然只有一个任务 —— 新题不许落在任务外面');
+  assert.deepEqual(next.present.nodes[0].children.map((child) => child.type), ['short-answer', 'single-choice']);
+});
+
+test('`parentId: null` 仍追加到顶层（散题是合法数据，老学习单里就有）', () => {
+  const state = twoLevel(node('q_a'));
+  const next = contentReducer(state, { kind: 'addQuestion', questionType: 'fill-blank', parentId: null });
+  assert.deepEqual(next.present.nodes.map((item) => item.type), ['short-answer', 'fill-blank']);
+});
+
+test('找不到 id / 找不到父任务 ⇒ **返回原对象**，不制造一条空的历史', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a')]));
+  assert.equal(contentReducer(state, { kind: 'updatePrompt', id: 'q_没有', prompt: 'x' }), state);
+  assert.equal(contentReducer(state, { kind: 'remove', id: 'q_没有' }), state);
+  assert.equal(contentReducer(state, { kind: 'move', id: 'q_没有', delta: 1 }), state);
+  assert.equal(contentReducer(state, { kind: 'addQuestion', questionType: 'fill-blank', parentId: 't_没有' }), state);
+});
+
+test('🔴 同值去重对任务里的小题同样成立（四次编辑动作各一次「按下去没反应」的守门）', () => {
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a', '题干')]));
+  assert.equal(contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '题干' }), state);
+  assert.equal(contentReducer(state, { kind: 'updateData', id: 'q_a', patch: {} }), state);
+});
+
+test('🔴 递归定位**不碰**兄弟节点与其它任务的引用（只重建走到的那条路径）', () => {
+  const untouched = node('q_z', '别动我');
+  const state = twoLevel(taskNode('t_1', '任务一', [node('q_a'), untouched]), taskNode('t_2', '任务二', [node('q_b')]));
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '新' });
+  const before = state.present.nodes;
+  const after = next.present.nodes;
+  assert.equal(after[1], before[1], '另一个任务整棵没被重建');
+  assert.equal(after[0].children[1], before[0].children[1], '兄弟小题原对象照搬');
+  assert.notEqual(after[0], before[0], '走到的那条路径要重建（否则就不是不可变更新了）');
+});
+
+/* ── 同一族的另外四个：保存路径上的判据也必须递归 ─────────────────────── */
+
+/**
+ * 🔴 上面那一节是**编辑动作**，这一节是**保存路径**。它们原先的理由都写着
+ * 「只动顶层 —— 第一批没有容器编辑 UI，嵌套里的题教师看不见也改不了，拦下会让他卡死」。
+ * 那个理由**在第 2 步的迁移之后就不成立了**：库里每一道题都在任务里，
+ * 而编辑页现在把它们**画出来也改得动**（上面那一节）⇒ 这些判据必须跟上来，
+ * 否则「保存前的四道闸」全部对嵌套的题失效：
+ *   · 空答案不清 ⇒ **安静的满分**（空串归一化后仍是空串，`answers: ['']` 判学生空作答为对）；
+ *   · 非法/半填的分值不拦 ⇒ 服务端**静默把教师填的数换掉**（越界回落默认档、半填补 0）。
+ */
+
+test('🔴 任务里填空题的空答案，保存前同样被清掉（`sanitizeContentForSave` 递归）', () => {
+  const task = taskNode('t_1', '任务一', [fillBlank('q_a', ['', '  ']), fillBlank('q_b', ['对'])]);
+  const cleaned = sanitizeContentForSave(contentOf(task));
+  assert.deepEqual(cleaned.nodes[0].children[0].data.answers, [], '全是空行的答案数组要被清成空数组（`withoutEmptyAnswers` 的既有口径）');
+  assert.deepEqual(cleaned.nodes[0].children[1].data.answers, ['对'], '有内容的照常留着');
+});
+
+test('🔴 任务里小题的分值非法 ⇒ `findInvalidPoints` 找得到（并带两级题号）', () => {
+  const bad = { ...node('q_a'), points: { full: 200, half: 0 } };
+  const found = findInvalidPoints(contentOf(taskNode('t_1', '任务一', [bad]), node('q_b')));
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, 'q_a');
+  assert.equal(found[0].heading, '任务一 · 1', '文案要指得到那一张卡 —— 用的是看板/导出同一份两级题号');
+});
+
+test('🔴 任务里小题的分值半填 ⇒ `findPartialPoints` 找得到', () => {
+  const half = { ...node('q_a'), points: { full: 7 } };
+  const found = findPartialPoints(contentOf(taskNode('t_1', '任务一', [half])));
+  assert.deepEqual(found.map((item) => item.heading), ['任务一 · 1']);
+});
+
+test('🔴 任务里小题有**没进 reducer** 的非法输入 ⇒ `findUncommittedPointInput` 找得到', () => {
+  const bad = node('q_a');
+  const rejected = { q_a: { signature: pointsSignature(bad), full: '两朵', half: undefined } };
+  const found = findUncommittedPointInput(contentOf(taskNode('t_1', '任务一', [bad])), rejected);
+  assert.deepEqual(found.map((item) => item.heading), ['任务一 · 1']);
+  assert.equal(found[0].which, 'full');
+});
+
+test('散题与任务混排：两边的题号都要对（散题不带前缀，前后端同一份规则）', () => {
+  const loose = { ...node('q_z'), points: { full: 0, half: 0 } };
+  const found = findInvalidPoints(contentOf(loose, taskNode('t_1', '任务一', [{ ...node('q_a'), points: { full: 200, half: 0 } }])));
+  assert.deepEqual(found.map((item) => item.heading), ['1', '任务一 · 1']);
+});
+
+/* ── 载入守卫：任务的孩子也要过一遍 ─────────────────────────────────── */
+
+/**
+ * 🔴 `isQuestionNode` 只查**顶层**：`normalizeLoadedContent` 是
+ * `nodes.filter(isQuestionNode)`。而任务的 `children` 是**未查过的外部输入**
+ *（手改过的库行 / 别的版本写的草稿）⇒ 一个坏孩子会让 `TaskCard` 里的
+ * `node.children.map(...)` 抛 TypeError，**整页白屏** ——
+ * 而这道守卫的职责逐字就是「手改过的库行不该让整个编辑页白屏」。
+ */
+test('🔴 载入守卫：任务里形状不对的孩子被丢掉，好的留下', () => {
+  const loaded = normalizeLoadedContent({
+    schemaVersion: 1,
+    nodes: [{
+      id: 't_1', type: 'task', prompt: '任务一', inputMode: 'keyboard', data: {},
+      children: [node('q_a', '好的'), null, 42, { id: 'q_broken' }, node('q_c', '也好')],
+    }],
+  });
+  assert.deepEqual(loaded.nodes[0].children.map((child) => child.id), ['q_a', 'q_c']);
+});
+
+test('🔴 载入守卫：`children` 不是数组 ⇒ 归一成空数组（否则渲染时 `.map` 抛）', () => {
+  const loaded = normalizeLoadedContent({
+    schemaVersion: 1,
+    nodes: [{ id: 't_1', type: 'task', prompt: '任务一', inputMode: 'keyboard', data: {}, children: 'nope' }],
+  });
+  assert.deepEqual(loaded.nodes[0].children, []);
+});
+
+test('载入守卫：正常的两级树**逐字不变**（别把好数据也改写一遍）', () => {
+  const good = taskNode('t_1', '任务一', [node('q_a', '题干'), node('q_b', '题干')]);
+  const loaded = normalizeLoadedContent({ schemaVersion: 1, nodes: [good] });
+  assert.deepEqual(loaded.nodes, [good]);
 });

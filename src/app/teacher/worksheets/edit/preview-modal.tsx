@@ -1,6 +1,6 @@
 'use client';
 
-import { flattenAnswerable } from '@/lib/worksheet-questions';
+import { studentVisibleGroups } from '@/lib/worksheet-questions';
 import type { WorksheetContent } from '@/lib/types';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
@@ -60,7 +60,9 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
   // 在预览与学生端是同一个数。
   // ⚠️ 不取 `flattenQuestions`：任务不是一道题（它没有作答控件），把它算进「共 N 题」
   // 会让这个数比屏幕上的卡片多几张 —— 而预览正是教师验收学生端的地方。
-  const questions = flattenAnswerable(content.nodes);
+  const groups = studentVisibleGroups(content.nodes);
+  // 「共 N 题」数的是**可作答的题**（与屏幕上画的张数同一个数）。
+  const questionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
 
   return (
     <>
@@ -75,7 +77,7 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
           <div>
             <h3 id="worksheet-preview-title">学生端预览</h3>
             <p>
-             按 iPad 宽度 {STUDENT_STAGE_WIDTH}px 渲染，共 {questions.length} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
+             按 iPad 宽度 {STUDENT_STAGE_WIDTH}px 渲染，共 {questionCount} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
             </p>
           </div>
           <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
@@ -85,7 +87,7 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
           <div className="worksheet-editor-preview-stage" style={{ width: STUDENT_STAGE_WIDTH }}>
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
             <WorksheetQuestionList
-              questions={questions}
+              groups={groups}
               // 预览没有作答态可言：空输入态、空状态、空提交中。**不传** `onChange` /
               // `onSubmit`，配合 `interactive={false}` ⇒ 一行都不会被写出去。
               drafts={{}}

@@ -28,8 +28,10 @@ import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, Work
 // 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
 import {
+  flattenAnswerable,
   optionKey,
   POINTS_FULL_MIN,
+  TASK_TYPE,
   POINTS_MAX,
   QUESTION_TYPE_OPTIONS,
   readOptions,
@@ -96,7 +98,17 @@ export const DRAFT_INTERVAL_MS = 10_000;
  * 那是新的基线，不是可撤销的一步。
  */
 export type ContentAction =
-  | { kind: 'add'; questionType: QuestionType }
+  /**
+   * ★ 2026-09-25：**加到哪儿**不再是隐含的。
+   *
+   * 原动作是 `{ kind: 'add'; questionType }`，**只往顶层追加** —— 而第 2 步的迁移已经把
+   * 库里的学习单包进了任务 ⇒ 教师新加的题永远落在任务**外面**（学生端因此是散题，
+   * 与任务里的题长得不一样，也永远编不进任务内序号）。
+   * `parentId: null` = 顶层（散题是合法数据，老学习单里就有）。
+   */
+  | { kind: 'addQuestion'; questionType: QuestionType; parentId: string | null }
+  /** ★ 2026-09-25：新建一个**任务**容器，标题按序号预填（教师可改）。 */
+  | { kind: 'addTask' }
   | { kind: 'updatePrompt'; id: string; prompt: string }
   | { kind: 'updateData'; id: string; patch: Record<string, unknown> }
   | { kind: 'updatePoints'; id: string; points: QuestionPointsDraft | undefined }
@@ -509,8 +521,9 @@ function withoutEmptyAnswers(raw: unknown): string[] | null {
  * 两个形状的清法**必须是同一段代码**（`withoutEmptyAnswers`）。
  */
 export function sanitizeContentForSave(content: WorksheetContent): WorksheetContent {
-  let touched = false;
-  const nodes = content.nodes.map((node) => {
+  // ★ 2026-09-25：改成**递归**（`mapAll`）。原先只 `map` 顶层，理由写在下面那条「只清顶层」
+  // 的旧注释里 —— 那个理由（「嵌套里的题教师看不见」）在迁移之后不成立了。
+  const nodes = mapAll(content.nodes, (node) => {
     // ★ M4a：`points` 为 `undefined` 时**把键删掉**，而不是留一个 `{ points: undefined }`。
     //
     // 两种形状在 `JSON.stringify` 之后长得一样（`undefined` 的属性会被丢掉），所以这不是
@@ -526,7 +539,6 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
       const dropped: WorksheetQuestionNode = { ...current };
       delete dropped.points;
       current = dropped;
-      touched = true;
     }
     if (current.type !== 'fill-blank') return current;
     const next: Record<string, unknown> = { ...current.data };
@@ -548,10 +560,9 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
     }
 
     if (!changed) return current;
-    touched = true;
     return { ...current, data: next };
   });
-  return touched ? { ...content, nodes } : content;
+  return nodes === content.nodes ? content : { ...content, nodes };
 }
 
 // ── 6 个题型的编辑形状（M4a / C2）──────────────────────────────────────
@@ -1109,9 +1120,14 @@ export function describeWhich(which: PointField): string {
   return which === 'full' ? '全对' : '半对';
 }
 
-/** 把 `Array<{index, which}>` 拼成「第 2 题的全对、第 5 题的全对与半对」。 */
-export function describePoints(items: Array<{ index: number; which: PointField }>): string {
-  return items.map((item) => `第 ${item.index + 1} 题的${describeWhich(item.which)}`).join('、');
+/**
+ * 把 `Array<{heading, which}>` 拼成「任务一 · 2 的全对、3 的全对与半对」。
+ *
+ * ★ 2026-09-25：`index`（数组下标 +1）换成 **`heading`（两级题号）** —— 与 R7 同一条：
+ * 题号一律裸显示。原来那句「第 N 题」在有任务之后会**指错题**（任务节点占了顶层的一个位置）。
+ */
+export function describePoints(items: Array<{ heading: string; which: PointField }>): string {
+  return items.map((item) => `${item.heading} 的${describeWhich(item.which)}`).join('、');
 }
 
 /**
@@ -1155,15 +1171,15 @@ function isValidPointNumber(value: number | undefined, field: 'full' | 'half'): 
  * ⚠️ 与 `findPartialPoints` 一样**只看顶层**（嵌套里的题教师看不见也改不了，
  * 拦了会让保存按钮废掉）。
  */
-export function findInvalidPoints(content: WorksheetContent): Array<{ id: string; index: number; which: PointField }> {
-  const found: Array<{ id: string; index: number; which: PointField }> = [];
-  content.nodes.forEach((node, index) => {
+export function findInvalidPoints(content: WorksheetContent): Array<{ id: string; heading: string; which: PointField }> {
+  const found: Array<{ id: string; heading: string; which: PointField }> = [];
+  answerableOf(content).forEach(({ node, heading }) => {
     const points = node.points;
     if (!points) return;
     const fullBad = !isValidPointNumber(points.full, 'full');
     const halfBad = !isValidPointNumber(points.half, 'half');
     if (!fullBad && !halfBad) return;
-    found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
+    found.push({ id: node.id, heading, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });
   return found;
 }
@@ -1188,22 +1204,22 @@ export function findInvalidPoints(content: WorksheetContent): Array<{ id: string
 export function findUncommittedPointInput(
   content: WorksheetContent,
   rejected: Record<string, RejectedPointInput>,
-): Array<{ id: string; index: number; which: PointField }> {
-  const found: Array<{ id: string; index: number; which: PointField }> = [];
-  content.nodes.forEach((node, index) => {
+): Array<{ id: string; heading: string; which: PointField }> {
+  const found: Array<{ id: string; heading: string; which: PointField }> = [];
+  answerableOf(content).forEach(({ node, heading }) => {
     const entry = rejected[node.id];
     if (!entry || entry.signature !== pointsSignature(node)) return;
     // ⚠️ 两格的域不同（`full` 是 1..99），所以按格传 `field` —— 与 `parsePointInput` 同一个判据。
     const fullBad = entry.full !== undefined && parsePointInput(entry.full, 'full').kind === 'invalid';
     const halfBad = entry.half !== undefined && parsePointInput(entry.half, 'half').kind === 'invalid';
     if (!fullBad && !halfBad) return;
-    found.push({ id: node.id, index, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
+    found.push({ id: node.id, heading, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });
   return found;
 }
 
 /**
- * 🔴 **只填了一个框**的题（顶层，按题目顺序）—— `save()` 用它拦下保存。
+ * 🔴 **只填了一个框**的题（可作答的题，按屏幕顺序）—— `save()` 用它拦下保存。
  *
  * 为什么必须拦（2026-09-24 实测，A2 审查带出）：服务端的 `normalizePoints` 对
  * 「只填了一端」的处理是**用 `DEFAULT_POINTS` 补另一端**（全对 1 / 半对 0），
@@ -1215,17 +1231,16 @@ export function findUncommittedPointInput(
  * ⇒ 「改 `resolvePoints` 为逐字段回落」那条路**修不了这个**：库里那个 `half: 0` 是一个
  * 有效分值，逐字段回落会照用它。**这才是这里必须拦、而不是去改判分的原因。**
  *
- * ⚠️ **只看顶层 `nodes`**：编辑器的题流只渲染顶层（第一批没有容器编辑 UI，规格 §4.3），
- * 嵌套 `children` 里的题教师**看不见也改不了** —— 对它拦下保存会让教师卡死在一个
- * 无法修复的错误上。手工改过的库行若在嵌套里带了半填的 `points`，它的后果与「没配过」
- * 一致（服务端补 0），属于第一批的已知边界。
+ * ⚠️ **原来只看顶层**，理由逐字是「编辑器的题流只渲染顶层…嵌套里的题教师看不见也改不了，
+ * 拦下保存会让他卡死在一个无法修复的错误上」。**那个理由在第 2 步的迁移之后失效了**：
+ * 库里的题都在任务里，而编辑页现在把它们画出来也改得动 ⇒ 拦下是对的，改回递归。
  *
- * 返回的下标是**数组下标（0-based）**；调用方要拼「第 N 题」时自己 +1（界面上的题号是 1-based）。
+ * 返回 `heading` 是**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出 / 分析载荷同一份。
  */
-export function findPartialPoints(content: WorksheetContent): Array<{ id: string; index: number }> {
-  const found: Array<{ id: string; index: number }> = [];
-  content.nodes.forEach((node, index) => {
-    if (isPartialPoints(node.points)) found.push({ id: node.id, index });
+export function findPartialPoints(content: WorksheetContent): Array<{ id: string; heading: string }> {
+  const found: Array<{ id: string; heading: string }> = [];
+  answerableOf(content).forEach(({ node, heading }) => {
+    if (isPartialPoints(node.points)) found.push({ id: node.id, heading });
   });
   return found;
 }
@@ -1274,33 +1289,209 @@ export function shouldWarnZeroHalfCredit(
   return effectiveHalfStep(node, inherited) === 0;
 }
 
-/** 顶层题目列表里替换一道题。没命中就**返回原对象**，免得制造一条空的历史。 */
+/**
+ * 递归地把树里**每一个**节点过一遍 `fn`（**孩子先、自己后**）。
+ * 没变就**原对象返回** —— 与 `mapTree` 同一条纪律（不制造假变化）。
+ */
+function mapAll(
+  nodes: WorksheetQuestionNode[],
+  fn: (node: WorksheetQuestionNode) => WorksheetQuestionNode,
+): WorksheetQuestionNode[] {
+  let touched = false;
+  const next = nodes.map((node) => {
+    let current = node;
+    const kids = kidsOf(node);
+    if (kids.length > 0) {
+      const nextKids = mapAll(kids, fn);
+      if (nextKids !== kids) {
+        current = { ...node, children: nextKids };
+        touched = true;
+      }
+    }
+    const out = fn(current);
+    if (out !== current) touched = true;
+    return out;
+  });
+  return touched ? next : nodes;
+}
+
+/**
+ * 这份 `content` 里**可作答的题**及它们的**两级题号**。
+ *
+ * 🔴 保存路径上的四个判据（`sanitizeContentForSave` / `findInvalidPoints` /
+ * `findPartialPoints` / `findUncommittedPointInput`）原先一律 `content.nodes.forEach` ——
+ * **只认顶层**。它们当时的注释逐字写着「编辑器的题流只渲染顶层（第一批没有容器编辑 UI），
+ * 嵌套里的题教师**看不见也改不了**，拦下保存会让他卡死在一个无法修复的错误上」。
+ * 那个理由在第 2 步的迁移之后**不成立**：库里每一道题都在任务里，而编辑页现在把它们
+ * 画出来也改得动。⇒ 四个判据全部跟上来，且文案里的指代改用**两级题号**
+ *（与看板 / 抽屉 / 导出 / 分析载荷同一份，见 `lib/worksheet-questions.ts`）。
+ */
+function answerableOf(content: WorksheetContent): Array<{ node: WorksheetQuestionNode; heading: string }> {
+  return flattenAnswerable(content.nodes);
+}
+
+/**
+ * 树里某个节点的孩子。**非数组一律当没有孩子** —— 与 `flattenQuestions` /
+ * `flattenAnswerable` 同一条守卫（一行手改过的数据不该让编辑页整个炸掉）。
+ */
+function kidsOf(node: WorksheetQuestionNode): WorksheetQuestionNode[] {
+  return Array.isArray(node.children) ? node.children : [];
+}
+
+/**
+ * 在题目树里把 `id` 那个节点按 `transform` 换掉 —— **递归**，任务里的小题同样找得到。
+ *
+ * 🔴 原实现只 `map` 顶层 `nodes`（它的注释原话是「只动**顶层** `nodes`…将来加容器时再说」）。
+ * 第 2 步的迁移把库里的题**都**包进了任务之后，那个「将来」就到了：只认顶层 =
+ * 任务里的小题**一个字都改不动**，而且因为是静默返回原对象，**连撤销栈都不进** ——
+ * 教师按下去什么也没发生，也没有任何报错。
+ *
+ * ⚠️ 没命中（或 `transform` 返回原对象）就**原对象返回**，免得制造一条空的历史
+ *（与 `updatePrompt` 的「同值去重」是同一条纪律）。
+ * ⚠️ 只重建**走到的那条路径**：兄弟节点与别的任务整棵照搬（有用例钉着）。
+ */
+function mapTree(
+  nodes: WorksheetQuestionNode[],
+  id: string,
+  transform: (node: WorksheetQuestionNode) => WorksheetQuestionNode,
+): WorksheetQuestionNode[] {
+  let touched = false;
+  const next = nodes.map((node) => {
+    if (node.id === id) {
+      const replaced = transform(node);
+      if (replaced !== node) touched = true;
+      return replaced;
+    }
+    const kids = kidsOf(node);
+    if (kids.length === 0) return node;
+    const nextKids = mapTree(kids, id, transform);
+    if (nextKids === kids) return node;
+    touched = true;
+    return { ...node, children: nextKids };
+  });
+  return touched ? next : nodes;
+}
+
+/** 树里替换一个节点（顶层或任务内）。没命中就**返回原对象**。 */
 function replaceNode(
   content: WorksheetContent,
   id: string,
   transform: (node: WorksheetQuestionNode) => WorksheetQuestionNode,
 ): WorksheetContent {
-  let touched = false;
-  const nodes = content.nodes.map((node) => {
-    if (node.id !== id) return node;
-    const next = transform(node);
-    if (next !== node) touched = true;
+  const nodes = mapTree(content.nodes, id, transform);
+  return nodes === content.nodes ? content : { ...content, nodes };
+}
+
+/**
+ * 在**同层内**把 `id` 那个节点挪 `delta` 位。
+ *
+ * ⚠️ 只在它**所在的那一层**里换位：任务内的小题上移下移不该跨出任务、也不该把它挪到任务外面
+ *（与「删一道小题」同一条边界）。越界 ⇒ 原样返回（不制造历史）。
+ */
+function moveInTree(
+  nodes: WorksheetQuestionNode[],
+  id: string,
+  delta: -1 | 1,
+): WorksheetQuestionNode[] {
+  const index = nodes.findIndex((node) => node.id === id);
+  if (index >= 0) {
+    const target = index + delta;
+    if (target < 0 || target >= nodes.length) return nodes;
+    const next = nodes.slice();
+    next[index] = nodes[target];
+    next[target] = nodes[index];
     return next;
+  }
+  let touched = false;
+  const next = nodes.map((node) => {
+    const kids = kidsOf(node);
+    if (kids.length === 0) return node;
+    const nextKids = moveInTree(kids, id, delta);
+    if (nextKids === kids) return node;
+    touched = true;
+    return { ...node, children: nextKids };
   });
-  return touched ? { ...content, nodes } : content;
+  return touched ? next : nodes;
+}
+
+/**
+ * 从树里删掉 `id` 那个节点（含它的整棵子树）。
+ *
+ * 🔴 任务那个节点**可以被删** —— 删它 = 删掉它和它的全部小题。
+ * 原来的顶层 `filter` 只删得到顶层节点，而迁移之后顶层往往**只有一个任务**
+ * ⇒ 删它就把整份学习单清空了（终审 C1）。
+ */
+function removeFromTree(nodes: WorksheetQuestionNode[], id: string): WorksheetQuestionNode[] {
+  const filtered = nodes.filter((node) => node.id !== id);
+  if (filtered.length !== nodes.length) return filtered;
+  let touched = false;
+  const next = nodes.map((node) => {
+    const kids = kidsOf(node);
+    if (kids.length === 0) return node;
+    const nextKids = removeFromTree(kids, id);
+    if (nextKids === kids) return node;
+    touched = true;
+    return { ...node, children: nextKids };
+  });
+  return touched ? next : nodes;
+}
+
+/** 中文序号（任务标题预填用）。够 1..99 —— 一份学习单不会有更多任务。 */
+const TASK_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+function taskNumeral(n: number): string {
+  if (n <= 9) return TASK_NUMERALS[n - 1];
+  const tens = Math.floor(n / 10);
+  const ones = n % 10;
+  return `${tens === 1 ? '' : TASK_NUMERALS[tens - 1]}十${ones === 0 ? '' : TASK_NUMERALS[ones - 1]}`;
+}
+
+/**
+ * 新任务预填的标题 —— 按**已有的顶层任务数**推下一个序号。
+ *
+ * ⚠️ 它是**输入框里的预填值**，不是定稿：教师可以改，也可以清空
+ *（标题留空 ⇒ 学生端题号没有前缀，那是合法的，见 `flattenAnswerable`）。
+ * 预填的理由：迁移写下的就是「任务一」这套惯例，新任务跟着它，
+ * 两个任务的题号才不会长得一模一样（都是 `1 2 3`）。
+ */
+export function nextTaskTitle(nodes: WorksheetQuestionNode[]): string {
+  const count = nodes.filter((node) => node.type === TASK_TYPE).length;
+  return `任务${taskNumeral(count + 1)}`;
+}
+
+/** 一个新任务容器：**空的是合法的**（教师 2026-09-25 裁定），所以不预置小题。 */
+export function newTask(nodes: WorksheetQuestionNode[]): WorksheetQuestionNode {
+  return {
+    id: `t_${randomIdSuffix()}`,
+    type: TASK_TYPE,
+    prompt: nextTaskTitle(nodes),
+    inputMode: 'keyboard',
+    data: {},
+    children: [],
+  };
 }
 
 /**
  * 编辑动作的实际计算。
  *
- * ⚠️ 只动**顶层** `nodes`，递归的 `children` 原样保留（`{...node}` 会带上它）。
- * 第一批没有容器编辑 UI（规格 §4.3），所以不需要递归；将来加容器时，
- * 「改一道顶层题」仍然应当整棵子树照搬。
+ * ★ 2026-09-25：**递归**。题可以长在任务里（第 2 步的迁移把存量都包进了任务），
+ * 所以「改一道题」必须能在任意一层找到它 —— 见 `mapTree` / `moveInTree` / `removeFromTree`。
+ * ⚠️ 「改一道题」仍然是**整棵子树照搬**（`{...node}` 会带上 `children`），这一条没变。
  */
 function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetContent {
   switch (action.kind) {
-    case 'add':
-      return { ...content, nodes: [...content.nodes, newQuestion(action.questionType)] };
+    case 'addQuestion': {
+      const fresh = newQuestion(action.questionType);
+      if (action.parentId === null) return { ...content, nodes: [...content.nodes, fresh] };
+      // ⚠️ 走 `replaceNode`（递归找）而不是只看顶层：父任务在树里的任何一层都找得到。
+      // 找不到 ⇒ 原对象返回（不制造空历史）。
+      return replaceNode(content, action.parentId, (parent) => ({
+        ...parent,
+        children: [...kidsOf(parent), fresh],
+      }));
+    }
+
+    case 'addTask':
+      return { ...content, nodes: [...content.nodes, newTask(content.nodes)] };
 
     case 'updatePrompt':
       return replaceNode(content, action.id, (node) => (
@@ -1356,20 +1547,15 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
       ));
 
     case 'move': {
-      const index = content.nodes.findIndex((node) => node.id === action.id);
-      const target = index + action.delta;
       // 越界 ⇒ 原样返回（不制造历史）：第一题按 ▲ 或最后一题按 ▼ 不该占掉一次撤销。
-      if (index < 0 || target < 0 || target >= content.nodes.length) return content;
-      const nodes = content.nodes.slice();
-      const swapped = nodes[index];
-      nodes[index] = nodes[target];
-      nodes[target] = swapped;
-      return { ...content, nodes };
+      // ⚠️ 「同层内换位」这条边界在 `moveInTree` 里 —— 任务内的小题不会跨出任务。
+      const nodes = moveInTree(content.nodes, action.id, action.delta);
+      return nodes === content.nodes ? content : { ...content, nodes };
     }
 
     case 'remove': {
-      const nodes = content.nodes.filter((node) => node.id !== action.id);
-      return nodes.length === content.nodes.length ? content : { ...content, nodes };
+      const nodes = removeFromTree(content.nodes, action.id);
+      return nodes === content.nodes ? content : { ...content, nodes };
     }
 
     default:
@@ -1493,6 +1679,30 @@ function isQuestionNode(value: unknown): value is WorksheetQuestionNode {
 }
 
 /**
+ * ★ 2026-09-25：把一棵**载入的**树归一成可渲染的形状 —— **递归**。
+ *
+ * 🔴 为什么必须递归：`normalizeLoadedContent` 是 `nodes.filter(isQuestionNode)`，
+ * 而任务的 `children` 是**没查过的外部输入**（手改过的库行、别的版本写的草稿）。
+ * 一个坏孩子会让 `TaskCard` 里的 `node.children.map(...)` 抛 TypeError ⇒
+ * **整页白屏** —— 而那正是这道守卫的职责（它上面那句注释逐字写着
+ * 「手改过的库行不该让整个编辑页白屏」）。`children: 'nope'` 更隐蔽：`.map` 根本不存在。
+ *
+ * ⚠️ 没坏就**不重建对象**（全部孩子原样通过时返回原对象）—— 与 `mapAll` 同一条纪律，
+ * 免得每次载入都把整棵树换一遍引用。
+ */
+function normalizeLoadedTree(value: unknown): WorksheetQuestionNode | null {
+  if (!isQuestionNode(value)) return null;
+  const raw = value.children;
+  const children = Array.isArray(raw)
+    ? raw.map(normalizeLoadedTree).filter((child): child is WorksheetQuestionNode => child !== null)
+    : [];
+  const unchanged = Array.isArray(raw)
+    && children.length === raw.length
+    && children.every((child, index) => child === raw[index]);
+  return unchanged ? value : { ...value, children };
+}
+
+/**
  * 解析草稿。**localStorage 里的东西是外部输入**：可能是上一个版本写的、可能被人手改过、
  * 也可能是别的应用写的。形状不对就整份作废 —— 半个草稿比没有草稿更危险。
  */
@@ -1554,7 +1764,7 @@ export function normalizeLoadedContent(content: unknown): WorksheetContent {
   const schemaVersion = (content as Record<string, unknown>).schemaVersion;
   return {
     schemaVersion: typeof schemaVersion === 'number' ? schemaVersion : SCHEMA_VERSION,
-    nodes: nodes.filter(isQuestionNode),
+    nodes: nodes.map(normalizeLoadedTree).filter((node): node is WorksheetQuestionNode => node !== null),
   };
 }
 

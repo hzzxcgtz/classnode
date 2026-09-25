@@ -148,7 +148,9 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  /* ★ 2026-09-25：这一层现在是**段的容器**（原来装的是逐张题卡）⇒ 间距升到 24 ——
+     组与组之间要让人一眼看出「上一组到这里结束了」（简报 C：敢留白）。组内是 8。 */
+  gap: 24px;
 }
 
 /* ───────────────────────── 一道题 ─────────────────────────────────────── */
@@ -167,26 +169,35 @@
   margin-bottom: 10px;
 }
 
-.questionIndex {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #eef2ff;
-  color: var(--ws-accent);
-  font-size: .8rem;
-  font-weight: 800;
-}
-
-.questionType {
+/* ★ 2026-09-25（教师裁定）：**题号徽章去掉了**，题型文字换成一个象形图标。
+   🔴 同时去掉的是那个 24×24 的固定盒子：迁移之后题号一律是 `任务一 · 1`（6 个字符），
+   塞进 24px 里中文会逐字断行、撑破盒子并压到同一行的状态字上 —— 而老 iPad 上尤其明显。
+   改图标顺带解决了它：图标是定宽的，题号根本不再出现在这一行。
+   ⚠️ `flex: 1 1 auto` 是**从 `.questionType` 挪过来的**：这一行靠它把状态与工具推到右侧。 */
+.questionIcon {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: .72rem;
-  font-weight: 700;
-  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  color: #64748b;
+}
+
+/* ── 任务分段（★ 2026-09-25）────────────────────────────────────────────
+   学生看到的那一页按任务分块：任务名自己占一行，下面挂它的小题。
+   组与组之间 24、组内 8 —— 与编辑页同一套刻度（4/8/12/16/24）。 */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 任务名。**比题干轻一档**（0.813rem / `#475569`）：题干是这一页唯一的主角，
+   而这是分组标签 —— 它抢眼就等于每几道题插一个假主角。 */
+.groupTitle {
+  margin: 0;
+  font-size: .813rem;
+  font-weight: 600;
+  color: #475569;
 }
 
 /* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。

@@ -17,7 +17,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenAnswerable, flattenQuestions, TASK_TYPE } from './worksheet-questions.ts';
+import { flattenAnswerable, flattenQuestions, groupAnswerable, TASK_TYPE } from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
@@ -142,4 +142,45 @@ test('🔴 坏形状时两份拍平函数给出**同样的题**（一道不多�
 test('🔴 小题自己带坏 children（非任务节点）同样不抛', () => {
   const broken = { ...q('a'), children: 42 as unknown as WorksheetQuestionNode[] };
   assert.deepEqual(headings([broken, q('b')]), ['1', '2']);
+});
+
+/* ── 分组：学生端按任务把小题归拢（教师 2026-09-25 的裁定）─────────────── */
+
+/**
+ * 学生端「任务名自己占一行」需要的是**分组**，不是一个扁平的列表。
+ * 分组的规则只有一份，与题号同一个函数族 —— 各写一份必然漂移
+ *（症状：屏幕上分组与题号对不上，而两处都不报错）。
+ */
+test('一个任务一组，标题就是它（去空白）的 `prompt`', () => {
+  const groups = groupAnswerable([
+    task('t1', '任务一', [q('a'), q('b')]),
+    task('t2', '任务二', [q('c')]),
+  ]);
+  assert.deepEqual(groups.map((g) => g.title), ['任务一', '任务二']);
+  assert.deepEqual(groups.map((g) => g.items.map((i) => i.heading)), [['任务一 · 1', '任务一 · 2'], ['任务二 · 1']]);
+});
+
+test('🔴 连续散题合成**一组**，不给它编标题（`title: null`）', () => {
+  // 散题是老数据/手工做的库才有的形态。它们不属于任何任务，所以「这一段的标题」是
+  // **没有**，而不是「任务一」那种编出来的名字（与「迁移不猜」同一条纪律）。
+  const groups = groupAnswerable([q('a'), q('b'), task('t1', '任务一', [q('c')]), q('d')]);
+  assert.deepEqual(groups.map((g) => g.title), [null, '任务一', null]);
+  assert.deepEqual(groups.map((g) => g.items.map((i) => i.node.id)), [['a', 'b'], ['c'], ['d']]);
+});
+
+test('🔴 任务标题留空 ⇒ 这一组**没有标题行**（与题号无前缀同一件事）', () => {
+  assert.deepEqual(groupAnswerable([task('t1', '   ', [q('a')])]).map((g) => g.title), [null]);
+});
+
+test('所有可作答的题恰好出现一次，顺序与 `flattenAnswerable` 逐项相同', () => {
+  const nodes = [q('a'), task('t1', '任务一', [q('b'), q('c')]), q('d')];
+  assert.deepEqual(
+    groupAnswerable(nodes).flatMap((g) => g.items.map((i) => i.node.id)),
+    flattenAnswerable(nodes).map((i) => i.node.id),
+  );
+});
+
+test('空树 / 只有任务没有小题 ⇒ 零组或空组，都不编东西', () => {
+  assert.deepEqual(groupAnswerable([]), []);
+  assert.deepEqual(groupAnswerable([task('t1', '任务一', [])]), [{ title: '任务一', items: [] }]);
 });

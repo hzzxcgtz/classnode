@@ -8,7 +8,8 @@ import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { flattenAnswerable, questionTypeLabel, type AnswerableQuestion } from '@/lib/worksheet-questions';
+import { studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
+import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
 // 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
@@ -101,8 +102,11 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
 interface LoadedWorksheet {
   id: string;
   title: string;
-  /** 屏幕上逐张画的就是它 —— 可作答的题 + 两级题号。 */
-  items: AnswerableQuestion[];
+  /**
+   * 屏幕上逐段画的就是它 —— 按任务分好段、空任务已滤掉、每段带标题与小题。
+   * ⚠️ 与 `questions` 在**同一次 `setLoad`** 里建好（理由见下）。
+   */
+  groups: AnswerableGroup[];
   /**
    * 同上，只取节点 —— 作答状态机（`useWorksheetAnswers`）按 `node.id` 建态与校验题号。
    * ⚠️ **与 `items` 在同一次 `setLoad` 里建好**（不是渲染时现 `map` 一遍）：
@@ -175,13 +179,16 @@ const NO_SAVED_ANSWERS: SavedAnswerRow[] = [];
  */
 export interface WorksheetQuestionListProps {
   /**
-   * 要画的题 —— **可作答的、带两级题号的**（`flattenAnswerable` 的输出）。
+   * 要画的**段** —— 一个任务一段（标题 + 它的小题），连续散题合一段（无标题）。
    *
    * 🔴 不是「题目树里所有节点」：任务不是一道题（它没有作答控件），把它算进来会让
-   * 屏幕上多出一张只有标题、没东西可答的卡（spec §十一）。题号也**不再由本组件按数组下标算**
-   * —— 那样任务一进来，后面每道题的号都偏大，而屏幕上只是「号怪怪的」。
+   * 屏幕上多出一张只有标题、没东西可答的卡（spec §十一）。
+   *
+   * ★ 2026-09-25（教师裁定）：学生看到的那一页**按任务分块** —— 任务名自己占一行，
+   * 小题上不再挂编号、也不再写题型文字（题型退化成一个象形图标）。
+   * 空任务已经由 `studentVisibleGroups` 滤掉，所以这里每一段至少有一道小题。
    */
-  questions: AnswerableQuestion[];
+  groups: AnswerableGroup[];
   /** 界面上的输入态。只读态传空对象即可。 */
   drafts: Record<string, AnswerDraft>;
   statuses: Record<string, WorksheetQuestionStatus>;
@@ -219,7 +226,7 @@ export interface WorksheetQuestionListProps {
 }
 
 export function WorksheetQuestionList({
-  questions,
+  groups,
   drafts,
   statuses,
   submitting,
@@ -233,7 +240,7 @@ export function WorksheetQuestionList({
   // 两个都叫 locked 会让 `controlsDisabled` 那一行读不出是哪一条在起作用。
   answersLocked: classroomLocked,
 }: WorksheetQuestionListProps) {
-  if (questions.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
         <p className={styles.cardNote}>这份学习单还没有题目。</p>
@@ -243,7 +250,12 @@ export function WorksheetQuestionList({
 
   return (
     <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
-      {questions.map(({ node, heading }) => {
+      {groups.map((group, groupIndex) => (
+        // ⚠️ `key` 用下标 + 标题：散题那几段的 `title` 恒为 `null`，拿它当 key 会撞。
+        // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
+        <div className={styles.group} key={`${groupIndex}:${group.title ?? ''}`}>
+          {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}
+          {group.items.map(({ node }) => {
         // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
         //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列
         //     排好的条目（`data.items` 的顺序），所以「还没碰过」也不能画成空的；
@@ -266,8 +278,14 @@ export function WorksheetQuestionList({
         return (
           <section className={styles.question} key={node.id}>
             <div className={styles.questionHead}>
-              <span className={styles.questionIndex}>{heading}</span>
-              <span className={styles.questionType}>{questionTypeLabel(node.type)}</span>
+              {/*
+                ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——
+                没有编号、没有题型文字。原话：「也不用加题型『选择题』『判断题』，
+                题型可以在标题前加一个象形的图标。」
+                ⚠️ `heading` 在这里**不再显示**，但它仍然是布局之外的身份（看板 / 抽屉 /
+                导出 / 分析载荷用同一份）。学生侧的题号由**段标题（任务名）**承担。
+              */}
+              <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>
               {/* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
                   文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
               <span className={styles.questionState} data-state={state}>
@@ -339,8 +357,10 @@ export function WorksheetQuestionList({
               )
             ) : null}
           </section>
-        );
-      })}
+          );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
@@ -440,7 +460,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;
         const rawNodes = data.content && Array.isArray(data.content.nodes) ? data.content.nodes : [];
-        const items = flattenAnswerable(rawNodes as WorksheetQuestionNode[]);
+        const groups = studentVisibleGroups(rawNodes as WorksheetQuestionNode[]);
+        const questions = groups.flatMap((group) => group.items.map((item) => item.node));
         setLoad({
           kind: 'ready',
           worksheet: {
@@ -449,8 +470,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             // 🔴 任务不是一道题：它没有作答控件，**不能**当成一张卡片渲染。
             // 走 `flattenAnswerable` —— 于是学生看到的题号（`任务一 · 1`）与看板、抽屉、
             // 导出里那份是同一个函数算出来的。
-            items,
-            questions: items.map((item) => item.node),
+            groups,
+            questions,
             // 缺字段时按**允许**处理：服务端的 `readStudentSettings` 一定会补齐这几个键
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
@@ -567,7 +588,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
 
           <div className={styles.scroller}>
             <WorksheetQuestionList
-              questions={load.worksheet.items}
+              groups={load.worksheet.groups}
               drafts={answers.drafts}
               statuses={answers.statuses}
               submitting={answers.submitting}

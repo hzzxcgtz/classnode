@@ -328,10 +328,12 @@ export function useWorksheetEditor({ id, onNotice }: {
       // `DEFAULT_POINTS`（全对 1 / 半对 0），**不是**补成学习单级的档 —— 于是
       // 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时半对得 **0 分**，
       // 而教师以为自己只是把全对调成了 7。完整实测与推理见 `findPartialPoints`。
-      const numbers = partial.map((item) => item.index + 1).join('、');
-      const message = `第 ${numbers} 题的「全对 / 半对」只填了一个。两个框要么都填（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、半对 0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
+      // ★ 2026-09-25：指代改用**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出同一份。
+      // 原来拼的是「第 N 题」（数组下标 +1），有任务之后那个号会**指错题**。
+      const numbers = partial.map((item) => item.heading).join('、');
+      const message = `${numbers} 的「全对 / 半对」只填了一个。两个框要么都填（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、半对 0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
       setSaveStatus({ kind: 'error', at: null, message });
-      callbacksRef.current.onNotice({ message: `保存失败：第 ${numbers} 题的分值只填了一个框`, type: 'error' });
+      callbacksRef.current.onNotice({ message: `保存失败：${numbers} 的分值只填了一个框`, type: 'error' });
       return null;
     }
     savingRef.current = true;
@@ -542,8 +544,18 @@ export function useWorksheetEditor({ id, onNotice }: {
 
   // —— 暴露给页面的动作 ───────────────────────────────────────────────
 
-  const addQuestion = useCallback((questionType: QuestionType) => {
-    dispatch({ kind: 'add', questionType });
+  /**
+   * ★ 2026-09-25：**加到哪儿**是参数。`parentId: null` = 顶层（散题），
+   * 否则进指定的任务 —— 迁移之后顶层的题都在任务里，只看顶层的旧写法会让
+   * 教师新加的题永远落在任务外面。
+   */
+  const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null) => {
+    dispatch({ kind: 'addQuestion', questionType, parentId });
+  }, []);
+
+  /** 新建一个任务容器（标题按序号预填，教师可改）。 */
+  const addTask = useCallback(() => {
+    dispatch({ kind: 'addTask' });
   }, []);
 
   const updatePrompt = useCallback((questionId: string, prompt: string) => {
@@ -608,7 +620,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     usage,
     draftFound, acceptDraft, discardDraft,
     duplicating,
-    addQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
+    addQuestion, addTask, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
     save, duplicate, goBack, ensureUsage,
   };

@@ -9,6 +9,8 @@ import { api } from '@/lib/api';
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
 import { HALF_STEPS, REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
+import { TaskCard } from './task-card';
+import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
 // `use-worksheet-editor.ts` 里有 `export * from './worksheet-editor-core'`，所以同一个
@@ -79,7 +81,14 @@ function WorksheetEditorBody() {
   const editor = useWorksheetEditor({ id, onNotice: notice => notify(notice.message, notice.type) });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  /**
+   * 加题弹窗现在要知道**加到哪儿**（★ 2026-09-25）：
+   *   `null`      = 弹窗没开；
+   *   `{ parentId }` = 开着，`parentId` 为 `null` 表示加到顶层（散题，老数据形态）。
+   * 迁移之后顶层的题都在任务里，所以绝大多数情况 `parentId` 是一个任务 id ——
+   * 旧写法（没有这个参数）会让教师新加的题永远落在任务**外面**。
+   */
+  const [pickerFor, setPickerFor] = useState<{ parentId: string | null } | null>(null);
 
   const { content, worksheetId, usage, saveStatus, draftFound } = editor;
 
@@ -107,15 +116,24 @@ function WorksheetEditorBody() {
    * 一个数字讲整卷，一句话讲这道题的答案会怎样，不能把它们说成同一件事。
    */
   const requestRemove = useCallback(async (node: WorksheetQuestionNode, index: number) => {
-    const lines = [`确定删除第 ${index + 1} 题吗？`];
+    // 🔴 任务是**一整块**，而它的删除按钮就在任务头行上 —— 与小题的删除按钮只隔几十像素。
+    // 说成「确定删除第 1 题吗？」的后果是：教师以为在删一道题，实际删掉了整个任务
+    // （在那之前更糟：迁移之后顶层往往只有一个任务，删它 = **清空整份学习单**）。
+    const isTask = node.type === TASK_TYPE;
+    const count = node.children.length;
+    const lines = [
+      isTask
+        ? (count > 0 ? `确定删除这个任务吗？它里面的 ${count} 道小题会一起删掉。` : '确定删除这个任务吗？')
+        : `确定删除第 ${index + 1} 题吗？`,
+    ];
     if (!editor.worksheetId) {
-      lines.push('这道题还没保存过，删掉之后本机草稿里也不会再有它。');
+      lines.push(isTask ? '这个任务还没保存过，删掉之后本机草稿里也不会再有它。' : '这道题还没保存过，删掉之后本机草稿里也不会再有它。');
     } else {
       const usageNow = await editor.ensureUsage();
       if (usageNow === null) {
-        lines.push('这次没能读到作答情况，无法确认这道题是否已经被学生作答过。');
+        lines.push(isTask ? '这次没能读到作答情况，无法确认这个任务里有没有学生答过的题。' : '这次没能读到作答情况，无法确认这道题是否已经被学生作答过。');
       } else if (usageNow.responseCount > 0) {
-        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生在第 ${index + 1} 题上写下的答案会在看板与导出里变成孤立数据。`);
+        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生${isTask ? '在这个任务里' : '在第 ' + (index + 1) + ' 题上'}写下的答案会在看板与导出里变成孤立数据。`);
       } else {
         lines.push('这份学习单还没有收到过作答，删掉不影响任何学生。');
       }
@@ -206,38 +224,78 @@ function WorksheetEditorBody() {
 
       {content.nodes.length === 0 ? (
         <div className="worksheet-editor-empty">
-          还没有题目。点下面的「＋ 添加题目」开始。
+          还没有题目。点下面的「＋ 添加任务」开始。
         </div>
       ) : (
         <div className="worksheet-editor-questions">
           {content.nodes.map((node, index) => (
-            <QuestionCard
-              key={node.id}
-              index={index}
-              total={content.nodes.length}
-              node={node}
-              inheritedPoints={inheritedPoints}
-              rejectedPointInput={editor.rejectedPoints[node.id]}
-              onPromptChange={prompt => editor.updatePrompt(node.id, prompt)}
-              onDataChange={patch => editor.updateData(node.id, patch)}
-              onPointsInputChange={input => editor.setPointsInput(node.id, input)}
-              onPointsChange={points => editor.updatePoints(node.id, points)}
-              onInputModeChange={inputMode => editor.updateInputMode(node.id, inputMode)}
-              onMove={delta => editor.moveQuestion(node.id, delta)}
-              onRemove={() => void requestRemove(node, index)}
-            />
+            // ★ 2026-09-25：顶层有两种节点 —— **任务**（迁移之后都是它）与**散题**
+            //（老数据 / 手工改过的库）。散题照旧画成一张卡；任务是容器，里面装小题。
+            node.type === TASK_TYPE ? (
+              <TaskCard
+                key={node.id}
+                index={index}
+                total={content.nodes.length}
+                node={node}
+                onTitleChange={prompt => editor.updatePrompt(node.id, prompt)}
+                onMove={delta => editor.moveQuestion(node.id, delta)}
+                onRemove={() => void requestRemove(node, index)}
+                onAddQuestion={() => setPickerFor({ parentId: node.id })}
+              >
+                {node.children.map((child, childIndex) => (
+                  // ⚠️ `index` / `total` 传的是**任务内**的序号与个数 —— 卡上的
+                  // 「1 2 3」与上移/下移的边界都以任务为单位（页面级那个是任务自己的 ▲▼）。
+                  <QuestionCard
+                    key={child.id}
+                    index={childIndex}
+                    total={node.children.length}
+                    node={child}
+                    inheritedPoints={inheritedPoints}
+                    rejectedPointInput={editor.rejectedPoints[child.id]}
+                    onPromptChange={prompt => editor.updatePrompt(child.id, prompt)}
+                    onDataChange={patch => editor.updateData(child.id, patch)}
+                    onPointsInputChange={input => editor.setPointsInput(child.id, input)}
+                    onPointsChange={points => editor.updatePoints(child.id, points)}
+                    onInputModeChange={inputMode => editor.updateInputMode(child.id, inputMode)}
+                    onMove={delta => editor.moveQuestion(child.id, delta)}
+                    onRemove={() => void requestRemove(child, childIndex)}
+                  />
+                ))}
+              </TaskCard>
+            ) : (
+              <QuestionCard
+                key={node.id}
+                index={index}
+                total={content.nodes.length}
+                node={node}
+                inheritedPoints={inheritedPoints}
+                rejectedPointInput={editor.rejectedPoints[node.id]}
+                onPromptChange={prompt => editor.updatePrompt(node.id, prompt)}
+                onDataChange={patch => editor.updateData(node.id, patch)}
+                onPointsInputChange={input => editor.setPointsInput(node.id, input)}
+                onPointsChange={points => editor.updatePoints(node.id, points)}
+                onInputModeChange={inputMode => editor.updateInputMode(node.id, inputMode)}
+                onMove={delta => editor.moveQuestion(node.id, delta)}
+                onRemove={() => void requestRemove(node, index)}
+              />
+            )
           ))}
         </div>
       )}
 
-      <button type="button" className="worksheet-editor-add" onClick={() => setPickerOpen(true)}>
-        ＋ 添加题目
+      {/* 页面级只有这一个入口：**添加任务**（§六 第 3 条：入口醒目且分层）。
+          「添加小题」在任务内部 —— 两个按钮长得一样就分不出层级了。 */}
+      <button type="button" className="worksheet-editor-add" onClick={() => editor.addTask()}>
+        ＋ 添加任务
       </button>
 
-      {pickerOpen && (
+      {pickerFor && (
         <AddQuestionPicker
-          onPick={questionType => { editor.addQuestion(questionType); setPickerOpen(false); }}
-          onClose={() => setPickerOpen(false)}
+          onPick={questionType => {
+            editor.addQuestion(questionType, pickerFor.parentId);
+            setPickerFor(null);
+          }}
+          onClose={() => setPickerFor(null)}
         />
       )}
 

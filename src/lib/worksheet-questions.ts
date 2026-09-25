@@ -278,6 +278,73 @@ export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQue
   return out;
 }
 
+/**
+ * 学生端的一**段**：一个任务（或一段连续的散题）以及它的小题。
+ *
+ * ★ 2026-09-25（教师裁定）：学生看到的那一页**按任务分块** ——
+ * 任务名自己占一行，下面挂它的小题；小题上不再挂题号、也不再写题型文字
+ *（题型退化成一个象形图标，见 `worksheet-question-icons.tsx`）。
+ */
+export interface AnswerableGroup {
+  /**
+   * 这一段的主标题 —— 任务的 `prompt`（去首尾空白）。
+   * `null` = **没有标题行**：散题那一段，或一个标题留空的任务。
+   * ⚠️ `null` 时刻意**不编**一个「任务一」（与题号无前缀、迁移不猜是同一条纪律）。
+   */
+  title: string | null;
+  items: AnswerableQuestion[];
+}
+
+/**
+ * 把题目树切成**段**：一个任务一段；**连续**的散题合成一段（无标题）。
+ *
+ * ⚠️ 「连续」是有意的：散题 A、任务一、散题 B 是**三段**（A 与 B 不合成一段）——
+ * 它们中间隔着一个任务，合起来会让那一段的标题位置变得没有意义。
+ *
+ * ⚠️ 顺序与 `flattenAnswerable` **逐项相同**（用例钉着），因为两处都从
+ * 「先本节点、再按序递归 children」那条遍历来。
+ */
+export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup[] {
+  // ⚠️ 题号（含散题那个**跨全文**的计数器）由 `flattenAnswerable` **算一次** ——
+  // 逐节点分别调用会把散题的计数器每组重置成 1，于是每道散题都叫「1」。
+  // 这里只做**切段**：因为拍平是 DFS、一个顶层节点的全部可作答后代在结果里**必然连续**，
+  // 所以按各顶层节点的条数顺序切即可（条数用同一个函数数，不另写一份遍历规则）。
+  const items = flattenAnswerable(nodes);
+  const groups: AnswerableGroup[] = [];
+  let loose: AnswerableQuestion[] = [];
+  let cursor = 0;
+  const flushLoose = () => {
+    if (loose.length > 0) { groups.push({ title: null, items: loose }); loose = []; }
+  };
+
+  for (const top of nodes) {
+    const count = flattenAnswerable([top]).length;
+    const itemsOfTop = items.slice(cursor, cursor + count);
+    cursor += count;
+    if (top.type === TASK_TYPE) {
+      // ⚠️ 「连续」的散题才合成一段：中间隔了一个任务，就不属于同一段了。
+      flushLoose();
+      const title = typeof top.prompt === 'string' ? top.prompt.trim() : '';
+      groups.push({ title: title || null, items: itemsOfTop });
+      continue;
+    }
+    loose.push(...itemsOfTop);
+  }
+  flushLoose();
+  return groups;
+}
+
+/**
+ * 学生端要画的那几段 —— **空任务整段丢掉**（这是学生端与编辑页唯一的口径差别）。
+ *
+ * 教师 2026-09-25 裁定「允许空任务」：编辑器里点「+ 添加任务」之后还没放小题时，
+ * 容器是一块看得见、可以往里加东西的地方。而**学生端**那一侧，一个空任务渲染出来
+ * 是一行光秃秃的标题、下面什么都没有 —— 那是「渲染坏了」的长相，不是「这里可以加」。
+ */
+export function studentVisibleGroups(nodes: WorksheetQuestionNode[]): AnswerableGroup[] {
+  return groupAnswerable(nodes).filter((group) => group.items.length > 0);
+}
+
 /** 选项的 key 由**位置**派生（A、B、C…），与规格 §4.3 的示例一致。 */
 export function optionKey(index: number): string {
   return String.fromCharCode(65 + index);

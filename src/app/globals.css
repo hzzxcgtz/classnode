@@ -1900,6 +1900,107 @@ tr:hover td {
   margin-bottom: 24px;
 }
 
+/* ── 任务容器（★ 2026-09-25，规格 §六 的两级信息架构）─────────────────────
+   三层「面」照简报的取值，**不自创**：
+     页面底 #f8fafc · 任务容器 #f8fafc + 边框 + 圆角 12 · 小题卡 #fff + 边框 + 圆角 12。
+   ⇒ 容器与页面底**同色**，靠 1px 边框立起来；最亮的 #fff 留给小题卡 ——
+   题干是这一页唯一的主角，容器不该比它更抢眼。
+   ⚠️ 容器上**不画**焦点蓝竖条：那条只属于「当前正在编辑的那一张小题卡」
+     （见 `.worksheet-editor-question:focus-within`）。两处都亮等于都不亮。 */
+.worksheet-editor-task {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.worksheet-editor-task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 段间 16：头行与它下面那组小题是**两段**。 */
+  margin-bottom: 16px;
+}
+
+/* 任务标题 —— 长得像标题，但悬停/聚焦时露出「它是个输入框」（与 `.worksheet-editor-title` 同款）。 */
+.worksheet-editor-task-title {
+  flex: 1;
+  min-width: 160px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.938rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.worksheet-editor-task-title:hover {
+  border-color: #e2e8f0;
+  background: #fff;
+}
+
+.worksheet-editor-task-title:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.worksheet-editor-task-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.worksheet-editor-task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 任务内的小题卡：段内 12（比页面上卡片之间的 16 紧一档）——
+   「同一组里的东西挨得近一点」是分组唯一不需要装饰的表达方式。 */
+.worksheet-editor-task-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 空任务的那句话。⚠️ 空任务是合法数据，但**空容器在屏幕上与「渲染坏了」长得一样**，
+   所以这里给一句看得见的说明（样式是「内嵌块」那一档：不要阴影）。 */
+.worksheet-editor-task-empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.813rem;
+  text-align: center;
+}
+
+/* 「＋ 添加小题」在**任务内**（页面级那个是「＋ 添加任务」）。
+   两个入口的形状刻意不同：页面级那个是整行的大按钮，这个窄而轻 ——
+   §六 第 3 条要的是「入口醒目且**分层**」，两个一样大就分不出层级了。 */
+.worksheet-editor-task-add {
+  padding: 12px;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  background: #fff;
+  color: #2563eb;
+  font: inherit;
+  font-size: 0.813rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.worksheet-editor-task-add:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
 .worksheet-editor-question {
   background: #fff;
   border: 1px solid #e2e8f0;

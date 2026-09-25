@@ -262,6 +262,8 @@ function WorksheetEditorBody() {
                 total={row.total}
                 expanded={openId === row.node.id}
                 onToggle={() => toggleOpen(row.node.id)}
+                // 任务里的小题徽章只显示序号（任务名在容器头上，别重复）
+                inTask={row.taskId !== null}
                 node={row.node}
                 inheritedPoints={inheritedPoints}
                 rejectedPointInput={editor.rejectedPoints[row.node.id]}

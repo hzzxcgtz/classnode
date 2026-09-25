@@ -1938,6 +1938,10 @@ tr:hover td {
   gap: 8px;
   /* 段间 16：头行与它下面那组小题是**两段**。 */
   margin-bottom: 16px;
+  /* ★ 2026-09-26：头行**自己**有一条底线 —— 它是这一组的标题，
+     而下面每道题又各自有卡片边框；没有这条线时「任务到哪一行结束」看不出来。 */
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 /* 任务标题 —— 长得像标题，但悬停/聚焦时露出「它是个输入框」（与 `.worksheet-editor-title` 同款）。 */
@@ -1949,8 +1953,14 @@ tr:hover td {
   border-radius: 8px;
   background: transparent;
   font: inherit;
-  font-size: 0.938rem;
-  font-weight: 600;
+  /* ★ 2026-09-26（教师）：「这个不够醒目，可以大一点，突出一点。」
+     原来 0.938rem/600 —— 而它下面的每一道题的题干都是那个大小，两级的层次就看不出来。
+     ⇒ 提到 1.25rem/700：**任务名比它下面任何一道题的题干都大**，这才是两级。
+     ⚠️ 别再往上加到 1.5rem 以上：它会盖过题干，而「题干是主角」是简报第 2 步的裁定
+     （任务名是**分组标签**，只是这一组里最大的那一个）。 */
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: #0f172a;
 }
 
@@ -2067,17 +2077,6 @@ tr:hover td {
   font: inherit;
   text-align: left;
   cursor: pointer;
-}
-
-/* 题干那一行：**一行 + 省略号**（CSS 做，不在 JS 里切字符串 —— 那会把空题干那条文案一起吃掉）。 */
-.worksheet-editor-question-brief {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #334155;
-  font-size: 0.875rem;
 }
 
 /* 折叠态的分值：配角（灰阶、不回绕）。 */

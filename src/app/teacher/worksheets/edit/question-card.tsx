@@ -57,7 +57,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, expanded, onToggle, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, expanded, onToggle, inTask, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -77,6 +77,8 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
    */
   expanded: boolean;
   onToggle: () => void;
+  /** ★ 2026-09-26：这道题是不是**任务里的小题**（决定徽章显不显示任务名前缀）。 */
+  inTask: boolean;
   node: WorksheetQuestionNode;
   /**
    * 学习单级的**两档**（`settings.rewardStep` / `settings.halfStep`）—— 逐题留空时继承的就是它们。
@@ -120,6 +122,17 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
    *    作答值仍然是 `drawing/v1`，学生拿到的仍然是画布。
    */
   const isDrawing = node.type === 'drawing';
+  /**
+   * ★ 2026-09-26（教师）：「这个任务一有点多余」—— 那道题**就在**标题写着「任务一」的
+   * 容器里，徽章上再拼一遍前缀是同一句话说两次（一屏 20 行就是 20 遍）。
+   * ⇒ 任务里的小题显示**任务内序号**（`1` `2` `3`），任务名由**容器头**承担；
+   * 散题（不在任何任务里）仍用 `heading`（它本来就是裸的 `1` `2`）。
+   * ⚠️ `aria-label` 仍用完整的 `heading` —— 读屏用户听得见「这道题在哪个任务里」，
+   * 而屏幕上看不见的**前缀**在那里是有用的。
+   * ⚠️ 保存失败的报错仍写 `任务二 · 1`（那是全局文案）；教师靠**容器头 + 序号**对得上，
+   * 而容器头就在眼前 —— 这是本次取舍的代价，写在 `editorRenderRows` 那一侧也可以。
+   */
+  const badgeLabel = inTask ? String(index + 1) : heading;
   /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
   const gradedOn = gradesOnSubmit(node);
   const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
@@ -159,9 +172,14 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
           aria-expanded={expanded}
           title={expanded ? '收起这道题' : '展开这道题'}
         >
-          <span className="worksheet-editor-question-index">{heading}</span>
+          {/*
+            ★ 2026-09-26（教师）：「这个为什么会重复？」—— 摘要行原来也印了一遍题干，
+            而下面那份只读题面本来就画着它。⇒ **摘要行不再印题干**，它只负责
+            「这是第几题 · 什么题型 · 多少分」这三件**题面里没有**的事。
+            ⚠️ 别再把题干挪回来：重复一次不会报错，只会让人以为有两道一样的题。
+          */}
+          <span className="worksheet-editor-question-index">{badgeLabel}</span>
           <span className="worksheet-editor-question-type">{typeLabel}</span>
-          <span className="worksheet-editor-question-brief">{node.prompt.trim() || '（题干还没写）'}</span>
           <span className="worksheet-editor-question-points">
             {displayPoints(node, inheritedPoints).full} / {displayPoints(node, inheritedPoints).half}
           </span>

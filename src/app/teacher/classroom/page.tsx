@@ -132,8 +132,19 @@ const WEBAPP_WIDTH_OPTIONS: Array<{ width: number; hint: string }> = [
   { width: 640, hint: '约24K' },
 ];
 
-/** 画面更新的基准周期档位（毫秒）。服务端接受 5000~60000，这里只给四档常用的。 */
+/**
+ * 画面更新的基准周期档位（毫秒）。服务端接受 5000~60000，这里只给几档常用的。
+ *
+ * ★ 2026-09-25：加了 **5 秒**（教师要求，并问「是否可行」）。**服务端零改动** ——
+ * `WEBAPP_INTERVAL_MIN_MS` 本来就是 5000，这一档一直合法，只是界面上没给。
+ *
+ * ⚠️ 但它是**服务端写明的下界**，理由逐字在 `webapp-capture.ts`：
+ * 「比这更密的话，学生端的截图开销会明显咬住课堂（而且网络也会变成持续负载）」。
+ * ⇒ 这一档是**全班每个学生**都按它跑（详情档那个「只影响被聚焦的一个」是另一回事），
+ * 40 人的班在 5 秒档上就是**每秒 8 帧**的聚合上传。教师选它要自己知道这件事。
+ */
 const WEBAPP_INTERVAL_OPTIONS: Array<{ ms: number; label: string }> = [
+  { ms: 5000, label: '5 秒' },
   { ms: 10000, label: '10 秒' },
   { ms: 15000, label: '15 秒' },
   { ms: 20000, label: '20 秒' },
@@ -144,6 +155,22 @@ const WEBAPP_INTERVAL_OPTIONS: Array<{ ms: number; label: string }> = [
 // 教师端拿到的可能是老数据（没有这三个字段），此时按默认显示 —— 而不是显示成"关闭/最小档"。
 const DEFAULT_WEBAPP_WIDTH = 320;
 const DEFAULT_WEBAPP_FRAME_INTERVAL_MS = 10000;
+
+/**
+ * **详情档**那一档的档位与派生规则（★ 2026-09-25）。
+ *
+ * 🔴 这四个数必须与服务端 `server/src/services/webapp-capture.ts` 的
+ * `WEBAPP_DETAIL_DIVISOR` / `WEBAPP_DETAIL_MIN_MS` / `WEBAPP_DETAIL_MAX_MS` 逐字一致：
+ * 客户端拿它**画选中态**、服务端拿它**算下发的真实周期**，两边不一致的表现是
+ * 「面板上选着 3 秒，学生端按 2 秒在跑」—— 没有任何地方会报错。
+ *
+ * ⚠️ 为什么客户端要自己算一遍派生值：详情面板上那个控件必须**停在一个档位上**，
+ * 而「没调过」时停在哪儿只有派生规则说了算。**权威仍在服务端**（真正下发给学生的是它算的）；
+ * 这里算的只用于显示。
+ */
+const WEBAPP_DETAIL_DIVISOR = 5;
+const WEBAPP_DETAIL_MIN_MS = 1000;
+const WEBAPP_DETAIL_MAX_MS = 5000;
 
 /**
  * 采集参数里的一个档位按钮。
@@ -1327,7 +1354,7 @@ function ClassroomBoardContent() {
   // 传 null 更不行 —— 那会被当成数值 0 再夹成下界（已在服务端修掉，但界面上没必要去踩）。
   //
   // 回写的是**服务端的响应值**而不是请求值：夹取发生在服务端，界面上那几档只是候选。
-  const setWebappCapture = (key: string, body: { enabled?: boolean; width?: number; frameIntervalMs?: number }) => {
+  const setWebappCapture = (key: string, body: { enabled?: boolean; width?: number; frameIntervalMs?: number; detailIntervalMs?: number | null }) => {
     // 「关掉开关后，下面两行点了不生效」的**代码级**保证。
     // 界面上那两行已经 disabled（disabled 的按钮在浏览器里不会派发 click），这里再挡一道是因为
     // 那个属性是个样式层的东西：一次「顺手删掉 disabled 让文字别发灰」的改动就会让它失效，
@@ -1340,6 +1367,9 @@ function ClassroomBoardContent() {
         webappCaptureEnabled: result.enabled,
         webappThumbnailWidth: result.width,
         webappFrameIntervalMs: result.frameIntervalMs,
+        // ⚠️ 这一格可能是 **`null`**（= 没调过、跟随基准）。写成 `result.detailIntervalMs ?? 2000`
+        // 会让「跟随基准」的课堂在改过一次别的采集设置之后，界面上被固定成 2 秒。
+        webappDetailIntervalMs: result.detailIntervalMs,
       } : previous);
     });
   };
@@ -1424,6 +1454,19 @@ function ClassroomBoardContent() {
   const captureEnabled = classroom.webappCaptureEnabled !== false;
   const captureWidth = classroom.webappThumbnailWidth ?? DEFAULT_WEBAPP_WIDTH;
   const captureIntervalMs = classroom.webappFrameIntervalMs ?? DEFAULT_WEBAPP_FRAME_INTERVAL_MS;
+  // ★ 2026-09-25 详情档（教师可覆盖）：
+  //   · 没调过（`null` / 缺字段 / 坏值）⇒ **派生**（基准的 1/5，夹在 1000~5000）——
+  //     基准 10 秒 ⇒ 2 秒，与 P2.2 的行为逐字相同。
+  //   · 调过 ⇒ 用他那个值（同样夹一次：库里可能是手改过的行）。
+  // ⚠️ 这里**不能**用 `?? 2000` 兜底：基准 30 秒的慢设备课堂，详情档该是 6 秒，
+  //    兜成 2 秒等于把教师当初避开的代价加回去（理由逐字在服务端的
+  //    `WEBAPP_DETAIL_DIVISOR` 注释里）。
+  const rawDetailOverride = classroom.webappDetailIntervalMs;
+  const detailIntervalOverride = typeof rawDetailOverride === 'number' && Number.isFinite(rawDetailOverride)
+    ? Math.min(WEBAPP_DETAIL_MAX_MS, Math.max(WEBAPP_DETAIL_MIN_MS, Math.round(rawDetailOverride)))
+    : null;
+  const derivedDetailIntervalMs = Math.max(WEBAPP_DETAIL_MIN_MS, Math.round(captureIntervalMs / WEBAPP_DETAIL_DIVISOR));
+  const detailIntervalMs = detailIntervalOverride ?? derivedDetailIntervalMs;
   // 整个采集分组共用的禁用条件：关掉开关时下面两行置灰。
   // 注意 `disabled` 要落到 <button> 上，光靠样式挡不住键盘与脚本触发。
   const captureRowsDisabled = controlBusy !== null || !captureEnabled;
@@ -2786,6 +2829,16 @@ function ClassroomBoardContent() {
                「未打开」而不是「等待画面…」——因为那时永远不会再来一帧）。
                它不决定任何数据的收发：那是学生端与服务端的事。 */
             captureEnabled={captureEnabled}
+            /* ★ 2026-09-25 详情档周期：面板上那个 1~5 秒控件要停在**当前生效**的那一档。
+               ⚠️ 传的是「生效值」（覆盖 ?? 派生），不是「覆盖值」—— 没调过的课堂
+               也该看到 2 秒那一档是选中的，否则面板上**一个选中项都没有**。
+               ⚠️ 但写回去时写的是**覆盖值**（`setWebappCapture` 那条路），
+               所以「点了跟没点一样的那一档」也会把它固定下来。那是可接受的：
+               他显式点了，就是要它。 */
+            detailIntervalMs={detailIntervalMs}
+            detailIsDerived={detailIntervalOverride === null}
+            detailBusy={controlBusy === 'capture-detail-interval'}
+            onSelectDetailInterval={(ms) => void setWebappCapture('capture-detail-interval', { detailIntervalMs: ms })}
             onClose={() => setExploreDetailId(null)}
           />
         )}

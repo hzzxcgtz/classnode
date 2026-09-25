@@ -7,7 +7,7 @@ import type { Response } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 import classroomRoutes from '../routes/classroom.js';
-import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
+import { captureFieldsFromInput, detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { createTeacherSession } from '../middleware/auth.js';
 import { createStudentToken } from '../middleware/student-auth.js';
 import {
@@ -325,7 +325,7 @@ function demand(
     captureEnabled: overrides.captureEnabled ?? true,
     width: overrides.width ?? 320,
     // ⚠️ 这里是**图墙基准**（生产默认 10000）。detail 档的周期由服务端算成
-    //    `max(2000, round(基准/5))`，所以 detail 的用例必须**显式**写出那个数字
+    //    `max(1000, round(基准/5))`，所以 detail 的用例必须**显式**写出那个数字
     //    （如 `{ frameIntervalMs: 2000 }`），不能在这里用生产公式推 —— 用被测代码
     //    算期望值，等于把公式写错这件事从测试里删掉。
     frameIntervalMs: overrides.frameIntervalMs ?? 10_000,
@@ -563,12 +563,70 @@ test('🔴 normalizeCaptureConfig：认不出就当**开** —— undefined 绝�
 });
 
 test('normalizeCaptureConfig：整行 null / undefined 时返回整份默认值', () => {
-  const defaults = { enabled: true, width: 320, frameIntervalMs: 10_000 };
+  // ★ 2026-09-25：多了 `detailIntervalMs`，默认 **`null`**（= 没调过 ⇒ 按基准派生）。
+  const defaults = { enabled: true, width: 320, frameIntervalMs: 10_000, detailIntervalMs: null };
   assert.deepEqual(normalizeCaptureConfig(null), defaults);
   assert.deepEqual(normalizeCaptureConfig(undefined), defaults);
   // 阳性对照：给了一行的（哪怕是空的）走的是另一条分支，但三列同样落到默认值 ——
   // 与上面两条**逐字段相同**，区别只在「有没有那一行」，所以这里把两者放在一起比。
   assert.deepEqual(normalizeCaptureConfig({}), defaults);
+});
+
+test('★ 详情档周期：默认**派生**（基准 ÷ 5），教师调过就固定成他那个值', () => {
+  // ── 派生那条路（P2.2 的原行为，一个字没改）
+  assert.equal(detailIntervalFor(10_000), 2000, '基准 10 秒 ⇒ 详情 2 秒');
+  assert.equal(detailIntervalFor(15_000), 3000);
+  assert.equal(detailIntervalFor(20_000), 4000);
+  assert.equal(detailIntervalFor(30_000), 6000,
+    '基准 30 秒 ⇒ 6 秒：**超出 1~5 秒那五档**，所以界面上必须补一档，否则一个选中项都没有');
+  // 🔴 下界 2026-09-25 由 2000 降到 1000。依据是**这条档只作用于被聚焦的那一个学生**
+  //    （两处下发都判 `focused === studentId`），不是全班 —— 与基准那条 5000 的下界不同。
+  assert.equal(detailIntervalFor(5_000), 1000, '基准 5 秒 ⇒ 1000（旧下界 2000 会把它推回去）');
+  // ── 覆盖那条路
+  assert.equal(detailIntervalFor(30_000, 3000), 3000, '教师调过 ⇒ 覆盖优先，**不再跟随基准**');
+  assert.equal(detailIntervalFor(10_000, 1000), 1000);
+  // ── 覆盖值同样要夹：库里可能是手改过的行、或上一版写进来的
+  assert.equal(detailIntervalFor(10_000, 99), 1000, '低于下界 ⇒ 夹到 1000');
+  assert.equal(detailIntervalFor(10_000, 99_999), 5000, '高于上界 ⇒ 夹到 5000');
+  // ── 「没调过」的几种形态一律回**派生**，不是回一个固定值
+  assert.equal(detailIntervalFor(30_000, null), 6000);
+  assert.equal(detailIntervalFor(30_000, undefined), 6000);
+  assert.equal(detailIntervalFor(30_000, Number.NaN), 6000);
+  assert.equal(detailIntervalFor(30_000, 'abc' as unknown as number), 6000, '垃圾值 = 没调过');
+  // 🔴 真正**能碰到下界**的那一条。⚠️ 光写 `detailIntervalFor(5000)` 是碰不到的：
+  //    基准的下界就是 5000 ⇒ 5000/5 = 1000 = 新下界，两者恰好相等 ⇒ 把
+  //    `Math.max(WEBAPP_DETAIL_MIN_MS, …)` 整句删掉那条断言**照样绿**（假绿）。
+  //    要让它真的生效，得给一个**比基准下界还低**的基准 —— 只有手改过的行才有。
+  assert.equal(detailIntervalFor(1_000), 1000, '基准 1000（手改过的行）⇒ 200 被抬到下界');
+  assert.equal(detailIntervalFor(0), 1000);
+});
+
+test('★ 详情档覆盖值：`null` 是**有意义的值**（清掉覆盖），缺字段才是「这次不改」', () => {
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: 3000 }), { webappDetailIntervalMs: 3000 });
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: 99 }), { webappDetailIntervalMs: 1000 });
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: 99_999 }), { webappDetailIntervalMs: 5000 });
+  // 🔴 与上面那三列**方向相反**：这里的 `null` 不是「没填」，而是「清掉覆盖、回到跟随基准」。
+  //    写成 `isProvidedNumber` 那一套（`null` ⇒ 这次不改）的后果是**这一列永远清不掉** ——
+  //    一个只会往一个方向走的设置。
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: null }), { webappDetailIntervalMs: null });
+  // ⚠️ 而「压根没提这个字段」仍然是**这次不改**；两者不能混。
+  assert.deepEqual(captureFieldsFromInput({}), {});
+  assert.deepEqual(captureFieldsFromInput({ enabled: true }), { webappCaptureEnabled: true });
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: undefined }), {}, 'undefined = 没给');
+  assert.deepEqual(captureFieldsFromInput({ detailIntervalMs: 'abc' }), {}, '垃圾值 = 没给，不能落列');
+});
+
+test('🔴 老课堂（没有这一列）的详情档必须**跟随基准**，不许被兜成固定 2000', () => {
+  // 方向的守卫：`webappDetailIntervalMs` 是**可空**列，`null` / 缺字段都是「没调过」。
+  // 写成 `row.webappDetailIntervalMs ?? 2000`（或给列加 `DEFAULT 2000`）会让基准 30 秒的
+  // 慢设备课堂从 6 秒被**静默提速到 2 秒** —— 而那正是教师当初把基准调大要避开的事，
+  // 且全程没有任何报错。
+  assert.equal(normalizeCaptureConfig({}).detailIntervalMs, null);
+  assert.equal(normalizeCaptureConfig({ webappDetailIntervalMs: null }).detailIntervalMs, null);
+  assert.equal(normalizeCaptureConfig(null).detailIntervalMs, null);
+  // 阳性对照：真的写了值就真的读出来（否则上面三条在「恒回 null」时也成立）
+  assert.equal(normalizeCaptureConfig({ webappDetailIntervalMs: 3000 }).detailIntervalMs, 3000);
+  assert.equal(normalizeCaptureConfig({ webappDetailIntervalMs: 99 }).detailIntervalMs, 1000, '读库也要夹');
 });
 
 test('captureFieldsFromInput：只产出**真的提到了**的列，且同样夹范围', () => {
@@ -819,7 +877,7 @@ test('教师点开某个学生的详情：只有那个学生转高频，其他�
 
   await teacher.call('focus-webapp-student', { classroomId: 'classroom-a', studentId: PARTICIPANT_2_ID });
 
-  // ⚠️ 基准是默认的 10000 ⇒ detail 档 = max(2000, round(10000/5)) = 2000。这个数字
+  // ⚠️ 基准是默认的 10000 ⇒ detail 档 = max(1000, round(10000/5)) = 2000。这个数字
   //    **显式写在这里**（不用生产公式推），否则公式改了测试会跟着一起改。
   assert.deepEqual(
     demandsFor(harness, focused),
@@ -921,9 +979,9 @@ test('课堂设置里关掉了画面：学生收到的 captureEnabled 是 false�
   );
 });
 
-test('detail 档的周期是 max(2000, round(基准/5))，没被点开的学生仍是基准值', async () => {
+test('detail 档的周期是 round(基准/5)（下界 1000），没被点开的学生仍是基准值', async () => {
   resetMonitor();
-  // 基准设成 30000 ⇒ detail = max(2000, 6000) = **6000**。两个数字差得够远，
+  // 基准设成 30000 ⇒ detail = max(1000, 6000) = **6000**。两个数字差得够远，
   // 「没跟着变」或「全班一起变」都能一眼看出来。
   const harness = createHarness({ captureFrameIntervalMs: 30_000 });
   const teacher = harness.connect({ cookie: teacherCookie() });
@@ -955,10 +1013,15 @@ test('detail 档的周期是 max(2000, round(基准/5))，没被点开的学生�
   );
 });
 
-test('detail 档有下界 2000：基准很密（5000）时不再按五分之一算', async () => {
-  // ⚠️ 上一条只走到 `round(基准/5)` 那个分支；`max(2000, …)` 的外层没人守。
-  //    基准 5000 ⇒ 五分之一是 1000，低于下界 ⇒ 必须被抬到 2000。
-  //    少了这条，「下界被删掉」不会有任何用例红。
+test('detail 档：基准很密（5000）时就是 1000（下界 2026-09-25 由 2000 降下来）', async () => {
+  // ⊘ 2026-09-25（教师要求详情面板可选 1~5 秒）：下界由 **2000 降到 1000**，
+  //    所以基准 5000 现在**原样**得到 1000，不再被抬。
+  //
+  // 🔴 **这条用例不再是那道下界的守卫** —— 降界之后 `5000/5 === 1000 === 下界`，
+  //    把 `Math.max(WEBAPP_DETAIL_MIN_MS, …)` 整句删掉它**照样绿**。
+  //    真正守那道闸的用例在**单元层**：`detailIntervalFor(1_000) === 1000`
+  //    （基准比基准下界还低 ⇒ 只有手改过的行才到得了那条路）。
+  //    留着这一条是因为它守的是**另一件事**：基准 5000 时学生端拿到的确实是 1000。
   resetMonitor();
   const harness = createHarness({ captureFrameIntervalMs: 5000 });
   const teacher = harness.connect({ cookie: teacherCookie() });
@@ -973,8 +1036,8 @@ test('detail 档有下界 2000：基准很密（5000）时不再按五分之一�
 
   assert.deepEqual(
     demandsFor(harness, student),
-    [demand(true, false, { frameIntervalMs: 5000 }), demand(true, true, { frameIntervalMs: 2000 })],
-    '5000/5 = 1000 低于下界 ⇒ 必须是 2000，不能是 1000',
+    [demand(true, false, { frameIntervalMs: 5000 }), demand(true, true, { frameIntervalMs: 1000 })],
+    '5000/5 = 1000 ⇒ 就是 1000（下界已由 2000 降到 1000）',
   );
 });
 

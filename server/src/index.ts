@@ -423,6 +423,15 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappFrameIntervalMs" INTEGER NOT NULL DEFAULT 10000`);
       console.log('[server] Added webappFrameIntervalMs column to Classroom');
     }
+    // ★ 2026-09-25：详情档的教师覆盖值。**这一列刻意可空，且默认 NULL** ——
+    // `NULL` = 没调过 ⇒ 详情档按基准派生（P2.2 的原行为）。
+    // ⚠️ **不要给它 `DEFAULT 2000`**：那会让所有老课堂的详情档从「跟随基准」变成固定 2 秒
+    //    —— 基准 30 秒的慢设备课堂会因此被**静默提速三倍**，而那是教师当初特意避开的。
+    //    （与上面三列方向相反：那三列是「认不出就当默认」，这一列是「认不出就当没调过」。）
+    if (!classroomColNames.includes('webappDetailIntervalMs')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappDetailIntervalMs" INTEGER`);
+      console.log('[server] Added webappDetailIntervalMs column to Classroom');
+    }
     // M5a：课堂级「锁定作答」。默认未锁定 ⇒ `DEFAULT 0`（布尔列的先例见上面几行）。
     if (!classroomColNames.includes('answersLocked')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "answersLocked" BOOLEAN NOT NULL DEFAULT 0`);

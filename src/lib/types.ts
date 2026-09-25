@@ -725,6 +725,15 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
   webappCaptureEnabled?: boolean;
   webappThumbnailWidth?: number;
   webappFrameIntervalMs?: number;
+  /**
+   * ★ 2026-09-25：**详情档**周期的教师覆盖值（毫秒）。
+   *
+   * 🔴 这一格与上面三个**方向相反**：`null` / 缺字段都表示「**没调过**」⇒ 按基准派生
+   * （`detailIntervalFor`：基准的 1/5，夹在 1000~5000）。**不要**给它兜一个 `?? 2000` ——
+   * 那会把「跟随基准」的课堂（基准 30 秒 ⇒ 详情 6 秒）静默改成固定 2 秒，
+   * 而那正是教师当初把基准调大要避开的事。
+   */
+  webappDetailIntervalMs?: number | null;
 }
 
 export interface ClassroomHistoryItem extends ClassroomSummary {

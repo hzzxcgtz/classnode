@@ -108,7 +108,9 @@ test('越界输入被夹住落库，且改完**确实重新下发**了新档位'
   const response = await h.post({ width: 9999, frameIntervalMs: 100 });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { enabled: true, width: 640, frameIntervalMs: 5000 });
+  // ★ 2026-09-25：响应多了 `detailIntervalMs`（详情档的教师覆盖值）。这条行没有那一列
+  // ⇒ `null` = 没调过、跟随基准。
+  assert.deepEqual(await response.json(), { enabled: true, width: 640, frameIntervalMs: 5000, detailIntervalMs: null });
   // 落库的也得是夹过的值 —— 不能只在响应里夹一下、把 9999 原样写进去
   assert.deepEqual(h.updates, [{
     where: { id: 'classroom-1' },
@@ -128,7 +130,7 @@ test('只改 enabled 时，宽度与周期保持原值，且随新档位一起�
   const response = await h.post({ enabled: false });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { enabled: false, width: 480, frameIntervalMs: 20_000 });
+  assert.deepEqual(await response.json(), { enabled: false, width: 480, frameIntervalMs: 20_000, detailIntervalMs: null });
   assert.deepEqual(
     h.updates,
     [{ where: { id: 'classroom-1' }, data: { webappCaptureEnabled: false } }],

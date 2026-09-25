@@ -16,12 +16,21 @@ export interface WebappCaptureConfig {
   width: number;
   /** **图墙档**的截图基准周期（毫秒）。 */
   frameIntervalMs: number;
+  /**
+   * ★ 2026-09-25：**详情档**周期的教师覆盖值（毫秒）。`null` = 没调过 ⇒ 按基准派生。
+   *
+   * ⚠️ 它**不是**一个必填档位，而是「派生值之上的覆盖」—— 见 `detailIntervalFor`。
+   * 客户端拿它来把详情面板上那个 1~5 秒控件停在正确的档位上。
+   */
+  detailIntervalMs: number | null;
 }
 
 export const DEFAULT_WEBAPP_CAPTURE: WebappCaptureConfig = {
   enabled: true,
   width: 320,
   frameIntervalMs: 10000,
+  // 没调过 ⇒ 派生（基准 10 秒 ⇒ 详情 2 秒，与 P2.2 的行为逐字相同）
+  detailIntervalMs: null,
 };
 
 /**
@@ -51,9 +60,51 @@ export const WEBAPP_INTERVAL_MAX_MS = 60000;
  * 等于把教师刚刚避开的代价又加回去。基准 10 秒 ⇒ 详情 2 秒（与改动前一致）。
  */
 export const WEBAPP_DETAIL_DIVISOR = 5;
-export const WEBAPP_DETAIL_MIN_MS = 2000;
 
-export function detailIntervalFor(baseMs: number): number {
+/**
+ * 详情档的下界。
+ *
+ * ⊘ 2026-09-25：由 **2000 降到 1000**（教师要求详情面板可选 1~5 秒）。
+ * 🔴 降它有依据，依据是**这条档只作用于一个学生**：两处下发都判
+ * `detail = watching && focused === studentId`（`socket/index.ts:780` 与 `:1205`）
+ * ⇒ 1 秒档下是**一台设备**在每秒截一张，不是全班。
+ * （对比 `WEBAPP_INTERVAL_MIN_MS` 那条 5000 的下界 —— 那个是**全班**每个学生都按它跑，
+ *  所以两者不能一起松。）
+ */
+export const WEBAPP_DETAIL_MIN_MS = 1000;
+
+/** 详情档的上界。教师面板给的是 1~5 秒；比基准还疏就没有「详情」的意义了。 */
+export const WEBAPP_DETAIL_MAX_MS = 5000;
+
+/**
+ * 老师填的详情档覆盖值 → 合法值或 `null`（没调过）。
+ *
+ * ⚠️ 判据用 `isProvidedNumber` 而不是 `clampInt`：`clampInt(null, …)` 会先算出
+ * `Number(null) === 0` 再夹成**下界**，于是「没调过」会被写成一个合法的最小档。
+ * 这与 `isProvidedNumber` 上头那段注释是同一件事，只是这里多了「空」这个合法值。
+ */
+function normalizeDetailOverride(raw: unknown): number | null {
+  if (!isProvidedNumber(raw)) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(WEBAPP_DETAIL_MAX_MS, Math.max(WEBAPP_DETAIL_MIN_MS, Math.round(n)));
+}
+
+/**
+ * 详情档的最终周期。
+ *
+ * 两条路，**默认那条一个字没改**（P2.2 的行为）：
+ *   · `overrideMs` 有值 ⇒ 就是它（教师显式调过，夹在 1000~5000）；
+ *   · `overrideMs` 为 `null` ⇒ `max(1000, 基准 / 5)`。
+ *
+ * 🔴 保留派生这条路的理由逐字还在（见 `WEBAPP_DETAIL_DIVISOR` 那段）：基准是教师按
+ * **设备能力**选的，固定一个值等于把他刚避开的代价加回去。
+ * ⚠️ 副作用要说清：**教师一调过就固定了**，之后再改基准也不会带动它 —— 那是他要的
+ * 「我就要 3 秒」，不是漂移。想回到跟随基准，得有个「恢复默认」的入口（今天没有）。
+ */
+export function detailIntervalFor(baseMs: number, overrideMs: number | null = null): number {
+  const override = normalizeDetailOverride(overrideMs);
+  if (override !== null) return override;
   return Math.max(WEBAPP_DETAIL_MIN_MS, Math.round(baseMs / WEBAPP_DETAIL_DIVISOR));
 }
 
@@ -62,6 +113,8 @@ export interface RawCaptureFields {
   webappCaptureEnabled?: unknown;
   webappThumbnailWidth?: unknown;
   webappFrameIntervalMs?: unknown;
+  /** ★ 2026-09-25：详情档覆盖值。**可空**（`null` = 没调过 ⇒ 派生）。 */
+  webappDetailIntervalMs?: unknown;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -105,6 +158,7 @@ export function normalizeCaptureConfig(row: RawCaptureFields | null | undefined)
       WEBAPP_INTERVAL_MAX_MS,
       DEFAULT_WEBAPP_CAPTURE.frameIntervalMs,
     ),
+    detailIntervalMs: normalizeDetailOverride(row.webappDetailIntervalMs),
   };
 }
 
@@ -119,8 +173,19 @@ export function captureFieldsFromInput(input: {
   enabled?: unknown;
   width?: unknown;
   frameIntervalMs?: unknown;
-}): { webappCaptureEnabled?: boolean; webappThumbnailWidth?: number; webappFrameIntervalMs?: number } {
-  const out: { webappCaptureEnabled?: boolean; webappThumbnailWidth?: number; webappFrameIntervalMs?: number } = {};
+  detailIntervalMs?: unknown;
+}): {
+  webappCaptureEnabled?: boolean;
+  webappThumbnailWidth?: number;
+  webappFrameIntervalMs?: number;
+  webappDetailIntervalMs?: number | null;
+} {
+  const out: {
+    webappCaptureEnabled?: boolean;
+    webappThumbnailWidth?: number;
+    webappFrameIntervalMs?: number;
+    webappDetailIntervalMs?: number | null;
+  } = {};
   if (typeof input.enabled === 'boolean') out.webappCaptureEnabled = input.enabled;
   // ⚠️ 只在**确实给了数值**时才写：没给 = 这次不改，写进去会把它变成默认值（或更糟，见
   //    isProvidedNumber 的注释：null 会被当成 0 再夹成 160）。
@@ -134,6 +199,14 @@ export function captureFieldsFromInput(input: {
       WEBAPP_INTERVAL_MAX_MS,
       DEFAULT_WEBAPP_CAPTURE.frameIntervalMs,
     );
+  }
+  // ★ 详情档覆盖值 —— 与上面两条**不同**：这条的 `null` 是一个**有意义的值**
+  //（= 清掉覆盖、回到「跟随基准」），所以它收 `null`。
+  // ⚠️ 但「压根没给这个字段」仍然是「这次不改它」：`undefined === null` 为假，
+  //    所以缺字段不会掉进第一支。这正是上面那条「缺字段 ≠ 写默认值」的纪律。
+  if (input.detailIntervalMs === null) out.webappDetailIntervalMs = null;
+  else if (isProvidedNumber(input.detailIntervalMs)) {
+    out.webappDetailIntervalMs = normalizeDetailOverride(input.detailIntervalMs);
   }
   return out;
 }

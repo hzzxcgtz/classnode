@@ -765,7 +765,7 @@ export async function broadcastWebappDemand(io: Server, prisma: PrismaClient, cl
   const config = normalizeCaptureConfig(
     await prisma.classroom.findUnique({
       where: { id: classroomId },
-      select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true },
+      select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true, webappDetailIntervalMs: true },
     }),
   );
 
@@ -785,7 +785,7 @@ export async function broadcastWebappDemand(io: Server, prisma: PrismaClient, cl
       width: config.width,
       // ⚠️ 下发的是**本档的最终周期**，不是「图墙基准」：wall 与 detail 的差别由服务端算好。
       //    让学生端自己乘一个比例，等于把这个比例的定义复制到另一个语言、另一个位置。
-      frameIntervalMs: detail ? detailIntervalFor(config.frameIntervalMs) : config.frameIntervalMs,
+      frameIntervalMs: detail ? detailIntervalFor(config.frameIntervalMs, config.detailIntervalMs) : config.frameIntervalMs,
     });
   }
 }
@@ -1207,7 +1207,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const joinConfig = normalizeCaptureConfig(
           await prisma.classroom.findUnique({
             where: { id: classroom.id },
-            select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true },
+            select: { webappCaptureEnabled: true, webappThumbnailWidth: true, webappFrameIntervalMs: true, webappDetailIntervalMs: true },
           }),
         );
         socket.emit('webapp-monitor-demand', {
@@ -1216,7 +1216,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           captureEnabled: joinConfig.enabled,
           width: joinConfig.width,
           frameIntervalMs: demandDetail
-            ? detailIntervalFor(joinConfig.frameIntervalMs)
+            ? detailIntervalFor(joinConfig.frameIntervalMs, joinConfig.detailIntervalMs)
             : joinConfig.frameIntervalMs,
         });
 

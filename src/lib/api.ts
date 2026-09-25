@@ -208,8 +208,11 @@ export const api = {
   //
   // 返回的是**归一化后的完整设置**（宽度夹在 160~640、周期夹在 5000~60000），
   // 应当用它回写本地 state，而不是回写请求里那个可能被夹掉的值。
-  setWebappCapture: (id: string, body: { enabled?: boolean; width?: number; frameIntervalMs?: number }) =>
-    request<{ enabled: boolean; width: number; frameIntervalMs: number }>(`/api/classroom/${id}/webapp-capture`, { method: 'POST', body: JSON.stringify(body) }),
+  // ★ 2026-09-25：多了 `detailIntervalMs`（详情档周期的教师覆盖值）。
+  // ⚠️ 它的 `null` 是**有意义的值**（= 清掉覆盖、回到「跟随基准」），不是「不改」——
+  // 「不改」是**不传这个键**（`JSON.stringify` 会把 `undefined` 整个丢掉）。
+  setWebappCapture: (id: string, body: { enabled?: boolean; width?: number; frameIntervalMs?: number; detailIntervalMs?: number | null }) =>
+    request<{ enabled: boolean; width: number; frameIntervalMs: number; detailIntervalMs: number | null }>(`/api/classroom/${id}/webapp-capture`, { method: 'POST', body: JSON.stringify(body) }),
   getHistory: () => request<ClassroomHistoryItem[]>('/api/classroom/history/all'),
   getAllClassrooms: () => request<DashboardClassroom[]>('/api/classroom/all'),
   // 🔴 **只有课堂名称可以改**（服务端只读 `title`，其余字段不采用）。这条签名只收

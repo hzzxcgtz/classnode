@@ -122,8 +122,13 @@ model Classroom {
   webappCaptureEnabled Boolean @default(true)
   /// 探究空间：缩略图目标宽度（像素）。服务端夹在 160~640 之间再下发。
   webappThumbnailWidth Int @default(320)
-  /// 探究空间：**图墙档**的截图基准周期（毫秒）。详情档由学校端按比例推。
+  /// 探究空间：**图墙档**的截图基准周期（毫秒）。详情档由服务端按比例推。
   webappFrameIntervalMs Int @default(10000)
+  /// 探究空间：**详情档**周期的教师覆盖值（毫秒），可空。
+  /// `null` = 没调过 ⇒ 按基准派生（`detailIntervalFor`，基准的 1/5），那是 P2.2 的原行为。
+  /// ⚠️ **可空是有意的**：基准是教师按**设备能力**选的 —— 一个班把基准调到 30 秒，
+  /// 正是因为设备跑不动。给这种课堂固定一个 2 秒详情档，等于把他刚避开的代价加回去。
+  webappDetailIntervalMs Int?
   createdAt DateTime @default(now())
   endedAt   DateTime?
 

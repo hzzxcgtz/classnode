@@ -105,18 +105,40 @@ export function ExploreMemberStrip({ members, states, statuses, captureEnabled, 
 }
 
 /**
+ * 详情档周期控件的那几档：1~5 秒，**外加当前生效值本身**（如果它不在这五档里）。
+ *
+ * 🔴 为什么要有后面那一截：这一档默认是**按基准派生**的（基准 ÷ 5）。基准能到 30 秒
+ * ⇒ 派生 6 秒，而教师看到的档位只到 5 秒 —— 那就**没有任何一档是选中的**，
+ * 面板上呈现为「一个都没选」，而学生端明明按 6 秒在跑。
+ * 补上它，控件永远是诚实的（选中项就是真实生效的那个值）。
+ */
+function detailIntervalOptions(current: number): number[] {
+  const base = [1000, 2000, 3000, 4000, 5000];
+  return base.indexOf(current) >= 0 ? base : base.concat(current);
+}
+
+/**
  * 某个学生的探究详情（右侧浮层）。从原 `WebappMonitorView` 的抽屉原样搬来。
  *
  * 抽屉里**有当前状态、没有事件流**：这里曾经是最近 200 条操作事件的列表
  * （含「只显示字符个数、不显示输入内容」那条隐私约束）—— 那条链路没有回来，
  * 而恢复的文字档被服务端收成了**当前状态**，所以它在上面的信息栏里就说完了。
  */
-export function ExploreDetailPanel({ student, state, online, webapps, captureEnabled, onClose }: {
+export function ExploreDetailPanel({ student, state, online, webapps, captureEnabled, detailIntervalMs, detailIsDerived, detailBusy, onSelectDetailInterval, onClose }: {
   student: ClassroomCardStudent;
   state?: StudentMonitorState;
   online: boolean;
   webapps: readonly ClassroomWebappSummary[];
   captureEnabled: boolean;
+  /**
+   * ★ 2026-09-25：**当前生效**的详情档周期（毫秒）。控件停在它那一档上。
+   * ⚠️ 是「生效值」不是「覆盖值」：没调过的课堂也该看到 2 秒那一档选中。
+   */
+  detailIntervalMs: number;
+  /** `true` = 这个值是按基准**派生**的（教师没调过）⇒ 界面上说明一句，别让他以为是自己设的。 */
+  detailIsDerived: boolean;
+  detailBusy: boolean;
+  onSelectDetailInterval: (ms: number) => void;
   onClose: () => void;
 }) {
   const webappName = state ? (webapps.find(w => w.id === state.webappId)?.name ?? '探究网页') : '探究网页';
@@ -152,6 +174,42 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
           <span>{state?.dataUrl ? timeLabel(state.at) : '暂无画面'}</span>
           {state?.presence && state.presence.depth > 0 ? <span>滚到 {state.presence.depth}%</span> : null}
           {state?.presence && state.presence.switches > 0 ? <span>切换过 {state.presence.switches} 次</span> : null}
+        </div>
+        {/* ★ 2026-09-25（教师要求）：**详情档周期**在这里可调（1~5 秒，默认跟随基准）。
+            🔴 它改的是**学生端的截图节奏**，不是这个面板的刷新 —— 服务端按
+            `detail = watching && focused === studentId` 只把这一档下发给**被点开的这一个**
+            学生（`socket/index.ts:780`），所以调到 1 秒也只有一台设备在每秒截一张。
+            ⚠️ 因此这个控件**不能**写在没有学生的公共设置里：同一屏下别的人的格子照旧按基准跑。 */}
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span>刷新周期</span>
+            <span style={{ color: '#94a3b8' }}>他的设备多久截一张（只影响这一个学生）</span>
+            {detailIsDerived && (
+              <span style={{ color: '#94a3b8' }}>· 当前跟随基准自动推算</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {detailIntervalOptions(detailIntervalMs).map((ms) => {
+              const selected = ms === detailIntervalMs;
+              return (
+                <button key={ms} type="button" aria-pressed={selected} disabled={detailBusy}
+                  // 点**已经选中**的那一档是空操作：省掉一次写入，也省掉一次「把派生值
+                  // 固定成覆盖值」——教师点它只是想看看，不该因此改掉课堂设置。
+                  onClick={() => { if (!selected) onSelectDetailInterval(ms); }}
+                  style={{
+                    minHeight: 30, padding: '4px 12px', borderRadius: 999, fontSize: '0.813rem',
+                    border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
+                    background: selected ? '#2563eb' : 'white',
+                    color: selected ? 'white' : '#475569',
+                    fontWeight: selected ? 600 : 500,
+                    cursor: detailBusy ? 'not-allowed' : 'pointer',
+                    opacity: detailBusy ? 0.6 : 1,
+                  }}>
+                  {Math.round(ms / 1000)} 秒
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 16px' }}>
           <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>

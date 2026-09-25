@@ -341,6 +341,14 @@ export interface WorksheetSettings {
    * `worksheet-reward.ts` 的 `normalizeHalfStep`，**不是** `normalizeRewardStep`（它的域不含 0）。
    */
   halfStep: number;
+  /**
+   * ★ M7b：这道题的分析用哪个智能体（`Agent.id`）。`null` = 没指定 ⇒ 分析按钮禁用。
+   *
+   * 🔴 它是**学习单级**而不是全局：提示词写在平台上那个 bot 里，而一份数学单与一份
+   * 语文作文单该用不同的提示词 ⇒ 「用哪个分析 bot」天然是**学习单的属性**，不是全局偏好。
+   * ⚠️ **没有默认值**是刻意的：默认指定一个等于「默认把全班作业发出去」。
+   */
+  analysisAgentId: string | null;
 }
 
 /**

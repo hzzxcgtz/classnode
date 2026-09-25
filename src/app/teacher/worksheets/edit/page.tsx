@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
-import type { WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import { api } from '@/lib/api';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
 import { HALF_STEPS, REWARD_STEPS, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
@@ -334,6 +335,20 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
   // 分数论「分」、对错没有步长）。这里**不写**任何一档的字面量。
   const currentStyle = REWARD_STYLE_OPTIONS.find(option => option.value === settings.rewardStyle)
     ?? REWARD_STYLE_OPTIONS[0];
+
+  // ★ M7b：分析型智能体的候选。**在模态挂载时按需取**（`{settingsOpen && <SettingsModal/>}`
+  // ⇒ 挂载 = 打开）—— 这个列表只有打开设置才用得上，跟着页面一起取是白取。
+  // ⚠️ 取失败**不阻断**：下拉退回只剩「（不指定）」那一项，教师仍能编辑别的设置。
+  // 与「学习单列表加载失败不阻断创建」那条既有判断同形（`classroom/new/page.tsx`）。
+  const [analysisAgents, setAnalysisAgents] = useState<AgentSummary[]>([]);
+  useEffect(() => {
+    let alive = true;
+    api.getAgents('analysis')
+      .then(list => { if (alive) setAnalysisAgents(list); })
+      .catch(() => { if (alive) setAnalysisAgents([]); });
+    return () => { alive = false; };
+  }, []);
+
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
@@ -367,6 +382,28 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             <strong>提交后可以修改</strong>
             <em>关掉之后，学生点了「提交本题」就定稿，再改会被拒绝（由服务端拦下，不是只做个提示）。</em>
           </span>
+        </label>
+
+        {/* ★ M7b：分析型智能体（学习单级 —— 用户 2026-09-25 裁定 4）。
+            🔴 候选只列 `purpose === 'analysis'` 的，而且**由服务端过滤**（`?purpose=analysis`）。
+            🔴 **默认是「不指定」**：默认指定一个等于「默认把全班作业发给第三方 AI」。
+            🔴 平台提示必须**在配的时候就**看到 —— 否则教师会在用的那一刻才发现绘图题发不出去。 */}
+        <label className="worksheet-editor-field">
+          <span>分析型智能体（用于看板里的「发给 AI 分析」）</span>
+          <select
+            className="input"
+            value={settings.analysisAgentId ?? ''}
+            onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
+          >
+            <option value="">（不指定 —— 分析按钮不可用）</option>
+            {analysisAgents.map(agent => (
+              <option key={agent.id} value={agent.id}>{agent.name}（{agent.platform}）</option>
+            ))}
+          </select>
+          <em style={{ display: 'block', marginTop: 4, fontSize: '0.78rem', color: '#64748b' }}>
+            没配到候选？去「智能体管理」把要用的那个的**用途**改成「分析」。
+            ⚠️ 绘图题的分析**只有 Coze 平台收得了图**（其他平台只能分析文字作答）。
+          </em>
         </label>
 
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——

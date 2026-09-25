@@ -1455,6 +1455,10 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   // ⚠️ 用 `DEFAULT_HALF_STEP` 而**不是** `DEFAULT_REWARD_STEP`：两者刚好是 0 与 1，
   // 写错了不会报错，只会让每一张新建的学习单都悄悄变成「半对也给 1」。
   halfStep: DEFAULT_HALF_STEP,
+  // ★ M7b：**没有默认分析智能体**（与服务端 `normalizeSettings` 的默认**必须一致** ——
+  // 上面那段注释说的就是这件事：这里决定新建的单、那边决定缺字段的行）。
+  // 🔴 默认指定一个等于「默认把全班作业发给第三方 AI」。
+  analysisAgentId: null,
 };
 
 /**
@@ -1527,6 +1531,10 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       rewardStyle: normalizeRewardStyle(settings.rewardStyle),
       rewardStep: normalizeRewardStep(settings.rewardStep),
       halfStep: normalizeHalfStep(settings.halfStep),
+      // ★ M7b：非空字符串才算指定（与服务端同一判据：空串与坏值都回落 `null`）。
+      analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
+        ? settings.analysisAgentId
+        : null,
     },
     content: { schemaVersion: typeof content.schemaVersion === 'number' ? content.schemaVersion : SCHEMA_VERSION, nodes },
   };
@@ -1565,5 +1573,12 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     rewardStyle: normalizeRewardStyle(settings.rewardStyle),
     rewardStep: normalizeRewardStep(settings.rewardStep),
     halfStep: normalizeHalfStep(settings.halfStep),
+    // ★ M7b：非空字符串才算指定（与服务端 `normalizeSettings` 同一判据）。
+    // ⚠️ 这一层**必须**有：`buildPayload` 保存时把 `settings` 整份发回去，
+    // 这里漏一个键就等于用默认值覆盖库里的设置 —— 一次「只改了个标题」的保存
+    // 会把教师配好的分析智能体悄悄清掉（上面那段注释说的正是这一类键）。
+    analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
+      ? settings.analysisAgentId
+      : null,
   };
 }

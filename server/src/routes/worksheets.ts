@@ -158,6 +158,9 @@ const DEFAULT_SETTINGS = {
   // 逐字相同，所以已在用的学习单升级后学生端什么都不变。前端那一份是
   // `worksheet-reward.ts` 的 `DEFAULT_HALF_STEP`。
   halfStep: 0,
+  // ★ M7b：**没有默认分析智能体**，这是刻意的 —— 默认指定一个等于「默认把全班作业发出去」。
+  // ⇒ `null` 表示「没指定」，而没指定时分析按钮禁用并提示去哪儿配。
+  analysisAgentId: null,
 } as const;
 
 /**
@@ -171,7 +174,8 @@ const DEFAULT_SETTINGS = {
  * （M4a 的 `halfStep` 就是这么加进来的：B2 之前它进不了这里，于是 `pointsFromSettings`
  * 读到的永远是默认的 0 —— 教师填的值会被一次「只改标题」的保存抹掉。）
  */
-function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
+/** ★ M7b：**导出**是为了让用例能测它（原先不导出 ⇒ 只能另抄一份判据，那是第二份真源）。 */
+export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
     : {};
@@ -192,6 +196,12 @@ function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     rewardStyle,
     rewardStep,
     halfStep,
+    // ★ M7b：空串与坏值都回落 `null`（⇒ 分析按钮禁用并提示去哪儿配）。
+    // ⚠️ 判据是「非空字符串」而不是「真值」—— `0` 与 `false` 不是合法的 agent id，
+    // 但它们都不是空串，写成真值判断会把它们放过去，而那时界面上那个下拉会选不中任何一项。
+    analysisAgentId: typeof source.analysisAgentId === 'string' && source.analysisAgentId !== ''
+      ? source.analysisAgentId
+      : null,
   };
 }
 

@@ -84,7 +84,13 @@ export const api = {
     request<InitStatus>('/api/settings/init-status'),
 
   // Agents
-  getAgents: () => request<AgentSummary[]>('/api/agents'),
+  /**
+   * 智能体列表。★ M7b：可按**用途**过滤。
+   * 🔴 过滤在**服务端**做（`?purpose=`）—— 前端因此不必复述那条规则，
+   * 而复述一遍就是第二份真源（它漂了不会红）。
+   */
+  getAgents: (purpose?: 'tutoring' | 'analysis') =>
+    request<AgentSummary[]>(`/api/agents${purpose ? `?purpose=${purpose}` : ''}`),
   getAgent: (id: string) => request<AgentSummary>(`/api/agents/${id}`),
   createAgent: (data: FormData) =>
     formRequest<AgentSummary>('/api/agents', 'POST', data),

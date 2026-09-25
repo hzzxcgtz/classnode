@@ -13,7 +13,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveMaterialTargetId } from './group-material-resolve.js';
-import { flattenQuestions, type QuestionNode, type WorksheetContent } from './worksheet-questions.js';
+import { type QuestionNode, type WorksheetContent } from './worksheet-questions.js';
+import { flattenAnswerable } from './worksheet-heading.js';
 import {
   REPORT_TEXT, answerCell, formatDuration, gradeLabel, unmappedParticipantsNotice, webappUsageColumnLabels,
   type AnswerCell, type GradeLabel,
@@ -1122,15 +1123,19 @@ export async function generateConversationsCsv(
 
 /**
  * 🔴 **畸形的 `content` 不许让整份导出失败**：手工改过的库行 / 一个旧版本的行都可能让
- * `flattenQuestions` 抛，而抛出去的后果是教师拿到「导出失败」四个字、**一整节课的报告导不出来**
+ * `flattenAnswerable` 抛，而抛出去的后果是教师拿到「导出失败」四个字、**一整节课的报告导不出来**
  * —— 正是本批在 `answerCell` 上已经立过的那条纪律（「认不出的形状不抛，收成一句可读的文字」），
  * 只不过这一侧原先一个守卫都没有。
  */
-function safeQuestions(content: unknown): QuestionNode[] {
+function safeAnswers(content: unknown): Array<{ node: QuestionNode; heading: string }> {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
   if (!Array.isArray((content as { nodes?: unknown }).nodes)) return [];
   try {
-    return flattenQuestions(content as WorksheetContent);
+    // 🔴 **可作答的题**，任务不在其中：报告是「一道题一行」，
+    // 一行任务会是一行没有答案、没有判定的空壳，而它还会把后面每道题的序号顶掉一格。
+    // ⚠️ 入参是**顶层 nodes**：`flattenQuestions` 的返回值里节点还带着 `children`，
+    // 再喂给 `flattenAnswerable` 会把小题数两遍。
+    return flattenAnswerable((content as WorksheetContent).nodes ?? []);
   } catch {
     return [];
   }
@@ -1148,7 +1153,7 @@ function reportTitle(title: string | null, code: string | null): string {
 
 /** 一行的三个格子：题号+题型 / 学生答案（笔迹是图）/ 判定。 */
 function worksheetRowCells(
-  row: { index: number; typeLabel: string; prompt: string; cell: AnswerCell; png: Buffer | null; grade: GradeLabel },
+  row: { heading: string; typeLabel: string; prompt: string; cell: AnswerCell; png: Buffer | null; grade: GradeLabel },
 ): TableRow {
   const rawPrompt = typeof row.prompt === 'string' ? row.prompt : '';
   const prompt = rawPrompt.trim() || REPORT_TEXT.promptMissing;
@@ -1178,7 +1183,7 @@ function worksheetRowCells(
   const gradeColor = row.grade === '对' ? C.green : row.grade === '半对' ? C.gold : row.grade === '错' ? C.red : C.textLight;
   return new TableRow({
     children: [
-      cell(`${row.index + 1}. ${row.typeLabel}　${short}`, { width: 3600, size: 16 }),
+      cell(`${row.heading}. ${row.typeLabel}　${short}`, { width: 3600, size: 16 }),
       new TableCell({ width: { size: 3900, type: WidthType.DXA }, children: [new Paragraph({ children: answerChildren })] }),
       cell(row.grade, { width: 900, size: 16, color: gradeColor, bold: true }),
     ],
@@ -1278,21 +1283,21 @@ export async function generateWorksheetReportDocx(
       const sheet = sheetById.get(sheetId);
       if (!sheet) continue;
       children.push(pText(`《${sheet.title}》`, { bold: true, size: 22, color: C.text, spacingBefore: 220, spacingAfter: 100 }));
-      const questions = safeQuestions(sheet.content);
+      const questions = safeAnswers(sheet.content);
       const members = classroom.students.filter((participant) => participantSheet.get(participant.id) === sheetId);
       for (const participant of members) {
         const rows = answersByPair.get(`${participant.id}\x00${sheetId}`) ?? [];
         const byQuestion = new Map(rows.map((row) => [row.questionId, row]));
         children.push(pText(participantName(participant), { bold: true, size: 20, color: C.text, spacingBefore: 160, spacingAfter: 60 }));
         const tableRows: TableRow[] = [];
-        for (let index = 0; index < questions.length; index++) {
-          const node = questions[index];
+        // ⚠️ 逐**题**（可作答的），行首的序号是**两级题号** —— 与看板、抽屉、学生端同一份。
+        for (const { node, heading } of questions) {
           const row = byQuestion.get(node.id);
           const answer = answerCell(row ? row.value : undefined);
           // ⚠️ 笔迹在这里**同步渲染成 PNG**：`inkToPng` 自己会吞掉所有失败并回 `null`。
           const png = answer.kind === 'ink' ? await inkToPng(answer.ink) : null;
           tableRows.push(worksheetRowCells({
-            index, typeLabel: questionTypeLabel(node.type), prompt: node.prompt,
+            heading, typeLabel: questionTypeLabel(node.type), prompt: node.prompt,
             cell: answer, png,
             grade: gradeLabel({ isCorrect: row?.isCorrect ?? null, gradeState: row?.gradeState ?? null }),
           }));

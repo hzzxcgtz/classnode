@@ -56,13 +56,15 @@ function stateLine(state: WorksheetTileState): string {
     case 'working':
       // 说不出哪一题时（最后作答那题已被教师删掉、也没有在答的题）**不编号码**：
       // 编一个「第 1 题」会让教师去讲一道这个学生根本没在做的题。
-      return state.index === null
+      // 题号是两级题号（`任务一 · 2`）**裸显示**，不再包「第 … 题」：包起来之后
+      // 每一条已迁移的学习单上都会写成「第 任务一 · 2 题」。
+      return state.heading === null
         ? '正在作答'
-        : `正在做 第 ${state.index + 1} 题${state.typeLabel ? ` · ${state.typeLabel}` : ''}`;
+        : `正在做 ${state.heading}${state.typeLabel ? ` · ${state.typeLabel}` : ''}`;
     case 'stuck':
-      return state.index === null
+      return state.heading === null
         ? `停住了 · ${state.minutes} 分钟`
-        : `停在第 ${state.index + 1} 题 · ${state.minutes} 分钟`;
+        : `停在 ${state.heading} · ${state.minutes} 分钟`;
     case 'all-submitted':
       return `✓ ${state.cells.length} 题已全部提交`;
     default:

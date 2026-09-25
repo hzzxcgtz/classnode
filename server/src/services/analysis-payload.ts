@@ -185,12 +185,22 @@ export function payloadKindOf(entries: AnalyzeEntry[]): 'text' | 'image' | 'mixe
  */
 export const ANSWER_TEXT_MAX = 800;
 
-/** 一道题在界面上的位置信息（`index` 是 0-based 的拍平题序，与 `MatrixRow.index` 同源）。 */
+/**
+ * 一道题在界面上的位置信息。
+ *
+ * ★ 2026-09-25：`index: number`（0-based 拍平题序）换成 **`heading: string`**（两级题号，
+ * `任务一 · 3`；没有任务前缀时就是 `3`）。
+ *
+ * 🔴 换的理由不只是显示：拍平序把**任务节点也算了一号** ⇒ 任务一旦在树里，抬头印出来的
+ * 「第 N 题」就比教师看板上那一列大 —— 而**载荷里看不出来它是错的**（它只是个数字）。
+ * 两级题号与看板、抽屉、导出、学生端**同一份**（`services/worksheet-heading.ts` 的
+ * `flattenAnswerable`，对拍用例钉着与前端逐字相同）。
+ */
 export interface QuestionMeta {
   questionId: string;
   typeLabel: string;
   prompt: string;
-  index: number;
+  heading: string;
 }
 
 /** 超长就截断并附一句说明。 */
@@ -216,7 +226,7 @@ export function buildTextDocument(
   covered: number, total: number,
 ): string {
   const head = [
-    `第 ${question.index + 1} 题 · ${question.typeLabel}`,
+    `${question.heading} · ${question.typeLabel}`,
     `题干：${question.prompt || '（题干为空）'}`,
     `已交 ${covered}/${total}`,
   ].join('\n');
@@ -431,7 +441,7 @@ export function buildAnalysisPayload(input: {
   const payloadKind = payloadKindOf(entries);
   return {
     questionId: question.questionId,
-    questionLabel: `第 ${question.index + 1} 题`,
+    questionLabel: question.heading,
     typeLabel: question.typeLabel,
     prompt: question.prompt,
     payloadKind,

@@ -190,7 +190,8 @@ function MatrixRowView({
       <th scope="row" style={{ ...stickyCellStyle, borderLeft: stuck ? '3px solid #f59e0b' : '3px solid transparent' }}>
         <button type="button" onClick={onOpenQuestion}
           style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
-          <span style={{ color: '#1e293b', fontWeight: 600 }}>{row.index + 1}</span>
+          {/* ★ 两级题号（`任务一 · 1`）已经是给人看的串，**不加 1** */}
+          <span style={{ color: '#1e293b', fontWeight: 600 }}>{row.heading}</span>
           <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.75rem' }}>{row.typeLabel}</span>
           {/* 题干单行截断交给 CSS（不在这里切字符串 —— 那会把空题干那条既有文案一起吃掉）。 */}
           <span style={{
@@ -278,6 +279,6 @@ function headlineText(headline: MatrixHeadline): string {
     case 'no-participants': return '还没有人加入';
     case 'all-submitted': return '全部交齐';
     case 'not-started': return '全班还没开始';
-    case 'stuck': return `卡住的是第 ${headline.index + 1} 题 · ${headline.tally}/${headline.total} 人作答过`;
+    case 'stuck': return `卡住的是 ${headline.heading} · ${headline.tally}/${headline.total} 人作答过`;
   }
 }

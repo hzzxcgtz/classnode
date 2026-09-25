@@ -6,6 +6,11 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
 import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
+// ★ 2026-09-25：两级题号（`任务一 · 1`）。与前端同名函数是**镜像**关系，
+// 对拍用例 `src/lib/worksheet-heading-parity.test.ts` 钉着两边逐字相同。
+// ⚠️ 与上面的 `flattenQuestions` **不是**一回事：那个吐出树里**所有**节点
+//（含任务），而「一道题一条」的地方全都只认可作答的题。
+import { flattenAnswerable } from '../services/worksheet-heading.js';
 import { toAgentConfig } from '../services/agent-config.js';
 import {
   flattenQuestions,
@@ -961,14 +966,19 @@ async function loadAnalysisKnobs(prisma: PrismaClient): Promise<SheetKnobs> {
 /** 题在 `content` 树里的位置（拍平序）—— 抬头那句「第 N 题」要用它。 */
 async function loadAnalysisTarget(
   prisma: PrismaClient, classroomId: string, worksheetId: string, questionId: string,
-): Promise<{ ok: true; node: QuestionNode; index: number } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true; node: QuestionNode; heading: string } | { ok: false; status: number; error: string }> {
   const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true } });
   if (!worksheet) return { ok: false, status: 404, error: '学习单不存在' };
   // 与既有三处同形（:1288 / :1469 / :1806）：JSON 列的窄化要走 unknown。
-  const nodes = flattenQuestions(worksheet.content as unknown as WorksheetContent);
-  const index = nodes.findIndex((node) => node.id === questionId);
-  if (index === -1) return { ok: false, status: 404, error: '这道题不在学习单里' };
-  const node = nodes[index];
+  // ★ 两级题号（`任务一 · 3`），不是拍平下标：拍平序把**任务**也算了一号 ⇒ 抬头印出来的
+  // 「第 N 题」会比教师看板上那一列大，而载荷里看不出来它是错的。
+  // ⚠️ 入参是**顶层 nodes**：`flattenQuestions` 的返回值里节点还带着 `children`，
+  // 再喂给 `flattenAnswerable` 会把小题数两遍。
+  const items = flattenAnswerable((worksheet.content as unknown as WorksheetContent).nodes ?? []);
+  const found = items.find((item) => item.node.id === questionId);
+  if (!found) return { ok: false, status: 404, error: '这道题不在学习单里' };
+  const node = found.node;
+  const heading = found.heading;
   if (!isAnalyzableType(node.type)) {
     return { ok: false, status: 400, error: '这道题不是主观题 —— 客观题本来就判分，看板的对错已经回答了问题' };
   }
@@ -977,7 +987,7 @@ async function loadAnalysisTarget(
     // 猜错的后果是把**别的班**的数据当成这个班的给教师看。
     return { ok: false, status: 404, error: '这份学习单没有挂在当前课堂上' };
   }
-  return { ok: true, node, index };
+  return { ok: true, node, heading };
 }
 
 /**
@@ -1061,9 +1071,9 @@ function readClassroomIdQuery(raw: unknown): string | null {
 /** 把一行库里的记录重建成载荷（`GET` 与 sheet 端点共用）。 */
 function payloadFromStoredRow(
   row: { aggregate: unknown; totalCount: number },
-  node: QuestionNode, index: number, knobs: SheetKnobs,
+  node: QuestionNode, heading: string, knobs: SheetKnobs,
 ): ReturnType<typeof buildAnalysisPayload> {
-  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, index };
+  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, heading };
   // ⚠️ `total` 取**存下来的** `totalCount`（与 `coveredCount` 同一时刻的口径），不重算 ——
   // 重算会让「存下来的分子」配上「现在的分母」，两边不是同一时刻的。
   return buildAnalysisPayload({
@@ -1135,7 +1145,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const entries = selectAnalyzeEntries(answers, participants, questionId);
     const knobs = await loadAnalysisKnobs(prisma);
     const meta = {
-      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, index: target.index,
+      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, heading: target.heading,
     };
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
 
@@ -1199,7 +1209,7 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
     res.json(await payloadResponse(prisma, worksheetId,
-      payloadFromStoredRow(row, target.node, target.index, knobs), await labelsRenderOk(), stale,
+      payloadFromStoredRow(row, target.node, target.heading, knobs), await labelsRenderOk(), stale,
       { narrative: row.narrative, agentId: row.agentId, model: row.model }));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
@@ -1299,7 +1309,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const knobs = await loadAnalysisKnobs(prisma);
     const entries = entriesFromAggregate(row.aggregate);
     const payload = buildAnalysisPayload({
-      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, index: target.index },
+      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, heading: target.heading },
       entries, total: row.totalCount, knobs,
     });
 
@@ -1516,7 +1526,11 @@ function readStudentSettings(raw: unknown): {
 }
 
 function findQuestion(content: Prisma.JsonValue, questionId: string): QuestionNode | null {
-  return flattenQuestions(content as unknown as WorksheetContent).find(node => node.id === questionId) ?? null;
+  // ⚠️ 跳过任务：任务是分组容器，**没有作答值**（教师裁定 ①a）。拿它的 id 来落库
+  // 会写出一行永远判不了分、也永远画不出来的作答；「找不到」才是实话。
+  return flattenAnswerable((content as unknown as WorksheetContent).nodes ?? [])
+    .map((item) => item.node)
+    .find(node => node.id === questionId) ?? null;
 }
 
 /**
@@ -2034,7 +2048,15 @@ router.post('/:id/answers/submit', async (req, res) => {
       where: { responseId: response.id, status: 'submitted' },
       select: { questionId: true },
     });
-    const inContent = new Set(flattenQuestions(ctx.worksheet.content as unknown as WorksheetContent).map(q => q.id));
+    // 🔴 **任务不进这个分母**：它在 `WorksheetAnswer` 里永远没有对应的行，
+    // 被算进来 ⇒ `submittedCount >= total` 恒假 ⇒ **整卷永远交不了卷**，
+    // 而学生明明每道小题都交了、教师看板上的「全部交齐」永不出现，**没有任何报错**。
+    // ⚠️ 入参是**顶层 nodes**，不是 `flattenQuestions` 的返回值：后者吐出来的节点**还带着
+    // `children`**，再喂给 `flattenAnswerable` 会把小题数两遍。
+    const inContent = new Set(
+      flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [])
+        .map((item) => item.node.id),
+    );
     const total = inContent.size;
     const submittedCount = submitted.filter(row => inContent.has(row.questionId)).length;
     if (total > 0 && submittedCount >= total) {
@@ -2074,7 +2096,8 @@ router.post('/:id/answers/submit', async (req, res) => {
  */
 function countQuestions(content: unknown): number {
   try {
-    return flattenQuestions(content as WorksheetContent).length;
+    // ⚠️ 数的是**可作答的题**，任务不算 —— 否则每有一个任务，列表上就多报一道题。
+    return flattenAnswerable((content as WorksheetContent).nodes ?? []).length;
   } catch {
     return 0;
   }

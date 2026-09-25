@@ -1,6 +1,6 @@
 'use client';
 
-import { flattenQuestions } from '@/lib/worksheet-questions';
+import { flattenAnswerable } from '@/lib/worksheet-questions';
 import type { WorksheetContent } from '@/lib/types';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
@@ -56,9 +56,11 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
   content: WorksheetContent;
   onClose: () => void;
 }) {
-  // 与面板同一条口径：拍平在调用方做（`flattenQuestions`），所以「屏幕上有几道题」
+  // 与面板同一条口径：拍平在调用方做（`flattenAnswerable`），所以「屏幕上有几道题」
   // 在预览与学生端是同一个数。
-  const questions = flattenQuestions(content.nodes);
+  // ⚠️ 不取 `flattenQuestions`：任务不是一道题（它没有作答控件），把它算进「共 N 题」
+  // 会让这个数比屏幕上的卡片多几张 —— 而预览正是教师验收学生端的地方。
+  const questions = flattenAnswerable(content.nodes);
 
   return (
     <>

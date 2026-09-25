@@ -1282,3 +1282,66 @@ test('回读：没作答是空数组；别人组那份 403；教师 cookie 401',
   assert.equal(clearedBody.rows[0].value, null, '清空过的行回读时 `value` 必须是 null');
   assert.equal(clearedBody.rows[0].status, 'draft', '清空之后回到 draft');
 });
+
+// ---------------------------------------------------------------------------
+// ⑥ 任务制：任务**不是一道题**，它不许进「整卷交齐」的分母
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 这一条钉的是本次改动**最危险**的那一处（spec §十一 的同一条失效，服务端这一半）。
+ *
+ * 「整卷交齐」的判据是「`current content` 里的**每一道题**都 `submitted`」。
+ * 任务节点在 `WorksheetAnswer` 里**永远没有对应的行**（它不能作答，教师裁定 ①a）
+ * ⇒ 它一旦被算进那个分母，**整卷永远交不了卷**：学生把每一道小题都交了，
+ * 卷子仍停在 `in-progress`，教师看板上的「全部交齐」永不出现，而**没有任何报错**。
+ */
+test('🔴 题目包在任务里时，小题全交完 ⇒ 整卷照样 submitted（任务不进分母）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await db.prisma.worksheet.create({
+    data: {
+      title: '任务制学习单',
+      description: null,
+      settings: SAMPLE_SETTINGS,
+      content: {
+        schemaVersion: 1,
+        nodes: [{
+          id: 't_1',
+          type: 'task',
+          prompt: '任务一',
+          inputMode: 'keyboard',
+          data: {},
+          children: [
+            {
+              id: 'q_1', type: 'single-choice', prompt: '光合作用的产物是？', inputMode: 'keyboard',
+              data: { options: [{ key: 'A', text: '氧气' }, { key: 'B', text: '二氧化碳' }], correctKeys: ['A'] },
+              children: [],
+            },
+            {
+              id: 'q_2', type: 'fill-blank', prompt: '水的化学式是____', inputMode: 'keyboard',
+              data: { blanks: [{ answers: ['H2O'] }] },
+              children: [],
+            },
+          ],
+        }],
+      } as never,
+    },
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, '9021');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const submit = (questionId: string) =>
+    server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId }, bearer(token));
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['A']) }, bearer(token));
+  await submit('q_1');
+  const half = await db.prisma.worksheetResponse.findFirstOrThrow();
+  assert.equal(half.status, 'in-progress', '前置条件：还有一道小题没交，整卷不能算交卷');
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_2', value: FILL('H2O') }, bearer(token));
+  await submit('q_2');
+  const whole = await db.prisma.worksheetResponse.findFirstOrThrow();
+  assert.equal(whole.status, 'submitted', '两道小题都交了 ⇒ 整卷必须 submitted（任务不算一道题）');
+});

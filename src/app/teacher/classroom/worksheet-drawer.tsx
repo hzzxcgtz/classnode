@@ -197,14 +197,13 @@ function describeHeader(
   if (view.kind === 'question') {
     const worksheet = worksheetOf(view.worksheetId);
     const nodes = nodesByWorksheet[view.worksheetId] ?? [];
-    const { questions, indexOf } = indexQuestions(nodes);
-    const index = indexOf(view.questionId);
-    const node = index >= 0 ? questions[index] : null;
+    const { byId, headingOf } = indexQuestions(nodes);
+    const node = byId.get(view.questionId) ?? null;
     const kinds = worksheet?.participants.map((participant) => participant.kind) ?? [];
     // 标题写「全部作答」而不是「全班答案」：分组/高级模式下这里列的是**参与者**（是组不是人），
     // 而且「答案」在本项目里已被 §5.4 占用为「正确答案」（规格 §7.3 的原话）。
     return {
-      title: (node ? questionHeading(node, index) : '题目') + ` · ${participantColumnTitle(kinds)}`,
+      title: (node ? questionHeading(node, headingOf(view.questionId)) : '题目') + ` · ${participantColumnTitle(kinds)}`,
       hint: worksheet?.title ?? null,
     };
   }
@@ -279,14 +278,14 @@ function QuestionList({
       </div>
     );
   }
-  const { questions } = indexQuestions(nodes);
-  if (questions.length === 0) {
+  const { items } = indexQuestions(nodes);
+  if (items.length === 0) {
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {questions.map((node, index) => {
+      {items.map(({ node, heading }) => {
         // ⚠️ 一个参与者一格（没作答的是 `undefined`）：`questionAggregate` 的两个分母都靠
         // 「参与者数」这个长度，把没作答的人过滤掉会让「已交 N/M」凭空满员。
         const rows = worksheet.participants.map((participant) =>
@@ -300,7 +299,7 @@ function QuestionList({
               padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
             }}>
             <div style={{ minWidth: 0, flex: 1, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {questionHeading(node, index)}
+              {questionHeading(node, heading)}
             </div>
             {/* 主观题恒不判分 ⇒ 这里自然是「—」，不是 0%（见 questionAggregate 的注释）。 */}
             <span style={{ fontSize: '0.75rem', color: accuracy === null ? '#94a3b8' : accuracy >= 60 ? '#15803d' : '#b45309', whiteSpace: 'nowrap' }}
@@ -386,14 +385,14 @@ function ParticipantAnswers({
   if (!nodes) {
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>学习单内容还没加载到。</div>;
   }
-  const { questions } = indexQuestions(nodes);
-  if (questions.length === 0) {
+  const { items } = indexQuestions(nodes);
+  if (items.length === 0) {
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {questions.map((node, index) => {
+      {items.map(({ node, heading }) => {
         const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
         const outcome = questionOutcome(node, row);
         const busyKey = `${participantId}:${node.id}`;
@@ -404,7 +403,7 @@ function ParticipantAnswers({
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {questionHeading(node, index)}
+                {questionHeading(node, heading)}
               </span>
               <OutcomeMark mark={outcome.mark} status={outcome.status} />
             </div>

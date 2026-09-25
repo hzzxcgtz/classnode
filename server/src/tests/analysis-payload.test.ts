@@ -123,7 +123,8 @@ test('🔴 混杂时不许把笔迹丢掉：mixed 是必须的（教师中途改
 
 /* ── Task 3：文字类的聚合文档 ─────────────────────────────────────────── */
 
-const meta = { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', index: 2 };
+// 题号是**两级**的串（`任务一 · 3`），服务端与前端同一份（对拍用例钉着）。
+const meta = { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3' };
 const docLabels = new Map([['p1', 'User_001'], ['p2', 'User_002'], ['p3', 'User_003']]);
 
 test('文档：抬头有题号/题型/题干/覆盖数，逐条带伪名，顺序就是入参顺序', () => {
@@ -131,7 +132,7 @@ test('文档：抬头有题号/题型/题干/覆盖数，逐条带伪名，顺�
     { studentId: 'p1', kind: 'text', text: '我认为是甲' },
     { studentId: 'p2', kind: 'text', text: '我觉得是乙' },
   ], docLabels, 12, 40);
-  assert.match(doc, /第 3 题/);          // index 是 0-based ⇒ 屏幕上是 3
+  assert.match(doc, /任务一 · 3/);      // 抬头印的就是看板上那个题号
   assert.match(doc, /问答题/);
   assert.match(doc, /说说你的看法/);
   assert.match(doc, /已交 12\/40/);

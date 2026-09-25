@@ -24,7 +24,7 @@ const textEntries: AnalyzeEntry[] = [
   { studentId: 'p2', kind: 'text', text: '我觉得是乙' },
 ];
 const payloadOf = (kind: 'text' | 'image' | 'mixed', entries?: AnalyzeEntry[]) => buildAnalysisPayload({
-  question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', index: 2 },
+  question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3' },
   entries: entries ?? (kind === 'text' ? textEntries : kind === 'image' ? [inkEntry('p1')] : [textEntries[0], inkEntry('p2')]),
   total: 40,
   knobs: DEFAULT_ANALYSIS_KNOBS,
@@ -56,7 +56,7 @@ test('🔴 非 coze 一律拒绝 —— **不分有没有图**（这是独立审
 
 test('🔴 零份已提交 ⇒ 拒绝（发空载荷只会得到一段编造的解读）', () => {
   const empty = buildAnalysisPayload({
-    question: { questionId: 'q1', typeLabel: '问答题', prompt: 'x', index: 0 },
+    question: { questionId: 'q1', typeLabel: '问答题', prompt: 'x', heading: '1' },
     entries: [], total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
   });
   const gate = analysisGateOf(empty, 'coze');
@@ -66,7 +66,7 @@ test('🔴 零份已提交 ⇒ 拒绝（发空载荷只会得到一段编造的�
 
 test('消息文本：含题干、已交 N/M、逐条伪名与答案，以及固定引导语', () => {
   const msg = buildAnalysisMessage(payloadOf('text'));
-  assert.match(msg, /第 3 题/);
+  assert.match(msg, /任务一 · 3/);
   assert.match(msg, /说说你的看法/);
   assert.match(msg, /已交 2\/40/);
   assert.match(msg, /User_001/);

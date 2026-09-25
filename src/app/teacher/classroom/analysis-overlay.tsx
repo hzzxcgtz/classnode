@@ -194,7 +194,7 @@ export function AnalysisOverlay({
                 )}
                 <img
                   src={api.worksheetAnalysisSheetUrl(classroomId, worksheetId, questionId, sheet.sheetIndex)}
-                  alt={`第 ${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
+                  alt={`${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
                   // ★ 取不回来时**说一句**（服务端缺 sharp 的能力时回 503）——
                   // 没有它，界面上只有一个坏图，而教师不知道是「坏了」还是「本来就空」。
                   onError={() => setSheetFailed(true)}

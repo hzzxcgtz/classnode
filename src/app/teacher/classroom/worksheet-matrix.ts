@@ -1,6 +1,6 @@
 // ⚠️ **相对路径 + `.ts` 后缀**（不是联名路径 `@/…`）：本文件要被 `node --test` 直接跑，
 // 而 Node 的类型擦除不认 tsconfig 的 `paths`。与 `worksheet-tile-state.ts` 同一条写法。
-import { flattenQuestions, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
+import { flattenAnswerable, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
 import type { WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
@@ -19,11 +19,18 @@ import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 /** 一格的状态。**只有三档**：对错**不在这里**（规格 §3.4 / p1 §7.2）。 */
 export type CellState = 'unanswered' | 'draft' | 'submitted';
 
-/** 矩阵的一行 = 一道题。 */
+/** 矩阵的一行 = 一道**可作答的**题（任务不占行）。 */
 export interface MatrixRow {
   questionId: string;
-  /** 0-based 的**拍平**题序（与 `worksheetTileState` 的 `index` 同源）。屏幕上加 1 显示。 */
-  index: number;
+  /**
+   * ★ 2026-09-25：**两级题号**（`任务一 · 1`；没有任务前缀时就是 `1`）。
+   * 直接显示，**不加 1**（它已经是给人看的串）。
+   *
+   * 🔴 换掉原来的 `index: number`（0-based 拍平序）**是有意的**：拍平序把任务节点
+   * 也算了一号，任务一旦占行，它后面所有小题的题号**整体后移**，而屏幕上只是「题号怪怪的」。
+   * 留着那个数值下标只会让下一个人再拿它当题号 —— §3-P 明令禁止的那件事。
+   */
+  heading: string;
   /** 题型的中文名（`questionTypeLabel`）。 */
   typeLabel: string;
   /**
@@ -56,8 +63,10 @@ function toCellState(value: unknown): CellState | null {
 /**
  * 把 REST 那一份与广播那一份合成矩阵。
  *
- * 🔴 **行轴是题目树**（`flattenQuestions(nodes)`），**不是**「有人答过的题」的并集 ——
- * 后者会让一道全班都没动过的题**整行消失**，而那恰恰是最该被看见的一行。
+ * 🔴 **行轴是题目树里可作答的那些题**（`flattenAnswerable(nodes)`），**不是**「有人答过的题」
+ * 的并集 —— 后者会让一道全班都没动过的题**整行消失**，而那恰恰是最该被看见的一行。
+ * ⚠️ 也**不是** `flattenQuestions`：那一个把**任务**节点也吐出来，而任务没有作答行
+ * ⇒ 它占一行、分母里还算它一格，且它后面每道题的题号整体后移。
  *
  * 🔴 **列轴只有 REST 那一份**（`sheet.participants`）。广播里出现列外的参与者时**不造列**：
  * 两边各造一套「谁在班里」必然分叉。课中途加入的人等下一轮 30 秒重拉（规格 §3.9）。
@@ -100,7 +109,10 @@ export function buildWorksheetMatrix(
   });
 
   // ② 逐题成行。广播优先，认不出或没有则回落 REST，两边都没有就是未答。
-  return flattenQuestions(nodes).map((node, index) => {
+  //
+  // ⚠️ 走 `flattenAnswerable`（跳过任务）而**不是** `flattenQuestions`：任务没有作答行，
+  // 它占一行会让下面每一行的题号整体后移，而屏幕上看起来只是「题号怪怪的」。
+  return flattenAnswerable(nodes).map(({ node, heading }) => {
     const cells: Record<string, CellState> = {};
     sheet.participants.forEach((participant) => {
       const progress = live[participant.participantId];
@@ -109,14 +121,15 @@ export function buildWorksheetMatrix(
       const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
       cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
     });
-    return { questionId: node.id, index, typeLabel: questionTypeLabel(node.type), type: node.type, prompt: node.prompt, cells };
+    return { questionId: node.id, heading, typeLabel: questionTypeLabel(node.type), type: node.type, prompt: node.prompt, cells };
   });
 }
 
 /** 一道题的三档计数。**分母是参与者数**（`total`），不是「作答过的人数」。 */
 export interface QuestionTally {
   questionId: string;
-  index: number;
+  /** 两级题号，与 `MatrixRow.heading` 同一份（`rowTally` 逐字转过来）。 */
+  heading: string;
   /** `'draft'` 的参与者数。 */
   drafted: number;
   /** `'submitted'` 的参与者数。 */
@@ -146,7 +159,7 @@ export type MatrixHeadline =
   | { kind: 'no-participants' }
   | { kind: 'all-submitted' }
   | { kind: 'not-started' }
-  | { kind: 'stuck'; questionId: string; index: number; tally: number; total: number };
+  | { kind: 'stuck'; questionId: string; heading: string; tally: number; total: number };
 
 export function matrixHeadline(tallies: QuestionTally[]): MatrixHeadline {
   if (tallies.length === 0) return { kind: 'no-questions' };
@@ -161,7 +174,7 @@ export function matrixHeadline(tallies: QuestionTally[]): MatrixHeadline {
 
   // ⚠️ 严格 `>` ⇒ 并列时**保留先遇到的那一个** = 题序最小的那一题。
   const stuck = open.reduce((best, tally) => (tally.engaged > best.engaged ? tally : best));
-  return { kind: 'stuck', questionId: stuck.questionId, index: stuck.index, tally: stuck.engaged, total };
+  return { kind: 'stuck', questionId: stuck.questionId, heading: stuck.heading, tally: stuck.engaged, total };
 }
 
 /**
@@ -178,7 +191,7 @@ export function rowTally(row: MatrixRow): QuestionTally {
   const submitted = values.filter((value) => value === 'submitted').length;
   return {
     questionId: row.questionId,
-    index: row.index,
+    heading: row.heading,
     drafted,
     submitted,
     engaged: drafted + submitted,

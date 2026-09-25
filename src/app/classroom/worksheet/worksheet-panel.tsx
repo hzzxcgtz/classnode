@@ -8,7 +8,7 @@ import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { flattenQuestions, questionTypeLabel } from '@/lib/worksheet-questions';
+import { flattenAnswerable, questionTypeLabel, type AnswerableQuestion } from '@/lib/worksheet-questions';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
 // 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
@@ -97,10 +97,18 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
   return out;
 }
 
-/** `student-view` 的一次读取。`questions` 已拍平（见 `flattenQuestions`）。 */
+/** `student-view` 的一次读取。 */
 interface LoadedWorksheet {
   id: string;
   title: string;
+  /** 屏幕上逐张画的就是它 —— 可作答的题 + 两级题号。 */
+  items: AnswerableQuestion[];
+  /**
+   * 同上，只取节点 —— 作答状态机（`useWorksheetAnswers`）按 `node.id` 建态与校验题号。
+   * ⚠️ **与 `items` 在同一次 `setLoad` 里建好**（不是渲染时现 `map` 一遍）：
+   * 那个 hook 把 `questions` 存进 ref、并拿 `savedAnswers` 当水合 effect 的依赖项，
+   * 「每次渲染换一个数组身份」正是本文件反复警告的那类陷阱。
+   */
   questions: WorksheetQuestionNode[];
   /**
    * 「提交之后还能不能改」（规格 §8.4 的「三层控制」里的**第二层**）。
@@ -162,11 +170,18 @@ const NO_SAVED_ANSWERS: SavedAnswerRow[] = [];
  * `interactive={false}` 时：控件 `disabled`、不渲染「提交本题」、不做任何状态芯片
  * （预览没有作答态可言），也不显示正确答案 —— 那会让教师误以为学生也看得到。
  *
- * 题目树在**调用方**拍平（`flattenQuestions`），所以两处传进来的都是扁平的一列 ——
+ * 题目树在**调用方**拍平（`flattenAnswerable` → 只取节点），所以两处传进来的都是扁平的一列 ——
  * 「屏幕上画几道」这条口径也只有一处。
  */
 export interface WorksheetQuestionListProps {
-  questions: WorksheetQuestionNode[];
+  /**
+   * 要画的题 —— **可作答的、带两级题号的**（`flattenAnswerable` 的输出）。
+   *
+   * 🔴 不是「题目树里所有节点」：任务不是一道题（它没有作答控件），把它算进来会让
+   * 屏幕上多出一张只有标题、没东西可答的卡（spec §十一）。题号也**不再由本组件按数组下标算**
+   * —— 那样任务一进来，后面每道题的号都偏大，而屏幕上只是「号怪怪的」。
+   */
+  questions: AnswerableQuestion[];
   /** 界面上的输入态。只读态传空对象即可。 */
   drafts: Record<string, AnswerDraft>;
   statuses: Record<string, WorksheetQuestionStatus>;
@@ -228,7 +243,7 @@ export function WorksheetQuestionList({
 
   return (
     <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
-      {questions.map((node, index) => {
+      {questions.map(({ node, heading }) => {
         // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
         //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列
         //     排好的条目（`data.items` 的顺序），所以「还没碰过」也不能画成空的；
@@ -251,7 +266,7 @@ export function WorksheetQuestionList({
         return (
           <section className={styles.question} key={node.id}>
             <div className={styles.questionHead}>
-              <span className={styles.questionIndex}>{index + 1}</span>
+              <span className={styles.questionIndex}>{heading}</span>
               <span className={styles.questionType}>{questionTypeLabel(node.type)}</span>
               {/* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
                   文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
@@ -425,12 +440,17 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;
         const rawNodes = data.content && Array.isArray(data.content.nodes) ? data.content.nodes : [];
+        const items = flattenAnswerable(rawNodes as WorksheetQuestionNode[]);
         setLoad({
           kind: 'ready',
           worksheet: {
             id: data.id,
             title: data.title,
-            questions: flattenQuestions(rawNodes as WorksheetQuestionNode[]),
+            // 🔴 任务不是一道题：它没有作答控件，**不能**当成一张卡片渲染。
+            // 走 `flattenAnswerable` —— 于是学生看到的题号（`任务一 · 1`）与看板、抽屉、
+            // 导出里那份是同一个函数算出来的。
+            items,
+            questions: items.map((item) => item.node),
             // 缺字段时按**允许**处理：服务端的 `readStudentSettings` 一定会补齐这几个键
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
@@ -547,7 +567,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
 
           <div className={styles.scroller}>
             <WorksheetQuestionList
-              questions={questions}
+              questions={load.worksheet.items}
               drafts={answers.drafts}
               statuses={answers.statuses}
               submitting={answers.submitting}

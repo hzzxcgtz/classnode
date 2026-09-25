@@ -126,9 +126,9 @@ test('🔴 嵌套子题也算题（与看板格子、抽屉三处同一把尺子
   assert.deepEqual(rows.map((r) => r.questionId), ['q1', 'q1a', 'q2']);
 });
 
-test('题号是 0-based 的拍平序（与 `worksheetTileState` 的 `index` 同源），题型走注册表的中文名', () => {
+test('题号是两级题号（无任务时就是 1..n），题型走注册表的中文名', () => {
   const rows = buildWorksheetMatrix(sheet([participant('p1')]), [node('q1'), node('q2', 'fill-blank')], {});
-  assert.deepEqual(rows.map((r) => r.index), [0, 1]);
+  assert.deepEqual(rows.map((r) => r.heading), ['1', '2']);
   assert.equal(rows[0].typeLabel, '单选题');
   assert.equal(rows[1].typeLabel, '填空题');
   // ★ M7a：`type` 是**原始题型串**（`typeLabel` 是它的中文名）。矩阵题行上的「分析」入口
@@ -175,7 +175,7 @@ test('计数：drafted / submitted / engaged / total 四样，分母是参与者
     {},
   );
   assert.deepEqual(questionTallies(rows), [
-    { questionId: 'q1', index: 0, drafted: 1, submitted: 1, engaged: 2, total: 3 },
+    { questionId: 'q1', heading: '1', drafted: 1, submitted: 1, engaged: 2, total: 3 },
   ]);
 });
 
@@ -186,7 +186,7 @@ test('🔴 全班停在第三题（有人交了、有人还在写）、第四题
   // 那个更自然的判据于是总把**还没讲到的题**报成卡住，而它看起来完全合理。
   const rows = buildWorksheetMatrix(sheet(FRONTIER), FRONTIER_NODES, {});
   const headline = matrixHeadline(questionTallies(rows));
-  assert.deepEqual(headline, { kind: 'stuck', questionId: 'q3', index: 2, tally: 3, total: 4 });
+  assert.deepEqual(headline, { kind: 'stuck', questionId: 'q3', heading: '3', tally: 3, total: 4 });
 });
 
 test('🔴 阴性对照：全班一道题都没动 ⇒ not-started，**不是** stuck 在第 1 题', () => {
@@ -220,7 +220,7 @@ test('并列时取**最靠前**的那一题', () => {
     {},
   );
   const headline = matrixHeadline(questionTallies(rows));
-  assert.equal(headline.kind === 'stuck' ? headline.index : -1, 0);
+  assert.equal(headline.kind === 'stuck' ? headline.heading : '-1', '1');
 });
 
 test('★ 反证：「未交最多」会把还没讲到的题报成卡住 —— 钉住两种口径的差别', () => {
@@ -308,4 +308,70 @@ test('★ liveTrustedAfter：晚于快照的广播**照样赢**', () => {
 test('不传 liveTrustedAfter ⇒ 老行为（全信 live），既有用例与调用点不受影响', () => {
   const rows = buildWorksheetMatrix(sheet([participant('p1', { q1: 'submitted' })]), [node('q1')], live({ p1: { q1: 'draft' } }));
   assert.equal(cell(rows, 'q1', 'p1'), 'draft');
+});
+
+/* ── 任务制：行轴是**可作答的题**，题号是两级的 ─────────────────────── */
+
+/** 一个任务容器。`prompt` 是它的**标题**（迁移写的就是「任务一」这种），不是说明文字。 */
+function task(id: string, prompt: string, children: WorksheetQuestionNode[]): WorksheetQuestionNode {
+  return { id, type: 'task', prompt, inputMode: 'keyboard', data: {}, children };
+}
+
+/**
+ * 🔴 这一条钉的是 §十一 数出来的那个失效：`flattenQuestions` 的**下标当题号**。
+ * 任务节点一旦占掉一行，它后面**所有**小题的题号整体后移 —— 教师照着讲就会讲错题，
+ * 而且没有任何报错。
+ */
+test('🔴 任务不占一行；小题的题号带任务前缀', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'submitted' })]),
+    [task('t1', '任务一', [node('q1'), node('q2')]), task('t2', '任务二', [node('q3')])],
+    {},
+  );
+  assert.deepEqual(rows.map((r) => r.questionId), ['q1', 'q2', 'q3'], '任务不许占一行');
+  assert.deepEqual(rows.map((r) => r.heading), ['任务一 · 1', '任务一 · 2', '任务二 · 1']);
+});
+
+test('🔴 计数也带同一个题号（`rowTally` 与屏幕上的「已交 N/M」是同一个函数）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'submitted' })]),
+    [task('t1', '任务一', [node('q1')]), node('q8'), node('q9')],
+    {},
+  );
+  const tallies = questionTallies(rows);
+  // ⚠️ 散题自己有**一个**跨全文的计数器（与任务内的计数器是两回事）：
+  // 上面这个任务里的 q1 是「任务一 · 1」，而散题从 1 起、彼此接着往下编。
+  assert.deepEqual(tallies.map((t) => t.heading), ['任务一 · 1', '1', '2'], '散题不带前缀，自己连续编号');
+  assert.deepEqual(tallies.map((t) => t.submitted), [1, 0, 0]);
+});
+
+test('🔴 「卡住的是哪一题」用同一份题号 —— 前面有任务时不会指错题', () => {
+  // 任务一：q1 有人动过、q2 没人动；任务二：q3 没人动。
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'draft' }), participant('p2', {})]),
+    [task('t1', '任务一', [node('q1'), node('q2')]), task('t2', '任务二', [node('q3')])],
+    {},
+  );
+  const headline = matrixHeadline(questionTallies(rows));
+  assert.equal(headline.kind, 'stuck');
+  assert.equal(headline.questionId, 'q1');
+  // ⚠️ 若拿拍平下标当题号，这里会是 `1`（任务占了 0 号）而屏幕上写着「第 1 题」
+  //    却指向 q1 —— 巧合对上；把任务放在 q1 之前才暴露。所以再钉一条**前缀**。
+  assert.equal(headline.heading, '任务一 · 1');
+
+  const shifted = buildWorksheetMatrix(
+    sheet([participant('p1', { q2: 'draft' }), participant('p2', {})]),
+    [task('t1', '任务一', [node('q1'), node('q2')]), task('t2', '任务二', [node('q3')])],
+    {},
+  );
+  const shiftedHeadline = matrixHeadline(questionTallies(shifted));
+  assert.equal(shiftedHeadline.kind, 'stuck');
+  assert.equal(shiftedHeadline.questionId, 'q2');
+  assert.equal(shiftedHeadline.heading, '任务一 · 2');
+});
+
+test('全都是任务、一个可作答的题都没有 ⇒ 不说「还没有人加入」，说「还没有题目」', () => {
+  const rows = buildWorksheetMatrix(sheet([participant('p1')]), [task('t1', '任务一', [])], {});
+  assert.deepEqual(rows, []);
+  assert.equal(matrixHeadline(questionTallies(rows)).kind, 'no-questions');
 });

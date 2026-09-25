@@ -6,7 +6,8 @@ import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNod
 // Node 也解析得了的相对路径）。加一行 `@/…` 的运行时 import 就会让
 // `worksheet-drawer-state.test.ts` 整个跑不起来 —— `import type` 那一行是唯一的例外。
 import {
-  draftFromValue, flattenQuestions, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
+  draftFromValue, flattenAnswerable, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
+  type AnswerableQuestion,
   readCategorizeItems, readCategorizeZones, readMatchLeft, readMatchRight, readOrderItems,
   TRUE_FALSE_OPTIONS,
 } from '../../../lib/worksheet-questions.ts';
@@ -559,29 +560,44 @@ export function participantColumnTitle(kinds: readonly string[]): string {
 /**
  * 按题号索引题目（题干、题型、题号都从这里来）。
  *
- * ⚠️ 走 `flattenQuestions`（递归展开）而不是只看顶层 `nodes`：`content` 是树，
+ * ⚠️ 走 `flattenAnswerable`（递归展开**并跳过任务**）而不是只看顶层 `nodes`：`content` 是树，
  * 服务端算「整卷交齐」与看板数格子都会递归 —— 只看顶层会让带嵌套的那几道题
  * **在抽屉里不存在**，而它们在格子上有方块。
+ * 🔴 也**不是** `flattenQuestions`：那一个把**任务**节点也吐出来，任务就成了一行「题」
+ * —— 它没有作答、也没法点开看谁答了，而抽屉里会多出这么一行。
  *
  * `questionId` 在 `answerRows` 里**没有顺序保证**（数据库按写入顺序回），所以题号一律
  * 从这里查，绝不拿数组下标当题号（规格 §3-P：按下标会在教师改序时整片错位，且是静默的）。
  */
 export function indexQuestions(nodes: WorksheetQuestionNode[]): {
+  /** 可作答的题（**任务不在其中**），按屏幕顺序 —— 抽屉里逐行渲染的就是它。 */
+  items: AnswerableQuestion[];
+  /** 同上，只取节点 —— 给那些只要节点的调用方。 */
   questions: WorksheetQuestionNode[];
-  indexOf: (questionId: string) => number;
+  /** 题号（两级）查表。**绝不拿下标当题号**（规格 §3-P）。 */
+  headingOf: (questionId: string) => string | null;
   byId: Map<string, WorksheetQuestionNode>;
 } {
-  const questions = flattenQuestions(nodes);
+  const items = flattenAnswerable(nodes);
+  const questions = items.map((item) => item.node);
+  const headings = new Map(items.map((item) => [item.node.id, item.heading]));
   const byId = new Map(questions.map((question) => [question.id, question]));
   return {
+    items,
     questions,
     byId,
-    indexOf: (questionId: string) => questions.findIndex((question) => question.id === questionId),
+    headingOf: (questionId: string) => headings.get(questionId) ?? null,
   };
 }
 
-/** 题号（1-based）+ 题型，抽屉里每一行的第一列。题号查不到时不编号码（不编一个假题号）。 */
-export function questionHeading(node: WorksheetQuestionNode, index: number): string {
+/**
+ * 题号 + 题型，抽屉里每一行的第一列。题号查不到时**不编一个假题号**，只给题型。
+ *
+ * ★ 2026-09-25：第二参从「0-based 拍平序」换成**两级题号串**（`任务一 · 2`；散题是 `2`）。
+ * 换的理由不只是显示：拍平序把**任务节点也算了一号** ⇒ 任务一旦在树里，
+ * 它后面每一道题的号都比屏幕上该显示的大 —— 而两处都不报错。
+ */
+export function questionHeading(node: WorksheetQuestionNode, heading: string | null): string {
   const type = questionTypeLabel(node.type);
-  return index >= 0 ? `${index + 1}. ${type}` : type;
+  return heading ? `${heading}. ${type}` : type;
 }

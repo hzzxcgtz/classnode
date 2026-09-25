@@ -18,25 +18,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { flattenAnswerable, TASK_TYPE } from './worksheet-questions.ts';
-import * as mirror from '../../server/src/services/worksheet-heading.ts';
+import { flattenAnswerable as mirrorFlatten, TASK_TYPE as MIRROR_TASK_TYPE } from '../../server/src/services/worksheet-heading.ts';
+import type { WorksheetQuestionNode } from './types.ts';
 
-interface Node {
-  id: string;
-  type: string;
-  prompt: string;
-  children: Node[];
+// ⚠️ 夹具用**真的**节点类型（不是本文件自己写的一个结构类型）：喂给两边时都要过类型检查，
+// 而服务端那一份的 `T` 是从实参推断的 —— 用窄类型会让这条用例在 `tsc` 下红，
+// 而它**跑**起来是绿的（`pnpm test:client` 不做类型检查，只有 `next build` / `tsc --noEmit` 会红）。
+function q(id: string, children: WorksheetQuestionNode[] = []): WorksheetQuestionNode {
+  return { id, type: 'single-choice', prompt: `题干 ${id}`, inputMode: 'keyboard', data: {}, children };
 }
 
-function q(id: string, children: Node[] = []): Node {
-  return { id, type: 'single-choice', prompt: `题干 ${id}`, children };
-}
-
-function task(id: string, prompt: string, children: Node[]): Node {
-  return { id, type: TASK_TYPE, prompt, children };
+function task(id: string, prompt: string, children: WorksheetQuestionNode[]): WorksheetQuestionNode {
+  return { id, type: TASK_TYPE, prompt, inputMode: 'keyboard', data: {}, children };
 }
 
 /** 刻意刁钻的一批树：空 / 无任务 / 一个任务 / 两个任务 / 散题与任务混排 / 标题留空 / 手工嵌套。 */
-const TREES: Node[][] = [
+const TREES: WorksheetQuestionNode[][] = [
   [],
   [q('a'), q('b'), q('c')],
   [task('t1', '任务一', [q('a'), q('b'), q('c')])],
@@ -49,7 +46,7 @@ const TREES: Node[][] = [
 test('★ 对拍：同一批树上，两边的题号逐字相同', () => {
   for (const nodes of TREES) {
     const front = flattenAnswerable(nodes).map((item) => item.heading);
-    const back = mirror.flattenAnswerable(nodes).map((item) => item.heading);
+    const back = mirrorFlatten(nodes).map((item) => item.heading);
     assert.deepEqual(front, back, `题号不一致：${JSON.stringify(nodes.map((n) => n.id))}`);
   }
 });
@@ -57,7 +54,7 @@ test('★ 对拍：同一批树上，两边的题号逐字相同', () => {
 test('★ 对拍：两边都跳过任务节点，且题的顺序逐项相同', () => {
   for (const nodes of TREES) {
     const front = flattenAnswerable(nodes).map((item) => item.node.id);
-    const back = mirror.flattenAnswerable(nodes).map((item) => item.node.id);
+    const back = mirrorFlatten(nodes).map((item) => item.node.id);
     assert.deepEqual(front, back);
     assert.equal(back.includes('t1') || back.includes('t2'), false, '任务被当成了一道题');
   }
@@ -72,5 +69,5 @@ test('对拍不是空转：至少有一棵树产出带前缀的题号，且没�
 });
 
 test('两边的 TASK_TYPE 必须是同一个串', () => {
-  assert.equal(mirror.TASK_TYPE, TASK_TYPE);
+  assert.equal(MIRROR_TASK_TYPE, TASK_TYPE);
 });

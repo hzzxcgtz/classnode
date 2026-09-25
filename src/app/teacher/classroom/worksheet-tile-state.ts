@@ -5,7 +5,7 @@ import type { WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/type
 // （Node 24 的类型擦除会把 `import type` 整段删掉，剩下的运行时 import 必须是
 // Node 也解析得了的相对路径）。加一行 `@/…` 的运行时 import 就会让
 // `worksheet-tile-state.test.ts` 整个跑不起来。
-import { flattenQuestions, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
+import { flattenAnswerable, questionTypeLabel, type AnswerableQuestion } from '../../../lib/worksheet-questions.ts';
 
 /**
  * 教师看板**学习单格子**的状态机 —— 纯函数，不碰 React / DOM / 网络。
@@ -122,8 +122,10 @@ export type WorksheetTileState =
   | { kind: 'loading' }
   | { kind: 'empty' }
   | { kind: 'no-progress' }
-  | { kind: 'working'; index: number | null; typeLabel: string | null; cells: WorksheetCellStatus[] }
-  | { kind: 'stuck'; index: number | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[] }
+  // ★ 2026-09-25：`index`（0-based 拍平序）换成 `heading`（两级题号，`任务一 · 2`）。
+  // 格子上写的从来就是「第几题」，而拍平序把**任务**也数了一号 ⇒ 它后面每一题的号都偏大。
+  | { kind: 'working'; heading: string | null; typeLabel: string | null; cells: WorksheetCellStatus[] }
+  | { kind: 'stuck'; heading: string | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[] }
   | { kind: 'all-submitted'; cells: WorksheetCellStatus[] };
 
 export interface WorksheetTileInput {
@@ -153,13 +155,16 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   if (!worksheet) return { kind: 'unconfigured' };
   if (!nodes) return { kind: 'loading' };
 
-  // `flattenQuestions`（而不是只看 `nodes`）：`content` 是嵌套树，服务端算「整卷交齐」时
-  // 也会递归展开 —— 只看顶层节点会让带嵌套的那几道题**在屏幕上不存在**，
-  // 而分母还算着它们（症状：格子永远差几格才满）。规则的唯一一份在 `lib/worksheet-questions.ts`。
-  const questions = flattenQuestions(nodes);
-  if (questions.length === 0) return { kind: 'empty' };
+  // `flattenAnswerable`（而不是只看 `nodes`，也不是 `flattenQuestions`）：`content` 是嵌套树，
+  // 服务端算「整卷交齐」时也会递归展开 —— 只看顶层节点会让带嵌套的那几道题**在屏幕上不存在**，
+  // 而分母还算着它们（症状：格子永远差几格才满）。
+  // 🔴 更要紧的另一半：**任务节点不是一道题**。它在 `progress.cells` 里永远没有对应的行
+  // ⇒ 它那一格恒为 `unanswered` ⇒ 下面 `every(submitted)` **永远不成立** ——
+  // 学生明明交了卷，格子上永远停在「正在做」。规则的唯一一份在 `lib/worksheet-questions.ts`。
+  const items = flattenAnswerable(nodes);
+  if (items.length === 0) return { kind: 'empty' };
 
-  const cells: WorksheetCellStatus[] = questions.map((question) => progress?.cells[question.id] ?? 'unanswered');
+  const cells: WorksheetCellStatus[] = items.map((item) => progress?.cells[item.node.id] ?? 'unanswered');
 
   // 收到的作答**全都对不上现在这份学习单**（教师改单删掉了那些题）：格子上一个状态都画不出来。
   // 与「一条广播都没收到」在屏幕上没有区别，而后者那句话（「还没收到作答」）在这种情况下
@@ -170,14 +175,15 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
 
   if (cells.every((status) => status === 'submitted')) return { kind: 'all-submitted', cells };
 
-  const index = activeQuestionIndex(questions, cells, known.lastQuestionId);
-  const typeLabel = index === null ? null : questionTypeLabel(questions[index].type);
+  const at = activeQuestionIndex(items, cells, known.lastQuestionId);
+  const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
+  const heading = at === null ? null : items[at].heading;
   const idleMs = now - known.lastAt;
   if (online && idleMs > WORKSHEET_STUCK_AFTER_MS) {
     // `Math.floor` 而不是四舍五入：8 分 59 秒说「8 分钟」是准的，说「9 分钟」是提前量。
-    return { kind: 'stuck', index, typeLabel, minutes: Math.floor(idleMs / 60_000), cells };
+    return { kind: 'stuck', heading, typeLabel, minutes: Math.floor(idleMs / 60_000), cells };
   }
-  return { kind: 'working', index, typeLabel, cells };
+  return { kind: 'working', heading, typeLabel, cells };
 }
 
 /**
@@ -188,12 +194,12 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
  * 而不是随便挑一道。两者都没有就**不编**：返回 `null`，格子上只说「正在作答」。
  */
 function activeQuestionIndex(
-  questions: WorksheetQuestionNode[],
+  items: AnswerableQuestion[],
   cells: WorksheetCellStatus[],
   lastQuestionId: string | null,
 ): number | null {
   if (lastQuestionId) {
-    const found = questions.findIndex((question) => question.id === lastQuestionId);
+    const found = items.findIndex((item) => item.node.id === lastQuestionId);
     if (found >= 0) return found;
   }
   const draft = cells.indexOf('draft');

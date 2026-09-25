@@ -659,13 +659,32 @@ test('形态 B：量词跟着模式走 —— 全是组就说「个组」，否�
 
 test('题号一律由题目树算，**绝不**拿 answerRows 的下标当题号', () => {
   const nodes = [choice, fill, { ...short, children: [node({ id: 'q_4', type: 'fill-blank', prompt: '嵌套题' })] }];
-  const { questions, indexOf } = indexQuestions(nodes);
+  const { questions, headingOf } = indexQuestions(nodes);
   assert.deepEqual(questions.map((q) => q.id), ['q_1', 'q_2', 'q_3', 'q_4'], '嵌套的题也要在（服务端算「整卷交齐」时数它）');
-  assert.equal(questionHeading(choice, indexOf('q_1')), '1. 单选题');
-  assert.equal(questionHeading(questions[3], indexOf('q_4')), '4. 填空题');
-  // 题已被教师删掉 / 改过 id ⇒ 查不到下标，**不编题号**，只给题型。
-  assert.equal(indexOf('已经不在的题'), -1);
-  assert.equal(questionHeading(choice, -1), '单选题');
+  assert.equal(questionHeading(choice, headingOf('q_1')), '1. 单选题');
+  assert.equal(questionHeading(questions[3], headingOf('q_4')), '4. 填空题');
+  // 题已被教师删掉 / 改过 id ⇒ 查不到题号，**不编一个**，只给题型。
+  assert.equal(headingOf('已经不在的题'), null);
+  assert.equal(questionHeading(choice, null), '单选题');
+});
+
+test('🔴 任务不是一道题：它不进题目清单、也不占题号（抽屉里不会多一行）', () => {
+  const inTask = node({ id: 't1', type: 'task', prompt: '任务一', children: [choice, fill] });
+  const { questions, headingOf, items } = indexQuestions([inTask, short]);
+  assert.deepEqual(questions.map((q) => q.id), ['q_1', 'q_2', 'q_3'], '任务自己不许出现在抽屉的题目清单里');
+  assert.deepEqual(items.map((item) => item.heading), ['任务一 · 1', '任务一 · 2', '1']);
+  assert.equal(questionHeading(choice, headingOf('q_1')), '任务一 · 1. 单选题');
+  assert.equal(headingOf('t1'), null, '任务没有题号 —— 它不是一道题');
+});
+
+test('🔴 嵌套的子题：题号按任务内重排算，不再整体后移', () => {
+  const nodes = [node({ id: 't1', type: 'task', prompt: '任务一', children: [
+    choice,
+    { ...short, children: [node({ id: 'q_4', type: 'fill-blank', prompt: '嵌套题' })] },
+  ] })];
+  const { headingOf } = indexQuestions(nodes);
+  assert.equal(headingOf('q_1'), '任务一 · 1');
+  assert.equal(headingOf('q_4'), '任务一 · 3');
 });
 
 // ---------------------------------------------------------------------------

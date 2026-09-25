@@ -80,11 +80,11 @@ test('🔴 一条广播都没收到 ⇒ no-progress，**不是**「还没开始�
   assert.deepEqual(state({ progress: undefined }), { kind: 'no-progress' });
 });
 
-test('正在做：最后一次保存的那一题 + 题型（题号是 1-based，题型走注册表的中文名）', () => {
+test('正在做：最后一次保存的那一题 + 题型（题号是两级题号，题型走注册表的中文名）', () => {
   const result = state({ progress: progress({ q2: 'draft' }, 'q2', NOW - 1000) });
   assert.deepEqual(result, {
     kind: 'working',
-    index: 1,
+    heading: '2',
     typeLabel: '填空题',
     cells: ['unanswered', 'draft', 'unanswered'],
   });
@@ -94,7 +94,7 @@ test('🔴 「正在做哪题」= 最后一次保存的那题，不是第一道�
   // 学生先在第 1 题上写了草稿、再跳到第 3 题写：格子必须说第 3 题。
   // 改成「第一道 draft」就会说第 1 题 —— 而两处都不报错。
   const result = state({ progress: progress({ q1: 'draft', q3: 'draft' }, 'q3', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.index : -1, 2);
+  assert.equal(result.kind === 'working' ? result.heading : 'x', '3');
 });
 
 test('方格阵 = 逐题状态（未答 / 作答中 / 已提交），顺序与题目顺序一致', () => {
@@ -122,7 +122,7 @@ test('🔴 停住了：在线 + 距最后一次作答刚好超过 5 分钟', () 
     progress: progress({ q1: 'draft' }, 'q1', NOW - WORKSHEET_STUCK_AFTER_MS - 1000),
   });
   assert.equal(result.kind, 'stuck');
-  assert.equal(result.kind === 'stuck' ? result.index : -1, 0);
+  assert.equal(result.kind === 'stuck' ? result.heading : 'x', '1');
   assert.equal(result.kind === 'stuck' ? result.minutes : -1, 5);
 });
 
@@ -152,13 +152,13 @@ test('分钟数向下取整（8 分 59 秒说 8 分钟，不说 9 分钟）', ()
 
 test('🔴 最后一次作答的那题被教师删掉 ⇒ 退到「第一道还在作答中的题」，不编题号', () => {
   const result = state({ progress: progress({ q1: 'draft', gone: 'draft' }, 'gone', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.index : -1, 0);
+  assert.equal(result.kind === 'working' ? result.heading : 'x', '1');
 });
 
-test('🔴 说不出在哪一题（最后作答那题已删、也没有在答的题）⇒ index 为 null 而不是猜一道', () => {
+test('🔴 说不出在哪一题（最后作答那题已删、也没有在答的题）⇒ heading 为 null 而不是猜一道', () => {
   // q1 已提交、q2 没作答、最后一次作答的 q_gone 已被删掉：题号确实推不出来。
   const result = state({ progress: progress({ q1: 'submitted', gone: 'draft' }, 'gone', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.index : -1, null);
+  assert.equal(result.kind === 'working' ? result.heading : 'x', null);
   assert.equal(result.kind === 'working' ? result.typeLabel : 'x', null);
 });
 
@@ -203,4 +203,40 @@ test('★ M5a 反证：把量词改成恒回「组」⇒ 上一条的前两条�
   // 阳性对照：分组 / 高级那两条在改坏前后**恰好相同**（别把「挡住回退」写成「凡 mode 都特殊」）。
   assert.equal(alwaysGroup(), moduleCountUnit('group'));
   assert.equal(alwaysGroup(), moduleCountUnit('advanced'));
+});
+
+/* ── 任务制：格子上的题号是两级的，且任务不算一道题 ──────────────────── */
+
+/** 一个任务容器（`prompt` 是它的标题）。 */
+function task(id: string, prompt: string, children: WorksheetQuestionNode[]): WorksheetQuestionNode {
+  return { id, type: 'task', prompt, inputMode: 'keyboard', data: {}, children };
+}
+
+const IN_TASK = [task('t1', '任务一', THREE)];
+
+test('🔴 任务不占格子：三题全交 ⇒ all-submitted（任务被当成一道题时这一态**永不成立**）', () => {
+  // §十一 数出来的失效：任务节点没有作答行 ⇒ 它那一格永远是 `unanswered`
+  // ⇒ `cells.every(submitted)` 恒假 ⇒ 学生明明交了卷，格子上永远停在「正在做」。
+  const result = state({ nodes: IN_TASK, progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'submitted' }, 'q3', NOW - 1000) });
+  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'] });
+});
+
+test('格子上的题号带任务前缀', () => {
+  const result = state({ nodes: IN_TASK, progress: progress({ q2: 'draft' }, 'q2', NOW - 1000) });
+  assert.deepEqual(result, {
+    kind: 'working',
+    heading: '任务一 · 2',
+    typeLabel: '填空题',
+    cells: ['unanswered', 'draft', 'unanswered'],
+  });
+});
+
+test('🔴 停住了：也带同一个题号', () => {
+  const result = state({ nodes: IN_TASK, progress: progress({ q1: 'draft' }, 'q1', NOW - WORKSHEET_STUCK_AFTER_MS - 1), online: true });
+  assert.equal(result.kind === 'stuck' ? result.heading : 'x', '任务一 · 1');
+});
+
+test('题目树里只有任务、一道可作答的题都没有 ⇒ empty（不是「一道题都还没答」）', () => {
+  const result = state({ nodes: [task('t1', '任务一', [])], progress: progress({}, null, NOW) });
+  assert.deepEqual(result, { kind: 'empty' });
 });

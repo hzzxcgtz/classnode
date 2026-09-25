@@ -7,6 +7,7 @@ import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNod
 // `worksheet-drawer-state.test.ts` 整个跑不起来 —— `import type` 那一行是唯一的例外。
 import {
   draftFromValue, flattenQuestions, QUESTION_TYPE_OPTIONS, questionTypeLabel, readOptions,
+  readCategorizeItems, readCategorizeZones, readMatchLeft, readMatchRight, readOrderItems,
 } from '../../../lib/worksheet-questions.ts';
 // ★ M4b/E1：笔迹的读数**只有一份实现**（`readInkValue`），这里直接引它。
 // 🔴 **刻意不包一层 `readAnswerInk(node, value)`**：包一层多出来的那个 `node` 参数
@@ -266,6 +267,11 @@ export function questionOutcome(
  *     这是**既有**口径（D4 的地盘），本轮没改，别把它读成新引入的行为。
  *   · 判断题同理：不展开「对 / 错」两个选项，也返回 `null`（既有口径）。
  */
+function entryText(entries: Array<{ id: string; text: string }>, id: string): string {
+  const entry = entries.filter((item) => item.id === id)[0];
+  return entry ? entry.text || entry.id : id;
+}
+
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
   // ★ M4b：**笔迹不是文字** ⇒ `answerText` 回 `null`（`readInkValue` 认得它）。那一幅画由
   // `questionOutcome` 的 `ink` 带走、由 `worksheet-drawer.tsx` 的 `InkPreview` 画出来 ——
@@ -285,6 +291,71 @@ export function formatAnswer(node: WorksheetQuestionNode, value: unknown): strin
   // 而它与「学生什么都没写」长得一模一样。
   if (readInkValue(value)) return null;
   const draft = draftFromValue(node, value);
+  // ★ 2026-09-25：**条目型（排序 / 连线 / 归类）**。这三支过去**根本不存在** ——
+  // 值里存的是 **id**（`i1` / `z2`），而下面那条三元链只认 `text` / `fill` ⇒ 落进最后的 `''`
+  // ⇒ `null` ⇒ 抽屉把**答过**的学生显示成「未作答」。与 M4b 的笔迹同一个形状的缺陷。
+  //
+  // 🔴 三支都**先于**下面那句 `node.type === 'single-choice'`，判据与 ink 那一段逐字相同：
+  // **`format` 是第一判据、题型只是兜底**。教师把一道排序题改成单选之后，学生**之前交的**
+  // 那份排序仍然在库里，抽屉的天职是把它显示出来 —— 按题型判会让它变回「未作答」。
+  // （`draftFromValue` 也是这么分派的：`format` 认得出就用 `format`。）
+  //
+  // ⚠️ 条目文本按 id 从**题目**里查；查不到（教师删了那个条目 / 改了题型）就**退回 id 本身**,
+  // 与单选「选项对不上时退回 key 本身」同一条纪律 —— 空白会让教师以为学生没答。
+  if (draft.kind === 'order') {
+    // 🔴 「他到底排过没有」读的是**原始值**里的那个数组，**不是** `draft.order`：
+    // `reconcileWithNode` 会把题里所有条目按出题顺序补进 `order`（教师后加的条目也必须排得
+    // 进去），于是一份 `order: []` 的行读回来是**满满一列**、与「学生排好了」长得一模一样
+    // ⇒ 那会是一句**假话**（我们在替学生说他没说过的话）。空就是空。
+    // 判据形状照抄 `readStringList` 的容错：非对象 / 非数组一律当空。
+    const raw = value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>).order : undefined;
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const items = readOrderItems(node);
+    const texts: string[] = [];
+    draft.order.forEach((id) => { texts.push(entryText(items, id)); });
+    return texts.length > 0 ? texts.join(' → ') : null;
+  }
+  if (draft.kind === 'match') {
+    // ⚠️ 按**左栏顺序**输出，不是按 `links` 自己的顺序：后者是学生的点击顺序，
+    // 逐人不同、看着像随机，教师横着比一串学生时会以为「每个人连得都不一样」。
+    const left = readMatchLeft(node);
+    const right = readMatchRight(node);
+    const pairs: string[] = [];
+    left.forEach((entry) => {
+      const link = draft.links.filter((item) => item.leftId === entry.id)[0];
+      if (link) pairs.push(`${entryText(left, entry.id)} — ${entryText(right, link.rightId)}`);
+    });
+    return pairs.length > 0 ? pairs.join('；') : null;
+  }
+  if (draft.kind === 'categorize') {
+    // 按**框**归组（`哺乳类：猫、狗`），不是逐条列「猫→哺乳类」—— 后者要教师自己在脑子里
+    // 重排一遍才能看出学生把哪几条放到了一起。框的顺序取**题目的**，同样是为了横向可比。
+    const zones = readCategorizeZones(node);
+    const items = readCategorizeItems(node);
+    const parts: string[] = [];
+    zones.forEach((zone) => {
+      const inside: string[] = [];
+      items.forEach((item) => {
+        if (draft.assignment[item.id] === zone.id) inside.push(entryText(items, item.id));
+      });
+      // 空框**不出现**（「鸟类：（空）」是噪声，而一个框空着这件事由「哪些条目没出现」表达）
+      if (inside.length > 0) parts.push(`${zone.text || zone.id}：${inside.join('、')}`);
+    });
+    // 🔴 没归类的条目**必须说出来**：少了这一句，教师会以为学生把条目全归完了。
+    // 它不是理论上的分支 —— 教师删掉一个框之后，那份旧作答里指向它的条目就落到这里。
+    //
+    // ⚠️ 但它**只在已经有东西归好类时**才说（`parts.length > 0`）：一份**一条都没归**的
+    // 作答如果把条目全列成「未归类：…」，那句话读起来像「学生**故意**把它们留在外面」——
+    // 而事实是他什么都没做。没做**就该是 `null`（未作答）**，不是一句替他表了态的总结。
+    const loose: string[] = [];
+    items.forEach((item) => {
+      const zoneId = draft.assignment[item.id];
+      if (zones.filter((zone) => zone.id === zoneId).length === 0) loose.push(entryText(items, item.id));
+    });
+    if (loose.length > 0 && parts.length > 0) parts.push(`未归类：${loose.join('、')}`);
+    return parts.length > 0 ? parts.join('；') : null;
+  }
   if (node.type === 'single-choice') {
     const selected = draft.kind === 'choice' ? draft.selected[0] ?? '' : '';
     if (!selected) return null;

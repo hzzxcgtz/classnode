@@ -220,6 +220,71 @@ test('形态 A：原答案的读法 —— 单选给选项文字，读不出来�
   assert.equal(formatAnswer(choice, { format: 'choice/v1', selected: [] }), null);
 });
 
+test('🔴 形态 A：排序 / 连线 / 归类的原答案 —— 条目型过去一律显示「未作答」', () => {
+  // 🔴 起因：`formatAnswer` 的 kind 分派只认 `text` / `fill` 两族，而 `draftFromValue`
+  //    明明把 `order` / `match` / `categorize` 三支都读了回来 ⇒ 那三种落进最后那个 `''`
+  //    ⇒ `null` ⇒ 抽屉把**答过**的学生显示成「未作答」。
+  //    ⇒ 与 M4b 那条同一个形状的缺陷：**学生写的东西在教师眼里不存在**。
+  // 排版的依据**不是** `answer` 里键的顺序（那是学生的点击顺序，逐人不同、看着像随机），
+  // 而是**题目条目的顺序** —— 与学生屏幕上那一栏 / 那一列长得一样，教师横着比也稳。
+  const orderNode = node({
+    id: 'q_6', type: 'order',
+    data: { items: [{ id: 'i1', text: '苹果' }, { id: 'i2', text: '香蕉' }, { id: 'i3', text: '梨' }] },
+  });
+  assert.equal(
+    formatAnswer(orderNode, { format: 'order/v1', order: ['i1', 'i2', 'i3'] }),
+    '苹果 → 香蕉 → 梨',
+  );
+  // 学生排成另一个顺序 ⇒ 显示的就是**他排的那个**（不是题目的顺序）
+  assert.equal(
+    formatAnswer(orderNode, { format: 'order/v1', order: ['i3', 'i1', 'i2'] }),
+    '梨 → 苹果 → 香蕉',
+  );
+
+  const matchNode = node({
+    id: 'q_7', type: 'match',
+    data: {
+      left: [{ id: 'l1', text: '苹果' }, { id: 'l2', text: '香蕉' }],
+      right: [{ id: 'r1', text: '红色' }, { id: 'r2', text: '黄色' }],
+    },
+  });
+  // ⚠️ 传进去的 `links` **故意不是左栏顺序**：显示要按左栏重排。
+  assert.equal(
+    formatAnswer(matchNode, {
+      format: 'match/v1',
+      links: [{ leftId: 'l2', rightId: 'r2' }, { leftId: 'l1', rightId: 'r1' }],
+    }),
+    '苹果 — 红色；香蕉 — 黄色',
+  );
+
+  const categorizeNode = node({
+    id: 'q_8', type: 'categorize',
+    data: {
+      items: [{ id: 'i1', text: '猫' }, { id: 'i2', text: '狗' }, { id: 'i3', text: '鹰' }],
+      zones: [{ id: 'z1', label: '哺乳类' }, { id: 'z2', label: '鸟类' }],
+    },
+  });
+  assert.equal(
+    formatAnswer(categorizeNode, { format: 'categorize/v1', assignment: { i3: 'z2', i1: 'z1', i2: 'z1' } }),
+    '哺乳类：猫、狗；鸟类：鹰',
+    '按**框**归组（不是逐条列「猫→哺乳类」），框的顺序是题目的，不是值的',
+  );
+  // 🔴 一个框里**一个条目都没有** ⇒ 那个框不出现（不是「鸟类：（空）」）；
+  //    而**没被归类的条目必须说出来** —— 少了它，教师会以为学生把 3 条都归完了。
+  assert.equal(
+    formatAnswer(categorizeNode, { format: 'categorize/v1', assignment: { i1: 'z1', i2: 'z1' } }),
+    '哺乳类：猫、狗；未归类：鹰',
+  );
+
+  // 边界：三种「一条都没有」⇒ null（= 未作答），不是空串。
+  assert.equal(formatAnswer(orderNode, { format: 'order/v1', order: [] }), null);
+  assert.equal(formatAnswer(matchNode, { format: 'match/v1', links: [] }), null);
+  assert.equal(formatAnswer(categorizeNode, { format: 'categorize/v1', assignment: {} }), null);
+  // 读不出来的形状不抛（渲染路径上一次 TypeError 会让整个抽屉白屏）
+  assert.equal(formatAnswer(orderNode, null), null);
+  assert.equal(formatAnswer(matchNode, 'x'), null);
+});
+
 test('🔴 形态 M4b：笔迹作答 —— answerText 回 null，但 ink 非空（抽屉不许说「未作答」）', () => {
   // ⚠️ 两个助手是既有的：`node({id, type, …})`（单对象）与 `row({status, value, …})`，
   //    **不是** `node('drawing')` 那种形状 —— 照该文件既有的调用写。

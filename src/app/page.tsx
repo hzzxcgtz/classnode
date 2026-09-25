@@ -173,9 +173,14 @@ export default function StudentHomePage() {
           ))}
         </div>
 
-        {error && (
-          <p style={{ color: '#ef4444', fontSize: "0.875rem", marginBottom: 16, textAlign: 'center' }}>{error}</p>
-        )}
+        {/* ★ M6b/2：错误位做成**固定槽**。原先这行 <p> 一插入就把整卡内容顶上去 ——
+            外层是 `justifyContent:'center'` 的 100vh flex，于是输入框与按钮一起位移。
+            样式照 `identity-picker.tsx` 那套（底 + 描边 + 圆角），并补 `role="alert"`。 */}
+        <div style={{ minHeight: 30, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {error && (
+            <p role="alert" style={{ margin: 0, padding: '5px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c', fontSize: "0.813rem" }}>{error}</p>
+          )}
+        </div>
 
         <button type="submit" className="btn btn-primary btn-lg"
           disabled={fullCode.length !== 4 || loading}

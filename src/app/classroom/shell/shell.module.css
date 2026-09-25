@@ -25,6 +25,9 @@
  * 高度不随文案或视口变化。 */
 .shell {
   --shell-topbar-height: 52px;
+  /* ★ M6b/9：四条层动画的时长**只有这一个定义处**。原先四处硬编码 `240ms`，
+     而本文件自己写着「没有任何机制强制它们相等」—— 改一条不会报错、没有编译期信号。 */
+  --shell-slide-duration: 240ms;
   position: relative;
   min-height: 100vh;
   display: flex;
@@ -547,10 +550,14 @@
    ② **下面四条动画的时长必须一致 —— 这是一条不变量，不是「已经只有一份」的事实。**
       外壳的 JS（classroom-shell.tsx）不去猜动画何时结束，而是从**离场层与当前前台层**的
       计算样式里各读一次 `animation-duration`、取二者的 `Math.max` 再定时。之所以读两侧：
-      真正决定「就位」的是**入场层**何时停，而四条 240ms 是四处**独立的字面量**，没有任何
-      机制强制它们相等。只读离场层的话，把 `.enterRight` / `.enterLeft` 单独调成 480ms 就会
-      让外壳在 280ms 宣布就位、入场层还在平移途中 —— 正是 §4.6 约束 ② 要防的那件事，
-      且没有任何编译期或运行期信号。**改时长请四条一起改。**
+      真正决定「就位」的是**入场层**何时停。
+      ★ M6b/9（2026-09-25）：四条原先各自硬编码 `240ms`，只靠这段注释约束 —— 改一条不会报错、
+      没有任何编译期信号。现在四条一律写 `var(--shell-slide-duration)`（定义见文件头 `.shell`），
+      **改时长只需改那一处**。⇒ 原先那句「没有任何机制强制它们相等」**已不成立**，故改写。
+      ⚠️ 但读两侧仍然必要，**不要**因此简化成只读一侧：变量只保证**这四条规则**同源，
+      挡不住有人在别处覆盖其中一条（更具体的选择器、内联样式、`!important`）——
+      那种情况下只读离场层会重演下面这个事故：把 `.enterRight` / `.enterLeft` 单独调成 480ms，
+      外壳会在 280ms 宣布就位、而入场层还在平移途中（§4.6 约束 ② 要防的正是这件事）。
       `prefers-reduced-motion` 下本文件把动画整个关掉（`animation: none`，见文件末尾），
       计算值随之落到 ≈0（本项目 globals.css 另有一条全局降级把时长压成 0.01ms），
       外壳于是很快视为就位 —— 与 §4.7 要求的「降级为直接切换」是同一个机制，
@@ -584,10 +591,15 @@
    ⚠️ 四条时长必须**一致**（上面 ②）。就位判定读的是入场层与离场层二者的最大值，所以哪怕
    某一侧被单独调长，也不会提前宣布就位 —— 「外壳已就位而某层还在动」在**正确性**上已由
    `Math.max` 兜住。保持一致是为了两个层看起来是**同一段**动画：一快一慢会明显发飘。 */
-.enterRight { animation: shellEnterRight 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
-.enterLeft { animation: shellEnterLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
-.exitLeft { animation: shellExitLeft 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
-.exitRight { animation: shellExitRight 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
+/* ★ M6b/10：**入场**层也要 `pointer-events: none` —— 原先只给了离场层。
+   入场那 240ms 里层正从 `translateX(100%)`/`-30%` 滑到 0，而它的子元素已经可以点，
+   于是「学生点了一下、按钮却在他手指底下移动」。摘除时机不用写 JS：`layerClass`
+   本来就用 `!phase.settled` 挂这两个类，就位时类名自动消失。
+   ⚠️ `pointer-events: none` 不阻止程序化 `focus()`，键盘弹出不受影响。 */
+.enterRight { animation: shellEnterRight var(--shell-slide-duration) cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
+.enterLeft { animation: shellEnterLeft var(--shell-slide-duration) cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
+.exitLeft { animation: shellExitLeft var(--shell-slide-duration) cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
+.exitRight { animation: shellExitRight var(--shell-slide-duration) cubic-bezier(0.22, 0.61, 0.36, 1) both; pointer-events: none; }
 
 /* 首页层：内容自带 min-height:100%，这里给它「层内滚动 + 让开固定栏」。
    （栏是 fixed 的，不占流内空间，所以这 52px 的上内边距就是它的位置。） */

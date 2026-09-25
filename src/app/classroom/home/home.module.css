@@ -162,6 +162,9 @@
 
 .card:active {
   transform: translateY(0) scale(0.992);
+  /* ★ M6b/7：按下要**立刻**缩到位。原先共用 `:hover` 那条 160ms —— 触屏上没有 hover，
+     学生按下去要等 160ms 才看到回弹，那就是「按了没反应」。抬起仍保留 160ms。 */
+  transition-duration: 60ms;
 }
 
 /* 图标位：只负责**定位上下文**与尺寸，不画自己的底色。
@@ -293,12 +296,15 @@
   box-shadow: 0 0 0 2px #f8fafc;
 }
 
+/* ★ M6b/6：原先用**虚线**占位框，而这句话其实是**正常状态** —— 虚线读起来像「出错了」。
+   改成与同屏三张卡同族的实线卡（`.card` 是 solid + `border-left: 4px`）。 */
 .emptyNote {
   margin: 0;
-  padding: 26px 18px;
-  border: 1px dashed #cbd5e1;
+  padding: 18px 16px;
+  border: 1px solid #e6eaf2;
+  border-left: 4px solid var(--card-accent, #2563eb);
   border-radius: 14px;
-  background: #f8fafc;
+  background: #fff;
   color: #64748b;
   font-size: 0.875rem;
   text-align: center;

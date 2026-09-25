@@ -123,6 +123,7 @@
 }
 
 .rewardTotal {
+  animation: rewardPop 260ms cubic-bezier(.34, 1.56, .64, 1) both;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -190,7 +191,10 @@
 
 /* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
    用属性选择器分三态，文案由组件给（同一个判据只有一处）。 */
+/* ★ M6b/16：三态原先只换颜色、**瞬间跳变**，而同屏的进度条是平滑的
+   （「进度条在动、状态字在跳」）。只加颜色过渡 —— `.progressFill` 已有非 transform 过渡的先例。 */
 .questionState {
+  transition: color .18s ease-out;
   flex: 0 0 auto;
   font-size: .74rem;
   font-weight: 750;
@@ -202,7 +206,17 @@
 /* 每题旁的奖励（规格 §9.3）。只在学生端出现 —— 教师端的「学生端预览」渲染同一个组件，
    但它不传奖励配置（规格 §3-U），所以这里没有「教师端的那一套样式」可言。
    `data-right` 只在对错档下有意义（✓ 绿 / ✗ 红）；符号档只有一个颜色。 */
+/* ★ M6b/12：奖励徽章的入场动画 —— `reward-badge.tsx` 的注释逐字写着
+   「动画（星星飞入）属 **P3 视觉打磨**，第一批是静态图标 + 出现即显示」。这就是那一次。
+   ⚠️ **只碰 transform / opacity**（合成器上跑，老 iPad 无压力）。 */
+@keyframes rewardPop {
+  from { transform: scale(.4); opacity: 0; }
+  60%  { transform: scale(1.18); }
+  to   { transform: scale(1); opacity: 1; }
+}
+
 .questionReward {
+  animation: rewardPop 260ms cubic-bezier(.34, 1.56, .64, 1) both;
   flex: 0 0 auto;
   font-size: .86rem;
   font-weight: 750;
@@ -253,6 +267,7 @@
 }
 
 .optionSelected {
+  transition: background-color .18s ease-out, border-color .18s ease-out;
   border-color: var(--ws-accent);
   background: #f5f8ff;
 }
@@ -355,6 +370,26 @@
   font-size: .76rem;
   color: #94a3b8;
   text-align: right;
+}
+
+/* ★ M6b/13：提交中的旋转圈。
+   🔴 名字**必须**是本文件自己的 `@keyframes`（所以叫 `submitSpin` 而不是 `spin`）：
+   `css-loader` 的模块模式会把 `animation-name` 当局部名字加哈希前缀，
+   而**跨文件引用不成立** —— 写 `animation: spin` 时产物里是 `worksheet_spin__<hash>`，
+   而 `globals.css` 那个全局 `@keyframes spin` **不会**被匹配到 ⇒ **悬空引用、圈不转**，
+   且构建不报错。这条已由 `src/lib/css-module-animation.test.ts` 守住。 */
+@keyframes submitSpin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: submitSpin .7s linear infinite;
+  display: inline-block;
 }
 
 .submitButton {
@@ -867,11 +902,23 @@
    `globals.css` 那条全局 `0.01ms` 兜底。那确实生效，但意味着本文件「所有会动的东西」
    **既没有清单、也没有例外可言**：谁新加一条动画，不会有任何信号告诉他要不要降级。
    ⚠️ 与 `shell.module.css` / `home.module.css` 的降级块**同形**（那两处都把它当一条纪律）。
-   ⚠️ 本文件今天会动的东西只有两条 `transition`（顶栏底色、进度条宽度）——
-   加了新动画要**同批**补进来。 */
+   ⚠️ 本文件今天会动的东西：**4 条 `transition`**（顶栏底色 `:52`、进度条宽度 `:91`、
+   状态三态 `:197`、选项选中态 `:270`）+ **3 条 `animation`**（`.rewardTotal` `:126`、
+   `.questionReward` `:219`、`.spinner` `:391`）—— 下面**逐条**列全。
+   （🔴 原写「只有两条 transition」，那是加 M6b/12/16/13 之前的旧账，已改正。）
+   加了新动效要**同批**补进来。 */
 @media (prefers-reduced-motion: reduce) {
   .topbar,
-  .progressFill {
+  .progressFill,
+  .questionState,
+  .optionSelected {
     transition: none;
+  }
+
+  /* ★ M6b/12/16 新增的动效 —— **同批**加进来（这是 #17 立下的规矩）。 */
+  .questionReward,
+  .rewardTotal,
+  .spinner {
+    animation: none;
   }
 }

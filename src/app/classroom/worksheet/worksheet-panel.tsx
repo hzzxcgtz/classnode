@@ -307,7 +307,17 @@ export function WorksheetQuestionList({
                       disabled={submitDisabled}
                       onClick={() => onSubmit?.(node)}
                     >
-                      {submitting[node.id] ? '提交中…' : submitted ? '重新提交' : '提交本题'}
+                      {/* ★ M6b/13：判分要等服务端往返，而这段时间原先屏幕上只有**半透明的按钮 + 三个字**。
+                          加一个 12px 的纯 CSS 旋转圈。keyframe 定义在 `worksheet.module.css`
+                          自己的 `@keyframes submitSpin` —— 🔴 **不能**改成引 `globals.css` 的
+                          全局 `spin`：CSS 模块会把 `animation-name` 加哈希前缀，跨文件引用
+                          会变成悬空引用（圈不转、构建还不报错）。见 `src/lib/css-module-animation.test.ts`。 */}
+                      {submitting[node.id] ? (
+                        <>
+                          <span className={styles.spinner} aria-hidden="true" />
+                          提交中…
+                        </>
+                      ) : submitted ? '重新提交' : '提交本题'}
                     </button>
                   </div>
                 </>

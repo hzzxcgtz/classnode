@@ -14,7 +14,7 @@ import {
   type AnswerDraft,
 } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { usePointerDrag } from '../use-pointer-drag';
+import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
 
 /**
@@ -53,6 +53,32 @@ interface MatchLine {
   y2: number;
 }
 
+/**
+ * ★ 2026-09-26（教师第 1 条）：「从左侧一个选项中开始向右拖动，**并出现一条连线跟随**」。
+ *
+ * ── 这条线为什么不是 React state ────────────────────────────────────────────
+ * 它**每帧都在动**。放进 state ⇒ 每帧一次 setState ⇒ 整个作答面板每帧重渲一次
+ *（老 iPad 上直接掉帧）。所以它的四个坐标全部**直接写 DOM 属性**，一个 state 都不碰。
+ * 代价：React **不认识**这四个属性 —— 所以 JSX 里刻意**不声明** `x1/y1/x2/y2`，
+ * 由下面那个 `onDragMove` 独占它们（React 只改它从 props 知道的东西，
+ * 不声明就不会被下一次渲染擦掉）。
+ * ⚠️ 「可见 / 不可见」同理走**内联 `style.visibility`**（类里那份 `hidden` 是初值，
+ * 内联优先）—— 不能写成 SVG 的 `visibility` 属性：**表现属性打不过类选择器**。
+ *
+ * ── 只量一次 ───────────────────────────────────────────────────────────────
+ * 起点（左项的右缘中点）与容器原点在**第一次回调**那一刻量一次就够 ——
+ * 左项在拖动过程中不动。⚠️ 那一刻 DOM **还是拖动前的布局**（`use-pointer-drag.ts`
+ * 的 `onDragMove` 注释写着为什么），所以量到的正是我们要的那份坐标。
+ * 锚点带 `id`：换了拖拽源就重新量，于是**不需要**在手势结束时清它（少一处会漏的收尾）。
+ */
+interface FollowAnchor {
+  id: string;
+  x1: number;
+  y1: number;
+  originX: number;
+  originY: number;
+}
+
 export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
   const [selection, setSelection] = useState<DragSelection>(clearSelection());
   const left = readMatchLeft(node);
@@ -66,6 +92,45 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
   /** 每个端点的 DOM 节点（键带 `l:` / `r:` 前缀，两栏的 id 各自独立编号，可能重名）。 */
   const itemEls = useRef<Record<string, HTMLElement | null>>({});
   const [lines, setLines] = useState<MatchLine[]>([]);
+  /** 跟手的那条线（见 `FollowAnchor` 上面那一段）。 */
+  const ghostRef = useRef<SVGLineElement | null>(null);
+  const anchorRef = useRef<FollowAnchor | null>(null);
+
+  // ⚠️ 依赖是空的：这个回调**只碰 ref**（`itemEls` / `containerRef` / `ghostRef` /
+  // `anchorRef`），一个 state 都不读 —— 所以它不需要跟着任何一次渲染换身份，
+  // 也不会读到旧的 state（这正是「跟手的线」不能走 state 的那条约束的副产品）。
+  const onDragMove = useCallback((point: DragPoint) => {
+    const ghost = ghostRef.current;
+    if (!ghost) return;
+    let anchor = anchorRef.current;
+    if (!anchor || anchor.id !== point.id) {
+      // ⚠️ `l:` 前缀：只有**左项**才是连线的起点。右项是落点、不是拖拽源，
+      // 在它上面按下去拖时这里找不到元素 ⇒ 不画线（而不是画一条从 (0,0) 出发的假线）。
+      const el = itemEls.current[`l:${point.id}`];
+      const box = containerRef.current;
+      if (!el || !box) {
+        anchorRef.current = null;
+        ghost.style.visibility = 'hidden';
+        return;
+      }
+      const a = el.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      anchor = {
+        id: point.id,
+        x1: Math.round(a.right - b.left),
+        y1: Math.round(a.top + a.height / 2 - b.top),
+        originX: b.left,
+        originY: b.top,
+      };
+      anchorRef.current = anchor;
+    }
+    ghost.setAttribute('x1', String(anchor.x1));
+    ghost.setAttribute('y1', String(anchor.y1));
+    ghost.setAttribute('x2', String(Math.round(point.x - anchor.originX)));
+    ghost.setAttribute('y2', String(Math.round(point.y - anchor.originY)));
+    ghost.style.visibility = 'visible';
+  }, []);
+
 
   const links = draft.links;
   const measure = useCallback(() => {
@@ -110,6 +175,7 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
 
   const drag = usePointerDrag({
     disabled,
+    onDragMove,
     onTap: (id) => {
       const leftId = selection.kind === 'item' ? selection.id : null;
       if (!leftId) {
@@ -133,6 +199,17 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
       onChange({ kind: 'match', links: setPair(links, sourceId, targetId) });
     },
   });
+
+  // 手势结束（松手 / 被系统中断）⇒ 把跟手的线收掉。
+  // ⚠️ 不能只靠 `onDrop`：`pointercancel` 那条路**不落位**，只走这一个 effect；
+  // 少了它，一次被来电/多任务手势打断的拖拽会把线**永远留在屏幕上**。
+  // ⚠️ 依赖是 `drag.draggingId`：它每**次手势**才变一次（不是每帧），
+  // 所以这一个 effect 不会跟着指针走。
+  useEffect(() => {
+    if (drag.draggingId) return;
+    const ghost = ghostRef.current;
+    if (ghost) ghost.style.visibility = 'hidden';
+  }, [drag.draggingId]);
 
   if (left.length === 0 || right.length === 0) {
     return <p className={styles.cardNote}>（这道题还没有条目）</p>;
@@ -205,6 +282,10 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
           {lines.map((line) => (
             <line className={styles.matchLine} key={line.key} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
           ))}
+          {/* 跟手的那条线。🔴 **刻意不声明** `x1/y1/x2/y2`：那四个属性由 `onDragMove`
+              每帧直接写（见 `FollowAnchor` 上面那一段）。React 只改它从 props 知道的
+              属性，这里不声明，它就不会在下一次渲染时把写进去的坐标擦掉。 */}
+          <line ref={ghostRef} className={styles.matchGhostLine} />
         </svg>
       </div>
     </div>

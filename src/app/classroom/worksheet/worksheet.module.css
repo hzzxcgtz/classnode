@@ -778,6 +778,22 @@
   stroke-linecap: round;
 }
 
+/* ★ 2026-09-26（教师第 1 条）：**拖动中跟手的那条线**。
+   虚线、淡一点 —— 它与「已经连上的线」说的不是同一件事：那一条是**事实**，
+   这一条是**手指此刻在哪**。混在一起学生会以为已经连上了。
+   🔴 `visibility: hidden` 是**初值**，拖动中由 JS 写内联 `style.visibility`
+   （内联优先于类）打开，手势结束那一个 effect 再关回来。
+   ⚠️ 别改成 SVG 的 `visibility="hidden"` 属性 —— **表现属性打不过类选择器**，
+   那样 JS 就再也打不开它了。 */
+.matchGhostLine {
+  visibility: hidden;
+  stroke: var(--ws-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 5;
+  opacity: .65;
+}
+
 /* ───────────────────────── 归类题 ─────────────────────────────────────── */
 
 .categorizeWrap { margin-top: 4px; }

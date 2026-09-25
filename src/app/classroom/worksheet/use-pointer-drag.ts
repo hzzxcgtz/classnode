@@ -41,11 +41,41 @@ export const DROP_TARGET_ATTR = 'data-drop-id';
 /** 超过这么多像素才算「拖」，否则算「点」。8 是老 iPad 上手指抖动与真拖动之间的经验值。 */
 const DRAG_THRESHOLD_PX = 8;
 
+/**
+ * ★ 2026-09-26：拖动中每一帧交给调用方的那一个点（跟手的线 / 跟手的条目要用它）。
+ *
+ * ⚠️ **必须带上 `id`**：第一次回调是在「越过阈值的那一次 `pointermove`」里发出的，
+ * 那一刻 `draggingId` 这个 state **还没进本次渲染的闭包**（本组件重新渲染要等这一次
+ * 事件处理函数返回）。调用方想知道「拖的是谁」只能读这里。
+ */
+export interface DragPoint {
+  /** 正在被拖的条目 id。 */
+  id: string;
+  /** 指针的客户端坐标（`pointermove` 原样 —— 与 `getBoundingClientRect` 同一坐标系）。 */
+  x: number;
+  y: number;
+  /** 相对**手势起点**（`pointerdown` 那一刻）的位移。跟手的条目要的是 `dy` / `dx`。 */
+  dx: number;
+  dy: number;
+}
+
 export interface PointerDragOptions {
   /** 点了一下（没移动）时调它。id 由组件解释（连线的左项 / 归类的条目 /…）。 */
   onTap: (id: string) => void;
   /** 落位（移动过且手指底下是一个落点）时调它。**整个手势只调一次**。 */
   onDrop: (sourceId: string, targetId: string) => void;
+  /**
+   * ★ 2026-09-26：拖动中**每一帧**（只在越过 `DRAG_THRESHOLD_PX` 之后，与拖动态同时开始）。
+   *
+   * 🔴 **不要在里面 `setState`。** 每帧一次 setState 会让整个作答面板每帧重渲一次 ——
+   * 老 iPad 上直接掉帧，而这正是本仓「每帧的重算要限量」那条约束要防的东西。
+   * 跟手的线 / 跟手的条目一律**直接写 DOM**（SVG 的 `x2 y2`、元素的内联 `transform`）。
+   *
+   * ⚠️ **第一次回调那一刻，DOM 还是拖动前的布局**（React 还没重渲，拖动态的类名也还没上）——
+   * 要量尺寸就趁这一刻量，而且**只量这一次**：每帧读一堆 `getBoundingClientRect`
+   * 会强制同步布局，那比 setState 更慢。
+   */
+  onDragMove?: (point: DragPoint) => void;
   /** 只读态（教师端预览）/ 已锁定的题：所有手势都不生效，但**不隐藏**任何东西。 */
   disabled?: boolean;
 }
@@ -80,19 +110,48 @@ interface Gesture {
   el: HTMLElement | null;
 }
 
-/** 手指底下有没有落点。找不到就 `null`（松手时按「没落位」处置）。 */
-function findDropTarget(clientX: number, clientY: number): string | null {
-  if (typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') return null;
-  const under = document.elementFromPoint(clientX, clientY);
-  if (!under || typeof under.closest !== 'function') return null;
-  // ⚠️ `closest` 而不是「直接看 under」：手指底下的几乎总是条目里的一个 `<span>`。
-  // 用 `closest` 才能找到真正带 `data-drop-id` 的那一层。
-  const holder = under.closest(`[${DROP_TARGET_ATTR}]`);
-  if (!holder || typeof holder.getAttribute !== 'function') return null;
-  return holder.getAttribute(DROP_TARGET_ATTR);
+/**
+ * 手指底下有没有落点。找不到就 `null`（松手时按「没落位」处置）。
+ *
+ * ★ 2026-09-26：改成从**整摞**里挑第一个不是自己的，而不是「只看最上面那一个」。
+ *
+ * ── 为什么（这一条在改的时候是**纯重构**，到排序题跟手之后才变成承重的）────────
+ * 排序题拖起来的那一项现在**跟手**（`order-body.tsx` 每帧写它的 `transform`），
+ * 于是它**就压在手指底下**。而它自己也是一个落点（`data-drop-id` = 它自己的 id）——
+ * 「只看最上面那一个」拿到的永远是它自己，`hoverTargetId` 恒为 `null`，
+ * `pointerup` 时 `onDrop` **一次都调不到**：拖得动、放不下。
+ * ⇒ 必须跳过自己，看见它下面那一条。
+ *
+ * ⚠️ `elementsFromPoint`（复数）在 Safari 11.1+ 有，老 iPad 的 15 上有；
+ * 没有就退回单数的 `elementFromPoint`（那时行为与改之前**逐字相同** ——
+ * 「最上面那一个恰好是自己」⇒ 返回 null，只是不再往下找）。
+ * ⚠️ 「跳过自己」与旧版那句 `under !== gesture.id ? under : null` 是**同一条判据**，
+ * 只是现在会继续往下找，而不是就此放弃。
+ * ⚠️ 归类题的条目池 / 框、连线题的右项都不受影响：那三处的拖拽源**不是**落点，
+ * 所以最上面那个带 `data-drop-id` 的祖先历来就是答案（旧版已经在靠 `closest` 往上找）。
+ */
+function findDropTarget(clientX: number, clientY: number, draggingId: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const stack: Element[] = typeof document.elementsFromPoint === 'function'
+    ? document.elementsFromPoint(clientX, clientY)
+    : (typeof document.elementFromPoint === 'function'
+      ? [document.elementFromPoint(clientX, clientY)].filter((el): el is Element => el !== null)
+      : []);
+  for (const el of stack) {
+    if (!el || typeof el.closest !== 'function') continue;
+    // ⚠️ `closest` 而不是「直接看 el」：手指底下的几乎总是条目里的一个 `<span>`。
+    // 用 `closest` 才能找到真正带 `data-drop-id` 的那一层。
+    const holder = el.closest(`[${DROP_TARGET_ATTR}]`);
+    if (!holder || typeof holder.getAttribute !== 'function') continue;
+    const id = holder.getAttribute(DROP_TARGET_ATTR);
+    // 自己不是自己的落点（自己高亮自己没有意义）。
+    if (id === draggingId) continue;
+    return id;
+  }
+  return null;
 }
 
-export function usePointerDrag({ onTap, onDrop, disabled = false }: PointerDragOptions): PointerDrag {
+export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: PointerDragOptions): PointerDrag {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -184,15 +243,24 @@ export function usePointerDrag({ onTap, onDrop, disabled = false }: PointerDragO
       // 提前高亮会让学生以为「我一碰它就进入拖拽了」。
       setDraggingId(gesture.id);
     }
-    const under = findDropTarget(event.clientX, event.clientY);
-    // 手指下的落点就是自己 ⇒ 当成「还没到任何落点」（自己高亮自己没有意义）。
-    const next = under && under !== gesture.id ? under : null;
+    const next = findDropTarget(event.clientX, event.clientY, gesture.id);
     if (hoverRef.current !== next) {
       hoverRef.current = next;
       setHoverTargetId(next);
     }
+    // ★ 2026-09-26：跟手的线 / 跟手的条目在这一行。**它在 `setDraggingId` 之后、
+    // 本次渲染之前** —— 那一刻的 DOM 还是拖动前的布局（见 `onDragMove` 的注释）。
+    if (onDragMove) {
+      onDragMove({
+        id: gesture.id,
+        x: event.clientX,
+        y: event.clientY,
+        dx: event.clientX - gesture.startX,
+        dy: event.clientY - gesture.startY,
+      });
+    }
     event.stopPropagation();
-  }, []);
+  }, [onDragMove]);
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;

@@ -15,6 +15,7 @@ import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
+import { MatrixOverlay } from './matrix-overlay';
 import { moduleCountUnit, stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
@@ -486,6 +487,9 @@ function ClassroomBoardContent() {
   const [answersLocked, setAnswersLocked] = useState(false);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [gridFullscreen, setGridFullscreen] = useState(false);
+  // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
+  // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
+  const [matrixOpen, setMatrixOpen] = useState(false);
   /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
@@ -776,6 +780,31 @@ function ClassroomBoardContent() {
     setWorksheetDrawer({ token: Date.now(), view });
     void loadWorksheetBoard();
   }, [loadWorksheetBoard]);
+
+  /**
+   * ★ M5b：矩阵的下钻。两条都**复用现成的抽屉入口**（规格 §3.7），零抽屉改动。
+   * ⚠️ 抽屉的层级是 290/291，本覆盖层是 250 ⇒ 抽屉画在上面，**不关矩阵**。
+   *    只重开抽屉（让下钻栈从入口那层重新开始），教师关掉抽屉就回到矩阵原来的位置。
+   */
+  const openMatrixQuestion = useCallback((worksheetId: string, questionId: string) => {
+    openWorksheetDrawer({ kind: 'question', worksheetId, questionId });
+  }, [openWorksheetDrawer]);
+  const openMatrixParticipant = useCallback((participantId: string) => {
+    openWorksheetDrawer({ kind: 'participant', participantId });
+  }, [openWorksheetDrawer]);
+
+  /**
+   * ★ M5b：矩阵**开着不关**，而抽屉那条「每次打开都重拉」的规矩在这里不成立。
+   * 广播会漏（教师这台机器的 socket 断线重连期间的那些作答，一条都收不到），
+   * 而这一条重拉**同时负责列的增减**：课中途加入的学生最多等一轮（≤30 秒）才出现一列。
+   * 30 秒与看板既有那条「会走的表」（`nowMs`，30 秒一格）同频，不再引入第三个节拍。
+   */
+  useEffect(() => {
+    if (!matrixOpen) return;
+    void loadWorksheetBoard();
+    const timer = window.setInterval(() => { void loadWorksheetBoard(); }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [matrixOpen, loadWorksheetBoard]);
 
   /**
    * 标记「已查看」（`POST /api/worksheets/:id/review`，粒度是**参与者 × 题**）。
@@ -2161,6 +2190,18 @@ function ClassroomBoardContent() {
                   全屏
                 </button>
               )}
+              {/* ★ M5b：学习单矩阵。🔴 **与 `boardMode` 无关**（GC 28）——
+                  上面那个「全屏」被限制在指定模式，理由是「跟随模式下每格显示不同模块」，
+                  而那条理由对矩阵不成立：矩阵只显示学习单进度，与此刻在看哪个模块无关。 */}
+              <button className="btn btn-secondary" onClick={() => setMatrixOpen(true)} title="学生×题目矩阵：一眼看出此刻该讲哪一题" style={{ minHeight: 36, padding: '7px 12px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="3" y1="15" x2="21" y2="15" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+                矩阵
+              </button>
             </div>
           </div>
 
@@ -3195,6 +3236,22 @@ function ClassroomBoardContent() {
           </div>
         </div>
       )}
+
+      {/* ★ M5b：学习单矩阵覆盖层。与 `gridFullscreen` 是**两块互不相交**的覆盖层
+          （矩阵的按钮在 `!gridFullscreen` 的头部里，所以两者不可能同时被点开）。 */}
+      {matrixOpen && (
+        <MatrixOverlay
+          board={worksheetBoard}
+          nodesByWorksheet={worksheetNodes}
+          live={worksheetProgress}
+          loading={worksheetBoardLoading}
+          participantCount={students.length}
+          onClose={() => setMatrixOpen(false)}
+          onOpenQuestion={openMatrixQuestion}
+          onOpenParticipant={openMatrixParticipant}
+        />
+      )}
+
       {groupTooltip && groupMembersMap[groupTooltip.id] && (
         <div style={{
           position: 'fixed', left: groupTooltip.x + 12, top: groupTooltip.y - 10,

@@ -10,7 +10,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  payloadKindOf, selectAnalyzeEntries, type Participant, type RawAnswer,
+  ANSWER_TEXT_MAX, buildTextDocument, payloadKindOf, selectAnalyzeEntries,
+  type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
 
 const ink = (strokes: number) => ({
@@ -117,4 +118,71 @@ test('🔴 混杂时不许把笔迹丢掉：mixed 是必须的（教师中途改
   assert.equal(payloadKindOf(entries), 'mixed');
   assert.deepEqual(entries.map((e) => e.kind), ['text', 'ink']);
   assert.equal(entries.length, 2, '混杂时两条都要在 —— 丢一条就是「已交 2 人」而只有一条内容');
+});
+
+/* ── Task 3：文字类的聚合文档 ─────────────────────────────────────────── */
+
+const meta = { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', index: 2 };
+const docLabels = new Map([['p1', 'User_001'], ['p2', 'User_002'], ['p3', 'User_003']]);
+
+test('文档：抬头有题号/题型/题干/覆盖数，逐条带伪名，顺序就是入参顺序', () => {
+  const doc = buildTextDocument(meta, [
+    { studentId: 'p1', displayName: '张三', kind: 'text', text: '我认为是甲' },
+    { studentId: 'p2', displayName: '李四', kind: 'text', text: '我觉得是乙' },
+  ], docLabels, 12, 40);
+  assert.match(doc, /第 3 题/);          // index 是 0-based ⇒ 屏幕上是 3
+  assert.match(doc, /问答题/);
+  assert.match(doc, /说说你的看法/);
+  assert.match(doc, /已交 12\/40/);
+  assert.match(doc, /User_001/);
+  assert.match(doc, /我认为是甲/);
+  // 真名**不许**出现在文档里（文档就是将来发给 AI 的那份东西）
+  assert.ok(!doc.includes('张三'), '真名不得进文档 —— 上线的只有伪名');
+  assert.ok(!doc.includes('李四'), '真名不得进文档');
+  assert.ok(doc.indexOf('User_001') < doc.indexOf('User_002'), '顺序必须保持');
+});
+
+test('🔴 零份已提交 ⇒ 仍然是一份说得清的文档（不是空字符串）', () => {
+  const doc = buildTextDocument(meta, [], docLabels, 0, 40);
+  assert.ok(doc.length > 0, '零份也要有一份文档，不能是空字符串');
+  assert.match(doc, /已交 0\/40/);
+  assert.match(doc, /尚无/);
+});
+
+test('🔴 超长答案被截断，且**说出来**（不许悄悄砍）', () => {
+  const long = '甲'.repeat(ANSWER_TEXT_MAX + 500);
+  const doc = buildTextDocument(meta,
+    [{ studentId: 'p1', displayName: '张三', kind: 'text', text: long }], docLabels, 1, 40);
+  assert.ok(!doc.includes(long), '不该原样带出超长答案');
+  assert.match(doc, /已截断/, '截断必须有一句说明');
+  assert.ok(doc.includes('甲'.repeat(ANSWER_TEXT_MAX)), '前 ANSWER_TEXT_MAX 个字要保留');
+  assert.match(doc, new RegExp(String(ANSWER_TEXT_MAX + 500)), '要说清原文共多少字');
+});
+
+test('刚好 ANSWER_TEXT_MAX 个字不截断（边界不多不少）', () => {
+  const exact = '乙'.repeat(ANSWER_TEXT_MAX);
+  const doc = buildTextDocument(meta,
+    [{ studentId: 'p1', displayName: '张三', kind: 'text', text: exact }], docLabels, 1, 40);
+  assert.ok(doc.includes(exact));
+  assert.ok(!doc.includes('已截断'), '刚好到上限不该标截断');
+});
+
+test('🔴 空白答案与「认不出」的条目都要在文档里说出来（不能只剩一个伪名）', () => {
+  const doc = buildTextDocument(meta, [
+    { studentId: 'p1', displayName: '张三', kind: 'text', text: '   ' },
+    { studentId: 'p2', displayName: '李四', kind: 'unknown' },
+  ], docLabels, 2, 40);
+  assert.match(doc, /User_001[\s\S]*?空白/, '空文字要说「空白」');
+  assert.match(doc, /User_002[\s\S]*?认不出/, 'unknown 要说「认不出」');
+});
+
+test('缺伪名时回落成参与者 id（不抛、不留空）', () => {
+  const doc = buildTextDocument(meta,
+    [{ studentId: 'pX', displayName: '某人', kind: 'text', text: 'x' }], new Map(), 1, 40);
+  assert.match(doc, /pX/);
+});
+
+test('题干为空时不留一个空洞（写「（题干为空）」）', () => {
+  const doc = buildTextDocument({ ...meta, prompt: '' }, [], docLabels, 0, 3);
+  assert.match(doc, /题干为空/);
 });

@@ -116,3 +116,60 @@ export function payloadKindOf(entries: AnalyzeEntry[]): 'text' | 'image' | 'mixe
   if (hasText && hasInk) return 'mixed';
   return hasInk ? 'image' : 'text';
 }
+
+/* ── 文字类的聚合文档 ─────────────────────────────────────────────────── */
+
+/**
+ * 一份答案里最多带出多少个字。
+ *
+ * 🔴 **超长的必须截断、且必须说出来。** 学生完全可能粘一整篇作文进来；原样带出的后果是
+ * 这份文档被一条答案撑爆（它将来要发给 AI，token 是按字算的），而**看不出来是被谁撑的**。
+ * 悄悄砍掉前半/后半更坏：教师与模型都会把残句当成完整的答案来读。
+ */
+export const ANSWER_TEXT_MAX = 800;
+
+/** 一道题在界面上的位置信息（`index` 是 0-based 的拍平题序，与 `MatrixRow.index` 同源）。 */
+export interface QuestionMeta {
+  questionId: string;
+  typeLabel: string;
+  prompt: string;
+  index: number;
+}
+
+/** 超长就截断并附一句说明。 */
+function truncate(text: string): string {
+  if (text.length <= ANSWER_TEXT_MAX) return text;
+  return `${text.slice(0, ANSWER_TEXT_MAX)}\n（已截断：原文共 ${text.length} 字，只带出前 ${ANSWER_TEXT_MAX} 字）`;
+}
+
+/**
+ * 文字类的聚合文档。**纯字符串拼装**，发出去的就是它。
+ *
+ * ⚠️ **上线的一律是伪名**（`labels` 给的），真名绝不进这份文档 —— 它就是将来发给
+ * 第三方 AI 的那份东西。`labels` 由调用方给（本函数是纯函数，不生成伪名）；
+ * 缺伪名时**回落成参与者 id** 而不是留空：留空的后果是那一整段没有归属。
+ *
+ * ⚠️ 抬头里的 `covered / total` 是**防假绿**用的：载荷只覆盖了一部分人，
+ * 而一份没有分母的名单会被读成「全班就这些人」。零份作答时 `covered` 是 0，
+ * 那句话必须照发（**不是空文档**）—— 教师点开时看到「已交 0/40 · 尚无已提交的作答」
+ * 才是对的反馈，一份空文档看起来像「功能坏了」。
+ */
+export function buildTextDocument(
+  question: QuestionMeta, entries: AnalyzeEntry[], labels: Map<string, string>,
+  covered: number, total: number,
+): string {
+  const head = [
+    `第 ${question.index + 1} 题 · ${question.typeLabel}`,
+    `题干：${question.prompt || '（题干为空）'}`,
+    `已交 ${covered}/${total}`,
+  ].join('\n');
+  if (entries.length === 0) return `${head}\n\n尚无已提交的作答。\n`;
+  const body = entries.map((entry) => {
+    const who = labels.get(entry.studentId) ?? entry.studentId;
+    if (entry.kind === 'unknown') return `【${who}】（这一份的形状本版认不出，未纳入）`;
+    const raw = entry.text ?? '';
+    if (raw.trim() === '') return `【${who}】（空白）`;
+    return `【${who}】\n${truncate(raw)}`;
+  });
+  return `${head}\n\n${body.join('\n\n')}\n`;
+}

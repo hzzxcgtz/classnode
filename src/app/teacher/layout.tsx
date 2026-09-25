@@ -17,7 +17,10 @@ import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navig
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
-  { path: '/teacher/webapps', label: '探究网页', icon: 'explore' },
+  // 2026-09-25：显示名由「探究网页」改为「探究空间」（教师裁定，只改侧栏 + 页标题两处）。
+  // ⚠️ 页内其余文案（「还没有探究网页」「无法删除探究网页」…）**暂时没动** ——
+  // 见 `webapps/page.tsx` 的副标题注释：这一页的两个词还没统一，别把它读成漏改。
+  { path: '/teacher/webapps', label: '探究空间', icon: 'explore' },
   { path: '/teacher/worksheets', label: '学习单', icon: 'clipboard' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },

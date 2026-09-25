@@ -979,7 +979,16 @@ export default function NewClassroomPage() {
                       cursor: 'pointer', fontSize: "0.875rem", fontWeight: selected ? 500 : 400,
                       transition: 'all 0.12s', fontFamily: 'inherit', maxWidth: 260,
                     }}>
-                    <span style={{ color: '#0f172a', wordBreak: 'break-all' }}>{w.name}</span>
+                    {/* 2026-09-25（教师截图批注）：名字前面加一个网页图标 —— 这几张卡片
+                        过去是**纯文字**，一眼扫过去与旁边的学习单下拉分不出是两类东西。
+                        ⚠️ 图标与**本块标题**（`关联探究网页` 那一行）用的是**同一个地球路径**，
+                        只是小一号：同一页上两个不同的地球 = 下一个人以为它们是两回事。 */}
+                    <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: '#0f172a' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                        <circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
+                      </svg>
+                      <span style={{ wordBreak: 'break-all' }}>{w.name}</span>
+                    </span>
                     <span style={{ fontSize: "0.688rem", color: '#94a3b8', wordBreak: 'break-all' }}>入口 {w.entryPath}</span>
                   </button>
                 );

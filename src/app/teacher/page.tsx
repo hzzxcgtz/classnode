@@ -701,14 +701,9 @@ export default function TeacherDashboard() {
                       ),
                       color: "#94a3b8",
                     },
-                    {
-                      label: "互动",
-                      value: (cr.students || []).reduce(
-                        (sum: number, s) => sum + (s.totalRounds || 0),
-                        0,
-                      ),
-                      color: "#2563eb",
-                    },
+                    // 2026-09-25：第三格「互动」（`totalRounds` 求和）已按教师要求**去掉**。
+                    // ⇒ 卡片上只剩「在线 / 离线」两格，它们是一对（离线 = 参与者数 − 在线），
+                    //   而「互动」是另一个量纲的累计值，去掉之后这一行反而是自洽的。
                   ].map((stat, i) => (
                     <div key={i} style={{ textAlign: "center", minWidth: 40 }}>
                       <div

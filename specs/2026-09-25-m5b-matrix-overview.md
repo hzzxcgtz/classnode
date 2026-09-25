@@ -109,7 +109,7 @@ sed -n '52,56p' src/app/teacher/classroom/worksheet-drawer.tsx
 #  2930:      {gridFullscreen && (
 #  2964:            <button onClick={() => setGridFullscreen(false)}
 ```
-它的挂载条件是 `boardMode === 'assign'`（`page.tsx:2161-2165`），理由逐字是
+它的挂载条件是 `boardMode === 'assign'`（`page.tsx:2158-2163`），理由逐字是
 「跟随模式下每格显示的是**不同**的模块，铺满之后既不像投屏讲评、也不像图墙」。
 ⇒ **那条理由对矩阵不成立**（矩阵只显示学习单进度，与「此刻在看哪个模块」无关），所以矩阵**不受 `boardMode` 约束**（§3.1）。
 

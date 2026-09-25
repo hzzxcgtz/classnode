@@ -1080,10 +1080,36 @@ function payloadFromStoredRow(
  * `stale`：「算完之后又有人交了这道题」—— 界面必须显眼说出来，否则教师会把一份不完整的
  * 名单当成当前的。
  */
-function payloadResponse(
-  payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean, stale: boolean,
-): Record<string, unknown> {
-  return { ...payload, labeled, stale };
+async function payloadResponse(
+  prisma: PrismaClient,
+  worksheetId: string,
+  payload: ReturnType<typeof buildAnalysisPayload>,
+  labeled: boolean,
+  stale: boolean,
+  analysis: { narrative: string | null; agentId: string | null; model: string | null },
+): Promise<Record<string, unknown>> {
+  // ★ M7b：**「现在能不能发」由服务端算** —— 它需要三件事，而那三件的数据都在这一侧：
+  // 有没有指定智能体 · 那个智能体启没启用 · 平台收不收得了这份载荷的形态。
+  // 前端只管把 `canSend.reason` **逐字**说出来，不复述这些规则。
+  const worksheet = await prisma.worksheet.findUnique({
+    where: { id: worksheetId }, select: { settings: true },
+  });
+  const settings = normalizeSettings((worksheet?.settings ?? {}) as Record<string, unknown>);
+  const analysisAgentId = (settings as Record<string, unknown>).analysisAgentId;
+  let analysisAgent: { name: string; platform: string } | null = null;
+  let canSend: { ok: true } | { ok: false; reason: string };
+  if (typeof analysisAgentId !== 'string' || analysisAgentId === '') {
+    canSend = { ok: false, reason: '这份学习单还没有指定分析型智能体（去学习单编辑器的「设置」里选一个）' };
+  } else {
+    const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
+    if (!agent || !agent.enabled) {
+      canSend = { ok: false, reason: '指定的分析型智能体不存在或已停用' };
+    } else {
+      analysisAgent = { name: agent.name, platform: agent.platform };
+      canSend = analysisGateOf(payload, agent.platform);
+    }
+  }
+  return { ...payload, labeled, stale, ...analysis, analysisAgent, canSend };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1130,7 +1156,13 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     // 🔴 `labeled` 必须**真算一次探针**（不是传 `null`）：界面只在 `labeled === false` 时给
     // 「编号对照表」，而 `null === false` 是假 ⇒ 那一整块 UI 永远不会渲染 ——
     // 它恰好在探针为 false 的那一刻才需要，那一刻它不存在。
-    res.json(payloadResponse(payload, await labelsRenderOk(), false));
+    // ⚠️ 刚算完时那三格是**旧值**（`upsert` 的 update 刻意不碰它们）—— 如实读库里的。
+    const fresh = await prisma.worksheetQuestionAnalysis.findUnique({
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+      select: { narrative: true, agentId: true, model: true },
+    });
+    res.json(await payloadResponse(prisma, worksheetId, payload, await labelsRenderOk(), false,
+      fresh ?? { narrative: null, agentId: null, model: null }));
   } catch (error) {
     console.error('[worksheets] 生成分析载荷失败:', error);
     res.status(500).json({ error: '生成分析载荷失败' });
@@ -1158,8 +1190,9 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     // 的 stale 用例当场抓住）。
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
-    res.json(payloadResponse(
-      payloadFromStoredRow(row, target.node, target.index, knobs), await labelsRenderOk(), stale));
+    res.json(await payloadResponse(prisma, worksheetId,
+      payloadFromStoredRow(row, target.node, target.index, knobs), await labelsRenderOk(), stale,
+      { narrative: row.narrative, agentId: row.agentId, model: row.model }));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
     res.status(500).json({ error: '读取分析载荷失败' });

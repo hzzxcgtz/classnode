@@ -467,6 +467,14 @@ export const api = {
     request<WorksheetAnalysisPayload>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}?classroomId=${encodeURIComponent(classroomId)}`),
   /**
+   * ★ M7b：**唯一会外发的那一次调用**（把全班作业发给第三方 AI）。
+   * 🔴 界面**必须**先用预览让教师确认过再调它 —— 那一步是隐私闸门的实质（用户裁定 3）。
+   */
+  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
+    request<{ narrative: string; agentId: string; model: string }>(
+      `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`,
+      { method: 'POST' }),
+  /**
    * 第 index 张联系表的图片 URL（**给 `<img src>` 用**，不走 `request`）。
    * ⚠️ 它每次请求都会重渲（服务端不存图）—— 这是「旋钮改了，旧图不会变成按旧参数画的」的代价。
    */

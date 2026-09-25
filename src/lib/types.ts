@@ -419,6 +419,23 @@ export interface WorksheetAnalysisPayload {
   labeled: boolean;
   /** 「算完之后又有人交了这道题」—— 服务端算的，界面必须显眼说出来。 */
   stale: boolean;
+  /** ★ M7b：AI 写的解读。`null` = 还没分析过（按钮没点过，或点了但失败了）。 */
+  narrative: string | null;
+  /** ★ M7b：写这段解读的智能体与平台（审计用）。 */
+  agentId: string | null;
+  model: string | null;
+  /**
+   * ★ M7b：学习单上指定的那个分析智能体（`null` = 没指定）。
+   * 只给界面**显示**用 —— 能不能发的判断在服务端（见 `canSend`）。
+   */
+  analysisAgent: { name: string; platform: string } | null;
+  /**
+   * ★ M7b：现在能不能发。`ok: false` 时 `reason` **逐字**说明为什么（界面直接显示它）。
+   *
+   * 🔴 判断在服务端 —— 它需要三件事，而那三件的数据都在那一侧：有没有指定智能体 ·
+   * 那个智能体启没启用 · 平台收不收得了这份载荷的形态。前端**不复述**这些规则。
+   */
+  canSend: { ok: true } | { ok: false; reason: string };
 }
 
 /**

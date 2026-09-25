@@ -21,6 +21,8 @@ import { api } from '@/lib/api';
 import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
+// ★ M7b：预览那几行住在**纯模块**里（它是隐私闸门的实质文本，必须有测试）
+import { analysisPreviewLines } from './analysis-preview';
 
 export function AnalysisOverlay({
   classroomId,
@@ -43,6 +45,8 @@ export function AnalysisOverlay({
   const [error, setError] = useState<string | null>(null);
   /** ★ 联系表的图没取回来（服务端缺 sharp 时回 503）。没有它，界面上只有一个**坏图**。 */
   const [sheetFailed, setSheetFailed] = useState(false);
+  /** ★ M7b：正在让教师确认「本次将发什么」（裁定 3：发之前必须看见）。 */
+  const [confirming, setConfirming] = useState(false);
 
   /** 打开时先读已存的（不重算）；没算过则算一次。 */
   const load = useCallback(async () => {
@@ -81,6 +85,36 @@ export function AnalysisOverlay({
 
   const unit = moduleCountUnit(mode);
   const sheets = payload?.sheetLayouts ?? [];
+
+  // ★ M7b：预览那几行。**调纯模块**，不在 JSX 里拼 —— 它是承重的文本（教师据此决定发不发）。
+  const previewLines = payload && payload.analysisAgent ? analysisPreviewLines({
+    agentName: payload.analysisAgent.name,
+    platform: payload.analysisAgent.platform,
+    sendable: {
+      covered: payload.covered, total: payload.total, payloadKind: payload.payloadKind,
+      sheetCount: payload.sheetLayouts.length,
+      columns: payload.knobs.columns, cellWidth: payload.knobs.cellWidth, cellHeight: payload.knobs.cellHeight,
+    },
+    unit,
+    blockedReason: payload.canSend.ok ? null : payload.canSend.reason,
+  }) : [];
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api.runWorksheetAnalysis(classroomId, worksheetId, questionId);
+      // 只把那三格合进去（`aggregate`/`covered` 那些是载荷那一侧，这次一个都没动）
+      setPayload((prev) => (prev ? { ...prev, ...out } : prev));
+      setConfirming(false);
+    } catch (e) {
+      // 🔴 失败**不动 payload.narrative** —— 已有的解读必须原样留在屏幕上
+      // （服务端也没写库；两边都不动，才叫「失败不丢东西」）。
+      setError(e instanceof Error ? e.message : '分析失败');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
@@ -183,6 +217,37 @@ export function AnalysisOverlay({
         )}
       </div>
 
+      {/* ★ M7b：解读显示在文档/图**之后**，视觉上与它们分开 —— AI 写的东西不该看起来
+          像学生写的。 */}
+      {!loading && payload?.narrative && (
+        <div style={{ margin: '0 18px 18px', padding: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10 }}>
+          <div style={{ fontSize: '0.8rem', color: '#0369a1', marginBottom: 6 }}>
+            AI 解读{payload.model ? `（${payload.model}）` : ''}
+          </div>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.85rem', lineHeight: 1.7, fontFamily: 'inherit', color: '#0f172a' }}>
+            {payload.narrative}
+          </pre>
+        </div>
+      )}
+
+      {/* ★ M7b：确认块（**浮层内的一个块**，不是新浮层 —— 层级已定死 270）。 */}
+      {confirming && (
+        <div style={{ margin: '0 18px 12px', padding: 12, border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 10 }}>
+          <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 6 }}>即将把下面这些发给第三方 AI：</div>
+          <ul style={{ margin: '0 0 10px', paddingLeft: 20, fontSize: '0.82rem', color: '#78350f', lineHeight: 1.9 }}>
+            {previewLines.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+          <button type="button" onClick={run} disabled={busy}
+            style={{ border: '1px solid #b45309', background: '#fff', borderRadius: 10, padding: '6px 16px', cursor: busy ? 'default' : 'pointer', color: '#92400e', opacity: busy ? 0.5 : 1 }}>
+            {busy ? '发送中…' : '确认发送'}
+          </button>
+          <button type="button" onClick={() => setConfirming(false)} disabled={busy}
+            style={{ marginLeft: 8, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 10, padding: '6px 16px', cursor: busy ? 'default' : 'pointer', color: '#334155' }}>
+            取消
+          </button>
+        </div>
+      )}
+
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
         borderTop: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',
@@ -192,13 +257,28 @@ export function AnalysisOverlay({
           style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 10, padding: '8px 16px', cursor: busy ? 'default' : 'pointer', color: '#334155', opacity: busy ? 0.5 : 1 }}>
           {busy ? '生成中…' : '重新生成'}
         </button>
-        <button type="button" disabled
-          style={{ border: '1px solid #e2e8f0', background: '#f1f5f9', borderRadius: 10, padding: '8px 16px', cursor: 'not-allowed', color: '#94a3b8' }}>
+        {/* ★ M7b：这个按钮**活了** —— 但点它只打开预览，**确认之后**才真的发出去
+            （用户裁定 3）。`canSend.ok` 与那句话都是**服务端**给的判断。 */}
+        <button type="button" disabled={!payload?.canSend.ok || busy}
+          onClick={() => setConfirming(true)}
+          title={payload && !payload.canSend.ok ? payload.canSend.reason : undefined}
+          style={{
+            border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 16px',
+            cursor: payload?.canSend.ok ? 'pointer' : 'not-allowed',
+            background: payload?.canSend.ok ? '#fff' : '#f1f5f9',
+            color: payload?.canSend.ok ? '#334155' : '#94a3b8',
+          }}>
           发给 AI 分析
         </button>
-        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-          尚未接入第三方 AI（本版不外发任何数据）
-        </span>
+        {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
+        {payload && !payload.canSend.ok && (
+          <span style={{ fontSize: '0.78rem', color: '#b45309' }}>{payload.canSend.reason}</span>
+        )}
+        {payload?.canSend.ok && !confirming && (
+          <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+            点它会先给你看一遍「本次将发什么」
+          </span>
+        )}
       </div>
     </div>
   );

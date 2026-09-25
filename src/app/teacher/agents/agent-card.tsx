@@ -58,6 +58,14 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
               ⚠️ 计数只在确实有值时才渲染：显示硬凑的 0 会让「数据没读到」和
               「读了、确实是 0」长得一样。
             */}
+          </div>
+          {/* ★ 2026-09-25（教师截图批注）：「这个直接放下一行，和右边一样」。
+              🔴 原委与**网页卡片**那一处逐字相同（同一个 `flexWrap` 行、同一种观感事故）：
+              它与平台标签挤在**同一个会换行的行**里 —— 标签少就并排（截图右边那张），
+              标签多就掉到下一行（左边那张）。⇒ 同一个组件在不同数据下**行数不一样**，
+              一排卡片扫过去是散的。
+              现在**结构固定**：平台标签自己一行，关联课堂自己一行，与标签多少无关。 */}
+          <div style={{ marginTop: 5 }}>
             <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />

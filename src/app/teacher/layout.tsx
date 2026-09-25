@@ -529,7 +529,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     它挂在这个 icon 容器上（容器随图标一起居中），不是挂在文字上。 */}
                 {item.path === '/teacher/agents' && tokenNeedsAttention && (
                   <span
-                    title="有访问令牌需要处理"
+                    title="有扣子访问令牌需要处理"
                     style={{
                       position: 'absolute', top: -1, right: -1,
                       width: 7, height: 7, borderRadius: '50%',

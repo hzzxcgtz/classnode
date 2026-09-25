@@ -107,7 +107,7 @@ export default function AgentsPage() {
               它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
           <button className="btn btn-secondary" onClick={() => setShowTokens(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>
-            访问令牌
+            扣子访问令牌
           </button>
           <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -135,7 +135,7 @@ export default function AgentsPage() {
           <span style={{ flex: 1, minWidth: 0 }}>
             {expiringTokens.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <strong>访问令牌快到期了</strong>
+                <strong>扣子访问令牌快到期了</strong>
                 {expiringTokens.map(({ row, expiry }) => (
                   <span key={row.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontWeight: 600 }}>{row.label}</span>
@@ -147,7 +147,7 @@ export default function AgentsPage() {
             )}
             {unsetTokens.length > 0 && (
               <div style={{ marginTop: expiringTokens.length > 0 ? 4 : 0 }}>
-                还有 <strong>{unsetTokens.length}</strong> 份访问令牌没填有效期（{unsetTokens.map((row) => row.label).join('、')}）——
+                还有 <strong>{unsetTokens.length}</strong> 份扣子访问令牌没填有效期（{unsetTokens.map((row) => row.label).join('、')}）——
                 填了我们才能提前提醒你。
               </div>
             )}
@@ -402,7 +402,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
               </div>
               {platform === 'coze' && (
                 <button type="button" className="btn btn-primary agent-coze-fetch-button" onClick={handleFetchInfo} disabled={!canFetchCozeInfo || fetchingInfo}
-                  title={canFetchCozeInfo ? '自动填入头像、名称和开场白' : '请先填写 Bot ID 和访问令牌'}>
+                  title={canFetchCozeInfo ? '自动填入头像、名称和开场白' : '请先填写 Bot ID 和扣子访问令牌'}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                   {fetchingInfo ? '获取中...' : '从 Coze 获取资料'}
                 </button>

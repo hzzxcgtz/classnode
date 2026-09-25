@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
     res.json(rows.map((row) => toView(row, counts.get(row.id) ?? 0)));
   } catch (error) {
     console.error('[PlatformToken] list error:', error);
-    res.status(500).json({ error: '获取访问令牌列表失败' });
+    res.status(500).json({ error: '获取扣子访问令牌列表失败' });
   }
 });
 
@@ -93,7 +93,7 @@ router.post('/', async (req, res) => {
     const { label, token, platform } = req.body ?? {};
     // 备注必填：一份没有名字的凭据，在一份列表里等于没有（spec §一）。
     if (typeof label !== 'string' || label.trim() === '') return res.status(400).json({ error: '请填写备注（这是谁的账号）' });
-    if (typeof token !== 'string' || token.trim() === '') return res.status(400).json({ error: '请填写访问令牌' });
+    if (typeof token !== 'string' || token.trim() === '') return res.status(400).json({ error: '请填写扣子访问令牌' });
     const expiresAt = readExpiresAt(req.body?.expiresAt);
     if (expiresAt === undefined && req.body?.expiresAt !== undefined) {
       return res.status(400).json({ error: '有效期格式不正确' });
@@ -111,7 +111,7 @@ router.post('/', async (req, res) => {
     res.json(toView(row, 0));
   } catch (error) {
     console.error('[PlatformToken] create error:', error);
-    res.status(500).json({ error: '新建访问令牌失败' });
+    res.status(500).json({ error: '新建扣子访问令牌失败' });
   }
 });
 
@@ -119,7 +119,7 @@ router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const existing = await prisma.platformToken.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ error: '访问令牌不存在' });
+    if (!existing) return res.status(404).json({ error: '扣子访问令牌不存在' });
 
     const { label, token } = req.body ?? {};
     const data: { label?: string; token?: string; expiresAt?: Date | null } = {};
@@ -140,7 +140,7 @@ router.put('/:id', async (req, res) => {
     res.json(toView(row, agentCount));
   } catch (error) {
     console.error('[PlatformToken] update error:', error);
-    res.status(500).json({ error: '保存访问令牌失败' });
+    res.status(500).json({ error: '保存扣子访问令牌失败' });
   }
 });
 
@@ -154,7 +154,7 @@ router.get('/:id/usage', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const token = await prisma.platformToken.findUnique({ where: { id: req.params.id }, select: { id: true } });
-    if (!token) return res.status(404).json({ error: '访问令牌不存在' });
+    if (!token) return res.status(404).json({ error: '扣子访问令牌不存在' });
     const agents = await prisma.agent.findMany({
       where: { credentialId: req.params.id },
       select: { id: true, name: true, platform: true },
@@ -171,7 +171,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
     const token = await prisma.platformToken.findUnique({ where: { id: req.params.id }, select: { id: true } });
-    if (!token) return res.status(404).json({ error: '访问令牌不存在' });
+    if (!token) return res.status(404).json({ error: '扣子访问令牌不存在' });
 
     // 🔴 先查引用再删，**不靠外键兜底**：外键回的是一个 500 级的 Prisma 错误，
     //    教师看到「删除失败」而不知道是哪几个智能体在用它 —— 一个说不出原因的拒绝，
@@ -191,7 +191,7 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('[PlatformToken] delete error:', error);
-    res.status(500).json({ error: '删除访问令牌失败' });
+    res.status(500).json({ error: '删除扣子访问令牌失败' });
   }
 });
 

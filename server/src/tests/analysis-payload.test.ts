@@ -38,7 +38,6 @@ test('只收 status === "submitted"，未作答与草稿都不进载荷', () => 
   assert.deepEqual(entries.map((e) => e.studentId), ['p1']);
   assert.equal(entries[0].kind, 'text');
   assert.equal(entries[0].text, '甲');
-  assert.equal(entries[0].displayName, '张三');
 });
 
 test('🔴 零份已提交 ⇒ 空数组（不抛、不造一条假的）', () => {
@@ -101,9 +100,9 @@ test('参与者名单里查不到的作答行被丢掉（脏数据不抛）', ()
 });
 
 test('形态：全文字 ⇒ text · 全笔迹 ⇒ image · 混杂 ⇒ mixed · 全 unknown/空 ⇒ text', () => {
-  const t = (id: string) => ({ studentId: id, displayName: id, kind: 'text' as const, text: 'x' });
-  const i = (id: string) => ({ studentId: id, displayName: id, kind: 'ink' as const, ink: ink(1) as never });
-  const u = (id: string) => ({ studentId: id, displayName: id, kind: 'unknown' as const });
+  const t = (id: string) => ({ studentId: id, kind: 'text' as const, text: 'x' });
+  const i = (id: string) => ({ studentId: id, kind: 'ink' as const, ink: ink(1) as never });
+  const u = (id: string) => ({ studentId: id, kind: 'unknown' as const });
   assert.equal(payloadKindOf([t('a'), t('b')]), 'text');
   assert.equal(payloadKindOf([i('a'), i('b')]), 'image');
   assert.equal(payloadKindOf([t('a'), i('b')]), 'mixed');
@@ -129,8 +128,8 @@ const docLabels = new Map([['p1', 'User_001'], ['p2', 'User_002'], ['p3', 'User_
 
 test('文档：抬头有题号/题型/题干/覆盖数，逐条带伪名，顺序就是入参顺序', () => {
   const doc = buildTextDocument(meta, [
-    { studentId: 'p1', displayName: '张三', kind: 'text', text: '我认为是甲' },
-    { studentId: 'p2', displayName: '李四', kind: 'text', text: '我觉得是乙' },
+    { studentId: 'p1', kind: 'text', text: '我认为是甲' },
+    { studentId: 'p2', kind: 'text', text: '我觉得是乙' },
   ], docLabels, 12, 40);
   assert.match(doc, /第 3 题/);          // index 是 0-based ⇒ 屏幕上是 3
   assert.match(doc, /问答题/);
@@ -154,7 +153,7 @@ test('🔴 零份已提交 ⇒ 仍然是一份说得清的文档（不是空字�
 test('🔴 超长答案被截断，且**说出来**（不许悄悄砍）', () => {
   const long = '甲'.repeat(ANSWER_TEXT_MAX + 500);
   const doc = buildTextDocument(meta,
-    [{ studentId: 'p1', displayName: '张三', kind: 'text', text: long }], docLabels, 1, 40);
+    [{ studentId: 'p1', kind: 'text', text: long }], docLabels, 1, 40);
   assert.ok(!doc.includes(long), '不该原样带出超长答案');
   assert.match(doc, /已截断/, '截断必须有一句说明');
   assert.ok(doc.includes('甲'.repeat(ANSWER_TEXT_MAX)), '前 ANSWER_TEXT_MAX 个字要保留');
@@ -164,15 +163,15 @@ test('🔴 超长答案被截断，且**说出来**（不许悄悄砍）', () =>
 test('刚好 ANSWER_TEXT_MAX 个字不截断（边界不多不少）', () => {
   const exact = '乙'.repeat(ANSWER_TEXT_MAX);
   const doc = buildTextDocument(meta,
-    [{ studentId: 'p1', displayName: '张三', kind: 'text', text: exact }], docLabels, 1, 40);
+    [{ studentId: 'p1', kind: 'text', text: exact }], docLabels, 1, 40);
   assert.ok(doc.includes(exact));
   assert.ok(!doc.includes('已截断'), '刚好到上限不该标截断');
 });
 
 test('🔴 空白答案与「认不出」的条目都要在文档里说出来（不能只剩一个伪名）', () => {
   const doc = buildTextDocument(meta, [
-    { studentId: 'p1', displayName: '张三', kind: 'text', text: '   ' },
-    { studentId: 'p2', displayName: '李四', kind: 'unknown' },
+    { studentId: 'p1', kind: 'text', text: '   ' },
+    { studentId: 'p2', kind: 'unknown' },
   ], docLabels, 2, 40);
   assert.match(doc, /User_001[\s\S]*?空白/, '空文字要说「空白」');
   assert.match(doc, /User_002[\s\S]*?认不出/, 'unknown 要说「认不出」');
@@ -180,7 +179,7 @@ test('🔴 空白答案与「认不出」的条目都要在文档里说出来（
 
 test('缺伪名时回落成参与者 id（不抛、不留空）', () => {
   const doc = buildTextDocument(meta,
-    [{ studentId: 'pX', displayName: '某人', kind: 'text', text: 'x' }], new Map(), 1, 40);
+    [{ studentId: 'pX', kind: 'text', text: 'x' }], new Map(), 1, 40);
   assert.match(doc, /pX/);
 });
 
@@ -194,7 +193,6 @@ test('题干为空时不留一个空洞（写「（题干为空）」）', () =>
 const PT: [number, number] = [0, 0];
 const inkEntries = (n: number): AnalyzeEntry[] => Array.from({ length: n }, (_, i) => ({
   studentId: `p${String(i + 1).padStart(3, '0')}`,
-  displayName: `学生${i + 1}`,
   kind: 'ink' as const,
   ink: { format: 'ink/v1' as const, canvas: { w: 320, h: 240 }, strokes: [{ points: [PT, [1, 1]], width: 0.01, color: '#111111' }] },
 }));
@@ -245,10 +243,10 @@ test('画布尺寸 = 外边距 + 列宽 + 间距 + 行高（含每行的标签�
 
 test('🔴 空笔迹与「认不出」也要占一格（丢了就让 covered 与格子数对不上）', () => {
   const entries: AnalyzeEntry[] = [
-    { studentId: 'p001', displayName: '甲', kind: 'ink',
+    { studentId: 'p001', kind: 'ink',
       ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
-    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
-    { studentId: 'p003', displayName: '丙', kind: 'text', text: '这题我写文字了' },
+    { studentId: 'p002', kind: 'unknown' },
+    { studentId: 'p003', kind: 'text', text: '这题我写文字了' },
   ];
   const labels = new Map([['p001', 'User_001'], ['p002', 'User_002'], ['p003', 'User_003']]);
   const [sheet] = layoutSheets(entries, labels, DEFAULT_ANALYSIS_KNOBS);
@@ -290,16 +288,15 @@ test('🔴 旋钮归一化：坏值/越界/缺字段一律回落默认（不抛�
 
 test('往返：条目 → aggregate → 条目，内容与顺序都不变', () => {
   const entries: AnalyzeEntry[] = [
-    { studentId: 'p1', displayName: '张三', kind: 'text', text: '甲' },
-    { studentId: 'p2', displayName: '李四', kind: 'ink', ink: ink(2) as never },
-    { studentId: 'p3', displayName: '王五', kind: 'unknown' },
+    { studentId: 'p1', kind: 'text', text: '甲' },
+    { studentId: 'p2', kind: 'ink', ink: ink(2) as never },
+    { studentId: 'p3', kind: 'unknown' },
   ];
   const back = entriesFromAggregate(entriesToAggregate(entries));
   assert.deepEqual(back.map((e) => [e.studentId, e.kind, e.text ?? null]), [
     ['p1', 'text', '甲'], ['p2', 'ink', null], ['p3', 'unknown', null],
   ]);
   assert.equal(back[1].ink?.strokes.length, 2);
-  assert.equal(back[1].displayName, '李四');
 });
 
 test('🔴 脏 aggregate 不抛：坏行落 unknown / 被跳过，整体不是数组 ⇒ 空数组', () => {
@@ -309,14 +306,14 @@ test('🔴 脏 aggregate 不抛：坏行落 unknown / 被跳过，整体不是�
   // 有条目但没有 studentId ⇒ 跳过（它没法归属，也占不了一格）
   assert.deepEqual(entriesFromAggregate([{ kind: 'text', text: 'x' }]), []);
   // kind 是没见过的值 ⇒ unknown（不是丢）
-  const back = entriesFromAggregate([{ studentId: 'p1', displayName: '甲', kind: '未来题型', text: null, ink: null }]);
+  const back = entriesFromAggregate([{ studentId: 'p1', kind: '未来题型', text: null, ink: null }]);
   assert.deepEqual(back.map((e) => e.kind), ['unknown']);
   // kind 是 ink 但 ink 坏了 ⇒ unknown（不是丢，也不是抛）
   const badInk = entriesFromAggregate([{ studentId: 'p1', kind: 'ink', ink: { format: 'ink/v1', canvas: { w: 'x' } } }]);
   assert.deepEqual(badInk.map((e) => e.kind), ['unknown']);
-  // displayName 缺失 ⇒ 回落 studentId（图上的标签不会空着）
-  const noName = entriesFromAggregate([{ studentId: 'p9', kind: 'text', text: 'x' }]);
-  assert.equal(noName[0].displayName, 'p9');
+  // 只给 studentId 的最小合法行（`displayName` 已从类型里去掉了 —— 见 `AnalyzeEntry` 的注释）
+  const minimal = entriesFromAggregate([{ studentId: 'p9', kind: 'text', text: 'x' }]);
+  assert.deepEqual(minimal.map((e) => [e.studentId, e.kind, e.text]), [['p9', 'text', 'x']]);
 });
 
 /* ── 陈旧判定 ─────────────────────────────────────────────────────────── */

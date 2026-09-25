@@ -18,6 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 
@@ -40,6 +41,8 @@ export function AnalysisOverlay({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** ★ 联系表的图没取回来（服务端缺 sharp 时回 503）。没有它，界面上只有一个**坏图**。 */
+  const [sheetFailed, setSheetFailed] = useState(false);
 
   /** 打开时先读已存的（不重算）；没算过则算一次。 */
   const load = useCallback(async () => {
@@ -48,8 +51,11 @@ export function AnalysisOverlay({
     try {
       try {
         setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId));
-      } catch {
-        // 还没算过（404）⇒ 由「打开即算」承接。其他错误由第二次调用抛出并显示。
+      } catch (e) {
+        // 🔴 **只把 404 当成「还没算过」**。原先 `catch {}` 吞掉一切再改写 ——
+        // 那会把 GET 的真失败（网络断、500、库坏）当成「没算过」而**触发一次 POST**，
+        // 于是教师看到的是第二次调用的错误，而第一次的真因被丢掉（独立审查 M7）。
+        if (!isNotFound(e)) throw e;
         setPayload(await api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
       }
     } catch (e) {
@@ -154,10 +160,18 @@ export function AnalysisOverlay({
                 <img
                   src={api.worksheetAnalysisSheetUrl(classroomId, worksheetId, questionId, sheet.sheetIndex)}
                   alt={`第 ${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
+                  // ★ 取不回来时**说一句**（服务端缺 sharp 的能力时回 503）——
+                  // 没有它，界面上只有一个坏图，而教师不知道是「坏了」还是「本来就空」。
+                  onError={() => setSheetFailed(true)}
                   style={{ maxWidth: '100%', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}
                 />
               </div>
             ))}
+            {sheetFailed && (
+              <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem' }}>
+                ⚠️ 联系表**画不出来**（本机没有图片渲染能力，服务端回了 503）—— 文字那部分若存在仍然可读。
+              </div>
+            )}
             {payload.labeled === false && (
               <ol style={{ margin: '0 0 18px', paddingLeft: 22, fontSize: '0.82rem', color: '#334155' }}>
                 {payload.entries.map((entry) => (

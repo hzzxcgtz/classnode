@@ -42,10 +42,14 @@ export interface Participant {
  */
 export interface AnalyzeEntry {
   studentId: string;
-  displayName: string;
   kind: 'text' | 'ink' | 'unknown';
   text?: string;
   ink?: InkValue;
+  // 🔴 **这里刻意没有 `displayName`。**
+  // 原先有，而它**只写不读**：文档与联系表上的标签都走伪名（`payloadLabels` 按 `studentId` 的
+  // 序派生），真名一次都没被显示过（独立审查 M3）。它却被写进了 `aggregate`，
+  // 于是库里多一份**用不上的真名副本** —— 而将来那道缝若图省事从 `aggregate` 取数发出去，
+  // 真名会跟着走。少一份这种副本，就少一处将来要审的地方。
 }
 
 /** 从作答值里认出文字。`text/v1` 是本仓问答题的格式（`WorksheetAnswerValue`）。 */
@@ -129,24 +133,24 @@ function readStrokes(raw: unknown[]): InkValue['strokes'] {
 export function selectAnalyzeEntries(
   answers: RawAnswer[], participants: Participant[], questionId: string,
 ): AnalyzeEntry[] {
-  const nameById = new Map(participants.map((p) => [p.participantId, p.name]));
+  // 参与者名单仍然要 —— 它挡的是「库里有一行谁的名单里都没有的作答」（脏数据）。
+  const known = new Set(participants.map((p) => p.participantId));
   const out: AnalyzeEntry[] = [];
   for (const answer of answers) {
     if (answer.questionId !== questionId) continue;
     if (answer.status !== 'submitted') continue;
-    const displayName = nameById.get(answer.participantId);
-    if (displayName === undefined) continue;
+    if (!known.has(answer.participantId)) continue;
     const text = readText(answer.value);
     if (text !== null) {
-      out.push({ studentId: answer.participantId, displayName, kind: 'text', text });
+      out.push({ studentId: answer.participantId, kind: 'text', text });
       continue;
     }
     const ink = readInk(answer.value);
     if (ink) {
-      out.push({ studentId: answer.participantId, displayName, kind: 'ink', ink });
+      out.push({ studentId: answer.participantId, kind: 'ink', ink });
       continue;
     }
-    out.push({ studentId: answer.participantId, displayName, kind: 'unknown' });
+    out.push({ studentId: answer.participantId, kind: 'unknown' });
   }
   return out.sort((a, b) => (a.studentId < b.studentId ? -1 : a.studentId > b.studentId ? 1 : 0));
 }
@@ -454,7 +458,6 @@ export function buildAnalysisPayload(input: {
 export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string, unknown>> {
   return entries.map((entry) => ({
     studentId: entry.studentId,
-    displayName: entry.displayName,
     kind: entry.kind,
     text: entry.text ?? null,
     ink: entry.ink ?? null,
@@ -475,10 +478,9 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
     if (typeof row.studentId !== 'string' || row.studentId === '') continue;
-    const displayName = typeof row.displayName === 'string' ? row.displayName : row.studentId;
     if (row.kind === 'text') {
       out.push({
-        studentId: row.studentId, displayName, kind: 'text',
+        studentId: row.studentId, kind: 'text',
         text: typeof row.text === 'string' ? row.text : '',
       });
       continue;
@@ -486,11 +488,11 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
     if (row.kind === 'ink') {
       const ink = readInk(row.ink);
       out.push(ink
-        ? { studentId: row.studentId, displayName, kind: 'ink', ink }
-        : { studentId: row.studentId, displayName, kind: 'unknown' });
+        ? { studentId: row.studentId, kind: 'ink', ink }
+        : { studentId: row.studentId, kind: 'unknown' });
       continue;
     }
-    out.push({ studentId: row.studentId, displayName, kind: 'unknown' });
+    out.push({ studentId: row.studentId, kind: 'unknown' });
   }
   return out;
 }

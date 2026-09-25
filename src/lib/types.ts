@@ -377,7 +377,9 @@ export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
  * 派生物，见规格 §3.1 决定 1）。所以这个类型里只有 `sheetLayouts`（每张的尺寸与格数）。
  */
 export interface WorksheetAnalysisPayload {
-  worksheetId: string;
+  // ⚠️ **没有 `worksheetId` / `computedAt`** —— 服务端的 `payloadResponse` 回的是
+  // `{ ...buildAnalysisPayload(...), labeled, stale }`，而那两个字段不在里面（独立审查 M1）。
+  // 类型上写着它们，读的人会以为拿得到，而 `payload.computedAt` 会**静默是 `undefined`**。
   questionId: string;
   /** 「第 N 题」（服务端按拍平题序算好，1-based）。 */
   questionLabel: string;
@@ -401,7 +403,6 @@ export interface WorksheetAnalysisPayload {
   labeled: boolean;
   /** 「算完之后又有人交了这道题」—— 服务端算的，界面必须显眼说出来。 */
   stale: boolean;
-  computedAt: string;
 }
 
 /**

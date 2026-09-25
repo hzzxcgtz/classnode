@@ -903,7 +903,9 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
 // 那是全仓唯一的网络出口，便于合规审查。
 //
 // 🔴 **鉴权**：这三条路径是三段 / 四段，**不匹配** `worksheetAccessGate` 放行学生的
-// 那四条正则（都是「恰好两段」）⇒ 自然落到 `requireTeacher`。
+// 那四条放行学生的形状里，三条是「恰好两段」、`answers/submit` 是**三段** ——
+// 但这三条新路径（`…/analysis/…` 与 `…/analysis/…/sheet/…`）**一条都不匹配** ⇒ 自然落到
+// `requireTeacher`。（原先这里写「都是恰好两段」，不实 —— 独立审查 M6 抓到；结论不变。）
 // `analysis-endpoint.test.ts` 有一条「学生 token 打这三条路径一律 403」把它钉住 ——
 // 改路径形状时要重新确认那一条。
 
@@ -1042,7 +1044,7 @@ function readClassroomIdQuery(raw: unknown): string | null {
 
 /** 把一行库里的记录重建成载荷（`GET` 与 sheet 端点共用）。 */
 function payloadFromStoredRow(
-  row: { payloadKind: string; aggregate: unknown; coveredCount: number; totalCount: number },
+  row: { aggregate: unknown; totalCount: number },
   node: QuestionNode, index: number, knobs: SheetKnobs,
 ): ReturnType<typeof buildAnalysisPayload> {
   const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, index };
@@ -1090,18 +1092,17 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
 
     await prisma.worksheetQuestionAnalysis.upsert({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+      // ⚠️ 只写 `aggregate` + `totalCount`：`payloadKind` 与「已交数」都从 `aggregate` 推得出来，
+      // 各存一列等于给同一件事留两个会静默分叉的来源（独立审查 M4）。`totalCount` 不同 ——
+      // 它是**冻结的分母**，从 `aggregate` 里推不出来（没作答的人不进条目）。
       update: {
-        payloadKind: payload.payloadKind,
         aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
-        coveredCount: entries.length,
         totalCount: participants.length,
         computedAt: new Date(),
       },
       create: {
         classroomId, worksheetId, questionId,
-        payloadKind: payload.payloadKind,
         aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
-        coveredCount: entries.length,
         totalCount: participants.length,
       },
     });

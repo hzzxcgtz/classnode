@@ -460,9 +460,11 @@ model WorksheetQuestionAnalysis {
   classroomId  String
   worksheetId  String
   questionId   String   // content 树里的稳定 id，**不是下标**（与 WorksheetAnswer.questionId 同口径）
-  payloadKind  String   // 'text' | 'image' | 'mixed'
+  // 🔴 `aggregate` 是**唯一的事实来源**：`payloadKind` 由 `payloadKindOf(entries)` 算、
+  // 「已交数」就是 `entries.length`。这两样原先各占一列，而**没有任何地方读它们**
+  // —— 那等于给同一件事留了两个会静默分叉的来源（独立审查 M4）。已删。
+  // ⚠️ `totalCount` **留着**：它是冻结的分母，`aggregate` 里推不出来（分母可能大于条目数）。
   aggregate    Json     // 本地聚合的结构化快照 —— 唯一的事实来源
-  coveredCount Int      // 已提交该题的参与者数
   totalCount   Int      // 该题应作答的参与者数（高级模式下**不是**全班人数）
   computedAt   DateTime @default(now())
   // ↓ 下面四格本版恒为 null —— 它们就是「留的接口」（用户 2026-09-25 裁定 1）

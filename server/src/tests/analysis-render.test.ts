@@ -20,7 +20,6 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 
 const inkEntry = (id: string, strokes: number): AnalyzeEntry => ({
   studentId: id,
-  displayName: id,
   kind: 'ink',
   ink: {
     format: 'ink/v1',
@@ -60,10 +59,10 @@ test('多张：40 份 ⇒ 4 张图，每张都是真 PNG', async () => {
 
 test('🔴 空笔迹与 unknown 的格子不阻断渲染（那一格画成灰底，整张图照出）', async () => {
   const entries: AnalyzeEntry[] = [
-    { studentId: 'p1', displayName: '甲', kind: 'ink',
+    { studentId: 'p1', kind: 'ink',
       ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
-    { studentId: 'p2', displayName: '乙', kind: 'unknown' },
-    { studentId: 'p3', displayName: '丙', kind: 'text', text: '写了文字' },
+    { studentId: 'p2', kind: 'unknown' },
+    { studentId: 'p3', kind: 'text', text: '写了文字' },
     inkEntry('p4', 5),
   ];
   const layouts = layoutSheets(entries, labels(['p1', 'p2', 'p3', 'p4']), DEFAULT_ANALYSIS_KNOBS);
@@ -98,7 +97,7 @@ test('🔴 探针与渲染必须自洽：探针说不能画标签时，renderShe
 
 test('🔴 一格的画布框量不出来（canvas = 0×0）不阻断渲染（落回默认比例）', async () => {
   const entries: AnalyzeEntry[] = [{
-    studentId: 'p1', displayName: '甲', kind: 'ink',
+    studentId: 'p1', kind: 'ink',
     ink: {
       format: 'ink/v1', canvas: { w: 0, h: 0 },
       strokes: [{ points: [[0, 0], [1, 1]] as Array<[number, number]>, width: 0.01, color: '#111111' }],
@@ -113,7 +112,7 @@ test('🔴 一格的画布框量不出来（canvas = 0×0）不阻断渲染（�
 
 test('🔴 笔画颜色坏掉（不是 #rgb / #rrggbb）不阻断渲染（回落常量色）', async () => {
   const entries: AnalyzeEntry[] = [{
-    studentId: 'p1', displayName: '甲', kind: 'ink',
+    studentId: 'p1', kind: 'ink',
     ink: {
       format: 'ink/v1', canvas: { w: 320, h: 240 },
       strokes: [{ points: [[0, 0], [1, 1]] as Array<[number, number]>, width: 0.01, color: 'red; }</svg><script>' }],
@@ -128,8 +127,8 @@ test('🔴 笔画颜色坏掉（不是 #rgb / #rrggbb）不阻断渲染（回落
 test('🔴 退化路径（labeled=false）：SVG 里**一个 `<text>` 都没有**（缺 fontconfig 时全靠它）', () => {
   const entries: AnalyzeEntry[] = [
     inkEntry('p001', 2),
-    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
-    { studentId: 'p003', displayName: '丙', kind: 'ink',
+    { studentId: 'p002', kind: 'unknown' },
+    { studentId: 'p003', kind: 'ink',
       ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
   ];
   const layouts = layoutSheets(entries, labels(['p001', 'p002', 'p003']), DEFAULT_ANALYSIS_KNOBS);
@@ -142,8 +141,8 @@ test('🔴 退化路径（labeled=false）：SVG 里**一个 `<text>` 都没有*
 test('正常路径（labeled=true）：标签与占位文案都在，且文字都转义过', () => {
   const entries: AnalyzeEntry[] = [
     inkEntry('p001', 2),
-    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
-    { studentId: 'p003', displayName: '丙', kind: 'ink',
+    { studentId: 'p002', kind: 'unknown' },
+    { studentId: 'p003', kind: 'ink',
       ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
   ];
   const layouts = layoutSheets(entries, labels(['p001', 'p002', 'p003']), DEFAULT_ANALYSIS_KNOBS);
@@ -167,7 +166,7 @@ test('🔴 mixed 里**文字作答**那一格不能写「（空白）」—— �
   // 文字那几格的笔迹是空的 ⇒ 原先落进「（空白）」那一支，而这张图将来是**发给模型**的那份东西
   // ⇒ 模型会读到「这几位没答」。
   const entries: AnalyzeEntry[] = [
-    { studentId: 'p001', displayName: '甲', kind: 'text', text: '我写的是文字答案' },
+    { studentId: 'p001', kind: 'text', text: '我写的是文字答案' },
     inkEntry('p002', 2),
   ];
   const layouts = layoutSheets(entries, labels(['p001', 'p002']), DEFAULT_ANALYSIS_KNOBS);
@@ -178,9 +177,9 @@ test('🔴 mixed 里**文字作答**那一格不能写「（空白）」—— �
 
 test('三种占位文案分得开：空白 / 形状认不出 / 文字作答', () => {
   const entries: AnalyzeEntry[] = [
-    { studentId: 'p001', displayName: '甲', kind: 'ink', ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
-    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
-    { studentId: 'p003', displayName: '丙', kind: 'text', text: 'x' },
+    { studentId: 'p001', kind: 'ink', ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
+    { studentId: 'p002', kind: 'unknown' },
+    { studentId: 'p003', kind: 'text', text: 'x' },
   ];
   const layouts = layoutSheets(entries, labels(['p001', 'p002', 'p003']), DEFAULT_ANALYSIS_KNOBS);
   const svg = buildSheetSvg(entries, layouts[0], true);

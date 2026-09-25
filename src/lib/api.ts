@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from './api-base';
+import { HttpError } from './http-error';
 import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload } from './types';
 
 let studentSessionToken = '';
@@ -29,7 +30,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `请求失败 (HTTP ${res.status})` }));
-    throw new Error(err.error || `HTTP ${res.status}`);
+    throw new HttpError(err.error || `HTTP ${res.status}`, res.status);
   }
   return res.json();
 }

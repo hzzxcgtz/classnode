@@ -14,14 +14,22 @@ import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navig
  * 漏了不会报错、也不会构建失败 —— 那一项只是渲染成一个没有图标的空位（label 还在，
  * 布局不塌，所以肉眼很容易放过）。改这个数组时请顺手 grep 一次图标 switch。
  */
+/**
+ * ★ 2026-09-25（教师截图批注）：**「AI智能体」与「学习单」交换位置**。
+ * 换完之后前三项正好是**学生那三件套的名字**（学习单 / 探究空间 / AI智能体），
+ * 顺序也与学生在 Tab 栏上看到的 学习单 → 探究空间 → 智能学伴 一致 ——
+ * 教师在菜单里认到的次序，和学生在他屏幕上看到的次序是同一个。
+ * ⚠️ 只是**数组顺序**变了：每一项的 `path` / `label` / `icon` 一个字没动
+ * （`path` 决定路由、`icon` 决定图标 switch 里的那一支，两者都跟着自己那一项走）。
+ */
 const navItems = [
   { path: '/teacher/dashboard', label: '仪表盘', icon: 'gauge' },
-  { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
+  { path: '/teacher/worksheets', label: '学习单', icon: 'clipboard' },
   // 2026-09-25：显示名由「探究网页」改为「探究空间」（教师裁定，只改侧栏 + 页标题两处）。
   // ⚠️ 页内其余文案（「还没有探究网页」「无法删除探究网页」…）**暂时没动** ——
   // 见 `webapps/page.tsx` 的副标题注释：这一页的两个词还没统一，别把它读成漏改。
   { path: '/teacher/webapps', label: '探究空间', icon: 'explore' },
-  { path: '/teacher/worksheets', label: '学习单', icon: 'clipboard' },
+  { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
   { path: '/teacher/avatars', label: '头像管理', icon: 'avatar' },

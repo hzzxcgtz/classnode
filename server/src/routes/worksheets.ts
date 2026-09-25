@@ -6,6 +6,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
 import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
+import { decrypt } from '../services/crypto.js';
 import {
   flattenQuestions,
   grade,
@@ -44,6 +45,10 @@ import {
   type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
 } from '../services/analysis-payload.js';
 import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
+// ★ M7b：编排层的三个纯函数（平台闸门 / 消息构造 / 解读归一化）
+import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
+// ★ M7b：**全仓唯一一处 fetch 到第三方**
+import { proxyAnalysisRequest } from '../services/ai-proxy.js';
 
 /**
  * 学习单路由。
@@ -1196,6 +1201,103 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
   } catch (error) {
     console.error('[worksheets] 渲染联系表失败:', error);
     res.status(500).json({ error: '渲染联系表失败' });
+  }
+});
+
+/**
+ * ★ M7b：把 M7a 那道缝接活 —— 读已存的载荷，发给学习单上指定的分析型智能体，写回解读。
+ *
+ * 🔴 **它只写 `narrative`/`agentId`/`model`**（用户 2026-09-25 裁定 3：两组字段各自动自己
+ * 那一半）。`aggregate`/`totalCount`/`computedAt` 属于「这份载荷是什么时候、按什么算的」，
+ * 与「AI 怎么解读它」是两件事 —— 教师只想重发一次时不该连带把前者也改掉。
+ *
+ * 🔴 **失败一律不写库**：模型返回空、平台报错、渲不出图 —— 三种都不写，
+ * 于是「界面上原本那段解读」不会因为一次失败而消失（那是**静默**的）。
+ */
+router.post('/:id/analysis/:questionId/run', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheetId = req.params.id;
+    const questionId = req.params.questionId;
+    const classroomId = readClassroomIdQuery(req.query.classroomId);
+    if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
+
+    const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
+    if (!target.ok) return res.status(target.status).json({ error: target.error });
+
+    const row = await prisma.worksheetQuestionAnalysis.findUnique({
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+    });
+    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+
+    // 学习单上指定的那个分析智能体（M7b 裁定 4：学习单级）
+    const worksheet = await prisma.worksheet.findUnique({
+      where: { id: worksheetId }, select: { settings: true },
+    });
+    const settings = normalizeSettings((worksheet?.settings ?? {}) as Record<string, unknown>);
+    const analysisAgentId = (settings as Record<string, unknown>).analysisAgentId;
+    if (typeof analysisAgentId !== 'string' || analysisAgentId === '') {
+      return res.status(400).json({ error: '这份学习单还没有指定分析型智能体（去学习单编辑器的「设置」里选一个）' });
+    }
+    const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
+    if (!agent || !agent.enabled) {
+      return res.status(400).json({ error: '指定的分析型智能体不存在或已停用' });
+    }
+
+    const knobs = await loadAnalysisKnobs(prisma);
+    const entries = entriesFromAggregate(row.aggregate);
+    const payload = buildAnalysisPayload({
+      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, index: target.index },
+      entries, total: row.totalCount, knobs,
+    });
+
+    // 第一道闸（界面用的也是它）
+    const gate = analysisGateOf(payload, agent.platform);
+    if (!gate.ok) return res.status(400).json({ error: gate.reason });
+
+    // 联系表按需渲染（M7a 决定 1）—— 只有需要图时才渲
+    let labeled = true;
+    const images: Buffer[] = [];
+    if (payload.payloadKind !== 'text') {
+      const rendered = await renderSheets(entries, payload.sheetLayouts, knobs);
+      if (!rendered || rendered.sheets.length === 0) {
+        return res.status(502).json({ error: '联系表渲不出来（本机缺图片渲染能力）' });
+      }
+      images.push(...rendered.sheets);
+      // 🔴 **必须把它传下去**：探针说标签没画出来时，消息里那句「每格上方标着代号」
+      // 就是**假的**，而模型会照着猜 ⇒ 分析结果整体错位。退化时 `buildAnalysisMessage`
+      // 会把编号对照以文本形式附上（Task 3 的裁定）。
+      labeled = rendered.labeled;
+    }
+
+    // 🔴 **必须转成 `AgentConfig`**（与 `socket/index.ts:1973` 那处同一写法）：
+    // 库里 `apiKey` 存的是 **AES 密文**，直接把它当 key 发出去，平台会回 401 ——
+    // 而那条错误在界面上只会显示成「分析失败」，看不出是「密钥没解密」。
+    const agentConfig = {
+      platform: agent.platform,
+      apiUrl: agent.apiUrl || undefined,
+      apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
+      botId: agent.botId || undefined,
+      extra: agent.extra || undefined,
+      // 每次分析都要一个新会话（不传 conversationId）：两次分析之间不该串上下文。
+    };
+    const result = await proxyAnalysisRequest(agentConfig, buildAnalysisMessage(payload, labeled), images);
+    if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
+    const narrative = normalizeNarrative(result.content ?? '');
+    if (narrative === '') {
+      // 🔴 **空解读不写库** —— 写进去的后果是「界面上原本那段解读消失了」，而没有任何报错。
+      return res.status(502).json({ error: '模型没有返回可用的解读（未写入）' });
+    }
+
+    await prisma.worksheetQuestionAnalysis.update({
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+      // ⚠️ 只这三格。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
+      data: { narrative, agentId: agent.id, model: agent.platform },
+    });
+    res.json({ narrative, agentId: agent.id, model: agent.platform });
+  } catch (error) {
+    console.error('[worksheets] 分析失败:', error);
+    res.status(500).json({ error: '分析失败' });
   }
 });
 

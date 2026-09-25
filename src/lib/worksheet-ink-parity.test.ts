@@ -22,6 +22,8 @@ import assert from 'node:assert/strict';
 import * as front from './worksheet-ink.ts';
 import * as serverValidate from '../../server/src/services/worksheet-ink.ts';
 import * as mirror from '../../server/src/services/ink-path.ts';
+import { QUESTION_TYPE_LABELS } from '../../server/src/services/question-type-labels.ts';
+import { QUESTION_TYPE_OPTIONS } from './worksheet-questions.ts';
 
 /** 一批刻意刁钻的笔画：单点 / 空 / 边界 0 与 1 / 会触发两位小数取整的坐标 / 多笔。 */
 const BOXES = [
@@ -74,4 +76,10 @@ test('★ readInkValue 的容错同判：坏形状两边都回 null，好形状�
   for (const bad of [null, undefined, 7, 'x', {}, { format: 'nobody' }, { format: 'ink/v1' }, { format: 'ink/v1', strokes: 'x' }]) {
     assert.equal(mirror.readInkValue(bad), front.readInkValue(bad), `不一致：${JSON.stringify(bad)}`);
   }
+});
+
+test('★ 服务端的题型名与前端那张表逐条相同（报告上印的是中文，而服务端没有那张表）', () => {
+  const frontLabels: Record<string, string> = {};
+  for (const option of QUESTION_TYPE_OPTIONS) frontLabels[option.value] = option.label;
+  assert.deepEqual({ ...QUESTION_TYPE_LABELS }, frontLabels, '两处的题型名漂了');
 });

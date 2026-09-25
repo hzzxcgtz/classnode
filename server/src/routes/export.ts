@@ -14,6 +14,7 @@ import {
   generateStatsDocx,
   generateConversationsCsv,
   generateStatsCsv,
+  generateWorksheetReportDocx,
 } from '../services/export-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -228,6 +229,30 @@ router.post('/:classroomId/conversations/docx', async (req, res) => {
     res.send(result.buffer);
   } catch (error: unknown) {
     console.error('[Export] conversations DOCX error:', error);
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
+  }
+});
+
+// 服务端生成「学习单与探究空间报告」（M6a）。形状与上面那条 docx 端点逐字同款。
+router.post('/:classroomId/worksheet-report/docx', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const io = req.app.get('io');
+    const { socketId } = req.body ?? {};
+
+    const result = await generateWorksheetReportDocx(
+      req.params.classroomId,
+      prisma,
+      socketId && io ? (p) => {
+        io.to(socketId).emit('export-progress', p);
+      } : undefined,
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+    res.send(result.buffer);
+  } catch (error: unknown) {
+    console.error('[Export] worksheet report DOCX error:', error);
     res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });

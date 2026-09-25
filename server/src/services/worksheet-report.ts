@@ -181,3 +181,9 @@ export const REPORT_TEXT = {
 export function unmappedParticipantsNotice(count: number): string {
   return `另有 ${count} 个参与者没有可作答的学习单（高级模式下每组各自配置）`;
 }
+
+/* ── 题型名 ───────────────────────────────────────────────────────────── */
+
+// 🔴 表在**另一个无 import 的文件**里：那份要能被前端 runner 直接加载（对拍用），
+// 而本文件 import 了 `./ink-path.js` ⇒ Node 解析不了 ⇒ 本文件**不能**被前端加载。
+export { QUESTION_TYPE_LABELS, questionTypeLabel } from './question-type-labels.js';

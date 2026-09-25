@@ -346,8 +346,15 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
           </div>
 
           {/* ★ M7b：用途 —— `Agent.purpose` 的**唯一写入口**（独立审查 C1）。
-              没有它，分析型智能体一个都建不出来，整条 M7b 在界面上不可达。 */}
-          <div className="agent-form-section">
+              没有它，分析型智能体一个都建不出来，整条 M7b 在界面上不可达。
+
+              ★ 2026-09-25（教师：「要单独提取出来，不要放在每个编辑框内部」）：
+              **横贯整行**（`agent-form-purpose` = `grid-column: 1 / -1`）。
+              🔴 它本来就与平台无关（任何平台都要选用途），而 M7b 当初把它当成普通的一节塞进
+              两栏网格 ⇒ 挤掉了「智能体资料」的右栏位，于是资料孤零零地留在左栏、
+              右边一片空白（教师截图里看得见）。提出来其实是**恢复原本的两栏**：
+              凭据 | 资料 并排，用途单独一行。 */}
+          <div className="agent-form-section agent-form-purpose">
             <AgentPurposeSelector purpose={purpose} onChange={setPurpose} />
           </div>
 

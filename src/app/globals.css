@@ -591,6 +591,14 @@ html, body {
   height: 100%;
 }
 
+/* ★ 2026-09-25：「用途」横贯整行。
+   🔴 它本来就与平台无关（任何平台都要选用途），塞进两栏网格里会挤掉「智能体资料」的
+   右栏位 —— 于是资料孤零零留在左栏、右边一片空白。提出来是**恢复原本的两栏**：
+   凭据 | 资料 并排，用途单独一行，而它自己是一条扁带（不高，不抢视线）。 */
+.agent-form-purpose {
+  grid-column: 1 / -1;
+}
+
 .agent-form-platform-notice,
 .agent-form-submit-error,
 .agent-form-footer {

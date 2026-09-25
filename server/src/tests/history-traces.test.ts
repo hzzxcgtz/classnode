@@ -22,7 +22,11 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import express from 'express';
 import { loadHistoryTraces } from '../routes/classroom.js';
+import classroomRoutes from '../routes/classroom.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
@@ -52,7 +56,9 @@ async function seedClassroomWithWorksheet(prisma: PrismaClient, code: string) {
   return { classroom, participant, worksheet, response };
 }
 
-test('🔴 空表：两样都没有 ⇒ 四个数都是 0（`SUM` 对空集回 NULL，没 COALESCE 会得到 null 而不报错）', async (t) => {
+// ⚠️ 标题里那半句是终审更正的：空表这一路靠的是「先给每个 id 落一个全 0 条目」，
+// **不是** `COALESCE`（查带 GROUP BY ⇒ 空集根本没有行；实测去掉 COALESCE 这条仍绿）。
+test('🔴 空表：两样都没有 ⇒ 四个数都是 0', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
 
@@ -117,4 +123,37 @@ test('★ ids 为空数组 ⇒ 回空 Map（与既有那条聚合同一条守卫
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const traces = await loadHistoryTraces(db.prisma, []);
   assert.equal(traces.size, 0);
+});
+
+test('🔴 端点接线：`GET /history/all` 真的把那几个字段发出来了', async (t) => {
+  // ⚠️ 为什么补这一条（终审 I4）：4 条纯函数用例**碰不到接线**，而接线坏掉的信号是
+  //    **静默的** —— 字段名写错 ⇒ 前端每个格都是 `undefined > 0` 为假 ⇒ 整张表显示成
+  //    「无记录 / 无作答」，与「这些课确实没用过」**在屏幕上一模一样**。
+  //    （规格 §六 原本就要求「真建库 + 真调 /history/all」，计划把它收窄成了纯函数 —— 这是补回那一半。）
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+
+  const { classroom } = await seedClassroomWithWorksheet(db.prisma, '9101');
+  // 端点是 `status: 'ended'` 过滤的。
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { status: 'ended' } });
+
+  const app = express();
+  app.use(express.json());
+  app.set('prisma', db.prisma);
+  // ⚠️ 直接挂路由（跳过 `requireTeacher`）—— 这一条测的是**接线与字段名**，不是鉴权。
+  app.use('/api/classroom', classroomRoutes);
+  const server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { port } = server.address() as AddressInfo;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/classroom/history/all`);
+  assert.equal(res.status, 200, '端点本身要活着');
+  const body = await res.json() as Array<Record<string, unknown>>;
+  const item = body.find((row) => row.id === classroom.id);
+  assert.ok(item, '刚结束的课堂要出现在历史里');
+  for (const key of ['webappUsageCount', 'webappDurationMs', 'webappDurationText', 'worksheetSubmitted', 'worksheetTotal']) {
+    assert.ok(key in item, `响应里缺 ${key} —— 前端会把它渲染成「无记录」而不报错`);
+  }
+  assert.equal(item.webappDurationText, '0 秒');
 });

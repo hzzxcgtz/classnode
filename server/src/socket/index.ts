@@ -9,6 +9,7 @@ import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews, resolveParticipantWebappId } from '../services/group-material-resolve.js';
+import { studentAgentView } from '../services/agent-purpose.js';
 
 /** 智能体异常告警冷却（同一 agentId 2 分钟内最多推送一次） */
 const agentAlertCooldown = new Map<string, number>();
@@ -1151,12 +1152,12 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
         socket.emit('joined', {
           classroomId: classroom.id,
-          agents: classroom.classroomAgents.map((ca: Prisma.ClassroomAgentGetPayload<{ include: { agent: true } }>) => ({
-            id: ca.agent.id,
-            name: ca.agent.name,
-            logo: ca.agent.logo,
-            platform: ca.agent.platform,
-          })),
+          // ★ M7b：与 `GET /code/:code` 用**同一个** `studentAgentView` —— 上面那条注释逐字
+          // 要求「学生端拿到的组材料必须与它逐字一致」，而这条载荷是学生**连接后**那一份。
+          // 两处各写一份 `.map` 的话，学生在**刷新前/后**会看到不一样的智能体列表。
+          agents: classroom.classroomAgents
+            .map((ca: Prisma.ClassroomAgentGetPayload<{ include: { agent: true } }>) => studentAgentView(ca))
+            .filter((view): view is NonNullable<typeof view> => view !== null),
           groups: classroom.groups.map((group) => ({
             id: group.id,
             name: group.name,

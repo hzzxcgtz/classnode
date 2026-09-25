@@ -33,6 +33,14 @@ export interface AgentSummary {
    * 等）走的是同一条类型，那些端点不算这个数。声明成必填会逼那些构造点塞假值。
    */
   classroomCount?: number;
+  /**
+   * ★ M7b：用途。`'tutoring'`（学伴，学生可见）| `'analysis'`（分析型，**学生绝不可见**）。
+   *
+   * ⚠️ **可选** —— 这个类型是**复用类型**：学生端下发的 `agents[]` 也走它，
+   * 而那些构造点（`studentAgentView`）本来就把分析型滤掉了，不必再填一遍。
+   * （与 `classroomCount?` 同一条理由，见它上面的注释。）
+   */
+  purpose?: string;
 }
 
 /**

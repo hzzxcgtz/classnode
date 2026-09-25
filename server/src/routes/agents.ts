@@ -9,6 +9,9 @@ import { testAgentAvailability, fetchAgentGreeting, fetchAgentInfo, discoverCoze
 import { encrypt, decrypt, isEncrypted } from '../services/crypto.js';
 import { detectSafeImage, sanitizeSvg } from '../services/upload-security.js';
 import { maskAgentSecret, shouldPreserveAgentSecret } from '../services/agent-secret-policy.js';
+// ★ M7b：`purpose` 的归一化（**闸**的取值域住在那个零 import 的模块里）。
+// ⚠️ `toPublicAgent` 是 `{ ...agent, ... }` ⇒ `purpose` 自动随列表下发，不必在那里补一行。
+import { normalizeAgentPurpose } from '../services/agent-purpose.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -159,7 +162,13 @@ async function migrateAgentSecrets(prisma: PrismaClient, agent: Agent): Promise<
 router.get('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const agents = await prisma.agent.findMany({ orderBy: { createdAt: 'desc' } });
+    // ★ M7b：可按用途过滤（`?purpose=tutoring|analysis`）。**让服务端过滤**是为了让前端
+    // 不必自己复述那条规则 —— 复述一遍就是第二份真源，而它漂了不会红。
+    const purposeFilter = req.query.purpose;
+    const where = purposeFilter === 'analysis' || purposeFilter === 'tutoring'
+      ? { purpose: purposeFilter }
+      : {};
+    const agents = await prisma.agent.findMany({ where, orderBy: { createdAt: 'desc' } });
     await Promise.all(agents.map(agent => migrateAgentSecrets(prisma, agent)));
 
     // 每个智能体关联到的**去重后**的课堂数 —— 管理页的概览条与「按关联状态筛选」要用它。
@@ -253,7 +262,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, apiUrl, apiKey, botId, extra, greeting } = req.body;
+    const { name, platform, apiUrl, apiKey, botId, extra, greeting, purpose } = req.body;
     if (typeof apiKey !== 'string' || !apiKey.trim()) return res.status(400).json({ error: 'API 密钥不能为空' });
     const apiUrlError = validateAgentApiUrl(apiUrl);
     if (apiUrlError) {
@@ -281,6 +290,8 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
         botId: botId || null,
         extra: storedExtra,
         greeting: greeting || null,
+        // ★ M7b：坏值回落 `tutoring`（**保守方向** —— 见 `normalizeAgentPurpose` 的注释）
+        purpose: normalizeAgentPurpose(purpose),
         logo,
       },
     });
@@ -297,7 +308,7 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
 router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting } = req.body;
+    const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting, purpose } = req.body;
     const previousAgent = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } });
     if (!previousAgent) {
       discardUploadedLogo(req);
@@ -331,6 +342,10 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     }
             if (greeting !== undefined) data.greeting = greeting || null;
     if (enabled !== undefined) data.enabled = enabled === 'true' || enabled === true;
+    // ★ M7b：只在**明确传了**的时候改（`undefined` = 这次不动它）——
+    // 与上面 `name`/`platform` 那条纪律同形。⚠️ 传坏值回落 `tutoring`，
+    // 而 `tutoring` 是**会被学生看见**的那一侧 ⇒ 这是刻意的保守方向（不是安全的默认方向）。
+    if (purpose !== undefined) data.purpose = normalizeAgentPurpose(purpose);
     if (req.file) data.logo = `/uploads/logos/${req.file.filename}`;
     else if (req.body.logo && typeof req.body.logo === 'string' && req.body.logo.startsWith('http')) data.logo = req.body.logo;
     if (req.body.removeLogo === 'true') data.logo = null;

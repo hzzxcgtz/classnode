@@ -10,6 +10,7 @@ import type { WebappUsageRow } from '../socket/index.js';
 import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { loadClassroomWebapps } from './webapps.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
+import { studentAgentView } from '../services/agent-purpose.js';
 import { formatDuration } from '../services/worksheet-report.js';
 
 const router: Router = Router();
@@ -1082,14 +1083,12 @@ router.get('/code/:code', async (req, res) => {
       // ⚠️ 扁平字段（`groups[].worksheet`），不是 `groups[].materials.worksheet`。
       worksheets,
       modules: mergeModuleStates(moduleRecords),
-      agents: classroom.classroomAgents.map((ca) => ({
-        id: ca.agent.id,
-        name: ca.agent.name,
-        logo: ca.agent.logo,
-        platform: ca.agent.platform,
-        enabled: ca.agent.enabled,
-        greeting: ca.agent.greeting,
-      })),
+      // ★ M7b：**学生绝不可见分析型**（一个「会收到全班作业」的 bot 不该出现在小学生的
+      // 聊天列表里）。走共用助手 —— 「首屏」与「socket 的 joined」两处必须是同一把尺子
+      // （`socket/index.ts` 那条注释逐字要求两者逐字一致）。
+      agents: classroom.classroomAgents
+        .map((ca) => studentAgentView(ca))
+        .filter((view): view is NonNullable<typeof view> => view !== null),
       groups: (classroom.mode === 'advanced' || classroom.mode === 'group')
         ? classroom.groups.map(group => {
             const view = groupMaterialViews.get(group.id);

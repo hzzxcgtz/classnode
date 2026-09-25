@@ -350,6 +350,14 @@ async function main() {
       console.log('[server] Avatar table created');
     }
 
+    // ★ M7b：`Agent.purpose`（`tutoring` / `analysis`）。
+    // ⚠️ 必须带 DEFAULT —— SQLite 的 ALTER 加不了「NOT NULL 且无默认值」的列。
+    const agentCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Agent')`);
+    if (!agentCols.map(c => c.name).includes('purpose')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Agent" ADD COLUMN "purpose" TEXT NOT NULL DEFAULT 'tutoring'`);
+      console.log('[server] Added purpose column to Agent');
+    }
+
     // 检查 Student 表是否有新列
     const studentCols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('Student')`);
     const studentColNames = studentCols.map(c => c.name);

@@ -29,6 +29,9 @@ model Agent {
   botId     String?  // Bot ID (for Coze)
   extra     String?  // 额外配置 (JSON)
   enabled   Boolean  @default(true)
+  /// ★ M7b：用途。`tutoring`（学伴，学生可见）| `analysis`（分析型，**学生绝不可见**）。
+  /// 🔴 它是一门**闸**，不是一个标签 —— 见 `services/agent-purpose.ts` 的文件头。
+  purpose   String   @default("tutoring")
   greeting         String?   // 开场白
   greetingFetchedAt DateTime? // 开场白最后拉取时间
   lastCheckAt       DateTime? // 最后连通性检查时间

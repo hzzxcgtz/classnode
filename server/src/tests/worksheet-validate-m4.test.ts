@@ -128,13 +128,14 @@ test('题干为空是公共检查：所有**可作答的**题型都拦（含主�
 // ① 判断题：与单选同一支
 // ---------------------------------------------------------------------------
 
-test('判断题与单选共用一支：correctKeys **最多一个**（可空），且不要求 options', () => {
+test('判断题与单选共用一支：correctKeys 必须恰好一个（关掉自动评分可空），且不要求 options', () => {
   accepted('true-false', { correctKeys: ['T'] });
   accepted('true-false', { correctKeys: ['F'] });
-  // ★ 2026-09-25（教师裁定）：空答案合法 = 这道题不用给分（判分器回 `null`）。
-  accepted('true-false', { correctKeys: [] });
-  accepted('true-false', {});
+  // ★ 2026-09-25：空答案**只在关掉自动评分时**合法（教师最终裁定：选「允许」则要求设答案）。
+  rejected('true-false', { correctKeys: [] });
+  rejected('true-false', {});
   rejected('true-false', { correctKeys: ['T', 'F'] });
+  assert.deepEqual(validateQuestion({ ...node('true-false', {}), autoGrade: false }), []);
 
   // 反向对照：判断题**不该**冒出「至少需要两个选项」那条 —— 它根本不存 options，
   // 一条错的提示会让教师去找一个不存在的设置项。
@@ -144,28 +145,32 @@ test('判断题与单选共用一支：correctKeys **最多一个**（可空）�
   }
 });
 
-test('单选题：选项数要查；答案**可空**（不设 = 不判分）但不可多于一个、不可指向不存在的选项', () => {
+test('单选题：选项数要查；答案必填（关掉自动评分时不必），且不可多于一个、不可指向不存在的选项', () => {
   accepted('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'] });
   rejected('single-choice', { options: [{ key: 'A', text: '甲' }], correctKeys: ['A'] });
-  // ★ 2026-09-25（教师裁定）：**空答案是合法的** —— 它表示「这道题不用给分」。
-  // ⚠️ 旧断言是 `rejected(... correctKeys: [])`，它的前提（答案必填）已被推翻。
-  accepted('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: [] });
-  // 而「多于一个」与「指向不存在的选项」仍然是坏数据：
+  // ★ 2026-09-25（教师最终裁定）：答案必填与否由**「允许自动评分」那个开关**决定 ——
+  // 开着（缺省）⇒ 必须恰好一个；关掉 ⇒ 答案根本用不上（`acceptedAuto` 那条）。
+  rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: [] });
   rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['A', 'B'] });
   rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['Z'] });
+  assert.deepEqual(
+    validateQuestion({ ...node('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }] }), autoGrade: false }),
+    [], '关掉自动评分 ⇒ 不设答案也存得下',
+  );
 });
 
 // ---------------------------------------------------------------------------
 // ② 多选题
 // ---------------------------------------------------------------------------
 
-test('多选题：至少两个选项、答案可空，且每个答案都要指向真实选项', () => {
+test('多选题：至少两个选项、答案必填（关掉自动评分时不必），且每个答案都要指向真实选项', () => {
   const options = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }];
   accepted('multi-choice', { options, correctKeys: ['A', 'C'], partialCredit: 'allow-missing' });
   accepted('multi-choice', { options, correctKeys: ['A'] });
   rejected('multi-choice', { options: [{ key: 'A', text: '甲' }], correctKeys: ['A'] });
-  // ★ 2026-09-25（教师裁定）：空答案合法 = 这道题不用给分（判分器回 `null`）。
-  accepted('multi-choice', { options, correctKeys: [] });
+  // ★ 2026-09-25：空答案只在关掉自动评分时合法。
+  rejected('multi-choice', { options, correctKeys: [] });
+  assert.deepEqual(validateQuestion({ ...node('multi-choice', { options }), autoGrade: false }), []);
   // 🔴 指向不存在的选项：那道题**没有任何学生能答对**，而看板上只表现为「正确率 0%」——
   // 教师会去怀疑学生，不会来怀疑这道题。
   rejected('multi-choice', { options, correctKeys: ['D'] });

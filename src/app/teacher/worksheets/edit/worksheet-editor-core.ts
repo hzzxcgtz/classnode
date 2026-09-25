@@ -106,7 +106,18 @@ export type ContentAction =
    * 与任务里的题长得不一样，也永远编不进任务内序号）。
    * `parentId: null` = 顶层（散题是合法数据，老学习单里就有）。
    */
-  | { kind: 'addQuestion'; questionType: QuestionType; parentId: string | null }
+  | {
+    kind: 'addQuestion';
+    questionType: QuestionType;
+    parentId: string | null;
+    /**
+     * ★ 2026-09-25（教师裁定）：新题的**分值**直接写成学习单当前那两档
+     *（新建单就是 1 / 0）—— 于是框里是**真实数字**，不是灰提示。
+     * ⚠️ **老题一个字不改**：`points` 仍是「没有」＝跟随学习单。两条路的分界是**时间**，
+     * 不是题型（见 `points` 的注释与「两格留空 = 用学习单的默认分值」那句话）。
+     */
+    points?: QuestionPointsDraft;
+  }
   /** ★ 2026-09-25：新建一个**任务**容器，标题按序号预填（教师可改）。 */
   | { kind: 'addTask' }
   | { kind: 'updatePrompt'; id: string; prompt: string }
@@ -117,6 +128,10 @@ export type ContentAction =
   // 取值域是 `WorksheetQuestionNode.inputMode` 那两个字面量，**不是**学习单级的
   // `settings.defaultInputMode`（那一个今天仍然是死的，见 `DEFAULT_SETTINGS`）。
   | { kind: 'updateInputMode'; id: string; inputMode: 'keyboard' | 'handwriting' }
+  /** ★ 2026-09-25：逐题的「允许自动评分」开关。 */
+  | { kind: 'updateAutoGrade'; id: string; autoGrade: boolean }
+  /** ★ 2026-09-25：部分给分的容错档。`null` = 缺省（旧规则）。 */
+  | { kind: 'updateTolerance'; id: string; tolerance: number | null }
   | { kind: 'move'; id: string; delta: -1 | 1 }
   | { kind: 'remove'; id: string }
   | { kind: 'reset'; content: WorksheetContent }
@@ -1067,9 +1082,21 @@ export function isGradedQuestionType(type: string): boolean {
 }
 
 export function gradesOnSubmit(node: WorksheetQuestionNode): boolean {
-  if (!isGradedQuestionType(node.type)) return false;
-  const isChoice = node.type === 'single-choice' || node.type === 'true-false' || node.type === 'multi-choice';
-  return isChoice ? readCorrectKeys(node).length > 0 : true;
+  // ★ 2026-09-25（教师最终裁定）：判不判分**只看那个开关**，不再以「有没有答案」推断。
+  // ⚠️ 上一版（同一个下午）是 `isChoice ? readCorrectKeys(node).length > 0 : true` ——
+  // 教师随后要求「加一个开关，选允许则要求设置答案」⇒ 两条路留着会有两个来源，
+  // 而「有答案却不判分」在他关掉开关时是**正常状态**，推断不出来。
+  return isGradedQuestionType(node.type) && node.autoGrade !== false;
+}
+
+/**
+ * 读一道题的**容错档**（与 `points` 同一条容错口径）。
+ * 返回 `null` = **缺省**＝旧规则「只要有一部分对就给分」。
+ */
+export function toleranceOf(node: WorksheetQuestionNode): number | null {
+  const raw = node.partialTolerance;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) return null;
+  return raw;
 }
 
 export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
@@ -1630,7 +1657,7 @@ export function newTask(nodes: WorksheetQuestionNode[]): WorksheetQuestionNode {
 function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetContent {
   switch (action.kind) {
     case 'addQuestion': {
-      const fresh = newQuestion(action.questionType);
+      const fresh = { ...newQuestion(action.questionType), ...(action.points ? { points: action.points } : {}) };
       if (action.parentId === null) return { ...content, nodes: [...content.nodes, fresh] };
       // ⚠️ 走 `replaceNode`（递归找）而不是只看顶层：父任务在树里的任何一层都找得到。
       // 找不到 ⇒ 原对象返回（不制造空历史）。
@@ -1695,6 +1722,26 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
         // 教师按撤销时屏幕纹丝不动，只能再按一次。
         node.inputMode === action.inputMode ? node : { ...node, inputMode: action.inputMode }
       ));
+
+    case 'updateAutoGrade':
+      // 与其余四条编辑动作走**同一条路**（进撤销栈、同值去重）。
+      return replaceNode(content, action.id, (node) => (
+        (node.autoGrade === false) === (action.autoGrade === false) && node.autoGrade !== undefined
+          ? node
+          : { ...node, autoGrade: action.autoGrade }
+      ));
+
+    case 'updateTolerance':
+      // `null` = 缺省 ⇒ **把键删掉**（与 `points` 的「没有 = 键不存在」同一条约定）。
+      return replaceNode(content, action.id, (node) => {
+        if (toleranceOf(node) === action.tolerance) return node;
+        if (action.tolerance === null) {
+          const dropped: WorksheetQuestionNode = { ...node };
+          delete dropped.partialTolerance;
+          return dropped;
+        }
+        return { ...node, partialTolerance: action.tolerance };
+      });
 
     case 'move': {
       // 越界 ⇒ 原样返回（不制造历史）：第一题按 ▲ 或最后一题按 ▼ 不该占掉一次撤销。

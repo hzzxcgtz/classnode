@@ -46,6 +46,7 @@ import {
   findPartialPoints,
   findUncommittedPointInput,
   gradesOnSubmit,
+  toleranceOf,
   HISTORY_LIMIT,
   isOrderAmbiguous,
   isOrderAnswerUsable,
@@ -2090,27 +2091,57 @@ test('🔴 切块：小题必须落在它**自己的**任务块里，散题各�
 
 /* ── 无答案的选择题：不判分（教师裁定 2026-09-25）────────────────────── */
 
-test('🔴 不设答案的选择题 ⇒ **不判分**（分值行该消失，不是显示 0 分）', () => {
-  // 服务端那一半在 `server/src/tests/worksheet-ungraded.test.ts`：校验器放行、判分器回 `null`。
-  // 这一条是**界面的那一半**：一块「全对 1 / 部分给分 0」的分值行摆在一道不判分的题上，
-  // 就是在告诉教师「这道题会算分」—— 而它不会。
-  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'single-choice', [])), false);
-  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'true-false', [])), false);
-  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'multi-choice', [])), false);
+test('🔴 判不判分**只看那个开关**（教师最终裁定），不再以「有没有答案」推断', () => {
+  // ⚠️ 本条 2026-09-25 改过一次：先是按 `correctKeys` 推断 —— 教师随后要求
+  // 「加一个『允许自动评分』的开关，选允许则要求设置答案」⇒ 推断被显式开关取代。
+  // 两条路留着会有两个来源，而「有答案却不判分」在开关关掉时是**正常状态**。
+  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'single-choice', ['A'])), true, '缺省 = 允许');
+  assert.equal(gradesOnSubmit({ ...node('q_c', '题干', {}, 'single-choice', ['A']), autoGrade: false }), false);
+  // 🔴 **没答案也一样判分**（开关开着）—— 答案必填由**校验器**管，不由这里推断。
+  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'single-choice', [])), true);
 });
 
-test('阳性对照：设了答案的选择题照常判分（上面那条不是因为「选择题一律不判分」）', () => {
-  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'single-choice', ['A'])), true);
-  assert.equal(gradesOnSubmit(node('q_c', '题干', {}, 'multi-choice', ['A', 'B'])), true);
-});
-
-test('🔴 其余题型的「答案」不在 `correctKeys` 里 —— 别拿选择题的尺子量它们', () => {
-  // 填空/排序/连线/归类的答案在 `data` 的别的键上，而且**由校验器强制要求**
-  // ⇒ 它们永远到不了「没答案」这个状态。按 `correctKeys` 判会把它们全判成「不判分」，
-  // 而那会让分值行从这四种题上**整片消失**（教师再也改不了分值）。
-  assert.equal(gradesOnSubmit(node('q_f', '题干', { answers: ['H2O'] }, 'fill-blank')), true);
-  assert.equal(gradesOnSubmit(node('q_o', '题干', {}, 'order')), true);
-  // 主观题与绘图题本来就不判分（题型那一格就是 false）。
+test('题型本身不判分的（问答 / 绘图）与任务：开关开着也不判分', () => {
   assert.equal(gradesOnSubmit(node('q_s', '题干', {}, 'short-answer')), false);
   assert.equal(gradesOnSubmit(node('q_d', '题干', {}, 'drawing')), false);
+  assert.equal(gradesOnSubmit(taskNode('t_1', '任务一', [])), false);
+});
+
+test('其余题型不受开关以外的影响（别拿选择题的尺子量它们）', () => {
+  assert.equal(gradesOnSubmit(node('q_f', '题干', { answers: ['H2O'] }, 'fill-blank')), true);
+  assert.equal(gradesOnSubmit(node('q_o', '题干', {}, 'order')), true);
+});
+
+/* ── 两个新动作 ─────────────────────────────────────────────────────── */
+
+test('🔴 `updateAutoGrade` 进撤销栈，且**同值去重**（按下去没反应不该占一格）', () => {
+  const state = twoLevel(node('q_a'));
+  const off = contentReducer(state, { kind: 'updateAutoGrade', id: 'q_a', autoGrade: false });
+  assert.equal(off.present.nodes[0].autoGrade, false);
+  assert.equal(off.past.length, state.past.length + 1, '要进栈');
+  // 再关一次：值没变 ⇒ 原对象返回（与 `updatePrompt` 的同值去重同一条纪律）
+  assert.equal(contentReducer(off, { kind: 'updateAutoGrade', id: 'q_a', autoGrade: false }), off);
+  const on = contentReducer(off, { kind: 'updateAutoGrade', id: 'q_a', autoGrade: true });
+  assert.equal(on.present.nodes[0].autoGrade, true);
+});
+
+test('🔴 `updateTolerance`：设数字就写键，`null` 就把键**删掉**（缺省 = 键不存在）', () => {
+  const state = twoLevel(node('q_a'));
+  const set = contentReducer(state, { kind: 'updateTolerance', id: 'q_a', tolerance: 1 });
+  assert.equal(set.present.nodes[0].partialTolerance, 1);
+  assert.equal(toleranceOf(set.present.nodes[0]), 1);
+  const cleared = contentReducer(set, { kind: 'updateTolerance', id: 'q_a', tolerance: null });
+  assert.equal('partialTolerance' in cleared.present.nodes[0], false, '缺省 ⇒ 键不存在（与 points 同一条约定）');
+  assert.equal(toleranceOf(cleared.present.nodes[0]), null);
+  assert.equal(contentReducer(cleared, { kind: 'updateTolerance', id: 'q_a', tolerance: null }), cleared, '同值去重');
+});
+
+test('🔴 新建的题把分值**落成真实数字**（学习单当前那两档），不是留空跟随', () => {
+  const state = twoLevel(node('q_a'));
+  const next = contentReducer(state, { kind: 'addQuestion', questionType: 'single-choice', parentId: null, points: { full: 3, half: 2 } });
+  assert.deepEqual(next.present.nodes[1].points, { full: 3, half: 2 }, '框里要显示真实数字（教师要求「不是灰色提示」）');
+  // ⚠️ 不给 `points` 时（老调用点 / 没传）造出来的题仍然是「跟随学习单」——
+  // 那条路留给老数据，不是给新题的默认。
+  const noSeed = contentReducer(state, { kind: 'addQuestion', questionType: 'fill-blank', parentId: null });
+  assert.equal('points' in noSeed.present.nodes[1], false);
 });

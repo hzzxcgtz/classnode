@@ -40,10 +40,17 @@ const PICKED_B = { format: 'choice/v1', selected: ['B'] };
 
 /* ── 校验器：放行 ───────────────────────────────────────────────────── */
 
-test('🔴 单选 / 判断 / 多选：`correctKeys` 为空 ⇒ **校验通过**（不设答案 = 不判分）', () => {
-  assert.deepEqual(validateQuestion(choice('single-choice', [])), []);
-  assert.deepEqual(validateQuestion(choice('true-false', [])), []);
-  assert.deepEqual(validateQuestion(choice('multi-choice', [])), []);
+test('🔴 答案可空**只在关掉自动评分时成立**（这是本文件与 `autoGrade` 的分界）', () => {
+  // ⚠️ 本条 2026-09-25 **又改过一次**：先是「答案必填」⇒ 改成「空答案合法」⇒
+  // 教师当天追加裁定「加一个『允许自动评分』的开关，选允许则要求设置答案」。
+  // ⇒ 现在**以开关为准**：关掉 ⇒ 答案用不上、一条都不查；开着（缺省）⇒ 恢复必填。
+  // 完整口径见 `worksheet-auto-grade.test.ts`。本文件保留的是**判分器那一半**：
+  // 手上真拿到一份没有答案的数据时（手改过的库）判分器回 `null` 而不是判错。
+  const off = (type: QuestionType) => ({ ...choice(type, []), autoGrade: false as const });
+  assert.deepEqual(validateQuestion(off('single-choice')), []);
+  assert.deepEqual(validateQuestion(off('true-false')), []);
+  assert.deepEqual(validateQuestion(off('multi-choice')), []);
+  assert.ok(validateQuestion(choice('single-choice', [])).length > 0, '开着开关 ⇒ 答案必填');
 });
 
 test('🔴 单选仍然**不许有两个**答案（那不是「没设」，是坏数据）', () => {

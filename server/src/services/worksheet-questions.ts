@@ -202,6 +202,25 @@ export interface QuestionNode {
    * 放进去就要在 8 个题型里各写一遍读法。
    */
   points?: QuestionPoints;
+  /**
+   * ★ 2026-09-25（教师裁定）：**是否允许自动评分**。缺省 / `true` = 允许；`false` = 不判分。
+   *
+   * 它放**顶层**而不是 `data` 里，理由与 `points` 逐字相同：**题型无关**（九个题型都要回答
+   * 这一格），塞进 `data` 就要在九个题型里各写一遍读法。
+   *
+   * 🔴 判分器以**这个开关**为准，**不再**以「有没有答案」推断 —— 两条路留着就会有两个来源
+   *（教师关掉开关时答案**保留在库里**，见下面的裁定），而那时「有答案却不判分」是**正常状态**。
+   */
+  autoGrade?: boolean;
+  /**
+   * ★ 2026-09-25（教师裁定）：**部分给分的容错档** —— 「错不超过 N 处 ⇒ 部分给分」。
+   * 缺省（`undefined`）= **旧规则**「只要有一部分对就给分」。
+   *
+   * 🔴 缺省**不能**换算成某个数存下来：旧规则是「至少对 1 处」，它**随题面变**
+   *（教师给连线加一条，总数就变了）⇒ 存成死数会让判据在改题面时**静默漂移**。
+   * ⚠️ 判据（`meetsTolerance`）只认 `undefined` 与 `>= 1` 的整数；其他值一律当缺省。
+   */
+  partialTolerance?: number;
   data: Record<string, unknown>;
   children: QuestionNode[];
 }
@@ -317,6 +336,31 @@ export function normalizeFillText(raw: string): string {
     .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))  // 全角→半角
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * 读一道题的容错档。**只有 `>= 1` 的整数才算设过** —— 与 `normalizePointValue` 同一把尺子：
+ * 库里可能出现任何形状（`0` / 小数 / 字符串 / `null`），认不出的**一律当缺省**（旧规则）。
+ * ⚠️ 这里**不抛也不报错**：它是读路径，一份手改过的数据不该让判分 500。
+ */
+export function toleranceOf(node: QuestionNode): number | null {
+  const raw = node.partialTolerance;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) return null;
+  return raw;
+}
+
+/**
+ * ★ 2026-09-25：**部分给分的唯一判据** —— 「错了多少处」是否在容错之内。
+ *
+ * `tolerance === null` ⇒ **旧规则**：只要有一部分对就给分（`hit > 0`）。
+ * 否则 ⇒ `总数 - 对的 ≤ N`。
+ *
+ * 🔴 五个题型（多空填空 / 排序 / 连线 / 归类 / 多选）共用这一个函数。各写一份算术
+ * 是本仓反复栽的那类分叉：改了一处、另一处还是旧的，而屏幕上只是「分数不太对」。
+ */
+export function meetsTolerance(hit: number, total: number, tolerance: number | null): boolean {
+  if (tolerance === null) return hit > 0;
+  return total - hit <= tolerance;
 }
 
 /** 深度优先展开题目（第一批没有容器节点，但 content 是树，遍历写成递归不会过时）。 */
@@ -670,7 +714,7 @@ function judgeSingleChoice(data: Record<string, unknown>, value: unknown): Grade
   return picked[0] === correct[0] ? 'correct' : 'incorrect';
 }
 
-function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeState | null {
+function judgeMultiChoice(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState | null {
   const correct = [...new Set(readStrings(data.correctKeys))];
   const selected = readStrictStrings(readField(value, 'selected'));
   // ★ 2026-09-25（教师裁定）：没设答案 ⇒ 不判分（回 `null`，理由与 `judgeSingleChoice` 同一段）。
@@ -687,6 +731,11 @@ function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeS
   if (picked.size === correct.length) return 'correct';
   // 空选不是「漏选」：什么都没做不该拿分（否则一道允许漏选的题在零作答时给半分）。
   if (picked.size === 0) return 'incorrect';
+  // ★ 2026-09-25：容错档设过 ⇒ 「漏选不超过 N 个」（`total` = 正确答案的个数，`hit` = 选对几个）；
+  // 没设 ⇒ **旧行为**（那个「漏选算不算」的开关）。
+  // ⚠️ 两种口径写在同一行里是有意的：教师把容错档一设，`partialCredit` 那个键就**不再被读**
+  //（它在界面上是「判分依据」的默认档，一旦选了具体数字就由那个数字说了算）。
+  if (tolerance !== null) return meetsTolerance(picked.size, correct.length, tolerance) ? 'partial' : 'incorrect';
   return allowsMissing(data) ? 'partial' : 'incorrect';
 }
 
@@ -709,7 +758,7 @@ function allowsMissing(data: Record<string, unknown>): boolean {
  * 两个形状的分派判据与 `VALIDATORS` 里那支**逐字一致**（`Array.isArray(data.blanks)` 在不在）——
  * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
  */
-function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState {
   // ⚠️ **向后兼容**：`data.blanks` 缺席时走 M3 的单空路径（**形状**不动）。
   // 第一批落库的填空题一个 `blanks` 都没有，把它当成「零个空」会让全班的历史题目集体判错。
   //
@@ -754,7 +803,9 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeSta
     if (acceptable.some((answer) => normalizeFillText(answer) === normalized)) hit += 1;
   }
   if (hit === blanks.length) return 'correct';
-  return hit > 0 ? 'partial' : 'incorrect';
+  // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
+  // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
+  return meetsTolerance(hit, blanks.length, tolerance) ? 'partial' : 'incorrect';
 }
 
 /**
@@ -767,7 +818,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeSta
  * 口径是**位置制**（「至少有 1 个位置对就不是全错」），不做移位距离、不做最长公共子序列 ——
  * 后两者会让「调换了 3 个」与「只调换了 1 个」在同一个分数上，而教师看到的是一个数。
  */
-function judgeOrder(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeOrder(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState {
   const correct = readStrings(data.correctOrder);
   const order = readStrictStrings(readField(value, 'order'));
   if (correct.length === 0 || order === null) return 'incorrect';
@@ -778,7 +829,9 @@ function judgeOrder(data: Record<string, unknown>, value: unknown): GradeState {
   }
   // 「全对」还要求**长度相同**：少放了条目 = 这题没做完，哪怕前面每一位都碰巧对上了。
   if (hit === correct.length && order.length === correct.length) return 'correct';
-  return hit > 0 ? 'partial' : 'incorrect';
+  // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
+  // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
+  return meetsTolerance(hit, correct.length, tolerance) ? 'partial' : 'incorrect';
 }
 
 /**
@@ -800,7 +853,7 @@ function judgeOrder(data: Record<string, unknown>, value: unknown): GradeState {
  * 而偏严的代价是「一份正确作答 + 一条重复的线」掉到 `partial`（不会虚高），
  * 偏松的代价是矛盾作答拿满分（虚高，且教师查不出来）。
  */
-function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeMatch(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState {
   const pairs = readPairs(data.pairs);
   if (pairs.length === 0) return 'incorrect';
   // 🔴 `readStrictPairs`（含坏元素 ⇒ 整体判错），**不是** `readPairs` ——
@@ -829,7 +882,9 @@ function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
     if (matched) hit += 1;
   }
   if (hit === pairs.length) return 'correct';
-  return hit > 0 ? 'partial' : 'incorrect';
+  // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
+  // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
+  return meetsTolerance(hit, pairs.length, tolerance) ? 'partial' : 'incorrect';
 }
 
 /**
@@ -844,7 +899,7 @@ function judgeMatch(data: Record<string, unknown>, value: unknown): GradeState {
  * 用例里把两者**分开钉住**，因为它们代价不同：后者会让一个「其他都对」的学生
  * **答对了却拿不到满分**，而教师查不出来（§14.4 那一类）。
  */
-function judgeCategorize(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeCategorize(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState {
   const items = readItemIds(data.items).ids;
   const placement = readStringMap(data.placement);
   const assignment = readStringMap(readField(value, 'assignment'));
@@ -859,7 +914,9 @@ function judgeCategorize(data: Record<string, unknown>, value: unknown): GradeSt
     if (assignment[id] === expected) hit += 1;
   }
   if (hit === items.length) return 'correct';
-  return hit > 0 ? 'partial' : 'incorrect';
+  // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
+  // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
+  return meetsTolerance(hit, items.length, tolerance) ? 'partial' : 'incorrect';
 }
 
 /**
@@ -873,7 +930,7 @@ function judgeCategorize(data: Record<string, unknown>, value: unknown): GradeSt
  * ⚠️ `short-answer` 那支 `() => null` **不只是「不判分」的口径，也是一个必须被明确作出的
  * 决定**：`Record` 缺一个键就是编译错误，所以它不能靠「忘了写」来达成。
  */
-const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknown) => GradeState | null> = {
+const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknown, tolerance: number | null) => GradeState | null> = {
   // 🔴 **任务没有作答值，永远不该走到判分**。所以这里**抛**，不返回 `null`。
   //    返回 `null`（= 没判过）会让「任务被当成一道题」这件事**一路滑到界面上**：
   //    看板多一格、抽屉多一行、统计的分母悄悄变大，而全程没有一处报错。
@@ -919,6 +976,12 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   // 一条管「值是 ink」（教师把作答模式改回键盘之后仍然挡得住 —— 那时题型不再是 `drawing`），
   // 一条管「题型就是绘图题」（值被手改成别的形状时也挡得住 —— 那时 `format` 不是 ink）。
   if (isInkFormat(readField(value, 'format'))) return null;
+  // ★ 2026-09-25（教师裁定）：教师**关掉了这道题的自动评分** ⇒ 不判分。
+  // 🔴 这里是**唯一**读 `autoGrade` 的地方 —— 五个判分器都不需要知道它，
+  //    它们只管「按题面判」，而「判不判」是分派层的事。
+  // ⚠️ 以**开关**为准，不以「有没有答案」推断：关掉开关时答案**保留在库里**（教师再打开时
+  //    原来勾的还在），所以「有答案却不判分」是一个**正常状态**，不能当成坏数据。
+  if (node.autoGrade === false) return null;
   // ⚠️ `node.data` 也走「先判类型再取」：`Record<string, unknown>` 是**编译期的承诺**，
   // 而库里的 JSON 可能是 `null` / 数组 / 别的标量 —— `null.correctKeys` 会在提交路径上
   // 抛一次 500，学生看到的是「提交失败」。
@@ -928,10 +991,10 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   // ⚠️ `node.type` 同样是编译期的承诺：手工改过的行可能是一个**不存在的题型**。
   // 取不到判分器时回答 `null`（= 不判分）—— 与主观题同一档，看板不会把它算进
   // 「已判分」的分母，也就不会报出一个错的正确率。
-  const judgeForType: ((data: Record<string, unknown>, value: unknown) => GradeState | null) | undefined =
+  const judgeForType: ((data: Record<string, unknown>, value: unknown, tolerance: number | null) => GradeState | null) | undefined =
     JUDGES[node.type];
   if (!judgeForType) return null;
-  return judgeForType(data, value);
+  return judgeForType(data, value, toleranceOf(node));
 }
 
 /** 单选与判断题**共用**的校验：`correctKeys` 恰好一个。`checkOptions` 只对单选为真。 */
@@ -945,11 +1008,13 @@ function validateSingleAnswer(
   if (checkOptions && optionKeys.length < 2) {
     errors.push(`${label}至少需要两个选项`);
   }
+  // ★ 2026-09-25（教师裁定）：答案必填与否**由「允许自动评分」那个开关决定** ——
+  // 开着（缺省）⇒ 必须恰好一个；关掉 ⇒ 答案根本用不上，一条都不查。
+  // ⚠️ 这是本特性与上一版的分界：上一版按「有没有答案」**推断**判不判分，现在以开关为准
+  //（关掉时答案保留在库里，所以「有答案却不判分」是正常状态）。
+  if (node.autoGrade === false) return;
   const correct = readStrings(node.data.correctKeys);
-  // ★ 2026-09-25（教师裁定）：**可以不设答案** —— 不设就是不判分（`judgeSingleChoice` 回 `null`）。
-  // ⚠️ 旧判据是 `length !== 1`，它把「0 个」（合法的新形态）与「2 个以上」（坏数据）
-  // 当成同一件事。现在两者分开：0 个放行，2 个以上仍然拒绝。
-  if (correct.length > 1) errors.push(`${label}最多只能指定一个正确答案`);
+  if (correct.length !== 1) errors.push(`${label}必须且只能指定一个正确答案`);
   // ★ 2026-09-25 补：答案指向一个**不存在的选项** ⇒ 没有任何学生能答对，而看板上只表现为
   // 「正确率 0%」—— 教师会去怀疑学生，不会来怀疑这道题。多选题那一支**一直**有这条检查，
   // 单选漏了（同一条失效、两处两个样）。
@@ -1017,8 +1082,9 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     const optionKeys = readOptionKeys(node.data.options);
     const correct = readStrings(node.data.correctKeys);
     if (optionKeys.length < 2) errors.push('多选题至少需要两个选项');
-    // ★ 2026-09-25（教师裁定）：**可以不设答案**（不设 = 不判分）。原来这里是
-    // 「至少要指定一个正确答案」，把「没设」与「设错」混成一条。
+    // ★ 2026-09-25（教师裁定）：答案必填与否由「允许自动评分」那个开关决定（与单选同一段）。
+    if (node.autoGrade === false) return;
+    if (correct.length < 1) errors.push('多选题至少要指定一个正确答案');
     // 🔴 每个 key 都必须指向真实存在的选项：`correctKeys` 里一个不存在的字母
     // ⇒ 那道题**没有任何学生能答对**，而它在看板上只表现为「正确率 0%」——
     // 教师会去怀疑学生，不会来怀疑这道题。
@@ -1031,7 +1097,9 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     // 题目在下次保存时集体报错。
     if (!Array.isArray(node.data.blanks)) {
       const answers = readStrings(node.data.answers);
-      if (!answers.some((answer) => answer.trim())) errors.push('填空题至少要有一个可接受的答案');
+      // ⚠️ 开关关掉时「答案」整块不查（下面两处同样）—— 但**题面**照查：
+      // 一个空、一个 `blanks` 的形状仍然是题目本身的要求。
+      if (node.autoGrade !== false && !answers.some((answer) => answer.trim())) errors.push('填空题至少要有一个可接受的答案');
       return;
     }
     const blanks = node.data.blanks;
@@ -1042,7 +1110,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
         : undefined;
       if (!readStrings(answers).some((answer) => answer.trim())) {
         // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。
-        errors.push('填空题每个空至少要有一个可接受的答案');
+        if (node.autoGrade !== false) errors.push('填空题每个空至少要有一个可接受的答案');
         break;
       }
     }
@@ -1060,7 +1128,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     if (ids.length < 2) errors.push('排序题至少需要两个条目');
     else if (!allValid) errors.push('排序题里有条目缺少 id');
     else if (new Set(ids).size !== ids.length) errors.push('排序题里有重复的条目 id');
-    else if (!isPermutation(ids, correctOrder)) errors.push('排序题的「正确顺序」必须正好是这些条目各一次');
+    else if (node.autoGrade !== false && !isPermutation(ids, correctOrder)) errors.push('排序题的「正确顺序」必须正好是这些条目各一次');
     else if (isSameOrder(ids, correctOrder)) {
       // 🔴 **本步骤最容易漏掉的一条。** `items` 是学生看到的**初始顺序**，两者相同
       // ⇒ 学生什么都不做就是满分。这不是理论风险：教师在编辑器里按正确顺序录入条目
@@ -1079,7 +1147,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     else if (new Set(left.ids).size !== left.ids.length || new Set(right.ids).size !== right.ids.length) {
       errors.push('连线题里有重复的条目 id');
     } else if (!isCompleteMatching(left.ids, right.ids, pairs)) {
-      errors.push('连线题必须把左栏每一项都连到右栏的一个不同项上');
+      if (node.autoGrade !== false) errors.push('连线题必须把左栏每一项都连到右栏的一个不同项上');
     }
   },
 
@@ -1104,7 +1172,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
       const zoneId = placement[id];
       return typeof zoneId !== 'string' || !zones.ids.includes(zoneId);
     })) {
-      errors.push('归类题每个条目都必须落到一个框里');
+      if (node.autoGrade !== false) errors.push('归类题每个条目都必须落到一个框里');
     }
   },
 

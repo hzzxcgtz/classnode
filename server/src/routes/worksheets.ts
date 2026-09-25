@@ -323,6 +323,14 @@ function normalizeNode(
     // 但显式展开一个 `undefined` 会让「这个键到底存不存在」在读的一侧多一种形状。
     // 统一成「没有 = 键不存在」，`resolvePoints` 只看 `node.points` 的真假。
     ...(points ? { points } : {}),
+    // ★ 2026-09-25：**逐题的自动评分开关与容错档必须在这里显式带上** ——
+    // `normalizeNode` 是**白名单式**的（逐个字段列出），漏一个的后果是教师设置完之后
+    // 保存一次**静默丢光**（键没了、判分器回落到缺省，而屏幕上什么都没变）。
+    // ⚠️ 与 `points` 同一条规矩：只在**有值**时写（`undefined` 与「键不存在」在库里长得一样）。
+    ...(node.autoGrade === false ? { autoGrade: false } : {}),
+    ...(typeof node.partialTolerance === 'number' && Number.isInteger(node.partialTolerance) && node.partialTolerance >= 1
+      ? { partialTolerance: node.partialTolerance }
+      : {}),
     data,
     children,
   };

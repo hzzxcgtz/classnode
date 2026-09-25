@@ -348,6 +348,20 @@ export interface WorksheetQuestionNode {
    */
   points?: QuestionPointsDraft;
   data: Record<string, unknown>;
+  /**
+   * ★ 2026-09-25（教师裁定）：**是否允许自动评分**。缺省 = 允许；`false` = 不判分。
+   *
+   * 🔴 与 `points` 同一条理由放在**顶层**：它**题型无关**（九个可判分的题型都要回答这一格）。
+   * ⚠️ 判分器以**开关**为准，不以「有没有答案」推断 —— 关掉时答案**保留在库里**，
+   * 所以「有答案却不判分」是正常状态。
+   */
+  autoGrade?: boolean;
+  /**
+   * ★ 2026-09-25（教师裁定）：**部分给分的容错档** —— 「错不超过 N 处 ⇒ 部分给分」。
+   * 缺省（`undefined`）= **旧规则**「只要有一部分对就给分」。
+   * ⚠️ 只有 `>= 1` 的整数算设过；其余值一律当缺省（与 `toleranceOf` 同一把尺子）。
+   */
+  partialTolerance?: number;
   children: WorksheetQuestionNode[];
 }
 

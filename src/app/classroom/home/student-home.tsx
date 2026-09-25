@@ -28,13 +28,6 @@ export interface StudentHomeProps {
   toast: ChatToast | null;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   onOpenModule: (moduleId: ModuleId) => void;
-  /**
-   * ★ 2026-09-25：课堂暂停中 ⇒ 三张卡片全部置灰、点了会被外壳拒掉。
-   * ⚠️ 与 `preview`（教师只锁了那一件）**共用同一个灰化样式与同一条 `aria-disabled`**，
-   * 但**提示语必须分开**：一个是「老师还没开放」（针对这一件），
-   * 一个是「课堂正在休息」（针对整节课）。混用会让学生以为老师单独关了这一件。
-   */
-  paused: boolean;
 }
 
 /**
@@ -171,7 +164,6 @@ export function StudentHome({
   toast,
   setToast,
   onOpenModule,
-  paused,
 }: StudentHomeProps) {
   // 浮层一律走 portal：Task 5 的切换动画会让首页成为 `transform` 容器，届时留在树内的
   // `position: fixed` 会被重新锚定到首页盒子（Task 2 同类问题）。现在就先摆正，
@@ -263,7 +255,7 @@ export function StudentHome({
                 const moduleId = MODULE_ID_BY_KEY[moduleKey];
                 const card = MODULE_META[moduleId];
                 const content = cardContent[moduleId];
-                const locked = state === 'preview' || paused;
+                const locked = state === 'preview';
                 return (
                   <button
                     key={moduleKey}
@@ -273,12 +265,7 @@ export function StudentHome({
                     aria-disabled={locked || undefined}
                     onClick={() => {
                       if (locked) {
-                        // ⚠️ 两句话的**原因不同**，别合并成一句：暂停是整节课的事，
-                        // preview 是这一件的事。合并之后学生分不清「等一会儿」还是「问老师」。
-                        setToast({
-                          msg: paused ? '课堂正在休息，等老师继续吧' : '老师还没开放',
-                          type: 'info',
-                        });
+                        setToast({ msg: '老师还没开放', type: 'info' });
                         return;
                       }
                       onOpenModule(moduleId);

@@ -25,9 +25,7 @@ export interface ClassroomShellProps {
    */
   chat: Omit<ChatPanelProps, 'active'>;
   /** 首页的全部 props，**除 `active` 与 `onOpenModule`**：两者都由外壳注入（同理）。 */
-  /** ⚠️ `paused` 与 `active` / `onOpenModule` 一样由**外壳**注入（它才知道课堂暂停了没），
-      所以也从 `Omit` 里去掉 —— 留着会逼 `page.tsx` 造一个它不该负责的字面量。 */
-  home: Omit<StudentHomeProps, 'active' | 'onOpenModule' | 'paused'>;
+  home: Omit<StudentHomeProps, 'active' | 'onOpenModule'>;
   /**
    * 视图相位的单向镜像（`'home'` = 学生在首页，`'shell'` = 在某个模块里）。
    *
@@ -144,6 +142,22 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
     setToast,
     paused,
   });
+
+  /**
+   * ★ 2026-09-25：暂停那一刻把**焦点**从底下的输入框上摘掉。
+   *
+   * 🔴 覆盖层挡得住鼠标与手指，**挡不住已经落在输入框里的光标** —— 学生若刚好停在
+   * 学伴的输入框里，暂停后继续敲键盘，字会照进那个输入框（屏幕上什么都看不见），
+   * 而解除暂停时他会发现自己莫名其妙打了一段。一次 `blur()` 就没有这个洞了。
+   *
+   * ⚠️ 不用 `inert` / `pointer-events` 之类的整体禁用：前者在 Safari 15 上支持不全
+   * （本仓学生端跑在老 iPad 上），后者的作用范围会连覆盖层自己一起波及。
+   */
+  useEffect(() => {
+    if (!paused) return;
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+  }, [paused]);
 
   /** 前台层：`activeModuleId` 为 `null` 时是首页。**点击即刻生效**，不等动画。 */
   const frontKey: LayerKey = activeModuleId ?? 'home';
@@ -570,24 +584,26 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
       {/* 操作组（M1b-3 T1）的四项能力全部来自 `chat` —— 它们本来就是会话级状态，
           外壳只是转手，因此这里**不新增任何状态、不新增 effect**。
           面板头那四个同名同义的入口已随 M1b-3 T4 整行撤除，所以顶栏这一组是**唯一**一份。 */}
-      {/* ★ 2026-09-25：**暂停横幅**（教师要求：温馨 + 醒目）。
-          🔴 它是暂停期间学生**唯一**的解释来源 —— 所以 `use-module-tabs` 那条「暂停 ⇒ 送回
-          首页」的 effect **刻意不发 toast**（再弹一条只会把屏幕糊住，而这一条是常驻的）。
-          ⚠️ 语气是安抚，不是报错：琥珀色而不是红色，且明说「你写过的东西都还在」——
-          那句话是**真的**（§4.5：`mountedIds` 只增不减，模块仍挂在 DOM 里）。 */}
+      {/* ★ 2026-09-25：**课堂暂停的覆盖层**（教师选的「方案 1」）。
+          🔴 用 `position: fixed` 而不是流内的一块 —— 第一版写成了流内横幅，
+          而 `.bar` 是 `position: fixed; z-index: 60` 的：横幅被它**整个盖住**，
+          教师真机上「顶部横幅没有出现」。教训是**这一层里没有任何东西是「在流内」的**，
+          凡是浮在面板之上的东西都得自己 fixed + 给定 z-index（`.pauseCover` 里 10000）。
+          🔴 覆盖层**不改变学生所在的模块** —— 他刚才在哪就还在哪，只是被盖住了；
+          解除时原地继续。第一版是「暂停 ⇒ 送回首页」，教师真机一试就否掉了。
+          ⚠️ 语气是安抚不是报错（琥珀色、不是红色），且明说「你写过的东西都还在」——
+          那句话是**真的**（§4.5：`mountedIds` 只增不减，模块仍挂在 DOM 里，草稿一个字节没动）。
+          ⚠️ z-index 10000 夹在中间：高于 `.bar`(60) 与面板内模态(100)，低于 Toast(99999)
+          —— 老师发来的消息与「课堂已恢复」这类提示不该被盖住。 */}
       {paused && (
-        <div role="status" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap',
-          padding: '10px 16px',
-          background: 'linear-gradient(135deg, #fffbeb, #fef3c7)',
-          borderBottom: '1px solid #fcd34d',
-          color: '#92400e', fontSize: '0.938rem', fontWeight: 600,
-        }}>
-          <span aria-hidden="true" style={{ fontSize: '1.125rem' }}>☕</span>
-          <span>课堂暂时休息一下，等老师继续</span>
-          <span style={{ fontWeight: 400, fontSize: '0.813rem', color: '#b45309' }}>
-            你写过的东西都还在，不会丢
-          </span>
+        <div role="status" aria-live="polite" className={styles.pauseCover}>
+          <div className={styles.pauseEmoji} aria-hidden="true">☕</div>
+          <div className={styles.pauseTitle}>课堂暂时休息一下</div>
+          <div className={styles.pauseText}>
+            老师按下了暂停键。现在不用做什么，等老师继续就可以接着做。
+          </div>
+          <div className={styles.pauseNote}>你写过的东西都还在，不会丢</div>
+          <div className={styles.pauseDot} aria-hidden="true" />
         </div>
       )}
       <ModuleTabBar
@@ -595,7 +611,6 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
         activeId={activeModuleId}
         onSelect={(id) => userNavigate(() => openModule(id))}
         onHome={() => userNavigate(goHome)}
-        paused={paused}
         connected={chat.connected}
         selectedStudent={chat.selectedStudent}
         avatarSvgs={chat.avatarSvgs}
@@ -615,7 +630,6 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
           styles.homeLayer,
           <StudentHome
             {...home}
-            paused={paused}
             active={activate('home')}
             toast={toastFor('home')}
             onOpenModule={(id) => userNavigate(() => openModule(id))}

@@ -24,7 +24,14 @@ export interface UseModuleTabsOptions {
    *
    * 🔴 暂停 = 三件套**整体**不可用（学习单 / 探究空间 / 智能学伴都进不去），
    * 与「某个模块被教师设成 preview」不是一回事：后者只锁那一件。
-   * 判据收在这一处，调用点（首页卡片、Tab 栏、将来的任何入口）不需要各判一次。
+   *
+   * ⊘ **2026-09-25 二次修订：暂停**不**切走学生**。第一版在这里加过一条
+   *   「暂停 ⇒ `setActiveModuleId(null)`」的 effect，教师真机一试就否掉了：
+   *   学生被丢回首页、解除后还停在首页，得自己再点回去 —— 而**他刚才就在那儿**。
+   *   ⇒ 现在暂停由**覆盖层**表达（`classroom-shell.tsx` 的 `.pauseCover`），
+   *   学生的位置**一个字节都不动**，解除时原地继续。
+   *   ⚠️ 所以 `paused` 在这里只剩下**一道闸门**的作用：`openModule` 里拦住新进入
+   *   （覆盖层挡得住鼠标/手指，挡不住将来的程序化入口 —— 那道闸门本来就是为它们留的）。
    */
   paused: boolean;
 }
@@ -198,21 +205,6 @@ export function useModuleTabs({ classroom, setToast, paused }: UseModuleTabsOpti
     setActiveModuleId(null);
     setToast({ msg: '老师暂时关闭了这个模块，先回到首页', type: 'info' });
   }, [activeModuleId, classroom?.modules, setToast]);
-
-  /**
-   * ★ 2026-09-25：**暂停时把已经在模块里的学生送回首页**。
-   *
-   * 做法与上面那条「模块被关闭」逐字同源（同一把尺子：前台必须是一个可用的地方）。
-   * 🔴 但**不发 toast** —— 学生一抬头就能看到那条常驻的暂停横幅，它才是解释；
-   * 再弹一条只会把屏幕糊住。横幅在 `classroom-shell.tsx`。
-   *
-   * ⚠️ 草稿与已作答**一个字节都不丢**：`mountedIds` 只增不减（§4.5），
-   * 学生只是被切走，模块仍挂在 DOM 里；教师恢复后切回去，内容原样。
-   */
-  useEffect(() => {
-    if (!paused) return;
-    setActiveModuleId(null);
-  }, [paused]);
 
   return { activeModuleId, mountedIds, tabs, openModule, goHome };
 }

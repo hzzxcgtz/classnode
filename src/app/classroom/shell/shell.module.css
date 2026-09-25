@@ -689,6 +689,14 @@
     transition: none;
   }
 
+  /* ★ 2026-09-25：暂停覆盖层那个呼吸点。关掉之后留一个**常亮**的点 ——
+     `animation: none` 会让它停在 `opacity: .25`（动画的首帧），那看起来像是坏了；
+     覆盖层是暂停期间唯一的解释来源，不能让它显得半死不活。 */
+  .pauseDot {
+    animation: none;
+    opacity: 0.7;
+  }
+
   .home:active,
   .tab:active,
   .action:active,
@@ -777,4 +785,69 @@
     gap: 5px;
     font-size: 0.75rem;
   }
+}
+
+/* ───────────────── 课堂暂停的覆盖层（★ 2026-09-25）─────────────────────────
+ * 教师端「暂停课堂」时盖住**整个外壳**的那一层。
+ *
+ * 🔴 为什么是 `position: fixed` 而不是流内的一块：`.bar` 本身就是
+ * `position: fixed; z-index: 60`，流内的东西会被它整个盖住 —— 第一版写成流内横幅，
+ * 教师真机上「顶部横幅没有出现」，就是这么来的。
+ *
+ * z-index 10000 **夹在中间**：高于 `.bar`(60) 与面板内的模态(100)，
+ * 低于 Toast(99999) —— 老师发来的消息与「课堂已恢复」这类提示不该被盖住。
+ *
+ * 观感是**安抚**不是报错：琥珀色、不是红色；不是纯色块而是浅渐变。
+ * ------------------------------------------------------------------------- */
+.pauseCover {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 55%, #fde68a 100%);
+}
+
+.pauseEmoji {
+  font-size: 3.25rem;
+  line-height: 1;
+}
+
+.pauseTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #92400e;
+}
+
+.pauseText {
+  max-width: 26em;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #b45309;
+}
+
+.pauseNote {
+  font-size: 0.875rem;
+  color: #a16207;
+}
+
+/* 一个缓慢呼吸的小点：告诉学生「页面没卡死，是在等老师」。
+   ⚠️ 只碰 `opacity` —— 与文件头那条「动效只碰 transform 与 opacity」一致。 */
+.pauseDot {
+  width: 10px;
+  height: 10px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  animation: pauseBreathe 1.6s ease-in-out infinite;
+}
+
+@keyframes pauseBreathe {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
 }

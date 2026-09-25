@@ -112,9 +112,12 @@ export function WorksheetTileContent({ state, compact }: {
           </div>
           {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。 */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {/* ⚠️ 题号取自判据层的 `headings`（与 `cells` 同源），**不在这里现算** ——
+                现算就是又一份真源：第二级任务的第一道题会写着「第 3 题」，而同一屏上
+                抽屉/矩阵/学生端说的是「任务二 · 1」。 */}
             {state.cells.map((status, index) => (
               <span key={index}
-                title={`第 ${index + 1} 题 · ${CELL_STYLE[status].label}`}
+                title={`${state.headings[index]} · ${CELL_STYLE[status].label}`}
                 style={{
                   width: compact ? 11 : 14, height: compact ? 11 : 14, borderRadius: 3,
                   background: CELL_STYLE[status].background, border: `1px solid ${CELL_STYLE[status].border}`,

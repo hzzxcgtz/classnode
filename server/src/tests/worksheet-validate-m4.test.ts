@@ -68,7 +68,13 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   // ⚠️ 别顺手把 `drawing: () => {}` 改成 `drawing: () => { errors.push('…') }` 来让它从
   // EXEMPT 里挪出来：绘图题在 `newQuestion` 里的 `data` 是 `{}` ⇒ 那等于**新建的绘图题
   // 永远存不下去**，而那句错误文案说的是「题干不能为空」（一个说得通但与真实原因无关的提示）。
-  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing'];
+  // ★ 2026-09-25 补第三个豁免：**任务容器**。它与上面两个**理由不同**，别混：
+  // 主观题/绘图题豁免是因为「空 data 就是它的正确形状」；任务豁免是因为
+  // **它根本不是一道题**（没有作答值，裁定 ①a）—— 拿「题」的尺子量它本身就是错的。
+  // ⚠️ 与 `drawing` 同款：这条豁免不会削弱把关，因为 `VALIDATORS` 里那个键**必须存在**
+  // 是编译错误，而「键在、内容是空的」对任务**就是正确行为**（它只拦嵌套任务）。
+  // 任务的规矩在 `worksheet-task.test.ts`：空任务合法、标题可留空、嵌套被拦。
+  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing', 'task'];
   const checked: QuestionType[] = [];
 
   for (const type of QUESTION_TYPES) {
@@ -104,8 +110,11 @@ test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data
   );
 });
 
-test('题干为空是公共检查：所有题型都拦（含主观题）', () => {
-  for (const type of QUESTION_TYPES) {
+test('题干为空是公共检查：所有**可作答的**题型都拦（含主观题）', () => {
+  // ⚠️ `task` **不在**这条检查里（2026-09-25）：任务的 `prompt` 是它的**标题**，
+  // 「纯分组」是合法数据（教师裁定 ①a），而且教师收到的词不该是「题干」——
+  // 他改的是任务名。这一条在 `worksheet-task.test.ts` 里正面钉着。
+  for (const type of QUESTION_TYPES.filter((t) => t !== 'task')) {
     const empty: QuestionNode = { id: 'q', type, prompt: '   ', inputMode: 'keyboard', data: {}, children: [] };
     assert.ok(validateQuestion(empty).includes('题干不能为空'), `题型「${type}」的空题干没被拦下`);
   }

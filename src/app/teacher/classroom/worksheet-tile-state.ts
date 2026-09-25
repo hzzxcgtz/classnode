@@ -124,9 +124,9 @@ export type WorksheetTileState =
   | { kind: 'no-progress' }
   // ★ 2026-09-25：`index`（0-based 拍平序）换成 `heading`（两级题号，`任务一 · 2`）。
   // 格子上写的从来就是「第几题」，而拍平序把**任务**也数了一号 ⇒ 它后面每一题的号都偏大。
-  | { kind: 'working'; heading: string | null; typeLabel: string | null; cells: WorksheetCellStatus[] }
-  | { kind: 'stuck'; heading: string | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[] }
-  | { kind: 'all-submitted'; cells: WorksheetCellStatus[] };
+  | { kind: 'working'; heading: string | null; typeLabel: string | null; cells: WorksheetCellStatus[]; headings: string[] }
+  | { kind: 'stuck'; heading: string | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[]; headings: string[] }
+  | { kind: 'all-submitted'; cells: WorksheetCellStatus[]; headings: string[] };
 
 export interface WorksheetTileInput {
   /** 这一格的参与者（或小组）此刻该作答的那一份；`null` = 没有（未配置 / 高级模式下本组没配）。 */
@@ -164,7 +164,10 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   const items = flattenAnswerable(nodes);
   if (items.length === 0) return { kind: 'empty' };
 
+  // ⚠️ `cells` 与 `headings` 是**同一个数组的两个投影** —— 逐格对齐是结构性的，
+  //    不是「记得两边一起改」那种约定（格子的 tooltip 要题号，见 `worksheet-tiles.tsx`）。
   const cells: WorksheetCellStatus[] = items.map((item) => progress?.cells[item.node.id] ?? 'unanswered');
+  const headings: string[] = items.map((item) => item.heading);
 
   // 收到的作答**全都对不上现在这份学习单**（教师改单删掉了那些题）：格子上一个状态都画不出来。
   // 与「一条广播都没收到」在屏幕上没有区别，而后者那句话（「还没收到作答」）在这种情况下
@@ -173,7 +176,7 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   // 走到这里 `progress` 必然在场（`cells` 全灰是上面那一条处理掉的），断言给 TS 看。
   const known = progress!;
 
-  if (cells.every((status) => status === 'submitted')) return { kind: 'all-submitted', cells };
+  if (cells.every((status) => status === 'submitted')) return { kind: 'all-submitted', cells, headings };
 
   const at = activeQuestionIndex(items, cells, known.lastQuestionId);
   const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
@@ -181,9 +184,9 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   const idleMs = now - known.lastAt;
   if (online && idleMs > WORKSHEET_STUCK_AFTER_MS) {
     // `Math.floor` 而不是四舍五入：8 分 59 秒说「8 分钟」是准的，说「9 分钟」是提前量。
-    return { kind: 'stuck', heading, typeLabel, minutes: Math.floor(idleMs / 60_000), cells };
+    return { kind: 'stuck', heading, typeLabel, minutes: Math.floor(idleMs / 60_000), cells, headings };
   }
-  return { kind: 'working', heading, typeLabel, cells };
+  return { kind: 'working', heading, typeLabel, cells, headings };
 }
 
 /**

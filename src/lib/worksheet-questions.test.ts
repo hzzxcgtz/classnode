@@ -101,3 +101,45 @@ test('🔴 顺序同构：拍平结果逐项等于 flattenQuestions 去掉任务
 test('空树不炸，也不编出任何题号', () => {
   assert.deepEqual(flattenAnswerable([]), []);
 });
+
+/* ── 坏形状（手工改过的库行）：必须与 flattenQuestions 一样老实 ────────── */
+
+/**
+ * 🔴 这一组钉的是终审 I3：`flattenQuestions` 对 `children` 有 `Array.isArray` 守卫，
+ * 而 `flattenAnswerable` 第一版直接 `node.children ?? []` —— 于是一行手改过的数据：
+ *   · `children: {}` / `42` / `true` ⇒ **抛** `TypeError: list is not iterable`；
+ *   · `children: "ab"`             ⇒ **不抛**，按字符迭代出两个**假题**（`node` 是单字符），
+ *                                      下游读 `prompt` / `readOptions` 时再炸或渲染垃圾。
+ * 要紧的是它落在**写路径**上（`routes/worksheets.ts` 的 `findQuestion` 没有 try/catch）
+ * ⇒ 一份坏数据让学生**每次保存都 500**，而同一份数据喂给 `flattenQuestions` 是读得出来的。
+ *
+ * ⇒ 两份实现必须**同一条守卫**：不是数组就当没有孩子，与 `flattenQuestions` 逐字同形。
+ */
+const BAD_CHILDREN: unknown[] = [{}, 42, true, 'ab', null];
+
+function withBadChildren(children: unknown): WorksheetQuestionNode {
+  return { id: 't1', type: TASK_TYPE, prompt: '任务一', inputMode: 'keyboard', data: {}, children: children as WorksheetQuestionNode[] };
+}
+
+test('🔴 children 不是数组 ⇒ 当作没有孩子，不抛、也不编出假题', () => {
+  for (const bad of BAD_CHILDREN) {
+    const tree = [withBadChildren(bad), q('z')];
+    assert.deepEqual(headings(tree), ['1'], `children=${JSON.stringify(bad)} 时应当只剩散题 z`);
+  }
+});
+
+test('🔴 坏形状时两份拍平函数给出**同样的题**（一道不多、一道不少）', () => {
+  for (const bad of BAD_CHILDREN) {
+    const tree = [withBadChildren(bad), q('z')];
+    assert.deepEqual(
+      flattenAnswerable(tree).map((item) => item.node),
+      flattenQuestions(tree).filter((node) => node.type !== TASK_TYPE),
+      `children=${JSON.stringify(bad)}`,
+    );
+  }
+});
+
+test('🔴 小题自己带坏 children（非任务节点）同样不抛', () => {
+  const broken = { ...q('a'), children: 42 as unknown as WorksheetQuestionNode[] };
+  assert.deepEqual(headings([broken, q('b')]), ['1', '2']);
+});

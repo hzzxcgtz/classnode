@@ -87,6 +87,7 @@ test('正在做：最后一次保存的那一题 + 题型（题号是两级题�
     heading: '2',
     typeLabel: '填空题',
     cells: ['unanswered', 'draft', 'unanswered'],
+    headings: ['1', '2', '3'],
   });
 });
 
@@ -107,12 +108,12 @@ test('子题也算题（嵌套 content 不能只渲染顶层 —— 否则格子
   // 而服务端算「整卷交齐」时数的也是 3 ⇒ 只看顶层的实现会让这一格**永远交不完**。
   const nodes = [question('q1', 'single-choice', [question('q1a', 'fill-blank')]), question('q2', 'short-answer')];
   const result = state({ nodes, progress: progress({ q1: 'submitted', q1a: 'submitted', q2: 'submitted' }, 'q2', NOW - 1000) });
-  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'] });
+  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'], headings: ['1', '2', '3'] });
 });
 
 test('全部提交 ⇒ all-submitted（题数取方格阵的长度）', () => {
   const result = state({ progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'submitted' }, 'q3', NOW - 1000) });
-  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'] });
+  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'], headings: ['1', '2', '3'] });
 });
 
 /* ── ③ 「停住了」的判据：在线 且 > 5 分钟 且 未全部提交 ──────────────── */
@@ -218,7 +219,7 @@ test('🔴 任务不占格子：三题全交 ⇒ all-submitted（任务被当成
   // §十一 数出来的失效：任务节点没有作答行 ⇒ 它那一格永远是 `unanswered`
   // ⇒ `cells.every(submitted)` 恒假 ⇒ 学生明明交了卷，格子上永远停在「正在做」。
   const result = state({ nodes: IN_TASK, progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'submitted' }, 'q3', NOW - 1000) });
-  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'] });
+  assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'], headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'] });
 });
 
 test('格子上的题号带任务前缀', () => {
@@ -228,6 +229,7 @@ test('格子上的题号带任务前缀', () => {
     heading: '任务一 · 2',
     typeLabel: '填空题',
     cells: ['unanswered', 'draft', 'unanswered'],
+    headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'],
   });
 });
 
@@ -239,4 +241,32 @@ test('🔴 停住了：也带同一个题号', () => {
 test('题目树里只有任务、一道可作答的题都没有 ⇒ empty（不是「一道题都还没答」）', () => {
   const result = state({ nodes: [task('t1', '任务一', [])], progress: progress({}, null, NOW) });
   assert.deepEqual(result, { kind: 'empty' });
+});
+
+test('🔴 格子阵的 tooltip 也要两级题号 —— `headings` 与 `cells` 同源、逐格对齐', () => {
+  // 终审 I5：`worksheet-tiles.tsx` 的 tooltip 原先写 `第 ${index + 1} 题`，
+  // 与同一屏上抽屉/矩阵/学生端的题号**不是同一个号**（第二级任务的第一道题会说「第 3 题」
+  // 而别处说「任务二 · 1」）。修法不是在那儿现算 —— 现算就是又一份真源；
+  // 而是让判据层把题号**一起带出来**，与 `cells` 由同一个数组投影，结构上不可能漂。
+  const result = state({
+    nodes: [task('t1', '任务一', THREE), task('t2', '任务二', [question('q4', 'order')])],
+    progress: progress({ q1: 'draft', q4: 'submitted' }, 'q4', NOW - 1000),
+  });
+  assert.equal(result.kind, 'working');
+  if (result.kind !== 'working') return;
+  assert.deepEqual(result.cells, ['draft', 'unanswered', 'unanswered', 'submitted']);
+  assert.deepEqual(result.headings, ['任务一 · 1', '任务一 · 2', '任务一 · 3', '任务二 · 1']);
+  assert.equal(result.headings.length, result.cells.length, '两个数组必须逐格对齐');
+});
+
+test('🔴 全部交齐那一态也带题号（tooltip 在那个态里同样要能hover）', () => {
+  const result = state({
+    nodes: IN_TASK,
+    progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'submitted' }, 'q3', NOW - 1000),
+  });
+  assert.deepEqual(result, {
+    kind: 'all-submitted',
+    cells: ['submitted', 'submitted', 'submitted'],
+    headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'],
+  });
 });

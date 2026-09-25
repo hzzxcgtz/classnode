@@ -27,7 +27,10 @@ import { test } from 'node:test';
  * ⇒ 它不该进那两个集合中的任何一个，但**必须被显式地排除**：
  * 直接用 `QUESTION_TYPES` 会让 `task` 从缝里掉进「不判分 ⇒ 那就该送去分析」那一侧，
  * 而那正是这道闸存在的意义（把「没作答值」误判成「主观题」）。
- * 下面另有一条用例专门钉住 `task` 两边都不属于。
+ * ⚠️ 「`task` 两边都不属于」那一条**不在本文件里**（本文件只测那个二分法，
+ * 而 `task` 已被 `ANSWERABLE_TYPES` 滤掉、根本不进循环）。它在
+ * `worksheet-task.test.ts`：那边用真的 `grade()` 与真的 `isAnalyzableType()`
+ * 各钉一次。本条注释原先写的是「下面另有一条用例」—— **本文件里没有那一条**。
  */
 const ANSWERABLE_TYPES = QUESTION_TYPES.filter((t) => t !== 'task');
 import assert from 'node:assert/strict';

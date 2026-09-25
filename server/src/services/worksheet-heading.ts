@@ -54,17 +54,20 @@ export interface AnswerableQuestion<T extends HeadingNode = HeadingNode> {
  */
 export function flattenAnswerable<T extends HeadingNode>(nodes: T[]): Array<AnswerableQuestion<T>> {
   const out: Array<AnswerableQuestion<T>> = [];
+  /** `children` 的守卫 —— 与前端那一份、以及 `flattenQuestions` **逐字同形**（见那里的注释）。 */
+  const kids = (node: T): T[] => (Array.isArray(node.children) ? (node.children as T[]) : []);
+
   /** `counter` 是**这一层**的计数器：散题共用一个，每个任务各有一个自己的。 */
   const walk = (list: T[], prefix: string, counter: { n: number }) => {
     for (const node of list) {
       if (node.type === TASK_TYPE) {
         const title = typeof node.prompt === 'string' ? node.prompt.trim() : '';
-        walk((node.children ?? []) as T[], title ? `${title} · ` : '', { n: 0 });
+        walk(kids(node), title ? `${title} · ` : '', { n: 0 });
         continue;
       }
       counter.n += 1;
       out.push({ node, heading: `${prefix}${counter.n}` });
-      walk((node.children ?? []) as T[], prefix, counter);
+      walk(kids(node), prefix, counter);
     }
   };
   walk(nodes, '', { n: 0 });

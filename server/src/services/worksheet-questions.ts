@@ -964,22 +964,27 @@ function validateSingleAnswer(
  */
 const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) => void> = {
   /**
-   * ★ 2026-09-25：**任务容器**的校验。
+   * ★ 2026-09-25：**任务容器**的校验。只剩一条：**任务里不能再嵌套任务**。
    *
-   * 🔴 它要拦住的是两件事，两件都会让下游静默出错：
-   *   1. **任务里嵌套任务** —— 题号会变成三级，而 UI 那套「重复」的优势立刻消失
-   *      （教师裁定：任务只装小题）。schema 里没有禁止它的东西，所以只能在这里拦。
-   *   2. **任务里一道小题都没有** —— 一个空任务在界面上是一块空白，而学生端会渲染出
-   *      一个只有标题、没有任何可作答东西的段落。**允许它存在没有任何好处**，
-   *      而迁移造出来的「任务一」如果原学习单是空的，正好会命中这一条 ——
-   *      ⇒ 迁移那边要保证不造空任务（见 `specs/2026-09-25-学习单-任务制与编辑页重设计.md` §五）。
+   * 🔴 它拦的是「题号会变成三级」——而三级题号会让 UI 那套「重复」的优势立刻消失
+   *（教师裁定：任务只装小题）。schema 里没有禁止它的东西，所以只能在这里拦。
    *
-   * ⚠️ **任务的说明允许留空**（教师裁定 ①a：任务只是分组 + 一段说明）——
-   * 所以这里**不校验 `prompt` 非空**。「任务一」这种纯分组是合法的。
+   * ── 两条**已经不在**这里的检查（别照旧注释以为还在）────────────────────
+   *
+   * 1. ~~任务里一道小题都没有~~ —— **2026-09-25 教师裁定：允许空任务。**
+   *    理由在编辑页那一侧：教师点「+ 添加任务」之后还没放小题时保存，不该撞上 400。
+   *    原先写在这里的三条理由（空任务在界面上是一块空白…）**仍然是事实**，
+   *    但它们的代价现在由编辑页承担（页面上看得见、可编辑），不再用 400 去挡。
+   *    ⚠️ 迁移那边**仍然不造空任务**（`worksheet-task-migration.ts` 的纪律 4）——
+   *    那 теперь是**品味**（不造没用的东西），**不是**为了躲开校验。
+   *
+   * 2. ~~任务标题不能为空~~ —— **本来就允许**（教师裁定 ①a：任务只是分组 + 一段说明），
+   *    但这一条原先**只在注释里成立**：`validateQuestion` 的公共那句「题干不能为空」
+   *    对任务一样生效，而且报错用的词是「题干」——教师改的是任务名，却收到一句说题干的话。
+   *    ⇒ 已改成公共那句按题型放行（见 `validateQuestion`）。
    */
   task: (node, errors) => {
     const children = node.children ?? [];
-    if (children.length === 0) errors.push('任务里至少要有一道小题');
     if (children.some((child) => child.type === 'task')) errors.push('任务里不能再嵌套任务');
   },
   'single-choice': (node, errors) => validateSingleAnswer(node, errors, '单选题', true),
@@ -1091,10 +1096,17 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
   drawing: () => {},
 };
 
-/** 编辑期校验。返回中文错误列表，空数组表示通过。 */
+/**
+ * 编辑期校验。返回中文错误列表，空数组表示通过。
+ *
+ * ⚠️ **「题干不能为空」这条对 `task` 不适用**：任务的 `prompt` 是它的**标题**，
+ * 而「纯分组」是合法数据（教师裁定 ①a —— 见 `VALIDATORS.task` 上面那一段）。
+ * 不排除它的表现是：一个合法的纯分组任务**存不进库**，而教师收到的词是「题干」
+ * ——他改的明明是任务名。
+ */
 export function validateQuestion(node: QuestionNode): string[] {
   const errors: string[] = [];
-  if (!node.prompt.trim()) errors.push('题干不能为空');
+  if (node.type !== 'task' && !node.prompt.trim()) errors.push('题干不能为空');
   VALIDATORS[node.type](node, errors);
   return errors;
 }

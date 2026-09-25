@@ -7,9 +7,11 @@
  * 「`content` 是一列题」写的（学生端面板 / 教师看板矩阵 / 导出与 M7a 分析载荷）。
  * 所以四条纪律逐条有用例：
  *   1. **原节点一个字不动** —— 只是外面包一层 ⇒ 回滚 = 把那层剥掉；
- *   2. **幂等** —— 重复跑不套两层；
- *   3. **空学习单不造空任务** —— `VALIDATORS['task']` 会把空任务判为不合法，
- *      而一个「本来就是空的」学习单是合法数据，迁移不许把它弄成不合法的；
+ *   2. **幂等** —— 重复跑不套两层（判据 2026-09-25 改成「顶层出现过 task 就不动」，
+ *      见「混合形状」那一条的注释：旧判据会再造一个同名的「任务一」⇒ 题号撞车）；
+ *   3. **空学习单不造空任务** —— 不造一个没用的、教师也没要过的容器。
+ *      ⚠️ 这**不再**是为了躲开校验：教师 2026-09-25 裁定「允许空任务」，
+ *      `VALIDATORS['task']` 里那条已经删了（本条原话是「会把空任务判为不合法」，已过期）；
  *   4. **老作答仍然对得上** —— 作答按 `questionId` 存，而这次迁移**不改任何 id**。
  */
 import { test } from 'node:test';
@@ -143,20 +145,28 @@ test('已经是任务制的学习单**不动**（哪怕它已经有多个任务�
   assert.deepEqual(after, already, '逐字不变');
 });
 
-test('🔴 混合形状：**只把非任务的顶层节点收进一个任务**，已有的任务原样留在原位', async (t) => {
-  // 「跑到一半崩过」的库，或将来手工做过的库 —— 这条钉住它不会被再套一层。
+test('🔴 混合形状：顶层**已经有任务** ⇒ 整份不动（不把散题再收一遍）', async (t) => {
+  // ⚠️ 本条 2026-09-25 **改过判据**（推翻它原来的写法，见下）。
+  //
+  // 原判据是「顶层还有没有非 task 的节点」⇒ 顶层有任务、又混着散题时，会把散题**再收一个**
+  // 名为「任务一」的容器 —— 而容器名是**恒定**的 `'任务一'` ⇒ 同屏出现两个「任务一」，
+  // 题号也逐字撞车（`任务一 · 1` 出现两次）。而整批第 3/4 步的修复理由就是「题号不能撞」，
+  // 这是它自己造出来的撞号。
+  //
+  // 新判据：**顶层出现过 task 就不动**。理由：迁移是**一次性升级**，它只该处理
+  // 「还没有任何任务」的学习单；顶层已经有任务，说明这份单要么迁过了、要么是教师
+  // 自己做的分组 —— 两种都不该被迁移改写。
+  // ⚠️ 原注释里那条理由（「迁移可能中途崩过」）**在这份实现里不成立**：每次
+  // `prisma.worksheet.update` 只写**一行**、是原子的，不存在「一份单迁了一半」。
   const prisma = await openTempDb(t);
   const existingTask = { id: 't1', type: 'task', prompt: '任务一', inputMode: 'keyboard', data: {}, children: [q('a')] };
   const loose = q('b');
-  const ws = await prisma.worksheet.create({
-    data: { title: '混合', content: content([existingTask, loose]) , settings: {} },
-  });
+  const before = content([existingTask, loose]);
+  const ws = await prisma.worksheet.create({ data: { title: '混合', content: before, settings: {} } });
 
-  await migrateWorksheetsToTasks(prisma);
+  const result = await migrateWorksheetsToTasks(prisma);
 
-  const after = (await prisma.worksheet.findUnique({ where: { id: ws.id } }))!.content as unknown as { nodes: Node[] };
-  assert.equal(after.nodes.length, 2, '已存在的任务 + 一个收容任务');
-  assert.deepEqual(after.nodes[0].children.map((c) => c.id), ['a'], '原任务原样不动（**不**并进收容任务）');
-  assert.equal(after.nodes[1].type, 'task');
-  assert.deepEqual(after.nodes[1].children.map((c) => c.id), ['b'], '只有散题被收进去');
+  assert.equal(result.migrated, 0, '顶层已经有任务 ⇒ 这份单不动');
+  const after = (await prisma.worksheet.findUnique({ where: { id: ws.id } }))!.content;
+  assert.deepEqual(after, before, '逐字不变 —— 散题留在原位，不会多出一个同名的「任务一」');
 });

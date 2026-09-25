@@ -246,6 +246,19 @@ export interface AnswerableQuestion {
  */
 export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQuestion[] {
   const out: AnswerableQuestion[] = [];
+  /**
+   * `children` 的守卫 —— **与 `flattenQuestions` 逐字同形**（它写的是 `Array.isArray(node.children)`）。
+   *
+   * 🔴 少了它，一行手改过的数据（`children: {}` / `42` / `true`）会**抛**
+   * `TypeError: list is not iterable`，而 `children: "ab"` 更坏 —— 它会**按字符迭代**，
+   * 编出两个单字符的假题一路流下去。要紧的是本函数落在**写路径**上（服务端的
+   * `findQuestion` 用它判「这道题属不属于这份学习单」，且**没有 try/catch**）
+   * ⇒ 一份坏数据让学生**每次保存都 500**，而同一份数据喂给 `flattenQuestions` 读得出来。
+   */
+  const kids = (node: WorksheetQuestionNode): WorksheetQuestionNode[] => (
+    Array.isArray(node.children) ? node.children : []
+  );
+
   /** `counter` 是**这一层**的计数器：散题共用一个，每个任务各有一个自己的。 */
   const walk = (list: WorksheetQuestionNode[], prefix: string, counter: { n: number }) => {
     for (const node of list) {
@@ -253,12 +266,12 @@ export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQue
         const title = typeof node.prompt === 'string' ? node.prompt.trim() : '';
         // 里层的任务另起一个计数器，**不动外层的** —— 嵌套任务由服务端校验器拦住
         // （`VALIDATORS['task']`），但手工改过的库还读得进来，读的一侧不能因此错乱。
-        walk(node.children ?? [], title ? `${title} · ` : '', { n: 0 });
+        walk(kids(node), title ? `${title} · ` : '', { n: 0 });
         continue;
       }
       counter.n += 1;
       out.push({ node, heading: `${prefix}${counter.n}` });
-      walk(node.children ?? [], prefix, counter);
+      walk(kids(node), prefix, counter);
     }
   };
   walk(nodes, '', { n: 0 });

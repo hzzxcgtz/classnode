@@ -304,6 +304,18 @@ html, body {
   gap: 6px;
 }
 
+/* ★ M6b/1：`.btn` 原先**只有 `:hover`** —— 于是「禁用」与「可点」在屏幕上长得一模一样
+   （学生入口页那个按钮，码没填满时 `disabled` 但 opacity 是 1），而触屏上也没有任何按下反馈。
+   ⚠️ `.btn` 是**师生共用**的类，教师端 20+ 处会一起获得这两条 —— 那是想要的效果。 */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-primary {
   background: var(--primary);
   color: white;

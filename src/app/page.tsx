@@ -176,10 +176,9 @@ export default function StudentHomePage() {
 
         <button type="submit" className="btn btn-primary btn-lg"
           disabled={fullCode.length !== 4 || loading}
-          style={{
-            width: '100%', fontSize: "0.938rem",
-            opacity: loading ? 0.7 : 1,
-          }}
+          // ★ M6b/1：**不再内联 opacity** —— 它曾经盖住了 `.btn:disabled` 的视觉，
+          //   于是「码没填满 ⇒ 禁用」与「可点」长得完全一样。禁用态现在由 globals.css 给。
+          style={{ width: '100%', fontSize: "0.938rem" }}
         >
           {loading ? '验证中...' : '进入课堂'}
         </button>

@@ -358,7 +358,10 @@
 }
 
 .submitButton {
-  min-height: 40px;
+  /* ★ M6b/15：本文件自己写着「44px 是触屏命中区的下限，老 iPad 上手指更粗」（4 处），
+     而这里与 `.retry` 却是 40px —— 自相矛盾。补到 44px。
+     ⚠️ `.poolItem`（分类题的拖拽源）**刻意不动**：手指按下去是拖不是点，容差更大。 */
+  min-height: 44px;
   padding: 0 18px;
   border: 1px solid var(--ws-accent);
   border-radius: 10px;
@@ -438,7 +441,7 @@
 
 .retry {
   margin-top: 16px;
-  min-height: 40px;
+  min-height: 44px;   /* ★ M6b/15：与上面 `.submitButton` 同一条理由 */
   padding: 0 20px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -850,4 +853,19 @@
 .questions[data-interactive='0'] .inkCanvas {
   cursor: default;
   touch-action: auto;
+}
+
+
+/* ★ M6b/17：`prefers-reduced-motion` 的**显式**降级块。
+   🔴 本文件此前**一条都没有**（`grep -n "prefers-reduced-motion"` 零命中）—— 靠的是
+   `globals.css` 那条全局 `0.01ms` 兜底。那确实生效，但意味着本文件「所有会动的东西」
+   **既没有清单、也没有例外可言**：谁新加一条动画，不会有任何信号告诉他要不要降级。
+   ⚠️ 与 `shell.module.css` / `home.module.css` 的降级块**同形**（那两处都把它当一条纪律）。
+   ⚠️ 本文件今天会动的东西只有两条 `transition`（顶栏底色、进度条宽度）——
+   加了新动画要**同批**补进来。 */
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .progressFill {
+    transition: none;
+  }
 }

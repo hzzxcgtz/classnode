@@ -35,6 +35,7 @@ import { ensureGroupMaterials } from './services/group-materials-migration.js';
 import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from './services/worksheet-schema.js';
 import { ensurePlatformTokenSchema } from './services/platform-token-schema.js';
 import { migratePlatformTokens } from './services/platform-token-migration.js';
+import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -485,6 +486,36 @@ async function main() {
     }
   } catch (e) {
     console.error('[server] Platform token migration failed:', e);
+    throw e;
+  }
+
+  // ★ 2026-09-25：**学习单任务制** —— 把现有平铺的题包进一个「任务一」容器。
+  // 教师裁定 ④a。做法与上面那条逐字相同（备份 + 完成标记 + 幂等）。
+  //
+  // 🔴 为什么要备份：它动的是**每一份已有学习单的 `content`**，而那个字段的四个下游
+  //（学生端面板 / 看板矩阵 / 导出 / M7a 分析载荷）全都按「`content` 是一列题」写的。
+  // 迁移**只包一层、不改任何 id**，所以老作答仍然对得上 —— 但那是推理，备份才是退路。
+  //
+  // ⚠️ 迁移函数**自己**的幂等判据是「顶层还有没有非 task 的节点」，不依赖这个标记；
+  //    标记只用来决定**要不要再备份一次**（与参与者迁移同一个理由：不给同一件事反复留档）。
+  try {
+    const taskMigrationKey = 'worksheet-task-migration-v1';
+    const taskMigrationDone = await prisma.setting.findUnique({ where: { key: taskMigrationKey } });
+    if (!taskMigrationDone) {
+      const backupPath = backupDatabase('worksheet-task-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    const taskMigrated = await migrateWorksheetsToTasks(prisma);
+    if (!taskMigrationDone) {
+      await prisma.setting.upsert({ where: { key: taskMigrationKey }, update: { value: 'completed' }, create: { key: taskMigrationKey, value: 'completed' } });
+    }
+    // ⚠️ 只在**真的迁了**时打日志：它每次启动都会跑（幂等），每次都打一行「迁了 0 份」
+    //    会让日志里全是噪声，真出问题时更难找。
+    if (taskMigrated.migrated > 0) {
+      console.log(`[server] Worksheet task migration: ${taskMigrated.migrated} 份学习单已包进任务`);
+    }
+  } catch (e) {
+    console.error('[server] Worksheet task migration failed:', e);
     throw e;
   }
 

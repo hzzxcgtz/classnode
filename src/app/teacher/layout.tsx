@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { APP_VERSION } from '@/lib/version';
+import { tokenExpiryView } from '@/lib/platform-token-expiry';
 import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
@@ -75,6 +76,14 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     catch { return false; }
   });
   const [hasUpdate, setHasUpdate] = useState(false);
+  /**
+   * ★ 2026-09-25：侧栏「AI智能体」那一项上的**小圆点** —— 有 Token 需要处理时亮。
+   *
+   * 🔴 **必须 gate 在已认证之后**：`/api/platform-tokens` 要教师会话，未登录时调它会拿到 401，
+   * 而 `api.ts` 在 401 上会派发 `classnode-teacher-session-expired` ⇒ 登录页会弹一句
+   * 「登录已过期，请重新输入管理密码」。教师还没登录，却被通知登录过期了。
+   */
+  const [tokenNeedsAttention, setTokenNeedsAttention] = useState(false);
 
   // 检查服务状态和认证
   useEffect(() => {
@@ -156,6 +165,26 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     window.addEventListener('classnode-teacher-session-expired', onSessionExpired);
     return () => window.removeEventListener('classnode-teacher-session-expired', onSessionExpired);
   }, []);
+
+  /**
+   * 侧栏那个圆点：与智能体页顶上那条横幅**同一份判据**（临期 / 过期 / 没填有效期）。
+   * ⚠️ 两处判据必须一致 —— 圆点亮着点进去却什么都没有，比不亮更糟。
+   */
+  useEffect(() => {
+    if (authState !== 'authenticated') return;
+    let cancelled = false;
+    void api.getPlatformTokens()
+      .then((rows) => {
+        if (cancelled) return;
+        setTokenNeedsAttention(rows.some((row) => {
+          const level = tokenExpiryView(row.expiresAt, new Date()).level;
+          return level === 'none' || level === 'soon' || level === 'urgent' || level === 'expired';
+        }));
+      })
+      // 拉不到就不亮：一个拉不到数据的圆点会把教师引到一个空页面上。
+      .catch(() => { if (!cancelled) setTokenNeedsAttention(false); });
+    return () => { cancelled = true; };
+  }, [authState]);
 
   // 服务端启动时已完成一次后台检测；教师认证后只读取该次结果。
   useEffect(() => {
@@ -496,6 +525,18 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 }} />
               )}
               <span style={{ flexShrink: 0, display: 'flex', position: 'relative' }}>
+                {/* ★ 2026-09-25：Token 需要处理的小圆点。⚠️ 侧栏**收起**时也要看得见 ——
+                    它挂在这个 icon 容器上（容器随图标一起居中），不是挂在文字上。 */}
+                {item.path === '/teacher/agents' && tokenNeedsAttention && (
+                  <span
+                    title="有 API Token 需要处理"
+                    style={{
+                      position: 'absolute', top: -1, right: -1,
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: '#ef4444', border: '1.5px solid white',
+                    }}
+                  />
+                )}
                 {item.icon === 'dashboard' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="7" height="7" rx="1" />

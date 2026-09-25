@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
-import type { AgentSummary, RelatedClassroom } from '@/lib/types';
+import type { AgentSummary, PlatformTokenSummary, RelatedClassroom } from '@/lib/types';
+import { api } from '@/lib/api';
+import { tokenExpiryView } from '@/lib/platform-token-expiry';
+import { ApiTokenModal, ExpiryChip } from './api-token-modal';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
@@ -26,6 +29,13 @@ export default function AgentsPage() {
   const [errorTip, setErrorTip] = useState<AgentErrorTipData | null>(null);
   const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string; classrooms: RelatedClassroom[] } | null>(null);
   const [agentSearch, setAgentSearch] = useState('');
+  /**
+   * ★ 2026-09-25：共享 API Token 的列表。
+   * 🔴 **页面持有它、弹窗只是消费者** —— 因为顶上那条临期横幅与弹窗画的是**同一份数据**，
+   * 两边各拉一次就会出现「横幅说 3 天后到期，点进去列表说还剩 12 天」。
+   */
+  const [tokens, setTokens] = useState<PlatformTokenSummary[]>([]);
+  const [showTokens, setShowTokens] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<'all' | AgentPlatform>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'healthy' | 'error'>('all');
 
@@ -41,6 +51,34 @@ export default function AgentsPage() {
   useEffect(() => () => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
   }, []);
+
+  /**
+   * 拉一次 Token 列表。⚠️ **失败不阻断这一页**（智能体列表才是主角），
+   * 但也**不静默吞掉** —— 顶上的横幅会因此不出现，而那正是「有效期的提醒」本身。
+   * ⇒ 失败时把 `tokens` 留空（横幅不显示），错误由弹窗那一次请求自己报。
+   */
+  const loadTokens = async () => {
+    try {
+      setTokens(await api.getPlatformTokens());
+    } catch {
+      setTokens([]);
+    }
+  };
+  useEffect(() => { void loadTokens(); }, []);
+
+  const notify = (message: string) => {
+    setToast({ show: true, msg: message, type: 'error' });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
+  };
+
+  /** 没填有效期的那几份 —— **单独一档**：我们不知道什么时候到期，所以提醒不了。 */
+  const unsetTokens = tokens.filter((row) => tokenExpiryView(row.expiresAt, new Date()).level === 'none');
+
+  /** 需要提醒的凭据：黄 / 红 / 已过期。⚠️ **不含 `none`**（那是另一回事，见横幅那段）。 */
+  const expiringTokens = tokens
+    .map((row) => ({ row, expiry: tokenExpiryView(row.expiresAt, new Date()) }))
+    .filter(({ expiry }) => expiry.level === 'soon' || expiry.level === 'urgent' || expiry.level === 'expired');
 
   const normalizedAgentSearch = agentSearch.trim().toLocaleLowerCase('zh-CN');
   const filteredAgents = agents.filter(agent => {
@@ -64,15 +102,76 @@ export default function AgentsPage() {
   return (
     <div>
       <TeacherPageHeader title="AI 智能体" description="接入并管理课堂使用的 AI 智能体。" actions={
-        <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          接入智能体
-        </button>
+        <>
+          {/* ★ 2026-09-25：与「接入智能体」并排。⚠️ 在**没有 token 时也显示** ——
+              它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
+          <button className="btn btn-secondary" onClick={() => setShowTokens(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>
+            API Token
+          </button>
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            接入智能体
+          </button>
+        </>
       } />
+
+      {/* ★ 2026-09-25：**临期横幅**（spec §三③）。
+          只在**真有事**时出现，其余时候完全不占位置。
+
+          🔴 「未设置有效期」与「快到期了」是**两条不同的催促**，合成一句会让两边都变模糊：
+          前者是「你还没告诉我什么时候到期」（我们不知道，所以提醒不了你），
+          后者是「你告诉过我，而现在快了」。所以文案分开、颜色也分开。 */}
+      {(expiringTokens.length > 0 || unsetTokens.length > 0) && (
+        <div role="status" style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
+          padding: '12px 16px', borderRadius: 10, marginBottom: 16,
+          background: expiringTokens.length > 0 ? '#fffbeb' : '#f8fafc',
+          border: `1px solid ${expiringTokens.length > 0 ? '#fde68a' : '#e2e8f0'}`,
+          color: expiringTokens.length > 0 ? '#92400e' : '#475569',
+          fontSize: '0.813rem', lineHeight: 1.7,
+        }}>
+          <span aria-hidden="true" style={{ fontSize: '1rem' }}>{expiringTokens.length > 0 ? '⚠️' : 'ℹ️'}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {expiringTokens.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <strong>API Token 快到期了</strong>
+                {expiringTokens.map(({ row, expiry }) => (
+                  <span key={row.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>{row.label}</span>
+                    <ExpiryChip level={expiry.level} text={expiry.text} />
+                  </span>
+                ))}
+                <span>到期后智能体会连不上，请及时到扣子平台换新。</span>
+              </div>
+            )}
+            {unsetTokens.length > 0 && (
+              <div style={{ marginTop: expiringTokens.length > 0 ? 4 : 0 }}>
+                还有 <strong>{unsetTokens.length}</strong> 份 Token 没填有效期（{unsetTokens.map((row) => row.label).join('、')}）——
+                填了我们才能提前提醒你。
+              </div>
+            )}
+          </span>
+          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 12px', flexShrink: 0 }} onClick={() => setShowTokens(true)}>
+            去处理
+          </button>
+        </div>
+      )}
+
+      {showTokens && (
+        <ApiTokenModal
+          tokens={tokens}
+          onRefresh={loadTokens}
+          onClose={() => setShowTokens(false)}
+          onError={notify}
+        />
+      )}
 
       {showForm && (
         <AgentForm
           agent={editing}
+          tokens={tokens}
+          onManageTokens={() => setShowTokens(true)}
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSaved={() => { setShowForm(false); setEditing(null); loadAgents(); }}
         />
@@ -170,16 +269,23 @@ export default function AgentsPage() {
   );
 }
 
-function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; onClose: () => void; onSaved: () => void }) {
+function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
+  agent: AgentSummary | null;
+  /** ★ 2026-09-25：共享 API Token 清单 —— **页面持有**（顶上那条临期横幅画的是同一份）。 */
+  tokens: PlatformTokenSummary[];
+  onManageTokens: () => void;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const fields = useAgentFormFields(agent);
-  const { name, setName, platform, setPlatform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
+  const { name, setName, platform, setPlatform, credentialId, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
     purpose, setPurpose,
     updateCredential,
     hasSavedApiKey, hasSavedApiSecret, savedApiKeyLabel, savedApiSecretLabel, editingSavedPlatform } = fields;
   const logo = useAgentLogo(agent);
   const { fileRef, preview: logoPreview, selectFile: handleLogoChange, applyRemote: applyRemoteLogo, remove: handleRemoveLogo, resetForPlatform: resetLogoForPlatform, appendTo: appendLogoTo } = logo;
   const actions = useAgentFormActions({
-    agent, values: { name, platform, apiKey, apiUrl, botId, projectId, apiSecret, greeting, purpose },
+    agent, values: { name, platform, credentialId, apiKey, apiUrl, botId, projectId, apiSecret, greeting, purpose },
     hasSavedApiKey, hasSavedApiSecret, setName, setGreeting, applyRemoteLogo, appendLogoTo, onSaved,
   });
   const { fetchingInfo, saving, fieldErrors, toast, setToast, clearError, clearErrors, fetchInfo: handleFetchInfo, submit } = actions;
@@ -260,6 +366,9 @@ function AgentForm({ agent, onClose, onSaved }: { agent: AgentSummary | null; on
                 editing={editingSavedPlatform}
                 savedApiKeyLabel={savedApiKeyLabel}
                 savedApiSecretLabel={savedApiSecretLabel}
+                credentialId={credentialId}
+                tokens={tokens}
+                onManageTokens={onManageTokens}
                 apiKey={apiKey}
                 apiUrl={apiUrl}
                 botId={botId}

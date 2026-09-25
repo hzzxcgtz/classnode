@@ -1,8 +1,15 @@
 import { FieldError } from '@/lib/components';
 import { useState } from 'react';
 import type { AgentPlatform } from './agent-platforms';
+import type { PlatformTokenSummary } from '@/lib/types';
 
 export interface AgentCredentialValues {
+  /**
+   * ★ 2026-09-25：选中的**共享 API Token**（`''` = 用自带的 `apiKey`）。
+   * ⚠️ 它是「这一格凭据值」的一种，所以并进本类型 —— 表单那个逐平台草稿的机制
+   * （`use-agent-form-fields` 的 `draftsRef`）就不用为它单开一条路。
+   */
+  credentialId: string;
   apiKey: string;
   apiUrl: string;
   botId: string;
@@ -19,6 +26,10 @@ interface AgentCredentialsFieldsProps extends AgentCredentialValues {
   savedApiSecretLabel?: string;
   fieldErrors: Record<string, string>;
   onChange: (field: CredentialField, value: string) => void;
+  /** ★ 2026-09-25：可选的共享 Token 清单（只有 `coze` 用得上）。 */
+  tokens?: PlatformTokenSummary[];
+  /** 打开「管理 API Token」弹窗。 */
+  onManageTokens?: () => void;
 }
 
 const SAVED_SECRET_PLACEHOLDER = '••••••••••••••••••••••••';
@@ -111,7 +122,42 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           <RequiredField label="Project ID" value={props.projectId} placeholder="在 Coze 项目设置中获取 Project ID" error={fieldErrors.projectId} onChange={update('projectId')} />
         </>
       )}
-      <RequiredField label={apiKeyLabel} value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+      {/* ★ 2026-09-25：**Coze 低代码的 Token 改成「选一份共享的」**。
+          Token 属于扣子账号、不属于 Bot —— 同一个号做出来的智能体共用一份，
+          换一次只需改那一份（新建/管理在「API Token」弹窗里）。
+
+          ⚠️ 仍保留「自带 Token」这一项（= `credentialId` 为空）：
+          「这个 Bot 用的不是我的号」是真实存在的情况，去掉它等于逼教师绕路。
+          ⚠️ 选了共享凭据时**不再强制填 apiKey**（下方 `validateAgentCredentials` 同源）。 */}
+      {platform === 'coze' ? (
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: '0.813rem', color: '#475569', fontWeight: 500, marginBottom: 4 }}>
+            {apiKeyLabel}
+          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select className="input" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
+              style={{ fontSize: '0.813rem', padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }}>
+              <option value="">自带 Token（只给这一个智能体用）</option>
+              {(props.tokens ?? []).filter((row) => row.platform === 'coze').map((row) => (
+                <option key={row.id} value={row.id}>{row.label}</option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px', flexShrink: 0 }}
+              onClick={() => props.onManageTokens?.()}>管理</button>
+          </div>
+          {props.credentialId ? (
+            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 4 }}>
+              这一份由多个智能体共用，换 Token 只需在「API Token」里改一次。
+            </div>
+          ) : (
+            <div style={{ marginTop: 10 }}>
+              <RequiredField label="Token" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <RequiredField label={apiKeyLabel} value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+      )}
       {platform === 'zhipuai' && (
         <RequiredField label="API Secret" value={props.apiSecret} placeholder={editing ? savedApiSecretLabel || SAVED_SECRET_PLACEHOLDER : '在智谱清言开发者面板获取 api_secret'} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiSecret} onChange={update('apiSecret')} />
       )}
@@ -131,6 +177,12 @@ export function validateAgentCredentials(platform: AgentPlatform, values: AgentC
     if (!values.botId.trim()) errors.botId = '请填写 Assistant ID';
     if (!hasSavedApiSecret && !values.apiSecret.trim()) errors.apiSecret = '请填写 API Secret';
   }
-  if (!hasSavedApiKey && !values.apiKey.trim()) errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写 API Token';
+  // ★ 2026-09-25：`coze` 选了**共享凭据**时不必再填 Token —— 判据与
+  // `use-agent-form-actions` 那条「获取信息」的前置判据**同源**（两处不一致会出现
+  // 「能保存但不能再获取信息」这种极难归因的错位）。
+  const usesSharedCredential = platform === 'coze' && !!values.credentialId;
+  if (!usesSharedCredential && !hasSavedApiKey && !values.apiKey.trim()) {
+    errors.apiKey = platform === 'wenxin' ? '请填写密钥' : '请填写 API Token';
+  }
   return errors;
 }

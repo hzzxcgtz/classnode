@@ -64,6 +64,13 @@ export interface AgentSummary {
    * （与 `classroomCount?` 同一条理由，见它上面的注释。）
    */
   purpose?: string;
+  /**
+   * ★ 2026-09-25：这个智能体用的**共享 API Token**（`PlatformToken.id`）。
+   * `null` / 缺字段 = 用自带的 `apiKey`（老数据全是这一档）。
+   * ⚠️ 服务端的 `toPublicAgent` 是 `{ ...agent }` 展开，所以这一格**本来就在响应里**，
+   * 这里只是把类型补上。
+   */
+  credentialId?: string | null;
 }
 
 /**

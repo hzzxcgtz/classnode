@@ -6,7 +6,7 @@ import type { AgentPlatform } from './agent-platforms';
 
 interface FormActionOptions {
   agent: AgentSummary | null;
-  values: { name: string; platform: AgentPlatform; apiKey: string; apiUrl: string; botId: string; projectId: string; apiSecret: string; greeting: string; purpose: string };
+  values: { name: string; platform: AgentPlatform; credentialId: string; apiKey: string; apiUrl: string; botId: string; projectId: string; apiSecret: string; greeting: string; purpose: string };
   hasSavedApiKey: boolean;
   hasSavedApiSecret: boolean;
   setName: (value: string) => void;
@@ -38,7 +38,10 @@ export function useAgentFormActions(options: FormActionOptions) {
 
   const fetchInfo = async () => {
     const { agent, values, hasSavedApiKey, setName, setGreeting, applyRemoteLogo } = optionsRef.current;
-    if (!values.botId.trim() || (!hasSavedApiKey && !values.apiKey.trim())) {
+    // ★ 2026-09-25：选了共享凭据（或库里有旧值）时，「没填 apiKey」不再算缺 ——
+    // 判据要与 `validateAgentCredentials` 那条**同源**，否则会出现「能保存但不能再获取信息」。
+    const hasKey = hasSavedApiKey || !!values.apiKey.trim() || !!values.credentialId;
+    if (!values.botId.trim() || !hasKey) {
       setToast({ msg: '请先填写 Bot ID 和 API Token 后再获取信息', type: 'error' }); return;
     }
     setFetchingInfo(true);
@@ -66,6 +69,12 @@ export function useAgentFormActions(options: FormActionOptions) {
       const form = new FormData();
       form.append('name', values.name.trim()); form.append('platform', values.platform);
       if (values.apiKey.trim()) form.append('apiKey', values.apiKey.trim());
+      // ★ 2026-09-25：共享 Token。
+      // ⚠️ **`coze` 之外不发**：服务端只在 `coze` 上认它（`toAgentConfig` 的判据带 platform），
+      //    但发出去一个别的平台用不上的 id 只会让库里多一列没人读的引用。
+      // ⚠️ **空串也要发**（而不是跳过）：那是「改回自带 Token」的唯一表达方式 ——
+      //    不发的话，编辑一个已经接了共享凭据的智能体时**取消不掉**那个引用。
+      if (values.platform === 'coze') form.append('credentialId', values.credentialId);
       if (agent || values.apiUrl.trim()) form.append('apiUrl', values.apiUrl.trim());
       if (agent || values.botId.trim()) form.append('botId', values.botId.trim());
       if (values.platform === 'coze-agent') form.append('extra', JSON.stringify({ projectId: values.projectId.trim() }));

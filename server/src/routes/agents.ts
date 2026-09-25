@@ -263,8 +263,22 @@ router.get('/:id', async (req, res) => {
 router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, apiUrl, apiKey, botId, extra, greeting, purpose } = req.body;
-    if (typeof apiKey !== 'string' || !apiKey.trim()) return res.status(400).json({ error: 'API 密钥不能为空' });
+    const { name, platform, apiUrl, apiKey, botId, extra, greeting, purpose, credentialId } = req.body;
+    // ★ 2026-09-25：Coze 低代码的 Token 可以**选一份共享的**（`credentialId`）而不是自己填 ——
+    // 同一个扣子账号做出来的多个智能体共用一份，换一次只需改那一份。
+    // ⇒ 判据从「apiKey 必填」放宽成「**两者至少有一个**」。
+    // ⚠️ 放宽的是**必填**，不是**校验**：下面仍然要求那个凭据真的存在（防一个悬空 id 落库）。
+    const sharedCredentialId = typeof credentialId === 'string' && credentialId.trim() ? credentialId.trim() : null;
+    if (!sharedCredentialId && (typeof apiKey !== 'string' || !apiKey.trim())) {
+      return res.status(400).json({ error: '请填写 API 密钥，或者选一份共享的 API Token' });
+    }
+    if (sharedCredentialId) {
+      const credential = await prisma.platformToken.findUnique({ where: { id: sharedCredentialId }, select: { id: true } });
+      if (!credential) {
+        discardUploadedLogo(req);
+        return res.status(400).json({ error: '选中的 API Token 不存在，请刷新后重试' });
+      }
+    }
     const apiUrlError = validateAgentApiUrl(apiUrl);
     if (apiUrlError) {
       discardUploadedLogo(req);
@@ -287,8 +301,11 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
         name,
         platform,
         apiUrl: apiUrl || null,
-        apiKey: encrypt(apiKey),
+        // ⚠️ 选了共享凭据时这里**仍然写一份**（可能为空串）：`apiKey` 列是 NOT NULL，
+        // 而且它同时是「改回自带 Token」时的回落值 —— 见 `toAgentConfig` 的判据。
+        apiKey: typeof apiKey === 'string' && apiKey.trim() ? encrypt(apiKey) : encrypt(''),
         botId: botId || null,
+        credentialId: sharedCredentialId,
         extra: storedExtra,
         greeting: greeting || null,
         // ★ M7b：坏值回落 `tutoring`（**保守方向** —— 见 `normalizeAgentPurpose` 的注释）
@@ -309,7 +326,7 @@ router.post('/', upload.single('logo'), secureLogoUpload, async (req, res) => {
 router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting, purpose } = req.body;
+    const { name, platform, apiUrl, apiKey, botId, extra, enabled, greeting, purpose, credentialId } = req.body;
     const previousAgent = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } });
     if (!previousAgent) {
       discardUploadedLogo(req);
@@ -327,6 +344,22 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
     if (apiUrl !== undefined) data.apiUrl = apiUrl;
     if (typeof apiKey === 'string' && apiKey.trim()) data.apiKey = encryptApiKey(apiKey.trim());
     if (botId !== undefined) data.botId = botId;
+    // ★ 2026-09-25：共享凭据的三种语义（与 `readExpiresAt` 那条纪律同款）：
+    //   · 字段**不在**请求里 ⇒ 这次不改它；
+    //   · 空串 ⇒ **改回自带 Token**（清掉引用）；
+    //   · 有值 ⇒ 接到那一份上（**必须真的存在**，否则会留下一个悬空 id —— 而它只会
+    //     让 `toAgentConfig` 静默回落到自带 Token，教师以为自己换成了共享的）。
+    if (credentialId !== undefined) {
+      const nextId = typeof credentialId === 'string' && credentialId.trim() ? credentialId.trim() : null;
+      if (nextId) {
+        const credential = await prisma.platformToken.findUnique({ where: { id: nextId }, select: { id: true } });
+        if (!credential) return res.status(400).json({ error: '选中的 API Token 不存在，请刷新后重试' });
+      }
+      // ⚠️ `data` 标注的是 `Prisma.AgentUpdateInput`（checked input）—— 它**没有**裸外键列
+      // `credentialId`，只有关系 `credential`。写 `data.credentialId` 会编译失败（好事：
+      // 类型把它挡住了）。清空用 `disconnect`。
+      data.credential = nextId ? { connect: { id: nextId } } : { disconnect: true };
+    }
     if (extra !== undefined) {
       let incoming: Record<string, unknown>;
       try { incoming = JSON.parse(extra || '{}'); } catch {

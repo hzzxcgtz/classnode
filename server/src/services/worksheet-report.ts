@@ -26,8 +26,10 @@ export type GradeLabel = '对' | '半对' | '错' | '未判分';
  * 「答错」与「半对」两件事 —— 只看它会把半对**印成错**，而那是一次对学生的错判。
  * 三态住在 `gradeState` 里（`correct` / `partial` / `incorrect`）。
  *
- * ⚠️ `gradeState` 缺失或认不出时**回落**到 `isCorrect`：升级前落库的旧行没有
- * `gradeState`（A1 的回填只补了新行那一段），那两档在旧行上仍然分得开。
+ * ⚠️ `gradeState` 缺失或认不出时**回落**到 `isCorrect`：**回填没跑到**的旧行 `gradeState` 是
+ * `null`（`services/worksheet-schema.ts` 的回填是 `WHERE gradeState IS NULL AND isCorrect IS NOT NULL`，
+ * 覆盖所有已有行 —— 这里原先写「A1 的回填只补了新行那一段」，**那句话是错的**），
+ * 而回落到 `isCorrect` 仍然让那两档在旧行上分得开。
  */
 export function gradeLabel(row: { isCorrect: boolean | null; gradeState: string | null }): GradeLabel {
   if (row.gradeState === 'correct') return '对';
@@ -126,6 +128,25 @@ export function webappUsageLineKeys(): string[] {
   return ['webappName', 'participantName', 'durationMs', 'frameCount'];
 }
 
+/** 列名 → 表头中文。**加列时这里必须一起加**，否则表头会印出字段名（那也是一种「读起来怪」）。 */
+const WEBAPP_COLUMN_LABEL: Record<string, string> = {
+  webappName: '网页',
+  participantName: '参与者',
+  durationMs: '时长',
+  frameCount: '帧数',
+};
+
+/**
+ * 探究空间那张表的**表头**。
+ *
+ * 🔴 **渲染层必须调它，不许自己写死表头** —— 独立审查抓到过：原先渲染层硬编码
+ * `['网页','参与者','时长','帧数']`，而本函数**一个调用点都没有** ⇒ 那条「不印恒为 0 的列」
+ * 的护栏只是**装饰**：往渲染层的表头加回一列「点击」，全部用例照样绿。
+ */
+export function webappUsageColumnLabels(): string[] {
+  return webappUsageLineKeys().map((key) => WEBAPP_COLUMN_LABEL[key] ?? key);
+}
+
 export interface WebappUsageLine {
   webappName: string;
   participantName: string;
@@ -175,6 +196,22 @@ export const REPORT_TEXT = {
   inkFallback: '（手写作答，本机无法渲染成图片）',
   /** 探究空间表下那句实话。 */
   webappNoteMissingCounters: '交互次数与滚动深度本轮暂不可得（该项统计已停采）',
+  /** 参与者的名字两个来源都读不出来。 */
+  unnamedParticipant: '（未命名）',
+  /** 题干是空的。 */
+  promptMissing: '（这道题的题干还没写）',
+  /** 参与者的名字读不出来（`node.type` 不是字符串）。 */
+  typeUnknown: '（未知题型）',
+  /** `Worksheet.content` 的形状读不出来（手改过的行 / 旧版本）。 */
+  contentUnreadable: '（这份学习单的题目结构读不出来）',
+  /** 笔迹值合法、但**一根笔画都没有**。⚠️ 与「渲染不出来」是两件事（见 `inkFallback`）。 */
+  inkEmpty: '（这一题没有笔画）',
+  /** 探究空间表里那个网页已经不在了。 */
+  webappDeleted: '（网页已删除）',
+  /** 探究空间表里那个参与者已经退出课堂。 */
+  participantLeft: '（已退出）',
+  /** 页尾署名。 */
+  generatedBy: '— 文档由 ClassNode 自动生成 —',
 } as const;
 
 /** 高级模式下「没有可作答学习单」的那句附注（与 M5b 的矩阵同一条纪律）。 */

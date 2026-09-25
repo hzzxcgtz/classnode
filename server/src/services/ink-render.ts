@@ -1,7 +1,9 @@
 import { INK_STROKE_COLOR, strokePath, strokeWidthPx, type InkCanvas, type InkValue } from './ink-path.js';
 
 /**
- * 笔迹 → PNG（M6a）。**本文件是全仓唯一 import `sharp` 的导出相关模块。**
+ * 笔迹 → PNG（M6a）。**本批新增的模块里，只有本文件碰 `sharp`。**
+ * ⚠️ 全仓不止一处 import 它：`export-service.ts` 的同名 `getSharp()` 也在 `await import('sharp')`
+ * （那是既有的，用于 WebP 转换）—— 本文件只是把笔迹这一路的 sharp 依赖**收在一处**。
  *
  * 🔴 为什么把「画成 SVG」与「光栅化成 PNG」拆成两个文件：
  *   · `ink-path.ts` 必须能被 `src/lib/worksheet-ink-parity.test.ts` **跨工程加载**

@@ -3,8 +3,10 @@
  *
  * 🔴 **本文件是镜像，不是共享。** 服务端读不到 `src/`，所以这里**必须**再写一份。
  * 改动规则只有一条：**改了 `src/lib/worksheet-ink.ts` 里对应的那一处，这里必须一起改。**
- * `src/lib/worksheet-ink-parity.test.ts` 会红 —— 它把同一批笔画喂给三份实现
- * （前端 `worksheet-ink.ts` · 服务端 `worksheet-ink.ts` · 本文件），`d` 串必须逐字相同。
+ * `src/lib/worksheet-ink-parity.test.ts` 会红 —— 它把同一批笔画喂给**两份**画线实现
+ * （前端 `worksheet-ink.ts` 与**本文件**），`d` 串必须逐字相同；
+ * ⚠️ 服务端早已有另一份 `worksheet-ink.ts`，但它**只做校验、没有 `strokePath`** ——
+ * 那条用例比的是**常量与判据**（`INK_FORMATS` / `isInkFormat`，三处重复）。
  *
  * ⚠️ **本文件不许 import 任何东西**（连 `./worksheet-ink.js` 也不行）：
  * 对拍用例用 Node 的类型擦除**直接加载本文件**，而 Node **不会**把 `./x.js` 解析到 `./x.ts`

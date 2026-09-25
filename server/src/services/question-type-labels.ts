@@ -22,6 +22,11 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
   'drawing': '绘图题',
 };
 
-export function questionTypeLabel(type: string): string {
+/**
+ * ⚠️ 入参是 `unknown`：`Worksheet.content` 可能被手改过，`node.type` 未必是字符串。
+ * 回落到「（未知题型）」而不是 `undefined` —— 后者会**把 `undefined` 印在纸上**当题型名。
+ */
+export function questionTypeLabel(type: unknown): string {
+  if (typeof type !== 'string' || !type) return '（未知题型）';
   return QUESTION_TYPE_LABELS[type] ?? type;
 }

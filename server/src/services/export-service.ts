@@ -13,9 +13,9 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveMaterialTargetId } from './group-material-resolve.js';
-import { flattenQuestions, type WorksheetContent } from './worksheet-questions.js';
+import { flattenQuestions, type QuestionNode, type WorksheetContent } from './worksheet-questions.js';
 import {
-  REPORT_TEXT, answerCell, formatDuration, gradeLabel,
+  REPORT_TEXT, answerCell, formatDuration, gradeLabel, unmappedParticipantsNotice, webappUsageColumnLabels,
   type AnswerCell, type GradeLabel,
 } from './worksheet-report.js';
 import { questionTypeLabel } from './question-type-labels.js';
@@ -470,7 +470,7 @@ function renderCover(data: ConversationExportData): DocBlock[] {
   ];
   children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }));
   children.push(new Paragraph({ spacing: { before: 300 }, children: [] }));
-  children.push(pText('— 文档由 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
+  children.push(pText(REPORT_TEXT.generatedBy, { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
   return children;
 }
 
@@ -1120,9 +1120,25 @@ export async function generateConversationsCsv(
 // 🔴 **纸上的每一句话都来自 `worksheet-report.ts`**（判据层，有 12 条用例）。本文件只把
 //    模型画成段落 —— 写在这里的字**没有任何回归网**，而本机**打不开 Word**。
 
+/**
+ * 🔴 **畸形的 `content` 不许让整份导出失败**：手工改过的库行 / 一个旧版本的行都可能让
+ * `flattenQuestions` 抛，而抛出去的后果是教师拿到「导出失败」四个字、**一整节课的报告导不出来**
+ * —— 正是本批在 `answerCell` 上已经立过的那条纪律（「认不出的形状不抛，收成一句可读的文字」），
+ * 只不过这一侧原先一个守卫都没有。
+ */
+function safeQuestions(content: unknown): QuestionNode[] {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
+  if (!Array.isArray((content as { nodes?: unknown }).nodes)) return [];
+  try {
+    return flattenQuestions(content as WorksheetContent);
+  } catch {
+    return [];
+  }
+}
+
 /** 参与者的名字。⚠️ `ClassroomStudent` **没有 `name` 字段** —— 名在 `student` / `group` 上。 */
 function participantName(student: { type: string; student: { name: string } | null; group: { name: string } | null }): string {
-  return student.student?.name ?? student.group?.name ?? '（未命名）';
+  return student.student?.name ?? student.group?.name ?? REPORT_TEXT.unnamedParticipant;
 }
 
 /** 报告标题：课堂标题，没有就用互动码。 */
@@ -1134,7 +1150,8 @@ function reportTitle(title: string | null, code: string | null): string {
 function worksheetRowCells(
   row: { index: number; typeLabel: string; prompt: string; cell: AnswerCell; png: Buffer | null; grade: GradeLabel },
 ): TableRow {
-  const prompt = row.prompt.trim() || '（这道题的题干还没写）';
+  const rawPrompt = typeof row.prompt === 'string' ? row.prompt : '';
+  const prompt = rawPrompt.trim() || REPORT_TEXT.promptMissing;
   const short = prompt.length > 40 ? `${prompt.slice(0, 40)}…` : prompt;
 
   let answerChildren: Array<TextRun | ImageRun>;
@@ -1144,6 +1161,10 @@ function worksheetRowCells(
     answerChildren = [new TextRun({ text: REPORT_TEXT.cleared, size: 18, color: C.textLight })];
   } else if (row.cell.kind === 'unanswered') {
     answerChildren = [new TextRun({ text: REPORT_TEXT.unanswered, size: 18, color: C.textLight })];
+  } else if (row.cell.kind === 'ink' && row.cell.ink.strokes.length === 0) {
+    // ⚠️ **三种成因三句话**：「一根笔画都没有」与「渲染不出来」不是一回事，
+    //    而后者那句写的是「本机无法渲染成图片」—— 拿它去说前者是**断言一个它不知道的成因**。
+    answerChildren = [new TextRun({ text: REPORT_TEXT.inkEmpty, size: 18, color: C.textLight })];
   } else if (row.png) {
     // 图片的宽高从 PNG 自己的 IHDR 里读（渲染层不知道值里的 canvas，那张图的真实尺寸在这里）。
     const w = row.png.readUInt32BE(16);
@@ -1257,7 +1278,7 @@ export async function generateWorksheetReportDocx(
       const sheet = sheetById.get(sheetId);
       if (!sheet) continue;
       children.push(pText(`《${sheet.title}》`, { bold: true, size: 22, color: C.text, spacingBefore: 220, spacingAfter: 100 }));
-      const questions = flattenQuestions(sheet.content as unknown as WorksheetContent);
+      const questions = safeQuestions(sheet.content);
       const members = classroom.students.filter((participant) => participantSheet.get(participant.id) === sheetId);
       for (const participant of members) {
         const rows = answersByPair.get(`${participant.id}\x00${sheetId}`) ?? [];
@@ -1281,6 +1302,11 @@ export async function generateWorksheetReportDocx(
         }
       }
     }
+    // 🔴 **没配学习单的参与者要点名**（规格 §3.5 最后一行）：高级模式下
+    //    `resolveMaterialTargetId` **不回落** ⇒ 那些组**不在上面任何一节里**，
+    //    而「少一块」与「他没做」在纸上长得一样。
+    const unmapped = classroom.students.filter((participant) => !participantSheet.get(participant.id)).length;
+    if (unmapped > 0) children.push(pText(unmappedParticipantsNotice(unmapped), { size: 16, color: C.gold, spacingBefore: 160 }));
   }
 
   progress({ taskId: '', progress: 80, stage: '正在渲染探究空间使用…' });
@@ -1303,12 +1329,14 @@ export async function generateWorksheetReportDocx(
     //    `reports` 今天**值恒为 0**（`recordWebappSummary` 只写时长与帧数）⇒ 一个都不许印。
     const header = new TableRow({
       tableHeader: true,
-      children: ['网页', '参与者', '时长', '帧数'].map((label) => cell(label, { bold: true, size: 16, shading: C.primaryLight, color: C.primary })),
+      // 🔴 **表头来自判据层**（`webappUsageColumnLabels`）—— 写死在这里的话，「不印恒为 0 的列」
+      //    那条约束就只是一句注释（独立审查抓到过）。
+      children: webappUsageColumnLabels().map((label) => cell(label, { bold: true, size: 16, shading: C.primaryLight, color: C.primary })),
     });
     const body = usages.map((usage) => new TableRow({
       children: [
-        cell(webappNameById.get(usage.webappId) ?? '（网页已删除）', { size: 16 }),
-        cell(nameByParticipant.get(usage.studentId) ?? '（已退出）', { size: 16 }),
+        cell(webappNameById.get(usage.webappId) ?? REPORT_TEXT.webappDeleted, { size: 16 }),
+        cell(nameByParticipant.get(usage.studentId) ?? REPORT_TEXT.participantLeft, { size: 16 }),
         cell(formatDuration(usage.durationMs), { size: 16 }),
         cell(String(usage.frameCount), { size: 16 }),
       ],

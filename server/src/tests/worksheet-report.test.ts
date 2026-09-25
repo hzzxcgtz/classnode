@@ -21,6 +21,7 @@ import {
   formatDuration,
   gradeLabel,
   unmappedParticipantsNotice,
+  webappUsageColumnLabels,
   webappUsageLineKeys,
 } from '../services/worksheet-report.js';
 
@@ -116,11 +117,14 @@ test('🔴 webappUsageLineKeys：只有有数据的两列，四列恒 0 的**一
     assert.ok(!webappUsageLineKeys().includes(forbidden), `${forbidden} 恒为 0，不许出现在表里`);
   }
   assert.match(REPORT_TEXT.webappNoteMissingCounters, /暂不可得/);
+  // ★ 渲染层调的**就是**这个表头（独立审查抓到过：清单原先一个调用点都没有）。
+  assert.deepEqual(webappUsageColumnLabels(), ['网页', '参与者', '时长', '帧数']);
+  assert.equal(webappUsageColumnLabels().length, webappUsageLineKeys().length, '加了列却没给表头');
 });
 
 /* ── 5. 报告里那几句固定的话（规格 §3.5）───────────────────────────── */
 
-test('★ REPORT_TEXT：七句话互不相同（两句一样 = 两种情形在纸上分不开）', () => {
+test('★ REPORT_TEXT：所有固定文案互不相同（两句一样 = 两种情形在纸上分不开）', () => {
   const values = Object.values(REPORT_TEXT);
   assert.equal(new Set(values).size, values.length, `有重复：${JSON.stringify(values)}`);
   assert.match(REPORT_TEXT.noWorksheet, /未使用学习单/);

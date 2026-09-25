@@ -109,7 +109,7 @@ M7a 的规格 §五 逐字预留了这一步的同意关口（「需要单独征
 | 类型 | `npx tsc --noEmit` | 退出 **0** |
 | 静态检查 | `npx eslint src server/src` | **0 errors / 5 warnings**（5 条都是开工前就有的） |
 | 前端全量 | `node --test "src/**/*.test.ts"` | **374 pass / 0 fail**（M7b 新增 **7** 条：预览纯模块） |
-| 服务端全量 | `rm -rf server/dist && pnpm test` | **622 pass / 0 fail**（M7b 新增 **26** 条：596 → 622） |
+| 服务端全量 | `rm -rf server/dist && pnpm test` | **627 pass / 0 fail**（M7b 新增 **31** 条：596 → 627） |
 | 产物构建 | `./dev.sh stop && pnpm build && ./dev.sh start` | 退出 **0**；Safari 15 闸门 **83 个源文件通过** |
 | 产物里真有这个功能 | `grep -rl '第三方平台会留存' out/` | 命中教师端 chunk；而旧的「尚未接入第三方 AI」**已不在** |
 | 启动期加列（`Agent.purpose`） | `sqlite3 server/prisma/dev.db "PRAGMA table_info('Agent')"` | 有 `purpose`；日志里有 `Added purpose column to Agent` |
@@ -120,9 +120,11 @@ M7a 的规格 §五 逐字预留了这一步的同意关口（「需要单独征
 |---|---|---|
 | `server/src/tests/agent-purpose.test.ts` | 4 | 闸：取值域 · 缺字段的旧行**按 tutoring 算**（不被吞掉）· 分析型回 `null` |
 | `server/src/tests/worksheet-analysis-settings.test.ts` | 4 | `analysisAgentId` 归一化（含「**没有默认值**是刻意的」那条断言） |
-| `server/src/tests/analysis-agent.test.ts` | 9 | 平台闸门 · 消息构造（含**标签没画出来时附编号对照**）· 解读归一化 |
-| `server/src/tests/analysis-proxy.test.ts` | 3 | **唯一外发点**：有图+非 coze 拦下 · **一次都不碰 anonymizer** |
-| `server/src/tests/analysis-run-endpoint.test.ts` | 6 | run 接线：**成功时只动三格**（`aggregate`/`totalCount`/`computedAt` 逐字不变）· **失败不写库** · 三次拦下 |
+| `server/src/tests/analysis-agent.test.ts` | 11 | 平台闸门（**非 coze 一律拒**）· 消息构造（含**标签没画出来时附编号对照**）· 解读归一化（含**零宽字符**与**孤立代理**） |
+| `server/src/tests/analysis-proxy.test.ts` | 3 | **唯一外发点**：非 coze 拦下 · **一次都不碰 anonymizer** |
+| `server/src/tests/analysis-run-endpoint.test.ts` | 7 | run 接线：**成功时只动三格** · **失败不写库** · 三次拦下 · **学伴 bot 不能当分析目标** |
+| `server/src/tests/group-material-agent-gate.test.ts` | 1 | 🔴 **组材料那条路也走闸**（C2 的漏点，带学伴的阳性对照） |
+| `server/src/tests/student-agent-gate-paths.test.ts` | 1 | 🔴 **真的连 socket**：四条路径一次断言完（HTTP/socket × `agents[]`/`groups[].agent`） |
 | `src/app/teacher/classroom/analysis-preview.test.ts` | 7 | 预览那几行（量词 · 留存 · mixed · 被拦时逐字显示服务端的话） |
 
 🧪 **成功路径是怎么在本机测到的**：起一个**假的 Coze 端点**，把分析智能体的 `apiUrl` 指过去
@@ -134,7 +136,17 @@ M7a 的规格 §五 逐字预留了这一步的同意关口（「需要单独征
 
 ---
 
-## 8. 留给审查者的两处（**我知道它们没有回归网**）
+## 8. 独立审查（2026-09-25）修复轮
+
+审查报 **2 Critical / 2 Important / 5 Minor**，全部有实跑取证，**一轮修完**（提交见
+`progress.md` 的 `Final: fixed …` 各行）。其中两条改变了这份清单本身：
+
+- 🔴 **C1：整条 M7b 在界面上不可达**（前端一个 `purpose` 都没发、也没有控件 ⇒ 新建的 bot
+  永远是「学伴」⇒ 学习单那个下拉永远空 ⇒ 按钮恒灰）。**⇒ §1 那两条原本永远无法通过，现在能了。**
+- 🔴 **I1：两道闸门口径不一致**（纯文字 + 非 coze 时预览说能发、点确认必 502）。
+  **⇒ §6 那条原本必失败，已改成本版的真口径（只接 coze）。**
+
+**还剩下的一处没有回归网**：
 
 1. **`labeled` 那条接线只证到一半**：`run` 端点把 `renderSheets()` 的 `rendered.labeled`
    传给 `buildAnalysisMessage`（探针说标签没画出来时，它会把编号对照**以文本形式附上**，

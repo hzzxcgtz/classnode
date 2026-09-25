@@ -10,7 +10,7 @@ import { api } from '@/lib/api';
 import { DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
-import { editorRenderBlocks } from './worksheet-editor-core';
+import { editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -123,6 +123,10 @@ function WorksheetEditorBody() {
     [],
   );
 
+  // ★ 2026-09-26（spec 第 4 步）：页面头的「N 题 · 满分 M」（核心里、有用例）。
+  const totals = scoreSummary(content.nodes, inheritedPoints);
+
+
   /**
    * 删题确认（规格 §6.4）。文案里必须含**已收到的作答份数** —— 不说的后果是教师
    * 以为「只是删一道题」，而学生已经写下的答案会变成看板与导出里的孤立数据。
@@ -229,6 +233,15 @@ function WorksheetEditorBody() {
           placeholder="未命名学习单"
           aria-label="学习单标题"
         />
+        {/*
+          ★ 2026-09-26（spec 第 4 步）：页面头要给这一页**自己的样子** ——
+          「这份单几道题、满分多少」是教师最常被问的两个数，原来这里一个都没有。
+          ⚠️ 判据在核心里（`scoreSummary`，有用例）：**满分只数会判分的题** ——
+          把不判分的题算进去会让这个数比学生实际能拿到的分大，而教师会拿它去分配课堂时间。
+        */}
+        <span className="worksheet-editor-totals" title="这份学习单有几道可作答的题、学生最多能拿多少分">
+          {totals.questions} 题 · 满分 {totals.maxScore}
+        </span>
         <span className={`worksheet-editor-status${editor.dirty ? ' is-dirty' : ''}${saveStatus.kind === 'error' ? ' is-error' : ''}`}>
           {describeSaveStatus(saveStatus, editor.dirty, Boolean(worksheetId))}
         </span>
@@ -325,6 +338,7 @@ function WorksheetEditorBody() {
                 onMove={delta => editor.moveQuestion(block.task!.node.id, delta)}
                 onRemove={() => void requestRemove(block.task!.node, '')}
                 onAddQuestion={() => setPickerFor({ parentId: block.task!.node.id })}
+                inheritedPoints={inheritedPoints}
               >
                 {questionCards}
               </TaskCard>

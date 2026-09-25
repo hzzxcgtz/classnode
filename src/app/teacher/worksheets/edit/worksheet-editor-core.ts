@@ -1130,6 +1130,31 @@ export function displayPoints(
   return { full: node.points?.full ?? fallback.full, half: node.points?.half ?? fallback.half };
 }
 
+/**
+ * ★ 2026-09-26（spec 第 4 步）：一组题的**小题数**与**满分合计**。
+ *
+ * 两处用它：**页面头**（这份单几道题、满分多少）与**任务容器头**（这一组几道题、满分多少）
+ * ——「一屏看全局」是工具与表单的分界，而这两个数是那个「全局」里最常被问的。
+ *
+ * 🔴 **只数「会判分的题」的满分**：不判分的题（问答 / 绘图 / 关掉了自动评分的）给不出分，
+ * 把它们算进满分会让这个数**比学生实际能拿到的分大** —— 而教师会用这个数去分配课堂时间。
+ * ⚠️ `questions` 数的是**可作答的题**（与看板、抽屉、导出同一份口径，见 `flattenAnswerable`）：
+ * 任务不是题，它不该进这个数。
+ * ⚠️ 分值的来源是 `displayPoints`（逐题优先、清空时默认档），与判分那侧同一把尺子。
+ */
+export function scoreSummary(
+  nodes: WorksheetQuestionNode[],
+  fallback: { full: number; half: number },
+): { questions: number; maxScore: number } {
+  const items = flattenAnswerable(nodes);
+  let maxScore = 0;
+  for (const { node } of items) {
+    if (!gradesOnSubmit(node)) continue;
+    maxScore += displayPoints(node, fallback).full;
+  }
+  return { questions: items.length, maxScore };
+}
+
 export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
   if (!points) return false;
   return (points.full === undefined) !== (points.half === undefined);

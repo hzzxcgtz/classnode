@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { scoreSummary } from './worksheet-editor-core';
 
 /**
  * ★ 2026-09-25：**任务容器**（规格 §六 的两级信息架构）。
@@ -33,6 +34,7 @@ export function TaskCard({
   onMove,
   onRemove,
   onAddQuestion,
+  inheritedPoints,
   children,
 }: {
   /** 这是第几个任务（0-based）。只用于「上移/下移」的边界与无障碍标签。 */
@@ -45,6 +47,8 @@ export function TaskCard({
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onAddQuestion: () => void;
+  /** ★ 2026-09-26：任务头上那两个数（几道题 / 满分）要用它算逐题分值。 */
+  inheritedPoints: { full: number; half: number };
   /** 这个任务里的小题目卡（由页面渲染 —— 它要传一堆各自的回调）。 */
   children: ReactNode;
 }) {
@@ -71,6 +75,14 @@ export function TaskCard({
           placeholder="任务标题（可以留空）"
           aria-label={`任务 ${index + 1} 的标题`}
         />
+        {/*
+          ★ 2026-09-26（spec 第 4 步）：任务容器要有**自己的身份** —— 折起来时教师只看得见
+          一行标题，而「这一组几道题、多少分」是他扫全卷时最需要的两个数。
+          ⚠️ 数的是**可作答的题**，满分只算会判分的那几道（与页面头同一个函数）。
+        */}
+        <span className="worksheet-editor-task-totals">
+          {scoreSummary(node.children, inheritedPoints).questions} 道 · 满分 {scoreSummary(node.children, inheritedPoints).maxScore}
+        </span>
         <div className="worksheet-editor-task-tools">
           <button
             type="button"

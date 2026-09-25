@@ -1816,6 +1816,21 @@ tr:hover td {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* ★ 2026-09-26（spec 第 4 步）：页面头的「N 题 · 满分 M」。
+   与保存状态是**两种信息**（一个是这份单是什么，一个是这次改动存了没有），
+   所以样式也分开：这个用中性灰（它是**事实**），状态那个带状态色。 */
+.worksheet-editor-totals {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .worksheet-editor-status {
   flex-shrink: 0;
   padding: 3px 8px;
@@ -2008,6 +2023,15 @@ tr:hover td {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* 任务头上的「N 道 · 满分 M」—— 与标题同一行的**次要**信息（标题是这一组最大的字）。 */
+.worksheet-editor-task-totals {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .worksheet-editor-task-tools {
   display: flex;
   align-items: center;
@@ -2026,7 +2050,9 @@ tr:hover td {
 .worksheet-editor-task-questions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* ★ 2026-09-26：折叠之后这里是**行**（不是一个任务只放一两张卡）⇒ 12 收到 8。
+     同一组里的东西挨得近一点，是分组唯一不需要装饰的表达方式。 */
+  gap: 8px;
 }
 
 /* 空任务的那句话。⚠️ 空任务是合法数据，但**空容器在屏幕上与「渲染坏了」长得一样**，

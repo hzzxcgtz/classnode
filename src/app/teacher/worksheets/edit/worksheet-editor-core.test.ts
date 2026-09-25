@@ -39,6 +39,7 @@ import {
   canGivePartial,
   displayPoints,
   draftKeyFor,
+  scoreSummary,
   editorRenderBlocks,
   editorRenderRows,
   ensureEntryIds,
@@ -2173,4 +2174,21 @@ test('🔴 `displayPoints`：折叠态那一行的分值（逐题优先，清空
   // 而这一行**必须**有个数 —— 半填时缺的那一端用默认档补上。
   const halfFilled = { ...node('q_c', '题干', {}, 'single-choice'), points: { full: 5 } };
   assert.deepEqual(displayPoints(halfFilled, fallback), { full: 5, half: 0 });
+});
+
+test('🔴 `scoreSummary`：题数与**满分**（只数会判分的题 —— 不判分的给不出分）', () => {
+  const fallback = { full: 1, half: 0 };
+  const graded = { ...node('q_a', '题干', {}, 'single-choice'), points: { full: 2, half: 1 } };
+  const halfGraded = { ...node('q_b', '题干', {}, 'order'), points: { full: 3, half: 1 } };
+  const ungraded = node('q_s', '主观题', {}, 'short-answer');
+  const off = { ...node('q_c', '关掉了', {}, 'single-choice'), autoGrade: false as const };
+  const task = taskNode('t_1', '任务一', [graded, halfGraded, ungraded, off]);
+
+  // 四道小题都数进「几道题」，但满分只算会判分的那两道（2 + 3）。
+  assert.deepEqual(scoreSummary(task.children, fallback), { questions: 4, maxScore: 5 });
+  // 整份一起数（含任务里的）—— 与页面头那个数是同一个函数。
+  assert.deepEqual(scoreSummary([task], fallback), { questions: 4, maxScore: 5 });
+  assert.deepEqual(scoreSummary([], fallback), { questions: 0, maxScore: 0 });
+  // 清空了 points 的题按默认档算（与判分同一把尺子）。
+  assert.deepEqual(scoreSummary([node('q_d', '题干', {}, 'single-choice')], fallback), { questions: 1, maxScore: 1 });
 });

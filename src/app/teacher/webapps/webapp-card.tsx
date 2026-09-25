@@ -37,7 +37,9 @@ export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onSh
 
   return (
     <div className={used ? 'card webapp-management-card' : 'card webapp-management-card is-unused'}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      {/* `flex: 1` 是给上面那条 `.webapp-management-card` 的 flex 列用的：
+          它撑开之后页脚才会落到卡片底部（与另外几张卡的按钮行对齐）。 */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1 }}>
         <div style={{
           width: 44, height: 44, borderRadius: 10, flexShrink: 0,
           background: used ? '#2563eb12' : '#f1f5f9',
@@ -50,18 +52,30 @@ export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onSh
           </svg>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.938rem', color: '#1a1a2e', marginBottom: 3, wordBreak: 'break-all' }}>{webapp.name}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.688rem', fontWeight: 600, background: '#f1f5f9', color: '#475569' }}>
-              入口 {webapp.entryPath}
-            </span>
-            <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
+          {/* ★ 2026-09-25 版式（教师：「对齐方式要优化，高高低低的」）：
+              原来「入口」与「关联课堂」挤在**同一个 `flexWrap: 'wrap'` 的行**里 ——
+              入口文件名短就并排（截图中间那张），长就掉到下一行（左右两张）。
+              ⇒ 三张卡的**行数不一样**，下面的分隔线与按钮行跟着各在各的高度上。
+
+              现在**结构固定**：标题行右挂「关联课堂」，入口自己一行。
+              三张卡的行数因此恒为 2，与文件名的长短无关；文件名过长时只是在
+              自己那一行里折行。 */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.938rem', color: '#1a1a2e', wordBreak: 'break-all' }}>{webapp.name}</div>
+            {/* `flexShrink: 0`：标题很长时不许把它挤扁 —— 它是一枚**可点的**东西，
+                被压成两个字宽就没人认得出那是个按钮了。 */}
+            <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms} style={{ flexShrink: 0 }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
               </svg>
               关联课堂
               {used && <span className="related-classrooms-chip-count">{webapp.classroomCount}</span>}
             </button>
+          </div>
+          <div style={{ marginTop: 5 }}>
+            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.688rem', fontWeight: 600, background: '#f1f5f9', color: '#475569', wordBreak: 'break-all' }}>
+              入口 {webapp.entryPath}
+            </span>
           </div>
         </div>
       </div>

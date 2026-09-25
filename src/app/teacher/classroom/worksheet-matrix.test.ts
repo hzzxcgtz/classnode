@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoardAnswerRow, WorksheetBoardParticipant, WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
-import { buildWorksheetMatrix, matrixHeadline, questionTallies, type CellState } from './worksheet-matrix.ts';
+import { buildWorksheetMatrix, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState } from './worksheet-matrix.ts';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /* ── 造数据 ──────────────────────────────────────────────────────────── */
@@ -229,4 +229,77 @@ test('★ 反证：「未交最多」会把还没讲到的题报成卡住 ——
   const right = matrixHeadline(tallies);
   assert.equal(right.kind === 'stuck' ? right.questionId : null, 'q3');
   assert.notEqual(wrong.questionId, right.kind === 'stuck' ? right.questionId : null);
+});
+
+/* ── 6. ★ 独立审查抓出的：屏幕上的那些数字必须**与用例读的是同一个函数** ── */
+
+/**
+ * 🔴 起因：审查发现组件在 JSX 里**重新数了一遍**「已交 N/M」
+ * （`filter(id => row.cells[id] === 'submitted')`），而被测的 `questionTallies().submitted`
+ * **在界面上一次都没被读**。今天两份实现逐字等价 ⇒ 门禁三道全绿；一旦有人改了口径，
+ * **测试仍全绿而屏幕上的数字变了**。⇒ 「已交 N/M」必须走同一个函数。
+ */
+test('★ rowTally：一行的计数与 questionTallies 逐字段一致（屏幕与用例同一个函数）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'draft' }), participant('p2', { q1: 'submitted' }), participant('p3')]),
+    [node('q1')],
+    {},
+  );
+  assert.deepEqual(rowTally(rows[0]), questionTallies(rows)[0]);
+  assert.equal(rowTally(rows[0]).submitted, 1, '「已交 N/M」的分子就是它');
+  assert.equal(rowTally(rows[0]).total, 3, '分母是参与者数');
+});
+
+test('★ promptLabel：空题干的那句文案只在这一处', () => {
+  assert.equal(promptLabel('光合作用需要什么？'), '光合作用需要什么？');
+  assert.equal(promptLabel('   '), '（这道题的题干还没写）', '全是空白也算空');
+  assert.equal(promptLabel(''), '（这道题的题干还没写）');
+});
+
+test('★ uncoveredCount：没有任何一份学习单的参与者数，且**钳在 0**', () => {
+  const one = sheet([participant('p1'), participant('p2')]);
+  assert.equal(uncoveredCount(5, [one]), 3, '5 人里只有 2 人有学习单 ⇒ 3 人没有');
+  assert.equal(uncoveredCount(2, [one]), 0, '全都有 ⇒ 0');
+  // ⚠️ 负数是**可能**的（两个快照取自不同时刻）—— 钳在 0，屏幕上不许出现「另有 -1 个」。
+  assert.equal(uncoveredCount(1, [one]), 0);
+  assert.equal(uncoveredCount(0, []), 0);
+});
+
+/* ── 7. ★ 只信「本次快照之后」到达的广播 ─────────────────────────────── */
+
+/**
+ * 🔴 起因：审查发现「广播赢」在 socket 断线重连后**永久**压住更新的 REST 数据 ——
+ * 断线期间学生提交了，广播丢了，30 秒后 REST 明确说 `submitted`，而 `live` 里那条
+ * 断线前的 `draft` 照样赢 ⇒ 那一格**永远**停在琥珀，直到教师手动刷新页面。
+ *
+ * 修法是给「广播赢」加一个**可信下界**：`liveTrustedAfter`（= 本次快照的发起时刻）。
+ * 一个参与者的广播若**全部早于**这个时刻，那 REST 那份一定不比它旧
+ * （REST 是在那一刻之后才读的库）⇒ 丢开 live、用 REST。
+ *
+ * ⚠️ 判据用的是 `ParticipantWorksheetProgress.lastAt`（= 广播**到达浏览器**的时刻，
+ * `page.tsx` 用 `Date.now()` 写的）。它与下界都是**浏览器时钟**，所以两端之间的
+ * 服务器 / 浏览器时钟偏差**在比较中相消** —— 这也是为什么不改用服务端时间。
+ */
+test('★ liveTrustedAfter：早于快照的广播**不再赢**（断线重连后的陈旧 live）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'submitted' })]),
+    [node('q1')],
+    live({ p1: { q1: 'draft' } }),
+    // 广播是 t=100 到的，而快照是 t=200 发起的 ⇒ 这条广播一定早于快照读到的库。
+    200,
+  );
+  // ⚠️ live 的 lastAt 默认是 0（见 `live()` 助手）⇒ 一定 <= 200。
+  assert.equal(cell(rows, 'q1', 'p1'), 'submitted', '陈旧 live 不许赢');
+});
+
+test('★ liveTrustedAfter：晚于快照的广播**照样赢**', () => {
+  const old = live({ p1: { q1: 'draft' } });
+  old.p1.lastAt = 300;   // 快照 t=200 之后才到
+  const rows = buildWorksheetMatrix(sheet([participant('p1', { q1: 'submitted' })]), [node('q1')], old, 200);
+  assert.equal(cell(rows, 'q1', 'p1'), 'draft', '快照之后到的广播更新，必须赢');
+});
+
+test('不传 liveTrustedAfter ⇒ 老行为（全信 live），既有用例与调用点不受影响', () => {
+  const rows = buildWorksheetMatrix(sheet([participant('p1', { q1: 'submitted' })]), [node('q1')], live({ p1: { q1: 'draft' } }));
+  assert.equal(cell(rows, 'q1', 'p1'), 'draft');
 });

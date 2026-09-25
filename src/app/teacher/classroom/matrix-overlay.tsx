@@ -4,7 +4,7 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 import type { CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
-import { buildWorksheetMatrix, matrixHeadline, questionTallies, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
+import { buildWorksheetMatrix, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
@@ -25,8 +25,10 @@ export function MatrixOverlay({
   board,
   nodesByWorksheet,
   live,
+  liveTrustedAfter,
   loading,
   participantCount,
+  advancedMode,
   onClose,
   onOpenQuestion,
   onOpenParticipant,
@@ -34,16 +36,20 @@ export function MatrixOverlay({
   board: WorksheetBoard | null;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   live: Record<string, ParticipantWorksheetProgress>;
+  /** ★ 只信在这个时刻之后到达的广播（= 本次快照发起的时刻）。见 `buildWorksheetMatrix` 的参数说明。 */
+  liveTrustedAfter: number | undefined;
   loading: boolean;
   participantCount: number;
+  /** ★ 只有高级模式才谈得上「有的组没配学习单」—— 下面那行提示按它收窄。 */
+  advancedMode: boolean;
   onClose: () => void;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
 }) {
-  // 「有学习单的参与者」总数 = 各块参与者数之和（一个参与者只属于一份学习单）。
-  // ⚠️ 这是**纯算术**，不是再实现一份 `resolveMaterialTargetId` —— 后者会让两个口径分叉。
-  const covered = board ? board.worksheets.reduce((sum, sheet) => sum + sheet.participants.length, 0) : 0;
-  const uncovered = Math.max(0, participantCount - covered);
+  // ⚠️ 算术在纯函数里（GC 26）：JSX 里只调用，不再自己算一遍。
+  // ⚠️ **两个入参取自不同时刻的快照**（`participantCount` 来自课堂详情、`board` 来自作答端点），
+  //    差额因此可以是负数（钳在 0）或短暂偏大 —— 见 `uncoveredCount` 的注释与移交说明里的已知残余。
+  const uncovered = board ? uncoveredCount(participantCount, board.worksheets) : 0;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
@@ -77,6 +83,7 @@ export function MatrixOverlay({
                 title={sheet.title}
                 nodes={nodesByWorksheet[sheet.id]}
                 live={live}
+                liveTrustedAfter={liveTrustedAfter}
                 sheet={sheet}
                 onOpenQuestion={onOpenQuestion}
                 onOpenParticipant={onOpenParticipant}
@@ -84,7 +91,7 @@ export function MatrixOverlay({
             ))}
             {/* 🔴 高级模式下「没配学习单的组」不在任何一块里（`resolveMaterialTargetId` 不回落）。
                 少了这一行，教师看到的是一张**少了几个组**的表，而屏幕上没有任何东西说少了人。 */}
-            {uncovered > 0 && (
+            {advancedMode && uncovered > 0 && (
               <p style={{ fontSize: '0.813rem', color: '#b45309', marginTop: 8 }}>
                 另有 {uncovered} 个参与者没有可作答的学习单（高级模式下每组各自配置）
               </p>
@@ -98,22 +105,26 @@ export function MatrixOverlay({
 
 /** 一块 = 一份学习单。 */
 function MatrixBlock({
-  sheet, title, nodes, live, onOpenQuestion, onOpenParticipant,
+  sheet, title, nodes, live, liveTrustedAfter, onOpenQuestion, onOpenParticipant,
 }: {
   sheet: WorksheetBoard['worksheets'][number];
   title: string;
   nodes: WorksheetQuestionNode[] | undefined;
   live: Record<string, ParticipantWorksheetProgress>;
+  liveTrustedAfter: number | undefined;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
 }) {
   if (!nodes) return <p style={{ fontSize: '0.875rem', color: '#64748b' }}>《{title}》正在读取题目…</p>;
 
-  const rows = buildWorksheetMatrix(sheet, nodes, live);
-  if (rows.length === 0) return <p style={{ fontSize: '0.875rem', color: '#64748b' }}>《{title}》还没有题目</p>;
-
+  const rows = buildWorksheetMatrix(sheet, nodes, live, liveTrustedAfter);
+  // 🔴 **不再在这里早退**（独立审查抓到的）：原先 `rows.length === 0` 直接 return 一句自己写的文案，
+  // 于是 `matrixHeadline` 的 `no-questions` 那一支**永远不可达**、它的用例白写，
+  // 而 R1「空态只有一处判据」的目的**没达成**（还是两半，且纯函数那半是死的）。
+  // 现在让没有题的那种情况照常走 `matrixHeadline` → `headlineText`。
   const headline = matrixHeadline(questionTallies(rows));
   const stuckId = headline.kind === 'stuck' ? headline.questionId : null;
+  // ⚠️ 列的**顺序**来自这里（`buildWorksheetMatrix` 也是按这个顺序往 `row.cells` 里写的）。
   const participantIds = sheet.participants.map((participant) => participant.participantId);
 
   return (
@@ -157,12 +168,15 @@ function MatrixRowView({
   row, participantIds, stuck, onOpenQuestion, onOpenParticipant,
 }: {
   row: MatrixRow;
+  /** 列的循环顺序（= `sheet.participants` 的顺序）。 */
   participantIds: string[];
   stuck: boolean;
   onOpenQuestion: () => void;
   onOpenParticipant: (participantId: string) => void;
 }) {
-  const submitted = participantIds.filter((id) => row.cells[id] === 'submitted').length;
+  // ★ 屏幕上的「已交 N/M」走**用例断言的那个函数**（GC 26）。
+  //   原先这里自己 `filter` 了一遍 —— 两份实现等价时三道门禁全绿，改了口径则屏幕先变而测试不红。
+  const tally = rowTally(row);
   return (
     <tr style={stuck ? { background: '#fffbeb' } : undefined}>
       <th scope="row" style={{ ...stickyCellStyle, borderLeft: stuck ? '3px solid #f59e0b' : '3px solid transparent' }}>
@@ -175,7 +189,7 @@ function MatrixRowView({
             display: 'inline-block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
             whiteSpace: 'nowrap', verticalAlign: 'bottom', marginLeft: 8, color: '#475569', fontSize: '0.75rem',
           }}>
-            {row.prompt.trim() || '（这道题的题干还没写）'}
+            {promptLabel(row.prompt)}
           </span>
         </button>
       </th>
@@ -187,7 +201,7 @@ function MatrixRowView({
         </td>
       ))}
       <td style={{ ...bodyCellStyle, fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-        {submitted}/{participantIds.length}
+        {tally.submitted}/{tally.total}
         {stuck && <span style={{ marginLeft: 6, color: '#b45309' }}>⚠ 卡住</span>}
       </td>
     </tr>
@@ -195,7 +209,9 @@ function MatrixRowView({
 }
 
 /** 三档颜色。**只有三档** —— 对错不在这里（规格 §3.4）。 */
-const CELL_COLOR: Record<string, string> = {
+// ⚠️ 键类型是 `CellState` 而不是 `string`：用 `string` 时**缺键 TS 判不出来**，
+//    色块会静默变透明（审查点名的一处）。
+const CELL_COLOR: Record<CellState, string> = {
   unanswered: '#e2e8f0',
   draft: '#fbbf24',
   submitted: '#3b82f6',

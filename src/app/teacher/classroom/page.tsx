@@ -491,6 +491,16 @@ function ClassroomBoardContent() {
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
   const [matrixOpen, setMatrixOpen] = useState(false);
   /**
+   * ★ M5b：矩阵**最近一次 REST 快照发起的时刻**（浏览器时钟）。
+   *
+   * 🔴 它的唯一用途是给「广播赢」一个**可信下界**：`worksheetProgress` 是页内 state、
+   * 没有任何失效机制，教师这台机器 socket 断线期间学生提交的那条广播永远收不到 ——
+   * 而 30 秒重拉回来的 REST 明确说 `submitted`，断线前那条 `draft` 却照样赢 ⇒
+   * 那一格**永远**停在琥珀，直到手动刷新页面（独立审查抓到的）。
+   * 见 `worksheet-matrix.ts` 的 `buildWorksheetMatrix` 第 4 个参数。
+   */
+  const matrixSnapshotAtRef = useRef<number | undefined>(undefined);
+  /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
    * ⚠️ 这里**曾经**是 `teacherView: 'board' | 'webapp'` + `TeacherPageTabs` 的视图切换。
@@ -801,8 +811,14 @@ function ClassroomBoardContent() {
    */
   useEffect(() => {
     if (!matrixOpen) return;
-    void loadWorksheetBoard();
-    const timer = window.setInterval(() => { void loadWorksheetBoard(); }, 30_000);
+    const snapshot = () => {
+      // ⚠️ 先记时刻再发请求（「发起」而不是「回来」）：这样任何**早于**它的广播，
+      // 其对应的那次写库一定在服务端读这个快照之前 —— 下界才是安全的那一侧。
+      matrixSnapshotAtRef.current = Date.now();
+      void loadWorksheetBoard();
+    };
+    snapshot();
+    const timer = window.setInterval(snapshot, 30_000);
     return () => window.clearInterval(timer);
   }, [matrixOpen, loadWorksheetBoard]);
 
@@ -3244,8 +3260,13 @@ function ClassroomBoardContent() {
           board={worksheetBoard}
           nodesByWorksheet={worksheetNodes}
           live={worksheetProgress}
+          liveTrustedAfter={matrixSnapshotAtRef.current}
           loading={worksheetBoardLoading}
           participantCount={students.length}
+          // ⚠️ 只有高级模式才谈得上「有的组没配学习单」；标准 / 分组模式下这一行恒为 0，
+          // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）
+          // ⇒ 不收窄的话屏幕上会出现一句「另有 1 个参与者没有可作答的学习单」的**假话**（审查抓到）。
+          advancedMode={classroom?.mode === 'advanced'}
           onClose={() => setMatrixOpen(false)}
           onOpenQuestion={openMatrixQuestion}
           onOpenParticipant={openMatrixParticipant}

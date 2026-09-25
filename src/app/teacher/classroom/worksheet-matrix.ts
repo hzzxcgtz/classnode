@@ -32,7 +32,14 @@ export interface MatrixRow {
   cells: Record<string, CellState>;
 }
 
-/** 认不出的字符串一律当「未答」—— 编第四种颜色就是编事实。 */
+/**
+ * 认得出的状态就返回它，认不出返回 `null`。
+ *
+ * ⚠️ **两个来源对 `null` 的处置不同，这不是笔误**（本注释初稿写成「一律当未答」，
+ * 与下面 live 那一支的行为**相反**，被本文件自己的用例 `:97` 反证了）：
+ *   · **REST 那一支**：`null` ⇒ **丢掉这一行**（等于「这一题没有任何行」= 未答）；
+ *   · **live 那一支**：`null` ⇒ **回落到 REST**。当成未答会把学生**已经交掉**的题画成没动。
+ */
 function toCellState(value: unknown): CellState | null {
   return value === 'draft' || value === 'submitted' ? value : null;
 }
@@ -53,6 +60,24 @@ export function buildWorksheetMatrix(
   sheet: WorksheetBoardWorksheet,
   nodes: WorksheetQuestionNode[],
   live: Record<string, ParticipantWorksheetProgress>,
+  /**
+   * ★ 只信**在这个时刻之后到达**的广播（= 本次 REST 快照发起的时刻）。
+   *
+   * 🔴 加它的理由（独立审查抓到的）：`live` 是页内 state，**没有任何失效机制** ——
+   * 教师这台机器的 socket 断线期间学生提交了，那条广播永远收不到，而 30 秒重拉回来的
+   * REST 明确说 `submitted`，`live` 里断线前那条 `draft` 却照样赢 ⇒ 那一格**永远**停在琥珀，
+   * 直到教师手动刷新页面。而它恰好咬在招牌上：被黏住的正是**学生动过的那几题**。
+   *
+   * 判据是 `ParticipantWorksheetProgress.lastAt`（广播**到达浏览器**的时刻）。
+   * 一个参与者的广播若全部早于这个下界，REST 那份**一定不比它旧**（REST 是在那一刻之后才读的库）
+   * ⇒ 丢开 live、用 REST。**这个方向只会丢陈旧数据，不会丢新数据。**
+   *
+   * ⚠️ 两端都是**浏览器时钟**（`lastAt` 与这个下界都由 `page.tsx` 的 `Date.now()` 写），
+   * 所以服务器 / 浏览器之间的时钟偏差在比较中**相消**。这是为什么不用服务端时间。
+   *
+   * 不传 = 全信 live（既有调用点与既有用例的行为逐字不变）。
+   */
+  liveTrustedAfter?: number,
 ): MatrixRow[] {
   // ① REST 那一份先摊成 (参与者 → 题 → 状态)。
   const restCells: Record<string, Record<string, CellState>> = {};
@@ -69,7 +94,10 @@ export function buildWorksheetMatrix(
   return flattenQuestions(nodes).map((node, index) => {
     const cells: Record<string, CellState> = {};
     sheet.participants.forEach((participant) => {
-      const fromLive = toCellState(live[participant.participantId]?.cells[node.id]);
+      const progress = live[participant.participantId];
+      // ⚠️ `>` 不是 `>=`：下界是**快照发起**的时刻，而广播要在它之后**到达**才算新。
+      const trustLive = liveTrustedAfter === undefined || (progress !== undefined && progress.lastAt > liveTrustedAfter);
+      const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
       cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
     });
     return { questionId: node.id, index, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, cells };
@@ -91,19 +119,7 @@ export interface QuestionTally {
 }
 
 export function questionTallies(rows: MatrixRow[]): QuestionTally[] {
-  return rows.map((row) => {
-    const values = Object.values(row.cells);
-    const drafted = values.filter((value) => value === 'draft').length;
-    const submitted = values.filter((value) => value === 'submitted').length;
-    return {
-      questionId: row.questionId,
-      index: row.index,
-      drafted,
-      submitted,
-      engaged: drafted + submitted,
-      total: values.length,
-    };
-  });
+  return rows.map(rowTally);
 }
 
 /**
@@ -137,4 +153,43 @@ export function matrixHeadline(tallies: QuestionTally[]): MatrixHeadline {
   // ⚠️ 严格 `>` ⇒ 并列时**保留先遇到的那一个** = 题序最小的那一题。
   const stuck = open.reduce((best, tally) => (tally.engaged > best.engaged ? tally : best));
   return { kind: 'stuck', questionId: stuck.questionId, index: stuck.index, tally: stuck.engaged, total };
+}
+
+/**
+ * 一行的计数。`questionTallies` 就是它逐行 `map` —— **同一份判据**。
+ *
+ * 🔴 存在的理由（独立审查抓到的）：组件原先在 JSX 里**自己又数了一遍**「已交 N/M」
+ * （`filter(id => row.cells[id] === 'submitted')`），于是屏幕上的那个数字与用例断言的那个
+ * **不是同一个函数**：今天两份实现逐字等价、三道门禁全绿，一旦有人改了口径，
+ * **测试仍全绿而屏幕上的数字变了**。⇒ 屏幕也走这里（GC 26）。
+ */
+export function rowTally(row: MatrixRow): QuestionTally {
+  const values = Object.values(row.cells);
+  const drafted = values.filter((value) => value === 'draft').length;
+  const submitted = values.filter((value) => value === 'submitted').length;
+  return {
+    questionId: row.questionId,
+    index: row.index,
+    drafted,
+    submitted,
+    engaged: drafted + submitted,
+    total: values.length,
+  };
+}
+
+/** 题干那一格的文案。**「算不算空」的判据只在这一处** —— JSX 里不许再 `trim()` 一次。 */
+export function promptLabel(prompt: string): string {
+  return prompt.trim() || '（这道题的题干还没写）';
+}
+
+/**
+ * 没有任何一份学习单可作答的参与者数（屏幕上底部那一行）。
+ *
+ * ⚠️ 两个入参**必须取自同一时刻的快照**，否则这个减法会**静默漏报或误报** ——
+ * 这是本函数唯一的坑，调用方（`page.tsx` 的矩阵重拉）要负责。
+ */
+export function uncoveredCount(participantCount: number, sheets: WorksheetBoardWorksheet[]): number {
+  const covered = sheets.reduce((sum, sheet) => sum + sheet.participants.length, 0);
+  // ⚠️ 钳在 0：两个快照取自不同时刻时差额**可以是负数**，而「另有 -1 个」是一句胡话。
+  return Math.max(0, participantCount - covered);
 }

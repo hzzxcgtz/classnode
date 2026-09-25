@@ -2126,6 +2126,35 @@ tr:hover td {
 
 /* 加题弹窗 / 设置弹窗。与 C1 那两个弹窗一样是 `.modal-overlay` 的兄弟节点，
    靠 `position: fixed` 自己居中（`.modal-overlay` 只负责遮罩）。 */
+/* 探究网页预览浮窗（★ 2026-09-25）。
+   教师要求：「网页预览浮窗移到屏幕中间，长宽比按常规 ipad 竖屏设定」。
+   原来它靠内联的 `inset: 40px` **铺满视口**（减掉 40px 边距），完全看不出「学生手里
+   那块屏是什么比例」。与 `.worksheet-editor-dialog` 同一套定位：
+   `.modal-overlay` 只负责遮罩，浮窗自己 `position: fixed` 居中。
+
+   🔴 宽高**两个都显式算出来**，不用 `aspect-ratio`：
+     w = min(可用高 × 3/4, 可用宽)　h = min(可用高, 可用宽 × 4/3)
+   两条式子互为反函数 ⇒ 两种情形下都**精确是 3:4**，而且不依赖任何特性支持。
+   高度是这里的驱动量：桌面屏是**横的**，不夹「按宽度反推的高度」那一下，
+   一个 3:4 的框会高过视口、把底部顶到屏幕外。
+
+   3:4 = 768×1024，常规 iPad 竖屏。 */
+.webapp-preview-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  width: min(calc((100vh - 80px) * 3 / 4), calc(100vw - 80px));
+  height: min(calc(100vh - 80px), calc((100vw - 80px) * 4 / 3));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
 .worksheet-editor-dialog {
   position: fixed;
   top: 50%;

@@ -93,7 +93,13 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="modal-content webapp-preview-modal" role="dialog" aria-modal="true" aria-labelledby="webapp-preview-title" style={{ position: 'fixed', inset: '40px', zIndex: 201, background: 'white', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+      {/* ★ 2026-09-25：由 `modal-content webapp-preview-modal` + 内联 `inset: 40px` 改为
+          专属类 `.webapp-preview-dialog`（居中 + 3:4 竖屏）。
+          🔴 **必须去掉 `modal-content`**：它带来 `max-width: 520px`、`width: 90%`、
+          `padding: 32px` 三条 —— 前两条会跟新算出来的宽高打架（显式 width/height 与
+          `width: 90%` 同时存在时，浮窗会被压成 90% 而不是那个比例），
+          第三条会给预览面板套一圈 32px 的白边（面板自己每一段都有内边距）。 */}
+      <div className="webapp-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="webapp-preview-title">
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="webapp-preview-title" style={{ margin: 0, fontSize: '0.938rem', fontWeight: 700, wordBreak: 'break-all' }}>{webapp.name}</h3>

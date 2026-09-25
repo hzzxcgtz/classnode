@@ -9,10 +9,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AGENT_PURPOSES, normalizeAgentPurpose, studentAgentView } from '../services/agent-purpose.js';
+import { normalizeAgentPurpose, studentAgentView } from '../services/agent-purpose.js';
 
-test('取值域只有两个，默认是 tutoring', () => {
-  assert.deepEqual([...AGENT_PURPOSES], ['tutoring', 'analysis']);
+test('归一化：只有 `analysis` 是 `analysis`，其余一律回落 tutoring', () => {
+  // ⚠️ 这里**不再**断言一个 `AGENT_PURPOSES` 常量 —— 独立审查 M2 抓到它只被本用例读过
+  //（= 装饰品），已删。取值域由前端的 `purpose-selector.tsx` 那边管。
   assert.equal(normalizeAgentPurpose(undefined), 'tutoring');
   assert.equal(normalizeAgentPurpose(''), 'tutoring');
   assert.equal(normalizeAgentPurpose('nope'), 'tutoring', '坏值回落默认，不是抛');

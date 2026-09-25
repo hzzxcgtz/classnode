@@ -12,8 +12,16 @@
  * 设计文档 §15.1 那条配套调整（「学生端只关联 `purpose = 'tutoring'` 的智能体」）正是为此。
  */
 
-export const AGENT_PURPOSES = ['tutoring', 'analysis'] as const;
-export type AgentPurpose = (typeof AGENT_PURPOSES)[number];
+/**
+ * ⚠️ **这里没有 `AGENT_PURPOSES` 这个运行时值** —— 独立审查 M2 抓到它**只被自己的用例读过**
+ * （它本来是给那个没建成的「用途」下拉准备的）。而 C1 把下拉建起来之后它**仍然**是装饰品：
+ * 那个下拉在**前端**，而前端运行时加载不了服务端模块（只能靠纯函数镜像 + 对拍用例）。
+ * ⇒ 取值域在前端那一侧各有一份（`purpose-selector.tsx` 的 `PURPOSES`），
+ * **服务端只需要「怎么判」**（下面这个函数），不需要「有哪几个值」。
+ * ⇒ 删掉它，而不是留一个只被用例读的导出（本项目栽过三次同类：
+ * `unmappedParticipantsNotice` / `studentVisibleAgents`（第一次）/ 它自己）。
+ */
+export type AgentPurpose = 'tutoring' | 'analysis';
 
 /** 学生端那一份视图的形状（两处调用点共用）。 */
 export interface StudentAgentView {

@@ -27,19 +27,19 @@ import {
 
 /* ── 1. 🔴 评分三态必须走 gradeState ─────────────────────────────────── */
 
-test('🔴 评分三态：correct ⇒ 对、partial ⇒ 半对、incorrect ⇒ 错、null ⇒ 未判分', () => {
+test('🔴 评分三态：correct ⇒ 对、partial ⇒ 部分给分、incorrect ⇒ 错、null ⇒ 未判分', () => {
   assert.equal(gradeLabel({ isCorrect: true, gradeState: 'correct' }), '对');
-  assert.equal(gradeLabel({ isCorrect: false, gradeState: 'partial' }), '半对');
+  assert.equal(gradeLabel({ isCorrect: false, gradeState: 'partial' }), '部分给分');
   assert.equal(gradeLabel({ isCorrect: false, gradeState: 'incorrect' }), '错');
   assert.equal(gradeLabel({ isCorrect: null, gradeState: null }), '未判分');
 });
 
-test('★ 反证：只读 isCorrect（不管 gradeState）⇒ 半对会被印成错', () => {
-  // 这就是那个更自然、也更错的写法。`isCorrect: false` **同时**覆盖「错」与「半对」（规格 §12）。
+test('★ 反证：只读 isCorrect（不管 gradeState）⇒ 部分给分会被印成错', () => {
+  // 这就是那个更自然、也更错的写法。`isCorrect: false` **同时**覆盖「错」与「部分给分」（规格 §12）。
   const onlyIsCorrect = (row: { isCorrect: boolean | null }) =>
     row.isCorrect === true ? '对' : row.isCorrect === false ? '错' : '未判分';
   assert.equal(onlyIsCorrect({ isCorrect: false }), '错');
-  assert.equal(gradeLabel({ isCorrect: false, gradeState: 'partial' }), '半对');
+  assert.equal(gradeLabel({ isCorrect: false, gradeState: 'partial' }), '部分给分');
   assert.notEqual(onlyIsCorrect({ isCorrect: false }), gradeLabel({ isCorrect: false, gradeState: 'partial' }));
   // 阳性对照：三态里「对」在两种写法下**恰好相同** —— 别把这条反证读成「凡 false 都特殊」。
   assert.equal(onlyIsCorrect({ isCorrect: true }), gradeLabel({ isCorrect: true, gradeState: 'correct' }));

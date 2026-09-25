@@ -26,9 +26,9 @@ import {
  *   · 主观题没有 ✓/½/✗（并且 `gradeState` / `isCorrect` 被手工改成「对」也一样没有）；
  *   · 未作答的题**不给**「标记已查看」按钮（服务端对它会回 409）；
  *   · 正确率的分母是「已判过的行」，不是参与者数；
- *   · ★ M4a **正确率的分子只数全对**（半对进分母不进分子 ⇒ 10 行 4/3/3 是 **40%**）；
+ *   · ★ M4a **正确率的分子只数全对**（部分给分进分母不进分子 ⇒ 10 行 4/3/3 是 **40%**）；
  *   · ★ M4a 三档标记以 `gradeState` 为**真源**，`isCorrect` 只在它缺失时兜底；
- *   · ★ E2 **四档在界面上两两可区分**（半对是 `½ 半对`，既不长得像答错、也不像没判分，
+ *   · ★ E2 **四档在界面上两两可区分**（部分给分是 `½ 部分给分`，既不长得像答错、也不像没判分，
  *     而且**不许**沿用 `◐` —— 那个符号在同一列上已经是「作答中 / 已提交但没有对错」）；
  *   · 「已交 N/M」的分母是参与者数，不是答过的人；
  *   · 量词跟着模式走（高级模式下列的是组）。
@@ -116,7 +116,7 @@ test('形态 A：主观题**永远没有对错**，即使库里那行的 isCorre
   assert.equal(questionOutcome(choice, { ...submitted, questionId: 'q_1', value: { format: 'choice/v1', selected: ['B'] } }).mark, 'correct');
 });
 
-test('🔴 形态 A：三档标记读 gradeState —— 半对画出自己那一档，既不是「对」也不是「错」', () => {
+test('🔴 形态 A：三档标记读 gradeState —— 部分给分画出自己那一档，既不是「对」也不是「错」', () => {
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).mark,
     'correct',
@@ -124,7 +124,7 @@ test('🔴 形态 A：三档标记读 gradeState —— 半对画出自己那一
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false })).mark,
     'partial',
-    '半对落到 wrong 的话，「算进分母却不算对」就看起来是答错了（规格 §12 要它在看板那一侧、即抽屉里画得出来）',
+    '部分给分落到 wrong 的话，「算进分母却不算对」就看起来是答错了（规格 §12 要它在看板那一侧、即抽屉里画得出来）',
   );
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).mark,
@@ -141,12 +141,12 @@ test('🔴 形态 A：三档标记读 gradeState —— 半对画出自己那一
 });
 
 test('🔴 形态 A：gradeState 与 isCorrect 打架时以 gradeState 为准（它是真源，另一个是派生）', () => {
-  // 半对那一行**必然**是 `isCorrect: false`（那个布尔的语义已收窄为「全对」）——
+  // 部分给分那一行**必然**是 `isCorrect: false`（那个布尔的语义已收窄为「全对」）——
   // 光看布尔值，它与「答错」长得一模一样，这正是要加 gradeState 这一列的原因。
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false })).mark,
     'partial',
-    '半对的 isCorrect 是 false ⇒ 读布尔值会把半对说成答错',
+    '部分给分的 isCorrect 是 false ⇒ 读布尔值会把部分给分说成答错',
   );
   // 反过来也一样：库里 isCorrect 是脏的（true）也不改结论 —— 两张表打架时真源只有一个。
   assert.equal(
@@ -167,7 +167,7 @@ test('🔴 形态 A：gradeState 缺失时 isCorrect 兜底（回填没跑到的
   assert.equal(
     questionOutcome(choice, row({ status: 'submitted', isCorrect: false })).mark,
     'wrong',
-    '旧行里没有「半对」这个概念（M4a 才有）⇒ false 只能落 incorrect，猜成 partial 是编的',
+    '旧行里没有「部分给分」这个概念（M4a 才有）⇒ false 只能落 incorrect，猜成 partial 是编的',
   );
   // 🔴 认不出的新档 ⇒ 什么都不画。**不**掉回 isCorrect：一个 false 会把新档说成「答错」，
   // 而「没有标记」至少是一句真话（系统没给出这一档）。
@@ -447,7 +447,7 @@ test('状态标签：三态各一个词，与看板方格阵同一组', () => {
 //
 // 🔴 这一节存在的理由：E2 之前 `'partial'` 落到「没有对错」那一支，画出的是「◐ 已提交」
 // —— 一句话是真的（它确实交了），但它与「系统没判分」**完全不可区分**，而 §12 的要求
-// 是「半对必须画得出来」。这一段判据原本写在 `worksheet-drawer.tsx` 的 JSX 里，
+// 是「部分给分必须画得出来」。这一段判据原本写在 `worksheet-drawer.tsx` 的 JSX 里，
 // 那里**没有任何回归网**（本仓没有前端测试框架，`node --test` 加载不了 JSX）——
 // 把它改成与 `'wrong'` 一模一样不会有任何东西变红。所以搬到这里来。
 // ---------------------------------------------------------------------------
@@ -466,12 +466,12 @@ function look(view: { glyph: string; label: string; color: string }): string {
   return `${view.glyph}|${view.label}|${view.color}`;
 }
 
-test('🔴 四档判分结论在界面上两两可区分 —— 半对既不长得像答错，也不长得像没判分', () => {
+test('🔴 四档判分结论在界面上两两可区分 —— 部分给分既不长得像答错，也不长得像没判分', () => {
   const correct = outcomeMarkView('correct', 'submitted');
   const partial = outcomeMarkView('partial', 'submitted');
   const wrong = outcomeMarkView('wrong', 'submitted');
-  // 没有判分结论的那一档取「已提交」来比 —— 它是最容易被误认成半对的那一个
-  //（E2 之前半对画的就是它）。
+  // 没有判分结论的那一档取「已提交」来比 —— 它是最容易被误认成部分给分的那一个
+  //（E2 之前部分给分画的就是它）。
   const none = outcomeMarkView('none', 'submitted');
 
   const looks = [correct, partial, wrong, none].map(look);
@@ -480,34 +480,34 @@ test('🔴 四档判分结论在界面上两两可区分 —— 半对既不长�
   // 逐对点名 —— 上面那一条只说得清「有重复」，说不出是哪一对。
   assert.notEqual(
     look(partial), look(wrong),
-    '半对画成答错 —— 「算进分母却不算对」（规格 §12）就变成了一句假话',
+    '部分给分画成答错 —— 「算进分母却不算对」（规格 §12）就变成了一句假话',
   );
   assert.notEqual(
     look(partial), look(none),
-    '半对画成「没判分」—— 这正是 E2 之前的样子，教师看不出这道题被扣了分',
+    '部分给分画成「没判分」—— 这正是 E2 之前的样子，教师看不出这道题被扣了分',
   );
   assert.notEqual(
     look(partial), look(correct),
-    '半对画成答对 —— 正确率的分子里没有它，那是另一句假话',
+    '部分给分画成答对 —— 正确率的分子里没有它，那是另一句假话',
   );
   assert.notEqual(look(wrong), look(none), '「答错」与「没判分」是两件事：一个系统知道，一个系统不知道');
 
   // 三档判分结论同字号同字重（并排扫视时才是一组），差别只在符号、词与颜色。
-  // ⚠️ 这条改坏了的表现是「半对比答对矮半头」—— 教师会把它读成次要信息，而不是一个扣分结论。
+  // ⚠️ 这条改坏了的表现是「部分给分比答对矮半头」—— 教师会把它读成次要信息，而不是一个扣分结论。
   assert.deepEqual(
     [correct, partial, wrong].map((view) => view.emphasis), ['verdict', 'verdict', 'verdict'],
     '三档判分结论必须是同一个强调档',
   );
-  assert.equal(partial.glyph, '½', '半对的符号');
-  assert.equal(partial.label, '半对');
+  assert.equal(partial.glyph, '½', '部分给分的符号');
+  assert.equal(partial.label, '部分给分');
 });
 
-test('🔴 半对的符号**不能**是 ◐ —— 它在同一列上已经带了两个别的意思', () => {
+test('🔴 部分给分的符号**不能**是 ◐ —— 它在同一列上已经带了两个别的意思', () => {
   const partial = outcomeMarkView('partial', 'submitted');
   assert.notEqual(
     partial.glyph, '◐',
     '◐ 在同一个抽屉列表里已经是「◐ 作答中」与「◐ 已提交」（没有对错的那一支），' +
-    '而规格 §7.3 的图例逐字写着「◐ = 作答中 / 已提交但没有对错」—— 再拿它当半对，' +
+    '而规格 §7.3 的图例逐字写着「◐ = 作答中 / 已提交但没有对错」—— 再拿它当部分给分，' +
     '同一列上就有三种含义，「画得出来」也就落空了（得逐行读字才分得清）',
   );
   // 阴性对照：◐ 确实还在用（用在那两处状态词上）—— 否则上面那条断言可以靠「删掉 ◐」蒙过去。
@@ -515,14 +515,14 @@ test('🔴 半对的符号**不能**是 ◐ —— 它在同一列上已经带�
   assert.equal(outcomeMarkView('none', 'submitted').glyph, '◐');
 });
 
-test('🔴 没有判分结论的那一档既不像「答错」也不像「半对」（未作答 / 作答中 / 已提交 三种状态）', () => {
+test('🔴 没有判分结论的那一档既不像「答错」也不像「部分给分」（未作答 / 作答中 / 已提交 三种状态）', () => {
   const verdictGlyphs = ['✓', '½', '✗'];
   for (const status of ['unanswered', 'draft', 'submitted'] as const) {
     const view = outcomeMarkView('none', status);
     assert.ok(
       !verdictGlyphs.includes(view.glyph),
       `状态「${status}」在系统根本没判分时画出了判分符号「${view.glyph}」—— ` +
-      '把「不知道」说成「对 / 半对 / 错」是本任务最要防的一类假象',
+      '把「不知道」说成「对 / 部分给分 / 错」是本任务最要防的一类假象',
     );
     assert.ok(
       ['未作答', '作答中', '已提交'].includes(view.label),
@@ -534,10 +534,10 @@ test('🔴 没有判分结论的那一档既不像「答错」也不像「半对
   assert.equal(new Set(labels).size, 3);
 });
 
-test('🔴 端到端（纯函数这一段）：库里判成半对的那一行，画出来是「½ 半对」而不是「✗ 答错」', () => {
+test('🔴 端到端（纯函数这一段）：库里判成部分给分的那一行，画出来是「½ 部分给分」而不是「✗ 答错」', () => {
   const partialView = viewOf(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false }));
   assert.equal(partialView.glyph, '½');
-  assert.equal(partialView.label, '半对');
+  assert.equal(partialView.label, '部分给分');
 
   // 同一条管线上的另外两档各就各位 —— 否则上面那两行可以靠「所有档都画 ½」蒙过去。
   assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).glyph, '✓');
@@ -556,11 +556,11 @@ test('🔴 端到端（纯函数这一段）：库里判成半对的那一行，
 // 形态 B · 按题聚合
 // ---------------------------------------------------------------------------
 
-test('🔴 形态 B：正确率是「全对才算对」—— 10 行 4 全对 / 3 半对 / 3 错 = **40%**，不是 70%', () => {
+test('🔴 形态 B：正确率是「全对才算对」—— 10 行 4 全对 / 3 部分给分 / 3 错 = **40%**，不是 70%', () => {
   const rows: Array<WorksheetBoardAnswerRow | undefined> = [];
   const submit = (gradeState: 'correct' | 'partial' | 'incorrect'): void => {
-    // 半对那一行的 `isCorrect` 按规格 §12 只能是 false（那个布尔的语义已收窄为「全对」）——
-    // 所以这一组数据里，**光看 isCorrect 根本分不出半对与答错**，这正是本用例的意义。
+    // 部分给分那一行的 `isCorrect` 按规格 §12 只能是 false（那个布尔的语义已收窄为「全对」）——
+    // 所以这一组数据里，**光看 isCorrect 根本分不出部分给分与答错**，这正是本用例的意义。
     rows.push(row({ status: 'submitted', gradeState, isCorrect: gradeState === 'correct' }));
   };
   for (let i = 0; i < 4; i += 1) submit('correct');
@@ -568,15 +568,15 @@ test('🔴 形态 B：正确率是「全对才算对」—— 10 行 4 全对 / 
   for (let i = 0; i < 3; i += 1) submit('incorrect');
 
   const aggregate = questionAggregate(rows);
-  assert.equal(aggregate.graded, 10, '半对**进分母**（分母是「已判过的行」，三档都算判过）');
-  assert.equal(aggregate.correct, 4, '半对**不进分子**');
+  assert.equal(aggregate.graded, 10, '部分给分**进分母**（分母是「已判过的行」，三档都算判过）');
+  assert.equal(aggregate.correct, 4, '部分给分**不进分子**');
   assert.equal(
     aggregate.accuracy, 40,
-    '把分子写成「非 incorrect 即算对」会得到 70%（7/10）—— 半对被算成了对，教师看到的正确率凭空变高',
+    '把分子写成「非 incorrect 即算对」会得到 70%（7/10）—— 部分给分被算成了对，教师看到的正确率凭空变高',
   );
 
-  // 🔴 反面对照：同一组数据把 3 行半对**改判**成答错，正确率必须**一模一样**（40%）。
-  // 这是「半对既不算对、也不算得比错更差」那句话的实测形状 —— 顺带证明上面那个 40
+  // 🔴 反面对照：同一组数据把 3 行部分给分**改判**成答错，正确率必须**一模一样**（40%）。
+  // 这是「部分给分既不算对、也不算得比错更差」那句话的实测形状 —— 顺带证明上面那个 40
   // 不是碰巧（它只由 4 与分母 10 决定）。
   const allOrNothing = rows.map((item) => (
     item && item.gradeState === 'partial'
@@ -586,12 +586,12 @@ test('🔴 形态 B：正确率是「全对才算对」—— 10 行 4 全对 / 
   assert.equal(questionAggregate(allOrNothing).accuracy, 40);
 });
 
-test('★ 形态 B：全是半对 ⇒ 正确率 **0**（进了分母、一个也没进分子），不是「—」', () => {
+test('★ 形态 B：全是部分给分 ⇒ 正确率 **0**（进了分母、一个也没进分子），不是「—」', () => {
   const allPartial = questionAggregate([
     row({ status: 'submitted', gradeState: 'partial', isCorrect: false }),
     row({ status: 'submitted', gradeState: 'partial', isCorrect: false }),
   ]);
-  assert.equal(allPartial.graded, 2, '半对不是「没判过」—— 它进分母');
+  assert.equal(allPartial.graded, 2, '部分给分不是「没判过」—— 它进分母');
   assert.equal(
     allPartial.accuracy, 0,
     '0% 与 null 是两句不同的话：这句是「一道全对的都没有」（是真的），null 才是「没有已判过的行」',
@@ -745,7 +745,7 @@ test('🔴 每个题型的 graded 标记都要与「它判不判分」的决策�
 // ⚠️ 这条的**名字**于 2026-09-24 改过（原为「分母与**格子**必须同进同出…也要在**格子上**画标记」）。
 // 改名的理由与 §12 那句字面更正是同一件事：标记画在**抽屉里**、不在方格阵上（规格 §7.2）。
 // 留着旧名字是一个**给下一个人抄的模板** —— F1 的验收项正要从这类句子写起，
-// 而「半对在格子上画得出来」恰恰是 E2 核清掉的那个 §7.2 违规。
+// 而「部分给分在格子上画得出来」恰恰是 E2 核清掉的那个 §7.2 违规。
 // 代价如实记：E1 报告里引用的那条名册（「分母与格子同进同出」）与本文件不再逐字相同。
 test('🔴 分母与抽屉里的标记必须同进同出：能判分的题型既要进正确率的分母，也要在抽屉里画标记', () => {
   const rows: Array<WorksheetBoardAnswerRow | undefined> = [
@@ -771,14 +771,14 @@ test('🔴 分母与抽屉里的标记必须同进同出：能判分的题型既
       '这就是「新题型算进正确率、抽屉里没有 ✓」那个静默不一致',
     );
 
-    // ★ M4a：半对那一档**也**要同进同出，而且比另外两档更要紧 ——
+    // ★ M4a：部分给分那一档**也**要同进同出，而且比另外两档更要紧 ——
     // 它是唯一「算进分母却不算对」的行（规格 §12），抽屉里少了它就只能看起来像答错。
     const partialRow = row({ questionId: 'q_x', status: 'submitted', gradeState: 'partial', isCorrect: false });
-    assert.equal(questionAggregate([partialRow, partialRow]).graded, 2, '半对也进分母');
+    assert.equal(questionAggregate([partialRow, partialRow]).graded, 2, '部分给分也进分母');
     assert.equal(
       questionOutcome(node({ id: 'q_x', type: option.value }), partialRow).mark,
       'partial',
-      `题型「${option.value}」被判成半对，抽屉里却没画出半对档 —— ` +
+      `题型「${option.value}」被判成部分给分，抽屉里却没画出部分给分档 —— ` +
       '它会看起来像答错（或像没判分），两句话都是假的',
     );
   }

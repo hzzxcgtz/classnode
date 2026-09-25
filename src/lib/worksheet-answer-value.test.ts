@@ -173,7 +173,7 @@ test('isDraftEmpty：逐题型判「这一份输入态里有东西吗」', () =>
   assert.equal(isDraftEmpty({ kind: 'text', text: '   ' }), true, '全是空白等于没写');
   assert.equal(isDraftEmpty({ kind: 'text', text: ' 叶片 ' }), false);
   assert.equal(isDraftEmpty({ kind: 'fill', texts: ['', '  '] }), true);
-  assert.equal(isDraftEmpty({ kind: 'fill', texts: ['', 'H2O'] }), false, '只填了一半也是「有内容」——服务端会判半对');
+  assert.equal(isDraftEmpty({ kind: 'fill', texts: ['', 'H2O'] }), false, '只填了一半也是「有内容」——服务端会判部分给分');
   assert.equal(isDraftEmpty({ kind: 'match', links: [] }), true);
   assert.equal(isDraftEmpty({ kind: 'match', links: [{ leftId: 'l1', rightId: 'r1' }] }), false);
   assert.equal(isDraftEmpty({ kind: 'categorize', assignment: {} }), true);
@@ -237,7 +237,7 @@ test('buildAnswerValue 的「空」判据逐题型写清（写错 = 一个必然
   assert.equal(buildAnswerValue(fillMultiNode(), { kind: 'fill', texts: ['', ' '] }), null);
   assert.equal(buildAnswerValue(node('short-answer'), { kind: 'text', text: ' \n ' }), null);
   assert.equal(buildAnswerValue(fillMultiNode(), { kind: 'fill', texts: ['H2O', ''] }) !== null, true,
-    '只填了一半**可以提交** —— 服务端会判半对');
+    '只填了一半**可以提交** —— 服务端会判部分给分');
   assert.equal(buildAnswerValue(matchNode(), { kind: 'match', links: [] }), null);
   assert.equal(buildAnswerValue(categorizeNode(), { kind: 'categorize', assignment: {} }), null);
 });

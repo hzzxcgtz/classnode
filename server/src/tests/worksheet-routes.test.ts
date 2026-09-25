@@ -598,7 +598,7 @@ test('🔴 逐题分值：合法值原样落库；**留空不补默认值**（�
  * 学生端对错档按 `score >= 1` 画 ⇒ **红叉**；教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**
  * 并把它计进正确率分子 ⇒ 同一次提交里两个角色看到相反的话，而全程无一处报错。
  */
-test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 0` 与「只填半对 0」照常收下', async (t) => {
+test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 0` 与「只填部分给分 0」照常收下', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
@@ -619,9 +619,9 @@ test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 
   // 文案要**指名道姓**：教师得知道是第几题、以及错在哪一格 —— 一句笼统的
   // 「内容不合法」会让他翻遍整份单子。
   assert.match(rejectedBody.error ?? '', /第 1 题/, '报错要点出是第几题');
-  assert.match(rejectedBody.error ?? '', /全对/, '报错要点出是「全对」那一格（半对填 0 是合法的）');
+  assert.match(rejectedBody.error ?? '', /全对/, '报错要点出是「全对」那一格（部分给分填 0 是合法的）');
 
-  // 旁边有一个合法值也救不了它（0 不是「因为半对合法就跟着合法」）
+  // 旁边有一个合法值也救不了它（0 不是「因为部分给分合法就跟着合法」）
   const mixed = await post({ full: 0, half: 2 });
   assert.equal(mixed.status, 400, 'full: 0 与 half 填什么无关');
 
@@ -632,10 +632,10 @@ test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 
   const halfZeroSaved = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: halfZeroBody.id } });
   const halfZeroNodes = (halfZeroSaved.content as { nodes: Array<Record<string, unknown>> }).nodes;
   assert.deepEqual(halfZeroNodes[0].points, { full: 2, half: 0 },
-    '⚠️ 半对填 0 是**合法**的（规格 §12 裁定 3 的默认档就是它）—— 别把它的 0 也判成「没填」');
+    '⚠️ 部分给分填 0 是**合法**的（规格 §12 裁定 3 的默认档就是它）—— 别把它的 0 也判成「没填」');
 
-  // 「只填半对 0」不是半填的非法态：`full` 缺席 ⇒ 按老语义回落 DEFAULT_POINTS.full（1），
-  // 而 `half: 0` 原样保留 —— 这条同时钉住「半对的 0 没有被判成『没填』」。
+  // 「只填部分给分 0」不是半填的非法态：`full` 缺席 ⇒ 按老语义回落 DEFAULT_POINTS.full（1），
+  // 而 `half: 0` 原样保留 —— 这条同时钉住「部分给分的 0 没有被判成『没填』」。
   const halfOnly = await post({ half: 0 });
   const halfOnlyBody = await halfOnly.json() as { id: string; error?: string };
   assert.equal(halfOnly.status, 200, JSON.stringify(halfOnlyBody));
@@ -646,13 +646,13 @@ test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 
 });
 
 /**
- * ★ M4a（B2）：学习单级的**半对档**（`settings.halfStep`）必须走完
+ * ★ M4a（B2）：学习单级的**部分给分档**（`settings.halfStep`）必须走完
  * 「写入口 → 库里 → 读回来 → 原样发回去」整条路。
  *
  * 🔴 这条用例存在的理由是**整份替换**：`PUT /api/worksheets/:id` 写的是
  * `data.settings = normalizeSettings(body.settings)`，而编辑页保存时把 `settings`
  * **整份**发回来（`buildPayload`）。所以 `normalizeSettings` 少认一个键 ⇒
- * 教师配好的「半对给 1 朵」会被一次「只改了个标题」的保存**静默抹掉**：
+ * 教师配好的「部分给分给 1 朵」会被一次「只改了个标题」的保存**静默抹掉**：
  * 保存照常 200、界面上没有任何提示，只有学生第二天发现奖励变了样。
  * （规格 §12「三处改错了不会报错的地方」之 ③。）
  *
@@ -664,7 +664,7 @@ test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 
  *      而教师在真实操作里必走的正是 ③ 这条路。
  *   ④ 越界值（4）落回默认档 —— 域是 `0/1/2/3/5`（`HALF_STEPS`），不是 `rewardStep` 的 1/2/3/5。
  */
-test('🔴 半对档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回去也不变**；越界回落默认', async (t) => {
+test('🔴 部分给分档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回去也不变**；越界回落默认', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
@@ -674,12 +674,12 @@ test('🔴 半对档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回�
   // ① 写入口认它。夹具里刻意**不配**默认值（1 而不是 0）—— 配 0 的话「落库是 0」
   //    与「那个键被整个丢掉、读的时候补默认 0」是同一个观测，这条断言就废了。
   const created = await (await server.post('/api/worksheets', {
-    title: '带半对档的学习单', content: SAMPLE_CONTENT, settings: { ...SAMPLE_SETTINGS, halfStep: 1 },
+    title: '带部分给分档的学习单', content: SAMPLE_CONTENT, settings: { ...SAMPLE_SETTINGS, halfStep: 1 },
   })).json() as { id: string };
   const stored = JSON.parse(JSON.stringify(
     (await db.prisma.worksheet.findUniqueOrThrow({ where: { id: created.id } })).settings,
   )) as Record<string, unknown>;
-  assert.equal(stored.halfStep, 1, '教师配的半对档必须落库 —— `normalizeSettings` 少认一个键就会静默丢掉它');
+  assert.equal(stored.halfStep, 1, '教师配的部分给分档必须落库 —— `normalizeSettings` 少认一个键就会静默丢掉它');
 
   // ② 读得回来（教师读端点 = 编辑页打开时走的那一条）。
   const loaded = await settingsOf(created.id);
@@ -692,7 +692,7 @@ test('🔴 半对档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回�
   const afterSave = await settingsOf(created.id);
   assert.equal(
     afterSave.halfStep, 1,
-    '把读回来的 settings 原样发回去之后半对档必须还是 1 —— 变回 0 就是「保存一次改标题的请求把它抹掉了」',
+    '把读回来的 settings 原样发回去之后部分给分档必须还是 1 —— 变回 0 就是「保存一次改标题的请求把它抹掉了」',
   );
   assert.deepEqual(afterSave, loaded, '整份发回去的 settings 不该有任何一项被改写');
 
@@ -710,17 +710,21 @@ test('🔴 半对档 halfStep：配过 ⇒ 原样落库 / 读回 / **再发回�
   assert.equal(badPut.status, 200, JSON.stringify(await badPut.json()));
   assert.equal(
     (await settingsOf(created.id)).halfStep, 0,
-    '越界的半对档要落回它自己的默认值 0，不能把 4 原样存进去（也不能落成 rewardStep 的 1）',
+    '越界的部分给分档要落回它自己的默认值 0，不能把 4 原样存进去（也不能落成 rewardStep 的 1）',
   );
 });
 
-test('CRUD：题目不合法（单选题没有正确答案）⇒ 400，且一个学习单都不建', async (t) => {
+test('CRUD：题目不合法（单选题的正确答案指向不存在的选项）⇒ 400，且一个学习单都不建', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
 
   const broken = structuredClone(SAMPLE_CONTENT);
-  broken.nodes[0].data.correctKeys = [];
+  // ⚠️ 这条用例原先用「**没有**正确答案」（`correctKeys: []`）当非法例子 —— 那条在
+  // 2026-09-25 之后**合法**了（教师裁定：选择题可以不设答案，不设 = 不用给分）。
+  // 换成「答案指向一个不存在的选项」：它仍然是坏数据，而且后果正是这条用例要防的那类 ——
+  // **没有任何学生能答对**，而看板上只表现为「正确率 0%」。
+  broken.nodes[0].data.correctKeys = ['不存在的选项'];
   const res = await server.post('/api/worksheets', { title: '坏学习单', content: broken, settings: SAMPLE_SETTINGS });
   const body = await res.json() as { error: string };
   assert.equal(res.status, 400, JSON.stringify(body));
@@ -734,7 +738,7 @@ test('CRUD：题目不合法（单选题没有正确答案）⇒ 400，且一个
  * 这个键在 B1 之前是**原样透传**的，而全仓只有判分侧读它一处（`allowsMissing`，
  * 判据是逐字等于 `'allow-missing'`）。于是编辑 UI 把那个值写错一个字符
  * （`'allowmissing'` / `'allow missing'` / 布尔 `true`）就**原样落库**，
- * 判分静默退化成「全对才算」—— 教师明明选了「漏选算半对」，而分一直不对、
+ * 判分静默退化成「全对才算」—— 教师明明选了「漏选算部分给分」，而分一直不对、
  * **无任何报错**，他会去怀疑学生。这条用例就是把它变成**响亮**的 400。
  *
  * ⚠️ 缺席**保持缺席**（不补写 `'all-or-nothing'`）：`allowsMissing` 对缺席的回答
@@ -771,7 +775,7 @@ test('CRUD：多选的 partialCredit 只认两个字面量，认不出 ⇒ 400�
       `partialCredit=${JSON.stringify(bad)} 必须当场拒绝，否则它会原样落库、` +
       `判分静默退化成「全对才算」：${JSON.stringify(body)}`,
     );
-    assert.match(String(body.error), /漏选算不算半对/, '报错要点到具体是哪个设置项');
+    assert.match(String(body.error), /漏选算不算部分给分/, '报错要点到具体是哪个设置项');
   }
   assert.equal(await db.prisma.worksheet.count(), 0, '被拒的请求不得留下任何学习单');
 

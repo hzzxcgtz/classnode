@@ -124,7 +124,7 @@ export interface ServerToClientEvents {
     isCorrect: boolean | null;
     /**
      * ★ M4a 新增：三态（`correct` / `partial` / `incorrect`），`null` = 没判分。
-     * 看板的 ½ 半对档只能来自它 —— `isCorrect: false` 推不出「是错还是半对」。
+     * 看板的 ½ 部分给分档只能来自它 —— `isCorrect: false` 推不出「是错还是部分给分」。
      */
     gradeState: WorksheetGradeState | null;
     /**

@@ -98,7 +98,7 @@ function WorksheetEditorBody() {
   /**
    * 学习单级的**两档**（逐题留空的题继承的就是它们）—— 传给每张卡片当占位符。
    *
-   * ⚠️ 只做**显示**与「半对 0 分」那条提示的判据，**绝不**拿它去预填逐题的输入框：
+   * ⚠️ 只做**显示**与「部分给分 0 分」那条提示的判据，**绝不**拿它去预填逐题的输入框：
    * 预填等于把「跟随学习单」拍成一份副本，教师之后改这两档时已保存的题不会跟随，
    * 而他看不到任何提示（规格 §12 裁定 4 的理由）。
    *
@@ -269,6 +269,8 @@ function WorksheetEditorBody() {
                 total={block.task.total}
                 node={block.task.node}
                 onTitleChange={prompt => editor.updatePrompt(block.task!.node.id, prompt)}
+                // 描述走 `updateData`（同一个 reducer ⇒ 同样进撤销栈、同样同值去重）。
+                onDescriptionChange={description => editor.updateData(block.task!.node.id, { description })}
                 onMove={delta => editor.moveQuestion(block.task!.node.id, delta)}
                 onRemove={() => void requestRemove(block.task!.node, '')}
                 onAddQuestion={() => setPickerFor({ parentId: block.task!.node.id })}
@@ -372,7 +374,7 @@ function AddQuestionPicker({ onPick, onClose }: {
  *   · 提交后可否修改（`allowResubmit`，规格 §8.4）
  *   · 奖励形式 + **两档**步长（规格 §9.2 与 §12 裁定 3 —— 2026-09-23 用户裁定：奖励是
  *     **学习单级**的，不做全局设置。「这堂课用得分制还是发小花」是这一张单的事。
- *     两档是 M4a 的「全对给几 / 半对给几」，它们同时是**逐题留空的题的默认值**，
+ *     两档是 M4a 的「全对给几 / 部分给分给几」，它们同时是**逐题留空的题的默认值**，
  *     所以下面那两行必须说清这层关系 —— 见那一段注释）
  * 输入方式**不做 UI**（规格 §3-V，第一批恒为 keyboard），`settings.defaultInputMode`
  * 只是原样带着走，不在这里改。
@@ -489,24 +491,24 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
         </fieldset>
 
         {/* 步长**两行**：选了「对错」时**两行都不出现** —— 对错档没有步长（规格 §9.2 的原话）。
-            ★ M4a（C3）补的是第二行（半对档）。在它之前，学习单级的半对档在服务端与内核里
-            都通了、却**没有 UI** ⇒ 它只能是默认值 0 ⇒ 逐题留空的题一律「半对 0 分」，
+            ★ M4a（C3）补的是第二行（部分给分档）。在它之前，学习单级的部分给分档在服务端与内核里
+            都通了、却**没有 UI** ⇒ 它只能是默认值 0 ⇒ 逐题留空的题一律「部分给分 0 分」，
             而 `shouldWarnZeroHalfCredit`（规格 §12 裁定 3 的连带要求）**到处都会响** ——
-            教师只要在多选卡上选一次「漏选算半对」，`effectiveHalfStep` 就是那个恒为 0 的
+            教师只要在多选卡上选一次「漏选算部分给分」，`effectiveHalfStep` 就是那个恒为 0 的
             学习单级档 ⇒ 提示条一概弹出来，**信号被稀释成噪音**（一张卡一句，说的都是同一件
-            他没做过的事）。补上这一行之后它才回到本意：只在半对档**实际为 0** 时才响
-            —— ⚠️ **不是**「只在教师真的把半对配成 0 时才响」：新建学习单的 `halfStep`
+            他没做过的事）。补上这一行之后它才回到本意：只在部分给分档**实际为 0** 时才响
+            —— ⚠️ **不是**「只在教师真的把部分给分配成 0 时才响」：新建学习单的 `halfStep`
             默认就是 0，而下面那两行的注释自己写着「它恰好是新单的默认值」。加一道多选、
-            选「漏选算半对」、半对留空 ⇒ 提示照样出现（判据是「这题**实际用到**的半对档」，
+            选「漏选算部分给分」、部分给分留空 ⇒ 提示照样出现（判据是「这题**实际用到**的部分给分档」，
             见 `effectiveHalfStep`）。
             （判据是 `shouldWarnZeroHalfCredit(multi, { full: 1, half: 0 }) === true`，
             `worksheet-editor-core.test.ts` 里那条用例在 `a4b1a11` 就已存在。）
             两行放在一起也是刻意的：它们是**同一件事的两个数**，
-            拆开摆会让人以为半对档与奖励形式无关。
+            拆开摆会让人以为部分给分档与奖励形式无关。
 
             ⚠️ 两个下拉的选项来自同一个文件的**两个不同数组**：`REWARD_STEPS`（1/2/3/5）与
             `HALF_STEPS`（**多一个 0**）。这里不许写任何字面量 —— 写成两处硬编码的
-            `[1,2,3,5]` 就会把「半对 0」这个合法档从界面上抹掉，而它恰好是新单的默认值。 */}
+            `[1,2,3,5]` 就会把「部分给分 0」这个合法档从界面上抹掉，而它恰好是新单的默认值。 */}
         {settings.rewardStyle === 'correctness' ? null : (
           <>
             <label className="worksheet-editor-field">
@@ -521,7 +523,9 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             </label>
 
             <label className="worksheet-editor-field">
-              <span>每半对一题得几{currentStyle.unit}</span>
+              {/* ⚠️ 与上一行「每答对一题得几」**句式对称**：改写时两行一起看，
+                  别让一行成了「每 X 一题得几」、另一行成了别的话。 */}
+              <span>每答对一部分得几{currentStyle.unit}</span>
               <select
                 className="input"
                 value={settings.halfStep}
@@ -534,11 +538,11 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
             {/* 这两行与**逐题**那两个数不是同一件事（规格 §12 裁定 4）：学习单级是
                 「默认值 + 兜底」，逐题留空的题才用它。这句话不能省 —— 不说，教师会以为
                 改这里能改全班已经逐题填过的题，**而它不会**（那些题甚至不会重新保存）。
-                「0」那句同理：半对填 0 是一个合法的选择（不给部分分），但它在屏幕上
+                「0」那句同理：部分给分填 0 是一个合法的选择（不给部分分），但它在屏幕上
                 与「忘了配」长得一样，所以要说清它是**什么意思**。 */}
             <em className="worksheet-editor-switch-note">
-              这两档是<b>默认值</b>：只有逐题<b>留空</b>的题用它们。题干上自己填过「全对 / 半对」的题按它自己的数，改这里不会动它。
-              半对档填 0 = 这一单不给部分分（答对才算全对）。
+              这两档是<b>默认值</b>：只有逐题<b>留空</b>的题用它们。题干上自己填过「全对 / 部分给分」的题按它自己的数，改这里不会动它。
+              部分给分档填 0 = 这一单不给部分分（答对才算全对）。
             </em>
           </>
         )}

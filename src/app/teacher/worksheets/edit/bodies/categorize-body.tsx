@@ -133,7 +133,7 @@ export function CategorizeBody({ node, onDataChange }: {
 
       <p className="worksheet-editor-hint">
         条目在屏幕上的<b>先后顺序与答案无关</b>，答案是每个条目归到了哪个框。全部落对=全对，
-        落对一部分=半对，一个都没落对=全错。
+        落对一部分=部分给分，一个都没落对=全错。
         {unplaced > 0 ? ` 现在还有 ${unplaced} 个条目没有归到框里，保存会被服务端拦下。` : ''}
         {zones.length < 2 ? ' 归类题至少要两个框。' : ''}
       </p>

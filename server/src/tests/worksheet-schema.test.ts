@@ -203,7 +203,7 @@ test('🔴 手写建表 DDL 与 prisma db push 的产物逐表逐字一致（差
  *   1. 不回填 ⇒ 升级后所有历史作答的 `gradeState` 都是 null ⇒ 看板把它们当成
  *      「没判过」⇒ **正确率的分母凭空变小**，而屏幕上没有任何东西变红；
  *   2. 回填的 `WHERE` 少了 `gradeState IS NULL` ⇒ 每次启动都把新判的 `partial`
- *      覆盖成 `correct`/`incorrect` ⇒ 半对从此消失，看起来只是「分算错了」。
+ *      覆盖成 `correct`/`incorrect` ⇒ 部分给分从此消失，看起来只是「分算错了」。
  *
  * 库的形状用 `ALTER TABLE … DROP COLUMN` 造（SQLite 3.35+）：模板库是**新**形状，
  * 而这里要的是**升级前**的形状。比手抄一份老 DDL 更可靠 —— 手抄的那份会随
@@ -263,7 +263,7 @@ test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次�
     assert.equal(typed.filter((c) => c.name === 'score')[0]?.type, 'REAL');
     assert.equal(typed.filter((c) => c.name === 'gradeState')[0]?.type, 'TEXT');
 
-    // 幂等：模拟 A2 之后新判的一行（半对），再跑一次启动流程。
+    // 幂等：模拟 A2 之后新判的一行（部分给分），再跑一次启动流程。
     await db.$executeRawUnsafe(
       `UPDATE "WorksheetAnswer" SET "gradeState"='partial', "score"=0.5, "isCorrect"=0 WHERE "id"='a_right'`);
     const second = await ensureWorksheetAnswerColumns(db);
@@ -295,7 +295,7 @@ test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次�
  *    **永远补不上**（E1 的「新列是权威」与 D3 的 `score` 兜底都建立在「回填已跑过」之上）。
  *    本用例的样本正是那个形状：模板库先天带两列（`columnsAdded` 为空）而**没有标记**。
  *
- * ② **标记在，就再也不回填。** A2 之后「半对」会落成 `isCorrect=false` +
+ * ② **标记在，就再也不回填。** A2 之后「部分给分」会落成 `isCorrect=false` +
  *    `gradeState=NULL`（B1 才写这两列），它与「M3 老行」在**列上完全同形** ——
  *    没有任何列能把两者区分开。少了标记，任何一次重启都会把它永久钉成
  *    `incorrect`/`score=NULL`，而它此后再也不被回填碰。
@@ -340,7 +340,7 @@ test('🔴 回填的边界：列已在（桌面版 db push 加的）也要跑；
     );
 
     // ── ② 标记已写 ⇒ 之后新出现的同形行**不许**再被碰 ────────────────────
-    // 这一行模拟「A2 之后写进来的半对」：与上面两行在列上完全同形
+    // 这一行模拟「A2 之后写进来的部分给分」：与上面两行在列上完全同形
     //（`isCorrect=0` 且 `gradeState IS NULL` 且 `score IS NULL`），**无法靠列区分**。
     await db.$executeRawUnsafe(
       `INSERT INTO "WorksheetAnswer" ("id","responseId","questionId","status","isCorrect")
@@ -351,7 +351,7 @@ test('🔴 回填的边界：列已在（桌面版 db push 加的）也要跑；
       second.backfilled,
       0,
       '🔴 标记已经写过 ⇒ 这一行**不许**被回填。红了就说明标记那道 `if` 没了，' +
-      '而代价是：任何一次重启都把半对永久钉成 incorrect/score=NULL。',
+      '而代价是：任何一次重启都把部分给分永久钉成 incorrect/score=NULL。',
     );
     const afterPartial = await db.$queryRawUnsafe<{ gradeState: string | null; score: number | null }[]>(
       `SELECT "gradeState","score" FROM "WorksheetAnswer" WHERE "id"='a_partial_after'`);

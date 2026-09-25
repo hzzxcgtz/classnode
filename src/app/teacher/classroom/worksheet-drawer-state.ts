@@ -30,9 +30,9 @@ import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
  *   · 未作答的题上冒出一个「标记已查看」按钮（点下去服务端回 **409**，纯属必然失败）；
  *   · 正确率的分母用错（拿参与者数当分母 ⇒ 一份交了一半的卷子显示「正确率 50%」，
  *     而它其实一道没错）；
- *   · ★ M4a：正确率的**分子**把半对算成对（`非 incorrect 即算对` 这种写法在类型上完全合法），
- *     10 行 4 全对 3 半对 3 错会显示 70% 而不是 40% —— 见 `questionAggregate` 上面那段；
- *   · ★ M4a：半对那一行落进 `wrong` ⇒ 教师把「算进分母却不算对」读成「答错了」；
+ *   · ★ M4a：正确率的**分子**把部分给分算成对（`非 incorrect 即算对` 这种写法在类型上完全合法），
+ *     10 行 4 全对 3 部分给分 3 错会显示 70% 而不是 40% —— 见 `questionAggregate` 上面那段；
+ *   · ★ M4a：部分给分那一行落进 `wrong` ⇒ 教师把「算进分母却不算对」读成「答错了」；
  *   · 「已交 N/M」的分母漏掉没作答的人（那个数没有任何地方会报错）。
  * 本仓没有前端测试框架（规格 §11），但 `node --test` 能直接跑本文件：
  *
@@ -55,8 +55,8 @@ export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
  * 这一道题的**判分档**。
  *
  * ★ M4a：从三档（`correct | wrong | none`）扩成**四档**，多出来的是 `partial`。
- * 🔴 为什么必须画得出来：正确率的口径是「**全对才算对**」⇒ 半对**进分母、不进分子**，
- * 于是半对是**唯一**一种「算进分母却不算对」的行。它若没有自己那一档，就只能
+ * 🔴 为什么必须画得出来：正确率的口径是「**全对才算对**」⇒ 部分给分**进分母、不进分子**，
+ * 于是部分给分是**唯一**一种「算进分母却不算对」的行。它若没有自己那一档，就只能
  * 落到 `wrong`（看起来是答错了）或 `none`（看起来是没判分）—— 两句话都是假的。
  *
  * `none` 的来源（界面上都不显示 ✓/½/✗）没变：
@@ -66,7 +66,7 @@ export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
  *
  * ── 🔴 画在哪、画成什么（E2 的裁定；规格字面已于 2026-09-24 回填）──────
  *
- * **画在抽屉里，不在看板的方格阵里。** §12 那句现在是「半对必须在**看板那一侧**画得出来」，
+ * **画在抽屉里，不在看板的方格阵里。** §12 那句现在是「部分给分必须在**看板那一侧**画得出来」，
  * 而「看板那一侧」= **抽屉** —— §12 已于 2026-09-24 更正并注明「是抽屉里，不是方格阵的格子」；
  * 更正之前它写的是「**格子**上」，与 §7.2 按字面读会打架（E2 核清的就是这一处）。
  * 判据是 §7.2 把逐题对错**明确排除**在格子之外（「方格阵着色 = 状态…不编码对错」＋
@@ -81,7 +81,7 @@ export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
  *     同一个符号在一列上带三种含义，「画得出来」就落空了 —— 教师得逐行读字才分得清。
  *   · 学生端 `worksheet-panel.tsx` 也用它表示「作答中」（那倒是不同屏，不是主要理由）。
  *   · `½` 直接读作「一半」，与 `✓ 答对` / `✗ 答错` 并排时同族同宽，且全仓此前零占用。
- * ⇒ 落到代码里是 `{ glyph: '½', label: '半对' }`，见 `VERDICT_VIEW`。
+ * ⇒ 落到代码里是 `{ glyph: '½', label: '部分给分' }`，见 `VERDICT_VIEW`。
  */
 export type WorksheetOutcomeMark = 'correct' | 'partial' | 'wrong' | 'none';
 
@@ -159,7 +159,7 @@ export interface QuestionOutcome {
  *      （`server/src/services/worksheet-schema.ts` 的
  *      `UPDATE … CASE WHEN "isCorrect" THEN 'correct' ELSE 'incorrect' END`），
  *      所以这条只该在**回填没跑到**时生效（回填失败、或浏览器里的旧 bundle 配新服务端）。
- *      落点的选择也是它该有的样子：旧行里**不存在半对**（那时没有这个概念），
+ *      落点的选择也是它该有的样子：旧行里**不存在部分给分**（那时没有这个概念），
  *      所以 `false` 只能落 `incorrect` —— 把旧行的 `false` 猜成 `partial` 是编的。
  *      ⚠️ 这条兜底**有回归网**：`worksheet-drawer-state.test.ts` 的「🔴 形态 A：`gradeState`
  *      缺失时 `isCorrect` 兜底（回填没跑到的旧行），认不出的值不猜」那条用例就钉着它
@@ -439,25 +439,25 @@ export interface OutcomeMarkView {
  * 而忘了补这张表，`tsc` 直接红（`Record` 的键集合就是那个联合）。这正是 M4a 之前
  * `'correct' | 'wrong' | 'none'` 手抄第二份时漏掉的那件事。
  *
- * ★ `partial` 那一行是 E2 的交付物：**`½ 半对`**，琥珀色（与三档的另外两端同字号同字重）。
+ * ★ `partial` 那一行是 E2 的交付物：**`½ 部分给分`**，琥珀色（与三档的另外两端同字号同字重）。
  *   符号为什么不沿用规格 §12 字面写的 `◐`：见 `WorksheetOutcomeMark` 上面那一段
  *   —— `◐` 在同一列上已经被「作答中 / 已提交但没有对错」占用了两次。
  */
 const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkView> = {
-  // 绿色只表示**结论为对**，而半对不是对（正确率的分子里没有它）—— 所以半对不用绿。
+  // 绿色只表示**结论为对**，而部分给分不是对（正确率的分子里没有它）—— 所以部分给分不用绿。
   correct: { glyph: '✓', label: '答对', color: '#15803d', emphasis: 'verdict' },
   // 琥珀是这块看板既有的「**中间档**」色（`停住了`、`作答中` 都用它），而红/绿是两端。
-  // 不为半对再引入第四种色相：同屏出现两个近似橙黄，教师反而分不出来。
+  // 不为部分给分再引入第四种色相：同屏出现两个近似橙黄，教师反而分不出来。
   // 同列上它与 `◐ 作答中` 同色 —— 靠**符号与词**区分（这正是本任务要的那一层）。
-  partial: { glyph: '½', label: '半对', color: '#b45309', emphasis: 'verdict' },
+  partial: { glyph: '½', label: '部分给分', color: '#b45309', emphasis: 'verdict' },
   wrong: { glyph: '✗', label: '答错', color: '#dc2626', emphasis: 'verdict' },
 };
 
 /**
  * **没有判分结论**时按状态给的那三种说法。三个词都取自 `statusLabel`（同一份，不另抄）。
  *
- * 🔴 这一档**必须既不像「答错」也不像「半对」**：它说的是「系统没判过」这个事实，
- * 画成 `✗` 就是把「不知道」说成「错」，画成 `½` 就是把「不知道」说成「半对」。
+ * 🔴 这一档**必须既不像「答错」也不像「部分给分」**：它说的是「系统没判过」这个事实，
+ * 画成 `✗` 就是把「不知道」说成「错」，画成 `½` 就是把「不知道」说成「部分给分」。
  * 所以符号只有 `─`（未作答）与 `◐`（作答中 / 已提交）两个，都与那三档判分结论不重样。
  */
 const NO_VERDICT_VIEW: Record<WorksheetQuestionStatus, OutcomeMarkView> = {
@@ -470,7 +470,7 @@ const NO_VERDICT_VIEW: Record<WorksheetQuestionStatus, OutcomeMarkView> = {
  * 判分档 + 状态 → 抽屉里那一小块。
  *
  * ⚠️ `status` **只在没有判分结论时**才影响长相（`'none'` 那一支）。判分结论自己说完了话，
- * 就不再拿状态去修饰它 —— 否则「已提交的半对」与「作答中的半对」会长得不一样，
+ * 就不再拿状态去修饰它 —— 否则「已提交的部分给分」与「作答中的部分给分」会长得不一样，
  * 而后者根本不可能存在（`questionOutcome` 已经把它挡在 `'none'` 上）。
  */
 export function outcomeMarkView(mark: WorksheetOutcomeMark, status: WorksheetQuestionStatus): OutcomeMarkView {
@@ -487,12 +487,12 @@ export function outcomeMarkView(mark: WorksheetOutcomeMark, status: WorksheetQue
  *     主观题恒不判分、关闭自动判分时全班都不判分，拿已交人数当分母会得到 0%。
  *
  * 🔴 **「正确」的口径 = 全对才算对**（规格 §12 的裁定，**不是**这里能自由发挥的地方）：
- *   · **半对进分母、不进分子** ⇒ 10 行里 4 全对 / 3 半对 / 3 错 = **40%**，不是 70%；
+ *   · **部分给分进分母、不进分子** ⇒ 10 行里 4 全对 / 3 部分给分 / 3 错 = **40%**，不是 70%；
  *   · 这**不是自动成立的**：把分子写成「非 `incorrect` 即算对」在类型上完全合法、
- *     跑起来也不报错，只是把半对算成了对（教师看到的正确率凭空变高）。
+ *     跑起来也不报错，只是把部分给分算成了对（教师看到的正确率凭空变高）。
  *     `worksheet-drawer-state.test.ts` 里那条 10 行 4/3/3 的用例就是钉它用的 ——
  *     ⚠️ 那条用例是**唯一**能区分「全对才算对」与「非错即对」的用例，别把它改成别的形状。
- *   · 全部都是半对 ⇒ `accuracy` 是 **0**（它们进了分母、一个也没进分子），**不是 `null`**：
+ *   · 全部都是部分给分 ⇒ `accuracy` 是 **0**（它们进了分母、一个也没进分子），**不是 `null`**：
  *     `null` 的意思只有一句 —— 一行都没判过（界面显示「—」）。
  *
  * `accuracy === null` 表示**没有已判过的行** ⇒ 界面上显示「—」（主观题那一行就是它）。
@@ -502,9 +502,9 @@ export interface QuestionAggregate {
   /** 分母：参与者数（`rows.length` —— 每个参与者一格，没作答的那一格是 `undefined`）。 */
   total: number;
   submitted: number;
-  /** 已判过的行数（`rowVerdict` 非 `null`，**含半对**）—— 正确率的分母。 */
+  /** 已判过的行数（`rowVerdict` 非 `null`，**含部分给分**）—— 正确率的分母。 */
   graded: number;
-  /** 判为**全对**的行数 —— 正确率的分子。半对**不在**这里。 */
+  /** 判为**全对**的行数 —— 正确率的分子。部分给分**不在**这里。 */
   correct: number;
   /** 0–100 的整数；`null` = 没有已判过的行（显示「—」）。 */
   accuracy: number | null;

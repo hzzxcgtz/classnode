@@ -372,7 +372,7 @@ export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
  * 还是 `undefined`），请看 `worksheet-panel.tsx` 那条 `untouched` 判据。
  *
  * 空白字符不算（填空 / 问答）。多空填空里**只要有**一个空填了就不算空 —— 只填一半
- * 是可以提交的，服务端会判半对。
+ * 是可以提交的，服务端会判部分给分。
  */
 export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'choice') return draft.selected.length === 0;

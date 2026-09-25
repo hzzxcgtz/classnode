@@ -17,13 +17,13 @@ import { readInkValue, type InkValue } from './ink-path.js';
 /* ── 评分三态 ─────────────────────────────────────────────────────────── */
 
 /** 一档判分结论在纸上长什么样。四档，`未判分` **不是** `错`。 */
-export type GradeLabel = '对' | '半对' | '错' | '未判分';
+export type GradeLabel = '对' | '部分给分' | '错' | '未判分';
 
 /**
  * 🔴 **必须读 `gradeState`，不能只读 `isCorrect`。**
  *
  * `isCorrect` 的语义已**收窄为「全对」**（规格 §12），所以 `false` **同时**覆盖
- * 「答错」与「半对」两件事 —— 只看它会把半对**印成错**，而那是一次对学生的错判。
+ * 「答错」与「部分给分」两件事 —— 只看它会把部分给分**印成错**，而那是一次对学生的错判。
  * 三态住在 `gradeState` 里（`correct` / `partial` / `incorrect`）。
  *
  * ⚠️ `gradeState` 缺失或认不出时**回落**到 `isCorrect`：**回填没跑到**的旧行 `gradeState` 是
@@ -33,7 +33,7 @@ export type GradeLabel = '对' | '半对' | '错' | '未判分';
  */
 export function gradeLabel(row: { isCorrect: boolean | null; gradeState: string | null }): GradeLabel {
   if (row.gradeState === 'correct') return '对';
-  if (row.gradeState === 'partial') return '半对';
+  if (row.gradeState === 'partial') return '部分给分';
   if (row.gradeState === 'incorrect') return '错';
   if (row.isCorrect === true) return '对';
   if (row.isCorrect === false) return '错';

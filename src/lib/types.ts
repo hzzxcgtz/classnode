@@ -304,7 +304,7 @@ export interface WorksheetUsage {
  * ⚠️ 两者的「半填」含义**不相同**，所以不要把一个当成另一个的别名：
  *   · 编辑期的半填 = 「还没填完」，编辑器会拦住保存（`findPartialPoints`）；
  *   · 服务端若收到半填（`{ full: 7 }`），`normalizePoints` 会补成 `{ full: 7, half: 0 }`
- *     —— **半对变成 0 分**，而教师以为它继承了学习单级的档。这正是要拦住的原因。
+ *     —— **部分给分变成 0 分**，而教师以为它继承了学习单级的档。这正是要拦住的原因。
  *
  * `undefined` 在两边同义且有意义：**留空 = 继承学习单级**（规格 §12 裁定 4）。
  */
@@ -341,8 +341,8 @@ export interface WorksheetQuestionNode {
    * 是**受控**的（显示值从 `node.points` 算出来）⇒ 表达不了它，就等于把教师刚打的字吞掉。
    *
    * ⇒ 半填（`{ full: 7 }`）是**编辑期**的合法状态，但**不是一个能保存的状态**：
-   * 服务端的 `normalizePoints` 会把缺的那一端补成 `DEFAULT_POINTS`（全对 1 / 半对 0），
-   * 而**不是**补成学习单级的档 —— 于是教师填了「全对 7」、半对留空，**半对静默变成 0 分**，
+   * 服务端的 `normalizePoints` 会把缺的那一端补成 `DEFAULT_POINTS`（全对 1 / 部分给分 0），
+   * 而**不是**补成学习单级的档 —— 于是教师填了「全对 7」、部分给分留空，**部分给分静默变成 0 分**，
    * 而他以为它跟随学习单级的 2（2026-09-24 A2 审查实测）。所以编辑器在保存前用
    * `findPartialPoints` 把它拦下，要求两端都填、或者两端都清空（= 跟随学习单）。
    */
@@ -377,7 +377,7 @@ export interface WorksheetSettings {
   /** 全对一题的步长，取值域 `1 | 2 | 3 | 5`。 */
   rewardStep: number;
   /**
-   * ★ M4a：半对一题的步长，取值域 `0 | 1 | 2 | 3 | 5` —— 🔴 **比 `rewardStep` 多一个 `0`**
+   * ★ M4a：部分给分一题的步长，取值域 `0 | 1 | 2 | 3 | 5` —— 🔴 **比 `rewardStep` 多一个 `0`**
    * （`0` = 这单不给部分分，也是新单的默认值，规格 §12 裁定 3）。归一化函数是
    * `worksheet-reward.ts` 的 `normalizeHalfStep`，**不是** `normalizeRewardStep`（它的域不含 0）。
    */
@@ -498,7 +498,7 @@ export interface WorksheetBoardAnswerRow {
    * 只有「已提交」且服务端判过分时才有值；主观题与关闭自动判分时是 `null`。
    *
    * ⚠️ 语义已**收窄为「全对」**（规格 §12「得分与正确率的口径」）：`false` **同时**覆盖
-   * `incorrect` 与 `partial`，所以**抽屉里**要画「½ 半对」时**不能**靠它，得看 `gradeState`（对错标记在抽屉里、不在看板格子上，规格 §7.2）。
+   * `incorrect` 与 `partial`，所以**抽屉里**要画「½ 部分给分」时**不能**靠它，得看 `gradeState`（对错标记在抽屉里、不在看板格子上，规格 §7.2）。
    * 🔴 字段名只增不改（协议字段）。
    */
   isCorrect: boolean | null;

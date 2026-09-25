@@ -141,8 +141,8 @@ const REWARD_STYLES: readonly string[] = ['correctness', 'star', 'flower', 'poin
 /** 全对档步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
 const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
 /**
- * ★ M4a：**半对档**步长的取值域 —— 🔴 它**比 `REWARD_STEPS` 多一个 `0`**，两者是不同的域：
- * `rewardStep` 是「答对一题得几个」，`0` 在那里无意义（答对却得 0 个）；而半对档的 `0`
+ * ★ M4a：**部分给分档**步长的取值域 —— 🔴 它**比 `REWARD_STEPS` 多一个 `0`**，两者是不同的域：
+ * `rewardStep` 是「答对一题得几个」，`0` 在那里无意义（答对却得 0 个）；而部分给分档的 `0`
  * 是**一个合法的选择** = 这单不给部分分（规格 §12 裁定 3 定的默认值就是它）。
  *
  * ⚠️ **别复用 `REWARD_STEPS` 判它**：`REWARD_STEPS.includes(0)` 为假 ⇒ `halfStep: 0`
@@ -164,7 +164,7 @@ const DEFAULT_SETTINGS = {
   // 这里决定**缺字段的行**长什么样，前端那份决定**新建的单**长什么样。
   rewardStyle: 'star',
   rewardStep: 1,
-  // 半对档的默认值是 **0**（规格 §12 裁定 3：「每题 全对 1 / 半对 0」）—— 与第一批行为
+  // 部分给分档的默认值是 **0**（规格 §12 裁定 3：「每题 全对 1 / 部分给分 0」）—— 与第一批行为
   // 逐字相同，所以已在用的学习单升级后学生端什么都不变。前端那一份是
   // `worksheet-reward.ts` 的 `DEFAULT_HALF_STEP`。
   halfStep: 0,
@@ -269,7 +269,7 @@ function normalizeNode(
   // 🔴 为什么值得挡：这个键今天**全仓只有判分侧读它一处**（`worksheet-questions.ts` 的
   // `allowsMissing`，判据是逐字等于 `'allow-missing'`），写入口在此之前是**原样透传**。
   // 于是编辑 UI 把那个值写错一个字符（`'allowmissing'` / `'allow missing'` / 布尔 `true`）
-  // 就**原样落库**，判分静默退化成「全对才算」—— 教师明明选了「漏选算半对」，
+  // 就**原样落库**，判分静默退化成「全对才算」—— 教师明明选了「漏选算部分给分」，
   // 而分一直不对、**无任何报错**，他会去怀疑学生。
   //
   // ⚠️ 只认这两个字面量，认不出就**拒绝保存**（走 `parseContent` 既有的校验错误路径 ⇒ 400）。
@@ -286,7 +286,7 @@ function normalizeNode(
   // **「库里出现的值必然是这两个字面量之一」**，不是「每个多选节点都长出一个键」。
   if (type === 'multi-choice' && data.partialCredit !== undefined) {
     if (data.partialCredit !== 'all-or-nothing' && data.partialCredit !== 'allow-missing') {
-      errors.push(`${label}：多选的「漏选算不算半对」取值不合法（只认 all-or-nothing / allow-missing）`);
+      errors.push(`${label}：多选的「漏选算不算部分给分」取值不合法（只认 all-or-nothing / allow-missing）`);
     }
   }
 
@@ -869,7 +869,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
         worksheetId: true,
         answers: {
           // ⚠️ `isCorrect` **在，且只增不改**（协议字段）；`gradeState` / `score` 是 B1 新增的，
-          // 看板的 ½ 半对档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
+          // 看板的 ½ 部分给分档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
           // 表现是**那个档永远画不出来**，而响应里也没有任何东西缺一块 —— 只是数字不对。
           select: {
             questionId: true, status: true, isCorrect: true,
@@ -1762,7 +1762,7 @@ router.get('/:id/student-view', async (req, res) => {
  *                     ⚠️ 语义已**收窄为「全对」**（规格 §12）：`false` 同时覆盖
  *                     `incorrect` 与 `partial`，所以它**推不出**下面那两个。
  *   · `gradeState` —— ★ M4a 新增：三态（`correct` / `partial` / `incorrect`）。
- *                     看板要画「½ 半对」（抽屉里的逐题行）、要按三态统计，都只能来自它。
+ *                     看板要画「½ 部分给分」（抽屉里的逐题行）、要按三态统计，都只能来自它。
  *   · `score`      —— ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的两个档之一）。
  *                     奖励显示**由得分驱动**（规格 §9），所以缺了它学生刷新后画不出奖励。
  *                     ⚠️ 旧行（M3 落的）它一直是 `null`：那时没有逐题分值，读的一侧按
@@ -1954,7 +1954,7 @@ router.put('/:id/answers', async (req, res) => {
  * 而它可由 `isCorrect` 推导」。**那句话已经作废，两句都不成立**（规格 §12 明写
  * M4 重开了 §3-S）：
  *   · 三态之后 `score` **不再可由 `isCorrect` 推导** —— `isCorrect=false` 同时覆盖
- *     `incorrect` 与 `partial`，而这两者对应的 `score` 是 0 与「半对那个数」（可以是 0，
+ *     `incorrect` 与 `partial`，而这两者对应的 `score` 是 0 与「部分给分那个数」（可以是 0，
  *     也可以是教师填的 2），同一个 `false` 底下有两个不同的数；
  *   · §3-S 那条「不下发」的理由（怕人拿它做统计）也被 M4 一起推翻了：奖励显示现在
  *     **由得分驱动**（规格 §9），不下发 `score` 恰恰等于学生端画不出奖励。

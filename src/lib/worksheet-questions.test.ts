@@ -182,5 +182,27 @@ test('所有可作答的题恰好出现一次，顺序与 `flattenAnswerable` �
 
 test('空树 / 只有任务没有小题 ⇒ 零组或空组，都不编东西', () => {
   assert.deepEqual(groupAnswerable([]), []);
-  assert.deepEqual(groupAnswerable([task('t1', '任务一', [])]), [{ title: '任务一', items: [] }]);
+  assert.deepEqual(groupAnswerable([task('t1', '任务一', [])]), [{ title: '任务一', description: null, items: [] }]);
+});
+
+/* ── 任务描述（教师裁定 2026-09-25：任务容器要能写一段说明）──────────────── */
+
+test('★ 分组带上任务的**描述**（`data.description`），散题那一段没有描述', () => {
+  const withDesc: WorksheetQuestionNode = {
+    ...task('t1', '任务一', [q('a')]),
+    data: { description: '读下面的材料，回答 1–3 题' },
+  };
+  const groups = groupAnswerable([withDesc, q('b')]);
+  assert.equal(groups[0].description, '读下面的材料，回答 1–3 题');
+  assert.equal(groups[1].description, null, '散题那一段没有标题、也没有描述');
+});
+
+test('描述的空白被去掉；留空 / 非字符串 / 缺字段 ⇒ 一律 `null`（不编内容）', () => {
+  const cases: unknown[] = [undefined, '', '   ', 42, null, {}, []];
+  for (const description of cases) {
+    const node = { ...task('t1', '任务一', [q('a')]), data: description === undefined ? {} : { description } };
+    assert.equal(groupAnswerable([node])[0].description, null, `description=${JSON.stringify(description)}`);
+  }
+  const padded = { ...task('t2', '任务二', [q('b')]), data: { description: '  两边有空白\n' } };
+  assert.equal(groupAnswerable([padded])[0].description, '两边有空白');
 });

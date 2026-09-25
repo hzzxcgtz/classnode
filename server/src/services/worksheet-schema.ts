@@ -210,7 +210,7 @@ export async function ensureWorksheetAnswerColumns(
     columnsAdded.push('score');
   }
 
-  // 🔴 **回填**：旧行的 `isCorrect` 是那时**全部**的信息（当时没有半对）。不回填的话，
+  // 🔴 **回填**：旧行的 `isCorrect` 是那时**全部**的信息（当时没有部分给分）。不回填的话，
   // 升级后所有历史作答的 `gradeState` 都是 null ⇒ 看板把它们当成「没判过」
   // ⇒ 正确率的分母凭空变小，且没有任何报错。
   //
@@ -227,14 +227,14 @@ export async function ensureWorksheetAnswerColumns(
   //   再 `db push` ⇒ **两列又回来了**（输出「already in sync」之前的同步动作）。
   // 判据看起来在工作，而它守的那条路永远不会执行 —— 正是本项目反复吃的形状。
   //
-  // 🔴 **也不能只靠 `WHERE` 子句**：A2 之后「半对」会落成 `isCorrect=false` +
+  // 🔴 **也不能只靠 `WHERE` 子句**：A2 之后「部分给分」会落成 `isCorrect=false` +
   // `gradeState=NULL`（B1 才写这两列），那样的行与「M3 老行」在**列上完全同形** ——
   // 没有任何列能把它们区分开（见 `ensureWorksheetAnswerColumns` 的用例里那条
   // 「A2 形状的行不得被回填」）。任何一次重启都会把它永久钉成 `incorrect`/`score=NULL`，
   // 而它此后再也不被回填碰。所以必须有一个**时间上**的判据，那就是下面这个标记。
   //
   // ⚠️ **标记的保证有一个时间边界，别把它读大**：它保证的是「**标记写下之后**，
-  // 新出现的半对行不会再被钉」。它**不**保证「标记写下那一刻**已经躺在库里**的
+  // 新出现的部分给分行不会再被钉」。它**不**保证「标记写下那一刻**已经躺在库里**的
   // A2 形状行」—— 那些行是在这次启动里被回填扫到的（那一刻标记还不存在，`WHERE`
   // 也认不出它们），会被钉成 `incorrect`/`score=NULL`。
   // 对发行版**无影响**：M4a 未发布，A2 与 B1 同一次发布 ⇒ 任何真实用户的库里
@@ -251,7 +251,7 @@ export async function ensureWorksheetAnswerColumns(
   // 两层、各有各的理由：标记挡的是「跑过一次就别再跑」（时间维度），`WHERE` 挡的是
   // 「标记写了、但同一进程里后来又冒出一行 `gradeState IS NULL` 的旧形状行」这种脏情况
   // （行维度）。少了 `WHERE`，一次重启就能把新判的 `partial` 覆盖成 `correct`/`incorrect`
-  // —— 半对从此消失，而它看起来只是「分算错了」。
+  // —— 部分给分从此消失，而它看起来只是「分算错了」。
   const BACKFILL_MARKER = 'worksheet-gradestate-backfill-v1';
   const done = await prisma.setting.findUnique({ where: { key: BACKFILL_MARKER } });
   let backfilled = 0;

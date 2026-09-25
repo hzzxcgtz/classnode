@@ -543,7 +543,7 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
   assert.equal(gradedPush.payload.isCorrect, true, '判分结果必须在广播里，否则抽屉的 ✓/✗ 只能靠轮询');
   // ★ B1：三态与数值一起上线缆。三个字段**同生共死** —— 只断言 `isCorrect` 的话，
   // 「新增的两个字段压根没发」也能全绿（那正是 B1 之前的状态）。
-  assert.equal(gradedPush.payload.gradeState, 'correct', '三态必须随广播下发（看板的 ½ 半对档只能来自它）');
+  assert.equal(gradedPush.payload.gradeState, 'correct', '三态必须随广播下发（看板的 ½ 部分给分档只能来自它）');
   assert.equal(gradedPush.payload.score, 2, '得分必须随广播下发（奖励显示由得分驱动），且用的是学习单级的档 2 而不是默认的 1');
 
   // ── autoGrade 关：**不判**（null），不是「判错」 ────────────────────────
@@ -562,31 +562,31 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
 });
 
 /**
- * 🔴 **半对**：`isCorrect` 一个人表达不了它 —— 这就是 §12 重开 §3-S 的全部理由。
+ * 🔴 **部分给分**：`isCorrect` 一个人表达不了它 —— 这就是 §12 重开 §3-S 的全部理由。
  *
- * 这道题是多选（正确 = A+C），教师的「漏选算不算半对」选了**算**，逐题赋分 3 / 2。
+ * 这道题是多选（正确 = A+C），教师的「漏选算不算部分给分」选了**算**，逐题赋分 3 / 2。
  * 学生只选了 A ⇒ `partial`：
  *   · `isCorrect === false`（语义收窄为「全对」，它**不是**错的）；
  *   · `gradeState === 'partial'`；
- *   · `score === 2`（不是 0 —— 半对那个数）。
+ *   · `score === 2`（不是 0 —— 部分给分那个数）。
  *
  * ⚠️ 断言里 `false` 与 `partial` 必须在**同一条**用例里出现：分开写等于允许一个
  * 「`isCorrect=false` 就一定是错」的实现通过，而那正是三态要否掉的东西。
  */
-test('广播：半对（多选漏选）⇒ isCorrect=false 与 gradeState=partial 同时成立，score 是半对档', async (t) => {
+test('广播：部分给分（多选漏选）⇒ isCorrect=false 与 gradeState=partial 同时成立，score 是部分给分档', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
 
-  // 逐题赋分（`points` 落在**题目节点**上，不进 `data`）是这里唯一能拿到「半对 ≠ 0」的路径：
+  // 逐题赋分（`points` 落在**题目节点**上，不进 `data`）是这里唯一能拿到「部分给分 ≠ 0」的路径：
   // 本用例下面写进库的那份 `settings` 里**没有** `halfStep` ⇒ `pointsFromSettings` 读到的是
-  // 缺席 ⇒ 半对档 = 0，那样 `score` 与「判错」撞成同一个数、断言就不再可观测。
+  // 缺席 ⇒ 部分给分档 = 0，那样 `score` 与「判错」撞成同一个数、断言就不再可观测。
   // ⊘ 2026-09-24（C3）更正理由：这里原先写的是「学习单级的 `halfStep` 要到 B2 才进写入口」。
   // B2 已经让写入口认它、C3 又让编辑器设置面板能写出它 ⇒ 那半句当天作废。
   // **用例本身不用改**（夹具里确实没有那个键，行为逐字不变），过期的只是理由。
   const worksheet = await db.prisma.worksheet.create({
     data: {
-      title: '多选半对的学习单',
+      title: '多选部分给分的学习单',
       content: {
         schemaVersion: 1,
         nodes: [{
@@ -615,9 +615,9 @@ test('广播：半对（多选漏选）⇒ isCorrect=false 与 gradeState=partia
   const res = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'm_1' }, bearer(token));
   const body = await res.json() as Record<string, unknown>;
   assert.equal(res.status, 200, JSON.stringify(body));
-  assert.equal(body.isCorrect, false, '半对不是「全对」⇒ isCorrect 收窄后就是 false');
+  assert.equal(body.isCorrect, false, '部分给分不是「全对」⇒ isCorrect 收窄后就是 false');
   assert.equal(body.gradeState, 'partial', '🔴 但它**不是**错 —— 三态必须由 gradeState 说出来');
-  assert.equal(body.score, 2, '得分是教师填的**半对**那一档（逐题 3/2 里的 2），不是 0');
+  assert.equal(body.score, 2, '得分是教师填的**部分给分**那一档（逐题 3/2 里的 2），不是 0');
 
   const push = server.broadcasts.filter(item => item.event === 'worksheet-answer-updated').at(-1);
   assert.equal(push?.payload.isCorrect, false, '广播与响应体必须是同一个回答（看板看到的必须是库里的真相）');

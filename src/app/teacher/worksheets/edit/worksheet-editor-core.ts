@@ -1028,7 +1028,7 @@ export function parsePointInput(raw: string, field: 'full' | 'half'): ParsedPoin
   if (!/^\d+$/.test(text)) return { kind: 'invalid' };
   const value = Number(text);
   if (value > POINTS_MAX) return { kind: 'invalid' };
-  // ★ I1：只有「全对」那一档有下界（半对的 0 是合法的「不给部分分」）。
+  // ★ I1：只有「全对」那一档有下界（部分给分的 0 是合法的「不给部分分」）。
   if (field === 'full' && value < POINTS_FULL_MIN) return { kind: 'invalid' };
   return { kind: 'value', value };
 }
@@ -1039,6 +1039,39 @@ export function parsePointInput(raw: string, field: 'full' | 'half'): ParsedPoin
  * 两个字段都填 = 已单独配分；两个都没填 = 跟随学习单级；**只有一个**是编辑期的中间态，
  * 而它**不是一个能保存的状态** —— 理由见 `findPartialPoints`。
  */
+/**
+ * ★ 2026-09-25（教师裁定）：**这道题实际会不会判分**。
+ *
+ * 「选择题的答案设置非必须，可以不设答案，也就是不用给分」—— 于是「判不判分」不再只由
+ * **题型**决定，还取决于**这一题有没有配答案**。
+ *
+ * 🔴 它存在的理由是界面那一半：一块「全对 1 / 部分给分 0」的分值行摆在一道**不判分**的题上，
+ * 就是在告诉教师「这道题会算分」—— 而它不会。服务端那一半（校验器放行 + 判分器回 `null`）
+ * 在 `server/src/tests/worksheet-ungraded.test.ts`。
+ *
+ * ⚠️ **只有选择题那一族（单选 / 判断 / 多选）的答案在 `correctKeys` 里。** 填空 / 排序 /
+ * 连线 / 归类的答案在 `data` 的别的键上，而且**由校验器强制要求** ⇒ 它们永远到不了
+ * 「没答案」这个状态。所以这里**只对那一族查 `correctKeys`** —— 拿它去量那四种会把它们
+ * 全判成「不判分」，症状是分值行从这四种题上**整片消失**（教师再也改不了分值）。
+ */
+/**
+ * **题型本身**判不判分 —— 读 `QUESTION_TYPE_OPTIONS` 的 `graded` 那一格（那**唯一真源**）。
+ *
+ * ⚠️ 与学生端抽屉的 `isGradedType`（`worksheet-drawer-state.ts`）是**同一格的两个读者**，
+ * 不是两份真源：两处都从 `graded` 派生，行为不可能分叉。
+ * ⚠️ 与 `gradesOnSubmit` 的区别：这个只看**题型**，那个还看**这一题有没有配答案**。
+ */
+export function isGradedQuestionType(type: string): boolean {
+  const option = QUESTION_TYPE_OPTIONS.filter((item) => item.value === type)[0];
+  return option?.graded === true;
+}
+
+export function gradesOnSubmit(node: WorksheetQuestionNode): boolean {
+  if (!isGradedQuestionType(node.type)) return false;
+  const isChoice = node.type === 'single-choice' || node.type === 'true-false' || node.type === 'multi-choice';
+  return isChoice ? readCorrectKeys(node).length > 0 : true;
+}
+
 export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
   if (!points) return false;
   return (points.full === undefined) !== (points.half === undefined);
@@ -1116,12 +1149,12 @@ export interface RejectedPointInput {
 export type PointField = 'full' | 'half' | 'both';
 
 export function describeWhich(which: PointField): string {
-  if (which === 'both') return '全对与半对';
-  return which === 'full' ? '全对' : '半对';
+  if (which === 'both') return '全对与部分给分';
+  return which === 'full' ? '全对' : '部分给分';
 }
 
 /**
- * 把 `Array<{heading, which}>` 拼成「任务一 · 2 的全对、3 的全对与半对」。
+ * 把 `Array<{heading, which}>` 拼成「任务一 · 2 的全对、3 的全对与部分给分」。
  *
  * ★ 2026-09-25：`index`（数组下标 +1）换成 **`heading`（两级题号）** —— 与 R7 同一条：
  * 题号一律裸显示。原来那句「第 N 题」在有任务之后会**指错题**（任务节点占了顶层的一个位置）。
@@ -1199,7 +1232,7 @@ export function findInvalidPoints(content: WorksheetContent): Array<{ id: string
  * （否则教师撤销之后还会被一段早已不存在的文本拦住）。
  *
  * ⚠️ `rejected` 里**合法的**那一格不构成拦阻：教师可能在全对留着一格非法文本的同时
- * 把半对改成了合法值，而那一格只在整题提交时才有意义（见 `PointsRow` 的 `commit`）。
+ * 把部分给分改成了合法值，而那一格只在整题提交时才有意义（见 `PointsRow` 的 `commit`）。
  */
 export function findUncommittedPointInput(
   content: WorksheetContent,
@@ -1222,9 +1255,9 @@ export function findUncommittedPointInput(
  * 🔴 **只填了一个框**的题（可作答的题，按屏幕顺序）—— `save()` 用它拦下保存。
  *
  * 为什么必须拦（2026-09-24 实测，A2 审查带出）：服务端的 `normalizePoints` 对
- * 「只填了一端」的处理是**用 `DEFAULT_POINTS` 补另一端**（全对 1 / 半对 0），
+ * 「只填了一端」的处理是**用 `DEFAULT_POINTS` 补另一端**（全对 1 / 部分给分 0），
  * **不是**用学习单级的档。于是「学习单级 `{full:3, half:2}` + 这道题 `points:{full:7}`」
- * 在判分时半对得 **0 分**，而教师以为自己只是把全对调成了 7、半对还在跟随学习单。
+ * 在判分时部分给分得 **0 分**，而教师以为自己只是把全对调成了 7、部分给分还在跟随学习单。
  *
  * 实测（隔离库 + 真实 `POST /api/worksheets`，载荷 `points: {full: 7}`）：
  * 回包与库里的都是 `points: {full: 7, half: 0}` —— **`half` 被补齐成了 0，不是缺席**。
@@ -1246,7 +1279,7 @@ export function findPartialPoints(content: WorksheetContent): Array<{ id: string
 }
 
 /**
- * 这道题**实际会用到的半对档**；`null` = **说不准**（调用方据此不判断）。
+ * 这道题**实际会用到的部分给分档**；`null` = **说不准**（调用方据此不判断）。
  *
  * 只有两种情形说得准（能保存的状态下）：
  *   · 逐题填了（两端齐全）⇒ 用它那个数；
@@ -1258,10 +1291,10 @@ function effectiveHalfStep(
 ): number | null {
   const points = node.points;
   // ⚠️ **半填（只填了一个字段）⇒ 说不准**，`{ half: 0 }` 与 `{ full: 7 }` 都算。
-  // 2026-09-24 修：这里原来只挡住了「半对为空」那一半（`points.half === undefined`），
+  // 2026-09-24 修：这里原来只挡住了「部分给分为空」那一半（`points.half === undefined`），
   // 于是 `{ half: 0 }` 会走下面那一支算出 0 ⇒ 返回 true，与本函数文档说的「半填不判断」
   // 矛盾。今天够不着（编辑器还写不出多选），但 C2 补上多选编辑体之后，
-  // 教师在多选卡上先填半对 0、还没填全对时，同一张卡会同时挂两条红字 ——
+  // 教师在多选卡上先填部分给分 0、还没填全对时，同一张卡会同时挂两条红字 ——
   // 正是 `shouldWarnZeroHalfCredit` 要避免的情形。
   if (points && isPartialPoints(points)) return null;
   if (!points || points.half === undefined) return inherited.half;
@@ -1269,10 +1302,10 @@ function effectiveHalfStep(
 }
 
 /**
- * 🔴 规格 §12 裁定 3 的**连带要求**：教师给多选题选了「漏选算半对」、而半对档是 **0** 时，
+ * 🔴 规格 §12 裁定 3 的**连带要求**：教师给多选题选了「漏选算部分给分」、而部分给分档是 **0** 时，
  * 界面必须说一句 —— 否则他以为自己开了部分得分，而学生**一分都拿不到**，且没有任何报错。
  *
- * 判据是「**这题实际会用到的半对档**」（`effectiveHalfStep`）。
+ * 判据是「**这题实际会用到的部分给分档**」（`effectiveHalfStep`）。
  *
  * ⚠️ **半填时返回 `false`（不提示）**，`{ full: 7 }` 与 `{ half: 0 }` **都是**：半填的题
  * 已经被 `findPartialPoints` 拦下、根本存不进去，而它自己那条「两个框要么都填」的提示
@@ -1754,9 +1787,9 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   // 长什么样」，不一致的话新建出来与学生看到的就是两回事。
   rewardStyle: DEFAULT_REWARD_STYLE,
   rewardStep: DEFAULT_REWARD_STEP,
-  // 半对档默认 **0**（规格 §12 裁定 3：新单默认「全对 1 / 半对 0」，与第一批行为逐字相同）。
+  // 部分给分档默认 **0**（规格 §12 裁定 3：新单默认「全对 1 / 部分给分 0」，与第一批行为逐字相同）。
   // ⚠️ 用 `DEFAULT_HALF_STEP` 而**不是** `DEFAULT_REWARD_STEP`：两者刚好是 0 与 1，
-  // 写错了不会报错，只会让每一张新建的学习单都悄悄变成「半对也给 1」。
+  // 写错了不会报错，只会让每一张新建的学习单都悄悄变成「部分给分也给 1」。
   halfStep: DEFAULT_HALF_STEP,
   // ★ M7b：**没有默认分析智能体**（与服务端 `normalizeSettings` 的默认**必须一致** ——
   // 上面那段注释说的就是这件事：这里决定新建的单、那边决定缺字段的行）。
@@ -1875,8 +1908,8 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       // 奖励三项与 `normalizeLoadedSettings` 走的是**同一对**归一化函数（不是各写一遍：
       // 草稿来自 localStorage、详情来自服务端，两边的判据分叉会让「恢复草稿」与
       // 「打开已保存的单」给出不同的奖励档）。
-      // ⚠️ 半对档用 `normalizeHalfStep` 而**不是** `normalizeRewardStep` —— 后者的域
-      // 不含 0，会把「半对 0」变成 1（理由写在 `HALF_STEPS` 上）。
+      // ⚠️ 部分给分档用 `normalizeHalfStep` 而**不是** `normalizeRewardStep` —— 后者的域
+      // 不含 0，会把「部分给分 0」变成 1（理由写在 `HALF_STEPS` 上）。
       rewardStyle: normalizeRewardStyle(settings.rewardStyle),
       rewardStep: normalizeRewardStep(settings.rewardStep),
       halfStep: normalizeHalfStep(settings.halfStep),

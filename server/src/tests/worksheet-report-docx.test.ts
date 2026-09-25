@@ -132,7 +132,7 @@ test('🔴 纸面核对：题干 / 参与者名 / 学习单名 / 判定都真的
 
   assert.match(text, /光合作用学习单/, '学习单名没印上去');
   assert.match(text, /光合作用需要哪些条件/, '题干没印上去');
-  assert.match(text, /半对/, '半对没印成半对（规格 §12：isCorrect:false 同时覆盖「错」与「半对」）');
+  assert.match(text, /部分给分/, '部分给分没印成部分给分（规格 §12：isCorrect:false 同时覆盖「错」与「部分给分」）');
   assert.match(text, /B/, '学生答案没印上去');
   assert.match(text, /画出实验装置/, '第二题的题干没印上去');
   // 🔴 GC 30：正确答案**不许**出现在纸面上（报告会被转发给学生）。

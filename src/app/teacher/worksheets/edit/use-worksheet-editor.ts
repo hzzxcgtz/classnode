@@ -304,7 +304,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 🔴 这条是 2026-09-24 审查实机复现出来的：教师看到框里写着 `7.5`、顶栏写着「已保存」，
       // 而真正发出去的是上一次的合法值 —— **界面在说假话，且没有任何报错**。
       // （brief Step 1 的「非整数即时提示」讲的是**不要拖到保存才报**，不是「不许拦」。）
-      const message = `${describePoints(uncommitted)}填的不是合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、半对 0–${POINTS_MAX} 的整数）。请改成一个整数，或把那一格清空（清空 = 跟随学习单的两档）。`;
+      const message = `${describePoints(uncommitted)}填的不是合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数）。请改成一个整数，或把那一格清空（清空 = 跟随学习单的两档）。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: '保存失败：有分值填的不是合法整数', type: 'error' });
       return null;
@@ -317,7 +317,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       // ⚠️ ★ M4a/I1 之后，「全对填 0」也走这一条，而它的后果**不是静默改写**：
       // 服务端那一侧同样拒收（400，见 `isRejectedFullPointValue`）。所以这句话把两种
       // 后果分开写 —— 一句「服务端会把它换成 1」对着 0 就是假话（0 会让服务端直接拒绝）。
-      const message = `${describePoints(invalid)}不是一个合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、半对 0–${POINTS_MAX} 的整数）。照这样保存，服务端会把你填的数换掉：越界的那一端回落默认档（全对 1 / 半对 0），两端都无效时整题改成「跟随学习单」；全对填 0 则会被直接拒绝（400）。所以先拦下。`;
+      const message = `${describePoints(invalid)}不是一个合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数）。照这样保存，服务端会把你填的数换掉：越界的那一端回落默认档（全对 1 / 部分给分 0），两端都无效时整题改成「跟随学习单」；全对填 0 则会被直接拒绝（400）。所以先拦下。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: '保存失败：有分值的取值不合法', type: 'error' });
       return null;
@@ -325,13 +325,13 @@ export function useWorksheetEditor({ id, onNotice }: {
     const partial = findPartialPoints(next.content);
     if (partial.length > 0) {
       // 🔴 半填的后果**不可见**：服务端的 `normalizePoints` 会把缺的那一端补成
-      // `DEFAULT_POINTS`（全对 1 / 半对 0），**不是**补成学习单级的档 —— 于是
-      // 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时半对得 **0 分**，
+      // `DEFAULT_POINTS`（全对 1 / 部分给分 0），**不是**补成学习单级的档 —— 于是
+      // 「学习单级 `{full:3, half:2}` + 这题 `points:{full:7}`」判分时部分给分得 **0 分**，
       // 而教师以为自己只是把全对调成了 7。完整实测与推理见 `findPartialPoints`。
       // ★ 2026-09-25：指代改用**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出同一份。
       // 原来拼的是「第 N 题」（数组下标 +1），有任务之后那个号会**指错题**。
       const numbers = partial.map((item) => item.heading).join('、');
-      const message = `${numbers} 的「全对 / 半对」只填了一个。两个框要么都填（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、半对 0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
+      const message = `${numbers} 的「全对 / 部分给分」只填了一个。两个框要么都填（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: `保存失败：${numbers} 的分值只填了一个框`, type: 'error' });
       return null;

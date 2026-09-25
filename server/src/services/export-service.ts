@@ -1180,7 +1180,7 @@ function worksheetRowCells(
     answerChildren = [new TextRun({ text: REPORT_TEXT.inkFallback, size: 18, color: C.gold })];
   }
 
-  const gradeColor = row.grade === '对' ? C.green : row.grade === '半对' ? C.gold : row.grade === '错' ? C.red : C.textLight;
+  const gradeColor = row.grade === '对' ? C.green : row.grade === '部分给分' ? C.gold : row.grade === '错' ? C.red : C.textLight;
   return new TableRow({
     children: [
       cell(`${row.heading}. ${row.typeLabel}　${short}`, { width: 3600, size: 16 }),

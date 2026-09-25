@@ -255,6 +255,9 @@ export function WorksheetQuestionList({
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
         <div className={styles.group} key={`${groupIndex}:${group.title ?? ''}`}>
           {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}
+          {/* ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
+              它挂在任务上（`data.description`），不是题目的一部分。 */}
+          {group.description && <p className={styles.groupDescription}>{group.description}</p>}
           {group.items.map(({ node, heading }) => {
         // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
         //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列

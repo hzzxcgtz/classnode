@@ -367,11 +367,11 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     '选项要留给学生（剥掉的只有答案）',
   );
 
-  // ⚠️ `settings` 只给学生需要的**五**个字段（B3 的两个 + D5 的奖励两项 + M4a 的半对档）——
+  // ⚠️ `settings` 只给学生需要的**五**个字段（B3 的两个 + D5 的奖励两项 + M4a 的部分给分档）——
   //    整份原样丢出去会连带下发第一批用不到的 `defaultInputMode`，前端就多一个能读错的开关。
   //    🔴 这是一条**逐字**的断言，键多一个少一个都会红：学生端下发什么必须有人明确决定过。
   //    （M4a 加 `halfStep` 时这条用例**一起改了** —— 那是**有意的决定**，不是把测试改松：
-  //    学生端要拿半对档才知道「半对」该画几个，见 `src/lib/worksheet-reward.ts`。）
+  //    学生端要拿部分给分档才知道「部分给分」该画几个，见 `src/lib/worksheet-reward.ts`。）
   //    奖励三项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
   assert.deepEqual(body.settings, {
     allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1, halfStep: 0,
@@ -407,7 +407,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
  *   ③ 坏值（不认识的样式、越界的步长）落到默认档，而不是把坏值存进去；
  *   ④ 库里**手工改过**的行（缺这三个键）也要能读出默认档，不能 500。
  *
- * ★ M4a（B2）：半对档 `halfStep` 加进来时，这四层**每层都要带上它** —— 它是最新加的那个键，
+ * ★ M4a（B2）：部分给分档 `halfStep` 加进来时，这四层**每层都要带上它** —— 它是最新加的那个键，
  * 也正因为如此最容易在某一条路上漏掉（服务端写入口 / 读出口 / 前端默认 / 前端读回，
  * 少一处就静默抹除，见 `worksheet-routes.test.ts` 里那条整份发回的哨兵）。
  */
@@ -442,10 +442,10 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   const after = JSON.stringify((await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } })).settings);
   assert.equal(after, before, '只改标题的那次 PUT 不得动 settings');
   assert.equal(JSON.parse(after).rewardStyle, 'flower');
-  assert.equal(JSON.parse(after).halfStep, 2, '半对档同样不许被这次 PUT 动到');
+  assert.equal(JSON.parse(after).halfStep, 2, '部分给分档同样不许被这次 PUT 动到');
 
   // ③ 坏值落到默认档（而不是把「第四档」存进库）
-  //    ⚠️ 半对档的域是 `0/1/2/3/5`（含 0，`HALF_STEPS`），与 `rewardStep` 的 1/2/3/5 **不同**：
+  //    ⚠️ 部分给分档的域是 `0/1/2/3/5`（含 0，`HALF_STEPS`），与 `rewardStep` 的 1/2/3/5 **不同**：
   //    所以这里两边都用越界值（4），它们各自的默认值却是 1 与 0 —— 别指望它们落成同一个数。
   const badPut = await server.put(`/api/worksheets/${worksheet.id}`, {
     settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: '彩虹', rewardStep: 4, halfStep: 4 },
@@ -455,7 +455,7 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   assert.deepEqual(
     { rewardStyle: bad.rewardStyle, rewardStep: bad.rewardStep, halfStep: bad.halfStep },
     { rewardStyle: 'star', rewardStep: 1, halfStep: 0 },
-    '不认识的样式与越界的步长都必须落到各自的默认档（半对档的默认是 0，不是 1）',
+    '不认识的样式与越界的步长都必须落到各自的默认档（部分给分档的默认是 0，不是 1）',
   );
 
   // ④ 库里手工改过的行（`settings` 里根本没有这三个键）⇒ 默认档，不是 500。
@@ -946,21 +946,21 @@ test('allowResubmit 为假 ⇒ 改已提交的题 409 且库里那行不动；�
  *
  * 这条 `PUT` 的 `update` 里现在多了 `gradeState` / `score` 两个赋值，所以「被拒的保存
  * 一个字节都不动」这句话必须**重新证明一次**（上面那条用例的整行 JSON 快照也会盖住它，
- * 但那是顺带的，不是为它写的）。用例刻意用**半对**的行做样本：它是唯一一种
+ * 但那是顺带的，不是为它写的）。用例刻意用**部分给分**的行做样本：它是唯一一种
  * 「`isCorrect` 是 `false`、而这一行**有**非空得分」的形状 —— 拿一条 `incorrect` 的行
  * 测，`score` 恰好是 0，与「没清干净」的区别在有些实现里看不出来。
  *
  * 401 那一半同理：提交端点在 B1 里改了响应体形状，而**鉴权那一层与响应体形状无关** ——
  * 没有学生会话时它必须仍然是 401（不是 500，也不是一个「形状对了但泄漏了」的 200）。
  */
-test('契约不变（B1）：半对的行被 409 拒绝时三列原样；学生端端点无会话仍是 401', async (t) => {
+test('契约不变（B1）：部分给分的行被 409 拒绝时三列原样；学生端端点无会话仍是 401', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const server = await startServer(t, db.prisma);
 
   const worksheet = await db.prisma.worksheet.create({
     data: {
-      title: '半对且不可重交的学习单',
+      title: '部分给分且不可重交的学习单',
       content: {
         schemaVersion: 1,
         nodes: [{
@@ -980,7 +980,7 @@ test('契约不变（B1）：半对的行被 409 拒绝时三列原样；学生�
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const token = createStudentToken(classroom.id, participant.id);
 
-  // 先落一个**半对**的行：`isCorrect=false` + `gradeState='partial'` + `score=2`。
+  // 先落一个**部分给分**的行：`isCorrect=false` + `gradeState='partial'` + `score=2`。
   await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'm_1', value: CHOICE(['A']) }, bearer(token));
   const submitted = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'm_1' }, bearer(token));
   assert.equal(submitted.status, 200, JSON.stringify(await submitted.json()));
@@ -988,7 +988,7 @@ test('契约不变（B1）：半对的行被 409 拒绝时三列原样；学生�
   assert.deepEqual(
     [before.isCorrect, before.gradeState, before.score],
     [false, 'partial', 2],
-    '前置条件：这一行必须是半对（否则下面测的不是它）',
+    '前置条件：这一行必须是部分给分（否则下面测的不是它）',
   );
 
   // ① 409：改已提交的题被拒 ⇒ 三个判分列原样（含 `isCorrect=false` 这个**不是**「错」的值）。

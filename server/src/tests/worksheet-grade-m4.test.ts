@@ -4,16 +4,16 @@
  * 🔴 **为什么这份文件值得这么大**（规格 §14.4）：判分是本项目唯一「错了教师会发现、
  * 但难以定位」的地方 —— 一道题判错**不会有异常、不会有红测试**，只会在看板上表现为
  * 「这道题正确率偏低」，而教师会去怀疑学生。所以每个题型都同时钉三件事：
- * **全对 / 半对 / 错**，外加归一化与**形状容错**的边界。
+ * **全对 / 部分给分 / 错**，外加归一化与**形状容错**的边界。
  *
  * 🔴 第二条主线是**「绝不抛」**：判分在提交路径上，一次抛错就是 500，学生看到的是
  * 「提交失败」并重试。而 `data`（库里的 JSON）与 `value`（请求体）都可能有别的形状，
  * 所以每个题型都有一组「value 是 null / 数字 / 数组 / 缺字段」「data 是空 / 缺字段」的用例。
  *
  * ⚠️ 判分口径的三条**统一规则**（写死在实现里，这里逐条钉住）：
- *   1. 「多个组成部分」的题（多选 / 填空多空 / 排序 / 连线 / 归类）**部分正确 = 半对**，
+ *   1. 「多个组成部分」的题（多选 / 填空多空 / 排序 / 连线 / 归类）**部分正确 = 部分给分**，
  *      唯一的开关是多选题的「漏选算不算」（教师逐题选）。
- *   2. 选了**错的**一律不给部分分 —— 半对只奖励「少做了」，不奖励「做错了」。
+ *   2. 选了**错的**一律不给部分分 —— 部分给分只奖励「少做了」，不奖励「做错了」。
  *   3. 坏形状（缺字段、类型不对）一律 `incorrect`，**不是** `null` —— `null` 的语义是
  *      「这题型不判分」（主观题），把它用来表示「读不懂」会让看板把一次 500 级的问题
  *      显示成「主观题」。
@@ -75,7 +75,7 @@ function safeJson(value: unknown): string {
  *
  * 🔴 两个字段都要断：只断 `state` 的话，「三态判对了、得分却写成比例」这种错会一路绿到
  * 看板的数字上 —— 而那正是规格 §12 把 `score` 定成**绝对值**要防的事（教师逐题填的是
- * 「全对给几 / 半对给几」，单选 2/1 与填空 1/0 的比例在各题之间不可比）。
+ * 「全对给几 / 部分给分给几」，单选 2/1 与填空 1/0 的比例在各题之间不可比）。
  */
 function assertVerdict(
   node: QuestionNode,
@@ -98,10 +98,16 @@ function assertIncorrect(node: QuestionNode, value: unknown, points: QuestionPoi
 }
 
 /**
- * 形状容错的统一判据：**绝不抛**，且一律 `incorrect` + 0 分。
+ * 形状容错的统一判据：**绝不抛**，且**绝不给分**（`null` = 没判过，或 `incorrect` + 0 分）。
  *
  * ⚠️ 用 try/catch 而**不是** `assert.doesNotThrow`：后者失败时只有一句「抛了」，
  * 而这里要把题型与被判的作答值一起打出来。
+ *
+ * ★ 2026-09-25：判据从「一律 `incorrect`」放宽为「**不是 null 就是 incorrect**」——
+ * 选择题的答案空着现在是**合法**的（教师裁定：不设答案 = 不用给分），那时
+ * `grade()` 回 `null`（与主观题同一条路）。这一条测的从来是**容错**（不抛）与
+ * **不给分**；`null` 与 `incorrect` 都满足后者，而「把 `null` 也算合格」不会放过
+ * 任何一个「坏形状反而给了分」的情况 —— 那才是这个 helper 存在的理由。
  */
 function assertIncorrectWithoutThrow(node: QuestionNode, value: unknown): void {
   let result: GradeResult | null;
@@ -110,8 +116,10 @@ function assertIncorrectWithoutThrow(node: QuestionNode, value: unknown): void {
   } catch (error) {
     assert.fail(`${node.type} 判分抛错了（作答值 ${safeJson(value)}）：${String(error)}`);
   }
-  assert.equal(result?.state, 'incorrect', `${node.type} · 作答 ${safeJson(value)}：坏形状一律判错`);
-  assert.equal(result?.score, 0, `${node.type} · 作答 ${safeJson(value)}：判错 ⇒ 0 分`);
+  const state = result?.state ?? null;
+  assert.ok(state === 'incorrect' || state === null,
+    `${node.type} · 作答 ${safeJson(value)}：坏形状只能判错或「没判过」，实际是 ${String(state)}`);
+  assert.equal(result?.score ?? 0, 0, `${node.type} · 作答 ${safeJson(value)}：没判过 / 判错 ⇒ 都不给分`);
 }
 
 /** 每个可自动判分的题型都要能拿到「坏形状」用例 —— 见文件末尾那条遍历。 */
@@ -136,7 +144,7 @@ const GRADED: Record<QuestionType, boolean> = {
 };
 
 // ---------------------------------------------------------------------------
-// ① 单选 / 判断 —— 只有一个组成部分，**没有半对**
+// ① 单选 / 判断 —— 只有一个组成部分，**没有部分给分**
 // ---------------------------------------------------------------------------
 
 test('🔴 判断题与单选逐字同构：同一条 data 在两个题型下必须给出同一个判定', () => {
@@ -150,7 +158,7 @@ test('🔴 判断题与单选逐字同构：同一条 data 在两个题型下必
   assertIncorrect(sc, { format: 'choice/v1', selected: ['F'] });
 });
 
-test('单选：只有一个组成部分 ⇒ 判不出「半对」，近似答案一律算错', () => {
+test('单选：只有一个组成部分 ⇒ 判不出「部分给分」，近似答案一律算错', () => {
   const sc = question('single-choice', {
     options: [{ key: 'A' }, { key: 'B' }],
     correctKeys: ['B'],
@@ -163,11 +171,15 @@ test('单选：只有一个组成部分 ⇒ 判不出「半对」，近似答案
   assertIncorrect(sc, { format: 'choice/v1', selected: [] });
 });
 
-test('单选：correctKeys 坏掉（0 个或 2 个）时没有人能对 —— 判错，不抛', () => {
-  assertIncorrect(question('single-choice', { options: [{ key: 'A' }], correctKeys: [] }),
-    { format: 'choice/v1', selected: ['A'] });
-  assertIncorrect(question('single-choice', { options: [{ key: 'A' }], correctKeys: ['A', 'B'] }),
-    { format: 'choice/v1', selected: ['A'] });
+test('🔴 单选：**没设答案 ⇒ 不判分**（回 null）；设了**两个**才是坏数据 ⇒ 判错', () => {
+  // ⚠️ 本条 2026-09-25 **改过**（教师裁定：选择题的答案非必须，不设 = 不用给分）。
+  // 原判据把「0 个」与「2 个」当成同一件事、一律判错 —— 而判错的后果是
+  // 看板上「正确率 0%」、抽屉里每人都画 ✗，教师会去怀疑学生，不会来怀疑这道题。
+  // ⇒ 两者必须分开：0 个是**合法的新形态**（`grade()` 回 null，与主观题同一条路），
+  //    2 个以上仍然是坏数据（判错是**响亮**的那条路，见 `judgeSingleChoice` 的注释）。
+  const node = (correctKeys: string[]) => question('single-choice', { options: [{ key: 'A' }], correctKeys });
+  assert.equal(grade(node([]), { format: 'choice/v1', selected: ['A'] }, P), null, '0 个答案 ⇒ 没判过');
+  assertIncorrect(node(['A', 'B']), { format: 'choice/v1', selected: ['A'] });
 });
 
 test('🔴 单选：选中项里混进非字符串元素 ⇒ 整体判错（跳过它 = 奖励坏数据）', () => {
@@ -224,7 +236,7 @@ function multiNode(partialCredit: unknown): QuestionNode {
   });
 }
 
-test('多选 · 全对才算（all-or-nothing）：漏选是**错**，不是半对 —— 这是教师逐题选的', () => {
+test('多选 · 全对才算（all-or-nothing）：漏选是**错**，不是部分给分 —— 这是教师逐题选的', () => {
   const node = multiNode('all-or-nothing');
   assertVerdict(node, { format: 'choice/v1', selected: ['A', 'C'] }, 'correct', P.full);
   assertIncorrect(node, { format: 'choice/v1', selected: ['A'] });          // 漏选
@@ -235,14 +247,14 @@ test('多选 · 全对才算（all-or-nothing）：漏选是**错**，不是半�
   assertVerdict(node, { format: 'choice/v1', selected: ['C', 'A'] }, 'correct', P.full);
 });
 
-test('多选 · 漏选算半对（allow-missing）：漏选且非空 ⇒ partial', () => {
+test('多选 · 漏选算部分给分（allow-missing）：漏选且非空 ⇒ partial', () => {
   const node = multiNode('allow-missing');
   assertVerdict(node, { format: 'choice/v1', selected: ['A', 'C'] }, 'correct', P.full);
   assertVerdict(node, { format: 'choice/v1', selected: ['A'] }, 'partial', P.half);
   assertVerdict(node, { format: 'choice/v1', selected: ['C'] }, 'partial', P.half);
 });
 
-test('🔴 多选 · 选了错的一律不给部分分（半对只奖励「少做了」，不奖励「做错了」）', () => {
+test('🔴 多选 · 选了错的一律不给部分分（部分给分只奖励「少做了」，不奖励「做错了」）', () => {
   const node = multiNode('allow-missing');
   assertIncorrect(node, { format: 'choice/v1', selected: ['A', 'B'] });       // 漏 C 且多了 B
   assertIncorrect(node, { format: 'choice/v1', selected: ['A', 'B', 'C'] });  // 全选但不全对
@@ -252,7 +264,7 @@ test('🔴 多选 · 选了错的一律不给部分分（半对只奖励「少�
 
 test('🔴 多选 · 重复的键先去重 —— 不去重会把「只选了 A」读成「选了两个」而凑成满分', () => {
   const allowMissing = multiNode('allow-missing');
-  // `['A','A']` 的真实含义是「只选了 A」= 漏选 ⇒ 半对。若按元素个数比较（2 == 2），
+  // `['A','A']` 的真实含义是「只选了 A」= 漏选 ⇒ 部分给分。若按元素个数比较（2 == 2），
   // 它会变成 `correct` —— 一次**没有任何报错**的虚高。
   assertVerdict(allowMissing, { format: 'choice/v1', selected: ['A', 'A'] }, 'partial', P.half);
   assertIncorrect(multiNode('all-or-nothing'), { format: 'choice/v1', selected: ['A', 'A'] });
@@ -261,15 +273,17 @@ test('🔴 多选 · 重复的键先去重 —— 不去重会把「只选了 A�
 test('🔴 多选 · partialCredit 认不出的值一律按「全对才算」（认不出 ≠ 允许漏选）', () => {
   // 方向是刻意选的：把「认不出」当成「允许漏选」会让一道本该判错的题**静默地给学生半分**，
   // 而教师看不出任何异常（他以为自己选的是「全对才算」）。反过来，认不出的值当成
-  // 「不给部分分」，教师至少能看到「我选了算半对但分数没给」—— 那是可见的。
+  // 「不给部分分」，教师至少能看到「我选了算部分给分但分数没给」—— 那是可见的。
   for (const credit of [undefined, null, '', 'ALLOW-MISSING', 'allow-missing ', 'allowMissing', 1, true, {}, []]) {
     assertIncorrect(multiNode(credit), { format: 'choice/v1', selected: ['A'] });
   }
 });
 
-test('多选：correctKeys 坏掉时没有人能对 —— 判错，不抛', () => {
-  assertIncorrect(question('multi-choice', { options: MULTI_OPTIONS, correctKeys: [] }),
-    { format: 'choice/v1', selected: ['A'] });
+test('🔴 多选：**没设答案 ⇒ 不判分**（回 null）；非字符串元素照旧跳过', () => {
+  // ⚠️ 本条 2026-09-25 改过：`correctKeys: []` 从「判错」变成「回 null」——
+  // 与单选那条同一个裁定（选择题答案非必须）。理由见 `judgeMultiChoice`。
+  assert.equal(grade(question('multi-choice', { options: MULTI_OPTIONS, correctKeys: [] }),
+    { format: 'choice/v1', selected: ['A'] }, P), null);
   // 非字符串元素是**教师的**坏数据，跳过它们（与作答值那一侧相反）——
   // 教师少填一个答案不该让学生拿不到分，但学生交上来的垃圾必须整体判错。
   const withJunk = question('multi-choice', {
@@ -307,11 +321,11 @@ test('🔴 填空（单空）：大小写仍然敏感 —— 化学式必须区�
   assertIncorrect(co2, { format: 'fill/v1', text: 'Co2' });
 });
 
-test('填空（单空）：多列几个可接受答案 —— 任一命中即全对，没有半对', () => {
+test('填空（单空）：多列几个可接受答案 —— 任一命中即全对，没有部分给分', () => {
   const node = question('fill-blank', { answers: ['光合作用', '光合作用作用'] });
   assertVerdict(node, { format: 'fill/v1', text: '光合作用作用' }, 'correct', P.full);
   assertIncorrect(node, { format: 'fill/v1', text: '呼吸作用' });
-  // 近似答案不是半对：单空只有一个组成部分。
+  // 近似答案不是部分给分：单空只有一个组成部分。
   assertIncorrect(node, { format: 'fill/v1', text: '光合' });
 });
 
@@ -380,7 +394,7 @@ test('填空（多空）：全空都对 ⇒ correct', () => {
   assertVerdict(node, { format: 'fill-multi/v1', texts: ['  Ｈ２Ｏ ', 'CO2'] }, 'correct', P.full);
 });
 
-test('填空（多空）：有一空对、至少一空错 ⇒ partial（半对是**按空**算的）', () => {
+test('填空（多空）：有一空对、至少一空错 ⇒ partial（部分给分是**按空**算的）', () => {
   const node = question('fill-blank', { blanks: MULTI_BLANKS });
   assertVerdict(node, { format: 'fill-multi/v1', texts: ['H2O', 'O2'] }, 'partial', P.half);
   assertVerdict(node, { format: 'fill-multi/v1', texts: ['X', 'CO2'] }, 'partial', P.half);
@@ -694,7 +708,7 @@ test('🔴 形状容错：value 是 null / 数字 / 字符串 / 数组 / 缺字�
   }
 });
 
-test('🔴 形状容错：data 是空对象 / 缺字段 / 根本不是对象 ⇒ 一律判错，绝不抛', () => {
+test('🔴 形状容错：data 是空对象 / 缺字段 / 根本不是对象 ⇒ 绝不抛，且绝不给分', () => {
   // `data: null` 这一条是最要命的：`node.data.correctKeys` 会在 `null` 上抛
   // `Cannot read properties of null` —— 提交路径上的一次抛错就是 500。
   for (const type of ANSWERABLE_TYPES) {
@@ -772,7 +786,7 @@ test('pointsFromSettings：缺字段 / 坏形状一律回落到 DEFAULT_POINTS',
   assert.deepEqual(pointsFromSettings({ rewardStyle: 'star' }), DEFAULT_POINTS);
 });
 
-test('pointsFromSettings：读 rewardStep（全对档）与 halfStep（半对档）', () => {
+test('pointsFromSettings：读 rewardStep（全对档）与 halfStep（部分给分档）', () => {
   assert.deepEqual(pointsFromSettings({ rewardStep: 3 }), { full: 3, half: 0 });
   assert.deepEqual(pointsFromSettings({ rewardStep: 2, halfStep: 1 }), { full: 2, half: 1 });
   assert.deepEqual(pointsFromSettings({ halfStep: 1 }), { full: 1, half: 1 });
@@ -802,8 +816,8 @@ test('🔴 pointsFromSettings：`full` 的域是 1..99（0 不算数）、`half`
   // 而 `node:test` 在第一条断言就停，所以红的是**一条用例**而不是三条）。
   assert.deepEqual(pointsFromSettings({ rewardStep: 0 }), { full: 1, half: 0 }, '0 落回默认档 1，不是「答对 0 分」');
   assert.deepEqual(pointsFromSettings({ rewardStep: 0.4 }), { full: 1, half: 0 }, '取整到 0 的同样落回（与 normalizePoints 同一把尺子）');
-  assert.deepEqual(pointsFromSettings({ rewardStep: 0, halfStep: 2 }), { full: 1, half: 2 }, '只动全对档，半对那一档不受影响');
-  // ⚠️ 反过来：**半对档的 0 必须原样保留** —— 它是「不给部分分」，是 §12 裁定 3 的默认档，
+  assert.deepEqual(pointsFromSettings({ rewardStep: 0, halfStep: 2 }), { full: 1, half: 2 }, '只动全对档，部分给分那一档不受影响');
+  // ⚠️ 反过来：**部分给分档的 0 必须原样保留** —— 它是「不给部分分」，是 §12 裁定 3 的默认档，
   // 也是 `shouldWarnZeroHalfCredit` 那条提示的地基。把这一行改红就是把两个域又合并了。
   assert.deepEqual(pointsFromSettings({ rewardStep: 3, halfStep: 0 }), { full: 3, half: 0 });
 });
@@ -849,5 +863,5 @@ test('🔴 逐题 × 判分：同一道题在不同的分值档下状态不变�
   const value = { format: 'choice/v1', selected: ['A'] };
   assertVerdict(node, value, 'partial', 1, { full: 2, half: 1 });
   assertVerdict(node, value, 'partial', 5, { full: 10, half: 5 });
-  assertVerdict(node, value, 'partial', 0, { full: 1, half: 0 }); // 半对档填 0 ⇒ partial 但 0 分
+  assertVerdict(node, value, 'partial', 0, { full: 1, half: 0 }); // 部分给分档填 0 ⇒ partial 但 0 分
 });

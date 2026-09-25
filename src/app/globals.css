@@ -1907,6 +1907,24 @@ tr:hover td {
    题干是这一页唯一的主角，容器不该比它更抢眼。
    ⚠️ 容器上**不画**焦点蓝竖条：那条只属于「当前正在编辑的那一张小题卡」
      （见 `.worksheet-editor-question:focus-within`）。两处都亮等于都不亮。 */
+/* 「不设答案 ⇒ 不判分」那一句（★ 2026-09-25）。样式取「内嵌块」那一档：
+   ⚠️ 它与 `.worksheet-editor-warn-hint`（红字警告）**不是一回事** —— 这不是错误，
+   是一个**合法的**选择（教师裁定：选择题的答案非必须）。所以用中性灰，不用红。 */
+.worksheet-editor-ungraded-hint {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid #eef2f6;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.813rem;
+  line-height: 1.5;
+}
+
+.worksheet-editor-ungraded-hint strong {
+  color: #475569;
+}
+
 .worksheet-editor-task {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -1945,6 +1963,38 @@ tr:hover td {
   outline: none;
   border-color: #2563eb;
   background: #fff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* 任务描述（★ 2026-09-25）。⚠️ 与标题框**刻意长得不一样**：
+   标题是这一段的「名字」（无边框、聚焦才显形），描述是「正文」（恒有一个淡底 + 边框）——
+   两者看起来一样时，教师会以为它们是同一个东西的两种叫法。 */
+.worksheet-editor-task-desc-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.worksheet-editor-task-desc {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.813rem;
+  line-height: 1.5;
+  color: #334155;
+  resize: vertical;
+}
+
+.worksheet-editor-task-desc::placeholder {
+  color: #94a3b8;
+}
+
+.worksheet-editor-task-desc:focus {
+  outline: none;
+  border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
@@ -2302,6 +2352,49 @@ tr:hover td {
 .worksheet-editor-add:hover {
   background: #eff6ff;
   border-color: #2563eb;
+}
+
+/* ── 逐题分值（★ 2026-09-25 补：这四个类**从来没有过样式**）────────────────
+   🔴 教师 2026-09-25 报「给分框太大了，而且不美观」—— 真因是这四个类名在
+   `question-card.tsx` 里用了，而 CSS 里**一个都没有定义**（`globals.css` 的类名没有网：
+   `css-module-class-reference.test.ts` 守的是**模块** CSS，globals 这一半一直没人看）。
+   于是那两个 `<input>` 只拿到 `.input { width: 100% }` ⇒ 撑满整行。
+   ⇒ 这一块是**从无到有**，不是「改小一点」。
+   刻度照本页的规则：间距 8、圆角 8、字号退到配角（`0.75/0.813rem`）。 */
+.worksheet-editor-points {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.worksheet-editor-points-label {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.worksheet-editor-points-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+/* 两个框**窄**且居中 —— 它只装得下两三位数（域是 0–99）。
+   ⚠️ 覆盖 `.input` 的 `width: 100%` 是这里的关键一行：不覆盖就还是撑满整行。 */
+.worksheet-editor-points-field .input {
+  width: 64px;
+  padding: 4px 8px;
+  font-size: 0.813rem;
+  text-align: center;
+}
+
+.worksheet-editor-points-note {
+  color: #94a3b8;
+  font-size: 0.75rem;
 }
 
 /* 加题弹窗 / 设置弹窗。与 C1 那两个弹窗一样是 `.modal-overlay` 的兄弟节点，

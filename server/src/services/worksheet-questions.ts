@@ -46,7 +46,7 @@ export type QuestionType = (typeof QUESTION_TYPES)[number];
 export interface QuestionPoints { full: number; half: number }
 
 /**
- * 逐题分值的默认档。**与第一批行为逐字相同**（规格 §12 裁定 3：星星 ⭐、全对 1 / 半对 0）
+ * 逐题分值的默认档。**与第一批行为逐字相同**（规格 §12 裁定 3：星星 ⭐、全对 1 / 部分给分 0）
  * —— 它同时是「题上没有 `points`」时 `normalizePointValue` 的回落值。
  */
 export const DEFAULT_POINTS: QuestionPoints = { full: 1, half: 0 };
@@ -55,7 +55,7 @@ export const DEFAULT_POINTS: QuestionPoints = { full: 1, half: 0 };
  * 分值的取值上限。
  *
  * ⚠️ 它是**两个档共用的上界**（`full` 与 `half` 各自上到 99），不是「`full + half <= 99`」——
- * 后者会让「全对 60 / 半对 50」这种（半对拿得比全对多的笔误）悄悄通过，
+ * 后者会让「全对 60 / 部分给分 50」这种（部分给分拿得比全对多的笔误）悄悄通过，
  * 而它唯一的表现是看板上的数字怪怪的。要挡那种笔误得靠在 UI 上比大小，不在这里。
  */
 export const POINTS_MAX = 99;
@@ -121,7 +121,7 @@ export function isUsablePointValue(raw: unknown): boolean {
  * 🔴 与 `isUsablePointValue` **是两个域，不许合并**：合并的那个方向有两种，都很坏 ——
  *   · 用窄的（本函数）替掉宽的 ⇒ `half: 0` 被判成「没填」，**教师配的「不给部分分」
  *     静默变成「继承学习单级」**，而 `shouldWarnZeroHalfCredit` 那条提示正建立在
- *     「半对 0 是一个有效值」上面；
+ *     「部分给分 0 是一个有效值」上面；
  *   · 用宽的替掉窄的 ⇒ 就是 I1 那个缺陷本身。
  *
  * ⚠️ 判据是 `Math.round` 之后的值（与 `normalizePointValue` 同一把尺子）：
@@ -221,13 +221,13 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * 「静默变回默认档」把两件事说成一件：
  *    · 换成 `normalizeRewardStep` ⇒ 库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了
  *      取值域）**静默变回 1**，教师看到的是「我配的档没生效」；
- *    · 换成 `normalizeHalfStep` ⇒ `halfStep: 4` **静默变回 0**，而半对 0 的含义是
+ *    · 换成 `normalizeHalfStep` ⇒ `halfStep: 4` **静默变回 0**，而部分给分 0 的含义是
  *      **「不给部分分」** —— 比变 1 更险：教师配的「漏选给 2 分」会变成「漏选一分不给」，
  *      学生只是少拿分，界面上一切正常，没有任何提示。
  *      更麻烦的是这个兜底值恰好等于一个**合法值**：`0` 与「越界回落」是同一个观测，
- *      所以「半对档坏了」这件事在数据上**看不出来**（`HALF_STEPS` 那边的说明也提到这点）。
+ *      所以「部分给分档坏了」这件事在数据上**看不出来**（`HALF_STEPS` 那边的说明也提到这点）。
  *
- * ⚠️ 半对档**有第三个消费方**，域与上面两个下拉都不同（2026-09-24 记，**不改行为**）：
+ * ⚠️ 部分给分档**有第三个消费方**，域与上面两个下拉都不同（2026-09-24 记，**不改行为**）：
  * 写入口（`routes/worksheets.ts` 的 `normalizeSettings`）认的是 `HALF_STEPS` 的
  * `{0,1,2,3,5}`，而**判分**这条兜底走的是本函数的 `0..99`。
  * ⚠️ 写入口那侧的机制是**越界即回落 `DEFAULT_SETTINGS.halfStep`（0）**，不是「夹到区间里」
@@ -235,11 +235,11 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * ⇒ 一行手改过的库写成 `halfStep: 7`（**它没走过写入口**）时，两侧对同一个键给出两个数：
  * 判分**按 7 分算**，而编辑器的下拉里没有 7（`normalizeLoadedSettings` 把它读成 0）
  * ⇒ **界面上显示 0**；而这行**一旦被编辑器保存一次**，写入口就把它落成 0，判分也跟着变 0 ——
- * 也就是「教师只要打开这张单改个标题再保存，半对档就会从 7 变成 0」，同样没有任何提示。
+ * 也就是「教师只要打开这张单改个标题再保存，部分给分档就会从 7 变成 0」，同样没有任何提示。
  * `rewardStep` 早就有同一条缝（`rewardStep: 4`），它是有意为之；这里把 `halfStep`
  * 一并点名，免得下一个人以为只有全对档有这条缝。
  *
- * ⚠️ 半对档缺席（`source.halfStep` 是 `undefined` / 形状不对）时 `normalizePointValue`
+ * ⚠️ 部分给分档缺席（`source.halfStep` 是 `undefined` / 形状不对）时 `normalizePointValue`
  * 回落到 `DEFAULT_POINTS.half = 0`，与规格的默认值相同 —— 也就是第一批的行为。
  * ⊘ 2026-09-24（C3）更正：这一段原先写的是「`halfStep` 要到任务 B2 才进 `normalizeSettings`
  *（写入口）。**这个窗口期是安全的**：此刻没有任何 UI 能写出那个键」。那个窗口期已经
@@ -281,13 +281,13 @@ export function pointsFromSettings(settings: unknown): QuestionPoints {
  * 逐题**既然填了**，它就脱离了学习单级，不再跟随（裁定 4 要防的正是「看起来跟随了」）。
  *
  * 🔴 **「留空 = 继承」是整对象级的，不是字段级的。** 2026-09-24 实测确认，写在这里免得
- * 下一个读这段的人以为可以「只让半对档跟随学习单」：
+ * 下一个读这段的人以为可以「只让部分给分档跟随学习单」：
  *
  * | 教师填了 | 落库的 `points`（`normalizeNode` → `normalizePoints`） | 本函数的结果 |
  * |---|---|---|
  * | 两个框都留空 | 键**不存在** | 整份回落学习单级 ✅ |
- * | 全对 7 / 半对留空 | `{ full: 7, half: 0 }` —— 缺的那一端被补成 `DEFAULT_POINTS` | `{ full: 7, half: 0 }` ⇒ **半对得 0 分** |
- * | 全对 7 / 半对 2 | `{ full: 7, half: 2 }` | 原样 |
+ * | 全对 7 / 部分给分留空 | `{ full: 7, half: 0 }` —— 缺的那一端被补成 `DEFAULT_POINTS` | `{ full: 7, half: 0 }` ⇒ **部分给分得 0 分** |
+ * | 全对 7 / 部分给分 2 | `{ full: 7, half: 2 }` | 原样 |
  *
  * ⚠️ 第二行**真的会发生**（不是理论风险）：在隔离库上 `POST /api/worksheets`、载荷
  * `points: {full: 7}` 的实测结果是回包与库里**都是** `points: {full: 7, half: 0}`。
@@ -295,7 +295,7 @@ export function pointsFromSettings(settings: unknown): QuestionPoints {
  * （`isUsablePointValue(0)` 为真），逐字段回落会照用它。
  * 真正的防线在**写入口**：编辑器的 UI 不允许只填一个框（`src/app/teacher/worksheets/edit/`
  * 的 `findPartialPoints` + `save()` 把它拦下）⇒ 第二行在**走编辑器的数据上不可达**。
- * 它仍可能出现在手工改过的库行上，届时半对得 0 分 —— 那是这条整对象语义的**已知代价**，
+ * 它仍可能出现在手工改过的库行上，届时部分给分得 0 分 —— 那是这条整对象语义的**已知代价**，
  * 不是一处漏判。
  *
  * ⚠️ 所以**别**把这里改成 `{ full: node.points?.full ?? fallback.full, half: … }`：
@@ -405,7 +405,7 @@ export type GradeState = 'correct' | 'partial' | 'incorrect';
  *   · `state` 供看板的正确率与「哪道题错得多」；
  *   · `score` 供显示与累计。
  * 它们不是彼此的派生 —— `score` 是教师逐题填的**绝对值**，同一个 `partial`
- * 在两道题上可以是 1 分也可以是 0 分（教师把半对档填成 0）。
+ * 在两道题上可以是 1 分也可以是 0 分（教师把部分给分档填成 0）。
  */
 export interface GradeResult { state: GradeState; score: number }
 
@@ -413,15 +413,15 @@ export interface GradeResult { state: GradeState; score: number }
  * 判分。`null` = 该题型不参与判分（主观题）。
  *
  * 🔴 **返回的是判定对象，不是布尔**（规格 §12「M4 重开了 §3-S」）：`isCorrect: boolean`
- * 表达不了「一半对」，而多选题的「漏选算半对」、排序 / 连线 / 归类的部分正确都要它。
+ * 表达不了「一部分给分」，而多选题的「漏选算部分给分」、排序 / 连线 / 归类的部分正确都要它。
  * ⇒ `isCorrect` 的语义**收窄为「全对」**，由 `state` 派生写入，它不再是第二真相源。
  *
- * ⚠️ `score` 是**绝对值**（该题「全对」或「半对」那个数），**不是** 0/0.5/1 的比例 ——
+ * ⚠️ `score` 是**绝对值**（该题「全对」或「部分给分」那个数），**不是** 0/0.5/1 的比例 ——
  * 逐题分值可以不同（§12 的例子：单选 2/1，填空 1/0），比例在各题之间不可比。
  *
  * ⚠️ 部分正确的统一口径：凡是「多个组成部分」的题（多选 / 填空多空 / 排序 / 连线 / 归类），
- * **部分正确 = 半对**。唯一的开关是多选题的「漏选算不算」（教师逐题选，§12 已裁定）。
- * 「选了错的」一律不给部分分 —— 半对只奖励「少做了」，不奖励「做错了」。
+ * **部分正确 = 部分给分**。唯一的开关是多选题的「漏选算不算」（教师逐题选，§12 已裁定）。
+ * 「选了错的」一律不给部分分 —— 部分给分只奖励「少做了」，不奖励「做错了」。
  *
  * 🔴 具体判分器在下面的 `JUDGES` 那张表里，与 `VALIDATORS` 同一手法：`Record<QuestionType, …>`
  * 把「加了题型却忘了写判分」变成**编译错误**，而不是一道永远没人判得了的题。
@@ -518,7 +518,7 @@ function readField(value: unknown, key: string): unknown {
  *     因为教师少填一个答案不该让学生拿不到分；
  *   · 本函数读的是**学生**的作答值（`selected` / `order`）—— 那里的元素**共同**构成
  *     一个集合或一个序列，跳过它就不是「忽略噪声」而是**改写答案**：
- *     `selected: ['A', 42]` 会被读成「只选了 A」，在「漏选算半对」下反而**多给**半分；
+ *     `selected: ['A', 42]` 会被读成「只选了 A」，在「漏选算部分给分」下反而**多给**半分；
  *     `order: ['i2', 42, 'i3']` 会被读成两项，后面每一位的位置全部错开。
  *     两种都是**安静的虚高 / 错位**，所以坏形状一律整体判错。
  */
@@ -646,11 +646,16 @@ function isCompleteMatching(
  * 两者在规格 §12 里「作答值与判分逐字相同」，差别只在编辑 UI（判断题不存 `options`，
  * 选项恒为对 / 错）—— 所以这里刻意是**同一个函数引用**，而不是复制一遍。
  */
-function judgeSingleChoice(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeSingleChoice(data: Record<string, unknown>, value: unknown): GradeState | null {
   const correct = readStrings(data.correctKeys);
   const selected = readStrictStrings(readField(value, 'selected'));
-  // `correctKeys` 不是恰好一个 ⇒ 这道题**没有人能答对**（数据被改坏了）。三态里没有
-  // 「题目坏了」这一档，只能判错 —— 出路是编辑期的 `validateQuestion`，不是判分。
+  // ★ 2026-09-25（教师裁定）：**没设答案 ⇒ 这道题不判分**（回 `null` = 没判过）。
+  // 它与主观题走同一条路：只统计作答进度，不画任何对错标记。
+  // 🔴 别把它判成 `incorrect` —— 那会让看板显示「正确率 0%」、抽屉里每人都画 ✗、
+  // 导出 Word 一列「错」，而教师会去怀疑学生，不会来怀疑这道题。
+  if (correct.length === 0) return null;
+  // ⚠️ 与「没设」分开：`correctKeys` **多于一个**是**坏数据**（单选只有一个正确答案），
+  // 判错是响亮的那条路（学生端会画 ✗、教师会来问），静默回 `null` 会让它一直没人发现。
   if (correct.length !== 1 || selected === null) return 'incorrect';
   // 🔴 先**去重**再判「是不是只选了一个」。这里有一处**有意的行为变更**：
   // `selected: ['B','B']` 在旧实现下是 `false`（`selected.length === 1` 不成立），
@@ -660,20 +665,22 @@ function judgeSingleChoice(data: Record<string, unknown>, value: unknown): Grade
   //      同一套「作答值是一个集合」的语义，否则同一个形状在两个题型上含义不同。
   // `worksheet-grade-m4.test.ts` 有一条用例把这个口径**显式钉住**。
   const picked = [...new Set(selected)];
-  // 选中不止一个 ⇒ 不符合题型（**不是**「部分对」）：单选只有一个组成部分，没有半对。
+  // 选中不止一个 ⇒ 不符合题型（**不是**「部分对」）：单选只有一个组成部分，没有部分给分。
   if (picked.length !== 1) return 'incorrect';
   return picked[0] === correct[0] ? 'correct' : 'incorrect';
 }
 
-function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeState {
+function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeState | null {
   const correct = [...new Set(readStrings(data.correctKeys))];
   const selected = readStrictStrings(readField(value, 'selected'));
-  if (correct.length === 0 || selected === null) return 'incorrect';
+  // ★ 2026-09-25（教师裁定）：没设答案 ⇒ 不判分（回 `null`，理由与 `judgeSingleChoice` 同一段）。
+  if (correct.length === 0) return null;
+  if (selected === null) return 'incorrect';
 
   // 🔴 **先去重再比个数。** 不去重的话 `selected: ['A','A']`（学生只勾了一个）会被读成
-  // 「选了两个」—— 在「漏选算半对」下正好凑成 `size === correct.length` ⇒ **静默的满分**。
+  // 「选了两个」—— 在「漏选算部分给分」下正好凑成 `size === correct.length` ⇒ **静默的满分**。
   const picked = new Set(selected);
-  // 选了错的 ⇒ 一律不给部分分。半对只奖励「少做了」，不奖励「做错了」。
+  // 选了错的 ⇒ 一律不给部分分。部分给分只奖励「少做了」，不奖励「做错了」。
   for (const key of picked) {
     if (!correct.includes(key)) return 'incorrect';
   }
@@ -684,13 +691,13 @@ function judgeMultiChoice(data: Record<string, unknown>, value: unknown): GradeS
 }
 
 /**
- * 多选题的「漏选算不算半对」（教师逐题选，规格 §12 的裁定）。
+ * 多选题的「漏选算不算部分给分」（教师逐题选，规格 §12 的裁定）。
  *
  * 🔴 **只有逐字等于 `'allow-missing'` 才算「算」** —— 认不出的值（缺字段、拼错、
  * 换了个别的写法）一律按「全对才算」走。方向是刻意选的：把「认不出」当成「允许漏选」
  * 会让一道本该判错的题**静默地给学生半分**，而教师看不出任何异常（他以为自己选的是
  * 「全对才算」）；反过来，认不出的值当成「不给部分分」，教师至少能看到
- * 「我选了算半对但分数没给」—— 那是**可见的**。
+ * 「我选了算部分给分但分数没给」—— 那是**可见的**。
  */
 function allowsMissing(data: Record<string, unknown>): boolean {
   return data.partialCredit === 'allow-missing';
@@ -720,7 +727,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown): GradeSta
     // 🔴 `normalizeFillText` **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的
     // 大小写是语义的一部分，把 `CO2` 判成 `co2` 正确比不判更糟。要多收几种写法请教师
     // 在 `answers` 里多列几个。
-    // 单空只有一个组成部分 ⇒ **没有半对**。
+    // 单空只有一个组成部分 ⇒ **没有部分给分**。
     return answers.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
   }
 
@@ -934,11 +941,25 @@ function validateSingleAnswer(
   label: string,
   checkOptions: boolean,
 ): void {
-  if (checkOptions && readOptionKeys(node.data.options).length < 2) {
+  const optionKeys = readOptionKeys(node.data.options);
+  if (checkOptions && optionKeys.length < 2) {
     errors.push(`${label}至少需要两个选项`);
   }
-  if (readStrings(node.data.correctKeys).length !== 1) {
-    errors.push(`${label}必须且只能指定一个正确答案`);
+  const correct = readStrings(node.data.correctKeys);
+  // ★ 2026-09-25（教师裁定）：**可以不设答案** —— 不设就是不判分（`judgeSingleChoice` 回 `null`）。
+  // ⚠️ 旧判据是 `length !== 1`，它把「0 个」（合法的新形态）与「2 个以上」（坏数据）
+  // 当成同一件事。现在两者分开：0 个放行，2 个以上仍然拒绝。
+  if (correct.length > 1) errors.push(`${label}最多只能指定一个正确答案`);
+  // ★ 2026-09-25 补：答案指向一个**不存在的选项** ⇒ 没有任何学生能答对，而看板上只表现为
+  // 「正确率 0%」—— 教师会去怀疑学生，不会来怀疑这道题。多选题那一支**一直**有这条检查，
+  // 单选漏了（同一条失效、两处两个样）。
+  //
+  // ⚠️ **只对存 `options` 的题型查**（即单选）。判断题的答案键是固定的 `T` / `F`，
+  // 而那不是 `data.options` 里的东西 —— 套用这条检查会把每一道合法的判断题都判成非法
+  //（实测踩过）。判断题的键**值**服务端今天不校验（它只是一对协议常量，服务端没有第二份
+  // 拷贝；本校验器只管个数），这是既有边界，本批没有改变它。
+  if (checkOptions && correct.some((key) => !optionKeys.includes(key))) {
+    errors.push(`${label}的正确答案里有不存在的选项`);
   }
 }
 
@@ -996,7 +1017,8 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     const optionKeys = readOptionKeys(node.data.options);
     const correct = readStrings(node.data.correctKeys);
     if (optionKeys.length < 2) errors.push('多选题至少需要两个选项');
-    if (correct.length < 1) errors.push('多选题至少要指定一个正确答案');
+    // ★ 2026-09-25（教师裁定）：**可以不设答案**（不设 = 不判分）。原来这里是
+    // 「至少要指定一个正确答案」，把「没设」与「设错」混成一条。
     // 🔴 每个 key 都必须指向真实存在的选项：`correctKeys` 里一个不存在的字母
     // ⇒ 那道题**没有任何学生能答对**，而它在看板上只表现为「正确率 0%」——
     // 教师会去怀疑学生，不会来怀疑这道题。

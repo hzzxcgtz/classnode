@@ -413,12 +413,12 @@ test('标准模式：只配了学习单的学生在列、没配的**不进分母
   });
   // ★ B1：这一行是**手工塞进库里的哨兵**，不是 `grade()` 的产物 —— 它钉的是
   // 「DB → 响应直通」这三列。选 `partial` 是因为它是 `isCorrect` **一个人表达不了**
-  // 的那一档：`false` 底下同时住着「判错」与「半对」。
+  // 的那一档：`false` 底下同时住着「判错」与「部分给分」。
   // ⚠️ **别把这一行的值读成「本单的配置」或「这道题的真实判分」**（2026-09-24 实测）：
-  //    · 这一单的 `settings` 没配半对档 ⇒ `pointsFromSettings` 给的是 `{full:1, half:0}`，
-  //      也就是说**半对档与判错档在这一单里都是 0**；
+  //    · 这一单的 `settings` 没配部分给分档 ⇒ `pointsFromSettings` 给的是 `{full:1, half:0}`，
+  //      也就是说**部分给分档与判错档在这一单里都是 0**；
   //    · `q_4` 的 `correctOrder` 是 `['i2','i1']`，这里的作答是 `['i1','i2']` ——
-  //      **逐位 0 命中** ⇒ `grade()` 给的是 `{state:'incorrect', score:0}`，不是半对
+  //      **逐位 0 命中** ⇒ `grade()` 给的是 `{state:'incorrect', score:0}`，不是部分给分
   //      （两条目也排不出「部分正确」：唯一另一个排列就是逐位全错）。
   //   ⇒ 下面那个 `score: 2` 是**构造出来的哨兵值**（取 2 而不是默认的 1，这样「直通了
   //   库里那个值」与「补了个默认值」才分得开），它不对应任何真实配置。
@@ -441,10 +441,10 @@ test('标准模式：只配了学习单的学生在列、没配的**不进分母
   // 判错也要如实下发（`false` 与「没有对错」的 `null` 是两件事）。
   const answeredRow = participants.find(p => p.participantId === answered.id)!.answerRows[0];
   assert.equal(answeredRow.isCorrect, false);
-  // ★ B1：`false` 之上的那一层 —— 这条线缆必须说得出「这是半对，不是错」，也必须
+  // ★ B1：`false` 之上的那一层 —— 这条线缆必须说得出「这是部分给分，不是错」，也必须
   // 带着库里那一行的数。少了 `select` 里的一列，这里会拿到 `undefined`
   //（键不存在），而看板的 ½ 与奖励会静默地永远画不出来。
-  assert.equal(answeredRow.gradeState, 'partial', '半对必须能由 gradeState 说出来 —— isCorrect=false 推不出它');
+  assert.equal(answeredRow.gradeState, 'partial', '部分给分必须能由 gradeState 说出来 —— isCorrect=false 推不出它');
   assert.equal(answeredRow.score, 2, '得分必须是**库里那一行的 2**（构造值，见上面的说明）—— 不是 0，也不是默认的 1');
   assert.equal(answeredRow.questionId, 'q_4', '钉住是这一行，别让夹具漂到别的题上而断言还是绿的');
 

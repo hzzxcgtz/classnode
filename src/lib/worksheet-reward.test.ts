@@ -76,11 +76,11 @@ test('normalizeRewardStep：只认 1/2/3/5，越界值回落到默认（不是�
 });
 
 /**
- * ★ M4a：半对档是**另一条规则**（域含 0、默认是 0）。
+ * ★ M4a：部分给分档是**另一条规则**（域含 0、默认是 0）。
  *
  * 🔴 这一条钉住的正是「两档的取值域**不同**」这件事：`0` 在 `normalizeRewardStep` 那里
  * 是**越界值**（回落到 1），在这里是**合法值**（原样返回 0）。两处一旦合并，
- * 教师配的「半对 0」就会变成 1 —— 而界面上只是多出一个符号，没有任何报错。
+ * 教师配的「部分给分 0」就会变成 1 —— 而界面上只是多出一个符号，没有任何报错。
  */
 test('normalizeHalfStep：0/1/2/3/5 原样；越界与缺字段回落到 0（**不是** 1）', () => {
   for (const half of HALF_STEPS) assert.equal(normalizeHalfStep(half), half);
@@ -150,14 +150,14 @@ test('🔴 rewardAmount：对错档**只看有没有分**，不看得几分（�
   const correctness: RewardScale = scale({ style: 'correctness' });
   const scores: Array<number | null> = [5, 1, 0, 2];
   const total = scores.reduce<number>((sum, score) => sum + rewardAmount(score, correctness), 0);
-  assert.equal(total, 3, '三题有分（含半对拿到的 2 分）⇒ 累计 3 枚 ✓');
+  assert.equal(total, 3, '三题有分（含部分给分拿到的 2 分）⇒ 累计 3 枚 ✓');
   assert.equal(rewardTotalText(correctness, total), '✓×3');
   // 阴性对照：同一批得分换到星星档就必须**按分数**画（否则这条断言证明不了什么）
   assert.equal(scores.reduce<number>((sum, score) => sum + rewardAmount(score, scale()), 0), 8);
 });
 
 test('rewardAmount：不做任何数学变换（不乘、不折算、不取整）', () => {
-  // 旧模型把 [0,1] 当成**比例**（`score = 0.5` ⇒ 半对档）、把 `step` 当成**上界**
+  // 旧模型把 [0,1] 当成**比例**（`score = 0.5` ⇒ 部分给分档）、把 `step` 当成**上界**
   //（`Math.floor(step × score)`）。这两个概念在绝对值模型下都不存在了：教师逐题填的就是
   // 绝对数（规格 §12 裁定 5），所以画出来的个数可以大于任何「步长」。
   assert.equal(rewardAmount(9, scale()), 9, '上界来自教师填的分值，不是一个步长');
@@ -167,15 +167,15 @@ test('rewardAmount：不做任何数学变换（不乘、不折算、不取整�
   assert.equal(rewardAmount(0.5, scale()), 0.5);
 });
 
-test('rewardAmount：半对不是奖励层的事 —— 那一档给了几分就画几个', () => {
-  // 教师给某题填「全对 5 / 半对 2」：服务端判出 5 或 2（`resolvePoints` + `pointsFromSettings`），
+test('rewardAmount：部分给分不是奖励层的事 —— 那一档给了几分就画几个', () => {
+  // 教师给某题填「全对 5 / 部分给分 2」：服务端判出 5 或 2（`resolvePoints` + `pointsFromSettings`），
   // 显示层照画。旧实现在这里读 `RewardScale.halfStep`，而那条分支**在真实数据上一次都走不到**
   //（归一化后的得分是整数 ⇒ 不存在 `0 < score < 1`）；现在连字段都没有了。
   assert.equal(rewardAmount(5, scale()), 5);
   assert.equal(rewardAmount(2, scale()), 2);
-  assert.equal(rewardMark(scale(), 2), '⭐⭐', '半对拿到 2 分就在星星档画两颗');
+  assert.equal(rewardMark(scale(), 2), '⭐⭐', '部分给分拿到 2 分就在星星档画两颗');
   assert.equal(rewardMark(scale({ style: 'points' }), 2), '+2');
-  // 半对填 0（默认档，规格 §12 裁定 3）⇒ 得分 0 ⇒ 什么都不画（对错档除外，那档画 ✗）
+  // 部分给分填 0（默认档，规格 §12 裁定 3）⇒ 得分 0 ⇒ 什么都不画（对错档除外，那档画 ✗）
   assert.equal(rewardMark(scale(), 0), null);
   assert.equal(rewardMark(scale({ style: 'correctness' }), 0), '✗');
 });

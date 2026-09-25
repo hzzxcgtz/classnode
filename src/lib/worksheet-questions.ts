@@ -78,7 +78,7 @@ export type QuestionType =
  *
  * 🔴 `graded` 这一格是 M4a 加的，**它不是描述、是判据**：`true` ⇒ 教师看板的**抽屉里**会画
  * ✓/½/✗（⚠️ **不是方格阵的格子** —— 对错标记在抽屉里、不在看板格子上，规格 §7.2；
- * §12 那句「半对必须在看板那一侧画得出来」已于 2026-09-24 更正为「是抽屉里」），
+ * §12 那句「部分给分必须在看板那一侧画得出来」已于 2026-09-24 更正为「是抽屉里」），
  * `false` ⇒ 只统计作答进度。它存在的理由是「加题型」这个动作**必须**同时回答
  * 「它判不判分」—— 见 `src/app/teacher/classroom/worksheet-drawer-state.ts` 的
  * `GRADED_QUESTION_TYPES`（它现在从这一格**派生**，不再是一份并列的白名单，
@@ -111,11 +111,11 @@ export const QUESTION_TYPE_OPTIONS: Array<{
 ];
 
 /**
- * ★ M4a：**逐题分值**（全对 / 半对两档）的取值上限 —— 与服务端
+ * ★ M4a：**逐题分值**（全对 / 部分给分两档）的取值上限 —— 与服务端
  * `services/worksheet-questions.ts` 的 `POINTS_MAX` 是**同一对**字面量（服务端读不到 `src/`）。
  *
  * 🔴 两处必须一起改，且**不能只改一处**：服务端的 `normalizePointValue` 对越界值
- * **回落** `DEFAULT_POINTS`（全对 1 / 半对 0），不是拒绝保存 —— 所以前端放宽而服务端不放宽时，
+ * **回落** `DEFAULT_POINTS`（全对 1 / 部分给分 0），不是拒绝保存 —— 所以前端放宽而服务端不放宽时，
  * 教师填的 `200` 会变成 `1`，保存照常 200，**没有任何报错**。
  *
  * ⚠️ 它是**两个档共用的上界**（`full` 与 `half` 各自上到 99），不是「`full + half <= 99`」；
@@ -292,6 +292,18 @@ export interface AnswerableGroup {
    * ⚠️ `null` 时刻意**不编**一个「任务一」（与题号无前缀、迁移不猜是同一条纪律）。
    */
   title: string | null;
+  /**
+   * ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
+   *
+   * 存在任务节点的 `data.description`（`content` 是 JSON 列 ⇒ 不动库结构、不用迁移），
+   * **两边都显示**（学生端在任务标题下、编辑页在标题输入框下）。
+   * `null` = 没有描述：散题那一段，或教师没写 / 只写了空白。
+   *
+   * ⚠️ 它与 `title` 是**两件事**：`title` 是任务的**名字**（学生会看到它作为题号前缀），
+   * 而描述是那一段的说明。裁定 ①a 的原话是「任务 = 分组 + **一段说明**」——
+   * 这个字段就是那句话里的「说明」。
+   */
+  description: string | null;
   items: AnswerableQuestion[];
 }
 
@@ -310,11 +322,19 @@ export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup
   // 这里只做**切段**：因为拍平是 DFS、一个顶层节点的全部可作答后代在结果里**必然连续**，
   // 所以按各顶层节点的条数顺序切即可（条数用同一个函数数，不另写一份遍历规则）。
   const items = flattenAnswerable(nodes);
+  /** 读任务的描述。**容错**（`data` 是库里的 JSON）：非字符串 / 空白的都当没有。 */
+  const descriptionOf = (node: WorksheetQuestionNode): string | null => {
+    const raw = node.data && typeof node.data === 'object' ? (node.data as Record<string, unknown>).description : undefined;
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    return trimmed === '' ? null : trimmed;
+  };
+
   const groups: AnswerableGroup[] = [];
   let loose: AnswerableQuestion[] = [];
   let cursor = 0;
   const flushLoose = () => {
-    if (loose.length > 0) { groups.push({ title: null, items: loose }); loose = []; }
+    if (loose.length > 0) { groups.push({ title: null, description: null, items: loose }); loose = []; }
   };
 
   for (const top of nodes) {
@@ -325,7 +345,7 @@ export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup
       // ⚠️ 「连续」的散题才合成一段：中间隔了一个任务，就不属于同一段了。
       flushLoose();
       const title = typeof top.prompt === 'string' ? top.prompt.trim() : '';
-      groups.push({ title: title || null, items: itemsOfTop });
+      groups.push({ title: title || null, description: descriptionOf(top), items: itemsOfTop });
       continue;
     }
     loose.push(...itemsOfTop);

@@ -246,7 +246,7 @@ const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
       explanation: '甲与丙',
     },
     answerKeys: ['correctKeys', 'explanation'],
-    // `partialCredit` 是**给学生看的规则**（他要知道漏选算不算半对），不是答案 ——
+    // `partialCredit` 是**给学生看的规则**（他要知道漏选算不算部分给分），不是答案 ——
     // 它决定的是「怎么算分」，不是「哪个选项对」。
     safeKeys: ['options', 'partialCredit'],
     afterStrip: {

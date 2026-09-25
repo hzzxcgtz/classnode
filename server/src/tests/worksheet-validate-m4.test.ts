@@ -68,13 +68,15 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   // ⚠️ 别顺手把 `drawing: () => {}` 改成 `drawing: () => { errors.push('…') }` 来让它从
   // EXEMPT 里挪出来：绘图题在 `newQuestion` 里的 `data` 是 `{}` ⇒ 那等于**新建的绘图题
   // 永远存不下去**，而那句错误文案说的是「题干不能为空」（一个说得通但与真实原因无关的提示）。
-  // ★ 2026-09-25 补第三个豁免：**任务容器**。它与上面两个**理由不同**，别混：
-  // 主观题/绘图题豁免是因为「空 data 就是它的正确形状」；任务豁免是因为
-  // **它根本不是一道题**（没有作答值，裁定 ①a）—— 拿「题」的尺子量它本身就是错的。
-  // ⚠️ 与 `drawing` 同款：这条豁免不会削弱把关，因为 `VALIDATORS` 里那个键**必须存在**
-  // 是编译错误，而「键在、内容是空的」对任务**就是正确行为**（它只拦嵌套任务）。
-  // 任务的规矩在 `worksheet-task.test.ts`：空任务合法、标题可留空、嵌套被拦。
-  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing', 'task'];
+  // ── 豁免表：**两类理由，别混在一起读** ────────────────────────────────
+  //   ① 「空 data 就是它的**正确形状**」：主观题 / 绘图题（没有答案要配）、
+  //      任务容器（它**根本不是一道题**，裁定 ①a —— 拿「题」的尺子量它本身就错了）；
+  //   ② ★ 2026-09-25 教师裁定新加的一类：「**不设答案 ⇒ 这道题不判分**」是**合法**状态 ——
+  //      单选 / 判断 / 多选。它们空 data 时 `grade()` 回 `null`（与主观题同一条路），
+  //      见 `worksheet-ungraded.test.ts`。
+  // ⚠️ 两类豁免都不会削弱把关：`VALIDATORS` 里那些键**必须存在**是编译错误，
+  // 而「键在、内容是空的」对它们**就是正确行为**。
+  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing', 'task', 'single-choice', 'true-false', 'multi-choice'];
   const checked: QuestionType[] = [];
 
   for (const type of QUESTION_TYPES) {
@@ -91,9 +93,11 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
     '每个非豁免题型都应真的被跑过',
   );
   assert.equal(checked.length, QUESTION_TYPES.length - EXEMPT.length);
-  // ⚠️ M4b 之后这个数**恰好等于 7**（9 个题型 - 2 个豁免）：`>= 7` 现在卡在下界上，
-  // 动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里 —— 再加一个豁免就会红。
-  assert.ok(checked.length >= 7, `实际只跑到 ${checked.length} 个题型`);
+  // ⚠️ 这个数随豁免表变：M4b 时是 7（9-2），2026-09-25 加了三类豁免（选择题不设答案合法）
+  // 与任务之后是 **4**（10-6）：填空 / 排序 / 连线 / 归类 —— 也就是**必须配答案**
+  // 的那四个题型。动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里：数字对不上就是在提醒你
+  // 「有一个题型的空 data 现在没人管了」。
+  assert.equal(checked.length, 4, `实际只跑到 ${checked.length} 个题型`);
 });
 
 test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data 恒为 {}）', () => {
@@ -124,12 +128,13 @@ test('题干为空是公共检查：所有**可作答的**题型都拦（含主�
 // ① 判断题：与单选同一支
 // ---------------------------------------------------------------------------
 
-test('判断题与单选共用一支：correctKeys 必须恰好一个，且不要求 options', () => {
+test('判断题与单选共用一支：correctKeys **最多一个**（可空），且不要求 options', () => {
   accepted('true-false', { correctKeys: ['T'] });
   accepted('true-false', { correctKeys: ['F'] });
-  rejected('true-false', { correctKeys: [] });
+  // ★ 2026-09-25（教师裁定）：空答案合法 = 这道题不用给分（判分器回 `null`）。
+  accepted('true-false', { correctKeys: [] });
+  accepted('true-false', {});
   rejected('true-false', { correctKeys: ['T', 'F'] });
-  rejected('true-false', {});
 
   // 反向对照：判断题**不该**冒出「至少需要两个选项」那条 —— 它根本不存 options，
   // 一条错的提示会让教师去找一个不存在的设置项。
@@ -139,22 +144,28 @@ test('判断题与单选共用一支：correctKeys 必须恰好一个，且不�
   }
 });
 
-test('单选题：选项数与正确答案都要查', () => {
+test('单选题：选项数要查；答案**可空**（不设 = 不判分）但不可多于一个、不可指向不存在的选项', () => {
   accepted('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'] });
   rejected('single-choice', { options: [{ key: 'A', text: '甲' }], correctKeys: ['A'] });
-  rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: [] });
+  // ★ 2026-09-25（教师裁定）：**空答案是合法的** —— 它表示「这道题不用给分」。
+  // ⚠️ 旧断言是 `rejected(... correctKeys: [])`，它的前提（答案必填）已被推翻。
+  accepted('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: [] });
+  // 而「多于一个」与「指向不存在的选项」仍然是坏数据：
+  rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['A', 'B'] });
+  rejected('single-choice', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['Z'] });
 });
 
 // ---------------------------------------------------------------------------
 // ② 多选题
 // ---------------------------------------------------------------------------
 
-test('多选题：至少两个选项、至少一个正确答案，且每个答案都要指向真实选项', () => {
+test('多选题：至少两个选项、答案可空，且每个答案都要指向真实选项', () => {
   const options = [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }];
   accepted('multi-choice', { options, correctKeys: ['A', 'C'], partialCredit: 'allow-missing' });
   accepted('multi-choice', { options, correctKeys: ['A'] });
   rejected('multi-choice', { options: [{ key: 'A', text: '甲' }], correctKeys: ['A'] });
-  rejected('multi-choice', { options, correctKeys: [] });
+  // ★ 2026-09-25（教师裁定）：空答案合法 = 这道题不用给分（判分器回 `null`）。
+  accepted('multi-choice', { options, correctKeys: [] });
   // 🔴 指向不存在的选项：那道题**没有任何学生能答对**，而看板上只表现为「正确率 0%」——
   // 教师会去怀疑学生，不会来怀疑这道题。
   rejected('multi-choice', { options, correctKeys: ['D'] });
@@ -325,9 +336,9 @@ test('分值归一化：只填了一个字段 ⇒ 取那个，另一个回落默
   assert.deepEqual(normalizePoints({ half: 2 }), { full: 1, half: 2 });
   // 小数四舍五入到整数（`WorksheetAnswer.score` 是 Float，2.5 会一路走进奖励累计）
   assert.deepEqual(normalizePoints({ full: 3.4, half: '两朵' }), { full: 3, half: 0 });
-  // 🔴 **`half: 0` 是有效分值**（「半对 0 分」就是默认档本身）：它假值，但不是「留空」。
+  // 🔴 **`half: 0` 是有效分值**（「部分给分 0 分」就是默认档本身）：它假值，但不是「留空」。
   // 判据写成 `source.half ? … : …` 的话，这里会静默变成「没填」⇒ 那道题变成继承学习单级，
-  // 而 `shouldWarnZeroHalfCredit` 那条提示正建立在「半对 0 是一个有效值」上面。
+  // 而 `shouldWarnZeroHalfCredit` 那条提示正建立在「部分给分 0 是一个有效值」上面。
   //
   // ★ M4a/I1 更正：**这一条只对 `half` 成立，`full` 不是。** 两档的域**不同**
   //（`full` 是 1..99，见 `POINTS_FULL_MIN`）。原先这里把 `full: 0` 也写成「有效分值」，
@@ -338,7 +349,7 @@ test('分值归一化：只填了一个字段 ⇒ 取那个，另一个回落默
   assert.deepEqual(normalizePoints({ full: 0 }), undefined,
     '两端都无效（`full` 那一端的 0 不算数）⇒ 与「留空」同义：继承学习单级');
   assert.deepEqual(normalizePoints({ full: 0, half: 2 }), { full: 1, half: 2 },
-    '半对那一端有效 ⇒ 整题脱离学习单级，全对回落默认档 1');
+    '部分给分那一端有效 ⇒ 整题脱离学习单级，全对回落默认档 1');
   // 边界：POINTS_MAX 本身合法，超一个就无效
   assert.deepEqual(normalizePoints({ full: 99 }), { full: 99, half: 0 });
   assert.deepEqual(normalizePoints({ full: 100 }), undefined);

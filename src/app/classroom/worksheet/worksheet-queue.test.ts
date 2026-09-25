@@ -469,7 +469,7 @@ test('🔴 hydrateAnswers：排序题的旧作答按题目当下的条目表**�
  * 「到底读了哪个键」这件事藏起来。直接写字面量，让两条路径一眼可见。
  */
 test('🔴 scoreFromWire：有 `score` 就用 `score`（绝对值），一个字节都不换算', () => {
-  assert.equal(scoreFromWire({ score: 2, isCorrect: false }), 2, '半对 2 分：不许因为 isCorrect=false 变成 0');
+  assert.equal(scoreFromWire({ score: 2, isCorrect: false }), 2, '部分给分 2 分：不许因为 isCorrect=false 变成 0');
   assert.equal(scoreFromWire({ score: 0, isCorrect: false }), 0);
   assert.equal(scoreFromWire({ score: 5, isCorrect: true }), 5);
   assert.equal(scoreFromWire({ score: 0.5, isCorrect: true }), 0.5, 'M4b 的部分得分走这条');

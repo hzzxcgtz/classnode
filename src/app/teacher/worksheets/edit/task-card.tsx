@@ -29,6 +29,7 @@ export function TaskCard({
   total,
   node,
   onTitleChange,
+  onDescriptionChange,
   onMove,
   onRemove,
   onAddQuestion,
@@ -39,6 +40,8 @@ export function TaskCard({
   total: number;
   node: WorksheetQuestionNode;
   onTitleChange: (prompt: string) => void;
+  /** 任务的**描述**（`data.description`）—— 学生端会显示在标题下面。 */
+  onDescriptionChange: (description: string) => void;
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onAddQuestion: () => void;
@@ -100,6 +103,23 @@ export function TaskCard({
           </button>
         </div>
       </header>
+
+      {/*
+        ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
+        ⚠️ 与上面那个标题框**是两件事，别合并**：标题是任务的**名字**（学生会看到它作为
+        题号前缀：`任务一 · 1`），描述是那一段的说明。裁定 ①a 的原话是
+        「任务 = 分组 + **一段说明**」，这个框就是那句话里的「说明」。
+        ⚠️ 用 `textarea` 而不是 `input`：描述常常是完整的一两句，单行会把后半句藏起来。
+      */}
+      <label className="worksheet-editor-task-desc-field">
+        <textarea
+          className="worksheet-editor-task-desc"
+          rows={2}
+          value={typeof node.data.description === 'string' ? node.data.description : ''}
+          onChange={event => onDescriptionChange(event.target.value)}
+          placeholder="给这个任务写一句说明（可留空）—— 学生会看到这段话"
+        />
+      </label>
 
       <div className="worksheet-editor-task-body">
         {/*

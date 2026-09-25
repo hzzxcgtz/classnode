@@ -2,6 +2,8 @@
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import {
+  gradesOnSubmit,
+  isGradedQuestionType,
   isPartialPoints,
   parsePointInput,
   planPointInputChange,
@@ -42,7 +44,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  *   1. 少于两个选项时禁用删除按钮（服务端要求 `options.length >= 2`）；
  *   2. 没选正确答案时给一句提示；
  *   3. 分值只填了一个框时给一句提示（真正的拦阻在 `save()` 的 `findPartialPoints`）；
- *   4. 多选「漏选算半对」+ 半对档 0 时给一句提示（规格 §12 裁定 3 的连带要求）。
+ *   4. 多选「漏选算部分给分」+ 部分给分档 0 时给一句提示（规格 §12 裁定 3 的连带要求）。
  * 真正的判据在服务端（`routes/worksheets.ts` 的 `parseContent` → `validateQuestion`），
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
@@ -64,7 +66,7 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
   node: WorksheetQuestionNode;
   /**
    * 学习单级的**两档**（`settings.rewardStep` / `settings.halfStep`）—— 逐题留空时继承的就是它们。
-   * ⚠️ 它的用法**只有两种**：画「继承中」的占位符、以及判断「半对 0 分」那条提示。
+   * ⚠️ 它的用法**只有两种**：画「继承中」的占位符、以及判断「部分给分 0 分」那条提示。
    * **不要**拿它去预填输入框 —— 预填等于把继承拍成了副本（规格 §12 裁定 4 的理由）。
    */
   inheritedPoints: { full: number; half: number };
@@ -155,14 +157,28 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
         />
       </label>
 
-      <PointsRow
-        heading={heading}
-        node={node}
-        inheritedPoints={inheritedPoints}
-        rejectedInput={rejectedPointInput}
-        onPointsInputChange={onPointsInputChange}
-        onPointsChange={onPointsChange}
-      />
+      {/*
+        ★ 2026-09-25（教师裁定）：**不设答案的选择题不判分**，所以这里不给它分值行 ——
+        一个「全对 1 / 部分给分 0」的输入框摆在一道不判分的题上，就是在说「它会算分」。
+        ⚠️ 判据是 `gradesOnSubmit`（核心里、有用例），不是「题型是不是选择题」——
+        填空/排序/连线/归类的答案在别的键上，拿选择题的尺子量它们会让分值行**整片消失**。
+        ⚠️ 区分两种情况，话不一样：题型**本来就不判分**（问答 / 绘图）时什么都不说，
+        因为那是题型的性质、教师改不了；只有「能判分却没设答案」才需要一句话告诉他为什么。
+      */}
+      {gradesOnSubmit(node) ? (
+        <PointsRow
+          heading={heading}
+          node={node}
+          inheritedPoints={inheritedPoints}
+          rejectedInput={rejectedPointInput}
+          onPointsInputChange={onPointsInputChange}
+          onPointsChange={onPointsChange}
+        />
+      ) : isGradedQuestionType(node.type) ? (
+        <p className="worksheet-editor-ungraded-hint">
+          没有勾选正确答案 ⇒ 这道题<strong>不判分</strong>，只统计有多少人作答。想让它算分，勾上正确答案即可。
+        </p>
+      ) : null}
 
       {/* ★ M4b/D1：「作答方式」那一行。位置钉在**分值行之下、题型编辑体之上**，
           不因题型而变 —— 教师换题型时控件的位置不该跳。
@@ -203,7 +219,7 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
  * 逐题分值的**两栏行**（规格 §12 裁定 4 / 5）。
  *
  * ```
- * 分值  全对 [ 7 ]  半对 [   ]      ← 留空 = 跟随学习单（3 / 2）
+ * 分值  全对 [ 7 ]  部分给分 [   ]      ← 留空 = 跟随学习单（3 / 2）
  * ```
  *
  * 🔴 **留空 = 继承，且不要预填。** 输入框为空 ⇒ `onPointsChange(undefined)`（整份
@@ -214,11 +230,11 @@ export function QuestionCard({ heading, index, total, node, inheritedPoints, rej
  *
  * ⚠️ **两个框要么都填、要么都空**。只填一个**不是一个能保存的状态**：
  * 服务端的 `normalizePoints` 会把缺的那一端补成 `DEFAULT_POINTS`（**不是**学习单级的档）
- * ⇒ 教师填了「全对 7」、半对留空，半对**静默变成 0 分**。实测与完整理由见
+ * ⇒ 教师填了「全对 7」、部分给分留空，部分给分**静默变成 0 分**。实测与完整理由见
  * `findPartialPoints`。这里给红字，保存时 `save()` 会真的拦下。
  *
  * ⚠️ **非法输入不进 reducer**（`onPointsChange` 不被调用）：`points` 只装整数
- *（**全对 1–99 / 半对 0–99**，★ M4a/I1 —— 两档的下界不同，见上面的红字分支），
+ *（**全对 1–99 / 部分给分 0–99**，★ M4a/I1 —— 两档的下界不同，见上面的红字分支），
  * 塞不进 `'7.5'`。被拒的文本靠 `rejectedInput` 留在屏幕上 —— 它是**受控**的，
  * 由 `useWorksheetEditor` 持有（**不是**这里的 `useState`），因为 `save()` 必须看得见它：
  * 否则教师看到框里写着 `7.5`、顶栏写着「已保存」，而发出去的其实是上一次的合法值
@@ -253,7 +269,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
     onPointsChange(plan.points);
   };
 
-  // 两格的域不同（全对 1–99 / 半对 0–99），所以**提示文案必须分开** —— 一句
+  // 两格的域不同（全对 1–99 / 部分给分 0–99），所以**提示文案必须分开** —— 一句
   // 「只能是 0–99 的整数」对着填了 0 的全对框就是错的（0 确实在 0–99 里）。
   const fullInvalid = parsePointInput(fullText, 'full').kind === 'invalid';
   const halfInvalid = parsePointInput(halfText, 'half').kind === 'invalid';
@@ -274,7 +290,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
       //     —— `save()` 由 `findInvalidPoints` 拦。
       //     第二种没有这条提示就等于**静默**：服务端的 `normalizePointValue` 对越界值
       //     **回落** `DEFAULT_POINTS`（200 变成 1），保存照常 200，而框里还写着 200。
-      ? `半对只能是 0–${POINTS_MAX} 的整数（0 = 不给部分分），请改一下。`
+      ? `部分给分只能是 0–${POINTS_MAX} 的整数（0 = 不给部分分），请改一下。`
       : null;
   // ⚠️ 非法值优先：两框非法 + 只填了一个时只显示前一条 —— 两条红字挤在一起，
   // 教师会先去改那个**更靠前**的错，而两条的路数是同一个（先把框改成合法值）。
@@ -298,19 +314,24 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
         />
       </label>
       <label className="worksheet-editor-points-field">
-        <span>半对</span>
+        <span>部分给分</span>
         <input
           className="input"
           type="text"
           inputMode="numeric"
           value={halfText}
           placeholder={String(inheritedPoints.half)}
-          aria-label={`${heading} 半对得分`}
+          aria-label={`${heading} 部分给分`}
           onChange={event => commit('half', event.target.value)}
         />
       </label>
+      {/*
+        ★ 2026-09-25（教师问「留空 = 跟随学习单（1 / 0）这个什么意思」⇒ 那句话没写好）：
+        改成一句能直接读懂的话，并把两个数**标上名字** —— 原来光秃秃的「1 / 0」
+        得先知道括号里是「全对 / 部分给分」两档才看得懂。
+      */}
       <span className="worksheet-editor-points-note">
-        留空 = 跟随学习单（{inheritedPoints.full} / {inheritedPoints.half}）
+        两格留空 = 用学习单的默认分值（全对 {inheritedPoints.full} · 部分给分 {inheritedPoints.half}）
       </span>
       {invalidHint && <p className="worksheet-editor-warn-hint">{invalidHint}</p>}
       {partialHint && <p className="worksheet-editor-warn-hint">{partialHint}</p>}
@@ -318,7 +339,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
         // 🔴 规格 §12 裁定 3 的**连带要求**，一个字都不许省：没有这句，教师会以为自己开了
         // 部分得分，而学生**一分都拿不到**，且没有任何报错 —— 他会去怀疑学生。
         <p className="worksheet-editor-warn-hint">
-          半对给 0 分，等于全对才算 —— 若想给部分分，请把半对填成一个正数。
+          部分给分设成 0 分，等于全对才算 —— 若想给部分分，请把它填成一个正数。
         </p>
       )}
     </div>
@@ -336,7 +357,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
  * 画不画这一行由 `QuestionCard` 的 `showInputModeRow` 决定（三条判据写在那里），
  * 本组件只管画。
  *
- * 🔴 **那句提示不能省**（与 C1 的「半对给 0 分」那句是同一条纪律）：手写作答**不参与判分**
+ * 🔴 **那句提示不能省**（与 C1 的「部分给分给 0 分」那句是同一条纪律）：手写作答**不参与判分**
  * （规格 §12 裁定 3，服务端两条闸见 B1）。教师把一道题改成手写之后，**看板的抽屉里不会再有
  * ✓/½/✗**，而屏幕上没有任何报错 —— 不写这句话，他会以为自己开了一个新功能，
  * 而整题的自动反馈其实消失了。

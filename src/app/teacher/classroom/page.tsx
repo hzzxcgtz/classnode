@@ -224,25 +224,33 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
  * `muted` 保留原义：**不是三件套**的（首页 / 未知），以及**尚未支持**的学习单
  * —— 它们与真正能用的模块不是一个分量，同样的着色会让人以为它们也一样能用。
  */
-function ModuleCountChip({ label, value, unit, hint, muted = false, selected, onSelect }: {
+function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'default', selected, onSelect }: {
   label: string;
   value: number;
   /** ★ M5a：量词（「人」/「组」）。放在数字后面，字号比数字小一档。 */
   unit?: string;
   hint?: string;
   muted?: boolean;
+  /**
+   * `attention` ⇒ 红字红底。
+   *
+   * ★ 2026-09-25：合并筛选行时从这里收进来的 —— 「需关注」那一格原来是**内联 button**，
+   * 有自己的红档（有值得注意的人时整格泛红）。合并后六个格子必须**同一个组件**，
+   * 否则一行里两种长相，教师会以为它们是两类东西。
+   */
+  tone?: 'default' | 'attention';
   selected: boolean;
   onSelect: () => void;
 }) {
-  const idleColor = muted ? '#94a3b8' : '#475569';
-  const numberColor = muted ? '#cbd5e1' : '#1d4ed8';
+  const idleColor = muted ? '#94a3b8' : tone === 'attention' ? '#dc2626' : '#475569';
+  const numberColor = muted ? '#cbd5e1' : tone === 'attention' ? '#dc2626' : '#1d4ed8';
   return (
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
         minHeight: 32, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
-        border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
-        background: selected ? '#2563eb' : 'white',
+        border: `1px solid ${selected ? '#2563eb' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
+        background: selected ? '#2563eb' : tone === 'attention' ? '#fef2f2' : 'white',
         color: selected ? 'white' : idleColor,
         fontSize: '0.813rem', fontWeight: selected ? 600 : 500,
       }}>
@@ -2256,57 +2264,73 @@ function ClassroomBoardContent() {
             </div>
           )}
 
-          <div aria-label="学生状态筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
-            {([
-              ['all', '全部'], ['online', '在线'], ['thinking', '互动中'], ['attention', '需关注'], ['offline', '离线'],
-            ] as Array<[StudentBoardFilter, string]>).map(([key, label]) => {
-              const active = studentBoardFilter === key;
-              const attention = key === 'attention' && boardFilterCounts.attention > 0;
-              return (
-                <button key={key} type="button" aria-pressed={active} onClick={() => setStudentBoardFilter(key)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '5px 11px', borderRadius: 999, border: `1px solid ${active ? '#2563eb' : attention ? '#fecaca' : '#e2e8f0'}`, background: active ? '#2563eb' : attention ? '#fef2f2' : 'white', color: active ? 'white' : attention ? '#dc2626' : '#475569', cursor: 'pointer', fontSize: '0.813rem', fontWeight: active ? 600 : 500, whiteSpace: 'nowrap' }}>
-                  {label}
-                  <span style={{ minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: active ? 'rgba(255,255,255,.2)' : '#f1f5f9', color: active ? 'white' : attention ? '#dc2626' : '#64748b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>{boardFilterCounts[key]}</span>
-                </button>
-              );
-            })}
+          {/* ★ 2026-09-25（教师截图批注）：**两组筛选并成一行**，只留六格 ——
+              全部 / 学习单 / 探究空间 / 智能学伴 / 需关注 / 离线。
+              原来上面一组是**状态**（全部 / 在线 / 互动中 / 需关注 / 离线），下面一组是**模块**
+              （全部 / 学习单 / 探究空间 / 智能学伴 / 首页 / 未知），两组是**「与」**关系。
+
+              🔴 **合并的代价说清楚：两个维度从此互斥。** 六格共用一个「当前选中」——
+              点模块格会把状态格清回「全部」，点状态格会把模块格清回「全部」。
+              ⇒ 过去那个「在线 **且** 在用学习单」的组合**不可达了**（教师裁定接受）。
+              state 仍然是两个（`studentBoardFilter` / `studentModuleFilter`），
+              只是在下面每个 `onSelect` 里互相清空 —— 这样 `displayCards` 那段「与」的判据
+              **一个字都不用动**（它今天恒只有一边不是 `all`）。
+              「在线 / 互动中」两格按要求**去掉**：仍留在 `StudentBoardFilter` 类型与判据里
+              （代码路径没删），只是界面上不再有入口。
+
+              ⚠️ 单位：这一行**六个数字分母相同**（参与者数，分组模式下是**组**，
+              量词由 `moduleCountUnit` 给）。⚠️ 一个**既有**的窄缝：`groupCards` 会跳过
+              **没有组 id 的参与者**（`page.tsx:660`）⇒ 分组模式下若有这种行，
+              它不进任何格子，`需关注 / 离线` 会**小于** `全部`。合并前两个「全部」分处两行、
+              看不出来，现在同一行上会显形。那是数据本身的问题（一个没有组的参与者），
+              不是这一行算错 —— 别在这里加个减法把它抹平。 */}
+          <div aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+            {/* 全部 —— 合并后**只剩这一个**（原来两行各有一个）。取**参与者**口径，
+                与它右边的五个同源；上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
+            <ModuleCountChip label="全部" value={students.length} unit={moduleCountUnitSuffix}
+              selected={studentBoardFilter === 'all' && effectiveModuleFilter === 'all'}
+              onSelect={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} />
+            {/* 模块三件套 —— ⚠️ 仍然**只在跟随模式下渲染**：指定模式全班都是同一个模块，
+                按模块筛只剩「全中 / 全不中」两种结果，那种筛选器只会让人以为它坏了
+                （见 `effectiveModuleFilter`）。全屏**只在指定模式下可达**，所以不需要额外判
+                `gridFullscreen`。
+                🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
+                的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
+                所以那些模式下这几个数字是**组数**，量词由 `moduleCountUnit(mode)` 给。
+                ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
+                （后者是格子数，与参与者数在「有没有组的参与者」那条窄缝上并不相等）。
+                ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
+                两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
+                ⚠️ 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。
+                ⊘ 2026-09-25：「首页 / 未知」两格按教师圈定的六格清单**去掉了**。
+                后果要说清：**这两个状态的学生不再有筛选入口、他们的计数也不再出现在这一行**
+                （格子阵里照旧看得见，只是筛不出来）。⇒ 一行数字相加可能明显小于「全部」，
+                那不是算错，是这两个状态现在没有格子。要加回来就是这里两行。 */}
+            {boardMode === 'follow' && (
+              <>
+                <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'worksheet'}
+                  onSelect={() => { setStudentModuleFilter('worksheet'); setStudentBoardFilter('all'); }} />
+                <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'explore'}
+                  onSelect={() => { setStudentModuleFilter('explore'); setStudentBoardFilter('all'); }} />
+                <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'companion'}
+                  onSelect={() => { setStudentModuleFilter('companion'); setStudentBoardFilter('all'); }} />
+              </>
+            )}
+            {/* 状态两格 —— ⚠️ 这两格的数字来自 `boardFilterCounts`（**格子数**），不是
+                `moduleDistribution`（参与者数）。在「有没有组的参与者」那条窄缝上两者会不等，
+                但常态下相等，且**格子确实是在线单位**（一个组就是一次上线下线），
+                所以按格子数是对的 —— 别为了「同一行同源」把这里换掉。 */}
+            <ModuleCountChip label="需关注" value={boardFilterCounts.attention} unit={moduleCountUnitSuffix}
+              tone={boardFilterCounts.attention > 0 ? 'attention' : 'default'}
+              selected={studentBoardFilter === 'attention'}
+              onSelect={() => { setStudentBoardFilter('attention'); setStudentModuleFilter('all'); }} />
+            <ModuleCountChip label="离线" value={boardFilterCounts.offline} unit={moduleCountUnitSuffix}
+              selected={studentBoardFilter === 'offline'}
+              onSelect={() => { setStudentBoardFilter('offline'); setStudentModuleFilter('all'); }} />
           </div>
-          {/* 第二组筛选：按**模块**（P2.3 修正，用户 2026-09-23：「这里需要改为：三件套中
-              各有多少人、需关注多少人、离线多少人」—— 控制器裁定为**另加一组**）。
-              与上面那组是**「与」**关系：状态那组答「他掉线了吗」，模块这组答「他在用哪一件」。
-              ⚠️ 只在**跟随**模式下渲染：指定模式全班都是同一个模块，按模块筛只剩「全中 /
-              全不中」两种结果，那种筛选器只会让人以为它坏了（见 `effectiveModuleFilter`）。
-              全屏**只在指定模式下可达**，所以不需要额外判 `gridFullscreen`。
-              顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴），后面跟着两项**不是模块**的位置
-              （首页 / 未知）—— 顶部那张卡里同样的计数已经撤掉，这里再不给它们留位，
-              这几个学生在筛选行里就彻底找不到了。 */}
-          {boardMode === 'follow' && (
-            <div aria-label="按模块筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>模块</span>
-              {/* 🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
-                  的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
-                  所以那些模式下这一行是**组数**，量词由 `moduleCountUnit(mode)` 给。
-                  ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
-                  （后者是格子数，与参与者数在某些筛选下并不相等）。
-                  ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
-                  两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
-                  ⚠️ 状态那一组（在线 / 需关注 / 离线）用的仍是 `boardFilterCounts` 的格子数 ——
-                  那是对的：一组是一个在线单位，不能拆成人。两组各按自己的语义，但同一组内一致。 */}
-              <ModuleCountChip label="全部" value={students.length} unit={moduleCountUnitSuffix}
-                selected={studentModuleFilter === 'all'} onSelect={() => setStudentModuleFilter('all')} />
-              {/* 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。 */}
-              <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
-                selected={studentModuleFilter === 'worksheet'} onSelect={() => setStudentModuleFilter('worksheet')} />
-              <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
-                selected={studentModuleFilter === 'explore'} onSelect={() => setStudentModuleFilter('explore')} />
-              <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
-                selected={studentModuleFilter === 'companion'} onSelect={() => setStudentModuleFilter('companion')} />
-              <ModuleCountChip label="首页" value={moduleDistribution.home} unit={moduleCountUnitSuffix} muted
-                selected={studentModuleFilter === 'home'} onSelect={() => setStudentModuleFilter('home')} />
-              <ModuleCountChip label="未知" value={moduleDistribution.unknown} unit={moduleCountUnitSuffix} muted
-                selected={studentModuleFilter === 'unknown'} onSelect={() => setStudentModuleFilter('unknown')} />
-            </div>
-          )}
           {/* `data-webapp-monitor` 三个属性是给**离线 E2E 探针**用的锚点
               （`.superpowers/sdd/…/dom-shot-e2e` 下那几个 verify 脚本按选择器取本块 innerText）。
               合并前它挂在 `webapp-monitor-view.tsx` 的根节点上，那个文件删掉之后锚点会断，

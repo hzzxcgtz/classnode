@@ -38,7 +38,9 @@ import {
   DEFAULT_SETTINGS,
   canGivePartial,
   displayPoints,
+  canReorder,
   draftKeyFor,
+  dropIndexAt,
   scoreSummary,
   editorRenderBlocks,
   editorRenderRows,
@@ -2191,4 +2193,52 @@ test('🔴 `scoreSummary`：题数与**满分**（只数会判分的题 —— �
   assert.deepEqual(scoreSummary([], fallback), { questions: 0, maxScore: 0 });
   // 清空了 points 的题按默认档算（与判分同一把尺子）。
   assert.deepEqual(scoreSummary([node('q_d', '题干', {}, 'single-choice')], fallback), { questions: 1, maxScore: 1 });
+});
+
+/* ── 拖拽（spec 第 5 步）─────────────────────────────────────────────── */
+
+test('🔴 `reorder` 一次到位、只占**一格撤销**（连按 `move` 会占四格）', () => {
+  const state = twoLevel(node('q_a'), node('q_b'), node('q_c'), node('q_d'));
+  const moved = contentReducer(state, { kind: 'reorder', id: 'q_a', toIndex: 2 });
+  assert.deepEqual(moved.present.nodes.map((n) => n.id), ['q_b', 'q_c', 'q_a', 'q_d']);
+  assert.equal(moved.past.length, state.past.length + 1, '★ 一格，不是三格 —— 撤销一次就该回到原样');
+  // 同层内的小题一样（任务里的题不能借拖拽跑到任务外）
+  const inTask = twoLevel(taskNode('t_1', '任务一', [node('q_a'), node('q_b'), node('q_c')]), node('q_z'));
+  const inner = contentReducer(inTask, { kind: 'reorder', id: 'q_a', toIndex: 2 });
+  assert.deepEqual(inner.present.nodes[0].children.map((n) => n.id), ['q_b', 'q_c', 'q_a']);
+  assert.deepEqual(inner.present.nodes.map((n) => n.id), ['t_1', 'q_z'], '另一个层一个字节不动');
+});
+
+test('`reorder`：原地不动 / 找不到 / 越界 ⇒ 不制造历史', () => {
+  const state = twoLevel(node('q_a'), node('q_b'));
+  assert.equal(contentReducer(state, { kind: 'reorder', id: 'q_a', toIndex: 0 }), state);
+  assert.equal(contentReducer(state, { kind: 'reorder', id: 'q_没有', toIndex: 1 }), state);
+  // 越界被**钳**进范围（拖到列表末尾之外是常态，不该什么都不发生）
+  const past = contentReducer(state, { kind: 'reorder', id: 'q_a', toIndex: 99 });
+  assert.deepEqual(past.present.nodes.map((n) => n.id), ['q_b', 'q_a']);
+});
+
+test('🔴 `dropIndexAt`：判据是**行的中线**（上半插前、下半插后）', () => {
+  const rows = [{ top: 0, height: 40 }, { top: 40, height: 40 }, { top: 80, height: 40 }];
+  assert.equal(dropIndexAt(rows, -10), 0, '在最上面 ⇒ 插到第 0 位');
+  assert.equal(dropIndexAt(rows, 5), 0, '第一行的上半 ⇒ 插到它前面');
+  assert.equal(dropIndexAt(rows, 30), 1, '第一行的下半 ⇒ 插到它后面');
+  // ⚠️ **中线本身算下半**（`<` 不是 `<=`）—— 边界写清楚，免得下一个人以为它该往前插。
+  assert.equal(dropIndexAt(rows, 99), 2, '中线之前 ⇒ 插到第 2 位');
+  assert.equal(dropIndexAt(rows, 100), 3, '中线本身 ⇒ 算下半');
+  assert.equal(dropIndexAt(rows, 999), 3, '在最下面 ⇒ 末尾（= 层长度）');
+  assert.equal(dropIndexAt([], 50), 0, '空列表 ⇒ 0');
+  assert.equal(dropIndexAt([{ top: 0, height: 0 }], 0), 1, '零高的坏矩形不抛');
+});
+
+test('🔴 `canReorder`：**同层才能拖**（跨任务换组是另一件事，本步不表态）', () => {
+  const nodes = [
+    node('q_a'), taskNode('t_1', '任务一', [node('q_b'), node('q_c')]), taskNode('t_2', '任务二', [node('q_d')]),
+  ];
+  assert.equal(canReorder(nodes, 'q_b', 'q_c'), true, '同一个任务里的两道小题');
+  assert.equal(canReorder(nodes, 't_1', 't_2'), true, '两个任务之间（顶层同一层）');
+  assert.equal(canReorder(nodes, 'q_b', 'q_d'), false, '★ 跨任务 —— 不许（换组没有表态）');
+  assert.equal(canReorder(nodes, 'q_a', 'q_b'), false, '顶层散题 ↔ 任务里的小题');
+  assert.equal(canReorder(nodes, 'q_b', 'q_b'), false, '自己拖自己');
+  assert.equal(canReorder(nodes, 'q_没有', 'q_b'), false, '找不到的 id');
 });

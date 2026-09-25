@@ -133,6 +133,13 @@ export type ContentAction =
   /** ★ 2026-09-25：部分给分的容错档。`null` = 缺省（旧规则）。 */
   | { kind: 'updateTolerance'; id: string; tolerance: number | null }
   | { kind: 'move'; id: string; delta: -1 | 1 }
+  /**
+   * ★ 2026-09-26（spec 第 5 步，拖拽）：把 `id` 挪到**同一层**的第 `toIndex` 位。
+   *
+   * 🔴 为什么不能靠连按 `move`：从第 3 位拖到第 7 位是**四次换位 ⇒ 四格撤销**，
+   * 而教师按一次 `⌘Z` 只会退回一位 —— 「撤销」在那时就不再是「撤销我刚才那一个动作」了。
+   */
+  | { kind: 'reorder'; id: string; toIndex: number }
   | { kind: 'remove'; id: string }
   | { kind: 'reset'; content: WorksheetContent }
   | { kind: 'undo' }
@@ -1155,6 +1162,51 @@ export function scoreSummary(
   return { questions: items.length, maxScore };
 }
 
+/**
+ * ★ 2026-09-26（spec 第 5 步，拖拽）：**指针落在第几行之前**。
+ *
+ * 入参是每一行**同层**的矩形（`top` / `height`，屏幕坐标即可），返回值是插入下标
+ * （`0..rows.length`）。判据是**行的中线**：指针在某一行的上半 ⇒ 插到它前面，
+ * 下半 ⇒ 插到它后面 —— 那是「一条线」的直觉，也是所有列表拖拽的通用做法。
+ *
+ * ⚠️ 它只算**位置**，不判合法性：同层才能拖（跨层的拖拽在 `editorRenderRows` 那一侧
+ * 就没有落点可言，见 `canDropInLayer`）。
+ * ⚠️ 空列表 ⇒ `0`；坏矩形（`height <= 0`）当零高处理，不会抛。
+ */
+export function dropIndexAt(rows: Array<{ top: number; height: number }>, pointerY: number): number {
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (pointerY < row.top + row.height / 2) return index;
+  }
+  return rows.length;
+}
+
+/**
+ * ★ 2026-09-26：**这两个能不能互换位置** —— 同层才行。
+ *
+ * 🔴 分层的理由与 `moveInTree` 逐字相同：一道题从「任务一」拖进「任务二」是**换组**，
+ * 而换组还有一整套没表态的问题（题号重排、答案的归属、绑定关系）。
+ * 「拖动排序」这一步只做**同层排序** —— 跨层留给一条明确的裁定。
+ */
+export function canReorder(
+  nodes: WorksheetQuestionNode[],
+  sourceId: string,
+  targetId: string,
+): boolean {
+  if (sourceId === targetId) return false;
+  const layerOf = (id: string, list: WorksheetQuestionNode[]): WorksheetQuestionNode[] | null => {
+    if (list.some((node) => node.id === id)) return list;
+    for (const node of list) {
+      const found = layerOf(id, kidsOf(node));
+      if (found) return found;
+    }
+    return null;
+  };
+  const sourceLayer = layerOf(sourceId, nodes);
+  const targetLayer = layerOf(targetId, nodes);
+  return sourceLayer !== null && sourceLayer === targetLayer;
+}
+
 export function isPartialPoints(points: QuestionPointsDraft | undefined): boolean {
   if (!points) return false;
   return (points.full === undefined) !== (points.half === undefined);
@@ -1531,6 +1583,35 @@ function moveInTree(
 }
 
 /**
+ * 把 `id` 挪到**它所在那一层**的第 `toIndex` 位（拖拽落点用；与 `moveInTree` 同一条边界：
+ * 只在本层内）。
+ *
+ * ⚠️ `toIndex` 是**挪过去之后**的下标（0-based，允许等于层长度 = 挪到末尾）。
+ * 越界 / 找不到 / 原地不动 ⇒ **原对象返回**（不制造历史）。
+ */
+function reorderInTree(nodes: WorksheetQuestionNode[], id: string, toIndex: number): WorksheetQuestionNode[] {
+  const index = nodes.findIndex((node) => node.id === id);
+  if (index >= 0) {
+    const target = Math.max(0, Math.min(toIndex, nodes.length - 1));
+    if (target === index) return nodes;
+    const next = nodes.slice();
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    return next;
+  }
+  let touched = false;
+  const next = nodes.map((node) => {
+    const kids = kidsOf(node);
+    if (kids.length === 0) return node;
+    const nextKids = reorderInTree(kids, id, toIndex);
+    if (nextKids === kids) return node;
+    touched = true;
+    return { ...node, children: nextKids };
+  });
+  return touched ? next : nodes;
+}
+
+/**
  * 从树里删掉 `id` 那个节点（含它的整棵子树）。
  *
  * 🔴 任务那个节点**可以被删** —— 删它 = 删掉它和它的全部小题。
@@ -1798,6 +1879,11 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
         }
         return { ...node, partialTolerance: action.tolerance };
       });
+
+    case 'reorder': {
+      const nodes = reorderInTree(content.nodes, action.id, action.toIndex);
+      return nodes === content.nodes ? content : { ...content, nodes };
+    }
 
     case 'move': {
       // 越界 ⇒ 原样返回（不制造历史）：第一题按 ▲ 或最后一题按 ▼ 不该占掉一次撤销。

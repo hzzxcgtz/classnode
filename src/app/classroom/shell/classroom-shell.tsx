@@ -597,13 +597,17 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
           —— 老师发来的消息与「课堂已恢复」这类提示不该被盖住。 */}
       {paused && (
         <div role="status" aria-live="polite" className={styles.pauseCover}>
-          <div className={styles.pauseEmoji} aria-hidden="true">☕</div>
-          <div className={styles.pauseTitle}>课堂暂时休息一下</div>
-          <div className={styles.pauseText}>
-            老师按下了暂停键。现在不用做什么，等老师继续就可以接着做。
+          {/* 遮罩本身只负责「压住底下那一层」，话都在卡片里说（教师：中间一个小弹窗，
+              四周是半透明的原网页）。 */}
+          <div className={styles.pauseCard}>
+            <div className={styles.pauseEmoji} aria-hidden="true">☕</div>
+            <div className={styles.pauseTitle}>课堂暂时休息一下</div>
+            <div className={styles.pauseText}>
+              等老师继续就可以接着做
+            </div>
+            <div className={styles.pauseNote}>你写过的东西都还在，不会丢</div>
+            <div className={styles.pauseDot} aria-hidden="true" />
           </div>
-          <div className={styles.pauseNote}>你写过的东西都还在，不会丢</div>
-          <div className={styles.pauseDot} aria-hidden="true" />
         </div>
       )}
       <ModuleTabBar

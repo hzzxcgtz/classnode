@@ -799,49 +799,69 @@
  *
  * 观感是**安抚**不是报错：琥珀色、不是红色；不是纯色块而是浅渐变。
  * ------------------------------------------------------------------------- */
+/* ⊘ 2026-09-25 二次修订：原来是**整屏不透明的琥珀渐变**，教师真机反馈
+ * 「有点难看、刺眼」。改成教师在截图上描述的样子：
+ * **四周是半透明的原网页，中间一张小卡片**。
+ * 🔴 遮罩用**浅色**而不是深色：教室的大屏与日光下，一块深色遮罩本身就是另一处刺眼的东西，
+ * 而这一层要表达的是「休息」不是「出事了」。 */
 .pauseCover {
   position: fixed;
   inset: 0;
   z-index: 10000;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   padding: 24px;
+  /* 暖白纱：底下的页面**看得见**，只是被压下去一层。0.82 是「看得清轮廓、
+     看不清字」的那一档 —— 再透一点会让人以为还能接着做。 */
+  background: rgba(255, 252, 242, 0.82);
+}
+
+/* 中间那张小卡片。⚠️ 不透明 + 一层软阴影：它必须从浅色遮罩上**浮起来**，
+   否则整屏都是同一个亮度，卡片就没有「跳出来」的感觉，回到教师说的「难看」。 */
+.pauseCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 320px;
+  padding: 22px 20px 20px;
+  border-radius: 16px;
   text-align: center;
-  background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 55%, #fde68a 100%);
+  background: #ffffff;
+  border: 1px solid #fde68a;
+  box-shadow: 0 12px 32px rgba(120, 83, 12, 0.16);
 }
 
 .pauseEmoji {
-  font-size: 3.25rem;
+  font-size: 2.25rem;
   line-height: 1;
 }
 
 .pauseTitle {
-  font-size: 1.5rem;
+  font-size: 1.125rem;
   font-weight: 700;
   color: #92400e;
 }
 
 .pauseText {
-  max-width: 26em;
-  font-size: 1rem;
+  font-size: 0.875rem;
   line-height: 1.7;
   color: #b45309;
 }
 
 .pauseNote {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: #a16207;
 }
 
 /* 一个缓慢呼吸的小点：告诉学生「页面没卡死，是在等老师」。
    ⚠️ 只碰 `opacity` —— 与文件头那条「动效只碰 transform 与 opacity」一致。 */
 .pauseDot {
-  width: 10px;
-  height: 10px;
-  margin-top: 8px;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
   border-radius: 50%;
   background: #f59e0b;
   animation: pauseBreathe 1.6s ease-in-out infinite;

@@ -129,6 +129,20 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
       className="worksheet-editor-question"
       data-expanded={expanded ? '1' : '0'}
       aria-label={`${heading} ${typeLabel}`}
+      /*
+        ★ 2026-09-26（教师）：「鼠标在某题上停留时，可以点击这题框中的**任何位置**都可以
+        激活编辑状态。」⇒ 折叠时整块可点（不再只有那一行摘要）。
+        ⚠️ **只在折叠时挂**：展开之后点卡片里的空白处**不该**把它收起来 ——
+        教师正在改这一张，点一下正文就没了是灾难。
+        ⚠️ 落点收口在 CSS：预览区里的控件是学生端那套（`disabled`），而浏览器**不派发**
+        落在 disabled 元素上的点击（事件被吞，冒泡不到这里）⇒ 预览区整块设
+        `pointer-events: none`，点击于是落在这一层上（见 `globals.css`）。
+        ⚠️ 划词选中时不切换：教师可能正想复制题干，一松手就展开/收起会很恼火。
+      */
+      onClick={expanded ? undefined : () => {
+        if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
+        onToggle();
+      }}
     >
       <header className="worksheet-editor-question-head">
         {/*
@@ -152,7 +166,9 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
             {displayPoints(node, inheritedPoints).full} / {displayPoints(node, inheritedPoints).half}
           </span>
         </button>
-        <div className="worksheet-editor-question-tools">
+        {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
+            不拦住的话按一下 ▲ 会顺带把整张卡展开（而教师只想挪一位）。 */}
+        <div className="worksheet-editor-question-tools" onClick={event => event.stopPropagation()}>
           <button
             type="button"
             className="worksheet-editor-icon-button"

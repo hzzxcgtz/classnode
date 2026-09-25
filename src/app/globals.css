@@ -2133,6 +2133,20 @@ tr:hover td {
   margin-top: 8px;
 }
 
+/* ★ 2026-09-26（教师）：折叠时**点这一块里的任何位置**都进入编辑状态。
+   🔴 为什么不是靠事件冒泡就够了：预览区里是学生端那套 `disabled` 控件，而浏览器
+   **不派发**落在 disabled 元素上的点击（事件当场被吞，冒泡不到 `<section>`）。
+   ⇒ 把整块设成 `pointer-events: none`：命中的落点于是变成这一层自己，
+   它再冒泡给挂 `onClick` 的 `<section>`。
+   ⚠️ 只在**折叠**时（那是只读态）；展开时这张卡是可编辑的，绝不能这样。 */
+.worksheet-editor-question[data-expanded='0'] .worksheet-editor-question-preview {
+  cursor: pointer;
+}
+
+.worksheet-editor-question[data-expanded='0'] .worksheet-editor-question-preview * {
+  pointer-events: none;
+}
+
 /* 题干：折叠态的主角（它是题面上唯一需要读的文字）。 */
 .worksheet-editor-question-preview-prompt {
   margin: 0 0 8px;

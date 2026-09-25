@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from './api-base';
 import { HttpError } from './http-error';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload, PlatformTokenSummary } from './types';
 
 let studentSessionToken = '';
 
@@ -112,6 +112,20 @@ export const api = {
       method: 'POST', body: JSON.stringify(params),
     }),
   testAgent: (id: string) => request<AgentTestResponse>(`/api/agents/${id}/test`, { method: 'POST' }),
+
+  // ★ 2026-09-25：共享 API Token（Coze 低代码）。见 `PlatformTokenSummary` 的注释。
+  /**
+   * ⚠️ `token` **只在新建/换值时出现**：不传 = 这次不改它（界面回显的是掩码，不该把掩码提交回去）。
+   * `expiresAt` 同理 —— `undefined` = 不改，`null` = 清掉（回到「未设置」）。
+   */
+  getPlatformTokens: () => request<PlatformTokenSummary[]>('/api/platform-tokens'),
+  createPlatformToken: (data: { label: string; token: string; expiresAt?: string | null }) =>
+    request<PlatformTokenSummary>('/api/platform-tokens', { method: 'POST', body: JSON.stringify(data) }),
+  updatePlatformToken: (id: string, data: { label?: string; token?: string; expiresAt?: string | null }) =>
+    request<PlatformTokenSummary>(`/api/platform-tokens/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  checkPlatformTokenUsage: (id: string) =>
+    request<{ used: boolean; agentCount: number; agents: { id: string; name: string; platform: string }[] }>(`/api/platform-tokens/${id}/usage`),
+  deletePlatformToken: (id: string) => request(`/api/platform-tokens/${id}`, { method: 'DELETE' }),
 
   // Classes
   getClasses: () => request<ClassSummary[]>('/api/classes'),

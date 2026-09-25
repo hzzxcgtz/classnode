@@ -10,6 +10,29 @@ export interface InitStatus {
   hasClasses: boolean;
 }
 
+/**
+ * ★ 2026-09-25：**共享 API Token**（Coze 低代码）。
+ *
+ * Coze 的 Token 属于**扣子账号**、不属于 Bot —— 同一个号做出来的多个智能体共用一份。
+ * 教师在这里维护若干份（可命名「张老师的号」），建/改智能体时选一份。
+ *
+ * 🔴 **明文 Token 永远不在这个类型里**：服务端出去的方向一律掩码（`maskedToken`）。
+ * 界面上那个输入框是「要么留空 = 不改，要么填一个新的」——**不是**回显明文再提交。
+ */
+export interface PlatformTokenSummary {
+  id: string;
+  platform: string;
+  /** 备注：这是谁的账号。 */
+  label: string;
+  /** 掩码（首尾各 4 个字符），**只用于回显**「你填的是不是这个」。 */
+  maskedToken: string;
+  /** `null` = **未设置有效期**（迁移来的记录就是这一档）⇒ 界面要**催促去填**，不是沉默。 */
+  expiresAt: string | null;
+  createdAt: string;
+  /** 几个智能体正在用它（删除守卫与「改值的影响面」共用）。 */
+  agentCount: number;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;

@@ -385,8 +385,14 @@
 .spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, .45);
-  border-top-color: #fff;
+  /* 🔴 颜色**必须**从 `currentColor` 派生，不许写死 —— 独立审查 2026-09-25 抓到：
+     初版写死白色，在主提交按钮上没问题（accent 底 + 白字），
+     但按钮在「已提交过」时会切成 `.submitButtonResubmit`（`background: #fff`）
+     ⇒ **白底白圈，等于没加**，而且 `:disabled { opacity: .5 }` 让它更淡。
+     `currentColor` 在两种态下分别解析成 白 / accent，两种底都成立。
+     由 `worksheet-adornment-color.test.ts` 守住。 */
+  border: 2px solid currentColor;
+  border-top-color: transparent;
   border-radius: 50%;
   animation: submitSpin .7s linear infinite;
   display: inline-block;
@@ -618,8 +624,14 @@
 }
 
 .orderButton {
-  width: 40px;
-  height: 40px;
+  /* ★ 独立审查 2026-09-25 补：这两个 ▲/▼ 是**点按**目标（<button aria-label="上移"/"下移">），
+     原先是 40×40。M6b/15 的现状枚举只 `grep` 了 `min-height`，而这一个是用 `width/height`
+     写的 ⇒ **它一次都没被扫到**，于是「补到 44px」这条修法把它漏在了原地 ——
+     排序题在老 iPad 上仍是 40×40。现补到 44px，并由
+     `worksheet-tap-targets.test.ts` 从 TSX 反查所有 `<button>` 守住。
+     ⚠️ 别与 `.poolItem`（分类题的**拖拽源**，40px 刻意不动）混为一谈。 */
+  width: 44px;
+  height: 44px;
   border: 1px solid #cbd5e1;
   border-radius: 9px;
   background: #fff;

@@ -73,7 +73,8 @@
   · 建议：错误位做成**固定槽**（`min-height: 24px` 的容器，`<p>` 只负责显隐）+ 套用 identity-picker 那套底色描边 + `role="alert"`。
   · 怎么判断做成了：量按钮的 `getBoundingClientRect().top` —— 触发前后**必须相同**（现在会差 ~13px）。
   · 风险：`src/app/page.tsx` **不在**扫描根内，但它跑在老 iPad 上 ⇒ 自觉守同一套约束。
-  · **实做**：固定 `minHeight: 24` 槽 + `#fef2f2`/`#fca5a5` + 圆角 + `role="alert"`。
+  · **实做**：固定 `minHeight: **30**` 槽 + `#fef2f2`/`#fca5a5` + 圆角 + `role="alert"`。
+    ⚠️ 独立审查抓到本行原写 `24`，**代码是 30** —— 已改（30 恰好放得下一行 `0.813rem` 的错误条）。
     ⚠️ **没做**「量 rect.top 前后相同」那条断言 —— 本机**没有 DOM 驱动**，这条只能真机验（已进真机清单）。
 
 - [x] **3.（✅ 已做）教师端「加载失败」与「还没有课堂」不可区分**
@@ -92,6 +93,14 @@
     `@keyframes spin` 在同文件 `:23` 已定义，**直接复用，不要新写**。
   · 怎么判断做成了：教师端 DOM 里出现 `.teacher-loading-state`；学生端连接屏里出现 `animation-name: spin` 的元素。
   · 风险：学生端那份在扫描根内，但 `spin` 是已存在的 keyframe ⇒ 不新增 token。
+  · **实做（教师端）**：整块换成 `<TeacherLoadingState label="正在加载课堂…" />`。
+  · 🔴 **实做（学生端）—— 这一半是独立审查后补的。** 条目当时已挂 ✅，而
+    `git diff --stat f914817~1..ff2d4bd -- src/app/classroom/page.tsx` **输出为空** ——
+    那屏仍是两行纯文字，**§六 也没给它留槽位** ⇒ 这条不会在任何地方被发现是空的。
+    现补上旋转圈（复用本文件 `:23` 的全局 `@keyframes spin`，颜色走 `currentColor`）。
+    **产物复验**：`out/classroom/index.html` 里 `animation:spin .7s linear infinite`
+    就在「正在连接课堂...」前一个 div。**已给 §六 补槽位。**
+    ⚠️ 教训：「一个条目写了两句话」时，**两句话都要有自己的判据**，否则做了一半也会勾上。
 
 - [x] **5.（✅ 已做）学生入口页的服务状态点，在健康检查回来之前就报「服务在线」**
   · 现状：`src/app/page.tsx:18` `useState(true)` ⇒ **首帧就是绿点 + 「服务在线」**（`:106-110`）。
@@ -154,6 +163,9 @@
     没有任何机制强制它们相等」—— 本次改动**让它变成假话**，已改写为「四条一律写 `var(...)`，
     原先那句已不成立」，并保留「仍要读两侧计算样式」的理由（变量只保证这四条规则同源，
     挡不住别处覆盖其中一条）。**加变量而不改这段注释 = 留下一句自相矛盾的注释。**
+  · ⚠️ **同一句话在 TS 里还有两份**（`classroom-shell.tsx:97` 与 `:235`），本批一开始**没跟着改**
+    —— 独立审查抓到。已按同一口径改写。⇒ 这是本批第 **4** 处「改动让注释变成假话」，
+    教训是：**改一个事实时要全仓 grep 那句话本身，而不是只改眼前那一份。**
 
 - [x] **10.（✅ 已做 2026-09-25）入场动画期间那一层可以点，而落点还在移动中**
   · 现状：`shell.module.css:589-590` 给两条**离场**动画加了 `pointer-events: none`，
@@ -215,6 +227,15 @@
     `.spinner` 改引 `submitSpin`。
     ⚠️ 本机能给的证据到此为止：**「圈真的在转」仍需真机看**（已进真机清单）。
     ⚠️ 该判据只覆盖 CSS **模块**；`globals.css` 不是模块、不做哈希，本轮未纳入。
+  · 🔴🔴 **第二轮（独立审查）又在这同一段代码上抓到一个 Critical：那个圈在「重新提交」的路上是白底白圈。**
+    初版把颜色**写死成白色**，而按钮在「已提交过」时会切成 `.submitButtonResubmit`
+    （`background: #fff`）⇒ 两条规则同时命中同一个按钮 ⇒ **等于没加**，
+    而且 `:disabled { opacity: .5 }` 让它更淡。**我为修 #13 写的这段代码，自己又是一个静默失效。**
+    **修法**：`border: 2px solid currentColor; border-top-color: transparent;` ——
+    `currentColor` 在两种态下分别解析成 白 / accent，两种底都成立。
+    **产物复验**：压缩器压成 `border:2px solid;border-top:2px solid transparent`
+    （`currentColor` 是 `border-color` 的**初始值**，省掉语义不变）。
+    **守护**：`worksheet-adornment-color.test.ts`（先看它红在 `2px solid rgba(255,255,255,.45)`）。
   · ⚠️ **本机没有 DOM 驱动 ⇒ 「DOM 断言」那条判据我一条都没跑**。本机能给的证据只有
     `grep -c 'styles.spinner'` == 1（引用存在）与静态检查/构建通过 —— **这不等价于「提交时真的在转」**。
     已进真机清单。
@@ -233,6 +254,20 @@
   · 建议：两者补到 44px，并对齐 explore 那份的形状与字号；两者都补 `:active` 反馈（现在没有）。
   · 怎么判断做成了：`getBoundingClientRect().height >= 44`。
   · 风险：低。
+  · 🔴 **本条的现状枚举本身是一次漏扫（独立审查 2026-09-25 抓到）**：那句
+    「`.submitButton` 与 `.retry` 都是 40px」是**拿 `grep min-height` 扫出来的**，
+    于是同文件里用 `width/height` 写的 **`.orderButton`（排序题的 ▲/▼，40×40）一次都没被扫到** ——
+    修法照抄那句枚举，也就**一起漏了**：它才是真正被留在原地的那一个。
+  · **实做（补漏）**：`.orderButton` 补到 44×44。
+    **守护**：`worksheet-tap-targets.test.ts` —— 判据不再是我「grep 了哪些」，
+    而是**从 TSX 反查每一个 `<button>` 再回 CSS 量尺寸**（尺寸取多个类的并集）。
+    **RED 实测**：红在 `questions/order-body.tsx:116/125 orderButton 高 40px / 宽 40px`，零误报。
+    ⚠️ 别与 `.poolItem`（分类题的**拖拽源**，40px 刻意不动）混为一谈 —— 那是另一回事。
+  · ⚠️ **本条的建议里还有两条没做**（独立审查 M9）：「对齐 explore 那份的**形状与字号**」、
+    「两者都补 **`:active`** 反馈」。**判据只覆盖高度 ⇒ ✅ 成立**，但记账要诚实：
+    实测 `grep -n 'submitButton:active'` **零命中**，`.retry` 仍是描边白底
+    （explore 那份是实心 + 有按下反馈）。改按钮形状/字号是**看不见界面时的盲改**，
+    已列进 §六 由你真机对照后再定。
 
 - [x] **16.（✅ 已做 2026-09-25）状态 chip 与选项选中态都是瞬间跳变，而同屏的进度条是平滑的**
   · 现状：`.questionState` 三态只换颜色（无过渡）、`.optionSelected` 换边框底色也是瞬间，
@@ -247,7 +282,8 @@
     `.optionSelected` 加 `transition: background-color .18s ease-out, border-color .18s ease-out;`（`:270`），
     两条都进 reduced-motion 降级块。
     **实测**：`transition:` **声明**由 2 条（`:52` `:91`）涨到 **4 条**（+`:197` `:270`）—— 与判据一致。
-    ⚠️ `grep -c 'transition'` 全文会数到 **6**（含注释与降级块的 `transition: none`）⇒
+    ⚠️ `grep -c 'transition'` 全文会数到 **7**（4 条声明 + 2 处注释 + 降级块的 `transition: none`）⇒
+    （独立审查抓到本行原写 6 —— 漏了我自己新写的那句注释。**这条「修正」自己也是错的**，已改。）
     **判据要数「声明」，不是数 `grep -c`**（本节原判据写的是条数，实测时按声明数才对得上）。
     ⚠️ 「跳变 vs 渐变」**只能真机看** —— 已进真机清单。**这是刻意的非 transform/opacity 例外，不要扩散到外壳。**
 
@@ -283,21 +319,118 @@
 
 ## 五、本批门禁实测（2026-09-25，全绿）
 
+> 下表是**独立审查修复后**的最终数字（修复前的中间值：前端 351、Safari 闸门 78）。
+
 | 门禁 | 命令 | 实测 |
 |---|---|---|
 | 类型 | `npx tsc --noEmit` | 退出 **0** |
 | 静态检查 | `npx eslint src server/src` | **0 errors / 5 warnings**（5 条全是本批之前就有的） |
-| 前端全量 | `node --test "src/**/*.test.ts"` | **351 pass / 0 fail**（本批前 346） |
+| 前端全量 | `node --test "src/**/*.test.ts"` | **359 pass / 0 fail**（本批开工前 346） |
 | 服务端全量 | `rm -rf server/dist && pnpm test` | **527 pass / 0 fail** |
-| 产物构建 | `./dev.sh stop && pnpm build && ./dev.sh start` | 退出 **0**；Safari 15 闸门 **78 个源文件通过** |
+| 产物构建 | `./dev.sh stop && pnpm build && ./dev.sh start` | 退出 **0**；Safari 15 闸门 **80 个源文件通过** |
 | `dvh` 冻结 | （闸门内建） | 用量**未变**，仍过 |
 
-**本批新增的自动化网**：`src/lib/css-module-animation.test.ts` —— **3 条**，钉住
-**「模块里引用的动画名字必须在同一文件里定义」**（跨文件引用在 CSS 模块里不成立），
-外加两条反证（抽走定义必须被抓到 · 注释与 `animation: none` 不算引用）。
-它的诞生原因见第 13 条：**该用例是为了让一个已经发生的静默失效不再发生**。
+**本批新增的自动化网**（3 个文件、11 条用例，全部带反证）：
+
+| 文件 | 条 | 钉住的事 |
+|---|---|---|
+| `src/lib/css-module-animation.test.ts` | 4 | 模块引用的动画名字必须在**同一文件**里定义（跨文件引用不成立）；**注释里的 `@keyframes` 不算定义** |
+| `src/app/classroom/worksheet/worksheet-tap-targets.test.ts` | 3 | 本模块**每个 `<button>`** 的命中区 ≥ 44px（从 TSX 反查，尺寸取多个类的并集） |
+| `src/app/classroom/worksheet/worksheet-adornment-color.test.ts` | 4 | 按钮里的装饰件颜色必须来自 `currentColor`（按钮有白底变体） |
 
 ⚠️ **测试覆盖 ≠ 端到端走查**：上面这一整节**不证明** §一–§三 任何一条的「更好看」。
+
+---
+
+## 五之二、独立审查（2026-09-25）的发现与处置
+
+> 审查者拿到的是 `f914817..ff2d4bd` 的整批 diff，独立取证。
+> **1 Critical / 5 Important / 9 Minor。** 处置如下（Critical+Important 一轮修完，每条先写会红的用例）。
+
+### 🔴 Critical
+
+**C1 · 那个旋转圈在「重新提交」的路上是白底白圈（等于没加）。**
+`.spinner` 把颜色写死成白色，而按钮在「已提交过」时会切成 `.submitButtonResubmit`
+（`background: #fff`）⇒ 两条规则同时命中同一个按钮。**这正是我用来修 #13 的那段代码**，
+而它自己又是一个静默失效。审查者的取证是产物里两条规则并存。
+**处置**：改成 `border: 2px solid currentColor; border-top-color: transparent;` ——
+`currentColor` 在两种态下分别解析成 白 / accent，两种底都成立。
+**产物复验**：压缩器把它压成 `border:2px solid;border-top:2px solid transparent`
+（`currentColor` 是 `border-color` 的**初始值**，省掉语义不变）⇒ 行为保留。
+**守护**：`worksheet-adornment-color.test.ts`（先看它红在 `2px solid rgba(255,255,255,.45)`）。
+
+### ⚠️ Important
+
+**I1 · 清单 #4 的「学生端那一半」根本没做，条目却挂着 ✅。**
+`git diff --stat f914817~1..ff2d4bd -- src/app/classroom/page.tsx` **输出为空** ——
+那屏仍是两行纯文字，而 §六 真机清单里**也没给它留槽位** ⇒ 这条不会在任何地方被发现是空的。
+**处置**：补上那个圈（用本文件 `:23` 已有的全局 `@keyframes spin`，颜色走 `currentColor`）。
+**产物复验**：`out/classroom/index.html` 里 `animation:spin .7s linear infinite` 就在
+「正在连接课堂...」前一个 div。**已给 §六 补槽位。**
+
+**I2 · `.orderButton` 仍是 40×40 —— 同一个文件里的 44px 下限还是破的。**
+#15 的现状枚举写成「`.submitButton` 与 `.retry` 都是 40px」，那是**拿 `grep min-height` 扫出来的**，
+于是用 `width/height` 写的 `.orderButton`（排序题的 ▲/▼，`<button aria-label="上移">`）
+**一次都没被扫到**，修法照抄那句枚举也就一起漏了。
+**处置**：补到 44×44。**守护**：`worksheet-tap-targets.test.ts` ——
+判据不再是我「grep 了哪些」，而是**从 TSX 反查每一个 `<button>` 再回 CSS 量尺寸**。
+**RED 实测**：红在 `questions/order-body.tsx:116/125 orderButton 高 40px / 宽 40px`，零误报。
+
+**I3 · 🔴 我为修 bug 建的那张网，被我在同一个提交里写的一句注释废掉了。**
+`css-module-animation.test.ts` 的 `declaredKeyframes` 扫**原文不剥注释**，而
+`worksheet.module.css:379` 那句注释里**恰好写着**「全局 `@keyframes spin`」
+⇒ 「`spin` 已在本文件定义」被一句注释凭空满足。
+**触发场景**：谁把 `.spinner` 改回 `animation: spin`（**这张网存在的全部理由**），测试**照样全绿**。
+**审查者的复现**：拿真文件只把 `submitSpin` 改回 `spin` ⇒ `pass 3 / fail 0`。
+**处置**：`declaredKeyframes` 先剥注释；补第 4 条用例「注释里的 `@keyframes X` 不算定义」。
+**双向验证**：① 修好的判据 vs 回退成 `spin` 的真文件 ⇒ **RED**（改前全绿）；
+② 把判据改回旧写法 ⇒ 新用例 **RED**（「注释里的 @keyframes 不能算定义」）。
+
+**I4 · `classroom-shell.tsx` 里那句「四处独立字面量」没跟着改，现在是假话。**
+本批已在 CSS 里改掉了这句，而**同一句话在 TS 里还有两份**（`:97` 与 `:235`）一字未动。
+**处置**：两份都按同一口径改写（并保留「两侧都读仍必要」的理由）。
+⚠️ 这是本批第 **4** 处「改动让注释变成假话」—— 说明**改一个事实时要全仓 grep 那句话，别只改眼前那份**。
+
+**I5 · `.btn:disabled { opacity: .5 }` 把教师端一个按钮压到几乎看不见。**
+`.agent-coze-fetch-button:disabled` 是本仓唯一一处**自己写死禁用外观**的 `.btn`；
+`opacity` 无人覆盖 ⇒ 与新增的 `.5` 叠加，对比度 **1.42 → 1.19**（1.42 本来就极低）。
+**处置**：给它补 `opacity: 1`（它已有自己的禁用配色）。
+⚠️ 审查者同时**查了教师端全部 `.btn`**，确认**没有**别处依赖「disabled 时 opacity 为 1」、
+也**没有**会被 `translateY(1px)` 顶出接缝的按钮 —— 这条我记下来，因为它比「找到一个缺陷」更有用。
+
+### Minor（**未修，交你定**）
+
+审查者的原话是「判据只覆盖高度 ⇒ 不算漏判」，所以下面这些**不影响任何 ✅ 的成立**，但都要记账：
+
+- **M1** #14 的判据「三个文件的这几条声明逐字一致」**不成立**：`.badge` 的 `letter-spacing`
+  是 `.04em` 而另两处 `.02em`；`.cardTitle` / `.cardNote` 的字号与行距也没对齐。
+  #14 自己点名的「徽章、标题行距也都不同」**只解决了徽章的一半**。
+- **M2** `shell-reduced-motion.test.ts` 的正则只认「类/ID 紧邻 `:active`」⇒
+  `button:active`、`.a:hover:active` 这类**会被漏掉**。今天文件里 5 条恰好都是单类形态 ⇒ 不是现网缺陷。
+- **M3** `shell.module.css:588` 的「**退场那两层额外**关掉指针事件」在 #10 之后不再准确（四条现在都有）。
+- **M4** `identity-picker.tsx:143` 的内联 `opacity` 盖掉了 `.btn:disabled` 的新视觉 ——
+  **这是我在 #1 里清掉的那个反模式，学生端这份还在**（「进入中...」时按钮看着仍是可点的）。
+- **M5** 本节 #16 修正后的判据**还是错的**：`grep -c 'transition'` 实测 **7**，我写的 **6**
+  （漏了我自己新写的那句注释）。**已改。**
+- **M6** #2 的「实做」写 `minHeight: 24`，代码是 **30**。**已改。**
+- **M7** `.classroom-management-toolbar`（不带 `-actions`）成了**孤立选择器**（`f914817` 换掉那块 div 之后）。
+  **已删。**
+- **M8** 旋转圈与「提交中…」之间**没有间隙**（`.submitButton` 不是 flex、JSX 里也没空白）⇒ 12px 的圆紧贴第一个字。
+- **M9** #15 的**建议**里「对齐 explore 那份的形状与字号」「两者都补 `:active`」**两条没做**（只做了高度）。
+  判据只覆盖高度 ⇒ ✅ 成立，但记账要诚实。
+
+✅ **已就手修掉的 Minor：M5 · M6 · M7**（都是「我自己写错的数字 / 我自己改动造成的死代码」，
+不是新的打磨建议）。其余 6 条**未修**，等你圈。
+
+### 审查者「查了但没找到」的部分（比找到什么更有信息量）
+
+- **产物全域动画名配对：13 引用 / 13 定义 / 悬空 0** —— 逐文件脚本扫过 `out/_next/static/css/*.css`。
+  旧的 `worksheet_spin__<hash>` 已不在产物里。
+- 教师端**没有**任何地方依赖「disabled 时 opacity 为 1」，也**没有**会被 `translateY(1px)` 顶出接缝的 `.btn`。
+- 新增/改动的每条 CSS 都有消费者，没有写错的选择器、没有死规则（`.classroom-management-toolbar` 除外，见 M7）。
+- `--shell-slide-duration` 的继承链成立（层不是 portal，变量继承得到）。
+- `#5` 状态点三态可达、`#3` 失败态与空态确实分开了。
+- `spin` 的其它引用（`chat-panel.tsx` 等 9 处）都是**内联 style**、不经过 css-loader ⇒ 成立，不是悬空。
 
 ---
 
@@ -318,3 +451,22 @@
 - [ ] **未验证 · #16** —— 状态 chip / 选项选中态是**渐变**而不是瞬间跳（与同屏进度条同族）。
 - [ ] **未验证 · #6** —— 空态卡看起来与同屏三张卡**是同一套语言**（不再是「虚线 = 出错了」）。
 - [ ] **未验证 · #8（本轮没做）** —— 切 Tab 时提示条**不闪**。⚠️ 第 8 条**未实现**，先别照这条验。
+
+### 独立审查修复后**新增**的待验项（4 条）
+
+- [ ] **未验证 · #13/C1** —— **走「重新提交」那条路**（学习单开启 `allowResubmit` + 某题已提交过，
+  按钮变成白底的「重新提交」）点它：那个**圈必须在白底上看得见**。
+  ⚠️ 修之前它是**白底白圈、等于没加** —— 所以这一条同时也在验 C1 那个修复。
+  主按钮（accent 底）那条路顺带一起看。
+- [ ] **未验证 · #4/学生端** —— 学生扫码进入后那一屏（深色渐变底 +「正在连接课堂...」）
+  上方**有一个白圈在转**。⚠️ 修之前那屏**只有两行字**（条目却挂着 ✅）。
+- [ ] **未验证 · #15/I2** —— 排序题的 **▲/▼** 现在 44×44，手指按得准；
+  并确认**撑高之后排序题的排版没有变难看**（这是这次补 44px 唯一可能变坏的地方）。
+- [ ] **未验证 · #15/M9（未做，先看再定）** —— 提交按钮与重试按钮的**形状与字号**
+  要不要对齐探究空间那份（实心 + 有按下反馈）。**我没改** —— 看不见界面时改按钮长相是盲改。
+  你对照两边真机看一次，说要改我再改。
+- [ ] **未验证 · M4（未修）** —— 学生身份选择页点「进入课堂」后（`joiningClassroom` 为真），
+  按钮**应当看起来是禁用的**。现在它的内联 `opacity` 盖掉了 `.btn:disabled` 的 `.5`
+  ⇒ 很可能**看着仍可点**。⚠️ 这是 #1 清掉的那个反模式在学生端的残留，**本轮没修**。
+- [ ] **未验证 · M8（未修）** —— 旋转圈与「提交中…」三个字之间**有没有间隙**。
+  现在没有 `gap` 也没有空白 ⇒ 12px 的圆应当**紧贴**第一个字。看着别扭我再补 `margin-right`。

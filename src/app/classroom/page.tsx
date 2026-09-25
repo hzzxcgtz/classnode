@@ -72,6 +72,18 @@ function ClassroomOrchestrator() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
         <div style={{ textAlign: 'center' }}>
+          {/* ★ M6b/4 的学生端那一半（独立审查 2026-09-25 补：原先只做了教师端，本条却挂着 ✅）。
+              这一屏是「等服务端往返」的等待态，此前**只有两行字**，看不出是不是卡住了。
+              旋转圈用本文件 `:23` 已有的全局 `@keyframes spin`（不是 CSS 模块 ⇒ 名字不做哈希，
+              内联引用成立）。颜色走 `currentColor` —— 外层文字是白的，底色是深色渐变。 */}
+          <div
+            aria-hidden="true"
+            style={{
+              width: 22, height: 22, margin: '0 auto 14px', borderRadius: '50%',
+              border: '2px solid currentColor', borderTopColor: 'transparent',
+              opacity: 0.85, animation: 'spin .7s linear infinite',
+            }}
+          />
           <div style={{ fontSize: "1rem", marginBottom: 8 }}>正在连接课堂...</div>
           <div style={{ fontSize: "0.813rem", opacity: 0.7 }}>互动码: <span>{session.code}</span></div>
         </div>

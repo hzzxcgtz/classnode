@@ -42,10 +42,22 @@ function findCssModules(dir: string): string[] {
   return out.sort();
 }
 
-/** 本文件里定义的全部 `@keyframes` 名字。 */
+/** 把注释整段换成等长空白（保留换行，行号才不会漂）。 */
+function stripComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
+}
+
+/**
+ * 本文件里定义的全部 `@keyframes` 名字。
+ * 🔴 **必须先剥注释** —— 这条是被一次**真的漏报**逼出来的（2026-09-25，独立审查抓到）：
+ * 初版直接扫原文，而本文件的注释里恰好写着「`globals.css` 那个全局 `@keyframes spin`」，
+ * 于是「`spin` 已在本文件定义」被**一句注释**凭空满足了 ⇒ 谁把 `.spinner` 改回
+ * `animation: spin`（也就是本用例存在的全部理由），**测试依然全绿**。
+ * ⇒ 判据读的必须是**声明**，不是「文本里出现过这个词」。
+ */
 function declaredKeyframes(css: string): Set<string> {
   const out = new Set<string>();
-  for (const m of css.matchAll(/@keyframes\s+([A-Za-z_][\w-]*)/g)) out.add(m[1]);
+  for (const m of stripComments(css).matchAll(/@keyframes\s+([A-Za-z_][\w-]*)/g)) out.add(m[1]);
   return out;
 }
 
@@ -86,7 +98,7 @@ function animationNames(value: string): string[] {
  * 不剥的话会把注释当成声明，凭空造出名字。
  */
 function referencedNames(css: string): { name: string; line: number }[] {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
+  const stripped = stripComments(css);
   const out: { name: string; line: number }[] = [];
   const decl = /(?:^|[;{\s])(animation(?:-name)?)\s*:\s*([^;}]+)/g;
   for (const m of stripped.matchAll(decl)) {
@@ -129,4 +141,18 @@ test('反证：把本文件里定义的 @keyframes 抽走 ⇒ 上一条的判据
 test('反证：`animation: none` 与注释里的动画字样都不算引用（否则误报会淹没真问题）', () => {
   const fake = '/* 这里写着 animation: ghost 与 @keyframes ghost */\n.x { animation: none; }';
   assert.deepEqual(referencedNames(fake), [], '注释与 `none` 都不该被当成引用');
+});
+
+test('🔴 反证：注释里的 `@keyframes X` **不算**定义（这条是补一次真实漏报）', () => {
+  // 2026-09-25 独立审查抓到：初版 `declaredKeyframes` 扫原文不剥注释，
+  // 而 worksheet.module.css 的注释里恰好写着「全局 `@keyframes spin`」⇒
+  // 把 `.spinner` 改回悬空的 `animation: spin`，那张网**照样全绿**。
+  // 这条用例把「注释不构成定义」钉死。
+  const fake = [
+    '/* 说明：globals.css 里那个全局 @keyframes ghostSpin 在本文件里引用不到 */',
+    '.probe { animation: ghostSpin .7s linear infinite; }',
+  ].join('\n');
+  assert.deepEqual([...declaredKeyframes(fake)], [], '注释里的 @keyframes 不能算定义');
+  const dangling = referencedNames(fake).map((r) => r.name).filter((n) => !declaredKeyframes(fake).has(n));
+  assert.deepEqual(dangling, ['ghostSpin'], '⇒ 必须被判定为悬空引用');
 });

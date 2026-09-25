@@ -435,6 +435,11 @@ html, body {
   background: #cbd5e1;
   color: #f8fafc;
   cursor: not-allowed;
+  /* ★ 独立审查 2026-09-25 补：本仓唯一一处**自己写死禁用外观**的 `.btn`。
+     M6b/1 给 `.btn:disabled` 加的 `opacity: .5` 会与它叠加（`opacity` 无人覆盖），
+     把本就极低的对比度（1.42）再压到 1.19 ⇒ 这个按钮在禁用时**几乎看不见字**。
+     它已有自己的禁用配色，所以这里必须把通用那条透明度抵掉。 */
+  opacity: 1;
 }
 
 .avatar-random-results {
@@ -2725,7 +2730,6 @@ tr:hover td {
   /* （`.new-classroom-group-agent` 那条规则已随「每组一个下拉」被删掉 —— 它包装的元素
      现在由 `.new-classroom-group-material` 取代：三件套三个下拉而不是一个。） */
 
-  .classroom-management-toolbar,
   .classroom-management-toolbar-actions {
     width: 100%;
   }

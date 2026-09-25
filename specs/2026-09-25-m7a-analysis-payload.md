@@ -298,6 +298,8 @@ export function buildAnalysisPayload(
 
 ### 3.4 三个旋钮**就是**「留的接口」
 
+（四个字段、**三个**旋钮：每格的宽与高算**一个**旋钮「一张格子多大」，另两个是「几列」「每张最多几格」。）
+
 ```ts
 export interface SheetKnobs {
   cellWidth: number;       // 默认 320 —— 绘图题的原生画布宽

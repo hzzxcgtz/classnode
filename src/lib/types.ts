@@ -677,6 +677,8 @@ export interface ClassroomHistoryItem extends ClassroomSummary {
    */
   webappUsageCount: number;
   webappDurationMs: number;
+  /** ★ 服务端用 `formatDuration` 算好的时长文案（**前端不许另写一份格式化**）。 */
+  webappDurationText: string;
   worksheetSubmitted: number;
   worksheetTotal: number;
   _count: { students: number; interactions: number };

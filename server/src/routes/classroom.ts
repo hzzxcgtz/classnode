@@ -10,6 +10,7 @@ import type { WebappUsageRow } from '../socket/index.js';
 import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { loadClassroomWebapps } from './webapps.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
+import { formatDuration } from '../services/worksheet-report.js';
 
 const router: Router = Router();
 
@@ -1629,6 +1630,10 @@ router.get('/history/all', async (req, res) => {
       totalRounds: Number(statsMap.get(c.id)?.totalRounds ?? 0),
       totalChars: Number(statsMap.get(c.id)?.totalChars ?? 0),
       ...(traces.get(c.id) ?? { webappUsageCount: 0, webappDurationMs: 0, worksheetSubmitted: 0, worksheetTotal: 0 }),
+      // ★ **时长文案由服务端算好**：`formatDuration` 住在服务端的判据层里，前端 import 它会
+      //   连带拉进 `./ink-path.js`（Next 解析不了那种说明符）⇒ 让前端另写一份是**第二份实现**。
+      //   所以口径那一条（规格 §3.2「不许在历史页再写一份」）靠**这个字段**成立。
+      webappDurationText: formatDuration(traces.get(c.id)?.webappDurationMs ?? 0),
     }));
 
     res.json(result);

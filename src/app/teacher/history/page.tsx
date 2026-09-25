@@ -269,6 +269,9 @@ export default function HistoryPage() {
               <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂记录</h2>
               <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>共 {history.length} 条记录</span>
             </div>
+            {/* 三件套三列加上之后**明显变宽** ⇒ 允许横向滚动。
+                ⚠️ **不许为了塞下去而缩字号**（规格 §3.3：教师屏幕上的可读性优先）。 */}
+            <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
                 <tr>
@@ -280,6 +283,12 @@ export default function HistoryPage() {
                   <th style={{ textAlign: 'center' }}>参与人数</th>
                   <th style={{ textAlign: 'center' }}>交互量</th>
                   <th style={{ textAlign: 'center' }}>文字量</th>
+                  {/* ★ M6c：三件套的使用痕迹（学伴 / 探究空间 / 学习单）。
+                      ⚠️ 学伴那一列**复用现成的 `totalRounds`**，不新增字段 ——
+                      本轮只是把三列放在一起，让「三件套」在表上成一个整体。 */}
+                  <th style={{ textAlign: 'center' }}>学伴</th>
+                  <th style={{ textAlign: 'center' }}>探究空间</th>
+                  <th style={{ textAlign: 'center' }}>学习单</th>
                   <th style={{ textAlign: 'center' }}>操作</th>
                 </tr>
               </thead>
@@ -348,6 +357,26 @@ export default function HistoryPage() {
                           ) : <span style={{ color: '#cbd5e1' }}>-</span>}
                         </span>
                       </td>
+                      {/* ★ M6c 三件套。🔴 两句文案的**判据**在服务端/规格里，不在这里现编：
+                          · 探究空间为 0 时写「无记录」——**不许**写「未使用」：那段注释逐字写着
+                            「0 行」有两种成因不可区分（这节课确实没人用 / 这节课没有教师打开过看板
+                            ⇒ 学生按需推流根本没推）；
+                          · 学习单的分母是**已有作答行数**，不是人数 ⇒ 只能写「已交 N / M 题」。
+                          时长文案 `webappDurationText` 由**服务端用 `formatDuration` 算好** ——
+                          前端不许另写一份格式化（那是第二份实现）。 */}
+                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                        {cr.totalRounds > 0 ? `${cr.totalRounds} 轮` : <span style={{ color: '#cbd5e1' }}>-</span>}
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                        {cr.webappUsageCount > 0
+                          ? `${cr.webappUsageCount} 人 · ${cr.webappDurationText}`
+                          : <span style={{ color: '#cbd5e1' }}>无记录</span>}
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                        {cr.worksheetTotal > 0
+                          ? `已交 ${cr.worksheetSubmitted} / ${cr.worksheetTotal} 题`
+                          : <span style={{ color: '#cbd5e1' }}>无作答</span>}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
@@ -382,6 +411,7 @@ export default function HistoryPage() {
                 })}
               </tbody>
             </table>
+            </div>
             <Pagination current={page} total={history.length} pageSize={pageSize} pageSizeOptions={[10, 15, 20, 50, 100]} onChange={setPage} onPageSizeChange={setPageSize} />
           </div>
             </>

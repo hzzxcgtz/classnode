@@ -1783,8 +1783,8 @@ tr:hover td {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 10px 14px;
-  margin-bottom: 14px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -1795,7 +1795,7 @@ tr:hover td {
 .worksheet-editor-title {
   flex: 1;
   min-width: 200px;
-  padding: 6px 8px;
+  padding: 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -1819,7 +1819,7 @@ tr:hover td {
 .worksheet-editor-status {
   flex-shrink: 0;
   padding: 3px 8px;
-  border-radius: 5px;
+  border-radius: 6px;
   background: #f1f5f9;
   color: #64748b;
   font-size: 0.75rem;
@@ -1851,9 +1851,9 @@ tr:hover td {
   gap: 12px;
   flex-wrap: wrap;
   justify-content: space-between;
-  padding: 10px 14px;
-  margin-bottom: 14px;
-  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
   font-size: 0.813rem;
   line-height: 1.7;
 }
@@ -1893,7 +1893,7 @@ tr:hover td {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .worksheet-editor-question {
@@ -1901,14 +1901,14 @@ tr:hover td {
   border: 1px solid #e2e8f0;
   border-left: 4px solid #2563eb;
   border-radius: 12px;
-  padding: 14px 18px 16px;
+  padding: 16px;
 }
 
 .worksheet-editor-question-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .worksheet-editor-question-index {
@@ -1944,7 +1944,7 @@ tr:hover td {
   height: 28px;
   padding: 0;
   border: 1px solid #e2e8f0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #fff;
   color: #475569;
   font-size: 0.75rem;
@@ -1970,7 +1970,7 @@ tr:hover td {
 
 .worksheet-editor-field {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .worksheet-editor-field > span {
@@ -2012,7 +2012,7 @@ tr:hover td {
   flex-shrink: 0;
   padding: 4px 8px;
   border: 1px solid #e2e8f0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: #f8fafc;
   color: #475569;
   font-size: 0.75rem;
@@ -2033,7 +2033,7 @@ tr:hover td {
    新的题型直接复用它们（同一张卡片里两套长得不一样的控件比少几条 CSS 糟得多）。 */
 
 .worksheet-editor-block {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 /* 一组控件的标题（「正确答案」「框（学生把这些条目放进去）」…）。
@@ -2090,13 +2090,13 @@ tr:hover td {
 }
 
 .worksheet-editor-blank {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .worksheet-editor-blank-remove {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   font-size: 0.75rem;
-  padding: 4px 10px;
+  padding: 4px 12px;
 }
 
 .worksheet-editor-hint {
@@ -2112,8 +2112,8 @@ tr:hover td {
 }
 
 .worksheet-editor-empty {
-  padding: 48px 20px;
-  margin-bottom: 14px;
+  padding: 48px 24px;
+  margin-bottom: 16px;
   border: 1px dashed #cbd5e1;
   border-radius: 12px;
   text-align: center;
@@ -2123,7 +2123,7 @@ tr:hover td {
 
 .worksheet-editor-add {
   width: 100%;
-  padding: 14px;
+  padding: 16px;
   border: 1px dashed #93c5fd;
   border-radius: 12px;
   background: #f8fbff;
@@ -2166,7 +2166,7 @@ tr:hover td {
   flex-direction: column;
   overflow: hidden;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
@@ -2179,9 +2179,9 @@ tr:hover td {
   max-width: 94vw;
   max-height: 88vh;
   overflow-y: auto;
-  padding: 26px 28px;
+  padding: 24px;
   background: #fff;
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
 
@@ -2208,9 +2208,9 @@ tr:hover td {
 .worksheet-editor-type-option {
   display: block;
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   text-align: left;
   font: inherit;
@@ -2240,10 +2240,10 @@ tr:hover td {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
 }
 

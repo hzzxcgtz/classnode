@@ -9,6 +9,7 @@ import { testAgentAvailability, fetchAgentGreeting, fetchAgentInfo, discoverCoze
 import { encrypt, decrypt, isEncrypted } from '../services/crypto.js';
 import { detectSafeImage, sanitizeSvg } from '../services/upload-security.js';
 import { maskAgentSecret, shouldPreserveAgentSecret } from '../services/agent-secret-policy.js';
+import { toAgentConfig } from '../services/agent-config.js';
 // ★ M7b：`purpose` 的归一化（**闸**的取值域住在那个零 import 的模块里）。
 // ⚠️ `toPublicAgent` 是 `{ ...agent, ... }` ⇒ `purpose` 自动随列表下发，不必在那里补一行。
 import { normalizeAgentPurpose } from '../services/agent-purpose.js';
@@ -494,7 +495,11 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id/greeting', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
+    const agent = await prisma.agent.findUnique({
+      where: { id: req.params.id },
+      // ★ 2026-09-25：`toAgentConfig` 要用共享凭据决定使哪把钥匙，必须一起取。
+      include: { credential: { select: { token: true } } },
+    });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
     // 有缓存且 30 分钟内拉取过则直接返回
@@ -506,14 +511,9 @@ router.get('/:id/greeting', async (req, res) => {
     }
 
     // 无缓存或过期，从平台 API 重新拉取
-    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
-    const greeting = await fetchAgentGreeting({
-      platform: agent.platform,
-      apiUrl: agent.apiUrl || undefined,
-      apiKey: decryptedKey,
-      botId: agent.botId || undefined,
-      extra: agent.extra || undefined,
-    });
+    // ★ 收口：这一处从前自己 decrypt —— 它是 7 处之一。
+    const config = toAgentConfig(agent, agent.credential);
+    const greeting = await fetchAgentGreeting(config);
 
     // 缓存到数据库（无论有无结果都更新时间戳，避免每次调用都去拉）
     await prisma.agent.update({
@@ -536,28 +536,29 @@ router.get('/:id/greeting', async (req, res) => {
 router.get('/:id/info', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
+    const agent = await prisma.agent.findUnique({
+      where: { id: req.params.id },
+      // ★ 2026-09-25：`toAgentConfig` 要用共享凭据决定使哪把钥匙，必须一起取。
+      include: { credential: { select: { token: true } } },
+    });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
     // 先解密 API Key
-    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
 
     // 先尝试用标准方式获取
-    let result = await fetchAgentInfo({
-      platform: agent.platform,
-      apiUrl: agent.apiUrl || undefined,
-      apiKey: decryptedKey,
-      botId: agent.botId || undefined,
-      extra: agent.extra || undefined,
-    });
+    // ★ 收口：这一处从前自己 decrypt —— 它是 7 处之一。
+    const config = toAgentConfig(agent, agent.credential);
+    let result = await fetchAgentInfo(config);
 
     // Coze Agent 无 botId 时，借用已有 Coze 智能体的 PAT 进行工作区发现
     if (!result && agent.platform === 'coze-agent') {
       const cozeAgent = await prisma.agent.findFirst({
         where: { platform: 'coze' },
+        // ★ 这一处也是 7 处之一：它借的是「某个 coze 智能体」的 PAT，同样要走共享凭据。
+        include: { credential: { select: { token: true } } },
       });
       if (cozeAgent) {
-        const cozeDecryptedKey = isEncrypted(cozeAgent.apiKey) ? decrypt(cozeAgent.apiKey) : cozeAgent.apiKey;
+        const cozeDecryptedKey = toAgentConfig(cozeAgent, cozeAgent.credential).apiKey;
         const discovered = await discoverCozeBotWithPat(cozeDecryptedKey, agent.name);
         if (discovered) {
           const baseUrl = 'https://api.coze.cn';
@@ -595,17 +596,16 @@ router.get('/:id/info', async (req, res) => {
 router.post('/:id/test', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const agent = await prisma.agent.findUnique({ where: { id: req.params.id } });
+    const agent = await prisma.agent.findUnique({
+      where: { id: req.params.id },
+      // ★ 2026-09-25：`toAgentConfig` 要用共享凭据决定使哪把钥匙，必须一起取。
+      include: { credential: { select: { token: true } } },
+    });
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
 
-    const decryptedKey = isEncrypted(agent.apiKey) ? decrypt(agent.apiKey) : agent.apiKey;
-    const result = await testAgentAvailability({
-      platform: agent.platform,
-      apiUrl: agent.apiUrl || undefined,
-      apiKey: decryptedKey,
-      botId: agent.botId || undefined,
-      extra: agent.extra || undefined,
-    });
+    // ★ 收口：这一处从前自己 decrypt —— 它是 7 处之一。
+    const config = toAgentConfig(agent, agent.credential);
+    const result = await testAgentAvailability(config);
 
     // 将测试结果持久化到数据库
     await prisma.agent.update({

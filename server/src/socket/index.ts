@@ -4,10 +4,10 @@ import { proxyAIRequestStream } from '../services/ai-proxy.js';
 import type { AgentConfig } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { buildShieldFilter } from '../services/shield-filter.js';
-import { decrypt } from '../services/crypto.js';
 import { hasTeacherSessionCookie } from '../middleware/auth.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
 import { detailIntervalFor, normalizeCaptureConfig } from '../services/webapp-capture.js';
+import { toAgentConfig } from '../services/agent-config.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveMaterialTargetId, resolveGroupMaterialViews, resolveParticipantWebappId } from '../services/group-material-resolve.js';
 import { studentAgentView, studentVisibleAgents } from '../services/agent-purpose.js';
 
@@ -1974,14 +1974,20 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}`;
         const storedConversation = platformConversations.get(platformConvKey);
         const platformConvId = storedConversation?.conversationId;
-        const agentConfig: AgentConfig = {
-          platform: agent.platform,
-          apiUrl: agent.apiUrl || undefined,
-          apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
-          botId: agent.botId || undefined,
-          extra: agent.extra || undefined,
+        // ★ 收口（2026-09-25）：从前这里自己 `decrypt(agent.apiKey)` —— 它是 7 处之一，
+        // 而且**正是对话链路那一处**（另外 6 处漏改只是别的功能用旧钥匙，这一处漏改是全班）。
+        //
+        // ⚠️ 凭据**按需查一次**，而不是给上面那两处 `include: { agent: true }` 加嵌套 ——
+        // 那样会把密文挂到**学生侧**那个 agent 对象上流出去（`studentAgentView` 今天只挑固定
+        // 字段，但那是它一个函数的事，不是结构上的保证）。这里查只发生在 `credentialId` 非空时：
+        // 老数据与回滚路径（全为空）**零额外查询**。
+        const credential = agent.credentialId
+          ? await prisma.platformToken.findUnique({ where: { id: agent.credentialId }, select: { token: true } })
+          : null;
+        const agentConfig: AgentConfig = toAgentConfig(agent, credential, {
+
           conversationId: platformNeedsConvId ? platformConvId : undefined,
-        };
+        });
 
         const abortController = new AbortController();
         const streamKey = socket.id;

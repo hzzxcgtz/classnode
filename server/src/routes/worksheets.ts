@@ -6,7 +6,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { requireTeacher } from '../middleware/auth.js';
 import { getStudentSession } from '../middleware/student-auth.js';
 import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
-import { decrypt } from '../services/crypto.js';
+import { toAgentConfig } from '../services/agent-config.js';
 import {
   flattenQuestions,
   grade,
@@ -1102,7 +1102,11 @@ async function payloadResponse(
   if (typeof analysisAgentId !== 'string' || analysisAgentId === '') {
     canSend = { ok: false, reason: '这份学习单还没有指定分析型智能体（去学习单编辑器的「设置」里选一个）' };
   } else {
-    const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
+    const agent = await prisma.agent.findUnique({
+      where: { id: analysisAgentId },
+      // ★ 2026-09-25：`toAgentConfig` 要用共享凭据决定使哪把钥匙，必须一起取。
+      include: { credential: { select: { token: true } } },
+    });
     if (!agent || !agent.enabled) {
       canSend = { ok: false, reason: '指定的分析型智能体不存在或已停用' };
     } else if (agent.purpose !== 'analysis') {
@@ -1276,7 +1280,11 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     if (typeof analysisAgentId !== 'string' || analysisAgentId === '') {
       return res.status(400).json({ error: '这份学习单还没有指定分析型智能体（去学习单编辑器的「设置」里选一个）' });
     }
-    const agent = await prisma.agent.findUnique({ where: { id: analysisAgentId } });
+    const agent = await prisma.agent.findUnique({
+      where: { id: analysisAgentId },
+      // ★ 2026-09-25：`toAgentConfig` 要用共享凭据决定使哪把钥匙，必须一起取。
+      include: { credential: { select: { token: true } } },
+    });
     if (!agent || !agent.enabled) {
       return res.status(400).json({ error: '指定的分析型智能体不存在或已停用' });
     }
@@ -1317,14 +1325,9 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // 🔴 **必须转成 `AgentConfig`**（与 `socket/index.ts:1973` 那处同一写法）：
     // 库里 `apiKey` 存的是 **AES 密文**，直接把它当 key 发出去，平台会回 401 ——
     // 而那条错误在界面上只会显示成「分析失败」，看不出是「密钥没解密」。
-    const agentConfig = {
-      platform: agent.platform,
-      apiUrl: agent.apiUrl || undefined,
-      apiKey: (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })(),
-      botId: agent.botId || undefined,
-      extra: agent.extra || undefined,
-      // 每次分析都要一个新会话（不传 conversationId）：两次分析之间不该串上下文。
-    };
+    // ★ 收口（2026-09-25）：从前这里自己 `decrypt(agent.apiKey)` —— 它是 7 处之一。
+    // 不传 conversationId：每次分析都要一个新会话，两次分析之间不该串上下文。
+    const agentConfig = toAgentConfig(agent, agent.credential);
     const result = await proxyAnalysisRequest(agentConfig, buildAnalysisMessage(payload, labeled), images);
     if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
     const narrative = normalizeNarrative(result.content ?? '');

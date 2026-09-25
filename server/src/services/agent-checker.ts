@@ -7,7 +7,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Server } from 'socket.io';
 import { testAgentAvailability } from './ai-proxy.js';
-import { decrypt } from './crypto.js';
+import { toAgentConfig } from './agent-config.js';
 
 let prisma: PrismaClient | null = null;
 let io: Server | null = null;
@@ -21,16 +21,15 @@ async function checkAgent(agent: {
   apiKey: string;
   botId: string | null;
   extra: string | null;
+  credentialId: string | null;
+  /** ★ 2026-09-25：共享 Token 那一行（随 `findMany` 一起取，见下面那条 `include`）。 */
+  credential: { token: string } | null;
 }): Promise<boolean> {
   try {
-    const decryptedKey = (() => { try { return decrypt(agent.apiKey); } catch { return agent.apiKey; } })();
-    const result = await testAgentAvailability({
-      platform: agent.platform,
-      apiUrl: agent.apiUrl || undefined,
-      apiKey: decryptedKey,
-      botId: agent.botId || undefined,
-      extra: agent.extra || undefined,
-    });
+    // ★ 收口：这一处从前自己 `decrypt(agent.apiKey)` —— 它是**7 处之一**，
+    //   而且**不在对话链路上**（定时连通性检查）⇒ 漏改的症状正是
+    //   「对话已经用上新 Token 了，而这里还在报旧 Token 的错」。
+    const result = await testAgentAvailability(toAgentConfig(agent, agent.credential));
     await prisma!.agent.update({
       where: { id: agent.id },
       data: {
@@ -57,7 +56,15 @@ async function checkAgent(agent: {
 export async function runCheckNow(): Promise<void> {
   if (!prisma) return;
   try {
-    const agents = await prisma.agent.findMany({ where: { enabled: true }, select: { id: true, name: true, platform: true, apiUrl: true, apiKey: true, botId: true, extra: true } });
+    const agents = await prisma.agent.findMany({
+      where: { enabled: true },
+      // ⚠️ `credential` 必须一起取：`toAgentConfig` 要用它决定使哪把钥匙。
+      select: {
+        id: true, name: true, platform: true, apiUrl: true, apiKey: true,
+        botId: true, extra: true, credentialId: true,
+        credential: { select: { token: true } },
+      },
+    });
     if (agents.length === 0) return;
     console.log(`[AgentChecker] 开始检测 ${agents.length} 个智能体...`);
     const results = await Promise.all(agents.map(checkAgent));

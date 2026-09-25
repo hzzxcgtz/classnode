@@ -23,6 +23,18 @@ const pickerKey = (groupId: string, kind: GroupMaterialKind) => `${groupId}:${ki
  * 迟早分叉成两个不同的命名空间，表现是「两个下拉同时打开」。
  */
 const CLASSROOM_WORKSHEET_KEY = pickerKey('classroom', 'worksheet');
+// ★ 2026-09-25：三件套统一成下拉之后，另外两格也要各自的键（同一条纪律：别在 JSX 里写字面量）。
+const CLASSROOM_AGENT_KEY = pickerKey('classroom', 'agent');
+
+/**
+ * 下拉里那个地球（`GroupMaterialPicker` 的 `logo` 走 `<img src>`，喂不了内联 SVG）。
+ * ⚠️ 路径与**本块标题**「关联探究网页」那一行的地球**逐字相同** ——
+ * 同一页上两个不同的地球会让下一个人以为它们是两回事（2026-09-25 已立过这条）。
+ */
+const GLOBE_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>',
+)}`;
+const CLASSROOM_WEBAPP_KEY = pickerKey('classroom', 'webapp');
 
 interface GroupMaterialOption {
   id: string;
@@ -548,7 +560,7 @@ export default function NewClassroomPage() {
         {/* 课堂标题 */}
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '16px 20px', marginBottom: 20,
+          padding: '12px 16px', marginBottom: 12,
         }}>
           <label htmlFor="classroom-title" style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -569,9 +581,9 @@ export default function NewClassroomPage() {
         {/* 选择参与模式 */}
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '16px 20px', marginBottom: 20,
+          padding: '12px 16px', marginBottom: 12,
         }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
             选择参与模式
           </div>
@@ -642,9 +654,9 @@ export default function NewClassroomPage() {
         {/* 选择班级 */}
         <div ref={classSectionRef} style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '16px 20px', marginBottom: 20,
+          padding: '12px 16px', marginBottom: 12,
         }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             选择班级
             <span className="required-field-mark">必填</span>
@@ -718,7 +730,7 @@ export default function NewClassroomPage() {
           <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10,
             border: `1px solid ${fieldErrors.groupAgents ? '#ef4444' : '#eef2f6'}`,
-            padding: '16px 20px', marginBottom: 20,
+            padding: '12px 16px', marginBottom: 12,
           }}>
             <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
@@ -858,67 +870,38 @@ export default function NewClassroomPage() {
           <div onClick={() => setOpenDropdownKey(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
         )}
 
-        {/* 标准/分组模式：选择AI智能体 */}
+        {/* 标准/分组模式：选择AI智能体。
+            ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
+            完美显示了」。原来是**平铺的胶囊**，十来个还凑合、几十个就把这一块撑成一堵墙
+            （而它旁边那两块早就因为同一个理由改成了下拉 —— 见下面「关联学习单」的注释）。
+            ⇒ 三块现在是**同一个控件**（`GroupMaterialPicker`：扁平下拉 + 自绘箭头 +
+              点已选中项取消），语义也一致（都是单选、都能取消）。 */}
         {mode !== 'advanced' && (
           <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '16px 20px', marginBottom: 20,
+            padding: '12px 16px', marginBottom: 12,
           }}>
-            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
               选择AI智能体
               {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
                   这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
               <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 三件套任选其一</span>
             </div>
-            {loadingOptions ? (
-              <div className="new-classroom-loading" role="status">正在加载智能体...</div>
-            ) : agents.length === 0 ? (
-              <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
-                暂无可选智能体，请先在「AI智能体」中接入
-              </div>
-            ) : (
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: 8,
-                padding: 8, borderRadius: 8,
-                border: `1.5px solid ${fieldErrors.agent ? '#ef4444' : 'transparent'}`,
-                transition: 'border-color 0.15s',
-              }}>
-                {agents.map(a => {
-                  const logoUrl = a.logo ? (a.logo.startsWith('/') ? `${getApiBaseUrl()}${a.logo}` : a.logo) : null;
-                  return (
-                    <button type="button" key={a.id}
-                      // 单选：点中的那个成为唯一选择，**再点一次取消**（它是选填项，必须能取消）。
-                      // ⚠️ 与下面探究网页那一块同一套语义。从前这里是一次性写入
-                      //    （`setSelectedAgentId(a.id)`），于是选中之后再也回不到未选状态。
-                      onClick={() => { setSelectedAgentId(prev => (prev === a.id ? '' : a.id)); clearError('agent'); clearError('material'); }}
-                      aria-pressed={selectedAgentId === a.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-                        borderRadius: 8, userSelect: 'none',
-                        border: `1.5px solid ${selectedAgentId === a.id ? '#2563eb' : '#e2e8f0'}`,
-                        background: selectedAgentId === a.id ? '#eef2ff' : 'white',
-                        cursor: 'pointer', fontSize: "0.875rem", fontWeight: selectedAgentId === a.id ? 500 : 400,
-                        transition: 'all 0.12s', fontFamily: 'inherit',
-                      }}>
-                      {logoUrl ? (
-                        <img src={logoUrl} alt="" style={{ width: 22, height: 22, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
-                      ) : (
-                        <div style={{
-                          width: 22, height: 22, borderRadius: 5,
-                          background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                          color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: "0.688rem", fontWeight: 700, flexShrink: 0,
-                        }}>
-                          {a.name[0]}
-                        </div>
-                      )}
-                      <span style={{ color: '#0f172a' }}>{a.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <GroupMaterialPicker
+              label="AI 智能体"
+              placeholder="选择AI智能体"
+              value={selectedAgentId || undefined}
+              options={agents.map(a => ({ id: a.id, name: a.name, logo: a.logo }))}
+              emptyHint={loadingOptions ? '正在加载智能体…' : '暂无可选智能体，请先在「AI智能体」中接入'}
+              open={openDropdownKey === CLASSROOM_AGENT_KEY}
+              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_AGENT_KEY ? null : CLASSROOM_AGENT_KEY)}
+              onPick={(id) => { setSelectedAgentId(id ?? ''); clearError('agent'); clearError('material'); }}
+              // 与学习单那一格同款：**不给「不指定」项**（三件套任选其一，不该有第三个状态），
+              // 但要保留「点已选中项取消」的能力，否则选错一次只能刷新整个页面。
+              allowUnspecified={false}
+              clearOnReselect
+            />
             {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.agent}
@@ -939,7 +922,7 @@ export default function NewClassroomPage() {
         {mode !== 'advanced' && (
         <div ref={webappSectionRef} style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '16px 20px', marginBottom: 20,
+          padding: '12px 16px', marginBottom: 12,
         }}>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
@@ -960,40 +943,26 @@ export default function NewClassroomPage() {
               还没有探究网页，可以先在「探究网页」里添加
             </div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {webapps.map(w => {
-                const selected = selectedWebappId === w.id;
-                return (
-                  <button type="button" key={w.id} aria-pressed={selected}
-                    // 单选：点中的那个成为唯一选择，再点一次取消（它是选填项，必须能取消）。
-                    // ⚠️ 不要写回 `Set` 那套 add/delete —— 那正是要改掉的旧语义。
-                    onClick={() => {
-                      setSelectedWebappId(prev => (prev === w.id ? '' : w.id));
-                      clearError('material');
-                    }}
-                    style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
-                      padding: '8px 14px', borderRadius: 8, userSelect: 'none', textAlign: 'left',
-                      border: `1.5px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
-                      background: selected ? '#eef2ff' : 'white',
-                      cursor: 'pointer', fontSize: "0.875rem", fontWeight: selected ? 500 : 400,
-                      transition: 'all 0.12s', fontFamily: 'inherit', maxWidth: 260,
-                    }}>
-                    {/* 2026-09-25（教师截图批注）：名字前面加一个网页图标 —— 这几张卡片
-                        过去是**纯文字**，一眼扫过去与旁边的学习单下拉分不出是两类东西。
-                        ⚠️ 图标与**本块标题**（`关联探究网页` 那一行）用的是**同一个地球路径**，
-                        只是小一号：同一页上两个不同的地球 = 下一个人以为它们是两回事。 */}
-                    <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: '#0f172a' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 2 }}>
-                        <circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
-                      </svg>
-                      <span style={{ wordBreak: 'break-all' }}>{w.name}</span>
-                    </span>
-                    <span style={{ fontSize: "0.688rem", color: '#94a3b8', wordBreak: 'break-all' }}>入口 {w.entryPath}</span>
-                  </button>
-                );
-              })}
-            </div>
+            /* ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
+               完美显示了」。原来是**平铺的卡片**（每张还带一行入口文件名），十几个就把这一块
+               撑得很高；而学习单那一格早就因为同一个理由改成了下拉。
+               ⇒ 现在三块是**同一个控件**、同一套语义（单选 + 点已选中项取消）。
+               ⚠️ 网页在列表里用**地球图标**（`GroupMaterialPicker` 的 logo 走 `<img>`，
+               而地球是内联 SVG ⇒ 这里给它一个 data URI，让下拉里那份与标题那一行**同一个地球**）。
+               ⚠️ 入口文件名不再逐张列出：它与名字几乎总是重复（名字就是文件名去扩展名），
+               而它正是把卡片撑高的那一行 —— 要看全文可以去「探究网页」页。 */
+            <GroupMaterialPicker
+              label="探究网页"
+              placeholder="选择探究网页"
+              value={selectedWebappId || undefined}
+              options={webapps.map(w => ({ id: w.id, name: w.name, logo: GLOBE_LOGO_DATA_URI }))}
+              emptyHint="还没有探究网页，可以先在「探究网页」里添加"
+              open={openDropdownKey === CLASSROOM_WEBAPP_KEY}
+              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_WEBAPP_KEY ? null : CLASSROOM_WEBAPP_KEY)}
+              onPick={(id) => { setSelectedWebappId(id ?? ''); clearError('material'); }}
+              allowUnspecified={false}
+              clearOnReselect
+            />
           )}
         </div>
         )}
@@ -1017,16 +986,17 @@ export default function NewClassroomPage() {
         {mode !== 'advanced' && (
         <div style={{
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '16px 20px', marginBottom: 20,
+          padding: '12px 16px', marginBottom: 12,
         }}>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             关联学习单
             <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一份 · 三件套任选其一</span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
-            学生在课堂里会填写这份学习单。<strong style={{ fontWeight: 600 }}>一个课堂只关联一份</strong>；
-            不选也可以 —— 那就记得至少选一项其他内容。
+          {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
+              而「只关联一份」已经由**下拉是单选的**这件事本身说清楚了。 */}
+          <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 8 }}>
+            学生在课堂里会填写它。一个课堂只关联一份，也可以不关联。
           </div>
           {worksheetLoadError ? (
             <div role="alert" style={{ padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>

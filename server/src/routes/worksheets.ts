@@ -13,6 +13,7 @@ import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import { flattenAnswerable } from '../services/worksheet-heading.js';
 import { toAgentConfig } from '../services/agent-config.js';
 import {
+  DEFAULT_POINTS,
   flattenQuestions,
   grade,
   // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
@@ -28,7 +29,6 @@ import {
   // ⚠️ A2 的最小适配用到这两个：`grade()` 现在要求调用点给出**这道题实际用的两个档**
   // （规格 §12 裁定 4：逐题优先、留空回落学习单级）。把「怎么算这两档」写在调用点
   // 就等于让每个调用点各抄一遍回落规则 —— 所以走这两个函数。
-  pointsFromSettings,
   QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
   resolvePoints,
   stripAnswers,
@@ -2019,7 +2019,10 @@ router.post('/:id/answers/submit', async (req, res) => {
     // `{full: -5}` ⇒ `score: -5`（学生的奖励累计变成负数）。今天安全**仅因为**
     // 唯一的生产调用点照抄了 `resolvePoints` —— 它同时负责 `normalizePoints` 的
     // 坏形状回落，那是手拼拿不到的。
-    const points = resolvePoints(node, pointsFromSettings(ctx.worksheet.settings));
+    // ★ 2026-09-26：**不再回落学习单级** —— 逐题分值已由迁移钉住（`worksheet-points-migration`），
+    // 分值的来源从两个变成一个。`DEFAULT_POINTS` 只是**最后一层保险**：一份手改过的、
+    // 或者迁移没跑到就写进来的空 `points` 行，不该让判分抛错。
+    const points = resolvePoints(node, DEFAULT_POINTS);
     // ⚠️ 关掉自动判分是「**不判**」（`null`），不是「判错」（`false`）—— 两者在学生端
     // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
     // ⇒ `verdict === null` 与 `verdict.state === 'incorrect'` 是**两件事**：

@@ -36,6 +36,7 @@ import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWork
 import { ensurePlatformTokenSchema } from './services/platform-token-schema.js';
 import { migratePlatformTokens } from './services/platform-token-migration.js';
 import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js';
+import { migrateWorksheetPoints } from './services/worksheet-points-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -513,6 +514,24 @@ async function main() {
     //    会让日志里全是噪声，真出问题时更难找。
     if (taskMigrated.migrated > 0) {
       console.log(`[server] Worksheet task migration: ${taskMigrated.migrated} 份学习单已包进任务`);
+    }
+
+    // ★ 2026-09-26：把逐题分值**钉住**（教师裁定：学习单级的默认给分不要了）。
+    // 与上面那一段逐字同形：备份 + 完成标记 + **只在真的迁了时**打日志。
+    // 🔴 迁移函数自己的幂等判据（「还有没有 `points` 为空的题」）与这个标记是**两件事** ——
+    // 标记只决定要不要再备份一次（与参与者迁移同一个理由）。
+    const pointsMigrationKey = 'worksheet-points-migration-v1';
+    const pointsMigrationDone = await prisma.setting.findUnique({ where: { key: pointsMigrationKey } });
+    if (!pointsMigrationDone) {
+      const backupPath = backupDatabase('worksheet-points-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    const pointsMigrated = await migrateWorksheetPoints(prisma);
+    if (!pointsMigrationDone) {
+      await prisma.setting.upsert({ where: { key: pointsMigrationKey }, update: { value: 'completed' }, create: { key: pointsMigrationKey, value: 'completed' } });
+    }
+    if (pointsMigrated.migrated > 0) {
+      console.log(`[server] Worksheet points migration: ${pointsMigrated.migrated} 份学习单的逐题分值已钉住`);
     }
   } catch (e) {
     console.error('[server] Worksheet task migration failed:', e);

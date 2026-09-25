@@ -710,7 +710,20 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   // ★ 学习单级的档取 **2** 而不是默认的 1：默认档下 `score` 恰好等于旧布尔值的
   // `Number()`，「把 `state` 当 `score` 用」「忘了乘 `points.full`」两种错会**全绿**。
   const worksheet = await seedWorksheet(db.prisma, '判分学习单', {
-    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStep: 2,
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard',
+  });
+  // ⚠️ 2026-09-26：这一题的分值**钉在题上**（原来靠学习单级的 `rewardStep: 2`，
+  // 而那两个档不再参与判分 —— 教师裁定：默认给分不要了）。
+  const pinned = (await db.prisma.worksheet.findUnique({ where: { id: worksheet.id } }))!
+    .content as unknown as { nodes: Array<Record<string, unknown>> };
+  await db.prisma.worksheet.update({
+    where: { id: worksheet.id },
+    data: {
+      content: {
+        ...pinned,
+        nodes: pinned.nodes.map((node) => (node.id === 'q_1' ? { ...node, points: { full: 2, half: 1 } } : node)),
+      } as never,
+    },
   });
   const { classroom, participant } = await seedClassroom(db.prisma, '9009');
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
@@ -727,7 +740,7 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   const q1Right = await submit('q_1');
   assert.equal(q1Right.isCorrect, true);
   assert.equal(q1Right.gradeState, 'correct', '三态必须由 gradeState 说出来，不能只靠 isCorrect');
-  assert.equal(q1Right.score, 2, '得分用的是学习单级的档 2（不是默认的 1，也不是比例 1）');
+  assert.equal(q1Right.score, 2, '得分用的是**这一题自己的**档 2（不是默认的 1，也不是比例 1）');
 
   // 同一题改错、再提交 ⇒ **重新判分**（规格 §8.4：改已提交的题重新判分）
   await save('q_1', CHOICE(['A']));

@@ -510,12 +510,22 @@ test('广播：提交作答 ⇒ 载荷带 isCorrect 与 submitted（autoGrade �
   const graded = await seedClassroomUsingWorksheet(db.prisma, '9106');
   const ungraded = await seedClassroomUsingWorksheet(db.prisma, '9107');
   const boardRoom = `${boardPrefix}${graded.classroom.id}`;
-  // ★ 学习单级的档用 **2**，不是默认的 1：默认档下 `score` 恰好等于旧布尔值的
+  // ★ `q_1` 的**逐题分值**用 2，不是默认的 1：默认档下 `score` 恰好等于旧布尔值的
   // `Number()`（对 = 1、错 = 0），于是「把 `state` 当 `score` 用」「忘了乘 `points.full`」
   // 「得分写成比例」三种错会**全部绿**。这个数在这里唯一的作用就是让 `score` 可观测。
+  // ⚠️ 2026-09-26：原来写的是**学习单级的** `rewardStep: 2` —— 那两个档不再参与判分
+  //（教师裁定：默认给分不要了，逐题分值已由迁移钉住）⇒ 改成直接钉在这一题上。
+  const gradedContent = (await db.prisma.worksheet.findUnique({ where: { id: graded.worksheet.id } }))!
+    .content as unknown as { nodes: Array<Record<string, unknown>> };
   await db.prisma.worksheet.update({
     where: { id: graded.worksheet.id },
-    data: { settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStep: 2 } },
+    data: {
+      settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' },
+      content: {
+        ...gradedContent,
+        nodes: gradedContent.nodes.map((node) => (node.id === 'q_1' ? { ...node, points: { full: 2, half: 1 } } : node)),
+      } as never,
+    },
   });
   await db.prisma.worksheet.update({
     where: { id: ungraded.worksheet.id },

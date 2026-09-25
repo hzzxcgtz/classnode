@@ -226,66 +226,6 @@ export interface QuestionNode {
 }
 export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[] }
 
-/**
- * 学习单级的**两个档**（`Worksheet.settings`）—— 规格 §12 裁定 4 的「兜底」。
- *
- * 语义是「**本单未单独设置的题**用这个」。缺字段 / 坏形状一律回落到 `DEFAULT_POINTS`
- * （= 第一批的默认档 1 / 0）。
- *
- * 🔴 **取值域是 `normalizePointValue` 的 0..99（`full` 那一档是 1..99，见 `POINTS_FULL_MIN`），
- * 不是 `rewardStep` / `halfStep` 的 1/2/3/5 与 0/1/2/3/5。** 那两个下拉是**学习单级**的 UI 约束
- * （`src/lib/worksheet-reward.ts` 的 `REWARD_STEPS` / `HALF_STEPS`），而**逐题**的两个输入框
- * 是自由的（规格 §12 裁定 5：教师可以填 2 或 4）。
- * ⚠️ 这个差异是**有意的**，不要「统一」它们。但两个函数换上来的后果**不一样**，别用一句
- * 「静默变回默认档」把两件事说成一件：
- *    · 换成 `normalizeRewardStep` ⇒ 库里一个已有的 `rewardStep: 4`（手工改过 / 将来放宽了
- *      取值域）**静默变回 1**，教师看到的是「我配的档没生效」；
- *    · 换成 `normalizeHalfStep` ⇒ `halfStep: 4` **静默变回 0**，而部分给分 0 的含义是
- *      **「不给部分分」** —— 比变 1 更险：教师配的「漏选给 2 分」会变成「漏选一分不给」，
- *      学生只是少拿分，界面上一切正常，没有任何提示。
- *      更麻烦的是这个兜底值恰好等于一个**合法值**：`0` 与「越界回落」是同一个观测，
- *      所以「部分给分档坏了」这件事在数据上**看不出来**（`HALF_STEPS` 那边的说明也提到这点）。
- *
- * ⚠️ 部分给分档**有第三个消费方**，域与上面两个下拉都不同（2026-09-24 记，**不改行为**）：
- * 写入口（`routes/worksheets.ts` 的 `normalizeSettings`）认的是 `HALF_STEPS` 的
- * `{0,1,2,3,5}`，而**判分**这条兜底走的是本函数的 `0..99`。
- * ⚠️ 写入口那侧的机制是**越界即回落 `DEFAULT_SETTINGS.halfStep`（0）**，不是「夹到区间里」
- *（`normalizeHalfStep` 与它同一条口径：越界不夹逼，见那份文件上的说明）。
- * ⇒ 一行手改过的库写成 `halfStep: 7`（**它没走过写入口**）时，两侧对同一个键给出两个数：
- * 判分**按 7 分算**，而编辑器的下拉里没有 7（`normalizeLoadedSettings` 把它读成 0）
- * ⇒ **界面上显示 0**；而这行**一旦被编辑器保存一次**，写入口就把它落成 0，判分也跟着变 0 ——
- * 也就是「教师只要打开这张单改个标题再保存，部分给分档就会从 7 变成 0」，同样没有任何提示。
- * `rewardStep` 早就有同一条缝（`rewardStep: 4`），它是有意为之；这里把 `halfStep`
- * 一并点名，免得下一个人以为只有全对档有这条缝。
- *
- * ⚠️ 部分给分档缺席（`source.halfStep` 是 `undefined` / 形状不对）时 `normalizePointValue`
- * 回落到 `DEFAULT_POINTS.half = 0`，与规格的默认值相同 —— 也就是第一批的行为。
- * ⊘ 2026-09-24（C3）更正：这一段原先写的是「`halfStep` 要到任务 B2 才进 `normalizeSettings`
- *（写入口）。**这个窗口期是安全的**：此刻没有任何 UI 能写出那个键」。那个窗口期已经
- * **关闭两次**：B2 让写入口认它，C3 让编辑器设置面板也能写出它（`page.tsx` 的那一行下拉）。
- * ⇒ 「库里那个键缺席」不再是常态，只是「这张单是在 C3 之前配的」或「那行是手改的」。
- * 上面那条兜底行为**本身仍然成立**，作废的只是那半句理由。
- *
- * 🔴 ★ M4a/I1（2026-09-24 终审的限定复查带出）：**`full` 那一档在这里也要过窄判据。**
- * 原先它走的是宽的 `normalizePointValue`（`0..99`）⇒ 一行手工改过的 `rewardStep: 0`
- * （`REWARD_STEPS` 只约束**写入口**，管不到这种行）会原样吐出 `full: 0` ⇒
- * `resolvePoints` ⇒ `grade(答对)` = `{state:'correct', score:0}` ——
- * **I1 那四个观测原样回来**（学生画红叉、教师画绿勾、正确率算全对、奖励 +0）。
- * 那条链因此有**两个**读出口，这是第二个（第一个是 `normalizePoints`）。
- * ⇒ 不在区间里就回落 `DEFAULT_POINTS.full`（= 1），与越界值的处置同一条路。
- * ⚠️ 只影响「取整之后是 0」的那一个值：`rewardStep: 7`（手改的、不在 `REWARD_STEPS` 里）
- * 照旧按 7 算 —— 那条缝**有意保留**（见下面 `halfStep: 7` 那段）。
- */
-export function pointsFromSettings(settings: unknown): QuestionPoints {
-  const source = (settings && typeof settings === 'object' && !Array.isArray(settings))
-    ? settings as Record<string, unknown> : {};
-  return {
-    full: isUsableFullPointValue(source.rewardStep)
-      ? normalizePointValue(source.rewardStep, DEFAULT_POINTS.full)
-      : DEFAULT_POINTS.full,
-    half: normalizePointValue(source.halfStep, DEFAULT_POINTS.half),
-  };
-}
 
 /**
  * 这道题**实际用**的两个档：逐题优先，留空回落学习单级（规格 §12 裁定 4）。

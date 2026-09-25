@@ -371,7 +371,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
         得先知道括号里是「全对 / 部分给分」两档才看得懂。
       */}
       <span className="worksheet-editor-points-note">
-        两格留空 = 用学习单的默认分值（全对 {inheritedPoints.full} · 部分给分 {inheritedPoints.half}）
+        两格清空 = 用默认分值（全对 {inheritedPoints.full} · 部分给分 {inheritedPoints.half}）
       </span>
       {invalidHint && <p className="worksheet-editor-warn-hint">{invalidHint}</p>}
       {partialHint && <p className="worksheet-editor-warn-hint">{partialHint}</p>}

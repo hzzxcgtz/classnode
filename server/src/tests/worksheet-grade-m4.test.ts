@@ -18,6 +18,7 @@
  *      「这题型不判分」（主观题），把它用来表示「读不懂」会让看板把一次 500 级的问题
  *      显示成「主观题」。
  */
+import { pointsFromSettings } from '../services/worksheet-points-migration.js';
 import { test } from 'node:test';
 
 /**
@@ -39,7 +40,6 @@ import {
   DEFAULT_POINTS,
   QUESTION_TYPES,
   grade,
-  pointsFromSettings,
   resolvePoints,
   type GradeResult,
   type GradeState,

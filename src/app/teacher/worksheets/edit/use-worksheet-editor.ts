@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+// ★ 2026-09-26：新题的**默认分值**（1 / 0）—— 学习单级那两档不再参与判分之后，
+// 逐题的值就是最终的值，种子取默认档。
+import { DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP } from '@/lib/worksheet-reward';
 import type { QuestionPointsDraft, WorksheetDetail, WorksheetSettings, WorksheetUsage } from '@/lib/types';
 import {
   buildPayload,
@@ -550,13 +553,14 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 教师新加的题永远落在任务外面。
    */
   const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null) => {
-    // ★ 2026-09-26（教师裁定）：新题的分值**落成真实数字**（学习单当前那两档），
-    // 于是框里显示的是数字而不是灰色提示。⚠️ 老题一个字不改（它们仍「跟随学习单」）。
+    // ★ 2026-09-26（教师裁定）：新题的分值**落成真实数字**，于是框里显示的是数字而不是灰提示。
+    // ⚠️ 它取的是**默认档**（1 / 0）：学习单级的那两档已经不再参与判分
+    //（教师当天裁定「默认给分不要了，已经在每小题中设置了」），逐题的值就是最终的值。
     dispatch({
       kind: 'addQuestion', questionType, parentId,
-      points: { full: settings.rewardStep, half: settings.halfStep },
+      points: { full: DEFAULT_REWARD_STEP, half: DEFAULT_HALF_STEP },
     });
-  }, [settings.rewardStep, settings.halfStep]);
+  }, []);
 
   /** ★ 2026-09-26：逐题的「允许自动评分」开关。 */
   const updateAutoGrade = useCallback((questionId: string, autoGrade: boolean) => {

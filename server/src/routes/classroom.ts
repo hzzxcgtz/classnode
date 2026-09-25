@@ -42,6 +42,54 @@ function limitPublicCodeRequests(req: import('express').Request, res: import('ex
 
 router.use('/code', limitPublicCodeRequests);
 
+/**
+ * ★ M6c：历史页那三件套的**三个数**（探究空间用量 + 学习单交卷数）。
+ *
+ * 🔴 **一轮查完 50 个课堂，不许 N+1**（GC 35）—— 形状与上面 `Message` 那条聚合**逐字同款**：
+ * 同一组 `?` 占位符、`IN (…)`、`GROUP BY "classroomId"`。
+ *
+ * 🔴 **空表不许回 `null`**：`SUM` 对空集回 `NULL`，而 `null` 传到前端会渲染成**空白**
+ * （看起来像「还没加载」，而真相是「这节课没有记录」）⇒ `COALESCE(SUM(…), 0)` 是承重的。
+ *
+ * 🔴 **`worksheetSubmitted` 只数 `status='submitted'`**：草稿不是交卷（GC 34 的分母同理）。
+ */
+export async function loadHistoryTraces(prisma: PrismaClient, ids: string[]): Promise<Map<string, {
+  webappUsageCount: number; webappDurationMs: number; worksheetSubmitted: number; worksheetTotal: number;
+}>> {
+  const out = new Map<string, { webappUsageCount: number; webappDurationMs: number; worksheetSubmitted: number; worksheetTotal: number }>();
+  // 与既有那条同一条守卫：空数组不发查询（`IN ()` 是语法错误）。
+  if (ids.length === 0) return out;
+  const placeholders = ids.map(() => '?').join(',');
+
+  // 🔴 **`COUNT(DISTINCT "studentId")`，不是 `COUNT(*)`** —— 这条是**跑用例时才发现**的：
+  //    `WebappUsage` 有唯一约束 `(classroomId, studentId, webappId)`（一个参与者对一个网页一行），
+  //    所以**行数是「参与者 × 网页」**。一节用了 3 个网页、5 个参与者的课，行数可以是 15，
+  //    而列上写的是「N 人」—— 用 `COUNT(*)` 就是**在纸上撒谎**。
+  const webapp = await prisma.$queryRawUnsafe<Array<{ classroomId: string; cnt: number; total: number }>>(
+    `SELECT "classroomId", COUNT(DISTINCT "studentId") AS cnt, COALESCE(SUM("durationMs"), 0) AS total FROM "WebappUsage" WHERE "classroomId" IN (${placeholders}) GROUP BY "classroomId"`,
+    ...ids,
+  );
+  const worksheet = await prisma.$queryRawUnsafe<Array<{ classroomId: string; submitted: number; total: number }>>(
+    `SELECT r."classroomId" AS "classroomId", ` +
+    `SUM(CASE WHEN a."status" = 'submitted' THEN 1 ELSE 0 END) AS submitted, COUNT(*) AS total ` +
+    `FROM "WorksheetAnswer" a JOIN "WorksheetResponse" r ON r."id" = a."responseId" ` +
+    `WHERE r."classroomId" IN (${placeholders}) GROUP BY r."classroomId"`,
+    ...ids,
+  );
+
+  // 先给每个 id 落一个全 0 的条目 —— 那样「没有记录」与「查询漏了」在调用方看来是两件事。
+  for (const id of ids) out.set(id, { webappUsageCount: 0, webappDurationMs: 0, worksheetSubmitted: 0, worksheetTotal: 0 });
+  for (const row of webapp) {
+    const entry = out.get(row.classroomId);
+    if (entry) { entry.webappUsageCount = Number(row.cnt); entry.webappDurationMs = Number(row.total); }
+  }
+  for (const row of worksheet) {
+    const entry = out.get(row.classroomId);
+    if (entry) { entry.worksheetSubmitted = Number(row.submitted); entry.worksheetTotal = Number(row.total); }
+  }
+  return out;
+}
+
 function generateCode(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
@@ -1569,6 +1617,9 @@ router.get('/history/all', async (req, res) => {
       statsMap = new Map(raw.map(r => [r.classroomId, r]));
     }
 
+    // ★ M6c：三件套的三个数（探究空间 + 学习单）。**一次查完**，不分课堂发查询。
+    const traces = await loadHistoryTraces(prisma, ids);
+
     const result = classrooms.map(c => ({
       ...c,
       participantCount: Number(statsMap.get(c.id)?.participantCount ?? 0),
@@ -1577,6 +1628,7 @@ router.get('/history/all', async (req, res) => {
         : c._count.students,
       totalRounds: Number(statsMap.get(c.id)?.totalRounds ?? 0),
       totalChars: Number(statsMap.get(c.id)?.totalChars ?? 0),
+      ...(traces.get(c.id) ?? { webappUsageCount: 0, webappDurationMs: 0, worksheetSubmitted: 0, worksheetTotal: 0 }),
     }));
 
     res.json(result);

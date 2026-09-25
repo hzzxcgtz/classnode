@@ -666,6 +666,19 @@ export interface ClassroomHistoryItem extends ClassroomSummary {
   totalRounds: number;
   participantCount: number;
   realStudentCount: number;
+  /**
+   * ★ M6c：三件套的使用痕迹（历史页那三列）。
+   *
+   * ⚠️ `webappUsageCount` 为 0 **有两种成因且不可区分**：这节课确实没人用探究空间 /
+   * **这节课没有教师打开过看板**（学生按需推流根本没推 —— `recordWebappSummary` 的注释逐字写着）。
+   * ⇒ 界面上的文案只能是「**无记录**」，**不许**写「未使用」（GC 33）。
+   * ⚠️ `worksheetTotal` 是**已有作答行数**，**不是**「参与者 × 题数」⇒ 文案只能写
+   * 「已交 N / M 题」，不许写「已交 N/M 人」（GC 34）。
+   */
+  webappUsageCount: number;
+  webappDurationMs: number;
+  worksheetSubmitted: number;
+  worksheetTotal: number;
   _count: { students: number; interactions: number };
   classes: Array<{ classId: string; class: Pick<ClassSummary, 'id' | 'name'> }>;
 }

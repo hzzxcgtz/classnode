@@ -1781,7 +1781,7 @@ tr:hover td {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   padding: 12px 16px;
   margin-bottom: 16px;
@@ -1839,7 +1839,7 @@ tr:hover td {
 .worksheet-editor-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -1892,8 +1892,12 @@ tr:hover td {
 .worksheet-editor-questions {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 16px;
+  /* ★ 第 3 步（留白）：卡片之间 16。⚠️ 它原来 14px —— 第 1 步的刻度归并**没碰到它**，
+     因为那条规则只覆盖 `padding` / `margin`，而这是 `gap`。⇒ 归并之后**回头核一遍**
+     同一族的其它属性（`gap` / `inset` / `top`）是有必要的。 */
+  gap: 16px;
+  /* 组与组之间 24：这一列卡片与下面那个「+ 添加题目」是**两组东西**，不是一张列表的两项。 */
+  margin-bottom: 24px;
 }
 
 .worksheet-editor-question {
@@ -1917,7 +1921,10 @@ tr:hover td {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  /* ★ 第 3 步：段间 16。卡片恒为四段 —— 头行（题号·题型·工具）→ 题干 → 作答区 → 底部，
+     段与段之间一律 16、段内一律 8。**「整体设计感」最直接的来源是重复**：
+     同一个结构重复二十次，页面自己就整齐了。 */
+  margin-bottom: 16px;
 }
 
 .worksheet-editor-question-index {
@@ -2017,7 +2024,7 @@ tr:hover td {
   font-weight: 600;
   color: #0f172a;
   line-height: 1.6;
-  padding: 10px 12px;
+  padding: 12px 12px;
 }
 
 /* 题干与下面那段（作答区 / 分数）之间给足留白 —— 主角周围要有空间才像主角。 */
@@ -2042,7 +2049,8 @@ tr:hover td {
 .worksheet-editor-options {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* ★ 第 3 步：段**内** 8（选项是同一组里的兄弟）。 */
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -2075,7 +2083,7 @@ tr:hover td {
 .worksheet-editor-inline-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -2108,7 +2116,7 @@ tr:hover td {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .worksheet-editor-order-row {

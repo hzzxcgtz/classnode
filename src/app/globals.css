@@ -2001,6 +2001,30 @@ tr:hover td {
   margin-bottom: 4px;
 }
 
+/* ★ 2026-09-25（重设计第 2 步·续）：**题干 —— 这一屏唯一的主角**。
+   它原来与其它输入框**完全同字号同色**（`.input` 的默认值），于是「题干」与
+   「选项 / 答案 / 分数」在视觉上平级 —— 而教师在这一页 90% 的时间是在读题干。
+   放大加深之后，一屏的视线落点就只有一个（这正是「没有设计感」那一问的解法：
+   **不是缺装饰，是缺对比**）。
+
+   🔴 **必须是直接子选择器**：`.worksheet-editor-field` 在**填空题的答案格**里也用
+   （`bodies/fill-blanks-body.tsx`，嵌在 `.worksheet-editor-blank` 里，深两层）。
+   写成后代选择器会把每一空的「答案」标签也一起放大 —— 那些是配角，放大就把主次又抹平了。
+
+   ⚠️ `.input` 是全局类，靠上面这层作用域收窄；别把它提到全局去改（那会动到全站的输入框）。 */
+.worksheet-editor-question > .worksheet-editor-field > .input {
+  font-size: 0.938rem;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+
+/* 题干与下面那段（作答区 / 分数）之间给足留白 —— 主角周围要有空间才像主角。 */
+.worksheet-editor-question > .worksheet-editor-field {
+  margin-bottom: 16px;
+}
+
 .worksheet-editor-field > span {
   display: block;
   margin-bottom: 4px;

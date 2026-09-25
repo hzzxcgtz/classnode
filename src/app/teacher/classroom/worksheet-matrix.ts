@@ -75,3 +75,66 @@ export function buildWorksheetMatrix(
     return { questionId: node.id, index, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, cells };
   });
 }
+
+/** 一道题的三档计数。**分母是参与者数**（`total`），不是「作答过的人数」。 */
+export interface QuestionTally {
+  questionId: string;
+  index: number;
+  /** `'draft'` 的参与者数。 */
+  drafted: number;
+  /** `'submitted'` 的参与者数。 */
+  submitted: number;
+  /** **作答过**的（`drafted + submitted`）。「卡住」判据吃的就是它。 */
+  engaged: number;
+  /** 这一行的总格数 = 参与者数。 */
+  total: number;
+}
+
+export function questionTallies(rows: MatrixRow[]): QuestionTally[] {
+  return rows.map((row) => {
+    const values = Object.values(row.cells);
+    const drafted = values.filter((value) => value === 'draft').length;
+    const submitted = values.filter((value) => value === 'submitted').length;
+    return {
+      questionId: row.questionId,
+      index: row.index,
+      drafted,
+      submitted,
+      engaged: drafted + submitted,
+      total: values.length,
+    };
+  });
+}
+
+/**
+ * 此刻该讲哪一题。**五个变体**，每一句在屏幕上都是不同的话。
+ *
+ * 🔴 **卡住的那一题 = 在「已交 < 参与者数」的题里，已作答最多的那一道**（并列取最靠前）。
+ * 为什么不是「未交最多」：一个班正在做第 2 题时，第 3–10 题全部「未交」= 100%，
+ * 那个判据会把**还没讲到的题**误报成卡住 —— 而它看起来完全合理。
+ * **已作答**（草稿也算）才分得开「停在这里」与「还没到」。
+ *
+ * ⚠️ `tally` 是**作答过的人数**（不是「答错的」）—— 矩阵不编码对错（规格 §3.4）。
+ */
+export type MatrixHeadline =
+  | { kind: 'no-questions' }
+  | { kind: 'no-participants' }
+  | { kind: 'all-submitted' }
+  | { kind: 'not-started' }
+  | { kind: 'stuck'; questionId: string; index: number; tally: number; total: number };
+
+export function matrixHeadline(tallies: QuestionTally[]): MatrixHeadline {
+  if (tallies.length === 0) return { kind: 'no-questions' };
+  const total = tallies[0].total;
+  if (total === 0) return { kind: 'no-participants' };
+
+  // 「还没交齐」的题。全部交齐时这一集合为空 —— 那不是「卡住」，是「做完了」。
+  const open = tallies.filter((tally) => tally.submitted < total);
+  if (open.length === 0) return { kind: 'all-submitted' };
+  // 每一道还没交齐的题都没人动过 ⇒ 全班还没开始（不是卡在某一题）。
+  if (open.every((tally) => tally.engaged === 0)) return { kind: 'not-started' };
+
+  // ⚠️ 严格 `>` ⇒ 并列时**保留先遇到的那一个** = 题序最小的那一题。
+  const stuck = open.reduce((best, tally) => (tally.engaged > best.engaged ? tally : best));
+  return { kind: 'stuck', questionId: stuck.questionId, index: stuck.index, tally: stuck.engaged, total };
+}

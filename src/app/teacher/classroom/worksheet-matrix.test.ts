@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoardAnswerRow, WorksheetBoardParticipant, WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
-import { buildWorksheetMatrix, type CellState } from './worksheet-matrix.ts';
+import { buildWorksheetMatrix, matrixHeadline, questionTallies, type CellState } from './worksheet-matrix.ts';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /* ── 造数据 ──────────────────────────────────────────────────────────── */
@@ -135,4 +135,98 @@ test('题号是 0-based 的拍平序（与 `worksheetTileState` 的 `index` 同�
 
 test('题目树为空 ⇒ 零行（调用方走「这份学习单还没有题目」那条空态）', () => {
   assert.deepEqual(buildWorksheetMatrix(sheet([participant('p1')]), [], {}), []);
+});
+
+/* ── 3b. 🔴 能区分两种口径的夹具 ────────────────────────────────────── */
+
+/**
+ * 🔴 这个夹具是**刻意设计**的：它让「已作答最多」与「未交最多」指向**不同**的题。
+ *
+ * 形状（4 个参与者 / 4 道题）：
+ *   q1 全班交齐 · q2 全班交齐 · **q3 两人交了、一人在写、一人没动** · q4 没人动
+ *
+ * ⇒ 已作答：q3 = 3、q4 = 0          ⇒「已作答最多」指向 **q3**（前沿）
+ * ⇒ 未交：  q3 = 2、q4 = 4          ⇒「未交最多」指向 **q4**（还没讲到的题）
+ *
+ * ⚠️ **最初的夹具（q3 全班都是草稿、q1/q2 全交）区分不开这两种口径** ——
+ * 那时 q3 的未交数与 q4 **并列最大**，并列取最靠前，两个判据都回 q3，
+ * 于是「反证」什么都没证。夹具必须让前沿那一题的**未交数严格更小**（因为有人交了）。
+ */
+const FRONTIER = [
+  participant('p1', { q1: 'submitted', q2: 'submitted', q3: 'submitted' }),
+  participant('p2', { q1: 'submitted', q2: 'submitted', q3: 'submitted' }),
+  participant('p3', { q1: 'submitted', q2: 'submitted', q3: 'draft' }),
+  participant('p4', { q1: 'submitted', q2: 'submitted' }),
+];
+const FRONTIER_NODES = [node('q1'), node('q2'), node('q3'), node('q4')];
+
+/* ── 4. 逐题计数 ────────────────────────────────────────────────────── */
+
+test('计数：drafted / submitted / engaged / total 四样，分母是参与者数', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'draft' }), participant('p2', { q1: 'submitted' }), participant('p3')]),
+    [node('q1')],
+    {},
+  );
+  assert.deepEqual(questionTallies(rows), [
+    { questionId: 'q1', index: 0, drafted: 1, submitted: 1, engaged: 2, total: 3 },
+  ]);
+});
+
+/* ── 5. 🔴 「卡住的那一题」 ─────────────────────────────────────────── */
+
+test('🔴 全班停在第三题（有人交了、有人还在写）、第四题没人动 ⇒ 指向第 3 题（**不是**第 4 题）', () => {
+  // 这是本判据存在的全部理由：越靠后、越没人碰的题，「未交」人数越多 ——
+  // 那个更自然的判据于是总把**还没讲到的题**报成卡住，而它看起来完全合理。
+  const rows = buildWorksheetMatrix(sheet(FRONTIER), FRONTIER_NODES, {});
+  const headline = matrixHeadline(questionTallies(rows));
+  assert.deepEqual(headline, { kind: 'stuck', questionId: 'q3', index: 2, tally: 3, total: 4 });
+});
+
+test('🔴 阴性对照：全班一道题都没动 ⇒ not-started，**不是** stuck 在第 1 题', () => {
+  const rows = buildWorksheetMatrix(sheet([participant('p1'), participant('p2')]), [node('q1'), node('q2')], {});
+  assert.deepEqual(matrixHeadline(questionTallies(rows)), { kind: 'not-started' });
+});
+
+test('全部交齐 ⇒ all-submitted（「已交 < 参与者数」的题一道都不剩）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'submitted' }), participant('p2', { q1: 'submitted' })]),
+    [node('q1')],
+    {},
+  );
+  assert.deepEqual(matrixHeadline(questionTallies(rows)), { kind: 'all-submitted' });
+});
+
+test('参与者数为 0 ⇒ no-participants；一道题都没有 ⇒ no-questions', () => {
+  const noPeople = buildWorksheetMatrix(sheet([participant('p1')]), [node('q1')], {});
+  // p1 存在但还没作答 ⇒ 这是 not-started；真正的「没有人」要 participant 为空。
+  assert.deepEqual(matrixHeadline(questionTallies(noPeople)), { kind: 'not-started' });
+  const empty = buildWorksheetMatrix(sheet([]), [node('q1')], {});
+  assert.deepEqual(matrixHeadline(questionTallies(empty)), { kind: 'no-participants' });
+  const noQuestions = buildWorksheetMatrix(sheet([participant('p1')]), [], {});
+  assert.deepEqual(matrixHeadline(questionTallies(noQuestions)), { kind: 'no-questions' });
+});
+
+test('并列时取**最靠前**的那一题', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'draft', q3: 'draft' })]),
+    [node('q1'), node('q2'), node('q3')],
+    {},
+  );
+  const headline = matrixHeadline(questionTallies(rows));
+  assert.equal(headline.kind === 'stuck' ? headline.index : -1, 0);
+});
+
+test('★ 反证：「未交最多」会把还没讲到的题报成卡住 —— 钉住两种口径的差别', () => {
+  // 这就是那个更自然、也更错的判据：它数的是「还差几个人交」，于是**越靠后、越没人碰的题
+  // 越是第一名**。在这个夹具上它指向 q4（未交 4），而实现必须指向 q3（未交 2、已作答 3）。
+  const rows = buildWorksheetMatrix(sheet(FRONTIER), FRONTIER_NODES, {});
+  const tallies = questionTallies(rows);
+  const wrong = tallies
+    .filter((t) => t.submitted < t.total)
+    .reduce((best, t) => (t.total - t.submitted > best.total - best.submitted ? t : best));
+  assert.equal(wrong.questionId, 'q4', '这就是「未交最多」的样子');
+  const right = matrixHeadline(tallies);
+  assert.equal(right.kind === 'stuck' ? right.questionId : null, 'q3');
+  assert.notEqual(wrong.questionId, right.kind === 'stuck' ? right.questionId : null);
 });

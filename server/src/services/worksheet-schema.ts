@@ -275,3 +275,49 @@ export async function ensureWorksheetAnswerColumns(
   if (backfilled > 0) console.log(`[server] 学习单作答表已回填 gradeState：${backfilled} 行`);
   return { columnsAdded, backfilled };
 }
+
+/**
+ * ★ M7a：给**已有这张表、但它还是「加 `classroomId` 之前」那个形状**的库补上。
+ *
+ * 🔴 **为什么不能像 `ensureWorksheetAnswerColumns` 那样 `ALTER TABLE ADD COLUMN`**：
+ * `classroomId` 是 `NOT NULL` **且带外键**，而 SQLite 的 `ALTER TABLE` 两样都加不了
+ * （NOT NULL 必须带默认值、外键根本加不上）。实测过：`prisma db push` 遇到这种改动也
+ * **拒绝执行**（要 `--force-reset`，即丢掉整个库）—— 它至少是**响亮地**拒绝，不是静默重建。
+ *
+ * ⇒ 唯一的办法是**重建**。之所以敢重建：**这张表是派生数据** —— 它是从学生作答算出来的，
+ * 重建的代价是教师再点一次「分析」，而**原始作答一行都不动**。
+ *
+ * 🔴 **但有数据时绝不删。** 本仓的纪律是「宁可响亮地坏，也不静默地毁」。所以：
+ *   · 表不存在 ⇒ 什么都不做（建表是 `ensureWorksheetTables` 的职责）
+ *   · 已经是新形状 ⇒ 什么都不做
+ *   · 老形状且有行 ⇒ **不删**，回 `{ recreated: false, rowCount: n }` 并打一行日志
+ *     （那个功能会在用的时候报错 —— 响亮，且不影响别的功能）
+ *   · 老形状且**空** ⇒ 删掉，让 `ensureWorksheetTables` 按新 DDL 重建
+ *
+ * ⚠️ **本函数只对「未发布的中间形状」有意义**：M7a 从没发布过，所以真实用户的库里
+ * 不可能有这张表。它存在的意义是让**本分支开发期的库**（`tsx watch` 启动不走 `db push`）
+ * 能自愈。发布之后这个分支永远不会再命中。
+ */
+export async function ensureAnalysisClassroomColumn(
+  prisma: PrismaClient,
+): Promise<{ recreated: boolean; rowCount: number }> {
+  const cols = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('WorksheetQuestionAnalysis')`);
+  if (cols.length === 0) return { recreated: false, rowCount: 0 };
+  if (cols.some((c) => c.name === 'classroomId')) return { recreated: false, rowCount: 0 };
+
+  const counted = await prisma.$queryRawUnsafe<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM "WorksheetQuestionAnalysis"`);
+  const rowCount = Number(counted[0]?.n ?? 0);
+  if (rowCount > 0) {
+    console.warn(
+      `[server] ⚠️ WorksheetQuestionAnalysis 是旧形状（缺 classroomId）且有 ${rowCount} 行 —— `
+      + 'SQLite 加不了这个列，只能重建表，而**有数据时本函数不删**。'
+      + '请手工处理：备份/清空该表后重启（或 `./dev.sh db reset`）。'
+      + '原始作答不受影响，重算即可。');
+    return { recreated: false, rowCount };
+  }
+  await prisma.$executeRawUnsafe(`DROP TABLE "WorksheetQuestionAnalysis"`);
+  console.warn('[server] WorksheetQuestionAnalysis 是旧形状（缺 classroomId）且为空 ⇒ 已删除，'
+    + '将由 ensureWorksheetTables 按新 DDL 重建（该表是派生数据，重算即可）。');
+  return { recreated: true, rowCount: 0 };
+}

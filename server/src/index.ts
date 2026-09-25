@@ -31,7 +31,7 @@ import { requireTeacher } from './middleware/auth.js';
 import { getStudentSession } from './middleware/student-auth.js';
 import { migrateClassroomParticipants } from './services/participant-migration.js';
 import { ensureGroupMaterials } from './services/group-materials-migration.js';
-import { ensureWorksheetAnswerColumns, ensureWorksheetTables } from './services/worksheet-schema.js';
+import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from './services/worksheet-schema.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -159,6 +159,9 @@ async function main() {
     //   · **索引会按名自愈**。每张表的索引是逐个按名到 sqlite_master 里查的，
     //     缺哪个补哪个 —— 「表建好了但建索引那一步失败」的中间态能在下次启动补回来。
     try {
+      // ★ M7a：**必须在建表之前**跑 —— 它管的是「表在、但形状是旧的（缺 classroomId）」。
+      // 建表函数只按表名探测存在性，不管列，所以旧形状不会自愈。
+      await ensureAnalysisClassroomColumn(prisma);
       await ensureWorksheetTables(prisma);
     } catch (error) {
       console.warn('[server] 学习单建表失败，学习单功能可能不可用：', error);

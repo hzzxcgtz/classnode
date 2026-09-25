@@ -102,16 +102,17 @@
 |---|---|---|
 | 类型 | `npx tsc --noEmit` | 退出 **0** |
 | 静态检查 | `npx eslint src server/src` | **0 errors / 5 warnings**（5 条都是开工前就有的） |
-| 前端全量 | `node --test "src/**/*.test.ts"` | **363 pass / 0 fail**（M7a 新增 **4** 条：跨工程对拍） |
-| 服务端全量 | `rm -rf server/dist && pnpm test` | **585 pass / 0 fail**（M7a 新增 **58** 条） |
-| 产物构建 | `./dev.sh stop && pnpm build && ./dev.sh start` | 退出 **0**；Safari 15 闸门 **81 个源文件通过** |
+| 前端全量 | `node --test "src/**/*.test.ts"` | **367 pass / 0 fail** |
+| 服务端全量 | `rm -rf server/dist && pnpm test` | **596 pass / 0 fail**（M7a 新增 **61** 条） |
+| 产物构建 | `./dev.sh stop && pnpm build && ./dev.sh start` | 退出 **0**；Safari 15 闸门 **83 个源文件通过** |
 | 产物里真有这个功能 | `grep -rl '尚未接入第三方 AI' out/` | 命中教师端 chunk（浮层真的进了包） |
 
-**M7a 新增的自动化网**（**62** 条用例，绝大多数带反证；下表条数由 `/usr/bin/grep -c '^test('` 量出）：
+**M7a 新增的自动化网**（**65** 条用例，绝大多数带反证；下表条数由 `/usr/bin/grep -c '^test('` 量出）：
 
 | 文件 | 条 | 钉住的事 |
 |---|---|---|
-| `server/src/tests/worksheet-schema.test.ts`（改） | +0 | 新表的**逐字 DDL** 与 `prisma db push` 一致（沿用既有那条，它遍历表名列表） |
+| `server/src/tests/worksheet-schema.test.ts`（改） | +3 | 新表的**逐字 DDL** 对拍（沿用既有那条）+ **M7a 迁移**三条（老形状空 ⇒ 重建 / 有数据 ⇒ 绝不删 / 表不在 ⇒ 什么都不做） |
+| `src/lib/api-http-error.test.ts` | 4 | `isNotFound` 的判断 + 反证（文件头写明「这条**不**覆盖 `api.ts` 的接线」） |
 | `server/src/tests/analysis-gate.test.ts` | 5 | 题型注册表 × `grade()` 行为 × 闸门**三方对拍** |
 | `src/lib/analysis-gate-parity.test.ts` | 4 | 前端 `graded:false` × 服务端闸门（**两个方向**各一条反证） |
 | `server/src/tests/analysis-payload.test.ts` | 32 | 选择 / 形态 / 文档 / 排版 / 旋钮 / 往返 / 陈旧 |
@@ -141,3 +142,14 @@ pnpm test > /tmp/m7a-flake.log 2>&1; grep -A8 'failing tests' /tmp/m7a-flake.log
 ```
 失败详情里会有文件名。**不要当成偶发一笔带过** —— 本项目栽过「把一次红当偶发」。
 ⚠️ **不是 M7a 引入的**（两次都发生在 M7a 期间，但改动都是纯新增：新表、新文件、新端点）。
+
+---
+
+## 9. 一条只对**开发期**有意义的迁移
+
+M7a 的 I1 修法给 `WorksheetQuestionAnalysis` **加了 `classroomId`**（键的一部分），
+而 SQLite 加不了「NOT NULL + 外键」的列、`prisma db push` 对它会**拒绝执行**（要 `--force-reset`）。
+⇒ 新增 `ensureAnalysisClassroomColumn`（在 `ensureWorksheetTables` **之前**跑）：
+表在、缺列、且**空** ⇒ 删掉让建表函数按新 DDL 重建；**有数据 ⇒ 绝不删**，只打一行日志。
+⚠️ **只对「未发布的中间形状」有意义**（M7a 从没发布过，真实用户的库里不可能有这张表）。
+本机 dev 库已实测自愈（`server/logs/server-2026-09-25.log` 里有那行日志）。

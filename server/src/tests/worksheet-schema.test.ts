@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
-import { ensureWorksheetAnswerColumns, ensureWorksheetTables } from '../services/worksheet-schema.js';
+import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from '../services/worksheet-schema.js';
 
 /**
  * 5 张新表 —— 也是「老库形状」的判据。
@@ -411,5 +411,79 @@ test('🔴 表在、索引不在的半成品库：按名补回索引，且第二
   } finally {
     await db.$disconnect();
     fs.rmSync(file, { force: true });
+  }
+});
+
+/* ── ★ M7a：给「加 classroomId 之前」那个形状的库补上 ──────────────────── */
+
+/** M7a 中间形状（缺 classroomId）的建表 DDL —— 就是本批 I1 修之前那一版，逐字。 */
+const OLD_ANALYSIS_DDL = `CREATE TABLE "WorksheetQuestionAnalysis" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "worksheetId" TEXT NOT NULL,
+    "questionId" TEXT NOT NULL,
+    "payloadKind" TEXT NOT NULL,
+    "aggregate" JSONB NOT NULL,
+    "coveredCount" INTEGER NOT NULL,
+    "totalCount" INTEGER NOT NULL,
+    "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "narrative" TEXT,
+    "perStudent" JSONB,
+    "agentId" TEXT,
+    "model" TEXT,
+    CONSTRAINT "WorksheetQuestionAnalysis_worksheetId_fkey" FOREIGN KEY ("worksheetId") REFERENCES "Worksheet" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);`;
+
+/** 把某一列是否存在读出来（判据用，不靠"看"）。 */
+async function hasColumn(db: PrismaClient, table: string, column: string): Promise<boolean> {
+  const cols = await db.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('${table}')`);
+  return cols.some((c) => c.name === column);
+}
+
+test('🔴 M7a 迁移：老形状且**空** ⇒ 删掉重建（新形状带 classroomId）', async () => {
+  const { db, file } = makeCopy('analysis-old-empty');
+  try {
+    await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "WorksheetQuestionAnalysis"`);
+    await db.$executeRawUnsafe(OLD_ANALYSIS_DDL);
+    assert.equal(await hasColumn(db, 'WorksheetQuestionAnalysis', 'classroomId'), false, '前置：老形状');
+
+    const result = await ensureAnalysisClassroomColumn(db);
+    assert.deepEqual(result, { recreated: true, rowCount: 0 });
+    await ensureWorksheetTables(db);
+    assert.equal(await hasColumn(db, 'WorksheetQuestionAnalysis', 'classroomId'), true, '重建之后必须带新列');
+  } finally {
+    await db.$disconnect(); fs.rmSync(file, { force: true });
+  }
+});
+
+test('🔴 M7a 迁移：老形状**有数据** ⇒ 绝不删（宁可响亮地坏）', async () => {
+  const { db, file } = makeCopy('analysis-old-data');
+  try {
+    await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "WorksheetQuestionAnalysis"`);
+    await db.$executeRawUnsafe(OLD_ANALYSIS_DDL);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "Worksheet" ("id","title","content","settings","updatedAt") VALUES ('w1','t','{}','{}',CURRENT_TIMESTAMP)`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetQuestionAnalysis" ("id","worksheetId","questionId","payloadKind","aggregate","coveredCount","totalCount")
+       VALUES ('a1','w1','q1','text','[]',1,2)`);
+
+    const result = await ensureAnalysisClassroomColumn(db);
+    assert.deepEqual(result, { recreated: false, rowCount: 1 }, '有数据时不重建，且把行数报出来');
+    const rows = await db.$queryRawUnsafe<{ n: number }[]>(`SELECT COUNT(*) AS n FROM "WorksheetQuestionAnalysis"`);
+    assert.equal(Number(rows[0].n), 1, '数据一行都不许丢');
+  } finally {
+    await db.$disconnect(); fs.rmSync(file, { force: true });
+  }
+});
+
+test('M7a 迁移：表不存在 / 已经是新形状 ⇒ 什么都不做', async () => {
+  const { db, file } = makeCopy('analysis-noop');
+  try {
+    // 新形状（模板库就是新形状）
+    assert.deepEqual(await ensureAnalysisClassroomColumn(db), { recreated: false, rowCount: 0 });
+    // 表不存在
+    await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "WorksheetQuestionAnalysis"`);
+    assert.deepEqual(await ensureAnalysisClassroomColumn(db), { recreated: false, rowCount: 0 }, '表不在时不许抛、也不许建');
+  } finally {
+    await db.$disconnect(); fs.rmSync(file, { force: true });
   }
 });

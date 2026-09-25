@@ -74,7 +74,21 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
           {agent.logo ? <Image unoptimized width={44} height={44} src={agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : agent.name[0]}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.938rem', color: '#1a1a2e', marginBottom: 3 }}>{agent.name}</div>
+          {/* ★ 2026-09-25（教师截图批注）：「这里可以加个类别『学』『析』」，
+              随后又定了位置：「还是加到智能体名称后面吧」。
+              🔴 值得它的理由：一排卡片扫过去时，**学伴**与**分析**是两种完全不同的东西 ——
+              后者**绝不会出现在学生的列表里**（`Agent.purpose` 那道闸）—— 而它们在卡片上
+              原本长得一模一样，只看名字看不出来。
+              ⚠️ 挂在**名称这一行**而不是标签行：它是这个名字的**属性**，不是一项能力标签。
+              ⚠️ 颜色与**课堂看板那枚模块字**同源（`classroom/page.tsx` 的 `ModuleInitialChip`）：
+              学伴用学生端「智能学伴」的青色，分析用与「深度思考」同族的紫色 ——
+              同一件事在两页认到的颜色必须是同一个（§4.6 立过的规矩）。
+              ⚠️ 无障碍：光秃秃一个「学」对读屏无意义 ⇒ `role="img"` + `aria-label`，
+              汉字本身 `aria-hidden`（本仓立过「图标化只减视觉宽度、不减无障碍信息」）。 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, minWidth: 0 }}>
+            <span style={{ fontWeight: 600, fontSize: '0.938rem', color: '#1a1a2e', minWidth: 0, wordBreak: 'break-word' }}>{agent.name}</span>
+            <PurposeChip purpose={agent.purpose} />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.688rem', fontWeight: 600, background: platform?.badgeBackground || '#f1f5f9', color }}>
               {platform?.label || agent.platform}
@@ -96,16 +110,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
               标签多就掉到下一行（左边那张）。⇒ 同一个组件在不同数据下**行数不一样**，
               一排卡片扫过去是散的。
               现在**结构固定**：平台标签自己一行，关联课堂自己一行，与标签多少无关。 */}
-          <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* ★ 2026-09-25（教师截图批注）：「这里可以加个类别『学』『析』」。
-                🔴 一个汉字就够扫 —— 一排卡片扫过去时，「学伴」和「分析」是两种完全不同的东西
-                （后者**绝不会出现在学生的列表里**），而它们在卡片上原本长得一模一样。
-                ⚠️ 颜色与**课堂看板那枚模块字**同源（`classroom/page.tsx` 的 `ModuleInitialChip`）：
-                学伴用学生端「智能学伴」的青色，分析用与「深度思考」同族的紫色 ——
-                同一件事在两页认到的颜色必须是同一个（§4.6 立过的规矩）。
-                ⚠️ 无障碍：光秃秃一个「学」对读屏无意义 ⇒ `role="img"` + `aria-label`，
-                汉字本身 `aria-hidden`（本仓立过「图标化只减视觉宽度、不减无障碍信息」）。 */}
-            <PurposeChip purpose={agent.purpose} />
+          <div style={{ marginTop: 5 }}>
             <button type="button" className="related-classrooms-chip" onClick={onShowRelatedClassrooms}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />

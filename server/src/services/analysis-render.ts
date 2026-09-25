@@ -142,7 +142,12 @@ export function buildSheetSvg(entries: AnalyzeEntry[], layout: SheetLayout, labe
     if (!cell.hasInk) {
       // 没有画可渲：说出原因，别留一块神秘的空底（教师与模型都得知道那是「空白」而不是「画布是白的」）
       if (labeled) {
-        const why = entry && entry.kind === 'unknown' ? '（形状认不出）' : '（空白）';
+        // 🔴 三态，不是两态：`mixed` 里**文字作答**那一格原先落进「（空白）」——
+        // 而他答了字，答案就在同一屏的文档里。这张图将来是发给模型的那份东西，
+        // 「（空白）」会让模型读到「这几位没答」。
+        const why = entry?.kind === 'unknown' ? '（形状认不出）'
+          : entry?.kind === 'text' ? '（文字作答，见文档）'
+            : '（空白）';
         parts.push(`<text x="${cell.x + 8}" y="${cell.y + Math.round(cell.h / 2)}" font-size="14" font-family="sans-serif" fill="${PLACEHOLDER_FILL}">${esc(why)}</text>`);
       }
       continue;

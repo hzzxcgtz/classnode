@@ -371,17 +371,6 @@ export interface WorksheetDetail {
 export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
 
 /**
- * 教师看板的**逐题作答行**（`GET /api/worksheets/classroom/:classroomId/answers`）。
- *
- * 🔴 这个端点是 D4 补的，它存在的理由是 D3 实测出来的一个洞：看板格子完全由
- * `worksheet-answer-updated` 广播驱动 ⇒ **教师刷新一次页面，早做完的学生就掉回
- * 「还没收到作答」态**（看板失忆，且不报错）。抽屉的两种形态本来也要同一份数据。
- *
- * `value` 是**学生自己写的**那个作答值，不是正确答案 —— 正确答案
- * （`data.correctKeys` / `data.answers`）住在 `Worksheet.content` 里，
- * 服务端**从不**把它放进这个响应（规格 §5.4 红线）。
- */
-/**
  * ★ M7a：一道题的**聚合载荷**（分析预览用）。
  *
  * ⚠️ 图**不在**里面 —— 它走 `…/sheet/:index` 单独取（库里只存结构化快照，图是按需重渲的
@@ -409,12 +398,23 @@ export interface WorksheetAnalysisPayload {
    * 标签**这一次**能不能渲染出来。`false` = 图上没有标签（本机渲染不出文字），
    * 界面**必须**给出编号对照表，否则教师与模型都认不出哪一格是谁。
    */
-  labeled: boolean | null;
+  labeled: boolean;
   /** 「算完之后又有人交了这道题」—— 服务端算的，界面必须显眼说出来。 */
   stale: boolean;
   computedAt: string;
 }
 
+/**
+ * 教师看板的**逐题作答行**（`GET /api/worksheets/classroom/:classroomId/answers`）。
+ *
+ * 🔴 这个端点是 D4 补的，它存在的理由是 D3 实测出来的一个洞：看板格子完全由
+ * `worksheet-answer-updated` 广播驱动 ⇒ **教师刷新一次页面，早做完的学生就掉回
+ * 「还没收到作答」态**（看板失忆，且不报错）。抽屉的两种形态本来也要同一份数据。
+ *
+ * `value` 是**学生自己写的**那个作答值，不是正确答案 —— 正确答案
+ * （`data.correctKeys` / `data.answers`）住在 `Worksheet.content` 里，
+ * 服务端**从不**把它放进这个响应（规格 §5.4 红线）。
+ */
 export interface WorksheetBoardAnswerRow {
   questionId: string;
   /** `'unanswered' | 'draft' | 'submitted'`（服务端 DDL 的取值域）。 */

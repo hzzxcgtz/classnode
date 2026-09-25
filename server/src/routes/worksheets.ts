@@ -43,7 +43,7 @@ import {
   isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
 } from '../services/analysis-payload.js';
-import { renderSheets } from '../services/analysis-render.js';
+import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 
 /**
  * 学习单路由。
@@ -908,26 +908,30 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
 // 改路径形状时要重新确认那一条。
 
 /**
- * 这份学习单绑在哪节课上。**两条路都要走**：
- *   · 课堂级绑定 `ClassroomWorksheet`（标准 / 分组模式的机制）
- *   · **组级材料** `ClassroomGroupMaterial`（高级模式的机制 —— 那时课堂级表是空的，
- *     每个组各配自己那一份）
+ * 这份学习单是不是**挂在这个班上**。
  *
- * 🔴 只认课堂级那一张表的话，**高级模式下所有分析都回 404** —— 而高级模式恰恰是
- * 分母最容易算错、因而最需要这个功能的地方。这个缺口是 `analysis-endpoint.test.ts`
- * 里那条「3 组里只有 2 组配了这份」当场抓出来的。
+ * 🔴 这是 I1 的修法：原先这里叫 `findWorksheetClassroomId`，做的是「**猜**一个课堂」——
+ * 先取 `ClassroomWorksheet` 里 `createdAt` 最早的那条、再退到组级材料。而同一份学习单
+ * 可以被**多个课堂**引用（`ClassroomWorksheet` 的唯一键是 `(classroomId, worksheetId)`，
+ * `GET /:id/usage` 专门统计「被 N 个课堂引用」）⇒ 教师在乙班点「分析」，拿到的是**甲班**的
+ * covered/total、甲班的答案、甲班的伪名列表；在乙班点「重新生成」会把甲班那份**静默覆盖**。
+ *
+ * ⇒ 现在课堂由**请求带入**（`?classroomId=`，前端从矩阵浮层所在的课堂传），这里只做一道
+ * 校验：它确实挂在这个班上（课堂级绑定 **或** 该班的组级材料）。不挂 ⇒ 404，
+ * 而不是回落到「猜一个」。
  */
-async function findWorksheetClassroomId(prisma: PrismaClient, worksheetId: string): Promise<string | null> {
+async function isWorksheetInClassroom(
+  prisma: PrismaClient, classroomId: string, worksheetId: string,
+): Promise<boolean> {
   const classroomLevel = await prisma.classroomWorksheet.findFirst({
-    where: { worksheetId }, select: { classroomId: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    where: { classroomId, worksheetId }, select: { id: true },
   });
-  if (classroomLevel) return classroomLevel.classroomId;
+  if (classroomLevel) return true;
   const groupLevel = await prisma.classroomGroupMaterial.findFirst({
-    where: { kind: 'worksheet', targetId: worksheetId },
-    select: { group: { select: { classroomId: true } } },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    where: { kind: 'worksheet', targetId: worksheetId, group: { classroomId } },
+    select: { id: true },
   });
-  return groupLevel?.group?.classroomId ?? null;
+  return groupLevel !== null;
 }
 
 /** 读一次旋钮。坏值回落默认（`normalizeAnalysisKnobs`），**不抛**。 */
@@ -938,8 +942,8 @@ async function loadAnalysisKnobs(prisma: PrismaClient): Promise<SheetKnobs> {
 
 /** 题在 `content` 树里的位置（拍平序）—— 抬头那句「第 N 题」要用它。 */
 async function loadAnalysisTarget(
-  prisma: PrismaClient, worksheetId: string, questionId: string,
-): Promise<{ ok: true; node: QuestionNode; index: number; classroomId: string } | { ok: false; status: number; error: string }> {
+  prisma: PrismaClient, classroomId: string, worksheetId: string, questionId: string,
+): Promise<{ ok: true; node: QuestionNode; index: number } | { ok: false; status: number; error: string }> {
   const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true } });
   if (!worksheet) return { ok: false, status: 404, error: '学习单不存在' };
   // 与既有三处同形（:1288 / :1469 / :1806）：JSON 列的窄化要走 unknown。
@@ -950,9 +954,12 @@ async function loadAnalysisTarget(
   if (!isAnalyzableType(node.type)) {
     return { ok: false, status: 400, error: '这道题不是主观题 —— 客观题本来就判分，看板的对错已经回答了问题' };
   }
-  const classroomId = await findWorksheetClassroomId(prisma, worksheetId);
-  if (!classroomId) return { ok: false, status: 404, error: '这份学习单还没有关联课堂' };
-  return { ok: true, node, index, classroomId };
+  if (!(await isWorksheetInClassroom(prisma, classroomId, worksheetId))) {
+    // ⚠️ 404 而不是「回落到别的课堂」：同一份学习单可以被多个课堂引用，
+    // 猜错的后果是把**别的班**的数据当成这个班的给教师看。
+    return { ok: false, status: 404, error: '这份学习单没有挂在当前课堂上' };
+  }
+  return { ok: true, node, index };
 }
 
 /**
@@ -1024,6 +1031,15 @@ async function loadAnalysisAnswers(
     })));
 }
 
+/**
+ * 读 `?classroomId=`。**必填**（同一份学习单可以被多个课堂引用，见 `isWorksheetInClassroom`）——
+ * 缺了它只能猜，而猜错的后果是把别的班的数据当成这个班的。
+ */
+function readClassroomIdQuery(raw: unknown): string | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 /** 把一行库里的记录重建成载荷（`GET` 与 sheet 端点共用）。 */
 function payloadFromStoredRow(
   row: { payloadKind: string; aggregate: unknown; coveredCount: number; totalCount: number },
@@ -1048,7 +1064,7 @@ function payloadFromStoredRow(
  * 名单当成当前的。
  */
 function payloadResponse(
-  payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean | null, stale: boolean,
+  payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean, stale: boolean,
 ): Record<string, unknown> {
   return { ...payload, labeled, stale };
 }
@@ -1058,11 +1074,13 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const worksheetId = req.params.id;
     const questionId = req.params.questionId;
-    const target = await loadAnalysisTarget(prisma, worksheetId, questionId);
+    const classroomId = readClassroomIdQuery(req.query.classroomId);
+    if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
+    const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
 
-    const participants = await loadAnalysisParticipants(prisma, target.classroomId, worksheetId);
-    const answers = await loadAnalysisAnswers(prisma, target.classroomId, worksheetId);
+    const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
+    const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const entries = selectAnalyzeEntries(answers, participants, questionId);
     const knobs = await loadAnalysisKnobs(prisma);
     const meta = {
@@ -1071,7 +1089,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
 
     await prisma.worksheetQuestionAnalysis.upsert({
-      where: { worksheetId_questionId: { worksheetId, questionId } },
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       update: {
         payloadKind: payload.payloadKind,
         aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
@@ -1080,7 +1098,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
         computedAt: new Date(),
       },
       create: {
-        worksheetId, questionId,
+        classroomId, worksheetId, questionId,
         payloadKind: payload.payloadKind,
         aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
         coveredCount: entries.length,
@@ -1093,7 +1111,10 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     // （`analysis-endpoint.test.ts` 有一条用例钉着它。）
 
     // 刚算完 ⇒ 不可能已过期（`computedAt` 是此刻）。仍然照发这一格，让前端只有一个形状要处理。
-    res.json(payloadResponse(payload, null, false));
+    // 🔴 `labeled` 必须**真算一次探针**（不是传 `null`）：界面只在 `labeled === false` 时给
+    // 「编号对照表」，而 `null === false` 是假 ⇒ 那一整块 UI 永远不会渲染 ——
+    // 它恰好在探针为 false 的那一刻才需要，那一刻它不存在。
+    res.json(payloadResponse(payload, await labelsRenderOk(), false));
   } catch (error) {
     console.error('[worksheets] 生成分析载荷失败:', error);
     res.status(500).json({ error: '生成分析载荷失败' });
@@ -1105,11 +1126,13 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const worksheetId = req.params.id;
     const questionId = req.params.questionId;
+    const classroomId = readClassroomIdQuery(req.query.classroomId);
+    if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
     const row = await prisma.worksheetQuestionAnalysis.findUnique({
-      where: { worksheetId_questionId: { worksheetId, questionId } },
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
     });
     if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
-    const target = await loadAnalysisTarget(prisma, worksheetId, questionId);
+    const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
     const knobs = await loadAnalysisKnobs(prisma);
     // ★ 陈旧 = 「算完之后又有人交了这道题」。**服务端算**（前端那份看板数据里没有
@@ -1117,9 +1140,10 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     // ⚠️ 第三个实参是 **worksheetId**，不是 questionId —— 传错的后果是这里永远查到 0 行、
     // 于是**永远不报过期**，而屏幕上一点异常都没有（这一条被 `analysis-endpoint.test.ts`
     // 的 stale 用例当场抓住）。
-    const answers = await loadAnalysisAnswers(prisma, target.classroomId, worksheetId);
+    const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
-    res.json(payloadResponse(payloadFromStoredRow(row, target.node, target.index, knobs), null, stale));
+    res.json(payloadResponse(
+      payloadFromStoredRow(row, target.node, target.index, knobs), await labelsRenderOk(), stale));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
     res.status(500).json({ error: '读取分析载荷失败' });
@@ -1135,8 +1159,10 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
     if (!Number.isInteger(sheetIndex) || sheetIndex < 0) {
       return res.status(404).json({ error: '没有这一张' });
     }
+    const classroomId = readClassroomIdQuery(req.query.classroomId);
+    if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
     const row = await prisma.worksheetQuestionAnalysis.findUnique({
-      where: { worksheetId_questionId: { worksheetId, questionId } },
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       select: { aggregate: true },
     });
     if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });

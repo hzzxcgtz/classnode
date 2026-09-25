@@ -69,6 +69,23 @@ async function seedWorksheet(prisma: PrismaClient, nodes: Prisma.InputJsonValue[
  * ⚠️ 唯一要测鉴权的那一条（学生 token 必须 403）**显式**传 `withGate: true` ——
  * 那条边只有真的挂上 gate 才证得了。
  */
+/**
+ * 分析端点的 URL。**`classroomId` 是必填的** —— 同一份学习单可以被多个课堂引用，
+ * 缺了它服务端只能猜，而猜错就是把别的班的数据当成这个班的（I1）。
+ */
+function analysisUrl(base: string, worksheetId: string, questionId: string, classroomId: string): string {
+  return `${base}/api/worksheets/${worksheetId}/analysis/${questionId}?classroomId=${classroomId}`;
+}
+
+/**
+ * 联系表的 URL。⚠️ **不能写成 `analysisUrl(...) + '/sheet/0'`** —— 那样查询串会落到
+ * 路径中间（`…/q3?classroomId=C/sheet/0`），路由匹配不上 ⇒ 404。
+ * （第一版就是这么写的，而「没算过时取联系表 ⇒ 404」那条用例**照样绿** —— 它绿在错误的原因上。）
+ */
+function sheetUrl(base: string, worksheetId: string, questionId: string, index: number, classroomId: string): string {
+  return `${base}/api/worksheets/${worksheetId}/analysis/${questionId}/sheet/${index}?classroomId=${classroomId}`;
+}
+
 async function withServer(prisma: PrismaClient, opts: { withGate?: boolean } = {}) {
   const app = express();
   app.use(express.json());
@@ -103,7 +120,7 @@ test('🔴 标准模式：covered / total 按参与者数（不是「作答过�
 
   const srv = await withServer(p);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`, { method: 'POST' });
+  const res = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
   // ⚠️ 不能写成 `assert.equal(res.status, 200, await res.text())` —— message 参数**先求值**，
   // 那次 `text()` 会把 body 读掉，紧接着的 `res.json()` 就抛「Body has already been read」，
   // 而**失败信息会指向一个与真因无关的地方**。先判状态，只在失败时才读 body。
@@ -137,7 +154,7 @@ test('🔴 高级模式：分母只算「解析到这份学习单」的组（3 �
 
   const srv = await withServer(p);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`, { method: 'POST' });
+  const res = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
   // ⚠️ 不能写成 `assert.equal(res.status, 200, await res.text())` —— message 参数**先求值**，
   // 那次 `text()` 会把 body 读掉，紧接着的 `res.json()` 就抛「Body has already been read」，
   // 而**失败信息会指向一个与真因无关的地方**。先判状态，只在失败时才读 body。
@@ -151,9 +168,11 @@ test('还没算过时 GET ⇒ 404（不是空载荷）', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const worksheet = await seedWorksheet(db.prisma, [SHORT_ANSWER_NODE]);
+  const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7011', status: 'active', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const srv = await withServer(db.prisma);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`);
+  const res = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id));
   assert.equal(res.status, 404);
 });
 
@@ -161,9 +180,11 @@ test('题不在学习单里 ⇒ POST 404', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const worksheet = await seedWorksheet(db.prisma, [SHORT_ANSWER_NODE]);
+  const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7012', status: 'active', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const srv = await withServer(db.prisma);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/nope`, { method: 'POST' });
+  const res = await fetch(analysisUrl(srv.base, worksheet.id, 'nope', classroom.id), { method: 'POST' });
   assert.equal(res.status, 404);
 });
 
@@ -171,9 +192,11 @@ test('🔴 客观题 ⇒ POST 400（闸门外，不该产出载荷）', async (t
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const worksheet = await seedWorksheet(db.prisma, [CHOICE_NODE]);
+  const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7013', status: 'active', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const srv = await withServer(db.prisma);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q2`, { method: 'POST' });
+  const res = await fetch(analysisUrl(srv.base, worksheet.id, 'q2', classroom.id), { method: 'POST' });
   assert.equal(res.status, 400, '客观题本来就判分，看板的 ✓/✗ 已经回答了问题');
 });
 
@@ -181,9 +204,11 @@ test('没算过时取联系表 ⇒ 404', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const worksheet = await seedWorksheet(db.prisma, [SHORT_ANSWER_NODE]);
+  const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7014', status: 'active', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const srv = await withServer(db.prisma);
   t.after(() => srv.close());
-  const res = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1/sheet/0`);
+  const res = await fetch(sheetUrl(srv.base, worksheet.id, 'q1', 0, classroom.id));
   assert.equal(res.status, 404);
 });
 
@@ -197,17 +222,18 @@ test('🔴 重算**不清空** AI 字段（将来 AI 写进去的解读不该被
 
   const srv = await withServer(p);
   t.after(() => srv.close());
-  await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`, { method: 'POST' });
+  await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
 
   // 假装 AI 已经写过解读（本版不写，但结构已留）
+  const key = { classroomId: classroom.id, worksheetId: worksheet.id, questionId: 'q1' };
   await p.worksheetQuestionAnalysis.update({
-    where: { worksheetId_questionId: { worksheetId: worksheet.id, questionId: 'q1' } },
+    where: { classroomId_worksheetId_questionId: key },
     data: { narrative: 'AI 写的解读', model: 'some-model' },
   });
 
-  await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`, { method: 'POST' });
+  await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
   const row = await p.worksheetQuestionAnalysis.findUnique({
-    where: { worksheetId_questionId: { worksheetId: worksheet.id, questionId: 'q1' } },
+    where: { classroomId_worksheetId_questionId: key },
   });
   assert.equal(row?.narrative, 'AI 写的解读', '重算不该把 AI 的解读抹掉 —— 而抹掉是静默的');
   assert.equal(row?.model, 'some-model');
@@ -258,7 +284,7 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
 
   const srv = await withServer(p);
   t.after(() => srv.close());
-  const post = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q3`, { method: 'POST' });
+  const post = await fetch(analysisUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
   if (post.status !== 200) assert.fail(`POST HTTP ${post.status}: ${await post.text()}`);
   const payload = await post.json() as Record<string, unknown>;
   assert.equal(payload.payloadKind, 'image', '全笔迹 ⇒ 联系表');
@@ -267,7 +293,7 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
   assert.equal((payload.sheetLayouts as unknown[]).length, 1);
   assert.equal((payload.entries as Array<{ anonLabel: string }>)[0].anonLabel, 'User_001', '伪名按格序派生');
 
-  const sheet = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q3/sheet/0`);
+  const sheet = await fetch(sheetUrl(srv.base, worksheet.id, 'q3', 0, classroom.id));
   assert.equal(sheet.status, 200);
   assert.equal(sheet.headers.get('content-type'), 'image/png');
   const buf = Buffer.from(await sheet.arrayBuffer());
@@ -275,11 +301,11 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
   assert.equal(sheet.headers.get('x-analysis-labels'), null, '本机能画标签 ⇒ 不该带「无标签」那个头');
 
   // 越界的张号 ⇒ 404（不是 500、不是空图）
-  const beyond = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q3/sheet/9`);
+  const beyond = await fetch(sheetUrl(srv.base, worksheet.id, 'q3', 9, classroom.id));
   assert.equal(beyond.status, 404);
 
   // GET 是同一个载荷（从落库的 aggregate 重建），与 POST 那次的结构一致
-  const got = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q3`);
+  const got = await fetch(analysisUrl(srv.base, worksheet.id, 'q3', classroom.id));
   assert.equal(got.status, 200);
   const again = await got.json() as Record<string, unknown>;
   assert.equal(again.payloadKind, 'image');
@@ -314,7 +340,7 @@ test('🔴 端点把 `stale` 发出来：算完之后又有人交了 ⇒ GET 报
 
   const srv = await withServer(p);
   t.after(() => srv.close());
-  const base = `${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`;
+  const base = analysisUrl(srv.base, worksheet.id, 'q1', classroom.id);
   const post = await fetch(base, { method: 'POST' });
   if (post.status !== 200) assert.fail(`POST HTTP ${post.status}: ${await post.text()}`);
   assert.equal((await post.json() as Record<string, unknown>).stale, false, '刚算完不可能过期');
@@ -330,4 +356,100 @@ test('🔴 端点把 `stale` 发出来：算完之后又有人交了 ⇒ GET 报
   const after = await fetch(base);
   const body = await after.json() as Record<string, unknown>;
   assert.equal(body.stale, true, '算完之后又有人交了 —— 教师必须看得见，否则会把一份不完整的名单当成当前的');
+});
+
+test('🔴 `labeled` 必须是真算出来的布尔（此前两条路都传死 `null` ⇒ 退化 UI 是死代码）', async (t) => {
+  // 规格 §3.5：打包环境缺 fontconfig 时 sharp 画不出 `<text>`，界面**必须**据 `labeled === false`
+  // 给出「编号对照表」。而 `null === false` 是 `false` ⇒ 那一整块 UI **永远不会渲染**，
+  // 而它恰好在探针为 false 的那一刻才需要 —— 那一刻它不存在。
+  // ⚠️ 这一条不必等真机：它证的是**接线**（字段有没有真值 + 界面认不认它）。
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const worksheet = await seedWorksheet(p, [SHORT_ANSWER_NODE]);
+  const classroom = await p.classroom.create({ data: { title: '课', code: '7007', status: 'active', mode: 'standard' } });
+  await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const post = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
+  if (post.status !== 200) assert.fail(`POST HTTP ${post.status}: ${await post.text()}`);
+  const postBody = await post.json() as Record<string, unknown>;
+  assert.equal(typeof postBody.labeled, 'boolean', 'POST 必须真算一次探针，不是传 null');
+
+  const got = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id));
+  const gotBody = await got.json() as Record<string, unknown>;
+  assert.equal(typeof gotBody.labeled, 'boolean', 'GET 同理');
+  assert.equal(gotBody.labeled, postBody.labeled, '两条路必须给同一个答案 —— 它们读的是同一台机器的能力');
+});
+
+test('🔴 I1：同一份学习单被两个课堂引用时，各算各的（不共用一行、不互相覆盖）', async (t) => {
+  // 教师完全可以用同一份学习单教两个班（`ClassroomWorksheet` 的唯一键是
+  // `(classroomId, worksheetId)`，`GET /:id/usage` 专门统计「被 N 个课堂引用」）。
+  // ⚠️ 键里没有 `classroomId` 时：在乙班点「分析」拿到的是**甲班**的 covered/total 与答案，
+  // 在乙班点「重新生成」会把甲班那份**静默覆盖** —— 而屏幕上一点异常都没有。
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+
+  const worksheet = await seedWorksheet(p, [SHORT_ANSWER_NODE]);
+  const jia = await p.classroom.create({ data: { title: '甲班', code: '7021', status: 'active', mode: 'standard' } });
+  const yi = await p.classroom.create({ data: { title: '乙班', code: '7022', status: 'active', mode: 'standard' } });
+  await p.classroomWorksheet.create({ data: { classroomId: jia.id, worksheetId: worksheet.id } });
+  await p.classroomWorksheet.create({ data: { classroomId: yi.id, worksheetId: worksheet.id } });
+  // 甲班 2 人、0 交；乙班 5 人、1 交
+  for (let i = 0; i < 2; i++) await p.classroomStudent.create({ data: { classroomId: jia.id, type: 'student' } });
+  const yiPeople = [];
+  for (let i = 0; i < 5; i++) {
+    yiPeople.push(await p.classroomStudent.create({ data: { classroomId: yi.id, type: 'student' } }));
+  }
+  const yiResp = await p.worksheetResponse.create({
+    data: { classroomId: yi.id, worksheetId: worksheet.id, participantId: yiPeople[0].id },
+  });
+  await p.worksheetAnswer.create({
+    data: { responseId: yiResp.id, questionId: 'q1', status: 'submitted', value: { format: 'text/v1', text: '乙班某人的答案' } },
+  });
+
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+
+  const inJia = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', jia.id), { method: 'POST' });
+  if (inJia.status !== 200) assert.fail(`甲班 POST HTTP ${inJia.status}: ${await inJia.text()}`);
+  const jiaBody = await inJia.json() as Record<string, unknown>;
+  const inYi = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', yi.id), { method: 'POST' });
+  if (inYi.status !== 200) assert.fail(`乙班 POST HTTP ${inYi.status}: ${await inYi.text()}`);
+  const yiBody = await inYi.json() as Record<string, unknown>;
+
+  assert.deepEqual([jiaBody.covered, jiaBody.total], [0, 2], '甲班：2 人、没人交');
+  assert.deepEqual([yiBody.covered, yiBody.total], [1, 5], '乙班：5 人、1 人交了 —— 不能串成甲班的 0/2');
+  assert.match(String(yiBody.text), /乙班某人的答案/);
+  assert.doesNotMatch(String(jiaBody.text), /乙班某人的答案/, '甲班不该看见乙班的答案');
+
+  const rows = await p.worksheetQuestionAnalysis.findMany({ where: { worksheetId: worksheet.id } });
+  assert.equal(rows.length, 2, '两个班各一行 —— 键里必须有 classroomId');
+
+  // 在乙班「重新生成」不该动甲班那一行
+  await fetch(analysisUrl(srv.base, worksheet.id, 'q1', yi.id), { method: 'POST' });
+  const jiaRow = await p.worksheetQuestionAnalysis.findUnique({
+    where: { classroomId_worksheetId_questionId: { classroomId: jia.id, worksheetId: worksheet.id, questionId: 'q1' } },
+  });
+  assert.equal(jiaRow?.totalCount, 2, '甲班那份不能被乙班的重算改掉');
+});
+
+test('🔴 classroomId 缺失 ⇒ 400；指向一个没挂这份学习单的课堂 ⇒ 404（不许「猜一个」）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const worksheet = await seedWorksheet(p, [SHORT_ANSWER_NODE]);
+  const mine = await p.classroom.create({ data: { title: '我的班', code: '7023', status: 'active', mode: 'standard' } });
+  await p.classroomWorksheet.create({ data: { classroomId: mine.id, worksheetId: worksheet.id } });
+  const other = await p.classroom.create({ data: { title: '别人的班', code: '7024', status: 'active', mode: 'standard' } });
+
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const bare = await fetch(`${srv.base}/api/worksheets/${worksheet.id}/analysis/q1`, { method: 'POST' });
+  assert.equal(bare.status, 400, '缺 classroomId ⇒ 400（服务端不许猜）');
+
+  const wrong = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', other.id), { method: 'POST' });
+  assert.equal(wrong.status, 404, '那份学习单没挂在这个班上 ⇒ 404，而不是回落到别的课堂');
 });

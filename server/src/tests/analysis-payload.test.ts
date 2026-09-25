@@ -349,3 +349,43 @@ test('反证：把 `isAnalysisStale` 的方向写反 ⇒ 上一条必须红', ()
   assert.equal(isAnalysisStale('2026-09-25T10:00:01.000Z', t), false,
     '把「算完的时刻」往后挪一秒，同一个提交就不再是「之后」的 —— 方向写反时两条会同真');
 });
+
+test('🔴 越界坐标必须在**读**的时候夹到 0..1（不然那条线会画进隔壁同学的格子）', () => {
+  // 与 `src/lib/worksheet-ink.ts` 的 `readPoint` 同一口径（`worksheet-ink.ts:100-101` 逐字写着
+  // 「那边把越界的数夹到 0..1，这里不夹……**夹取是读的一侧的事**」）。
+  // ⚠️ 不夹的后果不是「画歪一点」：`toPixel` 是 `x * box.w`，而联系表把每格平移到自己的框里 ——
+  // 于是负坐标那一笔会被画进**相邻参与者**的格子里，看起来就是那个人画的（跨人错位，且不报错）。
+  const [entry] = selectAnalyzeEntries([
+    row('p1', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[-0.5, 0.5], [2, 0.9]], width: 0.01, color: '#111111' }],
+    }),
+  ], people, 'q1');
+  assert.equal(entry.kind, 'ink');
+  assert.deepEqual(entry.ink?.strokes[0].points, [[0, 0.5], [1, 0.9]]);
+});
+
+test('🔴 坐标不是有限数的那一点被丢掉（不是留着让整张图渲不出来）', () => {
+  const [entry] = selectAnalyzeEntries([
+    row('p1', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[0, 0], [NaN, 0.5], [0.7, 0.7]], width: 0.01, color: '#111111' }],
+    }),
+  ], people, 'q1');
+  assert.deepEqual(entry.ink?.strokes[0].points, [[0, 0], [0.7, 0.7]], '坏的那一点丢掉，好的一点留下');
+});
+
+test('形状不对的笔画整条丢掉（不是留一条空笔画）', () => {
+  const [entry] = selectAnalyzeEntries([
+    row('p1', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [
+        { points: [[0, 0], [1, 1]], width: 0.01, color: '#111111' },
+        { points: 'nope', width: 0.01, color: '#111111' },
+        { points: [[0.5]], width: 0.01, color: '#111111' },
+      ],
+    }),
+  ], people, 'q1');
+  assert.equal(entry.ink?.strokes.length, 1, '只留形状对的那一条');
+  assert.equal(entry.ink?.strokes[0].points.length, 2);
+});

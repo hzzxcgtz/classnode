@@ -22,11 +22,14 @@ import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 
 export function AnalysisOverlay({
+  classroomId,
   worksheetId,
   questionId,
   mode,
   onClose,
 }: {
+  /** 🔴 必填：同一份学习单可以被多个课堂引用，服务端不许猜（猜错就把别的班的数据给这个班看）。 */
+  classroomId: string;
   worksheetId: string;
   questionId: string;
   /** 课堂 mode —— **只**用来定「已交 N/M」的单位（分组 / 高级模式下是「组」）。 */
@@ -44,17 +47,17 @@ export function AnalysisOverlay({
     setError(null);
     try {
       try {
-        setPayload(await api.getWorksheetAnalysis(worksheetId, questionId));
+        setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId));
       } catch {
         // 还没算过（404）⇒ 由「打开即算」承接。其他错误由第二次调用抛出并显示。
-        setPayload(await api.computeWorksheetAnalysis(worksheetId, questionId));
+        setPayload(await api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '读取分析失败');
     } finally {
       setLoading(false);
     }
-  }, [worksheetId, questionId]);
+  }, [classroomId, worksheetId, questionId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -62,7 +65,7 @@ export function AnalysisOverlay({
     setBusy(true);
     setError(null);
     try {
-      setPayload(await api.computeWorksheetAnalysis(worksheetId, questionId));
+      setPayload(await api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败');
     } finally {
@@ -149,7 +152,7 @@ export function AnalysisOverlay({
                   </div>
                 )}
                 <img
-                  src={api.worksheetAnalysisSheetUrl(worksheetId, questionId, sheet.sheetIndex)}
+                  src={api.worksheetAnalysisSheetUrl(classroomId, worksheetId, questionId, sheet.sheetIndex)}
                   alt={`第 ${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
                   style={{ maxWidth: '100%', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}
                 />

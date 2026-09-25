@@ -191,10 +191,11 @@ AI 只从这三处被调用，**全部是聊天与智能体管理**。`anonymize
 
 ### 3.1 数据结构
 
-新增 `WorksheetQuestionAnalysis`，按 **`(worksheetId, questionId)` 唯一**：
+新增 `WorksheetQuestionAnalysis`，按 **`(classroomId, worksheetId, questionId)` 唯一**：
 
 | 字段 | 本版 | 含义 |
 |---|---|---|
+| `classroomId` | ✅ | 🔴 **见下面决定 6** —— 同一份学习单可以被多个课堂引用 |
 | `worksheetId` / `questionId` | ✅ | `questionId` 是 **content 树里的稳定 id，不是下标**（与 `WorksheetAnswer.questionId` 同一口径） |
 | `payloadKind` | ✅ | `'text'` \| `'image'` \| `'mixed'`（§3.3） |
 | `aggregate` | ✅ | **本地聚合的结构化描述** —— 唯一的事实来源 |
@@ -224,6 +225,19 @@ AI 只从这三处被调用，**全部是聊天与智能体管理**。`anonymize
 设计文档 §6.3（`:558`）逐字写着 `"recognized": null // ★ P4 智能体识别结果写此处，不覆盖 strokes` ——
 那是**单个学生的笔迹识别结果（HTR）**，与「按题的班级聚合」**不是同一个对象**。
 两者以后都要，但这一版是后者。现在占了那个名字，以后两个概念会打架。
+
+**决定 6 · 键里必须有 `classroomId`（独立审查 I1 抓到，规格与实现一起改）。**
+最初的键是 `(worksheetId, questionId)` —— **那是个缺陷**：同一份学习单可以被**多个课堂**引用
+（`ClassroomWorksheet` 的唯一键是 `(classroomId, worksheetId)`，而 `GET /:id/usage` 专门统计
+「被 N 个课堂引用」；本仓一课一课堂，教师完全可以用同一份学习单教两个班）。
+后果是：在乙班点「分析」拿到的是**甲班**的 covered/total、甲班的答案、甲班的伪名列表；
+在乙班点「重新生成」会把甲班那份**静默覆盖** —— 屏幕上一点异常都没有。
+
+⇒ 修法两条：
+1. 键加上 `classroomId`；
+2. **三个端点接 `?classroomId=` 且必填**，服务端只做一道校验「这份学习单确实挂在这个班上」
+   （课堂级绑定 **或** 该班的组级材料），**不许「猜一个」**（原先那个 `findWorksheetClassroomId`
+   做的正是「猜」：取 `createdAt` 最早的那条）。不挂 ⇒ 404，缺参 ⇒ 400。
 
 **决定 5 · `totalCount` 复用 M5b 已有的口径，不另算一把尺子。**
 高级模式下**每个组可以是不同的学习单**（M5b 规格 §2.2）⇒ 「应作答的参与者数」不是「全部参与者数」，

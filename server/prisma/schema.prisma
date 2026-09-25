@@ -137,6 +137,8 @@ model Classroom {
   interactions     Interaction[]
   shieldWarnings   ShieldWarning[]
   notifications    TeacherNotification[]
+  // ★ M7a：按题的分析载荷（反向关系）。加它**不改动 Classroom 自己的 DDL**。
+  worksheetAnalyses WorksheetQuestionAnalysis[]
 }
 
 // 课堂关联的班级（标准模式）
@@ -452,6 +454,10 @@ model Worksheet {
 //    那个是「一个学生的笔迹识别成文字」，这个是「全班在某一道题上的情况」。
 model WorksheetQuestionAnalysis {
   id           String   @id @default(uuid())
+  // ★ 课程 id 是**键的一部分**：同一份学习单可以被多个课堂引用（`ClassroomWorksheet` 的唯一键
+  // 是 (classroomId, worksheetId)）⇒ 只按 (worksheetId, questionId) 存会让两个班**共用一行**，
+  // 在乙班点「分析」看到的是甲班的数据，点「重新生成」会**静默覆盖**甲班那份。
+  classroomId  String
   worksheetId  String
   questionId   String   // content 树里的稳定 id，**不是下标**（与 WorksheetAnswer.questionId 同口径）
   payloadKind  String   // 'text' | 'image' | 'mixed'
@@ -465,9 +471,10 @@ model WorksheetQuestionAnalysis {
   agentId      String?  // 以后：用了哪个分析型智能体
   model        String?  // 以后：平台 / 模型标识
 
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
 
-  @@unique([worksheetId, questionId])
+  @@unique([classroomId, worksheetId, questionId])
 }
 
 /// 学习单 ↔ 课堂的**课堂级**关联（standard / group 模式的权威来源）。

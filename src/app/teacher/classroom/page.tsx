@@ -3288,6 +3288,7 @@ function ClassroomBoardContent() {
           （分组 / 高级模式下是「组」而不是「人」）。 */}
       {analysisTarget && (
         <AnalysisOverlay
+          classroomId={classroom.id}
           worksheetId={analysisTarget.worksheetId}
           questionId={analysisTarget.questionId}
           mode={classroom?.mode ?? 'standard'}

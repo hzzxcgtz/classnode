@@ -103,6 +103,7 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
     name: 'WorksheetQuestionAnalysis',
     createTable: `CREATE TABLE "WorksheetQuestionAnalysis" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "classroomId" TEXT NOT NULL,
     "worksheetId" TEXT NOT NULL,
     "questionId" TEXT NOT NULL,
     "payloadKind" TEXT NOT NULL,
@@ -114,10 +115,11 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
     "perStudent" JSONB,
     "agentId" TEXT,
     "model" TEXT,
+    CONSTRAINT "WorksheetQuestionAnalysis_classroomId_fkey" FOREIGN KEY ("classroomId") REFERENCES "Classroom" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "WorksheetQuestionAnalysis_worksheetId_fkey" FOREIGN KEY ("worksheetId") REFERENCES "Worksheet" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );`,
     indexes: [
-      { name: 'WorksheetQuestionAnalysis_worksheetId_questionId_key', sql: `CREATE UNIQUE INDEX "WorksheetQuestionAnalysis_worksheetId_questionId_key" ON "WorksheetQuestionAnalysis"("worksheetId", "questionId");` },
+      { name: 'WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key', sql: `CREATE UNIQUE INDEX "WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key" ON "WorksheetQuestionAnalysis"("classroomId", "worksheetId", "questionId");` },
     ],
   },
 ];

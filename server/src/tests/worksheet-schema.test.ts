@@ -24,7 +24,7 @@ const INDEX_NAMES = [
   'WorksheetResponse_classroomId_worksheetId_participantId_key',
   'WorksheetAnswer_responseId_idx',
   'WorksheetAnswer_responseId_questionId_key',
-  'WorksheetQuestionAnalysis_worksheetId_questionId_key',
+  'WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key',
 ];
 
 const SCHEMA_SRC = new URL('../../prisma/schema.prisma', import.meta.url).pathname;

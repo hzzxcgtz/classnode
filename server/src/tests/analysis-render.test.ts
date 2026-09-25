@@ -161,3 +161,30 @@ test('🔴 伪名里的 XML 元字符被转义（标签若来自可控输入，�
   assert.ok(!svg.includes('<script>'), '标签必须转义');
   assert.ok(svg.includes('&lt;script&gt;'), '转义后的形式要在');
 });
+
+test('🔴 mixed 里**文字作答**那一格不能写「（空白）」—— 他答了字，答案就在同一屏的文档里', () => {
+  // 教师中途把作答方式从键盘改成手写时，同一道题的载荷是 `mixed`：联系表把**两种**条目都排进格子。
+  // 文字那几格的笔迹是空的 ⇒ 原先落进「（空白）」那一支，而这张图将来是**发给模型**的那份东西
+  // ⇒ 模型会读到「这几位没答」。
+  const entries: AnalyzeEntry[] = [
+    { studentId: 'p001', displayName: '甲', kind: 'text', text: '我写的是文字答案' },
+    inkEntry('p002', 2),
+  ];
+  const layouts = layoutSheets(entries, labels(['p001', 'p002']), DEFAULT_ANALYSIS_KNOBS);
+  const svg = buildSheetSvg(entries, layouts[0], true);
+  assert.ok(!svg.includes('（空白）'), '文字作答不是空白');
+  assert.ok(svg.includes('文字作答'), '要说清「他是用文字答的，见文档」');
+});
+
+test('三种占位文案分得开：空白 / 形状认不出 / 文字作答', () => {
+  const entries: AnalyzeEntry[] = [
+    { studentId: 'p001', displayName: '甲', kind: 'ink', ink: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] } },
+    { studentId: 'p002', displayName: '乙', kind: 'unknown' },
+    { studentId: 'p003', displayName: '丙', kind: 'text', text: 'x' },
+  ];
+  const layouts = layoutSheets(entries, labels(['p001', 'p002', 'p003']), DEFAULT_ANALYSIS_KNOBS);
+  const svg = buildSheetSvg(entries, layouts[0], true);
+  assert.ok(svg.includes('（空白）'), '空笔迹 ⇒ 空白');
+  assert.ok(svg.includes('形状认不出'), 'unknown ⇒ 形状认不出');
+  assert.ok(svg.includes('文字作答'), 'text ⇒ 文字作答（见文档）');
+});

@@ -71,7 +71,52 @@ function readInk(value: unknown): InkValue | null {
   if (!canvas || typeof canvas.w !== 'number' || typeof canvas.h !== 'number') return null;
   if (!Number.isFinite(canvas.w) || !Number.isFinite(canvas.h)) return null;
   if (!Array.isArray(raw.strokes)) return null;
-  return { format: raw.format, canvas: { w: canvas.w, h: canvas.h }, strokes: raw.strokes } as InkValue;
+  const strokes = readStrokes(raw.strokes);
+  // ⚠️ 一条笔画都不剩时仍然算 ink（`hasInk` 会为假、那一格写「空白」）——
+  // 回 `null` 会让它落成 `unknown`，而「画了但一条有效笔画都没有」与「认不出形状」不是一回事。
+  return { format: raw.format, canvas: { w: canvas.w, h: canvas.h }, strokes };
+}
+
+/** 夹到 `0..1`。与 `src/lib/worksheet-ink.ts` 的 `clamp01` 同一口径。 */
+function clamp01(value: number): number {
+  return value < 0 ? 0 : value > 1 ? 1 : value;
+}
+
+/**
+ * 🔴 **在读的一侧把坐标夹到 `0..1`、把坏点丢掉** —— 与 `src/lib/worksheet-ink.ts` 的
+ * `readPoint` 同一条纪律（`worksheet-ink.ts:100-101` 逐字写着「那边把越界的数**夹到 `0..1`**，
+ * 这里**不夹**……夹取是**读**的一侧的事」）。
+ *
+ * ⚠️ 为什么这件事在这里很重要：`toPixel` 是纯乘法（`x * box.w`，**不夹**），
+ * 而联系表把每一格 `translate` 到自己的框里 ⇒ 一个 `x: -0.5` 的点会被画到**左边那一格**
+ * （相邻参与者）去，看起来就是那个人画的。**跨人错位，且不报错。**
+ *
+ * 而 `src/lib/worksheet-ink.ts` 的 `readPoint` 只保护**学生端画布 / 教师抽屉 / M6a 导出**
+ * 那几条路 —— 本批的联系表是**新的一条**，它必须自己走同一口径。
+ * （写入口刻意**不拒**越界数：`worksheet-ink.ts:99` 写着「越界不是拒绝的理由」。）
+ */
+function readStrokes(raw: unknown[]): InkValue['strokes'] {
+  const out: InkValue['strokes'] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const stroke = item as Record<string, unknown>;
+    if (!Array.isArray(stroke.points)) continue;
+    const points: Array<[number, number]> = [];
+    for (const point of stroke.points) {
+      if (!Array.isArray(point) || point.length !== 2) continue;
+      const [x, y] = point;
+      if (typeof x !== 'number' || typeof y !== 'number') continue;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      points.push([clamp01(x), clamp01(y)]);
+    }
+    if (points.length === 0) continue;
+    out.push({
+      points,
+      width: typeof stroke.width === 'number' && Number.isFinite(stroke.width) ? stroke.width : 0,
+      color: typeof stroke.color === 'string' ? stroke.color : '',
+    });
+  }
+  return out;
 }
 
 /**

@@ -1918,16 +1918,22 @@ tr:hover td {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #eef2ff;
-  color: #2563eb;
+  /* ★ 2026-09-25（重设计第 2 步「立主次」）：**去蓝**。
+     它原来是蓝底蓝字 —— 而它只是**一个序号**，不承载任何状态。
+     满页二十个蓝圆点会把视线从题干上拉走，而题干才是这一屏唯一的主角。
+     灰阶之后它仍然是一个清晰的锚点，只是不再争抢。 */
+  background: #f1f5f9;
+  color: #64748b;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .worksheet-editor-question-type {
-  font-size: 0.813rem;
-  font-weight: 600;
-  color: #334155;
+  /* ★ 第 2 步：它原来 0.813rem / 600 / #334155 —— 与很多正文**同一个量级**，
+     于是「题型」和「题干」在视觉上打架。退成配角：小一档、轻一档、灰一档。 */
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
 }
 
 .worksheet-editor-question-tools {
@@ -1971,6 +1977,19 @@ tr:hover td {
 .worksheet-editor-field {
   display: block;
   margin-bottom: 12px;
+}
+
+/* ★ 第 2 步：字段标签一律退成**小、轻、灰**。
+   标签的作用是「说明下面那格是什么」，它不该与格子里的内容一样重 ——
+   而现在它们同字号同颜色，所以每一格都是两个同等重量的东西叠着，
+   这正是「没有主次 ⇒ 看着平 ⇒ 没设计感」的来源之一。
+   ⚠️ 用 `.worksheet-editor-field > span` 而不是给标签加类：**类名不许改**（简报的硬约束 1）。 */
+.worksheet-editor-field > span {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-bottom: 4px;
 }
 
 .worksheet-editor-field > span {

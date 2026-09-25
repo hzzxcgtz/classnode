@@ -7,11 +7,16 @@ import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { ensureWorksheetAnswerColumns, ensureWorksheetTables } from '../services/worksheet-schema.js';
 
-/** 4 张新表 —— 也是「老库形状」的判据。 */
-const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer'];
+/**
+ * 5 张新表 —— 也是「老库形状」的判据。
+ * 🔴 这几行是**硬编**的：往 `worksheet-schema.ts` 的 `TABLES` 里加一张表而忘了加到这里，
+ * 那条「逐字对拍」用例会**一个字都不检查**它（比对只遍历本数组）—— 加表时三处一起改：
+ * 本数组 · `DROP_ORDER` · `INDEX_NAMES`，外加第一条用例里那个 `tbl_name IN (...)` 查询。
+ */
+const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer', 'WorksheetQuestionAnalysis'];
 /** 逆外键依赖顺序：先删引用方，最后删被引用方。 */
-const DROP_ORDER = ['WorksheetAnswer', 'WorksheetResponse', 'ClassroomWorksheet', 'Worksheet'];
-/** 6 个具名索引 —— 名字必须与 worksheet-schema.ts 里的定义逐一对应。 */
+const DROP_ORDER = ['WorksheetQuestionAnalysis', 'WorksheetAnswer', 'WorksheetResponse', 'ClassroomWorksheet', 'Worksheet'];
+/** 7 个具名索引 —— 名字必须与 worksheet-schema.ts 里的定义逐一对应。 */
 const INDEX_NAMES = [
   'ClassroomWorksheet_worksheetId_idx',
   'ClassroomWorksheet_classroomId_worksheetId_key',
@@ -19,6 +24,7 @@ const INDEX_NAMES = [
   'WorksheetResponse_classroomId_worksheetId_participantId_key',
   'WorksheetAnswer_responseId_idx',
   'WorksheetAnswer_responseId_questionId_key',
+  'WorksheetQuestionAnalysis_worksheetId_questionId_key',
 ];
 
 const SCHEMA_SRC = new URL('../../prisma/schema.prisma', import.meta.url).pathname;
@@ -37,7 +43,7 @@ const TEMPLATE_DB = path.join(os.tmpdir(), `wsv-template-${RUN_ID}.db`);
  * 就一个断言都没跑，`pnpm test` 却依然是绿的 —— 这正是本项目反复出现的假绿形态。
  *
  * 造法：把 `schema.prisma` 复制到 /tmp，`db push` 到一个 /tmp 的空库，再**由用例自己
- * DROP 掉那 4 张表**得到「老库形状」。为什么不直接用 `db push` 的产物：那种库里 4 张表
+ * DROP 掉那 5 张表**得到「老库形状」。为什么不直接用 `db push` 的产物：那种库里 5 张表
  * 天生就是新形状，拿它测建表**永远绿**，而真实老库仍然是坏的。
  *
  * 🔴 全程只碰 /tmp，绝不碰 `server/prisma/dev.db`。
@@ -66,26 +72,28 @@ function makeCopy(tag: string): { db: PrismaClient; file: string } {
   return { db: new PrismaClient({ datasources: { db: { url: `file:${file}` } } }), file };
 }
 
-test('在缺表的库上建出 4 张表，且第二次调用不重复建', async () => {
+test('在缺表的库上建出 5 张表，且第二次调用不重复建', async () => {
   const { db, file } = makeCopy('legacy');
   try {
-    // 先制造「老库」形状：确保 4 张表都不存在（副本上操作，安全）
+    // 先制造「老库」形状：确保 5 张表都不存在（副本上操作，安全）
     for (const t of DROP_ORDER) {
       await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "${t}"`);
     }
     const before_ = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('${WORKSHEET_TABLES.join("','")}')`);
-    assert.deepEqual(before_, [], '前置条件：4 张新表在副本上都应已被删掉');
+    assert.deepEqual(before_, [], '前置条件：5 张新表在副本上都应已被删掉');
 
     const first = await ensureWorksheetTables(db);
-    assert.deepEqual(first.created.sort(), ['ClassroomWorksheet', 'Worksheet', 'WorksheetAnswer', 'WorksheetResponse']);
-    assert.deepEqual(first.indexesCreated.sort(), [...INDEX_NAMES].sort(), '建表时 6 个具名索引应一并建出');
+    assert.deepEqual(first.created.sort(), [...WORKSHEET_TABLES].sort(),
+      '建出的表名集合必须与 WORKSHEET_TABLES 完全一致（原先这里另抄了一份 4 个名字的字面量 —— 加表时它不漏红，只会与上面那两行断言打架）');
+    assert.deepEqual(first.indexesCreated.sort(), [...INDEX_NAMES].sort(), '建表时 7 个具名索引应一并建出');
 
     const second = await ensureWorksheetTables(db);
     assert.deepEqual(second.created, [], '第二次调用必须什么都不建');
     assert.deepEqual(second.indexesCreated, [], '第二次调用必须不重复建索引');
 
-    // 建表顺序与 prisma db push 的输出一致（Worksheet 无依赖 → ClassroomWorksheet → WorksheetResponse → WorksheetAnswer）
+    // 建表顺序与 prisma db push 的输出一致
+    // （Worksheet 无依赖 → ClassroomWorksheet → WorksheetResponse → WorksheetAnswer → WorksheetQuestionAnalysis）
     const rows = await db.$queryRawUnsafe<{ name: string; sql: string }[]>(
       `SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ('${WORKSHEET_TABLES.join("','")}')`);
     assert.deepEqual(rows.map(r => r.name).sort(), [...WORKSHEET_TABLES].sort());
@@ -111,7 +119,7 @@ test('在缺表的库上建出 4 张表，且第二次调用不重复建', async
     // sqlite_autoindex_*（Prisma 的 db push 也会产生同样的条目，不是我们写歪了）。
     const indexes = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL
-         AND tbl_name IN ('ClassroomWorksheet','WorksheetResponse','WorksheetAnswer')`);
+         AND tbl_name IN ('ClassroomWorksheet','WorksheetResponse','WorksheetAnswer','WorksheetQuestionAnalysis')`);
     assert.deepEqual(indexes.map(i => i.name).sort(), [...INDEX_NAMES].sort());
 
     // 建出来的表真能写：外键指向的父行存在时才写得进去（证明约束真的生效）
@@ -147,7 +155,7 @@ test('🔴 手写建表 DDL 与 prisma db push 的产物逐表逐字一致（差
   const { db, file } = makeCopy('ddl');
   const template = new PrismaClient({ datasources: { db: { url: `file:${TEMPLATE_DB}` } } });
   try {
-    // 把 4 张表删掉，再让被测函数按手写 DDL 建回来 —— 比的是「建出来的东西」，
+    // 把 5 张表删掉，再让被测函数按手写 DDL 建回来 —— 比的是「建出来的东西」，
     // 不是「文件里写了什么字符串」。
     for (const t of DROP_ORDER) {
       await db.$executeRawUnsafe(`DROP TABLE IF EXISTS "${t}"`);
@@ -169,8 +177,8 @@ test('🔴 手写建表 DDL 与 prisma db push 的产物逐表逐字一致（差
 
     // 前置条件：**两边都要有全部 10 项**。少一项就跳过比对的话，这条用例会在
     // 「表根本没建出来」时静默通过 —— 那正是它要挡的东西。
-    assert.deepEqual([...ours.keys()].sort(), [...names].sort(), '手写 DDL 应建出 4 张表 + 6 个索引');
-    assert.deepEqual([...theirs.keys()].sort(), [...names].sort(), 'db push 的产物里也应有这 10 项');
+    assert.deepEqual([...ours.keys()].sort(), [...names].sort(), '手写 DDL 应建出 5 张表 + 7 个索引');
+    assert.deepEqual([...theirs.keys()].sort(), [...names].sort(), 'db push 的产物里也应有这 12 项');
 
     for (const name of names) {
       assert.equal(
@@ -369,23 +377,24 @@ test('🔴 回填的边界：列已在（桌面版 db push 加的）也要跑；
 test('🔴 表在、索引不在的半成品库：按名补回索引，且第二次调用返回空', async () => {
   const { db, file } = makeCopy('half');
   try {
-    // 前置条件：表齐（db push 的产物），6 个具名索引由本用例删掉，模拟
+    // 前置条件：表齐（db push 的产物），7 个具名索引由本用例删掉，模拟
     // 「建表成功但建索引失败」的中间态。
     for (const name of INDEX_NAMES) {
       await db.$executeRawUnsafe(`DROP INDEX IF EXISTS "${name}"`);
     }
     const gone = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('${INDEX_NAMES.join("','")}')`);
-    assert.deepEqual(gone, [], '前置条件：6 个具名索引都应已被删掉');
+    assert.deepEqual(gone, [], '前置条件：7 个具名索引都应已被删掉');
     const tablesStillThere = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('${WORKSHEET_TABLES.join("','")}')`);
-    assert.equal(tablesStillThere.length, 4, '前置条件：4 张表都还在（这正是与上面那条用例的区别）');
+    assert.equal(tablesStillThere.length, WORKSHEET_TABLES.length,
+      '前置条件：这 5 张表都还在（这正是与上面那条用例的区别）');
 
     // 这条断言在修复前必定失败：旧实现只按表名探测，表在就 `continue`，
     // 一条索引都不会补，`indexesCreated` 甚至是 undefined。
     const first = await ensureWorksheetTables(db);
     assert.deepEqual(first.created, [], '表已存在，不应重复建表');
-    assert.deepEqual(first.indexesCreated.sort(), [...INDEX_NAMES].sort(), '缺的 6 个索引都应被补回');
+    assert.deepEqual(first.indexesCreated.sort(), [...INDEX_NAMES].sort(), '缺的 7 个索引都应被补回');
 
     const restored = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='index' AND name IN ('${INDEX_NAMES.join("','")}')`);

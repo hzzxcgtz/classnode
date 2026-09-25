@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 /**
- * 4 张新表的建表 DDL。
+ * 5 张新表的建表 DDL。
  *
  * 🔴 **必须与 `prisma db push` 到空库后 dump 出来的输出逐字一致** —— 否则桌面版下次
  * `db push` 会再重建一次，而 `index.ts` 里按 `sqlite_master` 探测的同步块不会重跑，
@@ -21,7 +21,8 @@ import type { PrismaClient } from '@prisma/client';
  * ⚠️ 同理，`server/src/index.ts` 里那条 `ALTER TABLE` 也写 `REAL`（同一个理由）。
  *
  * 建表顺序与 `prisma db push` 的输出一致（Worksheet 无依赖，ClassroomWorksheet 依赖它，
- * WorksheetResponse 依赖 Classroom / Worksheet / ClassroomStudent，WorksheetAnswer 最后）。
+ * WorksheetResponse 依赖 Classroom / Worksheet / ClassroomStudent，WorksheetAnswer 次之，
+ * WorksheetQuestionAnalysis 最后）。
  * ⚠️ 这个顺序**不是** SQLite 的要求 —— 它不校验外键目标、允许前向引用；之所以保持，
  * 只是为了与 db push 的输出逐字对齐，从而让上面那条「逐字一致」的比对继续成立。
  */
@@ -95,10 +96,34 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
       { name: 'WorksheetAnswer_responseId_questionId_key', sql: `CREATE UNIQUE INDEX "WorksheetAnswer_responseId_questionId_key" ON "WorksheetAnswer"("responseId", "questionId");` },
     ],
   },
+  {
+    // ★ M7a：按题的分析载荷。DDL 逐字来自 /tmp 探针库的 dump
+    // （拷 `schema.prisma` 到 /tmp → 加模型 → `db push` 到空库 → `SELECT sql FROM sqlite_master`）。
+    // ⚠️ 派生数据 ⇒ 跟着学习单 Cascade；四个「以后」的列全是 nullable。
+    name: 'WorksheetQuestionAnalysis',
+    createTable: `CREATE TABLE "WorksheetQuestionAnalysis" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "worksheetId" TEXT NOT NULL,
+    "questionId" TEXT NOT NULL,
+    "payloadKind" TEXT NOT NULL,
+    "aggregate" JSONB NOT NULL,
+    "coveredCount" INTEGER NOT NULL,
+    "totalCount" INTEGER NOT NULL,
+    "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "narrative" TEXT,
+    "perStudent" JSONB,
+    "agentId" TEXT,
+    "model" TEXT,
+    CONSTRAINT "WorksheetQuestionAnalysis_worksheetId_fkey" FOREIGN KEY ("worksheetId") REFERENCES "Worksheet" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+    indexes: [
+      { name: 'WorksheetQuestionAnalysis_worksheetId_questionId_key', sql: `CREATE UNIQUE INDEX "WorksheetQuestionAnalysis_worksheetId_questionId_key" ON "WorksheetQuestionAnalysis"("worksheetId", "questionId");` },
+    ],
+  },
 ];
 
 /**
- * 幂等地建出学习单相关的 4 张表及其 6 个具名索引。
+ * 幂等地建出学习单相关的 5 张表及其 7 个具名索引。
  *
  * 探测用 `sqlite_master` 而不是 `PRAGMA table_info`：这几张是**新表**，
  * 不存在「表在但缺列」的中间态；用表名 / 索引名探测更直接，
@@ -107,8 +132,8 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
  * 🔴 **索引必须与表分开、按名逐个探测**（同 `index.ts` 里 ClassroomModule / ClassroomWebapp /
  * WebappUsage 的做法）：只判断表存在是不够的 —— 那样「表建好但索引创建失败」的中间态
  * （建表成功、建索引时断电/报错）会**永久**缺唯一键，而 `WorksheetResponse` /
- * `WorksheetAnswer` 的 upsert 与关联查询正依赖那几个唯一索引。按名探测后，
- * 这种半成品库能在下次启动自愈。
+ * `WorksheetAnswer` / `WorksheetQuestionAnalysis` 的 upsert 与关联查询正依赖那几个唯一索引。
+ * 按名探测后，这种半成品库能在下次启动自愈。
  *
  * 返回值区分两件事：`created` 只放**表**名，`indexesCreated` 只放**索引**名 ——
  * 合在一起会让调用方无法区分「建了表」与「补了索引」，日志也会说谎。

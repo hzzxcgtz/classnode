@@ -441,6 +441,33 @@ model Worksheet {
 
   classrooms    ClassroomWorksheet[]
   responses     WorksheetResponse[]
+  // ★ M7a：按题的分析载荷（反向关系）。加这一行**不改动 Worksheet 自己的 DDL** —— 已实测
+  // （在 /tmp 探针库上 db push 后 dump，与本仓 `worksheet-schema.ts` 里那份手写 DDL 逐字相同，
+  // 差异只有该文件刻意补的行尾分号）。
+  analyses      WorksheetQuestionAnalysis[]
+}
+
+// ★ M7a：按题的一次性聚合载荷。**派生数据**，所以跟着学习单一起删（Cascade）。
+// ⚠️ 与 `WorksheetAnswer.value` 里那个 `recognized`（单人笔迹识别的预留字段）**不是同一个对象**：
+//    那个是「一个学生的笔迹识别成文字」，这个是「全班在某一道题上的情况」。
+model WorksheetQuestionAnalysis {
+  id           String   @id @default(uuid())
+  worksheetId  String
+  questionId   String   // content 树里的稳定 id，**不是下标**（与 WorksheetAnswer.questionId 同口径）
+  payloadKind  String   // 'text' | 'image' | 'mixed'
+  aggregate    Json     // 本地聚合的结构化快照 —— 唯一的事实来源
+  coveredCount Int      // 已提交该题的参与者数
+  totalCount   Int      // 该题应作答的参与者数（高级模式下**不是**全班人数）
+  computedAt   DateTime @default(now())
+  // ↓ 下面四格本版恒为 null —— 它们就是「留的接口」（用户 2026-09-25 裁定 1）
+  narrative    String?  // 以后：AI 写的解读
+  perStudent   Json?    // 以后：按人的建议
+  agentId      String?  // 以后：用了哪个分析型智能体
+  model        String?  // 以后：平台 / 模型标识
+
+  worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+
+  @@unique([worksheetId, questionId])
 }
 
 /// 学习单 ↔ 课堂的**课堂级**关联（standard / group 模式的权威来源）。

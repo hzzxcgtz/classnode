@@ -195,6 +195,76 @@ export function flattenQuestions(nodes: WorksheetQuestionNode[]): WorksheetQuest
   return out;
 }
 
+/**
+ * ★ 2026-09-25：「任务」这个**容器类型**的类型串 —— 全项目唯一一份。
+ *
+ * ⚠️ 它**不在** `QuestionType` 联合里，也**不在** `QUESTION_TYPE_OPTIONS` 里：
+ * 那个数组是「加题弹窗的九宫格」，而任务由另一个按钮加（教师裁定 ①：任务**不能作答**，
+ * 它只是分组 + 一段说明）。两件事混进同一份清单的症状是教师在加题弹窗里选中「任务」、
+ * 保存被服务端 400 拒 —— 那个窗口**真实发生过一次**（`drawing` 加进前端却没加进服务端）。
+ *
+ * 服务端那一份在 `services/worksheet-questions.ts` 的 `QUESTION_TYPES` 里（它**有**）；
+ * 两份必须同时值 `'task'`，`worksheet-heading-parity.test.ts` 盯着本常量与镜像。
+ */
+export const TASK_TYPE = 'task';
+
+/** `flattenAnswerable` 的一项：一道**可作答**的题，以及它在两级结构里的题号。 */
+export interface AnswerableQuestion {
+  node: WorksheetQuestionNode;
+  /**
+   * 两级题号：`任务一 · 1`。任务标题留空时**没有前缀**（就是 `1`）——
+   * 不编一个「任务N」，理由见 `flattenAnswerable`。
+   */
+  heading: string;
+}
+
+/**
+ * 拍平成**可作答的题**，并给每一道带上两级题号（`任务一 · 1`）。
+ *
+ * 🔴 **为什么不是改 `flattenQuestions` 的返回值**：它是「递归展开这棵树」，
+ * 展开出来的数组里**任务节点与小题混在一起**，而全仓有 11 个消费者拿它当「题列表」——
+ * 其中至少四处在拿**下标当题号**（矩阵行）或拿 **`.length` 当「几道题」**（服务端题数）。
+ * 改它的返回值，那 11 处会**各自静默地错**（多一格、题号整体后移、进度条到不了头）。
+ * ⇒ 两者**分家**：`flattenQuestions` 原样不动（它就是「树里所有节点」），
+ * 「一道题一条」的消费者改调本函数。
+ *
+ * 题号规则（教师裁定 ②b「每个任务内重排」）：
+ *   · 任务内的题从 1 起，前缀是**任务节点的 `prompt`**（那是它的**标题**，迁移写的就是
+ *     「任务一」这种；§六 把 task 级操作叫「改名」）；
+ *   · 标题留空 ⇒ **不带前缀**。这里**不按位置编一个「任务N」** —— 那等于替教师写一个
+ *     他没写过的名字，与「迁移不猜内容」是同一条纪律（裁定 ①a：纯分组是合法数据）；
+ *   · 散题（顶层非任务节点）共用一个**跨全文**的计数器，不带前缀。放在任务之间的散题
+ *     因此接着往下编号（`1` … `2`）而不是重新从 1 起 —— 避免同一份学习单上出现两个 `1.`。
+ *
+ * ⚠️ 遍历顺序**必须**与 `flattenQuestions` 同构（先本节点、再按序递归 `children`）：
+ * 两个函数一个决定「屏幕上画几道、什么顺序」，一个决定「题号是几」，
+ * 不同构的表现是题号与题**错位**，而屏幕上看起来只是「题号怪怪的」。
+ * `worksheet-questions.test.ts` 有一条用例把两者逐项比对钉住。
+ *
+ * ⚠️ 非任务节点带 `children`（手工改过的库）时，孩子**沿用同一层序号**继续往下编 ——
+ * 与 `flattenQuestions` 的 DFS 同序，不丢题也不另起一套号。
+ */
+export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQuestion[] {
+  const out: AnswerableQuestion[] = [];
+  /** `counter` 是**这一层**的计数器：散题共用一个，每个任务各有一个自己的。 */
+  const walk = (list: WorksheetQuestionNode[], prefix: string, counter: { n: number }) => {
+    for (const node of list) {
+      if (node.type === TASK_TYPE) {
+        const title = typeof node.prompt === 'string' ? node.prompt.trim() : '';
+        // 里层的任务另起一个计数器，**不动外层的** —— 嵌套任务由服务端校验器拦住
+        // （`VALIDATORS['task']`），但手工改过的库还读得进来，读的一侧不能因此错乱。
+        walk(node.children ?? [], title ? `${title} · ` : '', { n: 0 });
+        continue;
+      }
+      counter.n += 1;
+      out.push({ node, heading: `${prefix}${counter.n}` });
+      walk(node.children ?? [], prefix, counter);
+    }
+  };
+  walk(nodes, '', { n: 0 });
+  return out;
+}
+
 /** 选项的 key 由**位置**派生（A、B、C…），与规格 §4.3 的示例一致。 */
 export function optionKey(index: number): string {
   return String.fromCharCode(65 + index);

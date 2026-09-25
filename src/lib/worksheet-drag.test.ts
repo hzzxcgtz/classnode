@@ -24,6 +24,7 @@ import {
   setPair,
   setPlacement,
   tapSource,
+  tapTarget,
   unplace,
   type DragLink,
   type DragSelection,
@@ -136,6 +137,44 @@ test('setPair / clearPair：空 id 不动数据；clearPair 的往返', () => {
   assert.equal(clearPair(pairs, 'l9'), pairs, '没连过 ⇒ 原数组');
   assert.deepEqual(clearPair(pairs, 'l1'), []);
   assert.deepEqual(pairs, [{ leftId: 'l1', rightId: 'r1' }], '不改动入参');
+});
+
+// ── 3b. 连线：点一下**右项**（落点）────────────────────────────────────
+
+test('🔴 tapTarget：**没选左项**时点一下已连的右项 ⇒ 断开（教师第 2 条「点一下就能删」）', () => {
+  // ★ 2026-09-26。这一条是全批唯一一处「现状与 spec 不符」的修正：
+  // spec 的现状写着「点一下已连的右项会走 clearPair」，而代码里 `onTap` 第一句就是
+  // `if (!leftId) { … return }` —— **没选左项时点右项什么都不做**。
+  // 真实路径是「先点左项 → 再点右项」两步，而那正是教师说的「很不起眼」。
+  const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }];
+  assert.deepEqual(tapTarget(pairs, null, 'r1'), [{ leftId: 'l2', rightId: 'r2' }], '断开的是连到 r1 的那条');
+  assert.deepEqual(pairs, [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }], '不改动入参');
+});
+
+test('tapTarget：没选左项时点**没连过**的右项 ⇒ 返回原数组本身（不制造一次无意义的重渲）', () => {
+  const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
+  // ⚠️ 必须是**同一个身份**：`onChange` 拿到一份新数组会白写一条上传队列。
+  assert.equal(tapTarget(pairs, null, 'r2'), pairs);
+});
+
+test('🔴 tapTarget：选着左项时点右项 —— 已连的是拆掉，没连的是连上（顶掉旧的）', () => {
+  const linked: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.deepEqual(tapTarget(linked, 'l1', 'r1'), [], '连的正是这一对 ⇒ 拆掉');
+
+  const taken: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.deepEqual(tapTarget(taken, 'l2', 'r1'), [{ leftId: 'l2', rightId: 'r1' }], '右项被占 ⇒ 顶掉旧的，不是并存');
+
+  const free: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.deepEqual(tapTarget(free, 'l2', 'r2'), [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
+});
+
+test('tapTarget：空右 id / 非数组 ⇒ 原样返回，不抛', () => {
+  const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.equal(tapTarget(pairs, 'l1', ''), pairs);
+  assert.equal(tapTarget(pairs, null, ''), pairs);
+  // ⚠️ 入参形状坏掉时（读回的那一侧给的字段不是数组）也**不许抛** ——
+  // 抛出去就是整个作答面板白屏。
+  assert.equal(tapTarget(undefined as unknown as DragLink[], null, 'r1'), undefined as unknown as DragLink[]);
 });
 
 // ── 4. 归类：落框与取回 ────────────────────────────────────────────────

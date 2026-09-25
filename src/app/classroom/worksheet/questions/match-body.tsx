@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  clearPair,
   clearSelection,
   setPair,
   tapSource,
+  tapTarget,
   type DragSelection,
 } from '@/lib/worksheet-drag';
 import {
@@ -21,13 +21,18 @@ import styles from '../worksheet.module.css';
  * 连线题的作答体（规格 §12 裁定 1：点选为主 + 真拖拽增强）。
  *
  * ── 点选那一条路（必然能用的那一层）──────────────────────────────────────
- * 点左项 ⇒ 选中（高亮）；再点右项 ⇒ 连上（`setPair`），**并清空选择**。
+ * 点左项 ⇒ 选中（高亮）；再点右项 ⇒ 连上，**并清空选择**。
  *   · 点同一个左项 ⇒ 取消选中（`tapSource` 的往返）；
- *   · 点已经连过的**那一对** ⇒ 拆掉（`clearPair`）—— 这是学生唯一的「连错了，撤掉」入口，
- *     少了它，连错一条只能改连到别处（而改连会**顶掉**别的那条 —— `setPair` 的不变量）。
+ *   · 点右项那一下的**三条规则全在 `tapTarget` 里**（`lib/worksheet-drag.ts`，有用例）：
+ *     没选左项 + 点已连的右项 ⇒ **断开**（★ 2026-09-26 教师第 2 条「点一下就能删」，
+ *     在此之前那条路径是死路 —— 删一条线要「先点左项 → 再点右项」两步）；
+ *     选着左项 + 连的正是这一对 ⇒ 断开；否则 ⇒ 连上（右项被占则**顶掉**旧的）。
+ *   🔴 这就是「连错了，撤掉」的入口。少了它，连错一条只能改连到别处，
+ *     而改连会顶掉别的那条（`setPair` 的不变量）。
  *
  * ── 拖拽那一条路（叠上去的增强，**本机未验证**）─────────────────────────────
  * 从左项按住拖到右项。落位同样调 `setPair` —— 两条路共用同一份 `draft.links`。
+ * ★ 拖动中还有一条**跟手的线**（见 `FollowAnchor`），那是教师第 1 条要的反馈。
  *
  * ── 为什么还要画线 ─────────────────────────────────────────────────────
  * 每一条连线在两个端点各画一个同号的圆形徽标（① / ②…），**并在两列之间画一条 SVG 线**。
@@ -173,26 +178,34 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
     itemEls.current[key] = el;
   };
 
+  /** 此刻选中的左项（没选就是 `null`）—— 它决定「点右项」那一下是什么意思。 */
+  const activeLeftId = selection.kind === 'item' ? selection.id : null;
+  /**
+   * 点**这一条右项**会不会**断开**（而不是连上、也不是什么都不做）。
+   * 🔴 判据必须与 `tapTarget` **逐字同源** —— ✕ 出现在哪里，点下去就在哪里断开；
+   * 两者一旦走岔，画出来的就是一个**撒谎的**图标（比不画更糟）。
+   */
+  const tapWillUnlink = (rightId: string): boolean => {
+    const link = links.filter((item) => item.rightId === rightId)[0];
+    if (!link) return false;
+    return activeLeftId === null || activeLeftId === link.leftId;
+  };
+
   const drag = usePointerDrag({
     disabled,
     onDragMove,
     onTap: (id) => {
-      const leftId = selection.kind === 'item' ? selection.id : null;
-      if (!leftId) {
-        // 还没选左项时点右项：什么都不做（左项才是「源」，右项是落点）。
-        if (!isLeftId(id)) return;
-        setSelection(tapSource(selection, id));
-        return;
-      }
+      // **左项**（源）：选中 / 取消 / 改选（`tapSource` 的往返）。
       if (isLeftId(id)) {
-        // 点另一个左项 ⇒ 改选；点同一个 ⇒ 取消（`tapSource` 的往返）。
         setSelection(tapSource(selection, id));
         return;
       }
-      // 点右项 ⇒ 落位。⚠️ 连的正是已经连过的那一对 ⇒ 拆掉（学生唯一的撤销入口）。
-      const already = links.some((link) => link.leftId === leftId && link.rightId === id);
+      // **右项**（落点）：三条规则（删除 / 改连 / 连上）全在 `tapTarget` 里，那半边有用例。
+      const next = tapTarget(links, activeLeftId, id);
       setSelection(clearSelection());
-      onChange(already ? { kind: 'match', links: clearPair(links, leftId) } : { kind: 'match', links: setPair(links, leftId, id) });
+      // ⚠️ 只在**真的变了**的时候回调 —— `tapTarget` 在空操作时返回原数组，
+      // 而白回调一次会白写一条上传队列（与排序题的 `write` 同一条）。
+      if (next !== links) onChange({ kind: 'match', links: next });
     },
     onDrop: (sourceId, targetId) => {
       setSelection(clearSelection());
@@ -236,7 +249,7 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
 
   return (
     <div className={styles.matchWrap}>
-      <p className={styles.dragHint}>点一下左边的条目，再点右边它对应的那一条（也可以直接把左边拖过去）。</p>
+      <p className={styles.dragHint}>点一下左边的条目，再点右边它对应的那一条（也可以直接把左边拖过去）。连错了：点右边那一条上的 ✕ 就能断开。</p>
       <div className={styles.matchGrid} ref={containerRef}>
         <div className={styles.matchColumn}>
           {left.map((entry) => {
@@ -272,6 +285,10 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
                 <span className={styles.matchSide}>右</span>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
                 {badge > 0 ? <span className={styles.matchBadge}>{badge}</span> : null}
+                {/* ★ 2026-09-26（教师第 2 条）：断开的**可见入口**。它出现的时机与
+                    「点下去真的会断开」同源（`tapWillUnlink`）—— 选了左项、而这一条连的是
+                    **别的**左项时，点它是「改连」不是「断开」，那时不画叉。 */}
+                {tapWillUnlink(entry.id) ? <span className={styles.matchUnlink}>✕</span> : null}
               </div>
             );
           })}

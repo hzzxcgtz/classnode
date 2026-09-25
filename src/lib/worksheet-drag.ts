@@ -119,6 +119,39 @@ export function clearPair(links: DragLink[], leftId: string): DragLink[] {
 }
 
 /**
+ * 连线：点了一下**右项**（落点），返回新的 `links`。
+ *
+ * ★ 2026-09-26（教师第 2 条「连线题的线**在提交上要可以删除**」）。
+ *
+ * ── 为什么这一条要单独成一个函数 ────────────────────────────────────────────
+ * 「点右项」这一下的含义**取决于选没选左项**，而这是三条产品规则的交叉口：
+ *
+ *   · **没选左项**（`leftId === null`）：这是一个**纯粹的删除手势** ——
+ *     点已连的右项 ⇒ 断开它；点没连的 ⇒ 什么都不做（左项才是「源」，
+ *     ⚠️ 且必须**返回原数组本身**，否则会白写一条上传队列）。
+ *   · **选着左项**：这是**落位**手势 —— 连的正是这一对 ⇒ 拆掉（学生的退路）；
+ *     否则连上（`setPair`，右项被占时**顶掉**旧的，不是并存）。
+ *
+ * 🔴 没选左项那一条是**加法**：那条路径在 2026-09-26 之前是**死路**（`onTap` 直接
+ * `return`），所以它不可能碰到任何既有流程；而它正是教师说的「很不起眼」的解药 ——
+ * 在此之前要删一条线得「先点左项 → 再点右项」**两步**，而屏幕上没有任何东西
+ * 告诉学生第一步该点哪儿。现在一步，且右项上有一个看得见的叉（见 `match-body.tsx`）。
+ *
+ * ⚠️ 本函数**只算新的 `links`**，不碰点选态：清不清空选择由组件决定
+ *（它才知道那一下点的到底是源还是落点）。
+ */
+export function tapTarget(links: DragLink[], leftId: string | null, rightId: string): DragLink[] {
+  if (!Array.isArray(links)) return links;
+  if (!rightId) return links;
+  if (!leftId) {
+    const owner = links.filter((link) => link.rightId === rightId)[0];
+    return owner ? clearPair(links, owner.leftId) : links;
+  }
+  const already = links.some((link) => link.leftId === leftId && link.rightId === rightId);
+  return already ? clearPair(links, leftId) : setPair(links, leftId, rightId);
+}
+
+/**
  * 归类：把条目 `itemId` 放进框 `zoneId`。
  *
  * ⚠️ 一个条目**只能在一个框里**（判分器按 `assignment[id]` 取值），所以这是覆盖而不是追加 ——

@@ -747,6 +747,29 @@
   font-weight: 800;
 }
 
+/* ★ 2026-09-26（教师第 2 条）：**断开的可见入口**。
+   在此之前，一条线要删掉得「先点左项 → 再点右项」，而屏幕上没有任何东西
+   告诉学生第一步该点哪儿 —— 教师原话是这条「在提交上要可以删除」，实际是不好发现。
+   🔴 它出现的时机与「点下去真的会断开」**同源**（`match-body.tsx` 的 `tapWillUnlink`）：
+   选了左项、而这一条连的是**别的**左项时，点它是「改连」不是「断开」，那时不画 ✕ ——
+   画一个会撒谎的叉比不画更糟。
+   ⚠️ 它**不是** `<button>`：整个条目（≥44px）就是命中区，✕ 只是那句「这里能点掉」的交代。
+   （`worksheet-tap-targets.test.ts` 只量 `<button>`，这里的命中区由父条目保证。） */
+.matchUnlink {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 /* 「连到了哪一条」的一句话。与徽标同时存在是刻意的冗余：线画歪了也读得出配对。 */
 .matchChip {
   flex: 0 0 auto;

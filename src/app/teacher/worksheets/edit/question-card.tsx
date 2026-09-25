@@ -21,6 +21,10 @@ import {
   // 从**纯函数内核**直接取：这张卡片只用纯逻辑，不碰 hook（React 状态 / 路由 / 网络）。
   // 内核就是 `node --test` 直接跑的那一份，回归网在 `worksheet-editor-core.test.ts`。
 } from './worksheet-editor-core';
+// ★ 2026-09-26：**学生端那套只读题面**（九种题型一份实现）。跨目录引用与本页的
+// 「学生端预览」弹窗同源（`preview-modal.tsx` 引 `WorksheetQuestionList`）——
+// 规格 §6.3 要的就是「教师看到的就是学生看到的」。
+import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // ★ M4a：6 个题型的编辑体（单选复用 `choice-options` 那一个受控组件）。
 // 组件与内核分家的理由见各文件头：内核里全是可以 `node --test` 的纯函数，
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
@@ -283,6 +287,22 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, node, 
         <p className="worksheet-editor-hint">绘图题固定为手写作答，不自动判分。</p>
       )}
       </>)}
+
+      {/*
+        ★ 2026-09-26（教师修正）：「折叠只是指折叠所有**设置项**，题干和选项还是要保留的，
+        不要只剩一个标题。」⇒ 折起来的那一道题要读起来像**一张已经出好的卷子**。
+        🔴 **复用学生端那套只读渲染**（`QuestionInput` + `disabled`）—— 就是「学生端预览」
+        用的同一份组件，九种题型一行不用重写。自己另写一份文字预览 = 第二份渲染实现，
+        改了这边那边不动，而两边都不报错（本仓最防的那种分叉）。
+        ✅ `disabled` 同时解决了键盘导航：原生 `disabled` 的控件**不在 Tab 序里**。
+        ⚠️ 展开时这里**不渲染**（那时下面渲染的是可编辑的编辑体）—— 否则题面会画两遍。
+      */}
+      {!expanded && (
+        <div className="worksheet-editor-question-preview">
+          <p className="worksheet-editor-question-preview-prompt">{node.prompt.trim() || '（题干还没写）'}</p>
+          <QuestionInput node={node} draft={undefined} disabled />
+        </div>
+      )}
     </section>
   );
 }

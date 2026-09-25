@@ -2104,6 +2104,23 @@ tr:hover td {
    给的是「既有用法是有意的降级、不得新增」）—— 我在这里补的那一条当场把门禁跑红，
    而它**本来就是多余的**。别再加。 */
 
+/* 折叠态的**题面**（★ 2026-09-26 教师修正：折的只是设置项，题干与选项要一直看得见）。
+   ⚠️ 里面的控件是学生端那套（`QuestionInput` + `disabled`）—— 样式由它自己的
+   CSS 模块带过来，这里**只负责外框**：不要试图去覆盖它内部的样子
+   （那会变成同一件事两份样式，而这一页的类名网只管 `.worksheet-editor-*`）。 */
+.worksheet-editor-question-preview {
+  margin-top: 8px;
+}
+
+/* 题干：折叠态的主角（它是题面上唯一需要读的文字）。 */
+.worksheet-editor-question-preview-prompt {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 0.938rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .worksheet-editor-question {
   background: #fff;
   border: 1px solid #e2e8f0;

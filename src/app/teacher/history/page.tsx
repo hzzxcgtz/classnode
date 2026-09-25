@@ -89,6 +89,39 @@ export default function HistoryPage() {
     );
   };
 
+  /**
+   * ★ M6a：导出「学习单与探究空间」报告。
+   *
+   * ⚠️ 与上面那条「导出对话」**刻意不同**：它**没有预览那一步**（那份报告的正文是逐题作答
+   * 与笔迹图，预览在弹窗里读不了），点一下直接下载。
+   * 文件名与时间戳的拼法**逐字照抄**上面那一条（`titleSafe` 的替换也一样）。
+   */
+  const handleExportWorksheetReport = async (classroomId: string, title: string | null, code: string | null) => {
+    if (exporting) return;
+    setExporting(true);
+    // ⚠️ 「正在准备」不弹 toast：本页的 toast 类型只有 `error | success`（照既有的那条办 ——
+    //    它把进度放进 `exportStage`，而这里没有预览那一步、按钮本身的禁用态就够了）。
+    try {
+      const resp = await api.exportWorksheetReportDocx(classroomId);
+      if (!resp.ok) throw new Error('导出失败');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+      const titleSafe = (title || `课堂-${code || classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
+      a.download = `${titleSafe}-学习单与探究空间-${ts}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setToast({ msg: '导出成功！', type: 'success' });
+    } catch (error) {
+      setToast({ msg: '导出失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // 确认导出：服务端生成并下载
   const handleConfirmExport = async () => {
     if (!preview || exportingRef.current) return;
@@ -323,6 +356,14 @@ export default function HistoryPage() {
                             onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                             {previewingClassroomId === cr.id ? '准备中...' : '导出对话'}
+                          </button>
+                          <button className="btn btn-secondary"
+                            disabled={exporting}
+                            title="导出学习单作答明细（含笔迹）与探究空间使用汇总"
+                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                            onClick={() => void handleExportWorksheetReport(cr.id, cr.title, cr.code)}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /></svg>
+                            导出学习单与探究空间
                           </button>
                           <button onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
                             title="恢复课堂"

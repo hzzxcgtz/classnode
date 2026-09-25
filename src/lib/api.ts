@@ -293,6 +293,16 @@ export const api = {
     });
   },
 
+  // ★ M6a：服务端生成 DOCX（学习单与探究空间报告）。形状与上面那条逐字同款。
+  exportWorksheetReportDocx: (classroomId: string, options?: { socketId?: string }) => {
+    return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/worksheet-report/docx`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+  },
+
   // 服务端生成 DOCX（学情报表）
   exportStatsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/stats/docx`, {

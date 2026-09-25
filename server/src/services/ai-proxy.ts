@@ -1164,3 +1164,80 @@ export async function testWenxinConnection(agent: AgentConfig): Promise<{ succes
     return { success: false, error: getErrorMessage(error, '测试请求异常') };
   }
 }
+
+/**
+ * ★ M7b：**分析型的唯一外发点**（全仓只有这一处把学生的作业发出去）。
+ * 规格 §3.3 立这条规矩的理由：将来的合规审查只看这一个函数。
+ *
+ * 与 `proxyAIRequest` 的**三处刻意的不同**（少一处都会出问题）：
+ *
+ * 1. 🔴 **不过 `anonymizer`**。载荷已经是伪名（M7a 的 `payloadLabels`），而分析是**班级级**的、
+ *    没有「那个学生」可脱敏。传一个假名字会往映射表里塞一条**不是学生**的记录 ——
+ *    而 `MAX_ENTRIES = 500`，塞满会**重置**，重置会换掉**正在进行的一段聊天**里
+ *    同一个学生的伪名（`anonymizer.ts:7`）。
+ * 2. 🔴 **收 `images: Buffer[]` 而不是 `fileUrls: string[]`**。既有那条路每个 url 都过
+ *    `resolveLocalPath`（`:456` 逐字「仅允许读取应用上传目录中的文件」）⇒ 图必须先落盘到
+ *    `/uploads/`，而那是 `express.static` **公开目录**（`index.ts:97`）⇒
+ *    全班的画会变成一个**能被 URL 取到**的地址。这里走 `uploadBuffer`，**一个字节都不落盘**。
+ * 3. 🔴 **平台闸门**：有图而平台不是 `coze` ⇒ 立刻回失败。这是**第二道** ——
+ *    第一道是 `analysis-agent.ts` 的 `analysisGateOf`（界面在发之前就用它拦下）。
+ *    （`coze-agent` / 文心 / 智谱都不收图：`:499` / `:1039` / 智谱只有类型没有实现。）
+ *
+ * ⚠️ 本版**只接 coze**：无图时的文心 / 智谱分支要复用它们那条非流式调用，而那条路
+ * 内部带着 `anonymizer`（`:119`-`:120`）—— 复用就得先把脱敏拆出来。无图（纯文字）的分析
+ * 不在本轮的范围里（绘图题才是 §15.2 的重点，而它只有 coze 走得通）。
+ */
+export async function proxyAnalysisRequest(
+  agent: AgentConfig,
+  message: string,
+  images: Buffer[],
+): Promise<{ success: boolean; content?: string; error?: string }> {
+  if (images.length > 0 && agent.platform !== 'coze') {
+    return {
+      success: false,
+      error: `当前平台的智能体（${agent.platform}）收不了图，请改用 Coze 平台的分析型智能体`,
+    };
+  }
+  if (agent.platform !== 'coze') {
+    return { success: false, error: `暂不支持的分析平台：${agent.platform}` };
+  }
+  // ⚠️ 这里**刻意不调** `anonymizer.anonymize(...)` —— 见上面第 1 条。
+  try {
+    const coze = createCozeBot(agent);
+    const history: EnterMessage[] = [];
+    if (images.length > 0) {
+      const items: CozeMultimodalItem[] = [{ type: 'text', text: message }];
+      for (const [index, buffer] of images.entries()) {
+        const file = await coze.file.uploadBuffer(buffer, `analysis-${index}.png`);
+        items.push({ type: 'image', file_id: file.id });
+      }
+      history.push({
+        role: 'user',
+        type: 'question',
+        content: JSON.stringify(items),
+        content_type: 'object_string',
+      });
+    }
+    // 🔴 有图时第一个参数传**空串**，不是 `message`：`chat()` 见到 history 末尾已经是
+    // `user` 消息就**不再追加** content（`coze-bot/index.ts:108-115` 逐字），
+    // 而文字已经在 `object_string` 里了 —— 传 `message` 会让它重复一遍。
+    //
+    // ⚠️ `userName` 是 Coze 的 `user_id`（`coze-bot/index.ts:120`），必填。
+    // 这里给一个**中性常量**：分析是班级级的、没有「那个学生」，而把学生的名字发过去
+    // 正是本项目匿名化要防的事。每次调用都会 `chats.create` 出一个**新会话**
+    // （不传 `conversationId`）⇒ 两次分析之间不会串上下文。
+    const result = await coze.chat(images.length > 0 ? '' : message, {
+      userName: ANALYSIS_USER_ID,
+      history,
+    });
+    return { success: true, content: result.content };
+  } catch (error: unknown) {
+    return { success: false, error: getErrorMessage(error, '分析请求失败') };
+  }
+}
+
+/**
+ * 分析这条路在 Coze 侧的 `user_id`。**不是学生**（分析是班级级的），也**不是随机的**
+ * （随机会让平台侧把每次分析都当成一个新用户，不利于排查）。
+ */
+const ANALYSIS_USER_ID = 'classnode-analysis';

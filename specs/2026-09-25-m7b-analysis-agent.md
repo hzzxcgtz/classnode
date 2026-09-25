@@ -222,6 +222,7 @@ export function normalizeNarrative(raw: string): string   // 去首尾空白 · 
        · 本次内容：一份聚合文档 / N 张联系表（3 列 × 4 行）
        · 已交 12/40 人        ← 复用 M7a 的 covered/total，单位走 moduleCountUnit(mode)
        · 以上均为伪名（User_001…），不含学生真实姓名
+       · ⚠️ **第三方平台会留存这次对话**（如实说；见 §五 第 9 条）
        · ⚠️ 平台收不了图 ⇒ 确认按钮**禁用** + 说明为什么
   └→ 确认 → POST → 写回 narrative / agentId / model → 浮层显示解读
 ```
@@ -306,6 +307,15 @@ export function normalizeNarrative(raw: string): string   // 去首尾空白 · 
 | 6 | 往匿名映射表里塞非学生记录 | ✅ 可测（不进 anonymizer） | §2.3；用例钉住「这条路一次都不调 anonymizer」 |
 | 7 | 分析型 bot 漏进学生列表 | ✅ 可测（服务端查询） | §3.1；用例钉住「学生端读不到 analysis 类」 |
 | 8 | 解读覆盖了「这份载荷是什么时候算的」 | ✅ 可测 | §3.5：两组字段各自动自己那一半 |
+| 9 | 🔴 **第三方平台会留存这次对话**（`coze-bot/index.ts:122` 硬编 `auto_save_history: true`） | ❌ | **本章刻意不动它** —— 见下 |
+
+**关于第 9 条（写下来比悄悄放过好）**：`coze.chat()` 构造请求时写死了
+`auto_save_history: true`（`coze-bot/index.ts:122`），而紧接着的
+`chats.getMessages(conversation_id, chat.id)`（`:133`）正是**靠那份历史取回回复**的。
+⇒ 把那个开关关掉有可能让分析**返回空**，而本机没有平台/密钥，**验不了**。
+**本版不动它**（不动一个承重开关、去换一个验不了的隐私收益），但如实记在这里：
+**发出去的那份全班作业，在平台侧是有留存的。** 教师的那一屏预览里应当能看出这一点
+（§3.4 的预览行里加一条：『第三方平台会留存这次对话』）。
 
 ---
 

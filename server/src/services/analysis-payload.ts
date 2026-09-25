@@ -387,3 +387,57 @@ export function buildAnalysisPayload(input: {
     knobs,
   };
 }
+
+/* ── 落库 / 取回 ──────────────────────────────────────────────────────── */
+
+/**
+ * 条目 → `aggregate` 的 JSON 形状（写库用）。
+ *
+ * ⚠️ 存的是**快照**（含答案内容），不是只存计数：`aggregate` 是「本次分析看到的东西」的
+ * 唯一事实来源。只存计数的话，重新打开预览就得回去读 `WorksheetAnswer` ——
+ * 而那份数据在两次打开之间**可能已经变了**（学生改了、又交了），于是图上的内容与
+ * 存下来的 `coveredCount` 对不上，**且没有任何报错**。
+ */
+export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string, unknown>> {
+  return entries.map((entry) => ({
+    studentId: entry.studentId,
+    displayName: entry.displayName,
+    kind: entry.kind,
+    text: entry.text ?? null,
+    ink: entry.ink ?? null,
+  }));
+}
+
+/**
+ * `aggregate` → 条目（读库用，联系表端点靠它重渲）。
+ *
+ * 🔴 **必须能扛住脏数据**：这一列是 JSON，可能被手改过、也可能是**更老的版本**写的
+ * （本功能以后会长）。坏一行就整条 500 的后果是「分析打不开了」，而库里其实只有一条记录坏了。
+ * ⇒ 认不出的行落成 `unknown`（在图上占一格、写「形状认不出」），不认得的整体回空数组。
+ */
+export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AnalyzeEntry[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.studentId !== 'string' || row.studentId === '') continue;
+    const displayName = typeof row.displayName === 'string' ? row.displayName : row.studentId;
+    if (row.kind === 'text') {
+      out.push({
+        studentId: row.studentId, displayName, kind: 'text',
+        text: typeof row.text === 'string' ? row.text : '',
+      });
+      continue;
+    }
+    if (row.kind === 'ink') {
+      const ink = readInk(row.ink);
+      out.push(ink
+        ? { studentId: row.studentId, displayName, kind: 'ink', ink }
+        : { studentId: row.studentId, displayName, kind: 'unknown' });
+      continue;
+    }
+    out.push({ studentId: row.studentId, displayName, kind: 'unknown' });
+  }
+  return out;
+}

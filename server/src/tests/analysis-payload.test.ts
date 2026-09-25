@@ -11,8 +11,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANSWER_TEXT_MAX, DEFAULT_ANALYSIS_KNOBS, KNOBS_SETTING_KEY, SHEET_GAP, SHEET_LABEL_H,
-  SHEET_MARGIN, buildTextDocument, layoutSheets, normalizeAnalysisKnobs, payloadKindOf,
-  selectAnalyzeEntries, type AnalyzeEntry, type Participant, type RawAnswer,
+  SHEET_MARGIN, buildTextDocument, entriesFromAggregate, entriesToAggregate, layoutSheets,
+  normalizeAnalysisKnobs, payloadKindOf, selectAnalyzeEntries,
+  type AnalyzeEntry, type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
 
 const ink = (strokes: number) => ({
@@ -283,4 +284,37 @@ test('🔴 旋钮归一化：坏值/越界/缺字段一律回落默认（不抛�
   assert.deepEqual(normalizeAnalysisKnobs({ columns: NaN }), DEFAULT_ANALYSIS_KNOBS, 'NaN 不是数');
   assert.deepEqual(normalizeAnalysisKnobs('{"columns":2}'), { ...DEFAULT_ANALYSIS_KNOBS, columns: 2 }, 'JSON 串也要认');
   assert.deepEqual(normalizeAnalysisKnobs('{坏 json'), DEFAULT_ANALYSIS_KNOBS, '坏 JSON 回落而不是抛');
+});
+
+/* ── 落库 / 取回 ──────────────────────────────────────────────────────── */
+
+test('往返：条目 → aggregate → 条目，内容与顺序都不变', () => {
+  const entries: AnalyzeEntry[] = [
+    { studentId: 'p1', displayName: '张三', kind: 'text', text: '甲' },
+    { studentId: 'p2', displayName: '李四', kind: 'ink', ink: ink(2) as never },
+    { studentId: 'p3', displayName: '王五', kind: 'unknown' },
+  ];
+  const back = entriesFromAggregate(entriesToAggregate(entries));
+  assert.deepEqual(back.map((e) => [e.studentId, e.kind, e.text ?? null]), [
+    ['p1', 'text', '甲'], ['p2', 'ink', null], ['p3', 'unknown', null],
+  ]);
+  assert.equal(back[1].ink?.strokes.length, 2);
+  assert.equal(back[1].displayName, '李四');
+});
+
+test('🔴 脏 aggregate 不抛：坏行落 unknown / 被跳过，整体不是数组 ⇒ 空数组', () => {
+  assert.deepEqual(entriesFromAggregate(null), []);
+  assert.deepEqual(entriesFromAggregate('nope'), []);
+  assert.deepEqual(entriesFromAggregate({}), []);
+  // 有条目但没有 studentId ⇒ 跳过（它没法归属，也占不了一格）
+  assert.deepEqual(entriesFromAggregate([{ kind: 'text', text: 'x' }]), []);
+  // kind 是没见过的值 ⇒ unknown（不是丢）
+  const back = entriesFromAggregate([{ studentId: 'p1', displayName: '甲', kind: '未来题型', text: null, ink: null }]);
+  assert.deepEqual(back.map((e) => e.kind), ['unknown']);
+  // kind 是 ink 但 ink 坏了 ⇒ unknown（不是丢，也不是抛）
+  const badInk = entriesFromAggregate([{ studentId: 'p1', kind: 'ink', ink: { format: 'ink/v1', canvas: { w: 'x' } } }]);
+  assert.deepEqual(badInk.map((e) => e.kind), ['unknown']);
+  // displayName 缺失 ⇒ 回落 studentId（图上的标签不会空着）
+  const noName = entriesFromAggregate([{ studentId: 'p9', kind: 'text', text: 'x' }]);
+  assert.equal(noName[0].displayName, 'p9');
 });

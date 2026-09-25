@@ -34,6 +34,16 @@ import {
 // ★ M4b：笔迹的体积校验（规格 §12 裁定 4 的后半句「服务端也要校验」）。
 // 它是 `src/lib/worksheet-ink.ts` 在服务端的**第二份**实现 —— 服务端读不到 `src/`。
 import { findInkValueError } from '../services/worksheet-ink.js';
+// ★ M7a：分析载荷（「按题的一次性聚合」）。闸门在**零 import** 的 analysis-gate 里 ——
+// 那个文件被前端的跨工程对拍用例加载，所以它不能 import 任何东西（M6a 的教训）。
+import { isAnalyzableType } from '../services/analysis-gate.js';
+import { questionTypeLabel } from '../services/question-type-labels.js';
+import {
+  KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
+  layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
+  type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
+} from '../services/analysis-payload.js';
+import { renderSheets } from '../services/analysis-render.js';
 
 /**
  * 学习单路由。
@@ -879,6 +889,253 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
   } catch (error) {
     console.error('[worksheets] 读取课堂作答行失败:', error);
     res.status(500).json({ error: '读取课堂作答行失败' });
+  }
+});
+
+// ── 分析载荷（★ M7a）─────────────────────────────────────────────────
+//
+//   POST /:id/analysis/:questionId              算 + 落库 + 回载荷结构（不含图）
+//   GET  /:id/analysis/:questionId              读已存的载荷结构（没算过 ⇒ 404）
+//   GET  /:id/analysis/:questionId/sheet/:index 按需渲染第 index 张联系表（PNG）
+//
+// 🔴 **本版零外发** —— 这三条一个字节都不往第三方发。它们把「将来要发什么」在本机
+// 算出来、存下来、给教师看。将来接 AI 时**只加一处**（读这份载荷再发），
+// 那是全仓唯一的网络出口，便于合规审查。
+//
+// 🔴 **鉴权**：这三条路径是三段 / 四段，**不匹配** `worksheetAccessGate` 放行学生的
+// 那四条正则（都是「恰好两段」）⇒ 自然落到 `requireTeacher`。
+// `analysis-endpoint.test.ts` 有一条「学生 token 打这三条路径一律 403」把它钉住 ——
+// 改路径形状时要重新确认那一条。
+
+/**
+ * 这份学习单绑在哪节课上。**两条路都要走**：
+ *   · 课堂级绑定 `ClassroomWorksheet`（标准 / 分组模式的机制）
+ *   · **组级材料** `ClassroomGroupMaterial`（高级模式的机制 —— 那时课堂级表是空的，
+ *     每个组各配自己那一份）
+ *
+ * 🔴 只认课堂级那一张表的话，**高级模式下所有分析都回 404** —— 而高级模式恰恰是
+ * 分母最容易算错、因而最需要这个功能的地方。这个缺口是 `analysis-endpoint.test.ts`
+ * 里那条「3 组里只有 2 组配了这份」当场抓出来的。
+ */
+async function findWorksheetClassroomId(prisma: PrismaClient, worksheetId: string): Promise<string | null> {
+  const classroomLevel = await prisma.classroomWorksheet.findFirst({
+    where: { worksheetId }, select: { classroomId: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  if (classroomLevel) return classroomLevel.classroomId;
+  const groupLevel = await prisma.classroomGroupMaterial.findFirst({
+    where: { kind: 'worksheet', targetId: worksheetId },
+    select: { group: { select: { classroomId: true } } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return groupLevel?.group?.classroomId ?? null;
+}
+
+/** 读一次旋钮。坏值回落默认（`normalizeAnalysisKnobs`），**不抛**。 */
+async function loadAnalysisKnobs(prisma: PrismaClient): Promise<SheetKnobs> {
+  const row = await prisma.setting.findUnique({ where: { key: KNOBS_SETTING_KEY } }).catch(() => null);
+  return normalizeAnalysisKnobs(row?.value ?? null);
+}
+
+/** 题在 `content` 树里的位置（拍平序）—— 抬头那句「第 N 题」要用它。 */
+async function loadAnalysisTarget(
+  prisma: PrismaClient, worksheetId: string, questionId: string,
+): Promise<{ ok: true; node: QuestionNode; index: number; classroomId: string } | { ok: false; status: number; error: string }> {
+  const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true } });
+  if (!worksheet) return { ok: false, status: 404, error: '学习单不存在' };
+  // 与既有三处同形（:1288 / :1469 / :1806）：JSON 列的窄化要走 unknown。
+  const nodes = flattenQuestions(worksheet.content as unknown as WorksheetContent);
+  const index = nodes.findIndex((node) => node.id === questionId);
+  if (index === -1) return { ok: false, status: 404, error: '这道题不在学习单里' };
+  const node = nodes[index];
+  if (!isAnalyzableType(node.type)) {
+    return { ok: false, status: 400, error: '这道题不是主观题 —— 客观题本来就判分，看板的对错已经回答了问题' };
+  }
+  const classroomId = await findWorksheetClassroomId(prisma, worksheetId);
+  if (!classroomId) return { ok: false, status: 404, error: '这份学习单还没有关联课堂' };
+  return { ok: true, node, index, classroomId };
+}
+
+/**
+ * 「他此刻该答的那一份」= **参与者 → 该题应作答的人**。
+ *
+ * 🔴 分母就在这个函数里。它必须走 `resolveMaterialTargetId` 这**唯一**的口径：
+ * 高级模式下每个组可以是**不同的学习单**（M5b 规格 §2.2），所以
+ * 「应作答的参与者数」**不是**「全班参与者数」—— 算错的后果是「已交 5/40」而实际只有
+ * 5 人该答，教师会以为全班都没交，**且没有任何报错**。
+ */
+async function loadAnalysisParticipants(
+  prisma: PrismaClient, classroomId: string, worksheetId: string,
+): Promise<Participant[]> {
+  const classroom = await prisma.classroom.findUnique({
+    where: { id: classroomId },
+    select: {
+      id: true, mode: true,
+      groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
+      students: {
+        select: {
+          id: true, groupId: true,
+          student: { select: { name: true } },
+          group: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!classroom) return [];
+  const classroomLevelId = await loadClassroomLevelWorksheetId(prisma, classroomId);
+  const groupMaterials = classroom.groups.flatMap((group) =>
+    group.materials.map((m) => ({ groupId: group.id, kind: m.kind, targetId: m.targetId })));
+
+  const participants: Participant[] = [];
+  for (const participant of classroom.students) {
+    const resolved = resolveMaterialTargetId({
+      mode: classroom.mode, studentGroupId: participant.groupId, groupMaterials, classroomLevelId, kind: 'worksheet',
+    });
+    if (resolved !== worksheetId) continue;
+    participants.push({
+      participantId: participant.id,
+      // 分组 / 高级模式下这里是**一个组一行参与者**（`type === 'group'`）⇒ 名字优先取组名。
+      name: participant.student?.name ?? participant.group?.name ?? '未命名参与者',
+    });
+  }
+  return participants;
+}
+
+/** 这一份学习单在这一节课里的全部作答行（一次查全，不逐人查 —— GC 35）。 */
+async function loadAnalysisAnswers(
+  prisma: PrismaClient, classroomId: string, worksheetId: string,
+): Promise<RawAnswer[]> {
+  const responses = await prisma.worksheetResponse.findMany({
+    where: { classroomId, worksheetId },
+    select: { participantId: true, answers: { select: { questionId: true, status: true, value: true } } },
+  });
+  return responses.flatMap((response) =>
+    response.answers.map((answer) => ({
+      participantId: response.participantId,
+      questionId: answer.questionId,
+      status: answer.status,
+      value: answer.value,
+    })));
+}
+
+/** 把一行库里的记录重建成载荷（`GET` 与 sheet 端点共用）。 */
+function payloadFromStoredRow(
+  row: { payloadKind: string; aggregate: unknown; coveredCount: number; totalCount: number },
+  node: QuestionNode, index: number, knobs: SheetKnobs,
+): ReturnType<typeof buildAnalysisPayload> {
+  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, index };
+  // ⚠️ `total` 取**存下来的** `totalCount`（与 `coveredCount` 同一时刻的口径），不重算 ——
+  // 重算会让「存下来的分子」配上「现在的分母」，两边不是同一时刻的。
+  return buildAnalysisPayload({
+    question: meta,
+    entries: entriesFromAggregate(row.aggregate),
+    total: row.totalCount,
+    knobs,
+  });
+}
+
+/** 回给前端的载荷（图不在里面 —— 它走 sheet 端点单独取）。 */
+function payloadResponse(payload: ReturnType<typeof buildAnalysisPayload>, labeled: boolean | null): Record<string, unknown> {
+  return { ...payload, labeled };
+}
+
+router.post('/:id/analysis/:questionId', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheetId = req.params.id;
+    const questionId = req.params.questionId;
+    const target = await loadAnalysisTarget(prisma, worksheetId, questionId);
+    if (!target.ok) return res.status(target.status).json({ error: target.error });
+
+    const participants = await loadAnalysisParticipants(prisma, target.classroomId, worksheetId);
+    const answers = await loadAnalysisAnswers(prisma, target.classroomId, worksheetId);
+    const entries = selectAnalyzeEntries(answers, participants, questionId);
+    const knobs = await loadAnalysisKnobs(prisma);
+    const meta = {
+      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, index: target.index,
+    };
+    const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
+
+    await prisma.worksheetQuestionAnalysis.upsert({
+      where: { worksheetId_questionId: { worksheetId, questionId } },
+      update: {
+        payloadKind: payload.payloadKind,
+        aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
+        coveredCount: entries.length,
+        totalCount: participants.length,
+        computedAt: new Date(),
+      },
+      create: {
+        worksheetId, questionId,
+        payloadKind: payload.payloadKind,
+        aggregate: entriesToAggregate(entries) as unknown as Prisma.InputJsonValue,
+        coveredCount: entries.length,
+        totalCount: participants.length,
+      },
+    });
+    // 🔴 `update` 里**刻意不写** `narrative` / `perStudent` / `agentId` / `model` ——
+    // 那四格是将来 AI 写的，重算载荷**不该把它们清掉**。漏了这一点的表现是
+    // 「教师重算一次，之前花掉的 AI 解读没了」，而**没有任何报错**。
+    // （`analysis-endpoint.test.ts` 有一条用例钉着它。）
+
+    res.json(payloadResponse(payload, null));
+  } catch (error) {
+    console.error('[worksheets] 生成分析载荷失败:', error);
+    res.status(500).json({ error: '生成分析载荷失败' });
+  }
+});
+
+router.get('/:id/analysis/:questionId', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheetId = req.params.id;
+    const questionId = req.params.questionId;
+    const row = await prisma.worksheetQuestionAnalysis.findUnique({
+      where: { worksheetId_questionId: { worksheetId, questionId } },
+    });
+    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+    const target = await loadAnalysisTarget(prisma, worksheetId, questionId);
+    if (!target.ok) return res.status(target.status).json({ error: target.error });
+    const knobs = await loadAnalysisKnobs(prisma);
+    res.json(payloadResponse(payloadFromStoredRow(row, target.node, target.index, knobs), null));
+  } catch (error) {
+    console.error('[worksheets] 读取分析载荷失败:', error);
+    res.status(500).json({ error: '读取分析载荷失败' });
+  }
+});
+
+router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheetId = req.params.id;
+    const questionId = req.params.questionId;
+    const sheetIndex = Number.parseInt(req.params.index, 10);
+    if (!Number.isInteger(sheetIndex) || sheetIndex < 0) {
+      return res.status(404).json({ error: '没有这一张' });
+    }
+    const row = await prisma.worksheetQuestionAnalysis.findUnique({
+      where: { worksheetId_questionId: { worksheetId, questionId } },
+      select: { aggregate: true },
+    });
+    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+
+    const entries: AnalyzeEntry[] = entriesFromAggregate(row.aggregate);
+    const knobs = await loadAnalysisKnobs(prisma);
+    const layouts = layoutSheets(entries, payloadLabels(entries), knobs);
+    if (sheetIndex >= layouts.length) return res.status(404).json({ error: '没有这一张' });
+
+    // 🔴 **按需渲染**（规格 §3.1 决定 1）：库里只存结构化的 `aggregate`，
+    // 图是派生物。旋钮改了以后旧图不会变成「看着对、其实按旧参数画的」。
+    const rendered = await renderSheets(entries, [layouts[sheetIndex]], knobs);
+    if (!rendered || rendered.sheets.length === 0) {
+      return res.status(503).json({ error: '这一张渲染不出来（本机缺图片渲染能力）' });
+    }
+    if (!rendered.labeled) res.setHeader('X-ANALYSIS-LABELS', 'none');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(rendered.sheets[0]);
+  } catch (error) {
+    console.error('[worksheets] 渲染联系表失败:', error);
+    res.status(500).json({ error: '渲染联系表失败' });
   }
 });
 

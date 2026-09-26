@@ -208,6 +208,9 @@ const requiredFiles = [
   'prisma/dev.db',
   'node_modules/@prisma/client/package.json',
   'node_modules/prisma/build/index.js',
+  // 7z-wasm 的 wasm 主体。**少了它，安装包里 rar / 7z 的解压会在教师的机器上才报错** ——
+  // 那是「开发正常、安装包静默缺文件」的典型，只在这张清单里点名才能提前拦住。
+  'node_modules/7z-wasm/7zz.wasm',
 ];
 if (runtime.platform === 'win32') requiredFiles.push('node.exe');
 

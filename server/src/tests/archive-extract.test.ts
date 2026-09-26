@@ -330,3 +330,23 @@ test('只有空目录的包 ⇒ ArchiveError（不是「成功地」建出一个
   );
   assert.deepEqual(fs.readdirSync(dest), [], '拒掉之后不许在目标目录里留东西（调用方会 rm，但这里先确认它没落盘）');
 });
+
+test('★ 打包脚本必须点名 7zz.wasm —— 否则「开发正常、安装包静默缺文件」', () => {
+  // 照 webapp-vendor.test.ts:75 那条的形状。守的是同一个失败模式：
+  // `package-server.mjs` 只检查它点名的那几个文件，漏一行就**只在打包版炸**。
+  const packaging = fs.readFileSync(path.join(import.meta.dirname, '../../../scripts/package-server.mjs'), 'utf8');
+  assert.match(
+    packaging,
+    /node_modules\/7z-wasm\/7zz\.wasm/,
+    'package-server.mjs 的 requiredFiles 里没有 7zz.wasm —— 安装包里缺了它，教师上传 rar/7z 时才会报错',
+  );
+});
+
+test('7z-wasm 确实被声明成了运行时依赖（不是 devDependency）', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../../package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  assert.ok(pkg.dependencies?.['7z-wasm'], '7z-wasm 必须在 dependencies 里 —— devDependencies 不会进安装包');
+  assert.equal(pkg.devDependencies?.['7z-wasm'], undefined, '同时出现在两边说明声明是随手加的');
+});

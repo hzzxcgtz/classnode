@@ -14,6 +14,7 @@ import { flattenAnswerable } from '../services/worksheet-heading.js';
 import { toAgentConfig } from '../services/agent-config.js';
 import {
   DEFAULT_POINTS,
+  fillBlankWrongIndexes,
   flattenQuestions,
   grade,
   // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
@@ -130,14 +131,14 @@ const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
 /**
- * 奖励形式的**取值域**（规格 §9.2 的四选一）。
+ * 奖励形式的**取值域**（四种收藏型图标 + 分数）。
  *
- * ⚠️ 这四个字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
+ * ⚠️ 这五个字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
  * 服务端读不到 `src/`，而前端也不该把「什么值合法」的判据放在只有自己看得见的地方。
  * 与题型注册表（`QUESTION_TYPES` 对 `QUESTION_TYPE_OPTIONS`）同一个由来 ——
  * **两处必须一起改**。改一处不会报错，只会让存进去的档在学生端落到默认档（画成星星）。
  */
-const REWARD_STYLES: readonly string[] = ['correctness', 'star', 'flower', 'points'];
+const REWARD_STYLES: readonly string[] = ['star', 'flower', 'trophy', 'bear', 'points'];
 /** 全对档步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
 const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
 /**
@@ -154,10 +155,16 @@ const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
  * —— **两处必须一起改**，改一处不会报错，只会让存进去的档在学生端变成另一个档。
  */
 const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
+const WORKSHEET_BACKGROUND_THEMES: readonly string[] = [
+  'none', 'cloud-playground', 'forest-explorer', 'space-discovery',
+  'ocean-observation', 'creative-notebook', 'custom',
+];
+const WORKSHEET_ANSWER_MODES: readonly string[] = ['open', 'task-step', 'question-step'];
 
 const DEFAULT_SETTINGS = {
   allowResubmit: true,
   autoGrade: true,
+  answerMode: 'open',
   defaultInputMode: 'keyboard',
   // 默认档「星星 ⭐、每答对一题 1 个」的依据写在 `src/lib/worksheet-reward.ts` 的
   // `DEFAULT_REWARD_STYLE` 上（§9.2 的图与 §8.2 的版式图）。⚠️ 两处必须是同一对默认值：
@@ -171,6 +178,8 @@ const DEFAULT_SETTINGS = {
   // ★ M7b：**没有默认分析智能体**，这是刻意的 —— 默认指定一个等于「默认把全班作业发出去」。
   // ⇒ `null` 表示「没指定」，而没指定时分析按钮禁用并提示去哪儿配。
   analysisAgentId: null,
+  backgroundTheme: 'cloud-playground',
+  backgroundImageUrl: null,
 } as const;
 
 /**
@@ -202,6 +211,9 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
   return {
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
+    answerMode: typeof source.answerMode === 'string' && WORKSHEET_ANSWER_MODES.includes(source.answerMode)
+      ? source.answerMode
+      : DEFAULT_SETTINGS.answerMode,
     defaultInputMode: source.defaultInputMode === 'handwriting' ? 'handwriting' : DEFAULT_SETTINGS.defaultInputMode,
     rewardStyle,
     rewardStep,
@@ -211,6 +223,12 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     // 但它们都不是空串，写成真值判断会把它们放过去，而那时界面上那个下拉会选不中任何一项。
     analysisAgentId: typeof source.analysisAgentId === 'string' && source.analysisAgentId !== ''
       ? source.analysisAgentId
+      : null,
+    backgroundTheme: typeof source.backgroundTheme === 'string' && WORKSHEET_BACKGROUND_THEMES.includes(source.backgroundTheme)
+      ? source.backgroundTheme
+      : DEFAULT_SETTINGS.backgroundTheme,
+    backgroundImageUrl: typeof source.backgroundImageUrl === 'string' && source.backgroundImageUrl.startsWith('/uploads/chat/')
+      ? source.backgroundImageUrl
       : null,
   };
 }
@@ -293,7 +311,7 @@ function normalizeNode(
   // ★ M4a/I1：`full` 的域是 `1..POINTS_MAX`（`half` 才是 `0..`）—— **`full: 0` 拒绝保存**。
   //
   // 🔴 为什么值得拒（2026-09-24 终审实测的完整链条）：`full: 0` 让**答对**的题拿到 0 分，
-  // 于是同一次提交里学生屏幕画**红叉**（对错档按 `score >= 1` 画）、教师抽屉画**绿 `✓ 答对`**
+  // 于是同一次提交里学生屏幕显示**暂未获得**、教师抽屉画**绿 `✓ 答对`**
   // 并把它计进正确率的分子、学生顶栏的奖励累计 +0 —— 四个观测互相打架，**全程无一处报错**。
   //
   // ⚠️ 与 `partialCredit` 同一种处置（认不出就**拒绝保存**，而不是回落到默认值）：
@@ -1494,8 +1512,7 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
 }
 
 /**
- * 学生端只拿 `settings` 里的**五个**字段：`allowResubmit` / `autoGrade` /
- * `rewardStyle` / `rewardStep` / `halfStep`。
+ * 学生端只拿作答、奖励与背景呈现需要的字段，不下发分析智能体等教师侧设置。
  *
  * 前两个是 B3 就有的，中间两个是 D5 加的（规格 §9.2：奖励形式是**学习单级**配置，
  * 而学生端要拿它才知道该把判分画成对错、星星、花朵还是分数），`halfStep` 是 M4a 的 B2 加的
@@ -1511,6 +1528,7 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
  */
 function readStudentSettings(raw: unknown): {
   allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number; halfStep: number;
+  answerMode: string; backgroundTheme: string; backgroundImageUrl: string | null;
 } {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
@@ -1520,6 +1538,9 @@ function readStudentSettings(raw: unknown): {
   return {
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
+    answerMode: typeof source.answerMode === 'string' && WORKSHEET_ANSWER_MODES.includes(source.answerMode)
+      ? source.answerMode
+      : DEFAULT_SETTINGS.answerMode,
     rewardStyle: typeof source.rewardStyle === 'string' && REWARD_STYLES.includes(source.rewardStyle)
       ? source.rewardStyle
       : DEFAULT_SETTINGS.rewardStyle,
@@ -1530,6 +1551,12 @@ function readStudentSettings(raw: unknown): {
     halfStep: typeof source.halfStep === 'number' && HALF_STEPS.includes(source.halfStep)
       ? source.halfStep
       : DEFAULT_SETTINGS.halfStep,
+    backgroundTheme: typeof source.backgroundTheme === 'string' && WORKSHEET_BACKGROUND_THEMES.includes(source.backgroundTheme)
+      ? source.backgroundTheme
+      : DEFAULT_SETTINGS.backgroundTheme,
+    backgroundImageUrl: typeof source.backgroundImageUrl === 'string' && source.backgroundImageUrl.startsWith('/uploads/chat/')
+      ? source.backgroundImageUrl
+      : null,
   };
 }
 
@@ -1539,6 +1566,39 @@ function findQuestion(content: Prisma.JsonValue, questionId: string): QuestionNo
   return flattenAnswerable((content as unknown as WorksheetContent).nodes ?? [])
     .map((item) => item.node)
     .find(node => node.id === questionId) ?? null;
+}
+
+async function answerStepAllowed(
+  ctx: StudentWorksheetContext,
+  questionId: string,
+): Promise<boolean> {
+  const mode = readStudentSettings(ctx.worksheet.settings).answerMode;
+  if (mode === 'open') return true;
+  const top = (ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [];
+  const sequence: Array<{ id: string; group: number }> = [];
+  top.forEach((node, group) => {
+    flattenAnswerable([node]).forEach(item => sequence.push({ id: item.node.id, group }));
+  });
+  const target = sequence.findIndex(item => item.id === questionId);
+  if (target < 0) return false;
+  const rows = await ctx.prisma.worksheetAnswer.findMany({
+    where: {
+      status: 'submitted',
+      response: {
+        classroomId: ctx.classroomId,
+        worksheetId: ctx.worksheet.id,
+        participantId: ctx.participantId,
+      },
+    },
+    select: { questionId: true },
+  });
+  const done = new Set(rows.map(row => row.questionId));
+  if (done.has(questionId)) return true;
+  const firstPending = sequence.findIndex(item => !done.has(item.id));
+  if (firstPending < 0) return true;
+  return mode === 'task-step'
+    ? sequence[target].group <= sequence[firstPending].group
+    : target <= firstPending;
 }
 
 /**
@@ -1831,7 +1891,14 @@ router.get('/:id/answers', async (req, res) => {
     //
     // ⚠️ `value` 为 SQL NULL（学生把这题清空了）时它读出来就是 `null`，
     // 前端按「清空」处置（`draftFromValue(null)` ⇒ 空草稿），与队列里的 `null` 同义。
-    res.json({ rows });
+    const nodes = flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? []);
+    const byId = new Map(nodes.map(item => [item.node.id, item.node]));
+    res.json({ rows: rows.map(row => ({
+      ...row,
+      wrongBlankIndexes: row.gradeState && byId.has(row.questionId)
+        ? fillBlankWrongIndexes(byId.get(row.questionId)!, row.value)
+        : [],
+    })) });
   } catch (error) {
     console.error('[worksheets] 读取学生作答失败:', error);
     res.status(500).json({ error: '读取作答失败' });
@@ -1891,6 +1958,10 @@ router.put('/:id/answers', async (req, res) => {
     // 不是「在两个端点各写一遍」）。`submit` 那边有一句注释说明它为什么故意不判。
     if (ctx.answersLocked) {
       return res.status(409).json({ error: '老师已锁定作答', code: 'answers-locked' });
+    }
+
+    if (!(await answerStepAllowed(ctx, questionId))) {
+      return res.status(409).json({ error: '请先完成前面的内容', code: 'worksheet-step-locked' });
     }
 
     // 🔴 `allowResubmit: false` 在**服务端**生效（规格 §8.4 三层控制里的第一层）。
@@ -1988,6 +2059,10 @@ router.post('/:id/answers/submit', async (req, res) => {
     if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
     const node = findQuestion(ctx.worksheet.content, questionId);
     if (!node) return res.status(400).json({ error: '该题不属于这份学习单' });
+
+    if (!(await answerStepAllowed(ctx, questionId))) {
+      return res.status(409).json({ error: '请先完成前面的内容', code: 'worksheet-step-locked' });
+    }
 
     // 没作答过就没有可判的答案。若照判，空题会被记成「已提交 · 判错」并推进整卷进度 ——
     // 而看板的唯一数据源就是这些行，学生什么都没写、看板上显示他做完了。
@@ -2089,7 +2164,12 @@ router.post('/:id/answers/submit', async (req, res) => {
     // 那一步**早就做完了**：学生端读 `score`（奖励，`worksheet-queue.ts` 的 `scoreFromWire`）、
     // 看板读 `gradeState`（✓ / ½ / ✗，`worksheet-drawer-state.ts` 的 `rowVerdict`）；
     // `isCorrect` 今天只在**未回填的旧行**上兜底。它仍不许改名，但理由换了（见 `rowVerdict`）。
-    res.json({ isCorrect, gradeState, score });
+    res.json({
+      isCorrect,
+      gradeState,
+      score,
+      wrongBlankIndexes: verdict ? fillBlankWrongIndexes(node, answer.value) : [],
+    });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);
     res.status(500).json({ error: '提交作答失败' });

@@ -150,10 +150,11 @@ export async function cleanupOrphanedUploads(
   const [messages, avatars, worksheets] = await Promise.all([
     prisma.message.findMany({ select: { fileUrls: true } }),
     prisma.avatar.findMany({ select: { svgContent: true } }),
-    prisma.worksheet.findMany({ select: { content: true } }),
+    prisma.worksheet.findMany({ select: { content: true, settings: true } }),
   ]);
   const chatReferences = collectReferencedChatFiles(messages.map(message => message.fileUrls));
   collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.content)).forEach(name => chatReferences.add(name));
+  collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.settings)).forEach(name => chatReferences.add(name));
   const chat = await removeExpiredUnreferencedFiles(
     options.chatDirectory ?? chatDir,
     chatReferences,

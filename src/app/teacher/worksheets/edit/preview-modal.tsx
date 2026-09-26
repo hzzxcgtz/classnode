@@ -1,7 +1,10 @@
 'use client';
 
 import { studentVisibleGroups } from '@/lib/worksheet-questions';
-import type { WorksheetContent } from '@/lib/types';
+import type { CSSProperties } from 'react';
+import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
+import { resolveWorksheetBackground } from '@/lib/worksheet-backgrounds';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
 // 两个模块各自的路径在这里交汇，分叉在结构上不可能。
@@ -51,9 +54,10 @@ const STUDENT_STAGE_WIDTH = 768;
  *     的闸门即使将来有人补传了配置也仍然关着。
  * 看板 / 抽屉 / 按题看则根本不经过这个组件。
  */
-export function WorksheetPreviewModal({ title, content, onClose }: {
+export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   title: string;
   content: WorksheetContent;
+  settings: WorksheetSettings;
   onClose: () => void;
 }) {
   // 与面板同一条口径：拍平在调用方做（`flattenAnswerable`），所以「屏幕上有几道题」
@@ -63,6 +67,10 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
   const groups = studentVisibleGroups(content.nodes);
   // 「共 N 题」数的是**可作答的题**（与屏幕上画的张数同一个数）。
   const questionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
+  const background = resolveWorksheetBackground(settings.backgroundTheme, settings.backgroundImageUrl);
+  const stageStyle = background
+    ? { width: STUDENT_STAGE_WIDTH, '--worksheet-background': `url(${worksheetAssetUrl(background)})` } as CSSProperties
+    : { width: STUDENT_STAGE_WIDTH };
 
   return (
     <>
@@ -84,7 +92,7 @@ export function WorksheetPreviewModal({ title, content, onClose }: {
         </header>
 
         <div className="worksheet-editor-preview-scroll">
-          <div className="worksheet-editor-preview-stage" style={{ width: STUDENT_STAGE_WIDTH }}>
+          <div className="worksheet-editor-preview-stage" style={stageStyle} data-has-background={background ? '1' : '0'}>
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
             <WorksheetQuestionList
               groups={groups}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { getStudentSessionAuthorization } from '@/lib/api';
-import type { WorksheetQuestionNode } from '@/lib/types';
+import type { WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 import {
   buildAnswerValue,
   isDraftEmpty,
@@ -128,6 +128,10 @@ export interface UseWorksheetAnswersResult {
    * `isCorrect` / `score` 已被清成 `null`，留着旧的会让星星停在一个库里已不成立的判分上）。
    */
   scores: Record<string, WorksheetScore>;
+  gradeStates: Record<string, WorksheetGradeState | null>;
+  wrongBlankIndexes: Record<string, number[]>;
+  /** 本次页面停留期间，每道题新获得奖励的次数；只用于驱动一次性庆祝动效。 */
+  rewardBursts: Record<string, number>;
   /** 正在提交的题（按钮转圈、防连点）。 */
   submitting: Record<string, boolean>;
   /** 队列里还有几条没发出去。 */
@@ -161,6 +165,9 @@ export function useWorksheetAnswers({
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
   const [scores, setScores] = useState<Record<string, WorksheetScore>>({});
+  const [gradeStates, setGradeStates] = useState<Record<string, WorksheetGradeState | null>>({});
+  const [wrongBlankIndexes, setWrongBlankIndexes] = useState<Record<string, number[]>>({});
+  const [rewardBursts, setRewardBursts] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [pendingCount, setPendingCount] = useState(0);
   const [offline, setOffline] = useState(false);
@@ -241,6 +248,9 @@ export function useWorksheetAnswers({
       setDrafts({});
       setStatuses({});
       setScores({});
+      setGradeStates({});
+      setWrongBlankIndexes({});
+      setRewardBursts({});
       lastSentRef.current = {};
       return;
     }
@@ -261,6 +271,9 @@ export function useWorksheetAnswers({
     setDrafts(merged.drafts);
     setStatuses(merged.statuses);
     setScores(merged.scores);
+    setGradeStates(merged.gradeStates);
+    setWrongBlankIndexes(merged.wrongBlankIndexes);
+    setRewardBursts({});
     // `lastSentRef` **由水合结果整个替换**（不是「只填不删」）：换了参与者 / 换了一份学习单，
     // 上一个的「发过什么」不再适用。
     //
@@ -359,6 +372,8 @@ export function useWorksheetAnswers({
             // 一起写成了 `null`（那一段注释写着理由：改回 draft 却留着上次的 `true`，
             // 看板会显示成「这题刚判对」）。不清这里，学生会看着一颗已经作废的星星继续改答案。
             setScores((prev) => (prev[next.questionId] === undefined ? prev : { ...prev, [next.questionId]: null }));
+            setGradeStates((prev) => ({ ...prev, [next.questionId]: null }));
+            setWrongBlankIndexes((prev) => ({ ...prev, [next.questionId]: [] }));
           }
           setOffline(false);
           continue;
@@ -565,7 +580,20 @@ export function useWorksheetAnswers({
         // ⚠️ 读失败**不**当 0 分：`scoreFromWire(null)` 是 `null`（没判分），
         // 学生只是少一个奖励，而不是被判错（见那个函数的注释）。
         const payload = await res.json().catch(() => null);
-        setScores((prev) => ({ ...prev, [node.id]: scoreFromWire(payload) }));
+        const awardedScore = scoreFromWire(payload);
+        setScores((prev) => ({ ...prev, [node.id]: awardedScore }));
+        const gradeState = payload?.gradeState === 'correct' || payload?.gradeState === 'partial' || payload?.gradeState === 'incorrect'
+          ? payload.gradeState as WorksheetGradeState
+          : null;
+        const wrong = Array.isArray(payload?.wrongBlankIndexes)
+          ? payload.wrongBlankIndexes.filter((value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0)
+          : [];
+        setGradeStates((prev) => ({ ...prev, [node.id]: gradeState }));
+        setWrongBlankIndexes((prev) => ({ ...prev, [node.id]: wrong }));
+        // 只庆祝这一次新提交得到的“全部答对”。水合旧答案不会写这里，所以刷新不会重播。
+        if (gradeState === 'correct' && awardedScore !== null && awardedScore > 0) {
+          setRewardBursts((prev) => ({ ...prev, [node.id]: (prev[node.id] ?? 0) + 1 }));
+        }
         setOffline(false);
         return;
       }
@@ -589,6 +617,9 @@ export function useWorksheetAnswers({
     drafts,
     statuses,
     scores,
+    gradeStates,
+    wrongBlankIndexes,
+    rewardBursts,
     submitting,
     pendingCount,
     offline,

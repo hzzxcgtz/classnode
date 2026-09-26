@@ -1,0 +1,83 @@
+.icon {
+  width: var(--reward-icon-size);
+  height: var(--reward-icon-size);
+  display: block;
+  overflow: visible;
+  flex: 0 0 auto;
+  --reward-fill: transparent;
+  --reward-accent: transparent;
+  --reward-stroke: #b8c2d1;
+  --reward-detail: #dce3ec;
+  --reward-ink: #7f8b9d;
+}
+
+.icon[data-state='drafting'] {
+  --reward-fill: #d8dee8;
+  --reward-accent: #edf1f6;
+  --reward-stroke: #8491a5;
+  --reward-detail: #f7f9fc;
+  --reward-ink: #667085;
+}
+
+.sprite {
+  background-image: url('/worksheet-rewards/reward-sprite.png');
+  background-repeat: no-repeat;
+  background-size: 200% 200%;
+  filter: grayscale(1);
+  opacity: .32;
+  transition: filter .16s ease-out, opacity .16s ease-out, transform .16s ease-out;
+}
+
+.sprite[data-kind='star'] { background-position: 0 0; }
+.sprite[data-kind='flower'] { background-position: 100% 0; }
+.sprite[data-kind='trophy'] { background-position: 0 100%; }
+.sprite[data-kind='bear'] { background-position: 100% 100%; }
+.sprite[data-state='drafting'] { filter: grayscale(.9); opacity: .62; }
+.sprite[data-state='earned'] { filter: none; opacity: 1; }
+
+.icon[data-kind='star'][data-state='earned'] {
+  --reward-fill: #ffd45a;
+  --reward-accent: #fff1a8;
+  --reward-stroke: #e79a12;
+  --reward-detail: #fff4b8;
+  --reward-ink: #9a6100;
+}
+
+.icon[data-kind='flower'][data-state='earned'] {
+  --reward-fill: #ff8eb7;
+  --reward-accent: #ffd55a;
+  --reward-stroke: #db4f83;
+  --reward-detail: #ffc2d8;
+  --reward-ink: #8d3155;
+}
+
+.icon[data-kind='trophy'][data-state='earned'] {
+  --reward-fill: #ffca45;
+  --reward-accent: #f29d26;
+  --reward-stroke: #bf7218;
+  --reward-detail: #ffe89a;
+  --reward-ink: #85510f;
+}
+
+.icon[data-kind='bear'][data-state='earned'] {
+  --reward-fill: #c98952;
+  --reward-accent: #f3d3ad;
+  --reward-stroke: #84512e;
+  --reward-detail: #edbc86;
+  --reward-ink: #51301f;
+}
+
+.icon[data-kind='points'][data-state='earned'] {
+  --reward-fill: #7ea8ff;
+  --reward-accent: #dce8ff;
+  --reward-stroke: #3568d4;
+  --reward-detail: #c9dbff;
+  --reward-ink: #fff;
+}
+
+.main { fill: var(--reward-fill); stroke: var(--reward-stroke); stroke-width: 2; stroke-linejoin: round; }
+.accent { fill: var(--reward-accent); stroke: var(--reward-stroke); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.detail { fill: var(--reward-detail); stroke: none; }
+.spark { fill: var(--reward-detail); stroke: var(--reward-stroke); stroke-width: 1.5; }
+.ink { fill: var(--reward-ink); }
+.inkStroke { fill: none; stroke: var(--reward-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }

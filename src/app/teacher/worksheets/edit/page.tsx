@@ -14,6 +14,12 @@ import { TaskCard } from './task-card';
 import { dropIndexAt, editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
+import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import {
+  WORKSHEET_BACKGROUND_OPTIONS,
+} from '@/lib/worksheet-backgrounds';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
 // `use-worksheet-editor.ts` 里有 `export * from './worksheet-editor-core'`，所以同一个
 // `QUESTION_TYPE_OPTIONS` 有**两条 import 路径**。那不是一个假想的风险：`question-card.tsx`
@@ -166,6 +172,19 @@ function WorksheetEditorBody() {
     setActiveTaskId(block.task?.node.id ?? null);
     setOpenId(block.questions[0]?.node.id ?? null);
   }, []);
+
+  const pendingNewQuestionIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const previous = pendingNewQuestionIds.current;
+    if (!previous) return;
+    for (const block of blocks) {
+      const added = block.questions.find(row => !previous.has(row.node.id));
+      if (!added) continue;
+      pendingNewQuestionIds.current = null;
+      selectQuestion(added.node.id, added.taskId);
+      return;
+    }
+  }, [blocks, selectQuestion]);
 
 
   /**
@@ -386,8 +405,14 @@ function WorksheetEditorBody() {
         </div>
 
         <div className="worksheet-editor-topbar-actions">
-          <button type="button" className="worksheet-editor-command" onClick={editor.undo} disabled={!editor.canUndo} title="撤销（Ctrl/Cmd+Z）" aria-label="撤销">↶</button>
-          <button type="button" className="worksheet-editor-command" onClick={editor.redo} disabled={!editor.canRedo} title="重做（Ctrl/Cmd+Shift+Z）" aria-label="重做">↷</button>
+          <div className="worksheet-editor-history-actions" role="group" aria-label="编辑历史">
+            <button type="button" className="worksheet-editor-command" onClick={editor.undo} disabled={!editor.canUndo} title="撤销（Ctrl/Cmd+Z）" aria-label="撤销">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 7 4 12l5 5" /><path d="M4 12h9a7 7 0 0 1 7 7" /></svg>
+            </button>
+            <button type="button" className="worksheet-editor-command" onClick={editor.redo} disabled={!editor.canRedo} title="重做（Ctrl/Cmd+Shift+Z）" aria-label="重做">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 7 5 5-5 5" /><path d="M20 12h-9a7 7 0 0 0-7 7" /></svg>
+            </button>
+          </div>
           <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>设置</button>
           <button type="button" className="btn btn-secondary" onClick={() => setPreviewOpen(true)}>预览</button>
           <button type="button" className="btn btn-secondary" onClick={() => void editor.duplicate()} disabled={editor.duplicating}>
@@ -444,7 +469,7 @@ function WorksheetEditorBody() {
                     <button type="button" onClick={() => selectQuestion(row.node.id, null)}>
                       <span className="worksheet-editor-outline-number">{row.heading}</span>
                       <span className="worksheet-editor-outline-question-copy">
-                        <strong>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
                         <em>{row.node.prompt.trim() || '未填写题干'}</em>
                       </span>
                     </button>
@@ -492,7 +517,7 @@ function WorksheetEditorBody() {
                         <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
                           <span className="worksheet-editor-outline-number">{row.index + 1}</span>
                           <span className="worksheet-editor-outline-question-copy">
-                            <strong>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
                             <em>{row.node.prompt.trim() || '未填写题干'}</em>
                           </span>
                         </button>
@@ -580,6 +605,7 @@ function WorksheetEditorBody() {
       {pickerFor && (
         <AddQuestionPicker
           onPick={questionType => {
+            pendingNewQuestionIds.current = new Set(blocks.flatMap(block => block.questions.map(row => row.node.id)));
             editor.addQuestion(questionType, pickerFor.parentId);
             setPickerFor(null);
           }}
@@ -598,7 +624,12 @@ function WorksheetEditorBody() {
       )}
 
       {previewOpen && (
-        <WorksheetPreviewModal title={editor.title} content={content} onClose={() => setPreviewOpen(false)} />
+        <WorksheetPreviewModal
+          title={editor.title}
+          content={content}
+          settings={editor.settings}
+          onClose={() => setPreviewOpen(false)}
+        />
       )}
 
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}
@@ -636,17 +667,20 @@ function AddQuestionPicker({ onPick, onClose }: {
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 420 }}>
+      <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 560 }}>
         <h3 id="worksheet-add-question-title">添加题目</h3>
         {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
             你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
             一句说错的帮助文字比没有更糟：教师会按它去找一个不存在的行为。 */}
-        <p className="worksheet-editor-dialog-note">题目会加到这个任务的最后，之后可以用每题右上角的 ▲▼ 在任务内调整顺序。</p>
+        <p className="worksheet-editor-dialog-note">选择一种作答方式。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
           {QUESTION_TYPE_OPTIONS.map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
-              <span className="worksheet-editor-type-option-label">{option.label}</span>
-              <span className="worksheet-editor-type-option-hint">{option.hint}</span>
+              <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
+              <span className="worksheet-editor-type-option-copy">
+                <span className="worksheet-editor-type-option-label">{option.label}</span>
+                <span className="worksheet-editor-type-option-hint">{option.hint}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -690,6 +724,8 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
   // ⚠️ 取失败**不阻断**：下拉退回只剩「（不指定）」那一项，教师仍能编辑别的设置。
   // 与「学习单列表加载失败不阻断创建」那条既有判断同形（`classroom/new/page.tsx`）。
   const [analysisAgents, setAnalysisAgents] = useState<AgentSummary[]>([]);
+  const [backgroundUploading, setBackgroundUploading] = useState(false);
+  const [backgroundError, setBackgroundError] = useState('');
   useEffect(() => {
     let alive = true;
     api.getAgents('analysis')
@@ -698,86 +734,211 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
     return () => { alive = false; };
   }, []);
 
+  const uploadBackground = async (file: File | undefined) => {
+    if (!file) return;
+    setBackgroundError('');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setBackgroundError('请选择 JPEG、PNG 或 WebP 图片。');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setBackgroundError('图片不能超过 5 MB，建议先压缩到 300 KB 以内。');
+      return;
+    }
+    setBackgroundUploading(true);
+    try {
+      const result = await api.uploadWorksheetImage(file);
+      onSettingsChange({ backgroundTheme: 'custom', backgroundImageUrl: result.url });
+    } catch (error) {
+      setBackgroundError(error instanceof Error ? error.message : '背景图上传失败，请稍后重试。');
+    } finally {
+      setBackgroundUploading(false);
+    }
+  };
+
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title" style={{ width: 480 }}>
-        <h3 id="worksheet-settings-title">学习单设置</h3>
-        <p className="worksheet-editor-dialog-note">标题在顶栏直接改。这里的每一项都要按「保存」才会生效。</p>
+      <div className="worksheet-editor-dialog worksheet-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title">
+        <div className="worksheet-settings-head">
+          <div>
+            <h3 id="worksheet-settings-title">学习单设置</h3>
+            <p>设置整份学习单的作答规则与学生奖励。</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭学习单设置">×</button>
+        </div>
 
-        <label className="worksheet-editor-field">
-          <span>描述（只给教师看）</span>
-          <textarea
-            className="input"
-            rows={3}
-            value={description}
-            maxLength={2000}
-            onChange={event => onDescriptionChange(event.target.value)}
-            placeholder="这份学习单打算怎么用、和第几课配套。学生看不到这段文字。"
-          />
-        </label>
+        <div className="worksheet-settings-body">
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>学生端主题背景</strong><em>让学习单更像一本互动练习册，背景不会影响题目内容。</em></div></div>
+            <div className="worksheet-background-grid" role="radiogroup" aria-label="学习单主题背景">
+              {WORKSHEET_BACKGROUND_OPTIONS.map(option => (
+                <label
+                  key={option.id}
+                  className={`worksheet-background-option${settings.backgroundTheme === option.id ? ' is-selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="worksheet-background-theme"
+                    checked={settings.backgroundTheme === option.id}
+                    onChange={() => onSettingsChange({ backgroundTheme: option.id })}
+                  />
+                  <span
+                    className="worksheet-background-preview"
+                    style={{ backgroundColor: option.swatch, backgroundImage: option.url ? `url(${option.url})` : undefined }}
+                    aria-hidden="true"
+                  />
+                  <span className="worksheet-background-copy"><strong>{option.name}</strong><em>{option.description}</em></span>
+                  <span className="worksheet-background-check" aria-hidden="true">✓</span>
+                </label>
+              ))}
 
-        <label className="worksheet-editor-switch">
-          <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} />
-          <span>
-            <strong>自动判分</strong>
-            <em>单选题与填空题自动判对错。关掉之后看板只统计作答进度，没有正确率 —— 想看对错就把它打开。</em>
-          </span>
-        </label>
+              <label className={`worksheet-background-option worksheet-background-upload${settings.backgroundTheme === 'custom' ? ' is-selected' : ''}`}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={backgroundUploading}
+                  onChange={event => { void uploadBackground(event.target.files?.[0]); event.target.value = ''; }}
+                />
+                <span
+                  className="worksheet-background-preview"
+                  style={settings.backgroundImageUrl ? { backgroundImage: `url(${worksheetAssetUrl(settings.backgroundImageUrl)})` } : undefined}
+                  aria-hidden="true"
+                >{!settings.backgroundImageUrl && <span>＋</span>}</span>
+                <span className="worksheet-background-copy"><strong>{backgroundUploading ? '正在上传…' : '我的背景'}</strong><em>{settings.backgroundImageUrl ? '点击替换图片' : '上传自制图片'}</em></span>
+                <span className="worksheet-background-check" aria-hidden="true">✓</span>
+              </label>
+            </div>
+            {backgroundError && <p className="worksheet-background-error" role="alert">{backgroundError}</p>}
+            <details className="worksheet-background-guide">
+              <summary>教师自制背景图要求</summary>
+              <ul>
+                <li>横向 3:2，推荐 1536 × 1024 像素。</li>
+                <li>中央约 70% 留空，装饰放在四周 12%-15% 范围内。</li>
+                <li>使用浅色、低对比背景，不放文字、校徽或密集纹理。</li>
+                <li>优先 WebP，建议不超过 300 KB，最大上传 5 MB。</li>
+              </ul>
+            </details>
+          </section>
 
-        <label className="worksheet-editor-switch">
-          <input type="checkbox" checked={settings.allowResubmit} onChange={event => onSettingsChange({ allowResubmit: event.target.checked })} />
-          <span>
-            <strong>提交后可以修改</strong>
-            <em>关掉之后，学生点了「提交本题」就定稿，再改会被拒绝（由服务端拦下，不是只做个提示）。</em>
-          </span>
-        </label>
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>教师备注</strong><em>仅教师可见，不会出现在学生端。</em></div></div>
+            <label className="worksheet-editor-field">
+              <span>使用说明</span>
+              <textarea
+                className="input"
+                rows={3}
+                value={description}
+                maxLength={2000}
+                onChange={event => onDescriptionChange(event.target.value)}
+                placeholder="例如：第 3 课课堂练习，完成后一起讲评。"
+              />
+            </label>
+          </section>
+
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>作答规则</strong><em>决定学生提交后的行为和看板数据。</em></div></div>
+            <fieldset className="worksheet-answer-mode">
+              <legend>题目开放方式</legend>
+              <div className="worksheet-answer-mode-options">
+                {[
+                  { value: 'open', title: '开放式', note: '打开即可看到全部题目，可以自由选择作答顺序。' },
+                  { value: 'task-step', title: '按任务分步', note: '完成当前任务后，才显示下一个任务。' },
+                  { value: 'question-step', title: '按小题分步', note: '完成当前小题后，才显示下一小题。' },
+                ].map(option => (
+                  <label key={option.value} className={settings.answerMode === option.value ? 'is-selected' : ''}>
+                    <input
+                      type="radio"
+                      name="worksheet-answer-mode"
+                      checked={settings.answerMode === option.value}
+                      onChange={() => onSettingsChange({ answerMode: option.value as WorksheetSettings['answerMode'] })}
+                    />
+                    <span><strong>{option.title}</strong><em>{option.note}</em></span>
+                  </label>
+                ))}
+              </div>
+              <p>分步模式只提示“后面还有内容”，不会提前显示后续任务名称和题目。</p>
+            </fieldset>
+            <label className="worksheet-settings-switch">
+              <span className="worksheet-settings-switch-icon" aria-hidden="true">✓</span>
+              <span className="worksheet-settings-switch-copy">
+                <strong>自动判分</strong>
+                <em>{settings.autoGrade ? '已开启：看板显示对错与正确率。' : '已关闭：只统计作答进度，不显示正确率。'}</em>
+              </span>
+              <span className="worksheet-editor-autograde-control">
+                <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动判分" />
+                <span aria-hidden="true" />
+              </span>
+            </label>
+
+            <label className="worksheet-settings-switch">
+              <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>
+              <span className="worksheet-settings-switch-copy">
+                <strong>提交后可以修改</strong>
+                <em>{settings.allowResubmit ? '已开启：学生可修改并重新提交。' : '已关闭：提交后即定稿，不能再修改。'}</em>
+              </span>
+              <span className="worksheet-editor-autograde-control">
+                <input type="checkbox" checked={settings.allowResubmit} onChange={event => onSettingsChange({ allowResubmit: event.target.checked })} aria-label="提交后可以修改" />
+                <span aria-hidden="true" />
+              </span>
+            </label>
+          </section>
 
         {/* ★ M7b：分析型智能体（学习单级 —— 用户 2026-09-25 裁定 4）。
             🔴 候选只列 `purpose === 'analysis'` 的，而且**由服务端过滤**（`?purpose=analysis`）。
             🔴 **默认是「不指定」**：默认指定一个等于「默认把全班作业发给第三方 AI」。
             🔴 平台提示必须**在配的时候就**看到 —— 否则教师会在用的那一刻才发现绘图题发不出去。 */}
-        <label className="worksheet-editor-field">
-          <span>分析型智能体（用于看板里的「发给 AI 分析」）</span>
-          <select
-            className="input"
-            value={settings.analysisAgentId ?? ''}
-            onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
-          >
-            <option value="">（不指定 —— 分析按钮不可用）</option>
-            {analysisAgents.map(agent => (
-              <option key={agent.id} value={agent.id}>{agent.name}（{agent.platform}）</option>
-            ))}
-          </select>
-          <em style={{ display: 'block', marginTop: 4, fontSize: '0.78rem', color: '#64748b' }}>
-            没配到候选？去「智能体管理」新建一个、或把某个的**用途**改成「分析」。
-            ⚠️ 本版的分析**只接了 Coze 平台**（绘图题更是只有它收得了图）。
-          </em>
-        </label>
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>课堂分析</strong><em>可选。用于看板中的“发给 AI 分析”。</em></div></div>
+            <label className="worksheet-editor-field">
+              <span>分析型智能体</span>
+              <select
+                className="input"
+                value={settings.analysisAgentId ?? ''}
+                onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
+              >
+                <option value="">不指定（分析按钮不可用）</option>
+                {analysisAgents.map(agent => (
+                  <option key={agent.id} value={agent.id}>{agent.name}（{agent.platform}）</option>
+                ))}
+              </select>
+              <em className="worksheet-settings-help">没有候选时，可去“智能体管理”新建并将用途设为“分析”。当前仅支持 Coze，绘图题也需要通过 Coze 分析。</em>
+            </label>
+          </section>
 
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
             用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。
             放在「自动判分」下面也是刻意的：关掉自动判分就没有判分，也就没有奖励
             （规格 §9.3），两行挨着才看得出这层依赖。 */}
-        {/* `fieldset` + `legend` 而不是「一段标签 + 四个按钮」：这是一组单选，读屏要能
-            念出「奖励形式」这个组名。四个选项各自是 `label`，所以点文字也能选中。 */}
-        <fieldset className="worksheet-editor-reward">
-          <legend className="worksheet-editor-reward-legend">奖励形式</legend>
-          <div className="worksheet-editor-reward-options">
-            {REWARD_STYLE_OPTIONS.map(option => (
-              <label key={option.value} className="worksheet-editor-reward-option">
-                <input
-                  type="radio"
-                  name="worksheet-reward-style"
-                  checked={settings.rewardStyle === option.value}
-                  onChange={() => onSettingsChange({ rewardStyle: option.value })}
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-          <em className="worksheet-editor-switch-note">{currentStyle.hint}</em>
-        </fieldset>
+        {/* `fieldset` + `legend` 而不是「一段标签 + 一排按钮」：这是一组单选，读屏要能
+            念出「奖励形式」这个组名。每个选项都是 `label`，所以点文字或图标都能选中。 */}
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>学生奖励</strong><em>只改变学生端的呈现，不影响教师看板统计。</em></div></div>
+            <fieldset className="worksheet-editor-reward">
+              <legend className="worksheet-editor-reward-legend">奖励形式</legend>
+              <div className="worksheet-editor-reward-options">
+                {REWARD_STYLE_OPTIONS.map(option => (
+                  <label key={option.value} className={`worksheet-editor-reward-option${settings.rewardStyle === option.value ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="worksheet-reward-style"
+                      checked={settings.rewardStyle === option.value}
+                      onChange={() => onSettingsChange({ rewardStyle: option.value })}
+                    />
+                    <span className="worksheet-editor-reward-glyph" aria-hidden="true">
+                      <RewardIcon kind={option.value} state={settings.rewardStyle === option.value ? 'earned' : 'empty'} size={56} />
+                    </span>
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+              <em className="worksheet-editor-switch-note">{currentStyle.hint}</em>
+            </fieldset>
+
+            <p className="worksheet-settings-notice">
+              奖励显示在学生每道题旁和顶部累计处。关闭自动判分后不发奖励；问答、绘图等主观题也不自动发放。
+            </p>
+          </section>
 
         {/*
           ★ 2026-09-26（教师裁定）：「学习单设置里的默认给分就不要了，**已经在每小题中设置了**。」
@@ -786,15 +947,14 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
           （`routes/worksheets.ts` 的 `resolvePoints(node, DEFAULT_POINTS)`）。
           ⚠️ **不要顺手把 `settings` 里的那两个键也删掉**：老行的 JSON 里还带着它们，
           删类型会让读旧行出错；它们只是**不再被读**。
-          ⚠️ 上面那块「奖励形式」（星星 / 花朵 / 分数）**留着** —— 那是**形式**，与分数无关。
+          ⚠️ 上面那块「奖励形式」（星星 / 花朵 / 奖杯 / 小熊 / 分数）**留着** —— 那是**呈现形式**。
         */}
 
-        <p className="worksheet-editor-dialog-note" style={{ margin: '12px 0 16px' }}>
-          奖励只在<b>学生端</b>显示（每道题旁边 + 顶栏累计）。教师看板、抽屉与「按题看」始终是对错与正确率，不会出现星星。
-          关掉自动判分之后没有判分，也就没有奖励；主观题不判分，同样没有奖励。
-        </p>
-
-        <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
+        </div>
+        <div className="worksheet-settings-footer">
+          <span>修改会暂存，点击顶栏“保存”后生效。</span>
+          <button type="button" className="btn btn-primary" onClick={onClose}>完成设置</button>
+        </div>
       </div>
     </>
   );

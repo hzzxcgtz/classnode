@@ -809,6 +809,26 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
   return acceptable.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
 }
 
+/** 学生端批改反馈使用：返回多空填空中答错的空（0 起）。不适用的题型返回空数组。 */
+export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): number[] {
+  if (node.type !== 'fill-blank' && node.type !== 'choice-blank') return [];
+  const texts = readField(value, 'texts');
+  if (!Array.isArray(texts)) return [];
+  const wrong: number[] = [];
+  const total = answerSlotCount(node.data);
+  for (let index = 0; index < total; index += 1) {
+    const acceptable = acceptableAnswersFor(node.data, index);
+    const text = texts[index];
+    if (acceptable.length === 0 || typeof text !== 'string') {
+      wrong.push(index);
+      continue;
+    }
+    const normalized = normalizeFillText(text);
+    if (!acceptable.some(answer => normalizeFillText(answer) === normalized)) wrong.push(index);
+  }
+  return wrong;
+}
+
 /**
  * 排序题：**逐位**比。
  *
@@ -1136,8 +1156,11 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
       errors.push('「选择填空」至少要有一个待选词');
       return;
     }
-    if (choices.length < answerSlotCount(node.data)) {
-      errors.push('「选择填空」的待选词不能比空少（每个词只能用一次，词不够就有空填不上）');
+    const requiredChoices = answerSlotCount(node.data) * (node.data.choiceLayout === 'inline-pairs' ? 2 : 1);
+    if (choices.length < requiredChoices) {
+      errors.push(node.data.choiceLayout === 'inline-pairs'
+        ? '括号选词模式要求每个空至少配置两个待选词'
+        : '「选择填空」的待选词不能比空少（每个词只能用一次，词不够就有空填不上）');
     }
   },
 

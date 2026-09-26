@@ -367,14 +367,15 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     '选项要留给学生（剥掉的只有答案）',
   );
 
-  // ⚠️ `settings` 只给学生需要的**五**个字段（B3 的两个 + D5 的奖励两项 + M4a 的部分给分档）——
+  // ⚠️ `settings` 只给学生需要的字段（含作答开放方式与背景）——
   //    整份原样丢出去会连带下发第一批用不到的 `defaultInputMode`，前端就多一个能读错的开关。
   //    🔴 这是一条**逐字**的断言，键多一个少一个都会红：学生端下发什么必须有人明确决定过。
   //    （M4a 加 `halfStep` 时这条用例**一起改了** —— 那是**有意的决定**，不是把测试改松：
   //    学生端要拿部分给分档才知道「部分给分」该画几个，见 `src/lib/worksheet-reward.ts`。）
   //    奖励三项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
   assert.deepEqual(body.settings, {
-    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1, halfStep: 0,
+    allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
   });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
@@ -432,7 +433,8 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
 
   // ① 配过的档原样下发
   assert.deepEqual(await settingsOf(worksheet.id), {
-    allowResubmit: true, autoGrade: true, rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
+    allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
   });
 
   // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
@@ -471,7 +473,8 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
     `/api/worksheets/${handEdited.id}/student-view`, bearer(otherToken),
   )).json() as { settings: Record<string, unknown> }).settings;
   assert.deepEqual(handEditedSettings, {
-    allowResubmit: true, autoGrade: true, rewardStyle: 'star', rewardStep: 1, halfStep: 0,
+    allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
   });
 });
 

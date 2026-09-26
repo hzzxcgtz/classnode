@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
 
 /**
@@ -60,6 +60,10 @@ export interface PromptBlankBinding {
     onPlace: (index: number) => void;
     /** 此刻「手里拿着」的那个词 —— 有值时把空格点亮，告诉学生「可以放这儿」。 */
     pending: string | null;
+    /** 拖拽时指针正经过的落点 id。只突出当前这一格，避免所有空一起抢眼。 */
+    activeId?: string | null;
+    /** 紧跟在某个空后面的内容（选择填空的“（阳光 水分）”形式）。 */
+    after?: (index: number) => ReactNode;
   };
 }
 
@@ -78,30 +82,40 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
           if (blanks && blanks.drop) {
             const index = blankIndex;
             const filled = (blanks.values[index] ?? '') !== '';
+            const dropId = blanks.drop.idOf(index);
+            const active = blanks.drop.activeId === dropId;
             // 落点：一个**槽**，不是输入框（学生不许在这里打字 —— 词只能从待选区来）。
             // ⚠️ 宽度取那段占位的长度，与普通填空的空**同一套版面**。
             return (
+              <Fragment key={run.start}>
               <span
-                key={run.start}
-                data-drop-id={blanks.drop.idOf(index)}
+                data-drop-id={dropId}
                 aria-label={`第 ${index + 1} 空`}
                 onClick={blanks.disabled ? undefined : () => blanks.drop?.onPlace(index)}
                 style={{
-                  display: 'inline-block',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   minWidth: `${Math.max(3, run.end - run.start)}ch`,
-                  padding: '0 6px',
-                  margin: '0 2px',
-                  borderBottom: '1.5px solid #94a3b8',
-                  background: filled ? '#eef2ff' : 'transparent',
+                  minHeight: '34px',
+                  padding: '3px 8px 1px',
+                  margin: '-3px 3px -4px',
+                  borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
+                  background: active ? '#dbeafe' : filled ? '#e2e8f0' : '#e7ecf3',
+                  boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
+                  borderRadius: '4px 4px 2px 2px',
                   color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
                   fontWeight: 600,
                   textAlign: 'center',
                   verticalAlign: 'baseline',
                   cursor: blanks.disabled ? 'default' : 'pointer',
+                  transition: 'background-color .16s ease-out, border-color .16s ease-out',
                 }}
               >
                 {filled ? blanks.values[index] : '\u00a0'}
               </span>
+              {blanks.drop.after?.(index)}
+              </Fragment>
             );
           }
           if (blanks) {

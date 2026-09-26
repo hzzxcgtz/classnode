@@ -376,9 +376,20 @@ export interface WorksheetContent {
   nodes: WorksheetQuestionNode[];
 }
 
+export type WorksheetBackgroundTheme =
+  | 'none'
+  | 'cloud-playground'
+  | 'forest-explorer'
+  | 'space-discovery'
+  | 'ocean-observation'
+  | 'creative-notebook'
+  | 'custom';
+
+export type WorksheetAnswerMode = 'open' | 'task-step' | 'question-step';
+
 /**
- * 设置。六件都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），
- * 落库的 JSON 里六个键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
+ * 设置。各项都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），
+ * 落库的 JSON 里这些键一定都在，所以这里全是必填 —— 客户端不必再写 `?? 默认值`。
  *
  * ⚠️ `rewardStyle` / `rewardStep` / `halfStep` 是**学生端奖励形式**的配置（规格 §9.2，
  * 学习单级）。它们只影响**画法**，与 `isCorrect` 那个布尔值是两回事：星星、花朵、分数
@@ -387,6 +398,8 @@ export interface WorksheetContent {
 export interface WorksheetSettings {
   allowResubmit: boolean;
   autoGrade: boolean;
+  /** 学生的答题开放方式：全部开放、按任务解锁、按小题解锁。 */
+  answerMode: WorksheetAnswerMode;
   defaultInputMode: 'keyboard' | 'handwriting';
   /**
    * 奖励形式的取值域只有一份，在 `worksheet-reward.ts`（那里还有标签、符号、量词与
@@ -410,6 +423,10 @@ export interface WorksheetSettings {
    * ⚠️ **没有默认值**是刻意的：默认指定一个等于「默认把全班作业发出去」。
    */
   analysisAgentId: string | null;
+  /** 学生端学习单的背景主题。`custom` 时读取 `backgroundImageUrl`。 */
+  backgroundTheme: WorksheetBackgroundTheme;
+  /** 自定义背景只允许站内上传地址；预设主题时保留但不读取。 */
+  backgroundImageUrl: string | null;
 }
 
 /**

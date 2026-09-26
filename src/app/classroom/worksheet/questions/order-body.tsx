@@ -242,9 +242,9 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
           dragging ? styles.orderItemDragging : '',
         ].filter(Boolean).join(' ');
         return (
-          <li
+          <li className={styles.orderRow} key={id}>
+            <div
             className={className}
-            key={id}
             ref={(el) => { itemEls.current[id] = el; }}
             // ⚠️ 排序题的条目**既是拖拽源又是落点**（把它拖到另一条上 = 移到那个位置），
             // 所以这里两个工厂都用：`sourceProps` 给手势，`dropTarget` 那个属性
@@ -256,6 +256,7 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
                 拖动中它会被 JS 改写（`writeSlots`），松手时再写回与新顺序一致的值。 */}
             <span className={styles.orderIndex} ref={(el) => { numEls.current[id] = el; }}>{index + 1}</span>
             <span className={styles.orderText}>{byId[id] || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
+            </div>
             <span
               className={styles.orderButtons}
               // ⚠️ 这一层把事件**拦在这里**：条目本身挂了拖拽/点选手势，而按 ▲▼ 是

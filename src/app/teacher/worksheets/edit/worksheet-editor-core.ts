@@ -24,6 +24,7 @@
  */
 
 import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import { DEFAULT_WORKSHEET_BACKGROUND, normalizeWorksheetBackgroundTheme } from '../../../../lib/worksheet-backgrounds.ts';
 // 题型词汇表与「选项怎么读出来」的唯一一份在 `src/lib/worksheet-questions.ts`：
 // 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
@@ -355,6 +356,11 @@ export function moveIdInList(ids: string[], id: string, delta: -1 | 1): string[]
  * 让教师**替换**而不是从零填。占位文案会被原样保存（教师只填题干时会留下它们），
  * 但那时答案键是空的 ⇒ 保存被拦下，不会有任何静默判分。
  */
+/** 普通填空与选择填空都需要在题干中插入结构化的填空槽。 */
+export function hasPromptBlankSlots(type: string): boolean {
+  return type === 'fill-blank' || type === 'choice-blank';
+}
+
 export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   const question: WorksheetQuestionNode = {
     id: `q_${randomIdSuffix()}`,
@@ -1111,7 +1117,7 @@ export function categorizeRemoveZone(state: CategorizeData, index: number): Cate
  *
  * 🔴 ★ M4a/I1：**两档的域不同，所以必须传 `field`**（`full` 是 `1..POINTS_MAX`、
  * `half` 是 `0..POINTS_MAX`）。`full = 0` 不是「0 分」而是「答对了却给 0 分」——
- * 学生端对错档按 `score >= 1` 画 ⇒ **红叉**，而教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**。
+ * 学生端显示「暂未获得」，而教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**。
  * 域的理由写在 `POINTS_FULL_MIN`（`src/lib/worksheet-questions.ts`）上。
  * ⚠️ 参数**没有默认值**是刻意的：默认成 `'half'` 会让「忘了传字段」的那一处静默接受 0，
  * 而这条路上「静默」正是要防的东西。
@@ -2057,6 +2063,7 @@ export function buildPayload(
 export const DEFAULT_SETTINGS: WorksheetSettings = {
   allowResubmit: true,
   autoGrade: true,
+  answerMode: 'open',
   defaultInputMode: 'keyboard',
   // 奖励形式（规格 §9.2）：学习单级配置，默认「星星 ⭐、每答对一题 1 个」——
   // 依据（§9.2 的图里 ● 打在星星上、§8.2 的学生端版式图顶栏画着 `⭐×3`）写在
@@ -2073,6 +2080,8 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   // 上面那段注释说的就是这件事：这里决定新建的单、那边决定缺字段的行）。
   // 🔴 默认指定一个等于「默认把全班作业发给第三方 AI」。
   analysisAgentId: null,
+  backgroundTheme: DEFAULT_WORKSHEET_BACKGROUND,
+  backgroundImageUrl: null,
 };
 
 /**
@@ -2182,6 +2191,9 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
     settings: {
       allowResubmit: settings.allowResubmit !== false,
       autoGrade: settings.autoGrade !== false,
+      answerMode: settings.answerMode === 'task-step' || settings.answerMode === 'question-step'
+        ? settings.answerMode
+        : 'open',
       defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
       // 奖励三项与 `normalizeLoadedSettings` 走的是**同一对**归一化函数（不是各写一遍：
       // 草稿来自 localStorage、详情来自服务端，两边的判据分叉会让「恢复草稿」与
@@ -2194,6 +2206,10 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       // ★ M7b：非空字符串才算指定（与服务端同一判据：空串与坏值都回落 `null`）。
       analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
         ? settings.analysisAgentId
+        : null,
+      backgroundTheme: normalizeWorksheetBackgroundTheme(settings.backgroundTheme),
+      backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
+        ? settings.backgroundImageUrl
         : null,
     },
     content: { schemaVersion: typeof content.schemaVersion === 'number' ? content.schemaVersion : SCHEMA_VERSION, nodes },
@@ -2224,6 +2240,9 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
   return {
     allowResubmit: settings.allowResubmit !== false,
     autoGrade: settings.autoGrade !== false,
+    answerMode: settings.answerMode === 'task-step' || settings.answerMode === 'question-step'
+      ? settings.answerMode
+      : 'open',
     defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
     // ⚠️ 这三项**必须**原样带过来，哪怕是本编辑器没有 UI 的旧字段：编辑页保存时是把
     // `settings` 整份发回去的（`buildPayload`），漏掉一个键就等于用默认值覆盖了库里的设置
@@ -2239,6 +2258,10 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     // 会把教师配好的分析智能体悄悄清掉（上面那段注释说的正是这一类键）。
     analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
       ? settings.analysisAgentId
+      : null,
+    backgroundTheme: normalizeWorksheetBackgroundTheme(settings.backgroundTheme),
+    backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
+      ? settings.backgroundImageUrl
       : null,
   };
 }

@@ -13,7 +13,7 @@ import {
 } from '../../../lib/worksheet-answer-value.ts';
 // `WorksheetQuestionNode` 是**只读类型**：`import type` 会被类型擦除整段删掉，
 // 所以它不影响本文件能被 `node --test` 直接执行（`./types` 因此不必带后缀）。
-import type { WorksheetQuestionNode } from '../../../lib/types';
+import type { WorksheetGradeState, WorksheetQuestionNode } from '../../../lib/types';
 
 /**
  * 作答的**本地队列** —— 学习单模块「最不能出错」的一块（规格 §8.3）。
@@ -170,7 +170,7 @@ export type FailureKind = 'permanent' | 'session-expired' | 'locked' | 'transien
  */
 export function classifyFailure(status: number | null, code?: string | null): FailureKind {
   // 🔴 这一句必须排在**状态码判断之前**：锁定走的是 409，否则会被下面那条 4xx 吃掉。
-  if (code === 'answers-locked') return 'locked';
+  if (code === 'answers-locked' || code === 'worksheet-step-locked') return 'locked';
   if (status === null) return 'transient';
   // 🔴 401 走单独一档，**绝不能与 400/403/409 合并**。见 `sessionExpiredMessage`。
   if (status === 401) return 'session-expired';
@@ -257,6 +257,8 @@ export interface SavedAnswerRow {
   status: string;
   /** `boolean` = 判了对错；`null` = **没判分**（主观题 / 关掉自动判分）。 */
   isCorrect: boolean | null;
+  gradeState?: WorksheetGradeState | null;
+  wrongBlankIndexes?: number[];
   /**
    * ★ M4a：这一题拿到的**绝对数**（教师逐题填的两个档之一，规格 §12）。
    *
@@ -317,6 +319,8 @@ export interface HydratedAnswerState {
   statuses: Record<string, 'draft' | 'submitted'>;
   /** 每一题的得分（奖励）。 */
   scores: Record<string, number | null>;
+  gradeStates: Record<string, WorksheetGradeState | null>;
+  wrongBlankIndexes: Record<string, number[]>;
   /** 「库里**确实已经有这一行**」的题的「上一次落库的值」——「清空」判据吃它。 */
   lastSent: Record<string, WorksheetAnswerValue | null>;
 }
@@ -361,6 +365,8 @@ export function hydrateAnswers(
   const drafts: Record<string, AnswerDraft> = {};
   const statuses: Record<string, 'draft' | 'submitted'> = {};
   const scores: Record<string, number | null> = {};
+  const gradeStates: Record<string, WorksheetGradeState | null> = {};
+  const wrongBlankIndexes: Record<string, number[]> = {};
   const lastSent: Record<string, WorksheetAnswerValue | null> = {};
   const byId: Record<string, WorksheetQuestionNode> = {};
   questions.forEach((node) => { byId[node.id] = node; });
@@ -378,6 +384,8 @@ export function hydrateAnswers(
     // ⚠️ 传**整行**（不是 `row.isCorrect`）：`score` 优先、`isCorrect` 兜底，
     // 旧行（A1 没回填 `score`）因此仍然画得出奖励。顺序的理由写在 `scoreFromWire` 上。
     scores[row.questionId] = scoreFromWire(row);
+    gradeStates[row.questionId] = row.gradeState ?? null;
+    wrongBlankIndexes[row.questionId] = row.wrongBlankIndexes ?? [];
     lastSent[row.questionId] = row.value;
   });
 
@@ -390,8 +398,10 @@ export function hydrateAnswers(
     drafts[item.questionId] = item.value === null ? emptyDraftFor(node) : draftFromValue(node, item.value);
     delete statuses[item.questionId];
     delete scores[item.questionId];
+    delete gradeStates[item.questionId];
+    delete wrongBlankIndexes[item.questionId];
     delete lastSent[item.questionId];
   });
 
-  return { drafts, statuses, scores, lastSent };
+  return { drafts, statuses, scores, gradeStates, wrongBlankIndexes, lastSent };
 }

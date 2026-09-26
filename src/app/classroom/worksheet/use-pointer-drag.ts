@@ -140,25 +140,39 @@ interface Gesture {
  * ⚠️ 归类题的条目池 / 框、连线题的右项都不受影响：那三处的拖拽源**不是**落点，
  * 所以最上面那个带 `data-drop-id` 的祖先历来就是答案（旧版已经在靠 `closest` 往上找）。
  */
-function findDropTarget(clientX: number, clientY: number, draggingId: string): string | null {
+function findDropTarget(
+  clientX: number,
+  clientY: number,
+  draggingId: string,
+  draggingElement: HTMLElement | null,
+): string | null {
   if (typeof document === 'undefined') return null;
-  const stack: Element[] = typeof document.elementsFromPoint === 'function'
-    ? document.elementsFromPoint(clientX, clientY)
-    : (typeof document.elementFromPoint === 'function'
-      ? [document.elementFromPoint(clientX, clientY)].filter((el): el is Element => el !== null)
-      : []);
-  for (const el of stack) {
-    if (!el || typeof el.closest !== 'function') continue;
-    // ⚠️ `closest` 而不是「直接看 el」：手指底下的几乎总是条目里的一个 `<span>`。
-    // 用 `closest` 才能找到真正带 `data-drop-id` 的那一层。
-    const holder = el.closest(`[${DROP_TARGET_ATTR}]`);
-    if (!holder || typeof holder.getAttribute !== 'function') continue;
-    const id = holder.getAttribute(DROP_TARGET_ATTR);
-    // 自己不是自己的落点（自己高亮自己没有意义）。
-    if (id === draggingId) continue;
-    return id;
+  // 跟手的源元素会盖在落点之上。Safari 的 `elementFromPoint` 回退路径只能拿到最上层
+  // 那一个，因此查询这一瞬间让源元素“穿透”；同步恢复后它仍保持 pointer capture，
+  // 后续 move/up 不会丢。Chrome 的 `elementsFromPoint` 也走同一逻辑，避免两条路径漂移。
+  const previousPointerEvents = draggingElement?.style.pointerEvents ?? '';
+  if (draggingElement) draggingElement.style.pointerEvents = 'none';
+  try {
+    const stack: Element[] = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(clientX, clientY)
+      : (typeof document.elementFromPoint === 'function'
+        ? [document.elementFromPoint(clientX, clientY)].filter((el): el is Element => el !== null)
+        : []);
+    for (const el of stack) {
+      if (!el || typeof el.closest !== 'function') continue;
+      // ⚠️ `closest` 而不是「直接看 el」：手指底下的几乎总是条目里的一个 `<span>`。
+      // 用 `closest` 才能找到真正带 `data-drop-id` 的那一层。
+      const holder = el.closest(`[${DROP_TARGET_ATTR}]`);
+      if (!holder || typeof holder.getAttribute !== 'function') continue;
+      const id = holder.getAttribute(DROP_TARGET_ATTR);
+      // 自己不是自己的落点（自己高亮自己没有意义）。
+      if (id === draggingId) continue;
+      return id;
+    }
+    return null;
+  } finally {
+    if (draggingElement) draggingElement.style.pointerEvents = previousPointerEvents;
   }
-  return null;
 }
 
 export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: PointerDragOptions): PointerDrag {
@@ -253,7 +267,7 @@ export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: 
       // 提前高亮会让学生以为「我一碰它就进入拖拽了」。
       setDraggingId(gesture.id);
     }
-    const next = findDropTarget(event.clientX, event.clientY, gesture.id);
+    const next = findDropTarget(event.clientX, event.clientY, gesture.id, gesture.el);
     if (hoverRef.current !== next) {
       hoverRef.current = next;
       setHoverTargetId(next);
@@ -276,7 +290,11 @@ export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: 
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const { id, moved } = gesture;
-    const target = hoverRef.current;
+    // pointermove 与 pointerup 之间仍可能跨过最后一个落点（尤其是鼠标快速甩入小填空槽）。
+    // 松手坐标再命中一次，保证“看起来已经放在线上”的最后位置就是最终位置。
+    const target = moved
+      ? findDropTarget(event.clientX, event.clientY, id, gesture.el)
+      : hoverRef.current;
     event.stopPropagation();
     // 先收尾再落位：`onDrop` 里会 setState（写 draft），而收尾也要 setState ——
     // 顺序反过来的话，落位那一次渲染里元素还带着「正在拖」的类名（闪一帧）。

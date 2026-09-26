@@ -52,6 +52,8 @@ export interface MatchBodyProps {
 
 interface MatchLine {
   key: string;
+  leftId: string;
+  rightId: string;
   x1: number;
   y1: number;
   x2: number;
@@ -152,6 +154,8 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
       const b = rightEl.getBoundingClientRect();
       next.push({
         key: `${link.leftId}:${link.rightId}`,
+        leftId: link.leftId,
+        rightId: link.rightId,
         x1: Math.round(a.right - base.left),
         y1: Math.round(a.top + a.height / 2 - base.top),
         x2: Math.round(b.left - base.left),
@@ -184,11 +188,6 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
    * 🔴 判据必须与 `tapTarget` **逐字同源** —— ✕ 出现在哪里，点下去就在哪里断开；
    * 两者一旦走岔，画出来的就是一个**撒谎的**图标（比不画更糟）。
    */
-  const tapWillUnlink = (rightId: string): boolean => {
-    const link = links.filter((item) => item.rightId === rightId)[0];
-    if (!link) return false;
-    return activeLeftId === null || activeLeftId === link.leftId;
-  };
 
   const drag = usePointerDrag({
     disabled,
@@ -231,76 +230,67 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
     return <p className={styles.cardNote}>（这道题还没有条目）</p>;
   }
 
-  /** 徽标号：按 `draft.links` 的顺序（同一条线在两端是同一个号）。`0` = 这个端点没连。 */
-  const badgeOf = (leftId: string, rightId: string): number =>
-    links.findIndex((link) => link.leftId === leftId && link.rightId === rightId) + 1;
-  const leftBadge = (leftId: string): number => {
-    const link = links.filter((item) => item.leftId === leftId)[0];
-    return link ? badgeOf(link.leftId, link.rightId) : 0;
-  };
-  const rightBadge = (rightId: string): number => {
-    const link = links.filter((item) => item.rightId === rightId)[0];
-    return link ? badgeOf(link.leftId, link.rightId) : 0;
-  };
-  /** 左项连到了哪个右项（一句话交代，不依赖任何测量）。 */
-  const linkedText = (leftId: string): string | null => {
-    const link = links.filter((item) => item.leftId === leftId)[0];
-    if (!link) return null;
-    const target = right.filter((entry) => entry.id === link.rightId)[0];
-    return target ? (target.text || '（这一条还没写）') : null;
-  };
-
   return (
     <div className={styles.matchWrap}>
-      <p className={styles.dragHint}>点一下左边的条目，再点右边它对应的那一条（也可以直接把左边拖过去）。连错了：点右边那一条上的 ✕ 就能断开。</p>
+      <p className={styles.dragHint}>点左侧条目，再点右侧对应项；也可以直接拖动。鼠标移到连线上可直接删除。</p>
       <div className={styles.matchGrid} ref={containerRef}>
         <div className={styles.matchColumn}>
           {left.map((entry) => {
             const picked = selection.kind === 'item' && selection.id === entry.id;
-            const badge = leftBadge(entry.id);
+            const linked = links.some(item => item.leftId === entry.id);
             const className = [
               styles.matchItem,
               styles.dragSource,
               picked ? styles.matchItemSelected : '',
-              badge > 0 ? styles.matchItemLinked : '',
+              linked ? styles.matchItemLinked : '',
               drag.draggingId === entry.id ? styles.dragActive : '',
             ].filter(Boolean).join(' ');
             return (
               <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.sourceProps(entry.id)}>
-                <span className={styles.matchSide}>左</span>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
-                {badge > 0 ? <span className={styles.matchBadge}>{badge}</span> : null}
-                {linkedText(entry.id) ? <span className={styles.matchChip}>→ {linkedText(entry.id)}</span> : null}
               </div>
             );
           })}
         </div>
         <div className={styles.matchColumn}>
           {right.map((entry) => {
-            const badge = rightBadge(entry.id);
+            const linked = links.some(item => item.rightId === entry.id);
             const className = [
               styles.matchItem,
-              badge > 0 ? styles.matchItemLinked : '',
+              linked ? styles.matchItemLinked : '',
               drag.hoverTargetId === entry.id ? styles.dropActive : '',
             ].filter(Boolean).join(' ');
             return (
               <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.targetProps(entry.id)}>
-                <span className={styles.matchSide}>右</span>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
-                {badge > 0 ? <span className={styles.matchBadge}>{badge}</span> : null}
-                {/* ★ 2026-09-26（教师第 2 条）：断开的**可见入口**。它出现的时机与
-                    「点下去真的会断开」同源（`tapWillUnlink`）—— 选了左项、而这一条连的是
-                    **别的**左项时，点它是「改连」不是「断开」，那时不画叉。 */}
-                {tapWillUnlink(entry.id) ? <span className={styles.matchUnlink}>✕</span> : null}
               </div>
             );
           })}
         </div>
         {/* 连线层：`pointer-events: none`，否则它会挡住下面的落点（`elementFromPoint`
             返回的是这条路线上最上面那个元素）。 */}
-        <svg className={styles.matchLines} aria-hidden="true">
+        <svg className={styles.matchLines} aria-label="已连接的配对">
           {lines.map((line) => (
-            <line className={styles.matchLine} key={line.key} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+            <g
+              className={styles.matchLineGroup}
+              key={line.key}
+              role="button"
+              tabIndex={disabled ? -1 : 0}
+              aria-label="删除这条连线"
+              onClick={() => {
+                if (disabled) return;
+                onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
+              }}
+              onKeyDown={(event) => {
+                if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
+                event.preventDefault();
+                onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
+              }}
+            >
+              <line className={styles.matchLineHit} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+              <line className={styles.matchLine} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+              <text className={styles.matchLineDelete} x={(line.x1 + line.x2) / 2} y={(line.y1 + line.y2) / 2}>×</text>
+            </g>
           ))}
           {/* 跟手的那条线。🔴 **刻意不声明** `x1/y1/x2/y2`：那四个属性由 `onDragMove`
               每帧直接写（见 `FollowAnchor` 上面那一段）。React 只改它从 props 知道的

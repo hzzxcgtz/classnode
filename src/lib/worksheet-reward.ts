@@ -9,10 +9,8 @@
  *            isCorrect:  boolean | null   ← M3 及更早的旧字段：语义已收窄为「全对」，
  *                                           只增不改（协议字段），**未回填的旧行仍靠它兜底**
  *               │
- * 呈现层        ├─ 对错    ✓ / ✗
- *               ├─ 星星    ⭐ ×N
- *               ├─ 花朵    🌸 ×N
- *               └─ 分数    +N
+ * 呈现层        ├─ 星星 / 花朵 / 奖杯 / 小熊卡通图标 ×N
+ *               └─ 分数 +N
  * ```
  *
  * ⊘ 2026-09-24（M4a）更正：这张图原先的数据层只有一行
@@ -27,7 +25,7 @@
  * `WorksheetAnswer` 上没有任何一列与之对应」—— 这句在 M4a 之后**不再成立**：
  * `WorksheetAnswer.score` 就是画出来的那个数（绝对值模型，`rewardAmount` 直接返回它）。
  * 变的不是这条规矩，而是「哪个数是算出来的」：**落库的 `score` 是教师逐题填的分值**，
- * 「画几个符号」仍是本文件算出来的（对错档恒一枚 ✓/✗、`0` 与 `null` 两种不画）。
+ * 「画几个奖励图标」仍是本文件算出来的（`0` 与 `null` 两种不画）。
  * ⇒ 库里存的是**得分**，不存**呈现**。
  *
  * ── 单独成文件、单独可跑 ───────────────────────────────────────────────────
@@ -44,49 +42,56 @@
  */
 
 /**
- * 奖励形式（规格 §9.2 的四选一）。
+ * 奖励形式：四种收藏型图标 + 分数。
  *
  * ⚠️ 取值与服务端 `routes/worksheets.ts` 的 `REWARD_STYLES` 是**同一套字面量**，
  * 而服务端复制了一份自己的（它读不到 `src/`）。与题型注册表（`QUESTION_TYPE_OPTIONS`
  * 对 `QUESTION_TYPES`）同一个由来：**两处必须一起改**，改一处会让「学生端认不出
  * 服务端存的样式」——而那种失效是静默的（落到默认档，画出来的是另一种奖励）。
  */
-export type RewardStyle = 'correctness' | 'star' | 'flower' | 'points';
+export type RewardStyle = 'star' | 'flower' | 'trophy' | 'bear' | 'points';
 
 export interface RewardStyleOption {
   value: RewardStyle;
-  /** 教师端那四个选项上的字（规格 §9.2 的图）。 */
+  /** 教师端奖励选项上的名称。 */
   label: string;
-  /** 学生端画出来的符号；`null` = 这一档不用符号（对错档画的是 ✓ / ✗）。 */
+  /** 文本回退符号；界面中的收藏型奖励实际使用 `RewardIcon` 卡通图标。 */
   symbol: string | null;
-  /** 步长的量词（规格 §9.2：「星星/花朵是『个』、分数是『分』」）。空串 = 这一档没有步长。 */
+  /** 步长的量词（星星/花朵/奖杯/小熊分别用颗/朵/座/只，分数用分）。 */
   unit: string;
   /** 教师端那行小字：说清学生**看到**什么。 */
   hint: string;
 }
 
-/** 四选一的顺序 = 规格 §9.2 图里的顺序（对错打头，分数收尾）。 */
+/** 教师端从左到右的显示顺序，分数保留在最后。 */
 export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
   {
-    value: 'correctness',
-    label: '对错',
-    symbol: null,
-    unit: '',
-    hint: '答对显示 ✓、答错显示 ✗。没有步长 —— 对错本身不累计成一串符号。',
-  },
-  {
     value: 'star',
-    label: '星星 ⭐',
-    symbol: '⭐',
-    unit: '个',
+    label: '五角星',
+    symbol: '★',
+    unit: '颗',
     hint: '每答对一题给几颗星，答错不给。',
   },
   {
     value: 'flower',
-    label: '花朵 🌸',
-    symbol: '🌸',
+    label: '花朵',
+    symbol: '✿',
     unit: '朵',
     hint: '每答对一题给几朵花，答错不给。',
+  },
+  {
+    value: 'trophy',
+    label: '奖杯',
+    symbol: '奖',
+    unit: '座',
+    hint: '每答对一题赢得几座小奖杯，答错不给。',
+  },
+  {
+    value: 'bear',
+    label: '小熊',
+    symbol: '熊',
+    unit: '只',
+    hint: '每答对一题收集几只小熊徽章，答错不给。',
   },
   {
     value: 'points',
@@ -111,11 +116,8 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
  * **不能一直使用「分」**。」
  *
  * 🔴 与 `REWARD_STYLE_OPTIONS[].unit` **不是同一个东西**，别合并：
- *   · `unit` 是**步长**（学习单设置里「每答对一题得几 X」）的量词，而「对错」那一档
- *     **没有步长**（它的 `unit` 是空串，规格 §9.2）；
- *   · 这个是**逐题分值**的量词，而逐题分值**每一档都有** —— 「对错」档也要给个说法
- *     （分数是它背后的东西，学生看到的只是 ✓/✗），所以它回落到「分」。
- * ⇒ 四档里的两档有专属量词，另外两档（对错 / 分数）都是「分」。
+ *   · `unit` 是**步长**（学习单设置里「每答对一题得几 X」）的短量词；
+ *   · 这个是**逐题分值**旁的完整名称，例如「颗星星」、「只小熊」。
  *
  * ⚠️ 「星星」取「颗」而不是「个」：教师原话是「几颗五角星」。
  * ⚠️ 名字里的 `Label` 是刻意的：它**不只是量词**，有符号的那两档还带着 ⭐ / 🌸
@@ -128,8 +130,10 @@ export function pointsUnitLabel(style: RewardStyle): string {
   // 🔴 **按档位分支，不要按「有没有 `symbol`」判**：分数档（`points`）的 `symbol` 是
   // `'+'`，但它是**前缀**（学生端画的是 `+3`，见 `rewardMark`），不是跟在数字后面的量词。
   // 拿它去拼量词会得到「分 +」—— 2026-09-26 我第一版就是这么写的，用例当场抓住。
-  if (style === 'star') return '颗 ⭐';
-  if (style === 'flower') return '朵 🌸';
+  if (style === 'star') return '颗星星';
+  if (style === 'flower') return '朵花';
+  if (style === 'trophy') return '座奖杯';
+  if (style === 'bear') return '只小熊';
   return '分';
 }
 
@@ -161,7 +165,7 @@ export const DEFAULT_HALF_STEP = 0;
 export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 /**
- * 一份学习单上的奖励配置：**哪一档**（规格 §9.2 的四选一）。
+ * 一份学习单上的奖励配置：**哪一档**（四种收藏图标 + 分数）。
  *
  * ── ★ M4a：这里曾经还有 `step` / `halfStep` 两个数，**已删** ────────────────
  *
@@ -200,7 +204,7 @@ export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
  * `normalizeRewardStep` / `normalizeHalfStep` 归一化的是那一份，**不是**本类型）。
  */
 export interface RewardScale {
-  /** 哪一档：对错 / 星星 / 花朵 / 分数。**只有它决定画什么**；画几个由得分定。 */
+  /** 哪一档：星星 / 花朵 / 奖杯 / 小熊 / 分数。**只有它决定画什么**；画几个由得分定。 */
   style: RewardStyle;
 }
 
@@ -280,15 +284,15 @@ export function resolveRewardScale(settings: unknown): RewardScale {
  * ⚠️ 坏数字（`NaN` / `Infinity` / 负数）与 0 同路：符号档的 `repeat(N)` 拿到 `NaN` 会
  * **抛 RangeError**（渲染路径上的一次白屏），负数同理由此挡住。
  */
-export function rewardAmount(score: number | null, scale: RewardScale): number {
+export function rewardAmount(score: number | null, _scale: RewardScale): number {
+  // 保留第二个参数，让调用方始终以「得分 + 奖励样式」请求呈现；
+  // 绝对值模型下它不再参与数学计算。
+  void _scale;
   if (score === null || !Number.isFinite(score) || score <= 0) return 0;
-  // 🔴 **对错档画的是一枚 ✓，不是一串符号**（规格 §9.2：选了「对错」时步长那一行不出现）
-  // ⇒ 无论得了几分，这一档每次只算 1（它的累计画成 `✓×N`，N 是「答对几题」）。
-  if (scale.style === 'correctness') return 1;
   return score;
 }
 
-/** 这一档的符号（对错档没有符号，返回 `null`）。 */
+/** 这一档的文本回退符号。 */
 export function rewardSymbol(style: RewardStyle): string | null {
   return REWARD_STYLE_OPTIONS.find(option => option.value === style)?.symbol ?? null;
 }
@@ -299,20 +303,9 @@ export function rewardSymbol(style: RewardStyle): string | null {
  * 两处「不画」是刻意的，不是漏了：
  *   · `score === null` —— 没判分（主观题、关掉自动判分）⇒ 没有奖励可言；
  *   · 符号档拿到 0 个 —— 「0 颗星」就是一颗都不画（规格 §9.1：显示值 = 答对 ? N : 0）。
- *     ⚠️ 所以**符号档下答错是「什么都没多出来」**，而对错档答错是明写的 ✗ ——
- *     那正是「对错」这一档存在的意义，不是两档画得不一致。
  */
 export function rewardMark(scale: RewardScale, score: number | null): string | null {
   if (score === null) return null;
-  // 对错档只有两种画法：**有分就画 ✓、一分没有画 ✗**。
-  // ⊘ 2026-09-24（M4a）更正：这里曾经写着「部分给分（M4）在这档里画 ✗ —— 『部分给分』不是『对』」，
-  // 而那句只在 0/1 时代成立。得分改成**绝对值**之后，「部分给分」不再是一个固定的 0.5
-  //（教师可以给部分给分填 2 分），而这一层**拿不到题目的满分**（它只有 `score`）⇒ 判据只能是
-  // `score >= 1`，于是一道满分 5、部分给分 2 的题在这档里画的是 **✓**。
-  // 这是**本层的能力边界**，不是算错：想区分「全对 / 部分给分 / 错」要选星星、花朵或分数那三档
-  //（它们按分数画，部分给分自然少几个）。要在这档里区分，得把 `gradeState` 也接进来 ——
-  // 那超出了「显示层只读得分」这条边界，本次**不做**（见 D3 报告的顾虑）。
-  if (scale.style === 'correctness') return score >= 1 ? '✓' : '✗';
   const amount = rewardAmount(score, scale);
   if (amount <= 0) return null;
   if (scale.style === 'points') return `+${amount}`;
@@ -330,7 +323,6 @@ export function rewardMark(scale: RewardScale, score: number | null): string | n
 export function rewardTotalText(scale: RewardScale, amount: number): string | null {
   if (amount <= 0) return null;
   if (scale.style === 'points') return `+${amount} 分`;
-  if (scale.style === 'correctness') return `✓×${amount}`;
   const symbol = rewardSymbol(scale.style);
   return symbol ? `${symbol}×${amount}` : null;
 }

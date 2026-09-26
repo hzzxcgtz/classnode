@@ -51,6 +51,7 @@ import {
   findPartialPoints,
   findUncommittedPointInput,
   gradesOnSubmit,
+  hasPromptBlankSlots,
   toleranceOf,
   HISTORY_LIMIT,
   isOrderAmbiguous,
@@ -128,11 +129,14 @@ function contentOf(...nodes: WorksheetQuestionNode[]): WorksheetContent {
 }
 
 const SETTINGS: WorksheetSettings = {
-  allowResubmit: true,
-  autoGrade: true,
+      allowResubmit: true,
+      autoGrade: true,
+      answerMode: 'open',
   defaultInputMode: 'keyboard',
   rewardStyle: 'star',
   analysisAgentId: null,
+  backgroundTheme: 'cloud-playground',
+  backgroundImageUrl: null,
   rewardStep: 1,
   // 刻意给一个**非默认**的部分给分档（默认是 0）：这一份 `SETTINGS` 是「保存载荷」那一组用例
   // 的入参，配成默认值的话「它被原样带过去了」与「它被换成默认值」是同一个观测。
@@ -657,8 +661,9 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
   assert.equal(draft.title, '第一课');
   assert.equal(draft.content.schemaVersion, 9);
   assert.deepEqual(draft.settings, {
-    allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
+    allowResubmit: false, autoGrade: true, answerMode: 'open', defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
     analysisAgentId: null,   // ★ M7b：第七个键（规格 §3.2）
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
   });
 });
 
@@ -776,8 +781,9 @@ test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用
     allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
   });
   assert.deepEqual(loaded, {
-    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
+    allowResubmit: true, autoGrade: true, answerMode: 'open', defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
     analysisAgentId: null,   // ★ M7b：库里没有这一格 ⇒ `null`（= 没指定），不是 `undefined`
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
   });
   // ★ M7b：**真的 id 必须原样带过来** —— 这条用例的主题就是「漏一个键 = 一次只改标题的保存
   // 把它清掉」，而分析智能体是最新加入这一类键的那一个（同 `halfStep` 当年的处境）。
@@ -830,7 +836,7 @@ test('🔴 C3：两个步长下拉的选项必须覆盖内核能产出的每一�
   assert.deepEqual(HALF_STEPS.filter(step => step !== 0), [...REWARD_STEPS], '两个域除 0 之外应当逐字相同');
 });
 
-test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 读回来」之后逐字不变（**七个键**一个都不能少）', () => {
+test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 读回来」之后逐字不变（十个键一个都不能少）', () => {
   // 🔴 **这条用例钉的是哪一层，名字里就说清哪一层**（2026-09-24 修复轮 1 改名，原名是
   // 「面板改一个键 ⇒ 收回来仍是完整一份 settings」—— 那是**过宽**的：它没管「面板改一个键」
   // 那一步）。它钉的是：**任何一份完整的 settings，走「保存载荷 → JSON 往返 → 读回来」
@@ -860,7 +866,7 @@ test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 
     // JSON 往返 = 过线缆那一步；`undefined` 的键在这里被丢掉，与真实 PUT 一致。
     const roundTripped = normalizeLoadedSettings(JSON.parse(JSON.stringify(payload.settings)));
     assert.deepEqual(roundTripped, settings, `往返之后必须逐字不变：${JSON.stringify(settings)}`);
-    assert.equal(Object.keys(roundTripped).length, 7, '七个键一个都不能少（M7b 加了 analysisAgentId）');
+    assert.equal(Object.keys(roundTripped).length, 10, '十个键一个都不能少（含作答开放方式与背景设置）');
   }
   // 而 `undefined` **不是**「配过的值」：整份对象缺这个键时它回落到默认（这两件事必须分得开）。
   assert.equal(normalizeLoadedSettings({ ...DEFAULT_SETTINGS, halfStep: undefined }).halfStep, DEFAULT_SETTINGS.halfStep);
@@ -1300,6 +1306,14 @@ test('🔴 newQuestion 的填空题仍然是**单空形状**（`blanks` 键不�
   // `correctKeys`/`answers` 那一类**答案键**留空，而 `partialCredit` 不是答案键、是判分口径：
   // 界面上那两个单选按钮要有一个选中态。只能是那两个字面量之一（服务端只认它们）。
   assert.equal(newQuestion('multi-choice').data.partialCredit, 'all-or-nothing');
+});
+
+test('🔴 普通填空与选择填空都必须提供题干内的填空域，其他题型不提供', () => {
+  assert.equal(hasPromptBlankSlots('fill-blank'), true);
+  assert.equal(hasPromptBlankSlots('choice-blank'), true);
+  for (const type of ['single-choice', 'multi-choice', 'order', 'short-answer']) {
+    assert.equal(hasPromptBlankSlots(type), false, `${type} 不应显示填空域按钮`);
+  }
 });
 
 test('🔴 newQuestion 的条目 id：非空、互不相同（重复 = 两个条目在判分里永远只算一个）', () => {

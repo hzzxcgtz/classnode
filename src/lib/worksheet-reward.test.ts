@@ -46,16 +46,16 @@ function scale(over: Partial<RewardScale> = {}): RewardScale {
 
 // ── 1. 取值域与默认档 ────────────────────────────────────────────────────
 
-test('四个选项的取值两两不同，且都带标签；只有对错档没有符号', () => {
+test('五个可选奖励的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
   const values = REWARD_STYLE_OPTIONS.map(option => option.value);
-  assert.deepEqual([...values].sort(), ['correctness', 'flower', 'points', 'star']);
+  assert.deepEqual([...values].sort(), ['bear', 'flower', 'points', 'star', 'trophy']);
   assert.equal(new Set(values).size, values.length, '取值重复会让单选按钮选中两个');
   for (const option of REWARD_STYLE_OPTIONS) {
     assert.ok(option.label.length > 0, `${option.value} 缺标签`);
     assert.ok(option.hint.length > 0, `${option.value} 缺说明`);
     assert.equal(option.symbol, rewardSymbol(option.value));
   }
-  assert.equal(rewardSymbol('correctness'), null, '对错档画的是 ✓/✗，不是一个固定符号');
+  assert.equal(normalizeRewardStyle('correctness'), DEFAULT_REWARD_STYLE, '旧对错档读取后回落为默认星星');
   assert.ok(REWARD_STEPS.includes(DEFAULT_REWARD_STEP));
   assert.ok(REWARD_STYLE_OPTIONS.some(option => option.value === DEFAULT_REWARD_STYLE));
 });
@@ -132,29 +132,13 @@ test('🔴 rewardAmount：**得分就是画出来的那个数** —— 5 分画 
   // 🔴 旧模型的反例（B2 那轮抓的）：学习单级 `rewardStep = 3` + 某题 `full = 5`。
   // 旧的 `score >= 1 ? scale.step : …` 返回 **3** ⇒ 学生看到 ⭐⭐⭐，而规格 §12 要的是 5 个。
   assert.equal(rewardAmount(5, scale()), 5, '学习单级 ×3 + 本题 5 分 ⇒ 画 5 个，不是 3 个');
-  // 三档符号的规则是同一条（只有对错档不同，见下一条用例）
+  // 所有保留档位都按绝对得分显示。
   assert.equal(rewardAmount(4, scale({ style: 'flower' })), 4);
   assert.equal(rewardAmount(4, scale({ style: 'points' })), 4);
 });
 
 test('rewardAmount：没判分（null）⇒ 0，而不是「0 分」', () => {
   assert.equal(rewardAmount(null, scale()), 0);
-});
-
-test('🔴 rewardAmount：对错档**只看有没有分**，不看得几分（否则累计会变成 ✓×9）', () => {
-  // 这一档画的是 ✓/✗，不是一串符号 ⇒ 一次只算 1；它的累计画成 `✓×N`，N 是「有分几题」。
-  // 旧实现读 `scale.step`，教师在「星星 ×3」与「对错」之间来回选时库里那个 3 一直留着
-  //（这是好事，切回星星时他配的 ×3 还在）⇒ 拿它去算对错档的累计会得到 `✓×9`。
-  for (const score of [1, 2, 5]) {
-    assert.equal(rewardAmount(score, scale({ style: 'correctness' })), 1);
-  }
-  const correctness: RewardScale = scale({ style: 'correctness' });
-  const scores: Array<number | null> = [5, 1, 0, 2];
-  const total = scores.reduce<number>((sum, score) => sum + rewardAmount(score, correctness), 0);
-  assert.equal(total, 3, '三题有分（含部分给分拿到的 2 分）⇒ 累计 3 枚 ✓');
-  assert.equal(rewardTotalText(correctness, total), '✓×3');
-  // 阴性对照：同一批得分换到星星档就必须**按分数**画（否则这条断言证明不了什么）
-  assert.equal(scores.reduce<number>((sum, score) => sum + rewardAmount(score, scale()), 0), 8);
 });
 
 test('rewardAmount：不做任何数学变换（不乘、不折算、不取整）', () => {
@@ -174,11 +158,10 @@ test('rewardAmount：部分给分不是奖励层的事 —— 那一档给了几
   //（归一化后的得分是整数 ⇒ 不存在 `0 < score < 1`）；现在连字段都没有了。
   assert.equal(rewardAmount(5, scale()), 5);
   assert.equal(rewardAmount(2, scale()), 2);
-  assert.equal(rewardMark(scale(), 2), '⭐⭐', '部分给分拿到 2 分就在星星档画两颗');
+  assert.equal(rewardMark(scale(), 2), '★★', '部分给分拿到 2 分就在星星档画两颗');
   assert.equal(rewardMark(scale({ style: 'points' }), 2), '+2');
-  // 部分给分填 0（默认档，规格 §12 裁定 3）⇒ 得分 0 ⇒ 什么都不画（对错档除外，那档画 ✗）
+  // 部分给分填 0（默认档，规格 §12 裁定 3）⇒ 得分 0 ⇒ 什么都不画。
   assert.equal(rewardMark(scale(), 0), null);
-  assert.equal(rewardMark(scale({ style: 'correctness' }), 0), '✗');
 });
 
 test('rewardAmount：坏数字（NaN / Infinity）当成 0，不画出一串长度未定义的符号', () => {
@@ -189,29 +172,27 @@ test('rewardAmount：坏数字（NaN / Infinity）当成 0，不画出一串长�
 
 // ── 3. 画出来的字面（规格 §9.3 的两处）───────────────────────────────────
 
-test('rewardMark：每题旁那个字 —— 对错档画 ✓/✗，符号档按**得分**重复，分数档画 +N', () => {
-  assert.equal(rewardMark(scale({ style: 'correctness' }), 5), '✓');
-  assert.equal(rewardMark(scale({ style: 'correctness' }), 0), '✗');
-  assert.equal(rewardMark(scale(), 2), '⭐⭐');
-  assert.equal(rewardMark(scale({ style: 'flower' }), 1), '🌸');
+test('rewardMark：每题旁那个字 —— 图标档按**得分**重复，分数档画 +N', () => {
+  assert.equal(rewardMark(scale(), 2), '★★');
+  assert.equal(rewardMark(scale({ style: 'flower' }), 1), '✿');
+  assert.equal(rewardMark(scale({ style: 'trophy' }), 2), '奖奖');
+  assert.equal(rewardMark(scale({ style: 'bear' }), 1), '熊');
   assert.equal(rewardMark(scale({ style: 'points' }), 3), '+3');
   assert.equal(rewardMark(scale({ style: 'points' }), 5), '+5');
 });
 
 test('rewardMark：没判分 ⇒ null；符号档拿了 0 个 ⇒ null（不是画一个「0 颗星」）', () => {
   assert.equal(rewardMark(scale(), null), null);
-  assert.equal(rewardMark(scale({ style: 'correctness' }), null), null);
   assert.equal(rewardMark(scale(), 0), null);
   assert.equal(rewardMark(scale({ style: 'flower' }), 0), null);
   assert.equal(rewardMark(scale({ style: 'points' }), 0), null);
-  // 对错档相反：答错**必须**画出来 —— 那是这一档存在的意义
-  assert.notEqual(rewardMark(scale({ style: 'correctness' }), 0), null);
 });
 
-test('rewardTotalText：顶部累计 —— 符号档 `⭐×3`、对错档 `✓×3`、分数档是 `+3 分`', () => {
-  assert.equal(rewardTotalText(scale(), 3), '⭐×3');
-  assert.equal(rewardTotalText(scale({ style: 'flower' }), 2), '🌸×2');
-  assert.equal(rewardTotalText(scale({ style: 'correctness' }), 3), '✓×3');
+test('rewardTotalText：顶部累计 —— 图标档与分数档都返回紧凑字面兜底', () => {
+  assert.equal(rewardTotalText(scale(), 3), '★×3');
+  assert.equal(rewardTotalText(scale({ style: 'flower' }), 2), '✿×2');
+  assert.equal(rewardTotalText(scale({ style: 'trophy' }), 2), '奖×2');
+  assert.equal(rewardTotalText(scale({ style: 'bear' }), 2), '熊×2');
   assert.equal(rewardTotalText(scale({ style: 'points' }), 5), '+5 分');
   // 一个都没有 ⇒ 不画（`⭐×0` 会让「还没有」看起来像「统计过了」）
   assert.equal(rewardTotalText(scale(), 0), null);
@@ -237,22 +218,17 @@ test('累计 = 每题之和：同一份配置下，逐个求和的桶与逐步�
 test('🔴 pointsUnitLabel：量词与图标跟着学习单的奖励档走 —— 不能一直是「分」', () => {
   // 教师原话：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
   // **不能一直使用「分」**。」+「后面要加 🌸 或 ⭐ 图标」。
-  assert.equal(pointsUnitLabel('star'), '颗 ⭐', '教师原话是「几颗五角星」—— 不是「个」');
-  assert.equal(pointsUnitLabel('flower'), '朵 🌸');
+  assert.equal(pointsUnitLabel('star'), '颗星星', '教师原话是「几颗五角星」—— 不是「个」');
+  assert.equal(pointsUnitLabel('flower'), '朵花');
+  assert.equal(pointsUnitLabel('trophy'), '座奖杯');
+  assert.equal(pointsUnitLabel('bear'), '只小熊');
   assert.equal(pointsUnitLabel('points'), '分', '分数档没有符号，只有一个「分」');
-  // ⚠️ 「对错」档**也**要有个说法：它的逐题分值照样存在（只是学生看到的不是数字），
-  // 所以它回落「分」而不是空串 —— 空串会让界面上出现一个光秃秃的数字。
-  assert.equal(pointsUnitLabel('correctness'), '分', '对错档也没有符号（学生看到的是 ✓/✗）');
 });
 
 test('pointsUnitLabel 与 REWARD_STYLE_OPTIONS 的 `unit` 是**两件事**（别合并）', () => {
-  // `unit` 是**步长**的量词，而「对错」那一档根本没有步长（空串）；
-  // `pointsUnit` 是**逐题分值**的量词，四档都有。
-  const correctness = REWARD_STYLE_OPTIONS.find(option => option.value === 'correctness');
-  assert.equal(correctness?.unit, '', '对错档没有步长 —— 所以它不能直接拿来当分值的量词');
-  assert.equal(pointsUnitLabel('correctness'), '分', '而分值后面那串字必须有个说法');
-  // 星星那一档两个值**刻意不同**：步长沿用规格 §9.2 的「个」，分值是教师原话的「颗」。
+  // `unit` 是奖励设置的短量词，pointsUnitLabel 是逐题分值旁的完整名称。
+  // 星星使用自然量词「颗」，逐题分值补出完整名称，避免只看见一个量词。
   const star = REWARD_STYLE_OPTIONS.find(option => option.value === 'star');
-  assert.equal(star?.unit, '个');
+  assert.equal(star?.unit, '颗');
   assert.ok(pointsUnitLabel('star').startsWith('颗'));
 });

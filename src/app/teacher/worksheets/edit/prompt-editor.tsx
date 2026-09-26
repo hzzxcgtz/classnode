@@ -21,7 +21,7 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
-import { readBlankAnswers } from './worksheet-editor-core';
+import { hasPromptBlankSlots, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
@@ -127,10 +127,11 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   // ⚠️ 这一档**写全名**（教师 2026-09-26 第二次改口：先要「『重』字下面带一个着重号」，
   // 看到之后说「直接写『着重号』吧，下面不要有点了」）。与另外三个不同，它不是自证的 ——
   // 「着重号」三个字本身就是说明。
-  { key: 'emphasis', label: '着重号', title: '着重号（字下加点）' },
+  { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
 ];
 
 export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEditorProps) {
+  const supportsBlankSlots = hasPromptBlankSlots(node.type);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
@@ -313,7 +314,8 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   };
 
   /**
-   * 在**光标处**插入一个填空区域（教师 2026-09-26：这个按钮**只出现在填空题里**）。
+   * 在**光标处**插入一个填空区域。普通填空与选择填空都依赖同一份结构化空标记：
+   * 前者让学生输入文字，后者把它作为词块的拖放目标。
    * ⚠️ 名字带 `AtCaret` 是**故意的**：纯逻辑里那个 `insertBlank(runs, …)` 才是真正
    * 干活的那个，而局部这个名字一度把它遮住（`insertBlank(...)` 解析到本地这个零参函数
    * ⇒ 编译器报「Expected 0 arguments, but got 6」）。
@@ -395,81 +397,88 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
             pendingRangeRef.current = el ? selectedRange(el) : null;
           }}
         >
-          {BOOLEAN_BUTTONS.map(button => (
+          <div className="worksheet-editor-tool-group" role="group" aria-label="文字样式">
+            {BOOLEAN_BUTTONS.map(button => (
+              <button
+                key={button.key}
+                type="button"
+                className={toolbar[button.key] ? 'is-active' : ''}
+                disabled={!toolbar.hasSelection}
+                // ⚠️ 用 `onMouseDown` 而不是 `onClick`：**点按钮那一下会把输入框的焦点与选区
+                // 一起拿走**，等 `onClick` 跑到的时候 `selectedRange` 已经是空了 ——
+                // 症状是「选中一段点 B 没反应」。`preventDefault` 保住选区（而 not 保焦点）。
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  applyToSelection({ [button.key]: !toolbar[button.key] } as Partial<Record<PromptBooleanKey, boolean>>);
+                }}
+                aria-pressed={toolbar[button.key]}
+                aria-label={button.title}
+                title={toolbar.hasSelection ? button.title : '请先选中文字'}
+              >
+                {button.label}
+              </button>
+            ))}
+            <div className="worksheet-editor-color-control" ref={colorBoxRef}>
+              <button
+                type="button"
+                className="worksheet-editor-color-trigger"
+                disabled={!toolbar.hasSelection}
+                onClick={() => setColorOpen(open => !open)}
+                aria-haspopup="listbox"
+                aria-expanded={colorOpen}
+                aria-label="题干文字颜色"
+                title={toolbar.hasSelection ? '文字颜色' : '请先选中文字'}
+              >
+                <span className="worksheet-editor-color-letter" style={{ color: toolbar.color }}>A</span>
+                <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
+              </button>
+              {colorOpen && (
+                <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
+                  {WORKSHEET_TEXT_COLORS.map(color => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      role="option"
+                      aria-selected={toolbar.color === color.value}
+                      className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
+                      onClick={() => applyToSelection({ color: color.value })}
+                    >
+                      <b style={{ backgroundColor: color.value }} aria-hidden="true" />
+                      <span>{color.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* 普通填空与选择填空都需要题干内的结构化空；选择填空少了它就只有词块、没有落点。 */}
+          <div className="worksheet-editor-tool-group is-insert" role="group" aria-label="插入题目内容">
+          {supportsBlankSlots && (
             <button
-              key={button.key}
               type="button"
-              className={toolbar[button.key] ? 'is-active' : ''}
-              // ⚠️ 用 `onMouseDown` 而不是 `onClick`：**点按钮那一下会把输入框的焦点与选区
-              // 一起拿走**，等 `onClick` 跑到的时候 `selectedRange` 已经是空了 ——
-              // 症状是「选中一段点 B 没反应」。`preventDefault` 保住选区（而 not 保焦点）。
+              title="在光标处插入一个填空区域"
+              aria-label="插入填空区域"
               onMouseDown={(event) => {
                 event.preventDefault();
-                applyToSelection({ [button.key]: !toolbar[button.key] } as Partial<Record<PromptBooleanKey, boolean>>);
+                insertBlankAtCaret();
               }}
-              aria-pressed={toolbar[button.key]}
-              title={button.title}
             >
-              {button.label}
+              <span className="worksheet-editor-blank-glyph" aria-hidden="true">____</span>
+              <span>填空域</span>
             </button>
-          ))}
-          {/* ★ 2026-09-26（教师）：「工具栏里还要有一个按钮『填空区域』，点击后可以在光标的
-            位置插入一个填空区域……**这个按钮只会出现在填空题中**。」 */}
-        {node.type === 'fill-blank' && (
-          <button
-            type="button"
-            title="在光标处插入一个填空区域"
-            // ⚠️ 与另外四个格式按钮同一条：`onMouseDown` + `preventDefault` 保住光标/选区，
-            // 否则点它那一下就把光标拿走了，`caretOffset` 读到的是「没焦点」。
-            onMouseDown={(event) => {
-              event.preventDefault();
-              insertBlankAtCaret();
-            }}
-          >
-            填空区域
-          </button>
-        )}
-        {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
-              ⚠️ 触发按钮上**不能**加 `preventDefault` 那一套：它会把下拉一起按死
-              （2026-09-26 就是这么坏的）。选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
-          <div className="worksheet-editor-color-control" ref={colorBoxRef}>
-            <button
-              type="button"
-              className="worksheet-editor-color-trigger"
-              onClick={() => setColorOpen(open => !open)}
-              aria-haspopup="listbox"
-              aria-expanded={colorOpen}
-              aria-label="题干文字颜色"
-            >
-              <span>文字颜色</span>
-              <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
-            </button>
-            {colorOpen && (
-              <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
-                {WORKSHEET_TEXT_COLORS.map(color => (
-                  <button
-                    key={color.value}
-                    type="button"
-                    role="option"
-                    aria-selected={toolbar.color === color.value}
-                    className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
-                    onClick={() => applyToSelection({ color: color.value })}
-                  >
-                    <b style={{ backgroundColor: color.value }} aria-hidden="true" />
-                    <span>{color.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
           <label className="worksheet-editor-image-upload">
             <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
               const file = event.target.files?.[0];
               if (file) void uploadImage(file);
               event.target.value = '';
             }} />
-            {uploading ? '上传中…' : imageUrl ? '更换图片' : '添加图片'}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="8.5" cy="9" r="1.5" /><path d="m5 17 4.5-4.5 3.5 3 2.5-2.5L19 17" />
+            </svg>
+            {uploading ? '上传中…' : imageUrl ? '换图' : '图片'}
           </label>
+          </div>
         </div>
         {/*
           🔴 **一个子节点都不挂**（约束 1）：内容全由 `renderRunsInto` 用 JS 写。
@@ -483,7 +492,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           aria-multiline="true"
           aria-label="题干"
           data-empty={node.prompt.trim() ? undefined : '1'}
-          data-placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
+          data-placeholder={supportsBlankSlots ? '例如：植物进行光合作用需要____和____。' : '例如：光合作用需要哪些条件？'}
           onInput={handleInput}
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={(event) => {

@@ -48,6 +48,7 @@ import { CategorizeBody } from './bodies/categorize-body';
 // 重写一遍就是两份真源，而它们漂移的后果是「教师在教师端选的档」与「学生端拿到的输入形态」
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
+import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
@@ -263,10 +264,10 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
               <span>编辑题目</span>
-              <strong>{typeLabel}</strong>
+              <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
             </span>
           ) : (
-            <span className="worksheet-editor-question-type">{typeLabel}</span>
+            <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
             {gradingStatus}

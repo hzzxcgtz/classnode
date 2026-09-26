@@ -60,7 +60,13 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
           ⚠️ 词数必须 ≥ 空数（每个词只能用一次）—— 服务端 `VALIDATORS` 会拦，
           这里给一句**当场**看得到的提示。 */}
       {node.type === 'choice-blank' && (
-        <label className="worksheet-editor-field">
+        <div className="worksheet-editor-field">
+          <span>词语呈现方式</span>
+          <div className="worksheet-editor-choice-layout" role="radiogroup" aria-label="词语呈现方式">
+            <label><input type="radio" checked={node.data.choiceLayout !== 'inline-pairs'} onChange={() => onDataChange({ choiceLayout: 'pool' })} /> 题干下方词语区</label>
+            <label><input type="radio" checked={node.data.choiceLayout === 'inline-pairs'} onChange={() => onDataChange({ choiceLayout: 'inline-pairs' })} /> 每个空后显示两个词</label>
+          </div>
+          <label className="worksheet-editor-field">
           <span>待选词</span>
           <textarea
             className="input"
@@ -70,16 +76,29 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
             placeholder={'一行一个待选词，例如：\n阳光\n水分\n空气（可以多写几个当干扰项）'}
           />
           <span className="worksheet-editor-blank-hint">
-            学生把这几个词拖进题干里的空，**每个词只能用一次** ⇒ 词不能比空少。
+            {node.data.choiceLayout === 'inline-pairs'
+              ? '按空的顺序每两行为一组，例如第 1、2 行显示在第一个空后；拖入后括号里的词仍保留。'
+              : '学生把这些词拖进题干里的空，每个词只能用一次，词不能比空少。'}
           </span>
-        </label>
+          </label>
+        </div>
       )}
       {blanks.map((_, index) => (
         // ⚠️ key 只能是**下标**：空没有 id（服务端按位置读 `texts`），而「删掉第 2 个空」
         // 本来就意味着后面的空整体前移 —— 用下标当 key 与那份协议是同一个语义。
         <div className="worksheet-editor-blank" key={index}>
           <label className="worksheet-editor-field">
-            <span>{blanks.length > 1 ? `第 ${index + 1} 个空的答案` : '答案'}</span>
+            <span className="worksheet-editor-blank-title">
+              <span>{blanks.length > 1 ? `第 ${index + 1} 个空的答案` : '答案'}</span>
+              {blanks.length > 1 && (
+                <button
+                  type="button"
+                  className="worksheet-editor-blank-remove"
+                  title="删掉中间的空，会让已经交上来的答案往后错一位。请尽量在学生作答前确定空的数量。"
+                  onClick={() => onDataChange(removeBlank(node, index))}
+                >删除</button>
+              )}
+            </span>
             {showAnswer && (<>
 <textarea
               className="input"
@@ -92,19 +111,6 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
           </label>
           {/* ⚠️ 只剩一个空时**不渲染**这个按钮（服务端要求「至少要有一个空」）——
               不是渲染成禁用态。`removeBlank` 的注释里写着同一条。 */}
-          {blanks.length > 1 && (
-            <button
-              type="button"
-              className="btn btn-secondary worksheet-editor-blank-remove"
-              // 🔴 这句话是本批题型里**代价最高**的那个后果，必须在教师动手**之前**说到点子上：
-              // 学生的作答是按**位置**与这些空对应的（`texts[i]`），删掉中间的一个空
-              // 会让已经交上来的答案往后错一位 —— 而判分照常进行、没有任何报错。
-              title="删掉中间的空，会让已经交上来的答案往后错一位（学生的作答按下标与这些空对应）—— 请尽量在学生作答之前把空定下来。"
-              onClick={() => onDataChange(removeBlank(node, index))}
-            >
-              🗑 删掉这个空
-            </button>
-          )}
         </div>
       ))}
 

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
-import { usePointerDrag } from '../use-pointer-drag';
+import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
 
 /**
@@ -55,7 +55,52 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
   const [picked, setPicked] = useState<string | null>(null);
   const runs = readPromptRunsFor(node);
   const choices = readChoices(node);
-  const available = availableChoices(choices, draft.texts);
+  const inlinePairs = node.data.choiceLayout === 'inline-pairs';
+  const available = inlinePairs ? choices : availableChoices(choices, draft.texts);
+  const wordEls = useRef<Record<string, HTMLElement | null>>({});
+
+  const clearDragStyles = useCallback(() => {
+    Object.values(wordEls.current).forEach((el) => {
+      if (!el) return;
+      if (el.style.transform) el.style.transform = '';
+      if (el.style.zIndex) el.style.zIndex = '';
+    });
+  }, []);
+
+  const onDragMove = useCallback((point: DragPoint) => {
+    const el = wordEls.current[point.id];
+    if (!el) return;
+    el.style.transform = `translate3d(${Math.round(point.dx)}px, ${Math.round(point.dy)}px, 0)`;
+    el.style.zIndex = '2';
+  }, []);
+
+  const wordFromId = useCallback((id: string) => {
+    if (!id.startsWith(WORD_PREFIX)) return null;
+    const index = Number(id.slice(WORD_PREFIX.length));
+    return Number.isInteger(index) && index >= 0 ? (available[index] ?? null) : null;
+  }, [available]);
+
+  const wordButton = (word: string, index: number, compact = false) => {
+    const sourceId = `${WORD_PREFIX}${index}`;
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        key={`${word}-${index}`}
+        className={[
+          styles.choiceWord,
+          compact ? styles.choiceWordInline : '',
+          styles.dragSource,
+          picked === word ? styles.choiceWordPicked : '',
+          drag.draggingId === sourceId ? styles.dragActive : '',
+        ].filter(Boolean).join(' ')}
+        ref={(el) => { wordEls.current[sourceId] = el; }}
+        {...drag.sourceProps(sourceId)}
+      >
+        {word}
+      </button>
+    );
+  };
 
   /** 把 `word` 放进第 `index` 个空（两条路最终都走这里）。 */
   const place = (index: number, word: string) => {
@@ -80,19 +125,28 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
 
   const drag = usePointerDrag({
     disabled,
+    onDragMove,
     onTap: (id) => {
       // 落点那一侧的点由 `PromptText` 的 `onPlace` 接走，这里只会收到待选词。
       if (!id.startsWith(WORD_PREFIX)) return;
-      const word = id.slice(WORD_PREFIX.length);
+      const word = wordFromId(id);
+      if (word === null) return;
       setPicked((current) => (current === word ? null : word));
     },
     onDrop: (sourceId, targetId) => {
       if (!sourceId.startsWith(WORD_PREFIX) || !targetId || !targetId.startsWith(BLANK_PREFIX)) return;
       const index = Number(targetId.slice(BLANK_PREFIX.length));
-      if (!Number.isInteger(index) || index < 0) return;
-      place(index, sourceId.slice(WORD_PREFIX.length));
+      const word = wordFromId(sourceId);
+      if (!Number.isInteger(index) || index < 0 || word === null) return;
+      clearDragStyles();
+      place(index, word);
     },
   });
+
+  // pointercancel 不会触发 onDrop；收尾时必须把直接写在 DOM 上的跟手位移清掉。
+  useEffect(() => {
+    if (!drag.draggingId) clearDragStyles();
+  }, [drag.draggingId, clearDragStyles]);
 
   return (
     <>
@@ -111,40 +165,27 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
               idOf: (index) => `${BLANK_PREFIX}${index}`,
               onPlace: disabled ? () => {} : tapBlank,
               pending: picked,
+              activeId: drag.hoverTargetId,
+              after: inlinePairs ? (index) => {
+                const start = index * 2;
+                const pair = choices.slice(start, start + 2);
+                return (
+                  <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
+                    （{pair.map((word, offset) => wordButton(word, start + offset, true))}）
+                  </span>
+                );
+              } : undefined,
             },
           }}
         />
       </div>
       {choices.length === 0 ? (
         <p className={styles.cardNote}>（这道题还没有待选词）</p>
-      ) : (
+      ) : !inlinePairs ? (
         <div className={styles.choicePool} aria-label="待选词">
-          {available.map((word, index) => (
-            <div
-              // ⚠️ `key` 带下标：待选词**允许重复**（教师可以写两个「阳光」当干扰项），
-              // 而用词本身当 key 会让那两个撞在一起。
-              key={`${word}-${index}`}
-              className={[
-                styles.choiceWord,
-                // 🔴 `dragSource` 给的是**静态**的 `touch-action: none` —— 拖拽能不能起作用
-                // 全看它（`use-pointer-drag.ts` 文件头第 ② 条：浏览器在手势开始的那一刻就定了
-                // 这条手势归谁，`pointerdown` 里再设已经晚了）。少了它，iPad 上一按就变成滚动，
-                // 学生看到的只是「拖不动」。
-                styles.dragSource,
-                picked === word ? styles.choiceWordPicked : '',
-              ].filter(Boolean).join(' ')}
-              // 🔴 id 用**词本身**（不是下标）：两个同名词在待选区里是**可互换**的
-              //（拖哪一个都一样），所以它们共用一个 id 是对的 —— 而用下标的话，
-              // `onTap` 拿到的那个下标还得再查一次表才能换回词，多一处能算错的地方。
-              // ⚠️ 它们是**拖拽源**不是落点，所以共用 id 不会撞车（落点才要求唯一）。
-              {...drag.sourceProps(`${WORD_PREFIX}${word}`)}
-              title={picked === word ? '再点一下取消选择' : '点一下选中，再点题干里的空；也可以直接拖过去'}
-            >
-              {word}
-            </div>
-          ))}
+          {available.map((word, index) => wordButton(word, index))}
         </div>
-      )}
+      ) : null}
     </>
   );
 }

@@ -5,14 +5,20 @@ import type { CSSProperties } from 'react';
 import { getStudentSessionAuthorization } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { effectiveGroupWorksheet } from '@/lib/classroom-material';
-import type { WorksheetQuestionNode } from '@/lib/types';
+import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import {
+  normalizeWorksheetBackgroundTheme,
+  resolveWorksheetBackground,
+} from '@/lib/worksheet-backgrounds';
+import type { WorksheetBackgroundTheme } from '@/lib/types';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
 // 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
@@ -32,7 +38,7 @@ import {
   type WorksheetScore,
 } from './use-worksheet-answers';
 import type { SavedAnswerRow } from './worksheet-queue';
-import { QuestionReward, RewardTotal } from './reward-badge';
+import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
 import styles from './worksheet.module.css';
 
 /**
@@ -93,6 +99,12 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
       // ⚠️ 只认 `boolean`：`undefined`（`.json()` 失败）必须落到 `null`（**没判分**），
       // 不能变成 `false`（判错）—— `scoreFromWire` 那条注释里有完整理由。
       isCorrect: typeof row.isCorrect === 'boolean' ? row.isCorrect : null,
+      gradeState: row.gradeState === 'correct' || row.gradeState === 'partial' || row.gradeState === 'incorrect'
+        ? row.gradeState
+        : null,
+      wrongBlankIndexes: Array.isArray(row.wrongBlankIndexes)
+        ? row.wrongBlankIndexes.filter((value): value is number => Number.isInteger(value) && value >= 0)
+        : [],
       // ★ M4a：逐题得分的**绝对值**（教师填的那个数）。同一个纪律：只认有限数，
       // 读不出来落到 `null`（= 没判分），而 `scoreFromWire` 会回落到 `isCorrect` ——
       // **升级前落库的旧行没有 `score`**，那正是那条兜底存在的理由。
@@ -127,6 +139,7 @@ interface LoadedWorksheet {
    * 与规格 §8.4 那张表说的「学生改已提交的题」的唯一合法前提（`allowResubmit` 为真）对齐。
    */
   allowResubmit: boolean;
+  answerMode: WorksheetAnswerMode;
   /**
    * 这一份单的奖励配置（规格 §9.2，**学习单级**）。由 `resolveRewardScale` 收成
    * 「一定合法」的那一档：缺字段与坏值都落到默认档（星星），与新建学习单、
@@ -136,6 +149,8 @@ interface LoadedWorksheet {
    * 画出来的个数是**得分**（绝对值模型，规格 §12），学习单级那两个数由服务端折算进得分。
    */
   reward: RewardScale;
+  backgroundTheme: WorksheetBackgroundTheme;
+  backgroundImageUrl: string | null;
   /**
    * 这名学生**已有的作答**（`GET /:id/answers` 的 `rows`）。
    *
@@ -214,6 +229,10 @@ export interface WorksheetQuestionListProps {
   reward?: RewardScale | null;
   /** 每道题的得分（`useWorksheetAnswers` 的 `scores`）。不传 = 一道题都没判分。 */
   scores?: Record<string, WorksheetScore>;
+  gradeStates?: Record<string, WorksheetGradeState | null>;
+  wrongBlankIndexes?: Record<string, number[]>;
+  rewardBursts?: Record<string, number>;
+  answerMode?: WorksheetAnswerMode;
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   onSubmit?: (node: WorksheetQuestionNode) => void;
   /**
@@ -238,6 +257,10 @@ export function WorksheetQuestionList({
   allowResubmit,
   reward,
   scores,
+  gradeStates,
+  wrongBlankIndexes,
+  rewardBursts,
+  answerMode = 'open',
   onChange,
   onSubmit,
   // 改名解构：下面那个 map 里 `locked` 已经表示「本题已提交且不许重交」，
@@ -252,9 +275,33 @@ export function WorksheetQuestionList({
     );
   }
 
+  let visibleGroups = groups;
+  let hiddenQuestionCount = 0;
+  if (interactive && answerMode !== 'open') {
+    if (answerMode === 'task-step') {
+      const current = groups.findIndex(group => group.items.some(({ node }) => statuses[node.id] !== 'submitted'));
+      if (current >= 0) {
+        visibleGroups = groups.slice(0, current + 1);
+        hiddenQuestionCount = groups.slice(current + 1).reduce((sum, group) => sum + group.items.length, 0);
+      }
+    } else {
+      let reachedCurrent = false;
+      visibleGroups = groups.map(group => ({
+        ...group,
+        items: group.items.filter(({ node }) => {
+          if (reachedCurrent) return false;
+          if (statuses[node.id] !== 'submitted') reachedCurrent = true;
+          return true;
+        }),
+      })).filter(group => group.items.length > 0);
+      hiddenQuestionCount = groups.reduce((sum, group) => sum + group.items.length, 0)
+        - visibleGroups.reduce((sum, group) => sum + group.items.length, 0);
+    }
+  }
+
   return (
     <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
-      {groups.map((group, groupIndex) => (
+      {visibleGroups.map((group, groupIndex) => (
         // ⚠️ `key` 用下标 + 标题：散题那几段的 `title` 恒为 `null`，拿它当 key 会撞。
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
         // ★ 2026-09-26（教师）：「题目要**装在**任务容器里」—— 原来只有一个标题 + 一串平铺的卡，
@@ -315,7 +362,19 @@ export function WorksheetQuestionList({
         // 加它的理由：去掉那个题号徽章时，顺带把这一题在页面里唯一的身份一起删了 ——
         // 读屏用户听到的只有「题干 + 控件」，说不出自己在做哪一题。
         return (
-          <section className={styles.question} key={node.id} aria-label={`${heading} ${questionTypeLabel(node.type)}`}>
+          <section
+            className={styles.question}
+            data-state={state}
+            key={node.id}
+            aria-label={`${heading} ${questionTypeLabel(node.type)}`}
+          >
+            {interactive && reward && gradeStates?.[node.id] === 'correct' && (rewardBursts?.[node.id] ?? 0) > 0 ? (
+              <RewardBurst
+                key={`${node.id}:${rewardBursts?.[node.id]}`}
+                scale={reward}
+                score={scores?.[node.id] ?? null}
+              />
+            ) : null}
             <div className={styles.questionHead}>
               {/*
                 ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——
@@ -328,15 +387,25 @@ export function WorksheetQuestionList({
               {/* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
                   文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
               <span className={styles.questionState} data-state={state}>
-                {state === 'submitted' ? '✓ 已提交' : state === 'drafting' ? '◐ 作答中' : ''}
+                {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
               </span>
               {/* 奖励出现在**每题旁**（规格 §9.3），交完立刻出现。
                   🔴 `interactive` 是第二道闸：本组件同时被教师端的「学生端预览」渲染
                   （`preview-modal.tsx`，`interactive={false}`），而奖励**教师端一处都不许出现**
                   （规格 §3-U：那里问的是「哪道题错得多」）。所以即使将来有人往预览里
                   传了奖励配置，这一行也不会画出来。 */}
-              {interactive && reward ? (
-                <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+              {interactive && gradeStates?.[node.id] ? (
+                <div className={styles.questionFeedback} data-result={gradeStates[node.id]}>
+                  <strong>{gradeStates[node.id] === 'correct' ? '全部答对' : gradeStates[node.id] === 'partial' ? '部分答对' : '再想一想'}</strong>
+                  {(wrongBlankIndexes?.[node.id]?.length ?? 0) > 0 && (
+                    <span>第 {wrongBlankIndexes?.[node.id].map(index => index + 1).join('、')} 空需要修改</span>
+                  )}
+                  {reward && (
+                    <span className={styles.feedbackReward}>
+                      获得奖励：<QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+                    </span>
+                  )}
+                </div>
               ) : null}
             </div>
 
@@ -391,7 +460,7 @@ export function WorksheetQuestionList({
                 一句话难懂得多（学生会反复点它）。 */}
             {interactive ? (
               locked ? (
-                <p className={styles.lockedNote}>老师已设置本题提交后不可修改</p>
+                <p className={styles.lockedNote}>这道题已经完成，老师设置为不能再修改</p>
               ) : (
                 <>
                   {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
@@ -415,9 +484,9 @@ export function WorksheetQuestionList({
                       {submitting[node.id] ? (
                         <>
                           <span className={styles.spinner} aria-hidden="true" />
-                          提交中…
+                          正在保存…
                         </>
-                      ) : submitted ? '重新提交' : '提交本题'}
+                      ) : submitted ? '保存修改' : '已完成'}
                     </button>
                   </div>
                 </>
@@ -428,6 +497,13 @@ export function WorksheetQuestionList({
           })}
         </div>
       ))}
+      {hiddenQuestionCount > 0 && (
+        <div className={styles.lockedTail}>
+          <span aria-hidden="true">🔒</span>
+          <strong>后面还有 {hiddenQuestionCount} 道小题</strong>
+          <span>{answerMode === 'task-step' ? '完成当前任务后继续解锁' : '完成当前小题后继续解锁'}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -522,7 +598,15 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
           // `rewardStep` / `halfStep` 仍在下发（服务端的 `readStudentSettings` 会带上它们），
           // 但学生端的显示层不读：它们已经由服务端折算进**得分**（M4a 的绝对值模型，
           // 规格 §12），照原样列在这里只是为了让「下发的形状」一眼看得全。
-          settings?: { allowResubmit?: unknown; rewardStyle?: unknown; rewardStep?: unknown; halfStep?: unknown };
+          settings?: {
+            allowResubmit?: unknown;
+            answerMode?: unknown;
+            rewardStyle?: unknown;
+            rewardStep?: unknown;
+            halfStep?: unknown;
+            backgroundTheme?: unknown;
+            backgroundImageUrl?: unknown;
+          };
         };
         const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;
@@ -543,8 +627,15 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
             allowResubmit: data.settings?.allowResubmit !== false,
+            answerMode: data.settings?.answerMode === 'task-step' || data.settings?.answerMode === 'question-step'
+              ? data.settings.answerMode
+              : 'open',
             // 奖励同理：缺字段落到默认档（星星 ⭐），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
+            backgroundTheme: normalizeWorksheetBackgroundTheme(data.settings?.backgroundTheme),
+            backgroundImageUrl: typeof data.settings?.backgroundImageUrl === 'string' && data.settings.backgroundImageUrl.startsWith('/uploads/chat/')
+              ? data.settings.backgroundImageUrl
+              : null,
             // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
             savedAnswers: parseSavedAnswers(rowsData),
           },
@@ -593,6 +684,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
    * 得分（键在、题没了），把它算进累计会让顶栏多出学生看不见的那几分。
    */
   const rewardScale = load.kind === 'ready' ? load.worksheet.reward : null;
+  const background = load.kind === 'ready'
+    ? resolveWorksheetBackground(load.worksheet.backgroundTheme, load.worksheet.backgroundImageUrl)
+    : null;
   const rewardTotal = rewardScale
     ? questions.reduce((sum, node) => sum + rewardAmount(answers.scores[node.id] ?? null, rewardScale), 0)
     : 0;
@@ -636,12 +730,27 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         <>
           <div className={styles.topbar} data-offline={answers.offline ? '1' : '0'}>
             <div className={styles.title}>{load.worksheet.title || '学习单'}</div>
-            <div className={styles.progress}>
-              <span className={styles.progressTrack}>
-                <span
-                  className={styles.progressFill}
-                  style={{ width: total > 0 ? `${Math.round((submittedCount / total) * 100)}%` : '0%' }}
-                />
+            <div className={styles.progress} aria-label={`已完成 ${submittedCount} 题，共 ${total} 题`}>
+              <span className={styles.progressMap}>
+                {load.worksheet.groups.map((group, groupIndex) => (
+                  <span className={styles.progressGroup} key={`${groupIndex}:${group.title ?? ''}`}>
+                    {group.items.map(({ node }) => {
+                      const state = questionDisplayState(answers.statuses[node.id], answers.drafts[node.id]);
+                      const iconReward = rewardScale && ['star', 'flower', 'trophy', 'bear'].includes(rewardScale.style);
+                      return (
+                        <span className={styles.progressCell} data-state={state} data-style={iconReward ? 'icon' : 'square'} key={node.id}>
+                          {iconReward ? (
+                            <RewardIcon
+                              kind={rewardScale.style}
+                              state={state === 'submitted' ? 'earned' : state === 'drafting' ? 'drafting' : 'empty'}
+                              size={19}
+                            />
+                          ) : null}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ))}
               </span>
               <span className={styles.progressText}>{submittedCount}/{total}</span>
             </div>
@@ -653,7 +762,11 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             </div>
           </div>
 
-          <div className={styles.scroller}>
+          <div
+            className={styles.scroller}
+            data-has-background={background ? '1' : '0'}
+            style={background ? { '--worksheet-background': `url(${worksheetAssetUrl(background)})` } as CSSProperties : undefined}
+          >
             <WorksheetQuestionList
               groups={load.worksheet.groups}
               drafts={answers.drafts}
@@ -663,6 +776,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               allowResubmit={load.worksheet.allowResubmit}
               reward={load.worksheet.reward}
               scores={answers.scores}
+              gradeStates={answers.gradeStates}
+              wrongBlankIndexes={answers.wrongBlankIndexes}
+              rewardBursts={answers.rewardBursts}
+              answerMode={load.worksheet.answerMode}
               onChange={handleChange}
               onSubmit={handleSubmit}
               // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。

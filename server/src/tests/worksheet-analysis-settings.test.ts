@@ -44,3 +44,14 @@ test('既有六件不受影响（加字段不许碰它们）', () => {
   assert.equal(out.halfStep, 0);
   assert.equal(out.defaultInputMode, 'keyboard');
 });
+
+test('奖励图标新增的奖杯与小熊会原样落库，坏值仍回落星星', () => {
+  for (const rewardStyle of ['trophy', 'bear']) {
+    const out = normalizeSettings({ rewardStyle }) as Record<string, unknown>;
+    assert.equal(out.rewardStyle, rewardStyle);
+  }
+  const bad = normalizeSettings({ rewardStyle: 'rainbow' }) as Record<string, unknown>;
+  assert.equal(bad.rewardStyle, 'star');
+  const removed = normalizeSettings({ rewardStyle: 'correctness' }) as Record<string, unknown>;
+  assert.equal(removed.rewardStyle, 'star', '已移除的对错档读取后回落星星');
+});

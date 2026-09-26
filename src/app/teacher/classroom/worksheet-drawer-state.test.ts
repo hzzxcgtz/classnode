@@ -355,6 +355,12 @@ test('🔴 每个题型在抽屉里都「有话说」—— 没有哪个题型�
     },
     // ⚠️ 画布题**故意**让 `answerText` 是 `null`（笔迹不是文字）⇒ 它的「话」在 `ink` 上，
     //    由 `InkPreview` 画出来。下面那条断言两个都认，正是为了它。
+    // ★ 2026-09-26：选择填空的样本 —— 它与填空题**同形**（`texts` 每空一格），
+    // 所以抽屉里「学生答了什么」的画法与填空一致。
+    'choice-blank': {
+      node: node({ id: 's10', type: 'choice-blank' }),
+      value: { format: 'fill-multi/v1', texts: ['阳光', '水分'] },
+    },
     drawing: {
       node: node({ id: 's9', type: 'drawing', inputMode: 'handwriting' }),
       value: {
@@ -710,6 +716,8 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   order: true,
   match: true,
   categorize: true,
+  // ★ 2026-09-26：选择填空**判分**（与填空题共用判分器）。
+  'choice-blank': true,
   'short-answer': false,
   // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分
   // （规格 §12 裁定 3）。这一格决定了看板抽屉里画不画 ✓/½/✗。

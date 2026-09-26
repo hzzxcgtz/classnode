@@ -129,6 +129,8 @@ const GRADED: Record<QuestionType, boolean> = {
   //    但理由不同：绘图是「有人工判读、不自动判」，任务是「**根本没有作答值**」。
   task: false,
   'single-choice': true,
+  // ★ 2026-09-26：选择填空**判分**（与填空题共用一支 `judgeFillBlank`）。
+  'choice-blank': true,
   'true-false': true,
   'multi-choice': true,
   'fill-blank': true,
@@ -687,6 +689,8 @@ const SAMPLE_NODES: Record<QuestionType, QuestionNode> = {
   //    ⇒ 这里给 `'keyboard'` 只是为了满足形状，别把它读成「任务用键盘作答」。
   task: { id: 'q_task', type: 'task', prompt: '', data: {}, inputMode: 'keyboard', children: [question('single-choice', { options: MULTI_OPTIONS, correctKeys: ['A'] })] },
   'single-choice': question('single-choice', { options: MULTI_OPTIONS, correctKeys: ['A'] }),
+  // ★ 2026-09-26：选择填空的合法数据 = 每空一份答案 + 待选词（词数 ≥ 空数）。
+  'choice-blank': question('choice-blank', { answers: [['阳光'], ['水分']], choices: ['阳光', '水分', '空气'] }),
   'true-false': question('true-false', { correctKeys: ['T'] }),
   'multi-choice': multiNode('allow-missing'),
   'fill-blank': question('fill-blank', { answers: ['光合作用'] }),

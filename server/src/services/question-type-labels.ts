@@ -14,6 +14,7 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
   'single-choice': '单选题',
   'true-false': '判断题',
   'multi-choice': '多选题',
+  'choice-blank': '选择填空',
   'fill-blank': '填空题',
   'order': '排序题',
   'match': '连线题',

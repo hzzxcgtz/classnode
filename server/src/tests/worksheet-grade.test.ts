@@ -200,6 +200,19 @@ const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
     safeKeys: ['options'],
     afterStrip: { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }] },
   }],
+  'choice-blank': [
+    {
+      // ★ 2026-09-26：**待选词必须留下** —— 它是给学生看的（他要拿那几个词去拖），
+      // 而答案（`answers`）必须剥掉。这一条样本钉的正是那个边界：
+      // 谁把 `choices` 加进 `ANSWER_KEYS`，学生端就会拿到一道**没有词可拖**的题，
+      // 而那种题在屏幕上看不出异常（学生只看到几个空）。
+      label: '每空一份答案 + 待选词（`answers` 剥掉、`choices` **留下**）',
+      data: { answers: [['阳光'], ['水分']], choices: ['阳光', '水分', '空气'], explanation: '见课本 P42' },
+      answerKeys: ['answers', 'explanation'],
+      safeKeys: ['choices'],
+      afterStrip: { choices: ['阳光', '水分', '空气'] },
+    },
+  ],
   'fill-blank': [
     {
       label: '单空（M3 形状，**不许弱化**）',

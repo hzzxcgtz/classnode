@@ -34,6 +34,15 @@ export const QUESTION_TYPES = [
   // ⚠️ 它的作答值是**笔迹**（`ink/v1` / `drawing/v1`），判分的两处闸门见 `judge()`
   // 与 `JUDGES`；写入口的体积校验见 `services/worksheet-ink.ts`（B1）。
   'drawing',
+  // ★ 2026-09-26（教师）：「增加一个新的题型，叫**选择填空**，题干跟普通填空题类似，
+  //    但是题干下方会出现几个待选词，学生可以**拖拽**它们到正确的填空区域来完成答题。」
+  // 🔴 它复用填空题的**全部**机制：题干里的空（`promptRuns` 的 `blank` 标识）、
+  //    答案的存储（`answers: string[][]` 每空一份）、**判分器**（`JUDGES['fill-blank']`）。
+  //    它多出来的只有两样：`data.choices`（待选词）与「学生用拖拽填」这个交互。
+  //    ⇒ **别给它另写一份判分**（先例：判断题与单选共用一支）。
+  //    ⚠️ 校验上它多一条硬要求：`choices.length >= answers.length` ——
+  //    每个词只能用一次（教师裁定），词不够时这道题**无解**，而那种题在屏幕上看不出异常。
+  'choice-blank',
   // ★ 2026-09-25：**任务**（分组容器）—— 它不是一道题，见下面 `JUDGES` / `VALIDATORS` 里
   //    它那两条各自的注释。放进本联合而不是另开一个 node kind 的理由：
   //    下面两张表都是 `Record<QuestionType, …>` ⇒ 加一项会让**每一处编译报错**，
@@ -933,6 +942,10 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
   'true-false': judgeSingleChoice,
   'multi-choice': judgeMultiChoice,
   'fill-blank': judgeFillBlank,
+  // ★ 2026-09-26：**选择填空**判分与填空题**逐字相同**（题干里的空 + 每空一份答案；
+  // 待选词只是学生的**输入方式**，判分只看每个空填得对不对）。
+  // ⇒ 共用一支，不另写（先例：判断题与单选）。
+  'choice-blank': judgeFillBlank,
   'short-answer': () => null,
   order: judgeOrder,
   match: judgeMatch,
@@ -1040,6 +1053,32 @@ function validateSingleAnswer(
  * ⚠️ 表只能保证「每个题型都有一条」，**不能**保证那条不是空的 —— 后者由
  * `worksheet-grade.test.ts` 的「空 `data` 必须被拒绝」那条用例行为性地钉住。
  */
+function validateFillBlank(node: QuestionNode, errors: string[]): void {
+    // ⚠️ **向后兼容**：`data.blanks` 缺席时走原来的单空路径（M3 的形状，不动）。
+    // 第一批落库的填空题一个 `blanks` 都没有，把它们当成「零个空」会让全班的历史
+    // 题目在下次保存时集体报错。
+    if (!Array.isArray(node.data.blanks)) {
+      const answers = readStrings(node.data.answers);
+      // ⚠️ 开关关掉时「答案」整块不查（下面两处同样）—— 但**题面**照查：
+      // 一个空、一个 `blanks` 的形状仍然是题目本身的要求。
+      if (node.autoGrade !== false && !answers.some((answer) => answer.trim())) errors.push('填空题至少要有一个可接受的答案');
+      return;
+    }
+    const blanks = node.data.blanks;
+    if (blanks.length === 0) errors.push('填空题至少要有一个空');
+    for (const blank of blanks) {
+      const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
+        ? (blank as Record<string, unknown>).answers
+        : undefined;
+      if (!readStrings(answers).some((answer) => answer.trim())) {
+        // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。
+        if (node.autoGrade !== false) errors.push('填空题每个空至少要有一个可接受的答案');
+        break;
+      }
+    }
+}
+
+
 const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) => void> = {
   /**
    * ★ 2026-09-25：**任务容器**的校验。只剩一条：**任务里不能再嵌套任务**。
@@ -1083,31 +1122,34 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     if (correct.some((key) => !optionKeys.includes(key))) errors.push('多选题的正确答案里有不存在的选项');
   },
 
-  'fill-blank': (node, errors) => {
-    // ⚠️ **向后兼容**：`data.blanks` 缺席时走原来的单空路径（M3 的形状，不动）。
-    // 第一批落库的填空题一个 `blanks` 都没有，把它们当成「零个空」会让全班的历史
-    // 题目在下次保存时集体报错。
-    if (!Array.isArray(node.data.blanks)) {
-      const answers = readStrings(node.data.answers);
-      // ⚠️ 开关关掉时「答案」整块不查（下面两处同样）—— 但**题面**照查：
-      // 一个空、一个 `blanks` 的形状仍然是题目本身的要求。
-      if (node.autoGrade !== false && !answers.some((answer) => answer.trim())) errors.push('填空题至少要有一个可接受的答案');
+  // ★ 2026-09-26：**选择填空** —— 题干与填空**逐字同一条**（题干里的空 + 每空一份答案），
+  // 多出来的只有 `data.choices`（待选词）与「拖拽填」这个交互。
+  // ⇒ 校验**复用**填空那一支，只多补一条硬要求（先例：判断题与单选共用判分器）。
+  'choice-blank': (node, errors) => {
+    validateFillBlank(node, errors);
+    if (node.autoGrade === false) return;
+    const choices = readStrings(node.data.choices);
+    // 🔴 **每个词只能用一次**（教师裁定）⇒ 词比空少时这道题**无解**，
+    // 而那种题在屏幕上看不出任何异常（学生拖到最后一个空时没词可用）。
+    if (choices.length === 0) {
+      errors.push('「选择填空」至少要有一个待选词');
       return;
     }
-    const blanks = node.data.blanks;
-    if (blanks.length === 0) errors.push('填空题至少要有一个空');
-    for (const blank of blanks) {
-      const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
-        ? (blank as Record<string, unknown>).answers
-        : undefined;
-      if (!readStrings(answers).some((answer) => answer.trim())) {
-        // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。
-        if (node.autoGrade !== false) errors.push('填空题每个空至少要有一个可接受的答案');
-        break;
-      }
+    if (choices.length < answerSlotCount(node.data)) {
+      errors.push('「选择填空」的待选词不能比空少（每个词只能用一次，词不够就有空填不上）');
     }
   },
 
+  'fill-blank': validateFillBlank,
+  // ⚠️ 上面那条按名字引用（不是把函数体再写一遍）：`VALIDATORS` 在初始化期间
+  // 引用自己（`VALIDATORS['fill-blank']`）会踩 TDZ，而两份实现漂移的症状是
+  // 「两个题型一个校验得严一个松」。
+
+/**
+ * 填空题的校验（★ 2026-09-26：抽出来给「选择填空」复用）。
+ * ⚠️ 抽它的唯一理由是 `VALIDATORS` 里要有**一条**实现给两个题型用 ——
+ * 对象字面量里引用自己会踩 TDZ，而写两份必然漂移。
+ */
   'short-answer': () => {
     // 主观题**只有题干**要校验，而题干在上面的 `validateQuestion` 里已经查过 —— 所以
     // 这一支是空的。⚠️ 它**必须存在**：「主观题不校验别的」本身就是一个必须被明确作出的

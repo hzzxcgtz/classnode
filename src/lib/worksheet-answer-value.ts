@@ -322,7 +322,11 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
   if (isInkNode(node)) return 'ink';
   const type = node.type;
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') return 'choice';
-  if (type === 'fill-blank') return 'fill';
+  // ★ 2026-09-26：**选择填空复用填空的输入态**（`{ kind: 'fill', texts }`）——
+  // 学生填的就是「每个空一串文字」，与手动打字的那一版**逐字同形**；
+  // 待选词只改变他**怎么填**（拖 vs 打），不改变填出来的东西。
+  // ⇒ 往后判分 / 队列 / 提交这一步，两个题型走的是同一条路。
+  if (type === 'fill-blank' || type === 'choice-blank') return 'fill';
   if (type === 'short-answer') return 'text';
   if (type === 'order') return 'order';
   if (type === 'match') return 'match';

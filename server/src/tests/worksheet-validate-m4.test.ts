@@ -94,10 +94,12 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   );
   assert.equal(checked.length, QUESTION_TYPES.length - EXEMPT.length);
   // ⚠️ 这个数随豁免表变：M4b 时是 7（9-2），2026-09-25 加了三类豁免（选择题不设答案合法）
-  // 与任务之后是 **4**（10-6）：填空 / 排序 / 连线 / 归类 —— 也就是**必须配答案**
-  // 的那四个题型。动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里：数字对不上就是在提醒你
+  // 与任务之后是 4（10-6）：填空 / 排序 / 连线 / 归类 —— 也就是**必须配答案**的那四个题型。
+  // ★ 2026-09-26 加「选择填空」之后是 **5**（11-6）：它多一条硬要求（待选词不能比空少），
+  // 所以它**不在**豁免表里。
+  // 动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里：数字对不上就是在提醒你
   // 「有一个题型的空 data 现在没人管了」。
-  assert.equal(checked.length, 4, `实际只跑到 ${checked.length} 个题型`);
+  assert.equal(checked.length, 5, `实际只跑到 ${checked.length} 个题型`);
 });
 
 test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data 恒为 {}）', () => {

@@ -62,6 +62,11 @@ export const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
   'fill-blank': (
     <Glyph><path d="M4 16.5h16" /><path d="M7 10.5h4" /><path d="M15 10.5h2" /></Glyph>
   ),
+  // ★ 2026-09-26：选择填空 —— 与填空题同一个「空」（那条横线），
+  // 上面多一个小方块落进空里（「把词**拖**进去」这件事的象形）。
+  'choice-blank': (
+    <Glyph><path d="M4 16.5h16" /><path d="M9 4.5h6v4h-6z" /><path d="M12 8.5v4" /><path d="M12 12.5l-2-2" /><path d="M12 12.5l2-2" /></Glyph>
+  ),
   // 问答：三行文字（主观题要写一段）
   'short-answer': (
     <Glyph><path d="M5 7h14" /><path d="M5 12h14" /><path d="M5 17h8" /></Glyph>

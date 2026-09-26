@@ -71,7 +71,11 @@ export {
 export type QuestionType =
   | 'single-choice' | 'true-false' | 'multi-choice' | 'fill-blank' | 'short-answer'
   | 'order' | 'match' | 'categorize'
-  | 'drawing';
+  | 'drawing'
+  // ★ 2026-09-26（教师）：「选择填空」—— 题干与填空题同一条（题干里的空），
+  // 多出一排待选词，学生**拖**它们进空。⚠️ 它与服务端 `QUESTION_TYPES` 的成员
+  // **必须逐字相同**（这个联合是那份清单在前端的投影，不是第二份权威）。
+  | 'choice-blank';
 
 /**
  * 题型清单。**加题弹窗、每张卡片右上角的题型名、学生端的题号旁标签共用这一份。**
@@ -91,6 +95,8 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   /** 能不能自动判分。`true` ⇒ 看板的**抽屉里**会画 ✓/½/✗；`false` ⇒ 只统计作答进度。 */
   graded: boolean;
 }> = [
+  // ★ 2026-09-26：紧挨着填空题排（它就是填空题的一个变体，教师找它时会先看那里）。
+  { value: 'choice-blank', label: '选择填空', hint: '题干里有几个空，下方给出待选词，学生拖词入空', graded: true },
   { value: 'single-choice', label: '单选题', hint: '若干选项，只有一个正确答案', graded: true },
   { value: 'true-false', label: '判断题', hint: '对 / 错两个选项', graded: true },
   { value: 'multi-choice', label: '多选题', hint: '若干选项，正确答案可以不止一个', graded: true },

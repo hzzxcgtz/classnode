@@ -693,10 +693,67 @@ function allowsMissing(data: Record<string, unknown>): boolean {
 }
 
 /**
- * 填空题（单空 + 多空）。
+ * 这道填空题有几个**答案槽** —— 判分时的分母（★ 2026-09-26）。
  *
- * 两个形状的分派判据与 `VALIDATORS` 里那支**逐字一致**（`Array.isArray(data.blanks)` 在不在）——
- * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
+ * ⚠️ **不是「题干里画了几个框」**：那是客户端的事（它读题干里的空分段）。
+ * 这里数的是**教师配了几个答案**，而它才是判分该用的分母 ——
+ * 一份答案都没有的题恒判错（与下面那道「不许落到 0 === 0 全对」的闸同源）。
+ *
+ * 三种历史形状各有各的读法（都是不同时期落库的，一份都不能丢）：
+ *   ① 新：`answers: [['氧气'], ['阳光']]`（每空一份）
+ *   ② 老多空：`blanks: [{ answers: […​] }, …]`
+ *   ③ 老单空：`answers: ['氧气']`（**平铺**的一份）
+ */
+function answerSlotCount(data: Record<string, unknown>): number {
+  if (Array.isArray(data.blanks)) return data.blanks.length;
+  if (hasNestedAnswers(data)) return (data.answers as unknown[]).length;
+  return Array.isArray(data.answers) ? 1 : 0;
+}
+
+/**
+ * `data.answers` 是**新形状**（每空一份 `string[][]`）吗。
+ *
+ * 🔴 判据必须是「**每一个**元素都是数组」，不是「第一个是」——
+ * 教师的坏数据里出现一个 `[]`（M3 那条边界用例就钉着 `[42, null, [], …]` 这一串）
+ * 会让「第一个是数组」判错，于是那份**平铺**的答案表被当成「两个空」：
+ * 第 0 个空的可接受答案变成那个空数组 ⇒ **谁也答不对**。
+ * ⚠️ 而 `acceptableAnswersFor` **必须用同一个判据** —— 两处各判一次就会各错各的。
+ */
+function hasNestedAnswers(data: Record<string, unknown>): boolean {
+  const answers = data.answers;
+  return Array.isArray(answers) && answers.length > 0 && answers.every(Array.isArray);
+}
+
+/** 第 `index` 个空的**可接受答案** —— 三种历史形状都读得出来。 */
+function acceptableAnswersFor(data: Record<string, unknown>, index: number): string[] {
+  const answers = data.answers;
+  // ① 新形状：`answers[index]` 自己就是一份（判据与 `answerSlotCount` 同一个）
+  if (hasNestedAnswers(data)) return readAcceptableAnswers((answers as unknown[])[index]);
+  // ② 老多空：答案住在 `blanks[index].answers` 里
+  if (Array.isArray(data.blanks)) {
+    const blank = data.blanks[index];
+    const inner = (blank && typeof blank === 'object' && !Array.isArray(blank))
+      ? (blank as Record<string, unknown>).answers
+      : undefined;
+    return readAcceptableAnswers(inner);
+  }
+  // ③ 老单空：`answers` 是**平铺**的一份，只有第 0 个空有
+  return index === 0 ? readAcceptableAnswers(answers) : [];
+}
+
+/**
+ * 填空题的判分。
+ *
+ * ★ 2026-09-26：分派判据从**题目数据的形状**（`Array.isArray(data.blanks)`）改成
+ * **作答值的形状**（值自带 `format`：`fill/v1` 带 `text`、`fill-multi/v1` 带 `texts`）。
+ *
+ * 🔴 为什么必须改：迁移把老题的空挪进了题干，`data.blanks` 从此不在库里。
+ * 再按数据分派的话，一道**迁移过的多空题**会被当成单空题判 —— 它去读 `value.text`，
+ * 而客户端写的是 `{ texts: [...] }` ⇒ `undefined` ⇒ **每个学生都判错**，无一处报错。
+ * 按值的形状分派之后，**两边都不再看 `data.blanks`**，也就没有可漂移的地方。
+ *
+ * ⚠️ 顺带一个好处：**老提交**（迁移之前学生存的 `{ text }`）仍然判得对 ——
+ * 它的形状就是「单空」，而单空的可接受答案在新老形状下都读得出来。
  */
 function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance: number | null = null): GradeState {
   // ⚠️ **向后兼容**：`data.blanks` 缺席时走 M3 的单空路径（**形状**不动）。
@@ -708,44 +765,39 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
   // **不过滤空白串**，于是教师的 `[' ', '光合作用']`（能存进库）+ 学生的空提交 = **满分**。
   // ⇒ `['', '光合作用']` 从「空提交算对」变成「算错」。方向是收紧，见
   // `readAcceptableAnswers` 的注释与 `worksheet-grade-m4.test.ts` 里的用例。
-  if (!Array.isArray(data.blanks)) {
-    const answers = readAcceptableAnswers(data.answers);
-    const text = readField(value, 'text');
-    if (typeof text !== 'string') return 'incorrect';
-    const normalized = normalizeFillText(text);
-    // 🔴 `normalizeFillText` **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的
-    // 大小写是语义的一部分，把 `CO2` 判成 `co2` 正确比不判更糟。要多收几种写法请教师
-    // 在 `answers` 里多列几个。
-    // 单空只有一个组成部分 ⇒ **没有部分给分**。
-    return answers.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
-  }
-
-  const blanks = data.blanks;
-  // 🔴 空数组（教师建了题但一个空都没填）⇒ 判错。**不能**落到下面那句「全对」：
-  // `hit === blanks.length` 在空数组上恒真（0 === 0），一道没有任何空的题会拿到满分，
-  // 且全程无报错。
-  if (blanks.length === 0) return 'incorrect';
-
   const texts = readField(value, 'texts');
-  const list = Array.isArray(texts) ? texts : [];
-  let hit = 0;
-  for (const [index, blank] of blanks.entries()) {
-    const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
-      ? ((blank as Record<string, unknown>).answers)
-      : undefined;
-    // ⚠️ 多空这一侧同样要丢掉空白串（同一个洞的第二处），否则「这一空什么都不填」
-    // 会因为 `normalizeFillText(' ') === normalizeFillText('')` 而被算成答对。
-    const acceptable = readAcceptableAnswers(answers);
-    const text = list[index];
-    // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
-    if (acceptable.length === 0 || typeof text !== 'string') continue;
-    const normalized = normalizeFillText(text);
-    if (acceptable.some((answer) => normalizeFillText(answer) === normalized)) hit += 1;
+  if (Array.isArray(texts)) {
+    const total = answerSlotCount(data);
+    // 🔴 一个答案槽都没有（教师建了题但一个空都没填）⇒ 判错。**不能**落到下面那句
+    // 「全对」：`hit === total` 在 total 为 0 时恒真（0 === 0），一道没有任何空的题
+    // 会拿到满分，且全程无报错。
+    if (total === 0) return 'incorrect';
+    let hit = 0;
+    for (let index = 0; index < total; index += 1) {
+      // ⚠️ 每一空都要丢掉空白串（`readAcceptableAnswers` 负责），否则「这一空什么都不填」
+      // 会因为 `normalizeFillText(' ') === normalizeFillText('')` 而被算成答对。
+      const acceptable = acceptableAnswersFor(data, index);
+      const text = texts[index];
+      // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
+      if (acceptable.length === 0 || typeof text !== 'string') continue;
+      const normalized = normalizeFillText(text);
+      if (acceptable.some((answer) => normalizeFillText(answer) === normalized)) hit += 1;
+    }
+    if (hit === total) return 'correct';
+    // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
+    // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
+    return meetsTolerance(hit, total, tolerance) ? 'partial' : 'incorrect';
   }
-  if (hit === blanks.length) return 'correct';
-  // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
-  // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
-  return meetsTolerance(hit, blanks.length, tolerance) ? 'partial' : 'incorrect';
+
+  // 老的值形状（`{ text }`，迁移之前学生存的那些）：只有一个组成部分 ⇒ **没有部分给分**。
+  // 🔴 `normalizeFillText` **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的
+  // 大小写是语义的一部分，把 `CO2` 判成 `co2` 正确比不判更糟。要多收几种写法请教师
+  // 在答案里多列几个。
+  const acceptable = acceptableAnswersFor(data, 0);
+  const text = readField(value, 'text');
+  if (typeof text !== 'string') return 'incorrect';
+  const normalized = normalizeFillText(text);
+  return acceptable.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
 }
 
 /**

@@ -362,6 +362,12 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {/* ★ 2026-09-26：**选择填空**复用同一个作答体（题干里的空 + 每空一份答案都与填空
+            逐字同形），它自己多画一栏「待选词」（见 `FillBlanksBody` 里那一段）。
+            🔴 这里**必须显式写出来**：本页是按 `node.type === '…'` 逐个分派的（不是
+            `Record`），少写一支的后果是**这个题型在编辑页什么都不渲染** ——
+            教师建得出来、却配不了，而屏幕上只是一片空白。 */}
+        {node.type === 'choice-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}

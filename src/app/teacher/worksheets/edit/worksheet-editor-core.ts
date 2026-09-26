@@ -539,6 +539,24 @@ export function writeFillAnswers(text: string): string[] {
 }
 
 /**
+ * 「选择填空」的**待选词** textarea 值（★ 2026-09-26）—— 与上面的答案那份**同一条规矩**：
+ * 一行一个词、**刻意保留空行**（textarea 的换行要靠它，往返才是无损的）。
+ *
+ * ⚠️ 空行由 `sanitizeContentForSave` 在**出网之前**丢掉（见那里）—— 编辑期留着，
+ * 否则「敲一下回车想在下一行接着写」会被当场吃掉。
+ */
+export function readChoicesText(node: WorksheetQuestionNode): string {
+  const raw = node.data.choices;
+  if (!Array.isArray(raw)) return '';
+  return raw.filter((item): item is string => typeof item === 'string').join('\n');
+}
+
+/** 反向的 `readChoicesText`。返回的是**补丁**（与 `writeBlankText` 同形）。 */
+export function writeChoicesText(text: string): Record<string, unknown> {
+  return { choices: text.split('\n') };
+}
+
+/**
  * 去掉一组可接受答案里的空行（非字符串元素也一并丢掉）。
  * 返回 `null` = **一个都没去掉**（调用方据此判断要不要造新对象）。
  */
@@ -581,7 +599,13 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
       delete dropped.points;
       current = dropped;
     }
-    if (current.type !== 'fill-blank') return current;
+    // ★ 2026-09-26：**「选择填空」也走这一支** —— 它的答案与填空逐字同形（每空一份），
+    // 多出来的只有 `choices`（待选词）。
+    // 🔴 少了它，`choice-blank` 的答案**不会被清理**（空行留着 ⇒ 服务端那条
+    // 「每个空至少要有一个可接受的答案」会被一行空白骗过去），而且下面那段
+    // 「新形状逐空清」也跑不到。
+    const isFillLike = current.type === 'fill-blank' || current.type === 'choice-blank';
+    if (!isFillLike) return current;
     const next: Record<string, unknown> = { ...current.data };
     let changed = false;
 
@@ -607,6 +631,14 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
         return { ...(blank as Record<string, unknown>), answers: cleaned };
       });
       if (blanksChanged) { next.blanks = blanks; changed = true; }
+    }
+
+    // 🔴 待选词里的空行必须丢掉：`choices.length` 是**校验**（词不能比空少）与
+    // 「还有哪些词没用」的依据，一个空串会被当成一个词 ⇒ 那道题看起来够用、
+    // 学生却少一个词可拖。
+    if (current.type === 'choice-blank') {
+      const cleaned = withoutEmptyAnswers(next.choices);
+      if (cleaned) { next.choices = cleaned; changed = true; }
     }
 
     if (!changed) return current;

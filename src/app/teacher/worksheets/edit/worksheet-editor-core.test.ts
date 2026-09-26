@@ -107,6 +107,8 @@ import {
   writeMultipleOptions,
   writeOptions,
   writeOrder,
+  readChoicesText,
+  writeChoicesText,
 } from './worksheet-editor-core.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
@@ -1485,6 +1487,32 @@ test('🔴 保存前清理：**新形状**（每空一份）逐空清，不许�
   // 老形状照旧（与从前逐字相同）。
   const legacy = sanitizeContentForSave(contentOf(typed('fill-blank', { answers: ['甲', ''] })));
   assert.deepEqual(legacy.nodes[0].data.answers, ['甲']);
+});
+
+test('🔴 待选词的 textarea 往返：一行一个词，「保留空行」与答案那份同一条规矩', () => {
+  // ⚠️ 编辑期**保留**空行（否则「敲一下回车想在下一行接着写」会被当场吃掉），
+  // 出网之前由 `sanitizeContentForSave` 丢掉。
+  const node = typed('choice-blank', { choices: ['阳光', '水分'] });
+  assert.equal(readChoicesText(node), '阳光\n水分');
+  assert.deepEqual(writeChoicesText('阳光\n\n水分'), { choices: ['阳光', '', '水分'] }, '空行留着');
+  // 坏值 / 缺字段 ⇒ 空串（界面上是一个空框，不是一个崩掉的框）。
+  assert.equal(readChoicesText(typed('choice-blank', {})), '');
+  assert.equal(readChoicesText(typed('choice-blank', { choices: '阳光' })), '');
+  assert.equal(readChoicesText(typed('choice-blank', { choices: [1, '阳光', null] })), '阳光', '非字符串丢掉');
+});
+
+test('🔴 保存前清理：**待选词里的空行必须丢掉**（否则它会被算成一个词）', () => {
+  // 🔴 `choices.length` 是**校验**（词不能比空少）与「还有哪些词没用」的依据 ——
+  // 一个空串会被当成一个词 ⇒ 那道题看起来够用、学生却少一个词可拖。
+  const saved = sanitizeContentForSave(contentOf(
+    typed('choice-blank', { choices: ['阳光', '', '  ', '水分'], answers: [['阳光']] }),
+  ));
+  assert.deepEqual(saved.nodes[0].data.choices, ['阳光', '水分']);
+  // ⚠️ 顺带：**答案那一层同样要清**（`choice-blank` 也走 fill 那一支）。
+  const nested = sanitizeContentForSave(contentOf(
+    typed('choice-blank', { choices: ['阳光'], answers: [['阳光', '']] }),
+  ));
+  assert.deepEqual(nested.nodes[0].data.answers, [['阳光']], '空行去掉、答案留住');
 });
 
 test('🔴 fillShape：三种历史形状都认得出来，写出去的一律是 `nested`', () => {

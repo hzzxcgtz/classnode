@@ -2494,6 +2494,16 @@ tr:hover td {
   max-width: 220px;
 }
 
+/* ★ 2026-09-26：待选词那一栏下面的一句说明（词数必须 ≥ 空数 —— 每个词只能用一次）。
+   ⚠️ 与 `.worksheet-editor-format-hint` 同形（同一个小字灰度），但那个在设计上属于题干区。 */
+.worksheet-editor-blank-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.688rem;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
 .worksheet-editor-blank {
   margin-bottom: 8px;
 }

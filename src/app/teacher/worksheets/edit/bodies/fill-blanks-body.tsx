@@ -6,8 +6,10 @@ import {
   fillShape,
   readBlankAnswers,
   readBlankText,
+  readChoicesText,
   removeBlank,
   writeBlankText,
+  writeChoicesText,
 } from '../worksheet-editor-core';
 
 /**
@@ -51,6 +53,27 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
 
   return (
     <>
+      {/* ★ 2026-09-26：**选择填空**多出来的那一栏 —— 待选词（一行一个）。
+          它排在答案前面：教师先把词表定下来，再逐空填答案。
+          ⚠️ 待选词**是给学生看的**（他要拿它们去拖）⇒ 它**不是**答案键、不剥
+          （`ANSWER_KEYS` 审计里有一条样本钉着这件事）。
+          ⚠️ 词数必须 ≥ 空数（每个词只能用一次）—— 服务端 `VALIDATORS` 会拦，
+          这里给一句**当场**看得到的提示。 */}
+      {node.type === 'choice-blank' && (
+        <label className="worksheet-editor-field">
+          <span>待选词</span>
+          <textarea
+            className="input"
+            rows={2}
+            value={readChoicesText(node)}
+            onChange={event => onDataChange(writeChoicesText(event.target.value))}
+            placeholder={'一行一个待选词，例如：\n阳光\n水分\n空气（可以多写几个当干扰项）'}
+          />
+          <span className="worksheet-editor-blank-hint">
+            学生把这几个词拖进题干里的空，**每个词只能用一次** ⇒ 词不能比空少。
+          </span>
+        </label>
+      )}
       {blanks.map((_, index) => (
         // ⚠️ key 只能是**下标**：空没有 id（服务端按位置读 `texts`），而「删掉第 2 个空」
         // 本来就意味着后面的空整体前移 —— 用下标当 key 与那份协议是同一个语义。

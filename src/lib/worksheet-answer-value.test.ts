@@ -24,6 +24,7 @@ import {
   draftFromValue,
   emptyDraftFor,
   isDraftEmpty,
+  availableChoices,
   isMultiBlank,
   readBlankCount,
   readCategorizeItems,
@@ -612,4 +613,33 @@ test('🔴 题干里有空、又留着老的 `blanks` ⇒ **以题干为准**', 
   // 半途而废的迁移 / 手工改过的库都可能长这样。相加或取大都会让这道题凭空多出几格。
   const node = fillInlineNode(2, { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }, { answers: ['丙'] }] });
   assert.equal(readBlankCount(node), 2, '题干是唯一真源');
+});
+
+// ── 选择填空：待选词（★ 2026-09-26，教师「每个词只能用一次」）────────────────
+
+test('🔴 availableChoices：用掉的词从待选区**消失**（教师裁定「每个词只能用一次」）', () => {
+  const choices = ['阳光', '水分', '空气'];
+  assert.deepEqual(availableChoices(choices, ['', '']), ['阳光', '水分', '空气'], '一个都没用 ⇒ 原样');
+  assert.deepEqual(availableChoices(choices, ['阳光', '']), ['水分', '空气'], '用掉一个 ⇒ 少一个');
+  assert.deepEqual(availableChoices(choices, ['阳光', '空气']), ['水分']);
+  assert.deepEqual(availableChoices(choices, ['阳光', '水分', '空气']), [], '都用完了 ⇒ 空');
+});
+
+test('🔴 availableChoices：待选词里**有重复**时按**出现次数**扣，不是按名字扣', () => {
+  // 教师写两个「阳光」（干扰项故意重复）时，学生用掉一个之后另一个还得留着 ——
+  // 按名字扣会把它一起吃掉，而学生看到的只是「词少了」。
+  const choices = ['阳光', '阳光', '水分'];
+  assert.deepEqual(availableChoices(choices, ['阳光']), ['阳光', '水分'], '用掉一个「阳光」，另一个还在');
+  assert.deepEqual(availableChoices(choices, ['阳光', '阳光']), ['水分']);
+});
+
+test('availableChoices：学生填了词表外的文字（旧作答 / 手改过的库）⇒ 待选区照常全给', () => {
+  // 那种文字**不该占掉**任何一个待选词 —— 否则学生会看到一个凭空少掉的词表。
+  assert.deepEqual(availableChoices(['阳光', '水分'], ['一个不在表里的词']), ['阳光', '水分']);
+});
+
+test('availableChoices：空表 / 坏值不抛', () => {
+  assert.deepEqual(availableChoices([], []), []);
+  assert.deepEqual(availableChoices(undefined as unknown as string[], []), []);
+  assert.deepEqual(availableChoices(['a'], undefined as unknown as string[]), ['a']);
 });

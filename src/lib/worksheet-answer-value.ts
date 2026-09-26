@@ -254,6 +254,36 @@ function readStringList(raw: unknown): string[] {
 }
 
 /**
+ * 「选择填空」的**待选词**里，此刻还有哪些是学生能用的（★ 2026-09-26）。
+ *
+ * 教师裁定：「一个待选词被拖进某个空之后，**从待选区消失**（每个词只能用一次）。」
+ *
+ * 🔴 **它是派生出来的，不是新状态。** 存一份「已用」的清单就是第二份真源 ——
+ * 撤销、换题、从服务端读回作答值（跨设备）三条路上都会与它对不上，
+ * 而症状是「词表里少了一个词，但怎么点都用不了」。
+ * 判据只有一条：**某个空的 `texts` 里已经有它**。
+ *
+ * ⚠️ 按**出现次数**扣，不按名字扣：教师写两个「阳光」当干扰项时，学生用掉一个之后
+ * 另一个还得留着。按名字扣会把它一起吃掉。
+ * ⚠️ 学生填了**词表之外**的文字（旧作答 / 手改过的库）**不占**任何待选词 ——
+ * 否则学生看到一个凭空少掉的词表。
+ */
+export function availableChoices(choices: string[], texts: string[]): string[] {
+  if (!Array.isArray(choices)) return [];
+  const used = Array.isArray(texts) ? texts.slice() : [];
+  const out: string[] = [];
+  choices.forEach((choice) => {
+    const at = used.indexOf(choice);
+    if (at >= 0) {
+      used.splice(at, 1);   // 这个「名额」被用掉了，但只扣一次
+      return;
+    }
+    out.push(choice);
+  });
+  return out;
+}
+
+/**
  * 读**按位的**一串文本（多空填空的 `texts`）。
  *
  * 🔴 它与 `readStringList` **刻意不同**，而且这个区别是致命的：

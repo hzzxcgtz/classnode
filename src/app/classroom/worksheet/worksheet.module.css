@@ -853,6 +853,39 @@
   opacity: .65;
 }
 
+/* ─────────────────── 选择填空：待选词（★ 2026-09-26）─────────────────────── */
+/* 题干里的空由 `PromptText` 画成**落点**（槽），待选词在这一条里。
+   ⚠️ 待选词彼此**换行排**（`flex-wrap`）：一道题可能给七八个词，窄屏上排不下。 */
+.choicePool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.choiceWord {
+  padding: 7px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #1e293b;
+  font-size: .88rem;
+  font-weight: 600;
+  /* 触屏命中区的下限（与 `.orderItem` / `.poolItem` 同一条：老 iPad 上手指更粗）。 */
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* 选中（手里拿着）的那个词。⚠️ 与 `.dropActive`（手指底下的落点）分得开：
+   这一条说的是「我拿着什么」，那一条说的是「它要落到哪」。 */
+.choiceWordPicked {
+  border-color: var(--ws-accent);
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+
 /* ───────────────────────── 归类题 ─────────────────────────────────────── */
 
 .categorizeWrap { margin-top: 4px; }

@@ -128,6 +128,11 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
   // 那些输入框由**题干那一份渲染器**画（`PromptText` 的 `blanks`，见 `worksheet-panel.tsx`）。
   // ⚠️ 这里仍然保留 `FillBody`，但它**只在题干里还没有空时**才画东西（临时桥，
   // 见它的文件头）—— 迁移把老题的空挪进题干之后，这一支就没人走了。
+  // ★ 2026-09-26：**选择填空**的作答**跨了题干与题干下方**（空在题干里、待选词在下面），
+  // 而拖拽的手势状态必须在一个组件里 ⇒ 整块由 `ChoiceBlankAnswer` 接管，
+  // 由**面板**渲染（见 `worksheet-panel.tsx` 里那一条分支）。
+  // 🔴 这里**不能**再画一份：那会让待选词出现两组，而两组各有一份选中态。
+  if (node.type === 'choice-blank') return null;
   if (node.type === 'fill-blank') {
     return (
       <FillBody

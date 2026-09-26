@@ -42,9 +42,25 @@ export interface PromptTextProps {
 export interface PromptBlankBinding {
   /** 每个空的当前值（按从左到右）。长度不足时缺的那几格当空串。 */
   values: string[];
-  /** 第 `index` 个空（**从 0 起、从左到右**）被改了。 */
+  /** 第 `index` 个空（**从 0 起、从左到右**）被改了。⚠️ 落点模式下**不会**被调用（不许打字）。 */
   onChange: (index: number, value: string) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-26：**落点模式**（「选择填空」）—— 空不是一个能打字的输入框，
+   * 而是一个**等着被拖入的槽**。
+   *
+   * 🔴 为什么是同一个渲染器的另一种模式、而不是另写一份：题干里那几个空的位置
+   * 与切分逻辑只有一段代码（`runs` 的分段），另写一份就是本仓最防的那种分叉 ——
+   * 症状是「填空题的空在这个位置、选择填空的空在那个位置」。
+   */
+  drop?: {
+    /** 第 `index` 个空的落点 id（写进 `data-drop-id`，拖拽那一层按它找人）。 */
+    idOf: (index: number) => string;
+    /** 点了这个空（点选那一条路：先点词、再点空）。 */
+    onPlace: (index: number) => void;
+    /** 此刻「手里拿着」的那个词 —— 有值时把空格点亮，告诉学生「可以放这儿」。 */
+    pending: string | null;
+  };
 }
 
 export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps) {
@@ -59,6 +75,35 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
       {runs.map((run) => {
         if (isBlankRun(run)) {
           blankIndex += 1;
+          if (blanks && blanks.drop) {
+            const index = blankIndex;
+            const filled = (blanks.values[index] ?? '') !== '';
+            // 落点：一个**槽**，不是输入框（学生不许在这里打字 —— 词只能从待选区来）。
+            // ⚠️ 宽度取那段占位的长度，与普通填空的空**同一套版面**。
+            return (
+              <span
+                key={run.start}
+                data-drop-id={blanks.drop.idOf(index)}
+                aria-label={`第 ${index + 1} 空`}
+                onClick={blanks.disabled ? undefined : () => blanks.drop?.onPlace(index)}
+                style={{
+                  display: 'inline-block',
+                  minWidth: `${Math.max(3, run.end - run.start)}ch`,
+                  padding: '0 6px',
+                  margin: '0 2px',
+                  borderBottom: '1.5px solid #94a3b8',
+                  background: filled ? '#eef2ff' : 'transparent',
+                  color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  verticalAlign: 'baseline',
+                  cursor: blanks.disabled ? 'default' : 'pointer',
+                }}
+              >
+                {filled ? blanks.values[index] : '\u00a0'}
+              </span>
+            );
+          }
           if (blanks) {
             const index = blankIndex;
             return (

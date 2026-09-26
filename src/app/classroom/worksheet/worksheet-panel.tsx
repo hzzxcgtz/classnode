@@ -24,6 +24,7 @@ import { useModuleViewport } from '../shell/use-module-viewport';
 // ★ M4a/D2：作答区**只有一份实现**（`questions/index.tsx` 的分派器 + 6 个作答体）。
 // 教师端的「学生端预览」渲染的是下面这个 `WorksheetQuestionList`，所以它自动用上同一份。
 import { QuestionInput } from './questions';
+import { ChoiceBlankAnswer } from './questions/choice-blank-answer';
 import {
   questionDisplayState,
   useWorksheetAnswers,
@@ -339,6 +340,18 @@ export function WorksheetQuestionList({
               ) : null}
             </div>
 
+            {/* ★ 2026-09-26：「选择填空」的作答**跨了题干与题干下方**（空在题干里、
+                待选词在下面），而**拖拽的手势状态必须在一个组件里**（见
+                `choice-blank-answer.tsx` 的文件头）⇒ 这一段整个交给它。
+                🔴 所以这里要**跳过**下面那两块 —— 否则题干会画两遍。 */}
+            {node.type === 'choice-blank' ? (
+              <ChoiceBlankAnswer
+                node={node}
+                draft={fillDraft ?? { kind: 'fill', texts: [] }}
+                disabled={controlsDisabled}
+                onChange={(next) => onChange?.(node, next)}
+              />
+            ) : (<>
             {/* ★ 2026-09-26：题干的渲染**只有这一份实现**了（`PromptText`）。
                 在此之前这里画一次、教师编辑页折叠时另画一次，两份都不会因为另一份改了
                 而报错。样式（粗细 / 斜 / 下划线 / 着重号 / 颜色）由 `promptRunStyle` 给，
@@ -371,6 +384,7 @@ export function WorksheetQuestionList({
               onChange={onChange}
               disabled={controlsDisabled}
             />
+            </>)}
 
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比

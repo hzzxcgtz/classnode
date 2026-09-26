@@ -2394,9 +2394,14 @@ tr:hover td {
   margin-bottom: 8px;
 }
 
+/* ★ 2026-09-26（教师：「没有对齐啊」）：`align-items` 从 `flex-start` 改成 `center`。
+   原来是**每个控件各自顶对齐**，而这一行里四样东西高度各不相同（正确答案那个小圆点标签
+   ≈22px、输入框更高、配图按钮与删除按钮又各是一档）⇒ 它们的文字基线相差近 10px，
+   看着就是参差的。改成居中之后整行共一条中线。
+   ⚠️ 选项带配图时这一行会变高，居中仍然对（图在 `.worksheet-editor-option-content` 里）。 */
 .worksheet-editor-option {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 
@@ -3424,14 +3429,6 @@ tr:hover td {
   min-width: 0;
 }
 
-.worksheet-editor-rich-label {
-  display: block;
-  margin-bottom: 5px;
-  color: #64748b;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
 /* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
    工具条从**独立的一个盒子**改成**那个框的顶条**（`.worksheet-editor-rich-box` 的第一行）：
    去掉自己的边框与圆角（只留上面两个角跟着框走）、底色改成框内的一条分隔带。
@@ -3463,6 +3460,16 @@ tr:hover td {
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* ★ 2026-09-26（教师）：「『重』字下面带一个着重号」—— 这个图标**用真功能画**：
+   与正文里的着重号是同一对属性（`promptRunStyle` 里那两行），所以图标显示成什么样，
+   正文里就是什么样。⚠️ 与 `<i>I</i>` / `<u>U</u>` 同一条纪律：图标自证，别改成纯字符串。 */
+.worksheet-editor-emphasis-icon {
+  -webkit-text-emphasis: '•';
+  -webkit-text-emphasis-position: under;
+  text-emphasis: '•';
+  text-emphasis-position: under;
 }
 
 /* ★ 2026-09-26：四个格式按钮里那两个**自证**的图标 —— `<i>I</i>` 是斜的、

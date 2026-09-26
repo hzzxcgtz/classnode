@@ -171,7 +171,17 @@ function OptionImageButton({ optionKey, hasImage, onChange }: {
           if (file) void upload(file);
           event.target.value = '';
         }} />
-        {uploading ? '…' : hasImage ? '换图' : '配图'}
+        {/* ★ 2026-09-26（教师：「用图标」）：原来这里是「配图 / 换图」两个字的按钮，
+            在一行四个控件里显得又长又抢眼。换成一个小图标（挂在 `title` 上的说明没变，
+            读屏与悬停都还读得到「给选项 X 添加图片」）。
+            ⚠️ `stroke="currentColor"`：它的颜色要跟着按钮的 `color` 走（hover / disabled 都算）。 */}
+        {uploading ? '…' : (
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="5.6" cy="6.3" r="1.25" fill="currentColor" />
+            <path d="M2.6 12.2l3.5-3.5 2.3 2.3 1.9-1.9 3.1 3.1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </label>
       {hasImage && <button type="button" onClick={() => onChange()} title={`移除选项 ${optionKey} 的图片`}>移除</button>}
       {error && <span role="alert">{error}</span>}

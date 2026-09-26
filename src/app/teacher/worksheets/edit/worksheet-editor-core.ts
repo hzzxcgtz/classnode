@@ -365,6 +365,16 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     // 其余题型不动：规格 §3-V 那条「第一批的题恒为 keyboard」继续成立，
     // 改它的是教师逐题点的那一个开关（`updateInputMode`）。
     inputMode: type === 'drawing' ? 'handwriting' : 'keyboard',
+    // ★ 2026-09-26（教师）：「默认不勾选」—— 新题的「允许自动评分」开关**默认关**。
+    //
+    // 🔴 这一条**必须写进数据**，不能只是界面上不勾：服务端判分的判据是
+    // `autoGrade === false` 才不判（见 `services/worksheet-questions.ts` 的 `judge`），
+    // 而「没有这个键」= 照常判分。只改界面的话，教师看着开关是关的、分却照给。
+    // ⚠️ 只给**判分题型**写（问答题/绘图题本来就不判分，给它们写是噪音，
+    // 与 `normalizeNode` 那条「有值才写」同一条纪律）。
+    // ⚠️ **已有题目一个字不动**：这条只影响之后新建的题（老题的键本来就存在或缺席，
+    // 上面那个默认值不回溯）。
+    ...(isGradedQuestionType(type) ? { autoGrade: false as const } : {}),
     data: {},
     children: [],
   };

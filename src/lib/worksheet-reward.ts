@@ -104,6 +104,27 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
  * 「星星 ⭐」上、步长框里写的是 `1`，§8.2 的学生端版式图顶栏画的也是 `⭐×3` ——
  * 三处画的是同一个默认。改它等于改所有**已经存在**的学习单在学生眼前的样子。
  */
+/**
+ * 逐题分值旁边那个**量词** —— 跟着学习单的奖励档走。
+ *
+ * ★ 2026-09-26（教师）：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
+ * **不能一直使用「分」**。」
+ *
+ * 🔴 与 `REWARD_STYLE_OPTIONS[].unit` **不是同一个东西**，别合并：
+ *   · `unit` 是**步长**（学习单设置里「每答对一题得几 X」）的量词，而「对错」那一档
+ *     **没有步长**（它的 `unit` 是空串，规格 §9.2）；
+ *   · 这个是**逐题分值**的量词，而逐题分值**每一档都有** —— 「对错」档也要给个说法
+ *     （分数是它背后的东西，学生看到的只是 ✓/✗），所以它回落到「分」。
+ * ⇒ 四档里的两档有专属量词，另外两档（对错 / 分数）都是「分」。
+ *
+ * ⚠️ 「星星」取「颗」而不是「个」：教师原话是「几颗五角星」。
+ */
+export function pointsUnit(style: RewardStyle): string {
+  if (style === 'star') return '颗';
+  if (style === 'flower') return '朵';
+  return '分';
+}
+
 export const DEFAULT_REWARD_STYLE: RewardStyle = 'star';
 export const DEFAULT_REWARD_STEP = 1;
 /** 全对档步长的可选项（规格 §9.2 定死 1 / 2 / 3 / 5）。 */

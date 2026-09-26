@@ -104,7 +104,7 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -139,6 +139,13 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * **不要**拿它去预填输入框 —— 预填等于把继承拍成了副本（规格 §12 裁定 4 的理由）。
    */
   inheritedPoints: { full: number; half: number };
+  /**
+   * ★ 2026-09-26（教师）：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
+   * **不能一直使用「分」**。」—— 逐题分值的**量词**，由学习单的奖励档决定
+   *（`pointsUnit`，它有纯函数用例）。⚠️ 由上层算好传进来：卡片只负责画，
+   * 而「哪一档配哪个量词」是一个能被 `node --test` 钉住的判据。
+   */
+  pointsUnit: string;
   /** 这一题那两格里**还没进 reducer** 的文本（`useWorksheetEditor` 持有，见 `PointsRow`）。 */
   rejectedPointInput: RejectedPointInput | undefined;
   /**
@@ -418,6 +425,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           heading={heading}
           node={node}
           inheritedPoints={inheritedPoints}
+          pointsUnit={pointsUnit}
           rejectedInput={rejectedPointInput}
           onPointsInputChange={onPointsInputChange}
           onPointsChange={onPointsChange}
@@ -512,11 +520,13 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
  * （2026-09-24 审查实机复现的「界面在说假话」）。它带**签名**，
  * `node.points` 一变（撤销 / 恢复草稿 / 换题）就自动失效。
  */
-function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInputChange, onPointsChange }: {
+function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, onPointsInputChange, onPointsChange }: {
   /** 两级题号 —— 只用于两个输入框的 `aria-label`（读屏要能说清是哪一题的分值）。 */
   heading: string;
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
+  /** 见 `QuestionCard` 上那一条（量词跟着学习单的奖励档走）。 */
+  pointsUnit: string;
   /** 屏幕上还没进 reducer 的那两格文本（父层持有，因为 `save()` 要看得见它）。 */
   rejectedInput: RejectedPointInput | undefined;
   onPointsInputChange: (input: RejectedPointInput | null) => void;
@@ -576,7 +586,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
           <strong>得分规则</strong>
           <span>留空时跟随学习单的默认分值，也可以为本题单独设置。</span>
         </div>
-        <span>最高 {fullText || inheritedPoints.full} 分</span>
+        <span>最高 {fullText || inheritedPoints.full} {pointsUnit}</span>
       </div>
       <div className="worksheet-editor-points-grid">
         <label className="worksheet-editor-points-field">
@@ -594,7 +604,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
               aria-label={`${heading} 全对得分`}
               onChange={event => commit('full', event.target.value)}
             />
-            <b>分</b>
+            <b>{pointsUnit}</b>
           </span>
         </label>
         <label className="worksheet-editor-points-field">
@@ -612,7 +622,7 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
               aria-label={`${heading} 部分给分`}
               onChange={event => commit('half', event.target.value)}
             />
-            <b>分</b>
+            <b>{pointsUnit}</b>
           </span>
         </label>
       </div>

@@ -216,6 +216,30 @@ test('异值 updatePrompt 造新对象，且新内容正确', () => {
   assert.equal(next.past.length, 1);
 });
 
+// ── 1a. 新题的「允许自动评分」默认关（★ 2026-09-26，教师）──────────────
+
+test('🔴 新题的「允许自动评分」默认**关**，而且这个默认值必须写进数据', () => {
+  // 教师原话：「默认不勾选」。
+  //
+  // 🔴 关键在于**不能只改界面**：服务端判分的判据是 `autoGrade === false` 才不判
+  //（`services/worksheet-questions.ts` 的 `judge`），而「没有这个键」= **照常判分**。
+  // 只把开关画成关的 ⇒ 教师看着是关的、分却照给，而且两边都不报错。
+  const choice = newQuestion('single-choice');
+  assert.equal(choice.autoGrade, false, '新题必须把 `false` 写进数据');
+  assert.equal(gradesOnSubmit(choice), false, '于是它默认不判分');
+  // ⚠️ 不判分的题型不写这个键（问答题/绘图题本来就不判分 —— 写了是噪音，
+  // 与 `normalizeNode` 那条「有值才写」同一条纪律）。
+  assert.equal('autoGrade' in newQuestion('short-answer'), false);
+  assert.equal('autoGrade' in newQuestion('drawing'), false);
+});
+
+test('新题默认关**不回溯**：老题里没有这个键的仍然照常判分', () => {
+  // 这条默认值只影响之后新建的题 —— 改它的时候最容易犯的错是「顺手把判分也改了」，
+  // 而那是**静默把已有学习单变成不判分**。
+  const legacy = { id: 'q_old', type: 'single-choice', prompt: '旧题', inputMode: 'keyboard', data: {}, children: [] } as unknown as WorksheetQuestionNode;
+  assert.equal(gradesOnSubmit(legacy), true, '老题（没有这个键）不变');
+});
+
 // ── 1b. `updatePrompt` 带 `data`：题干与它的行内格式**一次改完**（★ 2026-09-26）──
 //
 // 🔴 为什么必须是一个 action：所见即所得编辑器敲**一个字**同时改了 `prompt` 与

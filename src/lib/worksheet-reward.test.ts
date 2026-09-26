@@ -29,6 +29,7 @@ import {
   REWARD_STEPS,
   REWARD_STYLE_OPTIONS,
   type RewardScale,
+  pointsUnit,
 } from './worksheet-reward.ts';
 
 /**
@@ -229,4 +230,29 @@ test('累计 = 每题之和：同一份配置下，逐个求和的桶与逐步�
   const summed = scores.reduce<number>((sum, score) => sum + rewardAmount(score, star), 0);
   assert.equal(running, summed);
   assert.equal(running, 11, '2 + 0 + 5 + 0 + 1 + 3（`null` 那题既不画也不加）');
+});
+
+// ── 逐题分值的量词（★ 2026-09-26，教师）────────────────────────────────
+
+test('🔴 pointsUnit：量词跟着学习单的奖励档走 —— 不能一直是「分」', () => {
+  // 教师原话：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
+  // **不能一直使用「分」**。」
+  assert.equal(pointsUnit('star'), '颗', '教师原话是「几颗五角星」—— 不是「个」');
+  assert.equal(pointsUnit('flower'), '朵');
+  assert.equal(pointsUnit('points'), '分');
+  // ⚠️ 「对错」档**也**要有个说法：它的逐题分值照样存在（只是学生看到的不是数字），
+  // 所以它回落「分」而不是空串 —— 空串会让界面上出现一个光秃秃的数字。
+  assert.equal(pointsUnit('correctness'), '分');
+});
+
+test('pointsUnit 与 REWARD_STYLE_OPTIONS 的 `unit` 是**两件事**（别合并）', () => {
+  // `unit` 是**步长**的量词，而「对错」那一档根本没有步长（空串）；
+  // `pointsUnit` 是**逐题分值**的量词，四档都有。
+  const correctness = REWARD_STYLE_OPTIONS.find(option => option.value === 'correctness');
+  assert.equal(correctness?.unit, '', '对错档没有步长 —— 所以它不能直接拿来当分值的量词');
+  assert.equal(pointsUnit('correctness'), '分', '而分值的量词必须有个说法');
+  // 星星那一档两个值**刻意不同**：步长沿用规格 §9.2 的「个」，分值是教师原话的「颗」。
+  const star = REWARD_STYLE_OPTIONS.find(option => option.value === 'star');
+  assert.equal(star?.unit, '个');
+  assert.equal(pointsUnit('star'), '颗');
 });

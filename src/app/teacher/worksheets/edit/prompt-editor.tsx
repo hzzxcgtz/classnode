@@ -107,7 +107,10 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'bold', label: 'B', title: '加粗' },
   { key: 'italic', label: <i>I</i>, title: '斜体' },
   { key: 'underline', label: <u>U</u>, title: '下划线' },
-  { key: 'emphasis', label: '重', title: '着重号（字下加点）' },
+  // ⚠️ 这个图标**自带着重号**（用真功能画的，见 `globals.css` 的
+  // `.worksheet-editor-emphasis-icon`）—— 与 `<i>I</i>` / `<u>U</u>` 同一条：
+  // 图标自己就是那个样子。教师原话：「『重』字下面带一个着重号」。
+  { key: 'emphasis', label: <span className="worksheet-editor-emphasis-icon">重</span>, title: '着重号（字下加点）' },
 ];
 
 export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEditorProps) {
@@ -307,7 +310,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
 
   return (
     <div className="worksheet-editor-rich-field">
-      <span className="worksheet-editor-rich-label">题干</span>
+      {/* ★ 2026-09-26（教师）：「这个有点多余」—— 这张卡的 section 头已经写着
+          「题目内容 / 写清学生需要完成什么」，下面再挂一个「题干」是同一句话说两次。
+          （原来的 `.worksheet-editor-rich-label` 也一并从 CSS 里删了。） */}
       {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
           ⇒ 工具条与编辑区收进**同一个框**：框顶那一条是工具，下面就是正文（Word / 问卷星
           都是这个样子）。提示语挪到**框外面**去 —— 它原来是夹在两者中间的那一条，

@@ -308,100 +308,107 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   return (
     <div className="worksheet-editor-rich-field">
       <span className="worksheet-editor-rich-label">题干</span>
-      <div
-        className="worksheet-editor-formatbar"
-        aria-label="题干文字格式"
-        // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
-        onMouseDownCapture={() => {
-          const el = editableRef.current;
-          pendingRangeRef.current = el ? selectedRange(el) : null;
-        }}
-      >
-        {BOOLEAN_BUTTONS.map(button => (
-          <button
-            key={button.key}
-            type="button"
-            className={toolbar[button.key] ? 'is-active' : ''}
-            // ⚠️ 用 `onMouseDown` 而不是 `onClick`：**点按钮那一下会把输入框的焦点与选区
-            // 一起拿走**，等 `onClick` 跑到的时候 `selectedRange` 已经是空了 ——
-            // 症状是「选中一段点 B 没反应」。`preventDefault` 保住选区（而 not 保焦点）。
-            onMouseDown={(event) => {
-              event.preventDefault();
-              applyToSelection({ [button.key]: !toolbar[button.key] } as Partial<Record<PromptBooleanKey, boolean>>);
-            }}
-            aria-pressed={toolbar[button.key]}
-            title={button.title}
-          >
-            {button.label}
-          </button>
-        ))}
-        {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
-            ⚠️ 触发按钮上**不能**加 `preventDefault` 那一套：它会把下拉一起按死
-            （2026-09-26 就是这么坏的）。选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
-        <div className="worksheet-editor-color-control" ref={colorBoxRef}>
-          <button
-            type="button"
-            className="worksheet-editor-color-trigger"
-            onClick={() => setColorOpen(open => !open)}
-            aria-haspopup="listbox"
-            aria-expanded={colorOpen}
-            aria-label="题干文字颜色"
-          >
-            <span>文字颜色</span>
-            <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
-          </button>
-          {colorOpen && (
-            <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
-              {WORKSHEET_TEXT_COLORS.map(color => (
-                <button
-                  key={color.value}
-                  type="button"
-                  role="option"
-                  aria-selected={toolbar.color === color.value}
-                  className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
-                  onClick={() => applyToSelection({ color: color.value })}
-                >
-                  <b style={{ backgroundColor: color.value }} aria-hidden="true" />
-                  <span>{color.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+      {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
+          ⇒ 工具条与编辑区收进**同一个框**：框顶那一条是工具，下面就是正文（Word / 问卷星
+          都是这个样子）。提示语挪到**框外面**去 —— 它原来是夹在两者中间的那一条，
+          正是「割裂感」的一部分。 */}
+      <div className="worksheet-editor-rich-box">
+        <div
+          className="worksheet-editor-formatbar"
+          aria-label="题干文字格式"
+          // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
+          onMouseDownCapture={() => {
+            const el = editableRef.current;
+            pendingRangeRef.current = el ? selectedRange(el) : null;
+          }}
+        >
+          {BOOLEAN_BUTTONS.map(button => (
+            <button
+              key={button.key}
+              type="button"
+              className={toolbar[button.key] ? 'is-active' : ''}
+              // ⚠️ 用 `onMouseDown` 而不是 `onClick`：**点按钮那一下会把输入框的焦点与选区
+              // 一起拿走**，等 `onClick` 跑到的时候 `selectedRange` 已经是空了 ——
+              // 症状是「选中一段点 B 没反应」。`preventDefault` 保住选区（而 not 保焦点）。
+              onMouseDown={(event) => {
+                event.preventDefault();
+                applyToSelection({ [button.key]: !toolbar[button.key] } as Partial<Record<PromptBooleanKey, boolean>>);
+              }}
+              aria-pressed={toolbar[button.key]}
+              title={button.title}
+            >
+              {button.label}
+            </button>
+          ))}
+          {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
+              ⚠️ 触发按钮上**不能**加 `preventDefault` 那一套：它会把下拉一起按死
+              （2026-09-26 就是这么坏的）。选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
+          <div className="worksheet-editor-color-control" ref={colorBoxRef}>
+            <button
+              type="button"
+              className="worksheet-editor-color-trigger"
+              onClick={() => setColorOpen(open => !open)}
+              aria-haspopup="listbox"
+              aria-expanded={colorOpen}
+              aria-label="题干文字颜色"
+            >
+              <span>文字颜色</span>
+              <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
+            </button>
+            {colorOpen && (
+              <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
+                {WORKSHEET_TEXT_COLORS.map(color => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    role="option"
+                    aria-selected={toolbar.color === color.value}
+                    className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
+                    onClick={() => applyToSelection({ color: color.value })}
+                  >
+                    <b style={{ backgroundColor: color.value }} aria-hidden="true" />
+                    <span>{color.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <label className="worksheet-editor-image-upload">
+            <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
+              const file = event.target.files?.[0];
+              if (file) void uploadImage(file);
+              event.target.value = '';
+            }} />
+            {uploading ? '上传中…' : imageUrl ? '更换图片' : '添加图片'}
+          </label>
         </div>
-        <label className="worksheet-editor-image-upload">
-          <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
-            const file = event.target.files?.[0];
-            if (file) void uploadImage(file);
-            event.target.value = '';
-          }} />
-          {uploading ? '上传中…' : imageUrl ? '更换图片' : '添加图片'}
-        </label>
+        {/*
+          🔴 **一个子节点都不挂**（约束 1）：内容全由 `renderRunsInto` 用 JS 写。
+          React 只认 `data-*` 那几个属性（占位符靠它们驱动 CSS），从不碰 children。
+        */}
+        <div
+          ref={editableRef}
+          className="worksheet-editor-prompt-input"
+          contentEditable
+          role="textbox"
+          aria-multiline="true"
+          aria-label="题干"
+          data-empty={node.prompt.trim() ? undefined : '1'}
+          data-placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
+          onInput={handleInput}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={(event) => {
+            composingRef.current = false;
+            // 拼字结束那一下 `onInput` 可能已经在标记清掉之前跑过了 ⇒ 这里补一次。
+            handleInput(event);
+          }}
+        />
       </div>
-      {/* ⚠️ 没选中时给一句为什么按不动（裁定 ② 的代价：这些按钮没有第二种含义）。 */}
+      {/* ⚠️ 没选中时给一句为什么按不动（裁定 ② 的代价：这些按钮没有第二种含义）。
+          放在**框外面**：它夹在工具条与正文中间的话，那个框就不像一个整体了。 */}
       <p className="worksheet-editor-format-hint">
-        {toolbar.hasSelection ? '格式只作用于选中的那一段文字。' : '先选中要设置格式的文字，再点上面的按钮。'}
+        {toolbar.hasSelection ? '格式只作用于选中的那一段文字。' : '先选中要设置格式的文字，再点上面工具栏里的按钮。'}
       </p>
-      {/*
-        🔴 **一个子节点都不挂**（约束 1）：内容全由 `renderRunsInto` 用 JS 写。
-        React 只认 `data-*` 那几个属性（占位符靠它们驱动 CSS），从不碰 children。
-      */}
-      <div
-        ref={editableRef}
-        className="worksheet-editor-prompt-input"
-        contentEditable
-        role="textbox"
-        aria-multiline="true"
-        aria-label="题干"
-        data-empty={node.prompt.trim() ? undefined : '1'}
-        data-placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
-        onInput={handleInput}
-        onCompositionStart={() => { composingRef.current = true; }}
-        onCompositionEnd={(event) => {
-          composingRef.current = false;
-          // 拼字结束那一下 `onInput` 可能已经在标记清掉之前跑过了 ⇒ 这里补一次。
-          handleInput(event);
-        }}
-      />
       {imageUrl && (
         <div className="worksheet-editor-upload-preview">
           <img src={worksheetAssetUrl(imageUrl)} alt="题干配图预览" />

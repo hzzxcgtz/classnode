@@ -3432,15 +3432,18 @@ tr:hover td {
   font-weight: 600;
 }
 
+/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
+   工具条从**独立的一个盒子**改成**那个框的顶条**（`.worksheet-editor-rich-box` 的第一行）：
+   去掉自己的边框与圆角（只留上面两个角跟着框走）、底色改成框内的一条分隔带。
+   ⚠️ 它现在**不是**一个独立的浮层了 —— 别再给它加 `border-radius: 8px` 或外边距。 */
 .worksheet-editor-formatbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 8px;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e6ebf5;
+  border-radius: 8px 8px 0 0;
   background: #f8fafc;
 }
 
@@ -3486,7 +3489,8 @@ tr:hover td {
    裁定 ②（没选中 ⇒ 什么都不做）的代价是这些按钮**只有一种含义**，
    所以必须有一句话把它说出来 —— 否则教师点了没反应只会以为坏了。 */
 .worksheet-editor-format-hint {
-  margin: 0 0 6px;
+  /* ⚠️ 它在框**下面**（原来夹在工具条与正文中间 —— 那是「割裂感」的一部分）。 */
+  margin: 6px 0 0;
   font-size: 0.688rem;
   line-height: 1.5;
   color: #94a3b8;
@@ -3499,11 +3503,16 @@ tr:hover td {
    ② 空的时候 Safari 里点不进去，靠 min-height + `[data-empty]::before` 撑住；
    ③ 光标颜色要显式给（正文颜色由每段的行内样式决定，默认光标色会跟着变）。
    ⚠️ 写 `white-space: pre-wrap` 与 `.prompt` 一致：换行就是换行（题面是预格式文本）。 */
+/* ★ 2026-09-26：题干那个**所见即所得**的输入区（原来的 `<textarea>`）。
+   🔴 它现在**没有自己的边框**了 —— 外面那个 `.worksheet-editor-rich-box` 才是框，
+   它是框里的正文（与工具条同框）。
+   ⚠️ 它是 contenteditable，所以两件事与 textarea 不同：
+   ① `min-height` 顶替 `rows=3`；⚠️ `:empty` 用不上（这个框**总有一个空文本节点**，
+      见 `renderRunsInto`），占位符走 `data-empty` 那个属性；
+   ② 光标颜色要显式给（正文颜色由每段的行内样式决定，默认光标色会跟着变）。 */
 .worksheet-editor-prompt-input {
   min-height: 72px;
   padding: 9px 11px;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
   background: #fff;
   color: #1e293b;
   font: inherit;
@@ -3514,11 +3523,24 @@ tr:hover td {
   word-break: break-word;
   box-sizing: border-box;
   caret-color: #1e293b;
+  /* ⚠️ 焦点环**不在这里**：它是框里的一部分，环要画在整框上（`.worksheet-editor-rich-box:focus-within`），
+     否则点进去时只亮半截，那个框看着又散开了。 */
+  outline: none;
 }
 
-.worksheet-editor-prompt-input:focus {
-  outline: 2px solid #bfdbfe;
-  outline-offset: 1px;
+/* 工具条 + 正文 = **一个**框。焦点环画在这里（`:focus-within`），
+   于是「正在编辑这个框」这件事由整个框来表态。
+   ⚠️ **不要 `overflow: hidden`** —— 颜色那个下拉是绝对定位在这个框里的，
+   加上它就会被裁掉（下拉一打开就看不见，而且没有任何报错）。 */
+.worksheet-editor-rich-box {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.worksheet-editor-rich-box:focus-within {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
 }
 
 .worksheet-editor-prompt-input[data-empty='1']::before {

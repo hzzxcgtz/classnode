@@ -350,14 +350,21 @@ export function promptRunStyle(run: PromptTextStyle): Record<string, string | nu
   };
   if (run.underline) style.textDecoration = 'underline';
   if (run.emphasis) {
-    // ⚠️ 形状取 `circle` 而不是 `dot`：CSS 里 `dot` 是**小**点、`circle` 是**大**圈，
-    // 而 `dot` 在中文正文的字号下小到几乎看不见（2026-09-26 教师反馈「点太小了」）。
-    // 这是**取悦眼睛**的那一半，改它不需要理由；而下面那两个**属性名**与 `under`
+    // ── 着重号的形状：为什么是**一个字符**，而不是 `dot` / `circle` ──────────────
+    // CSS 一共只给这几个：`dot`（**小**点）/ `circle`（**大**圈）/ `double-circle` /
+    // `triangle` / `sesame`，外加 `<string>`（任意字符）。`dot` 与 `circle` 之间
+    // **没有第三个关键词**，而教师两个都试过：dot 太小、circle 太大
+    //（2026-09-26 两轮反馈）。⇒ 走 `<string>`，字符自己决定视觉重量。
+    // ⚠️ 挑的是 `•`（U+2022 BULLET）：它就是按「正文里的小强调点」设计的，
+    // 重量正好落在 dot 与 circle 中间。可换的还有 `·`（更小）、`●`（更大，
+    // 约等于 circle）、`◦`（空心）。
+    // 🔴 值里那对**引号是语法的一部分**（`<string>` 形式），不是修饰。
+    // ⚠️ 这是**取悦眼睛**的那一半，改它不需要理由；下面那两个**属性名**与 `under`
     // 是「显不显示」的那一半，别动。
-    style.WebkitTextEmphasis = 'filled circle';
+    style.WebkitTextEmphasis = "'•'";
     style.WebkitTextEmphasisPosition = 'under';
     // 无前缀那一份也写上：今天的 Safari 只认前缀版，但不必等它改。
-    style.textEmphasis = 'filled circle';
+    style.textEmphasis = "'•'";
     style.textEmphasisPosition = 'under';
   }
   return style;

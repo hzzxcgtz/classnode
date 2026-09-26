@@ -3527,27 +3527,74 @@ tr:hover td {
   pointer-events: none;
 }
 
+/* ★ 2026-09-26：颜色选择器从**原生 `<select>`** 换成自定义下拉 ——
+   🔴 原生下拉里那几行 `<option>` 是**系统画的**，`background-color` / `color` 一律被忽略，
+   所以教师只能看到「深灰 / 蓝色 / …」这一串字，而要选的是**颜色**。
+   ⚠️ `position: relative` 是下拉层的定位祖先（不是装饰）。 */
 .worksheet-editor-color-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.worksheet-editor-color-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 30px;
-  padding: 0 7px;
+  padding: 0 9px;
   border: 1px solid #dbe3ee;
   border-radius: 6px;
   background: #fff;
   color: #64748b;
-  font-size: 0.688rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.worksheet-editor-color-control select {
+/* 下拉层。⚠️ `z-index` 要压过卡片上那些浮层（题卡的折叠头部是 sticky 的）。 */
+.worksheet-editor-color-menu {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  z-index: 20;
+  min-width: 116px;
+  padding: 4px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.worksheet-editor-color-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: #334155;
   font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
 }
 
+.worksheet-editor-color-option:hover,
+.worksheet-editor-color-option.is-active {
+  background: #eff6ff;
+}
+
+/* 色块本身。⚠️ 它出现在**两个**地方（触发按钮上那个、下拉里每一行那个），
+   所以这条规则按元素写、不按位置写 —— 两处的样子必须一致。 */
 .worksheet-editor-color-control b {
+  flex: 0 0 auto;
   width: 12px;
   height: 12px;
   border: 1px solid rgba(15, 23, 42, 0.16);

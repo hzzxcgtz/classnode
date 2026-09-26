@@ -114,6 +114,16 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
+  /**
+   * 颜色那个自定义下拉开着没有。
+   *
+   * 🔴 **为什么不用原生 `<select>`**（原来是它）：原生下拉里那几行 `<option>` 是**系统
+   * 画的**，`background-color` / `color` 一律被忽略 —— 教师只能看到「深灰 / 蓝色 / …」
+   * 这一串字，而要选的是**颜色**（2026-09-26 教师原话：「图中右侧的色彩圆放到下拉列表里，
+   * 让人在选的时候就能看到实际颜色」）。要让它看得见，只能自己画。
+   */
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorBoxRef = useRef<HTMLDivElement | null>(null);
 
   const runs = readPromptRunsFor(node);
   const imageUrl = readPromptImage(node);
@@ -142,7 +152,17 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   /** 按当前选区刷新工具栏的亮灯（没选中 ⇒ 全灭，裁定 ②）。 */
   const refreshToolbar = useCallback(() => {
     const el = editableRef.current;
-    const range = el ? selectedRange(el) : null;
+    if (!el) {
+      setToolbar(NO_SELECTION);
+      return;
+    }
+    // ⚠️ 输入框**没有焦点**时退回「按下工具栏那一刻记下的选区」。
+    //
+    // 🔴 少了这一条会出一个很别扭的毛病：点开颜色下拉会**把焦点从输入框拿走** ⇒
+    // `selectionchange` 随之触发 ⇒ 这里是「没选中」⇒ 工具栏被重置成 `NO_SELECTION`
+    // ⇒ 下拉里那个「当前是哪个色」的勾**跳到深灰**，而选区上明明是红的。
+    // 有焦点时只认**活的**选区（那时停在框里的光标就是真相，旧的那份已经过期）。
+    const range = selectedRange(el) || (document.activeElement === el ? null : pendingRangeRef.current);
     const current = runsRef.current;
     if (!range || !current) {
       setToolbar(NO_SELECTION);
@@ -192,6 +212,29 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     document.addEventListener('selectionchange', onSelectionChange);
     return () => document.removeEventListener('selectionchange', onSelectionChange);
   }, [refreshToolbar]);
+
+  /**
+   * 颜色下拉开着的时候：点外面或按 Esc 关掉。
+   * ⚠️ `mousedown`（不是 `click`）：点外面那一下要**在**它变成别处的点击之前关掉，
+   * 否则那一下会先被别的控件吃掉，下拉还挂在屏幕上。
+   */
+  useEffect(() => {
+    if (!colorOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const box = colorBoxRef.current;
+      if (box && event.target instanceof Node && box.contains(event.target)) return;
+      setColorOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setColorOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [colorOpen]);
 
   /**
    * 敲了字（约束 2 的另一半 + 区间跟着走）。
@@ -245,6 +288,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     // 不放回来的话选区**画不出来**（数据是对的，但教师看不到自己设了哪一段）。
     el.focus();
     placeSelection(el, range.from, range.to);
+    setColorOpen(false);
     refreshToolbar();
   };
 
@@ -291,19 +335,39 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
             {button.label}
           </button>
         ))}
-        {/* ⚠️ 这里**不能**加 `onMouseDown` + `preventDefault`：那会让原生下拉打不开。
-            选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
-        <label className="worksheet-editor-color-control">
-          <span>文字颜色</span>
-          <select
-            value={toolbar.color}
-            onChange={event => applyToSelection({ color: event.target.value })}
+        {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
+            ⚠️ 触发按钮上**不能**加 `preventDefault` 那一套：它会把下拉一起按死
+            （2026-09-26 就是这么坏的）。选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
+        <div className="worksheet-editor-color-control" ref={colorBoxRef}>
+          <button
+            type="button"
+            className="worksheet-editor-color-trigger"
+            onClick={() => setColorOpen(open => !open)}
+            aria-haspopup="listbox"
+            aria-expanded={colorOpen}
             aria-label="题干文字颜色"
           >
-            {WORKSHEET_TEXT_COLORS.map(color => <option key={color.value} value={color.value}>{color.label}</option>)}
-          </select>
-          <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
-        </label>
+            <span>文字颜色</span>
+            <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
+          </button>
+          {colorOpen && (
+            <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
+              {WORKSHEET_TEXT_COLORS.map(color => (
+                <button
+                  key={color.value}
+                  type="button"
+                  role="option"
+                  aria-selected={toolbar.color === color.value}
+                  className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
+                  onClick={() => applyToSelection({ color: color.value })}
+                >
+                  <b style={{ backgroundColor: color.value }} aria-hidden="true" />
+                  <span>{color.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <label className="worksheet-editor-image-upload">
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
             const file = event.target.files?.[0];

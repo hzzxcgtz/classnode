@@ -302,14 +302,17 @@ test('🔴 promptRunStyle：着重号**必须**带 `-webkit-` 前缀，且位置
   // 老 iPad 的 Safari 15 只认前缀版；而位置若不是 `under`，中文的着重号会挂到字上方
   // 并被行高裁掉。少了任何一条 ⇒ 教师设了着重号，学生端**什么都不显示**、**无一处报错**。
   const style = promptRunStyle({ ...DEFAULT_PROMPT_STYLE, emphasis: true });
-  assert.equal(style.WebkitTextEmphasis, 'filled circle', '前缀版是 Safari 15 唯一认的那一份');
+  assert.equal(style.WebkitTextEmphasis, "'•'", '前缀版是 Safari 15 唯一认的那一份');
   assert.equal(style.WebkitTextEmphasisPosition, 'under', '位置必须是 under —— over 会被裁掉');
-  assert.equal(style.textEmphasis, 'filled circle', '无前缀那份也写上，将来不必再改一次');
+  assert.equal(style.textEmphasis, "'•'", '无前缀那份也写上，将来不必再改一次');
   assert.equal(style.textEmphasisPosition, 'under');
-  // ⚠️ 上面那四个断言里，**只有形状那两个字**（`filled circle`）是取悦眼睛的：
-  // `dot` 是**小**点、`circle` 是**大**圈，而 `dot` 在中文正文字号下小到几乎看不见
-  //（2026-09-26 教师反馈）。改它不需要理由；改**属性名**或 `under` 需要。
-  // ⇒ 形状那两个字要是再动，改这两行是**对的**，不要以为自己改坏了用例。
+  // ⚠️ 上面那四个断言里，**只有中间那个值**（`'•'`）是取悦眼睛的：
+  // CSS 的格式键只有 dot（小）/ circle（大）/ double-circle / triangle / sesame，
+  // 中间没有档位，所以这里用的是 `<string>` 形式的一个字符。
+  // 教师试过 dot（太小）与 circle（太大）⇒ 2026-09-26 换成 `•`。
+  // ⇒ 再调它（`·` / `●` / `◦`）改这两行是**对的**，不要以为自己改坏了用例；
+  //   而改**属性名**或 `under` 才是真的改坏了。
+  // 🔴 值里那对引号是 `<string>` 语法的一部分 —— 少了它整条声明失效（静默不显示）。
 });
 
 // ── 5. isPlainRuns：写库时用它决定这个键要不要留 ───────────────────────

@@ -618,7 +618,8 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   if (kind === 'fill') {
     // 单空（`fill/v1`）与多空（`fill-multi/v1`）在输入态里是**同一个形状**：
     // 一列文本。短的补空串、长的截掉，长度恒等于题目当下的空数 ——
-    // 那是 `fill-body.tsx` 画几个输入框的依据。
+    // 那是「题干里画几个输入框」的依据（★ 2026-09-26：由题干里的空分段推，
+    // 见 `readBlankCount`；`fill-body.tsx` 剩下的那一支只是老题的临时桥）。
     //
     // 🔴 `texts` 走 `readTextList`（**保住空串、位置不变**），不是 `readStringList` ——
     // 后者会把 `['', 'H2O']` 读成 `['H2O']`，补位之后每个空往前挪一格。理由与实测输出

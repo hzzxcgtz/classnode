@@ -10,6 +10,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
@@ -289,6 +290,24 @@ export function WorksheetQuestionList({
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
         const promptRuns = readPromptRunsFor(node);
+        // 填空题的空 ↔ 作答草稿的绑定（见 `PromptText` 的 `blanks`）。
+        const fillDraft = draft && draft.kind === 'fill' ? draft : null;
+        const blankBinding = {
+          values: fillDraft ? fillDraft.texts : [],
+          disabled: controlsDisabled,
+          onChange: (index: number, value: string) => {
+            // ⚠️ 长度以**题目里的空数**为准，不是以旧草稿的长度为准：教师加了一个空之后
+            // 学生屏幕还没刷新时，旧草稿会短一格 —— 按下标写回去的话那一格会被吃掉。
+            const count = Math.max(readBlankCount(node), index + 1);
+            const texts = Array.from({ length: count }, (_, i) => (
+              i === index ? value : ((fillDraft && fillDraft.texts[i]) || '')
+            ));
+            // ⚠️ 走 `onChange` 这个 **prop**（本组件同时被「学生端预览」渲染 ——
+            // 那一侧的 `onChange` 是个空操作）。别在这里直接碰作答状态机的内部。
+            // ⚠️ `onChange` 是**可选 prop**（预览那一侧没有它，且那些框是 disabled）。
+            onChange?.(node, { kind: 'fill', texts });
+          },
+        };
         const promptImage = readPromptImage(node);
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
@@ -329,6 +348,12 @@ export function WorksheetQuestionList({
                 text={node.prompt}
                 runs={promptRuns}
                 placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
+                // ★ 2026-09-26：填空题的空**就在题干里**（教师裁定），所以输入框由题干
+                // 这一份渲染器画 —— 而不是像原来那样在题干**下面**再画一排。
+                // ⚠️ 绑定**恒给**（不是「有草稿才给」）：教师端的「学生端预览」走的是
+                // 同一个组件、`drafts` 是空的，那里也要看到**同样的输入框**（规格 §6.3：
+                // 教师看到的就是学生看到的）。没草稿时值是空的、并且 disabled。
+                blanks={node.type === 'fill-blank' ? blankBinding : undefined}
               />
             </div>
             {promptImage && (

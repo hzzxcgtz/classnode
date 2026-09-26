@@ -5,8 +5,8 @@ import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { CategorizeBody } from './categorize-body';
-import { ChoiceBody } from './choice-body';
 import { FillBody } from './fill-body';
+import { ChoiceBody } from './choice-body';
 import { InkBody } from './ink-body';
 import { MatchBody } from './match-body';
 import { OrderBody } from './order-body';
@@ -124,6 +124,10 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
       />
     );
   }
+  // ★ 2026-09-26：填空题的空住在**题干里**（教师裁定：「填空是在题目文字中间输入」），
+  // 那些输入框由**题干那一份渲染器**画（`PromptText` 的 `blanks`，见 `worksheet-panel.tsx`）。
+  // ⚠️ 这里仍然保留 `FillBody`，但它**只在题干里还没有空时**才画东西（临时桥，
+  // 见它的文件头）—— 迁移把老题的空挪进题干之后，这一支就没人走了。
   if (node.type === 'fill-blank') {
     return (
       <FillBody

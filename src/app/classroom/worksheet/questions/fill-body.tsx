@@ -1,5 +1,6 @@
 'use client';
 
+import { blankCount, readPromptRuns } from '@/lib/worksheet-prompt-marks';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import styles from '../worksheet.module.css';
@@ -36,7 +37,17 @@ export interface FillBodyProps {
   disabled: boolean;
 }
 
-export function FillBody({ draft, onChange, disabled }: FillBodyProps) {
+export function FillBody({ node, draft, onChange, disabled }: FillBodyProps) {
+  // ★ 2026-09-26（教师裁定：「填空是在题目文字中间输入」）：**空住在题干里**时，
+  // 这一支**什么都不画** —— 那些框由题干那一份渲染器画（`PromptText` 的 `blanks`）。
+  // 🔴 少了这一句就会画出**第二组**输入框（同一份 `draft.texts` 绑在两处），
+  // 学生填哪一组都对、而屏幕上多出一排没有对应空的框，**没有任何报错**。
+  //
+  // ⚠️ **临时桥**（迁移接上之后删掉这一支）：题干里**还没有**空的题（＝迁移还没跑到的
+  // 老题）仍然走下面那套「题干下面排一排框」的老版面。没有它的话，那些题的学生端
+  // **一个输入框都没有** —— 学生根本没法作答，而屏幕上只是「这道题没问题可答」。
+  const inline = blankCount(readPromptRuns(node.data.promptRuns, node.prompt));
+  if (inline > 0) return null;
   if (draft.texts.length === 0) {
     // 多空形状但一个空都没有（教师建了题还没填）⇒ 服务端对这道题恒判错。
     // 画一句实话，而不是画一个填了也不会有分的框。

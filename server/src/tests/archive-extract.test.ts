@@ -280,3 +280,53 @@ test('把 .jpg 改名成 .rar ⇒ ArchiveError（**不是**静默成功、不是
     },
   );
 });
+
+test('7z：自己压一个包，解出来的树逐条对上', async () => {
+  const SevenZip = createRequire(import.meta.url)('7z-wasm');
+  const sz = await SevenZip({ stdout() {}, stderr() {} });
+  sz.FS.mkdir('/w'); sz.FS.chdir('/w');
+  sz.FS.mkdir('/w/site'); sz.FS.mkdir('/w/site/css');
+  sz.FS.writeFile('/w/site/index.html', '<h1>hi</h1>');
+  sz.FS.writeFile('/w/site/css/s.css', 'body{}');
+  sz.callMain(['a', '-t7z', '/w/site.7z', '/w/site']);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'site.7z');
+  fs.writeFileSync(source, Buffer.from(sz.FS.readFile('/w/site.7z')));
+
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  const r = await safeExtractArchive({ sourcePath: source, originalName: 'site.7z', destination: dest, limits: LIMITS });
+  assert.equal(r.kind, '7z');
+  assert.equal(fs.readFileSync(path.join(dest, 'site/index.html'), 'utf8'), '<h1>hi</h1>');
+  assert.equal(fs.readFileSync(path.join(dest, 'site/css/s.css'), 'utf8'), 'body{}');
+});
+
+test('落盘权限必须是 0o600（与 safeExtractZip 逐字一致）', async () => {
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await safeExtractArchive({ sourcePath: RAR_FIXTURE, originalName: 'small.rar', destination: dest, limits: LIMITS });
+  const mode = fs.statSync(path.join(dest, 'test.txt')).mode & 0o777;
+  assert.equal(mode, 0o600, `解出来的文件是 ${mode.toString(8)} —— 与 zip 那条路的落盘权限不一致`);
+});
+
+test('只有空目录的包 ⇒ ArchiveError（不是「成功地」建出一个打不开的网页）', async () => {
+  const SevenZip = createRequire(import.meta.url)('7z-wasm');
+  const sz = await SevenZip({ stdout() {}, stderr() {} });
+  sz.FS.mkdir('/w'); sz.FS.chdir('/w');
+  sz.FS.mkdir('/w/empty'); sz.FS.mkdir('/w/empty/deeper');
+  sz.callMain(['a', '-t7z', '/w/empty.7z', '/w/empty']);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'empty.7z');
+  fs.writeFileSync(source, Buffer.from(sz.FS.readFile('/w/empty.7z')));
+
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'empty.7z', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError，实际是 ${String(error)}`);
+      // ⚠️ 与 T4 那两条同一个毛病：只查类型会被 `extractBody` 的占位（也抛 ArchiveError）蒙过去
+      //    —— 施工时实测，这条在实现之前是绿的。钉住文案。
+      assert.match(error.message, /没有文件|有效/, '要看到「包里没有文件」那类文案，而不是占位的错');
+      return true;
+    },
+  );
+  assert.deepEqual(fs.readdirSync(dest), [], '拒掉之后不许在目标目录里留东西（调用方会 rm，但这里先确认它没落盘）');
+});

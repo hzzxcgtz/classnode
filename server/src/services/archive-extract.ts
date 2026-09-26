@@ -219,12 +219,96 @@ async function extractWithSevenZip(kind: ArchiveKind, opts: SafeExtractOptions):
     // 那一条是**读得出清单、但条目标了 Encrypted**，这一条是**根本读不出来**。
     throw new ArchiveError('压缩包读不了，可能是加密的或已损坏');
   }
-  assertWithinLimits(parseSevenZipListing(read()), opts.limits);
+  const listing = parseSevenZipListing(read());
+  assertWithinLimits(listing, opts.limits);
 
-  return extractBody(kind, sz, opts);
+  return extractBody(kind, sz, opts, listing.declaredTotalBytes);
 }
 
-/** Task 5 实现。 */
-async function extractBody(kind: ArchiveKind, _sz: SevenZipModule, _opts: SafeExtractOptions): Promise<{ kind: ArchiveKind }> {
-  throw new ArchiveError('解压那一步还没做');
+/**
+ * 走一遍内存 FS 里的解压结果，把文件列出来。
+ *
+ * ⚠️ 用 **`lstat`**，不是 `stat` —— 软链必须被看成软链。
+ *
+ * 🔴 **这个判据是主保证，不是深度防御 —— 不要因为它"看起来从不触发"就删掉。**
+ * 初稿里这里写的是「实测 7-Zip 会把软链摊平，所以这一步大概率不触发」。T1 实测把那个
+ * 说法打掉了：**摊平只是 `7z-wasm` 这个 wasm 构建的行为**（那 336 字节样本里的 `testlink`
+ * 出来是 8 字节普通文件），而**本机原生 `7zz` 26.03 解同一个样本得到的是真软链**
+ * （`lrwxr-xr-x testlink -> test.txt`）。⇒ 一次 `7z-wasm` 升级就可能让摊平消失，
+ * 而落在静态目录里的真软链会被静态服务跟随（本仓实测过）。**「上游行为」不是保证，
+ * 这一行才是。**
+ */
+function walkExtracted(sz: SevenZipModule): { path: string; size: number }[] {
+  const out: { path: string; size: number }[] = [];
+  const walk = (dir: string, prefix: string): void => {
+    for (const name of sz.FS.readdir(dir)) {
+      if (name === '.' || name === '..') continue;
+      const full = `${dir}/${name}`;
+      const rel = prefix ? `${prefix}/${name}` : name;
+      const st = sz.FS.lstat(full);
+      if (sz.FS.isLink(st.mode)) throw new ArchiveError(`压缩包内含符号链接：${rel}`);
+      if (sz.FS.isDir(st.mode)) { walk(full, rel); continue; }
+      out.push({ path: rel, size: st.size });
+    }
+  };
+  walk(MEMFS_OUTPUT, '');
+  return out;
+}
+
+/**
+ * 条目名 → 真实磁盘上的绝对路径。
+ *
+ * ⚠️ **这一步是深度防御，不是这条路线的主防线。** 实测 7-Zip 会**自己把 `../` 剥掉**
+ * （`../../escaped.txt` 出来是 `escaped.txt`，返回码 0、不报错）—— 也就是说我们**事后
+ * 连原始名字都看不到**。主防线是另一件事：**解压发生在 wasm 的内存 FS 里，除了下面
+ * 这个循环自己拷出去的字节，没有任何东西能落到真实磁盘上。**
+ * 这两句话不要合成一句「我们防住了路径穿越」。
+ */
+function resolveInside(destination: string, rel: string): string {
+  const parts = rel.replace(/\\/g, '/').split('/');
+  if (parts.some(p => p === '' || p === '.' || p === '..')) throw new ArchiveError(`压缩包条目路径非法：${rel}`);
+  if (/^[a-zA-Z]:/.test(rel)) throw new ArchiveError(`压缩包条目是绝对路径：${rel}`);
+  const root = path.resolve(destination);
+  const target = path.resolve(root, ...parts);
+  if (target !== root && !target.startsWith(root + path.sep)) throw new ArchiveError(`压缩包条目超出目标目录：${rel}`);
+  return target;
+}
+
+async function extractBody(
+  kind: ArchiveKind,
+  sz: SevenZipModule,
+  opts: SafeExtractOptions,
+  /**
+   * 第一关拿到的声明体积之和。**必填**，故意不挂在 `SafeExtractOptions` 上：
+   * 挂在上面它就成了「可选、但在唯一的调用点永远必须传」——那种字段类型系统帮不上忙，
+   * 写的人只能靠 `?? 0` 糊过去，而 `?? 0` 会让每一个包都「超过声明」被误拒。
+   */
+  declaredTotalBytes: number,
+): Promise<{ kind: ArchiveKind }> {
+  // `-p`（空密码）**是必须的**：让加密包快速失败，而不是停在 stdin 上等输入。
+  // `-bso0 -bse0` 关掉进度输出。
+  const code = callMainChecked(sz, ['x', MEMFS_ARCHIVE, `-o${MEMFS_OUTPUT}`, '-y', '-p', '-bso0', '-bse0']);
+  if (code !== 0) throw new ArchiveError('压缩包解压失败，请确认它是一个有效的压缩包');
+
+  const extracted = walkExtracted(sz);
+  // 🔴 零文件判失败**不能省**：假 `.rar` 的返回码实测是 2，但也见过返回 0 而不产出的路径
+  //    （头部加密的 zip 配空密码 ⇒ 返回码 0，同时产出一个 0 字节的文件）。
+  if (extracted.length === 0) throw new ArchiveError('这个压缩包里没有文件，请确认它是一个有效的压缩包');
+
+  // 声明体积由第一关传进来（**不要在这里重新解析** —— 那要再读一次输出，两份口径就会漂移）。
+  const actualTotal = extracted.reduce((sum, e) => sum + e.size, 0);
+  // ⚠️ 交叉核对**只查「实际 > 声明」这一个方向**：声明偏小是危险的那一侧（挡的是「清单撒谎」的包），
+  //    声明偏大只是无损的多报。两个方向都查会把一些**合法但记账方式不同**的包误拒 ——
+  //    而误拒一个好包比放行一个我们要防的包更常见，也更让教师困惑。
+  if (actualTotal > declaredTotalBytes) {
+    throw new ArchiveError('压缩包实际内容大于清单声明的大小，已拒绝');
+  }
+
+  for (const entry of extracted) {
+    if (entry.size > opts.limits.maxSingleFileBytes) throw new ArchiveError(`压缩包包含过大的单个文件：${entry.path}`);
+    const target = resolveInside(opts.destination, entry.path);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, Buffer.from(sz.FS.readFile(`${MEMFS_OUTPUT}/${entry.path}`)), { mode: 0o600 });
+  }
+  return { kind };
 }

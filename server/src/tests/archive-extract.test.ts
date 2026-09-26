@@ -67,3 +67,9 @@ test('★ CRLF 输入必须解析出与 LF 完全相同的结果（否则会静�
   // 阳性对照：上面那条断言不能靠「两边都返回全零」蒙过去。
   assert.equal(parseSevenZipListing(crlf).fileCount, 3, 'CRLF 下解析出全零 ⇒ 体积闸门被静默绕过');
 });
+
+test('★ 裸 CR（\\r）输入同样不能塌成全零', () => {
+  // 与 CRLF 同一个机理：`'\n\n'` 不出现 ⇒ 整份输出塌成一个块 ⇒ 命中 `Folder = +` ⇒ 全零。
+  const bareCR = SEVEN_ZIP_LISTING_RAR3.replace(/\n/g, '\r');
+  assert.equal(parseSevenZipListing(bareCR).fileCount, 3, '裸 CR 下解析出全零 ⇒ 体积闸门被静默绕过');
+});

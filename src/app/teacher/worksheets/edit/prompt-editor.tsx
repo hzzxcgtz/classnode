@@ -103,14 +103,19 @@ const NO_SELECTION: ToolbarState = {
  * 对应的样式在 `globals.css` 里显式写了一份（`.worksheet-editor-formatbar > button u/i`）——
  * 不靠浏览器默认值，免得哪天的全局重置把它悄悄弄没。
  */
+/** 插入到题干里的那段占位（★ 2026-09-26「填空区域」按钮）。
+ *  ⚠️ 改它的长度就改了那个区域在题干里有多宽 —— 它**不是**一个结构化标记，
+ *  只是教师眼睛看得见的一串下划线（理由见 `insertBlank` 的注释）。 */
+const FILL_BLANK_TEXT = '________';
+
 const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
   { key: 'italic', label: <i>I</i>, title: '斜体' },
   { key: 'underline', label: <u>U</u>, title: '下划线' },
-  // ⚠️ 这个图标**自带着重号**（用真功能画的，见 `globals.css` 的
-  // `.worksheet-editor-emphasis-icon`）—— 与 `<i>I</i>` / `<u>U</u>` 同一条：
-  // 图标自己就是那个样子。教师原话：「『重』字下面带一个着重号」。
-  { key: 'emphasis', label: <span className="worksheet-editor-emphasis-icon">重</span>, title: '着重号（字下加点）' },
+  // ⚠️ 这一档**写全名**（教师 2026-09-26 第二次改口：先要「『重』字下面带一个着重号」，
+  // 看到之后说「直接写『着重号』吧，下面不要有点了」）。与另外三个不同，它不是自证的 ——
+  // 「着重号」三个字本身就是说明。
+  { key: 'emphasis', label: '着重号', title: '着重号（字下加点）' },
 ];
 
 export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEditorProps) {
@@ -295,6 +300,35 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     refreshToolbar();
   };
 
+  /**
+   * 在**光标处**插入一个填空区域（教师 2026-09-26：这个按钮**只出现在填空题里**）。
+   *
+   * 🔴 **它眼下只是题干里的一段视觉占位**，与「学生在这里作答」还不是一回事：
+   * 填空题的作答框是另一套机制（`data.blanks` + `fill-body.tsx` 按那个数画输入框），
+   * 题干里的这段下划线**不参与**它。教师原话是「**后期**我会要求学生……来答题」——
+   * 那一步要把这段占位换成一个**结构化的标记**（而不是文字），届时是一次内容迁移。
+   * ⇒ 现在插的是**可见的文字**（一串下划线），学生端会原样看到一条空线 ✓，
+   *   而它与教师自己敲的那一串下划线长得一样（占位文案里就是 `____`）。
+   */
+  const insertBlank = () => {
+    const el = editableRef.current;
+    if (!el) return;
+    const text = node.prompt;
+    const range = selectedRange(el) || pendingRangeRef.current;
+    const from = range ? range.from : (caretOffset(el) ?? text.length);
+    const to = range ? range.to : from;
+    const nextText = text.slice(0, from) + FILL_BLANK_TEXT + text.slice(to);
+    if (nextText === text) return;
+    const nextRuns = remapRuns(runsRef.current, text, nextText);
+    onPromptChange(nextText, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
+    renderRunsInto(el, nextText, nextRuns);
+    // 光标落在**插入的那一段之后**（接着打字不该把这串下划线拆开）。
+    const after = from + FILL_BLANK_TEXT.length;
+    el.focus();
+    placeSelection(el, after, after);
+    refreshToolbar();
+  };
+
   const uploadImage = async (file: File) => {
     setUploading(true);
     setUploadError('');
@@ -345,7 +379,23 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
               {button.label}
             </button>
           ))}
-          {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
+          {/* ★ 2026-09-26（教师）：「工具栏里还要有一个按钮『填空区域』，点击后可以在光标的
+            位置插入一个填空区域……**这个按钮只会出现在填空题中**。」 */}
+        {node.type === 'fill-blank' && (
+          <button
+            type="button"
+            title="在光标处插入一个填空区域"
+            // ⚠️ 与另外四个格式按钮同一条：`onMouseDown` + `preventDefault` 保住光标/选区，
+            // 否则点它那一下就把光标拿走了，`caretOffset` 读到的是「没焦点」。
+            onMouseDown={(event) => {
+              event.preventDefault();
+              insertBlank();
+            }}
+          >
+            填空区域
+          </button>
+        )}
+        {/* 颜色：**自定义下拉**（原生 `<select>` 的 `<option>` 上不了色，理由见 `colorOpen`）。
               ⚠️ 触发按钮上**不能**加 `preventDefault` 那一套：它会把下拉一起按死
               （2026-09-26 就是这么坏的）。选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
           <div className="worksheet-editor-color-control" ref={colorBoxRef}>

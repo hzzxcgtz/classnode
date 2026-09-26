@@ -105,7 +105,7 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
  * 三处画的是同一个默认。改它等于改所有**已经存在**的学习单在学生眼前的样子。
  */
 /**
- * 逐题分值旁边那个**量词** —— 跟着学习单的奖励档走。
+ * 逐题分值后面那串字（**量词 + 图标**）—— 跟着学习单的奖励档走。
  *
  * ★ 2026-09-26（教师）：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
  * **不能一直使用「分」**。」
@@ -118,10 +118,18 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
  * ⇒ 四档里的两档有专属量词，另外两档（对错 / 分数）都是「分」。
  *
  * ⚠️ 「星星」取「颗」而不是「个」：教师原话是「几颗五角星」。
+ * ⚠️ 名字里的 `Label` 是刻意的：它**不只是量词**，有符号的那两档还带着 ⭐ / 🌸
+ *（教师 2026-09-26：「后面要加 🌸 或 ⭐ 图标」）。
  */
-export function pointsUnit(style: RewardStyle): string {
-  if (style === 'star') return '颗';
-  if (style === 'flower') return '朵';
+export function pointsUnitLabel(style: RewardStyle): string {
+  // ★ 2026-09-26（教师）：「后面要加 🌸 或 ⭐ 图标」—— 于是教师填分值时看到的
+  // 就是学生将会看到的那一个（星星 / 花朵 / 只是一个分数）。
+  //
+  // 🔴 **按档位分支，不要按「有没有 `symbol`」判**：分数档（`points`）的 `symbol` 是
+  // `'+'`，但它是**前缀**（学生端画的是 `+3`，见 `rewardMark`），不是跟在数字后面的量词。
+  // 拿它去拼量词会得到「分 +」—— 2026-09-26 我第一版就是这么写的，用例当场抓住。
+  if (style === 'star') return '颗 ⭐';
+  if (style === 'flower') return '朵 🌸';
   return '分';
 }
 

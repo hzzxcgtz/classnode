@@ -142,7 +142,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
   /**
    * ★ 2026-09-26（教师）：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
    * **不能一直使用「分」**。」—— 逐题分值的**量词**，由学习单的奖励档决定
-   *（`pointsUnit`，它有纯函数用例）。⚠️ 由上层算好传进来：卡片只负责画，
+   *（`pointsUnitLabel`，它有纯函数用例）。⚠️ 由上层算好传进来：卡片只负责画，
    * 而「哪一档配哪个量词」是一个能被 `node --test` 钉住的判据。
    */
   pointsUnit: string;
@@ -632,7 +632,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
         得先知道括号里是「全对 / 部分给分」两档才看得懂。
       */}
       <p className="worksheet-editor-points-note">
-        两项都清空时使用默认值：完全正确 {inheritedPoints.full} 分，部分正确 {inheritedPoints.half} 分。
+        两项都清空时使用默认值：完全正确 {inheritedPoints.full} {pointsUnit}，部分正确 {inheritedPoints.half} {pointsUnit}。
       </p>
       {invalidHint && <p className="worksheet-editor-warn-hint">{invalidHint}</p>}
       {partialHint && <p className="worksheet-editor-warn-hint">{partialHint}</p>}

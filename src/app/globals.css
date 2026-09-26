@@ -3462,16 +3462,6 @@ tr:hover td {
   cursor: pointer;
 }
 
-/* ★ 2026-09-26（教师）：「『重』字下面带一个着重号」—— 这个图标**用真功能画**：
-   与正文里的着重号是同一对属性（`promptRunStyle` 里那两行），所以图标显示成什么样，
-   正文里就是什么样。⚠️ 与 `<i>I</i>` / `<u>U</u>` 同一条纪律：图标自证，别改成纯字符串。 */
-.worksheet-editor-emphasis-icon {
-  -webkit-text-emphasis: '•';
-  -webkit-text-emphasis-position: under;
-  text-emphasis: '•';
-  text-emphasis-position: under;
-}
-
 /* ★ 2026-09-26：四个格式按钮里那两个**自证**的图标 —— `<i>I</i>` 是斜的、
    `<u>U</u>` 带下划线（`B` 与 `重` 靠按钮本身的 `font-weight: 700` 与字面意思）。
    ⚠️ 这两条**显式**写出来，不靠浏览器的默认值：默认值哪天的全局重置一改就没了，

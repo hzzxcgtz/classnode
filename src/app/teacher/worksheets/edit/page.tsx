@@ -8,7 +8,7 @@ import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/l
 import { api } from '@/lib/api';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
-import { pointsUnit, DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
+import { pointsUnitLabel, DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
 import { dropIndexAt, editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
@@ -347,7 +347,7 @@ function WorksheetEditorBody() {
       node={row.node}
       inheritedPoints={inheritedPoints}
       // ★ 2026-09-26：逐题分值的量词跟着学习单的奖励档走（星星「颗」/ 花朵「朵」/ 分数「分」）。
-      pointsUnit={pointsUnit(editor.settings.rewardStyle)}
+      pointsUnit={pointsUnitLabel(editor.settings.rewardStyle)}
       rejectedPointInput={editor.rejectedPoints[row.node.id]}
       onPromptChange={(prompt, data) => editor.updatePrompt(row.node.id, prompt, data)}
       onDataChange={patch => editor.updateData(row.node.id, patch)}

@@ -21,6 +21,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   grade,
+  validateQuestion,
   type QuestionNode,
   type QuestionPoints,
 } from '../services/worksheet-questions.js';
@@ -94,4 +95,26 @@ test('空得比答案槽多 / 少：多出来的忽略，少的那几格算错',
   const node = blank({ answers: [['阳光'], ['水分']] });
   assert.equal(stateOf(node, { format: 'fill-multi/v1', texts: ['阳光', '水分', '多余的'] }), 'correct', '多填的忽略');
   assert.equal(stateOf(node, { format: 'fill-multi/v1', texts: ['阳光'] }), 'partial', '少一格 ⇒ 那一格算错');
+});
+
+// ── 校验那一侧：**必须与判分读同一份答案**（★ 2026-09-26 的返工）────────────
+
+test('🔴 校验：**每空一份**的答案要被认出来（教师填了两个答案，不许说「一个都没有」）', () => {
+  // 🔴 这一条是**被一次真实的保存失败逼出来的**：判分那边我改成了按形状读，
+  // 而**校验那一侧还按老形状读**（平铺的 `data.answers`）——
+  // 于是教师把两个空的答案都填好、题干里两个空也在，保存却被拒：
+  // 「填空题至少要有一个可接受的答案」。屏幕上两个框里明明写着字。
+  // ⇒ 判据只有一处（`answerSlotCount` / `acceptableAnswersFor`），校验与判分都走它。
+  const ok = blank({ answers: [['张三'], ['李四']] });
+  assert.deepEqual(validateQuestion(ok), [], '每空一份的答案必须被认出来');
+
+  // 阳性对照：真的一格都没填 ⇒ 仍然要被拒（别为了修这个洞把校验放空）。
+  const missing = blank({ answers: [['张三'], []] });
+  assert.ok(validateQuestion(missing).length > 0, '有一个空没答案 ⇒ 仍然拒');
+
+  // 老形状照旧（不能为了新形状把老的弄坏）。
+  assert.deepEqual(validateQuestion(blank({ answers: ['张三'] })), [], '老的单空（平铺）');
+  assert.deepEqual(validateQuestion(blank({ blanks: [{ answers: ['张三'] }] })), [], '老的多空');
+  // 空 data 必须被拒（那条通用用例的口径不变）。
+  assert.ok(validateQuestion(blank({})).length > 0);
 });

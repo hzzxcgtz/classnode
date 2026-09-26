@@ -1054,25 +1054,26 @@ function validateSingleAnswer(
  * `worksheet-grade.test.ts` 的「空 `data` 必须被拒绝」那条用例行为性地钉住。
  */
 function validateFillBlank(node: QuestionNode, errors: string[]): void {
-    // ⚠️ **向后兼容**：`data.blanks` 缺席时走原来的单空路径（M3 的形状，不动）。
-    // 第一批落库的填空题一个 `blanks` 都没有，把它们当成「零个空」会让全班的历史
-    // 题目在下次保存时集体报错。
-    if (!Array.isArray(node.data.blanks)) {
-      const answers = readStrings(node.data.answers);
-      // ⚠️ 开关关掉时「答案」整块不查（下面两处同样）—— 但**题面**照查：
-      // 一个空、一个 `blanks` 的形状仍然是题目本身的要求。
-      if (node.autoGrade !== false && !answers.some((answer) => answer.trim())) errors.push('填空题至少要有一个可接受的答案');
+    // ★ 2026-09-26：**与判分读同一份答案**（`answerSlotCount` / `acceptableAnswersFor`）。
+    //
+    // 🔴 这里原来自己按老形状读（`Array.isArray(data.blanks)` 在不在 + 平铺的 `data.answers`），
+    // 而编辑器与迁移现在写的是**每空一份**（`[['张三'], ['李四']]`）——
+    // 校验读到的是「一个字符串都没有」⇒ **教师填的两个答案它一个都没看见**，
+    // 保存被拒：「填空题至少要有一个可接受的答案」。而屏幕上两个框里明明写着字。
+    //
+    // ⇒ 判据只有一处（那两个函数），校验与判分都走它。**同一件事写在两处，必然有一处落后。**
+    const total = answerSlotCount(node.data);
+    if (total === 0) {
+      errors.push('填空题至少要有一个空');
       return;
     }
-    const blanks = node.data.blanks;
-    if (blanks.length === 0) errors.push('填空题至少要有一个空');
-    for (const blank of blanks) {
-      const answers = (blank && typeof blank === 'object' && !Array.isArray(blank))
-        ? (blank as Record<string, unknown>).answers
-        : undefined;
-      if (!readStrings(answers).some((answer) => answer.trim())) {
+    // ⚠️ 开关关掉时「答案」整块不查 —— 但**题面**照查（上面那条空数的检查仍在）。
+    if (node.autoGrade === false) return;
+    for (let index = 0; index < total; index += 1) {
+      if (!acceptableAnswersFor(node.data, index).some((answer) => answer.trim())) {
         // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。
-        if (node.autoGrade !== false) errors.push('填空题每个空至少要有一个可接受的答案');
+        // ⚠️ 单空那条文案保留（它更简短），多空用逐空那条。
+        errors.push(total === 1 ? '填空题至少要有一个可接受的答案' : '填空题每个空至少要有一个可接受的答案');
         break;
       }
     }

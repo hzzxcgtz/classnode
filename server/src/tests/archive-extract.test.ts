@@ -155,3 +155,128 @@ test('认不出的后缀 ⇒ ArchiveError', async () => {
     (error: unknown) => error instanceof ArchiveError,
   );
 });
+
+/**
+ * 造一个**加密的 `.7z`**（口令 `hunter2`）。用 7z-wasm 自己压 —— 不依赖系统装没装 7z。
+ *
+ * 🔴 **后缀必须是 `.7z`，不能是 `.zip`。** `safeExtractArchive` 按后缀分派：叫 `enc.zip`
+ * 就会走 AdmZip 那条路，于是这条用例「通过」却**根本没碰 7z-wasm 的加密检测** —— 假绿。
+ *
+ * `mode` 的两种取值对应**两条不同的拒绝路径**（两条都实测过，见下表）：
+
+ *   · `'content'`（默认，不给 `-mhe`）：清单**读得出来**（返回码 0），条目标 `Encrypted = +`
+ *     ⇒ 走 `assertWithinLimits` 里「不支持带密码的压缩包」那一条。
+ *   · `'header'`（`-mhe=on`，头部也加密）：清单**根本读不出来**，`callMain` **抛一个裸数字**
+ *     （实测 `262704`）⇒ 走「压缩包读不了」那一条。
+ */
+async function makeEncryptedArchive(mode: 'content' | 'header'): Promise<string> {
+  const SevenZip = createRequire(import.meta.url)('7z-wasm');
+  const sz = await SevenZip({ stdout() {}, stderr() {} });
+  sz.FS.mkdir('/w'); sz.FS.chdir('/w');
+  sz.FS.writeFile('/w/secret.txt', 'top secret');
+  const args = ['a', '-phunter2'];
+  if (mode === 'header') args.push('-mhe=on');
+  args.push('/w/enc.7z', '/w/secret.txt');
+  sz.callMain(args);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const file = path.join(dir, 'enc.7z');
+  fs.writeFileSync(file, Buffer.from(sz.FS.readFile('/w/enc.7z')));
+  return file;
+}
+
+const RAR_FIXTURE = path.join(import.meta.dirname, '../../src/tests/fixtures/small-rar3.rar');
+
+test('rar：真实样本能解，中文/嵌套无关的树逐条对上', async () => {
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  const r = await safeExtractArchive({ sourcePath: RAR_FIXTURE, originalName: 'small.rar', destination: dest, limits: LIMITS });
+  assert.equal(r.kind, 'rar');
+  assert.equal(fs.readFileSync(path.join(dest, 'test.txt'), 'utf8').length, 20);
+  assert.equal(fs.readFileSync(path.join(dest, 'testdir/test.txt'), 'utf8').length, 20);
+  // ⚠️ 软链条目 `testlink` 在 **7z-wasm 这条路上**出来必须是**普通文件**（内容 = 链接目标），
+  //    不能是真软链。⚠️ **但这是一次观察，不是 7-Zip 的契约** —— 本机原生 `7zz` 26.03 解同一个
+  //    样本得到的是真软链。所以这条断言钉的是**当前这个 wasm 构建的行为**；它一旦变，
+  //    兜底的是 `walkExtracted` 里那个 lstat 判据（那才是主保证，见 Task 5）。
+  const st = fs.lstatSync(path.join(dest, 'testlink'));
+  assert.equal(st.isSymbolicLink(), false, '软链穿透到真实磁盘了 —— 静态服务会跟随它');
+  assert.equal(st.isFile(), true);
+});
+
+test('加密包（内容加密）：清单读得出、条目标了 Encrypted ⇒ 拒，且说得出「密码」', async () => {
+  const source = await makeEncryptedArchive('content');
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'enc.7z', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError（回 400），实际是 ${String(error)}`);
+      assert.match(error.message, /密码/, '文案要说出是密码的问题，不然教师只会反复重传');
+      return true;
+    },
+  );
+});
+
+test('加密包（头部加密）：清单根本读不出来 ⇒ 拒，且不冒泡成 500', async () => {
+  // 这条路实测是 `callMain` **抛一个裸数字**（262704）—— 不 catch 就是个 500。
+  const source = await makeEncryptedArchive('header');
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'enc.7z', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError（回 400），实际是 ${String(error)}`);
+      assert.match(error.message, /加密|损坏/, '头部加密的包要说得出「读不了」的可能原因');
+      return true;
+    },
+  );
+});
+
+test('★ 超总量的包：**在解压之前**就拒，而且目标目录一个字节都没落', async () => {
+  // 🔴 两条要点：
+  //   ① 后缀必须是 `.7z` —— 叫 `bomb.zip` 就会走 AdmZip 那条路，**假绿**：它照样抛
+  //      ArchiveError（safeExtractZip 也有体积闸门），但「先列表再解压」这个顺序根本没被测到。
+  //   ② 判据是**目标目录为空**，不是「内存涨了多少」。内存阈值是概率性的（10x 那个比例只是
+  //      一次实测的经验值），而「拒绝之前有没有落过盘」是确定性的：只要它先解压了再判体积，
+  //      dest 里必然有文件。**这一条才是真在守那个顺序。**
+  const SevenZip = createRequire(import.meta.url)('7z-wasm');
+  const sz = await SevenZip({ stdout() {}, stderr() {} });
+  sz.FS.mkdir('/w'); sz.FS.chdir('/w');
+  sz.FS.writeFile('/w/big.bin', new Uint8Array(8 * 1024 * 1024));
+  sz.FS.writeFile('/w/index.html', '<h1>oversize</h1>');
+  sz.callMain(['a', '-t7z', '/w/big.7z', '/w/big.bin', '/w/index.html']);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'big.7z');
+  fs.writeFileSync(source, Buffer.from(sz.FS.readFile('/w/big.7z')));
+
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({
+      sourcePath: source, originalName: 'big.7z', destination: dest,
+      // ⚠️ 单个文件的上限**故意放宽到 100MB**：这样先命中的必然是「总体积」那一条，
+      //    否则 8MB 会先撞上单文件闸门（默认 25MB），测的就不是这条用例名字说的那件事了。
+      limits: { maxFiles: 500, maxTotalBytes: 1024 * 1024, maxSingleFileBytes: 100 * 1024 * 1024 },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError，实际是 ${String(error)}`);
+      // ⚠️ **光断言类型是不够的，这条会假绿。** Task 3 留的占位也抛 `ArchiveError`
+      //    （`7Z 支持还没做`），于是「只查类型」的版本在 T4 实现之前就是绿的 —— 它证明不了
+      //    任何事。钉住文案，它才从第一步起就指向「体积闸门」这一件事。
+      assert.match(error.message, /体积|过大/, '要看到体积闸门的文案，而不是别的 ArchiveError');
+      return true;
+    },
+  );
+  assert.deepEqual(fs.readdirSync(dest), [], '拒绝之前落过盘 ⇒ 它是先解压再判体积的，顺序反了');
+});
+
+test('把 .jpg 改名成 .rar ⇒ ArchiveError（**不是**静默成功、不是 500）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'faker.rar');
+  fs.writeFileSync(source, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7)]));
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'faker.rar', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError，实际是 ${String(error)}`);
+      // 同上：只查类型会被占位的 `RAR 支持还没做` 蒙过去。钉住文案。
+      assert.match(error.message, /压缩包|读不了|有效/, '要看到「这不是一个有效压缩包」那类文案');
+      return true;
+    },
+  );
+});

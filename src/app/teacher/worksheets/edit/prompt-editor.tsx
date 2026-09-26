@@ -97,7 +97,7 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: string; title: string }[]
   { key: 'bold', label: 'B', title: '加粗' },
   { key: 'italic', label: 'I', title: '斜体' },
   { key: 'underline', label: 'U', title: '下划线' },
-  { key: 'emphasis', label: '着', title: '着重号（字下加点）' },
+  { key: 'emphasis', label: '重', title: '着重号（字下加点）' },
 ];
 
 export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEditorProps) {
@@ -115,6 +115,19 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   /** `runs` 的最新一份（事件回调是闭包，`remapRuns` 要用**当下**的那一份）。 */
   const runsRef = useRef(runs);
   runsRef.current = runs;
+  /**
+   * 「按下工具栏那一刻」的选区。
+   *
+   * 🔴 **必须有它，而且不能靠 `preventDefault` 顶替。** 四个格式按钮用
+   * `mousedown` + `preventDefault` 就能保住焦点与选区；但**颜色那个 `<select>` 不行** ——
+   * `preventDefault` 会连**原生下拉都打不开**（2026-09-26 交付当天就是这么坏的：
+   * 颜色点了没反应）。而原生下拉一打开，焦点与选区就没了。
+   * ⇒ 在工具栏那一层的**捕获阶段**把当时的选区记下来（那时焦点还没跑），
+   * 控件真正触发时拿它当落点。
+   * ⚠️ 打字会把它作废（`handleInput` 里清掉）—— 否则「先选一段、再打字、再改颜色」
+   * 会作用到一段早就不存在的范围上。
+   */
+  const pendingRangeRef = useRef<{ from: number; to: number } | null>(null);
 
   /** 按当前选区刷新工具栏的亮灯（没选中 ⇒ 全灭，裁定 ②）。 */
   const refreshToolbar = useCallback(() => {
@@ -185,6 +198,8 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     if (nextText === node.prompt) return;
     // 区间跟着文字走（纯逻辑，那半边有用例）。
     const nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
+    // 文字变了 ⇒ 之前记下的那段选区作废（见 `pendingRangeRef`）。
+    pendingRangeRef.current = null;
     onPromptChange(nextText, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
     refreshToolbar();
   };
@@ -202,7 +217,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   const applyToSelection = (patch: Partial<Record<PromptBooleanKey, boolean>> & { color?: string }) => {
     const el = editableRef.current;
     if (!el) return;
-    const range = selectedRange(el);
+    // ⚠️ 活的选区优先；没有就用工具栏按下那一刻记下的那一份（颜色那个原生下拉
+    // 一打开选区就没了）。
+    const range = selectedRange(el) || pendingRangeRef.current;
     if (!range) {
       // 裁定 ②：一个字符都没选中 ⇒ 不生效（按钮本来也不亮）。
       setToolbar(NO_SELECTION);
@@ -214,6 +231,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     // 动作上（教师看到屏幕纹丝不动，只能再按一次）。
     onPromptChange(node.prompt, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
     renderRunsInto(el, node.prompt, nextRuns);
+    // ⚠️ 先把焦点放回输入框再放选区：从原生下拉回来时焦点在 `<select>` 上，
+    // 不放回来的话选区**画不出来**（数据是对的，但教师看不到自己设了哪一段）。
+    el.focus();
     placeSelection(el, range.from, range.to);
     refreshToolbar();
   };
@@ -234,7 +254,15 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   return (
     <div className="worksheet-editor-rich-field">
       <span className="worksheet-editor-rich-label">题干</span>
-      <div className="worksheet-editor-formatbar" aria-label="题干文字格式">
+      <div
+        className="worksheet-editor-formatbar"
+        aria-label="题干文字格式"
+        // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
+        onMouseDownCapture={() => {
+          const el = editableRef.current;
+          pendingRangeRef.current = el ? selectedRange(el) : null;
+        }}
+      >
         {BOOLEAN_BUTTONS.map(button => (
           <button
             key={button.key}
@@ -253,7 +281,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
             {button.label}
           </button>
         ))}
-        <label className="worksheet-editor-color-control" onMouseDown={(event) => event.preventDefault()}>
+        {/* ⚠️ 这里**不能**加 `onMouseDown` + `preventDefault`：那会让原生下拉打不开。
+            选区由外面那一层的捕获负责（`pendingRangeRef`）。 */}
+        <label className="worksheet-editor-color-control">
           <span>文字颜色</span>
           <select
             value={toolbar.color}

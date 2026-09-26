@@ -350,10 +350,14 @@ export function promptRunStyle(run: PromptTextStyle): Record<string, string | nu
   };
   if (run.underline) style.textDecoration = 'underline';
   if (run.emphasis) {
-    style.WebkitTextEmphasis = 'filled dot';
+    // ⚠️ 形状取 `circle` 而不是 `dot`：CSS 里 `dot` 是**小**点、`circle` 是**大**圈，
+    // 而 `dot` 在中文正文的字号下小到几乎看不见（2026-09-26 教师反馈「点太小了」）。
+    // 这是**取悦眼睛**的那一半，改它不需要理由；而下面那两个**属性名**与 `under`
+    // 是「显不显示」的那一半，别动。
+    style.WebkitTextEmphasis = 'filled circle';
     style.WebkitTextEmphasisPosition = 'under';
     // 无前缀那一份也写上：今天的 Safari 只认前缀版，但不必等它改。
-    style.textEmphasis = 'filled dot';
+    style.textEmphasis = 'filled circle';
     style.textEmphasisPosition = 'under';
   }
   return style;

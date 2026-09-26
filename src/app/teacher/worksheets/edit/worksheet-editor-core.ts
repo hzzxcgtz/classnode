@@ -585,8 +585,17 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
     const next: Record<string, unknown> = { ...current.data };
     let changed = false;
 
-    const flat = withoutEmptyAnswers(next.answers);
-    if (flat) { next.answers = flat; changed = true; }
+    // ★ 2026-09-26：**新形状**（每空一份）在这里要逐空清，不能整份丢给 `withoutEmptyAnswers` ——
+    // 它的判据是「元素必须是字符串」，而新形状的元素是**数组** ⇒ 它会把每一份答案都当成
+    // 坏元素丢掉，**存一次就把全题的答案清空**（而且没有报错）。
+    if (fillShape(current) === 'nested') {
+      const nested = (next.answers as unknown[]).map((entry) => withoutEmptyAnswers(entry) ?? entry);
+      const nestedChanged = nested.some((entry, index) => entry !== (next.answers as unknown[])[index]);
+      if (nestedChanged) { next.answers = nested; changed = true; }
+    } else {
+      const flat = withoutEmptyAnswers(next.answers);
+      if (flat) { next.answers = flat; changed = true; }
+    }
 
     if (Array.isArray(next.blanks)) {
       let blanksChanged = false;
@@ -621,11 +630,23 @@ export function sanitizeContentForSave(content: WorksheetContent): WorksheetCont
 // —— 填空（多空）──────────────────────────────────────────────────────
 
 /**
- * 这道填空题现在是哪一种形状。判据与服务端**逐字一致**：`Array.isArray(data.blanks)` 在不在
- * （`VALIDATORS` 的 `fill-blank` 支与 `judgeFillBlank` 用的都是它）——
- * 两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为分数不对。
+ * 这道填空题的答案是**哪一种历史形状**（★ 2026-09-26 起只影响**读**）。
+ *
+ * 三种形状（不同时期落库的，一份都不能丢）：
+ *   · `'multi'` —— 老多空：`blanks: [{ answers: […] }, …]`，答案住在 `blanks` 里面；
+ *   · `'single'` —— 老单空：`answers: ['氧气']`，**平铺**的一份；
+ *   · `'nested'` —— **新形状**：`answers: [['氧气'], …]`，**每空一份**。
+ *
+ * 🔴 **写**一律写 `'nested'`（读的三条路只是过渡）。理由：三种形状并存是本仓最防的
+ * 那类分叉，而「每空一份」是唯一一个**单空与多空没有区别**的形状 ——
+ * 判分（`answerSlotCount` / `acceptableAnswersFor`）、编辑器、迁移都能只写一套。
+ * ⚠️ 判据「**每一个**元素都是数组」而不是「第一个是」：教师的坏数据里出现一个 `[]`
+ * 会让「第一个是数组」判错，于是平铺那份被当成「多个空」（服务端那条 M3 边界用例
+ * 就是这么红的）。
  */
-export function fillShape(node: WorksheetQuestionNode): 'single' | 'multi' {
+export function fillShape(node: WorksheetQuestionNode): 'single' | 'multi' | 'nested' {
+  const answers = node.data.answers;
+  if (Array.isArray(answers) && answers.length > 0 && answers.every(Array.isArray)) return 'nested';
   return Array.isArray(node.data.blanks) ? 'multi' : 'single';
 }
 
@@ -638,16 +659,22 @@ export function fillShape(node: WorksheetQuestionNode): 'single' | 'multi' {
  * 只有「＋ 增加一个空」。不替它造一个空：那样屏幕上就有一行教师没建过的框。
  */
 export function readBlankAnswers(node: WorksheetQuestionNode): string[][] {
-  if (fillShape(node) === 'multi') {
+  const shape = fillShape(node);
+  const clean = (raw: unknown): string[] => (
+    Array.isArray(raw) ? raw.filter((answer): answer is string => typeof answer === 'string') : []
+  );
+  if (shape === 'nested') {
+    // 新形状：每空一份。⚠️ **长度就是空数** —— 这里不补也不裁。
+    return (node.data.answers as unknown[]).map(clean);
+  }
+  if (shape === 'multi') {
     const blanks = node.data.blanks as unknown[];
     return blanks.map((blank) => {
       if (!blank || typeof blank !== 'object' || Array.isArray(blank)) return [];
-      const answers = (blank as Record<string, unknown>).answers;
-      return Array.isArray(answers) ? answers.filter((answer): answer is string => typeof answer === 'string') : [];
+      return clean((blank as Record<string, unknown>).answers);
     });
   }
-  const raw = node.data.answers;
-  return [Array.isArray(raw) ? raw.filter((answer): answer is string => typeof answer === 'string') : []];
+  return [clean(node.data.answers)];
 }
 
 /** 第 `index` 个空的 textarea 值（一行一个可接受答案）。往返无损。 */
@@ -664,13 +691,15 @@ export function readBlankText(node: WorksheetQuestionNode, index: number): strin
  */
 export function writeBlankText(node: WorksheetQuestionNode, index: number, text: string): Record<string, unknown> {
   const answers = writeFillAnswers(text);
-  if (fillShape(node) === 'multi') {
-    const blanks = readBlankAnswers(node);
-    if (index < 0 || index >= blanks.length) return {};
-    return { blanks: blanks.map((current, blankIndex) => ({ answers: blankIndex === index ? answers : current })) };
-  }
-  // 单空只有一个空，下标越界 = 调用方算错了（界面上没有第二条路），返回空补丁而不是写进一个空。
-  return index === 0 ? { answers } : {};
+  const blanks = readBlankAnswers(node);
+  // 下标越界 = 调用方算错了（界面上没有第二条路），返回空补丁而不是写进一个空。
+  if (index < 0 || index >= blanks.length) return {};
+  // ★ 一律写**新形状**（每空一份）+ 把老的 `blanks` 键**清掉**：
+  // 两份答案并存会让「哪一份算数」有两个答案。
+  return {
+    blanks: undefined,
+    answers: blanks.map((current, blankIndex) => (blankIndex === index ? answers : current)),
+  };
 }
 
 /**
@@ -687,13 +716,9 @@ export function writeBlankText(node: WorksheetQuestionNode, index: number, text:
  * 代价是「这道题在库里是什么形状」不再随教师的增删来回变。
  */
 export function addBlank(node: WorksheetQuestionNode): Record<string, unknown> {
-  if (fillShape(node) === 'multi') {
-    return { blanks: [...readBlankAnswers(node).map((answers) => ({ answers })), { answers: [] }] };
-  }
-  return {
-    answers: undefined,
-    blanks: [{ answers: writeFillAnswers(readFillAnswers(node)) }, { answers: [] }],
-  };
+  // ★ 一律写新形状：老形状（平铺 / `blanks`）在**读**的时候已经被摊成同一份了，
+  // 所以这里不必再分情况 —— 这正是「统一成每空一份」换来的东西。
+  return { blanks: undefined, answers: [...readBlankAnswers(node), []] };
 }
 
 /**
@@ -706,11 +731,14 @@ export function addBlank(node: WorksheetQuestionNode): Record<string, unknown> {
  */
 export function removeBlank(node: WorksheetQuestionNode, index: number): Record<string, unknown> {
   const blanks = readBlankAnswers(node);
+  // ⚠️ 界面在**只剩一个空**时**不渲染**那个删除按钮（服务端要求「至少要有一个空」），
+  // 所以这里够不到「零个空」。够得到的话返回**空补丁**而不是 `{ answers: [] }` ——
+  // 后者会把一道「还没填答案」的题变成「填了空答案」的题，而教师只是按了一下那个按钮。
+  // ⚠️ 老的单空形状（`fillShape === 'single'`，即答案还是**平铺**的）**不删**：
+  // 它只有一个空，删它就是上面那种情况。
+  if (fillShape(node) === 'single' && blanks.length <= 1) return {};
   if (index < 0 || index >= blanks.length) return {};
-  if (fillShape(node) === 'multi') {
-    return { blanks: blanks.filter((_, blankIndex) => blankIndex !== index).map((answers) => ({ answers })) };
-  }
-  return {};
+  return { blanks: undefined, answers: blanks.filter((_, blankIndex) => blankIndex !== index) };
 }
 
 // —— 排序 ──────────────────────────────────────────────────────────────

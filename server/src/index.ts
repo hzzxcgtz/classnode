@@ -38,6 +38,7 @@ import { migratePlatformTokens } from './services/platform-token-migration.js';
 import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js';
 import { migrateWorksheetPoints } from './services/worksheet-points-migration.js';
 import { migrateWorksheetPromptStyle } from './services/worksheet-prompt-migration.js';
+import { migrateFillBlankToInline } from './services/worksheet-fill-blank-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -562,14 +563,23 @@ async function main() {
     // 而这一条的判据**认不出**「一道刚建好、题干写了但还没插空的新填空题」与
     // 「一道老填空题」—— 两者都是「没有空」。照前两次那样每次启动都跑 ⇒
     // **每重启一次就给那道新题多追加一个空**。判据不可靠时，唯一安全的就是只跑一次。
-    // 🔴 **这一次迁移暂时没有接上（2026-09-26）。** 它已经写好、也有用例，但**不能单独上线**：
-    // 「空」搬进题干之后，学生端要会把那个空画成输入框（学生侧）、编辑器要认新的答案形状
-    //（`answers` 从平铺变成每空一份）—— 两件事都属于 spec 的第 3、4 步。先跑迁移的话，
-    // 中间那段时间里多空的老题会**静默判所有人错**。
-    // ⇒ 接上它的那一次提交，必须同时带上第 3、4 步。**别提前把下面这段解注释。**
-    //
-    // const fillBlankMigrationKey = 'worksheet-fill-blank-inline-migration-v1';
-    // ...（见 git 历史里 9a113f2 的那一段：完成标记把门，只跑一次）
+    // ★ 2026-09-26：**接回来了。** 它上面那两条前置条件现在都到了：
+    //   · 学生端会把题干里的空画成输入框（spec 第 3 步，`PromptText` 的 `blanks`）；
+    //   · 编辑器与判分都认新的答案形状（每空一份，spec 第 4 步）。
+    // ⚠️ 它**只跑一次**（完成标记把门）—— 它的幂等判据认不出「刚建好、还没插空的新填空题」
+    // 与「一道老填空题」（两者都是「没有空」），照前两条那样每次启动都跑会让新题
+    // 每重启一次就多追加一个空。理由写在迁移自己的文件头。
+    const fillBlankMigrationKey = 'worksheet-fill-blank-inline-migration-v1';
+    const fillBlankDone = await prisma.setting.findUnique({ where: { key: fillBlankMigrationKey } });
+    if (!fillBlankDone) {
+      const backupPath = backupDatabase('worksheet-fill-blank-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+      const fillBlankMigrated = await migrateFillBlankToInline(prisma);
+      await prisma.setting.upsert({ where: { key: fillBlankMigrationKey }, update: { value: 'completed' }, create: { key: fillBlankMigrationKey, value: 'completed' } });
+      if (fillBlankMigrated.migrated > 0) {
+        console.log(`[server] Worksheet fill-blank migration: ${fillBlankMigrated.migrated} 份学习单的填空已挪进题干`);
+      }
+    }
   } catch (e) {
     console.error('[server] Worksheet task migration failed:', e);
     throw e;

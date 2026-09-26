@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   DEFAULT_PROMPT_STYLE,
+  blankRuns,
   insertBlank,
   isPlainRuns,
   rangeColor,
@@ -20,6 +21,7 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
+import { readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
@@ -338,9 +340,21 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     // —— 于是「填空区域」插进去的其实只是普通文字，学生端根本不会在那儿画输入框。
     // ⚠️ 标识由**这一侧**造（每题唯一，与 `optionKey` / `q_…` 同源）：纯逻辑那一层
     // 不许有随机性，否则它的用例就不确定了。
+    // 🔴 **答案那一栏要跟着在同一个位置上 splice。**
+    // 空的标识只回答「这几条是不是同一个空」，**不是答案序号** —— 答案序号是
+    // 「从左到右排第几」（服务端按 `texts[i]` 取值）。不 splice 的话，在中间插一个空
+    // 会让**后面所有答案整体错位一格**：教师看着答案还在，而学生答对的被判错。
+    const before = blankRuns(runsRef.current).filter((run) => run.start < from).length;
+    const current = readBlankAnswers(node);
+    const answers = [...current.slice(0, before), [], ...current.slice(before)];
     const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, `blank_${blankIdSuffix()}`);
     if (inserted.text === text) return;
-    onPromptChange(inserted.text, { promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs });
+    onPromptChange(inserted.text, {
+      promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs,
+      // ⚠️ 顺手把老形状的 `blanks` 清掉：两份答案并存会让「哪一份算数」有两个答案。
+      answers,
+      blanks: undefined,
+    });
     renderRunsInto(el, inserted.text, inserted.runs);
     // 光标落在**插入的那一段之后**（接着打字不该把这串下划线拆开）。
     const after = from + FILL_BLANK_TEXT.length;

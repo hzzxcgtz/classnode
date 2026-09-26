@@ -1422,45 +1422,79 @@ test('readBlankText / readFillAnswers：第 N 个空的文本；单空形状逐�
   assert.equal(readFillAnswers(multi), '甲\n甲2');
 });
 
-test('🔴 writeBlankText 保持形状：单空写回 `answers`（**不产生 blanks**）、多空写回 `blanks`', () => {
+test('🔴 writeBlankText：**一律写新形状**（每空一份），并把老的 `blanks` 键清掉', () => {
+  // ★ 2026-09-26：三种历史形状（平铺 / `blanks` / 每空一份）在**读**的时候已经被摊成
+  // 同一份了，写一律写「每空一份」—— 那是唯一一个**单空与多空没有区别**的形状，
+  // 判分、编辑器、迁移都因此只写一套。
   const single = typed('fill-blank', { answers: ['甲'] });
-  const written = writeBlankText(single, 0, '甲\n乙');
-  assert.deepEqual(written, { answers: ['甲', '乙'] });
-  assert.equal('blanks' in written, false, '打字不能让一道单空题悄悄换形状（库里那份数据换了结构，学生那边也跟着变）');
+  assert.deepEqual(writeBlankText(single, 0, '甲\n乙'), { blanks: undefined, answers: [['甲', '乙']] });
 
   const multi = typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }] });
-  assert.deepEqual(writeBlankText(multi, 1, '乙\n丙'), { blanks: [{ answers: ['甲'] }, { answers: ['乙', '丙'] }] });
+  // ⚠️ 老的多空形状被**读**成同一份，写回去时顺手换成新形状（`blanks` 清掉）。
+  assert.deepEqual(writeBlankText(multi, 1, '乙\n丙'), { blanks: undefined, answers: [['甲'], ['乙', '丙']] });
+
+  const nested = typed('fill-blank', { answers: [['甲'], ['乙']] });
+  assert.deepEqual(writeBlankText(nested, 0, '甲'), { blanks: undefined, answers: [['甲'], ['乙']] });
+
   // 越界 ⇒ 空补丁
   assert.deepEqual(writeBlankText(multi, 5, 'x'), {});
   assert.deepEqual(writeBlankText(single, 1, 'x'), {});
 });
 
-test('🔴 addBlank 把单空**升级**成多空：平面的 answers 成为第一个空，且 `answers` 键被置为 undefined', () => {
-  const patch = addBlank(typed('fill-blank', { answers: ['甲', '乙'] }));
-  assert.deepEqual(patch.blanks, [{ answers: ['甲', '乙'] }, { answers: [] }]);
-  // 🔴 两份答案并存会让「哪一份算数」有两个答案（服务端按 `blanks` 走，前端再读 `answers` 就分岔）。
-  // ⚠️ 必须是**置 undefined** 而不是「不写这个键」：补丁是 merge，不写就删不掉旧的那个键。
-  assert.equal('answers' in patch, true);
-  assert.equal(patch.answers, undefined);
-});
-
-test('addBlank / removeBlank 的边界：多空追加在末尾；单空删不掉（空补丁，不造「零个空的单空题」）', () => {
-  assert.deepEqual(
-    addBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] })).blanks,
-    [{ answers: ['甲'] }, { answers: [] }],
-  );
-  assert.deepEqual(removeBlank(typed('fill-blank', { answers: ['甲'] }), 0), {});
-  assert.deepEqual(removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] }), 0), {
-    blanks: [],
+test('🔴 addBlank：追加在末尾，**一律写新形状**', () => {
+  // 老的单空（平铺）⇒ 摊成「第一个空」再加一个。
+  assert.deepEqual(addBlank(typed('fill-blank', { answers: ['甲', '乙'] })), {
+    blanks: undefined,
+    answers: [['甲', '乙'], []],
   });
-  assert.deepEqual(removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] }), 9), {});
+  // 老的多空 ⇒ 同样写成新形状。
+  assert.deepEqual(addBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }] })), {
+    blanks: undefined,
+    answers: [['甲'], []],
+  });
+  // 已经是新形状 ⇒ 只追加。
+  assert.deepEqual(addBlank(typed('fill-blank', { answers: [['甲']] })), {
+    blanks: undefined,
+    answers: [['甲'], []],
+  });
 });
 
-test('🔴 删回一个空**不退回**单空形状（形状只升不降：换形状不带来任何好处，却让它随增删来回变）', () => {
-  const removed = removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }] }), 1);
-  assert.deepEqual(removed, { blanks: [{ answers: ['甲'] }] });
-  assert.equal('answers' in removed, false);
+test('removeBlank 的边界：只剩一个空（老的单空形状）⇒ 空补丁，不造「零个空」', () => {
+  // ⚠️ 界面在只剩一个空时**不渲染**删除按钮，所以这里够不到；够得到的话返回**空补丁**，
+  // 而不是 `{ answers: [] }`（后者把一道「还没填答案」的题变成「填了空答案」的题）。
+  assert.deepEqual(removeBlank(typed('fill-blank', { answers: ['甲'] }), 0), {});
+  assert.deepEqual(removeBlank(typed('fill-blank', { answers: [['甲'], ['乙']] }), 1), {
+    blanks: undefined,
+    answers: [['甲']],
+  });
+  assert.deepEqual(removeBlank(typed('fill-blank', { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }] }), 0), {
+    blanks: undefined,
+    answers: [['乙']],
+  });
+  assert.deepEqual(removeBlank(typed('fill-blank', { answers: [['甲']] }), 9), {});
+});
+
+test('🔴 保存前清理：**新形状**（每空一份）逐空清，不许把整题答案清空', () => {
+  // 🔴 这一条是**被一次真实的坑逼出来的**：那处清理原来无条件把 `data.answers` 交给
+  // `withoutEmptyAnswers`，而它的判据是「元素必须是字符串」—— 新形状的元素是**数组**
+  // ⇒ 每一份答案都被当成坏元素丢掉 ⇒ **教师存一次，全题答案清空**，且没有任何报错。
+  const saved = sanitizeContentForSave(contentOf(
+    typed('fill-blank', { answers: [['甲', ''], ['乙']] }),
+  ));
+  assert.deepEqual(saved.nodes[0].data.answers, [['甲'], ['乙']], '空行去掉，答案留住');
+  // 老形状照旧（与从前逐字相同）。
+  const legacy = sanitizeContentForSave(contentOf(typed('fill-blank', { answers: ['甲', ''] })));
+  assert.deepEqual(legacy.nodes[0].data.answers, ['甲']);
+});
+
+test('🔴 fillShape：三种历史形状都认得出来，写出去的一律是 `nested`', () => {
+  // 判据是「**每一个**元素都是数组」而不是「第一个是」—— 教师的坏数据里出现一个 `[]`
+  // 会让「第一个是数组」判错（服务端那条 M3 边界用例就是这么红的）。
+  assert.equal(fillShape(typed('fill-blank', { answers: ['甲'] })), 'single');
   assert.equal(fillShape(typed('fill-blank', { blanks: [{ answers: ['甲'] }] })), 'multi');
+  assert.equal(fillShape(typed('fill-blank', { answers: [['甲'], ['乙']] })), 'nested');
+  assert.equal(fillShape(typed('fill-blank', { answers: [[], '甲'] })), 'single', '坏数据不许骗过判据');
+  assert.equal(fillShape(typed('fill-blank', {})), 'single');
 });
 
 // —— 排序题：两个顺序的不变量 ───────────────────────────────────────────

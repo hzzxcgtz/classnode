@@ -124,7 +124,14 @@ export async function safeExtractArchive(opts: SafeExtractOptions): Promise<{ ki
       //    再以 mode 0o600 落盘。这条路的保证是**我们自己写的**，不要包一层改动它。
       safeExtractZip(zip as Parameters<typeof safeExtractZip>[0], opts.destination, opts.limits);
     } catch (error) {
-      throw new ArchiveError(`压缩包解压失败：${error instanceof Error ? error.message : '内容异常'}`);
+      const detail = error instanceof Error ? error.message : '内容异常';
+      // ⚠️ **adms-zip 的加密错误是一串英文内部串**（实测 `ADM-ZIP: Incompatible password parameter`）。
+      //    400 是对的（没有静默损坏的路径），但把一个英文库内部串端给教师看不是。
+      //    这里翻译成与 7z 那条路**逐字一致**的话 —— 同一个问题在不同格式下要给同一句回答。
+      if (/password/i.test(detail)) {
+        throw new ArchiveError('不支持带密码的压缩包，请先解压后重新打包');
+      }
+      throw new ArchiveError(`压缩包解压失败：${detail}`);
     }
     return { kind };
   }

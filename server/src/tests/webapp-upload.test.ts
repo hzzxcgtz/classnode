@@ -709,6 +709,30 @@ test('单 HTML：大写后缀照收（Review Focus 第 2 条）', async (t) => {
   });
 });
 
+test('★ 单 HTML 的落盘权限必须是 0o600（与压缩包那条路一致）', async (t) => {
+  // 独立复核实测：单 HTML 落盘是 **0644**（`copyFileSync` 把 multer 临时文件的权限带过来了），
+  // 而压缩包那条路一律 0600。规范 §二 的表格给单 HTML 写的就是 `{ mode: 0o600 }`，
+  // 而它现在是**默认路径** —— 不该是唯一一条权限不同的路。
+  await withTempDataDir(async (dataDir) => {
+    const res = await uploadSingle(t, dataDir, 'page', new Blob(['<h1>x</h1>']), 'index.html');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const mode = fs.statSync(path.join(dataDir, 'webapps', String(res.body.id), 'index.html')).mode & 0o777;
+    assert.equal(mode, 0o600, `单 HTML 落盘是 ${mode.toString(8)} —— 要与压缩包那条路同权限`);
+  });
+});
+
+test('★ missingRefs：单 HTML 引用了不在包里的 style.css ⇒ 响应里必须报出来', async (t) => {
+  // 独立复核指出：`missingRefs` 这个字段**没有任何已提交的用例碰过** —— 前端那条告警、
+  // 以及「两条提醒任一命中就留在弹窗里」的判断，全靠它。回归了不会有人发现。
+  await withTempDataDir(async (dataDir) => {
+    const res = await uploadSingle(t, dataDir, 'page', new Blob(['<link rel="stylesheet" href="style.css">']), 'index.html');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const missing = res.body.missingRefs as { count: number; refs: string[] };
+    assert.equal(missing.count, 1, '服务端不收这条 ⇒ 前端的告警永远不出现');
+    assert.deepEqual(missing.refs, ['style.css']);
+  });
+});
+
 test('单 HTML：传一个 .css ⇒ 400，且文案说的是「必须是 HTML」', async (t) => {
   await withTempDataDir(async (dataDir) => {
     const res = await uploadSingle(t, dataDir, 'page', new Blob(['body{}']), 'style.css');

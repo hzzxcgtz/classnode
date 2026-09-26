@@ -8,7 +8,11 @@ import { ArchiveError, archiveKindOf, parseSevenZipListing, safeExtractArchive }
 
 /**
  * 真实抓取：`7z-wasm` 对 `server/src/tests/fixtures/small-rar3.rar` 跑
- * `callMain(['l','-slt','-ba','/in/a'])` 的**逐字**输出。
+ * `callMain(['l','-slt','-ba','/in/a'])` 的输出的**节选**。
+ *
+ * ⚠️ **是节选不是逐字** —— 初稿说成「逐字」是假的，独立复核对过真实输出：每个块里还有
+ *    `Modified` / `Created` / `Accessed` / `Solid` / `Commented` / `Split Before` / `Split After` / `CRC` / `Host OS` / `Method` / `Version` / `Volume Index`
+ *    等十几行。**结构是真的、字段是筛过的**；解析结果与真实输出一致（3 / 48 / 20）。
  *
  * ⚠️ 块以空行分隔；目录块是 `Folder = +`；文件块是 `Folder = -`。
  * ⚠️ 这份是全 ASCII 的，所以看不到那个已知问题：**含非 ASCII 路径时这段文本会乱码**
@@ -229,40 +233,75 @@ test('加密包（头部加密）：清单根本读不出来 ⇒ 拒，且不冒
 });
 
 test('★ 超总量的包：**在解压之前**就拒，而且目标目录一个字节都没落', async () => {
-  // 🔴 两条要点：
+  // 🔴 三条要点：
   //   ① 后缀必须是 `.7z` —— 叫 `bomb.zip` 就会走 AdmZip 那条路，**假绿**：它照样抛
   //      ArchiveError（safeExtractZip 也有体积闸门），但「先列表再解压」这个顺序根本没被测到。
-  //   ② 判据是**目标目录为空**，不是「内存涨了多少」。内存阈值是概率性的（10x 那个比例只是
-  //      一次实测的经验值），而「拒绝之前有没有落过盘」是确定性的：只要它先解压了再判体积，
-  //      dest 里必然有文件。**这一条才是真在守那个顺序。**
+  //   ② 文案要钉住「总体积过大」：解压后才判体积会走到另一条拒绝（`实际内容大于清单声明`）。
+  //   ③ 🔴 **必须同时有内存判据 —— 这条初稿写反了。** 初稿说「判据是目标目录为空，
+  //      不是内存涨了多少，因为内存阈值是概率性的」。**独立复核实测证伪了它**：把体积闸门
+  //      从 `x` 之前挪到之后，`dest` 判据与断言**全部照样通过** —— 因为解压落在 wasm 的内存
+  //      FS 里，目标目录根本看不见。那道闸门是 80MB 压缩包与实测 ~800MB 内存事件之间唯一的
+  //      东西，而初稿那条用例在它本该挡住的变异下**不会红**。
   const SevenZip = createRequire(import.meta.url)('7z-wasm');
   const sz = await SevenZip({ stdout() {}, stderr() {} });
   sz.FS.mkdir('/w'); sz.FS.chdir('/w');
-  sz.FS.writeFile('/w/big.bin', new Uint8Array(8 * 1024 * 1024));
+  sz.FS.writeFile('/w/big.bin', new Uint8Array(40 * 1024 * 1024));
   sz.FS.writeFile('/w/index.html', '<h1>oversize</h1>');
   sz.callMain(['a', '-t7z', '/w/big.7z', '/w/big.bin', '/w/index.html']);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
   const source = path.join(dir, 'big.7z');
   fs.writeFileSync(source, Buffer.from(sz.FS.readFile('/w/big.7z')));
 
+  const before = process.memoryUsage().rss;
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
   await assert.rejects(
     () => safeExtractArchive({
       sourcePath: source, originalName: 'big.7z', destination: dest,
       // ⚠️ 单个文件的上限**故意放宽到 100MB**：这样先命中的必然是「总体积」那一条，
-      //    否则 8MB 会先撞上单文件闸门（默认 25MB），测的就不是这条用例名字说的那件事了。
+      //    否则 40MB 会先撞上单文件闸门（默认 25MB），测的就不是这条用例名字说的那件事了。
       limits: { maxFiles: 500, maxTotalBytes: 1024 * 1024, maxSingleFileBytes: 100 * 1024 * 1024 },
     }),
     (error: unknown) => {
       assert.ok(error instanceof ArchiveError, `要 ArchiveError，实际是 ${String(error)}`);
       // ⚠️ **光断言类型是不够的，这条会假绿。** Task 3 留的占位也抛 `ArchiveError`
-      //    （`7Z 支持还没做`），于是「只查类型」的版本在 T4 实现之前就是绿的 —— 它证明不了
-      //    任何事。钉住文案，它才从第一步起就指向「体积闸门」这一件事。
-      assert.match(error.message, /体积|过大/, '要看到体积闸门的文案，而不是别的 ArchiveError');
+      //    （`7Z 支持还没做`），于是「只查类型」的版本在 T4 实现之前就是绿的。
+      assert.match(error.message, /总体积过大/, '要看到「第一关」那条体积闸门的文案');
       return true;
     },
   );
   assert.deepEqual(fs.readdirSync(dest), [], '拒绝之前落过盘 ⇒ 它是先解压再判体积的，顺序反了');
+
+  // 🔴 **真正守住那个顺序的是这一条**（`dest` 判据看不见 wasm 内存 FS 里发生过什么）。
+  //    40MB 展开在 wasm 里约吃 10x（实测比例）⇒ 若它先解压了，这里会看到数百 MB 的增长。
+  const grew = (process.memoryUsage().rss - before) / 1024 / 1024;
+  assert.ok(
+    grew < 200,
+    `拒一个超总量的包吃掉了 ${grew.toFixed(0)}MB —— 说明它**先解压了再判体积**，顺序反了`,
+  );
+});
+
+test('加密的 zip ⇒ 中文文案说得出「密码」，不是 ADM-ZIP 的英文原文', async () => {
+  // 独立复核实测：加密 zip 会以 `压缩包解压失败：ADM-ZIP: Incompatible password parameter`
+  // 返回 —— 400 是对的，但把一个英文库内部串端给教师看不是。
+  const SevenZip = createRequire(import.meta.url)('7z-wasm');
+  const sz = await SevenZip({ stdout() {}, stderr() {} });
+  sz.FS.mkdir('/w'); sz.FS.chdir('/w');
+  sz.FS.writeFile('/w/secret.txt', 'top secret');
+  sz.callMain(['a', '-phunter2', '/w/enc.zip', '/w/secret.txt']);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'enc.zip');
+  fs.writeFileSync(source, Buffer.from(sz.FS.readFile('/w/enc.zip')));
+
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'enc.zip', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `要 ArchiveError，实际是 ${String(error)}`);
+      assert.match(error.message, /密码/, '要说「密码」这件事，与 7z 那条路一致');
+      assert.doesNotMatch(error.message, /ADM-ZIP|Incompatible password/, '不许把英文库内部串端给教师');
+      return true;
+    },
+  );
 });
 
 test('把 .jpg 改名成 .rar ⇒ ArchiveError（**不是**静默成功、不是 500）', async () => {

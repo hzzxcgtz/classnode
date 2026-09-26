@@ -528,9 +528,13 @@ router.get('/:id/usage', async (req, res) => {
 });
 
 /**
- * 上传网页。两条路径：
- *   · `archive`：单个 .zip，解压到 `<webappsRoot>/<uuid>/`
- *   · `files` / `files[]`：多选文件，逐个拷进 `<webappsRoot>/<uuid>/`
+ * 上传网页。两条路径（★ 2026-09-26 教师裁定后重写；**初稿这里说的两条早已作废**）：
+ *   · `page`：**单个 HTML 文件**，直接落盘到 `<webappsRoot>/<uuid>/`（不解压）
+ *   · `archive`：**压缩包**，`zip` / `rar` / `7z` 三种，统一走 `safeExtractArchive()`
+ *
+ * ⚠️ 初稿写的是「`archive`：单个 .zip」与「`files` / `files[]`：多选文件」—— **两句现在都是假的**：
+ *    `archive` 收三种后缀；`files` / `files[]` 已被整条删除，发它会拿到 400（见 `upload.fields` 那张表）。
+ *    留着不改就是本仓最怕的那种「下一个人当依据的假注释」。
  *
  * 解压**直接落在最终目录**（不是先解到临时目录再搬）：少一次全量拷贝，
  * 而 uuid 是刚生成的、库里还没有行，没有任何客户端知道这个地址。
@@ -569,7 +573,10 @@ if (uploaded.page) {
   const target = resolveInDir(dest, pageName);
   if (!target) throw new UploadRejected(`路径非法：${pageName}`);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.copyFileSync(uploaded.page.path, target);
+  // ⚠️ **用 writeFileSync 而不是 copyFileSync**：`copyFileSync` 会把 multer 临时文件的
+  //    权限（实测 0644）带过来，而压缩包那条路（`safeExtractZip` 与 7z 的拷出）一律 0o600。
+  //    单 HTML 现在是**默认路径**，不该是唯一一条权限不同的路（规范 §二 写的也是 0o600）。
+  fs.writeFileSync(target, fs.readFileSync(uploaded.page.path), { mode: 0o600 });
 } else if (uploaded.archive) {
   // ── 压缩包：zip / rar / 7z，统一走 safeExtractArchive。 ──
   if (!archiveKindOf(uploaded.archive.originalname)) {

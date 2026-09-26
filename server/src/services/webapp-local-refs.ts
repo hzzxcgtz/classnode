@@ -22,7 +22,18 @@ import { stripComments, type WebappSourceFile } from './webapp-external-deps.js'
  * 为止，所以 `url(a;b.png)` 会被截断。**只影响提示的文字，不影响判定**。
  */
 const REFERENCE_PATTERN =
-  /\b(?:href|src)\s*=\s*["']([^"']+)["']|url\(\s*["']?([^"')]+)|@import\s+["']([^"']+)["']/gi;
+  /\b(?:href|src)\s*=\s*["']([^"']+)["']|url\(\s*["']?([^"')]+)|@import\s+["']([^"']+)["']|srcset\s*=\s*["']([^"']+)["']/gi;
+
+/**
+ * `srcset` 的值是**逗号分隔的候选表**：`img/a.png 1x, img/b.png 2x`。
+ * 每项取第一个空白前的那个 token 就是地址（后面是 `1x` / `2x` / `640w` 这类描述符）。
+ *
+ * ⚠️ 这是独立复核抓到的漏项：`srcset` 是**响应式图片的唯一写法**，而初稿把它整条漏了
+ * （实测返回 0 条）—— 一个为了「别让教师的图静默丢」而存在的扫描器不该漏这一支。
+ */
+function splitSrcset(value: string): string[] {
+  return value.split(',').map(part => part.trim().split(/\s+/)[0]).filter(Boolean);
+}
 
 /**
  * 这条引用是不是「包内本该有的文件」。
@@ -39,10 +50,16 @@ function isLocalReference(ref: string): boolean {
 
 /** 把引用按它所在的文件解析成包内相对路径（`..` 要能退回去）。 */
 function resolveAgainst(baseFile: string, ref: string): string | null {
-  if (ref.startsWith('/')) return ref.slice(1).split('#')[0].split('?')[0] || null;
+  // ⚠️ **判定前先剥掉 `?` 与 `#`，两个分支都要。** 上面那条绝对路径分支本来就剥了，
+  //    下面那条相对分支初稿漏了 ⇒ `href="style.css?v=3"`（缓存串）与 `href="about.html#team"`
+  //    （锚点）会被报成缺失，**而文件明明在场**（独立复核实测）。缓存串与锚点是常见写法，
+  //    误报会让这条提醒整体失去可信度。⚠️ 剥的只是判定用的路径，**展示给教师的仍是原样**。
+  const clean = ref.split('#')[0].split('?')[0];
+  if (!clean) return null;
+  if (clean.startsWith('/')) return clean.slice(1) || null;
   const slash = baseFile.lastIndexOf('/');
   const baseDir = slash === -1 ? '' : baseFile.slice(0, slash);
-  const raw = baseDir ? `${baseDir}/${ref}` : ref;
+  const raw = baseDir ? `${baseDir}/${clean}` : clean;
   const stack: string[] = [];
   for (const segment of raw.split('/')) {
     if (segment === '' || segment === '.') continue;
@@ -63,13 +80,18 @@ export function scanMissingLocalRefs(
   for (const file of files) {
     const source = stripComments(file.content);
     for (const match of source.matchAll(REFERENCE_PATTERN)) {
-      const raw = (match[1] ?? match[2] ?? match[3] ?? '').trim();
-      if (!isLocalReference(raw)) continue;
-      const target = resolveAgainst(file.path.replace(/\\/g, '/'), raw);
-      if (target && present.has(target)) continue;
-      if (seen.has(raw)) continue;
-      seen.add(raw);
-      refs.push(raw);
+      // `srcset` 那一支（第 4 组）要展开成多个候选；其余三支各是一整条引用。
+      const candidates = match[4] !== undefined
+        ? splitSrcset(match[4])
+        : [(match[1] ?? match[2] ?? match[3] ?? '').trim()];
+      for (const raw of candidates) {
+        if (!isLocalReference(raw)) continue;
+        const target = resolveAgainst(file.path.replace(/\\/g, '/'), raw);
+        if (target && present.has(target)) continue;
+        if (seen.has(raw)) continue;
+        seen.add(raw);
+        refs.push(raw);
+      }
     }
   }
 

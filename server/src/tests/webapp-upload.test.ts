@@ -664,3 +664,88 @@ test('正对照：课堂级与组级指向**同一间**课堂时也算 1，不�
   const body = await res.json() as Array<{ id: string; classroomCount: number }>;
   assert.equal(body[0].classroomCount, 1, `两条路径同课堂时只算 1：${JSON.stringify(body)}`);
 });
+
+/**
+ * 走真实路由上传**一个**文件，字段名由调用方给（`page` 或 `archive`）。
+ * 与 `uploadZip` 是同一套装置，只是字段名与文件名可变 —— 不要为每种组合各写一份。
+ */
+async function uploadSingle(
+  t: { after: (fn: () => void) => void },
+  dataDir: string,
+  field: 'page' | 'archive',
+  blob: Blob,
+  filename: string,
+) {
+  const harness = createHarness(SAMPLE, 0);
+  const app = express();
+  app.set('prisma', harness.prisma);
+  app.use('/api/webapps', webappRoutes);
+  const server = createServer(app);
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const address = server.address() as AddressInfo;
+
+  const form = new FormData();
+  form.append(field, blob, filename);
+  form.append('name', '测试网页');
+  const res = await fetch(`http://127.0.0.1:${address.port}/api/webapps`, { method: 'POST', body: form });
+  return { status: res.status, body: await res.json() as Record<string, unknown>, dataDir };
+}
+
+test('单 HTML：落盘、入口就是它、拿得到 200', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const res = await uploadSingle(t, dataDir, 'page', new Blob(['<h1>太阳系</h1>'], { type: 'text/html' }), '太阳系 模拟#1.html');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.entryPath, '太阳系 模拟#1.html', 'Review Focus 第 3 条：中文/空格/# 的文件名要原样当入口');
+    assert.deepEqual(listTree(path.join(dataDir, 'webapps', String(res.body.id))), ['太阳系 模拟#1.html']);
+  });
+});
+
+test('单 HTML：大写后缀照收（Review Focus 第 2 条）', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const res = await uploadSingle(t, dataDir, 'page', new Blob(['<h1>x</h1>']), 'INDEX.HTML');
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.entryPath, 'INDEX.HTML');
+  });
+});
+
+test('单 HTML：传一个 .css ⇒ 400，且文案说的是「必须是 HTML」', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const res = await uploadSingle(t, dataDir, 'page', new Blob(['body{}']), 'style.css');
+    assert.equal(res.status, 400);
+    assert.match(String(res.body.error), /HTML/i);
+  });
+});
+
+test('多选文件那条路已经封死：发三个文件 ⇒ 400 且文案**不**提 500（Review Focus 第 1 条）', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const harness = createHarness(SAMPLE, 0);
+    const app = express();
+    app.set('prisma', harness.prisma);
+    app.use('/api/webapps', webappRoutes);
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => server.close());
+    const address = server.address() as AddressInfo;
+
+    const form = new FormData();
+    form.append('name', '三个文件');
+    form.append('files', new Blob(['a']), 'a.html');
+    form.append('files', new Blob(['b']), 'b.css');
+    form.append('files', new Blob(['c']), 'c.js');
+    const res = await fetch(`http://127.0.0.1:${address.port}/api/webapps`, { method: 'POST', body: form });
+    assert.equal(res.status, 400);
+    const body = await res.json() as { error: string };
+    assert.doesNotMatch(body.error, /500/, 'multer 的文件数上限已经是 2，说「超过上限 500」是拿另一个数字糊弄人');
+    assert.match(body.error, /一个文件|多选|单个/, '文案要说清楚现在只收一个文件');
+  });
+});
+
+test('rar：改名成 .zip 的包 ⇒ 400 且点名 ZIP', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const rar = fs.readFileSync(path.join(import.meta.dirname, '../../src/tests/fixtures/small-rar3.rar'));
+    const res = await uploadSingle(t, dataDir, 'archive', new Blob([new Uint8Array(rar)]), 'actually-rar.zip');
+    assert.equal(res.status, 400);
+    assert.match(String(res.body.error), /ZIP/);
+  });
+});

@@ -6,12 +6,11 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import crypto from 'crypto';
-import { createRequire } from 'module';
 import { safeExtractZip } from '../services/upload-security.js';
+import { ArchiveError, archiveKindOf, safeExtractArchive } from '../services/archive-extract.js';
 import { scanExternalDeps } from '../services/webapp-external-deps.js';
 import { webappsRoot } from '../services/webapp-host.js';
 
-const _require = createRequire(import.meta.url);
 const router: Router = Router();
 
 /**
@@ -115,7 +114,7 @@ export function validateWebappUpload(
   //    大小写不敏感：教师导出时写成 INDEX.HTML 很常见。
   const htmlFiles = files.filter(f => f.path.toLowerCase().endsWith('.html') || f.path.toLowerCase().endsWith('.htm'));
   if (htmlFiles.length === 0) {
-    return { ok: false, reason: '压缩包/所选文件中必须包含入口 HTML（如 index.html）' };
+    return { ok: false, reason: '压缩包或网页文件中必须包含入口 HTML（如 index.html）' };
   }
   // 教师显式指定的一律优先，压过下面的 index.html 启发式。
   if (entryHint) {
@@ -354,36 +353,33 @@ const upload = multer({
   limits: {
     // 单个 zip 最大按「解压后总量上限」收 —— 压缩包比它自己的解压结果还大是没有意义的。
     fileSize: WEBAPP_LIMITS.maxTotalBytes,
-    files: WEBAPP_LIMITS.maxFiles,
+    // 只收 `page` 与 `archive` 各一个 ⇒ 2。**不是** maxFiles(500)：那个数字是给
+    // 压缩包**解开之后**用的，混在这里会让下面的报错文案说出一个对不上的数。
+    files: 2,
   },
 });
 
-// `files[]` 与 `files` 都收：字段名带不带方括号是前端拼 FormData 的写法差异，
-// 不该让教师看到一个「没选文件」的假报错。
+// `page` = 单个 HTML；`archive` = 压缩包（zip / rar / 7z）。
+// ⚠️ 「多选文件」那条路已按教师要求**整条删除**（spec 第 3 条）：`files` / `files[]` 不再接收。
 const webappUpload = upload.fields([
+  { name: 'page', maxCount: 1 },
   { name: 'archive', maxCount: 1 },
-  { name: 'files', maxCount: WEBAPP_LIMITS.maxFiles },
-  { name: 'files[]', maxCount: WEBAPP_LIMITS.maxFiles },
 ]);
 
 interface CollectedUploads {
+  page?: Express.Multer.File;
   archive?: Express.Multer.File;
-  loose: Express.Multer.File[];
 }
 
 function collectedFiles(req: import('express').Request): CollectedUploads {
   const map = (req.files ?? {}) as Record<string, Express.Multer.File[]>;
-  return {
-    archive: map.archive?.[0],
-    loose: [...(map.files ?? []), ...(map['files[]'] ?? [])],
-  };
+  return { page: map.page?.[0], archive: map.archive?.[0] };
 }
 
 function discardUploads(files: CollectedUploads): void {
-  for (const file of [...(files.archive ? [files.archive] : []), ...files.loose]) {
-    try {
-      fs.unlinkSync(file.path);
-    } catch {}
+  for (const file of [files.page, files.archive]) {
+    if (!file) continue;
+    try { fs.unlinkSync(file.path); } catch {}
   }
 }
 
@@ -559,42 +555,39 @@ router.post('/', webappUpload, async (req, res) => {
     const name = (rawName || '未命名网页').slice(0, 120);
     let entryHint = typeof body.entryHint === 'string' && body.entryHint.trim() ? body.entryHint.trim() : undefined;
 
-    if (uploaded.archive) {
-      if (path.extname(uploaded.archive.originalname).toLowerCase() !== '.zip') {
-        throw new UploadRejected('网页压缩包必须是 .zip 文件');
-      }
-      const AdmZip = _require('adm-zip');
-      let zip: unknown;
-      try {
-        zip = new AdmZip(uploaded.archive.path);
-      } catch {
-        throw new UploadRejected('压缩包无法读取，请确认是一个有效的 ZIP 文件');
-      }
-      try {
-        // 第一层：防写出目录（路径穿越 / 绝对路径 / 总量 / 单文件）。
-        // ⚠️ 这一层对扩展名一个字都不会说 —— 所以下面还要跑 validateWebappUpload。
-        safeExtractZip(zip as Parameters<typeof safeExtractZip>[0], dest, WEBAPP_LIMITS);
-      } catch (error) {
-        throw new UploadRejected(`压缩包解压失败：${error instanceof Error ? error.message : '内容异常'}`);
-      }
-    } else if (uploaded.loose.length > 0) {
-      // 先按清单做一次前置校验，注定被拒的包不必先落到磁盘上。
-      const listing = uploaded.loose.map(file => ({
-        path: decodeUploadName(file.originalname),
-        size: file.size,
-        source: file.path,
-      }));
-      const pre = validateWebappUpload(listing, entryHint);
-      if (!pre.ok) throw new UploadRejected(pre.reason);
-      for (const item of listing) {
-        const target = resolveInDir(dest, item.path);
-        if (!target) throw new UploadRejected(`路径非法：${item.path}`);
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.copyFileSync(item.source, target);
-      }
-    } else {
-      throw new UploadRejected('请选择要上传的网页压缩包（.zip）或网页文件');
-    }
+if (uploaded.page) {
+  // ── 单个 HTML：不解压，直接落盘。 ──
+  const pageName = decodeUploadName(uploaded.page.originalname);
+  if (!/\.html?$/i.test(pageName)) {
+    throw new UploadRejected('单个网页文件必须是 .html 或 .htm');
+  }
+  // ⚠️ **先校验再落盘**，顺序与旧的多选那条路一致：`originalname` 是客户端给的，
+  //    可能是 `../../evil.html` —— validateWebappUpload 的路径那一段挡的就是它。
+  const pre = validateWebappUpload([{ path: pageName, size: uploaded.page.size }]);
+  if (!pre.ok) throw new UploadRejected(pre.reason);
+  const target = resolveInDir(dest, pageName);
+  if (!target) throw new UploadRejected(`路径非法：${pageName}`);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(uploaded.page.path, target);
+} else if (uploaded.archive) {
+  // ── 压缩包：zip / rar / 7z，统一走 safeExtractArchive。 ──
+  if (!archiveKindOf(uploaded.archive.originalname)) {
+    throw new UploadRejected('只支持 ZIP / RAR / 7Z 压缩包');
+  }
+  try {
+    await safeExtractArchive({
+      sourcePath: uploaded.archive.path,
+      originalName: uploaded.archive.originalname,
+      destination: dest,
+      limits: WEBAPP_LIMITS,
+    });
+  } catch (error) {
+    if (error instanceof ArchiveError) throw new UploadRejected(error.message);
+    throw error;
+  }
+} else {
+  throw new UploadRejected('请选择一个网页文件或压缩包（ZIP / RAR / 7Z）');
+}
 
     // ── 符号链接闸门（T1 审查 M3）────────────────────────────────
     // 解压/拷贝完成后遍历整棵树，**发现任何符号链接就拒绝整个上传**。
@@ -829,10 +822,12 @@ const handleUploadError: ErrorRequestHandler = (error, _req, res, next) => {
       res.status(400).json({ error: `上传文件不能超过 ${WEBAPP_LIMITS.maxTotalBytes / 1024 / 1024}MB` });
       return;
     }
-    if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
-      res.status(400).json({ error: `文件数超过上限 ${WEBAPP_LIMITS.maxFiles}` });
-      return;
-    }
+if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
+  // ⚠️ 这一句从前是「文件数超过上限 ${WEBAPP_LIMITS.maxFiles}」= 500。多选那条路删掉之后
+  //    上限已经是 2，那个数字就成了假的 —— 而教师会去数自己到底传了几个文件。
+  res.status(400).json({ error: '一次只能上传一个文件：单个 HTML，或一个压缩包（ZIP / RAR / 7Z）' });
+  return;
+}
     res.status(400).json({ error: '上传请求无效' });
     return;
   }

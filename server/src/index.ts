@@ -37,6 +37,7 @@ import { ensurePlatformTokenSchema } from './services/platform-token-schema.js';
 import { migratePlatformTokens } from './services/platform-token-migration.js';
 import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js';
 import { migrateWorksheetPoints } from './services/worksheet-points-migration.js';
+import { migrateWorksheetPromptStyle } from './services/worksheet-prompt-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -532,6 +533,25 @@ async function main() {
     }
     if (pointsMigrated.migrated > 0) {
       console.log(`[server] Worksheet points migration: ${pointsMigrated.migrated} 份学习单的逐题分值已钉住`);
+    }
+
+    // ★ 2026-09-26：把题干的**整段样式**（`promptStyle`）迁成**分段**（`promptRuns`）——
+    // 教师要求「下划线和着重号，并且可以只选择下面的部分文字来设置」。
+    // 与上面两段逐字同形：备份 + 完成标记 + **只在真的迁了时**打日志。
+    // 🔴 这一步是**格式来源从两个变成一个**的那一半：客户端在那个「临时桥」删掉之后
+    // 只认 `promptRuns`，所以本迁移必须在那之前跑过（它每次启动都会跑，幂等）。
+    const promptMigrationKey = 'worksheet-prompt-runs-migration-v1';
+    const promptMigrationDone = await prisma.setting.findUnique({ where: { key: promptMigrationKey } });
+    if (!promptMigrationDone) {
+      const backupPath = backupDatabase('worksheet-prompt-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    const promptMigrated = await migrateWorksheetPromptStyle(prisma);
+    if (!promptMigrationDone) {
+      await prisma.setting.upsert({ where: { key: promptMigrationKey }, update: { value: 'completed' }, create: { key: promptMigrationKey, value: 'completed' } });
+    }
+    if (promptMigrated.migrated > 0) {
+      console.log(`[server] Worksheet prompt migration: ${promptMigrated.migrated} 份学习单的题干格式已转成分段`);
     }
   } catch (e) {
     console.error('[server] Worksheet task migration failed:', e);

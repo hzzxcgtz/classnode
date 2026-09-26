@@ -507,6 +507,27 @@ export function promptRunStyle(run: PromptTextStyle): Record<string, string | nu
   return style;
 }
 
+/**
+ * 一行文本大约占几个 `ch`（★ 2026-09-26）。
+ *
+ * 教师：「在输入的长度较长时，这个区域的宽度要**自适应增大**。」
+ * 而 `<input>` 不会自己长 —— 得把宽度算出来给它。`ch` 是**数字 0 的宽度**（半角），
+ * 一个汉字大约占**两格**，所以不能拿 `text.length` 当宽度：那样中文一长就被截在框里。
+ *
+ * ⚠️ 这是个**近似**（真值要看字体），而它只需要「够宽」——宽一点看不出来，窄了就截字。
+ * 判据取「码点 ≥ 0x1100」：谚文、CJK、全角形式、中文标点都在那一侧
+ *（西文与半角标点在下）。刻意不引 `Intl` / 正则的 Unicode 属性转义 ——
+ * 学生端要过 Safari 15 那道门禁，而这行算术越笨越安全。
+ */
+export function inputWidthCh(text: string): number {
+  if (typeof text !== 'string') return 0;
+  let width = 0;
+  for (const char of text) {
+    width += char.codePointAt(0)! >= 0x1100 ? 2 : 1;
+  }
+  return width;
+}
+
 /** 一份分段是不是**全是默认样式**（= 没有格式）。写库时用它决定那个键要不要留。 */
 export function isPlainRuns(runs: PromptRun[]): boolean {
   if (!Array.isArray(runs)) return true;

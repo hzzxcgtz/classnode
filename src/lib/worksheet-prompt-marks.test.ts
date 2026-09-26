@@ -25,6 +25,7 @@ import {
   blankCount,
   blankRuns,
   insertBlank,
+  inputWidthCh,
   isPlainRuns,
   promptRunStyle,
   rangeColor,
@@ -472,4 +473,20 @@ test('insertBlank：连续插两个空 ⇒ 两个空，顺序就是插的先后'
   assert.equal(blankCount(runs), 2);
   assert.equal(current, '植物需要________和________');
   assertShape(runs, current.length);
+});
+
+// ── 6b. 题干里那个输入框该多宽（★ 2026-09-26，教师「长度较长时要自适应增大」）──
+
+test('🔴 inputWidthCh：全角算两格、半角算一格（决定题干里那个框该多宽）', () => {
+  // `ch` 是**数字 0 的宽度**（半角）—— 一个汉字大约占两格，所以不能拿
+  // `text.length` 直接当宽度（那样中文会一直被截）。而屏幕上的宽度就是按这个算的。
+  assert.equal(inputWidthCh(''), 0);
+  assert.equal(inputWidthCh('abc'), 3);
+  assert.equal(inputWidthCh('张三'), 4, '两个汉字 ≈ 四格');
+  assert.equal(inputWidthCh('张3'), 3, '一个汉字 + 一个半角');
+  assert.equal(inputWidthCh('光合作用'), 8);
+  assert.equal(inputWidthCh('H2O'), 3);
+  // 标点：中文标点也是全角（`，` 与 `,` 在题干里长得完全不一样）。
+  assert.equal(inputWidthCh('，'), 2);
+  assert.equal(inputWidthCh(','), 1);
 });

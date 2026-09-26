@@ -2496,6 +2496,41 @@ tr:hover td {
 
 /* ★ 2026-09-26：待选词那一栏下面的一句说明（词数必须 ≥ 空数 —— 每个词只能用一次）。
    ⚠️ 与 `.worksheet-editor-format-hint` 同形（同一个小字灰度），但那个在设计上属于题干区。 */
+/* ───────────── 题干里的填空输入框（学生端 + 教师端预览共用）─────────────────
+   ★ 2026-09-26（教师）：「填写时这个框要重新设计，太粗、太突兀。」
+   🔴 那圈又粗又蓝的东西是**浏览器默认的焦点框**（`outline: auto`）——
+   在一个句子里嵌着的空格上，它看起来像给这个字加了一个大蓝框。这里换成
+   「底线变蓝 + 底色极淡」：仍然**看得见焦点在哪**（无障碍要求），但不抢题干。
+   ⚠️ 这是一条**全局类**（不是 CSS 模块）：用它的是 `src/lib/worksheet-prompt-text.tsx`，
+   学生端（`worksheet.module.css`）与教师端两套模块都不该依赖它，而 `globals.css` 两页都加载。
+   ⚠️ 宽度不在这里 —— 由 JS 按内容算（`inputWidthCh`，那行算术有用例），这里只管最小宽度。 */
+.worksheet-blank-input {
+  display: inline-block;
+  min-width: 3ch;
+  padding: 0 2px;
+  border: none;
+  border-bottom: 1.5px solid #94a3b8;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  vertical-align: baseline;
+  outline: none;
+  transition: border-color .15s ease-out, background-color .15s ease-out;
+}
+
+.worksheet-blank-input:focus {
+  border-bottom-color: #2563eb;
+  background: #f8fafc;
+}
+
+.worksheet-blank-input:disabled {
+  color: inherit;
+  /* 只读态（教师端预览）**不画焦点**、也不变灰：那里是一个「长这样」的样品。 */
+  border-bottom-color: #cbd5e1;
+}
+
 .worksheet-editor-blank-hint {
   display: block;
   margin-top: 4px;

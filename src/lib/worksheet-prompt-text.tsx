@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
+import { inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
 
 /**
  * 题干那一段文字的**唯一一份渲染**（★ 2026-09-26）。
@@ -115,21 +115,19 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 // 读屏要能说清是哪一格（空与空之间可能隔着好几行题干）。
                 aria-label={`第 ${index + 1} 空`}
                 onChange={(event) => blanks.onChange(index, event.target.value)}
-                // ⚠️ 只用行内样式：本组件在 `src/lib`，两套 CSS 模块都不该依赖它
-                //（学生端是 `worksheet.module.css`、教师端是 `globals.css`）。
-                // 宽度取那段占位的长度 ⇒ 空的宽窄与它原来那串下划线一致，版面不跳。
+                // ★ 2026-09-26（教师）：「填写时这个框要重新设计，太粗、太突兀。
+                // 另外在输入的长度较长时，这个区域的宽度要自适应增大。」
+                // ⇒ 边框 / 焦点态 / 内边距那些搬到 `globals.css` 的
+                // `.worksheet-blank-input`（行内样式写不了 `:focus`，而「太粗」的
+                // 那圈正是浏览器**默认的焦点框**）。
+                className="worksheet-blank-input"
                 style={{
                   ...(promptRunStyle(run) as CSSProperties),
-                  display: 'inline-block',
-                  width: `${Math.max(3, run.end - run.start)}ch`,
-                  padding: '0 2px',
-                  border: 'none',
-                  borderBottom: '1.5px solid #94a3b8',
-                  borderRadius: 0,
-                  background: 'transparent',
-                  textAlign: 'center',
-                  font: 'inherit',
-                  verticalAlign: 'baseline',
+                  // 🔴 宽度**跟着内容长**：`ch` 是半角数字的宽，汉字占两格 ⇒
+                  // 用 `inputWidthCh` 算（那一行算术有用例）。
+                  // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
+                  // 空着的时候要与那串下划线一样宽，否则一填字版面就跳。
+                  width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
                 }}
               />
             );

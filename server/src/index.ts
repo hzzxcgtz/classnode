@@ -57,10 +57,25 @@ function backupDatabase(label: string): string | null {
   const databaseUrl = process.env.DATABASE_URL || '';
   if (!databaseUrl.startsWith('file:')) return null;
   const configuredPath = databaseUrl.slice('file:'.length);
+  // 🔴🔴 **相对路径要按 Prisma 的口径解析：相对 `schema.prisma` 所在目录，不是 `process.cwd()`。**
+  // 原来写的是 `process.cwd()` —— 而本仓 `server/` 下**恰好有一个 0 字节的 `dev.db`**
+  //（一个历史遗留的空壳），于是：
+
+  //   · 服务器连的是 `prisma/dev.db`（Prisma 按 schema 解析）；
+  //   · 备份复制的是 `server/dev.db`（0 字节）。
+  // ⇒ **这个仓里每一份自动备份都是 0 字节的空文件**（`backups/` 里那 7 份全都是）。
+  // 它们看起来像安全网，其实什么都不是 —— 2026-09-26 我用其中一份去恢复，
+  // 把真库覆盖成了空库（那份 4MB 的**手工**备份才是唯一救回来的东西）。
   const databasePath = path.isAbsolute(configuredPath)
     ? configuredPath
-    : path.resolve(process.cwd(), configuredPath);
+    : path.resolve(__dirname, '../prisma', configuredPath);
   if (!fs.existsSync(databasePath)) return null;
+  // 🔴 空文件**不算备份**：一份 0 字节的「备份」比没有备份更糟 —— 它看起来是安全网。
+  // 宁可在这里响亮地拒绝（返回 null 并留一条日志），也不要写出一份假的安全网。
+  if (fs.statSync(databasePath).size === 0) {
+    console.warn(`[server] 拒绝备份一个空文件（${databasePath}）—— 那不是一个可用的备份，检查 DATABASE_URL 的解析口径`);
+    return null;
+  }
   const backupDir = path.join(path.dirname(databasePath), 'backups');
   fs.mkdirSync(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');

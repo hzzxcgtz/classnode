@@ -3462,6 +3462,20 @@ tr:hover td {
   cursor: pointer;
 }
 
+/* ★ 2026-09-26：四个格式按钮里那两个**自证**的图标 —— `<i>I</i>` 是斜的、
+   `<u>U</u>` 带下划线（`B` 与 `重` 靠按钮本身的 `font-weight: 700` 与字面意思）。
+   ⚠️ 这两条**显式**写出来，不靠浏览器的默认值：默认值哪天的全局重置一改就没了，
+   而那时看到的是「图标不斜了 / 下划线没了」，没有任何东西会报错。
+   ⚠️ 别把图标改成纯字符串 —— 那样它就不自证了（改坏过一次）。 */
+.worksheet-editor-formatbar > button i {
+  font-style: italic;
+}
+
+.worksheet-editor-formatbar > button u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .worksheet-editor-formatbar > button.is-active {
   border-color: #93c5fd;
   background: #dbeafe;

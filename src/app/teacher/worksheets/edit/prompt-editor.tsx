@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -92,11 +92,21 @@ const NO_SELECTION: ToolbarState = {
   color: DEFAULT_PROMPT_STYLE.color,
 };
 
-/** 四个布尔按钮的文案与提示。**一个地方定义**，省得标签与 title 漂移。 */
-const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: string; title: string }[] = [
+/**
+ * 四个布尔按钮的图标与提示。**一个地方定义**，省得图标与 title 漂移。
+ *
+ * ⚠️ 图标**自己就是那个样子**（`<i>I</i>` 是斜的、`<u>U</u>` 带下划线）—— 这是原来
+ * `B` / `<i>I</i>` 那一版的写法，**别图省事改成纯字符串**：那样图标就不自证了
+ *（把 `'I'` 写成纯文本时它就不再是斜的 —— 2026-09-26 我改成字符串时真的丢了这一层，
+ * 教师看出来的）。
+ * ⚠️ 类名要 `ReactNode` 而不是 `string` 正是为了这个。
+ * 对应的样式在 `globals.css` 里显式写了一份（`.worksheet-editor-formatbar > button u/i`）——
+ * 不靠浏览器默认值，免得哪天的全局重置把它悄悄弄没。
+ */
+const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
-  { key: 'italic', label: 'I', title: '斜体' },
-  { key: 'underline', label: 'U', title: '下划线' },
+  { key: 'italic', label: <i>I</i>, title: '斜体' },
+  { key: 'underline', label: <u>U</u>, title: '下划线' },
   { key: 'emphasis', label: '重', title: '着重号（字下加点）' },
 ];
 

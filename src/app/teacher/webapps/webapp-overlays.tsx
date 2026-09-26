@@ -128,3 +128,29 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
     </>
   );
 }
+
+/**
+ * 上传后的「引用了不在包里的文件」提醒。
+ *
+ * ⚠️ 与 `WebappExternalDepsNotice` 是**两条**提示，别合并：
+ *    · 那条说「依赖 N 个外部资源」→ 断网时会白屏，是**环境**问题；
+ *    · 这条说「引用了 N 个不在包里的文件」→ **上传的内容本身不全**，是**做法**问题。
+ *      教师要做的事完全不同（一个是换网络/换资源，一个是重新打包）。
+ * ⚠️ 措辞是「疑似引用了」：扫描器认不出动态拼接的路径（`'./data/' + id`），
+ *    会把它们报出来。**这条不阻断上传**，所以宁可说软一点。
+ */
+export function WebappMissingRefsNotice({ refs }: { refs: { count: number; refs: string[] } }) {
+  if (refs.count === 0) return null;
+  const shown = refs.refs.slice(0, 6);
+  return (
+    <div role="status" style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+      <div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#9a3412', marginBottom: 4 }}>
+        这个网页疑似引用了 {refs.count} 个不在包里的文件
+      </div>
+      <div style={{ fontSize: '0.75rem', color: '#c2410c', lineHeight: 1.6 }}>
+        {shown.join('、')}{refs.refs.length > shown.length ? ` 等 ${refs.refs.length} 个` : ''}
+        。学生打开时这些会加载失败，网页可能没有样式或图片。
+      </div>
+    </div>
+  );
+}

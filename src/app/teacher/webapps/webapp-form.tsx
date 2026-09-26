@@ -3,30 +3,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { FieldError, Toast } from '@/lib/components';
-import type { WebappSummary } from '@/lib/types';
-import { WebappExternalDepsNotice } from './webapp-overlays';
+import type { WebappSummary, WebappUploadResult } from '@/lib/types';
+import { WebappExternalDepsNotice, WebappMissingRefsNotice } from './webapp-overlays';
 
-type UploadMode = 'archive' | 'files';
+type UploadMode = 'html' | 'archive';
 
 /**
  * 上传 / 编辑探究网页。
  *
- * ⚠️ **文案把教师往 ZIP 上引，这不是偏好而是正确性**：浏览器在选择多个文件时
- * **不提供** `webkitRelativePath`（那需要 `webkitdirectory`，而它只给目录、不给混选），
- * multer 那边也不暴露 —— 也就是说多选 `index.html + app.js + style.css` 时，
- * 三个文件都落在根目录。凡是 `css/`、`js/` 子目录里放资源的网页（绝大多数），
- * 多选上传的结果是**「上传成功但样式全没了」**：服务端无从知道它们原本在哪，
- * 教师也没有任何提示。
+ * ★ 2026-09-26（教师截图批注）：入口从「ZIP 为主推、多选为辅」改成**两栏** ——
+ * 左栏**单个 HTML 文件**（默认、推荐，教师用得最多），右栏**压缩包**（zip / rar / 7z）。
+ * 「多选文件」那条路**整条删掉**（教师原话：「为了避免出错，**不允许使用多选文件来上传**，
+ * 只允许压缩包」）。
  *
- * 所以两种入口都留着（只有一个 HTML 的极简网页用多选更省事），但 ZIP 是主推，
- * 多选那条带一句说得具体的警告。
+ * 🔴 多选为什么被删、压缩包为什么保留目录结构 —— 是**同一条事实**：浏览器在选择多个文件时
+ * **不提供** `webkitRelativePath`（那需要 `webkitdirectory`，而它只给目录、不给混选），
+ * multer 那边也不暴露 ⇒ 多选 `index.html + app.js + style.css` 时三个文件都落在根目录。
+ * 凡是 `css/`、`js/` 子目录里放资源的网页（绝大多数），多选上传的结果是
+ * **「上传成功但样式全没了」**，而服务端无从知道它们原本在哪。压缩包没有这个问题
+ * （解压后目录结构原样保留）。
+ *
+ * ⚠️ 单 HTML 那条路不涉及解压，但它有**另一个**静默失败：引用了同目录 / 子目录的
+ * css / js，而那些文件不在这次上传里 ⇒ 同样是「上传成功、打开没样式」。
+ * 那条由上传后的 `WebappMissingRefsNotice` 接住（服务端扫，**不阻断上传**）。
  */
 export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary | null; onClose: () => void; onSaved: () => void }) {
   const editing = webapp !== null;
   const [name, setName] = useState(webapp?.name ?? '');
-  const [mode, setMode] = useState<UploadMode>('archive');
+  const [mode, setMode] = useState<UploadMode>('html');   // ★ 教师定的：左栏默认
+  const [page, setPage] = useState<File | null>(null);    // 单 HTML
   const [archive, setArchive] = useState<File | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
   const [entryHint, setEntryHint] = useState('');
   const [entryPath, setEntryPath] = useState(webapp?.entryPath ?? '');
   const [entries, setEntries] = useState<string[]>([]);
@@ -36,7 +42,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [deps, setDeps] = useState<{ count: number; files: string[] } | null>(null);
   /** 上传成功后停在弹窗里展示外部依赖提醒用的；非 null 时表单主体换成结果面板。 */
-  const [created, setCreated] = useState<WebappSummary | null>(null);
+  const [created, setCreated] = useState<WebappUploadResult | null>(null);
   const savingRef = useRef(false);
 
   // 改入口要能看到「包里有哪些 HTML 可选」。拉不到就退化成只读展示（不阻断改名）。
@@ -67,8 +73,8 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = '请输入网页名称';
     if (!editing) {
-      if (mode === 'archive' && !archive) errors.archive = '请选择网页压缩包（.zip）';
-      if (mode === 'files' && files.length === 0) errors.archive = '请选择网页文件';
+    if (mode === 'html' && !page) errors.file = '请选择网页文件（.html）';
+    if (mode === 'archive' && !archive) errors.file = '请选择网页压缩包（ZIP / RAR / 7Z）';
     }
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
 
@@ -85,8 +91,8 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
       } else {
         const form = new FormData();
         form.append('name', name.trim());
+        if (mode === 'html' && page) form.append('page', page);
         if (mode === 'archive' && archive) form.append('archive', archive);
-        if (mode === 'files') for (const file of files) form.append('files', file);
         if (entryHint.trim()) form.append('entryHint', entryHint.trim());
         const created = await api.createWebapp(form);
         // 先刷新列表（`onSaved` 只做刷新，不关窗），再决定要不要留在本弹窗里。
@@ -94,7 +100,10 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
         // ⚠️ **有外部依赖时留在弹窗里**：`WebappExternalDepsNotice` 是教师唯一一次能看到
         // 「这个网页依赖 N 个外部资源」的机会，而它恰恰是「课堂网络连不上外网就白屏」
         // 这类问题的唯一线索。上传成功就静默关窗，等于把这条提醒做成了装饰。
-        if (created.externalDeps.count > 0) {
+        // 🔴 **两条提醒任一命中都要留下来。** 只判 `externalDeps` 的话，「单个 HTML 引用了
+        // 同目录的 style.css、且没有任何外链」这种最常见的情形会**直接关窗** ——
+        // 而那恰恰是缺失引用告警存在的理由。两条提醒是两个不同的问题（见 missingRefs 的类型注释）。
+        if (created.externalDeps.count > 0 || created.missingRefs.count > 0) {
           setCreated(created);
           setDeps(created.externalDeps);
         } else {
@@ -110,7 +119,6 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
   };
 
   const archiveName = archive?.name ?? '';
-  const filesSummary = files.length === 0 ? '' : files.map(f => f.name).join('、');
 
   return (
     <div className="modal-overlay">
@@ -129,6 +137,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
               入口是 <strong>{created.entryPath}</strong>。创建课堂时可以在「关联探究网页」里勾选它。
             </div>
             {deps && <WebappExternalDepsNotice deps={deps} />}
+            {created.missingRefs && <WebappMissingRefsNotice refs={created.missingRefs} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" className="btn btn-primary" onClick={onClose} style={{ fontSize: '0.813rem', padding: '7px 20px' }}>完成</button>
             </div>
@@ -165,46 +174,52 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
               <div>
                 <div style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 6 }}>网页文件 <span style={{ color: 'var(--danger)' }}>*</span></div>
                 <div role="radiogroup" aria-label="上传方式" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  {([['archive', '上传 ZIP 压缩包（推荐）'], ['files', '多选文件']] as Array<[UploadMode, string]>).map(([value, label]) => (
-                    <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('archive'); }}
+{([['html', '单个 HTML 文件（推荐）'], ['archive', '上传压缩包']] as Array<[UploadMode, string]>).map(([value, label]) => (
+                    <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('file'); }}
                       style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? '#2563eb' : '#e2e8f0'}`, background: mode === value ? '#eef2ff' : 'white', color: mode === value ? '#1d4ed8' : '#475569' }}>
                       {label}
                     </button>
                   ))}
                 </div>
 
-                {mode === 'archive' ? (
-                  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#0c4a6e', lineHeight: 1.7, marginBottom: 8 }}>
-                      <strong>请把网页文件夹压成 ZIP 再上传。</strong>压缩包解压后目录结构会原样保留，
-                      网页里的 <code>css/</code>、<code>js/</code>、<code>images/</code> 子目录都能正常加载。
-                    </div>
-                    <input type="file" accept=".zip,application/zip" aria-label="选择网页压缩包"
-                      onChange={e => { setArchive(e.target.files?.[0] ?? null); clearError('archive'); }}
-                      style={{ fontSize: '0.75rem' }} />
-                    {archiveName && <div style={{ fontSize: '0.688rem', color: '#0369a1', marginTop: 6 }}>已选择：{archiveName}</div>}
-                  </div>
-                ) : (
-                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: 1.7, marginBottom: 8 }}>
-                      <strong>⚠️ 多选文件只能选到文件，选不到文件夹。</strong>所有文件都会被放进同一层目录，
-                      网页原本的 <code>css/</code>、<code>js/</code> 结构会丢失 —— 结果是
-                      <strong>上传成功、但样式和脚本全都没了</strong>。只要网页里有子目录（绝大多数网页都有），请改用 ZIP。
-                    </div>
-                    <input type="file" multiple aria-label="选择网页文件"
-                      onChange={e => { setFiles(Array.from(e.target.files ?? [])); clearError('archive'); }}
-                      style={{ fontSize: '0.75rem' }} />
-                    {filesSummary && <div style={{ fontSize: '0.688rem', color: '#b45309', marginTop: 6, wordBreak: 'break-all' }}>已选择 {files.length} 个：{filesSummary}</div>}
-                  </div>
-                )}
-                {fieldErrors.archive && <FieldError message={fieldErrors.archive} />}
+{mode === 'html' ? (
+  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ fontSize: '0.75rem', color: '#0c4a6e', lineHeight: 1.7, marginBottom: 8 }}>
+      <strong>适合把 CSS / JS 都写在这一个文件里的网页。</strong>
+      网页里有子目录（<code>css/</code>、<code>js/</code>、<code>images/</code>）的，请改用压缩包 ——
+      单个 HTML 带不走那些文件。
+    </div>
+    <input type="file" accept=".html,.htm" aria-label="选择网页文件"
+      onChange={e => { setPage(e.target.files?.[0] ?? null); clearError('file'); }}
+      style={{ fontSize: '0.75rem' }} />
+    {page && <div style={{ fontSize: '0.688rem', color: '#0369a1', marginTop: 6 }}>已选择：{page.name}</div>}
+  </div>
+) : (
+  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ fontSize: '0.75rem', color: '#0c4a6e', lineHeight: 1.7, marginBottom: 8 }}>
+      <strong>支持 ZIP / RAR / 7Z。</strong>压缩包解压后目录结构会原样保留，
+      网页里的 <code>css/</code>、<code>js/</code>、<code>images/</code> 子目录都能正常加载。
+      {/* ⚠️ 这一句从前写的是「请把网页文件夹压成 ZIP 再上传」—— 它会把教师往 zip 上引，
+          而这次恰恰是要放开三种。 */}
+    </div>
+    <input type="file" accept=".zip,.rar,.7z" aria-label="选择网页压缩包"
+      onChange={e => { setArchive(e.target.files?.[0] ?? null); clearError('file'); }}
+      style={{ fontSize: '0.75rem' }} />
+    {archiveName && <div style={{ fontSize: '0.688rem', color: '#0369a1', marginTop: 6 }}>已选择：{archiveName}</div>}
+  </div>
+)}
+                {fieldErrors.file && <FieldError message={fieldErrors.file} />}
               </div>
 
-              <div>
-                <label htmlFor="webapp-entry-hint" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>入口文件（选填）</label>
-                <input id="webapp-entry-hint" className="input" value={entryHint} onChange={e => setEntryHint(e.target.value)} placeholder="如 index.html；留空则自动找 index.html"
-                  style={{ fontSize: '0.813rem', padding: '8px 12px' }} />
-              </div>
+              {/* ⚠️ **只在压缩包模式渲染。** 单 HTML 包里只有一个文件，服务端直接取它当入口 ——
+                  留着这个框只是给教师一个填错的机会。 */}
+              {mode === 'archive' && (
+                <div>
+                  <label htmlFor="webapp-entry-hint" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>入口文件（选填）</label>
+                  <input id="webapp-entry-hint" className="input" value={entryHint} onChange={e => setEntryHint(e.target.value)} placeholder="如 index.html；留空则自动找 index.html"
+                    style={{ fontSize: '0.813rem', padding: '8px 12px' }} />
+                </div>
+              )}
             </>
           )}
 

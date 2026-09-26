@@ -38,6 +38,7 @@ import { migratePlatformTokens } from './services/platform-token-migration.js';
 import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js';
 import { migrateWorksheetPoints } from './services/worksheet-points-migration.js';
 import { migrateWorksheetPromptStyle } from './services/worksheet-prompt-migration.js';
+import { migrateFillBlankToInline } from './services/worksheet-fill-blank-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -552,6 +553,26 @@ async function main() {
     }
     if (promptMigrated.migrated > 0) {
       console.log(`[server] Worksheet prompt migration: ${promptMigrated.migrated} 份学习单的题干格式已转成分段`);
+    }
+
+    // ★ 2026-09-26：填空题的**空**从「题干外面一排输入框」迁到「题干文字中间」
+    //（教师裁定：「填空是在题目文字中间输入，一道题可以包含多个填空区域」）。
+    //
+    // 🔴 **这一次与前两次不同：它必须只跑一次。** 前两条迁移的幂等判据本身幂等
+    //（「还有没有空着的 `points`」/「还有没有 `promptStyle`」），所以每次启动都跑是安全的；
+    // 而这一条的判据**认不出**「一道刚建好、题干写了但还没插空的新填空题」与
+    // 「一道老填空题」—— 两者都是「没有空」。照前两次那样每次启动都跑 ⇒
+    // **每重启一次就给那道新题多追加一个空**。判据不可靠时，唯一安全的就是只跑一次。
+    const fillBlankMigrationKey = 'worksheet-fill-blank-inline-migration-v1';
+    const fillBlankDone = await prisma.setting.findUnique({ where: { key: fillBlankMigrationKey } });
+    if (!fillBlankDone) {
+      const backupPath = backupDatabase('worksheet-fill-blank-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+      const fillBlankMigrated = await migrateFillBlankToInline(prisma);
+      await prisma.setting.upsert({ where: { key: fillBlankMigrationKey }, update: { value: 'completed' }, create: { key: fillBlankMigrationKey, value: 'completed' } });
+      if (fillBlankMigrated.migrated > 0) {
+        console.log(`[server] Worksheet fill-blank migration: ${fillBlankMigrated.migrated} 份学习单的填空已挪进题干`);
+      }
     }
   } catch (e) {
     console.error('[server] Worksheet task migration failed:', e);

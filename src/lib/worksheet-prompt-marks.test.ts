@@ -387,19 +387,20 @@ test('🔴 remapRuns 不许把 `blank` 弄丢：在空的前面写字，空还�
   const next = remapRuns(runs, text, '光合作用需要X____条件');
   assert.equal(blankCount(next), 1, '插字不该把空弄没');
   assert.deepEqual(blankRuns(next).map(run => [run.start, run.end]), [[7, 11]], '空跟着往后挪了一格');
-  // 🔴 反过来：在空**里面**写字 —— 编辑器会拦住这条路径，但粘贴/别的入口不一定。
-  // 真发生了也**不许造出第二个空**：两条挨着的空按形状不变量会并回一条
-  //（否则这道题凭空多出一格，而屏幕上那两段下划线连在一起、看不出是两个空，
-  //  学生的作答就此永远交不出去）。
+  // 🔴 **已知问题（2026-09-26，尚未解决）：在空的内部打字会把它切成两个空。**
+  //
+  // 「保住那个空」需要「这几条分段属于同一个空」这个信息，而现在**没有这个信息**：
+  // 同样的三条「挨着的、都带 `blank` 的分段」，既可能是「一个空被切成三截」，
+  // 也可能是「三个空连着排」（**迁移的输出正好是后者**）。
+  // 我一度按前者处理（并回一条），结果把迁移追加的多个空**并成了一个** ——
+  // 撤掉了。真正的修法是给空一个标识，见 ledger 里那条 ruling。
+  //
+  // 在那之前：编辑器**拦住**这条路径（spec 第 4 步：空内部不许落光标、退格整个删掉），
+  // 而这里钉住的是「纯函数不猜」——它只按规则挪区间，不试图猜哪几条是同一个空。
   const insideText = '光合作用需要__X__条件';
   const inside = remapRuns(runs, text, insideText);
-  assert.equal(blankCount(inside), 1, '在空内部写字不该变成两个空');
-  // 那个空变成了「它原来那 4 个下划线 + 刚打的那个字」——**还是一个空**。
-  // ⚠️ 切的是**新文本**（空的偏移属于新文本，不是旧的）—— 我第一版拿旧文本切，
-  // 切出来是 `____条`，一眼就知道切错了坐标系。
-  const [only] = blankRuns(inside);
-  assert.equal(insideText.slice(only.start, only.end), '__X__');
-  // ⚠️ 反证的另一半：紧贴着空的边界打字**不算**在它内部（那两处是新文字该落的地方）。
+  assert.equal(blankCount(inside), 2, '⚠️ 切成两个 —— 已知问题，由编辑器拦，不由纯函数猜');
+  // 而**紧贴边界**打字是正常路径：不改变空的数量，空本身也不变长。
   const atEdge = remapRuns(runs, text, '光合作用需要____条件X');
   assert.equal(blankCount(atEdge), 1, '紧贴边界打字不改变空的数量');
   assert.equal(blankRuns(atEdge)[0].end, 10, '空本身也没变长');
@@ -413,18 +414,30 @@ test('🔴 setStyleOnRange 作用在一个空上 ⇒ 它仍是空（加粗一个
   assert.equal(blankRuns(bold)[0].bold, true, '格式与「是空」是两件事，可以同时成立');
 });
 
-test('🔴 只给空的**一半**设样式 ⇒ 它仍是一个空（不许碎成两个）', () => {
-  // 这是**真实的教师操作**：选中空的一半、点一下加粗。
-  // 碎了的话这道题凭空多出一格（学生要多填一次，而屏幕上那两段下划线连着、看不出是两个空）。
-  // ⚠️ 这条用例是**被一次漏报逼出来的**：变异检验里把「两条挨着的空并成一条」那条规则
-  // 去掉，其余 34 条**照样全绿** —— 因为别的路径插入的字本身就带着 blank，会走
-  // 「同款合并」那一支。「一半加粗」是唯一能走到那条规则上的情形。
+test('🔴 挨着的空**各算一个**（迁移的输出就是连着追加的多个空）', () => {
+  // ⚠️ 这一条**反过来钉住了我一度写错的那条规则**：我曾让「两条挨着的空」并成一条
+  //（想防「一个空被切开」），而**迁移正是把 N 个空连着追加到题干末尾**
+  //（`'________'.repeat(3)`）⇒ 那条规则把三个空并成了一个，学生只剩一格可填。
+  // 现在：挨着 = 各自算一个 ✓
+  const text = '植物需要' + '________'.repeat(3);
+  const runs = readPromptRuns([
+    { start: 4, end: 12, blank: true },
+    { start: 12, end: 20, blank: true },
+    { start: 20, end: 28, blank: true },
+  ], text);
+  assert.equal(blankCount(runs), 3, '三个挨着的空就是三个空');
+  assert.deepEqual(blankRuns(runs).map(run => [run.start, run.end]), [[4, 12], [12, 20], [20, 28]]);
+});
+
+test('⚠️ 只给空的一半设样式 ⇒ 会碎成两个（**已知问题**，与上一条同一个根因）', () => {
+  // 这是真实的教师操作（选中空的一半点加粗），而它现在会把这一个空切成两个 ——
+  // 因为纯函数**分不清**「一个空被切开」与「两个空挨着」（见 ledger 的那条 ruling）。
+  // 修法是给空一个标识；在那之前由编辑器把这条路径拦住（spec 第 4 步）。
+  // ⇒ 这条用例钉的是**当前行为**，改设计时它必须跟着变。
   const text = '光合作用需要____条件';
   const runs = readPromptRuns([{ start: 6, end: 10, blank: true }], text);
   const half = setStyleOnRange(runs, text, 6, 8, { bold: true });
-  assert.equal(blankCount(half), 1, '一个空的一部分加粗，不该让它变成两个空');
-  assert.equal(blankRuns(half)[0].start, 6);
-  assert.equal(blankRuns(half)[0].end, 10, '整个空还是那一段');
+  assert.equal(blankCount(half), 2, '⚠️ 已知问题：一半加粗会把它切成两个空');
 });
 
 test('insertBlank：在光标处插一个空 —— 文本多出占位、那一段被标记，其余一个字不动', () => {

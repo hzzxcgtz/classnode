@@ -121,9 +121,10 @@ test('读条目：坏形状一律丢掉，不抛（渲染路径上一次 TypeErr
   ]);
 });
 
-test('填空题的单空 / 多空判据与空数：判据必须是 `Array.isArray(data.blanks)`', () => {
-  // 🔴 与服务端 `judgeFillBlank` / `VALIDATORS` **逐字一致**：两处用不同的判据会让一道题
-  // 「校验时按多空、判分时按单空」，而它只表现为分数不对。
+test('填空题的单空 / 多空判据与空数：题干里的空优先，落回 `data.blanks`（临时代）', () => {
+  // ⚠️ 这一条**原来写的是**「判据必须是 `Array.isArray(data.blanks)`」—— 那句话在
+  // 2026-09-26 之后就是**假话**了（空挪进了题干）。判据现在是「题干里有没有空分段」，
+  // 老形状靠下面那座临时桥兜着（迁移接上之后删）。
   assert.equal(isMultiBlank(fillNode()), false);
   assert.equal(readBlankCount(fillNode()), 1);
   assert.equal(isMultiBlank(fillMultiNode()), true);
@@ -577,4 +578,36 @@ test('🔴 draftFromValue：画布题上**读不出来的值** ⇒ 空画布（�
     draftFromValue(handwritingNode('short-answer'), { format: '不认识/v9' }),
     { kind: 'ink', box: { w: 320, h: 160 }, strokes: [] },
   );
+});
+
+// ── 空在题干里（★ 2026-09-26）────────────────────────────────────────────
+
+/** 一道**题干里带 `count` 个空**的填空题。
+ *  ⚠️ 数据是**照真形状构造的**（`promptRuns` 里 `blank: true` 的那几条），不是编的 ——
+ *  上一批我编造数据形状，漏掉过一次数据丢失（见 ledger）。 */
+function fillInlineNode(count: number, data: Record<string, unknown> = {}): WorksheetQuestionNode {
+  const placeholder = '________';
+  const prompt = '植物需要' + placeholder.repeat(count) + '才能生长';
+  const runs = Array.from({ length: count }, (_, index) => ({
+    start: 4 + index * placeholder.length,
+    end: 4 + (index + 1) * placeholder.length,
+    bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: true,
+  }));
+  return { id: 'q_inline', type: 'fill-blank', prompt, inputMode: 'keyboard', data: { ...data, promptRuns: runs }, children: [] };
+}
+
+test('🔴 空数从**题干里**数出来 —— 迁移之后 `data.blanks` 已经不在了', () => {
+  // 这条是「迁移跑完之后判分仍然对」的判据：空在题干里，数量由分段推。
+  // 🔴 三个空是**连着**排的（`'________'.repeat(3)`）—— 迁移的输出正是这个形状，
+  // 而纯函数一度把挨着的空并成一个（那道题就只剩一格可填）。
+  assert.equal(readBlankCount(fillInlineNode(3)), 3);
+  assert.equal(isMultiBlank(fillInlineNode(3)), true, '三个空 ⇒ 多空那一支（写出 fill-multi/v1）');
+  assert.equal(readBlankCount(fillInlineNode(1)), 1);
+  assert.equal(isMultiBlank(fillInlineNode(1)), false, '一个空 ⇒ 单空那一支');
+});
+
+test('🔴 题干里有空、又留着老的 `blanks` ⇒ **以题干为准**', () => {
+  // 半途而废的迁移 / 手工改过的库都可能长这样。相加或取大都会让这道题凭空多出几格。
+  const node = fillInlineNode(2, { blanks: [{ answers: ['甲'] }, { answers: ['乙'] }, { answers: ['丙'] }] });
+  assert.equal(readBlankCount(node), 2, '题干是唯一真源');
 });

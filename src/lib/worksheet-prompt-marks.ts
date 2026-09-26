@@ -141,21 +141,26 @@ function clampIndex(value: unknown, length: number): number {
 function pushRun(out: PromptRun[], next: PromptRun): void {
   if (next.end <= next.start) return;
   const last = out[out.length - 1];
-  if (last && last.end === next.start) {
-    // 🔴 **两条挨着的空 = 一个空。** 这一条是**形状不变量**，不是优化：
-    // 一条空的「区域」被切成两条，意味着这道题凭空多出一格 —— 学生要多填一次，
-    // 而屏幕上那两段下划线**连在一起、看不出是两个空**（`answers` 的长度也对不上了）
-    // ⇒ 整道题变成一份交不出去的作答，而没有任何一处报错。
-    // 它会怎么发生：在空的**内部**打字（编辑器会拦，但粘贴/别的路径不一定），
-    // 或者库里存着两条挨着的空。样式取**左边那一条**的（反正它们是同一个空）。
-    if (last.blank && next.blank) {
-      out[out.length - 1] = { ...last, end: next.end };
-      return;
-    }
-    if (sameRun(last, next)) {
-      out[out.length - 1] = { ...last, end: next.end };
-      return;
-    }
+  // 🔴🔴 **这里曾经有一条「两条挨着的空 = 一个空」的规则 —— 它是错的，已撤掉。**
+  //
+  // 它想防的是「在空的内部打字 / 只给空的一半设样式，把一个空切成两个」。
+  // 但它**分不开**这两件事：
+  //   · 三个空**连着**排在题干末尾（**迁移的输出正好长这样**：`'________'.repeat(3)`）；
+  //   · 一个空被加粗切成了三段。
+  // 两者在数据上都只是「三条挨着的、都带 `blank` 的分段」——
+  // 于是那条规则把**三个空并成了一个**，学生只剩一格可填，而屏幕上只是下划线长一点。
+  // （2026-09-26 施工第 3 步时被 `readPromptRuns` 的一次探针抓到：三个空读出来是 1 个。）
+  //
+  // ⇒ **要真正解决它，空必须自带一个标识**（「这几条属于同一个空」），而那是
+  //   spec 里「顺序即编号」那个决定的**反面** —— 见
+  //   `.superpowers/sdd/2026-09-26-填空题-题干内作答与选择填空/progress.md` 里那条 ruling。
+  //   在那之前：**挨着的空各算一个**（迁移要的就是这个），而「在空内部打字 / 半加粗」
+  //   会把它切成两个 —— 由编辑器拦住那两条路径（spec 第 4 步）。
+  // ⚠️ **空之间从不合并**（`!next.blank`）：没有标识就分不清「一个空被切开」与
+  //     「两个空挨着」，那就一律**不猜** —— 挨着就各算一个（迁移要的正是这个）。
+  if (last && last.end === next.start && !next.blank && sameRun(last, next)) {
+    out[out.length - 1] = { ...last, end: next.end };
+    return;
   }
   out.push(next);
 }
@@ -415,19 +420,10 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
     if (end > item.start) pushRun(out, { ...item, end });
   });
   const insertedStyle = styleBefore(runs, from);
-  // ⚠️ 新插入的文字**默认不是空**（造空只有一条路：`insertBlank`，工具栏那个按钮）。
-  // 🔴 **一个例外：插在某个空**内部**的字，属于那个空。**
-  // 不这么定的话，在空中间打一个字会把一个空**切成两个**（中间夹着刚打的字），
-  // 于是这道题凭空多出一格 —— 而屏幕上那两段下划线看起来还是连着的，
-  // `answers` 的长度也对不上了 ⇒ 整道题变成一份交不出去的作答，**没有任何报错**。
-  // 编辑器会拦住这条路径（spec 第 4 步），但**粘贴 / 别的入口不一定**，
-  // 所以这条不变量落在纯函数这一层，由用例钉住。
-  // ⚠️ 判据是**严格在内部**（`start < from < end`）：紧贴着空的左/右边界打字不算，
-  // 那两处是新文字正常落下的位置。
-  const insideBlank = runs.some(item => (
-    item.blank === true && item.start < from && from < item.end
-  ));
-  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: insideBlank });
+  // ⚠️ 新插入的文字**永远不是空**：造空只有一条路 —— `insertBlank`（工具栏那个按钮）。
+  // （这里曾经还有一条「插在空内部就归属于那个空」的规则，已随上面那条一起撤掉：
+  //   它与「挨着的空各算一个」互斥，见 `pushRun` 上那一段。）
+  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: false });
   const delta = inserted.length - (oldTo - from);
   runs.forEach((item) => {
     const start = Math.max(item.start, oldTo);

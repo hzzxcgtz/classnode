@@ -1,3 +1,4 @@
+import { blankCount, readPromptRuns } from './worksheet-prompt-marks.ts';
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkNode, readInkValue } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
@@ -211,28 +212,39 @@ export function readCategorizeZones(node: WorksheetQuestionNode): WorksheetEntry
 }
 
 /**
- * 这道填空题是**多空**形状吗。
+ * 这道填空题有几个空 —— **空的唯一真源是题干**（★ 2026-09-26）。
  *
- * 🔴 判据与服务端 `judgeFillBlank` / `VALIDATORS` 逐字相同：**`Array.isArray(data.blanks)`
- * 在不在**。两处用不同的判据会让一道题「校验时按多空、判分时按单空」，而它只表现为
- * 分数不对 —— 没有异常、没有日志。第一批落库的填空题一个 `blanks` 都没有，
- * 所以那个分支**不是**历史包袱，它是「单空」这个形状本身。
- */
-export function isMultiBlank(node: WorksheetQuestionNode): boolean {
-  return Array.isArray(node.data.blanks);
-}
-
-/**
- * 这道填空题有几个空。单空（没有 `blanks`）恒为 **1**。
+ * 教师裁定：「填空是在**题目文字中间**输入，一道题可以包含多个填空区域」⇒
+ * 空 = `promptRuns` 里带 `blank: true` 的那几条分段，**数量由它们推**。
  *
- * ⚠️ 多空形状下 `blanks: []`（教师建了题但一个空都没填）返回 **0** —— 界面上一行都没有，
+ * ⚠️ **临时桥**（迁移 `worksheet-fill-blank-migration.ts` 接上之后删掉，连用例一起）：
+ * 题干里一个空都没有时落回老的 `data.blanks` —— 迁移还没上线，库里全是老形状的题。
+ * 两者同时存在时**以题干为准**（一份真源；相加或取大都会让这道题凭空多出几格）。
+ *
+ * ⚠️ `blanks: []`（教师建了题但一个空都没填）返回 **0** —— 界面上一行都没有，
  * 与服务端判分（空数组 ⇒ `incorrect`）对齐。别在这里「至少给一个」：那会画出一个
  * 服务端根本不看的输入框，学生填了也不会有分。
  */
 export function readBlankCount(node: WorksheetQuestionNode): number {
-  if (!isMultiBlank(node)) return 1;
-  const blanks = node.data.blanks;
-  return Array.isArray(blanks) ? blanks.length : 0;
+  const inline = blankCount(readPromptRuns(node.data.promptRuns, node.prompt));
+  if (inline > 0) return inline;
+  // ⚠️ 临时桥 —— 与上面那条注释同一件事。
+  const legacy = node.data.blanks;
+  if (Array.isArray(legacy)) return legacy.length;
+  return 1;
+}
+
+/**
+ * 这道填空题是**多空**形状吗（决定作答值写成 `fill/v1` 还是 `fill-multi/v1`）。
+ *
+ * ★ 2026-09-26：判据从 `Array.isArray(data.blanks)` 改成**由空数推** ——
+ * 迁移之后那个键已经不在库里了，而「几个空」这件事现在只有一处真源（题干）。
+ * 🔴 **服务端不再依赖这个键**：`judgeFillBlank` 改成按**答案值的形状**分派
+ *（值自带 `format`：`fill/v1` 带 `text`、`fill-multi/v1` 带 `texts`）——
+ * 两边都不看 `data.blanks`，于是没有可漂移的地方。
+ */
+export function isMultiBlank(node: WorksheetQuestionNode): boolean {
+  return readBlankCount(node) > 1;
 }
 
 /** 一串非空字符串（丢别的元素）。用于从作答值里读 `selected` / `order`。 */

@@ -17,7 +17,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenAnswerable, flattenQuestions, groupAnswerable, TASK_TYPE } from './worksheet-questions.ts';
+import { flattenAnswerable, flattenQuestions, groupAnswerable, readOptions, TASK_TYPE } from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
@@ -34,6 +34,18 @@ function task(id: string, prompt: string, children: WorksheetQuestionNode[]): Wo
 function headings(nodes: WorksheetQuestionNode[]): string[] {
   return flattenAnswerable(nodes).map((item) => item.heading);
 }
+
+test('选择题选项只读取本机上传的配图地址，外部图片地址被丢弃', () => {
+  const node = q('image-options');
+  node.data.options = [
+    { key: 'A', text: '本机图', imageUrl: '/uploads/chat/chat-550e8400-e29b-41d4-a716-446655440000.png' },
+    { key: 'B', text: '外链图', imageUrl: 'https://example.com/tracker.png' },
+  ];
+  assert.deepEqual(readOptions(node), [
+    { key: 'A', text: '本机图', imageUrl: '/uploads/chat/chat-550e8400-e29b-41d4-a716-446655440000.png' },
+    { key: 'B', text: '外链图' },
+  ]);
+});
 
 test('没有任务时：题号就是 1..n，不带任何前缀', () => {
   assert.deepEqual(headings([q('a'), q('b'), q('c')]), ['1', '2', '3']);

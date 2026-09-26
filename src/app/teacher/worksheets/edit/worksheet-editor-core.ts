@@ -476,7 +476,7 @@ function writeChoiceOptions(
     if (index >= MAX_OPTIONS) return option;
     const key = optionKey(index);
     remap.set(option.key, key);
-    return { key, text: option.text };
+    return { key, text: option.text, ...(option.imageUrl ? { imageUrl: option.imageUrl } : {}) };
   });
   // 超上限那些选项的 key 没有新旧之分（上面原样返回），翻译 `correctKeys` 时按原值放行。
   const keptKeys = new Set(options.slice(MAX_OPTIONS).map((option) => option.key));

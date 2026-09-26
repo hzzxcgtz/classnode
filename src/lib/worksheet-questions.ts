@@ -152,6 +152,8 @@ export function questionTypeLabel(type: string): string {
 export interface ChoiceOption {
   key: string;
   text: string;
+  /** 选项可选配图。只接受本机上传目录，避免把外部跟踪图片带进学生端。 */
+  imageUrl?: string;
 }
 
 /**
@@ -383,6 +385,9 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
     options.push({
       key: typeof option.key === 'string' && option.key ? option.key : optionKey(options.length),
       text: typeof option.text === 'string' ? option.text : '',
+      ...(typeof option.imageUrl === 'string' && option.imageUrl.startsWith('/uploads/chat/')
+        ? { imageUrl: option.imageUrl }
+        : {}),
     });
   });
   return options;

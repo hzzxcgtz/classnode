@@ -89,6 +89,24 @@ function collectReferencedChatFiles(fileUrls: (string | null)[]): Set<string> {
   return referenced;
 }
 
+function collectWorksheetImageFiles(contents: unknown[]): Set<string> {
+  const referenced = new Set<string>();
+  const visit = (value: unknown) => {
+    if (typeof value === 'string' && value.startsWith('/uploads/chat/')) {
+      const name = value.slice('/uploads/chat/'.length);
+      if (CHAT_UPLOAD_NAME.test(name)) referenced.add(name);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value && typeof value === 'object') Object.values(value as Record<string, unknown>).forEach(visit);
+  };
+  contents.forEach(visit);
+  return referenced;
+}
+
 function collectReferencedAvatarFiles(svgContents: string[]): Set<string> {
   const referenced = new Set<string>();
   for (const svg of svgContents) {
@@ -123,19 +141,22 @@ async function removeExpiredUnreferencedFiles(directory: string, referenced: Set
   return removed;
 }
 
-/** 清理未被课堂消息或头像记录引用、且已超过宽限期的上传文件。 */
+/** 清理未被课堂消息、学习单或头像记录引用，且已超过宽限期的上传文件。 */
 export async function cleanupOrphanedUploads(
-  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar'>,
+  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar' | 'worksheet'>,
   options: { now?: number; chatDirectory?: string; avatarDirectory?: string } = {},
 ): Promise<{ chat: number; avatars: number }> {
   const now = options.now ?? Date.now();
-  const [messages, avatars] = await Promise.all([
+  const [messages, avatars, worksheets] = await Promise.all([
     prisma.message.findMany({ select: { fileUrls: true } }),
     prisma.avatar.findMany({ select: { svgContent: true } }),
+    prisma.worksheet.findMany({ select: { content: true } }),
   ]);
+  const chatReferences = collectReferencedChatFiles(messages.map(message => message.fileUrls));
+  collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.content)).forEach(name => chatReferences.add(name));
   const chat = await removeExpiredUnreferencedFiles(
     options.chatDirectory ?? chatDir,
-    collectReferencedChatFiles(messages.map(message => message.fileUrls)),
+    chatReferences,
     CHAT_UPLOAD_NAME,
     now,
   );
@@ -147,6 +168,27 @@ export async function cleanupOrphanedUploads(
   );
   return { chat, avatars: avatarFiles };
 }
+
+// 学习单题干与选择题选项配图：单独校验图片真实内容，不能沿用聊天附件的文档格式。
+router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '未选择图片' });
+    }
+    const content = fs.readFileSync(req.file.path);
+    const kind = detectSafeImage(content);
+    if (!kind) {
+      fs.rmSync(req.file.path, { force: true });
+      return res.status(400).json({ error: '题目配图仅支持有效的 JPEG、PNG 或 WebP 图片' });
+    }
+    const safeName = `chat-${crypto.randomUUID()}.${kind}`;
+    fs.renameSync(req.file.path, path.join(chatDir, safeName));
+    const url = `/uploads/chat/${safeName}`;
+    res.json({ success: true, url, name: req.file.originalname, size: req.file.size });
+  } catch {
+    res.status(500).json({ error: '题目配图上传失败' });
+  }
+});
 
 // 聊天文件上传
 router.post('/', requireActiveStudentUpload, upload.single('file'), (req, res) => {

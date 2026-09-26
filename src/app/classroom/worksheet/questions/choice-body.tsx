@@ -3,6 +3,7 @@
 import { TRUE_FALSE_OPTIONS, readOptions } from '@/lib/worksheet-questions';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import styles from '../worksheet.module.css';
 
 /**
@@ -74,7 +75,10 @@ export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps)
             />
             <span className={styles.optionKey}>{option.key}</span>
             <span className={styles.optionText}>
-              {option.text.trim() || <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
+              {option.text.trim()
+                ? option.text
+                : !option.imageUrl && <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
+              {option.imageUrl && <img className={styles.optionImage} src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图`} />}
             </span>
           </label>
         );

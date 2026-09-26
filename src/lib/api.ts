@@ -294,6 +294,11 @@ export const api = {
     formData.append('avatar', file);
     return formRequest<AvatarUploadResponse>('/api/upload/avatar', 'POST', formData);
   },
+  uploadWorksheetImage: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return formRequest<{ success: true; url: string; name: string; size: number }>('/api/upload/worksheet-image', 'POST', formData);
+  },
 
   // Export
   exportConversations: (classroomId: string) =>

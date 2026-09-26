@@ -346,6 +346,19 @@ test('🔴 删掉第一个选项后，正确答案仍然落在**同一段文本*
   assert.equal(written.options.find((option) => option.key === written.correctKeys[0])?.text, '光合作用');
 });
 
+test('选项重新编号时，选项配图与文字一起保留', () => {
+  const imageUrl = '/uploads/chat/chat-550e8400-e29b-41d4-a716-446655440000.webp';
+  const written = writeOptions([
+    { key: 'X', text: '太阳', imageUrl },
+    { key: 'Y', text: '月亮' },
+  ], ['X']);
+  assert.deepEqual(written.options, [
+    { key: 'A', text: '太阳', imageUrl },
+    { key: 'B', text: '月亮' },
+  ]);
+  assert.deepEqual(written.correctKeys, ['A']);
+});
+
 test('正确答案指向被删掉的那个选项 ⇒ 变空数组，而不是错指到别人身上', () => {
   const written = writeOptions([{ key: 'B', text: '光合作用' }], ['A']);
   assert.deepEqual(written.correctKeys, []);

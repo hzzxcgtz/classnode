@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
+import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import {
   MAX_OPTIONS,
   optionKey,
@@ -72,13 +75,28 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
               <span>{option.key}</span>
             </label>
             </>)}
-            <input
-              className="input"
-              value={option.text}
-              placeholder={`选项 ${option.key}`}
-              onChange={event => {
+            <div className="worksheet-editor-option-content">
+              <input
+                className="input"
+                value={option.text}
+                placeholder={`选项 ${option.key}`}
+                onChange={event => {
+                  const nextOptions = options.map((item, itemIndex) => (
+                    itemIndex === optionIndex ? { ...item, text: event.target.value } : item
+                  ));
+                  commit(nextOptions, correctKeys);
+                }}
+              />
+              {option.imageUrl && <img src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图预览`} />}
+            </div>
+            <OptionImageButton
+              optionKey={option.key}
+              hasImage={Boolean(option.imageUrl)}
+              onChange={(imageUrl) => {
                 const nextOptions = options.map((item, itemIndex) => (
-                  itemIndex === optionIndex ? { key: item.key, text: event.target.value } : item
+                  itemIndex === optionIndex
+                    ? { ...item, ...(imageUrl ? { imageUrl } : { imageUrl: undefined }) }
+                    : item
                 ));
                 commit(nextOptions, correctKeys);
               }}
@@ -97,7 +115,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
         ))}
       </div>
 
-      <div className="worksheet-editor-inline-actions">
+      <div className="worksheet-editor-choice-actions">
         <button
           type="button"
           className="btn btn-secondary"
@@ -108,18 +126,55 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
           ＋ 添加选项
         </button>
         {options.length === 0 && (
-          <span className="worksheet-editor-warn-hint">
-            这道题一个选项都没有（库里的数据被改过）—— 点「＋ 添加选项」补两个，再选正确答案。
+          <span className="worksheet-editor-choice-warning" role="status">
+            <strong>需要补充选项</strong>
+            这道题还没有选项。请至少添加两个选项，再设置正确答案。
           </span>
         )}
         {options.length > 0 && (multiple ? correctKeys.length === 0 : correctKeys.length !== 1) && (
-          <span className="worksheet-editor-warn-hint">
+          <span className="worksheet-editor-choice-warning" role="status">
+            <strong>尚未设置正确答案</strong>
             {multiple
-              ? '还没有指定正确答案 —— 点选项左边的方框勾选（可以勾多个）'
-              : '还没有指定正确答案 —— 点选项左边的圆点选一个'}
+              ? '请勾选选项左侧的方框，可以选择多个。'
+              : '请点击选项左侧的圆点，选择一个。'}
           </span>
         )}
       </div>
     </>
+  );
+}
+
+function OptionImageButton({ optionKey, hasImage, onChange }: {
+  optionKey: string;
+  hasImage: boolean;
+  onChange: (imageUrl?: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError('');
+    try {
+      const result = await api.uploadWorksheetImage(file);
+      onChange(result.url);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : '上传失败');
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="worksheet-editor-option-image-action">
+      <label title={hasImage ? `更换选项 ${optionKey} 的图片` : `给选项 ${optionKey} 添加图片`}>
+        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+          event.target.value = '';
+        }} />
+        {uploading ? '…' : hasImage ? '换图' : '配图'}
+      </label>
+      {hasImage && <button type="button" onClick={() => onChange()} title={`移除选项 ${optionKey} 的图片`}>移除</button>}
+      {error && <span role="alert">{error}</span>}
+    </div>
   );
 }

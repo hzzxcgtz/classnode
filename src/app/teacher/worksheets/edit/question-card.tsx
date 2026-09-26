@@ -1,8 +1,10 @@
 'use client';
 
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
+import { api } from '@/lib/api';
+import { WORKSHEET_TEXT_COLORS, readPromptImage, readPromptStyle, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import {
   canGivePartial,
   displayPoints,
@@ -43,6 +45,45 @@ import { CategorizeBody } from './bodies/categorize-body';
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
 
+const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
+  'single-choice': {
+    title: '选项与正确答案',
+    description: '编辑学生看到的选项；开启自动评分后，需要指定一个正确答案。',
+  },
+  'true-false': {
+    title: '判断答案',
+    description: '学生从“正确”和“错误”中选择；开启自动评分后，需要指定标准答案。',
+  },
+  'multi-choice': {
+    title: '选项与正确答案',
+    description: '可设置多个正确答案，并决定漏选时是否给部分分。',
+  },
+  'fill-blank': {
+    title: '填空与参考答案',
+    description: '为每个空设置答案；学生的答案将按这些内容自动判断。',
+  },
+  order: {
+    title: '排序条目与正确顺序',
+    description: '编辑需要排序的条目，并调整标准答案中的正确次序。',
+  },
+  match: {
+    title: '连线项目与正确配对',
+    description: '编辑左右两侧内容，并为每一项指定正确的连接关系。',
+  },
+  categorize: {
+    title: '分类框与条目归属',
+    description: '先设置分类框，再指定每个条目应该放入哪个分类。',
+  },
+  'short-answer': {
+    title: '学生作答方式',
+    description: '问答题由学生输入文字或手写内容，提交后由教师人工查看。',
+  },
+  drawing: {
+    title: '学生作答方式',
+    description: '绘图题固定使用手写画布，适合演算、标注和自由绘制。',
+  },
+};
+
 /**
  * 一道题的编辑卡片（规格 §6.2 的题流）。
  *
@@ -59,7 +100,7 @@ import { isInkNode } from '@/lib/worksheet-ink';
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, expanded, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, total, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -78,6 +119,8 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
    * 折叠态只画一行摘要（题号 · 题型 · 题干一行 · 分值 · 工具）；展开态才是今天这一整张。
    */
   expanded: boolean;
+  /** 工作台聚焦模式下当前题始终展开，摘要行只承担题号与题型说明。 */
+  focusedMode?: boolean;
   onToggle: () => void;
   /** ★ 2026-09-26：这道题是不是**任务里的小题**（决定徽章显不显示任务名前缀）。 */
   inTask: boolean;
@@ -109,6 +152,8 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
   const typeLabel = typeOption?.label ?? node.type;
+  const promptStyle = readPromptStyle(node);
+  const promptImage = readPromptImage(node);
 
   /**
    * ★ M4b/D1：「作答方式」那一行**画不画**（三个判据，逐个说清）：
@@ -142,10 +187,18 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
   /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
   const gradedOn = gradesOnSubmit(node);
   const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
+  const editorCopy = QUESTION_EDITOR_COPY[node.type] ?? {
+    title: '作答设置',
+    description: '设置学生作答时需要看到和填写的内容。',
+  };
+  const shownPoints = displayPoints(node, inheritedPoints);
+  const gradingStatus = isGradedQuestionType(node.type)
+    ? (gradedOn ? `自动评分 · 最高 ${shownPoints.full} 分` : '仅统计作答')
+    : '教师人工查看';
 
   return (
     <section
-      className="worksheet-editor-question"
+      className={`worksheet-editor-question${focusedMode ? ' is-focused' : ''}`}
       data-expanded={expanded ? '1' : '0'}
       /* ★ 2026-09-26（spec 第 3 步）：↑/↓ 在题间跳时靠它定位（见 `page.tsx` 的那段 effect）。 */
       data-question-id={node.id}
@@ -180,9 +233,9 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
         <button
           type="button"
           className="worksheet-editor-question-summary"
-          onClick={onToggle}
+          onClick={focusedMode ? undefined : onToggle}
           aria-expanded={expanded}
-          title={expanded ? '收起这道题' : '展开这道题'}
+          title={focusedMode ? undefined : (expanded ? '收起这道题' : '展开这道题')}
         >
           {/*
             ★ 2026-09-26（教师）：「这个为什么会重复？」—— 摘要行原来也印了一遍题干，
@@ -191,9 +244,16 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
             ⚠️ 别再把题干挪回来：重复一次不会报错，只会让人以为有两道一样的题。
           */}
           <span className="worksheet-editor-question-index">{badgeLabel}</span>
-          <span className="worksheet-editor-question-type">{typeLabel}</span>
-          <span className="worksheet-editor-question-points">
-            {displayPoints(node, inheritedPoints).full} / {displayPoints(node, inheritedPoints).half}
+          {focusedMode ? (
+            <span className="worksheet-editor-question-heading-copy">
+              <span>编辑题目</span>
+              <strong>{typeLabel}</strong>
+            </span>
+          ) : (
+            <span className="worksheet-editor-question-type">{typeLabel}</span>
+          )}
+          <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
+            {gradingStatus}
           </span>
         </button>
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
@@ -254,17 +314,63 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
       {/* ⚠️ `(<>` 后面**不能**多一个 `)`：多了会被 JSX 当成**文本节点**渲染出一个孤零零的
           `)`，而 tsc / eslint / 用例**全都不会红**（语法合法）。教师 2026-09-26 在真机上
           就是这么发现的 —— 见那一天的提交。 */}
-      {expanded && (<>
-      <label className="worksheet-editor-field">
-        <span>题干</span>
-        <textarea
-          className="input"
-          rows={2}
-          value={node.prompt}
-          onChange={event => onPromptChange(event.target.value)}
-          placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
+      {expanded && (<div className="worksheet-editor-question-form">
+      <section className="worksheet-editor-question-section is-prompt">
+        <div className="worksheet-editor-section-head">
+          <div>
+            <h3>题目内容</h3>
+            <p>写清学生需要完成什么，题干会直接显示在学生端。</p>
+          </div>
+          <span>必填</span>
+        </div>
+        <PromptEditor
+          node={node}
+          onPromptChange={onPromptChange}
+          onDataChange={onDataChange}
         />
-      </label>
+      </section>
+
+      <section className="worksheet-editor-question-section is-answer">
+        <div className="worksheet-editor-section-head">
+          <div>
+            <h3>{editorCopy.title}</h3>
+            <p>{editorCopy.description}</p>
+          </div>
+          <span>{typeLabel}</span>
+        </div>
+
+        {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
+
+        {/* 题型 → 编辑体。这里保持与学生端题型数据结构一一对应。 */}
+        {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+
+        {!gradedOn && isGradedQuestionType(node.type) && (
+          <p className="worksheet-editor-answer-disabled">
+            自动评分已关闭，正确答案暂时隐藏；选项和条目仍可继续编辑。
+          </p>
+        )}
+        {node.type === 'short-answer' && (
+          <p className="worksheet-editor-manual-note"><strong>人工查看</strong>学生提交后不自动判分，看板只统计作答进度。</p>
+        )}
+        {node.type === 'drawing' && (
+          <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师人工查看。</p>
+        )}
+      </section>
+
+      <section className="worksheet-editor-question-section is-grading">
+        <div className="worksheet-editor-section-head">
+          <div>
+            <h3>评分设置</h3>
+            <p>{isGradedQuestionType(node.type) ? '决定这道题是否自动判断，以及答对后获得多少分。' : '这类题不自动判断答案，教师可在课堂中查看学生的作答内容。'}</p>
+          </div>
+          <span className={gradedOn ? 'is-active' : ''}>{gradingStatus}</span>
+        </div>
 
       {/*
         ★ 2026-09-25（教师裁定）：**不设答案的选择题不判分**，所以这里不给它分值行 ——
@@ -282,13 +388,19 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
       */}
       {isGradedQuestionType(node.type) && (
         <label className="worksheet-editor-autograde">
-          <input
-            type="checkbox"
-            checked={node.autoGrade !== false}
-            onChange={event => onAutoGradeChange(event.target.checked)}
-          />
-          <span>允许自动评分</span>
-          <em>关掉之后，这道题的答案与分值都不参与判分，只统计有多少人作答。</em>
+          <span className="worksheet-editor-autograde-copy">
+            <strong>自动评分</strong>
+            <em>{gradedOn ? '已开启。系统会按标准答案判断，并使用下方得分规则。' : '已关闭。这道题只统计是否作答，不显示对错，也不计入得分。'}</em>
+          </span>
+          <span className="worksheet-editor-autograde-control">
+            <input
+              type="checkbox"
+              checked={node.autoGrade !== false}
+              onChange={event => onAutoGradeChange(event.target.checked)}
+              aria-label="允许自动评分"
+            />
+            <span aria-hidden="true" />
+          </span>
         </label>
       )}
 
@@ -316,42 +428,20 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
 
       {!gradesOnSubmit(node) && isGradedQuestionType(node.type) && (
         <p className="worksheet-editor-ungraded-hint">
-          关掉了自动评分 ⇒ 这道题<strong>不判分</strong>，只统计有多少人作答。答案与分值都已隐藏（重新打开即恢复）。
+          当前为<strong>仅统计作答</strong>。原有正确答案和分值会保留，重新开启自动评分即可恢复。
         </p>
       )}
-
-      {/* ★ M4b/D1：「作答方式」那一行。位置钉在**分值行之下、题型编辑体之上**，
-          不因题型而变 —— 教师换题型时控件的位置不该跳。
-          它是**唯一**能让手写笔迹变成可达的开关：没有它，`inputMode: 'handwriting'`
-          永远只在手工改过的库行里。 */}
-      {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
-
-      {/* 题型 → 编辑体。⚠️ 这里是一条**平铺的 && 链**，不是按 `QUESTION_TYPE_OPTIONS` 驱动的
-          分派：那个数组在 `src/lib/worksheet-questions.ts` 里，而它必须能被 `node --test`
-          直接执行（无 React）—— 往它里面塞组件就是两份真源。代价是**加题型要记得在这里加一支**，
-          而漏加的后果是「那道题在新题型上只有题干、没有任何输入控件」，教师看得出不对
-          （卡片上什么都没有），不像题目注册表那条漏改是静默的。 */}
-      {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-      {node.type === 'short-answer' && (
-        <p className="worksheet-editor-hint">问答题是主观题，不自动判分 —— 看板上只统计作答进度。</p>
-      )}
-      {node.type === 'drawing' && (
-        // ★ M4b/D1：绘图题的**静态说明** —— 它在这个链上刻意**没有编辑体分支**：
-        // `data` 恒为 `{}`（没有答案键、也没有条目），教师那边没有可配的东西。
-        // 它也没有那个「作答方式」开关（`showInputModeRow` 的 ③）：作答方式由题型决定，
-        // `inkFormatOf` 是**题型优先**的 —— 就算那一格被改成 `keyboard`，作答值仍然是
-        // `drawing/v1`、学生拿到的仍然是画布 ⇒ 那会是一个**改不动任何东西**的开关。
-        // ⚠️ 它落在**与上面那一行相同的槽位**（分值行之下、编辑体之上 —— 绘图题没有编辑体，
-        // 而这个分支就在编辑体那一段的位置），所以「换题型时控件的位置不该跳」对它也成立。
-        <p className="worksheet-editor-hint">绘图题固定为手写作答，不自动判分。</p>
-      )}
-      </>)}
+        {!isGradedQuestionType(node.type) && (
+          <div className="worksheet-editor-manual-grade">
+            <span aria-hidden="true">✓</span>
+            <div>
+              <strong>无需设置分值</strong>
+              <p>学生提交后由教师人工查看，系统不会根据答案自动给分。</p>
+            </div>
+          </div>
+        )}
+      </section>
+      </div>)}
 
       {/*
         ★ 2026-09-26（教师修正）：「折叠只是指折叠所有**设置项**，题干和选项还是要保留的，
@@ -364,11 +454,93 @@ export function QuestionCard({ heading, index, total, expanded, onToggle, inTask
       */}
       {!expanded && (
         <div className="worksheet-editor-question-preview">
-          <p className="worksheet-editor-question-preview-prompt">{node.prompt.trim() || '（题干还没写）'}</p>
+          <p
+            className="worksheet-editor-question-preview-prompt"
+            style={{
+              color: promptStyle.color,
+              fontWeight: promptStyle.bold ? 700 : 600,
+              fontStyle: promptStyle.italic ? 'italic' : 'normal',
+            }}
+          >
+            {node.prompt.trim() || '（题干还没写）'}
+          </p>
+          {promptImage && (
+            <img
+              className="worksheet-editor-question-preview-image"
+              src={worksheetAssetUrl(promptImage)}
+              alt="题干配图预览"
+            />
+          )}
           <QuestionInput node={node} draft={undefined} disabled />
         </div>
       )}
     </section>
+  );
+}
+
+function PromptEditor({ node, onPromptChange, onDataChange }: {
+  node: WorksheetQuestionNode;
+  onPromptChange: (prompt: string) => void;
+  onDataChange: (patch: Record<string, unknown>) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const style = readPromptStyle(node);
+  const imageUrl = readPromptImage(node);
+  const updateStyle = (patch: Partial<typeof style>) => {
+    onDataChange({ promptStyle: { ...style, ...patch } });
+  };
+  const uploadImage = async (file: File) => {
+    setUploading(true);
+    setUploadError('');
+    try {
+      const result = await api.uploadWorksheetImage(file);
+      onDataChange({ promptImageUrl: result.url });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '图片上传失败');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="worksheet-editor-rich-field">
+      <span className="worksheet-editor-rich-label">题干</span>
+      <div className="worksheet-editor-formatbar" aria-label="题干文字格式">
+        <button type="button" className={style.bold ? 'is-active' : ''} onClick={() => updateStyle({ bold: !style.bold })} aria-pressed={style.bold} title="加粗">B</button>
+        <button type="button" className={style.italic ? 'is-active' : ''} onClick={() => updateStyle({ italic: !style.italic })} aria-pressed={style.italic} title="斜体"><i>I</i></button>
+        <label className="worksheet-editor-color-control">
+          <span>文字颜色</span>
+          <select value={style.color} onChange={event => updateStyle({ color: event.target.value })} aria-label="题干文字颜色">
+            {WORKSHEET_TEXT_COLORS.map(color => <option key={color.value} value={color.value}>{color.label}</option>)}
+          </select>
+          <b style={{ backgroundColor: style.color }} aria-hidden="true" />
+        </label>
+        <label className="worksheet-editor-image-upload">
+          <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
+            const file = event.target.files?.[0];
+            if (file) void uploadImage(file);
+            event.target.value = '';
+          }} />
+          {uploading ? '上传中…' : imageUrl ? '更换图片' : '添加图片'}
+        </label>
+      </div>
+      <textarea
+        className="input"
+        rows={3}
+        value={node.prompt}
+        style={{ color: style.color, fontWeight: style.bold ? 700 : 600, fontStyle: style.italic ? 'italic' : 'normal' }}
+        onChange={event => onPromptChange(event.target.value)}
+        placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
+      />
+      {imageUrl && (
+        <div className="worksheet-editor-upload-preview">
+          <img src={worksheetAssetUrl(imageUrl)} alt="题干配图预览" />
+          <button type="button" onClick={() => onDataChange({ promptImageUrl: undefined })}>移除图片</button>
+        </div>
+      )}
+      {uploadError && <p className="worksheet-editor-upload-error" role="alert">{uploadError}</p>}
+    </div>
   );
 }
 
@@ -457,39 +629,59 @@ function PointsRow({ heading, node, inheritedPoints, rejectedInput, onPointsInpu
 
   return (
     <div className="worksheet-editor-points">
-      <span className="worksheet-editor-points-label">分值</span>
-      <label className="worksheet-editor-points-field">
-        <span>全对</span>
-        <input
-          className="input"
-          type="text"
-          inputMode="numeric"
-          value={fullText}
-          placeholder={String(inheritedPoints.full)}
-          aria-label={`${heading} 全对得分`}
-          onChange={event => commit('full', event.target.value)}
-        />
-      </label>
-      <label className="worksheet-editor-points-field">
-        <span>部分给分</span>
-        <input
-          className="input"
-          type="text"
-          inputMode="numeric"
-          value={halfText}
-          placeholder={String(inheritedPoints.half)}
-          aria-label={`${heading} 部分给分`}
-          onChange={event => commit('half', event.target.value)}
-        />
-      </label>
+      <div className="worksheet-editor-points-head">
+        <div>
+          <strong>得分规则</strong>
+          <span>留空时跟随学习单的默认分值，也可以为本题单独设置。</span>
+        </div>
+        <span>最高 {fullText || inheritedPoints.full} 分</span>
+      </div>
+      <div className="worksheet-editor-points-grid">
+        <label className="worksheet-editor-points-field">
+          <span>
+            <strong>完全正确</strong>
+            <em>答案全部符合标准</em>
+          </span>
+          <span className="worksheet-editor-points-control">
+            <input
+              className="input"
+              type="text"
+              inputMode="numeric"
+              value={fullText}
+              placeholder={String(inheritedPoints.full)}
+              aria-label={`${heading} 全对得分`}
+              onChange={event => commit('full', event.target.value)}
+            />
+            <b>分</b>
+          </span>
+        </label>
+        <label className="worksheet-editor-points-field">
+          <span>
+            <strong>部分正确</strong>
+            <em>{canGivePartial(node.type) ? '达到下方条件时获得' : '该题型通常不使用部分分'}</em>
+          </span>
+          <span className="worksheet-editor-points-control">
+            <input
+              className="input"
+              type="text"
+              inputMode="numeric"
+              value={halfText}
+              placeholder={String(inheritedPoints.half)}
+              aria-label={`${heading} 部分给分`}
+              onChange={event => commit('half', event.target.value)}
+            />
+            <b>分</b>
+          </span>
+        </label>
+      </div>
       {/*
         ★ 2026-09-25（教师问「留空 = 跟随学习单（1 / 0）这个什么意思」⇒ 那句话没写好）：
         改成一句能直接读懂的话，并把两个数**标上名字** —— 原来光秃秃的「1 / 0」
         得先知道括号里是「全对 / 部分给分」两档才看得懂。
       */}
-      <span className="worksheet-editor-points-note">
-        两格清空 = 用默认分值（全对 {inheritedPoints.full} · 部分给分 {inheritedPoints.half}）
-      </span>
+      <p className="worksheet-editor-points-note">
+        两项都清空时使用默认值：完全正确 {inheritedPoints.full} 分，部分正确 {inheritedPoints.half} 分。
+      </p>
       {invalidHint && <p className="worksheet-editor-warn-hint">{invalidHint}</p>}
       {partialHint && <p className="worksheet-editor-warn-hint">{partialHint}</p>}
       {shouldWarnZeroHalfCredit(node, inheritedPoints) && (
@@ -531,7 +723,10 @@ function ToleranceRow({ node, onToleranceChange }: {
   const current = toleranceOf(node);
   return (
     <label className="worksheet-editor-tolerance">
-      <span className="worksheet-editor-points-label">判分依据</span>
+      <span>
+        <strong>部分得分条件</strong>
+        <em>只有部分正确分值大于 0 时才会使用此条件。</em>
+      </span>
       <select
         className="input worksheet-editor-tolerance-select"
         value={current === null ? '' : String(current)}

@@ -24,6 +24,7 @@ import { WorksheetPreviewModal } from './preview-modal';
 import { useWorksheetEditor, type SaveStatus } from './use-worksheet-editor';
 import {
   QUESTION_TYPE_OPTIONS,
+  type EditorBlock,
   type QuestionType,
   type WorksheetDraft,
 } from './worksheet-editor-core';
@@ -90,16 +91,9 @@ function WorksheetEditorBody() {
    * 迁移之后顶层的题都在任务里，所以绝大多数情况 `parentId` 是一个任务 id ——
    * 旧写法（没有这个参数）会让教师新加的题永远落在任务**外面**。
    */
-  /**
-   * ★ 2026-09-26（spec 第 2 步）：**当前展开的那一道**（`null` = 全折起来）。
-   * 一页 20 题时只展开一张 —— 与焦点态同源：两张都展开就都没有重点。
-   * ⚠️ **刻意不持久化**：刷新回到全折叠。对 20 题的页面那是可接受的默认
-   *（先扫全卷、再点开要改的那一道），而持久化会让「我明明刷新了怎么还停在那张」变成一个疑问。
-   */
+  /** 当前在主工作区编辑的题。结构栏始终展示全卷，但主区域一次只显示这一题。 */
   const [openId, setOpenId] = useState<string | null>(null);
-  const toggleOpen = useCallback((id: string) => {
-    setOpenId(current => (current === id ? null : id));
-  }, []);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const [pickerFor, setPickerFor] = useState<{ parentId: string | null } | null>(null);
 
@@ -126,6 +120,52 @@ function WorksheetEditorBody() {
 
   // ★ 2026-09-26（spec 第 4 步）：页面头的「N 题 · 满分 M」（核心里、有用例）。
   const totals = scoreSummary(content.nodes, inheritedPoints);
+
+  /**
+   * 工作台只编辑当前这一题。结构变化后，如果当前题已经被删除，就落到第一道可编辑题；
+   * 空任务仍可单独选中并编辑标题与说明。
+   */
+  useEffect(() => {
+    const currentBlock = blocks.find(block => block.questions.some(row => row.node.id === openId));
+    if (currentBlock) {
+      const taskId = currentBlock.task?.node.id ?? null;
+      if (activeTaskId !== taskId) setActiveTaskId(taskId);
+      return;
+    }
+    const currentTaskBlock = blocks.find(block => block.task?.node.id === activeTaskId);
+    if (currentTaskBlock) {
+      const firstInTask = currentTaskBlock.questions[0]?.node.id ?? null;
+      if (openId !== firstInTask) setOpenId(firstInTask);
+      return;
+    }
+    const firstQuestionBlock = blocks.find(block => block.questions.length > 0);
+    if (firstQuestionBlock) {
+      setOpenId(firstQuestionBlock.questions[0].node.id);
+      setActiveTaskId(firstQuestionBlock.task?.node.id ?? null);
+      return;
+    }
+    setOpenId(null);
+    const firstTaskId = blocks.find(block => block.task)?.task?.node.id ?? null;
+    if (activeTaskId !== firstTaskId) setActiveTaskId(firstTaskId);
+  }, [activeTaskId, blocks, openId]);
+
+  const activeBlock = useMemo(() => {
+    if (openId) {
+      const byQuestion = blocks.find(block => block.questions.some(row => row.node.id === openId));
+      if (byQuestion) return byQuestion;
+    }
+    return blocks.find(block => block.task?.node.id === activeTaskId) ?? null;
+  }, [activeTaskId, blocks, openId]);
+
+  const selectQuestion = useCallback((questionId: string, taskId: string | null) => {
+    setOpenId(questionId);
+    setActiveTaskId(taskId);
+  }, []);
+
+  const selectTask = useCallback((block: EditorBlock) => {
+    setActiveTaskId(block.task?.node.id ?? null);
+    setOpenId(block.questions[0]?.node.id ?? null);
+  }, []);
 
 
   /**
@@ -198,7 +238,7 @@ function WorksheetEditorBody() {
   useEffect(() => {
     if (!drag) return;
     const rowsInLayer = () => Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-layer="${CSS.escape(drag.layer)}"]`),
+      document.querySelectorAll<HTMLElement>(`[data-outline-layer="${CSS.escape(drag.layer)}"]`),
     );
     const onMove = (event: PointerEvent) => {
       const rows = rowsInLayer();
@@ -291,34 +331,61 @@ function WorksheetEditorBody() {
     ].filter((part): part is string => part !== null).join(' · ') || '本单正在被使用'
     : null;
 
+  const activeQuestion = activeBlock?.questions.find(row => row.node.id === openId) ?? null;
+  const renderQuestionCard = (row: EditorBlock['questions'][number]) => (
+    <QuestionCard
+      key={row.node.id}
+      heading={row.heading}
+      index={row.index}
+      total={row.total}
+      expanded
+      focusedMode
+      onToggle={() => selectQuestion(row.node.id, row.taskId)}
+      inTask={row.taskId !== null}
+      taskId={row.taskId}
+      onDragStart={event => startDrag(event, row.node.id, row.taskId ?? '', row.index)}
+      node={row.node}
+      inheritedPoints={inheritedPoints}
+      rejectedPointInput={editor.rejectedPoints[row.node.id]}
+      onPromptChange={prompt => editor.updatePrompt(row.node.id, prompt)}
+      onDataChange={patch => editor.updateData(row.node.id, patch)}
+      onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
+      onPointsChange={points => editor.updatePoints(row.node.id, points)}
+      onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
+      onAutoGradeChange={autoGrade => editor.updateAutoGrade(row.node.id, autoGrade)}
+      onToleranceChange={tolerance => editor.updateTolerance(row.node.id, tolerance)}
+      onMove={delta => editor.moveQuestion(row.node.id, delta)}
+      onRemove={() => void requestRemove(row.node, row.heading)}
+    />
+  );
+
   return (
     <div className="worksheet-editor">
       <div className="worksheet-editor-topbar">
-        <button type="button" className="btn btn-ghost" onClick={editor.goBack}>← 返回</button>
-        <input
-          className="worksheet-editor-title"
-          value={editor.title}
-          onChange={event => editor.setTitle(event.target.value)}
-          maxLength={200}
-          placeholder="未命名学习单"
-          aria-label="学习单标题"
-        />
-        {/*
-          ★ 2026-09-26（spec 第 4 步）：页面头要给这一页**自己的样子** ——
-          「这份单几道题、满分多少」是教师最常被问的两个数，原来这里一个都没有。
-          ⚠️ 判据在核心里（`scoreSummary`，有用例）：**满分只数会判分的题** ——
-          把不判分的题算进去会让这个数比学生实际能拿到的分大，而教师会拿它去分配课堂时间。
-        */}
-        <span className="worksheet-editor-totals" title="这份学习单有几道可作答的题、学生最多能拿多少分">
-          {totals.questions} 题 · 满分 {totals.maxScore}
-        </span>
-        <span className={`worksheet-editor-status${editor.dirty ? ' is-dirty' : ''}${saveStatus.kind === 'error' ? ' is-error' : ''}`}>
-          {describeSaveStatus(saveStatus, editor.dirty, Boolean(worksheetId))}
-        </span>
+        <button type="button" className="worksheet-editor-back" onClick={editor.goBack} aria-label="返回学习单列表">←</button>
+        <div className="worksheet-editor-heading">
+          <span className="worksheet-editor-breadcrumb">学习单 / 编辑</span>
+          <input
+            className="worksheet-editor-title"
+            value={editor.title}
+            onChange={event => editor.setTitle(event.target.value)}
+            maxLength={200}
+            placeholder="未命名学习单"
+            aria-label="学习单标题"
+          />
+        </div>
+        <div className="worksheet-editor-meta">
+          <span className="worksheet-editor-totals" title="这份学习单的题目数与满分">
+            {blocks.filter(block => block.task).length} 个任务 · {totals.questions} 题 · 满分 {totals.maxScore}
+          </span>
+          <span className={`worksheet-editor-status${editor.dirty ? ' is-dirty' : ''}${saveStatus.kind === 'error' ? ' is-error' : ''}`}>
+            {describeSaveStatus(saveStatus, editor.dirty, Boolean(worksheetId))}
+          </span>
+        </div>
 
         <div className="worksheet-editor-topbar-actions">
-          <button type="button" className="btn btn-secondary" onClick={editor.undo} disabled={!editor.canUndo} title="撤销（Ctrl/Cmd+Z）">撤销</button>
-          <button type="button" className="btn btn-secondary" onClick={editor.redo} disabled={!editor.canRedo} title="重做（Ctrl/Cmd+Shift+Z）">重做</button>
+          <button type="button" className="worksheet-editor-command" onClick={editor.undo} disabled={!editor.canUndo} title="撤销（Ctrl/Cmd+Z）" aria-label="撤销">↶</button>
+          <button type="button" className="worksheet-editor-command" onClick={editor.redo} disabled={!editor.canRedo} title="重做（Ctrl/Cmd+Shift+Z）" aria-label="重做">↷</button>
           <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>设置</button>
           <button type="button" className="btn btn-secondary" onClick={() => setPreviewOpen(true)}>预览</button>
           <button type="button" className="btn btn-secondary" onClick={() => void editor.duplicate()} disabled={editor.duplicating}>
@@ -353,78 +420,151 @@ function WorksheetEditorBody() {
         </div>
       )}
 
-      {blocks.length === 0 ? (
-        <div className="worksheet-editor-empty">
-          还没有题目。点下面的「＋ 添加任务」开始。
-        </div>
-      ) : (
-        <div className="worksheet-editor-questions">
-          {/*
-            ★ 2026-09-25（第二轮终审 F2/F3）：这里**只做哑映射** —— 切段与题号全在
-            `editorRenderBlocks`（纯函数、有测试）。判据写进 JSX 就没有回归网（本仓没有前端测试框架）。
+      <div className="worksheet-editor-workspace">
+        <aside className="worksheet-editor-outline" aria-label="学习单结构">
+          <div className="worksheet-editor-outline-head">
+            <div>
+              <h2>学习单结构</h2>
+              <p>选择一道题开始编辑</p>
+            </div>
+            <span>{totals.questions} 题</span>
+          </div>
 
-            块有两种：任务（`TaskCard` 包着它的小题）与散题（各自成块）。
-            散题是老数据 / 手工改过的库才有的形态，仍然画得出来。
-          */}
-          {blocks.map((block) => {
-            const questionCards = block.questions.map((row) => (
-              <QuestionCard
-                key={row.node.id}
-                // 🔴 显示的是**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出 / 保存报错同一份。
-                // `index` / `total` 只服务 ▲▼ 的边界（换位是**同层内**的）。
-                heading={row.heading}
-                index={row.index}
-                total={row.total}
-                expanded={openId === row.node.id}
-                onToggle={() => toggleOpen(row.node.id)}
-                // 任务里的小题徽章只显示序号（任务名在容器头上，别重复）
-                inTask={row.taskId !== null}
-                taskId={row.taskId}
-                onDragStart={event => startDrag(event, row.node.id, row.taskId ?? '', row.index)}
-                node={row.node}
-                inheritedPoints={inheritedPoints}
-                rejectedPointInput={editor.rejectedPoints[row.node.id]}
-                onPromptChange={prompt => editor.updatePrompt(row.node.id, prompt)}
-                onDataChange={patch => editor.updateData(row.node.id, patch)}
-                onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
-                onPointsChange={points => editor.updatePoints(row.node.id, points)}
-                onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
-                onAutoGradeChange={autoGrade => editor.updateAutoGrade(row.node.id, autoGrade)}
-                onToleranceChange={tolerance => editor.updateTolerance(row.node.id, tolerance)}
-                onMove={delta => editor.moveQuestion(row.node.id, delta)}
-                onRemove={() => void requestRemove(row.node, row.heading)}
-              />
-            ));
-            if (!block.task) return questionCards;
-            // ⚠️ `key` 挂在**外层数组**上：React 要求 map 的每一项有 key，而散题那一支
-            // 返回的是一个数组（每一项自己带 key）。
-            return (
+          <div className="worksheet-editor-outline-list">
+            {blocks.map((block, blockIndex) => {
+              if (!block.task) {
+                return block.questions.map(row => (
+                  <div
+                    className={`worksheet-editor-outline-question${openId === row.node.id ? ' is-active' : ''}`}
+                    key={row.node.id}
+                    data-outline-layer=""
+                  >
+                    <button type="button" onClick={() => selectQuestion(row.node.id, null)}>
+                      <span className="worksheet-editor-outline-number">{row.heading}</span>
+                      <span className="worksheet-editor-outline-question-copy">
+                        <strong>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                        <em>{row.node.prompt.trim() || '未填写题干'}</em>
+                      </span>
+                    </button>
+                  </div>
+                ));
+              }
+
+              const task = block.task;
+              const taskTotals = scoreSummary(task.node.children, inheritedPoints);
+              const taskActive = activeTaskId === task.node.id;
+              return (
+                <section
+                  className={`worksheet-editor-outline-task${taskActive ? ' is-active' : ''}`}
+                  key={task.node.id}
+                  data-outline-layer=""
+                >
+                  <div className="worksheet-editor-outline-task-head">
+                    <button
+                      type="button"
+                      className="worksheet-editor-outline-task-select"
+                      onClick={() => selectTask(block)}
+                    >
+                      <span className="worksheet-editor-outline-chevron">⌄</span>
+                      <span>
+                        <strong>{task.node.prompt.trim() || `任务 ${blockIndex + 1}`}</strong>
+                        <em>{taskTotals.questions} 题 · 满分 {taskTotals.maxScore}</em>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="worksheet-editor-drag-handle"
+                      onPointerDown={event => startDrag(event, task.node.id, '', task.index)}
+                      aria-label={`拖动任务 ${task.index + 1} 调整顺序`}
+                      title="拖动调整任务顺序"
+                    >⠿</button>
+                  </div>
+
+                  <div className="worksheet-editor-outline-questions">
+                    {block.questions.map(row => (
+                      <div
+                        className={`worksheet-editor-outline-question${openId === row.node.id ? ' is-active' : ''}`}
+                        key={row.node.id}
+                        data-outline-layer={task.node.id}
+                      >
+                        <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
+                          <span className="worksheet-editor-outline-number">{row.index + 1}</span>
+                          <span className="worksheet-editor-outline-question-copy">
+                            <strong>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                            <em>{row.node.prompt.trim() || '未填写题干'}</em>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="worksheet-editor-outline-drag"
+                          onPointerDown={event => startDrag(event, row.node.id, task.node.id, row.index)}
+                          aria-label={`拖动第 ${row.index + 1} 题调整顺序`}
+                          title="拖动调整题目顺序"
+                        >⠿</button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button type="button" className="worksheet-editor-outline-add-question" onClick={() => setPickerFor({ parentId: task.node.id })}>
+                    ＋ 添加题目
+                  </button>
+                </section>
+              );
+            })}
+          </div>
+
+          <button type="button" className="worksheet-editor-add" onClick={() => editor.addTask()}>
+            ＋ 添加任务
+          </button>
+        </aside>
+
+        <main className="worksheet-editor-canvas">
+          {blocks.length === 0 ? (
+            <div className="worksheet-editor-canvas-empty">
+              <span>01</span>
+              <h2>先创建第一个任务</h2>
+              <p>任务用于组织一组相关题目，学生会按任务顺序完成学习单。</p>
+              <button type="button" className="btn btn-primary" onClick={() => editor.addTask()}>添加任务</button>
+            </div>
+          ) : activeBlock?.task ? (
+            <>
+              <div className="worksheet-editor-canvas-head">
+                <div>
+                  <span>任务 {activeBlock.task.index + 1}</span>
+                  <h2>{activeQuestion ? '编辑题目' : '编辑任务'}</h2>
+                </div>
+                {activeQuestion && <span>第 {activeQuestion.index + 1} 题 / 共 {activeQuestion.total} 题</span>}
+              </div>
               <TaskCard
-                key={block.task.node.id}
-                index={block.task.index}
-                total={block.task.total}
-                node={block.task.node}
-                onTitleChange={prompt => editor.updatePrompt(block.task!.node.id, prompt)}
-                // 描述走 `updateData`（同一个 reducer ⇒ 同样进撤销栈、同样同值去重）。
-                onDescriptionChange={description => editor.updateData(block.task!.node.id, { description })}
-                onMove={delta => editor.moveQuestion(block.task!.node.id, delta)}
-                onRemove={() => void requestRemove(block.task!.node, '')}
-                onDragStart={event => startDrag(event, block.task!.node.id, '', block.task!.index)}
-                onAddQuestion={() => setPickerFor({ parentId: block.task!.node.id })}
+                index={activeBlock.task.index}
+                total={activeBlock.task.total}
+                node={activeBlock.task.node}
+                onTitleChange={prompt => editor.updatePrompt(activeBlock.task!.node.id, prompt)}
+                onDescriptionChange={description => editor.updateData(activeBlock.task!.node.id, { description })}
+                onMove={delta => editor.moveQuestion(activeBlock.task!.node.id, delta)}
+                onRemove={() => void requestRemove(activeBlock.task!.node, '')}
+                onDragStart={event => startDrag(event, activeBlock.task!.node.id, '', activeBlock.task!.index)}
+                onAddQuestion={() => setPickerFor({ parentId: activeBlock.task!.node.id })}
                 inheritedPoints={inheritedPoints}
               >
-                {questionCards}
+                {activeQuestion ? renderQuestionCard(activeQuestion) : null}
               </TaskCard>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 页面级只有这一个入口：**添加任务**（§六 第 3 条：入口醒目且分层）。
-          「添加小题」在任务内部 —— 两个按钮长得一样就分不出层级了。 */}
-      <button type="button" className="worksheet-editor-add" onClick={() => editor.addTask()}>
-        ＋ 添加任务
-      </button>
+            </>
+          ) : activeQuestion ? (
+            <>
+              <div className="worksheet-editor-canvas-head">
+                <div><span>独立题目</span><h2>编辑题目</h2></div>
+              </div>
+              {renderQuestionCard(activeQuestion)}
+            </>
+          ) : (
+            <div className="worksheet-editor-canvas-empty">
+              <h2>选择一道题开始编辑</h2>
+              <p>从左侧结构中选择任务或题目。</p>
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* ★ 2026-09-26（spec 第 5 步）：**落点那条线**（不是整块高亮 —— 高亮会盖住行本身，
           而教师要看的是「插到哪两行之间」）。`position: fixed` + 指针量出来的坐标。 */}

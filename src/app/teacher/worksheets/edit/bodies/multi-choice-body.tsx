@@ -33,35 +33,42 @@ export function MultiChoiceBody({ node, onDataChange, showAnswer = true }: {
     <>
       <ChoiceOptionsEditor node={node} multiple onDataChange={onDataChange} showAnswer={showAnswer} />
 
-      {showAnswer && (<>
-<div className="worksheet-editor-inline-actions">
-        <span className="worksheet-editor-block-label">评分方式</span>
-        <label className="worksheet-editor-option-correct">
-          <input
-            type="radio"
-            name={`partial-${node.id}`}
-            checked={!allowMissing}
-            onChange={() => onDataChange({ partialCredit: 'all-or-nothing' })}
-          />
-          <span>全对才算</span>
-        </label>
-        <label className="worksheet-editor-option-correct">
-          <input
-            type="radio"
-            name={`partial-${node.id}`}
-            checked={allowMissing}
-            onChange={() => onDataChange({ partialCredit: 'allow-missing' })}
-          />
-          <span>漏选算部分给分</span>
-        </label>
-      </div>
-      </>)}
-
-      <p className="worksheet-editor-hint">
-        选了「漏选算部分给分」之后，学生只勾了正确答案里的一部分（<strong>一个错的都没勾</strong>）时得上面
-        「分值」一行的<strong>部分给分</strong>那个数；少勾但勾错了、或者什么都没勾，一律 0 分。
-        部分给分给几分由那一行决定 —— 填 0 就等于「全对才算」。
-      </p>
+      {showAnswer && (
+        <fieldset className="worksheet-editor-scoring-method">
+          <legend>评分方式</legend>
+          <div className="worksheet-editor-scoring-options">
+            <label className={!allowMissing ? 'is-selected' : ''}>
+              <input
+                type="radio"
+                name={`partial-${node.id}`}
+                checked={!allowMissing}
+                onChange={() => onDataChange({ partialCredit: 'all-or-nothing' })}
+              />
+              <span>
+                <strong>全对才得分</strong>
+                <em>必须选中全部正确答案</em>
+              </span>
+            </label>
+            <label className={allowMissing ? 'is-selected' : ''}>
+              <input
+                type="radio"
+                name={`partial-${node.id}`}
+                checked={allowMissing}
+                onChange={() => onDataChange({ partialCredit: 'allow-missing' })}
+              />
+              <span>
+                <strong>漏选可得部分分</strong>
+                <em>只漏选且没有选错时生效</em>
+              </span>
+            </label>
+          </div>
+          <p>
+            {allowMissing
+              ? '学生只漏选、没有错选时，获得“部分正确”的分值；错选或未作答得 0 分。'
+              : '学生必须选中全部正确答案，并且不能选错，才能获得“完全正确”的分值。'}
+          </p>
+        </fieldset>
+      )}
     </>
   );
 }

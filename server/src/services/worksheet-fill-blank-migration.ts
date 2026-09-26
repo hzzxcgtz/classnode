@@ -31,7 +31,12 @@ const BLANK_PLACEHOLDER = '________';
  * 1. 🔴 **不猜。** 空的数量**照原样推出来**：多空 = `data.blanks.length`、单空 = 1
  *    （判据与 `judgeFillBlank` 逐字一致：`Array.isArray(data.blanks)` 在不在）。
  *    编一个数出来会让一道题凭空多出或少掉几格，而屏幕上只是一排框的数量变了。
- * 2. 🔴 **别的东西一个字不动**：`answers` 是按位置配的，动一位就全班判错。
+ * 2. 🔴 **答案必须一条不丢地搬过去，而且形状会变。** 多空形状里答案住在
+ *    `data.blanks[i].answers`（**不是**另一个 `data.answers`）—— 删 `blanks` 之前先把它们搬出来。
+ *    这里统一成**每空一份可接受答案**（`string[][]`）：多空的 `blanks[i].answers` 原样搬、
+ *    单空的平铺 `answers` 包一层。⚠️ **这一步会改变单空题的 `data.answers` 形状** ⇒
+ *    它必须与「编辑器认新形状」（spec 第 4 步）**同一批上线**，否则中间那段时间里
+ *    编辑器读单空题的答案是错的。
  * 3. 🔴 **手写作答改回键盘**（同批裁定 ③）：题干内输入与手写天然冲突。
  *    ⚠️ `inputMode` 在**节点上**（不在 `data` 里）—— 写错地方等于没改。
  * 4. ⚠️ **这一次迁移与前两条不同：它必须只跑一次**（由 `index.ts` 的完成标记把门）。
@@ -89,6 +94,24 @@ export async function migrateFillBlankToInline(prisma: PrismaClient): Promise<{ 
       const appended = Array.from({ length: count }, () => BLANK_PLACEHOLDER).join('');
       const nextPrompt = prompt + appended;
       const nextData: Record<string, unknown> = { ...data };
+      // 🔴🔴 **答案在 `blanks` 里面**（多空形状是 `blanks[i].answers`）——
+      // 把它们搬出来**再**删 `blanks`。少了这一步就是**一次静默的数据丢失**：
+      // 空还在（题干里多了几个），而每空的答案一个不剩 ⇒ 全班判错。
+      // ⚠️ 第一版就是这么写的（`delete nextData.blanks` 之前**没有**搬答案），
+      // 而用例**没抓到** —— 因为我**编了**数据形状（另外写了一个 `data.answers`），
+      // 而不是照 `VALIDATORS` / `judgeFillBlank` 读真形状。**用例的数据也必须是真的。**
+      //
+      // 统一成**每空一份可接受答案**（`string[][]`）：
+      //   · 多空：`blanks[i].answers` 原样搬（它本来就是一份可接受答案的数组）；
+      //   · 单空：`data.answers` 是**平铺**的一份可接受答案 ⇒ 包一层变成「第一个空的」。
+      // 于是「空 i 的答案」在两个形状下都是 `answers[i]`，判分只有一条路。
+      nextData.answers = Array.isArray(legacyBlanks)
+        ? legacyBlanks.map((blank) => (
+          blank && typeof blank === 'object' && !Array.isArray(blank)
+            ? ((blank as Record<string, unknown>).answers ?? [])
+            : []
+        ))
+        : [Array.isArray(data.answers) ? data.answers : []];
       delete nextData.blanks;
       // ⚠️ **只写空那几条**，不补 [0, prompt.length) 那一段：
       // 读的一侧（`readPromptRuns`）本来就会把空隙补成默认样式 —— 那是它的职责，

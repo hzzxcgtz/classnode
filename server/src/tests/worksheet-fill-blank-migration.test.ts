@@ -74,7 +74,8 @@ test('🔴 单空的老填空题（没有 `data.blanks`）⇒ 题干末尾追加
   assert.equal(blanks.length, 1, '单空 ⇒ 追加一个空');
   // ⚠️ 下划线**不是空白**，`.trim()` 去不掉它 —— 直接比那段字面量。
   assert.equal(node.prompt.slice(blanks[0].start, blanks[0].end), '________', '空那一段是下划线占位');
-  assert.deepEqual(node.data.answers, ['氧气'], '答案按位置配，一个字不许动');
+  // 🔴 平铺的那一份**包一层**变成「第一个空的答案」（新形状统一成每空一份）。
+  assert.deepEqual(node.data.answers, [['氧气']], '答案按位置配，一个字都不许丢');
 });
 
 test('🔴 多空（`data.blanks: [a,b,c]`）⇒ 追加**三个**空，且 `data.blanks` 删掉', async (t) => {
@@ -82,7 +83,13 @@ test('🔴 多空（`data.blanks: [a,b,c]`）⇒ 追加**三个**空，且 `data
   const ws = await prisma.worksheet.create({
     data: {
       title: '多', settings: {},
-      content: content([fill('a', '植物需要____和____才能生长？', { blanks: ['阳光', '水分', '空气'], answers: [['阳光'], ['水分'], ['空气']] })]),
+      // ⚠️ **真实的多空形状**：答案在 `blanks[i].answers` 里，**没有**另一个 `data.answers`。
+      // 我第一版拿 `blanks: ['阳光', …]`（字符串数组）+ 一个平铺的 `answers` 当数据 ——
+      // 那是**编的**，于是「答案在 blanks 里」这件事用例根本验不到，
+      // 迁移把 `blanks` 一删，答案就丢了。
+      content: content([fill('a', '植物需要____和____才能生长？', {
+        blanks: [{ answers: ['阳光'] }, { answers: ['水分'] }, { answers: ['空气'] }],
+      })]),
     },
   });
 
@@ -91,7 +98,8 @@ test('🔴 多空（`data.blanks: [a,b,c]`）⇒ 追加**三个**空，且 `data
   const [node] = await readNodes(prisma, ws.id);
   assert.equal(blanksOf(node).length, 3, '空的个数照 `blanks` 原样推出来');
   assert.equal('blanks' in node.data, false, '旧键必须删掉 —— 留着它库里就有两种形状');
-  assert.deepEqual(node.data.answers, [['阳光'], ['水分'], ['空气']], '答案一个字不许动');
+  // 🔴 **这一条是这次 bug 的判据**：答案从 `blanks[i].answers` 搬到了 `answers[i]`。
+  assert.deepEqual(node.data.answers, [['阳光'], ['水分'], ['空气']], '答案一个都不许丢');
 });
 
 test('🔴 已经有空的题（新形状）一个字不动', async (t) => {

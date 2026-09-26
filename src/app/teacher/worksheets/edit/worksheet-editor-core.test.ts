@@ -216,6 +216,49 @@ test('异值 updatePrompt 造新对象，且新内容正确', () => {
   assert.equal(next.past.length, 1);
 });
 
+// ── 1b. `updatePrompt` 带 `data`：题干与它的行内格式**一次改完**（★ 2026-09-26）──
+//
+// 🔴 为什么必须是一个 action：所见即所得编辑器敲**一个字**同时改了 `prompt` 与
+// `promptRuns`。分两次 dispatch ⇒ 一次按键进两格撤销栈 ⇒ 教师按 ⌘Z 的第一下退到一个
+// **屏幕纹丝不动**的动作上（那一格的语义是「撤销一次格式变化」，他无从知道），
+// 只能再按一次。一个按键 = 一格撤销栈。
+
+test('🔴 updatePrompt 带 data：题干与分段一次改掉，只进**一格**撤销栈', () => {
+  const state = createHistory(contentWithPrompt('光合作用'));
+  const runs = [{ start: 0, end: 2, bold: true, italic: false, underline: false, emphasis: false, color: '#1e293b' }];
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_fixed', prompt: '光合作用哦', data: { promptRuns: runs } });
+  assert.equal(next.past.length, 1, '一个按键只许进一格');
+  assert.equal(next.present.nodes[0].prompt, '光合作用哦');
+  assert.deepEqual(next.present.nodes[0].data.promptRuns, runs);
+});
+
+test('🔴 updatePrompt 带 data：**两者都没变** ⇒ 返回原对象（不进栈）', () => {
+  const runs = [{ start: 0, end: 4, bold: true, italic: false, underline: false, emphasis: false, color: '#1e293b' }];
+  const state = createHistory(contentOf(node('q_a', '光合作用', { promptRuns: runs })));
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '光合作用', data: { promptRuns: runs } });
+  assert.equal(next, state);
+  assert.equal(next.past.length, 0);
+});
+
+test('🔴 updatePrompt 带 data：补丁里显式的 `undefined` 意思是「删掉这个键」，**算变了**', () => {
+  // 全默认的分段不写进库里（`isPlainRuns`），所以「格式被全部清掉」那一下走的就是
+  // `{ promptRuns: undefined }`。⚠️ 拿 `===` 一律当成「没变」的话，这一下会被吞掉 ——
+  // 症状是「取消了全部格式，保存后它又回来了」。
+  const runs = [{ start: 0, end: 4, bold: true, italic: false, underline: false, emphasis: false, color: '#1e293b' }];
+  const state = createHistory(contentOf(node('q_a', '光合作用', { promptRuns: runs })));
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '光合作用', data: { promptRuns: undefined } });
+  assert.notEqual(next, state, '「把格式清空」是一次真的变化');
+  assert.equal(next.past.length, 1);
+  assert.equal(next.present.nodes[0].data.promptRuns, undefined);
+});
+
+test('🔴 不带 data 的 updatePrompt 与从前**逐字相同**（老路径不受影响）', () => {
+  const state = createHistory(contentOf(node('q_a', '光合作用', { explanation: '因为所以' })));
+  const next = contentReducer(state, { kind: 'updatePrompt', id: 'q_a', prompt: '呼吸作用' });
+  assert.equal(next.present.nodes[0].prompt, '呼吸作用');
+  assert.deepEqual(next.present.nodes[0].data, { explanation: '因为所以' }, '别的 data 字段一个都不许碰');
+});
+
 test('🔴 同值 updateData 返回同一个对象（与 updatePrompt 同一条规矩）', () => {
   const state = createHistory(contentOf(node('q_a', '', { explanation: '因为所以', inputMode: 'keyboard' })));
   const next = contentReducer(state, { kind: 'updateData', id: 'q_a', patch: { explanation: '因为所以' } });

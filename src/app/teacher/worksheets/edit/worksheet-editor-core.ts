@@ -120,7 +120,16 @@ export type ContentAction =
   }
   /** ★ 2026-09-25：新建一个**任务**容器，标题按序号预填（教师可改）。 */
   | { kind: 'addTask' }
-  | { kind: 'updatePrompt'; id: string; prompt: string }
+  /**
+   * 改题干（★ 2026-09-26：可选地**同一次**带上一批 `data` 补丁）。
+   *
+   * 🔴 `data` 存在的唯一理由：所见即所得编辑器敲一个字同时改了 `prompt` 与
+   * `promptRuns`，分两次 dispatch 会让 ⌘Z 的第一下退到一个**什么都没变**的动作上
+   *（教师看到屏幕纹丝不动，只能再按一次）。一个按键 = 一格撤销栈。
+   * ⚠️ 补丁里一个**显式的 `undefined`** 意思是「把这个键删掉」（`promptRuns` 全默认时
+   * 就是这么清掉的），不是「没变」—— 别拿 `===` 一律当成「没变」。
+   */
+  | { kind: 'updatePrompt'; id: string; prompt: string; data?: Record<string, unknown> }
   | { kind: 'updateData'; id: string; patch: Record<string, unknown> }
   | { kind: 'updatePoints'; id: string; points: QuestionPointsDraft | undefined }
   // ★ M4b/D1：逐题的作答方式（键盘 / 手写）。它是**唯一**能让手写笔迹变成可达的开关 ——
@@ -1808,9 +1817,19 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
       return { ...content, nodes: [...content.nodes, newTask(content.nodes)] };
 
     case 'updatePrompt':
-      return replaceNode(content, action.id, (node) => (
-        node.prompt === action.prompt ? node : { ...node, prompt: action.prompt }
-      ));
+      return replaceNode(content, action.id, (node) => {
+        // ⚠️ 不带 `data` 时与从前**逐字相同**（老路径：只改题干）。
+        if (!action.data) {
+          return node.prompt === action.prompt ? node : { ...node, prompt: action.prompt };
+        }
+        const data = action.data;
+        // 「补丁里显式的 undefined」= 删掉那个键，所以它**不算没变**。
+        const dataChanged = Object.keys(data).some((key) => (
+          data[key] === undefined ? node.data[key] !== undefined : node.data[key] !== data[key]
+        ));
+        if (node.prompt === action.prompt && !dataChanged) return node;
+        return { ...node, prompt: action.prompt, data: dataChanged ? { ...node.data, ...data } : node.data };
+      });
 
     case 'updateData':
       // 与 `updatePrompt` 同一条规矩：补丁里每个键的值都与现值相同时返回原对象，

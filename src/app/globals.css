@@ -3468,6 +3468,51 @@ tr:hover td {
   color: #1d4ed8;
 }
 
+/* ★ 2026-09-26（spec 第 4 步）：工具栏下面那一句「先选中文字」的说明。
+   裁定 ②（没选中 ⇒ 什么都不做）的代价是这些按钮**只有一种含义**，
+   所以必须有一句话把它说出来 —— 否则教师点了没反应只会以为坏了。 */
+.worksheet-editor-format-hint {
+  margin: 0 0 6px;
+  font-size: 0.688rem;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+/* ★ 2026-09-26：题干那个**所见即所得**的输入区（原来的 `<textarea>`）。
+   🔴 它是 contenteditable，所以三件事与 textarea 不同，逐条都有理由：
+   ① `min-height` 顶替 `rows=3`；⚠️ `:empty` 用不上（这个框**总有一个空文本节点**，
+      见 `renderRunsInto`），占位符走 `data-empty` 那个属性；
+   ② 空的时候 Safari 里点不进去，靠 min-height + `[data-empty]::before` 撑住；
+   ③ 光标颜色要显式给（正文颜色由每段的行内样式决定，默认光标色会跟着变）。
+   ⚠️ 写 `white-space: pre-wrap` 与 `.prompt` 一致：换行就是换行（题面是预格式文本）。 */
+.worksheet-editor-prompt-input {
+  min-height: 72px;
+  padding: 9px 11px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.938rem;
+  font-weight: 400;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+  caret-color: #1e293b;
+}
+
+.worksheet-editor-prompt-input:focus {
+  outline: 2px solid #bfdbfe;
+  outline-offset: 1px;
+}
+
+.worksheet-editor-prompt-input[data-empty='1']::before {
+  content: attr(data-placeholder);
+  color: #a3aec2;
+  pointer-events: none;
+}
+
 .worksheet-editor-color-control {
   display: inline-flex;
   align-items: center;

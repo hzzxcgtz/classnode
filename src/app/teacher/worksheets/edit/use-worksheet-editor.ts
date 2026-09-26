@@ -577,8 +577,17 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'addTask' });
   }, []);
 
-  const updatePrompt = useCallback((questionId: string, prompt: string) => {
-    dispatch({ kind: 'updatePrompt', id: questionId, prompt });
+  /**
+   * 题干 + 它的**行内格式分段**的写入口。
+   *
+   * ★ 2026-09-26：`data` 是**可选**的，而它存在的唯一理由是「一个按键必须只进一格撤销栈」。
+   * 所见即所得编辑器里敲一个字同时改了两样东西（`prompt` 与 `promptRuns`），
+   * 分两次 dispatch 会让 ⌘Z 的第一下退到一个**屏幕纹丝不动**的动作上 ——
+   * 教师只能再按一次（而那一格的语义是「撤销一次格式变化」，他无从知道）。
+   * ⚠️ 不传 `data` 时行为与从前**逐字相同**。
+   */
+  const updatePrompt = useCallback((questionId: string, prompt: string, data?: Record<string, unknown>) => {
+    dispatch({ kind: 'updatePrompt', id: questionId, prompt, ...(data ? { data } : {}) });
   }, []);
 
   const updateData = useCallback((questionId: string, patch: Record<string, unknown>) => {

@@ -347,7 +347,7 @@ function WorksheetEditorBody() {
       node={row.node}
       inheritedPoints={inheritedPoints}
       rejectedPointInput={editor.rejectedPoints[row.node.id]}
-      onPromptChange={prompt => editor.updatePrompt(row.node.id, prompt)}
+      onPromptChange={(prompt, data) => editor.updatePrompt(row.node.id, prompt, data)}
       onDataChange={patch => editor.updateData(row.node.id, patch)}
       onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
       onPointsChange={points => editor.updatePoints(row.node.id, points)}

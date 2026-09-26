@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, type PointerEvent as ReactPointerEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
-import { api } from '@/lib/api';
-import { WORKSHEET_TEXT_COLORS, readPromptImage, readPromptRunsFor, readPromptStyle, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PromptText } from '@/lib/worksheet-prompt-text';
+// ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
+// 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
+// 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
+import { PromptEditor } from './prompt-editor';
 import {
   canGivePartial,
   displayPoints,
@@ -138,7 +141,12 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
   inheritedPoints: { full: number; half: number };
   /** 这一题那两格里**还没进 reducer** 的文本（`useWorksheetEditor` 持有，见 `PointsRow`）。 */
   rejectedPointInput: RejectedPointInput | undefined;
-  onPromptChange: (prompt: string) => void;
+  /**
+   * ★ 2026-09-26：第二个参数是**与题干同一次**提交的 `data` 补丁（题干的格式分段）。
+   * 🔴 类型上必须带上它 —— 少一个参数，`PromptEditor` 传进来的格式会被**静默丢掉**
+   * （编译器不报错：少参函数可以赋给多参签名），症状是「设了格式、保存后没了」。
+   */
+  onPromptChange: (prompt: string, data?: Record<string, unknown>) => void;
   onDataChange: (patch: Record<string, unknown>) => void;
   onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
@@ -475,72 +483,6 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         </div>
       )}
     </section>
-  );
-}
-
-function PromptEditor({ node, onPromptChange, onDataChange }: {
-  node: WorksheetQuestionNode;
-  onPromptChange: (prompt: string) => void;
-  onDataChange: (patch: Record<string, unknown>) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const style = readPromptStyle(node);
-  const imageUrl = readPromptImage(node);
-  const updateStyle = (patch: Partial<typeof style>) => {
-    onDataChange({ promptStyle: { ...style, ...patch } });
-  };
-  const uploadImage = async (file: File) => {
-    setUploading(true);
-    setUploadError('');
-    try {
-      const result = await api.uploadWorksheetImage(file);
-      onDataChange({ promptImageUrl: result.url });
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '图片上传失败');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="worksheet-editor-rich-field">
-      <span className="worksheet-editor-rich-label">题干</span>
-      <div className="worksheet-editor-formatbar" aria-label="题干文字格式">
-        <button type="button" className={style.bold ? 'is-active' : ''} onClick={() => updateStyle({ bold: !style.bold })} aria-pressed={style.bold} title="加粗">B</button>
-        <button type="button" className={style.italic ? 'is-active' : ''} onClick={() => updateStyle({ italic: !style.italic })} aria-pressed={style.italic} title="斜体"><i>I</i></button>
-        <label className="worksheet-editor-color-control">
-          <span>文字颜色</span>
-          <select value={style.color} onChange={event => updateStyle({ color: event.target.value })} aria-label="题干文字颜色">
-            {WORKSHEET_TEXT_COLORS.map(color => <option key={color.value} value={color.value}>{color.label}</option>)}
-          </select>
-          <b style={{ backgroundColor: style.color }} aria-hidden="true" />
-        </label>
-        <label className="worksheet-editor-image-upload">
-          <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
-            const file = event.target.files?.[0];
-            if (file) void uploadImage(file);
-            event.target.value = '';
-          }} />
-          {uploading ? '上传中…' : imageUrl ? '更换图片' : '添加图片'}
-        </label>
-      </div>
-      <textarea
-        className="input"
-        rows={3}
-        value={node.prompt}
-        style={{ color: style.color, fontWeight: style.bold ? 700 : 600, fontStyle: style.italic ? 'italic' : 'normal' }}
-        onChange={event => onPromptChange(event.target.value)}
-        placeholder={node.type === 'fill-blank' ? '例如：植物进行光合作用释放的气体是____。' : '例如：光合作用需要哪些条件？'}
-      />
-      {imageUrl && (
-        <div className="worksheet-editor-upload-preview">
-          <img src={worksheetAssetUrl(imageUrl)} alt="题干配图预览" />
-          <button type="button" onClick={() => onDataChange({ promptImageUrl: undefined })}>移除图片</button>
-        </div>
-      )}
-      {uploadError && <p className="worksheet-editor-upload-error" role="alert">{uploadError}</p>}
-    </div>
   );
 }
 

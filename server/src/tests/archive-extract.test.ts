@@ -33,7 +33,10 @@ test('archiveKindOf：认不出的回 null（不抛错）', () => {
   }
 });
 
-test('parseSevenZipListing：目录不计入文件数与体积', () => {
+test('parseSevenZipListing：目录不计入文件数', () => {
+  // ⚠️ 用例名是**「文件数」不是「文件数与体积」** —— T2 复核变异过：删掉排除目录那一行，
+  //    下面两条体积断言**照样通过**，因为捕获到的真实输出里目录块的 `Size` 就是 0。
+  //    真正拦住目录的只有 `fileCount === 3` 这一条。**别把这个名字改回去。**
   const r = parseSevenZipListing(SEVEN_ZIP_LISTING_RAR3);
   assert.equal(r.fileCount, 3, 'test.txt / testlink / testdir/test.txt 三个文件，两个目录不算');
   assert.equal(r.declaredTotalBytes, 48, '20 + 8 + 20');
@@ -50,4 +53,17 @@ test('parseSevenZipListing：阳性对照 —— 认得出一条 Encrypted = +',
 
 test('parseSevenZipListing：空输入回全零，不抛错', () => {
   assert.deepEqual(parseSevenZipListing(''), { fileCount: 0, declaredTotalBytes: 0, declaredMaxFileBytes: 0, encrypted: false });
+});
+
+test('★ CRLF 输入必须解析出与 LF 完全相同的结果（否则会静默返回全零、放行一切体积）', () => {
+  // T2 复核实测出来的洞：`\r\n` 下 `'\n\n'` 不出现，整份输出塌成一个块、命中 `Folder = +`，
+  // 于是返回全零 —— 而全零能静默通过每一条 declared-size 限值。
+  const crlf = SEVEN_ZIP_LISTING_RAR3.replace(/\n/g, '\r\n');
+  assert.deepEqual(
+    parseSevenZipListing(crlf),
+    parseSevenZipListing(SEVEN_ZIP_LISTING_RAR3),
+    'CRLF 解析结果与 LF 不一致 —— 归一化那一步没生效',
+  );
+  // 阳性对照：上面那条断言不能靠「两边都返回全零」蒙过去。
+  assert.equal(parseSevenZipListing(crlf).fileCount, 3, 'CRLF 下解析出全零 ⇒ 体积闸门被静默绕过');
 });

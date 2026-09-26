@@ -65,7 +65,15 @@ export function parseSevenZipListing(text: string): SevenZipListing {
   let declaredMaxFileBytes = 0;
   let encrypted = false;
 
-  for (const block of text.split('\n\n')) {
+  // 🔴 **先把 CRLF 归一成 LF，这不是洁癖。** T2 复核实测过：喂 `\r\n` 进来时
+  //    `'\n\n'` 这个分隔符**根本不出现**，整份输出塌成**一个**块；那个块里恰好有
+  //    `Folder = +`（目录行），于是每一条 `continue` 都命中、返回**全零**。
+  //    全零的列表会**静默通过每一条 declared-size 限值** —— 而那是挡在实测 1184MB
+  //    内存事件前面的**唯一**一道闸门。低概率 + 失败时大开，所以在这里堵死。
+  //    （当前 7z-wasm 经 Emscripten 输出的是 LF，所以这是**保险**，不是修 bug。）
+  const normalized = text.replace(/\r\n/g, '\n');
+
+  for (const block of normalized.split('\n\n')) {
     const trimmed = block.trim();
     if (!trimmed) continue;
     if (/^Encrypted = \+$/m.test(trimmed)) encrypted = true;

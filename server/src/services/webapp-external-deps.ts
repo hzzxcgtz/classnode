@@ -36,7 +36,7 @@ export interface ExternalDependency {
  * 无脑剥会把所有 URL 一起削掉），那是分词器的活，不是正则的活。
  * 后果只是提示里多一条噪音，不阻断上传、也不会掩盖真依赖 ⇒ 接受。
  */
-function stripComments(source: string): string {
+export function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/<!--[\s\S]*?-->/g, '')

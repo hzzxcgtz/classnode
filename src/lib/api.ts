@@ -425,9 +425,11 @@ export const api = {
 
   // 探究网页（P2 / 规格 §5.3）。上传走 multipart（`formRequest`），其余是 JSON。
   //
-  // ⚠️ 上传的响应是 `webapp` + `externalDeps: { count, files }`，**没有 urls 字段**。
+  // ⚠️ 上传的响应是 `webapp` + `externalDeps: { count, files }` + `missingRefs: { count, refs }`，
+  // **两个提示都没有 urls 字段**。
   // 服务端刻意只给数量与文件名（T2 的 `url` 只保证「识别出这是一条外部依赖」，
   // CSS 场景可能被 `;` 截断）—— 类型里就没有那个字段，后面的人也没法顺手列出来。
+  // `missingRefs` 同理：`refs` 是教师自己写的那个引用原样，不是解析后的路径。
   getWebapps: () => request<WebappSummary[]>('/api/webapps'),
   createWebapp: (data: FormData) => formRequest<WebappUploadResult>('/api/webapps', 'POST', data),
   updateWebapp: (id: string, data: { name?: string; entryPath?: string }) =>

@@ -8,7 +8,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { safeExtractZip } from '../services/upload-security.js';
 import { ArchiveError, archiveKindOf, safeExtractArchive } from '../services/archive-extract.js';
-import { scanExternalDeps } from '../services/webapp-external-deps.js';
+import { scanExternalDeps, type WebappSourceFile } from '../services/webapp-external-deps.js';
+import { scanMissingLocalRefs } from '../services/webapp-local-refs.js';
 import { webappsRoot } from '../services/webapp-host.js';
 
 const router: Router = Router();
@@ -615,13 +616,15 @@ if (uploaded.page) {
     const verdict = validateWebappUpload(listing, entryHint);
     if (!verdict.ok) throw new UploadRejected(verdict.reason);
 
-    const externalDeps = scanExternalDepsSafe(dest, listing);
+    const sources = readScannableSources(dest, listing);
+    const externalDeps = scanExternalDepsSafe(sources);
+    const missingRefs = scanMissingRefsSafe(sources, listing);
 
     const webapp = await prisma.webapp.create({
       data: { id, name, entryPath: verdict.entry },
       select: PUBLIC_WEBAPP_SELECT,
     });
-    res.json({ ...webapp, externalDeps });
+    res.json({ ...webapp, externalDeps, missingRefs });
   } catch (error) {
     fs.rmSync(dest, { recursive: true, force: true });
     if (error instanceof UploadRejected) {
@@ -746,33 +749,40 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-/**
- * 扫描外部依赖。
- *
- * ⚠️ 只是提醒，**绝不阻断上传** —— 所以整段包在 try/catch 里：一个扫描器的 bug
- * 不该让教师传不了网页。
- *
- * ⚠️ 返回值**只有数量与文件名，没有 URL**。scanExternalDeps 的 url 字段只保证
- * 「识别出这是一条外部依赖」，不保证完整（CSS 里含 `;` 的地址会被截断，Google Fonts
- * 就是），T2 的字段文档明确要求消费方不要原样展示。**字段不存在，后面的人就没法
- * 顺手把它列出来给教师看** —— 这是结构性约束，不是 UI 约定。
- */
-function scanExternalDepsSafe(dest: string, listing: readonly WebappUploadFile[]): { count: number; files: string[] } {
+/** 读出可扫描的源文件（html/css/js/… 且不太大）。两个扫描器共用这一份。 */
+function readScannableSources(dest: string, listing: readonly WebappUploadFile[]): { path: string; content: string }[] {
+  const sources: { path: string; content: string }[] = [];
+  for (const file of listing) {
+    const ext = (file.path.split('.').pop() ?? '').toLowerCase();
+    if (!SCANNABLE_EXTENSIONS.has(ext)) continue;
+    if (file.size > EXTERNAL_DEP_READ_LIMIT) continue;
+    const target = resolveInDir(dest, file.path);
+    if (!target) continue;
+    sources.push({ path: file.path, content: fs.readFileSync(target, 'utf8') });
+  }
+  return sources;
+}
+
+function scanExternalDepsSafe(sources: readonly WebappSourceFile[]): { count: number; files: string[] } {
   try {
-    const sources: { path: string; content: string }[] = [];
-    for (const file of listing) {
-      const ext = (file.path.split('.').pop() ?? '').toLowerCase();
-      if (!SCANNABLE_EXTENSIONS.has(ext)) continue;
-      if (file.size > EXTERNAL_DEP_READ_LIMIT) continue;
-      const target = resolveInDir(dest, file.path);
-      if (!target) continue;
-      sources.push({ path: file.path, content: fs.readFileSync(target, 'utf8') });
-    }
     const deps = scanExternalDeps(sources);
     return { count: deps.length, files: [...new Set(deps.map(d => d.file))] };
   } catch (error) {
     console.warn('[webapps] 外部依赖扫描失败（不阻断上传）:', error);
     return { count: 0, files: [] };
+  }
+}
+
+/** ⚠️ 与上面那条**同样是「失败不阻断上传」**：扫描器是提醒，不是闸门。 */
+function scanMissingRefsSafe(
+  sources: readonly WebappSourceFile[],
+  listing: readonly WebappUploadFile[],
+): { count: number; refs: string[] } {
+  try {
+    return scanMissingLocalRefs(sources, listing.map(f => f.path));
+  } catch (error) {
+    console.warn('[webapps] 缺失引用扫描失败（不阻断上传）:', error);
+    return { count: 0, refs: [] };
   }
 }
 

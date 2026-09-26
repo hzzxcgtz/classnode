@@ -219,6 +219,12 @@ export interface WebappSummary {
  */
 export interface WebappUploadResult extends WebappSummary {
   externalDeps: { count: number; files: string[] };
+  /**
+   * 网页里引用了、但**包里没有**的本地文件（`style.css` 这类）。
+   * ⚠️ 与 `externalDeps` 是两件事：那个数的是 `https://…`（环境问题），
+   * 这个数的是包内缺失的文件（**上传的内容本身不全**）—— 教师要做的事完全不同。
+   */
+  missingRefs: { count: number; refs: string[] };
 }
 
 /**

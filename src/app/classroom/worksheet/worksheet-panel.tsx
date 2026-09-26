@@ -9,7 +9,8 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
-import { readPromptImage, readPromptStyle, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
@@ -287,7 +288,7 @@ export function WorksheetQuestionList({
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
-        const promptStyle = readPromptStyle(node);
+        const promptRuns = readPromptRunsFor(node);
         const promptImage = readPromptImage(node);
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
@@ -319,14 +320,16 @@ export function WorksheetQuestionList({
               ) : null}
             </div>
 
-            <div className={styles.prompt} style={{
-              color: promptStyle.color,
-              fontWeight: promptStyle.bold ? 700 : 400,
-              fontStyle: promptStyle.italic ? 'italic' : 'normal',
-            }}>
-              {node.prompt.trim()
-                ? node.prompt
-                : <span className={styles.placeholder}>（这道题的题干还没写）</span>}
+            {/* ★ 2026-09-26：题干的渲染**只有这一份实现**了（`PromptText`）。
+                在此之前这里画一次、教师编辑页折叠时另画一次，两份都不会因为另一份改了
+                而报错。样式（粗细 / 斜 / 下划线 / 着重号 / 颜色）由 `promptRunStyle` 给，
+                本组件的 `.prompt` 只管基线（字号 / 行高 / 换行 / 默认色）。 */}
+            <div className={styles.prompt}>
+              <PromptText
+                text={node.prompt}
+                runs={promptRuns}
+                placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
+              />
             </div>
             {promptImage && (
               <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />

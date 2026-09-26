@@ -324,6 +324,41 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
   return out.length === 0 ? readPromptRuns(undefined, next) : out;
 }
 
+/**
+ * 一条分段该写上去的**行内样式**（渲染端唯一的样式来源）。
+ *
+ * ⚠️ 返回的是**普通键值对**（不是 `CSSProperties`）—— 这是刻意的：本模块必须零 import，
+ * 而 `CSSProperties` 是 react 的类型。调用方一次 `as CSSProperties`（见 `PromptText`）。
+ *
+ * 🔴 **那两个 `-webkit-` 前缀不是历史包袱，是唯一能用的写法。**
+ * 着重号（`text-emphasis`）在老 iPad 的 Safari 15 上只认 `-webkit-text-emphasis`
+ * 与 `-webkit-text-emphasis-position`，而**位置必须是 `under`** —— `over`（默认）
+ * 是给拉丁文基线设计的，中文的着重号会挂在字上方、被行高裁掉。
+ * 少了任何一条，教师设了着重号而学生端**什么都不显示**，且**全程无一处报错**。
+ * ⇒ `worksheet-prompt-marks.test.ts` 里有一条专门的用例钉着这两行。
+ *
+ * ⚠️ `fontWeight` 写的是 **400**（不是省略）：两处调用方的类里各有一个基线
+ *（学生端 `.prompt` 无声明、编辑页预览那一行 `font-weight: 600`），而今天两边
+ * **实际渲染的都是 400**（编辑页那个 600 一直被这里的内联样式盖着）。
+ * 省略它会把这个死值放出来 ⇒ 编辑页的观感变了。要改成 600 是**另一个**外观决定。
+ */
+export function promptRunStyle(run: PromptTextStyle): Record<string, string | number> {
+  const style: Record<string, string | number> = {
+    color: run.color,
+    fontWeight: run.bold ? 700 : 400,
+    fontStyle: run.italic ? 'italic' : 'normal',
+  };
+  if (run.underline) style.textDecoration = 'underline';
+  if (run.emphasis) {
+    style.WebkitTextEmphasis = 'filled dot';
+    style.WebkitTextEmphasisPosition = 'under';
+    // 无前缀那一份也写上：今天的 Safari 只认前缀版，但不必等它改。
+    style.textEmphasis = 'filled dot';
+    style.textEmphasisPosition = 'under';
+  }
+  return style;
+}
+
 /** 一份分段是不是**全是默认样式**（= 没有格式）。写库时用它决定那个键要不要留。 */
 export function isPlainRuns(runs: PromptRun[]): boolean {
   if (!Array.isArray(runs)) return true;

@@ -4,7 +4,8 @@ import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { api } from '@/lib/api';
-import { WORKSHEET_TEXT_COLORS, readPromptImage, readPromptStyle, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { WORKSHEET_TEXT_COLORS, readPromptImage, readPromptRunsFor, readPromptStyle, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import {
   canGivePartial,
   displayPoints,
@@ -152,7 +153,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
   const typeLabel = typeOption?.label ?? node.type;
-  const promptStyle = readPromptStyle(node);
+  const promptRuns = readPromptRunsFor(node);
   const promptImage = readPromptImage(node);
 
   /**
@@ -454,15 +455,14 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
       */}
       {!expanded && (
         <div className="worksheet-editor-question-preview">
-          <p
-            className="worksheet-editor-question-preview-prompt"
-            style={{
-              color: promptStyle.color,
-              fontWeight: promptStyle.bold ? 700 : 600,
-              fontStyle: promptStyle.italic ? 'italic' : 'normal',
-            }}
-          >
-            {node.prompt.trim() || '（题干还没写）'}
+          {/* ★ 2026-09-26：这一处原来**另写了一份**题干渲染（读同一份 `promptStyle`，
+              与学生端那份各画各的）。现在两处共用一个 `PromptText` —— 行内格式一旦
+              要按区间切分，两份实现就是把一个分叉翻倍。
+              ⚠️ 那个 `<p>` 的类里还留着 `font-weight: 600` 与 `color: #0f172a`：
+              它们以前被这里的行内样式盖住（**一直没生效**），现在只作用于
+              「（题干还没写）」那句占位文字。要不要让题干也用它，是一个独立的外观决定。 */}
+          <p className="worksheet-editor-question-preview-prompt">
+            <PromptText text={node.prompt} runs={promptRuns} placeholder="（题干还没写）" />
           </p>
           {promptImage && (
             <img

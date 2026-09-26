@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_PROMPT_STYLE,
   isPlainRuns,
+  promptRunStyle,
   rangeColor,
   rangeHasKey,
   readPromptRuns,
@@ -276,6 +277,35 @@ test('🔴 remapRuns 的输出仍必须满足形状三条不变量（每一次�
     current = nextText;
     assertShape(runs, nextText.length);
   }
+});
+
+// ── 4b. promptRunStyle：渲染端唯一的样式来源 ───────────────────────────
+
+test('promptRunStyle：默认那条写成 color/400/normal，且**不写**下划线与着重号', () => {
+  const style = promptRunStyle(DEFAULT_PROMPT_STYLE);
+  assert.equal(style.color, '#1e293b');
+  assert.equal(style.fontWeight, 400, '400 是**写出来**的，不是省略 —— 省略会把编辑页那个死值放出来');
+  assert.equal(style.fontStyle, 'normal');
+  assert.equal('textDecoration' in style, false);
+  assert.equal('WebkitTextEmphasis' in style, false);
+});
+
+test('promptRunStyle：粗 / 斜 / 下划线 / 自定义色', () => {
+  assert.equal(promptRunStyle({ ...DEFAULT_PROMPT_STYLE, bold: true }).fontWeight, 700);
+  assert.equal(promptRunStyle({ ...DEFAULT_PROMPT_STYLE, italic: true }).fontStyle, 'italic');
+  assert.equal(promptRunStyle({ ...DEFAULT_PROMPT_STYLE, underline: true }).textDecoration, 'underline');
+  assert.equal(promptRunStyle({ ...DEFAULT_PROMPT_STYLE, color: '#b91c1c' }).color, '#b91c1c');
+});
+
+test('🔴 promptRunStyle：着重号**必须**带 `-webkit-` 前缀，且位置是 `under`', () => {
+  // 这一条钉的不是「好不好看」，是「**显不显示**」：
+  // 老 iPad 的 Safari 15 只认前缀版；而位置若不是 `under`，中文的着重号会挂到字上方
+  // 并被行高裁掉。少了任何一条 ⇒ 教师设了着重号，学生端**什么都不显示**、**无一处报错**。
+  const style = promptRunStyle({ ...DEFAULT_PROMPT_STYLE, emphasis: true });
+  assert.equal(style.WebkitTextEmphasis, 'filled dot', '前缀版是 Safari 15 唯一认的那一份');
+  assert.equal(style.WebkitTextEmphasisPosition, 'under', '位置必须是 under —— over 会被裁掉');
+  assert.equal(style.textEmphasis, 'filled dot', '无前缀那份也写上，将来不必再改一次');
+  assert.equal(style.textEmphasisPosition, 'under');
 });
 
 // ── 5. isPlainRuns：写库时用它决定这个键要不要留 ───────────────────────

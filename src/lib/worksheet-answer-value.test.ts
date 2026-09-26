@@ -591,7 +591,9 @@ function fillInlineNode(count: number, data: Record<string, unknown> = {}): Work
   const runs = Array.from({ length: count }, (_, index) => ({
     start: 4 + index * placeholder.length,
     end: 4 + (index + 1) * placeholder.length,
-    bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: true,
+    // ⚠️ 标识是**非空字符串**（每题一个，各不相同）—— 布尔量分不开
+    // 「三个空挨着排」与「一个空被切开」，见 `worksheet-prompt-marks.ts` 的 ruling。
+    bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: `b${index + 1}`,
   }));
   return { id: 'q_inline', type: 'fill-blank', prompt, inputMode: 'keyboard', data: { ...data, promptRuns: runs }, children: [] };
 }

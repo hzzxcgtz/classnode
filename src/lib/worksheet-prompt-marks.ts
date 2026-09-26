@@ -42,16 +42,27 @@ export interface PromptRun extends PromptTextStyle {
   start: number;
   end: number;
   /**
-   * ★ 2026-09-26：这一段是一个**填空区域**（教师：「填空是在题目文字中间输入」）。
+   * ★ 2026-09-26：这一段属于哪个**填空区域** —— **每题一个标识**（空串 = 不是空）。
    *
-   * 🔴 **不存「第几个空」这个编号 —— 顺序即编号**（第几个空 = 它前面有几个空分段）。
-   * 存编号就会多出一种「编号与顺序不一致」的坏数据，而它的表现是
-   * **学生填对了却判错**（答案按位置取）。**顺序即编号**这一条没有第二种可能。
+   * ── 🔴 为什么是「标识」而不是「是/否」，也不是「第几个空」────────────────────
+   * 我第一版写的是 `boolean`，理由是「**顺序即编号**，存编号会多出一种编号与顺序
+   * 不一致的坏数据」。**那个理由是错的**，施工时被一次探针抓到：
+   * 三个空**连着**排在题干末尾（**迁移的输出正是 `'________'.repeat(3)`**）读出来是
+   * **1 个空**。因为「是不是空」这一个布尔量**分不开**这两件事：
+   *   · 三个空挨着排（三条分段，三个空）；
+   *   · 一个空被加粗切成三截（三条分段，**一个**空）。
+   * 两者在数据上都是「三条挨着的、都带 `blank` 的分段」—— 任何规则都分不开。
+   * ⇒ 标识一进来两件事立刻分开：**挨着但标识不同 = 两个空；挨着且标识相同 = 同一个空**。
+   *
+   * ⚠️ **标识不是答案序号。** 答案序号是「它在题干里从左到右排第几」
+   *（`blankRuns` 的顺序），而标识只回答「这几条是不是同一个空」。
+   * 让标识兼职序号的话，教师在中间插一个空就会把后面所有答案整体错位。
+   * ⇒ 插入一个空时，`data.answers` 要在**插入位置**上同步 splice —— 那是编辑器的事。
    *
    * ⚠️ 它与另外五个字段**不是一类东西**：那五个是样式（`promptRunStyle` 只管它们），
-   * 这个说的是「这一段是什么」。所以它不在 `PromptTextStyle` 上，而在 `PromptRun` 上。
+   * 这个说的是「这一段属于谁」。所以它不在 `PromptTextStyle` 上，而在 `PromptRun` 上。
    */
-  blank: boolean;
+  blank: string;
 }
 
 /** 没设过任何格式时的样子。`color` 的默认值与 `.prompt` 的颜色一致。 */
@@ -122,6 +133,11 @@ function sameRun(a: PromptRun, b: PromptRun): boolean {
   return a.blank === b.blank && sameStyle(a, b);
 }
 
+/** 这一条分段属于一个填空区域吗。 */
+export function isBlankRun(run: PromptRun): boolean {
+  return typeof run.blank === 'string' && run.blank !== '';
+}
+
 function sameRuns(a: PromptRun[], b: PromptRun[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((item, index) => (
@@ -156,9 +172,13 @@ function pushRun(out: PromptRun[], next: PromptRun): void {
   //   `.superpowers/sdd/2026-09-26-填空题-题干内作答与选择填空/progress.md` 里那条 ruling。
   //   在那之前：**挨着的空各算一个**（迁移要的就是这个），而「在空内部打字 / 半加粗」
   //   会把它切成两个 —— 由编辑器拦住那两条路径（spec 第 4 步）。
-  // ⚠️ **空之间从不合并**（`!next.blank`）：没有标识就分不清「一个空被切开」与
-  //     「两个空挨着」，那就一律**不猜** —— 挨着就各算一个（迁移要的正是这个）。
-  if (last && last.end === next.start && !next.blank && sameRun(last, next)) {
+  // ★ 标识一进来，两件事终于分得开了（**同一个空只许是一条分段**）：
+  //    · 两条的**标识相同**（非空）⇒ 同一个空被切开 ⇒ **并回一条，样式取左边那一条的**。
+  //      ⚠️ 这一支**不看样式**：给空的一半加粗仍然是**一个**空，而它只能有一条分段
+  //      ⇒ 整个空取左边的样式（一个空的样式是**统一**的，这是模型的一部分）。
+  //    · 标识不同 / 没有标识 ⇒ 走下面「同款才并」那一支（迁移追加的多个空就靠它各自留着）。
+  const sameBlank = !!last && isBlankRun(last) && last.blank === next.blank;
+  if (last && last.end === next.start && (sameBlank || sameRun(last, next))) {
     out[out.length - 1] = { ...last, end: next.end };
     return;
   }
@@ -179,15 +199,16 @@ function readStyle(item: Record<string, unknown>): PromptTextStyle {
 function readRun(item: Record<string, unknown>): Omit<PromptRun, 'start' | 'end'> {
   return {
     ...readStyle(item),
-    // ⚠️ 严格 `=== true`：认不出的值（`'yes'` / `1`）一律当**不是空**。
+    // ⚠️ 只认**非空字符串**：认不出的值（`true` / `1`）一律当**不是空**。
     // 猜成空会让一道普通的题在学生端长出一个输入框 —— 那是「猜」的代价里最响的一种。
-    blank: item.blank === true,
+    // （`true` 也不再认：标识是**字符串**，改形状之前的库里没有这种值。）
+    blank: typeof item.blank === 'string' ? item.blank : '',
   };
 }
 
 /** 一段没有任何东西的普通分段（填空隙用）。 */
 function plainRun(start: number, end: number): PromptRun {
-  return { start, end, ...DEFAULT_PROMPT_STYLE, blank: false };
+  return { start, end, ...DEFAULT_PROMPT_STYLE, blank: '' };
 }
 
 /**
@@ -333,7 +354,7 @@ function rewriteRange(runs: PromptRun[], from: number, to: number, patch: Partia
 /** 题干里那些空，**按在题干里出现的先后**（它们的位置就是「第几个空」）。 */
 export function blankRuns(runs: PromptRun[]): PromptRun[] {
   if (!Array.isArray(runs)) return [];
-  return runs.filter(run => run.blank === true);
+  return runs.filter(isBlankRun);
 }
 
 /** 这道题有几个空（= 学生要填几个格）。 */
@@ -356,6 +377,8 @@ export function insertBlank(
   from: number,
   to: number,
   placeholder: string,
+  /** 这个空的身份 —— **由调用方给**（编辑器按题的 id 造，与 `optionKey` / `q_…` 同源）。 */
+  id: string,
 ): { text: string; runs: PromptRun[] } {
   const length = typeof text === 'string' ? text.length : 0;
   const start = clampIndex(from, length);
@@ -364,7 +387,7 @@ export function insertBlank(
   // 先按「打字」那条路挪区间（新插入的一段会跟随**前一个字符**的样式），
   // 再把那一段标成空 —— **造空只有这一条路**，`remapRuns` 永远不造空。
   const moved = remapRuns(runs, text, nextText);
-  const nextRuns = rewriteRange(moved, start, start + placeholder.length, { blank: true });
+  const nextRuns = rewriteRange(moved, start, start + placeholder.length, { blank: id });
   return { text: nextText, runs: nextRuns };
 }
 
@@ -423,7 +446,12 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
   // ⚠️ 新插入的文字**永远不是空**：造空只有一条路 —— `insertBlank`（工具栏那个按钮）。
   // （这里曾经还有一条「插在空内部就归属于那个空」的规则，已随上面那条一起撤掉：
   //   它与「挨着的空各算一个」互斥，见 `pushRun` 上那一段。）
-  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: false });
+  // ★ 标识一进来，「在空内部打字」终于能**正确地**处理了：
+  //   插在某个空**内部**（严格内部）的字属于那个空（沿用它的标识）⇒ 那几条会并回一条，
+  //   那个空**不会被切开**。紧贴边界打字则是一个普通的新文字（`blank: ''`）。
+  //   ⚠️ 这一条在「只有布尔量」的时候是**做不到**的：那时它与「两个空挨着排」同形。
+  const owner = runs.filter(item => isBlankRun(item) && item.start < from && from < item.end)[0];
+  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: owner ? owner.blank : '' });
   const delta = inserted.length - (oldTo - from);
   runs.forEach((item) => {
     const start = Math.max(item.start, oldTo);
@@ -484,5 +512,5 @@ export function isPlainRuns(runs: PromptRun[]): boolean {
   if (!Array.isArray(runs)) return true;
   // 🔴 **一个空也不算「没有格式」**：调用方（编辑器）拿它为真时**不写 `promptRuns` 这个键**
   // ⇒ 空与格式一起没。这一条与 `sameRun` 那条是两个不同的入口，都会让空消失。
-  return runs.every(item => !item.blank && sameStyle(item, DEFAULT_PROMPT_STYLE));
+  return runs.every(item => !isBlankRun(item) && sameStyle(item, DEFAULT_PROMPT_STYLE));
 }

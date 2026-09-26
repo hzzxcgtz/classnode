@@ -22,9 +22,12 @@ const BLANK_PLACEHOLDER = '________';
  * ⇒ 教师选了「把空**追加到题干末尾**」，让库里只留**一种**形状。
  *
  * ── 数据形状 ────────────────────────────────────────────────────────────────
- * 空 = `data.promptRuns` 里**带 `blank: true` 的那一条分段**（`blank` 与那五个样式字段
- * 不是一类东西：那五个是样式，这个说的是「这一段是什么」）。
- * 🔴 **不存「第几个空」的编号 —— 顺序即编号**（第几个空 = 它前面有几个空分段）。
+ * 空 = `data.promptRuns` 里**带 `blank` 标识的那一条分段**（`blank` 与那五个样式字段
+ * 不是一类东西：那五个是样式，这个说的是「这一段属于哪个空」）。
+ * 🔴 **标识是每题唯一的字符串，不是「第几个空」的编号**（施工时的 ruling，见 ledger）：
+ *   没有标识就分不开「三个空挨着排」与「一个空被切开」——
+ *   而**本迁移的输出正好是前者**（`'________'.repeat(n)`，三个空连着追加）。
+ *   答案序号是「从左到右排第几」（`blankRuns` 的顺序推），标识只回答「是不是同一个空」。
  *
  * ── 四条纪律（与 `worksheet-points-migration.ts` 同源）──────────────────────
  *
@@ -72,7 +75,12 @@ export async function migrateFillBlankToInline(prisma: PrismaClient): Promise<{ 
       if (!data) return withKids();
 
       const runs = Array.isArray(data.promptRuns) ? data.promptRuns as Record<string, unknown>[] : [];
-      const hasInlineBlank = runs.some(run => run && typeof run === 'object' && run.blank === true);
+      // ⚠️ 标识是**非空字符串**（不是 `true`）—— 判据必须与写出去的那一份同形。
+      // （改形状时我漏了这一行、只改了注释，幂等用例当场变红：第二次跑又追加了一个空。）
+      const hasInlineBlank = runs.some(run => (
+        run && typeof run === 'object' && typeof (run as Record<string, unknown>).blank === 'string'
+        && (run as Record<string, unknown>).blank !== ''
+      ));
       // ⚠️ 手写那一档要单独看：一道**已经有空**的题也可能是手写的（教师先插了空、
       // 再把它切成手写）—— 那种题不追加空，但 `inputMode` 仍要改。
       const needsKeyboard = node.inputMode === 'handwriting';
@@ -127,7 +135,8 @@ export async function migrateFillBlankToInline(prisma: PrismaClient): Promise<{ 
           underline: false,
           emphasis: false,
           color: '#1e293b',
-          blank: true,
+          // 每题唯一的标识（与客户端 `insertBlank` 里那个同一套语义）。
+          blank: `blank_${index + 1}`,
         })),
       ];
 

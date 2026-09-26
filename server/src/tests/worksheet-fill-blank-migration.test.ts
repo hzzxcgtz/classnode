@@ -52,10 +52,13 @@ async function openTempDb(t: { after: (fn: () => Promise<void> | void) => void }
 const content = (nodes: Node[]) => ({ schemaVersion: 1, nodes: nodes as unknown as never });
 const readNodes = async (prisma: PrismaClient, id: string): Promise<Node[]> =>
   ((await prisma.worksheet.findUnique({ where: { id } }))!.content as unknown as { nodes: Node[] }).nodes;
-/** 空（带 `blank: true` 的分段）在题干里出现的位置，按先后。 */
+/** 空（带 `blank` **标识**的分段）在题干里出现的位置，按先后。
+ *  ⚠️ 标识是**非空字符串**（不是 `true`）—— 施工时的那条 ruling 把 `blank` 从布尔量
+ *  改成了「每题一个标识」，因为布尔量分不开「三个空挨着排」（**本迁移的输出**）
+ *  与「一个空被切开」。 */
 const blanksOf = (node: Node): { start: number; end: number }[] =>
   (Array.isArray(node.data.promptRuns) ? node.data.promptRuns as Record<string, unknown>[] : [])
-    .filter(run => run.blank === true)
+    .filter(run => typeof run.blank === 'string' && run.blank !== '')
     .map(run => ({ start: run.start as number, end: run.end as number }));
 
 test('🔴 单空的老填空题（没有 `data.blanks`）⇒ 题干末尾追加**一个**空，`answers` 一个字不动', async (t) => {
@@ -96,7 +99,13 @@ test('🔴 多空（`data.blanks: [a,b,c]`）⇒ 追加**三个**空，且 `data
   await migrateFillBlankToInline(prisma);
 
   const [node] = await readNodes(prisma, ws.id);
-  assert.equal(blanksOf(node).length, 3, '空的个数照 `blanks` 原样推出来');
+  // 🔴 **三个空是连着追加的** —— 这正是「标识」存在的理由：只有布尔量时它们会被并成一个
+  //（读的一侧一度真的这么做，学生就只剩一格可填）。
+  assert.equal(blanksOf(node).length, 3, '空的个数照 `blanks` 原样推出来，且三个挨着也各算一个');
+  const ids = (node.data.promptRuns as Record<string, unknown>[])
+    .filter(run => typeof run.blank === 'string' && run.blank !== '')
+    .map(run => run.blank);
+  assert.equal(new Set(ids).size, 3, '每个空一个**互不相同**的标识');
   assert.equal('blanks' in node.data, false, '旧键必须删掉 —— 留着它库里就有两种形状');
   // 🔴 **这一条是这次 bug 的判据**：答案从 `blanks[i].answers` 搬到了 `answers[i]`。
   assert.deepEqual(node.data.answers, [['阳光'], ['水分'], ['空气']], '答案一个都不许丢');
@@ -104,8 +113,10 @@ test('🔴 多空（`data.blanks: [a,b,c]`）⇒ 追加**三个**空，且 `data
 
 test('🔴 已经有空的题（新形状）一个字不动', async (t) => {
   const prisma = await openTempDb(t);
-  const runs = [{ start: 0, end: 6, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: false },
-    { start: 6, end: 14, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: true }];
+  // ⚠️ 标识是**非空字符串**（不是 `true`）—— 这条 fixture 一开始还写着布尔量，
+  // 于是它被当成「一道没有空的老题」又被追加了一个空（用例当场变红）。
+  const runs = [{ start: 0, end: 6, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: '' },
+    { start: 6, end: 14, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: 'blank_1' }];
   const ws = await prisma.worksheet.create({
     data: { title: '新', settings: {}, content: content([fill('a', '植物需要________才能生长', { answers: ['阳光'], promptRuns: runs })]) },
   });

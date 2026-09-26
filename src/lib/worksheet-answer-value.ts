@@ -215,7 +215,7 @@ export function readCategorizeZones(node: WorksheetQuestionNode): WorksheetEntry
  * 这道填空题有几个空 —— **空的唯一真源是题干**（★ 2026-09-26）。
  *
  * 教师裁定：「填空是在**题目文字中间**输入，一道题可以包含多个填空区域」⇒
- * 空 = `promptRuns` 里带 `blank: true` 的那几条分段，**数量由它们推**。
+ * 空 = `promptRuns` 里带 `blank` **标识**（非空字符串）的那几条分段，**数量由它们推**。
  *
  * ⚠️ **临时桥**（迁移 `worksheet-fill-blank-migration.ts` 接上之后删掉，连用例一起）：
  * 题干里一个空都没有时落回老的 `data.blanks` —— 迁移还没上线，库里全是老形状的题。

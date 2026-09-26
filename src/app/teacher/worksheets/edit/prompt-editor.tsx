@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   DEFAULT_PROMPT_STYLE,
+  insertBlank,
   isPlainRuns,
   rangeColor,
   rangeHasKey,
@@ -103,6 +104,15 @@ const NO_SELECTION: ToolbarState = {
  * 对应的样式在 `globals.css` 里显式写了一份（`.worksheet-editor-formatbar > button u/i`）——
  * 不靠浏览器默认值，免得哪天的全局重置把它悄悄弄没。
  */
+/**
+ * 造一个空的标识（★ 2026-09-26）。
+ * ⚠️ **随机性只许留在这一侧**：纯逻辑那一层（`@/lib/worksheet-prompt-marks`）拿了标识
+ * 当参数，它自己不许造 —— 否则那里的用例就不确定了。
+ */
+function blankIdSuffix(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
 /** 插入到题干里的那段占位（★ 2026-09-26「填空区域」按钮）。
  *  ⚠️ 改它的长度就改了那个区域在题干里有多宽 —— 它**不是**一个结构化标记，
  *  只是教师眼睛看得见的一串下划线（理由见 `insertBlank` 的注释）。 */
@@ -302,6 +312,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
 
   /**
    * 在**光标处**插入一个填空区域（教师 2026-09-26：这个按钮**只出现在填空题里**）。
+   * ⚠️ 名字带 `AtCaret` 是**故意的**：纯逻辑里那个 `insertBlank(runs, …)` 才是真正
+   * 干活的那个，而局部这个名字一度把它遮住（`insertBlank(...)` 解析到本地这个零参函数
+   * ⇒ 编译器报「Expected 0 arguments, but got 6」）。
    *
    * 🔴 **它眼下只是题干里的一段视觉占位**，与「学生在这里作答」还不是一回事：
    * 填空题的作答框是另一套机制（`data.blanks` + `fill-body.tsx` 按那个数画输入框），
@@ -310,18 +323,22 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
    * ⇒ 现在插的是**可见的文字**（一串下划线），学生端会原样看到一条空线 ✓，
    *   而它与教师自己敲的那一串下划线长得一样（占位文案里就是 `____`）。
    */
-  const insertBlank = () => {
+  const insertBlankAtCaret = () => {
     const el = editableRef.current;
     if (!el) return;
     const text = node.prompt;
     const range = selectedRange(el) || pendingRangeRef.current;
     const from = range ? range.from : (caretOffset(el) ?? text.length);
     const to = range ? range.to : from;
-    const nextText = text.slice(0, from) + FILL_BLANK_TEXT + text.slice(to);
-    if (nextText === text) return;
-    const nextRuns = remapRuns(runsRef.current, text, nextText);
-    onPromptChange(nextText, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
-    renderRunsInto(el, nextText, nextRuns);
+    // ★ 走纯逻辑那一层（它有用例）：插一段占位**并把它标成空**。
+    // 🔴 这个按钮上一版**只插了一串下划线、没标空**（那时纯逻辑里还没有 `insertBlank`）
+    // —— 于是「填空区域」插进去的其实只是普通文字，学生端根本不会在那儿画输入框。
+    // ⚠️ 标识由**这一侧**造（每题唯一，与 `optionKey` / `q_…` 同源）：纯逻辑那一层
+    // 不许有随机性，否则它的用例就不确定了。
+    const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, `blank_${blankIdSuffix()}`);
+    if (inserted.text === text) return;
+    onPromptChange(inserted.text, { promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs });
+    renderRunsInto(el, inserted.text, inserted.runs);
     // 光标落在**插入的那一段之后**（接着打字不该把这串下划线拆开）。
     const after = from + FILL_BLANK_TEXT.length;
     el.focus();
@@ -389,7 +406,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
             // 否则点它那一下就把光标拿走了，`caretOffset` 读到的是「没焦点」。
             onMouseDown={(event) => {
               event.preventDefault();
-              insertBlank();
+              insertBlankAtCaret();
             }}
           >
             填空区域

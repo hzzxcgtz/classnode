@@ -1,3 +1,4 @@
+import { locateInLengths } from '@/lib/text-offsets';
 import { promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
 
 /**
@@ -87,8 +88,13 @@ export function caretOffset(el: HTMLElement): number | null {
 /**
  * 把 DOM 上第 `from`..`to` 个字符选起来（`from === to` 就是放一个光标）。
  *
- * 🔴 **一个函数管两件事**（置光标 / 恢复选区），因为它们是同一段「按字符偏移找位置」的
- * 逻辑 —— 分成两份就会各自漂移，而漂移的症状是「撤销之后接着打字打到别处去」。
+ * 🔴 **起点与终点走的是同一个函数**（`locateInLengths`）—— 这一条是硬要求，不是风格。
+ * 2026-09-26 交付当天教师报「设完格式选区就没了」，根因就是这里：起点算的是
+ *「落在第几个文本节点里的第几个字符」，而终点那条路**从元素开头重新数**，
+ * 两者混起来 ⇒ 终点被算到起点**前面** ⇒ `Range.setEnd` 把整个 Range **折成一个点**
+ * ⇒ 选区消失、工具栏全灭 ⇒ 下一个格式按钮点了没反应。
+ * 而那只在「起点正好落在**第一个**文本节点里」时碰巧是对的 —— 所以第一样格式没事、
+ * 第二样就丢（第一样之前题干只有一整段）。纯算术那一半现在有用例（`text-offsets.test.ts`）。
  *
  * ⚠️ 越界一律夹紧（重建之后文本会变短：⌘Z 之后光标不能落在文本外面）。
  */
@@ -96,60 +102,35 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
   const selection = typeof window === 'undefined' ? null : window.getSelection();
   if (!selection) return;
   const range = document.createRange();
-  const total = (el.textContent || '').length;
-  let remaining = Math.max(0, Math.min(from, total));
-  let startPlaced = false;
-  const walkStart = (current: Node): boolean => {
-    if (current.nodeType === Node.TEXT_NODE) {
-      const length = (current.textContent || '').length;
-      if (remaining <= length) {
-        range.setStart(current, remaining);
-        startPlaced = true;
-        return true;
-      }
-      remaining -= length;
-      return false;
-    }
-    for (let i = 0; i < current.childNodes.length; i += 1) {
-      if (walkStart(current.childNodes[i])) return true;
-    }
-    return false;
+
+  // 各文本节点的长度，按文档顺序 —— 与 `locateInLengths` 的 `lengths` 同一份口径。
+  const texts: Text[] = [];
+  const collect = (node: Node): void => {
+    if (node.nodeType === Node.TEXT_NODE) { texts.push(node as Text); return; }
+    for (let i = 0; i < node.childNodes.length; i += 1) collect(node.childNodes[i]);
   };
-  for (let i = 0; i < el.childNodes.length; i += 1) {
-    if (walkStart(el.childNodes[i])) break;
-  }
-  if (!startPlaced) {
-    // 一个文本节点都没有（空题干）⇒ 光标落在框里。
+  for (let i = 0; i < el.childNodes.length; i += 1) collect(el.childNodes[i]);
+
+  const lengths = texts.map(text => (text.textContent || '').length);
+  const start = locateInLengths(lengths, from);
+  const end = locateInLengths(lengths, to);
+  if (!start || !end) {
+    // 空题干：没有字符可落，把光标放进框里（否则这个框点不进去）。
     range.selectNodeContents(el);
     range.collapse(false);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return;
-  }
-  // 终点：从起点那个文本节点的**开头**算起，还要再走 `to - from` 个字符
-  //（`remaining` 此刻正是起点在该节点内的偏移）。
-  let endRemaining = Math.min(remaining + Math.max(0, to - from), total);
-  let endPlaced = false;
-  const walkEnd = (current: Node): boolean => {
-    if (current.nodeType === Node.TEXT_NODE) {
-      const length = (current.textContent || '').length;
-      if (endRemaining <= length) {
-        range.setEnd(current, endRemaining);
-        endPlaced = true;
-        return true;
-      }
-      endRemaining -= length;
-      return false;
+  } else {
+    range.setStart(texts[start.index], start.offset);
+    // ⚠️ 终点**必须**用同一个函数算（见上面那段）。这里再补一道防线：真出现反序
+    // 就折到起点，而不是让 `setEnd` 静默把整个选区折没。
+    const startAt = { index: start.index, offset: start.offset };
+    const before = end.index < startAt.index
+      || (end.index === startAt.index && end.offset < startAt.offset);
+    if (before) {
+      range.collapse(true);
+    } else {
+      range.setEnd(texts[end.index], end.offset);
     }
-    for (let i = 0; i < current.childNodes.length; i += 1) {
-      if (walkEnd(current.childNodes[i])) return true;
-    }
-    return false;
-  };
-  for (let i = 0; i < el.childNodes.length; i += 1) {
-    if (walkEnd(el.childNodes[i])) break;
   }
-  if (!endPlaced) range.collapse(true);
   selection.removeAllRanges();
   selection.addRange(range);
 }

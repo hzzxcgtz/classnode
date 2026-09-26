@@ -5,6 +5,7 @@ import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, Te
 import type { AgentSummary, PlatformTokenSummary, RelatedClassroom } from '@/lib/types';
 import { api } from '@/lib/api';
 import { tokenExpiryView } from '@/lib/platform-token-expiry';
+import { agentPurposeOf, type AgentPurpose } from '@/lib/agent-purpose';
 import { ApiTokenModal, ExpiryChip } from './api-token-modal';
 import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
@@ -37,6 +38,15 @@ export default function AgentsPage() {
   const [tokens, setTokens] = useState<PlatformTokenSummary[]>([]);
   const [showTokens, setShowTokens] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<'all' | AgentPlatform>('all');
+  /**
+   * ★ 2026-09-26（教师截图批注：「这里需要增加『学习』『分析』类的智能体筛选」）：
+   * 按**用途**筛。用词照教师给的「学习类 / 分析类」（界面别处的 `purpose-selector` 与卡片
+   * 那枚「学」/「析」仍叫「学伴 / 分析」—— 同一件事的两种称呼，改那两处不在这次范围内）。
+   *
+   * ⚠️ 过滤在**客户端**做，与平台 / 状态两条同构：`use-agent-controller` 本来就一次拉全量
+   * （不带 `?purpose=`），加一个下拉不该多打一次请求。
+   */
+  const [purposeFilter, setPurposeFilter] = useState<'all' | AgentPurpose>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'healthy' | 'error'>('all');
 
   const { agents, loading, testing, busyOperation, relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms, loadAgents, toggleAgent, deleteAgent, testAgent } = useAgentController({
@@ -84,13 +94,19 @@ export default function AgentsPage() {
   const filteredAgents = agents.filter(agent => {
     const matchesSearch = !normalizedAgentSearch || agent.name.toLocaleLowerCase('zh-CN').includes(normalizedAgentSearch);
     const matchesPlatform = platformFilter === 'all' || agent.platform === platformFilter;
+    /**
+     * ⚠️ 判据是 `agentPurposeOf`（`@/lib/agent-purpose`），**不是** `agent.purpose === purposeFilter`：
+     * 老行的 `purpose` 是 `null` / 缺字段，直接比会把它们从**任何一个**选项里漏掉 ——
+     * 那些 bot 本来就是学伴，表现在界面上就是「筛学习类少了几张卡片」，不报错。
+     */
+    const matchesPurpose = purposeFilter === 'all' || agentPurposeOf(agent.purpose) === purposeFilter;
     const enabled = agent.enabled !== false;
     const matchesStatus = statusFilter === 'all'
       || (statusFilter === 'enabled' && enabled)
       || (statusFilter === 'disabled' && !enabled)
       || (statusFilter === 'healthy' && enabled && agent.lastCheckOk === true)
       || (statusFilter === 'error' && enabled && Boolean(agent.lastCheckAt) && agent.lastCheckOk === false);
-    return matchesSearch && matchesPlatform && matchesStatus;
+    return matchesSearch && matchesPlatform && matchesPurpose && matchesStatus;
   });
   const pagedAgents = filteredAgents.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
   const agentSummary = {
@@ -202,6 +218,12 @@ export default function AgentsPage() {
               <option value="all">全部平台</option>
               {AGENT_PLATFORMS.map(platform => <option key={platform.value} value={platform.value}>{platform.label}</option>)}
             </select>
+            {/* 顺序：搜索 → 平台 → 用途 → 状态。两个「是什么」挨着，状态（「怎么样」）压尾。 */}
+            <select value={purposeFilter} onChange={event => { setPurposeFilter(event.target.value as 'all' | AgentPurpose); setAgentPage(1); }} aria-label="按用途筛选智能体">
+              <option value="all">全部用途</option>
+              <option value="tutoring">学习类</option>
+              <option value="analysis">分析类</option>
+            </select>
             <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value as typeof statusFilter); setAgentPage(1); }} aria-label="按状态筛选智能体">
               <option value="all">全部状态</option>
               <option value="enabled">已启用</option>
@@ -226,7 +248,7 @@ export default function AgentsPage() {
         <TeacherEmptyState
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>}
           title="没有符合条件的智能体"
-          description="可以调整关键词、平台或连接状态。"
+          description="可以调整关键词、平台、用途或连接状态。"
           action={<button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>}
         />
       ) : (

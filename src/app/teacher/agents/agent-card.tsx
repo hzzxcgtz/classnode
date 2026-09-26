@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { getApiBaseUrl } from '@/lib/api-base';
+import { agentPurposeOf } from '@/lib/agent-purpose';
 import type { AgentSummary } from '@/lib/types';
 import { AGENT_PLATFORM_MAP, type AgentPlatform } from './agent-platforms';
 
@@ -30,6 +31,10 @@ const actionStyle = (danger = false) => ({
  * ⚠️ 只在**确实是分析型**时才画「析」；其余一律「学」——
  * `Agent.purpose` 是后加的列，老行可能是 `null` / 缺字段，而那些**本来就是学伴**
  * （与 `normalizeAgentPurpose` 同一条回落方向：认不出就当学伴）。
+ *
+ * ★ 2026-09-26：判据搬到 `@/lib/agent-purpose` 的 `agentPurposeOf` ——
+ * 「用途」筛选要判同一件事，两份拷贝分叉时卡片画「学」而筛选把它归进「分析类」，
+ * 静默。**这里只是取用，判据不在这里。**
  */
 const PURPOSE_CHIPS: Record<string, { char: string; color: string; bg: string; label: string }> = {
   tutoring: { char: '学', color: '#0e7490', bg: '#ecfeff', label: '学伴' },
@@ -37,7 +42,7 @@ const PURPOSE_CHIPS: Record<string, { char: string; color: string; bg: string; l
 };
 
 function PurposeChip({ purpose }: { purpose?: string | null }) {
-  const meta = PURPOSE_CHIPS[purpose === 'analysis' ? 'analysis' : 'tutoring'];
+  const meta = PURPOSE_CHIPS[agentPurposeOf(purpose)];
   return (
     <span
       role="img"

@@ -20,6 +20,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "7z-wasm": "^1.2.0",
     "@prisma/client": "^6.0.0",
     "adm-zip": "^0.5.17",
     "archiver": "^8.0.0",

@@ -37,10 +37,21 @@ export interface PromptTextStyle {
   color: string;
 }
 
-/** 一条分段：`[start, end)` 上的一整份样式。 */
+/** 一条分段：`[start, end)` 上的**一整份样式**，外加「它是不是一个填空区域」。 */
 export interface PromptRun extends PromptTextStyle {
   start: number;
   end: number;
+  /**
+   * ★ 2026-09-26：这一段是一个**填空区域**（教师：「填空是在题目文字中间输入」）。
+   *
+   * 🔴 **不存「第几个空」这个编号 —— 顺序即编号**（第几个空 = 它前面有几个空分段）。
+   * 存编号就会多出一种「编号与顺序不一致」的坏数据，而它的表现是
+   * **学生填对了却判错**（答案按位置取）。**顺序即编号**这一条没有第二种可能。
+   *
+   * ⚠️ 它与另外五个字段**不是一类东西**：那五个是样式（`promptRunStyle` 只管它们），
+   * 这个说的是「这一段是什么」。所以它不在 `PromptTextStyle` 上，而在 `PromptRun` 上。
+   */
+  blank: boolean;
 }
 
 /** 没设过任何格式时的样子。`color` 的默认值与 `.prompt` 的颜色一致。 */
@@ -102,9 +113,20 @@ function sameStyle(a: PromptTextStyle, b: PromptTextStyle): boolean {
     && a.color === b.color;
 }
 
+/**
+ * 两条分段是不是**同一条**（合并相邻分段用的唯一判据）。
+ * 🔴 **必须算上 `blank`**：样式完全一样、但一条是空、一条不是 —— 合并的话那个空
+ * **当场消失**，而屏幕上看只是「空短了一点」，直到学生端再也画不出那个框。
+ */
+function sameRun(a: PromptRun, b: PromptRun): boolean {
+  return a.blank === b.blank && sameStyle(a, b);
+}
+
 function sameRuns(a: PromptRun[], b: PromptRun[]): boolean {
   if (a.length !== b.length) return false;
-  return a.every((item, index) => item.start === b[index].start && item.end === b[index].end && sameStyle(item, b[index]));
+  return a.every((item, index) => (
+    item.start === b[index].start && item.end === b[index].end && sameRun(item, b[index])
+  ));
 }
 
 /** 把下标夹进 `[0, length]`。**不是数字就当成 0**（`'3'` / `NaN` / `null` 一律不认）。 */
@@ -119,9 +141,21 @@ function clampIndex(value: unknown, length: number): number {
 function pushRun(out: PromptRun[], next: PromptRun): void {
   if (next.end <= next.start) return;
   const last = out[out.length - 1];
-  if (last && last.end === next.start && sameStyle(last, next)) {
-    out[out.length - 1] = { ...last, end: next.end };
-    return;
+  if (last && last.end === next.start) {
+    // 🔴 **两条挨着的空 = 一个空。** 这一条是**形状不变量**，不是优化：
+    // 一条空的「区域」被切成两条，意味着这道题凭空多出一格 —— 学生要多填一次，
+    // 而屏幕上那两段下划线**连在一起、看不出是两个空**（`answers` 的长度也对不上了）
+    // ⇒ 整道题变成一份交不出去的作答，而没有任何一处报错。
+    // 它会怎么发生：在空的**内部**打字（编辑器会拦，但粘贴/别的路径不一定），
+    // 或者库里存着两条挨着的空。样式取**左边那一条**的（反正它们是同一个空）。
+    if (last.blank && next.blank) {
+      out[out.length - 1] = { ...last, end: next.end };
+      return;
+    }
+    if (sameRun(last, next)) {
+      out[out.length - 1] = { ...last, end: next.end };
+      return;
+    }
   }
   out.push(next);
 }
@@ -134,6 +168,21 @@ function readStyle(item: Record<string, unknown>): PromptTextStyle {
     emphasis: item.emphasis === true,
     color: isKnownColor(item.color) ? item.color as string : DEFAULT_PROMPT_STYLE.color,
   };
+}
+
+/** 库里那一条读出来的**完整样子**（样式 + 是不是空）。 */
+function readRun(item: Record<string, unknown>): Omit<PromptRun, 'start' | 'end'> {
+  return {
+    ...readStyle(item),
+    // ⚠️ 严格 `=== true`：认不出的值（`'yes'` / `1`）一律当**不是空**。
+    // 猜成空会让一道普通的题在学生端长出一个输入框 —— 那是「猜」的代价里最响的一种。
+    blank: item.blank === true,
+  };
+}
+
+/** 一段没有任何东西的普通分段（填空隙用）。 */
+function plainRun(start: number, end: number): PromptRun {
+  return { start, end, ...DEFAULT_PROMPT_STYLE, blank: false };
 }
 
 /**
@@ -150,14 +199,14 @@ export function readPromptRuns(raw: unknown, text: string): PromptRun[] {
   const length = typeof text === 'string' ? text.length : 0;
   if (length === 0) return [];
   const source = Array.isArray(raw) ? raw : [];
-  const pieces: { start: number; end: number; style: PromptTextStyle }[] = [];
+  const pieces: { start: number; end: number; run: Omit<PromptRun, 'start' | 'end'> }[] = [];
   source.forEach((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
     const item = entry as Record<string, unknown>;
     const start = clampIndex(item.start, length);
     const end = clampIndex(item.end, length);
     if (end <= start) return;
-    pieces.push({ start, end, style: readStyle(item) });
+    pieces.push({ start, end, run: readRun(item) });
   });
   // ⚠️ `Array.prototype.sort` 在现代引擎里是**稳定**的 ⇒ 同 `start` 时保持库里原来的先后，
   // 那正是「左边那条赢」这条规则要的东西。
@@ -168,11 +217,11 @@ export function readPromptRuns(raw: unknown, text: string): PromptRun[] {
   pieces.forEach((piece) => {
     if (piece.end <= cursor) return;               // 整条都被前面那条吃掉了
     const start = Math.max(piece.start, cursor);   // 重叠 ⇒ 从游标处开始（前面那条赢）
-    if (start > cursor) pushRun(out, { start: cursor, end: start, ...DEFAULT_PROMPT_STYLE });
-    pushRun(out, { start, end: piece.end, ...piece.style });
+    if (start > cursor) pushRun(out, plainRun(cursor, start));
+    pushRun(out, { start, end: piece.end, ...piece.run });
     cursor = piece.end;
   });
-  if (cursor < length) pushRun(out, { start: cursor, end: length, ...DEFAULT_PROMPT_STYLE });
+  if (cursor < length) pushRun(out, plainRun(cursor, length));
   return out;
 }
 
@@ -249,18 +298,69 @@ export function setStyleOnRange(
   if (patch && typeof patch.color === 'string' && isKnownColor(patch.color)) clean.color = patch.color;
   if (Object.keys(clean).length === 0) return runs;
 
+  const out = rewriteRange(runs, start, end, clean);
+  return sameRuns(out, runs) ? runs : out;
+}
+
+/**
+ * 把分段在 `[from, to)` 上切开、把 `patch` 盖在中间那一段上，其余原样。
+ *
+ * 🔴 **一条分段最多被切成三段**（左边原样 / 中间打补丁 / 右边原样）。
+ * 抽出来共用是因为它有两个调用方（设样式、插空），而**两份实现漂移的症状是
+ * 「设样式对、插空不对」**这种一半好一半坏的东西（本仓最烦的那一类）。
+ * ⚠️ `patch` 只盖它点名的字段：左边与右边那两段**带着原样**（含 `blank`）搬过去，
+ * 所以「给一个空加粗」不会把它变成普通文字。
+ */
+function rewriteRange(runs: PromptRun[], from: number, to: number, patch: Partial<PromptRun>): PromptRun[] {
   const out: PromptRun[] = [];
   runs.forEach((item) => {
-    // 一条分段最多被选区切成三段：左边原样 / 中间打补丁 / 右边原样。
-    const leftEnd = Math.min(item.end, start);
+    const leftEnd = Math.min(item.end, from);
     if (leftEnd > item.start) pushRun(out, { ...item, end: leftEnd });
-    const midStart = Math.max(item.start, start);
-    const midEnd = Math.min(item.end, end);
-    if (midEnd > midStart) pushRun(out, { ...item, start: midStart, end: midEnd, ...clean });
-    const rightStart = Math.max(item.start, end);
+    const midStart = Math.max(item.start, from);
+    const midEnd = Math.min(item.end, to);
+    if (midEnd > midStart) pushRun(out, { ...item, start: midStart, end: midEnd, ...patch });
+    const rightStart = Math.max(item.start, to);
     if (item.end > rightStart) pushRun(out, { ...item, start: rightStart });
   });
-  return sameRuns(out, runs) ? runs : out;
+  return out;
+}
+
+/** 题干里那些空，**按在题干里出现的先后**（它们的位置就是「第几个空」）。 */
+export function blankRuns(runs: PromptRun[]): PromptRun[] {
+  if (!Array.isArray(runs)) return [];
+  return runs.filter(run => run.blank === true);
+}
+
+/** 这道题有几个空（= 学生要填几个格）。 */
+export function blankCount(runs: PromptRun[]): number {
+  return blankRuns(runs).length;
+}
+
+/**
+ * 在 `[from, to)` 处插入一个**填空区域**（工具栏那个按钮走的唯一一条路）。
+ *
+ * ⚠️ **返回文本与分段两样**：插空同时改了文字（多出那段占位下划线），
+ * 只返回分段的话调用方得自己再拼一遍文本 —— 那是第二处会算错的地方。
+ *
+ * ⚠️ 占位的文字由调用方给（今天是 `prompt-editor.tsx` 里那个常量）：它的**长度**就是
+ * 这个空在题干里有多宽，而那是**外观**，不该焊死在这一层。
+ */
+export function insertBlank(
+  runs: PromptRun[],
+  text: string,
+  from: number,
+  to: number,
+  placeholder: string,
+): { text: string; runs: PromptRun[] } {
+  const length = typeof text === 'string' ? text.length : 0;
+  const start = clampIndex(from, length);
+  const end = Math.max(start, clampIndex(to, length));
+  const nextText = text.slice(0, start) + placeholder + text.slice(end);
+  // 先按「打字」那条路挪区间（新插入的一段会跟随**前一个字符**的样式），
+  // 再把那一段标成空 —— **造空只有这一条路**，`remapRuns` 永远不造空。
+  const moved = remapRuns(runs, text, nextText);
+  const nextRuns = rewriteRange(moved, start, start + placeholder.length, { blank: true });
+  return { text: nextText, runs: nextRuns };
 }
 
 /**
@@ -315,11 +415,24 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
     if (end > item.start) pushRun(out, { ...item, end });
   });
   const insertedStyle = styleBefore(runs, from);
-  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle });
+  // ⚠️ 新插入的文字**默认不是空**（造空只有一条路：`insertBlank`，工具栏那个按钮）。
+  // 🔴 **一个例外：插在某个空**内部**的字，属于那个空。**
+  // 不这么定的话，在空中间打一个字会把一个空**切成两个**（中间夹着刚打的字），
+  // 于是这道题凭空多出一格 —— 而屏幕上那两段下划线看起来还是连着的，
+  // `answers` 的长度也对不上了 ⇒ 整道题变成一份交不出去的作答，**没有任何报错**。
+  // 编辑器会拦住这条路径（spec 第 4 步），但**粘贴 / 别的入口不一定**，
+  // 所以这条不变量落在纯函数这一层，由用例钉住。
+  // ⚠️ 判据是**严格在内部**（`start < from < end`）：紧贴着空的左/右边界打字不算，
+  // 那两处是新文字正常落下的位置。
+  const insideBlank = runs.some(item => (
+    item.blank === true && item.start < from && from < item.end
+  ));
+  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: insideBlank });
   const delta = inserted.length - (oldTo - from);
   runs.forEach((item) => {
     const start = Math.max(item.start, oldTo);
-    if (item.end > start) pushRun(out, { start: start + delta, end: item.end + delta, ...styleOf(item) });
+    // ⚠️ 这里必须带上**整条**（含 `blank`）：只用 `styleOf` 会把空降级成普通文字。
+    if (item.end > start) pushRun(out, { ...item, start: start + delta, end: item.end + delta });
   });
   return out.length === 0 ? readPromptRuns(undefined, next) : out;
 }
@@ -373,5 +486,7 @@ export function promptRunStyle(run: PromptTextStyle): Record<string, string | nu
 /** 一份分段是不是**全是默认样式**（= 没有格式）。写库时用它决定那个键要不要留。 */
 export function isPlainRuns(runs: PromptRun[]): boolean {
   if (!Array.isArray(runs)) return true;
-  return runs.every(item => sameStyle(item, DEFAULT_PROMPT_STYLE));
+  // 🔴 **一个空也不算「没有格式」**：调用方（编辑器）拿它为真时**不写 `promptRuns` 这个键**
+  // ⇒ 空与格式一起没。这一条与 `sameRun` 那条是两个不同的入口，都会让空消失。
+  return runs.every(item => !item.blank && sameStyle(item, DEFAULT_PROMPT_STYLE));
 }

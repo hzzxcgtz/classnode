@@ -22,6 +22,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_PROMPT_STYLE,
+  blankCount,
+  blankRuns,
+  insertBlank,
   isPlainRuns,
   promptRunStyle,
   rangeColor,
@@ -35,7 +38,7 @@ import {
 
 /** 一条分段的可读写法：只有 `bold` 的写成 `['0:5','b']`，省得每条都写全五个字段。 */
 function run(start: number, end: number, style: Partial<PromptRun> = {}): PromptRun {
-  return { start, end, ...DEFAULT_PROMPT_STYLE, ...style };
+  return { start, end, ...DEFAULT_PROMPT_STYLE, blank: false, ...style };
 }
 
 /** 把分段压成一条可读的串，用来一眼看出「切在哪里」：`0-5|5-8b|8-12`。 */
@@ -70,7 +73,7 @@ test('🔴 没有存过格式 ⇒ 一条覆盖全段的默认分段（**不是**
   // 而归一化之后不存在这种情形：任何位置**恰好**属于一条。
   const runs = readPromptRuns(undefined, '光合作用的产物是？');
   assert.equal(runs.length, 1);
-  assert.deepEqual(runs[0], { start: 0, end: 9, ...DEFAULT_PROMPT_STYLE });
+  assert.deepEqual(runs[0], { start: 0, end: 9, ...DEFAULT_PROMPT_STYLE, blank: false });
   assert.ok(isPlainRuns(runs), '一条默认分段 = 没有格式');
 });
 
@@ -323,4 +326,137 @@ test('isPlainRuns：全是默认样式 ⇒ true（那种情况下不写这个键
   assert.equal(isPlainRuns(readPromptRuns([{ start: 0, end: 2, bold: true }], '光合作用')), false);
   assert.equal(isPlainRuns(readPromptRuns([{ start: 0, end: 4, color: '#b91c1c' }], '光合作用')), false);
   assert.equal(isPlainRuns([]), true, '空题干 ⇒ 没有格式可言');
+});
+
+// ── 6. 填空区域（★ 2026-09-26，教师：填空在题干文字中间输入）─────────────
+//
+// 🔴 形状：空 = 一份分段里**带 `blank` 标记的那一条**。
+// **不存「第几个空」的编号 —— 顺序即编号**。存编号会多出一种「编号与顺序不一致」
+// 的坏数据，而它的表现是**学生填对了却判错**（答案按位置取）。
+
+test('🔴 空**不会**与左右同款的普通文字合并（合并判据必须算上 blank）', () => {
+  // 漏了这一条的症状：教师插的那个空**当场消失**，变回一串普通下划线，
+  // 而屏幕上看起来「只是空短了一点」—— 直到学生端再也画不出那个框。
+  // ⚠️ 跨度必须落在题干长度之内（这里是 10 个字）—— 超出去会被 `clampIndex` 夹掉，
+  // 于是「三段」变成「两段」，用例验的就不是它想验的东西了（我第一版就这么写错过）。
+  const runs = readPromptRuns([
+    { start: 0, end: 4, blank: false },
+    { start: 4, end: 8, blank: true },
+    { start: 8, end: 10, blank: false },
+  ], '光合作用需要哪些条件？');
+  assert.equal(runs.length, 3, '三段样式完全相同，但中间那段是空 ⇒ 不许并成一段');
+  assert.equal(blankCount(runs), 1);
+  assert.deepEqual(blankRuns(runs).map(item => [item.start, item.end]), [[4, 8]], '中间那一段是空');
+});
+
+test('🔴 `isPlainRuns`：一个空**不算**「没有格式」', () => {
+  // 这一条与上一条是两个不同的入口，都会让空消失：
+  // `isPlainRuns` 为真 ⇒ 调用方（编辑器）**不写 `promptRuns` 这个键** ⇒ 空全没了。
+  const withBlank = readPromptRuns([{ start: 0, end: 8, blank: true }], '光合作用需要条件');
+  assert.equal(isPlainRuns(withBlank), false, '一个空也是「有东西要存」');
+  assert.equal(isPlainRuns(readPromptRuns([{ start: 0, end: 8, blank: false }], '光合作用需要条件')), true);
+});
+
+test('blankRuns / blankCount：顺序 = 在题干里出现的先后（这就是「第几个空」）', () => {
+  const runs = readPromptRuns([
+    { start: 0, end: 4, blank: false },
+    { start: 4, end: 8, bold: true, blank: true },
+    { start: 8, end: 10, blank: false },
+    { start: 10, end: 13, blank: true },
+  ], '植物光合作用释放的气体是？');
+  const blanks = blankRuns(runs);
+  assert.equal(blanks.length, 2);
+  assert.deepEqual(blanks.map(run => [run.start, run.end]), [[4, 8], [10, 13]], '按题干顺序');
+  assert.equal(blankCount(runs), 2);
+  assert.equal(blankCount(readPromptRuns(undefined, '植物光合作用')), 0, '没有空 ⇒ 0');
+});
+
+test('读脏数据：`blank` 认不出的一律当**不是空**（不是乱猜成空）', () => {
+  const runs = readPromptRuns([
+    { start: 0, end: 2, blank: 'yes' },
+    { start: 2, end: 4, blank: 1 },
+    { start: 4, end: 8, blank: true },
+  ], '植物光合作用释放');
+  assert.equal(blankCount(runs), 1, '只有严格 `=== true` 才算空');
+  assert.equal(blankRuns(runs)[0].start, 4);
+});
+
+test('🔴 remapRuns 不许把 `blank` 弄丢：在空的前面写字，空还是空（只是挪了位置）', () => {
+  const text = '光合作用需要____条件';
+  const runs = readPromptRuns([{ start: 6, end: 10, blank: true }], text);
+  const next = remapRuns(runs, text, '光合作用需要X____条件');
+  assert.equal(blankCount(next), 1, '插字不该把空弄没');
+  assert.deepEqual(blankRuns(next).map(run => [run.start, run.end]), [[7, 11]], '空跟着往后挪了一格');
+  // 🔴 反过来：在空**里面**写字 —— 编辑器会拦住这条路径，但粘贴/别的入口不一定。
+  // 真发生了也**不许造出第二个空**：两条挨着的空按形状不变量会并回一条
+  //（否则这道题凭空多出一格，而屏幕上那两段下划线连在一起、看不出是两个空，
+  //  学生的作答就此永远交不出去）。
+  const insideText = '光合作用需要__X__条件';
+  const inside = remapRuns(runs, text, insideText);
+  assert.equal(blankCount(inside), 1, '在空内部写字不该变成两个空');
+  // 那个空变成了「它原来那 4 个下划线 + 刚打的那个字」——**还是一个空**。
+  // ⚠️ 切的是**新文本**（空的偏移属于新文本，不是旧的）—— 我第一版拿旧文本切，
+  // 切出来是 `____条`，一眼就知道切错了坐标系。
+  const [only] = blankRuns(inside);
+  assert.equal(insideText.slice(only.start, only.end), '__X__');
+  // ⚠️ 反证的另一半：紧贴着空的边界打字**不算**在它内部（那两处是新文字该落的地方）。
+  const atEdge = remapRuns(runs, text, '光合作用需要____条件X');
+  assert.equal(blankCount(atEdge), 1, '紧贴边界打字不改变空的数量');
+  assert.equal(blankRuns(atEdge)[0].end, 10, '空本身也没变长');
+});
+
+test('🔴 setStyleOnRange 作用在一个空上 ⇒ 它仍是空（加粗一个空不该把它变成普通文字）', () => {
+  const text = '光合作用需要____条件';
+  const runs = readPromptRuns([{ start: 6, end: 10, blank: true }], text);
+  const bold = setStyleOnRange(runs, text, 6, 10, { bold: true });
+  assert.equal(blankCount(bold), 1);
+  assert.equal(blankRuns(bold)[0].bold, true, '格式与「是空」是两件事，可以同时成立');
+});
+
+test('🔴 只给空的**一半**设样式 ⇒ 它仍是一个空（不许碎成两个）', () => {
+  // 这是**真实的教师操作**：选中空的一半、点一下加粗。
+  // 碎了的话这道题凭空多出一格（学生要多填一次，而屏幕上那两段下划线连着、看不出是两个空）。
+  // ⚠️ 这条用例是**被一次漏报逼出来的**：变异检验里把「两条挨着的空并成一条」那条规则
+  // 去掉，其余 34 条**照样全绿** —— 因为别的路径插入的字本身就带着 blank，会走
+  // 「同款合并」那一支。「一半加粗」是唯一能走到那条规则上的情形。
+  const text = '光合作用需要____条件';
+  const runs = readPromptRuns([{ start: 6, end: 10, blank: true }], text);
+  const half = setStyleOnRange(runs, text, 6, 8, { bold: true });
+  assert.equal(blankCount(half), 1, '一个空的一部分加粗，不该让它变成两个空');
+  assert.equal(blankRuns(half)[0].start, 6);
+  assert.equal(blankRuns(half)[0].end, 10, '整个空还是那一段');
+});
+
+test('insertBlank：在光标处插一个空 —— 文本多出占位、那一段被标记，其余一个字不动', () => {
+  const text = '植物光合作用释放的气体是？';
+  const runs = readPromptRuns(undefined, text);
+  const result = insertBlank(runs, text, text.length, text.length, '________');
+  assert.equal(result.text, '植物光合作用释放的气体是？________');
+  assert.equal(blankCount(result.runs), 1);
+  const [blank] = blankRuns(result.runs);
+  assert.equal(result.text.slice(blank.start, blank.end), '________', '空那一段就是那段占位');
+  assert.equal(blank.bold || blank.italic || blank.underline || blank.emphasis, false, '空本身不带格式');
+  assertShape(result.runs, result.text.length);
+});
+
+test('insertBlank：有选区时**替换**选区（与打字同一条规矩）', () => {
+  const text = '植物光合作用释放的气体是？';
+  const runs = readPromptRuns(undefined, text);
+  const result = insertBlank(runs, text, 2, 6, '____');
+  assert.equal(result.text, '植物____释放的气体是？');
+  assert.equal(blankCount(result.runs), 1);
+  assertShape(result.runs, result.text.length);
+});
+
+test('insertBlank：连续插两个空 ⇒ 两个空，顺序就是插的先后', () => {
+  const text = '植物需要____和____';
+  let runs = readPromptRuns(undefined, text);
+  let current = text;
+  let step = insertBlank(runs, current, 4, 4, '____');
+  runs = step.runs; current = step.text;
+  step = insertBlank(runs, current, current.length, current.length, '____');
+  runs = step.runs; current = step.text;
+  assert.equal(blankCount(runs), 2);
+  assert.equal(current, '植物需要________和________');
+  assertShape(runs, current.length);
 });

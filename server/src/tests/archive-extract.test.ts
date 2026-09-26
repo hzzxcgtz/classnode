@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveKindOf, parseSevenZipListing } from '../services/archive-extract.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { ArchiveError, archiveKindOf, parseSevenZipListing, safeExtractArchive } from '../services/archive-extract.js';
 
 /**
  * 真实抓取：`7z-wasm` 对 `server/src/tests/fixtures/small-rar3.rar` 跑
@@ -72,4 +76,82 @@ test('★ 裸 CR（\\r）输入同样不能塌成全零', () => {
   // 与 CRLF 同一个机理：`'\n\n'` 不出现 ⇒ 整份输出塌成一个块 ⇒ 命中 `Folder = +` ⇒ 全零。
   const bareCR = SEVEN_ZIP_LISTING_RAR3.replace(/\n/g, '\r');
   assert.equal(parseSevenZipListing(bareCR).fileCount, 3, '裸 CR 下解析出全零 ⇒ 体积闸门被静默绕过');
+});
+
+const LIMITS = { maxFiles: 500, maxTotalBytes: 80 * 1024 * 1024, maxSingleFileBytes: 25 * 1024 * 1024 };
+
+/** 把 zip 落到一个临时文件上，返回它的路径。`safeExtractArchive` 收的是**路径**（multer 的落盘产物）。 */
+function writeTempArchive(zip: { toBuffer(): Buffer }, name: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, zip.toBuffer());
+  return file;
+}
+
+function makeZip(entries: Record<string, string>) {
+  const AdmZip = createRequire(import.meta.url)('adm-zip');
+  const zip = new AdmZip();
+  for (const [p, content] of Object.entries(entries)) zip.addFile(p, Buffer.from(content));
+  return zip;
+}
+
+test('zip 分支：正常包解出正确的树，返回 kind = zip', async () => {
+  const source = writeTempArchive(makeZip({ 'index.html': '<h1>hi</h1>', 'css/s.css': 'body{}' }), 'site.zip');
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  const r = await safeExtractArchive({ sourcePath: source, originalName: 'site.zip', destination: dest, limits: LIMITS });
+  assert.equal(r.kind, 'zip');
+  assert.equal(fs.readFileSync(path.join(dest, 'index.html'), 'utf8'), '<h1>hi</h1>');
+  assert.equal(fs.readFileSync(path.join(dest, 'css/s.css'), 'utf8'), 'body{}');
+});
+
+test('★ safeExtractZip 的拒绝必须被包成 ArchiveError（不然教师收到 500 而不是 400）', async () => {
+  // ⚠️ 这条测的是**集成**，不是 safeExtractZip 本身 —— 它自己的拒绝行为由
+  //    `upload-security.test.ts:25` 用桩对象覆盖（含 `../` 那条）。这里只问一件事：
+  //    zip 分支抛出来的，是不是调用方能据以回 400 的那个类型。
+  //
+  // ⚠️ 为什么不用 `../` 条目来触发：**`AdmZip.addFile` 会自己把 `../` 规范化掉**
+  //    （实测：`addFile('../escape.html')` 读回来是 `escape.html`），所以用 AdmZip 的 API
+  //    根本造不出带 `..` 的条目。要造得出就只能手拼 zip 字节或落一个 fixture ——
+  //    为了测「异常类型有没有被包一层」不值这个代价。（实测过：AdmZip **读**的时候
+  //    是保留 `../` 的，所以那条判据在真实恶意包上仍然是活的，不是死代码。）
+  const zip = makeZip({ 'index.html': '<h1>hi</h1>', 'big.bin': 'x'.repeat(4096) });
+  const source = writeTempArchive(zip, 'toobig.zip');
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({
+      sourcePath: source, originalName: 'toobig.zip', destination: dest,
+      limits: { ...LIMITS, maxSingleFileBytes: 1024 },   // 逼 safeExtractZip 抛「过大的单个文件」
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError, `必须是 ArchiveError（回 400），实际是 ${String(error)}`);
+      return true;
+    },
+  );
+});
+
+test('zip 分支：不是 zip 的文件 ⇒ ArchiveError，且文案不误导', async () => {
+  // Review Focus 第 4 条：一个 rar 改名成 .zip 会走到这条路上来。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'notreally.zip');
+  fs.writeFileSync(source, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2048, 7)]));
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'notreally.zip', destination: dest, limits: LIMITS }),
+    (error: unknown) => {
+      assert.ok(error instanceof ArchiveError);
+      assert.match(error.message, /ZIP/, '文案要点名 ZIP —— 说「不支持的文件类型」会让教师去改后缀');
+      return true;
+    },
+  );
+});
+
+test('认不出的后缀 ⇒ ArchiveError', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-'));
+  const source = path.join(dir, 'a.tar');
+  fs.writeFileSync(source, Buffer.from('x'));
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
+  await assert.rejects(
+    () => safeExtractArchive({ sourcePath: source, originalName: 'a.tar', destination: dest, limits: LIMITS }),
+    (error: unknown) => error instanceof ArchiveError,
+  );
 });

@@ -89,3 +89,50 @@ export function parseSevenZipListing(text: string): SevenZipListing {
 
   return { fileCount, declaredTotalBytes, declaredMaxFileBytes, encrypted };
 }
+
+export interface SafeExtractOptions {
+  /** multer 落在临时目录里的那个文件。 */
+  sourcePath: string;
+  /** 教师上传时的原始文件名 —— **只看后缀**，决定走哪条路。 */
+  originalName: string;
+  /** 解压目标。校验失败时调用方负责把整个目录删掉。 */
+  destination: string;
+  limits: ArchiveLimits;
+}
+
+/**
+ * 唯一的解压入口。**先判后缀，再分派**。
+ *
+ * ⚠️ 后缀与内容不符是存在的（rar 改名成 `.zip`）：zip 那条会走 AdmZip 然后失败，
+ * 文案说「请确认是一个有效的 ZIP 文件」—— 这是**故意**的，比「不支持的文件类型」有用
+ * （后者会让教师去改后缀，而问题不在后缀）。
+ */
+export async function safeExtractArchive(opts: SafeExtractOptions): Promise<{ kind: ArchiveKind }> {
+  const kind = archiveKindOf(opts.originalName);
+  if (!kind) throw new ArchiveError('只支持 ZIP / RAR / 7Z 压缩包');
+
+  if (kind === 'zip') {
+    const AdmZip = _require('adm-zip');
+    let zip: unknown;
+    try {
+      zip = new AdmZip(opts.sourcePath);
+    } catch {
+      throw new ArchiveError('压缩包无法读取，请确认是一个有效的 ZIP 文件');
+    }
+    try {
+      // 🔴 原样沿用既有实现：逐条校验路径穿越 / 绝对路径 / 声明体积 vs 实际体积 / 总量，
+      //    再以 mode 0o600 落盘。这条路的保证是**我们自己写的**，不要包一层改动它。
+      safeExtractZip(zip as Parameters<typeof safeExtractZip>[0], opts.destination, opts.limits);
+    } catch (error) {
+      throw new ArchiveError(`压缩包解压失败：${error instanceof Error ? error.message : '内容异常'}`);
+    }
+    return { kind };
+  }
+
+  return extractWithSevenZip(kind, opts);
+}
+
+/** 占位，Task 4 实现。先抛一个明确的错，免得这条分支静默走空。 */
+async function extractWithSevenZip(kind: ArchiveKind, _opts: SafeExtractOptions): Promise<{ kind: ArchiveKind }> {
+  throw new ArchiveError(`${kind.toUpperCase()} 支持还没做`);
+}

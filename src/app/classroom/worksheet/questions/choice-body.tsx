@@ -1,6 +1,6 @@
 'use client';
 
-import { TRUE_FALSE_OPTIONS, readOptions } from '@/lib/worksheet-questions';
+import { TRUE_FALSE_OPTIONS, optionBadge, readOptions } from '@/lib/worksheet-questions';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -73,7 +73,11 @@ export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps)
               disabled={disabled}
               onChange={() => toggle(option.key)}
             />
-            <span className={styles.optionKey}>{option.key}</span>
+            {/* ★ 2026-09-27（教师）：「学生页面中两个选项不要使用 T 和 F，只勾勾和叉叉。」
+                🔴 变的是**画出来的记号**，`value`/`key` 仍是 `T` / `F`（那是判分协议，
+                   见 `optionBadge`）—— 所以这里**不能**写成 `option.key`。
+                ⚠️ 判据在 `src/lib/worksheet-questions.ts` 里（`node --test` 有用例）。 */}
+            <span className={styles.optionKey}>{optionBadge(node.type, option.key)}</span>
             <span className={styles.optionText}>
               {option.text.trim()
                 ? option.text

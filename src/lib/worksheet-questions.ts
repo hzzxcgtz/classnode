@@ -181,6 +181,31 @@ export const TRUE_FALSE_OPTIONS: ChoiceOption[] = [
 ];
 
 /**
+ * 判断题那两个选项**画出来的记号** —— `✓` / `✗`。
+ *
+ * 与看板抽屉里的对错标记同一族（`✓ 答对` / `✗ 答错`，见 `worksheet-drawer-state.ts`），
+ * 也正是小学卷子上「对的打 √、错的打 ×」那个约定 —— `T` / `F` 对小学生是噪声。
+ */
+const TRUE_FALSE_BADGES: Record<string, string> = { T: '✓', F: '✗' };
+
+/**
+ * ★ 2026-09-27（教师）：「学生页面中两个选项不要使用 T 和 F，只勾勾和叉叉。」
+ *
+ * 🔴 **改的只是记号，不是 `key`。** `key` 是判分协议（服务端用例逐字钉着
+ * `correctKeys: ['T']`）—— 动它等于让库里已有的判断题**没有任何学生能答对**。
+ * ⇒ 「T 该显示成什么」是一条**派生**规则，住在**读**的一侧，与 `TRUE_FALSE_OPTIONS`
+ * 那句「改 key 等于改协议」是同一件事的两面。
+ *
+ * ⚠️ 认不出的 key **原样吐回来**（不回落成空串、也不回落成某个记号）：那个格子什么记号
+ * 都不画的后果是「学生看到一个没有记号的选项」，而屏幕上**没有任何报错**。
+ * 来路有两条且都不报错：手工改过的库行、以及将来真加了第三态（「无法判断」之类）。
+ */
+export function optionBadge(type: string, key: string): string {
+  if (type !== 'true-false') return key;
+  return TRUE_FALSE_BADGES[key] ?? key;
+}
+
+/**
  * 拍平题目树（含嵌套）。
  *
  * 规格 §4.3 的 `content` 是**嵌套树**（`children` 为将来的材料题组预留），第一批虽然

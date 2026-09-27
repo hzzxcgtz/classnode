@@ -1450,6 +1450,40 @@ export function canGivePartial(type: string): boolean {
   return PARTIAL_TYPES.includes(type);
 }
 
+/**
+ * ★ 2026-09-27（教师）：「判断题不存在部分正确，和单选一样，所以得分规则要改。」
+ *
+ * **「得分规则」那一块里到底画不画「部分正确」那一栏。**
+ *
+ * 🔴 改之前 `PointsRow` 用的判据是 `!isChoice`（`isChoice` 只认单选 / 多选）⇒
+ * **判断题落进了「不是选择题」那一支**，跟排序 / 连线 / 归类一样拿到了两栏。
+ * 而判断题走的是 `judgeSingleChoice`：只有对与错两态、永远返回不了 `partial`
+ * ⇒ 那一栏是**一句谎话** —— 教师填进去的分值任何学生都拿不到，且没有任何报错。
+ *（同一个文件里的 `canGivePartial` 早就写着「单选 / 判断**永远拿不到部分分**」，
+ *  两处判据打架。）
+ *
+ * ⚠️ **填空也没有这一栏**：它的「得分规则」是 `FillPointsRow`（每空得分 / 整题总分），
+ * 从头到尾只有一格。
+ * ⚠️ 多选那一档与服务端 `allowsMissing` 逐字一致（只认 `'allow-missing'`）——
+ * 认不出的值一律按「全对才算」，否则会给一个服务端并不认的档画出输入框。
+ *
+ * 🔴 **它是一条「那一栏画不画」的判据，所以在所有读 `points.half` 的地方都必须是同一个**：
+ *   · `PointsRow`                —— 画不画那一格（以及那两条指着它的红字）；
+ *   · `findPartialPoints`        —— 半填拦保存；
+ *   · `findInvalidPoints`        —— 越界值拦保存；
+ *   · `findUncommittedPointInput` —— 屏幕上那段没进 reducer 的文本拦保存。
+ * 后三条的形态都是「拦下 → 让教师到那一栏去改」，所以它们的**前提**是那一栏真的在屏幕上；
+ * 不成立的题型上拦下来的后果是一个**死锁**：保存永久失败，而教师**没有任何地方**能改那个值，
+ * 屏幕上那条红字还指着两个并不存在的框。旧草稿与手工改过的库行都能造出这个状态
+ *（`findUncommittedPointInput` 那条还多一条**可达**的路：多选从「漏选给分」切回「全对才得分」）。
+ */
+export function showsPartialPoints(node: WorksheetQuestionNode): boolean {
+  if (node.type === 'fill-blank' || node.type === 'choice-blank') return false;
+  if (!canGivePartial(node.type)) return false;
+  if (isChoiceQuestion(node)) return isMultipleChoice(node) && node.data.partialCredit === 'allow-missing';
+  return true;
+}
+
 export function gradesOnSubmit(node: WorksheetQuestionNode): boolean {
   // ★ 2026-09-25（教师最终裁定）：判不判分**只看那个开关**，不再以「有没有答案」推断。
   // ⚠️ 上一版（同一个下午）是 `isChoice ? readCorrectKeys(node).length > 0 : true` ——
@@ -1696,7 +1730,10 @@ export function findInvalidPoints(content: WorksheetContent): Array<{ id: string
     const points = node.points;
     if (!points) return;
     const fullBad = !isValidPointNumber(points.full, 'full');
-    const halfBad = !isValidPointNumber(points.half, 'half');
+    // ★ 2026-09-27：`half` 只在**那一栏真画得出来**的题型上查 —— 见 `showsPartialPoints`。
+    // 那道红字说的是「请改一下」，而那一栏不画的话教师改不了（这一条命中的又只有手工改过的库行，
+    // 于是症状正好是「红字指着一个不存在的框、保存点不动」）。
+    const halfBad = showsPartialPoints(node) && !isValidPointNumber(points.half, 'half');
     if (!fullBad && !halfBad) return;
     found.push({ id: node.id, heading, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });
@@ -1730,7 +1767,10 @@ export function findUncommittedPointInput(
     if (!entry || entry.signature !== pointsSignature(node)) return;
     // ⚠️ 两格的域不同（`full` 是 1..99），所以按格传 `field` —— 与 `parsePointInput` 同一个判据。
     const fullBad = entry.full !== undefined && parsePointInput(entry.full, 'full').kind === 'invalid';
-    const halfBad = entry.half !== undefined && parsePointInput(entry.half, 'half').kind === 'invalid';
+    // ★ 2026-09-27：`half` 那一格同理（见 `showsPartialPoints`）。这条路是**可达**的：
+    // 多选题上打了半截非法文本（没进 reducer，只留在 `rejectedInput`）→ 教师把评分方式
+    // 切回「全对才得分」⇒ 那一栏消失、那段文本还在 ⇒ 不挡的话保存**永久失败**。
+    const halfBad = showsPartialPoints(node) && entry.half !== undefined && parsePointInput(entry.half, 'half').kind === 'invalid';
     if (!fullBad && !halfBad) return;
     found.push({ id: node.id, heading, which: fullBad && halfBad ? 'both' : fullBad ? 'full' : 'half' });
   });
@@ -1755,11 +1795,19 @@ export function findUncommittedPointInput(
  * 库里的题都在任务里，而编辑页现在把它们画出来也改得动 ⇒ 拦下是对的，改回递归。
  *
  * 返回 `heading` 是**两级题号**（`任务一 · 2`）—— 与看板 / 抽屉 / 导出 / 分析载荷同一份。
+ *
+ * 🔴 ★ 2026-09-27：**只拦「真会画出「部分正确」那一栏」的题**（`showsPartialPoints`）。
+ *
+ * 这条闸门的形态是「拦下 → 让教师到那一栏去改」，所以它有一个**前提**：那一栏真的在屏幕上。
+ * 不成立的题型上（判断题 / 单选 / 问答 / 绘图，以及只有一格的填空）拦下的后果是一个**死锁**：
+ * 保存永久失败，而教师**没有任何地方**能改那个值 —— 屏幕上那条红字还指着两个并不存在的框。
+ * （改之前它们走不到**死锁**那一步 —— 那一栏画得出来，教师改得动。判断题这一栏
+ *   2026-09-27 被拿掉之后，旧草稿与手工改过的库行立刻能把它撞出来。）
  */
 export function findPartialPoints(content: WorksheetContent): Array<{ id: string; heading: string }> {
   const found: Array<{ id: string; heading: string }> = [];
   answerableOf(content).forEach(({ node, heading }) => {
-    if (isPartialPoints(node.points)) found.push({ id: node.id, heading });
+    if (showsPartialPoints(node) && isPartialPoints(node.points)) found.push({ id: node.id, heading });
   });
   return found;
 }

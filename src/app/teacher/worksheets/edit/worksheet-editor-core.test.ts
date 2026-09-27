@@ -99,6 +99,7 @@ import {
   renameEntryAt,
   sanitizeContentForSave,
   shouldWarnZeroHalfCredit,
+  showsPartialPoints,
   shuffleOrderItems,
   TRUE_FALSE_OPTIONS,
   writeBlankText,
@@ -899,8 +900,16 @@ test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 
 
 /** 一道带 `points` 的题。`points === undefined` 时**保留那个键**（值为 undefined）——
  *  `reducer` 把两个框清空时产出的就是这个形状，`sanitizeContentForSave` 要处理它。 */
-function withPoints(id: string, points: QuestionPointsDraft | undefined): WorksheetQuestionNode {
-  return { ...node(id, '题干'), points };
+/**
+ * 带分值的题。默认仍是 `node()` 的 `short-answer`（分值输入那一族用例与题型无关）。
+ *
+ * ⚠️ **`findPartialPoints` 那几条必须显式传 `'order'`**（2026-09-27 起）：它现在只拦
+ * 「**真会画出「部分正确」那一栏**」的题（`showsPartialPoints`），而问答 / 单选 / 判断
+ * 根本拿不到部分分、也就没有那一栏可改 ⇒ 拿它们当 fixture 等于在**无意中钉住一个缺陷**
+ *（半填把保存拦死，而教师没有任何地方能把它改回来）。
+ */
+function withPoints(id: string, points: QuestionPointsDraft | undefined, type = 'short-answer'): WorksheetQuestionNode {
+  return { ...node(id, '题干', {}, type), points };
 }
 
 /** 多选题 —— 「部分给分 0 分」那条提示只对它成立。 */
@@ -983,20 +992,21 @@ test('🔴 串起来：`buildPayload` 的产物上仍然看得见半填 —— `
   // 就是 `buildPayload` 的产物（已经过 `sanitizeContentForSave`）。这条钉住的是
   // **拦阻点在正确的对象上**：只要 sanitize 哪天「顺手」把半填补成默认档，
   // `save()` 的拦阻就会**静默失效**，而又没有任何用例会红 —— 除非有这一条。
-  const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 7 })));
+  const payload = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_a', { full: 7 }, 'order')));
   assert.deepEqual(findPartialPoints(payload.content), [{ id: 'q_a', heading: '1' }]);
   // 两个框都空（= 跟随学习单）**不是**半填，不该拦住保存。
-  const inherited = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_b', undefined)));
+  const inherited = buildPayload('标题', '', DEFAULT_SETTINGS, contentOf(withPoints('q_b', undefined, 'order')));
   assert.deepEqual(findPartialPoints(inherited.content), []);
 });
 
 test('🔴 findPartialPoints：只填了一个框的题被找出来，留空 / 两端齐全 / 空对象都不算', () => {
+  // ⚠️ fixture 用 `order`（会给部分分的题型）—— 见 `withPoints` 上那一段。
   const content = contentOf(
-    withPoints('q_a', { full: 7, half: 2 }),
-    withPoints('q_b', { full: 7 }),
+    withPoints('q_a', { full: 7, half: 2 }, 'order'),
+    withPoints('q_b', { full: 7 }, 'order'),
     node('q_c', '留空'),
-    withPoints('q_d', { half: 2 }),
-    withPoints('q_e', {}),
+    withPoints('q_d', { half: 2 }, 'order'),
+    withPoints('q_e', {}, 'order'),
   );
   assert.deepEqual(
     findPartialPoints(content),
@@ -1004,6 +1014,62 @@ test('🔴 findPartialPoints：只填了一个框的题被找出来，留空 / �
     '`{}` 与留空同义（服务端 normalizePoints({}) 也回 undefined），不是「半填」',
   );
   assert.deepEqual(findPartialPoints(createEmptyContent()), []);
+});
+
+test('🔴 findPartialPoints：**没有「部分正确」那一栏**的题型一概不拦（判断题半填不许把保存拦死）', () => {
+  // ★ 2026-09-27。教师：「判断题不存在部分正确，和单选一样」。
+  //
+  // 🔴 这条守的是一个**死锁**，不是洁癖：半填会拦下保存，而拦下之后教师必须
+  // 到那一栏去改；判断题 / 单选 / 问答的「部分正确」那一栏**根本不画**（填空只有一个框）
+  // ⇒ 他改不了 ⇒ 保存**永久失败**，而且屏幕上没有任何线索指向真正的原因。
+  // 唯一能造出这个状态的来路是**旧草稿**（这一版之前存下的 localStorage）与手工改过的库行。
+  const content = contentOf(
+    // 判断题：那一栏已经不画了（`showsPartialPoints`）
+    { ...node('q_tf', '题干', { correctKeys: ['T'] }, 'true-false'), points: { half: 2 } },
+    // 单选：判分器只有对与错，与判断题同一个口径
+    { ...node('q_s', '题干', { options: [{ key: 'A', text: '甲' }], correctKeys: ['A'] }, 'single-choice'), points: { half: 2 } },
+    // 问答：连自动评分都没有，分值 UI 整块不渲染
+    { ...node('q_a', '题干'), points: { half: 2 } },
+    // ⚠️ 对照组：**真会给部分分**的题型照旧拦住 —— 少了下半截，
+    //    这条用例就成了「把闸门整个拆掉」也会绿的一条。
+    withPoints('q_m', { half: 2 }, 'order'),
+  );
+  assert.deepEqual(findPartialPoints(content), [{ id: 'q_m', heading: '4' }]);
+});
+
+test('🔴 findInvalidPoints：**没有「部分正确」那一栏**的题型不看 `half`（红字不许指着不存在的框）', () => {
+  // 与上一条同一个原理，另一条闸门：那一栏不画，那个值就不参与判断。
+  // ⚠️ 命中它的只有**手工改过的库行**（编辑器的输入路径产生不了越界值）——
+  //    而正因为如此，一条指着已经隐藏的输入框的红字是**没法照做的**。
+  const content = contentOf(
+    { ...node('q_tf', '题干', {}, 'true-false'), points: { full: 2, half: 1000 } },
+    // ⚠️ 对照组 ①：`full` 照查 —— 它还在屏幕上、还是判分的依据。
+    { ...node('q_tf2', '题干', {}, 'true-false'), points: { full: 0, half: 1000 } },
+    // ⚠️ 对照组 ②：真会画那一栏的题型照查 `half`。
+    withPoints('q_o', { full: 2, half: 1000 }, 'order'),
+  );
+  assert.deepEqual(findInvalidPoints(content), [
+    { id: 'q_tf2', heading: '2', which: 'full' },
+    { id: 'q_o', heading: '3', which: 'half' },
+  ]);
+});
+
+test('🔴 findUncommittedPointInput：**没有那一栏**的题型，屏幕上那段 `half` 文本不该拦保存', () => {
+  // 🔴 这条是**可达**的（不是手工改库才有的）：多选题开了「漏选可得部分分」→
+  // 在「部分正确」里打了一串非法字（`parsePointInput` 拒了它 ⇒ 没进 reducer，
+  // 只留在 `rejectedInput` 里）→ 教师随后把评分方式切回「全对才得分」⇒ 那一栏消失，
+  // 而那段文本还挂着（签名没变）⇒ 不挡的话就是**保存永久失败**。
+  const tf = { ...node('q_tf', '题干', {}, 'true-false'), points: { full: 2 } };
+  const signature = pointsSignature(tf);
+  assert.deepEqual(
+    findUncommittedPointInput(contentOf(tf), { q_tf: { signature, full: undefined, half: '两朵' } }),
+    [],
+  );
+  // ⚠️ 对照组：`full` 那一格还在屏幕上，非法文本照拦。
+  assert.deepEqual(
+    findUncommittedPointInput(contentOf(tf), { q_tf: { signature, full: '两朵', half: undefined } }).map((item) => item.which),
+    ['full'],
+  );
 });
 
 test('🔴 findPartialPoints：嵌套里的题**也要查** —— 它那条「只查顶层」的理由已经失效', () => {
@@ -1018,7 +1084,7 @@ test('🔴 findPartialPoints：嵌套里的题**也要查** —— 它那条「�
   // ⇒ 教师以为部分给分还在跟随，而学生在部分给分那一档**只拿 0 分**，全程无报错。
   const nested: WorksheetContent = {
     schemaVersion: 1,
-    nodes: [{ ...node('q_parent', '材料题'), children: [withPoints('q_child', { full: 7 })] }],
+    nodes: [{ ...node('q_parent', '材料题'), children: [withPoints('q_child', { full: 7 }, 'order')] }],
   };
   assert.deepEqual(findPartialPoints(nested), [{ id: 'q_child', heading: '2' }]);
 });
@@ -1180,16 +1246,18 @@ test('pointsSignature：只随 id 与两个数值变（它决定那段输入什�
 });
 
 test('🔴 findInvalidPoints：`points` 里已有一个非法分值 ⇒ 拦（否则服务端静默换成 1，或直接 400）', () => {
+  // ⚠️ fixture 一律 `order`：这一条测的是**两个框各自的域**，而「部分正确」那一格只在
+  //    会给部分分的题型上存在（2026-09-27 起 `findInvalidPoints` 按这条分岔）。
   const content = contentOf(
-    withPoints('q_ok', { full: 99, half: 0 }),
-    withPoints('q_full_zero', { full: 0, half: 2 }),
-    withPoints('q_over', { full: 200, half: 1 }),
-    withPoints('q_frac', { full: 7.5, half: 2 }),
-    withPoints('q_neg', { full: -1, half: 2 }),
-    withPoints('q_half_zero', { full: 2, half: 0 }),
-    withPoints('q_both', { full: 0, half: 1000 }),
+    withPoints('q_ok', { full: 99, half: 0 }, 'order'),
+    withPoints('q_full_zero', { full: 0, half: 2 }, 'order'),
+    withPoints('q_over', { full: 200, half: 1 }, 'order'),
+    withPoints('q_frac', { full: 7.5, half: 2 }, 'order'),
+    withPoints('q_neg', { full: -1, half: 2 }, 'order'),
+    withPoints('q_half_zero', { full: 2, half: 0 }, 'order'),
+    withPoints('q_both', { full: 0, half: 1000 }, 'order'),
     node('q_none', '没有 points'),
-    withPoints('q_empty', {}),
+    withPoints('q_empty', {}, 'order'),
   );
   assert.deepEqual(
     findInvalidPoints(content),
@@ -1209,8 +1277,10 @@ test('🔴 findInvalidPoints：`points` 里已有一个非法分值 ⇒ 拦（�
 });
 
 test('🔴 findUncommittedPointInput：屏幕上那段非法文本要拦，且**签名失配就不算数**', () => {
-  const node = withPoints('q_a', { full: 4, half: 2 });
-  const content = contentOf(node, withPoints('q_b', { full: 1, half: 0 }));
+  // ⚠️ fixture 一律 `order`：这一条测的是**两格文本各自**拦不拦，而「部分正确」那一格
+  //    只在会给部分分的题型上存在（2026-09-27 起这条闸门按那条分岔，见 `showsPartialPoints`）。
+  const node = withPoints('q_a', { full: 4, half: 2 }, 'order');
+  const content = contentOf(node, withPoints('q_b', { full: 1, half: 0 }, 'order'));
 
   // 签名匹配 + 有一格非法 ⇒ 命中
   assert.deepEqual(
@@ -2106,7 +2176,9 @@ test('🔴 任务里小题的分值非法 ⇒ `findInvalidPoints` 找得到（�
 });
 
 test('🔴 任务里小题的分值半填 ⇒ `findPartialPoints` 找得到', () => {
-  const half = { ...node('q_a'), points: { full: 7 } };
+  // ⚠️ 题型取 `order`（会给部分分的）—— 这一条钉的是**嵌套递归**，题型本该是噪声，
+  //    但默认的 `short-answer` 从 2026-09-27 起不再被拦（见 `showsPartialPoints`）。
+  const half = withPoints('q_a', { full: 7 }, 'order');
   const found = findPartialPoints(contentOf(taskNode('t_1', '任务一', [half])));
   assert.deepEqual(found.map((item) => item.heading), ['任务一 · 1']);
 });
@@ -2333,6 +2405,40 @@ test('🔴 `canGivePartial`：只有**真会给部分分**的五个题型为真�
   // 这一条必须在两者之间划出那道界线（否则「判分依据」会画到永远用不到它的题上）。
   assert.equal(isGradedQuestionType('single-choice'), true);
   assert.equal(canGivePartial('single-choice'), false);
+});
+
+test('🔴 `showsPartialPoints`：「得分规则」那一块画不画**部分正确**那一栏', () => {
+  // ★ 2026-09-27（教师）：「判断题不存在部分正确，和单选一样，所以得分规则要改。」
+  //
+  // 🔴 改之前那个判据是 `!isChoice`（`isChoice` 只认单选/多选）⇒ **判断题落进了
+  // 「不是选择题」那一支**，跟排序/连线/归类一样拿到了两栏。而它走的是
+  // `judgeSingleChoice`，只有对与错两态、永远返回不了 `partial` ⇒ 那一栏是**一句谎话**：
+  // 教师填进去的「部分正确」分值，任何学生都拿不到，且没有任何报错。
+  // 同一个文件里 `canGivePartial` 早就写着「单选/判断**永远拿不到部分分**」—— 两处判据打架。
+  assert.equal(showsPartialPoints(node('q_tf', '题干', { correctKeys: ['T'] }, 'true-false')), false, '判断题');
+  assert.equal(showsPartialPoints(node('q_s', '题干', {}, 'single-choice')), false, '单选');
+
+  // 真会给部分分的那几种照旧画（少了下半截，这条用例对「整块拆掉」也会绿）。
+  for (const type of ['order', 'match', 'categorize']) {
+    assert.equal(showsPartialPoints(node('q_x', '题干', {}, type)), true, type);
+  }
+  // ⚠️ 填空**两块都不是**：它的「得分规则」只有一格（`FillPointsRow`），没有这一栏。
+  //    这条同时是 `findPartialPoints` 的闸门之一 —— 见那一条用例。
+  for (const type of ['fill-blank', 'choice-blank']) {
+    assert.equal(showsPartialPoints(node('q_f', '题干', {}, type)), false, type);
+  }
+
+  // 多选：只有教师选了「漏选可得部分分」才有这一栏（`all-or-nothing` 时部分分永远拿不到）。
+  assert.equal(showsPartialPoints(node('q_m', '题干', { partialCredit: 'all-or-nothing' }, 'multi-choice')), false);
+  assert.equal(showsPartialPoints(node('q_m', '题干', { partialCredit: 'allow-missing' }, 'multi-choice')), true);
+  // 判据与服务端 `allowsMissing` 逐字一致：认不出的值一律按「全对才算」（不画那一栏），
+  // 否则教师会在屏幕上看到一个服务端并不认的档。
+  assert.equal(showsPartialPoints(node('q_m', '题干', { partialCredit: '拼错的值' }, 'multi-choice')), false);
+
+  // 连判分都没有的题型。
+  for (const type of ['short-answer', 'drawing', 'task', '不认识的题型']) {
+    assert.equal(showsPartialPoints(node('q_0', '题干', {}, type)), false, type);
+  }
 });
 
 test('🔴 `displayPoints`：折叠态那一行的分值（逐题优先，清空时用默认档）', () => {

@@ -33,6 +33,7 @@ import {
   QUESTION_TYPE_OPTIONS,
   type RejectedPointInput,
   shouldWarnZeroHalfCredit,
+  showsPartialPoints,
   // 从**纯函数内核**直接取：这张卡片只用纯逻辑，不碰 hook（React 状态 / 路由 / 网络）。
   // 内核就是 `node --test` 直接跑的那一份，回归网在 `worksheet-editor-core.test.ts`。
 } from './worksheet-editor-core';
@@ -817,9 +818,19 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
   const signature = pointsSignature(node);
-  const isChoice = node.type === 'single-choice' || node.type === 'multi-choice';
-  const multipleChoice = node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
-  const showHalf = !isChoice || (multipleChoice && node.data.partialCredit === 'allow-missing');
+  /**
+   * ★ 2026-09-27（教师）：「判断题不存在部分正确，和单选一样，所以得分规则要改。」
+   *
+   * 🔴 判据在**内核**里（`showsPartialPoints`，有用例 + 变异检验过）—— 这里只读它。
+   * 原来这三行在本文件里现算，而那个表达式（`!isChoice || …`）**把判断题算成了「非选择题」**
+   * ⇒ 它拿到了跟排序 / 连线 / 归类一样的两栏，可它走的是 `judgeSingleChoice`、
+   * 永远返回不了 `partial` —— 那一格是**一句谎话**（填进去的分值没有任何学生拿得到）。
+   *
+   * ⚠️ **同一个判据还管着三条「拦保存」的闸门**（`findPartialPoints` / `findInvalidPoints` /
+   * `findUncommittedPointInput`）。它们的形式是「拦下 → 让教师到那一栏去改」，
+   * 所以那一栏一旦不画，就绝不能再拦 —— 见内核那条注释。
+   */
+  const showHalf = showsPartialPoints(node);
   const shown = rejectedInput && rejectedInput.signature === signature ? rejectedInput : null;
 
   const fullText = shown?.full !== undefined ? shown.full : pointText(node.points?.full);
@@ -840,7 +851,9 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
   // 两格的域不同（全对 1–99 / 部分给分 0–99），所以**提示文案必须分开** —— 一句
   // 「只能是 0–99 的整数」对着填了 0 的全对框就是错的（0 确实在 0–99 里）。
   const fullInvalid = parsePointInput(fullText, 'full').kind === 'invalid';
-  const halfInvalid = parsePointInput(halfText, 'half').kind === 'invalid';
+  // ⚠️ 只在**那一栏真画出来**时才判 `half` 的合法性：不画的话，这条红字说的是「请改一下」，
+  // 而教师**没有那个框可改**（`text` 那一侧读的还是库里那个值）。
+  const halfInvalid = showHalf && parsePointInput(halfText, 'half').kind === 'invalid';
   const invalidHint = fullInvalid
     // 🔴 ★ I1：这句必须**指名道姓**说清「全对」那一档，并交代「不计分」今天没有出口 ——
     // 教师填 0 的动机通常就是「这题不计分」，而**今天没有这个设置**（留空只是跟随学习单的
@@ -862,7 +875,8 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
       : null;
   // ⚠️ 非法值优先：两框非法 + 只填了一个时只显示前一条 —— 两条红字挤在一起，
   // 教师会先去改那个**更靠前**的错，而两条的路数是同一个（先把框改成合法值）。
-  const partialHint = !invalidHint && isPartialPoints(node.points)
+  // ⚠️ 同样只在画了那两个框时才有意义 —— 这句话说的是「两个框要么都填」，而单栏的题只有一个。
+  const partialHint = !invalidHint && showHalf && isPartialPoints(node.points)
     ? '两个框要么都填，要么都留空 —— 只填一个的话，另一个会按 0 分算，学生那边看不出来。'
     : null;
 

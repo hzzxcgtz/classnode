@@ -17,7 +17,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenAnswerable, flattenQuestions, groupAnswerable, readOptions, TASK_TYPE } from './worksheet-questions.ts';
+import { flattenAnswerable, flattenQuestions, groupAnswerable, optionBadge, readOptions, TASK_TYPE } from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
@@ -217,4 +217,25 @@ test('描述的空白被去掉；留空 / 非字符串 / 缺字段 ⇒ 一律 `n
   }
   const padded = { ...task('t2', '任务二', [q('b')]), data: { description: '  两边有空白\n' } };
   assert.equal(groupAnswerable([padded])[0].description, '两边有空白');
+});
+
+/* ── 学生端的选项记号（教师 2026-09-27：「学生页面中两个选项不要使用 T 和 F，只勾勾和叉叉」）── */
+
+test('🔴 判断题的选项记号画成 ✓ / ✗，而不是协议里的 T / F', () => {
+  assert.equal(optionBadge('true-false', 'T'), '✓');
+  assert.equal(optionBadge('true-false', 'F'), '✗');
+});
+
+test('其它题型的记号原样回 key（A/B/C/D 是学生要在题干里找的东西，一个字母都不许动）', () => {
+  for (const type of ['single-choice', 'multi-choice', 'fill-blank', 'order']) {
+    for (const key of ['A', 'B', 'D', 'Z']) assert.equal(optionBadge(type, key), key, `${type}/${key}`);
+  }
+});
+
+test('🔴 判断题上认不出的 key 必须把 key 原样吐回来，不许画成空白', () => {
+  // 来路有两条，都不报错：手工改过的库行、以及将来真加了第三态（「无法判断」之类）。
+  // 回空串的后果是那个格子**什么都没有** —— 学生看到一个没有记号的选项，
+  // 而屏幕上没有任何报错（本仓最防的那一类）。
+  assert.equal(optionBadge('true-false', 'X'), 'X');
+  assert.notEqual(optionBadge('true-false', 'X'), '');
 });

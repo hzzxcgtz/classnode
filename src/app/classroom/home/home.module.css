@@ -132,9 +132,16 @@
 
 /* ————————————————— 三张卡片 ————————————————— */
 
+/* ★ 2026-09-27（教师）：「三件套的卡片只有 1 张或 2 张，也居中显示。」
+   ⇒ 从 `grid` 换成 `flex` + `justify-content: center`：grid 的三列在只有两项时会把它们
+   顶到左边、右边空一大块（教师实测的那个样子）。
+   ⚠️ 卡片宽度**仍然是三列时的宽度**（`calc((100% - 32px) / 3)`，32 = 两个 16px 间隙）——
+      这样第三张出现时不会有任何跳动，而 1~2 张时整组居中。
+      改成「有几张就撑多宽」的话，同一张卡在 1 张与 3 张时宽度不同，看起来像两套版式。 */
 .cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 16px;
 }
 
@@ -155,6 +162,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  /* 三列时的宽度；1~2 张时由 `.cards` 的 `justify-content: center` 居中。 */
+  flex: 0 1 calc((100% - 32px) / 3);
+  min-width: 0;
   padding: 18px 18px 16px;
   border: 2px solid var(--card-line);
   border-radius: 22px;
@@ -408,11 +418,12 @@
      剩 ~820；每张卡 ~250px）。 */
 @media (max-width: 900px) {
   .cards {
-    grid-template-columns: 1fr;
     gap: 12px;
   }
 
   .card {
+    /* 竖屏单列：占满一行（`.cards` 的 `justify-content` 对满宽项没有影响）。 */
+    flex: 1 1 100%;
     padding: 14px 16px 14px;
     border-radius: 18px;
   }

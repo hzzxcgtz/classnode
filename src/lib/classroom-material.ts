@@ -234,9 +234,16 @@ export interface VisibleModule {
  * 「有没有东西可看」逐模块：
  *   · **学习单** → 这个学生**实际生效**的那一份（`effectiveGroupWorksheet`）
  *   · **探究空间** → 同上，网页（`effectiveGroupWebapp`）
- *   · **学伴**     → **恒为真**。它没有「材料」这回事：这节课没有配智能体时界面用兜底名，
- *                    学生照样能聊（`student-home.tsx` 的 `agentName`）。把它也按材料藏起来，
- *                    会让学生在「老师没配智能体」的课堂里连聊天入口都找不到。
+ *   · **学伴**     → 这个学生**实际生效的智能体**（`effectiveGroupAgent`）。
+ *
+ *     🔴 **2026-09-27 更正：原来这里写的是「恒为真」，理由是「没配智能体时界面用兜底名、
+ *        学生照样能聊」——那句话是错的，而且我没核实就写下了。** 教师当天实测报回来：
+ *        一个只配了学习单的课堂，首页上照样摆着一张「智能学伴」，点进去什么都没有。
+ *        服务端 `send-message` 在解析不到智能体时**直接**回
+ *        `ai-error: 未配置AI智能体` 就返回了（`server/src/socket/index.ts:1879`）——
+ *        学生一个字都发不出去，聊天窗口是死的。
+ *     ⇒ 「卡上写着『本组还没配置学伴，先问问老师』、点进去也聊不了」比**根本不显示这张卡**
+ *        糟得多：学生要为此点两次才发现这里什么都没有。
  *
  * 🔴 **两个解析函数不许换成自己 `groups.find`**：高级模式下材料是按**组**分的，
  * 而「本组没配」与「这间课堂没有」是**两件事**（`effectiveGroupWorksheet` 的注释写了完整
@@ -260,7 +267,7 @@ export function visibleModules(
       && moduleHasContent(entry.moduleKey, classroom, selectedStudent));
 }
 
-/** 见 `visibleModules` 的注释。「学伴」那一支的 `true` 与它上面那段理由是一体的。 */
+/** 见 `visibleModules` 的注释。「学伴」那一支曾经是 `true`（一条没核实的断言），已更正。 */
 function moduleHasContent(
   moduleKey: ClassroomModuleKey,
   classroom: ClassroomMaterials,
@@ -268,5 +275,5 @@ function moduleHasContent(
 ): boolean {
   if (moduleKey === 'learning-sheet') return effectiveGroupWorksheet(classroom, selectedStudent) !== null;
   if (moduleKey === 'explorer') return effectiveGroupWebapp(classroom, selectedStudent) !== null;
-  return true;
+  return effectiveGroupAgent(classroom, selectedStudent) !== null;
 }

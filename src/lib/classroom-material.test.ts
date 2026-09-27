@@ -330,87 +330,102 @@ function allOpen(): ClassroomModuleSetting[] {
   ];
 }
 
-test('🔴 模块开着、但这节课没有对应材料 ⇒ 那个模块不出现', () => {
+/** 三样材料齐备的一份课堂：用来当「什么都有」那一侧的对照。 */
+function fullClassroom(extra: Record<string, unknown> = {}) {
+  return {
+    mode: 'standard',
+    modules: allOpen(),
+    agents: [agent('a1', '小科老师')],
+    worksheets: [worksheet('s1', '第一课练习')],
+    webapps: [webapp('w1', '光合作用')],
+    ...extra,
+  };
+}
+
+test('🔴 模块开着、但这节课什么都没有 ⇒ 一个模块都不出现', () => {
   // ★ 2026-09-27（教师）：「学生页面顶部的导航栏，如果三件套中有没有关联的内容，
-  //   则相应图标也不要显示出来。」学习单 = 没关联学习单，探究空间 = 没有网页。
+  //   则相应图标也不要显示出来。」2026-09-27 晚些时候教师实测报回一个反例：
+  //   一个只配了学习单的课堂，首页上照样摆着一张「智能学伴」（学伴那一支当时写的是
+  //   「恒为真」—— 一条没核实的断言，见 `moduleHasContent` 的注释）。
   const none = visibleModules({ mode: 'standard', modules: allOpen() }, null);
-  assert.deepEqual(none.map((entry) => entry.moduleKey), ['companion'], '只该留下学伴');
-  assert.deepEqual(none.map((entry) => entry.state), ['open'], '态要原样带出去（调用方还按它画锁定角标）');
+  assert.deepEqual(none, [], '三样材料都没有 ⇒ 三张卡都不该出现');
 });
 
 test('🔴 有材料就出现 —— 少了这一半，「把三个全砍掉」也会绿', () => {
-  const both = visibleModules({
+  const all = visibleModules(fullClassroom(), null);
+  assert.deepEqual(all.map((entry) => entry.moduleKey), ['learning-sheet', 'explorer', 'companion']);
+  assert.deepEqual(all.map((entry) => entry.state), ['open', 'open', 'open'], '态要原样带出去（调用方还按它画锁定角标）');
+});
+
+test('🔴 学伴按**智能体**判：没配就不出现（服务端那时根本发不出消息）', () => {
+  // 服务端 `send-message` 解析不到智能体时**直接**回 `ai-error: 未配置AI智能体`
+  //（`server/src/socket/index.ts`）⇒ 聊天窗口是死的。「摆一张卡、点进去什么都没有」
+  // 比不显示这张卡糟得多。
+  const noAgent = visibleModules({
     mode: 'standard',
     modules: allOpen(),
     worksheets: [worksheet('s1', '第一课练习')],
     webapps: [webapp('w1', '光合作用')],
   }, null);
-  assert.deepEqual(both.map((entry) => entry.moduleKey), ['learning-sheet', 'explorer', 'companion']);
-});
-
-test('🔴 学伴永远出现 —— 它没有「材料」这回事（没有智能体也照样能聊）', () => {
-  const tabs = visibleModules({ mode: 'standard', modules: allOpen(), agents: [] }, null);
-  assert.ok(tabs.some((entry) => entry.moduleKey === 'companion'));
+  assert.deepEqual(noAgent.map((entry) => entry.moduleKey), ['learning-sheet', 'explorer'], '学伴不在里面');
+  // 阳性对照：给了智能体它就要回来（否则上面那条对「永远不显示学伴」也会绿）。
+  assert.ok(visibleModules(fullClassroom(), null).some((entry) => entry.moduleKey === 'companion'));
 });
 
 test('🔴 `hidden` 优先于一切：有材料也不出现', () => {
-  const tabs = visibleModules({
-    mode: 'standard',
+  const tabs = visibleModules(fullClassroom({
     modules: [
       { moduleKey: 'learning-sheet', state: 'hidden' },
       { moduleKey: 'explorer', state: 'open' },
       { moduleKey: 'companion', state: 'open' },
     ],
-    worksheets: [worksheet('s1', '第一课练习')],
-    webapps: [webapp('w1', '光合作用')],
-  }, null);
+  }), null);
   assert.deepEqual(tabs.map((entry) => entry.moduleKey), ['explorer', 'companion']);
 });
 
 test('🔴 高级模式下按**这个学生自己的组**判 —— 别的组有、我这组没有 ⇒ 不出现', () => {
   // 🔴 这条是 `classroom-material.ts` 的老毛病（高级模式回落课堂级 ⇒ 学生看到别的组的东西）。
-  // 判据必须走 `effectiveGroupWorksheet` / `effectiveGroupWebapp`，别自己 `groups.find`。
+  // 判据必须走 `effectiveGroup*` 那三个，别自己 `groups.find`。
   const classroom = {
     mode: 'advanced',
     agents: [],
     modules: allOpen(),
-    // ⚠️ 课堂级那两个数组在高级模式是**幽灵行**（服务端根本不写）：这里故意填上，
+    // ⚠️ 课堂级那三个数组在高级模式是**幽灵行**（服务端根本不写）：这里故意填满，
     //    照着它们判的实现会在这里露馅。
     worksheets: [worksheet('s-class', '全班共用的单子')],
     webapps: [webapp('w-class', '课堂级网页')],
+    agentsLevelGhost: [agent('a-class', '课堂级智能体')],
     groups: [
       { id: 'g1', name: '第1组', agent: null, webapp: webapp('w-1', '第1组的网页'), worksheet: null },
-      { id: 'g2', name: '第2组', agent: null, webapp: null, worksheet: worksheet('s-2', '第2组的单子') },
+      { id: 'g2', name: '第2组', agent: agent('a-2', '第2组的学伴'), webapp: null, worksheet: worksheet('s-2', '第2组的单子') },
     ],
   };
   assert.deepEqual(
     visibleModules(classroom, { groupId: 'g1' }).map((entry) => entry.moduleKey),
-    ['explorer', 'companion'],
-    '第1组有网页、没有学习单',
+    ['explorer'],
+    '第1组只有网页',
   );
   assert.deepEqual(
     visibleModules(classroom, { groupId: 'g2' }).map((entry) => entry.moduleKey),
     ['learning-sheet', 'companion'],
-    '第2组反过来',
+    '第2组有学习单和学伴',
   );
   assert.deepEqual(
     visibleModules(classroom, { groupId: null }).map((entry) => entry.moduleKey),
-    ['companion'],
-    '没有组 ⇒ 两个都没有（**不回落**课堂级那两个）',
+    [],
+    '没有组 ⇒ 三个都没有（**不回落**课堂级那几个）',
   );
 });
 
-test('老服务端不发 `worksheets` / `webapps` ⇒ 与「空数组」同判：没有', () => {
+test('老服务端不发 `worksheets` / `webapps` / `agents` ⇒ 与「空数组」同判：没有', () => {
   // 可选的读法与 `effectiveGroupWorksheet` 逐字同源：缺字段 = 没有，不是「不知道 ⇒ 显示」。
-  const tabs = visibleModules({ mode: 'standard', modules: allOpen() }, null);
-  assert.deepEqual(tabs.map((entry) => entry.moduleKey), ['companion']);
+  assert.deepEqual(visibleModules({ mode: 'standard', modules: allOpen() }, null), []);
 });
 
 test('`modules` 缺字段 / 数组里没有那一项 ⇒ 用 `moduleStateOf` 的兜底（`preview`），不抛错', () => {
   const tabs = visibleModules({ mode: 'standard', worksheets: [worksheet('s1', '第一课练习')] }, null);
-  // 兜底态是 `preview`（不是 `hidden`）⇒ 不会被态那一半挡掉，只剩「有没有材料」在判：
-  // 学习单有材料、学伴恒真、探究空间没有网页。
-  assert.deepEqual(tabs.map((entry) => entry.moduleKey), ['learning-sheet', 'companion']);
+  // 兜底态是 `preview`（不是 `hidden`）⇒ 不会被态那一半挡掉，只剩「有没有材料」在判。
+  assert.deepEqual(tabs.map((entry) => entry.moduleKey), ['learning-sheet']);
 });
 
 test('`classroom` 为 null ⇒ 一个都不出现，也不抛错', () => {

@@ -137,8 +137,9 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys }: 
   }
   // ★ 2026-09-26：填空题的空住在**题干里**（教师裁定：「填空是在题目文字中间输入」），
   // 那些输入框由**题干那一份渲染器**画（`PromptText` 的 `blanks`，见 `worksheet-panel.tsx`）。
-  // ⚠️ 这里仍然保留 `FillBody`，但它**只在题干里还没有空时**才画东西（临时桥，
-  // 见它的文件头）—— 迁移把老题的空挪进题干之后，这一支就没人走了。
+  // ⚠️ `FillBody` 已经**完全走不到**（迁移早已上线，而且下面那句 `return null` 在它之前
+  // 就返回了；文件里连 import 都没有）。⊘ 2026-09-28：这句原来写「这里仍然保留 FillBody，
+  // 但它只在题干里还没有空时才画东西」—— 那是假话，`return null` 在它上面。
   // ★ 2026-09-26：**选择填空**的作答**跨了题干与题干下方**（空在题干里、待选词在下面），
   // 而拖拽的手势状态必须在一个组件里 ⇒ 整块由 `ChoiceBlankAnswer` 接管，
   // 由**面板**渲染（见 `worksheet-panel.tsx` 里那一条分支）。

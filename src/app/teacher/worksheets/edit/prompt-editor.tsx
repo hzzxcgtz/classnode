@@ -459,8 +459,13 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
    * 这个按钮经纯逻辑那一层的 `insertBlank` 插入，会给那一段打上**空的标识**
    * ⇒ 学生端**就在那里**画一个输入框（`PromptText` 的 `blanks`）。教师原话
    * 「学生……在填空域输入答案」至此落地。
-   * 占位文案显示为紧凑的 `{填空域}`，并由 contenteditable=false 与 keydown 接管共同保证
-   * 光标不能进入、一次删除整块。插入和删除时答案按稳定 blank id 同步重排。
+   * 占位文案显示为紧凑的 `{填空域}`。插入和删除时答案按稳定 blank id 同步重排。
+   *
+   * ⊘ 2026-09-28 更正：这句原来写着「由 contenteditable=false 与 keydown 接管共同保证
+   * 光标不能进入、一次删除整块」—— **2026-09-27 起那是假话**。教师那天裁定
+   *「`{填空域}` 就是 5 个普通字符」，原子化那一整套（光标锚点 / 方向键与退格接管）
+   * 全删了，理由逐字记在 `prompt-rich-text.ts:44-51`（那是本模块**唯一**本机跑不到的部分）。
+   * ⇒ 今天光标能停在空里面，退格能删掉一个字符，**删坏了它就不再是空**（规则②）。
    */
   const insertBlankAtCaret = () => {
     const el = editableRef.current;

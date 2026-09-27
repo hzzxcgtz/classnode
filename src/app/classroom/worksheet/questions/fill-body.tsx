@@ -43,9 +43,13 @@ export function FillBody({ node, draft, onChange, disabled }: FillBodyProps) {
   // 🔴 少了这一句就会画出**第二组**输入框（同一份 `draft.texts` 绑在两处），
   // 学生填哪一组都对、而屏幕上多出一排没有对应空的框，**没有任何报错**。
   //
-  // ⚠️ **临时桥**（迁移接上之后删掉这一支）：题干里**还没有**空的题（＝迁移还没跑到的
-  // 老题）仍然走下面那套「题干下面排一排框」的老版面。没有它的话，那些题的学生端
-  // **一个输入框都没有** —— 学生根本没法作答，而屏幕上只是「这道题没问题可答」。
+  // ⊘ 2026-09-28 更正：这句原来写着「临时桥（迁移接上之后删掉这一支）……迁移还没跑到的
+  // 老题」。两处都是**假话**：① `migrateFillBlankToInline` 早在
+  // `server/src/index.ts:587-597` 注册并跑过了；② 🔴 **本组件今天根本走不到** ——
+  // 分派器对 `fill-blank` 提前 `return null`（`questions/index.tsx`），
+  // 而面板对这两个题型直接渲染 `ChoiceBlankAnswer`（`worksheet-panel.tsx`）。
+  // ⇒ **整份文件没有 import**。本次**不删它**（不在表格填空的范围内，也不替别人的
+  // 在建工作做决定），但下一个人看到这一段时别再把它当成活代码的依据。
   const inline = blankCount(readPromptRuns(node.data.promptRuns, node.prompt));
   if (inline > 0) return null;
   if (draft.texts.length === 0) {

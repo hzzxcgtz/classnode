@@ -151,6 +151,30 @@ export function cellLabel(row: number, col: number): string {
   return `第 ${row + 1} 行第 ${col + 1} 格`;
 }
 
+/** 一格的文本被改了。**答案与标空状态都不动** —— 改字与「这一格是不是空」是两件事。 */
+export function setCellText(table: unknown, row: number, col: number, text: string): WorksheetTable {
+  const current = readTable(table);
+  const cells = current.rows[row];
+  if (!Array.isArray(cells) || !Number.isInteger(col) || col < 0 || col >= cells.length) return current;
+  const next = typeof text === 'string' ? text : '';
+  if (cells[col].text === next) return current;
+  return withCell(current, row, col, { ...cells[col], text: next });
+}
+
+/**
+ * 从节点里读出那张表（编辑期用）。**没有表 / 有键但没有行 / 坏形状 ⇒ `null`**。
+ *
+ * ⚠️ 「有 `data.table` 键但一行都没有」当成**没有表**：那种形状在界面上是一个空白块，
+ * 教师看不出「我到底加没加表」。`createTable` 保证新表至少 1×1。
+ */
+export function readTableFor(node: { data: Record<string, unknown> }): WorksheetTable | null {
+  const data = node && node.data && typeof node.data === 'object' ? node.data : {};
+  const raw = data.table;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const table = readTable(raw);
+  return table.rows.length > 0 ? table : null;
+}
+
 /** 表格里的第 `slot` 个空在哪一格（行优先）。越界 / 没有那一个 ⇒ `null`。 */
 export function cellAtSlot(table: unknown, slot: number): { row: number; col: number } | null {
   if (!Number.isInteger(slot) || slot < 0) return null;

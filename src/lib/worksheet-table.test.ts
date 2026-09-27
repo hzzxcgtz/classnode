@@ -17,9 +17,11 @@ import {
   insertTableColumn,
   insertTableRow,
   parseTablePaste,
+  readTableFor,
   removeTableColumn,
   removeTableRow,
   setCellBlank,
+  setCellText,
   tableBlankCount,
   tableColumnCount,
   tableRowCount,
@@ -387,6 +389,39 @@ test('parseTablePaste：没有超出上限时 dropped 都是 0', () => {
   const parsed = parseTablePaste('甲\t乙');
   assert.equal(parsed?.droppedRows, 0);
   assert.equal(parsed?.droppedCols, 0);
+});
+
+// ── 编辑期访问器（网格面板用）──────────────────────────────────────────
+
+test('🔴 readTableFor：从节点读出表格；没有表 / 空表 / 坏形状 ⇒ null', () => {
+  assert.equal(readTableFor({ data: {} }), null);
+  assert.equal(readTableFor({ data: { table: { rows: [] } } }), null, '有键但没有行 ⇒ 不算有表');
+  assert.equal(readTableFor({ data: { table: '不是表' } }), null);
+  const table = readTableFor({ data: { table: sampleTable() } });
+  assert.equal(tableRowCount(table), 3);
+  assert.equal(tableBlankCount(table), 2);
+});
+
+test('🔴 setCellText：改格子里的字，**答案一个都不动**', () => {
+  const table = sampleTable();
+  const answers = [['A'], ['B']];
+  const next = setCellText(table, 0, 0, '名字');
+  assert.equal(next.rows[0][0].text, '名字');
+  assert.equal(next.rows[0][0].blank, '', '标空状态不受影响');
+  // 改一个**是空**的格子：身份留着（它是空这件事不该被打字抹掉）
+  const onBlank = setCellText(table, 1, 1, '提示文字');
+  assert.equal(onBlank.rows[1][1].text, '提示文字');
+  assert.equal(onBlank.rows[1][1].blank, 'b1');
+  // 越界 ⇒ 什么都不改（⚠️ 断言看**内容**，不看引用：这些函数一律返回归一化过的副本）
+  assert.deepEqual(setCellText(table, 9, 9, 'x'), readTableFor({ data: { table } }));
+  assert.deepEqual(answers, [['A'], ['B']], '传进来的答案没被动过');
+});
+
+test('🔴 setCellText：不改传进来的那张表（纯函数）', () => {
+  const table = sampleTable();
+  const snapshot = JSON.stringify(table);
+  setCellText(table, 1, 0, '李四四');
+  assert.equal(JSON.stringify(table), snapshot);
 });
 
 // ── 反向映射：第几个空 → 哪一格（「正确答案」那句话要用它）──────────────

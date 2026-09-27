@@ -99,6 +99,7 @@ import {
   type RejectedPointInput,
   removeBlank,
   renameEntryAt,
+  maximumPointsFor,
   sanitizeContentForSave,
   shouldWarnZeroHalfCredit,
   showsPartialPoints,
@@ -3024,4 +3025,52 @@ test('🔴 `choiceModePatch`：切多选**保住全部**正确答案，切单选
   // ⚠️ 两种方向都重置 `partialCredit`：它在单选口径下**无意义**，留着是一段会让下一个人
   //    以为「这道题还能漏选得分」的死数据。
   assert.equal(choiceModePatch(true, multi).partialCredit, 'all-or-nothing');
+});
+
+// ── 逐题最高分（★ 2026-09-28 表格填空）────────────────────────────────
+//
+// 🔴 它原来是 `question-card.tsx` 里的一行内联算术，数的是 `blankCount(promptRuns)`
+// —— **不含表格里的空**。表格题于是显示「最高 1 分」，而服务端按逐空给分、
+// 学生实际能拿 6 分。教师看到的数字与实际给分对不上，而**没有任何报错**。
+// 提到这里是因为它是本页**唯一「错了不报错」的算术**那一类（与文件头那句话同源）。
+
+/** 一个空的填空题（`answers` 每空一份）。 */
+function oneBlank(id: string): WorksheetQuestionNode {
+  return {
+    id, type: 'fill-blank', prompt: '{填空域}', inputMode: 'keyboard',
+    data: { answers: [['甲']], promptRuns: [{ start: 0, end: 5, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: 'b1' }] },
+    children: [],
+  };
+}
+
+/** 一张**两个空**的表格（`table` 挂在 `data` 上），逐空给分。 */
+function tableOfTwoBlanks(id: string): WorksheetQuestionNode {
+  const cell = (text: string, blank = '') => ({ text, blank });
+  return {
+    id, type: 'fill-blank', prompt: '看表填空', inputMode: 'keyboard',
+    data: {
+      fillScoring: 'per-blank',
+      answers: [['甲'], ['乙']],
+      table: { headerRow: true, rows: [[cell('姓名'), cell('分数')], [cell('张三'), cell('', 't1')], [cell('李四'), cell('', 't2')]] },
+    },
+    children: [],
+  };
+}
+
+test('🔴 maximumPointsFor：逐空给分时 = 每个空的满分 × 空数', () => {
+  assert.equal(maximumPointsFor(node('q_empty', '', { fillScoring: 'per-blank' }, 'fill-blank'), 1), 1, '没有空 ⇒ 只有一份分');
+  assert.equal(maximumPointsFor(oneBlank('q_a'), 1), 1);
+  assert.equal(maximumPointsFor(oneBlank('q_b'), 2), 2);
+});
+
+test('🔴 maximumPointsFor：**表格里的空也要数**（这一条就是这个函数存在的理由）', () => {
+  // 两个表格空 + 一个题干空（题干里那个 `{填空域}` 不在这个夹具里，所以是 2）
+  assert.equal(maximumPointsFor(tableOfTwoBlanks('q_t'), 1), 2, '两个表格空 ⇒ 2 分');
+  assert.equal(maximumPointsFor(tableOfTwoBlanks('q_t2'), 3), 6, '每个空 3 分 ⇒ 6 分');
+});
+
+test('🔴 maximumPointsFor：整题给分 / 不是填空题 ⇒ 就是那一份分（与空数无关）', () => {
+  assert.equal(maximumPointsFor({ ...tableOfTwoBlanks('q_w'), data: { ...tableOfTwoBlanks('q_w').data, fillScoring: 'whole' } }, 1), 1);
+  assert.equal(maximumPointsFor(node('q_sc', '', { options: [] }, 'single-choice'), 5), 5);
+  assert.equal(maximumPointsFor(node('q_sa'), 3), 3);
 });

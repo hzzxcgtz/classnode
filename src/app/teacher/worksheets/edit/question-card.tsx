@@ -14,6 +14,7 @@ import { PromptEditor, promptRunsPatchFor } from './prompt-editor';
 import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
 import {
   canGivePartial,
+  maximumPointsFor,
   displayPoints,
   effectiveHalfStep,
   gradesOnSubmit,
@@ -56,7 +57,6 @@ import { CategorizeBody } from './bodies/categorize-body';
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
-import { blankCount } from '@/lib/worksheet-prompt-marks';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
@@ -321,9 +321,11 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           ? { title: '每个空的作答方式', hint: '填空域会自动同步，可分别设置手工填写、右侧选词或下方选词。' }
           : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
-  const maximumPoints = (node.type === 'fill-blank' || node.type === 'choice-blank') && node.data.fillScoring === 'per-blank'
-    ? shownPoints.full * blankCount(promptRuns)
-    : shownPoints.full;
+  // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
+  // 🔴 原来这里数的是 `blankCount(promptRuns)` —— **不含表格里的空** ⇒
+  //    一道两个空的表格题显示「最高 1 分」，而服务端按逐空给分、学生实际能拿 2 分。
+  //    教师看到的数字与实际给分对不上，而**没有任何报错**（本仓最防的那一类）。
+  const maximumPoints = maximumPointsFor(node, shownPoints.full);
   const gradingStatus = isGradedQuestionType(node.type)
     ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
     : '教师人工查看';

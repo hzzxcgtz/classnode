@@ -24,7 +24,7 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
-import { hasPromptBlankSlots, isChoiceQuestion, readBlankAnswers } from './worksheet-editor-core';
+import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
@@ -120,10 +120,6 @@ const NO_SELECTION: ToolbarState = {
  * ⚠️ **随机性只许留在这一侧**：纯逻辑那一层（`@/lib/worksheet-prompt-marks`）拿了标识
  * 当参数，它自己不许造 —— 否则那里的用例就不确定了。
  */
-function blankIdSuffix(): string {
-  return Math.random().toString(36).slice(2, 8);
-}
-
 /** 教师端可读的填空占位串；学生端仍根据 run 的 blank 标识渲染真正输入区。 */
 const FILL_BLANK_TEXT = '{填空域}';
 
@@ -139,7 +135,7 @@ const FILL_BLANK_TEXT = '{填空域}';
  */
 function runsFromText(prevRuns: PromptRun[], prevText: string, nextText: string): PromptRun[] {
   const moved = remapRuns(prevRuns, prevText, nextText);
-  return recognizeBlanks(moved, nextText, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+  return recognizeBlanks(moved, nextText, FILL_BLANK_TEXT, () => newBlankId());
 }
 
 /**
@@ -154,7 +150,7 @@ function runsFromText(prevRuns: PromptRun[], prevText: string, nextText: string)
  * **而屏幕上只是几个普通字符**，没有任何东西会报错。
  */
 export function promptRunsPatchFor(text: string): Record<string, unknown> {
-  const runs = recognizeBlanks([], text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+  const runs = recognizeBlanks([], text, FILL_BLANK_TEXT, () => newBlankId());
   return { promptRuns: isPlainRuns(runs) ? undefined : runs };
 }
 
@@ -339,7 +335,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     if (removed.text === node.prompt) return;
     // 删完也要重新识别：退回一个字可能把某个占位串删坏 ⇒ 按规则②它该降级成普通文字
     //（只 remap 不识别的话，那个空**还会**算一个空，而这是静默的）。
-    removed.runs = recognizeBlanks(removed.runs, removed.text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+    removed.runs = recognizeBlanks(removed.runs, removed.text, FILL_BLANK_TEXT, () => newBlankId());
     const answers = readBlankAnswers(node);
     const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
     onPromptChange(removed.text, {
@@ -489,9 +485,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     const storedAnswers = readBlankAnswers(node);
     const current = existingBlanks.map((_, index) => storedAnswers[index] ?? []);
     const answers = [...current.slice(0, before), [], ...current.slice(before)];
-    const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, `blank_${blankIdSuffix()}`);
+    const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, newBlankId());
     // 同一条规则：文本一变就重新识别（这里恒等，但别为它留例外 —— 例外就是下一次的静默分叉）。
-    inserted.runs = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+    inserted.runs = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => newBlankId());
     if (inserted.text === text) return;
     onPromptChange(inserted.text, {
       promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs,

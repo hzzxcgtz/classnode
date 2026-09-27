@@ -40,6 +40,7 @@ import {
   TASK_TYPE,
   POINTS_MAX,
   QUESTION_TYPE_OPTIONS,
+  readBlankCount,
   readOptions,
   TRUE_FALSE_OPTIONS,
 } from '../../../../lib/worksheet-questions.ts';
@@ -219,6 +220,41 @@ export function newItemId(): string {
 /** 归类题「框」的 id（与条目同一条纪律）。 */
 export function newZoneId(): string {
   return `z_${randomIdSuffix()}`;
+}
+
+/**
+ * 这一题**最高能拿几分**（★ 2026-09-28，表格填空）。
+ *
+ * 逐空给分（`fillScoring: 'per-blank'`）时，服务端的得分是 `命中空数 × 本题满分`
+ * ⇒ 界面上要显示的那个数也是 `每个空的满分 × 空数`。否则教师看到的「最高 1 分」
+ * 与学生实际能拿的 6 分对不上，而**没有任何报错**。
+ *
+ * 🔴 空数必须读 **`readBlankCount`**（题干里的空 + **表格里的空**），
+ * 不能读 `blankCount(promptRuns)` —— 后者只数题干，表格题会少算。
+ *
+ * ⚠️ 这条改动顺带修了一个口径：**一个空都还没有**的填空题，原来算的是
+ * `full × 0 = 0`（「最高 0 分」），现在算 `full × 1` —— 因为服务端的
+ * `answerSlotCount` 对「还没有答案的空题」给的正是 **1** 个答案槽。
+ * 两个数从此一致（原来不一致，而屏幕上只是「最高 0 颗星星」这种没人会读的显示）。
+ */
+export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number): number {
+  const perBlank = (node.type === 'fill-blank' || node.type === 'choice-blank')
+    && node.data.fillScoring === 'per-blank';
+  return perBlank ? fullPoints * readBlankCount(node) : fullPoints;
+}
+
+/**
+ * 填空域的 id（★ 2026-09-28 从 `prompt-editor.tsx` 提上来）。
+ *
+ * 🔴 **题干里的空与表格里的空共用这一个造法**：两者在 `data` 里是**同一个命名空间**
+ *（`fillBlankSettings` 就按它存、`blankLayout` 按它编号），各写一份随机器不会撞
+ *（36^6），但会有两个地方要改 id 格式 —— 而「两处各写一份、只改了一处」正是本仓
+ * 反复栽的那一类。前缀只是让人认得出来，**不参与任何判据**。
+ * ⚠️ 造 id 只能由调用方做：纯逻辑层（`worksheet-table.ts` / `worksheet-prompt-marks.ts`）
+ * 自己造标识的话，它的用例就不确定了。
+ */
+export function newBlankId(): string {
+  return `blank_${randomIdSuffix()}`;
 }
 
 /**

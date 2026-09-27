@@ -88,12 +88,15 @@ export interface PromptBlankBinding {
  *    「图标化只减视觉宽度、不减无障碍信息」）。
  */
 function WrongMark() {
+  // ⚠️ **不要用 `<sup>`**：它自带 `vertical-align: super`，与 `line-height: 0` 叠加之后
+  //    会把标记挤出盒子（2026-09-27 教师看到的「落到框外面/右下角」就是它）。
+  //    位置一律交给**布局**：槽里靠 flex 的对齐，输入框那边靠绝对定位。
   return (
-    <sup role="img" aria-label="答错了" style={{ color: '#dc2626', lineHeight: 0, marginLeft: 2 }}>
+    <span role="img" aria-label="答错了" style={{ color: '#dc2626', display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round" aria-hidden="true">
         <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
       </svg>
-    </sup>
+    </span>
   );
 }
 
@@ -187,7 +190,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 }}
               />
                 {wrong && (
-                  <span style={{ position: 'absolute', top: 1, right: 2, pointerEvents: 'none' }}><WrongMark /></span>
+                  <span style={{ position: 'absolute', top: 2, right: 3, pointerEvents: 'none' }}><WrongMark /></span>
                 )}
 
                 </span>

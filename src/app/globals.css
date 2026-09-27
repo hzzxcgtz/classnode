@@ -5990,3 +5990,107 @@ tr:hover td {
     letter-spacing: 8px;
   }
 }
+
+/* ── 表格填空的网格面板（★ 2026-09-28）────────────────────────────────────
+   面板那一层在本机一行都跑不到（没有 jsdom、没有浏览器），所以这里的每条样式
+   都只解决「看得清 / 点得中」，**不含任何判断**（判断全在 src/lib/worksheet-table.ts）。
+   ⚠️ 编辑器宽高比学生端宽裕得多，所以面板里的格子可以密一点；
+      学生端那张表的样式在 src/lib/worksheet-table-view.tsx 里（内联样式，
+      因为那份组件同时被学生端与编辑页的两套 CSS 模块世界引用）。 */
+.worksheet-editor-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.worksheet-editor-table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.worksheet-editor-table-empty strong { color: #1e293b; font-size: 0.813rem; }
+.worksheet-editor-table-empty span { color: #64748b; font-size: 0.72rem; }
+
+.worksheet-editor-table-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.worksheet-editor-table-head-toggle,
+.worksheet-editor-table-blank-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #475569;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.worksheet-editor-table-count { margin-left: auto; color: #64748b; font-size: 0.72rem; }
+.worksheet-editor-table-count em { color: #b45309; font-style: normal; }
+
+/* `border-collapse: separate` + 每格自己那条下边框：相邻格子的边框不会叠成两条粗线，
+   而「哪一格是空」靠底色说 —— 与「颜色不是唯一载体」那条纪律无关（这里有复选框的文字）。 */
+.worksheet-editor-table-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.worksheet-editor-table-grid td {
+  border: 1px solid #dbe3ee;
+  padding: 4px;
+  vertical-align: top;
+}
+
+.worksheet-editor-table-grid td.is-blank { background: #eff6ff; }
+
+.worksheet-editor-table-grid .input {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+}
+
+.worksheet-editor-table-op {
+  width: 34px;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.worksheet-editor-table-op button {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.worksheet-editor-table-op button:hover:not(:disabled) { color: #b91c1c; }
+.worksheet-editor-table-op button:disabled { color: #e2e8f0; cursor: default; }
+
+.worksheet-editor-table-paste summary {
+  color: #2563eb;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.worksheet-editor-table-paste textarea { margin-top: 8px; width: 100%; }
+
+.worksheet-editor-table-note {
+  margin: 6px 0 0;
+  color: #b45309;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}

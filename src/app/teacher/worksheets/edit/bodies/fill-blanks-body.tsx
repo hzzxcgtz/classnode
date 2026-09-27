@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { blankCount } from '@/lib/worksheet-prompt-marks';
+import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
+import { readBlankCount } from '@/lib/worksheet-questions';
 import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
@@ -57,14 +58,20 @@ function LineListTextarea({
  * 插入或整体删除 `{填空域}`，答案框随即按 blank id 联动；已有答案不会因前面插空而串位。
  * 每个 textarea 仍是一行一个可接受答案，保存前由 `sanitizeContentForSave` 清理空行。
  */
-export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
+export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoints = 0 }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
   /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
   showAnswer?: boolean;
+  /** ★ 2026-09-28（表格填空，裁定④甲）：这一题「全对」值几分（逐题或继承学习单级）。 */
+  fullPoints?: number;
 }) {
   const answerSets = readBlankAnswers(node);
-  const slots = blankCount(readPromptRunsFor(node));
+  // 🔴 空数必须读 `readBlankCount`（题干里的空 + **表格里的空**）。
+  // 原来这里数的是 `blankCount(promptRuns)` —— 表格题会**一个答案框都不渲染**
+  // （教师填不了答案，而屏幕上只是「这道题没有空」）。
+  const slots = readBlankCount(node);
+  const { textCount } = blankLayout(node);
 
   return (
     <>
@@ -73,8 +80,12 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
           {Array.from({ length: slots }, (_, index) => (
             <label className="worksheet-editor-blank-answer" key={index}>
               <span>
-                <strong>第 {index + 1} 空</strong>
-                <em>对应题干中第 {index + 1} 个填空域</em>
+                {/* ★ 2026-09-28（表格填空）：位置**说实话**。
+                    题干里的空说「第 2 空」；表格里的空说「第 2 行第 2 格」——
+                    后者要是也说「第 N 空」，教师改答案时对着屏幕找不到那一格。
+                    ⚠️ 判据在 `blankLabelAt`（有用例），这里不自己算行列。 */}
+                <strong>{blankLabelAt(node, index) ?? `第 ${index + 1} 空`}</strong>
+                <em>{index < textCount ? `对应题干中第 ${index + 1} 个填空域` : '在表格里'}</em>
               </span>
               <LineListTextarea
                 rows={2}
@@ -97,14 +108,23 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
 
       {showAnswer && slots === 0 && (
         <div className="worksheet-editor-blank-empty">
-          <strong>题干中还没有填空域</strong>
-          <span>把光标放到题干的目标位置，再点击工具栏中的“{'{填空域}'}”。</span>
+          <strong>还没有填空位置</strong>
+          <span>把光标放到题干的目标位置，再点击工具栏中的“{'{填空域}'}”；或者在上面加一张表格、把某几格标成「填空」。</span>
         </div>
       )}
 
       {showAnswer && slots > 0 && (
         <p className="worksheet-editor-compact-note">
-          已根据题干自动生成 {slots} 个答案框；调整题干中的填空域时，这里会同步更新。
+          已根据题干与表格自动生成 {slots} 个答案框；调整填空域或表格时，这里会同步更新。
+          {/* ★ 2026-09-28（表格填空，裁定④甲）：逐空给分时**把这笔账算给教师看**。
+              服务端对 `fillScoring: 'per-blank'` 的给分是「命中空数 × 本题满分」
+              ⇒ 6 个空的题、每空 1 分，学生全对拿的是 6 分。
+              ⚠️ 这句话与「自动评分」卡里那个「最高 N」徽章是同一个数
+                 （两处都走 `maximumPointsFor` 那一条判据），只是这里把它拆开写，
+                 因为教师是在**这里**填答案的。 */}
+          {node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
+            <> 逐空给分：每个空 {fullPoints} 分 × {slots} 空 ⇒ 全对最多 <strong>{fullPoints * slots}</strong> 分。</>
+          )}
         </p>
       )}
     </>

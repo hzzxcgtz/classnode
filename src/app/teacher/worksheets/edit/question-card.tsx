@@ -5,6 +5,7 @@ import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import { WorksheetTableView } from '@/lib/worksheet-table-view';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
@@ -48,6 +49,7 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
+import { TableBody } from './bodies/table-body';
 import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
@@ -534,6 +536,22 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
               <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
             )}
+
+            {/* ★ 2026-09-28（表格填空，裁定③）：网格面板 —— 表格属于**题面**，
+                所以它排在题干与「每个空的作答方式」这一侧，不排到答案那一块里。
+                ⚠️ 只给 `fill-blank`：表格里的空只有「手工填写」一档（v1），
+                   选择填空那套待选词不跟表格组合（组合爆炸，等真有人要再说）。 */}
+            {node.type === 'fill-blank' && (
+              <div className="worksheet-editor-block">
+                <div className="worksheet-editor-block-head">
+                  <div>
+                    <h4>表格</h4>
+                    <p>学生看到的表格。点某几格的「填空」把它们变成作答位置 —— 空的顺序是从左上到右下。</p>
+                  </div>
+                </div>
+                <TableBody node={node} onDataChange={onDataChange} />
+              </div>
+            )}
             {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
@@ -660,7 +678,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                 </div>
               </div>
               {isBlankType
-                ? <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer />
+                ? <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer fullPoints={shownPoints.full} />
                 : <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />}
             </div>
           )}
@@ -698,6 +716,32 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         ✅ `disabled` 同时解决了键盘导航：原生 `disabled` 的控件**不在 Tab 序里**。
         ⚠️ 展开时这里**不渲染**（那时下面渲染的是可编辑的编辑体）—— 否则题面会画两遍。
       */}
+      {/* ★ 2026-09-28（表格填空，裁定③）：**编辑时也常显**一份只读的「卷子样子」。
+          🔴 为什么不是所有题型：那份折叠预览复用 `QuestionInput disabled`，而**选择题的
+             radio 用 `name={worksheet-choice-${node.id}}`** ⇒ 同一道题画两遍就是两份同名
+             radio 在同一个文档里。填空题没有 name 冲突，所以只给它开（见下面 `!expanded` 那一支）。
+          ⚠️ 它**不绑草稿**（内部没有输入框），所以与 `question-card.tsx` 那句
+             「展开时这里不渲染，否则题面会画两遍」担心的不是同一件事 —— 那句防的是
+             「同一个 draft 绑在两处」。 */}
+      {expanded && node.type === 'fill-blank' && node.data.table ? (
+        <section className="worksheet-editor-question-section">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3>学生看到的样子</h3>
+              <p>题干与表格按这个顺序显示；标成填空的格子就是学生要填的位置。</p>
+            </div>
+          </div>
+          <div className="worksheet-editor-question-preview">
+            <p className="worksheet-editor-question-preview-prompt">
+              <PromptText text={node.prompt} runs={promptRuns} placeholder="（题干还没写）" />
+            </p>
+            {/* ⚠️ 表格是那个 `<p>` 的**兄弟**、不是子节点：`<p>` 装不下 `<table>`，
+                浏览器会在表格前把段落闭掉（DOM 与 JSX 对不上）。 */}
+            <WorksheetTableView table={node.data.table} />
+          </div>
+        </section>
+      ) : null}
+
       {!expanded && (
         <div className="worksheet-editor-question-preview">
           {/* ★ 2026-09-26：这一处原来**另写了一份**题干渲染（读同一份 `promptStyle`，
@@ -709,6 +753,9 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           <p className="worksheet-editor-question-preview-prompt">
             <PromptText text={node.prompt} runs={promptRuns} placeholder="（题干还没写）" />
           </p>
+          {/* ★ 2026-09-28：折叠预览里也要画表格 —— 少了它，折起来一看
+              一道表格题**像一道空题**（题干只有一句「请根据下表填写」） */}
+          {node.data.table ? <WorksheetTableView table={node.data.table} /> : null}
           {promptImage && (
             <img
               className="worksheet-editor-question-preview-image"

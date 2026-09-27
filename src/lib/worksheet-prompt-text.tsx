@@ -132,9 +132,17 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
               >
                 {filled ? blanks.values[index] : '\u00a0'}
               </span>
-              {wrong && <sup role="img" aria-label="答错了" style={{ color: '#dc2626', fontSize: '0.8em' }}>❌</sup>}
+              {/* ★ 2026-09-27：答错 ⇒ 一个细红叉（**内联 SVG，不用 emoji** —— 学生端跑在学校的旧
+                  iPad 上，emoji 各家字体渲染差很远）。`role="img"` + `aria-label`：光秃秃一个叉对
+                  读屏无意义（本仓立过「图标化只减视觉宽度、不减无障碍信息」）。 */}
+              {wrong && (
+                <sup role="img" aria-label="答错了" style={{ color: '#dc2626', marginLeft: 3, lineHeight: 0 }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
+                    <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
+                  </svg>
+                </sup>
+              )}
               {blanks.drop.after?.(index)}
-              {wrong && <sup role="img" aria-label="答错了" style={{ color: '#dc2626', fontSize: '0.8em' }}>❌</sup>}
               </Fragment>
             );
           }
@@ -168,6 +176,16 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
                 }}
               />
+              {/* ★ 2026-09-27：答错 ⇒ 一个细红叉（**内联 SVG，不用 emoji** —— 学生端跑在学校的旧
+                  iPad 上，emoji 各家字体渲染差很远）。`role="img"` + `aria-label`：光秃秃一个叉对
+                  读屏无意义（本仓立过「图标化只减视觉宽度、不减无障碍信息」）。 */}
+              {wrong && (
+                <sup role="img" aria-label="答错了" style={{ color: '#dc2626', marginLeft: 3, lineHeight: 0 }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" aria-hidden="true">
+                    <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
+                  </svg>
+                </sup>
+              )}
 
               </Fragment>
             );

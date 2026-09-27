@@ -1,4 +1,14 @@
-import type { AgentSummary, ClassroomWebappSummary, WorksheetMaterialSummary } from './types';
+// ⚠️ 这两个是**运行期** import（`visibleModules` 真的要调它们）⇒ 必须带 `.ts` 后缀：
+// 本文件被 `node --test` 直接执行（Node 的 ESM 解析不做扩展名补全），而 webpack 两边都认。
+import { MODULE_KEYS, moduleStateOf } from './classroom-modules.ts';
+import type {
+  AgentSummary,
+  ClassroomModuleKey,
+  ClassroomModuleSetting,
+  ClassroomModuleState,
+  ClassroomWebappSummary,
+  WorksheetMaterialSummary,
+} from './types';
 
 /**
  * 「这个学生此刻实际生效的材料」——**学生端唯一**的解析口径（P2 / spec §4.4、§4.6）。
@@ -45,6 +55,8 @@ interface ClassroomMaterials {
   webapps?: ClassroomWebappSummary[];
   /** 课堂级学习单（`loadClassroomWorksheets` 下发；标准 / 分组模式的权威来源）。 */
   worksheets?: WorksheetMaterialSummary[];
+  /** 各模块的三态。`visibleModules` 要用它，其余函数不读。 */
+  modules?: readonly ClassroomModuleSetting[];
 }
 
 /**
@@ -198,4 +210,63 @@ export function classroomMaterialsInUse(
     webapps: classroomLevel(classroom.webapps),
     worksheets: classroomLevel(classroom.worksheets),
   };
+}
+
+/* ————————————— 学生端：「他此刻该看见哪几个模块」 ————————————— */
+
+/** 顶栏 Tab 与首页卡片共用的一项：模块键 + 此刻的三态。 */
+export interface VisibleModule {
+  moduleKey: ClassroomModuleKey;
+  state: ClassroomModuleState;
+}
+
+/**
+ * ★ 2026-09-27（教师）：「学生页面顶部的导航栏，如果三件套中有没有关联的内容，
+ * 则相应图标也不要显示出来。」
+ *
+ * 学生此刻该看见哪几个模块 —— **顶栏 Tab 与首页卡片共用这一条**。
+ *
+ * 🔴 **抽出来的理由：这两处本来就各写了一份拷贝**（`use-module-tabs.ts` 的 `tabs` 与
+ * `student-home.tsx` 的 `cards`，两处都是 `MODULE_KEYS.map(…).filter(state !== 'hidden')`）。
+ * 拷贝本身还没出过错，但**这条判据现在要加第二个条件了** —— 再抄一遍，就是让
+ * 「顶栏藏了、首页还摆着一张点进去什么都没有的卡」这种自相矛盾有地方可长。
+ *
+ * 「有没有东西可看」逐模块：
+ *   · **学习单** → 这个学生**实际生效**的那一份（`effectiveGroupWorksheet`）
+ *   · **探究空间** → 同上，网页（`effectiveGroupWebapp`）
+ *   · **学伴**     → **恒为真**。它没有「材料」这回事：这节课没有配智能体时界面用兜底名，
+ *                    学生照样能聊（`student-home.tsx` 的 `agentName`）。把它也按材料藏起来，
+ *                    会让学生在「老师没配智能体」的课堂里连聊天入口都找不到。
+ *
+ * 🔴 **两个解析函数不许换成自己 `groups.find`**：高级模式下材料是按**组**分的，
+ * 而「本组没配」与「这间课堂没有」是**两件事**（`effectiveGroupWorksheet` 的注释写了完整
+ * 理由，也是本文件存在的理由）。正因为如此，判据必须收 `selectedStudent` —— 同一个课堂里
+ * 不同组的学生看到的 Tab 可以不一样。
+ *
+ * ⚠️ `hidden` 优先于一切：教师明确关掉的模块，哪怕材料配了也不出现。
+ * ⚠️ 顺序恒为 `MODULE_KEYS`（后端定的展示顺序），不按 `classroom.modules` 的数组顺序 ——
+ *    与两个调用方原来的写法一致（§4.11 B6：数组下标会漂移）。
+ * ⚠️ `classroom` 为 `null`（还没拿到会话）⇒ 空数组。**不是**「三个都给」：那会让 Tab 栏
+ *    先闪一下三个、再收成一个。
+ */
+export function visibleModules(
+  classroom: ClassroomMaterials | null | undefined,
+  selectedStudent: { groupId?: string | null } | null | undefined,
+): VisibleModule[] {
+  if (!classroom) return [];
+  return MODULE_KEYS
+    .map((moduleKey) => ({ moduleKey, state: moduleStateOf(classroom.modules, moduleKey) }))
+    .filter((entry) => entry.state !== 'hidden'
+      && moduleHasContent(entry.moduleKey, classroom, selectedStudent));
+}
+
+/** 见 `visibleModules` 的注释。「学伴」那一支的 `true` 与它上面那段理由是一体的。 */
+function moduleHasContent(
+  moduleKey: ClassroomModuleKey,
+  classroom: ClassroomMaterials,
+  selectedStudent: { groupId?: string | null } | null | undefined,
+): boolean {
+  if (moduleKey === 'learning-sheet') return effectiveGroupWorksheet(classroom, selectedStudent) !== null;
+  if (moduleKey === 'explorer') return effectiveGroupWebapp(classroom, selectedStudent) !== null;
+  return true;
 }

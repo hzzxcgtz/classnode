@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { MODULE_ID_BY_KEY, MODULE_KEY_BY_ID, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
+import { MODULE_ID_BY_KEY, MODULE_KEY_BY_ID, moduleStateOf } from '@/lib/classroom-modules';
+import { visibleModules } from '@/lib/classroom-material';
 import type { ClassroomModuleKey, ClassroomModuleSetting } from '@/lib/types';
-import type { ChatToast, ClassroomInfo, ModuleId, ModuleState } from '../classroom-types';
+import type { ChatToast, ClassroomInfo, ModuleId, ModuleState, StudentSession } from '../classroom-types';
 
 /** Tab 栏的一项：前端语义名 + 线缆上的 moduleKey + 此刻的三态。 */
 export interface ModuleTabEntry {
@@ -13,6 +14,11 @@ export interface ModuleTabEntry {
 
 export interface UseModuleTabsOptions {
   classroom: ClassroomInfo | null;
+  /**
+   * ★ 2026-09-27：当前身份。`visibleModules` 要用它判「**这个学生**有没有材料」——
+   * 高级模式下材料是按组分的，同一个课堂里两组学生看到的 Tab 可以不一样。
+   */
+  selectedStudent: StudentSession | null;
   /**
    * 与首页、学伴面板共用的**同一个** `setToast`（会话级状态由 page.tsx 持有）。
    * 外壳的提示（模块被关闭、点开未开放的 Tab）走这里，渲染则交给当前可见的那一层 ——
@@ -107,7 +113,7 @@ export function clearStoredModule(): void {
   writeStoredModule(null);
 }
 
-export function useModuleTabs({ classroom, setToast, paused }: UseModuleTabsOptions) {
+export function useModuleTabs({ classroom, selectedStudent, setToast, paused }: UseModuleTabsOptions) {
   /** 前台是哪个模块；`null` = 首页在前台（首页也是这个外壳的一层）。 */
   const [activeModuleId, setActiveModuleId] = useState<ModuleId | null>(null);
   /** 挂载集合，按「第一次进入」的顺序（层是绝对定位的，顺序不影响显示）。 */
@@ -124,14 +130,23 @@ export function useModuleTabs({ classroom, setToast, paused }: UseModuleTabsOpti
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
-    if (!classroom?.modules) return;
+    // ⚠️ `selectedStudent` 也必须是到位的那一份：`visibleModules` 在高级模式下按**组**判，
+    // 拿着 null 判会把一切都判成「没有材料」。它和 `classroom` 同一条会话链路来，所以这里
+    // 只是把「等到齐」写明确，不是新增一次等待。
+    if (!classroom?.modules || !selectedStudent) return;
     restoredRef.current = true;
     const saved = readStoredModule();
-    if (saved && moduleStateFor(classroom.modules, saved) === 'open') {
-      setMountedIds((prev) => (prev.indexOf(saved) === -1 ? [...prev, saved] : prev));
-      setActiveModuleId(saved);
-    }
-  }, [classroom?.modules]);
+    if (!saved) return;
+    // ★ 2026-09-27：判据从「那个模块还开着吗」扩成「它**此刻真的看得见**吗」。
+    // 🔴 存档是**上一次**留下的：上节课停在探究空间、而这节课老师没配网页 —— 旧判据
+    //    （只看三态）会把学生**直接送进一个什么都没有的模块**，而 Tab 栏上还找不到它
+    //    （`visibleModules` 已经把它藏了）⇒ 学生被困在一个没有出口的层里。
+    const entry = visibleModules(classroom, selectedStudent)
+      .find((item) => MODULE_ID_BY_KEY[item.moduleKey] === saved);
+    if (!entry || entry.state !== 'open') return;
+    setMountedIds((prev) => (prev.indexOf(saved) === -1 ? [...prev, saved] : prev));
+    setActiveModuleId(saved);
+  }, [classroom, selectedStudent]);
 
   /**
    * 变化时记住。**首页也记**（即清掉存档）—— 学生主动回首页是一个明确的选择，
@@ -145,17 +160,21 @@ export function useModuleTabs({ classroom, setToast, paused }: UseModuleTabsOpti
     writeStoredModule(activeModuleId);
   }, [activeModuleId]);
 
-  // Tab 栏的内容：**遍历词汇表** `MODULE_KEYS` 逐键查态，不按 `classroom.modules` 的数组
-  // 下标（§4.11 B6：`applyModuleState` 在键缺失时会追加元素，下标会漂移 ⇒ 教师改一次态
-  // 就可能让 Tab 换位甚至串号）。渲染顺序由词汇表决定，恒定。
-  const tabs: ModuleTabEntry[] = MODULE_KEYS
-    .map((moduleKey) => ({
-      moduleKey,
-      id: MODULE_ID_BY_KEY[moduleKey],
-      state: moduleStateOf(classroom?.modules, moduleKey),
-    }))
-    // `hidden` 是「完全不显示」（§4.4）：教师没安排这个环节，学生不该在 Tab 栏看见它。
-    .filter((entry) => entry.state !== 'hidden');
+  // Tab 栏的内容。★ 2026-09-27：**判据搬进了 `visibleModules`**（`@/lib/classroom-material`），
+  // 因为首页那几张卡片写着**同一份拷贝**，而这条判据现在要加第二个条件了
+  //（见下）—— 再抄一遍就等于给「顶栏藏了、首页还摆着一张点进去什么都没有的卡」留了地方。
+  //
+  // 🔴 那一条的是教师 2026-09-27 的原话：「顶部的导航栏，如果三件套中有没有关联的内容，
+  //    则相应图标也不要显示出来。」⇒ 除了 `hidden`（§4.4：教师没安排这个环节），
+  //    「这节课根本没有对应材料」的模块也不出现。判据全在 `visibleModules` 的注释里，
+  //    包括**为什么学伴恒真**、以及**为什么必须按学生自己的组判**（高级模式不许回落课堂级）。
+  //    ⚠️ 所以它要 `selectedStudent` —— 同一个课堂里两组学生的 Tab 可以不一样。
+  //
+  // ⚠️ 顺序仍是**词汇表** `MODULE_KEYS`（§4.11 B6：不按 `classroom.modules` 的数组下标，
+  //    `applyModuleState` 在键缺失时会追加元素、下标会漂移 ⇒ 教师改一次态就可能让 Tab 换位）。
+  //    这一条也由 `visibleModules` 保证。
+  const tabs: ModuleTabEntry[] = visibleModules(classroom, selectedStudent)
+    .map((entry) => ({ ...entry, id: MODULE_ID_BY_KEY[entry.moduleKey] }));
 
   /**
    * 进入一个模块。**唯一的入口闸门在这里**，不在调用点：首页卡片与 Tab 栏都会自己提示一次，

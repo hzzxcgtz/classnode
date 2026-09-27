@@ -139,6 +139,8 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
   const paused = chat.paused;
   const { activeModuleId, mountedIds, tabs, openModule, goHome } = useModuleTabs({
     classroom: chat.classroom,
+    // ★ 2026-09-27：Tab 栏要按「**这个学生**有没有材料」筛（高级模式下材料按组分）。
+    selectedStudent: chat.selectedStudent,
     setToast,
     paused,
   });

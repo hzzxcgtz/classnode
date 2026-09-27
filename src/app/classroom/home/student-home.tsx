@@ -1,8 +1,8 @@
 'use client';
 
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
-import { MODULE_ID_BY_KEY, MODULE_KEYS, moduleStateOf } from '@/lib/classroom-modules';
-import { effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet } from '@/lib/classroom-material';
+import { MODULE_ID_BY_KEY } from '@/lib/classroom-modules';
+import { effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet, visibleModules } from '@/lib/classroom-material';
 import type { ClassroomWebappSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
@@ -212,10 +212,12 @@ export function StudentHome({
     },
   };
 
-  const cards = MODULE_KEYS
-    .map((moduleKey) => ({ moduleKey, state: moduleStateOf(classroom?.modules, moduleKey) }))
-    // `hidden` 是「不显示」而不是「灰掉」（§4.4）：教师没安排这个环节，学生不该看见它。
-    .filter((entry) => entry.state !== 'hidden');
+  // ★ 2026-09-27：这段原来是 `MODULE_KEYS.map(…).filter(state !== 'hidden')` —— 与
+  // `shell/use-module-tabs.ts` 里那份**逐字相同的拷贝**。两者现在都走 `visibleModules`：
+  // 🔴 判据这轮多了一条（「这节课没有对应材料的模块也不显示」，教师 2026-09-27 的要求），
+  //    拷贝留着就会长出「顶栏藏了、首页还摆着一张点进去什么都没有的卡」这种自相矛盾。
+  // 判据的完整理由（含为什么学伴恒真、为什么按学生自己的组判）在 `visibleModules` 上。
+  const cards = visibleModules(classroom, selectedStudent);
 
   // 换头像的收尾（写透当前会话 → 拉服务端权威数据）不再长在这里：它随两个入口一起搬进了
   // 外壳（`shell/classroom-shell.tsx` 的 `handleAvatarChanged`）。共用实现没变，仍是

@@ -383,6 +383,30 @@
   word-break: break-word;
 }
 
+/* ★ 2026-09-27（教师）：「如果是多选题的话，要在题干前面自动加上『多选』这样的提示文字。」
+   🔴 它是**题干的前缀标签**，不是一段说明 ⇒ 贴在题干行内最前面、**不单开一行**
+      （单开一行会在题干与选项之间插进一个元素，而这一屏的层次是「题干 > 其它」）。
+   ⚠️ `.prompt` 是 `white-space: pre-wrap`，而 chip 与题干之间**没有字面空格**
+      （JSX 会把跨行的空白吃掉）⇒ 间距只能由这里的 `margin-right` 提供，别删它。
+   ⚠️ 底色取 `#eef4ff`、与 `.questionIcon svg` 同一个淡蓝档：同一张卡上两个标签长得不一样
+      比少几条 CSS 糟得多（这条理由在 `globals.css` 的题型控件那一节也写着）。
+   ⚠️ **不用 `border`**：本页的标签一律靠底色，小字标签加边框会显得比字号还重。
+   ⚠️ 不加 `aria-hidden`：**「这题不止一个答案」正是学生要听到的信息**（见面板那一处注释）。 */
+.multiHint {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px 2px;
+  border-radius: 6px;
+  background: #eef4ff;
+  color: var(--ws-accent);
+  font-size: .75rem;
+  font-weight: 750;
+  line-height: 1.5;
+  vertical-align: 1px;
+  /* 它只是一个标签 —— 断成两行会读成两个词。 */
+  white-space: nowrap;
+}
+
 .promptImage {
   display: block;
   width: auto;

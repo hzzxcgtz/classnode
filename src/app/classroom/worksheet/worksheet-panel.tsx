@@ -9,7 +9,7 @@ import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } 
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
+import { isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { PromptText } from '@/lib/worksheet-prompt-text';
@@ -438,6 +438,18 @@ export function WorksheetQuestionList({
                 而报错。样式（粗细 / 斜 / 下划线 / 着重号 / 颜色）由 `promptRunStyle` 给，
                 本组件的 `.prompt` 只管基线（字号 / 行高 / 换行 / 默认色）。 */}
             <div className={styles.prompt}>
+              {/* ★ 2026-09-27（教师）：「学生页面中，如果是多选题的话，要在题干前面自动加上
+                  『多选』这样的提示文字。」
+                  🔴 判据是**共享的那一份** `isMultipleChoice`（`@/lib/worksheet-questions`，
+                      编辑页的「多选」开关用的是同一个函数对象 —— 有一条同一性用例钉着）。
+                      在这里自己写一遍 `node.type === 'multi-choice'` 就会漏掉旧数据：那批多选
+                      长在 `single-choice` 上（`data.choiceMode === 'multiple'`），
+                      症状是**老卷子不显示提示、新卷子显示**，而两边都不报错。
+                  ⚠️ 贴在题干**行内最前面**（不是单独一行）：它是一个前缀标签，不是一段说明 ——
+                      单开一行会在题干与选项之间插进一个元素，而这一屏的层次是「题干 > 其它」。
+                  ⚠️ 不加 `aria-hidden`：**「这题不止一个答案」正是学生要听到的信息**
+                      （本仓那条「图标化只减视觉宽度、不减无障碍信息」的同一条纪律）。 */}
+              {isMultipleChoice(node) && <span className={styles.multiHint}>多选</span>}
               <PromptText
                 text={node.prompt}
                 runs={promptRuns}

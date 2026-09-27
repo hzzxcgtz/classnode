@@ -30,6 +30,7 @@ import { DEFAULT_WORKSHEET_BACKGROUND, normalizeWorksheetBackgroundTheme } from 
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
 import {
   flattenAnswerable,
+  isMultipleChoice,
   optionKey,
   POINTS_FULL_MIN,
   TASK_TYPE,
@@ -51,7 +52,10 @@ import {
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 import { blankCount, readPromptRuns } from '../../../../lib/worksheet-prompt-marks.ts';
 
-export { optionKey, POINTS_FULL_MIN, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
+// ★ 2026-09-27：`isMultipleChoice` 也在这一串里 —— 它搬去了 `@/lib/worksheet-questions`，
+// 因为**学生端现在也要问同一个问题**（多选题的题干前要加「多选」提示），而学生端读不到
+// 这个内核。原样再导出 ⇒ 本文件的所有消费者与用例**一行都不用改**。
+export { isMultipleChoice, optionKey, POINTS_FULL_MIN, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
 export type { ChoiceOption, QuestionPointsDraft, QuestionType };
 
 
@@ -582,17 +586,8 @@ export function choiceModePatch(multiple: boolean, node: WorksheetQuestionNode):
   };
 }
 
-/**
- * 这道选择题是不是**多选**口径（能勾多个正确答案）。
- *
- * ⚠️ `single-choice` + `data.choiceMode === 'multiple'` 也算 ——「多选题」是 M4a 之后
- * 才独立出来的题型，旧数据里那批多选仍然长在 `single-choice` 上。
- * 🔴 判据原来在 `multi-choice-body.tsx` 里各写一遍（一边画界面、一边定判分口径），
- * 两处漂移的后果是「勾了三个正确答案、保存下来只剩一个」。
- */
-export function isMultipleChoice(node: WorksheetQuestionNode): boolean {
-  return node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
-}
+/* `isMultipleChoice` 在 2026-09-27 搬去了 `@/lib/worksheet-questions`（学生端也要用），
+   本文件从上面那串 `export { … }` 里原样再导出 —— 原来的注释跟着它一起搬走了。 */
 
 /** 带括号的标记：`(A)` `（A）` `[A]` `【A】`、`(1)` `（1）`。 */
 // 🔴 **不要求前面有空白**：中文卷子最常见的写法是 `（1）光合作用（2）呼吸作用` —— 紧挨着的。

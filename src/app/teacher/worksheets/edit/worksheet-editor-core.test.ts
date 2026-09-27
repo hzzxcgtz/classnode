@@ -19,6 +19,8 @@
  * 选项重编号 / 填空题 / 草稿与加载守卫。
  */
 import { test } from 'node:test';
+// ⚠️ 只为了下面那条「同一性」用例：`isMultipleChoice` 搬到 lib 之后，内核只是再导出它。
+import { isMultipleChoice as libIsMultipleChoice } from '../../../../lib/worksheet-questions.ts';
 import assert from 'node:assert/strict';
 import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 // ★ C3：设置面板那两个下拉的**选项清单**。⚠️ 运行时 import 必须是**相对路径 + `.ts` 后缀**
@@ -2891,6 +2893,18 @@ test('🔴 `isChoiceQuestion`：判断题**不算** —— 它没有可编辑的
   assert.equal(isChoiceQuestion(node('q', '', {}, 'fill-blank')), false);
   assert.equal(isChoiceQuestion(node('q', '', {}, 'order')), false);
   assert.equal(isChoiceQuestion(node('q', '', {}, 'short-answer')), false);
+});
+
+test('🔴 `isMultipleChoice` 只有**一份实现**（学生端与编辑页问的是同一个问题）', () => {
+  // ★ 2026-09-27：它从本内核搬去了 `@/lib/worksheet-questions`，因为学生端也要用它
+  //（多选题的题干前要加「多选」提示），而学生端读不到这个内核。
+  // 🔴 这条钉的是**同一性**而不是行为：两份实现今天可以逐字相同、明天就分叉，而分叉的
+  //    症状是「学生看到『多选』提示、判分却按单选算」（或反过来），两边都不报错。
+  // ⚠️ 先各自确认它**是个函数**：只比同一性的话，两边都是 `undefined` 也会绿
+  //（导出被删掉的那种改法正是这样），而那条断言就变成一句摆设。
+  assert.equal(typeof isMultipleChoice, 'function');
+  assert.equal(typeof libIsMultipleChoice, 'function');
+  assert.equal(isMultipleChoice, libIsMultipleChoice, '内核这一份必须是 lib 那一份的**同一个函数对象**');
 });
 
 test('🔴 `isMultipleChoice`：旧数据的多选长在 `single-choice` 上（`choiceMode`）', () => {

@@ -206,6 +206,25 @@ export function optionBadge(type: string, key: string): string {
 }
 
 /**
+ * 这道选择题是不是**多选**口径（能勾多个正确答案）。
+ *
+ * ⚠️ `single-choice` + `data.choiceMode === 'multiple'` 也算 ——「多选题」是 M4a 之后才独立
+ * 出来的题型，旧数据里那批多选仍然长在 `single-choice` 上。
+ * 🔴 判据原来在 `multi-choice-body.tsx` 里各写一遍（一边画界面、一边定判分口径），两处漂移的
+ * 后果是「勾了三个正确答案、保存下来只剩一个」。
+ *
+ * ★ 2026-09-27：**从 `worksheet-editor-core.ts` 搬到这里**。教师要求「学生页面中，如果是
+ * 多选题的话，要在题干前面自动加上『多选』这样的提示文字」⇒ 学生端也要问同一个问题，
+ * 而它读不到编辑页的内核（那边是给 `node --test` 用的纯函数内核，且只服务编辑页）。
+ * 与其在学生端再抄一遍，不如搬到**两边都引**的这一份上；编辑页照旧从内核 import
+ *（内核把它原样再导出，见那边的 `export { … }`），所以编辑页各处**一行都不用改**。
+ * ⚠️ 那条「只有一份」的纪律现在由用例钉着（`worksheet-editor-core.test.ts` 里比函数同一性）。
+ */
+export function isMultipleChoice(node: { type: string; data: Record<string, unknown> }): boolean {
+  return node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
+}
+
+/**
  * 拍平题目树（含嵌套）。
  *
  * 规格 §4.3 的 `content` 是**嵌套树**（`children` 为将来的材料题组预留），第一批虽然

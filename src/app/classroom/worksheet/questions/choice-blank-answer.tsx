@@ -40,6 +40,11 @@ export interface ChoiceBlankAnswerProps {
   draft: Extract<AnswerDraft, { kind: 'fill' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-27：**这一题**答错的空的正确答案（空下标 → 那一个答案）。
+   * ⚠️ 只在已提交的题上有内容 —— 服务端剥掉整张答案键、只放行答错的几个空。
+   */
+  correctBlanks?: Record<string, string>;
 }
 
 /** 落点 id 的前缀。⚠️ 与「待选词 id」区分开：拖拽那一层只看得出字符串。 */
@@ -47,7 +52,7 @@ const BLANK_PREFIX = 'blank:';
 const WORD_PREFIX = 'word:';
 
 /** `data.choices`：待选词。读不出来就是空表（学生没词可拖 ⇒ 界面要说实话）。 */
-export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBlankAnswerProps) {
+export function ChoiceBlankAnswer({ node, draft, onChange, disabled, correctBlanks }: ChoiceBlankAnswerProps) {
   const [picked, setPicked] = useState<{ word: string; target: number | null } | null>(null);
   const runs = useMemo(() => readPromptRunsFor(node), [node]);
   const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
@@ -169,6 +174,9 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
             },
             disabled,
             modeOf: index => settings[index]?.mode === 'text' ? 'input' : 'drop',
+            // ★ 2026-09-27：答错的那几个空 ⇒ 正确答案（服务端只在这几格上有值）。
+            // ⚠️ 键是**下标字符串**（JSON 的键只能是字符串），与 `wrongBlankIndexes` 同一套下标。
+            correctOf: index => correctBlanks?.[String(index)] ?? null,
             drop: {
               idOf: (index) => `${BLANK_PREFIX}${index}`,
               onPlace: disabled ? () => {} : tapBlank,

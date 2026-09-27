@@ -130,6 +130,8 @@ export interface UseWorksheetAnswersResult {
   scores: Record<string, WorksheetScore>;
   gradeStates: Record<string, WorksheetGradeState | null>;
   wrongBlankIndexes: Record<string, number[]>;
+  /** ★ 2026-09-27：答错的空的正确答案（空下标 → 那一个答案）。**只在已提交的题上有内容**。 */
+correctBlanks: Record<string, Record<string, string>>;
   /** 本次页面停留期间，每道题新获得奖励的次数；只用于驱动一次性庆祝动效。 */
   rewardBursts: Record<string, number>;
   /** 正在提交的题（按钮转圈、防连点）。 */
@@ -167,6 +169,7 @@ export function useWorksheetAnswers({
   const [scores, setScores] = useState<Record<string, WorksheetScore>>({});
   const [gradeStates, setGradeStates] = useState<Record<string, WorksheetGradeState | null>>({});
   const [wrongBlankIndexes, setWrongBlankIndexes] = useState<Record<string, number[]>>({});
+  const [correctBlanks, setCorrectBlanks] = useState<Record<string, Record<string, string>>>({});
   const [rewardBursts, setRewardBursts] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [pendingCount, setPendingCount] = useState(0);
@@ -273,6 +276,7 @@ export function useWorksheetAnswers({
     setScores(merged.scores);
     setGradeStates(merged.gradeStates);
     setWrongBlankIndexes(merged.wrongBlankIndexes);
+    setCorrectBlanks(merged.correctBlanks ?? {});
     setRewardBursts({});
     // `lastSentRef` **由水合结果整个替换**（不是「只填不删」）：换了参与者 / 换了一份学习单，
     // 上一个的「发过什么」不再适用。
@@ -590,6 +594,13 @@ export function useWorksheetAnswers({
           : [];
         setGradeStates((prev) => ({ ...prev, [node.id]: gradeState }));
         setWrongBlankIndexes((prev) => ({ ...prev, [node.id]: wrong }));
+        // ⚠️ 逐格消毒（与上面 `wrongBlankIndexes` 同一条纪律）：只收**整数下标 + 字符串值**，
+      //    坏数据一律丢掉，不猜。
+      const correct = (payload?.correctBlanks && typeof payload.correctBlanks === 'object')
+        ? Object.fromEntries(Object.entries(payload.correctBlanks as Record<string, unknown>)
+          .filter(([key, value]) => Number.isInteger(Number(key)) && typeof value === 'string')) as Record<string, string>
+        : {};
+      setCorrectBlanks((prev) => ({ ...prev, [node.id]: correct }));
         // 只庆祝这一次新提交得到的“全部答对”。水合旧答案不会写这里，所以刷新不会重播。
         if (gradeState === 'correct' && awardedScore !== null && awardedScore > 0) {
           setRewardBursts((prev) => ({ ...prev, [node.id]: (prev[node.id] ?? 0) + 1 }));
@@ -619,6 +630,7 @@ export function useWorksheetAnswers({
     scores,
     gradeStates,
     wrongBlankIndexes,
+    correctBlanks,
     rewardBursts,
     submitting,
     pendingCount,

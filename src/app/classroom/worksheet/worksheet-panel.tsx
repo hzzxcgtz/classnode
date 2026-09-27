@@ -231,6 +231,8 @@ export interface WorksheetQuestionListProps {
   scores?: Record<string, WorksheetScore>;
   gradeStates?: Record<string, WorksheetGradeState | null>;
   wrongBlankIndexes?: Record<string, number[]>;
+  /** ★ 2026-09-27：答错的空的正确答案（空下标 → 答案）。**只在已提交的题上有内容**。 */
+  correctBlanks?: Record<string, Record<string, string>>;
   rewardBursts?: Record<string, number>;
   answerMode?: WorksheetAnswerMode;
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
@@ -259,6 +261,7 @@ export function WorksheetQuestionList({
   scores,
   gradeStates,
   wrongBlankIndexes,
+  correctBlanks,
   rewardBursts,
   answerMode = 'open',
   onChange,
@@ -424,6 +427,8 @@ export function WorksheetQuestionList({
                 draft={fillDraft ?? { kind: 'fill', texts: [] }}
                 disabled={controlsDisabled}
                 onChange={(next) => onChange?.(node, next)}
+                // ★ 2026-09-27：答错的空的正确答案（**只这一题**；服务端只发答错的那几格）。
+                correctBlanks={correctBlanks?.[node.id]}
               />
             ) : (<>
             {/* ★ 2026-09-26：题干的渲染**只有这一份实现**了（`PromptText`）。
@@ -783,6 +788,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               scores={answers.scores}
               gradeStates={answers.gradeStates}
               wrongBlankIndexes={answers.wrongBlankIndexes}
+              correctBlanks={answers.correctBlanks}
               rewardBursts={answers.rewardBursts}
               answerMode={load.worksheet.answerMode}
               onChange={handleChange}

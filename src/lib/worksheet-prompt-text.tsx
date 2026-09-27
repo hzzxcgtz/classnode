@@ -55,6 +55,15 @@ export interface PromptBlankBinding {
    * 与切分逻辑只有一段代码（`runs` 的分段），另写一份就是本仓最防的那种分叉 ——
    * 症状是「填空题的空在这个位置、选择填空的空在那个位置」。
    */
+  /**
+   * ★ 2026-09-27：第 `index` 个空**答错时应该是什么**（正确答案）。`null` = 没有这一格
+   *（答对了 / 没提交 / 教师没设答案键）。
+   *
+   * 🔴 **只在已提交的题上有值** —— 服务端刻意剥掉整张答案键、只放行答错的几个空。
+   * ⇒ 渲染这一侧**拿到什么画什么，不再自己判**「该不该显示」。
+   * ⚠️ 它在**外层**绑定上、不在 `drop` 里：打字那条路（input）也要用它。
+   */
+  correctOf?: (index: number) => string | null;
   drop?: {
     /** 第 `index` 个空的落点 id（写进 `data-drop-id`，拖拽那一层按它找人）。 */
     idOf: (index: number) => string;
@@ -84,6 +93,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
           if (blanks && blanks.drop && blanks.modeOf?.(blankIndex) !== 'input') {
             const index = blankIndex;
             const filled = (blanks.values[index] ?? '') !== '';
+            // ★ 答错 ⇒ 原答案红色 + 删除线；正确答案写在**框外**后面（教师定的形态）。
+            const correct = blanks.correctOf?.(index) ?? null;
             const dropId = blanks.drop.idOf(index);
             const active = blanks.drop.activeId === dropId;
             // 落点：一个**槽**，不是输入框（学生不许在这里打字 —— 词只能从待选区来）。
@@ -106,7 +117,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
                   boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
                   borderRadius: '4px 4px 2px 2px',
-                  color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
+                  color: correct ? 'var(--danger)' : (blanks.drop.pending && !filled ? '#2563eb' : undefined),
+                  textDecoration: correct ? 'line-through' : undefined,
                   // ★ 2026-09-27：字重不再写死 600 —— 与打字那条路**共用同一条规则**
                   //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、
                   //  换个模式粗细就变了」。
@@ -119,15 +131,19 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
               >
                 {filled ? blanks.values[index] : '\u00a0'}
               </span>
+              {correct && <span key="correct">{correct}</span>}
               {blanks.drop.after?.(index)}
               </Fragment>
             );
           }
           if (blanks) {
             const index = blankIndex;
+            // ★ 同 drop 分支：答错 ⇒ 框里的字红色 + 删除线，正确答案写在**框外**后面。
+            // ⚠️ 框仍然是 `<input>`（截图里那个「保存修改」要能用 —— 学生得能改）。
+            const correct = blanks.correctOf?.(index) ?? null;
             return (
+              <Fragment key={run.start}>
               <input
-                key={run.start}
                 type="text"
                 value={blanks.values[index] ?? ''}
                 disabled={blanks.disabled}
@@ -148,8 +164,11 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
                   // 空着的时候要与那串下划线一样宽，否则一填字版面就跳。
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
+                  ...(correct ? { color: 'var(--danger)', textDecoration: 'line-through' } : {}),
                 }}
               />
+              {correct && <span>{correct}</span>}
+              </Fragment>
             );
           }
         }

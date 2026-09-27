@@ -259,6 +259,8 @@ export interface SavedAnswerRow {
   isCorrect: boolean | null;
   gradeState?: WorksheetGradeState | null;
   wrongBlankIndexes?: number[];
+  /** ★ 2026-09-27：答错的空的**正确答案**；⚠️ 只在已提交的题上有内容（服务端刻意剥掉整张答案键）。 */
+correctBlanks?: Record<string, string>;
   /**
    * ★ M4a：这一题拿到的**绝对数**（教师逐题填的两个档之一，规格 §12）。
    *
@@ -321,6 +323,8 @@ export interface HydratedAnswerState {
   scores: Record<string, number | null>;
   gradeStates: Record<string, WorksheetGradeState | null>;
   wrongBlankIndexes: Record<string, number[]>;
+  /** 每题的「答错的空 ⇒ 正确答案」。**可选**：加它时不想逼所有构造点都补一格。 */
+correctBlanks?: Record<string, Record<string, string>>;
   /** 「库里**确实已经有这一行**」的题的「上一次落库的值」——「清空」判据吃它。 */
   lastSent: Record<string, WorksheetAnswerValue | null>;
 }
@@ -367,6 +371,7 @@ export function hydrateAnswers(
   const scores: Record<string, number | null> = {};
   const gradeStates: Record<string, WorksheetGradeState | null> = {};
   const wrongBlankIndexes: Record<string, number[]> = {};
+  const correctBlanks: Record<string, Record<string, string>> = {};
   const lastSent: Record<string, WorksheetAnswerValue | null> = {};
   const byId: Record<string, WorksheetQuestionNode> = {};
   questions.forEach((node) => { byId[node.id] = node; });
@@ -386,6 +391,7 @@ export function hydrateAnswers(
     scores[row.questionId] = scoreFromWire(row);
     gradeStates[row.questionId] = row.gradeState ?? null;
     wrongBlankIndexes[row.questionId] = row.wrongBlankIndexes ?? [];
+    correctBlanks[row.questionId] = row.correctBlanks ?? {};
     lastSent[row.questionId] = row.value;
   });
 
@@ -400,8 +406,9 @@ export function hydrateAnswers(
     delete scores[item.questionId];
     delete gradeStates[item.questionId];
     delete wrongBlankIndexes[item.questionId];
+    delete correctBlanks[item.questionId];
     delete lastSent[item.questionId];
   });
 
-  return { drafts, statuses, scores, gradeStates, wrongBlankIndexes, lastSent };
+  return { drafts, statuses, scores, gradeStates, wrongBlankIndexes, correctBlanks, lastSent };
 }

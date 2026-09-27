@@ -9,7 +9,7 @@
  *            isCorrect:  boolean | null   ← M3 及更早的旧字段：语义已收窄为「全对」，
  *                                           只增不改（协议字段），**未回填的旧行仍靠它兜底**
  *               │
- * 呈现层        ├─ 星星 / 花朵 / 奖杯 / 小熊卡通图标 ×N
+ * 呈现层        ├─ 十种卡通收藏图标 ×N
  *               └─ 分数 +N
  * ```
  *
@@ -42,14 +42,25 @@
  */
 
 /**
- * 奖励形式：四种收藏型图标 + 分数。
+ * 奖励形式：十种收藏型图标 + 分数。
  *
  * ⚠️ 取值与服务端 `routes/worksheets.ts` 的 `REWARD_STYLES` 是**同一套字面量**，
  * 而服务端复制了一份自己的（它读不到 `src/`）。与题型注册表（`QUESTION_TYPE_OPTIONS`
  * 对 `QUESTION_TYPES`）同一个由来：**两处必须一起改**，改一处会让「学生端认不出
  * 服务端存的样式」——而那种失效是静默的（落到默认档，画出来的是另一种奖励）。
  */
-export type RewardStyle = 'star' | 'flower' | 'trophy' | 'bear' | 'points';
+export type RewardStyle =
+  | 'star'
+  | 'flower'
+  | 'trophy'
+  | 'bear'
+  | 'rocket'
+  | 'gem'
+  | 'crown'
+  | 'lightning'
+  | 'bulb'
+  | 'key'
+  | 'points';
 
 export interface RewardStyleOption {
   value: RewardStyle;
@@ -94,6 +105,48 @@ export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
     hint: '每答对一题收集几只小熊徽章，答错不给。',
   },
   {
+    value: 'rocket',
+    label: '探索火箭',
+    symbol: '箭',
+    unit: '枚',
+    hint: '每答对一题获得几枚探索火箭，答错不给。',
+  },
+  {
+    value: 'gem',
+    label: '智慧宝石',
+    symbol: '晶',
+    unit: '颗',
+    hint: '每答对一题收集几颗智慧宝石，答错不给。',
+  },
+  {
+    value: 'crown',
+    label: '闪耀皇冠',
+    symbol: '冠',
+    unit: '顶',
+    hint: '每答对一题获得几顶闪耀皇冠，答错不给。',
+  },
+  {
+    value: 'lightning',
+    label: '能量闪电',
+    symbol: '电',
+    unit: '道',
+    hint: '每答对一题积攒几道能量闪电，答错不给。',
+  },
+  {
+    value: 'bulb',
+    label: '灵感灯泡',
+    symbol: '灯',
+    unit: '盏',
+    hint: '每答对一题点亮几盏灵感灯泡，答错不给。',
+  },
+  {
+    value: 'key',
+    label: '成长钥匙',
+    symbol: '钥',
+    unit: '把',
+    hint: '每答对一题获得几把成长钥匙，答错不给。',
+  },
+  {
     value: 'points',
     label: '分数 ＋',
     symbol: '+',
@@ -134,6 +187,12 @@ export function pointsUnitLabel(style: RewardStyle): string {
   if (style === 'flower') return '朵花';
   if (style === 'trophy') return '座奖杯';
   if (style === 'bear') return '只小熊';
+  if (style === 'rocket') return '枚火箭';
+  if (style === 'gem') return '颗宝石';
+  if (style === 'crown') return '顶皇冠';
+  if (style === 'lightning') return '道闪电';
+  if (style === 'bulb') return '盏灯泡';
+  if (style === 'key') return '把钥匙';
   return '分';
 }
 
@@ -165,7 +224,7 @@ export const DEFAULT_HALF_STEP = 0;
 export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 /**
- * 一份学习单上的奖励配置：**哪一档**（四种收藏图标 + 分数）。
+ * 一份学习单上的奖励配置：**哪一档**（十种收藏图标 + 分数）。
  *
  * ── ★ M4a：这里曾经还有 `step` / `halfStep` 两个数，**已删** ────────────────
  *
@@ -204,7 +263,7 @@ export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
  * `normalizeRewardStep` / `normalizeHalfStep` 归一化的是那一份，**不是**本类型）。
  */
 export interface RewardScale {
-  /** 哪一档：星星 / 花朵 / 奖杯 / 小熊 / 分数。**只有它决定画什么**；画几个由得分定。 */
+  /** 哪一档：十种收藏图标之一或分数。**只有它决定画什么**；画几个由得分定。 */
   style: RewardStyle;
 }
 

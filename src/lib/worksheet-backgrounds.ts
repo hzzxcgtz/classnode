@@ -17,6 +17,11 @@ export const WORKSHEET_BACKGROUND_OPTIONS: readonly WorksheetBackgroundOption[] 
   { id: 'space-discovery', name: '星际发现', description: '想象、探索', url: '/worksheet-backgrounds/space-discovery.webp', swatch: '#eceeff' },
   { id: 'ocean-observation', name: '海底观察', description: '清新、安静', url: '/worksheet-backgrounds/ocean-observation.webp', swatch: '#ddf7f7' },
   { id: 'creative-notebook', name: '创意手账', description: '温暖、活泼', url: '/worksheet-backgrounds/creative-notebook.webp', swatch: '#fffaf0' },
+  { id: 'dinosaur-archaeology', name: '恐龙考古', description: '发现、求知', url: '/worksheet-backgrounds/dinosaur-archaeology.webp', swatch: '#f8ead6' },
+  { id: 'invention-workshop', name: '发明工坊', description: '动手、创造', url: '/worksheet-backgrounds/invention-workshop.webp', swatch: '#e4f3ef' },
+  { id: 'music-rhythm', name: '音乐律动', description: '轻快、灵动', url: '/worksheet-backgrounds/music-rhythm.webp', swatch: '#f7eaf4' },
+  { id: 'chinese-study', name: '国风书院', description: '雅致、从容', url: '/worksheet-backgrounds/chinese-study.webp', swatch: '#f6efe2' },
+  { id: 'active-sports', name: '活力运动', description: '健康、朝气', url: '/worksheet-backgrounds/active-sports.webp', swatch: '#e2f6f5' },
 ] as const;
 
 const VALID_THEMES = new Set<WorksheetBackgroundTheme>([

@@ -997,7 +997,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
           （`routes/worksheets.ts` 的 `resolvePoints(node, DEFAULT_POINTS)`）。
           ⚠️ **不要顺手把 `settings` 里的那两个键也删掉**：老行的 JSON 里还带着它们，
           删类型会让读旧行出错；它们只是**不再被读**。
-          ⚠️ 上面那块「奖励形式」（星星 / 花朵 / 奖杯 / 小熊 / 分数）**留着** —— 那是**呈现形式**。
+          ⚠️ 上面那块「奖励形式」（十种卡通奖励 / 分数）**留着** —— 那是**呈现形式**。
         */}
 
         </div>

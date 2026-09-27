@@ -32,6 +32,16 @@
 .sprite[data-kind='flower'] { background-position: 100% 0; }
 .sprite[data-kind='trophy'] { background-position: 0 100%; }
 .sprite[data-kind='bear'] { background-position: 100% 100%; }
+.spriteSecond {
+  background-image: url('/worksheet-rewards/reward-sprite-2.png');
+  background-size: 300% 200%;
+}
+.spriteSecond[data-kind='rocket'] { background-position: 0 0; }
+.spriteSecond[data-kind='gem'] { background-position: 50% 0; }
+.spriteSecond[data-kind='crown'] { background-position: 100% 0; }
+.spriteSecond[data-kind='lightning'] { background-position: 0 100%; }
+.spriteSecond[data-kind='bulb'] { background-position: 50% 100%; }
+.spriteSecond[data-kind='key'] { background-position: 100% 100%; }
 .sprite[data-state='drafting'] { filter: grayscale(.9); opacity: .62; }
 .sprite[data-state='earned'] { filter: none; opacity: 1; }
 

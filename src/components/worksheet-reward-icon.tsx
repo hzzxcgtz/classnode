@@ -14,7 +14,7 @@ interface RewardIconProps {
   label?: string;
 }
 
-/** 四种收藏型奖励共用一张 PNG 雪碧图；分数保持清晰的矢量加分徽章。 */
+/** 十种收藏型奖励分为两张 PNG 雪碧图；分数保持清晰的矢量加分徽章。 */
 export function RewardIcon({
   kind,
   state = 'earned',
@@ -30,6 +30,25 @@ export function RewardIcon({
     return (
       <span
         className={`${commonClassName} ${styles.sprite}`}
+        data-kind={kind}
+        data-state={state}
+        style={style}
+        {...accessible}
+      />
+    );
+  }
+
+  if (
+    kind === 'rocket'
+    || kind === 'gem'
+    || kind === 'crown'
+    || kind === 'lightning'
+    || kind === 'bulb'
+    || kind === 'key'
+  ) {
+    return (
+      <span
+        className={`${commonClassName} ${styles.sprite} ${styles.spriteSecond}`}
         data-kind={kind}
         data-state={state}
         style={style}

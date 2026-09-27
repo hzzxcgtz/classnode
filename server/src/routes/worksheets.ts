@@ -132,14 +132,18 @@ const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
 /**
- * 奖励形式的**取值域**（四种收藏型图标 + 分数）。
+ * 奖励形式的**取值域**（十种收藏型图标 + 分数）。
  *
- * ⚠️ 这五个字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
+ * ⚠️ 这些字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
  * 服务端读不到 `src/`，而前端也不该把「什么值合法」的判据放在只有自己看得见的地方。
  * 与题型注册表（`QUESTION_TYPES` 对 `QUESTION_TYPE_OPTIONS`）同一个由来 ——
  * **两处必须一起改**。改一处不会报错，只会让存进去的档在学生端落到默认档（画成星星）。
  */
-const REWARD_STYLES: readonly string[] = ['star', 'flower', 'trophy', 'bear', 'points'];
+const REWARD_STYLES: readonly string[] = [
+  'star', 'flower', 'trophy', 'bear',
+  'rocket', 'gem', 'crown', 'lightning', 'bulb', 'key',
+  'points',
+];
 /** 全对档步长的取值域（规格 §9.2 定死 1 / 2 / 3 / 5）。 */
 const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
 /**
@@ -158,7 +162,8 @@ const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
 const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 const WORKSHEET_BACKGROUND_THEMES: readonly string[] = [
   'none', 'cloud-playground', 'forest-explorer', 'space-discovery',
-  'ocean-observation', 'creative-notebook', 'custom',
+  'ocean-observation', 'creative-notebook', 'dinosaur-archaeology',
+  'invention-workshop', 'music-rhythm', 'chinese-study', 'active-sports', 'custom',
 ];
 const WORKSHEET_ANSWER_MODES: readonly string[] = ['open', 'task-step', 'question-step'];
 

@@ -7,9 +7,9 @@ import {
   resolveWorksheetBackground,
 } from './worksheet-backgrounds.ts';
 
-test('五套插画主题都有唯一 id 与 WebP 资源，无背景选项不加载图片', () => {
+test('十套插画主题都有唯一 id 与 WebP 资源，无背景选项不加载图片', () => {
   const illustrated = WORKSHEET_BACKGROUND_OPTIONS.filter(option => option.id !== 'none');
-  assert.equal(illustrated.length, 5);
+  assert.equal(illustrated.length, 10);
   assert.equal(new Set(WORKSHEET_BACKGROUND_OPTIONS.map(option => option.id)).size, WORKSHEET_BACKGROUND_OPTIONS.length);
   illustrated.forEach(option => assert.match(option.url ?? '', /^\/worksheet-backgrounds\/.+\.webp$/));
   assert.equal(WORKSHEET_BACKGROUND_OPTIONS.find(option => option.id === 'none')?.url, null);

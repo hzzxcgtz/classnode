@@ -46,9 +46,12 @@ function scale(over: Partial<RewardScale> = {}): RewardScale {
 
 // ── 1. 取值域与默认档 ────────────────────────────────────────────────────
 
-test('五个可选奖励的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
+test('十种卡通奖励加分数的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
   const values = REWARD_STYLE_OPTIONS.map(option => option.value);
-  assert.deepEqual([...values].sort(), ['bear', 'flower', 'points', 'star', 'trophy']);
+  assert.deepEqual([...values].sort(), [
+    'bear', 'bulb', 'crown', 'flower', 'gem', 'key',
+    'lightning', 'points', 'rocket', 'star', 'trophy',
+  ]);
   assert.equal(new Set(values).size, values.length, '取值重复会让单选按钮选中两个');
   for (const option of REWARD_STYLE_OPTIONS) {
     assert.ok(option.label.length > 0, `${option.value} 缺标签`);
@@ -222,6 +225,12 @@ test('🔴 pointsUnitLabel：量词与图标跟着学习单的奖励档走 —�
   assert.equal(pointsUnitLabel('flower'), '朵花');
   assert.equal(pointsUnitLabel('trophy'), '座奖杯');
   assert.equal(pointsUnitLabel('bear'), '只小熊');
+  assert.equal(pointsUnitLabel('rocket'), '枚火箭');
+  assert.equal(pointsUnitLabel('gem'), '颗宝石');
+  assert.equal(pointsUnitLabel('crown'), '顶皇冠');
+  assert.equal(pointsUnitLabel('lightning'), '道闪电');
+  assert.equal(pointsUnitLabel('bulb'), '盏灯泡');
+  assert.equal(pointsUnitLabel('key'), '把钥匙');
   assert.equal(pointsUnitLabel('points'), '分', '分数档没有符号，只有一个「分」');
 });
 

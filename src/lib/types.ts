@@ -383,6 +383,11 @@ export type WorksheetBackgroundTheme =
   | 'space-discovery'
   | 'ocean-observation'
   | 'creative-notebook'
+  | 'dinosaur-archaeology'
+  | 'invention-workshop'
+  | 'music-rhythm'
+  | 'chinese-study'
+  | 'active-sports'
   | 'custom';
 
 export type WorksheetAnswerMode = 'open' | 'task-step' | 'question-step';

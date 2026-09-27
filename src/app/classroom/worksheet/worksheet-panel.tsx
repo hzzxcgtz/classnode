@@ -747,7 +747,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
                   <span className={styles.progressGroup} key={`${groupIndex}:${group.title ?? ''}`}>
                     {group.items.map(({ node }) => {
                       const state = questionDisplayState(answers.statuses[node.id], answers.drafts[node.id]);
-                      const iconReward = rewardScale && ['star', 'flower', 'trophy', 'bear'].includes(rewardScale.style);
+                      const iconReward = rewardScale && rewardScale.style !== 'points';
                       return (
                         <span className={styles.progressCell} data-state={state} data-style={iconReward ? 'icon' : 'square'} key={node.id}>
                           {iconReward ? (

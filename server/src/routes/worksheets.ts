@@ -186,10 +186,11 @@ const DEFAULT_SETTINGS = {
   analysisAgentId: null,
   backgroundTheme: 'cloud-playground',
   backgroundImageUrl: null,
+  backgroundPortraitImageUrl: null,
 } as const;
 
 /**
- * 归一化 `settings`。**六个键都会写出来**（缺的补默认）—— 落库的 JSON 因此总是完整的，
+ * 归一化 `settings`。**所有键都会写出来**（缺的补默认）—— 落库的 JSON 因此总是完整的，
  * 学生端与编辑器都不必自己写 `?? 默认值`。
  *
  * 🔴 这里也是**奖励配置唯一的写入口**：`PUT /api/worksheets/:id` 是整份替换
@@ -235,6 +236,9 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
       : DEFAULT_SETTINGS.backgroundTheme,
     backgroundImageUrl: typeof source.backgroundImageUrl === 'string' && source.backgroundImageUrl.startsWith('/uploads/chat/')
       ? source.backgroundImageUrl
+      : null,
+    backgroundPortraitImageUrl: typeof source.backgroundPortraitImageUrl === 'string' && source.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
+      ? source.backgroundPortraitImageUrl
       : null,
   };
 }
@@ -1535,6 +1539,7 @@ async function loadClassroomLevelWorksheetId(prisma: PrismaClient, classroomId: 
 function readStudentSettings(raw: unknown): {
   allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number; halfStep: number;
   answerMode: string; backgroundTheme: string; backgroundImageUrl: string | null;
+  backgroundPortraitImageUrl: string | null;
 } {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
@@ -1562,6 +1567,9 @@ function readStudentSettings(raw: unknown): {
       : DEFAULT_SETTINGS.backgroundTheme,
     backgroundImageUrl: typeof source.backgroundImageUrl === 'string' && source.backgroundImageUrl.startsWith('/uploads/chat/')
       ? source.backgroundImageUrl
+      : null,
+    backgroundPortraitImageUrl: typeof source.backgroundPortraitImageUrl === 'string' && source.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
+      ? source.backgroundPortraitImageUrl
       : null,
   };
 }

@@ -58,3 +58,21 @@ test('十种卡通奖励都会原样落库，坏值仍回落星星', () => {
   const removed = normalizeSettings({ rewardStyle: 'correctness' }) as Record<string, unknown>;
   assert.equal(removed.rewardStyle, 'star', '已移除的对错档读取后回落星星');
 });
+
+test('横竖屏自定义背景分别保留站内上传地址，外部地址一律清空', () => {
+  const out = normalizeSettings({
+    backgroundTheme: 'custom',
+    backgroundImageUrl: '/uploads/chat/landscape.webp',
+    backgroundPortraitImageUrl: '/uploads/chat/portrait.webp',
+  }) as Record<string, unknown>;
+  assert.equal(out.backgroundTheme, 'custom');
+  assert.equal(out.backgroundImageUrl, '/uploads/chat/landscape.webp');
+  assert.equal(out.backgroundPortraitImageUrl, '/uploads/chat/portrait.webp');
+
+  const unsafe = normalizeSettings({
+    backgroundImageUrl: 'https://example.com/landscape.webp',
+    backgroundPortraitImageUrl: 'data:image/webp;base64,unsafe',
+  }) as Record<string, unknown>;
+  assert.equal(unsafe.backgroundImageUrl, null);
+  assert.equal(unsafe.backgroundPortraitImageUrl, null);
+});

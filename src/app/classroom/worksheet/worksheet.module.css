@@ -144,10 +144,23 @@
 .scroller[data-has-background='1'] {
   background-image:
     linear-gradient(rgba(247, 250, 255, .22), rgba(247, 250, 255, .22)),
-    var(--worksheet-background);
-  background-position: center top;
-  background-size: cover;
-  background-repeat: no-repeat;
+    var(--worksheet-background-landscape);
+  background-position: center top, center top;
+  background-size: 100% 100%, cover;
+  background-repeat: no-repeat, no-repeat;
+}
+
+@media (orientation: portrait) and (max-width: 900px) {
+  .scroller[data-has-background='1'][data-has-portrait='1'] {
+    background-image:
+      linear-gradient(rgba(247, 250, 255, .22), rgba(247, 250, 255, .22)),
+      var(--worksheet-background-portrait);
+  }
+
+  /* 自定义背景没有另传竖图时完整显示横图，不再用 cover 裁掉左右。 */
+  .scroller[data-has-background='1'][data-has-portrait='0'] {
+    background-size: 100% 100%, 100% auto;
+  }
 }
 
 /* 题目列：窄屏铺满，宽屏（iPad 横屏 / 桌面）居中限宽 —— 一行 90 个字符的题干很难读。 */

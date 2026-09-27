@@ -428,10 +428,12 @@ export interface WorksheetSettings {
    * ⚠️ **没有默认值**是刻意的：默认指定一个等于「默认把全班作业发出去」。
    */
   analysisAgentId: string | null;
-  /** 学生端学习单的背景主题。`custom` 时读取 `backgroundImageUrl`。 */
+  /** 学生端学习单的背景主题。`custom` 时读取下面的横、竖两张上传图。 */
   backgroundTheme: WorksheetBackgroundTheme;
   /** 自定义背景只允许站内上传地址；预设主题时保留但不读取。 */
   backgroundImageUrl: string | null;
+  /** 自定义竖屏背景；可选。缺省时学生端完整显示横图而不裁切。 */
+  backgroundPortraitImageUrl: string | null;
 }
 
 /**

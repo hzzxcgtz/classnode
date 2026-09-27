@@ -773,6 +773,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
   // 与「学习单列表加载失败不阻断创建」那条既有判断同形（`classroom/new/page.tsx`）。
   const [analysisAgents, setAnalysisAgents] = useState<AgentSummary[]>([]);
   const [backgroundUploading, setBackgroundUploading] = useState(false);
+  const [backgroundPortraitUploading, setBackgroundPortraitUploading] = useState(false);
   const [backgroundError, setBackgroundError] = useState('');
   useEffect(() => {
     let alive = true;
@@ -782,7 +783,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
     return () => { alive = false; };
   }, []);
 
-  const uploadBackground = async (file: File | undefined) => {
+  const uploadBackground = async (file: File | undefined, orientation: 'landscape' | 'portrait' = 'landscape') => {
     if (!file) return;
     setBackgroundError('');
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
@@ -793,14 +794,18 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
       setBackgroundError('图片不能超过 5 MB，建议先压缩到 300 KB 以内。');
       return;
     }
-    setBackgroundUploading(true);
+    if (orientation === 'portrait') setBackgroundPortraitUploading(true);
+    else setBackgroundUploading(true);
     try {
       const result = await api.uploadWorksheetImage(file);
-      onSettingsChange({ backgroundTheme: 'custom', backgroundImageUrl: result.url });
+      onSettingsChange(orientation === 'portrait'
+        ? { backgroundTheme: 'custom', backgroundPortraitImageUrl: result.url }
+        : { backgroundTheme: 'custom', backgroundImageUrl: result.url });
     } catch (error) {
       setBackgroundError(error instanceof Error ? error.message : '背景图上传失败，请稍后重试。');
     } finally {
-      setBackgroundUploading(false);
+      if (orientation === 'portrait') setBackgroundPortraitUploading(false);
+      else setBackgroundUploading(false);
     }
   };
 
@@ -848,7 +853,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   disabled={backgroundUploading}
-                  onChange={event => { void uploadBackground(event.target.files?.[0]); event.target.value = ''; }}
+                  onChange={event => { void uploadBackground(event.target.files?.[0], 'landscape'); event.target.value = ''; }}
                 />
                 <span
                   className="worksheet-background-preview"
@@ -859,11 +864,35 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
                 <span className="worksheet-background-check" aria-hidden="true">✓</span>
               </label>
             </div>
+            {settings.backgroundTheme === 'custom' && settings.backgroundImageUrl && (
+              <div className="worksheet-background-portrait-row">
+                <div>
+                  <strong>竖屏背景（可选）</strong>
+                  <em>上传后在 iPad 竖屏自动使用；不上传也会完整显示横图，不会裁掉左右。</em>
+                </div>
+                <label className="worksheet-background-portrait-upload">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={backgroundPortraitUploading}
+                    onChange={event => { void uploadBackground(event.target.files?.[0], 'portrait'); event.target.value = ''; }}
+                  />
+                  <span
+                    className="worksheet-background-portrait-thumb"
+                    style={settings.backgroundPortraitImageUrl
+                      ? { backgroundImage: `url(${worksheetAssetUrl(settings.backgroundPortraitImageUrl)})` }
+                      : undefined}
+                    aria-hidden="true"
+                  >{!settings.backgroundPortraitImageUrl && '＋'}</span>
+                  <span>{backgroundPortraitUploading ? '正在上传…' : settings.backgroundPortraitImageUrl ? '替换竖屏图' : '上传竖屏图'}</span>
+                </label>
+              </div>
+            )}
             {backgroundError && <p className="worksheet-background-error" role="alert">{backgroundError}</p>}
             <details className="worksheet-background-guide">
               <summary>教师自制背景图要求</summary>
               <ul>
-                <li>横向 3:2，推荐 1536 × 1024 像素。</li>
+                <li>横屏图使用 3:2，推荐 1536 × 1024；竖屏图使用 3:4，推荐 1200 × 1600。</li>
                 <li>中央约 70% 留空，装饰放在四周 12%-15% 范围内。</li>
                 <li>使用浅色、低对比背景，不放文字、校徽或密集纹理。</li>
                 <li>优先 WebP，建议不超过 300 KB，最大上传 5 MB。</li>

@@ -16,7 +16,7 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import {
   normalizeWorksheetBackgroundTheme,
-  resolveWorksheetBackground,
+  resolveWorksheetBackgroundSources,
 } from '@/lib/worksheet-backgrounds';
 import type { WorksheetBackgroundTheme } from '@/lib/types';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
@@ -151,6 +151,7 @@ interface LoadedWorksheet {
   reward: RewardScale;
   backgroundTheme: WorksheetBackgroundTheme;
   backgroundImageUrl: string | null;
+  backgroundPortraitImageUrl: string | null;
   /**
    * 这名学生**已有的作答**（`GET /:id/answers` 的 `rows`）。
    *
@@ -617,6 +618,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             halfStep?: unknown;
             backgroundTheme?: unknown;
             backgroundImageUrl?: unknown;
+            backgroundPortraitImageUrl?: unknown;
           };
         };
         const rowsData = await rowsRes.json().catch(() => null);
@@ -646,6 +648,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             backgroundTheme: normalizeWorksheetBackgroundTheme(data.settings?.backgroundTheme),
             backgroundImageUrl: typeof data.settings?.backgroundImageUrl === 'string' && data.settings.backgroundImageUrl.startsWith('/uploads/chat/')
               ? data.settings.backgroundImageUrl
+              : null,
+            backgroundPortraitImageUrl: typeof data.settings?.backgroundPortraitImageUrl === 'string' && data.settings.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
+              ? data.settings.backgroundPortraitImageUrl
               : null,
             // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
             savedAnswers: parseSavedAnswers(rowsData),
@@ -695,9 +700,23 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
    * 得分（键在、题没了），把它算进累计会让顶栏多出学生看不见的那几分。
    */
   const rewardScale = load.kind === 'ready' ? load.worksheet.reward : null;
-  const background = load.kind === 'ready'
-    ? resolveWorksheetBackground(load.worksheet.backgroundTheme, load.worksheet.backgroundImageUrl)
-    : null;
+  const backgrounds = load.kind === 'ready'
+    ? resolveWorksheetBackgroundSources(
+      load.worksheet.backgroundTheme,
+      load.worksheet.backgroundImageUrl,
+      load.worksheet.backgroundPortraitImageUrl,
+    )
+    : { landscape: null, portrait: null };
+  const backgroundLandscape = backgrounds.landscape ?? backgrounds.portrait;
+  const hasBackground = Boolean(backgroundLandscape);
+  const backgroundStyle = backgroundLandscape
+    ? {
+      '--worksheet-background-landscape': `url(${worksheetAssetUrl(backgroundLandscape)})`,
+      ...(backgrounds.portrait
+        ? { '--worksheet-background-portrait': `url(${worksheetAssetUrl(backgrounds.portrait)})` }
+        : {}),
+    } as CSSProperties
+    : undefined;
   const rewardTotal = rewardScale
     ? questions.reduce((sum, node) => sum + rewardAmount(answers.scores[node.id] ?? null, rewardScale), 0)
     : 0;
@@ -775,8 +794,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
 
           <div
             className={styles.scroller}
-            data-has-background={background ? '1' : '0'}
-            style={background ? { '--worksheet-background': `url(${worksheetAssetUrl(background)})` } as CSSProperties : undefined}
+            data-has-background={hasBackground ? '1' : '0'}
+            data-has-portrait={backgrounds.portrait ? '1' : '0'}
+            style={backgroundStyle}
           >
             <WorksheetQuestionList
               groups={load.worksheet.groups}

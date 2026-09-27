@@ -1,9 +1,9 @@
 'use client';
 
 import { studentVisibleGroups } from '@/lib/worksheet-questions';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
-import { resolveWorksheetBackground } from '@/lib/worksheet-backgrounds';
+import { resolveWorksheetBackgroundSources } from '@/lib/worksheet-backgrounds';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
@@ -15,6 +15,8 @@ import { WorksheetQuestionList } from '@/app/classroom/worksheet/worksheet-panel
  * 学生看到的那个宽度」）。第一代 iPad 竖屏的 CSS 宽度就是这个数。
  */
 const STUDENT_STAGE_WIDTH = 768;
+const STUDENT_LANDSCAPE_WIDTH = 1024;
+type PreviewOrientation = 'portrait' | 'landscape';
 
 /**
  * 预览弹窗。
@@ -60,6 +62,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   settings: WorksheetSettings;
   onClose: () => void;
 }) {
+  const [orientation, setOrientation] = useState<PreviewOrientation>('portrait');
   // 与面板同一条口径：拍平在调用方做（`flattenAnswerable`），所以「屏幕上有几道题」
   // 在预览与学生端是同一个数。
   // ⚠️ 不取 `flattenQuestions`：任务不是一道题（它没有作答控件），把它算进「共 N 题」
@@ -67,10 +70,23 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   const groups = studentVisibleGroups(content.nodes);
   // 「共 N 题」数的是**可作答的题**（与屏幕上画的张数同一个数）。
   const questionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
-  const background = resolveWorksheetBackground(settings.backgroundTheme, settings.backgroundImageUrl);
-  const stageStyle = background
-    ? { width: STUDENT_STAGE_WIDTH, '--worksheet-background': `url(${worksheetAssetUrl(background)})` } as CSSProperties
-    : { width: STUDENT_STAGE_WIDTH };
+  const backgrounds = resolveWorksheetBackgroundSources(
+    settings.backgroundTheme,
+    settings.backgroundImageUrl,
+    settings.backgroundPortraitImageUrl,
+  );
+  const hasBackground = Boolean(backgrounds.landscape || backgrounds.portrait);
+  const landscapeBackground = backgrounds.landscape ?? backgrounds.portrait;
+  const stageStyle = {
+    width: orientation === 'portrait' ? STUDENT_STAGE_WIDTH : STUDENT_LANDSCAPE_WIDTH,
+    height: orientation === 'portrait' ? STUDENT_LANDSCAPE_WIDTH : STUDENT_STAGE_WIDTH,
+    ...(landscapeBackground
+      ? { '--worksheet-background-landscape': `url(${worksheetAssetUrl(landscapeBackground)})` }
+      : {}),
+    ...(backgrounds.portrait
+      ? { '--worksheet-background-portrait': `url(${worksheetAssetUrl(backgrounds.portrait)})` }
+      : {}),
+  } as CSSProperties;
 
   return (
     <>
@@ -85,14 +101,24 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
           <div>
             <h3 id="worksheet-preview-title">学生端预览</h3>
             <p>
-             按 iPad 宽度 {STUDENT_STAGE_WIDTH}px 渲染，共 {questionCount} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
+             按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
             </p>
+          </div>
+          <div className="worksheet-editor-preview-orientation" role="group" aria-label="预览方向">
+            <button type="button" className={orientation === 'portrait' ? 'is-selected' : ''} onClick={() => setOrientation('portrait')}>竖屏</button>
+            <button type="button" className={orientation === 'landscape' ? 'is-selected' : ''} onClick={() => setOrientation('landscape')}>横屏</button>
           </div>
           <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
         </header>
 
         <div className="worksheet-editor-preview-scroll">
-          <div className="worksheet-editor-preview-stage" style={stageStyle} data-has-background={background ? '1' : '0'}>
+          <div
+            className="worksheet-editor-preview-stage"
+            style={stageStyle}
+            data-has-background={hasBackground ? '1' : '0'}
+            data-has-portrait={backgrounds.portrait ? '1' : '0'}
+            data-preview-orientation={orientation}
+          >
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
             <WorksheetQuestionList
               groups={groups}

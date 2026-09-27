@@ -375,7 +375,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   //    奖励三项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
   assert.deepEqual(body.settings, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
-    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
   });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
@@ -434,7 +434,7 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   // ① 配过的档原样下发
   assert.deepEqual(await settingsOf(worksheet.id), {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
-    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
   });
 
   // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
@@ -474,7 +474,7 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   )).json() as { settings: Record<string, unknown> }).settings;
   assert.deepEqual(handEditedSettings, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
-    backgroundTheme: 'cloud-playground', backgroundImageUrl: null,
+    backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
   });
 });
 

@@ -2461,6 +2461,7 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   analysisAgentId: null,
   backgroundTheme: DEFAULT_WORKSHEET_BACKGROUND,
   backgroundImageUrl: null,
+  backgroundPortraitImageUrl: null,
 };
 
 /**
@@ -2590,6 +2591,9 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
         ? settings.backgroundImageUrl
         : null,
+      backgroundPortraitImageUrl: typeof settings.backgroundPortraitImageUrl === 'string' && settings.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
+        ? settings.backgroundPortraitImageUrl
+        : null,
     },
     content: { schemaVersion: typeof content.schemaVersion === 'number' ? content.schemaVersion : SCHEMA_VERSION, nodes },
   };
@@ -2641,6 +2645,9 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     backgroundTheme: normalizeWorksheetBackgroundTheme(settings.backgroundTheme),
     backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
       ? settings.backgroundImageUrl
+      : null,
+    backgroundPortraitImageUrl: typeof settings.backgroundPortraitImageUrl === 'string' && settings.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
+      ? settings.backgroundPortraitImageUrl
       : null,
   };
 }

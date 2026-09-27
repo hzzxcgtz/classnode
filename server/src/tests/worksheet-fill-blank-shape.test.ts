@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import {
   grade,
   validateQuestion,
+  wrongBlankAnswers,
   type QuestionNode,
   type QuestionPoints,
 } from '../services/worksheet-questions.js';
@@ -117,4 +118,32 @@ test('🔴 校验：**每空一份**的答案要被认出来（教师填了两�
   assert.deepEqual(validateQuestion(blank({ blanks: [{ answers: ['张三'] }] })), [], '老的多空');
   // 空 data 必须被拒（那条通用用例的口径不变）。
   assert.ok(validateQuestion(blank({})).length > 0);
+});
+
+// ── 答错的空：正确答案（★ 2026-09-27 教师定的「错答划掉 + 后面写正确答案」）──────────
+
+test('🔴 只发**答错**的那几个空，且只发第一条可接受答案', () => {
+  const node = blank({ answers: [['宋'], ['李白', '太白'], ['孤帆一片日边来']] });
+  const got = wrongBlankAnswers(node, { format: 'fill-multi/v1', texts: ['元', '李白', '不知道'] });
+  assert.deepEqual(got, { 0: '宋', 2: '孤帆一片日边来' }, '第 1 空答对了 ⇒ 不许出现在里面');
+});
+
+test('🔴 没设答案键的空：它算错，但**不许**发空串（界面会写出「正确答案：」这种半句话）', () => {
+  const node = blank({ answers: [[], ['水分']] });
+  const got = wrongBlankAnswers(node, { format: 'fill-multi/v1', texts: ['随便', '随便'] });
+  assert.deepEqual(Object.keys(got), ['1'], '第 0 空没有答案键 ⇒ 只划掉、不写正确答案');
+  assert.equal(got[1], '水分');
+});
+
+test('全对 ⇒ 一个空都不发（这就是「提交后只发答错的空」那道窄口）', () => {
+  const node = blank({ answers: [['宋']] });
+  assert.deepEqual(wrongBlankAnswers(node, { format: 'fill-multi/v1', texts: ['宋'] }), {});
+});
+
+test('🔴 老形状也读得出来：扁平的一份 ⇒ 只有第 0 个空有（第 1 个算错但没有答案）', () => {
+  const node = blank({ answers: ['氧气'] });
+  assert.deepEqual(
+    wrongBlankAnswers(node, { format: 'fill-multi/v1', texts: ['二氧化碳', '随便'] }),
+    { 0: '氧气' },
+  );
 });

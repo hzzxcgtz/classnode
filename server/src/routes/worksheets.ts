@@ -15,6 +15,7 @@ import { toAgentConfig } from '../services/agent-config.js';
 import {
   DEFAULT_POINTS,
   fillBlankWrongIndexes,
+  wrongBlankAnswers,
   flattenQuestions,
   grade,
   // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
@@ -1898,6 +1899,15 @@ router.get('/:id/answers', async (req, res) => {
       wrongBlankIndexes: row.gradeState && byId.has(row.questionId)
         ? fillBlankWrongIndexes(byId.get(row.questionId)!, row.value)
         : [],
+      // ★ 2026-09-27（教师定的）：答错的空要写得出正确答案。
+      // 🔴 **只在已判分（= 已提交）的行上发**，而且只发**答错的那几个空** ——
+      //    `stripAnswers` 刻意不下发整张答案键，这里是它唯一的窄口。
+      // ⚠️ **名字里不许出现 `answers` 这个子串**：`worksheet-grade.test.ts` 那条红线是
+      //    对**整串**做 `!raw.includes('answers')`（刻意钝的兵器，不区分键名与恰好出现）。
+      //    叫 `blankAnswers` 就会在那把钝刀下变成一次假警报 —— 所以叫 `correctBlanks`。
+      correctBlanks: row.gradeState && byId.has(row.questionId)
+        ? wrongBlankAnswers(byId.get(row.questionId)!, row.value)
+        : {},
     })) });
   } catch (error) {
     console.error('[worksheets] 读取学生作答失败:', error);
@@ -2169,6 +2179,8 @@ router.post('/:id/answers/submit', async (req, res) => {
       gradeState,
       score,
       wrongBlankIndexes: verdict ? fillBlankWrongIndexes(node, answer.value) : [],
+      // 同上：只在**判过分**的这次提交响应里发，且只发答错的空。
+      correctBlanks: verdict ? wrongBlankAnswers(node, answer.value) : {},
     });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);

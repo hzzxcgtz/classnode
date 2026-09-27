@@ -837,6 +837,29 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
 }
 
 /** 学生端批改反馈使用：返回多空填空中答错的空（0 起）。不适用的题型返回空数组。 */
+/**
+ * ★ 2026-09-27（教师定的）：**答错的空**要能看到正确答案。
+ *
+ * 教师原话：「答错的用其它颜色表示，可以在原文字上加删除线，并在后面写上正确答案。」
+ *
+ * 🔴 **只发答错的那几个空。** `stripAnswers` 刻意不下发整张答案键（`routes/worksheets.ts`
+ *    返回前剥掉），所以学生能看到的答案必须**刚好是他答错的那几格**、而且**只在他提交之后**
+ *    —— 两个调用点都由 `gradeState` / `submittedAt` 把着门，别在别处调它。
+ *    多一格就是泄露；少一格学生的「正确答案」就空着。
+ * 🔴 **没设答案键的空不发**（`acceptable.length === 0`）：那种空在 `fillBlankWrongIndexes`
+ *    里**也算错**，但它没有正确答案可写 —— 发了会得到一个空串，界面会写出「正确答案：」这种半句话。
+ * ⚠️ **只发第一条**：其余是判分接受的别名（`宋朝` / `宋代`），一屏写不下。
+ *    将来要在界面上展示全部别名再扩这个形状（现在是 `string`，扩成 `string[]` 即可）。
+ */
+export function wrongBlankAnswers(node: QuestionNode, value: unknown): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const index of fillBlankWrongIndexes(node, value)) {
+    const acceptable = acceptableAnswersFor(node.data, index);
+    if (acceptable.length > 0) out[index] = acceptable[0];
+  }
+  return out;
+}
+
 export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): number[] {
   if (node.type !== 'fill-blank' && node.type !== 'choice-blank') return [];
   const texts = readField(value, 'texts');

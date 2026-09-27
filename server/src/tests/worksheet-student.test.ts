@@ -683,10 +683,15 @@ test('判分：autoGrade 关 ⇒ isCorrect / gradeState / score 三个字段同�
   const body = await res.json() as Record<string, unknown>;
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.equal(body.isCorrect, null, '关掉自动判分是「不判」，不是「判错」');
+  // ☆ 2026-09-27 又有两个（**这次是有意识地改，不是红线松了**）：
+  //   · `wrongBlankIndexes` —— 逐空对错，Codex 那批引进的，守卫当时没同步（红了几天）；
+  //   · `correctBlanks` —— **答错的那几个空的正确答案**。教师定的：「答错的用其它颜色、
+  //     加删除线、后面写上正确答案」。它是答案数据 ⇒ 只在**已判分（= 已提交）**的行上非空，
+  //     未提交一定是 `{}`（见本文件里守这一条的用例）。键名级红线 `ANSWER_KEYS` 照样全扫。
   // 🔴 `isCorrect` **必须在**这个集合里（协议字段，只增不改），另外两个是 B1 新增的。
   assert.deepEqual(
     Object.keys(body).sort(),
-    ['gradeState', 'isCorrect', 'score'],
+        ['correctBlanks', 'gradeState', 'isCorrect', 'score', 'wrongBlankIndexes'],
     `返回体只许有这三个字段：${JSON.stringify(body)}`,
   );
   assert.equal(body.gradeState, null, '不判分 ⇒ 没有三态（**不是** incorrect）');
@@ -766,7 +771,7 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   assert.equal(shortAnswer.isCorrect, null, '主观题不参与判分，返回 null');
   assert.equal(shortAnswer.gradeState, null, '三态也一起是 null');
   assert.equal(shortAnswer.score, null, '得分也一起是 null（**不是 0**：0 是「判错」那个数）');
-  assert.deepEqual(Object.keys(shortAnswer).sort(), ['gradeState', 'isCorrect', 'score']);
+  assert.deepEqual(Object.keys(shortAnswer).sort(), ['correctBlanks', 'gradeState', 'isCorrect', 'score', 'wrongBlankIndexes']);
 
   const rows = await db.prisma.worksheetAnswer.findMany({ orderBy: { questionId: 'asc' } });
   assert.deepEqual(
@@ -1215,7 +1220,11 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   for (const row of body.rows) {
     assert.deepEqual(
       Object.keys(row).sort(),
-      ['gradeState', 'isCorrect', 'questionId', 'score', 'status', 'submittedAt', 'value'],
+      // ☆ 2026-09-27：`wrongBlankIndexes`（Codex 那批）与 `correctBlanks`（教师定的窄口）也在这里。
+      // ⚠️ 与上面那条键名级红线**不冲突**：红线扫的是 `ANSWER_KEYS` 那些**键名**（`answers`/`correctOrder`…），
+      //   而 `correctBlanks` 是另一个键名，且只承载**答错的那几个空**的答案。
+      ['correctBlanks', 'gradeState', 'isCorrect', 'questionId', 'score', 'status',
+       'submittedAt', 'value', 'wrongBlankIndexes'],
       `每一行只许有这几个键（多一个就可能是捎带出来的题目数据）：${raw}`,
     );
   }

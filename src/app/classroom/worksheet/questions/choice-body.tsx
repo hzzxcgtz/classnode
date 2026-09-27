@@ -28,7 +28,7 @@ export interface ChoiceBodyProps {
 
 export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps) {
   const options = node.type === 'true-false' ? TRUE_FALSE_OPTIONS : readOptions(node);
-  const multiple = node.type === 'multi-choice';
+  const multiple = node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
 
   if (options.length === 0) {
     // 单选 / 多选还没有选项（教师在编辑期删光了）。说一句，而不是画一个空的作答区

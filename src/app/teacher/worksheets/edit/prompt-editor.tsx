@@ -12,6 +12,7 @@ import {
   rangeColor,
   rangeHasKey,
   remapRuns,
+  removePromptRange,
   setStyleOnRange,
   type PromptBooleanKey,
 } from '@/lib/worksheet-prompt-marks';
@@ -22,7 +23,7 @@ import {
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
 import { hasPromptBlankSlots, readBlankAnswers } from './worksheet-editor-core';
-import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
+import { caretOffset, nodeTextRange, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
  * 题干的**所见即所得**编辑器（★ 2026-09-26，教师裁定 ①）。
@@ -115,10 +116,8 @@ function blankIdSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-/** 插入到题干里的那段占位（★ 2026-09-26「填空区域」按钮）。
- *  ⚠️ 改它的长度就改了那个区域在题干里有多宽 —— 它**不是**一个结构化标记，
- *  只是教师眼睛看得见的一串下划线（理由见 `insertBlank` 的注释）。 */
-const FILL_BLANK_TEXT = '________';
+/** 教师端可读的原子填空占位符；学生端仍根据 run 的 blank 标识渲染真正输入区。 */
+const FILL_BLANK_TEXT = '{填空域}';
 
 const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
@@ -274,8 +273,67 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     const nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
     // 文字变了 ⇒ 之前记下的那段选区作废（见 `pendingRangeRef`）。
     pendingRangeRef.current = null;
-    onPromptChange(nextText, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
+    const nextData: Record<string, unknown> = {
+      promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns,
+    };
+    if (supportsBlankSlots) {
+      const answers = readBlankAnswers(node);
+      const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
+      nextData.answers = blankRuns(nextRuns).map(run => byId.get(run.blank) ?? []);
+      nextData.blanks = undefined;
+    }
+    onPromptChange(nextText, nextData);
     refreshToolbar();
+  };
+
+  /** 删除一段题干；若命中填空占位符，答案按稳定 blank id 一起重排。 */
+  const deletePromptRange = (from: number, to: number) => {
+    const el = editableRef.current;
+    if (!el) return;
+    const removed = removePromptRange(runsRef.current, node.prompt, from, to);
+    if (removed.text === node.prompt) return;
+    const answers = readBlankAnswers(node);
+    const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
+    onPromptChange(removed.text, {
+      promptRuns: isPlainRuns(removed.runs) ? undefined : removed.runs,
+      ...(supportsBlankSlots ? {
+        answers: blankRuns(removed.runs).map(run => byId.get(run.blank) ?? []),
+        blanks: undefined,
+      } : {}),
+    });
+    renderRunsInto(el, removed.text, removed.runs);
+    el.focus();
+    placeSelection(el, from, from);
+    pendingRangeRef.current = null;
+    refreshToolbar();
+  };
+
+  /**
+   * 填空占位符是原子对象：光标不能进入；与选区相交，或光标紧邻它时，删除整块。
+   */
+  const handleAtomicBlankDelete = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!supportsBlankSlots || (event.key !== 'Backspace' && event.key !== 'Delete')) return;
+    const el = editableRef.current;
+    if (!el) return;
+    const blanks = blankRuns(runsRef.current);
+    const selected = selectedRange(el);
+    if (selected) {
+      const hit = blanks.filter(run => run.end > selected.from && run.start < selected.to);
+      if (hit.length === 0) return;
+      event.preventDefault();
+      deletePromptRange(Math.min(selected.from, hit[0].start), Math.max(selected.to, hit[hit.length - 1].end));
+      return;
+    }
+    const caret = caretOffset(el);
+    if (caret === null) return;
+    const hit = blanks.find(run => (
+      (event.key === 'Backspace' && caret === run.end)
+      || (event.key === 'Delete' && caret === run.start)
+      || (run.start < caret && caret < run.end)
+    ));
+    if (!hit) return;
+    event.preventDefault();
+    deletePromptRange(hit.start, hit.end);
   };
 
   /**
@@ -314,7 +372,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
   };
 
   /**
-   * 在**光标处**插入一个填空区域。普通填空与选择填空都依赖同一份结构化空标记：
+   * 在**光标处**插入一个填空域。普通填空与选择填空都依赖同一份结构化空标记：
    * 前者让学生输入文字，后者把它作为词块的拖放目标。
    * ⚠️ 名字带 `AtCaret` 是**故意的**：纯逻辑里那个 `insertBlank(runs, …)` 才是真正
    * 干活的那个，而局部这个名字一度把它遮住（`insertBlank(...)` 解析到本地这个零参函数
@@ -323,12 +381,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
    * ★ 2026-09-26（同一天晚些时候）：**它已经不再只是「视觉占位」了。**
    * 这个按钮经纯逻辑那一层的 `insertBlank` 插入，会给那一段打上**空的标识**
    * ⇒ 学生端**就在那里**画一个输入框（`PromptText` 的 `blanks`）。教师原话
-   * 「学生……在填空区域输入答案」至此落地。
-   * ⚠️ 那段文字仍然是一串下划线（占位文案），但它现在是**结构性**的 ——
-   * 教师把它当普通文字删掉/改写都会让那个空消失（退回桥那一支）。
-   * ⚠️ 插入时**还要在插入位置上同步 splice `data.answers`**（标识不是答案序号，
-   * 答案序号是「从左到右排第几」）—— 那件事属于第 4 步（编辑器的答案那一栏），
-   * 目前**还没做**，已记在 ledger 里。
+   * 「学生……在填空域输入答案」至此落地。
+   * 占位文案显示为紧凑的 `{填空域}`，并由 contenteditable=false 与 keydown 接管共同保证
+   * 光标不能进入、一次删除整块。插入和删除时答案按稳定 blank id 同步重排。
    */
   const insertBlankAtCaret = () => {
     const el = editableRef.current;
@@ -338,16 +393,20 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     const from = range ? range.from : (caretOffset(el) ?? text.length);
     const to = range ? range.to : from;
     // ★ 走纯逻辑那一层（它有用例）：插一段占位**并把它标成空**。
-    // 🔴 这个按钮上一版**只插了一串下划线、没标空**（那时纯逻辑里还没有 `insertBlank`）
-    // —— 于是「填空区域」插进去的其实只是普通文字，学生端根本不会在那儿画输入框。
+    // 🔴 这个按钮早期版本只插入普通占位文字、没标空（那时纯逻辑里还没有 `insertBlank`）
+    // —— 于是「填空域」插进去的其实只是普通文字，学生端根本不会在那儿画输入框。
     // ⚠️ 标识由**这一侧**造（每题唯一，与 `optionKey` / `q_…` 同源）：纯逻辑那一层
     // 不许有随机性，否则它的用例就不确定了。
     // 🔴 **答案那一栏要跟着在同一个位置上 splice。**
     // 空的标识只回答「这几条是不是同一个空」，**不是答案序号** —— 答案序号是
     // 「从左到右排第几」（服务端按 `texts[i]` 取值）。不 splice 的话，在中间插一个空
     // 会让**后面所有答案整体错位一格**：教师看着答案还在，而学生答对的被判错。
-    const before = blankRuns(runsRef.current).filter((run) => run.start < from).length;
-    const current = readBlankAnswers(node);
+    const existingBlanks = blankRuns(runsRef.current);
+    const before = existingBlanks.filter((run) => run.start < from).length;
+    // `readBlankAnswers` 为兼容老的单空数据，在「题干还没有空」时也会回 `[[]]`；
+    // 这里的数量必须只听题干，先按已有占位符裁齐，再插入新的一格。
+    const storedAnswers = readBlankAnswers(node);
+    const current = existingBlanks.map((_, index) => storedAnswers[index] ?? []);
     const answers = [...current.slice(0, before), [], ...current.slice(before)];
     const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, `blank_${blankIdSuffix()}`);
     if (inserted.text === text) return;
@@ -358,7 +417,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
       blanks: undefined,
     });
     renderRunsInto(el, inserted.text, inserted.runs);
-    // 光标落在**插入的那一段之后**（接着打字不该把这串下划线拆开）。
+    // 光标落在**插入的那一段之后**（接着打字不该进入原子占位符内部）。
     const after = from + FILL_BLANK_TEXT.length;
     el.focus();
     placeSelection(el, after, after);
@@ -456,15 +515,14 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           {supportsBlankSlots && (
             <button
               type="button"
-              title="在光标处插入一个填空区域"
-              aria-label="插入填空区域"
+              title="在光标处插入一个填空域"
+              aria-label="插入填空域"
               onMouseDown={(event) => {
                 event.preventDefault();
                 insertBlankAtCaret();
               }}
             >
-              <span className="worksheet-editor-blank-glyph" aria-hidden="true">____</span>
-              <span>填空域</span>
+              <span className="worksheet-editor-blank-glyph" aria-hidden="true">{'{填空域}'}</span>
             </button>
           )}
           <label className="worksheet-editor-image-upload">
@@ -492,7 +550,22 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           aria-multiline="true"
           aria-label="题干"
           data-empty={node.prompt.trim() ? undefined : '1'}
-          data-placeholder={supportsBlankSlots ? '例如：植物进行光合作用需要____和____。' : '例如：光合作用需要哪些条件？'}
+          data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
+          onKeyDown={handleAtomicBlankDelete}
+          onMouseDown={(event) => {
+            const el = editableRef.current;
+            const target = event.target instanceof Element
+              ? event.target.closest<HTMLElement>('[data-worksheet-blank]')
+              : null;
+            if (!el || !target) return;
+            const range = nodeTextRange(el, target);
+            if (!range) return;
+            event.preventDefault();
+            el.focus();
+            placeSelection(el, range.from, range.to);
+            pendingRangeRef.current = range;
+            refreshToolbar();
+          }}
           onInput={handleInput}
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={(event) => {

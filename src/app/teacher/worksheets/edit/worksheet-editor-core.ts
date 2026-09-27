@@ -49,6 +49,7 @@ import {
   normalizeRewardStyle,
 } from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
+import { blankCount, readPromptRuns } from '../../../../lib/worksheet-prompt-marks.ts';
 
 export { optionKey, POINTS_FULL_MIN, POINTS_MAX, QUESTION_TYPE_OPTIONS, readOptions, TRUE_FALSE_OPTIONS };
 export type { ChoiceOption, QuestionPointsDraft, QuestionType };
@@ -395,6 +396,7 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     question.data = {
       options: [{ key: optionKey(0), text: '' }, { key: optionKey(1), text: '' }],
       correctKeys: [],
+      choiceMode: 'single',
     };
   } else if (type === 'true-false') {
     // 选项**固定为对/错**（不存 `options`，规格 §12），所以这里只有答案键，且它是空的。
@@ -413,7 +415,7 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   } else if (type === 'fill-blank') {
     // ⚠️ **单空形状，不是 `blanks`**（规格 §12：单空仍是 `{ answers }`，不动）。
     // 编辑体把它画成**一个空**，教师点「＋ 增加一个空」时才升级成多空。
-    question.data = { answers: [] };
+    question.data = { answers: [], fillScoring: 'per-blank' };
   } else if (type === 'order') {
     question.data = {
       // ⚠️ 占位条目的**文字刻意不是「一、二」的升序**：`items` 是**学生看到的顺序**，
@@ -1242,7 +1244,11 @@ export function scoreSummary(
   let maxScore = 0;
   for (const { node } of items) {
     if (!gradesOnSubmit(node)) continue;
-    maxScore += displayPoints(node, fallback).full;
+    const full = displayPoints(node, fallback).full;
+    const slots = (node.type === 'fill-blank' || node.type === 'choice-blank') && node.data.fillScoring === 'per-blank'
+      ? blankCount(readPromptRuns(node.data.promptRuns, node.prompt))
+      : 1;
+    maxScore += full * slots;
   }
   return { questions: items.length, maxScore };
 }

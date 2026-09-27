@@ -36,10 +36,9 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // ★ M4a：6 个题型的编辑体（单选复用 `choice-options` 那一个受控组件）。
 // 组件与内核分家的理由见各文件头：内核里全是可以 `node --test` 的纯函数，
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
-import { ChoiceOptionsEditor } from './bodies/choice-options';
 import { TrueFalseBody } from './bodies/true-false-body';
 import { MultiChoiceBody } from './bodies/multi-choice-body';
-import { FillBlanksBody } from './bodies/fill-blanks-body';
+import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
 import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
@@ -49,23 +48,28 @@ import { CategorizeBody } from './bodies/categorize-body';
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import { blankCount } from '@/lib/worksheet-prompt-marks';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
-    title: '选项与正确答案',
-    description: '编辑学生看到的选项；开启自动评分后，需要指定一个正确答案。',
+    title: '选择题设置',
+    description: '先选择单选或多选，再编辑选项和正确答案。',
   },
   'true-false': {
     title: '判断答案',
     description: '学生从“正确”和“错误”中选择；开启自动评分后，需要指定标准答案。',
   },
   'multi-choice': {
-    title: '选项与正确答案',
-    description: '可设置多个正确答案，并决定漏选时是否给部分分。',
+    title: '选择题设置',
+    description: '这是一道旧版多选题，可继续按选择题方式编辑。',
   },
   'fill-blank': {
-    title: '填空与参考答案',
-    description: '为每个空设置答案；学生的答案将按这些内容自动判断。',
+    title: '标准答案',
+    description: '答案框随题干中的填空域自动生成。',
+  },
+  'choice-blank': {
+    title: '填空答案',
+    description: '开启自动评分后，为题干中的每个空指定答案。',
   },
   order: {
     title: '排序条目与正确顺序',
@@ -168,7 +172,11 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
   onRemove: () => void;
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
-  const typeLabel = typeOption?.label ?? node.type;
+  const typeLabel = node.type === 'single-choice' || node.type === 'multi-choice'
+    ? '选择题'
+    : node.type === 'fill-blank' || node.type === 'choice-blank'
+      ? '填空题'
+      : typeOption?.label ?? node.type;
   const promptRuns = readPromptRunsFor(node);
   const promptImage = readPromptImage(node);
 
@@ -209,8 +217,11 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
     description: '设置学生作答时需要看到和填写的内容。',
   };
   const shownPoints = displayPoints(node, inheritedPoints);
+  const maximumPoints = (node.type === 'fill-blank' || node.type === 'choice-blank') && node.data.fillScoring === 'per-blank'
+    ? shownPoints.full * blankCount(promptRuns)
+    : shownPoints.full;
   const gradingStatus = isGradedQuestionType(node.type)
-    ? (gradedOn ? `自动评分 · 最高 ${shownPoints.full} 分` : '仅统计作答')
+    ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
     : '教师人工查看';
 
   return (
@@ -347,6 +358,45 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         />
       </section>
 
+      {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
+        <section className="worksheet-editor-question-section is-choice-blank">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3>每个空的作答方式</h3>
+              <p>填空域会自动同步，可分别设置手工填写、右侧选词或下方选词。</p>
+            </div>
+            <span>学生可见</span>
+          </div>
+          <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
+        </section>
+      )}
+
+      {isGradedQuestionType(node.type) && (
+        <section className="worksheet-editor-question-section is-mode">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3>评分方式</h3>
+              <p>新题默认仅统计作答；需要系统判对错时再开启。</p>
+            </div>
+          </div>
+          <label className="worksheet-editor-autograde">
+            <span className="worksheet-editor-autograde-copy">
+              <strong>{gradedOn ? '自动评分' : '仅统计作答'}</strong>
+              <em>{gradedOn ? '系统会按标准答案判断，下面继续设置答案和得分。' : '不显示对错、不计分，原有答案设置会保留。'}</em>
+            </span>
+            <span className="worksheet-editor-autograde-control">
+              <input
+                type="checkbox"
+                checked={node.autoGrade !== false}
+                onChange={event => onAutoGradeChange(event.target.checked)}
+                aria-label="允许自动评分"
+              />
+              <span aria-hidden="true" />
+            </span>
+          </label>
+        </section>
+      )}
+
       <section className="worksheet-editor-question-section is-answer">
         <div className="worksheet-editor-section-head">
           <div>
@@ -359,12 +409,12 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
 
         {/* 题型 → 编辑体。这里保持与学生端题型数据结构一一对应。 */}
-        {node.type === 'single-choice' && <SingleChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+        {node.type === 'single-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
         {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {/* ★ 2026-09-26：**选择填空**复用同一个作答体（题干里的空 + 每空一份答案都与填空
-            逐字同形），它自己多画一栏「待选词」（见 `FillBlanksBody` 里那一段）。
+        {/* ★ 2026-09-26：**选择填空**复用同一个答案体（题干里的空 + 每空一份答案都与填空
+            逐字同形），学生可见的待选词设置已经固定在题干编辑之后。
             🔴 这里**必须显式写出来**：本页是按 `node.type === '…'` 逐个分派的（不是
             `Record`），少写一支的后果是**这个题型在编辑页什么都不渲染** ——
             教师建得出来、却配不了，而屏幕上只是一片空白。 */}
@@ -386,11 +436,11 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         )}
       </section>
 
-      <section className="worksheet-editor-question-section is-grading">
+      {(gradedOn || !isGradedQuestionType(node.type)) && <section className="worksheet-editor-question-section is-grading">
         <div className="worksheet-editor-section-head">
           <div>
-            <h3>评分设置</h3>
-            <p>{isGradedQuestionType(node.type) ? '决定这道题是否自动判断，以及答对后获得多少分。' : '这类题不自动判断答案，教师可在课堂中查看学生的作答内容。'}</p>
+            <h3>{isGradedQuestionType(node.type) ? '得分规则' : '查看方式'}</h3>
+            <p>{isGradedQuestionType(node.type) ? '设置全部答对与部分答对时获得的奖励。' : '这类题不自动判断答案，由教师查看学生提交的内容。'}</p>
           </div>
           <span className={gradedOn ? 'is-active' : ''}>{gradingStatus}</span>
         </div>
@@ -403,31 +453,10 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         ⚠️ 区分两种情况，话不一样：题型**本来就不判分**（问答 / 绘图）时什么都不说，
         因为那是题型的性质、教师改不了；只有「能判分却没设答案」才需要一句话告诉他为什么。
       */}
-      {/*
-        ★ 2026-09-26（教师裁定）：**「允许自动评分」这个开关 + 由它决定显示什么**。
-        开着（缺省）⇒ 答案、全对分、部分给分都要设；关掉 ⇒ 三样一起隐藏，这道题不判分。
-        ⚠️ 开关**只对「本来就能判分」的题型画**（问答 / 绘图 / 任务没有它 ——
-        它们本来就不判分，给一个开了也没用的开关是骗人）。
-      */}
-      {isGradedQuestionType(node.type) && (
-        <label className="worksheet-editor-autograde">
-          <span className="worksheet-editor-autograde-copy">
-            <strong>自动评分</strong>
-            <em>{gradedOn ? '已开启。系统会按标准答案判断，并使用下方得分规则。' : '已关闭。这道题只统计是否作答，不显示对错，也不计入得分。'}</em>
-          </span>
-          <span className="worksheet-editor-autograde-control">
-            <input
-              type="checkbox"
-              checked={node.autoGrade !== false}
-              onChange={event => onAutoGradeChange(event.target.checked)}
-              aria-label="允许自动评分"
-            />
-            <span aria-hidden="true" />
-          </span>
-        </label>
+      {gradesOnSubmit(node) && (node.type === 'fill-blank' || node.type === 'choice-blank') && (
+        <FillScoringRow node={node} inheritedPoints={inheritedPoints} pointsUnit={pointsUnit} onDataChange={onDataChange} onPointsChange={onPointsChange} />
       )}
-
-      {gradesOnSubmit(node) && (
+      {gradesOnSubmit(node) && node.type !== 'fill-blank' && node.type !== 'choice-blank' && (
         <PointsRow
           heading={heading}
           node={node}
@@ -445,16 +474,11 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         部分给分档」。半填（只填了一个框）时它回 `null`（说不准）⇒ 那时**不显示**这一行：
         教师还在打字的中间态，弹出一行要他选容错档是打断。
       */}
-      {gradesOnSubmit(node) && canGivePartial(node.type)
+      {gradesOnSubmit(node) && node.type !== 'fill-blank' && node.type !== 'choice-blank' && canGivePartial(node.type)
         && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
         <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
       )}
 
-      {!gradesOnSubmit(node) && isGradedQuestionType(node.type) && (
-        <p className="worksheet-editor-ungraded-hint">
-          当前为<strong>仅统计作答</strong>。原有正确答案和分值会保留，重新开启自动评分即可恢复。
-        </p>
-      )}
         {!isGradedQuestionType(node.type) && (
           <div className="worksheet-editor-manual-grade">
             <span aria-hidden="true">✓</span>
@@ -464,7 +488,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             </div>
           </div>
         )}
-      </section>
+      </section>}
       </div>)}
 
       {/*
@@ -498,6 +522,35 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         </div>
       )}
     </section>
+  );
+}
+
+function FillScoringRow({ node, inheritedPoints, pointsUnit, onDataChange, onPointsChange }: {
+  node: WorksheetQuestionNode;
+  inheritedPoints: { full: number; half: number };
+  pointsUnit: string;
+  onDataChange: (patch: Record<string, unknown>) => void;
+  onPointsChange: (points: QuestionPointsDraft | undefined) => void;
+}) {
+  const perBlank = node.data.fillScoring === 'per-blank';
+  const value = node.points?.full ?? inheritedPoints.full;
+  const setValue = (raw: string) => {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > POINTS_MAX) return;
+    onPointsChange({ full: parsed, half: 0 });
+  };
+  return (
+    <div className="worksheet-editor-points worksheet-editor-fill-scoring">
+      <div className="worksheet-editor-points-head"><div><strong>给分方法</strong><span>按空给分为默认设置。</span></div></div>
+      <div className="worksheet-editor-scoring-options">
+        <label className={perBlank ? 'is-selected' : ''}><input type="radio" name={`fill-score-${node.id}`} checked={perBlank} onChange={() => onDataChange({ fillScoring: 'per-blank' })} /><span><strong>按空给分</strong><em>每答对一空就得分</em></span></label>
+        <label className={!perBlank ? 'is-selected' : ''}><input type="radio" name={`fill-score-${node.id}`} checked={!perBlank} onChange={() => onDataChange({ fillScoring: 'whole' })} /><span><strong>整题给分</strong><em>所有空都答对才得分</em></span></label>
+      </div>
+      <label className="worksheet-editor-points-field worksheet-editor-fill-points-field">
+        <span><strong>{perBlank ? '每空得分' : '整题总分'}</strong><em>{perBlank ? '答对几个空，就累计几份奖励' : '全部答对时一次获得'}</em></span>
+        <span className="worksheet-editor-points-control"><input className="input" type="number" min={1} max={POINTS_MAX} value={value} onChange={event => setValue(event.target.value)} /><b>{pointsUnit}</b></span>
+      </label>
+    </div>
   );
 }
 
@@ -540,6 +593,9 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
   const signature = pointsSignature(node);
+  const isChoice = node.type === 'single-choice' || node.type === 'multi-choice';
+  const multipleChoice = node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
+  const showHalf = !isChoice || (multipleChoice && node.data.partialCredit === 'allow-missing');
   const shown = rejectedInput && rejectedInput.signature === signature ? rejectedInput : null;
 
   const fullText = shown?.full !== undefined ? shown.full : pointText(node.points?.full);
@@ -595,7 +651,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
         </div>
         <span>最高 {fullText || inheritedPoints.full} {pointsUnit}</span>
       </div>
-      <div className="worksheet-editor-points-grid">
+      <div className={`worksheet-editor-points-grid${showHalf ? '' : ' is-single'}`}>
         <label className="worksheet-editor-points-field">
           <span>
             <strong>完全正确</strong>
@@ -609,12 +665,20 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
               value={fullText}
               placeholder={String(inheritedPoints.full)}
               aria-label={`${heading} 全对得分`}
-              onChange={event => commit('full', event.target.value)}
+            onChange={event => {
+              if (!showHalf) {
+                const parsed = parsePointInput(event.target.value, 'full');
+                if (parsed.kind === 'value') onPointsChange({ full: parsed.value, half: 0 });
+                if (parsed.kind === 'empty') onPointsChange(undefined);
+                return;
+              }
+              commit('full', event.target.value);
+            }}
             />
             <b>{pointsUnit}</b>
           </span>
         </label>
-        <label className="worksheet-editor-points-field">
+        {showHalf && <label className="worksheet-editor-points-field">
           <span>
             <strong>部分正确</strong>
             <em>{canGivePartial(node.type) ? '达到下方条件时获得' : '该题型通常不使用部分分'}</em>
@@ -631,7 +695,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
             />
             <b>{pointsUnit}</b>
           </span>
-        </label>
+        </label>}
       </div>
       {/*
         ★ 2026-09-25（教师问「留空 = 跟随学习单（1 / 0）这个什么意思」⇒ 那句话没写好）：
@@ -770,21 +834,4 @@ function InputModeRow({ node, onInputModeChange }: {
       </p>
     </>
   );
-}
-
-/**
- * 单选题：选项列表（增删改）+ 正确答案单选。
- *
- * ★ M4a：选项编辑的**逻辑与实现**搬进了 `bodies/choice-options.tsx`（单选/多选共用一份，
- * 用 `multiple` 开关区分），这里只剩「按单选口径调它」这一层。
- * 那条「`options` 与 `correctKeys` 必须**一起**提交」的纪律也跟着搬了过去 —— 它现在只有
- * 一处需要遵守（那正是拆出这个组件的目的：多选直接用 `SingleChoiceBody` 的话，
- * `writeOptions` 结尾的 `slice(0, 1)` 会把第 2 个正确答案静默丢掉）。
- */
-function SingleChoiceBody({ node, onDataChange, showAnswer = true }: {
-  node: WorksheetQuestionNode;
-  onDataChange: (patch: Record<string, unknown>) => void;
-  showAnswer?: boolean;
-}) {
-  return <ChoiceOptionsEditor node={node} multiple={false} onDataChange={onDataChange} showAnswer={showAnswer} />;
 }

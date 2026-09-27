@@ -104,6 +104,26 @@ test('多选的容错档：漏选不超过 N 个（现有那个「漏选算不�
   assert.equal(grade({ ...base, partialTolerance: 1 }, { format: 'choice/v1', selected: ['A', 'B'] }, DEFAULT_POINTS)?.state, 'partial');
 });
 
+test('合并后的选择题：single-choice 节点切到多选后按多选规则判分', () => {
+  const node: QuestionNode = {
+    id: 'q_choice', type: 'single-choice', prompt: '选出植物需要的条件', inputMode: 'keyboard',
+    data: { choiceMode: 'multiple', options: [{ key: 'A' }, { key: 'B' }, { key: 'C' }], correctKeys: ['A', 'B'], partialCredit: 'allow-missing' },
+    children: [],
+  };
+  assert.deepEqual(grade(node, { format: 'choice/v1', selected: ['A'] }, { full: 3, half: 1 }), { state: 'partial', score: 1 });
+});
+
+test('合并后的填空题：按空给分累计，整题给分必须全部答对', () => {
+  const base: QuestionNode = {
+    id: 'q_fill', type: 'fill-blank', prompt: '填空', inputMode: 'keyboard',
+    data: { answers: [['阳光'], ['水分'], ['空气']], fillScoring: 'per-blank' }, children: [],
+  };
+  const value = { format: 'fill-multi/v1', texts: ['阳光', '错', '空气'] };
+  assert.deepEqual(grade(base, value, { full: 2, half: 0 }), { state: 'partial', score: 4 });
+  assert.deepEqual(grade({ ...base, data: { ...base.data, fillScoring: 'whole' } }, value, { full: 5, half: 3 }), { state: 'partial', score: 0 });
+  assert.deepEqual(grade({ ...base, data: { ...base.data, fillScoring: 'whole' } }, { format: 'fill-multi/v1', texts: ['阳光', '水分', '空气'] }, { full: 5, half: 3 }), { state: 'correct', score: 5 });
+});
+
 /* ── 校验器：关掉开关 ⇒ 不再要求答案 ─────────────────────────────────── */
 
 test('🔴 关掉自动评分 ⇒ 答案**不再必填**（五种题型一起看）', () => {

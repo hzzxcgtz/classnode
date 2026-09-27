@@ -196,20 +196,26 @@
 }
 
 .questionHead {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, auto);
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.questionIdentity {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 /* ★ 2026-09-25（教师裁定）：**题号徽章去掉了**，题型文字换成一个象形图标。
    🔴 同时去掉的是那个 24×24 的固定盒子：迁移之后题号一律是 `任务一 · 1`（6 个字符），
    塞进 24px 里中文会逐字断行、撑破盒子并压到同一行的状态字上 —— 而老 iPad 上尤其明显。
-   改图标顺带解决了它：图标是定宽的，题号根本不再出现在这一行。
-   ⚠️ `flex: 1 1 auto` 是**从 `.questionType` 挪过来的**：这一行靠它把状态与工具推到右侧。 */
+   改图标顺带解决了它：图标是定宽的，题号根本不再出现在这一行。 */
 .questionIcon {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   color: var(--ws-accent);
@@ -284,9 +290,9 @@
 .questionReward {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 5px;
   vertical-align: middle;
-  font-size: .82rem;
+  font-size: 1rem;
   font-weight: 750;
   line-height: 1;
   color: currentColor;
@@ -296,7 +302,26 @@
 .questionRewardWrong { color: #991b1b; font-weight: 700; }
 .rewardCount { font-weight: 800; font-variant-numeric: tabular-nums; }
 
-.feedbackReward { display: inline-flex; align-items: center; gap: 4px; min-height: 25px; }
+.feedbackReward {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  justify-content: start;
+  column-gap: 8px;
+  min-width: 116px;
+  padding-left: 14px;
+  border-left: 1px solid currentColor;
+  border-left-color: rgba(22, 101, 52, .2);
+}
+
+.feedbackRewardLabel {
+  grid-column: 1 / -1;
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: .82;
+}
 
 /* 新答对才播放一次：从题目内容区弹出，短暂停留后收进右上角。只动 transform / opacity。 */
 @keyframes rewardCollect {
@@ -608,9 +633,40 @@
     border-radius: 16px;
   }
 
+  .questionHead {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .questionFeedback {
+    justify-self: stretch;
+    min-width: 0;
+    max-width: none;
+  }
+
   .options {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+@media (max-width: 390px) {
+  .questionFeedback {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .feedbackReward {
+    grid-template-columns: auto auto;
+    width: fit-content;
+    min-width: 0;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid rgba(22, 101, 52, .2);
+    border-left: 0;
+  }
+
+  .questionFeedback[data-result='partial'] .feedbackReward { border-top-color: rgba(146, 64, 14, .2); }
+  .questionFeedback[data-result='incorrect'] .feedbackReward { border-top-color: rgba(153, 27, 27, .2); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -674,9 +730,26 @@
 .zoneGrid { gap: 22px; }
 .zone { border-radius: 8px; background: #f8fbff; }
 
-.questionFeedback { margin-left: auto; padding: 7px 10px; border-left: 3px solid #16a34a; background: #f0fdf4; display: flex; flex-direction: column; gap: 2px; font-size: .76rem; color: #166534; }
+.questionFeedback {
+  justify-self: end;
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 270px;
+  max-width: min(100%, 440px);
+  padding: 10px 12px;
+  border-left: 3px solid #16a34a;
+  background: #f0fdf4;
+  font-size: .8rem;
+  color: #166534;
+}
+.feedbackSummary { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.45; }
+.feedbackSummary strong { font-size: .88rem; }
 .questionFeedback[data-result='partial'] { border-left-color: #d97706; background: #fffbeb; color: #92400e; }
 .questionFeedback[data-result='incorrect'] { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }
+.questionFeedback[data-result='partial'] .feedbackReward { border-left-color: rgba(146, 64, 14, .2); }
+.questionFeedback[data-result='incorrect'] .feedbackReward { border-left-color: rgba(153, 27, 27, .2); }
 .lockedTail { padding: 20px; border: 1px dashed #94a3b8; background: rgba(248,250,252,.88); display: grid; justify-items: center; gap: 5px; color: #64748b; text-align: center; }
 
 /* ───────────────────────── 空态 / 加载 / 出错卡（与探究空间同款语气）──────
@@ -1078,11 +1151,30 @@
 /* ─────────────────── 选择填空：待选词（★ 2026-09-26）─────────────────────── */
 /* 题干里的空由 `PromptText` 画成**落点**（槽），待选词在这一条里。
    ⚠️ 待选词彼此**换行排**（`flex-wrap`）：一道题可能给七八个词，窄屏上排不下。 */
+.choicePoolArea {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.choicePoolHint {
+  margin: 0;
+  color: #64748b;
+  font-size: .78rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .choicePool {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
-  margin-top: 12px;
+  width: 100%;
 }
 
 .choiceWord {

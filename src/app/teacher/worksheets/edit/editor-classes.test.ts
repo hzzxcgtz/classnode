@@ -73,3 +73,14 @@ test('阳性对照：这条网真的看得见类名（否则上面那条对空�
   // 而它不该把别的类误算进来。
   assert.equal(editorClassesIn('<i className="btn is-danger" />').size, 0);
 });
+
+test('选择填空的待选词设置固定在题干之后、评分方式之前', () => {
+  const source = fs.readFileSync(path.join(EDITOR_DIR, 'question-card.tsx'), 'utf8');
+  const prompt = source.indexOf('<PromptEditor');
+  const choiceSetup = source.indexOf('<ChoiceBlankSetup');
+  const gradingMode = source.indexOf('className="worksheet-editor-question-section is-mode"');
+
+  assert.ok(prompt >= 0 && choiceSetup >= 0 && gradingMode >= 0, '三个区域都必须存在');
+  assert.ok(prompt < choiceSetup, '待选词设置必须紧跟在题干编辑之后');
+  assert.ok(choiceSetup < gradingMode, '待选词设置必须位于评分方式之前');
+});

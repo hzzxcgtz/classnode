@@ -25,6 +25,7 @@ import {
   blankCount,
   blankRuns,
   insertBlank,
+  removePromptRange,
   inputWidthCh,
   isPlainRuns,
   promptRunStyle,
@@ -329,7 +330,7 @@ test('isPlainRuns：全是默认样式 ⇒ true（那种情况下不写这个键
   assert.equal(isPlainRuns([]), true, '空题干 ⇒ 没有格式可言');
 });
 
-// ── 6. 填空区域（★ 2026-09-26，教师：填空在题干文字中间输入）─────────────
+// ── 6. 填空域（★ 2026-09-26，教师：填空在题干文字中间输入）─────────────
 //
 // 🔴 形状：空 = 一份分段里**带 `blank` 标记的那一条**。
 // **不存「第几个空」的编号 —— 顺序即编号**。存编号会多出一种「编号与顺序不一致」
@@ -473,6 +474,23 @@ test('insertBlank：连续插两个空 ⇒ 两个空，顺序就是插的先后'
   assert.equal(blankCount(runs), 2);
   assert.equal(current, '植物需要________和________');
   assertShape(runs, current.length);
+});
+
+test('removePromptRange：一次删除整个填空域，后面的空保留身份并前移', () => {
+  const placeholder = '{填空域}';
+  const text = `植物通过${placeholder}吸收${placeholder}。`;
+  const firstStart = 4;
+  const secondStart = firstStart + placeholder.length + 2;
+  const runs = readPromptRuns([
+    { start: firstStart, end: firstStart + placeholder.length, blank: 'b1' },
+    { start: secondStart, end: secondStart + placeholder.length, blank: 'b2' },
+  ], text);
+  const removed = removePromptRange(runs, text, firstStart, firstStart + placeholder.length);
+  assert.equal(removed.text, `植物通过吸收${placeholder}。`);
+  assert.equal(blankCount(removed.runs), 1);
+  assert.equal(blankRuns(removed.runs)[0].blank, 'b2', '删第一个空不能让第二个空换身份');
+  assert.equal(blankRuns(removed.runs)[0].start, firstStart + 2);
+  assertShape(removed.runs, removed.text.length);
 });
 
 // ── 6b. 题干里那个输入框该多宽（★ 2026-09-26，教师「长度较长时要自适应增大」）──

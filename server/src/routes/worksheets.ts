@@ -302,7 +302,7 @@ function normalizeNode(
   // 「全对才算」，语义已经完备；补一个键等于在教师**没碰过**这道题的情况下改写它的 `data`
   //（`data` 一律黑名单透传是这张表的既定手法）。⇒ 「归一化」的落点是
   // **「库里出现的值必然是这两个字面量之一」**，不是「每个多选节点都长出一个键」。
-  if (type === 'multi-choice' && data.partialCredit !== undefined) {
+  if ((type === 'multi-choice' || (type === 'single-choice' && data.choiceMode === 'multiple')) && data.partialCredit !== undefined) {
     if (data.partialCredit !== 'all-or-nothing' && data.partialCredit !== 'allow-missing') {
       errors.push(`${label}：多选的「漏选算不算部分给分」取值不合法（只认 all-or-nothing / allow-missing）`);
     }

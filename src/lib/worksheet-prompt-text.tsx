@@ -28,7 +28,7 @@ export interface PromptTextProps {
   /** 题干为空时显示的东西。⚠️ 两处措辞不同，所以由调用方给。 */
   placeholder: ReactNode;
   /**
-   * ★ 2026-09-26：**填空区域的输入绑定**（教师裁定：「填空是在题目文字中间输入」）。
+   * ★ 2026-09-26：**填空域的输入绑定**（教师裁定：「填空是在题目文字中间输入」）。
    *
    * ⚠️ **有它 ⇒ 空画成输入框；没有它 ⇒ 空画成那串下划线占位**（教师端的只读预览）。
    * 这是同一份渲染器的两种用途，不是两套实现 —— 学生端那个框与教师端预览看到的
@@ -45,6 +45,8 @@ export interface PromptBlankBinding {
   /** 第 `index` 个空（**从 0 起、从左到右**）被改了。⚠️ 落点模式下**不会**被调用（不许打字）。 */
   onChange: (index: number, value: string) => void;
   disabled: boolean;
+  /** 混合作答时决定某一空画输入框还是落词槽；缺省时保持原来的整题模式。 */
+  modeOf?: (index: number) => 'input' | 'drop';
   /**
    * ★ 2026-09-26：**落点模式**（「选择填空」）—— 空不是一个能打字的输入框，
    * 而是一个**等着被拖入的槽**。
@@ -79,7 +81,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
       {runs.map((run) => {
         if (isBlankRun(run)) {
           blankIndex += 1;
-          if (blanks && blanks.drop) {
+          if (blanks && blanks.drop && blanks.modeOf?.(blankIndex) !== 'input') {
             const index = blankIndex;
             const filled = (blanks.values[index] ?? '') !== '';
             const dropId = blanks.drop.idOf(index);
@@ -101,7 +103,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   padding: '3px 8px 1px',
                   margin: '-3px 3px -4px',
                   borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
-                  background: active ? '#dbeafe' : filled ? '#e2e8f0' : '#e7ecf3',
+                  background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
                   boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
                   borderRadius: '4px 4px 2px 2px',
                   color: blanks.drop.pending && !filled ? '#2563eb' : undefined,

@@ -376,33 +376,38 @@ export function WorksheetQuestionList({
               />
             ) : null}
             <div className={styles.questionHead}>
-              {/*
-                ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——
-                没有编号、没有题型文字。原话：「也不用加题型『选择题』『判断题』，
-                题型可以在标题前加一个象形的图标。」
-                ⚠️ `heading` 在这里**不再显示**，但它仍然是布局之外的身份（看板 / 抽屉 /
-                导出 / 分析载荷用同一份）。学生侧的题号由**段标题（任务名）**承担。
-              */}
-              <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>
-              {/* 状态挂在题号旁（规格 §8.2）：`✓ 已提交` / `◐ 作答中` / 空白 = 未作答。
-                  文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
-              <span className={styles.questionState} data-state={state}>
-                {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
-              </span>
+              <div className={styles.questionIdentity}>
+                {/*
+                  ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——
+                  没有编号、没有题型文字。原话：「也不用加题型『选择题』『判断题』，
+                  题型可以在标题前加一个象形的图标。」
+                  ⚠️ `heading` 在这里**不再显示**，但它仍然是布局之外的身份（看板 / 抽屉 /
+                  导出 / 分析载荷用同一份）。学生侧的题号由**段标题（任务名）**承担。
+                */}
+                <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>
+                {/* 状态挂在题型图标旁：`✓ 已完成` / `◐ 正在写` / 空白 = 未作答。
+                    文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
+                <span className={styles.questionState} data-state={state}>
+                  {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
+                </span>
+              </div>
               {/* 奖励出现在**每题旁**（规格 §9.3），交完立刻出现。
                   🔴 `interactive` 是第二道闸：本组件同时被教师端的「学生端预览」渲染
                   （`preview-modal.tsx`，`interactive={false}`），而奖励**教师端一处都不许出现**
                   （规格 §3-U：那里问的是「哪道题错得多」）。所以即使将来有人往预览里
                   传了奖励配置，这一行也不会画出来。 */}
               {interactive && gradeStates?.[node.id] ? (
-                <div className={styles.questionFeedback} data-result={gradeStates[node.id]}>
-                  <strong>{gradeStates[node.id] === 'correct' ? '全部答对' : gradeStates[node.id] === 'partial' ? '部分答对' : '再想一想'}</strong>
-                  {(wrongBlankIndexes?.[node.id]?.length ?? 0) > 0 && (
-                    <span>第 {wrongBlankIndexes?.[node.id].map(index => index + 1).join('、')} 空需要修改</span>
-                  )}
+                <div className={styles.questionFeedback} data-result={gradeStates[node.id]} role="status" aria-live="polite">
+                  <span className={styles.feedbackSummary}>
+                    <strong>{gradeStates[node.id] === 'correct' ? '全部答对' : gradeStates[node.id] === 'partial' ? '部分答对' : '再想一想'}</strong>
+                    {(wrongBlankIndexes?.[node.id]?.length ?? 0) > 0 && (
+                      <span>第 {wrongBlankIndexes?.[node.id].map(index => index + 1).join('、')} 空需要修改</span>
+                    )}
+                  </span>
                   {reward && (
                     <span className={styles.feedbackReward}>
-                      获得奖励：<QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+                      <span className={styles.feedbackRewardLabel}>获得奖励</span>
+                      <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
                     </span>
                   )}
                 </div>
@@ -413,7 +418,7 @@ export function WorksheetQuestionList({
                 待选词在下面），而**拖拽的手势状态必须在一个组件里**（见
                 `choice-blank-answer.tsx` 的文件头）⇒ 这一段整个交给它。
                 🔴 所以这里要**跳过**下面那两块 —— 否则题干会画两遍。 */}
-            {node.type === 'choice-blank' ? (
+            {(node.type === 'choice-blank' || node.type === 'fill-blank') ? (
               <ChoiceBlankAnswer
                 node={node}
                 draft={fillDraft ?? { kind: 'fill', texts: [] }}

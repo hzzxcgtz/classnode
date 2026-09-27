@@ -1,5 +1,5 @@
 import { locateInLengths } from '@/lib/text-offsets';
-import { promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
+import { isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
 
 /**
  * 所见即所得题干编辑器的**那一层 DOM 原语**（★ 2026-09-26）。
@@ -41,6 +41,14 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
       span.style.setProperty(cssPropertyName(key), String(style[key]));
     });
     span.textContent = text.slice(run.start, run.end);
+    if (isBlankRun(run)) {
+      // 填空占位符是题干中的一个「原子对象」，不是一串可以把光标插进去的普通文字。
+      // contenteditable=false 先阻止浏览器在内部落光标；删除键的跨浏览器一致性由
+      // PromptEditor 的 keydown 接管。
+      span.contentEditable = 'false';
+      span.className = 'worksheet-editor-inline-blank';
+      span.dataset.worksheetBlank = run.blank;
+    }
     el.appendChild(span);
   });
   if (runs.length === 0) el.appendChild(document.createTextNode(''));
@@ -73,6 +81,14 @@ function charsBefore(root: HTMLElement, node: Node, offset: number): number {
   walk(root);
   // 走不到那个节点（选区不在这个框里）⇒ 返回 `-1`，由调用方判成「不算数」。
   return hit ? total : -1;
+}
+
+/** 一个题干子节点覆盖的字符区间。点击原子填空占位符时用它选中整段。 */
+export function nodeTextRange(root: HTMLElement, node: Node): { from: number; to: number } | null {
+  if (!root.contains(node)) return null;
+  const from = charsBefore(root, node, 0);
+  if (from < 0) return null;
+  return { from, to: from + (node.textContent || '').length };
 }
 
 /** 光标在可编辑区里的**字符偏移**。焦点不在框里 / 取不到选区 ⇒ `null`。 */

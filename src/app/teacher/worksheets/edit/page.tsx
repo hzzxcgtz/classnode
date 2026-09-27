@@ -469,7 +469,7 @@ function WorksheetEditorBody() {
                     <button type="button" onClick={() => selectQuestion(row.node.id, null)}>
                       <span className="worksheet-editor-outline-number">{row.heading}</span>
                       <span className="worksheet-editor-outline-question-copy">
-                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{row.node.type === 'single-choice' || row.node.type === 'multi-choice' ? '选择题' : row.node.type === 'fill-blank' || row.node.type === 'choice-blank' ? '填空题' : QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
                         <em>{row.node.prompt.trim() || '未填写题干'}</em>
                       </span>
                     </button>
@@ -517,7 +517,7 @@ function WorksheetEditorBody() {
                         <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
                           <span className="worksheet-editor-outline-number">{row.index + 1}</span>
                           <span className="worksheet-editor-outline-question-copy">
-                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{row.node.type === 'single-choice' || row.node.type === 'multi-choice' ? '选择题' : row.node.type === 'fill-blank' || row.node.type === 'choice-blank' ? '填空题' : QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
                             <em>{row.node.prompt.trim() || '未填写题干'}</em>
                           </span>
                         </button>
@@ -674,12 +674,12 @@ function AddQuestionPicker({ onPick, onClose }: {
             一句说错的帮助文字比没有更糟：教师会按它去找一个不存在的行为。 */}
         <p className="worksheet-editor-dialog-note">选择一种作答方式。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
-          {QUESTION_TYPE_OPTIONS.map(option => (
+          {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice').map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
               <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
               <span className="worksheet-editor-type-option-copy">
-                <span className="worksheet-editor-type-option-label">{option.label}</span>
-                <span className="worksheet-editor-type-option-hint">{option.hint}</span>
+                <span className="worksheet-editor-type-option-label">{option.value === 'single-choice' ? '选择题' : option.label}</span>
+                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在题内设置为单选或多选' : option.value === 'fill-blank' ? '每个空可设置手工填写、右侧选词或下方选词' : option.hint}</span>
               </span>
             </button>
           ))}

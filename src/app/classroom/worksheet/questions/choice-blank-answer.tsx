@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { PromptText } from '@/lib/worksheet-prompt-text';
-import { readPromptRunsFor } from '@/lib/worksheet-presentation';
+import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { fillSettingsFor, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
 
@@ -13,7 +14,7 @@ import styles from '../worksheet.module.css';
  * 「选择填空」的**整块作答区**（★ 2026-09-26，教师裁定）。
  *
  * 教师原话：「题干跟普通填空题类似，但是题干下方会出现几个**待选词**，学生可以**拖拽**
- * 它们到正确的填空区域来完成答题。」
+ * 它们到正确的填空域来完成答题。」
  *
  * ── 为什么这一个组件把题干**也**渲染了 ────────────────────────────────────
  * 🔴 拖拽那条路要求「待选词」与「题干里的空」在**同一个组件**里 ——
@@ -46,17 +47,22 @@ const BLANK_PREFIX = 'blank:';
 const WORD_PREFIX = 'word:';
 
 /** `data.choices`：待选词。读不出来就是空表（学生没词可拖 ⇒ 界面要说实话）。 */
-function readChoices(node: WorksheetQuestionNode): string[] {
-  const raw = node.data.choices;
-  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
-}
-
 export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBlankAnswerProps) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const runs = readPromptRunsFor(node);
-  const choices = readChoices(node);
-  const inlinePairs = node.data.choiceLayout === 'inline-pairs';
-  const available = inlinePairs ? choices : availableChoices(choices, draft.texts);
+  const [picked, setPicked] = useState<{ word: string; target: number | null } | null>(null);
+  const runs = useMemo(() => readPromptRunsFor(node), [node]);
+  const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
+  const poolChoices = useMemo(() => sharedPoolChoices(node), [node]);
+  const promptImage = readPromptImage(node);
+  const poolValues = useMemo(() => draft.texts.filter((_, index) => settings[index]?.mode === 'pool'), [draft.texts, settings]);
+  const available = useMemo(() => availableChoices(poolChoices, poolValues), [poolChoices, poolValues]);
+  const sources = useMemo(() => {
+    const result = new Map<string, { word: string; target: number | null }>();
+    available.forEach((word, index) => result.set(`${WORD_PREFIX}pool:${index}`, { word, target: null }));
+    settings.forEach((setting, blankIndex) => setting.choices.forEach((word, choiceIndex) => {
+      result.set(`${WORD_PREFIX}inline:${blankIndex}:${choiceIndex}`, { word, target: blankIndex });
+    }));
+    return result;
+  }, [available, settings]);
   const wordEls = useRef<Record<string, HTMLElement | null>>({});
 
   const clearDragStyles = useCallback(() => {
@@ -75,23 +81,21 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
   }, []);
 
   const wordFromId = useCallback((id: string) => {
-    if (!id.startsWith(WORD_PREFIX)) return null;
-    const index = Number(id.slice(WORD_PREFIX.length));
-    return Number.isInteger(index) && index >= 0 ? (available[index] ?? null) : null;
-  }, [available]);
+    return sources.get(id) ?? null;
+  }, [sources]);
 
-  const wordButton = (word: string, index: number, compact = false) => {
-    const sourceId = `${WORD_PREFIX}${index}`;
+  const wordButton = (word: string, sourceId: string, compact = false) => {
+    const source = sources.get(sourceId);
     return (
       <button
         type="button"
         disabled={disabled}
-        key={`${word}-${index}`}
+        key={sourceId}
         className={[
           styles.choiceWord,
           compact ? styles.choiceWordInline : '',
           styles.dragSource,
-          picked === word ? styles.choiceWordPicked : '',
+          picked?.word === word && picked?.target === (source?.target ?? null) ? styles.choiceWordPicked : '',
           drag.draggingId === sourceId ? styles.dragActive : '',
         ].filter(Boolean).join(' ')}
         ref={(el) => { wordEls.current[sourceId] = el; }}
@@ -113,8 +117,8 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
 
   /** 点一个空：手里有词就放进去；手里没词就把它**清空**（学生要有退路）。 */
   const tapBlank = (index: number) => {
-    if (picked) {
-      place(index, picked);
+    if (picked && ((picked.target === null && settings[index]?.mode === 'pool') || picked.target === index)) {
+      place(index, picked.word);
       return;
     }
     if (!draft.texts[index]) return;
@@ -129,17 +133,19 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
     onTap: (id) => {
       // 落点那一侧的点由 `PromptText` 的 `onPlace` 接走，这里只会收到待选词。
       if (!id.startsWith(WORD_PREFIX)) return;
-      const word = wordFromId(id);
-      if (word === null) return;
-      setPicked((current) => (current === word ? null : word));
+      const source = wordFromId(id);
+      if (source === null) return;
+      setPicked((current) => (current?.word === source.word && current.target === source.target ? null : source));
     },
     onDrop: (sourceId, targetId) => {
       if (!sourceId.startsWith(WORD_PREFIX) || !targetId || !targetId.startsWith(BLANK_PREFIX)) return;
       const index = Number(targetId.slice(BLANK_PREFIX.length));
-      const word = wordFromId(sourceId);
-      if (!Number.isInteger(index) || index < 0 || word === null) return;
+      const source = wordFromId(sourceId);
+      if (!Number.isInteger(index) || index < 0 || source === null
+          || (source.target === null && settings[index]?.mode !== 'pool')
+          || (source.target !== null && source.target !== index)) return;
       clearDragStyles();
-      place(index, word);
+      place(index, source.word);
     },
   });
 
@@ -157,33 +163,39 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
           placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
           blanks={{
             values: draft.texts,
-            // ⚠️ 落点模式下**永远不会**被调用（那些空不是输入框）—— 给一个空实现，
-            // 因为 `PromptText` 的接口对两种模式是同一个。
-            onChange: () => {},
+            onChange: (index, value) => {
+              const texts = Array.from({ length: Math.max(draft.texts.length, settings.length) }, (_, itemIndex) => itemIndex === index ? value : (draft.texts[itemIndex] ?? ''));
+              onChange({ kind: 'fill', texts });
+            },
             disabled,
+            modeOf: index => settings[index]?.mode === 'text' ? 'input' : 'drop',
             drop: {
               idOf: (index) => `${BLANK_PREFIX}${index}`,
               onPlace: disabled ? () => {} : tapBlank,
-              pending: picked,
+              pending: picked?.word ?? null,
               activeId: drag.hoverTargetId,
-              after: inlinePairs ? (index) => {
-                const start = index * 2;
-                const pair = choices.slice(start, start + 2);
+              after: (index) => {
+                const setting = settings[index];
+                if (setting?.mode !== 'inline') return null;
                 return (
                   <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
-                    （{pair.map((word, offset) => wordButton(word, start + offset, true))}）
+                    （{setting.choices.map((word, choiceIndex) => wordButton(word, `${WORD_PREFIX}inline:${index}:${choiceIndex}`, true))}）
                   </span>
                 );
-              } : undefined,
+              },
             },
           }}
         />
       </div>
-      {choices.length === 0 ? (
-        <p className={styles.cardNote}>（这道题还没有待选词）</p>
-      ) : !inlinePairs ? (
-        <div className={styles.choicePool} aria-label="待选词">
-          {available.map((word, index) => wordButton(word, index))}
+      {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
+      {settings.some(setting => setting.mode === 'pool') ? (
+        <div className={styles.choicePoolArea}>
+          <p className={styles.choicePoolHint}>
+            {disabled ? '待选词会显示在题干下方' : '先选一个词，再点上方的填空域；也可以直接拖进去'}
+          </p>
+          <div className={styles.choicePool} aria-label="待选词">
+            {available.map((word, index) => wordButton(word, `${WORD_PREFIX}pool:${index}`))}
+          </div>
         </div>
       ) : null}
     </>

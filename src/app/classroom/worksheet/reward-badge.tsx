@@ -15,7 +15,7 @@ export function QuestionReward({ scale, score }: { scale: RewardScale; score: Wo
   if (amount <= 0) return <span className={styles.questionRewardWrong}>暂未获得</span>;
   return (
     <span className={styles.questionReward} data-style={scale.style}>
-      <RewardIcon kind={scale.style} state="earned" size={25} />
+      <RewardIcon kind={scale.style} state="earned" size={50} />
       <RewardAmount scale={scale} amount={amount} />
     </span>
   );

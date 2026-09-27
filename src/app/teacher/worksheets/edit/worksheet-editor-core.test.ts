@@ -1301,7 +1301,7 @@ test('newQuestion：**非答案**内容给占位条目（让教师替换，而�
 
 test('🔴 newQuestion 的填空题仍然是**单空形状**（`blanks` 键不出现），多选带上判分口径', () => {
   const fill = newQuestion('fill-blank');
-  assert.deepEqual(fill.data, { answers: [] });
+  assert.deepEqual(fill.data, { answers: [], fillScoring: 'per-blank' });
   assert.equal(fillShape(fill), 'single');
   // `correctKeys`/`answers` 那一类**答案键**留空，而 `partialCredit` 不是答案键、是判分口径：
   // 界面上那两个单选按钮要有一个选中态。只能是那两个字面量之一（服务端只认它们）。
@@ -2349,6 +2349,17 @@ test('🔴 `scoreSummary`：题数与**满分**（只数会判分的题 —— �
   assert.deepEqual(scoreSummary([], fallback), { questions: 0, maxScore: 0 });
   // 清空了 points 的题按默认档算（与判分同一把尺子）。
   assert.deepEqual(scoreSummary([node('q_d', '题干', {}, 'single-choice')], fallback), { questions: 1, maxScore: 1 });
+  const perBlank = {
+    ...node('q_fill', '________', {
+      fillScoring: 'per-blank',
+      promptRuns: [
+        { start: 0, end: 4, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: 'a' },
+        { start: 4, end: 8, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b', blank: 'b' },
+      ],
+    }, 'fill-blank'),
+    points: { full: 2, half: 0 },
+  };
+  assert.deepEqual(scoreSummary([perBlank], fallback), { questions: 1, maxScore: 4 });
 });
 
 /* ── 拖拽（spec 第 5 步）─────────────────────────────────────────────── */

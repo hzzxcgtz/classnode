@@ -5,7 +5,6 @@ import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { CategorizeBody } from './categorize-body';
-import { FillBody } from './fill-body';
 import { ChoiceBody } from './choice-body';
 import { InkBody } from './ink-body';
 import { MatchBody } from './match-body';
@@ -132,17 +131,7 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
   // 而拖拽的手势状态必须在一个组件里 ⇒ 整块由 `ChoiceBlankAnswer` 接管，
   // 由**面板**渲染（见 `worksheet-panel.tsx` 里那一条分支）。
   // 🔴 这里**不能**再画一份：那会让待选词出现两组，而两组各有一份选中态。
-  if (node.type === 'choice-blank') return null;
-  if (node.type === 'fill-blank') {
-    return (
-      <FillBody
-        node={node}
-        draft={pick('fill') ?? { kind: 'fill', texts: [] }}
-        onChange={(next) => onChange?.(node, next)}
-        disabled={disabled}
-      />
-    );
-  }
+  if (node.type === 'choice-blank' || node.type === 'fill-blank') return null;
   if (node.type === 'short-answer') {
     return (
       <TextBody

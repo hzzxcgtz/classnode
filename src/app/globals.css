@@ -2525,7 +2525,7 @@ tr:hover td {
   border: none;
   border-bottom: 1.5px solid #94a3b8;
   border-radius: 0;
-  background: #edf1f6;
+  background: #f1f5f9;
   color: inherit;
   font: inherit;
   text-align: center;
@@ -2536,13 +2536,14 @@ tr:hover td {
 
 .worksheet-blank-input:focus {
   border-bottom-color: #2563eb;
-  background: #e2e8f0;
+  background: #eaf2ff;
 }
 
 .worksheet-blank-input:disabled {
   color: inherit;
   /* 只读态（教师端预览）**不画焦点**、也不变灰：那里是一个「长这样」的样品。 */
   border-bottom-color: #cbd5e1;
+  background: #f1f5f9;
 }
 
 .worksheet-editor-blank-hint {
@@ -2570,8 +2571,247 @@ tr:hover td {
 }
 
 .worksheet-editor-blank-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.worksheet-editor-choice-layout { display: flex; flex-wrap: wrap; gap: 10px; }
-.worksheet-editor-choice-layout label { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #dbe4f0; border-radius: 7px; background: #fff; }
+
+.worksheet-editor-choice-blank-setup {
+  display: grid;
+  gap: 14px;
+}
+
+.worksheet-editor-fill-mode-list {
+  display: grid;
+  gap: 12px;
+}
+
+.worksheet-editor-fill-mode-card {
+  border: 1px solid #d9e2ef;
+  background: #fff;
+  padding: 14px 16px;
+}
+
+.worksheet-editor-fill-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+  color: #172033;
+}
+
+.worksheet-editor-fill-mode-head > span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.worksheet-editor-fill-mode-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(96px, auto));
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid #dbe4f0;
+  border-radius: 9px;
+  background: #eef2f7;
+}
+
+.worksheet-editor-fill-mode-tabs label {
+  cursor: pointer;
+}
+
+.worksheet-editor-fill-mode-tabs input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.worksheet-editor-fill-mode-tabs label > span {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #475569;
+  font-weight: 650;
+  border-radius: 6px;
+  transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out;
+}
+
+.worksheet-editor-fill-mode-tabs label.is-selected > span {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.worksheet-editor-fill-mode-tabs label:hover:not(.is-selected) > span {
+  background: #f8fafc;
+  color: #1e3a5f;
+}
+
+.worksheet-editor-fill-mode-tabs input:focus + span {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.worksheet-editor-inline-word-field {
+  margin-top: 12px;
+}
+
+.worksheet-editor-fill-points-field {
+  margin-top: 12px;
+}
+
+.worksheet-editor-choice-mode { margin-bottom: 14px; }
+
+/* 单选/多选是同一题型下的模式切换，用分段开关表达，避免误看成两张设置卡。 */
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(112px, 1fr));
+  gap: 3px;
+  width: min(100%, 320px);
+  padding: 4px;
+  border: 1px solid #dbe4f0;
+  border-radius: 9px;
+  background: #eef2f7;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options > label {
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 16px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: center;
+  transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options > label:hover:not(.is-selected) {
+  background: #f8fafc;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options > label.is-selected {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options strong {
+  font-size: 0.813rem;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options > label.is-selected strong {
+  color: #fff;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options em {
+  display: none;
+}
+
+.worksheet-editor-choice-mode .worksheet-editor-scoring-options input:focus + span {
+  outline: 2px solid #93c5fd;
+  outline-offset: 5px;
+  border-radius: 3px;
+}
+.worksheet-editor-fill-scoring { display: grid; gap: 12px; }
+
+.worksheet-editor-points-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.worksheet-editor-choice-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.worksheet-editor-choice-layout legend {
+  grid-column: 1 / -1;
+  margin-bottom: 1px;
+  padding: 0;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.worksheet-editor-choice-layout label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.worksheet-editor-choice-layout label.is-selected {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.worksheet-editor-choice-layout input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+.worksheet-editor-choice-layout label > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worksheet-editor-choice-layout strong {
+  color: #1e293b;
+  font-size: 0.813rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.worksheet-editor-choice-layout em {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.worksheet-editor-choice-words {
+  margin: 0;
+}
+
+.worksheet-editor-choice-words > span:first-child {
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-choice-words textarea.input {
+  min-height: 88px;
+  padding: 10px 12px;
+  color: #1e293b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.65;
+}
+
+@media (max-width: 720px) {
+  .worksheet-editor-choice-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 .worksheet-answer-mode { margin: 0; padding: 0; border: 0; }
 .worksheet-answer-mode > legend { margin-bottom: 8px; font-weight: 700; color: #1e293b; }
@@ -3870,6 +4110,22 @@ tr:hover td {
   background: #fbfdff;
 }
 
+.worksheet-editor-question-section.is-mode {
+  padding: 13px 16px;
+  background: #f8fafc;
+}
+
+.worksheet-editor-question-section.is-choice-blank {
+  border-color: #dbeafe;
+  background: #fbfdff;
+}
+
+.worksheet-editor-question-section.is-mode .worksheet-editor-section-head {
+  margin-bottom: 10px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .worksheet-editor-question-section.is-grading {
   border-color: #dbeafe;
   background: #f8fbff;
@@ -4047,8 +4303,8 @@ tr:hover td {
 
 .worksheet-editor-blank-glyph {
   color: #2563eb;
-  font-size: 0.7rem;
-  letter-spacing: -1px;
+  font-size: 0.75rem;
+  letter-spacing: 0;
 }
 
 /* ★ 2026-09-26（spec 第 4 步）：工具栏下面那一句「先选中文字」的说明。
@@ -4092,6 +4348,25 @@ tr:hover td {
   /* ⚠️ 焦点环**不在这里**：它是框里的一部分，环要画在整框上（`.worksheet-editor-rich-box:focus-within`），
      否则点进去时只亮半截，那个框看着又散开了。 */
   outline: none;
+}
+
+/* 题干里的填空是一个紧凑的行内对象：默认只用浅灰底纹区分，不画常驻蓝框。
+   点击后浏览器的 selection 才承担“已选中”的反馈。 */
+.worksheet-editor-inline-blank {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #eef1f4;
+  color: #4d5d73 !important;
+  font-size: 0.82em;
+  font-style: normal !important;
+  font-weight: 600 !important;
+  line-height: 1.55;
+  text-decoration: none !important;
+  vertical-align: 0.04em;
+  cursor: default;
+  user-select: all;
 }
 
 /* 工具条 + 正文 = **一个**框。焦点环画在这里（`:focus-within`），
@@ -4313,6 +4588,82 @@ tr:hover td {
   color: #64748b;
   font-size: 0.75rem;
   line-height: 1.6;
+}
+
+.worksheet-editor-blank-answer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.worksheet-editor-blank-answer {
+  display: block;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.worksheet-editor-blank-answer > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.worksheet-editor-blank-answer strong {
+  color: #1e293b;
+  font-size: 0.78rem;
+}
+
+.worksheet-editor-blank-answer em {
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worksheet-editor-blank-answer textarea {
+  min-height: 66px;
+  resize: vertical;
+}
+
+.worksheet-editor-blank-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  text-align: center;
+}
+
+.worksheet-editor-blank-empty strong {
+  color: #334155;
+  font-size: 0.8rem;
+}
+
+.worksheet-editor-blank-empty span,
+.worksheet-editor-compact-note {
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.worksheet-editor-compact-note {
+  margin: 8px 0 0;
+  color: #64748b;
+}
+
+@media (max-width: 820px) {
+  .worksheet-editor-blank-answer-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .worksheet-editor-manual-note {

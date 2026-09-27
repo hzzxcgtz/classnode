@@ -425,6 +425,18 @@ export interface GradeResult { state: GradeState; score: number }
  * @see judge — 三态是怎么判出来的
  */
 export function grade(node: QuestionNode, value: unknown, points: QuestionPoints): GradeResult | null {
+  const data = node.data && typeof node.data === 'object' && !Array.isArray(node.data)
+    ? node.data as Record<string, unknown>
+    : {};
+  if ((node.type === 'fill-blank' || node.type === 'choice-blank')
+      && (data.fillScoring === 'per-blank' || data.fillScoring === 'whole')) {
+    if (node.autoGrade === false) return null;
+    const stats = fillHitStats(data, value);
+    if (stats.total === 0) return { state: 'incorrect', score: 0 };
+    const state: GradeState = stats.hit === stats.total ? 'correct' : stats.hit > 0 ? 'partial' : 'incorrect';
+    if (data.fillScoring === 'per-blank') return { state, score: stats.hit * points.full };
+    return { state, score: state === 'correct' ? points.full : 0 };
+  }
   const verdict = judge(node, value);            // 'correct' | 'partial' | 'incorrect' | null
   if (verdict === null) return null;
   const score = verdict === 'correct' ? points.full : verdict === 'partial' ? points.half : 0;
@@ -750,6 +762,21 @@ function acceptableAnswersFor(data: Record<string, unknown>, index: number): str
   return index === 0 ? readAcceptableAnswers(answers) : [];
 }
 
+function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: number; total: number } {
+  const total = answerSlotCount(data);
+  const rawTexts = readField(value, 'texts');
+  const texts = Array.isArray(rawTexts) ? rawTexts : [readField(value, 'text')];
+  let hit = 0;
+  for (let index = 0; index < total; index += 1) {
+    const acceptable = acceptableAnswersFor(data, index);
+    const text = texts[index];
+    if (typeof text !== 'string' || acceptable.length === 0) continue;
+    const normalized = normalizeFillText(text);
+    if (acceptable.some(answer => normalizeFillText(answer) === normalized)) hit += 1;
+  }
+  return { hit, total };
+}
+
 /**
  * 填空题的判分。
  *
@@ -1017,7 +1044,7 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   // 取不到判分器时回答 `null`（= 不判分）—— 与主观题同一档，看板不会把它算进
   // 「已判分」的分母，也就不会报出一个错的正确率。
   const judgeForType: ((data: Record<string, unknown>, value: unknown, tolerance: number | null) => GradeState | null) | undefined =
-    JUDGES[node.type];
+    node.type === 'single-choice' && data.choiceMode === 'multiple' ? judgeMultiChoice : JUDGES[node.type];
   if (!judgeForType) return null;
   return judgeForType(data, value, toleranceOf(node));
 }
@@ -1099,6 +1126,31 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
     }
 }
 
+function validateFillModes(node: QuestionNode, errors: string[]): void {
+  if (node.data.fillScoring !== undefined && node.data.fillScoring !== 'per-blank' && node.data.fillScoring !== 'whole') {
+    errors.push('填空题的给分方法不合法');
+  }
+  const raw = node.data.fillBlankSettings;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const settings = Object.values(raw as Record<string, unknown>);
+  let needsPool = false;
+  settings.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`填空题第 ${index + 1} 空的作答方式不合法`);
+      return;
+    }
+    const setting = entry as Record<string, unknown>;
+    if (setting.mode !== 'text' && setting.mode !== 'pool' && setting.mode !== 'inline') {
+      errors.push(`填空题第 ${index + 1} 空的作答方式不合法`);
+    }
+    if (setting.mode === 'pool') needsPool = true;
+    if (setting.mode === 'inline' && readStrings(setting.choices).length < 2) {
+      errors.push(`填空题第 ${index + 1} 空的右侧选词至少需要两个词`);
+    }
+  });
+  if (needsPool && readStrings(node.data.fillChoicePool ?? node.data.choices).length === 0) errors.push('填空题的下方共用词池不能为空');
+}
+
 
 const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) => void> = {
   /**
@@ -1125,7 +1177,18 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     const children = node.children ?? [];
     if (children.some((child) => child.type === 'task')) errors.push('任务里不能再嵌套任务');
   },
-  'single-choice': (node, errors) => validateSingleAnswer(node, errors, '单选题', true),
+  'single-choice': (node, errors) => {
+    if (node.data.choiceMode !== 'multiple') {
+      validateSingleAnswer(node, errors, '选择题（单选）', true);
+      return;
+    }
+    const optionKeys = readOptionKeys(node.data.options);
+    const correct = readStrings(node.data.correctKeys);
+    if (optionKeys.length < 2) errors.push('选择题至少需要两个选项');
+    if (node.autoGrade === false) return;
+    if (correct.length < 1) errors.push('选择题（多选）至少要指定一个正确答案');
+    if (correct.some((key) => !optionKeys.includes(key))) errors.push('选择题的正确答案里有不存在的选项');
+  },
   // 判断题与单选**共用同一个校验器**：作答值与判分逐字相同（规格 §12），
   // 差别只在编辑 UI —— 判断题不存 `options`（选项恒为对/错两个），所以不查选项数。
   'true-false': (node, errors) => validateSingleAnswer(node, errors, '判断题', false),
@@ -1148,6 +1211,8 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
   // ⇒ 校验**复用**填空那一支，只多补一条硬要求（先例：判断题与单选共用判分器）。
   'choice-blank': (node, errors) => {
     validateFillBlank(node, errors);
+    validateFillModes(node, errors);
+    if (node.data.fillBlankSettings && typeof node.data.fillBlankSettings === 'object') return;
     if (node.autoGrade === false) return;
     const choices = readStrings(node.data.choices);
     // 🔴 **每个词只能用一次**（教师裁定）⇒ 词比空少时这道题**无解**，
@@ -1164,7 +1229,10 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     }
   },
 
-  'fill-blank': validateFillBlank,
+  'fill-blank': (node, errors) => {
+    validateFillBlank(node, errors);
+    validateFillModes(node, errors);
+  },
   // ⚠️ 上面那条按名字引用（不是把函数体再写一遍）：`VALIDATORS` 在初始化期间
   // 引用自己（`VALIDATORS['fill-blank']`）会踩 TDZ，而两份实现漂移的症状是
   // 「两个题型一个校验得严一个松」。

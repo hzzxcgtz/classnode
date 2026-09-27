@@ -214,7 +214,7 @@ export function readCategorizeZones(node: WorksheetQuestionNode): WorksheetEntry
 /**
  * 这道填空题有几个空 —— **空的唯一真源是题干**（★ 2026-09-26）。
  *
- * 教师裁定：「填空是在**题目文字中间**输入，一道题可以包含多个填空区域」⇒
+ * 教师裁定：「填空是在**题目文字中间**输入，一道题可以包含多个填空域」⇒
  * 空 = `promptRuns` 里带 `blank` **标识**（非空字符串）的那几条分段，**数量由它们推**。
  *
  * ⚠️ **临时桥**（迁移 `worksheet-fill-blank-migration.ts` 接上之后删掉，连用例一起）：
@@ -466,7 +466,7 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
     if (draft.kind !== 'choice' || draft.selected.length === 0) return null;
     return { format: 'choice/v1', selected: [...draft.selected] };
   }
-  if (type === 'fill-blank') {
+  if (type === 'fill-blank' || type === 'choice-blank') {
     if (draft.kind !== 'fill') return null;
     // ⚠️ **逐位对齐 `data.blanks`**（服务端按位取 `texts[index]`）：
     // 多填的空会被服务端忽略，少填的空按「没作答」算。

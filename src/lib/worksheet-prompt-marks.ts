@@ -37,12 +37,12 @@ export interface PromptTextStyle {
   color: string;
 }
 
-/** 一条分段：`[start, end)` 上的**一整份样式**，外加「它是不是一个填空区域」。 */
+/** 一条分段：`[start, end)` 上的**一整份样式**，外加「它是不是一个填空域」。 */
 export interface PromptRun extends PromptTextStyle {
   start: number;
   end: number;
   /**
-   * ★ 2026-09-26：这一段属于哪个**填空区域** —— **每题一个标识**（空串 = 不是空）。
+   * ★ 2026-09-26：这一段属于哪个**填空域** —— **每题一个标识**（空串 = 不是空）。
    *
    * ── 🔴 为什么是「标识」而不是「是/否」，也不是「第几个空」────────────────────
    * 我第一版写的是 `boolean`，理由是「**顺序即编号**，存编号会多出一种编号与顺序
@@ -133,7 +133,7 @@ function sameRun(a: PromptRun, b: PromptRun): boolean {
   return a.blank === b.blank && sameStyle(a, b);
 }
 
-/** 这一条分段属于一个填空区域吗。 */
+/** 这一条分段属于一个填空域吗。 */
 export function isBlankRun(run: PromptRun): boolean {
   return typeof run.blank === 'string' && run.blank !== '';
 }
@@ -363,7 +363,7 @@ export function blankCount(runs: PromptRun[]): number {
 }
 
 /**
- * 在 `[from, to)` 处插入一个**填空区域**（工具栏那个按钮走的唯一一条路）。
+ * 在 `[from, to)` 处插入一个**填空域**（工具栏那个按钮走的唯一一条路）。
  *
  * ⚠️ **返回文本与分段两样**：插空同时改了文字（多出那段占位下划线），
  * 只返回分段的话调用方得自己再拼一遍文本 —— 那是第二处会算错的地方。
@@ -389,6 +389,43 @@ export function insertBlank(
   const moved = remapRuns(runs, text, nextText);
   const nextRuns = rewriteRange(moved, start, start + placeholder.length, { blank: id });
   return { text: nextText, runs: nextRuns };
+}
+
+/**
+ * 删除题干中的一个明确区间，并让分段按同一坐标同步收缩。
+ *
+ * 这条路径主要服务「填空域」这种原子对象：浏览器自己的 contenteditable 删除行为
+ * 在不同内核里并不一致，有的删整段、有的只删一个字符。编辑器先确定准确区间，再走这里，
+ * 因而一次 Backspace / Delete 永远只产生一次、完整的删除。
+ */
+export function removePromptRange(
+  runs: PromptRun[],
+  text: string,
+  from: number,
+  to: number,
+): { text: string; runs: PromptRun[] } {
+  const length = typeof text === 'string' ? text.length : 0;
+  const start = clampIndex(from, length);
+  const end = Math.max(start, clampIndex(to, length));
+  if (end <= start) return { text, runs };
+
+  const nextText = text.slice(0, start) + text.slice(end);
+  if (!nextText) return { text: '', runs: [] };
+  const delta = end - start;
+  const out: PromptRun[] = [];
+  runs.forEach((run) => {
+    if (run.end <= start) {
+      pushRun(out, { ...run });
+      return;
+    }
+    if (run.start >= end) {
+      pushRun(out, { ...run, start: run.start - delta, end: run.end - delta });
+      return;
+    }
+    if (run.start < start) pushRun(out, { ...run, end: start });
+    if (run.end > end) pushRun(out, { ...run, start, end: run.end - delta });
+  });
+  return { text: nextText, runs: out.length > 0 ? out : readPromptRuns(undefined, nextText) };
 }
 
 /**

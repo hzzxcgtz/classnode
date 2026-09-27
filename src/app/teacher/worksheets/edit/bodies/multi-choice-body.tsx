@@ -27,13 +27,31 @@ export function MultiChoiceBody({ node, onDataChange, showAnswer = true }: {
   // 判据与服务端 `allowsMissing` 逐字一致：**只有** 'allow-missing' 算「漏选算部分给分」。
   // 认不出的值 ⇒ 这个按钮显示成未选中（= 全对才算），与判分的行为一致 ——
   // 反过来显示会让教师在屏幕上看到一个服务端并不认的选项。
+  const multiple = node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
   const allowMissing = node.data.partialCredit === 'allow-missing';
+
+  const setMultiple = (nextMultiple: boolean) => {
+    const correct = Array.isArray(node.data.correctKeys) ? node.data.correctKeys.filter((item): item is string => typeof item === 'string') : [];
+    onDataChange({
+      choiceMode: nextMultiple ? 'multiple' : 'single',
+      partialCredit: 'all-or-nothing',
+      ...(nextMultiple ? {} : { correctKeys: correct.slice(0, 1) }),
+    });
+  };
 
   return (
     <>
-      <ChoiceOptionsEditor node={node} multiple onDataChange={onDataChange} showAnswer={showAnswer} />
+      <fieldset className="worksheet-editor-scoring-method worksheet-editor-choice-mode">
+        <legend>选择方式</legend>
+        <div className="worksheet-editor-scoring-options">
+          <label className={!multiple ? 'is-selected' : ''}><input type="radio" name={`choice-mode-${node.id}`} checked={!multiple} onChange={() => setMultiple(false)} /><span><strong>单选</strong><em>学生只能选择一个答案</em></span></label>
+          <label className={multiple ? 'is-selected' : ''}><input type="radio" name={`choice-mode-${node.id}`} checked={multiple} onChange={() => setMultiple(true)} /><span><strong>多选</strong><em>学生可以选择多个答案</em></span></label>
+        </div>
+      </fieldset>
 
-      {showAnswer && (
+      <ChoiceOptionsEditor node={node} multiple={multiple} onDataChange={onDataChange} showAnswer={showAnswer} />
+
+      {showAnswer && multiple && (
         <fieldset className="worksheet-editor-scoring-method">
           <legend>评分方式</legend>
           <div className="worksheet-editor-scoring-options">

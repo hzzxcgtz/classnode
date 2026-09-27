@@ -1,46 +1,21 @@
 'use client';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { blankCount } from '@/lib/worksheet-prompt-marks';
+import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
-  addBlank,
-  fillShape,
   readBlankAnswers,
-  readBlankText,
-  readChoicesText,
-  removeBlank,
-  writeBlankText,
-  writeChoicesText,
+  writeFillAnswers,
 } from '../worksheet-editor-core';
 
 /**
- * 填空题：一个题干 + N 个空，**每个空一个 textarea（一行一个可接受答案）**。
+ * 填空题与选择填空题的答案区。
  *
- * ── 两种形状（规格 §12）────────────────────────────────────────────────
- *   · **单空**：`data.answers: string[]`（M3 的形状，**不动**）—— 一道题一个空；
- *   · **多空**：`data.blanks: Array<{ answers: string[] }>` —— 一个题干下多个空。
- * 服务端两种都收（判据是 `Array.isArray(data.blanks)`），**单空与多空的判分不一样**：
- * 单空只有对/错，多空是「全对 / 有对有错=部分给分 / 全错」。
- *
- * ★ 新建的填空题是**单空**形状（`newQuestion`），这里画成**一个空**；
- * 教师点「＋ 增加一个空」时才升级成多空（`addBlank`）。升级之后**不再退回** ——
- * 理由写在 `addBlank` 上（退回是一条会静默改形状的路径，而它换不来任何好处）。
- *
- * ── textarea 的往返是无损的 ────────────────────────────────────────────
- * 文本与答案数组之间只按 `\n` 切分、**不丢空行**（`writeFillAnswers`），所以这里不需要
- * 本地缓冲：`value` 由节点算出来即可，撤销 / 恢复草稿 / 换题都能立刻反映到光标那一行上。
- * 出网之前那份空行由 `sanitizeContentForSave` 去掉（否则 `answers: ['']` 会把学生的
- * **空作答**判成正确，看板上显示「全班都对」）——**多空那条路的清理也在同一个函数里**。
- *
- * 🔴 **空的个数是位置协议的一部分，改它会让已收上来的作答与空错位。**
- * 与其他五个题型不同，服务端读填空题的作答值是 `texts: string[]`（**按位置对应**这些空，
- * 见 D1/D2 的 `fill-multi/v1`），而不是按 id —— 所以在课堂进行中删掉中间的一个空，
- * 学生已经交上来的「第 3 个空的答案」会落到原来的第 4 个空上。**这不是本页面引入的**
- *（协议如此），但它是「删一个空」这个按钮真实的代价：**课堂开始之前**调好空的数量。
- *
- * ⚠️ 上面这句原先是**只写在这里的**（只有读源码的人知道），而它是本批题型里**代价最高**的
- * 一个后果 —— 2026-09-24 审查实测后指出：教师按下那个按钮的那一刻**完全无声**。
- * ⇒ 现在它在**两个地方**对教师可见：删除按钮的 `title`（悬停即见）、以及多空题目下面
- * 常显的那一句「⚠ 删掉中间的空会让已经交上来的答案往后错一位」。**改这里时别把界面那两处删掉。**
+ * 空的数量只有一个来源：题干 `promptRuns` 中带稳定 blank id 的占位符。这里不再提供
+ * “增加/删除答案框”，避免题干有两个空、下方却有三个答案框的双真源。教师在题干中
+ * 插入或整体删除 `{填空域}`，答案框随即按 blank id 联动；已有答案不会因前面插空而串位。
+ * 每个 textarea 仍是一行一个可接受答案，保存前由 `sanitizeContentForSave` 清理空行。
  */
 export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
@@ -48,100 +23,116 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
   /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
   showAnswer?: boolean;
 }) {
-  const blanks = readBlankAnswers(node);
-  const shape = fillShape(node);
+  const answerSets = readBlankAnswers(node);
+  const slots = blankCount(readPromptRunsFor(node));
 
   return (
     <>
-      {/* ★ 2026-09-26：**选择填空**多出来的那一栏 —— 待选词（一行一个）。
-          它排在答案前面：教师先把词表定下来，再逐空填答案。
-          ⚠️ 待选词**是给学生看的**（他要拿它们去拖）⇒ 它**不是**答案键、不剥
-          （`ANSWER_KEYS` 审计里有一条样本钉着这件事）。
-          ⚠️ 词数必须 ≥ 空数（每个词只能用一次）—— 服务端 `VALIDATORS` 会拦，
-          这里给一句**当场**看得到的提示。 */}
-      {node.type === 'choice-blank' && (
-        <div className="worksheet-editor-field">
-          <span>词语呈现方式</span>
-          <div className="worksheet-editor-choice-layout" role="radiogroup" aria-label="词语呈现方式">
-            <label><input type="radio" checked={node.data.choiceLayout !== 'inline-pairs'} onChange={() => onDataChange({ choiceLayout: 'pool' })} /> 题干下方词语区</label>
-            <label><input type="radio" checked={node.data.choiceLayout === 'inline-pairs'} onChange={() => onDataChange({ choiceLayout: 'inline-pairs' })} /> 每个空后显示两个词</label>
-          </div>
-          <label className="worksheet-editor-field">
-          <span>待选词</span>
-          <textarea
-            className="input"
-            rows={2}
-            value={readChoicesText(node)}
-            onChange={event => onDataChange(writeChoicesText(event.target.value))}
-            placeholder={'一行一个待选词，例如：\n阳光\n水分\n空气（可以多写几个当干扰项）'}
-          />
-          <span className="worksheet-editor-blank-hint">
-            {node.data.choiceLayout === 'inline-pairs'
-              ? '按空的顺序每两行为一组，例如第 1、2 行显示在第一个空后；拖入后括号里的词仍保留。'
-              : '学生把这些词拖进题干里的空，每个词只能用一次，词不能比空少。'}
-          </span>
-          </label>
+      {showAnswer && slots > 0 && (
+        <div className="worksheet-editor-blank-answer-grid">
+          {Array.from({ length: slots }, (_, index) => (
+            <label className="worksheet-editor-blank-answer" key={index}>
+              <span>
+                <strong>第 {index + 1} 空</strong>
+                <em>对应题干中第 {index + 1} 个填空域</em>
+              </span>
+              <textarea
+                className="input"
+                rows={2}
+                value={(answerSets[index] ?? []).join('\n')}
+                onChange={event => onDataChange({
+                  blanks: undefined,
+                  answers: Array.from(
+                    { length: slots },
+                    (_, answerIndex) => answerIndex === index
+                      ? writeFillAnswers(event.target.value)
+                      : (answerSets[answerIndex] ?? []),
+                  ),
+                })}
+                placeholder={'填写标准答案；多个可接受答案请分行输入'}
+              />
+            </label>
+          ))}
         </div>
       )}
-      {blanks.map((_, index) => (
-        // ⚠️ key 只能是**下标**：空没有 id（服务端按位置读 `texts`），而「删掉第 2 个空」
-        // 本来就意味着后面的空整体前移 —— 用下标当 key 与那份协议是同一个语义。
-        <div className="worksheet-editor-blank" key={index}>
-          <label className="worksheet-editor-field">
-            <span className="worksheet-editor-blank-title">
-              <span>{blanks.length > 1 ? `第 ${index + 1} 个空的答案` : '答案'}</span>
-              {blanks.length > 1 && (
-                <button
-                  type="button"
-                  className="worksheet-editor-blank-remove"
-                  title="删掉中间的空，会让已经交上来的答案往后错一位。请尽量在学生作答前确定空的数量。"
-                  onClick={() => onDataChange(removeBlank(node, index))}
-                >删除</button>
-              )}
-            </span>
-            {showAnswer && (<>
-<textarea
-              className="input"
-              rows={2}
-              value={readBlankText(node, index)}
-              onChange={event => onDataChange(writeBlankText(node, index, event.target.value))}
-              placeholder={'一行一个可接受答案，例如：\n光合作用\n碳氧平衡'}
-            />
-            </>)}
-          </label>
-          {/* ⚠️ 只剩一个空时**不渲染**这个按钮（服务端要求「至少要有一个空」）——
-              不是渲染成禁用态。`removeBlank` 的注释里写着同一条。 */}
+
+      {showAnswer && slots === 0 && (
+        <div className="worksheet-editor-blank-empty">
+          <strong>题干中还没有填空域</strong>
+          <span>把光标放到题干的目标位置，再点击工具栏中的“{'{填空域}'}”。</span>
         </div>
-      ))}
+      )}
 
-      <div className="worksheet-editor-inline-actions">
-        <button type="button" className="btn btn-secondary" onClick={() => onDataChange(addBlank(node))}>
-          ＋ 增加一个空
-        </button>
-        {blanks.length === 0 && (
-          <span className="worksheet-editor-warn-hint">
-            这道题一个空都没有（库里的数据被改过）—— 点「＋ 增加一个空」补一个。
-          </span>
-        )}
-      </div>
-
-      <p className="worksheet-editor-hint">
-        学生的答案与某个空里任意一行一致，就算这个空答对（忽略多余空格与全角/半角差异，
-        <strong>区分大小写</strong> —— 英文题请把大小写不同的写法各写一行）。
-        {shape === 'multi'
-          ? '全部空都答对=全对，答对一部分=部分给分，一个都没答对=全错。'
-          : '只有一个空时只有对错，没有部分给分 —— 要分档请点「＋ 增加一个空」。'}
-      </p>
-
-      {/* 🔴 只在**多空**（= 能删空）时出现。这是那个删除按钮的后果里最贵的一条，而它原先
-          只写在源码注释里 —— 教师按下按钮的那一刻完全无声（2026-09-24 审查实测）。
-          ⚠️ 与按钮的 `title` 是**同一句话的两处**：改一处要改两处。 */}
-      {blanks.length > 1 && (
-        <p className="worksheet-editor-warn-hint">
-          ⚠ 空是按<b>位置</b>与学生作答对应的：删掉中间的空，会让<b>已经交上来</b>的答案往后错一位。
-          改空的数量请在学生开始作答之前定下来。
+      {showAnswer && slots > 0 && (
+        <p className="worksheet-editor-compact-note">
+          已根据题干自动生成 {slots} 个答案框；调整题干中的填空域时，这里会同步更新。
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * 选择填空的题面设置。它属于学生看到的题目内容，不属于答案键，因此由题目卡固定放在
+ * 题干编辑之后、评分方式之前。关闭自动评分时，这一段仍可编辑。
+ */
+export function ChoiceBlankSetup({ node, onDataChange }: {
+  node: WorksheetQuestionNode;
+  onDataChange: (patch: Record<string, unknown>) => void;
+}) {
+  const runs = readPromptRunsFor(node);
+  const settings = fillSettingsFor(node, runs);
+  const poolChoices = sharedPoolChoices(node);
+  const setMode = (index: number, mode: FillAnswerMode) => {
+    const next = settings.map((setting, settingIndex) => settingIndex === index ? { ...setting, mode } : setting);
+    onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
+  };
+  const setInlineChoices = (index: number, text: string) => {
+    const next = settings.map((setting, settingIndex) => settingIndex === index
+      ? { ...setting, choices: splitChoiceLines(text) }
+      : setting);
+    onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
+  };
+
+  return (
+    <div className="worksheet-editor-choice-blank-setup">
+      {settings.length === 0 ? (
+        <div className="worksheet-editor-blank-empty"><strong>题干中还没有填空域</strong><span>先在题干中插入“{'{填空域}'}”，这里会自动出现对应设置。</span></div>
+      ) : (
+        <div className="worksheet-editor-fill-mode-list">
+          {settings.map((setting, index) => (
+            <section className="worksheet-editor-fill-mode-card" key={index}>
+              <div className="worksheet-editor-fill-mode-head"><strong>第 {index + 1} 空</strong><span>{setting.mode === 'text' ? '学生手工填写' : setting.mode === 'inline' ? '右侧独立选词' : '下方共用词池'}</span></div>
+              <div className="worksheet-editor-fill-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
+                {([
+                  ['text', '手工填写'],
+                  ['inline', '右侧选词'],
+                  ['pool', '下方选词'],
+                ] as const).map(([mode, label]) => (
+                  <label className={setting.mode === mode ? 'is-selected' : ''} key={mode}>
+                    <input type="radio" name={`fill-mode-${node.id}-${index}`} checked={setting.mode === mode} onChange={() => setMode(index, mode)} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              {setting.mode === 'inline' && (
+                <label className="worksheet-editor-field worksheet-editor-inline-word-field">
+                  <span>这一空右侧的词</span>
+                  <textarea className="input" rows={2} value={setting.choices.join('\n')} onChange={event => setInlineChoices(index, event.target.value)} placeholder={'一行一个词，例如：\n阳光\n灯光'} />
+                </label>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+
+      {settings.some(setting => setting.mode === 'pool') && (
+        <label className="worksheet-editor-field worksheet-editor-choice-words">
+          <span>下方共用词池</span>
+          <textarea className="input" rows={3} value={poolChoices.join('\n')} onChange={event => onDataChange({ fillChoicePool: splitChoiceLines(event.target.value) })} placeholder={'一行一个词，例如：\n阳光\n水分\n空气'} />
+          <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
+        </label>
+      )}
+    </div>
   );
 }

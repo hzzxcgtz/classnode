@@ -392,6 +392,59 @@ export function insertBlank(
 }
 
 /**
+ * 按题干文本**重新识别**填空域（★ 2026-09-27 教师裁定）。
+ *
+ * 🔴 判据（教师原话，两条）：
+ *   ① 5 个字符全、且中间无空格 ⇒ 是一个真正的占位符，灰色底，**计入**个数；
+ *   ② 5 个字符不全、或中间夹了其它字符 ⇒ 当**普通字符**处理，无底色，**不计入**个数。
+ * ⇒ 「是不是空」**完全由文本决定**。这条裁定把这件事从 DOM 那层（`contenteditable=false`
+ *    + 光标/删除接管）搬到了这里 —— 而这一层有用例、能做变异检验，那一层**本机一行都跑不到**。
+ *
+ * ⚠️ **身份（`blank`）要尽量继承**：同一个位置（区间逐字相同）上的空沿用旧身份，
+ *    `answers[]` 才跟着走（`blankRuns` 的顺序就是「第几个空」）。
+ *    改坏再改好 ⇒ 新身份、旧答案作废 —— 那是规则②的定义，不是缺陷。
+ * ⚠️ `placeholder` 由**调用方**给（与 `insertBlank` 同一规矩）：它的内容是外观，
+ *    不该焊死在纯逻辑这一层。
+ * ⚠️ **随机性也只许由调用方给**（`mintId`）：这里自己造标识的话，用例就不确定了。
+ *
+ * ⚠️ 找的是**不重叠**的出现（`indexOf` 一路往前推）。所以 `{{填空域}` 里那 5 个字符
+ *    仍然是连续的 ⇒ 算一个空（前面那个 `{` 是普通文字）—— 规则②排的是「缺字符」与
+ *    「中间夹了别的字符」，多一个前置字符不在其中。
+ */
+export function recognizeBlanks(
+  runs: PromptRun[],
+  text: string,
+  placeholder: string,
+  mintId: () => string,
+): PromptRun[] {
+  const source = typeof text === 'string' ? text : '';
+  if (!Array.isArray(runs)) return [];
+  if (typeof placeholder !== 'string' || placeholder.length === 0) return runs;
+
+  // 旧身份，按**区间**记 —— 「同一个位置」的判据就是区间逐字相同。
+  const previous = new Map<string, string>();
+  runs.forEach((item) => {
+    if (isBlankRun(item)) previous.set(`${item.start}:${item.end}`, item.blank);
+  });
+
+  // ① 先把**所有**旧的空标记清掉。规则②要求「文本变了就不再是空」，
+  //    留着旧的会让一个被改坏的占位串还算成空 —— 那是静默的（个数不降、答案还挂着）。
+  let next = rewriteRange(runs, 0, source.length, { blank: '' });
+
+  // ② 再按文本把**精确出现**的地方标回来。
+  let from = 0;
+  for (;;) {
+    const at = source.indexOf(placeholder, from);
+    if (at < 0) break;
+    const end = at + placeholder.length;
+    const inherited = previous.get(`${at}:${end}`);
+    next = rewriteRange(next, at, end, { blank: inherited ?? mintId() });
+    from = end;
+  }
+  return next;
+}
+
+/**
  * 删除题干中的一个明确区间，并让分段按同一坐标同步收缩。
  *
  * 这条路径主要服务「填空域」这种原子对象：浏览器自己的 contenteditable 删除行为

@@ -11,10 +11,12 @@ import {
   isPlainRuns,
   rangeColor,
   rangeHasKey,
+  recognizeBlanks,
   remapRuns,
   removePromptRange,
   setStyleOnRange,
   type PromptBooleanKey,
+  type PromptRun,
 } from '@/lib/worksheet-prompt-marks';
 import {
   WORKSHEET_TEXT_COLORS,
@@ -23,7 +25,7 @@ import {
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
 import { hasPromptBlankSlots, readBlankAnswers } from './worksheet-editor-core';
-import { caretOffset, nodeTextRange, placeCaretBesideNode, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
+import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
  * 题干的**所见即所得**编辑器（★ 2026-09-26，教师裁定 ①）。
@@ -46,7 +48,7 @@ import { caretOffset, nodeTextRange, placeCaretBesideNode, placeSelection, rende
  *
  * 3. **靠「文本对不对得上」区分「自己的回声」与「外部改动」。**
  *    外部改动 = ⌘Z 撤销（本仓的历史栈**有意**抢掉了浏览器的撤销，见 `edit/page.tsx`
- *    那一段）、换了一道题、别处改了同一道题。判据：`el.textContent !== node.prompt`
+ *    那一段）、换了一道题、别处改了同一道题。判据：`el.textContent !== node.prompt`。
  *    ⇒ 外部 ⇒ **整块重建**并把光标放回去；相等 ⇒ 自己刚敲的那一下的回声 ⇒ **什么都不做**。
  *    ⚠️ 少了「重建」，⌘Z 之后数据变了而屏幕纹丝不动；少了「什么都不做」，
  *    每敲一个字都要重建一次 DOM，光标当场跳回开头。
@@ -116,8 +118,23 @@ function blankIdSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-/** 教师端可读的原子填空占位符；学生端仍根据 run 的 blank 标识渲染真正输入区。 */
+/** 教师端可读的填空占位串；学生端仍根据 run 的 blank 标识渲染真正输入区。 */
 const FILL_BLANK_TEXT = '{填空域}';
+
+/**
+ * 文本变了之后重算分段：**先跟随文本重映射区间，再按文本重新识别填空域**。
+ *
+ * 🔴 **两步都不能省，而且顺序不能反**：
+ *   · `remapRuns` 负责「区间跟着文本走」（在空前面打字，空要挪位、身份不变）。
+ *   · `recognizeBlanks` 负责**教师裁定的那条规则**：`{填空域}` 就是 5 个普通字符 ⇒
+ *     **是不是空由文本决定**。只 remap 不识别的话，被删掉一个字符的占位串**还会**算成
+ *     一个空（个数不降、答案还挂着），而那是**静默**的。
+ *   · 反过来也不行：识别会拿没重映射过的区间去比对，「在空前面打字」会被判成新空、答案错位。
+ */
+function runsFromText(prevRuns: PromptRun[], prevText: string, nextText: string): PromptRun[] {
+  const moved = remapRuns(prevRuns, prevText, nextText);
+  return recognizeBlanks(moved, nextText, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+}
 
 const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
@@ -269,8 +286,8 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     if (!el) return;
     const nextText = el.textContent || '';
     if (nextText === node.prompt) return;
-    // 区间跟着文字走（纯逻辑，那半边有用例）。
-    const nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
+    // 区间跟着文字走 + 按文本重新识别填空域（纯逻辑，那半边有用例）。
+    const nextRuns = runsFromText(runsRef.current, node.prompt, nextText);
     // 文字变了 ⇒ 之前记下的那段选区作废（见 `pendingRangeRef`）。
     pendingRangeRef.current = null;
     const nextData: Record<string, unknown> = {
@@ -292,6 +309,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     if (!el) return;
     const removed = removePromptRange(runsRef.current, node.prompt, from, to);
     if (removed.text === node.prompt) return;
+    // 删完也要重新识别：退回一个字可能把某个占位串删坏 ⇒ 按规则②它该降级成普通文字
+    //（只 remap 不识别的话，那个空**还会**算一个空，而这是静默的）。
+    removed.runs = recognizeBlanks(removed.runs, removed.text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
     const answers = readBlankAnswers(node);
     const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
     onPromptChange(removed.text, {
@@ -308,59 +328,65 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     refreshToolbar();
   };
 
+
   /**
-   * 填空占位符是原子对象：光标不能进入；与选区相交，或光标紧邻它时，删除整块。
+   * 回车 = 在光标处插入一个**换行符**，走模型；不让浏览器自己造换行。
+   *
+   * 🔴 根因（2026-09-27 教师报的两个症状，**同一个洞**）：此前这里没有任何 Enter 处理
+   *    ⇒ 浏览器自己插 `<br>` / 建块级元素。而
+   *      ① 写回模型走的是 `el.textContent`（`handleInput`）—— `<br>` 与块边界**都产生
+   *         0 个字符** ⇒ 那些换行**既不在模型里、也不在字符偏移里**；
+   *      ② `charsBefore` / `placeSelection` **只数文本节点** ⇒ 断行处两侧的偏移**相等**
+   *         ⇒「上一行末尾的胶囊之后」与「下一行第一个胶囊之前」是**同一个偏移**。
+   *    两个症状由此而来：回车那次换行模型不认（下次整块重建时又画出来 ⇒ 多一个空行）；
+   *    在下一行首个胶囊前按退格，`handleAtomicBlankDelete` 按偏移匹配，命中的是
+   *    **上一行末尾那个空**，把它删了。
+   *    ⇒ 修法是让换行成为**模型里的一个真字符**，DOM 与偏移层就不会分叉。
+   *
+   * ⚠️ **拼字期间必须放行**（与 `handleInput` 同一道守卫，两处都留是有意的）：
+   *    中文输入法用回车**上屏**，在这里 `preventDefault` 会让教师打不出中文 ——
+   *    那是本文件五条硬约束里的第 2 条。
+   * ⚠️ `.worksheet-editor-prompt-input` 有 `white-space: pre-wrap`（globals.css），
+   *    所以这个 `\n` 会被画成真换行；改那个属性会让回车看起来「没反应」。
    */
-  const handleAtomicBlankDelete = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!supportsBlankSlots || (event.key !== 'Backspace' && event.key !== 'Delete')) return;
+  const handleEnter = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter') return;
+    if (composingRef.current) return;
+    if ((event.nativeEvent as KeyboardEvent).isComposing) return;
     const el = editableRef.current;
     if (!el) return;
-    const blanks = blankRuns(runsRef.current);
+    const caret = caretOffset(el);
+    if (caret === null) return;
     const selected = selectedRange(el);
-    if (selected) {
-      const hit = blanks.filter(run => run.end > selected.from && run.start < selected.to);
-      if (hit.length === 0) return;
-      event.preventDefault();
-      deletePromptRange(Math.min(selected.from, hit[0].start), Math.max(selected.to, hit[hit.length - 1].end));
-      return;
-    }
-    const caret = caretOffset(el);
-    if (caret === null) return;
-    const hit = blanks.find(run => (
-      (event.key === 'Backspace' && caret === run.end)
-      || (event.key === 'Delete' && caret === run.start)
-      || (run.start < caret && caret < run.end)
-    ));
-    if (!hit) return;
+    const from = selected ? selected.from : caret;
+    const to = selected ? selected.to : caret;
     event.preventDefault();
-    deletePromptRange(hit.start, hit.end);
-  };
-
-  /** contenteditable=false 的填空域在部分浏览器里会卡住左右方向键，主动跨过整个原子段。 */
-  const handleAtomicBlankNavigation = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!supportsBlankSlots || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
-    const el = editableRef.current;
-    if (!el || selectedRange(el)) return;
-    const caret = caretOffset(el);
-    if (caret === null) return;
-    const hit = blankRuns(runsRef.current).find(run => (
-      (event.key === 'ArrowRight' && caret === run.start)
-      || (event.key === 'ArrowLeft' && caret === run.end)
-      || (run.start < caret && caret < run.end)
-    ));
-    if (!hit) return;
-    const blankNode = Array.from(el.querySelectorAll<HTMLElement>('[data-worksheet-blank]'))
-      .find(item => item.dataset.worksheetBlank === hit.blank);
-    if (!blankNode) return;
-    event.preventDefault();
-    placeCaretBesideNode(el, blankNode, event.key === 'ArrowRight');
+    const nextText = `${node.prompt.slice(0, from)}\n${node.prompt.slice(to)}`;
+    const nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
     pendingRangeRef.current = null;
+    const nextData: Record<string, unknown> = {
+      promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns,
+    };
+    if (supportsBlankSlots) {
+      const answers = readBlankAnswers(node);
+      const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
+      nextData.answers = blankRuns(nextRuns).map(run => byId.get(run.blank) ?? []);
+      nextData.blanks = undefined;
+    }
+    onPromptChange(nextText, nextData);
+    renderRunsInto(el, nextText, nextRuns);
+    el.focus();
+    // ★ 2026-09-27：胶囊成了普通字符 ⇒ 落光标不再需要任何特判（那段 `placeCaretBesideNode`
+    // 的绕法连同原子化那一整套一起删了）。换行符右侧现在就是普通位置。
+    placeSelection(el, from + 1, from + 1);
     refreshToolbar();
   };
 
+  // ★ 2026-09-27：方向键与退格都不再由我们接管 —— 胶囊是普通字符，浏览器自己管光标与删除；
+  // 「删掉一个字符 ⇒ 那个空降级成普通文字」正是教师裁定的规则②。**只剩回车要拦**
+  //（不然浏览器会造出模型接不住的 `<br>`）。
   const handlePromptKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    handleAtomicBlankNavigation(event);
-    if (!event.defaultPrevented) handleAtomicBlankDelete(event);
+    handleEnter(event);
   };
 
   /**
@@ -436,6 +462,8 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     const current = existingBlanks.map((_, index) => storedAnswers[index] ?? []);
     const answers = [...current.slice(0, before), [], ...current.slice(before)];
     const inserted = insertBlank(runsRef.current, text, from, to, FILL_BLANK_TEXT, `blank_${blankIdSuffix()}`);
+    // 同一条规则：文本一变就重新识别（这里恒等，但别为它留例外 —— 例外就是下一次的静默分叉）。
+    inserted.runs = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
     if (inserted.text === text) return;
     onPromptChange(inserted.text, {
       promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs,
@@ -579,20 +607,6 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           data-empty={node.prompt.trim() ? undefined : '1'}
           data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
           onKeyDown={handlePromptKeyDown}
-          onMouseDown={(event) => {
-            const el = editableRef.current;
-            const target = event.target instanceof Element
-              ? event.target.closest<HTMLElement>('[data-worksheet-blank]')
-              : null;
-            if (!el || !target) return;
-            const range = nodeTextRange(el, target);
-            if (!range) return;
-            event.preventDefault();
-            el.focus();
-            placeSelection(el, range.from, range.to);
-            pendingRangeRef.current = range;
-            refreshToolbar();
-          }}
           onInput={handleInput}
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={(event) => {

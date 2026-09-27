@@ -32,6 +32,7 @@ import {
   rangeColor,
   rangeHasKey,
   readPromptRuns,
+  recognizeBlanks,
   remapRuns,
   setStyleOnRange,
   styleAt,
@@ -508,3 +509,104 @@ test('🔴 inputWidthCh：全角算两格、半角算一格（决定题干里那
   assert.equal(inputWidthCh('，'), 2);
   assert.equal(inputWidthCh(','), 1);
 });
+
+// ── 填空域的**识别**（★ 2026-09-27 教师裁定：`{填空域}` 就是 5 个普通字符）────────────
+//
+// 🔴 教师原话（两条规则，一字不改）：
+//   ① 5 个字符全、且中间无空格 ⇒ 是一个真正的占位符，灰色底，**计入**占位符个数；
+//   ② 5 个字符不全、或中间夹了其它字符 ⇒ 当**普通字符**处理，无底色，**不计入**个数。
+// ⇒ 也就是说：**「是不是空」完全由文本决定**，不再由 DOM 的 `contenteditable=false` 决定。
+// 这正是这些用例能存在的原因 —— 判据全在纯逻辑这一层，DOM 那一层只剩画和落光标。
+
+const PH = '{填空域}';
+let seq = 0;
+const mint = () => `new-${(seq += 1)}`;
+
+test('🔴 规则①：精确的占位串 ⇒ 算一个空', () => {
+  const text = `光合作用需要${PH}和光`;
+  const runs = recognizeBlanks([run(0, text.length)], text, PH, mint);
+  assert.equal(blankCount(runs), 1);
+  assert.equal(blankRuns(runs)[0].start, 6);
+  assert.equal(blankRuns(runs)[0].end, 6 + PH.length);
+  assertShape(runs, text.length);
+});
+
+test('🔴 规则②：缺字符 / 中间夹字符 ⇒ 普通文字，**不计入**个数（教师定的判据）', () => {
+  // ⚠️ 注意 `{{填空域}` **不在**这张表里：前面多一个 `{` 不影响那 5 个字符连续 ⇒ 按规则①它仍然是一个空
+  //    （单独有用例）。规则②排的是「缺字符」与「中间夹了别的字符」。
+  for (const broken of ['{填空}', '{填空 域}', '{填空域', '填空域}', '{填字域}']) {
+    const runs = recognizeBlanks([run(0, broken.length)], broken, PH, mint);
+    assert.equal(blankCount(runs), 0, `「${broken}」不该被当成一个空`);
+    assert.equal(shape(runs), `0-${broken.length}`, `「${broken}」应当原样保持普通文字`);
+  }
+});
+
+test('🔴 规则②的反面：**样式不许被识别过程吃掉**', () => {
+  const text = `这是{填空}，那是${PH}`;
+  const styled = [run(0, 8, { bold: true }), run(8, text.length)];
+  const runs = recognizeBlanks(styled, text, PH, mint);
+  assert.equal(blankCount(runs), 1);
+  assert.deepEqual(
+    runs.filter(r => r.bold).map(r => [r.start, r.end]),
+    [[0, 8]],
+    '加粗那一段的区间不许被识别改动',
+  );
+  assertShape(runs, text.length);
+});
+
+test('🔴 挨着的两个空各算一个，顺序 = 在题干里出现的先后', () => {
+  const text = `${PH}${PH}`;
+  const runs = recognizeBlanks([run(0, text.length)], text, PH, mint);
+  assert.equal(blankCount(runs), 2);
+  assert.deepEqual(blankRuns(runs).map(r => [r.start, r.end]), [[0, 5], [5, 10]]);
+});
+
+test('🔴 身份继承：在空前面打字，那个空**还是同一个**（答案才跟着走）', () => {
+  const before = `前${PH}`;
+  const withBlank = recognizeBlanks([run(0, before.length)], before, PH, mint);
+  const id = blankRuns(withBlank)[0].blank;
+  const after = `开头前${PH}`;
+  const runs = recognizeBlanks(remapRuns(withBlank, before, after), after, PH, mint);
+  assert.equal(blankCount(runs), 1);
+  assert.equal(blankRuns(runs)[0].blank, id, '同一个位置上的空必须沿用它的身份');
+  assert.equal(blankRuns(runs)[0].start, 3);
+});
+
+test('🔴 改坏再改好 ⇒ 旧空降级、改好的是**新**空（答案会丢，这是规则②的定义）', () => {
+  const good = `甲${PH}乙`;
+  const first = recognizeBlanks([run(0, good.length)], good, PH, mint);
+  const oldId = blankRuns(first)[0].blank;
+
+  const broken = `甲{填空}乙`;
+  const noBlank = recognizeBlanks(remapRuns(first, good, broken), broken, PH, mint);
+  assert.equal(blankCount(noBlank), 0, '缺字符的占位串不许还算成一个空');
+
+  const repaired = recognizeBlanks(remapRuns(noBlank, broken, good), good, PH, mint);
+  assert.equal(blankCount(repaired), 1);
+  assert.notEqual(blankRuns(repaired)[0].blank, oldId, '改好的是新空 —— 身份不继承');
+});
+
+test('没有占位串 ⇒ 一个空都没有（也不许多切一刀）', () => {
+  const text = '普通题干，没有填空';
+  const runs = recognizeBlanks([run(0, text.length)], text, PH, mint);
+  assert.equal(blankCount(runs), 0);
+  assert.equal(shape(runs), `0-${text.length}`);
+});
+
+test('🔴 跨样式边界的占位串：切断之后仍然拼满全文（分段不变量）', () => {
+  const text = `前${PH}后`;
+  const styled = [run(0, 3, { bold: true }), run(3, text.length, { italic: true })];
+  const runs = recognizeBlanks(styled, text, PH, mint);
+  assert.equal(blankCount(runs), 1);
+  assertShape(runs, text.length);
+  assert.equal(blankRuns(runs)[0].start, 1);
+  assert.equal(blankRuns(runs)[0].end, 1 + PH.length);
+});
+
+test('相邻的多余字符不算「夹在中间」：`{{填空域}` 仍然是一个空', () => {
+  const text = '{{填空域}';
+  const runs = recognizeBlanks([run(0, text.length)], text, PH, mint);
+  assert.equal(blankCount(runs), 1, '那 5 个字符是连续的 ⇒ 按规则①算一个空');
+  assert.equal(blankRuns(runs)[0].start, 1, '空从第二个字符开始，前面那个 `{` 是普通文字');
+});
+

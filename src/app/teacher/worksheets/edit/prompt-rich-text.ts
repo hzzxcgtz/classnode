@@ -42,16 +42,15 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     });
     span.textContent = text.slice(run.start, run.end);
     if (isBlankRun(run)) {
-      // 填空占位符是题干中的一个「原子对象」，不是一串可以把光标插进去的普通文字。
-      // contenteditable=false 先阻止浏览器在内部落光标；删除键的跨浏览器一致性由
-      // PromptEditor 的 keydown 接管。
-      span.contentEditable = 'false';
+      // ★ 2026-09-27 教师裁定：**`{填空域}` 就是 5 个普通字符**。
+      // 这里只负责「画成灰底」，**不再** `contenteditable=false`、不再接管光标与删除键：
+      // 光标能像普通文字一样停在里面、退格能删掉一个字符（那正是规则②：删坏了就不算空了）。
+      // ⇒ 原子化那一整套（光标锚点 / `placeCaretBesideNode` / 方向键与退格接管 / 点选接管）
+      //   全部删掉 —— 它们曾经是本模块**唯一**无法在本机验证的部分。
       span.className = 'worksheet-editor-inline-blank';
-      span.dataset.worksheetBlank = run.blank;
     }
     el.appendChild(span);
   });
-  if (runs.length === 0) el.appendChild(document.createTextNode(''));
 }
 
 /** 从 `root` 走到 (`node`, `offset`) 为止一共走过多少个**字符**。 */
@@ -81,14 +80,6 @@ function charsBefore(root: HTMLElement, node: Node, offset: number): number {
   walk(root);
   // 走不到那个节点（选区不在这个框里）⇒ 返回 `-1`，由调用方判成「不算数」。
   return hit ? total : -1;
-}
-
-/** 一个题干子节点覆盖的字符区间。点击原子填空占位符时用它选中整段。 */
-export function nodeTextRange(root: HTMLElement, node: Node): { from: number; to: number } | null {
-  if (!root.contains(node)) return null;
-  const from = charsBefore(root, node, 0);
-  if (from < 0) return null;
-  return { from, to: from + (node.textContent || '').length };
 }
 
 /** 光标在可编辑区里的**字符偏移**。焦点不在框里 / 取不到选区 ⇒ `null`。 */
@@ -147,23 +138,6 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
       range.setEnd(texts[end.index], end.offset);
     }
   }
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-/**
- * 把光标放到一个原子子节点的前面或后面。
- * 不能用字符偏移落点，因为边界偏移会按既有规则归到前一段文本节点末尾；若前一段正好是
- * `contenteditable=false` 的填空域，Safari/Chromium 都可能把光标留在原处。
- */
-export function placeCaretBesideNode(root: HTMLElement, node: Node, after: boolean): void {
-  const selection = typeof window === 'undefined' ? null : window.getSelection();
-  if (!selection || node.parentNode !== root) return;
-  const index = Array.prototype.indexOf.call(root.childNodes, node) as number;
-  if (index < 0) return;
-  const range = document.createRange();
-  range.setStart(root, index + (after ? 1 : 0));
-  range.collapse(true);
   selection.removeAllRanges();
   selection.addRange(range);
 }

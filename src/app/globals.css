@@ -4366,8 +4366,9 @@ tr:hover td {
   line-height: 1.55;
   text-decoration: none !important;
   vertical-align: 0.04em;
-  cursor: default;
-  user-select: all;
+  /* ★ 2026-09-27：`{填空域}` 改成普通字符之后，这里**不再** `cursor: default` /
+     `user-select: all` —— 它要能像普通文字一样被点、被选中、被删（删坏即降级，见规则②）。 */
+
 }
 
 /* 工具条 + 正文 = **一个**框。焦点环画在这里（`:focus-within`），

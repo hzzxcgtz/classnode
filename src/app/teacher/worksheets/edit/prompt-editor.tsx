@@ -23,7 +23,7 @@ import {
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
 import { hasPromptBlankSlots, readBlankAnswers } from './worksheet-editor-core';
-import { caretOffset, nodeTextRange, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
+import { caretOffset, nodeTextRange, placeCaretBesideNode, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
  * 题干的**所见即所得**编辑器（★ 2026-09-26，教师裁定 ①）。
@@ -336,6 +336,33 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
     deletePromptRange(hit.start, hit.end);
   };
 
+  /** contenteditable=false 的填空域在部分浏览器里会卡住左右方向键，主动跨过整个原子段。 */
+  const handleAtomicBlankNavigation = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!supportsBlankSlots || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    const el = editableRef.current;
+    if (!el || selectedRange(el)) return;
+    const caret = caretOffset(el);
+    if (caret === null) return;
+    const hit = blankRuns(runsRef.current).find(run => (
+      (event.key === 'ArrowRight' && caret === run.start)
+      || (event.key === 'ArrowLeft' && caret === run.end)
+      || (run.start < caret && caret < run.end)
+    ));
+    if (!hit) return;
+    const blankNode = Array.from(el.querySelectorAll<HTMLElement>('[data-worksheet-blank]'))
+      .find(item => item.dataset.worksheetBlank === hit.blank);
+    if (!blankNode) return;
+    event.preventDefault();
+    placeCaretBesideNode(el, blankNode, event.key === 'ArrowRight');
+    pendingRangeRef.current = null;
+    refreshToolbar();
+  };
+
+  const handlePromptKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    handleAtomicBlankNavigation(event);
+    if (!event.defaultPrevented) handleAtomicBlankDelete(event);
+  };
+
   /**
    * 工具栏点了一下（裁定 ②：没选中就什么都不做）。
    *
@@ -551,7 +578,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           aria-label="题干"
           data-empty={node.prompt.trim() ? undefined : '1'}
           data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
-          onKeyDown={handleAtomicBlankDelete}
+          onKeyDown={handlePromptKeyDown}
           onMouseDown={(event) => {
             const el = editableRef.current;
             const target = event.target instanceof Element

@@ -723,8 +723,8 @@
 .matchLineDelete { opacity: 0; pointer-events: none; fill: #b91c1c; font-size: 22px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
 .matchLineGroup:hover .matchLineDelete, .matchLineGroup:focus .matchLineDelete { opacity: 1; }
 
-.choiceWord { padding: 5px 10px; border-radius: 2px; min-height: 44px; }
-.choiceWordInline { min-height: 44px; padding: 2px 6px; margin: 0 2px; font-size: .82rem; }
+.choiceWord { padding: 0 2px; border-radius: 0; min-height: 44px; }
+.choiceWordInline { min-height: 44px; padding: 0 1px; margin: 0 1px; font-size: .82rem; }
 .inlineChoices { display: inline-flex; align-items: center; white-space: nowrap; margin-left: 4px; }
 .poolItem { border-radius: 5px; border-color: #93c5fd; background: #f8fbff; }
 .zoneGrid { gap: 22px; }
@@ -1179,10 +1179,10 @@
 
 .choiceWord {
   appearance: none;
-  padding: 7px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: #fff;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: #1e293b;
   font-size: .88rem;
   font-weight: 600;
@@ -1194,12 +1194,45 @@
   box-sizing: border-box;
 }
 
+.choiceWord > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid #dbe5f2;
+  border-radius: 4px;
+  background: #eef4ff;
+  color: #3f628f;
+  line-height: 1.3;
+  transition: border-color .12s ease-out, background-color .12s ease-out, color .12s ease-out;
+}
+
+.choiceWordInline > span {
+  min-height: 25px;
+  padding: 2px 7px;
+}
+
 /* 选中（手里拿着）的那个词。⚠️ 与 `.dropActive`（手指底下的落点）分得开：
    这一条说的是「我拿着什么」，那一条说的是「它要落到哪」。 */
 .choiceWordPicked {
+  background: transparent;
+}
+
+.choiceWordPicked > span,
+.choiceWord.dragActive > span {
   border-color: var(--ws-accent);
-  background: #eef2ff;
+  background: #dbeafe;
   color: #1d4ed8;
+}
+
+.choiceWord.dragActive {
+  box-shadow: none;
+}
+
+.choiceWord:disabled > span {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 /* ───────────────────────── 归类题 ─────────────────────────────────────── */
@@ -1430,8 +1463,8 @@
 .matchLineHit { stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: pointer; }
 .matchLineDelete { opacity: 0; pointer-events: none; fill: #b91c1c; font-size: 22px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
 .matchLineGroup:hover .matchLineDelete, .matchLineGroup:focus .matchLineDelete { opacity: 1; }
-.choiceWord { padding: 5px 10px; border-radius: 2px; min-height: 44px; }
-.choiceWordInline { min-height: 44px; padding: 2px 6px; margin: 0 2px; font-size: .82rem; }
+.choiceWord { padding: 0 2px; border-radius: 0; min-height: 44px; }
+.choiceWordInline { min-height: 44px; padding: 0 1px; margin: 0 1px; font-size: .82rem; }
 .inlineChoices { display: inline-flex; align-items: center; white-space: nowrap; margin-left: 4px; }
 .poolItem { border-radius: 5px; border-color: #93c5fd; background: #f8fbff; }
 .zoneGrid { gap: 22px; }

@@ -101,7 +101,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled }: ChoiceBla
         ref={(el) => { wordEls.current[sourceId] = el; }}
         {...drag.sourceProps(sourceId)}
       >
-        {word}
+        <span>{word}</span>
       </button>
     );
   };

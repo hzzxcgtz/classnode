@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankCount } from '@/lib/worksheet-prompt-marks';
 import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
@@ -8,6 +10,44 @@ import {
   readBlankAnswers,
   writeFillAnswers,
 } from '../worksheet-editor-core';
+
+/**
+ * 一行一项的编辑框需要保留教师正在输入的末尾换行。
+ * 直接把 `splitChoiceLines(text)` 的结果立刻回填给 textarea，会马上删掉空行，表现为 Enter 失效。
+ */
+function LineListTextarea({
+  values,
+  rows,
+  placeholder,
+  onLinesChange,
+}: {
+  values: string[];
+  rows: number;
+  placeholder: string;
+  onLinesChange: (lines: string[]) => void;
+}) {
+  const canonical = values.join('\n');
+  const [draft, setDraft] = useState(canonical);
+
+  useEffect(() => {
+    setDraft(canonical);
+  }, [canonical]);
+
+  return (
+    <textarea
+      className="input"
+      rows={rows}
+      value={draft}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        onLinesChange(splitChoiceLines(next));
+      }}
+      onBlur={() => setDraft(current => splitChoiceLines(current).join('\n'))}
+      placeholder={placeholder}
+    />
+  );
+}
 
 /**
  * 填空题与选择填空题的答案区。
@@ -36,16 +76,15 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true }: {
                 <strong>第 {index + 1} 空</strong>
                 <em>对应题干中第 {index + 1} 个填空域</em>
               </span>
-              <textarea
-                className="input"
+              <LineListTextarea
                 rows={2}
-                value={(answerSets[index] ?? []).join('\n')}
-                onChange={event => onDataChange({
+                values={answerSets[index] ?? []}
+                onLinesChange={lines => onDataChange({
                   blanks: undefined,
                   answers: Array.from(
                     { length: slots },
                     (_, answerIndex) => answerIndex === index
-                      ? writeFillAnswers(event.target.value)
+                      ? writeFillAnswers(lines.join('\n'))
                       : (answerSets[answerIndex] ?? []),
                   ),
                 })}
@@ -102,23 +141,25 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
         <div className="worksheet-editor-fill-mode-list">
           {settings.map((setting, index) => (
             <section className="worksheet-editor-fill-mode-card" key={index}>
-              <div className="worksheet-editor-fill-mode-head"><strong>第 {index + 1} 空</strong><span>{setting.mode === 'text' ? '学生手工填写' : setting.mode === 'inline' ? '右侧独立选词' : '下方共用词池'}</span></div>
-              <div className="worksheet-editor-fill-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
-                {([
-                  ['text', '手工填写'],
-                  ['inline', '右侧选词'],
-                  ['pool', '下方选词'],
-                ] as const).map(([mode, label]) => (
-                  <label className={setting.mode === mode ? 'is-selected' : ''} key={mode}>
-                    <input type="radio" name={`fill-mode-${node.id}-${index}`} checked={setting.mode === mode} onChange={() => setMode(index, mode)} />
-                    <span>{label}</span>
-                  </label>
-                ))}
+              <div className="worksheet-editor-fill-mode-head">
+                <strong>第 {index + 1} 空</strong>
+                <div className="worksheet-editor-fill-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
+                  {([
+                    ['text', '手工填写'],
+                    ['inline', '右侧选词'],
+                    ['pool', '下方选词'],
+                  ] as const).map(([mode, label]) => (
+                    <label className={setting.mode === mode ? 'is-selected' : ''} key={mode}>
+                      <input type="radio" name={`fill-mode-${node.id}-${index}`} checked={setting.mode === mode} onChange={() => setMode(index, mode)} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               {setting.mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空右侧的词</span>
-                  <textarea className="input" rows={2} value={setting.choices.join('\n')} onChange={event => setInlineChoices(index, event.target.value)} placeholder={'一行一个词，例如：\n阳光\n灯光'} />
+                  <LineListTextarea rows={2} values={setting.choices} onLinesChange={lines => setInlineChoices(index, lines.join('\n'))} placeholder={'一行一个词，例如：\n阳光\n灯光'} />
                 </label>
               )}
             </section>
@@ -129,7 +170,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
       {settings.some(setting => setting.mode === 'pool') && (
         <label className="worksheet-editor-field worksheet-editor-choice-words">
           <span>下方共用词池</span>
-          <textarea className="input" rows={3} value={poolChoices.join('\n')} onChange={event => onDataChange({ fillChoicePool: splitChoiceLines(event.target.value) })} placeholder={'一行一个词，例如：\n阳光\n水分\n空气'} />
+          <LineListTextarea rows={3} values={poolChoices} onLinesChange={lines => onDataChange({ fillChoicePool: lines })} placeholder={'一行一个词，例如：\n阳光\n水分\n空气'} />
           <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
         </label>
       )}

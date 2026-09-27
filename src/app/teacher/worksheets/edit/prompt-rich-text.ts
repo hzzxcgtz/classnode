@@ -151,6 +151,23 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
   selection.addRange(range);
 }
 
+/**
+ * 把光标放到一个原子子节点的前面或后面。
+ * 不能用字符偏移落点，因为边界偏移会按既有规则归到前一段文本节点末尾；若前一段正好是
+ * `contenteditable=false` 的填空域，Safari/Chromium 都可能把光标留在原处。
+ */
+export function placeCaretBesideNode(root: HTMLElement, node: Node, after: boolean): void {
+  const selection = typeof window === 'undefined' ? null : window.getSelection();
+  if (!selection || node.parentNode !== root) return;
+  const index = Array.prototype.indexOf.call(root.childNodes, node) as number;
+  if (index < 0) return;
+  const range = document.createRange();
+  range.setStart(root, index + (after ? 1 : 0));
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 /** 只放一个光标（`placeSelection` 的简写）。 */
 export function setCaretOffset(el: HTMLElement, offset: number): void {
   placeSelection(el, offset, offset);

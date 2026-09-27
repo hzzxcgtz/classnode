@@ -2585,30 +2585,30 @@ tr:hover td {
 .worksheet-editor-fill-mode-card {
   border: 1px solid #d9e2ef;
   background: #fff;
-  padding: 14px 16px;
+  padding: 11px 14px;
 }
 
 .worksheet-editor-fill-mode-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
   color: #172033;
 }
 
-.worksheet-editor-fill-mode-head > span {
-  color: #64748b;
-  font-size: 13px;
+.worksheet-editor-fill-mode-head > strong {
+  min-width: 52px;
+  font-size: 0.813rem;
 }
 
 .worksheet-editor-fill-mode-tabs {
   display: inline-grid;
-  grid-template-columns: repeat(3, minmax(96px, auto));
-  gap: 3px;
-  padding: 4px;
+  grid-template-columns: repeat(3, minmax(74px, auto));
+  gap: 2px;
+  padding: 3px;
   border: 1px solid #dbe4f0;
-  border-radius: 9px;
+  border-radius: 7px;
   background: #eef2f7;
 }
 
@@ -2624,15 +2624,16 @@ tr:hover td {
 
 .worksheet-editor-fill-mode-tabs label > span {
   display: flex;
-  min-height: 38px;
+  min-height: 30px;
   align-items: center;
   justify-content: center;
-  padding: 7px 14px;
+  padding: 4px 9px;
   border: 1px solid transparent;
   background: transparent;
   color: #475569;
+  font-size: 0.75rem;
   font-weight: 650;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out;
 }
 
@@ -4302,7 +4303,7 @@ tr:hover td {
 }
 
 .worksheet-editor-blank-glyph {
-  color: #2563eb;
+  color: inherit;
   font-size: 0.75rem;
   letter-spacing: 0;
 }

@@ -31,8 +31,8 @@ export interface WorksheetSurfaceOption {
 }
 
 /**
- * 三档。[0] 是默认档，且**与本次改动之前逐字相同**（.96 / .90）——
- * 「教师没动过这个设置」必须等于「屏幕上一个像素都没变」。
+ * 三档，按**透明度递增**排（清晰 → 通透 → 极透）。顺序不是默认值的顺序 ——
+ * 默认档是 `soft`（通透），见 `DEFAULT_WORKSHEET_SURFACE`。
  */
 export const WORKSHEET_SURFACE_OPTIONS: readonly WorksheetSurfaceOption[] = [
   { id: 'opaque', name: '清晰', description: '卡片不透明，题干最清楚' },
@@ -40,16 +40,29 @@ export const WORKSHEET_SURFACE_OPTIONS: readonly WorksheetSurfaceOption[] = [
   { id: 'clear', name: '极透', description: '背景最明显，文字的对比度会低一些' },
 ] as const;
 
-export const DEFAULT_WORKSHEET_SURFACE: WorksheetSurfaceOpacity = 'opaque';
+/**
+ * ★ 2026-09-27（教师）：**默认档是「通透」**，不是「清晰」。
+ *
+ * 教师原话：「卡片透明度默认选『通透』模式。」
+ *
+ * 🔴 **这会改变历史学习单的外观**（那些 `settings` 里没有这一格的行）
+ * —— 那正是他的意思：他看过「通透」那一档、要的就是它当默认。
+ * ⚠️ 所以下面 `normalizeWorksheetSurfaceOpacity` 里那条「认不出就回默认档」
+ *    现在**不再**等于「屏幕一个像素都不变」（改版前它是这么写的）。
+ *    两件事别再混为一谈：**「通透」是产品默认，「清晰」只是其中一档。**
+ */
+export const DEFAULT_WORKSHEET_SURFACE: WorksheetSurfaceOpacity = 'soft';
 
 const VALID_SURFACES = new Set<string>(WORKSHEET_SURFACE_OPTIONS.map(option => option.id));
 
 /**
- * 认不出的值（老数据、手工改过的行、拼错的串）一律回**默认档**。
+ * 认不出的值（老数据、手工改过的行、拼错的串）一律回**默认档**（= 通透）。
  *
- * ⚠️ 默认档是 `.96`（今天的样子）而不是「最透」：一份没有这个字段的老学习单，
- * 屏幕必须与升级前**逐像素相同**。反过来的话，所有历史学习单上的字会**一起变淡**，
- * 而教师没有改过任何设置。
+ * ⚠️ 「最透」（`clear`）**刻意不是**默认：那一档在花背景上的文字对比度是三个里最低的，
+ * 让它当默认等于把每一份没配过的学习单都推到那一档上。默认取中间那一档。
+ * ⚠️ 与「清晰」也不一样：那是**最保守**的一档（今天之前的样子），留作教师手动选。
+ *    ⊘ 本节原来写的是「默认档是 `.96`（今天的样子），一份没有这个字段的老学习单必须与
+ *      升级前逐像素相同」—— 那条在 2026-09-27 被教师明确否掉了（他要通透当默认）。
  */
 export function normalizeWorksheetSurfaceOpacity(value: unknown): WorksheetSurfaceOpacity {
   return typeof value === 'string' && VALID_SURFACES.has(value)
@@ -82,6 +95,7 @@ export interface SurfaceAlphas {
 export function surfaceAlphas(option: WorksheetSurfaceOpacity): SurfaceAlphas {
   if (option === 'soft') return { card: 0.82, container: 0.74, cardActive: 0.84 };
   if (option === 'clear') return { card: 0.64, container: 0.54, cardActive: 0.66 };
-  // 默认档 = 本次改动之前的三个字面量（.96 / .90 / .98），**逐字**搬过来的。
+  // 「清晰」= 本次改动之前的三个字面量（.96 / .90 / .98），**逐字**保留 ——
+  // 它是「老师想要以前那个样子」的出口。⚠️ 它**已经不是默认档了**（默认是 `soft`）。
   return { card: 0.96, container: 0.9, cardActive: 0.98 };
 }

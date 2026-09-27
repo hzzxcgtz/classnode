@@ -200,9 +200,10 @@ const DEFAULT_SETTINGS = {
   backgroundTheme: 'cloud-playground',
   backgroundImageUrl: null,
   backgroundPortraitImageUrl: null,
-  // ★ 2026-09-27：卡片透度。默认 = **今天的样子**（卡片 .96 / 任务容器 .90）——
-  // 一份没有这个字段的老学习单，学生端必须一个像素都不变。
-  surfaceOpacity: 'opaque',
+  // ★ 2026-09-27：卡片透度。默认 = **通透**（教师当天定的：「卡片透明度默认选『通透』模式」）。
+  // ⚠️ 这会改掉历史学习单的外观（那些行里没有这一格）—— 那正是他要的，
+  //    别拿「老数据不许变」去改回来。三档与数值见 `src/lib/worksheet-surface.ts`。
+  surfaceOpacity: 'soft',
 } as const;
 
 /**

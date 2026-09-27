@@ -379,7 +379,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   assert.deepEqual(body.settings, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
-    surfaceOpacity: 'opaque',
+    surfaceOpacity: 'soft',
   });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
@@ -439,8 +439,8 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   assert.deepEqual(await settingsOf(worksheet.id), {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
-    // ★ 2026-09-27：卡片透度（与上面那条同一次决定，见那里的注释）。
-    surfaceOpacity: 'opaque',
+    // ★ 2026-09-27：卡片透度 = 默认档「通透」（教师当天定的默认；上面那条同一次决定）。
+    surfaceOpacity: 'soft',
   });
 
   // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
@@ -482,8 +482,8 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
     // ★ 2026-09-27：卡片透度 —— 这一条是「库里手工改过的行**没有**这个键」那个情形，
-    //    归一化必须补上默认档（`opaque` = 今天的样子），否则学生端读到一个 undefined 会自己再兜一次。
-    surfaceOpacity: 'opaque',
+    //    归一化必须补上默认档（`soft` = 通透），否则学生端读到一个 undefined 会自己再兜一次。
+    surfaceOpacity: 'soft',
   });
 });
 

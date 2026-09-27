@@ -684,9 +684,10 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
     analysisAgentId: null,   // ★ M7b：第七个键（规格 §3.2）
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
     // ★ 2026-09-27：卡片透度（教师：「在学习单设置中增加几档透明度供选择」）。
-    // ⚠️ 草稿里**没有**这一格 ⇒ 归一化补默认档 `opaque`（= 今天的样子）。这一条**钉不出**
-    //    「原样读进来」（草稿里没有值可读），那半边由下面 `halfStep` 那一条同型的用例负责。
-    surfaceOpacity: 'opaque',
+    // ⚠️ 草稿里**没有**这一格 ⇒ 归一化补**默认档 `soft`**（通透；教师当天定的默认）。
+    //    这一条**钉不出**「原样读进来」（草稿里没有值可读），那半边由下面 `halfStep`
+    //    那一条同型的用例负责。
+    surfaceOpacity: 'soft',
   });
 });
 

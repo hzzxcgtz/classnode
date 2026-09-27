@@ -20,18 +20,19 @@ import {
   surfaceAlphas,
 } from './worksheet-surface.ts';
 
-test('🔴 默认档 = **改动之前的样子**（卡片 .96 / 任务容器 .90 / 正在写 .98）', () => {
-  assert.equal(DEFAULT_WORKSHEET_SURFACE, 'opaque');
-  assert.deepEqual(surfaceAlphas(DEFAULT_WORKSHEET_SURFACE), { card: 0.96, container: 0.9, cardActive: 0.98 });
-  // ⚠️ 这三个数是 `worksheet.module.css` 里 `.question`（常态与「正在写」）与
-  //    `.group[data-container='1']` 原来的字面量，**逐字**搬过来的。
-  //    改它们 = 改所有历史学习单的外观。
-  assert.equal(surfaceAlphas(DEFAULT_WORKSHEET_SURFACE).cardActive, 0.98, '「正在写」那一档');
+test('🔴 默认档是**通透**（教师 2026-09-27 明确指定）', () => {
+  assert.equal(DEFAULT_WORKSHEET_SURFACE, 'soft');
+  assert.equal(normalizeWorksheetSurfaceOpacity(undefined), 'soft', '老学习单没有这一格 ⇒ 也走通透');
+  // ⚠️ 「清晰」那一档的数值仍然是**改版之前的三个字面量**（逐字保留）：
+  //    它是「老师想要以前那个样子」的出口，但它**不再是默认**。
+  assert.deepEqual(surfaceAlphas('opaque'), { card: 0.96, container: 0.9, cardActive: 0.98 });
+  // ⚠️ 「最透」**刻意不是**默认：那一档在花背景上的文字对比度是三个里最低的。
+  assert.notEqual(DEFAULT_WORKSHEET_SURFACE, 'clear');
 });
 
-test('🔴 认不出的值一律回默认档（老数据没有这个字段 ⇒ 屏幕不许变）', () => {
+test('🔴 认不出的值一律回默认档（通透）', () => {
   for (const bad of [undefined, null, '', 'OPAQUE', '极透', 0, 1, {}, [], true]) {
-    assert.equal(normalizeWorksheetSurfaceOpacity(bad), 'opaque', JSON.stringify(bad));
+    assert.equal(normalizeWorksheetSurfaceOpacity(bad), 'soft', JSON.stringify(bad));
   }
   for (const good of ['opaque', 'soft', 'clear']) {
     assert.equal(normalizeWorksheetSurfaceOpacity(good), good);

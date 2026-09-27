@@ -1,6 +1,6 @@
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
-import { cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
+import { blankLayout, cellAtSlot, cellLabel, tableBlankIds, tableMarkIndex } from './worksheet-table.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
 
@@ -74,21 +74,30 @@ export interface BlankSlot {
 
 export function blankSlots(node: WorksheetQuestionNode, runs: PromptRun[]): BlankSlot[] {
   const textRuns = blankRuns(runs);
-  const slots: BlankSlot[] = textRuns.map((run, index) => ({
-    id: run.blank,
-    label: `第 ${index + 1} 空`,
-    kind: 'text',
-  }));
-  // ⚠️ 表格空的标签**只用表格那两个原语**（`cellAtSlot` + `cellLabel`），
-  //    不绕 `blankLabelAt` —— 后者要读**节点自己的** `promptRuns`，而本函数的
-  //    `runs` 是调用方传进来的，两者一旦不是同一份，标签就会算错（而那是静默的）。
-  //    两个原语与 `blankLabelAt` 用的是同一对 ⇒ 标签格式仍然只有 `cellLabel` 一处定义。
-  tableBlankIds(node.data.table).forEach((id, index) => {
+  // ⚠️ 把 `runs` 传进去：`blankLayout` 自己会读 `node.data.promptRuns`，两个来源
+  // 一旦不是同一份，编号就会静默算错（这个坑我踩过一次）。
+  const { tableBase } = blankLayout(node, runs);
+  const tableIds = tableBlankIds(node.data.table);
+  const slots: BlankSlot[] = [];
+  // ① 标记**之前**的文本空
+  textRuns.slice(0, tableBase).forEach((run, index) => {
+    slots.push({ id: run.blank, label: `第 ${index + 1} 空`, kind: 'text' });
+  });
+  // ② 表格里的空（行优先）—— 插在中间了（★ 2026-09-28：表格域能插在题干中间）
+  tableIds.forEach((id, index) => {
     const at = cellAtSlot(node.data.table, index);
     slots.push({
       id,
       label: at ? cellLabel(at.row, at.col) : `表格里的第 ${index + 1} 个空`,
       kind: 'table',
+    });
+  });
+  // ③ 标记**之后**的文本空 —— 号接着表格往后数
+  textRuns.slice(tableBase).forEach((run, index) => {
+    slots.push({
+      id: run.blank,
+      label: `第 ${tableBase + tableIds.length + index + 1} 空`,
+      kind: 'text',
     });
   });
   return slots;

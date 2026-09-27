@@ -25,6 +25,8 @@ import {
   tableBlankCount,
   tableBlankIds,
   tableColumnCount,
+  tableMarkCount,
+  tableMarkIndex,
   tableRowCount,
   type WorksheetTable,
 } from './worksheet-table.ts';
@@ -481,3 +483,37 @@ test('🔴 tableBlankIds：行优先的身份表（`fillBlankSettings` 的键就
   assert.deepEqual(tableBlankIds(undefined), []);
   assert.deepEqual(tableBlankIds({ rows: [[cell('甲'), { text: '乙', blank: true }]] }), [], '非字符串的标记不算空');
 });
+
+// ── 表格域标记（★ 2026-09-28，教师）：空的顺序按标记位置切 ────────────────
+
+test('tableMarkIndex / tableMarkCount：标记的识别', () => {
+  assert.equal(tableMarkIndex('请根据{表格域}填写'), 3);
+  assert.equal(tableMarkIndex('没有标记'), -1);
+  assert.equal(tableMarkIndex(undefined), -1);
+  assert.equal(tableMarkCount('{表格域}'), 1);
+  assert.equal(tableMarkCount('{表格域}和{表格域}'), 2, '两处 ⇒ 坏数据（一份题干只允许一张表）');
+  assert.equal(tableMarkCount('没有标记'), 0);
+  assert.equal(tableMarkCount(''), 0);
+});
+
+test('🔴 blankLayout：**标记之前的文本空 → 表格空 → 标记之后的文本空**', () => {
+  // 两个文本空、标记跟在它们后面、后面没有别的文字
+  const after = { ...nodeOf(2, sampleTable()), prompt: '{填空域}{填空域}{表格域}' };
+  assert.deepEqual(blankLayout(after), { textCount: 2, tableCount: 2, total: 4, tableBase: 2 });
+
+  // 标记**夹在两个文本空中间**：第 1 个文本空在前、第 2 个在表格**之后**
+  // ⚠️ 夹具的分段要跟着文本走：`{填空域}` 各 5 个字符，标记从第 5 个字符开始。
+  const runs: PromptRun[] = [
+    { start: 0, end: 5, ...DEFAULT_PROMPT_STYLE, blank: 't1' },
+    { start: 10, end: 15, ...DEFAULT_PROMPT_STYLE, blank: 't2' },
+  ];
+  const middle = { prompt: '{填空域}{表格域}{填空域}', data: { promptRuns: runs, table: sampleTable() } };
+  assert.deepEqual(blankLayout(middle), { textCount: 2, tableCount: 2, total: 4, tableBase: 1 });
+});
+
+test('🔴 blankLayout：**没有标记**时与加标记之前逐字相同（表格空排最后）', () => {
+  assert.deepEqual(blankLayout(nodeOf(2, sampleTable())), { textCount: 2, tableCount: 2, total: 4, tableBase: 2 });
+  assert.deepEqual(blankLayout(nodeOf(0, sampleTable())), { textCount: 0, tableCount: 2, total: 2, tableBase: 0 });
+});
+
+;

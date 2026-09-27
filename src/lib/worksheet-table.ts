@@ -1,4 +1,4 @@
-import { blankCount, readPromptRuns } from './worksheet-prompt-marks.ts';
+import { blankRuns, readPromptRuns, type PromptRun } from './worksheet-prompt-marks.ts';
 
 /**
  * 表格填空的**纯逻辑核心**（★ 2026-09-28，教师裁定「按 B 做」＝ 结构化网格）。
@@ -26,6 +26,44 @@ import { blankCount, readPromptRuns } from './worksheet-prompt-marks.ts';
  * 造 id 的能力**由调用方传进来**（这里的函数只收一个 id 字符串）——
  * 纯逻辑层自己造标识的话，用例就不确定了（`recognizeBlanks` 那条注释的同一条理由）。
  */
+
+/**
+ * 「表格域」的标记串 —— 与题干里那套 `{填空域}` **同一种东西**（★ 2026-09-28，教师）。
+ *
+ * 教师原话：「在题干的编辑区域里，跟填空域一样增加一个表格域，点击以后插入，
+ * 然后可以显示被隐藏的表格设置区域。」
+ *
+ * 🔴 **它与 `{填空域}` 有一处本质不同**：`{填空域}` 那一段自己就是空的全部（它带着
+ * 身份、答案与作答方式都从它推）；而表格**有行列、每格有内容与身份** —— 所以
+ * `{表格域}` 只是**一个位置的引用**（「这里放那张表」），表格本体仍住在 `data.table`。
+ * ⇒ 两份东西要同步，判据照 `{填空域}` 那条裁定的先例：**由文本决定** ——
+ *   文本里有标记才渲染；没有标记时 `data.table` 就算还在也不渲染（那是孤儿，
+ *   删标记时编辑器要**响亮地**问一句，见 `prompt-editor.tsx`）。
+ *
+ * ⚠️ **一份题干只允许一处标记**（教师 2026-09-28 裁定）：标记是个固定串、不带 id，
+ * 出现两处就没法说清「哪一处是哪张表」。`tableMarkCount` 就是给那条校验用的，
+ * 服务端也会拒（多张表要让 `data.table` 变成按标记 id 索引的 `data.tables`，那是一次迁移）。
+ */
+export const TABLE_MARK_TEXT = '{表格域}';
+
+/** 标记在题干里的位置；没有 ⇒ `-1`。**只看第一处**。 */
+export function tableMarkIndex(text: unknown): number {
+  return typeof text === 'string' ? text.indexOf(TABLE_MARK_TEXT) : -1;
+}
+
+/** 题干里有几处标记（>1 是坏数据，服务端与编辑器都要响亮地说）。 */
+export function tableMarkCount(text: unknown): number {
+  if (typeof text !== 'string' || text === '') return 0;
+  let total = 0;
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(TABLE_MARK_TEXT, from);
+    if (at < 0) break;
+    total += 1;
+    from = at + TABLE_MARK_TEXT.length;
+  }
+  return total;
+}
 
 /** 表格的行数上限。⚠️ 产品数（照 `MAX_OPTIONS = 26` 的先例），教师觉得不合适就改。 */
 export const MAX_TABLE_ROWS = 10;
@@ -236,16 +274,35 @@ export function blankLabelAt(
  * 🔴 **两种空可以并存**（题干里的空 + 表格里的空），顺序是「题干在前、表格在后」。
  * 裁定②（表格固定渲染在题干之后）让这个顺序没有歧义 —— 不需要额外一条规则。
  */
-export function blankLayout(node: { prompt: string; data: Record<string, unknown> }): {
+export function blankLayout(
+  node: { prompt: string; data: Record<string, unknown> },
+  /**
+   * 题干的空分段。⚠️ 给了就用它，**不回头读 `node.data.promptRuns`** ——
+   * 两个来源一旦不是同一份，编号就会静默算错（调用方本来就有 `runs`，传进来最稳）。
+   */
+  runs?: readonly PromptRun[],
+): {
   textCount: number;
   tableCount: number;
   total: number;
   tableBase: number;
 } {
   const data = node.data && typeof node.data === 'object' ? node.data : {};
-  const textCount = blankCount(readPromptRuns(data.promptRuns, node.prompt));
+  const list = Array.isArray(runs) ? runs as PromptRun[] : readPromptRuns(data.promptRuns, node.prompt);
+  const textRuns = blankRuns(list);
   const tableCount = tableBlankCount(data.table);
-  return { textCount, tableCount, total: textCount + tableCount, tableBase: textCount };
+  /**
+   * ★ 2026-09-28（教师裁定）：表格域能插在题干**中间**，于是空的顺序按**标记的位置**切：
+   *
+   *     标记之前的文本空 → 表格里的空（行优先）→ 标记之后的文本空
+   *
+   * ⚠️ 没有标记时 `before` = 全部文本空 ⇒ 表格空排在最后 —— 与加标记之前**逐字相同**
+   *（这正是这套改动对老数据安全的原因）。
+   * 🔴 这个顺序就是 `data.answers` 的下标顺序，**判分按它取值**：改它等于改答案的含义。
+   */
+  const mark = tableMarkIndex(node.prompt);
+  const before = mark < 0 ? textRuns.length : textRuns.filter((run) => run.start < mark).length;
+  return { textCount: textRuns.length, tableCount, total: textRuns.length + tableCount, tableBase: before };
 }
 
 export function canAddTableRow(table: unknown): boolean {

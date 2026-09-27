@@ -190,3 +190,16 @@ test('🔴 writeFillSettings：表格空的设置也按格子身份写回去', (
   assert.equal(written['tb1'].mode, 'text', '第 4 份写给了格子 tb1');
   assert.equal(Object.keys(written).length, 4);
 });
+
+test('🔴 blankSlots：标记夹在中间时，清单的顺序 = 答案的顺序（标记前 → 表格 → 标记后）', () => {
+  // 题干：`{填空域}{表格域}{填空域}` —— 标记把两个文本空分开了
+  const runs: PromptRun[] = [
+    { start: 0, end: 5, ...DEFAULT_PROMPT_STYLE, blank: 'ba' },
+    { start: 10, end: 15, ...DEFAULT_PROMPT_STYLE, blank: 'bc' },
+  ];
+  const node = { id: 'q1', type: 'fill-blank', prompt: '{填空域}{表格域}{填空域}', inputMode: 'keyboard' as const, data: { promptRuns: runs, table: tableFixture() }, children: [] };
+  const slots = blankSlots(node, runs);
+  assert.deepEqual(slots.map(item => item.label), ['第 1 空', '第 2 行第 3 格', '第 3 空']);
+  assert.deepEqual(slots.map(item => item.id), ['ba', 'tb1', 'bc']);
+  assert.deepEqual(slots.map(item => item.kind), ['text', 'table', 'text']);
+});

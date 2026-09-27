@@ -37,6 +37,24 @@ pnpm build         # Next.js static export → out/, then check-classroom-browse
 pnpm build:server  # tsc compile server/src → server/dist/
 pnpm build:all     # both, then assemble the web runtime dir via scripts/package-web.mjs
 
+# 🔴 NEVER run a build while dev is running. `pnpm build` and `./dev.sh build`
+# both write into `.next/`, and `./dev.sh build` does NOT stop dev first
+# (dev.sh does `ensure_runtime; pnpm build`). The running dev server then 500s
+# every page with `Cannot find module './NNN.js'` — `.next/server/webpack-runtime.js`
+# points at chunks the production build overwrote. Hit twice (2026-09-25, 09-27).
+#   · To build:       ./dev.sh stop && ./dev.sh build && ./dev.sh start
+#   · Already broken: ./dev.sh stop && rm -rf .next && ./dev.sh start
+#     `rm -rf .next` is the verified fix. A plain `./dev.sh restart` is UNTESTED —
+#     don't promise it. `out/` belongs to the build, not the dev cache: leave it.
+#   · Diagnose first: if `.next/BUILD_ID` and `out/` share one mtime while
+#     `.next/server/webpack-runtime.js` has a later one, you have two generations
+#     of `.next` — that is exactly this failure. Otherwise `.next` is innocent.
+#   · Compat gate only: `node scripts/check-classroom-browser-compat.mjs` needs no
+#     build and never touches `.next`. ⚠️ But its bundle-level half scans `out/` —
+#     the PREVIOUS build's output — so after a source change it is grading a stale
+#     bundle. Rebuild first when that matters.
+# (`pnpm test` is safe to run with dev up: test:server only runs tsc → server/dist.)
+
 # Test (compiles server then runs Node built-in test runner over dist/tests/*.test.js)
 pnpm test
 # Run a single test file (from server/, after pnpm build:server)

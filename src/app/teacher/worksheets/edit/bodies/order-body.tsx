@@ -34,19 +34,27 @@ function entryLabel(text: string): string {
  *
  * 🔴 **两个顺序不能逐位相同** —— 相同就是「学生什么都不做就是满分」。
  * 维持它的是内核里的 `ensureOrderDistinct`（增删条目时）与 `shuffleOrderItems`
- * （「打乱顺序」与「取当前顺序」时，后者**保证**结果不同）。这一屏只负责把当下的状态画出来，
+ * （「重新排列」与「取当前顺序」时，后者**保证**结果不同）。这一屏只负责把当下的状态画出来，
  * 并在它们相同的时候说一句 —— 判据一条都不在这里（组件这一层没有回归网）。
+ *
+ * ── ★ 2026-09-28（教师）：**拆成两个组件** ─────────────────────────────────
+ * 教师原话：「『正确顺序』的设置放到『自动评分』中去」+「布局设计参考填空、选择」。
+ * ⇒ 「正确顺序」搬进「自动评分」卡（与填空题的「标准答案」、选择题的「正确答案」
+ *   同一个位置 —— 三者都是**答案**，而答案该在开关旁边）；条目与「学生看到的顺序」
+ *   留在容器 A（题目内容）。
+ * ⚠️ 判据仍然一条都不在这两个组件里：全在内核 `worksheet-editor-core.ts`。
  */
-export function OrderBody({ node, onDataChange, showAnswer = true }: {
+
+/**
+ * 「正确答案的顺序」—— 学生看不到。**住在「自动评分」卡里**（见文件头那一段）。
+ */
+export function OrderAnswerBody({ node, onDataChange }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
-  /** 关掉「允许自动评分」时为 `false` ⇒ **正确答案那一块**不渲染（题面照常）。 */
-  showAnswer?: boolean;
 }) {
   const order = readOrder(node);
   const { items, correctOrder } = order;
   const byId = new Map(items.map(entry => [entry.id, entry]));
-  const ambiguous = isOrderAmbiguous(items, correctOrder);
   /**
    * 「正确顺序」这一栏现在能不能用（是不是条目的 id 的一个排列）。
    *
@@ -75,78 +83,95 @@ export function OrderBody({ node, onDataChange, showAnswer = true }: {
   const commit = (next: OrderData) => onDataChange(writeOrder(next.items, next.correctOrder));
 
   return (
-    <>
-      {/* ★ 2026-09-26：关掉「允许自动评分」时这一块不渲染（它是**答案**，题面在下面） */}
-      {showAnswer && (<>
-      {/* ── 正确答案的顺序（学生看不到）──────────────────────────────── */}
-      <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">正确答案的顺序（学生看不到）</span>
-        {correctOrder.length === 0 ? (
-          <p className="worksheet-editor-hint">
-            还没设置正确顺序 —— 先点下面的「取当前顺序」（它会把现在的条目顺序当答案，
-            同时把学生看到的顺序打乱），再用这里的 ▲▼ 调成正确的顺序。
-          </p>
-        ) : (
-          <ol className="worksheet-editor-order-answer">
-            {correctOrder.map((id, index) => {
-              const entry = byId.get(id);
-              const label = entry ? entryLabel(entry.text) : '（这个条目已经被删掉了）';
-              return (
-                // key 用下标：条目缺 id 时写回会补一个（`writeEntries`），用 id 当 key
-                // 会让这一行的按钮在补 id 的那一刻被重挂载 —— 而列表本身是受控的，不会串位。
-                <li className="worksheet-editor-order-row" key={index}>
-                  <span className="worksheet-editor-order-index">{index + 1}</span>
-                  <span className="worksheet-editor-option-text">{label}</span>
-                  <button
-                    type="button"
-                    className="worksheet-editor-icon-button"
-                    disabled={index === 0}
-                    title={index === 0 ? '已经是第一个' : '往前一位'}
-                    aria-label={`把「${label}」往前移一位`}
-                    onClick={() => commit({ items, correctOrder: moveIdInList(correctOrder, id, -1) })}
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    className="worksheet-editor-icon-button"
-                    disabled={index === correctOrder.length - 1}
-                    title={index === correctOrder.length - 1 ? '已经是最后一个' : '往后一位'}
-                    aria-label={`把「${label}」往后移一位`}
-                    onClick={() => commit({ items, correctOrder: moveIdInList(correctOrder, id, 1) })}
-                  >
-                    ▼
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-        {!answerReady && correctOrder.length > 0 && (
-          // 「正确顺序」与条目对不上（缺 id / 长度不符 / 有重复）—— 它是**存不下**的状态
-          //（服务端：「排序题的『正确顺序』必须正好是这些条目各一次」），所以必须说清怎么重设。
-          <p className="worksheet-editor-warn-hint">
-            ⚠ 这一栏与下面的条目对不上（库里那一份被改过，或者条目缺了 id），照这样保存会被服务端拒绝。
-            点「取当前顺序」按现在的条目重设一遍即可。
-          </p>
-        )}
-        {!answerReady ? (
-          <div className="worksheet-editor-inline-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={items.length < 2}
-              title={items.length < 2 ? '至少要两个条目' : '把现在的条目顺序当成正确答案，并打乱学生看到的顺序'}
-              onClick={() => commit(orderUseCurrentOrder(order))}
-            >
-              取当前顺序
-            </button>
-          </div>
-        ) : null}
+    <div className="worksheet-editor-block">
+      <div className="worksheet-editor-block-head">
+        <div>
+          <h4>正确顺序</h4>
+          <p>学生看不到这个顺序；它是判分的依据。用 ▲▼ 调成正确的先后。</p>
+        </div>
       </div>
-      </>)}
+      {correctOrder.length === 0 ? (
+        <p className="worksheet-editor-hint">
+          还没设置正确顺序 —— 先点下面的「取当前顺序」（它会把现在的条目顺序当答案，
+          同时把学生看到的顺序重新排列），再用这里的 ▲▼ 调成正确的顺序。
+        </p>
+      ) : (
+        <ol className="worksheet-editor-order-answer">
+          {correctOrder.map((id, index) => {
+            const entry = byId.get(id);
+            const label = entry ? entryLabel(entry.text) : '（这个条目已经被删掉了）';
+            return (
+              // key 用下标：条目缺 id 时写回会补一个（`writeEntries`），用 id 当 key
+              // 会让这一行的按钮在补 id 的那一刻被重挂载 —— 而列表本身是受控的，不会串位。
+              <li className="worksheet-editor-order-row" key={index}>
+                <span className="worksheet-editor-order-index">{index + 1}</span>
+                <span className="worksheet-editor-option-text">{label}</span>
+                <button
+                  type="button"
+                  className="worksheet-editor-icon-button"
+                  disabled={index === 0}
+                  title={index === 0 ? '已经是第一个' : '往前一位'}
+                  aria-label={`把「${label}」往前移一位`}
+                  onClick={() => commit({ items, correctOrder: moveIdInList(correctOrder, id, -1) })}
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  className="worksheet-editor-icon-button"
+                  disabled={index === correctOrder.length - 1}
+                  title={index === correctOrder.length - 1 ? '已经是最后一个' : '往后一位'}
+                  aria-label={`把「${label}」往后移一位`}
+                  onClick={() => commit({ items, correctOrder: moveIdInList(correctOrder, id, 1) })}
+                >
+                  ▼
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {!answerReady && correctOrder.length > 0 && (
+        // 「正确顺序」与条目对不上（缺 id / 长度不符 / 有重复）—— 它是**存不下**的状态
+        //（服务端：「排序题的『正确顺序』必须正好是这些条目各一次」），所以必须说清怎么重设。
+        <p className="worksheet-editor-warn-hint">
+          ⚠ 这一栏与条目对不上（库里那一份被改过，或者条目缺了 id），照这样保存会被服务端拒绝。
+          点「取当前顺序」按现在的条目重设一遍即可。
+        </p>
+      )}
+      {!answerReady ? (
+        <div className="worksheet-editor-inline-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={items.length < 2}
+            title={items.length < 2 ? '至少要两个条目' : '把现在的条目顺序当成正确答案，并重新排列学生看到的顺序'}
+            onClick={() => commit(orderUseCurrentOrder(order))}
+          >
+            取当前顺序
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
-      {/* ── 条目（学生要排的东西）────────────────────────────────────── */}
+/**
+ * 条目（学生要排的东西）+「学生看到的顺序」+「重新排列」。
+ * **住在容器 A（题目内容）里**；答案那一半见 `OrderAnswerBody`。
+ */
+export function OrderBody({ node, onDataChange }: {
+  node: WorksheetQuestionNode;
+  onDataChange: (patch: Record<string, unknown>) => void;
+}) {
+  const order = readOrder(node);
+  const { items, correctOrder } = order;
+  const ambiguous = isOrderAmbiguous(items, correctOrder);
+  /** 三个键一起写（`items` 陪着 `correctOrder`）—— 见内核里那一节的纪律 1。 */
+  const commit = (next: OrderData) => onDataChange(writeOrder(next.items, next.correctOrder));
+
+  return (
+    <>
       <div className="worksheet-editor-block">
         <span className="worksheet-editor-block-label">条目（学生看到的就是这些，顺序见下面一行）</span>
         <div className="worksheet-editor-options">
@@ -171,39 +196,38 @@ export function OrderBody({ node, onDataChange, showAnswer = true }: {
             </div>
           ))}
         </div>
+        {/* ★ 2026-09-28（教师）：「打乱顺序」移到这一行、改名「重新排列」——
+            它和「＋ 添加条目」都是**对条目这一列本身的操作**，摆在一起才读得通；
+            而「打乱顺序」这个名字说着像是另一种操作，其实只是把学生看到的顺序重排一次。 */}
         <div className="worksheet-editor-inline-actions">
           <button type="button" className="btn btn-secondary" onClick={() => commit(orderAddItem(order, ''))}>
             ＋ 添加条目
           </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={items.length < 2}
+            title={items.length < 2 ? '至少要两个条目' : '重新排列学生看到的顺序（不会等于正确答案的顺序）'}
+            onClick={() => commit({ items: shuffleOrderItems(items, correctOrder), correctOrder })}
+          >
+            重新排列
+          </button>
         </div>
-      </div>
-
-      {/* ── 学生看到的那个顺序 + 打乱 ─────────────────────────────────── */}
-      <div className="worksheet-editor-inline-actions">
-        <span className="worksheet-editor-hint">
+        <p className="worksheet-editor-hint">
           学生看到的顺序：{items.length === 0
             ? '（还没有条目）'
             : items.map(entry => entryLabel(entry.text)).join(' → ')}
-        </span>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={items.length < 2}
-          title={items.length < 2 ? '至少要两个条目' : '重新打乱学生看到的顺序（不会等于正确答案的顺序）'}
-          onClick={() => commit({ items: shuffleOrderItems(items, correctOrder), correctOrder })}
-        >
-          打乱顺序
-        </button>
+        </p>
       </div>
 
       {ambiguous && (
         // 本地提示，**不是**判据：真正的拦阻在服务端（A1 的那条校验会说「请先把条目打乱，
-        // 或点『打乱顺序』」）。这里重复一遍是为了不必先保存一次才知道。
+        // 或点『重新排列』」）。这里重复一遍是为了不必先保存一次才知道。
         // ⚠️ 它只有在**库里那一份**是这种状态时才可能出现（增删条目与「取当前顺序」
         // 都会在内核里把顺序挪开）—— 例如手工改过的行。
         <p className="worksheet-editor-warn-hint">
           ⚠ 学生看到的顺序与正确答案的顺序**一模一样** —— 学生什么都不做就是满分。
-          点「打乱顺序」，或调整正确答案那一栏的顺序。
+          点「重新排列」，或调整「正确顺序」那一栏。
         </p>
       )}
     </>

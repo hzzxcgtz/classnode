@@ -50,7 +50,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
 import { TableBody } from './bodies/table-body';
-import { OrderBody } from './bodies/order-body';
+import { OrderAnswerBody, OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
 // ★ M4b/D1：「这道题是不是手写作答」这个判据只有一份，在 `src/lib/worksheet-ink.ts`
@@ -552,7 +552,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                 <TableBody node={node} onDataChange={onDataChange} />
               </div>
             )}
-            {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+            {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
 
@@ -665,6 +665,16 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
               <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
             )}
           </div>
+
+          {/* ★ 2026-09-28（教师）：「正确顺序」搬到「自动评分」里来 —— 与填空题的
+              「标准答案」、选择题的「正确答案」同一个位置。三者都是**答案**，
+              而答案该在自动评分开关旁边（教师原话：「布局设计参考填空、选择」）。
+              ⚠️ 条目本身仍在容器 A（那是题目内容）—— 所以这一块只说答案那一半。 */}
+          {node.type === 'order' && (
+            <div className="worksheet-editor-block">
+              <OrderAnswerBody node={node} onDataChange={onDataChange} />
+            </div>
+          )}
 
           {/* 「标准答案」—— 填空题与判断题共用一个块标题（教师要求两型对齐）。 */}
           {(isBlankType || node.type === 'true-false') && (

@@ -1683,7 +1683,7 @@ test('shuffleOrderItems：注入 random 之后可复现（这个保证只能靠�
   // 常量 0 ⇒ Fisher–Yates 恰好把两个元素换位 ⇒ 与 correctOrder ['i1','i2'] 不同
   const shuffled = shuffleOrderItems([entry('i1', '一'), entry('i2', '二')], ['i1', 'i2'], () => 0);
   assert.deepEqual(shuffled.map((item) => item.id), ['i2', 'i1']);
-  // 正确答案**还没配**（[]）时也要能洗 —— 「打乱顺序」在配答案之前就该可用
+  // 正确答案**还没配**（[]）时也要能洗 —— 「重新排列」在配答案之前就该可用
   assert.deepEqual(shuffleOrderItems([entry('i1', '一'), entry('i2', '二')], [], () => 0).map((item) => item.id), ['i2', 'i1']);
 });
 
@@ -1719,7 +1719,7 @@ test('🔴 orderUseCurrentOrder：「取当前顺序」不能产出一道**立�
   assert.deepEqual(next.items.map((item) => item.id).sort(), ['i1', 'i2', 'i3'], 'id 集合不变');
 
   // 🔴 答案取自 items ⇒ **不打乱的话两者逐位相同**，服务端会拒绝整道题
-  //（「请先把条目打乱，或点『打乱顺序』」）—— 教师点一下得到的是一个不能保存的状态。
+  //（「请先把条目打乱，或点『重新排列』」）—— 教师点一下得到的是一个不能保存的状态。
   //
   // ⚠️ 这里**必须循环跑真随机**，不能只跑一次注入的常量：3 个条目时有 1/6 的概率
   // 恰好洗回原顺序，而那一次就是「教师点了一下、得到一道学生什么都不做就满分的题」。

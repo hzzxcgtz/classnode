@@ -8,6 +8,29 @@ export interface FillBlankSetting {
   choices: string[];
 }
 
+/**
+ * **单行**输入框里那一串词 → 词表（★ 2026-09-28，教师）。
+ *
+ * 教师原话：「这个完全没必要一行一个，太占空间了，用单行即可，词与词之间提示使用
+ * 常见的符号分隔即可。」⇒ 输入框从多行 textarea 变成单行，于是解析要认常见的分隔符：
+ * **顿号、逗号（中英文）、分号（中英文）、换行**。
+ *
+ * 🔴 **只用在输入这一侧。** 读库那一侧（`fillSettingsFor` / `sharedPoolChoices`）
+ * 仍然走 `splitChoiceLines` —— 让**读**也按逗号切，会把库里一个含逗号的词条
+ * 悄悄切成两个，而那是**数据变更**（存进去的是「甲,乙」一个词，读出来变两个）。
+ *
+ * ⚠️ **空格不是分隔符**：「New York」是一个词。教师说的也是「符号」。
+ * ⚠️ 数组直接交给 `splitChoiceLines`（它已经是一份词表了，再切一次就是重复解析）。
+ */
+export function splitChoiceText(raw: unknown): string[] {
+  if (Array.isArray(raw)) return splitChoiceLines(raw);
+  if (typeof raw !== 'string') return [];
+  return raw
+    .split(/[、，,；;\r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function splitChoiceLines(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean);
   if (typeof raw !== 'string') return [];

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
-import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -46,6 +46,49 @@ function LineListTextarea({
       }}
       onBlur={() => setDraft(current => splitChoiceLines(current).join('\n'))}
       placeholder={placeholder}
+    />
+  );
+}
+
+/**
+ * **单行**的词表输入（★ 2026-09-28，教师）。
+ *
+ * 教师原话：「这个完全没必要一行一个，太占空间了，用单行即可，词与词之间提示使用
+ * 常见的符号分隔即可。」⇒ 待选词从多行 textarea 换成单行输入框。
+ *
+ * 🔴 **为什么自己存一份正在输入的文本**：与 `LineListTextarea` 逐字同一条理由 ——
+ * 每次按键都立刻 `splitChoiceText(text).join('、')` 回填的话，教师刚打完的那个分隔符
+ * 会在同一瞬间被吃掉（「阳光、」→ 变回「阳光」）⇒ **第二个词根本打不进去**。
+ * ⇒ 打字时只更新自己那一份，`onBlur` 才规范化显示。
+ * ⚠️ 依赖是那个**字符串**（不是数组）：解析结果没变时 canonical 不变 ⇒ effect 不跑
+ * ⇒ draft 里那个尾巴留得住。这一条与 `LineListTextarea` 完全一样。
+ *
+ * ⚠️ 分隔符由 `splitChoiceText` 认（顿号 / 逗号 / 分号 / 换行），**判据不在组件里**。
+ * ⚠️ 显示时用顿号 join：教师看到的就是他们自己会打的那个符号。
+ */
+function ChoiceWordsInput({ values, placeholder, onChange }: {
+  values: string[];
+  placeholder: string;
+  onChange: (words: string[]) => void;
+}) {
+  const canonical = values.join('、');
+  const [draft, setDraft] = useState(canonical);
+
+  useEffect(() => {
+    setDraft(canonical);
+  }, [canonical]);
+
+  return (
+    <input
+      className="input"
+      value={draft}
+      placeholder={placeholder}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        onChange(splitChoiceText(next));
+      }}
+      onBlur={() => setDraft(splitChoiceText(draft).join('、'))}
     />
   );
 }
@@ -146,9 +189,11 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
     const next = settings.map((setting, settingIndex) => settingIndex === index ? { ...setting, mode } : setting);
     onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
   };
-  const setInlineChoices = (index: number, text: string) => {
+  // ★ 2026-09-28：直接收词表 —— 原来收一个字符串再 `splitChoiceLines` 解析一遍，
+  // 而单行输入那一侧已经解析过了（多一次往返就多一处会分叉的地方）。
+  const setInlineChoices = (index: number, words: string[]) => {
     const next = settings.map((setting, settingIndex) => settingIndex === index
-      ? { ...setting, choices: splitChoiceLines(text) }
+      ? { ...setting, choices: words }
       : setting);
     onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
   };
@@ -179,7 +224,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
               {setting.mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空右侧的词</span>
-                  <LineListTextarea rows={2} values={setting.choices} onLinesChange={lines => setInlineChoices(index, lines.join('\n'))} placeholder={'一行一个词，例如：\n阳光\n灯光'} />
+                  <ChoiceWordsInput values={setting.choices} onChange={words => setInlineChoices(index, words)} placeholder="用顿号或逗号分隔，例如：唐、宋、元" />
                 </label>
               )}
             </section>
@@ -190,7 +235,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
       {settings.some(setting => setting.mode === 'pool') && (
         <label className="worksheet-editor-field worksheet-editor-choice-words">
           <span>下方共用词池</span>
-          <LineListTextarea rows={3} values={poolChoices} onLinesChange={lines => onDataChange({ fillChoicePool: lines })} placeholder={'一行一个词，例如：\n阳光\n水分\n空气'} />
+          <ChoiceWordsInput values={poolChoices} onChange={words => onDataChange({ fillChoicePool: words })} placeholder="用顿号或逗号分隔，例如：阳光、水分、空气" />
           <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
         </label>
       )}

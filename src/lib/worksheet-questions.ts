@@ -225,6 +225,74 @@ export function isMultipleChoice(node: { type: string; data: Record<string, unkn
 }
 
 /**
+ * ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并给出正确答案。」
+ *
+ * 答错时该在**哪些选项**上打叉 —— 学生选中的那些里、不属于正确答案的。
+ *
+ * 🔴 **`correctKeys` 为空 ⇒ 一个都不打。** 这条闸不是可选的：服务端**只在判过分、且学生
+ * 没全对**时才下发正确答案（`wrongChoiceAnswers`，那条窄口的注释写了完整理由），所以
+ * 「空」同时包含「还没判分」与「全对了」两种情形。少了这道闸，一道**还没提交**的题会把
+ * 学生勾过的每一个选项都打上叉 —— 而那正是「界面在说假话」。
+ *
+ * ⚠️ **多选漏选（只对了一部分）⇒ 空**：他没有选错任何一个，只是少选了。
+ *    该告诉他的是「正确答案是 A、C」（那块提示区），不是给已选的打叉。
+ *
+ * ⚠️ 判据是**集合**：`selected` 的顺序是学生的点击顺序，逐人不同，与对错无关。
+ */
+export function wrongSelectedKeys(
+  selected: readonly string[],
+  correctKeys: readonly string[],
+): string[] {
+  if (correctKeys.length === 0) return [];
+  return selected.filter((key) => !correctKeys.includes(key));
+}
+
+/**
+ * 「正确答案」那句话里那一段 —— 把服务端发回来的那串 key 变成给学生看的字。
+ *
+ * 🔴 **判断题要翻成「对 / 错」**：它的 key 是协议里的 `T` / `F`（`TRUE_FALSE_OPTIONS` 的注释
+ * 写了为什么不能改），而「正确答案 T」对一个小学生是噪声 —— 同一件事在抽屉那边也做过
+ *（`worksheet-drawer-state.ts`：判断题**只印『对』、不印 key**，理由逐字相同）。
+ *
+ * ⚠️ 其余题型**原样回 key**（`A` / `B` / `C`）：题干里就是用字母指代选项的
+ *（「下面哪个是 B」），翻成选项文字反而对不上；而且多选题的选项文字可能很长。
+ *
+ * ⚠️ 分隔符是顿号 `、`：一屏里可能有多个正确答案（多选），而逗号在中文里读起来像分句。
+ */
+/**
+ * 服务端那串「答错时要展示的正确答案」→ **按下标排好的一列**。
+ *
+ * 线上形状是 `Record<下标, 答案>`（`routes/worksheets.ts` 的 `correctBlanks`，下标从 0 起），
+ * 因为填空要按下标说「第几空」、而选择要按顺序排「A、C」—— 同一份形状服务两种题型。
+ *
+ * 🔴 **必须按数值排，不能按字典序。** 字典序下 `'10'` 会排在 `'2'` 前面，于是多选题的
+ *    第 11 个答案跑到第二位去 —— 而屏幕上看起来只是一串「正确答案」，没人会发现顺序错了。
+ *
+ * ⚠️ 这一行 `.sort()` **今天其实可以省掉**：JS 对象对整数样式的键本来就按数值升序迭代
+ *    （规范保证），所以删掉它输出一个字节都不变（变异检验实测）。留着是**刻意**的 ——
+ *    显式排一次，读的人看得见「这里要求的是数值序」这条约定，而不必先想起那条规范细节。
+ *    ⇒ **别以为这一行有用例守着**：用例钉的是输出顺序，不是这个实现。
+ *
+ * ⚠️ 顺带滤掉空串：填空那边「没设答案键的空」不发（见 `wrongBlankAnswers`），
+ *    真漏进一个空串时也不该在「正确答案」后面写出一个空档。
+ */
+export function correctKeysFromPayload(byIndex: Record<string, string> | undefined): string[] {
+  if (!byIndex) return [];
+  return Object.keys(byIndex)
+    .sort((left, right) => Number(left) - Number(right))
+    .map((key) => byIndex[key])
+    .filter((value): value is string => typeof value === 'string' && value !== '');
+}
+
+export function correctAnswerLabel(type: string, keys: readonly string[]): string {
+  return keys
+    .map((key) => (type === 'true-false'
+      ? TRUE_FALSE_OPTIONS.filter((option) => option.key === key)[0]?.text ?? key
+      : key))
+    .join('、');
+}
+
+/**
  * 拍平题目树（含嵌套）。
  *
  * 规格 §4.3 的 `content` 是**嵌套树**（`children` 为将来的材料题组预留），第一批虽然

@@ -9,7 +9,7 @@ import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } 
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
+import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { PromptText } from '@/lib/worksheet-prompt-text';
@@ -37,7 +37,7 @@ import {
   type WorksheetQuestionStatus,
   type WorksheetScore,
 } from './use-worksheet-answers';
-import type { SavedAnswerRow } from './worksheet-queue';
+import { readCorrectBlanks, type SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
 import styles from './worksheet.module.css';
 
@@ -105,6 +105,11 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
       wrongBlankIndexes: Array.isArray(row.wrongBlankIndexes)
         ? row.wrongBlankIndexes.filter((value): value is number => Number.isInteger(value) && value >= 0)
         : [],
+      // ★ 2026-09-27：**刷新之后答案还得在**。服务端在 `GET /:id/answers` 里一直发着它
+      //（`routes/worksheets.ts` 那条 `correctBlanks`），而这里当初没接 ⇒ 学生一刷新，
+      // 答错的空只剩一个叉、「正确答案」整块消失，选择 / 判断那边连叉都没有 ——
+      // 屏幕上没有任何异常。读法只有一处（`readCorrectBlanks`），别再在这儿写第二份。
+      correctBlanks: readCorrectBlanks(row.correctBlanks),
       // ★ M4a：逐题得分的**绝对值**（教师填的那个数）。同一个纪律：只认有限数，
       // 读不出来落到 `null`（= 没判分），而 `scoreFromWire` 会回落到 `isCorrect` ——
       // **升级前落库的旧行没有 `score`**，那正是那条兜底存在的理由。
@@ -476,6 +481,12 @@ export function WorksheetQuestionList({
               draft={draft}
               onChange={onChange}
               disabled={controlsDisabled}
+              // ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并
+              // 给出正确答案。」服务端只在**判过分、且学生没全对**时才发这串东西
+              //（`wrongChoiceAnswers` 那条窄口）⇒ 还没提交的题这里是空表，
+              // 答错标记一个都不会画（判据在 `wrongSelectedKeys`，有用例）。
+              // ⚠️ 教师端的预览走的是同一个组件、**不传**这个 prop。
+              correctKeys={correctKeysFromPayload(correctBlanks?.[node.id])}
             />
             </>)}
 

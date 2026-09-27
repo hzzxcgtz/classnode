@@ -860,6 +860,68 @@ export function wrongBlankAnswers(node: QuestionNode, value: unknown): Record<nu
   return out;
 }
 
+/**
+ * ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并给出正确答案。」
+ *
+ * 选择 / 判断那一族的**正确答案**（选项 key），**只在学生没全对时**给。
+ *
+ * 🔴 **窄口与 `wrongBlankAnswers` 逐字相同**：`stripAnswers` 刻意不下发整张答案键，
+ *    所以学生能看到的答案必须**只在他提交之后**、而且**只有他没答对的那道题**。
+ *    两个调用点都由 `gradeState` / `submittedAt` 把着门，别在别处调它。
+ * 🔴 **全对 ⇒ 空对象**。判据是「**集合**是否完全一致」（顺序无关）—— 那也正是
+ *    `gradeState === 'correct'` 的口径，所以「没全对（含只对了一部分）」与
+ *    「这里有条目」是同一件事，不会出现「显示『部分答对』却看不到答案」。
+ *    多选的部分分是「漏选且没选错」⇒ 那种情况会走到这里、把漏掉的那几个告诉他。
+ *
+ * ⚠️ 顺序取**选项表**（`data.options`）而不是 `correctKeys` 自己的顺序：教师横着比一串
+ *    学生时，同一道题的「正确答案」每次都得是同一串（与抽屉 / 导出口径一致）。
+ *    判断题不存 `options`（key 是协议里的 T/F），而它的正确答案恰好一个 ⇒ 没有顺序问题。
+ */
+export function wrongChoiceAnswers(node: QuestionNode, value: unknown): Record<number, string> {
+  if (!CHOICE_ANSWER_TYPES.includes(node.type)) return {};
+  const selected = [...new Set(readStrings(readField(value, 'selected')))];
+  const correct = [...new Set(readStrings(node.data.correctKeys))];
+  // 没设答案键 ⇒ 这题不判分（`judgeSingleChoice` 回 null），也就没有「正确答案」可写。
+  // ⚠️ 这一行**是显式的、不是必需的**：`correct` 为空时下面 `shown` 的兜底同样得到空对象。
+  //    留着它是因为「没设答案键 ⇒ 不发」是那道窄口的一部分，值得在函数开头一眼看见。
+  // 🔴 但**没有用例专门钉它** —— 删掉这一行，两个调用点的输出一个字节都不变（变异检验实测）。
+  //    别在任何地方引用「这一行有测试守着」：它没有。
+  if (correct.length === 0) return {};
+  if (selected.length === correct.length && selected.every((key) => correct.includes(key))) return {};
+
+  const ordered = optionKeyOrder(node).filter((key) => correct.includes(key));
+  // ⚠️ 兜底：手工改过的行可能让 `correctKeys` 指向一个不存在的选项（校验器会拒，
+  //    但库里的行不一定经过校验）—— 那时**宁可照发**也不静默丢掉：丢掉会让界面
+  //    既不画叉也不写答案，学生只看到一句「再想一想」。
+  const shown = ordered.length > 0 ? ordered : correct;
+  const out: Record<number, string> = {};
+  shown.forEach((key, index) => { out[index] = key; });
+  return out;
+}
+
+/**
+ * 这道题**答错**时要写给学生的正确答案：填空逐空、选择 / 判断逐选项。不适用时 `{}`。
+ *
+ * ⚠️ 线上那个键仍叫 `correctBlanks`（`routes/worksheets.ts` 的两个下发点）——
+ *    **不改名有两条理由**：① 键集是被三条用例锁着的窄口；② 那个名字里不许出现
+ *    `answers` 这个子串（`worksheet-grade.test.ts` 拿整串做 `!raw.includes('answers')`
+ *    的钝刀，见 `routes/worksheets.ts` 里那条注释）。⇒ 名字的含义由这条注释承担：
+ *    **它装的是「答错时要展示给学生的正确答案」，填空是逐空的答案、选择是选项 key。**
+ */
+export function wrongAnswers(node: QuestionNode, value: unknown): Record<number, string> {
+  if (node.type === 'fill-blank' || node.type === 'choice-blank') return wrongBlankAnswers(node, value);
+  return wrongChoiceAnswers(node, value);
+}
+
+/** 答案长在 `correctKeys` 里、判分器是 `judgeSingleChoice` / 多选那一支的三个题型。 */
+const CHOICE_ANSWER_TYPES: readonly string[] = ['single-choice', 'multi-choice', 'true-false'];
+
+/** 这道题**选项表**的顺序。判断题见 `wrongChoiceAnswers` 里那一段。 */
+function optionKeyOrder(node: QuestionNode): string[] {
+  if (node.type === 'true-false') return readStrings(node.data.correctKeys);
+  return readOptionKeys(node.data.options);
+}
+
 export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): number[] {
   if (node.type !== 'fill-blank' && node.type !== 'choice-blank') return [];
   const texts = readField(value, 'texts');

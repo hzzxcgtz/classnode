@@ -23,6 +23,7 @@ import {
   hydrateAnswers,
   isPermanentFailure,
   permanentFailureMessage,
+  readCorrectBlanks,
   readQueue,
   replayOrder,
   scoreFromWire,
@@ -501,4 +502,23 @@ test('🔴 scoreFromWire：读不出来的东西一律 `null`（**不是** 0）'
   assert.equal(scoreFromWire([{ score: 3 }]), null, '数组不是「整行」');
   // 阳性对照：`false` 必须是 **0**（答错），与上面那些 `null` 不是一回事。
   assert.notEqual(scoreFromWire({ isCorrect: false }), null);
+});
+
+/* ── 答错时要展示的正确答案（★ 2026-09-27）────────────────────────────────── */
+
+test('🔴 `readCorrectBlanks`：只收**整数下标 + 字符串值**，坏格子丢掉、不猜', () => {
+  // 渲染路径上的消毒（与 `wrongBlankIndexes` 同一条纪律）：一次 TypeError 就是一整片白屏，
+  // 而白屏的学生会以为「老师没布置」。
+  assert.deepEqual(readCorrectBlanks({ 0: '氧气', 2: '阳光' }), { 0: '氧气', 2: '阳光' });
+  assert.deepEqual(readCorrectBlanks({ 0: '氧气', x: '阳光' }), { 0: '氧气' }, '非整数下标');
+  assert.deepEqual(readCorrectBlanks({ 0: 42 }), {}, '值不是字符串');
+  assert.deepEqual(readCorrectBlanks(null), {});
+  assert.deepEqual(readCorrectBlanks([ 'A' ]), {}, '数组不是那个形状');
+  assert.deepEqual(readCorrectBlanks('A'), {}, '标量也不是');
+});
+
+test('🔴 认不出的形状回**空对象**（不是 undefined）—— 调用方按「空 = 没什么可展示」读', () => {
+  const empty = readCorrectBlanks(undefined);
+  assert.deepEqual(empty, {});
+  assert.equal(typeof empty, 'object');
 });

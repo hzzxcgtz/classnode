@@ -17,7 +17,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenAnswerable, flattenQuestions, groupAnswerable, optionBadge, readOptions, TASK_TYPE } from './worksheet-questions.ts';
+import { flattenAnswerable, flattenQuestions, groupAnswerable, optionBadge, readOptions, TASK_TYPE, correctAnswerLabel, correctKeysFromPayload, wrongSelectedKeys } from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
@@ -230,6 +230,53 @@ test('其它题型的记号原样回 key（A/B/C/D 是学生要在题干里找�
   for (const type of ['single-choice', 'multi-choice', 'fill-blank', 'order']) {
     for (const key of ['A', 'B', 'D', 'Z']) assert.equal(optionBadge(type, key), key, `${type}/${key}`);
   }
+});
+
+/* ── 答错时在哪些选项上打叉（教师：选择和判断答错后也要给叉叉和正确答案）──────── */
+
+test('🔴 没拿到正确答案（没判分 / 全对）⇒ **一个都不打叉**', () => {
+  // 🔴 这条闸非有不可：`correctKeys` 为空时若照「选中的都不对」处理，一道**还没提交**的题
+  // 会把学生勾过的每一个选项都打上叉 —— 而那正是「界面在说假话」。
+  assert.deepEqual(wrongSelectedKeys(['A'], []), []);
+  assert.deepEqual(wrongSelectedKeys(['A', 'C'], []), [], '多选也一样');
+});
+
+test('单选 / 判断选错 ⇒ 只有那一个', () => {
+  assert.deepEqual(wrongSelectedKeys(['A'], ['B']), ['A'], '判断题就是 T/F 两个 key，同一支');
+  assert.deepEqual(wrongSelectedKeys(['T'], ['F']), ['T']);
+});
+
+test('🔴 多选：选错的打叉，选对的**不打**', () => {
+  assert.deepEqual(wrongSelectedKeys(['A', 'D'], ['A', 'C']), ['D'], 'A 是对的 ⇒ 不许打叉');
+  assert.deepEqual(wrongSelectedKeys(['B', 'D'], ['A', 'C']), ['B', 'D']);
+});
+
+test('🔴 多选**漏选**（只对了一部分）⇒ 空：他没有选错任何一个', () => {
+  // 该告诉他的是「正确答案是 A、C」（下方那块提示区），不是给已选的打叉。
+  assert.deepEqual(wrongSelectedKeys(['A'], ['A', 'C']), []);
+});
+
+test('顺序无关：作答值是学生的点击顺序，逐人不同', () => {
+  assert.deepEqual(wrongSelectedKeys(['C', 'A'], ['A', 'C']), []);
+});
+
+test('🔴 「正确答案」那句话：判断题翻成「对 / 错」，其余题型原样回 key', () => {
+  // 判断题的 key 是协议里的 T/F（不能改，见 TRUE_FALSE_OPTIONS）—— 而「正确答案 T」
+  // 对一个小学生是噪声。抽屉那边同一条口径：判断题只印「对」、不印 key。
+  assert.equal(correctAnswerLabel('true-false', ['T']), '对');
+  assert.equal(correctAnswerLabel('true-false', ['F']), '错');
+  // ⚠️ 其余题型不翻：题干里就是用字母指代选项的，翻成选项文字反而对不上。
+  assert.equal(correctAnswerLabel('single-choice', ['B']), 'B');
+  assert.equal(correctAnswerLabel('multi-choice', ['A', 'C']), 'A、C', '多选用顿号连');
+});
+
+test('🔴 服务端那串答案按下标**数值**排好 —— 字典序会把第 11 个答案排到第 2 位', () => {
+  // 屏幕上它只是一串「正确答案」，顺序错了没人看得出来。
+  assert.deepEqual(correctKeysFromPayload({ 0: 'A', 2: 'C' }), ['A', 'C']);
+  assert.deepEqual(correctKeysFromPayload({ 10: 'K', 2: 'C' }), ['C', 'K'], '数值序，不是字典序');
+  assert.deepEqual(correctKeysFromPayload(undefined), []);
+  assert.deepEqual(correctKeysFromPayload({}), []);
+  assert.deepEqual(correctKeysFromPayload({ 0: '' }), [], '空串不该在「正确答案」里留一个空档');
 });
 
 test('🔴 判断题上认不出的 key 必须把 key 原样吐回来，不许画成空白', () => {

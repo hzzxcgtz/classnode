@@ -49,9 +49,18 @@ export interface QuestionInputProps {
   /** 输入态变了。**只在真的有变化时**调（拖拽的每一帧都不写，见 `use-pointer-drag.ts`）。 */
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-27：**选择题 / 判断题的正确答案**（选项 key），服务端在判过分、且学生没全对
+   * 时才下发。只有 `ChoiceBody` 读它。
+   *
+   * 🔴 **学生端那条路给它，教师端的预览不给**（`preview-modal.tsx` 不传）——
+   * 教师预览里出现「正确答案 B」会让他以为学生也看得到答案。
+   * ⚠️ 所以这里必须是**可选**的，而且默认的「没给」= **不打叉、不写答案**（不是「全错」）。
+   */
+  correctKeys?: string[];
 }
 
-export function QuestionInput({ node, draft, onChange, disabled }: QuestionInputProps) {
+export function QuestionInput({ node, draft, onChange, disabled, correctKeys }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -120,6 +129,9 @@ export function QuestionInput({ node, draft, onChange, disabled }: QuestionInput
         draft={pick('choice') ?? { kind: 'choice', selected: [] }}
         onChange={(next) => onChange?.(node, next)}
         disabled={disabled}
+        // ★ 2026-09-27：答错的叉与「正确答案」那句话都读它。⚠️ 教师端的预览不传
+        //（见 prop 上的注释）⇒ 那里一处都不会出现。
+        correctKeys={correctKeys}
       />
     );
   }

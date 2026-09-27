@@ -18,6 +18,7 @@ import {
   dropQueueItem,
   hydrateAnswers,
   permanentFailureMessage,
+  readCorrectBlanks,
   readQueue,
   replayOrder,
   scoreFromWire,
@@ -594,13 +595,10 @@ export function useWorksheetAnswers({
           : [];
         setGradeStates((prev) => ({ ...prev, [node.id]: gradeState }));
         setWrongBlankIndexes((prev) => ({ ...prev, [node.id]: wrong }));
-        // ⚠️ 逐格消毒（与上面 `wrongBlankIndexes` 同一条纪律）：只收**整数下标 + 字符串值**，
-      //    坏数据一律丢掉，不猜。
-      const correct = (payload?.correctBlanks && typeof payload.correctBlanks === 'object')
-        ? Object.fromEntries(Object.entries(payload.correctBlanks as Record<string, unknown>)
-          .filter(([key, value]) => Number.isInteger(Number(key)) && typeof value === 'string')) as Record<string, string>
-        : {};
-      setCorrectBlanks((prev) => ({ ...prev, [node.id]: correct }));
+        // ★ 2026-09-27：读法搬去了 `worksheet-queue.ts` 的 `readCorrectBlanks` ——
+      //    它原来只在这里实现过一次，而**刷新那条路漏了**（学生一刷新正确答案就整块消失）。
+      //    两处合成一处之后不会再漏第二次。
+      setCorrectBlanks((prev) => ({ ...prev, [node.id]: readCorrectBlanks(payload?.correctBlanks) }));
         // 只庆祝这一次新提交得到的“全部答对”。水合旧答案不会写这里，所以刷新不会重播。
         if (gradeState === 'correct' && awardedScore !== null && awardedScore > 0) {
           setRewardBursts((prev) => ({ ...prev, [node.id]: (prev[node.id] ?? 0) + 1 }));

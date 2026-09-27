@@ -26,25 +26,35 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-prompt-text.tsx'), 'utf8');
+/**
+ * ★ 2026-09-27：答错标记搬去了 `src/components/worksheet-wrong-mark.tsx`（选择题的选项现在
+ * 也画它）。**那一份也在网里** —— 否则「不许定位」只守住了调用方，而那枚标记自己
+ * 加一个 `position: absolute` 就又能浮起来。
+ */
+const MARK_SOURCE = fs.readFileSync(path.resolve(HERE, '../components/worksheet-wrong-mark.tsx'), 'utf8');
 
 /** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。 */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-test('🔴 `worksheet-prompt-text.tsx` 里一个定位都没有（标记不许浮到内容上面）', () => {
-  const code = stripComments(SOURCE);
-  const found = [...code.matchAll(/position:\s*'([a-zA-Z]+)'/g)].map((match) => match[1]);
-  assert.deepEqual(
-    found, [],
-    `这里出现了定位（${found.join(' / ')}）⇒ 答错标记又能被绝对定位到框角上、压住学生写的字。`
-    + ' 位置请交给布局：槽里用 flex 的 alignSelf，输入框那边用紧随其后的内联兄弟。',
-  );
+test('🔴 题干渲染器与答错标记里一个定位都没有（标记不许浮到内容上面）', () => {
+  for (const [name, source] of [['worksheet-prompt-text.tsx', SOURCE], ['worksheet-wrong-mark.tsx', MARK_SOURCE]]) {
+    const found = [...stripComments(source).matchAll(/position:\s*'([a-zA-Z]+)'/g)].map((match) => match[1]);
+    assert.deepEqual(
+      found, [],
+      `${name} 里出现了定位（${found.join(' / ')}）⇒ 答错标记又能被绝对定位到框角上、`
+      + '压住学生写的字。位置请交给布局：槽里用 flex 的 alignSelf，输入框那边用紧随其后的内联兄弟。',
+    );
+  }
 });
 
-test('阳性对照：这条网真的在读这个文件（否则上面那条对空串永远绿）', () => {
-  assert.ok(SOURCE.includes('function WrongMark'), '文件要真的被读到了');
+test('阳性对照：这条网真的在读这两个文件（否则上面那条对空串永远绿）', () => {
+  assert.ok(SOURCE.includes('export function PromptText'), '题干渲染器要真的被读到了');
+  assert.ok(MARK_SOURCE.includes('export function WrongMark'), '标记那一份也要真的被读到');
   assert.ok(stripComments(SOURCE).length > 500, '剥注释之后剩下的仍是这个组件，不是一段空壳');
   // 那个叉**两处都还在画**（槽 + 输入框）—— 少了任何一处，上面那条会因为「没有定位」而更绿。
   assert.equal((SOURCE.match(/<WrongMark \/>/g) ?? []).length, 2, '槽与输入框各一处');
+  // ★ 2026-09-27：标记本身搬去共用组件了 ⇒ 这里只是引用它（选择题的选项也用同一枚）。
+  assert.ok(SOURCE.includes("from '@/components/worksheet-wrong-mark'"), '标记从共用组件来');
 });

@@ -1,6 +1,8 @@
 'use client';
 
-import { TRUE_FALSE_OPTIONS, optionBadge, readOptions } from '@/lib/worksheet-questions';
+import { TRUE_FALSE_OPTIONS, correctAnswerLabel, optionBadge, readOptions, wrongSelectedKeys } from '@/lib/worksheet-questions';
+import { WrongMark } from '@/components/worksheet-wrong-mark';
+import { CorrectAnswerNote } from './correct-answer-note';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -24,11 +26,27 @@ export interface ChoiceBodyProps {
   draft: Extract<AnswerDraft, { kind: 'choice' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并给出正确答案。」
+   *
+   * **这道题的正确答案**（选项 key）。由服务端在**判过分、且学生没全对**时下发
+   *（`wrongChoiceAnswers` 那条窄口的注释写了完整理由：`stripAnswers` 刻意不下发整张答案键）。
+   *
+   * 🔴 **不给 = 不打叉、不写答案**（不是「全错」）。教师端的「学生端预览」走的是同一个
+   * 组件、永远不给这个 prop —— 那里**一处都不许出现**（那会让教师以为学生也看得到答案）。
+   * 学生端那一条路也只在已提交的题上有值，所以「还没提交 ⇒ 一个叉都没有」是靠这条闸成立的。
+   */
+  correctKeys?: string[];
 }
 
-export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps) {
+export function ChoiceBody({ node, draft, onChange, disabled, correctKeys }: ChoiceBodyProps) {
   const options = node.type === 'true-false' ? TRUE_FALSE_OPTIONS : readOptions(node);
   const multiple = node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
+  // ⚠️ 判据在 `@/lib/worksheet-questions`（有用例）：`correctKeys` 为空 ⇒ 一个叉都不打。
+  //    在这里现写 `draft.selected.filter(k => !correctKeys.includes(k))` 会在**未判分**的题上
+  //    把学生勾过的每一个选项都打上叉 —— 而那正是「界面在说假话」。
+  const answerKeys = correctKeys ?? [];
+  const wrongKeys = wrongSelectedKeys(draft.selected, answerKeys);
 
   if (options.length === 0) {
     // 单选 / 多选还没有选项（教师在编辑期删光了）。说一句，而不是画一个空的作答区
@@ -52,9 +70,11 @@ export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps)
   };
 
   return (
+    <>
     <div className={styles.options}>
       {options.map((option) => {
         const checked = draft.selected.includes(option.key);
+        const wrong = wrongKeys.includes(option.key);
         return (
           <label
             className={`${styles.option}${checked ? ` ${styles.optionSelected}` : ''}`}
@@ -84,9 +104,22 @@ export function ChoiceBody({ node, draft, onChange, disabled }: ChoiceBodyProps)
                 : !option.imageUrl && <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
               {option.imageUrl && <img className={styles.optionImage} src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图`} />}
             </span>
+            {/* ★ 2026-09-27：答错的那个选项后面跟一个红叉 —— 与填空那条路**同一枚标记**
+                （`@/components/worksheet-wrong-mark`，一处定义）。
+                ⚠️ 它是**行内的兄弟节点**、不是定位上去的：定位会让它压在选项文字上，
+                   而「标记盖住内容」正是这一轮修掉的那个缺陷（见那枚标记自己的注释）。 */}
+            {wrong && <WrongMark />}
           </label>
         );
       })}
     </div>
+
+    {/* ★ 2026-09-27（教师）：「…并给出正确答案」。与填空**同一块提示**、同一句措辞结构
+        （`CorrectAnswerNote`）。⚠️ 只在服务端给了答案时出现 —— 没给（还没判分 / 全对 /
+        这题没配答案）时整块不渲染，不会写出「正确答案」这种半句话。 */}
+    {answerKeys.length > 0 && (
+      <CorrectAnswerNote>{correctAnswerLabel(node.type, answerKeys)}</CorrectAnswerNote>
+    )}
+    </>
   );
 }

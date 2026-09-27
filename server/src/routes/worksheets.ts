@@ -15,7 +15,9 @@ import { toAgentConfig } from '../services/agent-config.js';
 import {
   DEFAULT_POINTS,
   fillBlankWrongIndexes,
-  wrongBlankAnswers,
+  // ★ 2026-09-27：按题型分派（填空逐空、选择/判断逐选项）。两个下发点都改用它 ——
+  // 「答错时要展示的正确答案」现在只有这一个入口，别再各自调那两支。
+  wrongAnswers,
   flattenQuestions,
   grade,
   // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
@@ -1912,14 +1914,17 @@ router.get('/:id/answers', async (req, res) => {
       wrongBlankIndexes: row.gradeState && byId.has(row.questionId)
         ? fillBlankWrongIndexes(byId.get(row.questionId)!, row.value)
         : [],
-      // ★ 2026-09-27（教师定的）：答错的空要写得出正确答案。
-      // 🔴 **只在已判分（= 已提交）的行上发**，而且只发**答错的那几个空** ——
+      // ★ 2026-09-27（教师定的）：答错的要写得出正确答案。
+      // 🔴 **只在已判分（= 已提交）的行上发**，而且只发**答错的那部分** ——
       //    `stripAnswers` 刻意不下发整张答案键，这里是它唯一的窄口。
+      // ★ 2026-09-27 扩到选择 / 判断（教师：「选择和判断学生错误后也要与填空一样给出
+      //    叉叉符号并给出正确答案」）⇒ 内容由 `wrongAnswers` 按题型分派：
+      //    **填空是逐空的答案，选择 / 判断是选项 key**（下标 → key，按选项表顺序）。
       // ⚠️ **名字里不许出现 `answers` 这个子串**：`worksheet-grade.test.ts` 那条红线是
       //    对**整串**做 `!raw.includes('answers')`（刻意钝的兵器，不区分键名与恰好出现）。
       //    叫 `blankAnswers` 就会在那把钝刀下变成一次假警报 —— 所以叫 `correctBlanks`。
       correctBlanks: row.gradeState && byId.has(row.questionId)
-        ? wrongBlankAnswers(byId.get(row.questionId)!, row.value)
+        ? wrongAnswers(byId.get(row.questionId)!, row.value)
         : {},
     })) });
   } catch (error) {
@@ -2192,8 +2197,11 @@ router.post('/:id/answers/submit', async (req, res) => {
       gradeState,
       score,
       wrongBlankIndexes: verdict ? fillBlankWrongIndexes(node, answer.value) : [],
-      // 同上：只在**判过分**的这次提交响应里发，且只发答错的空。
-      correctBlanks: verdict ? wrongBlankAnswers(node, answer.value) : {},
+      // 同上：只在**判过分**的这次提交响应里发，且只发答错的那部分。
+      // ⚠️ 名字仍是 `correctBlanks`（键集是被三条用例锁着的窄口，且不许含 `answers` 子串），
+      //    但它现在**也装选择 / 判断题的正确答案**（选项 key）—— 见上面那条注释与
+      //    `wrongAnswers` 的文档。
+      correctBlanks: verdict ? wrongAnswers(node, answer.value) : {},
     });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);

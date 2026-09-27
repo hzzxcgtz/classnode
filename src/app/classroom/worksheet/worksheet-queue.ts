@@ -249,6 +249,31 @@ export function sessionExpiredMessage(): string {
  * ⚠️ 信封那个键是 `rows`（「作答行」），不是 `answers`：后者是**正确答案**那个字段的
  * 名字（`ANSWER_KEYS`），两个端点都被「响应里不许出现 `ANSWER_KEYS` 里的键」扫着。
  */
+/**
+ * ★ 2026-09-27：**答错时要展示的正确答案**的读法（填空逐空、选择 / 判断逐选项）。
+ *
+ * 线上形状是 `Record<下标, 答案>`，服务端两个下发点都用它
+ *（`routes/worksheets.ts` 的 `correctBlanks`）。
+ *
+ * 🔴 **抽成一处的理由**：这条读法原来写在**两个**地方 —— 提交响应那一条
+ *（`use-worksheet-answers.ts`）与刷新读回那一条（`worksheet-panel.tsx` 的
+ * `parseSavedAnswers`）。而**只有前者实现了它** ⇒ 学生一刷新，答错的空只剩一个叉、
+ * 「正确答案」整块消失，选择 / 判断那边连叉都没有 —— 屏幕上没有任何异常，
+ * 他会以为「老师只标了错、没给答案」。两条路合到这里就不会再有第二次。
+ *
+ * ⚠️ 逐格消毒，与 `wrongBlankIndexes` 同一条纪律：**只收整数下标 + 字符串值**，
+ *    坏数据一律丢掉、不猜（渲染路径上一次 TypeError 就是一整片白屏）。
+ * ⚠️ 认不出的形状回**空对象**（不是 `undefined`）：调用方那一侧的分类是
+ *    「空 = 没什么可展示的」，而空对象与空表在 `correctKeysFromPayload` 里同义。
+ */
+export function readCorrectBlanks(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>)
+      .filter(([key, value]) => Number.isInteger(Number(key)) && typeof value === 'string'),
+  ) as Record<string, string>;
+}
+
 export interface SavedAnswerRow {
   questionId: string;
   /** 学生自己写的值。`null` = 这一题的作答**被清空了**（库里那一行还在）。 */

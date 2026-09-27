@@ -8,6 +8,7 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { fillSettingsFor, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
+import { CorrectAnswerNote } from './correct-answer-note';
 import styles from '../worksheet.module.css';
 
 /**
@@ -223,14 +224,13 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           .map((index) => ({ index, answer: correctBlanks?.[String(index)] }))
           .filter((item): item is { index: number; answer: string } => typeof item.answer === 'string' && item.answer !== '');
         if (items.length === 0) return null;
+        // ★ 2026-09-27：盒子搬去了 `correct-answer-note.tsx`（选择题 / 判断题也要画同一块，
+        // 两处各写一份样式 ⇒ 改一次只改一处、而学生看到两张长得不一样的红框）。
+        // ⚠️ 措辞留在这里：填空说的是「第 N 空填『X』」，选择说的是「B」。
         return (
-          <div role="status" style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10,
-            background: '#fef2f2', border: '1px solid #fecaca', fontSize: '0.813rem', lineHeight: 1.7 }}>
-            <strong style={{ color: '#b91c1c', marginRight: 8 }}>正确答案</strong>
-            <span style={{ color: '#7f1d1d' }}>
-              {items.map(item => `第 ${item.index + 1} 空填「${item.answer}」`).join('，')}。
-            </span>
-          </div>
+          <CorrectAnswerNote>
+            {items.map(item => `第 ${item.index + 1} 空填「${item.answer}」`).join('，')}。
+          </CorrectAnswerNote>
         );
       })()}
     </>

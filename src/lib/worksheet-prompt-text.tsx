@@ -1,5 +1,8 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { blankAnswerStyle, inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
+// ★ 2026-09-27：答错标记搬去了 `@/components/worksheet-wrong-mark` —— 选择题的选项现在也要
+// 用它，而从「题干渲染器」里导出它读起来是错的层次（那枚标记自己写着完整理由）。
+import { WrongMark } from '@/components/worksheet-wrong-mark';
 
 /**
  * 题干那一段文字的**唯一一份渲染**（★ 2026-09-26）。
@@ -89,29 +92,6 @@ export interface PromptBlankBinding {
  * ⚠️ 所以这个文件里**一个 `position: absolute` 都不该再有**（`worksheet-prompt-text.test.ts`
  *    那条用例钉着这一点：绝对定位回来 = 那个叉又能盖住字）。
  */
-
-/**
- * 答错的标记：一个稍粗的红叉（教师从四款里挑的 B）。
- *
- * 🔴 **一处定义** —— 这轮已经有三次「同一个东西写两处、然后分叉」的教训（字重、红色、
- * 覆盖顺序），所以标记也只有这一份。
- * ⚠️ **内联 SVG，不用 emoji**：学生端跑在学校的旧 iPad 上，emoji 各家字体渲染差很远。
- * ⚠️ `role="img"` + `aria-label`：光秃秃一个叉对读屏无意义（本仓立过
- *    「图标化只减视觉宽度、不减无障碍信息」）。
- */
-function WrongMark() {
-  // ⚠️ **不要用 `<sup>`**：它自带 `vertical-align: super`，与 `line-height: 0` 叠加之后
-  //    会把标记挤出盒子（2026-09-27 教师看到的「落到框外面/右下角」就是它）。
-  //    ⇒ 位置一律交给**布局**：槽里靠 flex 的对齐，输入框那边就是紧跟其后的一个内联兄弟。
-  //    ⊘ 曾经还写过「输入框那边靠绝对定位」—— 那条路会把叉压在字上，已删（见文件上方那一段）。
-  return (
-    <span role="img" aria-label="答错了" style={{ color: '#dc2626', display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
-        <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
-      </svg>
-    </span>
-  );
-}
 
 export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps) {
   // ⚠️ 判空用 `trim()`，渲染用**原文** —— 与合并之前那两处逐字同一条判据

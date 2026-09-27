@@ -238,7 +238,6 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
             placeholder="例如：阳光、水分、空气"
             onChange={words => onDataChange({ fillChoicePool: words })}
           />
-          <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
         </label>
       )}
     </div>

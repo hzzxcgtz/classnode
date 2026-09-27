@@ -6122,3 +6122,14 @@ tr:hover td {
 }
 
 .worksheet-editor-table-toggle:hover { color: #1d4ed8; }
+
+/* ── 「表格域作答设置」那块与上一块之间的分隔线（★ 2026-09-28，教师：「加一个分隔线」）
+   🔴 为什么要单独写：`.worksheet-editor-block + .worksheet-editor-block` 那条通用规则
+   **对这一块不生效** —— 它嵌在「填空与作答设置」那一块的 `<div>` 里（不是兄弟），
+   所以 `+` 选不中它。数值与那条通用规则**逐字相同**（16/16/1px `#eef2f6`）：
+   两条分隔线长得不一样比没有分隔线更糟。 */
+.worksheet-editor-table-setup {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eef2f6;
+}

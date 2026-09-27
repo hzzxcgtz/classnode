@@ -569,7 +569,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
               // ★ 2026-09-28（教师第二轮）：「这里不用展开收拢？」⇒ **去掉了那个开关**：
               // 标记在不在**就是**显示/隐藏，再叠一个收起/展开是同一件事说两遍。
               // ⚠️ 点题干里那个 chip 仍然有用 —— 它把这一块**滚进视野**（题目长的时候）。
-              <div className="worksheet-editor-block" ref={tableBlockRef}>
+              <div className="worksheet-editor-block worksheet-editor-table-setup" ref={tableBlockRef}>
                 <div className="worksheet-editor-block-head">
                   <div>
                     <h4>表格域作答设置</h4>

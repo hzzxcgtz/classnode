@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
-import { fillSettingsFor, sharedPoolChoices, splitChoiceLines, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { fillSettingsFor, sharedPoolChoices, splitAnswerText, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -13,65 +13,32 @@ import {
 } from '../worksheet-editor-core';
 
 /**
- * 一行一项的编辑框需要保留教师正在输入的末尾换行。
- * 直接把 `splitChoiceLines(text)` 的结果立刻回填给 textarea，会马上删掉空行，表现为 Enter 失效。
- */
-function LineListTextarea({
-  values,
-  rows,
-  placeholder,
-  onLinesChange,
-}: {
-  values: string[];
-  rows: number;
-  placeholder: string;
-  onLinesChange: (lines: string[]) => void;
-}) {
-  const canonical = values.join('\n');
-  const [draft, setDraft] = useState(canonical);
-
-  useEffect(() => {
-    setDraft(canonical);
-  }, [canonical]);
-
-  return (
-    <textarea
-      className="input"
-      rows={rows}
-      value={draft}
-      onChange={(event) => {
-        const next = event.target.value;
-        setDraft(next);
-        onLinesChange(splitChoiceLines(next));
-      }}
-      onBlur={() => setDraft(current => splitChoiceLines(current).join('\n'))}
-      placeholder={placeholder}
-    />
-  );
-}
-
-/**
- * **单行**的词表输入（★ 2026-09-28，教师）。
+ * **单行**的「符号分隔列表」输入 —— 待选词与标准答案**共用这一个**（★ 2026-09-28，教师两轮）。
  *
- * 教师原话：「这个完全没必要一行一个，太占空间了，用单行即可，词与词之间提示使用
- * 常见的符号分隔即可。」⇒ 待选词从多行 textarea 换成单行输入框。
+ * 教师原话：第一轮「这个完全没必要一行一个，太占空间了，用单行即可，词与词之间提示
+ * 使用常见的符号分隔即可。」第二轮「这里也改成单行了，而且可以使用哪些符号间隔，
+ * 要提示一下，之前改的地方也是一样。」
  *
- * 🔴 **为什么自己存一份正在输入的文本**：与 `LineListTextarea` 逐字同一条理由 ——
- * 每次按键都立刻 `splitChoiceText(text).join('、')` 回填的话，教师刚打完的那个分隔符
- * 会在同一瞬间被吃掉（「阳光、」→ 变回「阳光」）⇒ **第二个词根本打不进去**。
- * ⇒ 打字时只更新自己那一份，`onBlur` 才规范化显示。
+ * 🔴 **为什么自己存一份正在输入的文本**：每次按键都立刻 `split(text).join(joinWith)`
+ * 回填的话，教师刚打完的那个分隔符会在同一瞬间被吃掉（「阳光、」→ 变回「阳光」）
+ * ⇒ **第二个词根本打不进去**。⇒ 打字时只更新自己那一份，`onBlur` 才规范化显示。
  * ⚠️ 依赖是那个**字符串**（不是数组）：解析结果没变时 canonical 不变 ⇒ effect 不跑
- * ⇒ draft 里那个尾巴留得住。这一条与 `LineListTextarea` 完全一样。
+ * ⇒ draft 里那个尾巴留得住。
  *
- * ⚠️ 分隔符由 `splitChoiceText` 认（顿号 / 逗号 / 分号 / 换行），**判据不在组件里**。
- * ⚠️ 显示时用顿号 join：教师看到的就是他们自己会打的那个符号。
+ * ⚠️ **分隔符由调用方给**（`split` / `joinWith`），判据在 `@/lib/worksheet-fill-modes`：
+ *   待选词认顿号/逗号/分号，标准答案**只认分号**（答案里可以有顿号和逗号 ——
+ *   见 `splitAnswerText` 的文件头，那是一处静默判分变化的入口）。
+ * ⚠️ 三处共用一个组件是刻意的：同屏三个同类输入框各写一份，改一处只改一处，
+ *   而教师看到的是「三个长得不一样的框」。
  */
-function ChoiceWordsInput({ values, placeholder, onChange }: {
+function SymbolListInput({ values, split, joinWith, placeholder, onChange }: {
   values: string[];
+  split: (raw: string) => string[];
+  joinWith: string;
   placeholder: string;
-  onChange: (words: string[]) => void;
+  onChange: (items: string[]) => void;
 }) {
-  const canonical = values.join('、');
+  const canonical = values.join(joinWith);
   const [draft, setDraft] = useState(canonical);
 
   useEffect(() => {
@@ -86,9 +53,9 @@ function ChoiceWordsInput({ values, placeholder, onChange }: {
       onChange={(event) => {
         const next = event.target.value;
         setDraft(next);
-        onChange(splitChoiceText(next));
+        onChange(split(next));
       }}
-      onBlur={() => setDraft(splitChoiceText(draft).join('、'))}
+      onBlur={() => setDraft(split(draft).join(joinWith))}
     />
   );
 }
@@ -99,7 +66,9 @@ function ChoiceWordsInput({ values, placeholder, onChange }: {
  * 空的数量只有一个来源：题干 `promptRuns` 中带稳定 blank id 的占位符。这里不再提供
  * “增加/删除答案框”，避免题干有两个空、下方却有三个答案框的双真源。教师在题干中
  * 插入或整体删除 `{填空域}`，答案框随即按 blank id 联动；已有答案不会因前面插空而串位。
- * 每个 textarea 仍是一行一个可接受答案，保存前由 `sanitizeContentForSave` 清理空行。
+ * ★ 2026-09-28（教师）：输入框从多行 textarea 改成**单行**（多个答案用分号分隔，
+ * 见 `SymbolListInput`），而**存储形状一个字没变** —— 仍然是「每空一份字符串数组」，
+ * 由 `sanitizeContentForSave` 在出网前清掉空项。
  */
 export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoints = 0 }: {
   node: WorksheetQuestionNode;
@@ -130,20 +99,27 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
                 <strong>{blankLabelAt(node, index) ?? `第 ${index + 1} 空`}</strong>
                 <em>{index < textCount ? `对应题干中第 ${index + 1} 个填空域` : '在表格里'}</em>
               </span>
-              <LineListTextarea
-                rows={2}
+              <SymbolListInput
                 values={answerSets[index] ?? []}
-                onLinesChange={lines => onDataChange({
+                split={splitAnswerText}
+                joinWith="；"
+                placeholder="填写标准答案；多个答案用分号分隔"
+                onChange={items => onDataChange({
                   blanks: undefined,
                   answers: Array.from(
                     { length: slots },
                     (_, answerIndex) => answerIndex === index
-                      ? writeFillAnswers(lines.join('\n'))
+                      ? writeFillAnswers(items.join('\n'))
                       : (answerSets[answerIndex] ?? []),
                   ),
                 })}
-                placeholder={'填写标准答案；多个可接受答案请分行输入'}
               />
+              {/* ★ 2026-09-28（教师）：「可以使用哪些符号间隔，要提示一下」。
+                  把**规则**写出来，别让教师去猜（猜错的表现是「答案被拆成两个」，
+                  而这一栏是判分依据）。当前个数也报出来 —— 单行框里看不见那几行字了。 */}
+              <span className="worksheet-editor-blank-hint">
+                多个可接受答案用<b>分号</b>分隔；答案里的顿号与逗号算答案的一部分（当前 {answerSets[index]?.length ?? 0} 个）
+              </span>
             </label>
           ))}
         </div>
@@ -224,7 +200,15 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
               {setting.mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空右侧的词</span>
-                  <ChoiceWordsInput values={setting.choices} onChange={words => setInlineChoices(index, words)} placeholder="用顿号或逗号分隔，例如：唐、宋、元" />
+                  <SymbolListInput
+                    values={setting.choices}
+                    split={splitChoiceText}
+                    joinWith="、"
+                    placeholder="例如：唐、宋、元"
+                    onChange={words => setInlineChoices(index, words)}
+                  />
+                  {/* ★ 2026-09-28（教师）：「可以使用哪些符号间隔，要提示一下。」 */}
+                  <span className="worksheet-editor-blank-hint">多个词用顿号、逗号或分号分隔（当前 {setting.choices.length} 个）</span>
                 </label>
               )}
             </section>
@@ -235,8 +219,16 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
       {settings.some(setting => setting.mode === 'pool') && (
         <label className="worksheet-editor-field worksheet-editor-choice-words">
           <span>下方共用词池</span>
-          <ChoiceWordsInput values={poolChoices} onChange={words => onDataChange({ fillChoicePool: words })} placeholder="用顿号或逗号分隔，例如：阳光、水分、空气" />
-          <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
+          <SymbolListInput
+            values={poolChoices}
+            split={splitChoiceText}
+            joinWith="、"
+            placeholder="例如：阳光、水分、空气"
+            onChange={words => onDataChange({ fillChoicePool: words })}
+          />
+          <span className="worksheet-editor-blank-hint">
+            多个词用顿号、逗号或分号分隔（当前 {poolChoices.length} 个）；所有设为“下方选词”的空共用这一组词，已使用的词会暂时离开词池。
+          </span>
         </label>
       )}
     </div>

@@ -683,7 +683,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                 <div>
                   <h4>标准答案</h4>
                   <p>{isBlankType
-                    ? '每个空可以填多个可接受答案（一行一个），学生答出其中一个就算对。'
+                    ? '每个空可以填多个可接受答案（用分号分隔），学生答出其中一个就算对。'
                     : '这道题的标准答案是「正确」还是「错误」。'}</p>
                 </div>
               </div>

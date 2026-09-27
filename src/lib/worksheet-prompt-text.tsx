@@ -79,7 +79,18 @@ export interface PromptBlankBinding {
 }
 
 /**
- * 答错的标记：一个细红叉。
+ * 答错标记**贴盒子右上角**的位置 —— **两处共用这一条**。
+ *
+ * 🔴 抽出来的理由：这轮已经有三次「同一个事实写两处、然后分叉」（字重 / 红色 / 覆盖顺序）。
+ * 位置也一样 —— 待选区那种槽与打字那种框必须**贴在同一样的地方**，否则又会「一个对一个不对」。
+ * ⚠️ 绝对定位 ⇒ **不在流里** ⇒ 不加宽、不换行（教师报过的两个毛病都出在这一条上）。
+ */
+const WRONG_MARK_ANCHOR = {
+  position: 'absolute', top: 1, right: 2, pointerEvents: 'none', lineHeight: 0,
+} as const;
+
+/**
+ * 答错的标记：一个稍粗的红叉（教师从四款里挑的 B）。
  *
  * 🔴 **一处定义** —— 这轮已经有三次「同一个东西写两处、然后分叉」的教训（字重、红色、
  * 覆盖顺序），所以标记也只有这一份。
@@ -93,7 +104,7 @@ function WrongMark() {
   //    位置一律交给**布局**：槽里靠 flex 的对齐，输入框那边靠绝对定位。
   return (
     <span role="img" aria-label="答错了" style={{ color: '#dc2626', display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round" aria-hidden="true">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
         <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
       </svg>
     </span>
@@ -133,6 +144,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   justifyContent: 'center',
                   minWidth: `${Math.max(3, run.end - run.start)}ch`,
                   minHeight: '34px',
+                  // ★ 标记要贴**这个盒子的**右上角 ⇒ 它得是定位父级。
+                  position: 'relative',
                   padding: '3px 8px 1px',
                   margin: '-3px 3px -4px',
                   borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
@@ -152,7 +165,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   transition: 'background-color .16s ease-out, border-color .16s ease-out',
                 }}
               >
-                {filled ? blanks.values[index] : '\u00a0'}{wrong && <WrongMark />}
+                {filled ? blanks.values[index] : '\u00a0'}
+                {wrong && <span style={WRONG_MARK_ANCHOR}><WrongMark /></span>}
               </span>
               {blanks.drop.after?.(index)}
               </Fragment>
@@ -190,7 +204,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 }}
               />
                 {wrong && (
-                  <span style={{ position: 'absolute', top: 2, right: 3, pointerEvents: 'none' }}><WrongMark /></span>
+                  <span style={WRONG_MARK_ANCHOR}><WrongMark /></span>
                 )}
 
                 </span>

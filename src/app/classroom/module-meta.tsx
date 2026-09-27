@@ -39,22 +39,79 @@ import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navig
  *
  * 单个模块图标只在这两处出现，所以两个字段都挂在同一张表上 —— 新增模块时
  * `Record<ModuleId, …>` 会同时逼着两份都补齐，不会出现「卡片有图、Tab 空着」。
+ *
+ * ── ★ 2026-09-27：首页三卡改版（设计稿 v6）────────────────────────────────
+ * 首页卡片换成一版新的视觉（大插画 + 一句话说明 + 信息块 + 通栏按钮），于是卡片上多出
+ * 三样**每个模块各一份**的文字/颜色，全部加在这张表上（理由同上面那段：`Record<ModuleId, …>`
+ * 会逼着补齐，不会出现「某张卡少一句副标题」）：
+ *
+ *   · `subtitle`      —— 一句话说明这个模块是干什么的（设计稿的副标题行）。
+ *   · `summaryLabel`  —— 信息块那枚药丸的字（「今天的任务」「本次探究」「上次聊到」）。
+ *                        它说的是**下面那行数据是什么**，所以必须与 `student-home.tsx`
+ *                        往那一格塞的数据对得上（塞了网页名、药丸却写「今天的任务」
+ *                        就是一句假话）。
+ *   · `iconTint` / `iconRim` —— 插画背后那个圆的浅色同色系底（从设计稿的合成图里
+ *                        量出来的，见 `student-home.tsx` 里那段注释）。
+ *   · `cardSurface` / `cardSurfaceDeep` / `cardPill` / `cardLine` —— 新版卡片那四层浅色：
+ *                        卡片底、信息块底、药丸底、分隔线。设计稿给每个模块配了一整套
+ *                        （蓝 / 紫 / 青各一套），**照抄在这里而不是写进 CSS** ——
+ *                        本仓的规矩是「颜色只有这一个来源，通过 CSS 自定义属性传下去，
+ *                        CSS 里不另抄十六进制」（见上面 `accent` 那一段）。
+ *
+ * ⚠️ `iconSrc` 从 v6 起指向 `/images/module-icons/v6/*.webp`（384px、透明底、**不带圆底**）——
+ *    圆底改由 CSS 画（`home.module.css` 的 `.cardIcon`），因为设计稿附带的那版合成图只有
+ *    192px，在 iPad 的 2x 屏上按 100px 以上显示会被放大发虚。旧的那三张
+ *    `/images/module-icons/*.svg` **暂时留在仓库里**（没人再引用它们，删不删是另一个决定）。
+ *
+ * ⚠️ `cta` 的取值这一轮跟着设计稿改了两个（`继续作答`→`开始学习`、`去探究`→`开始探究`）。
+ *    它只被首页卡片读（全仓 grep 过），所以改它不会波及别处。
  */
-export const MODULE_META: Record<ModuleId, { label: string; accent: string; accentStrong: string; cta: string; icon: ReactNode; iconSrc: string }> = {
+export const MODULE_META: Record<ModuleId, {
+  label: string;
+  accent: string;
+  accentStrong: string;
+  cta: string;
+  subtitle: string;
+  summaryLabel: string;
+  iconTint: string;
+  iconRim: string;
+  cardSurface: string;
+  cardSurfaceDeep: string;
+  cardPill: string;
+  cardLine: string;
+  icon: ReactNode;
+  iconSrc: string;
+}> = {
   worksheet: {
     label: '学习单',
     accent: '#2563eb',
     accentStrong: '#1d4ed8',
-    cta: '继续作答',
-    iconSrc: '/images/module-icons/worksheet.svg',
+    cta: '开始学习',
+    subtitle: '完成课堂任务',
+    summaryLabel: '今天的任务',
+    iconTint: '#eaf3ff',
+    iconRim: '#cfe4ff',
+    cardSurface: '#f7fbff',
+    cardSurfaceDeep: '#e6f3ff',
+    cardPill: '#cde6ff',
+    cardLine: '#d5eaff',
+    iconSrc: '/images/module-icons/v6/worksheet.webp',
     icon: <WorksheetNavigationIcon size={21} strokeWidth={1.9} />,
   },
   explore: {
     label: '探究空间',
     accent: '#7c3aed',
     accentStrong: '#6d28d9',
-    cta: '去探究',
-    iconSrc: '/images/module-icons/explore.svg',
+    cta: '开始探究',
+    subtitle: '动手体验原理',
+    summaryLabel: '本次探究',
+    iconTint: '#f0e9ff',
+    iconRim: '#dccbfb',
+    cardSurface: '#fbf9ff',
+    cardSurfaceDeep: '#eee7ff',
+    cardPill: '#ded0ff',
+    cardLine: '#e5dcff',
+    iconSrc: '/images/module-icons/v6/explore.webp',
     icon: <ExploreSpaceNavigationIcon size={21} strokeWidth={1.9} />,
   },
   companion: {
@@ -65,7 +122,15 @@ export const MODULE_META: Record<ModuleId, { label: string; accent: string; acce
     // 强调色（Tab 选中态用）再压一档：青 700 → 青 800。见文件头。
     accentStrong: '#155e75',
     cta: '开始对话',
-    iconSrc: '/images/module-icons/companion.svg',
+    subtitle: '和 AI 一起思考',
+    summaryLabel: '上次聊到',
+    iconTint: '#e4f9f2',
+    iconRim: '#c6efe3',
+    cardSurface: '#f7fffd',
+    cardSurfaceDeep: '#ddf5f0',
+    cardPill: '#c0ece3',
+    cardLine: '#d1f0eb',
+    iconSrc: '/images/module-icons/v6/companion.webp',
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M11.5 3C6.8 3 3 6.2 3 10.1c0 1.7.7 3.2 2 4.4L4 18l3.8-2c1.1.7 2.4 1 3.7 1 4.7 0 8.5-3.1 8.5-6.9S16.2 3 11.5 3Z" />

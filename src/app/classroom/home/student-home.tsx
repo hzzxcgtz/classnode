@@ -48,90 +48,84 @@ function LockBadge() {
   );
 }
 
-/**
- * 卡片上的一行文案：太长就截断并留一个省略号。
+/* ⊘ 2026-09-27（v6 改版）删除 `clipCardText`（32 字截断）。
  *
- * 卡片主内容区没有 `overflow: hidden` / `text-overflow`，超长文案会**换行把卡片撑高**，
- * 而三张卡的按钮是靠 `.cardMeta` 的 `min-height` 对齐的 —— 一张卡被撑高，三个按钮就错位。
- * 所以长度在 JS 这一侧收口（与「上次聊到…」同一个 32 字口径，改这里请两处一起想）。
- */
-function clipCardText(text: string, max = 32): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-}
+ * 它当初的理由是「超长文案会把卡片撑高，而三张卡的按钮靠 `min-height` 对齐」——
+ * 新版卡片的信息块是**固定高度 + `-webkit-line-clamp: 2`**：按真实宽度截断、且高度恒定，
+ * 那两件事都由 CSS 一处负责。留着 JS 那一份的话，一张 50 字的学习单标题会被截在 32 字，
+ * 而它本来放得下 —— 学生看不到自己那份单子的全名，且没有任何线索说明为什么。 */
 
 /**
  * 把最后一条有内容的消息压成一句短摘要。
  *
  * 从后往前找而不是取末条：助手回复可能只有空白或附件占位，那边界情况下取末条会得到
- * 一张空摘要。Markdown 记号一律压成空格 —— 卡片只有一行位置，`###` 与反引号在这
- * 里只是噪点。
+ * 一张空摘要。Markdown 记号一律压成空格 —— 卡片上那一格是两行正文，`###` 与反引号
+ * 在那里只是噪点。
+ *
+ * ★ 2026-09-27（v6 改版）：**去掉了 32 字的 JS 截断**。原来它承担的是「三张卡的按钮对齐」
+ * （靠 `.cardMeta` 的 `min-height`）—— 现在那一格是**固定高度 + `-webkit-line-clamp: 2`**，
+ * 截断由 CSS 按真实宽度做，比按字符数猜准得多。两套截断并存只会让「到底谁在截」说不清。
  */
 function summarizeLastRound(messages: StudentChatMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const text = (messages[i].content || '').replace(/[#*`>~\s]+/g, ' ').trim();
-    if (text) return clipCardText(text);
+    if (text) return text;
   }
   return null;
 }
 
 /**
- * 「探究空间」卡片的主内容 —— **这个学生此刻能打开的那个网页叫什么，这里就说那个名字**。
+ * 「学习单」卡片信息块里的那一句话 —— **这个学生（这一组）此刻该作答的是哪一份**。
  *
- * ⚠️ 这条以前是硬编码的占位（`还没有资料` / `老师添加网页后会出现在这里`），与「学伴」那张
- * 卡读真数据（`agentName` / `lastRound`）的做法不一致。后果是**卡片撒谎**：课堂已经关联了
- * 网页、学生点进去看到的是一张真网页，卡片却还说「还没有资料」。
- * 数据是**这个学生自己组的**那一个网页（P2 起：`effectiveGroupWebapp` 解析，高级模式
- * 不回落；T3 起随 `GET /code/:code` 下发的组材料只含 `id`/`name`/`entryPath`）。
- *
- * 🔴 **取哪个网页由 `effectiveGroupWebapp` 决定，本函数不自己挑**：它原来读的是
- * `classroom.webapps[0]`（课堂级），高级模式下会让卡片写着 A 组网页的名字、点进去却是
- * 「本组未配置探究网页」—— 同一张卡与面板两个说法，跟学伴卡那边「首页说一个名字、进去
- * 变成另一个」是同一类漂移。**卡片与面板必须说同一个网页。**
- *
- * ⚠️ **有关联网页时刻意不写「共 N 个」**：面板此刻只加载那一个网页（多网页的列表选择是
- * P2 已知的收窄，见 T6 报告 §4.2）。写「共 3 个网页」而学生点进去只看得到那一个，
- * 是**同一类撒谎换了个方向** —— 承诺一个点不到的东西。等多网页选择落地后再谈计数。
- *
- * 服务端保证 `name` 非空且不超过 120 字（`rawName || '未命名网页'`），所以这里不必兜空串，
- * 只需按卡片宽度截断。
- *
- * 空状态的文案两种模式**共用**「还没有资料」：卡片只有一行位置，而「本组没配」这个更精确
- * 的说法（`explore-panel.tsx` 的那张空状态卡）在点进去之后说 —— 那里有整张卡的地方讲清楚
- * 「问老师要你们组的那一个」。这里说「老师添加网页后会出现在这里」不构成误导：对这个学生
- * 而言，确实就是「（我这边）还没有」+「以后会出现」。
- */
-function exploreCardContent(webapp: ClassroomWebappSummary | null): { title: string; meta: string } {
-  if (!webapp) return { title: '还没有资料', meta: '老师添加网页后会出现在这里' };
-  return { title: clipCardText(webapp.name), meta: '老师准备的探究网页' };
-}
-
-/**
- * 「学习单」卡片的主内容 —— **这个学生（这一组）此刻该作答的是哪一份，这里就说那一份的标题**。
- *
- * 🔴 这条一直到 D2 都还是硬编码的占位（`还没有布置`），与另外两张卡读真数据的做法不一致。
- * 后果与探究空间那张卡逐字相同：**卡片撒谎** —— 教师已经布置了、学生点进去就是题目，
- * 卡片却还说「还没有布置」。改成读真数据（走 `effectiveGroupWorksheet`，见下）之后，
- * 卡片与面板说同一句话。
- *
- * 🔴 **取哪一份由 `effectiveGroupWorksheet` 决定，本函数不自己挑**（与 `exploreCardContent`
- * 同一个理由、同一个函数族）：它带着那条关键约束 —— 高级模式**只认学生自己那个组，
- * 本组没配就是 `null`，不回落**到课堂级那一份。自己挑就会在学生端造成「卡片说一份、
- * 点进去是另一份」的漂移，而那不报任何错。
- *
+ * ⚠️ 数据来源是 `effectiveGroupWorksheet`，**本函数不自己挑**（理由见下面各处的注释）。
  * ⚠️ **`null` 时分成两种说法**，不能合并（规格 §8.4，与学生端面板 `worksheet-panel.tsx` 的
  * 空状态**逐字对齐**）：
  *   · 高级模式 —— `null` 是「**本组**没配」，不是「老师没布置」：别的组可能有。
- *     面板在那里说「本组未配置学习单」，卡片必须说同一件事，否则同一张卡与面板两个说法。
+ *     面板在那里说「本组未配置学习单」，卡片必须说同一件事。
  *   · 其余 —— 才是「老师还没有布置」。
- * 两者都说清「以后会出现 / 该问谁」，因为卡片的两行位置只有这么多，而这两句都给出路。
+ * 两者都说清出路（「问问老师」/「以后会出现」），因为卡片那一格只有两行，而这两句都给出路。
+ *
+ * ★ 2026-09-27（v6）：原来这里返回 `{title, meta}` 两句（标题 + 「老师布置的学习单」），
+ * 而新版卡片的信息块只有**一句话** —— 「老师布置的学习单」那句由药丸
+ * （`MODULE_META.summaryLabel` 的「今天的任务」）承担了，再写一遍就是同一句话说两次。
  */
-function worksheetCardContent(
+function worksheetCardSummary(
   classroom: ClassroomInfo | null,
   worksheet: WorksheetMaterialSummary | null,
-): { title: string; meta: string } {
-  if (worksheet) return { title: clipCardText(worksheet.title), meta: '老师布置的学习单' };
-  if (classroom?.mode === 'advanced') return { title: '本组未配置学习单', meta: '先和同伴讨论，或问问老师' };
-  return { title: '还没有布置', meta: '老师布置后会出现在这里' };
+): string {
+  if (worksheet) return worksheet.title;
+  if (classroom?.mode === 'advanced') return '本组未配置学习单，先和同伴讨论或问问老师';
+  return '老师布置后会出现在这里';
+}
+
+/**
+ * 「探究空间」卡片信息块里的那一句话 —— **这个学生此刻能打开的那个网页叫什么**。
+ *
+ * 🔴 **取哪个网页由 `effectiveGroupWebapp` 决定，本函数不自己挑**：它原来读的是
+ * `classroom.webapps[0]`（课堂级），高级模式下会让卡片写着 A 组网页的名字、点进去却是
+ * 「本组未配置探究网页」—— 同一张卡与面板两个说法（与学伴卡那边「首页说一个名字、
+ * 进去变成另一个」是同一类漂移）。
+ *
+ * ⚠️ **有关联网页时刻意不写「共 N 个」**：面板此刻只加载那一个网页（多网页的列表选择是
+ * P2 已知的收窄）—— 承诺一个点不到的东西是**同一类撒谎换了个方向**。
+ * 空状态那句与原来逐字相同：对这个学生而言，确实就是「（我这边）还没有」+「以后会出现」。
+ */
+function exploreCardSummary(webapp: ClassroomWebappSummary | null): string {
+  if (!webapp) return '老师添加网页后会出现在这里';
+  return webapp.name;
+}
+
+/**
+ * 「智能学伴」卡片信息块里的那一句话 —— 上次聊到哪儿，或者为什么还没聊起来。
+ *
+ * 🔴 **「本组没配智能体」要说出来**（P2 那条「高级模式不回落」的同一条纪律）：不说的话，
+ * 那种课堂上的学生只会看到一句「还没开始对话，打个招呼吧」，进去才发现根本没有人可聊 ——
+ * 而「问了没反应」与「这里本来就没有学伴」是两件完全不同的事。
+ */
+function companionCardSummary(hasAgent: boolean, lastRound: string | null): string {
+  if (lastRound) return lastRound;
+  if (!hasAgent) return '本组还没配置学伴，先问问老师';
+  return '还没开始对话，打个招呼吧';
 }
 
 /**
@@ -189,7 +183,8 @@ export function StudentHome({
   // 兜底用模块的身份名（`MODULE_META.companion.label`，也就是卡片上的「智能学伴」）而不是
   // 再写一遍字面量：零智能体的课堂里，首页卡片、Tab 与面板标题必须说同一个名字，而三处
   // 各写一份字面量必然漂移。面板那一侧读的是同一个函数、同一份兜底。
-  const agentName = effectiveGroupAgent(classroom, selectedStudent)?.name || MODULE_META.companion.label;
+  const agent = effectiveGroupAgent(classroom, selectedStudent);
+  const agentName = agent?.name || MODULE_META.companion.label;
 
   // 换头像要消耗老师奖励的机会（服务端 `avatarChangeTokens >= 1` 才放行）。那套「没有机会
   // 时要说清为什么」的反馈没有丢，只是搬到了顶栏那个入口上：M1b-3 T2 起点击顶栏头像时由
@@ -198,19 +193,22 @@ export function StudentHome({
 
   const lastRound = summarizeLastRound(messages);
 
-  // 三态的「主内容」：卡片结构不动，换的只是标题与副标题那两个字符串。
-  // 三张卡**都读真数据**（关联网页 / 智能体与最后一轮对话 / 学习单标题）。
-  // `worksheet` 到 D3 也改成读真数据了（见 `worksheetCardContent`）—— 此前它写死
-  // 「还没有布置」，而那一句在教师布置之后就是假的。
-  const cardContent: Record<ModuleId, { title: string; meta: string }> = {
-    worksheet: worksheetCardContent(classroom, effectiveGroupWorksheet(classroom, selectedStudent)),
-    // 同一个 `effectiveGroupWebapp`：卡片说的网页就是面板会打开的那一个（见上面的注释）。
-    explore: exploreCardContent(effectiveGroupWebapp(classroom, selectedStudent)),
-    companion: {
-      title: agentName,
-      meta: lastRound ? `上次聊到：${lastRound}` : '还没开始对话，打个招呼吧',
-    },
+  // 信息块里那一句话 —— 三张卡**都读真数据**（学习单标题 / 关联网页名 / 最后一轮对话）。
+  // ★ 2026-09-27（v6）：从「标题 + 副标题」两句压成**一句**（新版卡片那一格只有一行数据，
+  // 上面那枚药丸已经把「这是什么」说了）。取数据的判据一个字没改，全在三个 helper 里。
+  const cardSummary: Record<ModuleId, string> = {
+    worksheet: worksheetCardSummary(classroom, effectiveGroupWorksheet(classroom, selectedStudent)),
+    // 同一个 `effectiveGroupWebapp`：卡片说的网页就是面板会打开的那一个。
+    explore: exploreCardSummary(effectiveGroupWebapp(classroom, selectedStudent)),
+    companion: companionCardSummary(Boolean(agent), lastRound),
   };
+  /**
+   * 「智能学伴」的副标题。★ v6：**有真智能体时把名字写进去** ——
+   * 新版卡片的副标题位从「模块说明」换成了设计稿写死的「和 AI 一起思考」，
+   * 而「这个课堂的 AI 叫什么」是学生该知道的（面板里用的就是这个名字）。
+   * 没有智能体时用设计稿原话，不编一个「和智能学伴一起思考」那种绕口的句子。
+   */
+  const companionSubtitle = agent ? `和${agent.name}一起思考` : MODULE_META.companion.subtitle;
 
   // ★ 2026-09-27：这段原来是 `MODULE_KEYS.map(…).filter(state !== 'hidden')` —— 与
   // `shell/use-module-tabs.ts` 里那份**逐字相同的拷贝**。两者现在都走 `visibleModules`：
@@ -247,7 +245,10 @@ export function StudentHome({
 
           <div className={styles.rule} />
 
-          <h2 className={styles.sectionTitle}>今天的学习</h2>
+          <header className={styles.heading}>
+            <h2 className={styles.headingTitle}>今天的学习</h2>
+            <p className={styles.headingLead}>一步一步，发现新知识</p>
+          </header>
 
           {cards.length === 0 ? (
             <p className={styles.emptyNote}>老师还没有开放今天的内容，先等等吧。</p>
@@ -256,38 +257,72 @@ export function StudentHome({
               {cards.map(({ moduleKey, state }) => {
                 const moduleId = MODULE_ID_BY_KEY[moduleKey];
                 const card = MODULE_META[moduleId];
-                const content = cardContent[moduleId];
                 const locked = state === 'preview';
+                const open = () => {
+                  if (locked) {
+                    setToast({ msg: '老师还没开放', type: 'info' });
+                    return;
+                  }
+                  onOpenModule(moduleId);
+                };
                 return (
-                  <button
+                  /* ★ 2026-09-27（v6）：卡片从 `<button>` 改成 `<article>` + 内层一个真正的
+                     `<button>`。**不是风格问题**：新版卡片里有一个通栏按钮，而 `<button>`
+                     里不能再套 `<button>`（非法 HTML，浏览器会把嵌套的那个拆出去，行为
+                     因浏览器而异）。原来「点卡片任意处」那一层热点由这一枚通栏按钮承担 ——
+                     它占满卡片宽度、44px 以上，也是键盘可达的那一个。
+                     ⚠️ 所以**不要**给 `<article>` 加 onClick：一个能点但键盘到不了的 div
+                     比少一层热点糟得多。 */
+                  <article
                     key={moduleKey}
-                    type="button"
                     className={locked ? `${styles.card} ${styles.cardLocked}` : styles.card}
-                    style={{ '--card-accent': card.accent } as CSSProperties}
-                    aria-disabled={locked || undefined}
-                    onClick={() => {
-                      if (locked) {
-                        setToast({ msg: '老师还没开放', type: 'info' });
-                        return;
-                      }
-                      onOpenModule(moduleId);
-                    }}
+                    /* 🔴 **八个变量一个都不能少。** CSS 侧 `home.module.css` 的 `.card` 给它们
+                       都写了蓝色兜底值 ⇒ 漏传的那几个会**静默变成蓝色**（三张卡里有一张
+                       长得跟学习单一样），而 `tsc` / `eslint` / 渲染都不报任何错 ——
+                       变量名是字符串，没人核对。`home-module-meta.test.ts` 有一条网钉着
+                       「CSS 读的每一个 `--card-*` 这里都设了」。 */
+                    style={{
+                      '--card-accent': card.accent,
+                      '--card-accent-strong': card.accentStrong,
+                      '--card-icon-tint': card.iconTint,
+                      '--card-icon-rim': card.iconRim,
+                      '--card-surface': card.cardSurface,
+                      '--card-surface-deep': card.cardSurfaceDeep,
+                      '--card-pill': card.cardPill,
+                      '--card-line': card.cardLine,
+                    } as CSSProperties}
                   >
-                    <span className={styles.cardIcon}>
-                      {/* `iconSrc` 而不是 `card.icon`：卡片用「自带渐变圆角底的整块图标」，
-                          Tab 用的白色线稿在 52px 上只剩几根细线。分工见 `module-meta.tsx`。
-                          `alt=""` 是刻意的 —— 卡片正文紧接着就是模块名，图标是装饰，
-                          读屏再念一遍只是啰嗦。 */}
-                      <img className={styles.cardIconImage} src={card.iconSrc} alt="" width={52} height={52} />
-                      {locked && <LockBadge />}
-                    </span>
-                    <span className={styles.cardBody}>
-                      <span className={styles.cardName}>{card.label}</span>
-                      <span className={styles.cardTitle}>{content.title}</span>
-                      <span className={styles.cardMeta}>{content.meta}</span>
-                    </span>
-                    <span className={styles.cardCta}>{locked ? '未开放' : card.cta}</span>
-                  </button>
+                    <div className={styles.cardHero}>
+                      <div className={styles.cardIdentity}>
+                        <h3 className={styles.cardName}>{card.label}</h3>
+                        <p className={styles.cardSubtitle}>
+                          {moduleId === 'companion' ? companionSubtitle : card.subtitle}
+                        </p>
+                      </div>
+                      <span className={styles.cardIcon}>
+                        {/* `iconSrc` 而不是 `card.icon`：卡片用插画，Tab 用的白色线稿在 21px
+                            上只剩几根细线。分工见 `module-meta.tsx`。
+                            `alt=""` 是刻意的 —— 卡片正文紧接着就是模块名，图标是装饰，
+                            读屏再念一遍只是啰嗦。 */}
+                        <img className={styles.cardIconImage} src={card.iconSrc} alt="" width={104} height={104} />
+                        {locked && <LockBadge />}
+                      </span>
+                    </div>
+                    <div className={styles.cardRule} />
+                    <div className={styles.cardInfo}>
+                      <span className={styles.cardPill}>{card.summaryLabel}</span>
+                      <p className={styles.cardSummary}>{cardSummary[moduleId]}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.cardCta}
+                      aria-disabled={locked || undefined}
+                      onClick={open}
+                    >
+                      {locked ? '未开放' : card.cta}
+                      <span className={styles.cardCtaArrow} aria-hidden="true">→</span>
+                    </button>
+                  </article>
                 );
               })}
             </div>

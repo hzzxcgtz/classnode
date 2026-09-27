@@ -104,11 +104,30 @@
   background: #eef1f6;
 }
 
-.sectionTitle {
-  margin: 0 0 12px;
-  font-size: 0.938rem;
-  font-weight: 700;
-  color: #334155;
+/* ————————————————— 标题 ————————————————— */
+
+/* ★ 2026-09-27（v6 改版）：从一行 0.938rem 的小标题换成设计稿那组「大标题 + 一句引导语」。
+   它是这一屏的**唯一主角**（三张卡是它的下挂），所以字号按设计稿给的层级走：
+   标题 2rem / 引导语 1rem，而不是原来那种「和卡片正文差不多大」。 */
+.heading {
+  margin: 0 0 16px;
+}
+
+.headingTitle {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #211967;
+}
+
+.headingLead {
+  margin: 6px 0 0;
+  font-size: 1rem;
+  font-weight: 550;
+  letter-spacing: 0.5px;
+  color: #7b7ba3;
 }
 
 /* ————————————————— 三张卡片 ————————————————— */
@@ -116,180 +135,250 @@
 .cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
+/* ★ 2026-09-27（v6 改版）：卡片从「左边一条色边 + 白底」换成设计稿那套**同色系浅色卡片**
+   —— 底、边框、分隔线、信息块、药丸、圆托六处颜色全部由模块色派生，四个浅色与两个圆托色
+   由 `module-meta.tsx` 经 CSS 变量传进来（**不在这里写十六进制**，见那个文件的注释）。
+   ⚠️ 它现在是 `<article>` + 内层一个 `<button>`（卡片里有一个通栏按钮，按钮不能套按钮）——
+      所以这一层不再有 `cursor: pointer` / `:active` 缩放：那两样属于按钮，见 `.cardCta`。 */
 .card {
   --card-accent: #2563eb;
+  --card-accent-strong: #1d4ed8;
+  --card-icon-tint: #eaf3ff;
+  --card-icon-rim: #cfe4ff;
+  --card-surface: #f7fbff;
+  --card-surface-deep: #e6f3ff;
+  --card-pill: #cde6ff;
+  --card-line: #d5eaff;
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  padding: 16px 16px 16px 17px;
-  border: 1px solid #e6eaf2;
-  border-left: 4px solid var(--card-accent);
-  border-radius: 14px;
-  background: #fff;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.16s ease;
+  padding: 18px 18px 16px;
+  border: 2px solid var(--card-line);
+  border-radius: 22px;
+  background: var(--card-surface);
 }
 
-/* 抬起的投影用 `::before` 的 opacity 淡入 —— 不 transition `box-shadow` 本身，
-   动效就只剩 transform / opacity 两件合成器友好的事。 */
-.card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.16s ease;
-}
+/* ── 头行：模块名在左、插画在右（设计稿的排法）───────────────────────────── */
 
-.card:hover {
-  transform: translateY(-2px);
-}
-
-.card:hover::before {
-  opacity: 1;
-}
-
-.card:active {
-  transform: translateY(0) scale(0.992);
-  /* ★ M6b/7：按下要**立刻**缩到位。原先共用 `:hover` 那条 160ms —— 触屏上没有 hover，
-     学生按下去要等 160ms 才看到回弹，那就是「按了没反应」。抬起仍保留 160ms。 */
-  transition-duration: 60ms;
-}
-
-/* 图标位：只负责**定位上下文**与尺寸，不画自己的底色。
-   ⚠️ M1b-3 T2b 起这里渲染的是 `/images/module-icons/*.svg` —— 那批图标**自带渐变圆角底**
-   （`rect rx=32`），原先的 `background: var(--card-accent)` + `border-radius: 12px` 叠上去
-   就是「色块套色块」，已一并撤除。
-   `position: relative` **必须保留**：锁定角标 `.lockBadge` 是挂在这一层里的绝对定位元素，
-   去掉定位上下文它就会跑到最近的定位祖先（`.card`）上，角标跟着跑位。
-   （`color: #fff` 也随内联 SVG 一起撤除了：图标不再吃 `currentColor`，而 `.lockBadge`
-   自己声明了 `color`，不依赖继承。） */
-.cardIcon {
-  position: relative;
-  display: inline-flex;
+.cardHero {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 104px;
 }
 
-/* `display: block` 不是为了排版而是为了消掉 inline 元素的基线缝隙：`.cardIcon` 是
-   inline-flex，行内图片按基线对齐会在底下多出几像素，把 52px 的盒子撑高。 */
-.cardIconImage {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.cardBody {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
+.cardIdentity {
+  min-width: 0;
 }
 
 .cardName {
-  font-size: 0.813rem;
-  font-weight: 700;
-  color: var(--card-accent);
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--card-accent-strong);
 }
 
-.cardTitle {
-  font-size: 1.063rem;
-  font-weight: 700;
-  line-height: 1.35;
-  color: #0f172a;
-}
-
-.cardMeta {
-  font-size: 0.813rem;
-  line-height: 1.5;
-  color: #64748b;
-  /* 摘要长度不一，留两行高度（line-height 1.5 × 2 = 3em）让三张卡的按钮横向对齐。 */
-  min-height: 3em;
-}
-
-.cardCta {
-  margin-top: 4px;
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: var(--card-accent);
-  color: #fff;
+.cardSubtitle {
+  margin: 6px 0 0;
   font-size: 0.875rem;
-  font-weight: 700;
+  font-weight: 550;
+  line-height: 1.35;
+  color: #6c7395;
+}
+
+/* 插画外面那个圆。
+   🔴 **圆底由这里画，不用设计稿附带的那版合成图**：那版只有 192px，在 iPad 的 2x 屏上
+      按 104px 显示已经是 1.08 倍、再大就明显发虚；而插画原图是 1254px，
+      圆底用 CSS 画则在任何尺寸下都是清的。
+   ⚠️ 用 `radial-gradient` 而不是纯色：设计稿那个圆是「中心极浅、靠边缘略深」的一圈，
+      而中心被插画盖住 ⇒ 屏幕上看到的就是那一圈渐变。
+   ⚠️ `position: relative` **必须保留**：锁定角标 `.lockBadge` 是挂在这一层里的绝对定位元素。 */
+.cardIcon {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, #ffffff 26%, var(--card-icon-tint) 68%, var(--card-icon-rim) 100%);
+}
+
+/* 插画占圆的 78%：留出那一圈浅色（设计稿里插画四周就是这么一圈留白）。
+   `display: block` 不是为了排版而是为了消掉 inline 元素的基线缝隙。 */
+.cardIconImage {
+  display: block;
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+}
+
+.cardRule {
+  height: 2px;
+  margin: 14px 0;
+  background: var(--card-line);
+}
+
+/* ── 信息块：一枚药丸 + 两行摘要 ───────────────────────────────────────────
+   🔴 **固定高度**（设计稿的要求，也是三张卡按钮对齐的依据）：摘要长短不一，
+      让它撑高的话三张卡的通栏按钮会错开。 */
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 118px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--card-surface-deep);
+}
+
+.cardPill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--card-pill);
+  /* ⚠️ 用 `-strong` 而不是 `accent`：药丸底是浅色，`accent` 落上去只有 4.3:1 左右，
+      而这行字是 0.75rem —— 够不到 WCAG「大字号」门槛，需要 4.5:1。 */
+  color: var(--card-accent-strong);
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+/* 两行封顶。**截断只在这一处**（JS 那侧原来还有一条 32 字截断，已删，见 `student-home.tsx`）：
+   这里按真实宽度截，比按字符数猜准；而且它同时保证信息块的高度不会被长文案顶开。 */
+.cardSummary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.938rem;
+  line-height: 1.45;
+  font-weight: 590;
+  color: #344165;
+}
+
+/* ── 通栏按钮 ─────────────────────────────────────────────────────────────
+   🔴 **卡片里唯一可点的东西**（`<article>` 上没有 onClick —— 一个能点但键盘到不了的
+      div 比少一层热点糟得多）。所以它必须自己够大：高度 52px、占满卡片宽度。
+   ⚠️ `margin-top: auto` 把三张卡的按钮压到同一条基线上（信息块固定高度是另一半保证）。 */
+.cardCta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  margin-top: auto;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--card-accent), var(--card-accent-strong));
+  box-shadow: 0 6px 14px rgba(31, 38, 82, 0.16);
+  color: #fff;
+  font: inherit;
+  font-size: 1.063rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.cardCta:hover {
+  transform: translateY(-1px);
+}
+
+.cardCta:active {
+  /* ★ 按下要**立刻**缩到位（与改版前那条同一条理由：触屏上没有 hover，
+     等 160ms 才回弹就是「按了没反应」）。抬起仍保留 160ms。 */
+  transform: translateY(0) scale(0.985);
+  transition-duration: 60ms;
+}
+
+/* 箭头。设计稿里它比文字大一号、且**不参与**字重（细箭头配粗字）。 */
+.cardCtaArrow {
+  font-size: 1.375rem;
+  font-weight: 400;
+  line-height: 1;
 }
 
 /* ————————————————— 预告态（灰掉 + 🔒 角标） ————————————————— */
 
+/* ⚠️ 不能用 `--card-accent: #94a3b8` 之类的办法灰掉：卡片上那几个变量是**内联 style**
+   写的（每个模块一套），内联声明的优先级高于本规则，改不动。所以这里直接指名颜色。 */
 .cardLocked {
-  /* ⚠️ 不能用 `--card-accent: #94a3b8` 来灰掉左侧粗边：卡片上的 `--card-accent` 是**内联
-     style** 写的（每个模块一色），内联声明的优先级高于本规则，改不动。所以左侧那条边
-     直接指名颜色；图标/标题/按钮三处则用下面的后代选择器覆盖（后代选择器优先级更高）。 */
-  border-left-color: #94a3b8;
   border-style: dashed;
-  border-left-style: solid;
   background: #f8fafc;
-  cursor: default;
 }
 
-/* 锁住的卡片不该「抬起来迎客」——按下仍有回弹（:active）作为「我收到了」的反馈。
-   ⚠️ `:not(:active)` 是必需的，不是修辞：`.card:active` 与 `.cardLocked:hover` 特异性
-   相同(0,2,0)，靠源码顺序取胜，而指针按下时**必然同时命中 `:hover`** —— 少了这个 `:not`，
-   后面的 `.cardLocked:hover` 会把 `.card:active` 的回弹吃掉，上面那句承诺就完全不生效。
-   加上之后特异性升到 (0,3,0)，且按下期间不匹配 ⇒ 回弹回来。 */
-.cardLocked:not(:active):hover {
-  transform: none;
-}
-
-.cardLocked:hover::before {
-  opacity: 0;
-}
-
-/* 锁定态：图标换 `<img>` 之后，旧的 `background: #e2e8f0` + `color: #94a3b8` 两条
-   **都不再起作用** —— SVG 自带颜色、也不吃 `currentColor`，改不了色。改用滤镜把它压成
-   灰阶（`grayscale(1)`）再降透明度，与开放态的彩色渐变块一眼分得开。
-   ⚠️ 滤镜只落在图片上，不落在 `.cardIcon` 上：给 `.cardIcon` 加 `filter` 会连 🔒 角标
-   一起灰掉+变淡，而角标正是「锁定」这个状态的主信号（另一处是 CTA 的「未开放」字样），
-   不该跟着一起褪色。 */
 .cardLocked .cardIconImage {
   filter: grayscale(1);
   opacity: 0.55;
 }
 
-.cardLocked .cardName {
+/* 灰掉那圈圆底。⚠️ 滤镜只落在图片上、不落在 `.cardIcon` 上：给圆加 `filter` 会连 🔒 角标
+   一起灰掉+变淡，而角标正是「锁定」这个状态的主信号（另一处是按钮上的「未开放」字样）。 */
+.cardLocked .cardIcon {
+  background: radial-gradient(circle at 50% 45%, #ffffff 26%, #eef1f6 68%, #e2e8f0 100%);
+}
+
+.cardLocked .cardName,
+.cardLocked .cardSubtitle {
+  color: #94a3b8;
+}
+
+.cardLocked .cardRule {
+  background: #e2e8f0;
+}
+
+.cardLocked .cardInfo {
+  background: #f1f5f9;
+}
+
+.cardLocked .cardPill {
+  background: #e2e8f0;
   color: #64748b;
 }
 
-.cardLocked .cardTitle,
-.cardLocked .cardMeta {
+.cardLocked .cardSummary {
   color: #94a3b8;
 }
 
 .cardLocked .cardCta {
   background: #e2e8f0;
+  box-shadow: none;
   color: #475569;
+  cursor: default;
+}
+
+/* 锁住的卡片不该「抬起来迎客」——按下仍有回弹（`:active`）作为「我收到了」的反馈。
+   ⚠️ `:not(:active)` 是必需的，不是修辞：`.cardCta:active` 与 `.cardLocked .cardCta:hover`
+   特异性相同(0,2,0)，靠源码顺序取胜，而指针按下时**必然同时命中 `:hover`** —— 少了这个
+   `:not`，后面的 hover 规则会把 `:active` 的回弹吃掉，上面那句承诺就完全不生效。 */
+.cardLocked .cardCta:not(:active):hover {
+  transform: none;
 }
 
 .lockBadge {
   position: absolute;
-  top: -7px;
-  right: -7px;
+  top: -2px;
+  right: -2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #94a3b8;
   color: #fff;
@@ -297,57 +386,77 @@
 }
 
 /* ★ M6b/6：原先用**虚线**占位框，而这句话其实是**正常状态** —— 虚线读起来像「出错了」。
-   改成与同屏三张卡同族的实线卡（`.card` 是 solid + `border-left: 4px`）。 */
+   现在与同屏三张卡同族（实线 + 浅底）。 */
 .emptyNote {
   margin: 0;
-  padding: 18px 16px;
-  border: 1px solid #e6eaf2;
-  border-left: 4px solid var(--card-accent, #2563eb);
-  border-radius: 14px;
-  background: #fff;
+  padding: 20px 16px;
+  border: 2px solid var(--card-line, #d5eaff);
+  border-radius: 22px;
+  background: #f7fbff;
   color: #64748b;
   font-size: 0.875rem;
   text-align: center;
 }
 
-/* ————————————————— 窄屏 ————————————————— */
+/* ————————————————— 窄屏 / iPad 竖屏 ————————————————— */
 
-@media (max-width: 860px) {
+/* 🔴 **这一档是为 iPad 竖屏（768×1024）定的，不是给手机的** —— 学生端就跑在 iPad 上。
+   竖屏放不下三列：768 减掉两侧留白与「课桌」内边距，每列只剩 ~210px，
+   而设计稿那张卡里的插画就要 104px ⇒ 文字列被挤成一条。
+   ⇒ 改成**单列**，卡片本身不变（还是「插画在右、信息块、通栏按钮」那三段），
+     只是整体缩一档 —— 竖屏一屏正好放得下三张（1024 减顶栏 52、减标题与身份区 ~150，
+     剩 ~820；每张卡 ~250px）。 */
+@media (max-width: 900px) {
   .cards {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 12px;
   }
 
   .card {
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    padding: 13px 14px 13px 15px;
+    padding: 14px 16px 14px;
+    border-radius: 18px;
+  }
+
+  .cardHero {
+    min-height: 84px;
+  }
+
+  .cardName {
+    font-size: 1.25rem;
   }
 
   .cardIcon {
-    flex-shrink: 0;
+    width: 84px;
+    height: 84px;
   }
 
-  .cardBody {
-    flex: 1;
-    min-width: 0;
+  .cardRule {
+    margin: 10px 0;
   }
 
-  .cardTitle {
-    font-size: 1rem;
+  /* ⚠️ 竖屏的信息块高度也收一档：这一档要的是「三张卡一屏放得下」，
+     而摘要仍然是两行封顶（`-webkit-line-clamp: 2` 不变）。 */
+  .cardInfo {
+    height: 92px;
+    padding: 12px 14px;
+    gap: 8px;
   }
 
-  .cardMeta {
-    min-height: 0;
+  .cardSummary {
+    font-size: 0.875rem;
   }
 
   .cardCta {
-    flex-shrink: 0;
-    margin-top: 0;
-    margin-left: auto;
-    padding: 8px 14px;
-    font-size: 0.813rem;
+    min-height: 46px;
+    font-size: 1rem;
+  }
+
+  .headingTitle {
+    font-size: 1.625rem;
+  }
+
+  .headingLead {
+    font-size: 0.938rem;
   }
 }
 
@@ -358,14 +467,16 @@
   }
 }
 
+/* ★ 2026-09-27（v6 改版）：悬停/按下那两样从卡片搬到了它里面的按钮上（卡片不再是
+   `<button>`，见 `.card` 那一段），所以这条媒体查询也跟着改指向 —— 不改的话它保护的
+   是一个已经不存在的元素，而真正会动的那个**照常动**（`prefers-reduced-motion` 形同虚设）。 */
 @media (prefers-reduced-motion: reduce) {
-  .card,
-  .card::before {
+  .cardCta {
     transition: none;
   }
 
-  .card:hover,
-  .card:active {
+  .cardCta:hover,
+  .cardCta:active {
     transform: none;
   }
 }

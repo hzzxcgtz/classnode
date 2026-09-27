@@ -118,7 +118,9 @@ export function ChoiceBody({ node, draft, onChange, disabled, correctKeys }: Cho
         （`CorrectAnswerNote`）。⚠️ 只在服务端给了答案时出现 —— 没给（还没判分 / 全对 /
         这题没配答案）时整块不渲染，不会写出「正确答案」这种半句话。 */}
     {answerKeys.length > 0 && (
-      <CorrectAnswerNote>{correctAnswerLabel(node.type, answerKeys)}</CorrectAnswerNote>
+      // ★ 2026-09-27（教师）：「答案文字加粗」。判断 / 选择这里**整句就是答案**（「B」「对」），
+      // 没有「第 N 空填」那种框话 ⇒ 整段加粗。
+      <CorrectAnswerNote><strong>{correctAnswerLabel(node.type, answerKeys)}</strong></CorrectAnswerNote>
     )}
     </>
   );

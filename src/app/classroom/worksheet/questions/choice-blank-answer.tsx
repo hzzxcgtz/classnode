@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -229,7 +229,15 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         // ⚠️ 措辞留在这里：填空说的是「第 N 空填『X』」，选择说的是「B」。
         return (
           <CorrectAnswerNote>
-            {items.map(item => `第 ${item.index + 1} 空填「${item.answer}」`).join('，')}。
+            {/* ★ 2026-09-27（教师）：「答案文字加粗」——**只有答案本身**加粗，
+                「第 N 空填」那句保持常规字重（学生要抓的是「填什么」）。 */}
+            {items.map((item, position) => (
+              <Fragment key={item.index}>
+                {position > 0 && '，'}
+                第 {item.index + 1} 空填「<strong>{item.answer}</strong>」
+              </Fragment>
+            ))}
+            。
           </CorrectAnswerNote>
         );
       })()}

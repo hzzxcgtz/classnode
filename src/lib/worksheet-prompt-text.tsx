@@ -152,9 +152,13 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 {/* ★ 2026-09-27（教师第二轮）：槽里的标记改成**贴文字**、不再贴盒角。
                     ⚠️ 槽有 `minWidth: 槽宽` 的富裕 ⇒ 值短时右边一段空白，贴盒角会离文字很远，
                        而打字的框是按文字算宽的 ⇒ 一个远一个近。
-                    ⚠️ `alignSelf: flex-start` 是把它**抬到右上**（槽自己是 `align-items: center`），
-                       这样它读起来像上标，而不是被垂直居中。 */}
-                {wrong && <span style={{ alignSelf: 'flex-start', marginTop: 1, display: 'inline-flex', flexShrink: 0 }}><WrongMark /></span>}
+                    ⊘ 2026-09-27（教师第三轮）：「这个叉叉也移动填空域右侧吧，跟左下角那个叉叉
+                      一样。」—— 原来这里写着 `alignSelf: flex-start; marginTop: 1`，把它
+                      **抬到右上角**当上标用；而同一个槽在**换行之后**（槽被撑高时）那个叉
+                      就飘得比字高一大截，同一道题里两个空各长一个样。
+                    ⇒ 去掉那两条，让它跟着槽自己的 `align-items: center` **垂直居中**：
+                      与「值 + 叉」横向居中同一条规则，不看槽有多高。 */}
+                {wrong && <WrongMark />}
               </span>
               {blanks.drop.after?.(index)}
               </Fragment>

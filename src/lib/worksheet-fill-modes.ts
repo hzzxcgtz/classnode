@@ -1,5 +1,6 @@
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
+import { cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
 
@@ -50,17 +51,64 @@ function storedSettings(node: WorksheetQuestionNode): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 }
 
+/**
+ * 这道题的**空的清单** —— 题干里的空在前、表格里的空在后（★ 2026-09-28，教师反馈）。
+ *
+ * 教师原话：「表格填空……和原来已有的题干和每个空的作答方式都完全割裂了……
+ * 东跳跳西跳跳」。具体的一条是：`fillSettingsFor` 原来只遍历 `promptRuns` 的分段
+ * ⇒ **一道表格题在「每个空的作答方式」那一块显示「题干中还没有填空域」**，
+ * 而上面明明有一张表、里面标着空 —— 两块互相打脸。
+ *
+ * 🔴 顺序与**答案编号**同一条规则（题干在前、表格在后），所以
+ * `slots[i]` 就是「第 i 个空」：标签用 `blankLabelAt`、身份用 `id`
+ *（`fillBlankSettings` 的键）。三处一条规则，不会再各说各的。
+ * ⚠️ `label` 由 `blankLabelAt` 给（有用例）—— 这里不自己拼「第几行第几格」。
+ */
+export interface BlankSlot {
+  /** 空的身份 —— `fillBlankSettings` 的键，与题干里的空共用同一个命名空间。 */
+  id: string;
+  /** 它在哪：`第 2 空` / `第 2 行第 2 格`。 */
+  label: string;
+  kind: 'text' | 'table';
+}
+
+export function blankSlots(node: WorksheetQuestionNode, runs: PromptRun[]): BlankSlot[] {
+  const textRuns = blankRuns(runs);
+  const slots: BlankSlot[] = textRuns.map((run, index) => ({
+    id: run.blank,
+    label: `第 ${index + 1} 空`,
+    kind: 'text',
+  }));
+  // ⚠️ 表格空的标签**只用表格那两个原语**（`cellAtSlot` + `cellLabel`），
+  //    不绕 `blankLabelAt` —— 后者要读**节点自己的** `promptRuns`，而本函数的
+  //    `runs` 是调用方传进来的，两者一旦不是同一份，标签就会算错（而那是静默的）。
+  //    两个原语与 `blankLabelAt` 用的是同一对 ⇒ 标签格式仍然只有 `cellLabel` 一处定义。
+  tableBlankIds(node.data.table).forEach((id, index) => {
+    const at = cellAtSlot(node.data.table, index);
+    slots.push({
+      id,
+      label: at ? cellLabel(at.row, at.col) : `表格里的第 ${index + 1} 个空`,
+      kind: 'table',
+    });
+  });
+  return slots;
+}
+
 export function fillSettingsFor(node: WorksheetQuestionNode, runs: PromptRun[]): FillBlankSetting[] {
   const stored = storedSettings(node);
   const legacyChoices = splitChoiceLines(node.data.choices);
   const legacyInline = node.type === 'choice-blank' && node.data.choiceLayout === 'inline-pairs';
-  return blankRuns(runs).map((run, index) => {
-    const raw = stored[run.blank];
+  // ⚠️ 下标用 `blankSlots` 的顺序：题干里的空在前（与 `blankRuns` 的下标逐位相同，
+  //    所以下面那两处沿用它算「第几个空」的旧逻辑照旧成立），表格里的空在后面。
+  return blankSlots(node, runs).map((slot, index) => {
+    const raw = stored[slot.id];
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       const item = raw as Record<string, unknown>;
       const mode: FillAnswerMode = item.mode === 'pool' || item.mode === 'inline' ? item.mode : 'text';
       return { mode, choices: splitChoiceLines(item.choices) };
     }
+    // 表格里的空：缺省「手工填写」（v1 不给表格开选词 —— 存过的设置上面已经读到了）
+    if (slot.kind === 'table') return { mode: 'text', choices: [] };
     if (node.type === 'choice-blank') {
       return legacyInline
         ? { mode: 'inline', choices: legacyChoices.slice(index * 2, index * 2 + 2) }
@@ -70,11 +118,20 @@ export function fillSettingsFor(node: WorksheetQuestionNode, runs: PromptRun[]):
   });
 }
 
-export function writeFillSettings(runs: PromptRun[], settings: FillBlankSetting[]): Record<string, FillBlankSetting> {
+/**
+ * 把每个空的作答方式写回去。**按身份写**（`blankSlots` 的顺序给每份设置找到自己的空）。
+ * ⚠️ 签名从 `(runs, settings)` 变成 `(node, runs, settings)`：表格里的空不在 `runs` 里，
+ * 光看分段认不出它们。
+ */
+export function writeFillSettings(
+  node: WorksheetQuestionNode,
+  runs: PromptRun[],
+  settings: FillBlankSetting[],
+): Record<string, FillBlankSetting> {
   const result: Record<string, FillBlankSetting> = {};
-  blankRuns(runs).forEach((run, index) => {
+  blankSlots(node, runs).forEach((slot, index) => {
     const setting = settings[index] ?? { mode: 'text' as const, choices: [] };
-    result[run.blank] = { mode: setting.mode, choices: splitChoiceLines(setting.choices) };
+    result[slot.id] = { mode: setting.mode, choices: splitChoiceLines(setting.choices) };
   });
   return result;
 }

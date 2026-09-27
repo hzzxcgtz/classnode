@@ -129,8 +129,10 @@ export function TableBody({ node, onDataChange }: {
           />
           第一行是表头
         </label>
+        {/* ⚠️ 这里报的是**上限**，不是「这道题有几个空」—— 空的总数由下面
+            「每个空的作答方式」那张清单说（一处口径；教师 2026-09-28 骂过一次重复信息）。 */}
         <span className="worksheet-editor-table-count">
-          表格里的空 {blanksInTable} / {MAX_TABLE_BLANKS}
+          本表最多标 {MAX_TABLE_BLANKS} 个空，已标 {blanksInTable} 个
           {atLimit && <em>（到上限了）</em>}
         </span>
       </div>

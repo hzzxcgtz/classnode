@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
-import { fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { blankSlots, fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -146,19 +146,27 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
 }
 
 /**
- * 选择填空的题面设置。它属于学生看到的题目内容，不属于答案键，因此由题目卡固定放在
- * 题干编辑之后、评分方式之前。关闭自动评分时，这一段仍可编辑。
+ * 「每个空的作答方式」——★ 2026-09-28（教师反馈）：它管的是**这道题全部的空**
+ *（题干里的 + 表格里的），不再只认题干里那几个。表格里的空 v1 固定手工填写，
+ * 所以那几张卡只报位置、不摆单选。
+ *
+ * 它属于学生看到的题目内容，不属于答案键，因此由题目卡固定放在题干编辑之后、
+ * 评分方式之前。关闭自动评分时，这一段仍可编辑。
  */
 export function ChoiceBlankSetup({ node, onDataChange }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
 }) {
   const runs = readPromptRunsFor(node);
+  // ★ 2026-09-28（教师反馈）：清单走 `blankSlots` —— **题干里的空与表格里的空是同一批**。
+  // 原来只遍历 `promptRuns` ⇒ 一道表格题在这里显示「题干中还没有填空域」，
+  // 而上面明明有一张表标着空（两块互相打脸 —— 教师：「一头雾水，东跳跳西跳跳」）。
+  const slots = blankSlots(node, runs);
   const settings = fillSettingsFor(node, runs);
   const poolChoices = sharedPoolChoices(node);
   const setMode = (index: number, mode: FillAnswerMode) => {
     const next = settings.map((setting, settingIndex) => settingIndex === index ? { ...setting, mode } : setting);
-    onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
+    onDataChange({ fillBlankSettings: writeFillSettings(node, runs, next) });
   };
   // ★ 2026-09-28：直接收词表 —— 原来收一个字符串再 `splitChoiceLines` 解析一遍，
   // 而单行输入那一侧已经解析过了（多一次往返就多一处会分叉的地方）。
@@ -166,37 +174,48 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
     const next = settings.map((setting, settingIndex) => settingIndex === index
       ? { ...setting, choices: words }
       : setting);
-    onDataChange({ fillBlankSettings: writeFillSettings(runs, next) });
+    onDataChange({ fillBlankSettings: writeFillSettings(node, runs, next) });
   };
 
   return (
     <div className="worksheet-editor-choice-blank-setup">
-      {settings.length === 0 ? (
-        <div className="worksheet-editor-blank-empty"><strong>题干中还没有填空域</strong><span>先在题干中插入“{'{填空域}'}”，这里会自动出现对应设置。</span></div>
+      {slots.length === 0 ? (
+        <div className="worksheet-editor-blank-empty">
+          <strong>还没有填空的位置</strong>
+          <span>把光标放到题干的目标位置再点“{'{填空域}'}”；或者在上面加一张表格、把某几格标成「填空」。</span>
+        </div>
       ) : (
         <div className="worksheet-editor-fill-mode-list">
-          {settings.map((setting, index) => (
-            <section className="worksheet-editor-fill-mode-card" key={index}>
+          {slots.map((slot, index) => (
+            // key 用空的身份（不是下标）：题干里插一个空时，后面那些卡不会整排重挂载
+            <section className="worksheet-editor-fill-mode-card" key={slot.id}>
               <div className="worksheet-editor-fill-mode-head">
-                <strong>第 {index + 1} 空</strong>
-                <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
+                {/* ★ 位置**说实话**：题干里的空说「第 2 空」，表格里的空说「第 2 行第 2 格」 */}
+                <strong>{slot.label}</strong>
+                {slot.kind === 'table' ? (
+                  // ⚠️ 表格里的空 v1 固定手工填写 ⇒ **不摆一排点了没用的单选**
+                  //（点了也存不下服务端认得的形状，而教师会以为它生效了）
+                  <span className="worksheet-editor-blank-hint">在表格里 · 学生在这一格填字</span>
+                ) : (
+                <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的作答方式`}>
                   {([
                     ['text', '手工填写'],
                     ['inline', '右侧选词'],
                     ['pool', '下方选词'],
                   ] as const).map(([mode, label]) => (
-                    <label className={setting.mode === mode ? 'is-selected' : ''} key={mode}>
-                      <input type="radio" name={`fill-mode-${node.id}-${index}`} checked={setting.mode === mode} onChange={() => setMode(index, mode)} />
+                    <label className={settings[index].mode === mode ? 'is-selected' : ''} key={mode}>
+                      <input type="radio" name={`fill-mode-${node.id}-${index}`} checked={settings[index].mode === mode} onChange={() => setMode(index, mode)} />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
+                )}
               </div>
-              {setting.mode === 'inline' && (
+              {slot.kind === 'text' && settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空右侧的词</span>
                   <SymbolListInput
-                    values={setting.choices}
+                    values={settings[index].choices}
                     split={splitChoiceText}
                     joinWith="、"
                     placeholder="例如：唐、宋、元"

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { blankSlots, fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -26,7 +26,8 @@ test('每个填空域按稳定 blank id 读取自己的作答方式', () => {
 });
 
 test('设置写回仍以 blank id 为键，题干中插空不会让后面的设置串位', () => {
-  const written = writeFillSettings(runs, [
+  // ⚠️ 签名带 `node` 了（★ 2026-09-28）：表格里的空不在 `runs` 里，光看分段认不出它们。
+  const written = writeFillSettings(node({}), runs, [
     { mode: 'pool', choices: [] },
     { mode: 'text', choices: [] },
     { mode: 'inline', choices: ['水', '油'] },
@@ -123,4 +124,69 @@ test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一�
   assert.deepEqual(splitChoiceText('甲、乙'), ['甲', '乙'], '字符串才按符号切');
   assert.deepEqual(splitChoiceText(null), []);
   assert.deepEqual(splitChoiceText(42), []);
+});
+
+// ── 空的清单：题干里的 + 表格里的（★ 2026-09-28，教师反馈）────────────────
+//
+// 教师原话：「表格填空……和原来已有的题干和每个空的作答方式都完全割裂了……
+// 东跳跳西跳跳」。
+// 🔴 具体的一条是：`fillSettingsFor` 只认题干里的空（它遍历 `promptRuns` 的分段），
+//    于是**一道表格题在「每个空的作答方式」那一块显示「题干中还没有填空域」**
+//    —— 而上面明明有一张表、里面标着空。两块互相打脸。
+// ⇒ 空的清单要**两种都数**，顺序与答案编号同一条规则（题干在前、表格在后）。
+
+/**
+ * 2×3 的表，**第 2 行第 3 格**是空（身份 `tb1`）。
+ *
+ * 🔴 空**不能落在对角线上**：`cellLabel` 的两个参数写反时，「第 2 行第 2 格」这类
+ * 标签一个字都不变 ⇒ 变异检验抓不到（我在 `worksheet-table.test.ts` 里刚栽过一次，
+ * 这里又栽了一次 —— 夹具自己要先立得住）。
+ */
+function tableFixture() {
+  return {
+    headerRow: true,
+    rows: [
+      [{ text: '姓名', blank: '' }, { text: '年龄', blank: '' }, { text: '城市', blank: '' }],
+      [{ text: '张三', blank: '' }, { text: '25', blank: '' }, { text: '', blank: 'tb1' }],
+    ],
+  };
+}
+
+test('🔴 blankSlots：题干里的空在前、表格里的空在后，各自说清自己在哪', () => {
+  const slots = blankSlots(node({ table: tableFixture() }), runs);
+  assert.deepEqual(slots.map(item => [item.kind, item.label]), [
+    ['text', '第 1 空'], ['text', '第 2 空'], ['text', '第 3 空'],
+    ['table', '第 2 行第 3 格'],
+  ]);
+  assert.deepEqual(slots.map(item => item.id), ['blank-a', 'blank-b', 'blank-c', 'tb1'], '身份就是 fillBlankSettings 的键');
+});
+
+test('🔴 blankSlots：没有表格 ⇒ 与原来逐字相同（老题的清单一个字不变）', () => {
+  assert.deepEqual(blankSlots(node({}), runs).map(item => item.id), ['blank-a', 'blank-b', 'blank-c']);
+});
+
+test('🔴 fillSettingsFor：**表格里的空也在清单里**（表格题不再说「还没有填空域」）', () => {
+  const settings = fillSettingsFor(node({ table: tableFixture() }), runs);
+  assert.equal(settings.length, 4, '三个题干空 + 一个表格空');
+  assert.deepEqual(settings.map(item => item.mode), ['text', 'text', 'text', 'text'], '表格空缺省就是手工填写');
+});
+
+test('🔴 fillSettingsFor：表格空**存过的设置照读**（手改过的库 / 以后给表格开选词）', () => {
+  const settings = fillSettingsFor(node({
+    table: tableFixture(),
+    fillBlankSettings: { tb1: { mode: 'pool', choices: [] } },
+  }), runs);
+  assert.equal(settings[3].mode, 'pool', '键是格子的身份，不是下标');
+});
+
+test('🔴 writeFillSettings：表格空的设置也按格子身份写回去', () => {
+  const written = writeFillSettings(node({ table: tableFixture() }), runs, [
+    { mode: 'text', choices: [] },
+    { mode: 'inline', choices: ['甲', '乙'] },
+    { mode: 'text', choices: [] },
+    { mode: 'text', choices: [] },
+  ]);
+  assert.equal(written['blank-b'].mode, 'inline');
+  assert.equal(written['tb1'].mode, 'text', '第 4 份写给了格子 tb1');
+  assert.equal(Object.keys(written).length, 4);
 });

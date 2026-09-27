@@ -533,20 +533,26 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             {(node.type === 'single-choice' || node.type === 'multi-choice') && (
               <ChoiceOptionsBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />
             )}
+            {/* ★ 2026-09-28：这一块现在覆盖**这道题全部的空**（题干里的 + 表格里的），
+                所以它排在表格面板**之后**（表格在上、空的清单在下，读起来才是一条线）。 */}
             {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
               <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
             )}
 
             {/* ★ 2026-09-28（表格填空，裁定③）：网格面板 —— 表格属于**题面**，
-                所以它排在题干与「每个空的作答方式」这一侧，不排到答案那一块里。
-                ⚠️ 只给 `fill-blank`：表格里的空只有「手工填写」一档（v1），
+                所以它排在题干这一侧，不排到答案那一块里。
+                ⚠️ **它排在「每个空的作答方式」之前是刻意的**（2026-09-28 教师反馈）：
+                   那两块原来顺序相反，「作答方式」先对一道表格题说「题干中还没有填空域」，
+                   紧接着下面那块又说「点某几格标成填空」—— 两块互相打脸，
+                   教师读到的第一句就是假的（原话：「一头雾水，东跳跳西跳跳」）。
+                ⚠️ 它只服务 `fill-blank`：表格里的空 v1 只有「手工填写」一档，
                    选择填空那套待选词不跟表格组合（组合爆炸，等真有人要再说）。 */}
             {node.type === 'fill-blank' && (
               <div className="worksheet-editor-block">
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4>表格</h4>
-                    <p>学生看到的表格。点某几格的「填空」把它们变成作答位置 —— 空的顺序是从左上到右下。</p>
+                    <h4>填空的位置（表格）</h4>
+                    <p>学生看到的就是这张表。点某几格的「填空」把那一格变成作答位置 —— 表格里的空与题干里的空是<strong>同一批</strong>，都会出现在下面的「每个空的作答方式」与「自动评分 → 标准答案」里。</p>
                   </div>
                 </div>
                 <TableBody node={node} onDataChange={onDataChange} />

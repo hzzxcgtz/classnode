@@ -175,6 +175,20 @@ export function readTableFor(node: { data: Record<string, unknown> }): Worksheet
   return table.rows.length > 0 ? table : null;
 }
 
+/**
+ * 表格里那些空的**身份**，按行优先（★ 2026-09-28）。
+ *
+ * 🔴 它就是 `fillBlankSettings` 的键 —— 与题干里的空**共用同一个命名空间**
+ *（`blankLayout` / `blankLabelAt` 也按同一顺序编号，三处一条规则）。
+ */
+export function tableBlankIds(table: unknown): string[] {
+  const ids: string[] = [];
+  readTable(table).rows.forEach((cells) => {
+    cells.forEach((cell) => { if (cell.blank !== '') ids.push(cell.blank); });
+  });
+  return ids;
+}
+
 /** 表格里的第 `slot` 个空在哪一格（行优先）。越界 / 没有那一个 ⇒ `null`。 */
 export function cellAtSlot(table: unknown, slot: number): { row: number; col: number } | null {
   if (!Number.isInteger(slot) || slot < 0) return null;

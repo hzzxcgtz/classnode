@@ -23,6 +23,7 @@ import {
   setCellBlank,
   setCellText,
   tableBlankCount,
+  tableBlankIds,
   tableColumnCount,
   tableRowCount,
   type WorksheetTable,
@@ -471,4 +472,12 @@ test('🔴 blankLabelAt：题干里的空说「第 N 空」，表格里的空说
 test('🔴 parseTablePaste：行长短不一 ⇒ 补齐成方正网格（表格的 v1 不变式）', () => {
   const parsed = parseTablePaste('甲\t乙\t丙\n丁');
   assert.deepEqual(parsed?.rows, [['甲', '乙', '丙'], ['丁', '', '']]);
+});
+
+test('🔴 tableBlankIds：行优先的身份表（`fillBlankSettings` 的键就是它）', () => {
+  assert.deepEqual(tableBlankIds(sampleTable()), ['b1', 'b2']);
+  assert.deepEqual(tableBlankIds(tableOf(2, 3, [[0, 2], [1, 0]])), ['tb_0_2', 'tb_1_0']);
+  assert.deepEqual(tableBlankIds(tableOf(2, 2, [])), []);
+  assert.deepEqual(tableBlankIds(undefined), []);
+  assert.deepEqual(tableBlankIds({ rows: [[cell('甲'), { text: '乙', blank: true }]] }), [], '非字符串的标记不算空');
 });

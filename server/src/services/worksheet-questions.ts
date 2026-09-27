@@ -1185,7 +1185,112 @@ function validateSingleAnswer(
  * ⚠️ 表只能保证「每个题型都有一条」，**不能**保证那条不是空的 —— 后者由
  * `worksheet-grade.test.ts` 的「空 `data` 必须被拒绝」那条用例行为性地钉住。
  */
+/**
+ * 表格填空的行 / 列 / 空数上限。
+ * 🔴 **与客户端 `src/lib/worksheet-table.ts` 是同一组数** —— 那边改了这边也要改，
+ * 两边不一致的症状是「教师端加得进去、保存被服务端拒掉」（或者反过来）。
+ */
+const MAX_TABLE_ROWS = 10;
+const MAX_TABLE_COLS = 10;
+const MAX_TABLE_BLANKS = 30;
+
+/** 表格的行列表（坏行 → 空行；**不丢行**，因为行的下标就是「第几行」）。 */
+function tableRowList(raw: unknown): unknown[][] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+  const rows = (raw as Record<string, unknown>).rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => (Array.isArray(row) ? row : []));
+}
+
+/**
+ * 表格里有几个空 —— **服务端自己的一份**（客户端那份在 `src/lib/worksheet-table.ts`）。
+ *
+ * ⚠️ **它是一对刻意的双胞胎**，照本仓既有的先例：`hasNestedAnswers`（服务端）与
+ * `fillShape`（客户端）也是各写一份，理由写在 `src/lib/types.ts` 的那段注释里
+ *（题型注册表与判分**只在服务端**，前端不该再定义一份纯逻辑）。两边靠**用例**对齐。
+ */
+export function tableBlankCount(raw: unknown): number {
+  return tableRowList(raw).reduce((total, row) => total + row.filter((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const blank = (entry as Record<string, unknown>).blank;
+    return typeof blank === 'string' && blank !== '';
+  }).length, 0);
+}
+
+/**
+ * 把表格拍成**能读的纯文本**（★ 2026-09-28）：Word 导出与 AI 分析载荷那两条路
+ * 今天只读 `prompt` 文本 ⇒ 不补这一段，表格在那两处**凭空消失**，
+ * 而分析智能体就看不到那道题在问的那张表。
+ *
+ * 🔴 格子里的 `|` 换成 `/`、换行压成空格：**一个格子的内容不许改变表格的形状**
+ *（否则 AI 读到的行列数与教师看到的不一样，而那是静默的）。
+ * ⚠️ 整行都是空白 ⇒ 丢掉那一行；一格空白**留着**（列要对齐）。
+ */
+export function tableAsText(raw: unknown): string {
+  const rows = tableRowList(raw).map((cells) => cells.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return '';
+    const text = (entry as Record<string, unknown>).text;
+    return typeof text === 'string' ? text.replace(/[|]/g, '/').replace(/[\r\n]+/g, ' ').trim() : '';
+  }));
+  return rows
+    .filter((cells) => cells.some((text) => text !== ''))
+    .map((cells) => cells.join(' | '))
+    .join('\n');
+}
+
+/**
+ * 一道题的**题面文本** —— 题干，外加表格的纯文本投影（★ 2026-09-28）。
+ *
+ * 🔴 为什么把表格**折进**题干文本，而不是给载荷加一个 `tableText` 字段：
+ *   那个 `{questionId, typeLabel, prompt, heading}` 的形状在**四个地方**各拼一遍
+ *   （`routes/worksheets.ts` 三处 + `export-service.ts` 一处），加字段就要四处都改，
+ *   而漏一处的症状是「那一条路里表格凭空消失」—— 本仓最防的就是这种静默的遗漏。
+ *   ⇒ 改一处、四处受益：所有读 `prompt` 的纯文本消费者（Word 导出、AI 分析载荷）
+ *     自动看得见表格。
+ * ⚠️ **代价**：`prompt` 字段从此不是「题干原文」。要读**原文**的地方（编辑器、迁移、
+ *   判分、学生端）请直接读 `node.prompt` —— 它们都不该用本函数。
+ */
+export function questionTextFor(node: { prompt: string; data: Record<string, unknown> }): string {
+  const prompt = typeof node.prompt === 'string' ? node.prompt : '';
+  const data = node.data && typeof node.data === 'object' ? node.data : {};
+  const table = tableAsText(data.table);
+  if (!table) return prompt;
+  return prompt ? `${prompt}\n${table}` : table;
+}
+
+/**
+ * 表格这道题有没有明显坏掉的地方。
+ *
+ * 🔴 **只查一个方向**（表格的空 > 答案槽），另一条**有意不查**：
+ * 服务端**从不读题干**（`answerSlotCount` 的注释：「不是题干里画了几个框」），
+ * 所以「表格 1 个空 + 2 份答案」既可能是坏数据、也可能是题干里还有一个空 ——
+ * 查它会把合法的「题干空 + 表格空」混合题一律拒掉。
+ * 而「表格的空比答案槽还多」无论题干里有没有空都一定是坏的。
+ */
+function findTableError(data: Record<string, unknown>): string | null {
+  const raw = data.table;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return '这道题的表格结构读不出来';
+  const rows = tableRowList(raw);
+  // ⚠️ 「有键但没有行」当成没有表 —— 与客户端 `readTableFor` 同一条判据
+  if (rows.length === 0) return null;
+  if (rows.length > MAX_TABLE_ROWS || rows[0].length > MAX_TABLE_COLS) {
+    return `表格最多 ${MAX_TABLE_ROWS} 行 ${MAX_TABLE_COLS} 列`;
+  }
+  const blanks = tableBlankCount(raw);
+  if (blanks > MAX_TABLE_BLANKS) return `表格里的填空最多 ${MAX_TABLE_BLANKS} 个`;
+  const slots = answerSlotCount(data);
+  if (blanks > slots) {
+    return `表格里有 ${blanks} 个填空，但只配了 ${slots} 份标准答案 —— 每个空都要配一份`;
+  }
+  return null;
+}
+
 function validateFillBlank(node: QuestionNode, errors: string[]): void {
+    // ★ 2026-09-28（表格填空）：表格先查，**查出问题就不再往下查** —— 后面那些判据
+    // 在「空数与答案对不上」的题上会给出更绕的错，教师看不出该改哪儿。
+    const tableError = findTableError(node.data);
+    if (tableError) { errors.push(tableError); return; }
     // ★ 2026-09-26：**与判分读同一份答案**（`answerSlotCount` / `acceptableAnswersFor`）。
     //
     // 🔴 这里原来自己按老形状读（`Array.isArray(data.blanks)` 在不在 + 平铺的 `data.answers`），

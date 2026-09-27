@@ -13,33 +13,34 @@ import { resolveMaterialTargetId } from '../services/group-material-resolve.js';
 import { flattenAnswerable } from '../services/worksheet-heading.js';
 import { toAgentConfig } from '../services/agent-config.js';
 import {
-  DEFAULT_POINTS,
-  fillBlankWrongIndexes,
+  // `normalizePoints` 与 `isUsablePointValue` 同处一地定义（service）—— 「什么算有效分值」
+  // 只有一处回答，而它直接决定「这题是继承学习单级还是脱离」。
+  normalizePoints,
   // ★ 2026-09-27：按题型分派（填空逐空、选择/判断逐选项）。两个下发点都改用它 ——
   // 「答错时要展示的正确答案」现在只有这一个入口，别再各自调那两支。
   wrongAnswers,
-  flattenQuestions,
-  grade,
   // ★ I1：`full` 那一档的拒绝判据（`0` 不合法，`half` 的 `0` 合法）。
   // 「什么算有效分值」仍然**只有一处**回答 —— 与 `normalizePoints` /
   // `isUsablePointValue` 同处一地定义（service），这里只用，不另抄。
   isRejectedFullPointValue,
-  // `normalizePoints` 与 `isUsablePointValue` 同处一地定义（service）—— 「什么算有效分值」
-  // 只有一处回答，而它直接决定「这题是继承学习单级还是脱离」。
-  normalizePoints,
-  // ⚠️ `POINTS_MAX` 只用在下面那条拒绝文案里（「必须是 1–99 的整数」）——
-  // 不写字面量：它改了而这里没改，报错文案就会与真正的域不一致。
-  POINTS_MAX,
   // ⚠️ A2 的最小适配用到这两个：`grade()` 现在要求调用点给出**这道题实际用的两个档**
   // （规格 §12 裁定 4：逐题优先、留空回落学习单级）。把「怎么算这两档」写在调用点
   // 就等于让每个调用点各抄一遍回落规则 —— 所以走这两个函数。
   QUESTION_TYPES as QUESTION_TYPE_REGISTRY,
+  // ⚠️ `POINTS_MAX` 只用在下面那条拒绝文案里（「必须是 1–99 的整数」）——
+  // 不写字面量：它改了而这里没改，报错文案就会与真正的域不一致。
+  POINTS_MAX,
+  DEFAULT_POINTS,
+  fillBlankWrongIndexes,
+  flattenQuestions,
+  grade,
+  questionTextFor,
   resolvePoints,
   stripAnswers,
-  validateQuestion,
   type QuestionNode,
   type QuestionType,
   type WorksheetContent,
+  validateQuestion,
 } from '../services/worksheet-questions.js';
 // ★ M4b：笔迹的体积校验（规格 §12 裁定 4 的后半句「服务端也要校验」）。
 // 它是 `src/lib/worksheet-ink.ts` 在服务端的**第二份**实现 —— 服务端读不到 `src/`。
@@ -1129,7 +1130,7 @@ function payloadFromStoredRow(
   row: { aggregate: unknown; totalCount: number },
   node: QuestionNode, heading: string, knobs: SheetKnobs,
 ): ReturnType<typeof buildAnalysisPayload> {
-  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: node.prompt, heading };
+  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: questionTextFor(node), heading };
   // ⚠️ `total` 取**存下来的** `totalCount`（与 `coveredCount` 同一时刻的口径），不重算 ——
   // 重算会让「存下来的分子」配上「现在的分母」，两边不是同一时刻的。
   return buildAnalysisPayload({
@@ -1201,7 +1202,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const entries = selectAnalyzeEntries(answers, participants, questionId);
     const knobs = await loadAnalysisKnobs(prisma);
     const meta = {
-      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, heading: target.heading,
+      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: questionTextFor(target.node), heading: target.heading,
     };
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
 
@@ -1365,7 +1366,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const knobs = await loadAnalysisKnobs(prisma);
     const entries = entriesFromAggregate(row.aggregate);
     const payload = buildAnalysisPayload({
-      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: target.node.prompt, heading: target.heading },
+      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: questionTextFor(target.node), heading: target.heading },
       entries, total: row.totalCount, knobs,
     });
 

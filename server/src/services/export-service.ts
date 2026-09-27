@@ -13,7 +13,11 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveMaterialTargetId } from './group-material-resolve.js';
-import { type QuestionNode, type WorksheetContent } from './worksheet-questions.js';
+import {
+  questionTextFor,
+  type QuestionNode,
+  type WorksheetContent,
+} from './worksheet-questions.js';
 import { flattenAnswerable } from './worksheet-heading.js';
 import {
   REPORT_TEXT, answerCell, formatDuration, gradeLabel, unmappedParticipantsNotice, webappUsageColumnLabels,
@@ -1297,7 +1301,7 @@ export async function generateWorksheetReportDocx(
           // ⚠️ 笔迹在这里**同步渲染成 PNG**：`inkToPng` 自己会吞掉所有失败并回 `null`。
           const png = answer.kind === 'ink' ? await inkToPng(answer.ink) : null;
           tableRows.push(worksheetRowCells({
-            heading, typeLabel: questionTypeLabel(node.type), prompt: node.prompt,
+            heading, typeLabel: questionTypeLabel(node.type), prompt: questionTextFor(node),
             cell: answer, png,
             grade: gradeLabel({ isCorrect: row?.isCorrect ?? null, gradeState: row?.gradeState ?? null }),
           }));

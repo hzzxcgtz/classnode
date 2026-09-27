@@ -678,7 +678,10 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
                 insertTableMarkAtCaret();
               }}
             >
-              表格域
+              {/* ★ 2026-09-28（教师）：「这个表格域也要带左右大括号」——
+                  与旁边那个填空域按钮**同一个字形类**：两者在题干里是同一种东西，
+                  教师该一眼看出它们是一类（`{填空域}` / `{表格域}`）。 */}
+              <span className="worksheet-editor-blank-glyph" aria-hidden="true">{'{表格域}'}</span>
             </button>
           )}
           {supportsBlankSlots && (

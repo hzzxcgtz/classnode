@@ -557,7 +557,13 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                    教师读到的第一句就是假的（原话：「一头雾水，东跳跳西跳跳」）。
                 ⚠️ 它只服务 `fill-blank`：表格里的空 v1 只有「手工填写」一档，
                    选择填空那套待选词不跟表格组合（组合爆炸，等真有人要再说）。 */}
-            {node.type === 'fill-blank' && (hasTableMark || hasTable) && (
+            {/* ★ 2026-09-28（教师）：「只有在题干中出现了表格域才会『出现填空的位置（表格）』，
+                如果删除了表格域，那么也随之隐藏。」
+                ⇒ 判据**只有标记**：删掉标记那一块就跟着消失（`data.table` 还在库里，
+                  但不渲染 —— 再插回标记它就回来）。
+                ⚠️ 于是「有表没标记」这种状态在界面上**没有入口**了（它只可能来自
+                  手工改过的库）；那种题保存时会被服务端拒（「学生看不到这张表」）。 */}
+            {node.type === 'fill-blank' && hasTableMark && (
               <div className="worksheet-editor-block">
                 {/* ★ 2026-09-28（教师）：「点击以后…显示被隐藏的表格设置区域」——
                     这块**默认收起**，点题干里那个 `{表格域}` chip（或点这一行）展开。
@@ -576,10 +582,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                     <p>
                       {hasTable
                         ? `学生看到的就是这张表（已标 ${tableBlankCount(node.data.table)} 个空）—— 表格里的空与题干里的空是同一批，都会出现在下面的「每个空的作答方式」与「自动评分 → 标准答案」里。`
-                        : '学生看到的就是这张表 —— 表格里的空与题干里的空是同一批。'}
-                      {hasTable && !hasTableMark
-                        ? ' ⚠️ 题干里没有 {表格域} 标记，学生看不到这张表（点工具栏的「表格域」把它放回题干）。'
-                        : ''}
+                        : '还没有表格 —— 点下面的「加一张表格」，它会长在题干里那个 {表格域} 的位置上。'}
                     </p>
                   </div>
                 </div>

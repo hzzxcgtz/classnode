@@ -3,6 +3,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
+import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
+import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -203,6 +205,32 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         />
       </div>
       {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
+      {/* ★ 2026-09-28（表格填空，裁定②）：表格**固定渲染在题干之后**。
+          🔴 判据是 `data.table` 在不在 —— 不看题型，也不看有没有空：一张
+             「加了表但还没标空」的题也要把表画出来（教师正对着屏幕建它）。
+          ⚠️ 只读那一份（教师端）走的是**同一个组件**、只是不给 `blanks`
+             （见 `worksheet-table-view.tsx` 的文件头：两份实现 = 本仓最防的分叉）。
+          ⚠️ 表格里空的下标是 `tableBase + 表内序号` —— 题干里的空排在表格的空**之前**
+             （裁定② 让这个顺序没有第二种可能）。这个偏移只在这一点算一次。 */}
+      {node.data.table ? (
+        <WorksheetTableView
+          table={node.data.table}
+          blanks={{
+            values: draft.texts,
+            base: blankLayout(node).tableBase,
+            onChange: (index, value) => {
+              // 与题干里的空**同一份草稿**（`draft.texts`）—— 只是下标不同。
+              const texts = Array.from(
+                { length: Math.max(draft.texts.length, index + 1) },
+                (_, itemIndex) => (itemIndex === index ? value : (draft.texts[itemIndex] ?? '')),
+              );
+              onChange({ kind: 'fill', texts });
+            },
+            disabled,
+            wrongOf: (index) => (wrongBlankIndexes ?? []).includes(index),
+          }}
+        />
+      ) : null}
       {settings.some(setting => setting.mode === 'pool') ? (
         <div className={styles.choicePoolArea}>
           <p className={styles.choicePoolHint}>
@@ -220,21 +248,29 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
              一个都列不出来时整块不显示（不写「正确答案：」这种半句话）。
           ⚠️ 用内联样式而不是 CSS 模块类：这次不想再动那个模块（改动面越小越好）。 */}
       {(() => {
+        // ★ 2026-09-28（表格填空）：「去改哪一格」这句话**两种空不能同一句**。
+        // 题干里的空说「第 2 空」，表格里的空说「第 2 行第 2 格」——判据在
+        // `blankLabelAt`（有用例）：表格里的空要是也说「第 N 空」，
+        // 学生拿到正确答案也**找不到那一格在哪**，而这块提示的全部用处就是那个。
+        // ⚠️ 越界（教师判分后又改了表格）⇒ 标签是 `null` ⇒ **整条不列**：
+        //    不写「第 3 空填『X』」这种学生找不到的句子（与下面「没设答案的空不列」同一道窄口）。
         const items = (wrongBlankIndexes ?? [])
-          .map((index) => ({ index, answer: correctBlanks?.[String(index)] }))
-          .filter((item): item is { index: number; answer: string } => typeof item.answer === 'string' && item.answer !== '');
+          .map((index) => ({ index, answer: correctBlanks?.[String(index)], label: blankLabelAt(node, index) }))
+          .filter((item): item is { index: number; answer: string; label: string } => (
+            typeof item.answer === 'string' && item.answer !== '' && item.label !== null
+          ));
         if (items.length === 0) return null;
         // ★ 2026-09-27：盒子搬去了 `correct-answer-note.tsx`（选择题 / 判断题也要画同一块，
         // 两处各写一份样式 ⇒ 改一次只改一处、而学生看到两张长得不一样的红框）。
-        // ⚠️ 措辞留在这里：填空说的是「第 N 空填『X』」，选择说的是「B」。
+        // ⚠️ 措辞留在这里：填空说的是「第 2 行第 2 格填『X』」，选择说的是「B」。
         return (
           <CorrectAnswerNote>
             {/* ★ 2026-09-27（教师）：「答案文字加粗」——**只有答案本身**加粗，
-                「第 N 空填」那句保持常规字重（学生要抓的是「填什么」）。 */}
+                位置那句保持常规字重（学生要抓的是「填什么」）。 */}
             {items.map((item, position) => (
               <Fragment key={item.index}>
                 {position > 0 && '，'}
-                第 {item.index + 1} 空填「<strong>{item.answer}</strong>」
+                {item.label}填「<strong>{item.answer}</strong>」
               </Fragment>
             ))}
             。

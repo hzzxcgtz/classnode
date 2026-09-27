@@ -8,7 +8,6 @@ import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
@@ -823,17 +822,20 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
                   <span className={styles.progressGroup} key={`${groupIndex}:${group.title ?? ''}`}>
                     {group.items.map(({ node }) => {
                       const state = questionDisplayState(answers.statuses[node.id], answers.drafts[node.id]);
-                      const iconReward = rewardScale && rewardScale.style !== 'points';
                       return (
-                        <span className={styles.progressCell} data-state={state} data-style={iconReward ? 'icon' : 'square'} key={node.id}>
-                          {iconReward ? (
-                            <RewardIcon
-                              kind={rewardScale.style}
-                              state={state === 'submitted' ? 'earned' : state === 'drafting' ? 'drafting' : 'empty'}
-                              size={19}
-                            />
-                          ) : null}
-                        </span>
+                        /* ★ 2026-09-27（教师实测后裁定）：格子**只表示作答进度**（空 / 灰 / 蓝），
+                           这里不再画那枚奖励图标。
+                           🔴 它原来在符号档下渲染 `RewardIcon state="earned"` —— 而 `earned` 的样式
+                              就是右边「已获得」那枚用的**同一张全彩图**。于是同一屏上同一张钥匙
+                              有两个意思：左边「这题交了」、右边「拿到了」。教师实测时正是被这里
+                              骗了：一串全彩钥匙读成「得了 3 把」，而累计那格写着 ×1
+                              （该生只对了 1 格填空，×1 是对的）。
+                           ⚠️ 进度格看的是 `statuses`（交没交），**不看对错** —— 规格 §7.2：
+                              对错标记在抽屉里、不在格子上。所以「交了」与「拿到了」本来就是
+                              两件事，用同一张图表达必然是假的。
+                           ⚠️ 于是全屏只有一处会出现全彩奖励图标：右边那格 `RewardTotal`（带 ×N）。
+                              每一题自己的「暂未获得 / +N」在题目卡片下方，那是第三处、也是对的。 */
+                        <span className={styles.progressCell} data-state={state} key={node.id} />
                       );
                     })}
                   </span>

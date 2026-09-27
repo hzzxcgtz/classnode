@@ -737,10 +737,11 @@
 .progressMap { display: flex; align-items: center; gap: 7px; }
 .progressGroup { display: flex; align-items: center; gap: 4px; }
 .progressGroup + .progressGroup { padding-left: 7px; border-left: 1px solid #cbd5e1; }
+/* ★ 2026-09-27（教师）：格子只有这三态，**不再有 `data-style='icon'` 那一档**（那档会把格子
+   换成 19px 的奖励图标，而它在「已交」时画的是与右边「已获得」同一张全彩图 —— 见面板那处注释）。 */
 .progressCell { width: 11px; height: 11px; border: 1.5px solid #94a3b8; background: transparent; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; color: #94a3b8; font-size: 13px; line-height: 1; }
 .progressCell[data-state='drafting'] { background: #cbd5e1; border-color: #94a3b8; }
 .progressCell[data-state='submitted'] { background: var(--ws-accent); border-color: var(--ws-accent); }
-.progressCell[data-style='icon'] { width: 19px; height: 19px; border: 0; background: transparent; }
 
 .question { border-radius: 12px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .question[data-state='drafting'], .question:focus-within { box-shadow: inset 3px 0 0 var(--ws-accent); }

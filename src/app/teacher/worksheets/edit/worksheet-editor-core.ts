@@ -2653,3 +2653,72 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     surfaceOpacity: normalizeWorksheetSurfaceOpacity(settings.surfaceOpacity),
   };
 }
+
+/* ————————————— 悬停看大图（★ 2026-09-27，教师） ————————————— */
+
+/**
+ * ★ 2026-09-27（教师）：「鼠标停留一会儿后，浮动显示大图，看效果。」
+ *
+ * 设置弹窗里那一格背景缩略图太小，看不出这套插图到底长什么样。
+ *
+ * ⚠️ **尺寸与位置分成两个纯函数**（都在这里，都有用例）：
+ *   · `hoverPreviewSize`   只跟**视口**有关 ⇒ 鼠标扫过一排卡片时尺寸**不变**；
+ *   · `placeHoverPreview`  只跟**卡片位置**有关 ⇒ 浮层跟着那一张卡走。
+ *   合成一个函数的话，尺寸会随卡片变 —— 屏幕上就是「浮层一边飘一边缩放」。
+ * 🔴 **不许把这两件事写进组件**：本仓的组件层没有回归网（无 jsdom），
+ *    而「浮层跑到屏幕外面去了」正是那种**只在某些窗口宽度下**才出现的缺陷。
+ */
+export interface HoverPreviewSize {
+  width: number;
+  height: number;
+}
+
+/** 浮层与卡片之间的间隙、以及它与视口边缘的最小距离。 */
+const HOVER_GAP = 12;
+const HOVER_MARGIN = 12;
+
+/** 横图是 3:2（`scripts` 里那批背景图就是这个比例）。 */
+const HOVER_ASPECT = 3 / 2;
+
+/** 再宽也不超过这个值 —— 一张背景图占满整个屏幕对「看效果」没有帮助。 */
+const HOVER_MAX_WIDTH = 460;
+
+/**
+ * 浮层多大。**只取决于视口** —— 见上面那段（尺寸不许跟着卡片变）。
+ * ⚠️ 窄视口下把两侧边距让出来（`viewport.width - 2 × MARGIN`），否则它会比屏幕还宽。
+ */
+export function hoverPreviewSize(viewport: { width: number; height: number }): HoverPreviewSize {
+  const width = Math.max(1, Math.min(HOVER_MAX_WIDTH, viewport.width - HOVER_MARGIN * 2));
+  return { width, height: Math.round(width / HOVER_ASPECT) };
+}
+
+/**
+ * 浮层放哪儿 —— **优先贴卡片右侧**（一眼看出它说的是哪一张卡），
+ * 右边放不下就翻到左侧，两边都放不下才水平居中（宁可盖住卡片，也不许溢出屏幕）。
+ *
+ * ⚠️ 垂直方向与卡片**中线对齐**（不是顶对齐）：卡片是一行两列，中线对齐读起来最稳。
+ * 🔴 最后一律**夹进视口**（`Math.max(HOVER_MARGIN, …)`）：浮层比视口还高时，
+ *    夹出来的上界会比下界还小 —— 那种情况下取 `HOVER_MARGIN`（贴顶），
+ *    而不是返回一个负数。这条有用例（`placeHoverPreview` 那一条的最后一问）。
+ */
+export function placeHoverPreview(
+  anchor: { left: number; right: number; top: number; bottom: number },
+  size: HoverPreviewSize,
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  const rightRoom = anchor.right + HOVER_GAP + size.width <= viewport.width - HOVER_MARGIN;
+  const leftRoom = anchor.left - HOVER_GAP - size.width >= HOVER_MARGIN;
+  let left: number;
+  if (rightRoom) left = anchor.right + HOVER_GAP;
+  else if (leftRoom) left = anchor.left - HOVER_GAP - size.width;
+  else left = (viewport.width - size.width) / 2;
+  // 夹进视口。⚠️ `Math.max(HOVER_MARGIN, viewport.width - HOVER_MARGIN - size.width)` 是上界；
+  // 浮层比视口还宽时上界小于下界，`Math.min` 会取到那个更小的值 —— 所以外面还要再夹一次。
+  const maxLeft = Math.max(HOVER_MARGIN, viewport.width - HOVER_MARGIN - size.width);
+  left = Math.max(HOVER_MARGIN, Math.min(left, maxLeft));
+
+  const centered = anchor.top + (anchor.bottom - anchor.top) / 2 - size.height / 2;
+  const maxTop = Math.max(HOVER_MARGIN, viewport.height - HOVER_MARGIN - size.height);
+  const top = Math.max(HOVER_MARGIN, Math.min(centered, maxTop));
+  return { left: Math.round(left), top: Math.round(top) };
+}

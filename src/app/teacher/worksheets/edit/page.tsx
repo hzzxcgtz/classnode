@@ -1,6 +1,8 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// ★ 2026-09-27：「悬停看大图」那张浮层要 portal 到 body（理由见 SettingsModal 里那段注释）。
+import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
@@ -11,7 +13,7 @@ import { api } from '@/lib/api';
 import { pointsUnitLabel, DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
-import { dropIndexAt, editorRenderBlocks, scoreSummary } from './worksheet-editor-core';
+import { dropIndexAt, editorRenderBlocks, hoverPreviewSize, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
@@ -729,6 +731,15 @@ function AddQuestionPicker({ onPick, onClose }: {
  * **根本看不到**（规格 §3-U：教师端只有对错与正确率，一个星星都不出现）——
  * 所以那一行必须说清「这是给学生看的」。
  */
+/**
+ * 「停留一会儿」是多久。
+ *
+ * 🔴 **不能是 0**：鼠标从一排卡的左边划到右边会扫过六张，没有延迟时浮层一路闪过去，
+ * 教师什么也看不清、只觉得界面在抖。
+ * ⚠️ 也别调到 1s 以上：那会变成「我明明停下来了，它怎么不出来」。450ms 是这两者之间那一档。
+ */
+const HOVER_PREVIEW_DELAY_MS = 450;
+
 function SettingsModal({ description, onDescriptionChange, settings, onSettingsChange, onClose, onSave, hasId }: {
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -755,6 +766,65 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
    */
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  /**
+   * ★ 2026-09-27（教师）：「鼠标停留一会儿后，浮动显示大图，看效果。」
+   *
+   * 缩略图那一格看不出这套插图到底长什么样。
+   *
+   * 🔴 **浮层必须 portal 到 `document.body`**，不能就地渲染：这一层的外层
+   *    `.worksheet-editor-dialog` 自己带 `transform: translate(-50%, -50%)`（居中用的），
+   *    而 transform 会把祖先变成 `position: fixed` 的**包含块** ⇒ 就地渲染的话
+   *    `left/top` 会相对那个弹窗算，而 `placeHoverPreview` 给的是**视口坐标**
+   *    （两者的差正好是弹窗的位置，且随窗口大小变 —— 那种「有时对有时错」最难查）。
+   *    `.worksheet-settings-body` 还带 `overflow-y: auto`，就地渲染的第二重风险是被裁掉。
+   * ⚠️ 所以这里**不用** classroom 那套 `useOverlayPortal`（它有「只有前台层才渲染」的语义，
+   *    而这个是纯装饰、没有层级概念）。
+   */
+  const [preview, setPreview] = useState<{ src: string; name: string; left: number; top: number; width: number; height: number } | null>(null);
+  const previewTimer = useRef<number | null>(null);
+
+  const cancelPreview = useCallback(() => {
+    if (previewTimer.current !== null) {
+      window.clearTimeout(previewTimer.current);
+      previewTimer.current = null;
+    }
+    setPreview(null);
+  }, []);
+
+  // 关窗时把计时器收掉 —— 否则它在组件卸载之后还会 `setPreview`（React 会警告，
+  // 而且那一帧的 `getBoundingClientRect` 拿到的是一张已经不存在的卡片）。
+  useEffect(() => cancelPreview, [cancelPreview]);
+
+  /**
+   * 「停留一会儿」再显示。🔴 这个延迟不是修饰：鼠标从左边划到右边会扫过六张卡，
+   * 没有延迟的话浮层会一路闪过去 —— 教师什么也看不清，只觉得界面在抖。
+   */
+  const startPreview = useCallback((element: HTMLElement, src: string, name: string) => {
+    cancelPreview();
+    previewTimer.current = window.setTimeout(() => {
+      previewTimer.current = null;
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const size = hoverPreviewSize(viewport);
+      const anchored = placeHoverPreview(element.getBoundingClientRect(), size, viewport);
+      setPreview({ src, name, ...anchored, ...size });
+    }, HOVER_PREVIEW_DELAY_MS);
+  }, [cancelPreview]);
+
+  /**
+   * 挂在一张背景卡上的三个手势。
+   * ⚠️ **只认鼠标**（`pointerType === 'mouse'`）：触屏上 `pointerenter` 会在**手指按下去**
+   *    那一下触发 ⇒ 浮层会盖在刚选中的那张卡上，而教师正要接着点「保存设置」。
+   * ⚠️ `pointercancel` 也要收（系统手势抢走指针时），不然计时器会在别处落地。
+   */
+  const previewHandlers = (src: string | null, name: string) => ({
+    onPointerEnter: (event: ReactPointerEvent<HTMLLabelElement>) => {
+      if (event.pointerType !== 'mouse' || !src) return;
+      startPreview(event.currentTarget, src, name);
+    },
+    onPointerLeave: cancelPreview,
+    onPointerCancel: cancelPreview,
+  });
 
   const submit = async () => {
     if (saving) return;
@@ -834,6 +904,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
                 <label
                   key={option.id}
                   className={`worksheet-background-option${settings.backgroundTheme === option.id ? ' is-selected' : ''}`}
+                  {...previewHandlers(option.url, option.name)}
                 >
                   <input
                     type="radio"
@@ -851,7 +922,10 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
                 </label>
               ))}
 
-              <label className={`worksheet-background-option worksheet-background-upload${settings.backgroundTheme === 'custom' ? ' is-selected' : ''}`}>
+              <label
+                className={`worksheet-background-option worksheet-background-upload${settings.backgroundTheme === 'custom' ? ' is-selected' : ''}`}
+                {...previewHandlers(settings.backgroundImageUrl, '我的背景')}
+              >
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -1082,6 +1156,24 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
           </button>
         </div>
       </div>
+
+      {/* ★ 2026-09-27（教师）：「鼠标停留一会儿后，浮动显示大图，看效果。」
+          🔴 **portal 到 body**，不就地渲染 —— 理由写在上面 `preview` 那段注释里
+             （外层弹窗自带 `transform`，会成为 `position: fixed` 的包含块）。
+          ⚠️ `aria-hidden`：它是纯视觉的辅助，名字已经在卡片上念过一遍了。
+          ⚠️ 样式走 `pointer-events: none`（见 globals.css）：浮层跟着悬停走，
+             它一旦吃到指针事件就会自己把自己关掉（`pointerleave` 在卡片上触发）。 */}
+      {preview && createPortal(
+        <div
+          className="worksheet-background-hover-preview"
+          aria-hidden="true"
+          style={{ left: preview.left, top: preview.top, width: preview.width }}
+        >
+          <img src={worksheetAssetUrl(preview.src)} alt="" width={preview.width} height={preview.height} />
+          <span>{preview.name}</span>
+        </div>,
+        document.body,
+      )}
     </>
   );
 }

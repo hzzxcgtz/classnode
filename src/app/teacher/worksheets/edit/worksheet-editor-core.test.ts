@@ -102,6 +102,8 @@ import {
   sanitizeContentForSave,
   shouldWarnZeroHalfCredit,
   showsPartialPoints,
+  placeHoverPreview,
+  hoverPreviewSize,
   shuffleOrderItems,
   TRUE_FALSE_OPTIONS,
   writeBlankText,
@@ -2425,6 +2427,60 @@ test('🔴 `canGivePartial`：只有**真会给部分分**的五个题型为真�
   // 这一条必须在两者之间划出那道界线（否则「判分依据」会画到永远用不到它的题上）。
   assert.equal(isGradedQuestionType('single-choice'), true);
   assert.equal(canGivePartial('single-choice'), false);
+});
+
+test('🔴 `placeHoverPreview`：浮层优先贴在卡片**右侧**，中线对齐', () => {
+  const anchor = { left: 100, right: 500, top: 300, bottom: 420 };
+  const size = { width: 400, height: 280 };
+  const viewport = { width: 1600, height: 900 };
+  assert.deepEqual(placeHoverPreview(anchor, size, viewport), { left: 512, top: 220 });
+  // 512 = 500 + 12（GAP）；220 = 300 + (420-300)/2 - 280/2 —— 垂直与卡片中线对齐，
+  // 一眼能看出「这张浮层说的是哪一张卡」。
+});
+
+test('🔴 右边放不下就**翻到左边**（不问「能不能塞下」，只问「放哪儿看得见」）', () => {
+  const anchor = { left: 1200, right: 1560, top: 300, bottom: 420 };
+  const size = { width: 400, height: 280 };
+  const viewport = { width: 1600, height: 900 };
+  assert.deepEqual(placeHoverPreview(anchor, size, viewport), { left: 788, top: 220 }, '1200 - 12 - 400');
+});
+
+test('🔴 两边都放不下 ⇒ **水平居中**（宁可盖住卡片，也不许溢出屏幕）', () => {
+  const anchor = { left: 600, right: 1000, top: 300, bottom: 420 };
+  const size = { width: 600, height: 280 };
+  const viewport = { width: 1100, height: 900 };
+  // 右边：1000+12+600 = 1612 > 1088；左边：600-12-600 = -12 < 12 ⇒ 居中 (1100-600)/2 = 250
+  assert.deepEqual(placeHoverPreview(anchor, size, viewport), { left: 250, top: 220 });
+});
+
+test('🔴 垂直方向夹在视口内：下面放不下就往上收，上面放不下就贴顶', () => {
+  const size = { width: 400, height: 280 };
+  const viewport = { width: 1600, height: 900 };
+  // 卡片在屏幕底部 ⇒ 浮层不能探出下边缘（888 = 900 - 12 - 280）
+  assert.equal(placeHoverPreview({ left: 100, right: 500, top: 800, bottom: 880 }, size, viewport).top, 608);
+  // 卡片贴顶 ⇒ 浮层也不能是负的
+  assert.equal(placeHoverPreview({ left: 100, right: 500, top: 0, bottom: 60 }, size, viewport).top, 12);
+});
+
+test('🔴 浮层比视口还高 / 还宽时仍然**落在视口内**（不返回负数，也不越界）', () => {
+  const anchor = { left: 0, right: 300, top: 0, bottom: 60 };
+  const size = { width: 900, height: 1200 };
+  const viewport = { width: 800, height: 600 };
+  const placed = placeHoverPreview(anchor, size, viewport);
+  assert.equal(placed.left, 12, '贴左边距，不是负数');
+  assert.equal(placed.top, 12, '贴顶边距');
+});
+
+test('浮层尺寸是**纯函数**给的：横图按 3:2，且不宽于视口减去两侧边距', () => {
+  // ⚠️ 尺寸与位置分开算（`hoverPreviewSize` / `placeHoverPreview`）：尺寸只跟视口有关，
+  //    位置才跟卡片有关。合成一个函数的话「同一个视口下尺寸随卡片变」—— 鼠标扫过一排
+  //    卡片时浮层会一边飘一边缩放。
+  assert.deepEqual(hoverPreviewSize({ width: 1600, height: 900 }), { width: 460, height: 307 });
+  // ⚠️ 460 是**上限**，它在「填满视口」之前生效：600 宽的视口本来放得下 576，
+  //    但仍然只给 460（一张背景图占满整个屏幕对「看效果」没有帮助）。
+  assert.deepEqual(hoverPreviewSize({ width: 600, height: 900 }), { width: 460, height: 307 });
+  // 真正触发「让出两侧边距」的是比 460 + 2×12 还窄的视口。
+  assert.deepEqual(hoverPreviewSize({ width: 400, height: 900 }), { width: 376, height: 251 }, '400 - 2×12');
 });
 
 test('🔴 `showsPartialPoints`：「得分规则」那一块画不画**部分正确**那一栏', () => {

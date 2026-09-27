@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fillSettingsFor, sharedPoolChoices, splitAnswerText, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -78,36 +78,49 @@ test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一�
   assert.deepEqual(splitChoiceText(42), []);
 });
 
-// ── 标准答案那一栏的单行输入（★ 2026-09-28，教师第二轮）──────────────────
+// ── 单行输入的分隔符集合（★ 2026-09-28，教师两轮）──────────────────────
 //
-// 教师原话：「这里也改成单行了，而且可以使用哪些符号间隔，要提示一下。」
-//
-// 🔴 **答案与待选词的分隔符**不能是同一套**：待选词是「词」（内部不会有标点），
-//    而答案是**短语** —— 「小明、小红」是一个答案，「先洗菜，再切菜」也是一个。
-//    照待选词那套切，这两条会被**悄悄拆成两个可接受答案**，于是学生答「小明」
-//    就得满分，而教师看不到任何异常（单行框里重新拼接后长得一模一样）。
+// 教师第二轮看到我「待选词按标点切、答案只按分号切」之后否了：
+// 「我说的是**常见符号提示都能用**，不要光是分号、顿号、逗号……」
+// ⇒ 两种输入共用同一套分隔符。下面那两条**原来断言的是相反的结论**
+//（「顿号与逗号是答案的一部分，不许拆」）—— 那是被教师否掉的设计，
+// 现在断言的是**当下的**行为，免得下一个人把它当成 bug 改回去。
 
-test('🔴 splitAnswerText：分号（中英文）与换行是分隔符', () => {
-  assert.deepEqual(splitAnswerText('唐；唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitAnswerText('唐;唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitAnswerText('唐\n唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitAnswerText('  唐 ； 唐代  '), ['唐', '唐代']);
-  assert.deepEqual(splitAnswerText('唐；；唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitAnswerText('唐；'), ['唐']);
-  assert.deepEqual(splitAnswerText('；'), []);
-  assert.deepEqual(splitAnswerText(''), []);
+test('🔴 splitChoiceText：常见符号都算分隔符（顿号 / 逗号 / 分号 / 斜杠 / 竖线 / 换行）', () => {
+  assert.deepEqual(splitChoiceText('唐、宋、元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐，宋，元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐,宋,元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐；宋;元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐/宋/元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐\n宋\n元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐、宋\n元;明'), ['唐', '宋', '元', '明']);
 });
 
-test('🔴 splitAnswerText：顿号与逗号**是答案的一部分**，不许拆', () => {
-  // 这两条是这个函数存在的全部理由 —— 它们要是被拆开，就是**静默的判分变化**：
-  // 教师本想让学生答出完整的那一句，结果答出半句也算对。
-  assert.deepEqual(splitAnswerText('小明、小红'), ['小明、小红']);
-  assert.deepEqual(splitAnswerText('先洗菜，再切菜'), ['先洗菜，再切菜']);
-  assert.deepEqual(splitAnswerText('小明、小红；先洗菜，再切菜'), ['小明、小红', '先洗菜，再切菜']);
+test('🔴 splitChoiceText：**答案**也走同一套**（教师裁定：常见符号都能用）', () => {
+  // ⚠️ 代价：本身含标点的答案会被拆开 —— 「小明、小红」变成两个可接受答案
+  //（学生答「小明」也算对）。教师知情并选了这个便利，所以**提示必须写出来**
+  //（见 question-card 里「标准答案」那句块说明）。
+  assert.deepEqual(splitChoiceText('唐；唐代'), ['唐', '唐代']);
+  assert.deepEqual(splitChoiceText('唐、唐代'), ['唐', '唐代']);
+  assert.deepEqual(splitChoiceText('小明、小红'), ['小明', '小红']);
 });
 
-test('🔴 splitAnswerText：数组原样交给 splitChoiceLines；坏输入 ⇒ 空表', () => {
-  assert.deepEqual(splitAnswerText([' 甲 ', '', '乙']), ['甲', '乙']);
-  assert.deepEqual(splitAnswerText(null), []);
-  assert.deepEqual(splitAnswerText(42), []);
+test('🔴 splitChoiceText：连续分隔符与两侧空白都不产生空条目', () => {
+  assert.deepEqual(splitChoiceText('  唐 、、 宋  '), ['唐', '宋']);
+  assert.deepEqual(splitChoiceText('唐、、、'), ['唐']);
+  assert.deepEqual(splitChoiceText('、、'), []);
+  assert.deepEqual(splitChoiceText(''), []);
+  assert.deepEqual(splitChoiceText('   '), []);
+});
+
+test('🔴 splitChoiceText：词里的空格**不切**（「New York」是一个词）', () => {
+  assert.deepEqual(splitChoiceText('New York、Los Angeles'), ['New York', 'Los Angeles']);
+});
+
+test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一侧的口径不变）', () => {
+  assert.deepEqual(splitChoiceText([' 甲 ', '', '乙']), ['甲', '乙']);
+  assert.deepEqual(splitChoiceText('甲、乙'), ['甲', '乙'], '字符串才按符号切');
+  assert.deepEqual(splitChoiceText(null), []);
+  assert.deepEqual(splitChoiceText(42), []);
 });

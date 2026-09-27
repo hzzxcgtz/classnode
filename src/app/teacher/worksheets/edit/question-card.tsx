@@ -320,7 +320,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
       : isChoiceQuestion(node)
         ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项左侧的圆点。' }
         : isBlankType
-          ? { title: '每个空的作答方式', hint: '填空域会自动同步，可分别设置手工填写、右侧选词或下方选词。' }
+          ? { title: '每个空的作答方式', hint: '填空域会自动同步，可分别设置手工填写、右侧选词或下方选词；词之间用顿号、逗号、分号等常见符号分隔。' }
           : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
@@ -683,7 +683,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                 <div>
                   <h4>标准答案</h4>
                   <p>{isBlankType
-                    ? '每个空可以填多个可接受答案（用分号分隔），学生答出其中一个就算对。'
+                    ? '每个空可以填多个可接受答案（多个之间用顿号、逗号、分号等常见符号分隔）；学生答出其中一个就算对。'
                     : '这道题的标准答案是「正确」还是「错误」。'}</p>
                 </div>
               </div>

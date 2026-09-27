@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
-import { fillSettingsFor, sharedPoolChoices, splitAnswerText, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -26,8 +26,8 @@ import {
  * ⇒ draft 里那个尾巴留得住。
  *
  * ⚠️ **分隔符由调用方给**（`split` / `joinWith`），判据在 `@/lib/worksheet-fill-modes`：
- *   待选词认顿号/逗号/分号，标准答案**只认分号**（答案里可以有顿号和逗号 ——
- *   见 `splitAnswerText` 的文件头，那是一处静默判分变化的入口）。
+ *   两种输入都认常见的那些（顿号/逗号/分号/斜杠/竖线/换行）—— 见 `splitChoiceText`
+ *   的文件头，那里记着「代价是什么」与教师为什么这么选。
  * ⚠️ 三处共用一个组件是刻意的：同屏三个同类输入框各写一份，改一处只改一处，
  *   而教师看到的是「三个长得不一样的框」。
  */
@@ -101,9 +101,9 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
               </span>
               <SymbolListInput
                 values={answerSets[index] ?? []}
-                split={splitAnswerText}
+                split={splitChoiceText}
                 joinWith="；"
-                placeholder="填写标准答案；多个答案用分号分隔"
+                placeholder="填写标准答案"
                 onChange={items => onDataChange({
                   blanks: undefined,
                   answers: Array.from(
@@ -114,12 +114,7 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
                   ),
                 })}
               />
-              {/* ★ 2026-09-28（教师）：「可以使用哪些符号间隔，要提示一下」。
-                  把**规则**写出来，别让教师去猜（猜错的表现是「答案被拆成两个」，
-                  而这一栏是判分依据）。当前个数也报出来 —— 单行框里看不见那几行字了。 */}
-              <span className="worksheet-editor-blank-hint">
-                多个可接受答案用<b>分号</b>分隔；答案里的顿号与逗号算答案的一部分（当前 {answerSets[index]?.length ?? 0} 个）
-              </span>
+
             </label>
           ))}
         </div>
@@ -207,8 +202,6 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
                     placeholder="例如：唐、宋、元"
                     onChange={words => setInlineChoices(index, words)}
                   />
-                  {/* ★ 2026-09-28（教师）：「可以使用哪些符号间隔，要提示一下。」 */}
-                  <span className="worksheet-editor-blank-hint">多个词用顿号、逗号或分号分隔（当前 {setting.choices.length} 个）</span>
                 </label>
               )}
             </section>
@@ -226,9 +219,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
             placeholder="例如：阳光、水分、空气"
             onChange={words => onDataChange({ fillChoicePool: words })}
           />
-          <span className="worksheet-editor-blank-hint">
-            多个词用顿号、逗号或分号分隔（当前 {poolChoices.length} 个）；所有设为“下方选词”的空共用这一组词，已使用的词会暂时离开词池。
-          </span>
+          <span className="worksheet-editor-blank-hint">所有设为“下方选词”的空共用这一组词；已使用的词会暂时离开词池。</span>
         </label>
       )}
     </div>

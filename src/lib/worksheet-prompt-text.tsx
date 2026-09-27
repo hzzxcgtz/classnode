@@ -166,7 +166,12 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 }}
               >
                 {filled ? blanks.values[index] : '\u00a0'}
-                {wrong && <span style={WRONG_MARK_ANCHOR}><WrongMark /></span>}
+                {/* ★ 2026-09-27（教师第二轮）：槽里的标记改成**贴文字**、不再贴盒角。
+                    ⚠️ 槽有 `minWidth: 槽宽` 的富裕 ⇒ 值短时右边一段空白，贴盒角会离文字很远，
+                       而打字的框是按文字算宽的 ⇒ 一个远一个近。
+                    ⚠️ `alignSelf: flex-start` 是把它**抬到右上**（槽自己是 `align-items: center`），
+                       这样它读起来像上标，而不是被垂直居中。 */}
+                {wrong && <span style={{ alignSelf: 'flex-start', marginTop: 1, display: 'inline-flex', flexShrink: 0 }}><WrongMark /></span>}
               </span>
               {blanks.drop.after?.(index)}
               </Fragment>

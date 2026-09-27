@@ -78,16 +78,17 @@ export interface PromptBlankBinding {
   };
 }
 
-/**
- * 答错标记**贴盒子右上角**的位置 —— **两处共用这一条**。
+/* ⊘ 2026-09-27 删除：`WRONG_MARK_ANCHOR`（`position: absolute; top: 1; right: 2`）。
  *
- * 🔴 抽出来的理由：这轮已经有三次「同一个事实写两处、然后分叉」（字重 / 红色 / 覆盖顺序）。
- * 位置也一样 —— 待选区那种槽与打字那种框必须**贴在同一样的地方**，否则又会「一个对一个不对」。
- * ⚠️ 绝对定位 ⇒ **不在流里** ⇒ 不加宽、不换行（教师报过的两个毛病都出在这一条上）。
+ * 它把标记**绝对定位在盒子右上角**，而那个盒子是「按内容算宽 + 2ch 富裕」的输入框 ⇒
+ * 学生的答案一长，红叉就**压在字上**。教师 2026-09-27 报的正是这个（「叉叉打上后原来的字
+ * 会最淡」—— 字被叉盖住了一角）。
+ *
+ * 🔴 **标记一律走布局，不走定位。** 两条路现在都是「文字后面的一个普通兄弟节点」：
+ * 槽那边靠 flex（`alignSelf`），输入框那边就是紧跟其后的一个内联兄弟。
+ * ⚠️ 所以这个文件里**一个 `position: absolute` 都不该再有**（`worksheet-prompt-text.test.ts`
+ *    那条用例钉着这一点：绝对定位回来 = 那个叉又能盖住字）。
  */
-const WRONG_MARK_ANCHOR = {
-  position: 'absolute', top: 1, right: 2, pointerEvents: 'none', lineHeight: 0,
-} as const;
 
 /**
  * 答错的标记：一个稍粗的红叉（教师从四款里挑的 B）。
@@ -101,7 +102,8 @@ const WRONG_MARK_ANCHOR = {
 function WrongMark() {
   // ⚠️ **不要用 `<sup>`**：它自带 `vertical-align: super`，与 `line-height: 0` 叠加之后
   //    会把标记挤出盒子（2026-09-27 教师看到的「落到框外面/右下角」就是它）。
-  //    位置一律交给**布局**：槽里靠 flex 的对齐，输入框那边靠绝对定位。
+  //    ⇒ 位置一律交给**布局**：槽里靠 flex 的对齐，输入框那边就是紧跟其后的一个内联兄弟。
+  //    ⊘ 曾经还写过「输入框那边靠绝对定位」—— 那条路会把叉压在字上，已删（见文件上方那一段）。
   return (
     <span role="img" aria-label="答错了" style={{ color: '#dc2626', display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
@@ -126,7 +128,10 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
           if (blanks && blanks.drop && blanks.modeOf?.(blankIndex) !== 'input') {
             const index = blankIndex;
             const filled = (blanks.values[index] ?? '') !== '';
-            // ★ 答错 ⇒ 原答案红色 + 删除线。（正确答案不在这里 —— 见 `wrongOf` 的注释。）
+            // 答错 ⇒ 后面跟一个红叉（正确答案不在这里 —— 见 `wrongOf` 的注释）。
+            // ⊘ 2026-09-27 更正：这句原来写「原答案红色 + 删除线」。那两样在 `4adac35`
+            //    （错答改成「后面一个 ❌ 上标」）里就被**有意删掉了**，而这句话没跟着改 ——
+            //    于是它一直是一条假注释。今天的错答**只有那个叉**，字不变色、不划掉。
             const wrong = blanks.wrongOf?.(index) ?? false;
             const dropId = blanks.drop.idOf(index);
             const active = blanks.drop.activeId === dropId;
@@ -144,8 +149,6 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   justifyContent: 'center',
                   minWidth: `${Math.max(3, run.end - run.start)}ch`,
                   minHeight: '34px',
-                  // ★ 标记要贴**这个盒子的**右上角 ⇒ 它得是定位父级。
-                  position: 'relative',
                   padding: '3px 8px 1px',
                   margin: '-3px 3px -4px',
                   borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
@@ -179,12 +182,19 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
           }
           if (blanks) {
             const index = blankIndex;
-            // ★ 同 drop 分支：答错 ⇒ 框里的字红色 + 删除线，正确答案写在**框外**后面。
+            // 同 drop 分支：答错 ⇒ 框**后面**跟一个红叉（不是划掉框里的字，见上面那条更正）。
             // ⚠️ 框仍然是 `<input>`（截图里那个「保存修改」要能用 —— 学生得能改）。
             const wrong = blanks.wrongOf?.(index) ?? false;
             return (
               <Fragment key={run.start}>
-                <span style={{ position: 'relative', display: 'inline-block' }}>
+                {/* ★ 2026-09-27（教师）：「叉叉打上后原来的字会最淡」—— 那不是我一开始以为的
+                    配色问题，是**红叉压在字上**：它原来绝对定位在这个盒子的右上角，而盒子是按
+                    内容算宽的 ⇒ 答案一长就被盖掉一角。
+                    ⇒ 把叉挪到框**外面**当兄弟节点。`inline-block` 是为了让「框 + 叉」整体换行
+                      （拆开的话会出现「叉在上一行末尾、框在下一行」那种读法）。
+                    ⚠️ 从此这个文件里**没有定位**了 —— 那正是「标记不许盖住内容」的可检验说法，
+                      由 `worksheet-prompt-text.test.ts` 钉着。 */}
+                <span style={{ display: 'inline-block' }}>
               <input
                 type="text"
                 value={blanks.values[index] ?? ''}
@@ -208,9 +218,9 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
                 }}
               />
-                {wrong && (
-                  <span style={WRONG_MARK_ANCHOR}><WrongMark /></span>
-                )}
+                {/* ⚠️ **不加包裹的 `<span style={…}>`**：`WrongMark` 自带 `marginLeft: 3`，
+                    再包一层只是多一个盒子（原来那层是为了挂绝对定位，定位没了它就没用了）。 */}
+                {wrong && <WrongMark />}
 
                 </span>
               </Fragment>

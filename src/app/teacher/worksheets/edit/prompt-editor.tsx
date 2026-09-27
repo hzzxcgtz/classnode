@@ -87,7 +87,7 @@ export interface PromptEditorProps {
   onRequestPaste: () => void;
   /**
    * ★ 2026-09-28（教师）：题干里那块**表格域 chip** 被点了 / 刚插进一个表格域。
-   * 题目卡据此展开下面那块默认收起的「填空的位置（表格）」。
+   * 题目卡据此把「表格域作答设置」那块**滚进视野**（不再是展开/收起：标记在不在就是显示/隐藏）。
    */
   onTableMarkClick?: () => void;
 }

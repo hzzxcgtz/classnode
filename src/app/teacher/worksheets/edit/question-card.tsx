@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -49,7 +49,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
 import { TableBody } from './bodies/table-body';
-import { readTableFor, tableBlankCount, tableMarkIndex } from '@/lib/worksheet-table';
+import { tableMarkIndex } from '@/lib/worksheet-table';
 import { OrderAnswerBody, OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
@@ -314,21 +314,20 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * 与填空题的「标准答案」并排，所以它的容器 A 只有题干。
    */
   const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
-  /**
-   * ★ 2026-09-28（教师）：表格设置那块**默认收起**（「显示被隐藏的表格设置区域」）。
-   * ⚠️ 它是个**局部 UI 状态**，不进 `data` —— 收着还是开着跟这道题的内容无关。
-   */
-  const [tableOpen, setTableOpen] = useState(false);
+  /** 题干里有表格域标记 ⇒ 出现「表格域作答设置」（判据只有它）。 */
   const hasTableMark = tableMarkIndex(node.prompt) >= 0;
-  // ⚠️ 判据用 `readTableFor`（有键但没有行**不算**有表 —— 与它的注释同一条）
-  const hasTable = readTableFor(node) !== null;
+  /**
+   * ★ 2026-09-28（教师）：点题干里那个 chip ⇒ 把设置块**滚进视野**。
+   * ⚠️ 不再是「展开/收起」：标记在不在就是显示/隐藏（教师第二轮：「这里不用展开收拢？」）。
+   */
+  const tableBlockRef = useRef<HTMLDivElement | null>(null);
   const answerBlock: { title: string; hint: string } | null =
     node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
         ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项左侧的圆点。' }
         : isBlankType
-          ? { title: '每个空的作答方式', hint: '填空域会自动同步，可分别设置手工填写、右侧选词或下方选词；词之间用顿号、逗号、分号等常见符号分隔。' }
+          ? { title: '填空与作答设置', hint: '填空域与表格域会自动同步；选词之间用顿号、逗号或分号分隔。' }
           : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
@@ -510,7 +509,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             onDataChange={onDataChange}
             onRequestPaste={requestPaste}
             // ★ 2026-09-28：点题干里的 {表格域} chip（或刚插入一个）⇒ 展开设置面板
-            onTableMarkClick={() => setTableOpen(true)}
+            onTableMarkClick={() => tableBlockRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
           />
         </div>
 
@@ -564,29 +563,20 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                 ⚠️ 于是「有表没标记」这种状态在界面上**没有入口**了（它只可能来自
                   手工改过的库）；那种题保存时会被服务端拒（「学生看不到这张表」）。 */}
             {node.type === 'fill-blank' && hasTableMark && (
-              <div className="worksheet-editor-block">
-                {/* ★ 2026-09-28（教师）：「点击以后…显示被隐藏的表格设置区域」——
-                    这块**默认收起**，点题干里那个 `{表格域}` chip（或点这一行）展开。
-                    ⚠️ 收起时也要说得出「现在什么样」：有表就报几个空、没标记就报「学生看不到它」。 */}
+              // ★ 2026-09-28（教师）：「只有在题干中出现了表格域才会『出现表格域作答设置』，
+              // 如果删除了表格域，那么也随之隐藏。」⇒ 判据**只有标记**（删掉标记这块就消失，
+              // `data.table` 还躺在库里但不渲染 —— 再插回标记它就回来）。
+              // ★ 2026-09-28（教师第二轮）：「这里不用展开收拢？」⇒ **去掉了那个开关**：
+              // 标记在不在**就是**显示/隐藏，再叠一个收起/展开是同一件事说两遍。
+              // ⚠️ 点题干里那个 chip 仍然有用 —— 它把这一块**滚进视野**（题目长的时候）。
+              <div className="worksheet-editor-block" ref={tableBlockRef}>
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <button
-                      type="button"
-                      className="worksheet-editor-table-toggle"
-                      aria-expanded={tableOpen}
-                      onClick={() => setTableOpen((open) => !open)}
-                    >
-                      <span aria-hidden="true">{tableOpen ? '▾' : '▸'}</span>
-                      {' '}填空的位置（表格）
-                    </button>
-                    <p>
-                      {hasTable
-                        ? `学生看到的就是这张表（已标 ${tableBlankCount(node.data.table)} 个空）—— 表格里的空与题干里的空是同一批，都会出现在下面的「每个空的作答方式」与「自动评分 → 标准答案」里。`
-                        : '还没有表格 —— 点下面的「加一张表格」，它会长在题干里那个 {表格域} 的位置上。'}
-                    </p>
+                    <h4>表格域作答设置</h4>
+                    <p>学生看到的就是这张表；表格里的空与题干里的空是同一批。</p>
                   </div>
                 </div>
-                {tableOpen && <TableBody node={node} onDataChange={onDataChange} />}
+                <TableBody node={node} onDataChange={onDataChange} />
               </div>
             )}
             {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}

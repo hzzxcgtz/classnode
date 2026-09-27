@@ -41,8 +41,15 @@ export interface ChoiceBlankAnswerProps {
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
   /**
+   * ★ 2026-09-27：**这一题**答错的是哪几个空（下标，从左到右从 0 起）。
+   * ⚠️ 只在已提交的题上有值 —— 服务端只在判过分之后才发它。
+   * ⚠️ 正确答案**不从这里进渲染器**：它由题目下方那块提示区直接读 `correctBlanks` 画，
+   *    这样行内一个多余节点都不加（教师改过一次设计，理由见 `PromptBlankBinding.wrongOf`）。
+   */
+  wrongBlankIndexes?: number[];
+  /**
    * ★ 2026-09-27：**这一题**答错的空的正确答案（空下标 → 那一个答案）。
-   * ⚠️ 只在已提交的题上有内容 —— 服务端剥掉整张答案键、只放行答错的几个空。
+   * ⚠️ 它**只喂下面那块提示区**，不进题干渲染器 —— 行内加节点会动到输入框/槽的结构。
    */
   correctBlanks?: Record<string, string>;
 }
@@ -52,7 +59,7 @@ const BLANK_PREFIX = 'blank:';
 const WORD_PREFIX = 'word:';
 
 /** `data.choices`：待选词。读不出来就是空表（学生没词可拖 ⇒ 界面要说实话）。 */
-export function ChoiceBlankAnswer({ node, draft, onChange, disabled, correctBlanks }: ChoiceBlankAnswerProps) {
+export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankIndexes, correctBlanks }: ChoiceBlankAnswerProps) {
   const [picked, setPicked] = useState<{ word: string; target: number | null } | null>(null);
   const runs = useMemo(() => readPromptRunsFor(node), [node]);
   const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
@@ -174,9 +181,8 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, correctBlan
             },
             disabled,
             modeOf: index => settings[index]?.mode === 'text' ? 'input' : 'drop',
-            // ★ 2026-09-27：答错的那几个空 ⇒ 正确答案（服务端只在这几格上有值）。
-            // ⚠️ 键是**下标字符串**（JSON 的键只能是字符串），与 `wrongBlankIndexes` 同一套下标。
-            correctOf: index => correctBlanks?.[String(index)] ?? null,
+            // ★ 2026-09-27：答错的空 ⇒ 红色 + 删除线（正确答案不在这里，见 props 注释）。
+            wrongOf: index => (wrongBlankIndexes ?? []).includes(index),
             drop: {
               idOf: (index) => `${BLANK_PREFIX}${index}`,
               onPlace: disabled ? () => {} : tapBlank,
@@ -206,6 +212,27 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, correctBlan
           </div>
         </div>
       ) : null}
+      {/* ★ 2026-09-27（教师裁定）：答错的那几个空 ⇒ **正确答案与「怎么改」写在这里**。
+          🔴 **不写在行内**（不接在空的后面）：那会给输入框/槽加一个兄弟节点，宽度、换行、
+             拖动落点全都要重新想一遍 —— 教师改过一次设计就是为了避开这件事。
+          ⚠️ **没设答案键的空不列**（服务端对它不发答案）：它照样被划掉，只是这里说不出答案；
+             一个都列不出来时整块不显示（不写「正确答案：」这种半句话）。
+          ⚠️ 用内联样式而不是 CSS 模块类：这次不想再动那个模块（改动面越小越好）。 */}
+      {(() => {
+        const items = (wrongBlankIndexes ?? [])
+          .map((index) => ({ index, answer: correctBlanks?.[String(index)] }))
+          .filter((item): item is { index: number; answer: string } => typeof item.answer === 'string' && item.answer !== '');
+        if (items.length === 0) return null;
+        return (
+          <div role="status" style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10,
+            background: '#fef2f2', border: '1px solid #fecaca', fontSize: '0.813rem', lineHeight: 1.7 }}>
+            <strong style={{ color: '#b91c1c', marginRight: 8 }}>正确答案</strong>
+            <span style={{ color: '#7f1d1d' }}>
+              {items.map(item => `第 ${item.index + 1} 空填「${item.answer}」`).join('，')}。
+            </span>
+          </div>
+        );
+      })()}
     </>
   );
 }

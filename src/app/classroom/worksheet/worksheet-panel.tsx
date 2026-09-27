@@ -428,6 +428,7 @@ export function WorksheetQuestionList({
                 disabled={controlsDisabled}
                 onChange={(next) => onChange?.(node, next)}
                 // ★ 2026-09-27：答错的空的正确答案（**只这一题**；服务端只发答错的那几格）。
+                wrongBlankIndexes={wrongBlankIndexes?.[node.id]}
                 correctBlanks={correctBlanks?.[node.id]}
               />
             ) : (<>

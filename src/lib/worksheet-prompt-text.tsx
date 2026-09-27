@@ -63,7 +63,7 @@ export interface PromptBlankBinding {
    * ⇒ 渲染这一侧**拿到什么画什么，不再自己判**「该不该显示」。
    * ⚠️ 它在**外层**绑定上、不在 `drop` 里：打字那条路（input）也要用它。
    */
-  correctOf?: (index: number) => string | null;
+  wrongOf?: (index: number) => boolean;
   drop?: {
     /** 第 `index` 个空的落点 id（写进 `data-drop-id`，拖拽那一层按它找人）。 */
     idOf: (index: number) => string;
@@ -93,8 +93,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
           if (blanks && blanks.drop && blanks.modeOf?.(blankIndex) !== 'input') {
             const index = blankIndex;
             const filled = (blanks.values[index] ?? '') !== '';
-            // ★ 答错 ⇒ 原答案红色 + 删除线；正确答案写在**框外**后面（教师定的形态）。
-            const correct = blanks.correctOf?.(index) ?? null;
+            // ★ 答错 ⇒ 原答案红色 + 删除线。（正确答案不在这里 —— 见 `wrongOf` 的注释。）
+            const wrong = blanks.wrongOf?.(index) ?? false;
             const dropId = blanks.drop.idOf(index);
             const active = blanks.drop.activeId === dropId;
             // 落点：一个**槽**，不是输入框（学生不许在这里打字 —— 词只能从待选区来）。
@@ -123,8 +123,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   ...(blankAnswerStyle(run) as CSSProperties),
                   // 🔴 **必须在下面那次展开之后**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
                   //    写在它前面会被整个盖掉（2026-09-27 教师看到「打字那条红了、待选区那条没红」就是这一条）。
-                  color: correct ? 'var(--danger)' : (blanks.drop.pending && !filled ? '#2563eb' : undefined),
-                  textDecoration: correct ? 'line-through' : undefined,
+                  color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
                   textAlign: 'center',
                   verticalAlign: 'baseline',
                   cursor: blanks.disabled ? 'default' : 'pointer',
@@ -133,8 +132,9 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
               >
                 {filled ? blanks.values[index] : '\u00a0'}
               </span>
-              {correct && <span key="correct">{correct}</span>}
+              {wrong && <sup role="img" aria-label="答错了" style={{ color: '#dc2626', fontSize: '0.8em' }}>❌</sup>}
               {blanks.drop.after?.(index)}
+              {wrong && <sup role="img" aria-label="答错了" style={{ color: '#dc2626', fontSize: '0.8em' }}>❌</sup>}
               </Fragment>
             );
           }
@@ -142,7 +142,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
             const index = blankIndex;
             // ★ 同 drop 分支：答错 ⇒ 框里的字红色 + 删除线，正确答案写在**框外**后面。
             // ⚠️ 框仍然是 `<input>`（截图里那个「保存修改」要能用 —— 学生得能改）。
-            const correct = blanks.correctOf?.(index) ?? null;
+            const wrong = blanks.wrongOf?.(index) ?? false;
             return (
               <Fragment key={run.start}>
               <input
@@ -166,10 +166,9 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
                   // 空着的时候要与那串下划线一样宽，否则一填字版面就跳。
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
-                  ...(correct ? { color: 'var(--danger)', textDecoration: 'line-through' } : {}),
                 }}
               />
-              {correct && <span>{correct}</span>}
+
               </Fragment>
             );
           }

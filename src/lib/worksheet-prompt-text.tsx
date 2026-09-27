@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
+import { blankAnswerStyle, inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
 
 /**
  * 题干那一段文字的**唯一一份渲染**（★ 2026-09-26）。
@@ -107,7 +107,10 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
                   borderRadius: '4px 4px 2px 2px',
                   color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
-                  fontWeight: 600,
+                  // ★ 2026-09-27：字重不再写死 600 —— 与打字那条路**共用同一条规则**
+                  //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、
+                  //  换个模式粗细就变了」。
+                  ...(blankAnswerStyle(run) as CSSProperties),
                   textAlign: 'center',
                   verticalAlign: 'baseline',
                   cursor: blanks.disabled ? 'default' : 'pointer',
@@ -138,7 +141,8 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                 // 那圈正是浏览器**默认的焦点框**）。
                 className="worksheet-blank-input"
                 style={{
-                  ...(promptRunStyle(run) as CSSProperties),
+                  // 同一条规则（此前这里是 `promptRunStyle` ⇒ 400，而 drop 那边是 600）。
+                  ...(blankAnswerStyle(run) as CSSProperties),
                   // 🔴 宽度**跟着内容长**：`ch` 是半角数字的宽，汉字占两格 ⇒
                   // 用 `inputWidthCh` 算（那一行算术有用例）。
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——

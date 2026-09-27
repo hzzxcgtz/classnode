@@ -22,6 +22,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_PROMPT_STYLE,
+  blankAnswerStyle,
   blankCount,
   blankRuns,
   insertBlank,
@@ -610,3 +611,14 @@ test('相邻的多余字符不算「夹在中间」：`{{填空域}` 仍然是�
   assert.equal(blankRuns(runs)[0].start, 1, '空从第二个字符开始，前面那个 `{` 是普通文字');
 });
 
+test('🔴 空里那份答案的字重：**两种填空模式必须同一条规则**（教师 2026-09-27 报的不一致）', () => {
+  // 症状：同一个学习单里，内联/待选区的空（drop 分支）答案看着是粗的，打字的空（input 分支）
+  // 看着是细的 —— 因为那两条路**各写了一套字重**（写死 600 vs promptRunStyle 的 400）。
+  const plain = run(0, 5, { blank: 'b1' });
+  const bolded = run(0, 5, { blank: 'b1', bold: true });
+  assert.equal(blankAnswerStyle(plain).fontWeight, 600, '没加粗的空：答案要比正文（400）重一档');
+  assert.equal(blankAnswerStyle(bolded).fontWeight, 700, '教师把空本身加粗了 ⇒ 再重一档');
+  // 其余格式照搬那个空 —— 这一条防的是「顺手把别的样式也写死」
+  assert.equal(blankAnswerStyle(run(0, 5, { blank: 'b', italic: true })).fontStyle, 'italic');
+  assert.equal(blankAnswerStyle(run(0, 5, { blank: 'b', color: '#ff0000' })).color, '#ff0000');
+});

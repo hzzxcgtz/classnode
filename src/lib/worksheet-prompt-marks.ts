@@ -569,6 +569,20 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
  * **实际渲染的都是 400**（编辑页那个 600 一直被这里的内联样式盖着）。
  * 省略它会把这个死值放出来 ⇒ 编辑页的观感变了。要改成 600 是**另一个**外观决定。
  */
+/**
+ * **空里那份答案**的文字样式（★ 2026-09-27）。
+ *
+ * 🔴 存在的唯一理由：这件事**只能有一条规则**。此前两条渲染路各写一套 ——
+ * drop（内联候选 / 待选区）写死 `fontWeight: 600`，input（打字）走 `promptRunStyle` 的 400
+ * ⇒ 同一个学习单里，换一种填空模式，答案的粗细就变了一档。教师报的原话：
+ * 「这个也加粗，跟上面空里的格式一样」。
+ *
+ * 规则：**比正文重一档**（正文 400 ⇒ 答案 600），教师把空本身加粗了就再重一档（700）。
+ */
+export function blankAnswerStyle(run: PromptTextStyle): Record<string, string | number> {
+  return { ...promptRunStyle(run), fontWeight: run.bold ? 700 : 600 };
+}
+
 export function promptRunStyle(run: PromptTextStyle): Record<string, string | number> {
   const style: Record<string, string | number> = {
     color: run.color,

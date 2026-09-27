@@ -6,10 +6,12 @@ import {
   MAX_TABLE_BLANKS,
   MAX_TABLE_COLS,
   MAX_TABLE_ROWS,
+  blankLabelAt,
   blankLayout,
   blankSlotIndex,
   canAddTableColumn,
   canAddTableRow,
+  cellAtSlot,
   cellLabel,
   createTable,
   insertTableColumn,
@@ -38,6 +40,21 @@ function sampleTable(): WorksheetTable {
       [cell('张三'), cell('', 'b1'), cell('北京')],
       [cell('李四'), cell('25'), cell('', 'b2')],
     ],
+  };
+}
+
+/**
+ * `rowCount × colCount` 的表，`blanks` 里那几格（按 **0 起的 `[行, 列]`**）是空。
+ * ⚠️ 它存在的理由是**造不在对角线上的空** —— `sampleTable` 那两个空都在对角线上，
+ * 行列写反在它身上看不出来（变异检验抓过这个洞）。
+ */
+function tableOf(rowCount: number, colCount: number, blanks: Array<[number, number]> = []): WorksheetTable {
+  return {
+    headerRow: true,
+    rows: Array.from({ length: rowCount }, (_, row) => Array.from({ length: colCount }, (_, col) => ({
+      text: `r${row}c${col}`,
+      blank: blanks.some(([r, c]) => r === row && c === col) ? `tb_${row}_${col}` : '',
+    }))),
   };
 }
 
@@ -371,6 +388,50 @@ test('parseTablePaste：没有超出上限时 dropped 都是 0', () => {
   assert.equal(parsed?.droppedRows, 0);
   assert.equal(parsed?.droppedCols, 0);
 });
+
+// ── 反向映射：第几个空 → 哪一格（「正确答案」那句话要用它）──────────────
+
+test('🔴 cellAtSlot：第 k 个空在哪一格（行优先）', () => {
+  const table = sampleTable();
+  assert.deepEqual(cellAtSlot(table, 0), { row: 1, col: 1 });
+  assert.deepEqual(cellAtSlot(table, 1), { row: 2, col: 2 });
+  assert.equal(cellAtSlot(table, 2), null);
+  assert.equal(cellAtSlot(table, -1), null);
+  assert.equal(cellAtSlot(undefined, 0), null);
+});
+
+test('🔴 cellAtSlot：**行列不能互换**（用不在对角线上的空钉住）', () => {
+  // ⚠️ 这条是补的：`sampleTable` 那两个空都在对角线上（row === col），
+  //    所以「行列写反」在那些断言下**看不出来** —— 变异检验抓到了这个洞。
+  const table = tableOf(2, 3, [[0, 2], [1, 0]]);
+  assert.deepEqual(cellAtSlot(table, 0), { row: 0, col: 2 });
+  assert.deepEqual(cellAtSlot(table, 1), { row: 1, col: 0 });
+});
+
+test('🔴 blankLabelAt：**行列不能互换**（同一条洞的另一半）', () => {
+  const table = tableOf(2, 3, [[0, 2], [1, 0]]);
+  assert.equal(blankLabelAt(nodeOf(0, table), 0), '第 1 行第 3 格');
+  assert.equal(blankLabelAt(nodeOf(0, table), 1), '第 2 行第 1 格');
+});
+
+test('🔴 blankLabelAt：题干里的空说「第 N 空」，表格里的空说「第 R 行第 C 格」', () => {
+  // 只有题干空
+  assert.equal(blankLabelAt(nodeOf(2), 0), '第 1 空');
+  assert.equal(blankLabelAt(nodeOf(2), 1), '第 2 空');
+  assert.equal(blankLabelAt(nodeOf(2), 2), null);
+  // 只有表格空。⚠️ sampleTable 的两个空在 0 起的 (1,1) 与 (2,2) ⇒ 标签是「第 2 行第 2 格」
+  //    与「第 3 行第 3 格」（1 起）。**别把 0 起的列号当成标签**。
+  assert.equal(blankLabelAt(nodeOf(0, sampleTable()), 0), '第 2 行第 2 格');
+  assert.equal(blankLabelAt(nodeOf(0, sampleTable()), 1), '第 3 行第 3 格');
+  // 两种并存：题干那两个是「第 1/2 空」，表格那两个接着排
+  const both = nodeOf(2, sampleTable());
+  assert.equal(blankLabelAt(both, 0), '第 1 空');
+  assert.equal(blankLabelAt(both, 1), '第 2 空');
+  assert.equal(blankLabelAt(both, 2), '第 2 行第 2 格');
+  assert.equal(blankLabelAt(both, 3), '第 3 行第 3 格');
+  assert.equal(blankLabelAt(both, 4), null, '越界 ⇒ null（调用方跳过它，不写出半句话）');
+});
+
 
 test('🔴 parseTablePaste：行长短不一 ⇒ 补齐成方正网格（表格的 v1 不变式）', () => {
   const parsed = parseTablePaste('甲\t乙\t丙\n丁');

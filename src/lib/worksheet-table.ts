@@ -151,6 +151,44 @@ export function cellLabel(row: number, col: number): string {
   return `第 ${row + 1} 行第 ${col + 1} 格`;
 }
 
+/** 表格里的第 `slot` 个空在哪一格（行优先）。越界 / 没有那一个 ⇒ `null`。 */
+export function cellAtSlot(table: unknown, slot: number): { row: number; col: number } | null {
+  if (!Number.isInteger(slot) || slot < 0) return null;
+  const rows = readTable(table).rows;
+  let seen = 0;
+  for (let row = 0; row < rows.length; row += 1) {
+    const cells = rows[row];
+    for (let col = 0; col < cells.length; col += 1) {
+      if (cells[col].blank === '') continue;
+      if (seen === slot) return { row, col };
+      seen += 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * 第 `index` 个空**叫什么** —— 「正确答案」那块提示要用它（`specs/2026-09-28-表格填空.md`）。
+ *
+ * 🔴 两句话**必须不一样**：题干里的空说「第 N 空」；表格里的空说「第 2 行第 1 格」。
+ * 表格里的空要是也说「第 N 空」，学生拿到答案也**找不到那一格在哪** ——
+ * 而这块提示的全部用处就是告诉他「去改哪一格」。
+ *
+ * 越界 ⇒ `null`（调用方跳过它）：**不写半句话**（服务端对「没设答案键的空」不发答案，
+ * 同一条窄口）。
+ */
+export function blankLabelAt(
+  node: { prompt: string; data: Record<string, unknown> },
+  index: number,
+): string | null {
+  if (!Number.isInteger(index) || index < 0) return null;
+  const { textCount } = blankLayout(node);
+  if (index < textCount) return `第 ${index + 1} 空`;
+  const data = node.data && typeof node.data === 'object' ? node.data : {};
+  const inside = cellAtSlot(data.table, index - textCount);
+  return inside ? cellLabel(inside.row, inside.col) : null;
+}
+
 /**
  * 这道题的空一共几个、各从几号开始 —— 客户端数空的**唯一真源**。
  *

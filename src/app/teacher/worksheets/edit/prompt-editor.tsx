@@ -8,6 +8,7 @@ import {
   DEFAULT_PROMPT_STYLE,
   blankRuns,
   insertBlank,
+  insertPromptText,
   isPlainRuns,
   rangeColor,
   rangeHasKey,
@@ -24,6 +25,7 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
+import { TABLE_MARK_TEXT, tableMarkIndex } from '@/lib/worksheet-table';
 import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
@@ -83,6 +85,11 @@ export interface PromptEditorProps {
    * —— 一次粘贴可能同时改题干与选项，而选项不在这个组件的职责里。
    */
   onRequestPaste: () => void;
+  /**
+   * ★ 2026-09-28（教师）：题干里那块**表格域 chip** 被点了 / 刚插进一个表格域。
+   * 题目卡据此展开下面那块默认收起的「填空的位置（表格）」。
+   */
+  onTableMarkClick?: () => void;
 }
 
 /** 工具栏的亮灯状态 —— 由**当前选区**决定，所以必须是 state（选区变了要重画按钮）。 */
@@ -164,7 +171,7 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
 ];
 
-export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste }: PromptEditorProps) {
+export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
   /**
    * ★ 2026-09-27（教师）：「"粘贴题目"只在选择题中需要。」—— 判断题的选项固定是对/错、
@@ -467,6 +474,45 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
    * 全删了，理由逐字记在 `prompt-rich-text.ts:44-51`（那是本模块**唯一**本机跑不到的部分）。
    * ⇒ 今天光标能停在空里面，退格能删掉一个字符，**删坏了它就不再是空**（规则②）。
    */
+  /**
+   * ★ 2026-09-28（教师）：「跟填空域一样增加一个表格域，点击以后插入，然后可以显示
+   * 被隐藏的表格设置区域。」
+   *
+   * 🔴 与 `insertBlankAtCaret` 的**两处不同**，都是刻意的：
+   *   ① 标记**没有身份**（表格本体住在 `data.table`，标记只是位置的引用）⇒ 不写
+   *      `promptRuns` 的 blank、也**不动 `answers`**（原来插空要 splice 答案）；
+   *   ② 它同时**打开**下面那块设置面板（教师那句话的后半句）。
+   * ⚠️ 一份题干只允许一处标记 ⇒ 已经有标记时这个按钮是禁用的（见工具栏那一段）。
+   */
+  /**
+   * 点题干里的**表格域 chip** ⇒ 展开下面那块设置面板（★ 2026-09-28，教师）。
+   * ⚠️ 用 `closest('[data-table-mark]')` 而不是给 chip 挂 onClick：那段 DOM 是
+   * `renderRunsInto` 用 JS 写的、React 不管它（约束 1：React 一旦按 state 重画它，
+   * 输入法拼字就被打断）。
+   */
+  const handleEditableClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('[data-table-mark]')) onTableMarkClick?.();
+  };
+
+  const insertTableMarkAtCaret = () => {
+    const el = editableRef.current;
+    if (!el) return;
+    const text = node.prompt;
+    const range = selectedRange(el) || pendingRangeRef.current;
+    const from = range ? range.from : (caretOffset(el) ?? text.length);
+    const to = range ? range.to : from;
+    const inserted = insertPromptText(runsRef.current, text, from, to, TABLE_MARK_TEXT);
+    if (inserted.text === text) return;
+    onPromptChange(inserted.text, { promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs });
+    renderRunsInto(el, inserted.text, inserted.runs);
+    const after = from + TABLE_MARK_TEXT.length;
+    el.focus();
+    placeSelection(el, after, after);
+    refreshToolbar();
+    onTableMarkClick?.();
+  };
+
   const insertBlankAtCaret = () => {
     const el = editableRef.current;
     if (!el) return;
@@ -616,6 +662,25 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
             粘贴题目
           </button>
           )}
+          {/* ★ 2026-09-28（教师）：「跟填空域一样增加一个表格域，点击以后插入」。
+              ⚠️ 一份题干只允许一处标记 ⇒ 已经有标记时**禁用**（title 告诉教师去哪儿找）
+                 —— 两个标记是坏数据，服务端也会拒。 */}
+          {node.type === 'fill-blank' && (
+            <button
+              type="button"
+              disabled={tableMarkIndex(node.prompt) >= 0}
+              title={tableMarkIndex(node.prompt) >= 0
+                ? '这道题已经有表格了（点题干里的 {表格域} 展开设置）'
+                : '在光标处插入一个表格域'}
+              aria-label="插入表格域"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                insertTableMarkAtCaret();
+              }}
+            >
+              表格域
+            </button>
+          )}
           {supportsBlankSlots && (
             <button
               type="button"
@@ -656,6 +721,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           data-empty={node.prompt.trim() ? undefined : '1'}
           data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
           onKeyDown={handlePromptKeyDown}
+          onClick={handleEditableClick}
           onInput={handleInput}
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={(event) => {

@@ -25,9 +25,9 @@ import {
   blankAnswerStyle,
   blankCount,
   blankRuns,
-  insertBlank,
-  removePromptRange,
   inputWidthCh,
+  insertBlank,
+  insertPromptText,
   isPlainRuns,
   promptRunStyle,
   rangeColor,
@@ -35,6 +35,7 @@ import {
   readPromptRuns,
   recognizeBlanks,
   remapRuns,
+  removePromptRange,
   setStyleOnRange,
   styleAt,
   type PromptRun,
@@ -621,4 +622,25 @@ test('🔴 空里那份答案的字重：**两种填空模式必须同一条规�
   // 其余格式照搬那个空 —— 这一条防的是「顺手把别的样式也写死」
   assert.equal(blankAnswerStyle(run(0, 5, { blank: 'b', italic: true })).fontStyle, 'italic');
   assert.equal(blankAnswerStyle(run(0, 5, { blank: 'b', color: '#ff0000' })).color, '#ff0000');
+});
+
+// ── 插一段普通文字（★ 2026-09-28：表格域标记走的唯一一条路）──────────────
+
+test('🔴 insertPromptText：在光标处插一段普通文字，分段跟着挪', () => {
+  const runs: PromptRun[] = [
+    { start: 0, end: 2, ...DEFAULT_PROMPT_STYLE, blank: '' },
+    { start: 2, end: 4, ...DEFAULT_PROMPT_STYLE, blank: 'b1' },
+  ];
+  const out = insertPromptText(runs, '甲乙丙丁', 2, 2, '{表格域}');
+  assert.equal(out.text, '甲乙{表格域}丙丁');
+  // ⚠️ **它不造空**：插进去的那一段 `blank` 是空的（表格域没有身份，表格本体在 data.table）
+  assert.equal(blankCount(out.runs), 1, '空还是原来那一个');
+  assert.equal(blankRuns(out.runs)[0].blank, 'b1', '身份没变、只是挪了位');
+});
+
+test('🔴 insertPromptText：替换选区（与 insertBlank 同一条路）', () => {
+  const runs: PromptRun[] = [{ start: 0, end: 4, ...DEFAULT_PROMPT_STYLE, blank: '' }];
+  const out = insertPromptText(runs, '甲乙丙丁', 1, 3, 'X');
+  assert.equal(out.text, '甲X丁');
+  assert.equal(blankCount(out.runs), 0);
 });

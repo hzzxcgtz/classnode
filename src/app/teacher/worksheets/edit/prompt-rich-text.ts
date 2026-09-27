@@ -1,4 +1,5 @@
 import { locateInLengths } from '@/lib/text-offsets';
+import { TABLE_MARK_TEXT } from '@/lib/worksheet-table';
 import { isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
 
 /**
@@ -32,24 +33,63 @@ function cssPropertyName(key: string): string {
  * ⚠️ 空题干时也要留一个空文本节点：Safari 里一个**完全没有子节点**的 contenteditable
  * 会塌成零高度、点不进去，而教师看到的是「这个框没了」。
  */
+/** 给一个 span 上「这一段该长什么样」的样式与文字（★ 2026-09-28：标记那三处也要用）。 */
+function applyRunStyle(span: HTMLSpanElement, style: Record<string, unknown>, content: string): void {
+  Object.keys(style).forEach((key) => {
+    span.style.setProperty(cssPropertyName(key), String(style[key]));
+  });
+  span.textContent = content;
+}
+
 export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[]): void {
   el.replaceChildren();
   runs.forEach((run) => {
-    const span = document.createElement('span');
     const style = promptRunStyle(run);
-    Object.keys(style).forEach((key) => {
-      span.style.setProperty(cssPropertyName(key), String(style[key]));
-    });
-    span.textContent = text.slice(run.start, run.end);
     if (isBlankRun(run)) {
       // ★ 2026-09-27 教师裁定：**`{填空域}` 就是 5 个普通字符**。
       // 这里只负责「画成灰底」，**不再** `contenteditable=false`、不再接管光标与删除键：
       // 光标能像普通文字一样停在里面、退格能删掉一个字符（那正是规则②：删坏了就不算空了）。
       // ⇒ 原子化那一整套（光标锚点 / `placeCaretBesideNode` / 方向键与退格接管 / 点选接管）
       //   全部删掉 —— 它们曾经是本模块**唯一**无法在本机验证的部分。
+      const span = document.createElement('span');
+      applyRunStyle(span, style, text.slice(run.start, run.end));
       span.className = 'worksheet-editor-inline-blank';
+      el.appendChild(span);
+      return;
     }
-    el.appendChild(span);
+    const whole = text.slice(run.start, run.end);
+    const markAt = whole.indexOf(TABLE_MARK_TEXT);
+    if (markAt < 0) {
+      const span = document.createElement('span');
+      applyRunStyle(span, style, whole);
+      el.appendChild(span);
+      return;
+    }
+    // ★ 2026-09-28（教师）：**表格域标记**画成一块灰底 chip（与 `{填空域}` 同一种观感）。
+    // 🔴 它与空**不同的地方**：空有身份（`blank` 那一段进 `promptRuns`），标记没有 ——
+    //    它是纯文本，「有没有表」完全由这段文字决定（`tableMarkIndex`）。
+    // ⚠️ `textContent` 必须**逐字**等于标记串：编辑器靠 `el.textContent === node.prompt`
+    //    判断 DOM 是不是过期（见 `prompt-editor.tsx`）—— 这里多一个字符都会让它每帧重建 DOM。
+    // ⚠️ **不设 `contenteditable=false`**：原子化那一整套 2026-09-27 已经删掉了
+    //    （理由逐字在上面那一节）。光标能进去、退格能删掉一个字符 —— 删坏了就不再有表，
+    //    而 `TableBody` 会**如实报出来**（「题干里没有表格域标记」），不是静默消失。
+    const head = whole.slice(0, markAt);
+    const tail = whole.slice(markAt + TABLE_MARK_TEXT.length);
+    if (head) {
+      const headSpan = document.createElement('span');
+      applyRunStyle(headSpan, style, head);
+      el.appendChild(headSpan);
+    }
+    const chip = document.createElement('span');
+    applyRunStyle(chip, style, TABLE_MARK_TEXT);
+    chip.className = 'worksheet-editor-table-mark';
+    chip.setAttribute('data-table-mark', '1');
+    el.appendChild(chip);
+    if (tail) {
+      const tailSpan = document.createElement('span');
+      applyRunStyle(tailSpan, style, tail);
+      el.appendChild(tailSpan);
+    }
   });
 }
 

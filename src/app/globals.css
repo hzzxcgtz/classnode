@@ -6094,3 +6094,31 @@ tr:hover td {
   font-size: 0.72rem;
   line-height: 1.6;
 }
+
+/* ── 题干里的「表格域」标记（★ 2026-09-28，教师）──────────────────────────
+   与 `.worksheet-editor-inline-blank`（填空域那段灰底）**刻意长得像**：两者都是
+   「题干里的一块特殊内容」，教师该一眼看出它们是一类东西。
+   ⚠️ 颜色取同一档（`#eef4ff` / 边框 `#c7d6ee`）—— 不一样的话教师会以为其中一个是坏掉的。 */
+.worksheet-editor-table-mark {
+  background: #eef4ff;
+  border: 1px solid #c7d6ee;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 表格设置那一块的展开开关（标题本身就是按钮） */
+.worksheet-editor-table-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1e293b;
+  font-size: 0.813rem;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.worksheet-editor-table-toggle:hover { color: #1d4ed8; }

@@ -371,6 +371,29 @@ export function blankCount(runs: PromptRun[]): number {
  * ⚠️ 占位的文字由调用方给（今天是 `prompt-editor.tsx` 里那个常量）：它的**长度**就是
  * 这个空在题干里有多宽，而那是**外观**，不该焊死在这一层。
  */
+/**
+ * 在 `[from, to)` 处插入一段**普通文字**（★ 2026-09-28，表格域标记走的唯一一条路）。
+ *
+ * ⚠️ 与 `insertBlank` 只差最后那一步：那个函数插完还要把这一段**标成空**
+ *（「造空只有这一条路」）；本函数插的就是普通文字 —— 表格域的**身份不在题干文本里**
+ *（标记只是一个位置的引用，表格本体住在 `data.table`），所以它不需要 run、不需要身份。
+ * ⚠️ 两件事共用同一条「先按打字挪区间、再插文字」的路（`remapRuns`）——
+ * 各写一份就是第二处会算错区间的地方。
+ */
+export function insertPromptText(
+  runs: PromptRun[],
+  text: string,
+  from: number,
+  to: number,
+  insertText: string,
+): { text: string; runs: PromptRun[] } {
+  const length = typeof text === 'string' ? text.length : 0;
+  const start = clampIndex(from, length);
+  const end = Math.max(start, clampIndex(to, length));
+  const nextText = text.slice(0, start) + insertText + text.slice(end);
+  return { text: nextText, runs: remapRuns(runs, text, nextText) };
+}
+
 export function insertBlank(
   runs: PromptRun[],
   text: string,

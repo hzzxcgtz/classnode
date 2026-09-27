@@ -5,7 +5,6 @@ import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PromptText } from '@/lib/worksheet-prompt-text';
-import { WorksheetTableView } from '@/lib/worksheet-table-view';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
@@ -50,6 +49,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
 import { TableBody } from './bodies/table-body';
+import { readTableFor, tableBlankCount, tableMarkIndex } from '@/lib/worksheet-table';
 import { OrderAnswerBody, OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
@@ -314,6 +314,14 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * 与填空题的「标准答案」并排，所以它的容器 A 只有题干。
    */
   const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
+  /**
+   * ★ 2026-09-28（教师）：表格设置那块**默认收起**（「显示被隐藏的表格设置区域」）。
+   * ⚠️ 它是个**局部 UI 状态**，不进 `data` —— 收着还是开着跟这道题的内容无关。
+   */
+  const [tableOpen, setTableOpen] = useState(false);
+  const hasTableMark = tableMarkIndex(node.prompt) >= 0;
+  // ⚠️ 判据用 `readTableFor`（有键但没有行**不算**有表 —— 与它的注释同一条）
+  const hasTable = readTableFor(node) !== null;
   const answerBlock: { title: string; hint: string } | null =
     node.type === 'true-false'
       ? null
@@ -501,6 +509,8 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             onPromptChange={onPromptChange}
             onDataChange={onDataChange}
             onRequestPaste={requestPaste}
+            // ★ 2026-09-28：点题干里的 {表格域} chip（或刚插入一个）⇒ 展开设置面板
+            onTableMarkClick={() => setTableOpen(true)}
           />
         </div>
 
@@ -547,15 +557,33 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                    教师读到的第一句就是假的（原话：「一头雾水，东跳跳西跳跳」）。
                 ⚠️ 它只服务 `fill-blank`：表格里的空 v1 只有「手工填写」一档，
                    选择填空那套待选词不跟表格组合（组合爆炸，等真有人要再说）。 */}
-            {node.type === 'fill-blank' && (
+            {node.type === 'fill-blank' && (hasTableMark || hasTable) && (
               <div className="worksheet-editor-block">
+                {/* ★ 2026-09-28（教师）：「点击以后…显示被隐藏的表格设置区域」——
+                    这块**默认收起**，点题干里那个 `{表格域}` chip（或点这一行）展开。
+                    ⚠️ 收起时也要说得出「现在什么样」：有表就报几个空、没标记就报「学生看不到它」。 */}
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4>填空的位置（表格）</h4>
-                    <p>学生看到的就是这张表。点某几格的「填空」把那一格变成作答位置 —— 表格里的空与题干里的空是<strong>同一批</strong>，都会出现在下面的「每个空的作答方式」与「自动评分 → 标准答案」里。</p>
+                    <button
+                      type="button"
+                      className="worksheet-editor-table-toggle"
+                      aria-expanded={tableOpen}
+                      onClick={() => setTableOpen((open) => !open)}
+                    >
+                      <span aria-hidden="true">{tableOpen ? '▾' : '▸'}</span>
+                      {' '}填空的位置（表格）
+                    </button>
+                    <p>
+                      {hasTable
+                        ? `学生看到的就是这张表（已标 ${tableBlankCount(node.data.table)} 个空）—— 表格里的空与题干里的空是同一批，都会出现在下面的「每个空的作答方式」与「自动评分 → 标准答案」里。`
+                        : '学生看到的就是这张表 —— 表格里的空与题干里的空是同一批。'}
+                      {hasTable && !hasTableMark
+                        ? ' ⚠️ 题干里没有 {表格域} 标记，学生看不到这张表（点工具栏的「表格域」把它放回题干）。'
+                        : ''}
+                    </p>
                   </div>
                 </div>
-                <TableBody node={node} onDataChange={onDataChange} />
+                {tableOpen && <TableBody node={node} onDataChange={onDataChange} />}
               </div>
             )}
             {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
@@ -732,32 +760,6 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
         ✅ `disabled` 同时解决了键盘导航：原生 `disabled` 的控件**不在 Tab 序里**。
         ⚠️ 展开时这里**不渲染**（那时下面渲染的是可编辑的编辑体）—— 否则题面会画两遍。
       */}
-      {/* ★ 2026-09-28（表格填空，裁定③）：**编辑时也常显**一份只读的「卷子样子」。
-          🔴 为什么不是所有题型：那份折叠预览复用 `QuestionInput disabled`，而**选择题的
-             radio 用 `name={worksheet-choice-${node.id}}`** ⇒ 同一道题画两遍就是两份同名
-             radio 在同一个文档里。填空题没有 name 冲突，所以只给它开（见下面 `!expanded` 那一支）。
-          ⚠️ 它**不绑草稿**（内部没有输入框），所以与 `question-card.tsx` 那句
-             「展开时这里不渲染，否则题面会画两遍」担心的不是同一件事 —— 那句防的是
-             「同一个 draft 绑在两处」。 */}
-      {expanded && node.type === 'fill-blank' && node.data.table ? (
-        <section className="worksheet-editor-question-section">
-          <div className="worksheet-editor-section-head">
-            <div>
-              <h3>学生看到的样子</h3>
-              <p>题干与表格按这个顺序显示；标成填空的格子就是学生要填的位置。</p>
-            </div>
-          </div>
-          <div className="worksheet-editor-question-preview">
-            <p className="worksheet-editor-question-preview-prompt">
-              <PromptText text={node.prompt} runs={promptRuns} placeholder="（题干还没写）" />
-            </p>
-            {/* ⚠️ 表格是那个 `<p>` 的**兄弟**、不是子节点：`<p>` 装不下 `<table>`，
-                浏览器会在表格前把段落闭掉（DOM 与 JSX 对不上）。 */}
-            <WorksheetTableView table={node.data.table} />
-          </div>
-        </section>
-      ) : null}
-
       {!expanded && (
         <div className="worksheet-editor-question-preview">
           {/* ★ 2026-09-26：这一处原来**另写了一份**题干渲染（读同一份 `promptStyle`，
@@ -766,12 +768,18 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
               ⚠️ 那个 `<p>` 的类里还留着 `font-weight: 600` 与 `color: #0f172a`：
               它们以前被这里的行内样式盖住（**一直没生效**），现在只作用于
               「（题干还没写）」那句占位文字。要不要让题干也用它，是一个独立的外观决定。 */}
-          <p className="worksheet-editor-question-preview-prompt">
-            <PromptText text={node.prompt} runs={promptRuns} placeholder="（题干还没写）" />
-          </p>
-          {/* ★ 2026-09-28：折叠预览里也要画表格 —— 少了它，折起来一看
-              一道表格题**像一道空题**（题干只有一句「请根据下表填写」） */}
-          {node.data.table ? <WorksheetTableView table={node.data.table} /> : null}
+          {/* ⚠️ 这里是 `<div>` 而不是 `<p>`（★ 2026-09-28）：题干里可能有一个
+              **块级**的表格域，而 `<p>` 装不下 `<table>` —— 浏览器会在表格前把段落
+              闭掉，DOM 与 JSX 就对不上（版面看上去只是「表格跳到段落外面了」）。
+              那个类名里留下的 `font-weight` / `color` 仍然生效，一个字没少。 */}
+          <div className="worksheet-editor-question-preview-prompt">
+            <PromptText
+              text={node.prompt}
+              runs={promptRuns}
+              placeholder="（题干还没写）"
+              table={node.data.table}
+            />
+          </div>
           {promptImage && (
             <img
               className="worksheet-editor-question-preview-image"

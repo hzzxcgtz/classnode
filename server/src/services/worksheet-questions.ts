@@ -1194,6 +1194,30 @@ const MAX_TABLE_ROWS = 10;
 const MAX_TABLE_COLS = 10;
 const MAX_TABLE_BLANKS = 30;
 
+/**
+ * 题干里那两个标记串的**服务端副本**（★ 2026-09-28）。
+ *
+ * ⚠️ 它是**刻意的双胞胎**：真源在客户端 `src/lib/worksheet-table.ts`（`TABLE_MARK_TEXT`）
+ * 与 `prompt-editor.tsx`（`FILL_BLANK_TEXT`），而服务端是另一个包、import 不过来。
+ * 两边靠用例对齐（先例：`hasNestedAnswers` / `fillShape`）。
+ */
+const TABLE_MARK_TEXT = '{表格域}';
+const FILL_BLANK_TEXT = '{填空域}';
+
+/** 题干里有几处表格域标记（>1 是坏数据：标记不带 id，说不清哪一处是哪张表）。 */
+function tableMarkCount(text: unknown): number {
+  if (typeof text !== 'string' || text === '') return 0;
+  let total = 0;
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(TABLE_MARK_TEXT, from);
+    if (at < 0) break;
+    total += 1;
+    from = at + TABLE_MARK_TEXT.length;
+  }
+  return total;
+}
+
 /** 表格的行列表（坏行 → 空行；**不丢行**，因为行的下标就是「第几行」）。 */
 function tableRowList(raw: unknown): unknown[][] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
@@ -1254,8 +1278,17 @@ export function questionTextFor(node: { prompt: string; data: Record<string, unk
   const prompt = typeof node.prompt === 'string' ? node.prompt : '';
   const data = node.data && typeof node.data === 'object' ? node.data : {};
   const table = tableAsText(data.table);
-  if (!table) return prompt;
-  return prompt ? `${prompt}\n${table}` : table;
+  const at = prompt.indexOf(TABLE_MARK_TEXT);
+  // 🔴 **有标记才投影** —— 与渲染同一条判据（`{填空域}` 那条裁定的先例：由文本决定）。
+  //    ⚠️ 这里有意的行为变更（2026-09-28）：表格域之前是**追加在题干末尾**的，
+  //    现在按标记的位置**就地**替换 —— 与学生在屏幕上看到的顺序一致。
+  const withTable = at < 0
+    ? prompt
+    : `${prompt.slice(0, at)}${table || TABLE_MARK_TEXT}${prompt.slice(at + TABLE_MARK_TEXT.length)}`;
+  // ★ 2026-09-28：`{填空域}` 那五个字**原来会原样进 Word 导出与 AI 载荷**（服务端
+  //   没有任何地方替换它）—— 教师导出的 Word 里写着「植物需要{填空域}才能生长」。
+  //   换成一条下划线：读得通，而且它是「这里该学生填」的通行写法。
+  return withTable.split(FILL_BLANK_TEXT).join('＿＿＿＿');
 }
 
 /**
@@ -1267,9 +1300,15 @@ export function questionTextFor(node: { prompt: string; data: Record<string, unk
  * 查它会把合法的「题干空 + 表格空」混合题一律拒掉。
  * 而「表格的空比答案槽还多」无论题干里有没有空都一定是坏的。
  */
-function findTableError(data: Record<string, unknown>): string | null {
+function findTableError(data: Record<string, unknown>, prompt: string): string | null {
+  const marks = tableMarkCount(prompt);
+  if (marks > 1) return `题干里有 ${marks} 处「${TABLE_MARK_TEXT}」—— 一道题只能放一张表格`;
   const raw = data.table;
   if (raw === undefined || raw === null) return null;
+  // 🔴 有表但没有标记 ⇒ **学生看不到这张表**（渲染与投影都由标记决定）。
+  //    这是「看不见的内容」，必须响亮地拒 —— 而不是让它静静地躺在库里。
+  if (marks === 0) return `题干里没有「${TABLE_MARK_TEXT}」标记，学生看不到这道题的表格 —— 请用工具栏的「表格域」把它插进题干`;
+  if (tableBlankCount(raw) === 0 && tableRowList(raw).length === 0) return null;
   if (typeof raw !== 'object' || Array.isArray(raw)) return '这道题的表格结构读不出来';
   const rows = tableRowList(raw);
   // ⚠️ 「有键但没有行」当成没有表 —— 与客户端 `readTableFor` 同一条判据
@@ -1289,7 +1328,7 @@ function findTableError(data: Record<string, unknown>): string | null {
 function validateFillBlank(node: QuestionNode, errors: string[]): void {
     // ★ 2026-09-28（表格填空）：表格先查，**查出问题就不再往下查** —— 后面那些判据
     // 在「空数与答案对不上」的题上会给出更绕的错，教师看不出该改哪儿。
-    const tableError = findTableError(node.data);
+    const tableError = findTableError(node.data, node.prompt);
     if (tableError) { errors.push(tableError); return; }
     // ★ 2026-09-26：**与判分读同一份答案**（`answerSlotCount` / `acceptableAnswersFor`）。
     //

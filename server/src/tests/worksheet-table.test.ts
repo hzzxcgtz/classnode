@@ -39,8 +39,9 @@ function tableOf(rowCount: number, colCount: number, blanks: Array<[number, numb
   };
 }
 
-function nodeOf(data: Record<string, unknown>): QuestionNode {
-  return { id: 'q_t', type: 'fill-blank', prompt: '看表填空', inputMode: 'keyboard', data, children: [] };
+/** ⚠️ 题干里**必须带标记**：有表没标记是「学生看不到的内容」，服务端会响亮地拒。 */
+function nodeOf(data: Record<string, unknown>, prompt = '看表{表格域}填空'): QuestionNode {
+  return { id: 'q_t', type: 'fill-blank', prompt, inputMode: 'keyboard', data, children: [] };
 }
 
 // ── ① 数空 ────────────────────────────────────────────────────────────
@@ -141,12 +142,42 @@ test('🔴 tableAsText：没有表格 / 坏形状 ⇒ 空串（调用方据此�
   assert.equal(tableAsText({ rows: [[cell('  '), cell('')]] }), '', '全是空白 ⇒ 空串');
 });
 
-test('🔴 questionTextFor：题干后面接上表格；没有表格时**逐字**就是题干', () => {
-  const node = { prompt: '请根据下表填写：', data: { table: tableOf(2, 2, []) } };
-  assert.equal(questionTextFor(node), '请根据下表填写：\nr0c0 | r0c1\nr1c0 | r1c1');
-  // 没有表格 ⇒ 一个字都不加（老题那两条路逐字不变）
+test('🔴 questionTextFor：表格在**标记的位置**就地展开（不再是追加在末尾）', () => {
+  assert.equal(
+    questionTextFor({ prompt: '请根据下表填写：{表格域}', data: { table: tableOf(2, 2) } }),
+    '请根据下表填写：r0c0 | r0c1\nr1c0 | r1c1',
+  );
+  // 标记夹在中间 ⇒ 表格就插在中间，与学生在屏幕上看到的顺序一致
+  assert.equal(
+    questionTextFor({ prompt: '前{表格域}后', data: { table: tableOf(1, 1) } }),
+    '前r0c0后',
+  );
+});
+
+test('🔴 questionTextFor：**没有标记就不投影**（与渲染同一条判据：由文本决定）', () => {
   assert.equal(questionTextFor({ prompt: '一道老题', data: {} }), '一道老题');
-  assert.equal(questionTextFor({ prompt: '', data: {} }), '');
-  // 题干是空的、但有表 ⇒ 就是那张表（不写一个空行开头）
-  assert.equal(questionTextFor({ prompt: '', data: { table: tableOf(1, 1) } }), 'r0c0');
+  // 有表但没标记 ⇒ 学生看不到它，投影也不该凭空冒出来（校验会另外拒这道题）
+  assert.equal(questionTextFor({ prompt: '没有标记', data: { table: tableOf(1, 1) } }), '没有标记');
+});
+
+test('🔴 questionTextFor：`{填空域}` 换成一条下划线（原来会原样进 Word 与 AI 载荷）', () => {
+  // 🔴 这一条是**既有的**毛病，2026-09-28 一并修：`node.prompt` 里存的就是那五个字，
+  //    而服务端没有任何地方替换它 ⇒ 教师导出的 Word 里写着「植物需要{填空域}才能生长」。
+  assert.equal(questionTextFor({ prompt: '植物需要{填空域}才能生长', data: {} }), '植物需要＿＿＿＿才能生长');
+  assert.equal(
+    questionTextFor({ prompt: '看{填空域}和{表格域}', data: { table: tableOf(1, 1) } }),
+    '看＿＿＿＿和r0c0',
+  );
+});
+
+test('🔴 校验：题干里有**两处**标记 ⇒ 响亮地拒（一份题干只允许一张表）', () => {
+  const errors = validateQuestion(nodeOf({ table: tableOf(2, 2, [[1, 1]]), answers: [['甲']] }, '{表格域}和{表格域}'));
+  assert.equal(errors.length, 1, JSON.stringify(errors));
+  assert.match(errors[0], /只能放一张/);
+});
+
+test('🔴 校验：**有表却没有标记** ⇒ 响亮地拒（学生看不到那张表）', () => {
+  const errors = validateQuestion(nodeOf({ table: tableOf(2, 2, [[1, 1]]), answers: [['甲']] }, '没有标记的题干'));
+  assert.equal(errors.length, 1, JSON.stringify(errors));
+  assert.match(errors[0], /没有「\{表格域\}」标记/);
 });

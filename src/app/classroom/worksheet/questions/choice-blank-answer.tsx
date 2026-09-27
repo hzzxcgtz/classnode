@@ -4,7 +4,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
-import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -68,6 +67,8 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
   const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
   const poolChoices = useMemo(() => sharedPoolChoices(node), [node]);
   const promptImage = readPromptImage(node);
+  // ★ 2026-09-28：空的布局只算一次（表格空占哪几号、表格从哪一号开始）
+  const layout = blankLayout(node);
   const poolValues = useMemo(() => draft.texts.filter((_, index) => settings[index]?.mode === 'pool'), [draft.texts, settings]);
   const available = useMemo(() => availableChoices(poolChoices, poolValues), [poolChoices, poolValues]);
   const sources = useMemo(() => {
@@ -176,7 +177,14 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           text={node.prompt}
           runs={runs}
           placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
+          // ★ 2026-09-28（教师）：表格域 —— 表在题干里那个 `{表格域}` 标记处画
+          //（不再固定在题干之后）。判据「有没有标记」在 PromptText 里，是纯文本的。
+          table={node.data.table}
           blanks={{
+            // 表格里的空占了 `tableBase .. tableBase+tableCount-1` 这几号，
+            // 标记之后的文本空接着往后数 —— 编号就是 answers 的下标。
+            tableBase: layout.tableBase,
+            tableCount: layout.tableCount,
             values: draft.texts,
             onChange: (index, value) => {
               const texts = Array.from({ length: Math.max(draft.texts.length, settings.length) }, (_, itemIndex) => itemIndex === index ? value : (draft.texts[itemIndex] ?? ''));
@@ -205,32 +213,6 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         />
       </div>
       {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
-      {/* ★ 2026-09-28（表格填空，裁定②）：表格**固定渲染在题干之后**。
-          🔴 判据是 `data.table` 在不在 —— 不看题型，也不看有没有空：一张
-             「加了表但还没标空」的题也要把表画出来（教师正对着屏幕建它）。
-          ⚠️ 只读那一份（教师端）走的是**同一个组件**、只是不给 `blanks`
-             （见 `worksheet-table-view.tsx` 的文件头：两份实现 = 本仓最防的分叉）。
-          ⚠️ 表格里空的下标是 `tableBase + 表内序号` —— 题干里的空排在表格的空**之前**
-             （裁定② 让这个顺序没有第二种可能）。这个偏移只在这一点算一次。 */}
-      {node.data.table ? (
-        <WorksheetTableView
-          table={node.data.table}
-          blanks={{
-            values: draft.texts,
-            base: blankLayout(node).tableBase,
-            onChange: (index, value) => {
-              // 与题干里的空**同一份草稿**（`draft.texts`）—— 只是下标不同。
-              const texts = Array.from(
-                { length: Math.max(draft.texts.length, index + 1) },
-                (_, itemIndex) => (itemIndex === index ? value : (draft.texts[itemIndex] ?? '')),
-              );
-              onChange({ kind: 'fill', texts });
-            },
-            disabled,
-            wrongOf: (index) => (wrongBlankIndexes ?? []).includes(index),
-          }}
-        />
-      ) : null}
       {settings.some(setting => setting.mode === 'pool') ? (
         <div className={styles.choicePoolArea}>
           <p className={styles.choicePoolHint}>

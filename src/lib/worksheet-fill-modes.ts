@@ -1,6 +1,6 @@
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
-import { blankLayout, cellAtSlot, cellLabel, tableBlankIds, tableMarkIndex } from './worksheet-table.ts';
+import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
 

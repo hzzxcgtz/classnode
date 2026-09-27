@@ -3,6 +3,8 @@ import { blankAnswerStyle, inputWidthCh, isBlankRun, promptRunStyle, type Prompt
 // ★ 2026-09-27：答错标记搬去了 `@/components/worksheet-wrong-mark` —— 选择题的选项现在也要
 // 用它，而从「题干渲染器」里导出它读起来是错的层次（那枚标记自己写着完整理由）。
 import { WrongMark } from '@/components/worksheet-wrong-mark';
+import { TABLE_MARK_TEXT } from './worksheet-table.ts';
+import { WorksheetTableView } from './worksheet-table-view.tsx';
 
 /**
  * 题干那一段文字的**唯一一份渲染**（★ 2026-09-26）。
@@ -40,6 +42,16 @@ export interface PromptTextProps {
    * ⚠️ `values` 按**从左到右**（`blankRuns` 的顺序），与 `data.answers` 同一个口径。
    */
   blanks?: PromptBlankBinding;
+  /**
+   * ★ 2026-09-28（教师）：**表格域** —— 题干里那个 `{表格域}` 标记处画的那张表。
+   *
+   * ⚠️ 标记是**纯文本**（没有自己的分段，照 `{填空域}` 那条「由文本决定」的裁定），
+   * 所以它在普通分段里被就地认出来。本组件是**唯一**一份实现：学生端、教师端折叠
+   * 预览、编辑页都走它 —— 三处各画一次就是本仓最防的那种分叉。
+   * ⚠️ 它是这一层唯一一个**块级**元素（其余全是行内 `<span>`）⇒ 调用方的容器
+   * 不能是 `<p>`（浏览器会把 `<p>` 在表格前闭掉，DOM 与 JSX 就对不上了）。
+   */
+  table?: unknown;
 }
 
 export interface PromptBlankBinding {
@@ -67,6 +79,13 @@ export interface PromptBlankBinding {
    * ⚠️ 它在**外层**绑定上、不在 `drop` 里：打字那条路（input）也要用它。
    */
   wrongOf?: (index: number) => boolean;
+  /**
+   * ★ 2026-09-28：表格里的空从第几号开始（= `blankLayout(node).tableBase`）。
+   * ⚠️ **标记之后的文本空要接着表格往后数** —— 编号就是 `answers` 的下标。
+   */
+  tableBase?: number;
+  /** 表格里有几个空（走标记时把编号往前推这么多，那些号被表格占了）。 */
+  tableCount?: number;
   drop?: {
     /** 第 `index` 个空的落点 id（写进 `data-drop-id`，拖拽那一层按它找人）。 */
     idOf: (index: number) => string;
@@ -93,20 +112,30 @@ export interface PromptBlankBinding {
  *    那条用例钉着这一点：绝对定位回来 = 那个叉又能盖住字）。
  */
 
-export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps) {
+export function PromptText({ text, runs, placeholder, blanks, table }: PromptTextProps) {
   // ⚠️ 判空用 `trim()`，渲染用**原文** —— 与合并之前那两处逐字同一条判据
   //（全是空白的题干要显示占位语，而不是一条看不见的空行）。
   if (!text.trim()) return <>{placeholder}</>;
   // ⚠️ 空是**按出现先后**编号的（第几个空 = 它前面有几个空分段）—— 就地数，
   // 不从外面传：那个数就是 `data.answers` 的下标，两处必须由同一条规则给。
   let blankIndex = -1;
+  /**
+   * ★ 2026-09-28：**标记之后的文本空要接着表格往后数**。
+   *
+   * 表格域把一行文本切成了两段，而空的编号是 `data.answers` 的下标、顺序是
+   * 「标记前的文本空 → 表格空 → 标记后的文本空」（`blankLayout` 那一条）。
+   * ⇒ 走过标记时把计数器一次推过表格占掉的那几号。
+   * ⚠️ 少了这一推，标记**后面**的空会拿到表格那几号的下标 ⇒ 学生填的答案与
+   * 判分取的位置**整体错位**，而屏幕上一切正常（本仓最防的那一类）。
+   */
+  let tableOffset = 0;
   return (
     <>
       {runs.map((run) => {
         if (isBlankRun(run)) {
           blankIndex += 1;
-          if (blanks && blanks.drop && blanks.modeOf?.(blankIndex) !== 'input') {
-            const index = blankIndex;
+          if (blanks && blanks.drop && blanks.modeOf?.(blankIndex + tableOffset) !== 'input') {
+            const index = blankIndex + tableOffset;
             const filled = (blanks.values[index] ?? '') !== '';
             // 答错 ⇒ 后面跟一个红叉（正确答案不在这里 —— 见 `wrongOf` 的注释）。
             // ⊘ 2026-09-27 更正：这句原来写「原答案红色 + 删除线」。那两样在 `4adac35`
@@ -165,7 +194,7 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
             );
           }
           if (blanks) {
-            const index = blankIndex;
+            const index = blankIndex + tableOffset;
             // 同 drop 分支：答错 ⇒ 框**后面**跟一个红叉（不是划掉框里的字，见上面那条更正）。
             // ⚠️ 框仍然是 `<input>`（截图里那个「保存修改」要能用 —— 学生得能改）。
             const wrong = blanks.wrongOf?.(index) ?? false;
@@ -211,11 +240,37 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
             );
           }
         }
+        const chunk = text.slice(run.start, run.end);
+        const markAt = chunk.indexOf(TABLE_MARK_TEXT);
+        if (markAt < 0) {
+          return (
+            // ⚠️ `key` 用 `start`：分段是拼满且不重叠的，所以 start 天然唯一。
+            <span key={run.start} style={promptRunStyle(run) as CSSProperties}>
+              {chunk}
+            </span>
+          );
+        }
+        // ★ 2026-09-28：这一段里有**表格域标记** —— 就地画那张表。
+        // ⚠️ 标记是纯文本（没有自己的分段），所以只能这样在普通分段里认。
+        // ⚠️ 一个分段里**最多一处**标记（编辑期与校验都拦「两份标记」）；真的出现两处时
+        //    第二处会跟着 `after` 一起当普通文字画出去 —— 那是坏数据的样子，不是静默的错。
+        tableOffset = blanks?.tableCount ?? tableOffset;
+        const head = chunk.slice(0, markAt);
+        const tail = chunk.slice(markAt + TABLE_MARK_TEXT.length);
         return (
-          // ⚠️ `key` 用 `start`：分段是拼满且不重叠的，所以 start 天然唯一。
-          <span key={run.start} style={promptRunStyle(run) as CSSProperties}>
-            {text.slice(run.start, run.end)}
-          </span>
+          <Fragment key={run.start}>
+            {head ? <span style={promptRunStyle(run) as CSSProperties}>{head}</span> : null}
+            {table
+              ? (
+                <WorksheetTableView
+                  table={table}
+                  blanks={blanks ? { ...blanks, base: blanks.tableBase ?? 0 } : undefined}
+                />
+              )
+              // ⚠️ 没有 `table`（例如题目结构坏掉）⇒ 如实画出标记本身，别假装那里什么都没有
+              : <span style={promptRunStyle(run) as CSSProperties}>{TABLE_MARK_TEXT}</span>}
+            {tail ? <span style={promptRunStyle(run) as CSSProperties}>{tail}</span> : null}
+          </Fragment>
         );
       })}
     </>

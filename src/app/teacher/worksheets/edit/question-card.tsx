@@ -1,6 +1,6 @@
 'use client';
 
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -8,7 +8,10 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
-import { PromptEditor } from './prompt-editor';
+import { PromptEditor, promptRunsPatchFor } from './prompt-editor';
+// ★ 2026-09-27：「粘贴题目」的确认窗（题干 + 选项一起识别）—— 单独一个文件，
+// 因为它是**一次粘贴**的界面，与「画一道题的控件」不是同一件事。
+import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
 import {
   canGivePartial,
   displayPoints,
@@ -16,7 +19,11 @@ import {
   gradesOnSubmit,
   isGradedQuestionType,
   toleranceOf,
+  choiceModePatch,
+  isChoiceQuestion,
+  isMultipleChoice,
   isPartialPoints,
+  optionPastePatch,
   parsePointInput,
   planPointInputChange,
   pointText,
@@ -37,7 +44,7 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // 组件与内核分家的理由见各文件头：内核里全是可以 `node --test` 的纯函数，
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
 import { TrueFalseBody } from './bodies/true-false-body';
-import { MultiChoiceBody } from './bodies/multi-choice-body';
+import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
 import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
@@ -53,6 +60,8 @@ import { blankCount } from '@/lib/worksheet-prompt-marks';
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
     title: '选择题设置',
+    // ★ 2026-09-27：这一句不再提粘贴 —— 入口已经搬到题干工具栏那个**看得见的按钮**上
+    //（教师：「不要使用在选项框内 onpaste，还是有个按钮用户使用更方便」）。
     description: '先选择单选或多选，再编辑选项和正确答案。',
   },
   'true-false': {
@@ -92,6 +101,41 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
     description: '绘图题固定使用手写画布，适合演算、标注和自由绘制。',
   },
 };
+
+/**
+ * 标题栏右上角那个**滑动开关**（★ 2026-09-27）。
+ *
+ * 🔴 **一份实现**：「多选」与「自动评分」是同一个控件（都是「一个布尔档」），
+ * 各写一份必然在某一处先变样。滑块本体的样式是 `.worksheet-editor-autograde-control`，
+ * 这个组件只负责「标签 + 滑块」那一行的排版。
+ *
+ * ⚠️ `text` 可以不给 —— 自动评分那张卡的**标题就是它的名字**，再写一遍是重复
+ * （教师 2026-09-27：「做得简洁一下，两个框及文字可以合并」）。
+ */
+function HeadSwitch({ checked, onChange, label, title, text }: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  /** 读屏念的名字（画面上那点小字对它不够用）。 */
+  label: string;
+  title: string;
+  /** 开关左边的小字。省略 ⇒ 只有滑块（名字由所在卡片的标题给）。 */
+  text?: string;
+}) {
+  return (
+    <label className="worksheet-editor-head-switch" title={title}>
+      {text}
+      <span className="worksheet-editor-autograde-control">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={event => onChange(event.target.checked)}
+          aria-label={label}
+        />
+        <span aria-hidden="true" />
+      </span>
+    </label>
+  );
+}
 
 /**
  * 一道题的编辑卡片（规格 §6.2 的题流）。
@@ -181,6 +225,50 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
   const promptImage = readPromptImage(node);
 
   /**
+   * ★ 2026-09-27（教师）：「在题目内容框内增加从剪贴板粘贴类似的按钮，不要使用在选项框内
+   * onpaste，还是有个按钮用户使用更方便。」+「连题干也一起识别」。
+   *
+   * `pasteOpen` 开着时那个确认窗才存在；`pasteText` 是框里的原文 —— **可编辑**：
+   * 读不到剪贴板时它是唯一的输入口，读到了也能改（拆错了就地改一行比重来一遍快）。
+   */
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
+  /**
+   * 点「粘贴题目」：**只开窗**，不碰剪贴板。
+   *
+   * 🔴 这里原来写的是 `await navigator.clipboard.readText()` —— 那一下会弹出**浏览器自己的
+   * 「粘贴」授权浮层**（Safari 弹一个原生「粘贴」按钮、Chrome 弹权限框），教师看到的是一个
+   * 莫名其妙的 tip，而且浮层不处理掉、这一次读就永远不返回（2026-09-27 教师实测：
+   * 「点击这个按钮后会出现一个 tip（粘贴），然后点了其它地方弹窗才会出现」）。
+   * ⇒ 那个 API 在教师常用的浏览器上做不到「点了就有」，就不用它。
+   * 按 ⌘V 那一下由弹窗里那个**已经聚焦**的输入框接住 —— 不需要任何授权，也不会弹任何东西。
+   */
+  const requestPaste = () => {
+    setPasteText('');
+    setPasteOpen(true);
+  };
+
+  /**
+   * 确认填入。
+   *
+   * 🔴 **题干与选项必须同一次提交**（走 `onPromptChange` 的第二个参数）：分两次 dispatch
+   * 会让这一次粘贴占掉**两格**撤销栈，教师按一下 ⌘Z 只退掉一半 ——
+   * 而屏幕看起来「退了一次，怎么还剩一半」。
+   * ⚠️ `promptRunsPatchFor` 不能省：题干的分段存在 `data.promptRuns` 里，而 `readPromptRuns`
+   * **只认存量**、不会从文本重认填空域（理由见那个函数）。
+   */
+  const applyPaste = (result: PasteQuestionResult) => {
+    const optionPatch = result.texts.length > 0 ? optionPastePatch(result.texts, node) : null;
+    if (result.stem !== null) {
+      onPromptChange(result.stem, { ...promptRunsPatchFor(result.stem), ...(optionPatch ?? {}) });
+    } else if (optionPatch) {
+      onDataChange(optionPatch);
+    }
+    setPasteOpen(false);
+  };
+
+  /**
    * ★ M4b/D1：「作答方式」那一行**画不画**（三个判据，逐个说清）：
    *
    * ① 题型**不判分**（`QUESTION_TYPE_OPTIONS` 里那一条的 `graded === false`）⇒ 画。
@@ -216,6 +304,21 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
     title: '作答设置',
     description: '设置学生作答时需要看到和填写的内容。',
   };
+  /**
+   * ★ 2026-09-27：容器 A 的**第二个块**（这一题的作答体）叫什么。
+   *
+   * ⚠️ `null` = 这道题没有这个块 —— 判断题的答案（对/错）在容器 B 里，
+   * 与填空题的「标准答案」并排，所以它的容器 A 只有题干。
+   */
+  const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
+  const answerBlock: { title: string; hint: string } | null =
+    node.type === 'true-false'
+      ? null
+      : isChoiceQuestion(node)
+        ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项左侧的圆点。' }
+        : isBlankType
+          ? { title: '每个空的作答方式', hint: '填空域会自动同步，可分别设置手工填写、右侧选词或下方选词。' }
+          : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   const maximumPoints = (node.type === 'fill-blank' || node.type === 'choice-blank') && node.data.fillScoring === 'per-blank'
     ? shownPoints.full * blankCount(promptRuns)
@@ -343,6 +446,32 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           `)`，而 tsc / eslint / 用例**全都不会红**（语法合法）。教师 2026-09-26 在真机上
           就是这么发现的 —— 见那一天的提交。 */}
       {expanded && (<div className="worksheet-editor-question-form">
+      {/*
+        ★ 2026-09-27（教师裁定）：编辑页从「五张平级卡片」改成**两层** ——
+
+          容器 A「题目内容」      题干 + 这一题的作答体（选项 / 作答方式 / 条目 / …）
+          中间「自动评分」        一个开关；**关掉时下面整块不出现**
+          容器 B「自动评分设置」  判分相关的那几块（仅开启时）
+
+        🔴 两型的**块标题刻意对齐**（教师：「两者要统一起来……一定要取得精准到位」）：
+             选择题   评分方式 → 得分规则
+             填空题   得分方式 → 得分规则 → 标准答案
+           ⚠️ 中间那张卡原来也叫「评分方式」，与容器 B 里第一块**重名**，已改成「自动评分」。
+
+        ⚠️ 块与块之间只用一条细线分隔（`.worksheet-editor-block`），**不再套第二层卡片**：
+           卡片套卡片会立刻失去层次（本页第一轮定下的视觉规矩：边框与投影只给「浮起来的」东西）。
+        ⚠️ 判断题没有「作答体」块 —— 它的答案（对/错）在容器 B 里，与填空题的「标准答案」并排。
+
+        🔴 **这一套是「模板」，不是只给这两种题型用的。** 教师 2026-09-27 原话：
+           「到时候我在优化另外几种题型，也参考这种布局和命名方式，**但不是现在**。」
+        ⇒ 还没细分块的是 **`order` / `match` / `categorize`**：它们的作答体仍把「条目」与
+           「答案」（正确顺序 / 配对 / 归属）挤在**同一个块**里。按这套办事时，该把那两样
+           分别放进容器 A 与容器 B —— 也正是 `fill-blank` 这一步做过的事
+           （「每个空的作答方式」留在 A、「标准答案」搬去 B）。
+        ⚠️ 命名规矩：容器名两型共用；块名**能共用的必须共用**（`得分规则` / `标准答案`），
+           共不了的才各取各的（`选项` / `每个空的作答方式`）。**重名是硬伤** ——
+           中间那张卡原来就叫「评分方式」，与容器 B 里第一块撞名。
+      */}
       <section className="worksheet-editor-question-section is-prompt">
         <div className="worksheet-editor-section-head">
           <div>
@@ -351,135 +480,201 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           </div>
           <span>必填</span>
         </div>
-        <PromptEditor
-          node={node}
-          onPromptChange={onPromptChange}
-          onDataChange={onDataChange}
-        />
-      </section>
 
-      {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
-        <section className="worksheet-editor-question-section is-choice-blank">
-          <div className="worksheet-editor-section-head">
+        <div className="worksheet-editor-block">
+          <div className="worksheet-editor-block-head">
             <div>
-              <h3>每个空的作答方式</h3>
-              <p>填空域会自动同步，可分别设置手工填写、右侧选词或下方选词。</p>
-            </div>
-            <span>学生可见</span>
-          </div>
-          <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
-        </section>
-      )}
-
-      {isGradedQuestionType(node.type) && (
-        <section className="worksheet-editor-question-section is-mode">
-          <div className="worksheet-editor-section-head">
-            <div>
-              <h3>评分方式</h3>
-              <p>新题默认仅统计作答；需要系统判对错时再开启。</p>
+              {/* ⚠️ 这个「题干」标题是**新的层级**要的：以前它在卡片头部下面，与
+                  「题目内容 / 写清学生需要完成什么」是同一句话说两次，所以当时删掉了。
+                  现在「题目内容」是容器的名字、块要有自己的名字，它不再重复。 */}
+              <h4>题干</h4>
+              <p>题目本身。需要学生填空时，在要填的位置插入「{'{填空域}'}」。</p>
             </div>
           </div>
-          <label className="worksheet-editor-autograde">
-            <span className="worksheet-editor-autograde-copy">
-              <strong>{gradedOn ? '自动评分' : '仅统计作答'}</strong>
-              <em>{gradedOn ? '系统会按标准答案判断，下面继续设置答案和得分。' : '不显示对错、不计分，原有答案设置会保留。'}</em>
-            </span>
-            <span className="worksheet-editor-autograde-control">
-              <input
-                type="checkbox"
-                checked={node.autoGrade !== false}
-                onChange={event => onAutoGradeChange(event.target.checked)}
-                aria-label="允许自动评分"
-              />
-              <span aria-hidden="true" />
-            </span>
-          </label>
-        </section>
-      )}
-
-      <section className="worksheet-editor-question-section is-answer">
-        <div className="worksheet-editor-section-head">
-          <div>
-            <h3>{editorCopy.title}</h3>
-            <p>{editorCopy.description}</p>
-          </div>
-          <span>{typeLabel}</span>
+          <PromptEditor
+            node={node}
+            onPromptChange={onPromptChange}
+            onDataChange={onDataChange}
+            onRequestPaste={requestPaste}
+          />
         </div>
 
-        {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
+        {answerBlock && (
+          <div className="worksheet-editor-block">
+            <div className="worksheet-editor-block-head">
+              <div>
+                <h4>{answerBlock.title}</h4>
+                <p>{answerBlock.hint}</p>
+              </div>
+              {/* ★ 2026-09-27（教师）：「这个使用左右滑动的开关打开，就表示可以多选，放到右上角去。」
+                  ⚠️ 开关上**只写「多选」**：关着就是单选、开着就是多选 —— 两个状态用一个开关
+                     表达，正是教师描述的那个心智模型（写两个标签就退回成分段控件了）。 */}
+              {isChoiceQuestion(node) && (
+                <HeadSwitch
+                  checked={isMultipleChoice(node)}
+                  onChange={next => onDataChange(choiceModePatch(next, node))}
+                  label="可以多选"
+                  title={isMultipleChoice(node) ? '已打开：学生可以选多个答案' : '已关闭：学生只能选一个答案'}
+                  text="多选"
+                />
+              )}
+            </div>
 
-        {/* 题型 → 编辑体。这里保持与学生端题型数据结构一一对应。 */}
-        {node.type === 'single-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'true-false' && <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'multi-choice' && <MultiChoiceBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'fill-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {/* ★ 2026-09-26：**选择填空**复用同一个答案体（题干里的空 + 每空一份答案都与填空
-            逐字同形），学生可见的待选词设置已经固定在题干编辑之后。
-            🔴 这里**必须显式写出来**：本页是按 `node.type === '…'` 逐个分派的（不是
-            `Record`），少写一支的后果是**这个题型在编辑页什么都不渲染** ——
-            教师建得出来、却配不了，而屏幕上只是一片空白。 */}
-        {node.type === 'choice-blank' && <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-        {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+            {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
+
+            {/* 题型 → 作答体。这里保持与学生端题型数据结构一一对应。
+                🔴 本页是按 `node.type === '…'` 逐个分派的（不是 `Record`），少写一支的后果是
+                **这个题型在编辑页什么都不渲染** —— 教师建得出来、却配不了，而屏幕上只是一片空白。 */}
+            {(node.type === 'single-choice' || node.type === 'multi-choice') && (
+              <ChoiceOptionsBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />
+            )}
+            {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
+              <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
+            )}
+            {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+            {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+            {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+
+            {node.type === 'short-answer' && (
+              <p className="worksheet-editor-manual-note"><strong>人工查看</strong>学生提交后不自动判分，看板只统计作答进度。</p>
+            )}
+            {node.type === 'drawing' && (
+              <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师人工查看。</p>
+            )}
+          </div>
+        )}
 
         {!gradedOn && isGradedQuestionType(node.type) && (
           <p className="worksheet-editor-answer-disabled">
-            自动评分已关闭，正确答案暂时隐藏；选项和条目仍可继续编辑。
+            自动评分已关闭，正确答案暂时隐藏；题面与选项仍可继续编辑，原有设置都保留着。
           </p>
-        )}
-        {node.type === 'short-answer' && (
-          <p className="worksheet-editor-manual-note"><strong>人工查看</strong>学生提交后不自动判分，看板只统计作答进度。</p>
-        )}
-        {node.type === 'drawing' && (
-          <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师人工查看。</p>
         )}
       </section>
 
-      {(gradedOn || !isGradedQuestionType(node.type)) && <section className="worksheet-editor-question-section is-grading">
-        <div className="worksheet-editor-section-head">
-          <div>
-            <h3>{isGradedQuestionType(node.type) ? '得分规则' : '查看方式'}</h3>
-            <p>{isGradedQuestionType(node.type) ? '设置全部答对与部分答对时获得的奖励。' : '这类题不自动判断答案，由教师查看学生提交的内容。'}</p>
+      {/*
+        ★ 2026-09-27（教师）：「中间不要分隔，在一个大窗口里。」
+        ⇒ 原来「自动评分」（开关）与「自动评分设置」（判分的块）是**两张卡**，
+        中间隔着一条缝。现在合成**一张**：开关就是这张卡的标题行，下面的块是它的设置。
+        🔴 于是容器 B 那个名字（「自动评分设置」）不再单独存在 —— 卡片标题取「自动评分」，
+        因为**开关关着时这张卡也还在**（开关得有人按），而一张只剩标题的卡叫「…设置」
+        是说不通的。开关自己的位置就是状态，标题里不再写「已开启 / 已关闭」。
+        ⚠️ 关掉时**下面整块不渲染**（教师：「如果不是其他选项全部隐藏，就不用显示了」）。
+      */}
+      {isGradedQuestionType(node.type) && (
+        <section className="worksheet-editor-question-section is-grading">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3>自动评分</h3>
+              <p>开启后系统按标准答案判对错并计分；关掉只统计作答进度，不计分。</p>
+            </div>
+            <div className="worksheet-editor-head-actions">
+              {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
+                  `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
+                  那里没有标题，所以不能直接搬过来）。 */}
+              {gradedOn && <span className="worksheet-editor-points-badge">最高 {maximumPoints} {pointsUnit}</span>}
+              <HeadSwitch
+                checked={gradedOn}
+                onChange={onAutoGradeChange}
+                label="自动评分"
+                title={gradedOn ? '已开启：系统按标准答案判对错并计分' : '已关闭：只统计作答进度，不计分'}
+              />
+            </div>
           </div>
-          <span className={gradedOn ? 'is-active' : ''}>{gradingStatus}</span>
-        </div>
 
-      {/*
-        ★ 2026-09-25（教师裁定）：**不设答案的选择题不判分**，所以这里不给它分值行 ——
-        一个「全对 1 / 部分给分 0」的输入框摆在一道不判分的题上，就是在说「它会算分」。
-        ⚠️ 判据是 `gradesOnSubmit`（核心里、有用例），不是「题型是不是选择题」——
-        填空/排序/连线/归类的答案在别的键上，拿选择题的尺子量它们会让分值行**整片消失**。
-        ⚠️ 区分两种情况，话不一样：题型**本来就不判分**（问答 / 绘图）时什么都不说，
-        因为那是题型的性质、教师改不了；只有「能判分却没设答案」才需要一句话告诉他为什么。
-      */}
-      {gradesOnSubmit(node) && (node.type === 'fill-blank' || node.type === 'choice-blank') && (
-        <FillScoringRow node={node} inheritedPoints={inheritedPoints} pointsUnit={pointsUnit} onDataChange={onDataChange} onPointsChange={onPointsChange} />
-      )}
-      {gradesOnSubmit(node) && node.type !== 'fill-blank' && node.type !== 'choice-blank' && (
-        <PointsRow
-          heading={heading}
-          node={node}
-          inheritedPoints={inheritedPoints}
-          pointsUnit={pointsUnit}
-          rejectedInput={rejectedPointInput}
-          onPointsInputChange={onPointsInputChange}
-          onPointsChange={onPointsChange}
-        />
+          {gradedOn && (<>
+
+          {isMultipleChoice(node) && (
+            <div className="worksheet-editor-block">
+              <div className="worksheet-editor-block-head">
+                <div>
+                  <h4>评分方式</h4>
+                  <p>多选时，漏掉一部分正确答案算不算得分。</p>
+                </div>
+              </div>
+              <ChoicePartialCreditBody node={node} onDataChange={onDataChange} />
+            </div>
+          )}
+
+          {isBlankType && (
+            <div className="worksheet-editor-block">
+              <div className="worksheet-editor-block-head">
+                <div>
+                  <h4>得分方式</h4>
+                  <p>按每个空单独计分，还是整道题全对才计分。</p>
+                </div>
+              </div>
+              <FillScoringMethodRow node={node} onDataChange={onDataChange} />
+            </div>
+          )}
+
+          <div className="worksheet-editor-block">
+            <div className="worksheet-editor-block-head">
+              <div>
+                <h4>得分规则</h4>
+                <p>{isBlankType
+                  ? '答对之后每个空（或整题）能得到多少。'
+                  : '全部答对与只答对一部分时，各自能得到多少。'}</p>
+              </div>
+            </div>
+            {isBlankType ? (
+              <FillPointsRow
+                node={node}
+                inheritedPoints={inheritedPoints}
+                pointsUnit={pointsUnit}
+                onPointsChange={onPointsChange}
+              />
+            ) : (
+              <PointsRow
+                heading={heading}
+                node={node}
+                inheritedPoints={inheritedPoints}
+                pointsUnit={pointsUnit}
+                rejectedInput={rejectedPointInput}
+                onPointsInputChange={onPointsInputChange}
+                onPointsChange={onPointsChange}
+              />
+            )}
+            {/*
+              ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。
+              ⚠️ 判据用的是 `effectiveHalfStep`（内核里、有 6 条用例）—— 「这一题**实际会用到**的
+              部分给分档」。半填（只填了一个框）时它回 `null`（说不准）⇒ 那时**不显示**这一行：
+              教师还在打字的中间态，弹出一行要他选容错档是打断。
+            */}
+            {!isBlankType && canGivePartial(node.type) && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
+              <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
+            )}
+          </div>
+
+          {/* 「标准答案」—— 填空题与判断题共用一个块标题（教师要求两型对齐）。 */}
+          {(isBlankType || node.type === 'true-false') && (
+            <div className="worksheet-editor-block">
+              <div className="worksheet-editor-block-head">
+                <div>
+                  <h4>标准答案</h4>
+                  <p>{isBlankType
+                    ? '每个空可以填多个可接受答案（一行一个），学生答出其中一个就算对。'
+                    : '这道题的标准答案是「正确」还是「错误」。'}</p>
+                </div>
+              </div>
+              {isBlankType
+                ? <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer />
+                : <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />}
+            </div>
+          )}
+          </>)}
+        </section>
       )}
 
-      {/*
-        ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。
-        ⚠️ 判据用的是 `effectiveHalfStep`（内核里、有 6 条用例）—— 「这一题**实际会用到**的
-        部分给分档」。半填（只填了一个框）时它回 `null`（说不准）⇒ 那时**不显示**这一行：
-        教师还在打字的中间态，弹出一行要他选容错档是打断。
-      */}
-      {gradesOnSubmit(node) && node.type !== 'fill-blank' && node.type !== 'choice-blank' && canGivePartial(node.type)
-        && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
-        <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
-      )}
-
-        {!isGradedQuestionType(node.type) && (
+      {/* 不判分的题型（问答 / 绘图）：没有自动评分这回事，只有一句「谁来查看」。 */}
+      {!isGradedQuestionType(node.type) && (
+        <section className="worksheet-editor-question-section is-grading">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3>查看方式</h3>
+              <p>这类题不自动判断答案，由教师查看学生提交的内容。</p>
+            </div>
+            <span>教师人工查看</span>
+          </div>
           <div className="worksheet-editor-manual-grade">
             <span aria-hidden="true">✓</span>
             <div>
@@ -487,8 +682,8 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
               <p>学生提交后由教师人工查看，系统不会根据答案自动给分。</p>
             </div>
           </div>
-        )}
-      </section>}
+        </section>
+      )}
       </div>)}
 
       {/*
@@ -521,15 +716,51 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           <QuestionInput node={node} draft={undefined} disabled />
         </div>
       )}
+
+      {pasteOpen && (
+        <PasteQuestionDialog
+          text={pasteText}
+          node={node}
+          onTextChange={setPasteText}
+          onCancel={() => setPasteOpen(false)}
+          onConfirm={applyPaste}
+        />
+      )}
     </section>
   );
 }
 
-function FillScoringRow({ node, inheritedPoints, pointsUnit, onDataChange, onPointsChange }: {
+/**
+ * 填空题的**得分方式**（★ 2026-09-27：从原来的 `FillScoringRow` 里拆出来）。
+ *
+ * 🔴 拆开的理由与选择题对齐：教师裁定「两型统一成『得分方式 → 得分规则 → 标准答案』」——
+ * 选择题那边「怎么算分」与「多少分」本来就是两块，填空题挤在一块会让两型的块数不一样，
+ * 教师从一种题型换到另一种时位置感就断了。
+ */
+function FillScoringMethodRow({ node, onDataChange }: {
+  node: WorksheetQuestionNode;
+  onDataChange: (patch: Record<string, unknown>) => void;
+}) {
+  const perBlank = node.data.fillScoring === 'per-blank';
+  return (
+    <div className="worksheet-editor-scoring-options">
+      <label className={perBlank ? 'is-selected' : ''}>
+        <input type="radio" name={`fill-score-${node.id}`} checked={perBlank} onChange={() => onDataChange({ fillScoring: 'per-blank' })} />
+        <span><strong>按空给分</strong><em>每答对一空就得分</em></span>
+      </label>
+      <label className={!perBlank ? 'is-selected' : ''}>
+        <input type="radio" name={`fill-score-${node.id}`} checked={!perBlank} onChange={() => onDataChange({ fillScoring: 'whole' })} />
+        <span><strong>整题给分</strong><em>所有空都答对才得分</em></span>
+      </label>
+    </div>
+  );
+}
+
+/** 填空题的**得分规则**：那一格分值（口径跟着「得分方式」走）。 */
+function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
   pointsUnit: string;
-  onDataChange: (patch: Record<string, unknown>) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
   const perBlank = node.data.fillScoring === 'per-blank';
@@ -540,17 +771,10 @@ function FillScoringRow({ node, inheritedPoints, pointsUnit, onDataChange, onPoi
     onPointsChange({ full: parsed, half: 0 });
   };
   return (
-    <div className="worksheet-editor-points worksheet-editor-fill-scoring">
-      <div className="worksheet-editor-points-head"><div><strong>给分方法</strong><span>按空给分为默认设置。</span></div></div>
-      <div className="worksheet-editor-scoring-options">
-        <label className={perBlank ? 'is-selected' : ''}><input type="radio" name={`fill-score-${node.id}`} checked={perBlank} onChange={() => onDataChange({ fillScoring: 'per-blank' })} /><span><strong>按空给分</strong><em>每答对一空就得分</em></span></label>
-        <label className={!perBlank ? 'is-selected' : ''}><input type="radio" name={`fill-score-${node.id}`} checked={!perBlank} onChange={() => onDataChange({ fillScoring: 'whole' })} /><span><strong>整题给分</strong><em>所有空都答对才得分</em></span></label>
-      </div>
-      <label className="worksheet-editor-points-field worksheet-editor-fill-points-field">
-        <span><strong>{perBlank ? '每空得分' : '整题总分'}</strong><em>{perBlank ? '答对几个空，就累计几份奖励' : '全部答对时一次获得'}</em></span>
-        <span className="worksheet-editor-points-control"><input className="input" type="number" min={1} max={POINTS_MAX} value={value} onChange={event => setValue(event.target.value)} /><b>{pointsUnit}</b></span>
-      </label>
-    </div>
+    <label className="worksheet-editor-points-field">
+      <span><strong>{perBlank ? '每空得分' : '整题总分'}</strong><em>{perBlank ? '答对几个空，就累计几份奖励' : '全部答对时一次获得'}</em></span>
+      <span className="worksheet-editor-points-control"><input className="input" type="number" min={1} max={POINTS_MAX} value={value} onChange={event => setValue(event.target.value)} /><b>{pointsUnit}</b></span>
+    </label>
   );
 }
 

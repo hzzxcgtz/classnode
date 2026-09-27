@@ -143,7 +143,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
             <section className="worksheet-editor-fill-mode-card" key={index}>
               <div className="worksheet-editor-fill-mode-head">
                 <strong>第 {index + 1} 空</strong>
-                <div className="worksheet-editor-fill-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
+                <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`第 ${index + 1} 空作答方式`}>
                   {([
                     ['text', '手工填写'],
                     ['inline', '右侧选词'],

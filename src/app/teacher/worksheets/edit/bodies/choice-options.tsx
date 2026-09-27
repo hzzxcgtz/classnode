@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import {
+  dropIndexAt,
   MAX_OPTIONS,
+  moveOptionTo,
   optionKey,
   readCorrectKeys,
   readOptions,
@@ -47,34 +49,120 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
     onDataChange({ options: written.options, correctKeys: written.correctKeys });
   };
 
+  /**
+   * ★ 2026-09-27（教师）：「4 个选项可以拖拽、上下移动、改变位置。」
+   *
+   * 与题目那边的拖动**同一套手法**（`edit/page.tsx`）：指针事件 + `dropIndexAt` 算落点
+   * + 一条 `position: fixed` 的线。**不用 HTML5 拖放**（老 iPad 上不可用，学生端的
+   * `use-pointer-drag.ts` 已经踩过一遍），教师端也可能在触屏笔记本上开。
+   */
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dropLine, setDropLine] = useState<{ y: number; left: number; width: number } | null>(null);
+  const dropIndexRef = useRef<number | null>(null);
+  /**
+   * 🔴 落点那一下要读的是**当下**的选项与正确答案，不是拖动开始时那一份。
+   * 走 ref 而不是把它们放进 effect 依赖：`options` 每次渲染都是新数组、
+   * `commit` 又闭包着父组件每次渲染新建的 `onDataChange` —— 放进依赖会让这个 effect
+   * 在拖动过程中被反复拆掉重建（监听器一断，指针事件就漏了）。
+   */
+  const latestRef = useRef({ options, correctKeys, commit });
+  latestRef.current = { options, correctKeys, commit };
+
+  const startDrag = useCallback((event: ReactPointerEvent<HTMLElement>, index: number) => {
+    // ⚠️ `preventDefault`：不拦的话按住把手拖到文字上会**顺带选中一片文字**。
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dropIndexRef.current = null;
+    setDropLine(null);
+    setDragFrom(index);
+  }, []);
+
+  useEffect(() => {
+    if (dragFrom === null) return;
+    // 只认**这一道题**的选项行：同一页里可能还有别的题（折叠态的预览不画这个把手，
+    // 但 `data-option-row` 是这道题独有的，比按类名找稳）。
+    const rowsInThisQuestion = () => Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-option-row="${CSS.escape(node.id)}"]`),
+    );
+    const onMove = (event: PointerEvent) => {
+      const rects = rowsInThisQuestion().map(row => row.getBoundingClientRect());
+      if (rects.length === 0) return;
+      const index = dropIndexAt(rects.map(rect => ({ top: rect.top, height: rect.height })), event.clientY);
+      dropIndexRef.current = index;
+      // 线画在**行的边界**上（第 0 位画在第一行上沿，其余画在第 index-1 行的下沿）。
+      const first = rects[0];
+      setDropLine({
+        y: index === 0 ? first.top : rects[index - 1].bottom,
+        left: first.left,
+        width: first.width,
+      });
+    };
+    const onUp = () => {
+      const index = dropIndexRef.current;
+      const { options: current, correctKeys: currentKeys, commit: apply } = latestRef.current;
+      // 🔴 落点是从「还带着被拖那一行」的列表里量出来的 ⇒ 往下拖时下标要多减一。
+      if (index !== null) {
+        const to = index > dragFrom ? index - 1 : index;
+        const next = moveOptionTo(current, dragFrom, to);
+        // ⚠️ 原地不动时 `moveOptionTo` 返回**原数组** ⇒ 这里别再 commit：
+        //    一次「拖回原位」不该占掉一格撤销栈（`updateData` 按 `===` 判有没有变）。
+        if (next !== current) apply(next, currentKeys);
+      }
+      dropIndexRef.current = null;
+      setDragFrom(null);
+      setDropLine(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    // ⚠️ `pointercancel` 也要收尾（系统手势抢走指针时）：不然线会**永远留在屏幕上**。
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [dragFrom, node.id]);
+
   return (
     <>
       <div className="worksheet-editor-options">
         {options.map((option, optionIndex) => (
-          <div className="worksheet-editor-option" key={option.key}>
-            {showAnswer && (<>
-<label className="worksheet-editor-option-correct" title="选为正确答案">
-              <input
-                // ⚠️ 多选是勾选框、单选是圆点。`name` 必须带 `node.id`：同卷多题如果共用名字，
-                // 第 1 题的选择会把第 2 题的顶掉（学生端 `worksheet-panel.tsx` 上有一条同源的注释）。
-                type={multiple ? 'checkbox' : 'radio'}
-                name={`correct-${node.id}`}
-                checked={correctKeys.includes(option.key)}
-                onChange={() => {
-                  if (!multiple) {
-                    commit(options, [option.key]);
-                    return;
-                  }
-                  // 多选：勾上就加、取消就减（顺序按点击次序，服务端只把它当一个集合读）。
-                  const next = correctKeys.includes(option.key)
-                    ? correctKeys.filter((key) => key !== option.key)
-                    : [...correctKeys, option.key];
-                  commit(options, next);
-                }}
-              />
-              <span>{option.key}</span>
-            </label>
-            </>)}
+          <div className="worksheet-editor-option" key={option.key} data-option-row={node.id}>
+            <button
+              type="button"
+              className="worksheet-editor-option-drag"
+              onPointerDown={event => startDrag(event, optionIndex)}
+              aria-label={`拖动选项 ${option.key} 调整顺序`}
+              title="拖动调整选项顺序"
+            >⠿</button>
+            {showAnswer ? (
+              <label className="worksheet-editor-option-correct" title="选为正确答案">
+                <input
+                  // ⚠️ 多选是勾选框、单选是圆点。`name` 必须带 `node.id`：同卷多题如果共用名字，
+                  // 第 1 题的选择会把第 2 题的顶掉（学生端 `worksheet-panel.tsx` 上有一条同源的注释）。
+                  type={multiple ? 'checkbox' : 'radio'}
+                  name={`correct-${node.id}`}
+                  checked={correctKeys.includes(option.key)}
+                  onChange={() => {
+                    if (!multiple) {
+                      commit(options, [option.key]);
+                      return;
+                    }
+                    // 多选：勾上就加、取消就减（顺序按点击次序，服务端只把它当一个集合读）。
+                    const next = correctKeys.includes(option.key)
+                      ? correctKeys.filter((key) => key !== option.key)
+                      : [...correctKeys, option.key];
+                    commit(options, next);
+                  }}
+                />
+                <span>{option.key}</span>
+              </label>
+            ) : (
+              /* ★ 2026-09-27（教师）：「自动加上 ABCD 的编号。」—— 关掉自动评分时那个圆点
+                 整块不画了，但**字母必须留下**：四个选项长得一模一样时，教师在
+                 「正确答案是 B」这句话里找不到 B。复用同一个类是为了几何完全一致。 */
+              <span className="worksheet-editor-option-correct is-readonly">{option.key}</span>
+            )}
             <div className="worksheet-editor-option-content">
               <input
                 className="input"
@@ -140,6 +228,15 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
           </span>
         )}
       </div>
+
+      {/* ★ 2026-09-27：**落点那条线**（不是整块高亮 —— 高亮会盖住行本身，而教师要看的是
+          「插到哪两行之间」）。`position: fixed` + 指针量出来的坐标，与题目拖动共用同一个类。 */}
+      {dragFrom !== null && dropLine && (
+        <div
+          className="worksheet-editor-drop-line"
+          style={{ top: dropLine.y, left: dropLine.left, width: dropLine.width }}
+        />
+      )}
     </>
   );
 }

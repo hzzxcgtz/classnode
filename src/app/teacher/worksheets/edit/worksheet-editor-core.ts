@@ -529,6 +529,266 @@ export function writeMultipleOptions(
   return writeChoiceOptions(rawOptions, correctKeys, true);
 }
 
+// ── 从剪贴板粘贴一整道题（★ 2026-09-27）──────────────────────────────────
+
+/**
+ * 这道题有**可编辑的选项表**吗（= 选择题）。
+ *
+ * 🔴 判断题**不算**：它的选项固定是对 / 错两个，`data` 里连 `options` 都没有 ——
+ * 把「粘贴题目」摆在一道判断题上，教师会粘进来一列选项，然后什么也看不见。
+ * 「哪些题型有选项表」这个问题**只许有一个答案**（工具栏按它决定按钮画不画、
+ * 粘贴补丁按它决定选项写不写），所以它住在这里。
+ */
+export function isChoiceQuestion(node: WorksheetQuestionNode): boolean {
+  return node.type === 'single-choice' || node.type === 'multi-choice';
+}
+
+/**
+ * 把一个选项挪到另一个位置（★ 2026-09-27，选项拖动排序）。
+ *
+ * 口径与 `reorder`（题目拖动）**逐字相同**：`to` 是**抽走被拖那一项之后**的目标下标
+ * （`page.tsx` 那边往下拖时会先 `index - 1`，这里沿用同一个约定，免得两处差一）。
+ *
+ * 🔴 无事发生时**返回原数组**：`updateData` 逐键按 `===` 判有没有变，返回一个新数组会让
+ * 一次「拖回原位」白占一格撤销栈 —— 教师按 ⌘N 时屏幕纹丝不动，只能再按一次。
+ */
+export function moveOptionTo(options: ChoiceOption[], from: number, to: number): ChoiceOption[] {
+  if (from < 0 || from >= options.length) return options;
+  const target = Math.max(0, Math.min(to, options.length - 1));
+  if (target === from) return options;
+  const next = options.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(target, 0, moved);
+  return next;
+}
+
+/**
+ * 「单选 / 多选」那个开关的 `data` 补丁（★ 2026-09-27）。
+ *
+ * 🔴 切回单选时**必须把正确答案截到一个**：服务端的单选口径要求「恰好一个」
+ *（`validateSingleAnswer`），多留一个的后果是那道题**永远存不进去**（400），
+ * 而屏幕上只是那个开关被关掉了 —— 教师会去别处找原因。
+ *
+ * ⚠️ 两个方向都重置 `partialCredit`：它在单选口径下**无意义**（判分器不读它），
+ * 留着就是一段「这道题还能漏选得分」的死数据。
+ * ⚠️ 这两条判据原来写在 `multi-choice-body.tsx` 里，现在住在这里 —— 因为开关本身
+ * 搬到了题目卡的 section 头上（教师：「放到右上角去」），那个组件已经拿不到它了。
+ */
+export function choiceModePatch(multiple: boolean, node: WorksheetQuestionNode): Record<string, unknown> {
+  return {
+    choiceMode: multiple ? 'multiple' : 'single',
+    partialCredit: 'all-or-nothing',
+    ...(multiple ? {} : { correctKeys: readCorrectKeys(node).slice(0, 1) }),
+  };
+}
+
+/**
+ * 这道选择题是不是**多选**口径（能勾多个正确答案）。
+ *
+ * ⚠️ `single-choice` + `data.choiceMode === 'multiple'` 也算 ——「多选题」是 M4a 之后
+ * 才独立出来的题型，旧数据里那批多选仍然长在 `single-choice` 上。
+ * 🔴 判据原来在 `multi-choice-body.tsx` 里各写一遍（一边画界面、一边定判分口径），
+ * 两处漂移的后果是「勾了三个正确答案、保存下来只剩一个」。
+ */
+export function isMultipleChoice(node: WorksheetQuestionNode): boolean {
+  return node.type === 'multi-choice' || node.data.choiceMode === 'multiple';
+}
+
+/** 带括号的标记：`(A)` `（A）` `[A]` `【A】`、`(1)` `（1）`。 */
+// 🔴 **不要求前面有空白**：中文卷子最常见的写法是 `（1）光合作用（2）呼吸作用` —— 紧挨着的。
+// 括号本身就是分隔符，所以它不需要额外的边界判据。
+const BRACKET_MARKER = /[（(\[【]\s*([A-Za-z]|\d{1,2})\s*[）)\]】]/g;
+/**
+ * 带分隔符的标记：`A.` `A、` `A)` `A）` `A．` `A:` `A：`，数字同理。
+ *
+ * 🔴 **必须落在行首或空白之后**。少了这条，正文里那个 `答案：A. 北京` 的 `A.` 会被当成前缀，
+ * 于是「答案：」被吃掉、选项变成半句话 —— 而教师看到的是「粘贴之后文字少了一截」。
+ */
+const SEPARATED_MARKER = /(^|\s)([A-Za-z]|\d{1,2})\s*[.、．)）:：]/g;
+
+/** 粘贴解析的结果。 */
+export interface ParsedQuestionPaste {
+  /**
+   * 题干 = 第一个选项标记**之前**那一段（已剥掉题号）。识别不到 ⇒ `null`。
+   *
+   * ⚠️ 它只在「认出了选项表」时才存在 —— 见 `findOptionRun` 那段。
+   */
+  stem: string | null;
+  /** 选项正文（前缀已剥掉、已 `trim`）。最多 `MAX_OPTIONS` 条；没识别到 ⇒ `[]`。 */
+  texts: string[];
+  /**
+   * 选项**怎么拆出来的**：`'marker'` = 按 `A.` / `(1)` 这类前缀；`'line'` = 一行一个。
+   * 一条都没拆出来 ⇒ `null`。
+   * 🔴 预览窗必须照实说出来 —— 拆错不可怕（替换前能看、替换后每格还能改），
+   * **拆错了却不说**才可怕。
+   */
+  optionSplit: 'marker' | 'line' | null;
+  /** 因为超过 `MAX_OPTIONS` 被丢掉的条数。**大于 0 时预览窗必须说**。 */
+  dropped: number;
+}
+
+interface FoundMarker {
+  /** 标记**本身**的起点（排序与「两个标记之间」的判断都用它）。 */
+  at: number;
+  /** 标记**之后**（= 正文开始）的位置。 */
+  contentAt: number;
+  /** 标记**之后**的位置（= 上一个标记的正文到此为止）。 */
+  end: number;
+  token: string;
+}
+
+/** 找出所有标记，丢掉互相重叠的那些（`（1）` 会被两条正则各命中一次，取起点靠前的）。 */
+function findOptionMarkers(text: string): FoundMarker[] {
+  const found: FoundMarker[] = [];
+  for (const match of text.matchAll(BRACKET_MARKER)) {
+    const at = match.index ?? 0;
+    found.push({ at, contentAt: at + match[0].length, end: at + match[0].length, token: match[1] });
+  }
+  for (const match of text.matchAll(SEPARATED_MARKER)) {
+    const at = match.index ?? 0;
+    // `(^|\s)` 里那个空白是**匹配到的**，标记本身从它后面一个字开始。
+    const markerAt = at + (match[1] === '' ? 0 : match[1].length);
+    found.push({ at: markerAt, contentAt: at + match[0].length, end: at + match[0].length, token: match[2] });
+  }
+  found.sort((a, b) => a.at - b.at);
+  const kept: FoundMarker[] = [];
+  for (const marker of found) {
+    // 与已收下的那个重叠 ⇒ 丢掉（同一个 `（1）` 被两条正则各命中一次，只用先出现的）。
+    if (kept.some(other => marker.at < other.end)) continue;
+    kept.push(marker);
+  }
+  return kept;
+}
+
+/** 标记的序数（字母按 A=1、数字按自身）。 */
+function markerRank(token: string, letters: boolean): number {
+  return letters ? token.toUpperCase().charCodeAt(0) - 64 : Number(token);
+}
+
+/**
+ * 从标记表里找出那一段**像选项表**的连续区间。
+ *
+ * 四条判据缺一不可（每一条都对应一个真实的误判）：
+ *
+ *   1. **至少两个** —— 一个标记不成表（`A. 甲` 单独一行不是四个选项）。
+ *   2. **从头就是 `A`/`a`/`1`** —— 🔴 这条拦的是**正文**：`3.14 是圆周率` / `2.71 是自然对数`
+ *      两行的 `3.` `2.` 会被正则命中，而它们首项不是 A/1 ⇒ 不当标记 ⇒ **一个字都不剥**
+ *      （退化成按行拆）。宁可拆得笨一点，也不要吃掉教师的正文。
+ *   3. **同族且严格递增** —— 拦 `1. 甲 / 2. 乙 / 1. 丙` 这类回头编号，也拦住 `A` 与 `1` 混着来。
+ *   4. 🔴 **一直延伸到最后一个标记** —— 这条是「题干也一起识别」逼出来的，也是本函数
+ *      最容易写错的一条。前面那三条只管**一段**，而 `1. 题干` 与 `1. 甲` 都是标记 ⇒
+ *      从第二个 `1.` 起算才是选项表，它前面那一段正好是题干。
+ *      ⇒ 但「一段合规的标记」不等于「它就是选项表」：`A. 甲\nB. 乙\n1. 丙` 里那三个标记
+ *      能切出 `[A,B]` 这一段，而尾巴上那个 `1.` **会被丢掉**（没有哪一段认领它）。
+ *      要求**跑到最后一个标记**就没有这个洞：不满足就整段退回按行拆，**一个字都不丢**。
+ */
+function findOptionRun(tokens: string[]): { from: number; to: number } | null {
+  for (let start = 0; start < tokens.length; start += 1) {
+    const letters = /^[A-Za-z]$/.test(tokens[start]);
+    const digits = /^\d{1,2}$/.test(tokens[start]);
+    if (!letters && !digits) continue;
+    const first = tokens[start].toUpperCase();
+    if (letters ? first !== 'A' : Number(first) !== 1) continue;
+    let end = start;
+    while (end + 1 < tokens.length
+      && /^[A-Za-z]$/.test(tokens[end + 1]) === letters
+      && markerRank(tokens[end + 1], letters) > markerRank(tokens[end], letters)) {
+      end += 1;
+    }
+    if (end - start + 1 >= 2 && end === tokens.length - 1) return { from: start, to: end };
+  }
+  return null;
+}
+
+/**
+ * 题干开头那个**题号**：`1.` `2、` `（3）` `第4题` `(5)`。
+ *
+ * 🔴 两支都**必须带括号或分隔符**。写成「开头有 1~2 个数字就剥掉」的后果是
+ * `2024 年的第一场雪` 变成 `24 年的第一场雪` —— 教师的题干少一截，而屏幕上只是一行字。
+ * ⚠️ 括号与「第 N 题」这两种形态**自带边界**，单独一支就能判准。
+ */
+const LEADING_BRACKETED_NUMBER = /^\s*(?:第\s*\d+\s*题[.、．:：]?|[（(\[【]\s*\d{1,2}\s*[）)\]】])\s*/;
+/** 「数字 + 分隔符」那一支 —— 它**需要额外一道判据**，见 `stripLeadingQuestionNumber`。 */
+const LEADING_NUMBER_WITH_SEPARATOR = /^\s*\d{1,2}\s*[.、．)）:：]\s*/;
+
+/**
+ * 剥掉题干开头的题号（剥不出就原样返回）。
+ *
+ * 🔴 `3.14 是圆周率` 开头那个 `3.` 与题号 `3.` **长得一模一样** —— 光靠正则分不开。
+ * 补的那道判据是：**剥完之后紧接着又是一个数字 ⇒ 那是小数，不是题号**。
+ * 少了它的后果是题干变成 `14 是圆周率`，而屏幕上只是一行看起来还算正常的字。
+ * （这条是**用例先红**抓出来的：`parseQuestionPaste('3.14 是圆周率\nA. 甲\nB. 乙')`。）
+ */
+function stripLeadingQuestionNumber(stem: string): string {
+  const bracketed = LEADING_BRACKETED_NUMBER.exec(stem);
+  if (bracketed) return stem.slice(bracketed[0].length).trim();
+  const numbered = LEADING_NUMBER_WITH_SEPARATOR.exec(stem);
+  if (!numbered) return stem;
+  const rest = stem.slice(numbered[0].length);
+  if (/^\d/.test(rest)) return stem;
+  return rest.trim();
+}
+
+/**
+ * 把一整段粘贴的文本解析成**题干 + 选项**。
+ *
+ * 三条出路：
+ *   · 认出了选项表（`findOptionRun`）⇒ 它**之前**那一段是题干、它自己切成选项；
+ *   · 没认出选项表但有多行 ⇒ 一行一个选项（题干由预览窗里的开关交给教师定）；
+ *   · 只有一行 ⇒ 只能当题干。
+ * 什么都没有（空白 / 非字符串）⇒ `null`。
+ */
+export function parseQuestionPaste(raw: unknown): ParsedQuestionPaste | null {
+  if (typeof raw !== 'string') return null;
+  // CRLF 归一化：Windows 上从 Word 复制出来的就是 CRLF。
+  const text = raw.replace(/\r\n?/g, '\n');
+  if (!text.trim()) return null;
+
+  const markers = findOptionMarkers(text);
+  const run = findOptionRun(markers.map(marker => marker.token));
+  if (run) {
+    const texts = markers.slice(run.from, run.to + 1).map((marker, index, list) => {
+      const next = list[index + 1];
+      return text.slice(marker.contentAt, next ? next.at : text.length).trim();
+    });
+    const before = stripLeadingQuestionNumber(text.slice(0, markers[run.from].at).trim());
+    const dropped = Math.max(0, texts.length - MAX_OPTIONS);
+    return {
+      stem: before || null,
+      texts: texts.slice(0, MAX_OPTIONS),
+      optionSplit: 'marker',
+      dropped,
+    };
+  }
+
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+  if (lines.length < 2) return { stem: lines[0] ?? text.trim(), texts: [], optionSplit: null, dropped: 0 };
+  const dropped = Math.max(0, lines.length - MAX_OPTIONS);
+  return { stem: null, texts: lines.slice(0, MAX_OPTIONS), optionSplit: 'line', dropped };
+}
+
+/**
+ * 把解析出来的选项文本变成 `data` 补丁。**全部替换**（教师裁定）。
+ *
+ * ⚠️ 正确答案**按位置**跟着走：旧字母交给 `writeOptions` / `writeMultipleOptions` 翻译，
+ * 于是「原来勾在第 2 个上的答案」会留在第 2 个；新列表更短、那个位置没了时它被丢掉，
+ * 界面随即显示「尚未设置正确答案」（预览窗已经把这两件事都说出来了）。
+ *
+ * 🔴 抽成纯函数是为了**让这条最难的判断能跑用例**：它要读三个东西（选项、正确答案、
+ * 这道题是不是多选），三个都在 `node` 里，而组件那一层在本机没有回归网。
+ * ⚠️ 它**不截断**到 `MAX_OPTIONS` —— 截断与「丢了几条」的报数在解析那一层，
+ * 这里再截一次就是第二个真源。
+ */
+export function optionPastePatch(texts: string[], node: WorksheetQuestionNode): { options: ChoiceOption[]; correctKeys: string[] } {
+  const multiple = isMultipleChoice(node);
+  const options = texts.map((text, index) => ({ key: optionKey(index), text }));
+  const correctKeys = readCorrectKeys(node);
+  const written = multiple
+    ? writeMultipleOptions(options, correctKeys)
+    : writeOptions(options, correctKeys);
+  return { options: written.options, correctKeys: written.correctKeys };
+}
+
 /**
  * 填空题**单空形状**的「答案」textarea 值（规格 §3-R：一行一个可接受答案）。
  *
@@ -2064,6 +2324,71 @@ export function buildPayload(
     settings,
     content: sanitizeContentForSave(content),
   };
+}
+
+/**
+ * ★ 2026-09-27（教师裁定）：「设置内容在弹窗内直接保存；顶栏的保存按钮是指整张学习单的保存。」
+ *
+ * ⇒ 从这一刻起**服务端上那份不再是一份**，而是两半、各自可能新旧不同：
+ *
+ *   | 这一半 | 装什么 | 谁会盖它 |
+ *   |---|---|---|
+ *   | `content`  | 标题 + 内容 | **只有**顶栏的「保存」 |
+ *   | `settings` | 备注 + 设置 | 顶栏「保存」**与**弹窗里的「保存设置」 |
+ *
+ * 🔴 **为什么要显式分成两半、而不是各存各的字符串**：这两半共用一条 `dirty` 判据，
+ * 而 `dirty` 是顶栏那句「未保存」**唯一**的依据。合成一份的后果是一个**会说谎的瞬间**：
+ * 教师改完设置点了「保存设置」、而同一时刻他还改过题目 —— 顶栏显示「已保存」，
+ * 题目却根本没进服务端。**界面上说假话、且没有任何报错**，正是本仓最防的那一类。
+ *
+ * ⚠️ 两半必须**不重叠**：`description` 归 `settings`（它就在那个弹窗里、与设置同一个按钮提交），
+ * `title` 归 `content`（它在顶栏直接编，与题目一起由顶栏的「保存」提交）。
+ *
+ * ⚠️ 切分的是**归一化之后**的载荷（`buildPayload` 的产物），不是屏幕上那几格原始状态 ——
+ * 否则标题带一个前后空格就会让「未保存」永远擦不掉。
+ */
+export interface SaveBaselines {
+  /** 标题 + 内容。**只有顶栏的「保存」会盖它。** */
+  content: string;
+  /** 备注 + 设置。顶栏「保存」与弹窗里的「保存设置」都会盖它。 */
+  settings: string;
+}
+
+/** 把一份载荷切成两半基线。**保存成功后拿它当新的基线**（哪一半存了就盖哪一半）。 */
+export function snapshotsOf(payload: WorksheetPayload): SaveBaselines {
+  return {
+    content: JSON.stringify({ title: payload.title, content: payload.content }),
+    settings: JSON.stringify({ description: payload.description, settings: payload.settings }),
+  };
+}
+
+/**
+ * 屏幕上那份与「服务端上那份」还差着东西吗。**任一****半**不同就是脏。
+ *
+ * ⚠️ `baselines === null`（还没加载完）⇒ 一律不脏：加载中途报「有未保存改动」是假的，
+ * 那时屏幕上那份根本不是教师写的，而且草稿也不该在那时被写下去。
+ */
+export function isDirtyAgainst(baselines: SaveBaselines | null, payload: WorksheetPayload): boolean {
+  if (!baselines) return false;
+  const current = snapshotsOf(payload);
+  return current.content !== baselines.content || current.settings !== baselines.settings;
+}
+
+/**
+ * **题目那一半**（标题 + 内容）与「服务端上那份」一致吗。
+ *
+ * 🔴 它守的是**草稿那条不变量**，也是本组第二个「会说谎的瞬间」：`offerDraft` 丢草稿的判据是
+ * 「服务端上的版本**不比草稿旧** ⇒ 草稿已经被覆盖进去了」。而「保存设置」会让服务端的
+ * `updatedAt` 前进、**却一个字节的题目都没存** —— 那条前提在一瞬间变成假的，于是一份装着
+ * 「还没保存过的题目改动」的草稿会被判成「已被覆盖」而**静默丢掉**。
+ * ⇒ 只存设置之后，只有这一条为真才允许清草稿。**丢了就是丢数据，没有任何提示。**
+ *
+ * ⚠️ `baselines === null`（还没加载完）⇒ 一律 `false`：不知道服务端上是什么的时候，
+ * 不许丢任何东西。
+ */
+export function isContentHalfSaved(baselines: SaveBaselines | null, payload: WorksheetPayload): boolean {
+  if (!baselines) return false;
+  return snapshotsOf(payload).content === baselines.content;
 }
 
 export const DEFAULT_SETTINGS: WorksheetSettings = {

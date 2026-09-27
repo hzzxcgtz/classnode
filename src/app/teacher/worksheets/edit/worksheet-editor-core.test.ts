@@ -65,6 +65,7 @@ import {
   matchSetPair,
   MAX_OPTIONS,
   moveIdInList,
+  moveOptionTo,
   newQuestion,
   nextTaskTitle,
   normalizeLoadedContent,
@@ -110,6 +111,17 @@ import {
   writeOrder,
   readChoicesText,
   writeChoicesText,
+  // ★ 2026-09-27：两半基线（「保存设置」只盖后一半）。见文件末尾那一组。
+  isDirtyAgainst,
+  choiceModePatch,
+  type ChoiceOption,
+  isChoiceQuestion,
+  isContentHalfSaved,
+  isMultipleChoice,
+  optionPastePatch,
+  parseQuestionPaste,
+  snapshotsOf,
+  type SaveBaselines,
 } from './worksheet-editor-core.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
@@ -2408,4 +2420,414 @@ test('🔴 `canReorder`：**同层才能拖**（跨任务换组是另一件事�
   assert.equal(canReorder(nodes, 'q_a', 'q_b'), false, '顶层散题 ↔ 任务里的小题');
   assert.equal(canReorder(nodes, 'q_b', 'q_b'), false, '自己拖自己');
   assert.equal(canReorder(nodes, 'q_没有', 'q_b'), false, '找不到的 id');
+});
+
+// ── 两半基线（★ 2026-09-27）：**设置可以单独保存，题目不行** ────────────────
+//
+// 教师裁定：「学习单的设置内容在弹窗内直接保存；顶栏的保存按钮是指整张学习单的保存。」
+// ⇒ 从这一刻起，服务端上那份**不再是一份**，而是两半各自可能新旧不同：
+//   标题 + 内容   —— 只有顶栏「保存」会盖它
+//   备注 + 设置   —— 顶栏「保存」与弹窗里的「保存设置」都会盖它
+//
+// 🔴 这一组守的就是那个**会说谎的瞬间**：教师改完设置点了「保存设置」，
+// 而同一时刻他还改过题目 —— 如果两半被合并成一份，顶栏会显示「已保存」，
+// 而题目根本没进服务端。**界面上说假话、且没有任何报错**，正是本仓最防的那一类。
+
+test('🔴 `snapshotsOf`：标题+内容是一半，备注+设置是另一半（两半各管各的）', () => {
+  const payload = buildPayload('标题', '备注', SETTINGS, contentOf(node('q_a', '题干')));
+  const halves = snapshotsOf(payload);
+
+  const renamed = snapshotsOf(buildPayload('改了标题', '备注', SETTINGS, payload.content));
+  assert.notEqual(renamed.content, halves.content, '标题属于 content 那一半');
+  assert.equal(renamed.settings, halves.settings, '改标题不该动 settings 那一半');
+
+  const restyled = snapshotsOf(buildPayload('标题', '备注', { ...SETTINGS, rewardStyle: 'flower' }, payload.content));
+  assert.equal(restyled.content, halves.content, '改设置不该动 content 那一半');
+  assert.notEqual(restyled.settings, halves.settings, '设置属于 settings 那一半');
+
+  // 备注与设置在同一个弹窗里、由同一个按钮存 ⇒ 必须落在同一半。
+  const described = snapshotsOf(buildPayload('标题', '换了一段备注', SETTINGS, payload.content));
+  assert.equal(described.content, halves.content, '改备注不该动 content 那一半');
+  assert.notEqual(described.settings, halves.settings, '备注属于 settings 那一半');
+});
+
+test('🔴 只存设置之后：题目那边改过就必须**仍然算未保存**', () => {
+  const oldContent = contentOf(node('q_a', '旧题干'));
+  const newSettings = { ...SETTINGS, autoGrade: false };
+  // 基线 = 服务端上那份：内容还是旧的，设置已经是新的（教师刚点过「保存设置」）
+  const baselines: SaveBaselines = {
+    content: snapshotsOf(buildPayload('标题', '备注', SETTINGS, oldContent)).content,
+    settings: snapshotsOf(buildPayload('标题', '备注', newSettings, oldContent)).settings,
+  };
+
+  // ① 设置改了、而设置**已经存过** ⇒ 不脏（那个「未保存」必须擦得掉）
+  assert.equal(
+    isDirtyAgainst(baselines, buildPayload('标题', '备注', newSettings, oldContent)), false,
+    '设置已经存上去了，不该还说「未保存」',
+  );
+
+  // ② 又改了题干 ⇒ 脏，**哪怕 settings 那一半是干净的**
+  assert.equal(
+    isDirtyAgainst(baselines, buildPayload('标题', '备注', newSettings, contentOf(node('q_a', '改过的题干')))), true,
+    '题目没存过 ⇒ 必须仍是「未保存」',
+  );
+});
+
+test('🔴 反向断言：只看设置那一半的判据会在这里说「没改过」—— 所以上面那条不是白写的', () => {
+  const oldContent = contentOf(node('q_a', '旧题干'));
+  const newContent = contentOf(node('q_a', '新题干'));
+  const newSettings = { ...SETTINGS, rewardStyle: 'flower' as const };
+  // 场景与上一条同形：教师刚点过「保存设置」，同时还改过题干。
+  const baselines: SaveBaselines = {
+    content: snapshotsOf(buildPayload('标题', '备注', SETTINGS, oldContent)).content,
+    settings: snapshotsOf(buildPayload('标题', '备注', newSettings, oldContent)).settings,
+  };
+  const edited = buildPayload('标题', '备注', newSettings, newContent);
+
+  // 把**坏判据**直接算出来（不去改实现）：只比 `settings` 那一半 ——
+  // 它给出的答案是「不脏」。屏幕上的题干明明改过，这正是那个会说谎的瞬间。
+  assert.equal(
+    snapshotsOf(edited).settings === baselines.settings, true,
+    '坏判据在这里给出「不脏」（两半合成一份、且那份只装设置时就是这个结果）',
+  );
+  // 而正确的两半看得见题目那一处改动 ⇒ 顶栏照实显示「未保存」。
+  assert.equal(isDirtyAgainst(baselines, edited), true);
+});
+
+test('🔴 每一格改动都要能被两半之一看见（漏一格 = 那一格的改动永远不显示「未保存」）', () => {
+  const base = buildPayload('标题', '备注', SETTINGS, contentOf(node('q_a', '题干')));
+  const baseHalves = snapshotsOf(base);
+  const variants: Array<[string, ReturnType<typeof buildPayload>]> = [
+    ['标题', buildPayload('改了标题', '备注', SETTINGS, base.content)],
+    ['题干', buildPayload('标题', '备注', SETTINGS, contentOf(node('q_a', '另一个题干')))],
+    ['备注', buildPayload('标题', '另一段备注', SETTINGS, base.content)],
+    ['设置', buildPayload('标题', '备注', { ...SETTINGS, autoGrade: false }, base.content)],
+  ];
+  for (const [name, payload] of variants) {
+    const halves = snapshotsOf(payload);
+    assert.ok(
+      halves.content !== baseHalves.content || halves.settings !== baseHalves.settings,
+      `改了「${name}」之后两半都没变 ⇒ 这一格的改动永远不会显示「未保存」`,
+    );
+  }
+});
+
+test('`baselines` 为 `null`（还没加载完）⇒ 一律不脏', () => {
+  // 加载中途报「有未保存改动」是假的：那时屏幕上那份根本不是教师写的。
+  assert.equal(isDirtyAgainst(null, buildPayload('', '', DEFAULT_SETTINGS, createEmptyContent())), false);
+});
+
+test('同一份 payload ⇒ 不脏（保存成功后那个「未保存」标记必须擦得掉）', () => {
+  // ⚠️ 两边都过 `buildPayload` 的 trim ⇒ 前后空格不算改动。
+  // 少了这一条，标题带空格时那个「未保存」会**永远擦不掉**。
+  const payload = buildPayload('  标题  ', '备注  ', SETTINGS, contentOf(node('q_a', '题干')));
+  assert.equal(isDirtyAgainst(snapshotsOf(payload), payload), false);
+  assert.equal(
+    isDirtyAgainst(snapshotsOf(payload), buildPayload('标题', '备注', SETTINGS, contentOf(node('q_a', '题干')))),
+    false,
+  );
+});
+
+test('🔴 `isContentHalfSaved`：题目那一半干净了吗 —— 「只存设置」之后能不能丢草稿，就靠它', () => {
+  const oldContent = contentOf(node('q_a', '旧题干'));
+  const newSettings = { ...SETTINGS, rewardStyle: 'flower' as const };
+  const baselines = snapshotsOf(buildPayload('标题', '备注', SETTINGS, oldContent));
+
+  // ① 只改了设置：题目那一半没动 ⇒ 干净 ⇒ 草稿是多余的，可以丢
+  assert.equal(
+    isContentHalfSaved(baselines, buildPayload('标题', '备注', newSettings, oldContent)), true,
+    '题目没动过 ⇒ 草稿里没有服务端没有的东西',
+  );
+
+  // ② 题干改过 ⇒ 不干净 ⇒ **草稿是本机唯一的一份，丢了就是丢数据**
+  assert.equal(
+    isContentHalfSaved(baselines, buildPayload('标题', '备注', newSettings, contentOf(node('q_a', '新题干')))), false,
+    '题目那一半没存过 ⇒ 草稿绝对不能丢',
+  );
+
+  // ③ 标题也算题目那一半（它与题目一起由顶栏的「保存」提交）
+  assert.equal(isContentHalfSaved(baselines, buildPayload('改过的标题', '备注', SETTINGS, oldContent)), false);
+
+  // ④ 还没加载完 ⇒ 一律「不干净」（不许在不知道服务端是什么的时候丢任何东西）
+  assert.equal(isContentHalfSaved(null, buildPayload('标题', '备注', SETTINGS, oldContent)), false);
+});
+
+// ── 粘贴解析：题干 + 选项（★ 2026-09-27）────────────────────────────────
+//
+// 教师：「我觉得需要加一个好的功能：它可以从剪贴板直接把我复制的内容粘贴进来，然后自动去
+// 判断并填充选项，例如，用 ABCD 或者 1234 都行，(1)(2)(3)(4)、(A)(B)(C)(D) 这种常用的选项
+// 前缀所跟的文本自动解析并填充。」→ 随后：「我建议升级这个功能，**不仅选择题的选项，
+// 连题干也一起识别**。」
+//
+// 🔴 这一组守的是**拆错**。拆错本身不可怕 —— 替换前有预览窗、替换后每一格都还能改；
+// 可怕的是**拆错了却不说**。所以 `optionSplit` 与 `stem` 必须如实反映这次的判断：
+// 题干是不是真的识别到了、选项是按前缀拆的还是按行拆的。
+//
+// ⚠️ 下面带「反向」字样与变异检验过的几条是**成对**的：每写一条「该拆」，旁边就有一条
+// 「不该拆」——只有「该拆」那一半的用例挡不住「拆得比该拆的多」。
+
+test('🔴 粘贴解析：字母 / 数字 / 带括号的前缀都要剥掉（不产生题干）', () => {
+  const none = { stem: null, optionSplit: 'marker' as const, dropped: 0 };
+  assert.deepEqual(parseQuestionPaste('A. 北京\nB. 上海\nC. 广州'), { ...none, texts: ['北京', '上海', '广州'] });
+  assert.deepEqual(parseQuestionPaste('1、甲\n2、乙'), { ...none, texts: ['甲', '乙'] });
+  assert.deepEqual(parseQuestionPaste('(A) 甲\n(B) 乙'), { ...none, texts: ['甲', '乙'] });
+  assert.deepEqual(parseQuestionPaste('（1）甲\n（2）乙'), { ...none, texts: ['甲', '乙'] });
+  assert.deepEqual(parseQuestionPaste('A）甲\nB）乙'), { ...none, texts: ['甲', '乙'] });
+  assert.deepEqual(parseQuestionPaste('【A】甲\n【B】乙'), { ...none, texts: ['甲', '乙'] });
+  // 前缀之后紧跟空格 / 不跟空格，两种都要。
+  assert.deepEqual(parseQuestionPaste('A.北京\nB.上海'), { ...none, texts: ['北京', '上海'] });
+});
+
+test('★ 粘贴解析：**整道题**（题号 + 题干 + 选项）—— 题干与选项各归各位', () => {
+  assert.deepEqual(
+    parseQuestionPaste('1. 下列哪个是首都？\nA. 北京\nB. 上海\nC. 广州\nD. 深圳'),
+    { stem: '下列哪个是首都？', texts: ['北京', '上海', '广州', '深圳'], optionSplit: 'marker', dropped: 0 },
+  );
+  // 题号的四种常见写法都要剥掉：`2、` / `（3）` / `第4题` / `(5)`。
+  assert.equal(parseQuestionPaste('2、下列哪个是首都？\nA. 北京\nB. 上海')?.stem, '下列哪个是首都？');
+  assert.equal(parseQuestionPaste('（3）下列哪个是首都？\nA. 北京\nB. 上海')?.stem, '下列哪个是首都？');
+  assert.equal(parseQuestionPaste('第4题 下列哪个是首都？\nA. 北京\nB. 上海')?.stem, '下列哪个是首都？');
+  assert.equal(parseQuestionPaste('(5) 下列哪个是首都？\nA. 北京\nB. 上海')?.stem, '下列哪个是首都？');
+  // 没有题号的那种（题干直接开头）。
+  assert.equal(parseQuestionPaste('下列哪个是首都？\nA. 北京\nB. 上海')?.stem, '下列哪个是首都？');
+});
+
+test('🔴 反向：**不该剥的题号一个都不许剥**（多剥一个字 = 教师的题干少一截）', () => {
+  // `2024 年的第一场雪` 开头的 `20` 不是题号 —— 后面既不是括号也不是分隔符。
+  assert.equal(
+    parseQuestionPaste('2024 年的第一场雪\nA. 甲\nB. 乙')?.stem,
+    '2024 年的第一场雪',
+  );
+  // 题干本身以数字开头、但数字是内容的一部分（`3.14 是圆周率`）。
+  assert.equal(parseQuestionPaste('3.14 是圆周率\nA. 甲\nB. 乙')?.stem, '3.14 是圆周率');
+});
+
+test('★ 粘贴解析：**同一行里**一串带括号的选项也要拆开（中文卷子最常见的那种）', () => {
+  const none = { stem: null, optionSplit: 'marker' as const, dropped: 0 };
+  assert.deepEqual(
+    parseQuestionPaste('（1）光合作用（2）呼吸作用（3）蒸腾作用'),
+    { ...none, texts: ['光合作用', '呼吸作用', '蒸腾作用'] },
+  );
+  // ⚠️ 括号形式**不要求前面有空格**（上面那条就是紧挨着的）；而「A.」那种要 —— 见下一条。
+  assert.deepEqual(parseQuestionPaste('(A)苹果(B)香蕉(C)梨'), { ...none, texts: ['苹果', '香蕉', '梨'] });
+  // 题干 + 同一行的括号选项。
+  assert.deepEqual(
+    parseQuestionPaste('光合作用需要什么？（1）阳光（2）水分（3）空气'),
+    { stem: '光合作用需要什么？', texts: ['阳光', '水分', '空气'], optionSplit: 'marker', dropped: 0 },
+  );
+});
+
+test('🔴 粘贴解析：`A.` 这种**必须前面是行首或空白**才算前缀 —— 否则正文里的 `A.` 会被吃掉', () => {
+  // 🔴 两行都带着「某某：」，后面跟 `A.` / `B.` —— 那不是选项表，是正文。
+  // ⚠️ **这两行必须都是正文**，否则钉不住这条判据：只有一个标记时，拦下它的是
+  //    「至少两个标记」，边界那一条根本没被走到（变异检验实测：去掉边界判据，用例全绿）。
+  assert.deepEqual(
+    parseQuestionPaste('答案：A. 北京\n解析：B. 上海'),
+    { stem: null, texts: ['答案：A. 北京', '解析：B. 上海'], optionSplit: 'line', dropped: 0 },
+  );
+  // 而正常的行首 `A.` 照拆（对照组：不能因为拦得狠就把这条也拦了）。
+  assert.equal(parseQuestionPaste('A. 北京\nB. 上海')?.optionSplit, 'marker');
+});
+
+test('🔴 粘贴解析：**没有分隔符的字母不算前缀**', () => {
+  // 「A 是北京」不是选项前缀 —— 少了这一条，「A 是……」这类正文会被吃掉一个字。
+  assert.deepEqual(
+    parseQuestionPaste('A 是北京\nB 是上海'),
+    { stem: null, texts: ['A 是北京', 'B 是上海'], optionSplit: 'line', dropped: 0 },
+  );
+});
+
+test('🔴 粘贴解析：标记序列要**像个选项表**（首项必须是 A/a/1，且严格递增）', () => {
+  // 一条数学正文：两个 `3.` / `2.` 会被误当成前缀 —— 首项不是 1 ⇒ 不按标记拆，
+  // 于是**一个字都不剥**（这正是要的效果：宁可退化成按行拆，也不要吃掉正文）。
+  assert.deepEqual(
+    parseQuestionPaste('3.14 是圆周率\n2.71 是自然对数'),
+    { stem: null, texts: ['3.14 是圆周率', '2.71 是自然对数'], optionSplit: 'line', dropped: 0 },
+  );
+  // 首项是 1 但是递减的 ⇒ 同一道门拦下。
+  assert.equal(parseQuestionPaste('1. 甲\n2. 乙\n1. 丙')?.optionSplit, 'line');
+  // 🔴 下面两条**专门**钉住「首项必须是 A/a/1」那一条判据 —— 递增、但没从 A/1 开始。
+  // ⚠️ 上面 `3.14 / 2.71` 那条**钉不住它**（那一串是递减的，被「严格递增」抢先拦下，
+  //    两条判据重叠 ⇒ 删掉首项判据它照样绿。变异检验实测如此）。
+  assert.deepEqual(
+    parseQuestionPaste('2. 第二点\n3. 第三点'),
+    { stem: null, texts: ['2. 第二点', '3. 第三点'], optionSplit: 'line', dropped: 0 },
+    '递增但没从 1 开始 ⇒ 保守地不剥前缀（宁可拆得笨，也不要吃掉正文）',
+  );
+  assert.deepEqual(
+    parseQuestionPaste('B. 甲\nC. 乙'),
+    { stem: null, texts: ['B. 甲', 'C. 乙'], optionSplit: 'line', dropped: 0 },
+  );
+});
+
+test('★ 粘贴解析：题号与选项之间**隔着一段题号错位**时，标记表从后面那一段起算', () => {
+  // `1. 题干` 与 `1. 甲` 都是 `1.`：从第一个 `1.` 起的表不是递增的 ⇒ 从第二个 `1.` 起算，
+  // 而它前面那段就成了题干。少了这条扫描，整道题会被判成「按行拆」。
+  assert.deepEqual(
+    parseQuestionPaste('1. 下列哪个是首都？\n1. 北京\n2. 上海\n3. 广州'),
+    { stem: '下列哪个是首都？', texts: ['北京', '上海', '广州'], optionSplit: 'marker', dropped: 0 },
+  );
+});
+
+test('★ 粘贴解析：没有前缀的纯多行 ⇒ 一行一个选项（识别不出题干 —— 由预览窗让教师改）', () => {
+  assert.deepEqual(
+    parseQuestionPaste('北京\n上海\n广州'),
+    { stem: null, texts: ['北京', '上海', '广州'], optionSplit: 'line', dropped: 0 },
+  );
+  // 空行不算一条，也不会把两条并起来。
+  assert.deepEqual(parseQuestionPaste('北京\n\n  \n上海')?.texts, ['北京', '上海']);
+  // CRLF 与前后空白照常处理。
+  assert.deepEqual(parseQuestionPaste('  北京  \r\n上海\r\n')?.texts, ['北京', '上海']);
+});
+
+test('🔴 粘贴解析：**一行** ⇒ 只能当题干（凑不出一张选项表）', () => {
+  assert.deepEqual(
+    parseQuestionPaste('光合作用需要哪些条件？'),
+    { stem: '光合作用需要哪些条件？', texts: [], optionSplit: null, dropped: 0 },
+  );
+  // 前后空白剥掉。
+  assert.equal(parseQuestionPaste('  北京  ')?.stem, '北京');
+});
+
+test('🔴 粘贴解析：什么都没有 ⇒ `null`（预览窗据此不显示）', () => {
+  assert.equal(parseQuestionPaste('  '), null);
+  assert.equal(parseQuestionPaste(''), null);
+  assert.equal(parseQuestionPaste('\n\n\n'), null);
+  assert.equal(parseQuestionPaste(null), null);
+  assert.equal(parseQuestionPaste(undefined), null);
+  assert.equal(parseQuestionPaste(42), null);
+});
+
+test('🔴 粘贴解析：超过 `MAX_OPTIONS` 的**必须报数**（悄悄截断 = 悄悄丢教师的字）', () => {
+  const many = Array.from({ length: MAX_OPTIONS + 3 }, (_, index) => `${index + 1}. 选项${index + 1}`).join('\n');
+  const parsed = parseQuestionPaste(many);
+  assert.ok(parsed);
+  assert.equal(parsed.texts.length, MAX_OPTIONS);
+  assert.equal(parsed.dropped, 3, '丢了 3 条就得说 3 条');
+  assert.equal(parsed.optionSplit, 'marker');
+});
+
+test('★ 粘贴解析：前缀之前的文字**归题干**（不是丢掉）', () => {
+  // ⚠️ 取舍写在这里：那段文字原来（只有选项的那一版）是**被丢掉**的；
+  //    现在它归题干 —— 那是「题干也一起识别」这条需求的直接结果。
+  assert.equal(parseQuestionPaste('光合作用需要什么条件？ A. 阳光\nB. 水分')?.stem, '光合作用需要什么条件？');
+  assert.equal(parseQuestionPaste('下列哪个是首都？\n（1）北京\n（2）上海')?.stem, '下列哪个是首都？');
+  // ⚠️ 而**只有题号**时剥完就没了 ⇒ 没有题干（那份粘贴里本来就没有题干，
+  //    硬把「第 3 题」当题干是给教师塞一段不该出现在学生屏幕上的字）。
+  assert.equal(parseQuestionPaste('第 3 题  A. 甲\nB. 乙')?.stem, null);
+});
+
+test('🔴 粘贴解析：一个标记都凑不成表 ⇒ 退化成按行拆，**一个字都不剥**', () => {
+  assert.deepEqual(
+    parseQuestionPaste('A. 甲\n乙\n丙'),
+    { stem: null, texts: ['A. 甲', '乙', '丙'], optionSplit: 'line', dropped: 0 },
+  );
+});
+
+// ── 选项补丁：把解析结果变成 `data` 补丁（★ 2026-09-27）──────────────────
+
+test('🔴 `optionPastePatch`：**全部替换**，正确答案按位置跟着走', () => {
+  // 原来 A/B 两个选项、B 是正确答案 ⇒ 替换成 4 个之后，标记落在**第 2 个**上。
+  const single = node('q_1', '题干', { options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }], correctKeys: ['B'], choiceMode: 'single' }, 'single-choice');
+  const patch = optionPastePatch(['北京', '上海', '广州', '深圳'], single);
+  assert.deepEqual(patch.options, [
+    { key: 'A', text: '北京' }, { key: 'B', text: '上海' }, { key: 'C', text: '广州' }, { key: 'D', text: '深圳' },
+  ]);
+  assert.deepEqual(patch.correctKeys, ['B'], '按位置保留：原来勾在第 2 个，替换后还在第 2 个');
+
+  // 🔴 替换后**选项变少、那个位置没了** ⇒ 标记必须被丢掉（界面随即显示「尚未设置正确答案」）。
+  // ⚠️ 上面的 `single` 里正确答案在 B（第 2 个）⇒ 换成 2 个选项时它还在，
+  //    所以这里必须另造一个**答案落在第 4 个**的题，否则这条断言什么都没钉住。
+  const four = node('q_1b', '题干', {
+    options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }, { key: 'D', text: '丁' }],
+    correctKeys: ['D'],
+    choiceMode: 'single',
+  }, 'single-choice');
+  assert.deepEqual(
+    optionPastePatch(['只有一个', '两个'], four).correctKeys, [],
+    'D 那个位置不存在了 ⇒ 不许留一个指向空气的答案',
+  );
+});
+
+test('🔴 `optionPastePatch`：多选要**保住多个**正确答案（单选口径会静默丢掉后几个）', () => {
+  const multi = node('q_2', '题干', {
+    options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }],
+    correctKeys: ['A', 'C'],
+    choiceMode: 'multiple',
+  }, 'single-choice');
+  const patch = optionPastePatch(['一', '二', '三'], multi);
+  assert.deepEqual(patch.options.map((option) => option.text), ['一', '二', '三']);
+  assert.deepEqual(patch.correctKeys, ['A', 'C'], '多选：两个都留住');
+  // 旧版多选题（`node.type === 'multi-choice'`）走同一条。
+  const legacy = node('q_3', '题干', {
+    options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }],
+    correctKeys: ['A', 'B'],
+  }, 'multi-choice');
+  assert.deepEqual(optionPastePatch(['一', '二'], legacy).correctKeys, ['A', 'B']);
+});
+
+test('🔴 `optionPastePatch`：**不许**把解析出来的选项数悄悄截到 26 以内（截断归解析那一层管）', () => {
+  // 解析层已经截过一次并报了 `dropped`；补丁这一层再截一次就是**第二个**真源。
+  // ⚠️ 必须**真的超过 26 条**，否则加一句 `.slice(0, MAX_OPTIONS)` 这条断言照样绿
+  //    （第一版就是 4 条 —— 变异检验里那处改动没被抓到）。
+  const blank = node('q_4', '题干', { options: [{ key: 'A', text: '' }, { key: 'B', text: '' }] }, 'single-choice');
+  const many = Array.from({ length: MAX_OPTIONS + 4 }, (_, index) => `第${index + 1}项`);
+  assert.equal(optionPastePatch(many, blank).options.length, MAX_OPTIONS + 4);
+});
+
+
+test('🔴 `isChoiceQuestion`：判断题**不算** —— 它没有可编辑的选项表', () => {
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'single-choice')), true);
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'multi-choice')), true);
+  // 🔴 「粘贴题目」的按钮按它决定画不画：画在判断题上，教师会粘进来一列选项、然后什么都看不见。
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'true-false')), false, '判断题的选项固定是对/错');
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'fill-blank')), false);
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'order')), false);
+  assert.equal(isChoiceQuestion(node('q', '', {}, 'short-answer')), false);
+});
+
+test('🔴 `isMultipleChoice`：旧数据的多选长在 `single-choice` 上（`choiceMode`）', () => {
+  assert.equal(isMultipleChoice(node('q', '', { choiceMode: 'multiple' }, 'single-choice')), true);
+  assert.equal(isMultipleChoice(node('q', '', { choiceMode: 'single' }, 'single-choice')), false);
+  assert.equal(isMultipleChoice(node('q', '', {}, 'single-choice')), false, '缺键 = 单选口径');
+  assert.equal(isMultipleChoice(node('q', '', {}, 'multi-choice')), true, '题型本身就是多选');
+});
+
+// ── 选择题选项：拖动换位与单选/多选开关（★ 2026-09-27）────────────────────
+//
+// 教师：「这个（单选/多选）使用左右滑动的开关打开，就表示可以多选」+
+// 「4 个选项可以拖拽、上下移动、改变位置」。
+
+test('🔴 `moveOptionTo`：与 `reorder` 同一口径（`to` 是**抽走之后**的目标下标）', () => {
+  const list: ChoiceOption[] = [
+    { key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }, { key: 'D', text: '丁' },
+  ];
+  const texts = (next: ChoiceOption[]) => next.map((option) => option.text);
+
+  assert.deepEqual(texts(moveOptionTo(list, 0, 2)), ['乙', '丙', '甲', '丁'], '把第 1 个往后拖到第 3 位');
+  assert.deepEqual(texts(moveOptionTo(list, 3, 0)), ['丁', '甲', '乙', '丙'], '从最后拖到最前');
+  assert.deepEqual(texts(moveOptionTo(list, 1, 2)), ['甲', '丙', '乙', '丁'], '往后挪一格');
+  // 🔴 原地不动必须返回**同一个数组引用**：`updateData` 按 `===` 判有没有变，
+  //    返回新数组会让一次「拖回原位」白占一格撤销栈（教师按 ⌘Z 屏幕纹丝不动）。
+  assert.equal(moveOptionTo(list, 1, 1), list, '原地不动 ⇒ 原数组');
+  assert.equal(moveOptionTo(list, 9, 0), list, '`from` 越界 ⇒ 原数组');
+  assert.equal(moveOptionTo(list, -1, 0), list, '`from` 为负 ⇒ 原数组');
+  assert.deepEqual(texts(moveOptionTo(list, 0, 99)), ['乙', '丙', '丁', '甲'], '`to` 越界 ⇒ 夹到末尾');
+  assert.deepEqual(texts(moveOptionTo(list, 0, -5)), ['甲', '乙', '丙', '丁'], '`to` 为负 ⇒ 夹到开头（等于没动）');
+});
+
+test('🔴 `choiceModePatch`：切多选**保住全部**正确答案，切单选只留一个', () => {
+  const multi = node('q_m', '题干', {
+    options: [{ key: 'A', text: '甲' }, { key: 'B', text: '乙' }, { key: 'C', text: '丙' }],
+    correctKeys: ['A', 'C'],
+    choiceMode: 'multiple',
+  }, 'single-choice');
+
+  assert.deepEqual(choiceModePatch(true, multi), { choiceMode: 'multiple', partialCredit: 'all-or-nothing' });
+  // 🔴 切回单选：正确答案**只能留一个**（服务端单选口径要求恰好一个），
+  //    不留的后果是那道题**永远存不进去**（400），而屏幕上只是那个开关被关掉了。
+  assert.deepEqual(choiceModePatch(false, multi), { choiceMode: 'single', partialCredit: 'all-or-nothing', correctKeys: ['A'] });
+  // ⚠️ 两种方向都重置 `partialCredit`：它在单选口径下**无意义**，留着是一段会让下一个人
+  //    以为「这道题还能漏选得分」的死数据。
+  assert.equal(choiceModePatch(true, multi).partialCredit, 'all-or-nothing');
 });

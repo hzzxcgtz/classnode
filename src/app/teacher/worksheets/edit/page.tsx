@@ -43,9 +43,12 @@ import {
  * 「新建」与「编辑」是同一个页面。
  *
  * 版式分三层（规格 §6.2 方案乙）：
- *   顶栏（返回 / 标题 / 保存状态 / 撤销重做 / 设置 / 预览 / 复制 / 保存）
+ *   顶栏（返回 / 标题 / 保存状态 / 设置 / 预览 / 保存）
  *   —— 题流（每题一张卡片，直接编辑题干、选项、正确答案）
  *   —— 底部的「＋ 添加题目」。
+ *
+ * ★ 2026-09-27（教师裁定）：顶栏的「撤销重做」与「复制一份」两个按钮删掉了；
+ * 「保存」保留，它存的是**整张学习单**（见那一处的注释）。
  *
  * `useSearchParams` 必须被 Suspense 包住（静态导出预渲染的硬要求）——
  * 与 `teacher/classroom/page.tsx` 同一写法。
@@ -404,21 +407,27 @@ function WorksheetEditorBody() {
           </span>
         </div>
 
+        {/*
+          ★ 2026-09-27（教师裁定）：顶栏只剩「设置 / 预览 / 保存」三个按钮。
+          删掉的两样，各有各的理由：
+          · **撤销 / 重做按钮** —— 快捷键（⌘Z / ⇧⌘Z / ⌘Y）照旧可用，见 `use-worksheet-editor.ts`
+            的那个 effect。⚠️ 那两颗按钮原本是**给不知道快捷键的教师**的唯一入口，删掉之后
+            本页就没有可见的撤销了 —— 这是明知的取舍，教师当天明确要求去掉。
+          · **「复制一份」** —— 学习单列表页每张卡片上都有（`worksheet-card.tsx`），
+            同一个动作不必两处都有。
+          ⚠️ 「保存」**留着**：它存的是**整张学习单**（标题 + 题目 + 设置 + 备注）。
+            设置弹窗里那个「保存设置」只存设置那一半 —— 两者的分工写在 `saveSettings` 的注释里。
+        */}
         <div className="worksheet-editor-topbar-actions">
-          <div className="worksheet-editor-history-actions" role="group" aria-label="编辑历史">
-            <button type="button" className="worksheet-editor-command" onClick={editor.undo} disabled={!editor.canUndo} title="撤销（Ctrl/Cmd+Z）" aria-label="撤销">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 7 4 12l5 5" /><path d="M4 12h9a7 7 0 0 1 7 7" /></svg>
-            </button>
-            <button type="button" className="worksheet-editor-command" onClick={editor.redo} disabled={!editor.canRedo} title="重做（Ctrl/Cmd+Shift+Z）" aria-label="重做">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 7 5 5-5 5" /><path d="M20 12h-9a7 7 0 0 0-7 7" /></svg>
-            </button>
-          </div>
           <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>设置</button>
           <button type="button" className="btn btn-secondary" onClick={() => setPreviewOpen(true)}>预览</button>
-          <button type="button" className="btn btn-secondary" onClick={() => void editor.duplicate()} disabled={editor.duplicating}>
-            {editor.duplicating ? '复制中…' : '复制一份'}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => void editor.save()} disabled={saveStatus.kind === 'saving'}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void editor.save()}
+            disabled={saveStatus.kind === 'saving'}
+            title="保存整张学习单（标题、题目、设置、备注）"
+          >
             {saveStatus.kind === 'saving' ? '保存中…' : '保存'}
           </button>
         </div>
@@ -442,7 +451,9 @@ function WorksheetEditorBody() {
         <div className="worksheet-editor-banner is-danger" role="alert">
           <strong>保存失败：</strong>{saveStatus.message}
           <div className="worksheet-editor-banner-note">
-            改动都还在，修好上面的问题再按一次保存即可。也可以随时用「预览」看看学生那边会看到什么。
+            {/* ⚠️ 这里原来写的是「再按一次保存即可」—— 现在**两个按钮**都会写这个状态
+                （顶栏的「保存」与设置弹窗里的「保存设置」），所以不点名哪一个。 */}
+            改动都还在，修好上面的问题后再保存一次即可。也可以随时用「预览」看看学生那边会看到什么。
           </div>
         </div>
       )}
@@ -620,6 +631,14 @@ function WorksheetEditorBody() {
           settings={editor.settings}
           onSettingsChange={editor.updateSettings}
           onClose={() => setSettingsOpen(false)}
+          // ★ 2026-09-27（教师裁定）：「要有真正的保存功能」。
+          // 返回 `null` = 存上了 ⇒ 由这一层关窗；返回字符串 = 失败原因 ⇒ 留在窗里给教师看。
+          onSave={async () => {
+            const result = await editor.saveSettings();
+            if (result.ok) { setSettingsOpen(false); return null; }
+            return result.message;
+          }}
+          hasId={Boolean(worksheetId)}
         />
       )}
 
@@ -707,13 +726,42 @@ function AddQuestionPicker({ onPick, onClose }: {
  * **根本看不到**（规格 §3-U：教师端只有对错与正确率，一个星星都不出现）——
  * 所以那一行必须说清「这是给学生看的」。
  */
-function SettingsModal({ description, onDescriptionChange, settings, onSettingsChange, onClose }: {
+function SettingsModal({ description, onDescriptionChange, settings, onSettingsChange, onClose, onSave, hasId }: {
   description: string;
   onDescriptionChange: (value: string) => void;
   settings: WorksheetSettings;
   onSettingsChange: (patch: Partial<WorksheetSettings>) => void;
   onClose: () => void;
+  /**
+   * 点「保存设置」。`null` = 存上了（**关窗由调用方决定**）；字符串 = 失败原因。
+   *
+   * ⚠️ 失败原因**留在窗里**、不外抛：走「整份创建」那条路时它可能是
+   * 「第 2 题：题干不能为空」—— 一句与设置无关、但教师必须看见的话。
+   * 把它丢给页面顶上那条横幅，教师在这个弹窗里就什么也看不到（他刚点的按钮只闪了一下）。
+   */
+  onSave: () => Promise<string | null>;
+  /** 这份学习单在服务端有没有行。没有 ⇒ 「保存设置」会连同整份一起创建（见 `saveSettings`）。 */
+  hasId: boolean;
 }) {
+  /**
+   * ★ 2026-09-27：这一层自己的两个瞬时状态。
+   *
+   * ⚠️ 弹窗里的每一格改动**仍然是即时写进编辑器状态的**（`onSettingsChange` 直通 hook），
+   * 所以「点了保存 ×」不是「丢弃」—— 那些改动还在屏幕上，顶栏的「保存」照样会把它们存进去。
+   * 把改动改成弹窗内的本地副本会让「关掉就走」变成一次静默丢弃，那比现在更危险。
+   */
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const submit = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    const message = await onSave();
+    setSaving(false);
+    if (message) setSaveError(message);
+  };
+
   // 每个形式的符号与量词都从那一份取值域里取（规格 §9.2：星星/花朵论「个/朵」、
   // 分数论「分」、对错没有步长）。这里**不写**任何一档的字面量。
   const currentStyle = REWARD_STYLE_OPTIONS.find(option => option.value === settings.rewardStyle)
@@ -758,7 +806,9 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose} />
+      {/* ⚠️ 保存中不许点遮罩关窗：那一次请求的结果（成功/失败原因）会落在一个已经不存在的
+          弹窗上，教师什么也看不到 —— 而顶栏那句状态他没在看。 */}
+      <div className="modal-overlay" onClick={saving ? undefined : onClose} />
       <div className="worksheet-editor-dialog worksheet-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title">
         <div className="worksheet-settings-head">
           <div>
@@ -951,9 +1001,24 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
         */}
 
         </div>
+        {/*
+          ★ 2026-09-27（教师裁定）：「完成设置」→「保存设置」，并且**真的存**。
+          ⚠️ 底下那行说明必须与两个按钮的分工逐字一致 —— 它原来写的是
+          「修改会暂存，点击顶栏"保存"后生效。」，而顶栏那个「保存」存的是整张学习单；
+          不写清「这个按钮只存设置」的话，教师改完题目再点它，会以为题目也存了。
+        */}
+        {saveError && (
+          <p className="worksheet-settings-error" role="alert">设置没有存上：{saveError}</p>
+        )}
         <div className="worksheet-settings-footer">
-          <span>修改会暂存，点击顶栏“保存”后生效。</span>
-          <button type="button" className="btn btn-primary" onClick={onClose}>完成设置</button>
+          <span>
+            {hasId
+              ? '这一页的设置由「保存设置」提交；题目与标题的改动仍由顶栏「保存」提交。'
+              : '这份学习单还没保存过，点「保存设置」会连同题目一起创建。'}
+          </span>
+          <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
+            {saving ? '保存中…' : '保存设置'}
+          </button>
         </div>
       </div>
     </>

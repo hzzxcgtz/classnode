@@ -24,7 +24,7 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
-import { hasPromptBlankSlots, readBlankAnswers } from './worksheet-editor-core';
+import { hasPromptBlankSlots, isChoiceQuestion, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 
 /**
@@ -77,6 +77,12 @@ export interface PromptEditorProps {
    */
   onPromptChange: (prompt: string, data?: Record<string, unknown>) => void;
   onDataChange: (patch: Record<string, unknown>) => void;
+  /**
+   * ★ 2026-09-27（教师）：「在题目内容框内增加从剪贴板粘贴类似的按钮，不要使用在选项框内
+   * onpaste，还是有个按钮用户使用更方便。」⇒ 工具栏里多一个按钮，**由题目卡处理那次粘贴**
+   * —— 一次粘贴可能同时改题干与选项，而选项不在这个组件的职责里。
+   */
+  onRequestPaste: () => void;
 }
 
 /** 工具栏的亮灯状态 —— 由**当前选区**决定，所以必须是 state（选区变了要重画按钮）。 */
@@ -136,6 +142,22 @@ function runsFromText(prevRuns: PromptRun[], prevText: string, nextText: string)
   return recognizeBlanks(moved, nextText, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
 }
 
+/**
+ * 把一段**纯文本**整段当成新题干时，要跟着一起提交的 `data` 补丁（★ 2026-09-27，粘贴题目用）。
+ *
+ * 🔴 **不能只写 `prompt` 就完事**：题干的分段存在 `data.promptRuns` 里，而 `readPromptRuns`
+ * **只认存量**、不会从文本里重新认填空域 —— 会做那件事的只有 `recognizeBlanks`。
+ * 粘进来的题干是纯文本，所以这里从空数组起重认一遍：
+ *   · 普通题干 ⇒ 一整段普通分段 ⇒ `isPlainRuns` 为真 ⇒ 写 `undefined`（把旧格式清干净）；
+ *   · 题干里带着 `{填空域}`（教师从自己的稿子里抄过来的）⇒ 认成真正的空。
+ * ⚠️ 少了它，粘进来的 `{填空域}` 在教师端画不出灰底、学生端也不会在那里画输入框 ——
+ * **而屏幕上只是几个普通字符**，没有任何东西会报错。
+ */
+export function promptRunsPatchFor(text: string): Record<string, unknown> {
+  const runs = recognizeBlanks([], text, FILL_BLANK_TEXT, () => `blank_${blankIdSuffix()}`);
+  return { promptRuns: isPlainRuns(runs) ? undefined : runs };
+}
+
 const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
   { key: 'italic', label: <i>I</i>, title: '斜体' },
@@ -146,8 +168,14 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
 ];
 
-export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEditorProps) {
+export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
+  /**
+   * ★ 2026-09-27（教师）：「"粘贴题目"只在选择题中需要。」—— 判断题的选项固定是对/错、
+   * 别的题型根本没有选项表，给它们画这个按钮，教师会粘进来一列选项然后**什么都看不见**。
+   * ⚠️ 判据在核心里（`isChoiceQuestion`，有用例），别在这里重写一遍。
+   */
+  const canPasteQuestion = isChoiceQuestion(node);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
@@ -567,6 +595,26 @@ export function PromptEditor({ node, onPromptChange, onDataChange }: PromptEdito
           </div>
           {/* 普通填空与选择填空都需要题干内的结构化空；选择填空少了它就只有词块、没有落点。 */}
           <div className="worksheet-editor-tool-group is-insert" role="group" aria-label="插入题目内容">
+          {/* ★ 2026-09-27（教师）：「在题目内容框内增加从剪贴板粘贴类似的按钮，不要使用在选项框内
+              onpaste，还是有个按钮用户使用更方便。」⇒ 从剪贴板粘一整道题（题干 + 选项一起识别）。
+              ⚠️ **只在选择题上画** —— 判据见 `canPasteQuestion`。
+              ⚠️ 这里**不读剪贴板**（`navigator.clipboard.readText()` 会弹浏览器自己的「粘贴」
+              授权浮层，教师看到的是一个莫名其妙的 tip）。按 ⌘V 那一下由弹窗里的输入框接住。 */}
+          {canPasteQuestion && (
+          <button
+            type="button"
+            title="粘贴一整道选择题（题干与选项一起识别）"
+            aria-label="粘贴题目"
+            onClick={onRequestPaste}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="8" y="3" width="8" height="4" rx="1.4" />
+              <path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+              <path d="M9 12h6M9 16h4" />
+            </svg>
+            粘贴题目
+          </button>
+          )}
           {supportsBlankSlots && (
             <button
               type="button"

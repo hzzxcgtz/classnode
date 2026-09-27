@@ -74,13 +74,17 @@ test('阳性对照：这条网真的看得见类名（否则上面那条对空�
   assert.equal(editorClassesIn('<i className="btn is-danger" />').size, 0);
 });
 
-test('选择填空的待选词设置固定在题干之后、评分方式之前', () => {
+test('选择填空的待选词设置固定在题干之后、自动评分之前', () => {
   const source = fs.readFileSync(path.join(EDITOR_DIR, 'question-card.tsx'), 'utf8');
   const prompt = source.indexOf('<PromptEditor');
   const choiceSetup = source.indexOf('<ChoiceBlankSetup');
-  const gradingMode = source.indexOf('className="worksheet-editor-question-section is-mode"');
+  // ★ 2026-09-27：这个锚点原来认的是 `is-mode`（「自动评分」自成一卡时那个类）。
+  // 教师随后说「中间不要分隔，在一个大窗口里」⇒ 开关与设置合成一张卡、`is-mode` 删掉。
+  // ⇒ 锚点改认**那张卡的标题**：类名会随排版改名，而「谁在谁前面」这件事是绑在
+  //   「题干 / 作答方式 / 自动评分」这三个**区域**上的，标题比类名稳。
+  const gradingMode = source.indexOf('<h3>自动评分</h3>');
 
   assert.ok(prompt >= 0 && choiceSetup >= 0 && gradingMode >= 0, '三个区域都必须存在');
   assert.ok(prompt < choiceSetup, '待选词设置必须紧跟在题干编辑之后');
-  assert.ok(choiceSetup < gradingMode, '待选词设置必须位于评分方式之前');
+  assert.ok(choiceSetup < gradingMode, '待选词设置必须位于自动评分之前');
 });

@@ -23,9 +23,13 @@ import {
   POINTS_MAX,
   type QuestionType,
   type RejectedPointInput,
+  isContentHalfSaved,
+  isDirtyAgainst,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   parseDraft,
+  snapshotsOf,
+  type SaveBaselines,
   type WorksheetDraft,
 } from './worksheet-editor-core';
 
@@ -54,6 +58,13 @@ export interface SaveStatus {
   /** `kind === 'error'` 时的原因（服务端原话，例如逐题的校验明细）。 */
   message: string | null;
 }
+
+/**
+ * `save()` 的结果（★ 2026-09-27）。失败时**一定带上原因** —— 见 `save()` 里那段注释。
+ */
+export type SaveOutcome =
+  | { ok: true; worksheet: WorksheetDetail }
+  | { ok: false; message: string };
 
 function readLocalStorage(key: string): string | null {
   try {
@@ -102,16 +113,19 @@ export function useWorksheetEditor({ id, onNotice }: {
   const [description, setDescription] = useState('');
   const [settings, setSettings] = useState<WorksheetSettings>(DEFAULT_SETTINGS);
   /**
-   * 已保存状态的快照。`null` = **还没加载完**，此时 `dirty` 一律为假 ——
-   * 加载中途不能报「有未保存改动」，也不能把一份空学习单写进草稿。
+   * 「服务端上那份」的**两半**快照（★ 2026-09-27）。`null` = **还没加载完**，
+   * 此时 `dirty` 一律为假 —— 加载中途不能报「有未保存改动」，也不能把一份空学习单写进草稿。
+   *
+   * 🔴 为什么是两半而不是一份：教师裁定「设置内容在弹窗内直接保存；顶栏的保存按钮
+   * 是指整张学习单的保存」⇒ 服务端上那份的标题/内容与备注/设置**可以一新一旧**。
+   * 合成一份的后果是一个会说谎的瞬间（详见 `snapshotsOf` 的注释）。
    */
-  const [baseline, setBaseline] = useState<string | null>(null);
+  const [baselines, setBaselines] = useState<SaveBaselines | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle', at: null, message: null });
   const [usage, setUsage] = useState<WorksheetUsage | null>(null);
   const [draftFound, setDraftFound] = useState<{ key: string; draft: WorksheetDraft } | null>(null);
-  const [duplicating, setDuplicating] = useState(false);
   /**
    * 逐题分值那两格里**还没进 reducer** 的文本（按题 id），由 `PointsRow` 写、由 `save()` 读。
    *
@@ -127,7 +141,6 @@ export function useWorksheetEditor({ id, onNotice }: {
 
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
-  const duplicatingRef = useRef(false);
   /**
    * 已经加载过的学习单 id。`undefined` 是「一次都没加载」的哨兵值 ——
    * 与 `null`（「加载空白编辑器」）必须分得开，否则首次进入 `?id=` 缺省的页面时
@@ -149,8 +162,9 @@ export function useWorksheetEditor({ id, onNotice }: {
     () => buildPayload(title, description, settings, history.present),
     [title, description, settings, history.present],
   );
-  const snapshot = useMemo(() => JSON.stringify(payload), [payload]);
-  const dirty = baseline !== null && snapshot !== baseline;
+  // ⚠️ 判据在核心里（`isDirtyAgainst`，有用例）—— 它是顶栏那句「未保存」**唯一**的依据，
+  //    而「哪一半算脏」这件事已经被「保存设置」拆成了两个问题，不能再在这里随手写一行。
+  const dirty = isDirtyAgainst(baselines, payload);
 
   // —— 引用情况（规格 §6.4 的顶栏警告）────────────────────────────────
 
@@ -192,6 +206,9 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 服务端上的版本不比草稿旧 ⇒ 草稿已经被覆盖进去了（例如上次保存成功但清理失败）。
       // ⚠️ 这条比较依赖「服务端与本机是同一台机器上的同一个时钟」—— 本应用是本地部署的
       // 桌面应用，成立；若将来服务端能跑在别处，这里要改成带偏移量的比较。
+      // 🔴 ★ 2026-09-27：「保存设置」引入了**第二种**让 `updatedAt` 前进的写法，而它不存题目
+      // ⇒ 不处理的话上面那条前提会在一瞬间变成假的，一份装着未保存题目的草稿会被静默丢掉。
+      // 补它的是 `saveSettings` 里那次 `isContentHalfSaved` 判断（**改这里之前先读那一段**）。
       if (Number.isFinite(serverAt) && draft.savedAt <= serverAt) {
         removeLocalStorage(key);
         return;
@@ -216,7 +233,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       setTitle('');
       setDescription('');
       setSettings(DEFAULT_SETTINGS);
-      setBaseline(JSON.stringify(buildPayload('', '', DEFAULT_SETTINGS, content)));
+      setBaselines(snapshotsOf(buildPayload('', '', DEFAULT_SETTINGS, content)));
       setWorksheetId(null);
       setSaveStatus({ kind: 'idle', at: null, message: null });
       setLoading(false);
@@ -235,7 +252,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       setTitle(loadedTitle);
       setDescription(loadedDescription);
       setSettings(loadedSettings);
-      setBaseline(JSON.stringify(buildPayload(loadedTitle, loadedDescription, loadedSettings, content)));
+      setBaselines(snapshotsOf(buildPayload(loadedTitle, loadedDescription, loadedSettings, content)));
       setWorksheetId(targetId);
       setSaveStatus({ kind: 'idle', at: null, message: null });
       setLoading(false);
@@ -267,6 +284,17 @@ export function useWorksheetEditor({ id, onNotice }: {
   useEffect(() => { payloadRef.current = payload; }, [payload]);
 
   /**
+   * 给 `saveSettings()` 读的两半基线（与 `payloadRef` 同一个手法）。
+   *
+   * 🔴 它守的是**草稿那条不变量**：`offerDraft` 的判据是「服务端不比草稿旧 ⇒ 草稿已被
+   * 覆盖进去，可以丢」。而 `saveSettings` 会让服务端的 `updatedAt` 前进、却**不存题目** ——
+   * 于是那条前提在一瞬间变成假的：一份装着「没保存过的题目改动」的草稿会被判成「已被覆盖」
+   * 而**静默丢掉**。所以只存设置之后，必须在这里把「整份到底干净了没有」判一次。
+   */
+  const baselinesRef = useRef<SaveBaselines | null>(null);
+  useEffect(() => { baselinesRef.current = baselines; }, [baselines]);
+
+  /**
    * 给 `save()` 读的 `rejectedPoints`。走 ref 而不是把它加进 `save` 的依赖 ——
    * 与上面的 `payloadRef` 同一个手法（`save` 是 `useCallback`，它不需要因为每一次击键重建）。
    */
@@ -286,12 +314,17 @@ export function useWorksheetEditor({ id, onNotice }: {
     });
   }, []);
 
-  const save = useCallback(async (): Promise<WorksheetDetail | null> => {
-    if (savingRef.current) return null;
+  const save = useCallback(async (): Promise<SaveOutcome> => {
+    // ★ 2026-09-27：返回值从 `WorksheetDetail | null` 改成带原因的判别式。
+    // 🔴 为什么必须带原因：设置弹窗里那个「保存设置」在**新学习单**上没有行可以打补丁，
+    // 只能退回整份创建（`saveSettings`），而创建会被拦（标题为空 / 逐题校验 / 网络）。
+    // 只回一个 `null` 的话，教师看着设置面板，收到的是一句「保存失败」而**没有原因** ——
+    // 原因恰恰是唯一能让他动手修的东西。两个调用方（顶栏按钮与 ⌘S）本来就不看返回值。
+    if (savingRef.current) return { ok: false, message: '正在保存中，请稍候再试' };
     const next = payloadRef.current;
     if (!next.title) {
       setSaveStatus({ kind: 'error', at: null, message: '学习单标题不能为空' });
-      return null;
+      return { ok: false, message: '学习单标题不能为空' };
     }
     /**
      * 🔴 **三条拦阻，顺序有讲究。** 三条拦的都是「发出去的结果与教师屏幕上看到的不一样」，
@@ -310,7 +343,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       const message = `${describePoints(uncommitted)}填的不是合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数）。请改成一个整数，或把那一格清空（清空 = 跟随学习单的两档）。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: '保存失败：有分值填的不是合法整数', type: 'error' });
-      return null;
+      return { ok: false, message };
     }
     const invalid = findInvalidPoints(next.content);
     if (invalid.length > 0) {
@@ -323,7 +356,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       const message = `${describePoints(invalid)}不是一个合法分值（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数）。照这样保存，服务端会把你填的数换掉：越界的那一端回落默认档（全对 1 / 部分给分 0），两端都无效时整题改成「跟随学习单」；全对填 0 则会被直接拒绝（400）。所以先拦下。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: '保存失败：有分值的取值不合法', type: 'error' });
-      return null;
+      return { ok: false, message };
     }
     const partial = findPartialPoints(next.content);
     if (partial.length > 0) {
@@ -337,7 +370,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       const message = `${numbers} 的「全对 / 部分给分」只填了一个。两个框要么都填（全对 ${POINTS_FULL_MIN}–${POINTS_MAX}、部分给分 0–${POINTS_MAX} 的整数），要么都留空 = 跟随学习单的两档 —— 只填一个的话，另一个会按 0 分算，而界面上看不出来。`;
       setSaveStatus({ kind: 'error', at: null, message });
       callbacksRef.current.onNotice({ message: `保存失败：${numbers} 的分值只填了一个框`, type: 'error' });
-      return null;
+      return { ok: false, message };
     }
     savingRef.current = true;
     setSaveStatus({ kind: 'saving', at: null, message: null });
@@ -360,7 +393,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       const saved = currentId
         ? await api.updateWorksheet(currentId, next)
         : await api.createWorksheet(next);
-      if (!mountedRef.current) return saved;
+      if (!mountedRef.current) return { ok: true, worksheet: saved };
       removeLocalStorage(keyBefore);
       // ⚠️ 那份草稿已经过期了（保存的就是当前屏幕上的内容），横幅必须一起收掉：
       // 留着它，教师在保存之后再点一次「恢复」就会用旧草稿盖掉刚保存的东西。
@@ -368,7 +401,7 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 基线取**刚发出去的那份载荷**，不是服务端的回包：回包会把
       // 「保存期间教师继续打的字」覆盖掉。载荷已经与本地状态同构
       // （见 `buildPayload` 的 trim），所以拿它当基线是准的。
-      setBaseline(JSON.stringify(next));
+      setBaselines(snapshotsOf(next));
       // 保存成功 ⇒ 屏幕上那两格与库里一致，输入态没有再留的意义。
       setRejectedPoints({});
       setSaveStatus({ kind: 'saved', at: Date.now(), message: null });
@@ -380,17 +413,80 @@ export function useWorksheetEditor({ id, onNotice }: {
       // 引用计数不阻塞保存 —— 它只影响顶栏那句警告的新鲜度。
       void refreshUsage(saved.id);
       callbacksRef.current.onNotice({ message: '已保存', type: 'success' });
-      return saved;
+      return { ok: true, worksheet: saved };
     } catch (error) {
       const message = error instanceof Error ? error.message : '请求失败';
       if (mountedRef.current) setSaveStatus({ kind: 'error', at: null, message });
       // ⚠️ 保存失败**不清草稿**：那份草稿现在是本机上唯一的一份，清掉就是丢数据。
       callbacksRef.current.onNotice({ message: `保存失败：${message}`, type: 'error' });
-      return null;
+      return { ok: false, message };
     } finally {
       savingRef.current = false;
     }
   }, [refreshUsage]);
+
+  /**
+   * ★ 2026-09-27（教师裁定）：「学习单的设置内容在弹窗内直接保存」。
+   *
+   * 设置弹窗里那个按钮走**这一条**，不走 `save()`：它只发 `description` + `settings`，
+   * **一个字节的 `content` 都不发**。
+   *
+   * 🔴 为什么值得单独一条路（而不是「顺手整份存一下」）：服务端的 `PUT` 是**部分更新**
+   *（`if (body.content !== undefined)`），而整份保存会先过 `parseContent` —— 那一道
+   * 会因为**任何一道没填完的题**（新建的题题干恒为空）把整份拒掉。于是「我只想改个背景」
+   * 会撞上一句「第 2 题：题干不能为空」，而它跟设置毫无关系。
+   * 只发设置就绕开了那道门：设置本身没有会被拒的形状（`normalizeSettings` 不拒任何值）。
+   *
+   * ⚠️ **成功之后只盖 `settings` 那一半基线**（`snapshotsOf(next).settings`）——
+   * 盖成整份就等于宣称「题目也存过了」。教师可能同一时刻还改过题干，那句宣称是假的，
+   * 而顶栏会照它显示「已保存」。**这条判据有用例**（`worksheet-editor-core.test.ts`）。
+   *
+   * ⚠️ **新学习单还没有行可以打补丁** ⇒ 退回整份创建（那一步同时把设置写进去）。
+   * 那是唯一一条会撞上 `parseContent` 的路径，所以失败原因要**原样交给弹窗**——
+   * 教师看着设置面板，收到的可能是「第 2 题：题干不能为空」，那句话必须让他看得见。
+   */
+  const saveSettings = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const next = payloadRef.current;
+    const currentId = worksheetIdRef.current;
+    if (!currentId) {
+      // 新学习单：还没有行可以打补丁 ⇒ 只能整份创建。失败原因**原样带回弹窗**
+      // （它可能是「学习单标题不能为空」，也可能是逐题校验里的一句）。
+      const outcome = await save();
+      return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
+    }
+    // 防重入与 `save()` 共用同一面旗子：两条路写的都是同一份学习单，
+    // 让它们并排飞出去，后落地的那一份会盖掉先落地的那一份。
+    if (savingRef.current) return { ok: false, message: '正在保存中，请稍候再试' };
+    savingRef.current = true;
+    setSaveStatus({ kind: 'saving', at: null, message: null });
+    try {
+      await api.updateWorksheet(currentId, { description: next.description, settings: next.settings });
+      if (mountedRef.current) {
+        // ⚠️ `previous === null`（还没加载完）时**什么都不改**，不要退回「两半都盖成当前载荷」——
+        //    那等于宣称「题目也存过了」，而那时我们根本不知道服务端上是什么。
+        //    这个分支在界面上够不到（加载中/加载失败都提前 return，弹窗开不出来），
+        //    写在这里只是为了**万一够得到时不撒谎**。
+        setBaselines(previous => (previous ? { ...previous, settings: snapshotsOf(next).settings } : previous));
+        setSaveStatus({ kind: 'saved', at: Date.now(), message: null });
+        // 设置那一半刚刚存上 ⇒ 若**题目那一半本来就是干净的**，整份就与服务端一致，
+        // 草稿是多余的，清掉。
+        // ⚠️ 只在真的干净时清：题目那边还有没存过的改动时清掉它，等于把那些改动**丢掉**
+        //    （草稿是它们在本机唯一的一份）。这与 `save()` 的无条件清是两回事 ——
+        //    `save()` 存的就是整份。理由详见 `baselinesRef` 上那段。
+        if (isContentHalfSaved(baselinesRef.current, next)) {
+          removeLocalStorage(draftKeyFor(currentId));
+        }
+      }
+      callbacksRef.current.onNotice({ message: '设置已保存', type: 'success' });
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '请求失败';
+      if (mountedRef.current) setSaveStatus({ kind: 'error', at: null, message });
+      return { ok: false, message };
+    } finally {
+      savingRef.current = false;
+    }
+  }, [save]);
 
   // —— 草稿（只写 localStorage，规格 §3-Y）────────────────────────────
 
@@ -461,47 +557,10 @@ export function useWorksheetEditor({ id, onNotice }: {
     router.push('/teacher/worksheets/');
   }, [router, writeDraft]);
 
-  const duplicate = useCallback(async (): Promise<void> => {
-    if (duplicatingRef.current) return;
-    duplicatingRef.current = true;
-    setDuplicating(true);
-    try {
-      let sourceId = worksheetIdRef.current;
-      // 复制的是**服务端上的版本**。有未保存的改动就先存一次，
-      // 否则教师会拿到一份缺了刚才那些改动的副本（而且他多半不会发现）。
-      if (!sourceId || dirtyRef.current) {
-        const saved = await save();
-        if (!saved) {
-          // 🔴 `save()` 有三种 `null`，只有第一种是**静默**的：它自己那道防重入
-          // （`savingRef.current`）直接 return，既不动 `saveStatus` 也不弹提示。
-          // 不在这里说话，教师点「复制一份」就什么也看不到 —— 按钮只闪了一瞬
-          // （`duplicating` 被置真又立刻置假），看起来像按钮坏了。
-          // 另外两种（标题为空 / 请求失败）`save()` 自己会写 `saveStatus` 与提示，不重复。
-          if (savingRef.current) {
-            callbacksRef.current.onNotice({ message: '正在保存中，等这次保存完再点「复制一份」', type: 'error' });
-          }
-          return;
-        }
-        sourceId = saved.id;
-      }
-      const copy = await api.duplicateWorksheet(sourceId);
-      if (!mountedRef.current) return;
-      // 显式加载副本，而不是等 URL 变化触发加载：路由软跳转是否重跑 effect
-      // 不该成为「页面显示的是不是副本」的判据（显示旧内容而地址是新的，就是一种撒谎）。
-      await load(copy.id);
-      callbacksRef.current.onNotice({ message: `已复制为「${copy.title}」，已切到副本`, type: 'success' });
-    } catch (error) {
-      if (mountedRef.current) {
-        callbacksRef.current.onNotice({
-          message: `复制失败：${error instanceof Error ? error.message : '请求失败'}`,
-          type: 'error',
-        });
-      }
-    } finally {
-      duplicatingRef.current = false;
-      if (mountedRef.current) setDuplicating(false);
-    }
-  }, [load, save]);
+  // ★ 2026-09-27（教师裁定）：本页顶栏的「复制一份」**删掉了** ——
+  // 学习单列表页的每张卡片上本来就有它（`worksheet-card.tsx`），两处同一个动作。
+  // ⇒ `duplicate` / `duplicating` / `duplicatingRef` 一并删干净，不留没人调的代码。
+  // ⚠️ 服务端那条 `POST /:id/duplicate` **没有跟着删**：列表页还在用它。
 
   // —— 快捷键 ────────────────────────────────────────────────────────
 
@@ -631,8 +690,9 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'remove', id: questionId });
   }, []);
 
-  const undo = useCallback(() => dispatch({ kind: 'undo' }), []);
-  const redo = useCallback(() => dispatch({ kind: 'redo' }), []);
+  // ★ 2026-09-27（教师裁定）：顶栏那两颗撤销/重做按钮删掉了，所以这里**不再返回**
+  // `undo` / `redo` / `canUndo` / `canRedo` —— 快捷键（见上面的 effect）自己 dispatch，
+  // 不经过这几个回调。留着一组没人调的包装只会让下一个人以为按钮还在别处。
 
   const updateSettings = useCallback((patch: Partial<WorksheetSettings>) => {
     setSettings((previous) => ({ ...previous, ...patch }));
@@ -644,18 +704,14 @@ export function useWorksheetEditor({ id, onNotice }: {
     description, setDescription,
     settings, updateSettings,
     content: history.present,
-    canUndo: history.past.length > 0,
-    canRedo: history.future.length > 0,
-    undo, redo,
     loading, loadError, retryLoad,
     dirty,
     saveStatus,
     usage,
     draftFound, acceptDraft, discardDraft,
-    duplicating,
     addQuestion, addTask, updateAutoGrade, updateTolerance, reorderQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
-    save, duplicate, goBack, ensureUsage,
+    save, saveSettings, goBack, ensureUsage,
   };
 }
 

@@ -3,6 +3,7 @@ import { blankAnswerStyle, inputWidthCh, isBlankRun, promptRunStyle, type Prompt
 // ★ 2026-09-27：答错标记搬去了 `@/components/worksheet-wrong-mark` —— 选择题的选项现在也要
 // 用它，而从「题干渲染器」里导出它读起来是错的层次（那枚标记自己写着完整理由）。
 import { WrongMark } from '@/components/worksheet-wrong-mark';
+import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { TABLE_MARK_TEXT } from './worksheet-table.ts';
 import { WorksheetTableView } from './worksheet-table-view.tsx';
 
@@ -136,61 +137,25 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
           blankIndex += 1;
           if (blanks && blanks.drop && blanks.modeOf?.(blankIndex + tableOffset) !== 'input') {
             const index = blankIndex + tableOffset;
-            const filled = (blanks.values[index] ?? '') !== '';
-            // 答错 ⇒ 后面跟一个红叉（正确答案不在这里 —— 见 `wrongOf` 的注释）。
-            // ⊘ 2026-09-27 更正：这句原来写「原答案红色 + 删除线」。那两样在 `4adac35`
-            //    （错答改成「后面一个 ❌ 上标」）里就被**有意删掉了**，而这句话没跟着改 ——
-            //    于是它一直是一条假注释。今天的错答**只有那个叉**，字不变色、不划掉。
-            const wrong = blanks.wrongOf?.(index) ?? false;
             const dropId = blanks.drop.idOf(index);
-            const active = blanks.drop.activeId === dropId;
-            // 落点：一个**槽**，不是输入框（学生不许在这里打字 —— 词只能从待选区来）。
-            // ⚠️ 宽度取那段占位的长度，与普通填空的空**同一套版面**。
             return (
-              <Fragment key={run.start}>
-              <span
-                data-drop-id={dropId}
-                aria-label={`第 ${index + 1} 空`}
-                onClick={blanks.disabled ? undefined : () => blanks.drop?.onPlace(index)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: `${Math.max(3, run.end - run.start)}ch`,
-                  minHeight: '34px',
-                  padding: '3px 8px 1px',
-                  margin: '-3px 3px -4px',
-                  borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
-                  background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
-                  boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
-                  borderRadius: '4px 4px 2px 2px',
-                  // ★ 2026-09-27：字重不再写死 600 —— 与打字那条路**共用同一条规则**
-                  //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、
-                  //  换个模式粗细就变了」。
-                  ...(blankAnswerStyle(run) as CSSProperties),
-                  // 🔴 **必须在下面那次展开之后**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
-                  //    写在它前面会被整个盖掉（2026-09-27 教师看到「打字那条红了、待选区那条没红」就是这一条）。
-                  color: blanks.drop.pending && !filled ? '#2563eb' : undefined,
-                  textAlign: 'center',
-                  verticalAlign: 'baseline',
-                  cursor: blanks.disabled ? 'default' : 'pointer',
-                  transition: 'background-color .16s ease-out, border-color .16s ease-out',
-                }}
+              // ★ 2026-09-28：槽的**画法**搬去了 `worksheet-blank-slot.tsx`
+              //（表格里的空现在也能是槽 —— 两处必须长得一样）。
+              <BlankSlot
+                key={run.start}
+                run={run}
+                width={`${Math.max(3, run.end - run.start)}ch`}
+                value={blanks.values[index] ?? ''}
+                label={`第 ${index + 1} 空`}
+                wrong={blanks.wrongOf?.(index) ?? false}
+                disabled={blanks.disabled}
+                active={blanks.drop.activeId === dropId}
+                pending={blanks.drop.pending}
+                dropId={dropId}
+                onPlace={() => blanks.drop?.onPlace(index)}
               >
-                {filled ? blanks.values[index] : '\u00a0'}
-                {/* ★ 2026-09-27（教师第二轮）：槽里的标记改成**贴文字**、不再贴盒角。
-                    ⚠️ 槽有 `minWidth: 槽宽` 的富裕 ⇒ 值短时右边一段空白，贴盒角会离文字很远，
-                       而打字的框是按文字算宽的 ⇒ 一个远一个近。
-                    ⊘ 2026-09-27（教师第三轮）：「这个叉叉也移动填空域右侧吧，跟左下角那个叉叉
-                      一样。」—— 原来这里写着 `alignSelf: flex-start; marginTop: 1`，把它
-                      **抬到右上角**当上标用；而同一个槽在**换行之后**（槽被撑高时）那个叉
-                      就飘得比字高一大截，同一道题里两个空各长一个样。
-                    ⇒ 去掉那两条，让它跟着槽自己的 `align-items: center` **垂直居中**：
-                      与「值 + 叉」横向居中同一条规则，不看槽有多高。 */}
-                {wrong && <WrongMark />}
-              </span>
-              {blanks.drop.after?.(index)}
-              </Fragment>
+                {blanks.drop.after?.(index)}
+              </BlankSlot>
             );
           }
           if (blanks) {

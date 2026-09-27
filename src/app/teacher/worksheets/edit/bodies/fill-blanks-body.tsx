@@ -192,11 +192,13 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
               <div className="worksheet-editor-fill-mode-head">
                 {/* ★ 位置**说实话**：题干里的空说「第 2 空」，表格里的空说「第 2 行第 2 格」 */}
                 <strong>{slot.label}</strong>
-                {slot.kind === 'table' ? (
-                  // ⚠️ 表格里的空 v1 固定手工填写 ⇒ **不摆一排点了没用的单选**
-                  //（点了也存不下服务端认得的形状，而教师会以为它生效了）
-                  <span className="worksheet-editor-blank-hint">在表格里 · 学生在这一格填字</span>
-                ) : (
+                {slot.kind === 'table' && (
+                  // 位置之外再说一句「它在表格里」：清单里两种空混着排，光看标签要能一眼分清
+                  <span className="worksheet-editor-blank-hint">在表格里</span>
+                )}
+                {/* ★ 2026-09-28（教师）：「这里也应该可以设置三种方式，跟普通填空域一样：
+                    手工填、右侧选、下方选。」⇒ 表格里的空**与题干里的空同一套单选**
+                    （上一版只报位置、不摆单选，那是 v1 的临时限制，教师否了）。 */}
                 <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的作答方式`}>
                   {([
                     ['text', '手工填写'],
@@ -209,9 +211,8 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
                     </label>
                   ))}
                 </div>
-                )}
               </div>
-              {slot.kind === 'text' && settings[index].mode === 'inline' && (
+              {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空右侧的词</span>
                   <SymbolListInput

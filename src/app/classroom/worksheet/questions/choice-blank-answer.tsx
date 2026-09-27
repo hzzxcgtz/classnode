@@ -170,6 +170,41 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
     if (!drag.draggingId) clearDragStyles();
   }, [drag.draggingId, clearDragStyles]);
 
+  /**
+   * ★ 2026-09-28：空的绑定**一份，两处用** —— 题干里的空（`PromptText`）与
+   * 表格里的空（`WorksheetTableView`）。表格里的空现在也能设「右侧选词 / 下方选词」
+   * （教师：「表格里的空也应该可以设置三种方式，跟普通填空域一样」），
+   * ⇒ 拖拽那一套（点选 + 拖拽、用过的词消失、答错打叉）**一行都不用新写**。
+   * ⚠️ 两份各建一次的话，「同一个空在题干里能拖、在表格里拖不动」这种分叉不会有报错。
+   */
+  const sharedBlankBinding = {
+    values: draft.texts,
+    onChange: (index: number, value: string) => {
+      const texts = Array.from({ length: Math.max(draft.texts.length, settings.length) }, (_, itemIndex) => itemIndex === index ? value : (draft.texts[itemIndex] ?? ''));
+      onChange({ kind: 'fill', texts });
+    },
+    disabled,
+    // 手工填写 ⇒ 输入框；其余两档 ⇒ 落点槽
+    modeOf: (index: number) => (settings[index]?.mode === 'text' ? 'input' : 'drop') as 'input' | 'drop',
+    // ★ 2026-09-27：答错的空 ⇒ 红色 + 删除线（正确答案不在这里，见 props 注释）。
+    wrongOf: (index: number) => (wrongBlankIndexes ?? []).includes(index),
+    drop: {
+      idOf: (index: number) => `${BLANK_PREFIX}${index}`,
+      onPlace: disabled ? () => {} : tapBlank,
+      pending: picked?.word ?? null,
+      activeId: drag.hoverTargetId,
+      after: (index: number) => {
+        const setting = settings[index];
+        if (setting?.mode !== 'inline') return null;
+        return (
+          <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
+            （{setting.choices.map((word, choiceIndex) => wordButton(word, `${WORD_PREFIX}inline:${index}:${choiceIndex}`, true))}）
+          </span>
+        );
+      },
+    },
+  };
+
   return (
     <>
       <div className={styles.prompt}>
@@ -181,34 +216,11 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           //（不再固定在题干之后）。判据「有没有标记」在 PromptText 里，是纯文本的。
           table={node.data.table}
           blanks={{
+            ...sharedBlankBinding,
             // 表格里的空占了 `tableBase .. tableBase+tableCount-1` 这几号，
             // 标记之后的文本空接着往后数 —— 编号就是 answers 的下标。
             tableBase: layout.tableBase,
             tableCount: layout.tableCount,
-            values: draft.texts,
-            onChange: (index, value) => {
-              const texts = Array.from({ length: Math.max(draft.texts.length, settings.length) }, (_, itemIndex) => itemIndex === index ? value : (draft.texts[itemIndex] ?? ''));
-              onChange({ kind: 'fill', texts });
-            },
-            disabled,
-            modeOf: index => settings[index]?.mode === 'text' ? 'input' : 'drop',
-            // ★ 2026-09-27：答错的空 ⇒ 红色 + 删除线（正确答案不在这里，见 props 注释）。
-            wrongOf: index => (wrongBlankIndexes ?? []).includes(index),
-            drop: {
-              idOf: (index) => `${BLANK_PREFIX}${index}`,
-              onPlace: disabled ? () => {} : tapBlank,
-              pending: picked?.word ?? null,
-              activeId: drag.hoverTargetId,
-              after: (index) => {
-                const setting = settings[index];
-                if (setting?.mode !== 'inline') return null;
-                return (
-                  <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
-                    （{setting.choices.map((word, choiceIndex) => wordButton(word, `${WORD_PREFIX}inline:${index}:${choiceIndex}`, true))}）
-                  </span>
-                );
-              },
-            },
           }}
         />
       </div>

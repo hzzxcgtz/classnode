@@ -1,6 +1,7 @@
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 import { WrongMark } from '@/components/worksheet-wrong-mark';
+import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
 
 /**
@@ -40,6 +41,21 @@ export interface TableBlankBinding {
   disabled: boolean;
   /** 某个**全局**下标是不是答错了。⚠️ 服务端只发答错的那几格，所以「拿到什么画什么」。 */
   wrongOf?: (index: number) => boolean;
+  /**
+   * ★ 2026-09-28（教师）：「表格里的空也应该可以设置三种方式，跟普通填空域一样。」
+   * ⇒ 表格里的空也能是**落点槽**（右侧选词 / 下方选词），不只是输入框。
+   * ⚠️ 形状与 `PromptBlankBinding` 那一个**刻意一样**（同一套拖拽那一层按
+   * `data-drop-id` 找人，跨组件没问题）——调用方把同一个对象喂给两处。
+   */
+  modeOf?: (index: number) => 'input' | 'drop';
+  drop?: {
+    idOf: (index: number) => string;
+    onPlace: (index: number) => void;
+    pending: string | null;
+    activeId?: string | null;
+    /** 紧跟在槽后面的内容（「右侧选词」那一串候选词）。 */
+    after?: (index: number) => ReactNode;
+  };
 }
 
 export interface WorksheetTableViewProps {
@@ -58,6 +74,16 @@ const CELL_STYLE: CSSProperties = {
   verticalAlign: 'middle',
   // ⚠️ 空的那一格也要撑得住：没有这一条，一个空行会被压成一条线
   minWidth: '5.5em',
+};
+
+/**
+ * 表格里的空没有 `PromptRun`（那是**题干**的分段概念），而 `BlankSlot` 要一个 run
+ * 来取字重与颜色 ⇒ 给它一个「什么都没设」的：颜色与题干基线一致，字重不额外加粗。
+ * ⚠️ 与浮出那个「同一个空、换个模式粗细就变了」的教训同源 —— 槽从不自己写字重。
+ */
+const PLAIN_RUN = {
+  start: 0, end: 0, bold: false, italic: false, underline: false, emphasis: false,
+  color: '#1e293b', blank: '',
 };
 
 const HEADER_STYLE: CSSProperties = { ...CELL_STYLE, background: '#f1f5f9', fontWeight: 600 };
@@ -109,7 +135,25 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                   <td key={col} style={headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE}>
                     {isBlank ? (
                       <Fragment>
-                        {blanks ? (
+                        {blanks && blanks.drop && blanks.modeOf?.(globalIndex) !== 'input' ? (
+                          /* ★ 2026-09-28：这一格是**落点槽**（右侧选词 / 下方选词）——
+                             与题干里那种槽**同一个组件**（`BlankSlot`），所以两处长得一样。
+                             ⚠️ 宽度给 `100%`：表格里的槽跟着格子走（题干里那个跟着占位文字走）。 */
+                          <BlankSlot
+                            run={PLAIN_RUN}
+                            width="100%"
+                            value={blanks.values[globalIndex] ?? ''}
+                            label={label}
+                            wrong={wrong}
+                            disabled={blanks.disabled}
+                            active={blanks.drop.activeId === blanks.drop.idOf(globalIndex)}
+                            pending={blanks.drop.pending}
+                            dropId={blanks.drop.idOf(globalIndex)}
+                            onPlace={() => blanks.drop?.onPlace(globalIndex)}
+                          >
+                            {blanks.drop.after?.(globalIndex)}
+                          </BlankSlot>
+                        ) : blanks ? (
                           <input
                             type="text"
                             className="worksheet-blank-input"

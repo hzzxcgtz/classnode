@@ -39,7 +39,9 @@ function stripComments(source: string): string {
 }
 
 test('🔴 题干渲染器与答错标记里一个定位都没有（标记不许浮到内容上面）', () => {
-  for (const [name, source] of [['worksheet-prompt-text.tsx', SOURCE], ['worksheet-wrong-mark.tsx', MARK_SOURCE]]) {
+  // ★ 2026-09-28：槽的画法搬去了 `worksheet-blank-slot.tsx` ⇒ **它也要进这条网**。
+  const SLOT_SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-blank-slot.tsx'), 'utf8');
+  for (const [name, source] of [['worksheet-prompt-text.tsx', SOURCE], ['worksheet-blank-slot.tsx', SLOT_SOURCE], ['worksheet-wrong-mark.tsx', MARK_SOURCE]]) {
     const found = [...stripComments(source).matchAll(/position:\s*'([a-zA-Z]+)'/g)].map((match) => match[1]);
     assert.deepEqual(
       found, [],
@@ -53,8 +55,13 @@ test('阳性对照：这条网真的在读这两个文件（否则上面那条�
   assert.ok(SOURCE.includes('export function PromptText'), '题干渲染器要真的被读到了');
   assert.ok(MARK_SOURCE.includes('export function WrongMark'), '标记那一份也要真的被读到');
   assert.ok(stripComments(SOURCE).length > 500, '剥注释之后剩下的仍是这个组件，不是一段空壳');
-  // 那个叉**两处都还在画**（槽 + 输入框）—— 少了任何一处，上面那条会因为「没有定位」而更绿。
-  assert.equal((SOURCE.match(/<WrongMark \/>/g) ?? []).length, 2, '槽与输入框各一处');
+  // 那个叉两处都还在画（槽 + 输入框）—— 少了任何一处，上面那条会因为「没有定位」而更绿。
+  // ★ 2026-09-28：**槽搬去了 `worksheet-blank-slot.tsx`**（表格里的空现在也能是槽，
+  //    两处必须长得一样）⇒ 数叉要**两个文件一起数**。少了这一条，槽那一份的定位
+  //    就没人守了（而它正是「叉压住字」那件事的现场）。
+  const slotSource = fs.readFileSync(path.join(HERE, 'worksheet-blank-slot.tsx'), 'utf8');
+  assert.equal((SOURCE.match(/<WrongMark \/>/g) ?? []).length, 1, '输入框那一处');
+  assert.equal((slotSource.match(/<WrongMark \/>/g) ?? []).length, 1, '槽那一处（在共用组件里）');
   // ★ 2026-09-27：标记本身搬去共用组件了 ⇒ 这里只是引用它（选择题的选项也用同一枚）。
   assert.ok(SOURCE.includes("from '@/components/worksheet-wrong-mark'"), '标记从共用组件来');
 });

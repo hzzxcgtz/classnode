@@ -117,12 +117,14 @@ export function PromptText({ text, runs, placeholder, blanks }: PromptTextProps)
                   background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
                   boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
                   borderRadius: '4px 4px 2px 2px',
-                  color: correct ? 'var(--danger)' : (blanks.drop.pending && !filled ? '#2563eb' : undefined),
-                  textDecoration: correct ? 'line-through' : undefined,
                   // ★ 2026-09-27：字重不再写死 600 —— 与打字那条路**共用同一条规则**
                   //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、
                   //  换个模式粗细就变了」。
                   ...(blankAnswerStyle(run) as CSSProperties),
+                  // 🔴 **必须在下面那次展开之后**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
+                  //    写在它前面会被整个盖掉（2026-09-27 教师看到「打字那条红了、待选区那条没红」就是这一条）。
+                  color: correct ? 'var(--danger)' : (blanks.drop.pending && !filled ? '#2563eb' : undefined),
+                  textDecoration: correct ? 'line-through' : undefined,
                   textAlign: 'center',
                   verticalAlign: 'baseline',
                   cursor: blanks.disabled ? 'default' : 'pointer',

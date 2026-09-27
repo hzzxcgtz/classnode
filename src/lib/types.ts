@@ -376,6 +376,19 @@ export interface WorksheetContent {
   nodes: WorksheetQuestionNode[];
 }
 
+/**
+ * ★ 2026-09-27（教师）：学生端**卡片透度**的取值域。
+ *
+ * 「让漂亮的背景图片更明显一些」—— 取值范围、选项表与那两个 alpha 在
+ * `src/lib/worksheet-surface.ts`（**唯一真源**），这里只放类型，与
+ * `WorksheetBackgroundTheme` 同一种分工。
+ *
+ * ⚠️ 加一档要同时改三处：本联合、`WORKSHEET_SURFACE_OPTIONS`、`surfaceAlphas`。
+ *    只加前两处的后果是那一档**静默落到默认数值**（`surfaceAlphas` 的最后一个 `return`），
+ *    教师选了「极透」而屏幕上一点变化都没有。
+ */
+export type WorksheetSurfaceOpacity = 'opaque' | 'soft' | 'clear';
+
 export type WorksheetBackgroundTheme =
   | 'none'
   | 'cloud-playground'
@@ -434,6 +447,13 @@ export interface WorksheetSettings {
   backgroundImageUrl: string | null;
   /** 自定义竖屏背景；可选。缺省时学生端完整显示横图而不裁切。 */
   backgroundPortraitImageUrl: string | null;
+  /**
+   * ★ 2026-09-27（教师）：学生端**卡片透度**（题目卡片 + 任务容器两个面）。
+   *
+   * 档位与数值在 `src/lib/worksheet-surface.ts`；认不出的值一律回 `opaque`
+   *（= 本次改动之前的样子，见那个归一化函数的注释）。
+   */
+  surfaceOpacity: WorksheetSurfaceOpacity;
 }
 
 /**

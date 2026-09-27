@@ -162,6 +162,17 @@ const REWARD_STEPS: readonly number[] = [1, 2, 3, 5];
  * —— **两处必须一起改**，改一处不会报错，只会让存进去的档在学生端变成另一个档。
  */
 const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
+/**
+ * ★ 2026-09-27（教师）：「学生页面的学习单区域可以增加一些透明度……也可以在学习单设置中增加
+ * 几档透明度供选择。」取值域与前端 `src/lib/types.ts` 的 `WorksheetSurfaceOpacity`、
+ * `src/lib/worksheet-surface.ts` 的选项表**必须一起改**。
+ *
+ * 🔴 服务端这一份不能省：认不出的值会在下面被归一回 `opaque`（= 今天的样子）。
+ *    少了这条归一化，一个拼错的串会原样落库，而学生端读到时也回落默认 ——
+ *    两边各自「兜」住、谁都不报错，只是那一档永远不生效。
+ */
+const WORKSHEET_SURFACE_OPACITIES: readonly string[] = ['opaque', 'soft', 'clear'];
+
 const WORKSHEET_BACKGROUND_THEMES: readonly string[] = [
   'none', 'cloud-playground', 'forest-explorer', 'space-discovery',
   'ocean-observation', 'creative-notebook', 'dinosaur-archaeology',
@@ -189,6 +200,9 @@ const DEFAULT_SETTINGS = {
   backgroundTheme: 'cloud-playground',
   backgroundImageUrl: null,
   backgroundPortraitImageUrl: null,
+  // ★ 2026-09-27：卡片透度。默认 = **今天的样子**（卡片 .96 / 任务容器 .90）——
+  // 一份没有这个字段的老学习单，学生端必须一个像素都不变。
+  surfaceOpacity: 'opaque',
 } as const;
 
 /**
@@ -242,6 +256,9 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     backgroundPortraitImageUrl: typeof source.backgroundPortraitImageUrl === 'string' && source.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
       ? source.backgroundPortraitImageUrl
       : null,
+    surfaceOpacity: typeof source.surfaceOpacity === 'string' && WORKSHEET_SURFACE_OPACITIES.includes(source.surfaceOpacity)
+      ? source.surfaceOpacity
+      : DEFAULT_SETTINGS.surfaceOpacity,
   };
 }
 
@@ -1542,6 +1559,8 @@ function readStudentSettings(raw: unknown): {
   allowResubmit: boolean; autoGrade: boolean; rewardStyle: string; rewardStep: number; halfStep: number;
   answerMode: string; backgroundTheme: string; backgroundImageUrl: string | null;
   backgroundPortraitImageUrl: string | null;
+  /** ★ 2026-09-27：卡片透度（`WORKSHEET_SURFACE_OPACITIES` 之一）。 */
+  surfaceOpacity: string;
 } {
   const source = (raw && typeof raw === 'object' && !Array.isArray(raw))
     ? raw as Record<string, unknown>
@@ -1573,6 +1592,9 @@ function readStudentSettings(raw: unknown): {
     backgroundPortraitImageUrl: typeof source.backgroundPortraitImageUrl === 'string' && source.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
       ? source.backgroundPortraitImageUrl
       : null,
+    surfaceOpacity: typeof source.surfaceOpacity === 'string' && WORKSHEET_SURFACE_OPACITIES.includes(source.surfaceOpacity)
+      ? source.surfaceOpacity
+      : DEFAULT_SETTINGS.surfaceOpacity,
   };
 }
 

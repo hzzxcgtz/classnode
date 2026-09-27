@@ -153,6 +153,9 @@ const SETTINGS: WorksheetSettings = {
   backgroundTheme: 'cloud-playground',
   backgroundImageUrl: null,
   backgroundPortraitImageUrl: null,
+  // ⚠️ 刻意用**非默认**档：这一份 `SETTINGS` 是「保存载荷」那一组用例的基准，
+  //    用默认值的话「设置里的这一格有没有被带上」就看不出来了（与它上面那两档同一条理由）。
+  surfaceOpacity: 'soft',
   rewardStep: 1,
   // 刻意给一个**非默认**的部分给分档（默认是 0）：这一份 `SETTINGS` 是「保存载荷」那一组用例
   // 的入参，配成默认值的话「它被原样带过去了」与「它被换成默认值」是同一个观测。
@@ -680,6 +683,10 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
     allowResubmit: false, autoGrade: true, answerMode: 'open', defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
     analysisAgentId: null,   // ★ M7b：第七个键（规格 §3.2）
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
+    // ★ 2026-09-27：卡片透度（教师：「在学习单设置中增加几档透明度供选择」）。
+    // ⚠️ 草稿里**没有**这一格 ⇒ 归一化补默认档 `opaque`（= 今天的样子）。这一条**钉不出**
+    //    「原样读进来」（草稿里没有值可读），那半边由下面 `halfStep` 那一条同型的用例负责。
+    surfaceOpacity: 'opaque',
   });
 });
 
@@ -795,11 +802,16 @@ test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用
   // 下发给学生，而前端读回来时没带上，于是原样发回去的 settings 里没有那个键）。
   const loaded = normalizeLoadedSettings({
     allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
+    // ★ 2026-09-27：卡片透度，**刻意用非默认档** —— 漏掉这个键时它会回落成 `opaque`，
+    //    而这一条用例的主题正是「漏一个键 = 一次只改标题的保存把它抹掉」。写默认档的话
+    //    「原样带过来」与「回落成默认了」是同一个观测（`halfStep` 那一条也是这个道理）。
+    surfaceOpacity: 'clear',
   });
   assert.deepEqual(loaded, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', defaultInputMode: 'keyboard', rewardStyle: 'flower', rewardStep: 5, halfStep: 3,
     analysisAgentId: null,   // ★ M7b：库里没有这一格 ⇒ `null`（= 没指定），不是 `undefined`
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
+    surfaceOpacity: 'clear',
   });
   // ★ M7b：**真的 id 必须原样带过来** —— 这条用例的主题就是「漏一个键 = 一次只改标题的保存
   // 把它清掉」，而分析智能体是最新加入这一类键的那一个（同 `halfStep` 当年的处境）。
@@ -852,7 +864,7 @@ test('🔴 C3：两个步长下拉的选项必须覆盖内核能产出的每一�
   assert.deepEqual(HALF_STEPS.filter(step => step !== 0), [...REWARD_STEPS], '两个域除 0 之外应当逐字相同');
 });
 
-test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 读回来」之后逐字不变（十一个键一个都不能少）', () => {
+test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 读回来」之后逐字不变（十二个键一个都不能少）', () => {
   // 🔴 **这条用例钉的是哪一层，名字里就说清哪一层**（2026-09-24 修复轮 1 改名，原名是
   // 「面板改一个键 ⇒ 收回来仍是完整一份 settings」—— 那是**过宽**的：它没管「面板改一个键」
   // 那一步）。它钉的是：**任何一份完整的 settings，走「保存载荷 → JSON 往返 → 读回来」
@@ -876,13 +888,17 @@ test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 
     { ...DEFAULT_SETTINGS, halfStep: 0 },
     { ...DEFAULT_SETTINGS, allowResubmit: false },
     { ...DEFAULT_SETTINGS, autoGrade: false },
+    // ★ 2026-09-27：卡片透度（教师：「在学习单设置中增加几档透明度供选择」）。
+    // ⚠️ 用**非默认档**：`opaque` 恰好等于默认值 ⇒ 那一条钉不出「原样往返」，
+    //    与上面 `halfStep: 0` 那条注释警告的是同一个假绿。
+    { ...DEFAULT_SETTINGS, surfaceOpacity: 'clear' },
   ];
   for (const settings of patched) {
     const payload = buildPayload('标题', '说明', settings, createEmptyContent());
     // JSON 往返 = 过线缆那一步；`undefined` 的键在这里被丢掉，与真实 PUT 一致。
     const roundTripped = normalizeLoadedSettings(JSON.parse(JSON.stringify(payload.settings)));
     assert.deepEqual(roundTripped, settings, `往返之后必须逐字不变：${JSON.stringify(settings)}`);
-    assert.equal(Object.keys(roundTripped).length, 11, '十一个键一个都不能少（含横竖屏背景设置）');
+    assert.equal(Object.keys(roundTripped).length, 12, '十二个键一个都不能少（含横竖屏背景与卡片透度）');
   }
   // 而 `undefined` **不是**「配过的值」：整份对象缺这个键时它回落到默认（这两件事必须分得开）。
   assert.equal(normalizeLoadedSettings({ ...DEFAULT_SETTINGS, halfStep: undefined }).halfStep, DEFAULT_SETTINGS.halfStep);

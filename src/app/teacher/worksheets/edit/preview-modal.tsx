@@ -5,6 +5,7 @@ import { useState, type CSSProperties } from 'react';
 import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
 import { resolveWorksheetBackgroundSources } from '@/lib/worksheet-backgrounds';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { surfaceAlphas } from '@/lib/worksheet-surface';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
 // 两个模块各自的路径在这里交汇，分叉在结构上不可能。
@@ -77,9 +78,17 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   );
   const hasBackground = Boolean(backgrounds.landscape || backgrounds.portrait);
   const landscapeBackground = backgrounds.landscape ?? backgrounds.portrait;
+  // ★ 2026-09-27：**卡片透度也要跟着来** —— 预览是教师验收学生端的地方
+  //（规格 §6.3「教师看到的就是学生看到的」）。这里不设的话，那三个 CSS 变量会落到
+  // CSS 里的兜底值（= 不透明），于是教师把透度调到「极透」、预览里却看不出任何变化。
+  // ⚠️ 数值同样只有一份来源（`surfaceAlphas`），别在这里写字面量。
+  const alphas = surfaceAlphas(settings.surfaceOpacity);
   const stageStyle = {
     width: orientation === 'portrait' ? STUDENT_STAGE_WIDTH : STUDENT_LANDSCAPE_WIDTH,
     height: orientation === 'portrait' ? STUDENT_LANDSCAPE_WIDTH : STUDENT_STAGE_WIDTH,
+    '--ws-card-alpha': String(alphas.card),
+    '--ws-card-active-alpha': String(alphas.cardActive),
+    '--ws-surface-alpha': String(alphas.container),
     ...(landscapeBackground
       ? { '--worksheet-background-landscape': `url(${worksheetAssetUrl(landscapeBackground)})` }
       : {}),

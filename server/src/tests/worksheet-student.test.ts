@@ -373,9 +373,13 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   //    （M4a 加 `halfStep` 时这条用例**一起改了** —— 那是**有意的决定**，不是把测试改松：
   //    学生端要拿部分给分档才知道「部分给分」该画几个，见 `src/lib/worksheet-reward.ts`。）
   //    奖励三项在这里是**默认档**（夹具没配），下面另有一条用例钉「配过的档会原样下发」。
+  //    ★ 2026-09-27：`surfaceOpacity` 也一起改了 —— 教师要求「在学习单设置中增加几档透明度」，
+  //    而**学生端的面板要读它**才知道把卡片写成多透明（`readStudentSettings` 是那条路唯一的来源）。
+  //    与 `halfStep` 同一种处置：加字段 = 在这里**有意**改一次，不是把断言改松。
   assert.deepEqual(body.settings, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
+    surfaceOpacity: 'opaque',
   });
 
   // 阳性对照 ②：同一份学习单走**教师端**读，每一个答案键都必须在 ——
@@ -435,6 +439,8 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   assert.deepEqual(await settingsOf(worksheet.id), {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'flower', rewardStep: 3, halfStep: 2,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
+    // ★ 2026-09-27：卡片透度（与上面那条同一次决定，见那里的注释）。
+    surfaceOpacity: 'opaque',
   });
 
   // ② 只改标题 ⇒ settings 一个字节都不许动（也就不会有「保存一次奖励跑回默认」）
@@ -475,6 +481,9 @@ test('奖励形式：配过的档原样下发；只改标题的 PUT 不动它；
   assert.deepEqual(handEditedSettings, {
     allowResubmit: true, autoGrade: true, answerMode: 'open', rewardStyle: 'star', rewardStep: 1, halfStep: 0,
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
+    // ★ 2026-09-27：卡片透度 —— 这一条是「库里手工改过的行**没有**这个键」那个情形，
+    //    归一化必须补上默认档（`opaque` = 今天的样子），否则学生端读到一个 undefined 会自己再兜一次。
+    surfaceOpacity: 'opaque',
   });
 });
 

@@ -18,6 +18,9 @@ import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import {
   WORKSHEET_BACKGROUND_OPTIONS,
 } from '@/lib/worksheet-backgrounds';
+// ★ 2026-09-27：卡片透度的选项表。⚠️ 它是**学生端读的那一份**（`surfaceAlphas` 也在那儿）——
+// 在这里再写一遍三档的名字，改了那边这边不报错，而教师选了「极透」学生那边可能没变。
+import { WORKSHEET_SURFACE_OPTIONS } from '@/lib/worksheet-surface';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -898,6 +901,35 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
                 <li>优先 WebP，建议不超过 300 KB，最大上传 5 MB。</li>
               </ul>
             </details>
+          </section>
+
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head">
+              <div>
+                <strong>卡片透度</strong>
+                <em>题目卡片与任务容器透一点，背景图会更明显；透明度越高，文字与背景的对比度越低。</em>
+              </div>
+            </div>
+            {/* ★ 2026-09-27（教师）：「学生页面的学习单区域可以增加一些透明度，让漂亮的背景图片
+                更明显一些，也可以在学习单设置中增加几档透明度供选择。」
+                ⚠️ 选项从 `WORKSHEET_SURFACE_OPTIONS` 遍历，**不在这里写字面量** ——
+                   那一份同时是学生端读的数值表（`surfaceAlphas`），加一档只改那一个文件。
+                ⚠️ 复用「评分方式」那一组控件（`.worksheet-editor-scoring-options`）：
+                   同一页里两套长得不一样的单选卡比少几条 CSS 糟得多（那条理由写在
+                   `globals.css` 的题型控件那一节）。 */}
+            <div className="worksheet-editor-scoring-options" role="radiogroup" aria-label="卡片透度">
+              {WORKSHEET_SURFACE_OPTIONS.map(option => (
+                <label key={option.id} className={settings.surfaceOpacity === option.id ? 'is-selected' : ''}>
+                  <input
+                    type="radio"
+                    name="worksheet-surface-opacity"
+                    checked={settings.surfaceOpacity === option.id}
+                    onChange={() => onSettingsChange({ surfaceOpacity: option.id })}
+                  />
+                  <span><strong>{option.name}</strong><em>{option.description}</em></span>
+                </label>
+              ))}
+            </div>
           </section>
 
           <section className="worksheet-settings-section">

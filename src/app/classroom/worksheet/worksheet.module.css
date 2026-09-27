@@ -187,7 +187,12 @@
   border: 1px solid rgba(210, 222, 238, .92);
   border-radius: 18px;
   padding: 18px 20px 20px;
-  background: rgba(255, 255, 255, .96);
+  /* ★ 2026-09-27（教师）：「增加一些透明度，让漂亮的背景图片更明显一些。」
+     🔴 默认值 `.96` 就是这一行**原来写死的字面量** —— 教师没动过这个设置时，
+        屏幕必须一个像素都不变（数值表在 `src/lib/worksheet-surface.ts`，有用例钉着）。
+     ⚠️ 下面那两条 `[data-state='drafting']` / `:focus-within` 也要跟着透，
+        否则学生一点进去、那张卡就「啪」地变回不透明。 */
+  background: rgba(255, 255, 255, var(--ws-card-alpha, .96));
   box-shadow: 0 8px 24px rgba(42, 77, 128, .08);
   transition: border-color .18s ease-out, background-color .18s ease-out, box-shadow .18s ease-out, transform .18s ease-out;
 }
@@ -196,7 +201,11 @@
 .question[data-state='drafting'],
 .question:focus-within {
   border-color: rgba(37, 99, 235, .58);
-  background: rgba(249, 252, 255, .98);
+  /* ⚠️ `.98` 在这里是「比常态再亮一点点」的相对关系，所以它也读同一个变量 ——
+     写死 `.98` 的话，最透那一档上「正在写」的卡片会比旁边的**更不透明**，层次反了。 */
+  /* ⚠️ `.98` 是默认档下「正在写」的那个字面量（第三个数在 `surfaceAlphas` 里一起算）——
+     在 CSS 里写 `calc()` 叠加在旧 Safari 上不保险，所以由 JS 给第三个变量。 */
+  background: rgba(249, 252, 255, var(--ws-card-active-alpha, .98));
   box-shadow: 0 10px 28px rgba(37, 99, 235, .13), inset 4px 0 0 var(--ws-accent);
 }
 
@@ -260,7 +269,8 @@
   padding: 16px;
   border: 1px solid rgba(218, 227, 240, .86);
   border-radius: 22px;
-  background: rgba(246, 249, 253, .9);
+  /* 任务容器：比卡片再淡一档（默认 `.9` = 原来写死的字面量）。见上面 `.question` 那一段。 */
+  background: rgba(246, 249, 253, var(--ws-surface-alpha, .9));
   box-shadow: 0 12px 32px rgba(51, 85, 136, .055);
 }
 

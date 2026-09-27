@@ -25,6 +25,10 @@
 
 import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { DEFAULT_WORKSHEET_BACKGROUND, normalizeWorksheetBackgroundTheme } from '../../../../lib/worksheet-backgrounds.ts';
+// ★ 2026-09-27（教师）：「学生页面的学习单区域可以增加一些透明度……也可以在学习单设置中增加
+// 几档透明度供选择。」档位、名字与那两个 alpha **只有那一份** —— 教师端的设置面板与学生端的
+// 面板读的是同一个模块（`@/lib/worksheet-surface`）。
+import { DEFAULT_WORKSHEET_SURFACE, normalizeWorksheetSurfaceOpacity } from '../../../../lib/worksheet-surface.ts';
 // 题型词汇表与「选项怎么读出来」的唯一一份在 `src/lib/worksheet-questions.ts`：
 // 学生端的作答面板直接引它，本文件**转出**同一份（不是抄一份）—— 理由见那个文件的文件头。
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
@@ -2457,6 +2461,7 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   backgroundTheme: DEFAULT_WORKSHEET_BACKGROUND,
   backgroundImageUrl: null,
   backgroundPortraitImageUrl: null,
+  surfaceOpacity: DEFAULT_WORKSHEET_SURFACE,
 };
 
 /**
@@ -2589,6 +2594,7 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       backgroundPortraitImageUrl: typeof settings.backgroundPortraitImageUrl === 'string' && settings.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
         ? settings.backgroundPortraitImageUrl
         : null,
+      surfaceOpacity: normalizeWorksheetSurfaceOpacity(settings.surfaceOpacity),
     },
     content: { schemaVersion: typeof content.schemaVersion === 'number' ? content.schemaVersion : SCHEMA_VERSION, nodes },
   };
@@ -2644,5 +2650,6 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     backgroundPortraitImageUrl: typeof settings.backgroundPortraitImageUrl === 'string' && settings.backgroundPortraitImageUrl.startsWith('/uploads/chat/')
       ? settings.backgroundPortraitImageUrl
       : null,
+    surfaceOpacity: normalizeWorksheetSurfaceOpacity(settings.surfaceOpacity),
   };
 }

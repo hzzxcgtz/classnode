@@ -18,7 +18,14 @@ import {
   normalizeWorksheetBackgroundTheme,
   resolveWorksheetBackgroundSources,
 } from '@/lib/worksheet-backgrounds';
-import type { WorksheetBackgroundTheme } from '@/lib/types';
+// ★ 2026-09-27：卡片透度（题目卡片 + 任务容器两个面）。档位与数值只有那一份 ——
+// 教师端的设置面板读的是同一个模块。
+import {
+  DEFAULT_WORKSHEET_SURFACE,
+  normalizeWorksheetSurfaceOpacity,
+  surfaceAlphas,
+} from '@/lib/worksheet-surface';
+import type { WorksheetBackgroundTheme, WorksheetSurfaceOpacity } from '@/lib/types';
 // ★ M4a/D1：作答态的形状与那两个转换函数住在 `lib/worksheet-answer-value.ts`
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
 // 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
@@ -157,6 +164,11 @@ interface LoadedWorksheet {
   backgroundTheme: WorksheetBackgroundTheme;
   backgroundImageUrl: string | null;
   backgroundPortraitImageUrl: string | null;
+  /**
+   * ★ 2026-09-27：**卡片透度**（题目卡片 + 任务容器两个面）。
+   * 归一化与数值在 `@/lib/worksheet-surface`；缺字段 / 坏值一律回默认档（= 今天的样子）。
+   */
+  surfaceOpacity: WorksheetSurfaceOpacity;
   /**
    * 这名学生**已有的作答**（`GET /:id/answers` 的 `rows`）。
    *
@@ -642,6 +654,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             backgroundTheme?: unknown;
             backgroundImageUrl?: unknown;
             backgroundPortraitImageUrl?: unknown;
+            /** ★ 2026-09-27：卡片透度。同样是 `unknown` —— 归一化在下面那一处。 */
+            surfaceOpacity?: unknown;
           };
         };
         const rowsData = await rowsRes.json().catch(() => null);
@@ -669,6 +683,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             // 奖励同理：缺字段落到默认档（星星 ⭐），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
             backgroundTheme: normalizeWorksheetBackgroundTheme(data.settings?.backgroundTheme),
+            // ★ 2026-09-27：与上面几格同一条纪律 —— 认不出 / 缺字段就回默认档，不抛。
+            surfaceOpacity: normalizeWorksheetSurfaceOpacity(data.settings?.surfaceOpacity),
             backgroundImageUrl: typeof data.settings?.backgroundImageUrl === 'string' && data.settings.backgroundImageUrl.startsWith('/uploads/chat/')
               ? data.settings.backgroundImageUrl
               : null,
@@ -740,6 +756,24 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         : {}),
     } as CSSProperties
     : undefined;
+  /**
+   * ★ 2026-09-27（教师）：「可以增加一些透明度，让漂亮的背景图片更明显一些。」
+   *
+   * 把**卡片透度**那两个 alpha 写成 CSS 变量（`.question` 与 `.group[data-container]` 读它们）。
+   * ⚠️ **无论有没有背景图都要设**：教师可能配的是「清爽无图」但透度选了「通透」，
+   *    那时屏幕上是浅蓝底上的半透明卡片 —— 一样是合法的选择，不该被这里悄悄改回不透明。
+   *    所以这一段**不在** `backgroundLandscape ? … : undefined` 里面。
+   * 🔴 数值只有一份来源（`@/lib/worksheet-surface` 的 `surfaceAlphas`）——
+   *    在 CSS 里再写一套字面量 = 两处都能改，其中一处改了另一处不报错。
+   */
+  const surfaceStyle = (() => {
+    const alphas = surfaceAlphas(load.kind === 'ready' ? load.worksheet.surfaceOpacity : DEFAULT_WORKSHEET_SURFACE);
+    return {
+      '--ws-card-alpha': String(alphas.card),
+      '--ws-card-active-alpha': String(alphas.cardActive),
+      '--ws-surface-alpha': String(alphas.container),
+    } as CSSProperties;
+  })();
   const rewardTotal = rewardScale
     ? questions.reduce((sum, node) => sum + rewardAmount(answers.scores[node.id] ?? null, rewardScale), 0)
     : 0;
@@ -819,7 +853,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             className={styles.scroller}
             data-has-background={hasBackground ? '1' : '0'}
             data-has-portrait={backgrounds.portrait ? '1' : '0'}
-            style={backgroundStyle}
+            // ⚠️ 透度那两个变量与背景的**同一个元素**：`.question` / `.group` 都是它的后代，
+            //    CSS 变量靠继承传下去，不必逐层透传。
+            style={{ ...backgroundStyle, ...surfaceStyle }}
           >
             <WorksheetQuestionList
               groups={load.worksheet.groups}

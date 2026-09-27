@@ -615,6 +615,54 @@ test('🔴 题干里有空、又留着老的 `blanks` ⇒ **以题干为准**', 
   assert.equal(readBlankCount(node), 2, '题干是唯一真源');
 });
 
+// ── 表格填空：表格里的空也算（★ 2026-09-28）──────────────────────────────
+
+/** 一张 `rowCount × colCount` 的表，`blanks` 里那几格（按 `[行, 列]`）是空。 */
+function tableOf(rowCount: number, colCount: number, blanks: Array<[number, number]> = []) {
+  return {
+    headerRow: true,
+    rows: Array.from({ length: rowCount }, (_, row) => Array.from({ length: colCount }, (_, col) => ({
+      text: `r${row}c${col}`,
+      blank: blanks.some(([r, c]) => r === row && c === col) ? `tb_${row}_${col}` : '',
+    }))),
+  };
+}
+
+test('🔴 空数把**表格里的空**也算上（题干 + 表格）', () => {
+  assert.equal(readBlankCount(node('fill-blank', { table: tableOf(2, 3, [[1, 1]]) })), 1);
+  assert.equal(readBlankCount(node('fill-blank', { table: tableOf(2, 3, [[0, 0], [1, 2]]) })), 2);
+  // 两种空并存：题干 2 个 + 表格 2 个 = 4（顺序是题干在前、表格在后）
+  assert.equal(readBlankCount(fillInlineNode(2, { table: tableOf(2, 2, [[0, 0], [1, 1]]) })), 4);
+});
+
+test('🔴 表格题一个空都没标 ⇒ 与「题干里没有空」同一条路（落回 1，不是 0）', () => {
+  // ⚠️ 这条钉的是**别在这里给表格开特例**：`return 1` 服务的是「刚建好、还没标空的题」，
+  //    表格题刚建好时也一样（教师加了表、还没点「设为填空」）。
+  //    ⚠️ 同时它保住 `isMultiBlank` 的既有语义（见下面那条）。
+  assert.equal(readBlankCount(node('fill-blank', { table: tableOf(2, 2) })), 1);
+});
+
+test('🔴 表格题只有一个空 ⇒ 仍然写 `fill/v1`（单空那一支，与题干里只有一个空同一条规则）', () => {
+  // 这不是笔误：`isMultiBlank` 的判据是**空数 > 1**，与空住在哪里无关。
+  // 服务端两条支路（`texts` / `text`）都读得对（`judgeFillBlank` 按值的形状分派），
+  // 所以这里**不新增一条特例** —— 有特例就有第二份真源。
+  assert.equal(isMultiBlank(node('fill-blank', { table: tableOf(2, 2, [[1, 1]]) })), false);
+  assert.equal(isMultiBlank(node('fill-blank', { table: tableOf(2, 2, [[0, 0], [1, 1]]) })), true);
+});
+
+test('🔴 emptyDraftFor / draftFromValue 按**总空数**对齐（表格的空也在内）', () => {
+  const withTable = node('fill-blank', { table: tableOf(2, 2, [[0, 0], [1, 1]]) });
+  assert.deepEqual(emptyDraftFor(withTable), { kind: 'fill', texts: ['', ''] });
+  // 交了一份短的值（学生中途刷新 / 教师加了空）⇒ 补位对齐到总空数
+  assert.deepEqual(
+    draftFromValue(withTable, { format: 'fill-multi/v1', texts: ['甲'] }),
+    { kind: 'fill', texts: ['甲', ''] },
+  );
+  // 题干 1 个 + 表格 1 个 ⇒ 2（表格空的下标接在题干空之后，所以是 texts[1]）
+  const both = fillInlineNode(1, { table: tableOf(2, 2, [[1, 1]]) });
+  assert.deepEqual(emptyDraftFor(both), { kind: 'fill', texts: ['', ''] });
+});
+
 // ── 选择填空：待选词（★ 2026-09-26，教师「每个词只能用一次」）────────────────
 
 test('🔴 availableChoices：用掉的词从待选区**消失**（教师裁定「每个词只能用一次」）', () => {

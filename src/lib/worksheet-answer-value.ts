@@ -1,7 +1,7 @@
-import { blankCount, readPromptRuns } from './worksheet-prompt-marks.ts';
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkNode, readInkValue } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
+import { blankLayout } from './worksheet-table.ts';
 
 /**
  * 学习单的**作答值形状**与**它到界面输入态的双向转换** —— 9 个题型，全项目唯一一份。
@@ -17,11 +17,12 @@ import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.t
  *   · **不引任何 React / DOM，也不引任何联名路径（`@/…`）** —— 它要能被 `node --test`
  *     直接执行（Node 24 的类型擦除），所以两个测试文件（`worksheet-answer-value.test.ts`、
  *     `worksheet-drag.test.ts`）能真的跑到这些判据；
- *   · `import type` 是**唯一**的 import 形态 —— ★ M4b 的唯一例外是 `./worksheet-ink.ts`
- *     那一条**值 import**（`isInkNode` / `inkFormatOf` / `readInkValue` / `defaultInkBox`
- *     是函数，擦不掉）。它同样是**相对路径 + `.ts` 后缀**、不引任何联名路径（`@/…`），
- *     所以 `node --test` 那一条路照旧成立；`worksheet-ink.ts` 自己**没有任何 import**，
- *     不存在环。
+ *   · `import type` 是**唯一**的 import 形态 —— 有两条例外，都是**值 import**：
+ *     ① `./worksheet-ink.ts`（`isInkNode` / `inkFormatOf` / `readInkValue` / `defaultInkBox`
+ *        是函数，擦不掉）；② `./worksheet-table.ts`（★ 2026-09-28 表格填空：
+ *        `blankLayout` 数的是「题干里的空 + 表格里的空」，本文件的 `readBlankCount` 收口到它）。
+ *     两条都同样是**相对路径 + `.ts` 后缀**、不引任何联名路径（`@/…`），
+ *     所以 `node --test` 那一条路照旧成立；那**两个文件自己都没有任何 import**，不存在环。
  *   · 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根（`src/lib`）内：
  *     不得出现 `Object.hasOwn` / `structuredClone` / `findLast` / `.at(` / `:has(` /
  *     `@container` / `content-visibility` / `color-mix(`（学生端跑在 Safari 15 的老 iPad 上）。
@@ -212,22 +213,29 @@ export function readCategorizeZones(node: WorksheetQuestionNode): WorksheetEntry
 }
 
 /**
- * 这道填空题有几个空 —— **空的唯一真源是题干**（★ 2026-09-26）。
+ * 这道填空题有几个空 —— **空的唯一真源是题干（与表格）**（★ 2026-09-26 / 09-28）。
  *
  * 教师裁定：「填空是在**题目文字中间**输入，一道题可以包含多个填空域」⇒
  * 空 = `promptRuns` 里带 `blank` **标识**（非空字符串）的那几条分段，**数量由它们推**。
  *
- * ⚠️ **临时桥**（迁移 `worksheet-fill-blank-migration.ts` 接上之后删掉，连用例一起）：
- * 题干里一个空都没有时落回老的 `data.blanks` —— 迁移还没上线，库里全是老形状的题。
- * 两者同时存在时**以题干为准**（一份真源；相加或取大都会让这道题凭空多出几格）。
+ * ★ 2026-09-28（表格填空）：**表格里的空也算** —— 判据收口到 `blankLayout`
+ *（`@/lib/worksheet-table`，那条有完整注释与用例）。顺序是「题干里的空在前、
+ * 表格里的空在后」（表格固定渲染在题干之后，所以这个顺序没有第二种可能）。
+ *
+ * ⚠️ **临时桥**（老形状）：题干与表格里一个空都没有时落回老的 `data.blanks`。
+ * 🔴 它服务的**不是**「迁移还没上线」—— `migrateFillBlankToInline` 已经在启动时跑过
+ *（`server/src/index.ts:587-597`）。它今天服务两件事：① 从旧备份恢复的库；
+ * ② ⚠️ **下面那句 `return 1`**（那才是活的）：「这道填空题刚建好、教师还没插空」。
+ * ⇒ **删这个桥之前先看清楚它服务谁**：删掉 `return 1` 会让新建的填空题在界面上
+ * 少一个框（教师以为界面坏了）。
  *
  * ⚠️ `blanks: []`（教师建了题但一个空都没填）返回 **0** —— 界面上一行都没有，
  * 与服务端判分（空数组 ⇒ `incorrect`）对齐。别在这里「至少给一个」：那会画出一个
  * 服务端根本不看的输入框，学生填了也不会有分。
  */
 export function readBlankCount(node: WorksheetQuestionNode): number {
-  const inline = blankCount(readPromptRuns(node.data.promptRuns, node.prompt));
-  if (inline > 0) return inline;
+  const layout = blankLayout(node);
+  if (layout.total > 0) return layout.total;
   // ⚠️ 临时桥 —— 与上面那条注释同一件事。
   const legacy = node.data.blanks;
   if (Array.isArray(legacy)) return legacy.length;

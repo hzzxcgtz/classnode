@@ -287,7 +287,14 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       />
-      <p className={styles.inkHint}>{hint}</p>
+      {/* ★ 2026-09-28：**只读态不显示这句提示。**
+          🔴 它说的是「用手指在画布上作图（画错了可以点「撤销」或「清空」）」——
+          而定稿（已提交 + 不许重交）与教师端预览时，画布不响应指针、那两个按钮也是
+          `disabled`。**一行叫学生做他做不到的事的提示，就是一句假话**，而且学生会
+          反复去点那两个按钮。
+          ⚠️ 定稿态**不另加一句解释**：教师明确删掉了原来那句
+          （「这道题已经完成，老师设置为不能再修改」），而状态本身在结果栏里已经读得出来。 */}
+      {!disabled && <p className={styles.inkHint}>{hint}</p>}
       {/* 🔴 上限提示：到上限时它**在屏幕上等着**，不是等到学生再戳一次才出现。
           文案由 A1 的 `inkLimitReason` 给（带上限数字与两条出路）。 */}
       {limitReason ? (

@@ -25,6 +25,8 @@ import {
   isMultipleChoice,
   isPartialPoints,
   optionPastePatch,
+  orderPastePatch,
+  writeOrder,
   parsePointInput,
   planPointInputChange,
   pointText,
@@ -84,7 +86,7 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
     description: '开启自动评分后，为题干中的每个空指定答案。',
   },
   order: {
-    title: '排序条目与正确顺序',
+    title: '选项顺序',
     description: '编辑需要排序的条目，并调整标准答案中的正确次序。',
   },
   match: {
@@ -262,7 +264,14 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * **只认存量**、不会从文本重认填空域（理由见那个函数）。
    */
   const applyPaste = (result: PasteQuestionResult) => {
-    const optionPatch = result.texts.length > 0 ? optionPastePatch(result.texts, node) : null;
+    const optionPatch = result.texts.length > 0
+      ? node.type === 'order'
+        ? (() => {
+            const pasted = orderPastePatch(result.texts);
+            return writeOrder(pasted.items, pasted.correctOrder);
+          })()
+        : optionPastePatch(result.texts, node)
+      : null;
     if (result.stem !== null) {
       onPromptChange(result.stem, { ...promptRunsPatchFor(result.stem), ...(optionPatch ?? {}) });
     } else if (optionPatch) {

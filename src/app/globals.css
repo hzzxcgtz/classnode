@@ -2524,6 +2524,39 @@ tr:hover td {
   gap: 8px;
 }
 
+.worksheet-editor-order-edit-row,
+.worksheet-editor-order-row {
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color .15s, background-color .15s;
+}
+
+.worksheet-editor-order-edit-row.is-drop-target,
+.worksheet-editor-order-row.is-drop-target {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.worksheet-editor-order-edit-row.is-dragging,
+.worksheet-editor-order-row.is-dragging { opacity: .55; }
+
+.worksheet-editor-order-drag {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  cursor: grab;
+  font: inherit;
+  letter-spacing: -3px;
+  touch-action: none;
+}
+
+.worksheet-editor-order-drag:active { cursor: grabbing; }
+
 .worksheet-editor-order-index {
   flex-shrink: 0;
   min-width: 18px;
@@ -2546,6 +2579,42 @@ tr:hover td {
 .worksheet-editor-pair-select {
   flex: 0 0 auto;
   max-width: 220px;
+}
+
+.worksheet-editor-match-head,
+.worksheet-editor-match-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(150px, 220px);
+  gap: 14px;
+  align-items: center;
+}
+
+.worksheet-editor-match-head {
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-match-grid {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.worksheet-editor-match-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.worksheet-editor-match-entry .input { min-width: 0; flex: 1; }
+
+@media (max-width: 780px) {
+  .worksheet-editor-match-head { display: none; }
+  .worksheet-editor-match-row { grid-template-columns: minmax(0, 1fr); padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+  .worksheet-editor-pair-select { max-width: none; width: 100%; }
 }
 
 /* ★ 2026-09-26：待选词那一栏下面的一句说明（词数必须 ≥ 空数 —— 每个词只能用一次）。

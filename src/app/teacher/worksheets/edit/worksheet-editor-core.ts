@@ -825,6 +825,17 @@ export function optionPastePatch(texts: string[], node: WorksheetQuestionNode): 
 }
 
 /**
+ * 把整题粘贴识别出的条目写入排序题。
+ * 粘贴时的先后顺序就是教师给出的正确顺序；学生初始看到的顺序会立即重新排列，
+ * 避免“原样不动就是满分”。
+ */
+export function orderPastePatch(texts: string[], random: () => number = Math.random): OrderData {
+  const source = texts.map((text) => ({ id: newItemId(), text }));
+  const correctOrder = source.map((entry) => entry.id);
+  return { items: shuffleOrderItems(source, correctOrder, random), correctOrder };
+}
+
+/**
  * 填空题**单空形状**的「答案」textarea 值（规格 §3-R：一行一个可接受答案）。
  *
  * ★ M4a/C2：本函数改成「**第 0 个空**的文本」（`readBlankText` 的同一份实现）。
@@ -1262,8 +1273,8 @@ export function writeMatch(left: ItemEntry[], right: ItemEntry[], pairs: PairEnt
  * 设定一个左项的配对（`rightId` 传空串 = 清掉这一条）。
  *
  * 🔴 **同一个右项只能被一个左项占用**：重复连同一个右项时**旧的被顶掉**、不是并存 ——
- * 并存会让服务端的 `isCompleteMatching` 拒绝**整道题**（「必须把左栏每一项都连到
- * 右栏的一个不同项上」），而教师看到的只是两个下拉选着同一个值。
+ * 并存会让服务端的 `isValidMatching` 拒绝**整道题**（已设置的答案必须一一对应），
+ * 而教师看到的只是两个下拉选着同一个值。
  * 那道题**一个学生都判不了分**，而看板上只表现为「正确率 0%」。
  *
  * ⚠️ D1 的 `src/lib/worksheet-drag.ts` 里有一个同名同义的 `setPair`（学生端**作答态**
@@ -1299,15 +1310,43 @@ export function matchPairLeftRow(state: MatchData, index: number, rightId: strin
 /**
  * 加一组（左栏、右栏**各一个**）。
  *
- * ⚠️ 刻意不做「单独加一个左项」：服务端要求左右栏条数相同，而两个独立的「＋」按钮
- * 能产出的中间态里有一半是必然被拒的。加一组则让那条校验在界面上够不着。
- * ⚠️ 新左项**没有配对**（下拉显示「请选择」）—— 不替教师臆造一条连线。
+ * 兼容旧调用的成组添加。新界面使用下面两个独立添加函数。
+ * 新左项没有配对，默认作为留空项，不替教师臆造一条连线。
  */
 export function matchAddRow(state: MatchData): MatchData {
   return {
     left: [...state.left, { id: newItemId(), text: '' }],
     right: [...state.right, { id: newItemId(), text: '' }],
     pairs: state.pairs,
+  };
+}
+
+/** 左右两栏可以独立增删；未配对的左项作为留空干扰项，已配对项仍需一一对应。 */
+export function matchAddLeft(state: MatchData): MatchData {
+  return { ...state, left: [...state.left, { id: newItemId(), text: '' }] };
+}
+
+export function matchAddRight(state: MatchData): MatchData {
+  return { ...state, right: [...state.right, { id: newItemId(), text: '' }] };
+}
+
+export function matchRemoveLeft(state: MatchData, index: number): MatchData {
+  const target = state.left[index];
+  if (!target) return state;
+  return {
+    ...state,
+    left: state.left.filter((_, itemIndex) => itemIndex !== index),
+    pairs: state.pairs.filter((pair) => pair.leftId !== target.id),
+  };
+}
+
+export function matchRemoveRight(state: MatchData, index: number): MatchData {
+  const target = state.right[index];
+  if (!target) return state;
+  return {
+    ...state,
+    right: state.right.filter((_, itemIndex) => itemIndex !== index),
+    pairs: state.pairs.filter((pair) => pair.rightId !== target.id),
   };
 }
 

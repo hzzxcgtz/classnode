@@ -551,8 +551,8 @@ function readStrictStrings(raw: unknown): string[] | null {
  * 一个具体形态，所以坏元素一律整体判错。
  *
  * ⚠️ 教师那一侧的 `data.pairs` **继续走 `readPairs`**（宽松）：那里是「教师少填一项不该
- * 让学生拿不到分」的方向，而且 `validateQuestion` 的 `isCompleteMatching` 已经把
- * 「每一项都连到不同的一项上」钉在写入口了。
+ * 让学生拿不到分」的方向，而且 `validateQuestion` 的 `isValidMatching` 已经把
+ * 「已设置的答案必须一一对应」钉在写入口了。
  */
 function readStrictPairs(raw: unknown): Array<{ leftId: string; rightId: string }> | null {
   if (!Array.isArray(raw)) return null;
@@ -613,18 +613,19 @@ function isSameOrder(a: string[], b: string[]): boolean {
 }
 
 /**
- * 连线题的 `pairs` 是不是左栏 → 右栏的一个**完整一一对应**。
+ * 连线题的 `pairs` 是不是一组合法的**可留空一一对应**。
  *
- * 「完整」= 左栏每一项都恰好出现一次；「一一」= 右栏每一项最多被用一次。
+ * 左栏允许放干扰项，因此不要求每一项都出现；「一一」= 已设置答案的左右端点最多各用一次。
+ * 自动评分开启时至少要有一组答案，否则整题没有任何可评分内容。
  * 少了「一一」，两个左项连到同一个右项也能存进去 —— 学生端会画出两条线汇到一处，
  * 而判分里那个右项被算两次。
  */
-function isCompleteMatching(
+function isValidMatching(
   leftIds: string[],
   rightIds: string[],
   pairs: Array<{ leftId: string; rightId: string }>,
 ): boolean {
-  if (pairs.length !== leftIds.length) return false;
+  if (pairs.length < 1) return false;
   const seenLeft = new Set<string>();
   const seenRight = new Set<string>();
   for (const pair of pairs) {
@@ -633,7 +634,7 @@ function isCompleteMatching(
     seenLeft.add(pair.leftId);
     seenRight.add(pair.rightId);
   }
-  return seenLeft.size === leftIds.length;
+  return true;
 }
 
 // ── 判分器（`grade()` 的内部实现，不导出）────────────────────────────
@@ -976,7 +977,7 @@ function judgeOrder(data: Record<string, unknown>, value: unknown, tolerance: nu
  * 把「学生答对了」读成「答案泄漏了」。两份都不能改。
  *
  * ⚠️ 「一条左项只能连一个右项」是连线题的**题面约束**（`validateQuestion` 用
- * `isCompleteMatching` 把它钉在教师那一侧）。学生两端有重复的连法时，那条线**不算对**：
+ * `isValidMatching` 把它钉在教师那一侧）。学生两端有重复的连法时，那条线**不算对**：
  * 否则一个「l1 连到 r1、又连到 r3」的矛盾作答会因为「里面含有正确的那条」而拿满分，
  * 而学生端画出来的明明是三条线。
  *
@@ -1014,10 +1015,11 @@ function judgeMatch(data: Record<string, unknown>, value: unknown, tolerance: nu
       && rightUse.get(link.rightId) === 1);
     if (matched) hit += 1;
   }
-  if (hit === pairs.length) return 'correct';
+  // 未出现在答案表里的左项可以留空，但学生若给这些干扰项多连了线，不能算全对。
+  if (hit === pairs.length && links.length === pairs.length) return 'correct';
   // ★ 2026-09-25：容错档（「错不超过 N 处」）与旧规则（「至少对 1 处」）由 `meetsTolerance`
   // 一处回答 —— 四个题型共用，各写一份算术是本仓反复栽的那类分叉。
-  return meetsTolerance(hit, pairs.length, tolerance) ? 'partial' : 'incorrect';
+  return meetsTolerance(hit, Math.max(pairs.length, links.length), tolerance) ? 'partial' : 'incorrect';
 }
 
 /**
@@ -1497,12 +1499,12 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     const right = readItemIds(node.data.right);
     const pairs = readPairs(node.data.pairs);
     if (left.ids.length < 2) errors.push('连线题左栏至少需要两个条目');
-    if (right.ids.length !== left.ids.length) errors.push('连线题左右两栏的条目数必须相同');
+    if (right.ids.length < 1) errors.push('连线题右栏至少需要一个条目');
     if (!left.allValid || !right.allValid) errors.push('连线题里有条目缺少 id');
     else if (new Set(left.ids).size !== left.ids.length || new Set(right.ids).size !== right.ids.length) {
       errors.push('连线题里有重复的条目 id');
-    } else if (!isCompleteMatching(left.ids, right.ids, pairs)) {
-      if (node.autoGrade !== false) errors.push('连线题必须把左栏每一项都连到右栏的一个不同项上');
+    } else if (!isValidMatching(left.ids, right.ids, pairs)) {
+      if (node.autoGrade !== false) errors.push('连线题至少设置一组正确配对；未配对的左侧条目将作为留空项');
     }
   },
 

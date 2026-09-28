@@ -9,15 +9,13 @@ import {
   parseQuestionPaste,
   readCorrectKeys,
   readOptions,
+  readOrder,
 } from './worksheet-editor-core';
 
 /**
  * 「粘贴题目」的确认窗（★ 2026-09-27）。
  *
- * 教师三次改口之后的形态：① 「可以从剪贴板直接把我复制的内容粘贴进来，然后自动去判断并填充
- * 选项」→ ② 「不要使用在选项框内 onpaste，还是有个按钮用户使用更方便」+「不仅选择题的选项，
- * 连题干也一起识别」→ ③ 「"粘贴题目"只在选择题中需要」。
- * ⇒ 入口是**选择题题干工具栏里的一个按钮**，出来的是这样一个窗。
+ * 完整题目粘贴确认窗：用于选择题和排序题，把题干与选项／排序条目一次拆开。
  *
  * ── 🔴 这个窗**不读剪贴板** ────────────────────────────────────────────────
  *
@@ -48,8 +46,8 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
   text: string;
   /**
    * 粘贴到的是**哪一道题**。
-   * ⚠️ 这个窗**只从选择题的工具栏打开**（`prompt-editor.tsx` 的 `canPasteQuestion`）——
-   * 所以这里不再判「题型有没有选项表」，那个问题的答案只有一处（`isChoiceQuestion`）。
+   * 这个窗只从选择题或排序题的工具栏打开（见 `prompt-editor.tsx` 的
+   * `canPasteQuestion`），其余题型不会进入这里。
    */
   node: WorksheetQuestionNode;
   onTextChange: (value: string) => void;
@@ -63,6 +61,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
    * 「一行一个选项」拆开 —— 那是对的吗？只有教师知道。给他一个开关，比让他取消重来强。
    */
   const [stemOnly, setStemOnly] = useState(false);
+  const isOrder = node.type === 'order';
 
   const parsed = useMemo(() => parseQuestionPaste(text), [text]);
   const raw = text.trim();
@@ -73,6 +72,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
     : { stem: parsed.stem, texts: parsed.texts };
 
   const options = readOptions(node);
+  const orderItems = isOrder ? readOrder(node).items : [];
   const correctKeys = readCorrectKeys(node);
   const willReplaceOptions = result.texts.length > 0;
   const withImage = willReplaceOptions ? options.filter(option => option.imageUrl).length : 0;
@@ -90,7 +90,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
       <div className="worksheet-editor-dialog worksheet-editor-paste-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-paste-title">
         <h3 id="worksheet-paste-title">粘贴题目</h3>
         <p className="worksheet-editor-dialog-note">
-          把题目原样粘进来即可：题干与选项会<strong>自动分开</strong>，选项前缀认
+          把题目原样粘进来即可：题干与{isOrder ? '排序条目' : '选项'}会<strong>自动分开</strong>，条目前缀认
           <code>A.</code> <code>1、</code> <code>(1)</code> <code>（A）</code> 这几种写法。
         </p>
 
@@ -104,7 +104,9 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
             value={text}
             autoFocus
             onChange={event => onTextChange(event.target.value)}
-            placeholder={'例如：\n下列哪个是首都？\nA. 北京\nB. 上海\nC. 广州\nD. 深圳'}
+            placeholder={isOrder
+              ? '例如：\n请按事情发展顺序排列。\n1. 放学走出校门\n2. 看见路边落叶\n3. 拿起扫帚扫地'
+              : '例如：\n下列哪个是首都？\nA. 北京\nB. 上海\nC. 广州\nD. 深圳'}
           />
         </label>
         <p className="worksheet-editor-paste-hint" role="status">
@@ -116,7 +118,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
           <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label="怎么使用这段粘贴">
             <label className={stemOnly ? '' : 'is-selected'}>
               <input type="radio" name={`paste-mode-${node.id}`} checked={!stemOnly} onChange={() => setStemOnly(false)} />
-              <span>题干 + 选项</span>
+              <span>题干 + {isOrder ? '条目' : '选项'}</span>
             </label>
             <label className={stemOnly ? 'is-selected' : ''}>
               <input type="radio" name={`paste-mode-${node.id}`} checked={stemOnly} onChange={() => setStemOnly(true)} />
@@ -140,14 +142,14 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
             {result.texts.length > 0 && (
               <div className="worksheet-editor-paste-block">
                 <span className="worksheet-editor-paste-block-head">
-                  选项 {result.texts.length} 个
+                  {isOrder ? '排序条目' : '选项'} {result.texts.length} 个
                   {!stemOnly && parsed?.optionSplit === 'marker' && '（按前缀拆分）'}
                   {!stemOnly && parsed?.optionSplit === 'line' && '（按每行一个拆分）'}
                 </span>
                 <ol className="worksheet-editor-paste-list">
                   {result.texts.map((item, index) => (
                     <li key={index}>
-                      <span className="worksheet-editor-paste-key">{optionKey(index)}</span>
+                      <span className="worksheet-editor-paste-key">{isOrder ? index + 1 : optionKey(index)}</span>
                       {item ? <span className="worksheet-editor-paste-text">{item}</span> : <em className="worksheet-editor-paste-empty">（这一条是空的）</em>}
                     </li>
                   ))}
@@ -161,17 +163,18 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
           <ul className="worksheet-editor-paste-notes">
             {/* ⚠️ 「丢了几条」只在真的打算填选项时说 —— 「整段作题干」那一次根本没打算填。 */}
             {!stemOnly && Boolean(parsed?.dropped) && <li>有 {parsed?.dropped} 条超出了上限（最多 {MAX_OPTIONS} 个选项），不会被填进来。</li>}
-            {withImage > 0 && <li>原来 {withImage} 个选项上的图片会被一起清掉。</li>}
-            {kept.length > 0 && <li>已选的正确答案会按位置留在第 {kept.map(slot => slot + 1).join('、')} 个选项上。</li>}
-            {lost > 0 && <li>有 {lost} 个正确答案的位置超出了新的选项数，那个标记会被清掉，需要重新选。</li>}
-            {willReplaceOptions && <li>确认后会换掉这道题<strong>现在全部 {options.length} 个选项</strong>。</li>}
+            {!isOrder && withImage > 0 && <li>原来 {withImage} 个选项上的图片会被一起清掉。</li>}
+            {!isOrder && kept.length > 0 && <li>已选的正确答案会按位置留在第 {kept.map(slot => slot + 1).join('、')} 个选项上。</li>}
+            {!isOrder && lost > 0 && <li>有 {lost} 个正确答案的位置超出了新的选项数，那个标记会被清掉，需要重新选。</li>}
+            {isOrder && willReplaceOptions && <li>粘贴的条目顺序会作为<strong>正确顺序</strong>，学生看到的顺序将自动重新排列。</li>}
+            {willReplaceOptions && <li>确认后会换掉这道题<strong>现在全部 {isOrder ? orderItems.length : options.length} 个{isOrder ? '条目' : '选项'}</strong>。</li>}
           </ul>
         ) : null}
 
         <div className="worksheet-editor-paste-actions">
           <button type="button" className="btn btn-secondary" onClick={onCancel}>取消</button>
           <button type="button" className="btn btn-primary" disabled={!canConfirm} onClick={() => onConfirm(result)}>
-            {willReplaceOptions ? '填入题干与选项' : '填入题干'}
+            {willReplaceOptions ? `填入题干与${isOrder ? '条目' : '选项'}` : '填入题干'}
           </button>
         </div>
       </div>

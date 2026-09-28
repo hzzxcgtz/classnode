@@ -154,18 +154,18 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                             {blanks.drop.after?.(globalIndex)}
                           </BlankSlot>
                         ) : blanks ? (
-                          <input
-                            type="text"
-                            className="worksheet-blank-input"
-                            // 读屏要说清是哪一格 —— 表格里说「第 N 空」，学生找不到那格
-                            aria-label={label}
-                            value={blanks.values[globalIndex] ?? ''}
-                            disabled={blanks.disabled}
-                            onChange={(event) => blanks.onChange(globalIndex, event.target.value)}
-                            // 宽度跟着格子走（不是跟着内容走）：表格的列宽必须稳，
-                            // 否则学生每打一个字整张表就跳一下。
-                            style={{ width: '100%', boxSizing: 'border-box' }}
-                          />
+                          <span style={{ display: 'inline-flex', alignItems: 'center', width: '100%' }}>
+                            <input
+                              type="text"
+                              className="worksheet-blank-input"
+                              aria-label={label}
+                              value={blanks.values[globalIndex] ?? ''}
+                              disabled={blanks.disabled}
+                              onChange={(event) => blanks.onChange(globalIndex, event.target.value)}
+                              style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box' }}
+                            />
+                            {wrong && <WrongMark />}
+                          </span>
                         ) : (
                           // 只读预览（教师端）：画一截下划线，与题干里那些空同一个观感
                           <span
@@ -179,8 +179,6 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                             {' '}
                           </span>
                         )}
-                        {/* 答错 ⇒ 后面跟同一个红叉（不是划掉格里的字） */}
-                        {wrong && <WrongMark />}
                       </Fragment>
                     ) : (
                       // 空格子也要占住那一行的高度（否则整行会被压扁）

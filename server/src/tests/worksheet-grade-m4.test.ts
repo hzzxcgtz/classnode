@@ -529,6 +529,19 @@ test('连线：全部配对正确 ⇒ correct', () => {
   assertVerdict(node, { format: 'match/v1', links: [...links].reverse() }, 'correct', P.full);
 });
 
+test('连线：教师未配对的左项应留空；学生留空为正确，多连线不算全对', () => {
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
+  assertVerdict(node, { format: 'match/v1', links: [
+    { leftId: 'l1', rightId: 'r1' },
+    { leftId: 'l2', rightId: 'r2' },
+  ] }, 'correct', P.full);
+  assertVerdict(node, { format: 'match/v1', links: [
+    { leftId: 'l1', rightId: 'r1' },
+    { leftId: 'l2', rightId: 'r2' },
+    { leftId: 'l3', rightId: 'r3' },
+  ] }, 'partial', P.half);
+});
+
 test('连线：至少一对正确 ⇒ partial；一对都不对 ⇒ incorrect', () => {
   const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
   // ⚠️ 构造里**刻意不含重复的两端**：一条对、一条错，两种口径下都必然是 partial。
@@ -542,7 +555,7 @@ test('连线：至少一对正确 ⇒ partial；一对都不对 ⇒ incorrect', 
 
 test('🔴 连线：重复连同一个右项 —— 那一条不算对，且**不抛**', () => {
   // 「一条左项只能连一个右项」是连线题的题面约束（`validateQuestion` 用
-  // `isCompleteMatching` 把它钉在**教师那一侧**）。学生交上来两条汇到同一个右项的连法
+  // `isValidMatching` 把它钉在**教师那一侧**）。学生交上来两条汇到同一个右项的连法
   // 时，那两条里没有一条是可信的 —— 判分不能因为「右项 r3 出现过」就给 l2 记一次对。
   //
   // ⚠️ 两个左项的情形（一条对、一条重复）在不同口径下会给出 `partial` 或 `incorrect`；

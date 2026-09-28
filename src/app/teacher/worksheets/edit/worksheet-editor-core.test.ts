@@ -62,8 +62,12 @@ import {
   isPartialPoints,
   type ItemEntry,
   matchAddRow,
+  matchAddLeft,
+  matchAddRight,
   matchPairLeftRow,
   matchRemoveRow,
+  matchRemoveLeft,
+  matchRemoveRight,
   matchSetPair,
   MAX_OPTIONS,
   moveIdInList,
@@ -74,6 +78,7 @@ import {
   normalizeLoadedSettings,
   optionKey,
   orderAddItem,
+  orderPastePatch,
   orderRemoveItem,
   orderUseCurrentOrder,
   parseDraft,
@@ -1712,6 +1717,15 @@ test('orderAddItem：`correctOrder` 还没配过（[]）时**不往里加**；�
   assert.equal(isOrderAmbiguous(set.items, set.correctOrder), false);
 });
 
+test('orderPastePatch：粘贴顺序成为正确答案，学生初始顺序自动错开', () => {
+  const texts = ['第一步', '第二步', '第三步'];
+  const pasted = orderPastePatch(texts, () => 0);
+  const byText = new Map(pasted.items.map((item) => [item.text, item.id]));
+  assert.deepEqual(pasted.correctOrder, texts.map((text) => byText.get(text)));
+  assert.equal(isOrderAmbiguous(pasted.items, pasted.correctOrder), false);
+  assert.deepEqual(new Set(pasted.items.map((item) => item.text)), new Set(['第一步', '第二步', '第三步']));
+});
+
 test('🔴 orderUseCurrentOrder：「取当前顺序」不能产出一道**立即无效**的题', () => {
   const items = [entry('i1', '一'), entry('i2', '二'), entry('i3', '三')];
   const next = orderUseCurrentOrder({ items, correctOrder: [] }, () => 0.5);
@@ -1807,7 +1821,7 @@ test('writeOrder：`items` 与 `correctOrder` **一起**写（分开写会有一
 test('🔴 matchSetPair：同一个右项只能被一个左项占用（重复连 ⇒ **旧的被顶掉**，不是并存）', () => {
   const pairs = matchSetPair([], 'l1', 'r1');
   assert.deepEqual(pairs, [{ leftId: 'l1', rightId: 'r1' }]);
-  // 并存会让服务端的 `isCompleteMatching` 拒绝**整道题**（一个学生都判不了分），
+  // 并存会让服务端的 `isValidMatching` 拒绝**整道题**（一个学生都判不了分），
   // 而教师看到的只是两个下拉选着同一个值。
   assert.deepEqual(matchSetPair(pairs, 'l2', 'r1'), [{ leftId: 'l2', rightId: 'r1' }]);
   // 同一个左项改连另一个右项 ⇒ 旧的也去掉
@@ -1882,6 +1896,20 @@ test('matchAddRow：左右**各加一个**（条数恒等 ⇒ 服务端那条校
   assert.equal(added.right.length, 3);
   assert.deepEqual(added.pairs, [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }], '不臆造一条连线');
   assert.deepEqual(readEntryIds(writeMatch(added.left, added.right, added.pairs).left).length, 3);
+});
+
+test('连线题左右栏可独立增删，删除时只清理指向该条目的配对', () => {
+  const state = {
+    left: [entry('l1', '甲'), entry('l2', '乙')],
+    right: [entry('r1', 'A'), entry('r2', 'B'), entry('r3', 'C')],
+    pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }],
+  };
+  assert.equal(matchAddLeft(state).left.length, 3);
+  assert.equal(matchAddRight(state).right.length, 4);
+  assert.deepEqual(matchRemoveLeft(state, 0).pairs, [{ leftId: 'l2', rightId: 'r2' }]);
+  assert.deepEqual(matchRemoveRight(state, 1).pairs, [{ leftId: 'l1', rightId: 'r1' }]);
+  assert.equal(matchRemoveLeft(state, 9), state);
+  assert.equal(matchRemoveRight(state, 9), state);
 });
 
 test('🔴 readMatch / writeMatch：教师侧是 `pairs`、学生侧是 `links`（写反 = 判分永远对不上）', () => {

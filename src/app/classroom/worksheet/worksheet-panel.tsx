@@ -377,6 +377,30 @@ export function WorksheetQuestionList({
           },
         };
         const promptImage = readPromptImage(node);
+        const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
+        const questionState = (
+          <span className={styles.questionState} data-state={state}>
+            {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
+          </span>
+        );
+        const gradeState = interactive ? gradeStates?.[node.id] : undefined;
+        const questionFeedback = gradeState ? (
+          <div className={styles.questionFeedback} data-result={gradeState} role="status" aria-live="polite">
+            <strong>{gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想'}</strong>
+            {reward && (
+              <span className={styles.feedbackReward}>
+                <span className={styles.feedbackRewardLabel}>获得奖励</span>
+                <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+              </span>
+            )}
+          </div>
+        ) : null;
+        const questionMeta = state !== 'empty' || questionFeedback ? (
+          <div className={styles.questionMeta}>
+            {questionState}
+            {questionFeedback}
+          </div>
+        ) : null;
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
         // 加它的理由：去掉那个题号徽章时，顺带把这一题在页面里唯一的身份一起删了 ——
@@ -395,45 +419,6 @@ export function WorksheetQuestionList({
                 score={scores?.[node.id] ?? null}
               />
             ) : null}
-            <div className={styles.questionHead}>
-              <div className={styles.questionIdentity}>
-                {/*
-                  ★ 2026-09-25（教师裁定）：头行只剩一个**题型图标** ——
-                  没有编号、没有题型文字。原话：「也不用加题型『选择题』『判断题』，
-                  题型可以在标题前加一个象形的图标。」
-                  ⚠️ `heading` 在这里**不再显示**，但它仍然是布局之外的身份（看板 / 抽屉 /
-                  导出 / 分析载荷用同一份）。学生侧的题号由**段标题（任务名）**承担。
-                */}
-                <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>
-                {/* 状态挂在题型图标旁：`✓ 已完成` / `◐ 正在写` / 空白 = 未作答。
-                    文案由 `questionDisplayState` 一处给出，样式按 `data-state` 分三态。 */}
-                <span className={styles.questionState} data-state={state}>
-                  {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
-                </span>
-              </div>
-              {/* 奖励出现在**每题旁**（规格 §9.3），交完立刻出现。
-                  🔴 `interactive` 是第二道闸：本组件同时被教师端的「学生端预览」渲染
-                  （`preview-modal.tsx`，`interactive={false}`），而奖励**教师端一处都不许出现**
-                  （规格 §3-U：那里问的是「哪道题错得多」）。所以即使将来有人往预览里
-                  传了奖励配置，这一行也不会画出来。 */}
-              {interactive && gradeStates?.[node.id] ? (
-                <div className={styles.questionFeedback} data-result={gradeStates[node.id]} role="status" aria-live="polite">
-                  <span className={styles.feedbackSummary}>
-                    <strong>{gradeStates[node.id] === 'correct' ? '全部答对' : gradeStates[node.id] === 'partial' ? '部分答对' : '再想一想'}</strong>
-                    {(wrongBlankIndexes?.[node.id]?.length ?? 0) > 0 && (
-                      <span>第 {wrongBlankIndexes?.[node.id].map(index => index + 1).join('、')} 空需要修改</span>
-                    )}
-                  </span>
-                  {reward && (
-                    <span className={styles.feedbackReward}>
-                      <span className={styles.feedbackRewardLabel}>获得奖励</span>
-                      <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
-                    </span>
-                  )}
-                </div>
-              ) : null}
-            </div>
-
             {/* ★ 2026-09-26：「选择填空」的作答**跨了题干与题干下方**（空在题干里、
                 待选词在下面），而**拖拽的手势状态必须在一个组件里**（见
                 `choice-blank-answer.tsx` 的文件头）⇒ 这一段整个交给它。
@@ -447,13 +432,17 @@ export function WorksheetQuestionList({
                 // ★ 2026-09-27：答错的空的正确答案（**只这一题**；服务端只发答错的那几格）。
                 wrongBlankIndexes={wrongBlankIndexes?.[node.id]}
                 correctBlanks={correctBlanks?.[node.id]}
+                leadingIcon={questionIcon}
+                status={questionMeta}
               />
             ) : (<>
             {/* ★ 2026-09-26：题干的渲染**只有这一份实现**了（`PromptText`）。
                 在此之前这里画一次、教师编辑页折叠时另画一次，两份都不会因为另一份改了
                 而报错。样式（粗细 / 斜 / 下划线 / 着重号 / 颜色）由 `promptRunStyle` 给，
                 本组件的 `.prompt` 只管基线（字号 / 行高 / 换行 / 默认色）。 */}
-            <div className={styles.prompt}>
+            <div className={styles.questionLead}>
+              {questionIcon}
+              <div className={styles.prompt}>
               {/* ★ 2026-09-27（教师）：「学生页面中，如果是多选题的话，要在题干前面自动加上
                   『多选』这样的提示文字。」
                   🔴 判据是**共享的那一份** `isMultipleChoice`（`@/lib/worksheet-questions`，
@@ -477,6 +466,8 @@ export function WorksheetQuestionList({
                 // 教师看到的就是学生看到的）。没草稿时值是空的、并且 disabled。
                 blanks={node.type === 'fill-blank' ? blankBinding : undefined}
               />
+              </div>
+              {questionMeta}
             </div>
             {promptImage && (
               <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />

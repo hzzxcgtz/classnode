@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
@@ -54,6 +54,8 @@ export interface ChoiceBlankAnswerProps {
    * ⚠️ 它**只喂下面那块提示区**，不进题干渲染器 —— 行内加节点会动到输入框/槽的结构。
    */
   correctBlanks?: Record<string, string>;
+  leadingIcon?: ReactNode;
+  status?: ReactNode;
 }
 
 /** 落点 id 的前缀。⚠️ 与「待选词 id」区分开：拖拽那一层只看得出字符串。 */
@@ -61,7 +63,7 @@ const BLANK_PREFIX = 'blank:';
 const WORD_PREFIX = 'word:';
 
 /** `data.choices`：待选词。读不出来就是空表（学生没词可拖 ⇒ 界面要说实话）。 */
-export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankIndexes, correctBlanks }: ChoiceBlankAnswerProps) {
+export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankIndexes, correctBlanks, leadingIcon, status }: ChoiceBlankAnswerProps) {
   const [picked, setPicked] = useState<{ word: string; target: number | null } | null>(null);
   const runs = useMemo(() => readPromptRunsFor(node), [node]);
   const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
@@ -207,8 +209,10 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
 
   return (
     <>
-      <div className={styles.prompt}>
-        <PromptText
+      <div className={styles.questionLead}>
+        {leadingIcon}
+        <div className={styles.prompt}>
+          <PromptText
           text={node.prompt}
           runs={runs}
           placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
@@ -222,7 +226,9 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
             tableBase: layout.tableBase,
             tableCount: layout.tableCount,
           }}
-        />
+          />
+        </div>
+        {status}
       </div>
       {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
       {settings.some(setting => setting.mode === 'pool') ? (

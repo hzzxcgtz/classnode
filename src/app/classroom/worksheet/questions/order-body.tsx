@@ -243,6 +243,7 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
         ].filter(Boolean).join(' ');
         return (
           <li className={styles.orderRow} key={id}>
+            <span className={styles.orderIndex} ref={(el) => { numEls.current[id] = el; }}>{index + 1}</span>
             <div
             className={className}
             ref={(el) => { itemEls.current[id] = el; }}
@@ -254,7 +255,6 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
           >
             {/* JSX 里这份 `{index + 1}` 是给**静态导出**与 React 自己用的那一份；
                 拖动中它会被 JS 改写（`writeSlots`），松手时再写回与新顺序一致的值。 */}
-            <span className={styles.orderIndex} ref={(el) => { numEls.current[id] = el; }}>{index + 1}</span>
             <span className={styles.orderText}>{byId[id] || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
             </div>
             <span

@@ -244,9 +244,9 @@
 }
 
 .questionIcon svg {
-  width: 20px;
-  height: 20px;
-  padding: 7px;
+  width: 25px;
+  height: 25px;
+  padding: 6px;
   border-radius: 10px;
   background: #eef4ff;
 }
@@ -301,7 +301,7 @@
 .questionState {
   transition: color .18s ease-out;
   flex: 0 0 auto;
-  font-size: .74rem;
+  font-size: .82rem;
   font-weight: 750;
 }
 
@@ -778,6 +778,80 @@
 .zoneGrid { gap: 22px; }
 .zone { border-radius: 8px; background: #f8fbff; }
 
+/* 题干、作答状态与判分结果共用一行：结果不再单独占据卡片顶部。 */
+.questionLead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+}
+.questionLead .prompt { margin: 0; }
+.questionIcon svg {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+}
+.questionMeta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.questionLead .questionState { margin: 0; white-space: nowrap; }
+.questionFeedback {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  gap: 7px;
+  padding: 4px 7px;
+  border-left-width: 2px;
+  line-height: 1.25;
+}
+.questionFeedback > strong { font-size: .78rem; white-space: nowrap; }
+.feedbackReward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 7px;
+}
+.feedbackRewardLabel {
+  display: inline;
+  font-size: .66rem;
+  white-space: nowrap;
+}
+
+/* 排序作答区整体居中；单行仍使用完整可用宽度。 */
+.orderList {
+  width: min(100%, 600px);
+  margin: 12px auto 0;
+}
+.orderRow { width: 100%; }
+
+/* 红叉沿实际斜率压在线上，白色细描边只负责保证交叉处仍清楚。 */
+.matchLineDelete {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 760px) {
+  .questionLead {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+  .questionMeta {
+    grid-column: 2;
+    justify-self: end;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+}
+
 .questionFeedback {
   justify-self: end;
   display: grid;
@@ -792,6 +866,21 @@
   font-size: .8rem;
   color: #166534;
 }
+
+.questionLead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.questionLead .prompt {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 3px 0 0;
+}
+
+.questionLead .questionState { margin-top: 7px; }
 .feedbackSummary { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.45; }
 .feedbackSummary strong { font-size: .88rem; }
 .questionFeedback[data-result='partial'] { border-left-color: #d97706; background: #fffbeb; color: #92400e; }
@@ -1505,12 +1594,51 @@
 .orderItem { flex: 1 1 auto; min-height: 40px; border-radius: 6px; }
 .orderItemDragging { box-shadow: inset 0 0 0 1px var(--ws-accent); }
 .orderButton { border-radius: 5px; }
+.orderButton {
+  border: 0;
+  background: transparent;
+  font-size: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.orderButton::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #334155;
+  font-size: .72rem;
+}
+.orderButton:first-child::before { content: '▲'; }
+.orderButton:last-child::before { content: '▼'; }
 .matchGrid { gap: 84px; }
 .matchSide, .matchBadge, .matchChip, .matchUnlink { display: none; }
 .matchLineGroup { pointer-events: none; }
 .matchLineHit { stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: pointer; }
 .matchLineDelete { opacity: 0; pointer-events: none; fill: #b91c1c; font-size: 22px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
 .matchLineGroup:hover .matchLineDelete, .matchLineGroup:focus .matchLineDelete { opacity: 1; }
+
+/* 结果卡只汇总结果与奖励；具体错处由题目下方的纠错提示负责。 */
+.questionHead {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.questionFeedback {
+  display: inline-flex;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  gap: 10px;
+  padding: 7px 9px;
+}
+.feedbackSummary strong { font-size: .82rem; }
+.feedbackReward { padding-left: 9px; }
 .choiceWord { padding: 0 2px; border-radius: 0; min-height: 44px; }
 .choiceWordInline { min-height: 44px; padding: 0 1px; margin: 0 1px; font-size: .82rem; }
 .inlineChoices { display: inline-flex; align-items: center; white-space: nowrap; margin-left: 4px; }

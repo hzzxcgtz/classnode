@@ -270,28 +270,37 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
         {/* 连线层：`pointer-events: none`，否则它会挡住下面的落点（`elementFromPoint`
             返回的是这条路线上最上面那个元素）。 */}
         <svg className={styles.matchLines} aria-label="已连接的配对">
-          {lines.map((line) => (
-            <g
-              className={styles.matchLineGroup}
-              key={line.key}
-              role="button"
-              tabIndex={disabled ? -1 : 0}
-              aria-label="删除这条连线"
-              onClick={() => {
-                if (disabled) return;
-                onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
-              }}
-              onKeyDown={(event) => {
-                if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
-                event.preventDefault();
-                onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
-              }}
-            >
-              <line className={styles.matchLineHit} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
-              <line className={styles.matchLine} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
-              <text className={styles.matchLineDelete} x={(line.x1 + line.x2) / 2} y={(line.y1 + line.y2) / 2}>×</text>
-            </g>
-          ))}
+          {lines.map((line) => {
+            // 删除叉沿线段方向离开左端 22px，而不是只改 x 坐标。
+            // 斜线若仍使用 y1，叉会浮在线上方，看起来像贴在选项框边缘。
+            const dx = line.x2 - line.x1;
+            const dy = line.y2 - line.y1;
+            const length = Math.max(Math.hypot(dx, dy), 1);
+            const deleteX = line.x1 + (dx / length) * 22;
+            const deleteY = line.y1 + (dy / length) * 22;
+            return (
+              <g
+                className={styles.matchLineGroup}
+                key={line.key}
+                role="button"
+                tabIndex={disabled ? -1 : 0}
+                aria-label="删除这条连线"
+                onClick={() => {
+                  if (disabled) return;
+                  onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
+                }}
+                onKeyDown={(event) => {
+                  if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
+                  event.preventDefault();
+                  onChange({ kind: 'match', links: links.filter(item => item.leftId !== line.leftId || item.rightId !== line.rightId) });
+                }}
+              >
+                <line className={styles.matchLineHit} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+                <line className={styles.matchLine} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+                <text className={styles.matchLineDelete} x={deleteX} y={deleteY}>×</text>
+              </g>
+            );
+          })}
           {/* 跟手的那条线。🔴 **刻意不声明** `x1/y1/x2/y2`：那四个属性由 `onDragMove`
               每帧直接写（见 `FollowAnchor` 上面那一段）。React 只改它从 props 知道的
               属性，这里不声明，它就不会在下一次渲染时把写进去的坐标擦掉。 */}

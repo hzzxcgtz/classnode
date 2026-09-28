@@ -174,12 +174,8 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
 
 export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
-  /**
-   * ★ 2026-09-27（教师）：「"粘贴题目"只在选择题中需要。」—— 判断题的选项固定是对/错、
-   * 别的题型根本没有选项表，给它们画这个按钮，教师会粘进来一列选项然后**什么都看不见**。
-   * ⚠️ 判据在核心里（`isChoiceQuestion`，有用例），别在这里重写一遍。
-   */
-  const canPasteQuestion = isChoiceQuestion(node);
+  /** 完整题目粘贴目前用于选择题与排序题；两者都能把题干和条目一次拆开。 */
+  const canPasteQuestion = isChoiceQuestion(node) || node.type === 'order';
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
@@ -686,7 +682,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           {canPasteQuestion && (
           <button
             type="button"
-            title="粘贴一整道选择题（题干与选项一起识别）"
+            title={node.type === 'order' ? '粘贴一整道排序题（题干与条目一起识别）' : '粘贴一整道选择题（题干与选项一起识别）'}
             aria-label="粘贴题目"
             onClick={onRequestPaste}
           >

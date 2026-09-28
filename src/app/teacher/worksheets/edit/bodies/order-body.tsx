@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   isOrderAmbiguous,
@@ -18,6 +19,14 @@ import {
 /** 正确答案栏里显示一个条目的文字；条目被改空时给一句看得懂的话，而不是一个空白。 */
 function entryLabel(text: string): string {
   return text.trim() || '（这个条目还没写内容）';
+}
+
+function moveAt<T>(values: T[], from: number, to: number): T[] {
+  if (from < 0 || to < 0 || from === to || from >= values.length || to >= values.length) return values;
+  const next = values.slice();
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
 }
 
 /**
@@ -53,6 +62,8 @@ export function OrderAnswerBody({ node, onDataChange }: {
   onDataChange: (patch: Record<string, unknown>) => void;
 }) {
   const order = readOrder(node);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const { items, correctOrder } = order;
   const byId = new Map(items.map(entry => [entry.id, entry]));
   /**
@@ -103,7 +114,20 @@ export function OrderAnswerBody({ node, onDataChange }: {
             return (
               // key 用下标：条目缺 id 时写回会补一个（`writeEntries`），用 id 当 key
               // 会让这一行的按钮在补 id 的那一刻被重挂载 —— 而列表本身是受控的，不会串位。
-              <li className="worksheet-editor-order-row" key={index}>
+              <li
+                className={`worksheet-editor-order-row${dragFrom === index ? ' is-dragging' : ''}${dragOver === index ? ' is-drop-target' : ''}`}
+                key={index}
+                onDragOver={(event) => { event.preventDefault(); setDragOver(index); }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (dragFrom !== null) commit({ items, correctOrder: moveAt(correctOrder, dragFrom, index) });
+                  setDragFrom(null); setDragOver(null);
+                }}
+              >
+                <button type="button" className="worksheet-editor-order-drag" draggable
+                  aria-label={`拖动「${label}」调整正确顺序`}
+                  onDragStart={(event) => { setDragFrom(index); event.dataTransfer.effectAllowed = 'move'; }}
+                  onDragEnd={() => { setDragFrom(null); setDragOver(null); }}>⋮⋮</button>
                 <span className="worksheet-editor-order-index">{index + 1}</span>
                 <span className="worksheet-editor-option-text">{label}</span>
                 <button
@@ -165,6 +189,8 @@ export function OrderBody({ node, onDataChange }: {
   onDataChange: (patch: Record<string, unknown>) => void;
 }) {
   const order = readOrder(node);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const { items, correctOrder } = order;
   const ambiguous = isOrderAmbiguous(items, correctOrder);
   /** 三个键一起写（`items` 陪着 `correctOrder`）—— 见内核里那一节的纪律 1。 */
@@ -173,10 +199,24 @@ export function OrderBody({ node, onDataChange }: {
   return (
     <>
       <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">条目（学生看到的就是这些，顺序见下面一行）</span>
+        <span className="worksheet-editor-block-label">选项顺序</span>
         <div className="worksheet-editor-options">
           {items.map((entry, index) => (
-            <div className="worksheet-editor-option" key={index}>
+            <div
+              className={`worksheet-editor-option worksheet-editor-order-edit-row${dragFrom === index ? ' is-dragging' : ''}${dragOver === index ? ' is-drop-target' : ''}`}
+              key={index}
+              onDragOver={(event) => { event.preventDefault(); setDragOver(index); }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (dragFrom !== null) commit({ items: moveAt(items, dragFrom, index), correctOrder });
+                setDragFrom(null); setDragOver(null);
+              }}
+            >
+              <button type="button" className="worksheet-editor-order-drag" draggable
+                aria-label={`拖动条目 ${index + 1} 调整学生看到的顺序`}
+                onDragStart={(event) => { setDragFrom(index); event.dataTransfer.effectAllowed = 'move'; }}
+                onDragEnd={() => { setDragFrom(null); setDragOver(null); }}>⋮⋮</button>
+              <span className="worksheet-editor-order-index">{index + 1}</span>
               <input
                 className="input"
                 value={entry.text}

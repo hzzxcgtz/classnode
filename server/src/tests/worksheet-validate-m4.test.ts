@@ -261,13 +261,21 @@ const LEFT = [{ id: 'l1', text: '甲' }, { id: 'l2', text: '乙' }];
 const RIGHT = [{ id: 'r1', text: 'A' }, { id: 'r2', text: 'B' }];
 const PAIRS = [{ leftId: 'l1', rightId: 'r2' }, { leftId: 'l2', rightId: 'r1' }];
 
-test('连线题：完整一一对应才通过', () => {
+test('连线题：完整一一对应通过', () => {
   accepted('match', { left: LEFT, right: RIGHT, pairs: PAIRS });
 });
 
-test('连线题：左右不等长 / 缺项 / 两项连到同一个右项 都要拒绝', () => {
+test('连线题：左右可不等长，左侧未配对项可作为留空干扰项', () => {
+  accepted('match', {
+    left: LEFT,
+    right: [...RIGHT, { id: 'r3', text: 'C' }],
+    pairs: PAIRS,
+  });
+  accepted('match', { left: LEFT, right: RIGHT, pairs: [PAIRS[0]] });
+});
+
+test('连线题：配对必须有效且一一对应', () => {
   rejected('match', { left: LEFT, right: [{ id: 'r1', text: 'A' }], pairs: PAIRS });
-  rejected('match', { left: LEFT, right: RIGHT, pairs: [PAIRS[0]] });                       // 缺一个左项
   rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' }] });
   rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l9', rightId: 'r2' }] });
   rejected('match', { left: LEFT, right: RIGHT, pairs: [] });

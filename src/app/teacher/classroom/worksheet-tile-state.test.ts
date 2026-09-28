@@ -34,11 +34,14 @@ function question(id: string, type: string, children: WorksheetQuestionNode[] = 
 
 const THREE = [question('q1', 'single-choice'), question('q2', 'fill-blank'), question('q3', 'short-answer')];
 
-/** 一份进度记录。`cells` 只写**有状态**的题（其余题在实现里按「未答」处理）。 */
+/**
+ * 一份进度记录。`cells` 只写**有状态**的题（其余题在实现里按「未答」处理）。
+ * `at` 传 `null` = **不知道**最后一次保存是什么时候（数据来自旧行，见 §3 那一段）。
+ */
 function progress(
   cells: Record<string, 'draft' | 'submitted'>,
   lastQuestionId: string | null,
-  at: number,
+  at: number | null,
 ): ParticipantWorksheetProgress {
   return { cells, lastQuestionId, lastAt: at };
 }
@@ -142,6 +145,26 @@ test('🔴 已全部提交时不算停住了（判据里的「未全部提交」
     progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'submitted' }, 'q3', NOW - 60 * 60 * 1000),
   });
   assert.equal(result.kind, 'all-submitted');
+});
+
+/**
+ * ★ 2026-09-28：**「不知道」必须有自己的那一档。**
+ *
+ * 数据源统一之后，进度可能来自**历史读端点**，而那一侧的时间戳取自作答行的 `savedAt`
+ * —— 它在**旧行上是 `null`**（那一列上线之前落库的行，见 `ensureWorksheetAnswerColumns`：
+ * 只加列、刻意不回填）。`lastAt: null` 就是这个意思。
+ *
+ * 🔴 少了这一档，`now - null` 会算成 `now`（= 一个巨大的数）⇒ 那一格**立刻**报「停住了」，
+ * 而那些题可能是学生刚才才答的 —— 教师会去「救」一个根本不需要救的人。
+ * 反过来把它当成「刚刚」则会永远不报 —— 两种都是把「不知道」编成了一个事实。
+ * 所以它既不报停住了、也不假装知道：落 `working`（唯一诚实的那一档）。
+ *
+ * ⚠️ 阳性对照在紧邻的上面两条（`lastAt` 是数时照样能报出 stuck）——
+ * 少了它们，一个「stuck 永不出现」的实现也能让本用例绿。
+ */
+test('🔴 lastAt 是 null（旧行没有 savedAt）⇒ **不许**报「停住了」，落 working', () => {
+  const result = state({ progress: progress({ q1: 'draft' }, 'q1', null) });
+  assert.equal(result.kind, 'working', '「不知道多久没动了」不是「他卡住了」—— 那两句话不是一句');
 });
 
 test('分钟数向下取整（8 分 59 秒说 8 分钟，不说 9 分钟）', () => {

@@ -117,7 +117,11 @@ export function buildWorksheetMatrix(
     sheet.participants.forEach((participant) => {
       const progress = live[participant.participantId];
       // ⚠️ `>` 不是 `>=`：下界是**快照发起**的时刻，而广播要在它之后**到达**才算新。
-      const trustLive = liveTrustedAfter === undefined || (progress !== undefined && progress.lastAt > liveTrustedAfter);
+      // ★ 2026-09-28：`lastAt` 现在可能是 `null`（= 不知道这条广播是什么时候到的，
+      // 它是从历史读端点换算出来的）。那种情况下**不信 live**、用 REST —— 与
+      // 「广播全部早于下界」同一个方向（只会丢陈旧数据，不会丢新数据）。
+      const trustLive = liveTrustedAfter === undefined
+        || (progress !== undefined && progress.lastAt !== null && progress.lastAt > liveTrustedAfter);
       const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
       cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
     });

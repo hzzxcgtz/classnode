@@ -71,14 +71,23 @@ export interface ParticipantWorksheetProgress {
    */
   lastQuestionId: string | null;
   /**
-   * 最后一次收到广播的**本地**时刻（ms）。
+   * 最后一次保存的**浏览器时钟**时刻（ms）。`null` = **不知道**。
    *
    * 🔴 用本地时钟而不是服务端时间：广播载荷里没有作答行的 `updatedAt`
    * （B4 的用例正面断言了字段集合，加字段会让那条用例变红），而「停住了」判的是
    * 「距最后一次保存」—— 广播是保存成功之后立刻发的，本地收报时刻就是它最好的代理。
    * 代价：教师本地时钟被改过时这个数会跟着偏，而「停住了」本来就是个 5 分钟量级的软判断。
+   *
+   * ★ 2026-09-28：**加了 `null` 这一档**（数据源统一之后必须的）。进度不再只来自广播，
+   * 也可能来自历史读端点的作答行，而那一侧的时间戳取自 `savedAt` ——
+   * 它在**旧行上是 `null`**（那一列上线之前落库的行）。
+   * 🔴 `null` 的含义是「不知道多久没动了」，它**既不等于「刚刚」也不等于「很久」**：
+   * 当成「刚刚」则永远不报停住了；当成一个数（`now - null` = `now`）则**立刻**报停住了 ——
+   * 教师会去救一个根本不需要救的人。所以它单独一档，落 `working`。
+   * ⚠️ 跨时钟的那次相减**不在这里**：`lastAt` 必须已经是浏览器时钟（换算在收集侧做一次，
+   * 见 `use-worksheet-board.ts`），否则 `now - lastAt` 会把两个不同源的时钟相减。
    */
-  lastAt: number;
+  lastAt: number | null;
 }
 
 /** 「停住了」的无操作阈值（规格 §7.2 定死 5 分钟）。 */
@@ -181,8 +190,11 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   const at = activeQuestionIndex(items, cells, known.lastQuestionId);
   const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
   const heading = at === null ? null : items[at].heading;
-  const idleMs = now - known.lastAt;
-  if (online && idleMs > WORKSHEET_STUCK_AFTER_MS) {
+  // 🔴 `lastAt === null` ⇒ **不算「停住了」**（见 `ParticipantWorksheetProgress.lastAt`）：
+  // `now - null` 在 JS 里是 `now`（一个 1.7e12 量级的数），它会让这一格**立刻**报停住了，
+  // 而那些题可能刚刚才被答过。判据宁可少报，也不许把「不知道」编成「他卡了 5 分钟」。
+  const idleMs = known.lastAt === null ? null : now - known.lastAt;
+  if (online && idleMs !== null && idleMs > WORKSHEET_STUCK_AFTER_MS) {
     // `Math.floor` 而不是四舍五入：8 分 59 秒说「8 分钟」是准的，说「9 分钟」是提前量。
     return { kind: 'stuck', heading, typeLabel, minutes: Math.floor(idleMs / 60_000), cells, headings };
   }

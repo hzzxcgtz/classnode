@@ -4,7 +4,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   matchAddLeft,
   matchAddRight,
-  matchPairLeftRow,
+  matchTogglePair,
   matchRemoveLeft,
   matchRemoveRight,
   readMatch,
@@ -39,8 +39,6 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
         {Array.from({ length: rows }, (_, index) => {
           const leftEntry = left[index];
           const rightEntry = right[index];
-          const paired = leftEntry ? pairs.find((pair) => pair.leftId === leftEntry.id) : undefined;
-          const pairedRightId = paired?.rightId ?? '';
           return (
             <div className="worksheet-editor-match-row" key={index}>
               <div className="worksheet-editor-match-entry">
@@ -67,17 +65,45 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                 ) : <span />}
               </div>
 
+              {/* ★ 2026-09-28（教师裁定甲）：这一格从**一对一的下拉**换成**开关** ——
+                  一个左项可以连到好几个右项（一对多），好几个左项也可以连同一个右项（多对一）。
+                  🔴 为什么不是一张真正的矩阵（左项当行、右项当列）：这个编辑器是**行式**的
+                     —— 第 i 行同时编辑「左项 i」与「右项 i」，左项与右项是**交错**排的，
+                     摆不出「左项一列、右项一行」。这里的语义与矩阵**逐字相同**
+                     （每格 = 一条线），只是把列摊在了行里。
+                  ⚠️ 「不连线（留空）」现在是**一个开关都不开**，不再是一个选项。 */}
               {showAnswer && (leftEntry ? (
-                <select className="input worksheet-editor-pair-select" value={pairedRightId}
-                  aria-label={`「${leftEntry.text.trim() || `左项 ${index + 1}`}」连到哪一项`}
-                  onChange={(event) => commit(matchPairLeftRow(match, index, event.target.value))}>
-                  <option value="">不连线（留空）</option>
-                  {right.map((item, itemIndex) => (
-                    <option key={item.id || `missing-${itemIndex}`} value={item.id} disabled={!item.id}>
-                      {rightLabel(item.text, itemIndex)}
-                    </option>
-                  ))}
-                </select>
+                <div className="worksheet-editor-pair-toggles" role="group"
+                  aria-label={`「${leftEntry.text.trim() || `左项 ${index + 1}`}」连到哪几项`}>
+                  {right.map((item, itemIndex) => {
+                    const checked = pairs.some((pair) => pair.leftId === leftEntry.id && pair.rightId === item.id);
+                    return (
+                      <label
+                        key={item.id || `missing-${itemIndex}`}
+                        className={[
+                          'worksheet-editor-pair-toggle',
+                          checked ? 'is-on' : '',
+                          // ⚠️ 禁用态用**一个类**而不是 CSS 的 `:has(input:disabled)` ——
+                          //    `:has()` Safari 15 不支持，而 globals.css 学生端也加载
+                          //    （`check-classroom-browser-compat.mjs` 当场把构建拦下来了）。
+                          leftEntry.id && item.id ? '' : 'is-disabled',
+                        ].filter(Boolean).join(' ')}
+                        title={item.id ? undefined : '这一项还没有 id（先在右边把它写完）'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!leftEntry.id || !item.id}
+                          onChange={(event) => commit({
+                            ...match,
+                            pairs: matchTogglePair(pairs, leftEntry.id, item.id, event.target.checked),
+                          })}
+                        />
+                        {rightLabel(item.text, itemIndex)}
+                      </label>
+                    );
+                  })}
+                </div>
               ) : <span />)}
             </div>
           );
@@ -88,9 +114,12 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
         <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddLeft(match))}>＋ 左侧添加</button>
         <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddRight(match))}>＋ 右侧添加</button>
       </div>
-      {showAnswer && pairs.length < left.length && (
+      {showAnswer && (
         <p className="worksheet-editor-hint">
-          {left.length - pairs.length} 个左侧条目设置为留空。学生不需要连接这些条目；若误连则会扣分。
+          {pairs.length === 0
+            ? '还没有设置任何连线 —— 点每一项右边的开关，打开的格子就是一条正确的连线。'
+            : `已设置 ${pairs.length} 条连线。一个左项可以连多个右项，多个左项也可以连同一个右项。`
+              + '没有连线的左项是**留空项**：学生不需要连它，误连会拿不到全对。'}
         </p>
       )}
     </>

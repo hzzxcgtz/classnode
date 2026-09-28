@@ -1313,6 +1313,31 @@ export function matchPairLeftRow(state: MatchData, index: number, rightId: strin
  * 兼容旧调用的成组添加。新界面使用下面两个独立添加函数。
  * 新左项没有配对，默认作为留空项，不替教师臆造一条连线。
  */
+/**
+ * 切换**一条**连线（★ 2026-09-28，教师裁定甲：支持一对多 / 多对一 / 多对多）。
+ *
+ * 原来的 `matchPairLeftRow(state, index, rightId)` 是**一对一**的：一个左项只有一个
+ * 下拉，选新的就顶掉旧的。矩阵那一侧要的是「一行能勾好几格」⇒ 得有个「加一条 / 去一条」。
+ *
+ * ⚠️ **同一条线不许重复**（`{l1,r1}` 两次没有意义，而判分会把它算两次命中）——
+ * 服务端的 `isValidMatching` 也会拒。所以这里是先过滤再追加，不是无脑 push。
+ * ⚠️ id 缺一个就**什么都不做**（条目还没写好的中间态：`writeEntries` 会补 id，
+ * 那一刻之前的点击不该在库里留下一条指向空串的线）。
+ * ⚠️ `pairs` 的**顺序不参与判分**（判分是集合语义：某条线在不在正确答案里），
+ * 所以追加在末尾是安全的 —— 不要为了「排序好看」去动它，那是给判分加一份真源。
+ */
+export function matchTogglePair(
+  pairs: PairEntry[],
+  leftId: string,
+  rightId: string,
+  on: boolean,
+): PairEntry[] {
+  if (!leftId || !rightId) return pairs;
+  const without = pairs.filter((pair) => !(pair.leftId === leftId && pair.rightId === rightId));
+  if (!on) return without;
+  return [...without, { leftId, rightId }];
+}
+
 export function matchAddRow(state: MatchData): MatchData {
   return {
     left: [...state.left, { id: newItemId(), text: '' }],

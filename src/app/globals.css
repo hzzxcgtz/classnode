@@ -6204,3 +6204,46 @@ tr:hover td {
   padding-top: 16px;
   border-top: 1px solid #eef2f6;
 }
+
+/* ── 连线题的配对开关（★ 2026-09-28，裁定甲：支持一对多 / 多对一）────────────
+   原来这里是一个 `<select>`（一对一）。现在是一行开关：每个右项一个，
+   点一下加一条线、再点去掉 —— 同一行开多个就是一对多。
+   ⚠️ 宽度会随右项个数长，所以换行（`flex-wrap`）而不是溢出：右项多的时候
+      这一格变成两行开关，比横向滚动好找。 */
+.worksheet-editor-pair-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.worksheet-editor-pair-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.72rem;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+/* 打开了的那一条 —— 底色与「已选中」那一档一致（与其它选中态同一个绿？不：
+   这里用主色淡底，与 `.worksheet-editor-mode-tabs .is-selected` 同源）。 */
+.worksheet-editor-pair-toggle.is-on {
+  border-color: #93b4f5;
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* 条目还没写完 id 时这一格点不了（⚠️ 不用 `:has(input:disabled)`：Safari 15 不支持，
+   而 globals.css 学生端也要加载 —— 那条标记是构建门禁会拦的）。 */
+.worksheet-editor-pair-toggle.is-disabled {
+  opacity: .55;
+  cursor: default;
+}

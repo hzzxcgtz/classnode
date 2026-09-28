@@ -28,22 +28,30 @@ import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from 
 // 与 `worksheet-drawer-state.test.ts` 引 `lib/worksheet-questions.ts` 是同一个写法。
 import { HALF_STEPS, REWARD_STEPS } from '../../../../lib/worksheet-reward.ts';
 import {
+  // ★ 2026-09-27：两半基线（「保存设置」只盖后一半）。见文件末尾那一组。
+  isDirtyAgainst,
+  DEFAULT_SETTINGS,
+  HISTORY_LIMIT,
+  MAX_OPTIONS,
+  POINTS_FULL_MIN,
+  POINTS_MAX,
+  QUESTION_TYPE_OPTIONS,
+  TRUE_FALSE_OPTIONS,
   addBlank,
   buildPayload,
+  canGivePartial,
+  canReorder,
   categorizeAddItem,
   categorizeAddZone,
   categorizeRemoveItem,
   categorizeRemoveZone,
+  choiceModePatch,
   contentReducer,
   createEmptyContent,
   createHistory,
-  DEFAULT_SETTINGS,
-  canGivePartial,
   displayPoints,
-  canReorder,
   draftKeyFor,
   dropIndexAt,
-  scoreSummary,
   editorRenderBlocks,
   editorRenderRows,
   ensureEntryIds,
@@ -54,22 +62,24 @@ import {
   findUncommittedPointInput,
   gradesOnSubmit,
   hasPromptBlankSlots,
-  toleranceOf,
-  HISTORY_LIMIT,
-  isOrderAmbiguous,
+  hoverPreviewSize,
+  isChoiceQuestion,
+  isContentHalfSaved,
   isGradedQuestionType,
+  isMultipleChoice,
+  isOrderAmbiguous,
   isOrderAnswerUsable,
   isPartialPoints,
-  type ItemEntry,
-  matchAddRow,
   matchAddLeft,
   matchAddRight,
+  matchAddRow,
   matchPairLeftRow,
-  matchRemoveRow,
   matchRemoveLeft,
   matchRemoveRight,
+  matchRemoveRow,
   matchSetPair,
-  MAX_OPTIONS,
+  matchTogglePair,
+  maximumPointsFor,
   moveIdInList,
   moveOptionTo,
   newQuestion,
@@ -77,22 +87,22 @@ import {
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
+  optionPastePatch,
   orderAddItem,
   orderPastePatch,
   orderRemoveItem,
   orderUseCurrentOrder,
   parseDraft,
   parsePointInput,
+  parseQuestionPaste,
+  placeHoverPreview,
   placementSet,
   planPointInputChange,
-  POINTS_FULL_MIN,
-  POINTS_MAX,
   pointsSignature,
-  type QuestionPointsDraft,
-  QUESTION_TYPE_OPTIONS,
   readBlankAnswers,
   readBlankText,
   readCategorize,
+  readChoicesText,
   readCorrectKeys,
   readEntries,
   readEntryIds,
@@ -101,38 +111,29 @@ import {
   readOptions,
   readOrder,
   readPlacement,
-  type RejectedPointInput,
   removeBlank,
   renameEntryAt,
-  maximumPointsFor,
   sanitizeContentForSave,
+  scoreSummary,
   shouldWarnZeroHalfCredit,
   showsPartialPoints,
-  placeHoverPreview,
-  hoverPreviewSize,
   shuffleOrderItems,
-  TRUE_FALSE_OPTIONS,
+  snapshotsOf,
+  toleranceOf,
+  type ChoiceOption,
+  type ItemEntry,
+  type QuestionPointsDraft,
+  type RejectedPointInput,
+  type SaveBaselines,
   writeBlankText,
   writeCategorize,
+  writeChoicesText,
   writeEntries,
   writeFillAnswers,
   writeMatch,
   writeMultipleOptions,
   writeOptions,
   writeOrder,
-  readChoicesText,
-  writeChoicesText,
-  // ★ 2026-09-27：两半基线（「保存设置」只盖后一半）。见文件末尾那一组。
-  isDirtyAgainst,
-  choiceModePatch,
-  type ChoiceOption,
-  isChoiceQuestion,
-  isContentHalfSaved,
-  isMultipleChoice,
-  optionPastePatch,
-  parseQuestionPaste,
-  snapshotsOf,
-  type SaveBaselines,
 } from './worksheet-editor-core.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
@@ -3101,4 +3102,32 @@ test('🔴 maximumPointsFor：整题给分 / 不是填空题 ⇒ 就是那一份
   assert.equal(maximumPointsFor({ ...tableOfTwoBlanks('q_w'), data: { ...tableOfTwoBlanks('q_w').data, fillScoring: 'whole' } }, 1), 1);
   assert.equal(maximumPointsFor(node('q_sc', '', { options: [] }, 'single-choice'), 5), 5);
   assert.equal(maximumPointsFor(node('q_sa'), 3), 3);
+});
+
+// ── 连线的开关（★ 2026-09-28，裁定甲）──────────────────────────────────
+
+test('🔴 matchTogglePair：加一条 / 去一条，且**同一行能开多个**（一对多）', () => {
+  const one = matchTogglePair([], 'l1', 'r1', true);
+  assert.deepEqual(one, [{ leftId: 'l1', rightId: 'r1' }]);
+  // 同一个左项再连一个右项 ⇒ 两条并存（原来的 `matchPairLeftRow` 会顶掉前一条）
+  const two = matchTogglePair(one, 'l1', 'r2', true);
+  assert.deepEqual(two, [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }]);
+  // 多对一：另一个左项连同一个右项
+  const three = matchTogglePair(two, 'l2', 'r1', true);
+  assert.equal(three.length, 3);
+  // 关掉一条
+  assert.deepEqual(matchTogglePair(three, 'l1', 'r1', false), [
+    { leftId: 'l1', rightId: 'r2' }, { leftId: 'l2', rightId: 'r1' },
+  ]);
+});
+
+test('🔴 matchTogglePair：同一条线不会重复（判分会把它算两次命中）', () => {
+  const once = matchTogglePair([], 'l1', 'r1', true);
+  assert.deepEqual(matchTogglePair(once, 'l1', 'r1', true), once, '再开一次还是那一条');
+});
+
+test('🔴 matchTogglePair：id 缺一个 ⇒ 原样返回（条目还没写完的中间态）', () => {
+  const pairs = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.deepEqual(matchTogglePair(pairs, '', 'r2', true), pairs);
+  assert.deepEqual(matchTogglePair(pairs, 'l1', '', true), pairs);
 });

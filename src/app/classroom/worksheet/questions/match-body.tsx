@@ -4,8 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearSelection,
   setPair,
-  tapSource,
-  tapTarget,
+  tapItem,
   type DragSelection,
 } from '@/lib/worksheet-drag';
 import {
@@ -22,8 +21,8 @@ import styles from '../worksheet.module.css';
  *
  * ── 点选那一条路（必然能用的那一层）──────────────────────────────────────
  * 点左项 ⇒ 选中（高亮）；再点右项 ⇒ 连上，**并清空选择**。
- *   · 点同一个左项 ⇒ 取消选中（`tapSource` 的往返）；
- *   · 点右项那一下的**三条规则全在 `tapTarget` 里**（`lib/worksheet-drag.ts`，有用例）：
+ *   · 点**同一列**的项 ⇒ 改选；点中已选那一项本身 ⇒ 取消选中；
+ *   · 一次点击的规则全在 `tapItem` 里（`lib/worksheet-drag.ts`，有用例）：
  *     没选左项 + 点已连的右项 ⇒ **断开**（★ 2026-09-26 教师第 2 条「点一下就能删」，
  *     在此之前那条路径是死路 —— 删一条线要「先点左项 → 再点右项」两步）；
  *     选着左项 + 连的正是这一对 ⇒ 断开；否则 ⇒ 连上（右项被占则**顶掉**旧的）。
@@ -93,7 +92,15 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
   // ⚠️ 这两个判据在下面那两段手势回调里都要用，而回调声明在 `usePointerDrag` 的参数里
   // —— 先定义再使用（不是风格问题：写在 hook 之后会在「第一次渲染就触发回调」时踩 TDZ）。
   const leftIds = left.map((entry) => entry.id);
+  const rightIds = right.map((entry) => entry.id);
   const isLeftId = (id: string) => leftIds.includes(id);
+  /**
+   * 这一项在哪一列（★ 2026-09-28）。`tapItem` 靠它判「点的是相反那一列吗」——
+   * 两个方向（左→右 / 右→左）用的就是这一条判据。
+   * ⚠️ 认不出来的 id ⇒ `null`（`tapItem` 会当成空操作，不连线）。
+   */
+  const sideOf = (id: string) => (isLeftId(id) ? 'left' as const : rightIds.includes(id) ? 'right' as const : null);
+  const isRightId = (id: string) => rightIds.includes(id);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   /** 每个端点的 DOM 节点（键带 `l:` / `r:` 前缀，两栏的 id 各自独立编号，可能重名）。 */
@@ -185,7 +192,7 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
   const activeLeftId = selection.kind === 'item' ? selection.id : null;
   /**
    * 点**这一条右项**会不会**断开**（而不是连上、也不是什么都不做）。
-   * 🔴 判据必须与 `tapTarget` **逐字同源** —— ✕ 出现在哪里，点下去就在哪里断开；
+   * 🔴 判据必须与 `tapItem` **逐字同源** —— ✕ 出现在哪里，点下去就在哪里断开；
    * 两者一旦走岔，画出来的就是一个**撒谎的**图标（比不画更糟）。
    */
 
@@ -193,17 +200,15 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
     disabled,
     onDragMove,
     onTap: (id) => {
-      // **左项**（源）：选中 / 取消 / 改选（`tapSource` 的往返）。
-      if (isLeftId(id)) {
-        setSelection(tapSource(selection, id));
-        return;
-      }
-      // **右项**（落点）：三条规则（删除 / 改连 / 连上）全在 `tapTarget` 里，那半边有用例。
-      const next = tapTarget(links, activeLeftId, id);
-      setSelection(clearSelection());
-      // ⚠️ 只在**真的变了**的时候回调 —— `tapTarget` 在空操作时返回原数组，
+      // ★ 2026-09-28（教师裁定甲）：「左框连到右框，也支持右框连到左框。」
+      // ⇒ 一次点击的判据收成一条：**点相反那一列 = 连线、点同一列 = 改选/取消**。
+      //    「从哪边起手」不再是特殊情况（那条规则两个方向都成立）——
+      //    判据在 `tapItem`（纯逻辑、有用例），这里只把它算出来的两个值放回去。
+      const next = tapItem(links, selection, id, sideOf);
+      setSelection(next.selection);
+      // ⚠️ 只在**真的变了**的时候回调 —— 空操作时返回原数组，
       // 而白回调一次会白写一条上传队列（与排序题的 `write` 同一条）。
-      if (next !== links) onChange({ kind: 'match', links: next });
+      if (next.links !== links) onChange({ kind: 'match', links: next.links });
     },
     onDrop: (sourceId, targetId) => {
       // ★ 2026-09-26：`onDrop` 现在在「拖到空白处松手」（`targetId === null`）时**也会**被调用。
@@ -211,7 +216,14 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
       // 选择态也留着，学生可以直接接着点右项。
       if (targetId === null) return;
       setSelection(clearSelection());
-      onChange({ kind: 'match', links: setPair(links, sourceId, targetId) });
+      // ★ 2026-09-28：拖拽也可能是**从右项起手拖到左项** ⇒ 按**列**归一化，
+      // 不能像原来那样把 `sourceId` 直接当成左项（那会把右项写进 leftId，判分全错）。
+      const sourceIsLeft = isLeftId(sourceId);
+      const targetIsLeft = isLeftId(targetId);
+      if (sourceIsLeft === targetIsLeft) return;   // 同一列 ⇒ 不连
+      const leftId = sourceIsLeft ? sourceId : targetId;
+      const rightId = sourceIsLeft ? targetId : sourceId;
+      onChange({ kind: 'match', links: setPair(links, leftId, rightId) });
     },
   });
 

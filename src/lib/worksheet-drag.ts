@@ -226,6 +226,50 @@ export function tapTarget(links: DragLink[], leftId: string | null, rightId: str
   return already ? removePair(links, leftId, rightId) : setPair(links, leftId, rightId);
 }
 
+/** 连线的两列。⚠️ 「源」与「落点」**不绑定在列上** —— 见 `tapItem`。 */
+export type DragSide = 'left' | 'right';
+
+/**
+ * 连线的**一次点击**（★ 2026-09-28，教师：「左框连到右框，**也支持右框连到左框**」）。
+ *
+ * 🔴 判据只有一条：**点与自己相反的那一列 ⇒ 连线；点与自己同一列 ⇒ 改选/取消。**
+ * ⇒ 「从哪边起手」根本不是一种特殊情况，它是同一条规则的两个方向 ——
+ *    这也是为什么这个函数收 `sideOf` 而不是收 `activeLeftId`：把「源=左」写进签名，
+ *    右起手就得再加一条分支，而那两条分支迟早会走岔（症状：一个方向能连、另一个连不上）。
+ *
+ * ⚠️ 连上之后**清空选中**（与原来 `tapTarget` 的手感一致：连完就松手）。
+ * ⚠️ 已经连过的那一对再点 ⇒ **拆掉那一条**（不是拆该左项的全部线 —— 一对多之后
+ *    那是另一件事，见 `removePair`）。
+ * ⚠️ 空操作时**原样返回那两个值**：调用方靠 `links !== links` 判断要不要上报，
+ *    白回调一次会白写一条上传队列（与排序题那条同源）。
+ */
+export function tapItem(
+  links: DragLink[],
+  selection: DragSelection,
+  tappedId: string,
+  sideOf: (id: string) => DragSide | null,
+): { links: DragLink[]; selection: DragSelection } {
+  const tapped = sideOf(tappedId);
+  if (!tapped) return { links, selection };
+  const selectedId = selection.kind === 'item' ? selection.id : null;
+  // 手里什么都没有 ⇒ 这一下是**起手**（从哪一列起手都行）
+  if (selectedId === null) return { links, selection: { kind: 'item', id: tappedId } };
+  const selected = sideOf(selectedId);
+  if (!selected) return { links, selection: { kind: 'item', id: tappedId } };
+  // 同一列 ⇒ 改选；点的是选中那一项本身 ⇒ 取消
+  if (selected === tapped) {
+    return { links, selection: selectedId === tappedId ? clearSelection() : { kind: 'item', id: tappedId } };
+  }
+  // 相反那一列 ⇒ 落点。⚠️ 归一化：谁在左、谁在右由**列**决定，不由起手方向决定
+  const leftId = selected === 'left' ? selectedId : tappedId;
+  const rightId = selected === 'left' ? tappedId : selectedId;
+  const already = links.some((link) => link.leftId === leftId && link.rightId === rightId);
+  return {
+    links: already ? removePair(links, leftId, rightId) : setPair(links, leftId, rightId),
+    selection: clearSelection(),
+  };
+}
+
 /**
  * 归类：把条目 `itemId` 放进框 `zoneId`。
  *

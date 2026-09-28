@@ -25,11 +25,12 @@ import {
   setPair,
   setPlacement,
   slotIndexAt,
+  tapItem,
   tapSource,
   tapTarget,
-  unplace,
   type DragLink,
   type DragSelection,
+  unplace,
 } from './worksheet-drag.ts';
 
 /** 点选态的一个可读写法，省得每条用例都写一遍 `{ kind: 'item', id: … }`。 */
@@ -275,4 +276,41 @@ test('🔴 所有函数都返回新对象 / 新数组，绝不就地改入参', 
   assert.notEqual(reorder(order, 0, 2), order);
   assert.notEqual(setPair(pairs, 'l1', 'r2'), pairs);
   assert.notEqual(setPlacement(placement, 'i1', 'z2'), placement);
+});
+
+// ── 一次点击（★ 2026-09-28：右往左也能连）────────────────────────────
+
+/** 一个两列的 test double：l* 是左、r* 是右。 */
+const sideOf = (id: string) => (id.startsWith('l') ? 'left' as const : id.startsWith('r') ? 'right' as const : null);
+const onItem = (id: string) => ({ kind: 'item' as const, id });
+
+test('🔴 tapItem：手里没东西时点任一项 ⇒ 选中它（**从哪一列起手都行**）', () => {
+  assert.deepEqual(tapItem([], clearSelection(), 'l1', sideOf), { links: [], selection: onItem('l1') });
+  assert.deepEqual(tapItem([], clearSelection(), 'r1', sideOf), { links: [], selection: onItem('r1') }, '右项也能起手');
+});
+
+test('🔴 tapItem：**选中右项、点左项 ⇒ 连上**（这就是「右框连到左框」）', () => {
+  const out = tapItem([], onItem('r1'), 'l1', sideOf);
+  assert.deepEqual(out.links, [{ leftId: 'l1', rightId: 'r1' }], '归一化成 leftId/rightId，不是按起手顺序');
+  assert.deepEqual(out.selection, clearSelection(), '连完就松手');
+});
+
+test('🔴 tapItem：选中左项、点右项 ⇒ 连上（反方向，同一条规则）', () => {
+  assert.deepEqual(tapItem([], onItem('l1'), 'r1', sideOf).links, [{ leftId: 'l1', rightId: 'r1' }]);
+});
+
+test('🔴 tapItem：点**同一列**的项 ⇒ 改选，不连线；点中已选那一项 ⇒ 取消', () => {
+  assert.deepEqual(tapItem([], onItem('l1'), 'l2', sideOf), { links: [], selection: onItem('l2') });
+  assert.deepEqual(tapItem([], onItem('l1'), 'l1', sideOf), { links: [], selection: clearSelection() });
+  assert.deepEqual(tapItem([], onItem('r1'), 'r2', sideOf), { links: [], selection: onItem('r2') }, '右列同理');
+});
+
+test('🔴 tapItem：已经连过的那一对再点 ⇒ 拆掉那一条', () => {
+  const links = [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }];
+  assert.deepEqual(tapItem(links, onItem('r1'), 'l1', sideOf).links, [{ leftId: 'l1', rightId: 'r2' }]);
+});
+
+test('🔴 tapItem：认不出的 id ⇒ 原样返回（不连线、不动选中）', () => {
+  const links = [{ leftId: 'l1', rightId: 'r1' }];
+  assert.deepEqual(tapItem(links, onItem('l1'), 'x9', sideOf), { links, selection: onItem('l1') });
 });

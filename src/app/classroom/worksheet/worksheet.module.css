@@ -782,29 +782,22 @@
 
 /* 学生题卡的阅读头：题干独占正文行，状态与奖励降为题干下方的结果回执。
    这里刻意不把判题卡放在题干右侧，否则长句会被切成狭窄的两三行。 */
+/* ★ 2026-09-28（教师，图 49/50）：这一行现在只放「图标 + 别名 …… 结果条」，
+   所以它从**两行两列的网格**改成**一行 flex**：
+   · `align-items: center` —— 教师图 50 要求图标与别名**居中对齐**（原来网格是
+     `align-items: start` + 图标 `align-self: start; margin-top: 1px`，那是给
+     「图标跨两行、对齐题干第一行」设计的，图标与别名并排时就不齐了）；
+   · 题干已经**搬出**这一行（下一个兄弟节点）⇒ 原来那条 `.questionLead > .prompt`
+     的定向规则一并删掉（留着就是一条永远匹配不上的死规则）。
+   ⚠️ 结果条靠自己的 `margin-left: auto` 顶到最右，这里不给 `space-between`。 */
 .questionLead {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: start;
-  column-gap: 12px;
-  row-gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 14px;
 }
 
-.questionLead > .questionIcon {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  align-self: start;
-  margin-top: 1px;
-}
-
-.questionLead > .prompt {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-  margin: 2px 0 0;
-}
+.questionLead > .questionIcon { margin-top: 0; }
 
 .questionMeta {
   grid-column: 2;

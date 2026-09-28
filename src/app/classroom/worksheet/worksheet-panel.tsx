@@ -405,8 +405,12 @@ export function WorksheetQuestionList({
             )}
             {gradeState && (
               <span className={styles.resultCell} data-tone={gradeState}>
+                {/* ★ 2026-09-28（教师图 59：「白色圆里用简单符号表示全对 / 部分得分 / 错误」）：
+                    符号取 **✓ / ½ / ✗** —— 与教师看板抽屉里那套**同一套**（`worksheet-drawer-state.ts`：
+                    「符号是 `½`」，且那里更正过 §12 写的 `◐`）。同一个三态两套记号，
+                    教师与学生看到的就对不上。 */}
                 <span className={styles.resultGlyph} aria-hidden="true">
-                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '!' : '✕'}
+                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '½' : '✗'}
                 </span>
                 {verdictLabel}
               </span>

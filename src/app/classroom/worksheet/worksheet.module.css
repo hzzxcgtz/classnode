@@ -1821,7 +1821,10 @@
 .resultCell[data-tone='partial'] { background: #fffbeb; color: #b45309; }
 .resultCell[data-tone='incorrect'] { background: #fef2f2; color: #b91c1c; }
 
-/* 判分那一段前面那枚圆点里的记号（✓ / ! / ✕）——白字、实心圆 */
+/* 判分那一段前面那枚圆点里的记号（✓ / ½ / ✗）。
+   🔴 **底色必须按档写死**（`background: currentColor` + `color: #fff` 写在同一规则里时，
+   `currentColor` 解析成那条规则自己设的 `#fff` ⇒ **白底白字，记号完全看不见**
+   —— 教师 2026-09-28 看到的就是「一个白色的圆」）。 */
 .resultGlyph {
   display: inline-flex;
   align-items: center;
@@ -1829,12 +1832,15 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: currentColor;
   color: #fff;
   font-size: 0.688rem;
   font-weight: 700;
   line-height: 1;
 }
+
+.resultCell[data-tone='correct'] .resultGlyph { background: #16a34a; }
+.resultCell[data-tone='partial'] .resultGlyph { background: #d97706; }
+.resultCell[data-tone='incorrect'] .resultGlyph { background: #dc2626; }
 
 /* 奖励：**在圆角框外面**（★ 2026-09-28 教师图 56：「火箭和 ×1 不需要框在圆角矩形里，
    这样可以保证左边的两个框的高度和其他框的高度保持一致」）。

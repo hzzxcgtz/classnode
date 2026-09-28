@@ -271,10 +271,13 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
               drag.draggingId === entry.id ? styles.dragActive : '',
             ].filter(Boolean).join(' ');
             return (
-              // ★ 2026-09-28：**两边都用 `bothProps`** —— 左项与右项都能起手拖、也都是落点
-              // （教师：「支持左框连到右框，也支持右框连到左框」）。同列互相拖由 `onDrop`
-              // 里那道「源与落点必须分属两列」的闸判掉。
-              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.bothProps(entry.id)}>
+              // 🔴 2026-09-28 **回退一步（诊断用）**：左列改回 `sourceProps`，**不再是落点**。
+              // 教师报「连左→右都不出线了」，而这条路在我改动之前一直是好的 ——
+              // 它这一路只动过一处：把 `sourceProps` 换成 `bothProps`，多出来的就是
+              // 那个 `data-drop-id`。把左列换回去就能判定**是不是它**在 hook 里挡了起拖。
+              // ⚠️ 代价：**右→左拖**暂时落不到左项上（左项不再是落点）。
+              //   这是**为了拿到一个可判定的事实**付的临时账，不是最终形态。
+              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.sourceProps(entry.id)}>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
               </div>
             );

@@ -29,6 +29,7 @@ import {
   insertBlank,
   insertPromptText,
   isPlainRuns,
+  normalizePastedText,
   promptRunStyle,
   rangeColor,
   rangeHasKey,
@@ -643,4 +644,15 @@ test('🔴 insertPromptText：替换选区（与 insertBlank 同一条路）', (
   const out = insertPromptText(runs, '甲乙丙丁', 1, 3, 'X');
   assert.equal(out.text, '甲X丁');
   assert.equal(blankCount(out.runs), 0);
+});
+
+test('🔴 normalizePastedText：Word 粘进来的那几种脏字符都归一化', () => {
+  assert.equal(normalizePastedText('甲\r\n乙'), '甲\n乙', 'Word 给的是 \\r\\n');
+  assert.equal(normalizePastedText('甲\r乙'), '甲\n乙');
+  assert.equal(normalizePastedText('甲\u000b乙'), '甲\n乙', 'Word 的软换行');
+  assert.equal(normalizePastedText('甲\u00a0乙'), '甲 乙', '不换行空格 ⇒ 普通空格');
+  assert.equal(normalizePastedText('  甲  '), '  甲  ', '不做 trim（教师可能就要那个缩进）');
+  assert.equal(normalizePastedText('干净的文字'), '干净的文字');
+  assert.equal(normalizePastedText(null), '');
+  assert.equal(normalizePastedText(42), '');
 });

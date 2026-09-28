@@ -380,6 +380,31 @@ export function blankCount(runs: PromptRun[]): number {
  * ⚠️ 两件事共用同一条「先按打字挪区间、再插文字」的路（`remapRuns`）——
  * 各写一份就是第二处会算错区间的地方。
  */
+/**
+ * 从剪贴板粘进来的文字 → 题干的**纯文本**（★ 2026-09-28，教师）。
+ *
+ * 教师原话：「这个编辑框中编辑文字有点不丝滑……例如，我从 word 中复制进来的文字，
+ * 全带着格式一起进来，当我按回车后，格式才会消失。」
+ *
+ * 🔴 根因是**粘贴没有任何处理**：浏览器把 Word 的 HTML（加粗 / 字体 / 颜色）插进了
+ * contenteditable，而模型里没有对应的 `promptRuns` ⇒ 屏幕上那一段是**假的**，
+ * 直到下一次重建 DOM（回车，或任何让 DOM 与模型对不上的动作）才被打回原形。
+ * ⇒ 粘贴一律只取纯文本，并经这一层归一化：
+ *   · `\r\n` / `\r` ⇒ `\n`（Word 给的是前者，而题干里换行就是换行）；
+ *   · `\u00a0`（不换行空格）⇒ 普通空格 —— Word 到处塞它，留着会让「看起来一样的
+ *     两段文字」在判分归一化 / 匹配时对不上；
+ *   · `\u000b`（垂直制表符，Word 的**软换行**）⇒ `\n` —— 它在界面上不显示，
+ *     留着就是一段看不见的字符。
+ * ⚠️ 不做 trim：教师可能就想粘一个前导空格（题干里的缩进靠它）。
+ */
+export function normalizePastedText(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u000b/g, '\n')
+    .replace(/\u00a0/g, ' ');
+}
+
 export function insertPromptText(
   runs: PromptRun[],
   text: string,

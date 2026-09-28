@@ -4674,7 +4674,14 @@ tr:hover td {
 
 /* 题干里的填空是一个紧凑的行内对象：默认只用浅灰底纹区分，不画常驻蓝框。
    点击后浏览器的 selection 才承担“已选中”的反馈。 */
-.worksheet-editor-inline-blank {
+/* ★ 2026-09-28（教师）：「表格域的显示格式要和填空域一致。」
+   🔴 原来 `.worksheet-editor-table-mark` 是**另写一条**的，而我当时是凭印象编的配色
+   （写成 `#eef4ff` + 边框），与这条真正的值（`#eef1f4`、无边框、字号 0.82em、
+   字重 600…）根本不是一档 —— 于是两个标记在屏幕上长得不一样。
+   ⇒ **两个选择器共用这一条**：它们是同一种东西（题干里的一块特殊内容），
+   改一处就是两处都改，不可能再漂。 */
+.worksheet-editor-inline-blank,
+.worksheet-editor-table-mark {
   display: inline-block;
   margin: 0 2px;
   padding: 0 5px;
@@ -6095,14 +6102,9 @@ tr:hover td {
   line-height: 1.6;
 }
 
-/* ── 题干里的「表格域」标记（★ 2026-09-28，教师）──────────────────────────
-   与 `.worksheet-editor-inline-blank`（填空域那段灰底）**刻意长得像**：两者都是
-   「题干里的一块特殊内容」，教师该一眼看出它们是一类东西。
-   ⚠️ 颜色取同一档（`#eef4ff` / 边框 `#c7d6ee`）—— 不一样的话教师会以为其中一个是坏掉的。 */
+/* 「表格域」标记**唯一的差异**：它可点（点它把「表格域作答设置」滚进视野）。
+   其余全部来自上面那条与填空域**共用**的规则 —— 别再给它加这里没有的属性。 */
 .worksheet-editor-table-mark {
-  background: #eef4ff;
-  border: 1px solid #c7d6ee;
-  border-radius: 4px;
   cursor: pointer;
 }
 

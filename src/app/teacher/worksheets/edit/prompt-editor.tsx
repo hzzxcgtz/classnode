@@ -9,6 +9,7 @@ import {
   blankRuns,
   insertBlank,
   insertPromptText,
+  normalizePastedText,
   isPlainRuns,
   rangeColor,
   rangeHasKey,
@@ -495,6 +496,41 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     if (target?.closest('[data-table-mark]')) onTableMarkClick?.();
   };
 
+  /**
+   * 粘贴：**只取纯文本**，并且经模型那一条路落下去（★ 2026-09-28，教师）。
+   *
+   * 教师原话：「我从 word 中复制进来的文字，全带着格式一起进来，当我按回车后，
+   * 格式才会消失。」🔴 根因是粘贴原来没有任何处理：浏览器把 Word 的 HTML 插进了
+   * contenteditable，而模型里没有对应的 `promptRuns` ⇒ 屏幕上那一段是**假的**，
+   * 直到下一次重建 DOM 才被打回原形（于是「按回车才恢复」）。
+   * ⇒ 接过来自己插：`normalizePastedText`（纯逻辑、有用例）归一化，
+   *   `insertPromptText` 落进模型，再按模型重建 DOM —— 当场「看到的」＝「存下的」。
+   *
+   * ⚠️ **不读 `navigator.clipboard`**：`event.clipboardData` 是粘贴事件里同步给的，
+   *    不弹任何授权浮层（`paste-question-dialog.tsx` 的文件头记着教师实测的那一次：
+   *    按钮里读剪贴板会拉起原生授权，不处理掉那一次读就永远不返回）。
+   * ⚠️ **没有纯文本时不 preventDefault**：剪贴板里是图片等情况交给浏览器默认行为
+   *    （配图走工具栏那个「上传图片」，不在这里猜）。
+   */
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const plain = normalizePastedText(event.clipboardData?.getData('text/plain'));
+    const el = editableRef.current;
+    if (!plain || !el) return;
+    event.preventDefault();
+    const text = node.prompt;
+    const range = selectedRange(el) || pendingRangeRef.current;
+    const from = range ? range.from : (caretOffset(el) ?? text.length);
+    const to = range ? range.to : from;
+    const inserted = insertPromptText(runsRef.current, text, from, to, plain);
+    if (inserted.text === text) return;
+    onPromptChange(inserted.text, { promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs });
+    renderRunsInto(el, inserted.text, inserted.runs);
+    const after = from + plain.length;
+    el.focus();
+    placeSelection(el, after, after);
+    refreshToolbar();
+  };
+
   const insertTableMarkAtCaret = () => {
     const el = editableRef.current;
     if (!el) return;
@@ -725,6 +761,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
           onKeyDown={handlePromptKeyDown}
           onClick={handleEditableClick}
+          onPaste={handlePaste}
           onInput={handleInput}
           onCompositionStart={() => { composingRef.current = true; }}
           onCompositionEnd={(event) => {

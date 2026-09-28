@@ -5,7 +5,8 @@ import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
-import { strokePath, strokeWidthPx, type InkValue } from '@/lib/worksheet-ink';
+import { AnswerViewBody } from './answer-view';
+import { InkPreview } from './ink-preview';
 // ★ 2026-09-28：奖励的换算与全貌/过程的判据。
 import { resolveRewardScale } from '@/lib/worksheet-reward';
 import {
@@ -481,13 +482,13 @@ function ParticipantAnswers({
                     {facts.savedAgoMs !== null && <span>最近 {formatAgo(facts.savedAgoMs)}</span>}
                   </div>
                 )}
-                {/* 学生原答案。未作答时如实说，不画一个空框。
-                    🔴 与上面「按题看」那一屏**同一条**：笔迹作答的 `answerText` 是 `null`，
-                    所以必须先看 `outcome.ink`。漏改这一处（或漏改上面那一处）的表现是
-                    「一屏说未作答、另一屏画出来了」—— 同一份数据两种说法，且没有任何报错。 */}
-                <div style={{ fontSize: '0.813rem', color: outcome.answerText ? '#0f172a' : '#94a3b8', wordBreak: 'break-word' }}>
-                  {outcome.ink ? <InkPreview value={outcome.ink} /> : outcome.answerText ?? '未作答'}
-                </div>
+                {/* ★ 2026-09-28（教师）：「答题信息过于简单……连线题就应该左右框加上
+                    中间的线」。⇒ 换成**逐题型的结构化呈现**（`AnswerViewBody`）。
+                    🔴 判据全在 `src/lib/worksheet-answer-view.ts`（纯函数、有测试）；
+                    这一行只画 —— 与上面「按题看」那一屏**不是**同一份实现了，
+                    而那是**有意的**：本轮的裁定是「只改形态 A」，形态 B 那边维持原样
+                    （它要的是「横着比一串学生」的可读性，逐题型的富呈现反而更难扫）。 */}
+                <AnswerViewBody node={node} value={row?.value} />
                 {/* 🔴 「标记已查看」只在**作答过**的题上出现（`canReview`）：服务端对未作答的题回
                     409，给一个必然失败的按钮是本任务明确要避免的那件事。
                     已看过的题也留着按钮 —— 再点一次是**刷新**「最后查看时间」（服务端就是这么写的）。 */}
@@ -566,48 +567,6 @@ function OverviewRow({ overview }: { overview: ParticipantOverview }) {
 }
 
 // ── 两处共用的小组件 ─────────────────────────────────────────────────
-
-/**
- * 学生笔迹的**只读**渲染（★ M4b/E1）—— 抽屉里两处渲染点（按题看 / 逐题列表）共用它。
- *
- * 🔴 **一个判据都不含**：坐标换算与线宽全部走 `src/lib/worksheet-ink.ts` 的
- * `strokePath` / `strokeWidthPx` —— 学生端的 canvas（C1）走的是同一对函数。各写一份的后果是
- * **两边画出来的形状不一样**，而两处都「看起来正常」。
- *
- * 宽高比用**值自己记的** `canvas.w/h`（裁定 2）：容器不足时按它留白，而不是把图拉变形。
- * ⚠️ 抽屉的宽度是 420px 固定（规格 §7.3），所以一幅 320×240 的图在这里是**缩小的**。
- * 「教师能不能看清学生的字」是产品判断，本批**不做**放大视图 —— 已写进 F1 的真机清单。
- */
-function InkPreview({ value }: { value: InkValue }) {
-  const { w, h } = value.canvas;
-  // `w`/`h` 可能是 0（手改过的值 / 读不出来的框，见 `readCanvas` 的哨兵）：那时给一个最小
-  // 可渲染的框，别让 SVG 的 viewBox 变成 "0 0 0 0"（那在 Safari 上什么都不画）。
-  const box = { w: w > 0 ? w : 1, h: h > 0 ? h : 1 };
-  return (
-    <svg
-      viewBox={`0 0 ${box.w} ${box.h}`}
-      width="100%"
-      style={{ display: 'block', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4 }}
-      role="img"
-      aria-label="学生的手写作答"
-    >
-      {/* `key={index}` 在这里**可以**接受：这个列表是静态的（只读、不重排、不增删、
-          没有输入控件），React 只需要它在同一次渲染内唯一。⚠️ 但别照抄到别处 ——
-          任何可排序 / 可增删的列表上用下标当 key 会让 React 复用错元素的状态。 */}
-      {value.strokes.map((stroke, index) => (
-        <path
-          key={index}
-          d={strokePath(stroke.points, box)}
-          fill="none"
-          stroke={stroke.color}
-          strokeWidth={strokeWidthPx(stroke, box)}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
-  );
-}
 
 /**
  * 这一题的对错那一小块。

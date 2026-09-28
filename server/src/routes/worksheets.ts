@@ -2048,7 +2048,12 @@ router.put('/:id/answers', async (req, res) => {
     const response = await ensureResponse(ctx, now);
     const answer = await ctx.prisma.worksheetAnswer.upsert({
       where: { responseId_questionId: { responseId: response.id, questionId } },
-      create: { responseId: response.id, questionId, value: toJsonValue(body.value), status: 'draft' },
+      // ★ 2026-09-28：首次落库写全三列。`saveCount` 必须是 **1**（不是 null）——
+      // 「知道它保存过一次」与「不知道」是两件事，而 null 在界面上是「整段不显示」。
+      create: {
+        responseId: response.id, questionId, value: toJsonValue(body.value), status: 'draft',
+        createdAt: now, savedAt: now, saveCount: 1,
+      },
       // ⚠️ `isCorrect: null` 不是顺手清一下：`WorksheetAnswer.isCorrect` 的语义是
       // 「autoGrade 开启**且已提交**时才有值」（规格 §4.1）。改回 draft 却留着上次的
       // `true`，看板会显示成「这题刚判对」，而学生此刻正在把它改错。
@@ -2065,6 +2070,13 @@ router.put('/:id/answers', async (req, res) => {
         isCorrect: null,
         gradeState: null,
         score: null,
+        // ★ 2026-09-28：作答活动。⚠️ **`createdAt` 刻意不在 update 里** ——
+        // 它是「这一题第一次落库」的时刻，每次保存都写它等于每次把它抹掉，
+        // 而屏幕上的「首次作答 X 分钟前」就会永远是「刚刚」，且没有任何报错。
+        savedAt: now,
+        // ⚠️ 用 `increment` 而不是读出来 +1：读-改-写在两次保存之间并发时不安全，
+        // 而学生端的保存是防抖之后单独发出的，两次挨得很近是常态。
+        saveCount: { increment: 1 },
       },
     });
 
@@ -2176,6 +2188,12 @@ router.post('/:id/answers/submit', async (req, res) => {
 
     const updated = await ctx.prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId: response.id, questionId } },
+      // ★ 2026-09-28：**这里刻意不写 `savedAt` / `saveCount`。**
+      // 它们数的是**内容保存**（`PUT /answers`），而提交这一次的 `data` 里**没有 `value`**
+      // —— 它只改 status 与判分三列，学生的答案一个字都没变。
+      // 顺手在这里推进 `savedAt` 的后果是：学生交完卷什么都不动，看板的「距上次保存」
+      // 也会显示成「刚刚保存过」，而教师据此以为他还在写。**别加。**
+      // （「提交」这件事本身有时间戳：本行的 `submittedAt`。）
       data: { status: 'submitted', submittedAt: now, isCorrect, gradeState, score },
     });
 

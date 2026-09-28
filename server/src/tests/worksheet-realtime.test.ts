@@ -669,3 +669,135 @@ test('广播：被拒的保存（allowResubmit 为假 ⇒ 409）不广播', asyn
     `被拒的保存不得广播（看板会显示成「作答中」，而库里一个字都没变）：${JSON.stringify(server.broadcasts.slice(before))}`,
   );
 });
+
+// ---------------------------------------------------------------------------
+// ⑯ 作答活动三列（★ 2026-09-28）：过程数据必须**落在库里**，不是只在线缆上
+// ---------------------------------------------------------------------------
+
+/**
+ * 教师看板第 3 条（「正在答题的过程」）的三段数字全部来自这三列。
+ * 它们三条各自有**一个错了不报错**的性质，所以逐条钉：
+ *
+ *   ① `createdAt` —— 首次保存写一次，**此后永不改**。改了的后果是「首次作答 12 分钟前」
+ *      每次都变成「刚刚」，教师看不出他在这题上耗了多久；
+ *   ② `saveCount` —— 每次保存 +1。不涨的后果是「已保存 N 次」永远显示 1；
+ *      涨多了（比如提交也算一次）的后果是把「改了几次」说多了 —— 一样没有报错；
+ *   ③ 🔴 **`savedAt` 必须被提交跳过**。提交那一次的 `data` 里**没有 `value`**
+ *      （它只改 status 与判分三列），不是一次内容写入。让它推进的话，学生交完卷
+ *      什么都不动，「距上次保存」也会显示成「刚刚保存过」—— 而看板据此判断他还在写。
+ *
+ * ⚠️ 第二条与第三条要用**真实的时间流逝**才分得清（同一毫秒内两件事看不出先后），
+ * 所以中间 `await sleep(12)`。这不是 flaky：断言的是「不小于」与「不变」，
+ * 不是「等于某个具体毫秒数」。
+ */
+test('★ 作答活动三列：首次保存写 createdAt，再保存只推进 savedAt/saveCount，提交不推进 savedAt', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { worksheet, classroom, participant } = await seedClassroomUsingWorksheet(db.prisma, '9111');
+  const token = createStudentToken(classroom.id, participant.id);
+  const answers = (q: string, body: unknown) =>
+    server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: q, value: body }, bearer(token));
+
+  // ── ① 第一次保存：三列都要落地 ────────────────────────────────────────
+  assert.equal((await answers('q_1', CHOICE(['B']))).status, 200);
+  const first = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.ok(first.createdAt, '🔴 首次保存必须写 createdAt（没写 ⇒「首次作答 X 前」整段显示不出来）');
+  assert.ok(first.savedAt, '首次保存必须写 savedAt');
+  assert.equal(first.saveCount, 1, '🔴 首次保存后 saveCount 必须是 1 —— 写成 null 会让它显示成「不知道保存过几次」');
+
+  const firstCreatedAt = first.createdAt!.getTime();
+  const firstSavedAt = first.savedAt!.getTime();
+
+  // ── ② 再保存：createdAt 不动，savedAt 前进，saveCount 涨 ────────────────
+  await sleep(12);
+  assert.equal((await answers('q_1', CHOICE(['A']))).status, 200);
+  const second = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.equal(
+    second.createdAt!.getTime(),
+    firstCreatedAt,
+    '🔴 createdAt 是「第一次」的时刻，第二次保存不许改它',
+  );
+  assert.ok(
+    second.savedAt!.getTime() >= firstSavedAt,
+    'savedAt 必须跟着这次保存前进',
+  );
+  assert.equal(second.saveCount, 2, '🔴 第二次保存后 saveCount 必须是 2');
+
+  // ── ③ 🔴 提交：status 变了，但 savedAt / saveCount **一个都不许动** ──────
+  await sleep(12);
+  const submitted = await server.post(
+    `/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+  assert.equal(submitted.status, 200, await submitted.text());
+  const third = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.equal(third.status, 'submitted', '前提：提交确实改了 status');
+  assert.ok(third.submittedAt, '前提：提交确实写了 submittedAt');
+  assert.equal(
+    third.savedAt!.getTime(),
+    second.savedAt!.getTime(),
+    '🔴 提交**不是**一次保存 —— savedAt 不许被它推进（推进了 ⇒「距上次保存」在交卷后显示成「刚刚」）',
+  );
+  assert.equal(third.saveCount, 2, '🔴 提交不计入 saveCount（它不是内容写入）');
+
+  // ── ④ 阳性对照：提交之后再保存一次，三列**照常**前进 ──────────────────────
+  // 少了这一段，「savedAt 永不更新」那种实现也能让上面三条全绿。
+  const allowResubmit = await db.prisma.worksheet.update({
+    where: { id: worksheet.id }, data: { settings: { ...SAMPLE_SETTINGS, allowResubmit: true } as never },
+  });
+  assert.ok(allowResubmit, '前提：允许重交');
+  await sleep(12);
+  assert.equal((await answers('q_1', CHOICE(['C']))).status, 200);
+  const fourth = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.ok(fourth.savedAt!.getTime() > third.savedAt!.getTime(), '再保存必须推进 savedAt');
+  assert.equal(fourth.saveCount, 3, '再保存必须继续累加 saveCount');
+  assert.equal(fourth.createdAt!.getTime(), firstCreatedAt, 'createdAt 仍然不许变');
+});
+
+/**
+ * ★ 旧行的 `saveCount` 是 `NULL`，而写入侧用的是 Prisma 的 `increment`
+ * —— 它落到 SQL 是 `"saveCount" = "saveCount" + 1`，而 **SQL 里 `NULL + 1` 还是 `NULL`**。
+ *
+ * 这条用例**量它**，不猜它。两种结果都有各自的道理，但必须写清楚是哪一个：
+ *   · 若结果是 `NULL` —— 旧行的「已保存 N 次」**永远不显示**（=「不知道」，诚实）；
+ *   · 若结果是 `1`   —— 那个数会被读成「他一共保存过 1 次」，而实际上他可能保存过 10 次。
+ * 🔴 后者才是危险的那一个：它把一个**从升级那一刻起才开始数**的数字，说成了他的历史。
+ * 所以这条用例断言的正是「不许变成 1」—— 将来有人把 `increment` 换成
+ * `COALESCE` 或读-改-写，这里会红，那时他要来读这一段。
+ */
+test('★ 旧行（saveCount 为 NULL）再保存：不许凭空变成 1（那会把「升级后才开始数」说成他的历史）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { worksheet, classroom, participant } = await seedClassroomUsingWorksheet(db.prisma, '9112');
+  const token = createStudentToken(classroom.id, participant.id);
+
+  // 造一行「升级前」的作答：三列全 NULL（`ensureWorksheetAnswerColumns` 只加列、不回填，
+  // 所以这正是真实升级之后旧行的样子）。
+  const response = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id, status: 'draft' },
+  });
+  await db.prisma.worksheetAnswer.create({
+    data: { responseId: response.id, questionId: 'q_1', status: 'draft', value: { format: 'choice/v1', selected: ['B'] } as never },
+  });
+  const legacy = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.equal(legacy.saveCount, null, '前置条件：旧行的 saveCount 是 NULL');
+  assert.equal(legacy.createdAt, null, '前置条件：旧行的 createdAt 是 NULL');
+
+  const saved = await server.put(
+    `/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['A']) }, bearer(token));
+  assert.equal(saved.status, 200, await saved.text());
+
+  const after = await db.prisma.worksheetAnswer.findFirstOrThrow({ where: { questionId: 'q_1' } });
+  assert.equal(
+    after.saveCount,
+    null,
+    '🔴 旧行的 saveCount 必须**保持 NULL**（「不知道」）—— 变成 1 就是把一个'
+    + '「从升级那一刻才开始数」的数字说成了他一共保存过 1 次',
+  );
+  assert.equal(after.createdAt, null, '旧行的 createdAt 同样是「不知道」，不许被这次保存补成 now');
+  assert.ok(after.savedAt, '但 `savedAt` 必须写上 —— 这一次保存的时刻是**知道**的（它刚刚发生）');
+});
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -574,6 +574,15 @@ model WorksheetAnswer {
   score        Float?    // ★ M4a（§12）：数值得分（= 该题「全对」或「半对」那个数）。与 gradeState 同生共死
   reviewedAt   DateTime? // ★ 教师的「已查看」标记（§3-AA）
   submittedAt  DateTime? // 定稿时间戳（供 P4 智能体分析）
+  // ★ 2026-09-28：作答活动三列（看板「正在答题的过程」的数据源）。
+  // 🔴 三列都**可空、都不带默认值**：本项目的升级路径是启动期 `ALTER TABLE ADD COLUMN`
+  //（`services/worksheet-schema.ts` 的 `ensureWorksheetAnswerColumns`），而 SQLite 的
+  // ALTER 不接受非常量默认值 —— 写 `@default(now())` 只在**新建库**时生效，两条路会长成
+  // 两种样子。写入侧显式赋值，与 `submittedAt` 同一条做法。
+  // 🔴 旧行一律 NULL（= 「不知道」），读的一侧不许把 null 当成「刚刚」或「很久以前」。
+  createdAt    DateTime? // 这一题**第一次**落库的时刻
+  savedAt      DateTime? // **最近一次保存**的时刻。⚠️ 提交**不推进它**（见下方写入侧注释）
+  saveCount    Int?      // 保存过几次
 
   response WorksheetResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 

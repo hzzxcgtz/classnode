@@ -284,6 +284,80 @@ test('🔴 加列 + 回填：旧行的 gradeState 由 isCorrect 派生；再次�
 });
 
 /**
+ * ★ 2026-09-28：作答活动三列（`createdAt` / `savedAt` / `saveCount`）。
+ *
+ * 它们是第 3 条（「正在答题的过程」）在服务端唯一的新数据。三条各自都要有**诚实的空值**：
+ *   · `createdAt` —— 这一题**第一次**落库的时刻（首次 insert 时写一次，此后不动）；
+ *   · `savedAt`   —— **最近一次保存**的时刻。🔴 **提交不推进它**：提交那一次的 `data` 里
+ *     没有 `value`（它只改 status / 判分三列），不是一次内容写入。让它推进的话，
+ *     学生交完卷什么都不动，「距上次保存」也会显示成「刚刚保存过」—— 一句假话；
+ *   · `saveCount` —— 落库次数（同样是**保存**的次数）。
+ *
+ * 🔴 **旧行一律 NULL，含义是「不知道」**，读的一侧不许把 null 当成「刚刚」或「很久以前」。
+ * 这里必须断言它 —— 「顺手写个 0 / now()」是最容易犯的错，而它的表现是
+ * 全班历史作答都显示成「刚刚保存过」或者「保存过 0 次」，两句话都是编的。
+ *
+ * ⚠️ 列的类型必须与建表 DDL 一致（`DATETIME` / `INTEGER`）：写错的后果与
+ * `REAL` vs `DOUBLE PRECISION` 那条逐字同源 —— 桌面版下一次 `db push` 会认为
+ * 「与 schema 不一致」而**静默重建整张表**（那条注释在 `score` 上已经记过一次）。
+ */
+test('★ 作答活动三列：补上且类型与 DDL 一致；旧行一律 NULL（不许写 0 / now）', async () => {
+  const { db, file } = makeCopy('activity-cols');
+  try {
+    // 造「升级前」的形状：把这三列删掉。
+    for (const column of ['createdAt', 'savedAt', 'saveCount']) {
+      await db.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" DROP COLUMN "${column}"`);
+    }
+    const legacy = await db.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+    assert.deepEqual(
+      legacy.map((c) => c.name).filter((n) => ['createdAt', 'savedAt', 'saveCount'].includes(n)),
+      [],
+      '前置条件：三列都应已不在（这才是升级前的形状）',
+    );
+
+    await db.$executeRawUnsafe(`INSERT INTO "Classroom" ("id") VALUES ('c1')`);
+    await db.$executeRawUnsafe(`INSERT INTO "ClassroomStudent" ("id","classroomId") VALUES ('p1','c1')`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "Worksheet" ("id","title","content","settings","updatedAt") VALUES ('w1','t','{}','{}',CURRENT_TIMESTAMP)`);
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetResponse" ("id","classroomId","worksheetId","participantId","status","updatedAt")
+       VALUES ('r1','c1','w1','p1','draft',CURRENT_TIMESTAMP)`);
+    // 一段历史作答：它在这次升级之前就存在，谁也不知道它被保存过几次、什么时候保存的。
+    await db.$executeRawUnsafe(
+      `INSERT INTO "WorksheetAnswer" ("id","responseId","questionId","status","value") VALUES
+         ('a1','r1','q1','draft','{"format":"fill/v1","text":"H2O"}'),
+         ('a2','r1','q2','submitted','{"format":"fill/v1","text":"CO2"}')`);
+
+    const first = await ensureWorksheetAnswerColumns(db);
+    // ⚠️ 只有这三列 —— `gradeState` / `score` 没被动过（它们的列在本用例里没删），
+    // 所以它们**不该**出现在 `columnsAdded` 里。第一版这里写成了五项，是错的。
+    assert.deepEqual(first.columnsAdded.slice().sort(), ['createdAt', 'saveCount', 'savedAt']);
+
+    // 🔴 旧行必须是 NULL —— 不是一个顺手写的 0 / 当前时间。
+    const rows = await db.$queryRawUnsafe<{ id: string; createdAt: unknown; savedAt: unknown; saveCount: unknown }[]>(
+      `SELECT "id","createdAt","savedAt","saveCount" FROM "WorksheetAnswer" ORDER BY "id"`);
+    assert.deepEqual(rows, [
+      { id: 'a1', createdAt: null, savedAt: null, saveCount: null },
+      { id: 'a2', createdAt: null, savedAt: null, saveCount: null },
+    ], '🔴 旧行的三列必须是 NULL（「不知道」），不许写 0 或 now()');
+
+    // 类型必须与 `worksheet-schema.ts` 的建表 DDL 一致。
+    const typed = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info('WorksheetAnswer')`);
+    const typeOf = (name: string) => typed.filter((c) => c.name === name)[0]?.type;
+    assert.equal(typeOf('createdAt'), 'DATETIME');
+    assert.equal(typeOf('savedAt'), 'DATETIME');
+    assert.equal(typeOf('saveCount'), 'INTEGER');
+
+    // 幂等：第二次调用不再加列。
+    const second = await ensureWorksheetAnswerColumns(db);
+    assert.deepEqual(second.columnsAdded, [], '第二次调用不该重复加列');
+  } finally {
+    await db.$disconnect();
+    fs.rmSync(file, { force: true });
+  }
+});
+
+/**
  * 🔴 **回填只在「第一次」跑，之后永不回头** —— 两层判据各自要挡的东西（B1）。
  *
  * 这条用例钉两件事，缺任何一件都会让回填在**某一条真实路径上**变成死代码或变成凶手：

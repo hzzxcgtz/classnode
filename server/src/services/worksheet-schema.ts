@@ -89,6 +89,9 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
     "score" REAL,
     "reviewedAt" DATETIME,
     "submittedAt" DATETIME,
+    "createdAt" DATETIME,
+    "savedAt" DATETIME,
+    "saveCount" INTEGER,
     CONSTRAINT "WorksheetAnswer_responseId_fkey" FOREIGN KEY ("responseId") REFERENCES "WorksheetResponse" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );`,
     indexes: [
@@ -208,6 +211,31 @@ export async function ensureWorksheetAnswerColumns(
   if (!cols.some((c) => c.name === 'score')) {
     await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "score" REAL`);
     columnsAdded.push('score');
+  }
+
+  // ★ 2026-09-28：作答活动三列。
+  //
+  // 🔴 **它们与 `gradeState` / `score` 有一个本质区别：不需要回填，也不许回填。**
+  // 那两列能从旧行已有的 `isCorrect` **推**出来；这三列推不出来 —— 旧行被保存过几次、
+  // 什么时候保存的，库里从来没有记过。任何填进去的数（`0` / `now()`）都是**编的**，
+  // 而它的表现是：全班历史作答显示成「刚刚保存过」或「保存过 0 次」，两句话都是假的，
+  // 且没有任何东西会报错。⇒ 旧行保持 NULL，含义就是「不知道」，由读的一侧处理。
+  //
+  // ⚠️ 类型必须与建表 DDL 逐字一致（`DATETIME` / `INTEGER`）：理由与上面 `score` 那段
+  // 「`REAL` 而不是 `DOUBLE PRECISION`」逐字同源 —— 差一个类型，桌面版下一次 `db push`
+  // 会认为「与 schema 不一致」而**静默重建整张表**。本文件第一条用例（DDL 逐字对拍）
+  // 钉着这件事，改这里之前先看它是不是还绿着。
+  if (!cols.some((c) => c.name === 'createdAt')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "createdAt" DATETIME`);
+    columnsAdded.push('createdAt');
+  }
+  if (!cols.some((c) => c.name === 'savedAt')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "savedAt" DATETIME`);
+    columnsAdded.push('savedAt');
+  }
+  if (!cols.some((c) => c.name === 'saveCount')) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "WorksheetAnswer" ADD COLUMN "saveCount" INTEGER`);
+    columnsAdded.push('saveCount');
   }
 
   // 🔴 **回填**：旧行的 `isCorrect` 是那时**全部**的信息（当时没有部分给分）。不回填的话，

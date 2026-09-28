@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+import type { WorksheetClearCommand } from '../classroom-types';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
 import type { WebappDemand } from '@/lib/socket-events';
@@ -41,6 +42,12 @@ interface ChatSocketOptions {
    * 不依赖那个 15 秒才刷新一次的快照对象（锁定要**立刻**生效）。
    */
   setAnswersLocked: Dispatch<SetStateAction<boolean>>;
+  /**
+   * ★ 2026-09-28（第 4 条）：教师从看板清除了这名学生在这份学习单上的作答。
+   * 与 `setAnswersLocked` **同一类**：socket 事件只在本 hook 里挂得上（连接在这里），
+   * 状态归会话层，面板走 props。理由逐字写在 `WorksheetClearCommand` 那一段。
+   */
+  setWorksheetClear: Dispatch<SetStateAction<WorksheetClearCommand | null>>;
   setSelectedStudent: Dispatch<SetStateAction<ClassroomStudentSummary | null>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'home' | 'shell'>>;
@@ -190,6 +197,26 @@ export function useChatSocket(options: ChatSocketOptions) {
 
       socket.on('answers-unlocked', () => {
         optionsRef.current.setAnswersLocked(false);
+      });
+
+      // ★ 2026-09-28（教师第 4 条）：教师在**看板**上清除了这名学生在这份学习单上的作答。
+      //
+      // 🔴 **这个订阅必须挂在这里，不能挂进学习单面板** —— 现在这条连接是唯一进得了
+      // `student:<id>` 房间的那一条（`join-classroom` 只在本文件发）。面板自己订阅的话：
+      //   · 用 `@/lib/socket` 的 `useSocket()` ⇒ 那是**教师端**的单例，学生这边用它会新开
+      //     一条从没 join 过的连接，广播永远收不到，而**两边都不报错**（实测栽过）；
+      //   · 自己再开一条并 join ⇒ 服务端对同一学生只保留一条连接，会**把聊天这条踢断**。
+      //
+      // ⚠️ token 用**递增序号**而不是 `Date.now()`：同一毫秒内两次清除会撞成同一个值，
+      // 而那时第二次不会被面板处置（两边都不报错）。
+      socket.on('worksheet-answers-cleared', (data) => {
+        optionsRef.current.setWorksheetClear((prev) => ({
+          token: (prev?.token ?? 0) + 1,
+          classroomId: data.classroomId,
+          participantId: data.participantId,
+          worksheetId: data.worksheetId,
+          questionId: data.questionId ?? null,
+        }));
       });
 
       socket.on('identity-conflict', (data: SocketErrorEvent) => {

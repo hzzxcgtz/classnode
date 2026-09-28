@@ -5,7 +5,7 @@ import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@
 import type { WebappDemand } from '@/lib/socket-events';
 import { effectiveGroupAgent } from '@/lib/classroom-material';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
-import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
+import type { ChatToast, StudentChatMessage, TeacherMessage, WorksheetClearCommand } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
 import { useChatSocket } from './chat/use-chat-socket';
 // ★ 2026-09-25：清「上次停在哪个模块」那条存档。**函数由键的所有者导出**，这里不写键名
@@ -62,6 +62,14 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // ★ M5a：课堂级「锁定作答」。与 `paused` 同一类（专门 state + socket 事件），
   // 理由见 `use-chat-socket.ts` 的那两条监听器与 `classroom-types.ts` 的 `ModulePanelProps`。
   const [answersLocked, setAnswersLocked] = useState(false);
+  /**
+   * ★ 2026-09-28（教师第 4 条）：教师最近的**一条**清除指令。
+   *
+   * 🔴 归会话层而不是学习单面板自己订阅 —— 逐字理由写在 `WorksheetClearCommand` 那一段：
+   * 学生端唯一进得了 `student:<id>` 房间的连接是 `useChatSocket` 那条，
+   * 面板自己用 `useSocket()` 会新开一条从没 join 过的连接（**两边都不报错**）。
+   */
+  const [worksheetClear, setWorksheetClear] = useState<WorksheetClearCommand | null>(null);
   const [agentDisabled, setAgentDisabled] = useState(false);
   /**
    * 探究空间按需推流：本课堂此刻有没有教师在看探究空间视图（P2 / Ruling 9）。
@@ -473,6 +481,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setToast,
     setWaitingAI,
     setWebappDemand,
+    setWorksheetClear,
   });
 
   // 同步错误检测：loadClassroom 失败后从 'loading' 切换到 'identity' 以显示错误
@@ -573,6 +582,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     waitingAI,
     paused,
     answersLocked,
+    worksheetClear,
     agentDisabled,
     webappDemand,
     shieldWarning,

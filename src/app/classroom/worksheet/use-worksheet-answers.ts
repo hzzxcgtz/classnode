@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { getStudentSessionAuthorization } from '@/lib/api';
-import { useSocket } from '@/lib/socket';
 import type { WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 import {
   buildAnswerValue,
@@ -12,7 +11,7 @@ import {
   type AnswerDraft,
   type WorksheetAnswerValue,
 } from '@/lib/worksheet-questions';
-import type { ChatToast } from '../classroom-types';
+import type { ChatToast, WorksheetClearCommand } from '../classroom-types';
 import {
   classifyFailure,
   shouldFlushOnLockChange,
@@ -113,6 +112,16 @@ export interface UseWorksheetAnswersOptions {
    * 它由会话层的专门 state + socket 事件供着，一路 props 递到本 hook。
    */
   answersLocked: boolean;
+  /**
+   * ★ 2026-09-28（教师第 4 条）：教师从看板清除了这名学生在这份学习单上的作答。
+   *
+   * 🔴 **不许改回「本 hook 自己用 `useSocket()` 订阅」** —— 实测栽过：
+   * `@/lib/socket` 那个单例是**教师端**的，学生这边用它只会新开一条从没
+   * `join-classroom` 过的连接 ⇒ 广播永远收不到，而**两边都不报错**。
+   * 学生端唯一在 `student:<id>` 房间里的连接是 `useChatSocket` 那条，
+   * 所以指令由会话层转手进来。详见 `WorksheetClearCommand`。
+   */
+  worksheetClear: WorksheetClearCommand | null;
 }
 
 export interface UseWorksheetAnswersResult {
@@ -165,8 +174,8 @@ export function useWorksheetAnswers({
   savedAnswers,
   setToast,
   answersLocked,
+  worksheetClear,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
-  const { on } = useSocket();
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
   const [scores, setScores] = useState<Record<string, WorksheetScore>>({});
@@ -302,58 +311,70 @@ export function useWorksheetAnswers({
   /**
    * ★ 2026-09-28（教师第 4 条）：教师在**看板**上清掉了这名学生在这份学习单上的作答。
    *
-   * 🔴 这个组件**此前零 socket 订阅** —— 这是第一条。少了它，教师清了之后学生屏幕上
-   * 还留着他刚写的内容，而他再点一次保存（1.5 秒防抖）就**写回去了**，
-   * 教师看到的是「清了又回来了」，且两边都不报错。
+   * 🔴 **指令是走 props 进来的，不是这里自己订阅 socket。** 这一点是实测栽出来的：
+   * 学生端**不用** `@/lib/socket` 那个单例（那是**教师端**的）—— 学生有两条自己建的连接，
+   * 而只有 `useChatSocket` 那条发 `join-classroom` ⇒ 只有它进得了 `student:<id>` 房间。
+   * 我第一版在这里调了 `useSocket()`，那开出的是**第三条从没 join 过的连接**：
+   * 广播永远收不到，而**两边都不报错**（服务端照发、日志干净、学生屏幕上什么都不动），
+   * 教师看到的正是「清了没反应，刷新才清」。
+   * ⚠️ 也不能「这里自己再开一条并 join」：服务端对同一学生**只保留一条连接**
+   *（重复 join 会踢掉旧的）⇒ 那会把学生的聊天连接踢断。
+   * ⇒ 与 `answersLocked` / `webappDemand` 同一条路：socket 事件挂在 `useChatSocket`，
+   *   状态归会话层，外壳转手进来。
    *
    * 两件事，缺一不可：
    *   ① **丢掉这个 scope 的待保存项**（`pendingRef` + `localStorage` 的镜像一起，走
-   *      `commitQueue` 那唯一一个写入点）—— 不丢的话上面那句「写回去」就是必然的；
+   *      `commitQueue` 那唯一一个写入点）—— 不丢的话，学生那一次 1.5 秒防抖保存会把内容
+   *      **写回去**，教师看到的是「清了又回来了」；
    *   ② **本地状态按「服务端已经没有这一份」重水合**。
-   *      ⚠️ 这里**复用水合那条函数**（`hydrateAnswers`），不手写一份「怎么把一题清空」：
-   *      那份规则有测试、且是 drafts/statuses/scores/lastSent 唯一的产出地；
-   *      手写第二份的表现是「清完之后输入框空了，但状态栏还写着已提交」这类不一致。
+   *      ⚠️ 复用水合那条函数（`hydrateAnswers`），不手写一份「怎么把一题清空」：
+   *      那份规则有测试、且是 drafts/statuses/scores/lastSent 唯一的产出地。
    *
-   * ⚠️ `lastSentRef` **也要跟着重算**（`merged.lastSent`）：它记的是「这一题发过什么」，
-   * 而服务端那一行已经被删了 —— 留着它的后果是学生随后清空这个字段时，我们会发一条
-   * 「清空」给一个**不存在的行**，服务端据此建出一行空作答。
-   *
-   * ⚠️ 判据里比 `classroomId` 与 `participantId`，与钩子里其余订阅同一条纪律
-   *（防「切换课堂/换学生时混进上一个的指令」这类不报错的串台）。
-   * `worksheetId` 也要比：这份钩子是**逐份学习单**的。
+   * ⚠️ `lastSentRef` 也要跟着重算（`merged.lastSent`）：它记的是「这一题发过什么」，
+   * 而服务端那一行已经被删了 —— 留着它的后果是学生随后清空这个字段时会发一条「清空」
+   * 给一个**不存在的行**，服务端据此建出一行空作答。
    */
+  const seenClearTokenRef = useRef(worksheetClear?.token ?? 0);
   useEffect(() => {
-    if (!queueKey || !classroomId || !participantId || !worksheetId) return;
-    return on('worksheet-answers-cleared', (data) => {
-      if (data?.classroomId !== classroomId) return;
-      if (data?.participantId !== participantId) return;
-      if (data?.worksheetId !== worksheetId) return;
-      // `null` = 整张清除；非空 = 只清那一题。
-      const scope = typeof data.questionId === 'string' && data.questionId ? data.questionId : null;
+    const command = worksheetClear;
+    if (!command) return;
+    // ⚠️ **三守卫放在 token 之前**：ids 还没就位时（水合中）不该把这条指令「消费」掉，
+    // 否则它会在这一轮被丢掉、而下一轮因为 token 已经记账不再处理 —— 静默丢失。
+    // 反过来，ids 对不上时**不消费**，依赖里那几个 id 变了会让本 effect 重跑。
+    // ⚠️ 对不上时**要吭声**：那意味着教师的动作在这台设备上什么也没发生，
+    // 而屏幕上没有任何东西会提示这件事（本仓反复吃的一类缺陷）。
+    if (command.classroomId !== classroomId) { console.warn('[worksheet] 清除指令被丢：不是这间课堂'); return; }
+    if (command.participantId !== participantId) { console.warn('[worksheet] 清除指令被丢：不是这个参与者'); return; }
+    if (command.worksheetId !== worksheetId) { console.warn('[worksheet] 清除指令被丢：不是这份学习单'); return; }
+    // 🔴 **挂载之前就存在的那一条不重放**（`useRef` 的初值就是挂载那一刻的 token）：
+    // 换身份再切回来时本 hook 会重挂，而 `worksheetClear` 还停在会话层 ——
+    // 那条指令可能已经是十几分钟前的，重放会把学生**在那之后重新答的**内容抹掉。
+    if (command.token <= seenClearTokenRef.current) return;
+    seenClearTokenRef.current = command.token;
 
-      const remaining = scope === null
-        ? []
-        : pendingRef.current.filter((item) => item.questionId !== scope);
-      commitQueue(remaining);
+    // `null` = 整张清除；非空 = 只清那一题。
+    const scope = command.questionId;
 
-      const kept = scope === null
-        ? []
-        : savedAnswers.filter((row) => row.questionId !== scope);
-      const merged = hydrateAnswers(kept, remaining, questionsRef.current);
-      setDrafts(merged.drafts);
-      setStatuses(merged.statuses);
-      setScores(merged.scores);
-      setGradeStates(merged.gradeStates);
-      setWrongBlankIndexes(merged.wrongBlankIndexes);
-      setCorrectBlanks(merged.correctBlanks ?? {});
-      // 正在提交中的那一题也不该再转圈了（服务端那一行已经没了）。
-      if (scope !== null) setSubmitting((prev) => ({ ...prev, [scope]: false }));
-      else setSubmitting({});
-      lastSentRef.current = merged.lastSent;
-    });
-    // ⚠️ `savedAnswers` 是依赖（不是 ref）：清除之后的那一次重水合要拿**最新的**服务端
-    // 回答来算，用首次渲染那一版的闭包会把刚读回来的作答又抹掉。
-  }, [on, queueKey, classroomId, participantId, worksheetId, savedAnswers, commitQueue]);
+    const remaining = scope === null
+      ? []
+      : pendingRef.current.filter((item) => item.questionId !== scope);
+    commitQueue(remaining);
+
+    const kept = scope === null
+      ? []
+      : savedAnswers.filter((row) => row.questionId !== scope);
+    const merged = hydrateAnswers(kept, remaining, questionsRef.current);
+    setDrafts(merged.drafts);
+    setStatuses(merged.statuses);
+    setScores(merged.scores);
+    setGradeStates(merged.gradeStates);
+    setWrongBlankIndexes(merged.wrongBlankIndexes);
+    setCorrectBlanks(merged.correctBlanks ?? {});
+    // 正在提交中的那一题也不该再转圈了（服务端那一行已经没了）。
+    if (scope !== null) setSubmitting((prev) => ({ ...prev, [scope]: false }));
+    else setSubmitting({});
+    lastSentRef.current = merged.lastSent;
+  }, [worksheetClear, classroomId, participantId, worksheetId, savedAnswers, commitQueue]);
 
   // ── 写入通道 ────────────────────────────────────────────────────────────
 

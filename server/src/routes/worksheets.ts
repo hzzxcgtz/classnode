@@ -883,7 +883,35 @@ function broadcastAnswersCleared(
     questionId: payload.questionId,
   };
   io.to(worksheetBoardRoom(ctx.classroomId)).emit('worksheet-answers-cleared', event);
-  if (ctx.studentId) io.to(`student:${ctx.studentId}`).emit('worksheet-answers-cleared', event);
+  if (ctx.studentId) {
+    const room = `student:${ctx.studentId}`;
+    // 🔴 **发之前先看那个房间里有没有人。** 这一条是给「教师清了、学生屏幕上没动」
+    // 那类报告用的：它把两种完全不同的原因分开 ——
+    //   · 房间是空的 ⇒ 学生**不在线**（或不在学习单页面上，那个钩子还没挂）；
+    //   · 房间有人 ⇒ 广播送到了，是客户端那一侧没处置。
+    // 少了这一行，两种原因在日志里长得一模一样（都只有「教师点了清除」）。
+    // ⚠️ `io.sockets.adapter.rooms` 在读不到时**不许抛**（测试里的 io 是个只有
+    // `to().emit()` 的替身）—— 拿不到就当不知道，不影响广播本身。
+    let size: number | null = null;
+    try {
+      size = io.sockets?.adapter?.rooms?.get(room)?.size ?? null;
+    } catch {
+      size = null;
+    }
+    if (size === 0) {
+      console.warn(
+        `[worksheets] 清除广播：${room} 里没有连接 —— 学生不在线，或他的学习单面板没挂上`
+        + `（participantId=${ctx.participantId}，questionId=${payload.questionId ?? '(整张)'}）`,
+      );
+    } else if (size !== null) {
+      console.log(`[worksheets] 清除广播：${room} 有 ${size} 个连接`);
+    }
+    io.to(room).emit('worksheet-answers-cleared', event);
+  } else {
+    // 小组 / 高级模式下一块设备是一个组，`ClassroomStudent.studentId` 可能是 null。
+    // 这一侧**发不出去是已知的**，但要说出来 —— 否则它和「学生不在线」分不开。
+    console.warn(`[worksheets] 清除广播：这个参与者没有关联的学生（studentId 为空），学生那一侧不发`);
+  }
 }
 
 /**

@@ -9,6 +9,35 @@ import type { WebappDemand } from '@/lib/socket-events';
 
 export type { ModuleId, ModuleState };
 
+/**
+ * ★ 2026-09-28（教师第 4 条）：教师从**看板**上清除了某个学生在这份学习单上的作答。
+ *
+ * 🔴 **为什么它是一份会话级 state 而不是面板自己订阅**（这条是实测栽出来的）：
+ * 学生端的 socket **不是** `@/lib/socket` 那个单例 —— 那个是**教师端**的。学生端有两条
+ * 自己建的连接（`useClassroomSession` 的状态监听、`useChatSocket` 的会话连接），
+ * 而**只有后者**发 `join-classroom` ⇒ 只有它进得了 `student:<id>` 房间。
+ * 我第一版在 `use-worksheet-answers.ts` 里调了 `useSocket()` —— 那开出的是**第三条**
+ * 从没 join 过的连接，于是广播永远收不到，而**两边都不报错**（事件照发、日志干净、
+ * 学生屏幕上什么都不动）。这正是 `webappDemand` / `answersLocked` 走同一条路的原因。
+ *
+ * ⚠️ 也不能「学生端自己再开一条并 emit join-classroom」：服务端对同一学生**只保留一条连接**
+ *（`socket/index.ts` 的 `connKey = classroomId:classroomStudentId`，重复 join 会**踢掉旧的那条**）
+ * ⇒ 那会把学生的聊天连接踢断。
+ */
+export interface WorksheetClearCommand {
+  /**
+   * 单调递增的序号。**同一份指令重复送达也要能触发一次处置** ⇒ 不能靠对象引用比。
+   * ⚠️ 不用 `Date.now()`：同一毫秒内的两次清除会撞成同一个 token，
+   * 而那时第二次清除**不会**触发（两个 token 相等）。
+   */
+  token: number;
+  classroomId: string;
+  participantId: string;
+  worksheetId: string;
+  /** `null` = 整张清除；非空 = 只清了那一题。 */
+  questionId: string | null;
+}
+
 export type ChatAgent = Pick<AgentSummary, 'name' | 'logo'> | null | undefined;
 export type StudentChatMessage = {
   id?: string;
@@ -206,6 +235,13 @@ export interface ChatPanelProps {
    * 该转高频 —— 一个布尔表达不了「在看谁」。
    */
   webappDemand: WebappDemand;
+
+  /**
+   * ★ 2026-09-28：教师最近的**一条**清除指令（`null` = 从没收到过）。
+   * 由 `useChatSocket` 的回调写入（socket 只在那一个 hook 里），外壳转手给学习单面板。
+   * 判据与理由见 `WorksheetClearCommand` 那一段。
+   */
+  worksheetClear: WorksheetClearCommand | null;
 
   // —— 外壳 setter：面板自身仍要写这些状态 ——
   // （setClassroom / setAvatarTokenCount / setTeacherMsgs 过去只有面板的 useChatSocket

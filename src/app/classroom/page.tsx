@@ -150,6 +150,8 @@ function ClassroomOrchestrator() {
         teacherNotifBubble: session.teacherNotifBubble,
         blacklisted: session.blacklisted,
         webappDemand: session.webappDemand,
+        // ★ 2026-09-28：教师清除了这名学生的作答（socket 事件 → 会话层 state → 外壳 → 面板）。
+        worksheetClear: session.worksheetClear,
         setSelectedStudent: session.setSelectedStudent,
         setAvatarSvgs: session.setAvatarSvgs,
         setAllStudentAvatars: session.setAllStudentAvatars,

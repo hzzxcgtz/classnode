@@ -100,7 +100,6 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
    * ⚠️ 认不出来的 id ⇒ `null`（`tapItem` 会当成空操作，不连线）。
    */
   const sideOf = (id: string) => (isLeftId(id) ? 'left' as const : rightIds.includes(id) ? 'right' as const : null);
-  const isRightId = (id: string) => rightIds.includes(id);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   /** 每个端点的 DOM 节点（键带 `l:` / `r:` 前缀，两栏的 id 各自独立编号，可能重名）。 */
@@ -188,8 +187,10 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
     itemEls.current[key] = el;
   };
 
-  /** 此刻选中的左项（没选就是 `null`）—— 它决定「点右项」那一下是什么意思。 */
-  const activeLeftId = selection.kind === 'item' ? selection.id : null;
+  /* ⊘ 2026-09-28 删掉：`activeLeftId`（此刻选中的左项）。
+     它原来喂给 `tapTarget`（那一下的含义取决于「选中的是哪个左项」）。改成 `tapItem`
+     之后判据收在纯逻辑里、由它自己从 `selection` 取 id ⇒ 这个变量**没有任何读者**
+     （eslint 的 no-unused-vars 当场点出来）。 */
   /**
    * 点**这一条右项**会不会**断开**（而不是连上、也不是什么都不做）。
    * 🔴 判据必须与 `tapItem` **逐字同源** —— ✕ 出现在哪里，点下去就在哪里断开；

@@ -222,6 +222,55 @@ function activeQuestionIndex(
 }
 
 /**
+ * ★ 2026-09-28（教师）：「图中已有图形和文字要整体上移，留出下方最大的空间用来显示
+ * 当天学生正在答题的详细动态情况，不同题型可能不同」。
+ *
+ * 这一格是**看板上正在预览的那一道题**：题号、题型、题目节点、以及**此刻**的作答值。
+ *
+ * 🔴 **它挑的那一题必须与格子上写着的那一题是同一个。** 所以这里**复用
+ * `activeQuestionIndex`** —— 格子正文那行「正在做 任务二 · 1 · 判断题」用的就是它。
+ * 各挑各的后果是：格子上写着第 3 题，下面预览的却是第 5 题的作答，
+ * 而**两边都不报错**（教师会照着第 5 题的答案去讲第 3 题）。
+ *
+ * `cells` 由调用方从 `state.cells` 传进来（`stateHasCells` 已保证它在场）——
+ * 传 `progress.cells` 也能跑，但那是**另一条合并路径**，与格子正文的判据可能分叉。
+ */
+export interface TileAnswer {
+  node: WorksheetQuestionNode;
+  /** 两级题号（`任务二 · 1`），与格子正文同源。 */
+  heading: string;
+  /** 题型中文名。 */
+  typeLabel: string;
+  /**
+   * 这一题**此刻**的作答值 —— 来自看板的作答行（`applyLiveRows` 已经把广播带来的
+   * 实时内容补进去了）。`undefined` = 这一题还没有任何行。
+   */
+  value: unknown;
+}
+
+export function activeAnswer(
+  nodes: WorksheetQuestionNode[],
+  answerRows: ReadonlyArray<{ questionId: string; value: unknown }>,
+  cells: WorksheetCellStatus[],
+  lastQuestionId: string | null,
+): TileAnswer | null {
+  const items = flattenAnswerable(nodes);
+  if (items.length === 0) return null;
+  const at = activeQuestionIndex(items, cells, lastQuestionId);
+  // ⚠️ `null` = 说不出是哪一题（最后作答那题已被教师删掉、也没有在答的题）——
+  // 那时**不预览**，而不是随便挑一道。与格子正文「不编题号」同一条纪律。
+  if (at === null) return null;
+  const item = items[at];
+  const row = answerRows.filter((entry) => entry.questionId === item.node.id)[0];
+  return {
+    node: item.node,
+    heading: item.heading,
+    typeLabel: questionTypeLabel(item.node.type),
+    value: row?.value,
+  };
+}
+
+/**
  * 徽章行里那个**模块相关**的徽章（`null` = 这一格不该有它）。
  *
  * 与 `tileShowsClear` / `tileModuleBadge` 同源：判据都是该格**当前显示的模块**
@@ -248,6 +297,23 @@ export type TileBadge =
  * ⚠️ 若将来又给学习单那一格加回任何**数字**，那条不变式要连同判据一起重新想一遍 ——
  * 不是把这个函数恢复就行（现在连徽章都没有了，它恢复出来也没有调用方）。
  */
+
+/**
+ * 这一态带不带方格阵（只有「画不出格子」的那三态不带）。
+ *
+ * ⊘→★ 这个函数**删过一次又加回来**，两段历史都值得留着：
+ *   · **2026-09-28 先删**：它当时的唯一用途是「徽章的 `已交 N/M` 与格子里的方块必须
+ *     数同一批东西」（教师第 5 条把徽章去掉 ⇒ 那条不变式没有对象了）；
+ *   · **同一天又加回**：教师要求「下方留出最大的空间显示学生正在答题的详细情况」
+ *     ⇒ 预览区要拿 `state.cells` 去挑「他正在做哪一题」，而它只在那三态上存在。
+ *     ⚠️ 所以它今天的用途**不是**那条作废的不变式，而是「这一态有没有 cells 可用」。
+ *     不要再按旧注释去理解它。
+ */
+export function stateHasCells(
+  state: WorksheetTileState,
+): state is Extract<WorksheetTileState, { cells: WorksheetCellStatus[] }> {
+  return 'cells' in state;
+}
 
 /**
  * 学习单徽章的文字。⚠️ 只有**已知**才给数字（`null` = 连分母都不知道）。

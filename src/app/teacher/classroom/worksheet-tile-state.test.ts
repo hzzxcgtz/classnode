@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
+  activeAnswer,
   moduleCountUnit,
   tileBadgeText,
   tileShowsWorksheetClear,
@@ -309,4 +310,52 @@ test('★ 垃圾桶：只有这一格显示着学习单（或混合里有学习�
   assert.equal(tileShowsWorksheetClear('mixed', ['companion', 'explore']), false, '混合里没有学习单 ⇒ 不出现');
   assert.equal(tileShowsWorksheetClear('home', ['home']), false);
   assert.equal(tileShowsWorksheetClear('unknown', []), false);
+});
+
+/* ── ⑦ 格子里预览哪一题（★ 教师：留出下方空间显示「正在答题的详细动态」）── */
+
+/**
+ * 🔴 **预览的那一题必须与格子正文写着的那一题是同一个。**
+ * 各挑各的后果是：上面写「正在做 任务二 · 1」，下面预览的却是第 5 题的作答 ——
+ * 而两边都不报错，教师会照着第 5 题的答案去讲第 3 题。
+ */
+test('🔴 预览的那一题 = 格子正文那一题（共用同一个 activeQuestionIndex）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'fill-blank'), question('q3', 'short-answer')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['submitted', 'submitted', 'draft'];
+  const rows = [
+    { questionId: 'q1', value: 'A' },
+    { questionId: 'q2', value: 'B' },
+    { questionId: 'q3', value: 'C' },
+  ];
+  const answer = activeAnswer(nodes, rows, cells, 'q3');
+  assert.equal(answer?.node.id, 'q3', '最后一次保存的是 q3');
+  assert.equal(answer?.value, 'C', '值也要是那一题的');
+
+  // 格子上那一行说的题号，与这里挑出来的**同一题**（两级题号同源）。
+  // ⚠️ 局部变量**不能叫 `state`** —— 本文件顶上那个 `state()` 是造格子的助手，撞名会 TDZ。
+  const tile = state({ nodes, progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'draft' }, 'q3', NOW - 1000) });
+  assert.equal(tile.kind === 'working' ? tile.heading : null, answer?.heading);
+});
+
+/**
+ * 🔴 **说不出是哪一题 ⇒ 不预览**（最后一题被教师删掉、也没有在答的题）。
+ * 随便挑一道的后果与上一条同源：教师会照着**另一道题**的答案去讲这一道。
+ */
+test('🔴 说不出是哪一题 ⇒ 不预览（不随便挑一道来显示）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'fill-blank')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['submitted', 'unanswered'];
+  // 最后一次作答的 q_gone 已经被教师删掉，而 q2 也没在答 ⇒ 说不出来。
+  assert.equal(activeAnswer(nodes, [], cells, 'q_gone'), null);
+});
+
+test('★ 退到「第一道还在作答中的题」（最后作答那题被删时）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'fill-blank')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['unanswered', 'draft'];
+  const answer = activeAnswer(nodes, [{ questionId: 'q2', value: 'x' }], cells, 'q_gone');
+  assert.equal(answer?.node.id, 'q2');
+  assert.equal(answer?.typeLabel, '填空题');
+});
+
+test('★ 一题都没有 ⇒ null（空学习单不预览）', () => {
+  assert.equal(activeAnswer([], [], [], null), null);
 });

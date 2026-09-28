@@ -19,7 +19,7 @@ import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
 import { resolveRewardScale } from '@/lib/worksheet-reward';
-import { moduleCountUnit, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
+import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
@@ -1860,17 +1860,33 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       case 'worksheet': {
         const participant = members[0] ?? null;
         const worksheet = tileWorksheetOf(participant);
+        const state = worksheetTileState({
+          worksheet,
+          // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
+          nodes: worksheet ? wb.nodesByWorksheet[worksheet.id] ?? null : null,
+          // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
+          progress: participant ? wb.progress[participant.id] : undefined,
+          online,
+          now: nowMs,
+        });
         return (
           <WorksheetTileContent
-            state={worksheetTileState({
-              worksheet,
-              // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
-              nodes: worksheet ? wb.nodesByWorksheet[worksheet.id] ?? null : null,
-              // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
-              progress: participant ? wb.progress[participant.id] : undefined,
-              online,
-              now: nowMs,
-            })}
+            state={state}
+            // ★ 2026-09-28（教师）：下方那一块 ——「学生此刻正在做的那一题」的实时作答。
+            // 🔴 那一题由 `activeAnswer` 挑，而它**复用格子正文同一个判据**
+            //（`activeQuestionIndex`）⇒ 上面写「正在做 任务二 · 1」，下面预览的一定是
+            // 那一题（各挑各的会让教师照着另一道题的答案去讲这一道，且两边都不报错）。
+            // ⚠️ `cells` 取 `state.cells`（不是 `progress.cells`）：那是格子正文真正用的
+            // 那一份，另取一份就是第二条合并路径，可能与正文分叉。
+            answer={participant && stateHasCells(state) && worksheet
+              ? activeAnswer(
+                wb.nodesByWorksheet[worksheet.id] ?? [],
+                (wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]
+                  ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? [],
+                state.cells,
+                wb.progress[participant.id]?.lastQuestionId ?? null,
+              )
+              : null}
             compact={compact}
           />
         );

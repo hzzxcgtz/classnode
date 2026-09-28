@@ -1,6 +1,7 @@
 'use client';
 
-import type { WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
+import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
+import { TileAnswerBody } from './tile-answer';
 
 /**
  * 看板格子里**学习单那一格的内容区**（规格 §7.2）。
@@ -79,8 +80,13 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
 }
 
-export function WorksheetTileContent({ state, compact }: {
+export function WorksheetTileContent({ state, answer, compact }: {
   state: WorksheetTileState;
+  /**
+   * ★ 2026-09-28：下方那一块要显示的那一题（教师：「留出下方最大的空间用来显示
+   * 当天学生正在答题的详细动态情况」）。`null` = 挑不出是哪一题 ⇒ 不画那一块。
+   */
+  answer?: TileAnswer | null;
   /** 全屏网格里格子更小、字更小 —— 与 `renderTileContent` 的同一个旋钮同义。 */
   compact: boolean;
 }) {
@@ -100,13 +106,20 @@ export function WorksheetTileContent({ state, compact }: {
     case 'no-progress':
       return placeholder('还没收到作答', '打开看板后的新作答会实时显示', compact);
 
-    // ── 四态里剩下的三态：一行大字 + 方格阵 ───────────────────────────────
+    // ── 四态里剩下的三态：一行大字 + 方格阵 + **下方：他此刻那一题的作答** ──────
     case 'working':
     case 'stuck':
     case 'all-submitted': {
       const tone = stateTone(state);
       return (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: compact ? 5 : 7, padding: compact ? '6px 8px' : '8px 10px', borderRadius: compact ? 6 : 8, background: tone.background, border: tone.border }}>
+        // ★ 2026-09-28（教师）：「已有图形和文字要整体上移，留出下方最大的空间用来显示
+        // 当天学生正在答题的详细动态情况」。
+        // ⇒ `justifyContent` 从 `center` 改成 `flex-start`（内容靠上），
+        //   下面那一块吃满剩余高度（`flex: 1`）。
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: compact ? 4 : 5, padding: compact ? '6px 8px' : '8px 10px', borderRadius: compact ? 6 : 8, background: tone.background, border: tone.border }}>
+          {/* 上面这一块**不许被压**（`flexShrink: 0`）：状态那一行是这一格的标题，
+              被下面的预览挤掉的话，教师就不知道下面那块是谁的作答了。 */}
+          <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: compact ? 4 : 5 }}>
           <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 700, color: tone.color, lineHeight: 1.3 }}>
             {stateLine(state)}
           </div>
@@ -124,6 +137,22 @@ export function WorksheetTileContent({ state, compact }: {
                 }} />
             ))}
           </div>
+          </div>
+          {/* ★ 下方：**他此刻正在做的那一题**的实时作答（逐题型换画法，见 `tile-answer.tsx`）。
+              🔴 只有真的挑得出那一题时才画（`answer` 为 `null` = 说不出来是哪一题）——
+              那时**不预览**，而不是随便挑一道（与正文「不编题号」同一条纪律）。 */}
+          {answer && (
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px dashed #e2e8f0', paddingTop: 4, overflow: 'hidden' }}>
+              {/* 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
+                  下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。 */}
+              {state.kind === 'all-submitted' && (
+                <div style={{ flexShrink: 0, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {answer.heading} · {answer.typeLabel}
+                </div>
+              )}
+              <TileAnswerBody answer={answer} />
+            </div>
+          )}
         </div>
       );
     }

@@ -378,27 +378,42 @@ export function WorksheetQuestionList({
         };
         const promptImage = readPromptImage(node);
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
-        const questionState = (
-          <span className={styles.questionState} data-state={state}>
-            {state === 'submitted' ? '✓ 已完成' : state === 'drafting' ? '◐ 正在写' : ''}
-          </span>
-        );
         const gradeState = interactive ? gradeStates?.[node.id] : undefined;
-        const questionFeedback = gradeState ? (
-          <div className={styles.questionFeedback} data-result={gradeState} role="status" aria-live="polite">
-            <strong>{gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想'}</strong>
-            {reward && (
-              <span className={styles.feedbackReward}>
-                <span className={styles.feedbackRewardLabel}>获得奖励</span>
+        /**
+         * ★ 2026-09-28（教师）：「按这种效果制作」—— 状态、判分与奖励合成**一条**，
+         * 三段用细线分开（效果图：✓已完成 ｜ !部分答对 ｜ 🚀获得奖励 ×1）。
+         *
+         * 🔴 原来它们是**两块**：一个 `✓ 已完成` 的小徽章 + 一个「全部答对／部分答对」的
+         * 反馈框（奖励挂在那个框里）。合成一条之后，学生一眼看完「做完没 / 对不对 /
+         * 拿到什么」，不用在两处找。
+         * ⚠️ **判分与奖励仍然只在 `interactive` 时有**（教师端预览 `gradeState` 是
+         * `undefined` ⇒ 那两段根本不渲染）—— 这条闸一个字没动。
+         * ⚠️ `role="status"` + `aria-live` 从原来那个反馈框搬到这里：判分结果是
+         * 提交后才出现的一段反馈，读屏要念出来。
+         */
+        const verdictLabel = gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
+        const questionMeta = state !== 'empty' || gradeState ? (
+          <div className={styles.questionResult} role="status" aria-live="polite">
+            {state !== 'empty' && (
+              <span className={styles.resultCell} data-tone="progress">
+                {state === 'submitted' ? '✓ 已完成' : '◐ 正在写'}
+              </span>
+            )}
+            {gradeState && (
+              <span className={styles.resultCell} data-tone={gradeState}>
+                <span className={styles.resultGlyph} aria-hidden="true">
+                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '!' : '✕'}
+                </span>
+                {verdictLabel}
+              </span>
+            )}
+            {/* 奖励只在**全对**时出现（与服务端发奖励的条件一致：`gradeStates === 'correct'`） */}
+            {gradeState === 'correct' && reward && (
+              <span className={styles.resultCell} data-tone="reward">
+                <span className={styles.resultCellLabel}>获得奖励</span>
                 <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
               </span>
             )}
-          </div>
-        ) : null;
-        const questionMeta = state !== 'empty' || questionFeedback ? (
-          <div className={styles.questionMeta}>
-            {questionState}
-            {questionFeedback}
           </div>
         ) : null;
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
@@ -495,10 +510,10 @@ export function WorksheetQuestionList({
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比
                 一句话难懂得多（学生会反复点它）。 */}
-            {interactive ? (
-              locked ? (
-                <p className={styles.lockedNote}>这道题已经完成，老师设置为不能再修改</p>
-              ) : (
+            {/* ⊘ 2026-09-28（教师）：「这个字不要了」—— 原来 `locked` 那一支只有一句话
+                （「这道题已经完成，老师设置为不能再修改」），删掉之后那一支空了。
+                ⇒ 直接改成「非锁定才渲染提交区」：锁定时这里什么都不画（按钮本来就不渲染）。 */}
+            {interactive && !locked && (
                 <>
                   {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
                       「只能提交已保存的内容」不是修辞 —— 有未保存改动的那道题会被拦下
@@ -527,8 +542,7 @@ export function WorksheetQuestionList({
                     </button>
                   </div>
                 </>
-              )
-            ) : null}
+            )}
           </section>
           );
           })}

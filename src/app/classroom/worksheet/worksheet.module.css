@@ -386,7 +386,9 @@
 }
 
 .prompt {
-  font-size: 1rem;
+  /* ★ 2026-09-28（教师）：「题干正文的字可以再缩小一些」——1rem ⇒ 0.938rem
+     （与 `.cardNote` / 选项文字那一档对齐：题干是这一屏的主角，但不该比选项大一圈）。 */
+  font-size: 0.938rem;
   line-height: 1.7;
   color: #1e293b;
   white-space: pre-wrap;
@@ -749,7 +751,7 @@
 .group[data-container='1'] { border-radius: 14px; box-shadow: none; }
 .groupTitle { margin: 2px 0 4px; padding: 0; border-left: 0; font-size: 1.35rem; text-align: center; }
 .groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: center; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
-.prompt { font-size: 1.1rem; }
+.prompt { font-size: 1rem; }
 
 .option { border-radius: 8px; min-height: 54px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .option:hover { border-color: #7daff2; transform: none; }
@@ -1774,3 +1776,58 @@
 .poolItem { border-radius: 5px; border-color: #93c5fd; background: #f8fbff; }
 .zoneGrid { gap: 22px; }
 .zone { border-radius: 8px; background: #f8fbff; }
+
+/* ── 题目的结果条：状态 ｜ 判分 ｜ 奖励（★ 2026-09-28，教师：「按这种效果制作」）────
+   效果图：一个圆角框，三段用细线分开 —— ✓已完成 ｜ !部分答对 ｜ 🚀获得奖励 ×1。
+   ⚠️ 段的**有与没有**由 JSX 决定（未提交时没有判分段、不全对时没有奖励段），
+      所以这里不能写死三段宽度：用 flex + 细线，缺哪段都不会留一条空线。 */
+.questionResult {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #d6e2f5;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.resultCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.813rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+/* 段与段之间的细线 —— 用 `+` 而不是给每段都加上边框：
+   第一段左边不该有线，而 `+` 天然只画「后面那一段的左边」。 */
+.resultCell + .resultCell { border-left: 1px solid #e8eef7; }
+
+/* 已完成 / 正在写：绿字浅底 */
+.resultCell[data-tone='progress'] { background: #f0fdf4; color: #15803d; }
+
+/* 判分那一段：底色与字色随结果走（三段各自一档，配色与「正确答案」那块互不干扰） */
+.resultCell[data-tone='correct'] { background: #f0fdf4; color: #15803d; }
+.resultCell[data-tone='partial'] { background: #fffbeb; color: #b45309; }
+.resultCell[data-tone='incorrect'] { background: #fef2f2; color: #b91c1c; }
+
+/* 判分那一段前面那枚圆点里的记号（✓ / ! / ✕）——白字、实心圆 */
+.resultGlyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: currentColor;
+  color: #fff;
+  font-size: 0.688rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 奖励那一段：上面一行小字「获得奖励」、下面是图标 + ×N */
+.resultCell[data-tone='reward'] { flex-direction: column; gap: 0; padding: 4px 12px; }
+.resultCellLabel { font-size: 0.688rem; font-weight: 500; color: #64748b; }

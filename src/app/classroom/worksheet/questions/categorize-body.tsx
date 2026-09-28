@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearSelection,
   setPlacement,
@@ -14,7 +14,7 @@ import {
   type AnswerDraft,
 } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { usePointerDrag } from '../use-pointer-drag';
+import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
 
 /**
@@ -66,8 +66,35 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
     onChange({ kind: 'categorize', assignment: unplace(assignment, itemId) });
   };
 
+  /**
+   * ★ 2026-09-28（教师）：「归类题在拖动词语框的时候，这个框要跟着一起移动。」
+   *
+   * 🔴 与选择填空的待选词**同一套做法**（`choice-blank-answer.tsx`）：拖动中每一帧把
+   * 位移**直接写在元素的 style 上**（`translate3d`）—— 不走 state：
+   * 每帧 setState 会让整块作答区重渲染，在 iPad 上直接掉帧。
+   * ⚠️ 两个细节都不能省：
+   *   · `zIndex = 2`：跟手的那个框要**压在**别的条目/框上面（否则它从它们下面穿过去）；
+   *   · `pointercancel` 不会触发 `onDrop` ⇒ 收尾时必须把直接写在 DOM 上的位移清掉
+   *     （见下面那个 effect）。少了它，一次被系统打断的拖动会让那个框**永久歪着**。
+   */
+  const chipEls = useRef<Record<string, HTMLElement | null>>({});
+  const clearDragStyles = useCallback(() => {
+    Object.values(chipEls.current).forEach((el) => {
+      if (!el) return;
+      if (el.style.transform) el.style.transform = '';
+      if (el.style.zIndex) el.style.zIndex = '';
+    });
+  }, []);
+  const onDragMove = useCallback((point: DragPoint) => {
+    const el = chipEls.current[point.id];
+    if (!el) return;
+    el.style.transform = `translate3d(${Math.round(point.dx)}px, ${Math.round(point.dy)}px, 0)`;
+    el.style.zIndex = '2';
+  }, []);
+
   const drag = usePointerDrag({
     disabled,
+    onDragMove,
     onTap: (id) => {
       // 点的是**池子**（或某个框）：把选中的那个条目放过去 / 取回来。
       if (id === POOL_TARGET || zones.some((zone) => zone.id === id)) {
@@ -89,6 +116,11 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
     },
   });
 
+  // 一次拖动结束（或被打断）之后把直接写在 DOM 上的位移清掉 —— 见上面那段注释。
+  useEffect(() => {
+    if (!drag.draggingId) clearDragStyles();
+  }, [drag.draggingId, clearDragStyles]);
+
   if (items.length === 0 || zones.length === 0) {
     return <p className={styles.cardNote}>（这道题还没有条目或还没有框）</p>;
   }
@@ -103,7 +135,12 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
       drag.draggingId === itemId ? styles.dragActive : '',
     ].filter(Boolean).join(' ');
     return (
-      <div className={className} key={itemId} {...drag.sourceProps(itemId)}>
+      <div
+        className={className}
+        key={itemId}
+        ref={(el) => { chipEls.current[itemId] = el; }}
+        {...drag.sourceProps(itemId)}
+      >
         {textOf[itemId] || <span className={styles.placeholder}>（这一条还没写）</span>}
       </div>
     );

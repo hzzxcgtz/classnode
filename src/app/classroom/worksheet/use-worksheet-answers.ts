@@ -122,6 +122,16 @@ export interface UseWorksheetAnswersOptions {
    * 所以指令由会话层转手进来。详见 `WorksheetClearCommand`。
    */
   worksheetClear: WorksheetClearCommand | null;
+  /**
+   * ★ 2026-09-28：收到清除指令后，让**面板**重拉一次服务端那一份
+   *（面板里就是 `setReloadToken((n) => n + 1)`）。
+   *
+   * 🔴 重水合**不在这里手写**：它唯一的产出地是面板那条 `[queueKey, savedAnswers]`
+   * 的 effect。本 hook 第一版把 `hydrateAnswers` + 六个 setter 搬进了 socket 回调那条路，
+   * 教师报「学生在输入时清除该题 ⇒ 学生端浏览器假死」—— 那条回路我没能读清成因，
+   * 而**读不出来的回路不该继续在上面加东西**。改成让既有的那条路去做。
+   */
+  onCleared: () => void;
 }
 
 export interface UseWorksheetAnswersResult {
@@ -175,6 +185,7 @@ export function useWorksheetAnswers({
   setToast,
   answersLocked,
   worksheetClear,
+  onCleared,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
@@ -338,43 +349,40 @@ export function useWorksheetAnswers({
   useEffect(() => {
     const command = worksheetClear;
     if (!command) return;
-    // ⚠️ **三守卫放在 token 之前**：ids 还没就位时（水合中）不该把这条指令「消费」掉，
-    // 否则它会在这一轮被丢掉、而下一轮因为 token 已经记账不再处理 —— 静默丢失。
-    // 反过来，ids 对不上时**不消费**，依赖里那几个 id 变了会让本 effect 重跑。
-    // ⚠️ 对不上时**要吭声**：那意味着教师的动作在这台设备上什么也没发生，
-    // 而屏幕上没有任何东西会提示这件事（本仓反复吃的一类缺陷）。
+    // 三守卫在 token 之前：ids 还没就位时（水合中）不该把这条指令「消费」掉，
+    // 否则它会在这一轮丢掉、下一轮因为 token 已记账不再处理 —— 静默丢失。
+    // 对不上时**要吭声**：那意味着教师的动作在这台设备上什么也没发生，而屏幕上没有提示。
     if (command.classroomId !== classroomId) { console.warn('[worksheet] 清除指令被丢：不是这间课堂'); return; }
     if (command.participantId !== participantId) { console.warn('[worksheet] 清除指令被丢：不是这个参与者'); return; }
     if (command.worksheetId !== worksheetId) { console.warn('[worksheet] 清除指令被丢：不是这份学习单'); return; }
-    // 🔴 **挂载之前就存在的那一条不重放**（`useRef` 的初值就是挂载那一刻的 token）：
+    // 🔴 挂载之前就存在的那一条**不重放**（`useRef` 的初值 = 挂载那一刻的 token）：
     // 换身份再切回来时本 hook 会重挂，而 `worksheetClear` 还停在会话层 ——
-    // 那条指令可能已经是十几分钟前的，重放会把学生**在那之后重新答的**内容抹掉。
+    // 重放一条十几分钟前的指令会把学生**在那之后重新答的**内容抹掉。
     if (command.token <= seenClearTokenRef.current) return;
     seenClearTokenRef.current = command.token;
 
-    // `null` = 整张清除；非空 = 只清那一题。
+    // ── 只做两件事，**一个手工 setState 都没有** ──────────────────────────
+    //
+    // ⊘ 这里第一版把「重水合」整个搬了进来（`hydrateAnswers` + 六个 setter +
+    //   `lastSentRef`），结果教师报「学生在输入时去清除该题，学生端浏览器假死」。
+    //   从 socket 回调那条路去动这五六个 state，是一条**我没能读清成因**的回路
+    //   （读了三遍都终止，而它确实假死了）。既然读不出来，就不该继续在那条路上加东西。
+    //
+    // ⇒ 改成：**服务端才是真相**，让面板重拉一次那一份，重水合走**已经跑了很久、
+    //   有测试的**那条路（`[queueKey, savedAnswers]` 那个 effect）。
+    //   它本来就是这件事唯一的产出地，我不该再手写第二份。
+    //
+    // ① 丢掉这个 scope 的待保存项。**这一件必须在这里做**：不丢的话，学生那一次
+    //    1.5 秒防抖保存（或队列里已有的那一条）会把内容**写回去**，而服务端那一行
+    //    刚被删掉 —— 教师看到的是「清了又回来了」。
+    //    ⚠️ 整张清除时丢**全部**（这份 hook 就是逐份学习单的）。
     const scope = command.questionId;
+    commitQueue(scope === null ? [] : pendingRef.current.filter((item) => item.questionId !== scope));
 
-    const remaining = scope === null
-      ? []
-      : pendingRef.current.filter((item) => item.questionId !== scope);
-    commitQueue(remaining);
-
-    const kept = scope === null
-      ? []
-      : savedAnswers.filter((row) => row.questionId !== scope);
-    const merged = hydrateAnswers(kept, remaining, questionsRef.current);
-    setDrafts(merged.drafts);
-    setStatuses(merged.statuses);
-    setScores(merged.scores);
-    setGradeStates(merged.gradeStates);
-    setWrongBlankIndexes(merged.wrongBlankIndexes);
-    setCorrectBlanks(merged.correctBlanks ?? {});
-    // 正在提交中的那一题也不该再转圈了（服务端那一行已经没了）。
-    if (scope !== null) setSubmitting((prev) => ({ ...prev, [scope]: false }));
-    else setSubmitting({});
-    lastSentRef.current = merged.lastSent;
-  }, [worksheetClear, classroomId, participantId, worksheetId, savedAnswers, commitQueue]);
+    // ② 让面板重拉服务端那一份。重水合由那条既有 effect 完成 ——
+    //    它同时会把 `lastSentRef` 按新的服务端数据重算（所以这里也不用手工碰它）。
+    onCleared();
+  }, [worksheetClear, classroomId, participantId, worksheetId, commitQueue, onCleared]);
 
   // ── 写入通道 ────────────────────────────────────────────────────────────
 

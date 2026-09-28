@@ -632,6 +632,13 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   /** 重试按钮的计数器：+1 ⇒ 重新拉一次（不改 key，避免把面板整个重挂）。 */
   const [reloadToken, setReloadToken] = useState(0);
+  /**
+   * ★ 2026-09-28：收到清除指令后重拉服务端那一份。
+   * 🔴 **必须 `useCallback` 稳定**：它进了 `useWorksheetAnswers` 里那条 effect 的依赖，
+   * 内联箭头每次渲染都是新引用 ⇒ 那条 effect 每帧都跑。今天有 token 守卫兜着不会成环，
+   * 但那是**碰巧**（守卫在调用之前）—— 别把这个当许可。
+   */
+  const handleCleared = useCallback(() => setReloadToken((n) => n + 1), []);
 
   useEffect(() => {
     if (!worksheetId) {
@@ -747,6 +754,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     // 而锁定要**立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
     answersLocked,
     worksheetClear,
+    // ★ 2026-09-28：收到清除指令后重拉一次服务端那一份 —— 重水合走**本面板既有**的
+    // 那条 `[worksheetId, reloadToken]` 取数 + `[queueKey, savedAnswers]` 水合，
+    // 不在别处手写第二份（手写那份曾经把学生端搞成假死）。
+    onCleared: handleCleared,
   });
 
   const handleChange = useCallback((node: WorksheetQuestionNode, draft: AnswerDraft) => {

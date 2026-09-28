@@ -1860,12 +1860,19 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       case 'worksheet': {
         const participant = members[0] ?? null;
         const worksheet = tileWorksheetOf(participant);
+        // ★ 2026-09-28：他**此刻正在编辑**的那一份（来自「正在输入」那条实时通道，没落库）。
+        // 🔴 它同时喂给 `worksheetTileState` 与 `activeAnswer` —— **两者必须同源**，
+        // 否则会出现「标题说正在做第 3 题、下面画的是第 5 题」（各挑各的，两边都不报错）。
+        // ⚠️ 按 `worksheetId` 过滤：两份学习单若有同名题号（复制出来的），只靠题号判会串。
+        const liveDraft = participant ? wb.liveDrafts[participant.id] : undefined;
+        const draft = liveDraft && worksheet && liveDraft.worksheetId === worksheet.id ? liveDraft : null;
         const state = worksheetTileState({
           worksheet,
           // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
           nodes: worksheet ? wb.nodesByWorksheet[worksheet.id] ?? null : null,
           // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
           progress: participant ? wb.progress[participant.id] : undefined,
+          liveQuestionId: draft?.questionId ?? null,
           online,
           now: nowMs,
         });
@@ -1885,9 +1892,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? [],
                 state.cells,
                 wb.progress[participant.id]?.lastQuestionId ?? null,
-                // ★ 他此刻正在写的那一份（没落库）。⚠️ 只在**它就是挑中的那一题**时
-                // 才会被采用 —— 判据在 `activeAnswer` 里（那里有一条用例钉着）。
-                participant ? wb.liveDrafts[participant.id] ?? null : null,
+                // ★ **同一份**实时预览（与上面 `liveQuestionId` 同源，见那里的注释）。
+                draft,
               )
               : null}
             compact={compact}

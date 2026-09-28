@@ -144,6 +144,13 @@ export interface WorksheetTileInput {
   nodes: WorksheetQuestionNode[] | null;
   /** 这一格参与者的进度；`undefined` = 打开看板后**从没收到过**这个人的作答（不是「零作答」）。 */
   progress: ParticipantWorksheetProgress | undefined;
+  /**
+   * ★ 2026-09-28：他**此刻正在编辑**的那一题（来自「正在输入」那条实时通道，**还没落库**）。
+   *
+   * 🔴 它比 `progress.lastQuestionId` **新**：后者只在落库时更新，而落库有 1.5 秒防抖 ——
+   * 学生连续打字时（问答题）它一直停在上一题。**这一条是那个 bug 的修法**。
+   */
+  liveQuestionId?: string | null;
   /** 这一格此刻在线吗 —— 离线的学生不算「停住了」（规格 §7.2 的判据里有「在线」）。 */
   online: boolean;
   /** 现在几点（`Date.now()`）。传进来而不是内部读：否则「停住了」只能靠端到端手测。 */
@@ -160,7 +167,7 @@ export interface WorksheetTileInput {
  *   4. 其余按「在线 + 5 分钟」分成 `stuck` 与 `working`。
  */
 export function worksheetTileState(input: WorksheetTileInput): WorksheetTileState {
-  const { worksheet, nodes, progress, online, now } = input;
+  const { worksheet, nodes, progress, online, now, liveQuestionId } = input;
   if (!worksheet) return { kind: 'unconfigured' };
   if (!nodes) return { kind: 'loading' };
 
@@ -187,7 +194,7 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
 
   if (cells.every((status) => status === 'submitted')) return { kind: 'all-submitted', cells, headings };
 
-  const at = activeQuestionIndex(items, cells, known.lastQuestionId);
+  const at = activeQuestionIndex(items, cells, known.lastQuestionId, liveQuestionId);
   const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
   const heading = at === null ? null : items[at].heading;
   // 🔴 `lastAt === null` ⇒ **不算「停住了」**（见 `ParticipantWorksheetProgress.lastAt`）：
@@ -212,7 +219,19 @@ function activeQuestionIndex(
   items: AnswerableQuestion[],
   cells: WorksheetCellStatus[],
   lastQuestionId: string | null,
+  liveQuestionId?: string | null,
 ): number | null {
+  // ★ 2026-09-28：**他此刻正在编辑的那一题优先**（来自「正在输入」那条实时通道）。
+  //
+  // 🔴 这一条是教师报「问答题的实时显示非常慢」时补上的，而它是**唯一**能让问答题
+  // 显示出来的判据：`lastQuestionId` **只在落库时更新**，而落库有 1.5 秒防抖 ——
+  // 学生**连续打字**（问答题正是如此）时一次都不会落库 ⇒ `lastQuestionId` 一直停在
+  // **上一题** ⇒ 预览那一份的题号永远对不上、被丢掉 ⇒ 格子看起来**冻住了**。
+  // 选择题是「点一下就有一次落库」，所以那里只是慢 1.5 秒，不是不动。
+  if (liveQuestionId) {
+    const live = items.findIndex((item) => item.node.id === liveQuestionId);
+    if (live >= 0) return live;
+  }
   if (lastQuestionId) {
     const found = items.findIndex((item) => item.node.id === lastQuestionId);
     if (found >= 0) return found;
@@ -267,21 +286,24 @@ export function activeAnswer(
   /**
    * ★ 2026-09-28：他**此刻正在写**的那一份（来自「正在输入」那条实时通道，**没落库**）。
    *
-   * 🔴 **只在它正好就是挑中的那一题时才采用。** 时间上两件事是分开的：
-   * 通道里那一份可能还是**上一题**的（他刚换了题、新的预览还没发出来）——
-   * 拿它去填这一题，教师会看到「第 3 题里写着第 2 题的答案」，而两边都不报错。
+   * 🔴 它同时决定**两件事**：挑哪一题、以及那一题的值。两者必须同源 ——
+   * 各挑各的会出现「标题说正在做第 3 题、下面画的是第 5 题的内容」，而两边都不报错。
+   *
+   * ⚠️ 它**优先于** `lastQuestionId`：后者只在落库时更新（1.5 秒防抖），
+   * 而学生连续打字时（问答题）根本不落库 —— 那是「问答题非常慢」那个 bug 的根。
    */
   draft?: { questionId: string; value: unknown } | null,
 ): TileAnswer | null {
   const items = flattenAnswerable(nodes);
   if (items.length === 0) return null;
-  const at = activeQuestionIndex(items, cells, lastQuestionId);
+  const at = activeQuestionIndex(items, cells, lastQuestionId, draft?.questionId ?? null);
   // ⚠️ `null` = 说不出是哪一题（最后作答那题已被教师删掉、也没有在答的题）——
   // 那时**不预览**，而不是随便挑一道。与格子正文「不编题号」同一条纪律。
   if (at === null) return null;
   const item = items[at];
   const row = answerRows.filter((entry) => entry.questionId === item.node.id)[0];
-  // ⚠️ 题号对得上才用预览（见 `draft` 参数那一段）。
+  // ⚠️ 挑中的正好就是实时那一题 ⇒ 用预览（`activeQuestionIndex` 已经优先挑了它，
+  // 所以这里对不上只可能是「那一题不在学习单里」，那时用库里那一份）。
   const useDraft = draft !== undefined && draft !== null && draft.questionId === item.node.id;
   return {
     node: item.node,

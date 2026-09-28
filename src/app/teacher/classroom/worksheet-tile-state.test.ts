@@ -361,33 +361,57 @@ test('★ 一题都没有 ⇒ null（空学习单不预览）', () => {
 });
 
 /**
- * 🔴 **实时预览只在题号对得上时才采用。**
+ * 🔴 **他此刻正在编辑的那一题，优先于「最后一次落库的那一题」。**
  *
- * 时间上两件事是分开的：那条「正在输入」的通道里那一份可能还是**上一题**的
- *（他刚换了题、新的预览还没发出来）。拿它去填这一题，教师会看到
- * 「第 3 题里写着第 2 题的答案」—— 而两边都不报错。
+ * 这条用例是教师报「**问答题的实时显示非常慢**」之后改写的，而它记的正是那个根因：
+ * `lastQuestionId` **只在落库时更新**，而落库有 1.5 秒防抖 —— 学生**连续打字**时
+ * （问答题正是如此）一次都不会落库 ⇒ 它一直停在**上一题** ⇒ 预览那一份的题号
+ * 永远对不上、被丢掉 ⇒ 格子看起来**冻住了**。选择题是「点一下就有一次落库」，
+ * 所以那里只是慢 1.5 秒，不是不动。
+ *
+ * ⚠️ **第一版这条用例断言的是反过来的事**（「题号对不上就不许用预览」）——
+ * 那个规则在当时看着对（怕拿上一题的草稿去填这一题），代价却是问答题整题不动。
+ * 改成「谁新听谁的」之后，两件事都不再发生：
+ *   · 新信号（他正在编辑）**优先**；
+ *   · 并且**标题与预览共用**这一个判据 —— 各挑各的会「标题说第 3 题、下面画第 5 题」。
  */
-test('🔴 实时预览：题号对不上 ⇒ 不用它（否则第 3 题里会写着第 2 题的答案）', () => {
-  const nodes = [question('q1', 'single-choice'), question('q2', 'fill-blank')];
-  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['unanswered', 'draft'];
-  const rows = [{ questionId: 'q2', value: '库里那份' }];
+test('🔴 他此刻正在编辑的那一题优先于「最后一次落库的那一题」（问答题那个 bug）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'short-answer')];
+  // 库里最后一次落库的是 q1（选择题），而他此刻在写 q2（问答题，还没落库）。
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['submitted', 'unanswered'];
+  const rows = [{ questionId: 'q1', value: '库里那份' }];
+  const draft = { questionId: 'q2', value: '他正在写的这一段' };
 
-  // 挑中的是 q2，而预览还停在 q1 ⇒ 必须用库里那一份。
-  const stale = activeAnswer(nodes, rows, cells, 'q2', { questionId: 'q1', value: '上一题的草稿' });
-  assert.equal(stale?.node.id, 'q2');
-  assert.equal(stale?.value, '库里那份', '🔴 题号对不上就不许用预览');
-  assert.equal(stale?.fromDraft, false);
+  const answer = activeAnswer(nodes, rows, cells, 'q1', draft);
+  assert.equal(answer?.node.id, 'q2', '🔴 必须切到他正在写的那一题（否则这一题永远不显示）');
+  assert.equal(answer?.value, '他正在写的这一段');
+  assert.equal(answer?.fromDraft, true, '界面要靠它给一个「还没落库」的记号');
 
-  // 阳性对照：题号对得上时**必须**用预览（否则这一条只是「永远不用预览」）。
-  const fresh = activeAnswer(nodes, rows, cells, 'q2', { questionId: 'q2', value: '此刻正在写' });
-  assert.equal(fresh?.value, '此刻正在写');
-  assert.equal(fresh?.fromDraft, true, '界面要靠它给一个「还没落库」的记号');
+  // 🔴 **标题与预览必须同源**：格子正文说的题号也得是 q2，不是 q1。
+  const tile = state({ nodes, progress: progress({ q1: 'submitted' }, 'q1', NOW - 1000), liveQuestionId: 'q2' });
+  assert.equal(tile.kind === 'working' ? tile.heading : null, answer?.heading, '标题与下方预览不许各说各的');
 });
 
-test('★ 没有实时预览时用库里那一份（`fromDraft` 为假）', () => {
-  const nodes = [question('q1', 'single-choice')];
-  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['draft'];
-  const answer = activeAnswer(nodes, [{ questionId: 'q1', value: 'x' }], cells, 'q1', null);
-  assert.equal(answer?.value, 'x');
+test('★ 没有实时预览时，退回「最后一次落库的那一题」', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'short-answer')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['submitted', 'unanswered'];
+  const answer = activeAnswer(nodes, [{ questionId: 'q1', value: '库里那份' }], cells, 'q1', null);
+  assert.equal(answer?.node.id, 'q1');
   assert.equal(answer?.fromDraft, false);
 });
+
+/**
+ * ⚠️ 实时那一题的**题号不在学习单里**（他刚在别的学习单上写过、或者教师删了那题）
+ * ⇒ 退回原来的两级判据，**不许**挑一道不存在的题。
+ */
+test('🔴 实时的题号不在学习单里 ⇒ 退回原判据（不挑一道不存在的题）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'short-answer')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['unanswered', 'draft'];
+  const answer = activeAnswer(
+    nodes, [{ questionId: 'q2', value: '库里' }], cells, 'q2',
+    { questionId: '别的学习单上的题', value: 'x' },
+  );
+  assert.equal(answer?.node.id, 'q2', '退回「第一道还在作答中的题」');
+  assert.equal(answer?.fromDraft, false, '那一份预览不属于这一题，不许用');
+});
+

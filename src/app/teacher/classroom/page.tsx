@@ -17,6 +17,7 @@ import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-t
 import { WorksheetTileContent } from './worksheet-tiles';
 import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
+import { QuestionStatsOverlay } from './question-stats-overlay';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
 import { resolveRewardScale } from '@/lib/worksheet-reward';
 import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
@@ -594,6 +595,11 @@ function ClassroomBoardContent() {
    * 关掉分析会回到矩阵，而不是回到课堂页。
    */
   const [analysisTarget, setAnalysisTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
+  /**
+   * ★ 2026-09-28：**按题统计浮层**开在哪一题（`null` = 没开）。规格 `specs/2026-09-28-按题统计与分析.md`。
+   * 层级 293（在抽屉 291 之上）—— 它是从抽屉里点开的，关闭后回到题列表。
+   */
+  const [questionStatsTarget, setQuestionStatsTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
   /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
@@ -2671,6 +2677,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             reviewBusy={worksheetReviewBusy}
             onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
             onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
+            onOpenQuestionStats={(worksheetId, questionId) => setQuestionStatsTarget({ worksheetId, questionId })}
           />
         )}
 
@@ -3399,7 +3406,27 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           worksheetId={analysisTarget.worksheetId}
           questionId={analysisTarget.questionId}
           mode={classroom?.mode ?? 'standard'}
+          // ★ 从「按题统计浮层」（293）里打开时抬到它之上；从矩阵（250）打开时是默认的 270。
+          zIndex={questionStatsTarget ? 295 : 270}
           onClose={() => setAnalysisTarget(null)}
+        />
+      )}
+
+      {/* ★ 2026-09-28：按题统计与分析（层级 292/293，在抽屉 291 之上）。 */}
+      {questionStatsTarget && (
+        <QuestionStatsOverlay
+          mode={classroom?.mode ?? 'standard'}
+          board={wb.board}
+          worksheetId={questionStatsTarget.worksheetId}
+          questionId={questionStatsTarget.questionId}
+          nodesByWorksheet={wb.nodesByWorksheet}
+          onClose={() => setQuestionStatsTarget(null)}
+          onOpenAnalysis={() => setAnalysisTarget({ ...questionStatsTarget })}
+          // 点某个学生的名字 ⇒ **先关掉本浮层再开抽屉**（抽屉在 291，被本浮层盖着）。
+          onOpenParticipant={(participantId) => {
+            setQuestionStatsTarget(null);
+            openWorksheetDrawer({ kind: 'participant', participantId });
+          }}
         />
       )}
 

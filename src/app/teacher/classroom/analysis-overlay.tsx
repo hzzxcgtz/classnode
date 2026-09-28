@@ -30,6 +30,7 @@ export function AnalysisOverlay({
   worksheetId,
   questionId,
   mode,
+  zIndex = 270,
   onClose,
 }: {
   /** 🔴 必填：同一份学习单可以被多个课堂引用，服务端不许猜（猜错就把别的班的数据给这个班看）。 */
@@ -38,6 +39,11 @@ export function AnalysisOverlay({
   questionId: string;
   /** 课堂 mode —— **只**用来定「已交 N/M」的单位（分组 / 高级模式下是「组」）。 */
   mode: string;
+  /**
+   * ★ 2026-09-28：默认 **270**（矩阵 250 之上、抽屉 291 之下 —— 那是它原来的位置）。
+   * 从「按题统计浮层」（293）里打开时要抬到 **295**，否则会被那一层盖住。
+   */
+  zIndex?: number;
   onClose: () => void;
 }) {
   const [payload, setPayload] = useState<WorksheetAnalysisPayload | null>(null);
@@ -118,7 +124,7 @@ export function AnalysisOverlay({
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 270, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
         borderBottom: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',

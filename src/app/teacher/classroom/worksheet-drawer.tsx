@@ -9,6 +9,8 @@ import { AnswerViewBody } from './answer-view';
 import { InkPreview } from './ink-preview';
 // ★ 2026-09-28：奖励的换算与全貌/过程的判据。
 import { resolveRewardScale } from '@/lib/worksheet-reward';
+import { StackedBar } from './question-stacked-bar';
+import { questionStats, type StatsRow } from './worksheet-question-stats';
 import {
   indexQuestions,
   participantColumnTitle,
@@ -69,7 +71,7 @@ export interface WorksheetDrawerEntry {
 }
 
 export function WorksheetDrawer({
-  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview, onClearQuestion,
+  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview, onClearQuestion, onOpenQuestionStats,
 }: {
   entry: WorksheetDrawerEntry;
   onClose: () => void;
@@ -88,6 +90,12 @@ export function WorksheetDrawer({
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
   /** ★ 2026-09-28（第 4 条）：清除**这一题**的作答。整张清除在格子的垃圾桶上。 */
   onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
+  /**
+   * ★ 2026-09-28：点题列表里的一题 ⇒ **开按题统计浮层**（规格 `2026-09-28-按题统计与分析.md` §2）。
+   * ⚠️ 抽屉**第三层**（`{kind:'question'}`）因此不再从这里进 —— 但**矩阵那条路仍在用它**
+   *（`openMatrixQuestion`），所以它不是死代码。
+   */
+  onOpenQuestionStats: (worksheetId: string, questionId: string) => void;
 }) {
   const [stack, setStack] = useState<WorksheetDrawerView[]>([entry.view]);
 
@@ -184,7 +192,7 @@ export function WorksheetDrawer({
           {board && current.kind === 'questions' && (
             <QuestionList board={board} worksheetId={current.worksheetId}
               nodes={nodesByWorksheet[current.worksheetId] ?? null}
-              onOpen={(questionId) => push({ kind: 'question', worksheetId: current.worksheetId, questionId })} />
+              onOpen={(questionId) => onOpenQuestionStats(current.worksheetId, questionId)} />
           )}
           {board && current.kind === 'question' && (
             <QuestionAnswers board={board} worksheetId={current.worksheetId} questionId={current.questionId}
@@ -291,6 +299,7 @@ function QuestionList({
   board: WorksheetBoard;
   worksheetId: string;
   nodes: WorksheetQuestionNode[] | null;
+  /** ★ 2026-09-28：改成**开按题统计浮层**（规格 §2）—— 抽屉第三层那条路仍留给矩阵。 */
   onOpen: (questionId: string) => void;
 }) {
   const worksheet = board.worksheets.filter((item) => item.id === worksheetId)[0];
@@ -314,14 +323,31 @@ function QuestionList({
         // 「参与者数」这个长度，把没作答的人过滤掉会让「已交 N/M」凭空满员。
         const rows = worksheet.participants.map((participant) =>
           participant.answerRows.filter((row) => row.questionId === node.id)[0]);
+        // ★ 迷你堆叠条：分布口径与浮层页头**同一个函数**（各数一份会让
+        // 「题列表说 3 人全对、点进去说 4 人」，而没有人会去核对这两个数）。
+        const miniRows: Array<StatsRow | undefined> = worksheet.participants.map((participant) => {
+          const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
+          if (!row) return undefined;
+          return {
+            participantId: participant.participantId, participantName: participant.name,
+            status: row.status, isCorrect: row.isCorrect, gradeState: row.gradeState, value: row.value,
+            createdAt: row.createdAt, savedAt: row.savedAt, saveCount: row.saveCount,
+          };
+        });
+        const miniStats = questionStats(node, miniRows);
         const aggregate = questionAggregate(rows);
         const accuracy = aggregate.accuracy;
         return (
           <button key={node.id} type="button" onClick={() => onOpen(node.id)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+              display: 'flex', flexDirection: 'column', gap: 6, width: '100%', textAlign: 'left',
               padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
             }}>
+            {/* ★ 2026-09-28：**分布条**与那两个数字分成上下两行。
+                今天只有两个数字，看不出分布形状 —— 「正确 0%」是**全班都错**、
+                还是**只有 3 个人交**，要读第二眼那个 `3/40` 才知道，
+                而那正是教师判「要不要讲这道题」的依据（规格 §2）。 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
             <div style={{ minWidth: 0, flex: 1, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {questionHeading(node, heading)}
             </div>
@@ -334,6 +360,8 @@ function QuestionList({
               已交 {aggregate.submitted}/{aggregate.total}
             </span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </div>
+            <StackedBar stats={miniStats} compact />
           </button>
         );
       })}
@@ -343,7 +371,7 @@ function QuestionList({
 
 // ── 形态 B · 第三层：某题的全部作答（按参与者列，可能是组不是人）────
 
-function QuestionAnswers({
+export function QuestionAnswers({
   board, worksheetId, questionId, nodes, onOpenParticipant,
 }: {
   board: WorksheetBoard;

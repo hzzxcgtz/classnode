@@ -22,6 +22,7 @@ import {
   clearConfirmText,
   inProgressQuestionId,
   participantOverview,
+  participantOverviewCells,
   processFacts,
 } from './worksheet-drawer-state.ts';
 
@@ -1029,4 +1030,30 @@ test('★ 确认文案：一行作答都没有时如实说，不印一串 0', ()
   const text = clearConfirmText('花荣', '秋天的雨', [], 0, null);
   assert.match(text, /还没有任何作答记录/, text);
   assert.ok(!/共 0 题/.test(text), '「共 0 题：0 题已提交」是噪声');
+});
+
+/**
+ * 🔴 **本仓没有前端测试框架，所以「key 唯一」这条 React 的硬要求只能在这里钉。**
+ *
+ * 实测事故（2026-09-28，教师点开看板的学生卡片时）：全貌那一行第一版把 key 写成**符号**，
+ * 而 `◐` 出现了两次（「已提交但没有对错」与「作答中」）⇒ React 报
+ * `Encountered two children with the same key, '◐'`，后果是那两个子节点
+ * **被漏掉或重复渲染**（React 明说这个行为不受支持）。
+ */
+test('🔴 全貌六格的 key 必须唯一（符号会重复 —— ◐ 就有两个）', () => {
+  const cells = participantOverviewCells(
+    participantOverview([node({ id: 'q1', type: 'single-choice' })], [], { style: 'star' }),
+  );
+  assert.equal(cells.length, 6);
+  const keys = cells.map((cell) => cell.key);
+  assert.equal(new Set(keys).size, keys.length, `key 不许重复：${keys.join(', ')}`);
+  // 阳性对照：**符号确实是重复的** —— 少了这一条，将来有人把 key 改回符号，
+  // 上面那条断言会「碰巧」还绿（只要那时六个符号刚好不重样），而 React 的错已经回来了。
+  const glyphs = cells.map((cell) => cell.glyph);
+  assert.ok(
+    new Set(glyphs).size < glyphs.length,
+    '前提变了：如果六个符号已经不重样，那「key 不许用符号」这条理由就要重新想一遍',
+  );
+  // 六格的 key 与顺序是屏幕上读得到的那一份，改动要是有意的。
+  assert.deepEqual(keys, ['correct', 'partial', 'wrong', 'noVerdict', 'draft', 'unanswered']);
 });

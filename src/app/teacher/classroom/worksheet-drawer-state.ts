@@ -844,3 +844,37 @@ export function clearConfirmText(
   lines.push('此操作不可撤销。');
   return lines.join('\n');
 }
+
+/**
+ * ★ 2026-09-28：全貌那一行的**六格 + 奖励**，作为一份带 key 的数据交给渲染层。
+ *
+ * 🔴 为什么要搬到这一层（而不是留在 `OverviewRow` 的 JSX 里）：我第一版把它写成
+ * `cell('✓', '全对', …)` 六个调用，key 用**符号** —— 而 `◐` 出现了**两次**
+ * （「已提交但没有对错」与「作答中」）。React 当场报
+ * `Encountered two children with the same key, '◐'`，而它的后果不是「一条警告」：
+ * **重复 key 的那两个子节点会被漏掉或重复渲染**，且 React 明说这个行为不受支持。
+ *
+ * ⇒ 判据（这里是哪六格、每格的 key 唯一）搬到这一层之后，`overviewCellsAreUnique`
+ * 那样的断言就能钉住它。JSX 那边只 `map`，**不再自己写 key**。
+ */
+export interface OverviewCell {
+  /** React key。**必须唯一** —— 用 `label` 而不是符号（符号会重复，见上面那一段）。 */
+  key: string;
+  glyph: string;
+  label: string;
+  count: number;
+  color: string;
+}
+
+/** 六格的顺序与配色。**顺序就是屏幕上的顺序**（对错三档在前，状态三档在后）。 */
+export function participantOverviewCells(overview: ParticipantOverview): OverviewCell[] {
+  return [
+    { key: 'correct', glyph: '✓', label: '全对', count: overview.correct, color: '#15803d' },
+    { key: 'partial', glyph: '½', label: '部分给分', count: overview.partial, color: '#b45309' },
+    { key: 'wrong', glyph: '✗', label: '答错', count: overview.wrong, color: '#dc2626' },
+    // ⚠️ 与下面 `draft` **同符号**（`◐`）—— 这正是 key 不许用符号的原因。
+    { key: 'noVerdict', glyph: '◐', label: '已提交但没有对错', count: overview.noVerdict, color: '#1d4ed8' },
+    { key: 'draft', glyph: '◐', label: '作答中', count: overview.draft, color: '#b45309' },
+    { key: 'unanswered', glyph: '─', label: '未作答', count: overview.unanswered, color: '#cbd5e1' },
+  ];
+}

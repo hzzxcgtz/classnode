@@ -21,6 +21,7 @@ import {
   formatAgo,
   inProgressQuestionId,
   participantOverview,
+  participantOverviewCells,
   processFacts,
   type ParticipantOverview,
   type WorksheetOutcomeMark,
@@ -526,24 +527,25 @@ function ParticipantAnswers({
  * 后者会让教师以为「这一档不可能出现」，而它只是这一次是 0。
  */
 function OverviewRow({ overview }: { overview: ParticipantOverview }) {
-  const cell = (glyph: string, label: string, count: number, color: string) => (
-    <span key={glyph} title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <span style={{ color, fontWeight: 700 }}>{glyph}</span>
-      <span style={{ color: count > 0 ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}>{count}</span>
-    </span>
-  );
+  // ⚠️ 六格与它们的 key **来自 `participantOverviewCells`**（纯函数、有测试），
+  // 这一层只 `map`。第一版把 key 写成**符号**，而 `◐` 出现了两次 ⇒ React 报
+  // `Encountered two children with the same key, '◐'`（后果是那两个子节点被漏掉或重复渲染）。
+  // 搬进判据层之后，「key 唯一」有了一条会红的断言。
+  const cells = participantOverviewCells(overview);
   return (
     <div style={{
       display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12,
       padding: '9px 12px', borderRadius: 10, background: '#f8faff', border: '1px solid #e0e7ff',
       fontSize: '0.75rem',
     }}>
-      {cell('✓', '全对', overview.correct, '#15803d')}
-      {cell('½', '部分给分', overview.partial, '#b45309')}
-      {cell('✗', '答错', overview.wrong, '#dc2626')}
-      {cell('◐', '已提交但没有对错（主观题 / 关闭自动判分）', overview.noVerdict, '#1d4ed8')}
-      {cell('◐', '作答中', overview.draft, '#b45309')}
-      {cell('─', '未作答', overview.unanswered, '#cbd5e1')}
+      {cells.map((cell) => (
+        <span key={cell.key} title={cell.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ color: cell.color, fontWeight: 700 }}>{cell.glyph}</span>
+          {/* ⚠️ 为 0 时**仍然画出来**（只是灰掉）：`✓0` 与「把 ✓ 藏起来」读起来不一样 ——
+              后者会让教师以为这一档不可能出现，而它只是这一次是 0。 */}
+          <span style={{ color: cell.count > 0 ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}>{cell.count}</span>
+        </span>
+      ))}
       <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <span style={{ color: '#94a3b8' }}>奖励</span>
         {/* 🔴 `null` = **不知道**（学习单的 settings 还没加载到）⇒ 画「—」而**不是 0**：

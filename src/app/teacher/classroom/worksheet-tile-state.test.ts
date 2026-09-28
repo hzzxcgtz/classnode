@@ -359,3 +359,35 @@ test('★ 退到「第一道还在作答中的题」（最后作答那题被删�
 test('★ 一题都没有 ⇒ null（空学习单不预览）', () => {
   assert.equal(activeAnswer([], [], [], null), null);
 });
+
+/**
+ * 🔴 **实时预览只在题号对得上时才采用。**
+ *
+ * 时间上两件事是分开的：那条「正在输入」的通道里那一份可能还是**上一题**的
+ *（他刚换了题、新的预览还没发出来）。拿它去填这一题，教师会看到
+ * 「第 3 题里写着第 2 题的答案」—— 而两边都不报错。
+ */
+test('🔴 实时预览：题号对不上 ⇒ 不用它（否则第 3 题里会写着第 2 题的答案）', () => {
+  const nodes = [question('q1', 'single-choice'), question('q2', 'fill-blank')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['unanswered', 'draft'];
+  const rows = [{ questionId: 'q2', value: '库里那份' }];
+
+  // 挑中的是 q2，而预览还停在 q1 ⇒ 必须用库里那一份。
+  const stale = activeAnswer(nodes, rows, cells, 'q2', { questionId: 'q1', value: '上一题的草稿' });
+  assert.equal(stale?.node.id, 'q2');
+  assert.equal(stale?.value, '库里那份', '🔴 题号对不上就不许用预览');
+  assert.equal(stale?.fromDraft, false);
+
+  // 阳性对照：题号对得上时**必须**用预览（否则这一条只是「永远不用预览」）。
+  const fresh = activeAnswer(nodes, rows, cells, 'q2', { questionId: 'q2', value: '此刻正在写' });
+  assert.equal(fresh?.value, '此刻正在写');
+  assert.equal(fresh?.fromDraft, true, '界面要靠它给一个「还没落库」的记号');
+});
+
+test('★ 没有实时预览时用库里那一份（`fromDraft` 为假）', () => {
+  const nodes = [question('q1', 'single-choice')];
+  const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['draft'];
+  const answer = activeAnswer(nodes, [{ questionId: 'q1', value: 'x' }], cells, 'q1', null);
+  assert.equal(answer?.value, 'x');
+  assert.equal(answer?.fromDraft, false);
+});

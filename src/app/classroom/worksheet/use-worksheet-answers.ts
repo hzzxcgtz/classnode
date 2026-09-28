@@ -12,7 +12,8 @@ import {
   type WorksheetAnswerValue,
 } from '@/lib/worksheet-questions';
 import type { ChatToast } from '../classroom-types';
-import { subscribeWorksheetClear } from './worksheet-clear-bus';
+import { downsampleInkValue } from '@/lib/worksheet-ink';
+import { publishDraftPreview, subscribeWorksheetClear } from './worksheet-socket-bus';
 import {
   classifyFailure,
   shouldFlushOnLockChange,
@@ -167,6 +168,13 @@ correctBlanks: Record<string, Record<string, string>>;
 
 /** 防抖时长（规格 §8.3 的 1.5s）。 */
 const SAVE_DEBOUNCE_MS = 1500;
+/**
+ * ★ 2026-09-28：「正在输入」那条实时通道的节流与体积预算。
+ * ⚠️ 节流**远小于** `SAVE_DEBOUNCE_MS` 是这条通道存在的全部理由（见 `emitPreview`）。
+ * 预算比落库那条（64 KiB）小得多：它每 300ms 就可能走一次，而落库是 1.5 秒一次。
+ */
+const PREVIEW_THROTTLE_MS = 300;
+const PREVIEW_BUDGET_CHARS = 16384;
 
 export function useWorksheetAnswers({
   classroomId,
@@ -550,6 +558,43 @@ export function useWorksheetAnswers({
   }, [answersLocked, flush]);
 
   /**
+   * ★ 2026-09-28：把「他此刻正在写什么」发出去（**不写库、只喂看板那一格的预览**）。
+   *
+   * 🔴 **它存在的理由就是 `SAVE_DEBOUNCE_MS`（1500ms）那条防抖**：学生的作答**落库**
+   * 要等他停手 1.5 秒（不防抖就是每敲一个字一次写库 + 一次广播），而教师看板上那一格
+   * 要跟得上学生的手。⇒ 两条通道各司其职：
+   *   · **落库**（`worksheet-answer-updated`）：慢、可靠、是**真相**；
+   *   · **这一条**：快（节流 300ms）、不写库、**只是预览**。
+   * ⚠️ 所以看板上「格子里的实时内容」与「库里的已保存内容」**不是同一份** ——
+   * 教师看到的是学生在写什么，不是已经存下了什么。这一点在界面上要能读出来。
+   *
+   * ⚠️ **节流 300ms，且是「拖尾」式**：第一次敲键排一个 300ms 的计时器，之后每一次敲键
+   * 只更新「最新那一份」而不重置计时器 ⇒ 打字过程中每 300ms 最多一条，
+   * 停手后 300ms 内最后那一份也会发出去。
+   *
+   * ⚠️ **笔迹要先抽稀**（`downsampleInkValue`）：实测一幅认真的画约 335 KB，
+   * 按 300ms 的节流原样发就是每秒一兆。抽稀后的值**只喂预览**，不写库、不进队列。
+   */
+  const previewTimerRef = useRef<number | null>(null);
+  const previewLatestRef = useRef<{ questionId: string; value: unknown } | null>(null);
+  const emitPreview = useCallback((questionId: string, value: unknown) => {
+    // 两个 id 不全时不发（换学生 / 换学习单的间隙里没有可投递的坐标）。
+    if (!classroomId || !worksheetId) return;
+    previewLatestRef.current = { questionId, value: downsampleInkValue(value, PREVIEW_BUDGET_CHARS) };
+    if (previewTimerRef.current !== null) return;
+    previewTimerRef.current = window.setTimeout(() => {
+      previewTimerRef.current = null;
+      const item = previewLatestRef.current;
+      if (!item) return;
+      publishDraftPreview({ classroomId, worksheetId, questionId: item.questionId, value: item.value });
+    }, PREVIEW_THROTTLE_MS);
+  }, [classroomId, worksheetId]);
+  // 卸载时收掉那个计时器（它一跑就会往一条可能已经关掉的连接上写）。
+  useEffect(() => () => {
+    if (previewTimerRef.current !== null) window.clearTimeout(previewTimerRef.current);
+  }, []);
+
+  /**
    * 学生的每一次输入。**本地状态立即变**（零延迟），然后进队列。
    *
    * 三种情形，第三条是最容易被漏掉的：
@@ -561,6 +606,9 @@ export function useWorksheetAnswers({
   const setDraft = useCallback((node: WorksheetQuestionNode, draft: AnswerDraft) => {
     setDrafts((prev) => ({ ...prev, [node.id]: draft }));
     const value = buildAnswerValue(node, draft);
+    // ★ 实时预览（不写库）。⚠️ 放在这里而不是 flush 里：flush 要等 1.5 秒，
+    // 而这一条的全部意义就是**不等那 1.5 秒**。
+    emitPreview(node.id, value);
     if (value) {
       enqueue({ questionId: node.id, value, at: Date.now() });
       return;
@@ -572,7 +620,7 @@ export function useWorksheetAnswers({
     if (pendingRef.current.some((item) => item.questionId === node.id)) {
       commitQueue(dropQueueItem(pendingRef.current, node.id));
     }
-  }, [commitQueue, enqueue]);
+  }, [commitQueue, enqueue, emitPreview]);
 
   // ── 断网恢复后自动重放（规格 §8.3）────────────────────────────────────────
   useEffect(() => {

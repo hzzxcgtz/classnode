@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { publishWorksheetClear, resetWorksheetClearBusForTest, subscribeWorksheetClear } from './worksheet-clear-bus.ts';
+import {
+  publishDraftPreview,
+  publishWorksheetClear,
+  resetWorksheetClearBusForTest,
+  subscribeDraftPreview,
+  subscribeWorksheetClear,
+} from './worksheet-socket-bus.ts';
 
 /**
  * 教师「清除这名学生在这份学习单上的作答」这条**命令**的投递。
@@ -104,4 +110,56 @@ test('🔴 投递途中新订阅的监听器不许收到这一条（`Set` 直接
     offA();
     resetWorksheetClearBusForTest();
   }
+});
+
+/* ── 出站：学生 → 教师（「他此刻正在写什么」）────────────────────────── */
+
+test('★ 出站：订阅者收到输入预览（题号 + 值）', () => {
+  resetWorksheetClearBusForTest();
+  const got: Array<{ questionId: string; value: unknown }> = [];
+  const off = subscribeDraftPreview((preview) => got.push({ questionId: preview.questionId, value: preview.value }));
+  try {
+    publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q3', value: '光合' });
+    publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q3', value: '光合作用' });
+    assert.deepEqual(got, [
+      { questionId: 'q3', value: '光合' },
+      { questionId: 'q3', value: '光合作用' },
+    ], '两次都要到（节流在调用方那一侧，这里只负责投递）');
+  } finally {
+    off();
+  }
+});
+
+/**
+ * 🔴 **两条通道必须互不串扰。**
+ *
+ * 它们的方向相反、用途也完全相反（一条是教师的命令、一条是学生的播报），
+ * 而实现上是同一个文件里的两个 `Set`。串了的话：清除指令会被当成输入预览转发出去、
+ * 或者学生的一次敲键会把「清空这一题」发给看板 —— 而**两边都不报错**。
+ */
+test('🔴 两条通道互不串扰（发输入预览不该惊动清除的监听器，反之亦然）', () => {
+  resetWorksheetClearBusForTest();
+  let clearHits = 0;
+  let draftHits = 0;
+  const offClear = subscribeWorksheetClear(() => { clearHits += 1; });
+  const offDraft = subscribeDraftPreview(() => { draftHits += 1; });
+  try {
+    publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q1', value: 'x' });
+    publishWorksheetClear({ classroomId: 'c1', participantId: 'p1', worksheetId: 'w1' });
+    assert.equal(clearHits, 1, '清除的监听器只该收到清除');
+    assert.equal(draftHits, 1, '输入的监听器只该收到输入');
+  } finally {
+    offClear();
+    offDraft();
+  }
+});
+
+test('★ 出站：退订之后不再收到（面板卸载）', () => {
+  resetWorksheetClearBusForTest();
+  let count = 0;
+  const off = subscribeDraftPreview(() => { count += 1; });
+  publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q1', value: 'a' });
+  off();
+  publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q1', value: 'b' });
+  assert.equal(count, 1);
 });

@@ -242,10 +242,21 @@ export interface TileAnswer {
   /** 题型中文名。 */
   typeLabel: string;
   /**
-   * 这一题**此刻**的作答值 —— 来自看板的作答行（`applyLiveRows` 已经把广播带来的
-   * 实时内容补进去了）。`undefined` = 这一题还没有任何行。
+   * 这一题**此刻**的作答值。`undefined` = 这一题还没有任何行。
+   *
+   * ⚠️ 它可能来自**两个不同的地方**，而界面上要能读出区别：
+   *   · 看板的作答行（`applyLiveRows` 补过落库广播）—— **库里已保存的那一份**；
+   *   · 「正在输入」那条实时通道（`draft`）—— **他此刻写在屏幕上的那一份**，
+   *     ⚠️ **还没落库**（学生端有 1.5 秒防抖）。
+   * `fromDraft` 说的就是「这一份是哪个」。
    */
   value: unknown;
+  /**
+   * ★ 2026-09-28：上面那个 `value` 是不是**还没落库**的实时预览。
+   * 界面上要据此给一个「正在写」的记号 —— 不说的话，教师会把一份还没存的草稿
+   * 当成「他已经交上来的答案」。
+   */
+  fromDraft: boolean;
 }
 
 export function activeAnswer(
@@ -253,6 +264,14 @@ export function activeAnswer(
   answerRows: ReadonlyArray<{ questionId: string; value: unknown }>,
   cells: WorksheetCellStatus[],
   lastQuestionId: string | null,
+  /**
+   * ★ 2026-09-28：他**此刻正在写**的那一份（来自「正在输入」那条实时通道，**没落库**）。
+   *
+   * 🔴 **只在它正好就是挑中的那一题时才采用。** 时间上两件事是分开的：
+   * 通道里那一份可能还是**上一题**的（他刚换了题、新的预览还没发出来）——
+   * 拿它去填这一题，教师会看到「第 3 题里写着第 2 题的答案」，而两边都不报错。
+   */
+  draft?: { questionId: string; value: unknown } | null,
 ): TileAnswer | null {
   const items = flattenAnswerable(nodes);
   if (items.length === 0) return null;
@@ -262,11 +281,14 @@ export function activeAnswer(
   if (at === null) return null;
   const item = items[at];
   const row = answerRows.filter((entry) => entry.questionId === item.node.id)[0];
+  // ⚠️ 题号对得上才用预览（见 `draft` 参数那一段）。
+  const useDraft = draft !== undefined && draft !== null && draft.questionId === item.node.id;
   return {
     node: item.node,
     heading: item.heading,
     typeLabel: questionTypeLabel(item.node.type),
-    value: row?.value,
+    value: useDraft ? draft.value : row?.value,
+    fromDraft: useDraft,
   };
 }
 

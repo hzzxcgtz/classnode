@@ -1,5 +1,19 @@
 /**
- * ★ 2026-09-28：教师「清除这名学生在这份学习单上的作答」这条**命令**的投递。
+ * ★ 2026-09-28：学生端与看板之间那两条**命令**的桥（**双向**，各一条）。
+ *
+ *   · **进站**（教师 → 学生）：`publishWorksheetClear` / `subscribeWorksheetClear` ——
+ *     「教师清除了这名学生在这份学习单上的作答」；
+ *   · **出站**（学生 → 教师）：`publishDraftPreview` / `subscribeDraftPreview` ——
+ *     「他此刻正在写什么」（不写库，只喂看板那一格的实时预览）。
+ *
+ * 🔴 **两条都必须绕开 React state**，理由见下面「为什么是一条总线」那一段；
+ * 而它们**只能**由 `useChatSocket` 收发 —— 学生端唯一进得了 `student:<id>` 房间、
+ * 也唯一带着会话身份的那条连接在那里。
+ *
+ * ⚠️ 文件原名 `worksheet-clear-bus.ts`（只有进站一条）—— 出站加进来之后那个名字就是
+ * 假的了，所以改了名。**别按旧名字去找它。**
+ *
+ * ── 为什么是一条总线，而不是会话层的 state ─────────────────────────────
  *
  * ── 为什么是一条总线，而不是会话层的 state ─────────────────────────────
  * 我第一版把它做成了 `useState`：socket 回调 → `setWorksheetClear` → 会话层 state →
@@ -81,8 +95,58 @@ export function subscribeWorksheetClear(listener: Listener): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** 仅供测试：清空监听器与序号（用例之间不互相污染）。 */
+/* ═══════════════════════════════════════════════════════════════════════
+   出站：学生 → 教师（「他此刻正在写什么」）
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 一条「正在输入」的预览。
+ *
+ * 🔴 **它不是一份可以回读的状态，而是一次性的播报** —— 收到就用、没有就什么都不显示。
+ * 所以不存历史、不回放、也不与库里的作答行合并（两者刻意分开：
+ * 「格子里的实时内容」与「库里的已保存内容」**不是同一份**，见看板那一侧的注释）。
+ */
+export interface DraftPreview {
+  /**
+   * 哪一间课堂。🔴 **服务端要拿它核身份**（与 `socket.data.classroomId` 比）——
+   * 不核的话，一个学生可以往**别的课堂**的看板里灌内容。
+   * ⚠️ 客户端送来的这个值**只是「他以为自己在哪」**，判据在服务端那一侧。
+   */
+  classroomId: string;
+  /**
+   * 哪一份学习单。⚠️ 服务端**不从库里推**（socket 只记了课堂，不知道学生在看哪一份）——
+   * 所以这个值必须由客户端带，而它只用来**转发**（看板按 participantId + worksheetId 归档）。
+   */
+  worksheetId: string;
+  /** 哪一道题（**必须**带上：没带题号的话看板不知道这个内容该画在哪一题上）。 */
+  questionId: string;
+  /** 此刻那一题的值。⚠️ 可能是**降过采样**的笔迹（见 `downsampleInkValue`）。 */
+  value: unknown;
+}
+
+type DraftListener = (preview: DraftPreview) => void;
+const draftListeners = new Set<DraftListener>();
+
+/**
+ * 发一条输入预览。**由学习单的作答 hook 调用**（它才知道学生正在写哪一题）。
+ *
+ * ⚠️ **节流由调用方负责**：这一层只做投递。理由与清除那条相反 ——
+ * 清除是低频事件（教师点一下），这里是**每次敲键都要走**的地方，
+ * 节流策略得和「谁在什么时机调用」放在一起才读得通。
+ */
+export function publishDraftPreview(preview: DraftPreview): void {
+  for (const listener of [...draftListeners]) listener(preview);
+}
+
+/** 订阅输入预览。**由 `useChatSocket` 调用**（它负责把这条转发到服务端）。 */
+export function subscribeDraftPreview(listener: DraftListener): () => void {
+  draftListeners.add(listener);
+  return () => { draftListeners.delete(listener); };
+}
+
+/** 仅供测试：清空两条通道的全部监听器与序号（用例之间不互相污染）。 */
 export function resetWorksheetClearBusForTest(): void {
   listeners.clear();
+  draftListeners.clear();
   sequence = 0;
 }

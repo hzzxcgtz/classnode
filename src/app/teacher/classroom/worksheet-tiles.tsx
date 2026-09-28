@@ -145,11 +145,23 @@ export function WorksheetTileContent({ state, answer, compact }: {
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px dashed #e2e8f0', paddingTop: 4, overflow: 'hidden' }}>
               {/* 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
                   下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。 */}
-              {state.kind === 'all-submitted' && (
-                <div style={{ flexShrink: 0, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {answer.heading} · {answer.typeLabel}
-                </div>
-              )}
+              {/* 🔴 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
+                  下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。
+                  ★ 而 `fromDraft` 那个记号**每一态都要有**：它说的是「这一份还没落库」，
+                  不说的话教师会把他**还在写**的草稿当成已经交上来的答案。 */}
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden' }}>
+                {state.kind === 'all-submitted' && (
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {answer.heading} · {answer.typeLabel}
+                  </span>
+                )}
+                {answer.fromDraft && (
+                  <span title="他此刻正在写，还没保存（学生端有 1.5 秒保存防抖）"
+                    style={{ marginLeft: 'auto', flexShrink: 0, padding: '0 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600 }}>
+                    正在写
+                  </span>
+                )}
+              </div>
               <TileAnswerBody answer={answer} />
             </div>
           )}

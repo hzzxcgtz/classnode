@@ -55,6 +55,15 @@ export interface WorksheetBoardData {
   settingsByWorksheet: Record<string, WorksheetSettings>;
   /** ★ 合并后的逐参与者进度（格子与矩阵都吃它）。 */
   progress: Record<string, ParticipantWorksheetProgress>;
+  /**
+   * ★ 2026-09-28：参与者 id → 他**此刻正在写**的那一份（`null`/缺键 = 没有）。
+   *
+   * 🔴 **它不是「库里的作答」，是「屏幕上的草稿」** —— 学生端的作答**落库**有 1.5 秒防抖
+   *（不防抖就是每敲一个字写一次库），而这一格要跟得上他的手，所以另开了一条
+   * **不写库、只喂预览**的通道（节流 300ms）。
+   * 界面上必须能读出这个区别 —— 见 `TileAnswer.fromDraft`。
+   */
+  liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   /** 立刻重拉一次（教师清除了数据之后调它）。 */
   refresh: () => void;
   /** 就地更新一行的「已查看」时间（不重拉整批 —— 教师是逐题点的，重拉会让滚动位置跳）。 */
@@ -106,6 +115,14 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
    * ⚠️ 但**下界是同一个**（`snapshot.startedAt`）—— 两处若各用一个判据，屏幕上会出现
    * 「格子说已提交、抽屉说作答中」这种同一份数据的两种说法，而两边都不报错。
    */
+  /**
+   * ★ 参与者 id → 他此刻正在写的那一份（**没落库**）。
+   * ⚠️ 与 `live` / `liveRows` **刻意分开**：那两个是「库里的真相的增量」，
+   * 这一个不是 —— 把它混进去会让「已保存」与「正在写」在界面上再也分不开。
+   */
+  const [liveDrafts, setLiveDrafts] = useState<
+    Record<string, { worksheetId: string; questionId: string; value: unknown }>
+  >({});
   const [liveRows, setLiveRows] = useState<
     Record<string, Record<string, LiveRowPatch & { lastArrivedAt: number | null }>>
   >({});
@@ -219,6 +236,16 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
           },
         };
       });
+      // 🔴 落库的广播到了 ⇒ **把这个人的「正在写」清掉**：那一份已经被取代
+      //（内容此刻就在库里，而且下面那一步会把它补进作答行）。
+      // ⚠️ 不清的话「正在写」那个记号会**永远挂着** —— 教帅会一直以为他还在敲字。
+      // 他继续敲，下一条预览会在 300ms 内把它填回来。
+      setLiveDrafts((prev) => {
+        if (prev[participantId] === undefined) return prev;
+        const next = { ...prev };
+        delete next[participantId];
+        return next;
+      });
       // ★ 乙档 / 丙档：内容与作答过程（抽屉那一侧读它）。
       // ⚠️ `valueOmitted` 的处置在 `applyLiveRows` 里（它**不许**覆盖快照里已有的内容）——
       // 这里只负责把广播原样收下来，一条判断都不做。
@@ -235,6 +262,24 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
             lastArrivedAt: at,
           },
         },
+      }));
+    });
+  }, [classroomId, on]);
+
+  /**
+   * ★ 2026-09-28：学生**正在输入**的实时预览（不写库，只喂看板那一格）。
+   * ⚠️ 与上面那条落库广播**是两条独立的数据流**，别合并 —— 见 `liveDrafts` 的注释。
+   */
+  useEffect(() => {
+    if (!classroomId) return;
+    return on('worksheet-draft-preview', (data) => {
+      if (data?.classroomId !== classroomId) return;
+      if (typeof data.participantId !== 'string' || !data.participantId) return;
+      if (typeof data.worksheetId !== 'string' || !data.worksheetId) return;
+      if (typeof data.questionId !== 'string' || !data.questionId) return;
+      setLiveDrafts((prev) => ({
+        ...prev,
+        [data.participantId]: { worksheetId: data.worksheetId, questionId: data.questionId, value: data.value },
       }));
     });
   }, [classroomId, on]);
@@ -289,6 +334,7 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     nodesByWorksheet,
     settingsByWorksheet,
     progress,
+    liveDrafts,
     refresh,
     markReviewed,
   };

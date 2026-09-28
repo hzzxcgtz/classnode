@@ -173,6 +173,18 @@ export interface ServerToClientEvents {
    * ⇒ 那一侧发不出去，只有教师那一侧。**不要为了凑一个 id 去猜** ——
    * 学生端下一次水合会自然对齐。
    */
+  /**
+   * ★ 2026-09-28：学生**正在输入**的实时预览（服务端**只转发给教师房间**，不写库）。
+   * 与上面那条客户端事件同名、方向相反 —— 学生发、教师收。
+   */
+  'worksheet-draft-preview': (data: {
+    classroomId: string;
+    participantId: string;
+    worksheetId: string;
+    questionId: string;
+    value: unknown;
+  }) => void;
+
   'worksheet-answers-cleared': (data: {
     classroomId: string;
     /** 参与者 id（= `ClassroomStudent.id`）。 */
@@ -210,6 +222,24 @@ export interface WebappDemand {
 
 export interface ClientToServerEvents {
   [event: string]: (...args: never[]) => void;
+  /**
+   * ★ 2026-09-28：学生**正在输入**的实时预览（不写库）。
+   *
+   * 🔴 它存在的唯一理由是「教师看板那一格要跟得上学生的手」，而学生的作答**落库**
+   * 是 1.5 秒防抖的（不防抖就是每敲一个字写一次库）—— 两者是两件事：
+   *   · **落库**（`worksheet-answer-updated`）：慢、可靠、是真相；
+   *   · **这一条**：快、不写库、只喂看板那一格的预览。
+   * ⚠️ 所以看板上「格子里的实时内容」与「库里的已保存内容」**不是同一份** ——
+   * 教师看到的是学生在写什么，不是已经存下了什么。
+   */
+  'worksheet-draft-preview': (data: {
+    classroomId: string;
+    worksheetId: string;
+    questionId: string;
+    /** 此刻那一题的值。⚠️ 笔迹可能被**降过采样**（它只喂那一格，不是存档）。 */
+    value: unknown;
+  }) => void;
+
   'join-classroom': (data: { classroomCode: string; studentId: string; token?: string }) => void;
   'join-teacher-board': (classroomId: string) => void;
   'listen-classroom-status': (classroomId: string) => void;

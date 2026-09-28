@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
-import { publishWorksheetClear } from '../worksheet/worksheet-clear-bus';
+import { publishWorksheetClear, subscribeDraftPreview } from '../worksheet/worksheet-socket-bus';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
 import type { WebappDemand } from '@/lib/socket-events';
@@ -63,6 +63,21 @@ interface ChatSocketOptions {
 export function useChatSocket(options: ChatSocketOptions) {
   const optionsRef = useRef(options);
   useEffect(() => { optionsRef.current = options; });
+
+  /**
+   * ★ 2026-09-28：把「他此刻正在写什么」转发到服务端（**不写库**）。
+   *
+   * 🔴 **必须从这里发**：这条连接是学生端唯一带着**会话身份**的那一条
+   *（服务端要拿 `socket.data.classroomId` 核身份才敢往教师房间转发）。
+   * 学习单那一侧只往总线上 publish —— 它自己开一条 socket 会新开一条**没有身份**的连接
+   *（而且服务端对同一学生只保留一条连接，另开一条会把聊天这条踢断）。
+   *
+   * ⚠️ 读的是 `optionsRef.current.wsRef.current`（**发的那一刻**才读）：
+   * 连接会被重建（换身份 / 重连），闭包里抓着旧的那条就再也发不出去了。
+   */
+  useEffect(() => subscribeDraftPreview((preview) => {
+    optionsRef.current.wsRef.current?.emit('worksheet-draft-preview', preview);
+  }), []);
 
   const startChatSession = async (studentId: string, studentName: string, classroomCode?: string, token?: string) => {
     const joinCode = classroomCode || optionsRef.current.code;

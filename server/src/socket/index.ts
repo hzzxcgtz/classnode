@@ -2179,6 +2179,46 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // 学生请求停止 AI 生成
+    /**
+     * ★ 2026-09-28：学生**正在输入**的实时预览 —— **只转发给教师房间，不写库**。
+     *
+     * 存在的理由：学生的作答**落库**是 1.5 秒防抖的（不防抖就是每敲一个字写一次库），
+     * 而教师看板那一格要跟得上学生的手。⇒ 两条通道各司其职：
+     *   · 落库（`PUT /answers` → `worksheet-answer-updated`）：慢、可靠、是真相；
+     *   · 这一条：快（学生端节流 300ms）、不写库、**只是预览**。
+     *
+     * 🔴 **身份一律取 `socket.data`，不信载荷里的**：`socket.data.classroomId` 是
+     * `join-classroom` 那一刻服务端自己写下的，客户端改不了。载荷里那个 `classroomId`
+     * 只用来**比对**（防「在 A 课堂的连接上往 B 课堂的看板灌内容」）。
+     * ⚠️ 少了这一步，任何一个学生都能伪造 `participantId` 往别人的格子里塞内容 ——
+     * 而那条路**不写库、也没有任何回显**，教师看到的会是一份凭空出现的答案。
+     *
+     * 🔴 **只发给 `teacher:` 房间**，绝不转发进任何学生房间：载荷里是别的同学的作答内容。
+     * （与 `broadcastAnswerUpdate` 那条同源 —— 它是"房间名写死一处"的第二个落点。）
+     *
+     * ⚠️ **不校验 `worksheetId` / `questionId` 是否真的属于这个课堂**：那要查库，
+     * 而这条通道的全部价值就是「快」（每 300ms 一次）。它**不写任何东西**，
+     * 最坏后果是教师那一格收到一份画不出来的内容（`answerView` 会落成「未作答」）——
+     * 比在这里加一次数据库往返划算得多。
+     */
+    socket.on('worksheet-draft-preview', (data: {
+      classroomId?: unknown; worksheetId?: unknown; questionId?: unknown; value?: unknown;
+    }) => {
+      const classroomId = socket.data.classroomId as string | undefined;
+      const participantId = socket.data.studentId as string | undefined;
+      if (!classroomId || !participantId) return;
+      if (!data || data.classroomId !== classroomId) return;
+      if (typeof data.worksheetId !== 'string' || !data.worksheetId) return;
+      if (typeof data.questionId !== 'string' || !data.questionId) return;
+      io.to(`teacher:${classroomId}`).emit('worksheet-draft-preview', {
+        classroomId,
+        participantId,
+        worksheetId: data.worksheetId,
+        questionId: data.questionId,
+        value: data.value ?? null,
+      });
+    });
+
     socket.on('stop-generation', async () => {
       // 查该学生所在课堂是否允许中断
       let classroomId: string | null = null;

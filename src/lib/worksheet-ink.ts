@@ -391,6 +391,59 @@ function readCanvas(raw: unknown): InkCanvas {
  * ⚠️ 数量**不在这里截断**：这里是读的一侧，截断会让「库里有什么」与「屏幕上画什么」
  * 变成两件事。上限只在写入口（`appendStroke` 与服务端的 400）。
  */
+/**
+ * ★ 2026-09-28：把一幅笔迹**抽稀**到指定体积以内 —— 只给「正在输入」那条实时通道用。
+ *
+ * 🔴 **为什么必须是抽稀，而不是「太大就不发」**：实测一幅认真的手写图约 **335 KB**
+ *（30 笔 × 300 点），而那条通道是**节流 300ms** 的 —— 原样发就是每秒一兆字节。
+ * 而看板那一格里的画只有 **200 来像素宽**，原始密度在那里本来就看不出来。
+ *
+ * 🔴 **它产出的值只喂预览，不是存档**，所以「抽稀后的形状略有不同」是可接受的：
+ *   · 落库那条路（`worksheet-answer-updated`）发的是**原值**（超限才不发）；
+ *   · 这一条只喂看板那一格，**没有第二个消费方**。
+ * ⚠️ 所以**不要**拿它的结果去写库或存 localStorage —— 那会把学生的画**永久降质**。
+ *
+ * 判据是「抽掉**偶数位**的点」（保首尾）：均匀抽稀比「每 N 个取一个」简单，
+ * 而且首尾一定在（少了首尾，一笔的形状会明显变形）。
+ */
+export function downsampleInkValue(value: unknown, budgetChars: number): unknown {
+  const ink = readInkValue(value);
+  // 不是笔迹（文本 / 选择 / 结构化值都远小于预算）⇒ **原样返回**。
+  if (!ink) return value;
+  if (JSON.stringify(value).length <= budgetChars) return value;
+
+  // 逐轮加倍抽稀，直到装得下。⚠️ **有上界**（8 轮 = 抽到 256 分之一）：
+  // 无上界的循环遇上「算不准的体积」会一直转，而这一头是学生的浏览器。
+  let strokes = ink.strokes;
+  for (let round = 0; round < 8; round += 1) {
+    strokes = strokes.map((stroke) => ({
+      ...stroke,
+      points: keepEveryOther(stroke.points, round + 1),
+    }));
+    const candidate = { format: ink.format, canvas: ink.canvas, strokes };
+    if (JSON.stringify(candidate).length <= budgetChars) return candidate;
+  }
+  // 抽到顶还装不下（几千笔的怪物）⇒ 返回抽到顶的那一份，**不再继续抽**
+  //（再抽下去那一笔就只剩两个点了，画出来是一条直线，比不画更误导）。
+  return { format: ink.format, canvas: ink.canvas, strokes };
+}
+
+/**
+ * 抽掉第 `2^n` 位上的点，保留首尾。
+ *
+ * ⚠️ 结果至少保留**两个点**（首尾）：少于两个点连不成线，`strokePath` 会画出空白 ——
+ * 而空白与「他没画」长得一样。
+ */
+function keepEveryOther(points: readonly InkPoint[], round: number): InkPoint[] {
+  const step = 2 ** round;
+  if (points.length <= 2) return [...points];
+  const kept: InkPoint[] = [];
+  for (let index = 0; index < points.length; index += step) kept.push(points[index]);
+  const last = points[points.length - 1];
+  if (kept[kept.length - 1] !== last) kept.push(last);
+  return kept;
+}
+
 export function readInkValue(raw: unknown): InkValue | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;

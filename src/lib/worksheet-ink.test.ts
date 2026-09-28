@@ -51,6 +51,7 @@ import {
   strokeWidthPx,
   toPixel,
   undoStroke,
+  downsampleInkValue,
 } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
 
@@ -461,4 +462,56 @@ test('readInkValue：读出来的那份值能直接喂给渲染三件套（换�
   assert.equal(Number.isFinite(y), true);
   assert.equal(Number.isFinite(strokeWidthPx(parsed.strokes[0], parsed.canvas)), true);
   assert.equal(strokePath(parsed.strokes[0].points, parsed.canvas).length > 0, true);
+});
+
+/* ── ★ 抽稀（只给「正在输入」那条实时通道用）────────────────────────── */
+
+test('★ 抽稀：不是笔迹的值**原样返回**（文本/选择远小于预算，不该被动）', () => {
+  const text = { format: 'text/v1', text: '光合作用需要阳光' };
+  assert.equal(downsampleInkValue(text, 100), text, '返回的必须是**同一个对象**（原样，不是复制）');
+});
+
+test('★ 抽稀：装得下就原样返回（不许无谓地降质）', () => {
+  const small = {
+    format: 'ink/v1', canvas: { w: 10, h: 10 },
+    strokes: [{ color: '#000', width: 2, points: [[0, 0], [1, 1]] as InkPoint[] }],
+  };
+  assert.equal(downsampleInkValue(small, 100000), small);
+});
+
+/**
+ * 🔴 **装不下时必须真的变小，而且首尾要留着。**
+ * 一幅实测约 335 KB 的画，只有抽稀才能走那条 300ms 节流的通道。
+ */
+test('🔴 抽稀：超预算的一幅画要被抽小，且每一笔的首尾都在', () => {
+  const points: InkPoint[] = Array.from({ length: 400 }, (_, index) => [index / 400, index / 400] as InkPoint);
+  const big = {
+    format: 'ink/v1', canvas: { w: 320, h: 240 },
+    strokes: Array.from({ length: 8 }, () => ({ color: '#000', width: 2, points })),
+  };
+  const before = JSON.stringify(big).length;
+  assert.ok(before > 20000, `前提：这一幅要真的超预算（实际 ${before}）`);
+
+  const after = downsampleInkValue(big, 4000);
+  const size = JSON.stringify(after).length;
+  assert.ok(size <= 4000, `抽稀后要装得下：${size} > 4000`);
+  const read = readInkValue(after)!;
+  assert.equal(read.strokes.length, 8, '笔数不许变（少一笔就是少一条线）');
+  for (const stroke of read.strokes) {
+    assert.deepEqual(stroke.points[0], points[0], '每一笔的首点必须在');
+    assert.deepEqual(stroke.points[stroke.points.length - 1], points[points.length - 1], '每一笔的尾点必须在');
+  }
+});
+
+/**
+ * 🔴 **少于两个点的笔画画不出线**（`strokePath` 会给一条空路径），而空白与「他没画」
+ * 长得一模一样 —— 所以抽稀**永远不能把一笔抽到只剩一个点**。
+ */
+test('🔴 抽稀：一笔只剩两个点时不再抽（再抽就画不出线了）', () => {
+  const tiny = {
+    format: 'ink/v1', canvas: { w: 10, h: 10 },
+    strokes: [{ color: '#000', width: 2, points: [[0, 0], [1, 1]] as InkPoint[] }],
+  };
+  const out = readInkValue(downsampleInkValue(tiny, 1))!;
+  assert.equal(out.strokes[0].points.length, 2, '两个点必须都留着');
 });

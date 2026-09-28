@@ -1885,6 +1885,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? [],
                 state.cells,
                 wb.progress[participant.id]?.lastQuestionId ?? null,
+                // ★ 他此刻正在写的那一份（没落库）。⚠️ 只在**它就是挑中的那一题**时
+                // 才会被采用 —— 判据在 `activeAnswer` 里（那里有一条用例钉着）。
+                participant ? wb.liveDrafts[participant.id] ?? null : null,
               )
               : null}
             compact={compact}

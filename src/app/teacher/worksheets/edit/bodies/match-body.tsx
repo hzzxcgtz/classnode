@@ -65,46 +65,56 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                 ) : <span />}
               </div>
 
-              {/* ★ 2026-09-28（教师裁定甲）：这一格从**一对一的下拉**换成**开关** ——
-                  一个左项可以连到好几个右项（一对多），好几个左项也可以连同一个右项（多对一）。
-                  🔴 为什么不是一张真正的矩阵（左项当行、右项当列）：这个编辑器是**行式**的
-                     —— 第 i 行同时编辑「左项 i」与「右项 i」，左项与右项是**交错**排的，
-                     摆不出「左项一列、右项一行」。这里的语义与矩阵**逐字相同**
-                     （每格 = 一条线），只是把列摊在了行里。
-                  ⚠️ 「不连线（留空）」现在是**一个开关都不开**，不再是一个选项。 */}
-              {showAnswer && (leftEntry ? (
-                <div className="worksheet-editor-pair-toggles" role="group"
-                  aria-label={`「${leftEntry.text.trim() || `左项 ${index + 1}`}」连到哪几项`}>
-                  {right.map((item, itemIndex) => {
-                    const checked = pairs.some((pair) => pair.leftId === leftEntry.id && pair.rightId === item.id);
-                    return (
-                      <label
-                        key={item.id || `missing-${itemIndex}`}
-                        className={[
-                          'worksheet-editor-pair-toggle',
-                          checked ? 'is-on' : '',
-                          // ⚠️ 禁用态用**一个类**而不是 CSS 的 `:has(input:disabled)` ——
-                          //    `:has()` Safari 15 不支持，而 globals.css 学生端也加载
-                          //    （`check-classroom-browser-compat.mjs` 当场把构建拦下来了）。
-                          leftEntry.id && item.id ? '' : 'is-disabled',
-                        ].filter(Boolean).join(' ')}
-                        title={item.id ? undefined : '这一项还没有 id（先在右边把它写完）'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={!leftEntry.id || !item.id}
-                          onChange={(event) => commit({
-                            ...match,
-                            pairs: matchTogglePair(pairs, leftEntry.id, item.id, event.target.checked),
-                          })}
-                        />
-                        {rightLabel(item.text, itemIndex)}
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : <span />)}
+              {/* ★ 2026-09-28（教师第二轮）：**带复选框的下拉**。
+                  第一版我做成了「把每个右项摊成一行开关」—— 教师当场否掉：
+                  「那你挤在一块儿，我也看不清楚呀。你这里完全可以使用下拉式的，带复选框的那种。」
+                  🔴 摊开那一版的问题不是控件本身，是**右项被重复了三遍**（每个左项一行），
+                     而组与组之间看不出谁属于谁。下拉把那一列收进一个控件里：
+                     一行一个左项、一屏三个控件。
+                  ⚠️ 用原生 `<details>` / `<summary>` 而不是自己写开关状态：
+                     · 不用管「点外面关掉」、不用管键盘与 Esc（浏览器给）；
+                     · 编辑器里已有先例（「从 Excel 粘贴一张表」那个折叠块）。
+                  ⚠️ 摘要行**必须写出当前连了哪几项** —— 收起时它就是唯一的信息，
+                     写「已选 2 项」的话教师还得展开才知道连的是谁。 */}
+              {showAnswer && (leftEntry ? (() => {
+                const chosen = right.filter((item) => pairs.some(
+                  (pair) => pair.leftId === leftEntry.id && pair.rightId === item.id,
+                ));
+                const summary = chosen.length === 0
+                  ? '不连线（留空）'
+                  : chosen.map((item) => rightLabel(item.text, right.indexOf(item))).join('、');
+                return (
+                  <details className="worksheet-editor-pair-picker">
+                    <summary title={summary}>{summary}</summary>
+                    <div className="worksheet-editor-pair-picker-panel" role="group"
+                      aria-label={`「${leftEntry.text.trim() || `左项 ${index + 1}`}」连到哪几项`}>
+                      {right.map((item, itemIndex) => {
+                        const checked = pairs.some(
+                          (pair) => pair.leftId === leftEntry.id && pair.rightId === item.id,
+                        );
+                        return (
+                          <label
+                            key={item.id || `missing-${itemIndex}`}
+                            className={`worksheet-editor-pair-option${checked ? ' is-on' : ''}${leftEntry.id && item.id ? '' : ' is-disabled'}`}
+                            title={item.id ? undefined : '这一项还没有 id（先在右边把它写完）'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!leftEntry.id || !item.id}
+                              onChange={(event) => commit({
+                                ...match,
+                                pairs: matchTogglePair(pairs, leftEntry.id, item.id, event.target.checked),
+                              })}
+                            />
+                            {rightLabel(item.text, itemIndex)}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                );
+              })() : <span />)}
             </div>
           );
         })}

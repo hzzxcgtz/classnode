@@ -6205,45 +6205,73 @@ tr:hover td {
   border-top: 1px solid #eef2f6;
 }
 
-/* ── 连线题的配对开关（★ 2026-09-28，裁定甲：支持一对多 / 多对一）────────────
-   原来这里是一个 `<select>`（一对一）。现在是一行开关：每个右项一个，
-   点一下加一条线、再点去掉 —— 同一行开多个就是一对多。
-   ⚠️ 宽度会随右项个数长，所以换行（`flex-wrap`）而不是溢出：右项多的时候
-      这一格变成两行开关，比横向滚动好找。 */
-.worksheet-editor-pair-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+/* ── 连线题的「正确配对」：**带复选框的下拉**（★ 2026-09-28，教师第二轮）────────
+   第一版是「把每个右项摊成一行开关」，教师否掉：「那你挤在一块儿，我也看不清楚呀。
+   你这里完全可以使用下拉式的，带复选框的那种。」
+   ⇒ 一行一个左项、收起时只占一行；展开是一列复选框（右项各一次，不重复）。
+   ⚠️ 用 `<details>` ⇒ 不用自己管开关状态、点外面关掉、键盘与 Esc（浏览器给）。
+   ⚠️ 面板**绝对定位**在摘要行下面 —— 展开时不该把下面的行推下去（那是「跳」）。
+      定位的祖先是谁由 `<details>` 自己决定，所以这里只给 `position: relative`。 */
+.worksheet-editor-pair-picker {
+  position: relative;
   min-width: 0;
 }
 
-.worksheet-editor-pair-toggle {
-  display: inline-flex;
+.worksheet-editor-pair-picker > summary {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 10px;
   border: 1px solid #dbe3ee;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #fff;
-  color: #475569;
-  font-size: 0.72rem;
+  color: #334155;
+  font-size: 0.75rem;
   cursor: pointer;
-  max-width: 100%;
+  /* ⚠️ 摘要可能很长（连了三项）⇒ 截断而不是把那一行撑宽：
+     右边那一列的宽度是版面的一部分，被内容推着跑会让整张表跳。 */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  list-style: none;
 }
 
-/* 打开了的那一条 —— 底色与「已选中」那一档一致（与其它选中态同一个绿？不：
-   这里用主色淡底，与 `.worksheet-editor-mode-tabs .is-selected` 同源）。 */
-.worksheet-editor-pair-toggle.is-on {
-  border-color: #93b4f5;
-  background: #eef4ff;
-  color: #1d4ed8;
-  font-weight: 600;
+.worksheet-editor-pair-picker > summary::-webkit-details-marker { display: none; }
+.worksheet-editor-pair-picker > summary::after { content: '▾'; margin-left: auto; color: #94a3b8; }
+.worksheet-editor-pair-picker[open] > summary { border-color: #93b4f5; background: #f6f9ff; }
+
+.worksheet-editor-pair-picker-panel {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .14);
 }
 
-/* 条目还没写完 id 时这一格点不了（⚠️ 不用 `:has(input:disabled)`：Safari 15 不支持，
-   而 globals.css 学生端也要加载 —— 那条标记是构建门禁会拦的）。 */
-.worksheet-editor-pair-toggle.is-disabled {
-  opacity: .55;
-  cursor: default;
+.worksheet-editor-pair-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: #334155;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
 }
+
+.worksheet-editor-pair-option:hover { background: #f1f5f9; }
+.worksheet-editor-pair-option.is-on { background: #eef4ff; color: #1d4ed8; font-weight: 600; }
+/* 条目还没写完 id 时点不了（⚠️ 不用 `:has()`：Safari 15 不支持，而这份 CSS 学生端也加载）。 */
+.worksheet-editor-pair-option.is-disabled { opacity: .55; cursor: default; }

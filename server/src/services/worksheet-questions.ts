@@ -995,24 +995,18 @@ function judgeMatch(data: Record<string, unknown>, value: unknown, tolerance: nu
   const links = readStrictPairs(readField(value, 'links'));
   if (links === null || links.length === 0) return 'incorrect';
 
-  // 两端各数一次出现次数：某个左项或右项**一共被用到超过一次**时，用到它的那些线都不算对。
-  // ⚠️ 「重复使用」**不限于「被别的连线用了」**：同一条线被原样提交两次
-  // （`[{l1,r1},{l1,r1}]`）同样算重复 —— 上面 JSDoc 那句「每一个端点 id 只许出现一次」
-  // 就是这么写的，这里是对它的行内复述（曾经写成「被**别的**连线重复使用时」，
-  // 那句话把同一条线提交两次的情形漏在外面，与实现不符）。
-  const leftUse = new Map<string, number>();
-  const rightUse = new Map<string, number>();
-  for (const link of links) {
-    leftUse.set(link.leftId, (leftUse.get(link.leftId) ?? 0) + 1);
-    rightUse.set(link.rightId, (rightUse.get(link.rightId) ?? 0) + 1);
-  }
+  // ★ 2026-09-28（教师裁定「甲」）：**逐条判断对错** —— 一条线对不对，只看它自己在不在
+  // 正确答案里。**去掉了**原来那条「某个左项/右项被用到超过一次 ⇒ 用到它的线全不算对」。
+  //
+  // 🔴 为什么去掉：那条规则是「**一对一**」这个假设的落点，而教师要求支持一对多 /
+  // 多对一 / 多对多。留着它的话，勾选矩阵里同一行勾两格（一对多）会被判成错。
+  // ⚠️ **它改变了老题的判分**（教师知情并选择了甲）：原来「A→1 对 + A→2 错」两条都不算，
+  //    现在 A→1 算一条命中 ⇒ 分数变宽松。方向是「更公平」。
+  // ⚠️ 于是「同一条线提交两次」(`[{l1,r1},{l1,r1}]`) 也从「一条都不算」变成「算一条命中、
+  //    但 `links.length` 多于答案 ⇒ 拿不到全对」—— 下面那条 `links.length` 的判据管着它。
   let hit = 0;
   for (const pair of pairs) {
-    const matched = links.some((link) =>
-      link.leftId === pair.leftId
-      && link.rightId === pair.rightId
-      && leftUse.get(link.leftId) === 1
-      && rightUse.get(link.rightId) === 1);
+    const matched = links.some((link) => link.leftId === pair.leftId && link.rightId === pair.rightId);
     if (matched) hit += 1;
   }
   // 未出现在答案表里的左项可以留空，但学生若给这些干扰项多连了线，不能算全对。

@@ -553,44 +553,55 @@ test('连线：至少一对正确 ⇒ partial；一对都不对 ⇒ incorrect', 
   assertIncorrect(node, { format: 'match/v1', links: [] });
 });
 
-test('🔴 连线：重复连同一个右项 —— 那一条不算对，且**不抛**', () => {
-  // 「一条左项只能连一个右项」是连线题的题面约束（`validateQuestion` 用
-  // `isValidMatching` 把它钉在**教师那一侧**）。学生交上来两条汇到同一个右项的连法
-  // 时，那两条里没有一条是可信的 —— 判分不能因为「右项 r3 出现过」就给 l2 记一次对。
+test('🔴 连线：一个左项连了两条（一条对一条错）⇒ **partial**（★ 2026-09-28 裁定甲变了这一档）', () => {
+  // 🔴 **这条用例是本次改动的见证**：它原来断言的是 `incorrect`。
   //
-  // ⚠️ 两个左项的情形（一条对、一条重复）在不同口径下会给出 `partial` 或 `incorrect`；
-  // 这里用**三个左项**构造，让「重复的那条不算对」在两种口径下都落到同一档：
-  // l1→r1 对、l2→r3 与 l3→r3 重复（r3 被用了两次）⇒ 只剩 1 对 ⇒ partial。
-  const node = matchNode([
-    { leftId: 'l1', rightId: 'r1' },
-    { leftId: 'l2', rightId: 'r2' },
-    { leftId: 'l3', rightId: 'r3' },
-  ]);
-  const links = [
-    { leftId: 'l1', rightId: 'r1' },
-    { leftId: 'l2', rightId: 'r3' },
-    { leftId: 'l3', rightId: 'r3' }, // r3 被连了两次
-  ];
-  assertVerdict(node, { format: 'match/v1', links }, 'partial', P.half);
-
-  // 同一对连法重复提交：也不该被算两次（它只可能命中同一个正确配对一次）。
-  assertVerdict(node, { format: 'match/v1', links: [
-    { leftId: 'l1', rightId: 'r1' },
-    { leftId: 'l1', rightId: 'r1' },
-    { leftId: 'l2', rightId: 'r2' },
-    { leftId: 'l3', rightId: 'r3' },
-  ] }, 'partial', P.half);
-
-  // 一条左项被连到两个右项时，**不能**因为它同时含有正确的那条就给满分：
-  // 学生画了三条线（l1→r1 对、l2→r2 对、l1→r3 错），l1 那一端是矛盾的。
-  const extra = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
-  assertVerdict(extra, { format: 'match/v1', links: [
-    { leftId: 'l1', rightId: 'r1' },
-    { leftId: 'l2', rightId: 'r2' },
-    { leftId: 'l1', rightId: 'r3' },
-  ] }, 'partial', P.half);
+  // 旧规则（一对一）：某个左项/右项**一共被用到超过一次** ⇒ 用到它的那些线**全不算对**
+  // ⇒ l1 被用了两次 ⇒ 那条对的也被作废 ⇒ 0 命中 ⇒ `incorrect`。
+  // 新规则（教师裁定「甲」：支持一对多 / 多对一 / 多对多）：**逐条判断对错** ——
+  // 一条线对不对只看它自己在不在正确答案里 ⇒ l1→r1 算一条命中 ⇒ `partial`。
+  //
+  // ⚠️ 这就是那条规则**改变了老题判分**的地方（教师知情并选了甲）：同一种作答，
+  //    分数从「0 分」变宽松成「部分给分」。方向是「更公平」，但它确实变了。
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }]);
+  const value = { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }] };
+  assert.equal(grade(node, value, { full: 2, half: 1 })?.state, 'partial');
 });
 
+test('🔴 连线：**一对多**（同一个左项连两个右项）⇒ correct', () => {
+  // 教师在勾选矩阵里同一行勾两格 —— 这是本次新增的能力，旧规则会把它判错。
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }]);
+  const value = { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }] };
+  assert.equal(grade(node, value, { full: 2, half: 1 })?.state, 'correct');
+});
+
+test('🔴 连线：**多对一**（两个左项连同一个右项）⇒ correct', () => {
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' }]);
+  const value = { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' }] };
+  assert.equal(grade(node, value, { full: 2, half: 1 })?.state, 'correct');
+});
+
+test('🔴 连线：**多对多**答全 ⇒ correct；多连一条错线 ⇒ 至多 partial', () => {
+  const node = matchNode([
+    { leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' },
+    { leftId: 'l2', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' },
+  ]);
+  const all = { format: 'match/v1', links: [
+    { leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' },
+    { leftId: 'l2', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' },
+  ] };
+  assert.equal(grade(node, all, { full: 2, half: 1 })?.state, 'correct', '四条全对');
+  // 多连一条错的：命中仍是 4，但 `links.length` 多于答案 ⇒ **不给全对**
+  // （与多选题那条纪律同源：部分给分只奖励「少做」，不奖励「做错」）
+  const extra = { format: 'match/v1', links: [...all.links, { leftId: 'l3', rightId: 'r9' }] };
+  assert.equal(grade(node, extra, { full: 2, half: 1 })?.state, 'partial', '多连错线 ⇒ 不能全对');
+});
+
+test('🔴 连线：同一条线提交两次 ⇒ 算一条命中、但拿不到全对（旧规则是「一条都不算」）', () => {
+  const node = matchNode([{ leftId: 'l1', rightId: 'r1' }]);
+  const value = { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r1' }] };
+  assert.equal(grade(node, value, { full: 2, half: 1 })?.state, 'partial');
+});
 test('🔴 连线：links 里含形状不全的元素 ⇒ 整个作答判错', () => {
   // ⚠️ 这里**刻意不是**「丢掉坏元素、剩下的一条仍可判定」（那是本用例的第一版，
   // 按它写的话判分是错的）。审查者探针（正确配对 `[{l1,r1},{l2,r2}]`）：

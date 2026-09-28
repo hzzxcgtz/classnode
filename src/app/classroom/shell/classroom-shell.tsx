@@ -743,9 +743,6 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
               // ★ M5a：课堂级「锁定作答」。⚠️ 走 props 而不是读 `chat.classroom.answersLocked`
               // —— 那个对象 15 秒才刷新一次，而锁定要**立刻**生效。
               answersLocked={answersLocked}
-              // ★ 2026-09-28：教师清除了这名学生在这份学习单上的作答。
-              // 与 `demand` 同一条路：socket 只挂在 `useChatSocket` 里，外壳只做搬运。
-              worksheetClear={chat.worksheetClear}
             />
           ) : (
             // 🔴 **这一支是这道编译期门本身，别删。** 三个模块全落地之后 `id` 到这里是

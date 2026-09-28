@@ -30,7 +30,7 @@ import type { WorksheetBackgroundTheme, WorksheetSurfaceOpacity } from '@/lib/ty
 //（`worksheet-questions.ts` 只是转出它们）。这里直接引那个文件，是为了让
 // 「面板读/写的是哪个形状」在这份 import 清单里就看得见。
 import { emptyDraftFor, isDraftEmpty, type AnswerDraft } from '@/lib/worksheet-answer-value';
-import type { ModulePanelProps, WorksheetClearCommand } from '../classroom-types';
+import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
 import { useModuleViewport } from '../shell/use-module-viewport';
@@ -603,16 +603,9 @@ export interface WorksheetPanelProps extends ModulePanelProps {
    * **立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
    */
   answersLocked: boolean;
-  /**
-   * ★ 2026-09-28（教师第 4 条）：教师从看板清除了这名学生在这份学习单上的作答。
-   * 与 `answersLocked` **同一条路**（会话层专门 state + socket 事件，外壳转手）——
-   * 理由是实测出来的：学生端唯一进得了 `student:<id>` 房间的连接在 `useChatSocket` 里，
-   * 面板自己订阅收不到（见 `WorksheetClearCommand` 那段）。
-   */
-  worksheetClear: WorksheetClearCommand | null;
 }
 
-export function WorksheetPanel({ active, classroom, session, toast, setToast, answersLocked, worksheetClear }: WorksheetPanelProps) {
+export function WorksheetPanel({ active, classroom, session, toast, setToast, answersLocked }: WorksheetPanelProps) {
   const accent = MODULE_META.worksheet.accent;
   const label = MODULE_META.worksheet.label;
 
@@ -753,10 +746,11 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     // ⚠️ 不要改成读 `classroom?.answersLocked`：那个对象 15 秒才刷新一次，
     // 而锁定要**立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
     answersLocked,
-    worksheetClear,
     // ★ 2026-09-28：收到清除指令后重拉一次服务端那一份 —— 重水合走**本面板既有**的
     // 那条 `[worksheetId, reloadToken]` 取数 + `[queueKey, savedAnswers]` 水合，
     // 不在别处手写第二份（手写那份曾经把学生端搞成假死）。
+    // ⚠️ 指令本身走**总线**（`worksheet-clear-bus.ts`），不经过本面板的任何 prop ——
+    // 见那条链被拆掉的理由。
     onCleared: handleCleared,
   });
 

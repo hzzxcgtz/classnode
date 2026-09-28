@@ -11,7 +11,8 @@ import {
   type AnswerDraft,
   type WorksheetAnswerValue,
 } from '@/lib/worksheet-questions';
-import type { ChatToast, WorksheetClearCommand } from '../classroom-types';
+import type { ChatToast } from '../classroom-types';
+import { subscribeWorksheetClear } from './worksheet-clear-bus';
 import {
   classifyFailure,
   shouldFlushOnLockChange,
@@ -112,16 +113,7 @@ export interface UseWorksheetAnswersOptions {
    * 它由会话层的专门 state + socket 事件供着，一路 props 递到本 hook。
    */
   answersLocked: boolean;
-  /**
-   * ★ 2026-09-28（教师第 4 条）：教师从看板清除了这名学生在这份学习单上的作答。
-   *
-   * 🔴 **不许改回「本 hook 自己用 `useSocket()` 订阅」** —— 实测栽过：
-   * `@/lib/socket` 那个单例是**教师端**的，学生这边用它只会新开一条从没
-   * `join-classroom` 过的连接 ⇒ 广播永远收不到，而**两边都不报错**。
-   * 学生端唯一在 `student:<id>` 房间里的连接是 `useChatSocket` 那条，
-   * 所以指令由会话层转手进来。详见 `WorksheetClearCommand`。
-   */
-  worksheetClear: WorksheetClearCommand | null;
+
   /**
    * ★ 2026-09-28：收到清除指令后，让**面板**重拉一次服务端那一份
    *（面板里就是 `setReloadToken((n) => n + 1)`）。
@@ -184,7 +176,6 @@ export function useWorksheetAnswers({
   savedAnswers,
   setToast,
   answersLocked,
-  worksheetClear,
   onCleared,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
@@ -345,44 +336,52 @@ export function useWorksheetAnswers({
    * 而服务端那一行已经被删了 —— 留着它的后果是学生随后清空这个字段时会发一条「清空」
    * 给一个**不存在的行**，服务端据此建出一行空作答。
    */
-  const seenClearTokenRef = useRef(worksheetClear?.token ?? 0);
+  /**
+   * ★ 2026-09-28（教师第 4 条）：教师在**看板**上清掉了这名学生在这份学习单上的作答。
+   *
+   * 🔴 **指令走总线（`worksheet-clear-bus.ts`），不经过任何 React state / prop。**
+   * 这条链的形状换过两次，每一次的原因都值得记下来：
+   *   ① 第一版在本 hook 里调 `useSocket()` 订阅 —— 那是**教师端**的单例，学生这边用它会
+   *      新开一条从没 `join-classroom` 过的连接 ⇒ 广播永远收不到，而**两边都不报错**
+   *      （服务端日志干净、事件照发、学生屏幕上什么都不动）。学生端唯一在
+   *      `student:<id>` 房间里的连接是 `useChatSocket` 那条；
+   *   ② 第二版把指令做成会话层 state，经外壳 → 面板 → 本 hook。教师报
+   *      **「学生在输入时清除该题 ⇒ 学生端浏览器假死」**，而我在那条链上读了三遍
+   *      都没读出回路 —— **读不出来就不该继续在上面加东西**；
+   *   ③ 现在这条：`useChatSocket` 收到事件就 publish，本 hook 自己 subscribe。
+   *      **链路上一个 setState 都没有** ⇒ 结构上不可能由这次投递引起重渲染。
+   *      形状本来就该这样：清除是一条**命令**（边沿触发），不是**状态**（电平触发）。
+   *
+   * 两件事，缺一不可：
+   *   ① **丢掉这个 scope 的待保存项** —— 不丢的话，学生那一次 1.5 秒防抖保存（或队列里
+   *      已有的那一条）会把内容**写回去**，而服务端那一行刚被删掉 ⇒ 教师看到
+   *      「清了又回来了」；
+   *   ② **让面板重拉服务端那一份**（`onCleared`）。重水合交给面板那条**已经跑了很久、
+   *      有测试的** effect（`[queueKey, savedAnswers]`）—— 它本来就是这件事唯一的产出地，
+   *      第一版手写的第二份既多余、又是我没能读清成因的那条回路的一部分。
+   *
+   * ⚠️ 订阅**之前**发出的命令收不到（总线没有回放），这正是要的：换身份再切回来时面板
+   *    会重挂，重放一条十几分钟前的指令会把学生**在那之后重新答的**内容抹掉。
+   *    旧版靠一个 `seenClearTokenRef` 手工挡这件事，现在是结构性的。
+   */
   useEffect(() => {
-    const command = worksheetClear;
-    if (!command) return;
-    // 三守卫在 token 之前：ids 还没就位时（水合中）不该把这条指令「消费」掉，
-    // 否则它会在这一轮丢掉、下一轮因为 token 已记账不再处理 —— 静默丢失。
-    // 对不上时**要吭声**：那意味着教师的动作在这台设备上什么也没发生，而屏幕上没有提示。
-    if (command.classroomId !== classroomId) { console.warn('[worksheet] 清除指令被丢：不是这间课堂'); return; }
-    if (command.participantId !== participantId) { console.warn('[worksheet] 清除指令被丢：不是这个参与者'); return; }
-    if (command.worksheetId !== worksheetId) { console.warn('[worksheet] 清除指令被丢：不是这份学习单'); return; }
-    // 🔴 挂载之前就存在的那一条**不重放**（`useRef` 的初值 = 挂载那一刻的 token）：
-    // 换身份再切回来时本 hook 会重挂，而 `worksheetClear` 还停在会话层 ——
-    // 重放一条十几分钟前的指令会把学生**在那之后重新答的**内容抹掉。
-    if (command.token <= seenClearTokenRef.current) return;
-    seenClearTokenRef.current = command.token;
+    return subscribeWorksheetClear((command) => {
+      // ⚠️ 对不上时**要吭声**：那意味着教师的动作在这台设备上什么也没发生，
+      // 而屏幕上没有任何东西会提示这件事（本仓反复吃的一类缺陷）。
+      if (command.classroomId !== classroomId) { console.warn('[worksheet] 清除指令被丢：不是这间课堂'); return; }
+      if (command.participantId !== participantId) { console.warn('[worksheet] 清除指令被丢：不是这个参与者'); return; }
+      if (command.worksheetId !== worksheetId) { console.warn('[worksheet] 清除指令被丢：不是这份学习单'); return; }
 
-    // ── 只做两件事，**一个手工 setState 都没有** ──────────────────────────
-    //
-    // ⊘ 这里第一版把「重水合」整个搬了进来（`hydrateAnswers` + 六个 setter +
-    //   `lastSentRef`），结果教师报「学生在输入时去清除该题，学生端浏览器假死」。
-    //   从 socket 回调那条路去动这五六个 state，是一条**我没能读清成因**的回路
-    //   （读了三遍都终止，而它确实假死了）。既然读不出来，就不该继续在那条路上加东西。
-    //
-    // ⇒ 改成：**服务端才是真相**，让面板重拉一次那一份，重水合走**已经跑了很久、
-    //   有测试的**那条路（`[queueKey, savedAnswers]` 那个 effect）。
-    //   它本来就是这件事唯一的产出地，我不该再手写第二份。
-    //
-    // ① 丢掉这个 scope 的待保存项。**这一件必须在这里做**：不丢的话，学生那一次
-    //    1.5 秒防抖保存（或队列里已有的那一条）会把内容**写回去**，而服务端那一行
-    //    刚被删掉 —— 教师看到的是「清了又回来了」。
-    //    ⚠️ 整张清除时丢**全部**（这份 hook 就是逐份学习单的）。
-    const scope = command.questionId;
-    commitQueue(scope === null ? [] : pendingRef.current.filter((item) => item.questionId !== scope));
+      // ① 丢掉这个 scope 的待保存项。整张清除时丢**全部**（这份 hook 就是逐份学习单的）。
+      const scope = command.questionId;
+      commitQueue(scope === null ? [] : pendingRef.current.filter((item) => item.questionId !== scope));
 
-    // ② 让面板重拉服务端那一份。重水合由那条既有 effect 完成 ——
-    //    它同时会把 `lastSentRef` 按新的服务端数据重算（所以这里也不用手工碰它）。
-    onCleared();
-  }, [worksheetClear, classroomId, participantId, worksheetId, commitQueue, onCleared]);
+      // ② 让面板重拉服务端那一份；重水合由它那条既有 effect 完成
+      //   （它同时会把 `lastSentRef` 按新的服务端数据重算，所以这里也不用手工碰它）。
+      onCleared();
+    });
+    // ⚠️ `onCleared` 必须是**稳定引用**（面板里 useCallback 过）：它进了依赖。
+  }, [classroomId, participantId, worksheetId, commitQueue, onCleared]);
 
   // ── 写入通道 ────────────────────────────────────────────────────────────
 

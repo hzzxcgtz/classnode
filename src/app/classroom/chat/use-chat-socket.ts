@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
-import type { WorksheetClearCommand } from '../classroom-types';
+import { publishWorksheetClear } from '../worksheet/worksheet-clear-bus';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
 import type { WebappDemand } from '@/lib/socket-events';
@@ -42,12 +42,6 @@ interface ChatSocketOptions {
    * 不依赖那个 15 秒才刷新一次的快照对象（锁定要**立刻**生效）。
    */
   setAnswersLocked: Dispatch<SetStateAction<boolean>>;
-  /**
-   * ★ 2026-09-28（第 4 条）：教师从看板清除了这名学生在这份学习单上的作答。
-   * 与 `setAnswersLocked` **同一类**：socket 事件只在本 hook 里挂得上（连接在这里），
-   * 状态归会话层，面板走 props。理由逐字写在 `WorksheetClearCommand` 那一段。
-   */
-  setWorksheetClear: Dispatch<SetStateAction<WorksheetClearCommand | null>>;
   setSelectedStudent: Dispatch<SetStateAction<ClassroomStudentSummary | null>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'home' | 'shell'>>;
@@ -207,16 +201,15 @@ export function useChatSocket(options: ChatSocketOptions) {
       //     一条从没 join 过的连接，广播永远收不到，而**两边都不报错**（实测栽过）；
       //   · 自己再开一条并 join ⇒ 服务端对同一学生只保留一条连接，会**把聊天这条踢断**。
       //
-      // ⚠️ token 用**递增序号**而不是 `Date.now()`：同一毫秒内两次清除会撞成同一个值，
-      // 而那时第二次不会被面板处置（两边都不报错）。
+      // 🔴 **发到总线上，不写 React state。** 第一版写成了会话层 state（→ 外壳 → 面板），
+      // 而那条链上每一次投递都要让整棵会话树重渲染一遍；教师报「学生在输入时清除该题
+      // ⇒ 学生端浏览器假死」，而我在那条链上读了三遍都没读出回路。命令（边沿触发）
+      // 本来就该走总线而不是 state（电平触发）—— 见 `worksheet-clear-bus.ts` 那一段。
       socket.on('worksheet-answers-cleared', (data) => {
-        optionsRef.current.setWorksheetClear((prev) => ({
-          token: (prev?.token ?? 0) + 1,
-          classroomId: data.classroomId,
-          participantId: data.participantId,
-          worksheetId: data.worksheetId,
-          questionId: data.questionId ?? null,
-        }));
+        // 🔬 临时诊断（教师报的假死）：这一行出现 ⇒ 事件**到了学生这条连接**。
+        // ⚠️ 一次清除只打一行，不刷屏；查完那个报告之前**不要删**。
+        console.log('[ws-clear] ① socket 收到', data);
+        publishWorksheetClear(data);
       });
 
       socket.on('identity-conflict', (data: SocketErrorEvent) => {

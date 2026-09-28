@@ -74,7 +74,10 @@ interface TestServer {
   get: (pathname: string, headers?: Record<string, string>) => Promise<Response>;
   post: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
   put: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
+  del: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
   cookie: string;
+  /** 本服务收到的全部广播（替身 io 记账）—— ★ 清除那几条用例要看它发去了哪些房间。 */
+  broadcasts: Array<{ room: string; event: string; payload: Record<string, unknown> }>;
 }
 
 /**
@@ -82,9 +85,19 @@ interface TestServer {
  * 本文件不含 `index.ts` 的挂载语句 —— 那条由 `worksheet-routes.test.ts` 的源码断言兜底）。
  */
 async function startServer(t: { after: (fn: () => void) => void }, prisma: PrismaClient): Promise<TestServer> {
+  const broadcasts: Array<{ room: string; event: string; payload: Record<string, unknown> }> = [];
   const app = express();
   app.use(express.json());
   app.set('prisma', prisma);
+  // ★ 2026-09-28：`io` 的记账替身。路由拿 io 的**唯一**途径是 `req.app.get('io')`，
+  // 所以这一层替身换掉的是「投递」，不是「广播这件事本身」——与 `worksheet-realtime.test.ts` 同款。
+  // ⚠️ 只实现 `to(room).emit(...)` 这一条链：路由若改用别的形状，这里会**当场抛错**
+  // 而不是静默漏掉（刻意的）。
+  app.set('io', {
+    to: (room: string) => ({
+      emit: (event: string, payload: Record<string, unknown>) => { broadcasts.push({ room, event, payload }); },
+    }),
+  });
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
   // 兜底 404 一律回 JSON：express 默认回 HTML，断言失败时 `await res.json()` 会抛
   // `Unexpected token '<'`，把「状态码不对」这个真正的原因盖成一句解析错误。
@@ -107,7 +120,9 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
     get: (pathname, headers) => call('GET')(pathname, undefined, headers),
     post: (pathname, body, headers) => call('POST')(pathname, body, headers),
     put: (pathname, body, headers) => call('PUT')(pathname, body, headers),
+    del: (pathname, body, headers) => call('DELETE')(pathname, body, headers),
     cookie,
+    broadcasts,
   };
 }
 
@@ -193,6 +208,9 @@ const SAMPLE_CONTENT = {
 };
 
 const SAMPLE_SETTINGS = { allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard' };
+
+/** 学生 token 的请求头。⚠️ 与 `worksheet-realtime.test.ts` 里同名那个**逐字同形**。 */
+const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 async function seedWorksheet(prisma: PrismaClient, title: string) {
   return prisma.worksheet.create({
@@ -542,4 +560,153 @@ test('边界：课堂不存在 ⇒ 404；组级目标已删（悬空 targetId）
   assert.equal(res.status, 200, '读路径不得因为一条悬空引用整个 500');
   const body = await res.json() as { worksheets: Array<{ id: string }> };
   assert.deepEqual(body.worksheets, [], '那一份没有标题也没有题目，前端画不出任何东西 ⇒ 不出现在响应里');
+});
+
+// ---------------------------------------------------------------------------
+// ⑤ ★ 2026-09-28：按学生清除学习单数据（教师第 4 条）
+// ---------------------------------------------------------------------------
+
+/**
+ * 造一间课堂 + 一个**与学生表真挂钩**的参与者（学生房间要用 `ClassroomStudent.studentId`）。
+ * ⚠️ 挂钩这一步不是装饰：不挂的话 `studentId` 是 null，学生那一侧的广播发不出去，
+ * 而「教师清了、学生屏幕上还在」正是本功能最要防的那件事。
+ */
+async function seedLinked(prisma: PrismaClient, code: string) {
+  const worksheet = await seedWorksheet(prisma, '光合作用学习单');
+  const classroom = await prisma.classroom.create({ data: { code, title: '清除课堂', mode: 'standard' } });
+  await prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  // ⚠️ `Student.class` 是必填外键（模型里没有可选标记）—— 不造班级这一步会直接抛。
+  const klass = await prisma.class.create({ data: { name: '测试班' } });
+  const student = await prisma.student.create({ data: { name: '花荣', classId: klass.id } });
+  const participant = await prisma.classroomStudent.create({
+    data: { classroomId: classroom.id, type: 'student', studentId: student.id },
+  });
+  const response = await prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id, status: 'draft' },
+  });
+  return { worksheet, classroom, student, participant, response };
+}
+
+/**
+ * 🔴 三层断言，缺一层就是假绿：
+ *   ① 教师 ⇒ 200，且**真的删了**那几行（只断言 200 的话，一个什么都不做的实现也能过）；
+ *   ② 学生 token ⇒ 403，且**一行都不许少**（403 之后仍有副作用是最坏的一种）；
+ *   ③ 广播发到**教师房间与学生房间两处** —— 少了学生那一处，教师清了之后学生屏幕上
+ *      还留着他刚才写的内容，他再点一次保存就**写回去了**。
+ */
+test('★ 清除：教师 200 且真的删掉；学生 403 且一行不少；广播发去教师与学生两处', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, student, participant, response } = await seedLinked(db.prisma, '9004');
+
+  await db.prisma.worksheetAnswer.createMany({ data: [
+    { responseId: response.id, questionId: 'q_1', status: 'submitted', value: { format: 'choice/v1', selected: ['B'] } as never, saveCount: 2 },
+    { responseId: response.id, questionId: 'q_2', status: 'draft', value: { format: 'choice/v1', selected: ['A'] } as never, saveCount: 1 },
+  ] });
+  const token = createStudentToken(classroom.id, participant.id);
+  // ⚠️ 这个变量**不许**叫 `path` —— 它会遮住上面 import 进来的 `node:path`，
+  // 而下面 `fs.rmSync(path.dirname(...))` 会当场变成 `string.dirname`（本用例第一版就栽在这）。
+  const endpoint = `/api/worksheets/classroom/${classroom.id}/answers`;
+  const body = { participantId: participant.id, worksheetId: worksheet.id };
+
+  // ── ② 学生先来：403 且一行都不许少 ──────────────────────────────────
+  const asStudent = await server.del(endpoint, body, bearer(token));
+  assert.equal(asStudent.status, 403, `清除是教师端点，学生不得放行：${await asStudent.text()}`);
+  assert.equal(await db.prisma.worksheetAnswer.count(), 2, '🔴 被拒的请求不得留下任何痕迹');
+
+  // ── ① 教师：200 且真的删了 ─────────────────────────────────────────
+  const before = server.broadcasts.length;
+  const asTeacher = await server.del(endpoint, body, { Cookie: server.cookie });
+  // ⚠️ body 只能读一次 —— 先 `json()` 再拿它做断言消息（先 `text()` 会把它读干，
+  // 第二句 `json()` 抛 `Body is unusable`，而那个错看起来像接口坏了）。
+  const result = await asTeacher.json() as { success: boolean; removed: number };
+  assert.equal(asTeacher.status, 200, JSON.stringify(result));
+  assert.equal(result.removed, 2, '返回删掉了几行 —— 确认框里的「共 N 题」就是它');
+  assert.equal(await db.prisma.worksheetAnswer.count(), 0, '🔴 必须真的删掉');
+
+  // ── ③ 广播：教师房间 + 学生房间**两处都要** ──────────────────────────
+  const pushes = server.broadcasts.slice(before).filter(item => item.event === 'worksheet-answers-cleared');
+  const rooms = pushes.map(item => item.room).sort();
+  assert.deepEqual(
+    rooms,
+    [`student:${student.id}`, `teacher:${classroom.id}`].sort(),
+    '🔴 两处都要发：少了学生那一处，他会把刚被清掉的内容再写回去',
+  );
+  assert.equal(pushes[0].payload.participantId, participant.id);
+  assert.equal(pushes[0].payload.worksheetId, worksheet.id);
+  assert.equal(pushes[0].payload.questionId, null, '整张清除时 questionId 是 null');
+});
+
+test('★ 清除：指定单题时只删那一题，整卷的 response 留着', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, participant, response } = await seedLinked(db.prisma, '9005');
+
+  await db.prisma.worksheetAnswer.createMany({ data: [
+    { responseId: response.id, questionId: 'q_1', status: 'submitted' },
+    { responseId: response.id, questionId: 'q_2', status: 'draft' },
+  ] });
+
+  // ⚠️ 教师 cookie **显式**带上：本文件的 harness 刻意不默认带它（见 startServer 的注释）。
+  const res = await server.del(`/api/worksheets/classroom/${classroom.id}/answers`,
+    { participantId: participant.id, worksheetId: worksheet.id, questionId: 'q_1' },
+    { Cookie: server.cookie });
+  const single = await res.json() as { removed: number };
+  assert.equal(res.status, 200, JSON.stringify(single));
+  assert.equal(single.removed, 1);
+  const left = await db.prisma.worksheetAnswer.findMany({ select: { questionId: true } });
+  assert.deepEqual(left.map(r => r.questionId), ['q_2'], '只删指定的那一题');
+  assert.equal(
+    await db.prisma.worksheetResponse.count(), 1,
+    '还有别的题的作答 ⇒ 整卷那一行**留着**（删了它会把「他在这份单上的其他作答」一起丢掉）',
+  );
+});
+
+/**
+ * 🔴 整张清除**删完之后没有答案行了 ⇒ 连 `WorksheetResponse` 一起删**。
+ *
+ * 留着它的后果不是「多一行垃圾」：看板的「已交 N/M」分母是参与者数（不受影响），
+ * 但**下一次保存**会 upsert 到这一行上，而这一行的 `status` / `submittedAt` 还停在被清
+ * 之前的样子 —— 于是「他一道题都没答」与「他已经交卷了」同时成立。
+ */
+test('★ 清除：整张清完没有答案行了 ⇒ 连 response 一起删', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, participant, response } = await seedLinked(db.prisma, '9006');
+
+  await db.prisma.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'q_1', status: 'submitted' } });
+  await db.prisma.worksheetResponse.update({ where: { id: response.id }, data: { status: 'submitted', submittedAt: new Date() } });
+
+  const res = await server.del(`/api/worksheets/classroom/${classroom.id}/answers`,
+    { participantId: participant.id, worksheetId: worksheet.id },
+    { Cookie: server.cookie });
+  assert.equal(res.status, 200, await res.text());
+  assert.equal(await db.prisma.worksheetAnswer.count(), 0);
+  assert.equal(await db.prisma.worksheetResponse.count(), 0, '🔴 空的 response 必须删掉');
+});
+
+test('★ 清除：只碰指定的参与者 —— 别人的作答一行都不许动', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, participant, response } = await seedLinked(db.prisma, '9007');
+
+  const other = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const otherResponse = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: other.id, status: 'draft' },
+  });
+  await db.prisma.worksheetAnswer.createMany({ data: [
+    { responseId: response.id, questionId: 'q_1', status: 'submitted' },
+    { responseId: otherResponse.id, questionId: 'q_1', status: 'submitted' },
+  ] });
+
+  const res = await server.del(`/api/worksheets/classroom/${classroom.id}/answers`,
+    { participantId: participant.id, worksheetId: worksheet.id },
+    { Cookie: server.cookie });
+  assert.equal(res.status, 200, await res.text());
+  const left = await db.prisma.worksheetAnswer.findMany({ select: { responseId: true } });
+  assert.deepEqual(left.map(r => r.responseId), [otherResponse.id], '🔴 只删被点名的那一个参与者');
 });

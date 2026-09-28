@@ -796,3 +796,51 @@ export function inProgressQuestionId(
   }
   return best?.id ?? firstDraft;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ★ 2026-09-28：清除数据的确认文案（教师第 4 条，裁定 ④「confirm + 写明影响范围」）
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 清除确认框里那段话。
+ *
+ * 🔴 **数字口径**（这一条最容易写错，而它错了教师会以为清掉了 7 题、其实只清了 5 题）：
+ * `answerRows` **只含有动作的题** —— 它在界面上就是「共 N 题**有作答记录**」，
+ * 而不是「这份学习单共 N 题」。所以：
+ *   · 逐字写「有作答记录」这四个字，**不许**写成「共 N 题」；
+ *   · **不许**列「未作答」那一档：没有行可清的东西列出来只会让教师困惑
+ *     （他会去数「7 = 3 + 2 + 2」，而那个等式本来就不该成立）。
+ *
+ * 🔴 **奖励只在不为 0 时才提**：0 的时候说一句「奖励会一并归零」是废话，
+ * 而且会让教师以为他刚才有过奖励。奖励为什么会被清掉要说清楚 ——
+ * 它是**派生**的（各题得分之和，见 `participantOverview`），不是一张单独的表，
+ * 所以答案没了它自然归零。教师一定会问「奖励清不清」，这句话就是回答。
+ */
+export function clearConfirmText(
+  participantName: string,
+  worksheetTitle: string,
+  answerRows: ReadonlyArray<WorksheetBoardAnswerRow>,
+  reward: number,
+  rewardText: string | null,
+): string {
+  let submitted = 0;
+  let draft = 0;
+  for (const row of answerRows) {
+    if (row.status === 'submitted') submitted += 1;
+    else if (row.status === 'draft') draft += 1;
+  }
+  const total = submitted + draft;
+  const lines = [
+    `确定清除「${participantName}」在《${worksheetTitle}》上的全部作答？`,
+    '',
+    total === 0
+      // ⚠️ 0 行时说清楚「没东西可清」，而不是印一句「共 0 题：0 题已提交、0 题作答中」。
+      ? '这个学生在这份学习单上还没有任何作答记录。'
+      : `共 ${total} 题有作答记录：${submitted} 题已提交、${draft} 题作答中。`,
+  ];
+  if (reward > 0 && rewardText) {
+    lines.push(`奖励（${rewardText}）由判分派生，会一并归零。`);
+  }
+  lines.push('此操作不可撤销。');
+  return lines.join('\n');
+}

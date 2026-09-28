@@ -19,6 +19,7 @@ import {
   statusLabel,
   // ★ 2026-09-28：形态 A 的「该生全貌」与「答题过程」
   formatAgo,
+  clearConfirmText,
   inProgressQuestionId,
   participantOverview,
   processFacts,
@@ -996,4 +997,36 @@ test('★ 默认展开：作答行里有题目树里已经没有的题（教师�
     row({ questionId: 'q1', status: 'draft', savedAt: '2026-09-28T11:00:00.000Z' }),
   ]);
   assert.equal(got, 'q1', '🔴 只认还在这份学习单里的题 —— 展开一道屏幕上不存在的题会是一片空白');
+});
+
+/* ── 清除的确认文案（第 4 条）─────────────────────────────────────────── */
+
+test('★ 确认文案：说「有作答记录」而不是「共 N 题」，且不列「未作答」那一档', () => {
+  const text = clearConfirmText('花荣', '秋天的雨', [
+    row({ questionId: 'q1', status: 'submitted' }),
+    row({ questionId: 'q2', status: 'submitted' }),
+    row({ questionId: 'q3', status: 'draft' }),
+  ], 0, null);
+  assert.match(text, /共 3 题有作答记录：2 题已提交、1 题作答中/, text);
+  assert.match(text, /秋天的雨/);
+  assert.match(text, /花荣/);
+  assert.match(text, /不可撤销/, '🔴 破坏性操作必须写明不可撤销');
+  // ⚠️ 学习单可能一共 7 题，但这里**只**说「3 题有作答记录」——
+  // 说成「共 3 题」会让教师以为这份单只有 3 题。
+  assert.ok(!/共 3 题：/.test(text), '不许写成「共 N 题」');
+});
+
+test('★ 确认文案：奖励为 0 时**不提**奖励那一句；不为 0 时要提，并说清它为什么归零', () => {
+  const rows = [row({ questionId: 'q1', status: 'submitted', score: 2 })];
+  const zero = clearConfirmText('花荣', '秋天的雨', rows, 0, '★×0');
+  assert.ok(!zero.includes('奖励'), '0 的时候提奖励是废话，而且会让教师以为他刚才有过奖励');
+
+  const some = clearConfirmText('花荣', '秋天的雨', rows, 6, '★×6');
+  assert.match(some, /奖励（★×6）由判分派生，会一并归零/, '🔴 教师一定会问「奖励清不清」，这句话就是回答');
+});
+
+test('★ 确认文案：一行作答都没有时如实说，不印一串 0', () => {
+  const text = clearConfirmText('花荣', '秋天的雨', [], 0, null);
+  assert.match(text, /还没有任何作答记录/, text);
+  assert.ok(!/共 0 题/.test(text), '「共 0 题：0 题已提交」是噪声');
 });

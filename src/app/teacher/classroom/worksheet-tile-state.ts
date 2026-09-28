@@ -230,20 +230,24 @@ function activeQuestionIndex(
 export type TileBadge =
   /** 智能学伴：本格的对话轮数（学伴指标，只在学伴模块下才有意义 —— 用户 2026-09-23 的裁定）。 */
   | { kind: 'rounds'; rounds: number }
-  /** 学习单：这一格的参与者在**当前这份学习单**上的已交题数。 */
-  | { kind: 'submitted'; submitted: number; total: number };
+  // ⊘ ★ 2026-09-28 删除：`{ kind: 'submitted'; submitted; total }`（学习单的「已交 N/M」）。
+  // 教师第 5 条：「看板上部的『已交 X/Y』这个信息我觉得是没有意义的，可以去掉」。
+  // ⇒ 学习单那一格**不再有徽章**，`page.tsx` 的 `tileModuleBadge` 在那一支直接返回 `null`。
+  // ⚠️ 别把它加回来：它说的那个数与格子正文里那串方块**是同一件事**（方块就是逐题状态），
+  // 而方块更细（哪几题、什么状态）。
 
 /**
- * 这一态带不带方格阵（只有「画不出格子」的那三态不带）。
+ * ⊘ ★ 2026-09-28 **作废并删除**：这里原来有一个 `stateHasCells(state)`，判据是
+ * `'cells' in state`，存在的理由是「徽章的 `已交 N/M` 与格子里的方块**必须**数同一批东西
+ * —— 各数一份的表现是徽章写着『已交 3/5』而下面只有 4 个方块，而没有人会去核对这两个数」。
  *
- * 存在的理由：徽章的 `已交 N/M` 与格子里的方块**必须**数同一批东西 —— 各数一份的表现是
- * 徽章写着「已交 3/5」而下面只有 4 个方块，而没有人会去核对这两个数。
+ * 教师第 5 条把学习单那一格的徽章去掉了 ⇒ 那条不变式**没有对象了** ⇒ 函数与它的用例
+ * 一起删掉。留着的坏处不是「多一个没人调的函数」，而是**它会继续断言一条已经作废的不变式**，
+ * 让下一个人以为「徽章还在」。按本仓的规矩，作废的东西要留一句带日期的话，而不是悄悄消失。
+ *
+ * ⚠️ 若将来又给学习单那一格加回任何**数字**，那条不变式要连同判据一起重新想一遍 ——
+ * 不是把这个函数恢复就行（现在连徽章都没有了，它恢复出来也没有调用方）。
  */
-export function stateHasCells(
-  state: WorksheetTileState,
-): state is Extract<WorksheetTileState, { cells: WorksheetCellStatus[] }> {
-  return 'cells' in state;
-}
 
 /**
  * 学习单徽章的文字。⚠️ 只有**已知**才给数字（`null` = 连分母都不知道）。
@@ -263,7 +267,8 @@ export function stateHasCells(
  * 要把它换回「已看 N/M」，需要的是数据源（review 广播 + 历史拉取），不是文案。
  */
 export function tileBadgeText(badge: TileBadge): string {
-  return badge.kind === 'rounds' ? `${badge.rounds} 轮` : `已交 ${badge.submitted}/${badge.total}`;
+  // ★ 2026-09-28：只剩学伴那一档（学习单的「已交 N/M」随第 5 条一起去掉了）。
+  return `${badge.rounds} 轮`;
 }
 
 /**
@@ -283,4 +288,23 @@ export function tileBadgeText(badge: TileBadge): string {
  */
 export function moduleCountUnit(mode: string): '人' | '组' {
   return mode === 'group' || mode === 'advanced' ? '组' : '人';
+}
+
+/**
+ * ★ 2026-09-28（教师第 4 条）：这一格的按钮组里**该不该有「清除学习单数据」那个垃圾桶**。
+ *
+ * 判据与 `page.tsx` 的 `tileShowsClear`（学伴那个垃圾桶）**同构** —— 那是刻意的：
+ * 两个垃圾桶在同一个位置、同一排按钮里，判据不同的话会出现「一格上两个垃圾桶」
+ * 或者「内容区明摆着是学习单，却找不到清它的入口」。
+ *
+ * ⚠️ 判据是**该格当前显示的模块**（`tileModule`），不是学生实际所在的那个 ——
+ * 与 `tileShowsClear` / `tileModuleBadge` 同一条（这一格显示什么，就清什么）。
+ *
+ * 小组格的灰度情形同款：组内混着几个模块时，只要有成员在**学习单**里，垃圾桶就还有意义
+ * （它一次清掉全组在这份学习单上的作答）。
+ */
+export function tileShowsWorksheetClear(module: string, memberModules: readonly string[]): boolean {
+  if (module === 'worksheet') return true;
+  if (module !== 'mixed') return false;
+  return memberModules.some((item) => item === 'worksheet');
 }

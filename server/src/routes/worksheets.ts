@@ -853,6 +853,102 @@ router.post('/:id/review', async (req, res) => {
  *    （`Worksheet` 行已经没了），前端对它画不出任何东西；学生那边同样是读不到的（404）。
  *    这不是「静默丢数据」：那节课的那道题本来就已经不存在了。
  */
+/**
+ * ★ 2026-09-28（教师第 4 条）：把「这次清除动到了谁」推给**两个房间**。
+ *
+ * 🔴 教师那一侧是「刷新」，学生那一侧是「**丢掉本地状态与待保存队列**」——
+ * 少了后者，教师清了之后学生屏幕上还留着他刚写的内容，他再点一次保存（1.5 秒防抖）
+ * 就**写回去了**，而教师看到的是「清了又回来了」。
+ *
+ * ⚠️ 学生房间的键是 `student:<Student.id>`（`socket/index.ts` 的 join-classroom 用的就是
+ * 它），而手上拿到的是 `participantId`（`ClassroomStudent.id`）—— 两者**不是一回事**。
+ * 小组 / 高级模式下 `studentId` 可能是 `null`（一块设备 = 一个组）⇒ 那一侧**发不出去**，
+ * 只发教师这一侧。**不要为了凑一个 id 去猜**：学生端下一次水合会自然对齐。
+ */
+function broadcastAnswersCleared(
+  req: Request,
+  ctx: { classroomId: string; participantId: string; studentId: string | null },
+  payload: { worksheetId: string; questionId: string | null },
+): void {
+  const io = req.app.get('io') as Server | undefined;
+  if (!io) {
+    // 与 `broadcastAnswerUpdate` 同一条：不缺声不响地吞掉（看板只会「不动」，最难查）。
+    console.error('[worksheets] app 上没有注册 io，学习单清除广播被跳过');
+    return;
+  }
+  const event = {
+    classroomId: ctx.classroomId,
+    participantId: ctx.participantId,
+    worksheetId: payload.worksheetId,
+    questionId: payload.questionId,
+  };
+  io.to(worksheetBoardRoom(ctx.classroomId)).emit('worksheet-answers-cleared', event);
+  if (ctx.studentId) io.to(`student:${ctx.studentId}`).emit('worksheet-answers-cleared', event);
+}
+
+/**
+ * ★ 2026-09-28：清除某个学生在这份学习单上的作答数据（**教师专用**，第 4 条）。
+ *
+ * 两种粒度：整张（`participantId × worksheetId`）、单题（再多一个 `questionId`）。
+ *
+ * 🔴 **奖励不需要单独清**：它派生自各题的 `score`（`rewardAmount` 的绝对值模型），
+ * 答案行删了奖励自然归零。这是这个设计的优点 —— 写一步「同时清除奖励」反而会引入
+ * 「答案清了、奖励还挂着」这种半清状态。
+ *
+ * 🔴 **整张清完一行都不剩时，连 `WorksheetResponse` 一起删**。留着它的后果不是
+ * 「多一行垃圾」：下一次保存会 upsert 到那一行上，而它的 `status` / `submittedAt`
+ * 还停在被清之前的样子 —— 于是「他一道题都没答」与「他已经交卷了」同时成立。
+ *
+ * ⚠️ 路径是**三段** `/classroom/:id/answers`，落在 `worksheetAccessGate` 那三条学生放行
+ * 正则之外（两条要求恰好两段、一条末段必须是 `submit`）⇒ 天然是教师专用。
+ * 这一点由用例正面钉着（学生 403 + 一行不少），不是靠这段注释。
+ */
+router.delete('/classroom/:classroomId/answers', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroomId = req.params.classroomId;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const participantId = typeof body.participantId === 'string' ? body.participantId : '';
+    const worksheetId = typeof body.worksheetId === 'string' ? body.worksheetId : '';
+    if (!participantId) return res.status(400).json({ error: '缺少 participantId' });
+    if (!worksheetId) return res.status(400).json({ error: '缺少 worksheetId' });
+    // `questionId` 缺省 / 空串都当「整张清除」—— 界面上那一个入口就是这么调的。
+    const questionId = typeof body.questionId === 'string' && body.questionId ? body.questionId : null;
+
+    const response = await prisma.worksheetResponse.findUnique({
+      where: { classroomId_worksheetId_participantId: { classroomId, worksheetId, participantId } },
+      select: { id: true },
+    });
+    // 一行都没答过 ⇒ 没什么可清。**回 200 + removed: 0**，不是 404：
+    // 教师的意图（「把这个人在这份单上的东西清掉」）已经达成了，报错只会让他以为出了故障。
+    if (!response) return res.json({ success: true, removed: 0 });
+
+    const removed = (await prisma.worksheetAnswer.deleteMany({
+      where: { responseId: response.id, ...(questionId ? { questionId } : {}) },
+    })).count;
+
+    if (!questionId) {
+      const left = await prisma.worksheetAnswer.count({ where: { responseId: response.id } });
+      // ⚠️ 只在**一行都不剩**时删 response（上面注释写了为什么）。
+      if (left === 0) await prisma.worksheetResponse.delete({ where: { id: response.id } });
+    }
+
+    // 学生房间要用 `ClassroomStudent.studentId`（→ `Student.id`），不是 participantId。
+    const participant = await prisma.classroomStudent.findUnique({
+      where: { id: participantId },
+      select: { studentId: true },
+    });
+    broadcastAnswersCleared(req, {
+      classroomId, participantId, studentId: participant?.studentId ?? null,
+    }, { worksheetId, questionId });
+
+    res.json({ success: true, removed });
+  } catch (error) {
+    console.error('[worksheets] 清除作答数据失败:', error);
+    res.status(500).json({ error: '清除作答数据失败' });
+  }
+});
+
 router.get('/classroom/:classroomId/answers', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');

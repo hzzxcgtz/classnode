@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { getStudentSessionAuthorization } from '@/lib/api';
+import { useSocket } from '@/lib/socket';
 import type { WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 import {
   buildAnswerValue,
@@ -165,6 +166,7 @@ export function useWorksheetAnswers({
   setToast,
   answersLocked,
 }: UseWorksheetAnswersOptions): UseWorksheetAnswersResult {
+  const { on } = useSocket();
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   const [statuses, setStatuses] = useState<Record<string, WorksheetQuestionStatus>>({});
   const [scores, setScores] = useState<Record<string, WorksheetScore>>({});
@@ -296,6 +298,62 @@ export function useWorksheetAnswers({
     // 上一次会话遗留的队列（刷新 / 断网关掉页面）在这里立刻排队重放一次。
     if (queued.length > 0) setDebouncing(true);
   }, [queueKey, savedAnswers]);
+
+  /**
+   * ★ 2026-09-28（教师第 4 条）：教师在**看板**上清掉了这名学生在这份学习单上的作答。
+   *
+   * 🔴 这个组件**此前零 socket 订阅** —— 这是第一条。少了它，教师清了之后学生屏幕上
+   * 还留着他刚写的内容，而他再点一次保存（1.5 秒防抖）就**写回去了**，
+   * 教师看到的是「清了又回来了」，且两边都不报错。
+   *
+   * 两件事，缺一不可：
+   *   ① **丢掉这个 scope 的待保存项**（`pendingRef` + `localStorage` 的镜像一起，走
+   *      `commitQueue` 那唯一一个写入点）—— 不丢的话上面那句「写回去」就是必然的；
+   *   ② **本地状态按「服务端已经没有这一份」重水合**。
+   *      ⚠️ 这里**复用水合那条函数**（`hydrateAnswers`），不手写一份「怎么把一题清空」：
+   *      那份规则有测试、且是 drafts/statuses/scores/lastSent 唯一的产出地；
+   *      手写第二份的表现是「清完之后输入框空了，但状态栏还写着已提交」这类不一致。
+   *
+   * ⚠️ `lastSentRef` **也要跟着重算**（`merged.lastSent`）：它记的是「这一题发过什么」，
+   * 而服务端那一行已经被删了 —— 留着它的后果是学生随后清空这个字段时，我们会发一条
+   * 「清空」给一个**不存在的行**，服务端据此建出一行空作答。
+   *
+   * ⚠️ 判据里比 `classroomId` 与 `participantId`，与钩子里其余订阅同一条纪律
+   *（防「切换课堂/换学生时混进上一个的指令」这类不报错的串台）。
+   * `worksheetId` 也要比：这份钩子是**逐份学习单**的。
+   */
+  useEffect(() => {
+    if (!queueKey || !classroomId || !participantId || !worksheetId) return;
+    return on('worksheet-answers-cleared', (data) => {
+      if (data?.classroomId !== classroomId) return;
+      if (data?.participantId !== participantId) return;
+      if (data?.worksheetId !== worksheetId) return;
+      // `null` = 整张清除；非空 = 只清那一题。
+      const scope = typeof data.questionId === 'string' && data.questionId ? data.questionId : null;
+
+      const remaining = scope === null
+        ? []
+        : pendingRef.current.filter((item) => item.questionId !== scope);
+      commitQueue(remaining);
+
+      const kept = scope === null
+        ? []
+        : savedAnswers.filter((row) => row.questionId !== scope);
+      const merged = hydrateAnswers(kept, remaining, questionsRef.current);
+      setDrafts(merged.drafts);
+      setStatuses(merged.statuses);
+      setScores(merged.scores);
+      setGradeStates(merged.gradeStates);
+      setWrongBlankIndexes(merged.wrongBlankIndexes);
+      setCorrectBlanks(merged.correctBlanks ?? {});
+      // 正在提交中的那一题也不该再转圈了（服务端那一行已经没了）。
+      if (scope !== null) setSubmitting((prev) => ({ ...prev, [scope]: false }));
+      else setSubmitting({});
+      lastSentRef.current = merged.lastSent;
+    });
+    // ⚠️ `savedAnswers` 是依赖（不是 ref）：清除之后的那一次重水合要拿**最新的**服务端
+    // 回答来算，用首次渲染那一版的闭包会把刚读回来的作答又抹掉。
+  }, [on, queueKey, classroomId, participantId, worksheetId, savedAnswers, commitQueue]);
 
   // ── 写入通道 ────────────────────────────────────────────────────────────
 

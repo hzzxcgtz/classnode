@@ -158,6 +158,29 @@ export interface ServerToClientEvents {
     /** 教师标记「已查看」的时刻（ISO 串），没看过是 `null`。 */
     reviewedAt: string | null;
   }) => void;
+
+  /**
+   * ★ 2026-09-28（教师第 4 条）：教师**清除了**某个学生在这份学习单上的作答数据。
+   * `questionId` 为 `null` = 整张清除，否则只清了那一题。
+   *
+   * 🔴 **两个房间都会收到**，而两边的处置完全不同：
+   *   · `teacher:<id>` —— 看板的格子 / 矩阵那一列 / 抽屉要**刷新**（重拉快照）；
+   *   · `student:<studentId>` —— 学生端必须**丢掉本地状态与待保存的队列**。
+   *     少了这一处，教师清了之后学生屏幕上还留着他刚写的内容，
+   *     他再点一次保存（1.5 秒防抖）就**写回去了** —— 教师看到的是「清了又回来了」。
+   *
+   * ⚠️ 小组 / 高级模式下 `ClassroomStudent.studentId` 可能是 `null`（一块设备 = 一个组）
+   * ⇒ 那一侧发不出去，只有教师那一侧。**不要为了凑一个 id 去猜** ——
+   * 学生端下一次水合会自然对齐。
+   */
+  'worksheet-answers-cleared': (data: {
+    classroomId: string;
+    /** 参与者 id（= `ClassroomStudent.id`）。 */
+    participantId: string;
+    worksheetId: string;
+    /** `null` = 整张清除；非空 = 只清了那一题。 */
+    questionId: string | null;
+  }) => void;
 }
 
 /**

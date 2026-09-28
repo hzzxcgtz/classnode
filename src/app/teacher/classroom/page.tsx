@@ -17,12 +17,14 @@ import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-t
 import { WorksheetTileContent } from './worksheet-tiles';
 import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
-import { moduleCountUnit, stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
+import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
+import { resolveRewardScale } from '@/lib/worksheet-reward';
+import { moduleCountUnit, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
-import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetBoard, WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/types';
+import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
 type ClassroomGroupDisplay = { id: string; name: string };
@@ -305,20 +307,22 @@ type BoardMode = 'follow' | 'assign';
  * 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。
  *
  * ⚠️ 它在**主看板与全屏网格两处**都渲染，而这两个地方本来就是逐字重复的两段 JSX
- * （`renderTileContent` 那条注释说的就是这件事）。抽成一个组件，是为了让「学习单说已交
- * 题数、学伴说轮数」这条规则只写一遍 —— 两处各写一份必然在某一处先漂移。
+ * （`renderTileContent` 那条注释说的就是这件事）。抽成一个组件，是为了让这条规则只写一遍
+ * —— 两处各写一份必然在某一处先漂移。
+ *
+ * ★ 2026-09-28：**现在只剩学伴那一档**（学习单的「已交 N/M」随教师第 5 条去掉）。
+ * 那两个分支（`badge.kind === 'rounds' ? … : …`）随之收成一个 —— 留着一个永远走不到的
+ * 分支会让下一个人以为学习单还会发徽章。
  */
 function TileBadgeChip({ badge, compact = false }: { badge: TileBadge; compact?: boolean }) {
-  const positive = badge.kind === 'rounds' ? badge.rounds > 0 : badge.submitted > 0;
   return (
     <div
-      title={badge.kind === 'rounds'
-        ? '对话轮数（只在智能学伴模块下显示）'
-        : `这份学习单已提交 ${badge.submitted}/${badge.total} 题`}
+      title="对话轮数（只在智能学伴模块下显示）"
       style={{
         padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6,
         fontSize: compact ? 8 : '0.625rem', fontWeight: 600,
-        background: positive ? '#eef2ff' : '#f3f4f6', color: positive ? '#2563eb' : '#9ca3af',
+        background: badge.rounds > 0 ? '#eef2ff' : '#f3f4f6',
+        color: badge.rounds > 0 ? '#2563eb' : '#9ca3af',
         whiteSpace: 'nowrap',
       }}>
       {tileBadgeText(badge)}
@@ -628,6 +632,14 @@ function ClassroomBoardContent() {
    */
   const wb = useWorksheetBoard(id ?? null);
   /**
+   * ⚠️ 把这两个**稳定引用**解构出来，而不是在依赖数组里写 `wb.xxx`：
+   * 写 `[wb.refresh]` 时 `react-hooks/exhaustive-deps` 认不出它是稳定的
+   * （它看到的是「读了 `wb` 这个对象」），于是报一条 missing dependency；
+   * 而按它说的把整个 `wb` 放进依赖，`wb` 每次渲染都是新对象 ⇒ 这两个回调**每帧重建**
+   * ⇒ 依赖它们的所有 memo 全部打穿。解构是唯一两边都对的做法。
+   */
+  const { refresh: refreshWorksheetBoard, markReviewed: markWorksheetReviewed } = wb;
+  /**
    * 学习单抽屉（规格 §7.3）开在哪一层。
    *
    * ⚠️ 每次打开都塞一个**新的对象**（`token` 只是让这件事显式化）：抽屉内部的下钻栈
@@ -805,10 +817,8 @@ function ClassroomBoardContent() {
     // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
     // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
     // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
-    wb.refresh();
-    // ⚠️ 依赖里是 `wb.refresh`（`useCallback` 过的稳定引用），不是整个 `wb` 对象 ——
-    // 后者每次渲染都是新的，会让这个回调每帧重建，进而把下面所有依赖它的 memo 打穿。
-  }, [wb.refresh]);
+    refreshWorksheetBoard();
+  }, [refreshWorksheetBoard]);
 
   /**
    * ★ M5b：矩阵的下钻。两条都**复用现成的抽屉入口**（规格 §3.7），零抽屉改动。
@@ -839,7 +849,7 @@ function ClassroomBoardContent() {
     try {
       const result = await api.reviewWorksheetAnswer(worksheetId, { participantId, questionId });
       // ★ 2026-09-28：就地更新那一行搬到 `wb.markReviewed`（快照在 hook 里，调用方不能直接改它）。
-      wb.markReviewed(worksheetId, participantId, questionId, result.reviewedAt);
+      markWorksheetReviewed(worksheetId, participantId, questionId, result.reviewedAt);
     } catch (error) {
       // 服务端的文案直接给学生看（409 那句是「该学生还没有作答这道题」）——
       // 本组件已经不给未作答的题按钮了，所以走到这里的是真的异常（断网 / 会话过期）。
@@ -847,8 +857,7 @@ function ClassroomBoardContent() {
     } finally {
       setWorksheetReviewBusy(null);
     }
-    // ⚠️ 依赖里是 `wb.markReviewed`（稳定引用），不是整个 `wb` —— 理由同 `openWorksheetDrawer`。
-  }, [wb.markReviewed]);
+  }, [markWorksheetReviewed]);
 
   // ★ 2026-09-28：题目树那条 60 秒的定期重拉也搬进了 `useWorksheetBoard`
   //（教师课上改单**不广播**，所以它必须留着，理由逐字未变）。
@@ -1120,6 +1129,78 @@ function ClassroomBoardContent() {
   };
 
   /** 清除学生对话记录并同步更新监控框 */
+  /**
+   * 参与者 id → 他在快照里的名字（确认文案要用）。
+   * ⚠️ 查不到就回一个**看得懂**的占位而不是空串：确认框里出现「确定清除「」的作答？」
+   * 会让教师以为界面坏了，而那时他正要按下一个不可撤销的按钮。
+   */
+  const worksheetParticipantName = (participantId: string): string => {
+    for (const worksheet of wb.board?.worksheets ?? []) {
+      for (const participant of worksheet.participants) {
+        if (participant.participantId === participantId) return participant.name;
+      }
+    }
+    return '这个学生';
+  };
+
+  /**
+   * ★ 2026-09-28（教师第 4 条）：清除某个学生在**这份学习单**上的作答数据。
+   *
+   * 🔴 确认文案里的数字取自**当前快照里那个参与者的 `answerRows`**，走的是
+   * `clearConfirmText`（纯函数、有测试）—— 不在这里自己数一遍：
+   * 自己数一份的表现是「屏幕上那个数」与「用例断言的那个数」不是同一个函数
+   *（`worksheet-matrix.ts` 的 `rowTally` 上记过同一条教训）。
+   *
+   * ⚠️ 清完**必须**重拉快照（`wb.refresh()`）：服务端会广播，但教师这台机器的 socket
+   * 断线时那条广播收不到，而「清了之后屏幕上还在」正是最不能出现的一种。
+   */
+  const clearWorksheetDataFor = async (participantId: string, participantName: string, questionId: string | null) => {
+    const found = (() => {
+      for (const worksheet of wb.board?.worksheets ?? []) {
+        for (const participant of worksheet.participants) {
+          if (participant.participantId === participantId) return { worksheet, participant };
+        }
+      }
+      return null;
+    })();
+    // 快照还没到 / 这个人不在这份单上 ⇒ 说清楚，**不要**拿一个空的 rows 去拼一句
+    // 「共 0 题有作答记录」然后真清一遍（那会清掉我们没看见的东西）。
+    if (!found) {
+      setToast({ msg: '还没读到这个学生的作答数据，请稍后再试', type: 'error' });
+      return;
+    }
+    const { worksheet, participant } = found;
+
+    // 只清一题时，确认文案换成那一题的题号 —— 整张那套数字在单题上读起来是错的。
+    const rows = questionId
+      ? participant.answerRows.filter((row) => row.questionId === questionId)
+      : participant.answerRows;
+    const settings = wb.settingsByWorksheet[worksheet.id];
+    const scale = settings ? resolveRewardScale(settings) : null;
+    const overview = participantOverview(
+      wb.nodesByWorksheet[worksheet.id] ?? [], rows, scale,
+    );
+    const prompt = questionId
+      ? `确定清除「${participantName}」这一题的作答？\n\n此操作不可撤销。`
+      : clearConfirmText(participantName, worksheet.title, rows, overview.reward, overview.rewardText);
+    if (!confirm(prompt)) return;
+
+    try {
+      const result = await api.clearWorksheetAnswers(id!, {
+        participantId, worksheetId: worksheet.id, questionId,
+      });
+      refreshWorksheetBoard();
+      setToast({
+        msg: result.removed > 0
+          ? `已清除「${participantName}」的 ${result.removed} 题作答`
+          : `「${participantName}」没有可清除的作答`,
+        type: 'success',
+      });
+    } catch (error) {
+      setToast({ msg: `清除失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+    }
+  };
+
   const handleClearMessages = async (studentId: string, studentName: string) => {
     if (clearBusyRef.current) return;
     if (!confirm(`确定清除「${studentName}」的全部对话记录？`)) return;
@@ -1471,21 +1552,6 @@ function ClassroomBoardContent() {
   };
 
   /**
-   * 这一格里**显示着学习单的那个参与者**（`null` = 这一格里没人显示学习单）。
-   *
-   * ⚠️ 为什么是「取一个参与者」而不是「把全组的加起来」：一格就是一个参与者
-   * （§1.2/§3-Q —— 分组与高级模式下参与者是**组**，一张组卡里就是那一个组参与者；
-   * 标准模式一张卡就是一个学生）。混着几个模块的组卡（`mixed`）是唯一的灰度情形，
-   * 那时取**第一个显示着学习单的成员** —— 卡片的 `mixed` 分支本来就把每个人的模块
-   * 列了出来，所以「这个数字是谁的」在屏幕上读得到。
-   */
-  const tileWorksheetParticipant = (module: GroupTileModule, members: ClassroomCardStudent[]): ClassroomCardStudent | null => {
-    if (module === 'worksheet') return members[0] ?? null;
-    if (module === 'mixed') return members.filter((member) => resolveTileModule(member.id) === 'worksheet')[0] ?? null;
-    return null;
-  };
-
-  /**
    * 这一格的参与者此刻该作答的那一份学习单（`null` = 没有）。
    *
    * 交给 `effectiveGroupWorksheet`（与学生端**同一个**解析口径：高级模式只认自己那个组，
@@ -1496,26 +1562,6 @@ function ClassroomBoardContent() {
     effectiveGroupWorksheet(classroom, { groupId: participant?.groupId ?? null });
 
   /**
-   * 一个参与者的学习单统计（`null` = 今天还说不出来 —— 没有学习单 / 题目没加载到 /
-   * 一条作答广播都没收到 / 这份单一道题都没有）。
-   *
-   * 🔴 分母与格子里的方块数**必须**是同一个数，所以这里走的是**同一个** `worksheetTileState`
-   * （连在线状态都传真的那个）：徽章写「已交 3/5」而下面只有 4 个方块这种事，
-   * 没有任何人会去核对，只能靠结构上不可能发生。
-   */
-  const tileWorksheetStats = (participant: ClassroomCardStudent | null, online: boolean): { submitted: number; total: number } | null => {
-    if (!participant) return null;
-    const worksheet = tileWorksheetOf(participant);
-    if (!worksheet) return null;
-    const nodes = wb.nodesByWorksheet[worksheet.id];
-    const progress = wb.progress[participant.id];
-    if (!nodes || !progress) return null;
-    const state = worksheetTileState({ worksheet, nodes, progress, online, now: nowMs });
-    if (!stateHasCells(state)) return null;
-    return { submitted: state.cells.filter((status) => status === 'submitted').length, total: state.cells.length };
-  };
-
-  /**
    * 徽章行里那个**模块相关**的徽章的文字（`null` = 这一格不该有它）。
    *
    * 🔴 用户 2026-09-23（截图批注）：「这个『几轮』只在智能学伴里有」。在此之前这一行
@@ -1523,35 +1569,38 @@ function ClassroomBoardContent() {
    *
    * 三件套**各判各的**，外加兜底 —— 徽章行从此是模块相关的，不是一行固定内容：
    *   · 智能学伴 → `{rounds} 轮`
-   *   · 学习单   → `已交 N/M`（**不是**规格 §3-I 写的「已看 N/M」，理由见 `TileBadge` 那段注释：
-   *                「已看」= 教师标记的 `reviewedAt`，而徽章的数据源 —— 只由广播写入的
-   *                `worksheetProgress` —— 到不了它。⚠️ 2026-09-23 更正：REST 来源**是有的**
-   *                （`GET /classroom/:id/answers` 的 `answerRows` 里就有 `reviewedAt`），
-   *                缺的是格子没有消费它；原文「既没有广播也没有 REST 来源」把前一半说对了、
-   *                后一半说错了）
+   *   · 学习单   → **没有徽章**（★ 2026-09-28，教师第 5 条：「已交 X/Y 没有意义，去掉」）
    *   · 探究空间 → 不显示（那一格显示的是画面，与对话轮数无关）
    *   · 兜底     → `home` / `unknown` / 线缆上多出来的取值都不显示
    *
    * 小组格的灰度情形与 `tileShowsClear` 同款：组内混着几个模块时，只要有成员在学伴，
-   * 这个数字就还有意义（`rounds` 数的是**学伴对话**，不是「在这个模块里说了几句」）；
-   * 学伴没人时再看有没有人在学习单上。
+   * 这个数字就还有意义（`rounds` 数的是**学伴对话**，不是「在这个模块里说了几句」）。
+   *
+   * ⊘ 2026-09-28 作废：这一段原先还解释「学习单那一档为什么是『已交 N/M』而不是规格 §3-I
+   * 写的『已看 N/M』」。那一整段现在**没有对象了**（学习单不再有徽章），所以删掉 ——
+   * 留着的后果是下一个人以为「已交 N/M」还在屏幕上，而它已经没有了。
    */
-  const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[], rounds: number, online: boolean): TileBadge | null => {
+  // ⚠️ 第三/四个参数里 `online` 在 ★ 2026-09-28 之后**不再被用到**（它原来只喂给
+// 「学习单已交 N/M」那个徽章，而那个随第 5 条去掉了）—— 顺手删掉，免得下一个人以为
+// 徽章还会看在线状态。
+const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[], rounds: number): TileBadge | null => {
     switch (module) {
       case 'companion':
         return { kind: 'rounds', rounds };
-      case 'worksheet': {
-        const stats = tileWorksheetStats(tileWorksheetParticipant(module, members), online);
-        // 还没有数字时**不给一个假的 0**：格子正文那一行已经说了「还没收到作答」，
-        // 徽章写「已交 0/3」会把「不知道」说成「一题都没交」。
-        return stats ? { kind: 'submitted', ...stats } : null;
-      }
+      case 'worksheet':
+        // ★ 2026-09-28（教师第 5 条）：**学习单这一格不再有徽章**。
+        // 原话：「看板上部的『已交 X/Y』这个信息我觉得是没有意义的，可以去掉」。
+        // 依据：那一行数字与格子正文里那串方块**说的是同一件事**（方块就是逐题状态），
+        // 而方块更细（哪几题、什么状态）。徽章只是把同一个数再说一遍，占着一行的位置。
+        // ⚠️ 连带作废了 `stateHasCells` 那条「徽章与方块必须数同一批东西」的不变式 ——
+        // 见 `worksheet-tile-state.ts` 里那个函数上的注释（它按本仓的规矩标了作废日期）。
+        return null;
       case 'explore':
         return null;
       case 'mixed': {
         if (members.some((member) => resolveTileModule(member.id) === 'companion')) return { kind: 'rounds', rounds };
-        const stats = tileWorksheetStats(tileWorksheetParticipant(module, members), online);
-        return stats ? { kind: 'submitted', ...stats } : null;
+        // ★ 学习单那一档与上面同一条：不再给徽章（第 5 条）。
+        return null;
       }
       default:
         return null;
@@ -2350,11 +2399,13 @@ function ClassroomBoardContent() {
                 // 这一格的内容区该显示哪个模块（跟随 = 该学生的 focus；指定 = 教师选的）。
                 const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                 const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
+                const showWorksheetClear = tileShowsWorksheetClear(
+                  tileModule, (isGroup ? item.members : [cs]).map((member) => resolveTileModule(member.id)));
                 // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次 ——
                 // 下面「渲染与否」与「显示什么」读的是同一个值，算两遍就是两份口径。
                 // ⚠️ 在线状态传**这一格真实的那一个**（不是常量）：徽章里那个数走的是
                 // 与格子正文同一个 `worksheetTileState`，传假的就会算出另一个数。
-                const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds, status !== 'offline');
+                const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
                     onClick={() => {
@@ -2488,6 +2539,18 @@ function ClassroomBoardContent() {
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                   </button>
                                 )}
+                                {/* ★ 2026-09-28（教师第 4 条）：**清学习单数据**。与上面那个垃圾桶
+                                    同款同位置，判据也同构（`tileShowsWorksheetClear`）——
+                                    一格上同时出现两个垃圾桶是不可能的（一个只在学伴那一格、
+                                    一个只在学习单那一格；`mixed` 下两个都不给）。
+                                    ⚠️ 粒度是**整张学习单**；清单题在抽屉的逐题行里。 */}
+                                {showWorksheetClear && (
+                                  <button title="清除这个学生在这份学习单上的全部作答"
+                                    onClick={(e) => { e.stopPropagation(); void clearWorksheetDataFor(cs.id, student.name, null); }}
+                                    style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>
@@ -2582,6 +2645,7 @@ function ClassroomBoardContent() {
             loading={wb.loading}
             reviewBusy={worksheetReviewBusy}
             onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
+            onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
           />
         )}
 
@@ -3093,8 +3157,10 @@ function ClassroomBoardContent() {
                   // —— 仍然走同一个 `renderTileContent`，不另写一份「全屏专用」的渲染。
                   const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                   const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
+                  const showWorksheetClear = tileShowsWorksheetClear(
+                    tileModule, (isGroup ? item.members : [cs]).map((member) => resolveTileModule(member.id)));
                   // 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。只算一次。
-                  const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds, status !== 'offline');
+                  const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
                       onClick={() => {
@@ -3198,6 +3264,15 @@ function ClassroomBoardContent() {
                                       onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
                                       style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
                                       <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                    </button>
+                                  )}
+                                  {/* ★ 2026-09-28（教师第 4 条）：清学习单数据。与上面那个同款，
+                                      判据同构（`tileShowsWorksheetClear`）—— 一格上不会同时出现两个。 */}
+                                  {showWorksheetClear && (
+                                    <button title="清除这个学生在这份学习单上的全部作答"
+                                      onClick={(e) => { e.stopPropagation(); void clearWorksheetDataFor(cs.id, student.name, null); }}
+                                      style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                      <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
                                     </button>
                                   )}
                                 </>

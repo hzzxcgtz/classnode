@@ -67,7 +67,7 @@ export interface WorksheetDrawerEntry {
 }
 
 export function WorksheetDrawer({
-  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview,
+  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview, onClearQuestion,
 }: {
   entry: WorksheetDrawerEntry;
   onClose: () => void;
@@ -84,6 +84,8 @@ export function WorksheetDrawer({
   /** 正在标记的那一条（`participantId:questionId`），点过的按钮显示「标记中…」。 */
   reviewBusy: string | null;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
+  /** ★ 2026-09-28（第 4 条）：清除**这一题**的作答。整张清除在格子的垃圾桶上。 */
+  onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
 }) {
   const [stack, setStack] = useState<WorksheetDrawerView[]>([entry.view]);
 
@@ -183,7 +185,7 @@ export function WorksheetDrawer({
           {!loading && board && current.kind === 'participant' && (
             <ParticipantAnswers board={board} participantId={current.participantId}
               nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
-              reviewBusy={reviewBusy} onReview={onReview} />
+              reviewBusy={reviewBusy} onReview={onReview} onClearQuestion={onClearQuestion} />
           )}
         </div>
       </div>
@@ -381,7 +383,7 @@ function QuestionAnswers({
 // ── 形态 A：某参与者的逐题详情 ───────────────────────────────────────
 
 function ParticipantAnswers({
-  board, participantId, nodesByWorksheet, settingsByWorksheet, reviewBusy, onReview,
+  board, participantId, nodesByWorksheet, settingsByWorksheet, reviewBusy, onReview, onClearQuestion,
 }: {
   board: WorksheetBoard;
   participantId: string;
@@ -389,6 +391,7 @@ function ParticipantAnswers({
   settingsByWorksheet: Record<string, WorksheetSettings>;
   reviewBusy: string | null;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
+  onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
 }) {
   /**
    * 教师手动展开/收起过的题（`questionId → 展开?`）。
@@ -490,6 +493,17 @@ function ParticipantAnswers({
                     {outcome.reviewed && (
                       <span style={{ fontSize: '0.688rem', color: '#15803d' }}>已看</span>
                     )}
+                    {/* ★ 2026-09-28（第 4 条）：**清除这一题**。与「标记已查看」同一排、
+                        同样只对作答过的题出现（`canReview` 就是「这一行在不在」的判据 ——
+                        未作答的题没有行可清，给一个必然无操作的按钮是本项目明确要避免的）。
+                        ⚠️ 整张清除在**格子的垃圾桶**上，不在抽屉里 —— 两个粒度分两处，
+                        免得教师想清一题时把整张清掉。 */}
+                    <button type="button" className="btn btn-ghost"
+                      onClick={() => onClearQuestion(worksheet.id, participantId, node.id)}
+                      title="清除这一题的作答（不可撤销）"
+                      style={{ fontSize: '0.688rem', padding: '3px 8px', marginLeft: 'auto', color: '#b91c1c' }}>
+                      清除这一题
+                    </button>
                   </div>
                 )}
               </>

@@ -20,6 +20,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   moduleCountUnit,
   tileBadgeText,
+  tileShowsWorksheetClear,
   WORKSHEET_STUCK_AFTER_MS,
   worksheetTileState,
   type ParticipantWorksheetProgress,
@@ -193,9 +194,12 @@ test('收到的作答全都不在这份学习单上了（题被删光）⇒ no-p
 
 /* ── ⑤ 徽章文字 ─────────────────────────────────────────────────────── */
 
-test('徽章：学伴说轮数，学习单说已交题数', () => {
+test('徽章：只剩学伴那一档说轮数（学习单的「已交 N/M」随第 5 条去掉了）', () => {
   assert.equal(tileBadgeText({ kind: 'rounds', rounds: 3 }), '3 轮');
-  assert.equal(tileBadgeText({ kind: 'submitted', submitted: 2, total: 3 }), '已交 2/3');
+  // ⊘ ★ 2026-09-28：这里原来断言 `{ kind: 'submitted', … }` → `'已交 2/3'`。
+  // 教师第 5 条把学习单那一格的徽章去掉了 ⇒ 那一档从 `TileBadge` 里删掉
+  // ⇒ 这条断言**在类型上就写不出来了**（这正是我们要的：不是靠人记得别加回来）。
+  // ⚠️ 别把 `submitted` 那一档加回去 —— 它说的数与格子正文里那串方块是同一件事。
 });
 
 /* ── ⑥ ★ M5a：模块筛选行那六个数字的量词 ──────────────────────────────── */
@@ -292,4 +296,17 @@ test('🔴 全部交齐那一态也带题号（tooltip 在那个态里同样要�
     cells: ['submitted', 'submitted', 'submitted'],
     headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'],
   });
+});
+
+/* ── ⑥ 清除数据的垃圾桶何时出现（第 4 条）────────────────────────────── */
+
+test('★ 垃圾桶：只有这一格显示着学习单（或混合里有学习单）时才出现', () => {
+  // 与学伴那个 `tileShowsClear` 逐字同构 —— 两个垃圾桶在同一排按钮里，判据不同会打架。
+  assert.equal(tileShowsWorksheetClear('worksheet', ['worksheet']), true);
+  assert.equal(tileShowsWorksheetClear('companion', ['companion']), false, '学伴那一格给的是「清除对话」');
+  assert.equal(tileShowsWorksheetClear('explore', ['explore']), false, '探究空间的内容区是画面，没有作答可清');
+  assert.equal(tileShowsWorksheetClear('mixed', ['companion', 'worksheet']), true, '混合里有学习单 ⇒ 还有意义');
+  assert.equal(tileShowsWorksheetClear('mixed', ['companion', 'explore']), false, '混合里没有学习单 ⇒ 不出现');
+  assert.equal(tileShowsWorksheetClear('home', ['home']), false);
+  assert.equal(tileShowsWorksheetClear('unknown', []), false);
 });

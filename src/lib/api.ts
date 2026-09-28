@@ -517,6 +517,17 @@ export const api = {
     request<WorksheetBoard>(`/api/worksheets/classroom/${classroomId}/answers`),
   // 教师的「已查看」标记（规格 §3-AA）。粒度是**参与者 × 题**，可重复调用（刷新时间）。
   // ⚠️ 对**没有作答过**的那道题服务端回 **409**：界面上就不该给那种题一个必然失败的按钮。
+  /**
+   * ★ 2026-09-28（教师第 4 条）：清除某个学生在这份学习单上的作答数据。
+   * `questionId` 缺省 = 整张清除。**不可撤销** —— 确认文案由调用方负责说清范围。
+   * 返回的 `removed` 是**真的删掉了几行**（确认文案里那个数就是从它来的，不是本地数出来的）。
+   */
+  clearWorksheetAnswers: (classroomId: string, data: { participantId: string; worksheetId: string; questionId?: string | null }) =>
+    request<{ success: boolean; removed: number }>(`/api/worksheets/classroom/${classroomId}/answers`, {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    }),
+
   reviewWorksheetAnswer: (worksheetId: string, data: { participantId: string; questionId: string }) =>
     request<{ success: true; participantId: string; questionId: string; reviewedAt: string }>(
       `/api/worksheets/${worksheetId}/review`,

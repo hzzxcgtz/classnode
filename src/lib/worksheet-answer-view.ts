@@ -133,13 +133,13 @@ function strings(raw: unknown): string[] {
  *   · `['H2O']` —— **单空的老值**（`answers` 一开始就是 `string[]`）。
  * 只认前者的话，单空题的标准答案会整栏消失，而屏幕上看起来只是「老师没填答案」。
  */
-function readAnswerSets(raw: unknown): string[][] {
+export function readAnswerSets(raw: unknown): string[][] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => (typeof item === 'string' ? [item] : strings(item)));
 }
 
 /** 读连线题的正确答案（`data.pairs`）。 */
-function readPairs(node: WorksheetQuestionNode): Array<{ leftId: string; rightId: string }> {
+export function readPairs(node: WorksheetQuestionNode): Array<{ leftId: string; rightId: string }> {
   const raw = node.data?.pairs;
   if (!Array.isArray(raw)) return [];
   return raw
@@ -153,7 +153,7 @@ function readPairs(node: WorksheetQuestionNode): Array<{ leftId: string; rightId
 }
 
 /** 读归类题的正确答案（`data.placement`：条目 id → 框 id）。 */
-function readPlacement(node: WorksheetQuestionNode): Record<string, string> {
+export function readPlacement(node: WorksheetQuestionNode): Record<string, string> {
   const raw = node.data?.placement;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out: Record<string, string> = {};

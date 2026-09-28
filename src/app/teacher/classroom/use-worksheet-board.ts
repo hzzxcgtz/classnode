@@ -74,7 +74,26 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     /** 响应到达的时刻（把服务端时长换算进浏览器时钟的锚点）。 */
     fetchedAt: number;
   } | null>(null);
+  /**
+   * ★ 2026-09-28：`loading` 的语义是「**第一次**读取中，还没有任何数据」，
+   * **不是**「正在刷新」。
+   *
+   * 🔴 这两件事混起来是一个实测出来的 bug（教师报「抽屉里展开某一题看答题情况，它会自己
+   * 收拢」）：抽屉与矩阵都拿它当「画内容还是画『正在读取作答…』」的判据
+   *（`worksheet-drawer.tsx` 那六行 `!loading && …`），而**常开的 30 秒轮询**
+   * 每次都把它置真 ⇒ 每 30 秒把内容**卸载重挂**一次 ⇒ 组件内的状态（抽屉里那个
+   * 「哪一题展开了」）随之清零、滚动位置也会跳。
+   *
+   * ⇒ 只有在**一次都没成功拿到过**快照时才置真。后续刷新**静默**进行：
+   * 数据到位就直接换上去，中间不经过「空」那一帧。
+   */
   const [loading, setLoading] = useState(false);
+  /**
+   * 有没有**成功拿到过**一次快照。
+   * ⚠️ 走 ref 而不是 state：它只用来决定「要不要置 loading」，进依赖会让 `refresh`
+   * 每次成功都换一个身份 ⇒ 下面那条轮询 effect 每次都被清掉重建（节拍被打散）。
+   */
+  const everLoadedRef = useRef(false);
   const [nodesByWorksheet, setNodesByWorksheet] = useState<Record<string, WorksheetQuestionNode[]>>({});
   const [settingsByWorksheet, setSettingsByWorksheet] = useState<Record<string, WorksheetSettings>>({});
   /** 逐参与者的**广播增量**（`worksheet-answer-updated` 攒出来的）—— 供**格子**读。 */
@@ -130,10 +149,12 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     // ⚠️ 先记时刻**再**发请求（「发起」而不是「回来」）—— 这样任何**早于**它的广播，
     // 其对应的那次写库一定在服务端读这个快照之前，下界才是安全的那一侧。
     const startedAt = Date.now();
-    setLoading(true);
+    // ⚠️ **只有第一次**置 loading（见上面那一段）。刷新是静默的。
+    if (!everLoadedRef.current) setLoading(true);
     void (async () => {
       try {
         const board = await api.getWorksheetBoard(classroomId);
+        everLoadedRef.current = true;
         setSnapshot({ board, startedAt, fetchedAt: Date.now() });
         // 顺带把题目树与 settings 补齐：抽屉的题号 / 题型 / 奖励换算全靠它们，
         // 而它们可能与首屏那次不同（教师课上加题，规格 §3-J 只警告不拦）。

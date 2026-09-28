@@ -160,30 +160,37 @@ export function WorksheetDrawer({
         </div>
 
         <div style={{ flex: 1, overflow: 'auto', padding: 14 }}>
-          {loading && (
+          {/* ★ 2026-09-28：判据是「**有没有数据**」，不是「正在不在读」。
+              🔴 这两件事混起来是一个实测出来的 bug（教师报「抽屉里展开某一题看答题情况，
+              它会自己收拢」）：下面那六个分支原先都带 `!loading`，而看板的数据层是
+              **30 秒轮询**的 —— 每一次刷新都让这一整块**卸载重挂**一次，
+              组件内的状态（「哪一题展开了」）随之清零、滚动位置也会跳。
+              ⇒ 有数据就画数据（刷新静默进行，中间不经过「空」那一帧），
+                没有数据才轮到「读到了没有」这两句。 */}
+          {!board && loading && (
             <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>正在读取作答…</div>
           )}
-          {!loading && !board && (
+          {!board && !loading && (
             // 读失败 / 还没到：**如实说**，不要画一个像是「全班都没作答」的空列表
             // （那正是本任务要修的那类假象）。
             <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem', lineHeight: 1.7 }}>
               还没有读到这一堂课的作答。<br />请确认服务正在运行，或稍后再打开一次。
             </div>
           )}
-          {!loading && board && current.kind === 'worksheets' && (
+          {board && current.kind === 'worksheets' && (
             <WorksheetList board={board} onOpen={(worksheetId) => push({ kind: 'questions', worksheetId })} />
           )}
-          {!loading && board && current.kind === 'questions' && (
+          {board && current.kind === 'questions' && (
             <QuestionList board={board} worksheetId={current.worksheetId}
               nodes={nodesByWorksheet[current.worksheetId] ?? null}
               onOpen={(questionId) => push({ kind: 'question', worksheetId: current.worksheetId, questionId })} />
           )}
-          {!loading && board && current.kind === 'question' && (
+          {board && current.kind === 'question' && (
             <QuestionAnswers board={board} worksheetId={current.worksheetId} questionId={current.questionId}
               nodes={nodesByWorksheet[current.worksheetId] ?? null}
               onOpenParticipant={(participantId) => push({ kind: 'participant', participantId })} />
           )}
-          {!loading && board && current.kind === 'participant' && (
+          {board && current.kind === 'participant' && (
             <ParticipantAnswers board={board} participantId={current.participantId}
               nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
               reviewBusy={reviewBusy} onReview={onReview} onClearQuestion={onClearQuestion} />

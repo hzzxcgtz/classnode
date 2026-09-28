@@ -1842,6 +1842,13 @@
 .resultCell[data-tone='partial'] .resultGlyph { background: #d97706; }
 .resultCell[data-tone='incorrect'] .resultGlyph { background: #dc2626; }
 
+/* ★ 2026-09-28（教师）：「需要一个大一点的减号。」
+   🔴 **只把这一档的字号调大**：`✓` 与 `½` 是「有笔画」的记号，11px 在 18px 的圆里够看；
+   而减号是**一条横线**，同样的字号下它的墨迹比另外两个小得多（同一字号下，
+   横线的视觉重量 ≈ 一个点的宽度）。⇒ 这一档单独放到 1.0625rem（17px）。
+   ⚠️ 想再大/再小就改这一个数：它在 18px 的圆里已经接近上界（再大就会顶到圆边）。 */
+.resultCell[data-tone='incorrect'] .resultGlyph { font-size: 1.0625rem; }
+
 /* 奖励：**在圆角框外面**（★ 2026-09-28 教师图 56：「火箭和 ×1 不需要框在圆角矩形里，
    这样可以保证左边的两个框的高度和其他框的高度保持一致」）。
    ⚠️ 它不再是一格 `.resultCell`（那一档自带边框与底色），只是框右边的一个符号组；

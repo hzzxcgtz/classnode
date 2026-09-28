@@ -3,10 +3,9 @@
 import { useMemo } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { indexQuestions } from './worksheet-drawer-state';
-import { QuestionAnswers } from './worksheet-drawer';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { StackedBar } from './question-stacked-bar';
-import { questionStats, type MatrixCell, type StatsRow } from './worksheet-question-stats';
+import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
 
 /**
  * 「按题统计与分析」的浮层（规格 `specs/2026-09-28-按题统计与分析.md`）。
@@ -128,7 +127,7 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenParticipant, classroomId,
+  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, classroomId,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -138,8 +137,6 @@ export function QuestionStatsOverlay({
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
   /** ② 智能体解读：**打开已有的分析浮层**（见下面那段注释）。 */
-  /** 点某个学生的名字 ⇒ 跳到他那一题（由调用方先关本浮层再开抽屉）。 */
-  onOpenParticipant: (participantId: string) => void;
   /** 🔴 分析载荷要用它（与 `AnalysisOverlay` 同一条理由：同一份学习单可被多个课堂引用）。 */
   classroomId: string;
 }) {
@@ -306,33 +303,24 @@ export function QuestionStatsOverlay({
             </>
           )}
 
-          {/* ② 智能体解读 —— ★ 2026-09-28：**正文内联在这里**（规格 §6.2）。
+          {/* ② 智能体解读 —— ★ 只对**主观题**显示（教师：「非问答题，非绘图题，
+              这部分要隐藏」）。判据在 `showsAgentAnalysis`（纯函数、有用例）。
               🔴 它不是另写一份：`AnalysisBody` / `AnalysisActions` / `AnalysisBanners`
               与整屏那个 `AnalysisOverlay` **共用同一个实现**（含那份「发之前先给你看一遍」
               的隐私闸门预览）—— 各画一份必然分叉，而两边都不报错。 */}
-          <Section title="智能体解读" note="问答 / 绘图题交给智能体分析">
-            <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 12px', background: '#fafcff' }}>
-              <AnalysisBanners state={analysis} />
-              {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}
-              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
-                <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} />
+          {node && showsAgentAnalysis(node) && (
+            <Section title="智能体解读" note="问答 / 绘图题交给智能体分析">
+              <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 12px', background: '#fafcff' }}>
+                <AnalysisBanners state={analysis} />
+                {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}
+                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
+                  <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} />
+                </div>
+                <AnalysisActions state={analysis} />
               </div>
-              <AnalysisActions state={analysis} />
-            </div>
-          </Section>
-
-          {/* ③ 逐个作答 —— **复用抽屉第三层那个组件**，不另写一份呈现 */}
-          {board && node && (
-            <Section title="逐个作答">
-              <QuestionAnswers
-                board={board}
-                worksheetId={worksheetId}
-                questionId={questionId}
-                nodes={nodes}
-                onOpenParticipant={onOpenParticipant}
-              />
             </Section>
           )}
+
         </div>
       </div>
     </>

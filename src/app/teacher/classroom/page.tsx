@@ -3420,11 +3420,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           questionId={questionStatsTarget.questionId}
           nodesByWorksheet={wb.nodesByWorksheet}
           onClose={() => setQuestionStatsTarget(null)}
-          // 点某个学生的名字 ⇒ **先关掉本浮层再开抽屉**（抽屉在 291，被本浮层盖着）。
-          onOpenParticipant={(participantId) => {
-            setQuestionStatsTarget(null);
-            openWorksheetDrawer({ kind: 'participant', participantId });
-          }}
         />
       )}
 

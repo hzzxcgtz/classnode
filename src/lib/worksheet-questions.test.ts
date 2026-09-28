@@ -47,6 +47,44 @@ function headings(nodes: WorksheetQuestionNode[]): string[] {
   return flattenAnswerable(nodes).map((item) => item.heading);
 }
 
+/** 只要**组内序号**。 */
+function labels(nodes: WorksheetQuestionNode[]): string[] {
+  return flattenAnswerable(nodes).map((item) => item.label);
+}
+
+/* ── 组内序号（★ 2026-09-29：矩阵按任务分块之后，小题上只画这一个数）──────── */
+
+test('🔴 组内序号：每个任务从 1 起', () => {
+  const nodes = [task('t1', '任务一', [q('a'), q('b')]), task('t2', '任务二', [q('c')])];
+  assert.deepEqual(labels(nodes), ['1', '2', '1']);
+  assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务二 · 1']);
+});
+
+test('🔴 组内序号：散题沿用**跨全文**的编号 —— 下标推不出它（这个字段存在的理由）', () => {
+  // 散题 a、任务一、散题 b：b 的序号是 `2`（散题共用一个计数器），
+  // 而它在**自己那一段**里的下标是 0 ⇒ 拿 `index + 1` 当序号会印出一个不存在的「1」。
+  const nodes = [q('a'), task('t1', '任务一', [q('c')]), q('b')];
+  assert.deepEqual(labels(nodes), ['1', '1', '2']);
+  assert.deepEqual(headings(nodes), ['1', '任务一 · 1', '2']);
+  // 摆明冲突：最后一道题是它那一段的第 1 项，序号却是 2。
+  const lastGroup = groupAnswerable(nodes)[2];
+  assert.equal(lastGroup.items.length, 1);
+  assert.equal(lastGroup.items[0].label, '2');
+});
+
+test('🔴 题号与组内序号**不许分家**（每一条题号的尾巴就是它的序号）', () => {
+  const nodes = [q('a'), task('t1', '任务一', [q('b'), q('c')]), task('t2', '   ', [q('d')]), q('e')];
+  for (const item of flattenAnswerable(nodes)) {
+    assert.ok(
+      item.heading === item.label || item.heading.endsWith(` · ${item.label}`),
+      `题号 ${item.heading} 的尾巴不是它的序号 ${item.label}`,
+    );
+  }
+  // 标题留空 ⇒ 题号就是序号本身（不编一个「任务N」）。
+  assert.deepEqual(labels([task('t1', '   ', [q('a')])]), ['1']);
+  assert.deepEqual(headings([task('t1', '   ', [q('a')])]), ['1']);
+});
+
 test('选择题选项只读取本机上传的配图地址，外部图片地址被丢弃', () => {
   const node = q('image-options');
   node.data.options = [

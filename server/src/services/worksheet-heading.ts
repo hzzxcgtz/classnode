@@ -43,6 +43,14 @@ export interface AnswerableQuestion<T extends HeadingNode = HeadingNode> {
   node: T;
   /** 两级题号：`任务一 · 1`。任务标题留空时没有前缀（就是 `1`）。 */
   heading: string;
+  /**
+   * ★ 2026-09-29：**组内序号**（题号去掉任务前缀的那一半）。
+   *
+   * 服务端**今天不读它** —— 加在这里只是为了「逐字镜像」这条规矩不出现例外
+   * （本文件是镜像，见文件头）。前端矩阵按任务分块之后，小题上画的就是它；
+   * 而它必须与 `heading` 出自同一个计数器，别在两处各算一遍。
+   */
+  label: string;
 }
 
 /**
@@ -66,7 +74,7 @@ export function flattenAnswerable<T extends HeadingNode>(nodes: T[]): Array<Answ
         continue;
       }
       counter.n += 1;
-      out.push({ node, heading: `${prefix}${counter.n}` });
+      out.push({ node, heading: `${prefix}${counter.n}`, label: String(counter.n) });
       walk(kids(node), prefix, counter);
     }
   };

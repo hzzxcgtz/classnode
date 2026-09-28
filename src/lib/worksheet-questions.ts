@@ -360,6 +360,19 @@ export interface AnswerableQuestion {
    * 不编一个「任务N」，理由见 `flattenAnswerable`。
    */
   heading: string;
+  /**
+   * ★ 2026-09-29（教师批图 1）：**组内序号** —— 题号去掉任务前缀的那一半（`1`）。
+   *
+   * 🔴 矩阵按任务分块之后，段头已经把任务名说完了，小题上只画这一个数
+   * ⇒ 那个数必须是**算出来的**，不许由渲染侧拿下标推：
+   * 散题共用**跨全文**的计数器（散题 A、任务一、散题 B 里 B 是 `2`），
+   * 而它在自己那一段里的下标是 0 —— `index + 1` 会印出一个不存在的「1」，
+   * 屏幕上看起来只是「题号怪怪的」。用例把这条冲突摆明了（`worksheet-questions.test.ts`）。
+   *
+   * ⚠️ 它与 `heading` 是**同一个 `counter.n`**（`heading` 就是前缀拼上它）——
+   * 两处不许分家，用例逐条核「题号的尾巴就是序号」。
+   */
+  label: string;
 }
 
 /**
@@ -414,7 +427,9 @@ export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQue
         continue;
       }
       counter.n += 1;
-      out.push({ node, heading: `${prefix}${counter.n}` });
+      // ⚠️ `heading` 与 `label` 是**同一个 `counter.n`** 的两种写法：一个是给人看的
+      // 两级题号，一个是分块之后剩下来的那个数。分两次算就是给自己留一个会漂的副本。
+      out.push({ node, heading: `${prefix}${counter.n}`, label: String(counter.n) });
       walk(kids(node), prefix, counter);
     }
   };

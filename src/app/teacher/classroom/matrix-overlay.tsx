@@ -2,10 +2,13 @@
 
 // ⚠️ `CSSProperties` 要显式 import：本仓的组件不引 React 本体（Next 的新 JSX 变换），
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
-import type { CSSProperties } from 'react';
+// ★ 2026-09-29：`Fragment` 是**具名** import（不是 `React.Fragment`）—— 段头行与它下面的题行
+// 是同一层里的兄弟节点，key 只能挂在 Fragment 上。同目录的 `analysis-panel.tsx` 也是这么引 hook 的。
+import { Fragment, type CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { isGradedType } from './worksheet-drawer-state';
-import { buildWorksheetMatrix, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
+import { buildWorksheetMatrix, matrixGroups, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
+import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
@@ -154,16 +157,36 @@ function MatrixBlock({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <MatrixRowView
-              key={row.questionId}
-              row={row}
-              participantIds={participantIds}
-              stuck={row.questionId === stuckId}
-              onOpenQuestion={() => onOpenQuestion(sheet.id, row.questionId)}
-              onOpenParticipant={onOpenParticipant}
-              onOpenAnalysis={() => onOpenAnalysis(sheet.id, row.questionId)}
-            />
+          {/* ★ 2026-09-29（教师批图 1）：「这里要按任务进行归类，不要让同样的任务名称多次出现」。
+              ⇒ 逐**段**画：段头一行（`matrixGroups` 切好的），下面才是题行。
+              ⚠️ 判据（哪两行属于同一段）全在纯函数里，这里只遍历 —— 写进 JSX 的判据没有回归网，
+              而它错了不报错（段头少画一次或多画一次，读起来完全正常）。 */}
+          {matrixGroups(rows).map((group, groupIndex) => (
+            // ⚠️ key 用「段序号 + 段名」：两个**同名任务**相邻时合成一段，拿段名当 key 会撞。
+            <Fragment key={`${groupIndex}:${group.taskTitle ?? ''}`}>
+              {group.taskTitle !== null && (
+                <tr>
+                  {/* 🔴 段头也必须是**粘性左列**：横向滑到第 30 个人时，题行上只剩一个
+                      「1 开心填空」—— 看不出这是哪个任务的。 */}
+                  <th scope="colgroup" style={groupHeadCellStyle}>{group.taskTitle}</th>
+                  {/* ⚠️ 粘性挂在**第一格**上，其余用一格 `colSpan` 的填空铺过去 ——
+                      给 `colSpan` 的那一格本身加 `position: sticky` 是没验证过的形状，
+                      而「粘性左列」在本文件里已经有一套跑通的写法（表头行与题行都是它）。 */}
+                  <td colSpan={participantIds.length + 1} style={groupHeadFillerStyle} />
+                </tr>
+              )}
+              {group.rows.map((row) => (
+                <MatrixRowView
+                  key={row.questionId}
+                  row={row}
+                  participantIds={participantIds}
+                  stuck={row.questionId === stuckId}
+                  onOpenQuestion={() => onOpenQuestion(sheet.id, row.questionId)}
+                  onOpenParticipant={onOpenParticipant}
+                  onOpenAnalysis={() => onOpenAnalysis(sheet.id, row.questionId)}
+                />
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -187,35 +210,53 @@ function MatrixRowView({
   const tally = rowTally(row);
   return (
     <tr style={stuck ? { background: '#fffbeb' } : undefined}>
-      <th scope="row" style={{ ...stickyCellStyle, borderLeft: stuck ? '3px solid #f59e0b' : '3px solid transparent' }}>
-        <button type="button" onClick={onOpenQuestion}
-          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
-          {/* ★ 两级题号（`任务一 · 1`）已经是给人看的串，**不加 1** */}
-          <span style={{ color: '#1e293b', fontWeight: 600 }}>{row.heading}</span>
-          <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.75rem' }}>{row.typeLabel}</span>
-          {/* 题干单行截断交给 CSS（不在这里切字符串 —— 那会把空题干那条既有文案一起吃掉）。 */}
-          <span style={{
-            display: 'inline-block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap', verticalAlign: 'bottom', marginLeft: 8, color: '#475569', fontSize: '0.75rem',
-          }}>
-            {promptLabel(row.prompt)}
-          </span>
-        </button>
-        {/* ★ M7a：「分析」入口 —— **只对主观题出现**。客观题本来就判分，看板的对错已经
-            回答了「这题答得怎么样」，再给一个分析入口只会让教师多点一下。
-            判据走 `isGradedType`（它派生自题型表的 `graded` 旗标）—— 与抽屉画不画 ✓/✗
-            是**同一把尺子**；而 `graded` 那张表由 `analysis-gate-parity.test.ts` 与服务端闸门对拍。
-            ⚠️ 这是**兄弟节点**（不是嵌在上面那个按钮里 —— 嵌 `<button>` 是非法 HTML，
-            点它会同时打开抽屉）。兄弟之间不需要 `stopPropagation`。 */}
-        {!isGradedType(row.type) && (
-          <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么"
-            style={{
-              marginLeft: 8, padding: '2px 8px', fontSize: '0.7rem', borderRadius: 6,
-              border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
-            }}>
-            分析
+      {/* 🔴 行头**两行**（★ 2026-09-29，教师批图 1：「可以在下一行显示题干内容……每一行的
+          高度可以适当的放大，甚至占到两到三行都没关系」）：
+            第一行 `组内序号 + 题型别名`（右侧挂「分析」），第二行题干（最多两行、超出省略）。
+          ⚠️ 任务名**不在这一行** —— 它在上面那条段头里（这就是批注要的「不要多次出现」）。 */}
+      <th scope="row" style={{
+        ...stickyCellStyle,
+        whiteSpace: 'normal',
+        verticalAlign: 'top',
+        padding: '6px 10px',
+        width: ROW_HEAD_WIDTH,
+        minWidth: ROW_HEAD_WIDTH,
+        maxWidth: ROW_HEAD_WIDTH,
+        borderLeft: stuck ? '3px solid #f59e0b' : '3px solid transparent',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+          {/* ⚠️ 题干与序号在**同一个**按钮里（点哪儿都是打开这道题的抽屉）；「分析」是它的
+              **兄弟节点** —— 嵌 `<button>` 是非法 HTML，点它会同时触发外层。
+              兄弟之间不需要 `stopPropagation`。 */}
+          <button type="button" onClick={onOpenQuestion}
+            style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+            <span style={{ display: 'block' }}>
+              <span style={{ color: '#1e293b', fontWeight: 700 }}>{row.label}</span>
+              {/* ★ 教师批图 1：「这里的题型使用别名」—— 画的是**学生端那套别名**
+                  （`开心填空` / `慧眼选择`…，见 `worksheet-questions.ts` 的 `nickname`）。
+                  🔴 正式题型名**没有丢**：挂在这一格的 `title` 上（悬浮可见）。
+                  它会让人对不上教材与教研的用词，所以两件都要留着。 */}
+              <span title={row.typeLabel} style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.75rem' }}>
+                {questionTypeNickname(row.type)}
+              </span>
+            </span>
+            {/* 题干：两行截断交给 CSS（不在这一层切字符串 —— 那会把空题干那条既有文案一起吃掉）。 */}
+            <span style={promptCellStyle}>{promptLabel(row.prompt)}</span>
           </button>
-        )}
+          {/* ★ M7a：「分析」入口 —— **只对主观题出现**。客观题本来就判分，看板的对错已经
+              回答了「这题答得怎么样」，再给一个分析入口只会让教师多点一下。
+              判据走 `isGradedType`（它派生自题型表的 `graded` 旗标）—— 与抽屉画不画 ✓/✗
+              是**同一把尺子**；而 `graded` 那张表由 `analysis-gate-parity.test.ts` 与服务端闸门对拍。 */}
+          {!isGradedType(row.type) && (
+            <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么"
+              style={{
+                flexShrink: 0, padding: '2px 8px', fontSize: '0.7rem', borderRadius: 6,
+                border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
+              }}>
+              分析
+            </button>
+          )}
+        </div>
       </th>
       {participantIds.map((participantId) => (
         <td key={participantId} style={bodyCellStyle}>
@@ -243,6 +284,13 @@ const CELL_COLOR: Record<CellState, string> = {
 
 const DOT = 22;
 
+/**
+ * 行头那一列的宽度（★ 2026-09-29）。**写死**是有意的：题干要按两行截断，
+ * 而截断的位置取决于这一列有多宽 —— 交给浏览器自动定宽时，同一份学习单在不同人数下
+ * 会截在不同字上（人数多 ⇒ 表格更宽 ⇒ 这一列被挤窄）。
+ */
+const ROW_HEAD_WIDTH = 300;
+
 const stickyHeaderStyle: CSSProperties = {
   position: 'sticky', left: 0, zIndex: 2, background: 'white', textAlign: 'left',
   padding: '4px 8px', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500,
@@ -251,6 +299,39 @@ const stickyHeaderStyle: CSSProperties = {
 const stickyCellStyle: CSSProperties = {
   position: 'sticky', left: 0, zIndex: 1, background: 'white', textAlign: 'left',
   padding: '4px 8px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
+};
+/**
+ * 段头（★ 2026-09-29）那一格。底色浅灰、上下各一条线 —— 它是「这一段的边界」，
+ * 而**不能**只靠加粗（教师扫一眼要能看出题行被分成了几段）。
+ * ⚠️ 底色必须**不透明**：粘性左列滑过去时它要盖住下面的格子。
+ */
+const groupHeadCellStyle: CSSProperties = {
+  position: 'sticky', left: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'left',
+  padding: '8px 10px', fontSize: '0.813rem', fontWeight: 700, color: '#334155',
+  borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap',
+};
+/** 段头那一行剩下的部分（铺满整行，让底色的那一条横贯过去）。 */
+const groupHeadFillerStyle: CSSProperties = {
+  background: '#f1f5f9', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0',
+};
+/**
+ * 题干那一行。**最多两行、超出省略**（教师批图 1 允许行高到两三行）。
+ *
+ * ⚠️ `-webkit-line-clamp` 而不是「高度裁掉」：后者会把第二行切成半截字，
+ * 那种「看起来是渲染坏了」的长相正是要避免的。`whiteSpace: normal` 是必须的 ——
+ * 它爸（`stickyCellStyle`）是 `nowrap`（行首那一列原来只放一行标题）。
+ */
+const promptCellStyle: CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  marginTop: 2,
+  color: '#475569',
+  fontSize: '0.75rem',
+  lineHeight: 1.45,
+  whiteSpace: 'normal',
+  wordBreak: 'break-word',
 };
 const headCellStyle: CSSProperties = {
   padding: '4px 2px', height: 96, verticalAlign: 'bottom', borderBottom: '1px solid #e2e8f0',

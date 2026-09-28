@@ -4,7 +4,35 @@ export type ModuleState = 'open' | 'preview' | 'hidden';
 export const MODULE_KEYS: readonly ModuleKey[] = ['learning-sheet', 'explorer', 'companion'] as const;
 export const MODULE_STATES: readonly ModuleState[] = ['open', 'preview', 'hidden'] as const;
 
-/** 老课堂没有 ClassroomModule 行时的兜底态。教学上最保守：可见但锁定。 */
+/**
+ * ★ 2026-09-29（教师）：「这三个模块在**创建后默认是开放**」。
+ *
+ * 🔴 它与下面的 `DEFAULT_MODULE_STATE` **不是一回事，拆开是这一节的要点**：
+ *   · 本常量 = **新建课堂写进库里的初始态** —— 教师这次的要求是「开箱即可用」；
+ *   · `DEFAULT_MODULE_STATE` = **读不到行 / 行是脏数据时的兜底** —— 那一侧必须是保守的
+ *     （一次读失败不该把模块开给学生）。
+ * 两者共用一个常量时，取值只能二选一，于是「新建要宽松」与「兜底要保守」里必有一个是错的。
+ */
+export const INITIAL_MODULE_STATE: ModuleState = 'open';
+
+/**
+ * 新建课堂要写下去的三行（`POST /create` 与 `POST /create-advanced` 共用）。
+ *
+ * ⚠️ 两条创建路径**都要种**：只种一条的话，另一条建出来的课堂落在
+ * `DEFAULT_MODULE_STATE` 上（= 三个模块全「暂停」），而**屏幕上没有任何异常** ——
+ * 教师只会觉得「刚建的课堂怎么三个模块都点不进去」。
+ */
+export function initialModuleRows(): Array<{ moduleKey: ModuleKey; state: ModuleState }> {
+  return MODULE_KEYS.map((moduleKey) => ({ moduleKey, state: INITIAL_MODULE_STATE }));
+}
+
+/**
+ * 老课堂没有 ClassroomModule 行时的兜底态。教学上最保守：可见但锁定。
+ *
+ * ⚠️ 2026-09-29 之后它**只剩兜底这一个角色**（新建课堂由 `INITIAL_MODULE_STATE` 种下去）。
+ * 别把这一行改成 `'open'` 来「顺手统一」：它同时兜着「行缺失」与「行里的值认不出」
+ * 两种情况，而后者是一次**读失败**，不该有任何宽松的后果。
+ */
 export const DEFAULT_MODULE_STATE: ModuleState = 'preview';
 
 export function isValidModuleKey(value: unknown): value is ModuleKey {

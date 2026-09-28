@@ -825,7 +825,7 @@ export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'gr
   /**
    * 该课堂在 ClassroomModule 表里有没有行。
    *
-   * `modules` 是补齐后的三项，「三态全是 preview」既可能是教师把三项都设成了预告、
+   * `modules` 是补齐后的三项，「三态全是 preview」既可能是教师把三项都设成了暂停、
    * 也可能是这个课堂从未设置过（老课堂零行兜底），前端单看 `modules` 分不出来。
    *
    * 可选：服务端读取模块行失败（老库 ClassroomModule 表不存在）时**不下结论**、不发这个

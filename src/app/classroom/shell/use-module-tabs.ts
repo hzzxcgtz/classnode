@@ -21,7 +21,7 @@ export interface UseModuleTabsOptions {
   selectedStudent: StudentSession | null;
   /**
    * 与首页、学伴面板共用的**同一个** `setToast`（会话级状态由 page.tsx 持有）。
-   * 外壳的提示（模块被关闭、点开未开放的 Tab）走这里，渲染则交给当前可见的那一层 ——
+   * 外壳的提示（模块被暂停、点开暂停的 Tab）走这里，渲染则交给当前可见的那一层 ——
    * 见 classroom-shell.tsx 里「只有可见层渲染 Toast」那条规则。
    */
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
@@ -188,7 +188,13 @@ export function useModuleTabs({ classroom, selectedStudent, setToast, paused }: 
       return;
     }
     if (moduleStateFor(classroom?.modules, id) !== 'open') {
-      setToast({ msg: '老师还没开放', type: 'info' });
+      // ★ 2026-09-29（教师）：「暂停状态主要是提醒学生，这个模块**是有的**，但是目前暂时
+      // 不能用。提醒的时候**温馨一点**。」⇒ 这句话要同时照顾 `preview` 的两种来意：
+      // 课前挂着的「即将开放」，与课中被收起来的「暂停」。所以**不能**写「即将开放」
+      //（对一个刚被暂停的模块那是一句假话），也不能写「已关闭」（那听上去像没有了）。
+      // 🔴 同一个事实在**三处**（本文件两处 + `student-home.tsx` 两处），改的时候 grep
+      // 这句话本身，别只改一个文件。
+      setToast({ msg: '这个模块还在的，老师先收起来啦，等一下再来看看～', type: 'info' });
       return;
     }
     setMountedIds((prev) => (prev.indexOf(id) === -1 ? [...prev, id] : prev));
@@ -222,7 +228,9 @@ export function useModuleTabs({ classroom, selectedStudent, setToast, paused }: 
     if (activeModuleId === null) return;
     if (moduleStateFor(classroom?.modules, activeModuleId) === 'open') return;
     setActiveModuleId(null);
-    setToast({ msg: '老师暂时关闭了这个模块，先回到首页', type: 'info' });
+    // ★ 2026-09-29：与上面那条同一个事实（`preview` 的措辞），换成「我们」——
+    // 这一句是**已经用着、被收走**的那一刻说的，比点一个锁着的图标更该像在安慰。
+    setToast({ msg: '老师先把这个模块收起来了，我们待会儿再来～', type: 'info' });
   }, [activeModuleId, classroom?.modules, setToast]);
 
   return { activeModuleId, mountedIds, tabs, openModule, goHome };

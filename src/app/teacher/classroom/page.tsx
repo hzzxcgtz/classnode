@@ -24,6 +24,7 @@ import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsW
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
+import { cardInOnlineModule, onlineModuleDistribution, resolveFocus, type FocusModule } from './board-module-counts';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -95,9 +96,19 @@ const MODULE_LABELS: Record<ClassroomModuleKey, string> = {
   companion: '智能学伴',
 };
 
+/**
+ * 教师端的三态中文名。★ 2026-09-29（教师）：「将**预告**改成**暂停**」。
+ *
+ * 🔴 改的只是**中文标签**，`preview` 这个值一个字没动（改值 = 库 + API + 三份校验表
+ * 一起动，换不来任何功能）。语义随之偏了一点，如实记下：
+ * `preview` 原来叫「预告」（即将开放），现在叫「暂停」（本来能用、暂时不能）——
+ * 两者靠同一句话活在同一个格子里：**这个模块是有的，但现在用不了**。
+ * ⚠️ 所以**学生端那句话**（`use-module-tabs.ts` / `student-home.tsx`）必须同时照顾这两种来意，
+ * 不能写成「即将开放」（对一个刚被暂停的模块，那是一句假话）。
+ */
 const MODULE_STATE_LABELS: Record<ClassroomModuleState, string> = {
   open: '开放',
-  preview: '预告',
+  preview: '暂停',
   hidden: '隐藏',
 };
 
@@ -114,9 +125,17 @@ const MODULE_ID_LABELS = {
   companion: MODULE_LABELS[MODULE_KEY_BY_ID.companion],
 } as const satisfies Record<ModuleId, string>;
 
+/**
+ * 三态那三个按钮上的说明（鼠标悬浮可见）。
+ *
+ * ★ 2026-09-29：`preview` 那条按教师的要求改了口径 —— 原来写「学生可见但被锁定」
+ * （描述界面的样子），现在写**学生会看到什么、老师该期待什么**。
+ * 教师这次的原话是「暂停状态主要是**提醒学生**，这个模块是有的，但是目前暂时不能用」
+ * —— 那句话是给学生的，教师这一侧就要说清楚他会看到什么。
+ */
 const MODULE_STATE_HINTS: Record<ClassroomModuleState, string> = {
   open: '学生可直接使用',
-  preview: '学生可见但被锁定',
+  preview: '学生看得见，但暂时用不了',
   hidden: '学生端不显示',
 };
 
@@ -394,8 +413,13 @@ function ModuleInitialChip({ module, compact = false }: { module: GroupTileModul
  *   · `'home'`    —— 学生此刻停在**首页**（focus 明确是 `null`）
  *   · `'unknown'` —— 还没收到这个学生的 focus。**不猜**：猜一个模块会让教师看到
  *                    一个不存在的事实（比一句「不知道」糟得多）。
+ *
+ * ★ 2026-09-29：定义**搬到** `board-module-counts.ts`（那边叫 `FocusModule`）。
+ * 这里留一个别名，是因为「这一格显示什么」与「他在哪个模块」在**两个文件里都要用**，
+ * 而两份结构相同、各自声明的联合类型**不会互相报错** —— 加第四个模块时只改一处，
+ * 另一处静默地少一个成员。别名让定义只有一份。
  */
-type TileModule = ModuleId | 'home' | 'unknown';
+type TileModule = FocusModule;
 
 /** 小组格子专用：组内成员此刻**不在同一个模块**。 */
 type GroupTileModule = TileModule | 'mixed';
@@ -1396,7 +1420,7 @@ function ClassroomBoardContent() {
       try {
         await api.setClassroomModuleState(id, moduleKey, state);
         // 成功后该课堂至少有这一行模块行了 —— 否则把 A 设成 open 再设回 preview 时，
-        // 三态又全是预告，而 hasModuleRows 还停在初始加载的 false 上，
+        // 三态又全是暂停，而 hasModuleRows 还停在初始加载的 false 上，
         // 菜单会重新弹出「未单独配置过模块」这句已经不成立的话。
         setClassroom((previous) => previous ? { ...previous, hasModuleRows: true } : previous);
       } catch (error) {
@@ -1448,8 +1472,8 @@ function ClassroomBoardContent() {
 
   // 「这个课堂从没单独配置过模块，菜单里看到的是默认态」。
   //
-  // 两个条件缺一不可：只看「三态都是预告」会把教师主动把三项都设成预告的课堂误判成未配置
-  // （mergeModuleStates 补齐出来的默认态与显式设置的预告在 modules 里长得一模一样）。
+  // 两个条件缺一不可：只看「三态都是暂停」会把教师主动把三项都设成暂停的课堂误判成未配置
+  // （mergeModuleStates 补齐出来的默认态与显式设置的暂停在 modules 里长得一模一样）。
   // hasModuleRows 用 === false 而不是 !：服务端读不到模块行时不发这个字段，那是「不知道」，
   // 不是「没有」，不能借它断言未配置。
   const modulesNeverConfigured = classroom.hasModuleRows === false
@@ -1506,12 +1530,12 @@ function ClassroomBoardContent() {
    * 与 `resolveTileModule` 的差别只在「指定」模式：那时格子显示的是教师指定的那个，
    * 而学生人还在自己点开的模块里。两者的差只有这里读得到，格子上那行「实际在：X」
    * 与小组格的实际位置统计都靠它（见 `tileLocationNote`）。
+   *
+   * ★ 2026-09-29：判据搬去 `board-module-counts.ts` 的 `resolveFocus`（**唯一一份**）——
+   * 看板那一行的「谁在哪个模块」也要用它，而两处各写一遍必然有一处先漂
+   *（筛出来的格子与数字对不上，两边都不报错）。这里只把地图递过去。
    */
-  const resolveStudentFocus = (studentId: string): TileModule => {
-    if (!Object.prototype.hasOwnProperty.call(studentModuleFocus, studentId)) return 'unknown';
-    const focus = studentModuleFocus[studentId];
-    return focus === null ? 'home' : focus;
-  };
+  const resolveStudentFocus = (studentId: string): TileModule => resolveFocus(studentModuleFocus, studentId);
 
   /**
    * 单个学生**这一格**该显示哪个模块。
@@ -1648,12 +1672,27 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     return `实际：${parts.join('、')}`;
   };
 
-  /** 三件套各几人（+ 首页 / 未知）。**按人**数，不按格子 —— 小组格会把这些学生藏起来。 */
-  const moduleDistribution: Record<TileModule, number> = (() => {
-    const counts: Record<TileModule, number> = { worksheet: 0, explore: 0, companion: 0, home: 0, unknown: 0 };
-    for (const student of students) counts[resolveStudentFocus(student.id)] += 1;
-    return counts;
-  })();
+  /**
+   * 三件套各几人（+ 首页 / 未知）。
+   *
+   * ★ 2026-09-29（教师批注 ③）：「这里显示的人数应该是指**当前正处在这个页面中的
+   * 在线人数**」。⇒ 只数**在线**（`online` / `thinking`）的人。截图里的症状是
+   * 全班 40、离线 38，而「学习单」写着 8 —— 那 8 个里多数是离线、只是最后停在学习单的。
+   *
+   * 🔴 数字与筛选**同一套判据**（`cardInOnlineModule`，教师选定「一起改」）：
+   * 只改数字会留下「写 2 人、点开 8 格」，比原来一致地错更糟。
+   *
+   * ⚠️ 相加 = **此刻在线人数**，不是参与者总数。界面上那一行仍然
+   * 「在线 + 离线 = 全部」，所以三个模块格相加**不该**等于「全部」—— 那不是算错。
+   *
+   * ⚠️ 单位是**参与者**（分组 / 高级模式下就是组，量词由 `moduleCountUnit` 给）：
+   * 小组格会把这些学生藏起来（一个组一个格子），所以**不能**改数 `allDisplayCards`。
+   */
+  const moduleDistribution: Record<TileModule, number> = onlineModuleDistribution(
+    students.map((student) => student.id),
+    studentModuleFocus,
+    studentStatuses,
+  );
 
   // ★ M5a：模块筛选行那六个数字的量词（分组/高级模式下参与者是组 ⇒ 那是组数）。
   // 与 `moduleDistribution` 同一处：两者必须同源，否则量词与数字会各说各的。
@@ -1677,10 +1716,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 小组格的 `tileModule` 可能是 `mixed`，而它确实**含有**在「学习单」里的人
    * —— 教师点「学习单」是想找出这些学生，把 mixed 格整格藏掉正好把他们藏起来了。
    * 代价是一个 mixed 格会在多个模块筛选下都出现（它本来就横跨多个模块）。
+   *
+   * ★ 2026-09-29（教师批注 ③）：判据加上**在线**，移到 `board-module-counts.ts`
+   *（`cardInOnlineModule`）—— 与那一格的数字**同一套判据**。教师选定「数字和筛选一起改」：
+   * 只改数字会留下「写 2 人、点开 8 格」。
    */
   const cardInModule = (card: ClassroomDisplayCard, module: TileModule): boolean => {
     const members = isClassroomGroupCard(card) ? card.members : [card];
-    return members.some((member) => resolveStudentFocus(member.id) === module);
+    return cardInOnlineModule(members.map((member) => member.id), module, studentModuleFocus, studentStatuses);
   };
 
   /* ═══════════ 筛选：状态那一组 + 模块那一组（「与」关系） ═══════════ */
@@ -2232,7 +2275,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
                     {modulesNeverConfigured && (
                       <div style={{ margin: '0 10px 8px', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>
-                        本课堂未单独配置过模块，以下三项均为默认的「预告」态。
+                        本课堂未单独配置过模块，以下三项均为默认的「暂停」态。
                       </div>
                     )}
                     {MODULE_KEYS.map((moduleKey) => {
@@ -2349,6 +2392,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 所以那些模式下这几个数字是**组数**，量词由 `moduleCountUnit(mode)` 给。
                 ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
                 （后者是格子数，与参与者数在「有没有组的参与者」那条窄缝上并不相等）。
+                ★ 2026-09-29（教师批注 ③）：这三个数字是**在线**口径 ——
+                「当前正处在这个页面中的在线人数」。⇒ 它们相加 = 此刻在线人数，
+                **不等于**左边的「全部」（那是参与者总数，含离线）。
+                这一行因此读作：`三个模块 + 首页 + 未知 = 在线`，而 `在线 + 离线 = 全部`。
+                点其中一格筛出来的格子走**同一套判据**（`cardInOnlineModule`）。
                 ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
                 两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
                 ⚠️ 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。

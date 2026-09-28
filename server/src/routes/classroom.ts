@@ -4,7 +4,7 @@ import { createStudentToken } from '../middleware/student-auth.js';
 import { hasTeacherSession } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
-import { isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
+import { initialModuleRows, isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
 import { abortClassroomStreams, broadcastWebappDemand } from '../socket/index.js';
 import type { WebappUsageRow } from '../socket/index.js';
 import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
@@ -444,6 +444,12 @@ router.post('/create', async (req, res) => {
         // createdAt，见 `linkRowCreatedAt` 的注释：那是排序键，不能交给 DEFAULT）
         webapps: { create: webappLinkRows(webapp.id ? [webapp.id] : []) },
         worksheets: { create: worksheetLinkRows(worksheet.id ? [worksheet.id] : []) },
+        // ★ 2026-09-29（教师）：「这三个模块在创建后默认是开放」。
+        // 🔴 在这里**种下三行**、而不是改 `DEFAULT_MODULE_STATE`：那个常量同时兜着
+        // 「行缺失」与「行里的值认不出」，而后者是一次读失败，不该把模块开给学生。
+        // 副作用（有意）：新课堂从此 `hasModuleRows === true` ⇒「本课堂未单独配置过模块」
+        // 那条提示不会再出现在新课堂上 —— 它本来就只在真的一行都没有时为真。
+        modules: { create: initialModuleRows() },
       },
       include: {
         classes: { include: { class: { include: { students: true } } } },
@@ -616,6 +622,10 @@ router.post('/create-advanced', async (req, res) => {
         title: title || null,
         mode: 'advanced',
           classes: { create: { classId } },
+          // ★ 2026-09-29（教师）：「这三个模块在创建后默认是开放」—— 与 `/create` 那处
+          // **逐字同源**（同一个 `initialModuleRows()`）。两条创建路径漏种一条的表现是
+          // 「另一种模式建出来的课堂三个模块全点不进去」，而屏幕上没有任何异常。
+          modules: { create: initialModuleRows() },
           // 🔴 高级模式**不再写课堂级网页**。网页在这个模式下的权威来源是「每组一份」，
           // 留着课堂级那一行会长出「它到底谁在用」的第二套解释，而运行期规定了不回落
           // ⇒ 它会变成一个**永远看不见、却挡得住删除守卫**的幽灵。
@@ -949,7 +959,7 @@ router.get('/:id', async (req, res) => {
       worksheets,
       modules: mergeModuleStates(moduleRecords ?? []),
       // 该课堂有没有 ClassroomModule 行。mergeModuleStates 会把缺失的 key 补齐成默认态，
-      // 所以「三态全是 preview」既可能是「教师把三项都设成了预告」也可能是「从未设置过」，
+      // 所以「三态全是 preview」既可能是「教师把三项都设成了暂停」也可能是「从未设置过」，
       // 前端单看 modules 分不出来。行数据本就读出来了，这个派生量不增加任何查询；
       // 读取失败（null）时不下结论、不发这个字段，前端只在明确拿到 false 时才提示。
       // 显式判空（而不是 `moduleRecords?.length ? … : undefined`）：写成后者会让「查到了、零行」

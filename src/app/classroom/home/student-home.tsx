@@ -260,7 +260,10 @@ export function StudentHome({
                 const locked = state === 'preview';
                 const open = () => {
                   if (locked) {
-                    setToast({ msg: '老师还没开放', type: 'info' });
+                    // ★ 2026-09-29（教师）：「这个模块**是有的**，但是目前暂时不能用。提醒的时候
+                    // **温馨一点**。」⚠️ 与 `use-module-tabs.ts` 那两处是**同一个事实**，
+                    // 改的时候 grep 这句话本身（本仓「同一句话有多份拷贝」的旧账）。
+                    setToast({ msg: '这个模块还在的，老师先收起来啦，等一下再来看看～', type: 'info' });
                     return;
                   }
                   onOpenModule(moduleId);
@@ -325,7 +328,7 @@ export function StudentHome({
                       aria-disabled={locked || undefined}
                       onClick={open}
                     >
-                      {locked ? '未开放' : card.cta}
+                      {locked ? '稍后再来' : card.cta}
                       <span className={styles.cardCtaArrow} aria-hidden="true">→</span>
                     </button>
                   </article>

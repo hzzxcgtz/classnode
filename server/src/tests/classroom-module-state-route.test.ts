@@ -349,7 +349,7 @@ test('教师端：模块表查询抛错时仍返回 200，三态降级为三个�
 });
 
 // ---------------------------------------------------------------------------
-// hasModuleRows：教师端的模块菜单要区分「教师把三项都设成了预告」与「这个课堂从未设置过」，
+// hasModuleRows：教师端的模块菜单要区分「教师把三项都设成了暂停」与「这个课堂从未设置过」，
 // 而 mergeModuleStates 会把两种情况补齐成**一模一样**的 modules（都是三个 preview），
 // 前端单看 modules 分不出来 —— 这就是这个派生量存在的理由。它只为教师端 GET /:id 服务。
 // ---------------------------------------------------------------------------
@@ -375,7 +375,7 @@ test('教师端：有模块行时 hasModuleRows 为 true，哪怕三态与补齐
   const body = await response.json();
   assert.equal(body.hasModuleRows, true);
   // 只有一行、且态就是默认态：modules 与上一用例（零行）逐字相同，
-  // 唯一的区别只在这个字段里 —— 少了它前端就会把「显式设成预告」说成「从未设置过」。
+  // 唯一的区别只在这个字段里 —— 少了它前端就会把「显式设成暂停」说成「从未设置过」。
   assert.deepEqual(body.modules, ALL_MODULE_KEYS.map(moduleKey => ({ moduleKey, state: 'preview' })));
 });
 

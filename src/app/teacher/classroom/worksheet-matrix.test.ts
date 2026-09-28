@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoardAnswerRow, WorksheetBoardParticipant, WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
-import { buildWorksheetMatrix, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState } from './worksheet-matrix.ts';
+import { buildWorksheetMatrix, matrixGroups, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState } from './worksheet-matrix.ts';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /* ── 造数据 ──────────────────────────────────────────────────────────── */
@@ -379,4 +379,94 @@ test('全都是任务、一个可作答的题都没有 ⇒ 不说「还没有人
   const rows = buildWorksheetMatrix(sheet([participant('p1')]), [task('t1', '任务一', [])], {});
   assert.deepEqual(rows, []);
   assert.equal(matrixHeadline(questionTallies(rows)).kind, 'no-questions');
+});
+
+/* ── 6. 按任务分块（★ 2026-09-29，教师批图 1）───────────────────────── */
+
+test('🔴 每行带上它的任务名与**组内序号**（矩阵按任务分块要用的两格）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1')]),
+    [node('q1'), task('t1', '任务一', [node('q2'), node('q3')]), node('q4')],
+    {},
+  );
+  assert.deepEqual(rows.map((r) => r.questionId), ['q1', 'q2', 'q3', 'q4']);
+  // 散题那两行的任务名是 `null`（它们不属于任何任务），不是空串 —— 空串当任务名会画出一个空标题行。
+  assert.deepEqual(rows.map((r) => r.taskTitle), [null, '任务一', '任务一', null]);
+  // ⚠️ 散题那个**跨全文**的计数器：q4 是 `2`，不是它那一段里的第 1 个。
+  assert.deepEqual(rows.map((r) => r.label), ['1', '1', '2', '2']);
+});
+
+test('🔴 组内序号与两级题号同源（同一行的 `heading` 尾巴就是 `label`）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1')]),
+    [task('t1', '任务一', [node('q1'), node('q2')]), node('q3')],
+    {},
+  );
+  for (const row of rows) {
+    assert.ok(row.heading === row.label || row.heading.endsWith(` · ${row.label}`), `${row.heading} / ${row.label}`);
+  }
+});
+
+test('🔴 matrixGroups：任务名**只出现一次**（连续同任务的行合成一组）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1')]),
+    [task('t1', '任务一', [node('q1'), node('q2')]), task('t2', '任务二', [node('q3')])],
+    {},
+  );
+  const groups = matrixGroups(rows);
+  assert.deepEqual(groups.map((g) => g.taskTitle), ['任务一', '任务二']);
+  assert.deepEqual(groups.map((g) => g.rows.map((r) => r.questionId)), [['q1', 'q2'], ['q3']]);
+  // ⚠️ 行一个都不能丢、也不能重复 —— 上面那两条断言在「漏一行」时可能凑巧还成立。
+  assert.equal(groups.reduce((sum, g) => sum + g.rows.length, 0), rows.length);
+});
+
+test('🔴 matrixGroups：散题 A、任务一、散题 B ⇒ **三组**（中间隔着任务就不算同一段）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1')]),
+    [node('q1'), task('t1', '任务一', [node('q2')]), node('q3')],
+    {},
+  );
+  const groups = matrixGroups(rows);
+  assert.deepEqual(groups.map((g) => g.taskTitle), [null, '任务一', null]);
+  assert.deepEqual(groups.map((g) => g.rows.map((r) => r.questionId)), [['q1'], ['q2'], ['q3']]);
+});
+
+test('matrixGroups：全是散题 ⇒ 一组（一个无标题的段头都不画）', () => {
+  const rows = buildWorksheetMatrix(sheet([participant('p1')]), [node('q1'), node('q2')], {});
+  const groups = matrixGroups(rows);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].taskTitle, null);
+  assert.equal(groups[0].rows.length, 2);
+});
+
+test('matrixGroups：没有题 ⇒ 零组（不画一个空的段头）', () => {
+  assert.deepEqual(matrixGroups([]), []);
+});
+
+test('🔴 matrixGroups：**空任务**不产生段头（它一行都没有）', () => {
+  // 教师 2026-09-25 裁定「允许空任务」：编辑器里是一块可以往里加东西的地方。
+  // 而矩阵这一侧一个空任务画出来是「一行标题、下面什么都没有」= 渲染坏了的长相。
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1')]),
+    [task('t0', '空任务', []), task('t1', '任务一', [node('q1')])],
+    {},
+  );
+  assert.deepEqual(matrixGroups(rows).map((g) => g.taskTitle), ['任务一']);
+});
+
+test('matrixGroups：标题留空的任务 ⇒ 段头是 `null`（那一行不画标题，与学生端同一口径）', () => {
+  const rows = buildWorksheetMatrix(sheet([participant('p1')]), [task('t1', '   ', [node('q1')])], {});
+  assert.equal(rows[0].taskTitle, null);
+  assert.deepEqual(matrixGroups(rows).map((g) => g.taskTitle), [null]);
+});
+
+test('🔴 matrixGroups 与行**同一份状态**（分组不改格子、不改「已交」计数）', () => {
+  const rows = buildWorksheetMatrix(
+    sheet([participant('p1', { q1: 'submitted' })]),
+    [task('t1', '任务一', [node('q1'), node('q2')])],
+    {},
+  );
+  const groups = matrixGroups(rows);
+  assert.equal(groups[0].rows[0].cells.p1, 'submitted');
+  assert.deepEqual(rowTally(groups[0].rows[0]).submitted, 1);
 });

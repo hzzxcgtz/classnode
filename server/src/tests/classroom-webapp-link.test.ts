@@ -18,6 +18,10 @@ import { createTeacherSession } from '../middleware/auth.js';
  *   · `POST /create`、`POST /create-advanced` —— 只关联第一个网页；
  *   · `PUT /:id/settings` —— 把历史遗留的多余关联裁到一个，且**只允许改课堂名称**。
  *
+ * ★ 2026-09-29：也管「创建课堂」的另一条规则 —— **三个模块的初始态是「开放」**
+ *（两条创建路径都要种，见下面那条用例）。放在本文件的理由只有一个：这里已经有
+ * 一个**真库 + 真路由**的创建夹具，而为一条断言再抄一份 90 行的夹具更糟。
+ *
  * ⚠️ **这个文件刻意用真 Prisma + 真 SQLite，而不是手搓一个假 prisma。**
  * 被验证的东西恰好是「Prisma 的嵌套 create 语法有没有把 `ClassroomWebapp` 行写下去」——
  * 一个只记录调用参数的替身**证明不了这件事**（关系名写错、字段名写错，替身一样绿，
@@ -153,6 +157,52 @@ test('标准模式：webappIds 只取第一个写进 ClassroomWebapp（真 Prism
       `未选中的网页 ${index} 不得被关联`,
     );
   }
+});
+
+/**
+ * ★ 2026-09-29（教师）：「这三个模块在**创建后默认是开放**」。
+ *
+ * 🔴 为什么必须落在**真库**上用真路由验：被验证的恰好是「Prisma 的嵌套 create 语法有没有
+ * 把那三行写下去」—— 一个只记录调用参数的替身证明不了关系名/字段名写对了
+ * （与本文件第一条用例同一个理由）。而它错了**不报错**：教师建完课堂看到的是三个
+ * 「暂停」的模块，只会以为「刚建的课堂怎么都点不进去」。
+ *
+ * ⚠️ **两条创建路径都要验**：只种一条的话，另一种模式建出来的课堂会落在
+ * `DEFAULT_MODULE_STATE`（= 全暂停），而屏幕上没有任何异常。
+ */
+test('新建课堂：两条创建路径都种下三行「开放」（真 Prisma / 真 SQLite）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls, agent, webapps } = await seed(db.prisma, 1);
+  const server = await startServer(t, db.prisma);
+
+  const readModules = async (classroomId: string) => {
+    const rows = await db.prisma.classroomModule.findMany({
+      where: { classroomId },
+      select: { moduleKey: true, state: true },
+      orderBy: { moduleKey: 'asc' },
+    });
+    return rows.map(row => `${row.moduleKey}=${row.state}`).sort();
+  };
+
+  const standard = await server.post('/api/classroom/create', {
+    title: '标准模式', classIds: [cls.id], agentIds: [agent.id],
+  });
+  const standardBody = await standard.json() as { id: string };
+  assert.equal(standard.status, 200, JSON.stringify(standardBody));
+  assert.deepEqual(await readModules(standardBody.id), [
+    'companion=open', 'explorer=open', 'learning-sheet=open',
+  ]);
+
+  const advanced = await server.post('/api/classroom/create-advanced', {
+    title: '高级模式', classId: cls.id,
+    groups: [{ name: '第一组', agentId: agent.id, webappId: webapps[0].id }],
+  });
+  const advancedBody = await advanced.json() as { id: string };
+  assert.equal(advanced.status, 200, JSON.stringify(advancedBody));
+  assert.deepEqual(await readModules(advancedBody.id), [
+    'companion=open', 'explorer=open', 'learning-sheet=open',
+  ], '高级模式漏种的话，这种课堂建出来三个模块全是「暂停」');
 });
 
 /**

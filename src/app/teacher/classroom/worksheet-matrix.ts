@@ -1,6 +1,6 @@
 // ⚠️ **相对路径 + `.ts` 后缀**（不是联名路径 `@/…`）：本文件要被 `node --test` 直接跑，
 // 而 Node 的类型擦除不认 tsconfig 的 `paths`。与 `worksheet-tile-state.ts` 同一条写法。
-import { flattenAnswerable, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
+import { groupAnswerable, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
 import type { WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
@@ -29,8 +29,28 @@ export interface MatrixRow {
    * 🔴 换掉原来的 `index: number`（0-based 拍平序）**是有意的**：拍平序把任务节点
    * 也算了一号，任务一旦占行，它后面所有小题的题号**整体后移**，而屏幕上只是「题号怪怪的」。
    * 留着那个数值下标只会让下一个人再拿它当题号 —— §3-P 明令禁止的那件事。
+   *
+   * ★ 2026-09-29：**屏幕上不再直接画它**（段头把任务名说完了）—— 题行画的是 `label`。
+   * 它仍然在，因为「卡住的是哪一题」那句话吃它（`matrixHeadline`），
+   * 而且它是**唯一**一个「这道题在整份学习单里叫什么」的完整答案。
    */
   heading: string;
+  /**
+   * ★ 2026-09-29（教师批图 1）：**组内序号**（`1` / `2` …）—— 段的标题已经占了一行，
+   * 小题上只画这一个数。
+   *
+   * 🔴 **不许拿渲染侧的下标推**：散题共用跨全文的计数器（`1` … `2`），
+   * 用完 `index + 1` 会印出一个不存在的「1」。见 `AnswerableQuestion.label`。
+   */
+  label: string;
+  /**
+   * ★ 2026-09-29（教师批图 1）：这道题属于哪个任务 —— 矩阵**按任务分块**的键。
+   *
+   * `null` = 散题（顶层不挂任务的题）或标题留空的任务：那两行的**上面不画段头**
+   *（标题留空时编一个「任务N」等于替教师写一个他没写过的名字）。
+   * 与 `groupAnswerable` 的 `AnswerableGroup.title` 是同一个值。
+   */
+  taskTitle: string | null;
   /** 题型的中文名（`questionTypeLabel`）。 */
   typeLabel: string;
   /**
@@ -110,23 +130,76 @@ export function buildWorksheetMatrix(
 
   // ② 逐题成行。广播优先，认不出或没有则回落 REST，两边都没有就是未答。
   //
-  // ⚠️ 走 `flattenAnswerable`（跳过任务）而**不是** `flattenQuestions`：任务没有作答行，
-  // 它占一行会让下面每一行的题号整体后移，而屏幕上看起来只是「题号怪怪的」。
-  return flattenAnswerable(nodes).map(({ node, heading }) => {
-    const cells: Record<string, CellState> = {};
-    sheet.participants.forEach((participant) => {
-      const progress = live[participant.participantId];
-      // ⚠️ `>` 不是 `>=`：下界是**快照发起**的时刻，而广播要在它之后**到达**才算新。
-      // ★ 2026-09-28：`lastAt` 现在可能是 `null`（= 不知道这条广播是什么时候到的，
-      // 它是从历史读端点换算出来的）。那种情况下**不信 live**、用 REST —— 与
-      // 「广播全部早于下界」同一个方向（只会丢陈旧数据，不会丢新数据）。
-      const trustLive = liveTrustedAfter === undefined
-        || (progress !== undefined && progress.lastAt !== null && progress.lastAt > liveTrustedAfter);
-      const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
-      cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
-    });
-    return { questionId: node.id, heading, typeLabel: questionTypeLabel(node.type), type: node.type, prompt: node.prompt, cells };
-  });
+  // ⚠️ 走 `groupAnswerable`（它内部就是 `flattenAnswerable` 逐一取项，跳过任务）而**不是**
+  // `flattenQuestions`：任务没有作答行，它占一行会让下面每一行的题号整体后移，
+  // 而屏幕上看起来只是「题号怪怪的」。
+  // ★ 2026-09-29：外层多套一层段（教师批图 1「按任务进行归类」）——
+  // 题号与组内序号都来自那**同一个** `counter.n`，所以这里不再自己算任何一个数。
+  const rows: MatrixRow[] = [];
+  for (const group of groupAnswerable(nodes)) {
+    for (const { node, heading, label } of group.items) {
+      const cells: Record<string, CellState> = {};
+      sheet.participants.forEach((participant) => {
+        const progress = live[participant.participantId];
+        // ⚠️ `>` 不是 `>=`：下界是**快照发起**的时刻，而广播要在它之后**到达**才算新。
+        // ★ 2026-09-28：`lastAt` 现在可能是 `null`（= 不知道这条广播是什么时候到的，
+        // 它是从历史读端点换算出来的）。那种情况下**不信 live**、用 REST —— 与
+        // 「广播全部早于下界」同一个方向（只会丢陈旧数据，不会丢新数据）。
+        const trustLive = liveTrustedAfter === undefined
+          || (progress !== undefined && progress.lastAt !== null && progress.lastAt > liveTrustedAfter);
+        const fromLive = trustLive ? toCellState(progress?.cells[node.id]) : null;
+        cells[participant.participantId] = fromLive ?? restCells[participant.participantId]?.[node.id] ?? 'unanswered';
+      });
+      rows.push({
+        questionId: node.id,
+        heading,
+        label,
+        taskTitle: group.title,
+        typeLabel: questionTypeLabel(node.type),
+        type: node.type,
+        prompt: node.prompt,
+        cells,
+      });
+    }
+  }
+  return rows;
+}
+
+/** 矩阵的一段 = 一个任务（或一段连续散题）以及它下面的题行。 */
+export interface MatrixRowGroup {
+  /** 与 `MatrixRow.taskTitle` 是同一个值；`null` = 这一段**不画段头**。 */
+  taskTitle: string | null;
+  /** 这一段的行（顺序与 `buildWorksheetMatrix` 一致）。 */
+  rows: MatrixRow[];
+}
+
+/**
+ * ★ 2026-09-29（教师批图 1）：「不要让同样的任务名称多次出现」——
+ * 把**连续**的、`taskTitle` 相同的行合成一段。屏幕上一个任务因此只印一次名字。
+ *
+ * 🔴 「连续」是有意的：散题 A、任务一、散题 B 是**三段**（A 与 B 中间隔着一个任务）——
+ * 与 `groupAnswerable` 里那条同名规则的注释逐字同源。所以这里切段得到的边界
+ * 与它的分组**逐段相同**（用例把两边钉在一起）；不同的只有一处：
+ * **空任务在行里根本没有行**（`buildWorksheetMatrix` 不产出），所以这里不会出现空段。
+ *
+ * ⚠️ 判据（哪两行属于同一段）放在这里、不放进 JSX：本仓没有 jsdom，
+ * 写进 JSX 的判据没有任何回归网，而它错了**不报错** —— 屏幕上只是段头少画一次
+ * 或多画一次，读起来完全正常。
+ */
+export function matrixGroups(rows: readonly MatrixRow[]): MatrixRowGroup[] {
+  const groups: MatrixRowGroup[] = [];
+  for (const row of rows) {
+    const last = groups[groups.length - 1];
+    // ⚠️ 用 `===` 比任务名而不是比「有没有标题」：两个**同名**任务相邻时合成一段，
+    // 在屏幕上与分成两段**长得一模一样**（同一行标题印两次变成印一次）——
+    // 而分成两段会让那个任务名多出现一次，正是教师这条批注要去掉的东西。
+    if (last && last.taskTitle === row.taskTitle) {
+      last.rows.push(row);
+      continue;
+    }
+    groups.push({ taskTitle: row.taskTitle, rows: [row] });
+  }
+  return groups;
 }
 
 /** 一道题的三档计数。**分母是参与者数**（`total`），不是「作答过的人数」。 */

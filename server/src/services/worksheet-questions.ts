@@ -918,8 +918,52 @@ export function wrongChoiceAnswers(node: QuestionNode, value: unknown): Record<n
  *    的钝刀，见 `routes/worksheets.ts` 里那条注释）。⇒ 名字的含义由这条注释承担：
  *    **它装的是「答错时要展示给学生的正确答案」，填空是逐空的答案、选择是选项 key。**
  */
+/**
+ * 连线题答错时要给的**正确答案**（★ 2026-09-28，教师：「批改有错误的没有显示正确答案」）。
+ *
+ * 给的是「学生**漏掉或连错**的那些正确连线」，每条一句话：`《绝句》 → 《望庐山瀑布》`。
+ * 🔴 **已经连对的那几条不给** —— 与填空/选择同一道窄口（只发答错的那几处，
+ * 不把整张答案键倒给学生）。全对时返回空对象，客户端那块提示就不渲染。
+ *
+ * ⚠️ 条目文字读不出来时**回落到 id**（不写空串）：教师手改过的库 / 缺 text 的行都可能
+ * 这样，而空串会让那一行变成「 → 」（看起来像界面坏了）。
+ * ⚠️ 作答值形状坏掉（`readStrictPairs` 回 `null`）⇒ 空对象：那种题判分本身已经是
+ * 「整体判错」，再列一堆答案也只是噪音。
+ */
+export function wrongMatchAnswers(node: QuestionNode, value: unknown): Record<number, string> {
+  if (node.type !== 'match') return {};
+  const pairs = readPairs(node.data.pairs);
+  if (pairs.length === 0) return {};
+  const links = readStrictPairs(readField(value, 'links'));
+  if (links === null) return {};
+
+  const textsOf = (raw: unknown): Map<string, string> => {
+    const map = new Map<string, string>();
+    if (!Array.isArray(raw)) return map;
+    raw.forEach((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+      const row = entry as Record<string, unknown>;
+      if (typeof row.id === 'string' && typeof row.text === 'string') map.set(row.id, row.text);
+    });
+    return map;
+  };
+  const left = textsOf(node.data.left);
+  const right = textsOf(node.data.right);
+
+  const out: Record<number, string> = {};
+  pairs.forEach((pair, index) => {
+    const drawn = links.some((link) => link.leftId === pair.leftId && link.rightId === pair.rightId);
+    if (drawn) return;
+    out[index] = `${left.get(pair.leftId) ?? pair.leftId} → ${right.get(pair.rightId) ?? pair.rightId}`;
+  });
+  return out;
+}
+
 export function wrongAnswers(node: QuestionNode, value: unknown): Record<number, string> {
   if (node.type === 'fill-blank' || node.type === 'choice-blank') return wrongBlankAnswers(node, value);
+  // ★ 2026-09-28：连线题原来落到下面那一支（`wrongChoiceAnswers`）⇒ **恒回空对象**
+  // ⇒ 学生答错了看不到任何正确答案（教师报的那个 bug）。
+  if (node.type === 'match') return wrongMatchAnswers(node, value);
   return wrongChoiceAnswers(node, value);
 }
 

@@ -58,9 +58,16 @@ export interface QuestionInputProps {
    * ⚠️ 所以这里必须是**可选**的，而且默认的「没给」= **不打叉、不写答案**（不是「全错」）。
    */
   correctKeys?: string[];
+  /**
+   * ★ 2026-09-28：**答错时要给的正确答案**（下标 → 一句话）。
+   * ⚠️ 与填空共用同一个 prop 名与同一个形状 —— 服务端那道窄口（`wrongAnswers`）
+   * 两个题型发的就是同一个 `Record<index, string>`（那半边的键名是 `correctBlanks`）。
+   * 连线题拿到的是「《绝句》 → 《望庐山瀑布》」这样一整句话。
+   */
+  correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ node, draft, onChange, disabled, correctKeys }: QuestionInputProps) {
+export function QuestionInput({ node, draft, onChange, disabled, correctKeys, correctBlanks }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -167,6 +174,7 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys }: 
   if (node.type === 'match') {
     return (
       <MatchBody
+        correctBlanks={correctBlanks}
         node={node}
         draft={pick('match') ?? { kind: 'match', links: [] }}
         onChange={(next) => onChange?.(node, next)}

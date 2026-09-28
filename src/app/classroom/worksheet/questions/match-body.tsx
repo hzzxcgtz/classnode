@@ -12,6 +12,9 @@ import {
   readMatchRight,
   type AnswerDraft,
 } from '@/lib/worksheet-answer-value';
+import { Fragment } from 'react';
+
+import { CorrectAnswerNote } from './correct-answer-note';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
@@ -47,6 +50,12 @@ export interface MatchBodyProps {
   draft: Extract<AnswerDraft, { kind: 'match' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-28：答错时要给的正确答案（下标 → 一整句「《绝句》 → 《望庐山瀑布》」）。
+   * ⚠️ 与填空共用同一个 prop 名与形状 —— 服务端 `wrongAnswers` 两个题型发的是同一个
+   * `Record<index, string>`（那条窄口只发**没连对**的那几条）。
+   */
+  correctBlanks?: Record<string, string>;
 }
 
 interface MatchLine {
@@ -85,7 +94,7 @@ interface FollowAnchor {
   originY: number;
 }
 
-export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
+export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: MatchBodyProps) {
   const [selection, setSelection] = useState<DragSelection>(clearSelection());
   const left = readMatchLeft(node);
   const right = readMatchRight(node);
@@ -320,6 +329,26 @@ export function MatchBody({ node, draft, onChange, disabled }: MatchBodyProps) {
           <line ref={ghostRef} className={styles.matchGhostLine} />
         </svg>
       </div>
+      {/* ★ 2026-09-28（教师：「批改有错误的没有显示正确答案」）——
+          服务端那道窄口只发**学生没连对**的那几条（`wrongMatchAnswers`），每条一句话
+          「《绝句》 → 《望庐山瀑布》」。全对时它是空对象 ⇒ 这里什么都不画。 */}
+      {(() => {
+        const items = Object.keys(correctBlanks ?? {})
+          .sort((a, b) => Number(a) - Number(b))
+          .map((key) => correctBlanks?.[key])
+          .filter((line): line is string => typeof line === 'string' && line !== '');
+        if (items.length === 0) return null;
+        return (
+          <CorrectAnswerNote>
+            {items.map((line, position) => (
+              <Fragment key={line}>
+                {position > 0 && <br />}
+                <strong>{line}</strong>
+              </Fragment>
+            ))}
+          </CorrectAnswerNote>
+        );
+      })()}
     </div>
   );
 }

@@ -394,6 +394,9 @@ export function WorksheetQuestionList({
          */
         const verdictLabel = gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
         const questionMeta = state !== 'empty' || gradeState ? (
+          // ⚠️ 根是 Fragment（两块：圆角框 + 框右边的奖励）—— 它被渲染进 `.questionLead`
+          // 那一行里，两个兄弟各占一个格子。
+          <>
           <div className={styles.questionResult} role="status" aria-live="polite">
             {state !== 'empty' && (
               <span className={styles.resultCell} data-tone="progress">
@@ -408,14 +411,18 @@ export function WorksheetQuestionList({
                 {verdictLabel}
               </span>
             )}
-            {/* 奖励只在**全对**时出现（与服务端发奖励的条件一致：`gradeStates === 'correct'`） */}
-            {gradeState === 'correct' && reward && (
-              <span className={styles.resultCell} data-tone="reward">
-                <span className={styles.resultCellLabel}>获得奖励</span>
-                <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
-              </span>
-            )}
           </div>
+          {/* ★ 2026-09-28（教师，图 56）：「火箭和 ×1 **不需要框在圆角矩形里**，
+              这样可以保证左边的两个框的高度和其他框的高度保持一致。」
+              ⇒ 它从那个框里搬出来，成了框**右边**的一个兄弟（无边框、无底色）。
+              ⚠️ 同时删掉上面那行小字「获得奖励」—— 教师：「这里的文字不要。」
+                 火箭 + ×1 本身已经说清（与顶栏那个累计奖励同一套符号）。 */}
+          {gradeState === 'correct' && reward && (
+            <span className={styles.resultReward}>
+              <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+            </span>
+          )}
+          </>
         ) : null;
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。

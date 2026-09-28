@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   questionTextFor,
+  wrongMatchAnswers,
   tableAsText,
   tableBlankCount,
   validateQuestion,
@@ -180,4 +181,36 @@ test('🔴 校验：**有表却没有标记** ⇒ 响亮地拒（学生看不到
   const errors = validateQuestion(nodeOf({ table: tableOf(2, 2, [[1, 1]]), answers: [['甲']] }, '没有标记的题干'));
   assert.equal(errors.length, 1, JSON.stringify(errors));
   assert.match(errors[0], /没有「\{表格域\}」标记/);
+});
+
+// ── 连线题的「正确答案」（★ 2026-09-28，教师报的 bug）──────────────────
+
+test('🔴 wrongMatchAnswers：只发**学生没连对**的那几条，且写成「左项 → 右项」', () => {
+  const node = {
+    id: 'q_m', type: 'match', prompt: '', inputMode: 'keyboard',
+    data: {
+      left: [{ id: 'l1', text: '《绝句》' }, { id: 'l2', text: '《望庐山瀑布》' }],
+      right: [{ id: 'r1', text: '杜甫' }, { id: 'r2', text: '李白' }],
+      pairs: [{ leftId: 'l1', rightId: 'r2' }, { leftId: 'l2', rightId: 'r1' }],
+    },
+    children: [],
+  } as unknown as QuestionNode;
+  // 学生只连对了一条（l1→r2），另一条连错
+  const wrong = wrongMatchAnswers(node, { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r2' }, { leftId: 'l2', rightId: 'r2' }] });
+  assert.deepEqual(Object.values(wrong), ['《望庐山瀑布》 → 杜甫'], '只列漏掉/连错的那一条');
+  // 全对 ⇒ 空对象（客户端那块提示因此不渲染）
+  const allRight = wrongMatchAnswers(node, { format: 'match/v1', links: [{ leftId: 'l1', rightId: 'r2' }, { leftId: 'l2', rightId: 'r1' }] });
+  assert.deepEqual(allRight, {});
+  // 一条都没连 ⇒ 全部列出（那种题的判分本来就是判错，答案照样要给）
+  assert.equal(Object.values(wrongMatchAnswers(node, { format: 'match/v1', links: [] })).length, 2);
+});
+
+test('🔴 wrongMatchAnswers：缺 text 时回落到 id，不写空串；坏形状 ⇒ 空对象', () => {
+  const node = {
+    id: 'q_m2', type: 'match', prompt: '', inputMode: 'keyboard',
+    data: { left: [{ id: 'l1' }], right: [{ id: 'r1' }], pairs: [{ leftId: 'l1', rightId: 'r1' }] },
+    children: [],
+  } as unknown as QuestionNode;
+  assert.deepEqual(Object.values(wrongMatchAnswers(node, { format: 'match/v1', links: [] })), ['l1 → r1']);
+  assert.deepEqual(wrongMatchAnswers(node, { format: 'match/v1', links: [{ leftId: 3 }] }), {}, '形状坏的 links ⇒ 空对象');
 });

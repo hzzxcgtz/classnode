@@ -1836,9 +1836,15 @@
   line-height: 1;
 }
 
-/* 奖励那一段：上面一行小字「获得奖励」、下面是图标 + ×N */
-.resultCell[data-tone='reward'] { flex-direction: column; gap: 0; padding: 4px 12px; }
-.resultCellLabel { font-size: 0.688rem; font-weight: 500; color: #64748b; }
+/* 奖励：**在圆角框外面**（★ 2026-09-28 教师图 56：「火箭和 ×1 不需要框在圆角矩形里，
+   这样可以保证左边的两个框的高度和其他框的高度保持一致」）。
+   ⚠️ 它不再是一格 `.resultCell`（那一档自带边框与底色），只是框右边的一个符号组；
+      也没有「获得奖励」那行小字（教师：「这里的文字不要」）。 */
+.resultReward {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
 
 /* ── 题目头那一行：题型别名（★ 2026-09-28，教师给学生的「趣味名称」）──────────
    这一行现在是「图标 + 别名 …… 结果条」，题干正文在它下面一行。

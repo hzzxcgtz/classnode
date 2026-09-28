@@ -842,10 +842,15 @@ test('★ 广播上限：value 超限时不发内容但置 valueOmitted，其余
   const { worksheet, classroom, participant } = await seedClassroomUsingWorksheet(db.prisma, '9113');
   const token = createStudentToken(classroom.id, participant.id);
 
-  // 一条超限的文本作答（上限是 8192 个字符，见 `MAX_BROADCAST_VALUE_CHARS`）。
-  // ⚠️ 用文本而不是笔迹：判据是 `JSON.stringify(value).length`，与格式无关，
-  // 而文本能一眼看出「它是被截了还是原样发的」。
-  const huge = '好'.repeat(9000);
+  // 一条超限的文本作答。⚠️ 夹具的规模必须**跟着上限走**：上限从 8192 抬到 65536 之后，
+  // 原来那个 `'好'.repeat(9000)` 不再超限，这条用例会红 —— 而它红得对（说明上限真的抬了）。
+  // 判据是 `JSON.stringify(value).length`，与格式无关。
+  // ⚠️ 用 **ASCII** 而不是中文：中文一个字在 JS 里 `length` 是 1、在 UTF-8 里是 3 字节，
+  // 而本文件的请求体上限是 `express.json()` 的默认 100kb ⇒ 70000 个中文是 210KB，
+  // 会被 **413 拒绝**（第一版就是这样红的，而它红的原因与上限判据毫无关系）。
+  // ⚠️ 另一件事：**生产的上限是 10mb**（`index.ts:109`），所以真实保存不受这个 100kb 影响 ——
+  // 这一条限制只属于本测试替身。
+  const huge = 'a'.repeat(70000);
   assert.equal(
     (await server.put(`/api/worksheets/${worksheet.id}/answers`,
       { questionId: 'q_1', value: { format: 'text/v1', text: huge } }, bearer(token))).status,

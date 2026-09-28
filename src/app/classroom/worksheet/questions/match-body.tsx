@@ -257,7 +257,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
 
   return (
     <div className={styles.matchWrap}>
-      <p className={styles.dragHint}>点左侧条目，再点右侧对应项；也可以直接拖动。鼠标移到连线上可直接删除。</p>
+      <p className={styles.dragHint}>点任一条目，再点对面那一列的对应项即可连线；也可以直接拖。连错的点一下就能删。</p>
       <div className={styles.matchGrid} ref={containerRef}>
         <div className={styles.matchColumn}>
           {left.map((entry) => {
@@ -282,10 +282,20 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
         </div>
         <div className={styles.matchColumn}>
           {right.map((entry) => {
+            const pickedRight = selection.kind === 'item' && selection.id === entry.id;
             const linked = links.some(item => item.rightId === entry.id);
             const className = [
               styles.matchItem,
+              // 🔴 **右项也必须带 `.dragSource`**（★ 2026-09-28）—— 那是一条**静态** CSS
+              // （`touch-action: none`），而它才是「能不能起拖」的真正开关：
+              // `handlePointerDown` 里那句 `el.style.touchAction = 'none'` 来得太晚
+              // （手势开始的那一刻浏览器已经决定了这一下是滚动还是拖动）。
+              // 少了它，手指按在右项上被当成**滚动** ⇒ 右项永远拖不动
+              //（左项一直能拖就是因为它有这个类）。
+              styles.dragSource,
+              pickedRight ? styles.matchItemSelected : '',
               linked ? styles.matchItemLinked : '',
+              drag.draggingId === entry.id ? styles.dragActive : '',
               drag.hoverTargetId === entry.id ? styles.dropActive : '',
             ].filter(Boolean).join(' ');
             return (

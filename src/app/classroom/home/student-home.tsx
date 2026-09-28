@@ -313,13 +313,13 @@ export function StudentHome({
                       <span className={styles.cardPill}>{card.summaryLabel}</span>
                       <p className={styles.cardSummary}>{cardSummary[moduleId]}</p>
                     </div>
-                    {/* ★ 2026-09-27（教师实测后追加）：「信息块与按钮之间再加一条线」。
-                        ⇒ 卡片从「一条线」变成**三段两条线**：插画行 — 信息块 — 按钮。
-                        ⚠️ 与上面那条**同一个类**（`.cardRule`）：两条线的粗细与颜色必须一致，
-                           各写一份的话改了其中一条另一条不报错。
-                        ⚠️ `cardRuleFoot` 只多一条 `margin-top: auto`，见 CSS 里那段注释。 */}
-                    <div className={`${styles.cardRule} ${styles.cardRuleFoot}`} />
-                    <button
+                    {/* ⊘ 2026-09-28（教师）删掉了这里那条分隔线：「这里不用分隔线，只要中间
+                        有白色空白区域隔开就可以。」（它是 2026-09-27 追加的，这次反转 ——
+                        信息块自己有底色，边缘已经把话说完，再画一条是同一件事说两遍。）
+                        ⇒ 卡片回到「插画行 — 信息块 — 按钮」，中间只有白色空白。
+                        ⚠️ 那条线当时兼着 `margin-top: auto`（把按钮沉到底部），现在归
+                           `.cardCta` —— 见 CSS。 */}
+                                <button
                       type="button"
                       className={styles.cardCta}
                       aria-disabled={locked || undefined}

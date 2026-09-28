@@ -5,6 +5,7 @@ import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { indexQuestions } from './worksheet-drawer-state';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { AnswerViewBody } from './answer-view';
+import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-charts';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
 
@@ -27,33 +28,8 @@ import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } fro
 const OK = '#15803d';
 const BAD = '#dc2626';
 const WARN = '#b45309';
-const BLUE = '#1d4ed8';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
-
-/** 一根横条。🔴 **数字一律写出来**（颜色不承载唯一信息，规格 §5）。 */
-function Bars({ bars, unit, color = BLUE }: { bars: Array<{ label: string; count: number; correct?: boolean }>; unit: string; color?: string }) {
-  const max = Math.max(1, ...bars.map((bar) => bar.count));
-  if (bars.length === 0) return <div style={{ fontSize: '0.75rem', color: FAINT }}>（没有数据）</div>;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {bars.map((bar) => (
-        <div key={bar.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem' }}>
-          <span style={{ flex: '0 0 42%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0f172a' }}>
-            {bar.label}
-          </span>
-          <span style={{ flex: 1, height: 12, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-            <span style={{ display: 'block', width: `${(bar.count / max) * 100}%`, height: '100%', background: bar.correct ? OK : color }} />
-          </span>
-          <span style={{ flex: '0 0 auto', color: bar.count > 0 ? '#0f172a' : FAINT, fontWeight: 600 }}>
-            {bar.count} {unit}
-          </span>
-          {bar.correct && <span style={{ flex: '0 0 auto', fontSize: '0.625rem', color: OK }}>答案</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /**
  * 矩阵热力（连线左×右、归类条目×框）。
@@ -68,27 +44,37 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
   cols: Array<{ id: string; text: string }>;
   cells: MatrixCell[];
 }) {
-  if (rows.length === 0 || cols.length === 0) return <div style={{ fontSize: '0.75rem', color: FAINT }}>（没有数据）</div>;
+  if (rows.length === 0 || cols.length === 0) {
+    return <div style={{ fontSize: '0.813rem', color: CHART.faint }}>这一题还没有人作答，所以没有分布可看。</div>;
+  }
   const max = Math.max(1, ...cells.map((cell) => cell.count));
   const at = (rowId: string, colId: string) => cells.filter((cell) => cell.rowId === rowId && cell.colId === colId)[0];
-  const shade = (count: number) => (count === 0 ? 'transparent' : `rgba(37, 99, 235, ${(0.12 + (count / max) * 0.55).toFixed(2)})`);
+  const shade = (count: number) => (count === 0 ? '#f8fafc' : `rgba(37, 99, 235, ${(0.10 + (count / max) * 0.62).toFixed(2)})`);
+  // ★ 行列合计（展示用）：教师要看的是「**这一条左项**有 12 人连错」，
+  // 而不是逐个格子去加 —— 那是这张图最重要的一栏，而裸表里没有。
+  const rowTotal = (rowId: string) => cells.filter((cell) => cell.rowId === rowId).reduce((sum, cell) => sum + cell.count, 0);
+  const colTotal = (colId: string) => cells.filter((cell) => cell.colId === colId).reduce((sum, cell) => sum + cell.count, 0);
+  const th: React.CSSProperties = { padding: '6px 10px', fontSize: '0.75rem', fontWeight: 500, color: CHART.muted };
+  const totalStyle: React.CSSProperties = { ...th, fontWeight: 700, color: CHART.ink, textAlign: 'center' };
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+      {/* 圆角格 + 2px 间隙（**不画网格线**）：表格线是数据录入的长相，间隙才是热力图的长相。 */}
+      <table style={{ borderCollapse: 'separate', borderSpacing: 2, fontSize: '0.813rem' }}>
         <thead>
           <tr>
-            <th style={{ padding: '3px 6px', color: MUTED, fontWeight: 500, textAlign: 'left' }}>{rowLabel} \ {colLabel}</th>
+            <th style={{ ...th, textAlign: 'left' }}>{rowLabel} ＼ {colLabel}</th>
             {cols.map((col) => (
-              <th key={col.id} title={col.text} style={{ padding: '3px 6px', color: MUTED, fontWeight: 500, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <th key={col.id} title={col.text} style={{ ...th, maxWidth: 108, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {col.text || col.id}
               </th>
             ))}
+            <th style={{ ...th, color: CHART.faint }}>合计</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <th title={row.text} style={{ padding: '3px 6px', color: '#0f172a', fontWeight: 500, textAlign: 'left', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <th title={row.text} style={{ ...th, textAlign: 'left', maxWidth: 132, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: CHART.ink }}>
                 {row.text || row.id}
               </th>
               {cols.map((col) => {
@@ -97,21 +83,48 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
                 return (
                   <td key={col.id} title={`${row.text || row.id} → ${col.text || col.id}：${count} 人`}
                     style={{
-                      padding: '3px 6px', textAlign: 'center', background: shade(count),
-                      color: count > 0 ? '#0f172a' : FAINT, fontWeight: count > 0 ? 600 : 400,
-                      // 正确答案那一格加一个边框 —— **不靠颜色**（颜色已经用在人数深浅上了）。
-                      outline: cell?.correct ? `2px solid ${OK}` : undefined, outlineOffset: -2,
+                      padding: '7px 10px', textAlign: 'center', borderRadius: 6, background: shade(count),
+                      color: count > 0 ? CHART.ink : CHART.faint, fontWeight: count > 0 ? 700 : 400,
+                      // 正确答案那一格加**绿框**（不靠深浅 —— 深浅已经用在人数上了）。
+                      boxShadow: cell?.correct ? `inset 0 0 0 2px ${CHART.correct}` : undefined,
                     }}>
                     {count || '·'}
                   </td>
                 );
               })}
+              <td style={{ ...totalStyle, background: '#f1f5f9', borderRadius: 6 }}>{rowTotal(row.id)}</td>
             </tr>
           ))}
+          <tr>
+            <th style={{ ...th, textAlign: 'left', color: CHART.faint }}>合计</th>
+            {cols.map((col) => (
+              <td key={col.id} style={{ ...totalStyle, background: '#f1f5f9', borderRadius: 6 }}>{colTotal(col.id)}</td>
+            ))}
+            <td />
+          </tr>
         </tbody>
       </table>
     </div>
   );
+}
+
+/**
+ * 把一句话里的**数字**挑出来加粗放大（★ 教师：「文字也要有设计感」）。
+ *
+ * 🔴 这是**显示变换，不是判据** —— 它不认识「12 人」是什么意思，只认识「数字」。
+ * 所以它不解释、不判断，只让数字从灰句子里跳出来。措辞本身仍由纯层给
+ * （`worksheet-question-stats.ts` 的 `buildInsights`，那里有一条用例钉着
+ * 「不许出现解释性的词」）。
+ *
+ * ⚠️ 用 `split` 保留分隔符的写法（`/(\d+)/`）而不是 `match` 循环：前者天然保住顺序与
+ * 非数字段，后者要自己拼回去、容易漏尾巴。
+ */
+function emphasizeNumbers(text: string): React.ReactNode {
+  return text.split(/(\d+)/).map((part, index) => (
+    /^\d+$/.test(part)
+      ? <b key={index} style={{ fontSize: '1rem', fontWeight: 700, color: CHART.ink }}>{part}</b>
+      : <span key={index}>{part}</span>
+  ));
 }
 
 /** 一行小标题。 */
@@ -210,14 +223,41 @@ export function QuestionStatsOverlay({
             <button type="button" className="btn btn-ghost" onClick={onClose} style={{ fontSize: '0.688rem', padding: '4px 10px' }}>关闭</button>
           </div>
           {stats && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 6, fontSize: '0.75rem', color: MUTED, flexWrap: 'wrap' }}>
-              <span>{stats.total} {unit}</span>
-              <span>已交 <b style={{ color: '#0f172a' }}>{stats.submitted}</b></span>
-              <span>全对 <b style={{ color: OK }}>{stats.correct}</b></span>
-              <span>部分 <b style={{ color: WARN }}>{stats.partial}</b></span>
-              <span>错 <b style={{ color: BAD }}>{stats.wrong}</b></span>
-              {/* ⚠️ 正确率是 `null` 时显示「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
-              <span style={{ marginLeft: 'auto' }}>正确率 <b style={{ color: BLUE }}>{stats.accuracy === null ? '—' : `${stats.accuracy}%`}</b></span>
+            // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
+            // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
+                {[
+                  { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
+                  { label: '已交', value: String(stats.submitted), suffix: unit, color: '#0f172a' },
+                  { label: '全对', value: String(stats.correct), suffix: unit, color: OK },
+                  { label: '部分给分', value: String(stats.partial), suffix: unit, color: WARN },
+                  { label: '答错', value: String(stats.wrong), suffix: unit, color: BAD },
+                ].map((cell) => (
+                  // 展示用：数值 1.375rem/700（这一屏第二大的字），标签降到 0.688rem 灰。
+                  <div key={cell.label}>
+                    <div style={{ fontSize: '0.688rem', color: CHART.faint, marginBottom: 2 }}>{cell.label}</div>
+                    <div style={{ fontSize: '1.375rem', fontWeight: 700, lineHeight: 1, color: cell.color }}>
+                      {cell.value}<span style={{ fontSize: '0.75rem', fontWeight: 500, color: CHART.faint, marginLeft: 2 }}>{cell.suffix}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
+                <VerdictDonut
+                  unit={unit}
+                  centerText={stats.accuracy === null ? null : `${stats.accuracy}%`}
+                  centerNote={stats.accuracy === null ? '不统计正确率' : '正确率'}
+                  data={[
+                    { name: '全对', value: stats.correct, color: CHART.correct },
+                    { name: '部分给分', value: stats.partial, color: CHART.partial },
+                    { name: '答错', value: stats.wrong, color: CHART.wrong },
+                    { name: '已提交（无对错）', value: stats.noVerdict, color: CHART.noVerdict },
+                    { name: '未作答', value: stats.unanswered, color: CHART.unanswered },
+                  ]}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -238,11 +278,11 @@ export function QuestionStatsOverlay({
                 )}
                 {distribution?.kind === 'options' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <Bars bars={distribution.bars} unit={unit} />
+                    <CountBars bars={distribution.bars} unit={unit} />
                     {distribution.combos.length > 0 && (
                       <div>
                         <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>选答组合（前 3）</div>
-                        <Bars bars={distribution.combos} unit={unit} color={MUTED} />
+                        <CountBars bars={distribution.combos} unit={unit} colorFor={() => CHART.muted} dense />
                       </div>
                     )}
                   </div>
@@ -255,7 +295,7 @@ export function QuestionStatsOverlay({
                           {blank.label}
                           {blank.distinct > 0 && <span style={{ marginLeft: 6 }}>共 {blank.distinct} 种写法</span>}
                         </div>
-                        <Bars bars={blank.bars} unit={unit} />
+                        <CountBars bars={blank.bars} unit={unit} dense />
                       </div>
                     ))}
                   </div>
@@ -263,25 +303,32 @@ export function QuestionStatsOverlay({
                 {distribution?.kind === 'order' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {/* 「有几位排对了」：**计数**，不是判分结论（判分那件事由页头那四格说）。 */}
-                    <Bars
+                    <CountBars
                       bars={distribution.positions.map((position) => ({ label: `第 ${position.index + 1} 位`, count: position.hits }))}
                       unit={unit}
                     />
                     {distribution.topOrders.length > 0 && (
                       <div>
                         <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>出现最多的顺序（前 3）</div>
-                        <Bars bars={distribution.topOrders} unit={unit} color={MUTED} />
+                        <CountBars bars={distribution.topOrders} unit={unit} colorFor={() => CHART.muted} dense />
                       </div>
                     )}
                   </div>
                 )}
-                {distribution?.kind === 'match' && (
-                  <Matrix rowLabel="左栏" colLabel="右栏" rows={distribution.left} cols={distribution.right} cells={distribution.cells} />
+                {(distribution?.kind === 'match' || distribution?.kind === 'categorize') && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <Matrix
+                      rowLabel={distribution.kind === 'match' ? '左栏' : '条目'}
+                      colLabel={distribution.kind === 'match' ? '右栏' : '框'}
+                      rows={distribution.kind === 'match' ? distribution.left : distribution.items}
+                      cols={distribution.kind === 'match' ? distribution.right : distribution.zones}
+                      cells={distribution.cells}
+                    />
+                    {/* 🔴 热力图**必须**有图例：没有它，深浅只是一片蓝。 */}
+                    <HeatLegend max={Math.max(0, ...distribution.cells.map((cell) => cell.count))} unit={unit} />
+                  </div>
                 )}
-                {distribution?.kind === 'categorize' && (
-                  <Matrix rowLabel="条目" colLabel="框" rows={distribution.items} cols={distribution.zones} cells={distribution.cells} />
-                )}
-                {distribution?.kind === 'text' && <Bars bars={distribution.lengths} unit={unit} />}
+                {distribution?.kind === 'text' && <CountBars bars={distribution.lengths} unit={unit} />}
                 {distribution?.kind === 'ink' && (
                   <div style={{ fontSize: '0.75rem', color: MUTED }}>
                     {distribution.drawn} {unit}交了这一题（笔迹的图见下面「逐个作答」）。
@@ -292,13 +339,15 @@ export function QuestionStatsOverlay({
               {/* 文字说明。🔴 只陈述算得出来的事实（判据层的硬线） */}
               {stats.insights.length > 0 && (
                 <Section title="说明">
-                  <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {stats.insights.map((insight, index) => (
+                      // 🔴 **整句不染色**，改用左侧 3px 色条 —— 染色整句是最像「调试输出」的写法。
                       <li key={index} style={{
-                        fontSize: '0.813rem',
-                        color: insight.level === 'warn' ? WARN : insight.level === 'good' ? OK : '#0f172a',
+                        display: 'flex', gap: 10, alignItems: 'flex-start',
+                        borderLeft: `3px solid ${insight.level === 'warn' ? CHART.partial : insight.level === 'good' ? CHART.correct : '#e2e8f0'}`,
+                        paddingLeft: 10, fontSize: '0.875rem', color: '#334155', lineHeight: 1.6,
                       }}>
-                        {insight.text}
+                        <span>{emphasizeNumbers(insight.text)}</span>
                       </li>
                     ))}
                   </ul>

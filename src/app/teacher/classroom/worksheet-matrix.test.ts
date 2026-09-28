@@ -26,7 +26,12 @@ function node(id: string, type = 'single-choice', children: WorksheetQuestionNod
 
 /** 一条作答行。⚠️ 只给 `status` —— 对错不在矩阵里（规格 §3.4），所以夹具也不该带它。 */
 function row(questionId: string, status: string): WorksheetBoardAnswerRow {
-  return { questionId, status, isCorrect: null, gradeState: null, score: null, reviewedAt: null, value: null };
+  // ★ 2026-09-28：作答活动三列一律 `null`（= 不知道）—— 矩阵**按规格 §3.4 不编码对错、
+  // 也不编码过程**，它只关心 `status`。带上这三列是为了满足类型，不是为了给矩阵用。
+  return {
+    questionId, status, isCorrect: null, gradeState: null, score: null, reviewedAt: null, value: null,
+    createdAt: null, savedAt: null, saveCount: null,
+  };
 }
 
 /** 一个参与者。`cells` 里没有的题 = 他这一题没有任何行（= 未答）。 */

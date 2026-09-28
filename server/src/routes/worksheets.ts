@@ -928,10 +928,14 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
           // ⚠️ `isCorrect` **在，且只增不改**（协议字段）；`gradeState` / `score` 是 B1 新增的，
           // 看板的 ½ 部分给分档与「这题得了几分」只能来自这两列（规格 §12）。漏 select 一列的
           // 表现是**那个档永远画不出来**，而响应里也没有任何东西缺一块 —— 只是数字不对。
+          // ⚠️ 再强调一次（★ 2026-09-28 又加了三列，同一个坑）：这里的每一列都要有哨兵。
+          // `createdAt` / `savedAt` / `saveCount` 是抽屉「过程区」三段数字的唯一来源，
+          // 漏一列的表现是那一段**永远不显示**，而响应里没有任何东西缺一块。
           select: {
             questionId: true, status: true, isCorrect: true,
             gradeState: true, score: true,
             reviewedAt: true, value: true,
+            createdAt: true, savedAt: true, saveCount: true,
           },
         },
       },
@@ -940,6 +944,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
       questionId: string; status: string; isCorrect: boolean | null;
       gradeState: string | null; score: number | null;
       reviewedAt: Date | null; value: Prisma.JsonValue | null;
+      createdAt: Date | null; savedAt: Date | null; saveCount: number | null;
     }>>();
     for (const response of responses) {
       rowsByPair.set(`${response.participantId}\x00${response.worksheetId}`, response.answers);

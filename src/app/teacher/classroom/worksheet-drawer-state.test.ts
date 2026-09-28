@@ -60,6 +60,10 @@ function row(over: Partial<WorksheetBoardAnswerRow>): WorksheetBoardAnswerRow {
     questionId: 'q_1', status: 'draft',
     isCorrect: null, gradeState: null, score: null,
     reviewedAt: null, value: null,
+    // ★ 2026-09-28：作答活动三列。默认 `null` = **不知道** —— 这是本助手最诚实的一档：
+    // 这些夹具说的是「这一行的作答状态」，而不是「他保存过几次」。要测过程区的用例
+    // 必须自己传这三个值（`...over` 允许）。
+    createdAt: null, savedAt: null, saveCount: null,
     ...over,
   };
 }

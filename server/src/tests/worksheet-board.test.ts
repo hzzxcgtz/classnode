@@ -335,6 +335,72 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
 });
 
 // ---------------------------------------------------------------------------
+// ②b ★ 2026-09-28：作答活动三列必须下发（抽屉「过程区」的唯一数据源）
+// ---------------------------------------------------------------------------
+
+/**
+ * 🔴 与上面 `gradeState` / `score` 那条**逐字同源**的坑：漏 `select` 一列的表现
+ * 与「压根没实现」一模一样 —— 事件照发、日志干净、那一项**永远画不出来**，
+ * 而响应里也没有任何东西缺一块（键不存在与值为 `null` 在 `Object.keys` 之外几乎不可区分）。
+ *
+ * 所以本用例**钉值**，且**刻意用三个互不相同的数**（若是三个 `null` 或三个 `0`，
+ * 「读错了列」与「正确」在断言上不可区分）：
+ *   · `createdAt` —— 12:00，**第一次**作答的时刻；
+ *   · `savedAt`   —— 12:07，**最近一次保存**（与上面那个不同 ⇒ 能证明确实读的是两列）；
+ *   · `saveCount` —— 3。
+ */
+test('★ 作答活动三列（createdAt / savedAt / saveCount）必须下发，且是库里那三个值', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const worksheet = await seedWorksheet(db.prisma, '过程区学习单');
+  const classroom = await db.prisma.classroom.create({ data: { code: '9003', title: '过程课堂', mode: 'standard' } });
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const response = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id, status: 'draft' },
+  });
+
+  const createdAt = new Date('2026-09-28T12:00:00.000Z');
+  const savedAt = new Date('2026-09-28T12:07:00.000Z');
+  await db.prisma.worksheetAnswer.create({
+    data: {
+      responseId: response.id, questionId: 'q_1',
+      value: { format: 'choice/v1', selected: ['B'] }, status: 'draft',
+      createdAt, savedAt, saveCount: 3,
+    },
+  });
+
+  const body = await (await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie })).json() as {
+    worksheets: Array<{ participants: Array<{ answerRows: Array<{ questionId: string; createdAt: string | null; savedAt: string | null; saveCount: number | null }> }> }>;
+  };
+  const rows = body.worksheets[0].participants[0].answerRows;
+  assert.equal(rows.length, 1);
+
+  // ⚠️ 三个值互不相同（12:00 / 12:07 / 3）—— 读错列、或三列读成同一个值，都会在这里红。
+  assert.equal(new Date(rows[0].createdAt!).toISOString(), createdAt.toISOString(), 'createdAt 必须下发且是库里那个值');
+  assert.equal(new Date(rows[0].savedAt!).toISOString(), savedAt.toISOString(), 'savedAt 必须下发且是库里那个值');
+  assert.equal(rows[0].saveCount, 3, 'saveCount 必须下发且是库里那个值');
+
+  // 阴性对照：旧行（三列为 NULL）下发的是 **null**，不是 0 / undefined。
+  // 🔴 `undefined` 与 `null` 在 JSON 里长得一样（键会整个消失），但读的一侧分不出来
+  // 就会把「不知道」渲染成「刚刚」—— 所以这里断言键**在**、值是 null。
+  const legacy = await db.prisma.worksheetAnswer.create({
+    data: { responseId: response.id, questionId: 'q_2', value: { format: 'choice/v1', selected: ['A'] }, status: 'draft' },
+  });
+  assert.equal(legacy.saveCount, null, '前置条件：直接建的行三列都是 NULL');
+  const again = await (await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie })).json() as {
+    worksheets: Array<{ participants: Array<{ answerRows: Array<Record<string, unknown>> }> }>;
+  };
+  const legacyRow = again.worksheets[0].participants[0].answerRows.find(row => row.questionId === 'q_2')!;
+  assert.ok('createdAt' in legacyRow, '旧行也要**带上这个键**（值是 null，不是缺字段）');
+  assert.equal(legacyRow.createdAt, null);
+  assert.equal(legacyRow.savedAt, null);
+  assert.equal(legacyRow.saveCount, null);
+});
+
+// ---------------------------------------------------------------------------
 // ③ 高级模式：不同组是不同的学习单
 // ---------------------------------------------------------------------------
 

@@ -582,6 +582,24 @@ export interface WorksheetBoardAnswerRow {
   reviewedAt: string | null;
   /** 学生原答案。读不出来时是 `null`（旧版本 / 手改过的行）。 */
   value: unknown;
+  /**
+   * ★ 2026-09-28：作答活动三列（抽屉「过程区」的数据源）。
+   *
+   * 🔴 **三个都可能为 `null`，含义一律是「不知道」**，读的一侧不许把它当成
+   * 「刚刚」或「0 次」—— 那两句都是编的。它们的 `null` 来自本列上线之前的旧行
+   * （`ensureWorksheetAnswerColumns` 只加列、**刻意不回填**：旧行被保存过几次、
+   * 什么时候保存的，库里从来没有记过）。缺值时那一整段**不显示**，不是显示 0。
+   */
+  /** 这一题**第一次**落库的时刻。 */
+  createdAt: string | null;
+  /**
+   * **最近一次保存**的时刻。
+   * ⚠️ 提交**不推进它** —— 提交不是一次内容写入（那一支的 `data` 里没有 `value`）。
+   * 所以「距上次保存」在交卷之后仍然说的是他最后一次**动笔**的时刻。
+   */
+  savedAt: string | null;
+  /** 保存过几次（**不含**提交）。`null` = 不知道。 */
+  saveCount: number | null;
 }
 
 /**

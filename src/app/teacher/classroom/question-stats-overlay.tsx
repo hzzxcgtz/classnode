@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { indexQuestions } from './worksheet-drawer-state';
 import { QuestionAnswers } from './worksheet-drawer';
+import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, type MatrixCell, type StatsRow } from './worksheet-question-stats';
 
@@ -127,7 +128,7 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenAnalysis, onOpenParticipant,
+  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenParticipant, classroomId,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -137,9 +138,10 @@ export function QuestionStatsOverlay({
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
   /** ② 智能体解读：**打开已有的分析浮层**（见下面那段注释）。 */
-  onOpenAnalysis: () => void;
   /** 点某个学生的名字 ⇒ 跳到他那一题（由调用方先关本浮层再开抽屉）。 */
   onOpenParticipant: (participantId: string) => void;
+  /** 🔴 分析载荷要用它（与 `AnalysisOverlay` 同一条理由：同一份学习单可被多个课堂引用）。 */
+  classroomId: string;
 }) {
   const worksheet = board?.worksheets.filter((item) => item.id === worksheetId)[0];
   const nodes = nodesByWorksheet[worksheetId] ?? null;
@@ -169,6 +171,8 @@ export function QuestionStatsOverlay({
     return questionStats(node, rows);
   }, [node, worksheet, questionId]);
 
+  // ★ 分析那一路的取数与动作（与整屏浮层同一个 hook、同一个实现）。
+  const analysis = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode);
   const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
   const distribution = stats?.distribution ?? null;
 
@@ -302,16 +306,19 @@ export function QuestionStatsOverlay({
             </>
           )}
 
-          {/* ② 智能体解读 —— 打开已有的分析浮层（zIndex 由调用方抬高到本浮层之上）。
-              ⚠️ 规格 §6.2 原本要求把分析正文抽成一个块**内联**在这里；本批**没做**：
-              那要重构 `analysis-overlay.tsx`（它身上还有「发之前先给教师确认」那套隐私闸门），
-              而我**没有逐行读过它**（规格 §11 已把这条列为没核过）。
-              先接线 —— 教师点得到、看得到结果；内联留作下一步。 */}
+          {/* ② 智能体解读 —— ★ 2026-09-28：**正文内联在这里**（规格 §6.2）。
+              🔴 它不是另写一份：`AnalysisBody` / `AnalysisActions` / `AnalysisBanners`
+              与整屏那个 `AnalysisOverlay` **共用同一个实现**（含那份「发之前先给你看一遍」
+              的隐私闸门预览）—— 各画一份必然分叉，而两边都不报错。 */}
           <Section title="智能体解读" note="问答 / 绘图题交给智能体分析">
-            <button type="button" className="btn btn-secondary" onClick={onOpenAnalysis}
-              style={{ alignSelf: 'flex-start', fontSize: '0.813rem', padding: '6px 12px' }}>
-              打开分析
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 12px', background: '#fafcff' }}>
+              <AnalysisBanners state={analysis} />
+              {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}
+              <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
+                <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} />
+              </div>
+              <AnalysisActions state={analysis} />
+            </div>
           </Section>
 
           {/* ③ 逐个作答 —— **复用抽屉第三层那个组件**，不另写一份呈现 */}

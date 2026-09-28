@@ -3406,8 +3406,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           worksheetId={analysisTarget.worksheetId}
           questionId={analysisTarget.questionId}
           mode={classroom?.mode ?? 'standard'}
-          // ★ 从「按题统计浮层」（293）里打开时抬到它之上；从矩阵（250）打开时是默认的 270。
-          zIndex={questionStatsTarget ? 295 : 270}
           onClose={() => setAnalysisTarget(null)}
         />
       )}
@@ -3415,13 +3413,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {/* ★ 2026-09-28：按题统计与分析（层级 292/293，在抽屉 291 之上）。 */}
       {questionStatsTarget && (
         <QuestionStatsOverlay
+          classroomId={id!}
           mode={classroom?.mode ?? 'standard'}
           board={wb.board}
           worksheetId={questionStatsTarget.worksheetId}
           questionId={questionStatsTarget.questionId}
           nodesByWorksheet={wb.nodesByWorksheet}
           onClose={() => setQuestionStatsTarget(null)}
-          onOpenAnalysis={() => setAnalysisTarget({ ...questionStatsTarget })}
           // 点某个学生的名字 ⇒ **先关掉本浮层再开抽屉**（抽屉在 291，被本浮层盖着）。
           onOpenParticipant={(participantId) => {
             setQuestionStatsTarget(null);

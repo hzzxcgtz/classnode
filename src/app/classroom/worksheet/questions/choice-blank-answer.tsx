@@ -209,9 +209,14 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
 
   return (
     <>
+      {/* ★ 2026-09-28（教师，图 49）：**这一行只放两样** —— 左边题型图标+别名（由调用方
+          拼进 `leadingIcon`），右边结果条（`status`）；**题干正文挪到下一行**。
+          原来是「图标 + 题干 + 结果条」挤在一行，于是题干被挤在中间、两头都是零碎。 */}
       <div className={styles.questionLead}>
         {leadingIcon}
-        <div className={styles.prompt}>
+        {status}
+      </div>
+      <div className={styles.prompt}>
           <PromptText
           text={node.prompt}
           runs={runs}
@@ -228,8 +233,6 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           }}
           />
         </div>
-        {status}
-      </div>
       {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
       {settings.some(setting => setting.mode === 'pool') ? (
         <div className={styles.choicePoolArea}>

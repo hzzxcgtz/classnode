@@ -13,6 +13,7 @@ import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/wor
 import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import { questionTypeNickname } from '@/lib/worksheet-questions';
 import {
   normalizeWorksheetBackgroundTheme,
   resolveWorksheetBackgroundSources,
@@ -447,7 +448,8 @@ export function WorksheetQuestionList({
                 // ★ 2026-09-27：答错的空的正确答案（**只这一题**；服务端只发答错的那几格）。
                 wrongBlankIndexes={wrongBlankIndexes?.[node.id]}
                 correctBlanks={correctBlanks?.[node.id]}
-                leadingIcon={questionIcon}
+                // 图标 + **别名**一起给（那一行左边是「图标 别名」，见组件里的注释）
+                leadingIcon={<>{questionIcon}<span className={styles.typeNickname}>{questionTypeNickname(node.type)}</span></>}
                 status={questionMeta}
               />
             ) : (<>
@@ -455,9 +457,14 @@ export function WorksheetQuestionList({
                 在此之前这里画一次、教师编辑页折叠时另画一次，两份都不会因为另一份改了
                 而报错。样式（粗细 / 斜 / 下划线 / 着重号 / 颜色）由 `promptRunStyle` 给，
                 本组件的 `.prompt` 只管基线（字号 / 行高 / 换行 / 默认色）。 */}
+            {/* ★ 2026-09-28（教师，图 49）：这一行只放两样 —— 左边题型图标 + 别名，
+                右边结果条；**题干正文挪到下一行**（原来三样挤一行，题干被夹在中间）。 */}
             <div className={styles.questionLead}>
               {questionIcon}
-              <div className={styles.prompt}>
+              <span className={styles.typeNickname}>{questionTypeNickname(node.type)}</span>
+              {questionMeta}
+            </div>
+            <div className={styles.prompt}>
               {/* ★ 2026-09-27（教师）：「学生页面中，如果是多选题的话，要在题干前面自动加上
                   『多选』这样的提示文字。」
                   🔴 判据是**共享的那一份** `isMultipleChoice`（`@/lib/worksheet-questions`，
@@ -481,8 +488,6 @@ export function WorksheetQuestionList({
                 // 教师看到的就是学生看到的）。没草稿时值是空的、并且 disabled。
                 blanks={node.type === 'fill-blank' ? blankBinding : undefined}
               />
-              </div>
-              {questionMeta}
             </div>
             {promptImage && (
               <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />

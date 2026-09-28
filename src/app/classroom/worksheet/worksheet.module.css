@@ -1782,6 +1782,8 @@
    ⚠️ 段的**有与没有**由 JSX 决定（未提交时没有判分段、不全对时没有奖励段），
       所以这里不能写死三段宽度：用 flex + 细线，缺哪段都不会留一条空线。 */
 .questionResult {
+  /* ★ 2026-09-28：顶到题目头那一行的最右（见 `.typeNickname` 的注释）。 */
+  margin-left: auto;
   display: inline-flex;
   align-items: stretch;
   border: 1px solid #d6e2f5;
@@ -1831,3 +1833,15 @@
 /* 奖励那一段：上面一行小字「获得奖励」、下面是图标 + ×N */
 .resultCell[data-tone='reward'] { flex-direction: column; gap: 0; padding: 4px 12px; }
 .resultCellLabel { font-size: 0.688rem; font-weight: 500; color: #64748b; }
+
+/* ── 题目头那一行：题型别名（★ 2026-09-28，教师给学生的「趣味名称」）──────────
+   这一行现在是「图标 + 别名 …… 结果条」，题干正文在它下面一行。
+   ⚠️ 右边那一块靠 `.questionResult` 自己的 `margin-left: auto` 顶到最右，
+      这里不给 `justify-content: space-between` —— 结果条有时只有一段（未提交时），
+      两端对齐会让它贴边而题干那一行看着是空的。 */
+.typeNickname {
+  font-size: 0.813rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}

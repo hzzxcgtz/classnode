@@ -17,7 +17,19 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flattenAnswerable, flattenQuestions, groupAnswerable, optionBadge, readOptions, TASK_TYPE, correctAnswerLabel, correctKeysFromPayload, wrongSelectedKeys } from './worksheet-questions.ts';
+import {
+  TASK_TYPE,
+  correctAnswerLabel,
+  correctKeysFromPayload,
+  flattenAnswerable,
+  flattenQuestions,
+  groupAnswerable,
+  optionBadge,
+  questionTypeLabel,
+  questionTypeNickname,
+  readOptions,
+  wrongSelectedKeys,
+} from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
@@ -285,4 +297,32 @@ test('🔴 判断题上认不出的 key 必须把 key 原样吐回来，不许�
   // 而屏幕上没有任何报错（本仓最防的那一类）。
   assert.equal(optionBadge('true-false', 'X'), 'X');
   assert.notEqual(optionBadge('true-false', 'X'), '');
+});
+
+// ── 题型别名（★ 2026-09-28，教师给的对照表）────────────────────────────
+
+test('🔴 questionTypeNickname：教师给的八个别名逐字对上', () => {
+  assert.equal(questionTypeNickname('single-choice'), '慧眼选择');
+  assert.equal(questionTypeNickname('multi-choice'), '慧眼选择', '多选题也是选择题');
+  assert.equal(questionTypeNickname('fill-blank'), '开心填空');
+  assert.equal(questionTypeNickname('match'), '巧手连线');
+  assert.equal(questionTypeNickname('categorize'), '分类达人');
+  assert.equal(questionTypeNickname('true-false'), '真假侦探');
+  assert.equal(questionTypeNickname('order'), '顺序高手');
+  assert.equal(questionTypeNickname('short-answer'), '妙语问答');
+  assert.equal(questionTypeNickname('drawing'), '创意画板');
+});
+
+test('🔴 questionTypeNickname：别名与正式名**都要留着**（两件不同的东西）', () => {
+  // 教师端用正式名（对得上教材与教研的用词），学生端用别名。
+  assert.equal(questionTypeLabel('fill-blank'), '填空题');
+  assert.equal(questionTypeNickname('fill-blank'), '开心填空');
+  assert.notEqual(questionTypeLabel('fill-blank'), questionTypeNickname('fill-blank'));
+});
+
+test('🔴 questionTypeNickname：表里没有的（任务容器 / 手工改过的行）⇒ 回落，不返回空串', () => {
+  // ⚠️ 回落成空串会让那一行只剩一个图标，而屏幕上不会报任何错。
+  assert.equal(questionTypeNickname('task'), 'task');
+  assert.equal(questionTypeNickname('没见过的题型'), '没见过的题型');
+  assert.equal(questionTypeNickname(''), '');
 });

@@ -163,11 +163,26 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
  * 正文（文档 / 联系表 / 解读 / 确认块）。
  * ⚠️ **从 `analysis-overlay.tsx` 原样搬过来**，行为一个字没改。
  */
-export function AnalysisBody({ state, classroomId, worksheetId, questionId }: {
+export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf }: {
   state: WorksheetAnalysisState;
   classroomId: string;
   worksheetId: string;
   questionId: string;
+  /**
+   * ★ 2026-09-29（教师）：「为什么没有显示姓名」。
+   *
+   * 🔴 **发出去的东西一个字不改**：那张联系表与文档上的标签**必须**是伪名
+   * （`User_001`…）—— 它们是**要发给第三方 AI 的**，而本项目的匿名器规定
+   * 「任何提示词离开这台机器之前，真名一律换成伪名」（`ai-proxy.ts`）。
+   * 真名进那张图 = 把未成年人的姓名发给第三方，**那不是这一屏能决定的事**。
+   *
+   * ⇒ 教师要看的是「第 3 格是谁」，而这个映射**本来就在他手上的数据里**
+   *（载荷里的 `entries[].studentId` 就是参与者 id，名册在这一屏也有）。
+   * 于是**只在教师自己的屏幕上**画一张对照表 —— 既不发出去，也不改任何载荷。
+   *
+   * ⚠️ 缺省不传 ⇒ 退回「只有伪名」（整屏那个分析浮层没有名册，它就不传）。
+   */
+  nameOf?: (participantId: string) => string | null;
 }) {
   const { payload, loading, busy, confirming, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
@@ -226,13 +241,22 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId }: {
               ⚠️ 联系表**画不出来**（本机没有图片渲染能力，服务端回了 503）—— 文字那部分若存在仍然可读。
             </div>
           )}
-          {payload.labeled === false && (
-            <ol style={{ margin: '0 0 18px', paddingLeft: 22, fontSize: '0.82rem', color: '#334155' }}>
-              {payload.entries.map((entry) => (
-                <li key={entry.studentId}>{entry.anonLabel} · 第 {payload.entries.indexOf(entry) + 1} 格</li>
-              ))}
-            </ol>
-          )}
+          {/* ★ 2026-09-29：对照表**一直显示**（原来只在图上没有标签时才显示），
+              而且带上**真名** —— 教师拿它对着那张图看「第几格是谁」。
+              🔴 真名只画在**这一屏**上（`nameOf` 由调用方从名册解析，是本机数据）；
+              发给 AI 的仍然是伪名，一个字没变。 */}
+          <ol style={{ margin: '0 0 18px', padding: '10px 12px 10px 28px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.82rem', color: '#334155' }}>
+            {payload.entries.map((entry, index) => {
+              const real = nameOf ? nameOf(entry.studentId) : null;
+              return (
+                <li key={entry.studentId}>
+                  <b>{entry.anonLabel}</b>
+                  {real ? <> · <b style={{ color: '#0f172a' }}>{real}</b></> : null}
+                  {' '}· 第 {index + 1} 格
+                </li>
+              );
+            })}
+          </ol>
         </>
       )}
 

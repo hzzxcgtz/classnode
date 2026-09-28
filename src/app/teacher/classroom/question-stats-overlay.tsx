@@ -416,7 +416,11 @@ export function QuestionStatsOverlay({
                 <AnalysisBanners state={analysis} />
                 {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}
                 <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
-                  <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} />
+                  <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId}
+                    // ★ 伪名 → 真名：**本机**从名册解析（`entries[].studentId` 就是参与者 id）。
+                    // 🔴 它只影响这一屏的对照表，**不改**发给 AI 的任何东西。
+                    nameOf={(participantId) => participants.filter((item) => item.participantId === participantId)[0]?.name ?? null}
+                  />
                 </div>
                 <AnalysisActions state={analysis} />
               </div>

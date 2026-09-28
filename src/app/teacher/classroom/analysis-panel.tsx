@@ -188,6 +188,31 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   const sheets = payload?.sheetLayouts ?? [];
   const previewLines = payload && payload.analysisAgent ? analysisPreviewFor(state, payload) : [];
 
+  /**
+   * ★ 2026-09-29（教师）：「经过第三方 AI 分析后返回的数据，在看的时候还是要有真名」。
+   *
+   * 🔴 **这就是学伴那条路上早就有的做法**（`ai-proxy.ts` 的文件头：出去时换成伪名，
+   * 模型回话时再把真名换回来）—— 分析这条路当时只做了前半段，于是教师在屏幕上
+   * 读到的是 `User_001 把第 2 空填成了…`。
+   *
+   * ⚠️ **替换只发生在渲染这一层**：发给 AI 的仍然是伪名，库里存的也仍然是伪名
+   * （`WorksheetQuestionAnalysis.narrative` 不变）。⇒ 将来若有人把这段解读**导出**
+   * 或**别处复用**，那份东西里仍是伪名 —— 想让它也带真名，要在**那一处**同样替换。
+   * 这一句写在这里，是因为「同一份数据在两个出口长得不一样」是本仓反复吃的形状。
+   *
+   * ⚠️ 朴素替换（不是正则）是安全的：伪名是 `User_` + **至少三位**零填充
+   *（`payloadLabels` 的 `padStart(3, '0')`），`User_001` 不会出现在别的伪名里面。
+   * 一个班不可能有 1000 人。
+   */
+  const localize = (text: string | null | undefined): string | null => {
+    if (!text) return text ?? null;
+    if (!nameOf || !payload) return text;
+    return payload.entries.reduce((acc, entry) => {
+      const real = nameOf(entry.studentId);
+      return real ? acc.split(entry.anonLabel).join(real) : acc;
+    }, text);
+  };
+
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
       {loading && <div style={{ color: '#64748b' }}>正在读取…</div>}
@@ -208,7 +233,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
           margin: '0 0 18px', padding: 14, background: '#fff', border: '1px solid #e2e8f0',
           borderRadius: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           fontSize: '0.85rem', lineHeight: 1.7, color: '#0f172a', fontFamily: 'inherit',
-        }}>{payload.text}</pre>
+        }}>{localize(payload.text)}</pre>
       )}
 
       {!loading && payload && sheets.length > 0 && (
@@ -268,7 +293,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             AI 解读{payload.model ? `（${payload.model}）` : ''}
           </div>
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.85rem', lineHeight: 1.7, fontFamily: 'inherit', color: '#0f172a' }}>
-            {payload.narrative}
+            {localize(payload.narrative)}
           </pre>
         </div>
       )}

@@ -131,7 +131,9 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
       // ★ 2026-09-28（教师：右往左也能连）：**两边都可能是起点** —— 从右项起手拖时
       // 锚点就是那个右项。原来这里只认 `l:` 前缀（那时的注释写着「只有左项才是连线的
       // 起点」—— 在一对一 + 只能左起手的年代是对的，现在是旧话）。
-      const el = itemEls.current[`l:${point.id}`] ?? itemEls.current[`r:${point.id}`];
+      // ⚠️ 先看左列：**锚点用哪条边取决于源在哪一列**（见下面 x1 那一行）。
+      const leftEl = itemEls.current[`l:${point.id}`];
+      const el = leftEl ?? itemEls.current[`r:${point.id}`];
       const box = containerRef.current;
       if (!el || !box) {
         anchorRef.current = null;
@@ -142,7 +144,11 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
       const b = box.getBoundingClientRect();
       anchor = {
         id: point.id,
-        x1: Math.round(a.right - b.left),
+        // ★ 2026-09-28（教师图 58：「不应该是从右侧矩形框的最右侧拖」）：
+        // 锚点必须**朝着对面那一列** —— 左项用右边缘（朝右）、右项用左边缘（朝左）。
+        // 原来一律用 `a.right`：左项对，从右项起手时线就从那个框的**最右边**出发，
+        // 横穿整个框再拐回来（教师一眼就看出来了）。
+        x1: Math.round((leftEl ? a.right : a.left) - b.left),
         y1: Math.round(a.top + a.height / 2 - b.top),
         originX: b.left,
         originY: b.top,
@@ -271,13 +277,12 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
               drag.draggingId === entry.id ? styles.dragActive : '',
             ].filter(Boolean).join(' ');
             return (
-              // 🔴 2026-09-28 **回退一步（诊断用）**：左列改回 `sourceProps`，**不再是落点**。
-              // 教师报「连左→右都不出线了」，而这条路在我改动之前一直是好的 ——
-              // 它这一路只动过一处：把 `sourceProps` 换成 `bothProps`，多出来的就是
-              // 那个 `data-drop-id`。把左列换回去就能判定**是不是它**在 hook 里挡了起拖。
-              // ⚠️ 代价：**右→左拖**暂时落不到左项上（左项不再是落点）。
-              //   这是**为了拿到一个可判定的事实**付的临时账，不是最终形态。
-              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.sourceProps(entry.id)}>
+              // ★ 2026-09-28：左项**既是拖动源、又是落点**（右→左拖要能落在它上面）。
+              // ⊘ 那次「改回 sourceProps」的诊断实验**结论无效** —— 它是在「已提交定稿」
+              //   的题上做的，那时控件本来就全禁用（三个交互都没反应、控制台也无输出）。
+              //   后来在**未提交**的题上测：拖动出线正常、松手连不上 —— 而连不上正是
+              //   「左项不是落点」造成的（`onDrop` 拿到 `targetId === null` 直接返回）。
+              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.bothProps(entry.id)}>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
               </div>
             );

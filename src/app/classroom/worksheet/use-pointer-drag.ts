@@ -108,6 +108,18 @@ export interface PointerDrag {
   sourceProps: (id: string) => PointerDragHandlers;
   /** 落点：只能被拖过来 + 可点（**不能**作为拖拽源 —— 否则落点自己也能被拖起来）。 */
   targetProps: (id: string) => PointerDragHandlers & { 'data-drop-id': string };
+  /**
+   * ★ 2026-09-28：**既是源、也是落点** —— 连线题两边都要能从任意一边起手拖。
+   *
+   * 🔴 上面 `targetProps` 那条限制（「不能作为拖拽源」）是给**单向**场景写的：
+   *    排序 / 归类 / 选择填空的落点确实不该被拖起来。而连线题要的是双向 ——
+   *    左项与右项都可能当源、也都可能当落点，所以这里给第三种。
+   * ⚠️ 安全的地方在 `findDropTarget`：它**跳过被拖的那个元素自己**（那一段注释写着
+   *    「必须跳过自己，否则拖得动、放不下」）⇒ 把自己拖到自己身上不会自己接自己。
+   * ⚠️ 同列互相拖（左项拖到另一个左项上）由**调用方**判掉（`match-body.tsx` 的
+   *    「源与落点必须分属两列」那道闸）—— 这个 hook 不知道题型，也不该知道。
+   */
+  bothProps: (id: string) => PointerDragHandlers & { 'data-drop-id': string };
 }
 
 /** 一次手势的全部状态。放在 ref 里，因为它在 `pointermove` 之间必须保持。 */
@@ -346,5 +358,15 @@ export function usePointerDrag({ onTap, onDrop, onDragMove, disabled = false }: 
     onClick: (event) => handleClick(event, id),
   }), [handleClick, handlePointerCancel, handlePointerMove, handlePointerUp]);
 
-  return { draggingId, hoverTargetId, sourceProps, targetProps };
+  const bothProps = useCallback((id: string): PointerDragHandlers & { 'data-drop-id': string } => ({
+    'data-drop-id': id,
+    // 与 `sourceProps` 逐字相同的处理 + 带上落点属性 —— 两件事都做。
+    onPointerDown: (event) => handlePointerDown(event, id),
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerCancel,
+    onClick: (event) => handleClick(event, id),
+  }), [handleClick, handlePointerCancel, handlePointerDown, handlePointerMove, handlePointerUp]);
+
+  return { draggingId, hoverTargetId, sourceProps, targetProps, bothProps };
 }

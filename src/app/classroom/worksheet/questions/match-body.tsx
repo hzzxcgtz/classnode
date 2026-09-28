@@ -126,9 +126,12 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
     if (!ghost) return;
     let anchor = anchorRef.current;
     if (!anchor || anchor.id !== point.id) {
-      // ⚠️ `l:` 前缀：只有**左项**才是连线的起点。右项是落点、不是拖拽源，
-      // 在它上面按下去拖时这里找不到元素 ⇒ 不画线（而不是画一条从 (0,0) 出发的假线）。
-      const el = itemEls.current[`l:${point.id}`];
+      // ⚠️ 找不到元素就不画线（而不是画一条从 (0,0) 出发的假线）—— 条目被删过、
+      // 或者还没挂上时会这样。
+      // ★ 2026-09-28（教师：右往左也能连）：**两边都可能是起点** —— 从右项起手拖时
+      // 锚点就是那个右项。原来这里只认 `l:` 前缀（那时的注释写着「只有左项才是连线的
+      // 起点」—— 在一对一 + 只能左起手的年代是对的，现在是旧话）。
+      const el = itemEls.current[`l:${point.id}`] ?? itemEls.current[`r:${point.id}`];
       const box = containerRef.current;
       if (!el || !box) {
         anchorRef.current = null;
@@ -268,7 +271,10 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
               drag.draggingId === entry.id ? styles.dragActive : '',
             ].filter(Boolean).join(' ');
             return (
-              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.sourceProps(entry.id)}>
+              // ★ 2026-09-28：**两边都用 `bothProps`** —— 左项与右项都能起手拖、也都是落点
+              // （教师：「支持左框连到右框，也支持右框连到左框」）。同列互相拖由 `onDrop`
+              // 里那道「源与落点必须分属两列」的闸判掉。
+              <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.bothProps(entry.id)}>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
               </div>
             );
@@ -283,7 +289,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
               drag.hoverTargetId === entry.id ? styles.dropActive : '',
             ].filter(Boolean).join(' ');
             return (
-              <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.targetProps(entry.id)}>
+              <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.bothProps(entry.id)}>
                 <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
               </div>
             );

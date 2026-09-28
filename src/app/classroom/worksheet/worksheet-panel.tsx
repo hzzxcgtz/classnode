@@ -405,12 +405,14 @@ export function WorksheetQuestionList({
             )}
             {gradeState && (
               <span className={styles.resultCell} data-tone={gradeState}>
-                {/* ★ 2026-09-28（教师图 59：「白色圆里用简单符号表示全对 / 部分得分 / 错误」）：
-                    符号取 **✓ / ½ / ✗** —— 与教师看板抽屉里那套**同一套**（`worksheet-drawer-state.ts`：
-                    「符号是 `½`」，且那里更正过 §12 写的 `◐`）。同一个三态两套记号，
-                    教师与学生看到的就对不上。 */}
+                {/* ★ 2026-09-28（教师）：「错误，用叉叉是不是让学生看了有点害怕？改一种温柔的提示方法。」
+                    ⇒ 学生侧那颗**错**的记号用 `？`（配它右边那句「再想一想」），不用 `✗`。
+                    ⚠️ 与教师看板抽屉那套 `✓ / ½ / ✗` **刻意不同**：那是给教师看的统计符号，
+                       这边是给中小学生看的反馈。全对与部分给分两个记号仍然共用（✓ / ½）——
+                       只有「错」这一档分叉，因为**只有它**关系到「学生会害怕」这件事。
+                    ⚠️ `？` 是我选的（与「再想一想」同一个意思）。教师觉得该换别的，说一声。 */}
                 <span className={styles.resultGlyph} aria-hidden="true">
-                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '½' : '✗'}
+                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '½' : '？'}
                 </span>
                 {verdictLabel}
               </span>

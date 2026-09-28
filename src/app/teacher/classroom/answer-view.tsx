@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
+import { answerView, matchLineGeometry, type AnswerView } from '@/lib/worksheet-answer-view';
 import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { InkPreview } from './ink-preview';
@@ -27,6 +27,16 @@ const WARN = '#b45309';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
 const ANSWER = '#1d4ed8';
+
+/**
+ * 连线题的行距与中间那条通道的宽度。
+ *
+ * 🔴 **行高必须是固定的** —— 这是「不测量 DOM 也能画线」的全部依据：两栏各按原题顺序排，
+ * 每个盒子的纵坐标由**下标**算出来（`matchLineGeometry`，纯函数、有测试）。
+ * 按内容自适应行高的话位置就只能量，而「量完 setState → 再量」正是这一晚把学生端
+ * 搞成假死的那类回路。⚠️ 代价：太长的条目会被**截断**（下面用两行截断兜着）。
+ */
+const MATCH_ROW = { rowHeight: 38, gap: 6, gutter: 46 } as const;
 
 /** 学生写的字那一层「底」。填空 / 问答共用，让「他写了什么」一眼能框出来。 */
 const answerBox: React.CSSProperties = {
@@ -151,51 +161,66 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         </div>
       );
 
-    case 'match':
+    case 'match': {
+      // 🔴 **两栏各自按原题顺序排**（教师：「左框和右框中的顺序不能变，要按照原题中的顺序」）。
+      // 线画在中间那条通道里 —— 它的坐标系只有 0..gutter 那么宽，所以横坐标是常数、
+      // 纵坐标由下标算，**整段没有一个测量**。
+      const solid = matchLineGeometry(view.left, view.right, view.links, MATCH_ROW);
+      // 「漏连」也画成线（虚线灰）：教师要看的是**漏了哪一条**，不是「有漏连」三个字。
+      const missing = matchLineGeometry(
+        view.left, view.right,
+        view.missed.map((pair) => ({ ...pair, ok: true })),
+        MATCH_ROW,
+      );
+      const height = solid.height;
+      // 一条线都没有、两栏也空 ⇒ 如实说（题面本身就是空的）。
+      if (view.left.length === 0 && view.right.length === 0) {
+        return <span style={{ fontSize: '0.813rem', color: FAINT }}>这一题没有可显示的连线</span>;
+      }
+      const wrong = solid.lines.filter((line) => !line.ok).length;
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* 🔴 **一对一行**：左框 ── 线 ── 右框。
-              这样画的好处是**完全不需要测量 DOM** —— 线就是这一行里的一个连接件。
-              按「左右两栏 + 绝对定位的 SVG」那种画法则要量每个盒子的位置，
-              而「量完 setState → 重渲染 → 再量」正是这一晚把学生端搞成假死的那类回路。
-              代价：一对多时同一个左框会在多行里各出现一次 —— 在 420px 的抽屉里
-              那反而比一张密集的线网好读。 */}
-          {view.links.map((link, index) => {
-            const left = view.left.filter((entry) => entry.id === link.leftId)[0];
-            const right = view.right.filter((entry) => entry.id === link.rightId)[0];
-            return (
-              <div key={`${link.leftId}-${link.rightId}-${index}`} style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
-                <div style={chip(link.ok ? OK : BAD)}>{textOrId(left?.text, link.leftId)}</div>
-                <div aria-hidden style={{
-                  flex: '0 0 46px', alignSelf: 'center', height: 2,
-                  background: link.ok ? OK : BAD,
-                  // 错的那几条画成虚线：颜色之外再给一个不依赖色觉的信号
-                  //（教师里可能有色觉障碍，而红绿是最不该独占的一组）。
-                  ...(link.ok ? {} : { backgroundImage: `repeating-linear-gradient(90deg, ${BAD} 0 4px, transparent 4px 8px)`, background: 'transparent' }),
-                }} />
-                <div style={chip(link.ok ? OK : BAD)}>{textOrId(right?.text, link.rightId)}</div>
-                <span style={{ marginLeft: 6, alignSelf: 'center', fontSize: '0.688rem', color: link.ok ? OK : BAD }}>
-                  {link.ok ? '✓' : '✗'}
-                </span>
-              </div>
-            );
-          })}
-          {/* 正确答案里、学生没连的那几对。**画出来**而不是只说一句「有漏连」——
-              教师要看的是「漏了哪一条」。 */}
-          {view.missed.map((pair, index) => (
-            <div key={`missed-${pair.leftId}-${pair.rightId}-${index}`} style={{ display: 'flex', alignItems: 'stretch', opacity: 0.75 }}>
-              <div style={chip(FAINT)}>{textOrId(view.left.filter((entry) => entry.id === pair.leftId)[0]?.text, pair.leftId)}</div>
-              <div aria-hidden style={{ flex: '0 0 46px', alignSelf: 'center', borderTop: `2px dashed ${FAINT}` }} />
-              <div style={chip(FAINT)}>{textOrId(view.right.filter((entry) => entry.id === pair.rightId)[0]?.text, pair.rightId)}</div>
-              <span style={{ marginLeft: 6, alignSelf: 'center', fontSize: '0.688rem', color: FAINT }}>漏连</span>
-            </div>
-          ))}
-          {/* 一条线都没有、也没有可漏的（正确答案是空的）⇒ 如实说。 */}
-          {view.links.length === 0 && view.missed.length === 0 && (
-            <span style={{ fontSize: '0.813rem', color: FAINT }}>这一题没有可显示的连线</span>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: MATCH_ROW.gap }}>
+            {view.left.map((entry) => (
+              <div key={entry.id} style={rowBox}>{textOrId(entry.text, entry.id)}</div>
+            ))}
+          </div>
+          {/* 中间那条通道。⚠️ 它的高度必须与两栏算出来的高度**一致**，否则线会错位 ——
+              而它由 `matchLineGeometry` 同一个函数给出，不是这里另算一份。 */}
+          <div style={{ flex: `0 0 ${MATCH_ROW.gutter}px`, position: 'relative', height }}>
+            <svg width={MATCH_ROW.gutter} height={height} style={{ position: 'absolute', top: 0, left: 0 }}>
+              {missing.lines.map((line, index) => (
+                <line key={`m${index}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+                  stroke={FAINT} strokeWidth={2} strokeDasharray="4 4" />
+              ))}
+              {solid.lines.map((line, index) => (
+                <line key={`s${index}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+                  // ⚠️ 错的那几条**只靠虚线区分、不用第二种颜色**：颜色之外再给一个
+                  // 不依赖色觉的信号（教师里可能有色觉障碍，而红绿是最不该独占的一组）。
+                  stroke={line.ok ? OK : BAD} strokeWidth={2}
+                  strokeDasharray={line.ok ? undefined : '4 4'} />
+              ))}
+            </svg>
+          </div>
+          <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: MATCH_ROW.gap }}>
+            {view.right.map((entry) => (
+              <div key={entry.id} style={rowBox}>{textOrId(entry.text, entry.id)}</div>
+            ))}
+          </div>
+        </div>
+        {/* 说明只在**真的需要**时出现（有线可看时才说线是什么）——
+            每次都给一段图例是噪声，而教师一天要看几十遍这一屏。 */}
+        {(wrong > 0 || view.missed.length > 0) && (
+          <div style={{ fontSize: '0.688rem', color: MUTED }}>
+            {wrong > 0 && <span style={{ color: BAD }}>红色虚线是他连错的（{wrong} 条）</span>}
+            {wrong > 0 && view.missed.length > 0 && ' · '}
+            {view.missed.length > 0 && <span style={{ color: FAINT }}>灰色虚线是正确答案里他漏连的（{view.missed.length} 条）</span>}
+          </div>
+        )}
         </div>
       );
+    }
 
     case 'categorize':
       return (
@@ -245,6 +270,18 @@ function chip(color: string): React.CSSProperties {
     wordBreak: 'break-word',
   };
 }
+
+/**
+ * 连线题两栏里的一个盒子。**高度固定**（见 `MATCH_ROW` 那段理由），文字**两行截断** ——
+ * 行高一旦随内容变，「按下标算位置」就不再成立。
+ */
+const rowBox: React.CSSProperties = {
+  height: MATCH_ROW.rowHeight, boxSizing: 'border-box',
+  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+  overflow: 'hidden', wordBreak: 'break-word',
+  fontSize: '0.75rem', lineHeight: 1.25, color: '#0f172a',
+  border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 7px',
+};
 
 /** 条目文字查不到就退回 id（与呈现层同一条纪律：不显示空白）。 */
 function textOrId(text: string | undefined, id: string): string {

@@ -164,6 +164,71 @@ function readPlacement(node: WorksheetQuestionNode): Record<string, string> {
 }
 
 /**
+ * ★ 2026-09-28（教师）：「连线题左框和右框中的顺序不能变，要按照原题中的顺序」。
+ *
+ * ── 为什么这里要算几何（而不是在 JSX 里量 DOM）────────────────────────
+ * 上一版我把每一对画成**一行**（左框 ── 线 ── 右框），好处是零测量；代价是
+ * **右框的顺序被连线打乱了** —— 而教师要看的是「左栏按原题顺序、右栏按原题顺序、
+ * 线在中间连」。⇒ 回到两栏布局。
+ *
+ * 🔴 而两栏布局**不一定非要测量**：把两栏的每一行做成**固定行高**，每个盒子的
+ * 纵向位置就能从**下标**算出来。于是：
+ *   · 「量完 setState → 重渲染 → 再量」那条回路**结构上不存在**
+ *     （这一晚把学生端搞成假死的就是那类回路，见 `worksheet-drawer.tsx` 里那条注释）；
+ *   · 这段几何是**纯函数**，能被 `node --test` 直接钉住。
+ *
+ * ⚠️ 代价（写在这里免得下一个人以为是 bug）：**行高固定 ⇒ 太长的条目会被截断**
+ *（界面用两行截断）。这是刻意的取舍：宁可截断，也不要一条会自己摆动的线。
+ * 真要看全文，教师可以点开别处 / 横向比时看学生端。
+ */
+export interface MatchLine {
+  /** 起止点都在**中间那条通道**的坐标系里（`x` 从 0 到 `gutter`）。 */
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  ok: boolean;
+}
+
+export interface MatchGeometry {
+  rowHeight: number;
+  gap: number;
+  /** 中间那条通道的宽度 —— 线画在里面，所以它是**唯一**需要横坐标宽度的地方。 */
+  gutter: number;
+}
+
+/**
+ * 把连线题的每一对算成一条线段（坐标在中间那条通道里）。
+ *
+ * 🔴 **纵坐标一律取下标的**（`index * (rowHeight + gap) + rowHeight / 2`），
+ * 两栏各按**原题顺序**排 —— 这正是教师这一条要求的内容。
+ * 一条线连的两个盒子若不在同一行，线段就是**斜的**，那是对的（交叉线本来就该交叉）。
+ */
+export function matchLineGeometry(
+  left: ReadonlyArray<{ id: string }>,
+  right: ReadonlyArray<{ id: string }>,
+  links: ReadonlyArray<{ leftId: string; rightId: string; ok: boolean }>,
+  geometry: MatchGeometry,
+): { lines: MatchLine[]; height: number } {
+  const step = geometry.rowHeight + geometry.gap;
+  const center = (index: number) => index * step + geometry.rowHeight / 2;
+  const leftIndex = new Map(left.map((entry, index) => [entry.id, index]));
+  const rightIndex = new Map(right.map((entry, index) => [entry.id, index]));
+  const lines: MatchLine[] = [];
+  for (const link of links) {
+    const from = leftIndex.get(link.leftId);
+    const to = rightIndex.get(link.rightId);
+    // ⚠️ 两端都在栏里才有线段可画。缺一端（教师改题删了那个条目）时**不画** ——
+    // 画一条指向空处的线会让教师去找一个屏幕上不存在的东西。
+    if (from === undefined || to === undefined) continue;
+    lines.push({ x1: 0, y1: center(from), x2: geometry.gutter, y2: center(to), ok: link.ok });
+  }
+  // 高度由**较长的那一栏**决定（两栏条目数可以不等）。
+  const rows = Math.max(left.length, right.length);
+  return { lines, height: rows === 0 ? 0 : rows * step - geometry.gap };
+}
+
+/**
  * 一道题 + 学生的作答值 → 呈现模型。
  *
  * 分派与 `draftFromValue` **同一把尺子**（`format` 是第一判据、题型是兜底）——

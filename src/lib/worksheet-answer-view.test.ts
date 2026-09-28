@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PROMPT_STYLE } from './worksheet-prompt-marks.ts';
 import type { WorksheetQuestionNode } from './types.ts';
-import { answerView } from './worksheet-answer-view.ts';
+import { answerView, matchLineGeometry } from './worksheet-answer-view.ts';
 
 /**
  * 教师抽屉里「逐题型的作答呈现」（★ 2026-09-28，教师：「看到的答题信息过于简单……
@@ -265,4 +265,42 @@ test('★ 绘图：走 ink 那一支，值原样交给界面画（判据只认 f
   const ink = { format: 'ink/v1', canvas: { w: 100, h: 50 }, strokes: [{ color: '#000', width: 2, points: [[0.1, 0.2]] }] };
   const view = answerView(node('drawing'), ink);
   assert.equal(view.kind, 'ink', '🔴 按 format 判，不按 node.type —— 教师把题改成键盘之后那幅画仍要画得出来');
+});
+
+/* ── 连线的几何（★ 教师：「左框和右框中的顺序不能变，要按照原题中的顺序」）── */
+
+/**
+ * 🔴 **两栏各自按原题顺序排，纵坐标一律取下标的** —— 这是教师那一条要求的落点。
+ * 上一版把每一对画成一行（零测量），代价是右栏的顺序被连线打乱了。
+ *
+ * 这条用例同时钉住「行高固定 ⇒ 位置可从下标算」这件事：它是**不测量 DOM** 的全部依据。
+ */
+test('🔴 连线几何：两栏各按原题顺序，纵坐标由下标算（不测量 DOM）', () => {
+  const left = [{ id: 'l1' }, { id: 'l2' }, { id: 'l3' }];
+  const right = [{ id: 'r1' }, { id: 'r2' }];
+  const { lines, height } = matchLineGeometry(
+    left, right,
+    [
+      // ⚠️ 故意让「第 1 个左框」连到「第 2 个右框」—— 这条线是**斜的**，
+      //    而斜线正是「按原题顺序排两栏」必然会产生的东西。
+      { leftId: 'l1', rightId: 'r2', ok: false },
+      { leftId: 'l3', rightId: 'r1', ok: true },
+    ],
+    { rowHeight: 30, gap: 6, gutter: 46 },
+  );
+  // 行距 36：第 0 行中心 15、第 1 行中心 51、第 2 行中心 87。
+  assert.deepEqual(lines, [
+    { x1: 0, y1: 15, x2: 46, y2: 51, ok: false },
+    { x1: 0, y1: 87, x2: 46, y2: 15, ok: true },
+  ]);
+  assert.equal(height, 3 * 36 - 6, '高度由**较长的那一栏**决定（左栏 3 条）');
+});
+
+test('连线几何：某一端不在栏里（教师改题删了那个条目）⇒ 那一条不画', () => {
+  const { lines } = matchLineGeometry(
+    [{ id: 'l1' }], [{ id: 'r1' }],
+    [{ leftId: 'l1', rightId: 'gone', ok: true }],
+    { rowHeight: 30, gap: 6, gutter: 46 },
+  );
+  assert.deepEqual(lines, [], '画一条指向空处的线会让教师找一个屏幕上不存在的东西');
 });

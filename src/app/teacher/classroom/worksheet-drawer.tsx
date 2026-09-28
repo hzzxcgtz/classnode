@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
+import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
 import { strokePath, strokeWidthPx, type InkValue } from '@/lib/worksheet-ink';
+// ★ 2026-09-28：奖励的换算与全貌/过程的判据。
+import { resolveRewardScale } from '@/lib/worksheet-reward';
 import {
   indexQuestions,
   participantColumnTitle,
@@ -16,6 +18,11 @@ import {
   // `statusLabel` 不再从这里引：它的唯一调用点（`◐ 作答中` / `◐ 已提交` 那两个词）
   // 随 E2 一起搬进了 `worksheet-drawer-state.ts` 的 `NO_VERDICT_VIEW`（那里引它，同一份）。
   outcomeMarkView,
+  formatAgo,
+  inProgressQuestionId,
+  participantOverview,
+  processFacts,
+  type ParticipantOverview,
   type WorksheetOutcomeMark,
   type WorksheetQuestionStatus,
 } from './worksheet-drawer-state';
@@ -60,14 +67,19 @@ export interface WorksheetDrawerEntry {
 }
 
 export function WorksheetDrawer({
-  entry, onClose, board, nodesByWorksheet, loading, reviewBusy, onReview,
+  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview,
 }: {
   entry: WorksheetDrawerEntry;
   onClose: () => void;
   /** 历史读端点的结果；`null` = 还没到（第一次打开时它总要先来一趟）。 */
   board: WorksheetBoard | null;
-  /** 学习单 id → 题目树（`loadWorksheetNodes` 拉的，格子的格数也用它）。 */
+  /** 学习单 id → 题目树（`useWorksheetBoard` 拉的，格子的格数也用它）。 */
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
+  /**
+   * ★ 2026-09-28：学习单 id → `settings`，**奖励换算要用它**（`resolveRewardScale`）。
+   * 键不在 = 还没加载到 ⇒ 奖励那一项显示「—」而**不是 0**（0 是一句假话）。
+   */
+  settingsByWorksheet: Record<string, WorksheetSettings>;
   loading: boolean;
   /** 正在标记的那一条（`participantId:questionId`），点过的按钮显示「标记中…」。 */
   reviewBusy: string | null;
@@ -170,7 +182,8 @@ export function WorksheetDrawer({
           )}
           {!loading && board && current.kind === 'participant' && (
             <ParticipantAnswers board={board} participantId={current.participantId}
-              nodesByWorksheet={nodesByWorksheet} reviewBusy={reviewBusy} onReview={onReview} />
+              nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
+              reviewBusy={reviewBusy} onReview={onReview} />
           )}
         </div>
       </div>
@@ -368,14 +381,23 @@ function QuestionAnswers({
 // ── 形态 A：某参与者的逐题详情 ───────────────────────────────────────
 
 function ParticipantAnswers({
-  board, participantId, nodesByWorksheet, reviewBusy, onReview,
+  board, participantId, nodesByWorksheet, settingsByWorksheet, reviewBusy, onReview,
 }: {
   board: WorksheetBoard;
   participantId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
+  settingsByWorksheet: Record<string, WorksheetSettings>;
   reviewBusy: string | null;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
 }) {
+  /**
+   * 教师手动展开/收起过的题（`questionId → 展开?`）。
+   * **没点过的题走默认**（进行中的那一题展开，其余收起）—— 见 `inProgressQuestionId`。
+   * ⚠️ 用 `undefined` 判「没点过」而不是 `false`：`false` 是一个**决定**（他收起了那一题），
+   * 与「他没表过态」是两件事，混起来的表现是「他收起的那一题，等下一个广播来了又自己弹开」。
+   */
+  const [expandedOverride, setExpandedOverride] = useState<Record<string, boolean | undefined>>({});
+
   const found = findParticipant(board, participantId);
   if (!found) {
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这一格（参与者）此刻没有配学习单。</div>;
@@ -390,48 +412,132 @@ function ParticipantAnswers({
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
+  // ── 全貌（第 2 条）────────────────────────────────────────────────
+  // `settings` 不在 ⇒ `scale` 为 null ⇒ 奖励那一格画「—」而不是 0（见 participantOverview）。
+  const settings = settingsByWorksheet[worksheet.id];
+  const scale = settings ? resolveRewardScale(settings) : null;
+  const overview = participantOverview(nodes, participant.answerRows, scale);
+  // 「距今多久」用的是**服务端对服务端**的差（`serverNow - savedAt`），与浏览器时钟无关。
+  // ⚠️ 旧服务端不发 `serverNow` ⇒ `NaN` ⇒ 时间那两段不显示（`processFacts` 负责落 null）。
+  const serverNowMs = typeof board.serverNow === 'string' ? Date.parse(board.serverNow) : Number.NaN;
+  const defaultExpandedId = inProgressQuestionId(nodes, participant.answerRows);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <OverviewRow overview={overview} />
       {items.map(({ node, heading }) => {
         const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
         const outcome = questionOutcome(node, row);
         const busyKey = `${participantId}:${node.id}`;
+        const expanded = expandedOverride[node.id] ?? (node.id === defaultExpandedId);
+        // 过程区只对**作答过**的题有意义（未作答的题没有任何事实可说）。
+        const facts = outcome.status === 'unanswered' ? null : processFacts(row, serverNowMs);
         return (
           <div key={node.id} style={{
-            padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white',
+            padding: '10px 12px', borderRadius: 10,
+            border: `1px solid ${expanded ? '#c7d2fe' : '#e2e8f0'}`,
+            background: 'white',
             display: 'flex', flexDirection: 'column', gap: 6,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* 题头。整行可点：展开 / 收起（默认由 `inProgressQuestionId` 决定）。 */}
+            <button type="button"
+              onClick={() => setExpandedOverride((prev) => ({ ...prev, [node.id]: !expanded }))}
+              aria-expanded={expanded}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              }}>
+              <span aria-hidden style={{ fontSize: '0.625rem', color: '#94a3b8', flexShrink: 0 }}>
+                {expanded ? '▾' : '▸'}
+              </span>
               <span style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {questionHeading(node, heading)}
               </span>
               <OutcomeMark mark={outcome.mark} status={outcome.status} />
-            </div>
-            {/* 学生原答案。未作答时如实说，不画一个空框。
-                🔴 与上面「按题看」那一屏**同一条**：笔迹作答的 `answerText` 是 `null`，
-                所以必须先看 `outcome.ink`。漏改这一处（或漏改上面那一处）的表现是
-                「一屏说未作答、另一屏画出来了」—— 同一份数据两种说法，且没有任何报错。 */}
-            <div style={{ fontSize: '0.813rem', color: outcome.answerText ? '#0f172a' : '#94a3b8', wordBreak: 'break-word' }}>
-              {outcome.ink ? <InkPreview value={outcome.ink} /> : outcome.answerText ?? '未作答'}
-            </div>
-            {/* 🔴 「标记已查看」只在**作答过**的题上出现（`canReview`）：服务端对未作答的题回
-                409，给一个必然失败的按钮是本任务明确要避免的那件事。
-                已看过的题也留着按钮 —— 再点一次是**刷新**「最后查看时间」（服务端就是这么写的）。 */}
-            {outcome.canReview && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
-                  onClick={() => onReview(worksheet.id, participantId, node.id)}
-                  style={{ fontSize: '0.688rem', padding: '3px 8px' }}>
-                  {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
-                </button>
-                {outcome.reviewed && (
-                  <span style={{ fontSize: '0.688rem', color: '#15803d' }}>已看</span>
+            </button>
+            {expanded && (
+              <>
+                {/* 过程区（第 3 条）。🔴 三段各自「不知道就不显示」——
+                    见 `processFacts`：编成 0 或「刚刚」都是假话。 */}
+                {facts && (facts.startedAgoMs !== null || facts.savedAgoMs !== null || facts.saveCount !== null) && (
+                  <div style={{
+                    fontSize: '0.688rem', color: '#64748b', background: '#f8fafc',
+                    border: '1px solid #eef2f6', borderRadius: 8, padding: '6px 9px',
+                    display: 'flex', flexWrap: 'wrap', gap: 10,
+                  }}>
+                    {facts.startedAgoMs !== null && <span>首次作答 {formatAgo(facts.startedAgoMs)}</span>}
+                    {facts.saveCount !== null && <span>已保存 {facts.saveCount} 次</span>}
+                    {facts.savedAgoMs !== null && <span>最近 {formatAgo(facts.savedAgoMs)}</span>}
+                  </div>
                 )}
-              </div>
+                {/* 学生原答案。未作答时如实说，不画一个空框。
+                    🔴 与上面「按题看」那一屏**同一条**：笔迹作答的 `answerText` 是 `null`，
+                    所以必须先看 `outcome.ink`。漏改这一处（或漏改上面那一处）的表现是
+                    「一屏说未作答、另一屏画出来了」—— 同一份数据两种说法，且没有任何报错。 */}
+                <div style={{ fontSize: '0.813rem', color: outcome.answerText ? '#0f172a' : '#94a3b8', wordBreak: 'break-word' }}>
+                  {outcome.ink ? <InkPreview value={outcome.ink} /> : outcome.answerText ?? '未作答'}
+                </div>
+                {/* 🔴 「标记已查看」只在**作答过**的题上出现（`canReview`）：服务端对未作答的题回
+                    409，给一个必然失败的按钮是本任务明确要避免的那件事。
+                    已看过的题也留着按钮 —— 再点一次是**刷新**「最后查看时间」（服务端就是这么写的）。 */}
+                {outcome.canReview && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
+                      onClick={() => onReview(worksheet.id, participantId, node.id)}
+                      style={{ fontSize: '0.688rem', padding: '3px 8px' }}>
+                      {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
+                    </button>
+                    {outcome.reviewed && (
+                      <span style={{ fontSize: '0.688rem', color: '#15803d' }}>已看</span>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * 该生全貌那一行（第 2 条）：六个计数 + 奖励总数。
+ *
+ * 🔴 六个数的判据全在 `participantOverview`（纯函数、有测试）—— 这一层只画。
+ * 「六档之和 = 题数」那条不变式在那里钉着；这里若自己再数一遍，屏幕上的数字与用例
+ * 断言的就不再是同一个函数（`worksheet-matrix.ts` 的 `rowTally` 上记过同一条教训）。
+ *
+ * ⚠️ 某一档为 0 时**仍然画出来**：`✓0` 与「把 ✓ 藏起来」读起来不一样 ——
+ * 后者会让教师以为「这一档不可能出现」，而它只是这一次是 0。
+ */
+function OverviewRow({ overview }: { overview: ParticipantOverview }) {
+  const cell = (glyph: string, label: string, count: number, color: string) => (
+    <span key={glyph} title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      <span style={{ color, fontWeight: 700 }}>{glyph}</span>
+      <span style={{ color: count > 0 ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}>{count}</span>
+    </span>
+  );
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12,
+      padding: '9px 12px', borderRadius: 10, background: '#f8faff', border: '1px solid #e0e7ff',
+      fontSize: '0.75rem',
+    }}>
+      {cell('✓', '全对', overview.correct, '#15803d')}
+      {cell('½', '部分给分', overview.partial, '#b45309')}
+      {cell('✗', '答错', overview.wrong, '#dc2626')}
+      {cell('◐', '已提交但没有对错（主观题 / 关闭自动判分）', overview.noVerdict, '#1d4ed8')}
+      {cell('◐', '作答中', overview.draft, '#b45309')}
+      {cell('─', '未作答', overview.unanswered, '#cbd5e1')}
+      <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ color: '#94a3b8' }}>奖励</span>
+        {/* 🔴 `null` = **不知道**（学习单的 settings 还没加载到）⇒ 画「—」而**不是 0**：
+            0 会让教师以为这个学生一分没得，而事实是我们还不知道奖励样式。 */}
+        <span style={{ fontWeight: 700, color: overview.rewardText ? '#b45309' : '#cbd5e1' }}>
+          {overview.rewardText ?? '—'}
+        </span>
+      </span>
     </div>
   );
 }

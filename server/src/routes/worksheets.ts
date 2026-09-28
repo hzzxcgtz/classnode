@@ -952,6 +952,17 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
 
     res.json({
       classroomId: classroom.id,
+      // ★ 2026-09-28：**服务端此刻的时刻**。
+      //
+      // 🔴 它存在的唯一理由是**跨时钟相减**：作答行上的 `savedAt` 是**服务端**时间，
+      // 而看板判「停住了」用的是**浏览器**时钟（`Date.now()`）。拿两个不同源的时钟相减，
+  // 在教师这台机器的时钟偏了几分钟时——**静默**给出错误的「停住了」。
+      // 有了它，客户端可以做**服务端减服务端**（`serverNow - savedAt` ⇒ 偏差相消），
+      // 再把那个**时长**换算回浏览器时钟。
+      //
+      // ⚠️ 它**不是**「当前时间」的通用来源，别拿它去显示「现在几点」——
+      // 那是浏览器的事，而这里多出来的几十毫秒网络延迟会让它偏。
+      serverNow: new Date().toISOString(),
       worksheets: [...participantsByWorksheet.entries()]
         .filter(([worksheetId]) => titleById.has(worksheetId))
         .map(([worksheetId, participants]) => ({

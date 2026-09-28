@@ -17,6 +17,11 @@ import {
   outcomeMarkView,
   questionOutcome,
   statusLabel,
+  // ★ 2026-09-28：形态 A 的「该生全貌」与「答题过程」
+  formatAgo,
+  inProgressQuestionId,
+  participantOverview,
+  processFacts,
 } from './worksheet-drawer-state.ts';
 
 /**
@@ -794,4 +799,201 @@ test('🔴 分母与抽屉里的标记必须同进同出：能判分的题型既
       '它会看起来像答错（或像没判分），两句话都是假的',
     );
   }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ★ 2026-09-28：形态 A 的「该生全貌」与「答题过程」
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 全貌那一行的**六档必须互斥、且加起来正好是题数**。
+ *
+ * 🔴 为什么它值得一条用例：这一行是教师**一眼看过去**的结论，而它错了不报错 ——
+ * 少了哪一档、或者两档数了同一道题，屏幕上只是「数字有点怪」，没有人会去核对。
+ * 六档之和 ≠ 总题数，就是「有一道题被数了两次或被漏掉了」的**唯一**可观测信号。
+ */
+test('★ 总览：六档互斥且恰好覆盖每一道题（和必须等于题数）', () => {
+  const nodes = [
+    node({ id: 'q1', type: 'single-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } }),
+    node({ id: 'q2', type: 'single-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } }),
+    node({ id: 'q3', type: 'single-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } }),
+    node({ id: 'q4', type: 'short-answer' }),
+    node({ id: 'q5', type: 'fill-blank', data: { answers: ['H2O'] } }),
+  ];
+  const rows = [
+    row({ questionId: 'q1', status: 'submitted', gradeState: 'correct', score: 2 }),
+    row({ questionId: 'q2', status: 'submitted', gradeState: 'partial', score: 1 }),
+    row({ questionId: 'q3', status: 'submitted', gradeState: 'incorrect', score: 0 }),
+    row({ questionId: 'q4', status: 'submitted', gradeState: null, score: null }),
+    row({ questionId: 'q5', status: 'draft' }),
+    // q6 不存在；q5 之后没有第 6 题 ⇒ 未作答那一档是 0
+  ];
+  const view = participantOverview(nodes, rows, { style: 'star' });
+  assert.deepEqual(
+    {
+      correct: view.correct, partial: view.partial, wrong: view.wrong,
+      noVerdict: view.noVerdict, draft: view.draft, unanswered: view.unanswered,
+    },
+    { correct: 1, partial: 1, wrong: 1, noVerdict: 1, draft: 1, unanswered: 0 },
+  );
+  assert.equal(
+    view.correct + view.partial + view.wrong + view.noVerdict + view.draft + view.unanswered,
+    nodes.length,
+    '🔴 六档之和必须正好是题数 —— 不等就是有题被数了两次或漏掉了',
+  );
+
+  // 🔴 主观题（q4）：**不进 ✓ 也不进 ✗**，它自己一档。
+  // 把它算进 correct 是「把不知道说成对」，算进 wrong 是「把不知道说成错」。
+  assert.equal(view.noVerdict, 1, '主观题落在「没有对错」那一档');
+});
+
+test('★ 总览：未作答的题进 unanswered（不是 draft）', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' }), node({ id: 'q2', type: 'single-choice' })];
+  const view = participantOverview(nodes, [row({ questionId: 'q1', status: 'draft' })], { style: 'star' });
+  assert.equal(view.unanswered, 1, 'q2 一行都没有 ⇒ 未作答');
+  assert.equal(view.draft, 1);
+});
+
+test('★ 总览：认不出的 gradeState 落「没有对错」那一档（不猜）', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice', data: { options: [{ key: 'A', text: '水' }], correctKeys: ['A'] } })];
+  const view = participantOverview(nodes, [row({ questionId: 'q1', status: 'submitted', gradeState: 'future' as never })], { style: 'star' });
+  assert.equal(view.noVerdict, 1, '🔴 认不出的档**不许**猜成对或错');
+  assert.equal(view.correct + view.wrong, 0);
+});
+
+test('★ 总览：奖励 = 各题得分之和；没判分的题记 0（不是记成「答错」）', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' }), node({ id: 'q2', type: 'single-choice' }), node({ id: 'q3', type: 'single-choice' })];
+  const view = participantOverview(nodes, [
+    row({ questionId: 'q1', status: 'submitted', gradeState: 'correct', score: 3 }),
+    row({ questionId: 'q2', status: 'submitted', gradeState: 'partial', score: 1 }),
+    row({ questionId: 'q3', status: 'submitted', gradeState: null, score: null }),
+  ], { style: 'star' });
+  assert.equal(view.reward, 4, '3 + 1 + 0（没判分记 0）');
+  assert.equal(view.rewardKnown, true);
+  // ⚠️ star 档的符号是 `★`（`REWARD_STYLE_OPTIONS` 里的 `symbol`），不是 emoji 的 ⭐ ——
+  // 这条断言第一版就是在这里红的（我按印象写成了 ⭐，而代码是对的）。
+  assert.equal(view.rewardText, '★×4', '符号档画成 ★×N 而不是 +N 分');
+
+  // 阳性对照：**分数档**画的是另一种形状。少了它，「永远画 ★×N」那种实现也能让上面那条绿。
+  const points = participantOverview(nodes, [
+    row({ questionId: 'q1', status: 'submitted', gradeState: 'correct', score: 3 }),
+    row({ questionId: 'q2', status: 'submitted', gradeState: 'partial', score: 1 }),
+    row({ questionId: 'q3', status: 'submitted', gradeState: null, score: null }),
+  ], { style: 'points' });
+  assert.equal(points.reward, 4);
+  assert.equal(points.rewardText, '+4 分', '分数档画成 +N 分');
+});
+
+test('★ 总览：奖励为 0 时**照样给文字**（「答了 4 题拿 0 个」与「还没答」是两件事）', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' })];
+  const view = participantOverview(nodes, [], { style: 'star' });
+  assert.equal(view.reward, 0);
+  assert.equal(view.rewardKnown, true);
+  assert.equal(view.rewardText, '★×0', '0 也要画出来，不是留空');
+  // 分数档同理（`rewardTotalText` 对 0 回 `null`，所以那一支要自己兜 —— 漏了的话
+  // 分数档的「0」会整个不显示，而星档照常显示，两种样式在同一个位置长得不一样）。
+  assert.equal(
+    participantOverview(nodes, [], { style: 'points' }).rewardText,
+    '+0 分',
+    '分数档的 0 也要画出来',
+  );
+});
+
+test('🔴 总览：settings 还没加载到（scale 为 null）⇒ rewardKnown=false，界面画「—」而不是 0', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' })];
+  const view = participantOverview(nodes, [row({ questionId: 'q1', status: 'submitted', gradeState: 'correct', score: 2 })], null);
+  assert.equal(view.rewardKnown, false, '🔴 不知道样式时**不许**显示 0 —— 学生会以为他一分没得');
+  assert.equal(view.reward, 2, '但那个数本身算得出来（它不依赖样式）');
+});
+
+/* ── 过程事实（第 3 条）──────────────────────────────────────────────── */
+
+test('★ 过程事实：三列齐 ⇒ 三个都在，且「距今」用的是**服务端对服务端**的差', () => {
+  const SERVER_NOW = Date.parse('2026-09-28T12:00:00.000Z');
+  const facts = processFacts(row({
+    createdAt: '2026-09-28T11:48:00.000Z',
+    savedAt: '2026-09-28T11:59:20.000Z',
+    saveCount: 3,
+  }), SERVER_NOW);
+  assert.equal(facts.startedAgoMs, 12 * 60 * 1000, '首次作答 12 分钟前');
+  assert.equal(facts.savedAgoMs, 40 * 1000, '最近一次保存 40 秒前');
+  assert.equal(facts.saveCount, 3);
+});
+
+/**
+ * 🔴 **旧行三列全 null ⇒ 三段全部「不知道」**，界面整段不显示。
+ * 不许拿浏览器的 `Date.now()` 去减服务端的时间戳（跨时钟，静默算错 ——
+ * 与 `worksheet-board-data.ts` 里那条同源），也不许编一个 0（「刚刚保存过」是假话）。
+ */
+test('🔴 过程事实：三列是 null ⇒ 三段全是 null（不知道），不许编', () => {
+  const SERVER_NOW = Date.parse('2026-09-28T12:00:00.000Z');
+  const facts = processFacts(row({}), SERVER_NOW);
+  assert.deepEqual(facts, { startedAgoMs: null, savedAgoMs: null, saveCount: null });
+});
+
+test('🔴 过程事实：serverNow 读不出来 ⇒ 时间那两段 null，但 saveCount 照给（它不需要时钟）', () => {
+  const facts = processFacts(row({
+    createdAt: '2026-09-28T11:48:00.000Z', savedAt: '2026-09-28T11:59:20.000Z', saveCount: 3,
+  }), Number.NaN);
+  assert.equal(facts.startedAgoMs, null);
+  assert.equal(facts.savedAgoMs, null);
+  assert.equal(facts.saveCount, 3, '次数没有时钟也能说');
+});
+
+test('★ 「多久以前」的取整：59 秒说「刚刚」、60 秒说「1 分钟前」', () => {
+  assert.equal(formatAgo(0), '刚刚');
+  assert.equal(formatAgo(59_000), '刚刚');
+  assert.equal(formatAgo(60_000), '1 分钟前');
+  assert.equal(formatAgo(90_000), '1 分钟前', '向下取整：1 分 30 秒是「1 分钟前」');
+  assert.equal(formatAgo(12 * 60_000), '12 分钟前');
+  assert.equal(formatAgo(59 * 60_000), '59 分钟前');
+  assert.equal(formatAgo(60 * 60_000), '1 小时前');
+  assert.equal(formatAgo(3 * 60 * 60_000), '3 小时前');
+  assert.equal(formatAgo(23 * 60 * 60_000), '23 小时前');
+  assert.equal(formatAgo(24 * 60 * 60_000), '1 天前');
+  assert.equal(formatAgo(50 * 60 * 60_000), '2 天前');
+});
+
+/* ── 该展开哪一题（第 3 条的落点判据）───────────────────────────────── */
+
+test('★ 默认展开：多题作答中时，展开**最近保存过**的那一道', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' }), node({ id: 'q2', type: 'single-choice' }), node({ id: 'q3', type: 'single-choice' })];
+  // ⚠️ 故意的顺序：q1 的时间戳比 q2 新，但它在题序上靠前 —— 两种口径在这里会分叉。
+  const got = inProgressQuestionId(nodes, [
+    row({ questionId: 'q1', status: 'draft', savedAt: '2026-09-28T12:00:00.000Z' }),
+    row({ questionId: 'q2', status: 'draft', savedAt: '2026-09-28T11:00:00.000Z' }),
+    row({ questionId: 'q3', status: 'submitted' }),
+  ]);
+  assert.equal(got, 'q1', '取最近保存的那一道（与格子上「正在做第 N 题」同源）');
+});
+
+test('★ 默认展开：一道都没在作答 ⇒ 一题都不展开（null）', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' }), node({ id: 'q2', type: 'single-choice' })];
+  assert.equal(
+    inProgressQuestionId(nodes, [row({ questionId: 'q1', status: 'submitted' })]),
+    null,
+  );
+});
+
+/**
+ * 🔴 有 draft 但**没有任何时间戳**（旧行）时，退到「题序最靠前的那一道」——
+ * 那是一个**可解释**的猜测（他是从前往后做的），而不是随便挑一题。
+ * 编一个「他正在做第 3 题」会让教师去讲一道这个学生根本没在做的题。
+ */
+test('🔴 默认展开：draft 没有 savedAt（旧行）⇒ 退到题序最靠前的那一道，不编', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' }), node({ id: 'q2', type: 'single-choice' }), node({ id: 'q3', type: 'single-choice' })];
+  const got = inProgressQuestionId(nodes, [
+    row({ questionId: 'q2', status: 'draft' }),
+    row({ questionId: 'q3', status: 'draft' }),
+  ]);
+  assert.equal(got, 'q2', '题序最靠前（q1 没动过，不算）');
+});
+
+test('★ 默认展开：作答行里有题目树里已经没有的题（教师改单删了）⇒ 不被它带偏', () => {
+  const nodes = [node({ id: 'q1', type: 'single-choice' })];
+  const got = inProgressQuestionId(nodes, [
+    row({ questionId: 'gone', status: 'draft', savedAt: '2026-09-28T23:00:00.000Z' }),
+    row({ questionId: 'q1', status: 'draft', savedAt: '2026-09-28T11:00:00.000Z' }),
+  ]);
+  assert.equal(got, 'q1', '🔴 只认还在这份学习单里的题 —— 展开一道屏幕上不存在的题会是一片空白');
 });

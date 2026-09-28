@@ -20,6 +20,10 @@ import {
 // `worksheet-drawer-state.test.ts` 整个跑不起来（实测见 E1 报告）。
 // `worksheet-ink.ts` 自己**没有任何 import**，所以这条值 import 不会把 `@/` 传染进来。
 import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
+// ★ 2026-09-28：奖励的换算**只有一份**（`src/lib/worksheet-reward.ts`，零 import，
+// 所以本文件仍然能被 `node --test` 直接跑）。看板这一侧此前**一处都没有**它 —— 见
+// `participantOverview` 上面那一段。
+import { rewardAmount, rewardSymbol, rewardTotalText, type RewardScale } from '../../../lib/worksheet-reward.ts';
 
 /**
  * 教师看板**学习单抽屉**的两种形态的判据 —— 纯函数，不碰 React / DOM / 网络。
@@ -600,4 +604,195 @@ export function indexQuestions(nodes: WorksheetQuestionNode[]): {
 export function questionHeading(node: WorksheetQuestionNode, heading: string | null): string {
   const type = questionTypeLabel(node.type);
   return heading ? `${heading}. ${type}` : type;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ★ 2026-09-28：形态 A 的「该生全貌」与「答题过程」（教师第 2、3 条）
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 一个参与者在**这一份学习单**上的全貌 —— 六个计数 + 奖励。
+ *
+ * 🔴 **六档互斥，且和必须正好是题数。** 这是这一行唯一可观测的错法：少了哪一档、
+ * 或者两档数了同一道题，屏幕上只是「数字有点怪」，而没有任何东西会报错。
+ * 本仓没有前端测试框架，判据写进 JSX 就没有回归网 —— 所以它在这里。
+ *
+ * 六档的口径（**主观题那一条最要紧**）：
+ *   · `correct` / `partial` / `wrong` —— 只有**可判分的题型**（`isGradedType`）且已提交
+ *     才可能落进来，判据与抽屉里那个 ✓/½/✗ **走同一个** `rowVerdict`（一份真源）；
+ *   · `noVerdict` —— **已提交但没有对错**：主观题、关闭自动判分、以及判分档认不出来的行。
+ *     🔴 主观题**既不进 ✓ 也不进 ✗** —— 把它算进 correct 是「把不知道说成对」，
+ *     算进 wrong 是「把不知道说成错」，而系统对它**根本没有结论**（服务端恒回 null）；
+ *   · `draft` —— 作答中（他动过，但没交）；
+ *   · `unanswered` —— 一行都没有，或那一行是 `unanswered`。
+ *
+ * ── 奖励 ──────────────────────────────────────────────────────────────
+ * 奖励是**派生**的：各题得分之和（`rewardAmount` 的绝对值模型，规格 §12）。
+ * 所以它**不需要新表、也不需要单独清** —— 答案行没了，奖励自然归零。
+ *
+ * 🔴 **只累加「还在学习单里的那些题」**，与上面六个计数同一个分母。
+ * 教师课上删掉一道题之后，库里留给它的那行答案**仍然带着分数**；把它算进来的话，
+ * 这一行的六个计数说「共 5 题」而奖励里含着第 6 题的星星 —— 同一行里的两个数
+ * 用了两个分母，而屏幕上没有任何东西提示这件事。
+ * ⚠️ 代价（写在这里免得下一个人以为是 bug）：被删掉的那道题的奖励会从这个总数里消失，
+ * 而学生在自己屏幕上可能还看到过它。**取舍是刻意的**：一行数字内部的自洽优先。
+ *
+ * `rewardKnown === false` 表示**学习单的 `settings` 还没加载到** ⇒ 界面画「—」。
+ * 🔴 那时**不许显示 0** —— 0 是一句假话（学生/教师会以为这题一分没得）。
+ * `reward` 那个数本身与样式无关，所以它照样算得出来。
+ */
+export interface ParticipantOverview {
+  correct: number;
+  partial: number;
+  wrong: number;
+  /** 已提交但**没有对错**（主观题 / 关闭自动判分 / 认不出的档）。 */
+  noVerdict: number;
+  draft: number;
+  unanswered: number;
+  /** 各题得分之和（绝对值模型：它同时就是「奖励之和」，规格 §12）。 */
+  reward: number;
+  /** 学习单的奖励样式**知道了没有**；`false` ⇒ 界面画「—」而不是 0。 */
+  rewardKnown: boolean;
+  /**
+   * 奖励那一格的文字（`⭐×6` / `+6 分` / 为 0 时 `⭐×0`）。
+   * `null` = **不知道**（`settings` 没到）—— 与 `rewardKnown === false` 是同一件事。
+   */
+  rewardText: string | null;
+}
+
+export function participantOverview(
+  nodes: WorksheetQuestionNode[],
+  /**
+   * 这个参与者的**全部**作答行（`participant.answerRows`）。
+   * 🔴 按 `questionId` 查，**绝不按下标**（规格 §3-P）—— 两边的顺序没有任何保证，
+   * 而按下标对齐错了的表现是「张三的分数挂在李四的题上」，全程不报错。
+   */
+  answerRows: ReadonlyArray<WorksheetBoardAnswerRow>,
+  rewardScale: RewardScale | null,
+): ParticipantOverview {
+  const items = flattenAnswerable(nodes);
+  const byQuestion = new Map<string, WorksheetBoardAnswerRow>();
+  for (const answerRow of answerRows) byQuestion.set(answerRow.questionId, answerRow);
+
+  let correct = 0; let partial = 0; let wrong = 0; let noVerdict = 0; let draft = 0; let unanswered = 0;
+  let reward = 0;
+
+  for (const { node } of items) {
+    const row = byQuestion.get(node.id);
+    const status: WorksheetQuestionStatus =
+      row?.status === 'submitted' ? 'submitted' : row?.status === 'draft' ? 'draft' : 'unanswered';
+    if (status === 'unanswered') { unanswered += 1; continue; }
+    if (status === 'draft') { draft += 1; continue; }
+
+    // 判据与抽屉里那个 ✓/½/✗ 走**同一个** `rowVerdict`（一份真源）。
+    const mark: WorksheetOutcomeMark =
+      isGradedType(node.type) ? markFromVerdict(rowVerdict(row)) : 'none';
+    if (mark === 'correct') correct += 1;
+    else if (mark === 'partial') partial += 1;
+    else if (mark === 'wrong') wrong += 1;
+    else noVerdict += 1;
+
+    reward += rewardAmount(row?.score ?? null, rewardScale ?? { style: 'star' });
+  }
+
+  return {
+    correct, partial, wrong, noVerdict, draft, unanswered,
+    reward,
+    rewardKnown: rewardScale !== null,
+    rewardText: rewardScale === null
+      ? null
+      : rewardTotalText(rewardScale, reward)
+        ?? (rewardScale.style === 'points' ? '+0 分' : `${rewardSymbol(rewardScale.style) ?? '★'}×0`),
+  };
+}
+
+/**
+ * 「这一题上他做了什么」的三段事实（教师第 3 条）。
+ *
+ * 🔴 **三段各自可以为 `null`（= 不知道），而且必须可分辨。** 它们的 `null` 来自
+ * 那一列上线之前的旧行（`ensureWorksheetAnswerColumns` **刻意不回填**：旧行被保存过几次、
+ * 什么时候保存的，库里从来没有记过）。三种编法都是错的，且都不报错：
+ *   · 编成 0 —— 「已保存 0 次」听起来像他什么都没做；
+ *   · 编成「刚刚」—— 教师以为他正在写；
+ *   · 拿**浏览器的** `Date.now()` 去减服务端的时间戳 —— 跨时钟，静默算错。
+ * ⇒ 界面对 `null` 的处置是**整段不显示**。
+ *
+ * @param serverNowMs **服务端**此刻的时刻（读端点响应里的 `serverNow`）。
+ *   时间那两段用的是「服务端减服务端」，与浏览器的时钟**无关** —— 偏差相消。
+ *   `NaN`（旧服务端不发这个字段）⇒ 两段时间都是 `null`，而 `saveCount` 照给
+ *   （次数不需要时钟）。
+ */
+export interface ProcessFacts {
+  /** 这一题**第一次**落库距现在多久（ms）；`null` = 不知道。 */
+  startedAgoMs: number | null;
+  /** **最近一次保存**距今多久（ms）；`null` = 不知道。 */
+  savedAgoMs: number | null;
+  /** 保存过几次；`null` = 不知道。 */
+  saveCount: number | null;
+}
+
+export function processFacts(
+  row: WorksheetBoardAnswerRow | undefined,
+  serverNowMs: number,
+): ProcessFacts {
+  const parse = (value: unknown): number | null => {
+    if (typeof value !== 'string') return null;
+    const at = Date.parse(value);
+    return Number.isFinite(at) ? at : null;
+  };
+  const clockKnown = Number.isFinite(serverNowMs);
+  const created = parse(row?.createdAt);
+  const saved = parse(row?.savedAt);
+  const count = typeof row?.saveCount === 'number' && Number.isFinite(row.saveCount) ? row.saveCount : null;
+  // ⚠️ 钳在 0：两次读之间若有写入落库，`serverNow - 那个时间戳` 可以是负的，
+  // 而「-3 分钟前」是一句胡话。
+  const ago = (at: number | null) =>
+    clockKnown && at !== null ? Math.max(0, serverNowMs - at) : null;
+  return { startedAgoMs: ago(created), savedAgoMs: ago(saved), saveCount: count };
+}
+
+/**
+ * 一个时长说成人话：`刚刚` / `N 分钟前` / `N 小时前` / `N 天前`。
+ *
+ * ⚠️ **一律向下取整**（与「停住了」那个分钟数同一条纪律）：1 分 30 秒说「1 分钟前」
+ * 是准的，说「2 分钟前」是提前量。`59_000` 落「刚刚」而不是「0 分钟前」——
+ * 后者读起来像坏了。
+ */
+export function formatAgo(ms: number): string {
+  if (ms < 60_000) return '刚刚';
+  if (ms < 60 * 60_000) return `${Math.floor(ms / 60_000)} 分钟前`;
+  if (ms < 24 * 60 * 60_000) return `${Math.floor(ms / (60 * 60_000))} 小时前`;
+  return `${Math.floor(ms / (24 * 60 * 60_000))} 天前`;
+}
+
+/**
+ * ★ 2026-09-28：逐题那一列里**默认展开**哪一题 —— 教师第 3 条「更详细地展示正在答题的那个小题」。
+ *
+ * 判据：**还在作答中**（`draft`）的题里，**最近保存过**的那一道。
+ *   · 多题同时是 `draft` 时取 `savedAt` 最大的那一道 —— 「他此刻在做哪一题」的判据
+ *     与格子上的「正在做第 N 题」**同源**（规格 §3-H）；
+ *   · 一道 draft 都没有（全交完了 / 一道没动）⇒ `null`，一题都不展开；
+ *   · 有 draft 但都没有 `savedAt`（旧行）⇒ 取**题序最靠前**的那一道。
+ *     ⚠️ 这只是「我们唯一能说的那一个」，不是「他正在做的那一个」—— 所以在没有
+ *     时间戳时**不退化成编造**：题序最靠前是一句可解释的话（他是从前往后做的），
+ *     而随便挑一题不是。
+ */
+export function inProgressQuestionId(
+  nodes: WorksheetQuestionNode[],
+  answerRows: ReadonlyArray<WorksheetBoardAnswerRow>,
+): string | null {
+  const byQuestion = new Map<string, WorksheetBoardAnswerRow>();
+  for (const answerRow of answerRows) byQuestion.set(answerRow.questionId, answerRow);
+
+  let best: { id: string; savedAt: number } | null = null;
+  let firstDraft: string | null = null;
+  for (const { node } of flattenAnswerable(nodes)) {
+    const status = byQuestion.get(node.id)?.status;
+    if (status !== 'draft') continue;
+    if (firstDraft === null) firstDraft = node.id;
+    const saved = byQuestion.get(node.id)?.savedAt;
+    const at = typeof saved === 'string' ? Date.parse(saved) : Number.NaN;
+    if (Number.isFinite(at) && (best === null || at > best.savedAt)) best = { id: node.id, savedAt: at };
+  }
+  return best?.id ?? firstDraft;
 }

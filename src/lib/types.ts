@@ -635,6 +635,18 @@ export interface WorksheetBoardWorksheet {
  */
 export interface WorksheetBoard {
   classroomId: string;
+  /**
+   * ★ 2026-09-28：**服务端发这个响应时的时刻**（ISO）。
+   *
+   * 🔴 它存在的唯一理由是**跨时钟相减**：作答行上的 `savedAt` 是服务端时间，而看板判
+   * 「停住了」用的是浏览器时钟。两个不同源的时钟相减，在教师那台机器的时钟偏了几分钟时
+   * 会**静默**给出错误的结论。有了它，客户端做**服务端减服务端**（偏差相消），
+   * 再把得到的**时长**换算回浏览器时钟 —— 见 `worksheet-board-data.ts`。
+   *
+   * ⚠️ 旧服务端不发这个字段（可空）：那时**不许**退化成「拿浏览器时钟去减服务端时间戳」，
+   * 只能把 `lastAt` 置 `null`（=「不知道」）。判据是 `null`，不是「随便算一个」。
+   */
+  serverNow?: string | null;
   worksheets: WorksheetBoardWorksheet[];
 }
 

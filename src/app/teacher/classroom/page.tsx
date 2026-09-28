@@ -19,6 +19,7 @@ import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
 import { moduleCountUnit, stateHasCells, tileBadgeText, worksheetTileState, type ParticipantWorksheetProgress, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
+import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetBoard, WorksheetMaterialSummary, WorksheetQuestionNode } from '@/lib/types';
@@ -590,16 +591,6 @@ function ClassroomBoardContent() {
    */
   const [analysisTarget, setAnalysisTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
   /**
-   * ★ M5b：矩阵**最近一次 REST 快照发起的时刻**（浏览器时钟）。
-   *
-   * 🔴 它的唯一用途是给「广播赢」一个**可信下界**：`worksheetProgress` 是页内 state、
-   * 没有任何失效机制，教师这台机器 socket 断线期间学生提交的那条广播永远收不到 ——
-   * 而 30 秒重拉回来的 REST 明确说 `submitted`，断线前那条 `draft` 却照样赢 ⇒
-   * 那一格**永远**停在琥珀，直到手动刷新页面（独立审查抓到的）。
-   * 见 `worksheet-matrix.ts` 的 `buildWorksheetMatrix` 第 4 个参数。
-   */
-  const matrixSnapshotAtRef = useRef<number | undefined>(undefined);
-  /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
    * ⚠️ 这里**曾经**是 `teacherView: 'board' | 'webapp'` + `TeacherPageTabs` 的视图切换。
@@ -621,43 +612,30 @@ function ClassroomBoardContent() {
    */
   const [studentModuleFocus, setStudentModuleFocus] = useState<Record<string, ModuleId | null>>({});
   /**
-   * 参与者 id → 他在**当前这份学习单**上的作答进度。数据源是 `worksheet-answer-updated`
-   * 广播（房间 `teacher:<id>`，载荷含 `questionId`）。
+   * ★ 2026-09-28：学习单的**全部数据**（快照 + 广播增量 + 题目树 + settings）由
+   * `useWorksheetBoard` 一处拥有 —— 教师裁定 ①「统一整个看板的数据层」。
    *
-   * 🔴 **键不在 = 打开看板后没收到过这个人的作答**，与「收到了、内容是空的」不是一件事
-   * （与 `studentModuleFocus` 同一条规矩）。
+   * 🔴 这里曾经有**四个** state（`worksheetProgress` / `worksheetNodes` / `worksheetBoard` /
+   * `worksheetBoardLoading`）加**两套**取数函数（`loadWorksheetNodes` 60 秒轮询、
+   * `loadWorksheetBoard` 只在开抽屉与矩阵开着时拉）。而 **格子只吃广播** ——
+   * 于是教师刷新一次页面，全班掉回「还没收到作答」；学生离开再回来（没有保存动作 ⇒
+   * 没有广播）格子也不知道。那就是教师报的第 1 条 bug，根因是「格子是唯一没接两条腿的
+   * 消费方」，而**矩阵早就两条腿了**（`worksheet-matrix.ts`）。
    *
-   * ⚠️ **2026-09-23 更正：读端点已经存在了**（教师端能读 `WorksheetAnswer` 的端点是
-   * `GET /api/worksheets/classroom/:classroomId/answers`，D4 落地，本文件由
-   * `loadWorksheetBoard` 在**打开抽屉时**拉它）。这一段原先写着「一个都不存在」——
-   * **结论仍然成立、理由已经换了**：`worksheetProgress` 这个 state 依然**只由广播写入**，
-   * 格子还没有消费那个读端点（它还差两个字段才够格子用，见
-   * `worksheet-tile-state.ts` 里 `WorksheetTileState` 那一段的更正），所以刷新一次页面
-   * 仍然会把这里清空 —— 格子上那一态说的是「还没收到作答」，**不是**「还没有开始作答」。
+   * ⇒ 现在三处消费方（格子 / 矩阵 / 抽屉）读的是**同一份**，轮询常开。
+   * 取数与合并的规则在 `use-worksheet-board.ts` 与 `worksheet-board-data.ts`（后者是
+   * 纯函数、有测试）。
    */
-  const [worksheetProgress, setWorksheetProgress] = useState<Record<string, ParticipantWorksheetProgress>>({});
+  const wb = useWorksheetBoard(id ?? null);
   /**
-   * 学习单 id → 它的**原始题目树**（`content.nodes`）。整份 content 只用来算格子有几格、
-   * 第几题是什么题型，所以这里存下来的是题目树本身，拍平与题数口径交给
-   * `worksheet-tile-state.ts`（它才是那份规则唯一的落点）。
-   * 键不在 = 还没加载到（正在加载 / 加载失败），格子如实说「内容还没加载到」。
-   */
-  const [worksheetNodes, setWorksheetNodes] = useState<Record<string, WorksheetQuestionNode[]>>({});
-  /**
-   * 学习单抽屉（规格 §7.3）开在哪一层、以及它的**历史读端点**的结果。
-   *
-   * 🔴 为什么需要那个读端点：上面 `worksheetProgress` 那种「键不在 = 没收到过」的数据源
-   * 让看板**在教师刷新一次页面之后失忆**（早做完的学生掉回「还没收到作答」）。抽屉更是
-   * 一开始就要整批历史数据，光靠广播根本画不出来。端点的形状与鉴权见
-   * `server/src/routes/worksheets.ts` 的 `/classroom/:classroomId/answers`。
+   * 学习单抽屉（规格 §7.3）开在哪一层。
    *
    * ⚠️ 每次打开都塞一个**新的对象**（`token` 只是让这件事显式化）：抽屉内部的下钻栈
    * （学习单 → 题 → 作答）以这个对象的**引用**为依赖重置，换一个学生、再点一次同一个入口
    * 都算新的一次 —— 少了它，教师从「张三」切到「李四」时抽屉会停在张三那个下钻层次上。
+   * 🔴 与「数据新鲜度」是**两件事**：数据由 `wb` 供给，`token` 只管下钻栈。
    */
   const [worksheetDrawer, setWorksheetDrawer] = useState<WorksheetDrawerEntry | null>(null);
-  const [worksheetBoard, setWorksheetBoard] = useState<WorksheetBoard | null>(null);
-  const [worksheetBoardLoading, setWorksheetBoardLoading] = useState(false);
   /** 正在标记「已查看」的那一条（`participantId:questionId`）—— 防止连点，并让按钮显示「标记中…」。 */
   const [worksheetReviewBusy, setWorksheetReviewBusy] = useState<string | null>(null);
   /**
@@ -813,69 +791,6 @@ function ClassroomBoardContent() {
   }, []);
 
   /**
-   * 课堂里**在用的那几份学习单**的 id（首屏从 `GET /:id` 算出来，存进 ref 给定期的重拉用）。
-   *
-   * ⚠️ 走 ref 而不是 state：那份清单只在 `loadClassroom` 里变，而下面的定时期
-   * **不想**因为它变化就重建（重建会重置计时，教师频繁操作时可能永远等不到那一次重拉）。
-   */
-  const worksheetIdsRef = useRef<string[]>([]);
-
-  /**
-   * 拉「课堂里在用的那几份学习单」的题目树。
-   *
-   * ⚠️ 单独抽出来是因为它**要能被重复调用**：教师课上可以改学习单（规格 §3-J：只警告不拦，
-   * 加题 / 删题都是合法形态），而**服务端对内容变更不广播**。不重拉的表现是格子的格数与
-   * 题目对不上 —— 教师加了一道题，学生答它时看板上要么少一格、要么整格退回「还没收到作答」，
-   * 全程不报错。所以除了首屏，下面还有一条 60 秒的定期重拉（学生端的 `/code/:code`
-   * 本来就是 15 秒轮询，同一个量级、同一类理由）。
-   *
-   * ⚠️ 某一份拉不到（离线 / 500）时**不清空已有的那一份**：格子上会如实说「内容还没加载到」，
-   * 而不是拿上一份的题目冒充这一份的。
-   */
-  const loadWorksheetNodes = useCallback(async (worksheetIds: string[]) => {
-    if (worksheetIds.length === 0) return;
-    const loaded = await Promise.all(worksheetIds.map(async (worksheetId) => {
-      try {
-        const detail = await api.getWorksheet(worksheetId);
-        return [worksheetId, detail.content.nodes] as const;
-      } catch {
-        return null;
-      }
-    }));
-    setWorksheetNodes((prev) => {
-      const next = { ...prev };
-      for (const entry of loaded) { if (entry) next[entry[0]] = entry[1]; }
-      return next;
-    });
-  }, []);
-
-  /**
-   * 拉这一堂课的**整批作答行**（抽屉两种形态的唯一数据源，规格 §7.4）。
-   *
-   * ⚠️ 抽屉**每次打开都重拉**（而不是复用上一次的结果）：教师课上看的是「此刻」，
-   * 而这条数据在两次打开之间会变（学生一直在答）。这也顺带修掉了「看板失忆」——
-   * 刷新页面后再打开抽屉，早做完的学生照样在。
-   *
-   * ⚠️ 拉失败时**不清空**已有的那一份（与 `loadWorksheetNodes` 同一条规矩）：
-   * 抽屉会如实说「还没有读到这一堂课的作答」，而不是画一个看起来「全班都没作答」的空表。
-   */
-  const loadWorksheetBoard = useCallback(async () => {
-    if (!id) return;
-    setWorksheetBoardLoading(true);
-    try {
-      const board = await api.getWorksheetBoard(id);
-      setWorksheetBoard(board);
-      // 顺带把题目树补齐：抽屉的题号 / 题型 / 选项文字全靠它，而它可能与首屏那次不同
-      // （教师课上加题，规格 §3-J 只警告不拦）。
-      void loadWorksheetNodes(board.worksheets.map((worksheet) => worksheet.id));
-    } catch {
-      // 状态由 `worksheetBoard === null` + `loading === false` 表达，见抽屉里那一段文案。
-    } finally {
-      setWorksheetBoardLoading(false);
-    }
-  }, [id, loadWorksheetNodes]);
-
-  /**
    * 打开抽屉。`token` 每次换新 ⇒ 抽屉内部的下钻栈从这一层重新开始。
    *
    * ⚠️ 顺手把**对话抽屉**关掉：两者是同一块位置（右上角、宽 420）的浮层，
@@ -887,8 +802,13 @@ function ClassroomBoardContent() {
     selectedStudentIdRef.current = null;
     setExploreDetailId(null);
     setWorksheetDrawer({ token: Date.now(), view });
-    void loadWorksheetBoard();
-  }, [loadWorksheetBoard]);
+    // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
+    // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
+    // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
+    wb.refresh();
+    // ⚠️ 依赖里是 `wb.refresh`（`useCallback` 过的稳定引用），不是整个 `wb` 对象 ——
+    // 后者每次渲染都是新的，会让这个回调每帧重建，进而把下面所有依赖它的 memo 打穿。
+  }, [wb.refresh]);
 
   /**
    * ★ M5b：矩阵的下钻。两条都**复用现成的抽屉入口**（规格 §3.7），零抽屉改动。
@@ -902,24 +822,9 @@ function ClassroomBoardContent() {
     openWorksheetDrawer({ kind: 'participant', participantId });
   }, [openWorksheetDrawer]);
 
-  /**
-   * ★ M5b：矩阵**开着不关**，而抽屉那条「每次打开都重拉」的规矩在这里不成立。
-   * 广播会漏（教师这台机器的 socket 断线重连期间的那些作答，一条都收不到），
-   * 而这一条重拉**同时负责列的增减**：课中途加入的学生最多等一轮（≤30 秒）才出现一列。
-   * 30 秒与看板既有那条「会走的表」（`nowMs`，30 秒一格）同频，不再引入第三个节拍。
-   */
-  useEffect(() => {
-    if (!matrixOpen) return;
-    const snapshot = () => {
-      // ⚠️ 先记时刻再发请求（「发起」而不是「回来」）：这样任何**早于**它的广播，
-      // 其对应的那次写库一定在服务端读这个快照之前 —— 下界才是安全的那一侧。
-      matrixSnapshotAtRef.current = Date.now();
-      void loadWorksheetBoard();
-    };
-    snapshot();
-    const timer = window.setInterval(snapshot, 30_000);
-    return () => window.clearInterval(timer);
-  }, [matrixOpen, loadWorksheetBoard]);
+  // ★ 2026-09-28：矩阵那条「开着才轮询」的 effect 搬进了 `useWorksheetBoard`（常开）。
+  // 它当时成立的前提是「只有矩阵在用这份数据」—— 格子接上来之后那个前提就没有了，
+  // 而格子恰恰是最需要历史的那一个（第 1 条 bug）。节拍没变，仍是 30 秒。
 
   /**
    * 标记「已查看」（`POST /api/worksheets/:id/review`，粒度是**参与者 × 题**）。
@@ -933,19 +838,8 @@ function ClassroomBoardContent() {
     setWorksheetReviewBusy(key);
     try {
       const result = await api.reviewWorksheetAnswer(worksheetId, { participantId, questionId });
-      setWorksheetBoard((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          worksheets: prev.worksheets.map((worksheet) => worksheet.id !== worksheetId ? worksheet : {
-            ...worksheet,
-            participants: worksheet.participants.map((participant) => participant.participantId !== participantId ? participant : {
-              ...participant,
-              answerRows: participant.answerRows.map((row) => row.questionId !== questionId ? row : { ...row, reviewedAt: result.reviewedAt }),
-            }),
-          }),
-        };
-      });
+      // ★ 2026-09-28：就地更新那一行搬到 `wb.markReviewed`（快照在 hook 里，调用方不能直接改它）。
+      wb.markReviewed(worksheetId, participantId, questionId, result.reviewedAt);
     } catch (error) {
       // 服务端的文案直接给学生看（409 那句是「该学生还没有作答这道题」）——
       // 本组件已经不给未作答的题按钮了，所以走到这里的是真的异常（断网 / 会话过期）。
@@ -953,18 +847,11 @@ function ClassroomBoardContent() {
     } finally {
       setWorksheetReviewBusy(null);
     }
-  }, []);
+    // ⚠️ 依赖里是 `wb.markReviewed`（稳定引用），不是整个 `wb` —— 理由同 `openWorksheetDrawer`。
+  }, [wb.markReviewed]);
 
-  /**
-   * 定期重拉学习单内容（60 秒）—— 理由见 `loadWorksheetNodes`。
-   *
-   * ⚠️ 没有学习单时不发请求（`loadWorksheetNodes` 自己短路），所以标准模式下没配学习单的
-   * 课堂一次多余的请求都不会有。
-   */
-  useEffect(() => {
-    const timer = window.setInterval(() => { void loadWorksheetNodes(worksheetIdsRef.current); }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [loadWorksheetNodes]);
+  // ★ 2026-09-28：题目树那条 60 秒的定期重拉也搬进了 `useWorksheetBoard`
+  //（教师课上改单**不广播**，所以它必须留着，理由逐字未变）。
 
   const loadClassroom = useCallback(async () => {
     if (!id) return;
@@ -1034,16 +921,18 @@ function ClassroomBoardContent() {
           return { ...s, messages: preview };
         }));
       } catch {}
-      // 学习单：把课堂里**在用的那几份**的题目树拉下来（格子的格数、题号、题型全靠它）。
+      // ★ 2026-09-28：**题目树不再在这里拉**（原来这一段会算出「课堂里在用的那几份」
+      // 再逐份 `GET /:id`）。
       //
-      // ⚠️ 取哪几份：课堂级 `worksheets` 与各组 `groups[].worksheet` **都收**，去重。
-      // 两处各对应一种模式（标准/分组读课堂级、高级读各组），看板在两种模式下都要能画格子。
-      const worksheetIds = Array.from(new Set([
-        ...(cr.worksheets ?? []).map((worksheet) => worksheet.id),
-        ...(cr.groups ?? []).map((group) => group.worksheet?.id),
-      ].filter((value): value is string => !!value)));
-      worksheetIdsRef.current = worksheetIds;
-      await loadWorksheetNodes(worksheetIds);
+      // 现在由 `useWorksheetBoard` 负责：它从**作答行快照里的那几份**学习单自己取
+      //（`loadNodes`），而它本来就已经在首屏与每 30 秒各拉一次快照了 —— 少了一套
+      // 「谁该拉、什么时候拉」的独立口径。
+      //
+      // ⚠️ 删掉的这段算法（课堂级 `worksheets` ∪ 各组 `groups[].worksheet`，去重）
+      // 与新口径**不是同一件事**，但差别只在一种情形上：某一组配的学习单**已经被删**
+      //（悬空 targetId）。那时旧口径会把一个取不到的 id 也拿去 GET（拿到 404，
+      // 而格子那一格永远停在「内容还没加载到」）；新口径直接不列它 ——
+      // 服务端的作答行快照本来就不会为它发回条目。**新的那一侧更对**。
 
       // ⚠️ 这里原来还顺手拉一次 `api.getAgents()` 来定抽屉里那个智能体署名。删掉了：
       // 它读的 `cr.agentIds` **服务端从来不下发**（只在创建课堂的请求体里被读），
@@ -1051,7 +940,7 @@ function ClassroomBoardContent() {
       // 名字与头像。署名改由 `drawerAgent`（下方，走 `effectiveGroupAgent`）算，
       // 顺带省掉一次「把整个智能体库拉下来只为挑第一个」的请求。
     } catch {}
-  }, [id, loadWorksheetNodes]);
+  }, [id]);
 
   const loadAnalytics = useCallback(async () => {
     if (!id) return;
@@ -1201,42 +1090,10 @@ function ClassroomBoardContent() {
       setStudentModuleFocus((prev) => ({ ...prev, [studentId]: resolved }));
     });
 
-    /**
-     * 学习单的作答进度（规格 §5.7 的第 ③ 步）：房间 `teacher:<id>`，只在**落库成功之后**
-     * 由服务端发出（`routes/worksheets.ts` 的 `broadcastAnswerUpdate`）。
-     *
-     * 🔴 载荷里的 `questionId` 是「正在做第 N 题」的**唯一**依据（规格 §3-H）：没有它，
-     * 格子只能给一个笼统的进度，而**不会报任何错**。所以这里对它的校验是硬性的 ——
-     * 缺题号的广播整条丢掉（存进去会得到一条「在做的题是 undefined」的记录）。
-     *
-     * ⚠️ 逐题记录按 `questionId` 存（规格 §3-P），不是按下标：教师改序 / 增删题时按下标的
-     * 记录会整片错位，而那是静默的。
-     *
-     * ⚠️ 判 `classroomId` 而不是只信房间：房间名是服务端 join 时定的（`teacher:<id>`），
-     * 而 join-teacher-board 会**先离开上一个课堂的房间**再进新的 —— 比对一下是零成本的
-     * 第二道闸，防的是「切换课堂时混进上一个课堂的进度」这类不报错的串台。
-     */
-    const unsub17 = on('worksheet-answer-updated', (data) => {
-      const { classroomId, participantId, questionId, status } = data ?? {};
-      if (classroomId !== id) return;
-      if (typeof participantId !== 'string' || !participantId) return;
-      if (typeof questionId !== 'string' || !questionId) return;
-      // 线缆上的 `status` 是自由字符串（类型只声明了形状）。认不出的值**整条丢掉**：
-      // 存进去会让格子对这一题画不出颜色（既不是未答、也不是在答、也不是已交）。
-      if (status !== 'draft' && status !== 'submitted') return;
-      const at = Date.now();
-      setWorksheetProgress((prev) => {
-        const current = prev[participantId];
-        return {
-          ...prev,
-          [participantId]: {
-            cells: { ...(current?.cells ?? {}), [questionId]: status },
-            lastQuestionId: questionId,
-            lastAt: at,
-          },
-        };
-      });
-    });
+    // ★ 2026-09-28：`worksheet-answer-updated` 的订阅**搬进 `useWorksheetBoard`** 了。
+    // 它原来在这里（`unsub17`），而这一页现在不再拥有学习单的任何一份数据 ——
+    // 见上面 `wb` 那一段。校验规则（缺题号整条丢掉、认不出的 status 整条丢掉、
+    // 比 classroomId 防串台）**逐字搬过去**，一条都没松。
 
     // ★ M5a：锁定/解锁作答。⚠️ 编号接着 17 往下排 —— 计划里给的 `unsub7`/`unsub8`
     // 在本文件里**已经被占用**（`classroom-ended` 与 `shield-warning`），
@@ -1244,7 +1101,7 @@ function ClassroomBoardContent() {
     const unsub18 = on('answers-locked', () => setAnswersLocked(true));
     const unsub19 = on('answers-unlocked', () => setAnswersLocked(false));
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub17?.(); unsub18?.(); unsub19?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub18?.(); unsub19?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1650,8 +1507,8 @@ function ClassroomBoardContent() {
     if (!participant) return null;
     const worksheet = tileWorksheetOf(participant);
     if (!worksheet) return null;
-    const nodes = worksheetNodes[worksheet.id];
-    const progress = worksheetProgress[participant.id];
+    const nodes = wb.nodesByWorksheet[worksheet.id];
+    const progress = wb.progress[participant.id];
     if (!nodes || !progress) return null;
     const state = worksheetTileState({ worksheet, nodes, progress, online, now: nowMs });
     if (!stateHasCells(state)) return null;
@@ -1959,9 +1816,9 @@ function ClassroomBoardContent() {
             state={worksheetTileState({
               worksheet,
               // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
-              nodes: worksheet ? worksheetNodes[worksheet.id] ?? null : null,
+              nodes: worksheet ? wb.nodesByWorksheet[worksheet.id] ?? null : null,
               // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
-              progress: participant ? worksheetProgress[participant.id] : undefined,
+              progress: participant ? wb.progress[participant.id] : undefined,
               online,
               now: nowMs,
             })}
@@ -2719,9 +2576,10 @@ function ClassroomBoardContent() {
           <WorksheetDrawer
             entry={worksheetDrawer}
             onClose={() => setWorksheetDrawer(null)}
-            board={worksheetBoard}
-            nodesByWorksheet={worksheetNodes}
-            loading={worksheetBoardLoading}
+            board={wb.board}
+            nodesByWorksheet={wb.nodesByWorksheet}
+            settingsByWorksheet={wb.settingsByWorksheet}
+            loading={wb.loading}
             reviewBusy={worksheetReviewBusy}
             onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
           />
@@ -3413,11 +3271,11 @@ function ClassroomBoardContent() {
           （矩阵的按钮在 `!gridFullscreen` 的头部里，所以两者不可能同时被点开）。 */}
       {matrixOpen && (
         <MatrixOverlay
-          board={worksheetBoard}
-          nodesByWorksheet={worksheetNodes}
-          live={worksheetProgress}
-          liveTrustedAfter={matrixSnapshotAtRef.current}
-          loading={worksheetBoardLoading}
+          board={wb.board}
+          nodesByWorksheet={wb.nodesByWorksheet}
+          live={wb.progress}
+          liveTrustedAfter={undefined}
+          loading={wb.loading}
           participantCount={students.length}
           // ⚠️ 只有高级模式才谈得上「有的组没配学习单」；标准 / 分组模式下这一行恒为 0，
           // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）

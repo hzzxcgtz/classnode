@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { indexQuestions } from './worksheet-drawer-state';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
+import { AnswerViewBody } from './answer-view';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
 
@@ -136,7 +137,6 @@ export function QuestionStatsOverlay({
   questionId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
-  /** ② 智能体解读：**打开已有的分析浮层**（见下面那段注释）。 */
   /** 🔴 分析载荷要用它（与 `AnalysisOverlay` 同一条理由：同一份学习单可被多个课堂引用）。 */
   classroomId: string;
 }) {
@@ -171,6 +171,24 @@ export function QuestionStatsOverlay({
   // ★ 分析那一路的取数与动作（与整屏浮层同一个 hook、同一个实现）。
   const analysis = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode);
   const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
+  /**
+   * ★ 2026-09-28（教师）：「在这一屏加一个『看某人的作答』的入口」。
+   * 🔴 **刻意是一个下拉 + 一块作答，而不是把全班列出来** —— 教师刚把「逐个作答」
+   * 整块删掉（那正是「列出全班」），所以这里要的是「按需看一个人」。
+   */
+  const [pickedId, setPickedId] = useState<string>('');
+  const participants = worksheet?.participants ?? [];
+  const picked = participants.filter((item) => item.participantId === pickedId)[0];
+  const pickedRow = picked?.answerRows.filter((item) => item.questionId === questionId)[0];
+
+  /** 「还没交」的**参与者**（带 id）—— 名字可点，所以不能只用 `stats.process` 里的名字串。 */
+  const notSubmitted = useMemo(() => {
+    if (!worksheet) return [] as Array<{ participantId: string; name: string }>;
+    return worksheet.participants.filter((item) => {
+      const row = item.answerRows.filter((entry) => entry.questionId === questionId)[0];
+      return !row || row.status !== 'submitted';
+    }).map((item) => ({ participantId: item.participantId, name: item.name }));
+  }, [worksheet, questionId]);
   const distribution = stats?.distribution ?? null;
 
   return (
@@ -294,14 +312,49 @@ export function QuestionStatsOverlay({
                   <span>修改次数中位数 <b>{stats.process.medianSaves === null ? '—' : `${stats.process.medianSaves} 次`}</b></span>
                   <span>还没交 <b>{stats.process.notSubmitted.length}</b> {unit}</span>
                 </div>
-                {stats.process.notSubmitted.length > 0 && (
-                  <div style={{ fontSize: '0.75rem', color: MUTED, marginTop: 4 }}>
-                    {stats.process.notSubmitted.join('、')}
+                {notSubmitted.length > 0 && (
+                  // ★ 名字**可点** ⇒ 直接跳到「看某人的作答」（教师不必再去下拉里找一遍）。
+                  <div style={{ fontSize: '0.75rem', color: MUTED, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {notSubmitted.map((item) => (
+                      <button key={item.participantId} type="button" onClick={() => setPickedId(item.participantId)}
+                        style={{ border: 'none', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px', cursor: 'pointer', color: '#334155', fontSize: '0.75rem' }}>
+                        {item.name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </Section>
             </>
           )}
+
+          {/* ★ 看某人的作答（教师指定）—— 复用逐题型的呈现组件，不另写一份。 */}
+          <Section title="看某人的作答" note="选一个人，看他这道题写了什么">
+            <select
+              value={pickedId}
+              onChange={(event) => setPickedId(event.target.value)}
+              style={{ alignSelf: 'flex-start', minWidth: 180, padding: '5px 8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.813rem', background: 'white' }}>
+              <option value="">（选一个人）</option>
+              {participants.map((item) => {
+                const row = item.answerRows.filter((entry) => entry.questionId === questionId)[0];
+                const state = row?.status === 'submitted' ? '已交' : row?.status === 'draft' ? '作答中' : '未作答';
+                return <option key={item.participantId} value={item.participantId}>{item.name}（{state}）</option>;
+              })}
+            </select>
+            {picked && node && (
+              <div style={{ marginTop: 8, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'white' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <b style={{ fontSize: '0.813rem' }}>{picked.name}</b>
+                  {/* 判分结论读的是行里的 `gradeState`（服务端判过的），本地不重算。 */}
+                  <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: MUTED }}>
+                    {pickedRow?.status === 'submitted'
+                      ? (pickedRow.gradeState === 'correct' ? '✓ 答对' : pickedRow.gradeState === 'partial' ? '½ 部分给分' : pickedRow.gradeState === 'incorrect' ? '✗ 答错' : '◐ 已提交')
+                      : pickedRow?.status === 'draft' ? '◐ 作答中' : '— 未作答'}
+                  </span>
+                </div>
+                <AnswerViewBody node={node} value={pickedRow?.value} />
+              </div>
+            )}
+          </Section>
 
           {/* ② 智能体解读 —— ★ 只对**主观题**显示（教师：「非问答题，非绘图题，
               这部分要隐藏」）。判据在 `showsAgentAnalysis`（纯函数、有用例）。

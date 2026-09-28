@@ -206,9 +206,6 @@ export function useChatSocket(options: ChatSocketOptions) {
       // ⇒ 学生端浏览器假死」，而我在那条链上读了三遍都没读出回路。命令（边沿触发）
       // 本来就该走总线而不是 state（电平触发）—— 见 `worksheet-clear-bus.ts` 那一段。
       socket.on('worksheet-answers-cleared', (data) => {
-        // 🔬 临时诊断（教师报的假死）：这一行出现 ⇒ 事件**到了学生这条连接**。
-        // ⚠️ 一次清除只打一行，不刷屏；查完那个报告之前**不要删**。
-        console.log('[ws-clear] ① socket 收到', data);
         publishWorksheetClear(data);
       });
 

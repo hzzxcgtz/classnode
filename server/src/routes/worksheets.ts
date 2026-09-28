@@ -898,13 +898,15 @@ function broadcastAnswersCleared(
     } catch {
       size = null;
     }
+    // ⚠️ 只在**发不出去**时说一句。原来还有一条「有 N 个连接」的成功日志 ——
+    // 那是查「学生端不清空」那次事故时加的诊断，查完就删了（它每次都打，没人会看）。
+    // 这一条留着：它说的是一个**可操作的事实**（教师清了、但那个学生不在线），
+    // 而这件事在屏幕上没有任何提示 —— 少了它，那条路是静默的。
     if (size === 0) {
       console.warn(
         `[worksheets] 清除广播：${room} 里没有连接 —— 学生不在线，或他的学习单面板没挂上`
         + `（participantId=${ctx.participantId}，questionId=${payload.questionId ?? '(整张)'}）`,
       );
-    } else if (size !== null) {
-      console.log(`[worksheets] 清除广播：${room} 有 ${size} 个连接`);
     }
     io.to(room).emit('worksheet-answers-cleared', event);
   } else {

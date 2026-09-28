@@ -1842,17 +1842,20 @@
 .resultCell[data-tone='partial'] .resultGlyph { background: #d97706; }
 .resultCell[data-tone='incorrect'] .resultGlyph { background: #dc2626; }
 
-/* 减号那一档的**字体度量修正**（★ 2026-09-28，教师两轮）：
-   · 先「需要一个大一点的减号」⇒ 我把它单独放到 17px；
-   · 再「还是刚才那个小一点的吧，但是减号在圆圈里边，感觉位置偏下了一点」
-     ⇒ **字号回到与 ✓ / ½ 同一档**（11px），并把它往上抬 1px。
+/* 减号那一档的**字体度量修正**（★ 2026-09-28，教师三轮）：
+   · 「需要一个大一点的减号」⇒ 我把它单独放到 17px；
+   · 「还是刚才那个小一点的吧，但是减号在圆圈里边，感觉位置偏下了一点」⇒ 字号回到 11px；
+   · 「**不是圆偏下，圆的位置是好的，是圆圈里面的减号位置**」—— 🔴 这一句纠正了我上一版：
+     我把 `transform` 加在了 `.resultGlyph`（**那就是圆本身**）上 ⇒ 整个圆往上挪了。
+   ⇒ 现在只推**圆里的内容**：`padding-bottom: 2px`。全局 `box-sizing: border-box` ⇒
+      圆的 18px 尺寸不变（外框一动没动），而内容区变成上 16px、居中基准上移 1px
+      ⇒ 减号在圆里升高 1px。
    🔴 为什么会偏下：`U+2212` 画在字体的**数学轴**上（约基线上方 0.25em），而这里居中用的
-   是行盒（`line-height: 1` + flex 居中）—— 行盒的中心由字体自己的 ascent/descent 决定，
-   两者不一定重合（中西文混排的字体尤其如此，ascent 常明显大于 descent 的视觉重量）。
-   ⇒ 用 `transform` 抬 1px 而不是改 `line-height`：后者会把这枚记号的**行盒**也改掉，
-      连带影响它在 flex 里的居中基准（越改越飘）。
-   ⚠️ 1px 是照「偏下了一点」估的。换字体或换字号时要重新看这一行（它是在补字体的账）。 */
-.resultCell[data-tone='incorrect'] .resultGlyph { transform: translateY(-1px); }
+   是行盒（`line-height: 1` + flex 居中）—— 行盒中心由字体自己的 ascent/descent 决定，
+   两者不一定重合（中西文混排的字体尤其如此）。
+   ⚠️ 想再高就把 2px 调大（内容升高 = 这个值 ÷ 2）。换字体/换字号时要重新看这一行 ——
+      它是在补字体的账。 */
+.resultCell[data-tone='incorrect'] .resultGlyph { padding-bottom: 2px; }
 
 /* 奖励：**在圆角框外面**（★ 2026-09-28 教师图 56：「火箭和 ×1 不需要框在圆角矩形里，
    这样可以保证左边的两个框的高度和其他框的高度保持一致」）。

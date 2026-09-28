@@ -168,23 +168,22 @@ test('🔴 dragShifts：越界 / 空表 ⇒ 全 0 的数组，不抛（下标是
 
 // ── 3b（原来的顺序）／连线的不变量 ──────────────────────────────────────
 
-test('🔴 setPair 的不变量一：同一个左项只能有一条线（改连 ⇒ 顶掉旧的）', () => {
-  const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
-  assert.deepEqual(setPair(pairs, 'l1', 'r2'), [{ leftId: 'l1', rightId: 'r2' }]);
-  assert.deepEqual(pairs, [{ leftId: 'l1', rightId: 'r1' }], '不改动入参');
+test('🔴 setPair：同一个左项可以连**多个**右项（一对多）—— 裁定甲把这条反过来了', () => {
+  // 🔴 这条用例**原来断言的是相反的结论**（名字叫「同一个左项只能有一条线（改连 ⇒ 顶掉旧的）」）。
+  // 教师 2026-09-28 裁定「甲」：连线题要支持一对多 / 多对一 / 多对多 ⇒ 并存，不顶掉。
+  const links = setPair([], 'l1', 'r1');
+  const both = setPair(links, 'l1', 'r2');
+  assert.deepEqual(both, [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }]);
+  // 同一条再加一次是**幂等**的（不是再加一条重复的 —— 判分会把它算两次命中）
+  assert.deepEqual(setPair(both, 'l1', 'r1'), both);
 });
-
-test('🔴 setPair 的不变量二：同一个右项也只能被一个左项占用（旧的被顶掉，不是并存）', () => {
-  // 并存 ⇒ 学生提交 `[{l1,r1},{l2,r1}]`，而服务端 `judgeMatch` 对「端点被用到两次」的
-  // 处置是**用到它的那些线一条都不算对**：学生看着自己连上了，拿到的是 0 分。
-  const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
-  const next = setPair(pairs, 'l2', 'r1');
-  assert.deepEqual(next, [{ leftId: 'l2', rightId: 'r1' }], '同一个右项只能被一个左项占用');
-  assert.equal(next.filter((pair) => pair.rightId === 'r1').length, 1);
-  // 阳性对照：连到一个**没有人占用**的右项时，两条线都该在（不是「永远只留一条」）。
-  assert.deepEqual(setPair(next, 'l1', 'r2'), [{ leftId: 'l2', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }]);
+test('🔴 setPair：同一个右项可以被**多个**左项连（多对一）—— 同一条裁定的另一半', () => {
+  // 🔴 同样：这条原来断言「旧的被顶掉，不是并存」。
+  const links = setPair([], 'l1', 'r1');
+  assert.deepEqual(setPair(links, 'l2', 'r1'), [
+    { leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' },
+  ]);
 });
-
 test('setPair / clearPair：空 id 不动数据；clearPair 的往返', () => {
   const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
   assert.equal(setPair(pairs, '', 'r1'), pairs, '空左 id ⇒ 原数组');
@@ -212,17 +211,17 @@ test('tapTarget：没选左项时点**没连过**的右项 ⇒ 返回原数组�
   assert.equal(tapTarget(pairs, null, 'r2'), pairs);
 });
 
-test('🔴 tapTarget：选着左项时点右项 —— 已连的是拆掉，没连的是连上（顶掉旧的）', () => {
-  const linked: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
-  assert.deepEqual(tapTarget(linked, 'l1', 'r1'), [], '连的正是这一对 ⇒ 拆掉');
-
-  const taken: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
-  assert.deepEqual(tapTarget(taken, 'l2', 'r1'), [{ leftId: 'l2', rightId: 'r1' }], '右项被占 ⇒ 顶掉旧的，不是并存');
-
-  const free: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
-  assert.deepEqual(tapTarget(free, 'l2', 'r2'), [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' }]);
+test('🔴 tapTarget：选着左项时点右项 —— 已连的拆**那一条**、没连的连上（不再顶掉别的）', () => {
+  // ★ 2026-09-28（裁定甲）：拆的是**这一条**（`removePair`），不是该左项的全部线。
+  let links = setPair([], 'l1', 'r1');
+  links = setPair(links, 'l1', 'r2');
+  // 再点 r1 ⇒ 只拆掉 l1→r1，l1→r2 留着
+  assert.deepEqual(tapTarget(links, 'l1', 'r1'), [{ leftId: 'l1', rightId: 'r2' }]);
+  // 没连过的右项 ⇒ 连上（并存）
+  assert.deepEqual(tapTarget(links, 'l1', 'r3'), [
+    { leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }, { leftId: 'l1', rightId: 'r3' },
+  ]);
 });
-
 test('tapTarget：空右 id / 非数组 ⇒ 原样返回，不抛', () => {
   const pairs: DragLink[] = [{ leftId: 'l1', rightId: 'r1' }];
   assert.equal(tapTarget(pairs, 'l1', ''), pairs);

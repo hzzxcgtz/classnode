@@ -169,8 +169,19 @@ export function dragShifts(centers: number[], from: number, to: number): number[
 export function setPair(links: DragLink[], leftId: string, rightId: string): DragLink[] {
   if (!Array.isArray(links)) return links;
   if (!leftId || !rightId) return links;
-  const kept = links.filter((link) => link.leftId !== leftId && link.rightId !== rightId);
-  return [...kept, { leftId, rightId }];
+  // ★ 2026-09-28（教师裁定甲：支持一对多 / 多对一 / 多对多）：**不再顶掉别的线**。
+  // 原来那一行是 `links.filter((link) => link.leftId !== leftId && link.rightId !== rightId)`
+  // —— 「同一个左项只能有一条、同一个右项只能被连一次」正是**一对一**那条限制在
+  // 学生端的落点（判分与服务端保存两侧已经先后放开）。
+  // ⇒ 现在只做一件事：加一条还不存在的线（同一条重复提交是**幂等**的）。
+  if (links.some((link) => link.leftId === leftId && link.rightId === rightId)) return links;
+  return [...links, { leftId, rightId }];
+}
+
+/** 拆掉**指定的那一条**线（★ 2026-09-28：一对多之后，「拆掉这个左项的全部线」不够用了）。 */
+export function removePair(links: DragLink[], leftId: string, rightId: string): DragLink[] {
+  if (!Array.isArray(links)) return links;
+  return links.filter((link) => !(link.leftId === leftId && link.rightId === rightId));
 }
 
 /** 连线：拆掉左项 `leftId` 的那条线（它本来就没连 ⇒ 返回原数组）。 */
@@ -209,8 +220,10 @@ export function tapTarget(links: DragLink[], leftId: string | null, rightId: str
     const owner = links.filter((link) => link.rightId === rightId)[0];
     return owner ? clearPair(links, owner.leftId) : links;
   }
+  // ★ 2026-09-28：已经连过 ⇒ 拆掉**这一条**（`clearPair` 会把该左项的全部线一起拆掉 ——
+  // 一对多之后那不再是「再点一下取消」的意思了）。
   const already = links.some((link) => link.leftId === leftId && link.rightId === rightId);
-  return already ? clearPair(links, leftId) : setPair(links, leftId, rightId);
+  return already ? removePair(links, leftId, rightId) : setPair(links, leftId, rightId);
 }
 
 /**

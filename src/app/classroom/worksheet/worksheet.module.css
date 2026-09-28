@@ -778,6 +778,135 @@
 .zoneGrid { gap: 22px; }
 .zone { border-radius: 8px; background: #f8fbff; }
 
+/* 学生题卡的阅读头：题干独占正文行，状态与奖励降为题干下方的结果回执。
+   这里刻意不把判题卡放在题干右侧，否则长句会被切成狭窄的两三行。 */
+.questionLead {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 8px;
+  margin-bottom: 14px;
+}
+
+.questionLead > .questionIcon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: start;
+  margin-top: 1px;
+}
+
+.questionLead > .prompt {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  margin: 2px 0 0;
+}
+
+.questionMeta {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #dbe4ef;
+  border-radius: 9px;
+  background: rgba(248, 250, 252, .92);
+}
+
+.questionLead .questionState {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 7px 10px;
+  white-space: nowrap;
+  font-size: .78rem;
+}
+
+.questionFeedback {
+  display: inline-flex;
+  align-items: center;
+  justify-self: auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 9px;
+  padding: 4px 8px 4px 10px;
+  border: 0;
+  border-left: 2px solid #16a34a;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: .78rem;
+  line-height: 1.25;
+}
+
+.questionFeedback > strong {
+  flex: 0 0 auto;
+  font-size: .8rem;
+  white-space: nowrap;
+}
+
+.questionFeedback[data-result='partial'] {
+  border-left-color: #d97706;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.questionFeedback[data-result='incorrect'] {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.feedbackReward {
+  display: inline-flex;
+  grid-template: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 9px;
+  border-left: 1px solid rgba(22, 101, 52, .2);
+}
+
+.feedbackRewardLabel {
+  grid-column: auto;
+  font-size: .68rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.questionFeedback[data-result='partial'] .feedbackReward {
+  border-left-color: rgba(146, 64, 14, .2);
+}
+
+.questionFeedback[data-result='incorrect'] .feedbackReward {
+  border-left-color: rgba(153, 27, 27, .2);
+}
+
+@media (max-width: 620px) {
+  .questionLead {
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 9px;
+  }
+
+  .questionMeta {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .questionFeedback {
+    flex: 1 1 auto;
+    justify-content: space-between;
+  }
+}
+
 /* 题干、作答状态与判分结果共用一行：结果不再单独占据卡片顶部。 */
 .questionLead {
   display: grid;

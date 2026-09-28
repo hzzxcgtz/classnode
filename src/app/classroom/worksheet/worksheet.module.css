@@ -797,7 +797,19 @@
   margin-bottom: 14px;
 }
 
-.questionLead > .questionIcon { margin-top: 0; }
+/* ★ 2026-09-28（教师，图 51）：「图标偏低、文字偏高」。
+   🔴 行的对齐（`align-items: center`）**本来就是对的** —— 偏的是**光学重心**，两半：
+     ① 图标画稿底重：填空题那个图的墨迹在 viewBox 的 y=10.5…16.5（中心 13.5，而圆心是 12）
+        —— 它那条代表「空」的长线画在底部；方框居中，图形本身却偏下。
+     ② 汉字在行盒里的光学重心比几何中心略高一点。
+   两半加起来 ≈ 2px（图标 25px 时）。
+   ⇒ 只把**图标上移 2px**：`transform` 而不是负 `margin` —— 在 `align-items: center`
+     的容器里，负 margin 会被居中逻辑**吃掉一半**（-2px 只挪 1px），而 transform 是
+     纯视觉位移、不走布局。
+   ⚠️ 图标的大小（25px + 6px 内边距）是教师此前定过的，**不动**。
+   ⚠️ 用 transform 是安全的：图标里没有 `position: fixed` 的后代 ——
+      「transform 会成为 fixed 后代的包含块」那个坑在别处（见浮层那几处的注释）。 */
+.questionLead > .questionIcon { transform: translateY(-2px); }
 
 .questionMeta {
   grid-column: 2;

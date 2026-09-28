@@ -71,11 +71,37 @@ export function mergeProgress(
 ): Record<string, ParticipantWorksheetProgress> {
   const out: Record<string, ParticipantWorksheetProgress> = {};
   for (const participantId of Object.keys(rest)) {
+    const base = rest[participantId];
     const fromLive = live[participantId];
     // ⚠️ `>` 不是 `>=`，且 `lastAt === null`（不知道这条广播什么时候到的）一律**不信** ——
     // 与 `worksheet-matrix.ts` 里那条判据逐字同源。
     const trusted = fromLive !== undefined && fromLive.lastAt !== null && fromLive.lastAt > snapshotAt;
-    out[participantId] = trusted ? fromLive : rest[participantId];
+    if (!trusted) {
+      out[participantId] = base;
+      continue;
+    }
+    out[participantId] = {
+      // 🔴 **逐格合并**：快照当底，广播只覆盖它**真正知道**的那几格。
+      //
+      // ⊘ **这里第一版写的是 `out[id] = fromLive`（整份替换），那是一个实测出来的 bug**：
+      // `live` 是逐条广播攒出来的 —— 教师**打开看板之前**发生过的作答，它一条都不知道 ——
+      // 所以它通常只有**一两格**。整份替换的后果是：学生交了第 3 题（广播只带 q3）
+      // ⇒ 快照里 q1 / q2 一起被抹掉 ⇒ 看板上**前两个方块反而变灰**，而刷新之后又全蓝
+      //（快照重新拉回来了）。全程不报错，只在「实时更新那一刻」错。
+      //
+      // ⚠️ 矩阵的 `buildWorksheetMatrix` 一直是**逐格**回落 REST 的
+      //（`fromLive ?? restCells[p][q] ?? 'unanswered'`）—— 本函数当时把它架空了，
+      // 所以连矩阵也一起错。两条路现在说的是同一件事。
+      //
+      // ⚠️ 这条性质**只有一条用例抓得到**（`worksheet-board-data.test.ts` 里
+      // 「广播只带一格 ⇒ 快照里另外几格必须留着」）：本文件其余的合并用例里
+      // `live` 都恰好含有 `rest` 的全部键，两种写法在那里**完全同形**。别把那条用例
+      // 改成「live 也带前两格」—— 那会把唯一能区分两者的形状毁掉。
+      cells: { ...base.cells, ...fromLive.cells },
+      // 「正在做第几题」与它的时刻是**整份**的属性（不是逐格），广播可信就取广播的。
+      lastQuestionId: fromLive.lastQuestionId,
+      lastAt: fromLive.lastAt,
+    };
   }
   return out;
 }

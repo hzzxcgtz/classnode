@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
-import { mergeProgress, restProgress } from './worksheet-board-data.ts';
+import { applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data.ts';
 import { WORKSHEET_STUCK_AFTER_MS, type ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
@@ -231,4 +231,64 @@ test('live 的 lastAt 是 null（不知道什么时候到的）⇒ 一律不信�
 test('广播里没有这个参与者 ⇒ 用 REST（没收到广播 ≠ 把这一格清空）', () => {
   const merged = mergeProgress({ p1: P({ q1: 'submitted' }, 'q1', 5) }, {}, 1_000_000);
   assert.deepEqual(merged.p1.cells, { q1: 'submitted' });
+});
+
+/* ── applyLiveRows：把广播的内容逐行补进快照（抽屉读这一份）────────────── */
+
+const patch = (over: Partial<LiveRowPatch> & { lastArrivedAt: number | null }) => ({
+  status: 'draft' as const, value: null, valueOmitted: false, savedAt: null, saveCount: null,
+  ...over,
+});
+
+test('★ 按行打补丁：广播那一行被更新，其余行**一个字都不动**', () => {
+  const b = board([
+    row({ questionId: 'q1', status: 'draft', value: { format: 'text/v1', text: '旧' } }),
+    row({ questionId: 'q2', status: 'draft', value: { format: 'text/v1', text: '别动我' } }),
+  ]);
+  const out = applyLiveRows(b, {
+    p1: { q1: patch({ status: 'submitted', value: { format: 'text/v1', text: '新' }, lastArrivedAt: 2_000_000, saveCount: 3 }) },
+  }, 1_000_000);
+  const rows = out.worksheets[0].participants[0].answerRows;
+  assert.equal(rows[0].status, 'submitted', 'q1 跟着广播走');
+  assert.deepEqual(rows[0].value, { format: 'text/v1', text: '新' }, '内容也要跟着走（乙档的意义）');
+  assert.equal(rows[0].saveCount, 3);
+  assert.deepEqual(rows[1], b.worksheets[0].participants[0].answerRows[1], 'q2 一个字都不许动');
+});
+
+test('🔴 下界同源：广播早于快照 ⇒ 不打补丁（否则格子与抽屉会各说各话）', () => {
+  const b = board([row({ questionId: 'q1', status: 'submitted', value: { format: 'text/v1', text: '快照里的' } })]);
+  const out = applyLiveRows(b, {
+    p1: { q1: patch({ status: 'draft', value: { format: 'text/v1', text: '陈旧的' }, lastArrivedAt: 999_000 }) },
+  }, 1_000_000);
+  assert.equal(out.worksheets[0].participants[0].answerRows[0].status, 'submitted', '陈旧广播不许赢');
+  assert.deepEqual(out.worksheets[0].participants[0].answerRows[0].value, { format: 'text/v1', text: '快照里的' });
+});
+
+/**
+ * 🔴 **`valueOmitted` 不许把快照里的内容抹掉。**
+ * 那会把「内容较大，没有随广播下发」变成「他什么都没写」—— 而这两种在屏幕上
+ * 长得一模一样（都是空白），意思却相反。快照里那一份（可能略旧）至少是真的。
+ */
+test('🔴 valueOmitted：保留快照里的内容，不覆盖成 null', () => {
+  const b = board([row({ questionId: 'q1', status: 'draft', value: { format: 'text/v1', text: '快照里有一份' }, saveCount: 1 })]);
+  const out = applyLiveRows(b, {
+    p1: { q1: patch({ value: null, valueOmitted: true, saveCount: 2, lastArrivedAt: 2_000_000 }) },
+  }, 1_000_000);
+  const got = out.worksheets[0].participants[0].answerRows[0];
+  assert.deepEqual(got.value, { format: 'text/v1', text: '快照里有一份' }, '🔴 内容照旧，不许被 null 顶掉');
+  assert.equal(got.saveCount, 2, '但次数/时间照常更新（它们不超限）');
+});
+
+test('🔴 广播里有快照之外的行 ⇒ 不造行（会指向一个屏幕上不存在的题）', () => {
+  const b = board([row({ questionId: 'q1' })]);
+  const out = applyLiveRows(b, {
+    p1: { gone: patch({ lastArrivedAt: 2_000_000, value: 'x' }) },
+  }, 1_000_000);
+  assert.equal(out.worksheets[0].participants[0].answerRows.length, 1, '不造行');
+});
+
+test('快照里没有这个参与者 ⇒ 原样返回（不造人）', () => {
+  const b = board([row({ questionId: 'q1' })]);
+  const out = applyLiveRows(b, { p_new: { q1: patch({ lastArrivedAt: 2_000_000 }) } }, 1_000_000);
+  assert.deepEqual(out, b);
 });

@@ -128,6 +128,29 @@ export interface ServerToClientEvents {
      */
     gradeState: WorksheetGradeState | null;
     /**
+     * ★ 2026-09-28（乙档）：**学生此刻写的内容**（与读端点的 `value` 同一份）。
+     * 教师看板据此显示「当前答：…」，不必等下一次快照。
+     *
+     * 🔴 **内容过大时是 `null`，同时 `valueOmitted` 为 `true`** —— 界面那时要显示
+     * 「内容较大，打开详情查看」，**不是**把 `null` 当成「他没写」。两者在屏幕上
+     * 长得一样，而意思相反。
+     */
+    value: unknown;
+    /** 内容是否因为过大而没有随这条广播下发（`value` 因此为 `null`）。 */
+    valueOmitted: boolean;
+    /**
+     * ★ 2026-09-28（丙档）：**这一次**保存的时刻（ISO，服务端时间）。
+     * `null` = 旧行没有这一列（见 `ensureWorksheetAnswerColumns`）。
+     *
+     * ⚠️ 它是**服务端**时间，而看板的「停住了」用的是浏览器时钟 ——
+     * **不许**拿 `Date.now()` 直接减它（跨时钟、静默算错）。
+     * 现有两处消费方都不用这条字段算时长（格子用快照的 `serverNow`，
+     * 过程区用读端点的 `serverNow`），它在这里是为了让协议完整。
+     */
+    savedAt: string | null;
+    /** ★ 2026-09-28（丙档）：保存过几次（**不含**提交）。`null` = 不知道。 */
+    saveCount: number | null;
+    /**
      * ★ M4a 新增：这道题拿到的**绝对数**（教师逐题填的档），`null` = 没判分。
      * ⚠️ 与 `gradeState` 同生共死，别只读一个。
      */

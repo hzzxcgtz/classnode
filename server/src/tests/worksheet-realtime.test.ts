@@ -468,9 +468,17 @@ test('广播：保存作答 ⇒ 房间是教师看板房间，载荷含 question
   // ⊘ 2026-09-24 更正：原先写的是「**前端与**看板拿到」—— 学生端**不订这条广播**
   //（`/usr/bin/grep -rn "worksheet-answer-updated" src` ⇒ `src/app/classroom/` 下零命中）。
   // `gradeState` / `score` 是 B1 新增的两项（规格 §12：三态 + 数值）。
+  // ★ 2026-09-28 加了四项：`value` / `valueOmitted`（乙档：草稿实时可见）与
+  // `savedAt` / `saveCount`（丙档：作答过程）。**这一行就是那次协议变更的记录**。
+  //
+  // 🔴 `valueOmitted` **永远在场**（超限时是 `true`、否则 `false`），而不是「只在超限时才发」：
+  // `io.emit` 走 JSON 序列化，`undefined` 的键会被**整个丢掉** ⇒ 字段集合会随内容变化，
+  // 而下面这条断言（以及任何按字段集合做的判据）就失去了意义。
+  // 超限时 `value` 发的是 `null`（而不是 `undefined`）—— 同理。
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ['classroomId', 'gradeState', 'isCorrect', 'participantId', 'questionId', 'reviewedAt', 'score', 'status'],
+    ['classroomId', 'gradeState', 'isCorrect', 'participantId', 'questionId', 'reviewedAt',
+     'saveCount', 'savedAt', 'score', 'status', 'value', 'valueOmitted'],
   );
   assert.equal(payload.classroomId, classroom.id);
   assert.equal(payload.participantId, participant.id);
@@ -486,6 +494,20 @@ test('广播：保存作答 ⇒ 房间是教师看板房间，载荷含 question
   assert.equal(payload.gradeState, null, 'draft 没有三态结果');
   assert.equal(payload.score, null, 'draft 没有得分');
   assert.equal(payload.reviewedAt, null, '没被标记过就是 null');
+
+  // ★ 乙档：学生刚保存的内容要跟着广播走（此前载荷里**没有** `value`，
+  // 所以「他此刻写了什么」在教师那一侧只能等下一次快照）。
+  // ⚠️ 值是**这一条广播对应的那一次保存**（本用例保存的是 q_2 的填空题）——
+  // 不是随便挑一个：写成别的题的值会让这条断言在「广播发的是上一次的 value」时照样绿。
+  assert.deepEqual(payload.value, { format: 'fill/v1', text: 'H2O' }, '🔴 保存的内容必须随广播下发（乙档）');
+  assert.equal(payload.valueOmitted, false, '这一条没超限');
+  // ★ 丙档：作答过程的两项。`savedAt` 是**这一次**保存的时刻（服务端时间）。
+  assert.equal(payload.saveCount, 1, '🔴 首次保存 ⇒ saveCount 是 1（不是 null、也不是 0）');
+  assert.equal(
+    typeof payload.savedAt, 'string',
+    '🔴 savedAt 必须是可解析的 ISO 串 —— 过程区的「最近 N 分钟前」只靠它',
+  );
+  assert.ok(Number.isFinite(Date.parse(payload.savedAt as string)), 'savedAt 要真的能解析');
 
   // 阴性对照：另一道题带来的是**另一条**广播、另一个 questionId ——
   // 少了它，一个「载荷里 questionId 恒为某个常量」的实现也能让上面那条通过。
@@ -801,3 +823,48 @@ test('★ 旧行（saveCount 为 NULL）再保存：不许凭空变成 1（那�
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * ★ 乙档的**上限**：内容过大时不下发 `value`，但**其余字段一个都不少**。
+ *
+ * 🔴 这里挡的是两件事，两件都不报错：
+ *   ① **静默截断** —— 截断之后那串字读起来仍然像学生的原文，教师会照着一份被腰斩的
+ *      答案去讲题。所以超限时发的是 `null` + `valueOmitted: true`，由界面说
+ *      「内容较大，打开详情查看」；
+ *   ② **连坐** —— `value` 超限不该影响「他答了哪一题、什么时候保存的、保存了几次」。
+ *      看板靠那三项更新格子与过程区，丢掉它们的话，一道笔迹题会让整格停止更新。
+ */
+test('★ 广播上限：value 超限时不发内容但置 valueOmitted，其余字段照常', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+
+  const { worksheet, classroom, participant } = await seedClassroomUsingWorksheet(db.prisma, '9113');
+  const token = createStudentToken(classroom.id, participant.id);
+
+  // 一条超限的文本作答（上限是 8192 个字符，见 `MAX_BROADCAST_VALUE_CHARS`）。
+  // ⚠️ 用文本而不是笔迹：判据是 `JSON.stringify(value).length`，与格式无关，
+  // 而文本能一眼看出「它是被截了还是原样发的」。
+  const huge = '好'.repeat(9000);
+  assert.equal(
+    (await server.put(`/api/worksheets/${worksheet.id}/answers`,
+      { questionId: 'q_1', value: { format: 'text/v1', text: huge } }, bearer(token))).status,
+    200,
+  );
+
+  const push = server.broadcasts.filter(item => item.event === 'worksheet-answer-updated').at(-1)!;
+  assert.equal(push.payload.valueOmitted, true, '🔴 超限必须**说出来**，而不是静默截断');
+  assert.equal(push.payload.value, null, '内容不发（不是截断后的那一份）');
+  // ② 连坐：其余字段一个都不许少。
+  assert.equal(push.payload.questionId, 'q_1', '题号照常 —— 少了它整格会停止更新');
+  assert.equal(push.payload.status, 'draft');
+  assert.equal(push.payload.saveCount, 1, '次数照常');
+  assert.equal(typeof push.payload.savedAt, 'string', '保存时刻照常');
+
+  // 阳性对照：一条**没超限**的作答里 value 照常下发（否则「永远发 null」也能让上面绿）。
+  await server.put(`/api/worksheets/${worksheet.id}/answers`,
+    { questionId: 'q_2', value: { format: 'text/v1', text: '短答案' } }, bearer(token));
+  const small = server.broadcasts.filter(item => item.event === 'worksheet-answer-updated').at(-1)!;
+  assert.equal(small.payload.valueOmitted, false);
+  assert.deepEqual(small.payload.value, { format: 'text/v1', text: '短答案' }, '未超限时原样下发');
+});

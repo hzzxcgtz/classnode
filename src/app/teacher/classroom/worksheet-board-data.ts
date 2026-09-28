@@ -1,6 +1,6 @@
 // ⚠️ **相对路径 + `.ts` 后缀**（不是联名路径 `@/…`）：本文件要被 `node --test` 直接跑，
 // 而 Node 的类型擦除不认 tsconfig 的 `paths`。与 `worksheet-tile-state.ts` 同一条写法。
-import type { WorksheetBoard } from '../../../lib/types';
+import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
@@ -132,4 +132,68 @@ export function restProgress(
     }
   }
   return out;
+}
+
+/**
+ * ★ 2026-09-28：广播带来的**一行**内容（乙档 + 丙档）。
+ *
+ * 与 `ParticipantWorksheetProgress` 的关系：那一个回答「**格子**该画什么」（逐题状态、
+ * 正在做第几题），这一个回答「**抽屉**该显示什么」（他写了什么、保存了几次）。
+ * 两者同源（同一条广播、同一个下界），只是粒度不同 —— 广播一次只带**一行**的内容，
+ * 所以抽屉那一侧按行打补丁，而格子那一侧按参与者整份覆盖。
+ */
+export interface LiveRowPatch {
+  status: 'draft' | 'submitted';
+  value: unknown;
+  /** 内容是否因为过大而没有随这条广播下发（`value` 那时是 `null`）。 */
+  valueOmitted: boolean;
+  savedAt: string | null;
+  saveCount: number | null;
+}
+
+/**
+ * 把广播带来的行内容**逐行**补进快照 —— 供抽屉读（它读的是 `answerRows`，不是 `progress`）。
+ *
+ * 🔴 **下界与 `mergeProgress` 逐字同源**（`lastArrivedAt > snapshotAt`）：两处若各用一个
+ * 判据，屏幕上会出现「格子说已提交、抽屉说作答中」这种同一份数据的两种说法，
+ * 而两边都不报错。
+ *
+ * 🔴 广播里出现**快照之外的行**时不造行（与「不为新参与者造列」同一条规矩）：
+ * 一个问句在快照里没有行，说明它不在这一份学习单上（教师改单删了它 / 换了学习单）。
+ * 造出来的行会指向一个屏幕上不存在的题。
+ */
+export function applyLiveRows(
+  board: WorksheetBoard,
+  liveRows: Record<string, Record<string, LiveRowPatch & { lastArrivedAt: number | null }>>,
+  snapshotAt: number,
+): WorksheetBoard {
+  return {
+    ...board,
+    worksheets: board.worksheets.map((worksheet) => ({
+      ...worksheet,
+      participants: worksheet.participants.map((participant) => {
+        const patches = liveRows[participant.participantId];
+        if (!patches) return participant;
+        return {
+          ...participant,
+          answerRows: participant.answerRows.map((row) => {
+            const patch = patches[row.questionId];
+            if (!patch) return row;
+            // ⚠️ `null` = 不知道这条广播什么时候到的 ⇒ **不信它**（与 `mergeProgress` 同一条）。
+            if (patch.lastArrivedAt === null || patch.lastArrivedAt <= snapshotAt) return row;
+            // 🔴 `valueOmitted` 时**不许**把 `value` 写成 null 覆盖掉快照里那份内容 ——
+            // 那会把「内容较大，没有随广播下发」变成「他什么都没写」，而屏幕上看不出区别。
+            const next: WorksheetBoardAnswerRow = {
+              ...row,
+              status: patch.status,
+              savedAt: patch.savedAt,
+              saveCount: patch.saveCount,
+            };
+            if (!patch.valueOmitted) next.value = patch.value;
+            return next;
+          }),
+        };
+      }),
+    })),
+  };
 }

@@ -1677,6 +1677,12 @@ interface AnswerRow {
   /** ★ M4a：这道题实际拿到的数（教师逐题填的绝对值），`null` = 没判分。 */
   score: number | null;
   reviewedAt: Date | null;
+  /** ★ 2026-09-28：学生此刻写的内容（乙档）。⚠️ 超限的那一次**不发**它（见 `omitted`）。 */
+  value?: unknown;
+  /** ★ 2026-09-28：最近一次保存的时刻（丙档）。旧行是 `null` = 不知道。 */
+  savedAt?: Date | null;
+  /** ★ 2026-09-28：保存过几次。旧行是 `null` = 不知道。 */
+  saveCount?: number | null;
 }
 
 /**
@@ -1705,6 +1711,18 @@ function worksheetBoardRoom(classroomId: string): string {
  * 🔴 载荷**必须**含 `questionId`：看板格子的「正在做第 N 题」只靠它（§7.4 的数据来源表），
  * 缺了会退化成一句笼统的进度 —— 而且**没有任何报错**。
  */
+/**
+ * ★ 2026-09-28：`value` 随广播下发时的大小上限（字符数，`JSON.stringify` 之后的长度）。
+ *
+ * 为什么要有它：笔迹作答的 `value` 里是一串 `strokes` 坐标，长起来可以很大，
+ * 而这条广播**每保存一次就发一遍**（学生端保存是 1.5 秒防抖的）。
+ *
+ * 🔴 超限时**不下发 `value`，并置 `valueOmitted: true`** —— 界面对它的处置是
+ * 「内容较大，打开详情查看」。**不许静默截断**：截断之后那串字读起来仍然像学生的原文，
+ * 而教师会照着一段被腰斩的答案去讲题。
+ */
+const MAX_BROADCAST_VALUE_CHARS = 8192;
+
 function broadcastAnswerUpdate(
   req: Request,
   ctx: { classroomId: string; participantId: string },
@@ -1717,6 +1735,9 @@ function broadcastAnswerUpdate(
     console.error('[worksheets] app 上没有注册 io，学习单进度广播被跳过');
     return;
   }
+  // ⚠️ 上限只挡 `value` 一项（题号/状态/判分/时间都不受影响）：超限的那一次，
+  // 看板仍然能正确地更新「他答了哪一题、什么时候保存的」，只是看不到内容。
+  const omitted = JSON.stringify(answer.value ?? null).length > MAX_BROADCAST_VALUE_CHARS;
   io.to(worksheetBoardRoom(ctx.classroomId)).emit('worksheet-answer-updated', {
     classroomId: ctx.classroomId,
     participantId: ctx.participantId,
@@ -1740,6 +1761,17 @@ function broadcastAnswerUpdate(
     gradeState: answer.gradeState,
     score: answer.score,
     reviewedAt: answer.reviewedAt,
+    // ★ 2026-09-28（教师第 3 条「乙档」）：**学生此刻写了什么**。
+    // 🔴 `valueOmitted` **永远在场**（超限 `true` / 否则 `false`），超限时 `value` 发 `null`
+    // 而**不是** `undefined` —— `io.emit` 走 JSON，`undefined` 的键会被整个丢掉，
+    // 字段集合就随内容变化了，而 B4 那条「字段集合是契约」的用例就失去了意义。
+    value: omitted ? null : answer.value,
+    valueOmitted: omitted,
+    // ★ 2026-09-28（丙档）：作答过程。`savedAt` 是**这一次保存**的时刻（服务端时间），
+    // 看板的「最近 N 分钟前」用它 —— ⚠️ 客户端**不许**拿浏览器的 `Date.now()` 去减它，
+    // 那条路跨时钟、静默算错（见 `src/app/teacher/classroom/worksheet-board-data.ts`）。
+    savedAt: answer.savedAt ? answer.savedAt.toISOString() : null,
+    saveCount: answer.saveCount,
   });
 }
 

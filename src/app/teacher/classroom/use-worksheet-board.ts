@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
-import { mergeProgress, restProgress } from './worksheet-board-data';
+import { applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
@@ -77,8 +77,19 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
   const [loading, setLoading] = useState(false);
   const [nodesByWorksheet, setNodesByWorksheet] = useState<Record<string, WorksheetQuestionNode[]>>({});
   const [settingsByWorksheet, setSettingsByWorksheet] = useState<Record<string, WorksheetSettings>>({});
-  /** 逐参与者的**广播增量**（`worksheet-answer-updated` 攒出来的）。 */
+  /** 逐参与者的**广播增量**（`worksheet-answer-updated` 攒出来的）—— 供**格子**读。 */
   const [live, setLive] = useState<Record<string, ParticipantWorksheetProgress>>({});
+  /**
+   * ★ 乙档 / 丙档：广播带来的**逐行内容** —— 供**抽屉**读（它读 `answerRows`，不是 `progress`）。
+   *
+   * 为什么是两个 state 而不是一个：它们回答两个问题、粒度也不同（广播一次只带**一行**的
+   * 内容，却会整体推进「正在做第几题」）。合并成一个会让格子与抽屉各自需要的形状互相将就。
+   * ⚠️ 但**下界是同一个**（`snapshot.startedAt`）—— 两处若各用一个判据，屏幕上会出现
+   * 「格子说已提交、抽屉说作答中」这种同一份数据的两种说法，而两边都不报错。
+   */
+  const [liveRows, setLiveRows] = useState<
+    Record<string, Record<string, LiveRowPatch & { lastArrivedAt: number | null }>>
+  >({});
   /**
    * 当前这份快照里有哪几份学习单 —— 下面那个 60 秒的题目树节拍要用它。
    *
@@ -187,6 +198,23 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
           },
         };
       });
+      // ★ 乙档 / 丙档：内容与作答过程（抽屉那一侧读它）。
+      // ⚠️ `valueOmitted` 的处置在 `applyLiveRows` 里（它**不许**覆盖快照里已有的内容）——
+      // 这里只负责把广播原样收下来，一条判断都不做。
+      setLiveRows((prev) => ({
+        ...prev,
+        [participantId]: {
+          ...(prev[participantId] ?? {}),
+          [questionId]: {
+            status,
+            value: data.value,
+            valueOmitted: data.valueOmitted === true,
+            savedAt: typeof data.savedAt === 'string' ? data.savedAt : null,
+            saveCount: typeof data.saveCount === 'number' ? data.saveCount : null,
+            lastArrivedAt: at,
+          },
+        },
+      }));
     });
   }, [classroomId, on]);
 
@@ -221,8 +249,18 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     });
   }, []);
 
+  /**
+   * ★ 抽屉读的那一份 = 快照 **+ 逐行的广播补丁**。
+   * ⚠️ 与 `progress` 走的是两条路（那条按参与者整份覆盖），但**下界同一个** ——
+   * 见 `liveRows` 的注释。
+   */
+  const boardWithLive = useMemo(
+    () => (snapshot ? applyLiveRows(snapshot.board, liveRows, snapshot.startedAt) : null),
+    [snapshot, liveRows],
+  );
+
   return {
-    board: snapshot?.board ?? null,
+    board: boardWithLive,
     loading,
     // ⚠️ 一次都没拉到过时下界是 0：那意味着**所有**广播都被采信（`lastAt > 0` 恒真）。
     // 这是保守的一侧 —— 没有快照可比时，广播是唯一的真相来源，不该把它丢掉。

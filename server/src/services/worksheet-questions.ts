@@ -613,12 +613,22 @@ function isSameOrder(a: string[], b: string[]): boolean {
 }
 
 /**
- * 连线题的 `pairs` 是不是一组合法的**可留空一一对应**。
+ * 连线题的 `pairs` 是不是一组合法的**可留空连线集合**。
  *
- * 左栏允许放干扰项，因此不要求每一项都出现；「一一」= 已设置答案的左右端点最多各用一次。
- * 自动评分开启时至少要有一组答案，否则整题没有任何可评分内容。
- * 少了「一一」，两个左项连到同一个右项也能存进去 —— 学生端会画出两条线汇到一处，
- * 而判分里那个右项被算两次。
+ * 左栏允许放干扰项，因此不要求每一项都出现；自动评分开启时至少要有一组答案，
+ * 否则整题没有任何可评分内容。
+ *
+ * ★ 2026-09-28（教师裁定「甲」）：**去掉了「左右端点最多各用一次」** —— 那条是
+ * 「一对一」这个假设的落点，而教师要支持一对多 / 多对一 / 多对多。留着它的话，
+ * 勾选矩阵里同一行勾两格**存都存不下**（保存被拒），而判分那一侧已经先放开了。
+ * ⇒ 现在只拦两件真正坏的事：
+ *   ① 答案指向不存在的条目（左或右）；
+ *   ② **同一条线重复**（`{l1,r1}` 出现两次）—— 它没有任何意义，而判分会把它算两次命中。
+ * ⚠️ 这**改变了老题能不能保存**的判断：一份「两个左项连同一个右项」的答案从前存不下、
+ *    现在存得下（教师知情选了甲）。
+ * ⚠️ 调用点那条错误文案（「至少设置一组正确配对」）对**重复线**那种失败是**说不清**的
+ *    —— 那是本次之前就在的毛病，我没顺手改（改它要动那条用例断言的文案），
+ *    但在这里记一笔：下次碰这段时把它拆成两句。
  */
 function isValidMatching(
   leftIds: string[],
@@ -626,13 +636,12 @@ function isValidMatching(
   pairs: Array<{ leftId: string; rightId: string }>,
 ): boolean {
   if (pairs.length < 1) return false;
-  const seenLeft = new Set<string>();
-  const seenRight = new Set<string>();
+  const seen = new Set<string>();
   for (const pair of pairs) {
     if (!leftIds.includes(pair.leftId) || !rightIds.includes(pair.rightId)) return false;
-    if (seenLeft.has(pair.leftId) || seenRight.has(pair.rightId)) return false;
-    seenLeft.add(pair.leftId);
-    seenRight.add(pair.rightId);
+    const key = `${pair.leftId}\u0000${pair.rightId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
   }
   return true;
 }

@@ -274,13 +274,27 @@ test('连线题：左右可不等长，左侧未配对项可作为留空干扰�
   accepted('match', { left: LEFT, right: RIGHT, pairs: [PAIRS[0]] });
 });
 
-test('连线题：配对必须有效且一一对应', () => {
+test('🔴 连线题：配对必须有效；**多对一 / 一对多现在存得下**（★ 2026-09-28 裁定甲）', () => {
+  // 🔴 这条用例**原来断言的是相反的结论**（名字就叫「配对必须有效且一一对应」）：
+  //    第 2、5 两行（两个左项连同一个右项 / 一个左项连两个右项）从前是 `rejected`。
+  //    教师裁定「甲」要支持一对多 / 多对一 / 多对多 ⇒ 那两行改成 `accepted`。
+  //    真正坏的两件仍然拒：答案指向不存在的条目、**同一条线重复**。
   rejected('match', { left: LEFT, right: [{ id: 'r1', text: 'A' }], pairs: PAIRS });
-  rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' }] });
   rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l9', rightId: 'r2' }] });
   rejected('match', { left: LEFT, right: RIGHT, pairs: [] });
-  rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }] });
   rejected('match', { left: LEFT, right: LEFT, pairs: [] });
+  // ★ 同一条线重复：没有意义，而判分会把它算两次命中 ⇒ 仍然拒
+  rejected('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r1' }] });
+  // ★ 新能力：多对一、一对多、多对多
+  accepted('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l2', rightId: 'r1' }] });
+  accepted('match', { left: LEFT, right: RIGHT, pairs: [{ leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' }] });
+  accepted('match', {
+    left: LEFT, right: RIGHT,
+    pairs: [
+      { leftId: 'l1', rightId: 'r1' }, { leftId: 'l1', rightId: 'r2' },
+      { leftId: 'l2', rightId: 'r1' }, { leftId: 'l2', rightId: 'r2' },
+    ],
+  });
 });
 
 // ---------------------------------------------------------------------------

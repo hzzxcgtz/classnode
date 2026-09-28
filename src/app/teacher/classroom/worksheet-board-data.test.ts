@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
 import { applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data.ts';
-import { WORKSHEET_STUCK_AFTER_MS, type ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
+import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
  * 把**历史读端点的快照**换算成看板格子的进度（`ParticipantWorksheetProgress`）。

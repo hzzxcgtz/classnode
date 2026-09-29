@@ -3957,8 +3957,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
  * ⚠️ **不是 `role="tab"`**：那是「页签 + tabpanel」那一套语义，而这里没有 tabpanel
  *（三页的内容是同一个容器的不同状态），而且这是个**常驻**的切换钮 —— 与看板模式那一对
  * 同类 ⇒ `aria-pressed` 才对（`SegmentedButton` 用的就是它，理由写在那个组件的注释里）。
- * ⚠️ 外面包一层拦掉冒泡：这一行右端有「刷新」与「收起」，而**整行原来点了会收起**
- *（那个行为本轮也去掉了，见调用处）—— 留着这一层是防将来又有人把整行做成可点。
+ * ⚠️ **不再包一层拦冒泡**了：那一层原是为了防「点页签把整行也一起点着（整行会收起）」，
+ * 而整行「点了就收起」这个行为已经去掉（见调用处）⇒ 那一层没有对象了。
+ * 而且折叠态**正是靠冒泡**工作的：整个折叠条上挂一个「点哪儿都展开」，页签的点击
+ * 照样能冒上去 ⇒ 点页签 = 切换 **+** 展开（见两处折叠态）。
  */
 function StatsTabs({ tabs, value, onChange }: {
   tabs: ReadonlyArray<{ id: 'companion' | 'worksheet' | 'explore'; label: string }>;
@@ -3968,10 +3970,8 @@ function StatsTabs({ tabs, value, onChange }: {
   return (
     <div aria-label="统计" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       {tabs.map((tab) => (
-        <span key={tab.id} onClick={(event) => event.stopPropagation()}>
-          <SegmentedButton label={tab.label} hint={`看「${tab.label}」这一块的统计`}
-            selected={tab.id === value} onSelect={() => onChange(tab.id)} />
-        </span>
+        <SegmentedButton key={tab.id} label={tab.label} hint={`看「${tab.label}」这一块的统计`}
+          selected={tab.id === value} onSelect={() => onChange(tab.id)} />
       ))}
     </div>
   );
@@ -4013,7 +4013,12 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 20px', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          {!collapsed && tabs}
+          {tabs && (
+            <div onClick={collapsed ? () => setCollapsed(false) : undefined}
+              style={{ minWidth: 0, cursor: collapsed ? 'pointer' : undefined }}>
+              {tabs}
+            </div>
+          )}
           {/* 这一页的摘要：**把头部数字放在这里**（原来是塞在正文里的一行）——
               它是这一页最该一眼看见的东西，而头部那一行正好有位置。 */}
           {!collapsed && tab === 'explore' && exploreSummary && (
@@ -4380,13 +4385,15 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
             padding: '12px 20px',
           }}
         >
-          {/* ★ 2026-09-29（教师）：「页签与折叠箭头挤在同一行，点偏一点就收起」⇒ 页签搬去了
-              它**自己的一行**（见展开态）。而折叠态这一行**不再放页签**：
-              ⚠️ 折起来的时候点页签只会把状态改掉、正文不出现 —— 看着像「点了没反应」，
-                 比没有页签更糟。要换页先展开（展开由点这一行完成，或者点右边那个箭头）。
-              ⊘ 顺便更正一句**假注释**：今天早些时候我在这里写过「『对话分析』这四个字移到了
-                 正文里」——**那句话当时是假的**（我没做）。现在它真的在正文标题行里了。 */}
-          <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>统计</span>
+          {/* ★ 2026-09-29（教师）：「搜龙怎么字都没有了？而且原来的智能学伴的 tab 页面内容呢？」
+              —— 那一条**空的**是折叠态：我上一轮把标题删掉、又把页签从折叠态拿掉，左边就空了。
+              ⇒ 折叠态现在放**页签本身**（它就是这一条该有的字），而且**整条点哪儿都展开**：
+              点页签 = 切换 **+** 展开（页签的点击冒泡到这一层，见 `StatsTabs` 的注释）。
+              ⚠️ 这一条是**误触折叠**最容易被看到的地方 —— 教师上次正是「想切页签结果点折了」，
+                 而折了之后它一个字都没有，看着像坏了。 */}
+          <div onClick={() => setCollapsed(false)} style={{ cursor: 'pointer', minWidth: 0 }}>
+            {tabs ?? <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>统计</span>}
+          </div>
           <button type="button" aria-label="展开统计面板" onClick={() => setCollapsed(false)}
             style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

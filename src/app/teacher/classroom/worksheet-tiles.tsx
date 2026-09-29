@@ -177,10 +177,15 @@ export function WorksheetTileContent({ state, answer, reward, compact }: {
                   // ⇒ 去掉底纹与边框。🔴 顺带消掉一处 2px 的跳动：原来 12(图标) + 上下各 1px
                   // 内边距 + 上下各 1px 边框 = **16px**，而这一行的高度由方格（14px）决定
                   // ⇒ 奖励一出现整行长高 2px。现在 12 + 2 = 14，与方格同高。
-                  // 🔴 图标组长 12px 同样是算过的（同上）；走 `RewardIcon` 卡通图，
-                  // 不是 `rewardSymbol` 那个文字符号（教师：「要用图标」）。
+                  // 🔴 图标走 `RewardIcon` 卡通图，不是 `rewardSymbol` 那个文字符号（教师：「要用图标」）。
+                  // ★ 2026-09-29 同日第三轮（教师）：「**火箭可以大一点**」⇒ 12px → 16px。
+                  // ⚠️ 这一档**会让这一行变高**（16 + 上下各 1px = 18px > 方格的 14px），
+                  //    与上面那段「12px 是算过的」正好相反 —— 那一条的**理由**是「不许上下跳」，
+                  //    而这次放大不违反它：跳的根因是它**每 1.5 秒随保存抖一次**（「正在写」那份旧账），
+                  //    而这枚奖励**加载后就在、一节课不动** ⇒ 多出来的 4px 是**一次性**的布局变化，
+                  //    不是来回跳。代价如实说：下方作答区少了 4px。
                   style={{ padding: '1px 4px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 1, whiteSpace: 'nowrap' }}>
-                  <RewardIcon kind={reward.style} state="earned" size={12} />
+                  <RewardIcon kind={reward.style} state="earned" size={16} />
                   <span style={{ fontSize: '0.563rem' }}>{rewardAmountLabel(reward.style, reward.amount)}</span>
                 </span>
               </span>

@@ -3946,14 +3946,19 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
 
 /**
- * 统计面板那三个页签（★ 2026-09-29，教师第 5 条：「三个模块就在统一的位置……Tab 方式」）。
+ * 统计面板那三个页签（★ 2026-09-29，教师第 5 条：「三个模块就在统一的位置……Tab 方式」；
+ * 同日教师看过之后又改过一次：「这个 tab 切换看起来好怪哟」⇒ 换成**本屏已有的那套控件**）。
  *
- * 🔴 **一份定义、两处宿主**：学伴那一页住在 `AnalyticsPanel` 的头部里（它的标题原来就是
- * 「对话分析」），另两页住在一个新面板里。各画一份 Tab 栏的话，两边的选中态与圆角迟早会分叉
- *（本仓这一类的旧账很多），所以这里做成**一个组件、由宿主把它渲染进自己的头部**。
+ * 🔴 **它就是 `SegmentedButton`** —— 与看板顶部「跟随 / 指定」那一对**逐字同款**
+ *（带边框、选中蓝底蓝字、同字号）。原来这里自己画了一套药丸（无边框 + 靛蓝 `#3730a3`），
+ * 于是同一屏出现**两套「选中一个」的语言**，而那个靛蓝在这一屏没有任何别的东西在用
+ * ⇒ 看着"外来的"。用同一个组件之后，颜色/边框/字号改一处两处一起变。
  *
- * ⚠️ 选中态用**底色 + 加粗**而不是下划线：那个面板的头部只有 14px 内边距，
- * 下划线会被 `overflow: hidden` 裁掉一半（那个白卡片有圆角 + overflow hidden）。
+ * ⚠️ **不是 `role="tab"`**：那是「页签 + tabpanel」那一套语义，而这里没有 tabpanel
+ *（三页的内容是同一个容器的不同状态），而且这是个**常驻**的切换钮 —— 与看板模式那一对
+ * 同类 ⇒ `aria-pressed` 才对（`SegmentedButton` 用的就是它，理由写在那个组件的注释里）。
+ * ⚠️ 外面包一层拦掉冒泡：这一行右端有「刷新」与「收起」，而**整行原来点了会收起**
+ *（那个行为本轮也去掉了，见调用处）—— 留着这一层是防将来又有人把整行做成可点。
  */
 function StatsTabs({ tabs, value, onChange }: {
   tabs: ReadonlyArray<{ id: 'companion' | 'worksheet' | 'explore'; label: string }>;
@@ -3961,23 +3966,13 @@ function StatsTabs({ tabs, value, onChange }: {
   onChange: (next: 'companion' | 'worksheet' | 'explore') => void;
 }) {
   return (
-    <div role="tablist" aria-label="统计" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      {tabs.map((tab) => {
-        const selected = tab.id === value;
-        return (
-          <button key={tab.id} type="button" role="tab" aria-selected={selected}
-            onClick={(event) => { event.stopPropagation(); onChange(tab.id); }}
-            style={{
-              // ★ 2026-09-29（教师）：「页签单独占一行、做得更大更好点」⇒ 内边距与字号各上一档。
-              border: 0, borderRadius: 8, padding: '7px 14px', cursor: 'pointer',
-              fontSize: '0.875rem', fontWeight: selected ? 700 : 500,
-              background: selected ? '#eef2ff' : 'transparent',
-              color: selected ? '#3730a3' : '#64748b',
-            }}>
-            {tab.label}
-          </button>
-        );
-      })}
+    <div aria-label="统计" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {tabs.map((tab) => (
+        <span key={tab.id} onClick={(event) => event.stopPropagation()}>
+          <SegmentedButton label={tab.label} hint={`看「${tab.label}」这一块的统计`}
+            selected={tab.id === value} onSelect={() => onChange(tab.id)} />
+        </span>
+      ))}
     </div>
   );
 }
@@ -4010,16 +4005,35 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
       {/* 折叠：与学伴那一页同一个交互（点头部收起 / 展开，箭头跟着翻）。
           ⚠️ 页签在折叠态**也留**（`{tabs}` 在头部里，与折叠无关）—— 否则教师收起之后
           连换页都做不到，得先展开。 */}
-      {/* 与学伴那一页**同一个结构**：页签独占一行（★ 教师 2026-09-29），下面才是这一页的
-          标题行。⚠️ 折叠态**不放页签**（折起来点页签只改状态、正文不出现，看着像没反应）。 */}
-      {!collapsed && tabs && <div style={{ padding: '10px 20px 0', borderBottom: '1px solid #f1f5f9' }}>{tabs}</div>}
-      <div onClick={() => setCollapsed((value) => !value)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: 'pointer', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9', userSelect: 'none' }}>
-        {/* 这一页的标题：**就是那个页签的名字**（不再另取一个名字 —— 两个名字迟早会分叉）。 */}
-        <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>{tab === 'worksheet' ? '学习单统计' : '探究空间统计'}</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points={collapsed ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
-        </svg>
+      {/* 与学伴那一页**同一个结构**（★ 教师 2026-09-29 定稿）：**一行头部** ——
+          左边是页签（本屏已有的段选），右端是这一页的摘要与收起。
+          ⚠️ 折叠态**不放页签**（折起来点页签只改状态、正文不出现，看着像没反应）；
+          收起只由右端那个箭头按钮负责（这一行整体不再可点）。 */}
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 20px', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          {!collapsed && tabs}
+          {/* 这一页的摘要：**把头部数字放在这里**（原来是塞在正文里的一行）——
+              它是这一页最该一眼看见的东西，而头部那一行正好有位置。 */}
+          {!collapsed && tab === 'explore' && exploreSummary && (
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, whiteSpace: 'nowrap' }}>
+              已有画面 {exploreSummary.withFrame}/{exploreSummary.participants} {unit} · 此刻正打开 {exploreSummary.opened} {unit}
+            </span>
+          )}
+          {!collapsed && tab === 'worksheet' && (worksheetSummaries ?? []).length === 1 && (
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, whiteSpace: 'nowrap' }}>
+              已交 {worksheetSummaries![0].submittedPairs}/{worksheetSummaries![0].totalPairs} 格 · 有作答记录 {worksheetSummaries![0].engaged}/{worksheetSummaries![0].participants} {unit}
+            </span>
+          )}
+        </div>
+        <button type="button" aria-label={collapsed ? '展开统计面板' : '收起统计面板'} aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+          style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex', flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points={collapsed ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
+          </svg>
+        </button>
       </div>
 
       {!collapsed && tab === 'worksheet' && (
@@ -4036,12 +4050,16 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
                 {(worksheetSummaries ?? []).length > 1 && (
                   <div style={{ fontSize: '0.813rem', fontWeight: 700, color: '#334155', marginBottom: 8 }}>《{summary.title}》</div>
                 )}
-                {/* 第一行：三个数，每个都带分母。 */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#475569' }}>
-                  <span>已交 <b style={{ color: '#1d4ed8' }}>{summary.submittedPairs}</b>/{summary.totalPairs} 格</span>
-                  <span>有作答记录 <b style={{ color: '#1d4ed8' }}>{summary.engaged}</b>/{summary.participants} {unit}</span>
-                  <span>共 <b style={{ color: '#1d4ed8' }}>{summary.questions}</b> 题</span>
-                </div>
+                {/* 三个数。⚠️ **只有多份学习单时才画**：单份时头部那一行已经写了「已交 X/Y 格 ·
+                    有作答记录 N/M」—— 同一个数在这块屏上出现两次就是「同一件事两种说法」的入口
+                    （★ 2026-09-29 定稿时顺手去重；多份时每份各有各的数，头部写不下）。 */}
+                {(worksheetSummaries ?? []).length > 1 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#475569' }}>
+                    <span>已交 <b style={{ color: '#1d4ed8' }}>{summary.submittedPairs}</b>/{summary.totalPairs} 格</span>
+                    <span>有作答记录 <b style={{ color: '#1d4ed8' }}>{summary.engaged}</b>/{summary.participants} {unit}</span>
+                    <span>共 <b style={{ color: '#1d4ed8' }}>{summary.questions}</b> 题</span>
+                  </div>
+                )}
                 {/* 全班进度条：一个数一条，不写百分比 —— 分子分母都在上面那一行了。 */}
                 <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
                   <div style={{ width: `${summary.totalPairs === 0 ? 0 : Math.round((summary.submittedPairs / summary.totalPairs) * 100)}%`, height: '100%', background: '#2563eb' }} />
@@ -4084,15 +4102,15 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
             <div style={{ fontSize: '0.813rem', color: '#94a3b8' }}>正在读取…</div>
           ) : (
             <>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#475569' }}>
-                <span>已有画面 <b style={{ color: '#1d4ed8' }}>{exploreSummary.withFrame}</b>/{exploreSummary.participants} {unit}</span>
-                <span>此刻正打开着网页 <b style={{ color: '#1d4ed8' }}>{exploreSummary.opened}</b> {unit}</span>
-                {exploreSummary.blocked > 0 && (
-                  <span title="这些设备上的采集已经放弃（不会自愈），与「画面还没到」不是一回事">
-                    设备放弃采集 <b style={{ color: '#b45309' }}>{exploreSummary.blocked}</b> {unit}
-                  </span>
-                )}
-              </div>
+              {/* ⚠️ 「已有画面 / 此刻正打开」**不在这里重复** —— 它们在头部那一行（★ 定稿时
+                  去重：同一个数在一块屏上出现两次，改口径时必然先改一处、另一处留着旧的）。
+                  这里只留头部放不下的那条：设备放弃采集（它是个**告警**，要显眼）。 */}
+              {exploreSummary.blocked > 0 && (
+                <div style={{ fontSize: '0.75rem', color: '#475569' }}
+                  title="这些设备上的采集已经放弃（不会自愈），与「画面还没到」不是一回事">
+                  设备放弃采集 <b style={{ color: '#b45309' }}>{exploreSummary.blocked}</b> {unit}
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>此刻在看的网页</div>
                 {exploreSummary.viewing.length === 0 ? (
@@ -4357,11 +4375,9 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
         marginBottom: 24, overflow: 'hidden',
       }}>
         <div
-          onClick={() => setCollapsed(false)}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '14px 20px', cursor: 'pointer',
-            userSelect: 'none',
+            padding: '12px 20px',
           }}
         >
           {/* ★ 2026-09-29（教师）：「页签与折叠箭头挤在同一行，点偏一点就收起」⇒ 页签搬去了
@@ -4371,9 +4387,12 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
               ⊘ 顺便更正一句**假注释**：今天早些时候我在这里写过「『对话分析』这四个字移到了
                  正文里」——**那句话当时是假的**（我没做）。现在它真的在正文标题行里了。 */}
           <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>统计</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="18 15 12 9 6 15" />
-          </svg>
+          <button type="button" aria-label="展开统计面板" onClick={() => setCollapsed(false)}
+            style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </button>
         </div>
       </div>
     );
@@ -4384,24 +4403,23 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
       background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
       marginBottom: 24, overflow: 'hidden',
     }}>
-      {/* ★ 2026-09-29（教师）：「页签与折叠箭头挤在同一行，点偏一点就收起」
-          ⇒ 页签**独占一行**，而且做得更大一点（占满一行之后不必再挤着）。
-          它答的是「看哪个模块的统计」，与下面那一行的「这一页的标题 / 刷新 / 收起」是两件事。 */}
-      {tabs && <div style={{ padding: '10px 20px 0', borderBottom: '1px solid #f1f5f9' }}>{tabs}</div>}
-      {/* 这一页自己的标题行（点它收起） */}
+      {/* ★ 2026-09-29（教师）：「这个 tab 切换看起来好怪哟」⇒ 定稿：**一行头部**。
+          页签用本屏已有的段选（`StatsTabs`），右端是这一页自己的东西（计数 / 刷新 / 收起）。
+          ⊘ 原来这里有**两行**头部（页签一行 + 标题一行，各一条线），中间夹着一条几乎空的带子。
+            标题本身也去掉了 —— 「在看哪个模块」由段选说清了，再写一遍「对话分析」是重复
+            （「智能学伴」那一段就是它的名字）。
+          🔴 **整行不再「点了就收起」**：页签回到了这一行（教师选的布局），而「点偏一点就收起」
+             正是教师先前抱怨的那件事 ⇒ 收起只由右端那个箭头负责（它现在是个真按钮）。
+             ⚠️ `cursor: pointer` 与 `userSelect: none` 也一起撤了：那一行不再是可点区域，
+                留着那个手型光标就是在骗人点它。 */}
       <div
-        onClick={() => setCollapsed(true)}
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 20px', cursor: 'pointer',
-          borderBottom: '1px solid #f1f5f9', userSelect: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          padding: '10px 20px', borderBottom: '1px solid #f1f5f9',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-          </svg>
-          <span style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a' }}>对话分析</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          {tabs}
           <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
             {allMessages.length} 条消息 · {participantCount} 人参与
           </span>
@@ -4420,9 +4438,15 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
             </svg>
             刷新
           </button>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          {/* 收起：**唯一**的收起入口（★ 2026-09-29）。它原来只是一个装饰性的 svg，
+              收起靠点整行 —— 而那一行现在放着页签，误触的代价是「面板整个收起来」。 */}
+          <button type="button" aria-label="收起统计面板" aria-expanded
+            onClick={() => setCollapsed(true)}
+            style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
         </div>
       </div>
 

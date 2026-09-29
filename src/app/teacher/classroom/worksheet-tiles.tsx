@@ -157,42 +157,32 @@ export function WorksheetTileContent({ state, answer, reward, compact }: {
                   background: CELL_STYLE[status].background, border: `1px solid ${CELL_STYLE[status].border}`,
                 }} />
             ))}
-            {/* ★ 2026-09-29：这一行的**右端**住着两枚小记号（奖励个数、「正在写」）。
-                🔴 **位置是算过的，不是随手放的**：教师报的问题是「『正在写』一出现，监控内容
-                就上下跳」—— 它原来住在下面预览块的表头行里，而那一行在 working / stuck 两态下
-                没有文字、高度是 **0**，记号一来整行就长高，下面整块预览跟着往下跳。
-                这一行的高度由方格决定（14px），这两枚也是 14px ⇒ **同一行内不改变高度**。
-                ⚠️ 格子很窄（214px）时它们可能被挤到下一行 —— 那会让这一行多 14px，
-                但**题数与奖励档在一节课里不会变**，所以不会来回跳。
+            {/* ★ 2026-09-29：这一行的**右端**住着奖励那一枚。
+                🔴 **位置是算过的，不是随手放的**：教师报过「记号一出现，监控内容就上下跳」——
+                它原来住在下面预览块的表头行里，而那一行在 working / stuck 两态下没有文字、
+                高度是 **0** ⇒ 记号一来整行长高。这一行的高度由方格决定（14px），
+                而这一枚 12 + 上下各 1px 内边距 = 14 ⇒ **同一行内不改变高度**。
+                ⚠️ 格子很窄（214px）时它可能被挤到下一行 —— 那会多 14px，但**奖励档在一节课里
+                不会变**，所以不会来回跳。
                 ⚠️ 也**不压任何文字**：方格阵通常填不满一行，右端本来就是空的。
-                ⚠️ 两枚记号**共用一个 `marginLeft: 'auto'`**（包在这一层里）：给两枚各写一个
-                auto ⇒ flex 会把剩余空间**平分**给它们，奖励就会被推到行中间去。 */}
-            {(reward || answer?.fromDraft) && (
-              <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {reward && (
-                  <span title="这一份学习单上他目前获得的奖励（各题得分之和）"
-                    // ★ 2026-09-29（教师）：「火箭乘三这个区域**不需要底纹和边框线**。」
-                    // ⇒ 去掉底纹与边框。🔴 顺带消掉一处 2px 的跳动：原来 12(图标) + 上下
-                    // 各 1px 内边距 + 上下各 1px 边框 = **16px**，而这一行的高度由方格（14px）
-                    // 决定 ⇒ 奖励一出现整行长高 2px（与「正在写」那件旧账同一类）。
-                    // 现在 12 + 2 = 14，与方格同高。
-                    style={{ padding: '1px 4px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 1, whiteSpace: 'nowrap' }}>
-                    {/* ★ 2026-09-29（教师第二轮）：**图标** + 更小的 `×N`。
-                        🔴 图标边长 12px 是**算过的**：这一行的高度由方格（14px）决定，而
-                        12 + 上下各 1px 内边距 = 14 ⇒ **同一行内不改变高度**（与「正在写」
-                        那一枚同一个理由：教师报过「一出现内容就上下跳」）。
-                        ⚠️ 图标走 `RewardIcon`（卡通图），不是 `rewardSymbol` 那个文字符号。 */}
-                    <RewardIcon kind={reward.style} state="earned" size={12} />
-                    <span style={{ fontSize: '0.563rem' }}>{rewardAmountLabel(reward.style, reward.amount)}</span>
-                  </span>
-                )}
-                {answer?.fromDraft && (
-                  <span title="他此刻正在写，还没保存（学生端有 1.5 秒保存防抖）"
-                    style={{ padding: '1px 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.625rem', whiteSpace: 'nowrap' }}>
-                    <WorksheetStatusIcon name="drafting" size={12} />
-                    正在写
-                  </span>
-                )}
+                ⚠️ `marginLeft: 'auto'` 给**这一枚**（不再是外面一层包裹）：原来它与「正在写」
+                包在一起，是因为两个 auto 会被 flex 把剩余空间平分；现在只剩这一枚。
+                ⊘ ★ 2026-09-29（教师）：「这个监控面板里经常会出现的『正在写』，我觉得**意义不大**，
+                索性去掉吧。」⇒ 那一枚删掉了（它每 1.5 秒随保存抖动一次，是噪音）。
+                连带的清理：`TileAnswer.fromDraft` 随之没有消费者 ⇒ 一起删（见那个文件）。 */}
+            {reward && (
+              <span title="这一份学习单上他目前获得的奖励（各题得分之和）" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                <span
+                  // ★ 2026-09-29（教师）：「火箭乘三这个区域**不需要底纹和边框线**。」
+                  // ⇒ 去掉底纹与边框。🔴 顺带消掉一处 2px 的跳动：原来 12(图标) + 上下各 1px
+                  // 内边距 + 上下各 1px 边框 = **16px**，而这一行的高度由方格（14px）决定
+                  // ⇒ 奖励一出现整行长高 2px。现在 12 + 2 = 14，与方格同高。
+                  // 🔴 图标组长 12px 同样是算过的（同上）；走 `RewardIcon` 卡通图，
+                  // 不是 `rewardSymbol` 那个文字符号（教师：「要用图标」）。
+                  style={{ padding: '1px 4px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 1, whiteSpace: 'nowrap' }}>
+                  <RewardIcon kind={reward.style} state="earned" size={12} />
+                  <span style={{ fontSize: '0.563rem' }}>{rewardAmountLabel(reward.style, reward.amount)}</span>
+                </span>
               </span>
             )}
           </div>

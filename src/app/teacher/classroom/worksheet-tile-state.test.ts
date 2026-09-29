@@ -384,8 +384,9 @@ test('🔴 他此刻正在编辑的那一题优先于「最后一次落库的那
 
   const answer = activeAnswer(nodes, rows, cells, 'q1', draft);
   assert.equal(answer?.node.id, 'q2', '🔴 必须切到他正在写的那一题（否则这一题永远不显示）');
+  // ⚠️ 这里原来还有一条 `fromDraft === true`（界面那个「正在写」记号）。教师 2026-09-29
+  // 把那个记号去掉了 ⇒ 字段与断言一起删。**实质仍被上一行钉着**：用的是预览那一份的值。
   assert.equal(answer?.value, '他正在写的这一段');
-  assert.equal(answer?.fromDraft, true, '界面要靠它给一个「还没落库」的记号');
 
   // 🔴 **标题与预览必须同源**：格子正文说的题号也得是 q2，不是 q1。
   const tile = state({ nodes, progress: progress({ q1: 'submitted' }, 'q1', NOW - 1000), liveQuestionId: 'q2' });
@@ -397,7 +398,9 @@ test('★ 没有实时预览时，退回「最后一次落库的那一题」', (
   const cells: Array<'unanswered' | 'draft' | 'submitted'> = ['submitted', 'unanswered'];
   const answer = activeAnswer(nodes, [{ questionId: 'q1', value: '库里那份' }], cells, 'q1', null);
   assert.equal(answer?.node.id, 'q1');
-  assert.equal(answer?.fromDraft, false);
+  // 没有预览 ⇒ 用库里那一份。⚠️ 断言的是**值**（原来断言的是 `fromDraft === false`）——
+  // 那个字段已随「正在写」记号一起删掉，而这里真正要守的是「值取自哪一份」。
+  assert.equal(answer?.value, '库里那份');
 });
 
 /**
@@ -412,6 +415,9 @@ test('🔴 实时的题号不在学习单里 ⇒ 退回原判据（不挑一道�
     { questionId: '别的学习单上的题', value: 'x' },
   );
   assert.equal(answer?.node.id, 'q2', '退回「第一道还在作答中的题」');
-  assert.equal(answer?.fromDraft, false, '那一份预览不属于这一题，不许用');
+  // 🔴 那一份预览**不属于这一题** ⇒ 必须用库里那一份（`库里`），不许把 `x` 画出来。
+  // ⚠️ 原来断言的是 `fromDraft === false`；字段删了之后，这里改成断言**值本身**
+  //（更好：原来那个标志只说明「没走预览那条路」，而这一条直接证明「画出来的不是 x」）。
+  assert.equal(answer?.value, '库里');
 });
 

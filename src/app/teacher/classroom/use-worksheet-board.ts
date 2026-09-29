@@ -61,7 +61,9 @@ export interface WorksheetBoardData {
    * 🔴 **它不是「库里的作答」，是「屏幕上的草稿」** —— 学生端的作答**落库**有 1.5 秒防抖
    *（不防抖就是每敲一个字写一次库），而这一格要跟得上他的手，所以另开了一条
    * **不写库、只喂预览**的通道（节流 300ms）。
-   * 界面上必须能读出这个区别 —— 见 `TileAnswer.fromDraft`。
+   * 界面上必须能读出这个区别 —— ⚠️ ★ 2026-09-29：那个记号（`TileAnswer.fromDraft`）
+   * 已按教师要求删掉（「『正在写』意义不大」）⇒ **两条数据流本身仍然分开**，
+   * 只是界面不再给草稿一个记号。
    */
   liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   /** 立刻重拉一次（教师清除了数据之后调它）。 */
@@ -118,7 +120,9 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
   /**
    * ★ 参与者 id → 他此刻正在写的那一份（**没落库**）。
    * ⚠️ 与 `live` / `liveRows` **刻意分开**：那两个是「库里的真相的增量」，
-   * 这一个不是 —— 把它混进去会让「已保存」与「正在写」在界面上再也分不开。
+   * 这一个不是 —— 把它混进去会让「预览」与「已保存的那一份」再也分不开。
+   * ⚠️ ★ 2026-09-29：那个界面记号（「正在写」）已按教师要求删掉，**但这个区分本身仍是
+   * 这两条数据流分开的理由**（一条会被落库广播取代，另一条不会）。
    */
   const [liveDrafts, setLiveDrafts] = useState<
     Record<string, { worksheetId: string; questionId: string; value: unknown }>
@@ -236,9 +240,11 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
           },
         };
       });
-      // 🔴 落库的广播到了 ⇒ **把这个人的「正在写」清掉**：那一份已经被取代
+      // 🔴 落库的广播到了 ⇒ **把这个人的实时预览清掉**：那一份已经被库里那一条取代
       //（内容此刻就在库里，而且下面那一步会把它补进作答行）。
-      // ⚠️ 不清的话「正在写」那个记号会**永远挂着** —— 教帅会一直以为他还在敲字。
+      // ★ 2026-09-29（教师）：「『正在写』那个记号**意义不大**，索性去掉吧」⇒ 那个界面记号
+      // 删掉了，所以**理由换成**：预览是**客户端**的一份快照，而库里那一条才是权威 ——
+      // 保存过了就不该再拿旧快照当「他此刻在写的」。**清理本身保留。**
       // 他继续敲，下一条预览会在 300ms 内把它填回来。
       setLiveDrafts((prev) => {
         if (prev[participantId] === undefined) return prev;

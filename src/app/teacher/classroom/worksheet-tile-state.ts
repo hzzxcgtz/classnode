@@ -270,12 +270,15 @@ export interface TileAnswer {
    * `fromDraft` 说的就是「这一份是哪个」。
    */
   value: unknown;
-  /**
-   * ★ 2026-09-28：上面那个 `value` 是不是**还没落库**的实时预览。
-   * 界面上要据此给一个「正在写」的记号 —— 不说的话，教师会把一份还没存的草稿
-   * 当成「他已经交上来的答案」。
-   */
-  fromDraft: boolean;
+  // ⊘ ★ 2026-09-29（教师）：「这个监控面板里经常会出现的『正在写』，我觉得**意义不大**，
+  // 索性去掉吧。」⇒ 那个记号删了，而它唯一的消费者就是这个字段 ⇒ **字段一起删**。
+  //
+  // 🔴 **删掉的是「界面读数」，不是「值怎么选」**：`activeAnswer` 内部仍然按
+  // 「他此刻在写的那一题优先」取值（那个 `useDraft` 局部量还在，见下）——
+  // 那是「问答题实时显示非常慢」那个 bug 的修法，动它会把 bug 带回来。
+  // ⚠️ 留着 `fromDraft` 而没人读，就是本仓反复清掉的那种「假装还活着的字段」
+  //（先例：`stateHasCells`、`RewardScale.step`）。要恢复它请连界面读数一起想清楚
+  // ——「每 1.5 秒随保存抖一次」正是教师说它没意义的原因。
 }
 
 export function activeAnswer(
@@ -310,7 +313,6 @@ export function activeAnswer(
     heading: item.heading,
     typeLabel: questionTypeLabel(item.node.type),
     value: useDraft ? draft.value : row?.value,
-    fromDraft: useDraft,
   };
 }
 

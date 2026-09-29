@@ -85,7 +85,18 @@ function renderCompact(view: AnswerView): React.ReactNode {
       return (
         <div style={{
           fontSize: '0.625rem', color: '#0f172a', lineHeight: 1.3, wordBreak: 'break-word',
-          display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          // 🔴 `pre-wrap`：学生**自己敲的换行要看得见**（★ 2026-09-29 教师：「学生在输入问答题
+          // 的答案时，已经手工换行了，但是在监控面板里没有看到换行」）。
+          // 默认的 `white-space: normal` 会把 `\n` **折叠成一个空格** ⇒ 学生分成三段的答案
+          // 在这里连成一段，读起来是不同的意思，而屏幕上一点异常都没有。
+          // ⚠️ 与教师端抽屉那一份**同一条**（`answer-view.tsx` 的 `ANSWER_TEXT_STYLE`）——
+          // 同一份作答在两处必须长得一样，各写一份的话分叉了也没人报错。
+          whiteSpace: 'pre-wrap',
+          // ⊘ ★ 2026-09-29：原来这里是 `-webkit-line-clamp: 4`（截断 4 行）。**去掉了**，
+          // 因为教师同一天要了「内容比较长则自动加上垂直滚动条」—— 两者是同一个问题的两种答案，
+          // 留着 clamp 的后果是：问答题的长答案被截到 4 行 ⇒ **永远不溢出** ⇒ 滚动条永远不出现
+          // ⇒ 那句「自动加滚动条」在这一类内容上**等于没做**（而且被截掉的部分看不出来少了）。
+          // ⇒ 长就让它长，滚由外面那一层负责（`worksheet-tiles.tsx` 的 `preview-scroll`）。
         }}>{view.text}</div>
       );
 

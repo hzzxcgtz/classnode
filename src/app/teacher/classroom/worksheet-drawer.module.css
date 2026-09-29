@@ -14,10 +14,6 @@
   box-shadow: 0 20px 56px rgb(42 61 84 / 18%);
 }
 
-.participantDrawer {
-  width: min(820px, calc(100vw - 40px));
-}
-
 .header {
   display: flex;
   align-items: center;
@@ -401,8 +397,7 @@
 }
 
 @media (max-width: 720px) {
-  .drawer,
-  .participantDrawer {
+  .drawer {
     top: 12px;
     right: 12px;
     bottom: 12px;

@@ -198,8 +198,8 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
                   onClick={() => { if (!selected) onSelectDetailInterval(ms); }}
                   style={{
                     minHeight: 30, padding: '4px 12px', borderRadius: 999, fontSize: '0.813rem',
-                    border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`,
-                    background: selected ? '#2563eb' : 'white',
+                    border: `1px solid ${selected ? '#527198' : '#e2e8f0'}`,
+                    background: selected ? '#527198' : 'white',
                     color: selected ? 'white' : '#475569',
                     fontWeight: selected ? 600 : 500,
                     cursor: detailBusy ? 'not-allowed' : 'pointer',

@@ -37,7 +37,7 @@ export function CorrectAnswerNote({ children }: { children: ReactNode }) {
         marginTop: 10,
         padding: '10px 14px',
         borderRadius: 10,
-        background: '#fef2f2',
+        background: '#f8eeee',
         border: '1px solid #fecaca',
         fontSize: '0.813rem',
         lineHeight: 1.7,

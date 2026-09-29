@@ -265,7 +265,7 @@ export default function ShieldPage() {
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
             background: '#fafbff', display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
             <div>
@@ -277,7 +277,7 @@ export default function ShieldPage() {
             {/* 自动黑屏 */}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#956834" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                 自动黑屏
               </div>
               <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '0 0 12px 20px', lineHeight: 1.5 }}>
@@ -298,7 +298,7 @@ export default function ShieldPage() {
             {/* 频率限制 */}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 提问频率限制
               </div>
               <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '0 0 12px 20px', lineHeight: 1.5 }}>
@@ -319,7 +319,7 @@ export default function ShieldPage() {
             padding: '12px 24px', borderTop: '1px solid #f1f5f9',
             display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
           }}>
-            {configError && <span style={{ fontSize: "0.75rem", color: '#ef4444', display: 'flex', alignItems: 'center', gap: 3 }}>
+            {configError && <span style={{ fontSize: "0.75rem", color: '#a85d5d', display: 'flex', alignItems: 'center', gap: 3 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               {configError}
             </span>}
@@ -343,7 +343,7 @@ export default function ShieldPage() {
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
             background: '#fafbff', display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
             </svg>
             <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义屏蔽词</h2><span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
@@ -373,7 +373,7 @@ export default function ShieldPage() {
                   <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
                 ))}
                 <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>Ctrl+Enter</code> 保存</span>
-                <span style={{ color: pendingWords.length ? '#2563eb' : '#94a3b8', fontWeight: 600 }}>
+                <span style={{ color: pendingWords.length ? '#527198' : '#94a3b8', fontWeight: 600 }}>
                   · {pendingCharacterCount} 字 · {pendingWords.length} 个词
                 </span>
               </div>
@@ -385,7 +385,7 @@ export default function ShieldPage() {
               </button>
             </div>
             {error && (
-              <div style={{ marginTop: 10, fontSize: "0.75rem", color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, background: '#fef2f2', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
+              <div style={{ marginTop: 10, fontSize: "0.75rem", color: '#a85d5d', display: 'flex', alignItems: 'center', gap: 4, background: '#f8eeee', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 {error}
               </div>
@@ -404,15 +404,15 @@ export default function ShieldPage() {
             background: '#fafbff', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
               <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>自定义屏蔽词</h2>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                 padding: '0 8px', height: 22, borderRadius: 11,
-                background: customWords.length > 0 ? '#fef2f2' : '#f1f5f9',
-                color: customWords.length > 0 ? '#dc2626' : '#94a3b8',
+                background: customWords.length > 0 ? '#f8eeee' : '#f1f5f9',
+                color: customWords.length > 0 ? '#934e4e' : '#94a3b8',
                 fontSize: "0.688rem", fontWeight: 600,
               }}>
                 {customWords.length}
@@ -428,7 +428,7 @@ export default function ShieldPage() {
                   <span style={{
                     position: 'relative', width: 40, height: 22,
                     borderRadius: 11, border: 'none',
-                    background: customWords.some(w => w.enabled !== false) ? '#22c55e' : '#d1d5db',
+                    background: customWords.some(w => w.enabled !== false) ? '#3f7859' : '#d1d5db',
                     transition: 'background 0.2s', display: 'inline-block', flexShrink: 0,
                   }}>
                     <span style={{
@@ -444,10 +444,10 @@ export default function ShieldPage() {
                 <button onClick={() => void deleteCustomWords()} disabled={shieldAction !== null}
                   style={{
                     fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
-                    background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#dc2626',
+                    background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#934e4e',
                     display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.1s',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fef2f2'; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8eeee'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                   一键清空
@@ -468,7 +468,7 @@ export default function ShieldPage() {
                   <div key={w.id} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '5px 6px 5px 12px', borderRadius: 8,
-                    background: w.enabled === false ? '#f1f5f9' : '#fef2f2',
+                    background: w.enabled === false ? '#f1f5f9' : '#f8eeee',
                     color: w.enabled === false ? '#94a3b8' : '#991b1b',
                     fontSize: "0.813rem", fontWeight: 500, lineHeight: 1.4,
                     border: `1px solid ${w.enabled === false ? '#e2e8f0' : '#fecaca'}`,
@@ -480,7 +480,7 @@ export default function ShieldPage() {
                         width: 18, height: 18, border: 'none', borderRadius: 4,
                         background: 'transparent', cursor: 'pointer', padding: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: w.enabled === false ? '#94a3b8' : '#dc2626',
+                        color: w.enabled === false ? '#94a3b8' : '#934e4e',
                         fontSize: "0.813rem", lineHeight: 1, opacity: 0.35,
                         transition: 'all 0.1s',
                       }}
@@ -517,7 +517,7 @@ export default function ShieldPage() {
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                   padding: '0 8px', height: 22, borderRadius: 11,
-                  background: '#eef2ff', color: '#6366f1',
+                  background: '#eef3f8', color: '#6366f1',
                   fontSize: "0.688rem", fontWeight: 600,
                 }}>
                   {builtinWords.length}
@@ -531,7 +531,7 @@ export default function ShieldPage() {
               <span style={{
                 position: 'relative', width: 40, height: 22,
                 borderRadius: 11, border: 'none', display: 'inline-block', flexShrink: 0,
-                background: builtinWords.some(w => w.enabled !== false) ? '#22c55e' : '#d1d5db',
+                background: builtinWords.some(w => w.enabled !== false) ? '#3f7859' : '#d1d5db',
                 transition: 'background 0.2s',
               }}>
                 <span style={{
@@ -591,7 +591,7 @@ export default function ShieldPage() {
             padding: '14px 24px', borderBottom: '1px solid #f1f5f9', background: '#fafbff',
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
             <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂列表</h2>
@@ -623,7 +623,7 @@ export default function ShieldPage() {
                   onMouseLeave={e => { if (selectedClassroom !== c.id) (e.currentTarget as HTMLElement).style.background = 'white'; }}>
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                    background: selectedClassroom === c.id ? '#2563eb' : 'transparent',
+                    background: selectedClassroom === c.id ? '#527198' : 'transparent',
                     transition: 'all 0.15s',
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -632,8 +632,8 @@ export default function ShieldPage() {
                       <span>{c.className}</span>
                       <span style={{
                         padding: '0 6px', borderRadius: 3,
-                        background: c.status === 'active' ? '#dcfce7' : c.status === 'paused' ? '#fef3c7' : '#f1f5f9',
-                        color: c.status === 'active' ? '#16a34a' : c.status === 'paused' ? '#d97706' : '#94a3b8',
+                        background: c.status === 'active' ? '#dcfce7' : c.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
+                        color: c.status === 'active' ? '#3f7859' : c.status === 'paused' ? '#956834' : '#94a3b8',
                         fontSize: "0.688rem", fontWeight: 600,
                       }}>
                         {c.status === 'ended' ? '已结束' : c.status === 'paused' ? '已暂停' : '进行中'}
@@ -643,8 +643,8 @@ export default function ShieldPage() {
                   <div style={{
                     fontSize: "0.813rem", fontWeight: 700,
                     padding: '2px 12px', borderRadius: 8,
-                    background: c.warningCount > 0 ? '#fef2f2' : '#f1f5f9',
-                    color: c.warningCount > 0 ? '#dc2626' : '#94a3b8',
+                    background: c.warningCount > 0 ? '#f8eeee' : '#f1f5f9',
+                    color: c.warningCount > 0 ? '#934e4e' : '#94a3b8',
                     flexShrink: 0,
                   }}>
                     {c.warningCount} 次
@@ -666,7 +666,7 @@ export default function ShieldPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
               <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>拦截详情</h2>
@@ -678,10 +678,10 @@ export default function ShieldPage() {
             </div>
             {warnings.length > 0 && <button onClick={() => void clearWarnings()} disabled={shieldAction !== null} style={{
               fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
-              background: 'white', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+              background: 'white', color: '#934e4e', cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.1s',
             }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fef2f2'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8eeee'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
               清空全部
@@ -729,7 +729,7 @@ export default function ShieldPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <div style={{
                             width: 26, height: 26, borderRadius: '50%',
-                            background: '#eef2ff', color: '#2563eb',
+                            background: '#eef3f8', color: '#527198',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
                           }}>
@@ -755,7 +755,7 @@ export default function ShieldPage() {
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.1s',
                         }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fef2f2'; (e.currentTarget as HTMLElement).style.color = '#dc2626'; }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8eeee'; (e.currentTarget as HTMLElement).style.color = '#934e4e'; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#cbd5e1'; }}
                           title="删除">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>

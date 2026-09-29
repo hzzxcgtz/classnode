@@ -32,7 +32,7 @@ const CLASSROOM_AGENT_KEY = pickerKey('classroom', 'agent');
  * 同一页上两个不同的地球会让下一个人以为它们是两回事（2026-09-25 已立过这条）。
  */
 const GLOBE_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#527198" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>',
 )}`;
 const CLASSROOM_WEBAPP_KEY = pickerKey('classroom', 'webapp');
 
@@ -158,14 +158,14 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             style={{
               width: '100%', border: 0, borderBottom: '1px solid #f1f5f9', fontFamily: 'inherit', textAlign: 'left',
               display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer',
-              fontSize: '0.813rem', background: value === null ? '#eef2ff' : 'white',
+              fontSize: '0.813rem', background: value === null ? '#eef3f8' : 'white',
             }}>
             <span style={{ width: 20, height: 20, borderRadius: 4, background: '#e2e8f0', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
             </span>
             <span style={{ color: '#0f172a' }}>不指定</span>
             {value === null && (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#527198" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
@@ -183,7 +183,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
                   width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px', cursor: 'pointer', fontSize: '0.813rem',
-                  background: value === option.id ? '#eef2ff' : 'white',
+                  background: value === option.id ? '#eef3f8' : 'white',
                   transition: 'background 0.1s',
                 }}>
                 {logoUrl ? (
@@ -193,7 +193,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
                 )}
                 <span>{option.name}</span>
                 {value === option.id && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#527198" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 )}
@@ -571,8 +571,8 @@ export default function NewClassroomPage() {
             placeholder="如：第三单元英语对话练习"
             aria-invalid={Boolean(fieldErrors.title)}
             aria-describedby={fieldErrors.title ? 'classroom-title-error' : undefined}
-            style={{ borderColor: fieldErrors.title ? '#ef4444' : undefined }} />
-          {fieldErrors.title && <div id="classroom-title-error" role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+            style={{ borderColor: fieldErrors.title ? '#a85d5d' : undefined }} />
+          {fieldErrors.title && <div id="classroom-title-error" role="alert" style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.title}
           </div>}
@@ -624,26 +624,26 @@ export default function NewClassroomPage() {
                 className="new-classroom-mode-card"
                 style={{
                   flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
-                  border: `2px solid ${mode === m.id ? '#2563eb' : '#e2e8f0'}`,
-                  background: mode === m.id ? '#eef2ff' : 'white',
+                  border: `2px solid ${mode === m.id ? '#527198' : '#e2e8f0'}`,
+                  background: mode === m.id ? '#eef3f8' : 'white',
                   transition: 'all 0.12s',
                   display: 'flex', flexDirection: 'column', textAlign: 'left', font: 'inherit',
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <div style={{
                     width: 16, height: 16, borderRadius: '50%',
-                    border: `2px solid ${mode === m.id ? '#2563eb' : '#cbd5e1'}`,
+                    border: `2px solid ${mode === m.id ? '#527198' : '#cbd5e1'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {mode === m.id && (
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb' }} />
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#527198' }} />
                     )}
                   </div>
                   <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
                   {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
-                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#2563eb' : '#94a3b8' }}>{m.icon}</span>
+                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#527198' : '#94a3b8' }}>{m.icon}</span>
                   <span>{m.desc}</span>
                 </div>
               </button>
@@ -682,14 +682,14 @@ export default function NewClassroomPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '12px 14px', borderRadius: 10, userSelect: 'none',
-                      border: `1.5px solid ${fieldErrors.class ? '#ef4444' : isSelected ? '#2563eb' : '#e2e8f0'}`,
-                      background: isSelected ? '#eef2ff' : 'white',
+                      border: `1.5px solid ${fieldErrors.class ? '#a85d5d' : isSelected ? '#527198' : '#e2e8f0'}`,
+                      background: isSelected ? '#eef3f8' : 'white',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
                       opacity: isDisabled ? 0.5 : 1,
                       fontSize: "0.875rem",
                       transition: 'all 0.12s', textAlign: 'left', fontFamily: 'inherit',
                     }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#2563eb' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#527198' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -705,7 +705,7 @@ export default function NewClassroomPage() {
                       </div>
                     </div>
                     {isDisabled ? (
-                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#fef3c7', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
+                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f5ecdd', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
                     ) : hasGroups ? (
                       <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
                     ) : (
@@ -717,7 +717,7 @@ export default function NewClassroomPage() {
             </div>
           )}
           {selectedClassId && loadingGroups && <div className="new-classroom-inline-status" role="status">正在读取班级分组...</div>}
-          {fieldErrors.class && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {fieldErrors.class && <div role="alert" style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
             {fieldErrors.class}
           </div>}
@@ -729,7 +729,7 @@ export default function NewClassroomPage() {
         {selectedClassId && mode === 'advanced' && classGroups.length > 0 && (
           <div ref={agentSectionRef} style={{
             background: '#fafbfc', borderRadius: 10,
-            border: `1px solid ${fieldErrors.groupAgents ? '#ef4444' : '#eef2f6'}`,
+            border: `1px solid ${fieldErrors.groupAgents ? '#a85d5d' : '#eef2f6'}`,
             padding: '12px 16px', marginBottom: 12,
           }}>
             <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
@@ -767,7 +767,7 @@ export default function NewClassroomPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                     <div style={{
                       width: 26, height: 26, borderRadius: 6,
-                      background: '#2563eb', color: 'white',
+                      background: '#527198', color: 'white',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                     }}>
@@ -843,14 +843,14 @@ export default function NewClassroomPage() {
             {/* 网页列表加载失败时，组级那个下拉会**空着**。不在这里说出来，「没勾」与
                 「加载失败导致没得勾」在界面上长得一模一样（同课堂级那一块的告诫）。 */}
             {webappLoadError && (
-              <div role="alert" style={{ marginTop: 8, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
+              <div role="alert" style={{ marginTop: 8, padding: '10px 12px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
                 探究网页列表没有加载成功（{webappLoadError}），所以上面的「探究网页」下拉里没有可选项。
                 智能体那一栏不受影响；也可以去「探究网页」页确认后再发一次课堂。
               </div>
             )}
             {/* 同上一段，学习单那一格。 */}
             {worksheetLoadError && (
-              <div role="alert" style={{ marginTop: 8, padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
+              <div role="alert" style={{ marginTop: 8, padding: '10px 12px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.75rem", color: '#92400e', lineHeight: 1.7 }}>
                 学习单列表没有加载成功（{worksheetLoadError}），所以上面的「学习单」下拉里没有可选项。
                 另外两栏不受影响；也可以去「学习单」页确认后再发一次课堂。
               </div>
@@ -858,7 +858,7 @@ export default function NewClassroomPage() {
             {/* 同课堂级那一块的截断告知 —— 每组的「学习单」下拉吃的是**同一份**被截断的列表，
                 高级模式不说不等于没发生。见变量定义处的注释。 */}
             {worksheetTruncationHint}
-            {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {classGroups.length > 0 && fieldErrors.groupAgents && <div style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.groupAgents}
             </div>}
@@ -902,7 +902,7 @@ export default function NewClassroomPage() {
               allowUnspecified={false}
               clearOnReselect
             />
-            {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#ef4444', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {fieldErrors.agent}
             </div>}
@@ -934,7 +934,7 @@ export default function NewClassroomPage() {
             不选也可以 —— 那就记得至少选一个 AI 智能体。
           </div>
           {webappLoadError ? (
-            <div role="alert" style={{ padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
+            <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
               探究网页列表没有加载成功（{webappLoadError}）。
               这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
             </div>
@@ -999,7 +999,7 @@ export default function NewClassroomPage() {
             学生在课堂里会填写它。一个课堂只关联一份，也可以不关联。
           </div>
           {worksheetLoadError ? (
-            <div role="alert" style={{ padding: '12px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
+            <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
               学习单列表没有加载成功（{worksheetLoadError}）。
               这次创建的课堂**不会带学习单**；学习单本身没丢，可以去「学习单」页确认后再发一次课堂。
             </div>
@@ -1046,7 +1046,7 @@ export default function NewClassroomPage() {
             —— 挂在智能体那块会让「只选了网页」的教师以为问题出在网页那一栏。
             位置紧贴操作按钮：教师点「发起课堂」时它就在眼前，不需要往上翻。 */}
         {fieldErrors.material && <div ref={materialErrorRef} role="alert" style={{
-          fontSize: "0.813rem", color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a',
+          fontSize: "0.813rem", color: '#92400e', background: '#faf4eb', border: '1px solid #fde68a',
           borderRadius: 8, padding: '10px 14px', marginBottom: 16, marginTop: -4,
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
@@ -1054,7 +1054,7 @@ export default function NewClassroomPage() {
           {fieldErrors.material}
         </div>}
 
-        {fieldErrors.submit && <div role="alert" style={{ fontSize: "0.75rem", color: '#ef4444', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {fieldErrors.submit && <div role="alert" style={{ fontSize: "0.75rem", color: '#a85d5d', marginBottom: 16, marginTop: -4, display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           {fieldErrors.submit}
         </div>}

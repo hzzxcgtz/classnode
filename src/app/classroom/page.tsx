@@ -17,7 +17,7 @@ export default function StudentChatPage() {
             的 `spin`，本文件这份是历史冗余（不是死代码，删它要连着确认全局那份仍在）。
           （`blink` / `teacherBubbleIn` 已随 Task 9 删除：全树零引用。） */}
       <style>{`
-        :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #ef4444; --primary-light: #eef2ff; }
+        :root { --primary: #667eea; --text-secondary: #6b7280; --border: #e5e7eb; --bg: #f3f4f6; --danger: #a85d5d; --primary-light: #eef3f8; }
         @keyframes thinkingWave { 0%,60%,100% { color: #94a3b8 } 30% { color: #818cf8 } }
         @keyframes notifSlideUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

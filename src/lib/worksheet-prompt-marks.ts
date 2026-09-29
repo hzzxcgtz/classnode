@@ -83,7 +83,7 @@ export const DEFAULT_PROMPT_STYLE: PromptTextStyle = {
  */
 export const WORKSHEET_TEXT_COLORS = [
   { value: '#1e293b', label: '深灰' },
-  { value: '#1d4ed8', label: '蓝色' },
+  { value: '#466384', label: '蓝色' },
   { value: '#b91c1c', label: '红色' },
   { value: '#15803d', label: '绿色' },
   { value: '#7e22ce', label: '紫色' },
@@ -641,7 +641,7 @@ export function blankAnswerStyle(run: PromptTextStyle): Record<string, string | 
  *（题干里的输入框、题干里的落点槽 = `BlankSlot`、表格里的输入框、表格里的槽），
  * 所以必须与 `blankAnswerStyle` 同住一处：各写一份的症状是「同一个空，换个模式红得不一样」。
  *
- * ⚠️ 颜色用 `#b91c1c`（比原来那枚红叉的 `#dc2626` 暗一档）—— 教师说的是「**暗**红」。
+ * ⚠️ 颜色用 `#b91c1c`（比原来那枚红叉的 `#934e4e` 暗一档）—— 教师说的是「**暗**红」。
  */
 export const WRONG_ANSWER_STYLE: Record<string, string> = { color: '#b91c1c', textDecoration: 'line-through' };
 

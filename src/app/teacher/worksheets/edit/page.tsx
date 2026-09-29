@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { TeacherEmptyState, TeacherLoadingState, Toast } from '@/lib/components';
+import { TeacherEmptyState, TeacherLoadingState, Toast, useTeacherConfirm } from '@/lib/components';
 import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { api } from '@/lib/api';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
@@ -83,6 +83,7 @@ function describeSaveStatus(saveStatus: SaveStatus, dirty: boolean, hasId: boole
 function WorksheetEditorBody() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id') || null;
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
 
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: 'success' | 'error' }>({ show: false, msg: '', type: 'success' });
   const toastTimerRef = useRef<number | null>(null);
@@ -328,9 +329,14 @@ function WorksheetEditorBody() {
       }
     }
     lines.push('（删错了可以用「撤销」找回来。）');
-    if (!window.confirm(lines.join('\n'))) return;
+    if (!await askConfirmation({
+      title: isTask ? '删除这个任务？' : `删除第 ${heading} 题？`,
+      message: lines.join('\n'),
+      confirmLabel: '确认删除',
+      tone: 'danger',
+    })) return;
     editor.removeQuestion(node.id);
-  }, [editor]);
+  }, [askConfirmation, editor]);
 
   if (editor.loading) {
     return <TeacherLoadingState label="正在加载学习单…" />;
@@ -656,6 +662,8 @@ function WorksheetEditorBody() {
         />
       )}
 
+      {editor.confirmationDialog}
+      {confirmationDialog}
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}
     </div>
   );
@@ -691,7 +699,7 @@ function AddQuestionPicker({ onPick, onClose }: {
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="worksheet-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 560 }}>
+      <div className="worksheet-editor-dialog teacher-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 560 }}>
         <h3 id="worksheet-add-question-title">添加题目</h3>
         {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
             你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
@@ -887,7 +895,7 @@ function SettingsModal({ description, onDescriptionChange, settings, onSettingsC
       {/* ⚠️ 保存中不许点遮罩关窗：那一次请求的结果（成功/失败原因）会落在一个已经不存在的
           弹窗上，教师什么也看不到 —— 而顶栏那句状态他没在看。 */}
       <div className="modal-overlay" onClick={saving ? undefined : onClose} />
-      <div className="worksheet-editor-dialog worksheet-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title">
+      <div className="worksheet-editor-dialog teacher-editor-dialog worksheet-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-settings-title">
         <div className="worksheet-settings-head">
           <div>
             <h3 id="worksheet-settings-title">学习单设置</h3>

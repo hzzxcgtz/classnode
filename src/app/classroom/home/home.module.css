@@ -151,8 +151,8 @@
    ⚠️ 它现在是 `<article>` + 内层一个 `<button>`（卡片里有一个通栏按钮，按钮不能套按钮）——
       所以这一层不再有 `cursor: pointer` / `:active` 缩放：那两样属于按钮，见 `.cardCta`。 */
 .card {
-  --card-accent: #2563eb;
-  --card-accent-strong: #1d4ed8;
+  --card-accent: #527198;
+  --card-accent-strong: #466384;
   --card-icon-tint: #eaf3ff;
   --card-icon-rim: #cfe4ff;
   --card-surface: #f7fbff;

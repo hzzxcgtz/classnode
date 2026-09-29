@@ -17,17 +17,17 @@ import { InkPreview } from './ink-preview';
  * / `worksheet-tiles.tsx` 同一条铁律。
  *
  * ── 配色（与抽屉其余各处同源）────────────────────────────────────────
- *   · `#15803d` 对 / `#dc2626` 错 / `#b45309` 部分与提醒 / `#64748b` 中性 / `#94a3b8` 空。
- *   「正确答案」一律用**中性蓝**（`#1d4ed8`）而不是绿色 —— 绿色在抽屉里已经占了
+ *   · `#15803d` 对 / `#934e4e` 错 / `#b45309` 部分与提醒 / `#64748b` 中性 / `#94a3b8` 空。
+ *   「正确答案」一律用**中性蓝**（`#466384`）而不是绿色 —— 绿色在抽屉里已经占了
  *   「判对」这个意思，再用它标正确答案会让「他答对了」与「这是答案」分不开。
  */
 
 const OK = '#15803d';
-const BAD = '#dc2626';
+const BAD = '#934e4e';
 const WARN = '#b45309';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
-const ANSWER = '#1d4ed8';
+const ANSWER = '#466384';
 
 /**
  * 连线题的行距与中间那条通道的宽度。
@@ -81,7 +81,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
               padding: '4px 8px', borderRadius: 6,
               // 学生勾了的那个有明显的底；没勾的什么都不加（不是「灰掉」——
               // 灰会读成「不可选」，而这些选项都是可选的）。
-              background: option.picked ? (option.correct ? '#f0fdf4' : '#fef2f2') : 'transparent',
+              background: option.picked ? (option.correct ? '#f0fdf4' : '#f8eeee') : 'transparent',
               border: `1px solid ${option.picked ? (option.correct ? '#bbf7d0' : '#fecaca') : 'transparent'}`,
             }}>
               {/* 两件事各一个记号：**左边**说「学生勾没勾」（✓/空），

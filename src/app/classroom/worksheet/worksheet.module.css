@@ -20,7 +20,7 @@
   /* 模块身份色由组件用行内样式写进来（`MODULE_META.worksheet.accent`），
      这里给一个同值的兜底：教师端的「学生端预览」也会渲染本文件的题目部分，
      那条路径上没有外壳给这个变量。 */
-  --ws-accent: var(--module-accent, #2563eb);
+  --ws-accent: var(--module-accent, #527198);
   position: relative;
   /* 可用高度：Safari 15 不认识 `dvh`（整条声明被丢弃 ⇒ 退化成 auto），所以这三行是
      渐进增强链，**顺序不能动**（chat.module.css 的 `.chatShell` 是同一套）。 */
@@ -53,7 +53,7 @@
 }
 
 .topbar[data-offline='1'] {
-  background: #fffbeb;
+  background: #faf4eb;
   border-bottom-color: #fcd34d;
 }
 
@@ -165,7 +165,7 @@
 
 /* 题目列：窄屏铺满，宽屏（iPad 横屏 / 桌面）居中限宽 —— 一行 90 个字符的题干很难读。 */
 .questions {
-  --ws-accent: var(--module-accent, #2563eb);
+  --ws-accent: var(--module-accent, #527198);
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
@@ -200,19 +200,19 @@
 /* 「正在写」比普通悬停更稳定：即使鼠标移开，学生仍知道自己刚才在操作哪一题。 */
 .question[data-state='drafting'],
 .question:focus-within {
-  border-color: rgba(37, 99, 235, .58);
+  border-color: rgba(82, 113, 152, .58);
   /* ⚠️ `.98` 在这里是「比常态再亮一点点」的相对关系，所以它也读同一个变量 ——
      写死 `.98` 的话，最透那一档上「正在写」的卡片会比旁边的**更不透明**，层次反了。 */
   /* ⚠️ `.98` 是默认档下「正在写」的那个字面量（第三个数在 `surfaceAlphas` 里一起算）——
      在 CSS 里写 `calc()` 叠加在旧 Safari 上不保险，所以由 JS 给第三个变量。 */
   background: rgba(249, 252, 255, var(--ws-card-active-alpha, .98));
-  box-shadow: 0 10px 28px rgba(37, 99, 235, .13), inset 4px 0 0 var(--ws-accent);
+  box-shadow: 0 10px 28px rgba(82, 113, 152, .13), inset 4px 0 0 var(--ws-accent);
 }
 
 @media (hover: hover) {
   .questions[data-interactive='1'] .question:hover {
-    border-color: rgba(37, 99, 235, .48);
-    box-shadow: 0 12px 30px rgba(37, 99, 235, .14);
+    border-color: rgba(82, 113, 152, .48);
+    box-shadow: 0 12px 30px rgba(82, 113, 152, .14);
     transform: translateY(-1px);
   }
 }
@@ -458,7 +458,7 @@
 .optionSelected {
   border-color: var(--ws-accent);
   background: #edf5ff;
-  box-shadow: 0 7px 18px rgba(37, 99, 235, .13), inset 0 0 0 1px rgba(37, 99, 235, .08);
+  box-shadow: 0 7px 18px rgba(82, 113, 152, .13), inset 0 0 0 1px rgba(82, 113, 152, .08);
 }
 
 .optionInput {
@@ -471,7 +471,7 @@
 }
 
 .option:focus-within {
-  outline: 3px solid rgba(37, 99, 235, .2);
+  outline: 3px solid rgba(82, 113, 152, .2);
   outline-offset: 2px;
 }
 
@@ -559,7 +559,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef2ff;
+  background: #eef3f8;
   color: var(--ws-accent);
   font-size: .74rem;
   font-weight: 800;
@@ -631,11 +631,11 @@
   cursor: pointer;
   font-family: inherit;
   transition: transform .16s ease-out, box-shadow .16s ease-out, background-color .16s ease-out;
-  box-shadow: 0 5px 14px rgba(37, 99, 235, .18);
+  box-shadow: 0 5px 14px rgba(82, 113, 152, .18);
 }
 
 .submitButton:not(:disabled):hover {
-  box-shadow: 0 7px 18px rgba(37, 99, 235, .25);
+  box-shadow: 0 7px 18px rgba(82, 113, 152, .25);
   transform: translateY(-1px);
 }
 
@@ -734,7 +734,7 @@
 
 .question { border-radius: 12px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .question[data-state='drafting'], .question:focus-within { box-shadow: inset 3px 0 0 var(--ws-accent); }
-@media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(37,99,235,.58); } }
+@media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(82, 113, 152,.58); } }
 .group[data-container='1'] { border-radius: 14px; box-shadow: none; }
 .groupTitle { margin: 2px 0 4px; padding: 0; border-left: 0; font-size: 1.35rem; text-align: center; }
 .groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: center; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
@@ -743,9 +743,9 @@
 .option { border-radius: 8px; min-height: 54px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .option:hover { border-color: #7daff2; transform: none; }
 .option:active { transform: none; background: #f1f5f9; }
-.optionSelected { box-shadow: inset 0 0 0 1px rgba(37,99,235,.08); }
+.optionSelected { box-shadow: inset 0 0 0 1px rgba(82, 113, 152,.08); }
 .submitButton { box-shadow: none; }
-.submitButton:not(:disabled):hover { box-shadow: none; transform: none; background: #1d4ed8; }
+.submitButton:not(:disabled):hover { box-shadow: none; transform: none; background: #466384; }
 .dragActive { border-color: var(--ws-accent); box-shadow: inset 0 0 0 1px var(--ws-accent); transform: none; }
 
 .orderRow { display: flex; align-items: center; gap: 8px; max-width: 600px; }
@@ -834,7 +834,7 @@
   gap: 9px;
   padding: 4px 8px 4px 10px;
   border: 0;
-  border-left: 2px solid #16a34a;
+  border-left: 2px solid #3f7859;
   background: #f0fdf4;
   color: #166534;
   font-size: .78rem;
@@ -848,14 +848,14 @@
 }
 
 .questionFeedback[data-result='partial'] {
-  border-left-color: #d97706;
-  background: #fffbeb;
+  border-left-color: #956834;
+  background: #faf4eb;
   color: #92400e;
 }
 
 .questionFeedback[data-result='incorrect'] {
-  border-left-color: #dc2626;
-  background: #fef2f2;
+  border-left-color: #934e4e;
+  background: #f8eeee;
   color: #991b1b;
 }
 
@@ -985,7 +985,7 @@
   min-width: 270px;
   max-width: min(100%, 440px);
   padding: 10px 12px;
-  border-left: 3px solid #16a34a;
+  border-left: 3px solid #3f7859;
   background: #f0fdf4;
   font-size: .8rem;
   color: #166534;
@@ -1007,8 +1007,8 @@
 .questionLead .questionState { margin-top: 7px; }
 .feedbackSummary { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.45; }
 .feedbackSummary strong { font-size: .88rem; }
-.questionFeedback[data-result='partial'] { border-left-color: #d97706; background: #fffbeb; color: #92400e; }
-.questionFeedback[data-result='incorrect'] { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }
+.questionFeedback[data-result='partial'] { border-left-color: #956834; background: #faf4eb; color: #92400e; }
+.questionFeedback[data-result='incorrect'] { border-left-color: #934e4e; background: #f8eeee; color: #991b1b; }
 .questionFeedback[data-result='partial'] .feedbackReward { border-left-color: rgba(146, 64, 14, .2); }
 .questionFeedback[data-result='incorrect'] .feedbackReward { border-left-color: rgba(153, 27, 27, .2); }
 .lockedTail { padding: 20px; border: 1px dashed #94a3b8; background: rgba(248,250,252,.88); display: grid; justify-items: center; gap: 5px; color: #64748b; text-align: center; }
@@ -1028,7 +1028,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px 16px;
-  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #527198 0%, #1e40af 100%);
   box-sizing: border-box;
 }
 
@@ -1040,7 +1040,7 @@
      那两处逐字相同（`28px 24px` / `border-top: 4px` / `0 10px 30px rgba(30,27,75,.16)`），
      而本文件是 `26px 22px` / `5px` / `0 18px 40px`。注释自己写着「与探究空间同款语气」，
      那就让它字面为真。 */
-  border-top: 4px solid var(--module-accent, #2563eb);
+  border-top: 4px solid var(--module-accent, #527198);
   background: #fff;
   padding: 28px 24px;
   text-align: center;
@@ -1053,7 +1053,7 @@
   padding: 3px 12px;
   border-radius: 999px;
   /* ★ M6b/14：与另外两处同款 —— 那两处是**模块色底 + 白字 + 下边距**。 */
-  background: var(--module-accent, #2563eb);
+  background: var(--module-accent, #527198);
   color: #fff;
   font-size: .813rem;
   font-weight: 700;
@@ -1130,7 +1130,7 @@
    而它不依赖任何测量 —— 拖拽挂掉时也不会画出一个错位的影子。 */
 .dragActive {
   border-color: var(--ws-accent);
-  box-shadow: 0 10px 24px rgba(37, 99, 235, .24);
+  box-shadow: 0 10px 24px rgba(82, 113, 152, .24);
   transform: scale(1.025) rotate(-0.5deg);
   cursor: grabbing;
 }
@@ -1138,8 +1138,8 @@
 /* 手指底下的落点。`dragActive` 说的是「我手里拿着什么」，这一条说的是「它要落到哪」。 */
 .dropActive {
   border-color: var(--ws-accent);
-  background: #eef2ff;
-  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .1);
+  background: #eef3f8;
+  box-shadow: inset 0 0 0 2px rgba(82, 113, 152, .1);
 }
 
 /* 操作提示（拖拽 / 点选两条路都要说一句 —— 老 iPad 上没人会去猜手势）。 */
@@ -1202,7 +1202,7 @@
   opacity: .95;
   position: relative;
   z-index: 3;
-  box-shadow: 0 8px 20px rgba(37, 99, 235, .24);
+  box-shadow: 0 8px 20px rgba(82, 113, 152, .24);
   transition: none;
 }
 
@@ -1219,7 +1219,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef2ff;
+  background: #eef3f8;
   color: var(--ws-accent);
   font-size: .76rem;
   font-weight: 800;
@@ -1355,7 +1355,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fee2e2;
+  background: #f3e3e3;
   color: #b91c1c;
   font-size: .72rem;
   font-weight: 800;
@@ -1370,7 +1370,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: .72rem;
-  color: #2563eb;
+  color: #527198;
 }
 
 .matchLines {
@@ -1483,8 +1483,8 @@
 .choiceWordPicked > span,
 .choiceWord.dragActive > span {
   border-color: var(--ws-accent);
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 .choiceWord.dragActive {
@@ -1702,7 +1702,7 @@
 /* 最终外观覆盖放在文件末尾，确保不被上面的题型基础样式盖回去。 */
 .question { border-radius: 12px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .question[data-state='drafting'], .question:focus-within { box-shadow: inset 3px 0 0 var(--ws-accent); }
-@media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(37,99,235,.58); } }
+@media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(82, 113, 152,.58); } }
 .group[data-container='1'] { border-radius: 14px; box-shadow: none; }
 .groupTitle { margin: 2px 0 4px; padding: 0; border-left: 0; font-size: 1.35rem; text-align: center; }
 .groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: center; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
@@ -1710,9 +1710,9 @@
 .option { border-radius: 8px; min-height: 54px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .option:hover { border-color: #7daff2; transform: none; }
 .option:active { transform: none; background: #f1f5f9; }
-.optionSelected { box-shadow: inset 0 0 0 1px rgba(37,99,235,.08); }
+.optionSelected { box-shadow: inset 0 0 0 1px rgba(82, 113, 152,.08); }
 .submitButton, .submitButton:not(:disabled):hover { box-shadow: none; transform: none; }
-.submitButton:not(:disabled):hover { background: #1d4ed8; }
+.submitButton:not(:disabled):hover { background: #466384; }
 .dragActive { border-color: var(--ws-accent); box-shadow: inset 0 0 0 1px var(--ws-accent); transform: none; }
 .orderRow { display: flex; align-items: center; gap: 8px; max-width: 600px; }
 .orderItem { flex: 1 1 auto; min-height: 40px; border-radius: 6px; }
@@ -1810,12 +1810,12 @@
 
 /* 进度状态也与图标同色：已完成用绿，正在写沿用“部分答对”的琥珀配色。 */
 .resultCell[data-tone='progress-completed'] { background: #f0fdf4; color: #15803d; }
-.resultCell[data-tone='progress-drafting'] { background: #fffbeb; color: #b45309; }
+.resultCell[data-tone='progress-drafting'] { background: #faf4eb; color: #b45309; }
 
 /* 判分那一段：底色与字色随结果走（三段各自一档，配色与「正确答案」那块互不干扰） */
 .resultCell[data-tone='correct'] { background: #f0fdf4; color: #15803d; }
-.resultCell[data-tone='partial'] { background: #fffbeb; color: #b45309; }
-.resultCell[data-tone='incorrect'] { background: #fef2f2; color: #b91c1c; }
+.resultCell[data-tone='partial'] { background: #faf4eb; color: #b45309; }
+.resultCell[data-tone='incorrect'] { background: #f8eeee; color: #b91c1c; }
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的

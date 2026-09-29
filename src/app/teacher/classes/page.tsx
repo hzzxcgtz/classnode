@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { Toast, Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
+import { Toast, Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState, useTeacherConfirm } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
 const API_BASE = getApiBaseUrl();
@@ -11,7 +11,7 @@ type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
 function SortIcon({ field, sortField, sortDir }: { field: StudentSortField; sortField: StudentSortField; sortDir: 'asc' | 'desc' }) {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-      stroke={sortField === field ? '#2563eb' : '#cbd5e1'}
+      stroke={sortField === field ? '#527198' : '#cbd5e1'}
       strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
       {sortField === field && sortDir === 'asc'
         ? <polyline points="18 15 12 9 6 15" />
@@ -21,6 +21,7 @@ function SortIcon({ field, sortField, sortDir }: { field: StudentSortField; sort
 }
 
 export default function ClassesPage() {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export default function ClassesPage() {
   const [classAvatars, setClassAvatars] = useState<Record<number, string>>({});
   const [studentAvatars, setStudentAvatars] = useState<Record<string, string>>({});
   const [classIconPicker, setClassIconPicker] = useState<string | null>(null);
+  const [showClassSettings, setShowClassSettings] = useState(false);
   const [studentAvatarPicker, setStudentAvatarPicker] = useState<{ studentId: string; currentAvatarId?: number } | null>(null);
   const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
   const [studentMarqueeRect, setStudentMarqueeRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
@@ -174,7 +176,12 @@ export default function ClassesPage() {
       setDeleteBusyId(null);
       return;
     }
-    if (!confirm('确定删除此班级及所有学生数据？')) {
+    if (!await askConfirmation({
+      title: '删除这个班级？',
+      message: `班级「${cls.name}」及其中的全部学生数据都会被删除。`,
+      confirmLabel: '删除班级',
+      tone: 'danger',
+    })) {
       deleteBusyRef.current = false;
       setDeleteBusyId(null);
       return;
@@ -194,7 +201,12 @@ export default function ClassesPage() {
 
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
     if (!selectedClass || deleteBusyRef.current) return;
-    if (!confirm(`确定删除 ${studentName}？`)) return;
+    if (!await askConfirmation({
+      title: '删除这名学生？',
+      message: `学生「${studentName}」将从当前班级中删除。`,
+      confirmLabel: '删除学生',
+      tone: 'danger',
+    })) return;
     deleteBusyRef.current = true;
     setDeleteBusyId(`student:${studentId}`);
     try {
@@ -213,7 +225,12 @@ export default function ClassesPage() {
   const handleBatchDeleteStudents = async () => {
     if (!selectedClass || batchActionRef.current) return;
     const ids = [...selectedStudentIds];
-    if (!ids.length || !confirm(`确定删除选中的 ${ids.length} 名学生？此操作不可撤销。`)) return;
+    if (!ids.length || !await askConfirmation({
+      title: `删除选中的 ${ids.length} 名学生？`,
+      message: '这些学生将从当前班级中删除，此操作不可撤销。',
+      confirmLabel: '批量删除',
+      tone: 'danger',
+    })) return;
     batchActionRef.current = true;
     setBatchAction('delete');
     try {
@@ -236,7 +253,11 @@ export default function ClassesPage() {
   const handleBatchClearAvatars = async () => {
     if (batchActionRef.current) return;
     const ids = [...selectedStudentIds];
-    if (!ids.length || !confirm(`确定清除选中 ${ids.length} 名学生的头像？`)) return;
+    if (!ids.length || !await askConfirmation({
+      title: `清除 ${ids.length} 名学生的头像？`,
+      message: '学生资料会保留，之后仍可重新选择或分配头像。',
+      confirmLabel: '清除头像',
+    })) return;
     batchActionRef.current = true;
     setBatchAction('avatars');
     try {
@@ -374,7 +395,7 @@ export default function ClassesPage() {
   };
 
   return (
-    <div>
+    <div className="classes-page">
       <TeacherPageHeader title="班级管理" description="维护班级、学生名单和课堂分组。" actions={
         <button className="btn btn-primary" onClick={openCreateModal}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -385,11 +406,11 @@ export default function ClassesPage() {
       {/* 创建班级弹窗 */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 28 }}>
+          <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 28 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
-                background: '#eef2ff', color: '#2563eb',
+                background: '#eef3f8', color: '#527198',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
@@ -412,7 +433,7 @@ export default function ClassesPage() {
                       onClick={() => setNewClassAvatarId(newClassAvatarId === icon.id ? null : icon.id)}
                       style={{
                         width: 40, height: 40, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                        border: `2px solid ${newClassAvatarId === icon.id ? '#2563eb' : '#e2e8f0'}`,
+                        border: `2px solid ${newClassAvatarId === icon.id ? '#527198' : '#e2e8f0'}`,
                         transition: 'all 0.12s',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
@@ -431,176 +452,59 @@ export default function ClassesPage() {
         </div>
       )}
 
-      {/* 主体内容 */}
-      <div className="classes-layout" style={{ display: 'flex', gap: 24 }}>
-        {/* 班级列表 */}
-        <div className="classes-sidebar" style={{ width: 260, flexShrink: 0 }}>
-          {loading ? (
-            <TeacherLoadingState label="正在加载班级…" />
-          ) : classes.length === 0 ? (
-            <div style={{
-              background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
-              textAlign: 'center', padding: '48px 20px',
-            }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: 14,
-                background: '#f1f5f9', margin: '0 auto 12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                </svg>
-              </div>
-              <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>暂无班级</p>
-              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: '0 0 16px' }}>创建班级后即可添加学生</p>
-              <button className="btn btn-primary" style={{ fontSize: "0.813rem" }} onClick={openCreateModal}>
-                创建第一个班级
-              </button>
+      {/* 班级切换与工作区 */}
+      <div className="classes-page-content">
+        {loading ? (
+          <div className="classes-switcher-loading"><TeacherLoadingState label="正在加载班级…" /></div>
+        ) : classes.length === 0 ? (
+          <div className="classes-empty-state">
+            <div className="classes-empty-state-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+              </svg>
             </div>
-          ) : (
-            <div className="classes-sidebar-list" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <p className="classes-empty-state-title">暂无班级</p>
+            <p className="classes-empty-state-description">创建班级后即可添加学生</p>
+            <button className="btn btn-primary" onClick={openCreateModal}>创建第一个班级</button>
+          </div>
+        ) : (
+          <section className="classes-switcher" aria-label="切换班级">
+            <div className="classes-switcher-label">我的班级</div>
+            <div className="classes-switcher-track">
               {classes.map(c => (
-                <div key={c.id}
-                  onClick={() => { setSelectedClass(c.id); setSelectedStudentIds(new Set()); setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}
-                  style={{
-                    padding: '13px 16px', borderRadius: 12, cursor: 'pointer',
-                    border: `1.5px solid ${selectedClass === c.id ? '#2563eb' : '#e2e8f0'}`,
-                    background: selectedClass === c.id ? '#f8faff' : 'white',
-                    boxShadow: selectedClass === c.id
-                      ? '0 1px 4px rgba(37,99,235,0.08)'
-                      : '0 1px 3px rgba(0,0,0,0.03)',
-                    transition: 'all 0.15s ease',
-                    position: 'relative',
-                    overflow: 'hidden',
-                  }}
-                  onMouseEnter={e => {
-                    if (selectedClass !== c.id) {
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                      e.currentTarget.style.background = '#fafbfc';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (selectedClass !== c.id) {
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                      e.currentTarget.style.background = 'white';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
-                    }
+                <button key={c.id} type="button"
+                  className={selectedClass === c.id ? 'classes-switcher-item is-active' : 'classes-switcher-item'}
+                  aria-pressed={selectedClass === c.id}
+                  onClick={() => {
+                    setSelectedClass(c.id);
+                    setSelectedStudentIds(new Set());
+                    setStudentSearch('');
+                    setStudentGroupFilter('all');
+                    setStudentPage(1);
+                    setEditingClassName(null);
+                    setShowClassSettings(false);
                   }}>
-                  {/* 选中指示条 */}
-                  {selectedClass === c.id && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: 0, bottom: 0,
-                      width: 3, background: '#2563eb',
-                      borderRadius: '0 2px 2px 0',
-                    }} />
+                  {c.avatarId && classAvatars[c.avatarId] ? (
+                    <span className="classes-switcher-avatar has-image"
+                      dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[c.avatarId]).replace('<svg', '<svg width="32" height="32"') }} />
+                  ) : (
+                    <span className="classes-switcher-avatar">{c.name[0]}</span>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {c.avatarId && classAvatars[c.avatarId] ? (
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 6, flexShrink: 0, overflow: 'hidden',
-                      }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[c.avatarId]).replace('<svg', '<svg width="28" height="28"') }} />
-                    ) : (
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                        color: 'white',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
-                      }}>
-                        {c.name[0]}
-                      </div>
-                    )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ marginBottom: 4 }}>
-                      {editingClassName === c.id ? (
-                        <input className="input" defaultValue={c.name} autoFocus
-                          onBlur={e => { handleRenameClass(c.id, e.target.value); }}
-                          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingClassName(null); }}
-                          style={{ width: '100%', fontSize: "0.813rem", fontWeight: 600 }}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      ) : (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-                        }}
-                          onClick={e => { e.stopPropagation(); setEditingClassName(c.id); }}>
-                          <span style={{
-                            fontWeight: 600,
-                            fontSize: selectedClass === c.id ? 16 : 15,
-                            color: '#0f172a',
-                          }}>{c.name}</span>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                            strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-                            style={{ flexShrink: 0, stroke: '#cbd5e1', transition: 'stroke 0.12s' }}
-                            onMouseEnter={e => e.currentTarget.style.stroke = '#2563eb'}
-                            onMouseLeave={e => e.currentTarget.style.stroke = '#cbd5e1'}>
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                            <path d="M14 6l4 4" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                      <div style={{
-                        fontSize: "0.75rem", color: '#94a3b8',
-                        display: 'flex', alignItems: 'center', gap: 12,
-                      }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-                          {c._count?.students || 0} 人
-                        </span>
-                        {(c._count?.groups ?? 0) > 0 && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-                            {c._count?.groups || 0} 个分组
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{
-                    marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef2f6',
-                    display: 'flex', justifyContent: 'flex-end',
-                    minHeight: 32,
-                    visibility: selectedClass === c.id ? 'visible' : 'hidden',
-                  }}>
-                    <button
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '4px 10px', borderRadius: 6,
-                        fontSize: "0.75rem", fontWeight: 500,
-                        color: '#94a3b8', border: '1px solid transparent',
-                        background: 'transparent', cursor: 'pointer',
-                        transition: 'all 0.12s',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.color = '#ef4444';
-                        e.currentTarget.style.borderColor = '#fca5a5';
-                        e.currentTarget.style.background = '#fef2f2';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.color = '#94a3b8';
-                        e.currentTarget.style.borderColor = 'transparent';
-                        e.currentTarget.style.background = 'transparent';
-                      }}
-                      onClick={(e) => { e.stopPropagation(); void handleDeleteClass(c.id); }} disabled={deleteBusyId !== null}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
-                      {deleteBusyId === `class:${c.id}` ? '删除中...' : '删除此班级'}
-                    </button>
-                  </div>
-                </div>
+                  <span className="classes-switcher-copy">
+                    <strong>{c.name}</strong>
+                    <small>{c._count?.students || 0} 名学生{(c._count?.groups ?? 0) > 0 ? `，${c._count?.groups || 0} 个分组` : ''}</small>
+                  </span>
+                </button>
               ))}
             </div>
-          )}
-        </div>
+          </section>
+        )}
 
         {/* 删除被阻止的浮动弹窗 */}
         {deleteBlocked && (
           <>
             <div className="modal-overlay" onClick={() => setDeleteBlocked(null)} />
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{
+            <div className="modal-content teacher-dialog teacher-dialog-alert" onClick={e => e.stopPropagation()} style={{
               position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
               zIndex: 201, background: 'white', borderRadius: 16, padding: 32,
               width: 420, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
@@ -608,10 +512,10 @@ export default function ClassesPage() {
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <div style={{
                   width: 52, height: 52, borderRadius: '50%',
-                  background: '#fef2f2', margin: '0 auto 12px',
+                  background: '#f8eeee', margin: '0 auto 12px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                   </svg>
                 </div>
@@ -621,7 +525,7 @@ export default function ClassesPage() {
                 </p>
               </div>
               <div style={{
-                background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
+                background: '#f8eeee', border: '1px solid #fecaca', borderRadius: 10,
                 padding: '12px 16px', marginBottom: 16,
               }}>
                 <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>
@@ -638,8 +542,8 @@ export default function ClassesPage() {
                     {cr.title}
                     <span style={{
                       fontSize: "0.688rem", padding: '1px 6px', borderRadius: 4,
-                      background: cr.status === 'active' ? '#dcfce7' : cr.status === 'paused' ? '#fef3c7' : '#f1f5f9',
-                      color: cr.status === 'active' ? '#16a34a' : cr.status === 'paused' ? '#d97706' : '#94a3b8',
+                      background: cr.status === 'active' ? '#dcfce7' : cr.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
+                      color: cr.status === 'active' ? '#3f7859' : cr.status === 'paused' ? '#956834' : '#94a3b8',
                       marginLeft: 'auto',
                     }}>
                       {cr.status === 'active' ? '进行中' : cr.status === 'paused' ? '已暂停' : '已结束'}
@@ -656,65 +560,68 @@ export default function ClassesPage() {
         )}
 
         {/* 学生列表 / 分组管理 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {selectedClass ? (
-            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-              {/* 头部：班级概览区块 — 紧凑版 */}
-              <div style={{
-                padding: '12px 20px 0',
-                background: 'linear-gradient(135deg, #f8faff 0%, #ffffff 100%)',
-                borderBottom: '1px solid #eef2f6',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <div onClick={() => setClassIconPicker(selectedClass)}
-                    style={{ cursor: 'pointer', position: 'relative' }} title="点击更换班级图标">
-                    {selectedClassData?.avatarId && classAvatars[selectedClassData.avatarId] ? (
-                      <div style={{
-                        width: 52, height: 52, borderRadius: 8, flexShrink: 0, overflow: 'hidden',
-                      }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[selectedClassData.avatarId]).replace('<svg', '<svg width="52" height="52"') }} />
-                    ) : (
-                      <div style={{
-                        width: 52, height: 52, borderRadius: 8,
-                        background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                        color: 'white',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 700, fontSize: "0.875rem", flexShrink: 0,
-                      }}>
-                        {selectedClassData?.name?.[0] || '班'}
+        {!loading && classes.length > 0 && (
+          selectedClass ? (
+            <div className="classes-workspace">
+              <div className="classes-workspace-header">
+                <button type="button" className="classes-current-avatar" onClick={() => setClassIconPicker(selectedClass)} title="更换班级图标">
+                  {selectedClassData?.avatarId && classAvatars[selectedClassData.avatarId] ? (
+                    <span className="classes-current-avatar-image"
+                      dangerouslySetInnerHTML={{ __html: fixSvgUrl(classAvatars[selectedClassData.avatarId]).replace('<svg', '<svg width="44" height="44"') }} />
+                  ) : (
+                    <span className="classes-current-avatar-fallback">{selectedClassData?.name?.[0] || '班'}</span>
+                  )}
+                </button>
+
+                <div className="classes-current-heading">
+                  <span>当前班级</span>
+                  {editingClassName === selectedClass ? (
+                    <input className="input classes-current-name-input" defaultValue={selectedClassData?.name || ''} autoFocus
+                      onBlur={e => { void handleRenameClass(selectedClass, e.target.value); }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingClassName(null); }} />
+                  ) : (
+                    <h2>{selectedClassData?.name || '班级'}</h2>
+                  )}
+                </div>
+
+                <div className="classes-current-stats" aria-label="班级概览">
+                  <div><strong>{students.length}</strong><span>学生</span></div>
+                  <div><strong>{classGroups.length}</strong><span>小组</span></div>
+                  <div className="classes-current-stats-secondary">
+                    <span>已分组 {students.filter(s => studentGroupMap.has(s.id)).length}</span>
+                    <span>未分组 {students.filter(s => !studentGroupMap.has(s.id)).length}</span>
+                  </div>
+                </div>
+
+                <div className="classes-current-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setClassIconPicker(selectedClass)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    更换图标
+                  </button>
+                  <div className="classes-settings-wrap">
+                    <button type="button" className="btn btn-secondary" aria-expanded={showClassSettings}
+                      onClick={() => setShowClassSettings(previous => !previous)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.1A1.7 1.7 0 0 0 4.6 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.08.38.3.73.6 1 .3.27.68.4 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7.6Z"/></svg>
+                      班级设置
+                    </button>
+                    {showClassSettings && (
+                      <div className="classes-settings-menu">
+                        <button type="button" onClick={() => { setEditingClassName(selectedClass); setShowClassSettings(false); }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          重命名班级
+                        </button>
+                        <button type="button" className="is-danger" disabled={deleteBusyId !== null}
+                          onClick={() => { setShowClassSettings(false); void handleDeleteClass(selectedClass); }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          {deleteBusyId === `class:${selectedClass}` ? '删除中...' : '删除班级'}
+                        </button>
                       </div>
                     )}
-                    <div style={{ position: 'absolute', right: -4, bottom: -4, background: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </div>
                   </div>
-                  <h2 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
-                    {selectedClassData?.name || '班级'}
-                  </h2>
                 </div>
+              </div>
 
-                {/* 快捷统计 — 行内紧凑 */}
-                <div style={{
-                  display: 'flex', gap: 0, marginBottom: 10,
-                  padding: '8px 0',
-                }}>
-                  {[
-                    { label: '学生', value: students.length, color: '#2563eb' },
-                    { label: '分组', value: classGroups.length, color: '#8b5cf6' },
-                    { label: '已分组', value: students.filter(s => studentGroupMap.has(s.id)).length, color: '#10b981' },
-                    { label: '未分组', value: students.filter(s => !studentGroupMap.has(s.id)).length, color: (selectedClassData?._count?.groups ?? 0) > 0 ? '#f59e0b' : '#94a3b8' },
-                  ].map((stat, i) => (
-                    <div key={i} style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      borderRight: i < 3 ? '1px solid #eef2f6' : 'none',
-                    }}>
-                      <div style={{ fontSize: "1.125rem", fontWeight: 700, color: stat.color, lineHeight: 1 }}>
-                        {stat.value}
-                      </div>
-                      <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>{stat.label}</div>
-                    </div>
-                  ))}
-                </div>
-
+              <div className="classes-workspace-tabs">
                 <TeacherPageTabs value={tabMode} onChange={setTabMode} items={[
                   { value: 'students', label: '学生列表', badge: students.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> },
                   { value: 'groups', label: '分组管理', badge: classGroups.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg> },
@@ -726,7 +633,7 @@ export default function ClassesPage() {
                 <div className="classes-action-bar teacher-list-toolbar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
                   {selectedStudentIds.size > 0 ? (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#527198" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                       <span style={{ fontWeight: 600, color: '#1e40af', fontSize: "0.813rem" }}>
                         已选 {selectedStudentIds.size} 名学生
                       </span>
@@ -738,15 +645,15 @@ export default function ClassesPage() {
                         }}>取消选择</button>
                       <div style={{ flex: 1 }} />
                       <span style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
-                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#527198', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
-                      <button onClick={() => void handleBatchDeleteStudents()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#ef4444', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchDeleteStudents()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         {batchAction === 'delete' ? '删除中...' : '删除学生'}
                       </button>
-                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#f59e0b', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#956834', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         {batchAction === 'avatars' ? '清除中...' : '清除头像'}
                       </button>
@@ -798,7 +705,11 @@ export default function ClassesPage() {
                         {students.some(s => !s.avatarId) && (
                           <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={async () => {
-                              if (!confirm('为当前班级中未分配头像的学生按性别自动分配头像？')) return;
+                              if (!await askConfirmation({
+                                title: '自动分配学生头像？',
+                                message: '系统会按性别为当前班级中尚未设置头像的学生自动分配头像。',
+                                confirmLabel: '开始分配',
+                              })) return;
                               try {
                                 const r = await api.autoAssignAvatar({ classId: selectedClass! });
                                 setToast({ msg: `已为 ${r.assigned} 名学生分配头像`, type: 'success' });
@@ -885,7 +796,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
+                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               学号 <SortIcon field="studentNo" sortField={sortField} sortDir={sortDir} />
@@ -897,7 +808,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
+                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               姓名 <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
@@ -909,7 +820,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
+                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               性别 <SortIcon field="gender" sortField={sortField} sortDir={sortDir} />
@@ -921,7 +832,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#2563eb'}
+                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               分组 <SortIcon field="group" sortField={sortField} sortDir={sortDir} />
@@ -950,7 +861,7 @@ export default function ClassesPage() {
                                   style={{ width: 15, height: 15, cursor: 'pointer' }} />
                               </label>
                             </td>
-                            <td style={{ textAlign: 'center', color: s.studentNo ? '#2563eb' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
+                            <td style={{ textAlign: 'center', color: s.studentNo ? '#527198' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
                             <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -963,7 +874,7 @@ export default function ClassesPage() {
                                 ) : (
                                   <div style={{
                                     width: 28, height: 28, borderRadius: '50%',
-                                    background: '#eef2ff', color: '#2563eb',
+                                    background: '#eef3f8', color: '#527198',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     fontSize: "0.75rem", fontWeight: 600,
                                   }}>
@@ -976,7 +887,7 @@ export default function ClassesPage() {
                               </div>
                               {s.name}
                               {s.avatarChangeTokens > 0 && (
-                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#fffbeb', color: '#d97706', fontSize: "0.625rem", fontWeight: 700 }}>
+                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#956834', fontSize: "0.625rem", fontWeight: 700 }}>
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   {s.avatarChangeTokens}
                                 </span>
@@ -1007,7 +918,7 @@ export default function ClassesPage() {
                               {s.tag ? (
                                 <span style={{
                                   padding: '1px 7px', borderRadius: 4,
-                                  background: '#fef3c7', color: '#92400e',
+                                  background: '#f5ecdd', color: '#92400e',
                                   fontSize: "0.75rem",
                                 }}>
                                   {s.tag}
@@ -1024,13 +935,17 @@ export default function ClassesPage() {
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
                                   color: '#94a3b8',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#fef2f2'; }}
+                                onMouseEnter={e => { e.currentTarget.style.color = '#a85d5d'; e.currentTarget.style.background = '#f8eeee'; }}
                                 onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="17" y1="9" x2="22" y2="14"/><line x1="22" y1="9" x2="17" y2="14"/></svg>
                               </button>
                               <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
                                 onClick={async () => {
-                                  if (!confirm(`确定奖励「${s.name}」一次头像更换权限？`)) return;
+                                  if (!await askConfirmation({
+                                    title: '奖励头像更换机会？',
+                                    message: `学生「${s.name}」将获得一次头像更换权限。`,
+                                    confirmLabel: '确认奖励',
+                                  })) return;
                                   try {
                                     await api.rewardStudentDirect(s.id);
                                     setToast({ msg: `已奖励 ${s.name} 一次头像更换权限`, type: 'success' });
@@ -1044,9 +959,9 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#d97706',
+                                  color: '#956834',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#fffbeb'; }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#faf4eb'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                               </button>
@@ -1055,9 +970,9 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#2563eb',
+                                  color: '#527198',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#eef2ff'; }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#eef3f8'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
@@ -1066,9 +981,9 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#ef4444',
+                                  color: '#a85d5d',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#f8eeee'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                               </button>
@@ -1173,11 +1088,11 @@ export default function ClassesPage() {
                 </svg>
               </div>
               <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>选择一个班级</p>
-              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>从左侧选择班级后即可管理学生名单</p>
+              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>从上方选择班级后即可管理学生名单</p>
             </div>
-          )}
+          ))}
         </div>
-      </div>
+      {confirmationDialog}
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
@@ -1213,8 +1128,8 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
             <label key={g.value} style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-              background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-              color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+              background: gender === g.value ? (g.value === 'boy' ? '#eef3f8' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+              color: gender === g.value ? (g.value === 'boy' ? '#527198' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
               fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
             }}>
               <input type="radio" name="gender" value={g.value}
@@ -1276,7 +1191,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
       }}>
         <div style={{
           width: 28, height: 28, borderRadius: 7,
-          background: '#eef2ff', color: '#2563eb',
+          background: '#eef3f8', color: '#527198',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -1302,7 +1217,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <div style={{
-          fontSize: "0.75rem", color: parsed.length > 0 ? '#2563eb' : '#94a3b8',
+          fontSize: "0.75rem", color: parsed.length > 0 ? '#527198' : '#94a3b8',
           fontWeight: parsed.length > 0 ? 600 : 400,
         }}>
           共识别 {parsed.length} 名学生
@@ -1359,7 +1274,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 28 }}>
+      <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           {student.avatarId && studentAvatars[student.avatarId] ? (
             <div style={{
@@ -1370,7 +1285,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           ) : (
             <div style={{
               width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-              background: '#eef2ff', color: '#2563eb',
+              background: '#eef3f8', color: '#527198',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: "1.125rem", fontWeight: 700,
             }}>
@@ -1406,8 +1321,8 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
               <label key={g.value} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-                color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+                background: gender === g.value ? (g.value === 'boy' ? '#eef3f8' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+                color: gender === g.value ? (g.value === 'boy' ? '#527198' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
                 fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
               }}>
                 <input type="radio" name="edit-gender" value={g.value}
@@ -1429,7 +1344,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                 onClick={() => setAvatarId(null)}
                 style={{
                   width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-                  border: `2px solid ${!avatarId ? '#2563eb' : '#e2e8f0'}`,
+                  border: `2px solid ${!avatarId ? '#527198' : '#e2e8f0'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: '#f1f5f9', fontSize: "0.75rem", color: '#94a3b8', flexShrink: 0,
                 }} title="清除头像">
@@ -1440,7 +1355,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                   onClick={() => setAvatarId(avatarId === av.id ? null : av.id)}
                   style={{
                     width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                    border: `2px solid ${avatarId === av.id ? '#2563eb' : '#e2e8f0'}`,
+                    border: `2px solid ${avatarId === av.id ? '#527198' : '#e2e8f0'}`,
                     transition: 'all 0.1s',
                   }}
                   title={av.name}
@@ -1489,9 +1404,9 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
+      <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef2ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef3f8', color: '#527198', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </div>
           <div>
@@ -1543,7 +1458,7 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 24 }}>
+      <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 24 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{
             width: 48, height: 48, borderRadius: '50%', margin: '0 auto 12px',
@@ -1563,7 +1478,7 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', gap: 12 }}>
             {[
-              { value: 'boy' as const, label: '男', icon: '♂', desc: '设置为男生', color: '#2563eb', bg: '#eff6ff', border: '#93c5fd' },
+              { value: 'boy' as const, label: '男', icon: '♂', desc: '设置为男生', color: '#527198', bg: '#f2f5f8', border: '#93c5fd' },
               { value: 'girl' as const, label: '女', icon: '♀', desc: '设置为女生', color: '#e91e63', bg: '#fdf2f8', border: '#f9a8d4' },
             ].map(g => (
               <button key={g.value} onClick={() => setGender(g.value)}
@@ -1619,14 +1534,14 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
+      <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择头像</h3>
         <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, maxHeight: 300, overflowY: 'auto', padding: '4px 0' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `2px solid ${!selected ? '#2563eb' : '#e2e8f0'}`,
+              border: `2px solid ${!selected ? '#527198' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1635,7 +1550,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
             <div key={av.id} onClick={() => setSelected(selected === av.id ? null : av.id)}
               style={{
                 width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                border: `2px solid ${selected === av.id ? '#2563eb' : '#e2e8f0'}`,
+                border: `2px solid ${selected === av.id ? '#527198' : '#e2e8f0'}`,
                 transition: 'all 0.1s',
               }}
               title={av.name}
@@ -1673,14 +1588,14 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
+      <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择班级图标</h3>
         <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 44, height: 44, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `2px solid ${!selected ? '#2563eb' : '#e2e8f0'}`,
+              border: `2px solid ${!selected ? '#527198' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1689,7 +1604,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
             <div key={icon.id} onClick={() => setSelected(selected === icon.id ? null : icon.id)}
               style={{
                 width: 44, height: 44, borderRadius: 8, cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                border: `2px solid ${selected === icon.id ? '#2563eb' : '#e2e8f0'}`,
+                border: `2px solid ${selected === icon.id ? '#527198' : '#e2e8f0'}`,
                 transition: 'all 0.1s',
               }}
               title={icon.name}
@@ -1708,17 +1623,18 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
 }
 
 const GROUP_COLORS = [
-  { bg: '#eef2ff', border: '#c7d2fe', text: '#3730a3', badge: '#6366f1', light: '#e0e7ff' },
-  { bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', badge: '#22c55e', light: '#dcfce7' },
-  { bg: '#fefce8', border: '#fef08a', text: '#854d0e', badge: '#eab308', light: '#fef9c3' },
-  { bg: '#fef2f2', border: '#fecaca', text: '#991b1b', badge: '#ef4444', light: '#fee2e2' },
-  { bg: '#f5f3ff', border: '#ddd6fe', text: '#4c1d95', badge: '#8b5cf6', light: '#ede9fe' },
-  { bg: '#ecfeff', border: '#a5f3fc', text: '#155e75', badge: '#06b6d4', light: '#cffafe' },
+  { bg: '#f1f4f8', border: '#cbd7e4', text: '#3f5872', badge: '#607a98', light: '#e8eef4' },
+  { bg: '#f1f6f3', border: '#ccdcd2', text: '#436052', badge: '#5f7d6a', light: '#e8f0eb' },
+  { bg: '#f7f5ef', border: '#dfd8c7', text: '#675b44', badge: '#807157', light: '#f0ece3' },
+  { bg: '#f8f2f2', border: '#e3d0d0', text: '#745050', badge: '#8b6262', light: '#f0e5e5' },
+  { bg: '#f4f2f7', border: '#d9d3e2', text: '#5f566d', badge: '#756a85', light: '#ece8f1' },
+  { bg: '#f0f5f5', border: '#cbdada', text: '#456062', badge: '#5e7c7e', light: '#e6eeee' },
 ];
 
 function GroupManagement({ classId, students, studentAvatars, onChanged }: {
   classId: string; students: StudentSummary[]; studentAvatars: Record<string, string>; onChanged: () => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [groups, setGroups] = useState<ClassGroup[]>([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -1821,7 +1737,12 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    if (!confirm('确定删除此分组？组内学生不会被删除，但会回到未分配状态。')) return;
+    if (!await askConfirmation({
+      title: '删除这个分组？',
+      message: '组内学生不会被删除，他们会回到未分组学生中。',
+      confirmLabel: '删除分组',
+      tone: 'danger',
+    })) return;
     await api.deleteGroup(classId, groupId);
     loadGroups();
     onChanged?.();
@@ -1837,7 +1758,11 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
   const handleRemoveAllStudents = async (groupId: string) => {
     const group = groups.find(g => g.id === groupId);
     if (!group || !group.studentIds?.length) return;
-    if (!confirm(`确定移除「${group.name}」中的所有学生？学生不会被删除。`)) return;
+    if (!await askConfirmation({
+      title: '移出组内全部学生？',
+      message: `「${group.name}」中的学生不会被删除，他们会回到未分组学生中。`,
+      confirmLabel: '全部移出',
+    })) return;
     await api.updateGroup(classId, groupId, { studentIds: [] });
     loadGroups();
     onChanged?.();
@@ -1966,14 +1891,14 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 onDrop={e => handleDrop(e, g.id)}
                 style={{
                   borderRadius: 12, overflow: 'hidden',
-                  border: `2px solid ${isDragOver ? color.border : '#e2e8f0'}`,
+                  border: `1px solid ${isDragOver ? color.badge : '#dce4ec'}`,
                   background: isDragOver ? color.light : 'white',
                   transition: 'all 0.15s',
                   minHeight: 80,
-                  boxShadow: isDragOver ? `0 0 0 3px ${color.light}` : 'none',
+                  boxShadow: isDragOver ? `0 0 0 3px ${color.light}` : '0 1px 2px rgba(54, 72, 94, 0.04)',
                 }}>
-                {/* 彩色顶部装饰条 */}
-                <div style={{ height: 4, background: color.border }} />
+                  {/* 彩色顶部装饰条 */}
+                <div style={{ height: 3, background: color.border }} />
 
                 <div style={{ padding: '14px 16px' }}>
                   {/* 组头 */}
@@ -2015,7 +1940,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                           display: 'flex', alignItems: 'center', gap: 3,
                           transition: 'all 0.1s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#f59e0b'; e.currentTarget.style.background = '#fffbeb'; }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#956834'; e.currentTarget.style.background = '#faf4eb'; }}
                         onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
                         title="全部移除">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -2029,7 +1954,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                         display: 'flex', alignItems: 'center', gap: 3,
                         transition: 'all 0.1s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#fef2f2'; }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#a85d5d'; e.currentTarget.style.background = '#f8eeee'; }}
                       onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                       删除
@@ -2070,7 +1995,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                             userSelect: 'none', transition: 'all 0.1s',
                             opacity: draggedId === s.id ? 0.35 : 1,
                             border: `1px solid ${color.light}`,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                            boxShadow: '0 1px 2px rgba(54,72,94,0.04)',
                             whiteSpace: 'nowrap',
                           }}>
                           <div style={{
@@ -2112,7 +2037,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
             <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
             {unassigned.length > 0 && selectedUnassigned.size > 0 ? (
               <>
-                <span style={{ fontSize: "0.688rem", color: '#2563eb', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.688rem", color: '#527198', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
                 </span>
                 <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>·</span>
@@ -2145,8 +2070,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
               position: 'relative', userSelect: 'none',
               display: 'flex', flexWrap: 'wrap', gap: 10, minHeight: 44,
               padding: '12px 16px', borderRadius: 10,
-              border: `2px dashed ${draggedId ? '#93c5fd' : selectedUnassigned.size > 0 ? '#2563eb' : '#e2e8f0'}`,
-              background: draggedId ? '#f8faff' : selectedUnassigned.size > 0 ? '#f0f4ff' : '#fafbfc',
+              border: `2px dashed ${draggedId ? '#aebfd2' : selectedUnassigned.size > 0 ? '#6f89aa' : '#dce4ec'}`,
+              background: draggedId ? '#f4f7fa' : selectedUnassigned.size > 0 ? '#eef3f8' : '#fafbfc',
               transition: 'all 0.12s',
             }}>
             {/* 框选遮罩层 */}
@@ -2157,8 +2082,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 top: marqueeRect.top,
                 width: marqueeRect.width,
                 height: marqueeRect.height,
-                background: 'rgba(37,99,235,0.08)',
-                border: '2px solid rgba(37,99,235,0.4)',
+                background: 'rgba(82,113,152,0.08)',
+                border: '2px solid rgba(82,113,152,0.4)',
                 borderRadius: 6,
                 pointerEvents: 'none',
                 zIndex: 20,
@@ -2181,20 +2106,20 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '4px 6px', borderRadius: 8, cursor: 'grab',
-                  background: isSelected ? '#eef2ff' : 'white',
-                  color: isSelected ? '#2563eb' : '#0f172a', fontSize: "0.813rem",
-                  border: `1.5px solid ${isSelected ? '#2563eb' : '#e2e8f0'}`,
+                  background: isSelected ? '#eef3f8' : 'white',
+                  color: isSelected ? '#405a78' : '#0f172a', fontSize: "0.813rem",
+                  border: `1.5px solid ${isSelected ? '#6f89aa' : '#dce4ec'}`,
                   userSelect: 'none', whiteSpace: 'nowrap',
                   opacity: draggedId === s.id ? 0.35 : 1,
                   transition: 'all 0.1s',
-                  boxShadow: isSelected ? '0 1px 3px rgba(37,99,235,0.15)' : '0 1px 2px rgba(0,0,0,0.04)',
+                  boxShadow: isSelected ? '0 1px 3px rgba(82,113,152,0.13)' : '0 1px 2px rgba(54,72,94,0.04)',
                   flex: '0 0 calc(20% - 8px)',
                 }}>
                 {/* 多选框 */}
                 <div style={{
                   width: 16, height: 16, borderRadius: 4,
-                  background: isSelected ? '#2563eb' : '#f1f5f9',
-                  border: `1.5px solid ${isSelected ? '#2563eb' : '#cbd5e1'}`,
+                  background: isSelected ? '#527198' : '#f1f5f9',
+                  border: `1.5px solid ${isSelected ? '#527198' : '#cbd5e1'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0, transition: 'all 0.1s',
                 }}>
@@ -2204,8 +2129,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 </div>
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                  background: isSelected ? '#dbeafe' : '#f1f5f9',
-                  color: isSelected ? '#2563eb' : '#64748b',
+                  background: isSelected ? '#e9eff6' : '#f1f5f9',
+                  color: isSelected ? '#527198' : '#64748b',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: "0.625rem", fontWeight: 700,
                 }}>
@@ -2249,6 +2174,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
           <p style={{ fontSize: "0.813rem", margin: 0 }}>请先在「学生列表」中添加学生</p>
         </div>
       )}
+      {confirmationDialog}
     </div>
   );
 }

@@ -84,8 +84,8 @@ export const MODULE_META: Record<ModuleId, {
 }> = {
   worksheet: {
     label: '学习单',
-    accent: '#2563eb',
-    accentStrong: '#1d4ed8',
+    accent: '#527198',
+    accentStrong: '#466384',
     cta: '开始学习',
     subtitle: '完成课堂任务',
     summaryLabel: '今天的任务',

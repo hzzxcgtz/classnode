@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { useTeacherConfirm } from '@/lib/components';
 import type { WorksheetSummary, WorksheetUsage } from '@/lib/types';
 
 type Notice = { message: string; type: 'success' | 'error' };
@@ -34,6 +35,7 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
   /** 三样引用里至少一样非零 ⇒ 交给页面开「无法删除」弹窗（连同这次已经取到的 usage）。 */
   onDeleteBlocked: (worksheet: WorksheetSummary, usage: WorksheetUsage) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [worksheets, setWorksheets] = useState<WorksheetSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -137,7 +139,12 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
       }
       // 这里 `used` 为假 ⇒ 三样都为 0。确认文案据此把「删了什么」说死，
       // 不用「可能会影响」这种含糊话。
-      if (!window.confirm(`确定删除「${worksheet.title}」吗？它没有被课堂或小组使用，也没有收到过作答。删除后无法恢复。`)) return;
+      if (!await askConfirmation({
+        title: '删除这份学习单？',
+        message: `「${worksheet.title}」没有被课堂或小组使用，也没有收到过作答。删除后无法恢复。`,
+        confirmLabel: '删除学习单',
+        tone: 'danger',
+      })) return;
       try {
         await api.deleteWorksheet(worksheet.id);
       } catch (deleteError) {
@@ -167,7 +174,7 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
       busyRef.current = false;
       if (mountedRef.current) setBusyOperation(null);
     }
-  }, [load]);
+  }, [askConfirmation, load]);
 
   /**
    * 复制一份 —— 也是删除守卫给出的两条出路之一（另一条是编辑）。
@@ -231,6 +238,6 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
     page, pageSize, search, setSearch: updateSearch, setPage, setPageSize: changePageSize,
     busyOperation, retry,
     deleteWorksheet, duplicateWorksheet,
-    usageDialog, openUsageDialog, closeUsageDialog,
+    usageDialog, openUsageDialog, closeUsageDialog, confirmationDialog,
   };
 }

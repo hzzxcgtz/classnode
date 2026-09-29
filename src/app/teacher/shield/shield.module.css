@@ -26,7 +26,7 @@
   padding: 8px;
   box-sizing: border-box;
   border-radius: 10px;
-  background: #fef2f2;
+  background: #f8eeee;
 }
 
 .wordComposerBody {
@@ -107,9 +107,9 @@
 }
 
 .wordStatusError {
-  border-color: #fee2e2;
-  color: #dc2626;
-  background: #fef2f2;
+  border-color: #f3e3e3;
+  color: #934e4e;
+  background: #f8eeee;
 }
 
 .recordStatus {

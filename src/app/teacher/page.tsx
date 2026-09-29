@@ -428,7 +428,7 @@ export default function TeacherDashboard() {
                 padding: "1px 8px",
                 borderRadius: 10,
                 background: "#dcfce7",
-                color: "#16a34a",
+                color: "#3f7859",
                 fontWeight: 500,
               }}
             >
@@ -693,7 +693,7 @@ export default function TeacherDashboard() {
                     {
                       label: "在线",
                       value: onlineMap[cr.id] || 0,
-                      color: "#22c55e",
+                      color: "#3f7859",
                     },
                     {
                       label: "离线",
@@ -816,7 +816,7 @@ export default function TeacherDashboard() {
                     )))}
                     {section("探究网页", materials.webapps.map(({ material, groupNames }) => chip(
                       material.id,
-                      iconBox("#2563eb", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
+                      iconBox("#527198", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
                       material.name,
                       groupNames,
                     )))}
@@ -897,11 +897,11 @@ export default function TeacherDashboard() {
                     height: 6,
                     borderRadius: "50%",
                     flexShrink: 0,
-                    background: cr.status === "paused" ? "#f59e0b" : "#22c55e",
+                    background: cr.status === "paused" ? "#956834" : "#3f7859",
                     boxShadow:
                       cr.status === "paused"
                         ? "0 0 6px rgba(245,158,11,0.4)"
-                        : "0 0 6px rgba(34,197,94,0.4)",
+                        : "0 0 6px rgba(63, 120, 89,0.4)",
                   }}
                 />
                 <span
@@ -909,7 +909,7 @@ export default function TeacherDashboard() {
                     fontSize: "0.75rem",
                     fontWeight: 500,
                     marginRight: "auto",
-                    color: cr.status === "paused" ? "#d97706" : "#16a34a",
+                    color: cr.status === "paused" ? "#956834" : "#3f7859",
                   }}
                 >
                   {cr.status === "paused" ? "已暂停" : "进行中"}
@@ -934,17 +934,17 @@ export default function TeacherDashboard() {
 
                 {/* 结束课堂 — 红字轮廓，hover 加强 */}
                 <button onClick={() => void endClassroom(cr)} disabled={endingClassroomId !== null}
-                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: "transparent", color: "#ef4444", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.borderColor = "#f87171"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
+                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: "transparent", color: "#a85d5d", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8eeee"; e.currentTarget.style.color = "#934e4e"; e.currentTarget.style.borderColor = "#f87171"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#a85d5d"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
                   {endingClassroomId === cr.id ? "结束中..." : "结束课堂"}
                 </button>
 
                 {/* 进入课堂 — 醒目填充按钮 */}
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
-                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #1d4ed8, #1e40af)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(37,99,235,0.35)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, #2563eb, #1d4ed8)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,0.25)"; }}>
+                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, #527198, #466384)", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(82, 113, 152,0.25)" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #466384, #1e40af)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(82, 113, 152,0.35)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, #527198, #466384)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(82, 113, 152,0.25)"; }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
                   进入课堂
                 </button>
@@ -1024,7 +1024,7 @@ export default function TeacherDashboard() {
               borderRadius: 8,
               fontSize: "0.875rem",
               fontWeight: 600,
-              background: "#2563eb",
+              background: "#527198",
               color: "white",
               border: "none",
               cursor: "pointer",
@@ -1168,14 +1168,14 @@ export default function TeacherDashboard() {
                     cursor: "pointer",
                     borderTop: "1px solid #eef2f6",
                     background: "#f8fafc",
-                    color: "#2563eb",
+                    color: "#527198",
                     fontSize: "0.875rem",
                     fontWeight: 600,
                     transition: "all 0.15s",
                     width: "100%",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#eff6ff";
+                    e.currentTarget.style.background = "#f2f5f8";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "#f8fafc";
@@ -1238,7 +1238,7 @@ export default function TeacherDashboard() {
                           width: 96,
                           height: 112,
                           borderRadius: 14,
-                          background: "rgba(37,99,235,0.15)",
+                          background: "rgba(82, 113, 152,0.15)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1323,8 +1323,8 @@ export default function TeacherDashboard() {
                   width: 40,
                   height: 40,
                   borderRadius: 10,
-                  background: "#eef2ff",
-                  color: "#2563eb",
+                  background: "#eef3f8",
+                  color: "#527198",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1412,7 +1412,7 @@ export default function TeacherDashboard() {
                     background: "#fafbfc",
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#2563eb";
+                    e.currentTarget.style.borderColor = "#527198";
                     e.currentTarget.style.background = "white";
                   }}
                   onBlur={(e) => {
@@ -1616,7 +1616,7 @@ export default function TeacherDashboard() {
                                 width: 24,
                                 height: 24,
                                 borderRadius: 6,
-                                background: "#2563eb",
+                                background: "#527198",
                                 color: "white",
                                 display: "flex",
                                 alignItems: "center",
@@ -1808,7 +1808,7 @@ export default function TeacherDashboard() {
                             marginTop: 8,
                             fontSize: "0.75rem",
                             color: "#92400e",
-                            background: "#fffbeb",
+                            background: "#faf4eb",
                             border: "1px solid #fde68a",
                             borderRadius: 8,
                             padding: "8px 12px",

@@ -57,7 +57,7 @@ export default function WorksheetsPage() {
     page, pageSize, search, setSearch, setPage, setPageSize,
     busyOperation, retry,
     deleteWorksheet, duplicateWorksheet,
-    usageDialog, openUsageDialog, closeUsageDialog,
+    usageDialog, openUsageDialog, closeUsageDialog, confirmationDialog,
   } = useWorksheetList({
     onNotice: notice => notify(notice.message, notice.type),
     onDeleteBlocked: (worksheet, usage) => setDeleteBlocked({ worksheet, usage }),
@@ -164,6 +164,7 @@ export default function WorksheetsPage() {
           onClose={() => setDeleteBlocked(null)}
         />
       )}
+      {confirmationDialog}
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}
     </div>
   );

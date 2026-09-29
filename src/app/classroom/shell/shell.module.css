@@ -150,7 +150,7 @@
    与模块 Tab 的「淡色药丸 + 模块色文字」是同一套语言，只是它自己带着底色。 */
 .homeActive {
   color: #4338ca;
-  background: #eef2ff;
+  background: #eef3f8;
 }
 
 /* 模块 Tab：静置灰、选中用**模块自己的色**（§4.6：学生在卡片上认到的颜色，
@@ -205,7 +205,7 @@
 .home:hover,
 .actionText:hover {
   color: #4338ca;
-  background: #eef2ff;
+  background: #eef3f8;
 }
 
 .tab:hover {
@@ -279,7 +279,7 @@
    原先「两份并存、T4 之后收敛成一份」的过渡期到此结束。
 
    ⚠️ T5 把文字搬到了脸上，配色因此**必须**跟着动（否则新出现的文字直接跌破 AA）：
-   `#079669` 落在 `#ecfdf5` 上只有 **3.58:1**，`#dc2626` 落在 `#fef2f2` 上只有 **4.41:1** ——
+   `#079669` 落在 `#ecfdf5` 上只有 **3.58:1**，`#934e4e` 落在 `#f8eeee` 上只有 **4.41:1** ——
    两者都低于小字号要求的 4.5:1（0.813rem / 650 字重够不到 WCAG 的「大字号」门槛）。
    换成同色系压深一档的 **`#047857`（5.21:1）** 与 **`#b91c1c`（5.91:1）**，四个值都由
    WCAG 相对亮度公式实算。深色对圆点同样安全（非文字 3:1 的要求反向更宽松）。
@@ -307,7 +307,7 @@
 
 .connectionOffline {
   color: #b91c1c;
-  background: #fef2f2;
+  background: #f8eeee;
 }
 
 /* 圆点用 `currentColor`：颜色只有 `.connectionOnline` / `.connectionOffline` 一处来源，
@@ -447,7 +447,7 @@
 
 .action:hover {
   color: #4338ca;
-  background: #eef2ff;
+  background: #eef3f8;
 }
 
 .action:active {
@@ -458,7 +458,7 @@
    「这个入口现在是开着的」，而**不是**「有新消息」—— 新消息由下面那枚角标说。 */
 .actionActive {
   color: #4338ca;
-  background: #eef2ff;
+  background: #eef3f8;
 }
 
 /* 栏内计数角标的**共用几何**（M1b-3 T3 立，T5 起两个使用者）：老师消息按钮上的未读条数，
@@ -868,7 +868,7 @@
   height: 8px;
   margin-top: 4px;
   border-radius: 50%;
-  background: #f59e0b;
+  background: #956834;
   animation: pauseBreathe 1.6s ease-in-out infinite;
 }
 
@@ -906,11 +906,11 @@
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: rgba(239, 68, 68, 0.35);
+  background: rgba(168, 93, 93, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 40px rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 40px rgba(168, 93, 93, 0.2);
 }
 
 .blackoutTitle {
@@ -977,7 +977,7 @@
   max-width: min(85vw, 420px);
   padding: 12px 16px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #fff7ed, #fffbeb);
+  background: linear-gradient(135deg, #fff7ed, #faf4eb);
   border: 1px solid #fed7aa;
   font-size: 0.875rem;
   color: #451a03;

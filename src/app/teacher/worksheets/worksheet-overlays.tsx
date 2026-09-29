@@ -31,7 +31,7 @@ function usageLines(usage: WorksheetUsage): string[] {
 }
 
 const boxStyle = {
-  background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20,
+  background: '#f8eeee', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20,
 } as const;
 
 /**
@@ -57,10 +57,10 @@ export function WorksheetDeleteBlockedDialog({ worksheet, usage, duplicating, on
 }) {
   const lines = usageLines(usage);
 
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="worksheet-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog teacher-dialog-alert" role="alertdialog" aria-modal="true" aria-labelledby="worksheet-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <div style={{ textAlign: 'center', marginBottom: 20 }}>
-      <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+      <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
       </div>
       <h3 id="worksheet-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除学习单</h3>
       <p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0, wordBreak: 'break-all' }}>「{worksheet.title}」还在被使用，所以这次删除会被拦下。下面说清楚拦住它的是什么。</p>
@@ -124,7 +124,7 @@ export function WorksheetUsageDialog({ worksheet, usage, onClose }: {
 }) {
   const lines = usage ? usageLines(usage) : [];
 
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="worksheet-usage-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-usage-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <h3 id="worksheet-usage-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{worksheet.title}」的引用情况</h3>
     <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px', lineHeight: 1.7 }}>
       学习单可以被整堂课选中，也可以被高级模式下的某个小组单独选中；学生提交的作答会留在它上面。

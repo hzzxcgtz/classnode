@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { useTeacherConfirm } from '@/lib/components';
 import type { WebappSummary, RelatedClassroom } from '@/lib/types';
 
 type Notice = { message: string; type: 'success' | 'error' };
@@ -25,6 +26,7 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
   onNotice: (notice: Notice) => void;
   onDeleteBlocked: (webapp: WebappSummary, classrooms: RelatedClassroom[]) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [webapps, setWebapps] = useState<WebappSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyOperation, setBusyOperation] = useState<string | null>(null);
@@ -71,7 +73,12 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
         if (mountedRef.current) callbacksRef.current.onDeleteBlocked(webapp, usage.classrooms);
         return;
       }
-      if (!window.confirm(`确定删除 "${webapp.name}" 吗？网页文件会一并删除，且无法恢复。`)) return;
+      if (!await askConfirmation({
+        title: '删除这个探究网页？',
+        message: `「${webapp.name}」及其网页文件会被一并删除，且无法恢复。`,
+        confirmLabel: '删除网页',
+        tone: 'danger',
+      })) return;
       await api.deleteWebapp(webapp.id);
       await loadWebapps();
       if (mountedRef.current) callbacksRef.current.onNotice({ message: `已删除「${webapp.name}」`, type: 'success' });
@@ -86,7 +93,7 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
       busyRef.current = false;
       if (mountedRef.current) setBusyOperation(null);
     }
-  }, [loadWebapps]);
+  }, [askConfirmation, loadWebapps]);
 
   /**
    * 打开「关联课堂」弹窗。⚠️ **点击时才请求** —— 列表接口只给计数，清单在 `:id/usage` 里，
@@ -122,6 +129,6 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
   return {
     webapps, loading, busyOperation,
     relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms,
-    loadWebapps, deleteWebapp,
+    loadWebapps, deleteWebapp, confirmationDialog,
   };
 }

@@ -181,9 +181,9 @@ test('设 bold=false 把加粗清掉，清完与左右合并回一条', () => {
 test('🔴 color 是**覆盖**不是并存：同一段文字上永远只有一个颜色', () => {
   const text = '光合作用';
   const red = setStyleOnRange(readPromptRuns(undefined, text), text, 0, 4, { color: '#b91c1c' });
-  const blue = setStyleOnRange(red, text, 0, 4, { color: '#1d4ed8' });
+  const blue = setStyleOnRange(red, text, 0, 4, { color: '#466384' });
   assert.equal(blue.length, 1);
-  assert.equal(blue[0].color, '#1d4ed8');
+  assert.equal(blue[0].color, '#466384');
   assert.equal(shape(blue), '0-4c', '两个颜色并存这条用例必须红');
 });
 
@@ -666,7 +666,7 @@ test('🔴 normalizePastedText：Word 粘进来的那几种脏字符都归一化
 
 test('🔴 blankValueStyle：答错 ⇒ 暗红 + 删除线', () => {
   const style = blankValueStyle(DEFAULT_PROMPT_STYLE, true);
-  assert.equal(style.color, '#b91c1c', '暗红（比原来那枚红叉的 #dc2626 暗一档）');
+  assert.equal(style.color, '#b91c1c', '暗红（比原来那枚红叉的 #934e4e 暗一档）');
   assert.equal(style.textDecoration, 'line-through');
   assert.equal(style.fontWeight, 600, '字重那半边照旧来自 blankAnswerStyle');
 });
@@ -679,10 +679,10 @@ test('🔴 blankValueStyle：答错的红**压得住**这一段的颜色（顺�
   // 🔴 `blankAnswerStyle` 里含 `promptRunStyle` 的 `color`：答错那层必须展开在它**之后**。
   // 写反了的表现是「这一段有色 ⇒ 答错不标红」，而屏幕上不报错。
   // `BlankSlot` 有一条同样的旧账（教师看到「打字那条红了、待选区那条没红」）。
-  const coloured = { ...DEFAULT_PROMPT_STYLE, color: '#1d4ed8' };
-  assert.equal(blankAnswerStyle(coloured).color, '#1d4ed8', '前提：这一段本来是有颜色的');
+  const coloured = { ...DEFAULT_PROMPT_STYLE, color: '#466384' };
+  assert.equal(blankAnswerStyle(coloured).color, '#466384', '前提：这一段本来是有颜色的');
   assert.equal(blankValueStyle(coloured, true).color, '#b91c1c', '答错必须盖过它');
-  assert.equal(blankValueStyle(coloured, false).color, '#1d4ed8', '没答错就别动它');
+  assert.equal(blankValueStyle(coloured, false).color, '#466384', '没答错就别动它');
 });
 
 test('🔴 blankValueStyle：着色与划线**都不含定位**（那枚红叉的旧缺陷不许换个形状回来）', () => {

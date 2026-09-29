@@ -87,8 +87,8 @@
 .voiceButton { display: flex; width: 50px; height: 50px; flex-shrink: 0; align-items: center; justify-content: center; border: 1px solid #dfe4ed; border-radius: 16px; color: #5b5bd6; background: #fff; cursor: pointer; box-shadow: 0 5px 14px rgba(71, 85, 105, .06); transition: transform .15s ease, color .15s ease, border-color .15s ease, background .15s ease; }
 .voiceButton:hover { border-color: #bebff0; background: #f7f7ff; transform: translateY(-1px); }
 .voiceButton:disabled { opacity: .38; cursor: not-allowed; transform: none; }
-.voiceButtonListening { border-color: #fca5a5; color: #dc2626; background: #fff1f2; }
-.voiceListeningDot { width: 14px; height: 14px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, .45); animation: voicePulse 1.25s infinite; }
+.voiceButtonListening { border-color: #fca5a5; color: #934e4e; background: #fff1f2; }
+.voiceListeningDot { width: 14px; height: 14px; border-radius: 50%; background: #a85d5d; box-shadow: 0 0 0 0 rgba(168, 93, 93, .45); animation: voicePulse 1.25s infinite; }
 .composerBox { display: flex; min-height: 52px; flex: 1; align-items: flex-end; overflow: hidden; border: 1.5px solid #dce1ec; border-radius: 18px; background: #fff; box-shadow: 0 7px 22px rgba(71, 85, 105, .07); transition: border-color .15s ease, box-shadow .15s ease; }
 .composerBox:focus-within { border-color: #9b9cec; box-shadow: 0 0 0 4px rgba(99, 102, 241, .09), 0 8px 24px rgba(71, 85, 105, .08); }
 .composerTextarea { min-height: 50px; max-height: 160px; flex: 1; padding: 13px 16px; overflow-y: auto; border: 0; outline: 0; resize: none; color: #1f2937; background: transparent; font-family: inherit; font-size: 1rem; line-height: 1.6; }
@@ -97,7 +97,7 @@
 .composerAction { display: flex; width: 44px; height: 44px; margin: 4px; flex-shrink: 0; align-items: center; justify-content: center; border: 0; border-radius: 14px; color: #fff; background: linear-gradient(135deg, #6767df, #554fc7); cursor: pointer; box-shadow: 0 6px 14px rgba(79, 70, 229, .23); transition: transform .15s ease, opacity .15s ease, box-shadow .15s ease; }
 .composerAction:hover:not(:disabled) { transform: translateY(-1px) scale(1.02); box-shadow: 0 8px 18px rgba(79, 70, 229, .28); }
 .composerAction:disabled { color: #b1b8c4; background: #e6e9ee; box-shadow: none; cursor: default; }
-.stopAction { color: #dc2626; background: #fee2e2; box-shadow: none; }
+.stopAction { color: #934e4e; background: #f3e3e3; box-shadow: none; }
 .scrollToBottom { display: flex; width: 44px; height: 44px; position: absolute; z-index: 24; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom)); align-items: center; justify-content: center; transform: translateX(-50%); border: 1px solid #d9deea; border-radius: 50%; color: #5b5bd6; background: rgba(255, 255, 255, .96); box-shadow: 0 8px 24px rgba(71, 85, 105, .14); cursor: pointer; transition: transform .15s ease, box-shadow .15s ease, background .15s ease; }
 .scrollToBottom:hover { background: #f7f7ff; box-shadow: 0 10px 28px rgba(71, 85, 105, .18); transform: translateX(-50%) translateY(-2px); }
 .scrollToBottom:focus-visible { outline: 3px solid rgba(99, 102, 241, .25); outline-offset: 2px; }
@@ -108,9 +108,9 @@
 }
 
 @keyframes voicePulse {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .45); }
-  70% { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(168, 93, 93, .45); }
+  70% { box-shadow: 0 0 0 9px rgba(168, 93, 93, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(168, 93, 93, 0); }
 }
 
 @media (max-width: 900px) {

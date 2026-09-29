@@ -87,8 +87,8 @@ export function AvatarChangerContent({ studentId, avatars, onChanged, setToast }
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
               padding: '8px 16px', fontSize: "0.813rem", fontWeight: tab === t.key ? 600 : 400,
-              color: tab === t.key ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
-              cursor: 'pointer', borderBottom: `2px solid ${tab === t.key ? '#2563eb' : 'transparent'}`,
+              color: tab === t.key ? '#527198' : '#64748b', background: 'transparent', border: 'none',
+              cursor: 'pointer', borderBottom: `2px solid ${tab === t.key ? '#527198' : 'transparent'}`,
               marginBottom: -2,
             }}>{t.label}</button>
         ))}
@@ -102,7 +102,7 @@ export function AvatarChangerContent({ studentId, avatars, onChanged, setToast }
             <div key={av.id} onClick={() => setSelectedId(selectedId === av.id ? null : av.id)}
               style={{
                 width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                border: `2px solid ${selectedId === av.id ? '#2563eb' : '#e2e8f0'}`,
+                border: `2px solid ${selectedId === av.id ? '#527198' : '#e2e8f0'}`,
               }}>
               <SvgAvatar svg={av.svgContent} size={40} />
             </div>
@@ -155,7 +155,7 @@ export function AvatarChangerContent({ studentId, avatars, onChanged, setToast }
                 <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功，点击确认更换</p>
               ) : null}
               <button onClick={() => { clearImagePreview(); setUploadSvg(null); }}
-                style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
+                style={{ background: 'transparent', border: 'none', color: '#a85d5d', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
                 重新选择
               </button>
             </div>
@@ -219,7 +219,7 @@ export function AvatarChangerModal({
         </button>
         <h3 id={titleId} style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 4px' }}>🎨 更换头像</h3>
         <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 4px' }}>
-          剩余 <strong style={{ color: '#d97706' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
+          剩余 <strong style={{ color: '#956834' }}>{avatarTokenCount}</strong> 次更换机会，由教师奖励获得
         </p>
         <p style={{ fontSize: '0.688rem', color: '#94a3b8', margin: '0 0 16px' }}>
           可从教师头像库中选择，也可粘贴自定义 SVG 代码

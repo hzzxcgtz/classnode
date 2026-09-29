@@ -8,17 +8,17 @@ export const platformLabels: Record<string, string> = {
 
 // 平台品牌色
 export const platformColors: Record<string, string> = {
-  coze: '#2563eb',
+  coze: '#527198',
   'coze-agent': '#7c3aed',
-  wenxin: '#dc2626',
+  wenxin: '#934e4e',
   zhipuai: '#1d8cf8',
 };
 
 // 平台徽标背景色
 export const platformBadgeBg: Record<string, string> = {
-  coze: '#eef2ff',
+  coze: '#eef3f8',
   'coze-agent': '#f5f3ff',
-  wenxin: '#fef2f2',
+  wenxin: '#f8eeee',
   zhipuai: '#e0f2fe',
 };
 
@@ -29,20 +29,20 @@ export const classroomModeLabels: Record<string, string> = {
 };
 
 export const classroomModeColors: Record<string, string> = {
-  standard: '#2563eb',
+  standard: '#527198',
   advanced: '#7c3aed',
-  group: '#f59e0b',
+  group: '#956834',
 };
 
 export const classroomModeBg: Record<string, string> = {
-  standard: '#eef2ff',
+  standard: '#eef3f8',
   advanced: '#f5f3ff',
-  group: '#fffbeb',
+  group: '#faf4eb',
 };
 
 export const statusColors: Record<string, string> = {
   active: '#10b981',
-  paused: '#f59e0b',
+  paused: '#956834',
   ended: '#94a3b8',
 };
 

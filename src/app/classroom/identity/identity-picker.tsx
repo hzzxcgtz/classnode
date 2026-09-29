@@ -97,7 +97,7 @@ export function IdentityPicker({
               const isSelected = selectedStudent?.id === s.id;
               return (
                 <button key={s.id} onClick={() => !isOnline && onSelectStudent(s)} disabled={isOnline}
-                  style={{ padding: '14px 18px', borderRadius: 12, border: '2px solid', borderColor: isSelected ? 'var(--primary)' : '#eef2f6', background: isOnline ? '#f9fafb' : isSelected ? '#eef2ff' : 'white', cursor: isOnline ? 'not-allowed' : 'pointer', fontSize: "0.938rem", textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, transition: 'all .15s', opacity: isOnline ? 0.5 : 1, width: '100%' }}>
+                  style={{ padding: '14px 18px', borderRadius: 12, border: '2px solid', borderColor: isSelected ? 'var(--primary)' : '#eef2f6', background: isOnline ? '#f9fafb' : isSelected ? '#eef3f8' : 'white', cursor: isOnline ? 'not-allowed' : 'pointer', fontSize: "0.938rem", textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, transition: 'all .15s', opacity: isOnline ? 0.5 : 1, width: '100%' }}>
                   {isGroupMode ? (
                     <>
                       <div style={{
@@ -146,8 +146,8 @@ export function IdentityPicker({
           {loadError && (
             <div style={{
               width: '100%', marginTop: 12, padding: '10px 14px',
-              background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10,
-              fontSize: "0.813rem", color: '#dc2626', textAlign: 'center',
+              background: '#f8eeee', border: '1px solid #fca5a5', borderRadius: 10,
+              fontSize: "0.813rem", color: '#934e4e', textAlign: 'center',
             }}>
               {loadError}
             </div>

@@ -87,7 +87,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
   return (
     <>
       <div className="modal-overlay" onClick={onCancel} />
-      <div className="worksheet-editor-dialog worksheet-editor-paste-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-paste-title">
+      <div className="worksheet-editor-dialog teacher-editor-dialog worksheet-editor-paste-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-paste-title">
         <h3 id="worksheet-paste-title">粘贴题目</h3>
         <p className="worksheet-editor-dialog-note">
           把题目原样粘进来即可：题干与{isOrder ? '排序条目' : '选项'}会<strong>自动分开</strong>，条目前缀认

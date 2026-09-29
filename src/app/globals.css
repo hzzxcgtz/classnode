@@ -3,17 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --primary-light: #dbeafe;
+  /* 全站交互色：低饱和灰蓝负责主要操作；绿、橙、红只表达明确语义。
+     这些值都经过白字对比度校验，避免为了“柔和”牺牲小字号按钮的可读性。 */
+  --primary: #527198;
+  --primary-dark: #466384;
+  --primary-light: #e9eff6;
+  --primary-soft: #f2f5f8;
+  --primary-border: #c8d5e3;
   --bg: #f8fafc;
   --card: #ffffff;
   --text: #1e293b;
   --text-secondary: #64748b;
   --border: #e2e8f0;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --success: #3f7859;
+  --success-light: #edf5f0;
+  --warning: #956834;
+  --warning-light: #faf4eb;
+  --danger: #a85d5d;
+  --danger-dark: #934e4e;
+  --danger-light: #f8eeee;
   --text-muted: #64748b;
   --text-subtle: #7c8da3;
   --radius-sm: 8px;
@@ -31,7 +39,7 @@
 
 /* 键盘操作时保留清晰焦点，鼠标点击不会额外干扰课堂投屏画面。 */
 :focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.55);
+  outline: 3px solid rgba(82, 113, 152, 0.48);
   outline-offset: 2px;
 }
 
@@ -183,8 +191,8 @@ html, body {
 }
 
 .teacher-page-tabs > button.is-active .teacher-page-tabs-badge {
-  background: #dbeafe;
-  color: #2563eb;
+  background: #e9eff6;
+  color: #527198;
 }
 
 .teacher-empty-state {
@@ -230,7 +238,7 @@ html, body {
   width: 16px;
   height: 16px;
   border: 2px solid #bfdbfe;
-  border-top-color: #2563eb;
+  border-top-color: #527198;
   border-radius: 50%;
   animation: teacher-loading-spin .7s linear infinite;
 }
@@ -248,7 +256,7 @@ html, body {
 
 .teacher-list-toolbar:focus-within {
   border-color: #bfdbfe;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, .06);
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, .06);
 }
 
 @media (max-width: 640px) {
@@ -269,12 +277,12 @@ html, body {
 
 .status-dot.online {
   background: var(--success);
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 6px rgba(63, 120, 89, 0.4);
 }
 
 .status-dot.offline {
   background: var(--danger);
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 6px rgba(168, 93, 93, 0.4);
 }
 
 .card {
@@ -299,9 +307,16 @@ html, body {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.15s;
   border: 1px solid transparent;
   gap: 6px;
+}
+
+/* 按钮中的线性图标统一继承按钮语义色，并保持稳定的视觉占位。 */
+.btn > svg,
+.btn > span > svg {
+  flex-shrink: 0;
+  color: inherit;
 }
 
 /* ★ M6b/1：`.btn` 原先**只有 `:hover`** —— 于是「禁用」与「可点」在屏幕上长得一模一样
@@ -325,6 +340,8 @@ html, body {
 .btn-primary {
   background: var(--primary);
   color: white;
+  border-color: var(--primary);
+  box-shadow: 0 1px 2px rgba(55, 77, 105, 0.14);
 }
 
 .btn-primary:hover {
@@ -333,13 +350,14 @@ html, body {
 
 .btn-secondary {
   background: var(--card);
-  border-color: var(--border);
-  color: var(--text);
+  border-color: var(--primary-border);
+  color: #52677f;
 }
 
 .btn-secondary:hover {
-  background: var(--bg);
-  border-color: #cbd5e1;
+  background: var(--primary-soft);
+  border-color: #aebfd2;
+  color: #405a78;
 }
 
 .btn-danger {
@@ -348,8 +366,24 @@ html, body {
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: var(--danger-dark);
 }
+
+.btn-success {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+.btn-success:hover { background: #35694d; }
+
+.btn-warning {
+  border-color: var(--warning);
+  background: var(--warning);
+  color: #fff;
+}
+
+.btn-warning:hover { background: #80582c; }
 
 .btn-ghost {
   background: transparent;
@@ -357,8 +391,8 @@ html, body {
 }
 
 .btn-ghost:hover {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--primary-soft);
+  color: #405a78;
 }
 
 .btn-lg {
@@ -379,7 +413,7 @@ html, body {
 
 .input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 /* 已保存的密钥使用普通输入值的视觉样式展示脱敏内容。 */
@@ -473,7 +507,7 @@ html, body {
 .avatar-random-loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #dbeafe;
+  border: 3px solid #e9eff6;
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -638,12 +672,12 @@ html, body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(35, 46, 63, 0.42);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(7px) saturate(0.88);
 }
 
 .modal-content {
@@ -654,6 +688,185 @@ html, body {
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+/* 教师管理页统一浮层语言：遮罩沿用全局一致的冷灰雾面；内容外观只给显式挂上
+   teacher-* 类的四个管理模块使用，避免改变课堂进行页等高频操作弹窗。 */
+.teacher-dialog,
+.teacher-editor-dialog,
+.teacher-preview-dialog {
+  border: 1px solid #dbe4ee !important;
+  border-radius: 18px !important;
+  box-shadow:
+    0 24px 64px rgba(59, 76, 99, 0.18),
+    0 3px 10px rgba(59, 76, 99, 0.07) !important;
+}
+
+.teacher-dialog {
+  background: linear-gradient(180deg, #f3f6fa 0, #f8fafc 104px, #fff 150px) !important;
+  scrollbar-color: #c8d3df transparent;
+  scrollbar-width: thin;
+}
+
+.teacher-dialog h2,
+.teacher-dialog h3,
+.teacher-editor-dialog h2,
+.teacher-editor-dialog h3 {
+  color: #26354b;
+  letter-spacing: -0.012em;
+}
+
+.teacher-dialog .input,
+.teacher-editor-dialog .input {
+  border-color: #d7e1ec;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.teacher-dialog .input:focus,
+.teacher-editor-dialog .input:focus {
+  border-color: #8da6c4;
+  box-shadow: 0 0 0 3px rgba(88, 118, 164, 0.12);
+}
+
+.teacher-form-dialog {
+  overflow: hidden;
+  background: #fff !important;
+}
+
+.teacher-form-dialog > div:first-child {
+  padding: 20px 24px 16px !important;
+  background: linear-gradient(135deg, #f1f5f9 0%, #eaf0f6 100%) !important;
+  border-bottom-color: #dbe4ee !important;
+}
+
+.teacher-form-dialog > div:first-child h2 {
+  color: #26354b;
+}
+
+.teacher-form-dialog > div:first-child p {
+  color: #697a90 !important;
+}
+
+.teacher-form-dialog > div:first-child > button {
+  border: 1px solid #d7e1ec !important;
+  border-radius: 9px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #718096 !important;
+}
+
+.teacher-editor-dialog {
+  background: linear-gradient(180deg, #f3f6fa 0, #fff 136px) !important;
+}
+
+.teacher-preview-dialog {
+  border-color: #d4deea !important;
+  box-shadow: 0 26px 70px rgba(50, 66, 88, 0.2) !important;
+}
+
+.teacher-floating-tip {
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  background: #334155;
+  color: #f8fafc;
+  font-size: 0.688rem;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+  box-shadow: 0 10px 26px rgba(30, 41, 59, 0.22);
+}
+
+/* 教师端四个管理模块共用的确认窗。重要信息集中在柔和标题区，正文保持短而清楚；
+   危险操作只使用暗红强调，避免默认高饱和红色破坏整套低饱和界面。 */
+.teacher-confirm-dialog {
+  position: fixed;
+  z-index: 201;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0 !important;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background: #fff !important;
+}
+
+.teacher-confirm-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 19px 22px 16px;
+  border-bottom: 1px solid #dce5ef;
+  background: linear-gradient(135deg, #f1f5f9 0%, #eaf0f6 100%);
+}
+
+.teacher-confirm-heading > span {
+  display: inline-flex;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd9e8;
+  border-radius: 11px;
+  background: #fff;
+  color: #55718f;
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.teacher-confirm-heading h3 {
+  margin: 0 0 3px;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.teacher-confirm-heading p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.teacher-confirm-dialog.is-danger .teacher-confirm-heading {
+  background: linear-gradient(135deg, #f8f2f2 0%, #f5ecec 100%);
+  border-bottom-color: #ead8d8;
+}
+
+.teacher-confirm-dialog.is-danger .teacher-confirm-heading > span {
+  border-color: #e3caca;
+  background: #fffafa;
+  color: #a85d5d;
+}
+
+.teacher-confirm-message {
+  margin: 18px 22px;
+  padding: 13px 14px;
+  border: 1px solid #e2e9f1;
+  border-radius: 11px;
+  background: #f8fafc;
+  color: #4a5b70;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.teacher-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 22px 20px;
+}
+
+.teacher-danger-button {
+  border-color: #a85d5d !important;
+  background: #a85d5d !important;
+  color: #fff !important;
+}
+
+.teacher-danger-button:hover {
+  border-color: #934e4e !important;
+  background: #934e4e !important;
 }
 
 @media (max-width: 640px) {
@@ -689,7 +902,7 @@ html, body {
 
 .student-card:hover {
   border-color: var(--primary);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 2px 8px rgba(82, 113, 152, 0.1);
 }
 
 .student-card .status {
@@ -808,7 +1021,7 @@ tr:hover td {
 
 .tag-green {
   background: #dcfce7;
-  color: #16a34a;
+  color: #3f7859;
 }
 
 .tag-gray {
@@ -817,8 +1030,8 @@ tr:hover td {
 }
 
 .tag-yellow {
-  background: #fef3c7;
-  color: #d97706;
+  background: #f5ecdd;
+  color: #956834;
 }
 
 /* 教师端基础可读性：历史页面中大量 10–12px 辅助信息统一抬升一档。 */
@@ -844,6 +1057,358 @@ tr:hover td {
 
 .classes-action-bar {
   flex-wrap: wrap;
+}
+
+/* ── 班级管理：顶部班级切换 + 当前班级工作区 ──────────────────────
+   班级选择只负责切换上下文，重命名与删除集中到当前班级的设置菜单中。
+   这样班级数量增加时仍是一条紧凑导航，不会挤压学生表格的工作宽度。 */
+.classes-page {
+  --classes-accent: #6887b3;
+  --classes-accent-strong: #55749f;
+  --classes-accent-soft: #eef3f9;
+  --classes-header-bg: #f1f5f9;
+}
+
+.classes-page .btn-primary {
+  border-color: var(--classes-accent-strong);
+  background: var(--classes-accent-strong);
+}
+
+.classes-page-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.classes-switcher-loading,
+.classes-empty-state {
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.classes-switcher-loading {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+}
+
+.classes-empty-state {
+  padding: 52px 20px;
+  text-align: center;
+}
+
+.classes-empty-state-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  background: #f1f5f9;
+  color: #7b8ba1;
+  display: grid;
+  place-items: center;
+}
+
+.classes-empty-state-title {
+  margin: 0 0 4px;
+  color: #172033;
+  font-size: 0.938rem;
+  font-weight: 650;
+}
+
+.classes-empty-state-description {
+  margin: 0 0 16px;
+  color: #6f7e93;
+  font-size: 0.813rem;
+}
+
+.classes-switcher {
+  min-width: 0;
+  padding: 9px;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(70, 91, 122, 0.035);
+}
+
+.classes-switcher-label {
+  padding: 0 15px 0 5px;
+  border-right: 1px solid #e2e8f0;
+  color: #718096;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.classes-switcher-track {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #d8e0eb transparent;
+  scroll-snap-type: x proximity;
+}
+
+.classes-switcher-item {
+  min-width: 178px;
+  max-width: 240px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #1f2a3d;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.12s ease;
+}
+
+.classes-switcher-item:hover {
+  background: #f7f9fc;
+  border-color: #e2e8f0;
+}
+
+.classes-switcher-item:active {
+  transform: translateY(1px);
+}
+
+.classes-switcher-item.is-active {
+  border-color: #bdcce0;
+  background: var(--classes-accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(104, 135, 179, 0.05);
+}
+
+.classes-switcher-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #e6edf6;
+  color: var(--classes-accent-strong);
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.classes-switcher-avatar.has-image {
+  background: #f8fafc;
+}
+
+.classes-switcher-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.classes-switcher-copy strong,
+.classes-switcher-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.classes-switcher-copy strong {
+  color: #1f2a3d;
+  font-size: 0.813rem;
+  font-weight: 650;
+}
+
+.classes-switcher-copy small {
+  color: #718096;
+  font-size: 0.688rem;
+}
+
+.classes-workspace {
+  min-width: 0;
+  overflow: visible;
+  border: 1px solid #dce4ef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(70, 91, 122, 0.045);
+}
+
+.classes-workspace-header {
+  min-height: 86px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dce4ef;
+  border-radius: 13px 13px 0 0;
+  background: var(--classes-header-bg);
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.classes-current-avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d5dfeb;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--classes-accent-strong);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.classes-current-avatar-image,
+.classes-current-avatar-fallback {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+
+.classes-current-avatar-fallback {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.classes-current-heading {
+  min-width: 150px;
+}
+
+.classes-current-heading > span {
+  display: block;
+  margin-bottom: 2px;
+  color: #718096;
+  font-size: 0.688rem;
+}
+
+.classes-current-heading h2 {
+  max-width: 320px;
+  margin: 0;
+  overflow: hidden;
+  color: #172033;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.063rem;
+  font-weight: 700;
+}
+
+.classes-current-name-input {
+  width: min(320px, 34vw);
+  height: 34px;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.classes-current-stats {
+  display: flex;
+  align-items: center;
+}
+
+.classes-current-stats > div:not(.classes-current-stats-secondary) {
+  min-width: 66px;
+  padding: 0 16px;
+  border-left: 1px solid #d8e1ec;
+  display: flex;
+  flex-direction: column;
+}
+
+.classes-current-stats strong {
+  color: #243349;
+  font-size: 1.063rem;
+  line-height: 1.15;
+}
+
+.classes-current-stats span {
+  color: #718096;
+  font-size: 0.688rem;
+}
+
+.classes-current-stats-secondary {
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.classes-current-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.classes-current-actions .btn {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.classes-settings-wrap {
+  position: relative;
+}
+
+.classes-settings-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 176px;
+  padding: 7px;
+  border: 1px solid #d7e1ec;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f5f8fb 0, #fff 58px);
+  box-shadow: 0 18px 42px rgba(59, 76, 99, 0.17), 0 2px 6px rgba(59, 76, 99, 0.06);
+}
+
+.classes-settings-menu button {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #46566d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.classes-settings-menu button:hover {
+  background: #edf2f7;
+}
+
+.classes-settings-menu button.is-danger {
+  color: #b94444;
+}
+
+.classes-settings-menu button.is-danger:hover {
+  background: #fff2f2;
+}
+
+.classes-settings-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.classes-workspace-tabs {
+  padding: 12px 20px 11px;
+  border-bottom: 1px solid #e5ebf2;
+}
+
+.classes-workspace-tabs .teacher-page-tabs {
+  margin: 0;
 }
 
 .classes-filter-controls,
@@ -880,8 +1445,8 @@ tr:hover td {
 }
 
 .classes-search-box:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #527198;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 .classes-search-box input {
@@ -933,14 +1498,14 @@ tr:hover td {
 }
 
 .classes-filter-summary strong {
-  color: #2563eb;
+  color: #527198;
 }
 
 .classes-filter-summary button {
   padding: 2px 0;
   border: 0;
   background: transparent;
-  color: #2563eb;
+  color: #527198;
   font: inherit;
   cursor: pointer;
 }
@@ -1018,7 +1583,7 @@ tr:hover td {
 
 .new-classroom-mode-card:focus-visible,
 .new-classroom-class-grid button:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.2);
+  outline: 3px solid rgba(82, 113, 152, 0.2);
   outline-offset: 2px;
 }
 
@@ -1033,14 +1598,14 @@ tr:hover td {
 
 .required-field-mark {
   margin-left: auto;
-  background: #fef2f2;
-  color: #dc2626;
+  background: #f8eeee;
+  color: #934e4e;
 }
 
 .recommended-mode-tag {
   margin-left: auto;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 .new-classroom-loading,
@@ -1057,8 +1622,8 @@ tr:hover td {
   margin-top: 8px;
   padding: 8px 12px;
   text-align: left;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .new-classroom-actions {
@@ -1120,20 +1685,18 @@ tr:hover td {
 }
 
 .network-status-dot.is-open {
-  background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+  background: #3f7859;
+  box-shadow: 0 0 0 3px rgba(63, 120, 89, 0.12);
 }
 
-.active-classroom-overview,
-.agent-management-overview {
+.active-classroom-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
 
-.active-classroom-overview > div,
-.agent-management-overview > div {
+.active-classroom-overview > div {
   min-height: 68px;
   padding: 12px 16px;
   border: 1px solid #e2e8f0;
@@ -1145,22 +1708,20 @@ tr:hover td {
   gap: 10px;
 }
 
-.active-classroom-overview strong,
-.agent-management-overview strong {
+.active-classroom-overview strong {
   font-size: 1.375rem;
   line-height: 1;
 }
 
-.active-classroom-overview span,
-.agent-management-overview span {
+.active-classroom-overview span {
   color: #64748b;
   font-size: 0.75rem;
 }
 
-.active-classroom-overview .tone-blue strong { color: #2563eb; }
+.active-classroom-overview .tone-blue strong { color: #527198; }
 .active-classroom-overview .tone-purple strong { color: #7c3aed; }
 .active-classroom-overview .tone-green strong { color: #059669; }
-.active-classroom-overview .tone-amber strong { color: #d97706; }
+.active-classroom-overview .tone-amber strong { color: #956834; }
 
 .active-classroom-filters {
   margin-bottom: 12px;
@@ -1184,8 +1745,8 @@ tr:hover td {
 }
 
 .active-classroom-search:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #527198;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 .active-classroom-search input {
@@ -1233,7 +1794,7 @@ tr:hover td {
 
 .active-classroom-filter-tabs button[aria-pressed="true"] {
   background: #fff;
-  color: #1d4ed8;
+  color: #466384;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
   font-weight: 600;
 }
@@ -1328,8 +1889,8 @@ tr:hover td {
 
 .active-classroom-permission:hover:not(:disabled),
 .active-classroom-permission:focus-visible {
-  color: #1d4ed8;
-  background: #eff6ff;
+  color: #466384;
+  background: #f2f5f8;
   outline: none;
 }
 
@@ -1388,16 +1949,67 @@ tr:hover td {
   gap: 6px;
 }
 
-.agent-management-overview .tone-blue strong { color: #2563eb; }
-.agent-management-overview .tone-purple strong { color: #7c3aed; }
-.agent-management-overview .tone-green strong { color: #059669; }
-.agent-management-overview .tone-red strong { color: #dc2626; }
+.agent-management-overview {
+  min-height: 66px;
+  margin-bottom: 16px;
+  padding: 0 18px;
+  border: 1px solid #dce5f0;
+  border-radius: 14px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+}
+
+.agent-management-overview-item {
+  padding: 0 22px;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.agent-management-overview-item:first-child {
+  padding-left: 0;
+}
+
+.agent-management-overview-item strong {
+  color: #26364e;
+  font-size: 1.313rem;
+  line-height: 1;
+}
+
+.agent-management-overview-item span {
+  color: #6c7d96;
+  font-size: 0.75rem;
+}
+
+.agent-management-overview-item.tone-green strong { color: #3f8866; }
+.agent-management-overview-item.tone-red strong { color: #a94f4f; }
+
+.agent-management-overview-note {
+  min-width: 0;
+  margin-left: auto;
+  color: #6c7d96;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.agent-management-overview-note svg {
+  color: #3f8866;
+  flex-shrink: 0;
+}
 
 .agent-management-filters {
   margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .agent-management-search {
@@ -1416,8 +2028,8 @@ tr:hover td {
 }
 
 .agent-management-search:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #527198;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 .agent-management-search input {
@@ -1451,6 +2063,58 @@ tr:hover td {
   color: #475569;
   font: inherit;
   font-size: 0.813rem;
+  cursor: pointer;
+}
+
+.agent-platform-filter-tabs {
+  min-height: 38px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e9eef5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.agent-platform-filter-tabs button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agent-platform-filter-tabs button:hover,
+.agent-platform-filter-tabs button:focus {
+  color: #334155;
+  outline: none;
+}
+
+.agent-platform-filter-tabs button:focus {
+  box-shadow: inset 0 0 0 2px #9eb1cf;
+}
+
+.agent-platform-filter-tabs button.is-active {
+  background: #fff;
+  color: #26364e;
+  box-shadow: 0 1px 4px rgba(43, 59, 82, 0.1);
+}
+
+.agent-platform-filter-tabs button > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 7px;
 }
 
 .agent-management-filter-empty {
@@ -1476,9 +2140,264 @@ tr:hover td {
   font-size: 0.813rem;
 }
 
-.agent-management-card-footer,
-.agent-management-card-actions {
+.agent-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.agent-management-card {
+  min-height: 214px;
+  padding: 0 !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.agent-management-card:hover {
+  border-color: var(--agent-platform-border);
+  box-shadow: 0 10px 28px rgba(63, 87, 120, 0.1);
+  transform: translateY(-1px);
+}
+
+.agent-management-card-header {
+  min-height: 82px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--agent-platform-border);
+  background: var(--agent-platform-soft);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-management-card-avatar {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--agent-platform-color);
+  box-shadow: inset 0 0 0 1px rgba(71, 85, 105, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.063rem;
+  font-weight: 700;
+}
+
+.agent-management-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agent-management-card-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-management-card-name-row,
+.agent-management-card-tags {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-management-card-name-row {
+  margin-bottom: 5px;
+}
+
+.agent-management-card-name {
+  min-width: 0;
+  color: #1a1a2e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.agent-management-card-tags {
   flex-wrap: wrap;
+}
+
+.agent-management-platform-badge {
+  min-height: 23px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--agent-platform-color);
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.688rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.agent-management-capability-tag {
+  min-height: 23px;
+  padding: 2px 7px;
+  border: 1px solid #dbe3ee;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.46);
+  color: #7b8799;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.agent-management-toggle {
+  position: relative;
+  width: 40px;
+  height: 23px;
+  flex: 0 0 40px;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: #cbd4df;
+  cursor: pointer;
+  transition: background 0.18s ease, opacity 0.18s ease;
+}
+
+.agent-management-toggle.is-enabled {
+  background: #5e946f;
+}
+
+.agent-management-toggle:focus {
+  outline: 2px solid #9eb1cf;
+  outline-offset: 2px;
+}
+
+.agent-management-toggle:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.agent-management-toggle span {
+  display: block;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  transform: translateX(0);
+  transition: transform 0.18s ease;
+}
+
+.agent-management-toggle.is-enabled span {
+  transform: translateX(17px);
+}
+
+.agent-management-card-body {
+  flex: 1;
+  padding: 14px 16px 13px;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-management-card-meta,
+.agent-management-status-row,
+.agent-management-card-footer,
+.agent-management-card-actions,
+.agent-management-status-copy {
+  display: flex;
+  align-items: center;
+}
+
+.agent-management-card-meta,
+.agent-management-status-row {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-management-purpose-copy {
+  color: #6c7d96;
+  font-size: 0.75rem;
+}
+
+.agent-management-card .agent-management-classrooms-chip {
+  min-height: 26px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border-color: #dbe3ee;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.agent-management-card .agent-management-classrooms-chip:hover {
+  border-color: var(--agent-platform-border);
+  color: var(--agent-platform-color);
+}
+
+.agent-management-test-progress {
+  position: relative;
+  height: 3px;
+  margin-top: 10px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+.agent-management-test-progress span {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--agent-platform-color);
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+.agent-management-status-row {
+  margin-top: 11px;
+}
+
+.agent-management-status-copy {
+  min-width: 0;
+  gap: 5px;
+}
+
+.agent-management-card-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e9f0;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-management-card-helper {
+  color: #8491a4;
+  font-size: 0.688rem;
+  line-height: 1.45;
+}
+
+.agent-management-card-actions {
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.agent-management-card-actions button {
+  min-height: 30px;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-management-card,
+  .agent-management-toggle,
+  .agent-management-toggle span {
+    transition: none;
+  }
+
+  .agent-management-card:hover {
+    transform: none;
+  }
 }
 
 /* ── 探究网页管理页（/teacher/webapps/）────────────────────────────────
@@ -1526,7 +2445,7 @@ tr:hover td {
 }
 
 /* 三格的色调只用来互相区分，不额外承载语义（与智能体页的四格同理）。 */
-.webapp-management-overview .tone-blue strong { color: #2563eb; }
+.webapp-management-overview .tone-blue strong { color: #527198; }
 .webapp-management-overview .tone-green strong { color: #059669; }
 .webapp-management-overview .tone-grey strong { color: #94a3b8; }
 
@@ -1554,8 +2473,8 @@ tr:hover td {
 }
 
 .webapp-management-search:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #5f887d;
+  box-shadow: 0 0 0 3px rgba(95, 136, 125, 0.12);
 }
 
 .webapp-management-search input {
@@ -1598,28 +2517,149 @@ tr:hover td {
   gap: 16px;
 }
 
-/* 卡片。`.card` 基类已经给了白底 / 圆角 / 边框 / 阴影，这里只加资产卡自己的东西：
-   左边那条色条**承载信息**（已被课堂使用 vs 未被使用），与智能体卡片用左色条表示
-   启用 / 停用是**同一条视觉语法** —— 教师一眼就能挑出还没派上用场的网页。 */
+/* 探究网页采用「柔和标题区 + 白色内容区」。灰绿色只表示网页资产类别，
+   引用状态由卡片正文里的明确文字表达，不再靠左色条和颜色猜测。 */
 .webapp-management-card {
-  border-left: 5px solid #2563eb;
-  padding: 16px 20px;
-  /* ★ 2026-09-25（教师：「对齐方式要优化，高高低低的」）：
-     卡片改成 **flex 列**，内容块 `flex: 1` ⇒ 页脚被压到卡片底部。
-     原来页脚是普通流里的一个块，它的高度跟着上面的内容走 ——
-     而上面那两行会因**入口文件名的长短**变成一行或两行（截图上三张卡就是这样错开的），
-     于是三张卡的分隔线与按钮行**各在各的高度上**。 */
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 190px;
+  overflow: hidden;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.webapp-management-card:hover {
+  border-color: #c8d8d3;
+  box-shadow: 0 10px 28px rgba(70, 105, 96, 0.1);
+  transform: translateY(-1px);
+}
+
+.webapp-management-card-header {
+  min-height: 76px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0f6f3;
+  border-bottom: 1px solid #cfdfda;
+}
+
+.webapp-management-card-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #5f887d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(95, 136, 125, 0.09);
+}
+
+.webapp-management-card-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.webapp-management-card-title {
+  color: #1a1a2e;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.webapp-management-card-created {
+  display: block;
+  margin-top: 2px;
+  color: #798c87;
+  font-size: 0.688rem;
+  line-height: 1.45;
+}
+
+.webapp-management-card-body {
+  flex: 1;
+  padding: 14px 18px 15px;
   display: flex;
   flex-direction: column;
 }
 
-.webapp-management-card.is-unused {
-  border-left-color: #e2e8f0;
+.webapp-management-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.webapp-management-entry-chip {
+  max-width: 100%;
+  min-height: 26px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: #f5f8f7;
+  border: 1px solid #dfe8e5;
+  color: #596d68;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.688rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.webapp-management-entry-chip svg {
+  flex-shrink: 0;
+}
+
+.webapp-management-card .webapp-management-usage-chip {
+  min-height: 26px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border-color: #cfe2d8;
+  background: #f0f8f4;
+  color: #3f7b60;
+}
+
+.webapp-management-card.is-unused .webapp-management-usage-chip {
+  border-color: #e1e7ef;
+  background: #f8fafc;
+  color: #7b8799;
+}
+
+.webapp-management-card .webapp-management-usage-chip:hover {
+  border-color: #9fbeaf;
+  color: #326c51;
+}
+
+.webapp-management-card.is-unused .webapp-management-usage-chip:hover {
+  border-color: #c9d2df;
+  color: #5f6f84;
 }
 
 .webapp-management-card-footer,
 .webapp-management-card-actions {
   flex-wrap: wrap;
+}
+
+.webapp-management-card-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #e4e9f0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.webapp-management-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* ── 学习单管理页（`/teacher/worksheets/`）────────────────────────────
@@ -1933,9 +2973,9 @@ tr:hover td {
 
 .worksheet-editor-title:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: #527198;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 /* ★ 2026-09-26（spec 第 4 步）：页面头的「N 题 · 满分 M」。
@@ -1964,12 +3004,12 @@ tr:hover td {
 }
 
 .worksheet-editor-status.is-dirty {
-  background: #fffbeb;
+  background: #faf4eb;
   color: #b45309;
 }
 
 .worksheet-editor-status.is-error {
-  background: #fef2f2;
+  background: #f8eeee;
   color: #b91c1c;
 }
 
@@ -1996,20 +3036,20 @@ tr:hover td {
 }
 
 .worksheet-editor-banner.is-warning {
-  background: #fffbeb;
+  background: #faf4eb;
   border: 1px solid #fde68a;
   color: #92400e;
 }
 
 .worksheet-editor-banner.is-info {
-  background: #eff6ff;
+  background: #f2f5f8;
   border: 1px solid #bfdbfe;
   color: #1e40af;
 }
 
 .worksheet-editor-banner.is-danger {
   display: block;
-  background: #fef2f2;
+  background: #f8eeee;
   border: 1px solid #fecaca;
   color: #991b1b;
 }
@@ -2108,9 +3148,9 @@ tr:hover td {
 
 .worksheet-editor-task-title:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: #527198;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 /* 任务描述（★ 2026-09-25）。⚠️ 与标题框**刻意长得不一样**：
@@ -2141,8 +3181,8 @@ tr:hover td {
 
 .worksheet-editor-task-desc:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #527198;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 /* 任务头上的「N 道 · 满分 M」—— 与标题同一行的**次要**信息（标题是这一组最大的字）。 */
@@ -2196,7 +3236,7 @@ tr:hover td {
   height: 2px;
   margin-top: -1px;
   border-radius: 2px;
-  background: #2563eb;
+  background: #527198;
   pointer-events: none;
 }
 
@@ -2243,7 +3283,7 @@ tr:hover td {
   border: 1px dashed #93c5fd;
   border-radius: 8px;
   background: #fff;
-  color: #2563eb;
+  color: #527198;
   font: inherit;
   font-size: 0.813rem;
   font-weight: 600;
@@ -2251,8 +3291,8 @@ tr:hover td {
 }
 
 .worksheet-editor-task-add:hover {
-  background: #eff6ff;
-  border-color: #2563eb;
+  background: #f2f5f8;
+  border-color: #527198;
 }
 
 /* ── 折叠（★ 2026-09-26，spec 第 2 步）──────────────────────────────────
@@ -2298,7 +3338,7 @@ tr:hover td {
 .worksheet-editor-question[data-expanded='1'],
 .worksheet-editor-question[data-expanded='1']:focus-within {
   border-color: #bfdbfe;
-  border-left-color: #2563eb;
+  border-left-color: #527198;
   background: #fff;
 }
 
@@ -2313,7 +3353,7 @@ tr:hover td {
 }
 
 /* ⚠️ 焦点环**不在这里写**：`globals.css` 顶部有一条全局的 `:focus-visible`
-   （`outline: 3px solid rgba(37,99,235,.55)` + `outline-offset: 2px`），它已经覆盖折叠态那一行。
+   （`outline: 3px solid rgba(82, 113, 152,.55)` + `outline-offset: 2px`），它已经覆盖折叠态那一行。
    🔴 而且这个文件对该标记有**配额**（`check-classroom-browser-compat.mjs` 卡在 5 次，
    给的是「既有用法是有意的降级、不得新增」）—— 我在这里补的那一条当场把门禁跑红，
    而它**本来就是多余的**。别再加。 */
@@ -2372,7 +3412,7 @@ tr:hover td {
 }
 
 .worksheet-editor-question:focus-within {
-  border-left-color: #2563eb;
+  border-left-color: #527198;
 }
 
 .worksheet-editor-question-head {
@@ -2448,8 +3488,8 @@ tr:hover td {
 
 .worksheet-editor-icon-button.is-danger:hover:not(:disabled) {
   border-color: #fecaca;
-  background: #fef2f2;
-  color: #dc2626;
+  background: #f8eeee;
+  color: #934e4e;
 }
 
 .worksheet-editor-field {
@@ -2549,8 +3589,8 @@ tr:hover td {
 }
 
 .worksheet-editor-option-drag:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 .worksheet-editor-option {
@@ -2643,7 +3683,7 @@ tr:hover td {
 .worksheet-editor-order-edit-row.is-drop-target,
 .worksheet-editor-order-row.is-drop-target {
   border-color: #60a5fa;
-  background: #eff6ff;
+  background: #f2f5f8;
 }
 
 .worksheet-editor-order-edit-row.is-dragging,
@@ -2752,7 +3792,7 @@ tr:hover td {
 }
 
 .worksheet-blank-input:focus {
-  border-bottom-color: #2563eb;
+  border-bottom-color: #527198;
   background: #eaf2ff;
 }
 
@@ -2869,7 +3909,7 @@ tr:hover td {
    （白药丸靠 `box-shadow` 浮起来，尺寸与未选中的格子**逐字相同**）。 */
 .worksheet-editor-mode-tabs label.is-selected > span {
   background: #fff;
-  color: #1d4ed8;
+  color: #466384;
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(15, 23, 42, .14);
 }
@@ -3005,7 +4045,7 @@ tr:hover td {
 .worksheet-editor-paste-key {
   flex: 0 0 auto;
   min-width: 18px;
-  color: #2563eb;
+  color: #527198;
   font-weight: 700;
 }
 
@@ -3032,7 +4072,7 @@ tr:hover td {
   padding: 10px 12px 10px 28px;
   border: 1px solid #fde68a;
   border-radius: 8px;
-  background: #fffbeb;
+  background: #faf4eb;
   color: #92400e;
   font-size: 0.75rem;
   line-height: 1.8;
@@ -3089,14 +4129,14 @@ tr:hover td {
 
 .worksheet-editor-choice-layout label.is-selected {
   border-color: #93c5fd;
-  background: #eff6ff;
+  background: #f2f5f8;
 }
 
 .worksheet-editor-choice-layout input {
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: #2563eb;
+  accent-color: #527198;
 }
 
 .worksheet-editor-choice-layout label > span {
@@ -3148,7 +4188,7 @@ tr:hover td {
 .worksheet-answer-mode > legend { margin-bottom: 8px; font-weight: 700; color: #1e293b; }
 .worksheet-answer-mode-options { display: grid; gap: 8px; }
 .worksheet-answer-mode-options > label { display: grid; grid-template-columns: 20px 1fr; gap: 2px 8px; padding: 11px 12px; border: 1px solid #dbe4f0; border-radius: 8px; background: #fff; cursor: pointer; }
-.worksheet-answer-mode-options > label.is-selected { border-color: #2563eb; background: #eff6ff; }
+.worksheet-answer-mode-options > label.is-selected { border-color: #527198; background: #f2f5f8; }
 .worksheet-answer-mode-options > label input { grid-row: 1; align-self: center; }
 .worksheet-answer-mode-options > label span { display: grid; gap: 3px; }
 .worksheet-answer-mode-options strong { color: #1e293b; }
@@ -3182,7 +4222,7 @@ tr:hover td {
   border: 1px dashed #93c5fd;
   border-radius: 12px;
   background: #f8fbff;
-  color: #2563eb;
+  color: #527198;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 600;
@@ -3190,8 +4230,8 @@ tr:hover td {
 }
 
 .worksheet-editor-add:hover {
-  background: #eff6ff;
-  border-color: #2563eb;
+  background: #f2f5f8;
+  border-color: #527198;
 }
 
 /* ── 逐题分值（★ 2026-09-25 补：这四个类**从来没有过样式**）────────────────
@@ -3348,8 +4388,8 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: #f2f5f8;
+  color: #527198;
 }
 
 .worksheet-editor-type-option-icon svg {
@@ -3362,7 +4402,7 @@ tr:hover td {
 }
 
 .worksheet-editor-type-option:hover {
-  border-color: #2563eb;
+  border-color: #527198;
   background: #f8fbff;
 }
 
@@ -3478,8 +4518,8 @@ tr:hover td {
   justify-content: space-between;
   gap: 16px;
   padding: 20px 22px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
+  border-bottom: 1px solid #dbe4ee;
+  background: linear-gradient(135deg, #f1f5f9 0%, #eaf0f6 100%);
 }
 
 .worksheet-settings-head h3,
@@ -3498,9 +4538,9 @@ tr:hover td {
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid #d7e1ec;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.76);
   color: #64748b;
   font: inherit;
   font-size: 1.1rem;
@@ -3524,10 +4564,10 @@ tr:hover td {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, .22);
+  border: 1px solid #d7e1ec;
+  border-radius: 16px;
+  background: #f8fafc;
+  box-shadow: 0 20px 48px rgba(59, 76, 99, .2), 0 2px 8px rgba(59, 76, 99, .08);
   pointer-events: none;
 }
 
@@ -3540,8 +4580,8 @@ tr:hover td {
 
 .worksheet-background-hover-preview span {
   padding: 7px 12px;
-  border-top: 1px solid #eef1f6;
-  color: #334155;
+  border-top: 1px solid #dfe7f0;
+  color: #41516a;
   font-size: 0.813rem;
   font-weight: 650;
 }
@@ -3610,8 +4650,8 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: #f2f5f8;
+  color: #527198;
   font-size: 0.85rem;
   font-weight: 800;
 }
@@ -3650,7 +4690,7 @@ tr:hover td {
   padding: 9px 11px;
   border-left: 3px solid #93c5fd;
   border-radius: 0 7px 7px 0;
-  background: #eff6ff;
+  background: #f2f5f8;
   color: #475569;
   font-size: 0.72rem;
   line-height: 1.55;
@@ -3688,7 +4728,7 @@ tr:hover td {
 .worksheet-background-option.is-selected {
   border-color: #60a5fa;
   background: #f5f9ff;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .1);
+  box-shadow: inset 0 0 0 1px rgba(82, 113, 152, .1);
 }
 
 .worksheet-background-option > input {
@@ -3701,7 +4741,7 @@ tr:hover td {
 }
 
 .worksheet-background-option:focus-within {
-  outline: 3px solid rgba(37, 99, 235, .2);
+  outline: 3px solid rgba(82, 113, 152, .2);
   outline-offset: 2px;
 }
 
@@ -3717,7 +4757,7 @@ tr:hover td {
   background-color: #f8fafc;
   background-position: center;
   background-size: cover;
-  color: #2563eb;
+  color: #527198;
   font-size: 1.2rem;
   font-weight: 700;
 }
@@ -3745,7 +4785,7 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #2563eb;
+  background: #527198;
   color: #fff;
   font-size: .68rem;
   font-weight: 800;
@@ -3825,7 +4865,7 @@ tr:hover td {
   border: 1px solid #dbe3ef;
   border-radius: 5px;
   background: #eef2f7 center / cover no-repeat;
-  color: #2563eb;
+  color: #527198;
   font-size: 1rem;
 }
 
@@ -3863,7 +4903,7 @@ tr:hover td {
   margin: 0;
   padding: 10px 22px;
   border-top: 1px solid #fecaca;
-  background: #fef2f2;
+  background: #f8eeee;
   color: #b91c1c;
   font-size: 0.75rem;
   line-height: 1.6;
@@ -3906,8 +4946,8 @@ tr:hover td {
 
 .worksheet-editor-reward-option.is-selected {
   border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .worksheet-editor-reward-option input {
@@ -3987,7 +5027,7 @@ tr:hover td {
 
 .worksheet-editor-preview-orientation button.is-selected {
   color: #fff;
-  background: #2563eb;
+  background: #527198;
 }
 
 .worksheet-editor-preview-scroll {
@@ -4085,8 +5125,8 @@ tr:hover td {
 
 .worksheet-editor-back:hover {
   border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .worksheet-editor-back:active {
@@ -4308,11 +5348,11 @@ tr:hover td {
 }
 
 .worksheet-editor-outline-question.is-active {
-  background: #eff6ff;
+  background: #f2f5f8;
 }
 
 .worksheet-editor-outline-question.is-active::before {
-  background: #2563eb;
+  background: #527198;
 }
 
 .worksheet-editor-outline-question > button:first-child {
@@ -4353,7 +5393,7 @@ tr:hover td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #2563eb;
+  color: #527198;
 }
 
 .worksheet-editor-type-glyph svg {
@@ -4369,7 +5409,7 @@ tr:hover td {
 
 .worksheet-editor-outline-question.is-active .worksheet-editor-outline-number,
 .worksheet-editor-outline-question.is-active .worksheet-editor-outline-question-copy strong {
-  color: #1d4ed8;
+  color: #466384;
 }
 
 .worksheet-editor-outline-drag {
@@ -4386,8 +5426,8 @@ tr:hover td {
 }
 
 .worksheet-editor-outline-drag:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 .worksheet-editor-outline-add-question {
@@ -4405,8 +5445,8 @@ tr:hover td {
 
 .worksheet-editor-outline-add-question:hover {
   border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .worksheet-editor-outline > .worksheet-editor-add {
@@ -4470,8 +5510,8 @@ tr:hover td {
 
 .worksheet-editor-canvas .worksheet-editor-question.is-focused {
   border: 1px solid #bfdbfe;
-  border-left: 4px solid #2563eb;
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.07);
+  border-left: 4px solid #527198;
+  box-shadow: 0 10px 26px rgba(82, 113, 152, 0.07);
 }
 
 .worksheet-editor-question.is-focused .worksheet-editor-question-summary {
@@ -4525,8 +5565,8 @@ tr:hover td {
 
 .worksheet-editor-grade-status.is-on {
   border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .worksheet-editor-question-form {
@@ -4543,7 +5583,7 @@ tr:hover td {
 }
 
 .worksheet-editor-question-section.is-prompt {
-  border-color: #dbeafe;
+  border-color: #e9eff6;
   background: #fbfdff;
 }
 
@@ -4556,7 +5596,7 @@ tr:hover td {
 
 
 .worksheet-editor-question-section.is-grading {
-  border-color: #dbeafe;
+  border-color: #e9eff6;
   background: #f8fbff;
 }
 
@@ -4570,8 +5610,8 @@ tr:hover td {
 .worksheet-editor-points-badge {
   padding: 3px 8px;
   border-radius: 6px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
   font-size: 0.688rem;
   font-weight: 700;
   white-space: nowrap;
@@ -4646,8 +5686,8 @@ tr:hover td {
 }
 
 .worksheet-editor-section-head > span.is-active {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 /* ★ 2026-09-27（教师）：「这个使用左右滑动的开关打开，就表示可以多选，放到右上角去。」
@@ -4690,8 +5730,8 @@ tr:hover td {
 }
 
 .worksheet-editor-question-section.is-prompt textarea:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: #527198;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.1);
 }
 
 .worksheet-editor-rich-field {
@@ -4751,8 +5791,8 @@ tr:hover td {
 .worksheet-editor-tool-group > button:hover:not(:disabled),
 .worksheet-editor-image-upload:hover {
   border-color: #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
 }
 
 .worksheet-editor-tool-group > button:disabled,
@@ -4777,8 +5817,8 @@ tr:hover td {
 
 .worksheet-editor-tool-group > button.is-active {
   border-color: #93c5fd;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #e9eff6;
+  color: #466384;
 }
 
 .worksheet-editor-emphasis-glyph {
@@ -4948,12 +5988,12 @@ tr:hover td {
   top: 34px;
   left: 0;
   z-index: 20;
-  min-width: 116px;
-  padding: 4px;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  min-width: 124px;
+  padding: 6px;
+  border: 1px solid #d7e1ec;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #f5f8fb 0, #fff 64px);
+  box-shadow: 0 16px 36px rgba(59, 76, 99, 0.17), 0 2px 6px rgba(59, 76, 99, 0.06);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -4977,7 +6017,7 @@ tr:hover td {
 
 .worksheet-editor-color-option:hover,
 .worksheet-editor-color-option.is-active {
-  background: #eff6ff;
+  background: #eaf0f6;
 }
 
 /* 下拉列表中的颜色样本；触发按钮使用 A 字下方的短色条，形态刻意不同。 */
@@ -5175,14 +6215,14 @@ tr:hover td {
 
 .worksheet-editor-manual-note {
   margin-top: 0;
-  border-color: #dbeafe;
-  background: #eff6ff;
+  border-color: #e9eff6;
+  background: #f2f5f8;
   color: #475569;
 }
 
 .worksheet-editor-manual-note strong {
   margin-right: 8px;
-  color: #1d4ed8;
+  color: #466384;
 }
 
 /* 选项列表底部只保留一个主操作；校验提示独占下一行，避免按钮、警告和评分方式抢空间。 */
@@ -5205,9 +6245,9 @@ tr:hover td {
   align-items: baseline;
   gap: 8px;
   padding: 9px 11px;
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid #956834;
   border-radius: 0 7px 7px 0;
-  background: #fffbeb;
+  background: #faf4eb;
   color: #92400e;
   font-size: 0.75rem;
   line-height: 1.5;
@@ -5255,13 +6295,13 @@ tr:hover td {
 
 .worksheet-editor-scoring-options > label.is-selected {
   border-color: #93c5fd;
-  background: #eff6ff;
+  background: #f2f5f8;
 }
 
 .worksheet-editor-scoring-options input {
   flex: 0 0 auto;
   margin: 2px 0 0;
-  accent-color: #2563eb;
+  accent-color: #527198;
 }
 
 .worksheet-editor-scoring-options strong,
@@ -5335,7 +6375,7 @@ tr:hover td {
 }
 
 .worksheet-editor-autograde-control input:checked + span {
-  background: #2563eb;
+  background: #527198;
 }
 
 .worksheet-editor-autograde-control input:checked + span::after {
@@ -5343,7 +6383,7 @@ tr:hover td {
 }
 
 .worksheet-editor-autograde-control input:focus + span {
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.16);
 }
 
 /* 分值不再是两个孤立的小框，而是一张完整的得分规则卡。 */
@@ -5384,8 +6424,8 @@ tr:hover td {
   flex: 0 0 auto;
   padding: 3px 7px;
   border-radius: 6px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
   font-size: 0.688rem;
   font-weight: 700;
 }
@@ -5510,7 +6550,7 @@ tr:hover td {
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid #dbeafe;
+  border: 1px solid #e9eff6;
   border-radius: 9px;
   background: #fff;
 }
@@ -5523,8 +6563,8 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #eff6ff;
-  color: #2563eb;
+  background: #f2f5f8;
+  color: #527198;
   font-size: 0.75rem;
   font-weight: 800;
 }
@@ -5568,8 +6608,8 @@ tr:hover td {
   justify-content: center;
   margin-bottom: 14px;
   border-radius: 12px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #f2f5f8;
+  color: #466384;
   font-size: 0.813rem;
   font-weight: 700;
 }
@@ -5665,6 +6705,14 @@ tr:hover td {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .webapp-management-card {
+    transition: none;
+  }
+
+  .webapp-management-card:hover {
+    transform: none;
+  }
+
   .worksheet-management-card {
     transition: none;
   }
@@ -5725,16 +6773,16 @@ tr:hover td {
 }
 
 .related-classrooms-chip:hover {
-  border-color: #2563eb;
-  color: #2563eb;
+  border-color: #527198;
+  color: #527198;
 }
 
 .related-classrooms-chip-count {
   min-width: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: #eef2ff;
-  color: #2563eb;
+  background: #eef3f8;
+  color: #527198;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -5800,8 +6848,8 @@ tr:hover td {
 }
 
 /* 配色与 `classes/page.tsx` 里那份既有实现一致：绿=进行中、黄=已暂停、灰=已结束。 */
-.related-classroom-status.is-active { background: #dcfce7; color: #16a34a; }
-.related-classroom-status.is-paused { background: #fef3c7; color: #d97706; }
+.related-classroom-status.is-active { background: #dcfce7; color: #3f7859; }
+.related-classroom-status.is-paused { background: #f5ecdd; color: #956834; }
 .related-classroom-status.is-ended { background: #f1f5f9; color: #94a3b8; }
 
 .related-classroom-list.is-pending,
@@ -5856,24 +6904,14 @@ tr:hover td {
 }
 
 @media (max-width: 900px) {
-  .classes-layout {
-    flex-direction: column;
+  .classes-workspace-header {
+    flex-wrap: wrap;
   }
 
-  .classes-sidebar {
-    width: 100% !important;
-  }
-
-  .classes-sidebar-list {
-    flex-direction: row !important;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x proximity;
-  }
-
-  .classes-sidebar-list > div {
-    min-width: 220px;
-    scroll-snap-align: start;
+  .classes-current-actions {
+    width: 100%;
+    margin-left: 61px;
+    justify-content: flex-start;
   }
 
   .active-classroom-card-header {
@@ -5897,7 +6935,16 @@ tr:hover td {
   }
 
   .agent-management-overview {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: 0;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .agent-management-overview-note {
+    width: 100%;
+    margin: 2px 0 0;
+    justify-content: flex-start;
   }
 }
 
@@ -6003,6 +7050,86 @@ tr:hover td {
   .classes-filter-controls,
   .classes-primary-actions {
     width: 100%;
+  }
+
+  .classes-switcher {
+    padding: 7px;
+  }
+
+  .classes-switcher-label {
+    display: none;
+  }
+
+  .classes-switcher-item {
+    min-width: 158px;
+    padding: 7px 8px;
+  }
+
+  .classes-switcher-copy small {
+    max-width: 108px;
+  }
+
+  .classes-workspace-header {
+    padding: 14px;
+  }
+
+  .classes-current-heading {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .classes-current-heading h2 {
+    max-width: calc(100vw - 190px);
+  }
+
+  .classes-current-name-input {
+    width: 100%;
+  }
+
+  .classes-current-stats {
+    width: 100%;
+    margin-top: 2px;
+    padding-top: 12px;
+    border-top: 1px solid #d8e1ec;
+  }
+
+  .classes-current-stats > div:not(.classes-current-stats-secondary) {
+    min-width: 58px;
+    padding: 0 12px;
+  }
+
+  .classes-current-stats > div:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .classes-current-stats-secondary {
+    margin-left: auto;
+  }
+
+  .classes-current-actions {
+    margin-left: 0;
+  }
+
+  .classes-current-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .classes-settings-wrap {
+    flex: 1;
+  }
+
+  .classes-settings-wrap > .btn {
+    width: 100%;
+  }
+
+  .classes-settings-menu {
+    width: 100%;
+  }
+
+  .classes-workspace-tabs {
+    padding: 10px 14px;
   }
 
   .classes-filter-controls {
@@ -6130,6 +7257,41 @@ tr:hover td {
     max-width: none;
   }
 
+  .agent-platform-filter-tabs {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .agent-platform-filter-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .agent-management-overview {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .agent-management-overview-item {
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .agent-management-overview-item:first-child {
+    padding-left: 10px;
+  }
+
+  .agent-management-overview-item:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .agent-management-overview-note {
+    grid-column: 1 / -1;
+    padding: 9px 10px 0;
+    border-top: 1px solid #e2e8f0;
+  }
+
   .agent-management-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -6236,7 +7398,7 @@ tr:hover td {
   vertical-align: top;
 }
 
-.worksheet-editor-table-grid td.is-blank { background: #eff6ff; }
+.worksheet-editor-table-grid td.is-blank { background: #f2f5f8; }
 
 .worksheet-editor-table-grid .input {
   width: 100%;
@@ -6265,7 +7427,7 @@ tr:hover td {
 .worksheet-editor-table-op button:disabled { color: #e2e8f0; cursor: default; }
 
 .worksheet-editor-table-paste summary {
-  color: #2563eb;
+  color: #527198;
   font-size: 0.72rem;
   cursor: pointer;
 }
@@ -6300,7 +7462,7 @@ tr:hover td {
   cursor: pointer;
 }
 
-.worksheet-editor-table-toggle:hover { color: #1d4ed8; }
+.worksheet-editor-table-toggle:hover { color: #466384; }
 
 /* ── 「表格域作答设置」那块与上一块之间的分隔线（★ 2026-09-28，教师：「加一个分隔线」）
    🔴 为什么要单独写：`.worksheet-editor-block + .worksheet-editor-block` 那条通用规则
@@ -6380,6 +7542,6 @@ tr:hover td {
 }
 
 .worksheet-editor-pair-option:hover { background: #f1f5f9; }
-.worksheet-editor-pair-option.is-on { background: #eef4ff; color: #1d4ed8; font-weight: 600; }
+.worksheet-editor-pair-option.is-on { background: #eef4ff; color: #466384; font-weight: 600; }
 /* 条目还没写完 id 时点不了（⚠️ 不用 `:has()`：Safari 15 不支持，而这份 CSS 学生端也加载）。 */
 .worksheet-editor-pair-option.is-disabled { opacity: .55; cursor: default; }

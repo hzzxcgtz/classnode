@@ -352,7 +352,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
               onKeyDown={(e) => e.key === 'Enter' && void handleLogin()}
               disabled={loggingIn}
-              style={{ borderColor: fieldErrors.password ? '#ef4444' : undefined }}
+              style={{ borderColor: fieldErrors.password ? '#a85d5d' : undefined }}
               autoFocus
             />
             {fieldErrors.password && (
@@ -392,7 +392,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               onChange={e => { setSetupPwd(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupPwd; return n; }); }}
               onKeyDown={e => e.key === 'Enter' && void handleSetup()}
               disabled={settingUp}
-              style={{ borderColor: fieldErrors.setupPwd ? '#ef4444' : undefined }} autoFocus />
+              style={{ borderColor: fieldErrors.setupPwd ? '#a85d5d' : undefined }} autoFocus />
             {fieldErrors.setupPwd && <FieldError message={fieldErrors.setupPwd} />}
           </div>
           <div style={{ marginBottom: 14 }}>
@@ -400,7 +400,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               onChange={e => { setSetupConfirm(e.target.value); setFieldErrors(prev => { const n = { ...prev }; delete n.setupConfirm; return n; }); }}
               onKeyDown={e => e.key === 'Enter' && void handleSetup()}
               disabled={settingUp}
-              style={{ borderColor: fieldErrors.setupConfirm ? '#ef4444' : undefined }} />
+              style={{ borderColor: fieldErrors.setupConfirm ? '#a85d5d' : undefined }} />
             {fieldErrors.setupConfirm && <FieldError message={fieldErrors.setupConfirm} />}
           </div>
           {fieldErrors.submit && <FieldError message={fieldErrors.submit} style={{ marginBottom: 8 }} />}
@@ -452,24 +452,24 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           <div className="teacher-service-status teacher-service-status-collapsed" style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
             <span title={serverOnline ? '服务运行中' : '服务已断开'} style={{
               width: 8, height: 8, borderRadius: '50%',
-              background: serverOnline ? '#22c55e' : '#ef4444',
-              boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+              background: serverOnline ? '#3f7859' : '#a85d5d',
+              boxShadow: serverOnline ? '0 0 6px rgba(63, 120, 89,0.5)' : 'none',
             }} />
           </div>
         ) : (
           <div className="teacher-service-status" style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '7px 12px', marginBottom: 24,
-            background: serverOnline ? '#f0fdf4' : '#fef2f2',
+            background: serverOnline ? '#f0fdf4' : '#f8eeee',
             borderRadius: 8, fontSize: "0.75rem",
           }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%',
-              background: serverOnline ? '#22c55e' : '#ef4444',
-              boxShadow: serverOnline ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+              background: serverOnline ? '#3f7859' : '#a85d5d',
+              boxShadow: serverOnline ? '0 0 6px rgba(63, 120, 89,0.5)' : 'none',
               flexShrink: 0,
             }} />
-            <span className="teacher-service-status-label" style={{ color: serverOnline ? '#16a34a' : '#dc2626' }}>
+            <span className="teacher-service-status-label" style={{ color: serverOnline ? '#3f7859' : '#934e4e' }}>
               服务{serverOnline ? '运行中' : '已断开'}
             </span>
           </div>
@@ -502,8 +502,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 padding: sidebarCollapsed ? '10px 0' : '9px 12px', borderRadius: 8, width: '100%',
                 border: 'none', cursor: 'pointer', textAlign: 'left',
                 fontSize: "0.875rem", fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#2563eb' : '#475569',
-                background: isActive ? '#eef2ff' : 'transparent',
+                color: isActive ? '#527198' : '#475569',
+                background: isActive ? '#eef3f8' : 'transparent',
                 position: 'relative', marginBottom: 2,
                 transition: 'all 0.15s',
               }}
@@ -520,7 +520,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   position: 'absolute', left: 0, top: '50%',
                   transform: 'translateY(-50%)',
                   width: 3, height: 18,
-                  background: '#2563eb',
+                  background: '#527198',
                   borderRadius: '0 2px 2px 0',
                 }} />
               )}
@@ -533,7 +533,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     style={{
                       position: 'absolute', top: -1, right: -1,
                       width: 7, height: 7, borderRadius: '50%',
-                      background: '#ef4444', border: '1.5px solid white',
+                      background: '#a85d5d', border: '1.5px solid white',
                     }}
                   />
                 )}
@@ -588,7 +588,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                       <span style={{
                         position: 'absolute', top: -2, right: sidebarCollapsed ? -2 : -4,
                         width: 8, height: 8, borderRadius: '50%',
-                        background: '#ef4444',
+                        background: '#a85d5d',
                         border: '2px solid #ffffff',
                       }} />
                     )}
@@ -636,7 +636,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#2563eb'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#527198'; }}
               onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -679,7 +679,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#a85d5d'; }}
               onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -725,7 +725,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           transition: 'left 0.2s ease, color 0.15s, background 0.15s',
           boxShadow: '2px 0 6px rgba(0,0,0,0.04)',
         }}
-        onMouseEnter={e => { e.currentTarget.style.color = '#2563eb'; e.currentTarget.style.background = '#f8faff'; }}
+        onMouseEnter={e => { e.currentTarget.style.color = '#527198'; e.currentTarget.style.background = '#f8faff'; }}
         onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = '#fff'; }}
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>
@@ -767,7 +767,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   <input type="password" className="input" value={oldPwd}
                     onChange={e => { setOldPwd(e.target.value); clearPwdError('oldPwd'); }}
                     placeholder="输入当前管理密码" autoFocus
-                    style={{ borderColor: pwdFieldErrors.oldPwd ? '#ef4444' : undefined }} />
+                    style={{ borderColor: pwdFieldErrors.oldPwd ? '#a85d5d' : undefined }} />
                   {pwdFieldErrors.oldPwd && <FieldError message={pwdFieldErrors.oldPwd} />}
                 </div>
                 <div style={{ marginBottom: 14 }}>
@@ -775,7 +775,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   <input type="password" className="input" value={newPwd}
                     onChange={e => { setNewPwd(e.target.value); clearPwdError('newPwd'); }}
                     placeholder="新密码"
-                    style={{ borderColor: pwdFieldErrors.newPwd ? '#ef4444' : undefined }} />
+                    style={{ borderColor: pwdFieldErrors.newPwd ? '#a85d5d' : undefined }} />
                   {pwdFieldErrors.newPwd && <FieldError message={pwdFieldErrors.newPwd} />}
                 </div>
                 <div style={{ marginBottom: 16 }}>
@@ -784,7 +784,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     onChange={e => { setConfirmPwd(e.target.value); clearPwdError('confirmPwd'); }}
                     placeholder="再次输入新密码"
                     onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }}
-                    style={{ borderColor: pwdFieldErrors.confirmPwd ? '#ef4444' : undefined }} />
+                    style={{ borderColor: pwdFieldErrors.confirmPwd ? '#a85d5d' : undefined }} />
                   {pwdFieldErrors.confirmPwd && <FieldError message={pwdFieldErrors.confirmPwd} />}
                   {pwdFieldErrors.submit && <FieldError message={pwdFieldErrors.submit} />}
                 </div>

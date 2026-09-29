@@ -100,7 +100,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="api-token-title"
+      <div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="api-token-title"
         style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 24, width: 560, maxWidth: '92vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
         <h3 id="api-token-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>扣子访问令牌</h3>
@@ -123,7 +123,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
                信息排成三行（备注+倒计时 / 掩码 / 谁在用），操作挤在右侧一列。
                原来是一行挤四样东西、掩码单独吊在下面，扫起来没有主次。 */
             <div key={row.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f2f5f8', color: '#527198', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" />
                 </svg>
@@ -147,13 +147,13 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
                 {confirming === row.id ? (
                   <>
                     <button type="button" className="btn btn-secondary" disabled={busy}
-                      style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#ef4444', borderColor: '#fecaca' }}
+                      style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#a85d5d', borderColor: '#fecaca' }}
                       onClick={() => void remove(row)}>{busy ? '处理中…' : '确定删除'}</button>
                     <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => setConfirming(null)}>取消</button>
                   </>
                 ) : (
                   <button type="button" className="btn btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#ef4444' }}
+                    style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#a85d5d' }}
                     onClick={() => setConfirming(row.id)}>删</button>
                 )}
               </div>
@@ -164,7 +164,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
         {editingId === null ? (
           <button type="button" onClick={startCreate} style={{
             width: '100%', marginTop: 4, padding: '11px', borderRadius: 12, cursor: 'pointer',
-            border: '1px dashed #cbd5e1', background: '#fff', color: '#2563eb',
+            border: '1px dashed #cbd5e1', background: '#fff', color: '#527198',
             fontSize: '0.813rem', fontWeight: 600, fontFamily: 'inherit',
           }}>
             + 新建一份
@@ -194,7 +194,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
 
             {/* 🔴 影响面提示：一份被多个智能体用着的凭据，改它就是同时改那几个的钥匙。 */}
             {editingRow && editingRow.agentCount > 0 && token.trim() !== '' && (
-              <div style={{ fontSize: '0.75rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.6 }}>
+              <div style={{ fontSize: '0.75rem', color: '#b45309', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.6 }}>
                 改这个 Token 会同时影响 <strong>{editingRow.agentCount} 个</strong>正在用它的智能体。
               </div>
             )}
@@ -227,9 +227,9 @@ export function ExpiryChip({ level, text }: { level: ReturnType<typeof tokenExpi
   const tone = {
     none: { bg: '#f1f5f9', fg: '#64748b', border: '#e2e8f0' },
     ok: { bg: '#f8fafc', fg: '#94a3b8', border: '#e2e8f0' },
-    soon: { bg: '#fffbeb', fg: '#b45309', border: '#fde68a' },
-    urgent: { bg: '#fef2f2', fg: '#b91c1c', border: '#fecaca' },
-    expired: { bg: '#fef2f2', fg: '#b91c1c', border: '#fecaca' },
+    soon: { bg: '#faf4eb', fg: '#b45309', border: '#fde68a' },
+    urgent: { bg: '#f8eeee', fg: '#b91c1c', border: '#fecaca' },
+    expired: { bg: '#f8eeee', fg: '#b91c1c', border: '#fecaca' },
   }[level];
   return (
     <span style={{ fontSize: '0.688rem', fontWeight: 600, padding: '1px 7px', borderRadius: 6, background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`, whiteSpace: 'nowrap' }}>

@@ -35,7 +35,7 @@ interface AgentCredentialsFieldsProps extends AgentCredentialValues {
 const SAVED_SECRET_PLACEHOLDER = '••••••••••••••••••••••••';
 
 const inputStyle = (error?: string) => ({
-  fontSize: '0.813rem', padding: '8px 12px', borderColor: error ? '#ef4444' : undefined,
+  fontSize: '0.813rem', padding: '8px 12px', borderColor: error ? '#a85d5d' : undefined,
 });
 
 function RequiredField({ label, value, placeholder, hint, savedDisplay = false, error, onChange }: {
@@ -82,7 +82,7 @@ function PlatformNotice({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px', borderRadius: 8,
-      background: 'linear-gradient(135deg, #fff7ed, #fffbeb)', border: '1px solid #fed7aa',
+      background: 'linear-gradient(135deg, #fff7ed, #faf4eb)', border: '1px solid #fed7aa',
       fontSize: '0.75rem', color: '#9a3412', lineHeight: 1.6,
     }}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -138,7 +138,7 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select className="input" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
-              style={{ fontSize: '0.813rem', padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#ef4444' : undefined }}>
+              style={{ fontSize: '0.813rem', padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#a85d5d' : undefined }}>
               {/* ★ 2026-09-25（教师）：「我的扣子是我自己在管理里面设置的，要排在最上面，
                   排在最后面的才是『自定义……』」。⇒ 已存的凭据在前，「自定义」垫底。
                   ⚠️ 这不是纯口味：**常用的是上面那几个**，而 `<select>` 默认选中第一项 ——

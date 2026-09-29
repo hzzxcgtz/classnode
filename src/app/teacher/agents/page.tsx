@@ -49,7 +49,7 @@ export default function AgentsPage() {
   const [purposeFilter, setPurposeFilter] = useState<'all' | AgentPurpose>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'healthy' | 'error'>('all');
 
-  const { agents, loading, testing, busyOperation, relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms, loadAgents, toggleAgent, deleteAgent, testAgent } = useAgentController({
+  const { agents, loading, testing, busyOperation, relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms, loadAgents, toggleAgent, deleteAgent, testAgent, confirmationDialog } = useAgentController({
     onNotice: notice => {
       setToast({ show: true, msg: notice.message, type: notice.type });
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -142,7 +142,7 @@ export default function AgentsPage() {
         <div role="status" style={{
           display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
           padding: '12px 16px', borderRadius: 10, marginBottom: 16,
-          background: expiringTokens.length > 0 ? '#fffbeb' : '#f8fafc',
+          background: expiringTokens.length > 0 ? '#faf4eb' : '#f8fafc',
           border: `1px solid ${expiringTokens.length > 0 ? '#fde68a' : '#e2e8f0'}`,
           color: expiringTokens.length > 0 ? '#92400e' : '#475569',
           fontSize: '0.813rem', lineHeight: 1.7,
@@ -196,17 +196,24 @@ export default function AgentsPage() {
       {!loading && agents.length > 0 && (
         <>
           <div className="agent-management-overview" aria-label="智能体状态概览">
-            {[
-              { label: '全部智能体', value: agents.length, tone: 'blue' },
-              { label: '当前启用', value: agentSummary.enabled, tone: 'purple' },
-              { label: '连接健康', value: agentSummary.healthy, tone: 'green' },
-              { label: '连接异常', value: agentSummary.error, tone: 'red' },
-            ].map(item => (
-              <div key={item.label} className={`tone-${item.tone}`}>
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
-              </div>
-            ))}
+            <div className="agent-management-overview-item">
+              <strong>{agents.length}</strong><span>全部智能体</span>
+            </div>
+            <div className="agent-management-overview-item">
+              <strong>{agentSummary.enabled}</strong><span>当前启用</span>
+            </div>
+            <div className="agent-management-overview-item tone-green">
+              <strong>{agentSummary.healthy}</strong><span>连接健康</span>
+            </div>
+            <div className={`agent-management-overview-item${agentSummary.error > 0 ? ' tone-red' : ''}`}>
+              <strong>{agentSummary.error}</strong><span>连接异常</span>
+            </div>
+            <div className="agent-management-overview-note">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" />
+              </svg>
+              {agentSummary.error > 0 ? `${agentSummary.error} 个智能体需要检查连接` : '已启用的智能体连接正常'}
+            </div>
           </div>
           <div className="agent-management-filters teacher-list-toolbar">
             <label className="agent-management-search">
@@ -214,10 +221,15 @@ export default function AgentsPage() {
               <input value={agentSearch} onChange={event => { setAgentSearch(event.target.value); setAgentPage(1); }} placeholder="搜索智能体名称" aria-label="搜索智能体" />
               {agentSearch && <button type="button" onClick={() => { setAgentSearch(''); setAgentPage(1); }} aria-label="清空智能体搜索">×</button>}
             </label>
-            <select value={platformFilter} onChange={event => { setPlatformFilter(event.target.value as 'all' | AgentPlatform); setAgentPage(1); }} aria-label="按平台筛选智能体">
-              <option value="all">全部平台</option>
-              {AGENT_PLATFORMS.map(platform => <option key={platform.value} value={platform.value}>{platform.label}</option>)}
-            </select>
+            <div className="agent-platform-filter-tabs" role="group" aria-label="按平台筛选智能体">
+              <button type="button" className={platformFilter === 'all' ? 'is-active' : ''} aria-pressed={platformFilter === 'all'} onClick={() => { setPlatformFilter('all'); setAgentPage(1); }}>全部</button>
+              {AGENT_PLATFORMS.map(platform => (
+                <button key={platform.value} type="button" className={platformFilter === platform.value ? 'is-active' : ''} aria-pressed={platformFilter === platform.value} onClick={() => { setPlatformFilter(platform.value); setAgentPage(1); }}>
+                  <span aria-hidden="true" style={{ background: platform.color }} />
+                  {platform.label}
+                </button>
+              ))}
+            </div>
             {/* 顺序：搜索 → 平台 → 用途 → 状态。两个「是什么」挨着，状态（「怎么样」）压尾。 */}
             <select value={purposeFilter} onChange={event => { setPurposeFilter(event.target.value as 'all' | AgentPurpose); setAgentPage(1); }} aria-label="按用途筛选智能体">
               <option value="all">全部用途</option>
@@ -249,10 +261,10 @@ export default function AgentsPage() {
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>}
           title="没有符合条件的智能体"
           description="可以调整关键词、平台、用途或连接状态。"
-          action={<button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>}
+          action={<button className="btn btn-secondary" onClick={() => { setAgentSearch(''); setPlatformFilter('all'); setPurposeFilter('all'); setStatusFilter('all'); setAgentPage(1); }}>查看全部智能体</button>}
         />
       ) : (
-        <div className="agent-management-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+        <div className="agent-management-grid">
           {pagedAgents.map(agent => (
             <AgentCard
               key={agent.id}
@@ -285,6 +297,7 @@ export default function AgentsPage() {
         />
       )}
       {errorTip && <AgentErrorTip tip={errorTip} />}
+      {confirmationDialog}
 
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}
     </div>
@@ -330,7 +343,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content agent-form-modal" role="dialog" aria-modal="true" aria-labelledby="agent-form-title" onClick={e => e.stopPropagation()} style={{
+      <div className="modal-content teacher-dialog teacher-form-dialog agent-form-modal" role="dialog" aria-modal="true" aria-labelledby="agent-form-title" onClick={e => e.stopPropagation()} style={{
         maxWidth: 860, padding: 0, borderRadius: 14,
       }}>
         {/* 顶栏 */}
@@ -434,7 +447,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
-                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
+                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
                   {fieldErrors.name && <FieldError message={fieldErrors.name} />}
                 </div>
               </div>
@@ -461,8 +474,8 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
           {fieldErrors.submit && (
             <div className="agent-form-submit-error" style={{
               padding: '8px 12px', borderRadius: 6,
-              background: '#fef2f2', border: '1px solid #fecaca',
-              color: '#dc2626', fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 6,
+              background: '#f8eeee', border: '1px solid #fecaca',
+              color: '#934e4e', fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
               {fieldErrors.submit}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { useTeacherConfirm } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AgentSummary, RelatedClassroom } from '@/lib/types';
 
@@ -15,6 +16,7 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
   onNotice: (notice: Notice) => void;
   onDeleteBlocked: (agent: AgentSummary, classrooms: RelatedClassroom[]) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState<string | null>(null);
@@ -86,7 +88,12 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
         if (mountedRef.current) callbacksRef.current.onDeleteBlocked(agent, usage.classrooms);
         return;
       }
-      if (!window.confirm(`确定删除 "${agent.name}" 吗？`)) return;
+      if (!await askConfirmation({
+        title: '删除这个 AI 智能体？',
+        message: `「${agent.name}」的接入配置会被删除，且无法恢复。`,
+        confirmLabel: '删除智能体',
+        tone: 'danger',
+      })) return;
       await api.deleteAgent(agent.id);
       await loadAgents();
     } catch (error) {
@@ -95,7 +102,7 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
       busyRef.current = false;
       if (mountedRef.current) setBusyOperation(null);
     }
-  }, [loadAgents]);
+  }, [askConfirmation, loadAgents]);
 
   const testAgent = useCallback(async (agent: AgentSummary) => {
     if (testing === agent.id) return;
@@ -147,6 +154,6 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
   return {
     agents, loading, testing, busyOperation,
     relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms,
-    loadAgents, toggleAgent, deleteAgent, testAgent,
+    loadAgents, toggleAgent, deleteAgent, testAgent, confirmationDialog,
   };
 }

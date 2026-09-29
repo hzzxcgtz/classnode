@@ -620,14 +620,14 @@ export function StudentChatContent({
           }}>
             <div style={{
               width: 56, height: 56, borderRadius: '50%',
-              background: '#fef2f2', color: '#ef4444',
+              background: '#f8eeee', color: '#a85d5d',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
             </div>
-            <div style={{ fontSize: "1rem", fontWeight: 600, color: '#dc2626' }}>{loadError}</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600, color: '#934e4e' }}>{loadError}</div>
             <p style={{ fontSize: "0.875rem", color: '#6b7280', margin: 0 }}>请确认课堂仍在进行中，或联系老师获取最新互动码</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={onRetryRestore}
@@ -635,7 +635,7 @@ export function StudentChatContent({
                 重试
               </button>
               <button onClick={onExit}
-                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: 'white', fontSize: "0.813rem", cursor: 'pointer' }}>
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#527198', color: 'white', fontSize: "0.813rem", cursor: 'pointer' }}>
                 返回首页
               </button>
             </div>
@@ -653,8 +653,8 @@ export function StudentChatContent({
               {getCurrentAgent()?.name || MODULE_META.companion.label}
             </h2>
             {getCurrentAgent()?.enabled === false ? (
-              <div style={{ fontSize: "0.938rem", color: '#f59e0b', margin: 0, lineHeight: 1.6 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' }}>
+              <div style={{ fontSize: "0.938rem", color: '#956834', margin: 0, lineHeight: 1.6 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#faf4eb', borderRadius: 8, border: '1px solid #fde68a' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   智能体已被教师停用，暂时无法回复消息
                 </span>
@@ -827,7 +827,7 @@ export function StudentChatContent({
             width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: '#f8eeee', border: '1px solid #fecaca',
             display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             zIndex: 5,
@@ -849,7 +849,7 @@ export function StudentChatContent({
             width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
-            background: '#fffbeb', border: '1px solid #fde68a',
+            background: '#faf4eb', border: '1px solid #fde68a',
             display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#92400e',
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             zIndex: 5,
@@ -866,7 +866,7 @@ export function StudentChatContent({
             width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
             marginBottom: 8,
             padding: '6px 14px', borderRadius: 8,
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: '#f8eeee', border: '1px solid #fecaca',
             display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.813rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
             zIndex: 5,
@@ -883,7 +883,7 @@ export function StudentChatContent({
             width: 'auto', maxWidth: 700, whiteSpace: 'nowrap',
             marginBottom: 8,
             padding: '6px 14px 6px 14px', borderRadius: 8,
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: '#f8eeee', border: '1px solid #fecaca',
             display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: '#991b1b',
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             zIndex: 5,

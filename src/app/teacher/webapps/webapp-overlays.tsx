@@ -17,9 +17,9 @@ export function WebappDeleteBlockedDialog({ webappName, classrooms, onClose }: {
   classrooms: RelatedClassroom[];
   onClose: () => void;
 }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="webapp-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="webapp-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除探究网页</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>这个网页正被课堂使用中，删掉会让那些课堂里的学生打不开它。</p></div>
-    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8, wordBreak: 'break-all' }}>「{webappName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /><div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: 8 }}>课堂关联目前只能在创建课堂时勾选。</div></div>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog teacher-dialog-alert" role="alertdialog" aria-modal="true" aria-labelledby="webapp-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="webapp-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除探究网页</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>这个网页正被课堂使用中，删掉会让那些课堂里的学生打不开它。</p></div>
+    <div style={{ background: '#f8eeee', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8, wordBreak: 'break-all' }}>「{webappName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /><div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: 8 }}>课堂关联目前只能在创建课堂时勾选。</div></div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;
 }
@@ -36,7 +36,7 @@ export function WebappRelatedClassroomsDialog({ webappName, classrooms, loading,
   loading: boolean;
   onClose: () => void;
 }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="webapp-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="webapp-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <h3 id="webapp-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{webappName}」关联的课堂</h3>
     <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选探究网页。</p>
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
@@ -57,7 +57,7 @@ export function WebappRelatedClassroomsDialog({ webappName, classrooms, loading,
 export function WebappExternalDepsNotice({ deps }: { deps: { count: number; files: string[] } }) {
   if (deps.count === 0) return null;
   return (
-    <div role="status" style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+    <div role="status" style={{ background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
       <div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
         本网页依赖 {deps.count} 个外部资源
       </div>
@@ -99,7 +99,7 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
           `padding: 32px` 三条 —— 前两条会跟新算出来的宽高打架（显式 width/height 与
           `width: 90%` 同时存在时，浮窗会被压成 90% 而不是那个比例），
           第三条会给预览面板套一圈 32px 的白边（面板自己每一段都有内边距）。 */}
-      <div className="webapp-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="webapp-preview-title">
+      <div className="webapp-preview-dialog teacher-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="webapp-preview-title">
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="webapp-preview-title" style={{ margin: 0, fontSize: '0.938rem', fontWeight: 700, wordBreak: 'break-all' }}>{webapp.name}</h3>

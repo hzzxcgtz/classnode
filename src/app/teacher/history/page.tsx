@@ -222,7 +222,7 @@ export default function HistoryPage() {
               { label: '历史课堂', value: history.length, color: '#0891b2', bg: '#ecfeff', icon: 'history' },
               { label: '参与学生', value: totalStudents, color: '#8b5cf6', bg: '#f5f3ff', icon: 'users' },
               { label: '交互总轮数', value: totalInteractions, color: '#db2777', bg: '#fdf2f8', icon: 'message' },
-              { label: '总文字量', value: totalChars > 10000 ? `${(totalChars / 10000).toFixed(1)}万` : `${totalChars}`, color: '#f59e0b', bg: '#fffbeb', icon: 'file' },
+              { label: '总文字量', value: totalChars > 10000 ? `${(totalChars / 10000).toFixed(1)}万` : `${totalChars}`, color: '#956834', bg: '#faf4eb', icon: 'file' },
             ].map(stat => (
               <div key={stat.label} style={{
                 background: 'white', borderRadius: 14,
@@ -322,8 +322,8 @@ export default function HistoryPage() {
                         <span style={{
                           display: 'inline-block', padding: '2px 8px', borderRadius: 4,
                           fontSize: "0.688rem", fontWeight: 600,
-                          background: cr.mode === 'advanced' ? '#f5f3ff' : cr.mode === 'group' ? '#fffbeb' : '#f0fdf4',
-                          color: cr.mode === 'advanced' ? '#7c3aed' : cr.mode === 'group' ? '#d97706' : '#059669',
+                          background: cr.mode === 'advanced' ? '#f5f3ff' : cr.mode === 'group' ? '#faf4eb' : '#f0fdf4',
+                          color: cr.mode === 'advanced' ? '#7c3aed' : cr.mode === 'group' ? '#956834' : '#059669',
                         }}>
                           {cr.mode === 'advanced' ? '高级模式' : cr.mode === 'group' ? '分组模式' : '标准模式'}
                         </span>
@@ -351,7 +351,7 @@ export default function HistoryPage() {
                       <td style={{ textAlign: 'center' }}>
                         <span style={{
                           fontSize: "0.813rem", fontWeight: 600,
-                          color: (cr.totalRounds || 0) > 50 ? '#2563eb' : (cr.totalRounds || 0) > 10 ? '#f59e0b' : '#94a3b8',
+                          color: (cr.totalRounds || 0) > 50 ? '#527198' : (cr.totalRounds || 0) > 10 ? '#956834' : '#94a3b8',
                         }}>
                           {cr.totalRounds || 0} 轮
                         </span>
@@ -410,7 +410,7 @@ export default function HistoryPage() {
                             style={{
                               fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
                               borderRadius: 6, cursor: 'pointer', fontWeight: 500,
-                              border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a',
+                              border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#3f7859',
                             }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                             恢复
@@ -433,7 +433,7 @@ export default function HistoryPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
-                background: '#f0fdf4', color: '#16a34a',
+                background: '#f0fdf4', color: '#3f7859',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
@@ -476,7 +476,7 @@ export default function HistoryPage() {
             background: 'white', borderRadius: 14, padding: '28px 32px',
             maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f0fdf4', color: '#16a34a', margin: '0 auto 16px',
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f0fdf4', color: '#3f7859', margin: '0 auto 16px',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
             </div>
@@ -494,7 +494,7 @@ export default function HistoryPage() {
                 style={{ fontSize: '0.813rem', padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestoreClassroom(restoreTarget)} disabled={restoring}
                 style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: restoring ? '#94a3b8' : '#16a34a', color: 'white' }}>
+                  background: restoring ? '#94a3b8' : '#3f7859', color: 'white' }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
             </div>
@@ -598,12 +598,12 @@ function ExportPreviewDialog({
                   选择学生（{selectedStudentIds.length}/{students.length}）
                 </span>
                 <label style={{
-                  fontSize: "0.688rem", color: '#2563eb', cursor: 'pointer',
+                  fontSize: "0.688rem", color: '#527198', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
                   <input type="checkbox" checked={allSelected}
                     onChange={() => onToggleAll(students.map(studentSelectorId))}
-                    style={{ accentColor: '#2563eb' }} />
+                    style={{ accentColor: '#527198' }} />
                   全选
                 </label>
               </div>
@@ -616,13 +616,13 @@ function ExportPreviewDialog({
                     <label key={i} style={{
                       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
                       borderRadius: 6, cursor: 'pointer', fontSize: "0.75rem",
-                      background: selectedStudentIds.includes(sid) ? '#eff6ff' : '#f8fafc',
+                      background: selectedStudentIds.includes(sid) ? '#f2f5f8' : '#f8fafc',
                       border: selectedStudentIds.includes(sid) ? '1px solid #bfdbfe' : '1px solid transparent',
                       transition: 'all 0.15s',
                     }}>
                       <input type="checkbox" checked={selectedStudentIds.includes(sid)}
                         onChange={() => onToggleStudent(sid)}
-                        style={{ accentColor: '#2563eb' }} />
+                        style={{ accentColor: '#527198' }} />
                       <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{s.name}</span>
                       <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
                         {rounds} 轮 · {msgCount} 条
@@ -659,7 +659,7 @@ function ExportPreviewDialog({
               }}>
                 <div style={{
                   width: `${exportProgress}%`, height: '100%',
-                  background: 'linear-gradient(90deg, #2563eb, #7c3aed)',
+                  background: 'linear-gradient(90deg, #527198, #7c3aed)',
                   borderRadius: 3,
                   transition: 'width 0.3s ease',
                 }} />
@@ -677,7 +677,7 @@ function ExportPreviewDialog({
               style={{
                 fontSize: "0.75rem", padding: '7px 18px', borderRadius: 8, border: 'none',
                 cursor: (exporting || selectedStudentIds.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 500,
-                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : '#2563eb',
+                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : '#527198',
                 color: 'white',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
@@ -857,7 +857,7 @@ function BackupManager() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
             borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
-            border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626',
+            border: '1px solid #fecaca', background: '#f8eeee', color: '#934e4e',
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
           系统初始化
@@ -867,25 +867,25 @@ function BackupManager() {
       {/* 跨设备迁移提示 */}
       <div style={{
         padding: '16px 20px', marginBottom: 16,
-        background: '#fffbeb', borderRadius: 12,
+        background: '#faf4eb', borderRadius: 12,
         border: '1px solid #fde68a',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           <strong style={{ fontSize: "0.875rem", color: '#92400e' }}>跨设备迁移</strong>
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#527198', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
             <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', color: '#d97706' }}>
+          <div style={{ display: 'flex', alignItems: 'center', color: '#956834' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#2563eb', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#527198', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
             <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
           </div>
         </div>
@@ -908,7 +908,7 @@ function BackupManager() {
                   {b.source === 'imported' ? (
                     <span style={{
                       fontSize: "0.625rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
-                      background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
+                      background: '#f5ecdd', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
                     }}>导入</span>
                   ) : (
                     <span style={{
@@ -928,12 +928,12 @@ function BackupManager() {
                   </a>
                   <button onClick={() => setRestoreTarget(b.name)} disabled={backupAction !== null}
                     style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-                      border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb' }}>
+                      border: '1px solid #e9eff6', background: '#f2f5f8', color: '#527198' }}>
                     恢复
                   </button>
                   <button onClick={() => setDeleteTarget(b.name)} disabled={backupAction !== null}
                     style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-                      border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626' }}>
+                      border: '1px solid #fecaca', background: '#f8eeee', color: '#934e4e' }}>
                     删除
                   </button>
                 </div>
@@ -957,7 +957,7 @@ function BackupManager() {
                 style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleDelete(deleteTarget)} disabled={deleting}
                 style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: '#dc2626', color: 'white', opacity: deleting ? 0.6 : 1 }}>
+                  background: '#934e4e', color: 'white', opacity: deleting ? 0.6 : 1 }}>
                 {deleting ? '删除中...' : '确认删除'}
               </button>
             </div>
@@ -974,8 +974,8 @@ function BackupManager() {
               将从备份文件 <strong style={{ color: '#0f172a' }}>{restoreTarget}</strong> 恢复数据。
             </p>
             <div style={{
-              padding: 12, borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: "0.813rem", color: '#dc2626', lineHeight: 1.6, marginBottom: 20,
+              padding: 12, borderRadius: 8, background: '#f8eeee', border: '1px solid #fecaca',
+              fontSize: "0.813rem", color: '#934e4e', lineHeight: 1.6, marginBottom: 20,
             }}>
               <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库中的所有数据。建议在恢复前先备份当前数据。
             </div>
@@ -984,7 +984,7 @@ function BackupManager() {
                 style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestore(restoreTarget)} disabled={restoring}
                 style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: '#2563eb', color: 'white', opacity: restoring ? 0.6 : 1 }}>
+                  background: '#527198', color: 'white', opacity: restoring ? 0.6 : 1 }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
             </div>
@@ -996,7 +996,7 @@ function BackupManager() {
       {showResetDialog && (
         <div style={overlay} onClick={() => !resetting && setShowResetDialog(false)}>
           <div style={dialog} onClick={e => e.stopPropagation()}>
-            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', color: '#dc2626', margin: '0 auto 16px',
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', color: '#934e4e', margin: '0 auto 16px',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
             </div>
@@ -1020,15 +1020,15 @@ function BackupManager() {
             </div>
 
             <div style={{
-              padding: '10px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca',
-              fontSize: '0.75rem', color: '#dc2626', lineHeight: 1.6, marginBottom: 16,
+              padding: '10px 14px', borderRadius: 8, background: '#f8eeee', border: '1px solid #fecaca',
+              fontSize: '0.75rem', color: '#934e4e', lineHeight: 1.6, marginBottom: 16,
             }}>
               <strong>⚠ 此操作不可撤销。</strong>建议先备份数据。
             </div>
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.75rem', color: '#475569', display: 'block', marginBottom: 6 }}>
-                请输入 <strong style={{ color: '#dc2626' }}>确认初始化</strong> 以继续：
+                请输入 <strong style={{ color: '#934e4e' }}>确认初始化</strong> 以继续：
               </label>
               <input type="text" value={resetConfirmText}
                 onChange={e => setResetConfirmText(e.target.value)}
@@ -1041,7 +1041,7 @@ function BackupManager() {
               <button onClick={handleReset}
                 disabled={resetting || resetConfirmText !== '确认初始化'}
                 style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: resetConfirmText === '确认初始化' ? '#dc2626' : '#e2e8f0',
+                  background: resetConfirmText === '确认初始化' ? '#934e4e' : '#e2e8f0',
                   color: resetConfirmText === '确认初始化' ? 'white' : '#94a3b8',
                   opacity: resetting ? 0.6 : 1 }}>
                 {resetting ? '初始化中...' : '确认初始化'}

@@ -447,7 +447,7 @@ const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkVie
   // 不为部分给分再引入第四种色相：同屏出现两个近似橙黄，教师反而分不出来。
   // 同列上它与作答中同色 —— 靠**独立图标与词**区分。
   partial: { icon: 'partial', label: '部分给分', color: '#b45309', emphasis: 'verdict' },
-  wrong: { icon: 'retry', label: '答错', color: '#dc2626', emphasis: 'verdict' },
+  wrong: { icon: 'retry', label: '答错', color: '#934e4e', emphasis: 'verdict' },
 };
 
 /**
@@ -460,7 +460,7 @@ const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkVie
 const NO_VERDICT_VIEW: Record<WorksheetQuestionStatus, OutcomeMarkView> = {
   unanswered: { icon: 'unanswered', label: statusLabel('unanswered'), color: '#64748b', emphasis: 'plain' },
   draft: { icon: 'drafting', label: statusLabel('draft'), color: '#b45309', emphasis: 'status' },
-  submitted: { icon: 'submitted', label: statusLabel('submitted'), color: '#1d4ed8', emphasis: 'status' },
+  submitted: { icon: 'submitted', label: statusLabel('submitted'), color: '#466384', emphasis: 'status' },
 };
 
 /**
@@ -864,8 +864,8 @@ export function participantOverviewCells(overview: ParticipantOverview): Overvie
   return [
     { key: 'correct', icon: 'correct', label: '全对', count: overview.correct, color: '#15803d' },
     { key: 'partial', icon: 'partial', label: '部分给分', count: overview.partial, color: '#b45309' },
-    { key: 'wrong', icon: 'retry', label: '答错', count: overview.wrong, color: '#dc2626' },
-    { key: 'noVerdict', icon: 'submitted', label: '已提交但没有对错', count: overview.noVerdict, color: '#1d4ed8' },
+    { key: 'wrong', icon: 'retry', label: '答错', count: overview.wrong, color: '#934e4e' },
+    { key: 'noVerdict', icon: 'submitted', label: '已提交但没有对错', count: overview.noVerdict, color: '#466384' },
     { key: 'draft', icon: 'drafting', label: '作答中', count: overview.draft, color: '#b45309' },
     { key: 'unanswered', icon: 'unanswered', label: '未作答', count: overview.unanswered, color: '#64748b' },
   ];

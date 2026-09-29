@@ -146,12 +146,12 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
     <>
       {/* 「算完之后又有人交了」—— 服务端算的，必须显眼。否则教师会把一份不完整的名单当成当前的。 */}
       {state.payload?.stale && (
-        <div style={{ padding: '8px 18px', background: '#fffbeb', borderBottom: '1px solid #fde68a', color: '#92400e', fontSize: '0.82rem', flex: '0 0 auto' }}>
+        <div style={{ padding: '8px 18px', background: '#faf4eb', borderBottom: '1px solid #fde68a', color: '#92400e', fontSize: '0.82rem', flex: '0 0 auto' }}>
           ⚠️ 有新的作答，结果可能已过期 —— 点「重新生成」以纳入。
         </div>
       )}
       {state.error && (
-        <div role="alert" style={{ padding: '8px 18px', background: '#fef2f2', borderBottom: '1px solid #fca5a5', color: '#b91c1c', fontSize: '0.82rem', flex: '0 0 auto' }}>
+        <div role="alert" style={{ padding: '8px 18px', background: '#f8eeee', borderBottom: '1px solid #fca5a5', color: '#b91c1c', fontSize: '0.82rem', flex: '0 0 auto' }}>
           {state.error}
         </div>
       )}
@@ -262,7 +262,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             </div>
           ))}
           {sheetFailed && (
-            <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem' }}>
+            <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', background: '#f8eeee', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem' }}>
               ⚠️ 联系表**画不出来**（本机没有图片渲染能力，服务端回了 503）—— 文字那部分若存在仍然可读。
             </div>
           )}
@@ -300,7 +300,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
       {/* ★ M7b：确认块（**一个块**，不是新浮层）。 */}
       {confirming && (
-        <div style={{ margin: '0 0 12px', padding: 12, border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 10 }}>
+        <div style={{ margin: '0 0 12px', padding: 12, border: '1px solid #fcd34d', background: '#faf4eb', borderRadius: 10 }}>
           <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 6 }}>即将把下面这些发给第三方 AI：</div>
           <ul style={{ margin: '0 0 10px', paddingLeft: 20, fontSize: '0.82rem', color: '#78350f', lineHeight: 1.9 }}>
             {previewLines.map((line) => <li key={line}>{line}</li>)}

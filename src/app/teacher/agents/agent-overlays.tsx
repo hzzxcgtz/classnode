@@ -15,9 +15,9 @@ export function AgentDeleteBlockedDialog({ agentName, classrooms, onClose }: {
   classrooms: RelatedClassroom[];
   onClose: () => void;
 }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#fef2f2', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>它正被这些课堂使用中，删掉会让那些课堂的学生失去这个智能体。</p></div>
-    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>「{agentName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /></div>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog teacher-dialog-alert" role="alertdialog" aria-modal="true" aria-labelledby="delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除智能体</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>它正被这些课堂使用中，删掉会让那些课堂的学生失去这个智能体。</p></div>
+    <div style={{ background: '#f8eeee', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8 }}>「{agentName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /></div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;
 }
@@ -34,7 +34,7 @@ export function AgentRelatedClassroomsDialog({ agentName, classrooms, loading, o
   loading: boolean;
   onClose: () => void;
 }) {
-  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="agent-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+  return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <h3 id="agent-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{agentName}」关联的课堂</h3>
     <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选智能体。</p>
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
@@ -45,5 +45,5 @@ export function AgentRelatedClassroomsDialog({ agentName, classrooms, loading, o
 }
 
 export function AgentErrorTip({ tip }: { tip: AgentErrorTipData }) {
-  return <div role="tooltip" style={{ position: 'fixed', top: tip.top, left: tip.left, transform: 'translate(-50%, -100%)', background: '#1e293b', color: '#f1f5f9', padding: '6px 10px', borderRadius: 6, fontSize: '0.688rem', whiteSpace: 'normal', wordBreak: 'break-all', maxWidth: 260, lineHeight: 1.5, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', zIndex: 9999, pointerEvents: 'none' }}>{tip.text}</div>;
+  return <div className="teacher-floating-tip" role="tooltip" style={{ position: 'fixed', top: tip.top, left: tip.left, transform: 'translate(-50%, -100%)', maxWidth: 260, zIndex: 9999, pointerEvents: 'none' }}>{tip.text}</div>;
 }

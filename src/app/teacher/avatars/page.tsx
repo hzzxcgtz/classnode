@@ -277,8 +277,8 @@ export default function AvatarsPage() {
             {/* 男孩区域 */}
             {boyAvatars.length > 0 && (
               <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#2563eb', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 3, height: 14, borderRadius: 2, background: '#2563eb', display: 'inline-block' }} />
+                <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#527198', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 3, height: 14, borderRadius: 2, background: '#527198', display: 'inline-block' }} />
                   男孩头像
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -328,8 +328,8 @@ export default function AvatarsPage() {
         {/* 学生自定义区域 — 显示在最下方 */}
         {tab === 'student' && (
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#f59e0b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 3, height: 14, borderRadius: 2, background: '#f59e0b', display: 'inline-block' }} />
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#956834', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 3, height: 14, borderRadius: 2, background: '#956834', display: 'inline-block' }} />
               学生自定义
               <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontWeight: 400 }}>（学生自己上传，可在此管理删除）</span>
             </div>
@@ -377,8 +377,8 @@ export default function AvatarsPage() {
               display: 'inline-flex', alignItems: 'center', gap: 5,
               fontSize: "0.813rem", fontWeight: 500, color: '#0f172a',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              已选 <strong style={{ color: '#2563eb', fontSize: "0.938rem" }}>{selectedForBatch.size}</strong> 个
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#527198" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              已选 <strong style={{ color: '#527198', fontSize: "0.938rem" }}>{selectedForBatch.size}</strong> 个
             </span>
             {selectedForBatch.size > 0 && (
               <button onClick={() => setSelectedForBatch(new Set())}
@@ -399,7 +399,7 @@ export default function AvatarsPage() {
             <button onClick={() => void handleBatchDelete()} disabled={selectedForBatch.size === 0 || avatarAction !== null}
               style={{
                 padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
-                border: 'none', background: selectedForBatch.size === 0 ? '#f1f5f9' : '#ef4444',
+                border: 'none', background: selectedForBatch.size === 0 ? '#f1f5f9' : '#a85d5d',
                 color: selectedForBatch.size === 0 ? '#94a3b8' : 'white',
                 cursor: selectedForBatch.size === 0 || avatarAction ? 'not-allowed' : 'pointer',
                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -461,7 +461,7 @@ export default function AvatarsPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
-                background: '#fef3c7', color: '#f59e0b',
+                background: '#f5ecdd', color: '#956834',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
@@ -476,10 +476,10 @@ export default function AvatarsPage() {
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{
                   width: 64, height: 64, borderRadius: 16,
-                  background: '#fef3c7', margin: '0 auto 16px',
+                  background: '#f5ecdd', margin: '0 auto 16px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                 </div>
                 <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>
                   💡 点击下方按钮，为你随机生成{tab === 'student' ? ' 20 个' : ' 10 个'}{tab === 'student' ? '头像' : '图标'}
@@ -503,16 +503,16 @@ export default function AvatarsPage() {
                     position: 'absolute', inset: 0,
                     borderRadius: '50%',
                     border: '3px solid #e2e8f0',
-                    borderTopColor: '#2563eb',
+                    borderTopColor: '#527198',
                     animation: 'spin 0.8s linear infinite',
                   }} />
                   <div style={{
                     position: 'absolute', inset: 8,
                     borderRadius: '50%',
-                    background: '#eef2ff',
+                    background: '#eef3f8',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#527198" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                   </div>
                 </div>
                 <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>正在生成{tab === 'student' ? '头像' : '图标'}...</p>
@@ -523,8 +523,8 @@ export default function AvatarsPage() {
                 {tab === 'student' && (
                   <>
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#2563eb', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 3, height: 12, borderRadius: 2, background: '#2563eb', display: 'inline-block' }} />
+                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#527198', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 3, height: 12, borderRadius: 2, background: '#527198', display: 'inline-block' }} />
                         男孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
@@ -533,7 +533,7 @@ export default function AvatarsPage() {
                             onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                             style={{
                               width: 72, padding: 6, textAlign: 'center',
-                              borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#2563eb' : '#e2e8f0'}`,
+                              borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#527198' : '#e2e8f0'}`,
                               background: selectedRandom.has(i) ? '#f8faff' : 'white',
                               cursor: 'pointer', transition: 'all 0.12s',
                             }}>
@@ -556,7 +556,7 @@ export default function AvatarsPage() {
                               onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(idx)) n.delete(idx); else n.add(idx); return n; }); }}
                               style={{
                                 width: 72, padding: 6, textAlign: 'center',
-                                borderRadius: 10, border: `2px solid ${selectedRandom.has(idx) ? '#2563eb' : '#e2e8f0'}`,
+                                borderRadius: 10, border: `2px solid ${selectedRandom.has(idx) ? '#527198' : '#e2e8f0'}`,
                                 background: selectedRandom.has(idx) ? '#f8faff' : 'white',
                                 cursor: 'pointer', transition: 'all 0.12s',
                               }}>
@@ -576,7 +576,7 @@ export default function AvatarsPage() {
                         onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                         style={{
                           width: 80, padding: 8, textAlign: 'center',
-                          borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#2563eb' : '#e2e8f0'}`,
+                          borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? '#527198' : '#e2e8f0'}`,
                           background: selectedRandom.has(i) ? '#f8faff' : 'white',
                           cursor: 'pointer', transition: 'all 0.12s',
                         }}>
@@ -604,7 +604,7 @@ export default function AvatarsPage() {
                     {generating ? '生成中...' : '换一批'}
                   </button>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-                    <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#64748b', display: 'flex', alignItems: 'center' }}>已选 <span style={{ color: '#2563eb', fontWeight: 700, marginLeft: 3 }}>{selectedRandom.size}</span> / {randomPool.length}</span>
+                    <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#64748b', display: 'flex', alignItems: 'center' }}>已选 <span style={{ color: '#527198', fontWeight: 700, marginLeft: 3 }}>{selectedRandom.size}</span> / {randomPool.length}</span>
                     <button onClick={handleImportAll}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -622,7 +622,7 @@ export default function AvatarsPage() {
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         padding: '8px 16px', borderRadius: 6, border: 'none',
-                        background: selectedRandom.size === 0 ? '#e2e8f0' : '#2563eb',
+                        background: selectedRandom.size === 0 ? '#e2e8f0' : '#527198',
                         color: selectedRandom.size === 0 ? '#94a3b8' : 'white', cursor: selectedRandom.size === 0 ? 'not-allowed' : 'pointer',
                         fontSize: "0.813rem", fontWeight: 500,
                         transition: 'all 0.12s',
@@ -670,7 +670,7 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
     <div className="avatar-card" data-avatar-id={av.id}
       onClick={batchMode ? onToggle : onEdit}
       style={{
-        background: batchMode && selected ? '#eff6ff' : 'white',
+        background: batchMode && selected ? '#f2f5f8' : 'white',
         borderRadius: 12, border: `1px solid ${batchMode && selected ? '#93c5fd' : '#e2e8f0'}`,
         padding: 8, textAlign: 'center', position: 'relative', cursor: batchMode ? 'pointer' : 'pointer',
         transition: 'all 0.12s',
@@ -682,8 +682,8 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
             position: 'absolute', top: 2, left: 2, zIndex: 10,
             width: 14, height: 14, borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: selected ? '#2563eb' : 'white',
-            border: `2px solid ${selected ? '#2563eb' : '#94a3b8'}`,
+            background: selected ? '#527198' : 'white',
+            border: `2px solid ${selected ? '#527198' : '#94a3b8'}`,
             cursor: 'pointer', transition: 'all 0.12s',
           }}>
           {selected && (
@@ -729,11 +729,11 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
             style={{
               position: 'absolute', top: 2, right: 2,
               width: 20, height: 20, borderRadius: '50%',
-              background: '#fef2f2', border: '1px solid #fca5a5',
+              background: '#f8eeee', border: '1px solid #fca5a5',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', opacity: 0, transition: 'opacity 0.12s',
             }} title="删除">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
       )}
     </div>
@@ -848,7 +848,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                           background: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
                         }}>
                           {s.class?.name ? (
-                            <><span style={{ color: '#2563eb', fontWeight: 600 }}>{s.class.name}</span><span style={{ color: '#94a3b8' }}>·</span><span>{s.name}</span></>
+                            <><span style={{ color: '#527198', fontWeight: 600 }}>{s.class.name}</span><span style={{ color: '#94a3b8' }}>·</span><span>{s.name}</span></>
                           ) : s.name}
                         </span>
                       ))}
@@ -897,7 +897,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <div style={{
             width: 40, height: 40, borderRadius: 10,
-            background: '#eef2ff', color: '#2563eb',
+            background: '#eef3f8', color: '#527198',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -917,15 +917,15 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
             <button onClick={() => setInputMode('svg')}
               style={{
                 padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'svg' ? 600 : 400,
-                color: inputMode === 'svg' ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
-                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'svg' ? '#2563eb' : 'transparent'}`,
+                color: inputMode === 'svg' ? '#527198' : '#64748b', background: 'transparent', border: 'none',
+                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'svg' ? '#527198' : 'transparent'}`,
                 marginBottom: -2,
               }}>SVG 代码</button>
             <button onClick={() => setInputMode('image')}
               style={{
                 padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'image' ? 600 : 400,
-                color: inputMode === 'image' ? '#2563eb' : '#64748b', background: 'transparent', border: 'none',
-                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'image' ? '#2563eb' : 'transparent'}`,
+                color: inputMode === 'image' ? '#527198' : '#64748b', background: 'transparent', border: 'none',
+                cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'image' ? '#527198' : 'transparent'}`,
                 marginBottom: -2,
               }}>上传图片</button>
           </div>
@@ -940,8 +940,8 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   onClick={() => setGender(g.value)}
                   style={{
                     padding: '6px 16px', borderRadius: 8, fontSize: "0.75rem", fontWeight: 500,
-                    background: gender === g.value ? (g.value === 'boy' ? '#eef2ff' : g.value === 'girl' ? '#fce4ec' : '#f5f5f4') : 'white',
-                    color: gender === g.value ? (g.value === 'boy' ? '#2563eb' : g.value === 'girl' ? '#e91e63' : '#78716c') : '#64748b',
+                    background: gender === g.value ? (g.value === 'boy' ? '#eef3f8' : g.value === 'girl' ? '#fce4ec' : '#f5f5f4') : 'white',
+                    color: gender === g.value ? (g.value === 'boy' ? '#527198' : g.value === 'girl' ? '#e91e63' : '#78716c') : '#64748b',
                     border: `1px solid ${gender === g.value ? (g.value === 'boy' ? '#bfdbfe' : g.value === 'girl' ? '#f8bbd0' : '#d6d3d1') : '#e2e8f0'}`,
                     cursor: 'pointer',
                   }}>
@@ -1047,7 +1047,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   setImagePreview(null);
                   setUploadSvg(null);
                 }}
-                  style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
+                  style={{ background: 'transparent', border: 'none', color: '#a85d5d', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
                   重新选择
                 </button>
               </div>
@@ -1075,7 +1075,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                           background: 'white', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
                         }}>
                           {s.class?.name ? (
-                            <><span style={{ color: '#2563eb', fontWeight: 600 }}>{s.class.name}</span><span style={{ color: '#94a3b8' }}>·</span><span>{s.name}</span></>
+                            <><span style={{ color: '#527198', fontWeight: 600 }}>{s.class.name}</span><span style={{ color: '#94a3b8' }}>·</span><span>{s.name}</span></>
                           ) : s.name}
                         </span>
                       ))}

@@ -30,8 +30,8 @@ import { TileAnswerBody } from './tile-answer';
  */
 const CELL_STYLE: Record<WorksheetCellStatus, { background: string; border: string; label: string }> = {
   unanswered: { background: '#f1f5f9', border: '#e2e8f0', label: '未答' },
-  draft: { background: '#fbbf24', border: '#f59e0b', label: '作答中' },
-  submitted: { background: '#2563eb', border: '#1d4ed8', label: '已提交' },
+  draft: { background: '#fbbf24', border: '#956834', label: '作答中' },
+  submitted: { background: '#527198', border: '#466384', label: '已提交' },
 };
 
 /**
@@ -78,7 +78,7 @@ function stateLine(state: WorksheetTileState): string {
 
 /** 那行大字与方格阵的底色（只有「停住了」是琥珀）。 */
 function stateTone(state: WorksheetTileState): { background: string; border: string; color: string } {
-  if (state.kind === 'stuck') return { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' };
+  if (state.kind === 'stuck') return { background: '#faf4eb', border: '1px solid #fde68a', color: '#92400e' };
   if (state.kind === 'all-submitted') return { background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' };
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
 }

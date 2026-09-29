@@ -101,7 +101,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
     <>
       <div className="modal-overlay" onClick={onClose} />
       <div
-        className="worksheet-editor-preview-modal"
+        className="worksheet-editor-preview-modal teacher-preview-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="worksheet-preview-title"

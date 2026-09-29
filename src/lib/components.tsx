@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { RelatedClassroom } from './types';
 
 /** 统一教师端页面的标题、说明和主操作区域。 */
@@ -79,6 +79,57 @@ export function TeacherLoadingState({ label = '正在加载…' }: { label?: str
   );
 }
 
+export interface TeacherConfirmOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  tone?: 'default' | 'danger';
+}
+
+/**
+ * 教师管理页共用的异步确认窗。用 Promise 保留原先 `window.confirm` 的顺序语义，
+ * 同时让破坏性操作也遵循统一的柔和标题区，而不是跳出浏览器原生小窗。
+ */
+export function useTeacherConfirm() {
+  const [pending, setPending] = useState<(TeacherConfirmOptions & { resolve: (result: boolean) => void }) | null>(null);
+
+  const askConfirmation = useCallback((options: TeacherConfirmOptions) => new Promise<boolean>((resolve) => {
+    setPending({ ...options, resolve });
+  }), []);
+
+  const finish = useCallback((result: boolean) => {
+    setPending(current => {
+      current?.resolve(result);
+      return null;
+    });
+  }, []);
+
+  const confirmationDialog = pending ? (
+    <>
+      <div className="modal-overlay" onClick={() => finish(false)} />
+      <div className={`modal-content teacher-dialog teacher-confirm-dialog${pending.tone === 'danger' ? ' is-danger' : ''}`}
+        role="alertdialog" aria-modal="true" aria-labelledby="teacher-confirm-title">
+        <div className="teacher-confirm-heading">
+          <span aria-hidden="true">{pending.tone === 'danger' ? '!' : '?'}</span>
+          <div>
+            <h3 id="teacher-confirm-title">{pending.title}</h3>
+            <p>{pending.tone === 'danger' ? '请确认后再继续，这项操作可能无法恢复。' : '请确认是否继续当前操作。'}</p>
+          </div>
+        </div>
+        <div className="teacher-confirm-message">{pending.message}</div>
+        <div className="teacher-confirm-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => finish(false)}>取消</button>
+          <button type="button" className={pending.tone === 'danger' ? 'btn teacher-danger-button' : 'btn btn-primary'} onClick={() => finish(true)}>
+            {pending.confirmLabel ?? '继续'}
+          </button>
+        </div>
+      </div>
+    </>
+  ) : null;
+
+  return { askConfirmation, confirmationDialog };
+}
+
 export function ErrorIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -93,7 +144,7 @@ export function FieldError({ message, style }: { message: string; style?: CSSPro
   if (!message) return null;
   return (
     <div role="alert" style={{
-      fontSize: "0.75rem", color: '#ef4444', marginTop: 4,
+      fontSize: "0.75rem", color: '#a85d5d', marginTop: 4,
       display: 'flex', alignItems: 'center', gap: 4,
       ...style,
     }}>
@@ -313,4 +364,3 @@ const CLASSROOM_MODE_LABELS: Record<string, string> = {
   group: '分组模式',
   advanced: '高级模式',
 };
-

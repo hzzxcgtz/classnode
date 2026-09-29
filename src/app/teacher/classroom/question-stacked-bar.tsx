@@ -4,9 +4,9 @@ import type { QuestionStats } from './worksheet-question-stats';
 
 // 与浮层、抽屉各处同源的一组颜色。
 const OK = '#15803d';
-const BAD = '#dc2626';
+const BAD = '#934e4e';
 const WARN = '#b45309';
-const BLUE = '#1d4ed8';
+const BLUE = '#466384';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
 

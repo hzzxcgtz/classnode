@@ -65,9 +65,9 @@ export function BlankSlot({
           minHeight: '34px',
           padding: '3px 8px 1px',
           margin: '-3px 3px -4px',
-          borderBottom: active ? '2px solid #2563eb' : '1.5px solid #94a3b8',
+          borderBottom: active ? '2px solid #527198' : '1.5px solid #94a3b8',
           background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
-          boxShadow: active ? 'inset 0 0 0 1px rgba(37, 99, 235, .22)' : 'none',
+          boxShadow: active ? 'inset 0 0 0 1px rgba(82, 113, 152, .22)' : 'none',
           borderRadius: '4px 4px 2px 2px',
           // ★ 2026-09-27：字重不写死 600 —— 与打字那条路**共用同一条规则**
           //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、换个模式粗细就变了」。
@@ -76,7 +76,7 @@ export function BlankSlot({
           // 只在真的预览“即将放入”的词时覆盖成蓝色。不能写成 `color: 条件 ? 蓝 : undefined`：
           // 对象后面的 `color: undefined` 仍会覆盖上面 `blankValueStyle` 给出的暗红色，
           // 于是错误答案只剩删除线、文字却退回黑色。
-          ...(pending && !filled && !wrong ? { color: '#2563eb' } : {}),
+          ...(pending && !filled && !wrong ? { color: '#527198' } : {}),
           textAlign: 'center',
           verticalAlign: 'baseline',
           cursor: disabled ? 'default' : 'pointer',

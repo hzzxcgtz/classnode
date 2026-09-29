@@ -86,7 +86,7 @@ function StackedBarTooltip({ active, payload }: { active?: boolean; payload?: Ch
         </div>
       ))}
       {usageItem && (
-        <div style={{ color: '#f59e0b' }}>使用次数: {usageItem.value}</div>
+        <div style={{ color: '#956834' }}>使用次数: {usageItem.value}</div>
       )}
       <div style={{ borderTop: '1px solid #334155', marginTop: 3, paddingTop: 3, color: '#f1f5f9' }}>
         总计: {total}人
@@ -186,7 +186,7 @@ export default function DashboardPage() {
   const agentError = agents.filter(a => a.lastCheckAt !== null && a.lastCheckOk === false).length;
   const agentPending = agentTotal - agentOk - agentError;
   const healthPercent = agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0;
-  const gaugeColor = healthPercent >= 80 ? '#22c55e' : healthPercent >= 50 ? '#f59e0b' : '#ef4444';
+  const gaugeColor = healthPercent >= 80 ? '#3f7859' : healthPercent >= 50 ? '#956834' : '#a85d5d';
   const agentPlatforms = agents.reduce((acc: Record<string, number>, a) => {
     const p = a.platform || 'unknown';
     acc[p] = (acc[p] || 0) + 1;
@@ -318,7 +318,7 @@ export default function DashboardPage() {
         <KpiCard
           label="AI 智能体"
           value={`${agentEnabled}/${agentTotal}`}
-          color="#2563eb"
+          color="#527198"
           trend={agentError > 0 ? `${agentError} 个异常` : '全部健康'}
           trendUp={agentError === 0}
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>}
@@ -334,7 +334,7 @@ export default function DashboardPage() {
         <KpiCard
           label="进行中课堂"
           value={classroomActive > 0 ? `${classroomActive}/${classroomTotal}` : classroomTotal}
-          color="#f59e0b"
+          color="#956834"
           trend={classroomActive > 0 ? `${classroomActive} 个课堂正在进行` : '暂无活跃课堂'}
           trendUp={classroomActive > 0}
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>}
@@ -353,7 +353,7 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 0 }}>
 
         {/* ─── AI 智能体 ─── */}
-        <SectionCard title="AI 智能体" color="#2563eb"
+        <SectionCard title="AI 智能体" color="#527198"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <rect x="4" y="4" width="16" height="16" rx="3" />
@@ -369,7 +369,7 @@ export default function DashboardPage() {
               {/* 数字概览 + 健康状态 */}
               <div style={{ display: 'flex', gap: 12 }}>
                 {[
-                  { label: '总接入', value: agentTotal, color: '#2563eb', bg: '#eef2ff' },
+                  { label: '总接入', value: agentTotal, color: '#527198', bg: '#eef3f8' },
                   { label: '启用中', value: agentEnabled, color: '#10b981', bg: '#f0fdf4' },
                   { label: '已停用', value: agentDisabled, color: '#94a3b8', bg: '#f8fafc' },
                 ].map(s => (
@@ -411,14 +411,14 @@ export default function DashboardPage() {
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3f7859', flexShrink: 0 }} />
                           <span style={{ color: '#64748b', flex: 1 }}>健康</span>
-                          <span style={{ fontWeight: 600, color: '#16a34a' }}>{agentOk}</span>
+                          <span style={{ fontWeight: 600, color: '#3f7859' }}>{agentOk}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#a85d5d', flexShrink: 0 }} />
                           <span style={{ color: '#64748b', flex: 1 }}>异常</span>
-                          <span style={{ fontWeight: 600, color: agentError === 0 ? '#94a3b8' : '#dc2626' }}>{agentError}</span>
+                          <span style={{ fontWeight: 600, color: agentError === 0 ? '#94a3b8' : '#934e4e' }}>{agentError}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
@@ -513,12 +513,12 @@ export default function DashboardPage() {
                           statusBg = '#f1f5f9';
                         } else if (isEnabled && isHealthy) {
                           statusLabel = '健康';
-                          statusColor = '#16a34a';
+                          statusColor = '#3f7859';
                           statusBg = '#f0fdf4';
                         } else if (isEnabled && isError) {
                           statusLabel = '异常';
-                          statusColor = '#dc2626';
-                          statusBg = '#fef2f2';
+                          statusColor = '#934e4e';
+                          statusBg = '#f8eeee';
                         }
                         return (
                         <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -545,7 +545,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         {/* ─── 课堂管理 ─── */}
-        <SectionCard title="课堂管理" color="#f59e0b"
+        <SectionCard title="课堂管理" color="#956834"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -563,7 +563,7 @@ export default function DashboardPage() {
               <div style={{ display: 'flex', gap: 12 }}>
                 {[
                   { label: '进行中', value: classroomActive, color: '#10b981', bg: '#f0fdf4' },
-                  { label: '已暂停', value: classroomPaused, color: '#f59e0b', bg: '#fffbeb' },
+                  { label: '已暂停', value: classroomPaused, color: '#956834', bg: '#faf4eb' },
                   { label: '已结束', value: classroomEnded, color: '#94a3b8', bg: '#f8fafc' },
                 ].map(s => (
                   <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
@@ -712,8 +712,8 @@ export default function DashboardPage() {
                           <td style={{ padding: '5px 4px', textAlign: 'center' }}>
                             <span style={{
                               display: 'inline-block', padding: '1px 5px', borderRadius: 4, fontSize: "0.625rem",
-                              background: cr.status === 'active' ? '#dcfce7' : cr.status === 'ended' ? '#f1f5f9' : '#fef3c7',
-                              color: cr.status === 'active' ? '#16a34a' : cr.status === 'ended' ? '#94a3b8' : '#d97706',
+                              background: cr.status === 'active' ? '#dcfce7' : cr.status === 'ended' ? '#f1f5f9' : '#f5ecdd',
+                              color: cr.status === 'active' ? '#3f7859' : cr.status === 'ended' ? '#94a3b8' : '#956834',
                             }}>
                               {cr.status === 'active' ? '进行中' : cr.status === 'ended' ? '已结束' : '已暂停'}
                             </span>
@@ -752,7 +752,7 @@ export default function DashboardPage() {
                 {[
                   { label: '总班级', value: classTotal, color: '#10b981', bg: '#f0fdf4' },
                   { label: '总学生', value: classTotalStudents, color: '#8b5cf6', bg: '#f5f3ff' },
-                  { label: '总分组', value: classGroupTotal, color: '#f59e0b', bg: '#fffbeb' },
+                  { label: '总分组', value: classGroupTotal, color: '#956834', bg: '#faf4eb' },
                 ].map(s => (
                   <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
                     <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
@@ -778,7 +778,7 @@ export default function DashboardPage() {
                         <Bar dataKey="unknownCount" stackId="gender" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={24} name="未设置" />
                         <Bar dataKey="femaleCount" stackId="gender" fill="#f472b6" barSize={24} name="女生" />
                         <Bar dataKey="maleCount" stackId="gender" fill="#6366f1" barSize={24} name="男生" />
-                        <Line type="monotone" dataKey="usageCount" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: '#f59e0b' }} name="使用次数" />
+                        <Line type="monotone" dataKey="usageCount" stroke="#956834" strokeWidth={2} dot={{ r: 3, fill: '#956834' }} name="使用次数" />
                       </ComposedChart>
                     </ResponsiveContainer>
                     <div style={{ display: 'flex', gap: 14, fontSize: "0.688rem", marginTop: 6, justifyContent: 'center' }}>
@@ -795,7 +795,7 @@ export default function DashboardPage() {
                         <span style={{ color: '#94a3b8' }}>未设置</span>
                       </span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ width: 12, height: 2, background: '#f59e0b', flexShrink: 0, borderRadius: 1 }} />
+                        <span style={{ width: 12, height: 2, background: '#956834', flexShrink: 0, borderRadius: 1 }} />
                         <span style={{ color: '#475569' }}>使用次数</span>
                       </span>
                     </div>
@@ -887,7 +887,7 @@ export default function DashboardPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
                     {[
-                      { label: '自定义屏蔽词', value: shieldCustomCount, color: '#dc2626', bg: '#fef2f2' },
+                      { label: '自定义屏蔽词', value: shieldCustomCount, color: '#934e4e', bg: '#f8eeee' },
                       { label: '系统屏蔽词', value: shieldBuiltinCount, color: '#7c3aed', bg: '#f5f3ff' },
                     ].map(s => (
                       <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
@@ -899,10 +899,10 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))}
-                    <div style={{ flex: 1, background: shieldEnabled ? '#f0fdf4' : '#fef2f2', borderRadius: 10, padding: '12px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ flex: 1, background: shieldEnabled ? '#f0fdf4' : '#f8eeee', borderRadius: 10, padding: '12px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: shieldEnabled ? '#22c55e' : '#ef4444', display: 'inline-block', flexShrink: 0 }} />
-                        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: shieldEnabled ? '#16a34a' : '#dc2626' }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: shieldEnabled ? '#3f7859' : '#a85d5d', display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: shieldEnabled ? '#3f7859' : '#934e4e' }}>
                           {shieldEnabled ? '已开启' : '未开启'}
                         </span>
                       </div>

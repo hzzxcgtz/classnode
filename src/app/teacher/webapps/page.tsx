@@ -42,7 +42,7 @@ export default function WebappsPage() {
   const {
     webapps, loading, busyOperation,
     relatedClassrooms, relatedLoading, openRelatedClassrooms, closeRelatedClassrooms,
-    loadWebapps, deleteWebapp,
+    loadWebapps, deleteWebapp, confirmationDialog,
   } = useWebappController({
     onNotice: notice => notify(notice.message, notice.type),
     onDeleteBlocked: (webapp, classrooms) => setDeleteBlocked({ webappName: webapp.name, classrooms }),
@@ -186,6 +186,7 @@ export default function WebappsPage() {
           onClose={closeRelatedClassrooms}
         />
       )}
+      {confirmationDialog}
       {toast.show && <Toast msg={toast.msg} type={toast.type} />}
     </div>
   );

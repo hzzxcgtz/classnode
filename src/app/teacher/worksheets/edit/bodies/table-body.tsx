@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTeacherConfirm } from '@/lib/components';
 
 import {
   MAX_TABLE_BLANKS,
@@ -54,6 +55,7 @@ export function TableBody({ node, onDataChange }: {
   onDataChange: (patch: Record<string, unknown>) => void;
 }) {
   const [note, setNote] = useState('');
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const table = readTableFor(node);
   const answers = readBlankAnswers(node);
   const base = blankLayout(node).textCount;
@@ -63,14 +65,19 @@ export function TableBody({ node, onDataChange }: {
     onDataChange({ table: next.table, answers: next.answers, blanks: undefined });
 
   /** 粘贴一张新表：★ 换表 = 表格里原来的空全没了 ⇒ 答案要跟着裁到 `base`。 */
-  const pasteTable = (raw: string) => {
+  const pasteTable = async (raw: string) => {
     const parsed = parseTablePaste(raw);
     if (!parsed) {
       setNote('没认出表格：请从 Excel 或 Word 里复制（列之间是制表符）再粘进来。');
       return;
     }
     const kept = answers.slice(0, base);
-    if (answers.length > base && !confirm('换一张表格会**清掉表格里原来的答案**（题干里那几个空的答案不受影响）。继续吗？')) return;
+    if (answers.length > base && !await askConfirmation({
+      title: '换成这张表格？',
+      message: '表格里原来的答案会被清除；题干中的填空答案不会受影响。',
+      confirmLabel: '替换表格',
+      tone: 'danger',
+    })) return;
     const notes: string[] = [];
     if (parsed.droppedRows > 0) notes.push(`有 ${parsed.droppedRows} 行超出上限（最多 ${MAX_TABLE_ROWS} 行），没进来`);
     if (parsed.droppedCols > 0) notes.push(`有 ${parsed.droppedCols} 列超出上限（最多 ${MAX_TABLE_COLS} 列），没进来`);
@@ -87,6 +94,7 @@ export function TableBody({ node, onDataChange }: {
   if (!table) {
     // 还没有表：一个明确的入口，而不是一个空网格（空网格看不出「加没加表」）
     return (
+      <>
       <div className="worksheet-editor-table">
         <div className="worksheet-editor-table-empty">
           <strong>这道题还没有表格</strong>
@@ -96,6 +104,8 @@ export function TableBody({ node, onDataChange }: {
           </button>
         </div>
       </div>
+      {confirmationDialog}
+      </>
     );
   }
 
@@ -206,10 +216,11 @@ export function TableBody({ node, onDataChange }: {
           className="input"
           rows={3}
           placeholder="从 Excel 复制表格，粘到这里"
-          onChange={(event) => { if (event.target.value.trim()) pasteTable(event.target.value); }}
+          onChange={(event) => { if (event.target.value.trim()) void pasteTable(event.target.value); }}
         />
         {note && <p className="worksheet-editor-table-note">{note}</p>}
       </details>
+      {confirmationDialog}
     </div>
   );
 }

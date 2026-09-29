@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useTeacherConfirm } from '@/lib/components';
 // ★ 2026-09-26：新题的**默认分值**（1 / 0）—— 学习单级那两档不再参与判分之后，
 // 逐题的值就是最终的值，种子取默认档。
 import { DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP } from '@/lib/worksheet-reward';
@@ -94,8 +95,8 @@ function removeLocalStorage(key: string): void {
 /**
  * 学习单编辑器的数据层。
  *
- * 分工：本文件管**内容状态、历史、草稿、网络**；`page.tsx` 管版式与确认弹窗；
- * `question-card.tsx` 管一道题的输入控件。这样 `window.confirm` 的文案与
+ * 分工：本文件管**内容状态、历史、草稿、网络**；`page.tsx` 管版式与删题确认弹窗；
+ * `question-card.tsx` 管一道题的输入控件。这样删除文案与
  * 「删题要说清已收到多少份作答」这类**界面判断**都留在页面里，
  * 而不是埋在状态机里。
  *
@@ -106,6 +107,7 @@ export function useWorksheetEditor({ id, onNotice }: {
   onNotice: (notice: EditorNotice) => void;
 }) {
   const router = useRouter();
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
 
   const [worksheetId, setWorksheetId] = useState<string | null>(id);
   const [history, dispatch] = useReducer(contentReducer, undefined, () => createHistory(createEmptyContent()));
@@ -545,17 +547,19 @@ export function useWorksheetEditor({ id, onNotice }: {
   const dirtyRef = useRef(false);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
 
-  const goBack = useCallback(() => {
+  const goBack = useCallback(async () => {
     if (dirtyRef.current) {
-      const confirmed = window.confirm(
-        '这份学习单有未保存的改动。返回列表后它不会出现在学习单里，改动会留在本机草稿中，下次打开编辑页时会提示恢复。确定返回吗？',
-      );
+      const confirmed = await askConfirmation({
+        title: '带着未保存改动返回？',
+        message: '返回列表后，这些改动不会出现在学习单中，但会留在本机草稿里；下次打开编辑页时可以恢复。',
+        confirmLabel: '保存草稿并返回',
+      });
       if (!confirmed) return;
       // 先把当前状态落成草稿再说「改动会留在草稿里」—— 否则那句是假的（最多差 10 秒）。
       writeDraft();
     }
     router.push('/teacher/worksheets/');
-  }, [router, writeDraft]);
+  }, [askConfirmation, router, writeDraft]);
 
   // ★ 2026-09-27（教师裁定）：本页顶栏的「复制一份」**删掉了** ——
   // 学习单列表页的每张卡片上本来就有它（`worksheet-card.tsx`），两处同一个动作。
@@ -711,7 +715,6 @@ export function useWorksheetEditor({ id, onNotice }: {
     draftFound, acceptDraft, discardDraft,
     addQuestion, addTask, updateAutoGrade, updateTolerance, reorderQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
-    save, saveSettings, goBack, ensureUsage,
+    save, saveSettings, goBack, ensureUsage, confirmationDialog,
   };
 }
-

@@ -209,7 +209,7 @@ function MatrixRowView({
   //   原先这里自己 `filter` 了一遍 —— 两份实现等价时三道门禁全绿，改了口径则屏幕先变而测试不红。
   const tally = rowTally(row);
   return (
-    <tr style={stuck ? { background: '#fffbeb' } : undefined}>
+    <tr style={stuck ? { background: '#faf4eb' } : undefined}>
       {/* 🔴 行头**两行**（★ 2026-09-29，教师批图 1：「可以在下一行显示题干内容……每一行的
           高度可以适当的放大，甚至占到两到三行都没关系」）：
             第一行 `组内序号 + 题型别名`（右侧挂「分析」），第二行题干（最多两行、超出省略）。
@@ -222,7 +222,7 @@ function MatrixRowView({
         width: ROW_HEAD_WIDTH,
         minWidth: ROW_HEAD_WIDTH,
         maxWidth: ROW_HEAD_WIDTH,
-        borderLeft: stuck ? '3px solid #f59e0b' : '3px solid transparent',
+        borderLeft: stuck ? '3px solid #956834' : '3px solid transparent',
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
           {/* ⚠️ 题干与序号在**同一个**按钮里（点哪儿都是打开这道题的抽屉）；「分析」是它的

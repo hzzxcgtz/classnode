@@ -122,7 +122,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content webapp-form-modal" role="dialog" aria-modal="true" aria-labelledby="webapp-form-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 620, padding: 0, borderRadius: 14 }}>
+      <div className="modal-content teacher-dialog teacher-form-dialog webapp-form-modal" role="dialog" aria-modal="true" aria-labelledby="webapp-form-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 620, padding: 0, borderRadius: 14 }}>
         <div style={{ padding: '16px 24px 0', background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)', borderBottom: '1px solid var(--border)', position: 'relative' }}>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
           <h2 id="webapp-form-title" style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 2px' }}>{created ? '上传成功' : editing ? '编辑探究网页' : '添加探究网页'}</h2>
@@ -147,7 +147,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           <div>
             <label htmlFor="webapp-name" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>网页名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input id="webapp-name" className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="如：太阳系模拟实验"
-              style={{ fontSize: '0.813rem', padding: '8px 12px', borderColor: fieldErrors.name ? '#ef4444' : undefined }} />
+              style={{ fontSize: '0.813rem', padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
             {fieldErrors.name && <FieldError message={fieldErrors.name} />}
           </div>
 
@@ -176,7 +176,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
                 <div role="radiogroup" aria-label="上传方式" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
 {([['html', '单个 HTML 文件（推荐）'], ['archive', '上传压缩包']] as Array<[UploadMode, string]>).map(([value, label]) => (
                     <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('file'); }}
-                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? '#2563eb' : '#e2e8f0'}`, background: mode === value ? '#eef2ff' : 'white', color: mode === value ? '#1d4ed8' : '#475569' }}>
+                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? '#527198' : '#e2e8f0'}`, background: mode === value ? '#eef3f8' : 'white', color: mode === value ? '#466384' : '#475569' }}>
                       {label}
                     </button>
                   ))}
@@ -223,7 +223,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
             </>
           )}
 
-          {fieldErrors.submit && <div role="alert" style={{ fontSize: '0.75rem', color: '#ef4444' }}>{fieldErrors.submit}</div>}
+          {fieldErrors.submit && <div role="alert" style={{ fontSize: '0.75rem', color: '#a85d5d' }}>{fieldErrors.submit}</div>}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: '0.813rem', padding: '7px 18px' }}>取消</button>

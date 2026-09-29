@@ -77,10 +77,10 @@
   overflow: hidden;
   margin-bottom: 20px;
   padding: 34px 38px 30px;
-  border: 1px solid #dbeafe;
+  border: 1px solid #e9eff6;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(255, 255, 255, .98), rgba(246, 249, 255, .96));
-  box-shadow: 0 16px 40px rgba(37, 99, 235, .08);
+  box-shadow: 0 16px 40px rgba(82, 113, 152, .08);
 }
 
 .letter::before {
@@ -121,7 +121,7 @@
 
 .letterEyebrow {
   margin: 0 0 9px;
-  color: #2563eb;
+  color: #527198;
   font-size: .688rem;
   font-weight: 700;
   letter-spacing: .12em;

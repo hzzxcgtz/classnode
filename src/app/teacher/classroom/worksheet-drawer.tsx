@@ -11,9 +11,7 @@ import { AnswerViewBody } from './answer-view';
 import { InkPreview } from './ink-preview';
 // ★ 2026-09-28：奖励的换算与全貌/过程的判据。
 import { resolveRewardScale, type RewardScale } from '@/lib/worksheet-reward';
-import { StackedBar } from './question-stacked-bar';
 import styles from './worksheet-drawer.module.css';
-import { questionStats, type StatsRow } from './worksheet-question-stats';
 import {
   indexQuestions,
   participantColumnTitle,
@@ -25,6 +23,7 @@ import {
   outcomeMarkView,
   formatAgo,
   inProgressQuestionId,
+  isGradedType,
   participantOverview,
   processFacts,
   type ParticipantOverview,
@@ -145,7 +144,7 @@ export function WorksheetDrawer({
       {/* 遮罩层。与对话抽屉同一块位置、同一个 z-index 层（两者互斥，见 page.tsx 的打开处）。 */}
       <div onClick={onClose}
         style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
-      <div data-worksheet-drawer className={styles.drawer}>
+      <div data-worksheet-drawer className={`${styles.drawer} ${current.kind === 'questions' ? styles.analysisDrawer : ''}`}>
         {/* 头部：标题随层次变，左上角是「返回」（只在有多层时出现）。 */}
         <div className={styles.header}>
           {canGoBack && (
@@ -304,6 +303,7 @@ function QuestionList({
   /** ★ 2026-09-28：改成**开按题统计浮层**（规格 §2）—— 抽屉第三层那条路仍留给矩阵。 */
   onOpen: (questionId: string) => void;
 }) {
+  const [filter, setFilter] = useState<'all' | 'attention' | 'manual' | 'empty'>('all');
   const worksheet = board.worksheets.filter((item) => item.id === worksheetId)[0];
   if (!worksheet) return null;
   if (!nodes) {
@@ -318,55 +318,93 @@ function QuestionList({
     return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
+  const details = items.map((item) => {
+    const rows = worksheet.participants.map((participant) =>
+      participant.answerRows.filter((row) => row.questionId === item.node.id)[0]);
+    const aggregate = questionAggregate(rows);
+    const automatic = isGradedType(item.node.type) && item.node.autoGrade !== false;
+    const manual = !automatic;
+    const sampleSmall = aggregate.submitted > 0 && aggregate.submitted < Math.min(3, Math.max(1, aggregate.total));
+    const attention = automatic && aggregate.graded > 0 && (aggregate.accuracy ?? 100) < 60;
+    return { ...item, aggregate, automatic, manual, sampleSmall, attention };
+  });
+  const totalSubmissions = details.reduce((sum, item) => sum + item.aggregate.submitted, 0);
+  const manualCount = details.filter((item) => item.manual).length;
+  const automaticCount = details.length - manualCount;
+  const attentionCount = details.filter((item) => item.attention).length;
+  const emptyCount = details.filter((item) => item.aggregate.submitted === 0).length;
+  const visible = details.filter((item) => {
+    if (filter === 'attention') return item.attention;
+    if (filter === 'manual') return item.manual;
+    if (filter === 'empty') return item.aggregate.submitted === 0;
+    return true;
+  });
+  const groups = new Map<string, typeof visible>();
+  for (const item of visible) {
+    const separator = item.heading.lastIndexOf(' · ');
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const group = groups.get(task) ?? [];
+    group.push(item);
+    groups.set(task, group);
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {items.map(({ node, heading }) => {
-        // ⚠️ 一个参与者一格（没作答的是 `undefined`）：`questionAggregate` 的两个分母都靠
-        // 「参与者数」这个长度，把没作答的人过滤掉会让「已交 N/M」凭空满员。
-        const rows = worksheet.participants.map((participant) =>
-          participant.answerRows.filter((row) => row.questionId === node.id)[0]);
-        // ★ 迷你堆叠条：分布口径与浮层页头**同一个函数**（各数一份会让
-        // 「题列表说 3 人全对、点进去说 4 人」，而没有人会去核对这两个数）。
-        const miniRows: Array<StatsRow | undefined> = worksheet.participants.map((participant) => {
-          const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
-          if (!row) return undefined;
-          return {
-            participantId: participant.participantId, participantName: participant.name,
-            status: row.status, isCorrect: row.isCorrect, gradeState: row.gradeState, value: row.value,
-            createdAt: row.createdAt, savedAt: row.savedAt, saveCount: row.saveCount,
-          };
-        });
-        const miniStats = questionStats(node, miniRows);
-        const aggregate = questionAggregate(rows);
-        const accuracy = aggregate.accuracy;
-        return (
-          <button key={node.id} type="button" onClick={() => onOpen(node.id)}
-            style={{
-              display: 'flex', flexDirection: 'column', gap: 6, width: '100%', textAlign: 'left',
-              padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
-            }}>
-            {/* ★ 2026-09-28：**分布条**与那两个数字分成上下两行。
-                今天只有两个数字，看不出分布形状 —— 「正确 0%」是**全班都错**、
-                还是**只有 3 个人交**，要读第二眼那个 `3/40` 才知道，
-                而那正是教师判「要不要讲这道题」的依据（规格 §2）。 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{ minWidth: 0, flex: 1, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {questionHeading(node, heading)}
-            </div>
-            {/* 主观题恒不判分 ⇒ 这里自然是「—」，不是 0%（见 questionAggregate 的注释）。 */}
-            <span style={{ fontSize: '0.75rem', color: accuracy === null ? '#94a3b8' : accuracy >= 60 ? '#15803d' : '#b45309', whiteSpace: 'nowrap' }}
-              title="正确率 = 已判对 ÷ 已判过的作答（主观题与关闭自动判分时没有这一项）">
-              正确 {accuracy === null ? '—' : `${accuracy}%`}
-            </span>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-              已交 {aggregate.submitted}/{aggregate.total}
-            </span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-            </div>
-            <StackedBar stats={miniStats} compact />
-          </button>
-        );
-      })}
+    <div className={styles.analysisRoot}>
+      <div className={styles.analysisSummary}>
+        <div className={styles.analysisMetric}><strong>{worksheet.participants.length}</strong><span>参与者总数</span></div>
+        <div className={styles.analysisMetric}><strong>{totalSubmissions}</strong><span>已产生作答</span></div>
+        <div className={styles.analysisMetric}><strong>{automaticCount}</strong><span>可自动判分题</span></div>
+        <div className={styles.analysisMetric} data-tone="warning"><strong>{manualCount}</strong><span>待人工分析题</span></div>
+      </div>
+      <div className={styles.sampleHint}>
+        <span><strong>正确情况始终按“答对人数 / 已判人数”显示</strong>，样本较少时仅作为课堂观察参考</span>
+        <span>数据实时更新</span>
+      </div>
+      <div className={styles.filters} aria-label="筛选题目">
+        {([
+          ['all', `全部题目 ${details.length}`],
+          ['attention', `需要关注 ${attentionCount}`],
+          ['manual', `待人工分析 ${manualCount}`],
+          ['empty', `暂无作答 ${emptyCount}`],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" className={styles.filterButton}
+            data-active={filter === value} onClick={() => setFilter(value)}>{label}</button>
+        ))}
+        <span className={styles.filterHint}>按任务顺序</span>
+      </div>
+
+      {groups.size === 0 && <div className={styles.emptyFilter}>这个筛选条件下暂时没有题目。</div>}
+      {[...groups.entries()].map(([task, group]) => (
+        <section key={task} className={styles.taskSection}>
+          <div className={styles.taskHeader}>
+            <h4>{task}</h4>
+            <span>{group.reduce((sum, item) => sum + item.aggregate.submitted, 0)} 份作答</span>
+          </div>
+          <div className={styles.analysisQuestionList}>
+            {group.map(({ node, label, aggregate, manual, sampleSmall, attention }) => (
+              <button key={node.id} type="button" className={styles.analysisQuestionRow}
+                data-attention={attention}
+                onClick={() => onOpen(node.id)}>
+                <span className={styles.questionNumber}>{label}</span>
+                <span className={styles.analysisQuestionInfo}>
+                  <strong>
+                    {questionHeading(node, null)}
+                    {manual && <span className={styles.analysisTag}>人工分析</span>}
+                    {sampleSmall && <span className={styles.analysisTag} data-tone="warning">样本少</span>}
+                  </strong>
+                  <p>{node.prompt || '这道题没有填写题干'}</p>
+                </span>
+                <span className={styles.rowMetric}><strong>{aggregate.submitted}/{aggregate.total}</strong><span>已提交</span></span>
+                <span className={styles.rowMetric} data-tone={attention ? 'warning' : aggregate.correct > 0 ? 'good' : undefined}>
+                  <strong>{manual ? (aggregate.submitted > 0 ? `${aggregate.submitted} 份` : '待作答') : aggregate.graded > 0 ? `${aggregate.correct}/${aggregate.graded}` : '暂无'}</strong>
+                  <span>{manual ? '人工分析' : '答对人数'}</span>
+                </span>
+                <span aria-hidden className={styles.chevron}>›</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

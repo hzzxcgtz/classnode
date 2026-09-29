@@ -4,12 +4,13 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 // ★ 2026-09-29：`Fragment` 是**具名** import（不是 `React.Fragment`）—— 段头行与它下面的题行
 // 是同一层里的兄弟节点，key 只能挂在 Fragment 上。同目录的 `analysis-panel.tsx` 也是这么引 hook 的。
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
-import { isGradedType } from './worksheet-drawer-state';
+import { indexQuestions, isGradedType, questionAggregate } from './worksheet-drawer-state';
 import { buildWorksheetMatrix, matrixGroups, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
+import styles from './matrix-overlay.module.css';
 
 /**
  * 教师看板的**学习单矩阵**覆盖层（规格 `specs/2026-09-25-m5b-matrix-overview.md`）。
@@ -59,29 +60,25 @@ export function MatrixOverlay({
   const uncovered = board ? uncoveredCount(participantCount, board.worksheets) : 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 24px', background: 'white', borderBottom: '1px solid #e2e8f0',
-      }}>
-        <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b' }}>学习单矩阵</div>
-        <button onClick={onClose} type="button"
-          style={{
-            padding: '7px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white',
-            cursor: 'pointer', fontSize: '0.813rem', color: '#475569',
-          }}>
+    <div className={styles.overlay}>
+      <div className={styles.topbar}>
+        <div className={styles.titleBlock}>
+          <h2>学习单举证</h2>
+          <p>按题目与学生交叉查看学习证据</p>
+        </div>
+        <button onClick={onClose} type="button" className={styles.closeButton}>
           退出
         </button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+      <div className={styles.content}>
         {!board && loading ? (
-          <p style={{ fontSize: '0.875rem', color: '#64748b' }}>正在读取作答…</p>
+          <div className={styles.emptyState}>正在读取作答…</div>
         ) : !board ? (
           // ⚠️ 与「全班都没作答」是两件事 —— 拉失败时 MUST NOT 画成一张空表。
-          <p style={{ fontSize: '0.875rem', color: '#64748b' }}>还没读到这一堂课的作答</p>
+          <div className={styles.emptyState}>还没读到这一堂课的作答</div>
         ) : board.worksheets.length === 0 ? (
-          <p style={{ fontSize: '0.875rem', color: '#64748b' }}>这间课堂还没配学习单</p>
+          <div className={styles.emptyState}>这间课堂还没配学习单</div>
         ) : (
           <>
             {board.worksheets.map((sheet) => (
@@ -100,7 +97,7 @@ export function MatrixOverlay({
             {/* 🔴 高级模式下「没配学习单的组」不在任何一块里（`resolveMaterialTargetId` 不回落）。
                 少了这一行，教师看到的是一张**少了几个组**的表，而屏幕上没有任何东西说少了人。 */}
             {advancedMode && uncovered > 0 && (
-              <p style={{ fontSize: '0.813rem', color: '#b45309', marginTop: 8 }}>
+              <p className={styles.uncovered}>
                 另有 {uncovered} 个参与者没有可作答的学习单（高级模式下每组各自配置）
               </p>
             )}
@@ -124,7 +121,9 @@ function MatrixBlock({
   onOpenParticipant: (participantId: string) => void;
   onOpenAnalysis: (worksheetId: string, questionId: string) => void;
 }) {
-  if (!nodes) return <p style={{ fontSize: '0.875rem', color: '#64748b' }}>《{title}》正在读取题目…</p>;
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'attention' | 'manual'>('all');
+  if (!nodes) return <div className={styles.emptyState}>《{title}》正在读取题目…</div>;
 
   const rows = buildWorksheetMatrix(sheet, nodes, live, liveTrustedAfter);
   // 🔴 **不再在这里早退**（独立审查抓到的）：原先 `rows.length === 0` 直接 return 一句自己写的文案，
@@ -133,46 +132,113 @@ function MatrixBlock({
   // 现在让没有题的那种情况照常走 `matrixHeadline` → `headlineText`。
   const headline = matrixHeadline(questionTallies(rows));
   const stuckId = headline.kind === 'stuck' ? headline.questionId : null;
-  // ⚠️ 列的**顺序**来自这里（`buildWorksheetMatrix` 也是按这个顺序往 `row.cells` 里写的）。
-  const participantIds = sheet.participants.map((participant) => participant.participantId);
+  const indexed = indexQuestions(nodes).byId;
+  const details = new Map(rows.map((row) => {
+    const answerRows = sheet.participants.map((participant) =>
+      participant.answerRows.find((answer) => answer.questionId === row.questionId));
+    const aggregate = questionAggregate(answerRows);
+    const node = indexed.get(row.questionId);
+    const manual = !isGradedType(row.type) || node?.autoGrade === false;
+    const attention = !manual && aggregate.graded > 0 && (aggregate.accuracy ?? 100) < 60;
+    return [row.questionId, { aggregate, manual, attention }] as const;
+  }));
+  const visibleRows = rows.filter((row) => {
+    const detail = details.get(row.questionId);
+    if (filter === 'attention') return detail?.attention;
+    if (filter === 'manual') return detail?.manual;
+    return true;
+  });
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const participants = sheet.participants.filter((participant) =>
+    normalizedQuery.length === 0 || participant.name.toLocaleLowerCase().includes(normalizedQuery));
+  // ⚠️ 列的**顺序**仍来自 REST 快照；搜索只做可见列过滤，不改变真实矩阵。
+  const participantIds = participants.map((participant) => participant.participantId);
+  const totalSubmissions = rows.reduce((sum, row) => sum + rowTally(row).submitted, 0);
+  const manualCount = [...details.values()].filter((detail) => detail.manual).length;
+  const attentionCount = [...details.values()].filter((detail) => detail.attention).length;
+  const focusRow = stuckId ? rows.find((row) => row.questionId === stuckId) : rows.find((row) => details.get(row.questionId)?.attention);
+  const focusDetail = focusRow ? details.get(focusRow.questionId) : undefined;
 
   return (
-    <section style={{ marginBottom: 28 }}>
-      <h3 style={{ fontSize: '0.938rem', fontWeight: 600, color: '#1e293b', margin: '0 0 6px' }}>《{title}》</h3>
-      <p style={{ fontSize: '0.813rem', color: headline.kind === 'stuck' ? '#b45309' : '#64748b', margin: '0 0 8px' }}>
-        {headlineText(headline)}
-      </p>
-      <table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-        <thead>
-          <tr>
-            {/* 🔴 行首（粘性左列）：横向滑到第 30 个人时，教师还得知道在看哪一题。 */}
-            <th style={stickyHeaderStyle}>题＼参与者</th>
-            {sheet.participants.map((participant) => (
-              <th key={participant.participantId} style={headCellStyle} title={participant.name}>
-                {/* 竖排：45 人时列宽只有 ~40px，横排名字会撞（「张伟 / 张敏」）。 */}
-                <span style={{ writingMode: 'vertical-rl', fontSize: '0.75rem', color: '#64748b' }}>{participant.name}</span>
-              </th>
-            ))}
-            <th style={{ ...headCellStyle, minWidth: 56 }}>已交</th>
-          </tr>
-        </thead>
-        <tbody>
+    <section className={styles.sheet}>
+      <div className={styles.sheetHeader}>
+        <div>
+          <h3>《{title}》</h3>
+          <p data-tone={headline.kind === 'stuck' ? 'warning' : undefined}>{headlineText(headline)}</p>
+        </div>
+      </div>
+
+      <div className={styles.summary}>
+        <div className={styles.metric}><strong>{sheet.participants.length}</strong><span>参与者</span></div>
+        <div className={styles.metric}><strong>{totalSubmissions}</strong><span>已提交作答</span></div>
+        <div className={styles.metric}><strong>{rows.length - manualCount}</strong><span>自动判分题</span></div>
+        <div className={styles.metric} data-tone="warning"><strong>{manualCount}</strong><span>待人工分析题</span></div>
+      </div>
+
+      {focusRow && focusDetail && (
+        <div className={styles.focusStrip}>
+          <strong>{focusDetail.attention ? '优先关注' : '当前进度'}：{focusRow.heading}</strong>
+          <span>已提交 {focusDetail.aggregate.submitted}/{focusDetail.aggregate.total}</span>
+          <span>{focusDetail.manual
+            ? `${focusDetail.aggregate.submitted} 份待分析`
+            : focusDetail.aggregate.graded > 0
+              ? `答对 ${focusDetail.aggregate.correct}/${focusDetail.aggregate.graded}`
+              : '暂无判分结果'}</span>
+          {focusDetail.aggregate.submitted > 0 && focusDetail.aggregate.submitted < 3 && <span>样本较少，仅供课堂观察</span>}
+          <button type="button" className={styles.focusAction}
+            onClick={() => onOpenQuestion(sheet.id, focusRow.questionId)}>查看该题</button>
+        </div>
+      )}
+
+      <div className={styles.toolbar}>
+        <input className={styles.search} value={query} onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索学生或小组" aria-label="搜索学生或小组" />
+        <button type="button" className={styles.filterButton} data-active={filter === 'all'} onClick={() => setFilter('all')}>全部题目 {rows.length}</button>
+        <button type="button" className={styles.filterButton} data-active={filter === 'attention'} onClick={() => setFilter('attention')}>需要关注 {attentionCount}</button>
+        <button type="button" className={styles.filterButton} data-active={filter === 'manual'} onClick={() => setFilter('manual')}>待分析 {manualCount}</button>
+        <div className={styles.legend} aria-label="状态图例">
+          {(Object.entries(CELL_LABEL) as Array<[CellState, string]>).map(([state, label]) => (
+            <span className={styles.legendItem} key={state}>
+              <i className={styles.legendDot} style={{ '--cell-color': CELL_COLOR[state] } as CSSProperties} />{label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.tableShell}>
+        {participants.length === 0 || visibleRows.length === 0 ? (
+          <div className={styles.noMatches}>{participants.length === 0 ? '没有找到匹配的学生或小组。' : '这个筛选条件下暂时没有题目。'}</div>
+        ) : (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.corner}>题目 / 学习证据</th>
+                {participants.map((participant) => (
+                  <th key={participant.participantId} className={styles.participantHead} title={participant.name}>
+                    <span className={styles.initial}>{participant.name.trim().slice(0, 1) || '·'}</span>
+                    <span className={styles.participantName}>{participant.name}</span>
+                  </th>
+                ))}
+                <th className={styles.aggregateHead}>已提交</th>
+              </tr>
+            </thead>
+            <tbody>
           {/* ★ 2026-09-29（教师批图 1）：「这里要按任务进行归类，不要让同样的任务名称多次出现」。
               ⇒ 逐**段**画：段头一行（`matrixGroups` 切好的），下面才是题行。
               ⚠️ 判据（哪两行属于同一段）全在纯函数里，这里只遍历 —— 写进 JSX 的判据没有回归网，
               而它错了不报错（段头少画一次或多画一次，读起来完全正常）。 */}
-          {matrixGroups(rows).map((group, groupIndex) => (
+          {matrixGroups(visibleRows).map((group, groupIndex) => (
             // ⚠️ key 用「段序号 + 段名」：两个**同名任务**相邻时合成一段，拿段名当 key 会撞。
             <Fragment key={`${groupIndex}:${group.taskTitle ?? ''}`}>
               {group.taskTitle !== null && (
                 <tr>
                   {/* 🔴 段头也必须是**粘性左列**：横向滑到第 30 个人时，题行上只剩一个
                       「1 开心填空」—— 看不出这是哪个任务的。 */}
-                  <th scope="colgroup" style={groupHeadCellStyle}>{group.taskTitle}</th>
+                  <th scope="colgroup" className={styles.groupHead}>{group.taskTitle}</th>
                   {/* ⚠️ 粘性挂在**第一格**上，其余用一格 `colSpan` 的填空铺过去 ——
                       给 `colSpan` 的那一格本身加 `position: sticky` 是没验证过的形状，
                       而「粘性左列」在本文件里已经有一套跑通的写法（表头行与题行都是它）。 */}
-                  <td colSpan={participantIds.length + 1} style={groupHeadFillerStyle} />
+                  <td colSpan={participantIds.length + 1} className={styles.groupFiller} />
                 </tr>
               )}
               {group.rows.map((row) => (
@@ -188,8 +254,10 @@ function MatrixBlock({
               ))}
             </Fragment>
           ))}
-        </tbody>
-      </table>
+            </tbody>
+          </table>
+        )}
+      </div>
     </section>
   );
 }
@@ -209,65 +277,52 @@ function MatrixRowView({
   //   原先这里自己 `filter` 了一遍 —— 两份实现等价时三道门禁全绿，改了口径则屏幕先变而测试不红。
   const tally = rowTally(row);
   return (
-    <tr style={stuck ? { background: '#faf4eb' } : undefined}>
+    <tr>
       {/* 🔴 行头**两行**（★ 2026-09-29，教师批图 1：「可以在下一行显示题干内容……每一行的
           高度可以适当的放大，甚至占到两到三行都没关系」）：
             第一行 `组内序号 + 题型别名`（右侧挂「分析」），第二行题干（最多两行、超出省略）。
           ⚠️ 任务名**不在这一行** —— 它在上面那条段头里（这就是批注要的「不要多次出现」）。 */}
-      <th scope="row" style={{
-        ...stickyCellStyle,
-        whiteSpace: 'normal',
-        verticalAlign: 'top',
-        padding: '6px 10px',
-        width: ROW_HEAD_WIDTH,
-        minWidth: ROW_HEAD_WIDTH,
-        maxWidth: ROW_HEAD_WIDTH,
-        borderLeft: stuck ? '3px solid #956834' : '3px solid transparent',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+      <th scope="row" className={styles.questionCell} data-stuck={stuck}>
+        <div className={styles.questionTop}>
           {/* ⚠️ 题干与序号在**同一个**按钮里（点哪儿都是打开这道题的抽屉）；「分析」是它的
               **兄弟节点** —— 嵌 `<button>` 是非法 HTML，点它会同时触发外层。
               兄弟之间不需要 `stopPropagation`。 */}
-          <button type="button" onClick={onOpenQuestion}
-            style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+          <button type="button" onClick={onOpenQuestion} className={styles.questionButton}>
             <span style={{ display: 'block' }}>
-              <span style={{ color: '#1e293b', fontWeight: 700 }}>{row.label}</span>
+              <span className={styles.questionLabel}>{row.label}</span>
               {/* ★ 教师批图 1：「这里的题型使用别名」—— 画的是**学生端那套别名**
                   （`开心填空` / `慧眼选择`…，见 `worksheet-questions.ts` 的 `nickname`）。
                   🔴 正式题型名**没有丢**：挂在这一格的 `title` 上（悬浮可见）。
                   它会让人对不上教材与教研的用词，所以两件都要留着。 */}
-              <span title={row.typeLabel} style={{ color: '#94a3b8', marginLeft: 6, fontSize: '0.75rem' }}>
+              <span title={row.typeLabel} className={styles.typeLabel}>
                 {questionTypeNickname(row.type)}
               </span>
             </span>
             {/* 题干：两行截断交给 CSS（不在这一层切字符串 —— 那会把空题干那条既有文案一起吃掉）。 */}
-            <span style={promptCellStyle}>{promptLabel(row.prompt)}</span>
+            <span className={styles.prompt}>{promptLabel(row.prompt)}</span>
           </button>
           {/* ★ M7a：「分析」入口 —— **只对主观题出现**。客观题本来就判分，看板的对错已经
               回答了「这题答得怎么样」，再给一个分析入口只会让教师多点一下。
               判据走 `isGradedType`（它派生自题型表的 `graded` 旗标）—— 与抽屉画不画 ✓/✗
               是**同一把尺子**；而 `graded` 那张表由 `analysis-gate-parity.test.ts` 与服务端闸门对拍。 */}
           {!isGradedType(row.type) && (
-            <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么"
-              style={{
-                flexShrink: 0, padding: '2px 8px', fontSize: '0.7rem', borderRadius: 6,
-                border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
-              }}>
+            <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么" className={styles.analysisButton}>
               分析
             </button>
           )}
         </div>
       </th>
       {participantIds.map((participantId) => (
-        <td key={participantId} style={bodyCellStyle}>
+        <td key={participantId} className={styles.bodyCell}>
           <button type="button" onClick={() => onOpenParticipant(participantId)}
-            title="查看这个参与者的逐题作答"
-            style={{ ...dotStyle, background: CELL_COLOR[row.cells[participantId]] }} />
+            title={`${CELL_LABEL[row.cells[participantId]]}，查看这个参与者的逐题作答`}
+            className={styles.cellButton}
+            style={{ '--cell-color': CELL_COLOR[row.cells[participantId]] } as CSSProperties} />
         </td>
       ))}
-      <td style={{ ...bodyCellStyle, fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+      <td className={styles.aggregateCell} data-stuck={stuck}>
         {tally.submitted}/{tally.total}
-        {stuck && <span style={{ marginLeft: 6, color: '#b45309' }}>⚠ 卡住</span>}
+        {stuck && <span title="当前作答前沿"> · 关注</span>}
       </td>
     </tr>
   );
@@ -277,68 +332,15 @@ function MatrixRowView({
 // ⚠️ 键类型是 `CellState` 而不是 `string`：用 `string` 时**缺键 TS 判不出来**，
 //    色块会静默变透明（审查点名的一处）。
 const CELL_COLOR: Record<CellState, string> = {
-  unanswered: '#e2e8f0',
-  draft: '#fbbf24',
-  submitted: '#3b82f6',
+  unanswered: '#e1e7ee',
+  draft: '#d3a45f',
+  submitted: '#6889ad',
 };
 
-const DOT = 22;
-
-/**
- * 行头那一列的宽度（★ 2026-09-29）。**写死**是有意的：题干要按两行截断，
- * 而截断的位置取决于这一列有多宽 —— 交给浏览器自动定宽时，同一份学习单在不同人数下
- * 会截在不同字上（人数多 ⇒ 表格更宽 ⇒ 这一列被挤窄）。
- */
-const ROW_HEAD_WIDTH = 300;
-
-const stickyHeaderStyle: CSSProperties = {
-  position: 'sticky', left: 0, zIndex: 2, background: 'white', textAlign: 'left',
-  padding: '4px 8px', fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500,
-  borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap',
-};
-const stickyCellStyle: CSSProperties = {
-  position: 'sticky', left: 0, zIndex: 1, background: 'white', textAlign: 'left',
-  padding: '4px 8px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
-};
-/**
- * 段头（★ 2026-09-29）那一格。底色浅灰、上下各一条线 —— 它是「这一段的边界」，
- * 而**不能**只靠加粗（教师扫一眼要能看出题行被分成了几段）。
- * ⚠️ 底色必须**不透明**：粘性左列滑过去时它要盖住下面的格子。
- */
-const groupHeadCellStyle: CSSProperties = {
-  position: 'sticky', left: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'left',
-  padding: '8px 10px', fontSize: '0.813rem', fontWeight: 700, color: '#334155',
-  borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap',
-};
-/** 段头那一行剩下的部分（铺满整行，让底色的那一条横贯过去）。 */
-const groupHeadFillerStyle: CSSProperties = {
-  background: '#f1f5f9', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0',
-};
-/**
- * 题干那一行。**最多两行、超出省略**（教师批图 1 允许行高到两三行）。
- *
- * ⚠️ `-webkit-line-clamp` 而不是「高度裁掉」：后者会把第二行切成半截字，
- * 那种「看起来是渲染坏了」的长相正是要避免的。`whiteSpace: normal` 是必须的 ——
- * 它爸（`stickyCellStyle`）是 `nowrap`（行首那一列原来只放一行标题）。
- */
-const promptCellStyle: CSSProperties = {
-  display: '-webkit-box',
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: 'vertical',
-  overflow: 'hidden',
-  marginTop: 2,
-  color: '#475569',
-  fontSize: '0.75rem',
-  lineHeight: 1.45,
-  whiteSpace: 'normal',
-  wordBreak: 'break-word',
-};
-const headCellStyle: CSSProperties = {
-  padding: '4px 2px', height: 96, verticalAlign: 'bottom', borderBottom: '1px solid #e2e8f0',
-};
-const bodyCellStyle: CSSProperties = { padding: '4px 2px', textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
-const dotStyle: CSSProperties = {
-  width: DOT, height: DOT, borderRadius: 5, border: 'none', padding: 0, cursor: 'pointer', display: 'block',
+const CELL_LABEL: Record<CellState, string> = {
+  unanswered: '未作答',
+  draft: '作答中',
+  submitted: '已提交',
 };
 
 /**

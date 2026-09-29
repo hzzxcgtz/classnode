@@ -83,6 +83,10 @@ test('阳性对照：这条网真的在读这两个文件（否则上面那条�
   assert.equal((slotSource.match(/<WrongMark/g) ?? []).length, 0, '槽那一处也不再画叉');
   assert.ok(stripImports(stripped(SOURCE)).includes('blankValueStyle'), '答错必须仍然被标出来（换成样式了）');
   assert.ok(stripImports(stripped(slotSource)).includes('blankValueStyle'), '槽那一处同样');
+  assert.ok(
+    !/color\s*:\s*pending\s*&&\s*!filled\s*\?[^:]+:\s*undefined/.test(stripComments(slotSource)),
+    '未预览候选词时不能用 color: undefined 覆盖 blankValueStyle 的暗红色',
+  );
   assert.ok(stripImports(stripped(SOURCE)).includes('blankAriaLabel'), '删除线对读屏无声 ⇒ 那一格的名字要跟着走');
   // 那枚叉本身仍然只有一处定义，而且**还有人用**（选择题的选项 —— 教师这次只说了填空题，
   // 那处分叉是有意的：✗ 标的是教师写的选项，删除线在别人写的字上是另一种读法）。

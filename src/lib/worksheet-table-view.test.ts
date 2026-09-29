@@ -89,7 +89,7 @@ test('阳性对照：剥注释之后仍然能看见真正的东西（这条网�
   // ⇒ 表格那一份**不再画那枚叉**。⚠️ 这一句不能只是删掉：它是「这里真的有东西可守」的
   // 证据，删了之后「顺手把标记整个去掉」会让上面那条（不许定位）更绿。
   // ⇒ 换成断言**标记仍然在**（只是从一枚节点变成了那个值的样式）。
-  assert.ok(stripImports(bareTable).includes('WRONG_ANSWER_STYLE'), '表格那一份必须仍然标出答错（换成了样式）');
+  assert.ok(stripImports(bareTable).includes('blankValueStyle(PLAIN_RUN, wrong)'), '表格手工输入必须与选择填空共用最终答案样式（含加粗、暗红与删除线）');
   assert.ok(bareTable.includes('aria-label'), '空的那几格必须有读屏标签（第 R 行第 C 格）');
   assert.ok(bareTable.includes('overflowX'), '表格必须能横向滚动（iPad 竖屏放不下）');
   assert.ok(barePrompt.includes('worksheet-blank-input'), '题干那一份的空用的就是那个全局类');

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
+import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { indexQuestions } from './worksheet-drawer-state';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { AnswerViewBody } from './answer-view';
@@ -30,6 +31,18 @@ const BAD = '#dc2626';
 const WARN = '#b45309';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
+
+function pickedStatusView(row: { status?: string; gradeState?: string | null } | undefined) {
+  if (row?.status === 'submitted') {
+    if (row.gradeState === 'correct') return { icon: 'correct', label: '答对' } as const;
+    if (row.gradeState === 'partial') return { icon: 'partial', label: '部分给分' } as const;
+    if (row.gradeState === 'incorrect') return { icon: 'retry', label: '答错' } as const;
+    return { icon: 'submitted', label: '已提交' } as const;
+  }
+  return row?.status === 'draft'
+    ? { icon: 'drafting', label: '作答中' } as const
+    : { icon: 'unanswered', label: '未作答' } as const;
+}
 
 /**
  * 矩阵热力（连线左×右、归类条目×框）。
@@ -394,11 +407,15 @@ export function QuestionStatsOverlay({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <b style={{ fontSize: '0.813rem' }}>{picked.name}</b>
                   {/* 判分结论读的是行里的 `gradeState`（服务端判过的），本地不重算。 */}
-                  <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: MUTED }}>
-                    {pickedRow?.status === 'submitted'
-                      ? (pickedRow.gradeState === 'correct' ? '✓ 答对' : pickedRow.gradeState === 'partial' ? '½ 部分给分' : pickedRow.gradeState === 'incorrect' ? '✗ 答错' : '◐ 已提交')
-                      : pickedRow?.status === 'draft' ? '◐ 作答中' : '— 未作答'}
-                  </span>
+                  {(() => {
+                    const statusView = pickedStatusView(pickedRow);
+                    return (
+                      <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: MUTED, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <WorksheetStatusIcon name={statusView.icon} size={15} />
+                        {statusView.label}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <AnswerViewBody node={node} value={pickedRow?.value} />
               </div>

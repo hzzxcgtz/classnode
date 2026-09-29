@@ -73,9 +73,10 @@ export function BlankSlot({
           //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、换个模式粗细就变了」。
           // ★ 2026-09-29：走 `blankValueStyle` —— 答错那层由它叠（顺序在那里面有测试）。
           ...(blankValueStyle(run, wrong) as CSSProperties),
-          // 🔴 **必须在上面那次展开之后**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
-          //    写在它前面会被整个盖掉（2026-09-27 教师看到「打字那条红了、待选区那条没红」就是这一条）。
-          color: pending && !filled ? '#2563eb' : undefined,
+          // 只在真的预览“即将放入”的词时覆盖成蓝色。不能写成 `color: 条件 ? 蓝 : undefined`：
+          // 对象后面的 `color: undefined` 仍会覆盖上面 `blankValueStyle` 给出的暗红色，
+          // 于是错误答案只剩删除线、文字却退回黑色。
+          ...(pending && !filled && !wrong ? { color: '#2563eb' } : {}),
           textAlign: 'center',
           verticalAlign: 'baseline',
           cursor: disabled ? 'default' : 'pointer',

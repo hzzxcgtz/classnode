@@ -47,6 +47,7 @@ import {
 import { readCorrectBlanks, type SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
 import { ResultGlyph } from './result-glyph';
+import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import styles from './worksheet.module.css';
 
 /**
@@ -402,8 +403,12 @@ export function WorksheetQuestionList({
           <span className={styles.resultRewardAnchor}>
             <div className={styles.questionResult} role="status" aria-live="polite">
               {state !== 'empty' && (
-                <span className={styles.resultCell} data-tone="progress">
-                  {state === 'submitted' ? '✓ 已完成' : '◐ 正在写'}
+                <span
+                  className={styles.resultCell}
+                  data-tone={state === 'submitted' ? 'progress-completed' : 'progress-drafting'}
+                >
+                  <WorksheetStatusIcon name={state === 'submitted' ? 'completed' : 'drafting'} size={18} />
+                  {state === 'submitted' ? '已完成' : '正在写'}
                 </span>
               )}
               {gradeState && (

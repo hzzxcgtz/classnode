@@ -1808,37 +1808,14 @@
    第一段左边不该有线，而 `+` 天然只画「后面那一段的左边」。 */
 .resultCell + .resultCell { border-left: 1px solid #e8eef7; }
 
-/* 已完成 / 正在写：绿字浅底 */
-.resultCell[data-tone='progress'] { background: #f0fdf4; color: #15803d; }
+/* 进度状态也与图标同色：已完成用绿，正在写沿用“部分答对”的琥珀配色。 */
+.resultCell[data-tone='progress-completed'] { background: #f0fdf4; color: #15803d; }
+.resultCell[data-tone='progress-drafting'] { background: #fffbeb; color: #b45309; }
 
 /* 判分那一段：底色与字色随结果走（三段各自一档，配色与「正确答案」那块互不干扰） */
 .resultCell[data-tone='correct'] { background: #f0fdf4; color: #15803d; }
 .resultCell[data-tone='partial'] { background: #fffbeb; color: #b45309; }
 .resultCell[data-tone='incorrect'] { background: #fef2f2; color: #b91c1c; }
-
-/* 判分那一段前面那枚圆点里的记号（✓ / ½ / ✗）。
-   🔴 **底色必须按档写死**（`background: currentColor` + `color: #fff` 写在同一规则里时，
-   `currentColor` 解析成那条规则自己设的 `#fff` ⇒ **白底白字，记号完全看不见**
-   —— 教师 2026-09-28 看到的就是「一个白色的圆」）。 */
-/* ★ 2026-09-29（教师）：「三种状态的图标，如果都用圆来表示呢？」
-   ⇒ 记号不再是**字符**，而是 `result-glyph.tsx` 画出来的「圆环 + 填充比例」。
-   🔴 这一条与上面那版**正好相反**，是这次的关键一步：原来是「彩色圆底 + 白色字符」，
-      而填充比例的语义要求底色**不能**是实心的 —— 否则「填满」那一档会画成一个
-      **空心环**（满 = 空，正好反了）。所以现在：无底色、圆环与填充都吃 `currentColor`
-      （颜色由那一格的 `data-tone` 给，本文件一个十六进制都不写）。
-   ⊘ 顺带退休的两样东西：那三条 `[data-tone] .resultGlyph { background }`，以及
-      「白底白字，记号完全看不见」（教师 2026-09-28 看到「一个白色的圆」）那段注释 ——
-      **没有底色，就没有白底白字**。
-   ⊘ 也顺带退休了那个「减号往上提 1px」的旧账：字符退场之后，居中不再依赖字体度量
-      （那段账在上一条注释里，见 `.resultGlyph` 之下）。 */
-.resultGlyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  color: inherit;
-}
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的

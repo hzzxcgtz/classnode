@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
@@ -18,8 +19,7 @@ import {
   questionAggregate,
   questionHeading,
   questionOutcome,
-  // `statusLabel` 不再从这里引：它的唯一调用点（`◐ 作答中` / `◐ 已提交` 那两个词）
-  // 随 E2 一起搬进了 `worksheet-drawer-state.ts` 的 `NO_VERDICT_VIEW`（那里引它，同一份）。
+  // `statusLabel` 不再从这里引：状态词与图标都由判据层统一给出。
   outcomeMarkView,
   formatAgo,
   inProgressQuestionId,
@@ -576,7 +576,7 @@ function OverviewRow({ overview }: { overview: ParticipantOverview }) {
     }}>
       {cells.map((cell) => (
         <span key={cell.key} title={cell.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-          <span style={{ color: cell.color, fontWeight: 700 }}>{cell.glyph}</span>
+          <WorksheetStatusIcon name={cell.icon} size={16} />
           {/* ⚠️ 为 0 时**仍然画出来**（只是灰掉）：`✓0` 与「把 ✓ 藏起来」读起来不一样 ——
               后者会让教师以为这一档不可能出现，而它只是这一次是 0。 */}
           <span style={{ color: cell.count > 0 ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}>{cell.count}</span>
@@ -599,17 +599,13 @@ function OverviewRow({ overview }: { overview: ParticipantOverview }) {
 /**
  * 这一题的对错那一小块。
  *
- * 🔴 用词与图形与规格 §7.3 的图例同源：`✓ 答对` / `✗ 答错` / `◐ 作答中 / 已提交但没有对错` /
- * `─ 未作答` —— **这四个就是 §7.3 图例列出的全部**。
- * ⚠️ **`½ 部分给分` 不在这四个里面** —— 它是 M4a 新增的**第五档**，出处在**规格 §12**
- * （§7.3 是 M3 的图例，早于这一档，所以那里本来就不会有它）。
- * 照 §7.3 逐条核对的人找不到部分给分，别以为它画错了。
- * 而 `◐ 作答中` / `◐ 已提交` 是**服务端未判分**的情形（主观题、关闭自动判分）——
+ * 用词与图形由统一状态系统给出；答对、部分给分、温和重试、作答中、已提交与未作答
+ * 都有各自的语义图标。作答中 / 已提交是**服务端未判分**的情形（主观题、关闭自动判分）——
  * 那里显示的是状态，**不显示 ✓ 也不显示 ✗**。把它画成「✗」是本任务最要防的一类假象：
  * 系统根本不知道学生对不对。
  *
  * ★ M4a：`mark` 多了一档 `'partial'`（规格 §12 要它画得出来）。E2 之前它落到最后那一支，
- * 显示「◐ 已提交」—— 那句话是真的，却与「没有对错」**完全不可区分**。
+ * 显示「已提交」—— 那句话是真的，却与判分结论不同。
  *
  * ⚠️ **本组件只把 `outcomeMarkView` 的结果贴上去，一个判据都不含**：
  * 「哪一档画哪个符号/词/颜色」住在 `worksheet-drawer-state.ts`（纯函数、有测试）——
@@ -632,8 +628,12 @@ function OutcomeMark({
       fontWeight: view.emphasis === 'verdict' ? 700 : undefined,
       color: view.color,
       whiteSpace: 'nowrap',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
     }}>
-      {view.glyph} {view.label}
+      <WorksheetStatusIcon name={view.icon} size={15} />
+      {view.label}
     </span>
   );
 }

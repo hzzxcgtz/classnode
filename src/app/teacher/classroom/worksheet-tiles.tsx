@@ -1,6 +1,7 @@
 'use client';
 
 import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
+import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { TileAnswerBody } from './tile-answer';
 
 /**
@@ -67,7 +68,7 @@ function stateLine(state: WorksheetTileState): string {
         ? `停住了 · ${state.minutes} 分钟`
         : `停在 ${state.heading} · ${state.minutes} 分钟`;
     case 'all-submitted':
-      return `✓ ${state.cells.length} 题已全部提交`;
+      return `${state.cells.length} 题已全部提交`;
     default:
       return '';
   }
@@ -120,7 +121,9 @@ export function WorksheetTileContent({ state, answer, compact }: {
           {/* 上面这一块**不许被压**（`flexShrink: 0`）：状态那一行是这一格的标题，
               被下面的预览挤掉的话，教师就不知道下面那块是谁的作答了。 */}
           <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: compact ? 4 : 5 }}>
-          <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 700, color: tone.color, lineHeight: 1.3 }}>
+          <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 700, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {state.kind === 'all-submitted' && <WorksheetStatusIcon name="completed" size={compact ? 14 : 16} />}
+            {state.kind === 'working' && <WorksheetStatusIcon name="drafting" size={compact ? 14 : 16} />}
             {stateLine(state)}
           </div>
           {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。 */}
@@ -157,7 +160,8 @@ export function WorksheetTileContent({ state, answer, compact }: {
                 )}
                 {answer.fromDraft && (
                   <span title="他此刻正在写，还没保存（学生端有 1.5 秒保存防抖）"
-                    style={{ marginLeft: 'auto', flexShrink: 0, padding: '0 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600 }}>
+                    style={{ marginLeft: 'auto', flexShrink: 0, padding: '1px 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <WorksheetStatusIcon name="drafting" size={12} />
                     正在写
                   </span>
                 )}

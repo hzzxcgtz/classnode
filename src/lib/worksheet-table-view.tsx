@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
-import { blankAriaLabel, WRONG_ANSWER_STYLE } from './worksheet-prompt-marks.ts';
+import { blankAriaLabel, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
 
@@ -163,14 +163,11 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                               value={blanks.values[globalIndex] ?? ''}
                               disabled={blanks.disabled}
                               onChange={(event) => blanks.onChange(globalIndex, event.target.value)}
-                              // ★ 2026-09-29（教师）：答错 ⇒ 字改成暗红 + 删除线（不再画红叉）。
-                              // ⚠️ 这一支没有 `blankAnswerStyle` 打底（表格里的框走全局的
-                              // `.worksheet-blank-input`）⇒ 直接叠即可，不必过 `blankValueStyle`
-                              //（那个函数存在的理由是**顺序**：答错那层要盖过打底那层的 `color`）。
-                              // 样式本身仍然只有一份（`WRONG_ANSWER_STYLE`）。
+                              // 与题干输入、选择填空槽走同一个最终样式：学生填写的内容恒为
+                              // 600 字重；答错时再由同一函数叠加暗红色与删除线。
                               style={{
                                 flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box',
-                                ...(wrong ? WRONG_ANSWER_STYLE : {}),
+                                ...(blankValueStyle(PLAIN_RUN, wrong) as CSSProperties),
                               }}
                             />
                           </span>

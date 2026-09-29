@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { answerView, matchLineGeometry, type AnswerView } from '@/lib/worksheet-answer-view';
 import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { InkPreview } from './ink-preview';
 
 /**
@@ -86,8 +87,8 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
               {/* 两件事各一个记号：**左边**说「学生勾没勾」（✓/空），
                   **右边**说「它是不是答案」（`正确答案` 三个字）。
                   用同一个记号表达两件事的话，「他答对了」与「这是答案」就分不开了。 */}
-              <span style={{ width: 12, flexShrink: 0, color: option.picked ? (option.correct ? OK : BAD) : 'transparent', fontWeight: 700 }}>
-                {option.picked ? (option.correct ? '✓' : '✗') : '·'}
+              <span style={{ width: 16, height: 16, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                {option.picked ? <WorksheetStatusIcon name={option.correct ? 'correct' : 'retry'} size={15} /> : null}
               </span>
               <span style={{ color: option.picked ? '#0f172a' : MUTED, fontWeight: option.picked ? 600 : 400 }}>
                 {option.key}. {option.text || <span style={{ color: FAINT }}>（这个选项还没写内容）</span>}

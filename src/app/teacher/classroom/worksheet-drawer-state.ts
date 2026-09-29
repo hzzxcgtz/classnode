@@ -24,6 +24,7 @@ import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
 // 所以本文件仍然能被 `node --test` 直接跑）。看板这一侧此前**一处都没有**它 —— 见
 // `participantOverview` 上面那一段。
 import { rewardAmount, rewardSymbol, rewardTotalText, type RewardScale } from '../../../lib/worksheet-reward.ts';
+import type { WorksheetStatusIconName } from '../../../lib/worksheet-status-icons.ts';
 
 /**
  * 教师看板**学习单抽屉**的两种形态的判据 —— 纯函数，不碰 React / DOM / 网络。
@@ -79,13 +80,7 @@ export type WorksheetQuestionStatus = 'unanswered' | 'draft' | 'submitted';
  * `worksheet-tile-state.ts` 里连一个 `mark` / `gradeState` 都没有）。
  * ⇒ 核清过程的实测依据见 E2 报告。
  *
- * **符号是 `½`。** 此前 §12 的字面写的是 `◐`，也已于 2026-09-24 一并更正。理由：
- *   · `◐` 在同一份抽屉列表里**已经被占用两次** —— `◐ 作答中` / `◐ 已提交`（没有对错的那一支，
- *     见 `NO_VERDICT_VIEW`），而 §7.3 的图例逐字写着「`◐` = 作答中 / 已提交但**没有对错**」。
- *     同一个符号在一列上带三种含义，「画得出来」就落空了 —— 教师得逐行读字才分得清。
- *   · 学生端 `worksheet-panel.tsx` 也用它表示「作答中」（那倒是不同屏，不是主要理由）。
- *   · `½` 直接读作「一半」，与 `✓ 答对` / `✗ 答错` 并排时同族同宽，且全仓此前零占用。
- * ⇒ 落到代码里是 `{ glyph: '½', label: '部分给分' }`，见 `VERDICT_VIEW`。
+ * 图形使用全系统统一的语义图标：全对、部分给分、温和重试以及三种进度状态互不复用。
  */
 export type WorksheetOutcomeMark = 'correct' | 'partial' | 'wrong' | 'none';
 
@@ -423,9 +418,9 @@ export function statusLabel(status: WorksheetQuestionStatus): string {
  * 所以哪怕只是「哪个符号」也住在有测试的这一侧，与 `statusLabel` 同一个理由、同一个去处。
  */
 export interface OutcomeMarkView {
-  /** 图形符号。 */
-  glyph: string;
-  /** 符号右边那个词。 */
+  /** 全系统共用的语义图标。 */
+  icon: WorksheetStatusIconName;
+  /** 图标右边那个词。 */
   label: string;
   color: string;
   /**
@@ -443,18 +438,16 @@ export interface OutcomeMarkView {
  * 而忘了补这张表，`tsc` 直接红（`Record` 的键集合就是那个联合）。这正是 M4a 之前
  * `'correct' | 'wrong' | 'none'` 手抄第二份时漏掉的那件事。
  *
- * ★ `partial` 那一行是 E2 的交付物：**`½ 部分给分`**，琥珀色（与三档的另外两端同字号同字重）。
- *   符号为什么不沿用规格 §12 字面写的 `◐`：见 `WorksheetOutcomeMark` 上面那一段
- *   —— `◐` 在同一列上已经被「作答中 / 已提交但没有对错」占用了两次。
+ * ★ `partial` 使用独立的半填充圆图标，琥珀色（与三档的另外两端同字号同字重）。
  */
 const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkView> = {
   // 绿色只表示**结论为对**，而部分给分不是对（正确率的分子里没有它）—— 所以部分给分不用绿。
-  correct: { glyph: '✓', label: '答对', color: '#15803d', emphasis: 'verdict' },
+  correct: { icon: 'correct', label: '答对', color: '#15803d', emphasis: 'verdict' },
   // 琥珀是这块看板既有的「**中间档**」色（`停住了`、`作答中` 都用它），而红/绿是两端。
   // 不为部分给分再引入第四种色相：同屏出现两个近似橙黄，教师反而分不出来。
-  // 同列上它与 `◐ 作答中` 同色 —— 靠**符号与词**区分（这正是本任务要的那一层）。
-  partial: { glyph: '½', label: '部分给分', color: '#b45309', emphasis: 'verdict' },
-  wrong: { glyph: '✗', label: '答错', color: '#dc2626', emphasis: 'verdict' },
+  // 同列上它与作答中同色 —— 靠**独立图标与词**区分。
+  partial: { icon: 'partial', label: '部分给分', color: '#b45309', emphasis: 'verdict' },
+  wrong: { icon: 'retry', label: '答错', color: '#dc2626', emphasis: 'verdict' },
 };
 
 /**
@@ -462,12 +455,12 @@ const VERDICT_VIEW: Record<Exclude<WorksheetOutcomeMark, 'none'>, OutcomeMarkVie
  *
  * 🔴 这一档**必须既不像「答错」也不像「部分给分」**：它说的是「系统没判过」这个事实，
  * 画成 `✗` 就是把「不知道」说成「错」，画成 `½` 就是把「不知道」说成「部分给分」。
- * 所以符号只有 `─`（未作答）与 `◐`（作答中 / 已提交）两个，都与那三档判分结论不重样。
+ * 所以未作答、作答中、已提交各有独立图标，都与三档判分结论不重样。
  */
 const NO_VERDICT_VIEW: Record<WorksheetQuestionStatus, OutcomeMarkView> = {
-  unanswered: { glyph: '─', label: statusLabel('unanswered'), color: '#cbd5e1', emphasis: 'plain' },
-  draft: { glyph: '◐', label: statusLabel('draft'), color: '#b45309', emphasis: 'status' },
-  submitted: { glyph: '◐', label: statusLabel('submitted'), color: '#1d4ed8', emphasis: 'status' },
+  unanswered: { icon: 'unanswered', label: statusLabel('unanswered'), color: '#64748b', emphasis: 'plain' },
+  draft: { icon: 'drafting', label: statusLabel('draft'), color: '#b45309', emphasis: 'status' },
+  submitted: { icon: 'submitted', label: statusLabel('submitted'), color: '#1d4ed8', emphasis: 'status' },
 };
 
 /**
@@ -858,9 +851,9 @@ export function clearConfirmText(
  * 那样的断言就能钉住它。JSX 那边只 `map`，**不再自己写 key**。
  */
 export interface OverviewCell {
-  /** React key。**必须唯一** —— 用 `label` 而不是符号（符号会重复，见上面那一段）。 */
+  /** React key。**必须唯一**。 */
   key: string;
-  glyph: string;
+  icon: WorksheetStatusIconName;
   label: string;
   count: number;
   color: string;
@@ -869,12 +862,11 @@ export interface OverviewCell {
 /** 六格的顺序与配色。**顺序就是屏幕上的顺序**（对错三档在前，状态三档在后）。 */
 export function participantOverviewCells(overview: ParticipantOverview): OverviewCell[] {
   return [
-    { key: 'correct', glyph: '✓', label: '全对', count: overview.correct, color: '#15803d' },
-    { key: 'partial', glyph: '½', label: '部分给分', count: overview.partial, color: '#b45309' },
-    { key: 'wrong', glyph: '✗', label: '答错', count: overview.wrong, color: '#dc2626' },
-    // ⚠️ 与下面 `draft` **同符号**（`◐`）—— 这正是 key 不许用符号的原因。
-    { key: 'noVerdict', glyph: '◐', label: '已提交但没有对错', count: overview.noVerdict, color: '#1d4ed8' },
-    { key: 'draft', glyph: '◐', label: '作答中', count: overview.draft, color: '#b45309' },
-    { key: 'unanswered', glyph: '─', label: '未作答', count: overview.unanswered, color: '#cbd5e1' },
+    { key: 'correct', icon: 'correct', label: '全对', count: overview.correct, color: '#15803d' },
+    { key: 'partial', icon: 'partial', label: '部分给分', count: overview.partial, color: '#b45309' },
+    { key: 'wrong', icon: 'retry', label: '答错', count: overview.wrong, color: '#dc2626' },
+    { key: 'noVerdict', icon: 'submitted', label: '已提交但没有对错', count: overview.noVerdict, color: '#1d4ed8' },
+    { key: 'draft', icon: 'drafting', label: '作答中', count: overview.draft, color: '#b45309' },
+    { key: 'unanswered', icon: 'unanswered', label: '未作答', count: overview.unanswered, color: '#64748b' },
   ];
 }

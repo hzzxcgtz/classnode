@@ -478,9 +478,9 @@ function viewOf(question: WorksheetQuestionNode, answerRow?: WorksheetBoardAnswe
   return outcomeMarkView(outcome.mark, outcome.status);
 }
 
-/** 一个长相「像不像」另一个 —— 拿教师真能看见的那三样（符号 / 词 / 颜色）比。 */
-function look(view: { glyph: string; label: string; color: string }): string {
-  return `${view.glyph}|${view.label}|${view.color}`;
+/** 一个长相「像不像」另一个 —— 拿教师真能看见的那三样（图标 / 词 / 颜色）比。 */
+function look(view: { icon: string; label: string; color: string }): string {
+  return `${view.icon}|${view.label}|${view.color}`;
 }
 
 test('🔴 四档判分结论在界面上两两可区分 —— 部分给分既不长得像答错，也不长得像没判分', () => {
@@ -515,30 +515,24 @@ test('🔴 四档判分结论在界面上两两可区分 —— 部分给分既�
     [correct, partial, wrong].map((view) => view.emphasis), ['verdict', 'verdict', 'verdict'],
     '三档判分结论必须是同一个强调档',
   );
-  assert.equal(partial.glyph, '½', '部分给分的符号');
+  assert.equal(partial.icon, 'partial', '部分给分的图标');
   assert.equal(partial.label, '部分给分');
 });
 
-test('🔴 部分给分的符号**不能**是 ◐ —— 它在同一列上已经带了两个别的意思', () => {
+test('🔴 部分给分、作答中、无结论已提交使用不同的语义图标', () => {
   const partial = outcomeMarkView('partial', 'submitted');
-  assert.notEqual(
-    partial.glyph, '◐',
-    '◐ 在同一个抽屉列表里已经是「◐ 作答中」与「◐ 已提交」（没有对错的那一支），' +
-    '而规格 §7.3 的图例逐字写着「◐ = 作答中 / 已提交但没有对错」—— 再拿它当部分给分，' +
-    '同一列上就有三种含义，「画得出来」也就落空了（得逐行读字才分得清）',
-  );
-  // 阴性对照：◐ 确实还在用（用在那两处状态词上）—— 否则上面那条断言可以靠「删掉 ◐」蒙过去。
-  assert.equal(outcomeMarkView('none', 'draft').glyph, '◐');
-  assert.equal(outcomeMarkView('none', 'submitted').glyph, '◐');
+  assert.equal(partial.icon, 'partial');
+  assert.equal(outcomeMarkView('none', 'draft').icon, 'drafting');
+  assert.equal(outcomeMarkView('none', 'submitted').icon, 'submitted');
 });
 
 test('🔴 没有判分结论的那一档既不像「答错」也不像「部分给分」（未作答 / 作答中 / 已提交 三种状态）', () => {
-  const verdictGlyphs = ['✓', '½', '✗'];
+  const verdictIcons = ['correct', 'partial', 'retry'];
   for (const status of ['unanswered', 'draft', 'submitted'] as const) {
     const view = outcomeMarkView('none', status);
     assert.ok(
-      !verdictGlyphs.includes(view.glyph),
-      `状态「${status}」在系统根本没判分时画出了判分符号「${view.glyph}」—— ` +
+      !verdictIcons.includes(view.icon),
+      `状态「${status}」在系统根本没判分时画出了判分图标「${view.icon}」—— ` +
       '把「不知道」说成「对 / 部分给分 / 错」是本任务最要防的一类假象',
     );
     assert.ok(
@@ -551,22 +545,20 @@ test('🔴 没有判分结论的那一档既不像「答错」也不像「部分
   assert.equal(new Set(labels).size, 3);
 });
 
-test('🔴 端到端（纯函数这一段）：库里判成部分给分的那一行，画出来是「½ 部分给分」而不是「✗ 答错」', () => {
+test('🔴 端到端（纯函数这一段）：各判分与进度状态映射到统一图标', () => {
   const partialView = viewOf(choice, row({ status: 'submitted', gradeState: 'partial', isCorrect: false }));
-  assert.equal(partialView.glyph, '½');
+  assert.equal(partialView.icon, 'partial');
   assert.equal(partialView.label, '部分给分');
 
-  // 同一条管线上的另外两档各就各位 —— 否则上面那两行可以靠「所有档都画 ½」蒙过去。
-  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).glyph, '✓');
-  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).glyph, '✗');
+  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'correct', isCorrect: true })).icon, 'correct');
+  assert.equal(viewOf(choice, row({ status: 'submitted', gradeState: 'incorrect', isCorrect: false })).icon, 'retry');
 
   // 主观题**永远没有对错** ⇒ 哪怕库里那一行写着 `partial` 也不画 ½
   //（`short-answer` 在注册表里是 `graded: false`，它走的是「没有对错」那一支）。
   assert.equal(
-    viewOf(short, row({ questionId: 'q_3', status: 'submitted', gradeState: 'partial' })).glyph, '◐',
+    viewOf(short, row({ questionId: 'q_3', status: 'submitted', gradeState: 'partial' })).icon, 'submitted',
   );
-  // 一次都没动过的题：`─ 未作答`，不许是任何判分符号。
-  assert.equal(viewOf(choice, undefined).glyph, '─');
+  assert.equal(viewOf(choice, undefined).icon, 'unanswered');
 });
 
 // ---------------------------------------------------------------------------
@@ -1040,20 +1032,16 @@ test('★ 确认文案：一行作答都没有时如实说，不印一串 0', ()
  * `Encountered two children with the same key, '◐'`，后果是那两个子节点
  * **被漏掉或重复渲染**（React 明说这个行为不受支持）。
  */
-test('🔴 全貌六格的 key 必须唯一（符号会重复 —— ◐ 就有两个）', () => {
+test('🔴 全貌六格的 key 与语义图标必须唯一', () => {
   const cells = participantOverviewCells(
     participantOverview([node({ id: 'q1', type: 'single-choice' })], [], { style: 'star' }),
   );
   assert.equal(cells.length, 6);
   const keys = cells.map((cell) => cell.key);
   assert.equal(new Set(keys).size, keys.length, `key 不许重复：${keys.join(', ')}`);
-  // 阳性对照：**符号确实是重复的** —— 少了这一条，将来有人把 key 改回符号，
-  // 上面那条断言会「碰巧」还绿（只要那时六个符号刚好不重样），而 React 的错已经回来了。
-  const glyphs = cells.map((cell) => cell.glyph);
-  assert.ok(
-    new Set(glyphs).size < glyphs.length,
-    '前提变了：如果六个符号已经不重样，那「key 不许用符号」这条理由就要重新想一遍',
-  );
+  const icons = cells.map((cell) => cell.icon);
+  assert.equal(new Set(icons).size, icons.length, `图标语义不许重复：${icons.join(', ')}`);
+  assert.deepEqual(icons, ['correct', 'partial', 'retry', 'submitted', 'drafting', 'unanswered']);
   // 六格的 key 与顺序是屏幕上读得到的那一份，改动要是有意的。
   assert.deepEqual(keys, ['correct', 'partial', 'wrong', 'noVerdict', 'draft', 'unanswered']);
 });

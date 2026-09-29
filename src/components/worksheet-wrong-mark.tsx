@@ -1,7 +1,9 @@
 'use client';
 
+import { WorksheetStatusIcon } from './worksheet-status-icon';
+
 /**
- * 答错的标记：一个稍粗的红叉（教师从四款里挑的 B）。
+ * 需要再试一次的标记：温和的红色回转箭头，不再使用会给学生挫败感的叉号。
  *
  * ★ 2026-09-27：**从 `src/lib/worksheet-prompt-text.tsx` 搬到这里。**
  * 教师那天要求「选择和判断学生错误后也要与填空一样给出叉叉符号」—— 于是它现在有**两个**
@@ -24,10 +26,8 @@
  */
 export function WrongMark() {
   return (
-    <span role="img" aria-label="答错了" style={{ color: '#dc2626', display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" aria-hidden="true">
-        <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
-      </svg>
+    <span role="img" aria-label="再想一想" style={{ display: 'inline-flex', marginLeft: 3, flexShrink: 0 }}>
+      <WorksheetStatusIcon name="retry" size={13} />
     </span>
   );
 }

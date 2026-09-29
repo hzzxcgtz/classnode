@@ -26,8 +26,8 @@ import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
 import { HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
-import { STATS_TABS, exploreClassSummary, needsAttentionQuestions, worksheetClassSummary, type ClassQuestionRow, type ExploreClassSummary, type WorksheetClassSummary } from './class-stats';
-import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
+import { exploreClassSummary, needsAttentionQuestions, visibleStatsTabs, worksheetClassSummary, type ClassQuestionRow, type ExploreClassSummary, type WorksheetClassSummary } from './class-stats';
+import { effectiveGroupAgent, effectiveGroupWorksheet, visibleModules } from '@/lib/classroom-material';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
@@ -1899,7 +1899,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 现在按页签各判一次，理由一个字没变：学生端已经看不见那个模块了，教师端还挂着一块
    * 它的统计，等于在讲一件课堂上不存在的事。
    */
-  const statsTabs = STATS_TABS.filter((tab) => moduleStateOf(classroom.modules, MODULE_KEY_BY_ID[tab.id]) !== 'hidden');
+  const statsTabs = visibleStatsTabs(students.map((student) => visibleModules(classroom, student)));
   /**
    * 此刻真正显示的那一页。**算出来的**，不是直接读 state：
    * 教师把当前页签那个模块设成 `hidden` 之后，页签消失了、而 state 还指着它 ——
@@ -3968,8 +3968,9 @@ function StatsTabs({ tabs, value, onChange }: {
           <button key={tab.id} type="button" role="tab" aria-selected={selected}
             onClick={(event) => { event.stopPropagation(); onChange(tab.id); }}
             style={{
-              border: 0, borderRadius: 8, padding: '5px 10px', cursor: 'pointer',
-              fontSize: '0.813rem', fontWeight: selected ? 700 : 500,
+              // ★ 2026-09-29（教师）：「页签单独占一行、做得更大更好点」⇒ 内边距与字号各上一档。
+              border: 0, borderRadius: 8, padding: '7px 14px', cursor: 'pointer',
+              fontSize: '0.875rem', fontWeight: selected ? 700 : 500,
               background: selected ? '#eef2ff' : 'transparent',
               color: selected ? '#3730a3' : '#64748b',
             }}>
@@ -4009,9 +4010,13 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
       {/* 折叠：与学伴那一页同一个交互（点头部收起 / 展开，箭头跟着翻）。
           ⚠️ 页签在折叠态**也留**（`{tabs}` 在头部里，与折叠无关）—— 否则教师收起之后
           连换页都做不到，得先展开。 */}
+      {/* 与学伴那一页**同一个结构**：页签独占一行（★ 教师 2026-09-29），下面才是这一页的
+          标题行。⚠️ 折叠态**不放页签**（折起来点页签只改状态、正文不出现，看着像没反应）。 */}
+      {!collapsed && tabs && <div style={{ padding: '10px 20px 0', borderBottom: '1px solid #f1f5f9' }}>{tabs}</div>}
       <div onClick={() => setCollapsed((value) => !value)}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', cursor: 'pointer', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9', userSelect: 'none' }}>
-        {tabs}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: 'pointer', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9', userSelect: 'none' }}>
+        {/* 这一页的标题：**就是那个页签的名字**（不再另取一个名字 —— 两个名字迟早会分叉）。 */}
+        <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>{tab === 'worksheet' ? '学习单统计' : '探究空间统计'}</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points={collapsed ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
         </svg>
@@ -4359,11 +4364,13 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
             userSelect: 'none',
           }}
         >
-          {/* ★ 2026-09-29：这一格原来写着「对话分析」+ 一个柱状图图标。现在它是**页签栏**
-              （由调用方渲染进来，见 `AnalyticsPanelProps.tabs` 的注释）；「对话分析」这四个字
-              退成了……不，它**没有退**：它仍然是这一页的内容标题，只是位置从这一行
-              移到了正文里（见下面那一块）。 */}
-          {tabs ?? <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>对话分析</span>}
+          {/* ★ 2026-09-29（教师）：「页签与折叠箭头挤在同一行，点偏一点就收起」⇒ 页签搬去了
+              它**自己的一行**（见展开态）。而折叠态这一行**不再放页签**：
+              ⚠️ 折起来的时候点页签只会把状态改掉、正文不出现 —— 看着像「点了没反应」，
+                 比没有页签更糟。要换页先展开（展开由点这一行完成，或者点右边那个箭头）。
+              ⊘ 顺便更正一句**假注释**：今天早些时候我在这里写过「『对话分析』这四个字移到了
+                 正文里」——**那句话当时是假的**（我没做）。现在它真的在正文标题行里了。 */}
+          <span style={{ fontSize: '0.938rem', fontWeight: 600, color: '#0f172a' }}>统计</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="18 15 12 9 6 15" />
           </svg>
@@ -4377,12 +4384,16 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
       background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
       marginBottom: 24, overflow: 'hidden',
     }}>
-      {/* 头部 */}
+      {/* ★ 2026-09-29（教师）：「页签与折叠箭头挤在同一行，点偏一点就收起」
+          ⇒ 页签**独占一行**，而且做得更大一点（占满一行之后不必再挤着）。
+          它答的是「看哪个模块的统计」，与下面那一行的「这一页的标题 / 刷新 / 收起」是两件事。 */}
+      {tabs && <div style={{ padding: '10px 20px 0', borderBottom: '1px solid #f1f5f9' }}>{tabs}</div>}
+      {/* 这一页自己的标题行（点它收起） */}
       <div
         onClick={() => setCollapsed(true)}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 20px', cursor: 'pointer',
+          padding: '12px 20px', cursor: 'pointer',
           borderBottom: '1px solid #f1f5f9', userSelect: 'none',
         }}
       >

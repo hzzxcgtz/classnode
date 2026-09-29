@@ -1,5 +1,6 @@
 // ⚠️ **相对路径 + `.ts` 后缀**：本文件要被 `node --test` 直接跑（与 `worksheet-matrix.ts` 同一条写法）。
 import { flattenAnswerable, questionTypeLabel } from '../../../lib/worksheet-questions.ts';
+import { MODULE_KEY_BY_ID } from '../../../lib/classroom-modules.ts';
 import type { WorksheetBoardAnswerRow, WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
 
 /**
@@ -233,3 +234,26 @@ export const STATS_TABS: ReadonlyArray<{ id: 'companion' | 'worksheet' | 'explor
   { id: 'worksheet', label: '学习单' },
   { id: 'explore', label: '探究空间' },
 ];
+
+/**
+ * 该显示哪几个页签（★ 2026-09-29，教师：「3 个 tab 应该是根据本堂课的**模块设置**，
+ * 自动选择是否要显示这个 tab 页」）。
+ *
+ * 🔴 **判据是学生端顶部 Tab 栏那一份**（`visibleModules`）：模块不是 `hidden` **且**
+ * 这一堂课真的配了那件材料。两条都要 —— 只判 `hidden` 的话，一个没配网页的课堂照样会有
+ * 一个空的「探究空间」统计页，而那正是学生端那条规则（「没有关联内容的图标不要显示」）
+ * 要去掉的东西。
+ *
+ * ⚠️ **取并集**（入参是**逐参与者**各自看得见的模块）：教师这一屏看的是全班 ——
+ * 标准模式下等价于课堂级那份材料，高级模式下等价于「至少有一个组配了」。
+ * 换成按「课堂级那一份」判的话，高级模式下会**一个页签都不剩**（那个模式下课堂级材料
+ * 本来就不落库）。
+ */
+export function visibleStatsTabs(
+  visiblePerParticipant: ReadonlyArray<ReadonlyArray<{ moduleKey: string }>>,
+): ReadonlyArray<{ id: 'companion' | 'worksheet' | 'explore'; label: string }> {
+  return STATS_TABS.filter((tab) => {
+    const key = MODULE_KEY_BY_ID[tab.id];
+    return visiblePerParticipant.some((list) => list.some((entry) => entry.moduleKey === key));
+  });
+}

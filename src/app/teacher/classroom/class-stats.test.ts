@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { STATS_TABS, exploreClassSummary, needsAttentionQuestions, worksheetClassSummary } from './class-stats.ts';
+import { STATS_TABS, exploreClassSummary, needsAttentionQuestions, visibleStatsTabs, worksheetClassSummary } from './class-stats.ts';
 import type { WorksheetBoardAnswerRow, WorksheetBoardWorksheet, WorksheetQuestionNode } from '@/lib/types';
 
 function node(id: string, type = 'single-choice'): WorksheetQuestionNode {
@@ -194,4 +194,38 @@ test('⚠️ 探究空间：没状态的学生（`undefined`）不抛，也不�
 test('🔴 三个页签：顺序与名字就是教师给的三件套', () => {
   assert.deepEqual(STATS_TABS.map((tab) => tab.label), ['智能学伴', '学习单', '探究空间']);
   assert.equal(new Set(STATS_TABS.map((tab) => tab.id)).size, 3, 'id 不许重复');
+});
+
+/* ── 页签显隐（★ 2026-09-29，教师：根据本堂课的模块设置自动决定）──────────────── */
+
+test('🔴 三个都配了 ⇒ 三个页签都在', () => {
+  const tabs = visibleStatsTabs([[
+    { moduleKey: 'learning-sheet' }, { moduleKey: 'explorer' }, { moduleKey: 'companion' },
+  ]]);
+  assert.deepEqual(tabs.map((tab) => tab.id), ['companion', 'worksheet', 'explore']);
+});
+
+test('🔴 只配了学习单 ⇒ 只剩「学习单」那一页（外加恒有的学伴）', () => {
+  // ⚠️ 这一条正是「只判 hidden 不够」：没配网页的课堂不该有一个空的「探究空间」统计页。
+  const tabs = visibleStatsTabs([[{ moduleKey: 'learning-sheet' }]]);
+  assert.deepEqual(tabs.map((tab) => tab.id), ['worksheet']);
+});
+
+test('🔴 高级模式：各组配得不一样 ⇒ 取**并集**（教师看的是全班）', () => {
+  // 第 1 组只配了网页、第 2 组只配了学习单 ⇒ 两页都要有。
+  // ⚠️ 按「课堂级那一份」判的话这里会**一个页签都不剩**（高级模式课堂级材料本就不落库）。
+  const tabs = visibleStatsTabs([
+    [{ moduleKey: 'explorer' }, { moduleKey: 'companion' }],
+    [{ moduleKey: 'learning-sheet' }, { moduleKey: 'companion' }],
+  ]);
+  assert.deepEqual(tabs.map((tab) => tab.id), ['companion', 'worksheet', 'explore']);
+});
+
+test('⚠️ 一个都没配 / 没有任何参与者 ⇒ 零个页签（调用方据此整块不渲染）', () => {
+  assert.deepEqual(visibleStatsTabs([]), []);
+  assert.deepEqual(visibleStatsTabs([[]]), []);
+});
+
+test('⚠️ 认不出的 moduleKey 不算任何一页（线缆上的脏值不许把页签点亮）', () => {
+  assert.deepEqual(visibleStatsTabs([[{ moduleKey: 'worksheet' }, { moduleKey: 'explore' }]]), []);
 });

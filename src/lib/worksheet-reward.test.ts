@@ -30,6 +30,7 @@ import {
   REWARD_STYLE_OPTIONS,
   type RewardScale,
   pointsUnitLabel,
+  rewardAmountLabel,
 } from './worksheet-reward.ts';
 
 /**
@@ -240,4 +241,18 @@ test('pointsUnitLabel 与 REWARD_STYLE_OPTIONS 的 `unit` 是**两件事**（别
   const star = REWARD_STYLE_OPTIONS.find(option => option.value === 'star');
   assert.equal(star?.unit, '颗');
   assert.ok(pointsUnitLabel('star').startsWith('颗'));
+});
+
+/* ── ★ 2026-09-29：奖励数量那几个字（教师看板那一格与学生端共用）────────────── */
+
+test('🔴 rewardAmountLabel：收藏图标档写 ×N，分数档写 +N', () => {
+  assert.equal(rewardAmountLabel('star', 3), '×3');
+  assert.equal(rewardAmountLabel('rocket', 1), '×1');
+  assert.equal(rewardAmountLabel('points', 6), '+6');
+});
+
+test('🔴 rewardAmountLabel：0 也要写出来（×0 / +0）—— 「零个」与「不知道」是两句不同的话', () => {
+  // 调用方靠 **不传这一格** 表达「不知道」；能走到这里就说明数是真的。
+  assert.equal(rewardAmountLabel('star', 0), '×0');
+  assert.equal(rewardAmountLabel('points', 0), '+0');
 });

@@ -343,6 +343,21 @@ export function resolveRewardScale(settings: unknown): RewardScale {
  * ⚠️ 坏数字（`NaN` / `Infinity` / 负数）与 0 同路：符号档的 `repeat(N)` 拿到 `NaN` 会
  * **抛 RangeError**（渲染路径上的一次白屏），负数同理由此挡住。
  */
+/**
+ * 奖励数量那几个字（收藏图标档写 `×3`、分数档写 `+3`）。
+ *
+ * ★ 2026-09-29（教师）：「箭头所指的地方要用图标，『×3』字要小一点」——
+ * 那一格改成画卡通图标之后，剩下的就是这几个字。
+ *
+ * 🔴 **它必须在这里**（而不是各处自己拼一个 `×`）：学生端的 `RewardAmount`
+ * 与教师看板那一格都要它，而后者**不能**去引学生端那个组件 —— 那个组件 import 了
+ * 学生端学习单整张 CSS module，从教师页引它会把那一整份样式拉进教师看板的产物里。
+ * ⚠️ 两处各拼一遍的后果是「学生端写 +3、教师端写 ×3」，而两边都不报错。
+ */
+export function rewardAmountLabel(style: RewardStyle, amount: number): string {
+  return `${style === 'points' ? '+' : '×'}${amount}`;
+}
+
 export function rewardAmount(score: number | null, _scale: RewardScale): number {
   // 保留第二个参数，让调用方始终以「得分 + 奖励样式」请求呈现；
   // 绝对值模型下它不再参与数学计算。

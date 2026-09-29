@@ -2237,8 +2237,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? []
           : [];
         const tileSettings = worksheet ? wb.settingsByWorksheet[worksheet.id] : undefined;
+        const tileScale = tileSettings ? resolveRewardScale(tileSettings) : null;
         const overview = participant && worksheet
-          ? participantOverview(tileNodes, tileRows, tileSettings ? resolveRewardScale(tileSettings) : null)
+          ? participantOverview(tileNodes, tileRows, tileScale)
           : null;
         return (
           <WorksheetTileContent
@@ -2259,9 +2260,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 draft,
               )
               : null}
-            // ⚠️ `null` = 那份学习单的 settings 还没到 ⇒ 格子不画奖励，**不是**画一个 ⭐×0
+            // ★ 2026-09-29 第二轮（教师）：「那个地方要用**图标**，『×3』字要小一点」
+            // ⇒ 传**档位 + 个数**（不是拼好的文字）—— 文字符号画不出那个卡通图标。
+            // ⚠️ `null` = 那份学习单的 settings 还没到 ⇒ 格子不画奖励，**不是**画一个 `×0`
             //（「不知道」与「零个」是两句不同的话，`participantOverview` 那半边分得清）。
-            rewardText={overview?.rewardText ?? null}
+            reward={overview && tileScale ? { style: tileScale.style, amount: overview.reward } : null}
             compact={compact}
           />
         );

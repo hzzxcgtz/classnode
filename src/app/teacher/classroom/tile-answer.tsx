@@ -68,7 +68,11 @@ function Line({ children, color = MUTED }: { children: React.ReactNode; color?: 
 export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
   // ⚠️ memo：`answerView` 每次调用都返回新对象，而这一格每 30 秒会因快照更新重渲染一次。
   const view = useMemo(() => answerView(answer.node, answer.value), [answer.node, answer.value]);
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minHeight: 0, overflow: 'hidden' }}>{renderCompact(view)}</div>;
+  // ⚠️ `flexShrink: 0` 是给**滚动**用的（★ 2026-09-29，教师：「内容比较长则自动加上垂直
+  // 滚动条」）：外面那一层是 column flex + `overflowY: auto`，而子项默认 `flex-shrink: 1`
+  // 会被压到刚好塞下 —— 那时没有任何东西溢出，滚动条永远不出现，长内容**直接被切掉**
+  //（不报错，只是「后半截没了」）。不许被压，那一层才会真的溢出、才谈得上滚。
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>{renderCompact(view)}</div>;
 }
 
 function renderCompact(view: AnswerView): React.ReactNode {

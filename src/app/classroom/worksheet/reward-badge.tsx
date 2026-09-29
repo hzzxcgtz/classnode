@@ -1,12 +1,21 @@
 'use client';
 
 import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
+import { rewardAmount, rewardAmountLabel, type RewardScale } from '@/lib/worksheet-reward';
 import type { WorksheetScore } from './use-worksheet-answers';
 import styles from './worksheet.module.css';
 
-function RewardAmount({ scale, amount }: { scale: RewardScale; amount: number }) {
-  return <span className={styles.rewardCount}>{scale.style === 'points' ? '+' : '×'}{amount}</span>;
+/**
+ * 奖励数量那几个字（`×N` / 分数档是 `+N`）。
+ *
+ * ★ 2026-09-29：**导出**给教师看板那一格用（教师：「箭头所指的地方要用图标，『×3』字要小一点」）。
+ * 🔴 那个 `×` / `+` 的分别只在**这一处**：看板那一格自己拼一遍的话，某天改动这里
+ *（比如分数档也换成 `×`）就会出现「学生端写 +3、教师端写 ×3」，而两边都不报错。
+ */
+export function RewardAmount({ scale, amount }: { scale: RewardScale; amount: number }) {
+  // ★ 2026-09-29：`×N` / `+N` 那条规则搬去了 `@/lib/worksheet-reward`（教师看板那一格
+  // 也要它，而那边不能引本文件 —— 本文件 import 了学生端学习单整张 CSS module）。
+  return <span className={styles.rewardCount}>{rewardAmountLabel(scale.style, amount)}</span>;
 }
 /**
  * 角标里那枚图标的边长。

@@ -2,6 +2,8 @@
 
 import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
+import { rewardAmountLabel, type RewardStyle } from '@/lib/worksheet-reward';
 import { TileAnswerBody } from './tile-answer';
 
 /**
@@ -81,7 +83,7 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
 }
 
-export function WorksheetTileContent({ state, answer, rewardText, compact }: {
+export function WorksheetTileContent({ state, answer, reward, compact }: {
   state: WorksheetTileState;
   /**
    * ★ 2026-09-28：下方那一块要显示的那一题（教师：「留出下方最大的空间用来显示
@@ -92,12 +94,18 @@ export function WorksheetTileContent({ state, answer, rewardText, compact }: {
    * ★ 2026-09-29（教师）：「这个面板里显示的是学生学习单的监控情况，还缺少一个**非常重要**
    * 的信息，就是学生目前所获得的**奖励个数**」。
    *
-   * 由调用方从 `participantOverview` 取（`⭐×6` / `+6 分` / 一个都没拿到时 `⭐×0`）——
-   * 判据在 `worksheet-drawer-state.ts`（纯函数、有用例），**这一层只画**。
+   * 由调用方从 `participantOverview` 取（个数）+ `resolveRewardScale`（哪一档）——
+   * 判据在 `worksheet-drawer-state.ts` / `worksheet-reward.ts`（纯函数、有用例），
+   * **这一层只画**。
+   *
+   * 🔴 ★ 2026-09-29 同日第二轮（教师）：「箭头所指的地方要用**图标**，『×3』字要小一点」。
+   * ⇒ 这里**收的是档位与个数**，不是一句拼好的文字。原来收 `rewardText`（形如 `箭×3`）——
+   * 那是**文字符号**（`rewardSymbol`），而这一格要画的是**那个卡通图标**（`RewardIcon`，
+   * 与学生端、顶栏累计是同一套图）。收字符串的话这里就画不出图标了。
    * ⚠️ `null` = **不知道**（那份学习单的 settings 还没到）⇒ 什么都不画，
-   * 而不是画一个 `⭐×0` —— 「不知道」与「零个」在屏幕上是两句不同的话。
+   * 而不是画一个 `×0` —— 「不知道」与「零个」在屏幕上是两句不同的话。
    */
-  rewardText?: string | null;
+  reward?: { style: RewardStyle; amount: number } | null;
   /** 全屏网格里格子更小、字更小 —— 与 `renderTileContent` 的同一个旋钮同义。 */
   compact: boolean;
 }) {
@@ -159,12 +167,23 @@ export function WorksheetTileContent({ state, answer, rewardText, compact }: {
                 ⚠️ 也**不压任何文字**：方格阵通常填不满一行，右端本来就是空的。
                 ⚠️ 两枚记号**共用一个 `marginLeft: 'auto'`**（包在这一层里）：给两枚各写一个
                 auto ⇒ flex 会把剩余空间**平分**给它们，奖励就会被推到行中间去。 */}
-            {(rewardText || answer?.fromDraft) && (
+            {(reward || answer?.fromDraft) && (
               <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {rewardText && (
+                {reward && (
                   <span title="这一份学习单上他目前获得的奖励（各题得分之和）"
-                    style={{ padding: '1px 5px', borderRadius: 4, background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', fontWeight: 700, fontSize: '0.625rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    {rewardText}
+                    // ★ 2026-09-29（教师）：「火箭乘三这个区域**不需要底纹和边框线**。」
+                    // ⇒ 去掉底纹与边框。🔴 顺带消掉一处 2px 的跳动：原来 12(图标) + 上下
+                    // 各 1px 内边距 + 上下各 1px 边框 = **16px**，而这一行的高度由方格（14px）
+                    // 决定 ⇒ 奖励一出现整行长高 2px（与「正在写」那件旧账同一类）。
+                    // 现在 12 + 2 = 14，与方格同高。
+                    style={{ padding: '1px 4px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 1, whiteSpace: 'nowrap' }}>
+                    {/* ★ 2026-09-29（教师第二轮）：**图标** + 更小的 `×N`。
+                        🔴 图标边长 12px 是**算过的**：这一行的高度由方格（14px）决定，而
+                        12 + 上下各 1px 内边距 = 14 ⇒ **同一行内不改变高度**（与「正在写」
+                        那一枚同一个理由：教师报过「一出现内容就上下跳」）。
+                        ⚠️ 图标走 `RewardIcon`（卡通图），不是 `rewardSymbol` 那个文字符号。 */}
+                    <RewardIcon kind={reward.style} state="earned" size={12} />
+                    <span style={{ fontSize: '0.563rem' }}>{rewardAmountLabel(reward.style, reward.amount)}</span>
                   </span>
                 )}
                 {answer?.fromDraft && (
@@ -181,10 +200,17 @@ export function WorksheetTileContent({ state, answer, rewardText, compact }: {
           {/* ★ 下方：**他此刻正在做的那一题**的实时作答（逐题型换画法，见 `tile-answer.tsx`）。
               🔴 只有真的挑得出那一题时才画（`answer` 为 `null` = 说不出来是哪一题）——
               那时**不预览**，而不是随便挑一道（与正文「不编题号」同一条纪律）。 */}
+            {/* ★ 2026-09-29（教师）：「学习单内容如果比较长，则**自动加上垂直滚动条，与智能学伴一致**。」
+                ⇒ 走学伴那一格同一个类（`preview-scroll`：细滚动条 + `scrollbar-width: thin`，
+                定义在 `page.tsx` 顶部那个 `<style>` 里），并把 `overflow: 'hidden'`
+                换成 `overflowY: 'auto'`。
+                ⚠️ 光换 `overflow` 是不够的：这一层是 column flex，子项默认 `flex-shrink: 1`
+                会被压到能塞下为止（那就不需要滚动条了，内容直接被切掉）——
+                所以 `TileAnswerBody` 那一层加了 `flexShrink: 0`（见那个文件）。
+                ⚠️ 学伴那一格是**结果条下面整块**可滚；这一格只让**作答内容**滚 ——
+                上面那行大字与方格阵是这一格的标题，滚走之后教师就不知道下面是谁的作答了。 */}
           {answer && (
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px dashed #e2e8f0', paddingTop: 4, overflow: 'hidden' }}>
-              {/* 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
-                  下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。 */}
+            <div className="preview-scroll" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px dashed #e2e8f0', paddingTop: 4, overflowY: 'auto' }}>
               {/* 🔴 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
                   下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。
                   ★ 2026-09-29：「正在写」那个记号**搬去上面方格阵那一行的右端了**

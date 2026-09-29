@@ -25,9 +25,8 @@ import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } 
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
-import { HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
-import { exploreClassSummary, needsAttentionQuestions, visibleStatsTabs, worksheetClassSummary, type ClassQuestionRow, type ExploreClassSummary, type WorksheetClassSummary } from './class-stats';
-import { effectiveGroupAgent, effectiveGroupWorksheet, visibleModules } from '@/lib/classroom-material';
+import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
+import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
@@ -245,12 +244,14 @@ function ModuleStateRadio({ label, hint, selected, busy, disabled, onSelect }: {
  * 关闭时由调用方还回触发按钮 —— 少了「进」这一步，键盘与读屏用户感知不到自己刚打开了窗。
  * ⚠️ **没有 `PermissionSection` 的分段线了**：每个弹窗现在只有一段（标题已经说明了范围）。
  */
-function SettingsDialog({ open, title, subtitle, dialogRef, onClose, children }: {
+function SettingsDialog({ open, title, subtitle, dialogRef, maxWidth = 560, onClose, children }: {
   open: boolean;
   title: string;
   /** 可选的一句话，排在标题栏下面、控件上面。 */
   subtitle?: string;
   dialogRef?: Ref<HTMLDivElement>;
+  /** ★ 2026-09-29：词云那个弹窗要宽得多（它是两栏的词云 + TOP10）⇒ 提成参数。 */
+  maxWidth?: number;
   onClose: () => void;
   children?: ReactNode;
 }) {
@@ -259,7 +260,7 @@ function SettingsDialog({ open, title, subtitle, dialogRef, onClose, children }:
     <div className="modal-overlay" style={{ zIndex: 400 }} onClick={onClose}>
       <div ref={dialogRef} className="modal-content" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        style={{ maxWidth: 560, padding: 0, borderRadius: 14, outline: 'none' }}>
+        style={{ maxWidth, padding: 0, borderRadius: 14, outline: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid #e2e8f0', borderTopLeftRadius: 14, borderTopRightRadius: 14, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <h3 style={{ margin: 0, flex: 1, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{title}</h3>
           <button type="button" aria-label={`关闭${title}设置窗口`} onClick={onClose}
@@ -272,6 +273,55 @@ function SettingsDialog({ open, title, subtitle, dialogRef, onClose, children }:
           {children}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 「对话分析」弹窗（★ 2026-09-29，教师：「把词云的这块功能迁移到下方『智能学伴』这个下拉按钮
+ * 里边，专门给它设置一个选项，后弹出一个**弹窗**来显示」）。
+ *
+ * 🔴 它**不是新写的**：里面就是原来那块 `AnalyticsPanel`（高频词云 + 活跃学生 TOP 10），
+ * 一行逻辑都没改 —— 换的只是**容器**（原来挂在看板上方那块面板里，现在在一个弹窗里）。
+ * ⚠️ 所以「词云不见了」这个问题从此有两种成因，别混：**模块被设成 hidden**（学生端看不见学伴了，
+ * 那块统计也就无从谈起，见调用点）／**智能体没配**（`AnalyticsPanel` 会显示空态）。
+ * 弹窗比原来的面板宽（`maxWidth: 960`）：词云是两栏布局，560 会把 TOP10 挤成两行。
+ */
+function WordCloudDialog({ classroomId, allMessages, loadAnalytics, onClose }: {
+  classroomId: string;
+  allMessages: ClassroomMessage[];
+  loadAnalytics: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <SettingsDialog open title="对话分析" maxWidth={960} onClose={onClose}>
+      <AnalyticsPanel classroomId={classroomId} allMessages={allMessages} loadAnalytics={loadAnalytics} />
+    </SettingsDialog>
+  );
+}
+
+/**
+ * 「智能学伴」那个下拉的**面板**（★ 2026-09-29，教师：「把词云的这块功能迁移到下方
+ * 『智能学伴』这个下拉按钮里边，专门给它设置一个选项，后弹出一个弹窗来显示」）。
+ *
+ * 两项：**对话分析**（词云弹窗）与**设置**（四项能力开关）。名字在判据层
+ * （`COMPANION_MENU_ITEMS`，有用例钉着），这里只把 id 接到动作。
+ * ⚠️ 与「学习单」「模块状态」那两个菜单**同住一层的写法**（`position: relative` 的包裹层
+ * 是锚点，面板 `absolute; right: 0; top: 100% + 8`）。
+ */
+function CompanionMenu({ onSelect, onClose }: {
+  onSelect: (id: 'analysis' | 'settings') => void;
+  onClose: () => void;
+}) {
+  return (
+    <div role="menu" aria-label="智能学伴" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 216, padding: 6, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
+      {COMPANION_MENU_ITEMS.map((item) => (
+        <button key={item.id} type="button" role="menuitem" title={item.title}
+          onClick={() => { onClose(); onSelect(item.id); }}
+          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 0, borderRadius: 8, background: 'transparent', color: '#334155', fontSize: '0.813rem', fontWeight: 600, cursor: 'pointer' }}>
+          {item.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -836,7 +886,7 @@ function ClassroomBoardContent() {
    */
   const headerButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   /** 这一个弹窗是哪个按钮开的（关闭时把焦点还回去用）。 */
-  const settingsOpenerRef = useRef<'explore-settings' | 'companion-settings'>('explore-settings');
+  const settingsOpenerRef = useRef<'explore-settings' | 'companion-menu'>('explore-settings');
   /** 是否**曾经**打开过。只为了避免首屏渲染（浮窗本来是关着的）去抢焦点。 */
   const settingsDialogOpenedRef = useRef(false);
   const [showModulesMenu, setShowModulesMenu] = useState(false);
@@ -844,6 +894,9 @@ function ClassroomBoardContent() {
   /** ★ 2026-09-29：「学习单」那个下拉（答题分析 / 进度矩阵）。 */
   const [showWorksheetMenu, setShowWorksheetMenu] = useState(false);
   const worksheetMenuRef = useRef<HTMLDivElement>(null);
+  /** ★ 2026-09-29：「智能学伴」那个下拉（对话分析 / 设置）。 */
+  const [showCompanionMenu, setShowCompanionMenu] = useState(false);
+  const companionMenuRef = useRef<HTMLDivElement>(null);
   const [studentBoardFilter, setStudentBoardFilter] = useState<StudentBoardFilter>('all');
   /**
    * 第二组筛选：按**该生此刻所在的模块**。与上面那组**同时生效**（「与」关系）——
@@ -852,13 +905,11 @@ function ClassroomBoardContent() {
   const [studentModuleFilter, setStudentModuleFilter] = useState<StudentModuleFilter>('all');
   const [clearBusy, setClearBusy] = useState<string | null>(null);
   /**
-   * ★ 2026-09-29（教师第 5 条）：「三个模块就在统一的位置，由用户来切换显示哪个统计内容，
-   * 切换的方式可以使用 Tab 方式」。
-   *
-   * ⚠️ 默认「智能学伴」：那个面板原来就是它，教师这一条要的是「保留 + 再加两个」，
-   * 不是「换一个默认」。
+   * ★ 2026-09-29（教师）：「把词云的这块功能迁移到下方『智能学伴』这个下拉按钮里边，
+   * 专门给它设置一个选项，后弹出一个弹窗来显示，这样一来，**页面上方原来的 tab 页面就全部取消了**。」
+   * ⇒ 词云搬进工具条那个下拉的「对话分析」，点开是这个弹窗。
    */
-  const [statsTab, setStatsTab] = useState<'companion' | 'worksheet' | 'explore'>('companion');
+  const [showWordCloud, setShowWordCloud] = useState(false);
   const clearBusyRef = useRef(false);
 
   // 「点外面关」只留给还在用下拉菜单的「模块状态」。
@@ -872,6 +923,7 @@ function ClassroomBoardContent() {
       // 各写一份的话，两个菜单会互相不关（点开 B 时 A 还开着）。
       if (!modulesMenuRef.current?.contains(target)) setShowModulesMenu(false);
       if (!worksheetMenuRef.current?.contains(target)) setShowWorksheetMenu(false);
+      if (!companionMenuRef.current?.contains(target)) setShowCompanionMenu(false);
     };
     document.addEventListener('pointerdown', closeMenusOnOutsidePointerDown);
     return () => document.removeEventListener('pointerdown', closeMenusOnOutsidePointerDown);
@@ -1890,15 +1942,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     // 模块那一组的生效值见 `effectiveModuleFilter`（指定模式下恒为 `all`）。
     return effectiveModuleFilter === 'all' || cardInModule(card, effectiveModuleFilter);
   });
-  /* ═══════════ 统计面板（★ 2026-09-29，教师第 5 条）═══════════ */
-
-  /**
-   * 该显示哪几个页签：**模块为 `hidden` 的那一个不出现**。
-   *
-   * 🔴 这条规则原来只作用在「智能学伴」那一个面板上（`companion !== 'hidden' &&`）——
-   * 现在按页签各判一次，理由一个字没变：学生端已经看不见那个模块了，教师端还挂着一块
-   * 它的统计，等于在讲一件课堂上不存在的事。
-   */
   /**
    * 「这间课堂在用什么材料」的那一份形状（`ClassroomMaterials`）。
    *
@@ -1914,43 +1957,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * ⇒ 现在拼一次、两处共用，并且立了一条网盯着调用点（`classroom-materials-shape.test.ts`）。
    */
   const materials = { ...classroom, agents: classroom.classroomAgents?.map((item) => item.agent) };
-
-  const statsTabs = visibleStatsTabs(students.map((student) => visibleModules(materials, student)));
-  /**
-   * 此刻真正显示的那一页。**算出来的**，不是直接读 state：
-   * 教师把当前页签那个模块设成 `hidden` 之后，页签消失了、而 state 还指着它 ——
-   * 不回落的话整个面板会**什么都不渲染**（看起来像坏了）。回落到学伴（那个面板的默认页）。
-   */
-  const activeStatsTab = statsTabs.some((tab) => tab.id === statsTab)
-    ? statsTab
-    : (statsTabs[0]?.id ?? null);
-
-  /**
-   * 「学习单」那一页的数 —— **只在那一页真的显示时才算**。
-   *
-   * 🔴 「只在那一页」不是省事，是**成本**：这几份摘要是 O(参与者 × 题) 的，而看板每收到
-   * 一条作答广播就重渲染一次。
-   *
-   * ⚠️ 这里**没有用 `useMemo`**，这是刻意的、也是唯一可行的：这段代码在
-   * `if (!classroom) return …` 那个**早退之后**，而 hooks 不能落在早退之后 ——
-   * 首屏 `classroom` 是 null（早退、不执行到这里），加载完就执行到了 ⇒
-   * 「这一次渲染的 hooks 比上一次多」，React 当场抛错。要 `useMemo` 就得把这三段整体
-   * 搬到早退之前，而那时 `classroom.modules` / `classroom.webapps` 都还不存在，
-   * 每一处都要多一层判空 —— 换来的只是「同一份小算术不重算」，不值。
-   * ⇒ 量级交代清楚：一个班 40 个参与者、一张学习单十来道题 ⇒ 每次几百次遍历，
-   *   与同一屏上那些 map/filter 同级。
-   */
-  const worksheetClassSummaries = activeStatsTab === 'worksheet' && wb.board
-    ? wb.board.worksheets.map((sheet) => worksheetClassSummary(sheet, wb.nodesByWorksheet[sheet.id] ?? null))
-    : null;
-  const needsAttention = (worksheetClassSummaries ?? []).map((summary) => needsAttentionQuestions(summary));
-  /** 「探究空间」那一页的数 —— 同上，只在那一页显示时才算。 */
-  const exploreSummary = activeStatsTab === 'explore'
-    ? exploreClassSummary(students.map((student) => student.id), webappStates)
-    : null;
-  /** 网页 id → 名字（那一页只拿得到 id，名字在课堂详情里）。 */
-  const webappNames: Record<string, string> = {};
-  for (const webapp of classroom.webapps ?? []) webappNames[webapp.id] = webapp.name;
 
   const boardFilterCounts: Record<StudentBoardFilter, number> = {
     all: allDisplayCards.length,
@@ -1981,7 +1987,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     busy: controlBusy,
     worksheetMenuOpen: showWorksheetMenu,
     exploreOpen: settingsDialog === 'explore',
-    companionOpen: settingsDialog === 'companion',
+    companionMenuOpen: showCompanionMenu,
     modulesOpen: showModulesMenu,
   });
 
@@ -1995,7 +2001,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     fullscreen: () => setGridFullscreen(true),
     // ★ 2026-09-29：两个设置弹窗各记下「是谁开的」，关闭时焦点要还回那一个（见上面那条 effect）。
     'explore-settings': () => { settingsOpenerRef.current = 'explore-settings'; setSettingsDialog('explore'); },
-    'companion-settings': () => { settingsOpenerRef.current = 'companion-settings'; setSettingsDialog('companion'); },
+    'companion-menu': () => setShowCompanionMenu((visible) => !visible),
     'module-state': () => setShowModulesMenu((visible) => !visible),
   };
 
@@ -2033,7 +2039,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         <path d="M12 3c2.5 2.6 2.5 15.4 0 18-2.5-2.6-2.5-15.4 0-18z" />
       </svg>
     ),
-    'companion-settings': () => (
+    'companion-menu': () => (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" />
       </svg>
@@ -2459,24 +2465,16 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           🔴 `tab` 是**算出来的**（`statsTabs` 里没有当前这一项时回落到学伴）：
              教师把当前页签那个模块设成 hidden 之后，页签消失了、而 state 还指着它 ——
              不回落的话整个面板会**什么都不渲染**，看起来像坏了。 */}
-      {activeStatsTab !== null && (
-        activeStatsTab === 'companion' ? (
-          <AnalyticsPanel
-            classroomId={id}
-            allMessages={allMessages}
-            loadAnalytics={loadAnalytics}
-            tabs={<StatsTabs tabs={statsTabs} value={activeStatsTab} onChange={setStatsTab} />} />
-        ) : (
-          <ClassStatsPanel
-            tab={activeStatsTab}
-            tabs={<StatsTabs tabs={statsTabs} value={activeStatsTab} onChange={setStatsTab} />}
-            worksheetSummaries={worksheetClassSummaries}
-            needsAttention={needsAttention}
-            unit={moduleCountUnit(classroom.mode)}
-            exploreSummary={exploreSummary}
-            webappNames={webappNames}
-            students={students} />
-        )
+      {/* ⊘ ★ 2026-09-29（教师）：上面那块三页签的统计面板**整个取消**。
+          词云（对话分析）搬进了工具条「智能学伴▾ → 对话分析」，点开就是这个弹窗；
+          我先前给学习单/探究空间那两页写的草稿内容一并取消。
+          ⚠️ 词云**不是被删掉** —— 它换了个家。 */}
+      {showWordCloud && (
+        <WordCloudDialog
+          classroomId={id}
+          allMessages={allMessages}
+          loadAnalytics={loadAnalytics}
+          onClose={() => setShowWordCloud(false)} />
       )}
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
@@ -2531,7 +2529,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       <div
                         ref={control.id === 'module-state' ? modulesMenuRef
                           : control.id === 'worksheet-menu' ? worksheetMenuRef
-                            : undefined}
+                            : control.id === 'companion-menu' ? companionMenuRef
+                              : undefined}
                         style={{ position: 'relative' }}>
                         {button}
                         {control.id === 'module-state' && showModulesMenu && (
@@ -2540,6 +2539,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                             busy={controlBusy}
                             neverConfigured={modulesNeverConfigured}
                             onSelect={(moduleKey, state) => void setModuleState(moduleKey, state)} />
+                        )}
+                        {control.id === 'companion-menu' && showCompanionMenu && (
+                          <CompanionMenu
+                            onSelect={(item) => {
+                              if (item === 'analysis') setShowWordCloud(true);
+                              else { settingsOpenerRef.current = 'companion-menu'; setSettingsDialog('companion'); }
+                            }}
+                            onClose={() => setShowCompanionMenu(false)} />
                         )}
                         {control.id === 'worksheet-menu' && showWorksheetMenu && (
                           <WorksheetMenu
@@ -3962,219 +3969,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   );
 }
 
-
-/**
- * 统计面板那三个页签（★ 2026-09-29，教师第 5 条：「三个模块就在统一的位置……Tab 方式」；
- * 同日教师看过之后又改过一次：「这个 tab 切换看起来好怪哟」⇒ 换成**本屏已有的那套控件**）。
- *
- * 🔴 **它就是 `SegmentedButton`** —— 与看板顶部「跟随 / 指定」那一对**逐字同款**
- *（带边框、选中蓝底蓝字、同字号）。原来这里自己画了一套药丸（无边框 + 靛蓝 `#3730a3`），
- * 于是同一屏出现**两套「选中一个」的语言**，而那个靛蓝在这一屏没有任何别的东西在用
- * ⇒ 看着"外来的"。用同一个组件之后，颜色/边框/字号改一处两处一起变。
- *
- * ⚠️ **不是 `role="tab"`**：那是「页签 + tabpanel」那一套语义，而这里没有 tabpanel
- *（三页的内容是同一个容器的不同状态），而且这是个**常驻**的切换钮 —— 与看板模式那一对
- * 同类 ⇒ `aria-pressed` 才对（`SegmentedButton` 用的就是它，理由写在那个组件的注释里）。
- * ⚠️ **不再包一层拦冒泡**了：那一层原是为了防「点页签把整行也一起点着（整行会收起）」，
- * 而整行「点了就收起」这个行为已经去掉（见调用处）⇒ 那一层没有对象了。
- * 而且折叠态**正是靠冒泡**工作的：整个折叠条上挂一个「点哪儿都展开」，页签的点击
- * 照样能冒上去 ⇒ 点页签 = 切换 **+** 展开（见两处折叠态）。
- */
-function StatsTabs({ tabs, value, onChange }: {
-  tabs: ReadonlyArray<{ id: 'companion' | 'worksheet' | 'explore'; label: string }>;
-  value: 'companion' | 'worksheet' | 'explore';
-  onChange: (next: 'companion' | 'worksheet' | 'explore') => void;
-}) {
-  return (
-    <div aria-label="统计" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      {tabs.map((tab) => (
-        <SegmentedButton key={tab.id} label={tab.label} hint={`看「${tab.label}」这一块的统计`}
-          selected={tab.id === value} onSelect={() => onChange(tab.id)} />
-      ))}
-    </div>
-  );
-}
-
-/**
- * 「学习单」与「探究空间」两页的正文（★ 2026-09-29，教师第 5 条 —— **这是初稿**）。
- *
- * 🔴 教师原话：「至于学习单和探究空间里需要统计的信息，你先根据你的思考帮我实现一个初稿，
- * 然后我在这个初稿的基础上进行优化。」⇒ 所以这一屏每一处都**把话说全**（分母、口径、
- * 空态的原因），而不是先摆几个好看的数 —— 教师要在它上面改，就得先看得懂每个数是什么。
- *
- * ⚠️ **一个数都不在这里算**：全部来自 `class-stats.ts`（纯函数、14 条用例）。
- * 这一层只负责「排」与「把分母写出来」。
- */
-function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, exploreSummary, webappNames, students }: {
-  tab: 'worksheet' | 'explore';
-  tabs: ReactNode;
-  worksheetSummaries: WorksheetClassSummary[] | null;
-  needsAttention: Array<{ mode: 'byWrong' | 'byUnsubmitted'; rows: ClassQuestionRow[] }>;
-  /** 量词（「人」/「组」）—— 分母要跟着课堂模式走。 */
-  unit: string;
-  exploreSummary: ExploreClassSummary | null;
-  /** 网页 id → 名字。查不到就显示一句「（已删除的网页）」，不显示裸 id。 */
-  webappNames: Record<string, string>;
-  students: ClassroomCardStudent[];
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  return (
-    <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', marginBottom: 24, overflow: 'hidden' }}>
-      {/* 折叠：与学伴那一页同一个交互（点头部收起 / 展开，箭头跟着翻）。
-          ⚠️ 页签在折叠态**也留**（`{tabs}` 在头部里，与折叠无关）—— 否则教师收起之后
-          连换页都做不到，得先展开。 */}
-      {/* 与学伴那一页**同一个结构**（★ 教师 2026-09-29 定稿）：**一行头部** ——
-          左边是页签（本屏已有的段选），右端是这一页的摘要与收起。
-          ⚠️ 折叠态**不放页签**（折起来点页签只改状态、正文不出现，看着像没反应）；
-          收起只由右端那个箭头按钮负责（这一行整体不再可点）。 */}
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 20px', borderBottom: collapsed ? 'none' : '1px solid #f1f5f9' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          {tabs && (
-            <div onClick={collapsed ? () => setCollapsed(false) : undefined}
-              style={{ minWidth: 0, cursor: collapsed ? 'pointer' : undefined }}>
-              {tabs}
-            </div>
-          )}
-          {/* 这一页的摘要：**把头部数字放在这里**（原来是塞在正文里的一行）——
-              它是这一页最该一眼看见的东西，而头部那一行正好有位置。 */}
-          {!collapsed && tab === 'explore' && exploreSummary && (
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, whiteSpace: 'nowrap' }}>
-              已有画面 {exploreSummary.withFrame}/{exploreSummary.participants} {unit} · 此刻正打开 {exploreSummary.opened} {unit}
-            </span>
-          )}
-          {!collapsed && tab === 'worksheet' && (worksheetSummaries ?? []).length === 1 && (
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, whiteSpace: 'nowrap' }}>
-              已交 {worksheetSummaries![0].submittedPairs}/{worksheetSummaries![0].totalPairs} 格 · 有作答记录 {worksheetSummaries![0].engaged}/{worksheetSummaries![0].participants} {unit}
-            </span>
-          )}
-        </div>
-        <button type="button" aria-label={collapsed ? '展开统计面板' : '收起统计面板'} aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
-          style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex', flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points={collapsed ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
-          </svg>
-        </button>
-      </div>
-
-      {!collapsed && tab === 'worksheet' && (
-        <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {(worksheetSummaries ?? []).length === 0 && (
-            <div style={{ fontSize: '0.813rem', color: '#94a3b8' }}>这一堂课还没有学习单。</div>
-          )}
-          {(worksheetSummaries ?? []).map((summary, index) => {
-            const picked = needsAttention[index];
-            return (
-              <section key={summary.worksheetId}>
-                {/* 有多份学习单时（高级模式每组一份）才标出是哪一份 —— 标准模式下只有一份，
-                    多一行标题是噪音。 */}
-                {(worksheetSummaries ?? []).length > 1 && (
-                  <div style={{ fontSize: '0.813rem', fontWeight: 700, color: '#334155', marginBottom: 8 }}>《{summary.title}》</div>
-                )}
-                {/* 三个数。⚠️ **只有多份学习单时才画**：单份时头部那一行已经写了「已交 X/Y 格 ·
-                    有作答记录 N/M」—— 同一个数在这块屏上出现两次就是「同一件事两种说法」的入口
-                    （★ 2026-09-29 定稿时顺手去重；多份时每份各有各的数，头部写不下）。 */}
-                {(worksheetSummaries ?? []).length > 1 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#475569' }}>
-                    <span>已交 <b style={{ color: '#1d4ed8' }}>{summary.submittedPairs}</b>/{summary.totalPairs} 格</span>
-                    <span>有作答记录 <b style={{ color: '#1d4ed8' }}>{summary.engaged}</b>/{summary.participants} {unit}</span>
-                    <span>共 <b style={{ color: '#1d4ed8' }}>{summary.questions}</b> 题</span>
-                  </div>
-                )}
-                {/* 全班进度条：一个数一条，不写百分比 —— 分子分母都在上面那一行了。 */}
-                <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
-                  <div style={{ width: `${summary.totalPairs === 0 ? 0 : Math.round((summary.submittedPairs / summary.totalPairs) * 100)}%`, height: '100%', background: '#2563eb' }} />
-                </div>
-                {/* 最需要讲的题。⚠️ 那句话必须跟着 `mode` 变 —— 没有判分数据时按题序取前三
-                    会读成「错得最多的题」，而那是编出来的结论（见 `needsAttentionQuestions`）。 */}
-                {picked && picked.rows.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-                      {picked.mode === 'byWrong' ? '错得最多的题' : '最多人还没交的题'}
-                      <span style={{ fontWeight: 400, color: '#94a3b8' }}>
-                        {picked.mode === 'byWrong' ? '（按答错人数）' : '（这份学习单还没有判分数据，所以按未交人数）'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {picked.rows.map((row) => (
-                        <div key={row.questionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#475569' }}>
-                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <b style={{ color: '#334155' }}>{row.heading}</b>
-                            <span style={{ color: '#94a3b8', marginLeft: 6 }}>{row.typeLabel}</span>
-                          </span>
-                          <span style={{ whiteSpace: 'nowrap' }}>
-                            已交 {row.submitted}/{row.total}
-                            {row.graded > 0 && <> · 对 {row.correct} / 半 {row.partial} / 错 {row.wrong}</>}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
-
-      {!collapsed && tab === 'explore' && (
-        <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {exploreSummary === null ? (
-            <div style={{ fontSize: '0.813rem', color: '#94a3b8' }}>正在读取…</div>
-          ) : (
-            <>
-              {/* ⚠️ 「已有画面 / 此刻正打开」**不在这里重复** —— 它们在头部那一行（★ 定稿时
-                  去重：同一个数在一块屏上出现两次，改口径时必然先改一处、另一处留着旧的）。
-                  这里只留头部放不下的那条：设备放弃采集（它是个**告警**，要显眼）。 */}
-              {exploreSummary.blocked > 0 && (
-                <div style={{ fontSize: '0.75rem', color: '#475569' }}
-                  title="这些设备上的采集已经放弃（不会自愈），与「画面还没到」不是一回事">
-                  设备放弃采集 <b style={{ color: '#b45309' }}>{exploreSummary.blocked}</b> {unit}
-                </div>
-              )}
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>此刻在看的网页</div>
-                {exploreSummary.viewing.length === 0 ? (
-                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>现在没有人在看网页。</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {exploreSummary.viewing.map((item) => (
-                      <div key={item.webappId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#475569' }}>
-                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {webappNames[item.webappId] ?? '（这个网页已经不在了）'}
-                        </span>
-                        <span style={{ whiteSpace: 'nowrap', color: '#94a3b8' }}>
-                          {item.count} {unit} · 最浅滚到 {item.minDepth}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {exploreSummary.switchy.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-                    切换最多的人
-                    <span style={{ fontWeight: 400, color: '#94a3b8' }}>（切走又切回来的次数，多则可能是在分心）</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: '0.75rem', color: '#475569' }}>
-                    {exploreSummary.switchy.map((item) => (
-                      <span key={item.studentId} style={{ padding: '2px 8px', borderRadius: 999, background: '#f1f5f9' }}>
-                        {students.filter((student) => student.id === item.studentId)[0]?.student?.name ?? '（已不在名册）'} × {item.switches}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── 对话分析面板 ──────────────────────────────────────────────
 

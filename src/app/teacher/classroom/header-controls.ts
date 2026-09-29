@@ -41,8 +41,12 @@ export type HeaderControlId =
   | 'fullscreen'
   /** ★ 2026-09-29：探究空间自己的设置弹窗（原来在「课堂权限」里的那一段）。 */
   | 'explore-settings'
-  /** ★ 2026-09-29：智能学伴自己的设置弹窗（原来在「课堂权限」里的那一段）。 */
-  | 'companion-settings'
+  /**
+   * ★ 2026-09-29（教师）：「把词云的这块功能迁移到下方『智能学伴』这个下拉按钮里边，
+   * 专门给它设置一个选项，后弹出一个弹窗来显示」。
+   * ⇒ 它从「一个设置按钮」变成**一个下拉**（两项见 `COMPANION_MENU_ITEMS`）。
+   */
+  | 'companion-menu'
   /** 模块三态菜单。 */
   | 'module-state';
 
@@ -53,6 +57,16 @@ export type HeaderControlId =
  * 而一个下拉丢掉一项、或某一项改了名字，在屏幕上只是「少一个入口」——
  * 没有任何东西会红。放这儿就有一条用例钉着。
  */
+/**
+ * ★ 2026-09-29（教师）：「智能学伴」那个下拉里的两项。
+ * · **对话分析** = 高频词云 + 活跃学生 TOP 10（原来挂在看板上方那块面板里）。
+ * · **设置** = 四项能力开关（允许中断回答 / 导出对话 / 学生提问 / 显示追问建议）。
+ */
+export const COMPANION_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'settings'; label: string; title: string }> = [
+  { id: 'analysis', label: '对话分析', title: '高频词云与活跃学生 TOP 10' },
+  { id: 'settings', label: '设置', title: '学生端智能学伴页面的四项能力开关' },
+];
+
 export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix'; label: string; title: string }> = [
   {
     id: 'analysis',
@@ -115,8 +129,8 @@ export interface HeaderLayoutInput {
   worksheetMenuOpen: boolean;
   /** 探究空间设置弹窗开着没有。 */
   exploreOpen: boolean;
-  /** 智能学伴设置弹窗开着没有。 */
-  companionOpen: boolean;
+  /** 「智能学伴」那个下拉开着没有。 */
+  companionMenuOpen: boolean;
   /** 模块三态菜单开着没有。 */
   modulesOpen: boolean;
 }
@@ -224,9 +238,10 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
     title: '探究空间的设置：学生网页画面的采集',
     popup: 'dialog', expanded: input.exploreOpen,
   }));
-  controls.push(build('companion-settings', 'setting', '智能学伴', {
-    title: '智能学伴的设置：四项能力开关',
-    popup: 'dialog', expanded: input.companionOpen,
+  // ★ 2026-09-29（教师）：智能学伴改成**下拉**：对话分析（词云弹窗）+ 设置（四项能力开关）。
+  controls.push(build('companion-menu', 'setting', '智能学伴', {
+    title: '智能学伴：对话分析 / 设置',
+    popup: 'menu', expanded: input.companionMenuOpen,
   }));
   controls.push(build('module-state', 'setting', '模块状态', {
     popup: 'menu', expanded: input.modulesOpen,

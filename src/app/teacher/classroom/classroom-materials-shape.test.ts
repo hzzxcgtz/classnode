@@ -78,7 +78,10 @@ test('🔴 那一份 `materials` 真的拼了（把 `classroomAgents` 改名成 
 test('阳性对照：这条网真的读到了那几个调用点（不是靠「一个都没匹配到」变绿的）', () => {
   assert.ok(PAGE.length > 10000, '`page.tsx` 真的被读到了');
   const bare = stripComments(PAGE);
-  assert.ok(/visibleModules\(materials\b/.test(bare), '页签那一处应当递 `materials`');
+  // ⊘ ★ 2026-09-29：`visibleModules` 那一个调用点**已经删掉了** —— 统计面板（三页签）
+  // 按教师要求整个取消（词云搬进了工具条「智能学伴▾ → 对话分析」）。
+  // ⚠️ 于是这条网现在只盯 `effectiveGroupAgent` 一处；上面那两条「不许递 `classroom`」
+  // 的断言对 `visibleModules` 仍然生效（万一将来有人把它加回来）。
   // ⚠️ 调用点与 `materials` 之间隔着一行注释（剥掉注释之后就贴上了）—— 所以查的是
   //     「同一个调用里出现了 materials」，而不是去拼换行与缩进。
   assert.ok(/effectiveGroupAgent\([^)]*materials\b/.test(bare), '`drawerAgent` 那一处也应当递 `materials`');

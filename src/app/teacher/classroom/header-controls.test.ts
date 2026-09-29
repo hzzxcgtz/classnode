@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
+  COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
 } from './header-controls.ts';
 
 /** 一个「什么都正常」的课堂：标准模式、进行中、未暂停、跟随、非全屏、不忙。 */
@@ -26,7 +26,7 @@ const BASE: HeaderLayoutInput = {
   busy: null,
   worksheetMenuOpen: false,
   exploreOpen: false,
-  companionOpen: false,
+  companionMenuOpen: false,
   modulesOpen: false,
 };
 
@@ -54,7 +54,7 @@ test('🔴 标准模式 + 跟随：正好这七个控件，按「状态｜动作
     'notify=全体消息',
     'worksheet-menu=学习单',
     'explore-settings=探究空间',
-    'companion-settings=智能学伴',
+    'companion-menu=智能学伴',
     'module-state=模块状态',
   ]);
 });
@@ -85,7 +85,7 @@ test('🔴 那个下拉里的两项：教师逐字给的两个名字', () => {
 test('🔴 「课堂权限」已经取消：它的两段各自成按钮（学习单那一段本来就没有开关）', () => {
   const list = ids();
   assert.equal(list.includes('permissions' as HeaderControlId), false, '课堂权限按钮应当消失');
-  assert.ok(list.includes('explore-settings') && list.includes('companion-settings'));
+  assert.ok(list.includes('explore-settings') && list.includes('companion-menu'));
 });
 
 test('🔴 暂停课堂排在锁定作答之前（两个最常用的状态开关在最左）', () => {
@@ -202,7 +202,7 @@ test('⚠️ 任意一个忙态键都禁用那三个（含探究空间的采集�
 
 test('🔴 忙态不影响另外四个（通知 / 学习单 / 矩阵 / 两个设置项）', () => {
   const controls = headerControls({ ...BASE, busy: HEADER_BUSY_KEYS.pause });
-  for (const id of ['notify', 'worksheet-menu', 'explore-settings', 'companion-settings', 'module-state'] as const) {
+  for (const id of ['notify', 'worksheet-menu', 'explore-settings', 'companion-menu', 'module-state'] as const) {
     const item = controls.filter((c) => c.id === id)[0];
     assert.equal(item.disabled, false, `${id} 不该被别的控件的忙态禁用`);
   }
@@ -212,12 +212,12 @@ test('🔴 忙态不影响另外四个（通知 / 学习单 / 矩阵 / 两个设
 
 test('🔴 每个设置项各自说自己开的是哪种浮层，以及开合态', () => {
   assert.equal(control('explore-settings').popup, 'dialog');
-  assert.equal(control('companion-settings').popup, 'dialog');
   assert.equal(control('module-state').popup, 'menu');
   assert.equal(control('worksheet-menu').popup, 'menu', '「学习单」是个下拉');
   assert.equal(control('explore-settings', { exploreOpen: true }).expanded, true);
   assert.equal(control('explore-settings').expanded, false);
-  assert.equal(control('companion-settings', { companionOpen: true }).expanded, true);
+  assert.equal(control('companion-menu').popup, 'menu', '「智能学伴」是个下拉（对话分析 / 设置）');
+  assert.equal(control('companion-menu', { companionMenuOpen: true }).expanded, true);
   assert.equal(control('module-state', { modulesOpen: true }).expanded, true);
   assert.equal(control('worksheet-menu', { worksheetMenuOpen: true }).expanded, true);
 });
@@ -260,4 +260,9 @@ test('⚠️ 指定模式仍然有看板模式那一段（否则切不回跟随�
   const layout = headerLayout({ ...BASE, boardMode: 'assign' });
   assert.equal(layout.showsHeader, true);
   assert.ok(layout.controls.some((c) => c.id === 'fullscreen'));
+});
+
+test('🔴 「智能学伴」那个下拉里的两项：教师给的两个名字', () => {
+  assert.deepEqual(COMPANION_MENU_ITEMS.map((item) => item.label), ['对话分析', '设置']);
+  assert.equal(new Set(COMPANION_MENU_ITEMS.map((item) => item.id)).size, 2);
 });

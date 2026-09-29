@@ -1,6 +1,6 @@
 // ⚠️ **相对路径 + `.ts` 后缀**（不是联名路径 `@/…`）：本文件要被 `node --test` 直接跑，
 // 而 Node 的类型擦除不认 tsconfig 的 `paths`。与 `worksheet-tile-state.ts` 同一条写法。
-import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
+import type { WorksheetBoard, WorksheetBoardAnswerRow, WorksheetGradeState } from '../../../lib/types';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
@@ -168,6 +168,22 @@ export function restProgress(
  * 两者同源（同一条广播、同一个下界），只是粒度不同 —— 广播一次只带**一行**的内容，
  * 所以抽屉那一侧按行打补丁，而格子那一侧按参与者整份覆盖。
  */
+/**
+ * 线缆上的 `gradeState` 是不是那三态之一（认不出的一律当作「没判分」）。
+ *
+ * 🔴 与 `status` 同一条规矩（见 `use-worksheet-board.ts` 里那个 `on(...)`）：
+ * 自由字符串不许直接进数据层。`gradeState` 认不出时尤其不能放过 —— 抽屉拿它画 ½ 与 ✗，
+ * 一个野值会画出一个屏幕上看着正常、实际没有依据的判分。
+ *
+ * ⚠️ 同一件事在仓里已有**两处行内写法**（`worksheet-panel.tsx` 与
+ * `use-worksheet-answers.ts`，都是三连 `===`）。这里给出的是一个**具名**的第三处 ——
+ * 不是又抄一遍字面量：将来要收口，这一处就是那个名字。之所以不现在就去改那两处，
+ * 是因为它们都在**学生端**产物里（改它要过课堂浏览器的兼容闸），与本次这个 bug 无关。
+ */
+export function isGradeState(raw: unknown): raw is WorksheetGradeState {
+  return raw === 'correct' || raw === 'partial' || raw === 'incorrect';
+}
+
 export interface LiveRowPatch {
   status: 'draft' | 'submitted';
   value: unknown;
@@ -175,6 +191,25 @@ export interface LiveRowPatch {
   valueOmitted: boolean;
   savedAt: string | null;
   saveCount: number | null;
+  /**
+   * 🔴 ★ 2026-09-29：**判分三件套**（协议字段，`socket-events.ts` 那边本来就不是可选的）。
+   *
+   * 为什么必须在这里 —— 教师报「火箭个数的更新明显偏慢，目测 6-10 秒」：
+   * 奖励是**各题得分之和**（`participantOverview`），而这三个字段此前**不在补丁里**
+   * ⇒ 广播只推进 status / value / savedAt / saveCount ⇒ 得分只能等下一次 30 秒快照
+   *（`BOARD_SNAPSHOT_INTERVAL_MS`）。
+   *
+   * 🔴 表现上**只有一半是实时的**：同一张卡里的作答内容（`value`）跟着广播走、火箭个数
+   * 却停在旧值上，而两者读的是**同一批作答行** —— 差别就在 `merged()` 复制了哪几个字段。
+   * ⇒ 「哪些字段实时」这件事由本接口决定，加字段时请连 `merged()` 一起看。
+   *
+   * ⚠️ `null` 一律是「**不知道 / 没判分**」，不是 0：
+   * `gradeState: null`（还没判）与 `'incorrect'`（答错了）在抽屉里是两句话；
+   * `score: null` 与 `0` 在奖励上都画不出东西，但「没判」不该被将来算成「答错」。
+   */
+  isCorrect: boolean | null;
+  gradeState: WorksheetGradeState | null;
+  score: number | null;
 }
 
 /**
@@ -205,16 +240,24 @@ export function applyLiveRows(
           patch.lastArrivedAt !== null && patch.lastArrivedAt > snapshotAt;
         /** 把一条可信的补丁叠到一行上（新建与更新**共用**这一处，免得两处各写一遍字段名）。 */
         const merged = (base: WorksheetBoardAnswerRow): WorksheetBoardAnswerRow => {
+          const patch = patches[base.questionId];
           const next: WorksheetBoardAnswerRow = {
             ...base,
-            status: patches[base.questionId].status,
-            savedAt: patches[base.questionId].savedAt,
-            saveCount: patches[base.questionId].saveCount,
+            status: patch.status,
+            savedAt: patch.savedAt,
+            saveCount: patch.saveCount,
+            // 🔴 判分三件套**必须一起带过来**（理由与代价见 `LiveRowPatch` 上那一段）：
+            // 少了它们，奖励（各题得分之和）就只能等 30 秒一次的快照。
+            // ⚠️ 它们与 `status` / `value` 是**同一次保存**的产物 ⇒ 同一个下界、同一个采信判据，
+            // 不另开一条路（那条路上会出现「状态是新的、分数是旧的」这种半新半旧的行）。
+            isCorrect: patch.isCorrect,
+            gradeState: patch.gradeState,
+            score: patch.score,
           };
           // 🔴 `valueOmitted` 时**不许**把 `value` 写成 null 覆盖掉快照里那份内容 ——
           // 那会把「内容较大，没有随广播下发」变成「他什么都没写」，而屏幕上看不出区别。
           // ⚠️ 新造的行本来就 `value: null` ⇒ 这一句对它没有副作用（不许编内容的规矩照旧）。
-          if (!patches[base.questionId].valueOmitted) next.value = patches[base.questionId].value;
+          if (!patch.valueOmitted) next.value = patch.value;
           return next;
         };
         return {
@@ -236,8 +279,12 @@ export function applyLiveRows(
             ...Object.keys(patches)
               .filter((questionId) => trusted(patches[questionId]))
               .filter((questionId) => !participant.answerRows.some((row) => row.questionId === questionId))
-              // ⚠️ 新行的未知字段一律 `null`（不知道），**不许**编成 `false` / `0` ——
-              // `gradeState: null`（还没判）与 `'incorrect'`（答错了）在抽屉里是两句话。
+              // ⚠️ 这个字面量只是 `merged()` 的**基底**，`merged()` 不复制的那几格
+              //（`reviewedAt` / `createdAt`）就靠它 —— 一律 `null`（不知道），
+              // **不许**编成 `false` / `0`。
+              // 🔴 ★ 2026-09-29：判分三件套**不在**「基底说了算」的那几格里 ——
+              // `merged()` 会用广播里的真值覆盖它们（见 `LiveRowPatch` 上那一段）。
+              // 这里写 `null` 只是「没有更早的一份可继承」，不是「这一格没判分」。
               .map((questionId) => merged({
                 questionId, status: 'draft', isCorrect: null, gradeState: null, score: null,
                 reviewedAt: null, value: null, createdAt: null, savedAt: null, saveCount: null,

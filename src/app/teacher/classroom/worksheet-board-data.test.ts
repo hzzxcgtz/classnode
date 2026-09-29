@@ -237,6 +237,9 @@ test('广播里没有这个参与者 ⇒ 用 REST（没收到广播 ≠ 把这�
 
 const patch = (over: Partial<LiveRowPatch> & { lastArrivedAt: number | null }) => ({
   status: 'draft' as const, value: null, valueOmitted: false, savedAt: null, saveCount: null,
+  // 判分三件套：线缆上**永远在场**（`socket-events.ts` 的该事件里它们不是可选字段），
+  // `null` = 没判分。默认值取 `null` 与「这一格里没有新判分」等价。
+  isCorrect: null, gradeState: null, score: null,
   ...over,
 });
 
@@ -253,6 +256,33 @@ test('★ 按行打补丁：广播那一行被更新，其余行**一个字都�
   assert.deepEqual(rows[0].value, { format: 'text/v1', text: '新' }, '内容也要跟着走（乙档的意义）');
   assert.equal(rows[0].saveCount, 3);
   assert.deepEqual(rows[1], b.worksheets[0].participants[0].answerRows[1], 'q2 一个字都不许动');
+});
+
+/**
+ * 🔴 **判分也必须随广播到达**（★ 2026-09-29，教师：「火箭个数的更新明显偏慢，目测 6-10 秒」）。
+ *
+ * 奖励是**各题得分之和**（`participantOverview`），而 `score` 此前**不在 `LiveRowPatch` 里** ——
+ * 广播只补 status / value / savedAt / saveCount ⇒ 得分只能等下一次 30 秒快照。
+ *
+ * 🔴 表现是**同一张卡上的一半实时、一半不实时**：作答内容（`value`）跟着广播走、
+ * 火箭个数却停在旧值上，而两者读的是**同一批作答行**。根因就是这一处：
+ * `merged()` 复制了哪几个字段，哪几个字段才是实时的。
+ */
+test('🔴 广播带来的判分要补进作答行（否则奖励只能等 30 秒快照）', () => {
+  const b = board([row({ questionId: 'q1', status: 'draft' })]);
+  const out = applyLiveRows(b, {
+    p1: {
+      q1: patch({
+        status: 'submitted', isCorrect: false, gradeState: 'partial', score: 2,
+        lastArrivedAt: 2_000_000,
+      }),
+    },
+  }, 1_000_000);
+  const got = out.worksheets[0].participants[0].answerRows[0];
+  // 🔴 这一条就是「火箭个数」的新鲜度：它等于各行 `score` 之和。
+  assert.equal(got.score, 2, '🔴 得分必须跟着广播走，不许等快照');
+  assert.equal(got.gradeState, 'partial', '三态也要跟着走（抽屉靠它画 ½）');
+  assert.equal(got.isCorrect, false, '协议字段一并带上');
 });
 
 test('🔴 下界同源：广播早于快照 ⇒ 不打补丁（否则格子与抽屉会各说各话）', () => {
@@ -318,6 +348,32 @@ test('🔴 广播里有快照之外的行 ⇒ **要造出来**（否则内容会
   assert.equal(created.gradeState, null);
   assert.equal(created.isCorrect, null);
   assert.equal(created.score, null);
+});
+
+/**
+ * 🔴 造行那一支里的判分**同样要取广播的值**（★ 2026-09-29）。
+ *
+ * 那一支的基底字面量里写着 `isCorrect: null, gradeState: null, score: null`，注释也改了
+ * ——本条钉住「那三个 null 会被 `merged()` 覆盖」这句话：它们**不是**「这一格没判分」，
+ * 而是「没有更早的一份可继承」。若哪天有人把 `merged()` 里的判分三件套删掉（或以为
+ * 基底那三个零就够了），新造的行会**静默**显示成「还没判」——而屏幕上一切正常。
+ */
+test('🔴 新造的行也要带上广播里的判分（基底那三个 null 会被覆盖）', () => {
+  const b = board([row({ questionId: 'q1' })]);
+  const out = applyLiveRows(b, {
+    p1: {
+      q2: patch({
+        status: 'submitted', isCorrect: true, gradeState: 'correct', score: 5,
+        lastArrivedAt: 2_000_000, value: { format: 'text/v1', text: '刚交的' },
+      }),
+    },
+  }, 1_000_000);
+  const created = out.worksheets[0].participants[0].answerRows
+    .filter((item) => item.questionId === 'q2')[0];
+  assert.ok(created, '那一行必须出现');
+  assert.equal(created.score, 5, '🔴 新造的行也要拿得到得分（奖励读的正是它）');
+  assert.equal(created.gradeState, 'correct');
+  assert.equal(created.isCorrect, true);
 });
 
 test('🔴 造行**只在广播比快照新**时才做（陈旧广播不许凭空多出一行）', () => {

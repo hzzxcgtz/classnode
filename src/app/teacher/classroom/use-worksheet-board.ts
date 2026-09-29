@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
-import { applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data';
+import { applyLiveRows, isGradeState, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
@@ -255,6 +255,16 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
       // ★ 乙档 / 丙档：内容与作答过程（抽屉那一侧读它）。
       // ⚠️ `valueOmitted` 的处置在 `applyLiveRows` 里（它**不许**覆盖快照里已有的内容）——
       // 这里只负责把广播原样收下来，一条判断都不做。
+      //
+      // 🔴 ★ 2026-09-29：**判分三件套也必须在这里收下来** —— 这一处正是「火箭个数更新偏慢」
+      // 的根因所在。服务端**一直在发** `score` / `gradeState` / `isCorrect`
+      //（`worksheets.ts` 的 `broadcastAnswerUpdate`，类型也一直在 `socket-events.ts` 里），
+      // 是这里只攒了四个字段、把判分丢了 ⇒ 得分只能等 30 秒一次的快照
+      //（奖励 = 各题得分之和，于是同一张卡上内容实时、火箭个数不实时）。
+      //
+      // ⚠️ 与 `status` 同一条规矩：线缆上的值不可信，**认不出的落 `null`（不知道），不猜**。
+      // `gradeState` 认不出时尤其不能放过 —— 抽屉拿它画 ½ 与 ✗，一个野值会画出一个
+      // 屏幕上看着正常、实际没有依据的判分。
       setLiveRows((prev) => ({
         ...prev,
         [participantId]: {
@@ -265,6 +275,9 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
             valueOmitted: data.valueOmitted === true,
             savedAt: typeof data.savedAt === 'string' ? data.savedAt : null,
             saveCount: typeof data.saveCount === 'number' ? data.saveCount : null,
+            isCorrect: typeof data.isCorrect === 'boolean' ? data.isCorrect : null,
+            gradeState: isGradeState(data.gradeState) ? data.gradeState : null,
+            score: typeof data.score === 'number' && Number.isFinite(data.score) ? data.score : null,
             lastArrivedAt: at,
           },
         },

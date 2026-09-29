@@ -15,7 +15,7 @@ import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
-import { MatrixOverlay } from './matrix-overlay';
+import { MatrixView } from './matrix-view';
 import { AnalysisOverlay } from './analysis-overlay';
 import { QuestionStatsOverlay } from './question-stats-overlay';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
@@ -26,7 +26,7 @@ import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
 import { HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
-import { exploreClassSummary, needsAttentionQuestions, visibleStatsTabs, worksheetClassSummary, type ClassQuestionRow, type ExploreClassSummary, type WorksheetClassSummary } from './class-stats';
+import { exploreClassSummary, needsAttentionQuestions, visibleStatsTabs, worksheetClassSummary, type ClassQuestionRow, type ExploreClassSummary } from './class-stats';
 import { effectiveGroupAgent, effectiveGroupWorksheet, visibleModules } from '@/lib/classroom-material';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -725,7 +725,6 @@ function ClassroomBoardContent() {
   const [gridFullscreen, setGridFullscreen] = useState(false);
   // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
-  const [matrixOpen, setMatrixOpen] = useState(false);
   /**
    * ★ M7a：正在看哪一道题的分析载荷（`null` = 没开）。
    * ⚠️ 与 `matrixOpen` **可以同时为真** —— 分析浮层（270）就叠在矩阵浮层（250）之上，
@@ -859,6 +858,12 @@ function ClassroomBoardContent() {
    * 不是「换一个默认」。
    */
   const [statsTab, setStatsTab] = useState<'companion' | 'worksheet' | 'explore'>('companion');
+  /**
+   * 统计面板收起没有。★ 2026-09-29：从 `ClassStatsPanel` 内部**上提到这里** ——
+   * 因为工具条那个「进度矩阵」现在要「切到这一页**并展开**」（教师裁定「甲」），
+   * 而它住在页面这一层，够不到面板内部的状态。
+   */
+  const [statsCollapsed, setStatsCollapsed] = useState(false);
   const clearBusyRef = useRef(false);
 
   // 「点外面关」只留给还在用下拉菜单的「模块状态」。
@@ -2452,8 +2457,23 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           <ClassStatsPanel
             tab={activeStatsTab}
             tabs={<StatsTabs tabs={statsTabs} value={activeStatsTab} onChange={setStatsTab} />}
-            worksheetSummaries={worksheetClassSummaries}
+            // ★ 「学习单」那一页的正文 = **进度矩阵**（教师裁定「甲」搬进来的）。
+            // ⚠️ 矩阵要十来项数据，而它们都在这一层 ⇒ 在这里渲染好递进去（见那个 prop 的注释）。
+            // ⚠️ 这里只能用 `//` 注释：`{/* … */}` 在**属性之间**是非法 JSX（踩过两次了）。
+            worksheetBody={<MatrixView
+              board={wb.board}
+              nodesByWorksheet={wb.nodesByWorksheet}
+              live={wb.progress}
+              liveTrustedAfter={undefined}
+              loading={wb.loading}
+              participantCount={students.length}
+              advancedMode={classroom.mode === 'advanced'}
+              onOpenQuestion={openMatrixQuestion}
+              onOpenParticipant={openMatrixParticipant}
+              onOpenAnalysis={(worksheetId, questionId) => setAnalysisTarget({ worksheetId, questionId })} />}
             needsAttention={needsAttention}
+            collapsed={statsCollapsed}
+            onToggleCollapsed={() => setStatsCollapsed((value) => !value)}
             unit={moduleCountUnit(classroom.mode)}
             exploreSummary={exploreSummary}
             webappNames={webappNames}
@@ -2527,9 +2547,15 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           <WorksheetMenu
                             // 「答题分析」= 原来那个「学习单」按钮（抽屉）；
                             // 「进度矩阵」= 原来那个「矩阵」按钮（浮层）。两条路一个字都没改。
+                            // ★ 2026-09-29（教师裁定「甲」）：矩阵搬进了统计面板的「学习单」页
+                            // ⇒ 「进度矩阵」这一项不再**另开一个全屏浮层**，而是**切到那一页**
+                            //（收起时顺手展开）—— 同一个矩阵只有一个家。
+                            // ⚠️ 「答题分析」一个字没动：它开的是**抽屉**（按题看正确率、逐生作答），
+                            //    与矩阵不是同一个东西，谁也代替不了谁。
                             onSelect={(item) => {
-                              if (item === 'analysis') openWorksheetDrawer({ kind: 'worksheets' });
-                              else setMatrixOpen(true);
+                              if (item === 'analysis') { openWorksheetDrawer({ kind: 'worksheets' }); return; }
+                              setStatsTab('worksheet');
+                              setStatsCollapsed(false);
                             }}
                             onClose={() => setShowWorksheetMenu(false)} />
                         )}
@@ -3652,26 +3678,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         </div>
       )}
 
-      {/* ★ M5b：学习单矩阵覆盖层。与 `gridFullscreen` 是**两块互不相交**的覆盖层
-          （矩阵的按钮在 `!gridFullscreen` 的头部里，所以两者不可能同时被点开）。 */}
-      {matrixOpen && (
-        <MatrixOverlay
-          board={wb.board}
-          nodesByWorksheet={wb.nodesByWorksheet}
-          live={wb.progress}
-          liveTrustedAfter={undefined}
-          loading={wb.loading}
-          participantCount={students.length}
-          // ⚠️ 只有高级模式才谈得上「有的组没配学习单」；标准 / 分组模式下这一行恒为 0，
-          // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）
-          // ⇒ 不收窄的话屏幕上会出现一句「另有 1 个参与者没有可作答的学习单」的**假话**（审查抓到）。
-          advancedMode={classroom?.mode === 'advanced'}
-          onClose={() => setMatrixOpen(false)}
-          onOpenQuestion={openMatrixQuestion}
-          onOpenParticipant={openMatrixParticipant}
-          onOpenAnalysis={(worksheetId, questionId) => setAnalysisTarget({ worksheetId, questionId })}
-        />
-      )}
 
       {/* ★ M7a：分析载荷预览。**独立浮层**（zIndex 270：矩阵 250 之上、学习单抽屉 290/291 之下）。
           它**不复用**学生端外壳的 `layer-overlays` —— 那条「非前台层的浮层不得浮在上面」
@@ -3987,11 +3993,19 @@ function StatsTabs({ tabs, value, onChange }: {
  * ⚠️ **一个数都不在这里算**：全部来自 `class-stats.ts`（纯函数、14 条用例）。
  * 这一层只负责「排」与「把分母写出来」。
  */
-function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, exploreSummary, webappNames, students }: {
+function ClassStatsPanel({ tab, tabs, worksheetBody, needsAttention, collapsed, onToggleCollapsed, unit, exploreSummary, webappNames, students }: {
   tab: 'worksheet' | 'explore';
   tabs: ReactNode;
-  worksheetSummaries: WorksheetClassSummary[] | null;
+  /**
+   * 「学习单」那一页的**正文**（★ 2026-09-29 教师裁定「甲」：那块正文就是**进度矩阵**）。
+   * ⚠️ 由调用方渲染好传进来（`MatrixView` 要十来项数据，而它们都在页面那一层）——
+   * 在这里再收一遍那些 props 只是把同一批东西搬个地方。
+   */
+  worksheetBody?: ReactNode;
   needsAttention: Array<{ mode: 'byWrong' | 'byUnsubmitted'; rows: ClassQuestionRow[] }>;
+  /** 收起没有。★ 上提到页面那一层（见那里的注释：工具条要能"切到这一页并展开"）。 */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   /** 量词（「人」/「组」）—— 分母要跟着课堂模式走。 */
   unit: string;
   exploreSummary: ExploreClassSummary | null;
@@ -3999,7 +4013,6 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
   webappNames: Record<string, string>;
   students: ClassroomCardStudent[];
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   return (
     <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', marginBottom: 24, overflow: 'hidden' }}>
       {/* 折叠：与学伴那一页同一个交互（点头部收起 / 展开，箭头跟着翻）。
@@ -4014,7 +4027,7 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           {tabs && (
-            <div onClick={collapsed ? () => setCollapsed(false) : undefined}
+            <div onClick={collapsed ? onToggleCollapsed : undefined}
               style={{ minWidth: 0, cursor: collapsed ? 'pointer' : undefined }}>
               {tabs}
             </div>
@@ -4026,14 +4039,22 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
               已有画面 {exploreSummary.withFrame}/{exploreSummary.participants} {unit} · 此刻正打开 {exploreSummary.opened} {unit}
             </span>
           )}
-          {!collapsed && tab === 'worksheet' && (worksheetSummaries ?? []).length === 1 && (
+          {/* 「学习单」那一页的头部摘要：**一句话**（★ 2026-09-29 教师裁定「甲」时说定的 ——
+              「别让它跟矩阵抢地方：矩阵已经把『哪一题卡住』说全了」）。
+              所以这里只留一句「最需要讲的题」，原来那两行数字（已交 X/Y 格…）删掉：
+              矩阵每一行自己就写着「已交 N/M」，头部再写一遍是同一件事两种说法。 */}
+          {!collapsed && tab === 'worksheet' && needsAttention[0]?.rows[0] && (
             <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, whiteSpace: 'nowrap' }}>
-              已交 {worksheetSummaries![0].submittedPairs}/{worksheetSummaries![0].totalPairs} 格 · 有作答记录 {worksheetSummaries![0].engaged}/{worksheetSummaries![0].participants} {unit}
+              {needsAttention[0].mode === 'byWrong' ? '最需要讲的题' : '最多人没交的题'}：
+              {needsAttention[0].rows[0].heading}
+              {needsAttention[0].mode === 'byWrong'
+                ? `（错 ${needsAttention[0].rows[0].wrong} ${unit}）`
+                : `（${unit}未交 ${needsAttention[0].rows[0].total - needsAttention[0].rows[0].submitted}）`}
             </span>
           )}
         </div>
         <button type="button" aria-label={collapsed ? '展开统计面板' : '收起统计面板'} aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
+          onClick={onToggleCollapsed}
           style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex', flexShrink: 0 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points={collapsed ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
@@ -4041,66 +4062,11 @@ function ClassStatsPanel({ tab, tabs, worksheetSummaries, needsAttention, unit, 
         </button>
       </div>
 
-      {!collapsed && tab === 'worksheet' && (
-        <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {(worksheetSummaries ?? []).length === 0 && (
-            <div style={{ fontSize: '0.813rem', color: '#94a3b8' }}>这一堂课还没有学习单。</div>
-          )}
-          {(worksheetSummaries ?? []).map((summary, index) => {
-            const picked = needsAttention[index];
-            return (
-              <section key={summary.worksheetId}>
-                {/* 有多份学习单时（高级模式每组一份）才标出是哪一份 —— 标准模式下只有一份，
-                    多一行标题是噪音。 */}
-                {(worksheetSummaries ?? []).length > 1 && (
-                  <div style={{ fontSize: '0.813rem', fontWeight: 700, color: '#334155', marginBottom: 8 }}>《{summary.title}》</div>
-                )}
-                {/* 三个数。⚠️ **只有多份学习单时才画**：单份时头部那一行已经写了「已交 X/Y 格 ·
-                    有作答记录 N/M」—— 同一个数在这块屏上出现两次就是「同一件事两种说法」的入口
-                    （★ 2026-09-29 定稿时顺手去重；多份时每份各有各的数，头部写不下）。 */}
-                {(worksheetSummaries ?? []).length > 1 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: '0.75rem', color: '#475569' }}>
-                    <span>已交 <b style={{ color: '#1d4ed8' }}>{summary.submittedPairs}</b>/{summary.totalPairs} 格</span>
-                    <span>有作答记录 <b style={{ color: '#1d4ed8' }}>{summary.engaged}</b>/{summary.participants} {unit}</span>
-                    <span>共 <b style={{ color: '#1d4ed8' }}>{summary.questions}</b> 题</span>
-                  </div>
-                )}
-                {/* 全班进度条：一个数一条，不写百分比 —— 分子分母都在上面那一行了。 */}
-                <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
-                  <div style={{ width: `${summary.totalPairs === 0 ? 0 : Math.round((summary.submittedPairs / summary.totalPairs) * 100)}%`, height: '100%', background: '#2563eb' }} />
-                </div>
-                {/* 最需要讲的题。⚠️ 那句话必须跟着 `mode` 变 —— 没有判分数据时按题序取前三
-                    会读成「错得最多的题」，而那是编出来的结论（见 `needsAttentionQuestions`）。 */}
-                {picked && picked.rows.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
-                      {picked.mode === 'byWrong' ? '错得最多的题' : '最多人还没交的题'}
-                      <span style={{ fontWeight: 400, color: '#94a3b8' }}>
-                        {picked.mode === 'byWrong' ? '（按答错人数）' : '（这份学习单还没有判分数据，所以按未交人数）'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {picked.rows.map((row) => (
-                        <div key={row.questionId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#475569' }}>
-                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <b style={{ color: '#334155' }}>{row.heading}</b>
-                            <span style={{ color: '#94a3b8', marginLeft: 6 }}>{row.typeLabel}</span>
-                          </span>
-                          <span style={{ whiteSpace: 'nowrap' }}>
-                            已交 {row.submitted}/{row.total}
-                            {row.graded > 0 && <> · 对 {row.correct} / 半 {row.partial} / 错 {row.wrong}</>}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
-
+      {/* 「学习单」那一页：**进度矩阵**（★ 2026-09-29 教师裁定「甲」搬进来的）。
+          ⚠️ 我先前那份摘要草稿（逐份学习单的进度条 + 最需要讲的题 TOP3）**删掉了**：
+          它的信息矩阵里全都有（每一行自己写着已交 N/M 与逐格状态），
+          而两处都说同一件事正是教师说的「怪」的来源；它的结论缩成了头部那一句话。 */}
+      {!collapsed && tab === 'worksheet' && worksheetBody}
       {!collapsed && tab === 'explore' && (
         <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {exploreSummary === null ? (

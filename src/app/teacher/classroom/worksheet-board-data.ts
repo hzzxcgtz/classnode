@@ -200,24 +200,49 @@ export function applyLiveRows(
       participants: worksheet.participants.map((participant) => {
         const patches = liveRows[participant.participantId];
         if (!patches) return participant;
+        /** 这条广播**此刻可信**吗（下界与 `mergeProgress` 同源：不知道到达时刻的一律不信）。 */
+        const trusted = (patch: LiveRowPatch & { lastArrivedAt: number | null }): boolean =>
+          patch.lastArrivedAt !== null && patch.lastArrivedAt > snapshotAt;
+        /** 把一条可信的补丁叠到一行上（新建与更新**共用**这一处，免得两处各写一遍字段名）。 */
+        const merged = (base: WorksheetBoardAnswerRow): WorksheetBoardAnswerRow => {
+          const next: WorksheetBoardAnswerRow = {
+            ...base,
+            status: patches[base.questionId].status,
+            savedAt: patches[base.questionId].savedAt,
+            saveCount: patches[base.questionId].saveCount,
+          };
+          // 🔴 `valueOmitted` 时**不许**把 `value` 写成 null 覆盖掉快照里那份内容 ——
+          // 那会把「内容较大，没有随广播下发」变成「他什么都没写」，而屏幕上看不出区别。
+          // ⚠️ 新造的行本来就 `value: null` ⇒ 这一句对它没有副作用（不许编内容的规矩照旧）。
+          if (!patches[base.questionId].valueOmitted) next.value = patches[base.questionId].value;
+          return next;
+        };
         return {
           ...participant,
-          answerRows: participant.answerRows.map((row) => {
-            const patch = patches[row.questionId];
-            if (!patch) return row;
-            // ⚠️ `null` = 不知道这条广播什么时候到的 ⇒ **不信它**（与 `mergeProgress` 同一条）。
-            if (patch.lastArrivedAt === null || patch.lastArrivedAt <= snapshotAt) return row;
-            // 🔴 `valueOmitted` 时**不许**把 `value` 写成 null 覆盖掉快照里那份内容 ——
-            // 那会把「内容较大，没有随广播下发」变成「他什么都没写」，而屏幕上看不出区别。
-            const next: WorksheetBoardAnswerRow = {
-              ...row,
-              status: patch.status,
-              savedAt: patch.savedAt,
-              saveCount: patch.saveCount,
-            };
-            if (!patch.valueOmitted) next.value = patch.value;
-            return next;
-          }),
+          // ★ 2026-09-29：**先打补丁，再补上快照里没有的那些行**。
+          //
+          // 🔴 为什么必须补（教师报的「内容闪一下就没」）：快照是 30 秒前拉的，而学生
+          // **刚开始**作答的那一题在快照里**根本没有行** ⇒ 广播的补丁无处可打 ⇒ 那一格
+          // 的内容回落到 `undefined`、画出「还没开始写」。旧规则是「不造行」，理由写的
+          // 是「会指向一个屏幕上不存在的题」——**那条理由对今天的消费者不成立**
+          //（抽屉 / 矩阵 / 格子全部**按题目树查行**，多出来的一行是惰性的），
+          // 而「少一行」的代价是真的。逐条证据在那条用例的注释里。
+          answerRows: [
+            ...participant.answerRows.map((row) => {
+              const patch = patches[row.questionId];
+              if (!patch || !trusted(patch)) return row;
+              return merged(row);
+            }),
+            ...Object.keys(patches)
+              .filter((questionId) => trusted(patches[questionId]))
+              .filter((questionId) => !participant.answerRows.some((row) => row.questionId === questionId))
+              // ⚠️ 新行的未知字段一律 `null`（不知道），**不许**编成 `false` / `0` ——
+              // `gradeState: null`（还没判）与 `'incorrect'`（答错了）在抽屉里是两句话。
+              .map((questionId) => merged({
+                questionId, status: 'draft', isCorrect: null, gradeState: null, score: null,
+                reviewedAt: null, value: null, createdAt: null, savedAt: null, saveCount: null,
+              })),
+          ],
         };
       }),
     })),

@@ -279,12 +279,68 @@ test('🔴 valueOmitted：保留快照里的内容，不覆盖成 null', () => {
   assert.equal(got.saveCount, 2, '但次数/时间照常更新（它们不超限）');
 });
 
-test('🔴 广播里有快照之外的行 ⇒ 不造行（会指向一个屏幕上不存在的题）', () => {
+/**
+ * 🔴 **规则在这里反转了**（2026-09-29，教师：「学生刚开始将相应的词语拖到分类容器后，
+ * 监控面板里会出现学生的分类结果，但是会马上又变成『还未开始填写』的提示，
+ * 多试几次以后监控又正常了」）。
+ *
+ * 旧规则是「**不造行**」，理由写的是「会指向一个屏幕上不存在的题」。那条理由对今天的
+ * 消费者**不成立**（已逐条核过）：它们**全部按题目树查行**，不是遍历行 ——
+ *   · 抽屉：`participant.answerRows.filter(row => row.questionId === node.id)`；
+ *   · 抽屉判据：`byQuestion.set(row.questionId, row)` 的查表；
+ *   · 矩阵：行轴来自 `flattenAnswerable(nodes)`；
+ *   · 格子：`restProgress` 收成 `cells[questionId]`，而 `cells` 数组由题目树铺出来。
+ * ⇒ 多出来的一行**是惰性的**（没人按它渲染）；而「少一行」的后果是**真的**：
+ *
+ * 那个 bug 的机制（一条都不许猜，全是代码里读得出来的）：
+ *   ① 学生拖一下 ⇒ 预览通道（300ms）到达 ⇒ 那一格显示他的分类结果；
+ *   ② 1.5 秒防抖到点 ⇒ 落库广播到达 ⇒ `use-worksheet-board` **主动删掉 `liveDrafts`**
+ *      （那个「正在写」记号不许永久挂着）⇒ 内容必须由**已保存的那一份**接上；
+ *   ③ 而快照是 30 秒前的、那一题**还没有行** ⇒ 广播的补丁**无处可打** ⇒ 值成了
+ *      `undefined` ⇒ 那一块画出「还没开始写」；
+ *   ④ 等下一轮快照把那一行带回来就正常了 —— 这正是「多试几次以后正常」与
+ *      「其他题型也出现过」（任何题型都走这一条路）。
+ */
+test('🔴 广播里有快照之外的行 ⇒ **要造出来**（否则内容会闪一下就没：见上面那段）', () => {
   const b = board([row({ questionId: 'q1' })]);
   const out = applyLiveRows(b, {
-    p1: { gone: patch({ lastArrivedAt: 2_000_000, value: 'x' }) },
+    p1: { q2: patch({ lastArrivedAt: 2_000_000, value: { format: 'text/v1', text: '刚写的' }, status: 'draft' }) },
   }, 1_000_000);
-  assert.equal(out.worksheets[0].participants[0].answerRows.length, 1, '不造行');
+  const rows = out.worksheets[0].participants[0].answerRows;
+  assert.equal(rows.length, 2, '那一行必须出现');
+  const created = rows.filter((item) => item.questionId === 'q2')[0];
+  assert.ok(created, '新行要在 answerRows 里');
+  // 🔴 **内容与状态必须带上** —— 这正是「闪烁」缺的那两样。
+  assert.deepEqual(created.value, { format: 'text/v1', text: '刚写的' });
+  assert.equal(created.status, 'draft');
+  // ⚠️ 造出来的行里，未知的那几格必须是 `null`（= 不知道），**不许**编成 false / 0：
+  //    `gradeState: null` 与 `'incorrect'` 在抽屉里是「还没判」与「答错了」两句话。
+  assert.equal(created.gradeState, null);
+  assert.equal(created.isCorrect, null);
+  assert.equal(created.score, null);
+});
+
+test('🔴 造行**只在广播比快照新**时才做（陈旧广播不许凭空多出一行）', () => {
+  const b = board([row({ questionId: 'q1' })]);
+  const stale = applyLiveRows(b, {
+    p1: { q2: patch({ lastArrivedAt: 999_000, value: 'x' }) },
+  }, 1_000_000);
+  assert.equal(stale.worksheets[0].participants[0].answerRows.length, 1, '早于下界的广播一律不采信');
+  // 阳性对照：同一份输入、只把到达时刻挪到下界之后 ⇒ 那一行就出现了。
+  const fresh = applyLiveRows(b, {
+    p1: { q2: patch({ lastArrivedAt: 1_000_001, value: 'x' }) },
+  }, 1_000_000);
+  assert.equal(fresh.worksheets[0].participants[0].answerRows.length, 2);
+});
+
+test('⚠️ 造行时 `valueOmitted` 仍然不许编内容（那一格是「不知道」，不是「空」）', () => {
+  const b = board([]);
+  const out = applyLiveRows(b, {
+    p1: { q2: patch({ lastArrivedAt: 2_000_000, valueOmitted: true, value: null }) },
+  }, 1_000_000);
+  const created = out.worksheets[0].participants[0].answerRows.filter((item) => item.questionId === 'q2')[0];
+  assert.ok(created, '行还是要造（状态与时间是真的）');
+  assert.equal(created.value, null, '内容没随广播下发 ⇒ 只能是 null，不许编');
 });
 
 test('快照里没有这个参与者 ⇒ 原样返回（不造人）', () => {

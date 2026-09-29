@@ -29,18 +29,42 @@ export type HeaderControlId =
   | 'lock'
   /** 把班级的分组同步进课堂（只在分组 / 高级模式、且课堂未结束时才有）。 */
   | 'sync-groups'
-  /** 给全班发一条提示。 */
+  /** 给全班发一条消息（★ 2026-09-29：原名「通知全体」）。 */
   | 'notify'
-  /** 学习单抽屉。 */
-  | 'worksheet'
-  /** 学生 × 题目矩阵浮层。 */
-  | 'matrix'
+  /**
+   * ★ 2026-09-29（教师）：「『学习单』改名为『答题分析』，『矩阵』改名为『进度矩阵』，
+   * 两者合并成一个『学习单』，通过鼠标点击下拉后选择」。
+   * ⇒ 两个入口合成一个**下拉**，里面那两项见 `WORKSHEET_MENU_ITEMS`。
+   */
+  | 'worksheet-menu'
   /** 把格子铺满整屏（只在指定模式才有）。 */
   | 'fullscreen'
-  /** 课堂权限浮窗。 */
-  | 'permissions'
+  /** ★ 2026-09-29：探究空间自己的设置弹窗（原来在「课堂权限」里的那一段）。 */
+  | 'explore-settings'
+  /** ★ 2026-09-29：智能学伴自己的设置弹窗（原来在「课堂权限」里的那一段）。 */
+  | 'companion-settings'
   /** 模块三态菜单。 */
   | 'module-state';
+
+/**
+ * ★ 2026-09-29：「学习单」那个下拉里的两项。
+ *
+ * 🔴 标签放这里而不是写进 `WorksheetMenu` 的 JSX：教师这次**逐字给了这两个名字**，
+ * 而一个下拉丢掉一项、或某一项改了名字，在屏幕上只是「少一个入口」——
+ * 没有任何东西会红。放这儿就有一条用例钉着。
+ */
+export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix'; label: string; title: string }> = [
+  {
+    id: 'analysis',
+    label: '答题分析',
+    title: '按学习单看全班：先按学习单分组，再按题看正确率与作答',
+  },
+  {
+    id: 'matrix',
+    label: '进度矩阵',
+    title: '学生×题目矩阵：一眼看出此刻该讲哪一题',
+  },
+];
 
 /**
  * 忙态键。🔴 **只在这一份**：`runControlAction('answers-lock', …)` 那三个调用点写的是
@@ -87,7 +111,13 @@ export interface HeaderLayoutInput {
   gridFullscreen: boolean;
   /** `controlBusy` 的当前值（`null` = 不忙）。**别的分组也在用这个 state**，见下面那条注释。 */
   busy: string | null;
-  permissionsOpen: boolean;
+  /** 「学习单」那个下拉开着没有。 */
+  worksheetMenuOpen: boolean;
+  /** 探究空间设置弹窗开着没有。 */
+  exploreOpen: boolean;
+  /** 智能学伴设置弹窗开着没有。 */
+  companionOpen: boolean;
+  /** 模块三态菜单开着没有。 */
   modulesOpen: boolean;
 }
 
@@ -170,15 +200,15 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
       disabled: anyBusy,
     }));
   }
-  controls.push(build('notify', 'action', '通知全体'));
+  // ★ 2026-09-29（教师）：「『通知全体』改成『全体消息』」。
+  controls.push(build('notify', 'action', '全体消息', { title: '给全班或某一组、某个人发一条消息' }));
 
-  controls.push(build('worksheet', 'view', '学习单', {
-    title: '按学习单看全班：先按学习单分组，再按题看正确率与作答',
-  }));
-  // ★ 矩阵紧挨着学习单：两者是「按学习单看全班」的两面（一个是按题的正确率与逐生作答、
-  // 一个是学生×题看谁卡住），原先被两个设置项隔开 ⇒ 教师分不出该按哪个。
-  controls.push(build('matrix', 'view', '矩阵', {
-    title: '学生×题目矩阵：一眼看出此刻该讲哪一题',
+  // ★ 2026-09-29（教师）：原来的「学习单」与「矩阵」两个按钮合成**这一个下拉**
+  //（里面的两项见 `WORKSHEET_MENU_ITEMS`）。合并的理由就是教师那句话本身：
+  // 两者是「按学习单看全班」的两面，摆成两个并列按钮时教师分不出该按哪个。
+  controls.push(build('worksheet-menu', 'view', '学习单', {
+    title: '按学习单看全班：答题分析 / 进度矩阵',
+    popup: 'menu', expanded: input.worksheetMenuOpen,
   }));
   // 全屏只在指定模式：跟随模式下每格显示的是**不同**的模块，铺满之后既不像投屏讲评、
   // 也不像图墙，教师按下去只会得到一个与预期无关的覆盖层。
@@ -186,8 +216,17 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
     controls.push(build('fullscreen', 'view', '全屏', { title: '全屏显示学生面板' }));
   }
 
-  controls.push(build('permissions', 'setting', '课堂权限', {
-    popup: 'dialog', expanded: input.permissionsOpen,
+  // ★ 2026-09-29（教师）：原来那一个「课堂权限」弹窗按模块**拆成两个**，
+  // 每个模块的设置紧挨着它自己的按钮；「课堂权限」这个按钮随之取消。
+  // ⚠️ 原来那个弹窗里的第三段（学习单）本来就只有一句「这一段还没有专属开关」——
+  // 所以它没有对应的按钮，直接消失（不是漏了）。
+  controls.push(build('explore-settings', 'setting', '探究空间', {
+    title: '探究空间的设置：学生网页画面的采集',
+    popup: 'dialog', expanded: input.exploreOpen,
+  }));
+  controls.push(build('companion-settings', 'setting', '智能学伴', {
+    title: '智能学伴的设置：四项能力开关',
+    popup: 'dialog', expanded: input.companionOpen,
   }));
   controls.push(build('module-state', 'setting', '模块状态', {
     popup: 'menu', expanded: input.modulesOpen,

@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  HEADER_BUSY_KEYS, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
+  HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
 } from './header-controls.ts';
 
 /** 一个「什么都正常」的课堂：标准模式、进行中、未暂停、跟随、非全屏、不忙。 */
@@ -24,7 +24,9 @@ const BASE: HeaderLayoutInput = {
   boardMode: 'follow',
   gridFullscreen: false,
   busy: null,
-  permissionsOpen: false,
+  worksheetMenuOpen: false,
+  exploreOpen: false,
+  companionOpen: false,
   modulesOpen: false,
 };
 
@@ -49,10 +51,10 @@ test('🔴 标准模式 + 跟随：正好这七个控件，按「状态｜动作
   assert.deepEqual(stripText(headerControls(BASE)), [
     'pause=暂停课堂',
     'lock=锁定作答',
-    'notify=通知全体',
-    'worksheet=学习单',
-    'matrix=矩阵',
-    'permissions=课堂权限',
+    'notify=全体消息',
+    'worksheet-menu=学习单',
+    'explore-settings=探究空间',
+    'companion-settings=智能学伴',
     'module-state=模块状态',
   ]);
 });
@@ -60,15 +62,30 @@ test('🔴 标准模式 + 跟随：正好这七个控件，按「状态｜动作
 test('🔴 分组边界由 `startsGroup` 给出（渲染层只管画线，不做判断）', () => {
   const controls = headerControls(BASE);
   // 第一项恒 false —— 一个开在最左边的分隔线是没有意义的。
-  assert.deepEqual(controls.map((c) => c.startsGroup), [false, false, true, true, false, true, false]);
+  assert.deepEqual(controls.map((c) => c.startsGroup), [false, false, true, true, true, false, false]);
   assert.deepEqual(controls.map((c) => c.kind), [
-    'state', 'state', 'action', 'view', 'view', 'setting', 'setting',
+    'state', 'state', 'action', 'view', 'setting', 'setting', 'setting',
   ]);
 });
 
-test('🔴 矩阵紧挨着学习单（它们是同一件事的两面，原来被两个设置项隔开）', () => {
+test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各自独立的按钮', () => {
+  // ★ 2026-09-29（教师）：「两者合并成一个『学习单』，通过鼠标点击下拉后选择」。
   const list = ids();
-  assert.equal(list.indexOf('matrix'), list.indexOf('worksheet') + 1);
+  assert.ok(list.includes('worksheet-menu'));
+  assert.equal(list.includes('worksheet' as HeaderControlId), false, '原来的「学习单」按钮不该还在');
+  assert.equal(list.includes('matrix' as HeaderControlId), false, '原来的「矩阵」按钮不该还在');
+});
+
+test('🔴 那个下拉里的两项：教师逐字给的两个名字', () => {
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题分析', '进度矩阵']);
+  // ⚠️ 两项的 id 必须不同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
+  assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, 2);
+});
+
+test('🔴 「课堂权限」已经取消：它的两段各自成按钮（学习单那一段本来就没有开关）', () => {
+  const list = ids();
+  assert.equal(list.includes('permissions' as HeaderControlId), false, '课堂权限按钮应当消失');
+  assert.ok(list.includes('explore-settings') && list.includes('companion-settings'));
 });
 
 test('🔴 暂停课堂排在锁定作答之前（两个最常用的状态开关在最左）', () => {
@@ -185,7 +202,7 @@ test('⚠️ 任意一个忙态键都禁用那三个（含探究空间的采集�
 
 test('🔴 忙态不影响另外四个（通知 / 学习单 / 矩阵 / 两个设置项）', () => {
   const controls = headerControls({ ...BASE, busy: HEADER_BUSY_KEYS.pause });
-  for (const id of ['notify', 'worksheet', 'matrix', 'permissions', 'module-state'] as const) {
+  for (const id of ['notify', 'worksheet-menu', 'explore-settings', 'companion-settings', 'module-state'] as const) {
     const item = controls.filter((c) => c.id === id)[0];
     assert.equal(item.disabled, false, `${id} 不该被别的控件的忙态禁用`);
   }
@@ -193,16 +210,20 @@ test('🔴 忙态不影响另外四个（通知 / 学习单 / 矩阵 / 两个设
 
 /* ── 6. 浮层：哪种、开着没有 ─────────────────────────────────── */
 
-test('🔴 两个设置项各自说自己开的是哪种浮层，以及开合态', () => {
-  assert.equal(control('permissions').popup, 'dialog');
+test('🔴 每个设置项各自说自己开的是哪种浮层，以及开合态', () => {
+  assert.equal(control('explore-settings').popup, 'dialog');
+  assert.equal(control('companion-settings').popup, 'dialog');
   assert.equal(control('module-state').popup, 'menu');
-  assert.equal(control('permissions', { permissionsOpen: true }).expanded, true);
-  assert.equal(control('permissions').expanded, false);
+  assert.equal(control('worksheet-menu').popup, 'menu', '「学习单」是个下拉');
+  assert.equal(control('explore-settings', { exploreOpen: true }).expanded, true);
+  assert.equal(control('explore-settings').expanded, false);
+  assert.equal(control('companion-settings', { companionOpen: true }).expanded, true);
   assert.equal(control('module-state', { modulesOpen: true }).expanded, true);
+  assert.equal(control('worksheet-menu', { worksheetMenuOpen: true }).expanded, true);
 });
 
 test('⚠️ 非设置项没有浮层（`popup: null`）—— 别给普通按钮挂 aria-haspopup', () => {
-  for (const id of ['pause', 'lock', 'notify', 'worksheet', 'matrix'] as const) {
+  for (const id of ['pause', 'lock', 'notify'] as const) {
     assert.equal(control(id).popup, null, `${id}`);
     assert.equal(control(id).expanded, false, `${id}`);
   }
@@ -214,9 +235,11 @@ test('🔴 三句既有的悬浮说明逐字保留（它们是唯一的解释来
   assert.equal(control('pause').title, '暂停后学生无法使用三件套中的任何功能');
   assert.equal(control('lock').title, '停笔：学生不能再修改答案，但仍然可以交卷');
   assert.equal(control('sync-groups', { mode: 'group' }).title, '把当前班级的分组名称和成员同步到正在进行的课堂');
-  assert.equal(control('worksheet').title, '按学习单看全班：先按学习单分组，再按题看正确率与作答');
-  assert.equal(control('matrix').title, '学生×题目矩阵：一眼看出此刻该讲哪一题');
+  assert.equal(control('worksheet-menu').title, '按学习单看全班：答题分析 / 进度矩阵');
   assert.equal(control('fullscreen', { boardMode: 'assign' }).title, '全屏显示学生面板');
+  // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。
+  assert.equal(WORKSHEET_MENU_ITEMS[0].title, '按学习单看全班：先按学习单分组，再按题看正确率与作答');
+  assert.equal(WORKSHEET_MENU_ITEMS[1].title, '学生×题目矩阵：一眼看出此刻该讲哪一题');
 });
 
 /* ── 8. `headerLayout`：头部那几段显不显示 ─────────────────────── */

@@ -81,13 +81,23 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
 }
 
-export function WorksheetTileContent({ state, answer, compact }: {
+export function WorksheetTileContent({ state, answer, rewardText, compact }: {
   state: WorksheetTileState;
   /**
    * ★ 2026-09-28：下方那一块要显示的那一题（教师：「留出下方最大的空间用来显示
    * 当天学生正在答题的详细动态情况」）。`null` = 挑不出是哪一题 ⇒ 不画那一块。
    */
   answer?: TileAnswer | null;
+  /**
+   * ★ 2026-09-29（教师）：「这个面板里显示的是学生学习单的监控情况，还缺少一个**非常重要**
+   * 的信息，就是学生目前所获得的**奖励个数**」。
+   *
+   * 由调用方从 `participantOverview` 取（`⭐×6` / `+6 分` / 一个都没拿到时 `⭐×0`）——
+   * 判据在 `worksheet-drawer-state.ts`（纯函数、有用例），**这一层只画**。
+   * ⚠️ `null` = **不知道**（那份学习单的 settings 还没到）⇒ 什么都不画，
+   * 而不是画一个 `⭐×0` —— 「不知道」与「零个」在屏幕上是两句不同的话。
+   */
+  rewardText?: string | null;
   /** 全屏网格里格子更小、字更小 —— 与 `renderTileContent` 的同一个旋钮同义。 */
   compact: boolean;
 }) {
@@ -127,7 +137,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
             {stateLine(state)}
           </div>
           {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。 */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 3 }}>
             {/* ⚠️ 题号取自判据层的 `headings`（与 `cells` 同源），**不在这里现算** ——
                 现算就是又一份真源：第二级任务的第一道题会写着「第 3 题」，而同一屏上
                 抽屉/矩阵/学生端说的是「任务二 · 1」。 */}
@@ -139,6 +149,33 @@ export function WorksheetTileContent({ state, answer, compact }: {
                   background: CELL_STYLE[status].background, border: `1px solid ${CELL_STYLE[status].border}`,
                 }} />
             ))}
+            {/* ★ 2026-09-29：这一行的**右端**住着两枚小记号（奖励个数、「正在写」）。
+                🔴 **位置是算过的，不是随手放的**：教师报的问题是「『正在写』一出现，监控内容
+                就上下跳」—— 它原来住在下面预览块的表头行里，而那一行在 working / stuck 两态下
+                没有文字、高度是 **0**，记号一来整行就长高，下面整块预览跟着往下跳。
+                这一行的高度由方格决定（14px），这两枚也是 14px ⇒ **同一行内不改变高度**。
+                ⚠️ 格子很窄（214px）时它们可能被挤到下一行 —— 那会让这一行多 14px，
+                但**题数与奖励档在一节课里不会变**，所以不会来回跳。
+                ⚠️ 也**不压任何文字**：方格阵通常填不满一行，右端本来就是空的。
+                ⚠️ 两枚记号**共用一个 `marginLeft: 'auto'`**（包在这一层里）：给两枚各写一个
+                auto ⇒ flex 会把剩余空间**平分**给它们，奖励就会被推到行中间去。 */}
+            {(rewardText || answer?.fromDraft) && (
+              <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {rewardText && (
+                  <span title="这一份学习单上他目前获得的奖励（各题得分之和）"
+                    style={{ padding: '1px 5px', borderRadius: 4, background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', fontWeight: 700, fontSize: '0.625rem', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                    {rewardText}
+                  </span>
+                )}
+                {answer?.fromDraft && (
+                  <span title="他此刻正在写，还没保存（学生端有 1.5 秒保存防抖）"
+                    style={{ padding: '1px 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.625rem', whiteSpace: 'nowrap' }}>
+                    <WorksheetStatusIcon name="drafting" size={12} />
+                    正在写
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           </div>
           {/* ★ 下方：**他此刻正在做的那一题**的实时作答（逐题型换画法，见 `tile-answer.tsx`）。
@@ -150,22 +187,17 @@ export function WorksheetTileContent({ state, answer, compact }: {
                   下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。 */}
               {/* 🔴 「全部提交」那一态的正文字说的是「✓ 8 题已全部提交」，**没有题号** ——
                   下面这块得自己说清是哪一题。其余两态的正文字已经带题号了，再说一遍是重复。
-                  ★ 而 `fromDraft` 那个记号**每一态都要有**：它说的是「这一份还没落库」，
-                  不说的话教师会把他**还在写**的草稿当成已经交上来的答案。 */}
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden' }}>
-                {state.kind === 'all-submitted' && (
+                  ★ 2026-09-29：「正在写」那个记号**搬去上面方格阵那一行的右端了**
+                  （教师：「目前所在的位置不是很好，会导致监控内容在显示的时候上下跳动」）——
+                  它原来就住在这一行，而这一行在 working / stuck 两态下**没有文字、高度是 0**
+                  ⇒ 记号一来整行长高、下面那块预览跟着往下跳。搬走之后这一行只剩标题文字。 */}
+              {state.kind === 'all-submitted' && (
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {answer.heading} · {answer.typeLabel}
                   </span>
-                )}
-                {answer.fromDraft && (
-                  <span title="他此刻正在写，还没保存（学生端有 1.5 秒保存防抖）"
-                    style={{ marginLeft: 'auto', flexShrink: 0, padding: '1px 4px', borderRadius: 4, background: '#fef3c7', color: '#b45309', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <WorksheetStatusIcon name="drafting" size={12} />
-                    正在写
-                  </span>
-                )}
-              </div>
+                </div>
+              )}
               <TileAnswerBody answer={answer} />
             </div>
           )}

@@ -302,7 +302,13 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
     const left = readMatchLeft(node);
     const right = readMatchRight(node);
     const pairs = readPairs(node);
-    const key = (pair: { leftId: string; rightId: string }) => `${pair.leftId} ${pair.rightId}`;
+    // ⚠️ 分隔符是一个 **NUL 字符**（写成转义 `\u0000`）：它不可能出现在 id 里，
+    //    所以拼接无歧义（换 `|` 之类可见字符，遇到一个含它的 id 就会串键，
+    //    而那种错的表现是「两张卡片的数据混在一起」，不报错）。
+    // 🔴 **写转义、不要写那个真字符**：真 NUL 会让 grep/rg 把整个文件当二进制
+    //    （2026-09-29 实测：grep 在这个文件上一无所获），下一个人再也搜不到它。
+    // 复合键：左 id + 右 id。
+    const key = (pair: { leftId: string; rightId: string }) => `${pair.leftId}\u0000${pair.rightId}`;
     const correctSet = new Set(pairs.map(key));
     const linkedSet = new Set(draft.links.map(key));
     return {

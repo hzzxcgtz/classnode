@@ -532,6 +532,20 @@ export function WorksheetQuestionList({
               // 答错标记一个都不会画（判据在 `wrongSelectedKeys`，有用例）。
               // ⚠️ 教师端的预览走的是同一个组件、**不传**这个 prop。
               correctKeys={correctKeysFromPayload(correctBlanks?.[node.id])}
+              // ★ 2026-09-29（教师）：「连线题在批改后，如果错误的话，没有出现错误信息。」
+              //
+              // 🔴 这一行就是那个 bug 的修复，而根因值得记下来：服务端 2026-09-28 就修好了
+              //（`wrongAnswers` 按题型分派，连线题发「《绝句》 → 杜甫」那样一整句话），
+              // 客户端那一半**只给 `ChoiceBlankAnswer` 那条路接了** `correctBlanks`
+              //（`f6b6ab8`）—— 而填空 / 选择填空走的正是那条路，所以它们当场就好了。
+              // **连线题走的是 `QuestionInput` 这条路，而这里从来没接过这个 prop**
+              // ⇒ 学生答错了什么也看不到，全程没有一处报错。
+              //
+              // ⚠️ 上面那个 `correctKeys` 是**另一件东西**（选择/判断的选项 key，由
+              // `correctKeysFromPayload` 从同一份数据里解出来）—— 两者都要传：
+              // 少了上面那个，选择题不标红；少了下面这个，连线题没有正确答案。
+              // 这条接线由 `panel-props-parity.test.ts` 看着（它查「每一个可选 prop 都传了」）。
+              correctBlanks={correctBlanks?.[node.id]}
             />
             </>)}
 

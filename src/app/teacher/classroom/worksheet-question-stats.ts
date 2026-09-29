@@ -326,7 +326,12 @@ function buildDistribution(
       // ⚠️ 重复的同一对只算一次（否则「一条左项连了两个右项」的矛盾作答会把那一对算两次）。
       const seen = new Set<string>();
       for (const link of draft.links) {
-        const key = `${link.leftId} ${link.rightId}`;
+    // ⚠️ 分隔符是一个 **NUL 字符**（写成转义 `\u0000`）：它不可能出现在 id 里，
+    //    所以拼接无歧义（换 `|` 之类可见字符，遇到一个含它的 id 就会串键，
+    //    而那种错的表现是「两张卡片的数据混在一起」，不报错）。
+    // 🔴 **写转义、不要写那个真字符**：真 NUL 会让 grep/rg 把整个文件当二进制
+    //    （2026-09-29 实测：grep 在这个文件上一无所获），下一个人再也搜不到它。
+        const key = `${link.leftId}\u0000${link.rightId}`;
         if (seen.has(key)) continue;
         seen.add(key);
         bump(counts, key);
@@ -337,7 +342,7 @@ function buildDistribution(
       left,
       right,
       cells: [...counts.entries()].map(([key, count]) => {
-        const [rowId, colId] = key.split(' ');
+        const [rowId, colId] = key.split('\u0000');
         return { rowId, colId, count, correct: isCorrectPair(rowId, colId) };
       }),
     };
@@ -357,7 +362,12 @@ function buildDistribution(
         // ⚠️ 放进了**不存在的框**（教师改题删了那个框）⇒ **不计**：那一格在矩阵上没有列，
         // 计进去会凭空多出一个画不出来的格子。
         if (!zoneIds.has(zoneId)) continue;
-        bump(counts, `${itemId} ${zoneId}`);
+    // ⚠️ 分隔符是一个 **NUL 字符**（写成转义 `\u0000`）：它不可能出现在 id 里，
+    //    所以拼接无歧义（换 `|` 之类可见字符，遇到一个含它的 id 就会串键，
+    //    而那种错的表现是「两张卡片的数据混在一起」，不报错）。
+    // 🔴 **写转义、不要写那个真字符**：真 NUL 会让 grep/rg 把整个文件当二进制
+    //    （2026-09-29 实测：grep 在这个文件上一无所获），下一个人再也搜不到它。
+        bump(counts, `${itemId}\u0000${zoneId}`);
       }
     }
     return {
@@ -365,7 +375,7 @@ function buildDistribution(
       items,
       zones,
       cells: [...counts.entries()].map(([key, count]) => {
-        const [rowId, colId] = key.split(' ');
+        const [rowId, colId] = key.split('\u0000');
         return { rowId, colId, count, correct: placement[rowId] === colId };
       }),
     };

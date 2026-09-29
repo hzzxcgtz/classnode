@@ -36,7 +36,10 @@ const SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-prompt-text.tsx'), 'ut
  * 也画它）。**那一份也在网里** —— 否则「不许定位」只守住了调用方，而那枚标记自己
  * 加一个 `position: absolute` 就又能浮起来。
  */
-const MARK_SOURCE = fs.readFileSync(path.resolve(HERE, '../components/worksheet-wrong-mark.tsx'), 'utf8');
+// ⊘ ★ 2026-09-29：那枚红叉（`@/components/worksheet-wrong-mark`）的**最后一个使用者**
+//（选择题的选项）也改成了「暗红 + 删除线」⇒ 那个文件删掉了，本网不再读它。
+// ⚠️ 它带着的教训没有丢：文件头「标记不许盖住内容」那一段说的就是它（那个叉曾绝对定位在
+// 填空框右上角，答案一长就压住字）。
 
 /** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。 */
 function stripComments(source: string): string {
@@ -46,7 +49,7 @@ function stripComments(source: string): string {
 test('🔴 题干渲染器与答错标记里一个定位都没有（标记不许浮到内容上面）', () => {
   // ★ 2026-09-28：槽的画法搬去了 `worksheet-blank-slot.tsx` ⇒ **它也要进这条网**。
   const SLOT_SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-blank-slot.tsx'), 'utf8');
-  for (const [name, source] of [['worksheet-prompt-text.tsx', SOURCE], ['worksheet-blank-slot.tsx', SLOT_SOURCE], ['worksheet-wrong-mark.tsx', MARK_SOURCE]]) {
+  for (const [name, source] of [['worksheet-prompt-text.tsx', SOURCE], ['worksheet-blank-slot.tsx', SLOT_SOURCE]]) {
     const found = [...stripComments(source).matchAll(/position:\s*'([a-zA-Z]+)'/g)].map((match) => match[1]);
     assert.deepEqual(
       found, [],
@@ -70,7 +73,6 @@ function stripImports(source: string): string {
 
 test('阳性对照：这条网真的在读这两个文件（否则上面那条对空串永远绿）', () => {
   assert.ok(SOURCE.includes('export function PromptText'), '题干渲染器要真的被读到了');
-  assert.ok(MARK_SOURCE.includes('export function WrongMark'), '标记那一份也要真的被读到');
   assert.ok(stripComments(SOURCE).length > 500, '剥注释之后剩下的仍是这个组件，不是一段空壳');
   const slotSource = fs.readFileSync(path.join(HERE, 'worksheet-blank-slot.tsx'), 'utf8');
   const stripped = (source: string) => stripComments(source);
@@ -88,10 +90,12 @@ test('阳性对照：这条网真的在读这两个文件（否则上面那条�
     '未预览候选词时不能用 color: undefined 覆盖 blankValueStyle 的暗红色',
   );
   assert.ok(stripImports(stripped(SOURCE)).includes('blankAriaLabel'), '删除线对读屏无声 ⇒ 那一格的名字要跟着走');
-  // 那枚叉本身仍然只有一处定义，而且**还有人用**（选择题的选项 —— 教师这次只说了填空题，
-  // 那处分叉是有意的：✗ 标的是教师写的选项，删除线在别人写的字上是另一种读法）。
   const choiceSource = fs.readFileSync(
     path.resolve(HERE, '../app/classroom/worksheet/questions/choice-body.tsx'), 'utf8',
   );
-  assert.equal((choiceSource.match(/<WrongMark \/>/g) ?? []).length, 1, '选择题的选项还在用它');
+  assert.ok(stripImports(stripped(choiceSource)).includes('WRONG_ANSWER_STYLE'),
+    '选择题那一处必须仍然标出答错（与填空同一条规则，换成样式了）');
+  // ⊘ ★ 2026-09-29：最后一处（选择题的选项）也改成了样式 ⇒ 那一枚**一个使用者都没有了**，
+  // 组件随之删除。这里改成断言**它确实改用样式**（而不是「不许用那枚叉」——
+  // 那种断言在组件删掉之后恒真，等于没有网）。
 });

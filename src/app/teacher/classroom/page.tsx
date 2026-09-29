@@ -1899,7 +1899,23 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 现在按页签各判一次，理由一个字没变：学生端已经看不见那个模块了，教师端还挂着一块
    * 它的统计，等于在讲一件课堂上不存在的事。
    */
-  const statsTabs = visibleStatsTabs(students.map((student) => visibleModules(classroom, student)));
+  /**
+   * 「这间课堂在用什么材料」的那一份形状（`ClassroomMaterials`）。
+   *
+   * 🔴 **课堂级智能体在教师端这条路径上叫 `classroomAgents`**（`GET /:id` 的 include），
+   * 不叫 `agents` —— 而 `agents` 在类型上是**可选**的 ⇒ 把原始 `classroom` 递下去时
+   * `classroom.agents` 恒为 `undefined`，`effectiveGroupAgent` **静默**回 `null`
+   *（=「这间课堂没配智能体」），而 tsc / eslint / 用例**全绿**。
+   *
+   * ⚠️ ★ 2026-09-29 **为这一条付过学费**：我用原始 `classroom` 去调 `visibleModules`，
+   * 于是「智能学伴」页签对**所有**课堂消失、词云跟着不见（教师报「词云还是没有回来」），
+   * 而同一个函数的网页 / 学习单两条恰好读的就是同名小写字段 ⇒ 只有智能体那一条静默地错。
+   * `drawerAgent` 那处**早就拼过同一个对象**（它的注释里写着「这里只做改名」），我没找到它。
+   * ⇒ 现在拼一次、两处共用，并且立了一条网盯着调用点（`classroom-materials-shape.test.ts`）。
+   */
+  const materials = { ...classroom, agents: classroom.classroomAgents?.map((item) => item.agent) };
+
+  const statsTabs = visibleStatsTabs(students.map((student) => visibleModules(materials, student)));
   /**
    * 此刻真正显示的那一页。**算出来的**，不是直接读 state：
    * 教师把当前页签那个模块设成 `hidden` 之后，页签消失了、而 state 还指着它 ——
@@ -2092,7 +2108,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 解析结果就是 `null`（不猜、也不拿课堂级顶上），界面显示「AI 助手」。
    */
   const drawerAgent = effectiveGroupAgent(
-    { ...classroom, agents: classroom.classroomAgents?.map((item) => item.agent) },
+    // ⚠️ 用上面那一份 `materials`（**同一份形状，拼一次**）—— 原来这里自己又拼了一遍，
+    // 而那正是上面那个 bug 的成因之一：同一件事存在两个拼法时，总有一处忘了拼。
+    materials,
     { groupId: students.find((s) => s.id === selectedStudent?.id)?.groupId ?? null },
   );
 

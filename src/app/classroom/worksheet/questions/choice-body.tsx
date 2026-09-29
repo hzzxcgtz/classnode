@@ -1,7 +1,7 @@
 'use client';
 
+import { WRONG_ANSWER_STYLE } from '@/lib/worksheet-prompt-marks';
 import { TRUE_FALSE_OPTIONS, correctAnswerLabel, optionBadge, readOptions, wrongSelectedKeys } from '@/lib/worksheet-questions';
-import { WrongMark } from '@/components/worksheet-wrong-mark';
 import { CorrectAnswerNote } from './correct-answer-note';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -98,17 +98,26 @@ export function ChoiceBody({ node, draft, onChange, disabled, correctKeys }: Cho
                    见 `optionBadge`）—— 所以这里**不能**写成 `option.key`。
                 ⚠️ 判据在 `src/lib/worksheet-questions.ts` 里（`node --test` 有用例）。 */}
             <span className={styles.optionKey}>{optionBadge(node.type, option.key)}</span>
-            <span className={styles.optionText}>
+            {/* ★ 2026-09-29（教师）：「选择题那个红叉也改掉吧」⇒ 与填空**同一条规则**：
+                他选中而答错的那一项，**文字**改成暗红 + 删除线，不再在旁边画一枚红叉。
+                🔴 样式只有一份（`WRONG_ANSWER_STYLE`，在 `@/lib/worksheet-prompt-marks`）——
+                与填空那四个渲染点同源，改一处两处一起变。
+                ⚠️ 这一格**没有** `blankAnswerStyle` 那种打底（选项文字本来没有行内色），
+                   所以直接展开即可，不必过 `blankValueStyle`（那个函数存在的理由是**顺序**）。
+                ⚠️ 删除线划的是**这个选项**（教师写的字）——与填空划掉学生写的字略有不同，
+                   但两者说的是同一句话：「这一项不对」。教师这次明确要它跟着改。
+                ⊘ ★ 2026-09-29：这一处是那枚红叉**最后一个**使用者 ⇒
+                   `@/components/worksheet-wrong-mark`（`WrongMark`）**随之删除**。
+                   它带着的那条教训（「标记不许盖住内容」：那个叉曾绝对定位在填空框右上角，
+                   答案一长就压住字）**没有丢** —— 记在 `worksheet-prompt-text.test.ts` 的文件头
+                   与 `@/lib/worksheet-prompt-marks` 那两处，而且那条「这几个文件里一个定位都不许有」
+                   的网仍然在跑（只是不再包括那个已删的文件）。 */}
+            <span className={styles.optionText} style={wrong ? WRONG_ANSWER_STYLE : undefined}>
               {option.text.trim()
                 ? option.text
                 : !option.imageUrl && <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
               {option.imageUrl && <img className={styles.optionImage} src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图`} />}
             </span>
-            {/* ★ 2026-09-27：答错的那个选项后面跟一个红叉 —— 与填空那条路**同一枚标记**
-                （`@/components/worksheet-wrong-mark`，一处定义）。
-                ⚠️ 它是**行内的兄弟节点**、不是定位上去的：定位会让它压在选项文字上，
-                   而「标记盖住内容」正是这一轮修掉的那个缺陷（见那枚标记自己的注释）。 */}
-            {wrong && <WrongMark />}
           </label>
         );
       })}

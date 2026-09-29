@@ -33,7 +33,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROMPT_SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-prompt-text.tsx'), 'utf8');
 const TABLE_SOURCE = fs.readFileSync(path.join(HERE, 'worksheet-table-view.tsx'), 'utf8');
-const MARK_SOURCE = fs.readFileSync(path.resolve(HERE, '../components/worksheet-wrong-mark.tsx'), 'utf8');
+// ⊘ ★ 2026-09-29：那枚红叉的最后一个使用者（选择题的选项）也改成了样式 ⇒ 组件已删，
+// 本网不再读它（见 `worksheet-prompt-text.test.ts` 同一处的说明）。
 const GLOBAL_CSS = fs.readFileSync(path.resolve(HERE, '../app/globals.css'), 'utf8');
 
 /** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。 */
@@ -93,5 +94,4 @@ test('阳性对照：剥注释之后仍然能看见真正的东西（这条网�
   assert.ok(bareTable.includes('aria-label'), '空的那几格必须有读屏标签（第 R 行第 C 格）');
   assert.ok(bareTable.includes('overflowX'), '表格必须能横向滚动（iPad 竖屏放不下）');
   assert.ok(barePrompt.includes('worksheet-blank-input'), '题干那一份的空用的就是那个全局类');
-  assert.ok(stripComments(MARK_SOURCE).length > 0, '那枚标记的文件不是空的');
 });

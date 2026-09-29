@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  cardInOnlineModule, isOnlineStatus, onlineModuleDistribution, resolveFocus,
+  cardInOnlineModule, isOnlineStatus, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote,
 } from './board-module-counts.ts';
 
 /* ── 1. 谁算「在线」（判据只有这一处）────────────────────────────── */
@@ -139,4 +139,44 @@ test('🔴 同一个人：被数字数进去 ⇔ 在自己的单人格子上命�
     .filter((id) => cardInOnlineModule([id], 'worksheet', focus, statuses)).length;
   assert.equal(counts.worksheet, hits);
   assert.equal(hits, 1);
+});
+
+/* ── 6. 让这一行**对得上账**（★ 2026-09-29，头部重构）────────────────── */
+
+test('🔴 onlineTotal：五个格相加 = 此刻在线人数（三个模块格是它的一个划分）', () => {
+  const counts = { worksheet: 2, explore: 0, companion: 1, home: 3, unknown: 1 };
+  assert.equal(onlineTotal(counts), 7);
+  // ⚠️ 这条是「三个模块相加 ≠ 全部」那件事的另一半：三个模块相加 = 在线 − 首页 − 未定。
+  assert.equal(onlineTotal(counts) - counts.home - counts.unknown, counts.worksheet + counts.explore + counts.companion);
+});
+
+test('🔴 onlineTotal：空名册 / 全离线 ⇒ 0', () => {
+  assert.equal(onlineTotal({ worksheet: 0, explore: 0, companion: 0, home: 0, unknown: 0 }), 0);
+});
+
+test('🔴 unplacedNote：三个模块之外还有几个在线的人（首页 / 位置未定）', () => {
+  assert.equal(
+    unplacedNote({ worksheet: 2, explore: 0, companion: 1, home: 3, unknown: 1 }, '人'),
+    '另有 4 人在首页或位置未定',
+  );
+});
+
+test('🔴 unplacedNote：一个不剩时**不出现**（这时三个模块相加就等于在线）', () => {
+  assert.equal(unplacedNote({ worksheet: 2, explore: 1, companion: 0, home: 0, unknown: 0 }, '人'), null);
+  // 全 0（没人在线）时同样不出现 —— 一句「另有 0 人」只是噪音。
+  assert.equal(unplacedNote({ worksheet: 0, explore: 0, companion: 0, home: 0, unknown: 0 }, '人'), null);
+});
+
+test('🔴 unplacedNote：量词随模式（分组 / 高级模式下参与者是组）', () => {
+  assert.equal(
+    unplacedNote({ worksheet: 0, explore: 0, companion: 0, home: 0, unknown: 2 }, '组'),
+    '另有 2 组在首页或位置未定',
+  );
+});
+
+test('🔴 unplacedNote 与 onlineTotal 对同一份分布不会互相打架', () => {
+  const counts = { worksheet: 1, explore: 1, companion: 1, home: 2, unknown: 4 };
+  const note = unplacedNote(counts, '人');
+  assert.ok(note !== null && note.includes('6'), '首页 + 未定 = 6');
+  assert.equal(onlineTotal(counts), 9, '而在线总数是 9 —— 3 个在模块里、6 个不在');
 });

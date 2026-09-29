@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useLayoutEffect, type ReactNode, type Ref } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useLayoutEffect, Fragment, type ReactNode, type Ref } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
@@ -24,9 +24,10 @@ import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsW
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
-import { cardInOnlineModule, onlineModuleDistribution, resolveFocus, type FocusModule } from './board-module-counts';
+import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
+import { HEADER_BUSY_KEYS, headerLayout, type HeaderControlId } from './header-controls';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
-import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
+import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
 
 type ClassroomGroupDisplay = { id: string; name: string };
@@ -240,6 +241,58 @@ function ModuleStateRadio({ label, hint, selected, busy, disabled, onSelect }: {
       style={{ flex: 1, minHeight: 30, padding: '5px 6px', border: `1px solid ${selected ? '#2563eb' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#eff6ff' : 'white', color: selected ? '#1d4ed8' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
       {label}
     </button>
+  );
+}
+
+/**
+ * 「模块状态」那个下拉菜单的**面板**（★ 2026-09-29 从头部 JSX 里搬出来）。
+ *
+ * 🔴 搬出来是**为了配合「控件由判据表驱动」**：按钮现在由 `header.controls.map` 画，
+ * 而那个菜单必须与按钮**同住一层**（它的锚点是包住两者的 `modulesMenuRef`，
+ * `position: absolute; right: 0; top: calc(100% + 8px)` 靠那一层的 `position: relative`）。
+ * 留在原处的话，它就会变成 `map` 里的一块 40 行 JSX。
+ *
+ * ⚠️ **行为一个字没改**（连文案与样式一起搬的）。四个入参是它真正用到的东西，
+ * 没有顺手把 `classroom` 整个递进来 —— 那会把这个组件的依赖面扩到整间课堂。
+ */
+function ModuleStateMenu({ modules, busy, neverConfigured, onSelect }: {
+  modules: readonly ClassroomModuleSetting[] | undefined;
+  busy: string | null;
+  neverConfigured: boolean;
+  onSelect: (moduleKey: ClassroomModuleKey, state: ClassroomModuleState) => void;
+}) {
+  return (
+    <div role="menu" aria-label="课堂模块状态" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
+      <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
+      {neverConfigured && (
+        <div style={{ margin: '0 10px 8px', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>
+          本课堂未单独配置过模块，以下三项均为默认的「暂停」态。
+        </div>
+      )}
+      {MODULE_KEYS.map((moduleKey) => {
+        const currentState = moduleStateOf(modules, moduleKey);
+        const moduleBusy = busy === `module:${moduleKey}`;
+        return (
+          <div key={moduleKey} role="group" aria-label={MODULE_LABELS[moduleKey]} style={{ padding: '4px 10px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.813rem', color: '#334155' }}>
+              <span style={{ flex: 1 }}>{MODULE_LABELS[moduleKey]}</span>
+              {moduleBusy && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>更新中...</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {MODULE_STATES.map((state) => (
+                <ModuleStateRadio key={state}
+                  label={MODULE_STATE_LABELS[state]}
+                  hint={MODULE_STATE_HINTS[state]}
+                  selected={currentState === state}
+                  busy={moduleBusy}
+                  disabled={busy !== null}
+                  onSelect={() => onSelect(moduleKey, state)} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1324,7 +1377,7 @@ function ClassroomBoardContent() {
 
   // ★ M5a：锁定/解锁作答。乐观更新 + 收自己的广播校正（与下面的 `toggleQuestions` 同一套）。
   // ⚠️ 它**不**动 `classroom.status` —— 锁定是另一个维度（停笔），与「暂停课堂」无关（GC 23）。
-  const toggleAnswersLock = () => runControlAction('answers-lock', async () => {
+  const toggleAnswersLock = () => runControlAction(HEADER_BUSY_KEYS.lock, async () => {
     if (answersLocked) {
       await api.unlockAnswers(id);
       setAnswersLocked(false);
@@ -1334,7 +1387,7 @@ function ClassroomBoardContent() {
     }
   });
 
-  const toggleQuestions = () => runControlAction('questions', async () => {
+  const toggleQuestions = () => runControlAction(HEADER_BUSY_KEYS.pause, async () => {
     if (paused) {
       await api.resumeClassroom(id);
       setPaused(false);
@@ -1346,7 +1399,7 @@ function ClassroomBoardContent() {
     }
   });
 
-  const syncGroups = () => runControlAction('sync-groups', async () => {
+  const syncGroups = () => runControlAction(HEADER_BUSY_KEYS.syncGroups, async () => {
     const result = await api.syncClassroomGroups(id);
     await loadClassroom();
     setToast({
@@ -1752,6 +1805,106 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     attention: allDisplayCards.filter(cardNeedsAttention).length,
     offline: allDisplayCards.filter((card) => getDisplayCardStatus(card) === 'offline').length,
   };
+
+  /* ═══════════ 头部（★ 2026-09-29 重构：判据抽进 `header-controls.ts`）═══════════ */
+
+  /**
+   * 这一屏头部有哪些控件、各叫什么、禁不禁用 —— 全部来自那个纯函数（有 25 条用例）。
+   *
+   * 🔴 这里**只递输入、只画结果**：`同步分组` 的两道条件、`全屏` 只在指定模式、
+   * 两个开关的标签翻转、忙态的三个键，原先全写在这一段的 JSX 三元里，**没有任何回归网**。
+   * 判据搬走之后，本文件只剩「把 `control.id` 接到哪个 handler、配哪个图标」。
+   * ⚠️ 那两件事（handler / 图标）**不进判据层**：它们是本文件里的闭包与 JSX，
+   * 搬出去只会得到一份需要 20 个回调的签名，收益为零。
+   */
+  const header = headerLayout({
+    mode: classroom.mode,
+    status: classroom.status,
+    paused,
+    answersLocked,
+    boardMode,
+    gridFullscreen,
+    busy: controlBusy,
+    permissionsOpen: showPermissionsDialog,
+    modulesOpen: showModulesMenu,
+  });
+
+  /** 每个控件的动作。`Record<HeaderControlId, …>` 是道门：判据层加一项而这里没接 ⇒ 编译失败。 */
+  const headerActions: Record<HeaderControlId, () => void> = {
+    pause: () => void toggleQuestions(),
+    lock: () => void toggleAnswersLock(),
+    'sync-groups': () => void syncGroups(),
+    notify: () => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); },
+    worksheet: () => openWorksheetDrawer({ kind: 'worksheets' }),
+    matrix: () => setMatrixOpen(true),
+    fullscreen: () => setGridFullscreen(true),
+    permissions: () => setShowPermissionsDialog((visible) => !visible),
+    'module-state': () => setShowModulesMenu((visible) => !visible),
+  };
+
+  /** 每个控件的图标。收 `active` 的只有「暂停课堂」—— 播放/暂停两个形状。 */
+  const headerIcons: Record<HeaderControlId, (active: boolean) => ReactNode> = {
+    pause: (active) => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {active ? <><path d="M8 5v14l11-7z" /></> : <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>}
+      </svg>
+    ),
+    lock: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="11" width="16" height="10" rx="2" />
+        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+      </svg>
+    ),
+    'sync-groups': () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
+    ),
+    notify: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+    ),
+    worksheet: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2h9a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6"/><path d="M4 6h5V2"/><line x1="9" y1="12" x2="16" y2="12"/><line x1="9" y1="16" x2="14" y2="16"/></svg>
+    ),
+    matrix: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="3" y1="9" x2="21" y2="9" />
+        <line x1="3" y1="15" x2="21" y2="15" />
+        <line x1="9" y1="3" x2="9" y2="21" />
+      </svg>
+    ),
+    fullscreen: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+    ),
+    permissions: () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.2.37.55.72 1 .9.35.14.73.2 1.1.2h.1v4h-.1a1.7 1.7 0 0 0-1.5.9z"/></svg>
+    ),
+    'module-state': () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+    ),
+  };
+
+  const headerCaret = (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+  );
+
+  /**
+   * 筛选行右段（「此刻在线」）那两个数。
+   *
+   * 🔴 三个模块数字是**在线**口径（教师批注 ③），而左段是**参与者**口径 ——
+   * 两个分母共用一行时，`三个模块 + 离线 + 全部` 这三条凑不齐（差的那一个正是在首页 /
+   * 位置未定的人）。所以右段要**自己把分母写出来**（「此刻在线 N 人」），并用
+   * `unplacedNote` 把那半句话补上（`0` 时不出现）。见那两个函数。
+   *
+   * ⚠️ **口径与 `onlineCount` 不同，这不是笔误**：上面那个数数的是
+   * `Object.values(studentStatuses)` —— 那是一张「**连过**这张看板的学生」的表
+   *（`loadClassroom` 只把 HTTP 查到的在线 id 写进去，离线且从没连过的人**根本没有键**），
+   * 而且换组后消失的参与者可能留在里面。这一个数逐**名册**数（`students`）——
+   * 与它左边那两个模块格、以及「全部 / 离线」两格**同一个分母**，才谈得上对账。
+   * ⇒ 两者在「有人被移出名册」时会差几个。屏幕上方那块统计卡用的是旧口径，
+   * 本次不动它（那是另一屏的事），但**别把这里换成它**。
+   */
+  const onlineParticipants = onlineTotal(moduleDistribution);
+  const unplaced = unplacedNote(moduleDistribution, moduleCountUnitSuffix);
 
 
   /**
@@ -2201,149 +2354,81 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>点击学生卡片查看完整对话，使用筛选快速定位课堂状态</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {(classroom.mode === 'group' || classroom.mode === 'advanced') && classroom.status !== 'ended' && (
-                <button className="btn btn-secondary" onClick={() => void syncGroups()} disabled={controlBusy !== null}
-                  title="把当前班级的分组名称和成员同步到正在进行的课堂"
-                  style={{ minHeight: 36, padding: '7px 12px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
-                  {controlBusy === 'sync-groups' ? '同步中...' : '同步分组'}
-                </button>
-              )}
-              {/* ★ 2026-09-25：标签由「暂停学生提问」改为「暂停课堂」。
-                  🔴 它**一直**调的是 `api.pauseClassroom()`（改 `status`）—— 暂停的是整节课，
-                  标签写着「学生提问」是错的，教师照那个名字理解就会以为学习单还能用。 */}
-              <button className={paused ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleQuestions()} disabled={controlBusy !== null}
-                title="暂停后学生无法使用三件套中的任何功能"
-                style={{ minHeight: 36, padding: '7px 12px', color: paused ? 'white' : '#2563eb' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  {paused ? <><path d="M8 5v14l11-7z" /></> : <><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></>}
-                </svg>
-                {controlBusy === 'questions' ? '更新中...' : paused ? '恢复课堂' : '暂停课堂'}
-              </button>
-              {/* ★ M5a：锁定作答。🔴 文案**必须带「作答」二字** —— 上面那个按钮是「暂停课堂」，
-                  不带限定词的话教师分不清自己按的是哪一个（一个是停课、一个是停笔）。 */}
-              <button className={answersLocked ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => void toggleAnswersLock()} disabled={controlBusy !== null}
-                title="停笔：学生不能再修改答案，但仍然可以交卷"
-                style={{ minHeight: 36, padding: '7px 12px', color: answersLocked ? 'white' : '#2563eb' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="4" y="11" width="16" height="10" rx="2" />
-                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-                </svg>
-                {controlBusy === 'answers-lock' ? '更新中...' : answersLocked ? '解锁作答' : '锁定作答'}
-              </button>
-              <button className="btn btn-secondary" onClick={() => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); }} style={{ minHeight: 36, padding: '7px 12px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-                通知全体
-              </button>
-              {/* 学习单抽屉的入口（规格 §7.1 的「顶栏入口」／§7.3 形态 B）。
-                  🔴 **必须与「跟随 / 指定」两种模式无关**：挂在 `boardMode === 'follow'`
-                  那一段里会让它在指定模式下消失，反之亦然 —— 而它是「这一堂课谁做到哪、
-                  哪道题错得多」的唯一入口，与「每格显示哪个模块」是同一个问题的两面。
-                  所以它挂在这一行（`!gridFullscreen` 的公共头部），不挂任何模式分支。
-                  ⚠️ 这一行已经很挤（1440px 下四个按钮刚好一行），加按钮前先看截图：
-                  `.superpowers/sdd/2026-09-23-p1-worksheet-plan/evidence-d4/`
-                  before-1440.png 与 after-1440.png 是改前 / 改后那两张。 */}
-              <button className="btn btn-secondary"
-                onClick={() => openWorksheetDrawer({ kind: 'worksheets' })}
-                title="按学习单看全班：先按学习单分组，再按题看正确率与作答"
-                style={{ minHeight: 36, padding: '7px 12px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2h9a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6"/><path d="M4 6h5V2"/><line x1="9" y1="12" x2="16" y2="12"/><line x1="9" y1="16" x2="14" y2="16"/></svg>
-                学习单
-              </button>
-              {/* 触发按钮。打开的是**浮动窗**（aria-haspopup 从 "menu" 改成 "dialog"），
-                  窗本身在文件末尾与其他浮层放在一起。
-                  包裹层留着只是为了让按钮与相邻按钮的缩进/盒子一致；它不再需要 ref
-                  —— 「点外面关」对浮窗没有意义（遮罩就是那块外面）。 */}
-              <div style={{ position: 'relative' }}>
-                <button ref={permissionsButtonRef} className="btn btn-secondary" aria-haspopup="dialog" aria-expanded={showPermissionsDialog} onClick={() => setShowPermissionsDialog((visible) => !visible)} style={{ minHeight: 36, padding: '7px 12px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.2.37.55.72 1 .9.35.14.73.2 1.1.2h.1v4h-.1a1.7 1.7 0 0 0-1.5.9z"/></svg>
-                  课堂权限
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                {/* ⚠️ 原来的下拉菜单内容（三个开关 + 探究空间画面那一组）整段搬进了文件末尾的
-                    「课堂权限」浮动窗，见那里的 JSX。这里是**搬家**不是删除：
-                    控件、handler、置灰的三道闸一个都没少。 */}
-              </div>
-              <div ref={modulesMenuRef} style={{ position: 'relative' }}>
-                <button className="btn btn-secondary" aria-haspopup="menu" aria-expanded={showModulesMenu} onClick={() => setShowModulesMenu((visible) => !visible)} style={{ minHeight: 36, padding: '7px 12px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-                  模块状态
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                {showModulesMenu && (
-                  <div role="menu" aria-label="课堂模块状态" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
-                    <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
-                    {modulesNeverConfigured && (
-                      <div style={{ margin: '0 10px 8px', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>
-                        本课堂未单独配置过模块，以下三项均为默认的「暂停」态。
-                      </div>
+              {/* ★ 2026-09-29（教师选「乙」）：这一行的控件由**判据表**驱动 ——
+                  「在不在 / 叫什么 / 禁不禁用 / 分到哪一组」全来自 `header-controls.ts`
+                  （25 条用例），这里只做两件本文件才有的事：把 id 接到 handler、配图标。
+                  ⚠️ 分组靠**位置 + 分隔线**，不靠颜色深浅 —— 这是投影给全班看的屏，
+                  把按钮改淡有真实的可发现性代价，而分组本身已经解决了「五种东西看着像一种」。
+                  ⚠️ `矩阵` 挪到了 `学习单` 旁边：两者是「按学习单看全班」的两面
+                  （一个按题看正确率与逐生作答、一个看学生×题谁卡住），原先被两个设置项隔开。 */}
+              {header.controls.map((control) => {
+                const button = (
+                  <button type="button"
+                    ref={control.id === 'permissions' ? permissionsButtonRef : undefined}
+                    className={control.active ? 'btn btn-primary' : 'btn btn-secondary'}
+                    onClick={headerActions[control.id]}
+                    disabled={control.disabled}
+                    title={control.title || undefined}
+                    aria-haspopup={control.popup ?? undefined}
+                    aria-expanded={control.popup ? control.expanded : undefined}
+                    style={{
+                      minHeight: 36, padding: '7px 12px',
+                      // 两个**状态开关**是唯一点蓝字的（与「已暂停 / 已锁定」时整块变蓝同一套语义）；
+                      // 其余控件用默认字色。这是既有的层级，重构没动它。
+                      color: control.active ? 'white' : control.kind === 'state' ? '#2563eb' : undefined,
+                    }}>
+                    {headerIcons[control.id](control.active)}
+                    {control.label}
+                    {control.popup && headerCaret}
+                  </button>
+                );
+                return (
+                  <Fragment key={control.id}>
+                    {/* 组边界：判据层给的是 `startsGroup`，这里只管画。 */}
+                    {control.startsGroup && (
+                      <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 2px' }} />
                     )}
-                    {MODULE_KEYS.map((moduleKey) => {
-                      const currentState = moduleStateOf(classroom.modules, moduleKey);
-                      const moduleBusy = controlBusy === `module:${moduleKey}`;
-                      return (
-                        <div key={moduleKey} role="group" aria-label={MODULE_LABELS[moduleKey]} style={{ padding: '4px 10px 10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.813rem', color: '#334155' }}>
-                            <span style={{ flex: 1 }}>{MODULE_LABELS[moduleKey]}</span>
-                            {moduleBusy && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>更新中...</span>}
-                          </div>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            {MODULE_STATES.map((state) => (
-                              <ModuleStateRadio key={state}
-                                label={MODULE_STATE_LABELS[state]}
-                                hint={MODULE_STATE_HINTS[state]}
-                                selected={currentState === state}
-                                busy={moduleBusy}
-                                disabled={controlBusy !== null}
-                                onSelect={() => void setModuleState(moduleKey, state)} />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {/* 全屏**只在指定模式下提供**（P2.3 的重新定位）。
-                  全屏这个能力的本质是「把同一批格子铺满整块屏」——跟随模式下每格显示的是
-                  **不同**的模块，铺满之后既不像投屏讲评、也不像图墙，教师按下去只会
-                  得到一个与预期无关的覆盖层。所以这里按模式给，而不是像合并前那样按视图给。 */}
-              {boardMode === 'assign' && (
-                <button className="btn btn-secondary" onClick={() => setGridFullscreen(true)} title="全屏显示学生面板" style={{ minHeight: 36, padding: '7px 12px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
-                  全屏
-                </button>
-              )}
-              {/* ★ M5b：学习单矩阵。🔴 **与 `boardMode` 无关**（GC 28）——
-                  上面那个「全屏」被限制在指定模式，理由是「跟随模式下每格显示不同模块」，
-                  而那条理由对矩阵不成立：矩阵只显示学习单进度，与此刻在看哪个模块无关。 */}
-              <button className="btn btn-secondary" onClick={() => setMatrixOpen(true)} title="学生×题目矩阵：一眼看出此刻该讲哪一题" style={{ minHeight: 36, padding: '7px 12px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <line x1="3" y1="9" x2="21" y2="9" />
-                  <line x1="3" y1="15" x2="21" y2="15" />
-                  <line x1="9" y1="3" x2="9" y2="21" />
-                </svg>
-                矩阵
-              </button>
+                    {/* 🔴 模块状态的下拉菜单靠「点外面关」，而那个判据是
+                        `modulesMenuRef.contains(target)` —— 锚点必须**同时包住按钮与菜单**，
+                        所以只有它需要一层 `position: relative` 的包裹。
+                        ⚠️ 这是 DOM 管道（哪个元素持有 ref、哪个浮层就地渲染），不是判据：
+                        判据全在 `header-controls.ts`，这里只有两个 id 分支。 */}
+                    {control.popup ? (
+                      <div ref={control.id === 'module-state' ? modulesMenuRef : undefined} style={{ position: 'relative' }}>
+                        {button}
+                        {control.id === 'module-state' && showModulesMenu && (
+                          <ModuleStateMenu
+                            modules={classroom.modules}
+                            busy={controlBusy}
+                            neverConfigured={modulesNeverConfigured}
+                            onSelect={(moduleKey, state) => void setModuleState(moduleKey, state)} />
+                        )}
+                      </div>
+                    ) : button}
+                  </Fragment>
+                );
+              })}
             </div>
           </div>
 
           {/* 看板模式开关（P2.3）。⚠️ **独立一行**，与筛选行同处（就在格子正上方）：
               它是「这一屏答的是哪个问题」的总开关，藏在某个菜单里等于没有。
-              与 `gridFullscreen` 同进退 —— 全屏时整个 header 都被藏掉，这一条也不该留下。 */}
-          {!gridFullscreen && (
+              显不显示由 `header.showsHeader` 给（全屏时整块头部一起藏掉）。 */}
+          {header.showsHeader && (
             <div aria-label="看板模式" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>看板模式</span>
-              <SegmentedButton label="跟随" hint="每格显示该学生此刻在用哪个模块"
+              {/* ★ 2026-09-29（头部重构）：**那句常显的解释搬进了悬浮说明**。
+                  「每格显示该学生此刻在用的模块；还没收到状态的学生显示「…」」原来是
+                  紧跟在这两个按钮后面的一行灰字 —— 而它是**读一次就够**的知识
+                  （「…」的含义），却常年占着格子上方的一行。放进 `hint`（= `title`）
+                  之后仍然查得到，而且紧挨着它解释的那个按钮。
+                  ⚠️ 「…」的含义必须留着：教师看到一格画着「…」时唯一的解释就是这一句。 */}
+              <SegmentedButton label="跟随"
+                hint="每格显示该学生此刻在用哪个模块；还没收到状态的学生显示「…」"
                 selected={boardMode === 'follow'} onSelect={() => setBoardMode('follow')} />
               <SegmentedButton label="指定" hint="全班格子统一显示下面选定的那一个模块"
                 selected={boardMode === 'assign'} onSelect={() => setBoardMode('assign')} />
-              {boardMode === 'follow' ? (
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  每格显示该学生此刻在用的模块；还没收到状态的学生显示「…」
-                </span>
-              ) : (
+              {boardMode === 'assign' && (
                 <>
                   <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 4 }}>全班显示</span>
                   {(['worksheet', 'explore', 'companion'] as ModuleId[]).map((moduleId) => (
@@ -2378,45 +2463,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               看不出来，现在同一行上会显形。那是数据本身的问题（一个没有组的参与者），
               不是这一行算错 —— 别在这里加个减法把它抹平。 */}
           <div aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
-            {/* 全部 —— 合并后**只剩这一个**（原来两行各有一个）。取**参与者**口径，
-                与它右边的五个同源；上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
+            {/* ── 左段：状态。分母 = **参与者总数**（含离线）。 ──
+                全部 —— 合并后**只剩这一个**，而且它是**重置**：点它会把两组筛选一起清回 `all`。
+                ⚠️ 上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
             <ModuleCountChip label="全部" value={students.length} unit={moduleCountUnitSuffix}
+              hint="取消所有筛选（含右边「此刻在线」那一段）"
               selected={studentBoardFilter === 'all' && effectiveModuleFilter === 'all'}
               onSelect={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} />
-            {/* 模块三件套 —— ⚠️ 仍然**只在跟随模式下渲染**：指定模式全班都是同一个模块，
-                按模块筛只剩「全中 / 全不中」两种结果，那种筛选器只会让人以为它坏了
-                （见 `effectiveModuleFilter`）。全屏**只在指定模式下可达**，所以不需要额外判
-                `gridFullscreen`。
-                🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
-                的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
-                所以那些模式下这几个数字是**组数**，量词由 `moduleCountUnit(mode)` 给。
-                ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
-                （后者是格子数，与参与者数在「有没有组的参与者」那条窄缝上并不相等）。
-                ★ 2026-09-29（教师批注 ③）：这三个数字是**在线**口径 ——
-                「当前正处在这个页面中的在线人数」。⇒ 它们相加 = 此刻在线人数，
-                **不等于**左边的「全部」（那是参与者总数，含离线）。
-                这一行因此读作：`三个模块 + 首页 + 未知 = 在线`，而 `在线 + 离线 = 全部`。
-                点其中一格筛出来的格子走**同一套判据**（`cardInOnlineModule`）。
-                ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
-                两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
-                ⚠️ 学习单已接进看板（D3），所以它与另外两件套同款：能点、不置灰、不标「尚未支持」。
-                ⊘ 2026-09-25：「首页 / 未知」两格按教师圈定的六格清单**去掉了**。
-                后果要说清：**这两个状态的学生不再有筛选入口、他们的计数也不再出现在这一行**
-                （格子阵里照旧看得见，只是筛不出来）。⇒ 一行数字相加可能明显小于「全部」，
-                那不是算错，是这两个状态现在没有格子。要加回来就是这里两行。 */}
-            {boardMode === 'follow' && (
-              <>
-                <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'worksheet'}
-                  onSelect={() => { setStudentModuleFilter('worksheet'); setStudentBoardFilter('all'); }} />
-                <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'explore'}
-                  onSelect={() => { setStudentModuleFilter('explore'); setStudentBoardFilter('all'); }} />
-                <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'companion'}
-                  onSelect={() => { setStudentModuleFilter('companion'); setStudentBoardFilter('all'); }} />
-              </>
-            )}
             {/* 状态两格 —— ⚠️ 这两格的数字来自 `boardFilterCounts`（**格子数**），不是
                 `moduleDistribution`（参与者数）。在「有没有组的参与者」那条窄缝上两者会不等，
                 但常态下相等，且**格子确实是在线单位**（一个组就是一次上线下线），
@@ -2428,6 +2481,53 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             <ModuleCountChip label="离线" value={boardFilterCounts.offline} unit={moduleCountUnitSuffix}
               selected={studentBoardFilter === 'offline'}
               onSelect={() => { setStudentBoardFilter('offline'); setStudentModuleFilter('all'); }} />
+            {/* 🔴 **两段的分母不同，这是这行的要点**：左段（全部 / 需关注 / 离线）数的是
+                **参与者**，右段数的是**此刻在线**的人。一条竖线把两段分开，右段带段标签 ——
+                没有它们，`三个模块 + 离线 + 全部` 这三条永远凑不齐（差的那一个正是在首页 /
+                位置未定的人），而屏幕上原先没有任何东西说明这件事。 */}
+            {header.showsModuleFilter && (
+              <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 4px' }} />
+            )}
+            {/* ── 右段：此刻在线。分母 = **在线**的参与者（不是全部）。 ──
+                ⚠️ 仍然**只在跟随模式下渲染**：指定模式全班都是同一个模块，按模块筛只剩
+                「全中 / 全不中」两种结果，那种筛选器只会让人以为它坏了（见 `effectiveModuleFilter`）。
+                🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
+                的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
+                所以那些模式下这几个数字是**组数**，量词由 `moduleCountUnit(mode)` 给。
+                ⇒ 必须是 `students.length` / `moduleDistribution`，**不是** `allDisplayCards.length`
+                （后者是格子数，与参与者数在「有没有组的参与者」那条窄缝上并不相等）。
+                ★ 2026-09-29（教师批注 ③）：这三个数字是**在线**口径。
+                点其中一格筛出来的格子走**同一套判据**（`cardInOnlineModule`）。
+                ⚠️ 与页头那个「N 名学生」是**两个口径**（那个在分组模式下按成员求和 = 真·人数）。
+                两者都对，只是单位不同 —— 所以这里必须带上量词，否则同一屏两个数字看着像打架。
+                ⊘ 2026-09-25：「首页 / 未知」两格按教师圈定的六格清单**没有 chip**
+                （那两格的状态学生筛不出来，格子阵里照旧看得见）。
+                ★ 2026-09-29：它们的**计数**现在由紧跟其后的 `unplaced` 那一句兜住 ——
+                它只回答「还差的那几个在哪」，仍然**不是一个筛选项**。要真正加回来就是这里两行。 */}
+            {header.showsModuleFilter && (
+              <>
+                {/* 段标签 = **把分母写在段首**。三个模块格是它的一个划分（不含首页 / 未定，
+                    那部分由紧跟着的 `unplaced` 那句话兜住）。 */}
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
+                  此刻在线 <span style={{ color: '#1d4ed8' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
+                </span>
+                <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'worksheet'}
+                  onSelect={() => { setStudentModuleFilter('worksheet'); setStudentBoardFilter('all'); }} />
+                <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'explore'}
+                  onSelect={() => { setStudentModuleFilter('explore'); setStudentBoardFilter('all'); }} />
+                <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
+                  selected={studentModuleFilter === 'companion'}
+                  onSelect={() => { setStudentModuleFilter('companion'); setStudentBoardFilter('all'); }} />
+                {/* 让这一行**对得上账**的那半句：`0` 时不出现（那时三个模块相加就等于在线）。
+                    ⚠️ 它是**灰字不是按钮** —— 一个点下去只看「在首页和不知道在哪的人」的
+                    筛选器没有用处（那正是 2026-09-25 圈掉那两格的理由）。 */}
+                {unplaced && (
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>· {unplaced}</span>
+                )}
+              </>
+            )}
           </div>
           {/* `data-webapp-monitor` 三个属性是给**离线 E2E 探针**用的锚点
               （`.superpowers/sdd/…/dom-shot-e2e` 下那几个 verify 脚本按选择器取本块 innerText）。

@@ -65,6 +65,37 @@ export function resolveFocus(
   return focus === null ? 'home' : focus;
 }
 
+/**
+ * 此刻在线的人数 = 那五个格相加。
+ *
+ * 🔴 它是「让这一行对得上账」的那一半：三个模块格**不是**全班的划分，而是**在线**的划分
+ * ⇒ 界面上必须能读到这个数，否则 `三个模块 0 + 离线 39 + 全部 40` 这三条永远凑不齐
+ * （差的那一个正是「在线但在首页 / 位置未定」的人）。
+ *
+ * ⚠️ 遍历 `FOCUS_MODULES` 而不是手写五项相加：加第六个格时（例如将来把「首页」与
+ * 「未定」分开）手写的那份会**静默漏掉它**，而这个数正是用来对账的 —— 漏一项就是账又对不上。
+ */
+export function onlineTotal(distribution: Readonly<Record<FocusModule, number>>): number {
+  return FOCUS_MODULES.reduce((sum, module) => sum + distribution[module], 0);
+}
+
+/**
+ * 三个模块之外还剩几个在线的人 —— 那半句让这一行对得上账的话（`0` ⇒ `null`，不画）。
+ *
+ * ★ 2026-09-29（头部重构）：三个模块数字改成**在线**口径之后，它们与「全部 / 离线」
+ * **不是同一个分母**了，而屏幕上原先没有任何东西说明这件事。这一句把它说圆：
+ * `三个模块 + 另有 N = 在线`，`在线 + 离线 = 全部`。
+ *
+ * ⚠️ **首页与「位置未定」合成一句**（不各给一格）：教师 2026-09-25 圈定的六格清单里
+ * 特意去掉了那两格，取消那个决定属于另一件事。这一句只承担「让这一行能对账」——
+ * 它答的是「还差的那几个在哪」，**不是一个筛选项**（点下去只看「在首页和不知道在哪的人」
+ * 的筛选器没有用处），所以它是灰字，不是按钮。
+ */
+export function unplacedNote(distribution: Readonly<Record<FocusModule, number>>, unit: string): string | null {
+  const unplaced = distribution.home + distribution.unknown;
+  return unplaced > 0 ? `另有 ${unplaced} ${unit}在首页或位置未定` : null;
+}
+
 const FOCUS_MODULES: readonly FocusModule[] = ['worksheet', 'explore', 'companion', 'home', 'unknown'];
 
 function emptyDistribution(): Record<FocusModule, number> {

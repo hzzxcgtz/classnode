@@ -46,6 +46,7 @@ import {
 } from './use-worksheet-answers';
 import { readCorrectBlanks, type SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
+import { ResultGlyph } from './result-glyph';
 import styles from './worksheet.module.css';
 
 /**
@@ -394,42 +395,45 @@ export function WorksheetQuestionList({
          */
         const verdictLabel = gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
         const questionMeta = state !== 'empty' || gradeState ? (
-          // ⚠️ 根是 Fragment（两块：圆角框 + 框右边的奖励）—— 它被渲染进 `.questionLead`
-          // 那一行里，两个兄弟各占一个格子。
-          <>
-          <div className={styles.questionResult} role="status" aria-live="polite">
-            {state !== 'empty' && (
-              <span className={styles.resultCell} data-tone="progress">
-                {state === 'submitted' ? '✓ 已完成' : '◐ 正在写'}
-              </span>
-            )}
-            {gradeState && (
-              <span className={styles.resultCell} data-tone={gradeState}>
-                {/* 学生侧那颗**错**的记号 —— 教师两轮改口后的结论（别改回去）：
-                    `✗` → 「用叉叉是不是让学生看了有点害怕？」 → `？` → 「这个问号也不好，
-                    或者直接加一个减号」 → **`−`（U+2212，不是连字符）**。
-                    🔴 要的是一个**中性**的记号：不表扬、也不吓人（右边那句「再想一想」已经把话说全了）。
-                    ⚠️ 与教师看板抽屉那套 `✓ / ½ / ✗` **刻意分叉**：那是给教师看的统计符号，
-                       这边是给中小学生看的反馈；全对与部分给分仍然共用（✓ / ½）。
-                    ⚠️ 用真减号而不是 `-`：连字符在那个字号下又短又偏上，视觉重心不在圆心上。 */}
-                <span className={styles.resultGlyph} aria-hidden="true">
-                  {gradeState === 'correct' ? '✓' : gradeState === 'partial' ? '½' : '−'}
+          // ★ 2026-09-29（教师 ⑤）：外面多了一层**锚点** —— 奖励角标要挂在判定那一格的
+          // 右上角上，而 `.questionResult` 有 `overflow: hidden`（它要把两格的底色裁进圆角里）
+          // ⇒ 角标必须是它的**兄弟**才不会被裁掉。`margin-left: auto`（原来在
+          // `.questionResult` 上，负责把整条顶到最右）跟着搬到这一层。
+          <span className={styles.resultRewardAnchor}>
+            <div className={styles.questionResult} role="status" aria-live="polite">
+              {state !== 'empty' && (
+                <span className={styles.resultCell} data-tone="progress">
+                  {state === 'submitted' ? '✓ 已完成' : '◐ 正在写'}
                 </span>
-                {verdictLabel}
-              </span>
-            )}
-          </div>
-          {/* ★ 2026-09-28（教师，图 56）：「火箭和 ×1 **不需要框在圆角矩形里**，
-              这样可以保证左边的两个框的高度和其他框的高度保持一致。」
-              ⇒ 它从那个框里搬出来，成了框**右边**的一个兄弟（无边框、无底色）。
-              ⚠️ 同时删掉上面那行小字「获得奖励」—— 教师：「这里的文字不要。」
-                 火箭 + ×1 本身已经说清（与顶栏那个累计奖励同一套符号）。 */}
-          {gradeState === 'correct' && reward && (
-            <span className={styles.resultReward}>
-              <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
-            </span>
-          )}
-          </>
+              )}
+              {gradeState && (
+                <span className={styles.resultCell} data-tone={gradeState}>
+                  {/* ★ 2026-09-29（教师）：「三种状态的图标，如果都用圆来表示呢？」
+                      ⇒ 记号从**字符**换成**画出来的圆环 + 填充比例**：
+                      全对 ● 填满、部分答对 ◐ 左半边、不对 ○ 不填。
+                      🔴 形状与三条理由全在 `result-glyph.tsx` 的文件头（含「顺带修掉
+                        `−` 那个『换一个浏览器就偏高』的字体度量缺陷」）。
+                      ⚠️ 与教师看板抽屉那套 `✓ / ½ / ✗` 仍然**刻意分叉**：那是给教师看的
+                        统计符号（一屏几十行，要极窄），这边是给中小学生看的反馈。 */}
+                  <ResultGlyph state={gradeState} />
+                  {verdictLabel}
+                  {/* ★ 2026-09-29（教师 ⑤）：奖励从「整条框右边的兄弟」改成**这一格的右上角角标**。
+                      ⛔ 这反转了 2026-09-28 图 56 的「不需要框在圆角矩形里」（那次要保的是
+                      「左边两个框的高度一致」）—— 角标是绝对定位、不占行内空间，那条照旧成立。
+                      ⚠️ 挂在这一格（不是整条 `.questionResult`）：挂在整条上会跑到
+                      「✓ 已完成」那一格的右上角去。
+                      ★ 教师 ③：「部分答对也要显示获得的奖励图标个数」⇒ 条件从
+                      `correct` 放宽到 `correct | partial`。⚠️ `incorrect` 仍然不画
+                      （那一档的分恒 0，没有任何东西可显示 —— 由 `QuestionReward` 挡掉）。 */}
+                  {(gradeState === 'correct' || gradeState === 'partial') && reward && (
+                    <span className={styles.resultReward}>
+                      <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          </span>
         ) : null;
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
@@ -871,7 +875,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
                               对错标记在抽屉里、不在格子上。所以「交了」与「拿到了」本来就是
                               两件事，用同一张图表达必然是假的。
                            ⚠️ 于是全屏只有一处会出现全彩奖励图标：右边那格 `RewardTotal`（带 ×N）。
-                              每一题自己的「暂未获得 / +N」在题目卡片下方，那是第三处、也是对的。 */
+                              每一题自己的奖励是**判定那一格右上角的角标**（★ 2026-09-29 改的，
+                              见 `.resultReward` 与 `reward-badge.tsx`），那是第三处、也是对的。 */
                         <span className={styles.progressCell} data-state={state} key={node.id} />
                       );
                     })}

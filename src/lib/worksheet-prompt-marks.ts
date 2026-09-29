@@ -631,6 +631,48 @@ export function blankAnswerStyle(run: PromptTextStyle): Record<string, string | 
   return { ...promptRunStyle(run), fontWeight: run.bold ? 700 : 600 };
 }
 
+/**
+ * ★ 2026-09-29（教师）：**答错的作答值 = 暗红 + 删除线**。
+ *
+ * 教师原话：「在对填空题评分的时候，我觉得在错误的边上加一个红色的叉叉符号对学生的
+ * 体验不是很好，所以我决定还是使用**暗红色文字加删除线**这种方式。」
+ *
+ * 🔴 它现在是**作答值自己的样式**，不再是旁边的一枚图标 —— 而这条规则有**四个**渲染点
+ *（题干里的输入框、题干里的落点槽 = `BlankSlot`、表格里的输入框、表格里的槽），
+ * 所以必须与 `blankAnswerStyle` 同住一处：各写一份的症状是「同一个空，换个模式红得不一样」。
+ *
+ * ⚠️ 颜色用 `#b91c1c`（比原来那枚红叉的 `#dc2626` 暗一档）—— 教师说的是「**暗**红」。
+ */
+export const WRONG_ANSWER_STYLE: Record<string, string> = { color: '#b91c1c', textDecoration: 'line-through' };
+
+/**
+ * 一个空的**最终**样式：`blankAnswerStyle` 打底，答错时叠上暗红 + 删除线。
+ *
+ * 🔴 **顺序就是这条函数存在的全部理由**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
+ * 答错那一层必须展开在它**之后**。写在前面会被整个盖掉，而症状是
+ * 「这一段本来有颜色 ⇒ 答错就不标红了」，**屏幕上不报错**。
+ *（`BlankSlot` 有一条一模一样的旧账：教师看到「打字那条红了、待选区那条没红」。）
+ * ⇒ 把顺序定在一个有测试的函数里，比在两个调用点各写一句注释可靠。
+ */
+export function blankValueStyle(run: PromptTextStyle, wrong: boolean): Record<string, string | number> {
+  const base = blankAnswerStyle(run);
+  return wrong ? { ...base, ...WRONG_ANSWER_STYLE } : base;
+}
+
+/**
+ * 答错时那一格的**无障碍名字**。
+ *
+ * 🔴 这一条是必需的，不是修饰：原来那枚红叉自带 `role="img" aria-label="答错了"`，
+ * 换成删除线之后**视觉信息还在、读屏信息没有了**（删除线对读屏是无声的）——
+ * 而本仓立过「图标化只减视觉宽度、不减无障碍信息」。⇒ 把「答错了」并进那一格的名字里。
+ *
+ * ⚠️ 只在答错时加那三个字：没答错时这个名字只管「这是哪一格」，
+ * 顺手加一句「答对了」同样是错的（这个名字不是判定结果的出口）。
+ */
+export function blankAriaLabel(label: string, wrong: boolean): string {
+  return wrong ? `${label}，答错了` : label;
+}
+
 export function promptRunStyle(run: PromptTextStyle): Record<string, string | number> {
   const style: Record<string, string | number> = {
     color: run.color,

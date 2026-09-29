@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
-import { WrongMark } from '@/components/worksheet-wrong-mark';
+import { blankAriaLabel, WRONG_ANSWER_STYLE } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
 
@@ -26,7 +26,8 @@ import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
  * · 表格在 iPad 竖屏上会超出宽度 ⇒ 外面套一层可横向滚动的容器，**不压字**；
  * · 空的那几格是 `<input>`（与题干里的空同一套观感），读屏标签是**「第 2 行第 2 格」**
  *   —— 表格里说「第 N 空」，学生找不到那一格（`blankLabelAt` 那条注释）；
- * · 答错的那格后面跟同一个红叉（`WrongMark`，一处定义）；
+ * · 答错的那格 ⇒ 那个格里的字改成**暗红 + 删除线**（★ 2026-09-29 教师：红叉对学生的
+ *   体验不好）。⚠️ 与题干里的空**同一条规则**（`WRONG_ANSWER_STYLE` 只有一份），不是各写一份；
  * · 不加 `:has()` / `content-visibility` / `@container` / `color-mix()`、
  *   不用 `Array.prototype.at` —— 学生端跑在 Safari 15 的老 iPad 上
  *   （`scripts/check-classroom-browser-compat.mjs` 会把门）。
@@ -158,13 +159,20 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                             <input
                               type="text"
                               className="worksheet-blank-input"
-                              aria-label={label}
+                              aria-label={blankAriaLabel(label, wrong)}
                               value={blanks.values[globalIndex] ?? ''}
                               disabled={blanks.disabled}
                               onChange={(event) => blanks.onChange(globalIndex, event.target.value)}
-                              style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box' }}
+                              // ★ 2026-09-29（教师）：答错 ⇒ 字改成暗红 + 删除线（不再画红叉）。
+                              // ⚠️ 这一支没有 `blankAnswerStyle` 打底（表格里的框走全局的
+                              // `.worksheet-blank-input`）⇒ 直接叠即可，不必过 `blankValueStyle`
+                              //（那个函数存在的理由是**顺序**：答错那层要盖过打底那层的 `color`）。
+                              // 样式本身仍然只有一份（`WRONG_ANSWER_STYLE`）。
+                              style={{
+                                flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box',
+                                ...(wrong ? WRONG_ANSWER_STYLE : {}),
+                              }}
                             />
-                            {wrong && <WrongMark />}
                           </span>
                         ) : (
                           // 只读预览（教师端）：画一截下划线，与题干里那些空同一个观感

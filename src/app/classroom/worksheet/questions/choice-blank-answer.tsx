@@ -200,7 +200,20 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         if (setting?.mode !== 'inline') return null;
         return (
           <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
-            （{setting.choices.map((word, choiceIndex) => wordButton(word, `${WORD_PREFIX}inline:${index}:${choiceIndex}`, true))}）
+            （{setting.choices.map((word, choiceIndex) => (
+              // ★ 2026-09-29（教师）：「箭头所指的位置我之前就提过要加一个**分隔符号**，
+              // 比如说**斜杠**，用来表示两个选项之间的分隔」⇒ 词与词之间加一个 `/`。
+              // 🔴 分隔符是**装饰**（`aria-hidden`）：两个词各自是带名字的按钮，
+              // 读屏再念一个「斜杠」只是噪音。
+              // ⚠️ **只加在题干里这一串**：下方「待选词」区那些是分开的胶囊，
+              // 本来就不连在一起，加分隔符只会多一层噪音。
+              <Fragment key={`${WORD_PREFIX}inline:${index}:${choiceIndex}`}>
+                {choiceIndex > 0 && (
+                  <span aria-hidden="true" style={{ color: '#94a3b8', margin: '0 2px' }}>/</span>
+                )}
+                {wordButton(word, `${WORD_PREFIX}inline:${index}:${choiceIndex}`, true)}
+              </Fragment>
+            ))}）
           </span>
         );
       },

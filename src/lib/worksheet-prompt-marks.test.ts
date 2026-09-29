@@ -22,6 +22,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_PROMPT_STYLE,
+  WRONG_ANSWER_STYLE,
+  blankAriaLabel,
+  blankValueStyle,
   blankAnswerStyle,
   blankCount,
   blankRuns,
@@ -655,4 +658,52 @@ test('🔴 normalizePastedText：Word 粘进来的那几种脏字符都归一化
   assert.equal(normalizePastedText('干净的文字'), '干净的文字');
   assert.equal(normalizePastedText(null), '');
   assert.equal(normalizePastedText(42), '');
+});
+
+/* ── ★ 2026-09-29（教师）：答错的作答值 = 暗红 + 删除线 ──────────────────────
+   教师原话：「在对填空题评分的时候，我觉得在错误的边上加一个红色的叉叉符号对学生的
+   体验不是很好，所以我决定还是使用暗红色文字加删除线这种方式。」 */
+
+test('🔴 blankValueStyle：答错 ⇒ 暗红 + 删除线', () => {
+  const style = blankValueStyle(DEFAULT_PROMPT_STYLE, true);
+  assert.equal(style.color, '#b91c1c', '暗红（比原来那枚红叉的 #dc2626 暗一档）');
+  assert.equal(style.textDecoration, 'line-through');
+  assert.equal(style.fontWeight, 600, '字重那半边照旧来自 blankAnswerStyle');
+});
+
+test('🔴 blankValueStyle：没答错 ⇒ **原样**是 blankAnswerStyle（不许顺手改对的那一半）', () => {
+  assert.deepEqual(blankValueStyle(DEFAULT_PROMPT_STYLE, false), blankAnswerStyle(DEFAULT_PROMPT_STYLE));
+});
+
+test('🔴 blankValueStyle：答错的红**压得住**这一段的颜色（顺序就是这条用例的全部意义）', () => {
+  // 🔴 `blankAnswerStyle` 里含 `promptRunStyle` 的 `color`：答错那层必须展开在它**之后**。
+  // 写反了的表现是「这一段有色 ⇒ 答错不标红」，而屏幕上不报错。
+  // `BlankSlot` 有一条同样的旧账（教师看到「打字那条红了、待选区那条没红」）。
+  const coloured = { ...DEFAULT_PROMPT_STYLE, color: '#1d4ed8' };
+  assert.equal(blankAnswerStyle(coloured).color, '#1d4ed8', '前提：这一段本来是有颜色的');
+  assert.equal(blankValueStyle(coloured, true).color, '#b91c1c', '答错必须盖过它');
+  assert.equal(blankValueStyle(coloured, false).color, '#1d4ed8', '没答错就别动它');
+});
+
+test('🔴 blankValueStyle：着色与划线**都不含定位**（那枚红叉的旧缺陷不许换个形状回来）', () => {
+  // `worksheet-prompt-text.test.ts` 有一条钉着「那个文件里不许出现定位」，理由记在
+  // `worksheet-wrong-mark.tsx`：红叉绝对定位在输入框右上角时，答案一长就被盖掉一角。
+  // 换成删除线之后不再有第二个节点，但**这条纪律一样要守住**。
+  for (const key of Object.keys(WRONG_ANSWER_STYLE)) {
+    assert.ok(!key.toLowerCase().includes('position'), `不该有这个键：${key}`);
+    assert.ok(!/top|left|right|bottom|margin|transform|zIndex/i.test(key), `不该有定位类键：${key}`);
+  }
+});
+
+test('🔴 blankAriaLabel：答错时把「答错了」并进那一格的名字（删除线对读屏是无声的）', () => {
+  // 原来那枚红叉自带 `role="img" aria-label="答错了"`。换成删除线之后**视觉信息还在、
+  // 读屏信息没有了** —— 而本仓立过「图标化只减视觉宽度、不减无障碍信息」。
+  assert.equal(blankAriaLabel('第 2 空', true), '第 2 空，答错了');
+  assert.equal(blankAriaLabel('第 2 行第 3 格', true), '第 2 行第 3 格，答错了');
+});
+
+test('🔴 blankAriaLabel：没答错时**一个字都不加**', () => {
+  assert.equal(blankAriaLabel('第 2 空', false), '第 2 空');
+  // 阴性对照说清方向：加了「答对了」也是错的 —— 这个名字只管「这是哪一格」。
+  assert.equal(blankAriaLabel('第 2 空', false).includes('答'), false);
 });

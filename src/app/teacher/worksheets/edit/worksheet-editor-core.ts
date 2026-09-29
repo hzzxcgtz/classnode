@@ -1484,7 +1484,8 @@ export function categorizeRemoveZone(state: CategorizeData, index: number): Cate
  *
  * 🔴 ★ M4a/I1：**两档的域不同，所以必须传 `field`**（`full` 是 `1..POINTS_MAX`、
  * `half` 是 `0..POINTS_MAX`）。`full = 0` 不是「0 分」而是「答对了却给 0 分」——
- * 学生端显示「暂未获得」，而教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**。
+ * 学生端**一枚奖励图标都不画**（角标在 `amount <= 0` 时不出现，见 `QuestionReward`），
+ * 而教师抽屉读 `gradeState` ⇒ **绿 `✓ 答对`**。
  * 域的理由写在 `POINTS_FULL_MIN`（`src/lib/worksheet-questions.ts`）上。
  * ⚠️ 参数**没有默认值**是刻意的：默认成 `'half'` 会让「忘了传字段」的那一处静默接受 0，
  * 而这条路上「静默」正是要防的东西。

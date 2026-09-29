@@ -1,8 +1,7 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { blankAnswerStyle, inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
+import { blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
 // ★ 2026-09-27：答错标记搬去了 `@/components/worksheet-wrong-mark` —— 选择题的选项现在也要
 // 用它，而从「题干渲染器」里导出它读起来是错的层次（那枚标记自己写着完整理由）。
-import { WrongMark } from '@/components/worksheet-wrong-mark';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { TABLE_MARK_TEXT } from './worksheet-table.ts';
 import { WorksheetTableView } from './worksheet-table-view.tsx';
@@ -160,25 +159,27 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
           }
           if (blanks) {
             const index = blankIndex + tableOffset;
-            // 同 drop 分支：答错 ⇒ 框**后面**跟一个红叉（不是划掉框里的字，见上面那条更正）。
-            // ⚠️ 框仍然是 `<input>`（截图里那个「保存修改」要能用 —— 学生得能改）。
+            // ★ 2026-09-29（教师）：**答错不再是一枚红叉**，而是把这个框里的字改成
+            // 暗红 + 删除线。原来那个 `inline-block` 的包裹层是为了让「框 + 叉」整体换行，
+            // 叉没了它也就没用了（`<input>` 自己就是 `inline-block`，换行行为一样）。
+            //
+            // ⊘ 一段旧账（换形状的理由就在里面）：2026-09-27 教师报「叉叉打上后原来的字会最淡」，
+            //    真因是**红叉压在字上**（它绝对定位在框的右上角，而框按内容算宽 ⇒ 答案一长就被
+            //    盖掉一角）。当时的修法是把叉挪到框**外面**；现在的修法更彻底 ——
+            //    **行内不再有第二个节点**，那一类缺陷从结构上没有了。
+            // ⚠️ 框仍然是 `<input>`（学生得能改），而 `.worksheet-blank-input:disabled` 写的是
+            //    `color: inherit` ⇒ 禁用态不会用 UA 的灰色盖掉这层暗红。
             const wrong = blanks.wrongOf?.(index) ?? false;
             return (
-              <Fragment key={run.start}>
-                {/* ★ 2026-09-27（教师）：「叉叉打上后原来的字会最淡」—— 那不是我一开始以为的
-                    配色问题，是**红叉压在字上**：它原来绝对定位在这个盒子的右上角，而盒子是按
-                    内容算宽的 ⇒ 答案一长就被盖掉一角。
-                    ⇒ 把叉挪到框**外面**当兄弟节点。`inline-block` 是为了让「框 + 叉」整体换行
-                      （拆开的话会出现「叉在上一行末尾、框在下一行」那种读法）。
-                    ⚠️ 从此这个文件里**没有定位**了 —— 那正是「标记不许盖住内容」的可检验说法，
-                      由 `worksheet-prompt-text.test.ts` 钉着。 */}
-                <span style={{ display: 'inline-block' }}>
               <input
+                key={run.start}
                 type="text"
                 value={blanks.values[index] ?? ''}
                 disabled={blanks.disabled}
                 // 读屏要能说清是哪一格（空与空之间可能隔着好几行题干）。
-                aria-label={`第 ${index + 1} 空`}
+                // ★ 答错时把「答错了」并进来：删除线对读屏是无声的（原来那枚红叉自带
+                // `aria-label="答错了"`，换形状时那条信息不能丢）。
+                aria-label={blankAriaLabel(`第 ${index + 1} 空`, wrong)}
                 onChange={(event) => blanks.onChange(index, event.target.value)}
                 // ★ 2026-09-26（教师）：「填写时这个框要重新设计，太粗、太突兀。
                 // 另外在输入的长度较长时，这个区域的宽度要自适应增大。」
@@ -187,8 +188,9 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                 // 那圈正是浏览器**默认的焦点框**）。
                 className="worksheet-blank-input"
                 style={{
-                  // 同一条规则（此前这里是 `promptRunStyle` ⇒ 400，而 drop 那边是 600）。
-                  ...(blankAnswerStyle(run) as CSSProperties),
+                  // 🔴 走 `blankValueStyle`（不是 `blankAnswerStyle` + 自己叠答错色）：
+                  // 顺序（答错那层必须在后）由那个有测试的函数定死，两个调用点各写一遍会分叉。
+                  ...(blankValueStyle(run, wrong) as CSSProperties),
                   // 🔴 宽度**跟着内容长**：`ch` 是半角数字的宽，汉字占两格 ⇒
                   // 用 `inputWidthCh` 算（那一行算术有用例）。
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
@@ -196,12 +198,6 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
                 }}
               />
-                {/* ⚠️ **不加包裹的 `<span style={…}>`**：`WrongMark` 自带 `marginLeft: 3`，
-                    再包一层只是多一个盒子（原来那层是为了挂绝对定位，定位没了它就没用了）。 */}
-                {wrong && <WrongMark />}
-
-                </span>
-              </Fragment>
             );
           }
         }

@@ -17,7 +17,9 @@
  *
  * ② 两个文件里**一个 `position` 都不许有** —— 与 `worksheet-prompt-text.test.ts` 逐字
  *   同一条规矩（标记不许浮到内容上面去）。表格那一份尤其容易破：格子窄，
- *   「把红叉塞到右上角」是很自然的下一步。
+ *   「把答错那个记号塞到格子右上角」是很自然的下一步。
+ *   ★ 2026-09-29：答错从「一枚红叉」改成「那个值的字变暗红 + 删除线」之后，
+ *     这一条**一个字都没变**（变的只是那个诱惑的形状）—— 守的仍然是「不许浮到内容上面」。
  *
  * ⚠️ 只读文本、不渲染任何东西 ⇒ 本机跑得起来。
  * ⚠️ 它**不查好不好看**：列宽、横向滚动的手感、软键盘顶不顶掉那一格，只能真机看。
@@ -67,11 +69,27 @@ test('🔴 表格那一份里一个定位都没有（标记不许浮到内容上
   assert.ok(!/\bposition\s*:/.test(bare), '表格渲染器里出现了 position —— 那正是「红叉盖住字」那条老路');
 });
 
+/**
+ * 连 `import` 行也剥掉。
+ *
+ * 🔴 这一层是**变异检验抓出来的**：第一版断言写的是「源码里出现过 `blankValueStyle`」，
+ * 而那个名字**还留在 import 行里** ⇒ 把调用点整个删掉、只留一行 import，断言照样绿。
+ * ⇒ 「名字出现过」不等于「那件事被做了」，所以先把 import 行剥掉再查。
+ * ⚠️ 按行剥，假设这几个文件的 import 都是**单行**（今天都是；换了写法这条要跟着改）。
+ */
+function stripImports(source: string): string {
+  return source.split('\n').filter((line) => !/^\s*import\b/.test(line)).join('\n');
+}
+
 test('阳性对照：剥注释之后仍然能看见真正的东西（这条网不是靠「什么都没匹配到」变绿的）', () => {
   // ⚠️ 没有这几条的话，上面两条「不许有 X」的断言在**文件被读空**时也会绿。
   const bareTable = stripComments(TABLE_SOURCE);
   const barePrompt = stripComments(PROMPT_SOURCE);
-  assert.ok(bareTable.includes('WrongMark'), '表格那一份必须画那枚红叉（一处定义）');
+  // ★ 2026-09-29（教师）：「错误的边上加一个红色的叉叉符号……改用暗红色文字加删除线。」
+  // ⇒ 表格那一份**不再画那枚叉**。⚠️ 这一句不能只是删掉：它是「这里真的有东西可守」的
+  // 证据，删了之后「顺手把标记整个去掉」会让上面那条（不许定位）更绿。
+  // ⇒ 换成断言**标记仍然在**（只是从一枚节点变成了那个值的样式）。
+  assert.ok(stripImports(bareTable).includes('WRONG_ANSWER_STYLE'), '表格那一份必须仍然标出答错（换成了样式）');
   assert.ok(bareTable.includes('aria-label'), '空的那几格必须有读屏标签（第 R 行第 C 格）');
   assert.ok(bareTable.includes('overflowX'), '表格必须能横向滚动（iPad 竖屏放不下）');
   assert.ok(barePrompt.includes('worksheet-blank-input'), '题干那一份的空用的就是那个全局类');

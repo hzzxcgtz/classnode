@@ -310,19 +310,6 @@
 
 /* 每题旁的奖励（规格 §9.3）。只在学生端出现 —— 教师端的「学生端预览」渲染同一个组件，
    但它不传奖励配置（规格 §3-U），所以这里没有「教师端的那一套样式」可言。 */
-.questionReward {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  vertical-align: middle;
-  font-size: 1rem;
-  font-weight: 750;
-  line-height: 1;
-  color: currentColor;
-  white-space: nowrap;
-}
-
-.questionRewardWrong { color: #991b1b; font-weight: 700; }
 .rewardCount { font-weight: 800; font-variant-numeric: tabular-nums; }
 
 .feedbackReward {
@@ -1787,9 +1774,17 @@
    效果图：一个圆角框，三段用细线分开 —— ✓已完成 ｜ !部分答对 ｜ 🚀获得奖励 ×1。
    ⚠️ 段的**有与没有**由 JSX 决定（未提交时没有判分段、不全对时没有奖励段），
       所以这里不能写死三段宽度：用 flex + 细线，缺哪段都不会留一条空线。 */
-.questionResult {
-  /* ★ 2026-09-28：顶到题目头那一行的最右（见 `.typeNickname` 的注释）。 */
+/* ★ 2026-09-29（教师 ⑤）：奖励角标的**锚点** —— 它必须在 `.questionResult` **外面**
+   （那一层有 `overflow: hidden`，要把两格的底色裁进圆角里 ⇒ 角标挂成它的后代会被裁掉）。
+   `.questionResult` 原来那个 `margin-left: auto`（把整条顶到最右）跟着搬到这一层：
+   它现在是 `.questionLead` 这一个 flex 行里的最后一格。 */
+.resultRewardAnchor {
+  position: relative;
+  display: inline-flex;
   margin-left: auto;
+}
+
+.questionResult {
   display: inline-flex;
   align-items: stretch;
   border: 1px solid #d6e2f5;
@@ -1825,22 +1820,25 @@
    🔴 **底色必须按档写死**（`background: currentColor` + `color: #fff` 写在同一规则里时，
    `currentColor` 解析成那条规则自己设的 `#fff` ⇒ **白底白字，记号完全看不见**
    —— 教师 2026-09-28 看到的就是「一个白色的圆」）。 */
+/* ★ 2026-09-29（教师）：「三种状态的图标，如果都用圆来表示呢？」
+   ⇒ 记号不再是**字符**，而是 `result-glyph.tsx` 画出来的「圆环 + 填充比例」。
+   🔴 这一条与上面那版**正好相反**，是这次的关键一步：原来是「彩色圆底 + 白色字符」，
+      而填充比例的语义要求底色**不能**是实心的 —— 否则「填满」那一档会画成一个
+      **空心环**（满 = 空，正好反了）。所以现在：无底色、圆环与填充都吃 `currentColor`
+      （颜色由那一格的 `data-tone` 给，本文件一个十六进制都不写）。
+   ⊘ 顺带退休的两样东西：那三条 `[data-tone] .resultGlyph { background }`，以及
+      「白底白字，记号完全看不见」（教师 2026-09-28 看到「一个白色的圆」）那段注释 ——
+      **没有底色，就没有白底白字**。
+   ⊘ 也顺带退休了那个「减号往上提 1px」的旧账：字符退场之后，居中不再依赖字体度量
+      （那段账在上一条注释里，见 `.resultGlyph` 之下）。 */
 .resultGlyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 0.688rem;
-  font-weight: 700;
-  line-height: 1;
+  color: inherit;
 }
-
-.resultCell[data-tone='correct'] .resultGlyph { background: #16a34a; }
-.resultCell[data-tone='partial'] .resultGlyph { background: #d97706; }
-.resultCell[data-tone='incorrect'] .resultGlyph { background: #dc2626; }
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的
@@ -1857,9 +1855,37 @@
    ⚠️ 它不再是一格 `.resultCell`（那一档自带边框与底色），只是框右边的一个符号组；
       也没有「获得奖励」那行小字（教师：「这里的文字不要」）。 */
 .resultReward {
+  /* ★ 2026-09-29（教师 ⑤-①）：「将它**叠加在「全部答对」这个框的右上角**」。
+     ⚠️ 绝对定位是**必须**的（不是口味）：它不占行内空间，`.questionResult` 两格的高度
+        一个像素都不变 —— 那正是 2026-09-28 图 56 那次要求「搬到框外面」时要保的东西。
+     ⚠️ `pointer-events: none`：它是装饰，压在那一格的角上，不该抢走点按。 */
+  /* ⚠️ 这两个偏移量是**算过的**，不是随手填的：
+     · `top: -14px` —— 判定那一格的文字在格子里**垂直居中**（`align-items: center`），
+       而角标高 22px。取 −14 时它的下沿落在格子顶边下 8px 处，**正好在字的cap高度之上**
+       ⇒ 角标压在框的右上角上，却一个笔画都不盖。取 −8 会把「答对」两个字的上半盖住。
+     · `right: -6px` —— 探出框右 6px。再往右（>10px）就会顶到**卡片**的右内边距
+       （20px）上，而卡片自己有 `overflow: hidden`。
+     ⇒ 想调观感就调这两个数，但先想清楚上面两条约束。 */
+  position: absolute;
+  right: -6px;
+  top: -14px;
   display: inline-flex;
   align-items: center;
-  margin-left: 8px;
+  pointer-events: none;
+}
+
+/* 角标里那一小串（一枚图标 + 可能的 `×N`）。字号比正文小一档 —— 教师 ⑤-③
+   说的是「一个小小的 ×N」。 */
+.questionReward {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  vertical-align: middle;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1;
+  color: currentColor;
+  white-space: nowrap;
 }
 
 /* ── 题目头那一行：题型别名（★ 2026-09-28，教师给学生的「趣味名称」）──────────

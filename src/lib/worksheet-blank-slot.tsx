@@ -1,7 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
-import { WrongMark } from '@/components/worksheet-wrong-mark';
-import { blankAnswerStyle, type PromptRun } from './worksheet-prompt-marks.ts';
+import { blankAriaLabel, blankValueStyle, type PromptRun } from './worksheet-prompt-marks.ts';
 
 /**
  * 「落点槽」—— 等着被拖入一个词的那个空。
@@ -30,6 +29,11 @@ export interface BlankSlotProps {
   value: string;
   /** 读屏要能说清这是哪一格（题干里是「第 2 空」，表格里是「第 2 行第 3 格」）。 */
   label: string;
+  /**
+   * ★ 2026-09-29（教师）：答错的槽 ⇒ 槽里的**字**改成暗红 + 删除线。
+   * ⚠️ 它**不再**在槽后面多画一枚红叉 —— 那个形状整体退休了（四个填空渲染点一起换）。
+   * ⚠️ 它同时决定读屏名字（`blankAriaLabel`）：删除线对读屏是无声的。
+   */
   wrong: boolean;
   disabled: boolean;
   /** 拖拽时指针正经过它 / 手里拿着词（点亮它告诉学生「可以放这儿」）。 */
@@ -51,7 +55,7 @@ export function BlankSlot({
     <Fragment>
       <span
         data-drop-id={dropId}
-        aria-label={label}
+        aria-label={blankAriaLabel(label, wrong)}
         onClick={disabled ? undefined : onPlace}
         style={{
           display: 'inline-flex',
@@ -67,7 +71,8 @@ export function BlankSlot({
           borderRadius: '4px 4px 2px 2px',
           // ★ 2026-09-27：字重不写死 600 —— 与打字那条路**共用同一条规则**
           //（`blankAnswerStyle`）。此前两处各写一套，教师看到「同一个空、换个模式粗细就变了」。
-          ...(blankAnswerStyle(run) as CSSProperties),
+          // ★ 2026-09-29：走 `blankValueStyle` —— 答错那层由它叠（顺序在那里面有测试）。
+          ...(blankValueStyle(run, wrong) as CSSProperties),
           // 🔴 **必须在上面那次展开之后**：`blankAnswerStyle` 里含 `promptRunStyle` 的 `color`，
           //    写在它前面会被整个盖掉（2026-09-27 教师看到「打字那条红了、待选区那条没红」就是这一条）。
           color: pending && !filled ? '#2563eb' : undefined,
@@ -78,10 +83,6 @@ export function BlankSlot({
         }}
       >
         {filled ? value : ' '}
-        {/* ★ 2026-09-27（教师第二轮）：槽里的标记改成**贴文字**、不再贴盒角。
-            ⚠️ 槽有 `minWidth` 的富裕 ⇒ 值短时右边一段空白，贴盒角会离文字很远，
-               而打字的框是按文字算宽的 ⇒ 一个远一个近。 */}
-        {wrong && <WrongMark />}
       </span>
       {children}
     </Fragment>

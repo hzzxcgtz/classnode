@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
 import { AnswerViewBody } from './answer-view';
 import { InkPreview } from './ink-preview';
 // ★ 2026-09-28：奖励的换算与全貌/过程的判据。
-import { resolveRewardScale } from '@/lib/worksheet-reward';
+import { resolveRewardScale, type RewardScale } from '@/lib/worksheet-reward';
 import { StackedBar } from './question-stacked-bar';
+import styles from './worksheet-drawer.module.css';
 import { questionStats, type StatsRow } from './worksheet-question-stats';
 import {
   indexQuestions,
@@ -24,7 +26,6 @@ import {
   formatAgo,
   inProgressQuestionId,
   participantOverview,
-  participantOverviewCells,
   processFacts,
   type ParticipantOverview,
   type WorksheetOutcomeMark,
@@ -128,27 +129,25 @@ export function WorksheetDrawer({
     () => describeHeader(current, board, nodesByWorksheet),
     [current, board, nodesByWorksheet],
   );
+  const participantHeader = current.kind === 'participant'
+    ? findParticipant(board, current.participantId)
+    : null;
+  const participantActivity = participantHeader
+    ? participantHeader.participant.answerRows.some((row) => row.status === 'draft')
+      ? { label: '作答中', state: 'draft' }
+      : participantHeader.participant.answerRows.some((row) => row.status === 'submitted')
+        ? { label: '有作答', state: 'submitted' }
+        : { label: '未开始', state: 'idle' }
+    : null;
 
   return (
     <>
       {/* 遮罩层。与对话抽屉同一块位置、同一个 z-index 层（两者互斥，见 page.tsx 的打开处）。 */}
       <div onClick={onClose}
         style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
-      <div data-worksheet-drawer style={{
-        position: 'fixed', top: 96, right: 24, bottom: 24,
-        width: 420, zIndex: 291,
-        background: 'white', borderRadius: 14,
-        border: '1px solid #e2e8f0',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-      }}>
+      <div data-worksheet-drawer className={`${styles.drawer} ${current.kind === 'participant' ? styles.participantDrawer : ''}`}>
         {/* 头部：标题随层次变，左上角是「返回」（只在有多层时出现）。 */}
-        <div style={{
-          padding: '14px 18px', borderBottom: '1px solid var(--border)',
-          background: 'linear-gradient(135deg, #f8faff, #f0f4ff)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div className={styles.header}>
           {canGoBack && (
             <button type="button" onClick={back} aria-label="返回上一层"
               className="btn btn-ghost" style={{ fontSize: '0.688rem', padding: '4px 8px', flexShrink: 0 }}>
@@ -156,19 +155,22 @@ export function WorksheetDrawer({
               返回
             </button>
           )}
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {header.title}
-            </h3>
-            {header.hint && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 }}>{header.hint}</div>
-            )}
+          {participantHeader && (
+            <div className={styles.avatar} aria-hidden>{participantHeader.participant.name.trim().slice(0, 1) || '学'}</div>
+          )}
+          <div className={styles.headerText}>
+            <div className={styles.headerTitleLine}>
+              <h3 className={styles.headerTitle}>{header.title}</h3>
+              {participantActivity && (
+                <span className={styles.activityBadge} data-state={participantActivity.state}>{participantActivity.label}</span>
+              )}
+            </div>
+            {header.hint && <div className={styles.headerHint}>{header.hint}</div>}
           </div>
-          <button type="button" className="btn btn-ghost" onClick={onClose}
-            style={{ fontSize: '0.688rem', padding: '4px 10px', flexShrink: 0 }}>关闭</button>
+          <button type="button" className={styles.headerButton} onClick={onClose}>关闭</button>
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 14 }}>
+        <div className={`${styles.body} ${current.kind === 'participant' ? styles.participantBody : ''}`}>
           {/* ★ 2026-09-28：判据是「**有没有数据**」，不是「正在不在读」。
               🔴 这两件事混起来是一个实测出来的 bug（教师报「抽屉里展开某一题看答题情况，
               它会自己收拢」）：下面那六个分支原先都带 `!loading`，而看板的数据层是
@@ -437,6 +439,7 @@ function ParticipantAnswers({
    * 与「他没表过态」是两件事，混起来的表现是「他收起的那一题，等下一个广播来了又自己弹开」。
    */
   const [expandedOverride, setExpandedOverride] = useState<Record<string, boolean | undefined>>({});
+  const [filter, setFilter] = useState<'all' | 'answered' | 'attention' | 'unanswered'>('all');
 
   const found = findParticipant(board, participantId);
   if (!found) {
@@ -462,90 +465,142 @@ function ParticipantAnswers({
   const serverNowMs = typeof board.serverNow === 'string' ? Date.parse(board.serverNow) : Number.NaN;
   const defaultExpandedId = inProgressQuestionId(nodes, participant.answerRows);
 
+  const rowsByQuestion = new Map(participant.answerRows.map((row) => [row.questionId, row]));
+  const enriched = items.map((item) => {
+    const row = rowsByQuestion.get(item.node.id);
+    return { ...item, row, outcome: questionOutcome(item.node, row) };
+  });
+  const attentionCount = overview.partial + overview.wrong + overview.noVerdict;
+  const answeredCount = items.length - overview.unanswered;
+  const completedCount = overview.correct + overview.partial + overview.wrong + overview.noVerdict;
+  const suggestedExpandedId = defaultExpandedId
+    ?? enriched.filter(({ outcome }) => outcome.mark === 'partial' || outcome.mark === 'wrong' || (outcome.status === 'submitted' && outcome.mark === 'none'))[0]?.node.id
+    ?? null;
+  const latestActivityMs = participant.answerRows.reduce((latest, row) => {
+    const value = Date.parse(row.savedAt ?? row.createdAt ?? '');
+    return Number.isFinite(value) ? Math.max(latest, value) : latest;
+  }, Number.NEGATIVE_INFINITY);
+  const lastActivity = Number.isFinite(serverNowMs) && Number.isFinite(latestActivityMs)
+    ? formatAgo(Math.max(0, serverNowMs - latestActivityMs))
+    : null;
+
+  const visible = enriched.filter(({ outcome }) => {
+    if (filter === 'answered') return outcome.status !== 'unanswered';
+    if (filter === 'attention') {
+      return outcome.mark === 'partial'
+        || outcome.mark === 'wrong'
+        || (outcome.status === 'submitted' && outcome.mark === 'none');
+    }
+    if (filter === 'unanswered') return outcome.status === 'unanswered';
+    return true;
+  });
+  const taskGroups = new Map<string, typeof visible>();
+  for (const item of visible) {
+    const separator = item.heading.lastIndexOf(' · ');
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const group = taskGroups.get(task) ?? [];
+    group.push(item);
+    taskGroups.set(task, group);
+  }
+  const allTaskGroups = new Map<string, typeof enriched>();
+  for (const item of enriched) {
+    const separator = item.heading.lastIndexOf(' · ');
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const group = allTaskGroups.get(task) ?? [];
+    group.push(item);
+    allTaskGroups.set(task, group);
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <OverviewRow overview={overview} />
-      {items.map(({ node, heading }) => {
-        const row = participant.answerRows.filter((item) => item.questionId === node.id)[0];
-        const outcome = questionOutcome(node, row);
-        const busyKey = `${participantId}:${node.id}`;
-        const expanded = expandedOverride[node.id] ?? (node.id === defaultExpandedId);
-        // 过程区只对**作答过**的题有意义（未作答的题没有任何事实可说）。
-        const facts = outcome.status === 'unanswered' ? null : processFacts(row, serverNowMs);
+    <div className={styles.participantRoot}>
+      <OverviewRow
+        overview={overview}
+        total={items.length}
+        completed={completedCount}
+        rewardScale={scale}
+        lastActivity={lastActivity}
+      />
+      <div className={styles.filters} aria-label="筛选题目">
+        {([
+          ['all', `全部题目 ${items.length}`],
+          ['answered', `已作答 ${answeredCount}`],
+          ['attention', `待处理 ${attentionCount}`],
+          ['unanswered', `未作答 ${overview.unanswered}`],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" className={styles.filterButton}
+            data-active={filter === value}
+            onClick={() => setFilter(value)}>{label}</button>
+        ))}
+        <span className={styles.filterHint}>展开题目可查看学生原始作答</span>
+      </div>
+
+      {taskGroups.size === 0 && (
+        <div className={styles.emptyFilter}>这个筛选条件下暂时没有题目。</div>
+      )}
+
+      {[...taskGroups.entries()].map(([task, group]) => {
+        const allInTask = allTaskGroups.get(task) ?? [];
+        const taskCompleted = allInTask.filter(({ outcome }) => outcome.status === 'submitted').length;
         return (
-          <div key={node.id} style={{
-            padding: '10px 12px', borderRadius: 10,
-            border: `1px solid ${expanded ? '#c7d2fe' : '#e2e8f0'}`,
-            background: 'white',
-            display: 'flex', flexDirection: 'column', gap: 6,
-          }}>
-            {/* 题头。整行可点：展开 / 收起（默认由 `inProgressQuestionId` 决定）。 */}
-            <button type="button"
-              onClick={() => setExpandedOverride((prev) => ({ ...prev, [node.id]: !expanded }))}
-              aria-expanded={expanded}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              }}>
-              <span aria-hidden style={{ fontSize: '0.625rem', color: '#94a3b8', flexShrink: 0 }}>
-                {expanded ? '▾' : '▸'}
-              </span>
-              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.813rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {questionHeading(node, heading)}
-              </span>
-              <OutcomeMark mark={outcome.mark} status={outcome.status} />
-            </button>
-            {expanded && (
-              <>
-                {/* 过程区（第 3 条）。🔴 三段各自「不知道就不显示」——
-                    见 `processFacts`：编成 0 或「刚刚」都是假话。 */}
-                {facts && (facts.startedAgoMs !== null || facts.savedAgoMs !== null || facts.saveCount !== null) && (
-                  <div style={{
-                    fontSize: '0.688rem', color: '#64748b', background: '#f8fafc',
-                    border: '1px solid #eef2f6', borderRadius: 8, padding: '6px 9px',
-                    display: 'flex', flexWrap: 'wrap', gap: 10,
-                  }}>
-                    {facts.startedAgoMs !== null && <span>首次作答 {formatAgo(facts.startedAgoMs)}</span>}
-                    {facts.saveCount !== null && <span>已保存 {facts.saveCount} 次</span>}
-                    {facts.savedAgoMs !== null && <span>最近 {formatAgo(facts.savedAgoMs)}</span>}
-                  </div>
-                )}
-                {/* ★ 2026-09-28（教师）：「答题信息过于简单……连线题就应该左右框加上
-                    中间的线」。⇒ 换成**逐题型的结构化呈现**（`AnswerViewBody`）。
-                    🔴 判据全在 `src/lib/worksheet-answer-view.ts`（纯函数、有测试）；
-                    这一行只画 —— 与上面「按题看」那一屏**不是**同一份实现了，
-                    而那是**有意的**：本轮的裁定是「只改形态 A」，形态 B 那边维持原样
-                    （它要的是「横着比一串学生」的可读性，逐题型的富呈现反而更难扫）。 */}
-                <AnswerViewBody node={node} value={row?.value} />
-                {/* 🔴 「标记已查看」只在**作答过**的题上出现（`canReview`）：服务端对未作答的题回
-                    409，给一个必然失败的按钮是本任务明确要避免的那件事。
-                    已看过的题也留着按钮 —— 再点一次是**刷新**「最后查看时间」（服务端就是这么写的）。 */}
-                {outcome.canReview && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
-                      onClick={() => onReview(worksheet.id, participantId, node.id)}
-                      style={{ fontSize: '0.688rem', padding: '3px 8px' }}>
-                      {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
+          <section key={task} className={styles.taskSection}>
+            <div className={styles.taskHeader}>
+              <h4>{task}</h4>
+              <span>完成 {taskCompleted}/{allInTask.length}</span>
+            </div>
+            <div className={styles.questionList}>
+              {group.map(({ node, label, row, outcome }) => {
+                const busyKey = `${participantId}:${node.id}`;
+                const expanded = expandedOverride[node.id] ?? (node.id === suggestedExpandedId);
+                const facts = outcome.status === 'unanswered' ? null : processFacts(row, serverNowMs);
+                return (
+                  <article key={node.id} className={styles.question}>
+                    <button type="button" className={styles.questionHeader}
+                      onClick={() => setExpandedOverride((prev) => ({ ...prev, [node.id]: !expanded }))}
+                      aria-expanded={expanded}>
+                      <span className={styles.questionNumber}>{label}</span>
+                      <span className={styles.questionText}>
+                        <strong>{questionHeading(node, null)}</strong>
+                        <p>{node.prompt || '这道题没有填写题干'}</p>
+                      </span>
+                      <OutcomeMark mark={outcome.mark} status={outcome.status} />
+                      <span aria-hidden className={styles.chevron}>{expanded ? '⌃' : '⌄'}</span>
                     </button>
-                    {outcome.reviewed && (
-                      <span style={{ fontSize: '0.688rem', color: '#15803d' }}>已看</span>
+                    {expanded && (
+                      <div className={styles.questionDetail}>
+                        {facts && (facts.startedAgoMs !== null || facts.savedAgoMs !== null || facts.saveCount !== null) && (
+                          <div className={styles.processFacts}>
+                            {facts.startedAgoMs !== null && <span>首次作答 {formatAgo(facts.startedAgoMs)}</span>}
+                            {facts.saveCount !== null && <span>已保存 {facts.saveCount} 次</span>}
+                            {facts.savedAgoMs !== null && <span>最近保存 {formatAgo(facts.savedAgoMs)}</span>}
+                          </div>
+                        )}
+                        <div className={styles.answerPanel}>
+                          <span className={styles.answerLabel}>学生作答与答案对照</span>
+                          <AnswerViewBody node={node} value={row?.value} />
+                        </div>
+                        {outcome.canReview && (
+                          <div className={styles.actionRow}>
+                            <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
+                              onClick={() => onReview(worksheet.id, participantId, node.id)}
+                              style={{ fontSize: '0.688rem', padding: '4px 9px' }}>
+                              {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
+                            </button>
+                            {outcome.reviewed && <span className={styles.reviewed}>已看</span>}
+                            <button type="button" className="btn btn-ghost"
+                              onClick={() => onClearQuestion(worksheet.id, participantId, node.id)}
+                              title="清除这一题的作答（不可撤销）"
+                              style={{ fontSize: '0.688rem', padding: '4px 9px', marginLeft: 'auto', color: '#a85d5d' }}>
+                              清除这一题
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
-                    {/* ★ 2026-09-28（第 4 条）：**清除这一题**。与「标记已查看」同一排、
-                        同样只对作答过的题出现（`canReview` 就是「这一行在不在」的判据 ——
-                        未作答的题没有行可清，给一个必然无操作的按钮是本项目明确要避免的）。
-                        ⚠️ 整张清除在**格子的垃圾桶**上，不在抽屉里 —— 两个粒度分两处，
-                        免得教师想清一题时把整张清掉。 */}
-                    <button type="button" className="btn btn-ghost"
-                      onClick={() => onClearQuestion(worksheet.id, participantId, node.id)}
-                      title="清除这一题的作答（不可撤销）"
-                      style={{ fontSize: '0.688rem', padding: '3px 8px', marginLeft: 'auto', color: '#b91c1c' }}>
-                      清除这一题
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         );
       })}
     </div>
@@ -562,34 +617,38 @@ function ParticipantAnswers({
  * ⚠️ 某一档为 0 时**仍然画出来**：`✓0` 与「把 ✓ 藏起来」读起来不一样 ——
  * 后者会让教师以为「这一档不可能出现」，而它只是这一次是 0。
  */
-function OverviewRow({ overview }: { overview: ParticipantOverview }) {
-  // ⚠️ 六格与它们的 key **来自 `participantOverviewCells`**（纯函数、有测试），
-  // 这一层只 `map`。第一版把 key 写成**符号**，而 `◐` 出现了两次 ⇒ React 报
-  // `Encountered two children with the same key, '◐'`（后果是那两个子节点被漏掉或重复渲染）。
-  // 搬进判据层之后，「key 唯一」有了一条会红的断言。
-  const cells = participantOverviewCells(overview);
+function OverviewRow({
+  overview, total, completed, rewardScale, lastActivity,
+}: {
+  overview: ParticipantOverview;
+  total: number;
+  completed: number;
+  rewardScale: RewardScale | null;
+  lastActivity: string | null;
+}) {
+  const needsAttention = overview.wrong + overview.noVerdict;
+  const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12,
-      padding: '9px 12px', borderRadius: 10, background: '#f8faff', border: '1px solid #e0e7ff',
-      fontSize: '0.75rem',
-    }}>
-      {cells.map((cell) => (
-        <span key={cell.key} title={cell.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-          <WorksheetStatusIcon name={cell.icon} size={16} />
-          {/* ⚠️ 为 0 时**仍然画出来**（只是灰掉）：`✓0` 与「把 ✓ 藏起来」读起来不一样 ——
-              后者会让教师以为这一档不可能出现，而它只是这一次是 0。 */}
-          <span style={{ color: cell.count > 0 ? '#0f172a' : '#cbd5e1', fontWeight: 600 }}>{cell.count}</span>
-        </span>
-      ))}
-      <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ color: '#94a3b8' }}>奖励</span>
-        {/* 🔴 `null` = **不知道**（学习单的 settings 还没加载到）⇒ 画「—」而**不是 0**：
-            0 会让教师以为这个学生一分没得，而事实是我们还不知道奖励样式。 */}
-        <span style={{ fontWeight: 700, color: overview.rewardText ? '#b45309' : '#cbd5e1' }}>
-          {overview.rewardText ?? '—'}
-        </span>
-      </span>
+    <div className={styles.overview}>
+      <div className={styles.overviewMain}>
+        <div className={styles.progressMetric}><strong>{completed}/{total}</strong><span>已完成题目</span></div>
+        <div className={styles.overviewMetric} data-tone="warning"><strong>{overview.partial}</strong><span>部分答对</span></div>
+        <div className={styles.overviewMetric}><strong>{needsAttention}</strong><span>需要处理</span></div>
+        <div className={styles.overviewMetric}><strong>{overview.unanswered}</strong><span>尚未作答</span></div>
+        <div className={styles.reward}>
+          <div className={styles.rewardIcon}>
+            {rewardScale
+              ? <RewardIcon kind={rewardScale.style} state={overview.reward > 0 ? 'earned' : 'empty'} size={34} />
+              : <span style={{ color: '#aab5c2' }}>?</span>}
+          </div>
+          <div><small>本学习单奖励</small><strong>{overview.rewardText ?? '暂未读取'}</strong></div>
+        </div>
+      </div>
+      <div className={styles.overviewFoot}>
+        <strong>当前进度 {progress}%</strong>
+        <span>{overview.draft > 0 ? `${overview.draft} 题正在作答` : completed > 0 ? `已完成 ${completed} 题` : '尚未开始作答'}</span>
+        <span className={styles.lastActivity}>{lastActivity ? `最后作答：${lastActivity}` : '暂无作答时间'}</span>
+      </div>
     </div>
   );
 }

@@ -12,17 +12,7 @@ import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
- * 教师看板的**学习单矩阵**（规格 `specs/2026-09-25-m5b-matrix-overview.md`）。
- *
- * ★ 2026-09-29（教师裁定「甲」）：它**从全屏浮层搬进了统计面板的「学习单」页**。
- *   · 外壳（`position: fixed` + zIndex 250 + 标题栏 + 退出按钮）**删掉了** ——
- *     容器现在是那个面板页，Tab 就是它的标题；
- *   · 换成一个**有高度上限的滚动框**（`MATRIX_MAX_HEIGHT`）：面板在格子阵**上面**，
- *     它长高一寸格子阵就矮一寸，而矩阵本身是十来道题 × 两行行头 ≈ 700px 以上。
- *     ⚠️ 这个滚动框不只是"限高"：粘性左列**必须**有一个"滚动的参照框"才成立
- *     （横向滑动时行首才钉得住）—— 浮层时代那个参照框是整个浮层。
- *   · 入口只剩一处：工具条「学习单▾ → 进度矩阵」现在**切到这一页**（不再另开浮层）。
- *     ⇒ 同一个矩阵只有一个家（本仓最防的「同一件事两处」）。
+ * 教师看板的**学习单矩阵**覆盖层（规格 `specs/2026-09-25-m5b-matrix-overview.md`）。
  *
  * ⚠️ **本文件只画，不判断**：每一格是什么状态、哪一题卡住，全在 `worksheet-matrix.ts`
  * （纯函数、有测试）。判据写进 JSX 就没有任何回归网了（本仓没有 jsdom，
@@ -35,10 +25,7 @@ import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
  * 🔴 **层级**：本覆盖层 `zIndex: 250`（与 `gridFullscreen` 同档），而学习单抽屉是 `290/291`
  * ⇒ 点行首 / 点格子打开抽屉时，抽屉**画在上面**，不需要改抽屉、也不该把矩阵关掉。
  */
-/** 矩阵那一块的高度上限（★ 2026-09-29 搬进面板时定的）。见上面文件头那一段。 */
-const MATRIX_MAX_HEIGHT = '46vh';
-
-export function MatrixView({
+export function MatrixOverlay({
   board,
   nodesByWorksheet,
   live,
@@ -46,6 +33,7 @@ export function MatrixView({
   loading,
   participantCount,
   advancedMode,
+  onClose,
   onOpenQuestion,
   onOpenParticipant,
   onOpenAnalysis,
@@ -59,6 +47,7 @@ export function MatrixView({
   participantCount: number;
   /** ★ 只有高级模式才谈得上「有的组没配学习单」—— 下面那行提示按它收窄。 */
   advancedMode: boolean;
+  onClose: () => void;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
   /** ★ M7a：打开这道题的**分析载荷**（只对主观题有入口）。 */
@@ -70,9 +59,22 @@ export function MatrixView({
   const uncovered = board ? uncoveredCount(participantCount, board.worksheets) : 0;
 
   return (
-    // 🔴 这个盒子**同时**是「限高」与「粘性的参照框」——两件事都靠它。
-    //    没有它：矩阵把格子阵挤下去（面板在格子阵上面）；粘性行首也没有可钉的边。
-    <div style={{ maxHeight: MATRIX_MAX_HEIGHT, overflow: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 250, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 24px', background: 'white', borderBottom: '1px solid #e2e8f0',
+      }}>
+        <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b' }}>学习单矩阵</div>
+        <button onClick={onClose} type="button"
+          style={{
+            padding: '7px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white',
+            cursor: 'pointer', fontSize: '0.813rem', color: '#475569',
+          }}>
+          退出
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
         {!board && loading ? (
           <p style={{ fontSize: '0.875rem', color: '#64748b' }}>正在读取作答…</p>
         ) : !board ? (
@@ -104,6 +106,7 @@ export function MatrixView({
             )}
           </>
         )}
+      </div>
     </div>
   );
 }

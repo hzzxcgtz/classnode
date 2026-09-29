@@ -60,3 +60,36 @@ export function ExploreSpaceNavigationIcon({ size = 24, ...props }: NavigationIc
     </svg>
   );
 }
+
+/**
+ * 智能体（教师侧栏「AI智能体」与学生端「学伴」那一族）。
+ *
+ * ★ 2026-09-29（教师）：「三个图标改一改，跟左侧菜单栏一致」——
+ * 看板工具条上「学习单 / 探究空间 / 智能学伴」那三个按钮的图标换成**侧栏那三个**。
+ * 「学习单」「探究空间」本来就已经是共用组件；这一个原来**内联在 `teacher/layout.tsx`** 里
+ * ⇒ 抽到这里，两处共用一份（各写一份必然漂移，而屏幕上只是「两个地方的图标长得不一样」）。
+ * ⚠️ 图形与侧栏那一枚逐字相同（同一个 24×24 网格、同样的 `strokeWidth`）。
+ */
+export function AgentNavigationIcon({ size = 24, ...props }: NavigationIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="M9 12h6" />
+      <path d="M12 9v6" />
+      <path d="M8 4V2" />
+      <path d="M16 4V2" />
+      <path d="M8 20v2" />
+      <path d="M16 20v2" />
+    </svg>
+  );
+}

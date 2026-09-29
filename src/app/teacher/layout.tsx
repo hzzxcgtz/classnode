@@ -8,7 +8,7 @@ import { APP_VERSION } from '@/lib/version';
 import { tokenExpiryView } from '@/lib/platform-token-expiry';
 import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
-import { ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
+import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 
 /**
  * 侧边栏导航。⚠️ **每一项的 `icon` 都必须在下面的图标 switch 里有一支对应的分支。**
@@ -546,15 +546,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   </svg>
                 )}
                 {item.icon === 'bot' && (
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="4" y="4" width="16" height="16" rx="3" />
-                    <path d="M9 12h6" />
-                    <path d="M12 9v6" />
-                    <path d="M8 4V2" />
-                    <path d="M16 4V2" />
-                    <path d="M8 20v2" />
-                    <path d="M16 20v2" />
-                  </svg>
+                  <AgentNavigationIcon size={iconSize} strokeWidth={1.5} />
                 )}
                 {item.icon === 'users' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

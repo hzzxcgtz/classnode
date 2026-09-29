@@ -4284,16 +4284,22 @@ function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElem
  * 而不是跟着别人的帧走。（内部那几处 `useMemo` 挡得住重算，挡不住重渲染。）
  */
 const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, loadAnalytics, tabs }: AnalyticsPanelProps) {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(`cls_analytics_collapsed_${classroomId}`) === 'true';
-    }
-    return false;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(`cls_analytics_collapsed_${classroomId}`, String(collapsed));
-  }, [collapsed, classroomId]);
+  /**
+   * ★ 2026-09-29（教师）：「折叠不再记住，改吧。」
+   *
+   * ⊘ 原来它**按课堂记在 localStorage 里**（`cls_analytics_collapsed_<id>`）。去掉的理由是
+   * 那一周里它让教师**两次找不到东西**：
+   *   · 第一次：页签与「点整行就收起」挤在同一行 ⇒ 想切页签却**误触折叠**，而折叠态当时
+   *     一个字都没有（一条空条 + 箭头），看着像坏了；
+   *   · 第二次：词云不见了（词云就在这一页里）—— 而那次折叠**是上一次误触留下的**，
+   *     刷新、重开都还在（键还在，所以一直折着）。
+   * ⇒ 「记住」对一块**每节课都要用、还要投影给全班看**的面板收益本来就很小，而它的失效方式
+   *   是「东西凭空不见了」。现在收起只在**当次**有效，刷新/重开一律展开。
+   *
+   * ⚠️ 老师浏览器里那个旧键（`cls_analytics_collapsed_*`）**没人读了**，是惰性的 ——
+   * 不清它（清它要写一段只跑一次的迁移代码，而它不占地方也不影响任何行为）。
+   */
+  const [collapsed, setCollapsed] = useState(false);
   const [cloudSource, setCloudSource] = useState<'user' | 'assistant' | 'both'>('user');
   const cloudRef = useRef<HTMLDivElement>(null);
   const [cloudWidth, setCloudWidth] = useState(360);

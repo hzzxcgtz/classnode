@@ -146,11 +146,12 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
-      <div role="dialog" aria-modal="true" aria-label={`${student.student.name} 的探究记录`} style={{
+      <div data-overscroll-guard="" role="dialog" aria-modal="true" aria-label={`${student.student.name} 的探究记录`} style={{
         position: 'fixed', top: 96, right: 24, bottom: 24, width: 420, zIndex: 291,
         background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          overscrollBehavior: 'contain',
       }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #f8faff, #f0f4ff)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -211,7 +212,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
             })}
           </div>
         </div>
-        <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 16px' }}>
+        <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '10px 16px' }}>
           <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
             {state?.dataUrl
               ? '这里只呈现定时快照（就是上面那张画面），以及「有没有在用、滚到哪儿」这两项状态。点击与输入不做记录。'

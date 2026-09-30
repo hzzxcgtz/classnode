@@ -144,7 +144,7 @@ export function WorksheetDrawer({
       {/* 遮罩层。与对话抽屉同一块位置、同一个 z-index 层（两者互斥，见 page.tsx 的打开处）。 */}
       <div onClick={onClose}
         style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
-      <div data-worksheet-drawer className={`${styles.drawer} ${current.kind === 'questions' ? styles.analysisDrawer : ''}`}>
+      <div data-overscroll-guard="" data-worksheet-drawer className={`${styles.drawer} ${current.kind === 'questions' ? styles.analysisDrawer : ''}`}>
         {/* 头部：标题随层次变，左上角是「返回」（只在有多层时出现）。 */}
         <div className={styles.header}>
           {canGoBack && (

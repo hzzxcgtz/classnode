@@ -42,7 +42,14 @@ export function AnalysisOverlay({
   const { payload } = state;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex, background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+    // ⚠️ `overflow: 'hidden'` 是给下一行那层网用的：`overscroll-behavior` 只对
+    // **滚动容器**有效（`overflow: visible` 的盒子被浏览器直接忽略、不报错）。
+    // 整屏的盒子加它无副作用。
+    <div data-overscroll-guard="" style={{
+      position: 'fixed', inset: 0, zIndex, background: '#f8fafc',
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', overscrollBehavior: 'contain',
+    }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
         borderBottom: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',

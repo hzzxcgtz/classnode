@@ -156,6 +156,12 @@ model Classroom {
   /// ⚠️ 改成 true 之后，学习单的**保存**会被 409 拒（`code: 'answers-locked'`），
   /// 而**交卷仍然放行**（规格 §3.2）。与 `allowResubmit`（学习单级、题级语义）是两层。
   answersLocked Boolean @default(false)
+  /// ★ 2026-09-30：课堂级「逐题开放」（学习单的 `answerMode: 'manual'` 那一档用它）。
+  /// 形状 `{ [学习单 id]: [已开放的题 id…] }`，判据在 `services/worksheet-open.ts`。
+  /// 🔴 **可空、且不给默认值**：老课堂读出来是 NULL ⇒ 含义是「一份单都没开放过」，
+  /// 而那正是这个新功能在老课堂里该有的样子（不是「全部开放」，那会把卷子整个放开）。
+  /// ⚠️ 按**学习单**分键：高级模式下各组拿的是不同的单，一份单一个进度。
+  worksheetOpen Json?
   /// 探究空间：是否采集**画面**（截图）。关掉后学生端不传任何图片，
   /// 只传文字档（可见性 + 滚动深度）—— 那是给老设备用的便宜档。
   webappCaptureEnabled Boolean @default(true)

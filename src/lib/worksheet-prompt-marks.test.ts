@@ -21,13 +21,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BLANK_MARK_TEXT,
   DEFAULT_PROMPT_STYLE,
   WRONG_ANSWER_STYLE,
   blankAriaLabel,
+  blankMarkCount,
   blankValueStyle,
   blankAnswerStyle,
   blankCount,
   blankRuns,
+  blanksFromText,
+  convertBlankMarks,
   inputWidthCh,
   insertBlank,
   insertPromptText,
@@ -706,4 +710,137 @@ test('🔴 blankAriaLabel：没答错时**一个字都不加**', () => {
   assert.equal(blankAriaLabel('第 2 空', false), '第 2 空');
   // 阴性对照说清方向：加了「答对了」也是错的 —— 这个名字只管「这是哪一格」。
   assert.equal(blankAriaLabel('第 2 空', false).includes('答'), false);
+});
+
+// ── 空标记的**统一**（★ 2026-09-29 教师裁定，粘贴导入那一批）────────────────────
+//
+// 教师原话，两条：
+//   ① 「如果题干中有中间带空格的小括号或一串下划线，则要保留，并统一设置成 8 个空格或
+//      8 个下划线」→ 追问之后裁定：**「填空的小括号和下划线要替换成 `{填空域}`」**。
+//   ② 「如果是选词填空，一般会在下划线后的小括号中」（括号里的词怎么算，见
+//      `worksheet-editor-core.test.ts` 的待选词那一组）。
+//
+// 🔴 于是**库里只有一种形态**：`{填空域}`（5 个字符）。「8」那一条被裁掉的是另一个读法
+//（把占位串本身做成 8 个字符宽），教师选了 5ch —— 理由与代价见 ledger 那一条 ruling。
+//
+// 🔴 这一组同时钉着一个**实测出来的 bug**：迁移把 `________` 写进题干
+//（`server/src/services/worksheet-fill-blank-migration.ts` 的 `BLANK_PLACEHOLDER`），
+// 而 `recognizeBlanks` 只认 `{填空域}` ⇒ 教师在题干里多打一个字，那个空**消失**
+//（2026-09-29 探针实测：读库后空数 1、编辑后 0）。修法不是去改识别那一侧
+//（那会让「括号 / 下划线」也变成空，而 `（高兴 难过）` 这种待选词括号会被一起吃掉），
+// 而是**统一发生在导入与迁移那一侧**：先 `convertBlankMarks`，再 `recognizeBlanks`。
+
+test('★ BLANK_MARK_TEXT 就是 `{填空域}`（库里唯一那一种形态，5 个字符）', () => {
+  // 它原来散在三处（`prompt-editor.tsx` 的 `FILL_BLANK_TEXT`、服务端 `worksheet-questions.ts`
+  // 的同名常量、以及一堆测试夹具里手写的字面量）。客户端从此只有**这一份**；
+  // 服务端那一份是刻意的双胞胎（另一个包、import 不过来），靠用例对齐。
+  assert.equal(BLANK_MARK_TEXT, '{填空域}');
+  assert.equal(BLANK_MARK_TEXT.length, 5);
+});
+
+test('🔴 convertBlankMarks：中间**只有空白**的小括号 ⇒ 一个 {填空域}', () => {
+  assert.deepEqual(convertBlankMarks('植物需要（   ）才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  // 半角括号、一个空格、全角空格、制表符 —— 都算「只有空白」。
+  assert.deepEqual(convertBlankMarks('植物需要( )才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  assert.deepEqual(convertBlankMarks('植物需要（　）才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  assert.deepEqual(convertBlankMarks('植物需要(\t)才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  // 一串是**一个**空，不是好几个空。
+  assert.deepEqual(convertBlankMarks('需要（        ）生长'), { text: '需要{填空域}生长', converted: 1 });
+});
+
+test('🔴 convertBlankMarks：2 个及以上的下划线 ⇒ 一个 {填空域}（几个都算一个）', () => {
+  assert.deepEqual(convertBlankMarks('植物需要__才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  // 迁移写进去的就是这 8 个 —— 它必须被认出来（否则教师一改题干空就没了）。
+  assert.deepEqual(convertBlankMarks('植物需要________才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+  // 全角下划线（服务端的纯文本投影用的就是这一种）。
+  assert.deepEqual(convertBlankMarks('植物需要＿＿＿＿才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
+});
+
+test('🔴 反向：**只有一个**下划线不算空（那是正文里的下划线，不是填空）', () => {
+  assert.deepEqual(convertBlankMarks('变量 _ 是空的'), { text: '变量 _ 是空的', converted: 0 });
+  assert.deepEqual(convertBlankMarks('file_name 里有下划线'), { text: 'file_name 里有下划线', converted: 0 });
+});
+
+test('🔴 反向：括号里**有字**的绝不是空 —— 这一条挡的是「选词填空的词库被吃成空」', () => {
+  // 教师裁定 ②：括号里不止一个词（有分隔符或空格）⇒ 那是**待选词**，不是空。
+  // 少了这一条，`（高兴 难过 兴奋）` 会变成 `{填空域}` ⇒ 词库凭空变成一道填空题，
+  // 而屏幕上看只是「那个括号没了」。
+  assert.deepEqual(convertBlankMarks('他（高兴）地说'), { text: '他（高兴）地说', converted: 0 });
+  assert.deepEqual(convertBlankMarks('（高兴 难过 兴奋）'), { text: '（高兴 难过 兴奋）', converted: 0 });
+  assert.deepEqual(convertBlankMarks('（高兴、难过）'), { text: '（高兴、难过）', converted: 0 });
+  // 题号 / 选项前缀那两种括号也**不是**空。
+  assert.deepEqual(convertBlankMarks('（1）甲（2）乙'), { text: '（1）甲（2）乙', converted: 0 });
+  assert.deepEqual(convertBlankMarks('(A)甲(B)乙'), { text: '(A)甲(B)乙', converted: 0 });
+  // 一个词 + 前后空格，还是「有字」。
+  assert.deepEqual(convertBlankMarks('他（ 高兴 ）地说'), { text: '他（ 高兴 ）地说', converted: 0 });
+});
+
+test('🔴 convertBlankMarks：多处一起换，`converted` 如实报数', () => {
+  assert.deepEqual(
+    convertBlankMarks('（1）植物需要____才能生长，（2）动物需要（   ）才能呼吸'),
+    { text: '（1）植物需要{填空域}才能生长，（2）动物需要{填空域}才能呼吸', converted: 2 },
+  );
+});
+
+test('🔴 convertBlankMarks：与已经在题干里的 {填空域} 并存 —— **不重复计入 `converted`**', () => {
+  // `converted` 回答的是「这次换掉了几处」，不是「题干里有几个空」。
+  // 「有几个空」是 `blankMarkCount` 的事，两个数混起来用，界面上就会报错个数。
+  assert.deepEqual(convertBlankMarks('需要{填空域}和（  ）'), { text: '需要{填空域}和{填空域}', converted: 1 });
+  assert.equal(blankMarkCount(convertBlankMarks('需要{填空域}和（  ）').text), 2);
+});
+
+test('🔴 convertBlankMarks：**幂等**（再跑一遍一个字都不动）', () => {
+  // 迁移与导入会各自跑一次，而它们可能对同一份题干都跑过 —— 不幂等就是「第一次对、
+  // 第二次多出一截」这种只在重跑时才现形的东西。
+  const once = convertBlankMarks('植物需要________才能生长').text;
+  assert.deepEqual(convertBlankMarks(once), { text: once, converted: 0 });
+});
+
+test('🔴 convertBlankMarks：不是字符串 / 空串 ⇒ 空串（不抛、不编）', () => {
+  assert.deepEqual(convertBlankMarks(undefined), { text: '', converted: 0 });
+  assert.deepEqual(convertBlankMarks(null), { text: '', converted: 0 });
+  assert.deepEqual(convertBlankMarks(42), { text: '', converted: 0 });
+  assert.deepEqual(convertBlankMarks(''), { text: '', converted: 0 });
+});
+
+test('🔴 blankMarkCount：数的是题干里有几个空（重叠的只算一个）', () => {
+  assert.equal(blankMarkCount(''), 0);
+  assert.equal(blankMarkCount('一个都没有'), 0);
+  assert.equal(blankMarkCount('需要{填空域}才能生长'), 1);
+  assert.equal(blankMarkCount('{填空域}{填空域}{填空域}'), 3);
+  // 不是一个串就不算（与 `recognizeBlanks` 规则②同一条判据）。
+  assert.equal(blankMarkCount('{填空域'), 0);
+  assert.equal(blankMarkCount(undefined), 0);
+});
+
+test('🔴 迁移出来的题干（一串下划线）统一之后**编辑题干也不会丢空**', () => {
+  // 这是上面那个 bug 的正面用例。走的是编辑器真实的那两步：
+  //   `runsFromText` = `remapRuns`（区间跟着文字走）+ `recognizeBlanks`（按文本重认）
+  // 修复前：第一步之后空数 0（题干里是 `________`，识别只认 `{填空域}`）。
+  const { text } = convertBlankMarks('植物需要________才能生长');
+  const runs = blanksFromText(text, mint);
+  assert.equal(blankCount(runs), 1, '统一之后必须认得出来');
+
+  const next = `${text}。`;
+  const moved = recognizeBlanks(remapRuns(runs, text, next), next, BLANK_MARK_TEXT, mint);
+  assert.equal(blankCount(moved), 1, '教师在题干里多打一个字，空不许消失');
+  assert.equal(blankRuns(moved)[0].start, 4);
+  assertShape(moved, next.length);
+});
+
+test('🔴 blanksFromText：**从纯文本认出全部空**（`recognizeBlanks([])` 是一个静默空操作）', () => {
+  // 🔴 这一条钉的是一个**实测出来的坑**，`promptRunsPatchFor` 当年就踩了它：
+  // `recognizeBlanks` 只能改**已有**的分段、造不出新的（`rewriteRange` 只遍历入参）
+  // ⇒ 喂一个空数组，它一声不响地返回空数组，而 `isPlainRuns([])` 为真
+  // ⇒ 调用方写 `promptRuns: undefined` ⇒ 屏幕上与「题干里没有空」一模一样。
+  // 代价：「粘一整道带 `{填空域}` 的题」那个功能从来没生效过。
+  assert.equal(blankCount(recognizeBlanks([], '需要{填空域}才能生长', BLANK_MARK_TEXT, mint)), 0, '前提：空数组喂进去就是 0');
+  assert.equal(blankCount(blanksFromText('需要{填空域}才能生长', mint)), 1);
+  // 普通文本 ⇒ 一条铺满的默认分段（与 `readPromptRuns(undefined, text)` 逐字相同）。
+  const plain = blanksFromText('光合作用需要什么？', mint);
+  assert.equal(plain.length, 1);
+  assert.ok(isPlainRuns(plain));
+  // 边界：空 / 非字符串 ⇒ 空数组（不抛、不编一条空段出来）。
+  assert.deepEqual(blanksFromText('', mint), []);
+  assert.deepEqual(blanksFromText(undefined, mint), []);
 });

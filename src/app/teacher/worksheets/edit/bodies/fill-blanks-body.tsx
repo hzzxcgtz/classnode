@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
+import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
 import { blankSlots, fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
@@ -123,7 +124,7 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
       {showAnswer && slots === 0 && (
         <div className="worksheet-editor-blank-empty">
           <strong>还没有填空位置</strong>
-          <span>把光标放到题干的目标位置，再点击工具栏中的“{'{填空域}'}”；或者在上面加一张表格、把某几格标成「填空」。</span>
+          <span>把光标放到题干的目标位置，再点击工具栏中的“{BLANK_MARK_TEXT}”；或者在上面加一张表格、把某几格标成「填空」。</span>
         </div>
       )}
 
@@ -182,7 +183,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
       {slots.length === 0 ? (
         <div className="worksheet-editor-blank-empty">
           <strong>还没有填空的位置</strong>
-          <span>把光标放到题干的目标位置再点“{'{填空域}'}”；或者在上面加一张表格、把某几格标成「填空」。</span>
+          <span>把光标放到题干的目标位置再点“{BLANK_MARK_TEXT}”；或者在上面加一张表格、把某几格标成「填空」。</span>
         </div>
       ) : (
         <div className="worksheet-editor-fill-mode-list">

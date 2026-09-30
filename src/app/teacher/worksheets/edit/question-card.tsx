@@ -3,12 +3,13 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
+import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
-import { PromptEditor, promptRunsPatchFor } from './prompt-editor';
+import { PromptEditor } from './prompt-editor';
 // ★ 2026-09-27：「粘贴题目」的确认窗（题干 + 选项一起识别）—— 单独一个文件，
 // 因为它是**一次粘贴**的界面，与「画一道题的控件」不是同一件事。
 import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
@@ -24,10 +25,8 @@ import {
   isChoiceQuestion,
   isMultipleChoice,
   isPartialPoints,
-  optionPastePatch,
-  orderPastePatch,
-  writeOrder,
   parsePointInput,
+  pasteDataPatch,
   planPointInputChange,
   pointText,
   POINTS_FULL_MIN,
@@ -158,7 +157,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, total, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onMove, onRemove }: {
+export function QuestionCard({ heading, index, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -166,12 +165,12 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * 🔴 它取代了原来的 `index + 1`（容器内下标）。那个数在正常路径上就错：两个任务时
    * 同屏有**两张「第 1 题」**，而保存失败说「任务二 · 1 的分值只填了一个框」——
    * 教师得在两处「第 1 题」之间猜是哪一张。
-   * ⚠️ `index` / `total` **留着**，但它们只服务 ▲▼ 的边界（换位是**同层内**的）。
+   * ⚠️ `index` 同时是**折叠态徽章**上那个「任务一 · 2」的来源（`badgeLabel`），
+   *    所以它必须留着 —— 「换位是同层内的」这条规则也仍然成立（拖拽那一路）。
    */
   heading: string;
-  /** 同层内的位置与个数（0-based）—— ▲▼ 的边界判据，**不用于显示**。 */
+  /** 同层内的位置（0-based）—— 折叠态徽章用它，**不是**给换位边界用的了（见下）。 */
   index: number;
-  total: number;
   /**
    * ★ 2026-09-26（spec 第 2 步）：**这张卡展开了没有**（一页 20 题，只展开一张）。
    * 折叠态只画一行摘要（题号 · 题型 · 题干一行 · 分值 · 工具）；展开态才是今天这一整张。
@@ -217,7 +216,6 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
   onAutoGradeChange: (autoGrade: boolean) => void;
   /** ★ 2026-09-26：部分给分的容错档。`null` = 缺省（旧规则「只要有一部分对就给分」）。 */
   onToleranceChange: (tolerance: number | null) => void;
-  onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
@@ -260,23 +258,15 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
    * 🔴 **题干与选项必须同一次提交**（走 `onPromptChange` 的第二个参数）：分两次 dispatch
    * 会让这一次粘贴占掉**两格**撤销栈，教师按一下 ⌘Z 只退掉一半 ——
    * 而屏幕看起来「退了一次，怎么还剩一半」。
-   * ⚠️ `promptRunsPatchFor` 不能省：题干的分段存在 `data.promptRuns` 里，而 `readPromptRuns`
-   * **只认存量**、不会从文本重认填空域（理由见那个函数）。
+   *
+   * ⊘ 2026-09-29：补丁的算法整个搬去 `pasteDataPatch`（纯函数，`node --test` 能跑）。
+   * 此前这段逻辑长在本文件里，而**本组件在本机没有回归网** —— 四种题型的拆分规则
+   * 一起长在这儿的话，每一条都只能靠人眼在浏览器里看。这里只剩「算一次、提交一次」。
    */
   const applyPaste = (result: PasteQuestionResult) => {
-    const optionPatch = result.texts.length > 0
-      ? node.type === 'order'
-        ? (() => {
-            const pasted = orderPastePatch(result.texts);
-            return writeOrder(pasted.items, pasted.correctOrder);
-          })()
-        : optionPastePatch(result.texts, node)
-      : null;
-    if (result.stem !== null) {
-      onPromptChange(result.stem, { ...promptRunsPatchFor(result.stem), ...(optionPatch ?? {}) });
-    } else if (optionPatch) {
-      onDataChange(optionPatch);
-    }
+    const patch = pasteDataPatch(result, node);
+    if (result.stem !== null) onPromptChange(result.stem, patch);
+    else if (Object.keys(patch).length > 0) onDataChange(patch);
     setPasteOpen(false);
   };
 
@@ -409,14 +399,18 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
           </span>
         </button>
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
-            不拦住的话按一下 ▲ 会顺带把整张卡展开（而教师只想挪一位）。 */}
+            不拦住的话按一下把手会顺带把整张卡展开（而教师只想挪一位）。 */}
         <div className="worksheet-editor-question-tools" onClick={event => event.stopPropagation()}>
           {/*
             ★ 2026-09-26（spec 第 5 步）：**拖拽把手**。
             ⚠️ 为什么必须是把手、不能让整行可拖：整行已经挂「点一下展开」了 ——
             两者会抢同一个手势（教师想展开却被拖走）。
             ⚠️ `touch-action: none`（CSS）是**必须**的：不写的话触屏上浏览器会先把这次
-            拖动解释成滚动，`pointermove` 到一半就断了。`▲▼` 留着：拖拽对键盘用户不可用。
+            拖动解释成滚动，`pointermove` 到一半就断了。
+            ★ 2026-09-30（教师）：「排序按钮可以取消了」⇒ 把手右边那对 `▲▼`
+            （`onMove`）**删掉了**，这一行现在只剩把手与删除。换位**只有拖拽一条路**。
+            🔴 代价写在明处：拖拽对**键盘用户不可用**（`onPointerDown` 起手），
+              这一改等于把「键盘换题序」这条能力一起拿掉了。别当成免费的清理。
           */}
           <button
             type="button"
@@ -426,26 +420,6 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
             aria-label={`拖动「${heading}」调整顺序`}
           >
             ⠿
-          </button>
-          <button
-            type="button"
-            className="worksheet-editor-icon-button"
-            onClick={() => onMove(-1)}
-            disabled={index === 0}
-            title={index === 0 ? '已经是第一题' : '上移一位'}
-            aria-label="上移一位"
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            className="worksheet-editor-icon-button"
-            onClick={() => onMove(1)}
-            disabled={index === total - 1}
-            title={index === total - 1 ? '已经是最后一题' : '下移一位'}
-            aria-label="下移一位"
-          >
-            ▼
           </button>
           <button
             type="button"
@@ -509,7 +483,7 @@ export function QuestionCard({ heading, index, total, expanded, focusedMode = fa
                   「题目内容 / 写清学生需要完成什么」是同一句话说两次，所以当时删掉了。
                   现在「题目内容」是容器的名字、块要有自己的名字，它不再重复。 */}
               <h4>题干</h4>
-              <p>题目本身。需要学生填空时，在要填的位置插入「{'{填空域}'}」。</p>
+              <p>题目本身。需要学生填空时，在要填的位置插入「{BLANK_MARK_TEXT}」。</p>
             </div>
           </div>
           <PromptEditor

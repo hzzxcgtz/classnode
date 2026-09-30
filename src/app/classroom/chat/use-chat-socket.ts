@@ -4,6 +4,8 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '@/lib/classroom-modules';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
+// ★ 2026-09-30：「逐题开放」那条广播的载荷要收干净（判据在那个文件里，有用例）。
+import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 import { publishWorksheetClear, subscribeDraftPreview } from '../worksheet/worksheet-socket-bus';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
@@ -42,6 +44,15 @@ interface ChatSocketOptions {
    * 不依赖那个 15 秒才刷新一次的快照对象（锁定要**立刻**生效）。
    */
   setAnswersLocked: Dispatch<SetStateAction<boolean>>;
+  /**
+   * ★ 2026-09-30：教师「逐题开放」的清单变了（按学习单分键）。
+   *
+   * ⚠️ 与 `setAnswersLocked`（一个布尔）不同，这个要**记住是哪一份单** ——
+   * 高级模式下各组拿的是不同的单，写错键会让另一组的卷子跟着变。
+   * 判据（收干净 id 列表）在 `@/lib/worksheet-answer-mode` 的 `normalizeOpenQuestions`，
+   * 这里只把它搬进 state（**一个 setState、一处判据**）。
+   */
+  setWorksheetOpen: Dispatch<SetStateAction<Record<string, string[]>>>;
   setSelectedStudent: Dispatch<SetStateAction<ClassroomStudentSummary | null>>;
   setShieldWarning: Dispatch<SetStateAction<string | null>>;
   setStep: Dispatch<SetStateAction<'loading' | 'identity' | 'home' | 'shell'>>;
@@ -206,6 +217,16 @@ export function useChatSocket(options: ChatSocketOptions) {
 
       socket.on('answers-unlocked', () => {
         optionsRef.current.setAnswersLocked(false);
+      });
+
+      // ★ 2026-09-30：教师在**看板**上逐题开放。载荷带状态本身（见 `socket-events.ts`
+      // 那一条的注释：它是**列表**，不能用 15 秒前的快照兜底）。
+      // ⚠️ 只**并进**那一份单的键，别的单原样保留 —— 高级模式下别组的进度不许被抹掉。
+      socket.on('worksheet-open-changed', (data) => {
+        const worksheetId = typeof data?.worksheetId === 'string' ? data.worksheetId : '';
+        if (!worksheetId) return;   // 认不出的载荷 ⇒ 一个字都不动（宁可不动也不写错键）
+        const questionIds = normalizeOpenQuestions(data?.questionIds);
+        optionsRef.current.setWorksheetOpen((previous) => ({ ...previous, [worksheetId]: questionIds }));
       });
 
       // ★ 2026-09-28（教师第 4 条）：教师在**看板**上清除了这名学生在这份学习单上的作答。

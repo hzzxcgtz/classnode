@@ -5,8 +5,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
+  BLANK_MARK_TEXT,
   DEFAULT_PROMPT_STYLE,
   blankRuns,
+  convertBlankMarks,
   insertBlank,
   insertPromptText,
   normalizePastedText,
@@ -128,8 +130,11 @@ const NO_SELECTION: ToolbarState = {
  * ⚠️ **随机性只许留在这一侧**：纯逻辑那一层（`@/lib/worksheet-prompt-marks`）拿了标识
  * 当参数，它自己不许造 —— 否则那里的用例就不确定了。
  */
-/** 教师端可读的填空占位串；学生端仍根据 run 的 blank 标识渲染真正输入区。 */
-const FILL_BLANK_TEXT = '{填空域}';
+// ⚠️ 填空占位串（`{填空域}`）的**真源现在在纯逻辑那一层**
+//（`@/lib/worksheet-prompt-marks` 的 `BLANK_MARK_TEXT`）—— 本文件曾经自己写了一份字面量，
+// 而「改写题干文本」的那几条路（导入、迁移）也要用同一个串 ⇒ 两份就是两次漂移的机会。
+// 局部别名留着，下面的代码一个字不用改。
+const FILL_BLANK_TEXT = BLANK_MARK_TEXT;
 
 /**
  * 文本变了之后重算分段：**先跟随文本重映射区间，再按文本重新识别填空域**。
@@ -146,21 +151,9 @@ function runsFromText(prevRuns: PromptRun[], prevText: string, nextText: string)
   return recognizeBlanks(moved, nextText, FILL_BLANK_TEXT, () => newBlankId());
 }
 
-/**
- * 把一段**纯文本**整段当成新题干时，要跟着一起提交的 `data` 补丁（★ 2026-09-27，粘贴题目用）。
- *
- * 🔴 **不能只写 `prompt` 就完事**：题干的分段存在 `data.promptRuns` 里，而 `readPromptRuns`
- * **只认存量**、不会从文本里重新认填空域 —— 会做那件事的只有 `recognizeBlanks`。
- * 粘进来的题干是纯文本，所以这里从空数组起重认一遍：
- *   · 普通题干 ⇒ 一整段普通分段 ⇒ `isPlainRuns` 为真 ⇒ 写 `undefined`（把旧格式清干净）；
- *   · 题干里带着 `{填空域}`（教师从自己的稿子里抄过来的）⇒ 认成真正的空。
- * ⚠️ 少了它，粘进来的 `{填空域}` 在教师端画不出灰底、学生端也不会在那里画输入框 ——
- * **而屏幕上只是几个普通字符**，没有任何东西会报错。
- */
-export function promptRunsPatchFor(text: string): Record<string, unknown> {
-  const runs = recognizeBlanks([], text, FILL_BLANK_TEXT, () => newBlankId());
-  return { promptRuns: isPlainRuns(runs) ? undefined : runs };
-}
+// ⊘ `promptRunsPatchFor` 2026-09-29 搬去 `worksheet-editor-core.ts` —— 它要能被
+//   `node --test` 直接跑（组件那一侧没有回归网），而搬过去时才发现它**从来没生效过**
+//   （`recognizeBlanks([])` 是静默空操作）。理由与那条用例都记在它的新家。
 
 const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string }[] = [
   { key: 'bold', label: 'B', title: '加粗' },
@@ -174,8 +167,20 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
 
 export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
-  /** 完整题目粘贴目前用于选择题与排序题；两者都能把题干和条目一次拆开。 */
-  const canPasteQuestion = isChoiceQuestion(node) || node.type === 'order';
+  /**
+   * ★ 2026-09-29（教师）：「增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」。
+   *
+   * 四种题型各自认什么，写在 `parsePasteFor` 上（纯逻辑、有用例）；这里只管**画不画那个按钮**。
+   * ⚠️ 判据是**题型**而不是「题干里有没有空」：填空题即使是空题干也要能粘
+   *（粘进来才有空），拿内容当判据会出现「新建一道填空题 ⇒ 按钮不见了」。
+   */
+  const canPasteQuestion = isChoiceQuestion(node) || node.type === 'order'
+    || node.type === 'true-false' || supportsBlankSlots;
+  /** 这个按钮的说明文字按题型给（四种题型认的东西不一样，一句通用的话会说错三种）。 */
+  const pasteTitle = node.type === 'order' ? '粘贴一整道排序题（题干与条目一起识别）'
+    : isChoiceQuestion(node) ? '粘贴一整道选择题（题干与选项一起识别）'
+      : node.type === 'true-false' ? '粘贴一整道判断题（整段作题干）'
+        : '粘贴一整道填空题（括号与下划线会认成填空域）';
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
@@ -302,6 +307,26 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
   }, [colorOpen]);
 
   /**
+   * 题干文本变了之后一起提交的 `data` 补丁 —— **打字与粘贴走同一条**（★ 2026-09-29 收口）。
+   *
+   * 🔴 抽出来是因为原来只有**打字**那条路做了「答案按空的身份重排」：粘贴那条路只写
+   * `promptRuns` ⇒ 粘一段带空的题干会让**空数变了而 `answers` 没变**，两边长度对不上。
+   * （`data.answers` 的下标就是空在题干里的次序 —— 长度错位 = 答案整体串位，而屏幕上
+   * 一切正常。`blankRuns` 的注释里对这条有一份更完整的账。）
+   */
+  const promptDataPatch = (prevRuns: PromptRun[], nextRuns: PromptRun[]): Record<string, unknown> => {
+    const data: Record<string, unknown> = { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns };
+    if (!supportsBlankSlots) return data;
+    const answers = readBlankAnswers(node);
+    // 按**身份**搬：同一个空换了位置也还是同一个空，它的答案跟着走。
+    const byId = new Map(blankRuns(prevRuns).map((run, index) => [run.blank, answers[index] ?? []]));
+    data.answers = blankRuns(nextRuns).map(run => byId.get(run.blank) ?? []);
+    // ⚠️ 顺手把老形状的 `blanks` 清掉：两份答案并存会让「哪一份算数」有两个答案。
+    data.blanks = undefined;
+    return data;
+  };
+
+  /**
    * 敲了字（约束 2 的另一半 + 区间跟着走）。
    *
    * 🔴 顺序不能反：**先**看拼字标记再读文本 —— 拼字中途的 `textContent` 是**半成品**
@@ -318,16 +343,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     const nextRuns = runsFromText(runsRef.current, node.prompt, nextText);
     // 文字变了 ⇒ 之前记下的那段选区作废（见 `pendingRangeRef`）。
     pendingRangeRef.current = null;
-    const nextData: Record<string, unknown> = {
-      promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns,
-    };
-    if (supportsBlankSlots) {
-      const answers = readBlankAnswers(node);
-      const byId = new Map(blankRuns(runsRef.current).map((run, index) => [run.blank, answers[index] ?? []]));
-      nextData.answers = blankRuns(nextRuns).map(run => byId.get(run.blank) ?? []);
-      nextData.blanks = undefined;
-    }
-    onPromptChange(nextText, nextData);
+    onPromptChange(nextText, promptDataPatch(runsRef.current, nextRuns));
     refreshToolbar();
   };
 
@@ -517,11 +533,21 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     const range = selectedRange(el) || pendingRangeRef.current;
     const from = range ? range.from : (caretOffset(el) ?? text.length);
     const to = range ? range.to : from;
-    const inserted = insertPromptText(runsRef.current, text, from, to, plain);
+    // ★ 2026-09-29（教师裁定）：「填空的小括号和下划线要替换成 `{填空域}`」。
+    // 🔴 这一步**打字那条路没有、粘贴这条路必须有**：教师从自己的稿子里复制的是
+    // 「（　）」或「____」，不换成标记的话同一句题干里「敲出来的那个是空、粘进来的那个
+    // 是普通文字」—— 而两种写法在屏幕上一模一样。
+    const { text: converted } = convertBlankMarks(plain);
+    const inserted = insertPromptText(runsRef.current, text, from, to, converted);
     if (inserted.text === text) return;
-    onPromptChange(inserted.text, { promptRuns: isPlainRuns(inserted.runs) ? undefined : inserted.runs });
-    renderRunsInto(el, inserted.text, inserted.runs);
-    const after = from + plain.length;
+    // 与打字那条路**同一条识别**：`insertPromptText` 里的 `remapRuns` **永远不造空**
+    //（造空只有 `insertBlank` 一条路）⇒ 少了这一句，粘进来的标记只是普通文字。
+    const nextRuns = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => newBlankId());
+    onPromptChange(inserted.text, promptDataPatch(runsRef.current, nextRuns));
+    renderRunsInto(el, inserted.text, nextRuns);
+    // ⚠️ 光标按**转换之后**那段算：`converted` 与 `plain` 长度可以不一样
+    //（「____」4 个字符 → 「{填空域}」5 个），按 `plain.length` 落光标会差一格。
+    const after = from + converted.length;
     el.focus();
     placeSelection(el, after, after);
     refreshToolbar();
@@ -676,13 +702,14 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           <div className="worksheet-editor-tool-group is-insert" role="group" aria-label="插入题目内容">
           {/* ★ 2026-09-27（教师）：「在题目内容框内增加从剪贴板粘贴类似的按钮，不要使用在选项框内
               onpaste，还是有个按钮用户使用更方便。」⇒ 从剪贴板粘一整道题（题干 + 选项一起识别）。
-              ⚠️ **只在选择题上画** —— 判据见 `canPasteQuestion`。
+              ⊘ 「只在选择题上画」那条 2026-09-29 扩到了**四种题型**（教师裁定）——
+              判据与每种的说明文字见 `canPasteQuestion` / `pasteTitle`。
               ⚠️ 这里**不读剪贴板**（`navigator.clipboard.readText()` 会弹浏览器自己的「粘贴」
               授权浮层，教师看到的是一个莫名其妙的 tip）。按 ⌘V 那一下由弹窗里的输入框接住。 */}
           {canPasteQuestion && (
           <button
             type="button"
-            title={node.type === 'order' ? '粘贴一整道排序题（题干与条目一起识别）' : '粘贴一整道选择题（题干与选项一起识别）'}
+            title={pasteTitle}
             aria-label="粘贴题目"
             onClick={onRequestPaste}
           >
@@ -726,7 +753,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
                 insertBlankAtCaret();
               }}
             >
-              <span className="worksheet-editor-blank-glyph" aria-hidden="true">{'{填空域}'}</span>
+              {/* ⚠️ 字形**用那个常量**，不再手写字面量：教师靠这个字形去题干里找它，
+                  两处一旦漂移（比如常量改成 8 个下划线），按钮上写的东西就指向一个不存在的东西。 */}
+              <span className="worksheet-editor-blank-glyph" aria-hidden="true">{BLANK_MARK_TEXT}</span>
             </button>
           )}
           <label className="worksheet-editor-image-upload">

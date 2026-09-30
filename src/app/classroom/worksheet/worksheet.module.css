@@ -1211,19 +1211,12 @@
    与让位算出来的落点是两份各自独立的判据、会对不上。两份真相里必须删一份。
    ⚠️ 别把它加回来：`.dropActive` 还在（连线题的落点高亮），那一个没有这个问题。 */
 
-.orderIndex {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #eef3f8;
-  color: var(--ws-accent);
-  font-size: .76rem;
-  font-weight: 800;
-}
+/* ★ 2026-09-30（教师）：「排序题的每一个选项前面不需要加数字编号，会误导学生」
+   ⇒ 那个 22×22 的序号徽标（`.orderIndex`）**整个删掉**了，换成什么都不加。
+   🔴 别把它加回来：那个位置是**序位槽**，任何符号（数字或圆点）学生都会读成
+   「这是第几步」，而这道题的全部意义就是学生给的顺序 —— 等于给答案。
+   （连带删掉的是 JS 里 `writeSlots` 那一整套「拖动中改写序号」的机制，
+     见 `questions/order-body.tsx` 的文件头。） */
 
 .orderText {
   flex: 1 1 auto;
@@ -1241,10 +1234,16 @@
   letter-spacing: -3px;
 }
 
+/* ★ 2026-09-30（教师）：「间隔距离太大」——指的是 ▲ 与 ▼ 两个**看得见的**方框之间
+   那一大段空白。它来自两处叠加：`.orderButton` 是 44×44 的命中区（触屏下限，不许改小，
+   见下面那一大段注释），而里面那个方框只有 32×32 ⇒ 每个按钮自带 6px 的「看不见的边」，
+   再加这里 6px 的 gap，两个方框之间就有 6+6+6=18px 空当。
+   ⇒ gap 收成 0、方框放到 36px：可见间隔 4+0+4=8px，与 `.orderRow` 自己的 gap 同宽。
+   ⚠️ **不许动 `.orderButton` 的 44px**：那是命中区，`worksheet-tap-targets.test.ts` 钉着它。 */
 .orderButtons {
   flex: 0 0 auto;
   display: flex;
-  gap: 6px;
+  gap: 0;
 }
 
 .orderButton {
@@ -1730,8 +1729,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  /* ★ 2026-09-30：32 → 36px（教师：「间隔距离太大」，理由见 `.orderButtons` 那条）。 */
+  width: 36px;
+  height: 36px;
   border: 1px solid #cbd5e1;
   border-radius: 5px;
   background: #fff;

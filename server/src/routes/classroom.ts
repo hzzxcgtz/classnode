@@ -12,6 +12,11 @@ import { loadClassroomWebapps } from './webapps.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
 import { studentAgentView } from '../services/agent-purpose.js';
 import { formatDuration } from '../services/worksheet-report.js';
+// ★ 2026-09-30：课堂级「逐题开放」。判据在那个服务里（含 `normalizeWorksheetOpen`），
+// 这里只用它；`flattenAnswerable` 用来核「这些题 id 真的在这份单里」（见那个端点的注释）。
+import { normalizeWorksheetOpen, withOpenQuestions } from '../services/worksheet-open.js';
+import { flattenAnswerable } from '../services/worksheet-heading.js';
+import type { WorksheetContent } from '../services/worksheet-questions.js';
 
 const router: Router = Router();
 
@@ -965,6 +970,17 @@ router.get('/:id', async (req, res) => {
       // 显式判空（而不是 `moduleRecords?.length ? … : undefined`）：写成后者会让「查到了、零行」
       // 也落到 undefined，老课堂的提示永远不再出现，且不报任何错。
       hasModuleRows: moduleRecords === null ? undefined : moduleRecords.length > 0,
+      /**
+       * ★ 2026-09-30：课堂级「逐题开放」的清单（`{ [学习单 id]: [已开放的题 id…] }`）。
+       *
+       * 🔴 **只在教师这一条路上发**。学生的读路径是 `GET /api/worksheets/:id/student-view`
+       * 的 `openQuestions`（那里只发**他自己那一份单**的那几个 id）——
+       * 把整间课堂的清单发给学生属于多给（高级模式下那是**别的组**的单）。
+       * ⚠️ 别顺手也加到 `/code/:code` 上：那条载荷有「形状逐字钉住」的用例
+       *（`student-join-flow.test.ts`），而学生端一个字节都不读它。
+       * ⚠️ 归一化之后再发：`null`（老课堂）与坏值都收成 `{}`，客户端不必再防一次。
+       */
+      worksheetOpen: normalizeWorksheetOpen(classroom.worksheetOpen),
     });
   } catch (error) {
     res.status(500).json({ error: '获取课堂详情失败' });
@@ -1376,6 +1392,88 @@ router.post('/:id/unlock-answers', async (req, res) => {
   }
 });
 
+/**
+ * ★ 2026-09-30（教师）：课堂级「逐题开放」—— 把某一份学习单**已开放的题**整份写下去。
+ *
+ * 教师原话：「题目开放方式有必要再增加一个：允许教师纯手工、可按顺序的、一个一个去开启
+ * 每个小题的使用权限，在教师看板页面中，找一个合适的位置和方式，帮我呈现控制界面」。
+ *
+ * ── 形状 ──────────────────────────────────────────────────────────────────
+ * `POST /api/classroom/:id/worksheet-open`，body `{ worksheetId, questionIds }`。
+ * 🔴 **整份替换**、不是增量（`+1 / -1` 那种）：教师那台机器上同时开着看板与设置是常事，
+ * 增量式的「先读再改」会让两个标签页互相丢更新。整份替换天然是后写者赢，而且**幂等**
+ *（同一个清单发两次结果一样，客户端重试/重连都不会改变状态）。
+ * 🔴 返回**整张映射**（不是刚写的那一份单）：客户端拿它直接覆盖本地那份，
+ * 高级模式下别的组那份也在里面 —— 少发一份就要客户端自己去拼，那是第二份真相。
+ *
+ * ── 校验 ──────────────────────────────────────────────────────────────────
+ * · 课堂不存在 ⇒ 404（`update` 对不存在的 id 会抛，而我们要的是 404 不是 500）；
+ * · 学习单不存在 ⇒ 404；
+ * · **题 id 必须真的在这份学习单里** ⇒ 否则 400。最后一条是必要的：教师的标签页可能停在
+ *   几十分钟前那一版（课上改过题），把已经不存在的 id 存下去只会让库里长出一堆幽灵条目，
+ *   而**没有任何东西会报错** —— 学生那边少一道题，老师以为是自己的错觉。
+ *
+ * ⚠️ 幂等：清单没变也照样写、照样广播（与 `lock-answers` 同一条理由 —— 客户端的状态
+ * 可能与服务端不同步，一次多余的广播是自愈，不是噪音）。
+ * ⚠️ 权限：走教师端那一道闸（`index.ts` 给 `/api/classroom` 注册的 `requireTeacher`）——
+ * 学生**拿不到**这个端点，所以清单不可能由学生改。
+ */
+router.post('/:id/worksheet-open', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const worksheetId = typeof req.body?.worksheetId === 'string' ? req.body.worksheetId : '';
+    const questionIds: unknown = req.body?.questionIds;
+    if (!worksheetId) return res.status(400).json({ error: '缺少学习单 id' });
+    if (!Array.isArray(questionIds)) return res.status(400).json({ error: 'questionIds 必须是数组' });
+
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, worksheetOpen: true },
+    });
+    if (!classroom) return res.status(404).json({ error: '课堂不存在' });
+
+    const worksheet = await prisma.worksheet.findUnique({
+      where: { id: worksheetId },
+      select: { id: true, content: true },
+    });
+    if (!worksheet) return res.status(404).json({ error: '学习单不存在' });
+
+    // 归一化**先做**：坏形状（非字符串 / 重复 / 空串）在这里被丢掉，
+    // 下面那道「是不是这份单的题」只面对一份干净的清单。
+    const next = withOpenQuestions(classroom.worksheetOpen, worksheetId, questionIds);
+    const wanted = next[worksheetId] ?? [];
+    // ⚠️ 与 `worksheets.ts` 那条读法逐字同形（`.nodes ?? []`）：`content` 是库里的 JSON，
+    // 手改过的行可能是任何形状 —— 少了 `?? []`，一份坏数据会让这个端点 500。
+    const known = new Set(
+      flattenAnswerable((worksheet.content as unknown as WorksheetContent).nodes ?? [])
+        .map(({ node }) => node.id),
+    );
+    const unknownId = wanted.find((id) => !known.has(id));
+    if (unknownId) {
+      return res.status(400).json({ error: `这一题不在这份学习单里（${unknownId}），刷新页面后重试` });
+    }
+
+    const updated = await prisma.classroom.update({
+      where: { id: classroom.id },
+      data: { worksheetOpen: next },
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      // 🔴 载荷里带上 `worksheetId`：一间课堂可以有好几份单（高级模式），
+      // 收到广播的人必须知道**是哪一份**变了，否则只能整份重拉。
+      const payload = { worksheetId, questionIds: wanted };
+      io.to(`classroom:${updated.id}`).emit('worksheet-open-changed', payload);
+      io.to(`teacher:${updated.id}`).emit('worksheet-open-changed', payload);
+    }
+
+    res.json({ worksheetOpen: normalizeWorksheetOpen(updated.worksheetOpen) });
+  } catch (error) {
+    console.error('[Classroom] worksheet-open error:', error);
+    res.status(500).json({ error: '设置逐题开放失败' });
+  }
+});
+
 // 恢复已结束的课堂（重新生成互动码）
 router.post('/:id/restore', async (req, res) => {
   try {
@@ -1395,7 +1493,9 @@ router.post('/:id/restore', async (req, res) => {
         where: { id: req.params.id, status: ALLOWED_SOURCE_STATUSES.restore[0] },
         // ★ M5a：恢复课堂 = 重新开始上课 ⇒ 顺手解锁（仍停笔是自相矛盾的）。
         // 这里**只通知教师端**（学生要用新码重新加入，不在房间里）—— 与这段既有注释一致。
-        data: { status: 'active', code: newCode, endedAt: null, answersLocked: false },
+        // ★ 2026-09-30：「逐题开放」的清单**一起清掉** —— 那是**上一节课**的进度，
+        // 留着会让新一节课一打开就开放着上次讲到的那几题（而教师以为要从头开始）。
+        data: { status: 'active', code: newCode, endedAt: null, answersLocked: false, worksheetOpen: Prisma.JsonNull },
       });
       if (changed.count !== 1) throw new Error('INVALID_CLASSROOM_STATE');
       return tx.classroom.findUniqueOrThrow({ where: { id: req.params.id } });

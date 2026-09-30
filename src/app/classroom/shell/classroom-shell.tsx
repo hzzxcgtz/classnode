@@ -42,6 +42,13 @@ export interface ClassroomShellProps {
    * ⚠️ 不从 `chat.classroom.answersLocked` 取 —— 那个对象 15 秒才刷新一次，锁定要立刻生效。
    */
   answersLocked: boolean;
+  /**
+   * ★ 2026-09-30：教师「逐题开放」的清单（按学习单 id 分键），同样只是**搬运工**：
+   * `session.worksheetOpen`（socket 广播）→ 学习单面板。
+   * ⚠️ 与 `answersLocked` 的差别：那份初值来自面板自己的 `student-view` 读取，
+   * 这里搬的只是**广播**那一层（面板按「有没有这一份单的键」决定用哪个）。
+   */
+  worksheetOpen: Record<string, string[]>;
 }
 
 /** 层的键空间：首页 + 三个模块。 */
@@ -127,7 +134,7 @@ function slideDurationMs(el: HTMLElement | null): number {
  * （滚动位置、换头像弹窗开着没关），而且 §4.6 的切换动画要求两个面板在动画期共存 ——
  * 首页与模块之间也要动画。写成 `step` 的两个分支就没有共存的窗口了。
  */
-export function ClassroomShell({ chat, home, onStepChange, answersLocked }: ClassroomShellProps) {
+export function ClassroomShell({ chat, home, onStepChange, answersLocked, worksheetOpen }: ClassroomShellProps) {
   // 外壳与学伴面板共用同一个 setToast（会话级状态由 page.tsx 持有，这里只是转手）。
   const { setToast } = chat;
   /**
@@ -743,6 +750,8 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked }: Clas
               // ★ M5a：课堂级「锁定作答」。⚠️ 走 props 而不是读 `chat.classroom.answersLocked`
               // —— 那个对象 15 秒才刷新一次，而锁定要**立刻**生效。
               answersLocked={answersLocked}
+              // ★ 2026-09-30：同上一条 —— 从会话层的专门 state 搬过来，不读 15 秒快照。
+              worksheetOpen={worksheetOpen}
             />
           ) : (
             // 🔴 **这一支是这道编译期门本身，别删。** 三个模块全落地之后 `id` 到这里是

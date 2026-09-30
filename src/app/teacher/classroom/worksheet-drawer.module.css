@@ -12,6 +12,8 @@
   border-radius: 16px;
   background: #f9fbfd;
   box-shadow: 0 20px 56px rgb(42 61 84 / 18%);
+  /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
+  overscroll-behavior: contain;
 }
 
 .analysisDrawer {
@@ -110,6 +112,8 @@
   min-height: 0;
   overflow: auto;
   padding: 16px;
+  /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
+  overscroll-behavior: contain;
 }
 
 .participantBody {

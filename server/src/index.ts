@@ -39,6 +39,7 @@ import { migrateWorksheetsToTasks } from './services/worksheet-task-migration.js
 import { migrateWorksheetPoints } from './services/worksheet-points-migration.js';
 import { migrateWorksheetPromptStyle } from './services/worksheet-prompt-migration.js';
 import { migrateFillBlankToInline } from './services/worksheet-fill-blank-migration.js';
+import { migrateBlankMarkText } from './services/worksheet-blank-mark-migration.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
 import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
@@ -467,6 +468,17 @@ async function main() {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "answersLocked" BOOLEAN NOT NULL DEFAULT 0`);
       console.log('[server] Added answersLocked column to Classroom');
     }
+    // ★ 2026-09-30：课堂级「逐题开放」（学习单 `answerMode: 'manual'` 那一档）。
+    // 🔴 **可空、无默认值**（与上面几列方向相反）—— 老课堂读出来是 NULL，而 NULL 的含义
+    //    是「一份单都没开放过」：那正是这个新功能在老课堂里该有的样子。
+    //    给个 `DEFAULT '{}'` 看着更整齐，但那就等于宣称「已经开过一次了」，而两种说法
+    //    在代码里是同一个分支 —— 多一个会漂的表示没有任何收益。
+    // ⚠️ 类型写 `JSONB`：Prisma 给 SQLite 的 Json 列发的就是它（见 `.schema Worksheet`
+    //    的 content/settings）。写成 TEXT 照样能跑，只是两份 DDL 从此长得不一样。
+    if (!classroomColNames.includes('worksheetOpen')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "worksheetOpen" JSONB`);
+      console.log('[server] Added worksheetOpen column to Classroom');
+    }
 
     // M4a：三态判分结果与数值得分（规格 §12）——加列 + 回填旧行。
     // ⚠️ 实现在 `services/worksheet-schema.ts` 里（**不是**内联在这儿）：那两列的类型
@@ -594,6 +606,30 @@ async function main() {
       if (fillBlankMigrated.migrated > 0) {
         console.log(`[server] Worksheet fill-blank migration: ${fillBlankMigrated.migrated} 份学习单的填空已挪进题干`);
       }
+    }
+
+    // ★ 2026-09-29：把题干里**老形态的空**（一串下划线）统一成 `{填空域}`。
+    //
+    // 🔴 它修的是上面那条迁移留下的一个**静默丢数据的 bug**：上一段追加的占位串是
+    // `'________'`，而客户端「按文本重新识别空」那条路只认 `{填空域}` ⇒ 教师在题干里
+    // 多打一个字，那个空就没了（2026-09-29 探针实测：读库后空数 1、编辑后 0）。
+    //
+    // ⚠️ 与上面那条**不同的地方**：它**每次启动都跑**（不必只跑一次）——
+    // 判据（「带 `blank` 标识、且那一段文字正好是下划线」）本身幂等，改完就不再匹配。
+    // 完成标记只决定**要不要再备份一次**（与 points / prompt 那两条同源）。
+    // ⚠️ 位置：必须排在上面那条**之后**（同一次启动里，那条刚写下的 `________` 这次就一起收掉）。
+    const blankMarkMigrationKey = 'worksheet-blank-mark-migration-v1';
+    const blankMarkDone = await prisma.setting.findUnique({ where: { key: blankMarkMigrationKey } });
+    if (!blankMarkDone) {
+      const backupPath = backupDatabase('worksheet-blank-mark-migration');
+      if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
+    }
+    const blankMarkMigrated = await migrateBlankMarkText(prisma);
+    if (!blankMarkDone) {
+      await prisma.setting.upsert({ where: { key: blankMarkMigrationKey }, update: { value: 'completed' }, create: { key: blankMarkMigrationKey, value: 'completed' } });
+    }
+    if (blankMarkMigrated.migrated > 0) {
+      console.log(`[server] Worksheet blank mark migration: ${blankMarkMigrated.migrated} 份学习单的空标记已统一`);
     }
   } catch (e) {
     console.error('[server] Worksheet task migration failed:', e);

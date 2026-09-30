@@ -149,7 +149,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
           marginTop: 4, background: 'white', borderRadius: 8,
           border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          maxHeight: 200, overflowY: 'auto',
+          maxHeight: 200, overflowY: 'auto', overscrollBehavior: 'contain',
         }}>
           {/* 「不指定」是列表的**第一项**（不是「清空」按钮）：它是一种与其他选项并列的
               合法选择，不是撤销操作。用下边框与真选项分开，免得被当成其中一个智能体。

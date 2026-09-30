@@ -31,6 +31,16 @@ export interface ServerToClientEvents {
   // 这两个事件只负责「让在线的学生立刻知道」，与 `classroom-paused` 同一条口径。
   'answers-locked': () => void;
   'answers-unlocked': () => void;
+  /**
+   * ★ 2026-09-30：教师在看板上**逐题开放**（`POST /api/classroom/:id/worksheet-open`）。
+   *
+   * 🔴 **载荷必须带 `worksheetId`**：一间课堂可以有好几份单（高级模式下每组一份），
+   * 收到的人得知道是**哪一份**变了 —— 只发 id 列表的话客户端只能整份重拉。
+   * ⚠️ 与 `answers-locked` 那两条的区别：它们载荷为空（状态由快照兜底），而这一条
+   * **带着状态本身** —— 因为「开放了哪几道题」是**列表**，快照里那份是 15 秒前的旧值，
+   * 空载荷会让客户端要么整份重拉、要么显示过期的一屏。
+   */
+  'worksheet-open-changed': (data: { worksheetId: string; questionIds: string[] }) => void;
   'allow-stop-changed': (data: { allow: boolean }) => void;
   // ★ 2026-09-25：只禁提问（与 `classroom-paused` 那个整节课暂停是两件事）。
   'allow-ask-changed': (data: { allow: boolean }) => void;

@@ -943,7 +943,13 @@ export default function TeacherDashboard() {
                 {/* 进入课堂 — 醒目填充按钮 */}
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
                   style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, #527198, #466384)", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(82, 113, 152,0.25)" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #466384, #1e40af)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(82, 113, 152,0.35)"; }}
+                  /* ★ 2026-09-30（教师）：「鼠标在上方停留颜色不对」。
+                     🔴 原先是 `linear-gradient(135deg, #466384, #1e40af)` —— 第一个色停是
+                     `--primary-dark`（灰蓝），第二个却是 `#1e40af`（**另一个色相**的高饱和蓝）
+                     ⇒ 悬停时按钮变成**左边灰蓝、右边亮蓝**的两截，看着像渲染坏了。
+                     现在整条按同一个色相**压暗一档**：底 → 悬停 = 青蓝 → 更深的青蓝，
+                     与 `.btn-primary`（`--primary` → `--primary-dark`）同一条规矩。 */
+                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #466384, #3a526e)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(82, 113, 152,0.35)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, #527198, #466384)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(82, 113, 152,0.25)"; }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
                   进入课堂

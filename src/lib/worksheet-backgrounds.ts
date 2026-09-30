@@ -43,6 +43,22 @@ export function normalizeWorksheetBackgroundTheme(value: unknown): WorksheetBack
     : DEFAULT_WORKSHEET_BACKGROUND;
 }
 
+/**
+ * 一个主题在界面上叫什么（★ 2026-09-30）。
+ *
+ * 🔴 它存在的理由是设置弹窗里那一行**折叠摘要**：「学生端主题背景：云朵操场」。
+ *    摘要行是教师**不开**那一段时唯一能看到的东西，所以它必须说对 ——
+ *    而写错的表现只是「名字不对」，没有任何东西会红。
+ * ⚠️ `custom` 那一档在 `WORKSHEET_BACKGROUND_OPTIONS` 里**没有对应项**（它不是一个主题，
+ *    是一张上传的图），所以必须单独给名字；认不出的值回落默认档的名字（与
+ *    `normalizeWorksheetBackgroundTheme` 回落的是同一档，两处不许分叉）。
+ */
+export function worksheetBackgroundLabel(theme: WorksheetBackgroundTheme): string {
+  if (theme === 'custom') return '我的背景';
+  return WORKSHEET_BACKGROUND_OPTIONS.find(option => option.id === theme)?.name
+    ?? WORKSHEET_BACKGROUND_OPTIONS.find(option => option.id === DEFAULT_WORKSHEET_BACKGROUND)!.name;
+}
+
 export function resolveWorksheetBackground(
   theme: WorksheetBackgroundTheme,
   customUrl: string | null,

@@ -2,6 +2,11 @@
   position: fixed;
   inset: 0;
   z-index: 250;
+  /* 浮窗根那层网：滚轮落在页头 / 内边距上时，别把外面的页面带着滚。
+     ⚠️ 它必须**自己是滚动容器** `overscroll-behavior` 才有效（`overflow: visible`
+     的盒子会被浏览器直接忽略、不报错）—— 整屏的盒子加 `overflow: hidden` 无副作用。 */
+  overflow: hidden;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   background: #f3f6f9;
@@ -44,6 +49,8 @@
   flex: 1;
   overflow: auto;
   padding: 22px 28px 32px;
+  /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
+  overscroll-behavior: contain;
 }
 
 .emptyState {
@@ -217,6 +224,8 @@
   border-radius: 13px;
   background: #fff;
   box-shadow: 0 7px 22px rgb(50 74 103 / 4%);
+  /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
+  overscroll-behavior: contain;
 }
 
 .table {

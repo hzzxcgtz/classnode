@@ -837,7 +837,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
             ) : usage.students.length === 0 && usage.classes.length === 0 ? (
               <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>暂无使用</p>
             ) : (
-              <div style={{ maxHeight: 160, overflow: 'auto' }}>
+              <div style={{ maxHeight: 160, overflow: 'auto', overscrollBehavior: 'contain' }}>
                 {usage.students.length > 0 && (
                   <div style={{ marginBottom: 4 }}>
                     <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
@@ -879,7 +879,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
               <p style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 4 }}>SVG 代码：</p>
               <pre style={{
                 background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12,
-                fontSize: "0.625rem", fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 160, overflow: 'auto',
+                fontSize: "0.625rem", fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 160, overflow: 'auto', overscrollBehavior: 'contain',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#334155',
               }}>{avatar.svgContent}</pre>
             </div>
@@ -1064,7 +1064,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
             ) : usage.students.length === 0 && usage.classes.length === 0 ? (
               <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>暂无使用</p>
             ) : (
-              <div style={{ maxHeight: 120, overflow: 'auto' }}>
+              <div style={{ maxHeight: 120, overflow: 'auto', overscrollBehavior: 'contain' }}>
                 {usage.students.length > 0 && (
                   <div style={{ marginBottom: 4 }}>
                     <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>

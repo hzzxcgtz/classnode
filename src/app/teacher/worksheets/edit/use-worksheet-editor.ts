@@ -119,7 +119,7 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 此时 `dirty` 一律为假 —— 加载中途不能报「有未保存改动」，也不能把一份空学习单写进草稿。
    *
    * 🔴 为什么是两半而不是一份：教师裁定「设置内容在弹窗内直接保存；顶栏的保存按钮
-   * 是指整张学习单的保存」⇒ 服务端上那份的标题/内容与备注/设置**可以一新一旧**。
+   * 是指整张学习单的保存」⇒ 服务端上那份的标题/内容与使用说明/设置**可以一新一旧**。
    * 合成一份的后果是一个会说谎的瞬间（详见 `snapshotsOf` 的注释）。
    */
   const [baselines, setBaselines] = useState<SaveBaselines | null>(null);

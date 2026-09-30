@@ -62,6 +62,18 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // ★ M5a：课堂级「锁定作答」。与 `paused` 同一类（专门 state + socket 事件），
   // 理由见 `use-chat-socket.ts` 的那两条监听器与 `classroom-types.ts` 的 `ModulePanelProps`。
   const [answersLocked, setAnswersLocked] = useState(false);
+  /**
+   * ★ 2026-09-30：教师「逐题开放」的清单（`{ [学习单 id]: [已开放的题 id…] }`）。
+   *
+   * 🔴 **初值不从这个 15 秒快照里取**（与上面 `answersLocked` 相反，这是刻意的）：
+   *    学生端那份清单的**权威来源是面板自己那次 `student-view` 读取**（它比快照新，
+   *    而且知道「是哪一份单」—— 高级模式下各组不同）。这里只承载 **socket 上那条广播**，
+   *    面板按「广播里有没有这一份单的键」决定用哪个（见 `worksheet-panel.tsx`）。
+   * ⚠️ 已知缺口：**socket 断线重连期间错过的那几条广播不会补发**（本仓既有的
+   *    「不补发」纪律）⇒ 学生要刷新一次、或切走再切回面板才拿到最新清单。
+   *    这与作答数据那条路是同一个性质（那条也不补发），不在本次扩大范围。
+   */
+  const [worksheetOpen, setWorksheetOpen] = useState<Record<string, string[]>>({});
   const [agentDisabled, setAgentDisabled] = useState(false);
   /**
    * 探究空间按需推流：本课堂此刻有没有教师在看探究空间视图（P2 / Ruling 9）。
@@ -463,6 +475,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setMessages,
     setPaused,
     setAnswersLocked,
+    setWorksheetOpen,
     setSelectedStudent,
     setShieldWarning,
     setStep,
@@ -573,6 +586,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     waitingAI,
     paused,
     answersLocked,
+    worksheetOpen,
     agentDisabled,
     webappDemand,
     shieldWarning,

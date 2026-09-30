@@ -6,6 +6,10 @@ import { getStudentSessionAuthorization } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { effectiveGroupWorksheet } from '@/lib/classroom-material';
 import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
+// ★ 2026-09-30：题目开放方式四档 —— 归一化与**学生端闸门**都在这里（有用例）。
+// 🔴 本文件原先自己内联了一份「哪几档 + 怎么判」的副本，加第四档时它会把 `manual`
+// 静默降级成 `open`（学生看到全部题目，而老师以为卷子是锁着的）。
+import { answerModeView, normalizeAnswerMode, normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
@@ -183,6 +187,14 @@ interface LoadedWorksheet {
    * 是它引用稳定的**唯一**来源。挪出去现 map 一份，学生每敲一个字都会被水合抹掉。
    */
   savedAnswers: SavedAnswerRow[];
+  /**
+   * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」，`manual` 档才用得上）。
+   *
+   * ⚠️ 缺字段（更老的服务端）⇒ **空数组** —— 那在 `manual` 档下的含义是「老师还没开放
+   * 任何题」，学生会看到那句提示而不是一片空白。收干净由 `normalizeOpenQuestions` 负责
+   *（`student-view` 与 socket 广播两个来路共用它，有用例）。
+   */
+  openQuestions: string[];
 }
 
 type LoadState =
@@ -197,6 +209,15 @@ type LoadState =
  * 身份 ⇒ 水合 effect 每次都重跑 ⇒ 学生敲进去的字被整体抹掉。
  */
 const NO_SAVED_ANSWERS: SavedAnswerRow[] = [];
+
+/**
+ * ★ 2026-09-30：`openQuestions` 的默认值。
+ *
+ * ⚠️ 与上面那条**同一个理由**（模块级常量，不在渲染里现写 `[]`）：这个数组的**身份**
+ * 进 `answerModeView` 之后会决定 `Set` 的构建，而每渲染一个新数组就是一次白做功 ——
+ * 更要紧的是它是 props 的默认值，每次渲染换身份会让下游的 `memo`/依赖比较永远为真。
+ */
+const NO_OPEN_QUESTIONS: readonly string[] = [];
 
 /**
  * ── 作答态渲染（唯一一份）────────────────────────────────────────────────────
@@ -255,6 +276,14 @@ export interface WorksheetQuestionListProps {
   correctBlanks?: Record<string, Record<string, string>>;
   rewardBursts?: Record<string, number>;
   answerMode?: WorksheetAnswerMode;
+  /**
+   * ★ 2026-09-30：教师**已开放的题 id**（`manual` 档专用，其它三档一律忽略）。
+   *
+   * 🔴 不传 = 空数组 = 「一道都还没开放」—— 在 `manual` 档下那是**学生看到一句话**
+   *（「老师还没开放后面的题」）而不是一片空白。所以教师端的只读预览不传它也没有副作用
+   *（那一档的闸门根本不在预览里跑，见上面 `interactive` 那段注释）。
+   */
+  openQuestions?: readonly string[];
   onChange?: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   onSubmit?: (node: WorksheetQuestionNode) => void;
   /**
@@ -284,6 +313,7 @@ export function WorksheetQuestionList({
   correctBlanks,
   rewardBursts,
   answerMode = 'open',
+  openQuestions = NO_OPEN_QUESTIONS,
   onChange,
   onSubmit,
   // 改名解构：下面那个 map 里 `locked` 已经表示「本题已提交且不许重交」，
@@ -298,29 +328,19 @@ export function WorksheetQuestionList({
     );
   }
 
-  let visibleGroups = groups;
-  let hiddenQuestionCount = 0;
-  if (interactive && answerMode !== 'open') {
-    if (answerMode === 'task-step') {
-      const current = groups.findIndex(group => group.items.some(({ node }) => statuses[node.id] !== 'submitted'));
-      if (current >= 0) {
-        visibleGroups = groups.slice(0, current + 1);
-        hiddenQuestionCount = groups.slice(current + 1).reduce((sum, group) => sum + group.items.length, 0);
-      }
-    } else {
-      let reachedCurrent = false;
-      visibleGroups = groups.map(group => ({
-        ...group,
-        items: group.items.filter(({ node }) => {
-          if (reachedCurrent) return false;
-          if (statuses[node.id] !== 'submitted') reachedCurrent = true;
-          return true;
-        }),
-      })).filter(group => group.items.length > 0);
-      hiddenQuestionCount = groups.reduce((sum, group) => sum + group.items.length, 0)
-        - visibleGroups.reduce((sum, group) => sum + group.items.length, 0);
-    }
-  }
+  /*
+    ★ 2026-09-30：这段「哪几道题此刻可作答」的判据**搬进了 `@/lib/worksheet-answer-mode`**
+    （`answerModeView`，四档各有用例）。搬走的理由不是好看：加第四档 `manual` 时，
+    内联版本要同时改三处（分支、隐藏计数、末尾那句解锁提示），而**每一处漏改都不报错** ——
+    最典型的是提示语：手动档复用分步那句「完成当前小题后继续解锁」是一句学生做不到的**假话**。
+    ⚠️ `interactive` 不进那个纯函数：它是**渲染**的事（教师端的只读预览永远看全卷，
+       那不是「学生此刻能看什么」的问题）。
+  */
+  const view = interactive
+    ? answerModeView({ groups, statuses, answerMode, openQuestions })
+    : { groups, hiddenCount: 0, unlockHint: '' };
+  const visibleGroups = view.groups;
+  const hiddenQuestionCount = view.hiddenCount;
 
   return (
     <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
@@ -594,7 +614,9 @@ export function WorksheetQuestionList({
         <div className={styles.lockedTail}>
           <span aria-hidden="true">🔒</span>
           <strong>后面还有 {hiddenQuestionCount} 道小题</strong>
-          <span>{answerMode === 'task-step' ? '完成当前任务后继续解锁' : '完成当前小题后继续解锁'}</span>
+          {/* ⚠️ 那半句解锁说明**由判据层给**（`view.unlockHint`）—— 在这里写三元就会在
+              加档时漏掉一处，而漏掉的那一档对学生说的是一句做不到的事。 */}
+          <span>{view.unlockHint}</span>
         </div>
       )}
     </div>
@@ -626,9 +648,20 @@ export interface WorksheetPanelProps extends ModulePanelProps {
    * **立刻**生效 —— 学生多写 15 秒就不是「停笔」了。
    */
   answersLocked: boolean;
+  /**
+   * ★ 2026-09-30：教师「逐题开放」的清单（按学习单 id 分键；`manual` 档才用得上）。
+   *
+   * 🔴 与 `answersLocked` 不同，这里的**初值不来自会话快照**，而是面板自己那次
+   * `student-view` 读取（它比 15 秒快照新，而且知道「是哪一份单」）。这个 prop 只承载
+   * **socket 上那条广播**：`worksheetOpen[自己这份单的 id]` 有值就用它，没有就用读到的那份。
+   * ⚠️ 两者不是「二选一」而是**并存**：广播里带的是状态本身（那是列表，快照兜不住），
+   * 而读取那份保证「刚进面板时是对的」。谁新谁旧在这里不重要 —— 广播是**边沿**，
+   * 它一到就覆盖；读取是**底**，它只在没有广播时说话。
+   */
+  worksheetOpen: Record<string, string[]>;
 }
 
-export function WorksheetPanel({ active, classroom, session, toast, setToast, answersLocked }: WorksheetPanelProps) {
+export function WorksheetPanel({ active, classroom, session, toast, setToast, answersLocked, worksheetOpen }: WorksheetPanelProps) {
   const accent = MODULE_META.worksheet.accent;
   const label = MODULE_META.worksheet.label;
 
@@ -710,6 +743,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             /** ★ 2026-09-27：卡片透度。同样是 `unknown` —— 归一化在下面那一处。 */
             surfaceOpacity?: unknown;
           };
+          /** ★ 2026-09-30：这间课堂已开放的题 id（`manual` 档用；更老的服务端不发这一格）。 */
+          openQuestions?: unknown;
         };
         const rowsData = await rowsRes.json().catch(() => null);
         if (cancelled) return;
@@ -730,9 +765,11 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             // （落库的 `settings` 都过了 `normalizeSettings`），所以缺字段只可能是更老的
             // 服务端。那种情况下把学生锁住，才是真正的伤害。
             allowResubmit: data.settings?.allowResubmit !== false,
-            answerMode: data.settings?.answerMode === 'task-step' || data.settings?.answerMode === 'question-step'
-              ? data.settings.answerMode
-              : 'open',
+            // ★ 2026-09-30：四档的判据**只有一份**（`@/lib/worksheet-answer-mode`）——
+            // 这里原来也有一份内联副本，加第四档时它会把 `manual` 静默降级成 `open`。
+            answerMode: normalizeAnswerMode(data.settings?.answerMode),
+            // 与上面同一条纪律（坏形状 / 缺字段 ⇒ 空数组，不抛也不画错）。
+            openQuestions: normalizeOpenQuestions(data.openQuestions),
             // 奖励同理：缺字段落到默认档（星星 ⭐），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
             backgroundTheme: normalizeWorksheetBackgroundTheme(data.settings?.backgroundTheme),
@@ -934,6 +971,10 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               correctBlanks={answers.correctBlanks}
               rewardBursts={answers.rewardBursts}
               answerMode={load.worksheet.answerMode}
+              // ★ 2026-09-30：**广播优先**（有这一份单的键就用广播那份，包括空数组 ——
+              // 「老师把全部收回去了」也是一次广播），否则用 `student-view` 读到的那份。
+              // ⚠️ 判据是「键在不在」而不是「数组非空」：空数组是**有效的状态**。
+              openQuestions={worksheetOpen[load.worksheet.id] ?? load.worksheet.openQuestions}
               onChange={handleChange}
               onSubmit={handleSubmit}
               // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。

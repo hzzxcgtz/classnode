@@ -210,6 +210,19 @@ export const api = {
   // ★ M5a：课堂级「锁定作答」（停笔但可交卷）
   lockAnswers: (id: string) => request(`/api/classroom/${id}/lock-answers`, { method: 'POST' }),
   unlockAnswers: (id: string) => request(`/api/classroom/${id}/unlock-answers`, { method: 'POST' }),
+  /**
+   * ★ 2026-09-30：课堂级「逐题开放」 —— 把某一份学习单**已开放的题**整份写下去。
+   *
+   * 🔴 **整份替换**（不是 `+1 / -1`）：教师那台机器上同时开着看板与设置是常事，
+   * 增量式的「先读再改」会让两个标签页互相丢更新。后写者赢，且幂等。
+   * ⚠️ 返回**整张映射**（别的学习单那份也在里面），调用方直接覆盖本地那份即可 ——
+   * 少发一份就要调用方自己去拼，那是第二份真相。
+   */
+  setClassroomWorksheetOpen: (classroomId: string, worksheetId: string, questionIds: string[]) =>
+    request<{ worksheetOpen: Record<string, string[]> }>(
+      `/api/classroom/${classroomId}/worksheet-open`,
+      { method: 'POST', body: JSON.stringify({ worksheetId, questionIds }) },
+    ),
   toggleAllowStop: (id: string) => request<{ allowStudentStop: boolean }>(`/api/classroom/${id}/toggle-allow-stop`, { method: 'POST' }),
   // ★ 2026-09-25：只禁提问（与「暂停课堂」那个 `pauseClassroom` 是两件事，别混用）。
   toggleAllowAsk: (id: string) => request<{ allowStudentAsk: boolean }>(`/api/classroom/${id}/toggle-allow-ask`, { method: 'POST' }),

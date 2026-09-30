@@ -60,7 +60,7 @@ export function MatrixOverlay({
   const uncovered = board ? uncoveredCount(participantCount, board.worksheets) : 0;
 
   return (
-    <div className={styles.overlay}>
+    <div data-overscroll-guard="" className={styles.overlay}>
       <div className={styles.topbar}>
         <div className={styles.titleBlock}>
           <h2>学习单举证</h2>

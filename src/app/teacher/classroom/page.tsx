@@ -26,6 +26,10 @@ import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
 import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
+// ★ 2026-09-30：逐题开放。`normalizeOpenQuestions` 收线缆上那份 id 清单（判据在那个文件里），
+// 浮层是这一屏的第三个「按学习单看全班」的工具。
+import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
+import { WorksheetOpenOverlay } from './worksheet-open-overlay';
 import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
 import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
@@ -43,6 +47,25 @@ function isClassroomGroupCard(card: ClassroomDisplayCard): card is ClassroomGrou
   return 'members' in card;
 }
 
+/**
+ * ★ 2026-09-30：把线缆上那份「逐题开放」映射收干净（`/api/classroom/:id` 的 `worksheetOpen`）。
+ *
+ * ⚠️ 老服务端不发这一格 ⇒ **空映射**（= 一份单都没开放），不是「全部开放」：
+ * 后者会把一份设了手动静止的卷子整个放开，而屏幕上没有任何异常。
+ * ⚠️ 每个键上的清单再过一遍 `normalizeOpenQuestions`（坏形状丢掉）——
+ * 与 socket 那条广播**共用同一个判据**，不在这里另写一份。
+ */
+function normalizeOpenMap(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [worksheetId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!worksheetId) continue;
+    const ids = normalizeOpenQuestions(value);
+    if (ids.length > 0) out[worksheetId] = ids;
+  }
+  return out;
+}
+
 function getGroupInitial(name?: string | null): string {
   return Array.from(name?.trim() || '')[0] || '组';
 }
@@ -53,6 +76,7 @@ function PermissionMenuItem({ label, enabled, busy, onToggle }: {
   busy: boolean;
   onToggle: () => void;
 }) {
+
   return (
     <button role="menuitemcheckbox" aria-checked={enabled} disabled={busy} onClick={onToggle}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', border: 0, borderRadius: 8, background: 'transparent', cursor: busy ? 'wait' : 'pointer', color: '#334155', textAlign: 'left', fontSize: '0.813rem', opacity: busy ? 0.7 : 1 }}>
@@ -331,15 +355,16 @@ function CompanionMenu({ onSelect, onClose }: {
  * 「学习单」那个下拉的**面板**（★ 2026-09-29，教师：「『学习单』改名为『答题分析』，
  * 『矩阵』改名为『进度矩阵』，两者合并成一个『学习单』，通过鼠标点击下拉后选择」）。
  *
- * 🔴 两项的**名字**在 `WORKSHEET_MENU_ITEMS`（判据层，有用例钉着）—— 这里只把 id 接到动作。
- * 少了那一条的话，「哪两项、叫什么」会只活在这段 JSX 里，删掉一项没有任何东西会红。
+ * 🔴 各项的**名字**在 `WORKSHEET_MENU_ITEMS`（判据层，有用例钉着）—— 这里只把 id 接到动作。
+ * 少了那一条的话，「有哪几项、叫什么」会只活在这段 JSX 里，删掉一项没有任何东西会红。
+ * ★ 2026-09-30：「逐题开放」成了第三项（`id: 'open'`），本组件只负责把它递出去。
  *
  * ⚠️ 与「模块状态」那个菜单**同住一层的写法**：包住按钮与面板的那一层带
  * `position: relative`（`worksheetMenuRef`），面板 `absolute; right: 0; top: 100% + 8`。
  * 这也是「点外面关」那条监听的锚点。
  */
 function WorksheetMenu({ onSelect, onClose }: {
-  onSelect: (id: 'analysis' | 'matrix') => void;
+  onSelect: (id: (typeof WORKSHEET_MENU_ITEMS)[number]['id']) => void;
   onClose: () => void;
 }) {
   return (
@@ -772,6 +797,28 @@ function ClassroomBoardContent() {
   const [paused, setPaused] = useState(false);
   // ★ M5a：课堂级「锁定作答」。与 `paused` 同一类：本地乐观更新 + 收自己的广播校正。
   const [answersLocked, setAnswersLocked] = useState(false);
+  /**
+   * ★ 2026-09-30：课堂级「逐题开放」—— `{ [学习单 id]: [已开放的题 id…] }`。
+   *
+   * 两个来路（与 `answersLocked` 同一条纪律）：
+   *   · **底**：`GET /api/classroom/:id` 的快照（刷新页面之后仍然要对）；
+   *   · **校正**：`worksheet-open-changed` 广播 —— 服务端发的是**整张映射**，
+   *     所以它一来就整张覆盖（别的标签页改了也立刻跟上）。
+   * ⚠️ 本机点的那一下**先乐观更新**（写进去 → 再发请求），失败回滚 + 提示；
+   *    而广播回来会把乐观那一份换成服务端那一份（两边一样，所以看不出跳动）。
+   */
+  const [worksheetOpen, setWorksheetOpen] = useState<Record<string, string[]>>({});
+  /** 「逐题开放」那个浮层开着没有。 */
+  const [showWorksheetOpen, setShowWorksheetOpen] = useState(false);
+  /** 正在写开放清单（写的时候按钮要禁用：整份替换，两次并发会互相盖）。 */
+  const [worksheetOpenBusy, setWorksheetOpenBusy] = useState(false);
+  /**
+   * 上面那一份的 ref（`loadClassroom` 要拿它做「这次快照是不是旧的」那个判断）。
+   * ⚠️ 走 ref 而不是把它加进 `loadClassroom` 的依赖：那个回调进的是 socket 那个大 effect
+   * 的依赖数组，换身份会让**所有监听器**重挂一遍（本仓已有这一条教训）。
+   */
+  const worksheetOpenRef = useRef<Record<string, string[]>>({});
+  useEffect(() => { worksheetOpenRef.current = worksheetOpen; }, [worksheetOpen]);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
@@ -1000,6 +1047,24 @@ function ClassroomBoardContent() {
     return map;
   }, [groupCards, classroom]);
 
+  /**
+   * ★ 2026-09-30：浮层那份入参**必须 memo**。
+   *
+   * 🔴 在 JSX 里现写 `Object.entries(...).map(...)` 每次都换一个数组身份 ⇒ 浮层里那个
+   *    `useMemo`（`flattenAnswerable` 走整棵树）**每次渲染都重算**，而这一页每次
+   *    socket 事件都会重渲（学生的作答、上下线都算）。看板是**投影给全班看的**，
+   *    白做功的那几帧正是它掉帧的地方。
+   */
+  const openOverlayWorksheets = useMemo(
+    () => Object.entries(wb.nodesByWorksheet).map(([worksheetId, nodes]) => ({
+      id: worksheetId,
+      title: wb.board?.worksheets.find((sheet) => sheet.id === worksheetId)?.title || '未命名学习单',
+      nodes,
+      settings: wb.settingsByWorksheet[worksheetId],
+    })),
+    [wb.nodesByWorksheet, wb.board, wb.settingsByWorksheet],
+  );
+
   const classroomStudentCount = groupCards
     ? groupCards.reduce((total, group) => total + (group.group?.id ? (groupMembersMap[group.group.id]?.length ?? 0) : 0), 0)
     : students.length;
@@ -1091,6 +1156,9 @@ function ClassroomBoardContent() {
 
   const loadClassroom = useCallback(async () => {
     if (!id) return;
+    // ★ 2026-09-30：发请求**之前**记下「此刻本地那份逐题开放清单」—— 回来时拿它做等值判断
+    //（见下面 `setWorksheetOpen` 那一行：期间被改过就不收这份快照）。
+    const openAtRequest = worksheetOpenRef.current;
     try {
       const cr = await api.getClassroom(id);
       setClassroom(cr);
@@ -1099,6 +1167,12 @@ function ClassroomBoardContent() {
       // ★ M5a：`=== true` 是刻意的 —— 老服务端不发这个字段（`ClassroomSummary.answersLocked?`
       // 是可选的），必须按「未锁定」处理，不能把它当成必填读出个 undefined 当真值。
       setAnswersLocked(cr.answersLocked === true);
+      // ★ 2026-09-30：同上一条 —— 老服务端不发这一格 ⇒ 收成空映射（= 一份单都没开放）。
+      // 🔴 **只在本地这一份没被改过时才收下**（与学生会话层 `flagsSnapshotRef` 同一条理由）：
+      //    这次 GET 是**在**教师的某次「开放」之前发出的，而它带着**旧**清单回来
+      //    （`syncGroups` 之后也会走这一条）⇒ 不看一眼就覆盖，屏幕上的开放状态会**退回去**，
+      //    而没有任何东西会红（下一次广播才自愈，中间那段时间教师看到的是一份假的进度）。
+      setWorksheetOpen((previous) => (previous === openAtRequest ? normalizeOpenMap(cr.worksheetOpen) : previous));
       const students = cr.students || [];
       // 排序：标准模式按学号，分组/高级模式按组名
       const mode = cr.mode || 'standard';
@@ -1337,7 +1411,19 @@ function ClassroomBoardContent() {
     const unsub18 = on('answers-locked', () => setAnswersLocked(true));
     const unsub19 = on('answers-unlocked', () => setAnswersLocked(false));
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub18?.(); unsub19?.(); };
+    // ★ 2026-09-30：课堂级「逐题开放」。载荷**带状态本身**（见 `socket-events.ts` 那条），
+    // 所以这里直接整张覆盖 —— 服务端发的是**整张映射**，本机这份是它的镜像。
+    // ⚠️ 与学习单作答那条广播不同：这一条**不需要**防串台校验（载荷里没有任何学生数据），
+    //    但**要**校验形状（`worksheetId` 是不是非空串）—— 一条坏载荷会把清单写到一个
+    //    空键上，而屏幕上只是「打开的那几题又变回去了」。
+    const unsub20 = on('worksheet-open-changed', (data) => {
+      const worksheetId = typeof data?.worksheetId === 'string' ? data.worksheetId : '';
+      if (!worksheetId) return;
+      const questionIds = normalizeOpenQuestions(data?.questionIds);
+      setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
+    });
+
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1530,6 +1616,36 @@ function ClassroomBoardContent() {
       setAnswersLocked(true);
     }
   });
+
+  /**
+   * ★ 2026-09-30：写一份学习单的「已开放的题」（整份替换）。
+   *
+   * 🔴 **先乐观更新、再发请求、失败回滚**：这一屏是**当着全班**按的 —— 按下去到广播
+   * 回来之间有一两个来回，什么都不动的话教师会以为没点上、于是再按一次（那一下会把
+   * 第一次的改动**当成基线再发一遍**，两次结果相同但白跑一趟）。
+   * ⚠️ 回滚要把**上一次**那一份还回去，不是清空：教师点了「开放下一题」失败之后，
+   * 前面已经开好的那几题必须原样还在。
+   */
+  const setOpenQuestions = (worksheetId: string, questionIds: string[]) => {
+    if (worksheetOpenBusy) return;   // 整份替换：并发两次会互相盖
+    const previous = worksheetOpen[worksheetId] ?? [];
+    setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
+    setWorksheetOpenBusy(true);
+    void (async () => {
+      try {
+        // 服务端回的是**整张映射**（别的单那份也在里面）⇒ 直接覆盖本地这一份。
+        const result = await api.setClassroomWorksheetOpen(id, worksheetId, questionIds);
+        if (result?.worksheetOpen && typeof result.worksheetOpen === 'object') {
+          setWorksheetOpen(result.worksheetOpen);
+        }
+      } catch (error) {
+        setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: previous }));
+        setToast({ msg: `没设上：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+      } finally {
+        setWorksheetOpenBusy(false);
+      }
+    })();
+  };
 
   const toggleQuestions = () => runControlAction(HEADER_BUSY_KEYS.pause, async () => {
     if (paused) {
@@ -1970,9 +2086,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   /* ═══════════ 头部（★ 2026-09-29 重构：判据抽进 `header-controls.ts`）═══════════ */
 
   /**
-   * 这一屏头部有哪些控件、各叫什么、禁不禁用 —— 全部来自那个纯函数（有 25 条用例）。
+   * 这一屏头部有哪些控件、各叫什么、禁不禁用 —— 全部来自那个纯函数
+   *（逐条用例在 `header-controls.test.ts`；⚠️ 不在这里写条数，它每次加用例都会过期）。
    *
-   * 🔴 这里**只递输入、只画结果**：`同步分组` 的两道条件、`全屏` 只在指定模式、
+   * 🔴 这里**只递输入、只画结果**：`同步分组` 的两道条件、
    * 两个开关的标签翻转、忙态的三个键，原先全写在这一段的 JSX 三元里，**没有任何回归网**。
    * 判据搬走之后，本文件只剩「把 `control.id` 接到哪个 handler、配哪个图标」。
    * ⚠️ 那两件事（handler / 图标）**不进判据层**：它们是本文件里的闭包与 JSX，
@@ -2543,9 +2660,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           <WorksheetMenu
                             // 「答题分析」= 原来那个「学习单」按钮（抽屉）；
                             // 「进度矩阵」= 原来那个「矩阵」按钮（浮层）。两条路一个字都没改。
+                            // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
+                            // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
+                            //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
                             onSelect={(item) => {
-                              if (item === 'analysis') openWorksheetDrawer({ kind: 'worksheets' });
-                              else setMatrixOpen(true);
+                              if (item === 'analysis') { openWorksheetDrawer({ kind: 'worksheets' }); return; }
+                              if (item === 'matrix') { setMatrixOpen(true); return; }
+                              setShowWorksheetOpen(true);
                             }}
                             onClose={() => setShowWorksheetMenu(false)} />
                         )}
@@ -2984,7 +3105,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)',
               }} />
             {/* 浮层面板 */}
-            <div style={{
+            <div data-overscroll-guard="" style={{
               position: 'fixed', top: 96, right: 24, bottom: 24,
               width: 420, zIndex: 291,
               background: 'white', borderRadius: 14,
@@ -2992,6 +3113,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
               boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                overscrollBehavior: 'contain',
             }}>
             {/* 抽屉头部 */}
             <div style={{
@@ -3056,7 +3178,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
             {/* 消息列表 */}
             <div ref={drawerMessagesRef} style={{
-              flex: 1, overflow: 'auto', padding: 16,
+              flex: 1, overflow: 'auto', overscrollBehavior: 'contain', padding: 16,
               display: 'flex', flexDirection: 'column', gap: 12,
             }}>
               {loadingMessages ? (
@@ -3167,7 +3289,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {/* 投屏发码 */}
       {codeScreenKey > 0 && (
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 300, overflow: 'auto',
+          position: 'fixed', inset: 0, zIndex: 300, overflow: 'auto', overscrollBehavior: 'contain',
           background: '#0f172a',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => setCodeScreenKey(0)}>
@@ -3256,10 +3378,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
       {/* 投屏讲评 */}
       {showFullscreen && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 300,
+        <div data-overscroll-guard="" style={{
+          position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 300,
           background: '#fff',
           display: 'flex', flexDirection: 'column',
+            overscrollBehavior: 'contain',
         }}>
           {/* 顶部信息栏 */}
           <div style={{
@@ -3285,7 +3408,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
           {/* 对话内容 */}
           <div ref={fullscreenContentRef} style={{
-            flex: 1, overflow: 'auto', padding: '40px 60px',
+            flex: 1, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px',
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
             {messages.length === 0 ? (
@@ -3388,9 +3511,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
       {/* 全屏学生网格覆盖层 — 盖过左侧导航栏 */}
       {gridFullscreen && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 250,
+        <div data-overscroll-guard="" style={{
+          position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 250,
           background: '#f8fafc', display: 'flex', flexDirection: 'column',
+            overscrollBehavior: 'contain',
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -3412,11 +3536,27 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 </svg>
               </div>
               <span style={{ fontWeight: 600, fontSize: "0.938rem", color: '#0f172a' }}>学生互动面板 · 全屏模式</span>
-              {/* 全屏只在指定模式下给（见 header 里那个按钮的注释），所以这里说得出
-                  「全班显示的是哪个模块」——跟随模式下这句话就不成立了。 */}
-              <span style={{ fontSize: "0.75rem", color: '#527198', fontWeight: 600 }}>
-                全班显示「{MODULE_ID_LABELS[assignModule]}」
-              </span>
+              {/* ★ 2026-09-30：全屏**两种模式都进得来**（`header-controls.ts` 那一条已取消）
+                  ⇒ 这句话必须按模式分开。跟随模式下每格画的是**那个自己**此刻所在的模块
+                  （`resolveTileModule`），照旧写「全班显示『X』」就是**编造**一句
+                  「全班都在智能学伴」——而屏幕上没有任何东西会红。 */}
+              {boardMode === 'assign' ? (
+                <span style={{ fontSize: "0.75rem", color: '#527198', fontWeight: 600 }}>
+                  全班显示「{MODULE_ID_LABELS[assignModule]}」
+                </span>
+              ) : (
+                <span style={{ fontSize: "0.75rem", color: '#527198', fontWeight: 600 }}>
+                  跟随：每格显示该生此刻所在的模块
+                </span>
+              )}
+              {/* ★ 2026-09-30：跟随模式下模块筛选段落在全屏时被藏掉（`showsModuleFilter`），
+                  而筛选**仍然生效**（`displayCards` 就是筛过的那一份）⇒ 不全屏时能看见的那个
+                  条件，在这里必须自己说出来。只在**筛过**时才出现（不筛时它是一句废话）。 */}
+              {boardMode === 'follow' && effectiveModuleFilter !== 'all' && (
+                <span style={{ fontSize: "0.75rem", color: '#956834', fontWeight: 600 }}>
+                  已筛「{moduleLabelOf(effectiveModuleFilter)}」
+                </span>
+              )}
               <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
                 {displayCards.length}{displayCards.length !== allDisplayCards.length ? ` / ${allDisplayCards.length}` : ''} {groupCards ? '个小组' : '名学生'}
               </span>
@@ -3479,8 +3619,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   const userMsg = isGroup ? allMsgs!.filter((m) => m.role === 'user')[0] : cs.messages.filter((m) => m.role === 'user').slice(-1)?.[0];
                   const assistantMsg = isGroup ? allMsgs!.filter((m) => m.role === 'assistant')[0] : cs.messages.filter((m) => m.role === 'assistant').slice(-1)?.[0];
                   const isSelected = !isGroup && selectedStudent?.id === sid;
-                  // 全屏**只在指定模式下可达**，所以这里每格的模块恒等于 `assignModule`
-                  // —— 仍然走同一个 `renderTileContent`，不另写一份「全屏专用」的渲染。
+                  // 每格的模块**逐格算**（`resolveTileModule`，与主看板同一个函数）——
+                  // 全屏在两种模式下都可达（★ 2026-09-30），跟随模式下各格本来就不同，
+                  // 而这里从来就没写死过 `assignModule`。仍然走同一个 `renderTileContent`，
+                  // 不另写一份「全屏专用」的渲染。
                   const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
                   const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
                   const showWorksheetClear = tileShowsWorksheetClear(
@@ -3647,7 +3789,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       </div>
                       {/* 内容区：与主看板**同一个**渲染实现，只有 `compact` 不同
                           —— 两处各写一遍必然出现「全屏里少了缩略图」这类只在全屏才看得见的差异。 */}
-                      <div className="preview-scroll" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto' }}>
+                      <div className="preview-scroll" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', overscrollBehavior: 'contain' }}>
                         {renderTileContent({
                           module: tileModule,
                           members: isGroup ? item.members : [cs],
@@ -3686,6 +3828,20 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           onOpenQuestion={openMatrixQuestion}
           onOpenParticipant={openMatrixParticipant}
           onOpenAnalysis={(worksheetId, questionId) => setAnalysisTarget({ worksheetId, questionId })}
+        />
+      )}
+
+      {/* ★ 2026-09-30：逐题开放浮层（zIndex 260：与矩阵 250 / 分析 270 同一档）。
+          「有哪几份学习单」直接用看板那份数据（`wb.nodesByWorksheet` 与 `wb.settingsByWorksheet`）——
+          ⚠️ 不另拉一次：那两份是**同一份数据**的两种形状，各拉一次必然出现「浮层里说 6 题、
+             看板列头说 5 题」这种对不上，而两边都不报错。 */}
+      {showWorksheetOpen && (
+        <WorksheetOpenOverlay
+          worksheets={openOverlayWorksheets}
+          open={worksheetOpen}
+          onChange={setOpenQuestions}
+          busy={worksheetOpenBusy}
+          onClose={() => setShowWorksheetOpen(false)}
         />
       )}
 
@@ -3731,15 +3887,16 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       )}
       {/* 发通知弹窗 */}
       {notifyState.show && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
+        <div data-overscroll-guard="" style={{
+          position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 9999,
           background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           backdropFilter: 'blur(4px)',
+            overscrollBehavior: 'contain',
         }} onClick={() => setNotifyState({ show: false })}>
           <div onClick={e => e.stopPropagation()} style={{
             background: 'white', borderRadius: 14, padding: 0,
-            maxWidth: 440, width: '90%', maxHeight: '90vh', overflowY: 'auto',
+            maxWidth: 440, width: '90%', maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain',
           }}>
             <div style={{ padding: '20px 24px 16px' }}>
               <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 4px' }}>

@@ -59,6 +59,8 @@ import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
 import { proxyAnalysisRequest } from '../services/ai-proxy.js';
+// ★ 2026-09-30：课堂级「逐题开放」的清单（存 `Classroom.worksheetOpen`，判据在那个文件里）。
+import { openQuestionsFor } from '../services/worksheet-open.js';
 
 /**
  * 学习单路由。
@@ -179,10 +181,21 @@ const WORKSHEET_BACKGROUND_THEMES: readonly string[] = [
   'ocean-observation', 'creative-notebook', 'dinosaur-archaeology',
   'invention-workshop', 'music-rhythm', 'chinese-study', 'active-sports', 'custom',
 ];
-const WORKSHEET_ANSWER_MODES: readonly string[] = ['open', 'task-step', 'question-step'];
+// ★ 2026-09-30：第四档 `manual`（教师在看板上逐题开放）。四档的语义与「谁推进」写在
+// `src/lib/worksheet-answer-mode.ts` 的文件头 —— 那份是客户端的那一半，这里只是取值域。
+// 🔴 两份数组必须同值：少一档的表现是「教师配了手动，保存一次就变回开放式」，
+//    而界面上没有任何提示（服务端 `normalizeSettings` 会把它回落成默认档）。
+const WORKSHEET_ANSWER_MODES: readonly string[] = ['open', 'task-step', 'question-step', 'manual'];
 
 const DEFAULT_SETTINGS = {
-  allowResubmit: true,
+  // ★ 2026-09-30（教师）：「将『允许学生修改』改为**默认不能修改**」。
+  // 🔴 这一份与前端 `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` **必须同值**：
+  //    那边决定「新建的学习单长什么样」，这边决定「缺这个键的行长什么样」——
+  //    分叉的表现是「教师新建时看到的是 A、学生端生效的是 B」，两边都不报错。
+  //    （前端 `worksheet-editor-core.test.ts` 有一条用例**跨文件核对**这一对值。）
+  // ⚠️ 归一化那条路（下面 `normalizeSettings`）读的就是本常量，所以它自动跟着走；
+  //    存量行里显式写下的 `true` 不受影响 —— 改的是默认值，不是已有数据。
+  allowResubmit: false,
   autoGrade: true,
   answerMode: 'open',
   defaultInputMode: 'keyboard',
@@ -1595,6 +1608,13 @@ interface StudentWorksheetContext {
   participantId: string;
   /** ★ M5a：这间课堂此刻是否锁定了作答（判据在 `requireOwnWorksheet` 里取）。 */
   answersLocked: boolean;
+  /**
+   * ★ 2026-09-30：这间课堂「逐题开放」目前开放了哪些题（`Classroom.worksheetOpen` 那一列
+   * 的**原始值** —— 按学习单分键，读某一份单用 `openQuestionsFor`）。
+   * ⚠️ 取的是原始 JSON 而不是「这一份单的那几个 id」：`requireOwnWorksheet` 在**解析出
+   * 是哪一份单之前**就已经查了这间课堂，而两种形状都要用它（写路径也要读）。
+   */
+  worksheetOpen: Prisma.JsonValue;
   worksheet: {
     id: string; title: string; description: string | null;
     content: Prisma.JsonValue; settings: Prisma.JsonValue;
@@ -1620,6 +1640,8 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
           mode: true,
           // ★ M5a：锁定作答的判据跟着 context 走 —— 写路径要用它，免得每个端点再查一次课堂。
           answersLocked: true,
+          // ★ 2026-09-30：同上 —— 「逐题开放」的清单也随 context 走（学生读学习单那条路要下发它）。
+          worksheetOpen: true,
           groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
         },
       },
@@ -1656,6 +1678,7 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
     classroomId: participant.classroomId,
     participantId: participant.id,
     answersLocked: participant.classroom.answersLocked,
+    worksheetOpen: participant.classroom.worksheetOpen,
     worksheet,
   };
 }
@@ -2003,6 +2026,16 @@ router.get('/:id/student-view', async (req, res) => {
       description: worksheet.description,
       content: stripAnswers(worksheet.content as unknown as WorksheetContent),
       settings: readStudentSettings(worksheet.settings),
+      /**
+       * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」）。
+       *
+       * ⚠️ 无论 `answerMode` 是哪一档都照发：客户端只在自己的档是 `manual` 时读它
+       * （`answerModeView` 的注释写着为什么 —— 老师从「手动」改回「开放式」之后，
+       * 库里剩下的这些 id 不许继续截断卷子）。**下发与生效分成两件事**是有意的：
+       * 在这里按档过滤就成了**第二处**知道「哪一档看它」的地方，而两处必然漂。
+       * 🔴 它**不是答案**：这些 id 是老师打算给学生做的题，学生本来就会看到它们。
+       */
+      openQuestions: openQuestionsFor(ctx.worksheetOpen, worksheet.id),
     });
   } catch (error) {
     console.error('[worksheets] 学生读取学习单失败:', error);

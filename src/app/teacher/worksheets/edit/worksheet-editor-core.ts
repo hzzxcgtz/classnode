@@ -55,7 +55,18 @@ import {
   normalizeRewardStyle,
 } from '../../../../lib/worksheet-reward.ts';
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
-import { blankCount, readPromptRuns } from '../../../../lib/worksheet-prompt-marks.ts';
+import {
+  BLANK_MARK_TEXT,
+  blankCount,
+  blanksFromText,
+  convertBlankMarks,
+  isPlainRuns,
+  readPromptRuns,
+} from '../../../../lib/worksheet-prompt-marks.ts';
+// ★ 2026-09-30：题目开放方式四档的归一化（唯一一份，有用例）。
+import { normalizeAnswerMode } from '../../../../lib/worksheet-answer-mode.ts';
+// ⚠️ 与上面那几行同一条纪律：**相对路径 + `.ts` 后缀**（`node --test` 直接跑本文件）。
+import { blankSlots, fillSettingsFor, writeFillSettings } from '../../../../lib/worksheet-fill-modes.ts';
 
 // ★ 2026-09-27：`isMultipleChoice` 也在这一串里 —— 它搬去了 `@/lib/worksheet-questions`，
 // 因为**学生端现在也要问同一个问题**（多选题的题干前要加「多选」提示），而学生端读不到
@@ -833,6 +844,427 @@ export function orderPastePatch(texts: string[], random: () => number = Math.ran
   const source = texts.map((text) => ({ id: newItemId(), text }));
   const correctOrder = source.map((entry) => entry.id);
   return { items: shuffleOrderItems(source, correctOrder, random), correctOrder };
+}
+
+// ── 粘贴导入：四种题型共用那一段（★ 2026-09-29）───────────────────────────────
+//
+// 教师原话：「现在要增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」，
+// 随后补了四条注意：
+//   ① 「如果题干中有中间带空格的小括号或一串下划线，则要保留」→ 追问后裁定：
+//      「填空的小括号和下划线要替换成 `{填空域}`」（判据与实现见 `convertBlankMarks`）；
+//   ② 「如果是选词填空，一般会在下划线后的小括号中，你要能够提取，并正确设置」；
+//   ③ 括号里的词怎么算，教师给了**一句话的判据**（见 `extractPoolWords`）；
+//   ④ 🔴 「关于答案我统一一下，**全部不作处理**」。
+//
+// 🔴 ①②③④ 合起来只有一句：**这个功能只拆结构，不猜语义。**
+//   拆错看得见 —— 替换前有预览窗，替换后每一格都还能改；
+//   猜错看不见 —— 答案静默写错就是全班判错（或更糟：判对）。
+//   所以第 ④ 条执行到极致：`答案：B` / `【答案】√` / 空后括号里的词，**一个都不认**、
+//   **一行都不删**。只认出来**报**给教师（`answerNoteLines`）。
+
+/**
+ * 看起来像「答案 / 解析 / 分值」的**标注行** —— **只认出来报，一个字都不动**。
+ *
+ * 🔴 为什么不顺手删掉（那本来是更「顺手」的做法）：删错的代价是**静默少一段**
+ *（正文里真的出现「解析：」三个字的时候），而留着它的代价只是「教师要在预览框里
+ * 自己删一行」—— 两边的代价差着一个数量级。本仓对「替教师做决定」的既有裁定
+ * 也是**看得见优先**。⚠️ 于是对话框要把这几行的**原文**列出来（见 `PasteQuestionDialog`）。
+ *
+ * ⚠️ 判据是「**行首**是这个前缀」：`答案：A. 北京` 这一行的开头确实是标注，
+ * 而正文中间出现「……答案：……」不算一行标注（少认一条的代价只是没提醒，不是改错东西）。
+ */
+const ANSWER_NOTE_LABEL = '答案|参考答案|正确答案|解析|答案解析|评分标准|考点|点拨';
+/**
+ * 三支，各对一种真实写法（`【答案】√` **不带冒号**，所以那支必须能自己站住）：
+ *   · `【答案】√` / `[答案] A` —— 括号包着，冒号可有可无；
+ *   · `答案：B` / `参考答案: C` —— 裸写，**必须有冒号**（少了这一条，
+ *     正文里只要出现「答案」两个字它就算一行标注）；
+ *   · `（3分）` —— 整行就是一个分值。
+ */
+const ANSWER_NOTE = new RegExp(
+  '^(?:'
+  + `[【\\[]\\s*(?:${ANSWER_NOTE_LABEL})\\s*[】\\]]`
+  + `|(?:${ANSWER_NOTE_LABEL})\\s*[：:]`
+  + '|[（(]\\s*\\d+(?:\\.\\d+)?\\s*分\\s*[）)]'
+  + ')',
+);
+
+export function answerNoteLines(raw: unknown): string[] {
+  const text = typeof raw === 'string' ? raw.replace(/\r\n?/g, '\n') : '';
+  if (!text) return [];
+  return text.split('\n').map(line => line.trim()).filter(line => ANSWER_NOTE.test(line));
+}
+
+/** 标记与括号之间允许的空白（教师手写时常见 `____ （高兴 难过）`）。 */
+const POOL_GAP = /[ \t 　]/;
+
+/** 待选词的分隔符 —— 与 `splitChoiceText`（输入那一侧）**同一套**，理由见那个函数。 */
+const POOL_SPLIT = /[、，,；;/|｜\s]+/;
+
+/**
+ * 从**已经统一成 `{填空域}`** 的题干里取出「空后括号里的待选词」（★ 2026-09-29，教师）。
+ *
+ * 教师原话（判据就这一句，两条一支）：
+ *   「如果括号内**只有一个词**（中英文均可能），则属于题干一部分，通常表示让学生根据
+ *    这个词填什么内容；如果括号内**不止一个字或词**，通常会有分隔符或空格，则表示待选词。」
+ *
+ * ⇒ 一个词 ⇒ 原样留在题干里（`他{填空域}（高兴）地说`，那个括号是**题目的一部分**）；
+ *    两个及以上 ⇒ 抽出来当词库，**括号连词一起从题干里移走**（学生不该在题干里看见词库）。
+ *
+ * ⚠️ 判据是「有没有分隔符或空白」，**不是**「有几个字」：`（New York）` 是一个词
+ *（中间那个空格是词的一部分），而 `（高兴 难过）` 是两个。这正是教师说的那一条。
+ *
+ * 🔴 **去重**（保留首次出现的先后）：词库是一份**共用清单** —— 同一个词在里面出现两次，
+ * 学生在待选区会看到两个一模一样的词块，拖走一个另一个还在，看起来像 bug。
+ *
+ * ⚠️ 括号里还有括号 ⇒ 不认（`（A（甲）` 这种截断出来的残片，认了就会把一个半个词
+ * 塞进词库）。宁可不认 —— 教师能在预览框里自己补。
+ *
+ * 🔴 **`loose` 报的是「有几处只靠空格分开」**：那一档判不准 —— `（New York）` 按字面是
+ * 一个词（教师原话：「括号内只有一个词，中英文均可能」），而 `（apple banana）` 是两个。
+ * 两者在**字符层面完全同形**（都是「一个空格 + 两个词」），没有判据能分开它们。
+ * ⇒ 照教师原话里那句「通常会有**分隔符或空格**」按待选词处理，**但把这一档如实报出来**
+ *（对话框据此提醒一句），让教师一眼看见并改回去 —— 猜错的代价因此是「看一眼」而不是
+ * 「词库静默少一个词」。
+ */
+export function extractPoolWords(raw: unknown): { text: string; words: string[]; loose: number } {
+  const text = typeof raw === 'string' ? raw : '';
+  if (text === '') return { text: '', words: [], loose: 0 };
+  const words: string[] = [];
+  /** 只有空格、没有明确分隔符的那几处。 */
+  const loose: string[] = [];
+  let out = '';
+  let cursor = 0;
+  for (;;) {
+    const at = text.indexOf(BLANK_MARK_TEXT, cursor);
+    if (at < 0) break;
+    const afterMark = at + BLANK_MARK_TEXT.length;
+    // ⚠️ 先把标记本身收进 `out`，再看它后面跟的是什么 —— 不认的时候一个字都不能少。
+    out += text.slice(cursor, afterMark);
+    let probe = afterMark;
+    while (probe < text.length && POOL_GAP.test(text[probe])) probe += 1;
+    const open = text[probe];
+    const close = open === '（' ? '）' : open === '(' ? ')' : '';
+    const end = close ? text.indexOf(close, probe + 1) : -1;
+    if (end < 0) { cursor = afterMark; continue; }
+    const inner = text.slice(probe + 1, end);
+    const tokens = inner.split(POOL_SPLIT).map(item => item.trim()).filter(Boolean);
+    // 一个词（或认不准的）⇒ 属于题干的一部分，原样留着。
+    if (tokens.length < 2 || /[（()）]/.test(inner)) { cursor = afterMark; continue; }
+    // 「明确分隔符」= 除空白之外那几种。一处都没有 ⇒ 这一档判不准，记下来。
+    if (!/[、，,；;/|｜]/.test(inner)) loose.push(inner.trim());
+    tokens.forEach((word) => { if (!words.includes(word)) words.push(word); });
+    // 认了 ⇒ 括号连词一起吃掉（`out` 里只留标记，标记与括号之间那段空白一并丢掉）。
+    cursor = end + 1;
+  }
+  out += text.slice(cursor);
+  return { text: out, words, loose: loose.length };
+}
+
+/**
+ * 填空题的整条链：**剥题号 → 统一空标记 → 取待选词**。
+ *
+ * 🔴 三步的**顺序不能换**：先统一再取词，`extractPoolWords` 才能安心地按
+ * `{填空域}` 找锚点（否则它得同时认三种空形态，而那是判据的第二份）。
+ *
+ * ⚠️ 只剥**开头**那个题号（复用 `stripLeadingQuestionNumber` 那条既有判据）：
+ * 单题导入下，`（1）（2）` 这种子题号会原样留在题干里 —— 那是**如实**的，
+ * 教师看得见（整题拆成多道是另一批的事，见 spec 那一条）。
+ */
+export function fillPaste(raw: unknown): { stem: string; converted: number; words: string[]; loose: number } | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.replace(/\r\n?/g, '\n');
+  if (!text.trim()) return null;
+  const { text: marked, converted } = convertBlankMarks(stripLeadingQuestionNumber(text.trim()));
+  const extracted = extractPoolWords(marked);
+  return { stem: extracted.text, converted, words: extracted.words, loose: extracted.loose };
+}
+
+/** 判断题 / 填空题之外的「整段就是题干」那一类：剥掉开头的题号，其余一字不动。 */
+export function promptPaste(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.replace(/\r\n?/g, '\n').trim();
+  if (!text) return null;
+  return stripLeadingQuestionNumber(text) || null;
+}
+
+/**
+ * 把一段**纯文本**整段当成新题干时，要跟着一起提交的 **`data` 补丁**（★ 2026-09-27，粘贴用）。
+ *
+ * 🔴 **不能只写 `prompt` 就完事**：题干的分段存在 `data.promptRuns` 里，而 `readPromptRuns`
+ * **只认存量**、不会从文本里重新认填空域 —— 会做那件事的只有 `recognizeBlanks`。
+ * 粘进来的题干是纯文本，所以这里从零重认一遍：
+ *   · 普通题干 ⇒ 一整段普通分段 ⇒ `isPlainRuns` 为真 ⇒ 写 `undefined`（把旧格式清干净）；
+ *   · 题干里带着 `{填空域}` ⇒ 认成真正的空。
+ *
+ * ⊘ **2026-09-29 修**：本函数从 `prompt-editor.tsx` 搬到这一层（组件那一侧没有回归网），
+ *   搬过来时发现它**从来没生效过** —— 它调的是 `recognizeBlanks([], text, …)`，而
+ *   `recognizeBlanks` **只能改已有的分段、造不出新的**（`rewriteRange` 只遍历入参）
+ *   ⇒ 喂空数组得到空数组 ⇒ `isPlainRuns([])` 为真 ⇒ 写 `undefined` ⇒ 那个 `{填空域}`
+ *   在教师端画不出灰底、学生端也不画输入框，**而屏幕上只是几个普通字符**。
+ *   现在走 `blanksFromText`（那一条判据封在那个函数里，带用例）。
+ */
+export function promptRunsPatchFor(text: string, mintId: () => string = newBlankId): Record<string, unknown> {
+  const runs = blanksFromText(text, mintId);
+  return { promptRuns: isPlainRuns(runs) ? undefined : runs };
+}
+
+/**
+ * 排序题**没有条目前缀**时，开头那句**指令**（★ 2026-09-29，教师）。
+ *
+ * 教师原话：「排序题中有没有办法自动识别这个的导入内容，如图，每个排序项前没有编号」——
+ * 截图上那段粘贴是一句指令 + 四句要排的话，而解析在没有前缀时只能退化成「一行一个」，
+ * 于是**指令成了第 1 个条目**（教师得自己删）。
+ *
+ * ── 🔴 判据为什么是两条 AND ────────────────────────────────────────────────
+ * 「无脑把第一行当题干」是**错的**，而且错得静默：教师写「没写指令、直接四句要排的话」
+ * 时，那四句里的第一句会被吃掉 ⇒ 学生少一个可选项，而屏幕上只是少了一行。
+ * ⇒ 两条**都要**：
+ *   · `ORDER_INSTRUCTION_ACT` —— 出现排序类的动作词（排列 / 排序 / 顺序 / 排成…）；
+ *   · `ORDER_INSTRUCTION_LEAD` —— 它处在**祈使**的位置（请 / 把 / 将 / 下列 / 下面…）。
+ * 只看动作词挡不住「他按照顺序做完了作业。」这种**陈述句条目**；只看祈使挡不住
+ * 「把书放进书包里。」这种以「把」开头的条目。两条一起，两边都挡住了。
+ *
+ * ⚠️ 只在**第一行**上判（多行指令是另一件事，真出现了教师能在预览窗里改）。
+ * ⚠️ 只在**排序题**上判：选择题同样会退化成「一行一个」，但它的指令形态完全不同
+ *    （「下列哪个是首都？」），拿这套词去认会认错 —— 那是另一个判据，需要时另加。
+ */
+const ORDER_INSTRUCTION_ACT = /(排列|排序|顺序|排好|重排|排成|排一排|依次)/;
+const ORDER_INSTRUCTION_LEAD = /(请|把|将|试|给|下列|下面|以下)/;
+
+/**
+ * 一段**按行拆出来**的条目里，开头那句是不是「排序指令」。
+ * @returns 是指令就返回那一行（已 trim），否则 `null`。
+ * ⚠️ 后面**至少还要剩两条**才算（`lines.length >= 3`）：只剩一条时那句「指令」
+ *    多半就是唯一的内容，把它拿走会让这道题一个条目都不剩。
+ */
+export function orderInstructionLine(lines: readonly string[]): string | null {
+  if (!Array.isArray(lines) || lines.length < 3) return null;
+  const first = typeof lines[0] === 'string' ? lines[0].trim() : '';
+  if (!first) return null;
+  if (!ORDER_INSTRUCTION_ACT.test(first)) return null;
+  return ORDER_INSTRUCTION_LEAD.test(first) ? first : null;
+}
+
+/**
+ * 一次粘贴的**解析结果** —— 四种题型共用一种形状，对话框与落库各读各的那几格。
+ *
+ * ⚠️ 不用联合类型（`{kind:'choice', texts} | {kind:'fill', pool}`）：那会让
+ * 「预览窗要按题型分支」这件事从**数据**变成**控制流**，而这两边只要有一个人忘了
+ * 加一支，症状是「某个题型的预览窗少显示一块」，屏幕上不报错。
+ * ⇒ 形状摊平，缺的那几格是空值，谁读谁判空。
+ */
+export interface ParsedPaste {
+  /** 要写进题干的那一段（`null` = 这次不动题干）。 */
+  stem: string | null;
+  /** 选项 / 排序条目（其余题型恒为空）。 */
+  texts: string[];
+  optionSplit: 'marker' | 'line' | null;
+  /** 超出上限被截掉的条数。 */
+  dropped: number;
+  /** 填空题抽出来的待选词（其余题型恒为空）。 */
+  pool: string[];
+  /** 其中**只靠空格分开**的有几处（判不准的那一档，见 `extractPoolWords`）。 */
+  poolLoose: number;
+  /** 这次统一空标记换掉了几处（只对填空题有意义）。 */
+  converted: number;
+  /** 看起来像答案 / 解析 / 分值标注的行 —— **只报不动**（见 `answerNoteLines`）。 */
+  notes: string[];
+  /**
+   * ★ 2026-09-29（教师）：「你要不加一个选项，让用户选择第 1 行是不是题干」。
+   *
+   * **这一格同时回答两件事**，所以它是三态而不是布尔：
+   *   · `true` / `false` = 这一档里**确实存在**「第 1 行是题干还是条目」这个选择，
+   *     而这个值是**判据给的默认答案**（教师可以推翻）；
+   *   · `null` = 这一档里**没有**这个选择（前缀之前已经有题干了 / 不是排序题）——
+   *     对话框据此不画那个勾。
+   *
+   * ⚠️ 判据只决定**默认值**，不决定可不可以选：判据说不是而教师说是，那个勾照样能勾上
+   *（见 `pasteResultFor` 的两条分支）。判据是个启发式，它认不出「教师自己知道」这件事。
+   */
+  firstLineAsStem: boolean | null;
+}
+
+/**
+ * 按**这道题的题型**解析一段粘贴（★ 2026-09-29）。
+ *
+ * 四条路各自认什么，写在各自的函数上；这里只负责分派：
+ *   · 选择题 / 排序题 ⇒ `parseQuestionPaste`（题干 + 选项 / 条目），再加一层标注行的报告；
+ *   · 填空题（含选择填空）⇒ `fillPaste`（整段作题干 + 统一空标记 + 取待选词）；
+ *   · 判断题 ⇒ `promptPaste`（整段作题干 —— 它没有选项可拆，`对`/`错`是固定两个）。
+ */
+export function parsePasteFor(node: WorksheetQuestionNode, raw: unknown): ParsedPaste | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const notes = answerNoteLines(raw);
+  const base = { pool: [] as string[], poolLoose: 0, converted: 0, notes, firstLineAsStem: null as boolean | null };
+  if (isChoiceQuestion(node) || node.type === 'order') {
+    const parsed = parseQuestionPaste(raw);
+    if (!parsed) return null;
+    const shape = { ...base, stem: parsed.stem, texts: parsed.texts, optionSplit: parsed.optionSplit, dropped: parsed.dropped };
+    // ★ 排序题：**题干还没有着落**时，把开头那句指令从条目里剥出来当题干。
+    //
+    // 🔴 判据是 `parsed.stem === null` 而**不是** `optionSplit === 'line'`：
+    //   · 一条前缀都没有（`'line'`）⇒ 题干恒为 `null` ⇒ 走这一步；
+    //   · 有前缀但**编号把指令也编进去了**（`1. 把下面的句子按顺序排列。` / `2. 小船离岸。`）
+    //     ⇒ `findOptionRun` 把所有标记当成同一条条目表，`stem` 也是 `null` ⇒ 同样该走这一步。
+    //     ⚠️ 这个形态是真实存在的（教师那头把指令也当成第 1 条编了号），
+    //     只认 `'line'` 会漏掉它 —— 而漏掉的表现就是教师报的那个「指令成了第 1 个条目」。
+    //   · 反过来，**前缀之前已经有题干**（`把下面的句子排列好` + `1. 甲`）⇒ `stem` 非空
+    //     ⇒ 这里一个字都不动。少了这一条会拿 `texts[0]` **顶掉**已经剥出来的题干
+    //     （原来那段题干当场消失，而屏幕上只是题干换了内容）。
+    if (node.type === 'order' && parsed.stem === null) {
+      const instruction = orderInstructionLine(parsed.texts);
+      if (instruction) {
+        return { ...shape, stem: instruction, texts: parsed.texts.slice(1), firstLineAsStem: true };
+      }
+      // 判据没认出来 ⇒ **默认「第 1 行是条目」**，但**那个选择还在**（教师可以勾）。
+      // ⚠️ 这一格报的是**判据的答案**（`false`），不是「可不可以选」——
+      // 「可不可以选」由 `null` / 非 `null` 表达。第一版在这儿写成了
+      // `parsed.texts.length >= 2`（那是「可不可以选」的意思），于是**默认变成了「是」**，
+      // 而这个默认一旦落到 `pasteResultFor` 上就会把那句开场白当成题干吃掉一条。
+      // 剩下不足两条时连选择都没有（把唯一一条拿走就什么都不剩了）。
+      return { ...shape, firstLineAsStem: parsed.texts.length >= 2 ? false : null };
+    }
+    return shape;
+  }
+  if (hasPromptBlankSlots(node.type)) {
+    const filled = fillPaste(raw);
+    if (!filled) return null;
+    return {
+      ...base, stem: filled.stem, texts: [], optionSplit: null, dropped: 0,
+      pool: filled.words, poolLoose: filled.loose, converted: filled.converted,
+    };
+  }
+  const stem = promptPaste(raw);
+  if (!stem) return null;
+  return { ...base, stem, texts: [], optionSplit: null, dropped: 0 };
+}
+
+/**
+ * 一次粘贴**最终要提交的东西** —— 对话框与落库之间那个形状（★ 2026-09-29）。
+ *
+ * 🔴 它从对话框里搬到这里，是因为「组装它」是一段**有判断的逻辑**，而组件那一层
+ * 在本机没有回归网：搬过来之前，下面那条 `stemOnly` 的错就长在 JSX 里
+ *（「整段作题干」那一支把解析结果整个丢掉 ⇒ 填空题的空标记与待选词**白转了一场**，
+ * 而屏幕上看起来只是「粘进去的东西没变」）。
+ */
+export interface PasteQuestionResult {
+  /** 要写进题干的那一段（`null` = 这次不动题干）。 */
+  stem: string | null;
+  /** 要替换掉的选项 / 排序条目（空数组 = 这次不动选项）。 */
+  texts: string[];
+  /** 从「空后括号」里抽出来的待选词（其余题型恒为空）。 */
+  pool: string[];
+  /** 抽到待选词时，教师勾了「同时把这些空改成『下方选词』」没有。 */
+  applyPoolMode: boolean;
+}
+
+/**
+ * 把「教师粘的那段文本 + 他在窗前做的两个选择」组装成最终结果（★ 2026-09-29）。
+ *
+ * @param stemOnly 「整段作题干」那一档（**只有选择题与排序题有这一档**）。
+ *   🔴 它的语义是「**别拆选项**」，不是「别做任何处理」——
+ *   这两件事在四种题型下**不是同一个决定**：
+ *     · 选择题 / 排序题：整段（连换行）原样进题干，不拆、不剥题号；
+ *     · 判断题 / 填空题：它们**没有**这一档，整段**就是**解析出来的那个题干
+ *       （要剥题号、要统一空标记、要抽待选词）。
+ *   ⊘ 把两者写成一支（「`stemOnly` ⇒ 用原文」）就是本函数存在的原因：
+ *   那样写填空题会把 `convertBlankMarks` 与 `extractPoolWords` 的结果**整个丢掉**，
+ *   而屏幕上的表现只是「粘进去的括号与下划线还在」—— 一点错都不报。
+ */
+/**
+ * 教师在那个窗里做的三个选择（★ 2026-09-29 收成一个对象）。
+ *
+ * ⚠️ 它们曾经是三个位置参数，而 `pasteResultFor(node, text, true, false)` 这种调用
+ * **在屏幕上读不出哪个 true 是哪个** —— 而这三个里有两个的默认值是 `true`、
+ * 一个是 `false`，最容易被写反。收成对象之后调用点是自解释的。
+ */
+export interface PasteChoices {
+  /** 「整段作题干」那一档（**只有**选择题与排序题有这一档）。 */
+  stemOnly: boolean;
+  /**
+   * 排序题：开头那句指令当成**题干**（默认），还是当成**第 1 个条目**。
+   * ⚠️ 这个开关只在自动认出指令时才有意义（见 `orderInstructionLine`）——
+   * 没认出来时它两个取值的结果**逐字相同**（不会凭空吃掉一条）。
+   */
+  instructionAsStem: boolean;
+  /** 填空题：抽到待选词时，是否同时把这些空的作答方式改成「下方选词」。 */
+  applyPoolMode: boolean;
+}
+
+export function pasteResultFor(
+  node: WorksheetQuestionNode,
+  text: string,
+  choices: PasteChoices,
+): PasteQuestionResult | null {
+  const raw = typeof text === 'string' ? text.trim() : '';
+  if (!raw) return null;
+  const { stemOnly, instructionAsStem, applyPoolMode } = choices;
+  const splittable = isChoiceQuestion(node) || node.type === 'order';
+  if (stemOnly && splittable) return { stem: raw, texts: [], pool: [], applyPoolMode };
+  const parsed = parsePasteFor(node, text);
+  if (!parsed) return { stem: raw, texts: [], pool: [], applyPoolMode };
+  // ★ 排序题：第 1 行是题干还是条目 —— **看教师那个勾**，判据只给默认值。
+  // ⚠️ 两条分支的**先后**不能换：勾上时若判据已经提上来了（`stem` 非空），
+  //    再提一次会把第 1 个**条目**吃掉。
+  if (parsed.firstLineAsStem !== null) {
+    if (!instructionAsStem && parsed.stem !== null) {
+      // 取消勾 ⇒ 放回**最前面**（与粘贴的先后一致 —— 排序题的条目顺序就是正确顺序，
+      // 插在别处会改变教师给的那个顺序）。
+      return { stem: null, texts: [parsed.stem, ...parsed.texts], pool: parsed.pool, applyPoolMode };
+    }
+    if (instructionAsStem && parsed.stem === null && parsed.texts.length >= 2) {
+      // 勾上而判据没提 ⇒ 现在提（教师比判据清楚）。
+      return { stem: parsed.texts[0], texts: parsed.texts.slice(1), pool: parsed.pool, applyPoolMode };
+    }
+  }
+  return { stem: parsed.stem, texts: parsed.texts, pool: parsed.pool, applyPoolMode };
+}
+
+/**
+ * 把一次粘贴的解析结果变成 **`data` 补丁**（纯函数 —— 组件那一层在本机没有回归网）。
+ *
+ * 🔴 填空题那一段有一处**很容易写错的地方**：空是**这次新造的**（id 由 `mintId` 现 mint），
+ * 而 `fillBlankSettings` 是**按 id 存**的 ⇒ 给新空写作答方式时必须拿**新**的 `runs` 去算。
+ * 本函数把新的 `runs` **显式传进去**（`blankSlots` / `fillSettingsFor` 都收第二个参数），
+ * 所以踩不到；**踩法是把 `node` 自己那份 `promptRuns` 读出来用** —— 那会得到一个键
+ * 全对不上的对象，屏幕上的表现是「勾了『改成下方选词』但一点反应都没有」。
+ * （变异检验实测：改成读 `node.data.promptRuns` 之后，下面那条用例红 2 条。）
+ *
+ * ⚠️ 表格里的空**不动**：抽出来的词是**题干的**待选词，把表格里的空也改成「选词」
+ * 是替教师改了另一个决定（`kind` 那一条判据在 `blankSlots`）。
+ */
+export function pasteDataPatch(
+  result: PasteQuestionResult,
+  node: WorksheetQuestionNode,
+  mintId: () => string = newBlankId,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (result.stem !== null) {
+    const runs = blanksFromText(result.stem, mintId);
+    // ⚠️ `isPlainRuns` 为真就写 `undefined`：把上一版留下的格式清干净（既有判据）。
+    patch.promptRuns = isPlainRuns(runs) ? undefined : runs;
+    if (result.pool.length > 0) {
+      patch.fillChoicePool = result.pool.join('\n');
+      if (result.applyPoolMode) {
+        const next = { ...node, prompt: result.stem, data: { ...node.data, promptRuns: runs } } as WorksheetQuestionNode;
+        const slots = blankSlots(next, runs);
+        const settings = fillSettingsFor(next, runs).map((setting, index) => (
+          slots[index]?.kind === 'text' ? { mode: 'pool' as const, choices: [] } : setting
+        ));
+        patch.fillBlankSettings = writeFillSettings(next, runs, settings);
+      }
+    }
+  }
+  if (result.texts.length > 0) {
+    if (node.type === 'order') {
+      const pasted = orderPastePatch(result.texts);
+      Object.assign(patch, writeOrder(pasted.items, pasted.correctOrder));
+    } else if (isChoiceQuestion(node)) {
+      Object.assign(patch, optionPastePatch(result.texts, node));
+    }
+  }
+  return patch;
 }
 
 /**
@@ -2488,15 +2920,19 @@ export function buildPayload(
  *   | 这一半 | 装什么 | 谁会盖它 |
  *   |---|---|---|
  *   | `content`  | 标题 + 内容 | **只有**顶栏的「保存」 |
- *   | `settings` | 备注 + 设置 | 顶栏「保存」**与**弹窗里的「保存设置」 |
+ *   | `settings` | 使用说明 + 设置 | 顶栏「保存」**与**弹窗里的「保存设置」 |
  *
  * 🔴 **为什么要显式分成两半、而不是各存各的字符串**：这两半共用一条 `dirty` 判据，
  * 而 `dirty` 是顶栏那句「未保存」**唯一**的依据。合成一份的后果是一个**会说谎的瞬间**：
  * 教师改完设置点了「保存设置」、而同一时刻他还改过题目 —— 顶栏显示「已保存」，
  * 题目却根本没进服务端。**界面上说假话、且没有任何报错**，正是本仓最防的那一类。
  *
- * ⚠️ 两半必须**不重叠**：`description` 归 `settings`（它就在那个弹窗里、与设置同一个按钮提交），
- * `title` 归 `content`（它在顶栏直接编，与题目一起由顶栏的「保存」提交）。
+ * ⚠️ 两半必须**不重叠**：`description` 归 `settings`，`title` 归 `content`。
+ * 🔴 判据是**谁真的会写它**，不是「它长在哪一屏」：`saveSettings` 发的是
+ * `{ description, settings }`（所以「使用说明」在那半），顶栏的「保存」发整份。
+ * ⚠️ ★ 2026-09-30：「使用说明」从设置弹窗搬到了编辑页标题下面（与 `title` 挨着），
+ * **归属没变** —— 别因为「它现在与标题挨着」就把它挪到 `content` 那半：
+ * 那样「保存设置」会写一个基线里不算它的字段，那次保存之后顶栏会一直显示「未保存」。
  *
  * ⚠️ 切分的是**归一化之后**的载荷（`buildPayload` 的产物），不是屏幕上那几格原始状态 ——
  * 否则标题带一个前后空格就会让「未保存」永远擦不掉。
@@ -2504,7 +2940,7 @@ export function buildPayload(
 export interface SaveBaselines {
   /** 标题 + 内容。**只有顶栏的「保存」会盖它。** */
   content: string;
-  /** 备注 + 设置。顶栏「保存」与弹窗里的「保存设置」都会盖它。 */
+  /** 使用说明 + 设置。顶栏「保存」与弹窗里的「保存设置」都会盖它。 */
   settings: string;
 }
 
@@ -2546,7 +2982,15 @@ export function isContentHalfSaved(baselines: SaveBaselines | null, payload: Wor
 }
 
 export const DEFAULT_SETTINGS: WorksheetSettings = {
-  allowResubmit: true,
+  // ★ 2026-09-30（教师）：「将『允许学生修改』改为**默认不能修改**」。
+  // 改了**两处**默认的一半：这里是「新建的学习单长什么样」，服务端
+  // `routes/worksheets.ts` 的 `DEFAULT_SETTINGS` 是「缺字段的行长什么样」。
+  // 🔴 两处必须是同一个值（那段注释在上面 rewardStyle 上写着）——
+  //    分叉的表现是「新建出来是 A、学生看到的是 B」，而两边都不报错。
+  // ⚠️ 它**只改默认值**：库里 `settings.allowResubmit` 已经是 `true` 的那几张单
+  //    仍然可以修改（教师当时是显式打开的）。「缺键 ⇒ 不能修改」是唯一一个答案 ——
+  //    `normalizeLoadedSettings` / `parseDraft` 两条读路径与这里同解，不另立一个。
+  allowResubmit: false,
   autoGrade: true,
   answerMode: 'open',
   defaultInputMode: 'keyboard',
@@ -2676,11 +3120,15 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
     title: draft.title,
     description: draft.description,
     settings: {
-      allowResubmit: settings.allowResubmit !== false,
+      // ★ 2026-09-30：判据从 `!== false` 翻成 `=== true` —— 默认值改成「不能修改」之后，
+      // **缺键的那一行也必须是不能修改**（两处读路径与 `DEFAULT_SETTINGS` 同解，
+      // 见那个常量的注释）。⚠️ 显式写下的 `true` 照旧读出来是 `true`。
+      allowResubmit: settings.allowResubmit === true,
       autoGrade: settings.autoGrade !== false,
-      answerMode: settings.answerMode === 'task-step' || settings.answerMode === 'question-step'
-        ? settings.answerMode
-        : 'open',
+      // ★ 2026-09-30：四档的判据**只有一份**（`worksheet-answer-mode.ts`）。
+      // 这里原来是内联的 `=== 'task-step' || === 'question-step'` —— 加第四档时，
+      // 内联副本会把 `manual` **静默降级成 `open`**（学生看到全部题目，而老师以为锁着）。
+      answerMode: normalizeAnswerMode(settings.answerMode),
       defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
       // 奖励三项与 `normalizeLoadedSettings` 走的是**同一对**归一化函数（不是各写一遍：
       // 草稿来自 localStorage、详情来自服务端，两边的判据分叉会让「恢复草稿」与
@@ -2729,11 +3177,12 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_SETTINGS;
   const settings = raw as Record<string, unknown>;
   return {
-    allowResubmit: settings.allowResubmit !== false,
+    // ★ 2026-09-30：`=== true`（缺键 ⇒ 不能修改）—— 与 `DEFAULT_SETTINGS`、`parseDraft`
+    // 同一个答案。⚠️ 显式写下的 `true` 读出来仍是 `true`：改的是**默认**，不是存量。
+    allowResubmit: settings.allowResubmit === true,
     autoGrade: settings.autoGrade !== false,
-    answerMode: settings.answerMode === 'task-step' || settings.answerMode === 'question-step'
-      ? settings.answerMode
-      : 'open',
+    // ★ 2026-09-30：同上 —— 四档的判据只有一份（别在这里再写一遍内联的等值判断）。
+    answerMode: normalizeAnswerMode(settings.answerMode),
     defaultInputMode: settings.defaultInputMode === 'handwriting' ? 'handwriting' : 'keyboard',
     // ⚠️ 这三项**必须**原样带过来，哪怕是本编辑器没有 UI 的旧字段：编辑页保存时是把
     // `settings` 整份发回去的（`buildPayload`），漏掉一个键就等于用默认值覆盖了库里的设置

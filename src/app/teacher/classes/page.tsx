@@ -1339,7 +1339,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         {avatars.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 6, display: 'block' }}>头像</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto', padding: '4px 0' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
               <div key="none"
                 onClick={() => setAvatarId(null)}
                 style={{
@@ -1537,7 +1537,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择头像</h3>
         <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, maxHeight: 300, overflowY: 'auto', padding: '4px 0' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1591,7 +1591,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择班级图标</h3>
         <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 44, height: 44, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',

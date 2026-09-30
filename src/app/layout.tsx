@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import 'katex/dist/katex.min.css';
+import { OverscrollGuard } from "@/components/overscroll-guard";
 
 export const metadata: Metadata = {
   title: "支点课堂｜ClassNode",
@@ -19,7 +20,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* 浮层里的滚轮守卫（见 `@/lib/overscroll-guard`）。全局只装一个，什么都不渲染。 */}
+        <OverscrollGuard />
+      </body>
     </html>
   );
 }

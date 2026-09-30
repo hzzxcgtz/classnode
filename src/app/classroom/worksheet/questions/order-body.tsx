@@ -41,6 +41,22 @@ import styles from '../worksheet.module.css';
  *   · 拖动**过程中**列表被滚动（页面别处滑了一下）或转屏 ⇒ 那份静止坐标就过期了，
  *     落点会偏。手势中途的滚动在老 iPad 上只能靠 `touch-action: none` 挡住；
  *   · 条目里有一项还没挂上 DOM ⇒ 这一次手势整个不动（宁可不动也不画一份错位的让位）。
+ *
+ * ── ★ 2026-09-30（教师）：**条目前面不再有序号** ───────────────────────────
+ * 教师原话：「排序题的每一个选项前面不需要加数字编号，**会误导学生**。
+ * 加普通的列表符号或者什么都不加都可以」。⇒ 取了「什么都不加」。
+ *
+ * 🔴 为什么是「什么都不加」而不是一个圆点：那个位置**本来就是序位槽** ——
+ *    一个数字是「这是第几条」，一个圆点读者也会当成同一个意思（只是没写数字）。
+ *    而这道题的全部意义就是「学生给的顺序」，任何暗示「1 就是第一步」的符号都是在给答案。
+ *    ▲▼ 与拖动带来的位移已经足够说清「它现在排第几」。
+ *
+ * 🔴 **连带删掉了 `writeSlots` 那一整套**（`numEls` / 每帧写槽位 / 松手再写回 /
+ *    每次渲染都跑的那个补偿 effect）：它存在的**唯一**理由是拖动中那个数字会写错
+ *    （让位之后原来第 3 条跑到第 2 格，而它身上还写着「3」）。没有数字就没有这件事，
+ *    **别再把它加回来** —— 除非同时把序号也加回来。
+ * ⚠️ 老师那一侧**照旧有序号**：编辑页「选项顺序」与「正确顺序」两栏的数字是给教师看
+ *    顺序用的（`bodies/order-body.tsx`），学生看不到那一屏。
  */
 export interface OrderBodyProps {
   node: WorksheetQuestionNode;
@@ -67,31 +83,6 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
 
   /** 每一项的 `<li>`（跟手与让位都要直接写它的 `transform`）。 */
   const itemEls = useRef<Record<string, HTMLElement | null>>({});
-  /** 每一项那个序号徽标（它的数字在拖动中由 JS 改写，见 `writeSlots`）。 */
-  const numEls = useRef<Record<string, HTMLElement | null>>({});
-
-  /**
-   * 把每一项的序号写成它的**视觉槽位**（`slots` 是 id → 槽位）。
-   *
-   * 🔴 拖动中必须改写：让位之后原来第 3 条跑到了第 2 格，而它身上还写着「3」——
-   * 那个数字读起来就是错的，而且错得很显眼。
-   *
-   * ⚠️ **松手时必须按新顺序再写一遍**（`onDrop` 里同步写、中断那一个 effect 里补）：
-   * JSX 里那个 `{index + 1}` 是 React 的文本节点，而 React **只在自己那份 vnode
-   * 变了的时候才动 DOM** —— 序号没变的那些条目它一次都不碰，DOM 上留着的就是拖动中
-   * 我们写进去的值。所以「交还给 React」这件事得我们自己做完。
-   * ⚠️ 只写变了的：给相同的 `textContent` 赋值会让浏览器白标一次脏。
-   */
-  const writeSlots = useCallback((slots: Record<string, number>) => {
-    const els = numEls.current;
-    Object.keys(els).forEach((id) => {
-      const el = els[id];
-      const slot = slots[id];
-      if (!el || slot === undefined) return;
-      const text = String(slot + 1);
-      if (el.textContent !== text) el.textContent = text;
-    });
-  }, []);
   /** 这一次手势开始时量下的静止坐标（中线 y）与拖起来那一项的位置。**一次手势只量一次**。 */
   const geomRef = useRef<{ from: number; centers: number[] } | null>(null);
   /** 上一次真正写进 DOM 的让位量（不变的那些项就不必再写一遍）。 */
@@ -160,12 +151,7 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
     });
     appliedRef.current = shifts;
     toRef.current = to;
-    // ③ 序号跟着槽位走（被拖那一项写的是**它将落到的那一格** —— 学生在拖动中
-    //    就该读出「松手之后它是第几条」）。
-    const slots: Record<string, number> = {};
-    shown.forEach((id, index) => { slots[id] = index === from ? to : index + shifts[index]; });
-    writeSlots(slots);
-  }, [shown, writeSlots]);
+  }, [shown]);
 
   const drag = usePointerDrag({
     disabled,
@@ -194,27 +180,17 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
       // 收掉跟手与让位写下的行内样式（不清的话，重排之后被让位过的那几项
       // 还带着上一次的偏移 —— 它们的 key 没变，React 不会重建它们）。
       clearDragStyles();
-      // 🔴 序号要在**这一帧同步**按新顺序写回去：拖动中我们改写过它，而 React
-      // 只在自己那份 vnode 变了的时候才动文本 —— 序号没变的那些条目它一次都不碰。
-      const slots: Record<string, number> = {};
-      next.forEach((id, index) => { slots[id] = index; });
-      writeSlots(slots);
       write(next);
     },
   });
 
   // 手势被系统中断（来电、多任务手势、滚动接管）时 `onDrop` **不会被调用** ——
-  // 少了这一个 effect，那几项会**永远停在让位后的位置上**，序号也留在拖动中那一份。
+  // 少了这一个 effect，那几项会**永远停在让位后的位置上**。
   // ⚠️ 依赖是 `drag.draggingId`：它每**次手势**才变一次，不是每帧。
-  // （`shown` 每次渲染都是新数组 ⇒ 这个 effect 每渲染都会跑一遍；`writeSlots`
-  //   自己会跳过没变的那些，所以代价只是几十次字符串比较。）
   useEffect(() => {
     if (drag.draggingId) return;
     clearDragStyles();
-    const slots: Record<string, number> = {};
-    shown.forEach((id, index) => { slots[id] = index; });
-    writeSlots(slots);
-  }, [drag.draggingId, clearDragStyles, shown, writeSlots]);
+  }, [drag.draggingId, clearDragStyles]);
 
   if (entries.length === 0) {
     return <p className={styles.cardNote}>（这道题还没有条目）</p>;
@@ -243,7 +219,6 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
         ].filter(Boolean).join(' ');
         return (
           <li className={styles.orderRow} key={id}>
-            <span className={styles.orderIndex} ref={(el) => { numEls.current[id] = el; }}>{index + 1}</span>
             <div
             className={className}
             ref={(el) => { itemEls.current[id] = el; }}
@@ -253,8 +228,8 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
             {...drag.sourceProps(id)}
             {...{ [DROP_TARGET_ATTR]: id }}
           >
-            {/* JSX 里这份 `{index + 1}` 是给**静态导出**与 React 自己用的那一份；
-                拖动中它会被 JS 改写（`writeSlots`），松手时再写回与新顺序一致的值。 */}
+            {/* ⚠️ 这里**不再有序号**（★ 2026-09-30，理由见文件头那一段）——
+                条目左边那个槽位已经整个删掉，别再补一个数字或圆点回来。 */}
             <span className={styles.orderText}>{byId[id] || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
             </div>
             <span

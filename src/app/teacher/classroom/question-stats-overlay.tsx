@@ -220,12 +220,13 @@ export function QuestionStatsOverlay({
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 292, background: 'rgba(0,0,0,0.16)' }} />
-      <div style={{
+      <div data-overscroll-guard="" style={{
         position: 'fixed', top: 48, bottom: 32, left: '50%', transform: 'translateX(-50%)',
         width: 'min(860px, calc(100vw - 48px))', zIndex: 293,
         background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 12px 40px rgba(0,0,0,0.16)',
+          overscrollBehavior: 'contain',
       }}>
         {/* 页头 */}
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>

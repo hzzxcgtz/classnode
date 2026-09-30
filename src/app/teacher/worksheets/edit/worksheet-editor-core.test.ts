@@ -19,6 +19,10 @@
  * 选项重编号 / 填空题 / 草稿与加载守卫。
  */
 import { test } from 'node:test';
+// ★ 2026-09-30：下面有一条**跨文件核对**（前端的默认值 vs 服务端那一份），只读文本。
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 // ⚠️ 只为了下面那条「同一性」用例：`isMultipleChoice` 搬到 lib 之后，内核只是再导出它。
 import { isMultipleChoice as libIsMultipleChoice } from '../../../../lib/worksheet-questions.ts';
 import assert from 'node:assert/strict';
@@ -27,6 +31,12 @@ import type { WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from 
 // （Node 解析不了 `@/…`，见 `worksheet-editor-core.ts` 的文件头）——
 // 与 `worksheet-drawer-state.test.ts` 引 `lib/worksheet-questions.ts` 是同一个写法。
 import { HALF_STEPS, REWARD_STEPS } from '../../../../lib/worksheet-reward.ts';
+
+/** 本文件所在目录（跨文件核对那一条要按它拼到仓根的路径）。 */
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+// ⚠️ `PromptRun` 从**定义它**的那个文件引（内核只是 import 它，不转出）——
+//    转出一次就是第二份可以漂移的出口。
+import type { PromptRun } from '../../../../lib/worksheet-prompt-marks.ts';
 import {
   // ★ 2026-09-27：两半基线（「保存设置」只盖后一半）。见文件末尾那一组。
   isDirtyAgainst,
@@ -87,16 +97,25 @@ import {
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
+  answerNoteLines,
+  extractPoolWords,
+  fillPaste,
   optionPastePatch,
   orderAddItem,
   orderPastePatch,
   orderRemoveItem,
   orderUseCurrentOrder,
+  pasteDataPatch,
+  orderInstructionLine,
+  pasteResultFor,
   parseDraft,
+  parsePasteFor,
   parsePointInput,
   parseQuestionPaste,
   placeHoverPreview,
   placementSet,
+  promptPaste,
+  promptRunsPatchFor,
   planPointInputChange,
   pointsSignature,
   readBlankAnswers,
@@ -676,7 +695,10 @@ function draftWith(nodeValue: unknown): string {
     //   正确 ⇒ 0；误用 `normalizeRewardStep` ⇒ 回落成 `DEFAULT_REWARD_STEP = 1`。
     // ⚠️ 但 `0` 恰好也是 `DEFAULT_HALF_STEP`，所以它**分不出「根本没读这个键」** ——
     //   那个方向由下面「草稿里的 halfStep 被原样读进来」那条用 `5` 单独钉住。
-    settings: { allowResubmit: false, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0 },
+    // ★ 2026-09-30：`allowResubmit` 用 **`true`**（默认值已改成 `false`）——
+    // 与下面 `halfStep` 用 `0` 是同一条纪律：**非默认档**才分得出「读进来了」与
+    // 「回落成默认了」。写成 `false` 的话，把这一行删掉也是同一个观测。
+    settings: { allowResubmit: true, autoGrade: true, defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0 },
     content: { schemaVersion: 9, nodes: [nodeValue] },
   });
 }
@@ -689,7 +711,7 @@ test('parseDraft：合法草稿解析成功，settings 与 schemaVersion 归一�
   assert.equal(draft.title, '第一课');
   assert.equal(draft.content.schemaVersion, 9);
   assert.deepEqual(draft.settings, {
-    allowResubmit: false, autoGrade: true, answerMode: 'open', defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
+    allowResubmit: true, autoGrade: true, answerMode: 'open', defaultInputMode: 'handwriting', rewardStyle: 'flower', rewardStep: 5, halfStep: 0,
     analysisAgentId: null,   // ★ M7b：第七个键（规格 §3.2）
     backgroundTheme: 'cloud-playground', backgroundImageUrl: null, backgroundPortraitImageUrl: null,
     // ★ 2026-09-27：卡片透度（教师：「在学习单设置中增加几档透明度供选择」）。
@@ -805,6 +827,67 @@ test('normalizeLoadedSettings：不是对象 ⇒ 默认值；只认 handwriting 
   assert.equal(normalizeLoadedSettings({ allowResubmit: false }).allowResubmit, false);
 });
 
+// ── 1b. 「提交后可以修改」的默认值（★ 2026-09-30，教师）─────────────────
+//
+// 教师原话：「学习单的设置页面里，将『允许学生修改』改为**默认不能修改**」。
+// 🔴 这一条是**默认值**的产品决定，不是数据迁移 —— 库里已经显式写着 `true` 的那几张单
+//    照旧能改（教师当年是自己打开的），而「缺这个键」只有**一个**答案。
+
+test('🔴 「提交后可以修改」的默认是**关**（教师：「默认不能修改」）', () => {
+  assert.equal(DEFAULT_SETTINGS.allowResubmit, false, '新建的学习单默认不能修改');
+  // 「缺键」与「新建」必须同解：两条读路径（服务端详情 / localStorage 草稿）各写一份判据时，
+  // 最容易出现的就是「新建的默认是关、读回来却是开」。
+  assert.equal(normalizeLoadedSettings({}).allowResubmit, false, '缺键 ⇒ 不能修改');
+  assert.equal(parseDraft(JSON.stringify({
+    savedAt: 1, title: 't', description: 'd',
+    settings: {},   // 草稿里没有这一格（老草稿 / 手改过的 localStorage）
+    content: { schemaVersion: 1, nodes: [GOOD_NODE] },
+  }))?.settings.allowResubmit, false, '草稿里缺键 ⇒ 不能修改');
+  // ⚠️ 改的是**默认**，不是存量：显式打开过的那几张单不能被这次改动锁上。
+  assert.equal(normalizeLoadedSettings({ allowResubmit: true }).allowResubmit, true);
+  assert.equal(parseDraft(JSON.stringify({
+    savedAt: 1, title: 't', description: 'd',
+    settings: { allowResubmit: true },
+    content: { schemaVersion: 1, nodes: [GOOD_NODE] },
+  }))?.settings.allowResubmit, true, '草稿里显式写着 true ⇒ 仍然是可修改');
+});
+
+test('🔴 开放方式四档在两条读路径上**都不许降级**（`manual` 变回 `open` 是静默的）', () => {
+  // ★ 2026-09-30：加了第四档 `manual`（教师在看板上逐题开放）。这两条读路径原先各自
+  // 内联着 `=== 'task-step' || === 'question-step'` —— 加档时漏改任何一处，教师配好的
+  // 「手动逐题开放」都会在读回来时变成 `open`：**学生看到全部题目，而老师以为卷子锁着**。
+  // ⇒ 现在两处都走 `normalizeAnswerMode`（判据在 `@/lib/worksheet-answer-mode`，有用例）。
+  for (const answerMode of ['open', 'task-step', 'question-step', 'manual'] as const) {
+    assert.equal(normalizeLoadedSettings({ answerMode }).answerMode, answerMode, `normalizeLoadedSettings: ${answerMode}`);
+  }
+  assert.equal(normalizeLoadedSettings({ answerMode: '第五档' }).answerMode, 'open', '认不出的回 open');
+  // 草稿那条路（localStorage）同上。
+  const draft = parseDraft(JSON.stringify({
+    savedAt: 1, title: 't', description: 'd',
+    settings: { answerMode: 'manual' },
+    content: { schemaVersion: 1, nodes: [GOOD_NODE] },
+  }));
+  assert.equal(draft?.settings.answerMode, 'manual');
+});
+
+test('🔴 这个默认值与**服务端那一份同值**（跨文件核对：分叉时两边都不报错）', () => {
+  // 🔴 为什么必须跨文件核：这里是「新建的学习单长什么样」，服务端
+  //    `routes/worksheets.ts` 的 `DEFAULT_SETTINGS` 是「缺这个键的行长什么样」。
+  //    分叉的表现是「教师新建时看到的是 A、学生端生效的是 B」——**没有任何东西会红**。
+  //    （本仓在奖励三项上有同一句警告，只是当年没有一条用例真的去核。）
+  // ⚠️ 只取服务端 `DEFAULT_SETTINGS` 那一个对象**内部**的键：那个文件里
+  //    `allowResubmit` 还出现在别处（归一化、学生端读设置），全局搜会取到错的那一行。
+  const source = fs.readFileSync(
+    path.resolve(HERE, '../../../../../server/src/routes/worksheets.ts'), 'utf8');
+  const start = source.indexOf('const DEFAULT_SETTINGS = {');
+  assert.ok(start !== -1, '服务端那个常量没找到 —— 是抽取写错了，不是它改了');
+  const body = source.slice(start, source.indexOf('} as const;', start));
+  const found = body.match(/allowResubmit:\s*(true|false)/);
+  assert.ok(found, '服务端 DEFAULT_SETTINGS 里没有 allowResubmit —— 抽取写错了');
+  assert.equal(found[1] === 'true', DEFAULT_SETTINGS.allowResubmit,
+    `两处默认值分叉了：前端 ${DEFAULT_SETTINGS.allowResubmit}、服务端 ${found[1]}`);
+});
+
 test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用默认值覆盖库里配好的档）', () => {
   // 🔴 编辑页保存时是把 `settings` **整份**发回去的（`buildPayload`）。这里漏一个键，
   // 「打开 → 只改了个标题 → 保存」就会把教师配好的奖励形式悄悄改回星星。
@@ -896,7 +979,9 @@ test('🔴 C3：一份完整的 settings 走「保存载荷 → JSON 往返 → 
     // 「原样读回来了」与「回落成默认了」是同一个观测（误用 `normalizeRewardStep`
     // 会把 0 变成 1，也只有这一条抓得住）。
     { ...DEFAULT_SETTINGS, halfStep: 0 },
-    { ...DEFAULT_SETTINGS, allowResubmit: false },
+    // ★ 2026-09-30：默认值改成 `false` 之后，这里的**非默认档**是 `true`
+    //（原先是反过来的）—— 同上，非默认档才分得出「原样往返」与「回落成默认了」。
+    { ...DEFAULT_SETTINGS, allowResubmit: true },
     { ...DEFAULT_SETTINGS, autoGrade: false },
     // ★ 2026-09-27：卡片透度（教师：「在学习单设置中增加几档透明度供选择」）。
     // ⚠️ 用**非默认档**：`opaque` 恰好等于默认值 ⇒ 那一条钉不出「原样往返」，
@@ -2638,8 +2723,10 @@ test('🔴 `canReorder`：**同层才能拖**（跨任务换组是另一件事�
 //
 // 教师裁定：「学习单的设置内容在弹窗内直接保存；顶栏的保存按钮是指整张学习单的保存。」
 // ⇒ 从这一刻起，服务端上那份**不再是一份**，而是两半各自可能新旧不同：
-//   标题 + 内容   —— 只有顶栏「保存」会盖它
-//   备注 + 设置   —— 顶栏「保存」与弹窗里的「保存设置」都会盖它
+//   标题 + 内容         —— 只有顶栏「保存」会盖它
+//   使用说明 + 设置     —— 顶栏「保存」与弹窗里的「保存设置」都会盖它
+// ⚠️ 「使用说明」（原「教师备注」）★ 2026-09-30 搬出了设置弹窗，但**两半的归属没变**：
+//    判据是 `saveSettings` 发的是 `{ description, settings }`。
 //
 // 🔴 这一组守的就是那个**会说谎的瞬间**：教师改完设置点了「保存设置」，
 // 而同一时刻他还改过题目 —— 如果两半被合并成一份，顶栏会显示「已保存」，
@@ -2657,7 +2744,12 @@ test('🔴 `snapshotsOf`：标题+内容是一半，备注+设置是另一半（
   assert.equal(restyled.content, halves.content, '改设置不该动 content 那一半');
   assert.notEqual(restyled.settings, halves.settings, '设置属于 settings 那一半');
 
-  // 备注与设置在同一个弹窗里、由同一个按钮存 ⇒ 必须落在同一半。
+  // 🔴 「使用说明」（原来叫「教师备注」）属于 settings 那一半 —— 判据是
+  // **`saveSettings` 真的会写它**（它发的是 `{ description, settings }`），
+  // 而不是「它与设置在同一个弹窗里」：★ 2026-09-30 之后它已经**不在**那个弹窗里了
+  // （搬到了编辑页标题下面），而这条分工一个字都没变。
+  // ⚠️ 想把它挪到 content 那一半？那要先改 `saveSettings` 发什么，否则「保存设置」
+  // 会写一个基线里不算它的字段 —— 于是那次保存之后顶栏仍然显示「未保存」。
   const described = snapshotsOf(buildPayload('标题', '换了一段备注', SETTINGS, payload.content));
   assert.equal(described.content, halves.content, '改备注不该动 content 那一半');
   assert.notEqual(described.settings, halves.settings, '备注属于 settings 那一半');
@@ -3130,4 +3222,385 @@ test('🔴 matchTogglePair：id 缺一个 ⇒ 原样返回（条目还没写完�
   const pairs = [{ leftId: 'l1', rightId: 'r1' }];
   assert.deepEqual(matchTogglePair(pairs, '', 'r2', true), pairs);
   assert.deepEqual(matchTogglePair(pairs, 'l1', '', true), pairs);
+});
+
+// ── 粘贴导入：四种题型（★ 2026-09-29，教师）───────────────────────────────────
+//
+// 教师原话：「现在要增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」，四条注意，
+// 外加一次**关键追问**：「关于答案我统一一下，**全部不作处理**」。
+//
+// 🔴 这一组用例守的是**同一件事的两个方向**：
+//   · 「该拆的要拆」（题干 / 选项 / 条目 / 空 / 待选词各归各位）；
+//   · 「不该猜的一个字都不许猜」（答案、解析、分值 —— 不认、不删、只报）。
+// 只有前一半的用例挡不住「猜得比该猜的多」，而猜错的代价是**静默**的：
+// 答案写错 = 全班判错，屏幕上什么都看不出来。
+
+test('🔴 answerNoteLines：只**认出来报**，一个字都不动（教师裁定：答案全部不作处理）', () => {
+  const pasted = '下列哪个是首都？\nA. 北京\nB. 上海\n答案：B\n解析：上海是直辖市，不是首都。';
+  assert.deepEqual(answerNoteLines(pasted), ['答案：B', '解析：上海是直辖市，不是首都。']);
+  // 几种常见的写法都要认。
+  assert.deepEqual(answerNoteLines('【答案】√'), ['【答案】√']);
+  assert.deepEqual(answerNoteLines('参考答案: C'), ['参考答案: C']);
+  assert.deepEqual(answerNoteLines('[答案] A'), ['[答案] A']);
+  assert.deepEqual(answerNoteLines('（3分）'), ['（3分）']);
+});
+
+test('🔴 反向：标注词出现在**一行中间**不算标注行（少认一条只是没提醒，认错是改错东西）', () => {
+  assert.deepEqual(answerNoteLines('请写出你的答案：'), [], '行首是「请」，不是标注');
+  assert.deepEqual(answerNoteLines('这道题的解析：第一步先算…'), [], '行首是「这道题」');
+  assert.deepEqual(answerNoteLines('下列哪个是首都？\nA. 北京'), []);
+  assert.deepEqual(answerNoteLines(undefined), []);
+});
+
+test('🔴 extractPoolWords：括号里**一个词** ⇒ 属于题干的一部分，原样留着', () => {
+  // 教师原话：「如果括号内只有一个词（中英文均可能），则属于题干一部分，通常表示
+  // 让学生根据这个词填什么内容」。
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴）地说'), { text: '他{填空域}（高兴）地说', words: [], loose: 0 });
+  assert.deepEqual(extractPoolWords('{填空域}（1）'), { text: '{填空域}（1）', words: [], loose: 0 });
+});
+
+test('🔴 extractPoolWords：括号里**不止一个词** ⇒ 抽成词库，括号连词一起从题干移走', () => {
+  // 教师原话：「如果括号内不止一个字或词，通常会有分隔符或空格，则表示待选词」。
+  assert.deepEqual(
+    extractPoolWords('{填空域}（高兴 难过 兴奋）'),
+    { text: '{填空域}', words: ['高兴', '难过', '兴奋'], loose: 1 },
+  );
+  assert.deepEqual(
+    extractPoolWords('他{填空域}（高兴、难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 },
+  );
+  // 逗号 / 分号 / 斜杠 / 竖线 —— 与 `splitChoiceText` 同一套分隔符。
+  assert.deepEqual(extractPoolWords('{填空域}（甲,乙;丙/丁|戊）').words, ['甲', '乙', '丙', '丁', '戊']);
+  // 标记与括号之间隔着空白也认（教师手写时常见）。
+  assert.deepEqual(extractPoolWords('{填空域} （甲、乙）'), { text: '{填空域}', words: ['甲', '乙'], loose: 0 });
+});
+
+test('🔴 extractPoolWords：**去重**（词库是一份共用清单，重复的词学生看到两个词块）', () => {
+  const got = extractPoolWords('{填空域}（甲、乙）{填空域}（乙、丙）');
+  assert.deepEqual(got.words, ['甲', '乙', '丙']);
+  assert.equal(got.text, '{填空域}{填空域}');
+});
+
+test('🔴 extractPoolWords：`loose` 如实报出「只靠空格分开」的那几处（判不准的那一档）', () => {
+  // `（New York）` 按字面是**一个词**（教师原话：「中英文均可能」），而 `（apple banana）`
+  // 是两个 —— 两者在字符层面**完全同形**，没有判据能分开。⇒ 照「空格也算分隔符」处理，
+  // 但把这一档报出来，让教师一眼看见（对话框据此提醒一句）。
+  const got = extractPoolWords('{填空域}（New York）');
+  assert.deepEqual(got.words, ['New', 'York'], '前提：按空格拆了');
+  assert.equal(got.loose, 1, '这一处要如实报出来');
+  // 有明确分隔符的**不算** loose —— 那一档判得准，不该跟着一起报。
+  assert.equal(extractPoolWords('{填空域}（甲、乙）').loose, 0);
+  assert.equal(extractPoolWords('{填空域}（甲 乙、丙）').loose, 0, '有分隔符就判得准');
+});
+
+test('🔴 反向：括号里还有括号 ⇒ 不认（宁可不认，也不往词库里塞半个词）', () => {
+  assert.deepEqual(extractPoolWords('{填空域}（甲（乙）丙）'), { text: '{填空域}（甲（乙）丙）', words: [], loose: 0 });
+});
+
+test('★ fillPaste：剥题号 → 统一空标记 → 取词，三步一条链', () => {
+  const got = fillPaste('1. 植物需要____才能生长，动物需要（   ）才能呼吸。');
+  assert.deepEqual(got, {
+    stem: '植物需要{填空域}才能生长，动物需要{填空域}才能呼吸。',
+    converted: 2,
+    words: [],
+    loose: 0,
+  });
+  // 选词填空那道最典型的形态：空 + 括号里的词库。
+  assert.deepEqual(
+    fillPaste('他____（高兴、难过）地说，她____（兴奋、平静）地笑。'),
+    {
+      stem: '他{填空域}地说，她{填空域}地笑。',
+      converted: 2,
+      words: ['高兴', '难过', '兴奋', '平静'],
+      loose: 0,
+    },
+  );
+  assert.equal(fillPaste('   '), null);
+  assert.equal(fillPaste(undefined), null);
+});
+
+test('★ promptPaste：判断题整段就是题干（`对`/`错`那两个选项是固定的，没有可拆的）', () => {
+  // 🔴 `（√）` **不动** —— 教师裁定「答案全部不作处理」。
+  assert.equal(promptPaste('1. 地球是圆的。（√）'), '地球是圆的。（√）');
+  assert.equal(promptPaste('  地球是圆的。  '), '地球是圆的。');
+  assert.equal(promptPaste(''), null);
+  assert.equal(promptPaste(null), null);
+});
+
+test('★ parsePasteFor：四条路各认各的（选择题 / 排序题 / 判断题 / 填空题）', () => {
+  const choice = parsePasteFor(node('q1', '', {}, 'single-choice'), '哪个是首都？\nA. 北京\nB. 上海');
+  assert.deepEqual(choice, {
+    stem: '哪个是首都？', texts: ['北京', '上海'], optionSplit: 'marker', dropped: 0,
+    pool: [], poolLoose: 0, converted: 0, notes: [], firstLineAsStem: null,
+  });
+  assert.equal(parsePasteFor(node('q2', '', {}, 'order'), '1. 起床\n2. 刷牙')?.texts.length, 2);
+  assert.deepEqual(parsePasteFor(node('q3', '', {}, 'true-false'), '地球是圆的。（√）'), {
+    stem: '地球是圆的。（√）', texts: [], optionSplit: null, dropped: 0,
+    pool: [], poolLoose: 0, converted: 0, notes: [], firstLineAsStem: null,
+  });
+  const fill = parsePasteFor(node('q4', '', {}, 'fill-blank'), '需要____和（  ）\n答案：光合作用');
+  // 🔴 标注行**原样留在题干里**（只报不动）—— 这一条是本次的裁定，不是遗漏：
+  // 删它的代价可能是静默少一段正文，留它的代价只是教师自己在预览框里删一行。
+  assert.equal(fill?.stem, '需要{填空域}和{填空域}\n答案：光合作用');
+  assert.equal(fill?.converted, 2);
+  assert.deepEqual(fill?.notes, ['答案：光合作用'], '标注行只报不动');
+  // 其余题型（问答题那些）走「整段作题干」那一支 —— 兜底不许抛。
+  assert.equal(parsePasteFor(node('q5', '', {}, 'short-answer'), '说说你的看法。')?.stem, '说说你的看法。');
+  assert.equal(parsePasteFor(node('q6', '', {}, 'single-choice'), '   '), null);
+});
+
+test('🔴 promptRunsPatchFor：粘进来的 `{填空域}` **必须真的变成空**（这个函数当年从来没生效过）', () => {
+  // 🔴 它原来调的是 `recognizeBlanks([], text, …)`，而 `recognizeBlanks` **只能改已有的
+  // 分段、造不出新的** ⇒ 喂空数组得空数组 ⇒ `isPlainRuns([])` 为真 ⇒ 写 `undefined`
+  // ⇒ 那个 `{填空域}` 在教师端画不出灰底、学生端也不画输入框，屏幕上只是几个普通字符。
+  const patch = promptRunsPatchFor('植物需要{填空域}才能生长');
+  const runs = patch.promptRuns as PromptRun[];
+  const blanks = runs.filter(run => run.blank !== '');
+  assert.equal(blanks.length, 1, '一个空都不许丢');
+  assert.equal(blanks[0].start, 4);
+  assert.equal(blanks[0].end, 9);
+  // 普通题干 ⇒ 仍然是 `undefined`（「没有格式」那一种写法，别把一条默认分段当成格式写进去）。
+  assert.deepEqual(promptRunsPatchFor('光合作用需要什么？'), { promptRuns: undefined });
+});
+
+test('🔴 pasteDataPatch：填空题的空 + 待选词一起落库，**设置按新空的 id 算**', () => {
+  // 🔴 这一条钉的是本批唯一一处「只有实现者知道」的顺序：空是**这次新造的**（id 现 mint），
+  // 而 `fillBlankSettings` **按 id 存** —— 拿旧 `node.data.promptRuns` 去算会得到一个
+  // 键全对不上的对象，屏幕上的表现是「勾了『改成下方选词』但一点反应都没有」。
+  const target = node('q1', '旧的题干', { answers: [[], []] }, 'fill-blank');
+  const patch = pasteDataPatch(
+    { stem: '需要{填空域}和{填空域}', texts: [], pool: ['甲', '乙'], applyPoolMode: true },
+    target,
+  );
+  assert.equal(patch.fillChoicePool, '甲\n乙');
+  const ids = (patch.promptRuns as PromptRun[]).filter(run => run.blank !== '').map(run => run.blank);
+  assert.equal(ids.length, 2);
+  const settings = patch.fillBlankSettings as Record<string, { mode: string; choices: string[] }>;
+  assert.deepEqual(Object.keys(settings).slice().sort(), ids.slice().sort(), '键必须是这次造出来的那些空');
+  assert.deepEqual(Object.values(settings).map(item => item.mode), ['pool', 'pool']);
+});
+
+test('🔴 反向：不勾「改成下方选词」⇒ 只填词池，**作答方式一个字都不动**', () => {
+  const target = node('q1', '', { answers: [[]] }, 'fill-blank');
+  const patch = pasteDataPatch(
+    { stem: '需要{填空域}', texts: [], pool: ['甲', '乙'], applyPoolMode: false },
+    target,
+  );
+  assert.equal(patch.fillChoicePool, '甲\n乙');
+  assert.equal('fillBlankSettings' in patch, false, '教师没勾就不许替他改作答方式');
+});
+
+test('🔴 反向：**表格里的空**不许被改成「选词」（那是另一个决定）', () => {
+  const table = { rows: [[{ text: '甲', blank: 't1' }]], headerRow: false };
+  const target = node('q1', '', { answers: [[], []], table }, 'fill-blank');
+  const patch = pasteDataPatch(
+    { stem: '需要{填空域}', texts: [], pool: ['甲', '乙'], applyPoolMode: true },
+    target,
+  );
+  const settings = patch.fillBlankSettings as Record<string, { mode: string }>;
+  assert.equal(settings.t1?.mode, 'text', '表格里的空照旧是手工填写');
+  assert.equal(Object.values(settings).filter(item => item.mode === 'pool').length, 1, '只有题干那个空被改');
+});
+
+test('🔴 pasteDataPatch：选择题 / 排序题走既有那两个补丁，题干与选项各归各位', () => {
+  const choice = node('q1', '', {}, 'single-choice');
+  const choicePatch = pasteDataPatch(
+    { stem: '哪个是首都？', texts: ['北京', '上海'], pool: [], applyPoolMode: false },
+    choice,
+  );
+  assert.equal((choicePatch.options as { text: string }[]).map(item => item.text).join(','), '北京,上海');
+  assert.deepEqual(choicePatch.promptRuns, undefined, '题干里没有空 ⇒ 不写 promptRuns');
+
+  const order = node('q2', '', {}, 'order');
+  const orderPatch = pasteDataPatch(
+    { stem: '按顺序排列', texts: ['起床', '刷牙', '吃饭'], pool: [], applyPoolMode: false },
+    order,
+  );
+  assert.equal((orderPatch.items as unknown[]).length, 3);
+  assert.equal((orderPatch.correctOrder as unknown[]).length, 3);
+});
+
+test('🔴 pasteResultFor：**填空题没有「整段作题干」那一档** —— 转换与待选词一个都不许丢', () => {
+  // 🔴 这一条钉的是我第一版写在**对话框里**的一个错：`stemOnly` 那一支直接返回原文，
+  // 而填空题压根没有这一档却被它兜住 ⇒ `convertBlankMarks` 与 `extractPoolWords` 的结果
+  // **整个丢掉**。屏幕上的表现只是「粘进去的括号还在」—— 一点错都不报。
+  // ⇒ 组装那一段判断搬进纯逻辑，这一条才存在。
+  const fill = node('q1', '', {}, 'fill-blank');
+  const converted = pasteResultFor(fill, '他____（高兴、难过）地说', { stemOnly: false, instructionAsStem: true, applyPoolMode: true });
+  assert.deepEqual(converted, { stem: '他{填空域}地说', texts: [], pool: ['高兴', '难过'], applyPoolMode: true });
+  // 传 `stemOnly` 也一样（这个题型没有那一档，函数必须自己扛住调用方传错）。
+  assert.deepEqual(pasteResultFor(fill, '他____（高兴、难过）地说', { stemOnly: true, instructionAsStem: true, applyPoolMode: true }), converted);
+});
+
+test('★ pasteResultFor：选择题的「整段作题干」是**别拆选项**，不是「别做任何处理」', () => {
+  const choice = node('q1', '', {}, 'single-choice');
+  // 整段作题干 ⇒ 连题号一起原样留着（教师选的就是「别动它」）。
+  assert.deepEqual(
+    pasteResultFor(choice, '1. 哪个是首都？\nA. 北京\nB. 上海', { stemOnly: true, instructionAsStem: true, applyPoolMode: false }),
+    { stem: '1. 哪个是首都？\nA. 北京\nB. 上海', texts: [], pool: [], applyPoolMode: false },
+  );
+  // 正常那一档 ⇒ 拆开，并剥掉题号。
+  assert.deepEqual(
+    pasteResultFor(choice, '1. 哪个是首都？\nA. 北京\nB. 上海', { stemOnly: false, instructionAsStem: true, applyPoolMode: false }),
+    { stem: '哪个是首都？', texts: ['北京', '上海'], pool: [], applyPoolMode: false },
+  );
+});
+
+test('🔴 pasteResultFor：判断题整段作题干，但**题号照样剥**（它没有「别动它」那一档）', () => {
+  const tf = node('q1', '', {}, 'true-false');
+  assert.deepEqual(
+    pasteResultFor(tf, '1. 地球是圆的。（√）', { stemOnly: false, instructionAsStem: true, applyPoolMode: true }),
+    { stem: '地球是圆的。（√）', texts: [], pool: [], applyPoolMode: true },
+  );
+  assert.equal(pasteResultFor(tf, '   ', { stemOnly: false, instructionAsStem: true, applyPoolMode: true }), null);
+  assert.equal(pasteResultFor(tf, '', { stemOnly: false, instructionAsStem: true, applyPoolMode: true }), null);
+});
+
+// ── 排序题：没有条目前缀时，开头那句**指令**（★ 2026-09-29，教师）──────────────
+//
+// 教师原话：「排序题中有没有办法自动识别这个的导入内容，如图，每个排序项前没有编号」。
+// 截图上那段粘贴是「一句指令 + 四句要排的话」，而**没有前缀**时解析只能退化成
+// 「一行一个条目」⇒ 指令成了第 1 个条目（教师得自己删）。
+//
+// 🔴 这一组的分量全在**反向**那几条上：「把第一行当题干」是个一句话就能写出来的规则，
+// 而它吃掉一个真条目时**是静默的**（学生少一个可选项，屏幕上只是少一行）。
+
+/** 教师截图里的那一段，一字不改。 */
+const ORDER_PASTE = [
+  '把下面的句子按事情发展顺序排列。',
+  '小船离岸，向湖心驶去。',
+  '我们穿好救生衣，依次上船。',
+  '夕阳西下，大家带着收获回到岸边。',
+  '老师先讲解了乘船安全事项。',
+].join('\n');
+
+test('★ 截图那一段：指令进题干，四句话进条目（不再多出第 1 条）', () => {
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), ORDER_PASTE);
+  assert.equal(parsed?.stem, '把下面的句子按事情发展顺序排列。');
+  assert.deepEqual(parsed?.texts, [
+    '小船离岸，向湖心驶去。',
+    '我们穿好救生衣，依次上船。',
+    '夕阳西下，大家带着收获回到岸边。',
+    '老师先讲解了乘船安全事项。',
+  ]);
+  assert.equal(parsed?.optionSplit, 'line');
+  assert.equal(parsed?.firstLineAsStem, true, '判据给的默认是「是」—— 对话框那个勾据此默认勾上');
+});
+
+test('🔴 反向：**没写指令、直接四句话** ⇒ 一行都不许吃', () => {
+  // 🔴 这是本规则最容易写错的那一半。写成「第一行当题干」的话，教师给的四句里
+  // 第一句会被吃掉 —— 学生少一个可选项，而屏幕上只是少了一行。
+  const paste = [
+    '小船离岸，向湖心驶去。',
+    '我们穿好救生衣，依次上船。',
+    '夕阳西下，大家带着收获回到岸边。',
+    '老师先讲解了乘船安全事项。',
+  ].join('\n');
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), paste);
+  assert.equal(parsed?.stem, null, '一个字都不许进题干');
+  assert.equal(parsed?.texts.length, 4);
+  assert.equal(parsed?.firstLineAsStem, false, '判据说不是 —— 但那个勾照样在，教师可以推翻它');
+});
+
+test('🔴 反向：**陈述句**里出现「顺序」「排列」不算指令（那可能是一条要排的话）', () => {
+  // 这些句子都可能**本身就是一条要排序的内容**（写景 / 叙事 / 说明文里太常见了）。
+  const paste = [
+    '他按照顺序做完了作业。',
+    '老师先讲解了乘船安全事项。',
+    '大家依次上了船。',
+  ].join('\n');
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), paste);
+  assert.equal(parsed?.stem, null, '「他按照顺序做完了作业。」是一条要排的话，不是指令');
+  assert.equal(parsed?.texts.length, 3);
+  // 只看动作词挡不住上面那句 ⇒ 判据里那半条「祈使位置」就是为它写的。
+  assert.equal(orderInstructionLine(['他按照顺序做完了作业。', '甲', '乙']), null);
+});
+
+test('🔴 反向：以「把」开头的**条目**也不算指令（祈使位置要配上动作词才成立）', () => {
+  const paste = ['把书放进书包里。', '他背上书包出门了。', '妈妈在门口等他。'].join('\n');
+  assert.equal(parsePasteFor(node('q1', '', {}, 'order'), paste)?.stem, null);
+  assert.equal(orderInstructionLine(['把书放进书包里。', '甲', '乙']), null);
+});
+
+test('🔴 反向：**只剩两条**时不吃第一行（拿走它这道题就只剩一条了）', () => {
+  assert.equal(orderInstructionLine(['把下面的句子排列好。', '甲']), null);
+  assert.equal(orderInstructionLine(['把下面的句子排列好。', '甲', '乙']), '把下面的句子排列好。');
+  assert.equal(orderInstructionLine(['把下面的句子排列好。']), null);
+  assert.equal(orderInstructionLine([]), null);
+});
+
+test('🔴 反向：**选择题**不走这条判据（它的指令形态完全不同，另加判据时要另写词表）', () => {
+  // ⚠️ 这一段粘到选择题上时，那句「指令」**仍然是第一个选项** —— 这是本次就有的取舍：
+  // 拿排序的词表去认选择题的指令会认错（「下列哪个是首都？」一个排序词都没有），
+  // 而认错比不认更坏。选择题那一支要另加一套词，属于另一批。
+  const parsed = parsePasteFor(node('q1', '', {}, 'single-choice'), '把下面的句子按事情发展顺序排列。\n甲\n乙\n丙');
+  assert.equal(parsed?.stem, null);
+  assert.equal(parsed?.texts.length, 4);
+  assert.equal(parsed?.firstLineAsStem, null, '选择题没有这个选择（判据只认排序题）');
+});
+
+test('★ 指令**被教师也编上了号**时同样要认出来（`1. 把下面的句子按顺序排列。`）', () => {
+  // ⚠️ 这是真实存在的形态：教师在原稿里把指令也当成第 1 条编了号。
+  // 此时 `findOptionRun` 把 1./2./3./4. 全当成同一条**条目表** ⇒ `stem` 是 `null`
+  // ⇒ 与「一条前缀都没有」是同一个处境，同样该把开头那句剥出来当题干。
+  const paste = [
+    '1. 把下面的句子按事情发展顺序排列。',
+    '2. 小船离岸，向湖心驶去。',
+    '3. 我们穿好救生衣，依次上船。',
+    '4. 夕阳西下，大家带着收获回到岸边。',
+  ].join('\n');
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), paste);
+  assert.equal(parsed?.optionSplit, 'marker');
+  assert.equal(parsed?.stem, '把下面的句子按事情发展顺序排列。');
+  assert.equal(parsed?.texts.length, 3);
+  assert.equal(parsed?.firstLineAsStem, true);
+});
+
+test('🔴 反向：**前缀之前已经有题干**时一个字都不动（否则会拿条目顶掉那段题干）', () => {
+  // 🔴 判据是 `parsed.stem === null` 那一条。少了它，`texts[0]` 会**顶掉**已经剥出来的
+  // 题干 —— 原来那段题干当场消失，而屏幕上只是「题干换了内容」。
+  //（这一条夹具是**构造**的：要同时满足「前缀前有题干」与「第 1 条读起来像指令」。
+  //  真实来源是教师从一份排好版的稿子里复制，段落头与第 1 条刚好长得一样。）
+  const paste = '把下面的句子按顺序排列\n1. 请把下面的句子排列好\n2. 乙\n3. 丙';
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), paste);
+  assert.equal(parsed?.optionSplit, 'marker');
+  assert.equal(parsed?.stem, '把下面的句子按顺序排列', '题干还是前缀之前那一段');
+  assert.deepEqual(parsed?.texts, ['请把下面的句子排列好', '乙', '丙'], '三个条目，一条都不许少');
+  assert.equal(parsed?.firstLineAsStem, null, '题干已经在前面了 —— 这一档里没有「第 1 行当题干」这个选择');
+});
+
+test('★ 教师取消那个勾 ⇒ 指令**回到条目里**、而且排在最前面（不改变他给的顺序）', () => {
+  const parsed = parsePasteFor(node('q1', '', {}, 'order'), ORDER_PASTE);
+  assert.equal(parsed?.firstLineAsStem, true);
+  const chosen = pasteResultFor(node('q1', '', {}, 'order'), ORDER_PASTE,
+    { stemOnly: false, instructionAsStem: false, applyPoolMode: true });
+  assert.equal(chosen?.stem, null);
+  assert.equal(chosen?.texts.length, 5);
+  assert.equal(chosen?.texts[0], '把下面的句子按事情发展顺序排列。', '放回最前面');
+  // 勾着（默认）⇒ 与解析结果一致。
+  const kept = pasteResultFor(node('q1', '', {}, 'order'), ORDER_PASTE,
+    { stemOnly: false, instructionAsStem: true, applyPoolMode: true });
+  assert.equal(kept?.stem, '把下面的句子按事情发展顺序排列。');
+  assert.equal(kept?.texts.length, 4);
+});
+
+test('🔴 没认出指令时：**默认**一条都不吃；但教师勾上就按教师的来（★ 他要的那个选项）', () => {
+  const paste = ['甲', '乙', '丙'].join('\n');
+  const order = node('q1', '', {}, 'order');
+  const off = pasteResultFor(order, paste, { stemOnly: false, instructionAsStem: false, applyPoolMode: true });
+  assert.equal(off?.stem, null, '判据没认出来 ⇒ 默认一个字都不进题干');
+  assert.equal(off?.texts.length, 3, '三条都要在');
+  // ★ 教师原话：「你要不加一个选项，让用户选择第 1 行是不是题干」——
+  //   判据说不准的地方，教师说了算（判据是个启发式，它认不出「教师自己知道」）。
+  const on = pasteResultFor(order, paste, { stemOnly: false, instructionAsStem: true, applyPoolMode: true });
+  assert.equal(on?.stem, '甲', '勾上 ⇒ 第 1 行就是题干');
+  assert.deepEqual(on?.texts, ['乙', '丙']);
+});
+
+test('🔴 只剩一条时**连那个选择都没有**（把唯一一条拿走就什么都不剩了）', () => {
+  const order = node('q1', '', {}, 'order');
+  const parsed = parsePasteFor(order, '甲\n乙');
+  assert.equal(parsed?.firstLineAsStem, false, '两条 ⇒ 可以选（默认否）');
+  // 只有一条时 `optionSplit` 是 `null`（一行拆不出条目表）⇒ 选择不存在。
+  assert.equal(parsePasteFor(order, '孤零零一行')?.firstLineAsStem, null);
 });

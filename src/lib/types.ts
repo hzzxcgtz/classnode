@@ -116,6 +116,16 @@ export interface ClassroomSummary {
    * `StudentClassroom` 与 `ClassroomDetail` 都继承本接口，所以这一处两端都生效。
    */
   answersLocked?: boolean;
+  /**
+   * ★ 2026-09-30：课堂级「逐题开放」—— `{ [学习单 id]: [已开放的题 id…] }`。
+   *
+   * 教师看板用它画「逐题开放」那个浮层（刷新页面之后仍然要对）；学生端的读路径不看它
+   * （那边读 `GET /api/worksheets/:id/student-view` 的 `openQuestions`，只发自己那一份单）。
+   *
+   * ⚠️ **可选**：更老的版本不发这个字段 ⇒ 读的地方必须收成 `{}`（= 一份单都没开放），
+   * 不能当成必填、也不能当成「全部开放」（那会把一份设了手动静止的卷子整个放开）。
+   */
+  worksheetOpen?: Record<string, string[]>;
   createdAt?: string;
   endedAt?: string | null;
   agents?: AgentSummary[];
@@ -403,7 +413,22 @@ export type WorksheetBackgroundTheme =
   | 'active-sports'
   | 'custom';
 
-export type WorksheetAnswerMode = 'open' | 'task-step' | 'question-step';
+/**
+ * 题目开放方式（四档）。★ 2026-09-30 加了第四档 `'manual'`。
+ *
+ *   · `open`          —— 一打开就全部可作答；
+ *   · `task-step`     —— **学生**推进：交了当前任务，下一个任务才出现；
+ *   · `question-step` —— **学生**推进：交了当前小题，下一小题才出现；
+ *   · `manual`        —— **教师**推进：只有他在看板「逐题开放」里开过的那几道是可作答的
+ *                        （清单存 `Classroom.worksheetOpen`，见 `services/worksheet-open.ts`）。
+ *
+ * 🔴 取值域与归一化**只有一份**：`src/lib/worksheet-answer-mode.ts` 的
+ * `WORKSHEET_ANSWER_MODES` / `normalizeAnswerMode`（服务端 `routes/worksheets.ts` 有一份
+ * 同名的字符串数组，两份必须同值）。⚠️ 别在别处再写一遍 `=== 'task-step' || …` 那种内联
+ * 判断：本次加第四档时仓里正好有三份，**每一份漏改都会把一个 `manual` 的学习单静默降级
+ * 成 `open`**（学生看到全部题目，而老师以为卷子是锁着的）。
+ */
+export type WorksheetAnswerMode = 'open' | 'task-step' | 'question-step' | 'manual';
 
 /**
  * 设置。各项都**由服务端 `normalizeSettings` 补齐**（`routes/worksheets.ts`），

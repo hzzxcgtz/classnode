@@ -3,8 +3,9 @@
  *
  * 🔴 这一层为什么存在：那 6–9 个控件的「在不在 / 叫什么 / 禁不禁用」原先全写在 260k 的
  * `page.tsx` 的 JSX 里，**没有任何回归网**。而它每一条错了都**不报错** ——
- * `同步分组` 的两道条件、`全屏` 只在指定模式、两个开关的标签翻转、三个忙态键：
+ * `同步分组` 的两道条件、两个开关的标签翻转、三个忙态键：
  * 屏幕上只是「按钮不对 / 不见了」，没有任何东西会红。
+ * （★ 2026-09-30：「全屏只在指定模式」那一条**已经取消**，见下面 `fullscreen` 的注释。）
  *
  * ⚠️ 本文件**零运行时 import**（`node --test` 直接跑）。类型也只收**字符串**：
  * `mode` / `status` / `boardMode` 都按联合类型收窄在这里，而不是 import 那三个类型 ——
@@ -37,7 +38,7 @@ export type HeaderControlId =
    * ⇒ 两个入口合成一个**下拉**，里面那两项见 `WORKSHEET_MENU_ITEMS`。
    */
   | 'worksheet-menu'
-  /** 把格子铺满整屏（只在指定模式才有）。 */
+  /** 把格子铺满整屏（★ 2026-09-30：**两种看板模式都有**）。 */
   | 'fullscreen'
   /** ★ 2026-09-29：探究空间自己的设置弹窗（原来在「课堂权限」里的那一段）。 */
   | 'explore-settings'
@@ -67,7 +68,18 @@ export const COMPANION_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'settings'; 
   { id: 'settings', label: '设置', title: '学生端智能学伴页面的四项能力开关' },
 ];
 
-export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix'; label: string; title: string }> = [
+/**
+ * ★ 2026-09-30（教师）：「逐题开放」并进这个下拉。
+ *
+ * 教师原话：「题目开放方式有必要再增加一个……在教师看板页面中，找一个合适的位置和方式，
+ * 帮我呈现控制界面」。落在这里的理由：那个下拉里原本两项（答题分析 / 进度矩阵）都是
+ * **按学习单看全班**的工具，而「逐题开放」是第三件同一类的事；头部那一排已经有 8 个控件，
+ * 再加一个按钮只会更挤（而它只在学习单是「手动逐题开放」那一档时才有用）。
+ *
+ * 🔴 **三项的顺序就是菜单里的顺序**，而这个顺序不是随手排的：前两项是**看**，
+ *    第三项是**改课堂状态**（它会当着全班改学生屏幕上有什么）。改的人要能一眼分清。
+ */
+export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix' | 'open'; label: string; title: string }> = [
   {
     id: 'analysis',
     label: '答题分析',
@@ -77,6 +89,11 @@ export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix'; la
     id: 'matrix',
     label: '进度矩阵',
     title: '学生×题目矩阵：一眼看出此刻该讲哪一题',
+  },
+  {
+    id: 'open',
+    label: '逐题开放',
+    title: '手动决定学生此刻能做哪几道题（学习单设成「手动逐题开放」时才生效）',
   },
 ];
 
@@ -224,11 +241,19 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
     title: '按学习单看全班：答题分析 / 进度矩阵',
     popup: 'menu', expanded: input.worksheetMenuOpen,
   }));
-  // 全屏只在指定模式：跟随模式下每格显示的是**不同**的模块，铺满之后既不像投屏讲评、
-  // 也不像图墙，教师按下去只会得到一个与预期无关的覆盖层。
-  if (input.boardMode === 'assign') {
-    controls.push(build('fullscreen', 'view', '全屏', { title: '全屏显示学生面板' }));
-  }
+  // ★ 2026-09-30（教师）：「全屏」**两种看板模式都给**。
+  //
+  // 原先是 `if (boardMode === 'assign')`，理由是「跟随模式下每格显示的是不同的模块，
+  // 铺满之后与预期无关」。那条理由**已经被否掉**了，两处都是实的：
+  //   · 教师报的是「**之前看板里有一个全屏功能**，现在跟随模式下按钮没了」——
+  //     那是一个**既有的**用法被收掉了，而不是新功能；
+  //   · 覆盖层本来就不依赖「全班同一个模块」：它逐格调 `resolveTileModule`
+  //     （`page.tsx`，与主看板**同一个**函数）⇒ 跟随模式下每格照旧画那个学生
+  //     此刻所在的模块，与主看板逐格一致。
+  // ⚠️ 覆盖层里那句「全班显示『X』」是**指定模式专属**的说法，已按模式分开
+  //（`page.tsx` 的全屏头部）—— 跟着这条一起改，否则跟随模式下它会**编造**一句
+  // 「全班都在智能学伴」。
+  controls.push(build('fullscreen', 'view', '全屏', { title: '全屏显示学生面板' }));
 
   // ★ 2026-09-29（教师）：原来那一个「课堂权限」弹窗按模块**拆成两个**，
   // 每个模块的设置紧挨着它自己的按钮；「课堂权限」这个按钮随之取消。

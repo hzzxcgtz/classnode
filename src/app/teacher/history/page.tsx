@@ -540,10 +540,11 @@ function ExportPreviewDialog({
   const allSelected = students.length > 0 && selectedStudentIds.length === students.length;
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
+    <div data-overscroll-guard="" style={{
+      position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 1000,
       background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overscrollBehavior: 'contain',
     }} onClick={exporting ? undefined : onCancel}>
       <div style={{
         background: 'white', borderRadius: 14, padding: 0,
@@ -567,7 +568,7 @@ function ExportPreviewDialog({
         {/* 弹窗内容 */}
         <div style={{
           padding: '16px 24px',
-          overflowY: 'auto', flex: 1,
+          overflowY: 'auto', overscrollBehavior: 'contain', flex: 1,
         }}>
           {/* 课堂基本信息 */}
           <div style={{
@@ -607,7 +608,7 @@ function ExportPreviewDialog({
                   全选
                 </label>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto', overscrollBehavior: 'contain' }}>
                 {students.map((s, i: number) => {
                   const sid = studentSelectorId(s);
                   const msgCount = s.messages?.length || 0;

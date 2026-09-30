@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   matchAddLeft,
@@ -17,6 +18,52 @@ function rightLabel(text: string, index: number): string {
   return text.trim() || `右项 ${index + 1}（还没写内容）`;
 }
 
+/**
+ * 「正确配对」那个下拉：**点外面 / 按 Esc 要关掉**（★ 2026-09-30，教师）。
+ *
+ * 教师原话：「我在下拉列表外部点击后，下拉列表应该消失。」
+ *
+ * 🔴 这是**原生 `<details>` 的一条真实缺口**，而下面那段注释原先写着相反的话
+ *（「不用管『点外面关掉』、不用管键盘与 Esc（浏览器给）」—— **那是错的**）：
+ * `<details>` 只在点自己的 `<summary>` 时开合，点屏幕别处它**一直开着**，
+ * Esc 也不管。⇒ 补上那条监听。
+ *
+ * ⚠️ `mousedown`（不是 `click`）—— 与 `prompt-editor.tsx` 那个颜色下拉同一条理由：
+ * 点外面那一下要**在**它变成别处的点击之前关掉，否则那一下会先被别的控件吃掉，
+ * 下拉还挂在屏幕上。
+ * 🔴 只认 `.worksheet-editor-pair-picker` 这一个类，**不能**写成「关掉页面上所有
+ * `<details>`」：同一个编辑器里还有两个**常驻的展开块**（表格粘贴、背景说明），
+ * 它们不是下拉，随手点一下就把教师刚展开的说明收掉是另一个毛病。
+ */
+// ⚠️ 形参写结构类型（`{ current }`）而不是 `RefObject<…>`：本文件不 import React 命名空间，
+//    而 ref 在这里只需要「读一下 `.current`」这一件事。
+function useClosePairPickerOnOutside(gridRef: { current: HTMLDivElement | null }) {
+  useEffect(() => {
+    const close = (inside: (node: Node) => boolean) => {
+      const box = gridRef.current;
+      if (!box) return;
+      box.querySelectorAll<HTMLDetailsElement>('details.worksheet-editor-pair-picker[open]').forEach((picker) => {
+        if (inside(picker)) return;
+        picker.open = false;
+      });
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      close((picker) => event.target instanceof Node && picker.contains(event.target));
+    };
+    // ⚠️ Esc 只是顺手补上的那一半（原生 `<details>` 也不管 Esc）：本页**没有**别的
+    // Esc 处理（全仓只有颜色下拉那一个），所以不会与谁抢。
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close(() => false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [gridRef]);
+}
+
 /** 连线题：左右栏独立维护，答案由每个左项后的下拉指定。 */
 export function MatchBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
@@ -27,6 +74,9 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
   const { left, right, pairs } = match;
   const commit = (next: MatchData) => onDataChange(writeMatch(next.left, next.right, next.pairs));
   const rows = Math.max(left.length, right.length);
+  /** 下面那条「点外面关掉」的监听按它找这一题里的下拉（见那个 hook 的注释）。 */
+  const gridRef = useRef<HTMLDivElement>(null);
+  useClosePairPickerOnOutside(gridRef);
 
   return (
     <>
@@ -35,7 +85,7 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
         <span>右侧选项</span>
         {showAnswer && <span>正确配对</span>}
       </div>
-      <div className="worksheet-editor-match-grid">
+      <div className="worksheet-editor-match-grid" ref={gridRef}>
         {Array.from({ length: rows }, (_, index) => {
           const leftEntry = left[index];
           const rightEntry = right[index];
@@ -72,8 +122,11 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                      而组与组之间看不出谁属于谁。下拉把那一列收进一个控件里：
                      一行一个左项、一屏三个控件。
                   ⚠️ 用原生 `<details>` / `<summary>` 而不是自己写开关状态：
-                     · 不用管「点外面关掉」、不用管键盘与 Esc（浏览器给）；
                      · 编辑器里已有先例（「从 Excel 粘贴一张表」那个折叠块）。
+                  🔴 这里原先还写着「不用管『点外面关掉』、不用管键盘与 Esc（浏览器给）」——
+                     **那句话是错的**，教师当场撞上（「我在下拉列表外部点击后，下拉列表
+                     应该消失」）。`<details>` 只在点自己的 `<summary>` 时开合，点别处
+                     它一直开着。⇒ 补在 `useClosePairPickerOnOutside` 那个 hook 里。
                   ⚠️ 摘要行**必须写出当前连了哪几项** —— 收起时它就是唯一的信息，
                      写「已选 2 项」的话教师还得展开才知道连的是谁。 */}
               {showAnswer && (leftEntry ? (() => {
@@ -129,7 +182,9 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
           {pairs.length === 0
             ? '还没有设置任何连线 —— 点每一项右边的开关，打开的格子就是一条正确的连线。'
             : `已设置 ${pairs.length} 条连线。一个左项可以连多个右项，多个左项也可以连同一个右项。`
-              + '没有连线的左项是**留空项**：学生不需要连它，误连会拿不到全对。'}
+              // ⚠️ 这句话是**纯文本**（不是 markdown）—— 原先写着 `**留空项**`，
+              // 于是屏幕上真的印出两个星号（教师截图里就有）。要强调就换个写法。
+              + '没有连线的左项是「留空项」：学生不需要连它，误连会拿不到全对。'}
         </p>
       )}
     </>

@@ -6,6 +6,7 @@ import {
   normalizeWorksheetBackgroundTheme,
   resolveWorksheetBackground,
   resolveWorksheetBackgroundSources,
+  worksheetBackgroundLabel,
 } from './worksheet-backgrounds.ts';
 
 test('十套插画主题都有唯一 id 与 WebP 资源，无背景选项不加载图片', () => {
@@ -25,6 +26,19 @@ test('背景主题归一化：合法值原样保留，坏值回落到默认主�
   assert.equal(normalizeWorksheetBackgroundTheme('custom'), 'custom');
   assert.equal(normalizeWorksheetBackgroundTheme('未知主题'), DEFAULT_WORKSHEET_BACKGROUND);
   assert.equal(normalizeWorksheetBackgroundTheme(null), DEFAULT_WORKSHEET_BACKGROUND);
+});
+
+test('🔴 「我的背景」的名字单独给：它不是十套插画里的一个（折叠摘要行读它）', () => {
+  // 设置弹窗把「学生端主题背景」收成了一行摘要（★ 2026-09-30）——**不开那一段时**，
+  // 这一行是教师唯一能看到的东西。写错的表现只是「名字不对」，没有任何东西会红。
+  assert.equal(worksheetBackgroundLabel('custom'), '我的背景');
+  assert.equal(worksheetBackgroundLabel('cloud-playground'), '云朵操场');
+  // 认不出的值回落到**默认档的名字** —— 与 `normalizeWorksheetBackgroundTheme`
+  // 回落的是同一档（两处分叉时摘要行会写出一个界面上根本不存在的主题）。
+  assert.equal(worksheetBackgroundLabel('未知主题' as never), worksheetBackgroundLabel(DEFAULT_WORKSHEET_BACKGROUND));
+  // 阳性对照：十套预设有几套就应当能念出几个名字（不是全部回落到默认那一句）。
+  const names = new Set(WORKSHEET_BACKGROUND_OPTIONS.map(option => worksheetBackgroundLabel(option.id)));
+  assert.equal(names.size, WORKSHEET_BACKGROUND_OPTIONS.length);
 });
 
 test('自定义主题读取上传地址，预设主题不受旧自定义地址干扰', () => {

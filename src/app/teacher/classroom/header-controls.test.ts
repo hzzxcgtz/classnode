@@ -3,8 +3,9 @@
  *
  * 🔴 这一层为什么存在：那 6–9 个控件的「在不在 / 叫什么 / 禁不禁用」原先全写在 260k 的
  * `page.tsx` 的 JSX 里，**没有任何回归网**。而它每一条错了都**不报错** ——
- * `同步分组` 的两道条件、`全屏` 只在指定模式、两个开关的标签翻转、三个忙态键：
+ * `同步分组` 的两道条件、两个开关的标签翻转、三个忙态键：
  * 屏幕上只是「按钮不对 / 不见了」，没有任何东西会红。
+ * （★ 2026-09-30：「全屏只在指定模式」那一条已取消，见第 3 节。）
  *
  * ⚠️ 本文件里每一个条件都配了**阴性对照**（同一形状但条件不满足时它必须不在）。
  * 只断言「分组模式有同步分组」，那么一个恒返回全表的实现也能全绿。
@@ -47,12 +48,14 @@ function stripText(controls: ReturnType<typeof headerControls>) {
 
 /* ── 1. 清单本身：有哪些、按什么顺序、怎么分组 ─────────────────────── */
 
-test('🔴 标准模式 + 跟随：正好这七个控件，按「状态｜动作｜看数据｜设置」排', () => {
+test('🔴 标准模式 + 跟随：正好这八个控件，按「状态｜动作｜看数据｜设置」排', () => {
   assert.deepEqual(stripText(headerControls(BASE)), [
     'pause=暂停课堂',
     'lock=锁定作答',
     'notify=全体消息',
     'worksheet-menu=学习单',
+    // ★ 2026-09-30：全屏跟着「学习单」在同一组（都是「看数据」那一类）。
+    'fullscreen=全屏',
     'explore-settings=探究空间',
     'companion-menu=智能学伴',
     'module-state=模块状态',
@@ -62,9 +65,10 @@ test('🔴 标准模式 + 跟随：正好这七个控件，按「状态｜动作
 test('🔴 分组边界由 `startsGroup` 给出（渲染层只管画线，不做判断）', () => {
   const controls = headerControls(BASE);
   // 第一项恒 false —— 一个开在最左边的分隔线是没有意义的。
-  assert.deepEqual(controls.map((c) => c.startsGroup), [false, false, true, true, true, false, false]);
+  // ★ 2026-09-30：`fullscreen` 插在 `worksheet-menu` 后面，两者同类 ⇒ 它**不**起新组。
+  assert.deepEqual(controls.map((c) => c.startsGroup), [false, false, true, true, false, true, false, false]);
   assert.deepEqual(controls.map((c) => c.kind), [
-    'state', 'state', 'action', 'view', 'setting', 'setting', 'setting',
+    'state', 'state', 'action', 'view', 'view', 'setting', 'setting', 'setting',
   ]);
 });
 
@@ -76,10 +80,17 @@ test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各�
   assert.equal(list.includes('matrix' as HeaderControlId), false, '原来的「矩阵」按钮不该还在');
 });
 
-test('🔴 那个下拉里的两项：教师逐字给的两个名字', () => {
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题分析', '进度矩阵']);
-  // ⚠️ 两项的 id 必须不同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
-  assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, 2);
+test('🔴 那个下拉里的三项：两个「看」的在前，一个「改课堂状态」的在后', () => {
+  // ★ 2026-09-30：「逐题开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
+  // 学生屏幕上有什么 —— 顺序不是随手排的，改的人要能一眼分清。
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题分析', '进度矩阵', '逐题开放']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['analysis', 'matrix', 'open']);
+  // ⚠️ 三项的 id 必须互不相同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
+  assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, WORKSHEET_MENU_ITEMS.length);
+  // ⚠️ 每一项都要有一句悬浮说明：那个下拉里三项挤在一起，标题是唯一说清「按下去会怎样」的地方。
+  for (const item of WORKSHEET_MENU_ITEMS) {
+    assert.ok(item.title.length > 0, `${item.id} 没有悬浮说明`);
+  }
 });
 
 test('🔴 「课堂权限」已经取消：它的两段各自成按钮（学习单那一段本来就没有开关）', () => {
@@ -118,11 +129,17 @@ test('⚠️ 同步分组：`paused` 的课堂仍然有它（暂停 ≠ 结束�
   assert.ok(ids({ mode: 'group', status: 'paused' }).indexOf('sync-groups') !== -1);
 });
 
-/* ── 3. 全屏：只在指定模式 ─────────────────────────────────────── */
+/* ── 3. 全屏：两种看板模式都有 ─────────────────────────────────── */
 
-test('🔴 全屏只在指定模式出现（跟随模式下每格是不同模块，铺满没有意义）', () => {
-  assert.equal(ids({ boardMode: 'follow' }).indexOf('fullscreen'), -1);
-  assert.ok(ids({ boardMode: 'assign' }).indexOf('fullscreen') !== -1);
+test('🔴 全屏在**两种**看板模式下都出现（跟随模式曾经被藏掉，教师报过）', () => {
+  // ★ 2026-09-30（教师）：「之前看板里有一个全屏功能，现在跟随模式下按钮没有了」。
+  // 原判据是 `boardMode === 'assign'`，理由是「跟随模式下每格是不同模块，铺满没有意义」——
+  // 那条理由站不住：覆盖层逐格调 `resolveTileModule`（与主看板**同一个**函数），
+  // 跟随模式下每格照旧画那个学生此刻的模块。
+  // ⚠️ 这条用例只钉「按钮在不在」；「铺满之后每格画得对不对」在 `page.tsx`
+  //    （那一层没有回归网，见文件头那句话）。
+  assert.ok(ids({ boardMode: 'follow' }).indexOf('fullscreen') !== -1, '跟随模式下必须有全屏');
+  assert.ok(ids({ boardMode: 'assign' }).indexOf('fullscreen') !== -1, '指定模式下也必须有全屏');
 });
 
 /* ── 4. 状态开关：标签翻转、两个不许同名 ─────────────────────────── */
@@ -236,7 +253,7 @@ test('🔴 三句既有的悬浮说明逐字保留（它们是唯一的解释来
   assert.equal(control('lock').title, '停笔：学生不能再修改答案，但仍然可以交卷');
   assert.equal(control('sync-groups', { mode: 'group' }).title, '把当前班级的分组名称和成员同步到正在进行的课堂');
   assert.equal(control('worksheet-menu').title, '按学习单看全班：答题分析 / 进度矩阵');
-  assert.equal(control('fullscreen', { boardMode: 'assign' }).title, '全屏显示学生面板');
+  assert.equal(control('fullscreen').title, '全屏显示学生面板');
   // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。
   assert.equal(WORKSHEET_MENU_ITEMS[0].title, '按学习单看全班：先按学习单分组，再按题看正确率与作答');
   assert.equal(WORKSHEET_MENU_ITEMS[1].title, '学生×题目矩阵：一眼看出此刻该讲哪一题');

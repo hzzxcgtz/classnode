@@ -642,6 +642,7 @@ html, body {
 @media (max-width: 760px) {
   .agent-form-modal {
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .agent-form-layout {
@@ -666,8 +667,40 @@ html, body {
 @media (max-height: 680px) {
   .agent-form-modal {
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
+
+/*
+ * 浮窗里的滚动容器：滚到**底**之后**不要**把外面的页面一起滚（滚动链 / scroll chaining）。
+ *
+ * 教师的原话：「系统中有多处使用了右侧抽屉式浮窗，在使用鼠标滚轮时，能不能在浮窗中
+ * 滚动条到底后，不要对外面的窗口也滚动？」
+ *
+ * 根因是浏览器的默认行为：一个滚动容器滚到边界之后，**滚动会往祖先链上传**，
+ * 一直到页面本身。`overscroll-behavior: contain` 就是「到此为止」——
+ * 它只掐断上传，不改这个容器自己的滚动。
+ *
+ * ⚠️ **它只对滚动容器有效**（`overflow` 为 auto/scroll/hidden 的那些）。写在
+ *    `overflow: visible` 的盒子上等于没写，浏览器直接忽略、**不报错**
+ *    —— 所以下面每一条都加在**真正在滚的那一层**上。
+ * ⚠️ 它是 **Safari 16+** 的（学生端跑在 Safari 15 的老 iPad 上，那里加了等于没加）。
+ *    这也是本次**只改教师端**的原因：教师用的是自己电脑上的 Chrome / 新版 Safari。
+ *    学生端那两个滚动容器（`chat.module.css` / `worksheet.module.css`）早就写了这一句，
+ *    它在老 iPad 上一直是空转的 —— 留着是为了将来系统升级后自然生效。
+ * ⚠️ **不要加到页面内的滚动面板上**（例如编辑器左侧那个大纲列表
+ *    `.worksheet-editor-outline-list`）：那边滚到底**就该**接着滚页面，
+ *    加了它反而变成「滚不动了」。
+ *
+ * ⚠️ **这里只装得下一半。** 另一半浮层的滚动容器是**内联样式**
+ *（`style={{ overflow: 'auto' }}`），CSS 规则够不着 —— 那一批的属性直接写在 JSX 里，
+ *    教师端一共 15 处。要一次看全：
+ *      `grep -rn "overscrollBehavior" src/app/teacher/`
+ *    ⚠️ 其中**共享的类不能加规则**：`.preview-scroll`（那个类名只描述滚动条外观）
+ *    与 `worksheet-tiles.tsx` 里那个滚动容器，**同时**活在「页面流的看板格子」与
+ *    「全屏浮层里的同一份」两种情形里 —— 给类加规则会把主看板一起改掉。
+ *    ⇒ 只在内联那一份上加，而且是加在**浮层的外层**（里层的链会停在外层）。
+ */
 
 .modal-overlay {
   position: fixed;
@@ -678,6 +711,7 @@ html, body {
   justify-content: center;
   z-index: 100;
   backdrop-filter: blur(7px) saturate(0.88);
+  overscroll-behavior: contain;
 }
 
 .modal-content {
@@ -688,6 +722,7 @@ html, body {
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* 教师管理页统一浮层语言：遮罩沿用全局一致的冷灰雾面；内容外观只给显式挂上
@@ -4028,6 +4063,7 @@ tr:hover td {
   list-style: none;
   display: grid;
   gap: 4px;
+  overscroll-behavior: contain;
 }
 
 .worksheet-editor-paste-list > li {
@@ -4187,7 +4223,20 @@ tr:hover td {
 .worksheet-answer-mode { margin: 0; padding: 0; border: 0; }
 .worksheet-answer-mode > legend { margin-bottom: 8px; font-weight: 700; color: #1e293b; }
 .worksheet-answer-mode-options { display: grid; gap: 8px; }
+/* ★ 2026-09-30（教师）：「整个页面太长了」——三项互斥的选择**并排成一行**（与同页
+   「卡片透度」「奖励形式」同一种形状）。竖排时每一张占一整行（三张 186px），并排后约 90px。
+   ⚠️ 每张只有约 170px 宽 ⇒ 说明文字必须短（`page.tsx` 里那三句已压到 9~11 字）。
+   ⚠️ 别把 `gap` 调大：三张卡之间那点缝就是「这是三个互斥选项」的唯一提示。 */
+/* ⚠️ 用 `grid-auto-flow: column` + 等分列，**不写死列数**：三档时是三列、
+   四档（★ 2026-09-30 加了「手动逐题开放」）时是四列，而**同一份 CSS 只管一件事** ——
+   写死 `repeat(3, …)` 的话加第四档会掉到第二行独占一格。 */
+.worksheet-answer-mode-options.is-row {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 7px;
+}
 .worksheet-answer-mode-options > label { display: grid; grid-template-columns: 20px 1fr; gap: 2px 8px; padding: 11px 12px; border: 1px solid #dbe4f0; border-radius: 8px; background: #fff; cursor: pointer; }
+.worksheet-answer-mode-options.is-row > label { grid-template-columns: 18px minmax(0, 1fr); gap: 1px 6px; padding: 9px 10px; }
 .worksheet-answer-mode-options > label.is-selected { border-color: #527198; background: #f2f5f8; }
 .worksheet-answer-mode-options > label input { grid-row: 1; align-self: center; }
 .worksheet-answer-mode-options > label span { display: grid; gap: 3px; }
@@ -4343,6 +4392,7 @@ tr:hover td {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overscroll-behavior: contain;
 }
 
 .worksheet-editor-dialog h3 {
@@ -4591,18 +4641,79 @@ tr:hover td {
   overflow-y: auto;
   padding: 16px 22px 20px;
   background: #f8fafc;
+  overscroll-behavior: contain;
 }
 
+/* ★ 2026-09-30（教师）：「整个页面太长了」⇒ 段内边距与段间距各收一点。
+   6 段 ⇒ 省下 6×4 + 5×2 = 34px。⚠️ 别再往下压了：14px 已经是「卡片不贴边」的下限。 */
 .worksheet-settings-section {
-  padding: 16px;
+  padding: 14px;
   border: 1px solid #e2e8f0;
   border-radius: 11px;
   background: #fff;
 }
 
 .worksheet-settings-section + .worksheet-settings-section {
-  margin-top: 12px;
+  margin-top: 10px;
 }
+
+/* ── ★ 2026-09-30：可折叠的段（现在是「学生端主题背景」那一块）───────────────
+   教师原话：「整个页面太长了」。那一段 13 张卡占掉一整屏，而一张单只定一次 ⇒
+   平时收成一行摘要、摘要行写出**当前选的是哪一个**（`worksheetBackgroundLabel`）。
+   ⚠️ 用原生 `<details>`（本页已有两处先例）：不用自己管键盘、也不用管「点外面关掉」
+      （它不是一个临时浮层，是常驻的展开块 —— 与「正确配对」那个下拉**不是**一类，
+       所以**不要**把它算进 `useClosePairPickerOnOutside`）。
+   ⚠️ 收起时 `summary` 要被当成标题行读（`strong` + `em` 两行），展开后**不再重复画**
+      原来的段标题 —— 重复一次不会报错，只会让同一句话在屏幕上出现两遍。 */
+.worksheet-settings-collapse > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.worksheet-settings-collapse > summary::-webkit-details-marker { display: none; }
+
+.worksheet-settings-collapse > summary::before {
+  content: '▸';
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: .8rem;
+  transition: transform .15s ease-out;
+}
+
+.worksheet-settings-collapse[open] > summary::before { transform: rotate(90deg); }
+
+.worksheet-settings-collapse[open] > summary { margin-bottom: 13px; }
+
+.worksheet-settings-collapse-title { display: grid; gap: 2px; min-width: 0; }
+.worksheet-settings-collapse-title strong { color: #172033; font-size: 0.875rem; }
+
+.worksheet-settings-collapse-title em,
+.worksheet-settings-collapse-hint {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+/* 「当前：云朵操场」—— 收起时它是**唯一**能看见的信息，所以给它主色。 */
+.worksheet-settings-collapse-value {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #466384;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.worksheet-settings-collapse-hint { flex: 0 0 auto; }
+
+/* 🔴 展开之后「展开挑选」这四个字就是**假的**了 ⇒ 整个拿掉（不是 `visibility: hidden`：
+   那会留一块看不见的空白，而这块空白正好把「当前：×××」那个胶囊往左挤）。 */
+.worksheet-settings-collapse[open] > summary .worksheet-settings-collapse-hint { display: none; }
 
 .worksheet-settings-section-head {
   display: flex;
@@ -4696,23 +4807,30 @@ tr:hover td {
   line-height: 1.55;
 }
 
+/* ★ 2026-09-30（教师）：「整个页面太长了」—— 这一段原来 2 列 × 7 行 ≈ 一整屏。
+   三笔改动都不删信息：
+     · 2 列 → **3 列**（13 张卡 ⇒ 5 行）；
+     · 缩略图 72×50 → **56×40**（仍是 3:2）；
+     · 那个 ✓ **叠到缩略图角上**（原来是网格的第三列，白占 20px+10px 的宽度）——
+       于是「名称 + 那句四个字的心情词」能在 3 列里照旧排成两行。
+   合计 7 行 → 5 行，省下约 250px。 */
 .worksheet-background-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .worksheet-background-option {
   position: relative;
   min-width: 0;
-  min-height: 72px;
+  min-height: 54px;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 20px;
+  grid-template-columns: 56px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 7px;
+  gap: 8px;
+  padding: 6px;
   border: 1px solid #dbe3ef;
-  border-radius: 11px;
+  border-radius: 10px;
   background: #fff;
   cursor: pointer;
   transition: border-color .18s ease-out, background-color .18s ease-out, transform .18s ease-out;
@@ -4746,8 +4864,8 @@ tr:hover td {
 }
 
 .worksheet-background-preview {
-  width: 72px;
-  height: 50px;
+  width: 56px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4778,17 +4896,26 @@ tr:hover td {
   font-style: normal;
 }
 
+/* ★ 2026-09-30：那个 ✓ 从网格的第三列**挪到卡片右上角**（绝对定位）——
+   3 列之后每张卡只有约 170px 宽，再白占 30px 给一个勾，「名称 + 心情词」就排不下了。
+   ⚠️ 名字最长 4 个字（≈48px），而副本那一列约 94px ⇒ 勾与名字不会撞上。 */
 .worksheet-background-check {
-  width: 20px;
-  height: 20px;
+  /* ⚠️ 贴在**卡片**右上角，不贴缩略图 —— 缩略图那一角要写 `left: 6 + 56` 这种
+     跟着两个尺寸走的算式，换个缩略图宽度就会错位（而错位只是「勾歪了」，不报错）。 */
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: #527198;
   color: #fff;
-  font-size: .68rem;
+  font-size: .64rem;
   font-weight: 800;
+  box-shadow: 0 0 0 2px #fff;
   opacity: 0;
   transform: scale(.72);
   transition: opacity .18s ease-out, transform .18s ease-out;
@@ -4990,6 +5117,11 @@ tr:hover td {
   justify-content: space-between;
   padding: 18px 22px;
   border-bottom: 1px solid #e2e8f0;
+  /* ★ 2026-09-30（教师）：「按钮大小要一致」。
+     🔴 高度**只写这一处**，下面「竖屏/横屏」与「关闭」都引用它：原先两者各自靠内边距凑
+     （分段控件 7px、`.btn` 8px + 1px 边框），差 4px 而字号也不一样（16px vs 14px）——
+     屏幕上只是「这几个按钮不太齐」，不报错。 */
+  --preview-control-h: 36px;
 }
 
 .worksheet-editor-preview-head h3 {
@@ -5005,9 +5137,11 @@ tr:hover td {
   line-height: 1.7;
 }
 
+/* ⚠️ 轨道**不再自带内边距**（原先 3px）：加了它，这一圈就比右边的「关闭」高 8px ——
+   而教师看的是**那三个按钮**齐不齐。现在按钮铺满轨道，三者同高（见上面的变量）。 */
 .worksheet-editor-preview-orientation {
   display: inline-flex;
-  padding: 3px;
+  padding: 0;
   border: 1px solid #dbe4f0;
   border-radius: 9px;
   background: #f1f5f9;
@@ -5016,13 +5150,26 @@ tr:hover td {
 
 .worksheet-editor-preview-orientation button {
   min-width: 58px;
-  padding: 7px 12px;
+  /* ★ 2026-09-30：高度与「关闭」共用一处（`--preview-control-h`，理由见那一行）。 */
+  height: var(--preview-control-h);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #64748b;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* 「关闭」那个 `.btn`：同高（横向内边距仍是它自己那 20px）。 */
+.worksheet-editor-preview-head .btn {
+  height: var(--preview-control-h);
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .worksheet-editor-preview-orientation button.is-selected {
@@ -5036,6 +5183,8 @@ tr:hover td {
   overflow: auto;
   padding: 22px;
   background: #f1f5f9;
+  /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
+  overscroll-behavior: contain;
 }
 
 .worksheet-editor-preview-stage {
@@ -5052,6 +5201,7 @@ tr:hover td {
   background: #fff;
   border: 1px solid #e2e8f0;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  overscroll-behavior: contain;
 }
 
 .worksheet-editor-preview-stage[data-has-background='1'][data-preview-orientation='landscape'] {
@@ -5081,9 +5231,15 @@ tr:hover td {
   background-repeat: no-repeat, no-repeat;
 }
 
+/* ★ 2026-09-30（教师）：「标题文字居中并放大」。
+   ⚠️ 这一行**只在预览里**（学生端那个标题在面板顶栏 `.title` 里，是另一个元素、
+      另一套版式 —— 它旁边还挤着进度条与奖励累计，居中放大在那里是错的）。
+      ⇒ 改这里之后预览与真实学生端的**标题**版式会有差异，这是**知情**的取舍：
+        教师看到的那张标题栏不是学生屏幕上的原件。 */
 .worksheet-editor-preview-title {
   padding: 0 16px;
-  font-size: 1.125rem;
+  text-align: center;
+  font-size: 1.5rem;
   font-weight: 700;
   color: #0f172a;
 }
@@ -5101,6 +5257,56 @@ tr:hover td {
   gap: 12px;
   padding: 10px 12px;
   border-radius: 12px;
+}
+
+/* ── ★ 2026-09-30：「使用说明」从设置弹窗搬到了顶栏下面这一格 ────────────────
+   形状与顶栏**同一套**（白底 + 1px 边 + 圆角 12）—— 它们在同一条纵线上，读起来
+   是「这张单的抬头」那一段（标题 → 使用说明），而不是正文。
+   ⚠️ 它**不 sticky**：跟着页面滚走是有意的 —— 顶栏 sticky 是为了那三个按钮，
+      而这一格在滚动中没有任何要随时够到的东西。
+   ⚠️ 高度是常驻的（约 70px）。收起来能再省，但收起来等于把它藏了 —— 它的性质与标题
+      一样（不常改，一打开就该看见）。 */
+.worksheet-editor-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 16px;   /* 与顶栏同一条：下面是 workspace */
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.worksheet-editor-note-label {
+  flex: 0 0 auto;
+  width: 132px;
+  padding-top: 7px;
+  display: grid;
+  gap: 2px;
+}
+
+.worksheet-editor-note-label strong { color: #172033; font-size: 0.813rem; }
+
+.worksheet-editor-note-label em {
+  color: #64748b;
+  font-size: 0.688rem;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.worksheet-editor-note > textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* 窄屏：标签与输入框改成上下排。
+   ⚠️ 900px 是**本页顶栏**自己那一档（`@media (max-width: 900px)` 那几条：`-topbar-actions`
+   会整行落下）—— 沿用同一个断点，别为这一格另立一个。 */
+@media (max-width: 900px) {
+  .worksheet-editor-note { flex-direction: column; gap: 6px; }
+  .worksheet-editor-note-label { width: auto; padding-top: 0; }
 }
 
 /* ⚠️ 这里原本还有 `.worksheet-editor-command`（撤销/重做那两颗按钮）与
@@ -6297,6 +6503,19 @@ tr:hover td {
   border-color: #93c5fd;
   background: #f2f5f8;
 }
+
+/* ★ 2026-09-30（教师）：设置弹窗里的「卡片透度」三档**并排成一行**（同样是等分列，
+   与上面那条 `is-row` 同一个手法 —— 档数变了不用改 CSS）。
+   🔴 只做 `.is-row` 这一支、**不改上面那个 2 列** —— 这个类同时被题型编辑器的
+   「评分方式」（四档）用着，全局改成 3 列会把那一处挤成 2 行。
+   ⚠️ 一行三档每张约 170px ⇒ 名字（2 字）+ 说明（≤ 18 字）正好两行。 */
+.worksheet-editor-scoring-options.is-row {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 7px;
+  margin-top: 0;
+}
+.worksheet-editor-scoring-options.is-row > label { padding: 9px 10px; gap: 7px; }
 
 .worksheet-editor-scoring-options input {
   flex: 0 0 auto;
@@ -7527,6 +7746,7 @@ tr:hover td {
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 10px 26px rgba(15, 23, 42, .14);
+  overscroll-behavior: contain;
 }
 
 .worksheet-editor-pair-option {

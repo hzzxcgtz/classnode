@@ -127,6 +127,9 @@ function ClassroomOrchestrator() {
       // ★ M5a：课堂级「锁定作答」。会话层是唯一持有者（专门 state + socket 事件），
       // 外壳只把它搬给学习单面板 —— 不从 `session.classroom` 那个 15 秒快照里读。
       answersLocked={session.answersLocked}
+      // ★ 2026-09-30：教师「逐题开放」的清单（socket 广播）。与上面那条同一类 ——
+      // 会话层是唯一持有者，外壳只把它搬给学习单面板。
+      worksheetOpen={session.worksheetOpen}
       chat={{
         code: session.code,
         classroom: session.classroom,

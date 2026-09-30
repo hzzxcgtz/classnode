@@ -45,6 +45,32 @@ test('既有六件不受影响（加字段不许碰它们）', () => {
   assert.equal(out.defaultInputMode, 'keyboard');
 });
 
+test('🔴 四档开放方式都原样落库（少认一档 ⇒ 那份卷子静默变回「开放式」）', () => {
+  // ★ 2026-09-30 加了第四档 `manual`（教师在看板上逐题开放）。
+  // 🔴 危险的失效方向是**静默降级**：`WORKSHEET_ANSWER_MODES` 少一档，教师配好的
+  //    「手动逐题开放」保存一次就变回 `open` —— 学生的屏幕会**整个放开**，
+  //    而界面上没有任何提示（教师以为自己锁着，学生已经在做后面的题了）。
+  for (const answerMode of ['open', 'task-step', 'question-step', 'manual']) {
+    const out = normalizeSettings({ answerMode }) as Record<string, unknown>;
+    assert.equal(out.answerMode, answerMode, `${answerMode} 应原样保留`);
+  }
+  // 认不出的值回落 `open`（= 什么都不拦，与「设置读不出来时不该把学生锁上」同向）。
+  const bad = normalizeSettings({ answerMode: '第五档' }) as Record<string, unknown>;
+  assert.equal(bad.answerMode, 'open');
+});
+
+test('★ 2026-09-30：「提交后可以修改」的默认是**关**（教师：「默认不能修改」）', () => {
+  // 🔴 这一格是**默认值**那一半的服务端：`normalizeSettings` 决定「缺这个键的行长什么样」，
+  //    前端 `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` 决定「新建的学习单长什么样」。
+  //    两处必须同值 —— 分叉的表现是「教师新建时看到的是 A、学生端生效的是 B」，
+  //    而两边都不报错（前端 `worksheet-editor-core.test.ts` 有一条跨文件核对的用例钉着这一对）。
+  const absent = normalizeSettings({}) as Record<string, unknown>;
+  assert.equal(absent.allowResubmit, false, '缺键 ⇒ 不能修改');
+  // ⚠️ 改的是**默认值**，不是存量：教师当年显式打开过的那几张单不受影响。
+  assert.equal((normalizeSettings({ allowResubmit: true }) as Record<string, unknown>).allowResubmit, true);
+  assert.equal((normalizeSettings({ allowResubmit: false }) as Record<string, unknown>).allowResubmit, false);
+});
+
 test('十种卡通奖励都会原样落库，坏值仍回落星星', () => {
   for (const rewardStyle of [
     'star', 'flower', 'trophy', 'bear', 'rocket',

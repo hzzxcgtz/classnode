@@ -440,6 +440,74 @@ export function insertBlank(
 }
 
 /**
+ * 题干里那个**填空域**的标记串 —— 客户端唯一的一份（★ 2026-09-29）。
+ *
+ * 🔴 它原来散在 `prompt-editor.tsx` 的 `FILL_BLANK_TEXT` 里，另有服务端
+ *（`services/worksheet-questions.ts`）的一份**刻意的双胞胎** —— 那是另一个包、import
+ * 不过来，靠用例对齐（先例：`hasNestedAnswers` / `fillShape`）。这里收的是**客户端**那一份：
+ * 从此「空长什么样」只有一个真源，`convertBlankMarks` / `recognizeBlanks` / 工具栏按钮
+ * 三处说的是同一句话。
+ */
+export const BLANK_MARK_TEXT = '{填空域}';
+
+/** 中间**只有空白**的圆括号（全角 / 半角都认）。⚠️ 横向空白，不含换行。 */
+const EMPTY_PARENS = /[（(][ \t 　]+[）)]/g;
+/** 两个及以上连续的下划线（全角 / 半角混着也算一串）。 */
+const UNDERSCORE_RUN = /[_＿]{2,}/g;
+
+/**
+ * 把题干里的**小括号 / 一串下划线**统一成 `{填空域}`（★ 2026-09-29 教师裁定）。
+ *
+ * 教师原话两条：
+ *   ① 「如果题干中有中间带空格的小括号或一串下划线，则要保留，并统一设置成 8 个空格或
+ *      8 个下划线」→ 追问后裁定：**「填空的小括号和下划线要替换成 `{填空域}`」**。
+ *   ② 「如果是选词填空，一般会在下划线后的小括号中」（括号里的词怎么算，见待选词那一条）。
+ *
+ * ── 🔴 它同时修掉一个**实测出来的丢数据 bug** ────────────────────────────────
+ * 迁移（`server/src/services/worksheet-fill-blank-migration.ts`）把 `________` 写进题干，
+ * 而 `recognizeBlanks` 只认 `{填空域}` ⇒ 教师在题干里多打一个字，那个空**消失**
+ * （2026-09-29 探针实测：读库后空数 1、编辑后 0；`data.answers` 还在，但学生那边
+ * 已经不画输入框了 —— 全部不报错）。
+ *
+ * 修法刻意**不放在识别那一侧**：让 `recognizeBlanks` 也认括号与下划线，就等于让
+ * `（高兴 难过）`（**待选词**）也变成一个空、并把括号一起吞掉。⇒ 统一只发生在
+ * **导入与迁移**这一侧：`convertBlankMarks` 先把文本变成规范形态，再由现有的
+ * `recognizeBlanks` 认。两件事各管各的，谁也不要去猜对方。
+ *
+ * ── 两条规则（各有一条反向用例钉着）─────────────────────────────────────────
+ *   · `（` + 空白 + `）` ⇒ 一个空。**括号里只要有别的字符就不是空** —— 这一条挡的是
+ *     待选词括号（`（高兴 难过）`）与题号 / 选项前缀（`（1）` `(A)`）被吃成空。
+ *   · 连续 2 个及以上的 `_` / `＿` ⇒ 一个空（几个都算**一个**）。单个 `_` 是正文
+ *     （`file_name` / `变量 _`），**不动**。
+ *
+ * ⚠️ 纯函数、不改入参；`converted` 报的是**这次换掉了几处**，不是「题干里有几个空」
+ *（后者是 `blankMarkCount`）—— 两个数混起来用，界面上就会报错个数。
+ */
+export function convertBlankMarks(raw: unknown): { text: string; converted: number } {
+  if (typeof raw !== 'string' || raw === '') return { text: '', converted: 0 };
+  let converted = 0;
+  const mark = () => { converted += 1; return BLANK_MARK_TEXT; };
+  // 两条规则互不产生对方的匹配（`{填空域}` 里既没有括号也没有下划线）⇒ 先后无所谓。
+  const text = raw.replace(EMPTY_PARENS, mark).replace(UNDERSCORE_RUN, mark);
+  return { text, converted };
+}
+
+/** 题干里有几处 `{填空域}`（= 这道题有几个空）。不重叠地数，与 `recognizeBlanks` 同一把尺子。 */
+export function blankMarkCount(raw: unknown): number {
+  const text = typeof raw === 'string' ? raw : '';
+  if (text === '') return 0;
+  let total = 0;
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(BLANK_MARK_TEXT, from);
+    if (at < 0) break;
+    total += 1;
+    from = at + BLANK_MARK_TEXT.length;
+  }
+  return total;
+}
+
+/**
  * 按题干文本**重新识别**填空域（★ 2026-09-27 教师裁定）。
  *
  * 🔴 判据（教师原话，两条）：
@@ -490,6 +558,24 @@ export function recognizeBlanks(
     from = end;
   }
   return next;
+}
+
+/**
+ * 从一段**纯文本**认出全部空 —— 「先铺满默认分段、再按文本标记」的**唯一正确走法**。
+ *
+ * 🔴 为什么必须封成函数：`recognizeBlanks` **只能改已有的分段、造不出新的**
+ *（`rewriteRange` 只遍历入参）。直接喂一个空数组是一个**静默的空操作** ——
+ * 2026-09-29 探针实测：`recognizeBlanks([], '需要{填空域}才能生长')` 的空数是 **0**。
+ * 而这个错**看起来是对的**：`isPlainRuns([])` 为真 ⇒ 调用方写 `promptRuns: undefined`
+ * ⇒ 一句「没有格式」，屏幕上与「题干里没有空」完全一致，没有任何东西报错。
+ *（`promptRunsPatchFor` 就这么错了 —— 代价是「粘一整道带空的题」那个功能从来没生效过。）
+ *
+ * ⇒ 粘进一整段题干、导入一整道题、迁移补空 —— 三条路都走这里。
+ */
+export function blanksFromText(text: unknown, mintId: () => string): PromptRun[] {
+  const source = typeof text === 'string' ? text : '';
+  if (source === '') return [];
+  return recognizeBlanks(readPromptRuns(undefined, source), source, BLANK_MARK_TEXT, mintId);
 }
 
 /**

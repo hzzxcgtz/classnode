@@ -427,13 +427,12 @@ export function QuestionStatsOverlay({
             )}
           </Section>
 
-          {/* ② 智能体解读 —— ★ 只对**主观题**显示（教师：「非问答题，非绘图题，
-              这部分要隐藏」）。判据在 `showsAgentAnalysis`（纯函数、有用例）。
-              🔴 它不是另写一份：`AnalysisBody` / `AnalysisActions` / `AnalysisBanners`
-              与整屏那个 `AnalysisOverlay` **共用同一个实现**（含那份「发之前先给你看一遍」
-              的隐私闸门预览）—— 各画一份必然分叉，而两边都不报错。 */}
+          {/* ② 智能体解读 —— 所有可作答题型都支持；客观题由本地先判分，智能体只解释
+              统计背后的思维特点。判据在 `showsAgentAnalysis`（纯函数、有用例）。
+              `AnalysisBody` / `AnalysisActions` / `AnalysisBanners` 与居中结果窗共用同一个实现，
+              包括后台进度与重新分析动作。 */}
           {node && showsAgentAnalysis(node) && (
-            <Section title="智能体解读" note="问答 / 绘图题交给智能体分析">
+            <Section title="智能体解读" note="发现简单统计之外的理解方式与共同困难">
               <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 12px', background: '#fafcff' }}>
                 <AnalysisBanners state={analysis} />
                 {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}

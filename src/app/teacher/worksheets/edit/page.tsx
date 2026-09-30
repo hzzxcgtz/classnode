@@ -1054,7 +1054,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
             🔴 **默认是「不指定」**：默认指定一个等于「默认把全班作业发给第三方 AI」。
             🔴 平台提示必须**在配的时候就**看到 —— 否则教师会在用的那一刻才发现绘图题发不出去。 */}
           <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>课堂分析</strong><em>可选。用于看板中的“发给 AI 分析”。</em></div></div>
+            <div className="worksheet-settings-section-head"><div><strong>课堂分析</strong><em>可选。用于看板中的小题 AI 分析。</em></div></div>
             <label className="worksheet-editor-field">
               <span>分析型智能体</span>
               <select

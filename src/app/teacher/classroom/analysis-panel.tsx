@@ -5,8 +5,11 @@ import { api } from '@/lib/api';
 import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
-// ★ M7b：预览那几行住在**纯模块**里（它是隐私闸门的实质文本，必须有测试）
-import { analysisPreviewLines } from './analysis-preview';
+import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask } from '@/lib/worksheet-analysis-background';
+import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
+
+export type AnalysisOperation = 'analyzing' | null;
+export type AnalysisRunStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing' | null;
 
 /**
  * 「智能体解读」的**取数 + 呈现**，抽出来给**两处**用（★ 2026-09-28，规格 §6.2）。
@@ -16,8 +19,8 @@ import { analysisPreviewLines } from './analysis-preview';
  *     **按题统计浮层**里那块内联的「② 智能体解读」；
  *   · 同一个 `narrative` 若在两处各画一份，迟早会长得不一样 —— 那是这类功能的经典分叉，
  *     而**两边都不报错**；
- *   · 更硬的一条是**隐私闸门**：「发给 AI 分析」之前必须先给教师看一遍「本次将发什么」
- *     （M7b 的裁定 3）。那份预览是承重文本，**绝不允许有第二个宿主自己拼一份**。
+ *   · 分析任务已经改成静默后台执行；这里统一负责读取结果、展示进度和重新分析，
+ *     避免两个宿主各自维护一套状态。
  *
  * ⚠️ **这里的代码是从 `analysis-overlay.tsx` 原样搬过来的**（连注释一起）——
  * 搬的时候行为**一个字都没改**，理由逐条都留在原处。
@@ -27,16 +30,14 @@ export interface WorksheetAnalysisState {
   payload: WorksheetAnalysisPayload | null;
   loading: boolean;
   busy: boolean;
+  operation: AnalysisOperation;
+  runStage: AnalysisRunStage;
+  runElapsedSeconds: number;
   error: string | null;
   /** 联系表的图没取回来（服务端缺 sharp 时回 503）。没有它，界面上只有一个**坏图**。 */
   sheetFailed: boolean;
-  /** 正在让教师确认「本次将发什么」（裁定 3：发之前必须看见）。 */
-  confirming: boolean;
-  setConfirming: (next: boolean) => void;
   markSheetFailed: () => void;
-  /** 「重新生成」= **全在本机**（重渲 + 重新聚合），不外发。 */
-  regenerate: () => Promise<void>;
-  /** 「确认发送」——**唯一**外发的那一步（只在确认块里被调）。 */
+  /** 后台重新整理数据并调用远端智能体；无需二次确认。 */
   run: () => Promise<void>;
   unit: string;
 }
@@ -55,10 +56,49 @@ export function useWorksheetAnalysis(
 ): WorksheetAnalysisState {
   const [payload, setPayload] = useState<WorksheetAnalysisPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<AnalysisOperation>(null);
+  const [runStage, setRunStage] = useState<AnalysisRunStage>(null);
+  const [runElapsedSeconds, setRunElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sheetFailed, setSheetFailed] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const busy = operation !== null;
+
+  useEffect(() => {
+    if (operation !== 'analyzing') return;
+    const timer = window.setInterval(() => setRunElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [operation]);
+
+  // 关闭浮窗后任务仍在模块级注册表中。重新打开同一道题时接回原 Promise，而不是重复外发。
+  useEffect(() => {
+    const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
+    if (!task) return;
+    let alive = true;
+    setOperation('analyzing');
+    setRunStage(task.stage);
+    setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
+    const stageTimer = window.setInterval(() => setRunStage(task.stage), 300);
+    void task.promise
+      .then(async (out) => {
+        if (!alive) return;
+        setRunStage('finalizing');
+        try {
+          const refreshed = await api.getWorksheetAnalysis(classroomId, worksheetId, questionId);
+          if (alive) setPayload(refreshed);
+        } catch {
+          if (alive) setPayload((prev) => (prev ? { ...prev, ...out } : prev));
+        }
+      })
+      .catch((e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : '分析失败');
+      })
+      .finally(() => {
+        if (!alive) return;
+        setRunStage(null);
+        setOperation(null);
+      });
+    return () => { alive = false; window.clearInterval(stageTimer); };
+  }, [classroomId, worksheetId, questionId]);
 
   /** 打开时先读已存的（不重算）；没算过则算一次。 */
   const load = useCallback(async () => {
@@ -83,61 +123,51 @@ export function useWorksheetAnalysis(
 
   useEffect(() => { void load(); }, [load]);
 
-  const regenerate = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setPayload(await api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '生成失败');
-    } finally {
-      setBusy(false);
-    }
-  }, [classroomId, worksheetId, questionId]);
-
   const run = useCallback(async () => {
-    setBusy(true);
+    setOperation('analyzing');
+    setRunStage('preparing');
+    setRunElapsedSeconds(0);
     setError(null);
+    // 远端平台只在请求结束时返回最终结果，无法报告真实百分比；这里按已经开始的真实步骤
+    // 给教师阶段提示，不伪造“完成 63%”一类精度。
+    const stageTimers = [
+      window.setTimeout(() => setRunStage('sending'), 650),
+      window.setTimeout(() => setRunStage('analyzing'), 1800),
+    ];
     try {
-      const out = await api.runWorksheetAnalysis(classroomId, worksheetId, questionId);
+      const task = startWorksheetAnalysisTask({
+        classroomId, worksheetId, questionId,
+        questionLabel: payload?.questionLabel ?? '本题',
+      });
+      const out = await task.promise;
+      stageTimers.forEach((timer) => window.clearTimeout(timer));
+      setRunStage('finalizing');
       // 只把那三格合进去（`aggregate`/`covered` 那些是载荷那一侧，这次一个都没动）
-      setPayload((prev) => (prev ? { ...prev, ...out } : prev));
-      setConfirming(false);
+      try {
+        setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId));
+      } catch {
+        setPayload((prev) => (prev ? { ...prev, ...out } : prev));
+      }
+      // 让“结果已返回”这一阶段能被人看见；不影响请求本身，也不伪造网络进度。
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
     } catch (e) {
+      stageTimers.forEach((timer) => window.clearTimeout(timer));
       // 🔴 失败**不动 payload.narrative** —— 已有的解读必须原样留在屏幕上
       // （服务端也没写库；两边都不动，才叫「失败不丢东西」）。
       setError(e instanceof Error ? e.message : '分析失败');
     } finally {
-      setBusy(false);
+      setRunStage(null);
+      setOperation(null);
     }
-  }, [classroomId, worksheetId, questionId]);
+  }, [classroomId, worksheetId, questionId, payload?.questionLabel]);
 
   return {
-    payload, loading, busy, error, sheetFailed, confirming,
-    setConfirming,
+    payload, loading, busy, operation, runStage, runElapsedSeconds,
+    error, sheetFailed,
     markSheetFailed: useCallback(() => setSheetFailed(true), []),
-    regenerate, run,
+    run,
     unit: moduleCountUnit(mode),
   };
-}
-
-/** 确认块要用的那几行（★ 隐私闸门的实质文本）。 */
-export function analysisPreviewFor(state: WorksheetAnalysisState, payload: WorksheetAnalysisPayload): string[] {
-  // ⚠️ 调用方已经判过 `payload.analysisAgent` 在场；这一句只是**让类型收窄**。
-  // 返回空数组（而不是编一行）—— 没有智能体时那份预览本来就没有内容可说。
-  const agent = payload.analysisAgent;
-  if (!agent) return [];
-  return analysisPreviewLines({
-    agentName: agent.name,
-    platform: agent.platform,
-    sendable: {
-      covered: payload.covered, total: payload.total, payloadKind: payload.payloadKind,
-      sheetCount: payload.sheetLayouts.length,
-      columns: payload.knobs.columns, cellWidth: payload.knobs.cellWidth, cellHeight: payload.knobs.cellHeight,
-    },
-    unit: state.unit,
-    blockedReason: payload.canSend.ok ? null : payload.canSend.reason,
-  });
 }
 
 /** 状态条那两行（过期警告 / 错误）。两处宿主共用。 */
@@ -184,9 +214,8 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
    */
   nameOf?: (participantId: string) => string | null;
 }) {
-  const { payload, loading, busy, confirming, sheetFailed } = state;
+  const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
-  const previewLines = payload && payload.analysisAgent ? analysisPreviewFor(state, payload) : [];
 
   /**
    * ★ 2026-09-29（教师）：「经过第三方 AI 分析后返回的数据，在看的时候还是要有真名」。
@@ -298,42 +327,19 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         </div>
       )}
 
-      {/* ★ M7b：确认块（**一个块**，不是新浮层）。 */}
-      {confirming && (
-        <div style={{ margin: '0 0 12px', padding: 12, border: '1px solid #fcd34d', background: '#faf4eb', borderRadius: 10 }}>
-          <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 6 }}>即将把下面这些发给第三方 AI：</div>
-          <ul style={{ margin: '0 0 10px', paddingLeft: 20, fontSize: '0.82rem', color: '#78350f', lineHeight: 1.9 }}>
-            {previewLines.map((line) => <li key={line}>{line}</li>)}
-          </ul>
-          <button type="button" onClick={() => void state.run()} disabled={busy}
-            style={{ border: '1px solid #b45309', background: '#fff', borderRadius: 10, padding: '6px 16px', cursor: busy ? 'default' : 'pointer', color: '#92400e', opacity: busy ? 0.5 : 1 }}>
-            {busy ? '发送中…' : '确认发送'}
-          </button>
-          <button type="button" onClick={() => state.setConfirming(false)} disabled={busy}
-            style={{ marginLeft: 8, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 10, padding: '6px 16px', cursor: busy ? 'default' : 'pointer', color: '#334155' }}>
-            取消
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-/** 底部那两个按钮（重新生成 / 发给 AI 分析 + 不可点时的原因）。 */
+/** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state }: { state: WorksheetAnalysisState }) {
-  const { payload, busy, confirming } = state;
+  const { payload, busy, operation, runStage, runElapsedSeconds } = state;
+  let actionText = payload?.narrative ? '重新生成分析' : '开始 AI 分析';
+  if (operation === 'analyzing' && runStage) actionText = worksheetAnalysisProgressLabel(runStage, runElapsedSeconds);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #e2e8f0', flex: '0 0 auto' }}>
-      {/* 「重新生成」= **全在本机**（重渲 + 重新聚合）；「发给 AI 分析」才是外发的那一步，
-          而它必须先过上面那个确认块。 */}
-      <button type="button" onClick={() => void state.regenerate()} disabled={busy}
-        style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 10, padding: '8px 16px', cursor: busy ? 'default' : 'pointer', color: '#334155', opacity: busy ? 0.5 : 1 }}>
-        {busy ? '生成中…' : '重新生成'}
-      </button>
-      {/* ★ M7b：这个按钮**活了** —— 但点它只打开预览，**确认之后**才真的发出去
-          （用户裁定 3）。`canSend.ok` 与那句话都是**服务端**给的判断。 */}
       <button type="button" disabled={!payload?.canSend.ok || busy}
-        onClick={() => state.setConfirming(true)}
+        onClick={() => void state.run()}
         title={payload && !payload.canSend.ok ? payload.canSend.reason : undefined}
         style={{
           border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 16px',
@@ -341,15 +347,15 @@ export function AnalysisActions({ state }: { state: WorksheetAnalysisState }) {
           background: payload?.canSend.ok ? '#fff' : '#f1f5f9',
           color: payload?.canSend.ok ? '#334155' : '#94a3b8',
         }}>
-        发给 AI 分析
+        {actionText}
       </button>
       {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
       {payload && !payload.canSend.ok && (
         <span style={{ fontSize: '0.78rem', color: '#b45309' }}>{payload.canSend.reason}</span>
       )}
-      {payload?.canSend.ok && !confirming && (
+      {payload?.canSend.ok && !busy && (
         <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-          点它会先给你看一遍「本次将发什么」
+          分析会在后台执行，完成后自动保存
         </span>
       )}
     </div>

@@ -224,19 +224,37 @@ router.get('/', async (req, res) => {
  */
 router.post('/info-preview', async (req, res) => {
   try {
-    const { platform, botId, apiKey, apiUrl, projectId, apiSecret } = req.body as Record<string, string | undefined>;
-    if (!platform || !botId || !apiKey) {
-      return res.status(400).json({ error: '缺少必要参数 platform、botId、apiKey' });
+    const prisma: PrismaClient = req.app.get('prisma');
+    const { platform, botId, credentialId, apiKey, apiUrl, projectId, apiSecret } = req.body as Record<string, string | undefined>;
+    if (!platform || !botId || (!apiKey && !credentialId)) {
+      return res.status(400).json({ error: '缺少必要参数 platform、botId、apiKey 或 credentialId' });
     }
     const apiUrlError = validateAgentApiUrl(apiUrl);
     if (apiUrlError) return res.status(400).json({ error: apiUrlError });
-    const result = await fetchAgentInfo({
+
+    // 共享令牌的明文绝不下发到浏览器。预览时只接收 id，在服务端读取并沿用
+    // toAgentConfig 的统一解密规则，保证预览、测试连接和正式对话使用同一把钥匙。
+    let credential: { token: string } | null = null;
+    if (credentialId) {
+      if (platform !== 'coze') {
+        return res.status(400).json({ error: '共享访问令牌仅支持 Coze 低代码智能体' });
+      }
+      credential = await prisma.platformToken.findUnique({
+        where: { id: credentialId },
+        select: { token: true },
+      });
+      if (!credential) return res.status(400).json({ error: '选中的访问令牌不存在，请刷新后重试' });
+    }
+    const config = toAgentConfig({
       platform,
-      apiUrl: (apiUrl && apiUrl !== 'undefined' ? apiUrl : undefined),
-      apiKey,
+      apiUrl: apiUrl && apiUrl !== 'undefined' ? apiUrl : null,
+      apiKey: apiKey || '',
       botId,
       extra: JSON.stringify({ projectId, apiSecret }),
-    });
+      credentialId: credentialId || null,
+    }, credential);
+    if (!config.apiKey) return res.status(400).json({ error: '选中的访问令牌无法使用，请在访问令牌管理中重新填写' });
+    const result = await fetchAgentInfo(config);
     if (!result) {
       return res.json({ name: null, iconUrl: null, greeting: null });
     }

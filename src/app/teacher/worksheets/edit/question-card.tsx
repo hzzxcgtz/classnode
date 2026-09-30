@@ -571,7 +571,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
 
-            {node.type === 'short-answer' && (
+            {(node.type === 'short-answer' || node.type === 'drawing') && (
               // ★ 2026-09-30（教师）：「主观题也需要设置参考答案，但是可以选择不本地评分。」
               // + 澄清：「主观题**不需要评分**」。
               // 🔴 所以这一块**只是让答案有个入口** —— 它不接判分那条链：
@@ -584,15 +584,18 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               <div className="worksheet-editor-block">
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4>参考答案</h4>
-                    <p>只印在教师用卷上、供你查看时对照；<strong>它不参与自动判分</strong>（学生提交后看板只统计作答进度）。</p>
+                    <h4>{node.type === 'drawing' ? '参考要点' : '参考答案'}</h4>
+                    <p>
+                      {node.type === 'drawing' ? '填写作品应包含的关键元素、结构或关系；' : '填写可接受的核心答案；'}
+                      <strong>它不参与自动判分</strong>，会作为智能体分析本题的参考依据。
+                    </p>
                   </div>
                 </div>
                 <SymbolListInput
                   values={readBlankAnswers(node)[0] ?? []}
                   split={splitChoiceText}
                   joinWith=" / "
-                  placeholder="例如：春天、春季"
+                  placeholder={node.type === 'drawing' ? '例如：包含蒸发、凝结、降水，并用箭头表示过程' : '例如：春天、春季'}
                   onChange={(items) => onDataChange({ answers: [items] })}
                 />
               </div>

@@ -9,6 +9,7 @@ import { tokenExpiryView } from '@/lib/platform-token-expiry';
 import { checkForUpdates } from '@/lib/upgrade-check';
 import { FieldError, Toast } from '@/lib/components';
 import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
+import { WORKSHEET_ANALYSIS_NOTICE_EVENT, type WorksheetAnalysisNotice } from '@/lib/worksheet-analysis-background';
 
 /**
  * 侧边栏导航。⚠️ **每一项的 `icon` 都必须在下面的图标 switch 里有一支对应的分支。**
@@ -164,6 +165,16 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     };
     window.addEventListener('classnode-teacher-session-expired', onSessionExpired);
     return () => window.removeEventListener('classnode-teacher-session-expired', onSessionExpired);
+  }, []);
+
+  // 分析浮窗关闭或教师切到别的页面后，后台请求仍会完成；顶层 layout 负责给片刻提示。
+  useEffect(() => {
+    const onAnalysisNotice = (event: Event) => {
+      const detail = (event as CustomEvent<WorksheetAnalysisNotice>).detail;
+      if (detail?.message) setToast({ msg: detail.message, type: detail.type });
+    };
+    window.addEventListener(WORKSHEET_ANALYSIS_NOTICE_EVENT, onAnalysisNotice);
+    return () => window.removeEventListener(WORKSHEET_ANALYSIS_NOTICE_EVENT, onAnalysisNotice);
   }, []);
 
   /**

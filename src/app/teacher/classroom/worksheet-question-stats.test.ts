@@ -341,19 +341,14 @@ test('★ 主观题：**不说正确率**，并指路给智能体', () => {
   assert.match(all, /智能体/, '要指路给智能体那一块');
 });
 
-/* ── 智能体解读那一块给谁看（★ 教师：「非问答题，非绘图题，这部分要隐藏」）── */
+/* ── 智能体解读入口 ─────────────────────────────────────────────── */
 
-/**
- * 🔴 客观题**本来就判分** —— 看板那四格与「本题统计」已经把「他答得怎么样」回答完了。
- * 再交给智能体读一遍，教师看到的会是一句「这道题不是主观题」（服务端的拒绝理由），
- * 而那在这一屏上只是噪声。
- */
-test('🔴 智能体解读只给主观题（问答题 / 绘图题）', () => {
+test('🔴 全部可作答题型都有智能体解读入口，未知类型没有', () => {
+  for (const type of ['single-choice', 'multi-choice', 'true-false', 'fill-blank', 'choice-blank', 'order', 'match', 'categorize']) {
+    assert.equal(showsAgentAnalysis({ type }), true, `${type} 的本地判分之外仍应能做语义分析`);
+  }
   assert.equal(showsAgentAnalysis({ type: 'short-answer' }), true);
   assert.equal(showsAgentAnalysis({ type: 'drawing' }), true);
-
-  // 客观题一个都不给 —— 包括「手写填空题」：手写只是**作答方式**，它照样按答案判分。
-  for (const type of ['single-choice', 'multi-choice', 'true-false', 'fill-blank', 'choice-blank', 'order', 'match', 'categorize']) {
-    assert.equal(showsAgentAnalysis({ type }), false, `${type} 是客观题，不该出现智能体那一块`);
-  }
+  assert.equal(showsAgentAnalysis({ type: 'task' }), false);
+  assert.equal(showsAgentAnalysis({ type: 'future-type' }), false);
 });

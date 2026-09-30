@@ -1,4 +1,6 @@
 import { isInkFormat, type InkValue } from './ink-path.js';
+import { analysisAnswerText } from './analysis-question.js';
+import type { QuestionNode } from './worksheet-questions.js';
 
 /**
  * ★ M7a：载荷的**判据层**。**纯函数、不碰 sharp、不碰网络、不读库。**
@@ -17,6 +19,8 @@ export interface RawAnswer {
   questionId: string;
   status: string;
   value: unknown;
+  /** 服务端已经算好的判分结论；分析链路只展示，绝不在这里重新判分。 */
+  gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   /**
    * 定稿时刻（ISO 串）。**只有「陈旧判定」读它** —— `selectAnalyzeEntries` 不看。
    *
@@ -45,6 +49,7 @@ export interface AnalyzeEntry {
   kind: 'text' | 'ink' | 'unknown';
   text?: string;
   ink?: InkValue;
+  gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   // 🔴 **这里刻意没有 `displayName`。**
   // 原先有，而它**只写不读**：文档与联系表上的标签都走伪名（`payloadLabels` 按 `studentId` 的
   // 序派生），真名一次都没被显示过（独立审查 M3）。它却被写进了 `aggregate`，
@@ -131,7 +136,7 @@ function readStrokes(raw: unknown[]): InkValue['strokes'] {
  * **顺序按 `studentId` 升序**：模型会说「第 3 格」「上面第 5 条」，顺序不确定就映射不回去。
  */
 export function selectAnalyzeEntries(
-  answers: RawAnswer[], participants: Participant[], questionId: string,
+  answers: RawAnswer[], participants: Participant[], questionId: string, question?: QuestionNode,
 ): AnalyzeEntry[] {
   // 参与者名单仍然要 —— 它挡的是「库里有一行谁的名单里都没有的作答」（脏数据）。
   const known = new Set(participants.map((p) => p.participantId));
@@ -142,15 +147,21 @@ export function selectAnalyzeEntries(
     if (!known.has(answer.participantId)) continue;
     const text = readText(answer.value);
     if (text !== null) {
-      out.push({ studentId: answer.participantId, kind: 'text', text });
+      out.push({ studentId: answer.participantId, kind: 'text', text, gradeState: answer.gradeState ?? null });
       continue;
     }
     const ink = readInk(answer.value);
     if (ink) {
-      out.push({ studentId: answer.participantId, kind: 'ink', ink });
+      out.push({ studentId: answer.participantId, kind: 'ink', ink, gradeState: answer.gradeState ?? null });
       continue;
     }
-    out.push({ studentId: answer.participantId, kind: 'unknown' });
+    // 客观题的值不是 text/v1：在这里按题型把 key/id 转成选项文字、条目文字与关系。
+    const described = question ? analysisAnswerText(question, answer.value) : null;
+    if (described !== null) {
+      out.push({ studentId: answer.participantId, kind: 'text', text: described, gradeState: answer.gradeState ?? null });
+      continue;
+    }
+    out.push({ studentId: answer.participantId, kind: 'unknown', gradeState: answer.gradeState ?? null });
   }
   return out.sort((a, b) => (a.studentId < b.studentId ? -1 : a.studentId > b.studentId ? 1 : 0));
 }
@@ -201,12 +212,45 @@ export interface QuestionMeta {
   typeLabel: string;
   prompt: string;
   heading: string;
+  /** 选项、待排序条目、左右栏、分类框等题干之外的材料。 */
+  details?: string;
+  /** 已按题型翻译成人类可读文字的参考答案/评价要求。 */
+  referenceAnswer?: string;
 }
 
 /** 超长就截断并附一句说明。 */
 function truncate(text: string): string {
   if (text.length <= ANSWER_TEXT_MAX) return text;
   return `${text.slice(0, ANSWER_TEXT_MAX)}\n（已截断：原文共 ${text.length} 字，只带出前 ${ANSWER_TEXT_MAX} 字）`;
+}
+
+function gradeLabel(state: AnalyzeEntry['gradeState']): string | null {
+  if (state === 'correct') return '全对';
+  if (state === 'partial') return '部分正确';
+  if (state === 'incorrect') return '答错';
+  return null;
+}
+
+function localStatsOf(entries: AnalyzeEntry[]): { correct: number; partial: number; incorrect: number; ungraded: number } {
+  let correct = 0;
+  let partial = 0;
+  let incorrect = 0;
+  let ungraded = 0;
+  for (const entry of entries) {
+    if (entry.gradeState === 'correct') correct += 1;
+    else if (entry.gradeState === 'partial') partial += 1;
+    else if (entry.gradeState === 'incorrect') incorrect += 1;
+    else ungraded += 1;
+  }
+  return { correct, partial, incorrect, ungraded };
+}
+
+function localStatsLine(entries: AnalyzeEntry[]): string {
+  const stats = localStatsOf(entries);
+  if (stats.correct + stats.partial + stats.incorrect === 0) return `本地统计：${stats.ungraded} 份作答未自动判分`;
+  const parts = [`全对 ${stats.correct}`, `部分正确 ${stats.partial}`, `答错 ${stats.incorrect}`];
+  if (stats.ungraded > 0) parts.push(`未自动判分 ${stats.ungraded}`);
+  return `本地统计：${parts.join('；')}`;
 }
 
 /**
@@ -228,15 +272,20 @@ export function buildTextDocument(
   const head = [
     `${question.heading} · ${question.typeLabel}`,
     `题干：${question.prompt || '（题干为空）'}`,
+    `题目材料：${question.details || '（没有额外题面材料）'}`,
+    `参考答案：${question.referenceAnswer || '（未提供参考答案）'}`,
     `已交 ${covered}/${total}`,
+    localStatsLine(entries),
   ].join('\n');
   if (entries.length === 0) return `${head}\n\n尚无已提交的作答。\n`;
   const body = entries.map((entry) => {
     const who = labels.get(entry.studentId) ?? entry.studentId;
-    if (entry.kind === 'unknown') return `【${who}】（这一份的形状本版认不出，未纳入）`;
+    const verdict = gradeLabel(entry.gradeState);
+    const label = verdict ? `${who}｜${verdict}` : who;
+    if (entry.kind === 'unknown') return `【${label}】（这一份的形状本版认不出，未纳入）`;
     const raw = entry.text ?? '';
-    if (raw.trim() === '') return `【${who}】（空白）`;
-    return `【${who}】\n${truncate(raw)}`;
+    if (raw.trim() === '') return `【${label}】（空白）`;
+    return `【${label}】\n${truncate(raw)}`;
   });
   return `${head}\n\n${body.join('\n\n')}\n`;
 }
@@ -402,6 +451,9 @@ export interface AnalysisPayload {
   questionLabel: string;
   typeLabel: string;
   prompt: string;
+  questionDetails: string;
+  referenceAnswer: string;
+  localStats: { correct: number; partial: number; incorrect: number; ungraded: number };
   payloadKind: 'text' | 'image' | 'mixed';
   covered: number;
   total: number;
@@ -444,6 +496,9 @@ export function buildAnalysisPayload(input: {
     questionLabel: question.heading,
     typeLabel: question.typeLabel,
     prompt: question.prompt,
+    questionDetails: question.details || '（没有额外题面材料）',
+    referenceAnswer: question.referenceAnswer || '（未提供参考答案）',
+    localStats: localStatsOf(entries),
     payloadKind,
     covered: entries.length,
     total,
@@ -471,6 +526,7 @@ export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string
     kind: entry.kind,
     text: entry.text ?? null,
     ink: entry.ink ?? null,
+    gradeState: entry.gradeState ?? null,
   }));
 }
 
@@ -488,21 +544,24 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
     if (typeof row.studentId !== 'string' || row.studentId === '') continue;
+    const gradeState = row.gradeState === 'correct' || row.gradeState === 'partial' || row.gradeState === 'incorrect'
+      ? row.gradeState : null;
     if (row.kind === 'text') {
       out.push({
         studentId: row.studentId, kind: 'text',
         text: typeof row.text === 'string' ? row.text : '',
+        gradeState,
       });
       continue;
     }
     if (row.kind === 'ink') {
       const ink = readInk(row.ink);
       out.push(ink
-        ? { studentId: row.studentId, kind: 'ink', ink }
-        : { studentId: row.studentId, kind: 'unknown' });
+        ? { studentId: row.studentId, kind: 'ink', ink, gradeState }
+        : { studentId: row.studentId, kind: 'unknown', gradeState });
       continue;
     }
-    out.push({ studentId: row.studentId, kind: 'unknown' });
+    out.push({ studentId: row.studentId, kind: 'unknown', gradeState });
   }
   return out;
 }

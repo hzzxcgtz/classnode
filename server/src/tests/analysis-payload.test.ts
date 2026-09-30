@@ -11,10 +11,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANSWER_TEXT_MAX, DEFAULT_ANALYSIS_KNOBS, KNOBS_SETTING_KEY, SHEET_GAP, SHEET_LABEL_H,
-  SHEET_MARGIN, buildTextDocument, entriesFromAggregate, entriesToAggregate, isAnalysisStale,
+  SHEET_MARGIN, buildAnalysisPayload, buildTextDocument, entriesFromAggregate, entriesToAggregate, isAnalysisStale,
   lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadKindOf, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
+import type { QuestionNode } from '../services/worksheet-questions.js';
 
 const ink = (strokes: number) => ({
   format: 'ink/v1',
@@ -97,6 +98,39 @@ test('只收这一道题的作答行（同一份学习单里别的题不进载�
 
 test('参与者名单里查不到的作答行被丢掉（脏数据不抛）', () => {
   assert.deepEqual(selectAnalyzeEntries([row('ghost', 'submitted', { format: 'text/v1', text: 'x' })], people, 'q1'), []);
+});
+
+test('客观题按题型翻译成语义文本，并把本地判分结果带给智能体', () => {
+  const question: QuestionNode = {
+    id: 'q1', type: 'single-choice', prompt: '哪一种变化属于化学变化？', inputMode: 'keyboard', children: [],
+    data: {
+      options: [{ key: 'A', text: '冰融化' }, { key: 'B', text: '铁生锈' }],
+      correctKeys: ['B'],
+      explanation: '是否生成新物质是判断依据。',
+    },
+  };
+  const entries = selectAnalyzeEntries([{
+    participantId: 'p1', questionId: 'q1', status: 'submitted', gradeState: 'incorrect',
+    value: { format: 'choice/v1', selected: ['A'] },
+  }], people, 'q1', question);
+
+  assert.equal(entries[0].text, '选择：A. 冰融化');
+  assert.equal(entries[0].gradeState, 'incorrect');
+
+  const payload = buildAnalysisPayload({
+    question: {
+      questionId: 'q1', heading: '任务一 · 1', typeLabel: '单选题', prompt: question.prompt,
+      details: '选项：A. 冰融化；B. 铁生锈',
+      referenceAnswer: 'B. 铁生锈\n参考说明：是否生成新物质是判断依据。',
+    },
+    entries,
+    total: 3,
+    knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  assert.deepEqual(payload.localStats, { correct: 0, partial: 0, incorrect: 1, ungraded: 0 });
+  assert.match(payload.text ?? '', /参考答案：B\. 铁生锈/);
+  assert.match(payload.text ?? '', /本地统计：全对 0；部分正确 0；答错 1/);
+  assert.match(payload.text ?? '', /User_001｜答错[\s\S]*选择：A\. 冰融化/);
 });
 
 test('形态：全文字 ⇒ text · 全笔迹 ⇒ image · 混杂 ⇒ mixed · 全 unknown/空 ⇒ text', () => {

@@ -8,6 +8,7 @@ import {
   readMatchRight,
   readOptions,
   readOrderItems,
+  QUESTION_TYPE_OPTIONS,
   TRUE_FALSE_OPTIONS,
   type WorksheetEntry,
 } from '../../../lib/worksheet-questions.ts';
@@ -517,21 +518,7 @@ function buildInsights(input: {
   return out;
 }
 
-/**
- * ★ 2026-09-28（教师）：「非问答题，非绘图题，这部分要隐藏」。
- *
- * 🔴 **判据是题型**：客观题（单选/多选/判断/填空/排序/连线/归类）**本来就判分**，
- * 看板那四格与「本题统计」已经把「他答得怎么样」回答完了 —— 再交给智能体去读一遍，
- * 教师看到的会是一句「这道题不是主观题」（那是服务端 `canSend` 的拒绝理由），
- * 而它在这一屏上只是一句**噪声**。
- *
- * ⚠️ 只认这两个题型，**不认 `inputMode === 'handwriting'`**：手写只是作答方式，
- * 一道手写填空题仍然是**客观题**（服务端照常按答案判分）。把它一起放进来会让
- * 「填空 + 手写」那一种多出一块它不需要的东西 —— 而教师那句话说的是**题型**。
- *
- * ⚠️ 这里**只管显不显示**，不管「能不能发」：`canSend` 仍然是**服务端**给的判断
- * （它还要看有没有配 `purpose='analysis'` 的智能体、已交份数够不够等），两件事不同源。
- */
+/** 所有可作答题型都能让智能体解释统计背后的思维特点；未知类型与任务容器不显示。 */
 export function showsAgentAnalysis(node: { type: string }): boolean {
-  return node.type === 'short-answer' || node.type === 'drawing';
+  return QUESTION_TYPE_OPTIONS.some((option) => option.value === node.type);
 }

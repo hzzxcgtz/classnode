@@ -3820,6 +3820,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           liveTrustedAfter={undefined}
           loading={wb.loading}
           participantCount={students.length}
+          classroomId={classroom.id}
           // ⚠️ 只有高级模式才谈得上「有的组没配学习单」；标准 / 分组模式下这一行恒为 0，
           // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）
           // ⇒ 不收窄的话屏幕上会出现一句「另有 1 个参与者没有可作答的学习单」的**假话**（审查抓到）。
@@ -3845,7 +3846,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         />
       )}
 
-      {/* ★ M7a：分析载荷预览。**独立浮层**（zIndex 270：矩阵 250 之上、学习单抽屉 290/291 之下）。
+      {/* AI 分析结果窗。第一次点击只在题行按钮上显示后台进度；完成后再次点击才打开本窗。
+          **独立居中浮层**（zIndex 270：矩阵 250 之上、学习单抽屉 290/291 之下）。
           它**不复用**学生端外壳的 `layer-overlays` —— 那条「非前台层的浮层不得浮在上面」
           的不变量属于学生端的三层结构，与教师端这两个浮层无关。
           ⚠️ `mode` 是**必需**的：浮层里「已交 N/M」的单位靠 `moduleCountUnit(mode)` 定

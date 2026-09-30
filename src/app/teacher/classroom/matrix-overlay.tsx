@@ -4,8 +4,12 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 // ★ 2026-09-29：`Fragment` 是**具名** import（不是 `React.Fragment`）—— 段头行与它下面的题行
 // 是同一层里的兄弟节点，key 只能挂在 Fragment 上。同目录的 `analysis-panel.tsx` 也是这么引 hook 的。
-import { Fragment, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
+import { api } from '@/lib/api';
+import { isNotFound } from '@/lib/http-error';
+import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, startWorksheetAnalysisTask, type BackgroundAnalysisTask } from '@/lib/worksheet-analysis-background';
+import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
 import { indexQuestions, isGradedType, questionAggregate } from './worksheet-drawer-state';
 import { buildWorksheetMatrix, matrixGroups, matrixHeadline, promptLabel, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
@@ -33,6 +37,7 @@ export function MatrixOverlay({
   liveTrustedAfter,
   loading,
   participantCount,
+  classroomId,
   advancedMode,
   onClose,
   onOpenQuestion,
@@ -46,12 +51,13 @@ export function MatrixOverlay({
   liveTrustedAfter: number | undefined;
   loading: boolean;
   participantCount: number;
+  classroomId: string;
   /** ★ 只有高级模式才谈得上「有的组没配学习单」—— 下面那行提示按它收窄。 */
   advancedMode: boolean;
   onClose: () => void;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
-  /** ★ M7a：打开这道题的**分析载荷**（只对主观题有入口）。 */
+  /** 打开这道题的分析载荷（所有可作答题型都有入口）。 */
   onOpenAnalysis: (worksheetId: string, questionId: string) => void;
 }) {
   // ⚠️ 算术在纯函数里（GC 26）：JSX 里只调用，不再自己算一遍。
@@ -89,6 +95,7 @@ export function MatrixOverlay({
                 live={live}
                 liveTrustedAfter={liveTrustedAfter}
                 sheet={sheet}
+                classroomId={classroomId}
                 onOpenQuestion={onOpenQuestion}
                 onOpenAnalysis={onOpenAnalysis}
                 onOpenParticipant={onOpenParticipant}
@@ -110,13 +117,14 @@ export function MatrixOverlay({
 
 /** 一块 = 一份学习单。 */
 function MatrixBlock({
-  sheet, title, nodes, live, liveTrustedAfter, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
+  sheet, title, nodes, live, liveTrustedAfter, classroomId, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
 }: {
   sheet: WorksheetBoard['worksheets'][number];
   title: string;
   nodes: WorksheetQuestionNode[] | undefined;
   live: Record<string, ParticipantWorksheetProgress>;
   liveTrustedAfter: number | undefined;
+  classroomId: string;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
   onOpenAnalysis: (worksheetId: string, questionId: string) => void;
@@ -247,6 +255,8 @@ function MatrixBlock({
                   row={row}
                   participantIds={participantIds}
                   stuck={row.questionId === stuckId}
+                  classroomId={classroomId}
+                  worksheetId={sheet.id}
                   onOpenQuestion={() => onOpenQuestion(sheet.id, row.questionId)}
                   onOpenParticipant={onOpenParticipant}
                   onOpenAnalysis={() => onOpenAnalysis(sheet.id, row.questionId)}
@@ -263,12 +273,14 @@ function MatrixBlock({
 }
 
 function MatrixRowView({
-  row, participantIds, stuck, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
+  row, participantIds, stuck, classroomId, worksheetId, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
 }: {
   row: MatrixRow;
   /** 列的循环顺序（= `sheet.participants` 的顺序）。 */
   participantIds: string[];
   stuck: boolean;
+  classroomId: string;
+  worksheetId: string;
   onOpenQuestion: () => void;
   onOpenParticipant: (participantId: string) => void;
   onOpenAnalysis: () => void;
@@ -301,15 +313,7 @@ function MatrixRowView({
             {/* 题干：两行截断交给 CSS（不在这一层切字符串 —— 那会把空题干那条既有文案一起吃掉）。 */}
             <span className={styles.prompt}>{promptLabel(row.prompt)}</span>
           </button>
-          {/* ★ M7a：「分析」入口 —— **只对主观题出现**。客观题本来就判分，看板的对错已经
-              回答了「这题答得怎么样」，再给一个分析入口只会让教师多点一下。
-              判据走 `isGradedType`（它派生自题型表的 `graded` 旗标）—— 与抽屉画不画 ✓/✗
-              是**同一把尺子**；而 `graded` 那张表由 `analysis-gate-parity.test.ts` 与服务端闸门对拍。 */}
-          {!isGradedType(row.type) && (
-            <button type="button" onClick={onOpenAnalysis} title="看全班这道题答了什么" className={styles.analysisButton}>
-              分析
-            </button>
-          )}
+          <AnalysisTrigger classroomId={classroomId} worksheetId={worksheetId} row={row} onOpen={onOpenAnalysis} />
         </div>
       </th>
       {participantIds.map((participantId) => (
@@ -325,6 +329,77 @@ function MatrixRowView({
         {stuck && <span title="当前作答前沿"> · 关注</span>}
       </td>
     </tr>
+  );
+}
+
+/** 第一次点击静默启动后台分析；完成后同一位置变成结果入口。 */
+function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
+  classroomId: string;
+  worksheetId: string;
+  row: MatrixRow;
+  onOpen: () => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [ready, setReady] = useState(() => hasCompletedWorksheetAnalysis(classroomId, worksheetId, row.questionId));
+  const [, setTick] = useState(0);
+  const task = activeWorksheetAnalysisTask(classroomId, worksheetId, row.questionId);
+
+  const watch = (backgroundTask: BackgroundAnalysisTask) => {
+    setTick((value) => value + 1);
+    void backgroundTask.promise
+      .then(() => setReady(true))
+      .catch(() => setReady(false))
+      .finally(() => setTick((value) => value + 1));
+  };
+
+  useEffect(() => {
+    if (!task) return;
+    let alive = true;
+    const timer = window.setInterval(() => setTick((value) => value + 1), 500);
+    void task.promise
+      .then(() => { if (alive) setReady(true); })
+      .catch(() => { /* 顶层 Toast 已经说明失败原因。 */ })
+      .finally(() => { if (alive) setTick((value) => value + 1); });
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [task]);
+
+  const handleClick = async () => {
+    if (task) return;
+    if (ready) { onOpen(); return; }
+    setChecking(true);
+    try {
+      const stored = await api.getWorksheetAnalysis(classroomId, worksheetId, row.questionId);
+      if (stored.narrative) {
+        setReady(true);
+        onOpen();
+        return;
+      }
+    } catch (error) {
+      // 404 = 从未分析；其它读取错误也交给完整后台流程统一报告，避免按钮停在死状态。
+      if (!isNotFound(error)) { /* 后台请求会给出可见错误。 */ }
+    }
+    watch(startWorksheetAnalysisTask({
+      classroomId, worksheetId, questionId: row.questionId, questionLabel: row.heading,
+    }));
+    setChecking(false);
+  };
+
+  let text = 'AI 分析';
+  let buttonState = 'idle';
+  if (checking) { text = '检查中…'; buttonState = 'running'; }
+  else if (task) {
+    buttonState = 'running';
+    const elapsed = Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000));
+    text = worksheetAnalysisProgressLabel(task.stage, elapsed);
+  } else if (ready) { text = '查看分析'; buttonState = 'ready'; }
+
+  return (
+    <button type="button" onClick={() => void handleClick()} disabled={checking || Boolean(task)}
+      data-state={buttonState} className={styles.analysisButton}
+      title={task ? '分析正在后台进行，可以离开当前页面' : ready ? '查看已保存结果，也可以重新分析' : '静默启动本题的 AI 分析'}>
+      {task && <span className={styles.analysisSpinner} aria-hidden="true" />}
+      {text}
+    </button>
   );
 }
 

@@ -107,7 +107,7 @@ export const api = {
     request<{ greeting: string | null }>(`/api/agents/${id}/greeting${force ? '?force=true' : ''}`),
   getAgentInfo: (id: string) =>
     request<AgentInfoResponse>(`/api/agents/${id}/info`),
-  getAgentInfoDirect: (params: { platform: string; botId: string; apiKey: string; apiUrl?: string; projectId?: string; apiSecret?: string }) =>
+  getAgentInfoDirect: (params: { platform: string; botId: string; credentialId?: string; apiKey: string; apiUrl?: string; projectId?: string; apiSecret?: string }) =>
     request<AgentInfoResponse>('/api/agents/info-preview', {
       method: 'POST', body: JSON.stringify(params),
     }),
@@ -521,7 +521,7 @@ export const api = {
       `/api/worksheets/${worksheetId}/analysis/${questionId}?classroomId=${encodeURIComponent(classroomId)}`),
   /**
    * ★ M7b：**唯一会外发的那一次调用**（把全班作业发给第三方 AI）。
-   * 🔴 界面**必须**先用预览让教师确认过再调它 —— 那一步是隐私闸门的实质（用户裁定 3）。
+   * 界面静默调用，但必须先经过 `computeWorksheetAnalysis` 返回的 `canSend` 能力闸门。
    */
   runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
     request<{ narrative: string; agentId: string; model: string }>(

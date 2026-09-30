@@ -12,6 +12,7 @@ import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
 import { AgentPurposeSelector } from './purpose-selector';
 import { AgentCredentialsFields, AgentPlatformNotice } from './credentials-fields';
+import { canFetchCozeAgentInfo } from './agent-info-preview';
 import { AgentCard } from './agent-card';
 import { AgentDeleteBlockedDialog, AgentErrorTip, AgentRelatedClassroomsDialog, type AgentErrorTipData } from './agent-overlays';
 import { useAgentController } from './use-agent-controller';
@@ -325,7 +326,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
   });
   const { fetchingInfo, saving, fieldErrors, toast, setToast, clearError, clearErrors, fetchInfo: handleFetchInfo, submit } = actions;
   const handleSubmit = (event: React.FormEvent) => { event.preventDefault(); void submit(); };
-  const canFetchCozeInfo = platform === 'coze' && Boolean(botId.trim()) && (hasSavedApiKey || Boolean(apiKey.trim()));
+  const canFetchCozeInfo = canFetchCozeAgentInfo({ platform, botId, credentialId, apiKey, hasSavedApiKey });
   const handlePlatformChange = (next: AgentPlatform) => {
     if (next === platform) return;
     setPlatform(next);

@@ -51,8 +51,15 @@ async function openTempDb() {
 const SHORT_ANSWER_NODE: Prisma.InputJsonValue = { id: 'q1', type: 'short-answer', prompt: '说说你的看法', inputMode: 'keyboard', data: {}, children: [] };
 /** 一条绘图题的节点（主观题之一 ⇒ 过闸门；它的载荷是**联系表**）。 */
 const DRAWING_NODE: Prisma.InputJsonValue = { id: 'q3', type: 'drawing', prompt: '画一画', inputMode: 'handwriting', data: {}, children: [] };
-/** 一条单选题的节点（客观题 ⇒ 不该有分析）。 */
-const CHOICE_NODE: Prisma.InputJsonValue = { id: 'q2', type: 'single-choice', prompt: '选一个', inputMode: 'keyboard', data: {}, children: [] };
+/** 一条单选题：本地判分之外，智能体继续解释错误选项反映的理解方式。 */
+const CHOICE_NODE: Prisma.InputJsonValue = {
+  id: 'q2', type: 'single-choice', prompt: '判断运动状态前首先要做什么？', inputMode: 'keyboard',
+  data: {
+    options: [{ key: 'A', text: '只看运动方向' }, { key: 'B', text: '先确定参照物' }],
+    correctKeys: ['B'], explanation: '运动状态必须相对于参照物判断',
+  },
+  children: [],
+};
 
 async function seedWorksheet(prisma: PrismaClient, nodes: Prisma.InputJsonValue[]) {
   return prisma.worksheet.create({
@@ -188,16 +195,32 @@ test('题不在学习单里 ⇒ POST 404', async (t) => {
   assert.equal(res.status, 404);
 });
 
-test('🔴 客观题 ⇒ POST 400（闸门外，不该产出载荷）', async (t) => {
+test('🔴 客观题也生成语义载荷：选项、参考答案、本地判分与学生选择都完整', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const worksheet = await seedWorksheet(db.prisma, [CHOICE_NODE]);
   const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7013', status: 'active', mode: 'standard' } });
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const response = await db.prisma.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id },
+  });
+  await db.prisma.worksheetAnswer.create({
+    data: {
+      responseId: response.id, questionId: 'q2', status: 'submitted', gradeState: 'incorrect', isCorrect: false,
+      value: { format: 'choice/v1', selected: ['A'] },
+    },
+  });
   const srv = await withServer(db.prisma);
   t.after(() => srv.close());
   const res = await fetch(analysisUrl(srv.base, worksheet.id, 'q2', classroom.id), { method: 'POST' });
-  assert.equal(res.status, 400, '客观题本来就判分，看板的 ✓/✗ 已经回答了问题');
+  if (res.status !== 200) assert.fail(`HTTP ${res.status}: ${await res.text()}`);
+  const body = await res.json() as Record<string, unknown>;
+  assert.match(String(body.questionDetails), /A\. 只看运动方向/);
+  assert.match(String(body.referenceAnswer), /B\. 先确定参照物/);
+  assert.match(String(body.text), /User_001｜答错/);
+  assert.match(String(body.text), /选择：A\. 只看运动方向/);
+  assert.deepEqual(body.localStats, { correct: 0, partial: 0, incorrect: 1, ungraded: 0 });
 });
 
 test('没算过时取联系表 ⇒ 404', async (t) => {

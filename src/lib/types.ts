@@ -531,6 +531,12 @@ export interface WorksheetAnalysisPayload {
   questionLabel: string;
   typeLabel: string;
   prompt: string;
+  /** 选项、排序条目、连线两栏、分类框等题干之外的可读题面材料。 */
+  questionDetails: string;
+  /** 本地按题型翻译后的参考答案或评价要点。 */
+  referenceAnswer: string;
+  /** 服务端已有的判分结果汇总；智能体直接使用，不重新判分或计数。 */
+  localStats: { correct: number; partial: number; incorrect: number; ungraded: number };
   payloadKind: 'text' | 'image' | 'mixed';
   /** 已提交该题的**参与者**数。单位（人 / 组）由界面按课堂 mode 定，见 `moduleCountUnit`。 */
   covered: number;

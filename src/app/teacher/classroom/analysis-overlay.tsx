@@ -3,16 +3,16 @@
 import { useWorksheetAnalysis, AnalysisActions, AnalysisBanners, AnalysisBody } from './analysis-panel';
 // ★ 2026-09-30：页头那句题干里可能有数学公式（`$x^2$`）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import styles from './analysis-overlay.module.css';
 
 /**
- * 分析载荷的**整屏浮层**（★ M7a/M7b）。
+ * 分析载荷的**居中浮窗**（★ M7a/M7b）。
  *
  * ★ 2026-09-28：**正文抽走了**（规格 `specs/2026-09-28-按题统计与分析.md` §6.2）。
  * 本文件现在只剩**外壳**：页头 + 三块（`AnalysisBanners` / `AnalysisBody` / `AnalysisActions`）。
  * 那三块同时被「按题统计浮层」里内联的「② 智能体解读」使用 —— **一个实现、两处宿主**。
  *
- * 🔴 为什么必须共用而不是各画一份：那个确认块是**隐私闸门的实质文本**
- * （M7b 裁定 3：发之前必须看见），两个宿主各拼一份必然分叉，而**两边都不报错**。
+ * 正文、后台进度与重新分析动作由 `analysis-panel.tsx` 统一实现，避免两个宿主分叉。
  *
  * ⚠️ 搬走的时候行为**一个字都没改**（连注释一起搬的，理由都留在 `analysis-panel.tsx`）。
  */
@@ -41,23 +41,18 @@ export function AnalysisOverlay({
   onClose: () => void;
 }) {
   const state = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode);
-  const { payload } = state;
+  const { payload, busy } = state;
 
   return (
-    // ⚠️ `overflow: 'hidden'` 是给下一行那层网用的：`overscroll-behavior` 只对
-    // **滚动容器**有效（`overflow: visible` 的盒子被浏览器直接忽略、不报错）。
-    // 整屏的盒子加它无副作用。
-    <div data-overscroll-guard="" style={{
-      position: 'fixed', inset: 0, zIndex, background: '#f8fafc',
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden', overscrollBehavior: 'contain',
-    }}>
+    <div data-overscroll-guard="" className={styles.backdrop} style={{ zIndex }}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
         borderBottom: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1e293b' }}>
+          <div id="analysis-dialog-title" style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1e293b' }}>
             {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '分析载荷'}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -74,8 +69,9 @@ export function AnalysisOverlay({
           </div>
         )}
         <button type="button" onClick={onClose}
+          title={busy ? '关闭后任务仍会在后台继续' : undefined}
           style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: '4px 12px', cursor: 'pointer', color: '#334155' }}>
-          关闭
+          {busy ? '关闭（后台继续）' : '关闭'}
         </button>
       </div>
 
@@ -85,6 +81,7 @@ export function AnalysisOverlay({
       <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto' }}>
         <AnalysisActions state={state} />
       </div>
+      </section>
     </div>
   );
 }

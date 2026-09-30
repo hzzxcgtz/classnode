@@ -49,6 +49,7 @@ import { findInkValueError } from '../services/worksheet-ink.js';
 // 那个文件被前端的跨工程对拍用例加载，所以它不能 import 任何东西（M6a 的教训）。
 import { isAnalyzableType } from '../services/analysis-gate.js';
 import { questionTypeLabel } from '../services/question-type-labels.js';
+import { analysisQuestionDetails, analysisReferenceAnswer } from '../services/analysis-question.js';
 import {
   KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
   isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
@@ -1192,7 +1193,7 @@ async function loadAnalysisTarget(
   const node = found.node;
   const heading = found.heading;
   if (!isAnalyzableType(node.type)) {
-    return { ok: false, status: 400, error: '这道题不是主观题 —— 客观题本来就判分，看板的对错已经回答了问题' };
+    return { ok: false, status: 400, error: '这个节点不是可作答题目，不能生成作答分析' };
   }
   if (!(await isWorksheetInClassroom(prisma, classroomId, worksheetId))) {
     // ⚠️ 404 而不是「回落到别的课堂」：同一份学习单可以被多个课堂引用，
@@ -1258,7 +1259,7 @@ async function loadAnalysisAnswers(
       // ⚠️ `submittedAt` 是给**陈旧判定**用的（「这道题最后一次定稿」）——
       // `selectAnalyzeEntries` 不看它，但少 select 它的表现是「永远不显示过期」，
       // 而那是**静默**的：屏幕上没有任何东西缺一块。
-      answers: { select: { questionId: true, status: true, value: true, submittedAt: true } },
+      answers: { select: { questionId: true, status: true, value: true, gradeState: true, submittedAt: true } },
     },
   });
   return responses.flatMap((response) =>
@@ -1267,6 +1268,7 @@ async function loadAnalysisAnswers(
       questionId: answer.questionId,
       status: answer.status,
       value: answer.value,
+      gradeState: answer.gradeState as RawAnswer['gradeState'],
       submittedAt: answer.submittedAt ? answer.submittedAt.toISOString() : null,
     })));
 }
@@ -1285,7 +1287,7 @@ function payloadFromStoredRow(
   row: { aggregate: unknown; totalCount: number },
   node: QuestionNode, heading: string, knobs: SheetKnobs,
 ): ReturnType<typeof buildAnalysisPayload> {
-  const meta = { questionId: node.id, typeLabel: questionTypeLabel(node.type), prompt: questionTextFor(node), heading };
+  const meta = analysisQuestionMeta(node, heading);
   // ⚠️ `total` 取**存下来的** `totalCount`（与 `coveredCount` 同一时刻的口径），不重算 ——
   // 重算会让「存下来的分子」配上「现在的分母」，两边不是同一时刻的。
   return buildAnalysisPayload({
@@ -1294,6 +1296,18 @@ function payloadFromStoredRow(
     total: row.totalCount,
     knobs,
   });
+}
+
+/** 一道题发给智能体前的完整题面投影。三条端点共用，避免重算/重发时漏掉参考答案。 */
+function analysisQuestionMeta(node: QuestionNode, heading: string) {
+  return {
+    questionId: node.id,
+    typeLabel: questionTypeLabel(node.type),
+    prompt: questionTextFor(node),
+    heading,
+    details: analysisQuestionDetails(node),
+    referenceAnswer: analysisReferenceAnswer(node),
+  };
 }
 
 /**
@@ -1354,11 +1368,9 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
 
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
-    const entries = selectAnalyzeEntries(answers, participants, questionId);
+    const entries = selectAnalyzeEntries(answers, participants, questionId, target.node);
     const knobs = await loadAnalysisKnobs(prisma);
-    const meta = {
-      questionId, typeLabel: questionTypeLabel(target.node.type), prompt: questionTextFor(target.node), heading: target.heading,
-    };
+    const meta = analysisQuestionMeta(target.node, target.heading);
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
 
     await prisma.worksheetQuestionAnalysis.upsert({
@@ -1521,7 +1533,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const knobs = await loadAnalysisKnobs(prisma);
     const entries = entriesFromAggregate(row.aggregate);
     const payload = buildAnalysisPayload({
-      question: { questionId, typeLabel: questionTypeLabel(target.node.type), prompt: questionTextFor(target.node), heading: target.heading },
+      question: analysisQuestionMeta(target.node, target.heading),
       entries, total: row.totalCount, knobs,
     });
 

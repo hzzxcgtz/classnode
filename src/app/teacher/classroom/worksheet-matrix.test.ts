@@ -136,9 +136,8 @@ test('题号是两级题号（无任务时就是 1..n），题型走注册表的
   assert.deepEqual(rows.map((r) => r.heading), ['1', '2']);
   assert.equal(rows[0].typeLabel, '单选题');
   assert.equal(rows[1].typeLabel, '填空题');
-  // ★ M7a：`type` 是**原始题型串**（`typeLabel` 是它的中文名）。矩阵题行上的「分析」入口
-  // 靠它判「这题是不是主观题」—— **不能反过来从 `typeLabel` 解**：那是给人看的中文名，
-  // 改成「问答题（主观）」就会让判据失效，而**屏幕上一点异常都没有**（只是按钮不见了）。
+  // `type` 是**原始题型串**（`typeLabel` 是它的中文名）。矩阵题行上的「分析」入口
+  // 靠它判断是否为可作答题，不能反过来从面向教师、可能随时调整的中文名推导。
   // 两条断言放在同一个用例里，是为了让 `type` 与 `typeLabel` 由**同一个夹具**钉住、不会各自漂。
   assert.equal(rows[0].type, 'single-choice');
   assert.equal(rows[1].type, 'fill-blank');

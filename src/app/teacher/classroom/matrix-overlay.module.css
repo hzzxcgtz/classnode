@@ -361,6 +361,9 @@
 }
 
 .analysisButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   border: 1px solid #cdd8e3;
   border-radius: 6px;
@@ -369,6 +372,36 @@
   cursor: pointer;
   font-size: .58rem;
   padding: 3px 7px;
+}
+
+.analysisButton[data-state='running'] {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: wait;
+}
+
+.analysisButton[data-state='ready'] {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.analysisSpinner {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: matrix-analysis-spin .8s linear infinite;
+}
+
+@keyframes matrix-analysis-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysisSpinner { animation-duration: 1.8s; }
 }
 
 .bodyCell {

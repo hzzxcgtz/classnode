@@ -4,14 +4,8 @@ import type { AnalysisPayload } from './analysis-payload.js';
  * ★ M7b：分析型的**编排层**。**不碰网络** —— 真正发出去的那一次在 `ai-proxy.ts` 的
  * `proxyAnalysisRequest`（**全仓唯一一处 `fetch` 到第三方**，见规格 §3.3）。
  *
- * ⚠️ 预览那几行**不在这里** —— 它们在前端的 `analysis-preview.ts`。两条理由：
- * ① 那几行要用 `moduleCountUnit(mode)` 定「人 / 组」的量词，而那个函数是**前端**的
- * （`worksheet-tile-state.ts:263`）—— 放这边就得再抄一把尺子，而「参与者单位」这个坑
- * 本项目已被咬过两次（M5a 与 M6c）；
- * ② 它是**隐私闸门的实质文本**（用户裁定 3），必须有测试，而前端 runner 跑得到
- * `src/**` 里的纯模块。
- * ⇒ **判断在这边**（`analysisGateOf`），**措辞在那边**，两者由端点响应里的
- * `canSend.reason` 串起来：这边说「不能发、因为 X」，那边把 X 混进那几行里说出来。
+ * 能否发送由这里的 `analysisGateOf` 与端点共同判断，并通过 `canSend.reason` 返回前端。
+ * 前端的后台任务在真正外发前读取这道闸；不满足时直接提示原因，不调用第三方平台。
  */
 
 /** 一份**能收图**的平台清单。实测依据写在规格 §2.1（每一条都有逐字出处）。 */
@@ -80,7 +74,7 @@ export function analysisGateOf(
 }
 
 /** 固定引导语（**进代码**）。具体要什么口径由教师写在平台的提示词里（规格 §3.7）。 */
-const LEAD = '请分析下面这份全班作答，指出典型错误与共同困难。';
+const LEAD = '请分析下面这道小题的全班作答。不要重复简单统计，重点发现统计无法直接呈现的理解方式、共同困难、思维差异或合理异解，并给教师一个简短的反馈切入点。';
 
 /**
  * 载荷 → 发给模型的那段文本。
@@ -91,16 +85,20 @@ const LEAD = '请分析下面这份全班作答，指出典型错误与共同困
  * 同一个学生的伪名）。
  */
 export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): string {
+  const stats = payload.localStats;
   const head = [
     LEAD,
     '',
     `【题目】${payload.questionLabel} · ${payload.typeLabel}`,
     `题干：${payload.prompt || '（题干为空）'}`,
+    `题目材料：${payload.questionDetails}`,
+    `参考答案：${payload.referenceAnswer}`,
     `已交 ${payload.covered}/${payload.total}`,
+    `本地统计：全对 ${stats.correct}；部分正确 ${stats.partial}；答错 ${stats.incorrect}；未自动判分 ${stats.ungraded}`,
     '',
   ].join('\n');
   if (payload.payloadKind === 'text') {
-    return `${head}【全班作答（均为代号）】\n${payload.text ?? ''}`;
+    return `${LEAD}\n\n${payload.text ?? head}`;
   }
   const shapes = payload.knobs;
   const note = [
@@ -119,8 +117,9 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
         + '格子按行从左到右、每张从第 1 格起连续编号：'
         + payload.entries.map((entry, index) => `第${index + 1}格=${entry.anonLabel}`).join('、'),
   ].join('\n');
-  // `mixed` 时文档与图**都要给**（文字那几条只存在于文档里）
+  // `mixed` 时文档与图**都要给**（文字那几条只存在于文档里）。文档自身已经包含完整题面，
+  // 不再把 head 重复一遍；纯图片没有文档，才由 head 承担题面与参考答案。
   return payload.text
-    ? `${head}${note}\n\n【文字作答（均为代号）】\n${payload.text}`
+    ? `${LEAD}\n\n${payload.text}\n【附带联系表】\n${note}`
     : `${head}${note}`;
 }

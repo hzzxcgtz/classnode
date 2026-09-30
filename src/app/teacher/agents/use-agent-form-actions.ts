@@ -46,8 +46,10 @@ export function useAgentFormActions(options: FormActionOptions) {
     }
     setFetchingInfo(true);
     try {
-      const stored = agent && !values.apiKey && !values.apiSecret;
-      const response = stored ? await api.getAgentInfo(agent.id) : await api.getAgentInfoDirect({ platform: values.platform, botId: values.botId.trim(), apiKey: values.apiKey.trim(), apiUrl: values.apiUrl.trim() || undefined, projectId: values.projectId.trim(), apiSecret: values.apiSecret.trim() });
+      // 选中的共享令牌只有服务端能解密，因此把 credentialId 交给预览接口解析。
+      // 编辑旧智能体且仍使用自带的已保存令牌时，才走按智能体 id 获取的旧路径。
+      const stored = agent && !values.credentialId && !values.apiKey && !values.apiSecret;
+      const response = stored ? await api.getAgentInfo(agent.id) : await api.getAgentInfoDirect({ platform: values.platform, botId: values.botId.trim(), credentialId: values.credentialId || undefined, apiKey: values.apiKey.trim(), apiUrl: values.apiUrl.trim() || undefined, projectId: values.projectId.trim(), apiSecret: values.apiSecret.trim() });
       if (!mountedRef.current) return;
       if (response.name) setName(response.name);
       if (response.iconUrl) applyRemoteLogo(response.iconUrl);

@@ -567,7 +567,16 @@ router.get('/', async (req, res) => {
       prisma.worksheet.count({ where }),
       prisma.worksheet.findMany({
         where,
-        orderBy: { updatedAt: 'desc' },
+        /**
+         * ★ 2026-09-30（教师）：「不要按最近修改过的顺序排，就按创建的顺序排，
+         * 最晚创建的排在最前面。」
+         * ⊘ 原来是 `updatedAt: 'desc'` —— 教师翻出一道老题改两个字，它就会跳到
+         *   列表最前面；而他要找的是「我刚刚新建的那一份」。
+         * ⚠️ `id` 那个次键不是装饰：`createdAt` 撞在同一毫秒时（连着建两份、
+         *   或测试里批量播数据），只按它排的话**分页会漏行或重行** —— 那种错是静默的
+         *   （第 2 页少一份，谁也不报错）。形状与下面那条 `[{createdAt},{id}]` 一致。
+         */
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

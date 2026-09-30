@@ -80,7 +80,47 @@ export type InkPoint = [number, number];
  * `number` —— 这正是必须在这里写清、并由 `worksheet-ink.test.ts` 钉住的原因：写错一个单位
  * 不会有任何报错，只会让线宽随屏幕变化。
  */
-export interface InkStroke { color: string; width: number; points: InkPoint[] }
+/**
+ * ★ 2026-09-30（教师）：「绘图区支持基本图形工具」。
+ *
+ * 🔴 **顺序就是工具栏上的顺序**，而两条用例（`worksheet-ink.test.ts`）把它逐条钉住 ——
+ *    加一个形状要同时改这里、`shapeOutline`、以及**两个渲染器**（spec 的「爆炸半径」九处）。
+ * ⚠️ `angle` 是唯一一个**不在外接框里**的形状：它由三个自由点定义（顶点 + 两条边的端点）——
+ *    一个永远 90° 的「角」在几何课上没用。
+ */
+export const INK_SHAPE_KINDS = [
+  'line', 'arrow', 'rect', 'ellipse', 'triangle',
+  'right-triangle', 'parallelogram', 'trapezoid', 'angle',
+] as const;
+export type InkShapeKind = (typeof INK_SHAPE_KINDS)[number];
+
+/** 这个值是九个形状之一吗。**认不出的一律当「不是」**（读值那一侧据此丢整笔）。 */
+export function isInkShapeKind(raw: unknown): raw is InkShapeKind {
+  return typeof raw === 'string' && (INK_SHAPE_KINDS as readonly string[]).includes(raw);
+}
+
+/**
+ * 一条**折线**（★ 2026-09-30：形状的统一形态）。
+ *
+ * 🔴 为什么把椭圆与弧也做成折线：形状要在**两个渲染器**里画出来（学生端 Canvas、
+ *    教师端 SVG），而它们的曲线能力是两套 API（`ctx.ellipse` / SVG 的 `A` 命令）。
+ *    让判据层只产出折线 ⇒ 两边都只需要 `moveTo`/`lineTo` ⇒ **画法在结构上不可能分叉**
+ *    （本仓最防的就是「学生画的和教师看到的不一样」）。顺带也少引一个本机核不了的 API。
+ * ⚠️ 代价：椭圆是 32 段折线（视觉上无差别）、`d` 串略长。这是**知情的选择**。
+ */
+export interface ShapeOutline { closed: boolean; points: InkPoint[] }
+
+export interface InkStroke {
+  color: string;
+  width: number;
+  points: InkPoint[];
+  /**
+   * ★ 2026-09-30：九个基本图形之一。**缺省 = 手写笔迹** ⇒ 库里所有老值一个字节不用动，
+   * 也不需要迁移（本项目从没有一条迁移碰过 `WorksheetAnswer.value`）。
+   * 🔴 有 `shape` 时，`points` 是**定义几何**（框 = 2 点、角 = 3 点），不是画出来的点。
+   */
+  shape?: InkShapeKind;
+}
 
 /** 作答那一刻画布框的**实测 CSS 像素**。`{ w: 0, h: 0 }` = 读不出来（见 `readInkValue`）。 */
 export interface InkCanvas { w: number; h: number }
@@ -455,4 +495,135 @@ export function readInkValue(raw: unknown): InkValue | null {
     if (stroke) strokes.push(stroke);
   });
   return { format: row.format, canvas: readCanvas(row.canvas), strokes };
+}
+
+/* ══ ★ 2026-09-30：基本图形的几何 ═══════════════════════════════════════════
+   规格：`specs/2026-09-30-绘图区-基本图形工具.md`
+
+   🔴 **一切在像素空间里算，算完再转回归一化。** 归一化空间是**各向异性**的
+      （x 乘画布宽、y 乘画布高，两者不等）—— 在那儿算角度、翼长、圆，宽高比一变
+      形状就是歪的，而屏幕上只是「看着怪」，没有任何报错。
+      `worksheet-ink.test.ts` 里有一条专门拿 400×50 与 100×100 两种画布对拍翼长。
+   🔴 归一化的输出**统一四舍五入到 6 位**：不四舍五入的话 `0.1 * 200 / 200` 是
+      `0.10000000000000002`，而屏幕上完全看不出差别 —— 那条 `deepEqual` 的用例会红得莫名其妙。
+*/
+
+/** 四舍五入到 6 位小数（理由见上面那段）。 */
+function round6(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+/** 像素点 → 归一化点。**不夹取**（夹取会把椭圆的边缘压平）。 */
+function toNormPoint(px: number, py: number, box: InkCanvas): InkPoint {
+  return [round6(box.w > 0 ? px / box.w : 0), round6(box.h > 0 ? py / box.h : 0)];
+}
+
+/** 折线的像素形式（内部用；出去之前一律转回归一化）。 */
+type PixelOutline = { closed: boolean; points: InkPoint[] };
+
+/**
+ * 一个形状的**折线**。手写（没有 `shape`）或坏值 ⇒ **空数组**（渲染层据此走老路）。
+ *
+ * ⚠️ 返回值是**数组**：箭头 = 杆 + 头部；角 = 两条射线 + 弧。其余形状都是 1 条。
+ */
+export function shapeOutline(stroke: InkStroke, box: InkCanvas): ShapeOutline[] {
+  if (!isInkShapeKind(stroke.shape)) return [];
+  const points = stroke.points;
+  if (!Array.isArray(points) || points.length < 2) return [];
+
+  const px = (p: InkPoint): InkPoint => [p[0] * box.w, p[1] * box.h];
+  const out = (parts: PixelOutline[]): ShapeOutline[] => parts.map((part) => ({
+    closed: part.closed,
+    points: part.points.map((p) => toNormPoint(p[0], p[1], box)),
+  }));
+
+  // ── 线与箭头：**保持拖拽方向**（尖端在终点那一头），绝不排序。
+  if (stroke.shape === 'line' || stroke.shape === 'arrow') {
+    const a = px(points[0]);
+    const b = px(points[1]);
+    const parts: PixelOutline[] = [{ closed: false, points: [a, b] }];
+    if (stroke.shape === 'arrow') {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy);
+      if (len > 0) {
+        // ⚠️ 翼长在**像素**里定（上限 12px），并夹取到不超过杆长的三分之一 ——
+        //    短杆上挂一个 12px 的大箭头，看起来像一个糊掉的三角形。
+        const wing = Math.min(len * 0.3, 12);
+        const back = Math.atan2(-dy, -dx);
+        const spread = (25 * Math.PI) / 180;
+        parts.push({
+          closed: false,
+          points: [
+            [b[0] + Math.cos(back + spread) * wing, b[1] + Math.sin(back + spread) * wing],
+            b,
+            [b[0] + Math.cos(back - spread) * wing, b[1] + Math.sin(back - spread) * wing],
+          ],
+        });
+      }
+    }
+    return out(parts);
+  }
+
+  // ── 角：三个自由点（顶点 · 边一端点 · 边二端点），不走外接框。
+  if (stroke.shape === 'angle') {
+    if (points.length < 3) return [];
+    const v = px(points[0]);
+    const a = px(points[1]);
+    const b = px(points[2]);
+    const parts: PixelOutline[] = [
+      { closed: false, points: [a, v] },
+      { closed: false, points: [v, b] },
+    ];
+    // 弧：半径取两条边较短者的 1/4（像素），**沿较短的那一侧**扫 —— 否则钝角会画成优角。
+    const r = Math.min(Math.hypot(a[0] - v[0], a[1] - v[1]), Math.hypot(b[0] - v[0], b[1] - v[1])) / 4;
+    if (r > 0) {
+      const t0 = Math.atan2(a[1] - v[1], a[0] - v[0]);
+      const t1 = Math.atan2(b[1] - v[1], b[0] - v[0]);
+      let delta = t1 - t0;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      const arc: InkPoint[] = [];
+      for (let i = 0; i <= 16; i += 1) {
+        const t = t0 + (delta * i) / 16;
+        arc.push([v[0] + Math.cos(t) * r, v[1] + Math.sin(t) * r]);
+      }
+      parts.push({ closed: false, points: arc });
+    }
+    return out(parts);
+  }
+
+  // ── 其余八个：由**外接框**推出。⚠️ 学生可能从任意方向拖 ⇒ 先排序对角。
+  const x0 = Math.min(points[0][0], points[1][0]) * box.w;
+  const x1 = Math.max(points[0][0], points[1][0]) * box.w;
+  const y0 = Math.min(points[0][1], points[1][1]) * box.h;
+  const y1 = Math.max(points[0][1], points[1][1]) * box.h;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const parts: PixelOutline[] = [];
+
+  if (stroke.shape === 'rect') {
+    parts.push({ closed: true, points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  } else if (stroke.shape === 'ellipse') {
+    const ring: InkPoint[] = [];
+    for (let i = 0; i < 32; i += 1) {
+      const t = (i / 32) * Math.PI * 2;
+      ring.push([cx + Math.cos(t) * (w / 2), cy + Math.sin(t) * (h / 2)]);
+    }
+    parts.push({ closed: true, points: ring });
+  } else if (stroke.shape === 'triangle') {
+    parts.push({ closed: true, points: [[cx, y0], [x1, y1], [x0, y1]] });
+  } else if (stroke.shape === 'right-triangle') {
+    parts.push({ closed: true, points: [[x0, y0], [x0, y1], [x1, y1]] });
+    // 直角小方块（一个「L」形折线，画在左下角那个直角上）。
+    // ⚠️ 边长夹取到不超过框的三分之一 —— 很扁的框里它会比框还大。
+    const side = Math.min(Math.min(w, h) / 6, Math.min(w, h) / 3);
+    if (side > 0) parts.push({ closed: false, points: [[x0, y1 - side], [x0 + side, y1 - side], [x0 + side, y1]] });
+  } else if (stroke.shape === 'parallelogram') {
+    parts.push({ closed: true, points: [[x0 + w / 4, y0], [x1, y0], [x1 - w / 4, y1], [x0, y1]] });
+  } else if (stroke.shape === 'trapezoid') {
+    parts.push({ closed: true, points: [[x0 + w / 4, y0], [x1 - w / 4, y0], [x1, y1], [x0, y1]] });
+  }
+  return out(parts);
 }

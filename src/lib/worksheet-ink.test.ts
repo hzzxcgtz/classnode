@@ -45,6 +45,9 @@ import {
   isFarEnough,
   isInkFormat,
   isInkNode,
+  isInkShapeKind,
+  INK_SHAPE_KINDS,
+  shapeOutline,
   normalizeAxis,
   readInkValue,
   strokePath,
@@ -514,4 +517,105 @@ test('🔴 抽稀：一笔只剩两个点时不再抽（再抽就画不出线了
   };
   const out = readInkValue(downsampleInkValue(tiny, 1))!;
   assert.equal(out.strokes[0].points.length, 2, '两个点必须都留着');
+});
+
+/* ══ ★ 2026-09-30：基本图形工具 ═══════════════════════════════════════════
+   教师原话：「帮我解决绘图区支持基本图形工具」，并在四条上分别定了：
+   都要 / 学生画布 / 甲档（选择-移动-改大小-删除）/ 手写笔留着。
+   规格：`specs/2026-09-30-绘图区-基本图形工具.md`
+
+   🔴 这一层是本次的重心：`ink-canvas.tsx`（Canvas）与 `ink-preview.tsx`（SVG）
+      是**两个渲染器**，而判据全在这里 ⇒ 只要这一层的折线是对的，
+      两边的画法就只可能同时对（见 spec 里「几何是那一份」那一节）。
+*/
+
+/** 一个图形的笔迹（点 = 定义几何，不是画出来的点）。 */
+function shapeStroke(shape: string, points: InkPoint[]): InkStroke {
+  return { color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points, shape } as InkStroke;
+}
+
+test('🔴 shapeOutline：手写笔迹（没有 shape）**不产生任何折线**', () => {
+  // 手写那条路走的是画布自己的 `lineTo`（今天就是这样），不经过 shapeOutline。
+  assert.deepEqual(shapeOutline({ color: '', width: 0, points: [[0, 0], [1, 1]] }, { w: 200, h: 100 }), []);
+});
+
+test('🔴 shapeOutline：直线 / 矩形（1 条折线，闭合与否各自标）', () => {
+  const box = { w: 200, h: 100 };
+  assert.deepEqual(shapeOutline(shapeStroke('line', [[0.1, 0.2], [0.6, 0.8]]), box),
+    [{ closed: false, points: [[0.1, 0.2], [0.6, 0.8]] }]);
+
+  const rect = shapeOutline(shapeStroke('rect', [[0.1, 0.2], [0.5, 0.6]]), box);
+  assert.equal(rect.length, 1, '矩形应当是 1 条折线');
+  assert.equal(rect[0].closed, true, '矩形要闭合');
+  assert.deepEqual(rect[0].points, [[0.1, 0.2], [0.5, 0.2], [0.5, 0.6], [0.1, 0.6]]);
+});
+
+test('🔴 shapeOutline：学生从**任意方向**拖都要成立（对角要排序）', () => {
+  // 学生很可能从右下往左上拖 —— 那时 points[0] 是 max、points[1] 是 min。
+  // 🔴 少了对角排序，矩形会自己交叉成「蝴蝶结」，而屏幕上只是「画出来的框怪怪的」。
+  const box = { w: 200, h: 100 };
+  assert.deepEqual(
+    shapeOutline(shapeStroke('rect', [[0.5, 0.6], [0.1, 0.2]]), box)[0].points,
+    [[0.1, 0.2], [0.5, 0.2], [0.5, 0.6], [0.1, 0.6]],
+  );
+});
+
+test('🔴 shapeOutline：**归一化空间是各向异性的** —— 形状要在像素空间里算再转回来', () => {
+  // 🔴 本次最容易做错的地方：x 乘画布宽、y 乘画布高，两者不等。
+  //    先在归一化空间里算「箭头头部」再直接用，宽高比一变箭头就是**歪的**
+  //    —— 而屏幕上只是「箭头看着怪」，没有任何报错。
+  const stroke = shapeStroke('arrow', [[0.1, 0.5], [0.9, 0.5]]);
+  const wingPx = (box: InkCanvas) => {
+    const parts = shapeOutline(stroke, box);
+    assert.equal(parts.length, 2, '箭头应当是「杆 + 头部」两条折线');
+    const [left, tip, right] = parts[1].points;      // 头部 = 左翼 → 尖端 → 右翼
+    const px = (p: InkPoint): InkPoint => [p[0] * box.w, p[1] * box.h];
+    const dist = (p: InkPoint, q: InkPoint) => Math.hypot(px(p)[0] - px(q)[0], px(p)[1] - px(q)[1]);
+    return { left: dist(left, tip), right: dist(right, tip), tipX: px(tip)[0] };
+  };
+  // 很扁的画布 vs 很方的画布：同一个笔迹，**像素空间**里的翼长必须一样。
+  const flat = wingPx({ w: 400, h: 50 });
+  const square = wingPx({ w: 100, h: 100 });
+  // ⚠️ 容差是 **1e-3 像素**，不是 1e-6：`shapeOutline` 把归一化输出统一四舍五入到
+  //    6 位小数（那是为了 `deepEqual` 那些用例稳定），折算到 400px 宽的画布上
+  //    约 4e-4 px —— 比一个像素小四个数量级，肉眼与渲染都无差别。
+  //    ✅ 这条容差仍然咬得住：**不在像素空间算**的话，两种画布下的翼长会差**好几个像素**。
+  assert.ok(Math.abs(flat.left - square.left) < 1e-3,
+    `两种画布下箭头翼长必须相同（像素空间），实际 ${flat.left} vs ${square.left}`);
+  // 两翼对称（左右等长）—— 归一化空间里算的话，这条在非方画布上必红。
+  assert.ok(Math.abs(flat.left - flat.right) < 1e-3, `两翼应当等长，实际 ${flat.left} vs ${flat.right}`);
+  // 尖端落在杆的终点上。
+  assert.ok(Math.abs(flat.tipX - 0.9 * 400) < 1e-3, `尖端应当落在杆的终点，实际 x=${flat.tipX}`);
+});
+
+test('🔴 shapeOutline：椭圆是**闭合折线**（不是弧命令，两个渲染器只会画折线）', () => {
+  const box = { w: 200, h: 200 };
+  const parts = shapeOutline(shapeStroke('ellipse', [[0.2, 0.2], [0.8, 0.8]]), box);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].closed, true);
+  assert.ok(parts[0].points.length >= 16, `椭圆至少要有 16 段，实际 ${parts[0].points.length} 个点`);
+  // 每个点都在外接框上（内切椭圆）—— 用像素空间量，否则非方画布上量不准。
+  for (const [x, y] of parts[0].points) {
+    const dx = (x - 0.5) / 0.3, dy = (y - 0.5) / 0.3;      // 半径 0.3（归一化）
+    assert.ok(Math.abs(Math.hypot(dx, dy) - 1) < 0.02, `点 (${x}, ${y}) 不在内切椭圆上`);
+  }
+});
+
+test('🔴 shapeOutline：角的弧也是折线，且**半径比例一致**', () => {
+  const box = { w: 200, h: 200 };
+  const parts = shapeOutline(shapeStroke('angle', [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]), box);
+  assert.equal(parts.length, 3, '角应当是「两条射线 + 一段弧」');
+  assert.equal(parts[0].closed, false);
+  assert.deepEqual(parts[0].points, [[0.9, 0.1], [0.1, 0.1]], '第一条射线：从边一的端点回到顶点');
+  assert.deepEqual(parts[1].points, [[0.1, 0.1], [0.1, 0.9]], '第二条射线：从顶点到边二的端点');
+  assert.ok(parts[2].points.length >= 4, '弧要是折线（至少几段）');
+});
+
+test('🔴 INK_SHAPE_KINDS：九个，且一条不多一条不少', () => {
+  assert.deepEqual([...INK_SHAPE_KINDS], ['line', 'arrow', 'rect', 'ellipse', 'triangle',
+    'right-triangle', 'parallelogram', 'trapezoid', 'angle']);
+  assert.equal(isInkShapeKind('rect'), true);
+  assert.equal(isInkShapeKind('hexagon'), false);
+  assert.equal(isInkShapeKind(undefined), false);
+  assert.equal(isInkShapeKind(42), false);
 });

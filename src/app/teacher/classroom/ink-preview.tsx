@@ -38,7 +38,9 @@ export function InkPreview({ value }: { value: InkValue }) {
       {value.strokes.map((stroke, index) => (
         <path
           key={index}
-          d={strokePath(stroke.points, box)}
+          // ★ 2026-09-30：第三个参数是**形状**（缺省 = 手写，老值一个字不变）。
+          // ⚠️ 漏了它，图形在这一屏会被画成一条手写线 —— 而学生屏幕上是对的。
+          d={strokePath(stroke.points, box, stroke.shape)}
           fill="none"
           stroke={stroke.color}
           strokeWidth={strokeWidthPx(stroke, box)}

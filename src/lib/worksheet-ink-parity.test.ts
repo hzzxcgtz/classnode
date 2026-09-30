@@ -19,6 +19,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as front from './worksheet-ink.ts';
 import type { InkPoint } from './worksheet-ink.ts';
 import * as serverValidate from '../../server/src/services/worksheet-ink.ts';
@@ -142,4 +145,23 @@ test('★ 三份形状表必须逐字相同（这是三处重复定义，只有�
   //   ⚠️ 漂了的症状：服务端收下一个前端读不回来的 `shape` ⇒ 学生画的图形在教师端**凭空消失**。
   assert.deepEqual([...serverValidate.inkShapeKinds()], [...front.INK_SHAPE_KINDS], '服务端校验那份与前端不一致');
   assert.deepEqual([...mirror.INK_SHAPE_KINDS], [...front.INK_SHAPE_KINDS], '镜像那份与前端不一致');
+});
+
+test('🔴 四处渲染都必须把 shape 传下去（漏一处 = 某个地方把图形画成手写线）', () => {
+  // ★ 2026-09-30。四处渲染点用的是**两种技术**（Canvas 2D / SVG），而「学生画的」
+  //    与「教师看到的」必须一致 —— 本仓最防的就是这类分叉，而它**不报错**：
+  //    图形在某一屏变成一条歪掉的手写线，只有人眼能发现。
+  //    ⇒ 判据是源码级的：每一处都得真的消费形状（`shapeOutline` 或 `strokePath(…, shape)`）。
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const RENDERERS = [
+    'src/app/classroom/worksheet/ink-canvas.tsx',      // 学生画布（Canvas 2D）
+    'src/app/teacher/classroom/ink-preview.tsx',       // 教师 SVG（唯一一个 SVG 渲染器，4 个挂载点）
+    'server/src/services/ink-render.ts',               // 教师用卷导出 → PNG
+    'server/src/services/analysis-render.ts',          // AI 分析联系表（自己拼 <path>，最容易漏）
+  ];
+  for (const file of RENDERERS) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    const consumes = /shapeOutline\(/.test(text) || /strokePath\([^)]*\.shape\s*\)/.test(text);
+    assert.ok(consumes, `${file} 没有消费 shape —— 它会把图形画成一条手写线`);
+  }
 });

@@ -11,6 +11,7 @@ import {
   inkLimitReason,
   isFarEnough,
   normalizeAxis,
+  shapeOutline,
   strokeWidthPx,
   toPixel,
 } from '@/lib/worksheet-ink';
@@ -142,6 +143,24 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
       ctx.lineWidth = strokeWidthPx(stroke, scale);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      // ★ 2026-09-30（基本图形工具）：图形走**折线** —— `shapeOutline` 与教师端 SVG
+      //    （`ink-preview.tsx` 的 `strokePath`）用的是**同一份几何**，所以「学生画的」
+      //    与「教师看到的」在结构上不可能不一样。手写仍然走下面那条老路，一个像素不变。
+      const outlines = shapeOutline(stroke, scale);
+      if (outlines.length > 0) {
+        for (const outline of outlines) {
+          if (outline.points.length === 0) continue;
+          ctx.beginPath();
+          outline.points.forEach((point, index) => {
+            const [x, y] = toPixel(point, scale);
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          if (outline.closed && outline.points.length >= 3) ctx.closePath();
+          ctx.stroke();
+        }
+        return;
+      }
       ctx.beginPath();
       stroke.points.forEach((point, index) => {
         const [x, y] = toPixel(point, scale);

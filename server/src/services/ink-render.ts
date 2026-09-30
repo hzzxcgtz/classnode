@@ -72,7 +72,8 @@ export async function inkToPng(ink: InkValue): Promise<Buffer | null> {
 
   const paths = ink.strokes
     .map((stroke) => {
-      const d = strokePath(stroke.points, box);
+      // ★ 2026-09-30：形状要传下去（教师用卷里的图形不能画成手写线）。
+      const d = strokePath(stroke.points, box, stroke.shape);
       if (!d) return '';
       const width = strokeWidthPx(stroke, box).toFixed(2);
       return `<path d="${d}" stroke="${safeColor(stroke.color)}" stroke-width="${width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;

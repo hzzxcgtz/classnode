@@ -107,7 +107,8 @@ function cellInk(ink: InkValue | undefined, cell: SheetLayout['cells'][number]):
   return ink.strokes
     .filter((stroke) => stroke && Array.isArray(stroke.points) && stroke.points.every(isFinitePoint))
     .map((stroke) => {
-      const d = strokePath(stroke.points, box);
+      // ★ 2026-09-30：同上 —— 这一处**自己拼 `<path>`**，是四处渲染里最容易漏的。
+      const d = strokePath(stroke.points, box, stroke.shape);
       if (!d) return '';
       const width = strokeWidthPx(stroke, box);
       const safeWidth = Number.isFinite(width) && width > 0 ? width.toFixed(2) : '1';

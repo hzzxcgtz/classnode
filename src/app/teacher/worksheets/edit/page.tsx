@@ -391,6 +391,10 @@ function WorksheetEditorBody() {
       onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
       onAutoGradeChange={autoGrade => editor.updateAutoGrade(row.node.id, autoGrade)}
       onToleranceChange={tolerance => editor.updateTolerance(row.node.id, tolerance)}
+      // ★ 2026-09-30（教师第三轮）：公式入口搬回题干工具栏之后，弹窗住在 `PromptEditor`
+      // 里而 toast 住在这里 ⇒ 这句话得转三层（本题卡 → 题干编辑器 → 弹窗的 onCopied）。
+      // 断了不会报错，只是**复制成功一声不吭**。
+      onNotice={notify}
       onRemove={() => void requestRemove(row.node, row.heading)}
     />
   );

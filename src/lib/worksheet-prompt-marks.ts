@@ -1,5 +1,14 @@
+import { splitMath } from './worksheet-math.ts';
+
 /**
- * 题干的行内格式（粗 / 斜 / 下划线 / 着重号 / 颜色）—— **纯逻辑，零 import**。
+ * 题干的行内格式（粗 / 斜 / 下划线 / 着重号 / 颜色）—— **纯逻辑**。
+ *
+ * ⚠️ **import 纪律**（★ 2026-09-30 改写，原文是「零 import」）：本文件要能被 `node --test`
+ *    直接加载 ⇒ 只许**带 `.ts` 后缀**的相对 import（Node 的 ESM **不做后缀补全**，
+ *    `./x.js` 那种写法在这里当场解析失败 —— 先例：`worksheet-heading.ts`）。
+ *    本文件在 2026-09-30 之前一个 import 都没有；那天为了让 `convertBlankMarks` 跳过
+ *    公式段（见那个函数里的一段），加了 `./worksheet-math.ts` —— 它自己是零 import 的，
+ *    所以不会牵出一串依赖。
  *
  * ★ 2026-09-26（教师）：「需增加下划线和着重号，并且可以**只选择下面的部分文字**来设置。」
  *
@@ -549,12 +558,27 @@ export function convertBlankMarks(raw: unknown): { text: string; converted: numb
    *   ④ `SPACE_RUN` 必须排在 `EMPTY_PARENS` **之后**（`（    ）` 里那串空格也会匹配它，
    *      先认括号就只剩一个空；反过来会先被空格规则吃掉、括号留着 ⇒ 两个空）。
    */
-  const text = raw
+  const convert = (chunk: string) => chunk
     .replace(EMPTY_PARENS, mark)
     .replace(SPACED_UNDERSCORES, markKeepingPrefix)
     .replace(UNDERSCORE_RUN, mark)
     .replace(LONE_UNDERSCORE, markKeepingPrefix)
     .replace(SPACE_RUN, markKeepingPrefix);
+  // ★ 2026-09-30（教师第二轮）：**公式段整段跳过**。
+  //
+  // 🔴 为什么这一条现在才有：教师的新流程是「公式弹窗里写好 → 点『复制』→ 到题干/选项里
+  //    ⌘V」，而粘进题干那一条路**必经**这里 ⇒ 公式里万一凑出「（　）」「____」
+  //    「一串空格」的形状，会被**悄悄换成一个填空域**。那是本仓最防的一类：
+  //    两种写法在屏幕上一模一样，存下来的东西却完全不同，而且两边都不报错
+  //    （教师要等到学生端平白多出一个输入框才发现）。
+  // ⚠️ 用的是 `splitMath`（`./worksheet-math`）—— **同一把尺子**。在这里自己再认一遍
+  //    `$` 就是本仓反复被咬的那种分叉（前端认成公式、这里不认）。
+  // ⚠️ 公式段拼回去走 `'$' + tex + '$'` ⇒ `$$…$$` 会归一成 `$…$`。这是**有意**的：
+  //    两串渲染上一模一样（`MathSpan` 一律行内），而要保住那两个字节就得在这里重走一遍
+  //    「这一段原文占多宽」，那条路算错的代价是**静默改坏教师的原文**。
+  const text = splitMath(raw)
+    .map(piece => (piece.kind === 'math' ? '$' + piece.tex + '$' : convert(piece.text)))
+    .join('');
   return { text, converted };
 }
 

@@ -87,3 +87,27 @@ export function splitMath(text: string): MathPiece[] {
 export function mathText(pieces: MathPiece[]): string {
   return pieces.map((piece) => (piece.kind === 'math' ? piece.tex : piece.text)).join('');
 }
+
+/**
+ * 源码 → **剪贴板上那一串**（公式弹窗的「复制」放出去的就是它）。
+ *
+ * 🔴 它是 `splitMath` 的**写那一半**：读那一半决定「什么算公式」，写这一半决定
+ *    「放出去的那串一定会被认成公式」。两边住在同一个文件里，就是为了不给它们分叉的
+ *    机会 —— 教师复制出去要粘在题干、选项、参考答案、表格格子里，认不出来时
+ *    **两边都不报错**，只是那一段变成一段死源码，要等学生端才发现。
+ *
+ * 三条判断，每条都对着 `splitMath` 的规则：
+ *   · 前后空白剥掉 —— 从别处粘进来的源码常带一个尾巴空格；
+ *   · 源码里的换行**折成空格** —— 规则 3 说公式不跨行，留着换行的那一串
+ *     **永远不会**被认成公式，而屏幕上看不出区别；
+ *   · **本来就是一段公式的（``$…$`` / ``$$…$$``）原样返回，不再包一层** ——
+ *     `$x^2$` 再包一层成 `$$x^2$$` 是规则 1 的另一档，含义变了而屏幕上看不出来。
+ * ⚠️ 空 / 只有空白 ⇒ **空串**（不是 `$$`：那是一个空公式，渲染出来是个错误标记）。
+ */
+export function mathMarkup(source: string): string {
+  const text = source.replace(/\r\n?/g, '\n').replace(/\n/g, ' ').trim();
+  if (text === '') return '';
+  const pieces = splitMath(text);
+  if (pieces.length === 1 && pieces[0].kind === 'math') return text;
+  return '$' + text + '$';
+}

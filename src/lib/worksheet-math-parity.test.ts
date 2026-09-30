@@ -16,8 +16,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitMath as front, mathText as frontText } from './worksheet-math.ts';
-import { splitMath as back, mathText as backText } from '../../server/src/services/worksheet-math.ts';
+import { splitMath as front, mathText as frontText, mathMarkup as frontMarkup } from './worksheet-math.ts';
+import { splitMath as back, mathText as backText, mathMarkup as backMarkup } from '../../server/src/services/worksheet-math.ts';
 
 /** 一批刻意刁钻的输入：裸 `$` / 没闭合 / 跨行 / `$$` / 空 / 相邻公式 / 边界字符。 */
 const INPUTS = [
@@ -39,6 +39,10 @@ test('★ 对拍：同一批输入 ⇒ 两边的切分与剥定界符结果逐�
   for (const input of INPUTS) {
     assert.deepEqual(back(input), front(input), `切分不一致：${JSON.stringify(input)}`);
     assert.equal(backText(back(input)), frontText(front(input)), `mathText 不一致：${JSON.stringify(input)}`);
+    // ★ 2026-09-30：写那一半（弹窗「复制」放出去的那串）也要对拍 —— 它决定了
+    // 「复制出去的东西落进任何输入框之后还算不算公式」，两边不一致的症状是
+    // 「教师端看着是公式、导出/判分那一侧当成普通文字」，两边都不报错。
+    assert.equal(backMarkup(input), frontMarkup(input), `mathMarkup 不一致：${JSON.stringify(input)}`);
   }
 });
 
@@ -47,6 +51,7 @@ test('阳性对照：这条网真的在读服务端那份文件（否则两边�
   //    「not a function」—— 那还算好。真正的风险是两份都被换成同一个空实现。
   assert.equal(typeof back, 'function', '服务端那份没被加载起来');
   assert.equal(typeof backText, 'function', '服务端那份没被加载起来');
+  assert.equal(typeof backMarkup, 'function', '服务端那份的 mathMarkup 没被加载起来');
   // 刁钻输入里必须真的有公式被切出来（否则「两边都是原样返回」也能逐字相同）。
   // ⚠️ `'光$x^2$'` 切出来是 **2** 段（文字 + 公式），不是 3 —— 这个数写错时
   //    失败的是**阳性对照自己**，而那正是它该做的事（它证明自己有牙齿）。

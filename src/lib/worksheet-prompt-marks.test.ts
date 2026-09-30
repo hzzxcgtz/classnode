@@ -844,6 +844,40 @@ test('🔴 convertBlankMarks：**幂等**（再跑一遍一个字都不动）', 
   assert.deepEqual(convertBlankMarks(once), { text: once, converted: 0 });
 });
 
+/**
+ * ★ 2026-09-30（教师第二轮）：公式段**整段跳过**。
+ *
+ * 🔴 为什么这一条现在才有：教师的新流程是「公式弹窗写 → 点复制 → 到题干/选项里 ⌘V」，
+ *    而粘进题干那一条路**必经** `convertBlankMarks`（粘贴的转换就在这里）——
+ *    公式里万一凑出「（　）」「____」「四个空格」的形状，会被**悄悄换成一个填空域**。
+ *    那是本仓最防的一类：两种写法在屏幕上一模一样，而存下来的东西完全不同，
+ *    两边都不报错（教师要等到学生端多出一个输入框才发现）。
+ * ⚠️ 判据用的是 `splitMath`（同目录的 `worksheet-math.ts`）——**同一把尺子**，
+ *    不在这里自己认一遍 `$`（两份认法就是下一次分叉的地方）。
+ */
+test('🔴 convertBlankMarks：`$…$` 里的东西不是填空域（公式段整段跳过）', () => {
+  assert.deepEqual(convertBlankMarks('求 $f(  )$ 的值'), { text: '求 $f(  )$ 的值', converted: 0 });
+  assert.deepEqual(convertBlankMarks('求 $\\frac{1}{____}$ 的值'), { text: '求 $\\frac{1}{____}$ 的值', converted: 0 });
+  assert.deepEqual(convertBlankMarks('求 $a    b$ 的值'), { text: '求 $a    b$ 的值', converted: 0 });
+  // 阳性对照：公式**外面**的照样换（别为了跳公式把整段都放过了 —— 那会让填空题
+  // 粘进来一个空都认不出，症状是「学生端没有输入框」）。
+  assert.deepEqual(
+    convertBlankMarks('求 $x^2$ 与 （　） 的值'),
+    { text: '求 $x^2$ 与 {填空域} 的值', converted: 1 },
+  );
+  // 安全阀（`splitMath` 规则 4）照旧：认不出来的 `$` 只是普通字符 ⇒ 它后面的括号照换。
+  assert.deepEqual(convertBlankMarks('每本 $5，买（　）本'), { text: '每本 $5，买{填空域}本', converted: 1 });
+});
+
+test('🔴 convertBlankMarks：`$$…$$` 会归一成 `$…$` —— **刻意**，理由在这里', () => {
+  // ⚠️ 这一条钉的是一个**已知且有意**的行为（不是漏网）：拼回去的时候公式段走
+  //    `'$' + tex + '$'`，而 `splitMath` 剥掉的是双层 ⇒ `$$x^2$$` 变成 `$x^2$`。
+  //    两串在渲染上**一模一样**（`MathSpan` 一律 `displayMode: false`，都是行内）。
+  //    要保住那两个字节，就得在这里重走一遍「这一段原文到底占了多宽」——
+  //    而那条路一旦算错，代价是**静默改坏教师的原文**，比一次渲染等价的重写糟得多。
+  assert.deepEqual(convertBlankMarks('$$x^2$$ 与 （　）'), { text: '$x^2$ 与 {填空域}', converted: 1 });
+});
+
 test('🔴 convertBlankMarks：不是字符串 / 空串 ⇒ 空串（不抛、不编）', () => {
   assert.deepEqual(convertBlankMarks(undefined), { text: '', converted: 0 });
   assert.deepEqual(convertBlankMarks(null), { text: '', converted: 0 });

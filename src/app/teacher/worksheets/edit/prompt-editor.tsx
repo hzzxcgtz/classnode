@@ -29,8 +29,6 @@ import {
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
 import { TABLE_MARK_TEXT, tableMarkIndex } from '@/lib/worksheet-table';
-// ★ 2026-09-30：常显预览用的就是题干那**同一个**渲染器（与学生端、与折叠预览同一个组件）。
-import { PromptText } from '@/lib/worksheet-prompt-text';
 import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
 import { MathInsertDialog } from './math-insert-dialog';
@@ -96,6 +94,17 @@ export interface PromptEditorProps {
    * 题目卡据此把「表格域作答设置」那块**滚进视野**（不再是展开/收起：标记在不在就是显示/隐藏）。
    */
   onTableMarkClick?: () => void;
+  /**
+   * ★ 2026-09-30（教师第三轮）：说一句话给教师听（弹一条 toast）。
+   *
+   * 🔴 现在只有一处用它：公式弹窗点「复制」成功之后那句「公式已复制…」。
+   *    它的住处在**编辑页**那一层（`page.tsx` 的 `notify`），而弹窗住在这一层 ——
+   *    这条链路断了的症状是「复制成功了一声不吭」：克隆出来的代码照样编译、照样跑，
+   *    屏幕上只是**少了一句本该出现的话**。
+   * ⚠️ 与 `useWorksheetEditor` 的 `onNotice` 同名同形状（`(message, type)`）——
+   *    两处说的是同一件事，改名会让下一个人以为它们是两套东西。
+   */
+  onNotice: (message: string, type: 'success' | 'error') => void;
 }
 
 /** 工具栏的亮灯状态 —— 由**当前选区**决定，所以必须是 state（选区变了要重画按钮）。 */
@@ -168,7 +177,7 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
 ];
 
-export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick }: PromptEditorProps) {
+export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
   /**
    * ★ 2026-09-29（教师）：「增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」。
@@ -197,10 +206,13 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
    */
   const [colorOpen, setColorOpen] = useState(false);
   /**
-   * ★ 2026-09-30：「插入公式」的小弹窗开着没有。
-   * 🔴 它**必须与 `pendingRangeRef` 配合**：弹窗一开，焦点就从 contenteditable 走了 ——
-   *    插入时靠 `selectedRange(el) || pendingRangeRef.current` 找回落点，与颜色下拉
-   *    那条路**完全一样**（`pendingRangeRef` 的注释记着为什么 `preventDefault` 顶替不了它）。
+   * ★ 2026-09-30：「插入公式」那个弹窗开着没有。
+   *
+   * 三轮的落点：题干工具栏（第一轮）→ 编辑页右下角悬浮（第二轮）→ **回到题干工具栏**
+   *（第三轮，教师原话：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的」）。
+   * ⚠️ **收尾动作没有跟着回退**：仍然是「复制 → 到任何输入框里粘贴」
+   *（第二轮裁定，第三轮明确说「其他功能不变」）—— 所以给**选项**加公式这条路照旧走得通，
+   *只是入口回到了教师习惯的地方。
    */
   const [mathOpen, setMathOpen] = useState(false);
   const colorBoxRef = useRef<HTMLDivElement | null>(null);
@@ -563,36 +575,13 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     refreshToolbar();
   };
 
-  /**
-   * ★ 2026-09-30（教师裁定 ①）：把弹窗里写好的 LaTeX 插到**光标/选区**处，包成 `$…$`。
-   *
-   * 🔴 走 `insertPromptText`（**与粘贴同一条路**）：它负责把已有的区间跟着文字搬、
-   *    把光标算准。自己拼字符串会让 `promptRuns` 的区间与文本分叉 —— 本仓最防的那类缺陷。
-   * ⚠️ 与 `insertTableMarkAtCaret` 的差别：公式**是一段普通文字** ⇒ 插完要重新识别填空域
-   *    （`recognizeBlanks`）；万一 `$…$` 里正好凑出 `{填空域}` 那五个字，也照样认得出。
-   *    表格标记没有这个顾虑（它靠 `tableMarkIndex` 就地认）。
-   * ⚠️ `setMathOpen(false)` 必须在**早退之前**：不然「什么都没变」（选区是空的、
-   *    文本没动）那条路上弹窗会一直挂着。
-   */
-  const insertMathAtCaret = (tex: string) => {
-    const el = editableRef.current;
-    if (!el) return;
-    const text = node.prompt;
-    const range = selectedRange(el) || pendingRangeRef.current;
-    const from = range ? range.from : (caretOffset(el) ?? text.length);
-    const to = range ? range.to : from;
-    const mark = `$${tex}$`;
-    const inserted = insertPromptText(runsRef.current, text, from, to, mark);
-    setMathOpen(false);
-    if (inserted.text === text) return;
-    const nextRuns = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => newBlankId());
-    onPromptChange(inserted.text, promptDataPatch(runsRef.current, nextRuns));
-    renderRunsInto(el, inserted.text, nextRuns);
-    const after = from + mark.length;
-    el.focus();
-    placeSelection(el, after, after);
-    refreshToolbar();
-  };
+  // ⊘ 2026-09-30：「插入到光标处」那条路**已经没有了** ——
+  //   第二轮教师说「好了以后也不要直接点『插入』，而且提供『复制』按钮，这样用户就可以在
+  //   任何地方粘贴公式了」⇒ 收尾改成复制（见 `math-insert-dialog.tsx`）；
+  //   第三轮把入口从右下角悬浮**搬回这条工具栏**，但**收尾动作没有跟着回退**。
+  //   ⚠️ 所以本文件里没有 `insertMathAtCaret` 这样的函数：公式**不再**由这里插进题干，
+  //     而是教师自己在弹窗里复制、在题干（或任何别的输入框）里 ⌘V（粘贴那条路见
+  //     `handlePaste`，公式段会在 `convertBlankMarks` 里被跳过）。
 
   const insertTableMarkAtCaret = () => {
     const el = editableRef.current;
@@ -762,17 +751,22 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
             粘贴题目
           </button>
           )}
-          {/* ★ 2026-09-30（教师裁定 ①）：插入数学公式。
-              ⚠️ **所有题型都适用**（不像「填空域」只对填空类），所以它不挂在任何题型条件下。
+          {/* ★ 2026-09-30（教师第三轮）：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的。
+              就在西格玛符号后面加上『数学公式』四个字就可以了，其他功能不变。」
+              ⇒ 它第二轮被搬去右下角悬浮，现又搬回这里。
+              🔴 **收尾动作没有跟着回退**：弹窗里仍然是「复制」而不是「插入到光标处」，
+                 所以给**选项 / 连线两栏 / 归类条目 / 表格格子 / 参考答案**加公式这条路
+                 照旧走得通（复制完到那些输入框里 ⌘V）—— 那才是第二轮改动的目的。
               ⚠️ 用 `onMouseDown` + `preventDefault` 与旁边那几个按钮同一条理由：
-                  点按钮会把输入框的焦点与选区一起拿走。 */}
+                 点按钮会把输入框的焦点与选区一起拿走。 */}
           <button
             type="button"
-            title="在光标处插入一个数学公式"
-            aria-label="插入公式"
+            title="插入数学公式（写好后点复制，到任何输入框里粘贴）"
+            aria-label="数学公式"
             onMouseDown={(event) => { event.preventDefault(); setMathOpen(true); }}
           >
             <span className="worksheet-editor-math-glyph" aria-hidden="true">Σ</span>
+            数学公式
           </button>
           {/* ★ 2026-09-28（教师）：「跟填空域一样增加一个表格域，点击以后插入」。
               ⚠️ 一份题干只允许一处标记 ⇒ 已经有标记时**禁用**（title 告诉教师去哪儿找）
@@ -849,21 +843,11 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           }}
         />
       </div>
-      {/* ★ 2026-09-30（教师裁定 ①）：编辑体**下方常显**一行渲染预览。
-          🔴 教师的公式在源码里是 `$x^2$`（编辑框里就长这样，光标能正常进出），
-             这一行让他**当场**看到学生将会看到的样子 —— 不必折叠题目卡再回来。
-          ⚠️ 它**只渲染、不接受编辑**：编辑永远在上面那个 contenteditable 里。
-          ⚠️ 与折叠预览（`question-card.tsx`）用的是**同一个组件**，不是另写一份 ——
-             两处各画一次就是本仓最防的那种分叉（那个文件的文件头为同一件事写过一整段）。 */}
-      <div className="worksheet-editor-math-preview">
-        <span className="worksheet-editor-math-preview-label">预览</span>
-        <PromptText
-          text={node.prompt}
-          runs={readPromptRunsFor(node)}
-          placeholder="（题干还没写）"
-          table={node.data.table}
-        />
-      </div>
+      {/* ⊘ 2026-09-30（教师第三轮）：「这个预览我觉得完全没有必要，因为用户可以在右上角点
+          『预览』看到渲染后的结果。」⇒ 题干下面那条**常显预览**删掉了。
+          ⚠️ 删的是**这一条**，不是渲染本身：右上角那个「预览」弹窗（`WorksheetPreviewModal`）
+             照旧渲染整份学习单；而写公式时的实时预览在弹窗的「效果」区里
+             （`math-insert-dialog.tsx`）—— 教师看公式的地方本来就该在那儿。 */}
       {/* ⚠️ 没选中时给一句为什么按不动（裁定 ② 的代价：这些按钮没有第二种含义）。
           放在**框外面**：它夹在工具条与正文中间的话，那个框就不像一个整体了。 */}
       <p className="worksheet-editor-format-hint">
@@ -876,9 +860,15 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
         </div>
       )}
       {uploadError && <p className="worksheet-editor-upload-error" role="alert">{uploadError}</p>}
-      {/* ★ 2026-09-30：公式插入弹窗（开着才渲染）。 */}
+      {/* ★ 2026-09-30：公式弹窗（开着才渲染）。
+          ⚠️ `onCopied` 必须把话**送到编辑页那一层**去弹 —— 在这里 `setMathOpen(false)`
+             只是关窗；弹窗自己也已经在复制成功后调了 `onClose`，两处都留着是有意的
+             （关窗是弹窗的职责，说话是这一层的职责）。 */}
       {mathOpen && (
-        <MathInsertDialog onInsert={insertMathAtCaret} onCancel={() => setMathOpen(false)} />
+        <MathInsertDialog
+          onClose={() => setMathOpen(false)}
+          onCopied={message => onNotice(message, 'success')}
+        />
       )}
     </div>
   );

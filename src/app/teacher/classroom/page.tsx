@@ -25,7 +25,7 @@ import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } 
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
-import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerLayout, type HeaderControlId } from './header-controls';
+import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControlGroups, headerLayout, type HeaderControlId } from './header-controls';
 // ★ 2026-09-30：逐题开放。`normalizeOpenQuestions` 收线缆上那份 id 清单（判据在那个文件里），
 // 浮层是这一屏的第三个「按学习单看全班」的工具。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
@@ -2588,8 +2588,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
             <div>
+              {/* ⊘ 2026-09-30（教师）：「这些字不要了」—— 原来这一行下面还有一句
+                  「点击学生卡片查看完整对话，使用筛选快速定位课堂状态」。
+                  ⚠️ 副标题整个删掉（不是藏起来）：这一屏是**投影给全班看的**，
+                  标题下面多一行小字只会占地方；而那两句话本身在第一次用的时候就懂了。 */}
               <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
-              <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>点击学生卡片查看完整对话，使用筛选快速定位课堂状态</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {/* ★ 2026-09-29（教师选「乙」）：这一行的控件由**判据表**驱动 ——
@@ -2599,82 +2602,99 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   把按钮改淡有真实的可发现性代价，而分组本身已经解决了「五种东西看着像一种」。
                   ⚠️ `矩阵` 挪到了 `学习单` 旁边：两者是「按学习单看全班」的两面
                   （一个按题看正确率与逐生作答、一个看学生×题谁卡住），原先被两个设置项隔开。 */}
-              {header.controls.map((control) => {
-                const button = (
-                  <button type="button"
-                    // ★ 2026-09-29：每个按钮都登记进 `headerButtonRefs`（两个设置弹窗关闭时
-                    // 要把焦点还回**开它的那一个**，见那条 effect）。原来只有「课堂权限」一个。
-                    ref={(el) => { headerButtonRefs.current[control.id] = el; }}
-                    className={control.active ? 'btn btn-primary' : 'btn btn-secondary'}
-                    onClick={headerActions[control.id]}
-                    disabled={control.disabled}
-                    title={control.title || undefined}
-                    aria-haspopup={control.popup ?? undefined}
-                    aria-expanded={control.popup ? control.expanded : undefined}
-                    style={{
-                      minHeight: 36, padding: '7px 12px',
-                      // 两个**状态开关**是唯一点蓝字的（与「已暂停 / 已锁定」时整块变蓝同一套语义）；
-                      // 其余控件用默认字色。这是既有的层级，重构没动它。
-                      color: control.active ? 'white' : control.kind === 'state' ? '#527198' : undefined,
-                    }}>
-                    {headerIcons[control.id](control.active)}
-                    {control.label}
-                    {control.popup && headerCaret}
-                  </button>
-                );
-                return (
-                  <Fragment key={control.id}>
-                    {/* 组边界：判据层给的是 `startsGroup`，这里只管画。 */}
-                    {control.startsGroup && (
-                      <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 2px' }} />
-                    )}
-                    {/* 🔴 模块状态的下拉菜单靠「点外面关」，而那个判据是
-                        `modulesMenuRef.contains(target)` —— 锚点必须**同时包住按钮与菜单**，
-                        所以只有它需要一层 `position: relative` 的包裹。
-                        ⚠️ 这是 DOM 管道（哪个元素持有 ref、哪个浮层就地渲染），不是判据：
-                        判据全在 `header-controls.ts`，这里只有两个 id 分支。 */}
-                    {control.popup ? (
-                      <div
-                        ref={control.id === 'module-state' ? modulesMenuRef
-                          : control.id === 'worksheet-menu' ? worksheetMenuRef
-                            : control.id === 'companion-menu' ? companionMenuRef
-                              : undefined}
-                        style={{ position: 'relative' }}>
-                        {button}
-                        {control.id === 'module-state' && showModulesMenu && (
-                          <ModuleStateMenu
-                            modules={classroom.modules}
-                            busy={controlBusy}
-                            neverConfigured={modulesNeverConfigured}
-                            onSelect={(moduleKey, state) => void setModuleState(moduleKey, state)} />
-                        )}
-                        {control.id === 'companion-menu' && showCompanionMenu && (
-                          <CompanionMenu
-                            onSelect={(item) => {
-                              if (item === 'analysis') setShowWordCloud(true);
-                              else { settingsOpenerRef.current = 'companion-menu'; setSettingsDialog('companion'); }
-                            }}
-                            onClose={() => setShowCompanionMenu(false)} />
-                        )}
-                        {control.id === 'worksheet-menu' && showWorksheetMenu && (
-                          <WorksheetMenu
-                            // 「答题分析」= 原来那个「学习单」按钮（抽屉）；
-                            // 「进度矩阵」= 原来那个「矩阵」按钮（浮层）。两条路一个字都没改。
-                            // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
-                            // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
-                            //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
-                            onSelect={(item) => {
-                              if (item === 'analysis') { openWorksheetDrawer({ kind: 'worksheets' }); return; }
-                              if (item === 'matrix') { setMatrixOpen(true); return; }
-                              setShowWorksheetOpen(true);
-                            }}
-                            onClose={() => setShowWorksheetMenu(false)} />
-                        )}
-                      </div>
-                    ) : button}
-                  </Fragment>
-                );
-              })}
+              {/* ★ 2026-09-30（教师第三轮）：「这个要**归归类**，按钮样式要有区分。」
+                  ⇒ 分组从「组与组之间一条 1px 分隔线」改成**一个盒子装一组**：
+                  那条线（`#e2e8f0`）在投影仪上基本看不见，而盒子是**结构性**的。
+                  ⚠️ 按钮本身**一个字没改**（对比度、尺寸、圆角都不动）——
+                     这一屏是投影给全班看的，把按钮按类别改淡有真实的可发现性代价。
+                  ⚠️ 分组是**判据层给的**（`headerControlGroups`），这里只管画：
+                     别在这一层自己数「第几个开始是新组」—— 那种数法没有任何东西钉得住。 */}
+              {headerControlGroups(header.controls).map((group) => (
+                <div
+                  key={group[0].id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '3px 4px', borderRadius: 12, background: '#e8eef6',
+                  }}
+                >
+                  {group.map((control) => {
+                  const button = (
+                    <button type="button"
+                      // ★ 2026-09-29：每个按钮都登记进 `headerButtonRefs`（两个设置弹窗关闭时
+                      // 要把焦点还回**开它的那一个**，见那条 effect）。原来只有「课堂权限」一个。
+                      ref={(el) => { headerButtonRefs.current[control.id] = el; }}
+                      className={control.active ? 'btn btn-primary' : 'btn btn-secondary'}
+                      onClick={headerActions[control.id]}
+                      disabled={control.disabled}
+                      title={control.title || undefined}
+                      aria-haspopup={control.popup ?? undefined}
+                      aria-expanded={control.popup ? control.expanded : undefined}
+                      style={{
+                        minHeight: 36, padding: '7px 12px',
+                        // 两个**状态开关**是唯一点蓝字的（与「已暂停 / 已锁定」时整块变蓝同一套语义）；
+                        // 其余控件用默认字色。这是既有的层级，重构没动它。
+                        color: control.active ? 'white' : control.kind === 'state' ? '#527198' : undefined,
+                      }}>
+                      {headerIcons[control.id](control.active)}
+                      {control.label}
+                      {control.popup && headerCaret}
+                    </button>
+                  );
+                  return (
+                    <Fragment key={control.id}>
+                      {/* ⊘ 2026-09-30：原来这里画一条 1px 的组边界线
+                          （`control.startsGroup`）—— 改成盒子之后它没有用了，
+                          而**判据层的那个字段也一并删了**（留着一个没人读的布尔
+                          只会让下一个人以为分组还在那儿按线分）。 */}
+                      {/* 🔴 模块状态的下拉菜单靠「点外面关」，而那个判据是
+                          `modulesMenuRef.contains(target)` —— 锚点必须**同时包住按钮与菜单**，
+                          所以只有它需要一层 `position: relative` 的包裹。
+                          ⚠️ 这是 DOM 管道（哪个元素持有 ref、哪个浮层就地渲染），不是判据：
+                          判据全在 `header-controls.ts`，这里只有两个 id 分支。 */}
+                      {control.popup ? (
+                        <div
+                          ref={control.id === 'module-state' ? modulesMenuRef
+                            : control.id === 'worksheet-menu' ? worksheetMenuRef
+                              : control.id === 'companion-menu' ? companionMenuRef
+                                : undefined}
+                          style={{ position: 'relative' }}>
+                          {button}
+                          {control.id === 'module-state' && showModulesMenu && (
+                            <ModuleStateMenu
+                              modules={classroom.modules}
+                              busy={controlBusy}
+                              neverConfigured={modulesNeverConfigured}
+                              onSelect={(moduleKey, state) => void setModuleState(moduleKey, state)} />
+                          )}
+                          {control.id === 'companion-menu' && showCompanionMenu && (
+                            <CompanionMenu
+                              onSelect={(item) => {
+                                if (item === 'analysis') setShowWordCloud(true);
+                                else { settingsOpenerRef.current = 'companion-menu'; setSettingsDialog('companion'); }
+                              }}
+                              onClose={() => setShowCompanionMenu(false)} />
+                          )}
+                          {control.id === 'worksheet-menu' && showWorksheetMenu && (
+                            <WorksheetMenu
+                              // 「答题分析」= 原来那个「学习单」按钮（抽屉）；
+                              // 「进度矩阵」= 原来那个「矩阵」按钮（浮层）。两条路一个字都没改。
+                              // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
+                              // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
+                              //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
+                              onSelect={(item) => {
+                                if (item === 'analysis') { openWorksheetDrawer({ kind: 'worksheets' }); return; }
+                                if (item === 'matrix') { setMatrixOpen(true); return; }
+                                setShowWorksheetOpen(true);
+                              }}
+                              onClose={() => setShowWorksheetMenu(false)} />
+                          )}
+                        </div>
+                      ) : button}
+                    </Fragment>
+                  );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 

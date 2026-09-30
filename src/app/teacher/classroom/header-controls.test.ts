@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
+  COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControlGroups, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
 } from './header-controls.ts';
 
 /** 一个「什么都正常」的课堂：标准模式、进行中、未暂停、跟随、非全屏、不忙。 */
@@ -48,28 +48,62 @@ function stripText(controls: ReturnType<typeof headerControls>) {
 
 /* ── 1. 清单本身：有哪些、按什么顺序、怎么分组 ─────────────────────── */
 
-test('🔴 标准模式 + 跟随：正好这八个控件，按「状态｜动作｜看数据｜设置」排', () => {
+test('🔴 标准模式 + 跟随：正好这八个控件，按**教师定死的三组**排', () => {
+  // ★ 2026-09-30（教师第三轮）：「这个分类我认为是这样分：暂停课堂和锁定作答是一类，
+  // 全体消息、全屏、模块状态是一类，学习单、探究空间和智能学伴是一类，并且按这个顺序。」
+  // ⚠️ 顺序**变了**：全屏与模块状态原来一个在第 5 位、一个在最后，现在都并进第二组。
   assert.deepEqual(stripText(headerControls(BASE)), [
+    // ① 课堂状态
     'pause=暂停课堂',
     'lock=锁定作答',
+    // ② 对全班 / 整屏起作用
     'notify=全体消息',
-    'worksheet-menu=学习单',
-    // ★ 2026-09-30：全屏跟着「学习单」在同一组（都是「看数据」那一类）。
     'fullscreen=全屏',
+    'module-state=模块状态',
+    // ③ 三个模块各自的入口
+    'worksheet-menu=学习单',
     'explore-settings=探究空间',
     'companion-menu=智能学伴',
-    'module-state=模块状态',
   ]);
 });
 
-test('🔴 分组边界由 `startsGroup` 给出（渲染层只管画线，不做判断）', () => {
+test('🔴 分组是**结构**（一个盒子装一组），不是「在第几个前面画一条线」', () => {
   const controls = headerControls(BASE);
-  // 第一项恒 false —— 一个开在最左边的分隔线是没有意义的。
-  // ★ 2026-09-30：`fullscreen` 插在 `worksheet-menu` 后面，两者同类 ⇒ 它**不**起新组。
-  assert.deepEqual(controls.map((c) => c.startsGroup), [false, false, true, true, false, true, false, false]);
   assert.deepEqual(controls.map((c) => c.kind), [
-    'state', 'state', 'action', 'view', 'view', 'setting', 'setting', 'setting',
+    'state', 'state',
+    'global', 'global', 'global',
+    'module', 'module', 'module',
   ]);
+  // 🔴 为什么把 `startsGroup` 那个布尔换成 `headerControlGroups`：前者要求**渲染层自己
+  //    数边界**（判据只给了一个「这里要画线」的位），而屏幕上真正的形状是「三组、
+  //    每组一个盒子」—— 用布尔表达时，「三组」这个事实在判据层里**根本没有出现过**，
+  //    一条用例也就钉不住它。改成返回分组之后，下面这一条就是那个事实本身。
+  assert.deepEqual(headerControlGroups(controls).map((group) => group.map((c) => c.id)), [
+    ['pause', 'lock'],
+    ['notify', 'fullscreen', 'module-state'],
+    ['worksheet-menu', 'explore-settings', 'companion-menu'],
+  ]);
+});
+
+test('🔴 同步分组进第 2 组、排在最前（它和「全体消息」一样是对全班做一件事）', () => {
+  // ⚠️ 教师这一轮**没有点名它**（标准模式下它压根不出现）⇒ 这条是实施时定的：
+  //    它是个**动作**（把班级的分组同步进课堂），既不是课堂状态开关，
+  //    也不是某个模块自己的入口 ⇒ 只能进第 2 组。教师看到后可以改。
+  assert.deepEqual(headerControlGroups(headerControls({ ...BASE, mode: 'group' })).map((g) => g.map((c) => c.id)), [
+    ['pause', 'lock'],
+    ['sync-groups', 'notify', 'fullscreen', 'module-state'],
+    ['worksheet-menu', 'explore-settings', 'companion-menu'],
+  ]);
+});
+
+test('🔴 `headerControlGroups`：不丢项、不重排（把清单摊平必须与输入逐项相同）', () => {
+  // ⚠️ 这条是那个函数的**安全阀**：它按 `kind` 分组，一旦分错（比如按 `popup` 分、
+  //    或者漏掉某一类），下面三组里就会少东西或多东西 —— 而屏幕上是「某个按钮不见了」，
+  //    不报错。摊平回去逐项比，是唯一能挡住它的写法。
+  for (const input of [BASE, { ...BASE, mode: 'group' }, { ...BASE, status: 'ended' }] as HeaderLayoutInput[]) {
+    const controls = headerControls(input);
+    assert.deepEqual(headerControlGroups(controls).flat().map((c) => c.id), controls.map((c) => c.id));
+  }
 });
 
 test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各自独立的按钮', () => {

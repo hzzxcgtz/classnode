@@ -12,16 +12,30 @@
  * 那些类型住在 `page.tsx`（260k）与 `@/lib/types`，为一个「拿几个字符串比一比」的函数
  * 去依赖它们，收益为零而耦合是实的。
  *
- * ── 屏幕上的形状（按性质分四段，段之间一条分隔线）──────────────────────
- *   [暂停课堂][锁定作答] │ [同步分组][通知全体] │ [学习单][矩阵][全屏] │ [课堂权限▾][模块状态▾]
+ * ── 屏幕上的形状（**三组，每组一个盒子**）─────────────────────────────────
  *
- * 为什么会「杂乱」（教师的原话）：这五种东西原先**完全同级** —— 同一套 `btn-secondary`、
- * 同样 36px 高、同样内边距。⇒ 分组靠**位置与分隔线**表达，不靠颜色深浅
- * （那是投影给全班看的屏，把按钮改淡有真实的可发现性代价）。
+ *   〔暂停课堂 锁定作答〕  〔全体消息 全屏 模块状态〕  〔学习单▾ 探究空间▾ 智能学伴▾〕
+ *      ① 课堂状态              ② 对全班 / 整屏            ③ 三个模块各自的入口
+ *
+ * ★ 2026-09-30（教师第三轮）：「这个分类我认为是这样分：**暂停课堂和锁定作答是一类，
+ * 全体消息、全屏、模块状态是一类，学习单、探究空间和智能学伴是一类，并且按这个顺序**。」
+ *
+ * ⊘ 上一版是「按性质分四段、段之间一条 1px 分隔线」，而教师看到的是
+ *   「这八个小按钮平铺着」—— 那条线（`#e2e8f0`，1px）**投屏上基本看不见**。
+ *   ⇒ 分组从「一条线」改成**结构**：一个盒子装一组。见下面 `headerControlGroups`。
  */
 
-/** 一个控件属于哪一类。**顺序就是屏幕上的顺序**（`state` → `action` → `view` → `setting`）。 */
-export type HeaderControlKind = 'state' | 'action' | 'view' | 'setting';
+/**
+ * 一个控件属于哪一组。**顺序就是屏幕上的顺序**（`state` → `global` → `module`）。
+ *
+ * ★ 2026-09-30（教师第三轮）逐字定的三组，取值域就照着它来：
+ *   · `state`  —— 课堂状态开关（暂停课堂 / 锁定作答）；
+ *   · `global` —— 对全班 / 整屏起作用（全体消息 / 全屏 / 模块状态）；
+ *   · `module` —— **三个模块各自的入口**（学习单 / 探究空间 / 智能学伴）。
+ * ⊘ 原来那四个值（`action` / `view` / `setting`）是上一版按「性质」分的，
+ *   与教师这次点的三组**对不上**（例如「全屏」原来与「学习单」同组，现在归第 2 组）。
+ */
+export type HeaderControlKind = 'state' | 'global' | 'module';
 
 export type HeaderControlId =
   /** 课堂状态开关：暂停 / 恢复整节课。 */
@@ -118,11 +132,6 @@ export interface HeaderControl {
   active: boolean;
   disabled: boolean;
   kind: HeaderControlKind;
-  /**
-   * 这一格之前画一条分隔线（组边界）。**第一项恒 `false`** ——
-   * 一个开在最左边的分隔线没有意义。
-   */
-  startsGroup: boolean;
   /** 打开的是哪种浮层（`null` = 普通按钮，不挂 `aria-haspopup`）。 */
   popup: 'dialog' | 'menu' | null;
   /** 那种浮层此刻开着没有（`aria-expanded`）。`popup: null` 时恒 `false`。 */
@@ -181,17 +190,13 @@ function build(
 ): HeaderControl {
   return {
     id, kind, label,
-    title: '', active: false, disabled: false, startsGroup: false, popup: null, expanded: false,
+    title: '', active: false, disabled: false, popup: null, expanded: false,
     ...extra,
   };
 }
 
 /**
- * 这一屏头部此刻有哪些控件。
- *
- * ⚠️ 顺序即屏幕上的顺序。`startsGroup` 由**类别变化**推出（不是手写一串布尔）——
- * 手写的那一串会在「同步分组不出现」时分错组（标准模式下它就是缺席的，而它的下一个
- * 通知全体属于另一类）。
+ * 这一屏头部此刻有哪些控件。**顺序即屏幕上的顺序**（三组，见文件头）。
  */
 export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   const busyPause = input.busy === HEADER_BUSY_KEYS.pause;
@@ -210,7 +215,12 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
    */
   const anyBusy = input.busy !== null;
 
+  /**
+   * ⚠️ **顺序就是屏幕上的顺序，而这是教师逐字点的三组**（见文件头）。改顺序之前先看
+   * `header-controls.test.ts` 里那条「正好这八个控件」—— 它把顺序逐个钉住了。
+   */
   const controls: HeaderControl[] = [
+    // ── ① 课堂状态：两个开关。它们会**当着全班**改学生屏幕上有什么。
     build('pause', 'state', busyPause ? '更新中...' : input.paused ? '恢复课堂' : '暂停课堂', {
       title: '暂停后学生无法使用三件套中的任何功能',
       active: input.paused,
@@ -223,24 +233,21 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
     }),
   ];
 
+  // ── ② 对全班 / 整屏起作用。
+  //
   // 同步分组：只有分组 / 高级模式、且课堂**没有结束**时才存在。
   // ⚠️ 判据是 `status === 'ended'`（不是「非 active」）—— 暂停的课堂里分组照旧是活的。
+  // ⚠️ 教师这一轮**没有点名它**（标准模式下它压根不出现）⇒ 位置是实施时定的：
+  //    它是个**动作**（把班级分组同步进课堂），既不是课堂状态开关、也不是某个模块的入口
+  //    ⇒ 只能进第 2 组，排在「全体消息」前面（两件事都是「对全班做一件事」）。
   if ((input.mode === 'group' || input.mode === 'advanced') && input.status !== 'ended') {
-    controls.push(build('sync-groups', 'action', busySync ? '同步中...' : '同步分组', {
+    controls.push(build('sync-groups', 'global', busySync ? '同步中...' : '同步分组', {
       title: '把当前班级的分组名称和成员同步到正在进行的课堂',
       disabled: anyBusy,
     }));
   }
   // ★ 2026-09-29（教师）：「『通知全体』改成『全体消息』」。
-  controls.push(build('notify', 'action', '全体消息', { title: '给全班或某一组、某个人发一条消息' }));
-
-  // ★ 2026-09-29（教师）：原来的「学习单」与「矩阵」两个按钮合成**这一个下拉**
-  //（里面的两项见 `WORKSHEET_MENU_ITEMS`）。合并的理由就是教师那句话本身：
-  // 两者是「按学习单看全班」的两面，摆成两个并列按钮时教师分不出该按哪个。
-  controls.push(build('worksheet-menu', 'view', '学习单', {
-    title: '按学习单看全班：答题分析 / 进度矩阵',
-    popup: 'menu', expanded: input.worksheetMenuOpen,
-  }));
+  controls.push(build('notify', 'global', '全体消息', { title: '给全班或某一组、某个人发一条消息' }));
   // ★ 2026-09-30（教师）：「全屏」**两种看板模式都给**。
   //
   // 原先是 `if (boardMode === 'assign')`，理由是「跟随模式下每格显示的是不同的模块，
@@ -252,34 +259,59 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   //     此刻所在的模块，与主看板逐格一致。
   // ⚠️ 覆盖层里那句「全班显示『X』」是**指定模式专属**的说法，已按模式分开
   //（`page.tsx` 的全屏头部）—— 跟着这条一起改，否则跟随模式下它会**编造**一句
-  // 「全班都在智能学伴」。
-  controls.push(build('fullscreen', 'view', '全屏', { title: '全屏显示学生面板' }));
+  //「全班都在智能学伴」。
+  controls.push(build('fullscreen', 'global', '全屏', { title: '全屏显示学生面板' }));
+  controls.push(build('module-state', 'global', '模块状态', {
+    popup: 'menu', expanded: input.modulesOpen,
+  }));
 
+  // ── ③ 三个模块**各自的入口**（教师点名的第三组）。
+  //
   // ★ 2026-09-29（教师）：原来那一个「课堂权限」弹窗按模块**拆成两个**，
   // 每个模块的设置紧挨着它自己的按钮；「课堂权限」这个按钮随之取消。
   // ⚠️ 原来那个弹窗里的第三段（学习单）本来就只有一句「这一段还没有专属开关」——
   // 所以它没有对应的按钮，直接消失（不是漏了）。
-  controls.push(build('explore-settings', 'setting', '探究空间', {
+  // ★ 2026-09-29（教师）：原来的「学习单」与「矩阵」两个按钮合成**这一个下拉**
+  //（里面的三项见 `WORKSHEET_MENU_ITEMS`）。合并的理由就是教师那句话本身：
+  // 两者是「按学习单看全班」的两面，摆成两个并列按钮时教师分不出该按哪个。
+  controls.push(build('worksheet-menu', 'module', '学习单', {
+    title: '按学习单看全班：答题分析 / 进度矩阵',
+    popup: 'menu', expanded: input.worksheetMenuOpen,
+  }));
+  controls.push(build('explore-settings', 'module', '探究空间', {
     title: '探究空间的设置：学生网页画面的采集',
     popup: 'dialog', expanded: input.exploreOpen,
   }));
   // ★ 2026-09-29（教师）：智能学伴改成**下拉**：对话分析（词云弹窗）+ 设置（四项能力开关）。
-  controls.push(build('companion-menu', 'setting', '智能学伴', {
+  controls.push(build('companion-menu', 'module', '智能学伴', {
     title: '智能学伴：对话分析 / 设置',
     popup: 'menu', expanded: input.companionMenuOpen,
   }));
-  controls.push(build('module-state', 'setting', '模块状态', {
-    popup: 'menu', expanded: input.modulesOpen,
-  }));
-
-  // 组边界由**类别变化**推出。第一项恒 false。
-  let previousKind: HeaderControlKind | null = null;
-  for (const control of controls) {
-    control.startsGroup = previousKind !== null && previousKind !== control.kind;
-    previousKind = control.kind;
-  }
 
   return controls;
+}
+
+/**
+ * 把清单按 `kind` 切成**屏幕上的那几个盒子**。
+ *
+ * 🔴 为什么要有它（而不是让渲染层自己数）：上一版判据给的是一个布尔 `startsGroup`
+ *（「这一格之前画一条线」），于是「分成三组」这个事实**在判据层里根本没有出现过** ——
+ * 渲染层拿到一串 true/false 自己数，数错了没有任何东西会红。
+ * ★ 2026-09-30（教师）：「这个要**归归类**，按钮样式要有区分」⇒ 分组从「一条线」
+ * 变成**结构**（一个盒子装一组），那这个结构就该由判据层给。
+ *
+ * ⚠️ **不重排、不丢项**：只是把相邻的同类项收进同一个盒子（`kind` 变了就开新盒子）。
+ *    摊平回去必须与输入逐项相同 —— 有一条用例钉着（分错类的症状是「某个按钮不见了」）。
+ * ⚠️ 返回的每一组都**非空**（同类的项必然相邻，因为 `headerControls` 就是按组拼的）。
+ */
+export function headerControlGroups(controls: HeaderControl[]): HeaderControl[][] {
+  const groups: HeaderControl[][] = [];
+  for (const control of controls) {
+    const current = groups[groups.length - 1];
+    if (current && current[0].kind === control.kind) current.push(control);
+    else groups.push([control]);
+  }
+  return groups;
 }
 
 /** 头部那几段显不显示（与 `controls` 同一份输入，一次算完）。 */

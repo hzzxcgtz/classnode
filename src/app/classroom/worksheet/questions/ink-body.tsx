@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -131,6 +131,14 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    * 默认档 = `INK_DEFAULT_WIDTH`，而它**就是**改动前的那个常量值 ⇒ 默认手感没变。
    */
   const [width, setWidth] = useState<InkWidth>(INK_DEFAULT_WIDTH);
+
+  /**
+   * ★ 2026-09-30（复审）：**被锁住时把选中清掉**。
+   * 🔴 提交/锁定之后画布 `disabled` ⇒ 点不动、删不掉、点空白也取消不了（`handlePointerDown`
+   *    在入口就 return）⇒ 留着那个下标，屏幕上就永远挂着一个**取消不掉的虚线框**。
+   *    那与本文件那条纪律直接冲突：「一行叫学生做他做不到的事的提示，就是一句假话」。
+   */
+  useEffect(() => { if (disabled) setSelected(null); }, [disabled]);
 
   /**
    * 换档。🔴 **离开「选择」档就把选中清掉**：留着的话，学生切回手写继续画，

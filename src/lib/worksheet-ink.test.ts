@@ -56,6 +56,9 @@ import {
   moveStroke,
   resizeStroke,
   INK_SHAPE_KINDS,
+  isShapeTooSmall,
+  pickInkHandle,
+  pickInkStroke,
   shapeOutline,
   strokeHandles,
   normalizeAxis,
@@ -799,4 +802,66 @@ test('🔴 INK_WIDTH_OPTIONS：三档，且**中间那档就是原来的默认�
   assert.ok(INK_WIDTH_OPTIONS[0] < INK_WIDTH_OPTIONS[1] && INK_WIDTH_OPTIONS[1] < INK_WIDTH_OPTIONS[2]);
   assert.equal(isInkWidth(INK_WIDTH_OPTIONS[0]), true);
   assert.equal(isInkWidth(0.5), false, '认不出的粗细要被判掉（读值那一侧据此回落）');
+});
+
+test('🔴 pickInkHandle：控制点在**轮廓外面**也要抓得住（复审抓出来的核心缺陷）', () => {
+  // ★ 2026-09-30 复审。**五个**图形的控制点（外接框的角）落在轮廓外面很远：
+  //    椭圆 ≈30px、三角形 ≈75px（320×240 实测）。选择档原来是「先轮廓命中、再找控制点」
+  //    ⇒ 按下那个**画出来的白点**时所有笔迹都不命中 ⇒ 选中被丢掉、什么都没拖起来。
+  //    🔴 这条用例是它的回归网：控制点判定必须**独立于**轮廓命中。
+  const box = { w: 320, h: 240 };
+  const shapes = ['ellipse', 'triangle', 'trapezoid', 'parallelogram', 'right-triangle'];
+  for (const shape of shapes) {
+    const stroke = shapeStroke(shape, [[0.15, 0.15], [0.85, 0.85]]);
+    const handles = strokeHandles(stroke, box);
+    assert.ok(handles.length >= 4, `${shape} 应当有四个控制点`);
+    for (let index = 0; index < handles.length; index += 1) {
+      assert.equal(pickInkHandle(handles[index], stroke, box, 14), index,
+        `${shape} 的第 ${index} 个控制点抓不住 —— 按下去会丢掉选中`);
+    }
+  }
+  // 阳性对照：离得远就是 -1（别把整个画布变成热区）。
+  assert.equal(pickInkHandle([0.5, 0.5], shapeStroke('ellipse', [[0.15, 0.15], [0.85, 0.85]]), box, 14), -1);
+  // 手写没有控制点 ⇒ 永远 -1。
+  assert.equal(pickInkHandle([0.1, 0.1], { color: '', width: 0, points: [[0.1, 0.1], [0.9, 0.9]] }, box, 14), -1);
+});
+
+test('🔴 pickInkStroke：从**后往前**找（重叠处选后画的那个），手写不命中', () => {
+  const box = { w: 320, h: 240 };
+  const strokes: InkStroke[] = [
+    shapeStroke('rect', [[0.1, 0.1], [0.9, 0.9]]),
+    shapeStroke('rect', [[0.2, 0.2], [0.5, 0.5]]),
+    { color: '', width: 0, points: [[0.05, 0.05], [0.95, 0.95]] },
+  ];
+  // (0.3,0.3) 两个矩形都命中 ⇒ 选**后画**的那个（下标 1）；手写那一笔在最后但它不参与。
+  assert.equal(pickInkStroke([0.3, 0.3], strokes, box, 14), 1);
+  // 只有第一个矩形命中。
+  assert.equal(pickInkStroke([0.8, 0.8], strokes, box, 14), 0);
+  // 全都点不中。
+  assert.equal(pickInkStroke([0.99, 0.01], strokes, box, 14), -1);
+});
+
+test('🔴 isShapeTooSmall：**任一边**太小就丢；但线与角各按自己的几何判', () => {
+  // ★ 2026-09-30 复审：这条规则原来散在组件里，且**三份说法打架**（spec / 代码 / 注释）。
+  const box = { w: 320, h: 240 };
+  const at = (shape: string, pts: InkPoint[]) => isShapeTooSmall(shapeStroke(shape, pts), box, 8);
+
+  // 外接框图形：**任一边**太小就丢 —— 200×2 的薄片也要丢（「两边都小才丢」会放它进来）。
+  assert.equal(at('rect', [[0, 0], [0.625, 2 / 240]]), true, '200×2 的薄片应当丢掉');
+  assert.equal(at('rect', [[0, 0], [2 / 320, 0.833]]), true, '2×200 的薄片应当丢掉');
+  assert.equal(at('rect', [[0, 0], [0.009, 0.009]]), true, '3×3 的手抖应当丢掉');
+  assert.equal(at('rect', [[0, 0], [0.31, 0.33]]), false, '100×80 是正常的矩形');
+
+  // 🔴 线：**只要两点不重合**就算成形 —— 一条 200×2 的水平直线是**合法**的。
+  assert.equal(at('line', [[0, 0], [0.625, 2 / 240]]), false, '水平的直线不该被丢掉');
+  assert.equal(at('arrow', [[0.5, 0], [0.9, 0]]), false, '水平的箭头不该被丢掉');
+  assert.equal(at('line', [[0.5, 0.5], [0.5, 0.5]]), true, '两点重合才算没画');
+
+  // 🔴 角：按**两条边各自的长度**判，不拿外接框 —— 一条竖直的边会让外接框宽 = 0，
+  //    用「任一边太小就丢」会把一个完全正常的角判掉。
+  assert.equal(at('angle', [[0.5, 0.2], [0.5, 0.8], [0.9, 0.2]]), false, '竖直的那条边不该让它被判掉');
+  assert.equal(at('angle', [[0.5, 0.5], [0.5, 0.505], [0.9, 0.5]]), true, '有一条边短得几乎为零才算没画');
+
+  // 手写不走这条判据（学生在屏幕上点一下就该留下一个点）。
+  assert.equal(isShapeTooSmall({ color: '', width: 0, points: [[0.5, 0.5]] }, box, 8), false);
 });

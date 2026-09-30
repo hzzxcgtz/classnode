@@ -51,13 +51,25 @@ test('★ 删除按钮：**只在「选择」档且真的选中了**才渲染，
   assert.match(body, /onChange\(\{ kind: 'ink', box, strokes: next \}\)/, '删除没有走那条唯一的写入口');
 });
 
-test('★ 选择档的命中判据来自判据层（`hitTestStroke`），不是组件自己算', () => {
+test('★ 选择档的判定全部来自判据层，而且**控制点要排在轮廓命中之前**', () => {
   const canvas = fs.readFileSync(path.join(HERE, '..', 'ink-canvas.tsx'), 'utf8');
   const stripped = stripComments(canvas);
-  assert.ok(stripped.includes('hitTestStroke('), '画布没有用判据层的命中测试');
-  assert.ok(stripped.includes('strokeHandles('), '画布没有用判据层的控制点');
-  assert.ok(stripped.includes('moveStroke(') && stripped.includes('resizeStroke('),
-    '移动/改大小没有走判据层 —— 组件这一层没有回归网，几何必须留在那儿');
+  for (const fn of ['pickInkHandle(', 'pickInkStroke(', 'moveStroke(', 'resizeStroke(', 'isShapeTooSmall(']) {
+    assert.ok(stripped.includes(fn), `画布没有用判据层的 \`${fn.slice(0, -1)}\``);
+  }
+  // 🔴 **顺序**才是要害（2026-09-30 复审抓出来的核心缺陷）：
+  //    先轮廓命中、再找控制点 ⇒ 椭圆/三角形/梯形/平行四边形/直角三角形的控制点
+  //    （外接框的角，落在轮廓外面 ≈30～75px）**永远找不到**，一按就 `onSelect(null)`。
+  //    ⇒ 控制点必须先判。
+  const selectAt = stripped.indexOf('INK_TOOL_SELECT');
+  const handleAt = stripped.indexOf('pickInkHandle(', selectAt);
+  const strokeAt = stripped.indexOf('pickInkStroke(', selectAt);
+  assert.ok(handleAt >= 0 && strokeAt >= 0, '找不到选择档里的两个挑选函数');
+  assert.ok(handleAt < strokeAt,
+    '控制点判定必须排在轮廓命中**之前** —— 排在后面的话，那五个图形的控制点一按就丢掉选中');
+  // 几何不许在组件里自己算（这一层没有回归网）。
+  assert.ok(!/Math\.hypot\(/.test(stripped.slice(selectAt, strokeAt + 400)),
+    '选择档里的几何是组件自己算的 —— 应该走判据层');
 });
 
 test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按钮的硬规矩）', () => {

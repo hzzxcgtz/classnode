@@ -165,3 +165,22 @@ test('🔴 四处渲染都必须把 shape 传下去（漏一处 = 某个地方�
     assert.ok(consumes, `${file} 没有消费 shape —— 它会把图形画成一条手写线`);
   }
 });
+
+test('★ 对拍：带 shape 的 readInkValue（复审指出的网眼：原来只喂了无 shape 的值）', () => {
+  // ★ 2026-09-30 复审：「现有对拍用例那条 readInkValue 只喂了无 shape 的值 —— 建议补一条」。
+  //   实测两边行为一致（4000 组随机差分 0 处不同），所以这是**网眼不是缺陷**；补上它，
+  //   免得哪天改了一边而这条路上的差异没人看得见。
+  const VALUES = [
+    { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 'rect' }] },
+    { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 'hexagon' }] },
+    { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 42 }] },
+    { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: null }] },
+    { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]] }] },
+  ];
+  for (const value of VALUES) {
+    assert.deepEqual(mirror.readInkValue(value), front.readInkValue(value), `readInkValue 不一致：${JSON.stringify(value)}`);
+  }
+  // 阳性对照：其中**真的有** shape 活下来（否则「两边都丢掉」也能相等）。
+  const kept = front.readInkValue(VALUES[0]);
+  assert.equal(kept?.strokes[0]?.shape, 'rect', '阳性对照失效：带 shape 的值没读出来');
+});

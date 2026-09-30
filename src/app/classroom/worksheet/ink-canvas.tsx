@@ -12,9 +12,11 @@ import {
   isFarEnough,
   normalizeAxis,
   INK_TOOL_SELECT,
-  hitTestStroke,
   isInkShapeTool,
+  isShapeTooSmall,
   moveStroke,
+  pickInkHandle,
+  pickInkStroke,
   resizeStroke,
   shapeOutline,
   strokeHandles,
@@ -125,6 +127,9 @@ interface LiveSelect {
   /** 这一帧要画成什么样。 */
   current: InkStroke;
 }
+
+/** 图形小到这个尺寸（像素）就不成形 —— 松手时丢掉（判据在 `isShapeTooSmall`）。 */
+const MIN_SHAPE_PX = 8;
 
 /** 选中框的颜色（与工具栏上当前档的高亮同一个主色）。 */
 const SELECT_COLOR = '#527198';
@@ -249,7 +254,9 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
     });
     // ★ 2026-09-30：选中态的画法（虚线外框 + 控制点）。**只有图形有控制点**
     //（手写选不中，判据在 `hitTestStroke` / `shapeOutline`）。
-    if (selected !== null) {
+    // ★ 2026-09-30（复审）：**只读态不画选中框** —— 锁住之后点不动、删不掉、
+    //    取消不了，一个留在屏幕上的虚线框就是「叫学生做他做不到的事」。
+    if (selected !== null && !disabled) {
       const chosen = liveSelect && liveSelect.index === selected ? liveSelect.current : strokesRef.current[selected];
       if (chosen) {
         const handles = strokeHandles(chosen, scale);
@@ -276,7 +283,7 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
     if (live && live.kind === 'stroke') drawStroke({ color: INK_STROKE_COLOR, width, points: live.points, shape: live.shape });
-  }, [selected, onSelect, width]);
+  }, [selected, onSelect, width, disabled]);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
   // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
@@ -323,27 +330,38 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
     // ⚠️ 它**不经过上限闸**（没有新笔画产生），也不做采样过滤（那不是画线）。
     if (tool === INK_TOOL_SELECT) {
       const filled = strokesRef.current;
-      // 从**后往前**找：后画的在上，点重叠处该选中看得见的那一个。
-      let index = -1;
-      for (let i = filled.length - 1; i >= 0; i -= 1) {
-        if (hitTestStroke(point, filled[i], liveBox, HANDLE_HIT_TOLERANCE_PX)) { index = i; break; }
+      // 🔴 **顺序不能反**（2026-09-30 复审抓出来的真缺陷）：
+      //   ① **先**看「已选中那一笔」的控制点 —— 控制点是**画出来的**，
+      //      按它就必须抓得住。而五个图形的控制点（外接框的角）落在**轮廓外面很远**
+      //      （椭圆 ≈30px、三角形 ≈75px，320×240 实测）⇒ 用轮廓命中去找它们**永远找不到**，
+      //      学生按下那个白点会 `onSelect(null)` —— 选中被丢掉、什么都没拖起来。
+      //   ② **再**看有没有点中某个图形（从后往前，后画的在上）。
+      //   ③ 都没中 ⇒ 点空白，取消选中。
+      const selectedStroke = selected !== null ? filled[selected] : undefined;
+      if (selectedStroke) {
+        const handle = pickInkHandle(point, selectedStroke, liveBox, HANDLE_HIT_TOLERANCE_PX);
+        if (handle >= 0) {
+          try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
+          event.currentTarget.style.touchAction = 'none';
+          liveRef.current = {
+            kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
+            index: selected as number, mode: 'resize', handle, from: point,
+            origin: selectedStroke, current: selectedStroke,
+          };
+          redraw();
+          event.stopPropagation();
+          return;
+        }
       }
+      const index = pickInkStroke(point, filled, liveBox, HANDLE_HIT_TOLERANCE_PX);
       if (index < 0) { onSelect(null); return; }             // 点空白 ⇒ 取消选中
       onSelect(index);
       const chosen = filled[index];
-      // 先看是不是点在某个控制点上（控制点优先级高于「框内」—— 否则贴着边的控制点永远拖不动）。
-      const handles = strokeHandles(chosen, liveBox);
-      let handle = -1;
-      for (let i = 0; i < handles.length; i += 1) {
-        const [hx, hy] = toPixel(handles[i], liveBox);
-        const [px, py] = toPixel(point, liveBox);
-        if (Math.hypot(px - hx, py - hy) <= HANDLE_HIT_TOLERANCE_PX) { handle = i; break; }
-      }
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
       event.currentTarget.style.touchAction = 'none';
       liveRef.current = {
         kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
-        index, mode: handle >= 0 ? 'resize' : 'move', handle, from: point,
+        index, mode: 'move', handle: -1, from: point,
         origin: chosen, current: chosen,
       };
       redraw();
@@ -427,14 +445,13 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
       }
       return;
     }
-    // ★ 2026-09-30：图形档**手指抖一下不该留下一个看不见的图形** ——
-    //   宽或高（在**像素**里量）小于 8px 就当没画过。⚠️ 手写**不过这一关**：
-    //   学生在屏幕上点一下本来就该留下一个点。
-    if (live.shape) {
-      const [a, b] = live.points;
-      const wPx = Math.abs((b?.[0] ?? a[0]) - a[0]) * live.box.w;
-      const hPx = Math.abs((b?.[1] ?? a[1]) - a[1]) * live.box.h;
-      if (!b || (wPx < 8 && hPx < 8)) { redraw(); return; }
+    // ★ 2026-09-30：图形档**手指抖一下不该留下一个看不见的图形**。
+    // 🔴 判据在 `isShapeTooSmall`（判据层、有用例）—— 这里原来是一段内联的像素算术，
+    //    而它与 spec、与自己的注释**三份说法打架**（复审抓出来的）。线 / 角 / 外接框图形
+    //    各按各自的几何判，不在这里一刀切。
+    if (live.shape && isShapeTooSmall({ color: '', width: 0, points: live.points, shape: live.shape }, live.box, MIN_SHAPE_PX)) {
+      redraw();
+      return;
     }
     const stroke: InkStroke = {
       color: INK_STROKE_COLOR, width, points: live.points,

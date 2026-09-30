@@ -296,6 +296,77 @@ export function strokeHandles(stroke: InkStroke, box: InkCanvas): InkPoint[] {
 }
 
 /**
+ * 点在这个图形的**哪个控制点**上？（`-1` = 没有）
+ *
+ * 🔴 它必须**独立于 `hitTestStroke`** —— 这是 2026-09-30 复审抓出来的一个**真缺陷**：
+ *    选择档原来是「先用 `hitTestStroke` 找到图形、再在它身上找控制点」，而
+ *    `hitTestStroke` 量的是**轮廓**距离 ⇒ 椭圆 / 三角形 / 梯形 / 平行四边形 / 直角三角形的
+ *    控制点（**外接框的角**）落在轮廓外面很远（实测椭圆 ≈30px、三角形 ≈75px）
+ *    ⇒ 学生按下那个**画出来的白点**时，所有笔迹都不命中 ⇒ `onSelect(null)` ⇒
+ *    **选中被丢掉、什么都没拖起来**。屏幕上只是「控制点画在那儿，一按就没了」。
+ * ⇒ 所以控制点判定要在轮廓命中**之前**、针对**已选中的那一笔**先跑一次。
+ */
+/**
+ * 这个图形**太小、不成形**吗（松手时丢掉）。
+ *
+ * ★ 2026-09-30（复审）：这条规则原来散在组件里，而且**三份说法互相打架** ——
+ *   spec 说「任一边 < 8px 就丢」、组件代码写的是「两边都小才丢」、组件注释又写回 spec 那一版。
+ *   落到判据层之后只剩一份说法，而且**可测**。
+ *
+ * 三档不同的判据（各按各自的几何意义，不搞一刀切）：
+ *   · `line` / `arrow` —— 两个定义点**不重合**就算成形。一条 200×2 的水平直线是**合法**的
+ *     （它本来就是一条线，没有「宽高」可言）。
+ *   · `angle` —— 两条边**都要有长度**。⚠️ 拿外接框量它是错的：一条竖直的边会让宽 = 0，
+ *     「任一边太小就丢」会把一个完全正常的角判掉。
+ *   · 其余（外接框图形）—— **任一边** < `minPx` 就丢（3×3 的手抖、200×2 的薄片都不要）。
+ *
+ * ⚠️ 单位：`minPx` 是**像素**（学生的手指抖不抖是按屏幕量的），所以这里要 `box`。
+ */
+export function isShapeTooSmall(stroke: InkStroke, box: InkCanvas, minPx: number): boolean {
+  if (!isInkShapeKind(stroke.shape)) return false;          // 手写不走这条判据
+  const points = stroke.points;
+  const limit = Number.isFinite(minPx) && minPx > 0 ? minPx : 0;
+  /** 两个定义点的**像素**距离。 */
+  const spanPx = (a: InkPoint, b: InkPoint) => Math.hypot((b[0] - a[0]) * box.w, (b[1] - a[1]) * box.h);
+  if (stroke.shape === 'line' || stroke.shape === 'arrow') {
+    return points.length < 2 || spanPx(points[0], points[1]) < limit;
+  }
+  if (stroke.shape === 'angle') {
+    if (points.length < 3) return true;
+    return spanPx(points[0], points[1]) < limit || spanPx(points[0], points[2]) < limit;
+  }
+  if (points.length < 2) return true;
+  const widthPx = Math.abs(points[1][0] - points[0][0]) * box.w;
+  const heightPx = Math.abs(points[1][1] - points[0][1]) * box.h;
+  // 🔴 **任一边**太小就丢（不是「两边都小才丢」—— 那会放进来 200×2 的薄片）。
+  return widthPx < limit || heightPx < limit;
+}
+
+export function pickInkHandle(point: InkPoint, stroke: InkStroke, box: InkCanvas, tolPx: number): number {
+  const handles = strokeHandles(stroke, box);
+  const [px, py] = toPixel(point, box);
+  const tol = Number.isFinite(tolPx) && tolPx > 0 ? tolPx : 0;
+  for (let index = 0; index < handles.length; index += 1) {
+    const [hx, hy] = toPixel(handles[index], box);
+    if (Math.hypot(px - hx, py - hy) <= tol) return index;
+  }
+  return -1;
+}
+
+/**
+ * 点中了**哪一笔**图形？（`-1` = 空白）从**后往前**找：后画的在上，重叠处该选中看得见的那一个。
+ * ⚠️ 手写一律不命中（判据在 `shapeOutline` 返回空数组那一层）。
+ */
+export function pickInkStroke(
+  point: InkPoint, strokes: readonly InkStroke[], box: InkCanvas, tolPx: number,
+): number {
+  for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    if (hitTestStroke(point, strokes[index], box, tolPx)) return index;
+  }
+  return -1;
+}
+
+/**
  * 读一个点：只收**两个都是有限数的二元数组**，并把两个数**夹到 0..1**
  * （手改过的行可能写着 `x: 7`）。其余一律 `null` —— 那个点丢掉。
  */
@@ -513,8 +584,11 @@ export function shapeOutline(
   } else if (stroke.shape === 'right-triangle') {
     parts.push({ closed: true, points: [[x0, y0], [x0, y1], [x1, y1]] });
     // 直角小方块（一个「L」形折线，画在左下角那个直角上）。
-    // ⚠️ 边长夹取到不超过框的三分之一 —— 很扁的框里它会比框还大。
-    const side = Math.min(Math.min(w, h) / 6, Math.min(w, h) / 3);
+    // ⊘ 2026-09-30（复审）：这里原来写着 `Math.min(Math.min(w, h) / 6, Math.min(w, h) / 3)`
+    //    并注释「边长夹取到不超过框的三分之一」—— 而 `min(x/6, x/3)` **恒等于** `x/6`
+    //    （x ≥ 0），那个「夹取」是个**恒等式**，它描述的分支永远到不了。
+    //    删掉它，只留真正生效的那一条（短边的六分之一）。
+    const side = Math.min(w, h) / 6;
     if (side > 0) parts.push({ closed: false, points: [[x0, y1 - side], [x0 + side, y1 - side], [x0 + side, y1]] });
   } else if (stroke.shape === 'parallelogram') {
     parts.push({ closed: true, points: [[x0 + w / 4, y0], [x1, y0], [x1 - w / 4, y1], [x0, y1]] });

@@ -119,7 +119,9 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         ref={(el) => { wordEls.current[sourceId] = el; }}
         {...drag.sourceProps(sourceId)}
       >
-        <span>{word}</span>
+        {/* ★ 2026-09-30：候选词走 `PromptText`。⚠️ 题干里那一串与下方「待选词」区
+            **共用这一个 `wordButton`** ⇒ 改这一处两处都生效。 */}
+        <span><PromptText text={word} placeholder="" /></span>
       </button>
     );
   };
@@ -286,7 +288,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
             {items.map((item, position) => (
               <Fragment key={item.index}>
                 {position > 0 && '，'}
-                {item.label}填「<strong>{item.answer}</strong>」
+                {item.label}填「<strong><PromptText text={item.answer} placeholder="" /></strong>」
               </Fragment>
             ))}
             。

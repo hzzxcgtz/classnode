@@ -15,6 +15,8 @@ import {
 } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
+// ★ 2026-09-30：条目与框名里的数学公式。走题干那**同一个**渲染器。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import styles from '../worksheet.module.css';
 
 /**
@@ -141,7 +143,11 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
         ref={(el) => { chipEls.current[itemId] = el; }}
         {...drag.sourceProps(itemId)}
       >
-        {textOf[itemId] || <span className={styles.placeholder}>（这一条还没写）</span>}
+        {/* ★ 2026-09-30：条目原文走 `PromptText`。⚠️ 池里与框里**共用这一个函数**，
+            所以改这一处两处都生效。 */}
+        {textOf[itemId]
+          ? <PromptText text={textOf[itemId]} placeholder="" />
+          : <span className={styles.placeholder}>（这一条还没写）</span>}
       </div>
     );
   };
@@ -164,7 +170,12 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
           const className = `${styles.zone}${drag.hoverTargetId === zone.id ? ` ${styles.dropActive}` : ''}`;
           return (
             <div className={className} key={zone.id} {...drag.targetProps(zone.id)}>
-              <div className={styles.zoneHead}>{zone.text || <span className={styles.placeholder}>（这个框还没写名字）</span>}</div>
+              <div className={styles.zoneHead}>
+                {/* ★ 2026-09-30：框名走 `PromptText`。 */}
+                {zone.text
+                  ? <PromptText text={zone.text} placeholder="" />
+                  : <span className={styles.placeholder}>（这个框还没写名字）</span>}
+              </div>
               {inside.length === 0 ? <p className={styles.cardNote}>（空的）</p> : inside.map((entry) => chip(entry.id))}
             </div>
           );

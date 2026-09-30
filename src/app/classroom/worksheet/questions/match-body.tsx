@@ -15,6 +15,8 @@ import {
 import { Fragment } from 'react';
 
 import { CorrectAnswerNote } from './correct-answer-note';
+// ★ 2026-09-30：左右项与正确答案里的数学公式。走题干那**同一个**渲染器。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
@@ -283,7 +285,12 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
               //   后来在**未提交**的题上测：拖动出线正常、松手连不上 —— 而连不上正是
               //   「左项不是落点」造成的（`onDrop` 拿到 `targetId === null` 直接返回）。
               <div className={className} key={entry.id} ref={setRef(`l:${entry.id}`)} {...drag.bothProps(entry.id)}>
-                <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
+                <span className={styles.matchText}>
+                  {/* ★ 2026-09-30：条目原文走 `PromptText`（不传 `runs` —— 纯文本）。 */}
+                  {entry.text
+                    ? <PromptText text={entry.text} placeholder="" />
+                    : <span className={styles.placeholder}>（这一条还没写）</span>}
+                </span>
               </div>
             );
           })}
@@ -308,7 +315,12 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
             ].filter(Boolean).join(' ');
             return (
               <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.bothProps(entry.id)}>
-                <span className={styles.matchText}>{entry.text || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
+                <span className={styles.matchText}>
+                  {/* ★ 2026-09-30：条目原文走 `PromptText`（不传 `runs` —— 纯文本）。 */}
+                  {entry.text
+                    ? <PromptText text={entry.text} placeholder="" />
+                    : <span className={styles.placeholder}>（这一条还没写）</span>}
+                </span>
               </div>
             );
           })}
@@ -367,7 +379,9 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
             {items.map((line, position) => (
               <Fragment key={line}>
                 {position > 0 && <br />}
-                <strong>{line}</strong>
+                {/* ★ 2026-09-30：这句是服务端拼的「左 → 右」（含教师原文）⇒ 也要认公式。
+                    ⚠️ **箭头与分隔符不在 `PromptText` 里** —— 它们是分隔符，不是教师文本。 */}
+                <strong><PromptText text={line} placeholder="" /></strong>
               </Fragment>
             ))}
           </CorrectAnswerNote>

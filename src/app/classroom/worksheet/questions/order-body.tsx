@@ -11,6 +11,8 @@ import {
   type DragSelection,
 } from '@/lib/worksheet-drag';
 import { readOrderItems, type AnswerDraft } from '@/lib/worksheet-answer-value';
+// ★ 2026-09-30：条目里的数学公式。走题干那**同一个**渲染器。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { DROP_TARGET_ATTR, usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import styles from '../worksheet.module.css';
@@ -230,7 +232,12 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
           >
             {/* ⚠️ 这里**不再有序号**（★ 2026-09-30，理由见文件头那一段）——
                 条目左边那个槽位已经整个删掉，别再补一个数字或圆点回来。 */}
-            <span className={styles.orderText}>{byId[id] || <span className={styles.placeholder}>（这一条还没写）</span>}</span>
+            <span className={styles.orderText}>
+              {/* ★ 2026-09-30：条目原文走 `PromptText`。 */}
+              {byId[id]
+                ? <PromptText text={byId[id]} placeholder="" />
+                : <span className={styles.placeholder}>（这一条还没写）</span>}
+            </span>
             </div>
             <span
               className={styles.orderButtons}

@@ -1,6 +1,8 @@
 'use client';
 
 import { WRONG_ANSWER_STYLE } from '@/lib/worksheet-prompt-marks';
+// ★ 2026-09-30：选项里的数学公式（`$x=5$`）。走题干那**同一个**渲染器 —— 两份就是分叉。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { TRUE_FALSE_OPTIONS, correctAnswerLabel, optionBadge, readOptions, wrongSelectedKeys } from '@/lib/worksheet-questions';
 import { CorrectAnswerNote } from './correct-answer-note';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
@@ -114,7 +116,8 @@ export function ChoiceBody({ node, draft, onChange, disabled, correctKeys }: Cho
                    的网仍然在跑（只是不再包括那个已删的文件）。 */}
             <span className={styles.optionText} style={wrong ? WRONG_ANSWER_STYLE : undefined}>
               {option.text.trim()
-                ? option.text
+                // ★ 2026-09-30：选项原文走 `PromptText`（不传 `runs` —— 选项是纯文本）。
+                ? <PromptText text={option.text} placeholder="" />
                 : !option.imageUrl && <span className={styles.placeholder}>（选项 {option.key} 还没写）</span>}
               {option.imageUrl && <img className={styles.optionImage} src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图`} />}
             </span>

@@ -91,3 +91,43 @@ test('★ 服务端的题型**别名**与前端那张表逐条相同（教师用
   // 阳性对照：别名与正式名**不是**同一批字（少一处 alias 会静默回落成正式名）。
   assert.notEqual(frontNicknames['fill-blank'], QUESTION_TYPE_LABELS['fill-blank']);
 });
+
+/* ══ ★ 2026-09-30：基本图形（九个形状）的两边对拍 ══════════════════════════
+   🔴 这一批形状的几何是**纯算术**，而算术写错**不会报错**：圆画成方的、箭头歪了、
+   学生画的和教师看到的不是一个东西 —— 两边都「看起来正常」。
+   ⇒ 同一批形状、同一批画布喂给两份实现，**逐字比**。
+   ⚠️ 形状在**像素空间**里算（归一化空间是各向异性的），所以下面刻意用了
+   **三种宽高比**（扁 / 方 / 高），其中一个不是正方形。
+*/
+test('★ 对拍：九个形状的折线与路径，两份实现逐字相同', () => {
+  const BOXES = [{ w: 200, h: 100 }, { w: 100, h: 100 }, { w: 400, h: 50 }, { w: 60, h: 240 }];
+  const POINTS = [[[0.1, 0.2], [0.7, 0.8]], [[0.8, 0.9], [0.2, 0.1]], [[0.5, 0.5], [0.5, 0.5]]];
+  let compared = 0;
+  for (const shape of front.INK_SHAPE_KINDS) {
+    // `angle` 要三个点，其余两个 —— 两种都给，覆盖「点数不足」那条回落路。
+    const pointSets = shape === 'angle'
+      ? [...POINTS, [[0.2, 0.2], [0.9, 0.2], [0.2, 0.9]]]
+      : [...POINTS, [[0.3, 0.3]]];
+    for (const points of pointSets) {
+      for (const box of BOXES) {
+        const stroke = { color: '#000', width: 0.01, points };
+        const what = `${shape} @ ${JSON.stringify(points)} × ${JSON.stringify(box)}`;
+        assert.deepEqual(mirror.shapeOutline({ ...stroke, shape }, box), front.shapeOutline({ ...stroke, shape }, box), `折线不一致：${what}`);
+        assert.equal(mirror.strokePath(points, box, shape), front.strokePath(points, box, shape), `路径不一致：${what}`);
+        assert.deepEqual(mirror.strokeHandles({ ...stroke, shape }, box), front.strokeHandles({ ...stroke, shape }, box), `把手不一致：${what}`);
+        for (const probe of [[0.5, 0.5], [0.2, 0.2], [0.95, 0.05]]) {
+          assert.equal(mirror.hitTestStroke(probe, { ...stroke, shape }, box, 8),
+            front.hitTestStroke(probe, { ...stroke, shape }, box, 8), `命中不一致：${what} 点 ${JSON.stringify(probe)}`);
+        }
+        assert.deepEqual(mirror.moveStroke({ ...stroke, shape }, 0.05, -0.05), front.moveStroke({ ...stroke, shape }, 0.05, -0.05), `平移不一致：${what}`);
+        for (let handle = 0; handle < 4; handle += 1) {
+          assert.deepEqual(mirror.resizeStroke({ ...stroke, shape }, handle, [0.42, 0.58], box),
+            front.resizeStroke({ ...stroke, shape }, handle, [0.42, 0.58], box), `缩放不一致：${what} 把手 ${handle}`);
+        }
+        compared += 1;
+      }
+    }
+  }
+  // 阳性对照：**真的比过东西**（否则上面整段在空循环里永远绿）。
+  assert.ok(compared >= 100, `只比了 ${compared} 组 —— 夹具自己失效了`);
+});

@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
+
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke } from '@/lib/worksheet-ink';
-import type { InkValue } from '@/lib/worksheet-ink';
+import { INK_DEFAULT_TOOL, INK_TOOLS, clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke } from '@/lib/worksheet-ink';
+import type { InkTool, InkValue } from '@/lib/worksheet-ink';
 import { InkCanvas } from '../ink-canvas';
 import styles from '../worksheet.module.css';
 
@@ -32,7 +34,35 @@ export interface InkBodyProps {
   disabled: boolean;
 }
 
+/**
+ * 每一档在按钮上写什么。
+ *
+ * ⚠️ **用文字不用图标**（★ 2026-09-30 实施时定的）：九个图形的图标要画九个小 SVG，
+ *    而文字标签**更准确**（「平行四边形」五个字不可能被认成别的），也天然满足
+ *    「图标按钮必须有 aria-label」那条纪律。真机上看着挤的话再换成图标。
+ * 🔴 顺序跟着 `INK_TOOLS`（判据层），这里只是一个「名字 → 中文」的查表。
+ */
+const TOOL_LABELS: Record<InkTool, string> = {
+  pen: '手写',
+  line: '直线',
+  arrow: '箭头',
+  rect: '矩形',
+  ellipse: '圆',
+  triangle: '三角形',
+  'right-triangle': '直角三角形',
+  parallelogram: '平行四边形',
+  trapezoid: '梯形',
+  angle: '角',
+  select: '选择',
+};
+
 export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
+  /**
+   * ★ 2026-09-30：当前档。**默认恒是「手写」**（`INK_DEFAULT_TOOL`）——
+   * 老习惯的学生进题目直接画；默认成别的档他会以为画布坏了。
+   * ⚠️ 它**不进 draft**（不是作答数据的一部分）：换档不该写库、也不该进撤销栈。
+   */
+  const [tool, setTool] = useState<InkTool>(INK_DEFAULT_TOOL);
   /**
    * 🔴 **不直接信任 `draft.box`**：`draftFromValue` 对「读不出宽高」的笔迹值会给出
    * `box: { w: 0, h: 0 }`（A1 的 `readCanvas` **刻意**不编一个默认框 —— 逐字段回落的
@@ -69,8 +99,27 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         strokes={draft.strokes}
         hint={inkHint(node)}
         disabled={disabled}
+        tool={tool}
         onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
       />
+      {/* ★ 2026-09-30（教师选「甲」）：**工具档**。默认「手写」，九个图形，最后是「选择」。
+          只读态（教师端预览渲染同一个组件）时整排禁用，但**一个都不少**。 */}
+      <div className={styles.inkToolbar} role="group" aria-label="画图工具">
+        {INK_TOOLS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={styles.inkButton}
+            disabled={disabled}
+            aria-pressed={tool === item}
+            title={item === 'select' ? '点一下图形选中它，再拖动或改大小' : `画${TOOL_LABELS[item]}`}
+            onClick={() => setTool(item)}
+            style={tool === item ? { borderColor: '#527198', background: '#e9eff6', color: '#466384', fontWeight: 700 } : undefined}
+          >
+            {TOOL_LABELS[item]}
+          </button>
+        ))}
+      </div>
       <div className={styles.inkToolbar}>
         <button
           type="button"

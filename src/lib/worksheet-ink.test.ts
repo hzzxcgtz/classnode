@@ -46,7 +46,10 @@ import {
   isInkFormat,
   isInkNode,
   hitTestStroke,
+  INK_DEFAULT_TOOL,
+  INK_TOOLS,
   isInkShapeKind,
+  isInkShapeTool,
   moveStroke,
   resizeStroke,
   INK_SHAPE_KINDS,
@@ -766,4 +769,17 @@ test('🔴 downsampleInkValue：**图形一个点都不许抽**（点是它的�
   assert.equal(small.strokes[1].points.length, 2, '矩形的定义几何被抽掉了');
   // 阳性对照：手写那一笔**照旧被抽**（别为了保图形把整条抽稀路径关掉）。
   assert.ok(small.strokes[2].points.length < 40, `手写那一笔没被抽（${small.strokes[2].points.length} 个点）—— 那这个函数就没在干活`);
+});
+
+test('🔴 INK_TOOLS：**默认档是手写**，顺序 = 工具栏顺序', () => {
+  // ★ 2026-09-30（基本图形工具，教师选「甲」）。
+  // 🔴 「默认是手写」是一条**产品规则**，不是口味：老习惯的学生进题目要能直接画，
+  //    默认成别的档他会以为画布坏了（而画布确实会「画不出线」）。
+  assert.equal(INK_DEFAULT_TOOL, 'pen');
+  // 顺序：手写在前、选择在后、九个图形夹在中间（与 `INK_SHAPE_KINDS` 同序）。
+  assert.deepEqual([...INK_TOOLS], ['pen', ...INK_SHAPE_KINDS, 'select']);
+  // 「这一档是不是画图形」的判据：`pen` 与 `select` 都不是。
+  assert.equal(isInkShapeTool('rect'), true);
+  assert.equal(isInkShapeTool('pen'), false);
+  assert.equal(isInkShapeTool('select'), false);
 });

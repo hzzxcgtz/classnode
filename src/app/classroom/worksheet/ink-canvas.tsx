@@ -11,6 +11,7 @@ import {
   inkLimitReason,
   isFarEnough,
   normalizeAxis,
+  isInkShapeTool,
   shapeOutline,
   strokeWidthPx,
   toPixel,
@@ -20,7 +21,7 @@ import {
 // 模块里其实能共存（`import type` 只占类型名字空间），但那样 `InkCanvasProps.box` 的类型
 // 会比它自己的名字更值得解释。⇒ 类型侧引入为 `InkCanvasBox`：**同一个类型**，只改本文件的
 // 本地名，不是第二份定义。
-import type { InkCanvas as InkCanvasBox, InkPoint, InkStroke } from '@/lib/worksheet-ink';
+import type { InkCanvas as InkCanvasBox, InkPoint, InkShapeKind, InkStroke, InkTool } from '@/lib/worksheet-ink';
 import styles from './worksheet.module.css';
 
 /**
@@ -85,6 +86,11 @@ export interface InkCanvasProps {
   /** 一笔结束 / 撤销 / 清空时调一次。`box` 是**这一刻量出来的**框。 */
   onChange: (next: { box: InkCanvasBox; strokes: InkStroke[] }) => void;
   disabled: boolean;
+  /**
+   * ★ 2026-09-30（基本图形工具）：这一档画什么。
+   * ⚠️ `pen` 是**默认**，且手写那条路一个像素都没变 —— 老习惯的学生进题目直接画。
+   */
+  tool: InkTool;
 }
 
 /** 正在画的那一笔。⚠️ **不进 React state**（纪律 ④）—— 它每一帧都在变。 */
@@ -93,9 +99,11 @@ interface LiveStroke {
   pointerId: number;
   box: InkCanvasBox;
   points: InkPoint[];
+  /** ★ 2026-09-30：正在拖出来的图形（缺省 = 手写，那时 `points` 是**一串采样点**）。 */
+  shape?: InkShapeKind;
 }
 
-export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
@@ -179,7 +187,7 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
     // 进行中的那一笔照**收笔后会用到的同一份样式**画（同一个常量），否则收笔的一瞬间
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
-    if (live) drawStroke({ color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points });
+    if (live) drawStroke({ color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points, shape: live.shape });
   }, []);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
@@ -228,7 +236,12 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
     ];
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
     event.currentTarget.style.touchAction = 'none';        // 纪律 ②
-    liveRef.current = { el: event.currentTarget, box: liveBox, pointerId: event.pointerId, points: [point] };
+    // ★ 2026-09-30：图形档 ⇒ 这一笔**只有两个点**（外接框的两个对角），拖动时**换掉第二个点**
+    //    而不是往后追加 —— 见 `handlePointerMove`。手写档一行都没变。
+    liveRef.current = {
+      el: event.currentTarget, box: liveBox, pointerId: event.pointerId, points: [point],
+      ...(isInkShapeTool(tool) ? { shape: tool } : {}),
+    };
     redraw();
     event.stopPropagation();
   };
@@ -242,6 +255,14 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
       normalizeAxis(event.clientX - rect.left, rect.width),
       normalizeAxis(event.clientY - rect.top, rect.height),
     ];
+    // ★ 图形档：**换掉第二个点**（形状恒是两点定义几何），也不做采样过滤 ——
+    //   采样过滤会把「拖到一半的手」判成没动，而形状只需要那两个点。
+    if (live.shape) {
+      live.points = [live.points[0], point];
+      redraw();
+      event.stopPropagation();
+      return;
+    }
     const last = live.points[live.points.length - 1];
     // 🔴 采样过滤（A1 的 `isFarEnough`）：不过滤的话一次涂鸦就是上千个点，
     //    学生几乎一落笔就撞上 2000 点的上限，而他以为是自己画得太多。
@@ -263,7 +284,19 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled }: InkCanvasP
       try { live.el.releasePointerCapture(live.pointerId); } catch { /* 纪律 ① */ }
     }
     if (!live || !commit) { redraw(); return; }
-    const stroke: InkStroke = { color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points };
+    // ★ 2026-09-30：图形档**手指抖一下不该留下一个看不见的图形** ——
+    //   宽或高（在**像素**里量）小于 8px 就当没画过。⚠️ 手写**不过这一关**：
+    //   学生在屏幕上点一下本来就该留下一个点。
+    if (live.shape) {
+      const [a, b] = live.points;
+      const wPx = Math.abs((b?.[0] ?? a[0]) - a[0]) * live.box.w;
+      const hPx = Math.abs((b?.[1] ?? a[1]) - a[1]) * live.box.h;
+      if (!b || (wPx < 8 && hPx < 8)) { redraw(); return; }
+    }
+    const stroke: InkStroke = {
+      color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points,
+      ...(live.shape ? { shape: live.shape } : {}),
+    };
     // ⚠️ 这里**不**走 A1 的 `appendStroke`，两个理由：
     //   ① 它要一份 `InkValue`（多一个 `format` 字段，而本组件**拿不到 node** —— 与工具栏
     //      不在本文件的那条理由逐字相同，见 `InkCanvasProps` 上面那段）；

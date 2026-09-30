@@ -75,6 +75,24 @@ export function isInkShapeKind(raw: unknown): raw is InkShapeKind {
  * ⚠️ 代价：椭圆是 32 段折线（视觉上无差别）、`d` 串略长。这是**知情的选择**。
  */
 export interface ShapeOutline { closed: boolean; points: InkPoint[] }
+/**
+ * 画布上的**档**（★ 2026-09-30）：手写 / 九个图形 / 选择。
+ *
+ * 🔴 **顺序就是工具栏上的顺序**，而且**默认档恒是手写**（`INK_DEFAULT_TOOL`）——
+ *    老习惯的学生进题目要能**直接画**；默认成别的档他会以为画布坏了。
+ * ⚠️ `select` 不是一个形状：它是「选中并移动已有的图形」那一档（教师选的「甲」）。
+ */
+export const INK_TOOL_PEN = 'pen';
+export const INK_TOOL_SELECT = 'select';
+export const INK_TOOLS = [INK_TOOL_PEN, ...INK_SHAPE_KINDS, INK_TOOL_SELECT] as const;
+export type InkTool = (typeof INK_TOOLS)[number];
+/** 默认档：**手写**。见上面那条 🔴。 */
+export const INK_DEFAULT_TOOL: InkTool = INK_TOOL_PEN;
+/** 这一档是不是「画某个图形」（`pen` / `select` 都不是）。 */
+export function isInkShapeTool(tool: string): tool is InkShapeKind {
+  return isInkShapeKind(tool);
+}
+
 
 export interface InkStroke {
   color: string;

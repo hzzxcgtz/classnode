@@ -278,7 +278,7 @@ export default function GuidePage() {
 
         <main className={styles.content}>
           <GuideSection id="overview">
-            <SectionHeading icon="route" eyebrow="先建立全局认识" title="一堂课，会经过哪些步骤？" intro="ClassNode 把课堂前、中、后的工作连在一起。你不需要一次学会所有功能，先走通下面这条主线。" />
+            <SectionHeading icon="route" eyebrow="先建立全局认识" title="一堂课，会经过哪些步骤？" intro="支点课堂把课堂前、中、后的工作连在一起。你不需要一次学会所有功能，先走通下面这条主线。" />
             <div className={styles.journey}>
               {[
                 ["接入", "连接一个已有的 AI 智能体"],
@@ -304,11 +304,11 @@ export default function GuidePage() {
               { title: "确认学生访问方式", text: <>学生设备需要和教师电脑处在同一局域网。课堂开始前，可在课堂管理页确认“局域网访问”已经开启。</> },
               { title: "记住恢复入口", text: <>忘记密码时，可在桌面端控制面板重置。重置后应立即登录并修改为自己的密码。</> },
             ]} />
-            <Note tone="amber"><strong>课堂前 3 分钟检查：</strong>教师电脑能访问 AI 平台、学生设备能打开 ClassNode 学生端、投屏设备能看清互动码。</Note>
+            <Note tone="amber"><strong>课堂前 3 分钟检查：</strong>教师电脑能访问 AI 平台、学生设备能打开支点课堂学生端、投屏设备能看清互动码。</Note>
           </GuideSection>
 
           <GuideSection id="agents">
-            <SectionHeading icon="bot" eyebrow="步骤 2" title="接入智能体：把你已经做好的 AI 助教带进来" intro="ClassNode 不负责替你创作智能体，而是把各平台上的智能体安全、可控地接入真实课堂。" />
+            <SectionHeading icon="bot" eyebrow="步骤 2" title="接入智能体：把你已经做好的 AI 助教带进来" intro="支点课堂不负责替你创作智能体，而是把各平台上的智能体安全、可控地接入真实课堂。" />
             <Steps items={[
               { title: "选择平台", text: <>在“智能体管理”点击接入，先选择智能体所在的平台。不同平台需要的凭据会随标签切换。</> },
               { title: "填写接入凭据", text: <>按表单填写 Bot ID、访问令牌、App ID 等信息。密钥会加密保存在教师电脑上，不需要也不应该告诉任何人。</> },
@@ -355,7 +355,7 @@ export default function GuidePage() {
               { title: "确认进入对话", text: <>学生看到智能体名称和开场白后即可提问。教师端会实时看到上线状态与对话进展。</> },
             ]} />
             <Screenshot id="student-join" title="截图 4：学生加入与选择身份" instruction="建议制作一张左右拼图：左侧为输入互动码页面，右侧为选择姓名页面；保留搜索框、头像和确认按钮。" avoid="姓名请全部使用虚拟数据，互动码也请使用演示号码。" />
-            <Note tone="amber"><strong>学生打不开页面时：</strong>先确认两台设备在同一局域网，再检查教师端“局域网访问”开关和系统防火墙是否允许 ClassNode / Node.js 通信。</Note>
+            <Note tone="amber"><strong>学生打不开页面时：</strong>先确认两台设备在同一局域网，再检查教师端“局域网访问”开关和系统防火墙是否允许支点课堂（ClassNode）/ Node.js 通信。</Note>
           </GuideSection>
 
           <GuideSection id="live">
@@ -398,7 +398,7 @@ export default function GuidePage() {
 
           <div className={styles.finish}>
             <span><Icon name="check" /></span>
-            <div><strong>现在，你已经了解了 ClassNode 的完整工作流</strong><p>下一步不必追求复杂：用一个熟悉的智能体、几名测试学生，先完成一堂十分钟的测试课。</p></div>
+            <div><strong>现在，你已经了解了支点课堂的完整工作流</strong><p>下一步不必追求复杂：用一个熟悉的智能体、几名测试学生，先完成一堂十分钟的测试课。</p></div>
           </div>
         </main>
       </div>

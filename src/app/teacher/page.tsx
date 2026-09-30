@@ -342,7 +342,7 @@ export default function TeacherDashboard() {
 
     // 下载
     const link = document.createElement("a");
-    link.download = `ClassNode-${cr.code}-${title}.png`;
+    link.download = `支点课堂-${cr.code}-${title}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
   };
@@ -1010,7 +1010,7 @@ export default function TeacherDashboard() {
             }}
           >
             {loadError
-              ? '请确认本机的 ClassNode 服务正在运行，然后重试'
+              ? '请确认本机的支点课堂服务正在运行，然后重试'
               : '创建新课堂后，学生通过互动码加入，即可开始互动教学'}
           </p>
           <button

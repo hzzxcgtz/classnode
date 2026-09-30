@@ -130,13 +130,14 @@ export default function StudentHomePage() {
       <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {logoErr ? (
-            <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
+            <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
           ) : (
-            <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
+            <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
           )}
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>
-            AI互动课堂
+            支点课堂
           </h1>
+          <div style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 600, letterSpacing: '0.06em', marginTop: 4 }}>ClassNode</div>
           <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>
             请输入老师下发的4位互动码
           </p>

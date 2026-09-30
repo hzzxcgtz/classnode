@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>安装部署指南 · ClassNode - AI编程技术分享</title>
-<meta name="description" content="ClassNode 本地部署指南：安装包一键安装，或源码部署（Node.js + PM2 一键脚本）。无需云服务器，几分钟内完成。" />
+<title>安装部署指南 · 支点课堂 ClassNode - AI编程技术分享</title>
+<meta name="description" content="支点课堂（ClassNode）本地部署指南：安装包一键安装，或源码部署（Node.js + PM2 一键脚本）。无需云服务器，几分钟内完成。" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect x=%223%22 y=%223%22 width=%2226%22 height=%2226%22 rx=%228%22 fill=%22%23E07A3C%22/><path d=%22M11 10.5h10M11 16h7M11 21.5h10%22 stroke=%22%23fff%22 stroke-width=%222.2%22 stroke-linecap=%22round%22/></svg>" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
@@ -28,7 +28,7 @@
   <span class="hero-blob b2"></span>
   <div class="container">
     <span class="eyebrow"><span class="dot"></span> 本地部署指南</span>
-    <h1 class="guide-title">把 ClassNode<br><span class="grad">装进你的电脑</span></h1>
+    <h1 class="guide-title">把支点课堂<br><span class="grad">装进你的电脑</span></h1>
     <p class="guide-sub">无需云服务器。无论你习惯用安装包还是手动源码部署，都能在几分钟内完成。</p>
     <div class="guide-jump" style="margin-top:32px;">
       <a href="#install-pkg" class="btn btn-ghost btn-sm">方式一：安装包</a>
@@ -139,7 +139,7 @@ npm config get registry
     <div class="guide-card fade-in">
       <h3 class="guide-h3">
         <span class="guide-h3-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
-        第三步：部署 ClassNode
+        第三步：部署支点课堂
       </h3>
       <p class="guide-text">
         从
@@ -215,7 +215,7 @@ node start.js</code></pre>
       </div>
       <div class="guide-note warn">
         <strong>💡 客户端连不上？</strong>Windows 系统默认的安全策略有时会误拦截网络。若客户端连接失败，多半是管理机的 <strong>3001</strong> 端口被防火墙阻挡。请在管理电脑上尝试：<br />
-        <strong>方式一：</strong>打开「Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙」，勾选 <strong>ClassNode</strong>（或 <strong>Node.js</strong>）的专用与公用网络（若无，点「允许其他应用」手动添加）。<br />
+        <strong>方式一：</strong>打开「Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙」，勾选 <strong>支点课堂（ClassNode）</strong>（或 <strong>Node.js</strong>）的专用与公用网络（若无，点「允许其他应用」手动添加）。<br />
         <strong>方式二：</strong>进同页面的「高级设置 → 入站规则 → 新建规则」，按提示勾选：端口 → TCP → 输入 <code>3001</code> → 允许连接。
       </div>
     </div>

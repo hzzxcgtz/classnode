@@ -134,9 +134,9 @@ fn update_tray(app: &AppHandle, running: bool) {
     set_tray_icon(app, running);
 
     let tooltip = if running {
-        format!("ClassNode - 运行中 (端口: {SERVER_PORT})")
+        format!("支点课堂 - 运行中 (端口: {SERVER_PORT})")
     } else {
-        "ClassNode - 已停止".to_string()
+        "支点课堂 - 已停止".to_string()
     };
     if let Some(tray) = app.tray_by_id("dashboard") {
         let _ = tray.set_tooltip(Some(&tooltip));
@@ -211,7 +211,7 @@ fn ensure_port_free(port: u16) -> Result<(), String> {
     if TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
         return Ok(());
     }
-    Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序，或在系统设置中调整 ClassNode 端口后重试。"))
+    Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序，或在系统设置中调整支点课堂端口后重试。"))
 }
 
 fn process_output_details(output: &Output) -> String {
@@ -563,7 +563,7 @@ fn build_app_menu(handle: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> 
     let file_menu = Submenu::with_items(handle, "文件", true, &[
         &MenuItem::with_id(handle, "show", "显示面板", true, None::<&str>)?,
         &PredefinedMenuItem::separator(handle)?,
-        &MenuItem::with_id(handle, "quit", "退出 ClassNode", true, Some("CmdOrCtrl+Q"))?,
+        &MenuItem::with_id(handle, "quit", "退出支点课堂", true, Some("CmdOrCtrl+Q"))?,
     ])?;
     let server_menu = Submenu::with_items(handle, "服务", true, &[
         &MenuItem::with_id(handle, "start", "启动服务", true, Some("CmdOrCtrl+R"))?,
@@ -608,7 +608,7 @@ pub fn run() {
             let _tray = TrayIconBuilder::with_id("dashboard")
                 .icon(icon)
                 .icon_as_template(true)
-                .tooltip("ClassNode - 已停止")
+                .tooltip("支点课堂 - 已停止")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -679,7 +679,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("启动 ClassNode 失败");
+        .expect("启动支点课堂失败");
 
     app.run(|app_handle, event| {
         match event {

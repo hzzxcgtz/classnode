@@ -794,7 +794,7 @@ function renderStatsDocx(data: StatsExportData): DocBlock[] {
   // 尾部
   children.push(new Paragraph({ children: [new PageBreak()] }));
   children.push(new Paragraph({ spacing: { before: 2000 }, children: [] }));
-  children.push(pText('— 文档由 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
+  children.push(pText('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
   children.push(pText(`导出时间：${fmtDate(data.exportedAt || new Date().toISOString())}`, { size: 16, color: C.textLight, align: AlignmentType.CENTER }));
 
   return children;
@@ -983,7 +983,7 @@ export async function generateConversationsDocx(
   progress({ taskId: '', progress: 92, stage: '正在生成文档尾部...' });
   allChildren.push(new Paragraph({ children: [new PageBreak()] }));
   allChildren.push(new Paragraph({ spacing: { before: 2000 }, children: [] }));
-  allChildren.push(pText('— 文档由 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
+  allChildren.push(pText('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
   allChildren.push(pText(`导出时间：${fmtDate(new Date().toISOString())}`, { size: 16, color: C.textLight, align: AlignmentType.CENTER }));
 
   progress({ taskId: '', progress: 95, stage: '正在打包文档...' });
@@ -991,7 +991,7 @@ export async function generateConversationsDocx(
   const doc = new Document({
     title: `对话记录-${data.code}`,
     description: '课堂对话记录',
-    creator: 'ClassNode',
+    creator: '支点课堂 ClassNode',
     styles: { paragraphStyles: [], default: {} },
     sections: [{
       children: allChildren,
@@ -1035,7 +1035,7 @@ export async function generateStatsDocx(
   const doc = new Document({
     title: '学情报表',
     description: '课堂学情统计数据',
-    creator: 'ClassNode',
+    creator: '支点课堂 ClassNode',
     styles: { paragraphStyles: [], default: {} },
     sections: [{
       children,
@@ -1356,13 +1356,13 @@ export async function generateWorksheetReportDocx(
   }
 
   children.push(new Paragraph({ spacing: { before: 1200 }, children: [] }));
-  children.push(pText('— 文档由 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
+  children.push(pText('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
 
   progress({ taskId: '', progress: 95, stage: '正在打包文档…' });
   const doc = new Document({
     title: `学习单与探究空间-${classroom.code ?? classroomId.slice(0, 8)}`,
     description: '课堂学习单作答与探究空间使用',
-    creator: 'ClassNode',
+    creator: '支点课堂 ClassNode',
     styles: { paragraphStyles: [], default: {} },
     sections: [{ children, footers: { default: makeFooter(reportTitle(classroom.title, classroom.code)) } }],
   });

@@ -336,9 +336,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
             ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
+              <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
             <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>教师身份验证</h1>
             <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>请输入管理密码以进入控制台</p>
@@ -380,11 +380,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>C</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
             ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
+              <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>欢迎使用 AI互动课堂</h1>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>欢迎使用支点课堂</h1>
+            <div style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 600, letterSpacing: '0.06em', marginTop: 4 }}>ClassNode</div>
             <p style={{ color: '#6b7280', fontSize: "0.875rem", marginTop: 6 }}>首次使用，请设置管理密码以保护教师控制台</p>
           </div>
           <div style={{ marginBottom: 14 }}>
@@ -427,15 +428,15 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div className="teacher-sidebar-brand" style={{ marginBottom: 24, textAlign: sidebarCollapsed ? 'center' : undefined }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: sidebarCollapsed ? 'center' : undefined }}>
             {logoErr ? (
-              <div style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>C</div>
+              <div style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>支</div>
             ) : (
-              <img src="/logo.png" alt="ClassNode" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
+              <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             {!sidebarCollapsed && (
               <div className="teacher-sidebar-brand-copy">
-                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>ClassNode</div>
+                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>支点课堂</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                  <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>AI 互动课堂系统</span>
+                  <span style={{ fontSize: "0.75rem", color: '#94a3b8', letterSpacing: '0.04em' }}>ClassNode</span>
                   <span style={{
                     fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
                     borderRadius: 100, background: 'rgba(79,70,229,0.08)', color: '#6366f1',

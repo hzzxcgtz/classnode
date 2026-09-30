@@ -764,7 +764,7 @@ function ClassroomBoardContent() {
     ctx.fillText(title, qrSize / 2, qrSize + textHeight / 2);
 
     const link = document.createElement('a');
-    link.download = `ClassNode-${teacherCode}-${title}.png`;
+    link.download = `支点课堂-${teacherCode}-${title}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -3381,7 +3381,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             fontSize: "0.813rem", color: '#cbd5e1',
             borderTop: '1px solid #f1f5f9',
           }}>
-            ClassNode · 投屏展示
+            支点课堂 · 投屏展示
           </div>
         </div>
       )}

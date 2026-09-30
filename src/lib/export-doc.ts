@@ -688,7 +688,7 @@ export async function exportConversationsDoc(data: ConversationExportReport): Pr
   children.push(
     new Table({ rows: coverRows, width: { size: 100, type: WidthType.PERCENTAGE } }),
     new Paragraph({ spacing: { before: 400 }, children: [] }),
-    p('— 文档由 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }),
+    p('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }),
   );
 
   // Class overview statistics page
@@ -754,13 +754,13 @@ export async function exportConversationsDoc(data: ConversationExportReport): Pr
   // Footer
   children.push(new Paragraph({ children: [new PageBreak()] }));
   children.push(new Paragraph({ spacing: { before: 3000 }, children: [] }));
-  children.push(p('— 文档由 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }));
+  children.push(p('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }));
   children.push(p('导出时间：' + formatDate(new Date().toISOString()), { size: 16, color: COLORS.textLight, align: AlignmentType.CENTER }));
 
   const doc = new Document({
     title: '对话记录-' + (data.code || ''),
     description: '课堂对话记录',
-    creator: 'ClassNode',
+    creator: '支点课堂 ClassNode',
     styles: { paragraphStyles: [], default: {} },
     sections: [{ children }],
   });
@@ -915,13 +915,13 @@ export async function exportStatsDoc(data: StatsExportReport): Promise<Blob> {
 
   children.push(new Paragraph({ children: [new PageBreak()] }));
   children.push(new Paragraph({ spacing: { before: 3000 }, children: [] }));
-  children.push(p('— 文档由 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }));
+  children.push(p('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: COLORS.textLight, align: AlignmentType.CENTER }));
   children.push(p('导出时间：' + formatDate(data.exportedAt || new Date().toISOString()), { size: 16, color: COLORS.textLight, align: AlignmentType.CENTER }));
 
   const doc = new Document({
     title: '学情报表',
     description: '课堂学情统计数据',
-    creator: 'ClassNode',
+    creator: '支点课堂 ClassNode',
     styles: { paragraphStyles: [], default: {} },
     sections: [{ children }],
   });

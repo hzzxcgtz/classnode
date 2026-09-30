@@ -220,7 +220,7 @@ export const REPORT_TEXT = {
   /** 探究空间表里那个参与者已经退出课堂。 */
   participantLeft: '（已退出）',
   /** 页尾署名。 */
-  generatedBy: '— 文档由 ClassNode 自动生成 —',
+  generatedBy: '— 由支点课堂 ClassNode 自动生成 —',
 } as const;
 
 /** 高级模式下「没有可作答学习单」的那句附注（与 M5b 的矩阵同一条纪律）。 */

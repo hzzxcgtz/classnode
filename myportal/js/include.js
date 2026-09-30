@@ -33,7 +33,7 @@
     '<li><a href="' + home("#change") + '">缘起</a></li>' +
     '<li><a href="' + home("#vibe") + '">Vibe Coding</a></li>' +
     '<li><a href="' + home("#works") + '">作品</a></li>' +
-    '<li><a href="classnode.html">ClassNode</a></li>' +
+    '<li><a href="classnode.html">支点课堂</a></li>' +
     '<li><a href="' + home("#about") + '">关于</a></li>' +
     "</ul>" +
     '<div class="nav-right">' +
@@ -53,7 +53,7 @@
     '<div class="footer-inner">' +
     '<div class="footer-brand">' + LOGO_SVG + '<span>编程研习工坊</span></div>' +
     '<div class="footer-links">' +
-    '<a href="' + (IS_INDEX ? "classnode.html" : "index.html") + '">' + (IS_INDEX ? "ClassNode 详情" : "返回首页") + "</a>" +
+    '<a href="' + (IS_INDEX ? "classnode.html" : "index.html") + '">' + (IS_INDEX ? "支点课堂详情" : "返回首页") + "</a>" +
     '<a href="' + (IS_INDEX ? "deploy.html" : "deploy.html") + '" target="_blank" rel="noopener">部署指南</a>' +
     '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026044424号-2</a>' +
     '<a href="https://beian.mps.gov.cn/#/query/webSearch?code=33010602014703" target="_blank" rel="noopener noreferrer">浙公网安备 33010602014703号</a>' +

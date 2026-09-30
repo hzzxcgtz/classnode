@@ -54,7 +54,7 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
     return data as T;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('保存请求超时，请确认 ClassNode 服务正在运行后重试');
+      throw new Error('保存请求超时，请确认支点课堂服务正在运行后重试');
     }
     throw error;
   } finally {

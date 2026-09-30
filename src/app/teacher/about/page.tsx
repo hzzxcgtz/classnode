@@ -114,16 +114,16 @@ export default function AboutPage() {
     <main className={styles.page}>
       <header className={styles.hero}>
         {logoError ? (
-          <span className={styles.logoFallback}>C</span>
+          <span className={styles.logoFallback}>支</span>
         ) : (
-          <img className={styles.logo} src="/logo.png" alt="ClassNode" onError={() => setLogoError(true)} />
+          <img className={styles.logo} src="/logo.png" alt="支点课堂 ClassNode" onError={() => setLogoError(true)} />
         )}
         <div className={styles.heroContent}>
           <div className={styles.titleRow}>
-            <h1>ClassNode</h1>
+            <h1>支点课堂</h1>
             <span className={styles.version}>v{APP_VERSION}</span>
           </div>
-          <p>让每一次 AI 探索，都自然地发生在真实课堂里。</p>
+          <p>ClassNode · 让每一次 AI 探索，都自然地发生在真实课堂里。</p>
         </div>
       </header>
 
@@ -135,10 +135,10 @@ export default function AboutPage() {
           <h2 id="developer-letter-title">愿技术靠近课堂，而不是让课堂迁就技术</h2>
           <div className={styles.letterBody}>
             <p>
-              ClassNode 源于一堂真实的 AI 课。老师花了许多个夜晚打磨智能体，真正带进教室时，却常常被账号、网络和设备挡在门外。
+              支点课堂（ClassNode）源于一堂真实的 AI 课。老师花了许多个夜晚打磨智能体，真正带进教室时，却常常被账号、网络和设备挡在门外。
             </p>
             <p>
-              真实课堂需要简单的入口，也需要教师看见互动、掌握秩序并留下学习过程。因此，ClassNode 安静地运行在教师电脑上，用一枚互动码连接老师精心创造的智能体与每一个正在思考的学生。
+              真实课堂需要简单的入口，也需要教师看见互动、掌握秩序并留下学习过程。因此，支点课堂安静地运行在教师电脑上，用一枚互动码连接老师精心创造的智能体与每一个正在思考的学生。
             </p>
             <p className={styles.letterWish}>
               我始终相信，好的技术应该站在教学身后：让工具少占一点注意力，让教师多留一点心力给学生。
@@ -200,7 +200,7 @@ export default function AboutPage() {
       <footer className={styles.footer}>
         <strong>教学互促 · 源码共研</strong>
         <p>欢迎对技术感兴趣的老师访问仓库交流</p>
-        <nav aria-label="ClassNode 代码仓库">
+        <nav aria-label="支点课堂 ClassNode 代码仓库">
           <a href="https://gitcode.com/weixin_41523975/classnode" target="_blank" rel="noreferrer">
             <img src="/gitcode_logo.png" alt="" />
             GitCode

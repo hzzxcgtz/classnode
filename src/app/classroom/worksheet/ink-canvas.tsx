@@ -20,6 +20,7 @@ import {
   resizeStroke,
   shapeOutline,
   strokeHandles,
+  textBoxOf,
   strokeWidthPx,
   toPixel,
 } from '@/lib/worksheet-ink';
@@ -28,7 +29,7 @@ import {
 // 模块里其实能共存（`import type` 只占类型名字空间），但那样 `InkCanvasProps.box` 的类型
 // 会比它自己的名字更值得解释。⇒ 类型侧引入为 `InkCanvasBox`：**同一个类型**，只改本文件的
 // 本地名，不是第二份定义。
-import type { InkCanvas as InkCanvasBox, InkPoint, InkShapeKind, InkStroke, InkTool } from '@/lib/worksheet-ink';
+import type { InkCanvas as InkCanvasBox, InkPoint, InkShapeKind, InkStroke, InkText, InkTool } from '@/lib/worksheet-ink';
 import styles from './worksheet.module.css';
 
 /**
@@ -102,6 +103,8 @@ export interface InkCanvasProps {
   width: number;
   /** ★ 2026-09-30：新画的那一笔用什么颜色（`ink-body` 的八色板给的）。 */
   color: string;
+  /** ★ 2026-09-30 第二轮：画布上的**文字**（没有就不传）。 */
+  texts: readonly InkText[];
   /**
    * ★ 2026-09-30：被选中的图形下标（`null` = 没选中）。
    * 🔴 它**住在 `ink-body`**（不是这里）：删除按钮在那边那条工具栏上，而两处各存一份
@@ -168,12 +171,15 @@ interface LiveStroke {
   shape?: InkShapeKind;
 }
 
-export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
   const strokesRef = useRef<readonly InkStroke[]>(strokes);
-  strokesRef.current = strokes;              // 每次渲染同步（不在 effect 里：`pointerup` 可能先到）
+  strokesRef.current = strokes;
+  /** ★ 第二轮：文字的最新一份（与 `strokesRef` 同一条理由：`redraw` 是闭包）。 */
+  const textsRef = useRef<readonly InkText[]>(texts);
+  textsRef.current = texts;              // 每次渲染同步（不在 effect 里：`pointerup` 可能先到）
   const liveRef = useRef<LiveStroke | LiveSelect | null>(null);
   /**
    * 落笔**被拦**那一刻记下的原因。它只是上限提示的**第二个来源** ——
@@ -254,6 +260,17 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
     strokesRef.current.forEach((stroke, index) => {
       drawStroke(liveSelect && liveSelect.index === index ? liveSelect.current : stroke);
     });
+    // ★ 2026-09-30 第二轮：**文字**。⚠️ 用的是与教师端 SVG **同一个** `textBoxOf`
+    //（估算框）⇒ 两边画在同一处，不可能分叉。
+    // ⚠️ `textBaseline = 'top'`：canvas 默认是 `alphabetic`（基线），而我们的框是左上角 ——
+    //    不改的话文字会整体上浮一个字高（屏幕上只是「位置有点怪」）。
+    for (const text of textsRef.current) {
+      const [x, y, , h] = textBoxOf(text, scale);
+      ctx.fillStyle = text.color;
+      ctx.font = `${h / 1.3}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(text.text, x, y);
+    }
     // ★ 2026-09-30：选中态的画法（虚线外框 + 控制点）。**只有图形有控制点**
     //（手写选不中，判据在 `hitTestStroke` / `shapeOutline`）。
     // ★ 2026-09-30（复审）：**只读态不画选中框** —— 锁住之后点不动、删不掉、
@@ -289,7 +306,7 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
   // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
-  useEffect(() => { redraw(); }, [redraw, strokes, selected]);
+  useEffect(() => { redraw(); }, [redraw, strokes, texts, selected]);
 
   /**
    * 上限提示的**第一个来源**（主来源）：当下就在上限上时它自己就在屏幕上。

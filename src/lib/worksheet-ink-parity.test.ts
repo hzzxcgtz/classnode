@@ -184,3 +184,20 @@ test('★ 对拍：带 shape 的 readInkValue（复审指出的网眼：原来�
   const kept = front.readInkValue(VALUES[0]);
   assert.equal(kept?.strokes[0]?.shape, 'rect', '阳性对照失效：带 shape 的值没读出来');
 });
+
+test('🔴 四处渲染都必须把 texts 画出来（漏一处 = 某个地方凭空少一段文字）', () => {
+  // ★ 2026-09-30 第二轮。与 `shape` 那条**同一个理由、同一批文件** ——
+  //   而文字比图形更容易漏：它在四处各自要拼一个 `<text>` / 一次 `fillText`。
+  //   漏了不报错：某一屏上学生写的字**凭空不见**，只有人眼能发现。
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const RENDERERS = [
+    'src/app/classroom/worksheet/ink-canvas.tsx',      // 学生画布（ctx.fillText）
+    'src/app/teacher/classroom/ink-preview.tsx',       // 教师 SVG（<text>）
+    'server/src/services/ink-render.ts',               // 教师用卷导出 → PNG
+    'server/src/services/analysis-render.ts',          // AI 分析联系表（自己拼 SVG，最容易漏）
+  ];
+  for (const file of RENDERERS) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.ok(/textBoxOf\(/.test(text), `${file} 没有用 textBoxOf —— 它不会画文字（或画在别处）`);
+  }
+});

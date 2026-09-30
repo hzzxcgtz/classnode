@@ -1,4 +1,4 @@
-import { INK_STROKE_COLOR, strokePath, strokeWidthPx, type InkValue } from './ink-path.js';
+import { INK_STROKE_COLOR, strokePath, strokeWidthPx, textBoxOf, type InkValue } from './ink-path.js';
 import type { AnalyzeEntry, SheetKnobs, SheetLayout } from './analysis-payload.js';
 
 /**
@@ -104,7 +104,7 @@ function isFinitePoint(point: unknown): boolean {
 function cellInk(ink: InkValue | undefined, cell: SheetLayout['cells'][number]): string {
   if (!ink || !Array.isArray(ink.strokes)) return '';
   const box = { w: cell.w, h: cell.h };
-  return ink.strokes
+  const paths = ink.strokes
     .filter((stroke) => stroke && Array.isArray(stroke.points) && stroke.points.every(isFinitePoint))
     .map((stroke) => {
       // ★ 2026-09-30：同上 —— 这一处**自己拼 `<path>`**，是四处渲染里最容易漏的。
@@ -116,6 +116,16 @@ function cellInk(ink: InkValue | undefined, cell: SheetLayout['cells'][number]):
     })
     .filter(Boolean)
     .join('');
+  // ★ 2026-09-30 第二轮：**文字**。这是**四处渲染里最容易漏的一处**（它自己拼 SVG）。
+  // ⚠️ 与 `ink-render.ts` 同一条：学生的字是不可信数据，必须转义。
+  // ⚠️ 这一处**不判空**：调用方按整格取，空串就什么都不画（与其他几种作答一致）。
+  const texts = (ink.texts ?? [])
+    .map((text) => {
+      const [x, y, , h] = textBoxOf(text, box);
+      return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${(h / 1.3).toFixed(2)}" fill="${safeColor(text.color)}" dominant-baseline="hanging" font-family="sans-serif">${escape(text.text)}</text>`;
+    })
+    .join('');
+  return paths + texts;
 }
 
 /** 一块底板 + 可选的一段文本。 */

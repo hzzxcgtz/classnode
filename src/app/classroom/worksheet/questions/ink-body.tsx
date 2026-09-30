@@ -285,6 +285,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
       <InkCanvas
         box={box}
         strokes={draft.strokes}
+        texts={draft.texts ?? []}
         hint={inkHint(node)}
         disabled={disabled}
         tool={tool}

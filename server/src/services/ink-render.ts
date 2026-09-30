@@ -1,4 +1,4 @@
-import { INK_STROKE_COLOR, strokePath, strokeWidthPx, type InkCanvas, type InkValue } from './ink-path.js';
+import { INK_STROKE_COLOR, strokePath, strokeWidthPx, textBoxOf, type InkCanvas, type InkValue } from './ink-path.js';
 
 /**
  * 笔迹 → PNG（M6a）。**本批新增的模块里，只有本文件碰 `sharp`。**
@@ -31,6 +31,15 @@ export const INK_PNG_MAX = 400;
  * 「像画布」的比例即可 —— 这里取 4:3（绘图题的默认框就是 `320 × 240`）。
  */
 const FALLBACK_BOX: InkCanvas = { w: 320, h: 240 };
+
+/** 学生写进来的**文字**要转义才能进 SVG 的字符串拼接（`<` `&` 会让整张图解析失败）。 */
+function escapeXml(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 /** `#rgb` / `#rrggbb` 之外的**一律回落**常量色：颜色是学生数据，不该进 SVG 的字符串拼接。 */
 function safeColor(raw: string): string {
@@ -66,8 +75,11 @@ async function getSharp(): Promise<SharpModule | null> {
  * 「导出失败」四个字 —— 一道手工改过的题能让一整节课的报告导不出来。
  */
 export async function inkToPng(ink: InkValue): Promise<Buffer | null> {
-  // ⚠️ 空笔画回 `null`（不是一张纯白图）：报告里「没有笔画」与「没作答」必须分得开。
-  if (ink.strokes.length === 0) return null;
+  // ⚠️ 一笔没画**且一个字没写**才回 `null`（不是一张纯白图）：
+  //    报告里「没有内容」与「没作答」必须分得开。
+  //    ★ 2026-09-30 第二轮：原来只看 `strokes.length === 0` —— 那样**只写了字**的作答
+  //    会被当成「没作答」（教师用卷上那格空白）。
+  if (ink.strokes.length === 0 && (ink.texts ?? []).length === 0) return null;
   const box: InkCanvas = ink.canvas.w > 0 && ink.canvas.h > 0 ? ink.canvas : FALLBACK_BOX;
 
   const paths = ink.strokes
@@ -80,9 +92,18 @@ export async function inkToPng(ink: InkValue): Promise<Buffer | null> {
     })
     .filter(Boolean)
     .join('');
-  if (!paths) return null;
+  // ★ 2026-09-30 第二轮：**文字**。⚠️ 学生写进来的字是**不可信数据** ⇒ 必须转义
+  //（`<` `&` 直接拼进 XML 会让整张图解析失败，而那条路是静默的：图出不来，谁也不知道为什么）。
+  const texts = (ink.texts ?? [])
+    .map((text) => {
+      const [x, y, , h] = textBoxOf(text, box);
+      const size = (h / 1.3).toFixed(2);
+      return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${size}" fill="${safeColor(text.color)}" dominant-baseline="hanging" font-family="sans-serif">${escapeXml(text.text)}</text>`;
+    })
+    .join('');
+  if (!paths && !texts) return null;
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${box.w}" height="${box.h}" viewBox="0 0 ${box.w} ${box.h}"><rect width="100%" height="100%" fill="#ffffff"/>${paths}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${box.w}" height="${box.h}" viewBox="0 0 ${box.w} ${box.h}"><rect width="100%" height="100%" fill="#ffffff"/>${paths}${texts}</svg>`;
 
   const sharp = await getSharp();
   if (!sharp) return null;

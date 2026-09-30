@@ -1,6 +1,6 @@
 'use client';
 
-import { strokePath, strokeWidthPx, type InkValue } from '@/lib/worksheet-ink';
+import { strokePath, strokeWidthPx, textBoxOf, type InkValue } from '@/lib/worksheet-ink';
 
 /**
  * 学生笔迹的**只读**渲染（★ M4b/E1）。
@@ -48,6 +48,26 @@ export function InkPreview({ value }: { value: InkValue }) {
           strokeLinejoin="round"
         />
       ))}
+      {/* ★ 2026-09-30 第二轮：**文字**。⚠️ 与笔迹同一份估算框（`textBoxOf`）——
+          学生画布用同一个函数 ⇒ 两边画在同一处，不可能分叉。
+          ⚠️ `dominantBaseline="hanging"`：SVG 的 `y` 默认是**基线**，而我们的框是**左上角**；
+          不对齐的话文字会整体上浮一个字高（屏幕上只是「位置有点怪」）。 */}
+      {(value.texts ?? []).map((text, index) => {
+        const [x, y, , h] = textBoxOf(text, box);
+        return (
+          <text
+            key={`t${index}`}
+            x={x}
+            y={y}
+            fontSize={h / 1.3}
+            fill={text.color}
+            dominantBaseline="hanging"
+            style={{ fontFamily: 'inherit' }}
+          >
+            {text.text}
+          </text>
+        );
+      })}
     </svg>
   );
 }

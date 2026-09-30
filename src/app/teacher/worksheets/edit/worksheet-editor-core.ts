@@ -44,6 +44,8 @@ import {
   readOptions,
   TRUE_FALSE_OPTIONS,
 } from '../../../../lib/worksheet-questions.ts';
+// ★ 2026-09-30：待选词的分隔符集合**只有一份**（`CHOICE_SEPARATORS`）—— 理由见那个常量。
+import { CHOICE_SEPARATORS } from '../../../../lib/worksheet-fill-modes.ts';
 // 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
 // （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
 import {
@@ -898,8 +900,21 @@ export function answerNoteLines(raw: unknown): string[] {
 /** 标记与括号之间允许的空白（教师手写时常见 `____ （高兴 难过）`）。 */
 const POOL_GAP = /[ \t 　]/;
 
-/** 待选词的分隔符 —— 与 `splitChoiceText`（输入那一侧）**同一套**，理由见那个函数。 */
-const POOL_SPLIT = /[、，,；;/|｜\s]+/;
+/**
+ * 待选词的分隔符。
+ *
+ * 🔴 **从 `CHOICE_SEPARATORS` 派生，不再自己写一条**（★ 2026-09-30）。原来这里是
+ * `/[、，,；;/|｜\s]+/` 字面量，注释写着「与 `splitChoiceText`（输入那一侧）**同一套**」——
+ * 那句话在那一侧加了全角斜杠之后**当场变成假话**，症状是粘贴一道
+ * `（高兴／难过）` 的题时**整个括号连词一起留在题干里**（学生看到词库印在题面上），
+ * 而屏幕上不报错。三份拷贝收成一份，理由见 `CHOICE_SEPARATORS` 的注释。
+ * ⚠️ **`\s` 是这一处刻意多出来的**：教师原话「通常会有分隔符**或空格**」——
+ *    只靠空格分开的那一档判不准，另有 `loose` 如实报出来（见 `extractPoolWords`）。
+ */
+const POOL_SPLIT = new RegExp(`[${CHOICE_SEPARATORS}\\s]+`);
+
+/** 「明确分隔符」= 上面那些里**除空白之外**的。一处都没有 ⇒ 那一档判不准（`loose`）。 */
+const POOL_EXPLICIT = new RegExp(`[${CHOICE_SEPARATORS}]`);
 
 /**
  * 从**已经统一成 `{填空域}`** 的题干里取出「空后括号里的待选词」（★ 2026-09-29，教师）。
@@ -952,7 +967,7 @@ export function extractPoolWords(raw: unknown): { text: string; words: string[];
     // 一个词（或认不准的）⇒ 属于题干的一部分，原样留着。
     if (tokens.length < 2 || /[（()）]/.test(inner)) { cursor = afterMark; continue; }
     // 「明确分隔符」= 除空白之外那几种。一处都没有 ⇒ 这一档判不准，记下来。
-    if (!/[、，,；;/|｜]/.test(inner)) loose.push(inner.trim());
+    if (!POOL_EXPLICIT.test(inner)) loose.push(inner.trim());
     tokens.forEach((word) => { if (!words.includes(word)) words.push(word); });
     // 认了 ⇒ 括号连词一起吃掉（`out` 里只留标记，标记与括号之间那段空白一并丢掉）。
     cursor = end + 1;

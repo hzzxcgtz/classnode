@@ -51,7 +51,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody, SymbolListInput } from './bodies/fill-blanks-body';
 // ★ 2026-09-30：主观题的**参考答案**（不判分）。输入框与填空题那份是**同一个组件**。
-import { splitChoiceText } from '@/lib/worksheet-fill-modes';
+import { CHOICE_SEPARATOR_HINT, splitChoiceText } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -91,7 +91,9 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
   },
   order: {
     title: '选项顺序',
-    description: '编辑需要排序的条目，并调整标准答案中的正确次序。',
+    // ★ 2026-09-30：右栏原来自己挂着一整段说明，而那正是两栏**错位**的来源
+    //（它比左栏那个单行标签高约 52px）⇒ 说明搬到这一句里，一句话管两栏。
+    description: '左栏是学生看到的顺序；右栏是正确顺序 —— 学生看不到它，它是判分的依据，用 ▲▼ 调成正确的先后。',
   },
   match: {
     title: '连线项目与正确配对',
@@ -162,7 +164,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onRemove }: {
+export function QuestionCard({ heading, index, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -221,6 +223,13 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   onAutoGradeChange: (autoGrade: boolean) => void;
   /** ★ 2026-09-26：部分给分的容错档。`null` = 缺省（旧规则「只要有一部分对就给分」）。 */
   onToleranceChange: (tolerance: number | null) => void;
+  /**
+   * ★ 2026-09-30（教师第三轮）：说一句话给教师听 —— 由 `PromptEditor` 转给公式弹窗，
+   * 供「复制成功」那句提示用。**在这里只是个过路参数**（真正的 toast 在编辑页那一层）。
+   * ⚠️ 第三轮把公式入口搬回题干工具栏之后，弹窗住进了 `PromptEditor`，
+   * 而 toast 住在 `page.tsx` ⇒ 中间必须有人把它转下去，否则复制成功一声不吭。
+   */
+  onNotice: (message: string, type: 'success' | 'error') => void;
   onRemove: () => void;
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
@@ -331,7 +340,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
       : isChoiceQuestion(node)
         ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项左侧的圆点。' }
         : isBlankType
-          ? { title: '填空与作答设置', hint: '填空域与表格域会自动同步；选词之间用顿号、逗号或分号分隔。' }
+          ? { title: '填空与作答设置', hint: `填空域与表格域会自动同步；${CHOICE_SEPARATOR_HINT}` }
           : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
@@ -498,6 +507,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             onRequestPaste={requestPaste}
             // ★ 2026-09-28：点题干里的 {表格域} chip（或刚插入一个）⇒ 展开设置面板
             onTableMarkClick={() => tableBlockRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
+            onNotice={onNotice}
           />
         </div>
 
@@ -588,13 +598,13 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                     <p>
                       {node.type === 'drawing' ? '填写作品应包含的关键元素、结构或关系；' : '填写可接受的核心答案；'}
                       <strong>它不参与自动判分</strong>，会作为智能体分析本题的参考依据。
+                      {CHOICE_SEPARATOR_HINT}
                     </p>
                   </div>
                 </div>
                 <SymbolListInput
                   values={readBlankAnswers(node)[0] ?? []}
                   split={splitChoiceText}
-                  joinWith=" / "
                   placeholder={node.type === 'drawing' ? '例如：包含蒸发、凝结、降水，并用箭头表示过程' : '例如：春天、春季'}
                   onChange={(items) => onDataChange({ answers: [items] })}
                 />
@@ -722,7 +732,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 <div>
                   <h4>标准答案</h4>
                   <p>{isBlankType
-                    ? '每个空可以填多个可接受答案（多个之间用顿号、逗号、分号等常见符号分隔）；学生答出其中一个就算对。'
+                    ? `每个空可以填多个可接受答案；学生答出其中一个就算对。${CHOICE_SEPARATOR_HINT}`
                     : '这道题的标准答案是「正确」还是「错误」。'}</p>
                 </div>
               </div>

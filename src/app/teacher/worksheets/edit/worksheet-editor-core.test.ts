@@ -3604,3 +3604,49 @@ test('🔴 只剩一条时**连那个选择都没有**（把唯一一条拿走�
   // 只有一条时 `optionSplit` 是 `null`（一行拆不出条目表）⇒ 选择不存在。
   assert.equal(parsePasteFor(order, '孤零零一行')?.firstLineAsStem, null);
 });
+
+/**
+ * ★ 2026-09-30（教师第三轮）：「几个选词之间的分隔符是怎么回事？几个地方要统一下，
+ * 用户在输入的时候可以用各种常见的分隔符号，**你多想几个，都是支持的**」。
+ *
+ * 🔴 这条网的由来：分隔符集合在仓里原来有**三份拷贝**（`splitChoiceText` 一条、
+ * 本文件的 `POOL_SPLIT` 一条、判 `loose` 那一条），而且后两条的注释写着
+ * 「与 `splitChoiceText`（输入那一侧）**同一套**」—— 那句话在我给输入那一侧加了
+ * 全角斜杠之后**当场变成假话**，而假的注释会被下一个人当依据。
+ * ⇒ 现在三处都从 `CHOICE_SEPARATORS` 派生，下面这几条钉住「派生出来的真的管用」。
+ */
+test('🔴 extractPoolWords：**中文输入法打出来的**分隔符也要认（全角斜杠等）', () => {
+  // ⚠️ 判据是「括号里不止一个词」⇒ 抽出来当词库。少认一个分隔符的症状是
+  //    **整个括号连词一起留在题干里**（学生看到词库印在题面上），而屏幕上不报错。
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴／难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 }, '全角斜杠：中文输入法下按 / 打出来的就是它');
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴·难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 });
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴﹑难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 });
+  // 阳性对照：原来那几种一个都不许丢。
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴、难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 });
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴；难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 0 });
+  // ⚠️ 而「只靠空格分开」那一档**仍然**如实报 `loose`（那是刻意保留的判不准档）。
+  assert.deepEqual(extractPoolWords('他{填空域}（高兴 难过）地说'),
+    { text: '他{填空域}地说', words: ['高兴', '难过'], loose: 1 });
+});
+
+test('🔴 参考答案（`answers: [items]`）写回再读回必须无损 —— 否则输入框会无限回填', () => {
+  // 🔴 为什么这条是**硬要求**而不是「最好无损」：`SymbolListInput` 的回填 effect
+  //    （★ 2026-09-30）判的是「手里这份解析出来与外面那份是否逐项相等」，
+  //    而它会在**每次渲染后**跑一遍。往返一旦变成**有损**的，判据永远为假 ⇒
+  //    `setDraft` ⇒ 再渲染 ⇒ 再判假……**无限循环**。
+  //    ⚠️ 症状不是「慢」而是**标签页卡死**，而这条链上没有别的东西拦得住它。
+  const items = ['阳光', '水分'];
+  const node = {
+    id: 'q1', type: 'short-answer', prompt: '写一写', inputMode: 'keyboard',
+    data: { answers: [items] }, children: [],
+  } as unknown as Parameters<typeof readBlankAnswers>[0];
+  assert.deepEqual(readBlankAnswers(node)[0], items, '参考答案往返丢了东西');
+  // 空表也要是无损的（教师把这一栏清空 ⇒ `[]` 去、`[]` 回）。
+  const empty = { ...node, data: { answers: [[]] } } as unknown as typeof node;
+  assert.deepEqual(readBlankAnswers(empty)[0], []);
+});

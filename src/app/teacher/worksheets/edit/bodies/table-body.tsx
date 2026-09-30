@@ -151,30 +151,60 @@ export function TableBody({ node, onDataChange }: {
         <tbody>
           {table.rows.map((cells, row) => (
             <tr key={row}>
-              {cells.map((cell, col) => (
-                <td key={col} className={cell.blank === '' ? undefined : 'is-blank'}>
-                  <input
-                    className="input"
-                    value={cell.text}
-                    aria-label={`${cellLabel(row, col)}的内容`}
-                    placeholder={row === 0 && table.headerRow !== false ? '表头' : ''}
-                    onChange={(event) => onDataChange({ table: setCellText(table, row, col, event.target.value) })}
-                  />
-                  {/* ⚠️ 「设为填空」用真的复选框：读屏与键盘都天然可用，
-                      也不用为它写一套按钮的选中态样式。 */}
-                  <label className="worksheet-editor-table-blank-toggle">
-                    <input
-                      type="checkbox"
-                      checked={cell.blank !== ''}
-                      disabled={cell.blank === '' && atLimit}
-                      onChange={(event) => apply(setCellBlank(
-                        table, answers, base, row, col, event.target.checked ? newBlankId() : null,
-                      ))}
-                    />
-                    填空
-                  </label>
-                </td>
-              ))}
+              {cells.map((cell, col) => {
+                const isBlank = cell.blank !== '';
+                return (
+                  <td key={col} className={isBlank ? 'is-blank' : undefined}>
+                    <div className="worksheet-editor-table-cell">
+                      {isBlank ? (
+                        /* ★ 2026-09-30（教师选「A」）：填空格**不给输入框**。
+                           🔴 为什么不给：学生端**从不渲染**填空格里的文字
+                              （`worksheet-table-view.tsx` —— 那一格只画一个输入框/落点槽），
+                              留一个输入框只会让教师打进去一段**学生永远看不到**的字，
+                              而屏幕上一切正常 —— 本仓最防的那类静默不一致。
+                           ⚠️ 原来打进去的文字**一个字都没被删**（`setCellBlank` 只改
+                              `blank`）—— 取消标记它就回来了，`worksheet-table.test.ts`
+                              有一条用例钉着这一点。 */
+                        <span
+                          className="worksheet-editor-table-blank-face"
+                          title="这一格留给学生作答"
+                        >
+                          学生填
+                        </span>
+                      ) : (
+                        <input
+                          className="input"
+                          value={cell.text}
+                          aria-label={`${cellLabel(row, col)}的内容`}
+                          placeholder={row === 0 && table.headerRow !== false ? '表头' : ''}
+                          onChange={(event) => onDataChange({ table: setCellText(table, row, col, event.target.value) })}
+                        />
+                      )}
+                      {/* ⚠️ 「设为填空」仍然用**真的复选框**（★ 2026-09-28 那条理由不变：
+                          读屏与键盘天然可用，也不用为它写一套按钮的选中态样式）。
+                          它现在没有文字了 ⇒ **名字必须由 `aria-label` 给**，
+                          否则读屏读出来是一个没有名字的勾选框（只有 title 是不够的：
+                          title 对触屏与读屏都不是可靠的可访问名）。 */}
+                      <label
+                        className="worksheet-editor-table-blank-toggle"
+                        title={isBlank
+                          ? `取消「${cellLabel(row, col)}」的填空标记（原来的文字还在，取消后会回来）`
+                          : `把「${cellLabel(row, col)}」标成填空：这一格留给学生作答`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isBlank}
+                          disabled={!isBlank && atLimit}
+                          aria-label={`把「${cellLabel(row, col)}」标成填空`}
+                          onChange={(event) => apply(setCellBlank(
+                            table, answers, base, row, col, event.target.checked ? newBlankId() : null,
+                          ))}
+                        />
+                      </label>
+                    </div>
+                  </td>
+                );
+              })}
               <td className="worksheet-editor-table-op">
                 <button
                   type="button"

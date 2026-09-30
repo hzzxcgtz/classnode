@@ -3705,6 +3705,25 @@ tr:hover td {
   flex: 1 1 0;
   min-width: 0;
 }
+
+/* ★ 2026-09-30（教师）：「还是不对」→「你看」——**真凶是这三行**。
+   🔴 `.worksheet-editor-block + .worksheet-editor-block` 那条通用规则（在下面 ~2000 行处）
+      本意是给**上下叠着**的两块之间加一条分隔线（margin/padding 各 16px + border-top）。
+      而右栏（`OrderAnswerBody` 自己那一层）恰好是**左栏的相邻兄弟** ⇒ `+` 选得中它
+      ⇒ 右栏被整体推下去 32px、头上还多出一条横线 —— 两栏的行怎么都对不齐。
+   🔴 **权重必须压过它，不能只靠书写顺序**：那条通用规则是**两个类**（0,2,0），
+      而 `…-order-columns > *` 只有**一个类**（0,1,0）—— 我第一版就是那么写的，
+      **它压根没生效**，而源码级那条网照样绿（它只查「文件里有没有这三行」，
+      不查「这三行压不压得过」）。⇒ 这里用**三个类**（0,3,0）压过它。
+   ⚠️ 本仓已为同一条通用规则踩过一次（`.worksheet-editor-table-setup` 那段注释）——
+      那次是「嵌在别的块里 ⇒ `+` 选不中」，这次是「并排 ⇒ 选得太中」。
+   ⚠️ 选择器写全（而不是 `> *`）还有一个理由：它把**意图**写清楚了 ——
+      被压的是「相邻的那个 block」，不是「随便什么子项」。 */
+.worksheet-editor-order-columns > .worksheet-editor-block + .worksheet-editor-block {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
 @media (max-width: 720px) {
   .worksheet-editor-order-columns {
     flex-direction: column;
@@ -3735,6 +3754,17 @@ tr:hover td {
   border: 1px solid transparent;
   border-radius: 8px;
   transition: border-color .15s, background-color .15s;
+  /* ★ 2026-09-30（教师）：「是**这个红框里边的位置不对**，所以导致错位。」
+     🔴 那处错位有两个来源，**只修标题是不够的**：
+       ① 右栏原来那一个 h4 + 一整段说明，比左栏的单行标签高约 52px
+          （标题已改成同一个类，见 `order-body.tsx`）；
+       ② **两栏的行高天生不同** —— 左行的高度由里头的 `<input>` 决定（~51px），
+          右行由那两个 28px 的箭头按钮决定（~40px）⇒ 每行再差 ~11px，
+          四行下来又歪掉一截。
+     ⇒ 统一最小高度把 ② 也钉住。
+     ⚠️ 左行的高度就是 `.input` 的高度（`padding: 10px 14px` + `font-size: 14px` + 边框）——
+        **改 `.input` 的内边距或字号时，这个数要跟着改**，否则两栏重新开始歪。 */
+  min-height: 44px;
 }
 
 .worksheet-editor-order-edit-row.is-drop-target,
@@ -6075,7 +6105,11 @@ tr:hover td {
 }
 
 /* ══ ★ 2026-09-30：题面里的数学公式 ══════════════════════════════════════════
-   三部分：工具栏那个 Σ、编辑体下方的常显预览、插入弹窗。
+   两部分：题干工具栏里那个 Σ（+「数学公式」四个字）、它开出来的公式弹窗。
+   ⊘ 2026-09-30 教师第三轮：原来那个「右下角悬浮按钮」与「编辑体下方的常显预览」
+     **都已拆除**（原话：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的」／
+     「这个预览我觉得完全没有必要，因为用户可以在右上角点『预览』看到渲染后的结果」）。
+     这两族的类名一并删干净 —— 留着就是死样式，而下一个人会以为它还在用。
    ⚠️ 类名一律 `worksheet-editor-` 前缀：本页有一条网（`editor-classes.test.ts`）守
       「用到的类必须在 globals.css 里有定义」—— 换个前缀就等于把这族类挪出网外，
       而症状是**屏幕上只是「长得不对」，构建与 tsc 全都不报错**（那条网的文件头
@@ -6090,93 +6124,196 @@ tr:hover td {
   vertical-align: baseline;
 }
 
-/* 工具栏上那个 Σ（与 `{填空域}` 那个字形同一族的写法）。 */
+/* 工具栏上那个 Σ —— 字号对齐紧挨着的 `{填空域}`（`.worksheet-editor-blank-glyph`），
+   两者在教师眼里是同一类东西：点一下往题干里放点东西。 */
 .worksheet-editor-math-glyph {
   color: inherit;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   line-height: 1;
 }
 
-/* 编辑体**下方**那一行常显预览（教师裁定 ①：打完当场看到学生将会看到的样子）。
-   ⚠️ 虚线框是**有意**的：它表示「这一块不是输入区」，免得教师去点它。 */
-.worksheet-editor-math-preview {
+/* ── 公式弹窗 ────────────────────────────────────────────────────────────────
+   外观沿用本页既有的浮层语言（`.teacher-editor-dialog` 给边框/圆角/阴影/渐变），
+   这里只补它自己的尺寸与内部分区。⚠️ **不用** `design/` 里那套新的森林绿 ——
+   那套还没落到代码里，只给这一个弹窗用会显得像两个人做的。 */
+.worksheet-editor-math-modal {
+  width: min(720px, 92vw);
+  max-height: 86vh;
   display: flex;
-  gap: 8px;
-  align-items: baseline;
-  margin-top: 6px;
-  padding: 6px 10px;
-  border: 1px dashed #d8dee6;
-  border-radius: 8px;
-  font-size: 0.813rem;
-  line-height: 1.6;
-  color: #334155;
+  flex-direction: column;
+  overflow: hidden;
+  /* ⚠️ `!important` 盖掉 `.teacher-editor-dialog` 的渐变：这个弹窗上面要放一行小标题、
+     下面是一个长滚动区，渐变会在滚动时露馅。纯白更稳。 */
+  background: #fff !important;
 }
-/* ⚠️ 题干可能很长，而预览是**一眼**用的 ⇒ 不许被公式撑破版面。 */
-.worksheet-editor-math-preview > :last-child {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.worksheet-editor-math-preview-label {
+.worksheet-editor-math-head {
   flex: none;
-  font-size: 0.688rem;
-  color: #94a3b8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 13px;
+  border-bottom: 1px solid var(--border);
+}
+.worksheet-editor-math-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #26354b;
+  letter-spacing: -0.012em;
+}
+.worksheet-editor-math-head p {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+/* 设计规范：关闭按钮始终位于右上角。 */
+.worksheet-editor-math-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+  color: #718096;
+  font-size: 0.813rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.worksheet-editor-math-close:hover { background: #f1f5f9; color: #334155; }
+
+/* 正文区独自滚动（设计规范：内容过长时仅正文区滚动）——
+   ⚠️ `min-height: 0` 是 flex 子项能滚的前提，少了它内容会把整个弹窗撑破。 */
+.worksheet-editor-math-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 18px;
 }
 
-/* ── 插入公式的小弹窗 ────────────────────────────────────────────────────── */
-.worksheet-editor-math-dialog {
-  margin-top: 6px;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+.worksheet-editor-math-field > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
-.worksheet-editor-math-dialog-input {
+.worksheet-editor-math-source {
   width: 100%;
-  min-height: 56px;
-  padding: 8px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  min-height: 62px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
   /* 等宽字体：LaTeX 源码里 `\` 与 `{}` 很多，比例字体下很难数清。 */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
   resize: vertical;
 }
-.worksheet-editor-math-dialog-preview {
-  margin-top: 8px;
-  padding: 8px 10px;
-  min-height: 40px;
-  background: #f8fafc;
-  border-radius: 8px;
+.worksheet-editor-math-source:focus {
+  outline: none;
+  border-color: #8da6c4;
+  box-shadow: 0 0 0 3px rgba(82, 113, 152, 0.16);
 }
-.worksheet-editor-math-dialog-hint {
+
+.worksheet-editor-math-effect { margin-top: 14px; }
+.worksheet-editor-math-effect-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+/* 效果区是教师**校对**的地方 ⇒ 公式比正文大一档、居中、浅底（与源码框一眼分得开）。 */
+.worksheet-editor-math-effect-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 68px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  font-size: 1.25rem;
+  /* 长公式不许把弹窗撑破：横向自己滚。 */
+  overflow-x: auto;
+}
+.worksheet-editor-math-hint {
   font-size: 0.75rem;
   color: #94a3b8;
 }
-.worksheet-editor-math-dialog-templates {
+
+.worksheet-editor-math-symbols {
+  display: grid;
+  gap: 13px;
+  margin-top: 16px;
+}
+.worksheet-editor-math-group { display: grid; gap: 6px; }
+.worksheet-editor-math-group-label {
+  font-size: 0.688rem;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+.worksheet-editor-math-group-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
+  gap: 6px;
 }
-.worksheet-editor-math-dialog-templates button {
-  min-width: 36px;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+/* ⚠️ `min-height` 而不是 `height`：方程组那一格（`\begin{cases}`）比别的符号高，
+   写死高度会把它裁掉一半 —— 而那种错在屏幕上只是「那个按钮怪怪的」。 */
+.worksheet-editor-math-symbol {
+  min-width: 44px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
   background: #fff;
+  color: var(--text);
+  font-size: 0.875rem;
   cursor: pointer;
+  transition: background 160ms, border-color 160ms, transform 180ms;
 }
-.worksheet-editor-math-dialog-templates button:hover {
-  background: #f1f5f9;
+.worksheet-editor-math-symbol:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-border);
 }
-.worksheet-editor-math-dialog-actions {
+.worksheet-editor-math-symbol:active { transform: scale(0.97); }
+
+.worksheet-editor-math-foot {
+  flex: none;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfe;
+}
+/* 复制失败那一句：`margin-right: auto` 把它顶到最左，右边两个按钮照旧靠右。 */
+.worksheet-editor-math-error {
+  margin: 0 auto 0 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+/* 窄屏（教师可能用平板/小笔记本改学习单）：弹窗几乎占满宽 —— 符号按钮那一排本来就多，
+   窄屏下更要紧的是别让弹窗被挤出一条横向滚动条。 */
+@media (max-width: 720px) {
+  .worksheet-editor-math-modal {
+    width: 96vw;
+    max-height: 90vh;
+  }
+  .worksheet-editor-math-body { padding: 14px 14px 16px; }
+  .worksheet-editor-math-head,
+  .worksheet-editor-math-foot { padding-left: 14px; padding-right: 14px; }
 }
 
 /* ★ 2026-09-26（spec 第 4 步）：工具栏下面那一句「先选中文字」的说明。
@@ -7716,13 +7853,59 @@ tr:hover td {
   gap: 10px;
 }
 
-.worksheet-editor-table-head-toggle,
-.worksheet-editor-table-blank-toggle {
+.worksheet-editor-table-head-toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   color: #475569;
   font-size: 0.72rem;
+  cursor: pointer;
+}
+
+/* ★ 2026-09-30（教师选「A」）：「这个表格填空的编辑……有点简陋，不够直观。」
+   ⇒ 每格改成**一行**：左边是内容（普通格 = 输入框，填空格 = 「学生填」），
+     右上角一个小方框。
+   ⊘ 原来「填空」是一个**独占一行的复选框**，于是每一行占两排、整张表很高，
+     而「哪些格要学生填」这条信息埋在复选框里，扫一眼看不出来。 */
+.worksheet-editor-table-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* ⚠️ `min-width: 0` 是 flex 子项能被压到比内容窄的前提 —— 少了它，一格里的长词
+   会把整列撑破（`table-layout: fixed` 也救不了）。 */
+.worksheet-editor-table-cell > .input { flex: 1 1 auto; min-width: 0; }
+
+/* 填空格上那一行字（那一格**不给输入框**，理由见 `table-body.tsx`）。
+   ⚠️ 虚线框是**有意**的：它一眼说明「这块不是给你打字的」，
+      而不是一个看起来能点却点不动的输入框。 */
+.worksheet-editor-table-blank-face {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px dashed #b9c8da;
+  border-radius: 8px;
+  background: #fff;
+  color: #7b8ca3;
+  font-size: 0.75rem;
+}
+
+/* 右上角那个小方框：勾上 = 这一格留给学生填。
+   ⚠️ 它是**真的 `<input type="checkbox">`**（读屏与键盘天然可用）——
+      只是把文字去掉了，视觉上缩成一个小方块。 */
+.worksheet-editor-table-blank-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.worksheet-editor-table-blank-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
   cursor: pointer;
 }
 
@@ -7744,7 +7927,13 @@ tr:hover td {
   vertical-align: top;
 }
 
-.worksheet-editor-table-grid td.is-blank { background: #f2f5f8; }
+/* 「这一格是空」靠**底色 + 左边一道色条**说 —— 两样都看得见。
+   ⊘ 原来只有一层几乎没有色差的 `#f2f5f8`，加上一个 15px 的复选框在下面，
+     教师看到的就是「一格一格的输入框 + 一堆勾」，认不出哪些要学生填。 */
+.worksheet-editor-table-grid td.is-blank {
+  background: #eef4fb;
+  box-shadow: inset 3px 0 0 #7d9dc4;
+}
 
 .worksheet-editor-table-grid .input {
   width: 100%;

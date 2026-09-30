@@ -57,7 +57,8 @@ function moveAt<T>(values: T[], from: number, to: number): T[] {
  */
 
 /**
- * 「正确答案的顺序」—— 学生看不到。**住在「自动评分」卡里**（见文件头那一段）。
+ * 「正确答案的顺序」—— 学生看不到。★ 2026-09-30 起它住在**左栏（选项顺序）的右边**
+ *（教师：「排序题的答案设置可以参考连线题和归类题，放在选项顺序的右侧」）。
  */
 export function OrderAnswerBody({ node, onDataChange }: {
   node: WorksheetQuestionNode;
@@ -97,12 +98,12 @@ export function OrderAnswerBody({ node, onDataChange }: {
 
   return (
     <div className="worksheet-editor-block">
-      <div className="worksheet-editor-block-head">
-        <div>
-          <h4>正确顺序</h4>
-          <p>学生看不到这个顺序；它是判分的依据。用 ▲▼ 调成正确的先后。</p>
-        </div>
-      </div>
+      {/* ★ 2026-09-30（教师）：「是这个红框里边的位置不对，所以导致错位。」
+          原来这里是 `<h4>正确顺序</h4>` + 一整段说明，比左栏那一个
+          `.worksheet-editor-block-label` 高出约 **52px** ⇒ 右栏的行整体被推下去，
+          两栏的行对不齐。⇒ 改成与左栏**同一个类**的单行标签；那两句说明搬到卡片顶部
+          （`question-card.tsx` 的 `order.description`）—— 一句话管两栏，也更省地方。 */}
+      <span className="worksheet-editor-block-label">正确顺序</span>
       {correctOrder.length === 0 ? (
         <p className="worksheet-editor-hint">
           还没设置正确顺序 —— 先点下面的「取当前顺序」（它会把现在的条目顺序当答案，

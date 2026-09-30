@@ -517,3 +517,24 @@ test('🔴 blankLayout：**没有标记**时与加标记之前逐字相同（表
 });
 
 ;
+
+test('🔴 setCellBlank：标空 / 取消标空都**不动那一格的文字**', () => {
+  // 🔴 2026-09-30（教师选了表格编辑器的新形状）之后，这一条从「一个实现细节」变成了
+  //    **唯一的数据保障**：新形状里填空格**不再渲染输入框**（那一格是留给学生作答的），
+  //    所以「教师原来打在这一格的字」在标记期间是**看不见的**——
+  //    它必须原样躺在库里，取消标记时一个字不差地回来。
+  //    ⚠️ 哪天有人「顺手」在标空时清掉 text（看起来很合理：空里不该有字），
+  //       症状是**教师的文字静默消失**，而屏幕上只是「取消标记后那一格空了」。
+  const table = { headerRow: true, rows: [[cell('时间'), cell('上午')], [cell('周六'), cell('去图书馆')]] };
+
+  const marked = setCellBlank(table, [[], []], 0, 1, 1, 'b1');
+  assert.equal(marked.table.rows[1][1].text, '去图书馆', '标成填空之后文字丢了');
+  assert.equal(marked.table.rows[1][1].blank, 'b1');
+
+  const unmarked = setCellBlank(marked.table, marked.answers, 0, 1, 1, null);
+  assert.equal(unmarked.table.rows[1][1].text, '去图书馆', '取消标记之后文字没回来');
+  assert.equal(unmarked.table.rows[1][1].blank, '');
+  // 而改身份的（`b1` → `b2`）也照旧不动文字。
+  const reidentified = setCellBlank(marked.table, marked.answers, 0, 1, 1, 'b2');
+  assert.equal(reidentified.table.rows[1][1].text, '去图书馆');
+});

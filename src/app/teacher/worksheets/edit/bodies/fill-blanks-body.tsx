@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
-import { blankSlots, fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { CHOICE_JOINER, blankSlots, fillSettingsFor, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -20,31 +20,58 @@ import {
  * 使用常见的符号分隔即可。」第二轮「这里也改成单行了，而且可以使用哪些符号间隔，
  * 要提示一下，之前改的地方也是一样。」
  *
- * 🔴 **为什么自己存一份正在输入的文本**：每次按键都立刻 `split(text).join(joinWith)`
- * 回填的话，教师刚打完的那个分隔符会在同一瞬间被吃掉（「阳光、」→ 变回「阳光」）
- * ⇒ **第二个词根本打不进去**。⇒ 打字时只更新自己那一份，`onBlur` 才规范化显示。
- * ⚠️ 依赖是那个**字符串**（不是数组）：解析结果没变时 canonical 不变 ⇒ effect 不跑
- * ⇒ draft 里那个尾巴留得住。
+ * 🔴 **为什么自己存一份正在输入的文本**：每次按键都立刻 `split(text).join(…)` 回填的话，
+ *   教师刚打完的那个分隔符会在同一瞬间被吃掉（「阳光、」→ 变回「阳光」）
+ *   ⇒ **第二个词根本打不进去**。所以打字时只更新自己那一份。
  *
- * ⚠️ **分隔符由调用方给**（`split` / `joinWith`），判据在 `@/lib/worksheet-fill-modes`：
- *   两种输入都认常见的那些（顿号/逗号/分号/斜杠/竖线/换行）—— 见 `splitChoiceText`
- *   的文件头，那里记着「代价是什么」与教师为什么这么选。
- * ⚠️ 三处共用一个组件是刻意的：同屏三个同类输入框各写一份，改一处只改一处，
- *   而教师看到的是「三个长得不一样的框」。
+ * ★ 2026-09-30（教师第三轮）：「几个地方要统一下，用户在输入的时候可以用各种常见的
+ *   分隔符号，**你多想几个，都是支持的**，也**不用刻意地转成某一个特别的符号**。」
+ *   ⇒ 两件事：
+ *   ① **显示分隔符收到一处**（`CHOICE_JOINER`，`@/lib/worksheet-fill-modes`）——
+ *      原来四个调用点各传一个（` / ` / `；` / `、` / `、`），而主观题「参考答案」那处
+ *      的占位语写的是顿号、值却用斜杠显示，自己跟自己不一致。
+ *   ② **`onBlur` 那次「规范化」整个删掉**，回填改判「解析结果是否逐项相等」——
+ *      见下面那个 effect。他打逗号就留逗号，打斜杠就留斜杠。
+ *
+ * ⚠️ **认哪些分隔符由 `split` 给**（`@/lib/worksheet-fill-modes` 的 `splitChoiceText`：
+ *   顿号/逗号/分号/斜杠/竖线/间隔号/制表符/换行，**中英文都认**）—— 那里记着
+ *   「代价是什么」（本身含标点的答案会被拆开）与教师为什么这么选。
+ * ⚠️ 四处共用一个组件是刻意的：同屏几个同类输入框各写一份，改一处只改一处，
+ *   而教师看到的是「几个长得不一样的框」。
  */
-export function SymbolListInput({ values, split, joinWith, placeholder, onChange }: {
+export function SymbolListInput({ values, split, placeholder, onChange }: {
   values: string[];
   split: (raw: string) => string[];
-  joinWith: string;
   placeholder: string;
   onChange: (items: string[]) => void;
 }) {
-  const canonical = values.join(joinWith);
+  const canonical = values.join(CHOICE_JOINER);
   const [draft, setDraft] = useState(canonical);
+  /**
+   * 这一帧手里那一份。
+   * ⚠️ 它进不了 effect 的依赖（`draft` 每次按键都变 ⇒ 那个 effect 会被自己触发的
+   *    一次渲染再跑一遍）。用 ref 读当下值，与 `prompt-editor` 里 `runsRef` 同一套写法。
+   */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
+  /**
+   * 什么时候拿**外面那份值**回填。
+   *
+   * 🔴 判据是「**手里这份解析出来与外面那份逐项相等，就一个字都不回填**」
+   *    （★ 2026-09-30，教师第三轮：「也不用刻意地转成某一个特别的符号」）。
+   *    教师打 `阳光,水分` 的那一刻，外面存下的是 `['阳光','水分']`、拼出来是
+   *    `阳光、水分` —— **两份说的是同一个列表**，只是写法不同 ⇒ 别动他的稿子。
+   *    ⚠️ 少了这条判据（比如只比「拼出来的字符串」），他刚打的逗号会**当场**被换成
+   *    顿号；屏幕上看不出是谁改的，像是输入法在捣乱。
+   * ⚠️ 真的变了（撤销 / 换题 / 别处改了同一个答案）⇒ 解析结果不同 ⇒ 照旧回填。
+   * ⚠️ 依赖里带上 `values` / `split`：它俩每次渲染都是新的 ⇒ 这个 effect 每渲染跑一遍，
+   *    但函数体第一句就把绝大多数情况挡回去了（判据只是几个短字符串的比较）。
+   */
   useEffect(() => {
-    setDraft(canonical);
-  }, [canonical]);
+    if (sameChoiceItems(split(draftRef.current), values)) return;
+    setDraft(values.join(CHOICE_JOINER));
+  }, [canonical, values, split]);
 
   return (
     <input
@@ -56,7 +83,6 @@ export function SymbolListInput({ values, split, joinWith, placeholder, onChange
         setDraft(next);
         onChange(split(next));
       }}
-      onBlur={() => setDraft(split(draft).join(joinWith))}
     />
   );
 }
@@ -103,7 +129,6 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
               <SymbolListInput
                 values={answerSets[index] ?? []}
                 split={splitChoiceText}
-                joinWith="；"
                 placeholder="填写标准答案"
                 onChange={items => onDataChange({
                   blanks: undefined,
@@ -219,7 +244,6 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
                   <SymbolListInput
                     values={settings[index].choices}
                     split={splitChoiceText}
-                    joinWith="、"
                     placeholder="例如：唐、宋、元"
                     onChange={words => setInlineChoices(index, words)}
                   />
@@ -236,7 +260,6 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
           <SymbolListInput
             values={poolChoices}
             split={splitChoiceText}
-            joinWith="、"
             placeholder="例如：阳光、水分、空气"
             onChange={words => onDataChange({ fillChoicePool: words })}
           />

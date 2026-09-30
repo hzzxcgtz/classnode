@@ -68,19 +68,85 @@ test('★ 排序题：正确顺序与选项顺序**并排**，且右栏不再住
 
 test('★ 两栏在窄屏上下叠（媒体查询真的写了，不是靠默认换行）', () => {
   const css = fs.readFileSync(GLOBALS, 'utf8');
-  const at = css.indexOf('.worksheet-editor-order-columns');
-  assert.ok(at >= 0, '找不到两栏那一段');
-  const block = css.slice(at, at + 900);
-  assert.ok(block.includes('display: flex'), '两栏不是 flex');
-  // 🔴 **必须只看媒体查询那一段**（从 `@media` 到它的结束 `}`）。
-  //    变异检验抓出来的假绿：`flex-direction: column` 在 CSS 里到处都是 ——
-  //    紧邻的 `.worksheet-editor-order-answer`（就在这几行之后）里也有一个，
-  //    用「附近 900 字符」这种窗口去查会被**邻居规则喂饱** ⇒
-  //    把媒体查询里的那一档改成 `row`，断言照样绿。
-  const mediaAt = block.indexOf('@media');
-  assert.ok(mediaAt >= 0, '那段附近没有媒体查询');
-  const media = block.slice(mediaAt, block.indexOf('\n}', mediaAt) + 2);
+  // 🔴 **按「哪条媒体查询管这两栏」找，不按字符窗口找**。
+  //    原来这里是 `css.slice(at, at + 900)` —— 一个**固定长度的窗口**：
+  //    只要在这段 CSS 附近多写几行注释，`@media` 就被挤出窗口，
+  //    症状是这条用例**红**（还算好）；更糟的是窗口里正好有**邻居规则**时它会**绿**
+  //    （这文件里已经为同类假绿改过一次：旁边 `.worksheet-editor-order-answer` 的
+  //     `flex-direction: column` 曾经把这个窗口喂饱，把媒体查询里那一档改成 `row` 照样绿）。
+  //    ⇒ 现在直接在**媒体查询块**里找，窗口长度不再参与判据。
+  const mediaBlocks = [...css.matchAll(/@media[^{]*\{[\s\S]*?\n\}/g)].map((m) => m[0]);
+  const mine = mediaBlocks.filter((block) => block.includes('.worksheet-editor-order-columns'));
+  assert.equal(mine.length, 1, `管这两栏的媒体查询应当只有一条，实际 ${mine.length} 条`);
+  const media = mine[0];
   assert.ok(media.includes('flex-direction: column'), '窄屏那一档不是叠放');
   assert.match(media, /max-width/, '媒体查询不是按宽度触发的');
   // ⚠️ 它**仍然只是源码级**：真机上窄屏是不是真的叠了，只能由人看。
+});
+
+test('★ 右栏的标题要和左栏**同一个类**（换行标签，不是 h4 + 一段说明）', () => {
+  const order = body(ORDER);
+  assert.ok(order.includes('export function OrderAnswerBody'), '找不到 OrderAnswerBody');
+  // 🔴 **两栏各一个**、且是**同一个类**。⚠️ 数个数而不是分别切两段：
+  //    `OrderBody` 在文件里排在 `OrderAnswerBody` **之后**，按位置切很容易切反
+  //    （第一版就切反了，报的是「左栏的标题类变了」）。
+  const labels = order.match(/worksheet-editor-block-label/g) ?? [];
+  assert.equal(labels.length, 2, `两栏的标题应当各是一个单行标签，实际找到 ${labels.length} 个`);
+  // 🔴 反面：`<h4>` + 一整段 `<p>` 正是把右栏的行推下去 ~52px 的东西。
+  assert.ok(!order.includes('<h4>'), '这一栏里还挂着一个 h4 —— 那正是「错位」的来源');
+  // ⚠️ 只挡 `<h4>` 是不够的（变异检验抓出来的洞）：**只挂一段 `<p>` 同样会把行推下去**。
+  //    而这一栏里 `worksheet-editor-hint` / `worksheet-editor-warn-hint` 那两段 `<p>`
+  //    是**条件渲染**的（只在空态 / 对不上时出现），不能一概禁掉。
+  //    ⇒ 判据是**位置**：「正确顺序」那个标签后面必须**紧接着**列表/空态那一句。
+  assert.match(
+    order,
+    /<span className="worksheet-editor-block-label">正确顺序<\/span>\s*\n\s*\{correctOrder\.length === 0 \? \(/,
+    '「正确顺序」标签后面又插了一整段说明 —— 那正是把右栏的行推下去的 ~52px',
+  );
+});
+
+test('★ 那两句说明搬进了卡片顶部那句话里（不许丢）', () => {
+  // 「学生看不到这个顺序；它是判分的依据」是**必须留着**的信息 ——
+  // 它是教师判断「我改的这一栏会不会影响学生」的唯一依据。
+  // ⚠️ 断言用的是**活代码**（剥过注释）：写进注释里不算数。
+  const card = body(CARD);
+  assert.ok(card.includes('学生看不到'), '「学生看不到」这句丢了');
+  assert.ok(card.includes('判分'), '「判分的依据」这句丢了');
+});
+
+test('★ 两栏的行高统一（不然每行再差一点，四行下来照样歪）', () => {
+  const css = fs.readFileSync(GLOBALS, 'utf8');
+  const at = css.indexOf('.worksheet-editor-order-edit-row,\n.worksheet-editor-order-row {');
+  assert.ok(at >= 0, '找不到两栏共用的那条行样式');
+  const block = css.slice(at, css.indexOf('}', at));
+  // 🔴 少了它：左行的高度由里头的 `<input>` 决定、右行由 28px 的箭头按钮决定
+  //    ⇒ 两栏的行高天生不同，而屏幕上只是「看着歪」，没有任何报错。
+  assert.ok(block.includes('min-height'), '两栏的行没有统一的最小高度（左行跟着输入框、右行跟着按钮）');
+});
+
+test('🔴 并排的两栏必须**按权重压过**「上下两块之间的分隔线」那条通用规则', () => {
+  // ★ 2026-09-30（教师）：「还是不对」→「你看」。真凶**不在这一屏的代码里**：
+  //
+  //   .worksheet-editor-block + .worksheet-editor-block {
+  //     margin-top: 16px; padding-top: 16px; border-top: 1px solid #eef2f6;
+  //   }
+  //
+  //   它本意是给**上下叠着**的两块之间加分隔线。而右栏恰好是左栏的**相邻兄弟**
+  //   ⇒ `+` 选得中它 ⇒ 右栏被推下去 32px、头上还多一条横线。
+  //
+  // 🔴 **只查「有没有那三行」是不够的 —— 我第一版就栽在这里**：
+  //    我把它挂在 `…-order-columns > *`（**一个**类）上，而通用规则是**两个**类
+  //    ⇒ 通用规则永远赢，补丁**压根没生效**，而这条用例照样绿。
+  //    ⇒ 现在下面同时断言**内容**与**权重**。
+  const css = fs.readFileSync(GLOBALS, 'utf8');
+  const SEL = '.worksheet-editor-order-columns > .worksheet-editor-block + .worksheet-editor-block';
+  const at = css.indexOf(SEL);
+  assert.ok(at >= 0, '找不到针对右栏的那条重置（选择器得写全，`> *` 压不过通用规则）');
+  const block = css.slice(at, css.indexOf('}', at));
+  assert.match(block, /margin-top:\s*0/, '右栏仍会被推下去 16px');
+  assert.match(block, /padding-top:\s*0/, '还要再推 16px');
+  assert.match(block, /border-top:\s*none/, '还会在右栏头上画一条横线');
+  // 🔴 **权重**：通用规则是「两个类」，这条必须**至少三个类**才压得过它。
+  const classes = (SEL.match(/\.[a-zA-Z-]+/g) ?? []).length;
+  assert.ok(classes >= 3, `这条重置只有 ${classes} 个类选择器，压不过通用规则的两个类`);
 });

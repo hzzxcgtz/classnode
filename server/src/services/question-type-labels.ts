@@ -24,6 +24,38 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * 题型的**别名**（★ 2026-09-28 教师给的对照表；★ 2026-09-30 教师用卷也用它）。
+ *
+ * 🔴 它是**给学生看的**名字（「开心填空」而不是「填空题」）——教师原话：
+ * 「题型使用别名，例如开心填空」（那是他在导出结果上提的第二批要求）。
+ * ⚠️ 与 `QUESTION_TYPE_LABELS` 一样，**必须与前端那张表逐条相同**：
+ *    `src/lib/worksheet-ink-parity.test.ts` 一条用例把两张表对拍（漂了会红）。
+ * ⚠️ 表里没有的题型（`task` 是任务容器、不是题）**回落到正式题型名** ——
+ *    回落成空串会让纸上那一行只剩一个分号。
+ */
+export const QUESTION_TYPE_NICKNAMES: Readonly<Record<string, string>> = {
+  'single-choice': '慧眼选择',
+  'true-false': '真假侦探',
+  'multi-choice': '慧眼选择',
+  'choice-blank': '开心填空',
+  'fill-blank': '开心填空',
+  'order': '顺序高手',
+  'match': '巧手连线',
+  'categorize': '分类达人',
+  'short-answer': '妙语问答',
+  'drawing': '创意画板',
+};
+
+/**
+ * 题型的**别名**（学生端那几个好玩的名字）。认不出的**回落到正式题型名** ——
+ * 与前端 `questionTypeNickname` 同一条规矩（那份是学生端渲染读的，这份给报告/教师用卷读）。
+ */
+export function questionTypeNickname(type: unknown): string {
+  if (typeof type !== 'string' || !type) return '（未知题型）';
+  return QUESTION_TYPE_NICKNAMES[type] ?? questionTypeLabel(type);
+}
+
+/**
  * ⚠️ 入参是 `unknown`：`Worksheet.content` 可能被手改过，`node.type` 未必是字符串。
  * 回落到「（未知题型）」而不是 `undefined` —— 后者会**把 `undefined` 印在纸上**当题型名。
  */

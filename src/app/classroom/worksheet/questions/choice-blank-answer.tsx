@@ -7,7 +7,7 @@ import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
-import { fillSettingsFor, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
+import { fillSettingsFor, placedValue, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import { CorrectAnswerNote } from './correct-answer-note';
 import styles from '../worksheet.module.css';
@@ -130,7 +130,14 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
   const place = (index: number, word: string) => {
     // ⚠️ 长度以**题目里的空数**为准（教师加了空、学生屏幕还没刷新时旧草稿会短一格）。
     const count = Math.max(draft.texts.length, index + 1);
-    const texts = Array.from({ length: count }, (_, i) => (i === index ? word : (draft.texts[i] || '')));
+    // 🔴 ★ 2026-09-30：写进草稿的是 `placedValue(word)` —— **判分口径**（剥掉公式定界符），
+    //    不是候选词的原文。学生**点**的是教师自己写的词（`$` 是教师文本自带的），
+    //    而判分侧比的是剥离之后的文本 ⇒ 直接用原文会**他点对了却判错**，
+    //    而屏幕上「他点的词」与「正确答案」渲染成同一个公式，看起来一模一样。
+    //    ⚠️ 与「学生手打 `$x=5$` 要判错」不矛盾：那说的是学生**打**的字符，
+    //       这里是**教师文本的引用**，两回事。
+    const value = placedValue(word);
+    const texts = Array.from({ length: count }, (_, i) => (i === index ? value : (draft.texts[i] || '')));
     setPicked(null);
     onChange({ kind: 'fill', texts });
   };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { blankSlots, fillSettingsFor, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { blankSlots, fillSettingsFor, placedValue, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -202,4 +202,17 @@ test('🔴 blankSlots：标记夹在中间时，清单的顺序 = 答案的顺�
   assert.deepEqual(slots.map(item => item.label), ['第 1 空', '第 2 行第 3 格', '第 3 空']);
   assert.deepEqual(slots.map(item => item.id), ['ba', 'tb1', 'bc']);
   assert.deepEqual(slots.map(item => item.kind), ['text', 'table', 'text']);
+});
+
+test('🔴 落词写进草稿的是**判分口径**（剥掉公式定界符），否则学生点对了判错', () => {
+  // 教师答案键写 `$x=2$` ⇒ 判分文本（`gradableAnswers`）是 `x=2`；
+  // 而学生**点**的候选词是教师原文 `$x=2$` —— 两个口径不一样。
+  // 不剥的话：点进来的值 `$x=2$` 与 `x=2` 不匹配 ⇒ **他点对了却判错**，
+  // 而屏幕上「他点的词」与「正确答案」都渲染成同一个公式，看起来一模一样。
+  assert.equal(placedValue('$x=2$'), 'x=2');
+  // 没有公式的词一个字节都不动。
+  assert.equal(placedValue('光合作用'), '光合作用');
+  // 🔴 那个**不成公式**的 `$` 不许被吃掉（与判分侧同一条安全阀）：
+  //    少了这一条，一个 `replace(/\$/g,'')` 式的实现也能让上面两条全绿。
+  assert.equal(placedValue('这本书 $5'), '这本书 $5');
 });

@@ -1,6 +1,8 @@
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
 import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
+// ★ 2026-09-30：落词要按**判分口径**写进草稿（见 `placedValue`）。
+import { mathText, splitMath } from './worksheet-math.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
 
@@ -147,4 +149,21 @@ export function writeFillSettings(
 
 export function sharedPoolChoices(node: WorksheetQuestionNode): string[] {
   return splitChoiceLines(node.data.fillChoicePool ?? node.data.choices);
+}
+
+/**
+ * 学生**点/拖**一个候选词时，写进作答草稿的值（★ 2026-09-30）。
+ *
+ * 🔴 它必须是**判分口径**的词（剥掉公式定界符），不能是候选词的原文。
+ *    根因：选择填空的学生**不打字** —— 他点的是**教师自己写的那个词**，`$` 是教师文本
+ *    自带的。而判分侧（`gradableAnswers`）比的是剥离之后的文本 ⇒ 不剥的话
+ *    **他点对了却判错**，而且屏幕上「他点的那个词」与「正确答案」都渲染成同一个公式，
+ *    看起来一模一样 —— 本仓最防的那类静默错判。
+ * ⚠️ 与「学生打 `$x=5$` 要判错」（裁定 ④ 的另一半）**不矛盾**：那说的是学生**手打**的
+ *    字符，这里是教师文本的引用，两回事。
+ * ⚠️ 没有公式的词一个字节都不动；不成公式的 `$`（「这本书 $5」）也原样保留 ——
+ *    那一条由 `splitMath` 的安全阀保证，这里不另设规则。
+ */
+export function placedValue(word: string): string {
+  return mathText(splitMath(word));
 }

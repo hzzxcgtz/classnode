@@ -1,4 +1,4 @@
-import { isInkFormat, type InkValue } from './ink-path.js';
+import { isInkFormat, isInkShapeKind, type InkValue } from './ink-path.js';
 import { analysisAnswerText } from './analysis-question.js';
 import type { QuestionNode } from './worksheet-questions.js';
 
@@ -103,6 +103,8 @@ function clamp01(value: number): number {
  * 而 `src/lib/worksheet-ink.ts` 的 `readPoint` 只保护**学生端画布 / 教师抽屉 / M6a 导出**
  * 那几条路 —— 本批的联系表是**新的一条**，它必须自己走同一口径。
  * （写入口刻意**不拒**越界数：`worksheet-ink.ts:99` 写着「越界不是拒绝的理由」。）
+ * ⚠️ 本文件是笔迹的**第四份读入器**：它自己重建每一笔 ⇒ **不在跨工程对拍网里**
+ *（对拍盯的是 `ink-path.ts`）。加字段时最容易漏的就是这里。
  */
 function readStrokes(raw: unknown[]): InkValue['strokes'] {
   const out: InkValue['strokes'] = [];
@@ -119,11 +121,21 @@ function readStrokes(raw: unknown[]): InkValue['strokes'] {
       points.push([clamp01(x), clamp01(y)]);
     }
     if (points.length === 0) continue;
-    out.push({
+    // ★ 2026-09-30：`shape` 必须**透传**，与前端 `readInkValue` 同一条纪律。
+    // 🔴 这一层是**第四份读入器**（它不 import `ink-path.ts`，所以不在跨工程对拍网里）——
+    //    吞掉 `shape` 的后果是 **AI 看到的图与教师看到的不是同一个东西**，两边都不报错。
+    // ⚠️ 「认不出的形状」⇒ **丢掉整笔**（不是静默当手写）：与前端同一把尺子。
+    // 🔴 形状表用 `ink-path.ts` 那一个（本文件**本来就引着它**）—— 不在这里再抄一份。
+    //    抄一份就是「同一个事实多份拷贝」，而这一整轮收的正是那笔账。
+    const shape = stroke.shape;
+    if (shape !== undefined && !isInkShapeKind(shape)) continue;
+    const next: InkValue['strokes'][number] = {
       points,
       width: typeof stroke.width === 'number' && Number.isFinite(stroke.width) ? stroke.width : 0,
       color: typeof stroke.color === 'string' ? stroke.color : '',
-    });
+    };
+    if (isInkShapeKind(shape)) next.shape = shape;
+    out.push(next);
   }
   return out;
 }

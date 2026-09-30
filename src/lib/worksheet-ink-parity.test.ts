@@ -20,6 +20,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as front from './worksheet-ink.ts';
+import type { InkPoint } from './worksheet-ink.ts';
 import * as serverValidate from '../../server/src/services/worksheet-ink.ts';
 import * as mirror from '../../server/src/services/ink-path.ts';
 import { QUESTION_TYPE_LABELS, QUESTION_TYPE_NICKNAMES } from '../../server/src/services/question-type-labels.ts';
@@ -101,13 +102,13 @@ test('★ 服务端的题型**别名**与前端那张表逐条相同（教师用
 */
 test('★ 对拍：九个形状的折线与路径，两份实现逐字相同', () => {
   const BOXES = [{ w: 200, h: 100 }, { w: 100, h: 100 }, { w: 400, h: 50 }, { w: 60, h: 240 }];
-  const POINTS = [[[0.1, 0.2], [0.7, 0.8]], [[0.8, 0.9], [0.2, 0.1]], [[0.5, 0.5], [0.5, 0.5]]];
+  const POINTS: InkPoint[][] = [[[0.1, 0.2], [0.7, 0.8]], [[0.8, 0.9], [0.2, 0.1]], [[0.5, 0.5], [0.5, 0.5]]];
   let compared = 0;
   for (const shape of front.INK_SHAPE_KINDS) {
     // `angle` 要三个点，其余两个 —— 两种都给，覆盖「点数不足」那条回落路。
-    const pointSets = shape === 'angle'
+    const pointSets: InkPoint[][] = shape === 'angle'
       ? [...POINTS, [[0.2, 0.2], [0.9, 0.2], [0.2, 0.9]]]
-      : [...POINTS, [[0.3, 0.3]]];
+      : [...POINTS, [[0.3, 0.3]], [[0.2, 0.2], [0.9, 0.9]]];
     for (const points of pointSets) {
       for (const box of BOXES) {
         const stroke = { color: '#000', width: 0.01, points };
@@ -115,14 +116,16 @@ test('★ 对拍：九个形状的折线与路径，两份实现逐字相同', (
         assert.deepEqual(mirror.shapeOutline({ ...stroke, shape }, box), front.shapeOutline({ ...stroke, shape }, box), `折线不一致：${what}`);
         assert.equal(mirror.strokePath(points, box, shape), front.strokePath(points, box, shape), `路径不一致：${what}`);
         assert.deepEqual(mirror.strokeHandles({ ...stroke, shape }, box), front.strokeHandles({ ...stroke, shape }, box), `把手不一致：${what}`);
-        for (const probe of [[0.5, 0.5], [0.2, 0.2], [0.95, 0.05]]) {
+        const PROBES: InkPoint[] = [[0.5, 0.5], [0.2, 0.2], [0.95, 0.05]];
+        for (const probe of PROBES) {
           assert.equal(mirror.hitTestStroke(probe, { ...stroke, shape }, box, 8),
             front.hitTestStroke(probe, { ...stroke, shape }, box, 8), `命中不一致：${what} 点 ${JSON.stringify(probe)}`);
         }
         assert.deepEqual(mirror.moveStroke({ ...stroke, shape }, 0.05, -0.05), front.moveStroke({ ...stroke, shape }, 0.05, -0.05), `平移不一致：${what}`);
         for (let handle = 0; handle < 4; handle += 1) {
-          assert.deepEqual(mirror.resizeStroke({ ...stroke, shape }, handle, [0.42, 0.58], box),
-            front.resizeStroke({ ...stroke, shape }, handle, [0.42, 0.58], box), `缩放不一致：${what} 把手 ${handle}`);
+          const target: InkPoint = [0.42, 0.58];
+          assert.deepEqual(mirror.resizeStroke({ ...stroke, shape }, handle, target, box),
+            front.resizeStroke({ ...stroke, shape }, handle, target, box), `缩放不一致：${what} 把手 ${handle}`);
         }
         compared += 1;
       }

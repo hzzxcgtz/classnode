@@ -421,3 +421,27 @@ test('形状不对的笔画整条丢掉（不是留一条空笔画）', () => {
   assert.equal(entry.ink?.strokes.length, 1, '只留形状对的那一条');
   assert.equal(entry.ink?.strokes[0].points.length, 2);
 });
+
+test('🔴 图形的 shape 必须活过这一层（它是**第四份读入器**，不在对拍网里）', () => {
+  // 🔴 `analysis-payload.ts` 自己重建每一笔（**不 import** `ink-path.ts`，那个文件才是被
+  //    跨工程对拍盯住的那一份）⇒ 新字段被它吞掉时，**AI 看到的图与教师看到的不是同一个
+  //    东西**，而两边都不报错。这正是「有九处各自读同一份数据，漏一处就静默不一致」的
+  //    那一处 —— 今天它是全仓唯一一个**没有任何护栏**的读入器。
+  const [entry] = selectAnalyzeEntries([
+    row('p1', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[0, 0], [1, 1]], width: 0.01, color: '#111111', shape: 'rect' }],
+    }),
+  ], people, 'q1');
+  assert.equal(entry.kind, 'ink');
+  const first = entry.ink?.strokes[0] as { shape?: string } | undefined;
+  assert.equal(first?.shape, 'rect', 'shape 被这一层吞掉了 —— AI 会把学生画的矩形看成一条手写线');
+  // 阴性对照：**认不出的形状**不许当成手写（与前端 `readInkValue` 同一条纪律：丢整笔）。
+  const [bad] = selectAnalyzeEntries([
+    row('p2', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[0, 0], [1, 1]], width: 0.01, color: '#111111', shape: 'hexagon' }],
+    }),
+  ], people, 'q1');
+  assert.equal(bad.ink?.strokes.length, 0, '认不出的形状那一笔要被丢掉，不是静默当手写');
+});

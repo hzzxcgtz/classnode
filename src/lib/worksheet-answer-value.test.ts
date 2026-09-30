@@ -64,6 +64,15 @@ const drawingNode = () => node('drawing', {});
 const STROKE: InkStroke = { color: '#1f2937', width: 0.016, points: [[0.1, 0.2], [0.3, 0.4]] };
 
 /**
+ * ★ 2026-09-30：**一个图形**（矩形）。它与 `STROKE` 一起进往返用例 —— 两条都要覆盖：
+ *   · 老值（没有 `shape`）不许因为新字段而变样；
+ *   · 图形的 `shape` **必须活过 `valueFromDraft` 的逐字段白名单重建**。
+ *     🔴 那一处是**逐字段重建**（`{ color, width, points }`），新字段会被**静默剥掉**：
+ *     学生画布对、离线队列对、**提交之后教师看到的就是一条普通笔迹**，两边都不报错。
+ */
+const RECT_STROKE: InkStroke = { ...STROKE, shape: 'rect' };
+
+/**
  * 学生作答那一刻**量出来**的框。⚠️ 它**刻意不等于**任何一道题的默认框
  *（绘图题 320×240 / 手写问答 320×160）—— 相等的话「用 `draft.box`」与
  * 「用 `defaultInkBox(node)`」两种写法在那条用例上**同结果**，那条用例就成了假保证。
@@ -356,8 +365,8 @@ test('draftFromValue：读-写往返', () => {
     [categorizeNode(), { kind: 'categorize', assignment: { i1: 'z2', i2: 'z1' } }],
     // ★ M4b：笔迹也走这条往返 —— `canvas` 与每一笔的几何必须**逐字**回来
     //（`box` 是这条往返里唯一一个「不是空的、又不是学生输入」的字段，最容易在转换中丢掉）。
-    [drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }],
-    [handwritingNode('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }],
+    [drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE, RECT_STROKE] }],
+    [handwritingNode('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE, RECT_STROKE] }],
   ];
   cases.forEach(([target, draft]) => {
     const value = buildAnswerValue(target, draft);

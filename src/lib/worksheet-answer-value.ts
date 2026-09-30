@@ -1,5 +1,5 @@
 import type { WorksheetQuestionNode } from './types';
-import { defaultInkBox, inkFormatOf, isInkNode, readInkValue } from './worksheet-ink.ts';
+import { defaultInkBox, inkFormatOf, isInkNode, isInkShapeKind, readInkValue } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
 import { blankLayout } from './worksheet-table.ts';
 
@@ -463,11 +463,20 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
       // 记错这一个字段的后果是教师在抽屉里看到的宽高比与学生画的那一版不同，
       // 而两处都「看起来正常」。
       canvas: { w: draft.box.w, h: draft.box.h },
-      strokes: draft.strokes.map((stroke) => ({
-        color: stroke.color,
-        width: stroke.width,
-        points: stroke.points.map((point): InkPoint => [point[0], point[1]]),
-      })),
+      // 🔴 这里是**逐字段白名单重建**（不是 `{...stroke}` 展开）—— 那是为了把草稿对象上
+      //    可能挂着的别的字段挡在外面。代价是：**加字段必须记得加在这一行**。
+      //    ★ 2026-09-30 加 `shape` 时就是这么被咬的：少了它，学生画的矩形在**提交那一刻**
+      //      被剥成普通笔迹，而画布、离线队列、教师抽屉全都不报错。
+      //      `worksheet-answer-value.test.ts` 那条往返用例现在喂的是**带 shape 的**笔迹。
+      strokes: draft.strokes.map((stroke) => {
+        const next = {
+          color: stroke.color,
+          width: stroke.width,
+          points: stroke.points.map((point): InkPoint => [point[0], point[1]]),
+        } as InkStroke;
+        if (isInkShapeKind(stroke.shape)) next.shape = stroke.shape;
+        return next;
+      }),
     };
   }
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') {

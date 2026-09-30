@@ -11,7 +11,7 @@ import {
   clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke,
 } from '@/lib/worksheet-ink';
 import type { InkShapeKind, InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
-import { InkCanvas } from '../ink-canvas';
+import { InkCanvas, type InkSelection } from '../ink-canvas';
 import styles from '../worksheet.module.css';
 
 /**
@@ -187,7 +187,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    * ★ 2026-09-30：被选中的图形（下标）。**住在这一层**（不是画布）——
    * 删除按钮在这条工具栏上，而两处各存一份「谁被选中」必然分叉。
    */
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<InkSelection | null>(null);
   /**
    * ★ 2026-09-30（教师：「笔的粗细」+「要能选」）：**新画的那一笔**用多粗。
    * ⚠️ 已经画下去的那些**不受影响**（粗细是每一笔各自的字段，这是数据的形状决定的）。
@@ -219,8 +219,14 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
   const applyColor = (next: string) => {
     setColor(next);
     if (tool !== 'select' || selected === null) return;
-    const strokes = draft.strokes.map((stroke, index) => (index === selected ? { ...stroke, color: next } : stroke));
-    onChange({ kind: 'ink', box, strokes });
+    // ★ 第二轮：文字与笔画都能改色（它们各自带着自己的 `color`）。
+    if (selected.kind === 'text') {
+      const texts = (draft.texts ?? []).map((item, index) => (index === selected.index ? { ...item, color: next } : item));
+      onChange({ kind: 'ink', box, strokes: draft.strokes, texts });
+      return;
+    }
+    const strokes = draft.strokes.map((stroke, index) => (index === selected.index ? { ...stroke, color: next } : stroke));
+    onChange({ kind: 'ink', box, strokes, texts: draft.texts });
   };
 
   /**
@@ -415,9 +421,15 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
           <button type="button" className={styles.inkButton} disabled={disabled}
             aria-label="删除选中的图形" title="删除选中的图形"
             onClick={() => {
-              const next = draft.strokes.filter((_, index) => index !== selected);
+              // ★ 第二轮：文字与笔画是两个数组 ⇒ 删**它所在的那一个**（删错一边 = 没反应）。
               setSelected(null);
-              onChange({ kind: 'ink', box, strokes: next });
+              if (selected.kind === 'text') {
+                const texts = (draft.texts ?? []).filter((_, index) => index !== selected.index);
+                onChange({ kind: 'ink', box, strokes: draft.strokes, texts });
+              } else {
+                const strokes = draft.strokes.filter((_, index) => index !== selected.index);
+                onChange({ kind: 'ink', box, strokes, texts: draft.texts });
+              }
             }}>
             <TrashIcon />
           </button>

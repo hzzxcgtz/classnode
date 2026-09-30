@@ -12,8 +12,10 @@ import {
   INK_TOOL_SELECT,
   INK_TOOL_TEXT,
   isInkShapeTool,
+  hitTestText,
   isShapeTooSmall,
   moveStroke,
+  moveText,
   pickInkHandle,
   pickInkStroke,
   resizeStroke,
@@ -107,13 +109,20 @@ export interface InkCanvasProps {
   /** ★ 第二轮：新文字的**字号**跟着笔的粗细档（`textSizeForWidth` 算好给这里）。 */
   textSize: number;
   /**
-   * ★ 2026-09-30：被选中的图形下标（`null` = 没选中）。
+   * ★ 2026-09-30：被选中的**元素**（`null` = 没选中）。
    * 🔴 它**住在 `ink-body`**（不是这里）：删除按钮在那边那条工具栏上，而两处各存一份
    *    「谁被选中」必然分叉（症状是「删掉的不是屏幕上圈着的那一个」）。
    */
-  selected: number | null;
-  onSelect: (index: number | null) => void;
+  selected: InkSelection | null;
+  onSelect: (next: InkSelection | null) => void;
 }
+
+/**
+ * ★ 2026-09-30 第二轮：被选中/正在拖的**是哪种元素**。
+ * 🔴 在这一轮之前它只是一个**笔画下标**（一个 `number`）—— 而文字是第二种元素，
+ *    一个下标说不清它指的是哪一边（症状是「删掉的不是屏幕上圈着的那一个」）。
+ */
+export interface InkSelection { kind: 'stroke' | 'text'; index: number }
 
 /** 选择档下正在做的手势（移动 / 改大小）。⚠️ 与 `LiveStroke` 同一条纪律：不进 state。 */
 interface LiveSelect {
@@ -121,17 +130,17 @@ interface LiveSelect {
   el: HTMLCanvasElement;
   pointerId: number;
   box: InkCanvasBox;
-  /** 被拖的那一笔在 `strokes` 里的下标。 */
-  index: number;
+  /** 被拖的那个元素。 */
+  target: InkSelection;
   /** 拖的是框内（移动）还是某个控制点（改大小）。 */
   mode: 'move' | 'resize';
   handle: number;
   /** 按下那一刻的那个点（归一化）。 */
   from: InkPoint;
   /** 按下那一刻那一笔的原样 —— 每次移动都**从它**算起（否则增量会累积、拖起来发飘）。 */
-  origin: InkStroke;
+  origin: InkStroke | InkText;
   /** 这一帧要画成什么样。 */
-  current: InkStroke;
+  current: InkStroke | InkText;
 }
 
 /** 图形小到这个尺寸（像素）就不成形 —— 松手时丢掉（判据在 `isShapeTooSmall`）。 */
@@ -267,7 +276,8 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     //    与手写那条「进行中的一笔走同一个 drawStroke」同一条理由：松手的一瞬间不该跳一下。
     const liveSelect = liveRef.current?.kind === 'select' ? liveRef.current : null;
     strokesRef.current.forEach((stroke, index) => {
-      drawStroke(liveSelect && liveSelect.index === index ? liveSelect.current : stroke);
+      const dragging = liveSelect && liveSelect.target.kind === 'stroke' && liveSelect.target.index === index;
+      drawStroke(dragging ? liveSelect.current as InkStroke : stroke);
     });
     // ★ 2026-09-30 第二轮：**文字**。⚠️ 用的是与教师端 SVG **同一个** `textBoxOf`
     //（估算框）⇒ 两边画在同一处，不可能分叉。
@@ -285,9 +295,23 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     // ★ 2026-09-30（复审）：**只读态不画选中框** —— 锁住之后点不动、删不掉、
     //    取消不了，一个留在屏幕上的虚线框就是「叫学生做他做不到的事」。
     if (selected !== null && !disabled) {
-      const chosen = liveSelect && liveSelect.index === selected ? liveSelect.current : strokesRef.current[selected];
-      if (chosen) {
-        const handles = strokeHandles(chosen);
+      const dragging = liveSelect && liveSelect.target.kind === selected.kind && liveSelect.target.index === selected.index;
+      const current = dragging ? liveSelect.current : undefined;
+      if (selected.kind === 'text') {
+        // ★ 第二轮：文字**没有控制点**（教师定的「字号跟着粗细档」）⇒ 只画一圈虚线框。
+        const chosenText = (current ?? textsRef.current[selected.index]) as InkText | undefined;
+        if (chosenText) {
+          const [tx, ty, tw, th] = textBoxOf(chosenText, scale);
+          ctx.save();
+          ctx.strokeStyle = SELECT_COLOR;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(tx, ty, tw, th);
+          ctx.restore();
+        }
+      } else {
+        const chosen = (current ?? strokesRef.current[selected.index]) as InkStroke | undefined;
+        const handles = chosen ? strokeHandles(chosen) : [];
         if (handles.length > 0) {
           ctx.save();
           ctx.strokeStyle = SELECT_COLOR;
@@ -372,31 +396,49 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
       //      学生按下那个白点会 `onSelect(null)` —— 选中被丢掉、什么都没拖起来。
       //   ② **再**看有没有点中某个图形（从后往前，后画的在上）。
       //   ③ 都没中 ⇒ 点空白，取消选中。
-      const selectedStroke = selected !== null ? filled[selected] : undefined;
-      if (selectedStroke) {
-        const handle = pickInkHandle(point, selectedStroke, liveBox, HANDLE_HIT_TOLERANCE_PX);
-        if (handle >= 0) {
-          try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
-          event.currentTarget.style.touchAction = 'none';
-          liveRef.current = {
-            kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
-            index: selected as number, mode: 'resize', handle, from: point,
-            origin: selectedStroke, current: selectedStroke,
-          };
-          redraw();
-          event.stopPropagation();
-          return;
+      const filledTexts = textsRef.current;
+      // ① 已选中那个**图形**的控制点（文字没有控制点 ⇒ 跳过这一档）。
+      if (selected?.kind === 'stroke') {
+        const selectedStroke = filled[selected.index];
+        if (selectedStroke) {
+          const handle = pickInkHandle(point, selectedStroke, liveBox, HANDLE_HIT_TOLERANCE_PX);
+          if (handle >= 0) {
+            try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
+            event.currentTarget.style.touchAction = 'none';
+            liveRef.current = {
+              kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
+              target: selected, mode: 'resize', handle, from: point,
+              origin: selectedStroke, current: selectedStroke,
+            };
+            redraw();
+            event.stopPropagation();
+            return;
+          }
         }
       }
-      const index = pickInkStroke(point, filled, liveBox, HANDLE_HIT_TOLERANCE_PX);
-      if (index < 0) { onSelect(null); return; }             // 点空白 ⇒ 取消选中
-      onSelect(index);
-      const chosen = filled[index];
+      // ② 点中了某个**图形**（从后往前：后画的在上）
+      const strokeIndex = pickInkStroke(point, filled, liveBox, HANDLE_HIT_TOLERANCE_PX);
+      // ③ 点中了某段**文字**（同样从后往前）——★ 第二轮：文字也能选中/拖动
+      let textIndex = -1;
+      for (let i = filledTexts.length - 1; i >= 0; i -= 1) {
+        if (hitTestText(point, filledTexts[i], liveBox, HANDLE_HIT_TOLERANCE_PX)) { textIndex = i; break; }
+      }
+      // 🔴 两者都命中时取**下标更大的**那一侧：两个数组各自按画的先后排，而屏幕上层级
+      //    只能用一个粗略规则 —— 后加进来的那一类在上（与「后画的在上」同一个意思）。
+      let target: InkSelection | null = null;
+      if (strokeIndex >= 0 && textIndex >= 0) {
+        // 两个数组没有共同的时序 ⇒ 用长度近似（后加的那一类通常更长的一方更晚）。
+        target = textIndex >= strokeIndex ? { kind: 'text', index: textIndex } : { kind: 'stroke', index: strokeIndex };
+      } else if (textIndex >= 0) target = { kind: 'text', index: textIndex };
+      else if (strokeIndex >= 0) target = { kind: 'stroke', index: strokeIndex };
+      if (!target) { onSelect(null); return; }               // 点空白 ⇒ 取消选中
+      onSelect(target);
+      const chosen: InkStroke | InkText = target.kind === 'text' ? filledTexts[target.index] : filled[target.index];
       try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
       event.currentTarget.style.touchAction = 'none';
       liveRef.current = {
         kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
-        index, mode: 'move', handle: -1, from: point,
+        target, mode: 'move', handle: -1, from: point,
         origin: chosen, current: chosen,
       };
       redraw();
@@ -440,9 +482,12 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     // ★ 选择手势：从**按下那一刻的原样**算起（不是增量累加 —— 累加会飘）。
     if (live.kind === 'select') {
       live.box = liveBox;
-      live.current = live.mode === 'move'
-        ? moveStroke(live.origin, point[0] - live.from[0], point[1] - live.from[1])
-        : resizeStroke(live.origin, live.handle, point);
+      // ★ 第二轮：移动按**元素种类**分派（文字走 `moveText`，它按估算框夹取）。
+      live.current = live.target.kind === 'text'
+        ? moveText(live.origin as InkText, point[0] - live.from[0], point[1] - live.from[1])
+        : live.mode === 'move'
+          ? moveStroke(live.origin as InkStroke, point[0] - live.from[0], point[1] - live.from[1])
+          : resizeStroke(live.origin as InkStroke, live.handle, point);
       redraw();
       event.stopPropagation();
       return;
@@ -473,8 +518,14 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     //    ⇒ 下标与屏幕上的图形对不上（症状是「拖着拖着选中了别的图形」）。
     if (live.kind === 'select') {
       if (live.current !== live.origin) {
-        const next = strokesRef.current.map((stroke, index) => (index === live.index ? live.current : stroke));
-        onChange({ box: live.box, strokes: next });
+        // ★ 第二轮：写回**它所在的那个数组**（文字与笔画是两个数组，写错一边 = 拖了没反应）。
+        if (live.target.kind === 'text') {
+          const nextTexts = textsRef.current.map((item, index) => (index === live.target.index ? live.current as InkText : item));
+          onChange({ box: live.box, strokes: [...strokesRef.current], texts: nextTexts });
+        } else {
+          const nextStrokes = strokesRef.current.map((stroke, index) => (index === live.target.index ? live.current as InkStroke : stroke));
+          onChange({ box: live.box, strokes: nextStrokes, texts: [...textsRef.current] });
+        }
       } else {
         redraw();                       // 按了没动（或拖回原地）⇒ 不写库，只重画掉高亮
       }

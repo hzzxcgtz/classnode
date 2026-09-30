@@ -52,7 +52,10 @@ test('★ 删除按钮：**只在「选择」档且真的选中了**才渲染，
   assert.match(body, /tool === 'select' && selected !== null/, '删除按钮不是在「选中了才出现」的条件下渲染');
   assert.ok(body.includes('删除选中的图形'), '删除按钮没有可读的名字（文字本身就是它的无障碍名）');
   // 删除走的是**同一条** onChange（与撤销/清空同一条纪律：不存在「按钮改了别处没改」）。
-  assert.match(body, /onChange\(\{ kind: 'ink', box, strokes: next \}\)/, '删除没有走那条唯一的写入口');
+  // ★ 第二轮：删除按**元素种类**分派（文字与笔画是两个数组）⇒ 断言放宽成「两条路都走
+  //   `onChange({ kind: 'ink', … })` 那一个写入口」。
+  assert.equal((body.match(/onChange\(\{ kind: 'ink',/g) ?? []).length >= 2, true,
+    '删除没有走那条唯一的写入口');
 });
 
 test('★ 选择档的判定全部来自判据层，而且**控制点要排在轮廓命中之前**', () => {
@@ -107,8 +110,11 @@ test('★ 颜色：八色从判据层来；**选中元素时点颜色 = 改那�
   assert.ok(body.includes('aria-label={`${swatch.label}色`}'), '色块没有可读的名字（它只有一块颜色）');
   assert.match(body, /aria-checked=\{color === swatch\.value\}/, '当前色没有可读的状态');
   // 🔴 **选中之后点颜色要改那个元素** —— 少了它，学生想改一个画错的颜色只能删掉重画。
-  assert.match(body, /index === selected \? \{ \.\.\.stroke, color: next \}/,
-    '选中元素时点颜色没有改它');
+  // ★ 第二轮：文字也能改色 ⇒ 两条分支各一处。
+  assert.ok(body.includes('index === selected.index ? { ...stroke, color: next } : stroke'),
+    '选中笔画时点颜色没有改它');
+  assert.ok(body.includes('index === selected.index ? { ...item, color: next } : item'),
+    '选中文字时点颜色没有改它');
   // 🔴 而颜色**不是整幅画的属性**：它是每个元素各自的字段（与粗细同一条纪律）。
   //    写进 draft 的顶层就成了「换一次颜色进一次撤销栈」，而那不是学生做的动作。
   assert.ok(!/onChange\(\{[^}]*\bcolor:/.test(body), '颜色被写成了整幅画的属性');

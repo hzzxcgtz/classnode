@@ -42,9 +42,13 @@ function findClose(text: string, from: number): number {
     // 规则 2 的后半：闭 `$` 前不接空白。
     const prev = text[i - 1];
     if (prev === undefined || /\s/.test(prev)) continue;
-    // 规则 2 的后半：闭 `$` 后不接数字（挡掉「另一本$8」）或另一个 `$`。
+    // 规则 2 的后半：闭 `$` 后不接**数字或字母**（挡掉「另一本$8」与「共计$y元」这类
+    // 金额写法），也不接另一个 `$`。
+    // ★ 2026-09-30：**字母那一条是交付当天复审补上的** —— 只挡数字时，
+    //   `花费$x元，共计$y元` 会把中间那段吞成一个公式，而 KaTeX 对这段只发一个
+    //   `unicodeTextInMathMode` **警告**、照画 ⇒ 屏幕上画出来的与存下的不是一个东西。
     const after = text[i + 1];
-    if (after !== undefined && /[0-9$]/.test(after)) continue;
+    if (after !== undefined && /[0-9a-zA-Z$]/.test(after)) continue;
     return i;
   }
   return -1;

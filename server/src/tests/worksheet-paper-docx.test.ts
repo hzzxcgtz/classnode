@@ -260,3 +260,27 @@ test('🔴 公式里的 `<` `>` `&` 必须被转义（不转义 ⇒ Word 报文�
   // `&` 同既有那条的判据：遮掉合法实体之后不许再有裸 `&`。
   assert.ok(!/(^|[^&])&(?![a-z]+;|#)/.test(xml.replace(/&amp;/g, '§')), 'XML 里出现了没转义的裸 &');
 });
+
+test('🔴 n 元算符之后的**裸文本**也要转义（`escapeMathText` 不能只看 `<m:t>`）', async () => {
+  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
+  // 🔴 `mathml2omml@0.5` 在 n 元算符（`\int` / `\sum`）之后会把 `<m:e>` 里的**后续兄弟节点
+  //    原样拼在标签外**：`\int_0^1 f(a<b)dx` ⇒ `<m:e><m:r><m:t>f</m:t></m:r>(a<b)dx</m:e>`
+  //    —— 那段 `(a<b)dx` 的 `<` **不经过 `<m:t>`**。
+  // ⇒ 只转 `<m:t>` 的实现会漏掉它 ⇒ XML 非法 ⇒ 整个公式降级成源码印在纸上。
+  const file = await writeTemp({
+    ...SAMPLE,
+    questionCount: 1,
+    blocks: [{ kind: 'question', question: {
+      heading: '1', meta: '开心填空 · 1 分',
+      prompt: P('求 $\\int_0^1 f(a<b)dx$ 的值'), body: [], answer: [], answerNote: null,
+    } }],
+  });
+  const xml = readDocumentXml(file);
+  assert.ok(xml.includes('<m:oMath'), '没有 OMML —— 说明它降级了（那段裸文本让 XML 非法）');
+  assert.ok(!xml.includes('\\int'), '公式降级成了源码');
+  // 判据与上一条同源：剥掉标签之后，文本内容里不许有裸的尖括号。
+  const textOnly = xml.replace(/<[^>]*>/g, '');
+  assert.ok(!/[<>]/.test(textOnly), `XML 文本里出现了没转义的裸尖括号：${textOnly.slice(0, 120)}`);
+  // 阳性对照：那段的文字必须**还在**（别为了转义把内容吃了）
+  assert.ok(xml.includes('f'), '公式里的内容被吃掉了');
+});

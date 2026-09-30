@@ -65,15 +65,34 @@ export function mathRun(tex: string): ImportedXmlComponent | null {
  * ⚠️ `>` 也一并转义：XML 里裸 `>` 合法，但转了对谁都无害，而且省得以后再想一遍。
  */
 function escapeMathText(omml: string): string {
-  return omml.replace(
-    /(<m:t\b[^>]*>)([\s\S]*?)(<\/m:t>)/g,
-    (_all, open: string, text: string, close: string) => open
-      + text
-        .replace(/&(?!(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-      + close,
-  );
+  /**
+   * 🔴 **不能用「只匹配 `<m:t>`」那版**（它曾经就是那样，被复审抓出来的）：
+   *    `mathml2omml@0.5` 在 **n 元算符**（`\int` / `\sum`）之后会把 `<m:e>` 里**后续的
+   *    兄弟节点原样拼在标签外** ——
+   *    `\int_0^1 f(a<b)dx` ⇒ `<m:e><m:r><m:t>f</m:t></m:r>(a<b)dx</m:e>`
+   *    那段 `(a<b)dx` 的 `<` **不经过 `<m:t>`** ⇒ 漏转 ⇒ XML 非法 ⇒ 整个公式降级成源码。
+   *
+   * ⇒ 改成**扫一遍**：把「不含尖括号的尖括号对」当标签，**其余全是文本**，一律转义。
+   * 🔴 关键在那个 `[^<>]*`：上面那段裸文本里，`<` 后面到**下一个 `>`** 之间还夹着
+   *    另一个 `<` ⇒ **匹配不上**标签 ⇒ 它落在文本那一侧 ✓ 这正是我们要的。
+   *    （反例：若写成 `<[^>]*>`，`<b)dx</m:e>` 会被当成一个标签 ⇒ 那段文本就漏了。）
+   */
+  let out = '';
+  let at = 0;
+  for (const match of omml.matchAll(/<[^<>]*>/g)) {
+    out += escapeXmlText(omml.slice(at, match.index)) + match[0];
+    at = match.index + match[0].length;
+  }
+  // 尾巴（最后一个标签之后的内容）也要处理。
+  return out + escapeXmlText(omml.slice(at));
+}
+
+/** XML 文本节点的转义。⚠️ `&` 用前瞻排除**已有的实体**，免得把 `&amp;` 二次转义。 */
+function escapeXmlText(text: string): string {
+  return text
+    .replace(/&(?!(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 /**

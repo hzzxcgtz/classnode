@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { INK_DEFAULT_TOOL, INK_TOOLS, clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke } from '@/lib/worksheet-ink';
-import type { InkTool, InkValue } from '@/lib/worksheet-ink';
+import {
+  INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_TOOLS, INK_WIDTH_OPTIONS,
+  clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke,
+} from '@/lib/worksheet-ink';
+import type { InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
 import { InkCanvas } from '../ink-canvas';
 import styles from '../worksheet.module.css';
 
@@ -56,6 +59,60 @@ const TOOL_LABELS: Record<InkTool, string> = {
   select: '选择',
 };
 
+/**
+ * ★ 2026-09-30（教师：「UI 你不考虑的吗？」）：每个档的图标。
+ *
+ * 🔴 **每个图标就是那个形状的缩略图** —— 用的观感与画布上画出来的**一致**
+ *（同一个 `20×20` 的坐标系里摆一遍那些几何）。教师认的是「形状」，不是文字。
+ * ⚠️ 图标按钮**必须**有 `aria-label`（本仓的设计规范明写；这里由 `TOOL_LABELS` 供）。
+ */
+const TOOL_ICONS: Record<InkTool, ReactNode> = {
+  pen: <path d="M3.5 16.5 5 12l7-6.8 2.8 2.8-7 6.8z" />,
+  line: <path d="M3.5 16.5 16.5 3.5" />,
+  arrow: (
+    <>
+      <path d="M3.5 16.5 16.5 3.5" />
+      <path d="M10.5 3.5h6v6" />
+    </>
+  ),
+  rect: <rect x="3.5" y="5.5" width="13" height="9" rx="0.8" />,
+  ellipse: <ellipse cx="10" cy="10" rx="6.5" ry="4.8" />,
+  triangle: <path d="M10 4 17 15.5H3z" />,
+  'right-triangle': <path d="M4.5 5v10.5h11" />,
+  parallelogram: <path d="M7.5 5h9l-4 10.5h-9z" />,
+  trapezoid: <path d="M7 5h6l4 10.5H3z" />,
+  angle: (
+    <>
+      <path d="M4 15.5h12" />
+      <path d="M4 15.5 14.5 5" />
+    </>
+  ),
+  select: (
+    <>
+      <path d="M4 6.5V4h2.5M13.5 4H16v2.5M16 13.5V16h-2.5M6.5 16H4v-2.5" />
+      <rect x="7.5" y="7.5" width="5" height="5" rx="0.6" />
+    </>
+  ),
+};
+
+/** 粗细三档的名字（顺序与 `INK_WIDTH_OPTIONS` 一致）。 */
+const WIDTH_LABELS = ['细', '中', '粗'] as const;
+/** 当前档的高亮（与设计规范里「选中项」同一个观感：底色 + 一圈描边）。 */
+const ACTIVE_STYLE = { borderColor: '#527198', background: '#e9eff6', color: '#466384' } as const;
+
+/** 一个工具按钮里那个 20×20 的小图标。 */
+function ToolIcon({ tool }: { tool: InkTool }) {
+  return (
+    <svg
+      width="18" height="18" viewBox="0 0 20 20" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {TOOL_ICONS[tool]}
+    </svg>
+  );
+}
+
 export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
   /**
    * ★ 2026-09-30：当前档。**默认恒是「手写」**（`INK_DEFAULT_TOOL`）——
@@ -68,6 +125,12 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    * 删除按钮在这条工具栏上，而两处各存一份「谁被选中」必然分叉。
    */
   const [selected, setSelected] = useState<number | null>(null);
+  /**
+   * ★ 2026-09-30（教师：「笔的粗细」+「要能选」）：**新画的那一笔**用多粗。
+   * ⚠️ 已经画下去的那些**不受影响**（粗细是每一笔各自的字段，这是数据的形状决定的）。
+   * 默认档 = `INK_DEFAULT_WIDTH`，而它**就是**改动前的那个常量值 ⇒ 默认手感没变。
+   */
+  const [width, setWidth] = useState<InkWidth>(INK_DEFAULT_WIDTH);
 
   /**
    * 换档。🔴 **离开「选择」档就把选中清掉**：留着的话，学生切回手写继续画，
@@ -114,6 +177,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         hint={inkHint(node)}
         disabled={disabled}
         tool={tool}
+        width={width}
         selected={selected}
         onSelect={setSelected}
         onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
@@ -128,11 +192,40 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
             className={styles.inkButton}
             disabled={disabled}
             aria-pressed={tool === item}
+            // 🔴 图标按钮**必须**有可读的名字（设计规范）—— `aria-label` 给读屏，
+            //    `title` 给鼠标悬停。两处用的是同一个词，不会漂。
+            aria-label={TOOL_LABELS[item]}
             title={item === 'select' ? '点一下图形选中它，再拖动或改大小' : `画${TOOL_LABELS[item]}`}
             onClick={() => changeTool(item)}
-            style={tool === item ? { borderColor: '#527198', background: '#e9eff6', color: '#466384', fontWeight: 700 } : undefined}
+            style={tool === item ? ACTIVE_STYLE : undefined}
           >
-            {TOOL_LABELS[item]}
+            <ToolIcon tool={item} />
+          </button>
+        ))}
+      </div>
+      {/* ★ 2026-09-30（教师：「笔的粗细」+「要能选」）：**三档**。
+          ⚠️ 只影响**新画的那一笔**；已经画下去的不动（粗细是每一笔各自的字段）。
+          ⚠️ 用的是**圆点的大小**而不是数字 —— 教师选的时候要**看见**它有多粗。 */}
+      <div className={styles.inkToolbar} role="group" aria-label="笔的粗细">
+        {INK_WIDTH_OPTIONS.map((option, index) => (
+          <button
+            key={option}
+            type="button"
+            className={styles.inkButton}
+            disabled={disabled}
+            aria-pressed={width === option}
+            aria-label={`${WIDTH_LABELS[index]}笔`}
+            title={`${WIDTH_LABELS[index]}笔`}
+            onClick={() => setWidth(option)}
+            style={width === option ? ACTIVE_STYLE : undefined}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'block', width: 6 + index * 4, height: 6 + index * 4,
+                borderRadius: '50%', background: 'currentColor', margin: '0 auto',
+              }}
+            />
           </button>
         ))}
       </div>

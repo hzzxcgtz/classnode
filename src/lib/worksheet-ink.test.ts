@@ -47,7 +47,10 @@ import {
   isInkNode,
   hitTestStroke,
   INK_DEFAULT_TOOL,
+  INK_DEFAULT_WIDTH,
   INK_TOOLS,
+  INK_WIDTH_OPTIONS,
+  isInkWidth,
   isInkShapeKind,
   isInkShapeTool,
   moveStroke,
@@ -782,4 +785,18 @@ test('🔴 INK_TOOLS：**默认档是手写**，顺序 = 工具栏顺序', () =>
   assert.equal(isInkShapeTool('rect'), true);
   assert.equal(isInkShapeTool('pen'), false);
   assert.equal(isInkShapeTool('select'), false);
+});
+
+test('🔴 INK_WIDTH_OPTIONS：三档，且**中间那档就是原来的默认值**', () => {
+  // ★ 2026-09-30（教师：「笔的粗细」+「要能选」）。
+  // 🔴 「中间那档 = `INK_STROKE_WIDTH`」是一条**兼容性**要求，不是口味：
+  //    它保证**加选项这件事不改默认手感** —— 否则以前画的与现在画的会不一样粗，
+  //    而屏幕上只是「今天这笔怎么变粗了」，没有任何报错。
+  assert.equal(INK_WIDTH_OPTIONS.length, 3);
+  assert.equal(INK_WIDTH_OPTIONS[1], INK_STROKE_WIDTH, '中间那档必须还是原来的默认值');
+  assert.equal(INK_DEFAULT_WIDTH, INK_STROKE_WIDTH);
+  // 从小到大（UI 上「细中粗」的顺序就靠它）。
+  assert.ok(INK_WIDTH_OPTIONS[0] < INK_WIDTH_OPTIONS[1] && INK_WIDTH_OPTIONS[1] < INK_WIDTH_OPTIONS[2]);
+  assert.equal(isInkWidth(INK_WIDTH_OPTIONS[0]), true);
+  assert.equal(isInkWidth(0.5), false, '认不出的粗细要被判掉（读值那一侧据此回落）');
 });

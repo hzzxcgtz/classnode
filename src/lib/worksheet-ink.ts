@@ -126,6 +126,24 @@ export const INK_DEFAULT_TOOL: InkTool = INK_TOOL_PEN;
 export function isInkShapeTool(tool: string): tool is InkShapeKind {
   return isInkShapeKind(tool);
 }
+/**
+ * 笔的粗细：**三档**（★ 2026-09-30 教师：「笔的粗细」+「要能选」）。
+ *
+ * 🔴 **中间那一档就是原来的默认值**（`INK_STROKE_WIDTH`）—— 加选项**不改默认手感**，
+ *    否则「以前画的」与「现在画的」会不一样粗，而那在屏幕上只是「今天这笔怎么变粗了」。
+ * ⚠️ 单位与 `InkStroke.width` 同一条规则：**归一化到 `min(画布宽, 画布高)`**，
+ *    所以同一档在不同尺寸的画布上看起来一样粗（A1 的 `strokeWidthPx` 负责换算）。
+ * ⚠️ 下限那一档不能太细：老 iPad 上 0.4px 的线画不出来（`strokeWidthPx` 里有 1px 的兜底）。
+ */
+export const INK_WIDTH_OPTIONS = [0.009, INK_STROKE_WIDTH, 0.028] as const;
+export type InkWidth = (typeof INK_WIDTH_OPTIONS)[number];
+/** 默认档 = 中间那一档。 */
+export const INK_DEFAULT_WIDTH: InkWidth = INK_STROKE_WIDTH;
+/** 这一档是不是三档之一（读值那一侧据此决定要不要回落）。 */
+export function isInkWidth(raw: unknown): raw is InkWidth {
+  return typeof raw === 'number' && (INK_WIDTH_OPTIONS as readonly number[]).includes(raw);
+}
+
 
 
 export interface InkStroke {

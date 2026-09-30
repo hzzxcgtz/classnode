@@ -59,3 +59,26 @@ test('★ 选择档的命中判据来自判据层（`hitTestStroke`），不是�
   assert.ok(stripped.includes('moveStroke(') && stripped.includes('resizeStroke('),
     '移动/改大小没有走判据层 —— 组件这一层没有回归网，几何必须留在那儿');
 });
+
+test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按钮的硬规矩）', () => {
+  // ★ 2026-09-30（教师：「UI 你不考虑的吗？」）⇒ 十一个档换成**图标**。
+  // 🔴 图标按钮没有可见文字 ⇒ **`aria-label` 是它唯一的名字**：少了它，
+  //    读屏用户听到的是十一个「按钮」。设计规范里这条是硬规矩。
+  assert.ok(body.includes('aria-label={TOOL_LABELS[item]}'), '工具按钮没有 aria-label（读屏读不出来）');
+  assert.ok(body.includes('aria-label={`${WIDTH_LABELS[index]}笔`}'), '粗细按钮没有 aria-label');
+  // 图标本身对读屏是**噪音**（形状已经由按钮的名字说了）⇒ 要 `aria-hidden`。
+  // ⚠️ **只看 ToolIcon 那个函数体**：文件里还有一处 `aria-hidden`（粗细按钮里那个圆点），
+  //    查整个文件的话「把工具图标的 aria-hidden 删掉」照样绿 —— 变异检验抓出来的假绿。
+  const iconAt = body.indexOf('function ToolIcon(');
+  assert.ok(iconAt >= 0, '找不到 ToolIcon');
+  const iconFn = body.slice(iconAt, body.indexOf('\n}', iconAt));
+  assert.ok(iconFn.includes('aria-hidden="true"'), '工具图标没有 aria-hidden —— 读屏会多念一段路径');
+});
+
+test('★ 粗细三档：当前档要看得见（aria-pressed），而且只影响新画的笔', () => {
+  assert.ok(body.includes('INK_WIDTH_OPTIONS.map('), '粗细没有遍历判据层的三档');
+  assert.match(body, /aria-pressed=\{width === option\}/, '当前粗细档没有可读的状态');
+  // 🔴 它是**新笔画**的参数，不该写进 draft（写进去就成了「作答数据的一部分」，
+  //    而换一次粗细会进撤销栈 —— 学生按撤销会撤销掉「换粗细」而不是一笔画）。
+  assert.ok(!/onChange\(\{[^}]*width[^}]*\}/.test(body), '粗细被写进了作答数据（它只该影响新笔画）');
+});

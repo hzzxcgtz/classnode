@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
+// ★ 2026-09-30：粘贴预览里那些词 / 选项也认公式（教师从别处复制来的题干常常带 `$…$`）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import {
   MAX_OPTIONS,
   isChoiceQuestion,
@@ -217,7 +219,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
                   {result.pool.map((word, index) => (
                     <li key={`${word}-${index}`}>
                       <span className="worksheet-editor-paste-key">{index + 1}</span>
-                      <span className="worksheet-editor-paste-text">{word}</span>
+                      <span className="worksheet-editor-paste-text"><PromptText text={word} placeholder="" /></span>
                     </li>
                   ))}
                 </ul>
@@ -240,7 +242,9 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
                   {result.texts.map((item, index) => (
                     <li key={index}>
                       <span className="worksheet-editor-paste-key">{isOrder ? index + 1 : optionKey(index)}</span>
-                      {item ? <span className="worksheet-editor-paste-text">{item}</span> : <em className="worksheet-editor-paste-empty">（这一条是空的）</em>}
+                      {item
+                        ? <span className="worksheet-editor-paste-text"><PromptText text={item} placeholder="" /></span>
+                        : <em className="worksheet-editor-paste-empty">（这一条是空的）</em>}
                     </li>
                   ))}
                 </ol>

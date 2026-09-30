@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
+// ★ 2026-09-30：正确顺序 / 「学生看到的顺序」里是教师的条目原文（可能含公式）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import {
   isOrderAmbiguous,
   isOrderAnswerUsable,
@@ -129,7 +131,9 @@ export function OrderAnswerBody({ node, onDataChange }: {
                   onDragStart={(event) => { setDragFrom(index); event.dataTransfer.effectAllowed = 'move'; }}
                   onDragEnd={() => { setDragFrom(null); setDragOver(null); }}>⋮⋮</button>
                 <span className="worksheet-editor-order-index">{index + 1}</span>
-                <span className="worksheet-editor-option-text">{label}</span>
+                {/* ★ 2026-09-30：`label` 是教师条目原文（条目被删掉时是那句机器提示，
+                    一并包住对它无害）。 */}
+                <span className="worksheet-editor-option-text"><PromptText text={label} placeholder="" /></span>
                 <button
                   type="button"
                   className="worksheet-editor-icon-button"
@@ -254,9 +258,10 @@ export function OrderBody({ node, onDataChange }: {
           </button>
         </div>
         <p className="worksheet-editor-hint">
+          {/* ★ 2026-09-30：这一行是教师条目原文 ⇒ 认公式。⚠️ 箭头是分隔符，不包。 */}
           学生看到的顺序：{items.length === 0
             ? '（还没有条目）'
-            : items.map(entry => entryLabel(entry.text)).join(' → ')}
+            : <PromptText text={items.map(entry => entryLabel(entry.text)).join(' → ')} placeholder="" />}
         </p>
       </div>
 

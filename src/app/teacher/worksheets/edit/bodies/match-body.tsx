@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
+// ★ 2026-09-30：已配对摘要里可能带教师的右项原文（含公式）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import {
   matchAddLeft,
   matchAddRight,
@@ -138,7 +140,9 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                   : chosen.map((item) => rightLabel(item.text, right.indexOf(item))).join('、');
                 return (
                   <details className="worksheet-editor-pair-picker">
-                    <summary title={summary}>{summary}</summary>
+                    {/* ★ 2026-09-30：摘要里是**教师的右项原文** ⇒ 认公式。
+                        ⚠️ `title` 那个属性是浏览器的原生 tooltip，只能吃字符串 ⇒ 不包。 */}
+                    <summary title={summary}><PromptText text={summary} placeholder="" /></summary>
                     <div className="worksheet-editor-pair-picker-panel" role="group"
                       aria-label={`「${leftEntry.text.trim() || `左项 ${index + 1}`}」连到哪几项`}>
                       {right.map((item, itemIndex) => {
@@ -160,7 +164,11 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                                 pairs: matchTogglePair(pairs, leftEntry.id, item.id, event.target.checked),
                               })}
                             />
-                            {rightLabel(item.text, itemIndex)}
+                            {/* ★ 2026-09-30：右项是教师原文 ⇒ 认公式。
+                                🔴 这一处**不是** `<option>`（最初的普查报错过一次，
+                                说它与归类那个下拉一样装不下元素）：它是
+                                `<label>` + `<input type="checkbox">` ⇒ 装得下。 */}
+                            <PromptText text={rightLabel(item.text, itemIndex)} placeholder="" />
                           </label>
                         );
                       })}

@@ -103,6 +103,12 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                   aria-label={`「${entry.text.trim() || `条目 ${index + 1}`}」归到哪个框`}
                   onChange={event => commit({ ...categorize, placement: placementSet(placement, entry.id, event.target.value) })}
                 >
+                  {/* 🔴 这些是**原生 `<option>`**，它只能装纯文本 ⇒ 下面那个框名里的
+                      数学公式（`$x^2$`）**在这里渲染不出来**（会显示源码）。
+                      这是**物理上限**，不是漏改：2026-09-30 那次「凡教师能打字处都支持」
+                      有一条边界，见 `specs/2026-09-30-题干-数学公式.md` 的「明确不做」。
+                      ⚠️ 要让它也渲染，得把这个下拉整个自绘掉 —— 成本远超收益，
+                      而且它只是一个**选择器**，不是题面。 */}
                   <option value="">请选择</option>
                   {zones.map((zone, zoneIndex) => (
                     <option key={zone.id} value={zone.id}>{zoneLabel(zone.text, zoneIndex)}</option>

@@ -1,6 +1,6 @@
 import type { WorksheetQuestionNode } from './types';
-import { defaultInkBox, inkFormatOf, isInkNode, isInkShapeKind, readInkValue } from './worksheet-ink.ts';
-import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
+import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
+import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
 import { blankLayout } from './worksheet-table.ts';
 
 /**
@@ -148,7 +148,7 @@ export type AnswerDraft =
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
   | { kind: 'categorize'; assignment: Record<string, string> }
-  | { kind: 'ink'; box: InkCanvas; strokes: InkStroke[] };
+  | { kind: 'ink'; box: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选）。 */ texts?: InkText[] };
 
 /**
  * 条目文本的键名：`items` / `left` / `right` 用 `text`，`zones` 用 `label`。
@@ -477,6 +477,20 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
         if (isInkShapeKind(stroke.shape)) next.shape = stroke.shape;
         return next;
       }),
+      // ★ 2026-09-30 第二轮：**文字同样要逐字段重建**（这一行就是「加字段必须记得加在这里」
+      //    那句话的第二个例子 —— 形状那轮加 `shape` 时已经被咬过一次）。
+      ...(draft.texts && draft.texts.length > 0
+        ? {
+            texts: draft.texts
+              .filter((item) => typeof item.text === 'string' && item.text !== '')
+              .map((item) => ({
+                text: item.text,
+                at: [item.at[0], item.at[1]] as InkPoint,
+                color: isInkColor(item.color) ? item.color : INK_STROKE_COLOR,
+                size: isInkTextSize(item.size) ? item.size : INK_DEFAULT_TEXT_SIZE,
+              })),
+          }
+        : {}),
     };
   }
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') {
@@ -636,7 +650,13 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   //     `formatAnswer` **不再只抽 `text` / `fill`** —— 它现在有 ink / 排序 / 连线 / 归类 /
   //     多选 / 判断六支。那一段留在这里只作为 E1 存在的**理由**，别拿它当现状读。
   const ink = readInkValue(row);
-  if (ink) return { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
+  // ★ 2026-09-30 第二轮：文字也要读回来。⚠️ **老值没有 `texts`** ⇒ 这里也**不带那个键**
+  //    （`undefined` 而不是 `[]`：与 `readInkValue` 同一条口径，让「老值原样」在 deepEqual 上成立）。
+  if (ink) {
+    const draft: Extract<AnswerDraft, { kind: 'ink' }> = { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
+    if (ink.texts && ink.texts.length > 0) draft.texts = ink.texts;
+    return draft;
+  }
   // 🔴 **没有「题型是画布题 ⇒ 一律回空画布」这一支。** R2 在这里加过一句
   // `if (isInkNode(node)) return empty;`，终审裁定 **R18 撤掉**，理由是它在两个方向上
   // **不对称**：

@@ -72,6 +72,9 @@ const STROKE: InkStroke = { color: '#1f2937', width: 0.016, points: [[0.1, 0.2],
  */
 const RECT_STROKE: InkStroke = { ...STROKE, shape: 'rect' };
 
+/** ★ 第二轮：画布上的一段文字（与 `STROKE` 一起进往返用例）。 */
+const DRAWN_TEXT = { text: '你好', at: [0.4, 0.55] as [number, number], color: '#dc2626', size: 0.07 };
+
 /**
  * 学生作答那一刻**量出来**的框。⚠️ 它**刻意不等于**任何一道题的默认框
  *（绘图题 320×240 / 手写问答 320×160）—— 相等的话「用 `draft.box`」与
@@ -367,6 +370,11 @@ test('draftFromValue：读-写往返', () => {
     //（`box` 是这条往返里唯一一个「不是空的、又不是学生输入」的字段，最容易在转换中丢掉）。
     [drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE, RECT_STROKE] }],
     [handwritingNode('short-answer'), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE, RECT_STROKE] }],
+    // ★ 2026-09-30 第二轮：**文字**也要活过这条往返。
+    // 🔴 `valueFromDraft` 是**逐字段白名单重建**（不是展开）⇒ 新字段会被**静默剥掉**：
+    //    学生画布对、离线队列对、提交之后教师看到的是「一段凭空消失的文字」。
+    //    这是形状那轮 `shape` 的翻版 —— 同一条用例位置、同一类缺陷。
+    [drawingNode(), { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE], texts: [DRAWN_TEXT] }],
   ];
   cases.forEach(([target, draft]) => {
     const value = buildAnswerValue(target, draft);

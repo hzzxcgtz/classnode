@@ -445,3 +445,29 @@ test('🔴 图形的 shape 必须活过这一层（它是**第四份读入器**�
   ], people, 'q1');
   assert.equal(bad.ink?.strokes.length, 0, '认不出的形状那一笔要被丢掉，不是静默当手写');
 });
+
+test('🔴 文字的 texts 必须活过这一层（与 shape 同一条：第四份读入器不在对拍网里）', () => {
+  // ★ 2026-09-30 第二轮。`readStrokes` 是**逐字段重建** —— 形状那轮加 `shape` 时在这里
+  //    差点被静默吞掉；这次加 `texts` 是**同一个位置、同一类缺陷**。
+  //    吞掉的后果：**AI 看到的图里没有学生写的字**，而教师看到的有 —— 两边都不报错。
+  const [entry] = selectAnalyzeEntries([
+    row('p1', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[0, 0], [1, 1]], width: 0.01, color: '#111111' }],
+      texts: [{ text: '你好', at: [0.2, 0.3], color: '#dc2626', size: 0.07 }],
+    }),
+  ], people, 'q1');
+  assert.equal(entry.kind, 'ink');
+  const texts = (entry.ink as { texts?: Array<{ text: string }> } | undefined)?.texts;
+  assert.equal(texts?.length, 1, 'texts 被这一层吞掉了 —— AI 看不到学生写的字');
+  assert.equal(texts?.[0].text, '你好');
+  // 阴性对照：**坏形状的那一段要丢掉**（与前端同一把尺子），而不是静默收下一个空框。
+  const [bad] = selectAnalyzeEntries([
+    row('p2', 'submitted', {
+      format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [],
+      texts: [{ at: [0.2, 0.3] }, { text: '甲' }, { text: '乙', at: [0.4, 0.5] }],
+    }),
+  ], people, 'q1');
+  const badTexts = (bad.ink as { texts?: unknown[] } | undefined)?.texts;
+  assert.equal(badTexts?.length ?? 0, 1, '没有 text / 没有 at 的那两段都要丢掉');
+});

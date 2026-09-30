@@ -1,4 +1,4 @@
-import { isInkFormat, isInkShapeKind, type InkValue } from './ink-path.js';
+import { INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR, isInkColor, isInkFormat, isInkShapeKind, isInkTextSize, type InkValue } from './ink-path.js';
 import { analysisAnswerText } from './analysis-question.js';
 import type { QuestionNode } from './worksheet-questions.js';
 
@@ -81,9 +81,16 @@ function readInk(value: unknown): InkValue | null {
   if (!Number.isFinite(canvas.w) || !Number.isFinite(canvas.h)) return null;
   if (!Array.isArray(raw.strokes)) return null;
   const strokes = readStrokes(raw.strokes);
+  // ★ 2026-09-30 第二轮：文字也要透传（与 `shape` 同一条纪律 —— 本文件是**第四份读入器**，
+  // 不在跨工程对拍网里，而它吞掉字段的后果是「AI 与学生/教师看到的不是同一个东西」）。
+  const texts = readTexts(raw.texts);
   // ⚠️ 一条笔画都不剩时仍然算 ink（`hasInk` 会为假、那一格写「空白」）——
   // 回 `null` 会让它落成 `unknown`，而「画了但一条有效笔画都没有」与「认不出形状」不是一回事。
-  return { format: raw.format, canvas: { w: canvas.w, h: canvas.h }, strokes };
+  // ⚠️ `texts` **没有就不带那个键**（与前端 `readInkValue` 同一条口径：
+  //    老值原样，不是凭空多一个空数组）。
+  const ink: InkValue = { format: raw.format, canvas: { w: canvas.w, h: canvas.h }, strokes };
+  if (texts.length > 0) ink.texts = texts;
+  return ink;
 }
 
 /** 夹到 `0..1`。与 `src/lib/worksheet-ink.ts` 的 `clamp01` 同一口径。 */
@@ -108,6 +115,34 @@ function clamp01(value: number): number {
  * ⊘ 2026-09-30（复审）：这里原来还写着「它不 import `ink-path.ts`」—— **那是假的**，
  *   本文件第 1 行就引着它。理由写错比不写更糟：下一个人会照着一个假的理由去办。
  */
+/**
+ * ★ 第二轮：读文字（`readStrokes` 的姊妹）。**坏形状整段丢掉** —— 与「坏点丢整笔」同一条。
+ * ⚠️ 这里**故意不引 `ink-path.ts` 的 `readText`**（那个是私有函数）⇒ 规则与前端
+ *    `worksheet-ink.ts` 的 `readText` **必须逐字相同**：`text` 非空、`at` 是合法二元点；
+ *    `color` / `size` 坏掉**回落默认**（样式坏不丢几何）。
+ */
+function readTexts(raw: unknown): Array<{ text: string; at: [number, number]; color: string; size: number }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ text: string; at: [number, number]; color: string; size: number }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.text !== 'string' || row.text === '') continue;
+    const at = row.at;
+    if (!Array.isArray(at) || at.length !== 2) continue;
+    const [x, y] = at;
+    if (typeof x !== 'number' || typeof y !== 'number') continue;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out.push({
+      text: row.text,
+      at: [clamp01(x), clamp01(y)],
+      color: isInkColor(row.color) ? row.color : INK_STROKE_COLOR,
+      size: isInkTextSize(row.size) ? row.size : INK_DEFAULT_TEXT_SIZE,
+    });
+  }
+  return out;
+}
+
 function readStrokes(raw: unknown[]): InkValue['strokes'] {
   const out: InkValue['strokes'] = [];
   for (const item of raw) {

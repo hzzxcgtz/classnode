@@ -893,3 +893,32 @@ test('🔴 逐题 × 判分：同一道题在不同的分值档下状态不变�
   assertVerdict(node, value, 'partial', 5, { full: 10, half: 5 });
   assertVerdict(node, value, 'partial', 0, { full: 1, half: 0 }); // 部分给分档填 0 ⇒ partial 但 0 分
 });
+
+// ---------------------------------------------------------------------------
+// ★ 2026-09-30 裁定 ④：学生端不解析公式 ⇒ 判分按**剥掉定界符**的文本比对
+// ---------------------------------------------------------------------------
+
+test('🔴 裁定 ④：教师答案里写公式，学生按纯文本作答要判对', () => {
+  // 教师写 `$x=5$` ⇒ 判分文本剥掉定界符是 `x=5` ⇒ 学生打 `x=5` 判对
+  const single = question('fill-blank', { answers: ['$x=5$'] });
+  assertVerdict(single, { format: 'fill/v1', text: 'x=5' }, 'correct', P.full);
+  // 归一化那条路照旧生效（在**剥离之后**归一化：全角→半角、trim、空白折叠）
+  assertVerdict(single, { format: 'fill/v1', text: '  ｘ=5  ' }, 'correct', P.full);
+  // 多空的新形状（`string[][]`）也要认
+  const many = question('fill-blank', { answers: [['$x=5$'], ['$y=2$']] });
+  assertVerdict(many, { format: 'fill/v1', texts: ['x=5', 'y=2'] }, 'correct', P.full);
+});
+
+test('🔴 反面：学生端不解析公式 ⇒ 学生**打了 `$`** 反而判错', () => {
+  // 这正是裁定 ④ 要的：`$` 在学生那一侧只是普通字符，不是定界符。
+  const node = question('fill-blank', { answers: ['$x=5$'] });
+  assertIncorrect(node, { format: 'fill/v1', text: '$x=5$' });
+});
+
+test('🔴 反面：答案里那个**不成公式**的 `$` 不许被吃掉', () => {
+  // 「这本书 $5」里的 `$` 不成对 ⇒ 不是公式 ⇒ 判分文本必须**逐字**是它。
+  // ⚠️ 少了这一条，一个「把所有 `$` 都删掉」的实现也能让上面两条全绿。
+  const node = question('fill-blank', { answers: ['这本书 $5'] });
+  assertVerdict(node, { format: 'fill/v1', text: '这本书 $5' }, 'correct', P.full);
+  assertIncorrect(node, { format: 'fill/v1', text: '这本书 5' });
+});

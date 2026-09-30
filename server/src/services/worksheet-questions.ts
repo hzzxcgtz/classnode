@@ -2,6 +2,8 @@
 
 // ★ M4b：判分前的 ink 短路，以及写入口的体积校验，都建立在同一份格式判据上。
 // ⚠️ 这是**本文件唯一**的 import —— 它不引入任何循环（`worksheet-ink.ts` 自身不 import）。
+// ★ 2026-09-30：判分侧要**剥掉公式定界符**（裁定 ④）—— 与显示侧同源于一条规则。
+import { mathText, splitMath } from './worksheet-math.js';
 import { isInkFormat } from './worksheet-ink.js';
 
 /**
@@ -449,12 +451,12 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
 // 一次抛错就是 500，教师看到的是「保存失败」，不是「你的第 3 题少了一个选项」。
 
 /** 读一串**非空字符串**（丢掉别的元素）。 */
-function readStrings(raw: unknown): string[] {
+export function readStrings(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string' && !!item) : [];
 }
 
 /** 读选择题的选项 key（`Array<{ key; text }>`）。 */
-function readOptionKeys(raw: unknown): string[] {
+export function readOptionKeys(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const keys: string[] = [];
   for (const item of raw) {
@@ -473,7 +475,7 @@ function readOptionKeys(raw: unknown): string[] {
  * 「一个合法的排列」，而那道题在学生端少一个条目、在判分里少一项，**全程无报错**。
  * 没有 id 的条目是坏数据，不是可以忽略的噪声。
  */
-function readItemIds(raw: unknown): { ids: string[]; allValid: boolean } {
+export function readItemIds(raw: unknown): { ids: string[]; allValid: boolean } {
   if (!Array.isArray(raw)) return { ids: [], allValid: false };
   const ids: string[] = [];
   let allValid = true;
@@ -487,7 +489,7 @@ function readItemIds(raw: unknown): { ids: string[]; allValid: boolean } {
 }
 
 /** 读连线题的配对（`Array<{ leftId; rightId }>`），形状不全的条目直接丢掉。 */
-function readPairs(raw: unknown): Array<{ leftId: string; rightId: string }> {
+export function readPairs(raw: unknown): Array<{ leftId: string; rightId: string }> {
   if (!Array.isArray(raw)) return [];
   const pairs: Array<{ leftId: string; rightId: string }> = [];
   for (const item of raw) {
@@ -584,7 +586,7 @@ function readAcceptableAnswers(raw: unknown): string[] {
 }
 
 /** 读一个 `字符串 → 非空字符串` 的映射（归类题的 `placement` / `assignment`），别的值丢掉。 */
-function readStringMap(raw: unknown): Record<string, string> {
+export function readStringMap(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
@@ -735,7 +737,7 @@ function allowsMissing(data: Record<string, unknown>): boolean {
  *   ② 老多空：`blanks: [{ answers: […​] }, …]`
  *   ③ 老单空：`answers: ['氧气']`（**平铺**的一份）
  */
-function answerSlotCount(data: Record<string, unknown>): number {
+export function answerSlotCount(data: Record<string, unknown>): number {
   if (Array.isArray(data.blanks)) return data.blanks.length;
   if (hasNestedAnswers(data)) return (data.answers as unknown[]).length;
   return Array.isArray(data.answers) ? 1 : 0;
@@ -756,7 +758,7 @@ function hasNestedAnswers(data: Record<string, unknown>): boolean {
 }
 
 /** 第 `index` 个空的**可接受答案** —— 三种历史形状都读得出来。 */
-function acceptableAnswersFor(data: Record<string, unknown>, index: number): string[] {
+export function acceptableAnswersFor(data: Record<string, unknown>, index: number): string[] {
   const answers = data.answers;
   // ① 新形状：`answers[index]` 自己就是一份（判据与 `answerSlotCount` 同一个）
   if (hasNestedAnswers(data)) return readAcceptableAnswers((answers as unknown[])[index]);
@@ -772,13 +774,31 @@ function acceptableAnswersFor(data: Record<string, unknown>, index: number): str
   return index === 0 ? readAcceptableAnswers(answers) : [];
 }
 
+/**
+ * **判分侧**的可接受答案 —— 在 `acceptableAnswersFor` 之上**剥掉公式定界符**（裁定 ④）。
+ *
+ * ★ 2026-09-30 教师裁定：「学生端在输入的时候不允许输入公式」。于是：
+ *   · 教师答案栏写 `$x=5$` ⇒ 判分文本是 `x=5` ⇒ 学生打 `x=5` **判对** ✓；
+ *   · 学生打 `$x=5$` 反而**判错**（学生那一侧 `$` 只是普通字符，这正是裁定要的）。
+ *
+ * 🔴 **只能用在判分那一侧。** `acceptableAnswersFor` 本身**不许改** —— 它同时喂给
+ *    **显示**（教师用卷、答错时发给学生看的那句正确答案），而那边要的是**原文**
+ *    （渲染时由 `splitMath` 切出公式来画）。两处需求相反，所以分叉在**调用点**，
+ *    不是在被调用的那个函数里。
+ * 🔴 剥离走的是**同一个** `mathText(splitMath(...))`（服务端孪生），不是另写一条 ——
+ *    显示侧与判分侧是从同一条规则派生出的**两个投影**，谁都不许自己造一份。
+ */
+function gradableAnswers(data: Record<string, unknown>, index: number): string[] {
+  return acceptableAnswersFor(data, index).map((answer) => mathText(splitMath(answer)));
+}
+
 function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: number; total: number } {
   const total = answerSlotCount(data);
   const rawTexts = readField(value, 'texts');
   const texts = Array.isArray(rawTexts) ? rawTexts : [readField(value, 'text')];
   let hit = 0;
   for (let index = 0; index < total; index += 1) {
-    const acceptable = acceptableAnswersFor(data, index);
+    const acceptable = gradableAnswers(data, index);
     const text = texts[index];
     if (typeof text !== 'string' || acceptable.length === 0) continue;
     const normalized = normalizeFillText(text);
@@ -822,7 +842,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
     for (let index = 0; index < total; index += 1) {
       // ⚠️ 每一空都要丢掉空白串（`readAcceptableAnswers` 负责），否则「这一空什么都不填」
       // 会因为 `normalizeFillText(' ') === normalizeFillText('')` 而被算成答对。
-      const acceptable = acceptableAnswersFor(data, index);
+      const acceptable = gradableAnswers(data, index);
       const text = texts[index];
       // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
       if (acceptable.length === 0 || typeof text !== 'string') continue;
@@ -839,7 +859,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
   // 🔴 `normalizeFillText` **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的
   // 大小写是语义的一部分，把 `CO2` 判成 `co2` 正确比不判更糟。要多收几种写法请教师
   // 在答案里多列几个。
-  const acceptable = acceptableAnswersFor(data, 0);
+  const acceptable = gradableAnswers(data, 0);
   const text = readField(value, 'text');
   if (typeof text !== 'string') return 'incorrect';
   const normalized = normalizeFillText(text);
@@ -983,7 +1003,7 @@ export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): numbe
   const wrong: number[] = [];
   const total = answerSlotCount(node.data);
   for (let index = 0; index < total; index += 1) {
-    const acceptable = acceptableAnswersFor(node.data, index);
+    const acceptable = gradableAnswers(node.data, index);
     const text = texts[index];
     if (acceptable.length === 0 || typeof text !== 'string') {
       wrong.push(index);
@@ -1250,8 +1270,19 @@ const MAX_TABLE_BLANKS = 30;
  * 与 `prompt-editor.tsx`（`FILL_BLANK_TEXT`），而服务端是另一个包、import 不过来。
  * 两边靠用例对齐（先例：`hasNestedAnswers` / `fillShape`）。
  */
-const TABLE_MARK_TEXT = '{表格域}';
-const FILL_BLANK_TEXT = '{填空域}';
+export const TABLE_MARK_TEXT = '{表格域}';
+export const FILL_BLANK_TEXT = '{填空域}';
+
+/**
+ * 纸面上的空：**8 个半角下划线**（★ 2026-09-30 教师从导出结果里看出来）。
+ *
+ * 教师原话：「填空题的下划线使用 8 个连续的下划线」。
+ * 🔴 原来是 4 个**全角**下划线（`＿＿＿＿`）—— 它在正文里看着还行，但**在 Word 里是四段
+ *    断开的短线**（全角字符一个字一格，格与格之间有空隙），教师看到的那一版就是那样。
+ * ⚠️ 半角 `_` 才会连成**一条**。改这一处同时影响教师用卷、按学生的作答报告与 AI 载荷
+ *（它们都走 `questionTextFor`）—— 那是要的：同一个空在四处长得一样。
+ */
+export const PAPER_BLANK_TEXT = '________';
 
 /** 题干里有几处表格域标记（>1 是坏数据：标记不带 id，说不清哪一处是哪张表）。 */
 function tableMarkCount(text: unknown): number {
@@ -1268,7 +1299,7 @@ function tableMarkCount(text: unknown): number {
 }
 
 /** 表格的行列表（坏行 → 空行；**不丢行**，因为行的下标就是「第几行」）。 */
-function tableRowList(raw: unknown): unknown[][] {
+export function tableRowList(raw: unknown): unknown[][] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
   const rows = (raw as Record<string, unknown>).rows;
   if (!Array.isArray(rows)) return [];
@@ -1337,7 +1368,7 @@ export function questionTextFor(node: { prompt: string; data: Record<string, unk
   // ★ 2026-09-28：`{填空域}` 那五个字**原来会原样进 Word 导出与 AI 载荷**（服务端
   //   没有任何地方替换它）—— 教师导出的 Word 里写着「植物需要{填空域}才能生长」。
   //   换成一条下划线：读得通，而且它是「这里该学生填」的通行写法。
-  return withTable.split(FILL_BLANK_TEXT).join('＿＿＿＿');
+  return withTable.split(FILL_BLANK_TEXT).join(PAPER_BLANK_TEXT);
 }
 
 /**

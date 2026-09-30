@@ -209,6 +209,49 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
   }, [load, page]);
 
   /**
+   * ★ 2026-09-30（教师）：**导出教师用卷**（任务 + 题目 + 答案，docx）。
+   *
+   * 下载这一步与「历史记录」页那条导出**同一套写法**（`blob` → 临时 `<a>` → `revoke`）——
+   * 文件名在客户端拼（服务端也发 `Content-Disposition`，但浏览器不会用它，两边必须一致）。
+   * ⚠️ 占同一个 `busyRef` 闸：导出是网络请求，与复制/删除一样会被那一面旗子挡住。
+   */
+  const exportWorksheet = useCallback(async (worksheet: WorksheetSummary) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusyOperation(`${worksheet.id}:export`);
+    try {
+      const resp = await api.exportWorksheetPaperDocx(worksheet.id);
+      if (!resp.ok) {
+        // 服务端给的是中文原因（「学习单不存在」之类），读出来比一句「导出失败」有用。
+        const payload = await resp.json().catch(() => null);
+        throw new Error(payload && typeof payload.error === 'string' ? payload.error : `导出失败（${resp.status}）`);
+      }
+      const blob = await resp.blob();
+      if (!mountedRef.current) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      a.download = `${(worksheet.title || '未命名学习单').replace(/[\\/:*?"<>|]/g, '_')}-教师用卷-${stamp}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      callbacksRef.current.onNotice({ message: '已导出教师用卷（含答案）', type: 'success' });
+    } catch (error) {
+      if (mountedRef.current) {
+        callbacksRef.current.onNotice({
+          message: `导出「${worksheet.title}」失败：${error instanceof Error ? error.message : '请求失败'}`,
+          type: 'error',
+        });
+      }
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setBusyOperation(null);
+    }
+  }, []);
+
+  /**
    * 打开「引用情况」弹窗。⚠️ **点击时才请求** —— 列表接口只给计数，明细在 `:id/usage` 里，
    * 让每张卡片挂载即取会变成一页 12 个请求（N+1）。
    *
@@ -237,7 +280,7 @@ export function useWorksheetList({ onNotice, onDeleteBlocked }: {
     worksheets, total, loading, loadError,
     page, pageSize, search, setSearch: updateSearch, setPage, setPageSize: changePageSize,
     busyOperation, retry,
-    deleteWorksheet, duplicateWorksheet,
+    deleteWorksheet, duplicateWorksheet, exportWorksheet,
     usageDialog, openUsageDialog, closeUsageDialog, confirmationDialog,
   };
 }

@@ -4,9 +4,13 @@ interface WorksheetCardProps {
   worksheet: WorksheetSummary;
   deleting: boolean;
   duplicating: boolean;
+  /** ★ 2026-09-30：正在导出「教师用卷」（含答案的 docx）。下载是网络请求，要有进行态。 */
+  exporting: boolean;
   /** 打开编辑器（`/teacher/worksheets/edit/?id=…`）。标题与「编辑」按钮走同一条路。 */
   onOpen: () => void;
   onDuplicate: () => void;
+  /** ★ 2026-09-30：导出教师用卷（任务 + 题目 + 答案）。 */
+  onExport: () => void;
   onDelete: () => void;
   /** 打开「引用情况」清单（哪些课堂 / 小组在用、收到多少份作答）。 */
   onShowUsage: () => void;
@@ -31,7 +35,7 @@ const actionStyle = (danger = false) => ({
  * 学习单采用「柔和标题区 + 白色内容区」：它与智能体、探究网页不是同一种资产，
  * 不再强行复用左色条。引用状态改用带文字的按钮明确表达，避免只靠颜色传递信息。
  */
-export function WorksheetCard({ worksheet, deleting, duplicating, onOpen, onDuplicate, onDelete, onShowUsage }: WorksheetCardProps) {
+export function WorksheetCard({ worksheet, deleting, duplicating, exporting, onOpen, onDuplicate, onExport, onDelete, onShowUsage }: WorksheetCardProps) {
   const updatedAt = new Date(worksheet.updatedAt).toLocaleString('zh-CN', {
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
@@ -99,6 +103,17 @@ export function WorksheetCard({ worksheet, deleting, duplicating, onOpen, onDupl
             <button type="button" style={actionStyle()} onClick={onDuplicate} disabled={duplicating}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               {duplicating ? '复制中...' : '复制一份'}
+            </button>
+            {/*
+              ★ 2026-09-30（教师）：「增加教师端学习单导出功能……内容包括任务、题目和答案」
+              —— 入口按教师选的位置放在**这张卡上**（导出的是「这一张单」本身）。
+              ⚠️ 按钮上写「导出 Word」而不是「导出」：这份是**含答案**的教师用卷，
+                 与将来可能有的「学生卷」不是一回事，名字里要说清是哪种格式。
+                 等 PDF 那条路做出来（浏览器打印），这里再变成带格式选项的下拉。
+            */}
+            <button type="button" style={actionStyle()} onClick={onExport} disabled={exporting}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              {exporting ? '导出中...' : '导出 Word'}
             </button>
             <button type="button" style={actionStyle(true)} onClick={onDelete} disabled={deleting}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>

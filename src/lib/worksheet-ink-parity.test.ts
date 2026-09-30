@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import * as front from './worksheet-ink.ts';
 import * as serverValidate from '../../server/src/services/worksheet-ink.ts';
 import * as mirror from '../../server/src/services/ink-path.ts';
-import { QUESTION_TYPE_LABELS } from '../../server/src/services/question-type-labels.ts';
+import { QUESTION_TYPE_LABELS, QUESTION_TYPE_NICKNAMES } from '../../server/src/services/question-type-labels.ts';
 import { QUESTION_TYPE_OPTIONS } from './worksheet-questions.ts';
 
 /** 一批刻意刁钻的笔画：单点 / 空 / 边界 0 与 1 / 会触发两位小数取整的坐标 / 多笔。 */
@@ -82,4 +82,12 @@ test('★ 服务端的题型名与前端那张表逐条相同（报告上印的�
   const frontLabels: Record<string, string> = {};
   for (const option of QUESTION_TYPE_OPTIONS) frontLabels[option.value] = option.label;
   assert.deepEqual({ ...QUESTION_TYPE_LABELS }, frontLabels, '两处的题型名漂了');
+});
+
+test('★ 服务端的题型**别名**与前端那张表逐条相同（教师用卷上印的是别名）', () => {
+  const frontNicknames: Record<string, string> = {};
+  for (const option of QUESTION_TYPE_OPTIONS) frontNicknames[option.value] = option.nickname;
+  assert.deepEqual({ ...QUESTION_TYPE_NICKNAMES }, frontNicknames, '两处的题型别名漂了');
+  // 阳性对照：别名与正式名**不是**同一批字（少一处 alias 会静默回落成正式名）。
+  assert.notEqual(frontNicknames['fill-blank'], QUESTION_TYPE_LABELS['fill-blank']);
 });

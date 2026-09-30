@@ -164,10 +164,12 @@ test('🔴 questionTextFor：**没有标记就不投影**（与渲染同一条�
 test('🔴 questionTextFor：`{填空域}` 换成一条下划线（原来会原样进 Word 与 AI 载荷）', () => {
   // 🔴 这一条是**既有的**毛病，2026-09-28 一并修：`node.prompt` 里存的就是那五个字，
   //    而服务端没有任何地方替换它 ⇒ 教师导出的 Word 里写着「植物需要{填空域}才能生长」。
-  assert.equal(questionTextFor({ prompt: '植物需要{填空域}才能生长', data: {} }), '植物需要＿＿＿＿才能生长');
+  // ★ 2026-09-30：空在纸上换成 **8 个半角下划线**（教师：「填空题的下划线使用 8 个连续
+  // 的下划线」）—— 原来是 4 个**全角**下划线，而全角在 Word 里是四段断开的短线。
+  assert.equal(questionTextFor({ prompt: '植物需要{填空域}才能生长', data: {} }), '植物需要________才能生长');
   assert.equal(
     questionTextFor({ prompt: '看{填空域}和{表格域}', data: { table: tableOf(1, 1) } }),
-    '看＿＿＿＿和r0c0',
+    '看________和r0c0',
   );
 });
 

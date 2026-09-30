@@ -56,7 +56,7 @@ export default function WorksheetsPage() {
     worksheets, total, loading, loadError,
     page, pageSize, search, setSearch, setPage, setPageSize,
     busyOperation, retry,
-    deleteWorksheet, duplicateWorksheet,
+    deleteWorksheet, duplicateWorksheet, exportWorksheet,
     usageDialog, openUsageDialog, closeUsageDialog, confirmationDialog,
   } = useWorksheetList({
     onNotice: notice => notify(notice.message, notice.type),
@@ -131,8 +131,10 @@ export default function WorksheetsPage() {
               worksheet={worksheet}
               deleting={busyOperation === `${worksheet.id}:delete`}
               duplicating={busyOperation === `${worksheet.id}:duplicate`}
+              exporting={busyOperation === `${worksheet.id}:export`}
               onOpen={() => router.push(editorHref(worksheet.id))}
               onDuplicate={() => void duplicateWorksheet(worksheet)}
+              onExport={() => void exportWorksheet(worksheet)}
               onDelete={() => void deleteWorksheet(worksheet)}
               onShowUsage={() => void openUsageDialog(worksheet)}
             />

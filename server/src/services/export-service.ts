@@ -14,6 +14,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { resolveMaterialTargetId } from './group-material-resolve.js';
 import {
+  DEFAULT_POINTS,
   questionTextFor,
   type QuestionNode,
   type WorksheetContent,
@@ -25,6 +26,9 @@ import {
 } from './worksheet-report.js';
 import { questionTypeLabel } from './question-type-labels.js';
 import { inkToPng } from './ink-render.js';
+// ★ 2026-09-30：教师用卷（含答案）。判据层 + 渲染层，与上面那份报告各走各的。
+import { buildWorksheetPaper } from './worksheet-paper.js';
+import { buildWorksheetPaperDocx, paperFilename } from './worksheet-paper-docx.js';
 type SharpModule = typeof import('sharp').default;
 let _sharp: SharpModule | null = null;
 async function getSharp(): Promise<SharpModule | null> {
@@ -1202,6 +1206,40 @@ const TABLE_BORDERS = {
   insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: C.border },
   insideVertical: { style: BorderStyle.SINGLE, size: 1, color: C.border },
 };
+
+/**
+ * ★ 2026-09-30（教师）：**教师用卷** —— 学习单本身（任务 + 题目 + 答案）导成 docx。
+ *
+ * 与 `generateWorksheetReportDocx`（**按学生**的作答报告）是**两份不同的文档**，
+ * 红线正好相反：那一份**不许印正确答案**，这一份**必须印**（教师原话：「内容包括任务、
+ * 题目和答案」）。⇒ 判据层也是两个文件（`worksheet-report.ts` / `worksheet-paper.ts`），
+ * 互不 import —— 合并等于把「发给学生的纸不许有答案」那条红线拆掉。
+ *
+ * ⚠️ 本函数**只做三件事**：读库、调判据层、调渲染层。纸上写什么一个字都不在这里决定
+ *（那是 `worksheet-paper.ts` 的事，有 15 条用例；渲染层本机验不了，见那边的文件头）。
+ * ⚠️ 分值那一路传的是 `DEFAULT_POINTS` —— 与**判分**用的是同一个兜底
+ *（`routes/worksheets.ts` 的 `resolvePoints(node, DEFAULT_POINTS)`）：纸上的分值必须
+ * 与看板/判分算的那个数一致，否则教师会拿着两个不一样的数去对账。
+ */
+export async function generateWorksheetPaperDocx(
+  worksheetId: string,
+  prisma: PrismaClient,
+): Promise<{ buffer: Buffer; filename: string; title: string } | null> {
+  const worksheet = await prisma.worksheet.findUnique({
+    where: { id: worksheetId },
+    select: { title: true, description: true, content: true },
+  });
+  if (!worksheet) return null;
+
+  const paper = buildWorksheetPaper({
+    title: worksheet.title,
+    description: worksheet.description,
+    content: worksheet.content,
+    fallbackPoints: DEFAULT_POINTS,
+  });
+  const buffer = await buildWorksheetPaperDocx(paper);
+  return { buffer, filename: paperFilename(paper.title, readableTimestamp()), title: paper.title };
+}
 
 export async function generateWorksheetReportDocx(
   classroomId: string,

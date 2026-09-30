@@ -15,6 +15,7 @@ import {
   generateConversationsCsv,
   generateStatsCsv,
   generateWorksheetReportDocx,
+  generateWorksheetPaperDocx,
 } from '../services/export-service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -253,6 +254,31 @@ router.post('/:classroomId/worksheet-report/docx', async (req, res) => {
     res.send(result.buffer);
   } catch (error: unknown) {
     console.error('[Export] worksheet report DOCX error:', error);
+    res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
+  }
+});
+
+/**
+ * ★ 2026-09-30（教师）：**教师用卷** —— 学习单本身（任务 + 题目 + 答案）导成 docx。
+ *
+ * 挂在 `/api/export` 下（`index.ts` 给这一组注册了 `requireTeacher`）⇒ 学生拿不到它。
+ * 🔴 这条**不是** `/:classroomId/...` 那一族：它导出的是**一份学习单**，与哪间课堂无关
+ *   （同一张单可以被好几间课堂用）⇒ 路径第一段是字面量 `worksheet`。
+ *   ⚠️ 所以它必须**排在** `/:classroomId/...` 那些**之前**吗？不必 —— `worksheet` 那一段
+ *   与 `:classroomId` 的位置不同（`/worksheet/:id/docx` 是三段），不会互相吃掉。
+ * ⚠️ 返回体是**文件流**不是 JSON：文件名走 `Content-Disposition`，形状与上面两条逐字同款。
+ */
+router.get('/worksheet/:worksheetId/docx', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const result = await generateWorksheetPaperDocx(req.params.worksheetId, prisma);
+    if (!result) return res.status(404).json({ error: '学习单不存在' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+    res.send(result.buffer);
+  } catch (error: unknown) {
+    console.error('[Export] worksheet paper DOCX error:', error);
     res.status(500).json({ error: '导出失败: ' + errorMessage(error) });
   }
 });

@@ -485,6 +485,19 @@ export const api = {
   // 所以副本一定是一份「还没人用过」的学习单 —— 这也正是它作为删除守卫出路的原因。
   duplicateWorksheet: (id: string) =>
     request<WorksheetDetail>(`/api/worksheets/${id}/duplicate`, { method: 'POST' }),
+  /**
+   * ★ 2026-09-30：**教师用卷**（学习单本身：任务 + 题目 + 答案）导成 docx。
+   *
+   * 🔴 与上面那条 `exportWorksheetReportDocx`（**按学生**的作答报告）是两份不同的文档，
+   * 红线相反：那一份不许印正确答案，这一份必须印。别把两条路合成一条。
+   * ⚠️ 走 `GET`（只读、无参数、无进度事件），所以不像那两条要 `POST` + `socketId`。
+   */
+  exportWorksheetPaperDocx: (worksheetId: string) => {
+    return fetch(`${getApiBaseUrl()}/api/export/worksheet/${encodeURIComponent(worksheetId)}/docx`, {
+      credentials: 'include',
+    });
+  },
+
   // 删除守卫的三样引用（课堂级 / 组级 / 历史作答）。`used` 由服务端算好，
   // 前端不要自己重新拼这个判据 —— 拼错了就会给出一个与 DELETE 不一致的结论。
   getWorksheetUsage: (id: string) =>

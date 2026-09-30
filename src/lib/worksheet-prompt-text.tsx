@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { DEFAULT_PROMPT_STYLE, blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, promptRunStyle, type PromptRun } from './worksheet-prompt-marks';
+import { DEFAULT_PROMPT_STYLE, blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, promptTextStyle, type PromptRun } from './worksheet-prompt-marks';
 // ★ 2026-09-30：题面里的数学公式（`$x^2$`）。**切分**是纯逻辑（`worksheet-math.ts`，16 条
 // 边界用例钉着），**画**是 `worksheet-math-view.tsx`（全仓唯一一处调 KaTeX 渲染题面公式的
 // 地方 —— 这里不许再调一次）。
@@ -133,18 +133,24 @@ export interface PromptBlankBinding {
  * ⚠️ 认不出来的 `$` 由 `splitMath` **原样带回**（那是它的安全阀），所以这里不需要任何
  *    兜底分支 —— 一个字都不会丢。
  */
-function renderInline(text: string, run: PromptRun): ReactNode {
+function renderInline(text: string, run: PromptRun, plain: boolean): ReactNode {
+  // ★ 2026-09-30：`plain`（调用方**没给** `runs`）= 纯文本场景 ⇒ **不写行内样式**。
+  // 🔴 见 `promptTextStyle` 的注释：`promptRunStyle` 永远返回 `color` 与 `fontWeight`，
+  //    而行内样式**永远赢过**父容器继承下来的值 ⇒ 会把「答错选项的红字」「正确答案的
+  //    深红 + 加粗」「归类框名的字重」「看板上未勾选=灰」这些**教师已经做过的决定**
+  //    静默打掉。那批全是交付当天复审抓出来的。
+  const style = promptTextStyle(run, plain) as CSSProperties | undefined;
   const pieces = splitMath(text);
   // 常见情形（这一段里没有公式）：走原来那条老路，不多造一层 Fragment。
   if (pieces.length === 1 && pieces[0].kind === 'text') {
-    return <span style={promptRunStyle(run) as CSSProperties}>{text}</span>;
+    return <span style={style}>{text}</span>;
   }
   return pieces.map((piece, index) => (
     piece.kind === 'math'
       // ⚠️ `key` 用下标：`splitMath` 不返回位置，而下标在这个数组里天然唯一、稳定
       //（同一段文字的切分结果是确定的）。
       ? <MathSpan key={index} tex={piece.tex} />
-      : <span key={index} style={promptRunStyle(run) as CSSProperties}>{piece.text}</span>
+      : <span key={index} style={style}>{piece.text}</span>
   ));
 }
 
@@ -154,6 +160,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
   if (!text.trim()) return <>{placeholder}</>;
   // ★ 2026-09-30：没给 `runs` ⇒ 整段**一个默认分段**（选项 / 条目 / 框名 / 表格单元格 /
   // 答案那些纯文本场景）。样式取默认档，`blank` 是空串（**不是**一个空域）。
+  const plain = runs === undefined;
   const segments: PromptRun[] = runs ?? [{ start: 0, end: text.length, blank: '', ...DEFAULT_PROMPT_STYLE }];
   // ⚠️ 空是**按出现先后**编号的（第几个空 = 它前面有几个空分段）—— 就地数，
   // 不从外面传：那个数就是 `data.answers` 的下标，两处必须由同一条规则给。
@@ -247,7 +254,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
             // ⚠️ `key` 用 `start`：分段是拼满且不重叠的，所以 start 天然唯一。
             // ★ 2026-09-30：这一段改走 `renderInline` —— 它会就地把公式切成 `MathSpan`；
             // 这一段里没有公式时，行为与原来那个 `<span>` 逐字相同（有一条快速路径）。
-            <Fragment key={run.start}>{renderInline(chunk, run)}</Fragment>
+            <Fragment key={run.start}>{renderInline(chunk, run, plain)}</Fragment>
           );
         }
         // ★ 2026-09-28：这一段里有**表格域标记** —— 就地画那张表。
@@ -259,7 +266,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
         const tail = chunk.slice(markAt + TABLE_MARK_TEXT.length);
         return (
           <Fragment key={run.start}>
-            {head ? renderInline(head, run) : null}
+            {head ? renderInline(head, run, plain) : null}
             {table
               ? (
                 <WorksheetTableView
@@ -268,8 +275,8 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                 />
               )
               // ⚠️ 没有 `table`（例如题目结构坏掉）⇒ 如实画出标记本身，别假装那里什么都没有
-              : <span style={promptRunStyle(run) as CSSProperties}>{TABLE_MARK_TEXT}</span>}
-            {tail ? renderInline(tail, run) : null}
+              : <span style={promptTextStyle(run, plain) as CSSProperties | undefined}>{TABLE_MARK_TEXT}</span>}
+            {tail ? renderInline(tail, run, plain) : null}
           </Fragment>
         );
       })}

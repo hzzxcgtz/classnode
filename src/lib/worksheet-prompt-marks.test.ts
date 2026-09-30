@@ -46,8 +46,7 @@ import {
   removePromptRange,
   setStyleOnRange,
   styleAt,
-  type PromptRun,
-} from './worksheet-prompt-marks.ts';
+  type PromptRun, promptTextStyle } from './worksheet-prompt-marks.ts';
 
 /** 一条分段的可读写法：只有 `bold` 的写成 `['0:5','b']`，省得每条都写全五个字段。 */
 function run(start: number, end: number, style: Partial<PromptRun> = {}): PromptRun {
@@ -756,9 +755,58 @@ test('🔴 convertBlankMarks：2 个及以上的下划线 ⇒ 一个 {填空域}
   assert.deepEqual(convertBlankMarks('植物需要＿＿＿＿才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
 });
 
-test('🔴 反向：**只有一个**下划线不算空（那是正文里的下划线，不是填空）', () => {
-  assert.deepEqual(convertBlankMarks('变量 _ 是空的'), { text: '变量 _ 是空的', converted: 0 });
-  assert.deepEqual(convertBlankMarks('file_name 里有下划线'), { text: 'file_name 里有下划线', converted: 0 });
+test('🔴 单个下划线：**独立成词**才算空（★ 2026-09-30 教师裁定 —— 方向与上一版相反）', () => {
+  // 教师新裁定：「如果填空位置不是 8 个下划线组成（**可能下划线少一点**），也要能够正确
+  // 识别为填空域」。⇒ 上一版那句「只有一个下划线一律是正文」**作废**：
+  //   · 独立成词（左右都不是单词字符）⇒ 是空；
+  //   · 夹在标识符里 ⇒ 仍是正文。
+  assert.deepEqual(convertBlankMarks('他_地走进教室'), { text: '他{填空域}地走进教室', converted: 1 });
+  assert.deepEqual(convertBlankMarks('变量 _ 是空的'), { text: '变量 {填空域} 是空的', converted: 1 });
+});
+
+test('🔴 反向（安全阀）：夹在**标识符**里的下划线一个都不许动', () => {
+  // 🔴 这一条是上一条的命门：判据里那两道 `[^\w]` 去掉之后，一个英语或信息技术的题干会被
+  // **静默改坏**（`file{填空域}name`）—— 而屏幕上只是一条多出来的下划线。
+  for (const untouched of ['file_name 里有下划线', 'a_b 是两个字母', '变量_1 的值为空', 'fill_in_the_blank', '_italic_ 是斜体']) {
+    assert.deepEqual(convertBlankMarks(untouched), { text: untouched, converted: 0 }, untouched);
+  }
+});
+
+test('🔴 被打散的一串下划线（`_ _ _ _`）⇒ **一个**空，不是四个', () => {
+  // 从 Word / 网页里复制出来的填空线常常是这个形态：每个下划线之间夹一个空格，
+  // 而它在屏幕上与 `____` **一模一样** —— 教师看不出差别（教师这一批报的就是它）。
+  assert.deepEqual(convertBlankMarks('他_ _ _ _地走进教室'), { text: '他{填空域}地走进教室', converted: 1 });
+  assert.deepEqual(convertBlankMarks('他 ＿ ＿ ＿ 地走进教室'), { text: '他 {填空域} 地走进教室', converted: 1 });
+  // ⚠️ 两组**连续**下划线是**两个**空：判据不许把 `__ __` 从中间切开（那会得到半截的
+  //    `_ {填空域}`，而屏幕上只是一条长短不一的横线）。
+  assert.deepEqual(convertBlankMarks('甲__ __乙'), { text: '甲{填空域} {填空域}乙', converted: 2 });
+  assert.deepEqual(convertBlankMarks('甲＿＿ ＿＿乙'), { text: '甲{填空域} {填空域}乙', converted: 2 });
+});
+
+test('🔴 裸空格：半角 ≥4 / 全角 ≥2，**两侧必须是非空白** ⇒ 一个空', () => {
+  // ★ 2026-09-30 教师裁定：「认：4 个以上空格、且两侧不是空白」。
+  assert.deepEqual(convertBlankMarks('他    地走进教室'), { text: '他{填空域}地走进教室', converted: 1 });
+  assert.deepEqual(convertBlankMarks('他        地走进教室'), { text: '他{填空域}地走进教室', converted: 1 });
+  assert.deepEqual(convertBlankMarks('他　　地走进教室'), { text: '他{填空域}地走进教室', converted: 1 });
+  // 阈值以下**不动**（3 个半角 / 1 个全角）：普通排版里的空格不该被吃。
+  assert.deepEqual(convertBlankMarks('他   地走进教室'), { text: '他   地走进教室', converted: 0 });
+  assert.deepEqual(convertBlankMarks('他　地走进教室'), { text: '他　地走进教室', converted: 0 });
+  // 🔴 **行首缩进不算**（两侧都得是**字符**，开头不算一侧）—— 否则一段缩进的题干会凭空多个空。
+  assert.deepEqual(convertBlankMarks('        他走进教室'), { text: '        他走进教室', converted: 0 });
+  // 🔴 **已知代价，教师知情并选了它**：拿空格对齐的文字会被吃成空。
+  //    这一条**不是**在说这个行为好，而是把它钉住 —— 谁想「修」它就得先看见这句话。
+  assert.deepEqual(convertBlankMarks('姓名    分数'), { text: '姓名{填空域}分数', converted: 1 });
+});
+
+test('🔴 四条规则的**顺序**是有硬要求的（换一下 `_ _ _ _` 就变成四个空）', () => {
+  // 判据：`SPACED_UNDERSCORES` 必须在 `LONE_UNDERSCORE` **之前** ——
+  // 反过来那串被打散的下划线会被逐个当成四个独立的空（探针实测 `§§§§`）。
+  // 这条用例是给那个顺序写的：它是纯实现的顺序，读代码看不出来「错了会怎样」。
+  assert.equal(convertBlankMarks('_ _ _ _').converted, 1);
+  assert.equal(blankMarkCount(convertBlankMarks('_ _ _ _').text), 1);
+  // 同一类要求还有一条：`SPACE_RUN` 必须排在 `EMPTY_PARENS` **之后** ——
+  // `（        ）` 里那串空格也匹配空格规则，先认空格就会得到「括号 + 一个空」两个东西。
+  assert.deepEqual(convertBlankMarks('植物需要（        ）才能生长'), { text: '植物需要{填空域}才能生长', converted: 1 });
 });
 
 test('🔴 反向：括号里**有字**的绝不是空 —— 这一条挡的是「选词填空的词库被吃成空」', () => {
@@ -843,4 +891,21 @@ test('🔴 blanksFromText：**从纯文本认出全部空**（`recognizeBlanks([
   // 边界：空 / 非字符串 ⇒ 空数组（不抛、不编一条空段出来）。
   assert.deepEqual(blanksFromText('', mint), []);
   assert.deepEqual(blanksFromText(undefined, mint), []);
+});
+
+test('🔴 纯文本场景**不写**行内样式（否则会打掉父容器的颜色/字重）', () => {
+  // ★ 2026-09-30：交付当天复审抓出来的一批静默回归 —— `promptRunStyle` 永远返回
+  // `color` 与 `fontWeight`，而行内样式**永远赢过**父元素继承下来的值。
+  // ⇒ 凡「靠父容器给颜色或加粗」的地方都会被顶掉：学生端答错选项的红字、
+  //    「正确答案」那句的深红+粗（教师 2026-09-27 明确要求过）、归类框名的字重、
+  //    看板上「未勾选=灰」……那些**都是教师已经做过的决定**，不是风格偏好。
+  const plainRun = { ...DEFAULT_PROMPT_STYLE };
+  // 题干（有 runs）⇒ 照旧写样式：那是教师的行内格式，本来就该落在这段文字上。
+  const forPrompt = promptTextStyle(plainRun, false);
+  assert.equal(forPrompt?.color, DEFAULT_PROMPT_STYLE.color, '题干要写颜色');
+  assert.equal(forPrompt?.fontWeight, 400, '题干要写字重');
+  // 纯文本（没有 runs）⇒ **不写**，让父容器决定。
+  assert.equal(promptTextStyle(plainRun, true), undefined, '纯文本不该写行内样式');
+  // 阳性对照：粗体那一段在题干里仍然要写成 700（否则上面那条可能只是「什么都不写」）。
+  assert.equal(promptTextStyle({ ...DEFAULT_PROMPT_STYLE, bold: true }, false)?.fontWeight, 700);
 });

@@ -3,6 +3,11 @@
 import { useMemo } from 'react';
 import { answerView, matchLineGeometry, type AnswerView } from '@/lib/worksheet-answer-view';
 import { WorksheetTableView } from '@/lib/worksheet-table-view';
+// ★ 2026-09-30：题面文本里的数学公式（选项 / 标准答案 / 左右项 / 框名 / 条目）。
+// 🔴 **只包「教师写的原文」**：本文件里 `view.text` / `blank.text` / `view.texts` 那些是
+//    **学生填的答案**，学生打的字里 `$` 没有公式语义（裁定 ④）⇒ 一律**不**包。
+//    这两种文本混在同一个组件里，改错一处不会报错，只会让某个学生的答案突然变成公式。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { InkPreview } from './ink-preview';
@@ -91,7 +96,11 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                 {option.picked ? <WorksheetStatusIcon name={option.correct ? 'correct' : 'retry'} size={15} /> : null}
               </span>
               <span style={{ color: option.picked ? '#0f172a' : MUTED, fontWeight: option.picked ? 600 : 400 }}>
-                {option.key}. {option.text || <span style={{ color: FAINT }}>（这个选项还没写内容）</span>}
+                {/* ★ 2026-09-30：选项是**教师原文** ⇒ 认公式。
+                    ⚠️ 同一行左边的 `option.picked` 是**学生勾没勾**，两回事。 */}
+                {option.key}. {option.text
+                  ? <PromptText text={option.text} placeholder="" />
+                  : <span style={{ color: FAINT }}>（这个选项还没写内容）</span>}
               </span>
               {option.correct && (
                 <span style={{ marginLeft: 'auto', fontSize: '0.688rem', color: ANSWER, flexShrink: 0 }}>正确答案</span>
@@ -112,7 +121,9 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                     而事实是老师**没填**标准答案（关掉自动评分时这是合法的）。 */}
                 {blank.accepted.length > 0 && (
                   <span style={{ marginLeft: 'auto', color: ANSWER }}>
-                    正确答案：{blank.accepted.join(' / ')}
+                    {/* ★ 2026-09-30：`accepted` 是**教师写的**标准答案 ⇒ 认公式。
+                        ⚠️ 别与下面 `blank.text`（学生填的）搞混 —— 那个是纯文本。 */}
+                    正确答案：<PromptText text={blank.accepted.join(' / ')} placeholder="" />
                   </span>
                 )}
               </div>
@@ -156,7 +167,9 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
               `judgeOrder(…, tolerance)`），在客户端复刻一份就是第二份判分实现。 */}
           {view.correct.length > 0 && (
             <div style={{ fontSize: '0.688rem', color: ANSWER }}>
-              正确顺序：{view.correct.join(' → ')}
+              {/* ★ 2026-09-30：正确顺序里是**教师的条目原文** ⇒ 认公式。
+                  （⚠️ 上面那个 `<ol>` 里的 `{text}` 是**学生的顺序**，不是这里。） */}
+              正确顺序：<PromptText text={view.correct.join(' → ')} placeholder="" />
             </div>
           )}
         </div>
@@ -184,7 +197,13 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         <div style={{ display: 'flex', alignItems: 'flex-start' }}>
           <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: MATCH_ROW.gap }}>
             {view.left.map((entry) => (
-              <div key={entry.id} style={rowBox}>{textOrId(entry.text, entry.id)}</div>
+              <div key={entry.id} style={rowBox}>
+                {/* ★ 2026-09-30：连线**左右项**是教师原文 ⇒ 认公式。
+                    ⚠️ 文本为空时仍然回落成 id（`textOrId` 原来那一条路），行为不变。 */}
+                {entry.text
+                  ? <PromptText text={entry.text} placeholder="" />
+                  : textOrId(entry.text, entry.id)}
+              </div>
             ))}
           </div>
           {/* 中间那条通道。⚠️ 它的高度必须与两栏算出来的高度**一致**，否则线会错位 ——
@@ -206,7 +225,13 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
           </div>
           <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: MATCH_ROW.gap }}>
             {view.right.map((entry) => (
-              <div key={entry.id} style={rowBox}>{textOrId(entry.text, entry.id)}</div>
+              <div key={entry.id} style={rowBox}>
+                {/* ★ 2026-09-30：连线**左右项**是教师原文 ⇒ 认公式。
+                    ⚠️ 文本为空时仍然回落成 id（`textOrId` 原来那一条路），行为不变。 */}
+                {entry.text
+                  ? <PromptText text={entry.text} placeholder="" />
+                  : textOrId(entry.text, entry.id)}
+              </div>
             ))}
           </div>
         </div>
@@ -228,13 +253,22 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {view.zones.map((zone) => (
             <div key={zone.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px' }}>
-              <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>{zone.label}</div>
+              <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>
+                {/* ★ 2026-09-30：框名是教师原文 ⇒ 认公式。 */}
+                <PromptText text={zone.label} placeholder="" />
+              </div>
               {zone.items.length === 0
                 ? <span style={{ fontSize: '0.75rem', color: FAINT }}>（这个框他一条都没放）</span>
                 : (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {zone.items.map((item, index) => (
-                      <span key={index} style={chip(item.ok ? OK : BAD)}>{item.text}</span>
+                      // ★ 2026-09-30：条目是**教师原文** ⇒ 认公式（`item.ok` 才是
+                      // 「学生放对了没有」，两回事）。
+                      // ⚠️ 这条注释只能用 `//`：这里是箭头函数的**表达式体**，
+                      // `{/* … */}` 是 JSX **子元素**位置的语法，放这儿是语法错。
+                      <span key={index} style={chip(item.ok ? OK : BAD)}>
+                        <PromptText text={item.text} placeholder="" />
+                      </span>
                     ))}
                   </div>
                 )}
@@ -245,7 +279,8 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
               这一行说的是「剩下这些他留在了外面」，而不是「他什么都没做」。 */}
           {view.loose.length > 0 && (
             <div style={{ fontSize: '0.75rem', color: WARN }}>
-              未归类：{view.loose.join('、')}
+              {/* ★ 2026-09-30：`loose` 是**教师的条目原文**里没被归进任何框的那些。 */}
+              未归类：<PromptText text={view.loose.join('、')} placeholder="" />
             </div>
           )}
         </div>

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+// ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
@@ -392,7 +394,10 @@ function QuestionList({
                     {manual && <span className={styles.analysisTag}>人工分析</span>}
                     {sampleSmall && <span className={styles.analysisTag} data-tone="warning">样本少</span>}
                   </strong>
-                  <p>{node.prompt || '这道题没有填写题干'}</p>
+                  {/* ★ 2026-09-30：题干认公式（两处：按题分析列表 + 作答详情）。 */}
+                  <p>{node.prompt
+                    ? <PromptText text={node.prompt} placeholder="" />
+                    : '这道题没有填写题干'}</p>
                 </span>
                 <span className={styles.rowMetric}><strong>{aggregate.submitted}/{aggregate.total}</strong><span>已提交</span></span>
                 <span className={styles.rowMetric} data-tone={attention ? 'warning' : aggregate.correct > 0 ? 'good' : undefined}>
@@ -598,7 +603,10 @@ function ParticipantAnswers({
                       <span className={styles.questionNumber}>{label}</span>
                       <span className={styles.questionText}>
                         <strong>{questionHeading(node, null)}</strong>
-                        <p>{node.prompt || '这道题没有填写题干'}</p>
+                        {/* ★ 2026-09-30：题干认公式（两处：按题分析列表 + 作答详情）。 */}
+                  <p>{node.prompt
+                    ? <PromptText text={node.prompt} placeholder="" />
+                    : '这道题没有填写题干'}</p>
                       </span>
                       <OutcomeMark mark={outcome.mark} status={outcome.status} />
                       <span aria-hidden className={styles.chevron}>{expanded ? '⌃' : '⌄'}</span>

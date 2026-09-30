@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+// ★ 2026-09-30：矩阵表头是**连线右项 / 归类框名**（教师原文）⇒ 认公式。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { indexQuestions } from './worksheet-drawer-state';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { AnswerViewBody } from './answer-view';
@@ -78,7 +80,8 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
             <th style={{ ...th, textAlign: 'left' }}>{rowLabel} ＼ {colLabel}</th>
             {cols.map((col) => (
               <th key={col.id} title={col.text} style={{ ...th, maxWidth: 108, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {col.text || col.id}
+                {/* ★ 2026-09-30：`col.text` 是**教师原文**（`col.id` 那条回落路是机器的）。 */}
+                {col.text ? <PromptText text={col.text} placeholder="" /> : col.id}
               </th>
             ))}
             <th style={{ ...th, color: CHART.faint }}>合计</th>
@@ -88,7 +91,8 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
           {rows.map((row) => (
             <tr key={row.id}>
               <th title={row.text} style={{ ...th, textAlign: 'left', maxWidth: 132, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: CHART.ink }}>
-                {row.text || row.id}
+                {/* ★ 2026-09-30：同列头（`row.text` 是教师原文）。 */}
+                {row.text ? <PromptText text={row.text} placeholder="" /> : row.id}
               </th>
               {cols.map((col) => {
                 const cell = at(row.id, col.id);

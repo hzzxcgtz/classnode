@@ -2,6 +2,9 @@
 
 import { useMemo } from 'react';
 import { flattenAnswerable, questionTypeLabel } from '@/lib/worksheet-questions';
+// ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）—— 教师在这个浮层上逐题开放，
+// 得看得见题面才认得出是哪一题。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { normalizeAnswerMode } from '@/lib/worksheet-answer-mode';
 import type { WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 
@@ -178,7 +181,10 @@ export function WorksheetOpenOverlay({
                           <span style={{ flex: '0 0 auto', minWidth: 40, fontSize: '0.72rem', fontWeight: 700, color: '#64748b' }}>{heading}</span>
                           <span style={{ flex: '0 0 auto', fontSize: '0.688rem', color: '#94a3b8' }}>{questionTypeLabel(node.type)}</span>
                           <span style={{ flex: 1, minWidth: 0, fontSize: '0.813rem', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {node.prompt.trim() || '（题干为空）'}
+                            {/* ★ 2026-09-30：题干认公式（判空仍然用 `trim()`）。 */}
+                            {node.prompt.trim()
+                              ? <PromptText text={node.prompt} placeholder="" />
+                              : '（题干为空）'}
                           </span>
                           {isOpen ? (
                             <button

@@ -2,6 +2,10 @@
 
 import { useMemo } from 'react';
 import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
+// ★ 2026-09-30：题面文本里的数学公式（选项 / 左右项 / 框名 / 条目）。
+// 🔴 **只包「教师写的原文」**：本文件里 `view.text`（问答）/ `blank.text`（填空）/
+//    排序那个 `{text}` 都是**学生填的答案**，一律**不**包（裁定 ④）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { TileAnswer } from './worksheet-tile-state';
 import { InkPreview } from './ink-preview';
 
@@ -118,7 +122,8 @@ function renderCompact(view: AnswerView): React.ReactNode {
             ? <Line color={FAINT}>还没选</Line>
             : picked.map((option) => (
               <span key={option.key} style={chipStyle('#e2e8f0')}>
-                {option.key}. {option.text || option.key}
+                {/* ★ 2026-09-30：选项是**教师原文** ⇒ 认公式。 */}
+                {option.key}. {option.text ? <PromptText text={option.text} placeholder="" /> : option.key}
               </span>
             ))}
         </div>
@@ -169,11 +174,14 @@ function renderCompact(view: AnswerView): React.ReactNode {
             : view.links.map((link, index) => (
               <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#0f172a' }}>
                 <span style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {textOrId(view.left, link.leftId)}
+                  {/* ★ 2026-09-30：连线**左项**是教师原文 ⇒ 认公式
+                      （`textOrId` 在文本为空时会回落成 id，那也照样能过）。 */}
+                  <PromptText text={textOrId(view.left, link.leftId)} placeholder="" />
                 </span>
                 <span aria-hidden style={{ flex: '0 0 18px', height: 2, alignSelf: 'center', background: FAINT }} />
                 <span style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {textOrId(view.right, link.rightId)}
+                  {/* ★ 2026-09-30：连线**右项**同左项。 */}
+                  <PromptText text={textOrId(view.right, link.rightId)} placeholder="" />
                 </span>
               </div>
             ))}
@@ -185,12 +193,21 @@ function renderCompact(view: AnswerView): React.ReactNode {
         <>
           {view.zones.filter((zone) => zone.items.length > 0).map((zone) => (
             <Line key={zone.id}>
-              <span style={{ color: MUTED }}>{zone.label}：</span>
+              {/* ★ 2026-09-30：框名是教师原文 ⇒ 认公式。 */}
+              <span style={{ color: MUTED }}><PromptText text={zone.label} placeholder="" />：</span>
               {/* ⚠️ 放错的条目**不带 ✗**（教师第二轮：这一格不给对错）。 */}
-              <span style={{ color: '#0f172a' }}>{zone.items.map((item) => item.text).join('、')}</span>
+              {/* ★ 2026-09-30：归类**条目**是教师原文 ⇒ 认公式。 */}
+              <span style={{ color: '#0f172a' }}>
+                <PromptText text={zone.items.map((item) => item.text).join('、')} placeholder="" />
+              </span>
             </Line>
           ))}
-          {view.loose.length > 0 && <Line color={FAINT}>未归类：{view.loose.join('、')}</Line>}
+          {view.loose.length > 0 && (
+            <Line color={FAINT}>
+              {/* ★ 2026-09-30：`loose` 是教师条目原文里没归进任何框的那些 ⇒ 认公式。 */}
+              未归类：<PromptText text={view.loose.join('、')} placeholder="" />
+            </Line>
+          )}
         </>
       );
 

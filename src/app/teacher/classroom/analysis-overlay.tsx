@@ -1,6 +1,8 @@
 'use client';
 
 import { useWorksheetAnalysis, AnalysisActions, AnalysisBanners, AnalysisBody } from './analysis-panel';
+// ★ 2026-09-30：页头那句题干里可能有数学公式（`$x^2$`）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 
 /**
  * 分析载荷的**整屏浮层**（★ M7a/M7b）。
@@ -59,7 +61,10 @@ export function AnalysisOverlay({
             {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '分析载荷'}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {payload ? payload.prompt || '（题干为空）' : '正在读取…'}
+            {/* ★ 2026-09-30：题干认公式。⚠️ 三层：还没有载荷 / 载荷里题干为空 / 有题干。 */}
+            {payload
+              ? (payload.prompt ? <PromptText text={payload.prompt} placeholder="" /> : '（题干为空）')
+              : '正在读取…'}
           </div>
         </div>
         {/* 🔴 分母必须显眼：载荷只覆盖一部分人，而一份没有分母的名单会被读成「全班就这些人」。 */}

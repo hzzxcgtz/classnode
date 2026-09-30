@@ -202,6 +202,13 @@ export function OrderBody({ node, onDataChange }: {
 
   return (
     <>
+      {/* ★ 2026-09-30（教师）：「排序题的答案设置可以参考连线题和归类题，放在**选项顺序的
+          右侧**。」⇒ **左栏**是这一块（条目 + 学生看到的顺序），**右栏**是 `OrderAnswerBody`
+          （正确顺序）—— 它原来住在「自动评分」卡里，两块分在两处，调答案时要上下找。
+          ⚠️ 窄屏**上下叠**（教师同日裁定）—— `.worksheet-editor-order-columns` 的媒体查询。
+          ⚠️ 「学生看到的顺序与正确答案一模一样」那句提示留在**两栏外面**：它说的是**整题**
+             的状态，且同时指向两栏（「点重新排列，或调整『正确顺序』那一栏」）。 */}
+      <div className="worksheet-editor-order-columns">
       <div className="worksheet-editor-block">
         <span className="worksheet-editor-block-label">选项顺序</span>
         <div className="worksheet-editor-options">
@@ -263,6 +270,9 @@ export function OrderBody({ node, onDataChange }: {
             ? '（还没有条目）'
             : <PromptText text={items.map(entry => entryLabel(entry.text)).join(' → ')} placeholder="" />}
         </p>
+      </div>
+      {/* ── 右栏：正确顺序（从「自动评分」卡搬来的）───────────────────────── */}
+      <OrderAnswerBody node={node} onDataChange={onDataChange} />
       </div>
 
       {ambiguous && (

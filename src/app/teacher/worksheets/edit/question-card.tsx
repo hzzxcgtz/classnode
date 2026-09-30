@@ -33,6 +33,7 @@ import {
   POINTS_MAX,
   pointsSignature,
   QUESTION_TYPE_OPTIONS,
+  readBlankAnswers,
   type RejectedPointInput,
   shouldWarnZeroHalfCredit,
   showsPartialPoints,
@@ -48,10 +49,14 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
 import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
-import { ChoiceBlankSetup, FillBlanksBody } from './bodies/fill-blanks-body';
+import { ChoiceBlankSetup, FillBlanksBody, SymbolListInput } from './bodies/fill-blanks-body';
+// ★ 2026-09-30：主观题的**参考答案**（不判分）。输入框与填空题那份是**同一个组件**。
+import { splitChoiceText } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
-import { OrderAnswerBody, OrderBody } from './bodies/order-body';
+// ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
+//    这一页不再直接渲染它。
+import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
 // ★ M4b/D1：「这道题是不是手写作答」这个判据只有一份，在 `src/lib/worksheet-ink.ts`
@@ -567,7 +572,30 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
 
             {node.type === 'short-answer' && (
-              <p className="worksheet-editor-manual-note"><strong>人工查看</strong>学生提交后不自动判分，看板只统计作答进度。</p>
+              // ★ 2026-09-30（教师）：「主观题也需要设置参考答案，但是可以选择不本地评分。」
+              // + 澄清：「主观题**不需要评分**」。
+              // 🔴 所以这一块**只是让答案有个入口** —— 它不接判分那条链：
+              //    `graded` 仍是 false、服务端的判分器仍恒返回 null。
+              //    答案的两个去处：**印在教师用卷上**、以及你在看板查看时有个对照。
+              // ⚠️ 输入框与填空题的「标准答案」是**同一个组件**（`SymbolListInput`，
+              //    它本来就是待选词与标准答案共用的那个）—— 两处各写一份就是本仓最防的分叉。
+              // ⚠️ 写回的是 **nested 形状**（`answers: [items]`，每空一份）：
+              //    内核的纪律是「写一律写 nested」（单空与多空没有区别的那个形状）。
+              <div className="worksheet-editor-block">
+                <div className="worksheet-editor-block-head">
+                  <div>
+                    <h4>参考答案</h4>
+                    <p>只印在教师用卷上、供你查看时对照；<strong>它不参与自动判分</strong>（学生提交后看板只统计作答进度）。</p>
+                  </div>
+                </div>
+                <SymbolListInput
+                  values={readBlankAnswers(node)[0] ?? []}
+                  split={splitChoiceText}
+                  joinWith=" / "
+                  placeholder="例如：春天、春季"
+                  onChange={(items) => onDataChange({ answers: [items] })}
+                />
+              </div>
             )}
             {node.type === 'drawing' && (
               <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师人工查看。</p>
@@ -676,15 +704,13 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             )}
           </div>
 
-          {/* ★ 2026-09-28（教师）：「正确顺序」搬到「自动评分」里来 —— 与填空题的
-              「标准答案」、选择题的「正确答案」同一个位置。三者都是**答案**，
-              而答案该在自动评分开关旁边（教师原话：「布局设计参考填空、选择」）。
-              ⚠️ 条目本身仍在容器 A（那是题目内容）—— 所以这一块只说答案那一半。 */}
-          {node.type === 'order' && (
-            <div className="worksheet-editor-block">
-              <OrderAnswerBody node={node} onDataChange={onDataChange} />
-            </div>
-          )}
+          {/* ⊘ ★ 2026-09-30（教师）：「排序题的答案设置可以参考连线题和归类题，放在
+              **选项顺序的右侧**。」⇒ 「正确顺序」从这一张卡**搬回**容器 A，与条目**并排**
+              （见 `OrderBody` 里那个 `.worksheet-editor-order-columns`）。
+              ⚠️ 这是它**第二次**改位置：2026-09-28 教师要求搬进来、今天要求搬出去。
+                 两次都不算「设计反复」—— 上一次他看到的是「答案该在开关旁边」，
+                 这一次他看到的是「调顺序时两个列表要并排着看」。两次都照做。
+              ⚠️ 于是这张卡对排序题只剩下面那两块（开关 + 分值 + 容错档），不再是空壳。 */}
 
           {/* 「标准答案」—— 填空题与判断题共用一个块标题（教师要求两型对齐）。 */}
           {(isBlankType || node.type === 'true-false') && (

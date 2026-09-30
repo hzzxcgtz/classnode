@@ -32,7 +32,7 @@ import {
  * ⚠️ 三处共用一个组件是刻意的：同屏三个同类输入框各写一份，改一处只改一处，
  *   而教师看到的是「三个长得不一样的框」。
  */
-function SymbolListInput({ values, split, joinWith, placeholder, onChange }: {
+export function SymbolListInput({ values, split, joinWith, placeholder, onChange }: {
   values: string[];
   split: (raw: string) => string[];
   joinWith: string;

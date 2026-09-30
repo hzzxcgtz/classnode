@@ -3689,6 +3689,28 @@ tr:hover td {
   color: #64748b;
 }
 
+/* ★ 2026-09-30（教师）：「排序题的答案设置可以参考连线题和归类题，放在**选项顺序的
+   右侧**。」⇒ 左栏 = 学生看到的顺序（条目 + 重新排列），右栏 = 正确顺序。
+   ⚠️ 窄屏**上下叠**（教师同日裁定）—— 见下面那条媒体查询。
+   ⚠️ 断点取 720px 是个**保守值**：编辑页左侧还有一条结构大纲，实际可用宽度比视口窄。
+      真机上觉得折得太早/太晚，改这一个数就行（`flex-direction` 那一行不用动）。 */
+.worksheet-editor-order-columns {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.worksheet-editor-order-columns > * {
+  /* 🔴 两栏等宽、都能收缩。`min-width: 0` 不能省 —— 少了它，右栏那个
+     「正确顺序」的条目文字会把整栏撑破（flex 项的默认最小宽度是内容宽度）。 */
+  flex: 1 1 0;
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .worksheet-editor-order-columns {
+    flex-direction: column;
+  }
+}
+
 /* 排序题「正确答案的顺序」那一栏：一个带序号的有序列表。
    ⚠️ 去掉 list-style 是因为序号由 `.worksheet-editor-order-index` 自己画
    （▲▼ 要跟它同一行对齐，交给浏览器的列表标记对不齐）。 */

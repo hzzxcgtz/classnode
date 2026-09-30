@@ -26,10 +26,12 @@ test('🔴 默认档从判据层拿（`INK_DEFAULT_TOOL`），不是随手写的
   // 这里钉的是**这一侧接上了没有**：写一个 `useState('pen')` 字面量就成了第二份真源，
   // 而判据层把默认值改掉时这一侧不会跟着动（屏幕上只是「进题目画不出线」）。
   assert.match(body, /useState<InkTool>\(INK_DEFAULT_TOOL\)/, '默认档没有从 INK_DEFAULT_TOOL 拿');
-  // 工具栏要把**全部**档画出来（漏一个 = 那个图形没有入口，而屏幕上只是「少一个按钮」）。
-  assert.ok(body.includes('INK_TOOLS.map('), '工具栏没有遍历 INK_TOOLS');
-  // 只读态（教师端预览渲染同一个组件）整排禁用，但一个都不少。
-  assert.ok(body.includes('aria-pressed={tool === item}'), '当前档没有可读的状态（aria-pressed）');
+  // 工具栏要把**全部**九个图形画出来（漏一个 = 那个图形没有入口，而屏幕上只是「少一个按钮」）。
+  assert.ok(body.includes('INK_SHAPE_KINDS.map('), '图形弹出组没有遍历 INK_SHAPE_KINDS');
+  // 当前档要看得见（第二轮改成了一行 + 弹出组：工具按钮用 aria-pressed，
+  // 弹出组里的格子用 menuitemradio 的 aria-checked）。
+  assert.ok(body.includes("aria-pressed={tool === 'pen'}"), '手写档没有可读的状态');
+  assert.ok(body.includes('aria-pressed={tool === \'select\'}'), '选择档没有可读的状态');
 });
 
 test('★ 选中态：离开「选择」档要清掉，撤销/清空也要清掉（否则会删错东西）', () => {
@@ -39,7 +41,9 @@ test('★ 选中态：离开「选择」档要清掉，撤销/清空也要清掉
   //    · 撤销/清空让 `strokes` 少了几笔 ⇒ 那个下标指向**别的图形**（或者指空）。
   //    屏幕上只是「删除删错了」/「点了没反应」，两边都不报错。
   assert.match(body, /if \(next !== 'select'\) setSelected\(null\)/, '换档时没有清掉选中');
-  assert.equal((body.match(/setSelected\(null\); transform\(/g) ?? []).length, 2,
+  // ⚠️ 第二轮把两个 handler 改成了 `setSelected(null); setOpenGroup(null); transform(…)`
+  //（一行工具栏上还要顺手关掉可能开着的弹出组）。
+  assert.equal((body.match(/setSelected\(null\);[\s\S]{0,40}?transform\(/g) ?? []).length, 2,
     '撤销与清空都必须清掉选中（两条路各一处）');
 });
 
@@ -76,7 +80,8 @@ test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按
   // ★ 2026-09-30（教师：「UI 你不考虑的吗？」）⇒ 十一个档换成**图标**。
   // 🔴 图标按钮没有可见文字 ⇒ **`aria-label` 是它唯一的名字**：少了它，
   //    读屏用户听到的是十一个「按钮」。设计规范里这条是硬规矩。
-  assert.ok(body.includes('aria-label={TOOL_LABELS[item]}'), '工具按钮没有 aria-label（读屏读不出来）');
+  assert.ok(body.includes('aria-label={TOOL_LABELS[shape]}'), '图形格子没有 aria-label（读屏读不出来）');
+  assert.ok(body.includes('aria-label="手写"') && body.includes('aria-label="选择"'), '手写/选择没有 aria-label');
   assert.ok(body.includes('aria-label={`${WIDTH_LABELS[index]}笔`}'), '粗细按钮没有 aria-label');
   // 图标本身对读屏是**噪音**（形状已经由按钮的名字说了）⇒ 要 `aria-hidden`。
   // ⚠️ **只看 ToolIcon 那个函数体**：文件里还有一处 `aria-hidden`（粗细按钮里那个圆点），
@@ -89,7 +94,7 @@ test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按
 
 test('★ 粗细三档：当前档要看得见（aria-pressed），而且只影响新画的笔', () => {
   assert.ok(body.includes('INK_WIDTH_OPTIONS.map('), '粗细没有遍历判据层的三档');
-  assert.match(body, /aria-pressed=\{width === option\}/, '当前粗细档没有可读的状态');
+  assert.match(body, /aria-checked=\{width === option\}/, '当前粗细档没有可读的状态');
   // 🔴 它是**新笔画**的参数，不该写进 draft（写进去就成了「作答数据的一部分」，
   //    而换一次粗细会进撤销栈 —— 学生按撤销会撤销掉「换粗细」而不是一笔画）。
   assert.ok(!/onChange\(\{[^}]*width[^}]*\}/.test(body), '粗细被写进了作答数据（它只该影响新笔画）');
@@ -99,11 +104,30 @@ test('★ 颜色：八色从判据层来；**选中元素时点颜色 = 改那�
   // ★ 2026-09-30（教师：「还缺少颜色工具」+ 选了「八色固定色板」那一档）。
   assert.ok(body.includes('INK_PALETTE.map('), '色板没有遍历判据层的八色');
   assert.ok(body.includes('aria-label={`${swatch.label}色`}'), '色块没有可读的名字（它只有一块颜色）');
-  assert.match(body, /aria-pressed=\{color === swatch\.value\}/, '当前色没有可读的状态');
+  assert.match(body, /aria-checked=\{color === swatch\.value\}/, '当前色没有可读的状态');
   // 🔴 **选中之后点颜色要改那个元素** —— 少了它，学生想改一个画错的颜色只能删掉重画。
   assert.match(body, /index === selected \? \{ \.\.\.stroke, color: next \}/,
     '选中元素时点颜色没有改它');
   // 🔴 而颜色**不是整幅画的属性**：它是每个元素各自的字段（与粗细同一条纪律）。
   //    写进 draft 的顶层就成了「换一次颜色进一次撤销栈」，而那不是学生做的动作。
   assert.ok(!/onChange\(\{[^}]*\bcolor:/.test(body), '颜色被写成了整幅画的属性');
+});
+
+test('★ 一行七格 + 三个弹出组（教师：「紧凑 / 分类明确 / 像一个专业的绘图工具」）', () => {
+  // ★ 2026-09-30 第二轮。三件事各自钉一条：
+  //  ① 三个弹出组都要**声明**自己是弹出（`aria-haspopup` + `aria-expanded`）——
+  //     少了它，读屏用户不知道点下去会开一个面板；
+  //  ② 组与组之间要有**分隔**（「分类明确」靠它，而不是靠猜）；
+  //  ③ **按钮上显示当前值**（这是「不用点开就知道现在拿的是什么笔」的全部内容）。
+  assert.equal((body.match(/aria-haspopup="menu"/g) ?? []).length, 3, '三个弹出组都要声明 aria-haspopup');
+  assert.equal((body.match(/aria-expanded=\{openGroup === '/g) ?? []).length, 3, '三个弹出组都要有 aria-expanded');
+  assert.ok(body.includes('<GroupDivider />'), '组与组之间没有分隔');
+  // ③ 当前值：图形按钮显示**最后一次选的图形**（当前档可能不是图形），
+  //    粗细显示当前档的圆点，颜色显示当前色块。
+  assert.match(body, /<ToolIcon tool=\{isInkShapeTool\(tool\) \? tool : lastShape\} \/>/,
+    '图形按钮没有显示「当前图形」—— 当前档是手写/选择时它会显示错的图标');
+  assert.ok(body.includes('background: color'), '颜色按钮没有显示当前色');
+  assert.ok(body.includes('WIDTH_DOTS['), '粗细按钮没有显示当前档的圆点');
+  // ⚠️ 三个组共用一个 `openGroup` ⇒ 同时只可能开一个（开两个会让屏幕上一片浮层）。
+  assert.ok(!/useState<[^>]*>\(\[/.test(body), '弹出组的状态不是一个「只能开一个」的标量');
 });

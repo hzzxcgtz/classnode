@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
-  INK_DEFAULT_COLOR, INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_PALETTE, INK_TOOLS, INK_WIDTH_OPTIONS,
+  INK_DEFAULT_COLOR, INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_PALETTE, INK_SHAPE_KINDS, INK_WIDTH_OPTIONS,
+  isInkShapeTool,
   clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke,
 } from '@/lib/worksheet-ink';
-import type { InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
+import type { InkShapeKind, InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
 import { InkCanvas } from '../ink-canvas';
 import styles from '../worksheet.module.css';
 
@@ -67,7 +68,15 @@ const TOOL_LABELS: Record<InkTool, string> = {
  * ⚠️ 图标按钮**必须**有 `aria-label`（本仓的设计规范明写；这里由 `TOOL_LABELS` 供）。
  */
 const TOOL_ICONS: Record<InkTool, ReactNode> = {
-  pen: <path d="M3.5 16.5 5 12l7-6.8 2.8 2.8-7 6.8z" />,
+  // ⚠️ 2026-09-30（教师：「图标不够直观」）：「笔」原来只是一个斜四边形 ——
+  //    认不出是笔。改成**一支笔的形状**（笔身 + 笔尖 + 尾端那条线）。
+  pen: (
+    <>
+      <path d="M3.6 16.4 5.2 12l6.6-6.6 3 3L8.2 15z" />
+      <path d="M11.8 5.4l2.8 2.8" />
+      <path d="M14.6 8.2l1.4-1.4a1.2 1.2 0 0 0 0-1.7l-.3-.3a1.2 1.2 0 0 0-1.7 0l-1.4 1.4" />
+    </>
+  ),
   line: <path d="M3.5 16.5 16.5 3.5" />,
   arrow: (
     <>
@@ -87,18 +96,63 @@ const TOOL_ICONS: Record<InkTool, ReactNode> = {
       <path d="M4 15.5 14.5 5" />
     </>
   ),
+  // ⚠️ 同上：「选择」原来是一个虚框 + 一个小方块 —— 看着像「裁剪」。改成**鼠标指针**，
+  //    那是所有绘图工具里「选择」的通用符号。
   select: (
     <>
-      <path d="M4 6.5V4h2.5M13.5 4H16v2.5M16 13.5V16h-2.5M6.5 16H4v-2.5" />
-      <rect x="7.5" y="7.5" width="5" height="5" rx="0.6" />
+      <path d="M5 3.5l10 6.2-4.3 1.3L9 15.6z" />
+      <path d="M11 12.4l3 3.6" />
     </>
   ),
 };
 
 /** 粗细三档的名字（顺序与 `INK_WIDTH_OPTIONS` 一致）。 */
 const WIDTH_LABELS = ['细', '中', '粗'] as const;
+/** 弹出组的面板（一行工具栏上的浮层）。⚠️ 全部行内样式 —— 不新增 CSS 模块类。 */
+const PANEL_STYLE = {
+  position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 60,
+  display: 'flex', flexWrap: 'wrap', gap: 4, padding: 6,
+  width: 180, borderRadius: 12, background: '#fff',
+  border: '1px solid #e2e8f0', boxShadow: '0 12px 32px rgba(15, 23, 42, 0.16)',
+} as const;
+
+/** 粗细三档各自的圆点直径（按钮上那个「当前值」的预览）。 */
+const WIDTH_DOTS: Record<number, number> = { 0.009: 6, 0.016: 11, 0.028: 16 };
+
+/** 弹出按钮右边那个小三角。 */
+function Caret() {
+  return <span aria-hidden="true" style={{ fontSize: 9, marginLeft: 2, opacity: 0.7 }}>▾</span>;
+}
+
+/** 组与组之间的竖分隔（比空白更明确地把「工具 / 样式 / 动作」分开）。 */
+function GroupDivider() {
+  return <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 20, background: '#dbe3ee', margin: '0 2px' }} />;
+}
+
 /** 当前档的高亮（与设计规范里「选中项」同一个观感：底色 + 一圈描边）。 */
 const ACTIVE_STYLE = { borderColor: '#527198', background: '#e9eff6', color: '#466384' } as const;
+
+/** 撤销：一个回转箭头。 */
+function UndoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7.5 6.5H5.5V4.5" />
+      <path d="M5.6 6.4a6 6 0 1 1-.9 6.6" />
+    </svg>
+  );
+}
+
+/** 删除：一个垃圾桶。 */
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6h12" />
+      <path d="M8 6V4.5h4V6" />
+      <path d="M6 6l.8 9.5h6.4L14 6" />
+      <path d="M8.6 9v4M11.4 9v4" />
+    </svg>
+  );
+}
 
 /** 一个工具按钮里那个 20×20 的小图标。 */
 function ToolIcon({ tool }: { tool: InkTool }) {
@@ -137,6 +191,17 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    *（`color` 是每个元素各自的字段）。
    */
   const [color, setColor] = useState<string>(INK_DEFAULT_COLOR);
+  /**
+   * ★ 2026-09-30（第二轮）：**哪一个弹出组开着**（`null` = 都关着）。
+   * ⚠️ 三个组共用一个 state ⇒ 同时只可能开一个（师生一致：一次只想改一样东西）。
+   */
+  const [openGroup, setOpenGroup] = useState<'shapes' | 'width' | 'color' | null>(null);
+  /**
+   * ★ **图形按钮上显示哪个图标**：拿的是「当前档」——而当前档可能不是图形（手写/选择）。
+   * ⇒ 记住**最后一次选的图形**，那才是那个按钮要显示的「当前值」。
+   */
+  const [lastShape, setLastShape] = useState<InkShapeKind>('rect');
+  const groupRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * 点一个色块。🔴 **选中了东西的时候它是「改那个元素的颜色」**（教师选的八色板那一条）——
@@ -192,6 +257,27 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
     onChange({ kind: 'ink', box: next.canvas, strokes: next.strokes });
   };
 
+  /**
+   * 弹出组：点外面或 Esc 关掉。
+   * ⚠️ 照编辑页那个颜色下拉的既有做法（`mousedown` 而不是 `click` —— 点外面那一下要
+   * 在它变成别处的点击**之前**关掉，否则那一下会先被别的控件吃掉、面板还挂在屏幕上）。
+   */
+  useEffect(() => {
+    if (!openGroup) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const box = groupRef.current;
+      if (box && event.target instanceof Node && box.contains(event.target)) return;
+      setOpenGroup(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenGroup(null); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openGroup]);
+
   const empty = draft.strokes.length === 0;
 
   return (
@@ -208,112 +294,120 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         onSelect={setSelected}
         onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
       />
-      {/* ★ 2026-09-30（教师选「甲」）：**工具档**。默认「手写」，九个图形，最后是「选择」。
-          只读态（教师端预览渲染同一个组件）时整排禁用，但**一个都不少**。 */}
-      <div className={styles.inkToolbar} role="group" aria-label="画图工具">
-        {INK_TOOLS.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={styles.inkButton}
-            disabled={disabled}
-            aria-pressed={tool === item}
-            // 🔴 图标按钮**必须**有可读的名字（设计规范）—— `aria-label` 给读屏，
-            //    `title` 给鼠标悬停。两处用的是同一个词，不会漂。
-            aria-label={TOOL_LABELS[item]}
-            title={item === 'select' ? '点一下图形选中它，再拖动或改大小' : `画${TOOL_LABELS[item]}`}
-            onClick={() => changeTool(item)}
-            style={tool === item ? ACTIVE_STYLE : undefined}
-          >
-            <ToolIcon tool={item} />
+      {/* ★ 2026-09-30（教师：「不够紧凑，图标不够直观，分类不够明确…应该像一个专业的绘图工具」）
+          ⇒ **一行七格，分三组**：工具 ｜ 粗细 · 颜色 ｜ 动作。
+          三个带 ▾ 的是**弹出组**，而且**按钮上显示的是当前值**（当前图形 / 当前粗细 / 当前颜色）——
+          教师不必点开就知道现在拿的是什么笔。 */}
+      <div className={styles.inkToolbar} role="group" aria-label="画图工具" ref={groupRef} style={{ flexWrap: 'nowrap' }}>
+
+        {/* ── ① 工具 ───────────────────────────────────────────── */}
+        <button type="button" className={styles.inkButton} disabled={disabled}
+          aria-pressed={tool === 'pen'} aria-label="手写" title="手写"
+          onClick={() => changeTool('pen')} style={tool === 'pen' ? ACTIVE_STYLE : undefined}>
+          <ToolIcon tool="pen" />
+        </button>
+
+        {/* 图形▾：按钮上是**当前图形**，点开是九宫格 */}
+        <div style={{ position: 'relative' }}>
+          <button type="button" className={styles.inkButton} disabled={disabled}
+            aria-haspopup="menu" aria-expanded={openGroup === 'shapes'} aria-label="图形" title="图形"
+            onClick={() => setOpenGroup(openGroup === 'shapes' ? null : 'shapes')}
+            style={isInkShapeTool(tool) ? ACTIVE_STYLE : undefined}>
+            <ToolIcon tool={isInkShapeTool(tool) ? tool : lastShape} />
+            <Caret />
           </button>
-        ))}
-      </div>
-      {/* ★ 2026-09-30（教师：「笔的粗细」+「要能选」）：**三档**。
-          ⚠️ 只影响**新画的那一笔**；已经画下去的不动（粗细是每一笔各自的字段）。
-          ⚠️ 用的是**圆点的大小**而不是数字 —— 教师选的时候要**看见**它有多粗。 */}
-      <div className={styles.inkToolbar} role="group" aria-label="笔的粗细">
-        {INK_WIDTH_OPTIONS.map((option, index) => (
-          <button
-            key={option}
-            type="button"
-            className={styles.inkButton}
-            disabled={disabled}
-            aria-pressed={width === option}
-            aria-label={`${WIDTH_LABELS[index]}笔`}
-            title={`${WIDTH_LABELS[index]}笔`}
-            onClick={() => setWidth(option)}
-            style={width === option ? ACTIVE_STYLE : undefined}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                display: 'block', width: 6 + index * 4, height: 6 + index * 4,
-                borderRadius: '50%', background: 'currentColor', margin: '0 auto',
-              }}
-            />
+          {openGroup === 'shapes' && (
+            <div role="menu" aria-label="图形" className={styles.inkToolbar} style={PANEL_STYLE}>
+              {INK_SHAPE_KINDS.map((shape) => (
+                <button key={shape} type="button" role="menuitemradio" aria-checked={tool === shape}
+                  className={styles.inkButton} disabled={disabled}
+                  aria-label={TOOL_LABELS[shape]} title={TOOL_LABELS[shape]}
+                  onClick={() => { changeTool(shape); setLastShape(shape); setOpenGroup(null); }}
+                  style={tool === shape ? ACTIVE_STYLE : undefined}>
+                  <ToolIcon tool={shape} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button type="button" className={styles.inkButton} disabled={disabled}
+          aria-pressed={tool === 'select'} aria-label="选择" title="点一下图形选中它，再拖动或改大小"
+          onClick={() => changeTool('select')} style={tool === 'select' ? ACTIVE_STYLE : undefined}>
+          <ToolIcon tool="select" />
+        </button>
+
+        <GroupDivider />
+
+        {/* ── ② 粗细▾ ──────────────────────────────────────────── */}
+        <div style={{ position: 'relative' }}>
+          <button type="button" className={styles.inkButton} disabled={disabled}
+            aria-haspopup="menu" aria-expanded={openGroup === 'width'} aria-label="笔的粗细" title="笔的粗细"
+            onClick={() => setOpenGroup(openGroup === 'width' ? null : 'width')}>
+            <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 16, height: 16, margin: '0 auto' }}>
+              <span style={{ display: 'block', width: WIDTH_DOTS[width] ?? 8, height: WIDTH_DOTS[width] ?? 8, borderRadius: '50%', background: 'currentColor' }} />
+            </span>
+            <Caret />
           </button>
-        ))}
-      </div>
-      {/* ★ 2026-09-30：**八色板**。⚠️ 颜色值是十六进制 —— 教师用卷导出那边只认它
-          （`ink-render.ts` 的 `safeColor`），别的写法会在那张图上被回落成黑。 */}
-      <div className={styles.inkToolbar} role="group" aria-label="颜色">
-        {INK_PALETTE.map((swatch) => (
-          <button
-            key={swatch.value}
-            type="button"
-            className={styles.inkButton}
-            disabled={disabled}
-            aria-pressed={color === swatch.value}
-            aria-label={`${swatch.label}色`}
-            title={`${swatch.label}色`}
-            onClick={() => applyColor(swatch.value)}
-            style={color === swatch.value ? ACTIVE_STYLE : undefined}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                display: 'block', width: 16, height: 16, margin: '0 auto',
-                borderRadius: 4, background: swatch.value, border: '1px solid rgba(15,23,42,0.18)',
-              }}
-            />
+          {openGroup === 'width' && (
+            <div role="menu" aria-label="笔的粗细" className={styles.inkToolbar} style={PANEL_STYLE}>
+              {INK_WIDTH_OPTIONS.map((option, index) => (
+                <button key={option} type="button" role="menuitemradio" aria-checked={width === option}
+                  className={styles.inkButton} disabled={disabled}
+                  aria-label={`${WIDTH_LABELS[index]}笔`} title={`${WIDTH_LABELS[index]}笔`}
+                  onClick={() => { setWidth(option); setOpenGroup(null); }}
+                  style={width === option ? ACTIVE_STYLE : undefined}>
+                  <span aria-hidden="true" style={{ display: 'block', width: 6 + index * 5, height: 6 + index * 5, margin: '0 auto', borderRadius: '50%', background: 'currentColor' }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── ③ 颜色▾ ──────────────────────────────────────────── */}
+        <div style={{ position: 'relative' }}>
+          <button type="button" className={styles.inkButton} disabled={disabled}
+            aria-haspopup="menu" aria-expanded={openGroup === 'color'} aria-label="颜色" title="颜色"
+            onClick={() => setOpenGroup(openGroup === 'color' ? null : 'color')}>
+            <span aria-hidden="true" style={{ display: 'block', width: 16, height: 16, margin: '0 auto', borderRadius: 4, background: color, border: '1px solid rgba(15,23,42,0.18)' }} />
+            <Caret />
           </button>
-        ))}
-      </div>
-      {/* ★ 2026-09-30：**删掉选中的那个图形**。只在「选择」档且真的选中了东西时出现 ——
-          一个永远在、点了没反应的删除按钮，会让学生以为它坏了。 */}
-      {tool === 'select' && selected !== null && (
-        <div className={styles.inkToolbar}>
-          <button
-            type="button"
-            className={styles.inkButton}
-            disabled={disabled}
+          {openGroup === 'color' && (
+            <div role="menu" aria-label="颜色" className={styles.inkToolbar} style={PANEL_STYLE}>
+              {INK_PALETTE.map((swatch) => (
+                <button key={swatch.value} type="button" role="menuitemradio" aria-checked={color === swatch.value}
+                  className={styles.inkButton} disabled={disabled}
+                  aria-label={`${swatch.label}色`} title={`${swatch.label}色`}
+                  onClick={() => { applyColor(swatch.value); setOpenGroup(null); }}
+                  style={color === swatch.value ? ACTIVE_STYLE : undefined}>
+                  <span aria-hidden="true" style={{ display: 'block', width: 16, height: 16, margin: '0 auto', borderRadius: 4, background: swatch.value, border: '1px solid rgba(15,23,42,0.18)' }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <GroupDivider />
+
+        {/* ── ④ 动作：删除选中 / 撤销 / 清空 ────────────────────── */}
+        {tool === 'select' && selected !== null && (
+          <button type="button" className={styles.inkButton} disabled={disabled}
+            aria-label="删除选中的图形" title="删除选中的图形"
             onClick={() => {
               const next = draft.strokes.filter((_, index) => index !== selected);
               setSelected(null);
               onChange({ kind: 'ink', box, strokes: next });
-            }}
-          >
-            删除选中的图形
+            }}>
+            <TrashIcon />
           </button>
-        </div>
-      )}
-      <div className={styles.inkToolbar}>
-        <button
-          type="button"
-          className={styles.inkButton}
-          disabled={disabled || empty}
-          onClick={() => { setSelected(null); transform(undoStroke); }}
-        >
-          撤销
+        )}
+        <button type="button" className={styles.inkButton} disabled={disabled || empty}
+          aria-label="撤销" title="撤销" onClick={() => { setSelected(null); setOpenGroup(null); transform(undoStroke); }}>
+          <UndoIcon />
         </button>
-        <button
-          type="button"
-          className={styles.inkButton}
-          disabled={disabled || empty}
-          onClick={() => { setSelected(null); transform(clearStrokes); }}
-        >
-          清空
+        <button type="button" className={styles.inkButton} disabled={disabled || empty}
+          aria-label="清空" title="清空（整幅画都清掉）" onClick={() => { setSelected(null); setOpenGroup(null); transform(clearStrokes); }}>
+          <TrashIcon />
         </button>
       </div>
     </>

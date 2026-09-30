@@ -239,3 +239,25 @@ test('🔴 逐点校验：`points` 里装的必须真的是点（只数 `.length
     '越界的点不是坏形状（夹取是读的一侧的事）',
   );
 });
+
+test('🔴 findInkValueError：认形状；**认不出的形状要拒**（不是存下来再说）', () => {
+  // ★ 2026-09-30（基本图形工具）。两条：
+  //   ① **图形按笔算** —— 400 个矩形 = 400 笔 800 点，两条上限都不该误伤
+  //      （「画了满屏图形反而被说『笔迹太多』」会让教师完全摸不着头脑）；
+  //   ② **认不出的形状要拒**：存下来之后前端会把它**整笔丢掉**（`readInkValue` 的纪律），
+  //      于是学生画的图形在教师端**凭空消失** —— 那比 400 拒掉难查得多。
+  const box = { w: 320, h: 240 };
+  const rects = Array.from({ length: 400 }, () => ({ color: '#111', width: 0.01, points: [[0.1, 0.1], [0.9, 0.9]], shape: 'rect' }));
+  assert.equal(findInkValueError({ format: 'ink/v1', canvas: box, strokes: rects }), null,
+    '满屏图形被上限误伤了');
+
+  assert.equal(findInkValueError({ format: 'ink/v1', canvas: box, strokes: [
+    { color: '#111', width: 0.01, points: [[0, 0], [1, 1]], shape: 'rect' },
+  ] }), null, '正常的图形要收下');
+  assert.notEqual(findInkValueError({ format: 'ink/v1', canvas: box, strokes: [
+    { color: '#111', width: 0.01, points: [[0, 0], [1, 1]], shape: 'hexagon' },
+  ] }), null, '认不出的形状必须拒 —— 存下来之后它会在前端被整笔丢掉');
+  assert.notEqual(findInkValueError({ format: 'ink/v1', canvas: box, strokes: [
+    { color: '#111', width: 0.01, points: [[0, 0], [1, 1]], shape: 42 },
+  ] }), null, '不是字符串的 shape 也要拒');
+});

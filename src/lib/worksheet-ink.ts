@@ -576,10 +576,17 @@ export function downsampleInkValue(value: unknown, budgetChars: number): unknown
   // 无上界的循环遇上「算不准的体积」会一直转，而这一头是学生的浏览器。
   let strokes = ink.strokes;
   for (let round = 0; round < 8; round += 1) {
-    strokes = strokes.map((stroke) => ({
-      ...stroke,
-      points: keepEveryOther(stroke.points, round + 1),
-    }));
+    // ★ 2026-09-30：**图形一个点都不抽**。
+    // 🔴 手写的点是**采样**（抽掉一半形状基本不变），而图形的点是**定义几何**：
+    //    角有 3 个点（顶点 + 两条边），抽掉中间那个 ⇒ **角变成一条直线**；
+    //    矩形只有 2 个点，抽掉一个 ⇒ 只剩一个点，画出来是一片空白
+    //    （而空白与「他没画」在屏幕上一模一样）。
+    //    ⚠️ `keepEveryOther` 自身的「≤2 不抽」守卫对**角**不成立（它是 3 个点）。
+    strokes = strokes.map((stroke) => (
+      isInkShapeKind(stroke.shape)
+        ? stroke
+        : { ...stroke, points: keepEveryOther(stroke.points, round + 1) }
+    ));
     const candidate = { format: ink.format, canvas: ink.canvas, strokes };
     if (JSON.stringify(candidate).length <= budgetChars) return candidate;
   }

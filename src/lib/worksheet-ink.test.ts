@@ -745,3 +745,25 @@ test('🔴 readInkValue：认 shape；**认不出的形状整笔丢掉**（不�
   assert.equal(read?.strokes[0].shape, undefined, '老值仍然没有 shape');
   assert.equal(read?.strokes[1].shape, 'rect');
 });
+
+test('🔴 downsampleInkValue：**图形一个点都不许抽**（点是它的定义几何，不是采样）', () => {
+  // 🔴 手写的点是**采样**（抽掉一半形状基本不变），而图形的点是**定义几何**：
+  //    · 角有 3 个点（顶点 + 两条边），抽掉中间那个 ⇒ **角变成一条直线**；
+  //    · 矩形/椭圆只有 2 个点，抽掉一个 ⇒ 只剩一个点，画出来是一片空白
+  //      （而空白与「他没画」在屏幕上一模一样）。
+  //    ⚠️ `keepEveryOther` 现有的守卫是「点数 ≤ 2 就不抽」—— 它对**角**不成立（3 个点）。
+  const value = {
+    format: 'ink/v1', canvas: { w: 100, h: 100 },
+    strokes: [
+      { color: '#000', width: 0.01, points: [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]], shape: 'angle' },
+      { color: '#000', width: 0.01, points: [[0.2, 0.2], [0.8, 0.8]], shape: 'rect' },
+      // 一笔手写，用来看「手写照抽」（阳性对照）
+      { color: '#000', width: 0.01, points: Array.from({ length: 40 }, (_, i) => [i / 40, i / 40] as InkPoint) },
+    ],
+  };
+  const small = downsampleInkValue(value, 60) as typeof value;
+  assert.equal(small.strokes[0].points.length, 3, '角的三个顶点被抽掉了 —— 它会变成一条直线');
+  assert.equal(small.strokes[1].points.length, 2, '矩形的定义几何被抽掉了');
+  // 阳性对照：手写那一笔**照旧被抽**（别为了保图形把整条抽稀路径关掉）。
+  assert.ok(small.strokes[2].points.length < 40, `手写那一笔没被抽（${small.strokes[2].points.length} 个点）—— 那这个函数就没在干活`);
+});

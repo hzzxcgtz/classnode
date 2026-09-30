@@ -134,3 +134,12 @@ test('★ 对拍：九个形状的折线与路径，两份实现逐字相同', (
   // 阳性对照：**真的比过东西**（否则上面整段在空循环里永远绿）。
   assert.ok(compared >= 100, `只比了 ${compared} 组 —— 夹具自己失效了`);
 });
+
+test('★ 三份形状表必须逐字相同（这是三处重复定义，只有这条用例盯着）', () => {
+  // ★ 2026-09-30：`SHAPE_KINDS` 在仓里是**三份**（前端 / `ink-path.ts` / `worksheet-ink.ts`）——
+  //   第三份是被逼的：那个文件必须零 import（对拍用例靠类型擦除直接加载它）。
+  //   与 `INK_FORMATS` 那三份**同一条先例**。
+  //   ⚠️ 漂了的症状：服务端收下一个前端读不回来的 `shape` ⇒ 学生画的图形在教师端**凭空消失**。
+  assert.deepEqual([...serverValidate.inkShapeKinds()], [...front.INK_SHAPE_KINDS], '服务端校验那份与前端不一致');
+  assert.deepEqual([...mirror.INK_SHAPE_KINDS], [...front.INK_SHAPE_KINDS], '镜像那份与前端不一致');
+});

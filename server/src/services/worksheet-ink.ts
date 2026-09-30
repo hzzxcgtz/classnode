@@ -62,6 +62,32 @@ export function isInkFormat(raw: unknown): raw is InkFormat {
  * ⚠️ 返回值是**给学生看的那句中文**，不是给开发者看的诊断：它会原样进 400 的响应体，
  * 经学生端的提示条显示出来。所以文案里带的是「怎么办」（撤销 / 清空），不是字段路径。
  */
+/**
+ * ★ 2026-09-30：九个基本图形的名字。
+ *
+ * 🔴 **这是同一份事实的第三处拷贝**（`src/lib/worksheet-ink.ts` 的 `INK_SHAPE_KINDS`、
+ *    `server/src/services/ink-path.ts` 的同名常量、以及这里）。明知重复还要写：
+ *    本文件**必须零 import**（`src/lib/worksheet-ink-parity.test.ts` 靠 Node 的类型擦除
+ *    直接加载它，而 `./ink-path.js` 在那种加载方式下解析不了）。
+ *    ⇒ 与 `INK_FORMATS` 那三份**同一条先例**：**由对拍用例钉住逐字相同**
+ *    （`worksheet-ink-parity.test.ts` 里那条「三份形状表必须逐字相同」）。
+ * ⚠️ 少了它，服务端会收下一个前端读不回来的 `shape` ⇒ 学生画的图形**凭空消失**。
+ */
+const SHAPE_KINDS = [
+  'line', 'arrow', 'rect', 'ellipse', 'triangle',
+  'right-triangle', 'parallelogram', 'trapezoid', 'angle',
+] as const;
+
+/** 这个值是九个形状之一吗（与 `ink-path.ts` 的 `isInkShapeKind` 同判）。 */
+function isShapeKind(raw: unknown): boolean {
+  return typeof raw === 'string' && (SHAPE_KINDS as readonly string[]).includes(raw);
+}
+
+/** 形状表本身（供对拍用例读；`const` 不是 export，所以另给一个 getter）。 */
+export function inkShapeKinds(): readonly string[] {
+  return SHAPE_KINDS;
+}
+
 export function findInkValueError(value: unknown): string | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -75,6 +101,15 @@ export function findInkValueError(value: unknown): string | null {
   for (const stroke of strokes) {
     if (!stroke || typeof stroke !== 'object' || Array.isArray(stroke)) {
       return '笔迹的形状不对（每一条笔画都必须是对象）';
+    }
+    // ★ 2026-09-30：`shape` 认不出就**拒**。存下来之后前端会把它**整笔丢掉**
+    // （`src/lib/worksheet-ink.ts` 的 `readInkValue`：坏形状丢整笔）⇒
+    // 学生画的图形在教师端**凭空消失**，而那比一个 400 难查得多。
+    // ⚠️ 形状表用 `isInkShapeKind`（`ink-path.ts` 那一份，逐字镜像前端）——
+    //    不在这里再抄一份：抄一份就是「同一个事实多份拷贝」。
+    const shape = (stroke as Record<string, unknown>).shape;
+    if (shape !== undefined && !isShapeKind(shape)) {
+      return '笔迹的形状不对（认不出的图形）';
     }
     const points = (stroke as Record<string, unknown>).points;
     if (!Array.isArray(points)) return '笔迹的形状不对（每条笔画的 points 必须是数组）';

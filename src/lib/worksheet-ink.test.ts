@@ -45,9 +45,11 @@ import {
   isFarEnough,
   isInkFormat,
   isInkNode,
+  hitTestStroke,
   isInkShapeKind,
   INK_SHAPE_KINDS,
   shapeOutline,
+  strokeHandles,
   normalizeAxis,
   readInkValue,
   strokePath,
@@ -536,7 +538,7 @@ function shapeStroke(shape: string, points: InkPoint[]): InkStroke {
 
 test('🔴 shapeOutline：手写笔迹（没有 shape）**不产生任何折线**', () => {
   // 手写那条路走的是画布自己的 `lineTo`（今天就是这样），不经过 shapeOutline。
-  assert.deepEqual(shapeOutline({ color: '', width: 0, points: [[0, 0], [1, 1]] }, { w: 200, h: 100 }), []);
+  assert.deepEqual(shapeOutline({ points: [[0, 0], [1, 1]] }, { w: 200, h: 100 }), []);
 });
 
 test('🔴 shapeOutline：直线 / 矩形（1 条折线，闭合与否各自标）', () => {
@@ -618,4 +620,51 @@ test('🔴 INK_SHAPE_KINDS：九个，且一条不多一条不少', () => {
   assert.equal(isInkShapeKind('hexagon'), false);
   assert.equal(isInkShapeKind(undefined), false);
   assert.equal(isInkShapeKind(42), false);
+});
+
+test('🔴 strokePath：有 shape 时走折线；**没有时一个字不改**（老调用点不动）', () => {
+  const box = { w: 200, h: 100 };
+  // ⚠️ 手写那条路是**既有行为**，逐字钉住 —— 它在四个渲染点、以及服务端镜像里都跑着。
+  //    （格式是 `M0 0 L200 100`，`M`/`L` 后面**没有空格**；第一版计划里我把它写成了
+  //     `M 0 0 L 200 100`，那是错的。）
+  assert.equal(strokePath([[0, 0], [1, 1]], box), 'M0 0 L200 100');
+  // 矩形 ⇒ 一条闭合折线，以 Z 收尾
+  const d = strokePath([[0.1, 0.2], [0.5, 0.6]], box, 'rect');
+  assert.ok(d.startsWith('M'), `应当以 M 开头，实际 ${d}`);
+  assert.ok(d.endsWith('Z'), `闭合折线要以 Z 收尾，实际 ${d}`);
+  // 🔴 反面：手写那条路**不许**因为多了第三个参数而变样。
+  assert.equal(strokePath([[0, 0], [1, 1]], box, undefined), 'M0 0 L200 100');
+});
+
+test('🔴 hitTestStroke：闭合图形**内部也算命中**；线状只算轮廓附近', () => {
+  const box = { w: 200, h: 200 };
+  const rect = shapeStroke('rect', [[0.2, 0.2], [0.8, 0.8]]);
+  assert.equal(hitTestStroke([0.5, 0.5], rect, box, 8), true, '点在矩形**内部**要点得中（否则学生拖不动它）');
+  assert.equal(hitTestStroke([0.95, 0.95], rect, box, 8), false, '离得远就不该中');
+
+  const line = shapeStroke('line', [[0.2, 0.5], [0.8, 0.5]]);
+  assert.equal(hitTestStroke([0.5, 0.52], line, box, 8), true, '线附近（宽容度内）');
+  assert.equal(hitTestStroke([0.5, 0.9], line, box, 8), false, '线**下方**不算 —— 直线没有内部');
+});
+
+test('🔴 hitTestStroke：**手写笔迹一律不命中**（不然学生一点就选中自己画的线）', () => {
+  const box = { w: 200, h: 200 };
+  const freehand: InkStroke = { color: '', width: 0, points: [[0.2, 0.2], [0.8, 0.8]] };
+  assert.equal(hitTestStroke([0.5, 0.5], freehand, box, 8), false);
+  // 也**不许**把点划到画布外当作命中（宽容度不该把整个画布变成热区）。
+  assert.equal(hitTestStroke([2, 2], freehand, box, 8), false);
+});
+
+test('🔴 strokeHandles：两点框图形 4 个角；直线/箭头 2 个端点；角 3 个顶点', () => {
+  const box = { w: 200, h: 100 };
+  assert.deepEqual(strokeHandles(shapeStroke('rect', [[0.1, 0.2], [0.5, 0.6]]), box),
+    [[0.1, 0.2], [0.5, 0.2], [0.5, 0.6], [0.1, 0.6]]);
+  assert.deepEqual(strokeHandles(shapeStroke('line', [[0.1, 0.2], [0.5, 0.6]]), box),
+    [[0.1, 0.2], [0.5, 0.6]]);
+  // 🔴 角是**三个自由点**（顶点 + 两条边的端点），不是外接框的四个角 ——
+  //    给它四个角的话，学生拖一个角会把「顶点」和「边」的语义搅在一起。
+  assert.deepEqual(strokeHandles(shapeStroke('angle', [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]), box),
+    [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]);
+  // 手写没有把手（它不参与选中）。
+  assert.deepEqual(strokeHandles({ color: '', width: 0, points: [[0, 0], [1, 1]] }, box), []);
 });

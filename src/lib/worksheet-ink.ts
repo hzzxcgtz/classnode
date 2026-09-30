@@ -344,7 +344,8 @@ function round2(value: number): number {
  * 「点了一下没反应」正是那种没人会报的缺陷。
  * ⚠️ 空数组回空串（不是 `'M0 0'`）：没有点的笔画不该在画布上留下一笔。
  */
-export function strokePath(points: readonly InkPoint[], box: InkCanvas): string {
+/** 一条折线 → SVG 的 `d`。★ 手写与图形**共用这一个**（图形的折线也走它）。 */
+function polylinePath(points: readonly InkPoint[], box: InkCanvas, closed: boolean): string {
   if (points.length === 0) return '';
   const parts: string[] = [];
   points.forEach((point, index) => {
@@ -352,7 +353,118 @@ export function strokePath(points: readonly InkPoint[], box: InkCanvas): string 
     parts.push(`${index === 0 ? 'M' : 'L'}${round2(x)} ${round2(y)}`);
   });
   if (points.length === 1) parts.push('l0.01 0');
+  // ⚠️ 少于 3 个点的「闭合」是画不出闭合的（两条边重合成一条），别硬加一个 Z。
+  if (closed && points.length >= 3) parts.push('Z');
   return parts.join(' ');
+}
+
+/**
+ * 一笔 → SVG 的 `d`。
+ *
+ * ★ 2026-09-30：第三个参数是**可选的形状**。**不传 = 手写**，那条路与今天逐字相同
+ * （四个渲染点、以及服务端镜像都在跑它）—— 有一条用例专门钉这一点。
+ * ⚠️ 形状认得、但几何不够（点数不足）时**回落到手写那条路**：画出定义点，
+ *    比画出一片空白好（空白会被当成「学生没画」）。
+ */
+export function strokePath(points: readonly InkPoint[], box: InkCanvas, shape?: unknown): string {
+  if (isInkShapeKind(shape)) {
+    const outlines = shapeOutline({ shape, points }, box);
+    if (outlines.length > 0) {
+      return outlines.map((outline) => polylinePath(outline.points, box, outline.closed)).join(' ');
+    }
+  }
+  return polylinePath(points, box, false);
+}
+
+/** 点到线段的距离（像素）。命中测试与折线共用。 */
+function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(px - ax, py - ay);
+  // 把点投影到线段上，参数夹到 [0,1]（**夹取**是「线段」与「直线」的区别）。
+  let t = ((px - ax) * dx + (py - ay) * dy) / lengthSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** 折线的最近距离。`closed` 时还要量最后一段「尾 → 首」。 */
+function distanceToPolyline(px: number, py: number, points: readonly InkPoint[], closed: boolean): number {
+  if (points.length === 0) return Infinity;
+  if (points.length === 1) return Math.hypot(px - points[0][0], py - points[0][1]);
+  let best = Infinity;
+  for (let i = 1; i < points.length; i += 1) {
+    const d = distanceToSegment(px, py, points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]);
+    if (d < best) best = d;
+  }
+  if (closed && points.length >= 3) {
+    const last = points[points.length - 1];
+    const d = distanceToSegment(px, py, last[0], last[1], points[0][0], points[0][1]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** 射线法：点在多边形内部吗（像素坐标）。 */
+function pointInPolygon(px: number, py: number, points: readonly InkPoint[]): boolean {
+  if (points.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    // 「这一条边跨过了 y」且交点在点的右边 ⇒ 翻一次。
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * 这个点**点得中**这一笔吗（★ 2026-09-30，「选择」档用它挑图形）。
+ *
+ * 🔴 **手写笔迹一律不命中。** 学生的手指在画布上点一下，十有八九是想继续画；
+ *    如果手写也算命中，他一点就选中了自己刚画的那条线 —— 而屏幕上只是「多了一圈虚线」。
+ * 🔴 **闭合图形内部也算命中**（否则一个矩形要点它的边框才选得中，手指根本点不准）。
+ *    线状（直线 / 箭头 / 角）**只有轮廓附近**算 —— 它们本来就没有内部。
+ * ⚠️ `tolPx` 是**像素**宽容度：手指比线粗得多，不给宽容度就点不中。
+ */
+export function hitTestStroke(point: InkPoint, stroke: InkStroke, box: InkCanvas, tolPx: number): boolean {
+  // ⚠️ 「手写笔迹一律不命中」这条规则的**守卫在 `shapeOutline` 里**（它对手写与坏值返回空数组），
+  //    这里**不重复一遍** —— 变异检验实测：把这里那句 `if (!isInkShapeKind(...)) return false`
+  //    删掉，**行为一个字不变**（那是句冗余代码）。重复的守卫会让下一个人以为
+  //    「手写不命中」是靠这一句保证的，从而在改 `shapeOutline` 时放心地把它漏掉。
+  const outlines = shapeOutline(stroke, box);
+  if (outlines.length === 0) return false;
+  const [px, py] = toPixel(point, box);
+  const tol = Number.isFinite(tolPx) && tolPx > 0 ? tolPx : 0;
+  for (const outline of outlines) {
+    const pixels = outline.points.map((p) => toPixel(p, box));
+    if (outline.closed && pointInPolygon(px, py, pixels)) return true;
+    if (distanceToPolyline(px, py, pixels, outline.closed) <= tol) return true;
+  }
+  return false;
+}
+
+/**
+ * 这一笔的**把手**（控制点）在哪儿（★ 2026-09-30，「选择」档据此画控制点、并判断拖的是哪一个）。
+ *
+ * - 两点框图形（矩形/椭圆/三角形/…）⇒ **4 个角**；
+ * - 直线 / 箭头 ⇒ **2 个端点**；
+ * - 角 ⇒ **3 个顶点**（它是唯一一个不在外接框里的形状）；
+ * - 手写 ⇒ **空**（它不参与选中）。
+ * ⚠️ 4 个角而不是 8 个：手指比控制点粗，8 个会互相压住（真机走查项）。
+ */
+export function strokeHandles(stroke: InkStroke, box: InkCanvas): InkPoint[] {
+  if (!isInkShapeKind(stroke.shape)) return [];
+  const points = stroke.points;
+  if (stroke.shape === 'angle') return points.slice(0, 3);
+  if (stroke.shape === 'line' || stroke.shape === 'arrow') return points.slice(0, 2);
+  if (points.length < 2) return [];
+  const [ax, ay] = points[0];
+  const [bx, by] = points[1];
+  const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx);
+  const y0 = Math.min(ay, by), y1 = Math.max(ay, by);
+  return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 }
 
 /**
@@ -524,9 +636,17 @@ type PixelOutline = { closed: boolean; points: InkPoint[] };
 /**
  * 一个形状的**折线**。手写（没有 `shape`）或坏值 ⇒ **空数组**（渲染层据此走老路）。
  *
+ * 🔴 **`[]` 这一个返回值同时承载两条产品规则**，所以它不只是「防御」：
+ *    · 渲染层据此走**手写那条老路**（一个像素都不变）；
+ *    · `hitTestStroke` 据此让**手写笔迹永远选不中**（学生点一下十有八九是想接着画）。
+ *    ⇒ 改这个返回值之前先看 `hitTestStroke` 的注释。
+ *
  * ⚠️ 返回值是**数组**：箭头 = 杆 + 头部；角 = 两条射线 + 弧。其余形状都是 1 条。
  */
-export function shapeOutline(stroke: InkStroke, box: InkCanvas): ShapeOutline[] {
+export function shapeOutline(
+  stroke: { shape?: unknown; points: readonly InkPoint[] },
+  box: InkCanvas,
+): ShapeOutline[] {
   if (!isInkShapeKind(stroke.shape)) return [];
   const points = stroke.points;
   if (!Array.isArray(points) || points.length < 2) return [];

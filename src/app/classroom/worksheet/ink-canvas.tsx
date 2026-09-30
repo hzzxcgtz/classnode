@@ -5,13 +5,12 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   INK_MAX_POINTS,
   INK_MIN_POINT_DISTANCE_PX,
-  INK_STROKE_COLOR,
-  INK_STROKE_WIDTH,
   countPoints,
   inkLimitReason,
   isFarEnough,
   normalizeAxis,
   INK_TOOL_SELECT,
+  INK_TOOL_TEXT,
   isInkShapeTool,
   isShapeTooSmall,
   moveStroke,
@@ -92,7 +91,7 @@ export interface InkCanvasProps {
   /** 画布下面那句提示语（`inkHint(node)`）。 */
   hint: string;
   /** 一笔结束 / 撤销 / 清空时调一次。`box` 是**这一刻量出来的**框。 */
-  onChange: (next: { box: InkCanvasBox; strokes: InkStroke[] }) => void;
+  onChange: (next: { box: InkCanvasBox; strokes: InkStroke[]; texts?: InkText[] }) => void;
   disabled: boolean;
   /**
    * ★ 2026-09-30（基本图形工具）：这一档画什么。
@@ -105,6 +104,8 @@ export interface InkCanvasProps {
   color: string;
   /** ★ 2026-09-30 第二轮：画布上的**文字**（没有就不传）。 */
   texts: readonly InkText[];
+  /** ★ 第二轮：新文字的**字号**跟着笔的粗细档（`textSizeForWidth` 算好给这里）。 */
+  textSize: number;
   /**
    * ★ 2026-09-30：被选中的图形下标（`null` = 没选中）。
    * 🔴 它**住在 `ink-body`**（不是这里）：删除按钮在那边那条工具栏上，而两处各存一份
@@ -171,7 +172,7 @@ interface LiveStroke {
   shape?: InkShapeKind;
 }
 
-export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
@@ -186,6 +187,14 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
    * 主来源是每次渲染重算的 `inkLimitReason(strokes)`（见下面 `limitReason` 那一段）。
    */
   const [blockedReason, setBlockedReason] = useState<string | null>(null);
+  /**
+   * ★ 2026-09-30 第二轮：**正在打的那一段文字**（`null` = 没在打）。
+   *
+   * 🔴 用一个**真的 `<input>` 浮在画布上**（而不是往 canvas 里画光标）：canvas 没有文本编辑，
+   *    自己实现光标 / 选区 / 输入法等于重写一个输入框 —— 而这一屏跑在老 iPad 上。
+   * ⚠️ `at` 是归一化坐标（与文字元素同一套），落定时才换算。
+   */
+  const [draftText, setDraftText] = useState<{ at: InkPoint; value: string } | null>(null);
 
   // 一帧的全量重绘是**廉价**的：上限 2000 个点（A1）保证了这个循环最多 2000 次 lineTo。
   // 🔴 不要为了「优化」改成增量绘制 —— 增量绘制在「撤销 / 清空 / 水合」三条路上都要
@@ -278,7 +287,7 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
     if (selected !== null && !disabled) {
       const chosen = liveSelect && liveSelect.index === selected ? liveSelect.current : strokesRef.current[selected];
       if (chosen) {
-        const handles = strokeHandles(chosen, scale);
+        const handles = strokeHandles(chosen);
         if (handles.length > 0) {
           ctx.save();
           ctx.strokeStyle = SELECT_COLOR;
@@ -302,7 +311,7 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
     if (live && live.kind === 'stroke') drawStroke({ color, width, points: live.points, shape: live.shape });
-  }, [selected, onSelect, width, color, disabled]);
+  }, [selected, width, color, disabled]);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
   // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
@@ -347,6 +356,13 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
     ];
     // ★ 2026-09-30（教师选「甲」）：**选择档** —— 点图形选中它、拖框内移动、拖控制点改大小。
     // ⚠️ 它**不经过上限闸**（没有新笔画产生），也不做采样过滤（那不是画线）。
+    // ★ 2026-09-30 第二轮：**文字档** —— 点一下在那里放一个文本框（真的 `<input>` 浮上来）。
+    // ⚠️ 它不经过上限闸、也不落笔画：文字是**另一种元素**，上限由服务端那条单独拦。
+    if (tool === INK_TOOL_TEXT) {
+      setDraftText({ at: point, value: '' });
+      event.stopPropagation();
+      return;
+    }
     if (tool === INK_TOOL_SELECT) {
       const filled = strokesRef.current;
       // 🔴 **顺序不能反**（2026-09-30 复审抓出来的真缺陷）：
@@ -426,7 +442,7 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
       live.box = liveBox;
       live.current = live.mode === 'move'
         ? moveStroke(live.origin, point[0] - live.from[0], point[1] - live.from[1])
-        : resizeStroke(live.origin, live.handle, point, liveBox);
+        : resizeStroke(live.origin, live.handle, point);
       redraw();
       event.stopPropagation();
       return;
@@ -488,6 +504,23 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
     onChange({ box: live.box, strokes: [...strokesRef.current, stroke] });
   };
 
+  /**
+   * ★ 第二轮：把正在打的那段文字**落定**（回车 / 失焦）。
+   * ⚠️ 空白串**不落**（点一下没打字不该留下一个看不见的空文字元素）；
+   *    落定时把 `at` 夹到 0..1（与 `moveText` 同一把尺子）。
+   */
+  const commitText = (value: string) => {
+    const draft = draftText;
+    setDraftText(null);
+    const text = value.trim();
+    if (!draft || text === '') return;
+    const next: InkText = {
+      text, at: [normalizeAxis(draft.at[0], 1), normalizeAxis(draft.at[1], 1)],
+      color, size: textSize,
+    };
+    onChange({ box, strokes: [...strokesRef.current], texts: [...textsRef.current, next] });
+  };
+
   // ★ 纪律 ③：**两条都要**。少任何一条都会让一次被系统中断的手势留下状态。
   const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (liveRef.current?.pointerId !== event.pointerId) return;
@@ -508,6 +541,37 @@ export function InkCanvas({ box, strokes, texts, hint, onChange, disabled, tool,
 
   return (
     <div className={styles.inkFrame}>
+      {draftText && (
+        /* ★ 第二轮：文字输入框。**绝对定位浮在画布上**（画布是 `<canvas>`，它没有文本编辑）。
+           ⚠️ `fontSize` 按**像素**算（与落定后 `textBoxOf` 的行高同一个换算）——
+              两者不一致的话，打字时与落定后会跳一下。 */
+        <input
+          autoFocus
+          value={draftText.value}
+          aria-label="输入文字"
+          placeholder="在这里输入"
+          onChange={(event) => setDraftText({ ...draftText, value: event.target.value })}
+          onBlur={(event) => commitText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') { event.preventDefault(); commitText(draftText.value); }
+            // Esc = 放弃这一段（与其它弹层的习惯一致）。
+            if (event.key === 'Escape') { event.preventDefault(); setDraftText(null); }
+          }}
+          style={{
+            position: 'absolute',
+            left: `${draftText.at[0] * box.w}px`,
+            top: `${draftText.at[1] * box.h}px`,
+            minWidth: 90,
+            padding: '2px 4px',
+            font: `${(textSize * Math.min(box.w, box.h) * 1.3).toFixed(1)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`,
+            color,
+            border: '1px dashed #8da6c4',
+            borderRadius: 4,
+            background: 'rgba(255,255,255,0.92)',
+            zIndex: 2,
+          }}
+        />
+      )}
       <canvas
         ref={canvasRef}
         className={styles.inkCanvas}

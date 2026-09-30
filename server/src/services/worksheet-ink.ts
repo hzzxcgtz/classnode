@@ -39,10 +39,14 @@ export function isInkFormat(raw: unknown): raw is InkFormat {
  * （`GET /classroom/:classroomId/answers`，`routes/worksheets.ts` 的那个 `select` 里
  * `value: true`）整份取回、在**教师那台机器**上画出来 ⇒ 看板卡死，
  * 而**服务端不会报任何错**。
- * ⊘ 2026-09-24（终审 I1）：这一句原写「再经两条读端点**与一次广播**送到教师那台机器上」——
- *   **「一次广播」那一半是假的**：本仓唯一那条学习单广播（`routes/worksheets.ts:1106` 的
- *   `worksheet-answer-updated`）的载荷里**没有 `value`**（只有 questionId / status /
- *   isCorrect / gradeState / score / reviewedAt）⇒ 教师那台机器上真正的路径**只有看板读端点这一条**。
+ * ⊘ 2026-09-24（终审 I1）：这一句原写「再经两条读端点**与一次广播**送到教师那台机器上」，
+ *   当时把「广播那一半」判成假的。**2026-09-30 复审更正：那一半现在是真的了** ——
+ *   `routes/worksheets.ts:1918` 给广播加了 `MAX_BROADCAST_VALUE_CHARS = 65536` 的闸，
+ *   `:1946` 是 `value: omitted ? null : answer.value` ⇒ 广播**带 `value`**（2026-09-28 的「乙档」起）。
+ *   ⇒ 教师那台机器上现在有**两条**路径（看板读端点 + 广播），而广播那条**超限时静默**
+ *   （`valueOmitted`，看板那一格暂时空白、不报错）。
+ *   ⚠️ 这条更正**改变了本函数上限的理由**：原来只需防「看板读端点整份取回」，
+ *   现在还要防「广播把一份大值推给每一台教师机」—— 而那条路是**静默**的。
  *   （顺带：「两条读端点」也不准 —— 学生自己的 `GET /:id/answers` 也带 `value`，
  *   但它送到的是**学生那台**机器。）
  * 学生端也躲不掉：那个值要过 `localStorage` 离线队列，配额一爆 `writeQueue` 的 `catch`
@@ -73,6 +77,11 @@ export function isInkFormat(raw: unknown): raw is InkFormat {
  *    （`worksheet-ink-parity.test.ts` 里那条「三份形状表必须逐字相同」）。
  * ⚠️ 少了它，服务端会收下一个前端读不回来的 `shape` ⇒ 学生画的图形**凭空消失**。
  */
+/** ★ 第二轮：文字的两条上限（段数 / 总字数）。⚠️ 与前端 `worksheet-ink.ts` 的同名常量
+ *  **必须一致**（前端拦不住手搓请求，后端也拦不住前端的 bug —— 两边各拦一道）。 */
+const INK_MAX_TEXTS = 100;
+const INK_MAX_TEXT_CHARS = 2000;
+
 const SHAPE_KINDS = [
   'line', 'arrow', 'rect', 'ellipse', 'triangle',
   'right-triangle', 'parallelogram', 'trapezoid', 'angle',
@@ -125,6 +134,27 @@ export function findInkValueError(value: unknown): string | null {
   }
   if (total > INK_MAX_POINTS) {
     return `笔迹太多：最多 ${INK_MAX_POINTS} 个点，请撤销几笔或清空后重画`;
+  }
+  // ★ 2026-09-30 第二轮：文字也有一条**体积**上限。
+  // 🔴 理由与笔画那条同源：值要进 Json 列、要被看板读端点整份取回、还要过广播那条
+  //    64KiB 的静默闸（超了看板那一格空白）。文字很容易写出很长的串，
+  //    而**它没有点数可以当尺子** ⇒ 单独按字符数拦。
+  const texts = row.texts;
+  if (texts !== undefined) {
+    if (!Array.isArray(texts)) return '文字的形状不对（texts 必须是数组）';
+    if (texts.length > INK_MAX_TEXTS) {
+      return `文字太多：最多 ${INK_MAX_TEXTS} 段，请删掉几段`;
+    }
+    let chars = 0;
+    for (const item of texts) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return '文字的形状不对（每一段都必须是对象）';
+      const text = (item as Record<string, unknown>).text;
+      if (typeof text !== 'string') return '文字的形状不对（每一段的 text 必须是字符串）';
+      chars += text.length;
+    }
+    if (chars > INK_MAX_TEXT_CHARS) {
+      return `文字太多：最多 ${INK_MAX_TEXT_CHARS} 个字，请删掉一些`;
+    }
   }
   return null;
 }

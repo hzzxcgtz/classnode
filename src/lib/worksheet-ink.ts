@@ -117,8 +117,9 @@ export interface ShapeOutline { closed: boolean; points: InkPoint[] }
  * ⚠️ `select` 不是一个形状：它是「选中并移动已有的图形」那一档（教师选的「甲」）。
  */
 export const INK_TOOL_PEN = 'pen';
+export const INK_TOOL_TEXT = 'text';
 export const INK_TOOL_SELECT = 'select';
-export const INK_TOOLS = [INK_TOOL_PEN, ...INK_SHAPE_KINDS, INK_TOOL_SELECT] as const;
+export const INK_TOOLS = [INK_TOOL_PEN, ...INK_SHAPE_KINDS, INK_TOOL_TEXT, INK_TOOL_SELECT] as const;
 export type InkTool = (typeof INK_TOOLS)[number];
 /** 默认档：**手写**。见上面那条 🔴。 */
 export const INK_DEFAULT_TOOL: InkTool = INK_TOOL_PEN;
@@ -608,7 +609,11 @@ export function hitTestStroke(point: InkPoint, stroke: InkStroke, box: InkCanvas
  * - 手写 ⇒ **空**（它不参与选中）。
  * ⚠️ 4 个角而不是 8 个：手指比控制点粗，8 个会互相压住（真机走查项）。
  */
-export function strokeHandles(stroke: InkStroke, box: InkCanvas): InkPoint[] {
+/**
+ * ⚠️ 2026-09-30：形参里那个 `box` **删掉了** —— 它从来没被用到（把手是归一化坐标，
+ * 是调用方拿 `toPixel` 换算的），而留着一个用不到的形参只会让下一个人以为这里要做换算。
+ */
+export function strokeHandles(stroke: InkStroke): InkPoint[] {
   if (!isInkShapeKind(stroke.shape)) return [];
   const points = stroke.points;
   if (stroke.shape === 'angle') return points.slice(0, 3);
@@ -669,7 +674,7 @@ export function isShapeTooSmall(stroke: InkStroke, box: InkCanvas, minPx: number
 }
 
 export function pickInkHandle(point: InkPoint, stroke: InkStroke, box: InkCanvas, tolPx: number): number {
-  const handles = strokeHandles(stroke, box);
+  const handles = strokeHandles(stroke);
   const [px, py] = toPixel(point, box);
   const tol = Number.isFinite(tolPx) && tolPx > 0 ? tolPx : 0;
   for (let index = 0; index < handles.length; index += 1) {
@@ -812,12 +817,15 @@ export function downsampleInkValue(value: unknown, budgetChars: number): unknown
         ? stroke
         : { ...stroke, points: keepEveryOther(stroke.points, round + 1) }
     ));
-    const candidate = { format: ink.format, canvas: ink.canvas, strokes };
+    // ★ 2026-09-30 第二轮：**文字原样带着**（抽稀只抽笔画 —— 文字没有「采样点」可抽）。
+    //    ⚠️ 少了这一句，预览那一份会**整段丢掉文字**（而学生屏幕上还在）——
+    //    正是「预览里看不到、学生那里有」那类静默分叉。
+    const candidate = { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}) };
     if (JSON.stringify(candidate).length <= budgetChars) return candidate;
   }
   // 抽到顶还装不下（几千笔的怪物）⇒ 返回抽到顶的那一份，**不再继续抽**
   //（再抽下去那一笔就只剩两个点了，画出来是一条直线，比不画更误导）。
-  return { format: ink.format, canvas: ink.canvas, strokes };
+  return { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}) };
 }
 
 /**
@@ -1079,9 +1087,7 @@ export function resizeStroke(
   stroke: InkStroke,
   handleIndex: number,
   point: InkPoint,
-  box: InkCanvas,
 ): InkStroke {
-  void box;
   if (!isInkShapeKind(stroke.shape)) return stroke;
   if (!Number.isInteger(handleIndex) || handleIndex < 0) return stroke;
   if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return stroke;

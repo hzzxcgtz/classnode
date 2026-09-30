@@ -7,6 +7,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   INK_DEFAULT_COLOR, INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_PALETTE, INK_SHAPE_KINDS, INK_WIDTH_OPTIONS,
   isInkShapeTool,
+  textSizeForWidth,
   clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke,
 } from '@/lib/worksheet-ink';
 import type { InkShapeKind, InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
@@ -58,6 +59,7 @@ const TOOL_LABELS: Record<InkTool, string> = {
   trapezoid: '梯形',
   angle: '角',
   select: '选择',
+  text: '文字',
 };
 
 /**
@@ -94,6 +96,13 @@ const TOOL_ICONS: Record<InkTool, ReactNode> = {
     <>
       <path d="M4 15.5h12" />
       <path d="M4 15.5 14.5 5" />
+    </>
+  ),
+  // ★ 第二轮：一个**大写的 T**（所有绘图工具里「文字」的通用符号）。
+  text: (
+    <>
+      <path d="M5 5.5h10" />
+      <path d="M10 5.5v9.5" />
     </>
   ),
   // ⚠️ 同上：「选择」原来是一个虚框 + 一个小方块 —— 看着像「裁剪」。改成**鼠标指针**，
@@ -286,6 +295,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         box={box}
         strokes={draft.strokes}
         texts={draft.texts ?? []}
+        textSize={textSizeForWidth(width)}
         hint={inkHint(node)}
         disabled={disabled}
         tool={tool}
@@ -293,7 +303,10 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         color={color}
         selected={selected}
         onSelect={setSelected}
-        onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
+        // 🔴 **`texts` 必须一起带过去** —— 这一行是「加字段要记得加在这里」的**第三个**例子
+        //（前两个：`valueFromDraft` 与 `analysis-payload` 的逐字段重建）。
+        // 少了它：学生打完字、屏幕上一闪就没了（画布重绘用的是上一份 texts）。
+        onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes, texts: next.texts })}
       />
       {/* ★ 2026-09-30（教师：「不够紧凑，图标不够直观，分类不够明确…应该像一个专业的绘图工具」）
           ⇒ **一行七格，分三组**：工具 ｜ 粗细 · 颜色 ｜ 动作。
@@ -331,6 +344,13 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
             </div>
           )}
         </div>
+
+        {/* ★ 2026-09-30 第二轮：**文字**。点一下画布放一个文本框。 */}
+        <button type="button" className={styles.inkButton} disabled={disabled}
+          aria-pressed={tool === 'text'} aria-label="文字" title="点一下画布，放一个文本框"
+          onClick={() => changeTool('text')} style={tool === 'text' ? ACTIVE_STYLE : undefined}>
+          <ToolIcon tool="text" />
+        </button>
 
         <button type="button" className={styles.inkButton} disabled={disabled}
           aria-pressed={tool === 'select'} aria-label="选择" title="点一下图形选中它，再拖动或改大小"

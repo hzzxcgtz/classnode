@@ -678,16 +678,16 @@ test('🔴 hitTestStroke：**手写笔迹一律不命中**（不然学生一点�
 
 test('🔴 strokeHandles：两点框图形 4 个角；直线/箭头 2 个端点；角 3 个顶点', () => {
   const box = { w: 200, h: 100 };
-  assert.deepEqual(strokeHandles(shapeStroke('rect', [[0.1, 0.2], [0.5, 0.6]]), box),
+  assert.deepEqual(strokeHandles(shapeStroke('rect', [[0.1, 0.2], [0.5, 0.6]])),
     [[0.1, 0.2], [0.5, 0.2], [0.5, 0.6], [0.1, 0.6]]);
-  assert.deepEqual(strokeHandles(shapeStroke('line', [[0.1, 0.2], [0.5, 0.6]]), box),
+  assert.deepEqual(strokeHandles(shapeStroke('line', [[0.1, 0.2], [0.5, 0.6]])),
     [[0.1, 0.2], [0.5, 0.6]]);
   // 🔴 角是**三个自由点**（顶点 + 两条边的端点），不是外接框的四个角 ——
   //    给它四个角的话，学生拖一个角会把「顶点」和「边」的语义搅在一起。
-  assert.deepEqual(strokeHandles(shapeStroke('angle', [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]), box),
+  assert.deepEqual(strokeHandles(shapeStroke('angle', [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]])),
     [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]);
   // 手写没有把手（它不参与选中）。
-  assert.deepEqual(strokeHandles({ color: '', width: 0, points: [[0, 0], [1, 1]] }, box), []);
+  assert.deepEqual(strokeHandles({ color: '', width: 0, points: [[0, 0], [1, 1]] }), []);
 });
 
 test('🔴 moveStroke：平移后**按包围盒夹取到 0..1**（不许把图形拖出画布外）', () => {
@@ -715,36 +715,36 @@ test('🔴 resizeStroke：拖一个角 ⇒ 那个角动、对角不动（外接�
   const box = { w: 200, h: 200 };
   const rect = shapeStroke('rect', [[0.2, 0.2], [0.6, 0.6]]);
   // 把手 0 = 左上角 [0.2,0.2] ⇒ 拖到 [0.1,0.3]
-  assert.deepEqual(resizeStroke(rect, 0, [0.1, 0.3], box).points, [[0.1, 0.3], [0.6, 0.6]]);
+  assert.deepEqual(resizeStroke(rect, 0, [0.1, 0.3]).points, [[0.1, 0.3], [0.6, 0.6]]);
   // 把手 2 = 右下角 [0.6,0.6] ⇒ 拖到 [0.9,0.95]
-  assert.deepEqual(resizeStroke(rect, 2, [0.9, 0.95], box).points, [[0.2, 0.2], [0.9, 0.95]]);
+  assert.deepEqual(resizeStroke(rect, 2, [0.9, 0.95]).points, [[0.2, 0.2], [0.9, 0.95]]);
   // 🔴 拖过头**穿过对角** ⇒ 只是框翻了个方向，仍然是合法矩形（不许变成负宽）。
-  assert.deepEqual(resizeStroke(rect, 0, [0.9, 0.9], box).points, [[0.6, 0.6], [0.9, 0.9]]);
+  assert.deepEqual(resizeStroke(rect, 0, [0.9, 0.9]).points, [[0.6, 0.6], [0.9, 0.9]]);
   // 把手越界 ⇒ 原样返回（坏输入不许造出一个框外的图形）。
-  assert.deepEqual(resizeStroke(rect, 99, [0.5, 0.5], box).points, rect.points);
+  assert.deepEqual(resizeStroke(rect, 99, [0.5, 0.5]).points, rect.points);
   // 🔴 **拖到画布外 ⇒ 夹回边界**（与 `moveStroke` 的夹取同一条纪律）。
   //    ⚠️ 少了这一条，学生把角拖到画布外就能造出一个「一半在框外」的图形 ——
   //    教师端按外接框渲染，那一半会被裁掉，而学生屏幕上看着是好的。
   //    （这条是变异检验补出来的：我先前的用例全都落在 0..1 之内，夹取从来没被触发过。）
   // ⚠️ 拖右下角到 (1.5, -0.2) ⇒ 夹成 (1, 0)，而另一角仍在 (0.2,0.2)
   //    ⇒ 包围盒是 [[0.2, 0], [1, 0.2]]（y 的上界由 0.6 变成 0.2，不是 0.6）。
-  assert.deepEqual(resizeStroke(rect, 2, [1.5, -0.2], box).points, [[0.2, 0], [1, 0.2]]);
-  assert.deepEqual(resizeStroke(shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]), 1, [2, 2], box).points, [[0.1, 0.1], [1, 1]]);
-  assert.deepEqual(resizeStroke(shapeStroke('angle', [[0.5, 0.5], [0.9, 0.5], [0.5, 0.9]]), 0, [-1, 3], box).points,
+  assert.deepEqual(resizeStroke(rect, 2, [1.5, -0.2]).points, [[0.2, 0], [1, 0.2]]);
+  assert.deepEqual(resizeStroke(shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]), 1, [2, 2]).points, [[0.1, 0.1], [1, 1]]);
+  assert.deepEqual(resizeStroke(shapeStroke('angle', [[0.5, 0.5], [0.9, 0.5], [0.5, 0.9]]), 0, [-1, 3]).points,
     [[0, 1], [0.9, 0.5], [0.5, 0.9]]);
 });
 
 test('🔴 resizeStroke：直线拖的是**端点**、角拖的是**顶点**（不是外接框）', () => {
   const box = { w: 200, h: 200 };
   const line = shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]);
-  assert.deepEqual(resizeStroke(line, 0, [0.2, 0.3], box).points, [[0.2, 0.3], [0.9, 0.9]]);
-  assert.deepEqual(resizeStroke(line, 1, [0.2, 0.3], box).points, [[0.1, 0.1], [0.2, 0.3]]);
+  assert.deepEqual(resizeStroke(line, 0, [0.2, 0.3]).points, [[0.2, 0.3], [0.9, 0.9]]);
+  assert.deepEqual(resizeStroke(line, 1, [0.2, 0.3]).points, [[0.1, 0.1], [0.2, 0.3]]);
   const angle = shapeStroke('angle', [[0.5, 0.5], [0.9, 0.5], [0.5, 0.9]]);
-  assert.deepEqual(resizeStroke(angle, 0, [0.4, 0.4], box).points, [[0.4, 0.4], [0.9, 0.5], [0.5, 0.9]]);
-  assert.deepEqual(resizeStroke(angle, 2, [0.1, 0.3], box).points, [[0.5, 0.5], [0.9, 0.5], [0.1, 0.3]]);
+  assert.deepEqual(resizeStroke(angle, 0, [0.4, 0.4]).points, [[0.4, 0.4], [0.9, 0.5], [0.5, 0.9]]);
+  assert.deepEqual(resizeStroke(angle, 2, [0.1, 0.3]).points, [[0.5, 0.5], [0.9, 0.5], [0.1, 0.3]]);
   // 手写没有把手 ⇒ 原样返回（它不该被 resize）。
   const freehand: InkStroke = { color: '', width: 0, points: [[0, 0], [1, 1]] };
-  assert.deepEqual(resizeStroke(freehand, 0, [0.5, 0.5], box).points, freehand.points);
+  assert.deepEqual(resizeStroke(freehand, 0, [0.5, 0.5]).points, freehand.points);
 });
 
 test('🔴 readInkValue：认 shape；**认不出的形状整笔丢掉**（不是静默当手写）', () => {
@@ -793,11 +793,13 @@ test('🔴 INK_TOOLS：**默认档是手写**，顺序 = 工具栏顺序', () =>
   //    默认成别的档他会以为画布坏了（而画布确实会「画不出线」）。
   assert.equal(INK_DEFAULT_TOOL, 'pen');
   // 顺序：手写在前、选择在后、九个图形夹在中间（与 `INK_SHAPE_KINDS` 同序）。
-  assert.deepEqual([...INK_TOOLS], ['pen', ...INK_SHAPE_KINDS, 'select']);
+  // ★ 第二轮：文字档夹在九个图形与「选择」之间（工具栏上就是这个顺序）。
+  assert.deepEqual([...INK_TOOLS], ['pen', ...INK_SHAPE_KINDS, 'text', 'select']);
   // 「这一档是不是画图形」的判据：`pen` 与 `select` 都不是。
   assert.equal(isInkShapeTool('rect'), true);
   assert.equal(isInkShapeTool('pen'), false);
   assert.equal(isInkShapeTool('select'), false);
+  assert.equal(isInkShapeTool('text'), false, '文字档不是一个图形');
 });
 
 test('🔴 INK_WIDTH_OPTIONS：三档，且**中间那档就是原来的默认值**', () => {
@@ -823,7 +825,7 @@ test('🔴 pickInkHandle：控制点在**轮廓外面**也要抓得住（复审�
   const shapes = ['ellipse', 'triangle', 'trapezoid', 'parallelogram', 'right-triangle'];
   for (const shape of shapes) {
     const stroke = shapeStroke(shape, [[0.15, 0.15], [0.85, 0.85]]);
-    const handles = strokeHandles(stroke, box);
+    const handles = strokeHandles(stroke);
     assert.ok(handles.length >= 4, `${shape} 应当有四个控制点`);
     for (let index = 0; index < handles.length; index += 1) {
       assert.equal(pickInkHandle(handles[index], stroke, box, 14), index,

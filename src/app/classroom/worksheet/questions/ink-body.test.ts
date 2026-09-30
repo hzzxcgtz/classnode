@@ -82,6 +82,7 @@ test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按
   //    读屏用户听到的是十一个「按钮」。设计规范里这条是硬规矩。
   assert.ok(body.includes('aria-label={TOOL_LABELS[shape]}'), '图形格子没有 aria-label（读屏读不出来）');
   assert.ok(body.includes('aria-label="手写"') && body.includes('aria-label="选择"'), '手写/选择没有 aria-label');
+  assert.ok(body.includes('aria-label="文字"'), '文字档没有 aria-label');
   assert.ok(body.includes('aria-label={`${WIDTH_LABELS[index]}笔`}'), '粗细按钮没有 aria-label');
   // 图标本身对读屏是**噪音**（形状已经由按钮的名字说了）⇒ 要 `aria-hidden`。
   // ⚠️ **只看 ToolIcon 那个函数体**：文件里还有一处 `aria-hidden`（粗细按钮里那个圆点），

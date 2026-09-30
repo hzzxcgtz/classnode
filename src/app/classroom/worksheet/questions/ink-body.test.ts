@@ -31,3 +31,31 @@ test('🔴 默认档从判据层拿（`INK_DEFAULT_TOOL`），不是随手写的
   // 只读态（教师端预览渲染同一个组件）整排禁用，但一个都不少。
   assert.ok(body.includes('aria-pressed={tool === item}'), '当前档没有可读的状态（aria-pressed）');
 });
+
+test('★ 选中态：离开「选择」档要清掉，撤销/清空也要清掉（否则会删错东西）', () => {
+  // ★ 2026-09-30（教师选「甲」）。
+  // 🔴 两条都是**静默**的：选中是画上去的虚线框，而「谁被选中」是一个**下标** ——
+  //    · 切回手写继续画之后还圈着旧图形 ⇒ 学生点一下删除会删掉一个自己没在看的图形；
+  //    · 撤销/清空让 `strokes` 少了几笔 ⇒ 那个下标指向**别的图形**（或者指空）。
+  //    屏幕上只是「删除删错了」/「点了没反应」，两边都不报错。
+  assert.match(body, /if \(next !== 'select'\) setSelected\(null\)/, '换档时没有清掉选中');
+  assert.equal((body.match(/setSelected\(null\); transform\(/g) ?? []).length, 2,
+    '撤销与清空都必须清掉选中（两条路各一处）');
+});
+
+test('★ 删除按钮：**只在「选择」档且真的选中了**才渲染，而且有可读的名字', () => {
+  // 🔴 一个永远在、点了没反应的删除按钮会让学生以为它坏了。
+  assert.match(body, /tool === 'select' && selected !== null/, '删除按钮不是在「选中了才出现」的条件下渲染');
+  assert.ok(body.includes('删除选中的图形'), '删除按钮没有可读的名字（文字本身就是它的无障碍名）');
+  // 删除走的是**同一条** onChange（与撤销/清空同一条纪律：不存在「按钮改了别处没改」）。
+  assert.match(body, /onChange\(\{ kind: 'ink', box, strokes: next \}\)/, '删除没有走那条唯一的写入口');
+});
+
+test('★ 选择档的命中判据来自判据层（`hitTestStroke`），不是组件自己算', () => {
+  const canvas = fs.readFileSync(path.join(HERE, '..', 'ink-canvas.tsx'), 'utf8');
+  const stripped = stripComments(canvas);
+  assert.ok(stripped.includes('hitTestStroke('), '画布没有用判据层的命中测试');
+  assert.ok(stripped.includes('strokeHandles('), '画布没有用判据层的控制点');
+  assert.ok(stripped.includes('moveStroke(') && stripped.includes('resizeStroke('),
+    '移动/改大小没有走判据层 —— 组件这一层没有回归网，几何必须留在那儿');
+});

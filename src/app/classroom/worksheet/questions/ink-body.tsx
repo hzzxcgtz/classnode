@@ -64,6 +64,20 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    */
   const [tool, setTool] = useState<InkTool>(INK_DEFAULT_TOOL);
   /**
+   * ★ 2026-09-30：被选中的图形（下标）。**住在这一层**（不是画布）——
+   * 删除按钮在这条工具栏上，而两处各存一份「谁被选中」必然分叉。
+   */
+  const [selected, setSelected] = useState<number | null>(null);
+
+  /**
+   * 换档。🔴 **离开「选择」档就把选中清掉**：留着的话，学生切回手写继续画，
+   * 屏幕上还圈着刚才那个图形，而删除按钮还在 —— 他点一下会删掉一个自己没在看的图形。
+   */
+  const changeTool = (next: InkTool) => {
+    setTool(next);
+    if (next !== 'select') setSelected(null);
+  };
+  /**
    * 🔴 **不直接信任 `draft.box`**：`draftFromValue` 对「读不出宽高」的笔迹值会给出
    * `box: { w: 0, h: 0 }`（A1 的 `readCanvas` **刻意**不编一个默认框 —— 逐字段回落的
    * `{ w: 0, h: 240 }` 会把学生的每一个点压到 x = 0，画出来是一条贴在左边的竖线）。
@@ -100,6 +114,8 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         hint={inkHint(node)}
         disabled={disabled}
         tool={tool}
+        selected={selected}
+        onSelect={setSelected}
         onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
       />
       {/* ★ 2026-09-30（教师选「甲」）：**工具档**。默认「手写」，九个图形，最后是「选择」。
@@ -113,19 +129,37 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
             disabled={disabled}
             aria-pressed={tool === item}
             title={item === 'select' ? '点一下图形选中它，再拖动或改大小' : `画${TOOL_LABELS[item]}`}
-            onClick={() => setTool(item)}
+            onClick={() => changeTool(item)}
             style={tool === item ? { borderColor: '#527198', background: '#e9eff6', color: '#466384', fontWeight: 700 } : undefined}
           >
             {TOOL_LABELS[item]}
           </button>
         ))}
       </div>
+      {/* ★ 2026-09-30：**删掉选中的那个图形**。只在「选择」档且真的选中了东西时出现 ——
+          一个永远在、点了没反应的删除按钮，会让学生以为它坏了。 */}
+      {tool === 'select' && selected !== null && (
+        <div className={styles.inkToolbar}>
+          <button
+            type="button"
+            className={styles.inkButton}
+            disabled={disabled}
+            onClick={() => {
+              const next = draft.strokes.filter((_, index) => index !== selected);
+              setSelected(null);
+              onChange({ kind: 'ink', box, strokes: next });
+            }}
+          >
+            删除选中的图形
+          </button>
+        </div>
+      )}
       <div className={styles.inkToolbar}>
         <button
           type="button"
           className={styles.inkButton}
           disabled={disabled || empty}
-          onClick={() => transform(undoStroke)}
+          onClick={() => { setSelected(null); transform(undoStroke); }}
         >
           撤销
         </button>
@@ -133,7 +167,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
           type="button"
           className={styles.inkButton}
           disabled={disabled || empty}
-          onClick={() => transform(clearStrokes)}
+          onClick={() => { setSelected(null); transform(clearStrokes); }}
         >
           清空
         </button>

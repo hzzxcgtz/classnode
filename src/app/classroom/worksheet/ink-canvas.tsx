@@ -11,8 +11,13 @@ import {
   inkLimitReason,
   isFarEnough,
   normalizeAxis,
+  INK_TOOL_SELECT,
+  hitTestStroke,
   isInkShapeTool,
+  moveStroke,
+  resizeStroke,
   shapeOutline,
+  strokeHandles,
   strokeWidthPx,
   toPixel,
 } from '@/lib/worksheet-ink';
@@ -91,10 +96,61 @@ export interface InkCanvasProps {
    * ⚠️ `pen` 是**默认**，且手写那条路一个像素都没变 —— 老习惯的学生进题目直接画。
    */
   tool: InkTool;
+  /**
+   * ★ 2026-09-30：被选中的图形下标（`null` = 没选中）。
+   * 🔴 它**住在 `ink-body`**（不是这里）：删除按钮在那边那条工具栏上，而两处各存一份
+   *    「谁被选中」必然分叉（症状是「删掉的不是屏幕上圈着的那一个」）。
+   */
+  selected: number | null;
+  onSelect: (index: number | null) => void;
+}
+
+/** 选择档下正在做的手势（移动 / 改大小）。⚠️ 与 `LiveStroke` 同一条纪律：不进 state。 */
+interface LiveSelect {
+  kind: 'select';
+  el: HTMLCanvasElement;
+  pointerId: number;
+  box: InkCanvasBox;
+  /** 被拖的那一笔在 `strokes` 里的下标。 */
+  index: number;
+  /** 拖的是框内（移动）还是某个控制点（改大小）。 */
+  mode: 'move' | 'resize';
+  handle: number;
+  /** 按下那一刻的那个点（归一化）。 */
+  from: InkPoint;
+  /** 按下那一刻那一笔的原样 —— 每次移动都**从它**算起（否则增量会累积、拖起来发飘）。 */
+  origin: InkStroke;
+  /** 这一帧要画成什么样。 */
+  current: InkStroke;
+}
+
+/** 选中框的颜色（与工具栏上当前档的高亮同一个主色）。 */
+const SELECT_COLOR = '#527198';
+/** 控制点的半径（像素）。⚠️ 画得小是**有意**的：它只是个记号。 */
+const HANDLE_RADIUS_PX = 5;
+/**
+ * 点选图形 / 点控制点的**像素**宽容度。
+ * 🔴 手指比线粗得多 —— 不给宽容度就点不中（而 `hitTestStroke` 对闭合图形内部也算命中，
+ *    所以「点得中」这件事对矩形这类还算宽，对直线才真要宽容度）。
+ */
+const HANDLE_HIT_TOLERANCE_PX = 14;
+
+/** 一组归一化点的**像素**外接框（`[x, y, w, h]`，喂 `strokeRect`）。 */
+function boundsOf(points: readonly InkPoint[], box: InkCanvasBox): [number, number, number, number] {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const point of points) {
+    const [x, y] = toPixel(point, box);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return [minX, minY, maxX - minX, maxY - minY];
 }
 
 /** 正在画的那一笔。⚠️ **不进 React state**（纪律 ④）—— 它每一帧都在变。 */
 interface LiveStroke {
+  kind: 'stroke';
   el: HTMLCanvasElement;
   pointerId: number;
   box: InkCanvasBox;
@@ -103,13 +159,13 @@ interface LiveStroke {
   shape?: InkShapeKind;
 }
 
-export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, selected, onSelect }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
   const strokesRef = useRef<readonly InkStroke[]>(strokes);
   strokesRef.current = strokes;              // 每次渲染同步（不在 effect 里：`pointerup` 可能先到）
-  const liveRef = useRef<LiveStroke | null>(null);
+  const liveRef = useRef<LiveStroke | LiveSelect | null>(null);
   /**
    * 落笔**被拦**那一刻记下的原因。它只是上限提示的**第二个来源** ——
    * 主来源是每次渲染重算的 `inkLimitReason(strokes)`（见下面 `limitReason` 那一段）。
@@ -183,15 +239,46 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkC
       }
       ctx.stroke();
     };
-    strokesRef.current.forEach(drawStroke);
+    // 🔴 选择手势进行中时，**被拖的那一笔画 `current`**（而不是库里那一份）——
+    //    与手写那条「进行中的一笔走同一个 drawStroke」同一条理由：松手的一瞬间不该跳一下。
+    const liveSelect = liveRef.current?.kind === 'select' ? liveRef.current : null;
+    strokesRef.current.forEach((stroke, index) => {
+      drawStroke(liveSelect && liveSelect.index === index ? liveSelect.current : stroke);
+    });
+    // ★ 2026-09-30：选中态的画法（虚线外框 + 控制点）。**只有图形有控制点**
+    //（手写选不中，判据在 `hitTestStroke` / `shapeOutline`）。
+    if (selected !== null) {
+      const chosen = liveSelect && liveSelect.index === selected ? liveSelect.current : strokesRef.current[selected];
+      if (chosen) {
+        const handles = strokeHandles(chosen, scale);
+        if (handles.length > 0) {
+          ctx.save();
+          ctx.strokeStyle = SELECT_COLOR;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(...boundsOf(handles, scale));
+          ctx.setLineDash([]);
+          for (const handle of handles) {
+            const [hx, hy] = toPixel(handle, scale);
+            ctx.beginPath();
+            ctx.arc(hx, hy, HANDLE_RADIUS_PX, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+    }
     // 进行中的那一笔照**收笔后会用到的同一份样式**画（同一个常量），否则收笔的一瞬间
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
-    if (live) drawStroke({ color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points, shape: live.shape });
-  }, []);
+    if (live && live.kind === 'stroke') drawStroke({ color: INK_STROKE_COLOR, width: INK_STROKE_WIDTH, points: live.points, shape: live.shape });
+  }, [selected, onSelect]);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
-  useEffect(() => { redraw(); }, [redraw, strokes]);
+  // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
+  useEffect(() => { redraw(); }, [redraw, strokes, selected]);
 
   /**
    * 上限提示的**第一个来源**（主来源）：当下就在上限上时它自己就在屏幕上。
@@ -224,21 +311,53 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkC
     // ⚠️ 手掌误触本身**本机验不了**（Global Constraint 16）：这一行只能保证
     // 「第二根手指不会打乱正在画的那一笔」，不能证明「手掌压上来时不会画出一条线」。
     if (liveRef.current) return;
-    const filled = strokesRef.current;
-    const reason = inkLimitReason(filled);
-    if (reason) { setBlockedReason(reason); return; }        // ★ 到上限：不落笔，把提示留在屏幕上
-    setBlockedReason(null);
     const rect = event.currentTarget.getBoundingClientRect();
     const liveBox = { w: rect.width, h: rect.height };
     const point: InkPoint = [
       normalizeAxis(event.clientX - rect.left, rect.width),
       normalizeAxis(event.clientY - rect.top, rect.height),
     ];
+    // ★ 2026-09-30（教师选「甲」）：**选择档** —— 点图形选中它、拖框内移动、拖控制点改大小。
+    // ⚠️ 它**不经过上限闸**（没有新笔画产生），也不做采样过滤（那不是画线）。
+    if (tool === INK_TOOL_SELECT) {
+      const filled = strokesRef.current;
+      // 从**后往前**找：后画的在上，点重叠处该选中看得见的那一个。
+      let index = -1;
+      for (let i = filled.length - 1; i >= 0; i -= 1) {
+        if (hitTestStroke(point, filled[i], liveBox, HANDLE_HIT_TOLERANCE_PX)) { index = i; break; }
+      }
+      if (index < 0) { onSelect(null); return; }             // 点空白 ⇒ 取消选中
+      onSelect(index);
+      const chosen = filled[index];
+      // 先看是不是点在某个控制点上（控制点优先级高于「框内」—— 否则贴着边的控制点永远拖不动）。
+      const handles = strokeHandles(chosen, liveBox);
+      let handle = -1;
+      for (let i = 0; i < handles.length; i += 1) {
+        const [hx, hy] = toPixel(handles[i], liveBox);
+        const [px, py] = toPixel(point, liveBox);
+        if (Math.hypot(px - hx, py - hy) <= HANDLE_HIT_TOLERANCE_PX) { handle = i; break; }
+      }
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
+      event.currentTarget.style.touchAction = 'none';
+      liveRef.current = {
+        kind: 'select', el: event.currentTarget, pointerId: event.pointerId, box: liveBox,
+        index, mode: handle >= 0 ? 'resize' : 'move', handle, from: point,
+        origin: chosen, current: chosen,
+      };
+      redraw();
+      event.stopPropagation();
+      return;
+    }
+    const filled = strokesRef.current;
+    const reason = inkLimitReason(filled);
+    if (reason) { setBlockedReason(reason); return; }        // ★ 到上限：不落笔，把提示留在屏幕上
+    setBlockedReason(null);
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
     event.currentTarget.style.touchAction = 'none';        // 纪律 ②
     // ★ 2026-09-30：图形档 ⇒ 这一笔**只有两个点**（外接框的两个对角），拖动时**换掉第二个点**
     //    而不是往后追加 —— 见 `handlePointerMove`。手写档一行都没变。
     liveRef.current = {
+      kind: 'stroke',
       el: event.currentTarget, box: liveBox, pointerId: event.pointerId, points: [point],
       ...(isInkShapeTool(tool) ? { shape: tool } : {}),
     };
@@ -257,8 +376,18 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkC
     ];
     // ★ 图形档：**换掉第二个点**（形状恒是两点定义几何），也不做采样过滤 ——
     //   采样过滤会把「拖到一半的手」判成没动，而形状只需要那两个点。
-    if (live.shape) {
+    if (live.kind === 'stroke' && live.shape) {
       live.points = [live.points[0], point];
+      redraw();
+      event.stopPropagation();
+      return;
+    }
+    // ★ 选择手势：从**按下那一刻的原样**算起（不是增量累加 —— 累加会飘）。
+    if (live.kind === 'select') {
+      live.box = liveBox;
+      live.current = live.mode === 'move'
+        ? moveStroke(live.origin, point[0] - live.from[0], point[1] - live.from[1])
+        : resizeStroke(live.origin, live.handle, point, liveBox);
       redraw();
       event.stopPropagation();
       return;
@@ -284,6 +413,18 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool }: InkC
       try { live.el.releasePointerCapture(live.pointerId); } catch { /* 纪律 ① */ }
     }
     if (!live || !commit) { redraw(); return; }
+    // ★ 2026-09-30：选择手势 —— **只在这一刻写库**（拖到一半不写）。
+    //    🔴 那是刻意的：`selected` 是**下标**，而移动中途写库会让 `strokes` 换一份新数组
+    //    ⇒ 下标与屏幕上的图形对不上（症状是「拖着拖着选中了别的图形」）。
+    if (live.kind === 'select') {
+      if (live.current !== live.origin) {
+        const next = strokesRef.current.map((stroke, index) => (index === live.index ? live.current : stroke));
+        onChange({ box: live.box, strokes: next });
+      } else {
+        redraw();                       // 按了没动（或拖回原地）⇒ 不写库，只重画掉高亮
+      }
+      return;
+    }
     // ★ 2026-09-30：图形档**手指抖一下不该留下一个看不见的图形** ——
     //   宽或高（在**像素**里量）小于 8px 就当没画过。⚠️ 手写**不过这一关**：
     //   学生在屏幕上点一下本来就该留下一个点。

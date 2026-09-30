@@ -99,3 +99,32 @@ test('阳性对照：这条网真的在读这两个文件（否则上面那条�
   // 组件随之删除。这里改成断言**它确实改用样式**（而不是「不许用那枚叉」——
   // 那种断言在组件删掉之后恒真，等于没有网）。
 });
+
+/**
+ * ★ 2026-09-30：公式渲染接在 `PromptText` 里。
+ *
+ * 🔴 **断言必须剥掉 import 行**（用上面那个 `stripImports`）：`splitMath` 与 `MathSpan`
+ *    这两个名字**本来就出现在 import 行里** ⇒ 不剥的话「把调用点整个删掉、只留一行
+ *    import」这条断言照样绿。这个坑本文件已经踩过一次（见 `stripImports` 的注释：
+ *    第一版就是这么假绿的）。
+ */
+test('★ 公式渲染接在 PromptText 里（三个调用方自动获得，不许各自实现一遍）', () => {
+  const body = stripImports(stripComments(SOURCE));
+  // 阳性对照：剥完之后剩下的仍是这个组件，不是空壳（否则下面几句对空串永远绿）。
+  assert.ok(body.length > 300, '剥 import 与注释之后剩下的仍是这个组件，不是一段空壳');
+  assert.ok(body.includes('splitMath'), 'PromptText 没有接公式切分（只在 import 行里出现不算）');
+  assert.ok(body.includes('MathSpan'), 'PromptText 没有画公式（只在 import 行里出现不算）');
+  // 🔴 **「函数定义了」不等于「它被接上了」。** 上面两句查的是「名字出现过」——
+  //    一个没人调用的 `renderInline` 里也有这两个名字 ⇒ 把三处调用点全部删掉，
+  //    上面两句**照样绿**。所以这里数**调用点**：1 处定义 + 3 处调用（chunk / head / tail）。
+  //    ⚠️ 变异检验抓出来的：只查名字时，把 `renderInline(chunk, run)` 换回
+  //    `<span>{chunk}</span>` 这条网一声不吭。
+  const calls = (body.match(/renderInline\(/g) ?? []).length;
+  assert.equal(calls, 4,
+    `renderInline 出现了 ${calls} 次（应为 1 处定义 + 3 处调用：chunk / head / tail）`
+    + ' —— 是不是有渲染点没接上公式？');
+  // 🔴 反面：这个文件里不许出现第二套 KaTeX 调用 —— 那意味着有人又实现了一遍，
+  //    而两块渲染一旦分叉，症状是「这里画得出来、那里画不出来」，且两边都不报错。
+  assert.equal((body.match(/katex\.renderToString/g) ?? []).length, 0,
+    'PromptText 里直接调了 KaTeX —— 应该走 MathSpan');
+});

@@ -3,6 +3,13 @@ import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { blankAriaLabel, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
+// ★ 2026-09-30：单元格里的字也走题面那**同一个**渲染器 —— 所以单元格里能写公式。
+// 🔴 由此 `worksheet-table-view.tsx` 与 `worksheet-prompt-text.tsx` **互为依赖**
+//    （前者要被后者画进题干，后者要用前者画单元格的字）。这是**有意**的、且是安全的：
+//    两边都只在 JSX 里用对方（运行时求值），顶层没有一处立即求值 ⇒ ESM 的活绑定
+//    在 render 那一刻两边都已初始化。⚠️ 别在任一文件的**顶层**（模块作用域）里
+//    调对方 —— 那才会真的拿到 `undefined`。
+import { PromptText } from './worksheet-prompt-text.tsx';
 
 /**
  * 表格填空的**表格那一份渲染**（★ 2026-09-28）。
@@ -187,7 +194,9 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                       </Fragment>
                     ) : (
                       // 空格子也要占住那一行的高度（否则整行会被压扁）
-                      cell.text === '' ? ' ' : cell.text
+                      // ★ 2026-09-30：单元格里的字走题面那**同一个**渲染器（`PromptText`），
+                      // 所以单元格里能写公式。⚠️ **不传 `runs`** —— 单元格是纯文本。
+                      cell.text === '' ? ' ' : <PromptText text={cell.text} placeholder="" />
                     )}
                   </td>
                 );

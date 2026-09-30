@@ -56,9 +56,14 @@ for (const file of ['myportal/index.html', 'myportal/classnode.html']) {
 }
 
 if (fs.existsSync(path.join(root, 'myportal/deploy.html'))) {
+  // The version must be replaced wherever it is glued to the product name, not
+  // only where a `.` or `/` follows. deploy.html also writes the extracted
+  // directory (`cd classnode-<version>`), which ends the line — a trailing
+  // lookahead for punctuation silently left those stale on every release.
+  // `(?![0-9])` only guards against truncating a two-digit patch (1.6.20).
   const content = read('myportal/deploy.html')
-    .replace(/ClassNode_\d+\.\d+\.\d+(?=_)/g, `ClassNode_${version}`)
-    .replace(/classnode-v?\d+\.\d+\.\d+(?=[./])/g, `classnode-${version}`);
+    .replace(/ClassNode_\d+\.\d+\.\d+(?![0-9])/g, `ClassNode_${version}`)
+    .replace(/classnode-v?\d+\.\d+\.\d+(?![0-9])/g, `classnode-${version}`);
   changed += writeIfChanged('myportal/deploy.html', content);
 }
 

@@ -23,11 +23,11 @@
   <span class="hero-blob b1"></span>
   <span class="hero-blob b2"></span>
   <div class="container">
-    <span class="eyebrow"><span class="dot"></span> v1.6.2 · 免费开源 · 持续更新</span>
+    <span class="eyebrow"><span class="dot"></span> v2.0.0 · 免费开源 · 持续更新</span>
     <h1 class="project-title">支点课堂<br><span class="grad">ClassNode</span></h1>
     <p class="project-subtitle">
       把你创建的 AI 智能体，安全可控地送到每位学生手中——专为教师打造的 AI 课堂互动平台。
-      支持 Coze、智谱清言、百度文心等主流智能体。
+      课堂由学习单、探究空间、智能学伴三个模块组成，支持 Coze、智谱清言、百度文心等主流智能体。
     </p>
     <div class="project-cta">
       <a href="#download" class="btn btn-primary">下载支点课堂 →</a>
@@ -42,27 +42,64 @@
     <div class="sec-head center fade-in">
       <span class="eyebrow teal"><span class="dot"></span> 功能预览</span>
       <h2 class="sec-title">看看支点课堂长什么样</h2>
-      <p class="sec-desc">从仪表盘到互动参与，一览无余</p>
+      <p class="sec-desc">从学习单到课堂看板，一览无余</p>
     </div>
     <div class="showcase-tabs" id="showcaseTabs">
       <button class="showcase-tab active" data-index="0">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>仪表盘
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>学习单
       </button>
       <button class="showcase-tab" data-index="1">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>智能体
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>探究空间
       </button>
       <button class="showcase-tab" data-index="2">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>运行模式
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>仪表盘
       </button>
       <button class="showcase-tab" data-index="3">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>监控看板
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>智能体
       </button>
       <button class="showcase-tab" data-index="4">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>互动参与
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>运行模式
+      </button>
+      <button class="showcase-tab" data-index="5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>监控看板
+      </button>
+      <button class="showcase-tab" data-index="6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>学生端
       </button>
     </div>
     <div class="showcase-stage" id="showcaseStage">
+      <!-- 待补截图：images/screenshots/worksheet.png、images/screenshots/explore.png -->
       <div class="showcase-slide active" data-index="0">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/worksheet.png" alt="学习单看板" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">学习单</h3>
+          <p class="showcase-info-desc">当堂练习与检测。学生逐题作答，教师在大屏上看到每个人此刻正在写什么。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>十种题型：选择填空、单选、多选、判断、填空、排序、连线、归类、问答、绘图</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>作答内容实时回传看板，填的字、连的线、画的内容都在格子里</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>点开学生看逐题详情，点开题目看全班作答分布</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="1">
+        <div class="showcase-mockup">
+          <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
+          <img src="images/screenshots/explore.png" alt="探究空间" />
+        </div>
+        <div class="showcase-info">
+          <h3 class="showcase-info-title">探究空间</h3>
+          <p class="showcase-info-desc">把教师自制的交互式网页送到每台设备上，学生在隔离沙箱里动手体验。</p>
+          <ul class="showcase-info-list">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>上传自制网页，支持单个 HTML 与 zip / rar / 7z 压缩包</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>跨源沙箱运行，学生不必离开课堂去访问外网</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>教师可看到每台设备正停在哪一步</li>
+          </ul>
+        </div>
+      </div>
+      <div class="showcase-slide" data-index="2">
         <div class="showcase-mockup">
           <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
           <img src="images/screenshots/dashboard.png" alt="系统仪表盘" />
@@ -77,7 +114,7 @@
           </ul>
         </div>
       </div>
-      <div class="showcase-slide" data-index="1">
+      <div class="showcase-slide" data-index="3">
         <div class="showcase-mockup">
           <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
           <img src="images/screenshots/agents.webp" alt="AI 智能体管理" />
@@ -92,7 +129,7 @@
           </ul>
         </div>
       </div>
-      <div class="showcase-slide" data-index="2">
+      <div class="showcase-slide" data-index="4">
         <div class="showcase-mockup">
           <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
           <img src="images/screenshots/modes.png" alt="运行模式" />
@@ -107,43 +144,45 @@
           </ul>
         </div>
       </div>
-      <div class="showcase-slide" data-index="3">
+      <div class="showcase-slide" data-index="5">
         <div class="showcase-mockup">
           <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
           <img src="images/screenshots/board.png" alt="监控看板" />
         </div>
         <div class="showcase-info">
           <h3 class="showcase-info-title">监控看板</h3>
-          <p class="showcase-info-desc">全维度实时监控 AI 互动实况，课堂节奏尽在掌控。</p>
+          <p class="showcase-info-desc">全维度实时监控课堂实况，三个模块同屏呈现，课堂节奏尽在掌控。</p>
           <ul class="showcase-info-list">
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>实时消息流集中展示监控</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>三种运行模式按需灵活切换</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>对话、学习单作答、探究空间三路同屏监控</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>逐题进度矩阵与全班作答分布</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>发言频率与内容双重管控</li>
           </ul>
         </div>
       </div>
-      <div class="showcase-slide" data-index="4">
+      <div class="showcase-slide" data-index="6">
         <div class="showcase-mockup">
           <div class="showcase-mockup-bar"><span></span><span></span><span></span></div>
-          <img src="images/screenshots/student.png" alt="参与者互动" />
+          <img src="images/screenshots/student.png" alt="学生端" />
         </div>
         <div class="showcase-info">
-          <h3 class="showcase-info-title">互动参与</h3>
-          <p class="showcase-info-desc">参与者零门槛体验，扫码即入与 AI 沉浸互动，完整记录可追溯。</p>
+          <h3 class="showcase-info-title">学生端</h3>
+          <p class="showcase-info-desc">参与者零门槛体验，扫码即入，三个模块一个入口，完整记录可追溯。</p>
           <ul class="showcase-info-list">
             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>扫码或输入互动码秒加入</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>无需互联网，经管理端统一接入 AI</li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>全部交互记录自动保存与导出</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>学习单作答、探究操作与 AI 对话记录全部保存与导出</li>
           </ul>
         </div>
       </div>
     </div>
     <div class="showcase-nav" id="showcaseNav">
-      <button class="showcase-dot active" data-index="0" aria-label="仪表盘"></button>
-      <button class="showcase-dot" data-index="1" aria-label="智能体"></button>
-      <button class="showcase-dot" data-index="2" aria-label="运行模式"></button>
-      <button class="showcase-dot" data-index="3" aria-label="监控看板"></button>
-      <button class="showcase-dot" data-index="4" aria-label="参与者互动"></button>
+      <button class="showcase-dot active" data-index="0" aria-label="学习单"></button>
+      <button class="showcase-dot" data-index="1" aria-label="探究空间"></button>
+      <button class="showcase-dot" data-index="2" aria-label="仪表盘"></button>
+      <button class="showcase-dot" data-index="3" aria-label="智能体"></button>
+      <button class="showcase-dot" data-index="4" aria-label="运行模式"></button>
+      <button class="showcase-dot" data-index="5" aria-label="监控看板"></button>
+      <button class="showcase-dot" data-index="6" aria-label="学生端"></button>
     </div>
   </div>
 </section>
@@ -170,7 +209,7 @@
         <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
         <div class="qa-content">
           <div class="qa-q">学习过程变"黑盒"，课堂交互难以掌控？</div>
-          <div class="qa-a">打造全局透视控制台，全班对话进程实时同步。深度思考与低效游离一目了然，精准捕捉认知卡点，让个性化指导随时发生。</div>
+          <div class="qa-a">打造全局透视控制台：对话进程、学习单作答、探究空间进度实时同步。谁卡在哪一题、谁已经想通一目了然，精准捕捉认知卡点，让个性化指导随时发生。</div>
         </div>
       </div>
       <div class="feature-card fade-in qa-card">
@@ -186,7 +225,7 @@
         <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
         <div class="qa-content">
           <div class="qa-q">交互痕迹随风散，学情数据无迹可寻？</div>
-          <div class="qa-a">课堂对话完整留存，一键生成可视化学情报告与高频词云。让每一次思维碰撞都沉淀为教研资产，赋能课后精准复盘与学情洞察。</div>
+          <div class="qa-a">课堂对话、学习单作答与探究空间记录完整留存，一键生成可视化学情报告。按题统计给出全班作答分布，让每一次思维碰撞都沉淀为教研资产，赋能课后精准复盘与学情洞察。</div>
         </div>
       </div>
     </div>
@@ -243,12 +282,12 @@
       <div class="step-card fade-in">
         <div class="step-num">2</div>
         <h4>扫码即入，全景监控</h4>
-        <p>大屏展示互动码，扫码即可加入。标准 / 分组 / 高级三种模式灵活切换，支持暂停与单独引导，课堂节奏尽在掌控。</p>
+        <p>大屏展示互动码，扫码即可加入。标准 / 分组 / 高级三种模式灵活切换，学习单、探究空间、智能学伴随时开合，支持暂停与单独引导，课堂节奏尽在掌控。</p>
       </div>
       <div class="step-card fade-in">
         <div class="step-num">3</div>
         <h4>一键导出报告</h4>
-        <p>高频词云、活跃度统计、完整对话实录一键生成 Word 报告。本地保存，支持跨设备备份与迁移。</p>
+        <p>对话实录、学习单作答、探究空间记录一键生成 Word 报告，手写作答渲染成图片一并保存。本地保存，支持跨设备备份与迁移。</p>
       </div>
     </div>
   </div>

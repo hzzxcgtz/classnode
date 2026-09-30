@@ -46,10 +46,13 @@ import {
   isInkFormat,
   isInkNode,
   hitTestStroke,
+  INK_DEFAULT_COLOR,
   INK_DEFAULT_TOOL,
   INK_DEFAULT_WIDTH,
+  INK_PALETTE,
   INK_TOOLS,
   INK_WIDTH_OPTIONS,
+  isInkColor,
   isInkWidth,
   isInkShapeKind,
   isInkShapeTool,
@@ -864,4 +867,22 @@ test('🔴 isShapeTooSmall：**任一边**太小就丢；但线与角各按自�
 
   // 手写不走这条判据（学生在屏幕上点一下就该留下一个点）。
   assert.equal(isShapeTooSmall({ color: '', width: 0, points: [[0.5, 0.5]] }, box, 8), false);
+});
+
+test('🔴 INK_PALETTE：八色，**第一个就是原来的默认色**，而且都是十六进制', () => {
+  // ★ 2026-09-30（教师：「还缺少颜色工具」+「八色固定色板」）。
+  // 🔴 「第一个 = `INK_STROKE_COLOR`」与粗细那条同一条纪律：**加选项不改默认观感**
+  //    （否则以前画的与新画的不是一个颜色，而屏幕上只是「今天这笔怎么变色了」）。
+  assert.equal(INK_PALETTE.length, 8);
+  assert.equal(INK_PALETTE[0].value, INK_STROKE_COLOR);
+  assert.equal(INK_DEFAULT_COLOR, INK_STROKE_COLOR);
+  // 每一格都要是**十六进制** —— `server/src/services/ink-render.ts` 的 `safeColor` 只认它，
+  // 别的写法会在教师用卷那张图上被回落成常量色（而屏幕上看着是好的）。
+  for (const swatch of INK_PALETTE) {
+    assert.equal(isInkColor(swatch.value), true, `${swatch.label} 不是十六进制：${swatch.value}`);
+    assert.ok(swatch.label.length > 0, '每一格都要有中文名（读屏与悬停都用它）');
+  }
+  assert.equal(isInkColor('red'), false, '颜色名不算 —— 导出那边会回落');
+  assert.equal(isInkColor('rgb(1,2,3)'), false);
+  assert.equal(isInkColor('#fff'), true, '三位简写也算');
 });

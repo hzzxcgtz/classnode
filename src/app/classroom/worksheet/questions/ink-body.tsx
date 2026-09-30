@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
-  INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_TOOLS, INK_WIDTH_OPTIONS,
+  INK_DEFAULT_COLOR, INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_PALETTE, INK_TOOLS, INK_WIDTH_OPTIONS,
   clearStrokes, defaultInkBox, inkFormatOf, inkHint, undoStroke,
 } from '@/lib/worksheet-ink';
 import type { InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
@@ -131,6 +131,23 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    * 默认档 = `INK_DEFAULT_WIDTH`，而它**就是**改动前的那个常量值 ⇒ 默认手感没变。
    */
   const [width, setWidth] = useState<InkWidth>(INK_DEFAULT_WIDTH);
+  /**
+   * ★ 2026-09-30（教师：「还缺少颜色工具」+「八色固定色板」）：**新元素**用什么颜色。
+   * ⚠️ 与粗细同一条纪律：**只影响新画的**；已经画下去的那些各自带着自己的颜色
+   *（`color` 是每个元素各自的字段）。
+   */
+  const [color, setColor] = useState<string>(INK_DEFAULT_COLOR);
+
+  /**
+   * 点一个色块。🔴 **选中了东西的时候它是「改那个元素的颜色」**（教师选的八色板那一条）——
+   * 专业绘图工具都是这个行为，而少了它，学生想改一个画错的颜色只能删掉重画。
+   */
+  const applyColor = (next: string) => {
+    setColor(next);
+    if (tool !== 'select' || selected === null) return;
+    const strokes = draft.strokes.map((stroke, index) => (index === selected ? { ...stroke, color: next } : stroke));
+    onChange({ kind: 'ink', box, strokes });
+  };
 
   /**
    * ★ 2026-09-30（复审）：**被锁住时把选中清掉**。
@@ -186,6 +203,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         disabled={disabled}
         tool={tool}
         width={width}
+        color={color}
         selected={selected}
         onSelect={setSelected}
         onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes })}
@@ -232,6 +250,31 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
               style={{
                 display: 'block', width: 6 + index * 4, height: 6 + index * 4,
                 borderRadius: '50%', background: 'currentColor', margin: '0 auto',
+              }}
+            />
+          </button>
+        ))}
+      </div>
+      {/* ★ 2026-09-30：**八色板**。⚠️ 颜色值是十六进制 —— 教师用卷导出那边只认它
+          （`ink-render.ts` 的 `safeColor`），别的写法会在那张图上被回落成黑。 */}
+      <div className={styles.inkToolbar} role="group" aria-label="颜色">
+        {INK_PALETTE.map((swatch) => (
+          <button
+            key={swatch.value}
+            type="button"
+            className={styles.inkButton}
+            disabled={disabled}
+            aria-pressed={color === swatch.value}
+            aria-label={`${swatch.label}色`}
+            title={`${swatch.label}色`}
+            onClick={() => applyColor(swatch.value)}
+            style={color === swatch.value ? ACTIVE_STYLE : undefined}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'block', width: 16, height: 16, margin: '0 auto',
+                borderRadius: 4, background: swatch.value, border: '1px solid rgba(15,23,42,0.18)',
               }}
             />
           </button>

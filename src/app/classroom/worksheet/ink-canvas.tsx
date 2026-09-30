@@ -100,6 +100,8 @@ export interface InkCanvasProps {
   tool: InkTool;
   /** ★ 2026-09-30：新画的那一笔用多粗（`ink-body` 的粗细档给的）。 */
   width: number;
+  /** ★ 2026-09-30：新画的那一笔用什么颜色（`ink-body` 的八色板给的）。 */
+  color: string;
   /**
    * ★ 2026-09-30：被选中的图形下标（`null` = 没选中）。
    * 🔴 它**住在 `ink-body`**（不是这里）：删除按钮在那边那条工具栏上，而两处各存一份
@@ -166,7 +168,7 @@ interface LiveStroke {
   shape?: InkShapeKind;
 }
 
-export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width, selected, onSelect }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
@@ -282,8 +284,8 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
     // 进行中的那一笔照**收笔后会用到的同一份样式**画（同一个常量），否则收笔的一瞬间
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
-    if (live && live.kind === 'stroke') drawStroke({ color: INK_STROKE_COLOR, width, points: live.points, shape: live.shape });
-  }, [selected, onSelect, width, disabled]);
+    if (live && live.kind === 'stroke') drawStroke({ color, width, points: live.points, shape: live.shape });
+  }, [selected, onSelect, width, color, disabled]);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
   // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
@@ -454,7 +456,7 @@ export function InkCanvas({ box, strokes, hint, onChange, disabled, tool, width,
       return;
     }
     const stroke: InkStroke = {
-      color: INK_STROKE_COLOR, width, points: live.points,
+      color, width, points: live.points,
       ...(live.shape ? { shape: live.shape } : {}),
     };
     // ⚠️ 这里**不**走 A1 的 `appendStroke`，两个理由：

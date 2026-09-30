@@ -101,6 +101,31 @@ export function isInkShapeTool(tool: string): tool is InkShapeKind {
  *    所以同一档在不同尺寸的画布上看起来一样粗（A1 的 `strokeWidthPx` 负责换算）。
  * ⚠️ 下限那一档不能太细：老 iPad 上 0.4px 的线画不出来（`strokeWidthPx` 里有 1px 的兜底）。
  */
+/**
+ * 画笔与文字的**八色固定色板**（★ 2026-09-30 教师：「还缺少颜色工具」+「八色固定色板」）。
+ *
+ * 🔴 **第一个就是 `INK_STROKE_COLOR`** ⇒ 默认色 = 改动前的那个常量，**加颜色不改默认观感**。
+ * ⚠️ 值必须是**十六进制**：`server/src/services/ink-render.ts` 的 `safeColor` 只认
+ *    `#rgb` / `#rrggbb`，别的写法会被那张图回落成常量色，而**屏幕上看着是好的**。
+ * ⚠️ 八色都要在白底上读得清（「黄」取的是偏深的 `#ca8a04`，纯黄在白纸上几乎看不见）。
+ */
+export const INK_PALETTE = [
+  { value: INK_STROKE_COLOR, label: '黑' },
+  { value: '#6b7280', label: '灰' },
+  { value: '#dc2626', label: '红' },
+  { value: '#ea580c', label: '橙' },
+  { value: '#ca8a04', label: '黄' },
+  { value: '#16a34a', label: '绿' },
+  { value: '#2563eb', label: '蓝' },
+  { value: '#7c3aed', label: '紫' },
+] as const;
+/** 默认色 = 笔迹常量（颜色是**每个元素各自**的字段，所以这只是「新元素用哪个」）。 */
+export const INK_DEFAULT_COLOR = INK_STROKE_COLOR;
+/** 这一串是不是十六进制颜色（与编辑器那一侧 `safeColor` 同一把尺子）。 */
+export function isInkColor(raw: unknown): raw is string {
+  return typeof raw === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw);
+}
+
 export const INK_WIDTH_OPTIONS = [0.009, INK_STROKE_WIDTH, 0.028] as const;
 export type InkWidth = (typeof INK_WIDTH_OPTIONS)[number];
 /** 默认档 = 中间那一档。 */

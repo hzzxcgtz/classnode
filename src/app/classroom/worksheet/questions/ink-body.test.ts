@@ -94,3 +94,16 @@ test('★ 粗细三档：当前档要看得见（aria-pressed），而且只影�
   //    而换一次粗细会进撤销栈 —— 学生按撤销会撤销掉「换粗细」而不是一笔画）。
   assert.ok(!/onChange\(\{[^}]*width[^}]*\}/.test(body), '粗细被写进了作答数据（它只该影响新笔画）');
 });
+
+test('★ 颜色：八色从判据层来；**选中元素时点颜色 = 改那个元素**', () => {
+  // ★ 2026-09-30（教师：「还缺少颜色工具」+ 选了「八色固定色板」那一档）。
+  assert.ok(body.includes('INK_PALETTE.map('), '色板没有遍历判据层的八色');
+  assert.ok(body.includes('aria-label={`${swatch.label}色`}'), '色块没有可读的名字（它只有一块颜色）');
+  assert.match(body, /aria-pressed=\{color === swatch\.value\}/, '当前色没有可读的状态');
+  // 🔴 **选中之后点颜色要改那个元素** —— 少了它，学生想改一个画错的颜色只能删掉重画。
+  assert.match(body, /index === selected \? \{ \.\.\.stroke, color: next \}/,
+    '选中元素时点颜色没有改它');
+  // 🔴 而颜色**不是整幅画的属性**：它是每个元素各自的字段（与粗细同一条纪律）。
+  //    写进 draft 的顶层就成了「换一次颜色进一次撤销栈」，而那不是学生做的动作。
+  assert.ok(!/onChange\(\{[^}]*\bcolor:/.test(body), '颜色被写成了整幅画的属性');
+});

@@ -47,6 +47,8 @@ import {
   isInkNode,
   hitTestStroke,
   isInkShapeKind,
+  moveStroke,
+  resizeStroke,
   INK_SHAPE_KINDS,
   shapeOutline,
   strokeHandles,
@@ -667,4 +669,79 @@ test('🔴 strokeHandles：两点框图形 4 个角；直线/箭头 2 个端点�
     [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9]]);
   // 手写没有把手（它不参与选中）。
   assert.deepEqual(strokeHandles({ color: '', width: 0, points: [[0, 0], [1, 1]] }, box), []);
+});
+
+test('🔴 moveStroke：平移后**按包围盒夹取到 0..1**（不许把图形拖出画布外）', () => {
+  const box = { w: 200, h: 100 };
+  const rect = shapeStroke('rect', [[0.2, 0.2], [0.6, 0.6]]);
+  assert.deepEqual(moveStroke(rect, 0.1, 0.1).points, [[0.3, 0.3], [0.7, 0.7]]);
+  assert.deepEqual(moveStroke(rect, 0, 0).points, [[0.2, 0.2], [0.6, 0.6]], '零位移不该动它');
+  // 🔴 往左上拖过头 ⇒ **整体停在边界上**（形状不变形）。
+  //    ⚠️ 逐点夹取会把矩形压扁成一条线 —— 而屏幕上只是「矩形变形了」。
+  assert.deepEqual(moveStroke(rect, -9, -9).points, [[0, 0], [0.4, 0.4]]);
+  assert.deepEqual(moveStroke(rect, 9, 9).points, [[0.6, 0.6], [1, 1]]);
+  // 只要有一个方向到界，那一维就停住、另一维照走。
+  assert.deepEqual(moveStroke(rect, -9, 0.1).points, [[0, 0.3], [0.4, 0.7]]);
+  void box;
+});
+
+test('🔴 moveStroke：手写笔迹**也能平移**（它不是图形，但同一个函数不该对它失效）', () => {
+  // ⚠️ 这条是**反面**：图形可选中、手写不可选中；而 `moveStroke` 是纯几何，
+  //    它对谁都能算。别在这里加一道「只许图形」的闸 —— 那会让这个函数突然与选中扯上关系。
+  const freehand: InkStroke = { color: '', width: 0, points: [[0.1, 0.1], [0.2, 0.2]] };
+  assert.deepEqual(moveStroke(freehand, 0.05, 0).points, [[0.15, 0.1], [0.25, 0.2]]);
+});
+
+test('🔴 resizeStroke：拖一个角 ⇒ 那个角动、对角不动（外接框重算）', () => {
+  const box = { w: 200, h: 200 };
+  const rect = shapeStroke('rect', [[0.2, 0.2], [0.6, 0.6]]);
+  // 把手 0 = 左上角 [0.2,0.2] ⇒ 拖到 [0.1,0.3]
+  assert.deepEqual(resizeStroke(rect, 0, [0.1, 0.3], box).points, [[0.1, 0.3], [0.6, 0.6]]);
+  // 把手 2 = 右下角 [0.6,0.6] ⇒ 拖到 [0.9,0.95]
+  assert.deepEqual(resizeStroke(rect, 2, [0.9, 0.95], box).points, [[0.2, 0.2], [0.9, 0.95]]);
+  // 🔴 拖过头**穿过对角** ⇒ 只是框翻了个方向，仍然是合法矩形（不许变成负宽）。
+  assert.deepEqual(resizeStroke(rect, 0, [0.9, 0.9], box).points, [[0.6, 0.6], [0.9, 0.9]]);
+  // 把手越界 ⇒ 原样返回（坏输入不许造出一个框外的图形）。
+  assert.deepEqual(resizeStroke(rect, 99, [0.5, 0.5], box).points, rect.points);
+  // 🔴 **拖到画布外 ⇒ 夹回边界**（与 `moveStroke` 的夹取同一条纪律）。
+  //    ⚠️ 少了这一条，学生把角拖到画布外就能造出一个「一半在框外」的图形 ——
+  //    教师端按外接框渲染，那一半会被裁掉，而学生屏幕上看着是好的。
+  //    （这条是变异检验补出来的：我先前的用例全都落在 0..1 之内，夹取从来没被触发过。）
+  // ⚠️ 拖右下角到 (1.5, -0.2) ⇒ 夹成 (1, 0)，而另一角仍在 (0.2,0.2)
+  //    ⇒ 包围盒是 [[0.2, 0], [1, 0.2]]（y 的上界由 0.6 变成 0.2，不是 0.6）。
+  assert.deepEqual(resizeStroke(rect, 2, [1.5, -0.2], box).points, [[0.2, 0], [1, 0.2]]);
+  assert.deepEqual(resizeStroke(shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]), 1, [2, 2], box).points, [[0.1, 0.1], [1, 1]]);
+  assert.deepEqual(resizeStroke(shapeStroke('angle', [[0.5, 0.5], [0.9, 0.5], [0.5, 0.9]]), 0, [-1, 3], box).points,
+    [[0, 1], [0.9, 0.5], [0.5, 0.9]]);
+});
+
+test('🔴 resizeStroke：直线拖的是**端点**、角拖的是**顶点**（不是外接框）', () => {
+  const box = { w: 200, h: 200 };
+  const line = shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]);
+  assert.deepEqual(resizeStroke(line, 0, [0.2, 0.3], box).points, [[0.2, 0.3], [0.9, 0.9]]);
+  assert.deepEqual(resizeStroke(line, 1, [0.2, 0.3], box).points, [[0.1, 0.1], [0.2, 0.3]]);
+  const angle = shapeStroke('angle', [[0.5, 0.5], [0.9, 0.5], [0.5, 0.9]]);
+  assert.deepEqual(resizeStroke(angle, 0, [0.4, 0.4], box).points, [[0.4, 0.4], [0.9, 0.5], [0.5, 0.9]]);
+  assert.deepEqual(resizeStroke(angle, 2, [0.1, 0.3], box).points, [[0.5, 0.5], [0.9, 0.5], [0.1, 0.3]]);
+  // 手写没有把手 ⇒ 原样返回（它不该被 resize）。
+  const freehand: InkStroke = { color: '', width: 0, points: [[0, 0], [1, 1]] };
+  assert.deepEqual(resizeStroke(freehand, 0, [0.5, 0.5], box).points, freehand.points);
+});
+
+test('🔴 readInkValue：认 shape；**认不出的形状整笔丢掉**（不是静默当手写）', () => {
+  // 🔴 「静默当手写」是最坏的一种：学生画了一个矩形、教师看到一条奇怪的手写线，
+  //    而两边都不报错。丢掉整笔至少与「坏点丢整笔」是同一条纪律 —— 一致的代价。
+  const value = {
+    format: 'ink/v1', canvas: { w: 200, h: 100 },
+    strokes: [
+      { color: '#000', width: 0.01, points: [[0, 0], [1, 1]] },                    // 老值：手写
+      { color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 'rect' },     // 图形
+      { color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 'hexagon' },  // 坏形状
+      { color: '#000', width: 0.01, points: [[0, 0], [1, 1]], shape: 42 },         // 坏形状（不是字符串）
+    ],
+  };
+  const read = readInkValue(value);
+  assert.equal(read?.strokes.length, 2, '认不出的形状那两笔都要被丢掉');
+  assert.equal(read?.strokes[0].shape, undefined, '老值仍然没有 shape');
+  assert.equal(read?.strokes[1].shape, 'rect');
 });

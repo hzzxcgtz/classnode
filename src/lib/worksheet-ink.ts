@@ -503,11 +503,19 @@ function readStroke(raw: unknown): InkStroke | null {
   if (points.length === 0) return null;
   const color = row.color;
   const width = row.width;
-  return {
+  const shape = row.shape;
+  // ★ 2026-09-30：`shape` **缺省 = 手写**（库里所有老值都是这样）⇒ 老数据一个字节不用动。
+  // 🔴 但**写了却不认识**（拼错、或者是别的版本写的）⇒ **整笔丢掉**，不是静默当手写。
+  //    静默当手写是最坏的一种：学生画了个矩形、教师看到一条怪手写线，两边都不报错。
+  //    丢掉整笔与「坏点丢整笔」（上面那条）是同一条纪律 —— 一致的代价。
+  if (shape !== undefined && !isInkShapeKind(shape)) return null;
+  const stroke: InkStroke = {
     color: typeof color === 'string' && color ? color : INK_STROKE_COLOR,
     width: typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : INK_STROKE_WIDTH,
     points,
   };
+  if (isInkShapeKind(shape)) stroke.shape = shape;
+  return stroke;
 }
 
 /**
@@ -746,4 +754,104 @@ export function shapeOutline(
     parts.push({ closed: true, points: [[x0 + w / 4, y0], [x1 - w / 4, y0], [x1, y1], [x0, y1]] });
   }
   return out(parts);
+}
+
+/* ══ ★ 2026-09-30：编辑一个形状（移动 / 改大小）═══════════════════════════
+   🔴 这两个都是**纯几何**：它们对**手写也能算**（`moveStroke` 尤其）。别在这里加一道
+      「只许图形」的闸 —— 那会让这两个函数突然与「选中」扯上关系，而选中是交互层的事
+      （手写不能被选中，判据在 `hitTestStroke` / `shapeOutline`）。
+*/
+
+/** 把 `delta` 夹到 `[low, high]`（`low > high` 时返回 `low`）。 */
+function clampDelta(delta: number, low: number, high: number): number {
+  if (!Number.isFinite(delta)) return 0;
+  if (low > high) return low;
+  if (delta < low) return low;
+  if (delta > high) return high;
+  return delta;
+}
+
+/**
+ * 整体平移一笔。**夹取按「包围盒」**，不是逐点。
+ *
+ * 🔴 逐点夹取会把形状**压扁**：矩形拖到左边界时，左边两个点停住、右边两个继续走
+ *    ⇒ 它越来越窄，最后成一条线。而屏幕上只是「矩形变形了」，没有任何报错。
+ *    按包围盒夹 ⇒ 只要有一个方向到头，整个形状就停住，形状永远不变形。
+ */
+export function moveStroke(stroke: InkStroke, dx: number, dy: number): InkStroke {
+  const points = stroke.points;
+  if (!Array.isArray(points) || points.length === 0) return stroke;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const point of points) {
+    if (point[0] < minX) minX = point[0];
+    if (point[0] > maxX) maxX = point[0];
+    if (point[1] < minY) minY = point[1];
+    if (point[1] > maxY) maxY = point[1];
+  }
+  const moveX = clampDelta(dx, -minX, 1 - maxX);
+  const moveY = clampDelta(dy, -minY, 1 - maxY);
+  if (moveX === 0 && moveY === 0) return stroke;
+  return {
+    ...stroke,
+    points: points.map((point): InkPoint => [round6(point[0] + moveX), round6(point[1] + moveY)]),
+  };
+}
+
+/**
+ * 把一个把手拖到新位置（★ 「选择」档拖控制点）。
+ *
+ * - 外接框图形：把手 0/1/2/3 = 左上 / 右上 / 右下 / 左下，拖完**按包围盒重算两个对角**
+ *   ⇒ 拖过头穿过对角也只是框翻了个方向，**不会出现负宽**。
+ * - `line` / `arrow`：把手 0/1 = 两个端点。
+ * - `angle`：把手 0/1/2 = 三个顶点。
+ * - 手写、越界的把手序号、点数不足 ⇒ **原样返回**（坏输入不许造出一个框外的图形）。
+ *
+ * ⚠️ `box` 现在没用到，但**签名里留着**：形状的几何在像素空间里算（见 `shapeOutline`），
+ *    而「拖一个角」将来若要支持等比缩放就需要它。留着的代价是一个参数，改签名的代价是
+ *    四个调用点 + 服务端镜像。
+ */
+export function resizeStroke(
+  stroke: InkStroke,
+  handleIndex: number,
+  point: InkPoint,
+  box: InkCanvas,
+): InkStroke {
+  void box;
+  if (!isInkShapeKind(stroke.shape)) return stroke;
+  if (!Number.isInteger(handleIndex) || handleIndex < 0) return stroke;
+  if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return stroke;
+  const points = stroke.points;
+  const nx = round6(clamp01(point[0]));
+  const ny = round6(clamp01(point[1]));
+
+  if (stroke.shape === 'angle') {
+    if (points.length < 3 || handleIndex > 2) return stroke;
+    return { ...stroke, points: points.map((p, i) => (i === handleIndex ? [nx, ny] as InkPoint : p)) };
+  }
+  if (stroke.shape === 'line' || stroke.shape === 'arrow') {
+    if (points.length < 2 || handleIndex > 1) return stroke;
+    return { ...stroke, points: points.map((p, i) => (i === handleIndex ? [nx, ny] as InkPoint : p)) };
+  }
+  if (points.length < 2 || handleIndex > 3) return stroke;
+  const x0 = Math.min(points[0][0], points[1][0]);
+  const x1 = Math.max(points[0][0], points[1][0]);
+  const y0 = Math.min(points[0][1], points[1][1]);
+  const y1 = Math.max(points[0][1], points[1][1]);
+  // 🔴 **拖哪个角就改它那两条边，对角不动。**
+  //    ⚠️ 第一版是「把那个角挪一下、再对四个角重算包围盒」—— 那是**错的**：
+  //    拖左上角往下时，右上角还在上面 ⇒ 重算出来的顶边**一动不动**，
+  //    而教师/学生看到的只是「拖了没反应」。`worksheet-ink.test.ts` 那条用例抓出来的。
+  let nx0 = x0, nx1 = x1, ny0 = y0, ny1 = y1;
+  if (handleIndex === 0) { nx0 = nx; ny0 = ny; }
+  else if (handleIndex === 1) { nx1 = nx; ny0 = ny; }
+  else if (handleIndex === 2) { nx1 = nx; ny1 = ny; }
+  else { nx0 = nx; ny1 = ny; }
+  // 拖过头穿过对角 ⇒ 只是框翻了个方向（这里收回 [min, max]），**不会出现负宽**。
+  return {
+    ...stroke,
+    points: [
+      [Math.min(nx0, nx1), Math.min(ny0, ny1)],
+      [Math.max(nx0, nx1), Math.max(ny0, ny1)],
+    ],
+  };
 }

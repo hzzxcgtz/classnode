@@ -6052,6 +6052,111 @@ tr:hover td {
   letter-spacing: 0;
 }
 
+/* ══ ★ 2026-09-30：题面里的数学公式 ══════════════════════════════════════════
+   三部分：工具栏那个 Σ、编辑体下方的常显预览、插入弹窗。
+   ⚠️ 类名一律 `worksheet-editor-` 前缀：本页有一条网（`editor-classes.test.ts`）守
+      「用到的类必须在 globals.css 里有定义」—— 换个前缀就等于把这族类挪出网外，
+      而症状是**屏幕上只是「长得不对」，构建与 tsc 全都不报错**（那条网的文件头
+      记着教师 2026-09-25 报的那一次：四个类名一个都没定义）。 */
+
+/* 🔴 公式**本体**（`MathSpan` 渲染出来的那层壳）。这是**全局**类 —— 学生端、教师端、
+   编辑页三处都用它，所以它**不挂** `worksheet-editor-` 前缀（那一族只管编辑页）。
+   ⚠️ `inline-block` + `baseline` 是**保守的起点**：公式与填空 `<input>` 同行时的对齐
+      是本机看不见的那一类，真机走查要调的就是这一条。 */
+.worksheet-math {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+/* 工具栏上那个 Σ（与 `{填空域}` 那个字形同一族的写法）。 */
+.worksheet-editor-math-glyph {
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 编辑体**下方**那一行常显预览（教师裁定 ①：打完当场看到学生将会看到的样子）。
+   ⚠️ 虚线框是**有意**的：它表示「这一块不是输入区」，免得教师去点它。 */
+.worksheet-editor-math-preview {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px dashed #d8dee6;
+  border-radius: 8px;
+  font-size: 0.813rem;
+  line-height: 1.6;
+  color: #334155;
+}
+/* ⚠️ 题干可能很长，而预览是**一眼**用的 ⇒ 不许被公式撑破版面。 */
+.worksheet-editor-math-preview > :last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.worksheet-editor-math-preview-label {
+  flex: none;
+  font-size: 0.688rem;
+  color: #94a3b8;
+}
+
+/* ── 插入公式的小弹窗 ────────────────────────────────────────────────────── */
+.worksheet-editor-math-dialog {
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+.worksheet-editor-math-dialog-input {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  /* 等宽字体：LaTeX 源码里 `\` 与 `{}` 很多，比例字体下很难数清。 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.813rem;
+  resize: vertical;
+}
+.worksheet-editor-math-dialog-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  min-height: 40px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.worksheet-editor-math-dialog-hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+.worksheet-editor-math-dialog-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.worksheet-editor-math-dialog-templates button {
+  min-width: 36px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.worksheet-editor-math-dialog-templates button:hover {
+  background: #f1f5f9;
+}
+.worksheet-editor-math-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 /* ★ 2026-09-26（spec 第 4 步）：工具栏下面那一句「先选中文字」的说明。
    裁定 ②（没选中 ⇒ 什么都不做）的代价是这些按钮**只有一种含义**，
    所以必须有一句话把它说出来 —— 否则教师点了没反应只会以为坏了。 */

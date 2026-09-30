@@ -29,8 +29,11 @@ import {
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
 import { TABLE_MARK_TEXT, tableMarkIndex } from '@/lib/worksheet-table';
+// ★ 2026-09-30：常显预览用的就是题干那**同一个**渲染器（与学生端、与折叠预览同一个组件）。
+import { PromptText } from '@/lib/worksheet-prompt-text';
 import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange } from './prompt-rich-text';
+import { MathInsertDialog } from './math-insert-dialog';
 
 /**
  * 题干的**所见即所得**编辑器（★ 2026-09-26，教师裁定 ①）。
@@ -193,6 +196,13 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
    * 让人在选的时候就能看到实际颜色」）。要让它看得见，只能自己画。
    */
   const [colorOpen, setColorOpen] = useState(false);
+  /**
+   * ★ 2026-09-30：「插入公式」的小弹窗开着没有。
+   * 🔴 它**必须与 `pendingRangeRef` 配合**：弹窗一开，焦点就从 contenteditable 走了 ——
+   *    插入时靠 `selectedRange(el) || pendingRangeRef.current` 找回落点，与颜色下拉
+   *    那条路**完全一样**（`pendingRangeRef` 的注释记着为什么 `preventDefault` 顶替不了它）。
+   */
+  const [mathOpen, setMathOpen] = useState(false);
   const colorBoxRef = useRef<HTMLDivElement | null>(null);
 
   const runs = readPromptRunsFor(node);
@@ -553,6 +563,37 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     refreshToolbar();
   };
 
+  /**
+   * ★ 2026-09-30（教师裁定 ①）：把弹窗里写好的 LaTeX 插到**光标/选区**处，包成 `$…$`。
+   *
+   * 🔴 走 `insertPromptText`（**与粘贴同一条路**）：它负责把已有的区间跟着文字搬、
+   *    把光标算准。自己拼字符串会让 `promptRuns` 的区间与文本分叉 —— 本仓最防的那类缺陷。
+   * ⚠️ 与 `insertTableMarkAtCaret` 的差别：公式**是一段普通文字** ⇒ 插完要重新识别填空域
+   *    （`recognizeBlanks`）；万一 `$…$` 里正好凑出 `{填空域}` 那五个字，也照样认得出。
+   *    表格标记没有这个顾虑（它靠 `tableMarkIndex` 就地认）。
+   * ⚠️ `setMathOpen(false)` 必须在**早退之前**：不然「什么都没变」（选区是空的、
+   *    文本没动）那条路上弹窗会一直挂着。
+   */
+  const insertMathAtCaret = (tex: string) => {
+    const el = editableRef.current;
+    if (!el) return;
+    const text = node.prompt;
+    const range = selectedRange(el) || pendingRangeRef.current;
+    const from = range ? range.from : (caretOffset(el) ?? text.length);
+    const to = range ? range.to : from;
+    const mark = `$${tex}$`;
+    const inserted = insertPromptText(runsRef.current, text, from, to, mark);
+    setMathOpen(false);
+    if (inserted.text === text) return;
+    const nextRuns = recognizeBlanks(inserted.runs, inserted.text, FILL_BLANK_TEXT, () => newBlankId());
+    onPromptChange(inserted.text, promptDataPatch(runsRef.current, nextRuns));
+    renderRunsInto(el, inserted.text, nextRuns);
+    const after = from + mark.length;
+    el.focus();
+    placeSelection(el, after, after);
+    refreshToolbar();
+  };
+
   const insertTableMarkAtCaret = () => {
     const el = editableRef.current;
     if (!el) return;
@@ -721,6 +762,18 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
             粘贴题目
           </button>
           )}
+          {/* ★ 2026-09-30（教师裁定 ①）：插入数学公式。
+              ⚠️ **所有题型都适用**（不像「填空域」只对填空类），所以它不挂在任何题型条件下。
+              ⚠️ 用 `onMouseDown` + `preventDefault` 与旁边那几个按钮同一条理由：
+                  点按钮会把输入框的焦点与选区一起拿走。 */}
+          <button
+            type="button"
+            title="在光标处插入一个数学公式"
+            aria-label="插入公式"
+            onMouseDown={(event) => { event.preventDefault(); setMathOpen(true); }}
+          >
+            <span className="worksheet-editor-math-glyph" aria-hidden="true">Σ</span>
+          </button>
           {/* ★ 2026-09-28（教师）：「跟填空域一样增加一个表格域，点击以后插入」。
               ⚠️ 一份题干只允许一处标记 ⇒ 已经有标记时**禁用**（title 告诉教师去哪儿找）
                  —— 两个标记是坏数据，服务端也会拒。 */}
@@ -796,6 +849,21 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           }}
         />
       </div>
+      {/* ★ 2026-09-30（教师裁定 ①）：编辑体**下方常显**一行渲染预览。
+          🔴 教师的公式在源码里是 `$x^2$`（编辑框里就长这样，光标能正常进出），
+             这一行让他**当场**看到学生将会看到的样子 —— 不必折叠题目卡再回来。
+          ⚠️ 它**只渲染、不接受编辑**：编辑永远在上面那个 contenteditable 里。
+          ⚠️ 与折叠预览（`question-card.tsx`）用的是**同一个组件**，不是另写一份 ——
+             两处各画一次就是本仓最防的那种分叉（那个文件的文件头为同一件事写过一整段）。 */}
+      <div className="worksheet-editor-math-preview">
+        <span className="worksheet-editor-math-preview-label">预览</span>
+        <PromptText
+          text={node.prompt}
+          runs={readPromptRunsFor(node)}
+          placeholder="（题干还没写）"
+          table={node.data.table}
+        />
+      </div>
       {/* ⚠️ 没选中时给一句为什么按不动（裁定 ② 的代价：这些按钮没有第二种含义）。
           放在**框外面**：它夹在工具条与正文中间的话，那个框就不像一个整体了。 */}
       <p className="worksheet-editor-format-hint">
@@ -808,6 +876,10 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
         </div>
       )}
       {uploadError && <p className="worksheet-editor-upload-error" role="alert">{uploadError}</p>}
+      {/* ★ 2026-09-30：公式插入弹窗（开着才渲染）。 */}
+      {mathOpen && (
+        <MathInsertDialog onInsert={insertMathAtCaret} onCancel={() => setMathOpen(false)} />
+      )}
     </div>
   );
 }

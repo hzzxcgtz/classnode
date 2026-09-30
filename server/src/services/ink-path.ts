@@ -109,6 +109,99 @@ export function isInkShapeTool(tool: string): tool is InkShapeKind {
  *    `#rgb` / `#rrggbb`，别的写法会被那张图回落成常量色，而**屏幕上看着是好的**。
  * ⚠️ 八色都要在白底上读得清（「黄」取的是偏深的 `#ca8a04`，纯黄在白纸上几乎看不见）。
  */
+/**
+ * 画布上的一段**文字**（★ 2026-09-30 第二轮，教师：「还缺少文本工具」）。
+ *
+ * 🔴 它是**第二种元素**（在此之前 `InkValue` 只有笔画）⇒ 那份「九处各自读/画同一份数据」的
+ *    爆炸半径**整份再来一遍**（规格第二轮那一节逐条列了）。存储上它走**可选数组**
+ *    `texts` ⇒ 老数据零改动、零迁移（与 `stroke.shape` 同一招）。
+ *
+ * 单位规则**与笔迹逐字相同**（别另立一条）：
+ *   · `at` 归一化到 **0..1**（基准 `canvas.w × canvas.h`）；
+ *   · `size` 归一化到 **`min(canvas.w, canvas.h)`** —— 与 `InkStroke.width` 同一个基准。
+ * ⚠️ 两条规则的单位不同而类型都是 `number`，写错不会有任何报错，只会让字号随屏幕变化。
+ */
+export interface InkText {
+  text: string;
+  /** 文本框的锚点：**左上角**（归一化）。 */
+  at: InkPoint;
+  color: string;
+  /** 字号（归一化到画布短边）。 */
+  size: number;
+}
+
+/**
+ * 字号三档 —— **与笔的粗细三档一一对应**（教师：「字号跟着粗细档」）。
+ * 🔴 一一对应是**产品决定**：工具栏上因此只需要一组控件（「细/中/粗」同时读作「小/中/大」），
+ *    而那正是第二轮「紧凑」那一条要的。
+ */
+export const INK_TEXT_SIZES = [0.045, 0.07, 0.105] as const;
+export type InkTextSize = (typeof INK_TEXT_SIZES)[number];
+export const INK_DEFAULT_TEXT_SIZE: InkTextSize = INK_TEXT_SIZES[1];
+
+/** 这一档是不是三档之一。 */
+export function isInkTextSize(raw: unknown): raw is InkTextSize {
+  return typeof raw === 'number' && (INK_TEXT_SIZES as readonly number[]).includes(raw);
+}
+
+/**
+ * 一段文字的**估算像素宽度**（不含字号）。
+ *
+ * 🔴 为什么是**估算**而不是量出来：判据层**不许碰 DOM**（零 import、`node --test` 直接跑），
+ *    而量文字要 `measureText`。⇒ 按字符宽度估：CJK / 全角 ≈ 1 em，其余 ≈ 0.55 em。
+ * ⚠️ 代价如实记：**命中框是近似的**（渲染出来的是真字，二者会有几个像素的出入）。
+ *    但两个渲染器与命中测试**用的是同一个估算** ⇒ 三者一致，不会出现「看得见点不中」
+ *    这种最糟的情况（学生在别处点一下反而选中了它）。
+ */
+export function estimateTextWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    // CJK 统一表意文字 / 全角标点 / 假名 / 谚文 ⇒ 全宽；其余按 0.55 估。
+    const wide = (code >= 0x1100 && code <= 0x115f) || (code >= 0x2e80 && code <= 0xa4cf)
+      || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff)
+      || (code >= 0xfe30 && code <= 0xfe6f) || (code >= 0xff00 && code <= 0xff60)
+      || (code >= 0xffe0 && code <= 0xffe6);
+    width += wide ? 1 : 0.55;
+  }
+  return width;
+}
+
+/**
+ * 一段文字在 `box` 里的**像素外接框** `[x, y, w, h]`（左上角 + 宽高）。
+ * 三个消费者共用它：命中测试、学生画布、教师端 SVG。
+ */
+export function textBoxOf(text: InkText, box: InkCanvas): [number, number, number, number] {
+  const sizePx = text.size * Math.min(box.w, box.h);
+  const x = text.at[0] * box.w;
+  const y = text.at[1] * box.h;
+  // ⚠️ 行高 1.3：与渲染那边（canvas 的 `textBaseline` / SVG 的 `dominant-baseline`）对齐的近似值。
+  return [x, y, estimateTextWidth(text.text) * sizePx, sizePx * 1.3];
+}
+
+/** 点得中这段文字吗（在它的估算框里，含宽容度）。⚠️ 与 `hitTestStroke` 同一条口径：宽容度是**像素**。 */
+export function hitTestText(point: InkPoint, text: InkText, box: InkCanvas, tolPx: number): boolean {
+  const [x, y, w, h] = textBoxOf(text, box);
+  const [px, py] = toPixel(point, box);
+  const tol = Number.isFinite(tolPx) && tolPx > 0 ? tolPx : 0;
+  return px >= x - tol && px <= x + w + tol && py >= y - tol && py <= y + h + tol;
+}
+
+/** 平移一段文字。**按估算框夹取到 0..1**（与 `moveStroke` 同一条纪律：逐点夹会把它挤扁）。 */
+export function moveText(text: InkText, dx: number, dy: number): InkText {
+  const [x, y, w, h] = textBoxOf(text, { w: 1, h: 1 });
+  const moveX = clampDelta(dx, -x, 1 - x - w);
+  const moveY = clampDelta(dy, -y, 1 - y - h);
+  if (moveX === 0 && moveY === 0) return text;
+  return { ...text, at: [round6(text.at[0] + moveX), round6(text.at[1] + moveY)] };
+}
+
+/** 这一档粗细对应哪一档字号（教师：「字号跟着粗细档」）。越界的档取中间。 */
+export function textSizeForWidth(width: number): InkTextSize {
+  const index = (INK_WIDTH_OPTIONS as readonly number[]).indexOf(width);
+  return INK_TEXT_SIZES[index < 0 ? 1 : index];
+}
+
 export const INK_PALETTE = [
   { value: INK_STROKE_COLOR, label: '黑' },
   { value: '#6b7280', label: '灰' },
@@ -153,7 +246,7 @@ export interface InkStroke {
 export interface InkCanvas { w: number; h: number }
 
 /** 一份笔迹作答值：落在 `WorksheetAnswer.value` 那个 Json 列里（Global Constraint 18）。 */
-export interface InkValue { format: InkFormat; canvas: InkCanvas; strokes: InkStroke[] }
+export interface InkValue { format: InkFormat; canvas: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选 ⇒ 老数据零改动）。 */ texts?: InkText[] }
 
 /** 这个 `format` 串是不是笔迹（`ink/v1` / `drawing/v1`）。服务端 B1 有一份同名的对应实现。 */
 export function isInkFormat(raw: unknown): raw is InkFormat {
@@ -478,7 +571,37 @@ export function readInkValue(raw: unknown): InkValue | null {
     const stroke = readStroke(item);
     if (stroke) strokes.push(stroke);
   });
-  return { format: row.format, canvas: readCanvas(row.canvas), strokes };
+  // ★ 2026-09-30 第二轮：文字。⚠️ **可选** —— 老值没有 `texts`，读出来也不带这个键
+  //    （`undefined` 而不是 `[]`：那让「老值原样返回」这件事在 `deepEqual` 上也成立）。
+  const texts: InkText[] = [];
+  if (Array.isArray(row.texts)) {
+    row.texts.forEach((item) => {
+      const text = readText(item);
+      if (text) texts.push(text);
+    });
+  }
+  const value: InkValue = { format: row.format, canvas: readCanvas(row.canvas), strokes };
+  if (texts.length > 0) value.texts = texts;
+  return value;
+}
+
+/** 读一段文字（★ 第二轮）。坏形状**整段丢掉** —— 与「坏点丢整笔」同一条纪律。 */
+function readText(raw: unknown): InkText | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  if (typeof row.text !== 'string' || row.text === '') return null;
+  const at = readPoint(row.at);
+  if (!at) return null;
+  const color = row.color;
+  const size = row.size;
+  // ⚠️ `size` 认不出就**回落默认档**（与 `color` / `width` 同一条：样式坏掉不丢几何）；
+  //    但 `at` 坏掉就**没有位置**，那段文字只能整段丢掉。
+  return {
+    text: row.text,
+    at,
+    color: typeof color === 'string' && isInkColor(color) ? color : INK_STROKE_COLOR,
+    size: isInkTextSize(size) ? size : INK_DEFAULT_TEXT_SIZE,
+  };
 }
 
 /* ══ ★ 2026-09-30：基本图形的几何 ═══════════════════════════════════════════

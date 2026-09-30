@@ -47,9 +47,13 @@ import {
   isInkNode,
   hitTestStroke,
   INK_DEFAULT_COLOR,
+  INK_DEFAULT_TEXT_SIZE,
   INK_DEFAULT_TOOL,
   INK_DEFAULT_WIDTH,
   INK_PALETTE,
+  INK_TEXT_SIZES,
+  textBoxOf,
+  textSizeForWidth,
   INK_TOOLS,
   INK_WIDTH_OPTIONS,
   isInkColor,
@@ -59,7 +63,10 @@ import {
   moveStroke,
   resizeStroke,
   INK_SHAPE_KINDS,
+  estimateTextWidth,
+  hitTestText,
   isShapeTooSmall,
+  moveText,
   pickInkHandle,
   pickInkStroke,
   shapeOutline,
@@ -72,7 +79,7 @@ import {
   undoStroke,
   downsampleInkValue,
 } from './worksheet-ink.ts';
-import type { InkCanvas, InkPoint, InkStroke, InkValue } from './worksheet-ink.ts';
+import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
 
@@ -885,4 +892,64 @@ test('🔴 INK_PALETTE：八色，**第一个就是原来的默认色**，而且
   assert.equal(isInkColor('red'), false, '颜色名不算 —— 导出那边会回落');
   assert.equal(isInkColor('rgb(1,2,3)'), false);
   assert.equal(isInkColor('#fff'), true, '三位简写也算');
+});
+
+/* ══ ★ 2026-09-30 第二轮：文本工具 ═══════════════════════════════════════ */
+
+test('🔴 文字的单位规则与笔迹**逐字相同**（写错不会报错，只会让字号随屏幕变化）', () => {
+  const box = { w: 200, h: 100 };
+  const text: InkText = { text: 'AB', at: [0.25, 0.5], color: INK_STROKE_COLOR, size: 0.07 };
+  const [x, y, w, h] = textBoxOf(text, box);
+  // `at` 归一化到 0..1（基准是画布宽高）
+  assert.equal(x, 50);
+  assert.equal(y, 50);
+  // `size` 归一化到 **min(w,h)** —— 200×100 的框里短边是 100 ⇒ 字号 7px
+  assert.ok(Math.abs(h - 0.07 * 100 * 1.3) < 1e-6, `行高应当按短边算，实际 ${h}`);
+  // 宽度按字符估：两个拉丁字符 ≈ 2 × 0.55 em
+  assert.ok(Math.abs(w - 2 * 0.55 * 0.07 * 100) < 1e-6, `宽度估错了：${w}`);
+  // 🔴 换一个**宽高比不同**的框：字号必须跟着**短边**变，不跟着宽。
+  const [, , , h2] = textBoxOf(text, { w: 400, h: 100 });
+  assert.equal(h2, h, '短边一样时行高必须一样（跟着 min(w,h)，不是 w）');
+  const [, , , h3] = textBoxOf(text, { w: 200, h: 300 });
+  assert.ok(h3 > h, '短边变大 ⇒ 字号变大');
+  // CJK 按 1 em 估（而不是拉丁的 0.55）—— **逐字**比，别拿两个字的和去比（第一版就是这么写错的）。
+  assert.ok(estimateTextWidth('中') > estimateTextWidth('a'), 'CJK 要按全宽估');
+  assert.ok(Math.abs(estimateTextWidth('中文') - 2) < 1e-6, '两个汉字 ≈ 2 em');
+});
+
+test('🔴 readInkValue：认 texts；**老值（没有 texts）读出来仍然没有这个键**', () => {
+  const base = { format: 'ink/v1', canvas: { w: 100, h: 100 }, strokes: [{ color: '#000', width: 0.01, points: [[0, 0], [1, 1]] }] };
+  // 老值：不带 `texts` ⇒ 读出来也**不带**（`undefined` 而不是 `[]`）——
+  // 那让「老值原样返回」在 deepEqual 上也成立，而不是多出一个空数组。
+  const old = readInkValue(base);
+  assert.equal(old?.texts, undefined, '老值不该凭空多出一个 texts');
+  // 新值：带上文字
+  const withText = readInkValue({ ...base, texts: [{ text: '你好', at: [0.1, 0.2], color: '#dc2626', size: 0.07 }] });
+  assert.equal(withText?.texts?.length, 1);
+  assert.equal(withText?.texts?.[0].text, '你好');
+  // 坏形状**整段丢掉**（与「坏点丢整笔」同一条纪律）：
+  //   · 没有 text / 没有 at ⇒ 丢；· color / size 坏 ⇒ **回落**（样式坏不丢几何）。
+  const mixed = readInkValue({ ...base, texts: [
+    { at: [0.1, 0.2] },                                        // 没有 text ⇒ 丢
+    { text: '甲', at: ['x', 'y'] },                            // at 坏 ⇒ 丢
+    { text: '乙', at: [0.3, 0.4], color: 'red', size: 99 },    // 样式坏 ⇒ 收下并回落
+  ] });
+  assert.equal(mixed?.texts?.length, 1, '坏的两段都要丢掉');
+  assert.equal(mixed?.texts?.[0].color, INK_STROKE_COLOR, '坏颜色要回落成常量色');
+  assert.equal(mixed?.texts?.[0].size, INK_DEFAULT_TEXT_SIZE, '坏字号要回落成默认档');
+});
+
+test('🔴 hitTestText / moveText / textSizeForWidth', () => {
+  const box = { w: 200, h: 200 };
+  const text: InkText = { text: 'AB', at: [0.1, 0.1], color: INK_STROKE_COLOR, size: 0.07 };
+  assert.equal(hitTestText([0.12, 0.12], text, box, 8), true, '框内要点得中');
+  assert.equal(hitTestText([0.9, 0.9], text, box, 8), false, '离得远不中');
+  // 平移：夹到 0..1（按估算框，不是逐点）
+  assert.deepEqual(moveText(text, 0.1, 0.1).at, [0.2, 0.2]);
+  assert.deepEqual(moveText(text, 0, 0).at, [0.1, 0.1], '零位移不该动它');
+  assert.ok(moveText(text, -9, -9).at[0] === 0 && moveText(text, -9, -9).at[1] === 0, '往左上拖过头要停在边界');
+  // 字号跟着粗细档（教师：「字号跟着粗细档」）
+  assert.equal(textSizeForWidth(INK_WIDTH_OPTIONS[0]), INK_TEXT_SIZES[0]);
+  assert.equal(textSizeForWidth(INK_WIDTH_OPTIONS[2]), INK_TEXT_SIZES[2]);
+  assert.equal(textSizeForWidth(0.999), INK_DEFAULT_TEXT_SIZE, '认不出的粗细档取中间');
 });

@@ -187,3 +187,30 @@ test('三种占位文案分得开：空白 / 形状认不出 / 文字作答', ()
   assert.ok(svg.includes('形状认不出'), 'unknown ⇒ 形状认不出');
   assert.ok(svg.includes('文字作答'), 'text ⇒ 文字作答（见文档）');
 });
+
+test('🔴 学生画布上的**文字**要按 XML 转义，不能把它整个吃掉（中文尤其）', () => {
+  // 学生用文字工具写的是中文（「跳绳 12人」）。
+  // ⊘ 原先这里用的是**全局 `escape()`**（那个废弃的 `%uXXXX` 转义），于是中文到了 SVG 里
+  //   变成 `%u8DF3%u7EF3` —— 图是真的、构建不报错、格子在、字也在，
+  //   只是一个中文都读不出来，而**这张图正是发给模型的那份东西**。
+  // ⚠️ 这一条盯的是「文字」那一支，不是占位文案那一支（后者本来就不走转义）。
+  const entries: AnalyzeEntry[] = [{
+    studentId: 'p001',
+    kind: 'ink',
+    ink: {
+      format: 'drawing/v1',
+      canvas: { w: 320, h: 240 },
+      strokes: [{ points: [[0.1, 0.1], [0.9, 0.9]], width: 0.01, color: '#111111' }],
+      texts: [
+        { text: '跳绳 12人', at: [0.2, 0.2], color: '#111111', size: 0.045 },
+        { text: '<b>&"', at: [0.2, 0.6], color: '#111111', size: 0.045 },
+      ],
+    },
+  }];
+  const layouts = layoutSheets(entries, labels(['p001']), DEFAULT_ANALYSIS_KNOBS);
+  const svg = buildSheetSvg(entries, layouts[0], true);
+  assert.ok(svg.includes('跳绳 12人'), '画布上的中文必须原样进 SVG');
+  assert.ok(!svg.includes('%u'), '不许出现 %uXXXX —— 那是全局 escape() 的产物，模型读到的是乱码');
+  assert.ok(!svg.includes('<b>'), '`<` 仍然必须转义（否则标签闭合、整张图解析失败）');
+  assert.ok(svg.includes('&lt;b&gt;&amp;&quot;'), 'XML 元字符要按 XML 的方式转义');
+});

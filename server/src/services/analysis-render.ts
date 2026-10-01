@@ -1,4 +1,10 @@
 import { INK_STROKE_COLOR, strokePath, strokeWidthPx, textBoxOf, type InkValue } from './ink-path.js';
+// ★ 2026-10-01：转义**借用** `ink-render.ts` 那一份，不在这里再写一个。
+// 🔴 这里原先写的是**全局 `escape()`** —— 它把非 ASCII 转成 `%uXXXX`，于是学生画布上的
+//    中文（「跳绳」）到了 SVG 里变成 `%u8DF3%u7EF3`：图是真的、格子在、字也在，
+//    只是一个字都读不出来，而**这张图正是发给模型的那份东西**。
+//    `escapeXml` 是 XML 转义（`<` `&` 才是它管的事），与「不可信数据进字符串拼接」同一件事。
+import { escapeXml } from './ink-render.js';
 import type { AnalyzeEntry, SheetKnobs, SheetLayout } from './analysis-payload.js';
 
 /**
@@ -122,7 +128,7 @@ function cellInk(ink: InkValue | undefined, cell: SheetLayout['cells'][number]):
   const texts = (ink.texts ?? [])
     .map((text) => {
       const [x, y, , h] = textBoxOf(text, box);
-      return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${(h / 1.3).toFixed(2)}" fill="${safeColor(text.color)}" dominant-baseline="hanging" font-family="sans-serif">${escape(text.text)}</text>`;
+      return `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${(h / 1.3).toFixed(2)}" fill="${safeColor(text.color)}" dominant-baseline="hanging" font-family="sans-serif">${escapeXml(text.text)}</text>`;
     })
     .join('');
   return paths + texts;

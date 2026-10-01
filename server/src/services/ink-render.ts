@@ -32,8 +32,15 @@ export const INK_PNG_MAX = 400;
  */
 const FALLBACK_BOX: InkCanvas = { w: 320, h: 240 };
 
-/** 学生写进来的**文字**要转义才能进 SVG 的字符串拼接（`<` `&` 会让整张图解析失败）。 */
-function escapeXml(raw: string): string {
+/**
+ * 学生写进来的**文字**要转义才能进 SVG 的字符串拼接（`<` `&` 会让整张图解析失败）。
+ *
+ * ★ 2026-10-01：**导出**给 `analysis-render.ts` 用 —— 它那一处原先写的是全局
+ * `escape()`（那个废弃的 `%uXXXX` 转义），中文到了 SVG 里全成乱码，而那张图正是
+ * 发给模型的那份东西。**不要再写第三份**：本仓已有两处（这里与
+ * `worksheet-paper-math.ts` 的 `escapeXmlText`），再多一处就是又一次各改各的。
+ */
+export function escapeXml(raw: string): string {
   return raw
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

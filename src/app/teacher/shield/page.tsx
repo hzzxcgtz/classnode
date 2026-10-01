@@ -373,7 +373,7 @@ export default function ShieldPage() {
                   <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
                 ))}
                 <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>Ctrl+Enter</code> 保存</span>
-                <span style={{ color: pendingWords.length ? '#527198' : '#94a3b8', fontWeight: 600 }}>
+                <span style={{ color: pendingWords.length ? 'var(--primary)' : '#94a3b8', fontWeight: 600 }}>
                   · {pendingCharacterCount} 字 · {pendingWords.length} 个词
                 </span>
               </div>
@@ -509,7 +509,7 @@ export default function ShieldPage() {
             background: '#fafbff', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
               </svg>
               <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>系统屏蔽词</h2>
@@ -517,7 +517,7 @@ export default function ShieldPage() {
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                   padding: '0 8px', height: 22, borderRadius: 11,
-                  background: '#eef3f8', color: '#6366f1',
+                  background: 'var(--primary-tint)', color: 'var(--primary)',
                   fontSize: "0.688rem", fontWeight: 600,
                 }}>
                   {builtinWords.length}
@@ -623,7 +623,7 @@ export default function ShieldPage() {
                   onMouseLeave={e => { if (selectedClassroom !== c.id) (e.currentTarget as HTMLElement).style.background = 'white'; }}>
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                    background: selectedClassroom === c.id ? '#527198' : 'transparent',
+                    background: selectedClassroom === c.id ? 'var(--primary)' : 'transparent',
                     transition: 'all 0.15s',
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -729,7 +729,7 @@ export default function ShieldPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <div style={{
                             width: 26, height: 26, borderRadius: '50%',
-                            background: '#eef3f8', color: '#527198',
+                            background: 'var(--primary-tint)', color: 'var(--primary)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
                           }}>

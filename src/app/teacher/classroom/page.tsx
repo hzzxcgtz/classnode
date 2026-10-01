@@ -80,7 +80,7 @@ function PermissionMenuItem({ label, enabled, busy, onToggle }: {
   return (
     <button role="menuitemcheckbox" aria-checked={enabled} disabled={busy} onClick={onToggle}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px', border: 0, borderRadius: 8, background: 'transparent', cursor: busy ? 'wait' : 'pointer', color: '#334155', textAlign: 'left', fontSize: '0.813rem', opacity: busy ? 0.7 : 1 }}>
-      <span style={{ width: 34, height: 20, padding: 2, borderRadius: 999, background: enabled ? '#527198' : '#cbd5e1', display: 'flex', justifyContent: enabled ? 'flex-end' : 'flex-start', transition: 'all .15s', flexShrink: 0 }}>
+      <span style={{ width: 34, height: 20, padding: 2, borderRadius: 999, background: enabled ? 'var(--primary)' : '#cbd5e1', display: 'flex', justifyContent: enabled ? 'flex-end' : 'flex-start', transition: 'all .15s', flexShrink: 0 }}>
         <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(15,23,42,.2)' }} />
       </span>
       <span style={{ flex: 1 }}>{busy ? '更新中...' : label}</span>
@@ -225,9 +225,9 @@ function CaptureOption({ label, hint, selected, busy, disabled, onSelect }: {
   return (
     <button type="button" role="menuitemradio" aria-checked={selected} aria-busy={busy} title={hint ? `${label}（${hint}）` : label}
       disabled={disabled} onClick={onSelect}
-      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, minHeight: 34, padding: '4px 2px', border: `1px solid ${selected ? '#527198' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? '#466384' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
+      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, minHeight: 34, padding: '4px 2px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
       <span>{busy ? '...' : label}</span>
-      {hint && <span style={{ fontSize: '0.625rem', fontWeight: 400, color: selected ? '#3b82f6' : '#94a3b8' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: '0.625rem', fontWeight: 400, color: selected ? 'var(--primary)' : '#94a3b8' }}>{hint}</span>}
     </button>
   );
 }
@@ -248,7 +248,7 @@ function ModuleStateRadio({ label, hint, selected, busy, disabled, onSelect }: {
   return (
     <button type="button" role="menuitemradio" aria-checked={selected} aria-busy={busy} title={hint}
       disabled={disabled} onClick={onSelect}
-      style={{ flex: 1, minHeight: 30, padding: '5px 6px', border: `1px solid ${selected ? '#527198' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? '#466384' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
+      style={{ flex: 1, minHeight: 30, padding: '5px 6px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
       {label}
     </button>
   );
@@ -447,7 +447,7 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
 }) {
   return (
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
-      style={{ minHeight: 30, padding: '5px 10px', border: `1px solid ${selected ? '#527198' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? '#466384' : '#475569', cursor: 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap' }}>
+      style={{ minHeight: 30, padding: '5px 10px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: 'pointer', fontSize: '0.75rem', fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap' }}>
       {label}
     </button>
   );
@@ -482,14 +482,14 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
   onSelect: () => void;
 }) {
   const idleColor = muted ? '#94a3b8' : tone === 'attention' ? '#934e4e' : '#475569';
-  const numberColor = muted ? '#cbd5e1' : tone === 'attention' ? '#934e4e' : '#466384';
+  const numberColor = muted ? '#cbd5e1' : tone === 'attention' ? '#934e4e' : 'var(--primary-dark)';
   return (
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
         minHeight: 32, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
-        border: `1px solid ${selected ? '#527198' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
-        background: selected ? '#527198' : tone === 'attention' ? '#f8eeee' : 'white',
+        border: `1px solid ${selected ? 'var(--primary)' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
+        background: selected ? 'var(--primary)' : tone === 'attention' ? '#f8eeee' : 'white',
         color: selected ? 'white' : idleColor,
         fontSize: '0.813rem', fontWeight: selected ? 600 : 500,
       }}>
@@ -500,7 +500,6 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
           {unit}
         </span>
       )}
-      {hint && <span style={{ fontSize: '0.625rem', color: selected ? 'rgba(255,255,255,.75)' : '#cbd5e1' }}>{hint}</span>}
     </button>
   );
 }
@@ -530,8 +529,8 @@ function TileBadgeChip({ badge, compact = false }: { badge: TileBadge; compact?:
       style={{
         padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6,
         fontSize: compact ? 8 : '0.625rem', fontWeight: 600,
-        background: badge.rounds > 0 ? '#eef3f8' : '#f3f4f6',
-        color: badge.rounds > 0 ? '#527198' : '#9ca3af',
+        background: badge.rounds > 0 ? 'var(--primary-tint)' : '#f3f4f6',
+        color: badge.rounds > 0 ? 'var(--primary)' : '#9ca3af',
         whiteSpace: 'nowrap',
       }}>
       {tileBadgeText(badge)}
@@ -2274,11 +2273,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       <>
         <div style={{
           padding: compact ? '5px 8px' : '10px 14px', borderRadius: compact ? 6 : 8,
-          background: '#eef3f8',
+          background: 'var(--primary-tint)',
           fontSize: compact ? '0.625rem' : '0.75rem', lineHeight: compact ? 1.4 : 1.6, color: '#334155',
           wordBreak: 'break-word',
         }}>
-          <span style={{ fontWeight: 600, color: '#527198', marginRight: compact ? 3 : 4 }}>{speaker}</span>
+          <span style={{ fontWeight: 600, color: 'var(--primary)', marginRight: compact ? 3 : 4 }}>{speaker}</span>
           <span>{stripMarkdownToPlainText(userMsg.content)}</span>
         </div>
         {assistantMsg && (
@@ -2489,8 +2488,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0 }}>{classroom.title || '课堂看板'}</h1>
             <span style={{
               fontSize: "0.688rem", fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-              background: classroom.mode === 'advanced' ? '#ecfdf5' : classroom.mode === 'group' ? '#f5f3ff' : '#eef3f8',
-              color: classroom.mode === 'advanced' ? '#059669' : classroom.mode === 'group' ? '#7c3aed' : '#527198',
+              background: classroom.mode === 'advanced' ? '#ecfdf5' : classroom.mode === 'group' ? '#f5f3ff' : 'var(--primary-tint)',
+              color: classroom.mode === 'advanced' ? '#059669' : classroom.mode === 'group' ? '#7c3aed' : 'var(--primary)',
               whiteSpace: 'nowrap', lineHeight: '20px',
             }}>
               {classroom.mode === 'advanced' ? '高级模式' : classroom.mode === 'group' ? '分组模式' : '标准模式'}
@@ -2503,7 +2502,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '3px 10px 3px 10px', borderRadius: 6,
-              background: '#eef3f8', fontSize: "0.813rem", fontWeight: 500, color: '#527198',
+              background: 'var(--primary-tint)', fontSize: "0.813rem", fontWeight: 500, color: 'var(--primary)',
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
@@ -2633,7 +2632,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         minHeight: 36, padding: '7px 12px',
                         // 两个**状态开关**是唯一点蓝字的（与「已暂停 / 已锁定」时整块变蓝同一套语义）；
                         // 其余控件用默认字色。这是既有的层级，重构没动它。
-                        color: control.active ? 'white' : control.kind === 'state' ? '#527198' : undefined,
+                        color: control.active ? 'white' : control.kind === 'state' ? 'var(--primary)' : undefined,
                       }}>
                       {headerIcons[control.id](control.active)}
                       {control.label}
@@ -2754,7 +2753,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 全部 —— 合并后**只剩这一个**，而且它是**重置**：点它会把两组筛选一起清回 `all`。
                 ⚠️ 上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
             <ModuleCountChip label="全部" value={students.length} unit={moduleCountUnitSuffix}
-              hint="取消所有筛选（含右边「此刻在线」那一段）"
+              hint="显示全部学生"
               selected={studentBoardFilter === 'all' && effectiveModuleFilter === 'all'}
               onSelect={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} />
             {/* 状态两格 —— ⚠️ 这两格的数字来自 `boardFilterCounts`（**格子数**），不是
@@ -2796,7 +2795,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 {/* 段标签 = **把分母写在段首**。三个模块格是它的一个划分（不含首页 / 未定，
                     那部分由紧跟着的 `unplaced` 那句话兜住）。 */}
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
-                  此刻在线 <span style={{ color: '#466384' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
+                  此刻在线 <span style={{ color: 'var(--primary-dark)' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
                 </span>
                 <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
                   selected={studentModuleFilter === 'worksheet'}
@@ -2839,14 +2838,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   </svg>
                 </div>
                 <div style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>暂无学生加入</div>
-                <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: '#527198', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
+                <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: 'var(--primary)', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
               </div>
             ) : displayCards.length === 0 ? (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '44px 20px', background: 'white', borderRadius: 14, border: '1px dashed #cbd5e1', color: '#64748b' }}>
                 <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>当前筛选下没有学生</div>
                 {/* 🔴 两组筛选都要清掉。只清状态那一组的话，教师点完「查看全部学生」仍然
                     看不到人（模块那一组还卡着），而按钮的字面意思正是「全部学生」。 */}
-                <button type="button" onClick={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} style={{ marginTop: 10, border: 0, background: 'transparent', color: '#527198', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
+                <button type="button" onClick={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} style={{ marginTop: 10, border: 0, background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
               </div>
             ) : (
               displayCards.map((item: ClassroomDisplayCard) => {
@@ -2895,7 +2894,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     style={{
                       cursor: 'pointer',
                       border: '2px solid',
-                      borderColor: isSelected ? '#527198' : status === 'thinking' ? '#956834' : '#e2e8f0',
+                      borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : '#e2e8f0',
                       padding: isGroup ? '18px 18px 16px' : '20px 18px 18px',
                       borderRadius: 12,
                       position: 'relative',
@@ -2904,7 +2903,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       flexDirection: 'column',
                       height: 260,
                       transition: 'all 0.15s',
-                      boxShadow: isSelected ? '0 4px 16px rgba(82, 113, 152,0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
+                      boxShadow: isSelected ? '0 4px 16px rgba(var(--primary-focus-rgb), 0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
                       overflow: 'hidden',
                     }}>
                     {/* 头像 + 姓名行（含操作按钮）+ 学号 + 状态标签 */}
@@ -2964,7 +2963,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                     </button>
                                     <button title={item.group?.name ? `发通知给「${item.group.name}」` : '发通知'}
                                       onClick={(e) => { e.stopPropagation(); setNotifyText(''); setNotifySent(false); setNotifyState({ show: true, groupId: item.group?.id, studentName: item.group?.name || item.group?.id }); }}
-                                      style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef3f8', color: '#4f46e5', padding: 0 }}>
+                                      style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary-tint)', color: 'var(--primary)', padding: 0 }}>
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                     </button>
                                     {showClear && (
@@ -2988,7 +2987,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 </button>
                                 <button title="发消息"
                                   onClick={(e) => { e.stopPropagation(); setNotifyText(''); setNotifySent(false); setNotifyState({ show: true, studentId: sid, studentName: student.name }); }}
-                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eef3f8', color: '#4f46e5', padding: 0 }}>
+                                  style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary-tint)', color: 'var(--primary)', padding: 0 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                                 </button>
                                 <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
@@ -3190,7 +3189,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 20px', borderBottom: '1px solid #eef2f6', background: '#fafbff' }}>
                 <span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>投屏选择</span>
                 <button onClick={() => setSelectedRounds(allRis.every(ri => selectedRounds.includes(ri)) ? [] : [...allRis])}
-                  style={{ fontSize: "0.688rem", color: '#6366f1', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
+                  style={{ fontSize: "0.688rem", color: 'var(--primary)', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
                   {allRis.every(ri => selectedRounds.includes(ri)) ? '取消全选' : `全选 (${allRis.length - selectedRounds.length} / ${allRis.length})`}
                 </button>
               </div>
@@ -3220,9 +3219,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   <div key={`dr-${m.role}-${m.createdAt || i}`} style={{
                     padding: '10px 14px',
                     borderRadius: m.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                    background: m.role === 'user' ? '#eef3f8' : '#f8fafc',
+                    background: m.role === 'user' ? 'var(--primary-tint)' : '#f8fafc',
                     border: '1px solid',
-                    borderColor: m.role === 'user' ? '#e9eff6' : '#eef2f6',
+                    borderColor: m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
                     maxWidth: '90%',
                     alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                   }}>
@@ -3233,7 +3232,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           return prev.includes(ri) ? prev.filter(x => x !== ri) : [...prev, ri];
                         });
                       }}
-                        style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid', borderColor: msgChecked[i] ? '#6366f1' : '#d1d5db', background: msgChecked[i] ? '#6366f1' : 'transparent', cursor: msgRounds[i] != null ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s', flexShrink: 0, opacity: msgRounds[i] != null ? 1 : 0 }}>
+                        style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid', borderColor: msgChecked[i] ? 'var(--primary)' : '#d1d5db', background: msgChecked[i] ? 'var(--primary)' : 'transparent', cursor: msgRounds[i] != null ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s', flexShrink: 0, opacity: msgRounds[i] != null ? 1 : 0 }}>
                         {msgChecked[i] && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
                       <div style={{ fontSize: "0.688rem", fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : '#64748b' }}>
@@ -3353,7 +3352,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     padding: '14px 0', border: 'none', cursor: 'pointer',
                     borderTop: '1px solid #eef2f6',
-                    background: '#f8fafc', color: '#527198',
+                    background: '#f8fafc', color: 'var(--primary)',
                     fontSize: "0.875rem", fontWeight: 600,
                     transition: 'all 0.15s', width: '100%',
                   }}
@@ -3376,7 +3375,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   {(teacherCode || '').split('').map((d: string, i: number) => (
                     <div key={i} style={{
                       width: 96, height: 112, borderRadius: 14,
-                      background: 'rgba(82, 113, 152,0.15)',
+                      background: 'rgba(var(--primary-focus-rgb), 0.15)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: "4.5rem", fontWeight: 700, color: '#60a5fa',
                       lineHeight: 1,
@@ -3453,14 +3452,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}
                             dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="48" height="48"') }} />
                         ) : (
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#eef3f8', color: '#667eea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.938rem", fontWeight: 700, flexShrink: 0 }}>
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--primary-tint)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.938rem", fontWeight: 700, flexShrink: 0 }}>
                             {selectedStudent?.name?.[0] || '学'}
                           </div>
                         )
                       ) : drawerAgent && (
                         <div style={{
                           width: 48, height: 48, borderRadius: 8,
-                          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                          background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
                           color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: "0.938rem", fontWeight: 700, overflow: 'hidden',
                         }}>
@@ -3472,7 +3471,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       )}
                       <span style={{
                         fontSize: "1.25rem", fontWeight: 600,
-                        color: m.role === 'user' ? '#667eea' : '#475569',
+                        color: m.role === 'user' ? 'var(--primary)' : '#475569',
                       }}>
                         {m.role === 'user' ? selectedStudent?.name || '学生' : (drawerAgent?.name || 'AI 助手')}
                       </span>
@@ -3483,9 +3482,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       maxWidth: '78%',
                       padding: '20px 28px',
                       borderRadius: m.role === 'user' ? '20px 20px 6px 20px' : '6px 20px 20px 20px',
-                      background: m.role === 'user' ? '#eef3f8' : '#f8fafc',
+                      background: m.role === 'user' ? 'var(--primary-tint)' : '#f8fafc',
                       border: '1px solid',
-                      borderColor: m.role === 'user' ? '#e9eff6' : '#eef2f6',
+                      borderColor: m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
                       lineHeight: 1.8,
                       fontSize: "1.375rem",
                       color: '#0f172a',
@@ -3544,7 +3543,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 30, height: 30, borderRadius: 8,
-                background: 'linear-gradient(135deg, #527198, #7c3aed)',
+                background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: 'white', fontWeight: 700, fontSize: "0.813rem",
               }}>
@@ -3561,11 +3560,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   （`resolveTileModule`），照旧写「全班显示『X』」就是**编造**一句
                   「全班都在智能学伴」——而屏幕上没有任何东西会红。 */}
               {boardMode === 'assign' ? (
-                <span style={{ fontSize: "0.75rem", color: '#527198', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.75rem", color: 'var(--primary)', fontWeight: 600 }}>
                   全班显示「{MODULE_ID_LABELS[assignModule]}」
                 </span>
               ) : (
-                <span style={{ fontSize: "0.75rem", color: '#527198', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.75rem", color: 'var(--primary)', fontWeight: 600 }}>
                   跟随：每格显示该生此刻所在的模块
                 </span>
               )}
@@ -3622,7 +3621,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 </div>
               ) : displayCards.length === 0 ? (
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: '#64748b' }}>
-                  当前筛选下没有学生，请退出全屏后切换筛选条件
+                  没有符合条件的学生
                 </div>
               ) : (
                 displayCards.map((item: ClassroomDisplayCard) => {
@@ -3666,13 +3665,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       style={{
                         cursor: 'pointer',
                         border: '2px solid',
-                        borderColor: isSelected ? '#527198' : status === 'thinking' ? '#956834' : '#e2e8f0',
+                        borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : '#e2e8f0',
                         padding: compact ? (isGroup ? '14px 10px 6px' : '16px 12px 6px') : (isGroup ? '18px 14px 8px' : '20px 16px 8px'),
                         borderRadius: 12,
                         background: 'white', position: 'relative',
                         display: 'flex', flexDirection: 'column',
                         transition: 'all 0.15s',
-                        boxShadow: isSelected ? '0 4px 16px rgba(82, 113, 152,0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
+                        boxShadow: isSelected ? '0 4px 16px rgba(var(--primary-focus-rgb), 0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
                         minHeight: 0,
                         height: compact ? 155 : 190,
                         overflow: 'hidden',
@@ -4351,7 +4350,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
   }, [words]);
   const wordFill = useCallback((_word: Word, i: number) => `url(#wcg${(i % 6) + 1})`, []);
   const wordGradients = useMemo(() => [
-    { id: 'wcg1', type: 'linear' as const, angle: 45, stops: [{ offset: '0%' as const, color: '#527198' }, { offset: '100%' as const, color: '#7c3aed' }] },
+    { id: 'wcg1', type: 'linear' as const, angle: 45, stops: [{ offset: '0%' as const, color: 'var(--primary)' }, { offset: '100%' as const, color: '#7c3aed' }] },
     { id: 'wcg2', type: 'linear' as const, angle: -45, stops: [{ offset: '0%' as const, color: '#db2777' }, { offset: '100%' as const, color: '#ea580c' }] },
     { id: 'wcg3', type: 'linear' as const, angle: 135, stops: [{ offset: '0%' as const, color: '#059669' }, { offset: '100%' as const, color: '#10b981' }] },
     { id: 'wcg4', type: 'linear' as const, angle: 90, stops: [{ offset: '0%' as const, color: '#7c3aed' }, { offset: '100%' as const, color: '#c084fc' }] },
@@ -4475,8 +4474,8 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
                   style={{
                     padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
                     fontSize: "0.688rem", fontWeight: cloudSource === key ? 600 : 400,
-                    background: cloudSource === key ? '#eef3f8' : 'transparent',
-                    color: cloudSource === key ? '#527198' : '#94a3b8',
+                    background: cloudSource === key ? 'var(--primary-tint)' : 'transparent',
+                    color: cloudSource === key ? 'var(--primary)' : '#94a3b8',
                     transition: 'all 0.12s',
                   }}>
                   {label}

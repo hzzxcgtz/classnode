@@ -351,7 +351,7 @@ export default function HistoryPage() {
                       <td style={{ textAlign: 'center' }}>
                         <span style={{
                           fontSize: "0.813rem", fontWeight: 600,
-                          color: (cr.totalRounds || 0) > 50 ? '#527198' : (cr.totalRounds || 0) > 10 ? '#956834' : '#94a3b8',
+                          color: (cr.totalRounds || 0) > 50 ? 'var(--primary)' : (cr.totalRounds || 0) > 10 ? '#956834' : '#94a3b8',
                         }}>
                           {cr.totalRounds || 0} 轮
                         </span>
@@ -599,12 +599,12 @@ function ExportPreviewDialog({
                   选择学生（{selectedStudentIds.length}/{students.length}）
                 </span>
                 <label style={{
-                  fontSize: "0.688rem", color: '#527198', cursor: 'pointer',
+                  fontSize: "0.688rem", color: 'var(--primary)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
                   <input type="checkbox" checked={allSelected}
                     onChange={() => onToggleAll(students.map(studentSelectorId))}
-                    style={{ accentColor: '#527198' }} />
+                    style={{ accentColor: 'var(--primary)' }} />
                   全选
                 </label>
               </div>
@@ -623,7 +623,7 @@ function ExportPreviewDialog({
                     }}>
                       <input type="checkbox" checked={selectedStudentIds.includes(sid)}
                         onChange={() => onToggleStudent(sid)}
-                        style={{ accentColor: '#527198' }} />
+                        style={{ accentColor: 'var(--primary)' }} />
                       <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{s.name}</span>
                       <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
                         {rounds} 轮 · {msgCount} 条
@@ -660,7 +660,7 @@ function ExportPreviewDialog({
               }}>
                 <div style={{
                   width: `${exportProgress}%`, height: '100%',
-                  background: 'linear-gradient(90deg, #527198, #7c3aed)',
+                  background: 'linear-gradient(90deg, var(--primary), var(--primary-dark))',
                   borderRadius: 3,
                   transition: 'width 0.3s ease',
                 }} />
@@ -678,7 +678,7 @@ function ExportPreviewDialog({
               style={{
                 fontSize: "0.75rem", padding: '7px 18px', borderRadius: 8, border: 'none',
                 cursor: (exporting || selectedStudentIds.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 500,
-                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : '#527198',
+                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : 'var(--primary)',
                 color: 'white',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
@@ -879,14 +879,14 @@ function BackupManager() {
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#527198', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
             <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', color: '#956834' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#527198', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
             <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
           </div>
         </div>
@@ -929,7 +929,7 @@ function BackupManager() {
                   </a>
                   <button onClick={() => setRestoreTarget(b.name)} disabled={backupAction !== null}
                     style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-                      border: '1px solid #e9eff6', background: '#f2f5f8', color: '#527198' }}>
+                      border: '1px solid var(--primary-light)', background: '#f2f5f8', color: 'var(--primary)' }}>
                     恢复
                   </button>
                   <button onClick={() => setDeleteTarget(b.name)} disabled={backupAction !== null}
@@ -985,7 +985,7 @@ function BackupManager() {
                 style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestore(restoreTarget)} disabled={restoring}
                 style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: '#527198', color: 'white', opacity: restoring ? 0.6 : 1 }}>
+                  background: 'var(--primary)', color: 'white', opacity: restoring ? 0.6 : 1 }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
             </div>

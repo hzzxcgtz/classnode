@@ -33,7 +33,7 @@ export const CHART = {
   correct: '#15803d',
   partial: '#b45309',
   wrong: '#934e4e',
-  noVerdict: '#527198',
+  noVerdict: 'var(--primary)',
   unanswered: '#cbd5e1',
   /** 中性：数据条的默认色（要**比语义色安静**，否则一屏全是重点）。 */
   neutral: '#3b82f6',
@@ -171,7 +171,7 @@ export function HeatLegend({ max, unit }: { max: number; unit: string }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem', color: CHART.faint }}>
       <span>少</span>
       {[0.1, 0.28, 0.46, 0.64].map((alpha) => (
-        <span key={alpha} style={{ width: 14, height: 14, borderRadius: 4, background: `rgba(82, 113, 152, ${alpha})` }} />
+        <span key={alpha} style={{ width: 14, height: 14, borderRadius: 4, background: `rgba(var(--primary-focus-rgb), ${alpha})` }} />
       ))}
       <span>多</span>
       <span style={{ marginLeft: 4 }}>（最多 {max} {unit}）</span>

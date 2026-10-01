@@ -391,7 +391,7 @@
   width: 9px;
   height: 9px;
   border: 1.5px solid #bfdbfe;
-  border-top-color: #2563eb;
+  border-top-color: var(--primary);
   border-radius: 999px;
   animation: matrix-analysis-spin .8s linear infinite;
 }

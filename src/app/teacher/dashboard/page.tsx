@@ -22,29 +22,17 @@ type ChartPayloadItem = {
 
 // ─── 区块卡片 ──────────────────────────────────────────────
 
-function SectionCard({ title, icon, color, children }: {
-  title: string; icon: React.ReactNode; color: string; children: React.ReactNode;
+function SectionCard({ title, icon, children }: {
+  title: string; icon: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div style={{
-      background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
-      overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-      transition: 'box-shadow 0.2s',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.06)'; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)'; }}
-    >
-      <div style={{
-        padding: '12px 16px',
-        display: 'flex', alignItems: 'center', gap: 8,
-        borderLeft: `3px solid ${color}`,
-        background: `linear-gradient(135deg, ${color}06, ${color}12)`,
-      }}>
-        <span style={{ color, display: 'flex' }}>{icon}</span>
-        <h3 style={{ fontSize: "0.813rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>{title}</h3>
+    <section className="dashboard-section-card">
+      <div className="dashboard-section-card-header">
+        <span>{icon}</span>
+        <h2>{title}</h2>
       </div>
-      <div style={{ padding: 16 }}>{children}</div>
-    </div>
+      <div className="dashboard-section-card-body">{children}</div>
+    </section>
   );
 }
 
@@ -97,44 +85,30 @@ function StackedBarTooltip({ active, payload }: { active?: boolean; payload?: Ch
 
 // ─── KPI 卡片 ────────────────────────────────────────────────
 
-function KpiCard({ label, value, color, icon, trend, trendUp }: {
-  label: string; value: string | number; color: string; icon: React.ReactNode; trend?: string; trendUp?: boolean;
+function KpiCard({ label, value, icon, trend, trendUp }: {
+  label: string; value: string | number; icon: React.ReactNode; trend?: string; trendUp?: boolean;
 }) {
   return (
-    <div style={{
-      background: `linear-gradient(135deg, ${color}, ${color}dd)`,
-      borderRadius: 14, padding: '18px 20px', position: 'relative', overflow: 'hidden',
-      boxShadow: `0 4px 16px ${color}33`,
-      transition: 'transform 0.2s, box-shadow 0.2s',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 28px ${color}44`; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 4px 16px ${color}33`; }}
-    >
-      {/* 装饰圆 */}
-      <div style={{ position: 'absolute', right: -20, top: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
-      <div style={{ position: 'absolute', right: -10, bottom: -30, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
-
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
+    <section className="dashboard-kpi-card">
+      <div className="dashboard-kpi-card-main">
         <div>
-          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: '#ffffff', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-            {typeof value === 'number' ? value.toLocaleString() : value}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: 'rgba(255,255,255,0.75)', marginTop: 4 }}>{label}</div>
+          <div className="dashboard-kpi-label">{label}</div>
+          <div className="dashboard-kpi-value">{typeof value === 'number' ? value.toLocaleString() : value}</div>
         </div>
-        <span style={{ color: 'rgba(255,255,255,0.6)', flexShrink: 0 }}>{icon}</span>
+        <span className="dashboard-kpi-icon">{icon}</span>
       </div>
       {trend && (
-        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, position: 'relative' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <div className={`dashboard-kpi-trend${trendUp ? ' is-positive' : ''}`}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             {trendUp
               ? <polyline points="18 15 12 9 6 15" />
               : <polyline points="6 9 12 15 18 9" />
             }
           </svg>
-          <span style={{ fontSize: "0.688rem", color: 'rgba(255,255,255,0.7)' }}>{trend}</span>
+          <span>{trend}</span>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -314,11 +288,10 @@ export default function DashboardPage() {
       } />
 
       {/* ═══ 核心 KPI 行 ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
+      <div className="dashboard-kpi-grid">
         <KpiCard
           label="AI 智能体"
           value={`${agentEnabled}/${agentTotal}`}
-          color="#527198"
           trend={agentError > 0 ? `${agentError} 个异常` : '全部健康'}
           trendUp={agentError === 0}
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>}
@@ -326,7 +299,6 @@ export default function DashboardPage() {
         <KpiCard
           label="班级总数"
           value={classTotal}
-          color="#10b981"
           trend={`${classTotalStudents} 名学生 · ${classGroupTotal} 个分组`}
           trendUp
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
@@ -334,7 +306,6 @@ export default function DashboardPage() {
         <KpiCard
           label="进行中课堂"
           value={classroomActive > 0 ? `${classroomActive}/${classroomTotal}` : classroomTotal}
-          color="#956834"
           trend={classroomActive > 0 ? `${classroomActive} 个课堂正在进行` : '暂无活跃课堂'}
           trendUp={classroomActive > 0}
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>}
@@ -342,7 +313,6 @@ export default function DashboardPage() {
         <KpiCard
           label="总互动次数"
           value={classroomTotalInteractions}
-          color="#7c3aed"
           trend={`${historyTotal} 节历史课堂`}
           trendUp
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}
@@ -350,10 +320,10 @@ export default function DashboardPage() {
       </div>
 
       {/* ═══ 四宫格核心卡片 ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 0 }}>
+      <div className="dashboard-section-grid">
 
         {/* ─── AI 智能体 ─── */}
-        <SectionCard title="AI 智能体" color="#527198"
+        <SectionCard title="AI 智能体"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <rect x="4" y="4" width="16" height="16" rx="3" />
@@ -369,7 +339,7 @@ export default function DashboardPage() {
               {/* 数字概览 + 健康状态 */}
               <div style={{ display: 'flex', gap: 12 }}>
                 {[
-                  { label: '总接入', value: agentTotal, color: '#527198', bg: '#eef3f8' },
+                  { label: '总接入', value: agentTotal, color: 'var(--primary)', bg: 'var(--primary-tint)' },
                   { label: '启用中', value: agentEnabled, color: '#10b981', bg: '#f0fdf4' },
                   { label: '已停用', value: agentDisabled, color: '#94a3b8', bg: '#f8fafc' },
                 ].map(s => (
@@ -545,7 +515,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         {/* ─── 课堂管理 ─── */}
-        <SectionCard title="课堂管理" color="#956834"
+        <SectionCard title="课堂管理"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -732,7 +702,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         {/* ─── 班级管理 ─── */}
-        <SectionCard title="班级管理" color="#10b981"
+        <SectionCard title="班级管理"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -844,7 +814,7 @@ export default function DashboardPage() {
         </SectionCard>
 
         {/* ─── 数据管理 ─── */}
-        <SectionCard title="数据管理" color="#7c3aed"
+        <SectionCard title="数据管理"
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" />

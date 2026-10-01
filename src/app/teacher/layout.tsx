@@ -41,6 +41,15 @@ const navItems = [
   { path: '/teacher/about', label: '关于', icon: 'info' },
 ];
 
+function teacherPageTone(pathname: string | null): 'worksheet' | 'explore' | 'agent' | 'classroom' | 'neutral' {
+  const path = (pathname || '').replace(/\/$/, '');
+  if (path.startsWith('/teacher/worksheets')) return 'worksheet';
+  if (path.startsWith('/teacher/webapps')) return 'explore';
+  if (path.startsWith('/teacher/agents')) return 'agent';
+  if (path.startsWith('/teacher/classes')) return 'classroom';
+  return 'neutral';
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
@@ -343,11 +352,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // 登录页
   if (authState === 'login') {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #466b8a 0%, #304b62 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: '#466b8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
             ) : (
               <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
@@ -374,7 +383,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             {loggingIn ? '验证中...' : '进入控制台'}
           </button>
           <div style={{ marginTop: 16, textAlign: 'center', fontSize: "0.75rem", color: '#9ca3af', lineHeight: 1.6 }}>
-            遗忘密码？请在桌面端<strong style={{ color: '#818cf8' }}>「控制面板」</strong>窗口中重置
+            遗忘密码？请在桌面端<strong style={{ color: '#466b8a' }}>「控制面板」</strong>窗口中重置
           </div>
           <button onClick={() => router.push('/')} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.813rem", cursor: 'pointer' }}>
             返回学生页面
@@ -387,11 +396,11 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   // 首次设置密码
   if (authState === 'setup') {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #466b8a 0%, #304b62 100%)' }}>
         <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             {logoErr ? (
-              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
+              <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: '#466b8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
             ) : (
               <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: 96, height: 96, borderRadius: 20, display: 'block', margin: '0 auto 16px' }} onError={() => setLogoErr(true)} />
             )}
@@ -439,19 +448,18 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div className="teacher-sidebar-brand" style={{ marginBottom: 24, textAlign: sidebarCollapsed ? 'center' : undefined }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: sidebarCollapsed ? 'center' : undefined }}>
             {logoErr ? (
-              <div style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>支</div>
+              <div className="teacher-brand-fallback" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: sidebarCollapsed ? "0.875rem" : "1.125rem" }}>支</div>
             ) : (
               <img src="/logo.png" alt="支点课堂 ClassNode" style={{ width: sidebarCollapsed ? 36 : 44, height: sidebarCollapsed ? 36 : 44, borderRadius: 10, flexShrink: 0 }} onError={() => setLogoErr(true)} />
             )}
             {!sidebarCollapsed && (
               <div className="teacher-sidebar-brand-copy">
-                <div style={{ fontWeight: 700, fontSize: "1.25rem", color: '#0f172a' }}>支点课堂</div>
+                <div className="teacher-brand-title" style={{ fontWeight: 700, fontSize: "1.25rem" }}>支点课堂</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                  <span style={{ fontSize: "0.75rem", color: '#94a3b8', letterSpacing: '0.04em' }}>ClassNode</span>
-                  <span style={{
+                  <span className="teacher-brand-en" style={{ fontSize: "0.75rem", letterSpacing: '0.04em' }}>ClassNode</span>
+                  <span className="teacher-version-chip" style={{
                     fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
-                    borderRadius: 100, background: 'rgba(79,70,229,0.08)', color: '#6366f1',
-                    border: '1px solid rgba(79,70,229,0.15)',
+                    borderRadius: 100,
                   }}>v{APP_VERSION}</span>
                 </div>
               </div>
@@ -504,7 +512,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             : p.replace(/\/$/, '') === item.path || p.startsWith(item.path + '/');
           return (
             <button
-              className="teacher-nav-button"
+              className={`teacher-nav-button${isActive ? ' is-active' : ''}`}
               key={item.path}
               onClick={() => router.push(item.path)}
               title={sidebarCollapsed ? item.label : undefined}
@@ -514,16 +522,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 padding: sidebarCollapsed ? '10px 0' : '9px 12px', borderRadius: 8, width: '100%',
                 border: 'none', cursor: 'pointer', textAlign: 'left',
                 fontSize: "0.875rem", fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#527198' : '#475569',
-                background: isActive ? '#eef3f8' : 'transparent',
                 position: 'relative', marginBottom: 2,
                 transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                if (!isActive) e.currentTarget.style.background = '#f8fafc';
-              }}
-              onMouseLeave={e => {
-                if (!isActive) e.currentTarget.style.background = 'transparent';
               }}
             >
               {/* 激活指示条 */}
@@ -532,7 +532,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   position: 'absolute', left: 0, top: '50%',
                   transform: 'translateY(-50%)',
                   width: 3, height: 18,
-                  background: '#527198',
+                  background: 'var(--cn-primary)',
                   borderRadius: '0 2px 2px 0',
                 }} />
               )}
@@ -648,7 +648,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 fontSize: "0.875rem", color: '#94a3b8', textAlign: 'left',
                 transition: 'color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#527198'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--cn-primary)'; }}
               onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -737,7 +737,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           transition: 'left 0.2s ease, color 0.15s, background 0.15s',
           boxShadow: '2px 0 6px rgba(0,0,0,0.04)',
         }}
-        onMouseEnter={e => { e.currentTarget.style.color = '#527198'; e.currentTarget.style.background = '#f8faff'; }}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--cn-primary)'; e.currentTarget.style.background = '#f1f4f7'; }}
         onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = '#fff'; }}
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s' }}>
@@ -745,7 +745,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         </svg>
       </button>
 
-      <main className="teacher-main" style={{
+      <main className="teacher-main" data-page-tone={teacherPageTone(pathname)} style={{
         marginLeft: sidebarCollapsed ? 68 : 220,
         maxWidth: sidebarCollapsed ? `min(calc(100vw - 68px), 1464px)` : undefined,
         transition: 'margin-left 0.2s ease',

@@ -68,9 +68,9 @@ export function AgentPurposeSelector({ purpose, onChange }: {
               onClick={() => onChange(option.value)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                border: `1px solid ${selected ? '#527198' : '#cbd5e1'}`,
+                border: `1px solid ${selected ? 'var(--primary)' : '#cbd5e1'}`,
                 background: selected ? '#f2f5f8' : '#fff',
-                color: selected ? '#466384' : '#475569',
+                color: selected ? 'var(--primary-dark)' : '#475569',
                 borderRadius: 999, padding: '5px 12px', fontSize: '0.813rem',
                 fontWeight: selected ? 600 : 500, fontFamily: 'inherit',
               }}

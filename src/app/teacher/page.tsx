@@ -449,9 +449,9 @@ export default function TeacherDashboard() {
         <><div className="active-classroom-overview" aria-label="活跃课堂概览">
           {[
             { label: "活跃课堂", value: activeClassrooms.length, tone: "blue" },
-            { label: "参与学生", value: activeTotals.students, tone: "purple" },
+            { label: "参与学生", value: activeTotals.students, tone: "blue" },
             { label: "当前在线", value: activeTotals.online, tone: "green" },
-            { label: "互动轮次", value: activeTotals.rounds, tone: "amber" },
+            { label: "互动轮次", value: activeTotals.rounds, tone: "blue" },
           ].map((item) => (
             <div key={item.label} className={`tone-${item.tone}`}>
               <strong>{item.value}</strong>
@@ -816,7 +816,7 @@ export default function TeacherDashboard() {
                     )))}
                     {section("探究网页", materials.webapps.map(({ material, groupNames }) => chip(
                       material.id,
-                      iconBox("#527198", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
+                      iconBox("var(--primary)", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
                       material.name,
                       groupNames,
                     )))}
@@ -926,7 +926,7 @@ export default function TeacherDashboard() {
                 </button>
                 <button onClick={() => void openQrCode(cr)} disabled={loadingQrClassroomId !== null} title="显示互动码"
                   style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#7c3aed"; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "var(--primary)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
                   {loadingQrClassroomId === cr.id ? "加载中..." : "互动码"}
@@ -942,15 +942,15 @@ export default function TeacherDashboard() {
 
                 {/* 进入课堂 — 醒目填充按钮 */}
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
-                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, #527198, #466384)", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(82, 113, 152,0.25)" }}
+                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, var(--primary), var(--primary-dark))", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(var(--primary-focus-rgb), 0.25)" }}
                   /* ★ 2026-09-30（教师）：「鼠标在上方停留颜色不对」。
-                     🔴 原先是 `linear-gradient(135deg, #466384, #1e40af)` —— 第一个色停是
+                     🔴 原先是 `linear-gradient(135deg, var(--primary-dark), #1e40af)` —— 第一个色停是
                      `--primary-dark`（灰蓝），第二个却是 `#1e40af`（**另一个色相**的高饱和蓝）
                      ⇒ 悬停时按钮变成**左边灰蓝、右边亮蓝**的两截，看着像渲染坏了。
                      现在整条按同一个色相**压暗一档**：底 → 悬停 = 青蓝 → 更深的青蓝，
                      与 `.btn-primary`（`--primary` → `--primary-dark`）同一条规矩。 */
-                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, #466384, #3a526e)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(82, 113, 152,0.35)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, #527198, #466384)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(82, 113, 152,0.25)"; }}>
+                  onMouseEnter={e => { e.currentTarget.style.background = "linear-gradient(135deg, var(--primary-dark), var(--cn-primary-pressed))"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(var(--primary-focus-rgb), 0.35)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, var(--primary), var(--primary-dark))"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(var(--primary-focus-rgb), 0.25)"; }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
                   进入课堂
                 </button>
@@ -1030,7 +1030,7 @@ export default function TeacherDashboard() {
               borderRadius: 8,
               fontSize: "0.875rem",
               fontWeight: 600,
-              background: "#527198",
+              background: "var(--primary)",
               color: "white",
               border: "none",
               cursor: "pointer",
@@ -1174,7 +1174,7 @@ export default function TeacherDashboard() {
                     cursor: "pointer",
                     borderTop: "1px solid #eef2f6",
                     background: "#f8fafc",
-                    color: "#527198",
+                    color: "var(--primary)",
                     fontSize: "0.875rem",
                     fontWeight: 600,
                     transition: "all 0.15s",
@@ -1244,7 +1244,7 @@ export default function TeacherDashboard() {
                           width: 96,
                           height: 112,
                           borderRadius: 14,
-                          background: "rgba(82, 113, 152,0.15)",
+                          background: "rgba(var(--primary-focus-rgb), 0.15)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1329,8 +1329,8 @@ export default function TeacherDashboard() {
                   width: 40,
                   height: 40,
                   borderRadius: 10,
-                  background: "#eef3f8",
-                  color: "#527198",
+                  background: "var(--primary-tint)",
+                  color: "var(--primary)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1418,7 +1418,7 @@ export default function TeacherDashboard() {
                     background: "#fafbfc",
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "#527198";
+                    e.currentTarget.style.borderColor = "var(--primary)";
                     e.currentTarget.style.background = "white";
                   }}
                   onBlur={(e) => {
@@ -1525,7 +1525,7 @@ export default function TeacherDashboard() {
                                   height: 20,
                                   borderRadius: 4,
                                   background:
-                                    "linear-gradient(135deg, #667eea, #764ba2)",
+                                    "linear-gradient(135deg, var(--primary), var(--primary-dark))",
                                   color: "white",
                                   display: "flex",
                                   alignItems: "center",
@@ -1622,7 +1622,7 @@ export default function TeacherDashboard() {
                                 width: 24,
                                 height: 24,
                                 borderRadius: 6,
-                                background: "#527198",
+                                background: "var(--primary)",
                                 color: "white",
                                 display: "flex",
                                 alignItems: "center",
@@ -1676,7 +1676,7 @@ export default function TeacherDashboard() {
                                     height: 20,
                                     borderRadius: 4,
                                     background:
-                                      "linear-gradient(135deg, #667eea, #764ba2)",
+                                      "linear-gradient(135deg, var(--primary), var(--primary-dark))",
                                     color: "white",
                                     display: "flex",
                                     alignItems: "center",

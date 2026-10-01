@@ -11,7 +11,7 @@ type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
 function SortIcon({ field, sortField, sortDir }: { field: StudentSortField; sortField: StudentSortField; sortDir: 'asc' | 'desc' }) {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-      stroke={sortField === field ? '#527198' : '#cbd5e1'}
+      stroke={sortField === field ? 'var(--primary)' : '#cbd5e1'}
       strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
       {sortField === field && sortDir === 'asc'
         ? <polyline points="18 15 12 9 6 15" />
@@ -410,7 +410,7 @@ export default function ClassesPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
-                background: '#eef3f8', color: '#527198',
+                background: 'var(--primary-tint)', color: 'var(--primary)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
@@ -433,7 +433,7 @@ export default function ClassesPage() {
                       onClick={() => setNewClassAvatarId(newClassAvatarId === icon.id ? null : icon.id)}
                       style={{
                         width: 40, height: 40, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                        border: `2px solid ${newClassAvatarId === icon.id ? '#527198' : '#e2e8f0'}`,
+                        border: `2px solid ${newClassAvatarId === icon.id ? 'var(--primary)' : '#e2e8f0'}`,
                         transition: 'all 0.12s',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
@@ -633,7 +633,7 @@ export default function ClassesPage() {
                 <div className="classes-action-bar teacher-list-toolbar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
                   {selectedStudentIds.size > 0 ? (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#527198" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                       <span style={{ fontWeight: 600, color: '#1e40af', fontSize: "0.813rem" }}>
                         已选 {selectedStudentIds.size} 名学生
                       </span>
@@ -645,7 +645,7 @@ export default function ClassesPage() {
                         }}>取消选择</button>
                       <div style={{ flex: 1 }} />
                       <span style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
-                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#527198', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: 'var(--primary)', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
@@ -796,7 +796,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               学号 <SortIcon field="studentNo" sortField={sortField} sortDir={sortDir} />
@@ -808,7 +808,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               姓名 <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
@@ -820,7 +820,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               性别 <SortIcon field="gender" sortField={sortField} sortDir={sortDir} />
@@ -832,7 +832,7 @@ export default function ClassesPage() {
                               padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#527198'}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                             onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               分组 <SortIcon field="group" sortField={sortField} sortDir={sortDir} />
@@ -861,7 +861,7 @@ export default function ClassesPage() {
                                   style={{ width: 15, height: 15, cursor: 'pointer' }} />
                               </label>
                             </td>
-                            <td style={{ textAlign: 'center', color: s.studentNo ? '#527198' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
+                            <td style={{ textAlign: 'center', color: s.studentNo ? 'var(--primary)' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
                             <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -874,7 +874,7 @@ export default function ClassesPage() {
                                 ) : (
                                   <div style={{
                                     width: 28, height: 28, borderRadius: '50%',
-                                    background: '#eef3f8', color: '#527198',
+                                    background: 'var(--primary-tint)', color: 'var(--primary)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     fontSize: "0.75rem", fontWeight: 600,
                                   }}>
@@ -970,9 +970,9 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#527198',
+                                  color: 'var(--primary)',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#eef3f8'; }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary-tint)'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
@@ -1128,8 +1128,8 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
             <label key={g.value} style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-              background: gender === g.value ? (g.value === 'boy' ? '#eef3f8' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-              color: gender === g.value ? (g.value === 'boy' ? '#527198' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+              background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+              color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
               fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
             }}>
               <input type="radio" name="gender" value={g.value}
@@ -1191,7 +1191,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
       }}>
         <div style={{
           width: 28, height: 28, borderRadius: 7,
-          background: '#eef3f8', color: '#527198',
+          background: 'var(--primary-tint)', color: 'var(--primary)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -1217,7 +1217,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <div style={{
-          fontSize: "0.75rem", color: parsed.length > 0 ? '#527198' : '#94a3b8',
+          fontSize: "0.75rem", color: parsed.length > 0 ? 'var(--primary)' : '#94a3b8',
           fontWeight: parsed.length > 0 ? 600 : 400,
         }}>
           共识别 {parsed.length} 名学生
@@ -1285,7 +1285,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           ) : (
             <div style={{
               width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-              background: '#eef3f8', color: '#527198',
+              background: 'var(--primary-tint)', color: 'var(--primary)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: "1.125rem", fontWeight: 700,
             }}>
@@ -1321,8 +1321,8 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
               <label key={g.value} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-                background: gender === g.value ? (g.value === 'boy' ? '#eef3f8' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-                color: gender === g.value ? (g.value === 'boy' ? '#527198' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+                background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
+                color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
                 fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
               }}>
                 <input type="radio" name="edit-gender" value={g.value}
@@ -1344,7 +1344,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                 onClick={() => setAvatarId(null)}
                 style={{
                   width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-                  border: `2px solid ${!avatarId ? '#527198' : '#e2e8f0'}`,
+                  border: `2px solid ${!avatarId ? 'var(--primary)' : '#e2e8f0'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: '#f1f5f9', fontSize: "0.75rem", color: '#94a3b8', flexShrink: 0,
                 }} title="清除头像">
@@ -1355,7 +1355,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                   onClick={() => setAvatarId(avatarId === av.id ? null : av.id)}
                   style={{
                     width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                    border: `2px solid ${avatarId === av.id ? '#527198' : '#e2e8f0'}`,
+                    border: `2px solid ${avatarId === av.id ? 'var(--primary)' : '#e2e8f0'}`,
                     transition: 'all 0.1s',
                   }}
                   title={av.name}
@@ -1406,7 +1406,7 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, padding: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#eef3f8', color: '#527198', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--primary-tint)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
           </div>
           <div>
@@ -1478,7 +1478,7 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', gap: 12 }}>
             {[
-              { value: 'boy' as const, label: '男', icon: '♂', desc: '设置为男生', color: '#527198', bg: '#f2f5f8', border: '#93c5fd' },
+              { value: 'boy' as const, label: '男', icon: '♂', desc: '设置为男生', color: 'var(--primary)', bg: '#f2f5f8', border: '#93c5fd' },
               { value: 'girl' as const, label: '女', icon: '♀', desc: '设置为女生', color: '#e91e63', bg: '#fdf2f8', border: '#f9a8d4' },
             ].map(g => (
               <button key={g.value} onClick={() => setGender(g.value)}
@@ -1541,7 +1541,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `2px solid ${!selected ? '#527198' : '#e2e8f0'}`,
+              border: `2px solid ${!selected ? 'var(--primary)' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1550,7 +1550,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
             <div key={av.id} onClick={() => setSelected(selected === av.id ? null : av.id)}
               style={{
                 width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                border: `2px solid ${selected === av.id ? '#527198' : '#e2e8f0'}`,
+                border: `2px solid ${selected === av.id ? 'var(--primary)' : '#e2e8f0'}`,
                 transition: 'all 0.1s',
               }}
               title={av.name}
@@ -1595,7 +1595,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
           <div key="none" onClick={() => setSelected(null)}
             style={{
               width: 44, height: 44, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `2px solid ${!selected ? '#527198' : '#e2e8f0'}`,
+              border: `2px solid ${!selected ? 'var(--primary)' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1604,7 +1604,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
             <div key={icon.id} onClick={() => setSelected(selected === icon.id ? null : icon.id)}
               style={{
                 width: 44, height: 44, borderRadius: 8, cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-                border: `2px solid ${selected === icon.id ? '#527198' : '#e2e8f0'}`,
+                border: `2px solid ${selected === icon.id ? 'var(--primary)' : '#e2e8f0'}`,
                 transition: 'all 0.1s',
               }}
               title={icon.name}
@@ -2037,7 +2037,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
             <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
             {unassigned.length > 0 && selectedUnassigned.size > 0 ? (
               <>
-                <span style={{ fontSize: "0.688rem", color: '#527198', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.688rem", color: 'var(--primary)', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
                 </span>
                 <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>·</span>
@@ -2071,7 +2071,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
               display: 'flex', flexWrap: 'wrap', gap: 10, minHeight: 44,
               padding: '12px 16px', borderRadius: 10,
               border: `2px dashed ${draggedId ? '#aebfd2' : selectedUnassigned.size > 0 ? '#6f89aa' : '#dce4ec'}`,
-              background: draggedId ? '#f4f7fa' : selectedUnassigned.size > 0 ? '#eef3f8' : '#fafbfc',
+              background: draggedId ? '#f4f7fa' : selectedUnassigned.size > 0 ? 'var(--primary-tint)' : '#fafbfc',
               transition: 'all 0.12s',
             }}>
             {/* 框选遮罩层 */}
@@ -2082,8 +2082,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 top: marqueeRect.top,
                 width: marqueeRect.width,
                 height: marqueeRect.height,
-                background: 'rgba(82,113,152,0.08)',
-                border: '2px solid rgba(82,113,152,0.4)',
+                background: 'rgba(var(--primary-focus-rgb), 0.08)',
+                border: '2px solid rgba(var(--primary-focus-rgb), 0.4)',
                 borderRadius: 6,
                 pointerEvents: 'none',
                 zIndex: 20,
@@ -2106,20 +2106,20 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '4px 6px', borderRadius: 8, cursor: 'grab',
-                  background: isSelected ? '#eef3f8' : 'white',
+                  background: isSelected ? 'var(--primary-tint)' : 'white',
                   color: isSelected ? '#405a78' : '#0f172a', fontSize: "0.813rem",
                   border: `1.5px solid ${isSelected ? '#6f89aa' : '#dce4ec'}`,
                   userSelect: 'none', whiteSpace: 'nowrap',
                   opacity: draggedId === s.id ? 0.35 : 1,
                   transition: 'all 0.1s',
-                  boxShadow: isSelected ? '0 1px 3px rgba(82,113,152,0.13)' : '0 1px 2px rgba(54,72,94,0.04)',
+                  boxShadow: isSelected ? '0 1px 3px rgba(var(--primary-focus-rgb), 0.13)' : '0 1px 2px rgba(54,72,94,0.04)',
                   flex: '0 0 calc(20% - 8px)',
                 }}>
                 {/* 多选框 */}
                 <div style={{
                   width: 16, height: 16, borderRadius: 4,
-                  background: isSelected ? '#527198' : '#f1f5f9',
-                  border: `1.5px solid ${isSelected ? '#527198' : '#cbd5e1'}`,
+                  background: isSelected ? 'var(--primary)' : '#f1f5f9',
+                  border: `1.5px solid ${isSelected ? 'var(--primary)' : '#cbd5e1'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0, transition: 'all 0.1s',
                 }}>
@@ -2129,8 +2129,8 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 </div>
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                  background: isSelected ? '#e9eff6' : '#f1f5f9',
-                  color: isSelected ? '#527198' : '#64748b',
+                  background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
+                  color: isSelected ? 'var(--primary)' : '#64748b',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: "0.625rem", fontWeight: 700,
                 }}>

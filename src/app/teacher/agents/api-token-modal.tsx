@@ -123,7 +123,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
                信息排成三行（备注+倒计时 / 掩码 / 谁在用），操作挤在右侧一列。
                原来是一行挤四样东西、掩码单独吊在下面，扫起来没有主次。 */
             <div key={row.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f2f5f8', color: '#527198', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f2f5f8', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" />
                 </svg>
@@ -164,7 +164,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
         {editingId === null ? (
           <button type="button" onClick={startCreate} style={{
             width: '100%', marginTop: 4, padding: '11px', borderRadius: 12, cursor: 'pointer',
-            border: '1px dashed #cbd5e1', background: '#fff', color: '#527198',
+            border: '1px dashed #cbd5e1', background: '#fff', color: 'var(--primary)',
             fontSize: '0.813rem', fontWeight: 600, fontFamily: 'inherit',
           }}>
             + 新建一份

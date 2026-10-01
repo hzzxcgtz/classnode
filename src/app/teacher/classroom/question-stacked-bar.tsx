@@ -6,7 +6,7 @@ import type { QuestionStats } from './worksheet-question-stats';
 const OK = '#15803d';
 const BAD = '#934e4e';
 const WARN = '#b45309';
-const BLUE = '#466384';
+const BLUE = 'var(--primary-dark)';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
 

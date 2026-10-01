@@ -113,7 +113,7 @@ export default function WebappsPage() {
           <div className="webapp-management-overview" aria-label="探究网页概览">
             {[
               { label: '全部网页', value: webapps.length, tone: 'blue' },
-              { label: '已关联课堂', value: usageSummary.used, tone: 'green' },
+              { label: '已关联课堂', value: usageSummary.used, tone: 'blue' },
               { label: '未被使用', value: usageSummary.unused, tone: 'grey' },
             ].map(item => (
               <div key={item.label} className={`tone-${item.tone}`}>

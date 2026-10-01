@@ -32,7 +32,7 @@ const CLASSROOM_AGENT_KEY = pickerKey('classroom', 'agent');
  * 同一页上两个不同的地球会让下一个人以为它们是两回事（2026-09-25 已立过这条）。
  */
 const GLOBE_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#527198" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4d7889" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>',
 )}`;
 const CLASSROOM_WEBAPP_KEY = pickerKey('classroom', 'webapp');
 
@@ -120,7 +120,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             ) : (
               <div style={{
                 width: 20, height: 20, borderRadius: 4,
-                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
                 color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '0.625rem', fontWeight: 700, flexShrink: 0,
               }}>{selected.name[0] || '?'}</div>
@@ -158,14 +158,14 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             style={{
               width: '100%', border: 0, borderBottom: '1px solid #f1f5f9', fontFamily: 'inherit', textAlign: 'left',
               display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer',
-              fontSize: '0.813rem', background: value === null ? '#eef3f8' : 'white',
+              fontSize: '0.813rem', background: value === null ? 'var(--primary-tint)' : 'white',
             }}>
             <span style={{ width: 20, height: 20, borderRadius: 4, background: '#e2e8f0', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
             </span>
             <span style={{ color: '#0f172a' }}>不指定</span>
             {value === null && (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#527198" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--primary)" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
@@ -183,17 +183,17 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
                   width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px', cursor: 'pointer', fontSize: '0.813rem',
-                  background: value === option.id ? '#eef3f8' : 'white',
+                  background: value === option.id ? 'var(--primary-tint)' : 'white',
                   transition: 'background 0.1s',
                 }}>
                 {logoUrl ? (
                   <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, #667eea, #764ba2)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700 }}>{option.name[0]}</div>
+                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700 }}>{option.name[0]}</div>
                 )}
                 <span>{option.name}</span>
                 {value === option.id && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#527198" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--primary)" stroke="white" strokeWidth="3" style={{ marginLeft: 'auto' }}>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 )}
@@ -624,26 +624,26 @@ export default function NewClassroomPage() {
                 className="new-classroom-mode-card"
                 style={{
                   flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
-                  border: `2px solid ${mode === m.id ? '#527198' : '#e2e8f0'}`,
-                  background: mode === m.id ? '#eef3f8' : 'white',
+                  border: `2px solid ${mode === m.id ? 'var(--primary)' : '#e2e8f0'}`,
+                  background: mode === m.id ? 'var(--primary-tint)' : 'white',
                   transition: 'all 0.12s',
                   display: 'flex', flexDirection: 'column', textAlign: 'left', font: 'inherit',
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <div style={{
                     width: 16, height: 16, borderRadius: '50%',
-                    border: `2px solid ${mode === m.id ? '#527198' : '#cbd5e1'}`,
+                    border: `2px solid ${mode === m.id ? 'var(--primary)' : '#cbd5e1'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {mode === m.id && (
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#527198' }} />
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)' }} />
                     )}
                   </div>
                   <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
                   {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
-                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? '#527198' : '#94a3b8' }}>{m.icon}</span>
+                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : '#94a3b8' }}>{m.icon}</span>
                   <span>{m.desc}</span>
                 </div>
               </button>
@@ -682,14 +682,14 @@ export default function NewClassroomPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '12px 14px', borderRadius: 10, userSelect: 'none',
-                      border: `1.5px solid ${fieldErrors.class ? '#a85d5d' : isSelected ? '#527198' : '#e2e8f0'}`,
-                      background: isSelected ? '#eef3f8' : 'white',
+                      border: `1.5px solid ${fieldErrors.class ? '#a85d5d' : isSelected ? 'var(--primary)' : '#e2e8f0'}`,
+                      background: isSelected ? 'var(--primary-tint)' : 'white',
                       cursor: isDisabled ? 'not-allowed' : 'pointer',
                       opacity: isDisabled ? 0.5 : 1,
                       fontSize: "0.875rem",
                       transition: 'all 0.12s', textAlign: 'left', fontFamily: 'inherit',
                     }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? '#527198' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? 'var(--primary)' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -767,7 +767,7 @@ export default function NewClassroomPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                     <div style={{
                       width: 26, height: 26, borderRadius: 6,
-                      background: '#527198', color: 'white',
+                      background: 'var(--primary)', color: 'white',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                     }}>

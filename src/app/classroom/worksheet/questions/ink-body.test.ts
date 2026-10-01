@@ -34,23 +34,24 @@ test('🔴 默认档从判据层拿（`INK_DEFAULT_TOOL`），不是随手写的
   assert.ok(body.includes('aria-pressed={tool === \'select\'}'), '选择档没有可读的状态');
 });
 
-test('★ 选中态：离开「选择」档要清掉，撤销/清空也要清掉（否则会删错东西）', () => {
+test('★ 选中态：离开「选择」档、撤销或清空时都要清掉（否则会删错东西）', () => {
   // ★ 2026-09-30（教师选「甲」）。
   // 🔴 两条都是**静默**的：选中是画上去的虚线框，而「谁被选中」是一个**下标** ——
   //    · 切回手写继续画之后还圈着旧图形 ⇒ 学生点一下删除会删掉一个自己没在看的图形；
   //    · 撤销/清空让 `strokes` 少了几笔 ⇒ 那个下标指向**别的图形**（或者指空）。
   //    屏幕上只是「删除删错了」/「点了没反应」，两边都不报错。
   assert.match(body, /if \(next !== 'select'\) setSelected\(null\)/, '换档时没有清掉选中');
-  // ⚠️ 第二轮把两个 handler 改成了 `setSelected(null); setOpenGroup(null); transform(…)`
-  //（一行工具栏上还要顺手关掉可能开着的弹出组）。
-  assert.equal((body.match(/setSelected\(null\);[\s\S]{0,40}?transform\(/g) ?? []).length, 2,
-    '撤销与清空都必须清掉选中（两条路各一处）');
+  for (const handler of ['const undoLast =', 'const clearCanvas =']) {
+    const start = body.indexOf(handler);
+    assert.ok(start >= 0, `找不到 ${handler}`);
+    assert.ok(body.slice(start, start + 220).includes('setSelected(null)'), `${handler} 没有清掉选中`);
+  }
 });
 
 test('★ 删除按钮：**只在「选择」档且真的选中了**才渲染，而且有可读的名字', () => {
   // 🔴 一个永远在、点了没反应的删除按钮会让学生以为它坏了。
   assert.match(body, /tool === 'select' && selected !== null/, '删除按钮不是在「选中了才出现」的条件下渲染');
-  assert.ok(body.includes('删除选中的图形'), '删除按钮没有可读的名字（文字本身就是它的无障碍名）');
+  assert.ok(body.includes('aria-label="删除所选"'), '删除按钮没有可读的名字');
   // 删除走的是**同一条** onChange（与撤销/清空同一条纪律：不存在「按钮改了别处没改」）。
   // ★ 第二轮：删除按**元素种类**分派（文字与笔画是两个数组）⇒ 断言放宽成「两条路都走
   //   `onChange({ kind: 'ink', … })` 那一个写入口」。
@@ -84,7 +85,7 @@ test('★ 工具栏：图标按钮**每一个都有可读的名字**（图标按
   // 🔴 图标按钮没有可见文字 ⇒ **`aria-label` 是它唯一的名字**：少了它，
   //    读屏用户听到的是十一个「按钮」。设计规范里这条是硬规矩。
   assert.ok(body.includes('aria-label={TOOL_LABELS[shape]}'), '图形格子没有 aria-label（读屏读不出来）');
-  assert.ok(body.includes('aria-label="手写"') && body.includes('aria-label="选择"'), '手写/选择没有 aria-label');
+  assert.ok(body.includes('aria-label="画笔"') && body.includes('aria-label="选择"'), '画笔/选择没有 aria-label');
   assert.ok(body.includes('aria-label="文字"'), '文字档没有 aria-label');
   assert.ok(body.includes('aria-label={`${WIDTH_LABELS[index]}笔`}'), '粗细按钮没有 aria-label');
   // 图标本身对读屏是**噪音**（形状已经由按钮的名字说了）⇒ 要 `aria-hidden`。
@@ -120,15 +121,17 @@ test('★ 颜色：八色从判据层来；**选中元素时点颜色 = 改那�
   assert.ok(!/onChange\(\{[^}]*\bcolor:/.test(body), '颜色被写成了整幅画的属性');
 });
 
-test('★ 一行七格 + 三个弹出组（教师：「紧凑 / 分类明确 / 像一个专业的绘图工具」）', () => {
-  // ★ 2026-09-30 第二轮。三件事各自钉一条：
-  //  ① 三个弹出组都要**声明**自己是弹出（`aria-haspopup` + `aria-expanded`）——
+test('★ 画布内工具栏：三类工具 + 四个弹出组 + 当前值预览', () => {
+  // ★ 2026-10-01 定向改造。三件事各自钉一条：
+  //  ① 图形、粗细、颜色、更多操作都要声明自己是弹出（`aria-haspopup` + `aria-expanded`）——
   //     少了它，读屏用户不知道点下去会开一个面板；
-  //  ② 组与组之间要有**分隔**（「分类明确」靠它，而不是靠猜）；
+  //  ② 绘制、样式、修改三类必须有真实的语义分组；
   //  ③ **按钮上显示当前值**（这是「不用点开就知道现在拿的是什么笔」的全部内容）。
-  assert.equal((body.match(/aria-haspopup="menu"/g) ?? []).length, 3, '三个弹出组都要声明 aria-haspopup');
-  assert.equal((body.match(/aria-expanded=\{openGroup === '/g) ?? []).length, 3, '三个弹出组都要有 aria-expanded');
-  assert.ok(body.includes('<GroupDivider />'), '组与组之间没有分隔');
+  assert.equal((body.match(/aria-haspopup="menu"/g) ?? []).length, 4, '四个弹出组都要声明 aria-haspopup');
+  assert.equal((body.match(/aria-expanded=\{openGroup === '/g) ?? []).length, 4, '四个弹出组都要有 aria-expanded');
+  for (const label of ['绘制工具', '画笔样式', '修改画布']) {
+    assert.ok(body.includes(`role="group" aria-label="${label}"`), `缺少「${label}」语义分组`);
+  }
   // ③ 当前值：图形按钮显示**最后一次选的图形**（当前档可能不是图形），
   //    粗细显示当前档的圆点，颜色显示当前色块。
   assert.match(body, /<ToolIcon tool=\{isInkShapeTool\(tool\) \? tool : lastShape\} \/>/,
@@ -137,4 +140,11 @@ test('★ 一行七格 + 三个弹出组（教师：「紧凑 / 分类明确 / �
   assert.ok(body.includes('WIDTH_DOTS['), '粗细按钮没有显示当前档的圆点');
   // ⚠️ 三个组共用一个 `openGroup` ⇒ 同时只可能开一个（开两个会让屏幕上一片浮层）。
   assert.ok(!/useState<[^>]*>\(\[/.test(body), '弹出组的状态不是一个「只能开一个」的标量');
+});
+
+test('★ 清空整张画布：低频操作藏在更多菜单，并要求二次确认', () => {
+  assert.ok(body.includes("openGroup === 'more'"), '清空操作没有收进更多菜单');
+  assert.ok(body.includes("clearArmed ? '再次点击确认清空' : '清空整张画布'"), '清空没有二次确认');
+  assert.match(body, /onChange\(\{ kind: 'ink', box, strokes: \[\], texts: \[\] \}\)/,
+    '清空必须同时移除笔画和文字');
 });

@@ -9,19 +9,19 @@ export function AgentHelpButton({ platform }: { platform: string }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,
         padding: '10px 24px', borderRadius: 10,
-        background: 'linear-gradient(135deg, #eef3f8 0%, #e0e7ff 100%)',
+        background: 'linear-gradient(135deg, var(--primary-tint) 0%, var(--primary-light) 100%)',
         color: '#4338ca', border: '1.5px dashed #a5b4fc',
         cursor: 'pointer', fontSize: '0.813rem', fontWeight: 600,
         fontFamily: 'inherit', transition: 'all 0.15s',
         boxShadow: '0 2px 8px rgba(99,102,241,0.08)',
       }}
       onMouseEnter={event => {
-        event.currentTarget.style.background = 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)';
+        event.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-light) 0%, #cbe3d7 100%)';
         event.currentTarget.style.borderStyle = 'solid';
         event.currentTarget.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)';
       }}
       onMouseLeave={event => {
-        event.currentTarget.style.background = 'linear-gradient(135deg, #eef3f8 0%, #e0e7ff 100%)';
+        event.currentTarget.style.background = 'linear-gradient(135deg, var(--primary-tint) 0%, var(--primary-light) 100%)';
         event.currentTarget.style.borderStyle = 'dashed';
         event.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.08)';
       }}

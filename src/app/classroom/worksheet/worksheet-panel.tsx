@@ -428,7 +428,7 @@ export function WorksheetQuestionList({
                   data-tone={state === 'submitted' ? 'progress-completed' : 'progress-drafting'}
                 >
                   <WorksheetStatusIcon name={state === 'submitted' ? 'completed' : 'drafting'} size={18} />
-                  {state === 'submitted' ? '已完成' : '正在写'}
+                  {state === 'submitted' ? '已完成' : '编辑中'}
                 </span>
               )}
               {gradeState && (
@@ -600,7 +600,7 @@ export function WorksheetQuestionList({
                           <span className={styles.spinner} aria-hidden="true" />
                           正在保存…
                         </>
-                      ) : submitted ? '保存修改' : '已完成'}
+                      ) : submitted ? '保存修改' : '完成作答'}
                     </button>
                   </div>
                 </>

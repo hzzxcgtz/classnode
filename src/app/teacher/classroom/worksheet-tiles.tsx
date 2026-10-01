@@ -31,7 +31,7 @@ import { TileAnswerBody } from './tile-answer';
 const CELL_STYLE: Record<WorksheetCellStatus, { background: string; border: string; label: string }> = {
   unanswered: { background: '#f1f5f9', border: '#e2e8f0', label: '未答' },
   draft: { background: '#fbbf24', border: '#956834', label: '作答中' },
-  submitted: { background: '#527198', border: '#466384', label: '已提交' },
+  submitted: { background: 'var(--primary)', border: 'var(--primary-dark)', label: '已提交' },
 };
 
 /**

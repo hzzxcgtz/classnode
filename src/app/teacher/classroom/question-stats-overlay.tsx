@@ -64,7 +64,7 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
   }
   const max = Math.max(1, ...cells.map((cell) => cell.count));
   const at = (rowId: string, colId: string) => cells.filter((cell) => cell.rowId === rowId && cell.colId === colId)[0];
-  const shade = (count: number) => (count === 0 ? '#f8fafc' : `rgba(82, 113, 152, ${(0.10 + (count / max) * 0.62).toFixed(2)})`);
+  const shade = (count: number) => (count === 0 ? '#f8fafc' : `rgba(var(--primary-focus-rgb), ${(0.10 + (count / max) * 0.62).toFixed(2)})`);
   // ★ 行列合计（展示用）：教师要看的是「**这一条左项**有 12 人连错」，
   // 而不是逐个格子去加 —— 那是这张图最重要的一栏，而裸表里没有。
   const rowTotal = (rowId: string) => cells.filter((cell) => cell.rowId === rowId).reduce((sum, cell) => sum + cell.count, 0);

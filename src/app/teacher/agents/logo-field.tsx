@@ -19,7 +19,7 @@ export function AgentLogoField({ inputRef, preview, onChange, onRemove }: AgentL
           border: '2px dashed #d0d5dd',
           transition: 'border-color 0.15s, box-shadow 0.15s',
         }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#527198'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(82, 113, 152,0.1)'; }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(var(--primary-focus-rgb), 0.1)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = '#d0d5dd'; e.currentTarget.style.boxShadow = 'none'; }}
         >
           {!preview && (
@@ -34,7 +34,7 @@ export function AgentLogoField({ inputRef, preview, onChange, onRemove }: AgentL
         <button type="button" onClick={() => inputRef.current?.click()} style={{
           position: 'absolute', bottom: -6, right: -6,
           width: 20, height: 20, borderRadius: '50%',
-          background: '#527198', color: 'white', border: '2px solid white',
+          background: 'var(--primary)', color: 'white', border: '2px solid white',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', fontSize: "0.75rem", lineHeight: 1,
           padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.15)',

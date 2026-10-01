@@ -176,7 +176,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
                 <div role="radiogroup" aria-label="上传方式" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
 {([['html', '单个 HTML 文件（推荐）'], ['archive', '上传压缩包']] as Array<[UploadMode, string]>).map(([value, label]) => (
                     <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('file'); }}
-                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? '#527198' : '#e2e8f0'}`, background: mode === value ? '#eef3f8' : 'white', color: mode === value ? '#466384' : '#475569' }}>
+                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? 'var(--primary)' : '#e2e8f0'}`, background: mode === value ? 'var(--primary-tint)' : 'white', color: mode === value ? 'var(--primary-dark)' : '#475569' }}>
                       {label}
                     </button>
                   ))}

@@ -117,7 +117,7 @@ test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各�
 test('🔴 那个下拉里的三项：两个「看」的在前，一个「改课堂状态」的在后', () => {
   // ★ 2026-09-30：「逐题开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
   // 学生屏幕上有什么 —— 顺序不是随手排的，改的人要能一眼分清。
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题分析', '进度矩阵', '逐题开放']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题结果', '矩阵分析', '逐题开放']);
   assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['analysis', 'matrix', 'open']);
   // ⚠️ 三项的 id 必须互不相同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
   assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, WORKSHEET_MENU_ITEMS.length);
@@ -282,15 +282,15 @@ test('⚠️ 非设置项没有浮层（`popup: null`）—— 别给普通按�
 
 /* ── 7. 悬浮说明（原来写死在 JSX 里的那几句）────────────────────── */
 
-test('🔴 三句既有的悬浮说明逐字保留（它们是唯一的解释来源）', () => {
+test('🔴 关键悬浮说明与两个分析维度一致（它们是唯一的解释来源）', () => {
   assert.equal(control('pause').title, '暂停后学生无法使用三件套中的任何功能');
   assert.equal(control('lock').title, '停笔：学生不能再修改答案，但仍然可以交卷');
   assert.equal(control('sync-groups', { mode: 'group' }).title, '把当前班级的分组名称和成员同步到正在进行的课堂');
-  assert.equal(control('worksheet-menu').title, '按学习单看全班：答题分析 / 进度矩阵');
+  assert.equal(control('worksheet-menu').title, '按题分析全班，或按学生分析整份学习单');
   assert.equal(control('fullscreen').title, '全屏显示学生面板');
   // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。
   assert.equal(WORKSHEET_MENU_ITEMS[0].title, '按学习单看全班：先按学习单分组，再按题看正确率与作答');
-  assert.equal(WORKSHEET_MENU_ITEMS[1].title, '学生×题目矩阵：一眼看出此刻该讲哪一题');
+  assert.equal(WORKSHEET_MENU_ITEMS[1].title, '按学生查看整份学习单的作答情况，也可交叉定位需要关注的题目');
 });
 
 /* ── 8. `headerLayout`：头部那几段显不显示 ─────────────────────── */

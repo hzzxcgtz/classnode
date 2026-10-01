@@ -237,14 +237,14 @@ export class ChatAPI {
 
   /**
    * 轮询直到对话完成（非流式场景）
-   * 每秒轮询一次，最多 retries 次
+   * 每秒轮询一次，默认最多等待 30 秒；调用方可为耗时任务单独延长。
    */
   async pollUntilCompleted(
     conversationId: string,
     chatId: string,
-    maxRetries = 30
+    timeoutSeconds = 30
   ): Promise<ChatData> {
-    for (let i = 0; i < maxRetries; i++) {
+    for (let i = 0; i < timeoutSeconds; i++) {
       const chat = await this.retrieve(conversationId, chatId);
       if (chat.status === 'completed') return chat;
       if (chat.status === 'failed') {
@@ -262,7 +262,7 @@ export class ChatAPI {
       // 每秒轮询一次
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    throw new Error('对话轮询超时（30秒）');
+    throw new Error(`对话轮询超时（${timeoutSeconds}秒）`);
   }
 
   /**

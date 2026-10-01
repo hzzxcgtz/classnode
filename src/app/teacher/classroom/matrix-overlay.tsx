@@ -37,6 +37,7 @@ export function MatrixOverlay({
   liveTrustedAfter,
   loading,
   participantCount,
+  avatarSvgByParticipantId,
   classroomId,
   advancedMode,
   onClose,
@@ -51,6 +52,8 @@ export function MatrixOverlay({
   liveTrustedAfter: number | undefined;
   loading: boolean;
   participantCount: number;
+  /** 看板已经加载好的学生头像 SVG；小组参与者没有头像时仍回落为首字。 */
+  avatarSvgByParticipantId: Record<string, string>;
   classroomId: string;
   /** ★ 只有高级模式才谈得上「有的组没配学习单」—— 下面那行提示按它收窄。 */
   advancedMode: boolean;
@@ -69,8 +72,8 @@ export function MatrixOverlay({
     <div data-overscroll-guard="" className={styles.overlay}>
       <div className={styles.topbar}>
         <div className={styles.titleBlock}>
-          <h2>学习单举证</h2>
-          <p>按题目与学生交叉查看学习证据</p>
+          <h2>学习单矩阵分析</h2>
+          <p>按学生查看整份作答，也可交叉定位需要关注的题目</p>
         </div>
         <button onClick={onClose} type="button" className={styles.closeButton}>
           退出
@@ -96,6 +99,7 @@ export function MatrixOverlay({
                 liveTrustedAfter={liveTrustedAfter}
                 sheet={sheet}
                 classroomId={classroomId}
+                avatarSvgByParticipantId={avatarSvgByParticipantId}
                 onOpenQuestion={onOpenQuestion}
                 onOpenAnalysis={onOpenAnalysis}
                 onOpenParticipant={onOpenParticipant}
@@ -117,7 +121,7 @@ export function MatrixOverlay({
 
 /** 一块 = 一份学习单。 */
 function MatrixBlock({
-  sheet, title, nodes, live, liveTrustedAfter, classroomId, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
+  sheet, title, nodes, live, liveTrustedAfter, classroomId, avatarSvgByParticipantId, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
 }: {
   sheet: WorksheetBoard['worksheets'][number];
   title: string;
@@ -125,6 +129,7 @@ function MatrixBlock({
   live: Record<string, ParticipantWorksheetProgress>;
   liveTrustedAfter: number | undefined;
   classroomId: string;
+  avatarSvgByParticipantId: Record<string, string>;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string) => void;
   onOpenAnalysis: (worksheetId: string, questionId: string) => void;
@@ -223,7 +228,12 @@ function MatrixBlock({
                 <th className={styles.corner}>题目 / 学习证据</th>
                 {participants.map((participant) => (
                   <th key={participant.participantId} className={styles.participantHead} title={participant.name}>
-                    <span className={styles.initial}>{participant.name.trim().slice(0, 1) || '·'}</span>
+                    <span className={styles.initial}>
+                      {avatarSvgByParticipantId[participant.participantId]
+                        ? <span className={styles.participantAvatar} aria-hidden="true"
+                            dangerouslySetInnerHTML={{ __html: avatarSvgByParticipantId[participant.participantId] }} />
+                        : participant.name.trim().slice(0, 1) || '·'}
+                    </span>
                     <span className={styles.participantName}>{participant.name}</span>
                   </th>
                 ))}
@@ -292,7 +302,7 @@ function MatrixRowView({
     <tr>
       {/* 🔴 行头**两行**（★ 2026-09-29，教师批图 1：「可以在下一行显示题干内容……每一行的
           高度可以适当的放大，甚至占到两到三行都没关系」）：
-            第一行 `组内序号 + 题型别名`（右侧挂「分析」），第二行题干（最多两行、超出省略）。
+            第一行 `全卷序号 + 题型别名`（右侧挂「分析」），第二行题干（最多两行、超出省略）。
           ⚠️ 任务名**不在这一行** —— 它在上面那条段头里（这就是批注要的「不要多次出现」）。 */}
       <th scope="row" className={styles.questionCell} data-stuck={stuck}>
         <div className={styles.questionTop}>
@@ -344,6 +354,16 @@ function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
   const [, setTick] = useState(0);
   const task = activeWorksheetAnalysisTask(classroomId, worksheetId, row.questionId);
 
+  // 页面重新进入后也要识别服务端已经保存的 AI 结果，不能只依赖本次会话的内存标记。
+  useEffect(() => {
+    if (ready || task) return;
+    let alive = true;
+    void api.getWorksheetAnalysis(classroomId, worksheetId, row.questionId)
+      .then((stored) => { if (alive && stored.narrative) setReady(true); })
+      .catch(() => { /* 404 表示尚未分析；入口保持初始状态即可。 */ });
+    return () => { alive = false; };
+  }, [classroomId, worksheetId, row.questionId, ready, task]);
+
   const watch = (backgroundTask: BackgroundAnalysisTask) => {
     setTick((value) => value + 1);
     void backgroundTask.promise
@@ -391,7 +411,7 @@ function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
     buttonState = 'running';
     const elapsed = Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000));
     text = worksheetAnalysisProgressLabel(task.stage, elapsed);
-  } else if (ready) { text = '查看分析'; buttonState = 'ready'; }
+  } else if (ready) { text = '查看 AI 解读'; buttonState = 'ready'; }
 
   return (
     <button type="button" onClick={() => void handleClick()} disabled={checking || Boolean(task)}

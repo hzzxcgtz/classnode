@@ -47,15 +47,13 @@ export function AnalysisOverlay({
     <div data-overscroll-guard="" className={styles.backdrop} style={{ zIndex }}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px',
-        borderBottom: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto',
-      }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div id="analysis-dialog-title" style={{ fontSize: '0.95rem', fontWeight: 600, color: '#1e293b' }}>
-            {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '分析载荷'}
+      <div className={styles.header}>
+        <div className={styles.heading}>
+          <div className={styles.eyebrow}>AI 分析结果</div>
+          <div id="analysis-dialog-title" className={styles.title}>
+            {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '正在读取题目信息'}
           </div>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className={styles.prompt}>
             {/* ★ 2026-09-30：题干认公式。⚠️ 三层：还没有载荷 / 载荷里题干为空 / 有题干。 */}
             {payload
               ? (payload.prompt ? <PromptText text={payload.prompt} placeholder="" /> : '（题干为空）')
@@ -64,13 +62,11 @@ export function AnalysisOverlay({
         </div>
         {/* 🔴 分母必须显眼：载荷只覆盖一部分人，而一份没有分母的名单会被读成「全班就这些人」。 */}
         {payload && (
-          <div style={{ fontSize: '0.85rem', color: '#0f172a', whiteSpace: 'nowrap' }}>
-            已交 <b>{payload.covered}</b>/{payload.total} {state.unit}
-          </div>
+          <div className={styles.count}>已交 <b>{payload.covered}</b>/{payload.total} {state.unit}</div>
         )}
         <button type="button" onClick={onClose}
           title={busy ? '关闭后任务仍会在后台继续' : undefined}
-          style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, padding: '4px 12px', cursor: 'pointer', color: '#334155' }}>
+          className={styles.closeButton}>
           {busy ? '关闭（后台继续）' : '关闭'}
         </button>
       </div>
@@ -78,7 +74,7 @@ export function AnalysisOverlay({
       <AnalysisBanners state={state} />
       <AnalysisBody state={state} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} />
 
-      <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e8f0', background: '#fff', flex: '0 0 auto' }}>
+      <div className={styles.footer}>
         <AnalysisActions state={state} />
       </div>
       </section>

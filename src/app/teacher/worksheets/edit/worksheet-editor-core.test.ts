@@ -2331,7 +2331,7 @@ test('🔴 任务里小题有**没进 reducer** 的非法输入 ⇒ `findUncommi
 test('散题与任务混排：两边的题号都要对（散题不带前缀，前后端同一份规则）', () => {
   const loose = { ...node('q_z'), points: { full: 0, half: 0 } };
   const found = findInvalidPoints(contentOf(loose, taskNode('t_1', '任务一', [{ ...node('q_a'), points: { full: 200, half: 0 } }])));
-  assert.deepEqual(found.map((item) => item.heading), ['1', '任务一 · 1']);
+  assert.deepEqual(found.map((item) => item.heading), ['1', '任务一 · 2']);
 });
 
 /* ── 载入守卫：任务的孩子也要过一遍 ─────────────────────────────────── */
@@ -2425,7 +2425,7 @@ test('🔴 F2/F3：编辑页要渲染的行由**一个纯函数**给出，且与
   assert.deepEqual(rows.map((row) => row.kind), ['question', 'question', 'question', 'question', 'task', 'question', 'task', 'question']);
   assert.deepEqual(
     rows.map((row) => (row.kind === 'task' ? `[任务]${row.node.prompt}` : row.heading)),
-    ['1', '2', '3', '4', '[任务]任务一', '任务一 · 1', '[任务]任务二', '任务二 · 1'],
+    ['1', '2', '3', '4', '[任务]任务一', '任务一 · 5', '[任务]任务二', '任务二 · 6'],
     '★ 题号就是 `flattenAnswerable` 那一份；任务自己占一行（`[任务]`）',
   );
   // 🔴 F2 的要害：深度 ≥2 的那两道题**在渲染行里**（旧实现里它们不渲染、判据却查它们）。

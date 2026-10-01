@@ -64,6 +64,7 @@
   --shadow-card-hover: 0 8px 24px rgba(15, 23, 42, 0.07);
   --teacher-sidebar-width: 220px;
   --teacher-sidebar-collapsed-width: 68px;
+  --teacher-drawer-width: 520px;
 }
 
 * {

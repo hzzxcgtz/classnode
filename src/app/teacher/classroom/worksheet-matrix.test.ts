@@ -333,7 +333,7 @@ test('🔴 任务不占一行；小题的题号带任务前缀', () => {
     {},
   );
   assert.deepEqual(rows.map((r) => r.questionId), ['q1', 'q2', 'q3'], '任务不许占一行');
-  assert.deepEqual(rows.map((r) => r.heading), ['任务一 · 1', '任务一 · 2', '任务二 · 1']);
+  assert.deepEqual(rows.map((r) => r.heading), ['任务一 · 1', '任务一 · 2', '任务二 · 3']);
 });
 
 test('🔴 计数也带同一个题号（`rowTally` 与屏幕上的「已交 N/M」是同一个函数）', () => {
@@ -343,9 +343,8 @@ test('🔴 计数也带同一个题号（`rowTally` 与屏幕上的「已交 N/M
     {},
   );
   const tallies = questionTallies(rows);
-  // ⚠️ 散题自己有**一个**跨全文的计数器（与任务内的计数器是两回事）：
-  // 上面这个任务里的 q1 是「任务一 · 1」，而散题从 1 起、彼此接着往下编。
-  assert.deepEqual(tallies.map((t) => t.heading), ['任务一 · 1', '1', '2'], '散题不带前缀，自己连续编号');
+  // 全卷共用一个计数器：任务里的 q1 是第 1 题，后面的散题继续编号为 2、3。
+  assert.deepEqual(tallies.map((t) => t.heading), ['任务一 · 1', '2', '3'], '散题不带前缀，但沿用全卷连续编号');
   assert.deepEqual(tallies.map((t) => t.submitted), [1, 0, 0]);
 });
 
@@ -382,7 +381,7 @@ test('全都是任务、一个可作答的题都没有 ⇒ 不说「还没有人
 
 /* ── 6. 按任务分块（★ 2026-09-29，教师批图 1）───────────────────────── */
 
-test('🔴 每行带上它的任务名与**组内序号**（矩阵按任务分块要用的两格）', () => {
+test('🔴 每行带上它的任务名与**全卷序号**（矩阵按任务分块要用的两格）', () => {
   const rows = buildWorksheetMatrix(
     sheet([participant('p1')]),
     [node('q1'), task('t1', '任务一', [node('q2'), node('q3')]), node('q4')],
@@ -391,11 +390,10 @@ test('🔴 每行带上它的任务名与**组内序号**（矩阵按任务分�
   assert.deepEqual(rows.map((r) => r.questionId), ['q1', 'q2', 'q3', 'q4']);
   // 散题那两行的任务名是 `null`（它们不属于任何任务），不是空串 —— 空串当任务名会画出一个空标题行。
   assert.deepEqual(rows.map((r) => r.taskTitle), [null, '任务一', '任务一', null]);
-  // ⚠️ 散题那个**跨全文**的计数器：q4 是 `2`，不是它那一段里的第 1 个。
-  assert.deepEqual(rows.map((r) => r.label), ['1', '1', '2', '2']);
+  assert.deepEqual(rows.map((r) => r.label), ['1', '2', '3', '4']);
 });
 
-test('🔴 组内序号与两级题号同源（同一行的 `heading` 尾巴就是 `label`）', () => {
+test('🔴 全卷序号与两级题号同源（同一行的 `heading` 尾巴就是 `label`）', () => {
   const rows = buildWorksheetMatrix(
     sheet([participant('p1')]),
     [task('t1', '任务一', [node('q1'), node('q2')]), node('q3')],

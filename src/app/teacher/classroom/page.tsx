@@ -352,8 +352,8 @@ function CompanionMenu({ onSelect, onClose }: {
 }
 
 /**
- * 「学习单」那个下拉的**面板**（★ 2026-09-29，教师：「『学习单』改名为『答题分析』，
- * 『矩阵』改名为『进度矩阵』，两者合并成一个『学习单』，通过鼠标点击下拉后选择」）。
+ * 「学习单」下拉的面板。两个分析入口分别从题目和学生维度进入，
+ * 第三项用于控制逐题开放。
  *
  * 🔴 各项的**名字**在 `WORKSHEET_MENU_ITEMS`（判据层，有用例钉着）—— 这里只把 id 接到动作。
  * 少了那一条的话，「有哪几项、叫什么」会只活在这段 JSX 里，删掉一项没有任何东西会红。
@@ -938,7 +938,7 @@ function ClassroomBoardContent() {
   const settingsDialogOpenedRef = useRef(false);
   const [showModulesMenu, setShowModulesMenu] = useState(false);
   const modulesMenuRef = useRef<HTMLDivElement>(null);
-  /** ★ 2026-09-29：「学习单」那个下拉（答题分析 / 进度矩阵）。 */
+  /** 「学习单」下拉：答题结果 / 矩阵分析 / 逐题开放。 */
   const [showWorksheetMenu, setShowWorksheetMenu] = useState(false);
   const worksheetMenuRef = useRef<HTMLDivElement>(null);
   /** ★ 2026-09-29：「智能学伴」那个下拉（对话分析 / 设置）。 */
@@ -2464,6 +2464,12 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     return Array.from(s).sort((a: number, b: number) => a - b);
   })();
 
+  const matrixAvatarSvgByParticipantId: Record<string, string> = Object.fromEntries(students.flatMap((participant) => {
+    const avatarId = participant.student.avatarId;
+    const svg = avatarId ? studentAvatars[avatarId] : null;
+    return svg ? [[participant.id, fixSvgUrl(svg)]] : [];
+  }));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
@@ -2675,8 +2681,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           )}
                           {control.id === 'worksheet-menu' && showWorksheetMenu && (
                             <WorksheetMenu
-                              // 「答题分析」= 原来那个「学习单」按钮（抽屉）；
-                              // 「进度矩阵」= 原来那个「矩阵」按钮（浮层）。两条路一个字都没改。
+                              // 「答题结果」按题看全班；「矩阵分析」按学生看整份学习单，
+                              // 同时保留题目与学生交叉定位能力。
                               // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
                               // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
                               //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
@@ -3126,7 +3132,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             {/* 浮层面板 */}
             <div data-overscroll-guard="" style={{
               position: 'fixed', top: 96, right: 24, bottom: 24,
-              width: 420, zIndex: 291,
+              width: 'min(var(--teacher-drawer-width), calc(100vw - 40px))', zIndex: 291,
               background: 'white', borderRadius: 14,
               border: '1px solid #e2e8f0',
               display: 'flex', flexDirection: 'column',
@@ -3839,6 +3845,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           liveTrustedAfter={undefined}
           loading={wb.loading}
           participantCount={students.length}
+          avatarSvgByParticipantId={matrixAvatarSvgByParticipantId}
           classroomId={classroom.id}
           // ⚠️ 只有高级模式才谈得上「有的组没配学习单」；标准 / 分组模式下这一行恒为 0，
           // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）

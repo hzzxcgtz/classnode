@@ -362,7 +362,7 @@ export interface AnswerableQuestion {
    */
   heading: string;
   /**
-   * ★ 2026-09-29（教师批图 1）：**组内序号** —— 题号去掉任务前缀的那一半（`1`）。
+   * **全卷连续序号** —— 题号去掉任务前缀的数字部分（`1`）。
    *
    * 🔴 矩阵按任务分块之后，段头已经把任务名说完了，小题上只画这一个数
    * ⇒ 那个数必须是**算出来的**，不许由渲染侧拿下标推：
@@ -386,13 +386,12 @@ export interface AnswerableQuestion {
  * ⇒ 两者**分家**：`flattenQuestions` 原样不动（它就是「树里所有节点」），
  * 「一道题一条」的消费者改调本函数。
  *
- * 题号规则（教师裁定 ②b「每个任务内重排」）：
- *   · 任务内的题从 1 起，前缀是**任务节点的 `prompt`**（那是它的**标题**，迁移写的就是
+ * 题号规则（2026-10-01 调整为全卷连续）：
+ *   · 全卷所有可作答小题连续编号，任务只提供标题前缀，不重置序号；前缀是任务节点的 `prompt`（那是它的**标题**，迁移写的就是
  *     「任务一」这种；§六 把 task 级操作叫「改名」）；
  *   · 标题留空 ⇒ **不带前缀**。这里**不按位置编一个「任务N」** —— 那等于替教师写一个
  *     他没写过的名字，与「迁移不猜内容」是同一条纪律（裁定 ①a：纯分组是合法数据）；
- *   · 散题（顶层非任务节点）共用一个**跨全文**的计数器，不带前缀。放在任务之间的散题
- *     因此接着往下编号（`1` … `2`）而不是重新从 1 起 —— 避免同一份学习单上出现两个 `1.`。
+ *   · 散题（顶层非任务节点）同样使用这一个全卷计数器，不带前缀。
  *
  * ⚠️ 遍历顺序**必须**与 `flattenQuestions` 同构（先本节点、再按序递归 `children`）：
  * 两个函数一个决定「屏幕上画几道、什么顺序」，一个决定「题号是几」，
@@ -417,14 +416,14 @@ export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQue
     Array.isArray(node.children) ? node.children : []
   );
 
-  /** `counter` 是**这一层**的计数器：散题共用一个，每个任务各有一个自己的。 */
+  /** 全卷只有一个计数器：进入新任务只换标题前缀，不从 1 重新开始。 */
+  const counter = { n: 0 };
   const walk = (list: WorksheetQuestionNode[], prefix: string, counter: { n: number }) => {
     for (const node of list) {
       if (node.type === TASK_TYPE) {
         const title = typeof node.prompt === 'string' ? node.prompt.trim() : '';
-        // 里层的任务另起一个计数器，**不动外层的** —— 嵌套任务由服务端校验器拦住
-        // （`VALIDATORS['task']`），但手工改过的库还读得进来，读的一侧不能因此错乱。
-        walk(kids(node), title ? `${title} · ` : '', { n: 0 });
+        // 任务只切换标题前缀，序号仍沿用全卷计数器。
+        walk(kids(node), title ? `${title} · ` : '', counter);
         continue;
       }
       counter.n += 1;
@@ -434,7 +433,7 @@ export function flattenAnswerable(nodes: WorksheetQuestionNode[]): AnswerableQue
       walk(kids(node), prefix, counter);
     }
   };
-  walk(nodes, '', { n: 0 });
+  walk(nodes, '', counter);
   return out;
 }
 

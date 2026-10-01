@@ -44,7 +44,7 @@ export interface AnswerableQuestion<T extends HeadingNode = HeadingNode> {
   /** 两级题号：`任务一 · 1`。任务标题留空时没有前缀（就是 `1`）。 */
   heading: string;
   /**
-   * ★ 2026-09-29：**组内序号**（题号去掉任务前缀的那一半）。
+   * **全卷连续序号**（题号去掉任务前缀的数字部分）。
    *
    * 服务端**今天不读它** —— 加在这里只是为了「逐字镜像」这条规矩不出现例外
    * （本文件是镜像，见文件头）。前端矩阵按任务分块之后，小题上画的就是它；
@@ -65,12 +65,13 @@ export function flattenAnswerable<T extends HeadingNode>(nodes: T[]): Array<Answ
   /** `children` 的守卫 —— 与前端那一份、以及 `flattenQuestions` **逐字同形**（见那里的注释）。 */
   const kids = (node: T): T[] => (Array.isArray(node.children) ? (node.children as T[]) : []);
 
-  /** `counter` 是**这一层**的计数器：散题共用一个，每个任务各有一个自己的。 */
+  /** 全卷只有一个计数器：进入新任务只换标题前缀，不从 1 重新开始。 */
+  const counter = { n: 0 };
   const walk = (list: T[], prefix: string, counter: { n: number }) => {
     for (const node of list) {
       if (node.type === TASK_TYPE) {
         const title = typeof node.prompt === 'string' ? node.prompt.trim() : '';
-        walk(kids(node), title ? `${title} · ` : '', { n: 0 });
+        walk(kids(node), title ? `${title} · ` : '', counter);
         continue;
       }
       counter.n += 1;
@@ -78,6 +79,6 @@ export function flattenAnswerable<T extends HeadingNode>(nodes: T[]): Array<Answ
       walk(kids(node), prefix, counter);
     }
   };
-  walk(nodes, '', { n: 0 });
+  walk(nodes, '', counter);
   return out;
 }

@@ -147,7 +147,8 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.12)' }} />
       <div data-overscroll-guard="" role="dialog" aria-modal="true" aria-label={`${student.student.name} 的探究记录`} style={{
-        position: 'fixed', top: 96, right: 24, bottom: 24, width: 420, zIndex: 291,
+        position: 'fixed', top: 96, right: 24, bottom: 24,
+        width: 'min(var(--teacher-drawer-width), calc(100vw - 40px))', zIndex: 291,
         background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 8px 32px rgba(0,0,0,0.12)',

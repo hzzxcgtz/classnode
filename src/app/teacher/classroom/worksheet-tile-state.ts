@@ -247,7 +247,7 @@ function activeQuestionIndex(
  * 这一格是**看板上正在预览的那一道题**：题号、题型、题目节点、以及**此刻**的作答值。
  *
  * 🔴 **它挑的那一题必须与格子上写着的那一题是同一个。** 所以这里**复用
- * `activeQuestionIndex`** —— 格子正文那行「正在做 任务二 · 1 · 判断题」用的就是它。
+ * `activeQuestionIndex`** —— 格子正文那行「正在做 任务二 · 4 · 判断题」用的就是它。
  * 各挑各的后果是：格子上写着第 3 题，下面预览的却是第 5 题的作答，
  * 而**两边都不报错**（教师会照着第 5 题的答案去讲第 3 题）。
  *
@@ -256,7 +256,7 @@ function activeQuestionIndex(
  */
 export interface TileAnswer {
   node: WorksheetQuestionNode;
-  /** 两级题号（`任务二 · 1`），与格子正文同源。 */
+  /** 两级题号（`任务二 · 4`），与格子正文同源。 */
   heading: string;
   /** 题型中文名。 */
   typeLabel: string;

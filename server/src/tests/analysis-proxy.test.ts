@@ -7,8 +7,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { proxyAnalysisRequest } from '../services/ai-proxy.js';
+import { proxyAIRequest, proxyAnalysisRequest } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
+import { ChatAPI } from '../services/coze-bot/chat.js';
+import type { ChatData, MessageData } from '../services/coze-bot/types.js';
 
 const agentOf = (platform: string) => ({
   id: 'a1', name: 't', platform, apiUrl: null, apiKey: 'k', botId: 'b', extra: null,
@@ -38,6 +40,40 @@ test('不认识的平台（无图）⇒ 如实失败，不是一个静默的空�
   assert.equal(r.success, false);
   assert.match(String(r.error), /暂不支持/);
   assert.equal(r.content, undefined, '失败时不许带 content —— 那会让调用方以为拿到了解读');
+});
+
+test('分析专用轮询等待 90 秒，普通学生对话仍使用默认 30 秒', async (t) => {
+  const originalCreate = ChatAPI.prototype.create;
+  const originalPoll = ChatAPI.prototype.pollUntilCompleted;
+  const originalGetMessages = ChatAPI.prototype.getMessages;
+  const receivedTimeouts: Array<number | undefined> = [];
+  const chat = {
+    id: 'chat-1', conversation_id: 'conv-1', bot_id: 'bot-1',
+    status: 'completed', created_at: 1,
+  } as ChatData;
+  const answer = {
+    id: 'message-1', conversation_id: 'conv-1', role: 'assistant', type: 'answer',
+    content: '完成', content_type: 'text', created_at: 1, updated_at: 1,
+  } as MessageData;
+
+  ChatAPI.prototype.create = async () => chat;
+  ChatAPI.prototype.pollUntilCompleted = async (_conversationId, _chatId, timeoutSeconds) => {
+    receivedTimeouts.push(timeoutSeconds);
+    return chat;
+  };
+  ChatAPI.prototype.getMessages = async () => [answer];
+  t.after(() => {
+    ChatAPI.prototype.create = originalCreate;
+    ChatAPI.prototype.pollUntilCompleted = originalPoll;
+    ChatAPI.prototype.getMessages = originalGetMessages;
+  });
+
+  const student = await proxyAIRequest(agentOf('coze'), '你好', '学生甲');
+  const analysis = await proxyAnalysisRequest(agentOf('coze'), '分析全班作答', []);
+
+  assert.equal(student.success, true);
+  assert.equal(analysis.success, true);
+  assert.deepEqual(receivedTimeouts, [undefined, 90], '学生走默认 30 秒，只有分析显式延长到 90 秒');
 });
 
 // ⚠️ **coze 那条路的成功路径没有自动化网**：它要真密钥才走得到 `uploadBuffer`，

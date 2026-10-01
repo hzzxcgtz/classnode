@@ -96,6 +96,8 @@ export class CozeBot {
       userName: string;
       conversationId?: string;
       history?: EnterMessage[];
+      /** 非流式对话的轮询等待秒数；普通对话默认 30 秒。 */
+      pollTimeoutSeconds?: number;
     }
   ): Promise<{ content: string; conversationId: string; chatId: string }> {
     const messages: EnterMessage[] = [];
@@ -128,7 +130,8 @@ export class CozeBot {
     // 轮询直到完成
     const completed = await this.chats.pollUntilCompleted(
       chat.conversation_id,
-      chat.id
+      chat.id,
+      options.pollTimeoutSeconds
     );
 
     // 获取回复消息

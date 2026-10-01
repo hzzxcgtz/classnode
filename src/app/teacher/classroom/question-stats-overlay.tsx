@@ -11,6 +11,7 @@ import { AnswerViewBody } from './answer-view';
 import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-charts';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
+import { questionTypeNickname } from '@/lib/worksheet-questions';
 
 /**
  * 「按题统计与分析」的浮层（规格 `specs/2026-09-28-按题统计与分析.md`）。
@@ -223,27 +224,30 @@ export function QuestionStatsOverlay({
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 292, background: 'rgba(0,0,0,0.16)' }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 292, background: 'rgb(25 43 62 / 34%)', backdropFilter: 'blur(2px)' }} />
       <div data-overscroll-guard="" style={{
         position: 'fixed', top: 48, bottom: 32, left: '50%', transform: 'translateX(-50%)',
-        width: 'min(860px, calc(100vw - 48px))', zIndex: 293,
-        background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
+        width: 'min(900px, calc(100vw - 48px))', zIndex: 293,
+        background: '#f7fafc', borderRadius: 18, border: '1px solid #d7e2ec',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.16)',
+        boxShadow: '0 24px 70px rgb(15 35 55 / 24%)',
           overscrollBehavior: 'contain',
       }}>
         {/* 页头 */}
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #dce6ef', background: '#fff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h3 style={{ margin: 0, flex: 1, fontSize: '1rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {node ? `${heading ? `${heading} · ` : ''}${node.type}` : '按题统计'}
-            </h3>
-            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ fontSize: '0.688rem', padding: '4px 10px' }}>关闭</button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ marginBottom: 3, color: '#66809b', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em' }}>答题结果</div>
+              <h3 style={{ margin: 0, color: '#213850', fontSize: '1rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {node ? `${heading ? `${heading} · ` : ''}${questionTypeNickname(node.type)}` : '正在读取题目'}
+              </h3>
+            </div>
+            <button type="button" onClick={onClose} style={{ border: '1px solid #cbd8e5', borderRadius: 9, padding: '7px 12px', background: '#fff', color: '#4d647c', cursor: 'pointer' }}>关闭</button>
           </div>
           {stats && (
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
             // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 14, padding: '12px 14px', border: '1px solid #e0e8f0', borderRadius: 13, background: '#f5f8fb' }}>
               <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
                 {[
                   { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
@@ -280,7 +284,7 @@ export function QuestionStatsOverlay({
           )}
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
           {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这一题的内容还没加载到。</div>}
 
           {stats && (
@@ -427,23 +431,23 @@ export function QuestionStatsOverlay({
             )}
           </Section>
 
-          {/* ② 智能体解读 —— 所有可作答题型都支持；客观题由本地先判分，智能体只解释
+          {/* ② AI 解读 —— 所有可作答题型都支持；客观题由本地先判分，AI 只解释
               统计背后的思维特点。判据在 `showsAgentAnalysis`（纯函数、有用例）。
               `AnalysisBody` / `AnalysisActions` / `AnalysisBanners` 与居中结果窗共用同一个实现，
               包括后台进度与重新分析动作。 */}
           {node && showsAgentAnalysis(node) && (
-            <Section title="智能体解读" note="发现简单统计之外的理解方式与共同困难">
-              <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0 12px', background: '#fafcff' }}>
+            <Section title="AI 解读" note="发现简单统计之外的理解方式与共同困难">
+              <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #d7e2ec', borderRadius: 14, background: '#f7fafc', boxShadow: '0 8px 24px rgb(36 71 107 / 6%)' }}>
                 <AnalysisBanners state={analysis} />
-                {/* ⚠️ 内联时正文不滚动（外层浮层已经在滚）：`maxHeight` 让它在长文档时不撑破浮层。 */}
-                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
+                {/* 展开发送数据时限制高度，避免长载荷撑破按题统计浮层。 */}
+                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 480, overflow: 'auto' }}>
                   <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId}
                     // ★ 伪名 → 真名：**本机**从名册解析（`entries[].studentId` 就是参与者 id）。
                     // 🔴 它只影响这一屏的对照表，**不改**发给 AI 的任何东西。
                     nameOf={(participantId) => participants.filter((item) => item.participantId === participantId)[0]?.name ?? null}
                   />
                 </div>
-                <AnalysisActions state={analysis} />
+                <div style={{ padding: '0 18px', background: '#fff' }}><AnalysisActions state={analysis} /></div>
               </div>
             </Section>
           )}

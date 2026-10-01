@@ -7,6 +7,9 @@ import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
+import { Markdown } from '@/lib/markdown';
+import { normalizeWorksheetAnalysisMarkdown } from '@/lib/worksheet-analysis-markdown';
+import styles from './analysis-panel.module.css';
 
 export type AnalysisOperation = 'analyzing' | null;
 export type AnalysisRunStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing' | null;
@@ -216,6 +219,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 }) {
   const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
+  const [showDetails, setShowDetails] = useState(false);
 
   /**
    * ★ 2026-09-29（教师）：「经过第三方 AI 分析后返回的数据，在看的时候还是要有真名」。
@@ -243,90 +247,86 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
-      {loading && <div style={{ color: '#64748b' }}>正在读取…</div>}
+    <div className={styles.body}>
+      {loading && <div className={styles.loading}>正在读取已保存的分析结果…</div>}
 
       {!loading && payload && payload.covered === 0 && (
-        // 零份已提交是教师最可能踩的一步（全班还没交就点开了）——说清楚，别给一张空图。
-        <div style={{ color: '#64748b' }}>这道题还没有已提交的作答。</div>
+        <div className={styles.emptyResult}>这道题还没有已提交的作答。</div>
       )}
 
-      {!loading && payload && payload.payloadKind === 'mixed' && (
-        <div style={{ marginBottom: 12, color: '#92400e', fontSize: '0.82rem' }}>
-          ⚠️ 本题有两种作答方式（部分文字、部分笔迹）—— 下面文档与联系表各是一部分。
-        </div>
+      {!loading && payload && payload.covered > 0 && payload.narrative && (
+        <section className={styles.resultCard} aria-label="AI 解读结果">
+          <div className={styles.resultHeader}>
+            <span className={styles.aiMark}>AI</span>
+            <span className={styles.resultTitle}>AI 解读</span>
+            {payload.model && <span className={styles.resultMeta}>{payload.model}</span>}
+          </div>
+          <Markdown className={styles.resultText} allowImages={false}>
+            {normalizeWorksheetAnalysisMarkdown(localize(payload.narrative) ?? '')}
+          </Markdown>
+        </section>
       )}
 
-      {!loading && payload?.text !== null && payload?.text !== undefined && payload.text !== '' && (
-        <pre style={{
-          margin: '0 0 18px', padding: 14, background: '#fff', border: '1px solid #e2e8f0',
-          borderRadius: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-          fontSize: '0.85rem', lineHeight: 1.7, color: '#0f172a', fontFamily: 'inherit',
-        }}>{localize(payload.text)}</pre>
+      {!loading && payload && payload.covered > 0 && !payload.narrative && (
+        <div className={styles.emptyResult}>尚未生成 AI 解读。点击下方按钮后，分析会在后台完成并自动保存。</div>
       )}
 
-      {!loading && payload && sheets.length > 0 && (
+      {!loading && payload && (
         <>
-          {payload.labeled === false && (
-            // 缺 fontconfig 时图上**没有**标签 —— 必须说清，并给出编号对照，否则认不出哪格是谁。
-            <div style={{ marginBottom: 10, color: '#92400e', fontSize: '0.82rem' }}>
-              ⚠️ 这张图上**没有标签**（本机渲染不出文字）—— 请按下面的编号对照表：
-            </div>
-          )}
-          {sheets.map((sheet) => (
-            <div key={sheet.sheetIndex} style={{ marginBottom: 16 }}>
-              {sheets.length > 1 && (
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>
-                  第 {sheet.sheetIndex + 1} 张 / 共 {sheets.length} 张
-                </div>
+          <button type="button" className={styles.detailsToggle}
+            aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>
+            {showDetails ? '收起发送数据' : '查看发送数据'}
+            <span aria-hidden="true">{showDetails ? '⌃' : '⌄'}</span>
+          </button>
+
+          {showDetails && (
+            <section className={styles.detailsPanel} aria-label="发送给 AI 的数据">
+              <div className={styles.detailsHeading}>发送给 AI 的数据</div>
+              {payload.payloadKind === 'mixed' && (
+                <div className={styles.notice}>本题同时包含文字与笔迹作答，以下文档和联系表分别呈现两部分数据。</div>
               )}
-              <img
-                src={api.worksheetAnalysisSheetUrl(classroomId, worksheetId, questionId, sheet.sheetIndex)}
-                alt={`${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
-                // ★ 取不回来时**说一句**（服务端缺 sharp 的能力时回 503）——
-                // 没有它，界面上只有一个坏图，而教师不知道是「坏了」还是「本来就空」。
-                onError={state.markSheetFailed}
-                style={{ maxWidth: '100%', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}
-              />
-            </div>
-          ))}
-          {sheetFailed && (
-            <div role="alert" style={{ marginBottom: 12, padding: '8px 12px', background: '#f8eeee', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem' }}>
-              ⚠️ 联系表**画不出来**（本机没有图片渲染能力，服务端回了 503）—— 文字那部分若存在仍然可读。
-            </div>
+              {payload.text !== null && payload.text !== undefined && payload.text !== '' && (
+                <pre className={styles.payloadText}>{localize(payload.text)}</pre>
+              )}
+              {sheets.length > 0 && (
+                <>
+                  {payload.labeled === false && (
+                    <div className={styles.notice}>联系表没有文字标签，请按下方编号对照表辨认。</div>
+                  )}
+                  {sheets.map((sheet) => (
+                    <div key={sheet.sheetIndex} className={styles.sheetBlock}>
+                      {sheets.length > 1 && (
+                        <div className={styles.sheetCaption}>第 {sheet.sheetIndex + 1} 张 / 共 {sheets.length} 张</div>
+                      )}
+                      <img
+                        src={api.worksheetAnalysisSheetUrl(classroomId, worksheetId, questionId, sheet.sheetIndex)}
+                        alt={`${payload.questionLabel} 的联系表（第 ${sheet.sheetIndex + 1} 张）`}
+                        onError={state.markSheetFailed}
+                        className={styles.sheetImage}
+                      />
+                    </div>
+                  ))}
+                  {sheetFailed && (
+                    <div role="alert" className={styles.errorNotice}>联系表暂时无法显示，文字数据仍可正常查看。</div>
+                  )}
+                  <ol className={styles.mapping}>
+                    {payload.entries.map((entry, index) => {
+                      const real = nameOf ? nameOf(entry.studentId) : null;
+                      return (
+                        <li key={entry.studentId}>
+                          <b>{entry.anonLabel}</b>
+                          {real ? <> · <b className={styles.realName}>{real}</b></> : null}
+                          {' '}· 第 {index + 1} 格
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </>
+              )}
+            </section>
           )}
-          {/* ★ 2026-09-29：对照表**一直显示**（原来只在图上没有标签时才显示），
-              而且带上**真名** —— 教师拿它对着那张图看「第几格是谁」。
-              🔴 真名只画在**这一屏**上（`nameOf` 由调用方从名册解析，是本机数据）；
-              发给 AI 的仍然是伪名，一个字没变。 */}
-          <ol style={{ margin: '0 0 18px', padding: '10px 12px 10px 28px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.82rem', color: '#334155' }}>
-            {payload.entries.map((entry, index) => {
-              const real = nameOf ? nameOf(entry.studentId) : null;
-              return (
-                <li key={entry.studentId}>
-                  <b>{entry.anonLabel}</b>
-                  {real ? <> · <b style={{ color: '#0f172a' }}>{real}</b></> : null}
-                  {' '}· 第 {index + 1} 格
-                </li>
-              );
-            })}
-          </ol>
         </>
       )}
-
-      {/* ★ M7b：解读显示在文档/图**之后**，视觉上与它们分开 —— AI 写的东西不该看起来
-          像学生写的。 */}
-      {!loading && payload?.narrative && (
-        <div style={{ margin: '0 0 18px', padding: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10 }}>
-          <div style={{ fontSize: '0.8rem', color: '#0369a1', marginBottom: 6 }}>
-            AI 解读{payload.model ? `（${payload.model}）` : ''}
-          </div>
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.85rem', lineHeight: 1.7, fontFamily: 'inherit', color: '#0f172a' }}>
-            {localize(payload.narrative)}
-          </pre>
-        </div>
-      )}
-
     </div>
   );
 }
@@ -334,29 +334,22 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state }: { state: WorksheetAnalysisState }) {
   const { payload, busy, operation, runStage, runElapsedSeconds } = state;
-  let actionText = payload?.narrative ? '重新生成分析' : '开始 AI 分析';
+  let actionText = payload?.narrative ? '重新生成 AI 解读' : '生成 AI 解读';
   if (operation === 'analyzing' && runStage) actionText = worksheetAnalysisProgressLabel(runStage, runElapsedSeconds);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: '1px solid #e2e8f0', flex: '0 0 auto' }}>
+    <div className={styles.actions}>
       <button type="button" disabled={!payload?.canSend.ok || busy}
         onClick={() => void state.run()}
         title={payload && !payload.canSend.ok ? payload.canSend.reason : undefined}
-        style={{
-          border: '1px solid #cbd5e1', borderRadius: 10, padding: '8px 16px',
-          cursor: payload?.canSend.ok ? 'pointer' : 'not-allowed',
-          background: payload?.canSend.ok ? '#fff' : '#f1f5f9',
-          color: payload?.canSend.ok ? '#334155' : '#94a3b8',
-        }}>
+        className={styles.actionButton}>
         {actionText}
       </button>
       {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
       {payload && !payload.canSend.ok && (
-        <span style={{ fontSize: '0.78rem', color: '#b45309' }}>{payload.canSend.reason}</span>
+        <span className={styles.actionWarning}>{payload.canSend.reason}</span>
       )}
       {payload?.canSend.ok && !busy && (
-        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-          分析会在后台执行，完成后自动保存
-        </span>
+        <span className={styles.actionHint}>分析会在后台执行，完成后自动保存</span>
       )}
     </div>
   );

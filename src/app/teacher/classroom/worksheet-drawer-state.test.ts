@@ -681,7 +681,7 @@ test('🔴 任务不是一道题：它不进题目清单、也不占题号（抽
   const inTask = node({ id: 't1', type: 'task', prompt: '任务一', children: [choice, fill] });
   const { questions, headingOf, items } = indexQuestions([inTask, short]);
   assert.deepEqual(questions.map((q) => q.id), ['q_1', 'q_2', 'q_3'], '任务自己不许出现在抽屉的题目清单里');
-  assert.deepEqual(items.map((item) => item.heading), ['任务一 · 1', '任务一 · 2', '1']);
+  assert.deepEqual(items.map((item) => item.heading), ['任务一 · 1', '任务一 · 2', '3']);
   assert.equal(questionHeading(choice, headingOf('q_1')), '任务一 · 1. 单选题');
   assert.equal(headingOf('t1'), null, '任务没有题号 —— 它不是一道题');
 });

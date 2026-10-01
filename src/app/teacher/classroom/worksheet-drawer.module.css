@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  width: min(520px, calc(100vw - 40px));
+  width: min(var(--teacher-drawer-width), calc(100vw - 40px));
   border: 1px solid #d9e3ed;
   border-radius: 16px;
   background: #f9fbfd;
@@ -17,7 +17,7 @@
 }
 
 .analysisDrawer {
-  width: min(880px, calc(100vw - 40px));
+  width: min(var(--teacher-drawer-width), calc(100vw - 40px));
 }
 
 .header {

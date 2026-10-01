@@ -1,0 +1,217 @@
+.body {
+  flex: 1;
+  overflow: auto;
+  padding: 18px;
+  color: #20344c;
+}
+
+.loading,
+.emptyResult {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  padding: 24px;
+  border: 1px dashed #c9d7e6;
+  border-radius: 14px;
+  background: #f8fbfe;
+  color: #60758d;
+  text-align: center;
+}
+
+.resultCard {
+  overflow: hidden;
+  border: 1px solid #cddceb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(36 71 107 / 7%);
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid #e3ebf3;
+  background: #f2f7fc;
+}
+
+.aiMark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: #dceafa;
+  color: #315f8c;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.resultTitle {
+  color: #243b55;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.resultMeta {
+  margin-left: auto;
+  color: #7a8da2;
+  font-size: 0.74rem;
+}
+
+.resultText,
+.payloadText {
+  margin: 0;
+  word-break: break-word;
+  color: #25384d;
+  font: inherit;
+  font-size: 0.94rem;
+  line-height: 1.72;
+}
+
+.resultText {
+  padding: 18px 22px 22px;
+  font-size: 1rem;
+}
+
+/* Markdown 组件带有通用的行内尺寸；分析卡片需要更适合长文扫读的专用层级。 */
+.resultText h1,
+.resultText h2,
+.resultText h3 {
+  margin: 1.05em 0 0.45em !important;
+  color: #1d3047 !important;
+  line-height: 1.4;
+}
+
+.resultText h1 { font-size: 1.32rem !important; }
+.resultText h2 { font-size: 1.24rem !important; }
+.resultText h3 { font-size: 1.16rem !important; }
+
+.resultText p { margin: 0.42em 0 !important; }
+
+.resultText ul,
+.resultText ol {
+  margin: 0.4em 0 0.7em !important;
+  padding-left: 1.55em !important;
+}
+
+.resultText li { padding: 0.08em 0 !important; }
+.resultText li + li { margin-top: 0.38em; }
+
+.resultText strong {
+  color: #172b43;
+  font-weight: 750 !important;
+}
+
+.resultText > :first-child { margin-top: 0 !important; }
+.resultText > :last-child { margin-bottom: 0 !important; }
+
+.payloadText { white-space: pre-wrap; }
+
+.detailsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 5px 9px;
+  border: 1px solid #cbd8e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #526a83;
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+
+.detailsToggle:hover { border-color: #91acc7; color: #315f8c; }
+
+.detailsPanel {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  background: #f7fafc;
+}
+
+.detailsHeading {
+  margin-bottom: 10px;
+  color: #526a83;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notice {
+  margin-bottom: 12px;
+  color: #8a6224;
+  font-size: 0.78rem;
+}
+
+.payloadText {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #e0e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.sheetBlock { margin-bottom: 14px; }
+.sheetCaption { margin-bottom: 5px; color: #71859a; font-size: 0.75rem; }
+.sheetImage { max-width: 100%; border: 1px solid #dbe5ef; border-radius: 10px; background: #fff; }
+
+.errorNotice {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid #efc7c7;
+  border-radius: 8px;
+  background: #fbf1f1;
+  color: #a94343;
+  font-size: 0.78rem;
+}
+
+.mapping {
+  margin: 0;
+  padding: 10px 12px 10px 30px;
+  border: 1px solid #e0e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #526a83;
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.realName { color: #25384d; }
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 0;
+  border-top: 1px solid #e2eaf2;
+}
+
+.actionButton {
+  border: 1px solid #9db4cb;
+  border-radius: 10px;
+  padding: 8px 15px;
+  background: #fff;
+  color: #315f8c;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.actionButton:disabled {
+  border-color: #d8e0e8;
+  background: #f1f5f8;
+  color: #97a7b7;
+  cursor: not-allowed;
+}
+
+.actionHint { color: #7a8da2; font-size: 0.76rem; }
+.actionWarning { color: #9a641e; font-size: 0.76rem; }
+
+@media (max-width: 640px) {
+  .body { padding: 12px; }
+  .resultText { padding: 15px; }
+  .actions { align-items: flex-start; flex-direction: column; gap: 7px; }
+}

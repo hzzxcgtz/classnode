@@ -283,7 +283,7 @@ test('🔴 格子阵的 tooltip 也要两级题号 —— `headings` 与 `cells`
   assert.equal(result.kind, 'working');
   if (result.kind !== 'working') return;
   assert.deepEqual(result.cells, ['draft', 'unanswered', 'unanswered', 'submitted']);
-  assert.deepEqual(result.headings, ['任务一 · 1', '任务一 · 2', '任务一 · 3', '任务二 · 1']);
+  assert.deepEqual(result.headings, ['任务一 · 1', '任务一 · 2', '任务一 · 3', '任务二 · 4']);
   assert.equal(result.headings.length, result.cells.length, '两个数组必须逐格对齐');
 });
 
@@ -420,4 +420,3 @@ test('🔴 实时的题号不在学习单里 ⇒ 退回原判据（不挑一道�
   //（更好：原来那个标志只说明「没走预览那条路」，而这一条直接证明「画出来的不是 x」）。
   assert.equal(answer?.value, '库里');
 });
-

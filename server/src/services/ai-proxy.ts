@@ -1229,6 +1229,9 @@ export async function proxyAnalysisRequest(
     const result = await coze.chat(images.length > 0 ? '' : message, {
       userName: ANALYSIS_USER_ID,
       history,
+      // 分析载荷比学生日常对话更大，Pro 模型也可能需要更长推理时间。
+      // 这里只延长分析专用链路；普通学生对话仍使用 CozeBot 的 30 秒默认值。
+      pollTimeoutSeconds: ANALYSIS_POLL_TIMEOUT_SECONDS,
     });
     return { success: true, content: result.content };
   } catch (error: unknown) {
@@ -1241,3 +1244,4 @@ export async function proxyAnalysisRequest(
  * （随机会让平台侧把每次分析都当成一个新用户，不利于排查）。
  */
 const ANALYSIS_USER_ID = 'classnode-analysis';
+const ANALYSIS_POLL_TIMEOUT_SECONDS = 90;

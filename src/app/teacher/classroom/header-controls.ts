@@ -47,9 +47,8 @@ export type HeaderControlId =
   /** 给全班发一条消息（★ 2026-09-29：原名「通知全体」）。 */
   | 'notify'
   /**
-   * ★ 2026-09-29（教师）：「『学习单』改名为『答题分析』，『矩阵』改名为『进度矩阵』，
-   * 两者合并成一个『学习单』，通过鼠标点击下拉后选择」。
-   * ⇒ 两个入口合成一个**下拉**，里面那两项见 `WORKSHEET_MENU_ITEMS`。
+   * 学习单的两个分析入口合成一个下拉，分别承载按题分析与按学生分析。
+   * 里面的具体项目见 `WORKSHEET_MENU_ITEMS`。
    */
   | 'worksheet-menu'
   /** 把格子铺满整屏（★ 2026-09-30：**两种看板模式都有**）。 */
@@ -86,7 +85,7 @@ export const COMPANION_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'settings'; 
  * ★ 2026-09-30（教师）：「逐题开放」并进这个下拉。
  *
  * 教师原话：「题目开放方式有必要再增加一个……在教师看板页面中，找一个合适的位置和方式，
- * 帮我呈现控制界面」。落在这里的理由：那个下拉里原本两项（答题分析 / 进度矩阵）都是
+ * 帮我呈现控制界面」。落在这里的理由：那个下拉里原本两项（答题结果 / 矩阵分析）都是
  * **按学习单看全班**的工具，而「逐题开放」是第三件同一类的事；头部那一排已经有 8 个控件，
  * 再加一个按钮只会更挤（而它只在学习单是「手动逐题开放」那一档时才有用）。
  *
@@ -96,13 +95,13 @@ export const COMPANION_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'settings'; 
 export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'matrix' | 'open'; label: string; title: string }> = [
   {
     id: 'analysis',
-    label: '答题分析',
+    label: '答题结果',
     title: '按学习单看全班：先按学习单分组，再按题看正确率与作答',
   },
   {
     id: 'matrix',
-    label: '进度矩阵',
-    title: '学生×题目矩阵：一眼看出此刻该讲哪一题',
+    label: '矩阵分析',
+    title: '按学生查看整份学习单的作答情况，也可交叉定位需要关注的题目',
   },
   {
     id: 'open',
@@ -275,7 +274,7 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   //（里面的三项见 `WORKSHEET_MENU_ITEMS`）。合并的理由就是教师那句话本身：
   // 两者是「按学习单看全班」的两面，摆成两个并列按钮时教师分不出该按哪个。
   controls.push(build('worksheet-menu', 'module', '学习单', {
-    title: '按学习单看全班：答题分析 / 进度矩阵',
+    title: '按题分析全班，或按学生分析整份学习单',
     popup: 'menu', expanded: input.worksheetMenuOpen,
   }));
   controls.push(build('explore-settings', 'module', '探究空间', {

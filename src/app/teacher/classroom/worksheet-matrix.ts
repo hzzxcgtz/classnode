@@ -36,7 +36,7 @@ export interface MatrixRow {
    */
   heading: string;
   /**
-   * ★ 2026-09-29（教师批图 1）：**组内序号**（`1` / `2` …）—— 段的标题已经占了一行，
+   * **全卷连续序号**（`1` / `2` …）—— 段的标题已经占了一行，
    * 小题上只画这一个数。
    *
    * 🔴 **不许拿渲染侧的下标推**：散题共用跨全文的计数器（`1` … `2`），
@@ -132,7 +132,7 @@ export function buildWorksheetMatrix(
   // `flattenQuestions`：任务没有作答行，它占一行会让下面每一行的题号整体后移，
   // 而屏幕上看起来只是「题号怪怪的」。
   // ★ 2026-09-29：外层多套一层段（教师批图 1「按任务进行归类」）——
-  // 题号与组内序号都来自那**同一个** `counter.n`，所以这里不再自己算任何一个数。
+  // 题号与全卷序号都来自同一个计数器，所以这里不再自己算任何一个数。
   const rows: MatrixRow[] = [];
   for (const group of groupAnswerable(nodes)) {
     for (const { node, heading, label } of group.items) {

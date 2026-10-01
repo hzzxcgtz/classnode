@@ -9,7 +9,7 @@
  *
  * 用例钉住三件事：
  *   1. **任务自己不是一道题**（不出现在结果里）—— 这是「任务不能作答」（裁定 ①a）的代码形态；
- *   2. **每个任务内重排**（裁定 ②b）+ 散题不带前缀；
+ *   2. **小题跨任务连续编号**，任务题保留任务标题前缀，散题不带前缀；
  *   3. 与 `flattenQuestions` 的**顺序同构**（见 `顺构` 那一条的断言）。
  *
  * ⚠️ 本文件跑在 `node --test`（根目录 `pnpm test:client`）—— 类型擦除直接加载 `.ts`，
@@ -47,32 +47,30 @@ function headings(nodes: WorksheetQuestionNode[]): string[] {
   return flattenAnswerable(nodes).map((item) => item.heading);
 }
 
-/** 只要**组内序号**。 */
+/** 只要**全卷连续序号**。 */
 function labels(nodes: WorksheetQuestionNode[]): string[] {
   return flattenAnswerable(nodes).map((item) => item.label);
 }
 
-/* ── 组内序号（★ 2026-09-29：矩阵按任务分块之后，小题上只画这一个数）──────── */
+/* ── 全卷连续序号（矩阵按任务分块之后，小题上只画这一个数）──────── */
 
-test('🔴 组内序号：每个任务从 1 起', () => {
+test('🔴 小题序号：跨任务连续编号，不因任务切换而重置', () => {
   const nodes = [task('t1', '任务一', [q('a'), q('b')]), task('t2', '任务二', [q('c')])];
-  assert.deepEqual(labels(nodes), ['1', '2', '1']);
-  assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务二 · 1']);
+  assert.deepEqual(labels(nodes), ['1', '2', '3']);
+  assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务二 · 3']);
 });
 
-test('🔴 组内序号：散题沿用**跨全文**的编号 —— 下标推不出它（这个字段存在的理由）', () => {
-  // 散题 a、任务一、散题 b：b 的序号是 `2`（散题共用一个计数器），
-  // 而它在**自己那一段**里的下标是 0 ⇒ 拿 `index + 1` 当序号会印出一个不存在的「1」。
+test('🔴 小题序号：散题与任务题共用全卷计数器', () => {
   const nodes = [q('a'), task('t1', '任务一', [q('c')]), q('b')];
-  assert.deepEqual(labels(nodes), ['1', '1', '2']);
-  assert.deepEqual(headings(nodes), ['1', '任务一 · 1', '2']);
-  // 摆明冲突：最后一道题是它那一段的第 1 项，序号却是 2。
+  assert.deepEqual(labels(nodes), ['1', '2', '3']);
+  assert.deepEqual(headings(nodes), ['1', '任务一 · 2', '3']);
+  // 最后一道题是它所在段的第 1 项，但全卷序号是 3，渲染层不能拿段内下标现算。
   const lastGroup = groupAnswerable(nodes)[2];
   assert.equal(lastGroup.items.length, 1);
-  assert.equal(lastGroup.items[0].label, '2');
+  assert.equal(lastGroup.items[0].label, '3');
 });
 
-test('🔴 题号与组内序号**不许分家**（每一条题号的尾巴就是它的序号）', () => {
+test('🔴 题号与全卷序号**不许分家**（每一条题号的尾巴就是它的序号）', () => {
   const nodes = [q('a'), task('t1', '任务一', [q('b'), q('c')]), task('t2', '   ', [q('d')]), q('e')];
   for (const item of flattenAnswerable(nodes)) {
     assert.ok(
@@ -106,12 +104,12 @@ test('一个任务里三道小题：题号带任务标题，且任务内从 1 �
   assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务一 · 3']);
 });
 
-test('两个任务：**每个任务内各自重排**（裁定 ②b）', () => {
+test('两个任务：小题编号跨任务连续', () => {
   const nodes = [
     task('t1', '任务一', [q('a'), q('b')]),
     task('t2', '任务二', [q('c')]),
   ];
-  assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务二 · 1']);
+  assert.deepEqual(headings(nodes), ['任务一 · 1', '任务一 · 2', '任务二 · 3']);
 });
 
 test('🔴 任务自己不是一道可作答的题 —— 它不出现在结果里', () => {
@@ -134,7 +132,7 @@ test('🔴 任务标题留空时**不编前缀**（不造一个「任务N」）'
 
 test('散题与任务混排：散题自己连续编号、不带前缀', () => {
   const nodes = [q('a'), task('t1', '任务一', [q('b'), q('c')]), q('d')];
-  assert.deepEqual(headings(nodes), ['1', '任务一 · 1', '任务一 · 2', '2']);
+  assert.deepEqual(headings(nodes), ['1', '任务一 · 2', '任务一 · 3', '4']);
 });
 
 test('手工改过的嵌套（非任务节点带 children）不丢题，沿用同一层序号', () => {
@@ -219,7 +217,7 @@ test('一个任务一组，标题就是它（去空白）的 `prompt`', () => {
     task('t2', '任务二', [q('c')]),
   ]);
   assert.deepEqual(groups.map((g) => g.title), ['任务一', '任务二']);
-  assert.deepEqual(groups.map((g) => g.items.map((i) => i.heading)), [['任务一 · 1', '任务一 · 2'], ['任务二 · 1']]);
+  assert.deepEqual(groups.map((g) => g.items.map((i) => i.heading)), [['任务一 · 1', '任务一 · 2'], ['任务二 · 3']]);
 });
 
 test('🔴 连续散题合成**一组**，不给它编标题（`title: null`）', () => {

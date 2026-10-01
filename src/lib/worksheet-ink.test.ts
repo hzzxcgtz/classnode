@@ -677,7 +677,6 @@ test('🔴 hitTestStroke：**手写笔迹一律不命中**（不然学生一点�
 });
 
 test('🔴 strokeHandles：两点框图形 4 个角；直线/箭头 2 个端点；角 3 个顶点', () => {
-  const box = { w: 200, h: 100 };
   assert.deepEqual(strokeHandles(shapeStroke('rect', [[0.1, 0.2], [0.5, 0.6]])),
     [[0.1, 0.2], [0.5, 0.2], [0.5, 0.6], [0.1, 0.6]]);
   assert.deepEqual(strokeHandles(shapeStroke('line', [[0.1, 0.2], [0.5, 0.6]])),
@@ -712,7 +711,6 @@ test('🔴 moveStroke：手写笔迹**也能平移**（它不是图形，但同�
 });
 
 test('🔴 resizeStroke：拖一个角 ⇒ 那个角动、对角不动（外接框重算）', () => {
-  const box = { w: 200, h: 200 };
   const rect = shapeStroke('rect', [[0.2, 0.2], [0.6, 0.6]]);
   // 把手 0 = 左上角 [0.2,0.2] ⇒ 拖到 [0.1,0.3]
   assert.deepEqual(resizeStroke(rect, 0, [0.1, 0.3]).points, [[0.1, 0.3], [0.6, 0.6]]);
@@ -735,7 +733,6 @@ test('🔴 resizeStroke：拖一个角 ⇒ 那个角动、对角不动（外接�
 });
 
 test('🔴 resizeStroke：直线拖的是**端点**、角拖的是**顶点**（不是外接框）', () => {
-  const box = { w: 200, h: 200 };
   const line = shapeStroke('line', [[0.1, 0.1], [0.9, 0.9]]);
   assert.deepEqual(resizeStroke(line, 0, [0.2, 0.3]).points, [[0.2, 0.3], [0.9, 0.9]]);
   assert.deepEqual(resizeStroke(line, 1, [0.2, 0.3]).points, [[0.1, 0.1], [0.2, 0.3]]);

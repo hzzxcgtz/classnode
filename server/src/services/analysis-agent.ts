@@ -1,4 +1,5 @@
 import type { AnalysisPayload } from './analysis-payload.js';
+import { AI_SCORE_BLOCK_END, AI_SCORE_BLOCK_START } from './analysis-scoring.js';
 
 /**
  * ★ M7b：分析型的**编排层**。**不碰网络** —— 真正发出去的那一次在 `ai-proxy.ts` 的
@@ -25,7 +26,7 @@ export function normalizeNarrative(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   const trimmed = raw.trim();
   // 🔴 **不能只判 `trim() === ''`**：`trim()` 不认识 U+200B（零宽空格）与 U+FEFF（BOM）
-  // ⇒ 模型只回一个零宽字符时，`narrative` 会变成「有值但看不见」，而界面那块「AI 解读」
+  // ⇒ 模型只回一个零宽字符时，`narrative` 会变成「有值但看不见」，而界面那块「AI 分析」
   // 渲染出来是**空白**的 —— 教师以为分析过了。判据是「去掉所有空白**与格式类字符**
   // （`\p{Cf}`）之后是否为空」，而**返回的仍是原文本**（只做首尾 trim，不改中间的内容）。
   if (trimmed.replace(/[\s\p{Cf}]/gu, '') === '') return '';
@@ -97,8 +98,23 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     `本地统计：全对 ${stats.correct}；部分正确 ${stats.partial}；答错 ${stats.incorrect}；未自动判分 ${stats.ungraded}`,
     '',
   ].join('\n');
+  const scoring = payload.aiScoring.enabled ? [
+    '',
+    '【AI 评分】已开启（结果仅供参考）',
+    `满额：${payload.aiScoring.maxScore} ${payload.aiScoring.unit}`,
+    payload.aiScoring.unit === '分'
+      ? '评分步长：可以保留一位小数。'
+      : `评分步长：只能返回整数（0、1、2…${payload.aiScoring.maxScore}），${payload.aiScoring.unit}不能拆分成小数。`,
+    `评分要求：${payload.aiScoring.criteria || '依据参考答案、题意与学生实际表达综合评分'}`,
+    '请给每一位已提交作答的学生评分。无法可靠判断时 score 填 null，不要猜分。',
+    '在正常 Markdown 解读之后，必须追加下面的机器数据块；学生代号必须与输入完全一致，不能遗漏：',
+    AI_SCORE_BLOCK_START,
+    '{"scores":[{"student":"User_001","score":8,"reason":"一句话说明给分依据"}]}',
+    AI_SCORE_BLOCK_END,
+    '机器数据块内只能放一行合法 JSON，不要使用 Markdown 代码围栏。',
+  ].join('\n') : '';
   if (payload.payloadKind === 'text') {
-    return `${LEAD}\n\n${payload.text ?? head}`;
+    return `${LEAD}\n\n${payload.text ?? head}${scoring}`;
   }
   const shapes = payload.knobs;
   const note = [
@@ -120,6 +136,6 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
   // `mixed` 时文档与图**都要给**（文字那几条只存在于文档里）。文档自身已经包含完整题面，
   // 不再把 head 重复一遍；纯图片没有文档，才由 head 承担题面与参考答案。
   return payload.text
-    ? `${LEAD}\n\n${payload.text}\n【附带联系表】\n${note}`
-    : `${head}${note}`;
+    ? `${LEAD}\n\n${payload.text}\n【附带联系表】\n${note}${scoring}`
+    : `${head}${note}${scoring}`;
 }

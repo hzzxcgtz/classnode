@@ -6,7 +6,6 @@ import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：矩阵表头是**连线右项 / 归类框名**（教师原文）⇒ 认公式。
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { indexQuestions } from './worksheet-drawer-state';
-import { AnalysisActions, AnalysisBanners, AnalysisBody, useWorksheetAnalysis } from './analysis-panel';
 import { AnswerViewBody } from './answer-view';
 import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-charts';
 import { StackedBar } from './question-stacked-bar';
@@ -25,7 +24,7 @@ import { questionTypeNickname } from '@/lib/worksheet-questions';
  *
  * ── 三块（规格 §6）──────────────────────────────────────────────────
  *   ① 本题统计（本批新增）
- *   ② 智能体解读 ← **打开已有的分析浮层**（裁决：见下面 `onOpenAnalysis` 那段注释）
+ *   ② AI 分析 ← **打开统一的分析结果浮层**（裁决：见下面 `onOpenAnalysis` 那段注释）
  *   ③ 逐个作答 ← **复用抽屉第三层那个组件**（不另写一份呈现）
  */
 
@@ -159,7 +158,7 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, classroomId,
+  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenAnalysis,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -168,8 +167,8 @@ export function QuestionStatsOverlay({
   questionId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
-  /** 🔴 分析载荷要用它（与 `AnalysisOverlay` 同一条理由：同一份学习单可被多个课堂引用）。 */
-  classroomId: string;
+  /** 两个入口统一打开同一个 AI 分析结果窗口，避免内嵌版与独立版继续分叉。 */
+  onOpenAnalysis: () => void;
 }) {
   const worksheet = board?.worksheets.filter((item) => item.id === worksheetId)[0];
   const nodes = nodesByWorksheet[worksheetId] ?? null;
@@ -199,8 +198,6 @@ export function QuestionStatsOverlay({
     return questionStats(node, rows);
   }, [node, worksheet, questionId]);
 
-  // ★ 分析那一路的取数与动作（与整屏浮层同一个 hook、同一个实现）。
-  const analysis = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode);
   const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
   /**
    * ★ 2026-09-28（教师）：「在这一屏加一个『看某人的作答』的入口」。
@@ -212,14 +209,6 @@ export function QuestionStatsOverlay({
   const picked = participants.filter((item) => item.participantId === pickedId)[0];
   const pickedRow = picked?.answerRows.filter((item) => item.questionId === questionId)[0];
 
-  /** 「还没交」的**参与者**（带 id）—— 名字可点，所以不能只用 `stats.process` 里的名字串。 */
-  const notSubmitted = useMemo(() => {
-    if (!worksheet) return [] as Array<{ participantId: string; name: string }>;
-    return worksheet.participants.filter((item) => {
-      const row = item.answerRows.filter((entry) => entry.questionId === questionId)[0];
-      return !row || row.status !== 'submitted';
-    }).map((item) => ({ participantId: item.participantId, name: item.name }));
-  }, [worksheet, questionId]);
   const distribution = stats?.distribution ?? null;
 
   return (
@@ -247,8 +236,8 @@ export function QuestionStatsOverlay({
           {stats && (
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
             // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 14, padding: '12px 14px', border: '1px solid #e0e8f0', borderRadius: 13, background: '#f5f8fb' }}>
-              <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10, padding: '8px 12px', border: '1px solid #e0e8f0', borderRadius: 12, background: '#f5f8fb' }}>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                 {[
                   { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
                   { label: '已交', value: String(stats.submitted), suffix: unit, color: '#0f172a' },
@@ -268,6 +257,7 @@ export function QuestionStatsOverlay({
               <div style={{ marginLeft: 'auto' }}>
                 {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
                 <VerdictDonut
+                  size={96}
                   unit={unit}
                   centerText={stats.accuracy === null ? null : `${stats.accuracy}%`}
                   centerNote={stats.accuracy === null ? '不统计正确率' : '正确率'}
@@ -350,7 +340,14 @@ export function QuestionStatsOverlay({
                     <HeatLegend max={Math.max(0, ...distribution.cells.map((cell) => cell.count))} unit={unit} />
                   </div>
                 )}
-                {distribution?.kind === 'text' && <CountBars bars={distribution.lengths} unit={unit} />}
+                {distribution?.kind === 'text' && (() => {
+                  // 问答题的 5 个长度区间大多只有 1—2 个有值。零值也各占一行会留下大片空白，
+                  // 所以这里只画实际出现过的区间；没有有效文字时才保留一句空态。
+                  const present = distribution.lengths.filter((item) => item.count > 0);
+                  return present.length > 0
+                    ? <CountBars bars={present} unit={unit} dense height={Math.max(54, present.length * 30)} />
+                    : <div style={{ fontSize: '0.75rem', color: FAINT }}>尚无可统计的文字作答。</div>;
+                })()}
                 {distribution?.kind === 'ink' && (
                   <div style={{ fontSize: '0.75rem', color: MUTED }}>
                     {distribution.drawn} {unit}交了这一题（笔迹的图见下面「逐个作答」）。
@@ -378,22 +375,21 @@ export function QuestionStatsOverlay({
 
               {/* 过程统计（★ 教师批准保留）。⚠️ 三列都是 NULL 的旧行**不进样本** ⇒ 那时整段是「—」。 */}
               <Section title="作答过程" note="旧数据没有这一项，显示「—」">
-                <div style={{ display: 'flex', gap: 20, fontSize: '0.813rem', color: '#0f172a' }}>
-                  <span>用时中位数 <b>{stats.process.medianMs === null ? '—' : `${Math.round(stats.process.medianMs / 1000)} 秒`}</b></span>
-                  <span>修改次数中位数 <b>{stats.process.medianSaves === null ? '—' : `${stats.process.medianSaves} 次`}</b></span>
-                  <span>还没交 <b>{stats.process.notSubmitted.length}</b> {unit}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                  {[
+                    { mark: '◷', label: '典型用时', value: stats.process.medianMs === null ? '—' : `${Math.round(stats.process.medianMs / 1000)} 秒` },
+                    { mark: '↻', label: '典型修改', value: stats.process.medianSaves === null ? '—' : `${stats.process.medianSaves} 次` },
+                    { mark: '○', label: '尚未提交', value: `${stats.process.notSubmitted.length} ${unit}` },
+                  ].map((item) => (
+                    <div key={item.label} style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 9, alignItems: 'center', padding: '9px 11px', border: '1px solid #e0e8f0', borderRadius: 10, background: '#fff' }}>
+                      <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 8, background: '#eef4fa', color: '#56789b', fontSize: '0.9rem' }}>{item.mark}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <small style={{ display: 'block', color: CHART.faint, fontSize: '0.65rem', lineHeight: 1.2 }}>{item.label}</small>
+                        <b style={{ display: 'block', marginTop: 2, color: CHART.ink, fontSize: '0.88rem' }}>{item.value}</b>
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                {notSubmitted.length > 0 && (
-                  // ★ 名字**可点** ⇒ 直接跳到「看某人的作答」（教师不必再去下拉里找一遍）。
-                  <div style={{ fontSize: '0.75rem', color: MUTED, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {notSubmitted.map((item) => (
-                      <button key={item.participantId} type="button" onClick={() => setPickedId(item.participantId)}
-                        style={{ border: 'none', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px', cursor: 'pointer', color: '#334155', fontSize: '0.75rem' }}>
-                        {item.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </Section>
             </>
           )}
@@ -431,24 +427,24 @@ export function QuestionStatsOverlay({
             )}
           </Section>
 
-          {/* ② AI 解读 —— 所有可作答题型都支持；客观题由本地先判分，AI 只解释
-              统计背后的思维特点。判据在 `showsAgentAnalysis`（纯函数、有用例）。
-              `AnalysisBody` / `AnalysisActions` / `AnalysisBanners` 与居中结果窗共用同一个实现，
-              包括后台进度与重新分析动作。 */}
+          {/* ② AI 分析。结果只保留一个统一查看窗口；这里不再内嵌第二套结果页。 */}
           {node && showsAgentAnalysis(node) && (
-            <Section title="AI 解读" note="发现简单统计之外的理解方式与共同困难">
-              <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #d7e2ec', borderRadius: 14, background: '#f7fafc', boxShadow: '0 8px 24px rgb(36 71 107 / 6%)' }}>
-                <AnalysisBanners state={analysis} />
-                {/* 展开发送数据时限制高度，避免长载荷撑破按题统计浮层。 */}
-                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 480, overflow: 'auto' }}>
-                  <AnalysisBody state={analysis} classroomId={classroomId} worksheetId={worksheetId} questionId={questionId}
-                    // ★ 伪名 → 真名：**本机**从名册解析（`entries[].studentId` 就是参与者 id）。
-                    // 🔴 它只影响这一屏的对照表，**不改**发给 AI 的任何东西。
-                    nameOf={(participantId) => participants.filter((item) => item.participantId === participantId)[0]?.name ?? null}
-                  />
-                </div>
-                <div style={{ padding: '0 18px', background: '#fff' }}><AnalysisActions state={analysis} /></div>
-              </div>
+            <Section title="AI 分析" note="发现简单统计之外的理解方式与共同困难">
+              <button type="button" onClick={onOpenAnalysis} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18,
+                width: '100%', padding: '15px 17px', border: '1px solid #cddceb', borderRadius: 12,
+                background: '#f5f9fd', color: '#28445f', cursor: 'pointer', textAlign: 'left',
+              }}>
+                <span>
+                  <strong style={{ display: 'block', fontSize: '0.86rem' }}>
+                    {worksheet?.analyzedQuestionIds?.includes(questionId) ? '查看已保存的 AI 分析' : '生成 AI 分析'}
+                  </strong>
+                  <span style={{ display: 'block', marginTop: 4, color: '#71859a', fontSize: '0.74rem' }}>
+                    分析结论、逐生 AI 评分和发送数据都在统一结果窗口中查看
+                  </span>
+                </span>
+                <span aria-hidden style={{ color: '#6685a5', fontSize: '1.1rem' }}>›</span>
+              </button>
             </Section>
           )}
 

@@ -105,7 +105,7 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
   },
   'short-answer': {
     title: '学生作答方式',
-    description: '问答题由学生输入文字或手写内容，提交后由教师人工查看。',
+    description: '问答题由学生输入文字或手写内容，提交后由教师查看，也可开启 AI 评分。',
   },
   drawing: {
     title: '学生作答方式',
@@ -348,9 +348,14 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   //    一道两个空的表格题显示「最高 1 分」，而服务端按逐空给分、学生实际能拿 2 分。
   //    教师看到的数字与实际给分对不上，而**没有任何报错**（本仓最防的那一类）。
   const maximumPoints = maximumPointsFor(node, shownPoints.full);
+  const aiScoringEnabled = node.data.aiScoringEnabled === true;
+  const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
+    ? node.data.aiScoringMaxScore : 10;
+  const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
+    ? node.data.aiScoringCriteria : '';
   const gradingStatus = isGradedQuestionType(node.type)
     ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
-    : '教师人工查看';
+    : (aiScoringEnabled ? `AI 评分 · 满额 ${aiScoringMaxScore} ${pointsUnit}` : '教师查看');
 
   return (
     <section
@@ -610,8 +615,60 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 />
               </div>
             )}
+            {(node.type === 'short-answer' || node.type === 'drawing') && (
+              <div className="worksheet-editor-block worksheet-editor-ai-scoring">
+                <div className="worksheet-editor-block-head">
+                  <div>
+                    <h4>AI 评分</h4>
+                    <p>分析本题时同步给出逐生评分；结果自动保存，无需教师逐条确认。</p>
+                  </div>
+                  <HeadSwitch
+                    checked={aiScoringEnabled}
+                    onChange={(enabled) => onDataChange({ aiScoringEnabled: enabled })}
+                    label="AI 评分"
+                    title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
+                  />
+                </div>
+                {aiScoringEnabled && (
+                  <div className="worksheet-editor-ai-scoring-fields">
+                    <label>
+                      <span>{pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={aiScoringMaxScore}
+                        onChange={(event) => {
+                          const value = Number.parseInt(event.target.value, 10);
+                          if (Number.isInteger(value) && value >= 1 && value <= 100) {
+                            onDataChange({ aiScoringMaxScore: value });
+                          }
+                        }}
+                        aria-label={`AI 评分满额（${pointsUnit}）`}
+                      />
+                    </label>
+                    <label className="is-wide">
+                      <span>评分要求</span>
+                      <textarea
+                        value={aiScoringCriteria}
+                        maxLength={1200}
+                        rows={3}
+                        placeholder={pointsUnit === '分'
+                          ? '例如：概念准确 4 分，理由完整 4 分，表达清楚 2 分；合理异解酌情给分。'
+                          : `例如：核心结论正确得 2 ${pointsUnit}，理由清楚再得 1 ${pointsUnit}。`}
+                        onChange={(event) => onDataChange({ aiScoringCriteria: event.target.value })}
+                      />
+                    </label>
+                    <p className="worksheet-editor-ai-scoring-note">
+                      AI 评分仅供参考；{pointsUnit === '分' ? '分数最多保留一位小数。' : `${pointsUnit}按完整个数发放，不会出现小数。`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             {node.type === 'drawing' && (
-              <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师人工查看。</p>
+              <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师查看。</p>
             )}
           </div>
         )}
@@ -745,21 +802,25 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         </section>
       )}
 
-      {/* 不判分的题型（问答 / 绘图）：没有自动评分这回事，只有一句「谁来查看」。 */}
+      {/* 不做本地自动判分的题型：可由 AI 给参考评分，最终仍保留教师查看入口。 */}
       {!isGradedQuestionType(node.type) && (
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
-              <h3>查看方式</h3>
-              <p>这类题不自动判断答案，由教师查看学生提交的内容。</p>
+              <h3>{aiScoringEnabled ? '评分说明' : '查看方式'}</h3>
+              <p>{aiScoringEnabled
+                ? '这类题不做本地自动判分，分析后由 AI 给出参考评分，教师仍可查看原作答。'
+                : '这类题不自动判断答案，由教师查看学生提交的内容。'}</p>
             </div>
-            <span>教师人工查看</span>
+            <span>{aiScoringEnabled ? 'AI 评分' : '教师查看'}</span>
           </div>
           <div className="worksheet-editor-manual-grade">
             <span aria-hidden="true">✓</span>
             <div>
-              <strong>无需设置分值</strong>
-              <p>学生提交后由教师人工查看，系统不会根据答案自动给分。</p>
+              <strong>{aiScoringEnabled ? `满额 ${aiScoringMaxScore} ${pointsUnit}` : '不设置本地分值'}</strong>
+              <p>{aiScoringEnabled
+                ? `智能体会按上方评分要求给出 0–${aiScoringMaxScore} ${pointsUnit}的参考结果；该结果不会覆盖教师评价。`
+                : '学生提交后由教师查看，系统不会根据答案自动给分。'}</p>
             </div>
           </div>
         </section>

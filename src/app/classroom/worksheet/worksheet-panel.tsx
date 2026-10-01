@@ -50,6 +50,7 @@ import {
 } from './use-worksheet-answers';
 import { readCorrectBlanks, type SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { ResultGlyph } from './result-glyph';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import styles from './worksheet.module.css';
@@ -132,6 +133,39 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
   return out;
 }
 
+interface StudentAiReferenceScore {
+  score: number;
+  maxScore: number;
+  unit: string;
+  comment: string;
+}
+
+/** 学生作答回读中只取“本人逐题参考分”；坏形状静默忽略，不能拖垮整张学习单。 */
+function parseAiReferenceScores(raw: unknown): Record<string, StudentAiReferenceScore> {
+  const rows = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>).rows
+    : undefined;
+  if (!Array.isArray(rows)) return {};
+  const result: Record<string, StudentAiReferenceScore> = {};
+  for (const entry of rows) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    const score = row.aiReferenceScore;
+    if (typeof row.questionId !== 'string' || !score || typeof score !== 'object' || Array.isArray(score)) continue;
+    const value = score as Record<string, unknown>;
+    if (typeof value.score !== 'number' || !Number.isFinite(value.score)
+      || typeof value.maxScore !== 'number' || !Number.isFinite(value.maxScore)
+      || typeof value.unit !== 'string' || !value.unit) continue;
+    result[row.questionId] = {
+      score: value.score,
+      maxScore: value.maxScore,
+      unit: value.unit,
+      comment: typeof value.comment === 'string' ? value.comment.trim().slice(0, 200) : '',
+    };
+  }
+  return result;
+}
+
 /** `student-view` 的一次读取。 */
 interface LoadedWorksheet {
   id: string;
@@ -187,6 +221,8 @@ interface LoadedWorksheet {
    * 是它引用稳定的**唯一**来源。挪出去现 map 一份，学生每敲一个字都会被水合抹掉。
    */
   savedAnswers: SavedAnswerRow[];
+  /** AI 对当前学生的逐题参考分；不参与正式判分与奖励。 */
+  aiReferenceScores: Record<string, StudentAiReferenceScore>;
   /**
    * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」，`manual` 档才用得上）。
    *
@@ -271,6 +307,8 @@ export interface WorksheetQuestionListProps {
   /** 每道题的得分（`useWorksheetAnswers` 的 `scores`）。不传 = 一道题都没判分。 */
   scores?: Record<string, WorksheetScore>;
   gradeStates?: Record<string, WorksheetGradeState | null>;
+  /** 远程智能体给当前学生的参考分；只在学生端传入，教师预览不显示。 */
+  aiReferenceScores?: Record<string, StudentAiReferenceScore>;
   wrongBlankIndexes?: Record<string, number[]>;
   /** ★ 2026-09-27：答错的空的正确答案（空下标 → 答案）。**只在已提交的题上有内容**。 */
   correctBlanks?: Record<string, Record<string, string>>;
@@ -309,6 +347,7 @@ export function WorksheetQuestionList({
   reward,
   scores,
   gradeStates,
+  aiReferenceScores,
   wrongBlankIndexes,
   correctBlanks,
   rewardBursts,
@@ -402,6 +441,7 @@ export function WorksheetQuestionList({
         const promptImage = readPromptImage(node);
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
         const gradeState = interactive ? gradeStates?.[node.id] : undefined;
+        const aiReferenceScore = interactive ? aiReferenceScores?.[node.id] : undefined;
         /**
          * ★ 2026-09-28（教师）：「按这种效果制作」—— 状态、判分与奖励合成**一条**，
          * 三段用细线分开（效果图：✓已完成 ｜ !部分答对 ｜ 🚀获得奖励 ×1）。
@@ -415,7 +455,7 @@ export function WorksheetQuestionList({
          * 提交后才出现的一段反馈，读屏要念出来。
          */
         const verdictLabel = gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
-        const questionMeta = state !== 'empty' || gradeState ? (
+        const questionMeta = state !== 'empty' || gradeState || aiReferenceScore ? (
           // ★ 2026-09-29（教师 ⑤）：外面多了一层**锚点** —— 奖励角标要挂在判定那一格的
           // 右上角上，而 `.questionResult` 有 `overflow: hidden`（它要把两格的底色裁进圆角里）
           // ⇒ 角标必须是它的**兄弟**才不会被裁掉。`margin-left: auto`（原来在
@@ -455,6 +495,16 @@ export function WorksheetQuestionList({
                       <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
                     </span>
                   )}
+                </span>
+              )}
+              {aiReferenceScore && (
+                <span className={`${styles.resultCell} ${styles.aiReferenceCell}`} data-tone="ai-reference">
+                  <span className={styles.aiScoreValue} aria-label={`AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}`}>
+                    <b>{aiReferenceScore.score}/{aiReferenceScore.maxScore}</b>
+                    {reward && <RewardIcon kind={reward.style} state="earned" size={20} />}
+                    {(!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
+                  </span>
+                  <small>由 AI 生成，仅供参考</small>
                 </span>
               )}
             </div>
@@ -568,6 +618,19 @@ export function WorksheetQuestionList({
               correctBlanks={correctBlanks?.[node.id]}
             />
             </>)}
+
+            {interactive && aiReferenceScore?.comment && (
+              <aside className={styles.aiScoreComment} aria-label="AI 评分反馈">
+                <span className={styles.aiScoreCommentMark} aria-hidden="true">AI</span>
+                <span className={styles.aiScoreCommentBody}>
+                  <span className={styles.aiScoreCommentHeading}>
+                    <strong>AI 评分反馈</strong>
+                    <small>由 AI 生成，仅供参考</small>
+                  </span>
+                  <span className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</span>
+                </span>
+              </aside>
+            )}
 
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比
@@ -783,6 +846,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               : null,
             // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
             savedAnswers: parseSavedAnswers(rowsData),
+            aiReferenceScores: parseAiReferenceScores(rowsData),
           },
         });
       } catch {
@@ -967,6 +1031,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               reward={load.worksheet.reward}
               scores={answers.scores}
               gradeStates={answers.gradeStates}
+              aiReferenceScores={load.worksheet.aiReferenceScores}
               wrongBlankIndexes={answers.wrongBlankIndexes}
               correctBlanks={answers.correctBlanks}
               rewardBursts={answers.rewardBursts}

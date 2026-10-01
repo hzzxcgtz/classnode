@@ -104,6 +104,19 @@ test('消息文本：mixed 时文档与图的说明**都在**（文字那几条�
   assert.match(msg, /我认为是甲/, '文字作答那一条要跟着走');
 });
 
+test('开启 AI 评分时消息带满分、要求和机器块协议；关闭时不带', () => {
+  const enabled = {
+    ...payloadOf('text'),
+    aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '概念 3 分，表达 2 分' },
+  };
+  const message = buildAnalysisMessage(enabled);
+  assert.match(message, /满额：5 分/);
+  assert.match(message, /概念 3 分，表达 2 分/);
+  assert.match(message, /<classnode-scores>/);
+  assert.match(message, /"student":"User_001"/);
+  assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
+});
+
 test('🔴 normalizeNarrative：空白 ⇒ 空串（⇒ 不写库）；超长 ⇒ 截断且标注；正常 ⇒ 去首尾空白', () => {
   assert.equal(normalizeNarrative('   \n  '), '');
   assert.equal(normalizeNarrative(null), '');

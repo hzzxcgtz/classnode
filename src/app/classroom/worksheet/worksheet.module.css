@@ -1946,6 +1946,60 @@
 .resultCell[data-tone='correct'] { background: #f0fdf4; color: #15803d; }
 .resultCell[data-tone='partial'] { background: #faf4eb; color: #b45309; }
 .resultCell[data-tone='incorrect'] { background: #f8eeee; color: #b91c1c; }
+.resultCell[data-tone='ai-reference'] {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 1px;
+  background: #edf4fb;
+  color: #315f90;
+  line-height: 1.2;
+}
+
+.aiReferenceCell small {
+  color: #70849a;
+  font-size: .625rem;
+  font-weight: 500;
+}
+
+.aiScoreValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.aiScoreValue b { font: inherit; font-weight: 750; }
+.aiScoreValue em { font-style: normal; }
+
+.aiScoreComment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid #d7e4f1;
+  border-radius: 12px;
+  background: #f5f9fd;
+  color: #29455f;
+}
+
+.aiScoreCommentMark {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: #e2eef9;
+  color: #315f90;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.aiScoreCommentBody { display: grid; min-width: 0; gap: 4px; }
+.aiScoreCommentHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.aiScoreCommentHeading strong { font-size: .78rem; }
+.aiScoreCommentHeading small { color: #7890a6; font-size: .64rem; }
+.aiScoreCommentText { color: #506b84; font-size: .78rem; line-height: 1.55; }
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的

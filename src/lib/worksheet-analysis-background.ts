@@ -1,6 +1,7 @@
 'use client';
 
 import { api } from './api';
+import type { WorksheetAnalysisPayload } from './types';
 
 export const WORKSHEET_ANALYSIS_NOTICE_EVENT = 'classnode:worksheet-analysis-notice';
 
@@ -12,7 +13,12 @@ export interface WorksheetAnalysisNotice {
   questionId: string;
 }
 
-type AnalysisResult = { narrative: string; agentId: string; model: string };
+type AnalysisResult = {
+  narrative: string;
+  perStudent: WorksheetAnalysisPayload['perStudent'];
+  agentId: string;
+  model: string;
+};
 export type BackgroundAnalysisStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing';
 
 export interface BackgroundAnalysisTask {

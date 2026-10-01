@@ -181,34 +181,36 @@ function MatrixBlock({
         </div>
       </div>
 
-      <div className={styles.summary}>
-        <div className={styles.metric}><strong>{sheet.participants.length}</strong><span>参与者</span></div>
-        <div className={styles.metric}><strong>{totalSubmissions}</strong><span>已提交作答</span></div>
-        <div className={styles.metric}><strong>{rows.length - manualCount}</strong><span>自动判分题</span></div>
-        <div className={styles.metric} data-tone="warning"><strong>{manualCount}</strong><span>待人工分析题</span></div>
-      </div>
-
-      {focusRow && focusDetail && (
-        <div className={styles.focusStrip}>
-          <strong>{focusDetail.attention ? '优先关注' : '当前进度'}：{focusRow.heading}</strong>
-          <span>已提交 {focusDetail.aggregate.submitted}/{focusDetail.aggregate.total}</span>
-          <span>{focusDetail.manual
-            ? `${focusDetail.aggregate.submitted} 份待分析`
-            : focusDetail.aggregate.graded > 0
-              ? `答对 ${focusDetail.aggregate.correct}/${focusDetail.aggregate.graded}`
-              : '暂无判分结果'}</span>
-          {focusDetail.aggregate.submitted > 0 && focusDetail.aggregate.submitted < 3 && <span>样本较少，仅供课堂观察</span>}
-          <button type="button" className={styles.focusAction}
-            onClick={() => onOpenQuestion(sheet.id, focusRow.questionId)}>查看该题</button>
+      <div className={styles.overviewStrip}>
+        <div className={styles.summary} aria-label="学习单概况">
+          <span className={styles.metric}><strong>{sheet.participants.length}</strong> 参与者</span>
+          <span className={styles.metric}><strong>{totalSubmissions}</strong> 已提交</span>
+          <span className={styles.metric}><strong>{rows.length - manualCount}</strong> 自动判分</span>
+          <span className={styles.metric} data-tone="warning"><strong>{manualCount}</strong> 主观题</span>
         </div>
-      )}
+
+        <div className={styles.focusStrip}>
+          {focusRow && focusDetail ? (<>
+            <strong>{focusDetail.attention ? '优先关注' : '当前进度'}：{focusRow.heading}</strong>
+            <span>已提交 {focusDetail.aggregate.submitted}/{focusDetail.aggregate.total}</span>
+            <span>{focusDetail.manual
+              ? `${focusDetail.aggregate.submitted} 份主观作答`
+              : focusDetail.aggregate.graded > 0
+                ? `答对 ${focusDetail.aggregate.correct}/${focusDetail.aggregate.graded}`
+                : '暂无判分结果'}</span>
+            {focusDetail.aggregate.submitted > 0 && focusDetail.aggregate.submitted < 3 && <span>样本较少</span>}
+            <button type="button" className={styles.focusAction}
+              onClick={() => onOpenQuestion(sheet.id, focusRow.questionId)}>查看该题</button>
+          </>) : <span>当前没有需要优先关注的题目</span>}
+        </div>
+      </div>
 
       <div className={styles.toolbar}>
         <input className={styles.search} value={query} onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索学生或小组" aria-label="搜索学生或小组" />
         <button type="button" className={styles.filterButton} data-active={filter === 'all'} onClick={() => setFilter('all')}>全部题目 {rows.length}</button>
         <button type="button" className={styles.filterButton} data-active={filter === 'attention'} onClick={() => setFilter('attention')}>需要关注 {attentionCount}</button>
-        <button type="button" className={styles.filterButton} data-active={filter === 'manual'} onClick={() => setFilter('manual')}>待分析 {manualCount}</button>
+        <button type="button" className={styles.filterButton} data-active={filter === 'manual'} onClick={() => setFilter('manual')}>主观题 {manualCount}</button>
         <div className={styles.legend} aria-label="状态图例">
           {(Object.entries(CELL_LABEL) as Array<[CellState, string]>).map(([state, label]) => (
             <span className={styles.legendItem} key={state}>
@@ -411,7 +413,7 @@ function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
     buttonState = 'running';
     const elapsed = Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000));
     text = worksheetAnalysisProgressLabel(task.stage, elapsed);
-  } else if (ready) { text = '查看 AI 解读'; buttonState = 'ready'; }
+  } else if (ready) { text = '查看 AI 分析'; buttonState = 'ready'; }
 
   return (
     <button type="button" onClick={() => void handleClick()} disabled={checking || Boolean(task)}

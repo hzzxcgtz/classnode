@@ -1232,7 +1232,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
       // ☆ 2026-09-27：`wrongBlankIndexes`（Codex 那批）与 `correctBlanks`（教师定的窄口）也在这里。
       // ⚠️ 与上面那条键名级红线**不冲突**：红线扫的是 `ANSWER_KEYS` 那些**键名**（`answers`/`correctOrder`…），
       //   而 `correctBlanks` 是另一个键名，且只承载**答错的那几个空**的答案。
-      ['correctBlanks', 'gradeState', 'isCorrect', 'questionId', 'score', 'status',
+      ['aiReferenceScore', 'correctBlanks', 'gradeState', 'isCorrect', 'questionId', 'score', 'status',
        'submittedAt', 'value', 'wrongBlankIndexes'],
       `每一行只许有这几个键（多一个就可能是捎带出来的题目数据）：${raw}`,
     );

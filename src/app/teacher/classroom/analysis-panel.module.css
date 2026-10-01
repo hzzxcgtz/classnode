@@ -19,6 +19,7 @@
 }
 
 .resultCard {
+  margin-top: 14px;
   overflow: hidden;
   border: 1px solid #cddceb;
   border-radius: 14px;
@@ -106,6 +107,62 @@
 
 .resultText > :first-child { margin-top: 0 !important; }
 .resultText > :last-child { margin-bottom: 0 !important; }
+
+.scoreCard {
+  overflow: hidden;
+  border: 1px solid #cddceb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.scoreHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  border-bottom: 1px solid #e3ebf3;
+  background: #f5f9fd;
+  color: #243b55;
+}
+
+.scoreHeader > div { display: flex; align-items: baseline; gap: 9px; }
+.scoreHeader strong { font-size: 0.94rem; }
+.scoreHeader > div span { color: #6f8297; font-size: 0.75rem; }
+
+.aiScoreNotice {
+  padding: 4px 8px;
+  border: 1px solid #e4d7b9;
+  border-radius: 999px;
+  background: #fbf7ee;
+  color: #876521;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.scoreCriteria {
+  padding: 10px 16px;
+  border-bottom: 1px solid #edf1f5;
+  color: #60758d;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.scoreList { display: grid; }
+.scoreRow {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) 110px minmax(180px, 2fr);
+  gap: 14px;
+  align-items: center;
+  padding: 11px 16px;
+  border-top: 1px solid #edf1f5;
+  font-size: 0.82rem;
+}
+.scoreRow:first-child { border-top: 0; }
+.scoreName { color: #263c54; font-weight: 700; }
+.scoreValue { color: #315f8c; }
+.scoreReason { color: #63778d; line-height: 1.5; }
 
 .payloadText { white-space: pre-wrap; }
 
@@ -214,4 +271,6 @@
   .body { padding: 12px; }
   .resultText { padding: 15px; }
   .actions { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .scoreRow { grid-template-columns: 1fr auto; gap: 5px 10px; }
+  .scoreReason { grid-column: 1 / -1; }
 }

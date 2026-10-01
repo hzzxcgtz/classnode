@@ -266,6 +266,8 @@ export interface QuestionMeta {
   details?: string;
   /** 已按题型翻译成人类可读文字的参考答案/评价要求。 */
   referenceAnswer?: string;
+  /** 主观题可选的 AI 评分设置；未开启时仍把配置明确带到载荷中。 */
+  aiScoring?: { enabled: boolean; maxScore: number; unit: string; criteria: string };
 }
 
 /** 超长就截断并附一句说明。 */
@@ -511,6 +513,7 @@ export interface AnalysisPayload {
   text: string | null;
   sheetLayouts: SheetLayout[];
   knobs: SheetKnobs;
+  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string };
 }
 
 /**
@@ -557,6 +560,7 @@ export function buildAnalysisPayload(input: {
     text: payloadKind === 'image' ? null : buildTextDocument(question, entries, labels, entries.length, total),
     sheetLayouts: payloadKind === 'text' ? [] : layoutSheets(entries, labels, knobs),
     knobs,
+    aiScoring: question.aiScoring ?? { enabled: false, maxScore: 10, unit: '分', criteria: '' },
   };
 }
 

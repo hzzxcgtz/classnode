@@ -6,6 +6,7 @@ import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
+import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis } from '@/lib/worksheet-analysis-background';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
@@ -356,7 +357,7 @@ function QuestionList({
         <div className={styles.analysisMetric}><strong>{worksheet.participants.length}</strong><span>参与者总数</span></div>
         <div className={styles.analysisMetric}><strong>{totalSubmissions}</strong><span>已产生作答</span></div>
         <div className={styles.analysisMetric}><strong>{automaticCount}</strong><span>可自动判分题</span></div>
-        <div className={styles.analysisMetric} data-tone="warning"><strong>{manualCount}</strong><span>待人工分析题</span></div>
+        <div className={styles.analysisMetric} data-tone="warning"><strong>{manualCount}</strong><span>主观题</span></div>
       </div>
       <div className={styles.sampleHint}>
         <span><strong>正确情况始终按“答对人数 / 已判人数”显示</strong>，样本较少时仅作为课堂观察参考</span>
@@ -366,7 +367,7 @@ function QuestionList({
         {([
           ['all', `全部题目 ${details.length}`],
           ['attention', `需要关注 ${attentionCount}`],
-          ['manual', `待人工分析 ${manualCount}`],
+          ['manual', `主观题 ${manualCount}`],
           ['empty', `暂无作答 ${emptyCount}`],
         ] as const).map(([value, label]) => (
           <button key={value} type="button" className={styles.filterButton}
@@ -383,7 +384,10 @@ function QuestionList({
             <span>{group.reduce((sum, item) => sum + item.aggregate.submitted, 0)} 份作答</span>
           </div>
           <div className={styles.analysisQuestionList}>
-            {group.map(({ node, label, aggregate, manual, sampleSmall, attention }) => (
+            {group.map(({ node, label, aggregate, manual, sampleSmall, attention }) => {
+              const aiScored = manual && node.data.aiScoringEnabled === true;
+              const analysisReady = worksheet.analyzedQuestionIds?.includes(node.id) === true;
+              return (
               <button key={node.id} type="button" className={styles.analysisQuestionRow}
                 data-attention={attention}
                 onClick={() => onOpen(node.id)}>
@@ -391,7 +395,7 @@ function QuestionList({
                 <span className={styles.analysisQuestionInfo}>
                   <strong>
                     {questionHeading(node, null)}
-                    {manual && <span className={styles.analysisTag}>人工分析</span>}
+                    {manual && <span className={styles.analysisTag}>{aiScored ? 'AI 评分' : '教师查看'}</span>}
                     {sampleSmall && <span className={styles.analysisTag} data-tone="warning">样本少</span>}
                   </strong>
                   {/* ★ 2026-09-30：题干认公式（两处：按题分析列表 + 作答详情）。 */}
@@ -402,15 +406,50 @@ function QuestionList({
                 <span className={styles.rowMetric}><strong>{aggregate.submitted}/{aggregate.total}</strong><span>已提交</span></span>
                 <span className={styles.rowMetric} data-tone={attention ? 'warning' : aggregate.correct > 0 ? 'good' : undefined}>
                   <strong>{manual ? (aggregate.submitted > 0 ? `${aggregate.submitted} 份` : '待作答') : aggregate.graded > 0 ? `${aggregate.correct}/${aggregate.graded}` : '暂无'}</strong>
-                  <span>{manual ? '人工分析' : '答对人数'}</span>
+                  <span>{manual ? (aiScored ? 'AI 评分' : '教师查看') : '答对人数'}</span>
                 </span>
+                <QuestionAnalysisState
+                  classroomId={board.classroomId}
+                  worksheetId={worksheet.id}
+                  questionId={node.id}
+                  initiallyReady={analysisReady}
+                />
                 <span aria-hidden className={styles.chevron}>›</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </section>
       ))}
     </div>
+  );
+}
+
+function QuestionAnalysisState({ classroomId, worksheetId, questionId, initiallyReady }: {
+  classroomId: string;
+  worksheetId: string;
+  questionId: string;
+  initiallyReady: boolean;
+}) {
+  const [ready, setReady] = useState(() => initiallyReady
+    || hasCompletedWorksheetAnalysis(classroomId, worksheetId, questionId));
+  const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
+
+  useEffect(() => {
+    if (initiallyReady) setReady(true);
+  }, [initiallyReady]);
+
+  useEffect(() => {
+    if (!task) return;
+    let alive = true;
+    void task.promise.then(() => { if (alive) setReady(true); }).catch(() => {});
+    return () => { alive = false; };
+  }, [task]);
+
+  return (
+    <span className={styles.aiAnalysisState} data-ready={ready ? 'true' : 'false'}>
+      <i aria-hidden />{task && !ready ? 'AI 分析中' : ready ? 'AI 已生成' : 'AI 未生成'}
+    </span>
   );
 }
 

@@ -44,6 +44,7 @@ function board(
     worksheets: [{
       id: 'w1',
       title: '光合作用',
+      analyzedQuestionIds: [],
       participants: [{ participantId: 'p1', name: '花荣', kind: 'student', groupName: null, answerRows }],
     }],
   };

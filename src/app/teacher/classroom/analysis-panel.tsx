@@ -15,11 +15,11 @@ export type AnalysisOperation = 'analyzing' | null;
 export type AnalysisRunStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing' | null;
 
 /**
- * 「智能体解读」的**取数 + 呈现**，抽出来给**两处**用（★ 2026-09-28，规格 §6.2）。
+ * 「AI 分析」的**取数 + 呈现**，抽成统一结果面板（★ 2026-09-28，规格 §6.2）。
  *
  * 🔴 **为什么要抽**（不是洁癖）：
  *   · 它今天有两个宿主 —— 整屏的 `AnalysisOverlay`（从矩阵那条路进）与
- *     **按题统计浮层**里那块内联的「② 智能体解读」；
+ *     **按题统计浮层**与矩阵分析中的查看入口；
  *   · 同一个 `narrative` 若在两处各画一份，迟早会长得不一样 —— 那是这类功能的经典分叉，
  *     而**两边都不报错**；
  *   · 分析任务已经改成静默后台执行；这里统一负责读取结果、展示进度和重新分析，
@@ -145,7 +145,7 @@ export function useWorksheetAnalysis(
       const out = await task.promise;
       stageTimers.forEach((timer) => window.clearTimeout(timer));
       setRunStage('finalizing');
-      // 只把那三格合进去（`aggregate`/`covered` 那些是载荷那一侧，这次一个都没动）
+      // 只合入 AI 产出的解读、参考评分与审计字段；载荷统计一个都不动。
       try {
         setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId));
       } catch {
@@ -213,7 +213,8 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
    *（载荷里的 `entries[].studentId` 就是参与者 id，名册在这一屏也有）。
    * 于是**只在教师自己的屏幕上**画一张对照表 —— 既不发出去，也不改任何载荷。
    *
-   * ⚠️ 缺省不传 ⇒ 退回「只有伪名」（整屏那个分析浮层没有名册，它就不传）。
+   * ⚠️ 缺省不传时优先使用服务端随本次教师查询返回的 `participantNames`；这个映射
+   * 只回到教师端，不会进入发给第三方 AI 的载荷。
    */
   nameOf?: (participantId: string) => string | null;
 }) {
@@ -239,9 +240,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
    */
   const localize = (text: string | null | undefined): string | null => {
     if (!text) return text ?? null;
-    if (!nameOf || !payload) return text;
+    if (!payload) return text;
     return payload.entries.reduce((acc, entry) => {
-      const real = nameOf(entry.studentId);
+      const real = payload.participantNames?.[entry.studentId] ?? nameOf?.(entry.studentId);
       return real ? acc.split(entry.anonLabel).join(real) : acc;
     }, text);
   };
@@ -254,11 +255,37 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         <div className={styles.emptyResult}>这道题还没有已提交的作答。</div>
       )}
 
+      {!loading && payload?.perStudent && (
+        <section className={styles.scoreCard} aria-label="AI 评分">
+          <div className={styles.scoreHeader}>
+            <div>
+              <strong>AI 评分</strong>
+              <span>满额 {payload.perStudent.maxScore} {payload.perStudent.unit}</span>
+            </div>
+            <span className={styles.aiScoreNotice}>由 AI 生成，仅供参考</span>
+          </div>
+          {payload.perStudent.criteria && (
+            <div className={styles.scoreCriteria}>评分要求：{payload.perStudent.criteria}</div>
+          )}
+          <div className={styles.scoreList}>
+            {payload.perStudent.scores.map((item) => (
+              <div className={styles.scoreRow} key={item.studentId}>
+                <span className={styles.scoreName}>{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}</span>
+                <strong className={styles.scoreValue}>
+                  {item.score === null ? '暂无法评分' : `${item.score} / ${payload.perStudent!.maxScore} ${payload.perStudent!.unit}`}
+                </strong>
+                <span className={styles.scoreReason}>{item.reason || '智能体未补充说明'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {!loading && payload && payload.covered > 0 && payload.narrative && (
-        <section className={styles.resultCard} aria-label="AI 解读结果">
+        <section className={styles.resultCard} aria-label="AI 分析结果">
           <div className={styles.resultHeader}>
             <span className={styles.aiMark}>AI</span>
-            <span className={styles.resultTitle}>AI 解读</span>
+            <span className={styles.resultTitle}>AI 分析</span>
             {payload.model && <span className={styles.resultMeta}>{payload.model}</span>}
           </div>
           <Markdown className={styles.resultText} allowImages={false}>
@@ -268,7 +295,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       )}
 
       {!loading && payload && payload.covered > 0 && !payload.narrative && (
-        <div className={styles.emptyResult}>尚未生成 AI 解读。点击下方按钮后，分析会在后台完成并自动保存。</div>
+        <div className={styles.emptyResult}>尚未生成 AI 分析。点击下方按钮后，任务会在后台完成并自动保存。</div>
       )}
 
       {!loading && payload && (
@@ -334,7 +361,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state }: { state: WorksheetAnalysisState }) {
   const { payload, busy, operation, runStage, runElapsedSeconds } = state;
-  let actionText = payload?.narrative ? '重新生成 AI 解读' : '生成 AI 解读';
+  let actionText = payload?.narrative
+    ? (payload.aiScoring.enabled ? '重新生成 AI 分析与评分' : '重新生成 AI 分析')
+    : (payload?.aiScoring.enabled ? '生成 AI 分析与评分' : '生成 AI 分析');
   if (operation === 'analyzing' && runStage) actionText = worksheetAnalysisProgressLabel(runStage, runElapsedSeconds);
   return (
     <div className={styles.actions}>

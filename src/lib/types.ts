@@ -560,6 +560,17 @@ export interface WorksheetAnalysisPayload {
   /** ★ M7b：写这段解读的智能体与平台（审计用）。 */
   agentId: string | null;
   model: string | null;
+  /** 主观题的 AI 评分设置。关闭时不会要求智能体返回逐生分数。 */
+  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string };
+  /** AI 返回并由服务端校验过的逐生评分；与正式自动判分字段完全分开。 */
+  perStudent: {
+    maxScore: number;
+    unit: string;
+    criteria: string;
+    scores: Array<{ studentId: string; score: number | null; reason: string }>;
+  } | null;
+  /** 只返回教师端，用于把评分中的参与者 ID 显示为姓名；不会进入远端智能体载荷。 */
+  participantNames: Record<string, string>;
   /**
    * ★ M7b：学习单上指定的那个分析智能体（`null` = 没指定）。
    * 只给界面**显示**用 —— 能不能发的判断在服务端（见 `canSend`）。
@@ -654,6 +665,8 @@ export interface WorksheetBoardParticipant {
 export interface WorksheetBoardWorksheet {
   id: string;
   title: string;
+  /** 已经成功生成并保存 AI 分析的题目 id。正文仍按需读取，不随看板大列表返回。 */
+  analyzedQuestionIds: string[];
   participants: WorksheetBoardParticipant[];
 }
 

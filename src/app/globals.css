@@ -6300,6 +6300,57 @@ tr:hover td {
   line-height: 1.55;
 }
 
+.worksheet-editor-ai-scoring-fields {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dbe7f2;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.worksheet-editor-ai-scoring { color: inherit; }
+
+.worksheet-editor-ai-scoring-fields label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  color: #40566f;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-ai-scoring-fields input,
+.worksheet-editor-ai-scoring-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd9e7;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f334a;
+  font: inherit;
+  font-weight: 500;
+  outline: none;
+}
+
+.worksheet-editor-ai-scoring-fields input { min-height: 38px; padding: 7px 10px; }
+.worksheet-editor-ai-scoring-fields textarea { min-height: 76px; padding: 9px 11px; resize: vertical; line-height: 1.55; }
+.worksheet-editor-ai-scoring-fields input:focus,
+.worksheet-editor-ai-scoring-fields textarea:focus { border-color: #6f94b9; box-shadow: 0 0 0 3px rgb(73 116 158 / 10%); }
+
+.worksheet-editor-ai-scoring-note {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: #6a7e93;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 720px) {
+  .worksheet-editor-ai-scoring-fields { grid-template-columns: 1fr; }
+  .worksheet-editor-ai-scoring-note { grid-column: auto; }
+}
+
 .worksheet-editor-section-head {
   display: flex;
   align-items: flex-start;

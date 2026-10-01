@@ -3891,13 +3891,19 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {/* ★ 2026-09-28：按题统计与分析（层级 292/293，在抽屉 291 之上）。 */}
       {questionStatsTarget && (
         <QuestionStatsOverlay
-          classroomId={id!}
           mode={classroom?.mode ?? 'standard'}
           board={wb.board}
           worksheetId={questionStatsTarget.worksheetId}
           questionId={questionStatsTarget.questionId}
           nodesByWorksheet={wb.nodesByWorksheet}
           onClose={() => setQuestionStatsTarget(null)}
+          onOpenAnalysis={() => {
+            setQuestionStatsTarget(null);
+            setAnalysisTarget({
+              worksheetId: questionStatsTarget.worksheetId,
+              questionId: questionStatsTarget.questionId,
+            });
+          }}
         />
       )}
 

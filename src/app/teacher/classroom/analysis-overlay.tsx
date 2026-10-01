@@ -10,7 +10,7 @@ import styles from './analysis-overlay.module.css';
  *
  * ★ 2026-09-28：**正文抽走了**（规格 `specs/2026-09-28-按题统计与分析.md` §6.2）。
  * 本文件现在只剩**外壳**：页头 + 三块（`AnalysisBanners` / `AnalysisBody` / `AnalysisActions`）。
- * 那三块同时被「按题统计浮层」里内联的「② 智能体解读」使用 —— **一个实现、两处宿主**。
+ * 题目统计与矩阵分析都通过这里查看结果，避免出现两套内容结构与交互。
  *
  * 正文、后台进度与重新分析动作由 `analysis-panel.tsx` 统一实现，避免两个宿主分叉。
  *
@@ -33,9 +33,7 @@ export function AnalysisOverlay({
   mode: string;
   /**
    * ★ 2026-09-28：默认 **270**（矩阵 250 之上、抽屉 291 之下 —— 它原来的位置）。
-   * ⚠️ 它现在**只从矩阵那条路进**（按题统计浮层改成内联正文了，不再打开本浮层），
-   * 所以这个参数**暂时没有调用方传值** —— 留着是因为它是一个正当的旋钮，
-   * 而不是因为「现在有人用」。
+   * 矩阵与按题统计两条入口都会打开本浮层；参数保留给上层覆盖关系的明确调节。
    */
   zIndex?: number;
   onClose: () => void;
@@ -49,7 +47,7 @@ export function AnalysisOverlay({
       <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
       <div className={styles.header}>
         <div className={styles.heading}>
-          <div className={styles.eyebrow}>AI 分析结果</div>
+          <div className={styles.eyebrow}>AI 分析</div>
           <div id="analysis-dialog-title" className={styles.title}>
             {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '正在读取题目信息'}
           </div>

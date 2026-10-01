@@ -46,7 +46,7 @@ function participant(participantId: string, cells: Record<string, string> = {}):
 }
 
 function sheet(participants: WorksheetBoardParticipant[]): WorksheetBoardWorksheet {
-  return { id: 'w1', title: '光合作用实验', participants };
+  return { id: 'w1', title: '光合作用实验', analyzedQuestionIds: [], participants };
 }
 
 /** 广播那一路（键 = 参与者 id，与 `worksheetProgress` 同一个键空间）。 */

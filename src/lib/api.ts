@@ -524,7 +524,12 @@ export const api = {
    * 界面静默调用，但必须先经过 `computeWorksheetAnalysis` 返回的 `canSend` 能力闸门。
    */
   runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
-    request<{ narrative: string; agentId: string; model: string }>(
+    request<{
+      narrative: string;
+      perStudent: WorksheetAnalysisPayload['perStudent'];
+      agentId: string;
+      model: string;
+    }>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`,
       { method: 'POST' }),
   /**
